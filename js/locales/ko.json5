@@ -145,6 +145,7 @@
   "dialog.audioConfig.latency.mid": "중간",
   "dialog.audioConfig.latency.high": "높음 (가장 안정적)",
   "dialog.audioConfig.useInputWithPlayer": "플레이어 사용 시에도 오디오 입력 사용",
+  "dialog.audioConfig.lowLatencyOutput": "저지연 출력(직접)",
   "dialog.audioConfig.cancel": "취소",
   "dialog.audioConfig.apply": "적용",
   "dialog.audioConfig.updatedTitle": "오디오 설정 업데이트됨",

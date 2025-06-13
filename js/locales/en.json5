@@ -146,6 +146,7 @@
   "dialog.audioConfig.latency.mid": "Mid",
   "dialog.audioConfig.latency.high": "High (Most stable)",
   "dialog.audioConfig.useInputWithPlayer": "Audio input even when using Player",
+  "dialog.audioConfig.lowLatencyOutput": "Low-latency output (direct)",
   "dialog.audioConfig.cancel": "Cancel",
   "dialog.audioConfig.apply": "Apply",
   "dialog.audioConfig.updatedTitle": "Audio Configuration Updated",

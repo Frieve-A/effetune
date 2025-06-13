@@ -145,6 +145,7 @@
   "dialog.audioConfig.latency.mid": "中",
   "dialog.audioConfig.latency.high": "高（最稳定）",
   "dialog.audioConfig.useInputWithPlayer": "使用播放器时仍启用音频输入",
+  "dialog.audioConfig.lowLatencyOutput": "低延迟输出(直接)",
   "dialog.audioConfig.cancel": "取消",
   "dialog.audioConfig.apply": "应用",
   "dialog.audioConfig.updatedTitle": "音频设置已更新",

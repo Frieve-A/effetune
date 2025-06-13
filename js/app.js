@@ -623,15 +623,21 @@ class App {
         const found = devices.some(d => d.kind === 'audiooutput' && d.deviceId === prefs.outputDeviceId);
         const currentSink = this.audioManager.ioManager.audioElement?.sinkId;
 
-        if (found) {
-            if (currentSink !== prefs.outputDeviceId) {
-                const success = await this.audioManager.ioManager.reapplyOutputDevice(prefs.outputDeviceId);
-                if (!success) {
-                    await this.audioManager.reset(prefs);
-                }
+        if (typeof currentSink === 'undefined') {
+            if (found) {
+                await this.audioManager.reset(prefs);
             }
-        } else if (currentSink === prefs.outputDeviceId) {
-            await this.audioManager.reset(prefs);
+        } else {
+            if (found) {
+                if (currentSink !== prefs.outputDeviceId) {
+                    const success = await this.audioManager.ioManager.reapplyOutputDevice(prefs.outputDeviceId);
+                    if (!success) {
+                        await this.audioManager.reset(prefs);
+                    }
+                }
+            } else if (currentSink === prefs.outputDeviceId) {
+                await this.audioManager.reset(prefs);
+            }
         }
     }
 

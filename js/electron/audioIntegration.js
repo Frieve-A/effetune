@@ -185,6 +185,10 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
             <option value="6" ${audioPreferences?.outputChannels === 6 ? 'selected' : ''}>6</option>
             <option value="8" ${audioPreferences?.outputChannels === 8 ? 'selected' : ''}>8</option>
           </select>
+          <div class="checkbox-container">
+            <input type="checkbox" id="low-latency-output" ${audioPreferences?.lowLatencyOutput ? 'checked' : ''}>
+            <label for="low-latency-output">${t('dialog.audioConfig.lowLatencyOutput')}</label>
+          </div>
         </div>
         <div class="device-section">
           <label for="sample-rate">${t('dialog.audioConfig.sampleRate')}</label>
@@ -316,6 +320,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       const sampleRateSelect = document.getElementById('sample-rate');
       const useInputWithPlayerCheckbox = document.getElementById('use-input-with-player');
       const outputChannelsSelect = document.getElementById('output-channels');
+      const lowLatencyOutputCheckbox = document.getElementById('low-latency-output');
       const latencySelect = document.getElementById('latency');
       
       const inputDevice = inputDevices.find(d => d.deviceId === inputDeviceSelect.value);
@@ -323,6 +328,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       const selectedSampleRate = parseInt(sampleRateSelect.value, 10);
       const useInputWithPlayer = useInputWithPlayerCheckbox.checked;
       const outputChannels = parseInt(outputChannelsSelect.value, 10);
+      const lowLatencyOutput = lowLatencyOutputCheckbox.checked;
       const selectedLatency = latencySelect.value;
       
       // Save preferences
@@ -333,6 +339,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         outputDeviceLabel: outputDevice?.label || '',
         sampleRate: selectedSampleRate,
         useInputWithPlayer: useInputWithPlayer,
+        lowLatencyOutput: lowLatencyOutput,
         outputChannels: outputChannels,
         latencyHint: selectedLatency
       };

@@ -144,6 +144,7 @@
   "dialog.audioConfig.latency.mid": "中",
   "dialog.audioConfig.latency.high": "高 (最も安定)",
   "dialog.audioConfig.useInputWithPlayer": "プレーヤー使用時も音声入力を有効にする",
+  "dialog.audioConfig.lowLatencyOutput": "低レイテンシー出力(直接)",
   "dialog.audioConfig.cancel": "キャンセル",
   "dialog.audioConfig.apply": "適用",
   "dialog.audioConfig.updatedTitle": "オーディオ設定が更新されました",

@@ -145,6 +145,7 @@
   "dialog.audioConfig.latency.mid": "Средняя",
   "dialog.audioConfig.latency.high": "Высокая (Наиболее стабильная)",
   "dialog.audioConfig.useInputWithPlayer": "Использовать аудиовход даже при использовании проигрывателя",
+  "dialog.audioConfig.lowLatencyOutput": "Низкая задержка вывода (напрямую)",
   "dialog.audioConfig.cancel": "Отмена",
   "dialog.audioConfig.apply": "Применить",
   "dialog.audioConfig.updatedTitle": "Аудиоконфигурация обновлена",

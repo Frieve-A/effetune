@@ -168,10 +168,11 @@ export class AudioManager {
      */
     updateAudioConfig(audioPreferences) {
         if (!this.workletNode) return;
-        
+
         this.workletNode.port.postMessage({
             type: 'updateAudioConfig',
-            outputChannels: audioPreferences.outputChannels || 2
+            outputChannels: audioPreferences.outputChannels || 2,
+            lowLatencyMode: !!audioPreferences.lowLatencyOutput
         });
     }
     

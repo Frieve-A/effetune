@@ -145,6 +145,7 @@
   "dialog.audioConfig.latency.mid": "متوسط",
   "dialog.audioConfig.latency.high": "مرتفع (الأكثر استقرارًا)",
   "dialog.audioConfig.useInputWithPlayer": "استخدام إدخال الصوت حتى عند استخدام المشغل",
+  "dialog.audioConfig.lowLatencyOutput": "إخراج منخفض الكمون (مباشر)",
   "dialog.audioConfig.cancel": "إلغاء",
   "dialog.audioConfig.apply": "تطبيق",
   "dialog.audioConfig.updatedTitle": "تم تحديث إعدادات الصوت",

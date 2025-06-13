@@ -15,11 +15,12 @@ class PluginProcessor extends AudioWorkletProcessor {
 
         // Audio configuration
         this.outputChannelCount = options?.processorOptions?.initialOutputChannelCount ?? 2;
+        this.lowLatencyMode = options?.processorOptions?.lowLatencyMode ?? false;
 
         // Message control
         this.lastMessageTime = 0;
         this.messageQueue = new Map();
-        this.MESSAGE_INTERVAL = 16; // ms
+        this.MESSAGE_INTERVAL = this.lowLatencyMode ? 8 : 16; // ms
 
         // Buffer management - blockSize will be updated in process
         this.blockSize = 128; // Default/initial block size
@@ -61,9 +62,12 @@ class PluginProcessor extends AudioWorkletProcessor {
                     if (data.outputChannels !== undefined) {
                         this.outputChannelCount = data.outputChannels;
                         // Invalidate combined buffer if channel count changes drastically
-                        // This might require more logic depending on how buffers are reused
                         this.combinedBuffer = null;
                         console.log(`Audio config updated: output channels = ${this.outputChannelCount}`);
+                    }
+                    if (data.lowLatencyMode !== undefined) {
+                        this.lowLatencyMode = data.lowLatencyMode;
+                        this.MESSAGE_INTERVAL = this.lowLatencyMode ? 8 : 16;
                     }
                     break;
                 case 'registerProcessor':
@@ -94,6 +98,10 @@ class PluginProcessor extends AudioWorkletProcessor {
                          this.audioLevelMonitoring._silenceThresholdAmplitude = Math.pow(10, data.threshold / 20);
                     }
                      break;
+                case 'setLowLatencyMode':
+                    this.lowLatencyMode = !!data.enabled;
+                    this.MESSAGE_INTERVAL = this.lowLatencyMode ? 8 : 16;
+                    break;
             }
         };
     }

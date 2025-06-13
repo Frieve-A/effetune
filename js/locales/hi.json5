@@ -145,6 +145,7 @@
   "dialog.audioConfig.latency.mid": "मध्यम",
   "dialog.audioConfig.latency.high": "उच्च (सबसे स्थिर)",
   "dialog.audioConfig.useInputWithPlayer": "प्लेयर का उपयोग करते समय भी ऑडियो इनपुट",
+  "dialog.audioConfig.lowLatencyOutput": "न्यून विलंबता आउटपुट (प्रत्यक्ष)",
   "dialog.audioConfig.cancel": "रद्द करें",
   "dialog.audioConfig.apply": "लागू करें",
   "dialog.audioConfig.updatedTitle": "ऑडियो विन्यास अपडेट हुआ",
