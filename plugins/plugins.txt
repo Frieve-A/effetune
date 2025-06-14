@@ -62,6 +62,7 @@ modulation/tremolo: Tremolo | Modulation | TremoloPlugin
 modulation/wow_flutter: Wow Flutter | Modulation | WowFlutterPlugin
 others/oscillator: Oscillator | Others | OscillatorPlugin
 resonator/horn_resonator: Horn Resonator | Resonator | HornResonatorPlugin
+resonator/horn_resonator_plus: Horn Resonator Plus | Resonator | HornResonatorPlusPlugin
 resonator/modal_resonator: Modal Resonator | Resonator | ModalResonatorPlugin | css
 reverb/fdn_reverb: FDN Reverb | Reverb | FDNReverbPlugin
 reverb/rs_reverb: RS Reverb | Reverb | RSReverbPlugin

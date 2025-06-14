@@ -5,6 +5,7 @@ A collection of plugins that emphasize resonant characteristics to add unique to
 ## Plugin List
 
 - [Horn Resonator](#horn-resonator) - Simulates the resonance of horn speaker systems
+- [Horn Resonator Plus](#horn-resonator-plus) - Enhanced horn model with advanced reflections
 - [Modal Resonator](#modal-resonator) - Frequency resonance effect with up to 5 resonators
 
 ## Horn Resonator
@@ -40,6 +41,14 @@ A plugin that simulates the resonance of a horn-loaded speaker using a digital w
 4.  Use **Curve** to fine-tune the resonant character (try 0% for conical, positive for exponential-like, negative for tractrix-like flare).
 5.  Tweak **Damping** and **Throat Reflection** for smoothness or emphasis of the horn's resonances.
 6.  Use **Output Gain** to balance the level of the horn sound against the bypassed low frequencies.
+
+## Horn Resonator Plus
+
+An enhanced horn model that uses a 2nd-order mouth reflection filter and a frequency-dependent throat reflection for smoother resonance.
+
+### Quick Start Guide
+
+Use the same controls as the Horn Resonator.
 
 ## Modal Resonator
 
