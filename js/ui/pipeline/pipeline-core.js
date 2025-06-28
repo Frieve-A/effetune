@@ -1508,7 +1508,7 @@ export class PipelineCore {
      * @param {boolean} useDeepCopy - Whether to create a deep copy of parameters
      * @returns {Object} Serializable plugin state
      */
-    getSerializablePluginState(plugin, useShortNames = false, useFullFallback = false, useDeepCopy = false) {
+    getSerializablePluginState(plugin, useShortNames = false, useFullFallback = false, useDeepCopy = false, includeExpanded = false) {
         // Use the centralized utility functions
         if (useShortNames) {
             // Short format (nm/en/ib/ob)
@@ -1521,8 +1521,8 @@ export class PipelineCore {
             
             return result;
         } else {
-            // Long format (name/enabled/parameters/inputBus/outputBus)
-            return getSerializablePluginStateLong(plugin, useDeepCopy);
+            // Long format (name/enabled/parameters/inputBus/outputBus) with optional expanded state
+            return getSerializablePluginStateLong(plugin, useDeepCopy, this.expandedPlugins, includeExpanded);
         }
     }
 

@@ -57,9 +57,11 @@ export function getSerializablePluginStateShort(plugin) {
  * Used for new format presets and app state persistence
  * @param {Object} plugin - The plugin to get state for
  * @param {boolean} useDeepCopy - Whether to create a deep copy of parameters
+ * @param {Set} expandedPlugins - Set of expanded plugins to determine expanded state
+ * @param {boolean} includeExpanded - Whether to include expanded state (for pipeline-state only)
  * @returns {Object} Serializable plugin state with long names
  */
-export function getSerializablePluginStateLong(plugin, useDeepCopy = false) {
+export function getSerializablePluginStateLong(plugin, useDeepCopy = false, expandedPlugins = null, includeExpanded = false) {
     // Get serializable parameters
     let params = plugin.getSerializableParameters ?
         plugin.getSerializableParameters() : {};
@@ -91,6 +93,11 @@ export function getSerializablePluginStateLong(plugin, useDeepCopy = false) {
         enabled: plugin.enabled,
         parameters: cleanParams
     };
+    
+    // Add expanded state only for pipeline-state persistence
+    if (includeExpanded && expandedPlugins) {
+        result.expanded = expandedPlugins.has(plugin);
+    }
     
     // Add input and output bus at the top level if they exist
     if (plugin.inputBus !== null && plugin.inputBus !== undefined) {

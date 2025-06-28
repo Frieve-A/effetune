@@ -487,7 +487,12 @@ class App {
                     applySerializedState(plugin, state);
 
                     plugin.updateParameters();
-                    this.uiManager.expandedPlugins.add(plugin);
+                    
+                    // Handle expanded state based on saved data with backward compatibility
+                    if (pluginState.expanded !== false) {
+                        this.uiManager.expandedPlugins.add(plugin);
+                    }
+                    
                     return plugin;
                 } catch (error) {
                     console.warn(`Failed to create plugin '${pluginState.name}': ${error.message}`);
@@ -801,8 +806,22 @@ window.savePipelineState = savePipelineState;
 
 // Add event listener to save pipeline state to file when the app is closing
 window.addEventListener('beforeunload', async (event) => {
-    // Write the latest pipeline state to file on app exit
-    await writePipelineStateToFile();
+    // Capture current state immediately before UI destruction
+    const currentPipeline = window.uiManager.pipelineManager.audioManager.pipeline;
+    const currentExpandedPlugins = window.uiManager.expandedPlugins;
+
+    // Serialize current state immediately
+    const pipelineState = currentPipeline.map(plugin => {
+        const result = window.uiManager.pipelineManager.core.getSerializablePluginState(plugin, false, false, false, true);
+        console.log(`Plugin ${plugin.name} expanded:`, result.expanded);
+        return result;
+    });
+    
+    // Save to file immediately
+    if (window.electronAPI && window.electronAPI.savePipelineStateToFile) {
+        const saveResult = await window.electronAPI.savePipelineStateToFile(pipelineState);
+        console.log('beforeunload save result:', saveResult);
+    }
 });
 
 // Initialize application after first launch check is complete
