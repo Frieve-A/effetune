@@ -1,7 +1,7 @@
 # Version History
 
-### Version 1.57 (Jun xx, 2025)
-- Added Exciter and Vinyl Artifacts effects
+### Version 1.57 (Jun 28, 2025)
+- Added Exciter, Hum Generator and Vinyl Artifacts effects
 - Various minor improvements
 
 ### Version 1.56 (Jun 22, 2025)

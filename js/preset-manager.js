@@ -138,9 +138,9 @@ export class PresetManager {
             const isNextPluginSection = targetIndex < audioManager.pipeline.length && 
                                       audioManager.pipeline[targetIndex].name === 'Section';
 
-            // Create end section plugin if needed (when next plugin is not Section)
+            // Create end section plugin if needed (when next plugin is not Section AND not at the end of pipeline)
             let endSectionPlugin = null;
-            if (!isNextPluginSection) {
+            if (!isNextPluginSection && targetIndex < audioManager.pipeline.length) {
                 try {
                     if (pluginManager.isPluginAvailable('Section')) {
                         endSectionPlugin = pluginManager.createPlugin('Section');

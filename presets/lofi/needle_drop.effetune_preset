@@ -1,0 +1,61 @@
+{
+  "pipeline": [
+    {
+      "name": "Compressor",
+      "enabled": true,
+      "parameters": {
+        "th": -24,
+        "rt": 4,
+        "at": 3,
+        "rl": 100,
+        "kn": 3,
+        "gn": 0
+      }
+    },
+    {
+      "name": "Saturation",
+      "enabled": true,
+      "parameters": {
+        "dr": 2,
+        "bs": 0.1,
+        "mx": 50,
+        "gn": 0
+      }
+    },
+    {
+      "name": "Wow Flutter",
+      "enabled": true,
+      "parameters": {
+        "rt": 0.5,
+        "dp": 2,
+        "rn": 10,
+        "rc": 5,
+        "rs": -6,
+        "cp": 0,
+        "cs": 100
+      }
+    },
+    {
+      "name": "Stereo Blend",
+      "enabled": true,
+      "parameters": {
+        "stereo": 2
+      }
+    },
+    {
+      "name": "Volume",
+      "enabled": true,
+      "parameters": {
+        "vl": -6
+      }
+    },
+    {
+      "name": "Hi Pass Filter",
+      "enabled": true,
+      "parameters": {
+        "fr": 2094,
+        "sl": -12
+      }
+    }
+  ]
+}

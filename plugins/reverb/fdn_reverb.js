@@ -3,19 +3,19 @@ class FDNReverbPlugin extends PluginBase {
         super('FDN Reverb', 'Feedback Delay Network reverb with Hadamard matrix');
 
         // Initialize parameters with defaults (using shortened names for external storage)
-        this.rt = 1.20;   // rt: Reverb Time (0.20-10.00s)
-        this.dt = 8;      // dt: Density (4-8 lines)
-        this.pd = 10.0;   // pd: Pre Delay (0.0-100.0ms)
-        this.bd = 20.0;   // bd: Base Delay (10.0-60.0ms)
-        this.ds = 5.0;    // ds: Delay Spread (0.0-25.0ms)
-        this.hd = 6.0;    // hd: HF Damp (0.0-12.0dB/s)
-        this.lc = 100;    // lc: Low Cut (20-500Hz)
-        this.md = 3.0;    // md: Mod Depth (0.0-10.0ct)
-        this.mr = 0.30;   // mr: Mod Rate (0.10-5.00Hz)
-        this.df = 100;    // df: Diffusion (0-100%)
-        this.wm = 30;     // wm: Wet Mix (0-100%)
-        this.dm = 100;    // dm: Dry Mix (0-100%)
-        this.sw = 100;    // sw: Stereo Width (0-200%)
+        this.rt = 1.20;  // rt: Reverb Time (0.20-10.00s)
+        this.dt = 8;     // dt: Density (4-8 lines)
+        this.pd = 10.0;  // pd: Pre Delay (0.0-100.0ms)
+        this.bd = 20.0;  // bd: Base Delay (10.0-60.0ms)
+        this.ds = 5.0;   // ds: Delay Spread (0.0-25.0ms)
+        this.hd = 6.0;   // hd: HF Damp (0.0-12.0dB/s)
+        this.lc = 100;   // lc: Low Cut (20-500Hz)
+        this.md = 3.0;   // md: Mod Depth (0.0-10.0ct)
+        this.mr = 0.30;  // mr: Mod Rate (0.10-5.00Hz)
+        this.df = 100;   // df: Diffusion (0-100%)
+        this.wm = 30;    // wm: Wet Mix (0-100%)
+        this.dm = 100;   // dm: Dry Mix (0-100%)
+        this.sw = 100;   // sw: Stereo Width (0-200%)
 
         // Register processor function
         this.registerProcessor(`
@@ -28,21 +28,22 @@ class FDNReverbPlugin extends PluginBase {
             
             const TWO_PI = 6.283185307179586; // 2 * Math.PI
 
-            // Cache parameters locally for minor potential performance gain and readability
+            // Cache parameters locally for performance and readability
             const p_rt = parameters.rt;
-            const p_dt = parameters.dt; // Already an integer due to setParameters
+            const p_dt = parameters.dt;
             const p_pd = parameters.pd;
             const p_bd = parameters.bd;
             const p_ds = parameters.ds;
             const p_hd = parameters.hd;
-            const p_lc = parameters.lc; // Already an integer
+            const p_lc = parameters.lc;
             const p_md = parameters.md;
             const p_mr = parameters.mr;
-            const p_df = parameters.df; // Already an integer
-            const p_wm = parameters.wm; // Already an integer
-            const p_dm = parameters.dm; // Already an integer
-            const p_sw = parameters.sw; // Already an integer
+            const p_df = parameters.df;
+            const p_wm = parameters.wm;
+            const p_dm = parameters.dm;
+            const p_sw = parameters.sw;
 
+            // --- Initialization and Re-initialization on sample rate change ---
             if (!context.initialized || context.sampleRate !== sampleRate) {
                 context.sampleRate = sampleRate;
                 context.hadamard = [
@@ -58,10 +59,12 @@ class FDNReverbPlugin extends PluginBase {
                 context.lpfStates = new Float32Array(8).fill(0.0);
                 context.hpfStates = new Float32Array(8).fill(0.0);
                 context.delayTimeRandomOffsetsMs = new Float32Array(8);
+                
                 const MAX_RANDOM_DELAY_OFFSET_MS = 3.0;
                 for (let k = 0; k < 8; k++) {
                     context.delayTimeRandomOffsetsMs[k] = (Math.random() - 0.5) * 2.0 * MAX_RANDOM_DELAY_OFFSET_MS;
                 }
+                
                 const maxDelayTimeSeconds = 0.175; 
                 const maxDelaySamplesPerLine = Math.ceil(sampleRate * maxDelayTimeSeconds); 
                 for (let i = 0; i < 8; i++) {
@@ -71,7 +74,8 @@ class FDNReverbPlugin extends PluginBase {
                 }
                 context.initialized = true;
             }
-
+            
+            // --- Pre-delay buffer allocation on channel count change ---
             if (!context.preDelayBuffer || context.preDelayBuffer.length !== channelCount) {
                 const maxPreDelaySamples = Math.ceil(sampleRate * 0.1); // Max pre-delay is 100ms
                 context.preDelayBuffer = new Array(channelCount);
@@ -83,56 +87,41 @@ class FDNReverbPlugin extends PluginBase {
                 }
             }
 
-            const preDelaySamples = (p_pd * sampleRate * 0.001) | 0; // ms to samples, floor
-            const baseDelaySamplesParam = p_bd * sampleRate * 0.001; // ms to samples
-            const spreadSamplesParam = p_ds * sampleRate * 0.001;   // ms to samples
+            // --- Per-block parameter calculations ---
+            const preDelaySamples = (p_pd * sampleRate * 0.001) | 0;
+            const baseDelaySamplesParam = p_bd * sampleRate * 0.001;
+            const spreadSamplesParam = p_ds * sampleRate * 0.001;
             const densityLines = p_dt; 
             const diffusionAmount = p_df * 0.01; 
-
             const modDepthAsFraction = Math.pow(2.0, p_md / 1200.0) - 1.0; 
-            const modRateHz = p_mr;            
+            const modRateHz = p_mr;             
             const reverbTimeSeconds = p_rt;
-
-            // HF Damp LPF Coefficient Calculation
-            const HF_DAMP_UI_MAX = 12.0;
-            const HF_DAMP_FC_AT_UI_MIN = 20000.0; 
-            const HF_DAMP_FC_AT_UI_MAX = 500.0;  
             
-            let temp_hd_norm = p_hd / HF_DAMP_UI_MAX;
-            // Clamp hfDampNormalized to [0.0, 1.0]
-            const hfDampNormalized = temp_hd_norm < 0.0 ? 0.0 : (temp_hd_norm > 1.0 ? 1.0 : temp_hd_norm);
-            const hfDampCutoffHz = HF_DAMP_FC_AT_UI_MIN * Math.pow(HF_DAMP_FC_AT_UI_MAX / HF_DAMP_FC_AT_UI_MIN, hfDampNormalized);
+            // HF Damp LPF coefficient calculation
+            const hfDampNormalized = Math.max(0.0, Math.min(1.0, p_hd / 12.0));
+            const hfDampCutoffHz = 20000.0 * Math.pow(500.0 / 20000.0, hfDampNormalized);
             
             let lpfAlphaForHfDamp = 0.0; 
-            if (sampleRate > 0.00001) { // Check sampleRate to avoid division by zero or tiny numbers
-                if (hfDampCutoffHz <= 1.0) { 
-                    const cutoff_val = hfDampCutoffHz < 0.1 ? 0.1 : hfDampCutoffHz; // Equivalent to Math.max(0.1, hfDampCutoffHz)
-                    const expVal = Math.exp(-TWO_PI * cutoff_val / sampleRate);
-                    lpfAlphaForHfDamp = expVal > 0.99999 ? 0.99999 : expVal; // Equivalent to Math.min(0.99999, expVal)
-                } else if (hfDampCutoffHz < sampleRate * 0.495) {
-                    const expVal = Math.exp(-TWO_PI * hfDampCutoffHz / sampleRate);
-                    // Clamp expVal to [0.000001, 0.99999]
-                    lpfAlphaForHfDamp = expVal < 0.000001 ? 0.000001 : (expVal > 0.99999 ? 0.99999 : expVal);
-                }
+            if (hfDampCutoffHz < sampleRate * 0.495 && sampleRate > 0.0) {
+                 const expVal = Math.exp(-TWO_PI * hfDampCutoffHz / sampleRate);
+                 lpfAlphaForHfDamp = Math.max(0.0, Math.min(0.99999, expVal));
             }
             
-            // Low Cut HPF Coefficient Calculation
+            // Low Cut HPF coefficient calculation
             const lowCutHz = p_lc; 
             let hpfAlphaForLowCut = 0.0; 
             let apply_hpf = false;
-            if (lowCutHz > 1.0 && sampleRate > 0.00001) {
+            if (lowCutHz > 1.0 && sampleRate > 0.0) {
                 const expVal = Math.exp(-TWO_PI * lowCutHz / sampleRate);
-                // Clamp expVal to [0.0, 0.99999]
-                hpfAlphaForLowCut = expVal < 0.0 ? 0.0 : (expVal > 0.99999 ? 0.99999 : expVal);
+                hpfAlphaForLowCut = Math.max(0.0, Math.min(0.99999, expVal));
                 apply_hpf = true;
             }
 
             const wetMix = p_wm * 0.01;
             const dryMix = p_dm * 0.01;
             const stereoWidthParam = p_sw * 0.01; 
-
-            // Manage context-cached arrays for unmodulated delay times and feedback gains.
-            // These are calculated per block if dependencies change.
+            
+            // Manage and calculate delay times and feedback gains for active lines
             if (!context.unmodulatedDelayTimesSamples_block || context.unmodulatedDelayTimesSamples_block.length !== densityLines) {
                 context.unmodulatedDelayTimesSamples_block = new Float32Array(densityLines);
             }
@@ -143,58 +132,59 @@ class FDNReverbPlugin extends PluginBase {
             }
             const feedbackGains = context.feedbackGains_block;
             
-            for (let k = 0; k < densityLines; k++) { // Use 'k' to avoid confusion with outer loop 'i'
+            for (let k = 0; k < densityLines; k++) {
                 let deterministicLineDelay = baseDelaySamplesParam;
-                if (densityLines > 1) { // Avoid division by zero if densityLines is 1 (min is 4 here)
+                if (densityLines > 1) {
                     const linearRatio = k / (densityLines - 1.0); 
                     const spreadFactor = Math.pow(linearRatio, 0.8); 
                     deterministicLineDelay += (spreadSamplesParam * spreadFactor);
                 }
                 const randomOffsetSamples = context.delayTimeRandomOffsetsMs[k] * sampleRate * 0.001;
-                let lineDelayWithRandomness = deterministicLineDelay + randomOffsetSamples;
-                unmodulatedDelayTimesSamples[k] = lineDelayWithRandomness < 1.0 ? 1.0 : lineDelayWithRandomness;
+                unmodulatedDelayTimesSamples[k] = Math.max(1.0, deterministicLineDelay + randomOffsetSamples);
             }
             
             const FEEDBACK_GAIN_CLAMP = 0.99999; 
-            for (let k = 0; k < densityLines; k++) { // Use 'k'
-                const currentUnmodulatedDelaySamples = unmodulatedDelayTimesSamples[k];
-                let edlfg_floor = currentUnmodulatedDelaySamples | 0; // floor for positive numbers
-                let effectiveDelayLengthForGain = edlfg_floor < 1 ? 1 : edlfg_floor;
-
-                if (reverbTimeSeconds > 0.001 && sampleRate > 0.00001 && effectiveDelayLengthForGain > 0) {
-                    feedbackGains[k] = Math.pow(0.001, effectiveDelayLengthForGain / (sampleRate * reverbTimeSeconds));
-                } else {
-                    feedbackGains[k] = 0.0; 
+            for (let k = 0; k < densityLines; k++) {
+                const effectiveDelayLengthForGain = Math.max(1, unmodulatedDelayTimesSamples[k] | 0);
+                let gain = 0.0;
+                if (reverbTimeSeconds > 0.0 && sampleRate > 0.0 && effectiveDelayLengthForGain > 0) {
+                    gain = Math.pow(0.001, effectiveDelayLengthForGain / (sampleRate * reverbTimeSeconds));
                 }
-                let fg_val = feedbackGains[k];
-                feedbackGains[k] = fg_val < -FEEDBACK_GAIN_CLAMP ? -FEEDBACK_GAIN_CLAMP : (fg_val > FEEDBACK_GAIN_CLAMP ? FEEDBACK_GAIN_CLAMP : fg_val);
+                feedbackGains[k] = Math.max(-FEEDBACK_GAIN_CLAMP, Math.min(FEEDBACK_GAIN_CLAMP, gain));
             }
-                        
-            const lfoIncrement = (sampleRate > 0.00001) ? (TWO_PI * modRateHz / sampleRate) : 0.0;
-
+            
+            const lfoIncrement = (sampleRate > 0.0) ? (TWO_PI * modRateHz / sampleRate) : 0.0;
             const invSqrtDensity = (densityLines > 0) ? (1.0 / Math.sqrt(densityLines)) : 1.0;
-
-            const lTapActualCount = (densityLines + 1) / 2 | 0; 
-            const rTapActualCount = densityLines / 2 | 0;     
+            const lTapActualCount = (densityLines + 1) >> 1; // Integer division by 2
+            const rTapActualCount = densityLines >> 1;
             const invSqrtLTapCount = (lTapActualCount > 0) ? (1.0 / Math.sqrt(lTapActualCount)) : 0.0;
             const invSqrtRTapCount = (rTapActualCount > 0) ? (1.0 / Math.sqrt(rTapActualCount)) : 0.0;
             
+            // --- Cache context properties for the hot loop ---
+            const delayLines = context.delayLines;
+            const delayPositions = context.delayPositions;
+            const lfoPhases = context.lfoPhases;
+            const lfoOffsets = context.lfoOffsets;
+            const lpfStates = context.lpfStates;
+            const hpfStates = context.hpfStates;
+            const hadamardMatrix = context.hadamard;
+            const preDelayBuffers = context.preDelayBuffer;
+
             // Allocate/resize FDN processing arrays in context if densityLines changed
             if (!context.fdnOutputs_block_cache || context.fdnOutputs_block_cache.length !== densityLines) {
                 context.fdnOutputs_block_cache = new Float32Array(densityLines);
                 context.hadamardMixingOutput_block_cache = new Float32Array(densityLines);
             }
-            // Use these context-cached arrays within the sample loop
             const fdnOutputs_currentSample = context.fdnOutputs_block_cache;
             const hadamardMixingOutput_currentSample = context.hadamardMixingOutput_block_cache;
 
-
+            // --- Main Sample Processing Loop (Hot Path) ---
             for (let i = 0; i < blockSize; i++) { 
-                // Update LFO phases for all 8 potential lines
+                // Update LFO phases once per sample for all potential lines
                 for (let lineIdx = 0; lineIdx < 8; lineIdx++) { 
-                    context.lfoPhases[lineIdx] += lfoIncrement;
-                    if (context.lfoPhases[lineIdx] >= TWO_PI) {
-                        context.lfoPhases[lineIdx] -= TWO_PI;
+                    lfoPhases[lineIdx] += lfoIncrement;
+                    if (lfoPhases[lineIdx] >= TWO_PI) {
+                        lfoPhases[lineIdx] -= TWO_PI;
                     }
                 }
                 
@@ -202,7 +192,8 @@ class FDNReverbPlugin extends PluginBase {
                     const channelGlobalOffset = ch * blockSize + i; 
                     const currentInputSample = data[channelGlobalOffset];
                     
-                    const preDelayLine = context.preDelayBuffer[ch];
+                    // Pre-delay processing
+                    const preDelayLine = preDelayBuffers[ch];
                     const preDelayBuffer = preDelayLine.buffer;
                     const preDelayBufferLength = preDelayBuffer.length;
                     let fdnTankInput; 
@@ -216,25 +207,24 @@ class FDNReverbPlugin extends PluginBase {
                     preDelayBuffer[preDelayLine.pos] = currentInputSample; 
                     preDelayLine.pos = (preDelayLine.pos + 1) % preDelayBufferLength;
                     
-                    // FDN read stage
+                    // FDN Read Stage: Read from delay lines with modulation
                     for (let line = 0; line < densityLines; line++) {
-                        const delayLineBuffer = context.delayLines[line];
+                        const delayLineBuffer = delayLines[line];
                         const allocatedBufferLength = delayLineBuffer.length; 
-                        const writePos = context.delayPositions[line]; 
+                        const writePos = delayPositions[line]; 
                         
-                        const lfoValue = Math.sin(context.lfoPhases[line] + context.lfoOffsets[line]);
-                        const baseDelayForLine = unmodulatedDelayTimesSamples[line]; 
-                        const modulatedDelay = baseDelayForLine * (1.0 + modDepthAsFraction * lfoValue);
+                        const lfoValue = Math.sin(lfoPhases[line] + lfoOffsets[line]);
+                        const modulatedDelay = unmodulatedDelayTimesSamples[line] * (1.0 + modDepthAsFraction * lfoValue);
                         
-                        let localClampedDelay = modulatedDelay < 0.0 ? 0.0 : modulatedDelay;
-                        const upperClampLimit = allocatedBufferLength - 1.00001; 
-                        localClampedDelay = localClampedDelay > upperClampLimit ? upperClampLimit : localClampedDelay;
-                        const readPosFloat = localClampedDelay;
+                        // Clamp delay time using ternary operators instead of Math.max/min
+                        const upperClampLimit = allocatedBufferLength - 1.00001;
+                        let clampedDelay = modulatedDelay < 0.0 ? 0.0 : modulatedDelay;
+                        clampedDelay = clampedDelay > upperClampLimit ? upperClampLimit : clampedDelay;
 
-                        const readPosInt = readPosFloat | 0; // floor for positive numbers
-                        const fraction = readPosFloat - readPosInt;
+                        const readPosInt = clampedDelay | 0;
+                        const fraction = clampedDelay - readPosInt;
                         
-                        // Original modulo logic is robust for positive results
+                        // Robust modulo for buffer wrap-around
                         const idx0 = (writePos - 1 - readPosInt + allocatedBufferLength) % allocatedBufferLength;
                         const idx1 = (writePos - 1 - (readPosInt + 1) + allocatedBufferLength) % allocatedBufferLength; 
                                                 
@@ -243,67 +233,70 @@ class FDNReverbPlugin extends PluginBase {
                         fdnOutputs_currentSample[line] = sample0 + (sample1 - sample0) * fraction; // Optimized lerp
                     }
                     
-                    // Hadamard mixing stage
+                    // Hadamard Mixing Stage
                     for (let row = 0; row < densityLines; row++) {
                         let sum = 0.0;
-                        // Cache hadamard row for potentially faster access if JIT benefits
-                        const hadamardRow = context.hadamard[row];
+                        const hadamardRow = hadamardMatrix[row];
                         for (let col = 0; col < densityLines; col++) {
                             sum += hadamardRow[col] * fdnOutputs_currentSample[col];
                         }
-                        hadamardMixingOutput_currentSample[row] = (sum * invSqrtDensity) * diffusionAmount;
+                        hadamardMixingOutput_currentSample[row] = sum * invSqrtDensity;
                     }
                     
-                    // FDN write stage (feedback, filtering, writing to delay lines)
+                    // FDN Write Stage: Feedback, filtering, and writing to delay lines
                     for (let line = 0; line < densityLines; line++) {
-                        const delayLineBuffer = context.delayLines[line];
+                        const delayLineBuffer = delayLines[line];
                         const allocatedBufferLength = delayLineBuffer.length;
-                        const writePos = context.delayPositions[line];
-                        let signalToFilter = fdnTankInput + hadamardMixingOutput_currentSample[line] * feedbackGains[line];
+                        const writePos = delayPositions[line];
                         
-                        if (p_hd > 0.01 && lpfAlphaForHfDamp > 0.000001 && lpfAlphaForHfDamp < 0.999999) { 
-                            context.lpfStates[line] = (1.0 - lpfAlphaForHfDamp) * signalToFilter + lpfAlphaForHfDamp * context.lpfStates[line];
-                            signalToFilter = context.lpfStates[line];
+                        // Apply diffusion and feedback
+                        const diffusedFeedback = hadamardMixingOutput_currentSample[line] * diffusionAmount;
+                        let signalToFilter = fdnTankInput + diffusedFeedback * feedbackGains[line];
+                        
+                        // HF Damp (LPF)
+                        if (lpfAlphaForHfDamp > 0.0) { 
+                            lpfStates[line] = (1.0 - lpfAlphaForHfDamp) * signalToFilter + lpfAlphaForHfDamp * lpfStates[line];
+                            signalToFilter = lpfStates[line];
                         }
                         
+                        // Low Cut (HPF)
                         if (apply_hpf) { 
-                            const inputToHpf = signalToFilter;
-                            const lpfComponentForHpf = (1.0 - hpfAlphaForLowCut) * inputToHpf + hpfAlphaForLowCut * context.hpfStates[line];
-                            signalToFilter = inputToHpf - lpfComponentForHpf; 
-                            context.hpfStates[line] = lpfComponentForHpf; 
+                            const lpfComponentForHpf = (1.0 - hpfAlphaForLowCut) * signalToFilter + hpfAlphaForLowCut * hpfStates[line];
+                            signalToFilter = signalToFilter - lpfComponentForHpf; 
+                            hpfStates[line] = lpfComponentForHpf; 
                         }
                         
                         delayLineBuffer[writePos] = signalToFilter;
-                        context.delayPositions[line] = (writePos + 1) % allocatedBufferLength;
+                        delayPositions[line] = (writePos + 1) % allocatedBufferLength; // Update position in cached array
                     }
                     
-                    // Output tapping and mixing
+                    // Output Tapping and Mixing
                     let lTapSum = 0.0;
                     let rTapSum = 0.0;
                     for (let line = 0; line < densityLines; line++) {
-                        if (line % 2 === 0) { 
+                        // Use bitwise AND for even/odd check, potentially faster
+                        if ((line & 1) === 0) { 
                             lTapSum += fdnOutputs_currentSample[line]; 
                         } else { 
                             rTapSum += fdnOutputs_currentSample[line];
                         }
                     }
 
-                    const lTapWet = lTapSum * invSqrtLTapCount; // invSqrtLTapCount will be 0.0 if lTapActualCount is 0, making lTapWet 0.0
-                    const rTapWet = rTapSum * invSqrtRTapCount; // Same for rTapWet
+                    const lTapWet = lTapSum * invSqrtLTapCount;
+                    const rTapWet = rTapSum * invSqrtRTapCount;
                     
-                    let wetSignalForThisChannel = 0.0;
+                    let wetSignalForThisChannel;
                     if (channelCount === 1) { 
                         wetSignalForThisChannel = (lTapWet + rTapWet) * 0.5; 
                     } else { 
+                        // Stereo width processing
                         const monoMixComponent = (lTapWet + rTapWet) * 0.5;
-                        let temp_m_s_factor = stereoWidthParam * 0.5; // stereoWidthParam is [0,2], so factor is [0,1]
-                        // The original Math.max/min clamp for mixToStereoFactor is technically redundant if p_sw is correctly clamped [0,200].
-                        // However, to preserve exact behavior including this (potentially redundant) clamp:
+                        const temp_m_s_factor = stereoWidthParam * 0.5;
                         const mixToStereoFactor = temp_m_s_factor < 0.0 ? 0.0 : (temp_m_s_factor > 1.0 ? 1.0 : temp_m_s_factor);
                         
                         if (ch === 0) { // Left channel
                             wetSignalForThisChannel = monoMixComponent * (1.0 - mixToStereoFactor) + lTapWet * mixToStereoFactor;
-                        } else { // Right channel (or any other subsequent channel)
+                        } else { // Right channel (and any subsequent)
                             wetSignalForThisChannel = monoMixComponent * (1.0 - mixToStereoFactor) + rTapWet * mixToStereoFactor;
                         }
                     }
@@ -331,7 +324,7 @@ class FDNReverbPlugin extends PluginBase {
             df: this.df,      // Diffusion
             wm: this.wm,      // Wet Mix
             dm: this.dm,      // Dry Mix
-            sw: this.sw       // Stereo Width
+            sw: this.sw      // Stereo Width
         };
     }
 

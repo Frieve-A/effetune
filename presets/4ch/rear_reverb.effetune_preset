@@ -1,0 +1,44 @@
+{
+  "pipeline": [
+    {
+      "name": "Matrix",
+      "enabled": true,
+      "parameters": {
+        "mx": "00021113"
+      },
+      "channel": "A"
+    },
+    {
+      "name": "Volume",
+      "enabled": true,
+      "parameters": {
+        "vl": -6
+      },
+      "channel": "34"
+    },
+    {
+      "name": "RS Reverb",
+      "enabled": true,
+      "parameters": {
+        "pd": 10,
+        "rs": 10,
+        "rt": 1.5,
+        "ds": 8,
+        "df": 0.7,
+        "dp": 80,
+        "hd": 2000,
+        "ld": 200,
+        "mx": 100
+      },
+      "channel": "34"
+    },
+    {
+      "name": "Stereo Blend",
+      "enabled": true,
+      "parameters": {
+        "stereo": 200
+      },
+      "channel": "34"
+    }
+  ]
+}

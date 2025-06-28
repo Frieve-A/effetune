@@ -146,16 +146,25 @@ class StereoMeterPlugin extends PluginBase {
       context.lastPeakUpdateTime = time; // Update time after applying decay
     }
 
-    // Attach measurements to the result array.
-    // Functionality requires attaching these exact properties.
-    result.measurements = {
-      xBuffer: context.xBuffer, // Return the buffer from context
-      yBuffer: context.yBuffer, // Return the buffer from context
-      peakBuffer: context.peakBuffer, // Return the buffer from context
-      currentPosition: context.bufferPosition, // Return the final position
-      time: time,
-      sampleRate: sampleRate // Use the value derived earlier
-    };
+    // Throttle measurements to 60 FPS (1/60 second intervals)
+    const measurementInterval = 1 / 60; // 16.67ms
+    if (!context.lastMeasurementTime) {
+      context.lastMeasurementTime = 0;
+    }
+    
+    if (time - context.lastMeasurementTime >= measurementInterval) {
+      // Attach measurements to the result array.
+      // Functionality requires attaching these exact properties.
+      result.measurements = {
+        xBuffer: context.xBuffer, // Return the buffer from context
+        yBuffer: context.yBuffer, // Return the buffer from context
+        peakBuffer: context.peakBuffer, // Return the buffer from context
+        currentPosition: context.bufferPosition, // Return the final position
+        time: time,
+        sampleRate: sampleRate // Use the value derived earlier
+      };
+      context.lastMeasurementTime = time;
+    }
 
     // Return the copied input data with attached measurements.
     return result;

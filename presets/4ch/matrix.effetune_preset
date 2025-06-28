@@ -1,0 +1,31 @@
+{
+  "pipeline": [
+    {
+      "name": "Matrix",
+      "enabled": true,
+      "parameters": {
+        "mx": "0002p0311p1213"
+      },
+      "channel": "A"
+    },
+    {
+      "name": "Time Alignment",
+      "enabled": true,
+      "parameters": {
+        "dl": 30
+      },
+      "channel": "34"
+    },
+    {
+      "name": "Narrow Range",
+      "enabled": true,
+      "parameters": {
+        "hf": 100,
+        "hs": -24,
+        "lf": 7000,
+        "ls": -12
+      },
+      "channel": "34"
+    }
+  ]
+}

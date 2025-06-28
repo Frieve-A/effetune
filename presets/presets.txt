@@ -6,6 +6,8 @@ Lo-Fi: Vintage and lo-fi sounds
 Processor: Simulation of effectors and typical signal processing pipelines
 Spatial : Listening environment simulation
 Spkr. Sim.: Simulation of speaker characteristics
+Visualize: Visualize music
+4ch: Presets for 4ch settings
 Others: Other presets
 
 
@@ -15,6 +17,7 @@ Others: Other presets
 [presets]
 amp_sim/tube_amp: Tube Amplifier | Amp Sim. | Distortion per rated output of a tube amplifier and the effect of a low damping factor
 lofi/dsd_noise: DSD Noise | Lo-Fi | Adds noise above 20kHz observed in SACD (DSD64)
+lofi/needle_drop: Needle Drop | Lo-Fi | Reproduces the sound of a vinyl record played without an amplifier or speakers
 lofi/old_r2r_dac: Old R2R DAC | Lo-Fi | Bit error and aliasing noise like old NOS R2R DACs
 lofi/old_radio: Old Radio | Lo-Fi | Mono narrowband, very noisy and distorted, very old radio-like sound
 lofi/vinyl: Vinyl | Lo-Fi | Reproduce the sound of Vinly
@@ -22,5 +25,8 @@ processor/bbe: BBE | Processor | Low-frequency delay and high-frequency emphasis
 processor/fm_radio: FM Radio | Processor | Online processor for multiband compression and stereo widening
 spatial/live: Live | Spatial | Reverberation at live venues and deterioration of sound quality due to air movement
 spkr_sim/vintage_full_range: Vintage Full Range | Spkr. Sim. | Narrowband, split-frequency and Doppler distortion in vintage full-range speakers
+visualize/all_analyzers: All Analyzers | Visualize | Visualize every corner of your music with all the analyzers
+4ch/matrix: Matrix | 4ch | Rear speakers play back center-cancelled, band-limited and delayed signals
+4ch/rear_reverb: Rear Reverb | 4ch | Stereo sources are played directly from the front speakers, while the reverberation is output from the rear speakers
 others/dsd_noise_listening : DSD Noise Listening | Others | Shifts high-frequency noise above 20kHz down 4 octaves to the audible range
 others/karaoke: Karaoke | Others | Eliminates high-mid range sounds in the center

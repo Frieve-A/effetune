@@ -23,6 +23,7 @@ class VinylArtifactsPlugin extends PluginBase {
             // Pop gain is boosted significantly based on user feedback. Original +12dB, now +24dB total.
             const POP_COMPENSATION_GAIN = 16.0;
             const CRACKLE_COMPENSATION_GAIN = 4.0;
+            const DB_TO_LINEAR_FAST = 0.11512925464970229; // ln(10) / 20
 
             // --- Biquad Filter Coefficient Calculation Helpers ---
             // NOTE: The High Shelf and Low Shelf functions use canonical, verified implementations.
@@ -36,12 +37,15 @@ class VinylArtifactsPlugin extends PluginBase {
                 const alpha = s / (2 * Q);
                 const beta = 2 * Math.sqrt(A) * alpha;
                 
-                const a0_inv = 1 / ((A + 1) + (A - 1) * c + beta);
-                const b0 = A * ((A + 1) - (A - 1) * c + beta) * a0_inv;
-                const b1 = 2 * A * ((A - 1) - (A + 1) * c) * a0_inv;
-                const b2 = A * ((A + 1) - (A - 1) * c - beta) * a0_inv;
-                const a1 = -2 * ((A - 1) + (A + 1) * c) * a0_inv;
-                const a2 = ((A + 1) + (A - 1) * c - beta) * a0_inv;
+                const Ap1 = A + 1;
+                const Am1 = A - 1;
+                const a0_inv = 1 / (Ap1 + Am1 * c + beta);
+                
+                const b0 = A * (Ap1 - Am1 * c + beta) * a0_inv;
+                const b1 = 2 * A * (Am1 - Ap1 * c) * a0_inv;
+                const b2 = A * (Ap1 - Am1 * c - beta) * a0_inv;
+                const a1 = -2 * (Am1 + Ap1 * c) * a0_inv;
+                const a2 = (Ap1 + Am1 * c - beta) * a0_inv;
 
                 return { b0, b1, b2, a1, a2 };
             }
@@ -55,27 +59,33 @@ class VinylArtifactsPlugin extends PluginBase {
                 const alpha = s / (2 * Q);
                 const beta = 2 * Math.sqrt(A) * alpha;
 
-                const a0_inv = 1 / ((A + 1) - (A - 1) * c + beta);
-                const b0 = A * ((A + 1) + (A - 1) * c + beta) * a0_inv;
-                const b1 = -2 * A * ((A - 1) + (A + 1) * c) * a0_inv;
-                const b2 = A * ((A + 1) + (A - 1) * c - beta) * a0_inv;
-                const a1 = 2 * ((A - 1) - (A + 1) * c) * a0_inv;
-                const a2 = ((A + 1) - (A - 1) * c - beta) * a0_inv;
+                const Ap1 = A + 1;
+                const Am1 = A - 1;
+                const a0_inv = 1 / (Ap1 - Am1 * c + beta);
+                
+                const b0 = A * (Ap1 + Am1 * c + beta) * a0_inv;
+                const b1 = -2 * A * (Am1 + Ap1 * c) * a0_inv;
+                const b2 = A * (Ap1 + Am1 * c - beta) * a0_inv;
+                const a1 = 2 * (Am1 - Ap1 * c) * a0_inv;
+                const a2 = (Ap1 - Am1 * c - beta) * a0_inv;
                 
                 return { b0, b1, b2, a1, a2 };
             }
             
             function calculateHpfCoeffs(f0, Q, sr) {
                 const w0 = 2 * Math.PI * f0 / sr, c = Math.cos(w0), a = Math.sin(w0) / (2 * Q), a0_inv = 1 / (1 + a);
-                return { b0: (1 + c) / 2 * a0_inv, b1: -(1 + c) * a0_inv, b2: (1 + c) / 2 * a0_inv, a1: -2 * c * a0_inv, a2: (1 - a) * a0_inv };
+                const one_plus_c_half = (1 + c) * 0.5;
+                return { b0: one_plus_c_half * a0_inv, b1: -(1 + c) * a0_inv, b2: one_plus_c_half * a0_inv, a1: -2 * c * a0_inv, a2: (1 - a) * a0_inv };
             }
             function calculateLpfCoeffs(f0, Q, sr) {
                 const w0 = 2 * Math.PI * f0 / sr, c = Math.cos(w0), a = Math.sin(w0) / (2 * Q), a0_inv = 1 / (1 + a);
-                return { b0: (1 - c) / 2 * a0_inv, b1: (1 - c) * a0_inv, b2: (1 - c) / 2 * a0_inv, a1: -2 * c * a0_inv, a2: (1 - a) * a0_inv };
+                const one_minus_c_half = (1 - c) * 0.5;
+                return { b0: one_minus_c_half * a0_inv, b1: (1 - c) * a0_inv, b2: one_minus_c_half * a0_inv, a1: -2 * c * a0_inv, a2: (1 - a) * a0_inv };
             }
             
             function processSafeBiquad(input, state, coeffs) {
                 if (!coeffs) return input;
+                // Using Direct Form 1 for simplicity and stability.
                 let output = coeffs.b0 * input + coeffs.b1 * state.x1 + coeffs.b2 * state.x2 - coeffs.a1 * state.y1 - coeffs.a2 * state.y2;
                 
                 // Add a denormal offset to prevent performance issues with subnormal numbers.
@@ -89,8 +99,13 @@ class VinylArtifactsPlugin extends PluginBase {
 
                 // Lower the clamp limit to a more reasonable value to prevent filter instability 
                 // (which causes high-frequency artifacts) without being triggered by normal signal levels.
+                // Use if statements instead of Math.max/min for performance.
                 const clampLimit = 10.0;
-                output = Math.max(-clampLimit, Math.min(clampLimit, output));
+                if (output > clampLimit) {
+                    output = clampLimit;
+                } else if (output < -clampLimit) {
+                    output = -clampLimit;
+                }
 
                 state.x2 = state.x1; state.x1 = input;
                 state.y2 = state.y1; state.y1 = output;
@@ -107,7 +122,6 @@ class VinylArtifactsPlugin extends PluginBase {
             if (!context.initialized || context.lastChannelCount !== channelCount) {
                 context.pinkState = Array.from({ length: channelCount }, () => new Float32Array(7).fill(0.0));
                 context.popState = Array.from({ length: channelCount }, () => ({ x1: 0, x2: 0, y1: 0, y2: 0, coeffs: null }));
-                // A simple level state is sufficient for the new impulse-based crackle model.
                 context.crackleState = Array.from({ length: channelCount }, () => ({ crackleLevel: 0, x1: 0, x2: 0, y1: 0, y2: 0 }));
                 context.rumbleState = Array.from({ length: channelCount }, () => ({ brown: 0.0, x1: 0, x2: 0, y1: 0, y2: 0 }));
                 context.lowShelfState = Array.from({ length: channelCount }, () => ({ x1: 0, x2: 0, y1: 0, y2: 0 }));
@@ -123,101 +137,150 @@ class VinylArtifactsPlugin extends PluginBase {
             const { pp, pl, cm, cl, hs, rb, xt, tn, wr, rt, rm } = parameters;
             const MIN_DB_LEVEL = -80.0;
             const wearMultiplier = wr / 100.0;
-            const popGain = (pl <= MIN_DB_LEVEL || wearMultiplier < 1e-6) ? 0.0 : Math.pow(10, pl / 20.0);
-            const crackleGain = (cl <= MIN_DB_LEVEL || wearMultiplier < 1e-6) ? 0.0 : Math.pow(10, cl / 20.0);
-            const hissGain = (hs <= MIN_DB_LEVEL || wearMultiplier < 1e-6) ? 0.0 : Math.pow(10, hs / 20.0);
-            const rumbleGain = (rb <= MIN_DB_LEVEL) ? 0.0 : Math.pow(10, rb / 20.0);
-            const popProb = (popGain > 0.0) ? (pp * wearMultiplier / 60.0) / sampleRate : 0.0;
-            const crackleProb = (crackleGain > 0.0) ? (cm * wearMultiplier / 60.0) / sampleRate : 0.0;
+            
+            const popGain = (pl <= MIN_DB_LEVEL || wearMultiplier < 1e-6) ? 0.0 : Math.exp(pl * DB_TO_LINEAR_FAST);
+            const crackleGain = (cl <= MIN_DB_LEVEL || wearMultiplier < 1e-6) ? 0.0 : Math.exp(cl * DB_TO_LINEAR_FAST);
+            const hissGain = (hs <= MIN_DB_LEVEL || wearMultiplier < 1e-6) ? 0.0 : Math.exp(hs * DB_TO_LINEAR_FAST);
+            const rumbleGain = (rb <= MIN_DB_LEVEL) ? 0.0 : Math.exp(rb * DB_TO_LINEAR_FAST);
+            
+            const invSampleRate = 1.0 / sampleRate;
+            const popProb = (popGain > 0.0) ? (pp * wearMultiplier / 60.0) * invSampleRate : 0.0;
+            const crackleProb = (crackleGain > 0.0) ? (cm * wearMultiplier / 60.0) * invSampleRate : 0.0;
+            
             const reactAmount = rt / 100.0;
             const crosstalkAmount = (xt / 100.0) * 0.5;
             const profileRatio = tn / 10.0;
             const lowShelfDb = 20.0 * (1.0 - profileRatio); 
             const highShelfDb = -20.0 * (1.0 - profileRatio);
-            // Higher HPF cutoff for a sharper, more "sizzling" crackle sound.
+            
             const crackleHpfCoeffs = calculateHpfCoeffs(3500.0, 0.707, sampleRate);
             const rumbleLpfCoeffs = (rumbleGain > 0.0) ? calculateLpfCoeffs(70.0, 0.707, sampleRate) : null;
-
             const lowShelfCoeffs = calculateLowShelfCoeffs(50.0, lowShelfDb, 0.707, sampleRate);
             const highShelfCoeffs = calculateHighShelfCoeffs(2122.0, highShelfDb, 0.707, sampleRate);
 
             const isLowShelfBypassed = (lowShelfCoeffs === null);
             if (isLowShelfBypassed !== context.lowShelfBypassed) {
-                for (let ch = 0; ch < channelCount; ch++) {
-                    Object.assign(context.lowShelfState[ch], { x1: 0, x2: 0, y1: 0, y2: 0 });
-                }
+                for (let ch = 0; ch < channelCount; ch++) { Object.assign(context.lowShelfState[ch], { x1: 0, x2: 0, y1: 0, y2: 0 }); }
+                context.lowShelfBypassed = isLowShelfBypassed;
             }
-            context.lowShelfBypassed = isLowShelfBypassed;
 
             const isHighShelfBypassed = (highShelfCoeffs === null);
             if (isHighShelfBypassed !== context.highShelfBypassed) {
-                for (let ch = 0; ch < channelCount; ch++) {
-                    Object.assign(context.highShelfState[ch], { x1: 0, x2: 0, y1: 0, y2: 0 });
-                }
+                for (let ch = 0; ch < channelCount; ch++) { Object.assign(context.highShelfState[ch], { x1: 0, x2: 0, y1: 0, y2: 0 }); }
+                context.highShelfBypassed = isHighShelfBypassed;
             }
-            context.highShelfBypassed = isHighShelfBypassed;
 
             let controlSignal = 0.0;
             if (reactAmount > 0.0) {
-                let energy = 0.0; for (let i = 0; i < blockSize; i++) { let f = 0.0; for (let c = 0; c < channelCount; c++) { const s = data[c * blockSize + i]; if (rm === 'Velocity') { const d = s - context.lastInput[c]; f += d * d; context.lastInput[c] = s; } else { f += s * s; } } energy += f / channelCount; }
-                energy = Math.sqrt(energy / blockSize); const sf = energy > context.energySmooth ? 0.05 : 0.3; context.energySmooth += (energy - context.energySmooth) * sf; controlSignal = Math.min(context.energySmooth * 2.0, 1.0) * reactAmount;
+                let energy = 0.0;
+                const invChannelCount = 1.0 / channelCount;
+                
+                // Hoist mode check out of the loop for performance.
+                if (rm === 'Velocity') {
+                    for (let i = 0; i < blockSize; i++) {
+                        let frameEnergy = 0.0;
+                        for (let c = 0; c < channelCount; c++) {
+                            const s = data[c * blockSize + i];
+                            const d = s - context.lastInput[c];
+                            frameEnergy += d * d;
+                            context.lastInput[c] = s;
+                        }
+                        energy += frameEnergy * invChannelCount;
+                    }
+                } else { // 'Amplitude' mode
+                    for (let i = 0; i < blockSize; i++) {
+                        let frameEnergy = 0.0;
+                        for (let c = 0; c < channelCount; c++) {
+                            const s = data[c * blockSize + i];
+                            frameEnergy += s * s;
+                        }
+                        energy += frameEnergy * invChannelCount;
+                    }
+                }
+                
+                energy = Math.sqrt(energy / blockSize);
+                const sf = energy > context.energySmooth ? 0.05 : 0.3;
+                context.energySmooth += (energy - context.energySmooth) * sf;
+                const scaledEnergy = context.energySmooth * 2.0;
+                controlSignal = (scaledEnergy > 1.0 ? 1.0 : scaledEnergy) * reactAmount;
             }
             
+            // Pre-calculate reaction-adjusted probabilities.
+            const popProbReact = popProb * (1.0 + controlSignal * 15.0);
+            const crackleProbReact = crackleProb * (1.0 + controlSignal * 8.0);
+            const hissFactor = 0.11 * hissGain * wearMultiplier;
+            const popImpulseGain = popGain * POP_COMPENSATION_GAIN;
+            const crackleImpulseGain = crackleGain * CRACKLE_COMPENSATION_GAIN;
+
+            // Avoid allocating memory in the main processing loop.
+            const wetSamples = new Float32Array(channelCount);
+
             for (let i = 0; i < blockSize; i++) {
-                const popTrigger = Math.random() < popProb * (1.0 + controlSignal * 15.0);
-                const crackleTrigger = Math.random() < crackleProb * (1.0 + controlSignal * 8.0);
-                const wetSamples = new Float32Array(channelCount);
+                const popTrigger = Math.random() < popProbReact;
+                const crackleTrigger = Math.random() < crackleProbReact;
                 
                 for (let ch = 0; ch < channelCount; ch++) {
                     let totalNoise = 0.0;
+                    
                     if (popGain > 0.0) {
-                        const popState = context.popState[ch]; let popSampleIn = 0.0;
+                        const popState = context.popState[ch];
+                        let popSampleIn = 0.0;
                         if (popTrigger) {
-                            const size = Math.random(); const freq = 200.0 + 3800.0 * (1 - size) * (1 - size); const q = 0.7 + 0.8 * size;
+                            const size = Math.random();
+                            const sizeInv = 1.0 - size;
+                            const freq = 200.0 + 3800.0 * sizeInv * sizeInv;
+                            const q = 0.7 + 0.8 * size;
                             popState.coeffs = calculateHpfCoeffs(freq, q, sampleRate);
-                            // Apply compensation gain to make up for level loss from the high-pass filter.
-                            popSampleIn = (Math.random() * 2 - 1) * popGain * POP_COMPENSATION_GAIN;
+                            popSampleIn = (Math.random() * 2.0 - 1.0) * popImpulseGain;
                         }
                         totalNoise += processSafeBiquad(popSampleIn, popState, popState.coeffs);
                     }
                     
-                    // --- Improved Crackle Generation Algorithm ---
                     if (crackleGain > 0.0) {
                         const crackleState = context.crackleState[ch];
-
-                        // The crackle level constantly decays. A slightly faster decay can make impulses feel sharper.
                         crackleState.crackleLevel *= 0.992;
-
                         if (crackleTrigger) {
-                            // Add a new impulse. Using a power function (Math.pow) on the random number
-                            // creates a more realistic distribution where smaller impulses are much more
-                            // common than larger ones, increasing the "chiri-chiri" feel and variation.
                             crackleState.crackleLevel += Math.pow(Math.random(), 2.5) * 1.2;
                         }
-
-                        // Clamp the level to prevent runaway feedback.
-                        crackleState.crackleLevel = Math.min(crackleState.crackleLevel, 2.0);
-
+                        if (crackleState.crackleLevel > 2.0) {
+                            crackleState.crackleLevel = 2.0;
+                        }
                         let crackleSampleIn = 0.0;
                         if (crackleState.crackleLevel > 1e-6) {
-                            crackleSampleIn = (Math.random() * 2 - 1) * crackleGain * CRACKLE_COMPENSATION_GAIN * crackleState.crackleLevel;
+                            crackleSampleIn = (Math.random() * 2.0 - 1.0) * crackleImpulseGain * crackleState.crackleLevel;
                         }
-                        
-                        // The raw crackle is high-pass filtered to give it its characteristic sharp sound.
                         totalNoise += processSafeBiquad(crackleSampleIn, crackleState, crackleHpfCoeffs);
                     }
 
                     if (hissGain > 0.0) {
-                        const pinkState = context.pinkState[ch], white = Math.random() * 2 - 1;
-                        let b0 = pinkState[0], b1 = pinkState[1], b2 = pinkState[2], b3 = pinkState[3], b4 = pinkState[4], b5 = pinkState[5], b6 = pinkState[6];
-                        b0 = 0.99886 * b0 + white * 0.0555179; b1 = 0.99332 * b1 + white * 0.0750759; b2 = 0.969 * b2 + white * 0.153852; b3 = 0.8665 * b3 + white * 0.3104856; b4 = 0.55 * b4 + white * 0.5329522; b5 = -0.7616 * b5 - white * 0.016898;
-                        totalNoise += (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.11 * hissGain * wearMultiplier;
-                        pinkState.set([b0, b1, b2, b3, b4, b5, b6 = white * 0.115926]);
+                        const pinkState = context.pinkState[ch];
+                        const white = Math.random() * 2.0 - 1.0;
+                        
+                        const b0 = 0.99886 * pinkState[0] + white * 0.0555179;
+                        const b1 = 0.99332 * pinkState[1] + white * 0.0750759;
+                        const b2 = 0.96900 * pinkState[2] + white * 0.1538520;
+                        const b3 = 0.86650 * pinkState[3] + white * 0.3104856;
+                        const b4 = 0.55000 * pinkState[4] + white * 0.5329522;
+                        const b5 = -0.7616 * pinkState[5] - white * 0.0168980;
+                        
+                        totalNoise += (b0 + b1 + b2 + b3 + b4 + b5 + pinkState[6] + white * 0.5362) * hissFactor;
+                        
+                        // Update state in-place to avoid creating a new array.
+                        pinkState[0] = b0; pinkState[1] = b1; pinkState[2] = b2;
+                        pinkState[3] = b3; pinkState[4] = b4; pinkState[5] = b5;
+                        pinkState[6] = white * 0.115926;
                     }
+
                     if (rumbleGain > 0.0) {
                         const rumbleState = context.rumbleState[ch];
-                        // Simple brown noise generator (random walk).
-                        rumbleState.brown = Math.max(-0.95, Math.min(0.95, rumbleState.brown + (Math.random() * 2 - 1) * 0.02));
+                        let brown = rumbleState.brown + (Math.random() * 2.0 - 1.0) * 0.02;
+                        // Clamp using if statements for performance.
+                        if (brown > 0.95) {
+                            brown = 0.95;
+                        } else if (brown < -0.95) {
+                            brown = -0.95;
+                        }
+                        rumbleState.brown = brown;
                         totalNoise += processSafeBiquad(rumbleState.brown * rumbleGain, rumbleState, rumbleLpfCoeffs);
                     }
                     
@@ -225,15 +288,19 @@ class VinylArtifactsPlugin extends PluginBase {
                     wetSamples[ch] = processSafeBiquad(shelf1Out, context.highShelfState[ch], highShelfCoeffs);
                 }
 
+                // --- Mix and Crosstalk ---
                 const dryL = data[i];
                 let wetL = wetSamples[0];
+                
                 if (channelCount > 1) {
                     const dryR = data[blockSize + i];
                     let wetR = wetSamples[1];
+                    
                     if (crosstalkAmount > 1e-6) {
-                        const oL = wetL, oR = wetR; 
-                        wetL = oL * (1.0 - crosstalkAmount) + oR * crosstalkAmount; 
-                        wetR = oR * (1.0 - crosstalkAmount) + oL * crosstalkAmount;
+                        const oL = wetL, oR = wetR;
+                        const crossMix = 1.0 - crosstalkAmount;
+                        wetL = oL * crossMix + oR * crosstalkAmount; 
+                        wetR = oR * crossMix + oL * crosstalkAmount;
                     }
                     data[blockSize + i] = dryR + wetR * mixAmount;
                 }
