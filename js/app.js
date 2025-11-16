@@ -7,64 +7,29 @@ import { applySerializedState } from './utils/serialization-utils.js';
 // Make electronIntegration globally accessible first
 window.electronIntegration = electronIntegration;
 
-// Store the latest pipeline state in memory
-let latestPipelineState = null;
-
-// Make saveDualPipelineState globally accessible
-window.saveDualPipelineState = saveDualPipelineState;
-
-// Function to save pipeline state to memory, only write to file on app exit
-async function savePipelineState(pipelineState) {
-    if (!window.electronAPI || !window.electronIntegration || !window.electronIntegration.isElectron) {
-        return;
-    }
-    
-    // Skip saving during first launch (splash screen)
-    if (window.isFirstLaunch === true) {
-        return;
-    }
-    
-    // Skip saving if pipeline state is empty
-    if (!pipelineState || !Array.isArray(pipelineState) || pipelineState.length === 0) {
-        return;
-    }
-    
-    // Store the latest state in memory
-    latestPipelineState = pipelineState;
-}
-
-// Function to save dual pipeline state to memory
-async function saveDualPipelineState() {
-    if (!window.electronAPI || !window.electronIntegration || !window.electronIntegration.isElectron) {
-        return;
-    }
-    
-    // Skip saving during first launch (splash screen)
-    if (window.isFirstLaunch === true) {
-        return;
-    }
-    
-    // Get the dual pipeline state from audioManager
-    if (window.audioManager) {
-        const dualState = window.audioManager.getPipelineState();
-        latestPipelineState = dualState;
-    }
-}
-
-// Function to write the latest pipeline state to file
+// Function to write the current pipeline state to file on app exit
 async function writePipelineStateToFile() {
     if (!window.electronAPI || !window.electronIntegration || !window.electronIntegration.isElectron) {
         return;
     }
     
-    // Skip if no state to save
-    if (!latestPipelineState) {
+    // Get the latest state from audioManager to ensure we save the current state
+    if (!window.audioManager || !window.pipelineManager) {
         return;
     }
     
+    const currentPipeline = window.audioManager.getCurrentPipeline();
+    if (!currentPipeline || currentPipeline.length === 0) {
+        return;
+    }
+    
+    const pipelineState = currentPipeline.map(plugin =>
+        window.pipelineManager.core.getSerializablePluginState(plugin, false, false, false)
+    );
+    
     try {
         // Use the IPC method to save pipeline state to file
-        const result = await window.electronAPI.savePipelineStateToFile(latestPipelineState);
+        const result = await window.electronAPI.savePipelineStateToFile(pipelineState);
         
         if (!result.success) {
             console.error('Failed to save pipeline state to file:', result.error);
@@ -1020,9 +985,6 @@ async function displayAppVersion() {
     }
     
 }
-
-// Make savePipelineState globally accessible for pipeline manager
-window.savePipelineState = savePipelineState;
 
 // Add event listener to save pipeline state to file when the app is closing
 window.addEventListener('beforeunload', async (event) => {

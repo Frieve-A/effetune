@@ -73,8 +73,25 @@ function joinPaths(basePath, ...paths) {
 async function savePipelineStateToFile(pipelineState, userDataPath) {
   try {
     // Skip saving if pipeline state is empty
-    if (!pipelineState || !Array.isArray(pipelineState) || pipelineState.length === 0) {
+    if (!pipelineState) {
       return { success: false, error: 'Empty pipeline state' };
+    }
+    
+    // Handle dual pipeline format (object with pipelineA, pipelineB, currentPipeline)
+    if (pipelineState.pipelineA !== undefined) {
+      // Check if at least one pipeline has content
+      const hasContent = (Array.isArray(pipelineState.pipelineA) && pipelineState.pipelineA.length > 0) ||
+                         (pipelineState.pipelineB && Array.isArray(pipelineState.pipelineB) && pipelineState.pipelineB.length > 0);
+      if (!hasContent) {
+        return { success: false, error: 'Empty pipeline state' };
+      }
+    } else if (Array.isArray(pipelineState)) {
+      // Handle old single pipeline format (array)
+      if (pipelineState.length === 0) {
+        return { success: false, error: 'Empty pipeline state' };
+      }
+    } else {
+      return { success: false, error: 'Invalid pipeline state format' };
     }
     
     // Use path.join for cross-platform compatibility

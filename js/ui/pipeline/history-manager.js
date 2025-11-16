@@ -61,39 +61,6 @@ export class HistoryManager {
             this.historyIndex--;
         }
         
-        // Check if pipeline is empty - for Electron file saving only
-        if (this.audioManager.pipeline.length === 0) {
-            // Create default plugins
-            const defaultPlugins = [
-                { name: 'Volume', enabled: true, parameters: { volume: -6 } },
-                { name: 'Level Meter', enabled: true, parameters: {} }
-            ];
-            
-            // Save default plugins state to file (but not to history)
-            if (window.electronIntegration && window.electronIntegration.isElectron) {
-                // Save to file using the savePipelineState function from app.js
-                if (window.savePipelineState) {
-                    window.savePipelineState(defaultPlugins);
-                }
-            }
-        }
-        
-        // Save pipeline state to file if in Electron environment
-        if (window.electronIntegration && window.electronIntegration.isElectron) {
-            // Save dual pipeline state using the saveDualPipelineState function from app.js
-            if (window.saveDualPipelineState) {
-                window.saveDualPipelineState();
-            } else {
-                // Fallback to old method for backward compatibility
-                const pipelineState = this.audioManager.pipeline.map(plugin =>
-                    this.pipelineManager.core.getSerializablePluginState(plugin, false, true, true)
-                );
-                
-                if (window.savePipelineState) {
-                    window.savePipelineState(pipelineState);
-                }
-            }
-        }
     }
     
     /**
