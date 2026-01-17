@@ -13,6 +13,8 @@ let appVersion = null;
 let appConfig = {};
 let startupPreset = null;
 let updateTrayMenuTemplate = null;
+let closeTimeout = null;
+let triggerClose = null;
 
 module.exports = {
   getMainWindow: () => mainWindow,
@@ -65,4 +67,16 @@ module.exports = {
 
   getUpdateTrayMenuTemplate: () => updateTrayMenuTemplate,
   setUpdateTrayMenuTemplate: (func) => { updateTrayMenuTemplate = func },
+
+  getCloseTimeout: () => closeTimeout,
+  setCloseTimeout: (timeout) => { closeTimeout = timeout; },
+  clearCloseTimeout: () => {
+    if (closeTimeout) {
+      clearTimeout(closeTimeout);
+      closeTimeout = null;
+    }
+  },
+
+  getTriggerClose: () => triggerClose,
+  setTriggerClose: (fn) => { triggerClose = fn; },
 };

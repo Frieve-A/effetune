@@ -405,7 +405,7 @@ class ElectronIntegration {
             <div class="about-version">Version ${data.version}</div>
             ${updateLinkHTML}
             <div class="about-description">Desktop Audio Effect Processor</div>
-            <div class="about-copyright">Copyright © Frieve 2025</div>
+            <div class="about-copyright">Copyright © Frieve 2025-2026</div>
           </div>
           <div class="dialog-buttons">
           <button id="close-button">Close</button>

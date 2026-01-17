@@ -279,6 +279,7 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Dynamics  | Compressor | Dynamic range compression with threshold, ratio, and knee control | [Details](docs/plugins/dynamics.md#compressor) |
 | Dynamics  | Gate | Noise gate with threshold, ratio, and knee control for noise reduction | [Details](docs/plugins/dynamics.md#gate) |
 | Dynamics  | Multiband Compressor | Professional 5-band dynamics processor with FM radio-style sound shaping | [Details](docs/plugins/dynamics.md#multiband-compressor) |
+| Dynamics  | Multiband Expander | Professional 5-band expander for restoring dynamics to over-compressed recordings | [Details](docs/plugins/dynamics.md#multiband-expander) |
 | Dynamics  | Multiband Transient | Advanced 3-band transient shaper for frequency-specific attack and sustain control | [Details](docs/plugins/dynamics.md#multiband-transient) |
 | Dynamics  | Power Amp Sag | Simulates power amplifier voltage sag under high load conditions | [Details](docs/plugins/dynamics.md#power-amp-sag) |
 | Dynamics  | Transient Shaper | Controls transient and sustain portions of the signal | [Details](docs/plugins/dynamics.md#transient-shaper) |

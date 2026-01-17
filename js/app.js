@@ -7,36 +7,53 @@ import { applySerializedState } from './utils/serialization-utils.js';
 // Make electronIntegration globally accessible first
 window.electronIntegration = electronIntegration;
 
-// Function to write the current pipeline state to file on app exit
-async function writePipelineStateToFile() {
+// Function to get the current pipeline state for saving
+function getPipelineStateForSave() {
     if (!window.electronAPI || !window.electronIntegration || !window.electronIntegration.isElectron) {
-        return;
+        return null;
     }
-    
+
     // Get the latest state from audioManager to ensure we save the current state
     if (!window.audioManager || !window.pipelineManager) {
-        return;
+        return null;
     }
-    
+
     const currentPipeline = window.audioManager.getCurrentPipeline();
     if (!currentPipeline || currentPipeline.length === 0) {
-        return;
+        return null;
     }
-    
-    const pipelineState = currentPipeline.map(plugin =>
+
+    return currentPipeline.map(plugin =>
         window.pipelineManager.core.getSerializablePluginState(plugin, false, false, false)
     );
-    
+}
+
+// Function to write the current pipeline state to file on app exit (legacy, used for manual save)
+async function writePipelineStateToFile() {
+    const pipelineState = getPipelineStateForSave();
+    if (!pipelineState) {
+        return;
+    }
+
     try {
         // Use the IPC method to save pipeline state to file
         const result = await window.electronAPI.savePipelineStateToFile(pipelineState);
-        
+
         if (!result.success) {
             console.error('Failed to save pipeline state to file:', result.error);
         }
     } catch (error) {
         console.error('Failed to save pipeline state to file:', error);
     }
+}
+
+// Set up listener for pipeline state request from main process (for window close)
+if (window.electronAPI && window.electronAPI.onRequestPipelineStateForClose) {
+    window.electronAPI.onRequestPipelineStateForClose(() => {
+        const pipelineState = getPipelineStateForSave();
+        // Send the pipeline state back to main process (even if null, to signal completion)
+        window.electronAPI.sendPipelineStateForClose(pipelineState);
+    });
 }
 
 // Function to load pipeline state from file when in Electron environment
@@ -985,12 +1002,6 @@ async function displayAppVersion() {
     }
     
 }
-
-// Add event listener to save pipeline state to file when the app is closing
-window.addEventListener('beforeunload', async (event) => {
-    // Write the latest pipeline state to file on app exit
-    await writePipelineStateToFile();
-});
 
 // Set up event listeners for tray menu functionality
 if (window.electronAPI && window.electronIntegration && window.electronIntegration.isElectron) {

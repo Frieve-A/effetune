@@ -40,6 +40,7 @@ dynamics/compressor: Compressor | Dynamics | CompressorPlugin | css
 dynamics/expander: Expander | Dynamics | ExpanderPlugin | css
 dynamics/gate: Gate | Dynamics | GatePlugin | css
 dynamics/multiband_compressor: Multiband Compressor | Dynamics | MultibandCompressorPlugin | css
+dynamics/multiband_expander: Multiband Expander | Dynamics | MultibandExpanderPlugin | css
 dynamics/multiband_transient: Multiband Transient | Dynamics | MultibandTransientPlugin | css
 dynamics/power_amp_sag: Power Amp Sag | Dynamics | PowerAmpSagPlugin | css
 dynamics/transient_shaper: Transient Shaper | Dynamics | TransientShaperPlugin | css

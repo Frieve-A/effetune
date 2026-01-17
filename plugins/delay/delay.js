@@ -2,283 +2,258 @@ class DelayPlugin extends PluginBase {
     constructor() {
         super('Delay', 'Feedback delay with damping controls');
 
-        // Initialize parameters with defaults
+        // Parameters (defaults)
         this.pd = 0;      // Pre-Delay (ms)
         this.ds = 150;    // Delay Size (ms)
-        this.dp = 50;     // Damping (%)
-        this.hd = 5000;   // High Damp (Hz)
-        this.ld = 100;    // Low Damp (Hz)
+        this.dp = 50;     // Damping (%): 0 = no filter, 100 = fully filtered in feedback path
+        this.hd = 5000;   // High Damp cutoff (Hz)  -> low-pass
+        this.ld = 100;    // Low Damp cutoff (Hz)   -> high-pass
         this.mx = 16;     // Wet/Dry Mix (%)
         this.fb = 50;     // Feedback (%)
         this.pp = 0;      // Ping-Pong (%)
 
-        // Register processor function
         this.registerProcessor(`
-            // Skip processing if the plugin is disabled.
             if (!parameters.enabled) return data;
 
-            // --- Cache frequently accessed parameters and constants ---
             const channelCount = parameters.channelCount;
             const blockSize = parameters.blockSize;
             const sampleRate = parameters.sampleRate;
             const twoPI = 2.0 * Math.PI;
 
-            // --- Helper function for context initialization/reset ---
             const initializeContext = (ctx, chCount, sRate) => {
                 ctx.sampleRate = sRate;
-                const maxPreDelaySamples = Math.ceil(sRate * 0.1); // Max 100ms pre-delay buffer
-                const maxDelaySamples = Math.ceil(sRate * 5.0);  // Max 5s delay buffer
+
+                // +1 to allow exact max delay without aliasing to 0 in a ring buffer
+                const maxPreDelaySamples = Math.ceil(sRate * 0.1) + 1; // up to 100ms
+                const maxDelaySamples    = Math.ceil(sRate * 5.0) + 1; // up to 5s
 
                 ctx.preDelayBuffer = new Array(chCount);
-                ctx.delayBuffer = new Array(chCount);
-                ctx.hdState = new Float32Array(chCount).fill(0.0); // Use Float32Array for filter states
+                ctx.delayBuffer    = new Array(chCount);
+
+                // Filter states:
+                // ldState = low-pass state at (Low Damp cutoff) used to form high-pass by subtraction
+                // hdState = low-pass state at (High Damp cutoff) applied after high-pass (band-pass overall)
+                ctx.hdState = new Float32Array(chCount).fill(0.0);
                 ctx.ldState = new Float32Array(chCount).fill(0.0);
 
                 for (let ch = 0; ch < chCount; ch++) {
                     ctx.preDelayBuffer[ch] = {
                         buffer: new Float32Array(maxPreDelaySamples),
                         pos: 0,
-                        length: maxPreDelaySamples // Cache length
+                        length: maxPreDelaySamples
                     };
                     ctx.delayBuffer[ch] = {
                         buffer: new Float32Array(maxDelaySamples),
                         pos: 0,
-                        length: maxDelaySamples // Cache length
+                        length: maxDelaySamples
                     };
                 }
-                ctx.channelCount = chCount; // Store current channel count in context
+
+                ctx.channelCount = chCount;
                 ctx.initialized = true;
             };
 
-            // --- Initialize or reset context if needed ---
             if (!context.initialized || context.sampleRate !== sampleRate || context.channelCount !== channelCount) {
                 initializeContext(context, channelCount, sampleRate);
             }
 
-            // --- Cache context references ---
             const preDelayBuffers = context.preDelayBuffer;
-            const delayBuffers = context.delayBuffer;
-            const hdStates = context.hdState; // Reference to the Float32Array
-            const ldStates = context.ldState; // Reference to the Float32Array
+            const delayBuffers    = context.delayBuffer;
+            const hdStates        = context.hdState;
+            const ldStates        = context.ldState;
 
-            // --- Pre-calculate coefficients for the block ---
-            // Ensure delay times are within buffer limits and at least 0/1 sample.
-            // Use cached buffer lengths for calculation. Max length - 1 is not strictly necessary with modulo.
             const maxPreDelayLen = preDelayBuffers[0].length;
-            const maxDelayLen = delayBuffers[0].length;
-            const preDelaySamples = Math.max(0, Math.min(maxPreDelayLen, Math.floor(parameters.pd * sampleRate * 0.001)));
-            const delaySamples = Math.max(1, Math.min(maxDelayLen, Math.floor(parameters.ds * sampleRate * 0.001)));
+            const maxDelayLen    = delayBuffers[0].length;
 
-            const dampAmount = parameters.dp * 0.01;
+            // Clamp to ring-buffer usable range [0..len-1] (len would fold to 0)
+            const preDelaySamples = Math.max(
+                0,
+                Math.min(maxPreDelayLen - 1, Math.floor(parameters.pd * sampleRate * 0.001))
+            );
+            const delaySamples = Math.max(
+                1,
+                Math.min(maxDelayLen - 1, Math.floor(parameters.ds * sampleRate * 0.001))
+            );
+
+            const dampAmount = Math.max(0.0, Math.min(1.0, parameters.dp * 0.01));
             const oneMinusDampAmount = 1.0 - dampAmount;
-            // Calculate filter coefficients using Math.exp for stability/accuracy
-            const hdCutoff = Math.max(1.0, parameters.hd); // Avoid zero frequency
-            const ldCutoff = Math.max(1.0, parameters.ld); // Avoid zero frequency
-            const hdCoeff = Math.exp(-twoPI * hdCutoff / sampleRate); // LPF coefficient (pole location)
-            const ldCoeff = 1.0 - Math.exp(-twoPI * ldCutoff / sampleRate); // HPF coefficient (related to pole location for 1-pole HPF difference equation)
 
-            // Clamp feedback gain to prevent instability.
+            const nyquist = 0.5 * sampleRate;
+
+            // Ensure cutoffs are valid and ordered (ld <= hd) for a sensible band-pass in feedback
+            let hdCutoff = Math.max(20.0, Math.min(nyquist - 1.0, parameters.hd));
+            let ldCutoff = Math.max(20.0, Math.min(nyquist - 1.0, parameters.ld));
+            if (ldCutoff > hdCutoff) {
+                const tmp = ldCutoff;
+                ldCutoff = hdCutoff;
+                hdCutoff = tmp;
+            }
+
+            // 1-pole low-pass pole coefficients
+            const aHD = Math.exp(-twoPI * hdCutoff / sampleRate);
+            const aLD = Math.exp(-twoPI * ldCutoff / sampleRate);
+
             const feedbackGain = Math.max(0.0, Math.min(0.99, parameters.fb * 0.01));
 
-            // Calculate constant power mix gains.
-            const wetMix = parameters.mx * 0.01;
-            const angle = wetMix * Math.PI * 0.5; // Map mix [0, 1] to angle [0, pi/2]
+            // Constant-power wet/dry
+            const wetMix = Math.max(0.0, Math.min(1.0, parameters.mx * 0.01));
+            const angle = wetMix * (Math.PI * 0.5);
             const dryGain = Math.cos(angle);
             const wetGain = Math.sin(angle);
 
-            // Ping-pong mix factor [0, 1].
-            const pingPongMix = parameters.pp * 0.01;
+            const pingPongMix = Math.max(0.0, Math.min(1.0, parameters.pp * 0.01));
             const isStereo = channelCount === 2;
 
-            // --- Stereo-specific temporary storage (reused per block) ---
-            // Initialize only if stereo, reduces unnecessary allocation/checks if mono.
-            const delayedSamplesStereo = isStereo ? [0.0, 0.0] : null;
-            const feedbackSourceStereo = isStereo ? [0.0, 0.0] : null;
-            const dampedFeedbackStereo = isStereo ? [0.0, 0.0] : null;
+            // Reusable stereo temps (no per-sample allocation)
+            let ds0 = 0.0, ds1 = 0.0;
+            let fbSrc0 = 0.0, fbSrc1 = 0.0;
+            let dampFb0 = 0.0, dampFb1 = 0.0;
 
-            // --- Main processing loop (per sample) ---
+            // Damping filter in feedback path:
+            // x -> LPF@ld => lpLD; hp = x - lpLD; then LPF@hd => bp
+            // final = x*(1-dp) + bp*dp
+            const dampFeedback = (ch, x) => {
+                let lpLD = ldStates[ch];
+                lpLD = (1.0 - aLD) * x + aLD * lpLD;
+                const hp = x - lpLD;
+
+                let lpHD = hdStates[ch];
+                lpHD = (1.0 - aHD) * hp + aHD * lpHD;
+
+                ldStates[ch] = lpLD;
+                hdStates[ch] = lpHD;
+
+                return x * oneMinusDampAmount + lpHD * dampAmount;
+            };
+
             for (let i = 0; i < blockSize; i++) {
 
-                // --- Stereo-specific calculations (executed once per sample) ---
+                // Stereo: read once, compute ping-pong feedback once
                 if (isStereo) {
-                    // --- Read Delayed Samples (Stereo L/R) ---
-                    // Cache L/R delay buffer info locally within the stereo block.
-                    const delayL = delayBuffers[0];
-                    const delayBufL = delayL.buffer;
-                    const delayLenL = delayL.length;
-                    const delayPosL = delayL.pos;
-                    const mainDelayedReadPosL = (delayPosL - delaySamples + delayLenL) % delayLenL;
-                    const ds0 = delayBufL[mainDelayedReadPosL];
-                    delayedSamplesStereo[0] = ds0;
+                    const dL = delayBuffers[0];
+                    const dR = delayBuffers[1];
 
-                    const delayR = delayBuffers[1];
-                    const delayBufR = delayR.buffer;
-                    const delayLenR = delayR.length;
-                    const delayPosR = delayR.pos;
-                    const mainDelayedReadPosR = (delayPosR - delaySamples + delayLenR) % delayLenR;
-                    const ds1 = delayBufR[mainDelayedReadPosR];
-                    delayedSamplesStereo[1] = ds1;
+                    const posL = dL.pos;
+                    const posR = dR.pos;
 
-                    // --- Calculate Feedback Source based on Ping-Pong Mix ---
-                    // Interpolate between independent stereo, mono sum, and crossed feedback.
-                    const monoFeedback = (ds0 + ds1) * 0.5;
-                    if (pingPongMix <= 0.5) { // Interpolate Independent -> Mono
-                        const mixRatio = pingPongMix * 2.0;
-                        const invMixRatio = 1.0 - mixRatio;
-                        feedbackSourceStereo[0] = ds0 * invMixRatio + monoFeedback * mixRatio;
-                        feedbackSourceStereo[1] = ds1 * invMixRatio + monoFeedback * mixRatio;
-                    } else { // Interpolate Mono -> Crossed
-                        const mixRatio = (pingPongMix - 0.5) * 2.0;
-                        const invMixRatio = 1.0 - mixRatio;
-                        feedbackSourceStereo[0] = monoFeedback * invMixRatio + ds1 * mixRatio; // Mono -> R source
-                        feedbackSourceStereo[1] = monoFeedback * invMixRatio + ds0 * mixRatio; // Mono -> L source
+                    const readPosL = (posL - delaySamples + dL.length) % dL.length;
+                    const readPosR = (posR - delaySamples + dR.length) % dR.length;
+
+                    ds0 = dL.buffer[readPosL];
+                    ds1 = dR.buffer[readPosR];
+
+                    const mono = 0.5 * (ds0 + ds1);
+
+                    if (pingPongMix <= 0.5) {
+                        const t = pingPongMix * 2.0;     // 0..1
+                        const it = 1.0 - t;
+                        fbSrc0 = ds0 * it + mono * t;
+                        fbSrc1 = ds1 * it + mono * t;
+                    } else {
+                        const t = (pingPongMix - 0.5) * 2.0; // 0..1
+                        const it = 1.0 - t;
+                        fbSrc0 = mono * it + ds1 * t; // crossfeed
+                        fbSrc1 = mono * it + ds0 * t;
                     }
 
-                    // --- Apply Damping to Feedback Source (Stereo L/R) ---
-                    // Process L channel damping
-                    let hdStateL = hdStates[0];
-                    let ldStateL = ldStates[0];
-                    const fbSrcL = feedbackSourceStereo[0];
-                    hdStateL = fbSrcL * (1.0 - hdCoeff) + hdStateL * hdCoeff; // Optimized 1-pole LPF
-                    const lpfOutL = hdStateL; // Store LPF output for HPF input difference
-                    ldStateL = ldCoeff * (ldStateL + lpfOutL - fbSrcL); // Original HPF structure
-                    dampedFeedbackStereo[0] = fbSrcL * oneMinusDampAmount + ldStateL * dampAmount;
-                    hdStates[0] = hdStateL; // Update state immediately
-                    ldStates[0] = ldStateL; // Update state immediately
-
-                    // Process R channel damping
-                    let hdStateR = hdStates[1];
-                    let ldStateR = ldStates[1];
-                    const fbSrcR = feedbackSourceStereo[1];
-                    hdStateR = fbSrcR * (1.0 - hdCoeff) + hdStateR * hdCoeff; // Optimized 1-pole LPF
-                    const lpfOutR = hdStateR; // Store LPF output for HPF input difference
-                    ldStateR = ldCoeff * (ldStateR + lpfOutR - fbSrcR); // Original HPF structure
-                    dampedFeedbackStereo[1] = fbSrcR * oneMinusDampAmount + ldStateR * dampAmount;
-                    hdStates[1] = hdStateR; // Update state immediately
-                    ldStates[1] = ldStateR; // Update state immediately
+                    dampFb0 = dampFeedback(0, fbSrc0);
+                    dampFb1 = dampFeedback(1, fbSrc1);
                 }
 
-                // --- Per-channel processing ---
                 for (let ch = 0; ch < channelCount; ch++) {
-                    // Calculate the offset for the current sample in the interleaved data array.
-                    const channelDataOffset = ch * blockSize + i;
-                    const input = data[channelDataOffset];
+                    const idx = ch * blockSize + i;
+                    const input = data[idx];
 
-                    // --- Pre-Delay ---
-                    // Cache pre-delay buffer info locally.
-                    const preDelay = preDelayBuffers[ch];
-                    const preDelayBuf = preDelay.buffer;
-                    const preDelayLen = preDelay.length;
-                    let preDelayPos = preDelay.pos; // Use local var for manipulation
+                    // --- Pre-Delay (fix: pd=0 must be true zero delay) ---
+                    const pre = preDelayBuffers[ch];
+                    const preBuf = pre.buffer;
+                    const preLen = pre.length;
+                    let prePos = pre.pos;
 
-                    // Read from pre-delay buffer
-                    const preDelayedReadPos = (preDelayPos - preDelaySamples + preDelayLen) % preDelayLen;
-                    const preDelayedInput = preDelayBuf[preDelayedReadPos];
-
-                    // Write input to pre-delay buffer
-                    preDelayBuf[preDelayPos] = input;
-
-                    // Update and wrap pre-delay write position using conditional check (potentially faster than modulo).
-                    preDelayPos++;
-                    if (preDelayPos >= preDelayLen) {
-                        preDelayPos = 0;
-                    }
-                    preDelay.pos = preDelayPos; // Store updated position back to context
-
-                    // --- Determine Feedback and Wet Output for the current channel ---
-                    let finalDampedFeedback;
-                    let wetOutput;
-
-                    // Cache main delay buffer info locally.
-                    const delay = delayBuffers[ch];
-                    const delayBuf = delay.buffer;
-                    const delayLen = delay.length;
-                    let delayPos = delay.pos; // Use local var for manipulation
-
-                    // Get the position to write the final delayed signal into.
-                    const mainDelayedWritePos = delayPos;
-
-                    // Check if stereo and processing the first two channels.
-                    if (isStereo && ch < 2) {
-                        // Use pre-calculated damped feedback and wet signal for L/R channels.
-                        finalDampedFeedback = dampedFeedbackStereo[ch];
-                        wetOutput = delayedSamplesStereo[ch];
+                    let preOut;
+                    if (preDelaySamples === 0) {
+                        preOut = input;
+                        // keep buffer warm (optional)
+                        preBuf[prePos] = input;
+                        prePos++;
+                        if (prePos >= preLen) prePos = 0;
                     } else {
-                        // Calculate for Mono or additional channels (ch >= 2 if channelCount > 2).
-                        // Read the raw delayed sample for this channel.
-                        const mainDelayedReadPos = (delayPos - delaySamples + delayLen) % delayLen;
-                        const delayedSample = delayBuf[mainDelayedReadPos];
-                        wetOutput = delayedSample; // Wet output is the raw delayed signal
+                        const preReadPos = (prePos - preDelaySamples + preLen) % preLen;
+                        preOut = preBuf[preReadPos];
 
-                        // Apply Damping directly to the delayed sample for this channel.
-                        let hdState = hdStates[ch]; // Get current filter state
-                        let ldState = ldStates[ch]; // Get current filter state
+                        preBuf[prePos] = input;
+                        prePos++;
+                        if (prePos >= preLen) prePos = 0;
+                    }
+                    pre.pos = prePos;
 
-                        // Low-pass filter (High Damp) - Optimized 1-pole LPF
-                        hdState = delayedSample * (1.0 - hdCoeff) + hdState * hdCoeff;
-                        const lpfOut = hdState; // Store LPF output for HPF input difference
+                    // --- Main Delay ---
+                    const d = delayBuffers[ch];
+                    const dBuf = d.buffer;
+                    const dLen = d.length;
+                    let dPos = d.pos;
 
-                        // High-pass filter (Low Damp) - Original 1-pole HPF structure
-                        ldState = ldCoeff * (ldState + lpfOut - delayedSample);
+                    const writePos = dPos;
+                    const readPos = (dPos - delaySamples + dLen) % dLen;
 
-                        // Combine damped signal with original delayed signal based on damping amount.
-                        finalDampedFeedback = delayedSample * oneMinusDampAmount + ldState * dampAmount;
+                    const wet = isStereo
+                        ? (ch === 0 ? ds0 : (ch === 1 ? ds1 : dBuf[readPos]))
+                        : dBuf[readPos];
 
-                        // Update filter states in context immediately for the next sample.
-                        hdStates[ch] = hdState;
-                        ldStates[ch] = ldState;
+                    let fbDamped;
+                    if (isStereo && ch === 0) {
+                        fbDamped = dampFb0;
+                    } else if (isStereo && ch === 1) {
+                        fbDamped = dampFb1;
+                    } else {
+                        // Mono or extra channels: feedback source is the delayed signal of that channel
+                        fbDamped = dampFeedback(ch, wet);
                     }
 
-                    // --- Main Delay Write (Pre-Delayed Input + Damped Feedback) ---
-                    // Write the sum of the pre-delayed input and the calculated damped feedback signal
-                    // into the main delay buffer. Apply feedback gain to the feedback signal.
-                    delayBuf[mainDelayedWritePos] = preDelayedInput + finalDampedFeedback * feedbackGain;
+                    // Write: pre-delayed input + feedback
+                    dBuf[writePos] = preOut + fbDamped * feedbackGain;
 
-                    // Update and wrap main delay write position using conditional check.
-                    delayPos++;
-                    if (delayPos >= delayLen) {
-                        delayPos = 0;
-                    }
-                    delay.pos = delayPos; // Store updated position back to context
+                    dPos++;
+                    if (dPos >= dLen) dPos = 0;
+                    d.pos = dPos;
 
                     // --- Output Mix ---
-                    // Combine the original dry input signal and the wet (delayed) output signal
-                    // using the calculated dry and wet gains.
-                    data[channelDataOffset] = input * dryGain + wetOutput * wetGain;
+                    data[idx] = input * dryGain + wet * wetGain;
                 }
             }
 
-            // Return the modified data array.
             return data;
         `);
     }
 
-    // Get current parameters
     getParameters() {
         return {
             type: this.constructor.name,
             enabled: this.enabled,
-            pd: this.pd,      // Pre-Delay (ms)
-            ds: this.ds,      // Delay Size (ms)
-            dp: this.dp,      // Damping (%)
-            hd: this.hd,      // High Damp (Hz)
-            ld: this.ld,      // Low Damp (Hz)
-            mx: this.mx,      // Mix (%)
-            fb: this.fb,      // Feedback (%)
-            pp: this.pp       // Ping-Pong (%)
+            pd: this.pd,
+            ds: this.ds,
+            dp: this.dp,
+            hd: this.hd,
+            ld: this.ld,
+            mx: this.mx,
+            fb: this.fb,
+            pp: this.pp
         };
     }
 
-    // Set parameters with validation
     setParameters(params) {
-        if (params.pd !== undefined) this.pd = Math.max(0, Math.min(100, Number(params.pd)));      // Pre-Delay ms
-        if (params.ds !== undefined) this.ds = Math.max(1, Math.min(5000, Number(params.ds)));     // Delay Size ms
-        if (params.dp !== undefined) this.dp = Math.max(0, Math.min(100, Number(params.dp)));      // Damping %
-        if (params.hd !== undefined) this.hd = Math.max(1000, Math.min(20000, Number(params.hd))); // High Damp Hz
-        if (params.ld !== undefined) this.ld = Math.max(20, Math.min(1000, Number(params.ld)));     // Low Damp Hz
-        if (params.mx !== undefined) this.mx = Math.max(0, Math.min(100, Number(params.mx)));      // Mix %
-        if (params.fb !== undefined) this.fb = Math.max(0, Math.min(99, Number(params.fb)));       // Feedback % (Clamped)
-        if (params.pp !== undefined) this.pp = Math.max(0, Math.min(100, Number(params.pp)));      // Ping-Pong %
+        if (params.pd !== undefined) this.pd = Math.max(0, Math.min(100, Number(params.pd)));       // 0..100 ms
+        if (params.ds !== undefined) this.ds = Math.max(1, Math.min(5000, Number(params.ds)));      // 1..5000 ms
+        if (params.dp !== undefined) this.dp = Math.max(0, Math.min(100, Number(params.dp)));       // 0..100 %
+
+        // Make UI/validation consistent and actually usable
+        if (params.hd !== undefined) this.hd = Math.max(20, Math.min(20000, Number(params.hd)));    // 20..20000 Hz
+        if (params.ld !== undefined) this.ld = Math.max(20, Math.min(20000, Number(params.ld)));    // 20..20000 Hz
+
+        if (params.mx !== undefined) this.mx = Math.max(0, Math.min(100, Number(params.mx)));       // 0..100 %
+        if (params.fb !== undefined) this.fb = Math.max(0, Math.min(99, Number(params.fb)));        // 0..99 %
+        if (params.pp !== undefined) this.pp = Math.max(0, Math.min(100, Number(params.pp)));       // 0..100 %
+
         this.updateParameters();
     }
 
@@ -286,49 +261,41 @@ class DelayPlugin extends PluginBase {
         const container = document.createElement('div');
         container.className = 'delay-plugin-ui plugin-parameter-ui';
 
-        // Pre-Delay Control
         container.appendChild(this.createParameterControl(
             'Pre-Delay', 0, 100, 0.1, this.pd,
             (value) => this.setParameters({ pd: value }), 'ms'
         ));
 
-        // Delay Size Control
         container.appendChild(this.createParameterControl(
             'Delay Size', 1, 5000, 1, this.ds,
             (value) => this.setParameters({ ds: value }), 'ms'
         ));
 
-        // Damping Control
         container.appendChild(this.createParameterControl(
             'Damping', 0, 100, 1, this.dp,
             (value) => this.setParameters({ dp: value }), '%'
         ));
 
-        // High Damp Control
         container.appendChild(this.createParameterControl(
             'High Damp', 20, 20000, 1, this.hd,
             (value) => this.setParameters({ hd: value }), 'Hz'
         ));
 
-        // Low Damp Control
         container.appendChild(this.createParameterControl(
             'Low Damp', 20, 20000, 1, this.ld,
             (value) => this.setParameters({ ld: value }), 'Hz'
         ));
 
-        // Wet/Dry Mix Control
         container.appendChild(this.createParameterControl(
             'Mix', 0, 100, 1, this.mx,
             (value) => this.setParameters({ mx: value }), '%'
         ));
 
-        // Feedback Control
         container.appendChild(this.createParameterControl(
-            'Feedback', 0, 100, 1, this.fb,
+            'Feedback', 0, 99, 1, this.fb,
             (value) => this.setParameters({ fb: value }), '%'
         ));
 
-        // Ping-Pong Control
         container.appendChild(this.createParameterControl(
             'Ping-Pong', 0, 100, 1, this.pp,
             (value) => this.setParameters({ pp: value }), '%'
@@ -338,5 +305,4 @@ class DelayPlugin extends PluginBase {
     }
 }
 
-// Register the plugin globally
 window.DelayPlugin = DelayPlugin;

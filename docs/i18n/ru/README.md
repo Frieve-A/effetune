@@ -254,6 +254,7 @@ No audiophile myths, Just pure science.
 | Dynamics  | Compressor | Компрессия динамического диапазона с регулировкой порога, коэффициента и «колена» | [Подробнее](plugins/dynamics.md#compressor) |
 | Dynamics  | Gate | Гейт шумоподавления с регулировкой порога, коэффициента и «колена» для уменьшения шума | [Подробнее](plugins/dynamics.md#gate) |
 | Dynamics  | Multiband Compressor | Профессиональный 5-полосный динамический процессор с FM-радио стилизацией звука | [Подробнее](plugins/dynamics.md#multiband-compressor) |
+| Dynamics  | Multiband Expander | Профессиональный 5-полосный экспандер для расширения динамического диапазона по частотам | [Подробнее](plugins/dynamics.md#multiband-expander) |
 | Dynamics  | Multiband Transient | Продвинутый 3-полосный формирователь переходных процессов для частотно-специфичного контроля атаки и сустейна | [Подробнее](plugins/dynamics.md#multiband-transient) |
 | Dynamics  | Power Amp Sag | Имитирует провал напряжения усилителя мощности при высоких нагрузках | [Подробнее](plugins/dynamics.md#power-amp-sag) |
 | Dynamics  | Transient Shaper | Контролирует переходные и затухающие части сигнала | [Подробнее](plugins/dynamics.md#transient-shaper) |

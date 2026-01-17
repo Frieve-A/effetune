@@ -278,6 +278,7 @@ CDプレーヤー、ネットワークプレーヤー、またはその他の物
 | Dynamics  | Compressor | しきい値、レシオ、ニーコントロール付きのダイナミックレンジ圧縮 | [詳細](plugins/dynamics.md#compressor) |
 | Dynamics  | Gate | ノイズリダクションのためのしきい値、レシオ、ニーコントロール付きノイズゲート | [詳細](plugins/dynamics.md#gate) |
 | Dynamics  | Multiband Compressor | FMラジオ風のサウンドシェイピングを備えたプロフェッショナルな5バンドダイナミクスプロセッサ | [詳細](plugins/dynamics.md#multiband-compressor) |
+| Dynamics  | Multiband Expander | 周波数帯域別のダイナミックレンジ拡張を実現するプロフェッショナルな5バンドエクスパンダー | [詳細](plugins/dynamics.md#multiband-expander) |
 | Dynamics  | Multiband Transient | 周波数別のアタックとサステインを独立制御する高度な3バンドトランジェントシェイパー | [詳細](plugins/dynamics.md#multiband-transient) |
 | Dynamics  | Power Amp Sag | 高負荷時のパワーアンプの電圧降下をシミュレート | [詳細](plugins/dynamics.md#power-amp-sag) |
 | Dynamics  | Transient Shaper | 信号のアタックとサステイン部分を独立してコントロール | [詳細](plugins/dynamics.md#transient-shaper) |

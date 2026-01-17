@@ -283,6 +283,7 @@ CD प्लेयर्स, नेटवर्क प्लेयर्स, य
 | Dynamics  | Compressor | थ्रेशोल्ड, अनुपात, और नी नियंत्रण के साथ डायनेमिक रेंज संपीड़न | [विवरण](plugins/dynamics.md#compressor) |
 | Dynamics  | Gate | शोर नियंत्रण के लिए थ्रेशोल्ड, अनुपात, और नी नियंत्रण के साथ नॉइज़ गेट | [विवरण](plugins/dynamics.md#gate) |
 | Dynamics  | Multiband Compressor | FM रेडियो-शैली ध्वनि आकार देने के साथ प्रोफेशनल 5-बैंड डायनेमिक्स प्रोसेसर | [विवरण](plugins/dynamics.md#multiband-compressor) |
+| Dynamics  | Multiband Expander | आवृत्ति-विशिष्ट डायनामिक रेंज विस्तार के लिए प्रोफेशनल 5-बैंड एक्सपैंडर | [विवरण](plugins/dynamics.md#multiband-expander) |
 | Dynamics  | Multiband Transient | आवृत्ति-विशिष्ट अटैक और सस्टेन नियंत्रण के लिए उन्नत 3-बैंड ट्रांजिएंट शेपर | [विवरण](plugins/dynamics.md#multiband-transient) |
 | Dynamics  | Power Amp Sag | उच्च लोड की स्थिति में पावर एम्पलीफायर वोल्टेज सैग का अनुकरण करता है | [विवरण](plugins/dynamics.md#power-amp-sag) |
 | Dynamics  | Transient Shaper | सिग्नल के ट्रांजिएंट और सस्टेन भागों को नियंत्रित करता है | [विवरण](plugins/dynamics.md#transient-shaper) |

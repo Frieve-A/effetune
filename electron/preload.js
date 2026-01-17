@@ -122,6 +122,14 @@ contextBridge.exposeInMainWorld(
     
     // Save pipeline state to file
     savePipelineStateToFile: (pipelineState) => ipcRenderer.invoke('save-pipeline-state-to-file', pipelineState),
+
+    // Send pipeline state for close (synchronous send, no response needed)
+    sendPipelineStateForClose: (pipelineState) => ipcRenderer.send('pipeline-state-for-close', pipelineState),
+
+    // Listen for pipeline state request from main process (for window close)
+    onRequestPipelineStateForClose: (callback) => {
+      ipcRenderer.on('request-pipeline-state-for-close', () => callback());
+    },
     
     // Load and save config
     loadConfig: () => ipcRenderer.invoke('load-config'),

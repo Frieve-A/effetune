@@ -10,6 +10,7 @@ A collection of plugins that help balance the loud and quiet parts of your music
 - [Expander](#expander) - Dynamic range expansion below threshold with ratio and knee control (includes upward compression)
 - [Gate](#gate) - Reduces unwanted background noise by attenuating signals below a threshold
 - [Multiband Compressor](#multiband-compressor) - Professional 5-band dynamics processor with FM radio-style sound shaping
+- [Multiband Expander](#multiband-expander) - Professional 5-band expander for frequency-specific dynamic range expansion
 - [Multiband Transient](#multiband-transient) - Advanced 3-band transient shaper for frequency-specific attack and sustain control
 - [Power Amp Sag](#power-amp-sag) - Simulates power amplifier voltage sag under high load conditions
 - [Transient Shaper](#transient-shaper) - Controls transient and sustain portions of the signal
@@ -550,6 +551,117 @@ This configuration creates the characteristic "radio-ready" sound:
 - Fine-tune each band's threshold for desired amount of control
 - Use the gain controls to shape the final frequency balance
 - Monitor the gain reduction meters to ensure appropriate processing
+
+## Multiband Expander
+
+A professional-grade dynamics processor that splits your audio into five frequency bands and applies independent expansion to each. This plugin is designed to expand the dynamic range of specific frequency ranges, making quiet sounds even quieter while leaving loud sounds unchanged. It's particularly effective for restoring natural dynamics to over-compressed recordings from modern mastering or creating more dramatic frequency-specific dynamic contrast.
+
+### Key Features
+- 5-band processing with adjustable crossover frequencies
+- Independent expansion controls for each band
+- Optimized default settings following 1/f energy distribution
+- Real-time visualization of gain boost per band
+- High-quality Linkwitz-Riley crossover filters
+
+### Listening Enhancement Guide
+- Pop/Rock Music:
+  - Reduce the "wall of sound" effect from over-compressed mastering
+  - Restore dynamic contrast between verses and choruses
+  - Improve the flat impression of streaming audio sources
+- Classical Music:
+  - Restore the natural dynamic ebb and flow of recordings
+  - Enhance contrast between quiet passages and loud crescendos
+  - Bring back the vivid expression of orchestral performances
+- Jazz Music:
+  - Enhance the natural dynamics between instruments
+  - Make quiet solos more intimate and loud sections more powerful
+  - Restore the natural breathing of jazz performances
+
+### Frequency Bands
+- Band 1 (Low): Below 100 Hz
+  - Controls the deep bass and sub frequencies
+  - Gentle expansion with longer attack/release for natural bass dynamics
+- Band 2 (Low-Mid): 100-500 Hz
+  - Handles the upper bass and lower midrange
+  - Moderate expansion to restore warmth and body
+- Band 3 (Mid): 500-2000 Hz
+  - Critical vocal and instrument presence range
+  - Balanced expansion to preserve naturalness
+- Band 4 (High-Mid): 2000-8000 Hz
+  - Controls presence and air
+  - Light expansion with faster response
+- Band 5 (High): Above 8000 Hz
+  - Manages brightness and sparkle
+  - Quick response times with gentler expansion
+
+### Parameters (Per Band)
+- **Threshold** (-60dB to 0dB)
+  - Sets the level where expansion begins
+  - Signals below this level will be expanded (made quieter)
+- **Ratio** (1:0.05 to 1:20)
+  - Controls the amount of expansion applied
+  - Higher ratios for more dramatic dynamic range expansion
+- **Attack** (0.1ms to 100ms)
+  - How quickly expansion responds
+  - Faster times for precise transient control
+- **Release** (10ms to 1000ms)
+  - How quickly gain returns to normal
+  - Longer times for smoother, more natural sound
+- **Knee** (0dB to 12dB)
+  - Smoothness of expansion onset
+  - Higher values for more natural transition
+- **Gain** (-12dB to +12dB)
+  - Output level adjustment per band
+  - Fine-tune the frequency balance
+
+### Dynamic Range Restoration
+The Multiband Expander comes with optimized default settings that follow natural 1/f energy distribution for restoring dynamics to over-compressed material:
+
+- Low Band (< 100 Hz)
+  - Gentle expansion (1.2:1) for controlled bass dynamics
+  - Longer attack/release to maintain punch
+  - Threshold set to accommodate typical bass energy
+
+- Low-Mid Band (100-500 Hz)
+  - Moderate expansion (1.2:1)
+  - Balanced timing for natural response
+  - Threshold follows -6dB energy rolloff
+
+- Mid Band (500-2000 Hz)
+  - Balanced expansion (1.2:1)
+  - Medium response times
+  - Optimized for vocal and instrument dynamics
+
+- High-Mid Band (2000-8000 Hz)
+  - Light expansion (1.2:1)
+  - Faster attack/release
+  - Natural presence restoration
+
+- High Band (> 8000 Hz)
+  - Gentlest expansion (1.1:1)
+  - Very quick response times
+  - Subtle air and sparkle enhancement
+
+This configuration creates natural-sounding dynamic restoration:
+- Restored natural dynamics across all frequencies
+- Enhanced contrast between quiet and loud passages
+- Frequency-specific control for optimal results
+- Natural, musical expansion without artifacts
+- Improved clarity and separation
+- Reduced flatness in over-compressed recordings
+
+### Visual Feedback
+- Interactive transfer function graphs for each band
+- Real-time gain boost meters showing expansion activity
+- Frequency band activity visualization
+- Clear crossover point indicators
+
+### Tips for Use
+- Start with the default settings for general dynamic restoration
+- Adjust crossover frequencies to match your material
+- Fine-tune each band's threshold based on the frequency content
+- Use the gain controls to compensate for any perceived volume changes
+- Monitor the gain boost meters to ensure appropriate expansion
 
 ## Multiband Transient
 

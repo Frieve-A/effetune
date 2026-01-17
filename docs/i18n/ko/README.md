@@ -277,6 +277,7 @@ CD 플레이어, 네트워크 플레이어 또는 기타 물리적 소스를 사
 | Dynamics  | Compressor | 임계값, 비율 및 니 제어가 가능한 다이내믹 레인지 컴프레션 | [세부 정보](plugins/dynamics.md#compressor) |
 | Dynamics  | Gate | 노이즈 감소를 위한 임계값, 비율 및 니 제어 기능의 노이즈 게이트 | [세부 정보](plugins/dynamics.md#gate) |
 | Dynamics  | Multiband Compressor | FM 라디오 스타일 사운드 셰이핑을 갖춘 전문 5밴드 다이내믹 프로세서 | [세부 정보](plugins/dynamics.md#multiband-compressor) |
+| Dynamics  | Multiband Expander | 주파수 대역별 다이나믹 레인지 확장을 위한 전문 5밴드 익스팬더 | [세부 정보](plugins/dynamics.md#multiband-expander) |
 | Dynamics  | Multiband Transient | 주파수별 어택과 서스테인 제어를 위한 고급 3밴드 트랜지언트 셰이퍼 | [세부 정보](plugins/dynamics.md#multiband-transient) |
 | Dynamics  | Power Amp Sag | 고부하 조건에서 파워 앰프 전압 처짐을 시뮬레이션 | [세부 정보](plugins/dynamics.md#power-amp-sag) |
 | Dynamics  | Transient Shaper | 신호의 트랜지언트와 서스테인 부분을 제어 | [세부 정보](plugins/dynamics.md#transient-shaper) |

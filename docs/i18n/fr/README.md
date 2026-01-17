@@ -271,6 +271,7 @@ Si le souci persiste, signalez-le sur [GitHub Issues](https://github.com/Frieve-
 | Dynamics  | Compressor | Compression de la plage dynamique avec contrôle du seuil, du ratio et de la zone de transition | [Détails](plugins/dynamics.md#compressor) |
 | Dynamics  | Gate | Gate de bruit avec réglages du seuil, du ratio et de la zone de transition pour la réduction du bruit | [Détails](plugins/dynamics.md#gate) |
 | Dynamics  | Multiband Compressor | Processeur dynamique professionnel 5 bandes offrant une coloration sonore façon radio FM | [Détails](plugins/dynamics.md#multiband-compressor) |
+| Dynamics  | Multiband Expander | Expanseur professionnel 5 bandes pour l'expansion de plage dynamique spécifique par fréquence | [Détails](plugins/dynamics.md#multiband-expander) |
 | Dynamics  | Multiband Transient | Modeleur de transitoires avancé 3 bandes pour un contrôle spécifique par fréquence de l'attaque et du sustain | [Détails](plugins/dynamics.md#multiband-transient) |
 | Dynamics  | Power Amp Sag | Simule l'affaissement de tension des amplificateurs de puissance sous fortes charges | [Détails](plugins/dynamics.md#power-amp-sag) |
 | Dynamics  | Transient Shaper | Contrôle les portions transitoires et de sustain du signal | [Détails](plugins/dynamics.md#transient-shaper) |

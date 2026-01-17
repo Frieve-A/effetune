@@ -1,0 +1,97 @@
+/* Multiband Expander plugin specific styles */
+.multiband-expander-container {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* Frequency slider area */
+.multiband-expander-frequency-sliders {
+    display: flex;
+    flex-direction: row;
+    gap: 10px;
+    padding: 10px;
+    background: #2d2d2d;
+    border-radius: 4px;
+}
+
+.multiband-expander-frequency-slider {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+}
+
+.multiband-expander-frequency-slider-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+
+/* Band settings area */
+.multiband-expander-band-settings {
+    background: #2d2d2d;
+    border-radius: 4px;
+    padding: 10px;
+}
+
+.multiband-expander-band-tabs {
+    display: flex;
+    gap: 2px;
+    margin-bottom: 20px;
+}
+
+.multiband-expander-band-tab {
+    padding: 8px 16px;
+    background: #333;
+    border: none;
+    cursor: pointer;
+    border-radius: 4px 4px 0 0;
+    color: #fff;
+}
+
+.multiband-expander-band-tab.active {
+    background: #444;
+}
+
+.multiband-expander-band-content {
+    display: none;
+}
+
+.multiband-expander-band-content.active {
+    display: block;
+}
+
+/* Gain boost graphs area */
+.multiband-expander-graphs {
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+    padding: 10px;
+    background: #2d2d2d;
+    border-radius: 4px;
+}
+
+.multiband-expander-band-graph {
+    flex: 1;
+    position: relative;
+    background: #222;
+    border-radius: 4px;
+    padding: 10px;
+}
+
+.multiband-expander-band-graph.active {
+    background: #333;
+}
+
+.multiband-expander-band-graph canvas {
+    margin: 10px auto;
+    display: block;
+}
+
+.multiband-expander-band-graph-label {
+    text-align: center;
+    margin-top: 5px;
+}

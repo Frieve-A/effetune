@@ -315,6 +315,23 @@ function registerIpcHandlers() {
     return await fileHandlers.savePipelineStateToFile(pipelineState);
   });
 
+  // Handle pipeline state response for window close
+  ipcMain.on('pipeline-state-for-close', async (event, pipelineState) => {
+    // Clear the close timeout
+    constants.clearCloseTimeout();
+
+    // Save the pipeline state
+    if (pipelineState) {
+      await fileHandlers.savePipelineStateToFile(pipelineState);
+    }
+
+    // Trigger the actual window close
+    const triggerClose = constants.getTriggerClose();
+    if (triggerClose) {
+      triggerClose();
+    }
+  });
+
   // Handle window reload request
   ipcMain.handle('reload-window', () => {
     const mainWin = constants.getMainWindow();

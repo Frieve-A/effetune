@@ -500,17 +500,45 @@ function createWindow() {
     }
   });
   
+  // Flag to track if we're in the process of closing
+  let isClosing = false;
+
+  // Set up the trigger close function for IPC handler to use
+  constants.setTriggerClose(() => {
+    isClosing = true;
+    mainWindow.close();
+  });
+
   // Handle window close event
-  mainWindow.on('close', () => {
-    windowState.saveWindowState();
-    globalShortcut.unregisterAll();
-    
-    // Request the renderer process to save pipeline state to file
+  mainWindow.on('close', (event) => {
+    // If already closing (after pipeline save), allow the close
+    if (isClosing) {
+      windowState.saveWindowState();
+      globalShortcut.unregisterAll();
+      return;
+    }
+
+    // Prevent the window from closing immediately
+    event.preventDefault();
+
+    // Request the renderer process to send pipeline state
     if (mainWindow && mainWindow.webContents) {
-      mainWindow.webContents.executeJavaScript('if (typeof writePipelineStateToFile === "function") { writePipelineStateToFile(); }')
-        .catch(err => {
-          console.error('Error requesting pipeline state save:', err.message || String(err));
-        });
+      // Set a timeout to ensure the app closes even if renderer doesn't respond
+      const closeTimeout = setTimeout(() => {
+        console.log('Pipeline state save timeout, closing window');
+        isClosing = true;
+        mainWindow.close();
+      }, 3000);
+
+      // Store the timeout ID so we can clear it when we receive the state
+      constants.setCloseTimeout(closeTimeout);
+
+      // Request pipeline state from renderer
+      mainWindow.webContents.send('request-pipeline-state-for-close');
+    } else {
+      // No renderer available, just close
+      isClosing = true;
+      mainWindow.close();
     }
   });
   
@@ -723,7 +751,7 @@ function createSplashScreen() {
       <div class="splash-content">
         <div class="splash-version">Version ${constants.getAppVersion()}</div>
         <div class="splash-description">Desktop Audio Effect Processor</div>
-        <div class="splash-copyright">Copyright © Frieve 2025</div>
+        <div class="splash-copyright">Copyright © Frieve 2025-2026</div>
         <div class="splash-loading">Starting application...</div>
       </div>
     </div>

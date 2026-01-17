@@ -10,6 +10,7 @@ Uma coleção de plugins que ajudam a equilibrar as partes altas e baixas da sua
 - [Expander](#expander) - Expansão de faixa dinâmica abaixo do limite com controle de ratio e knee (inclui compressão para cima)
 - [Gate](#gate) - Reduz ruídos de fundo indesejados atenuando sinais abaixo de um limite
 - [Multiband Compressor](#multiband-compressor) - Processador de dinâmica profissional de 5 bandas com modelagem de som estilo rádio FM
+- [Multiband Expander](#multiband-expander) - Expansor profissional de 5 bandas para expansão de faixa dinâmica específica por frequência
 - [Multiband Transient](#multiband-transient) - Processador avançado de moldagem de transientes de 3 bandas para controle específico de ataques e sustentações por frequência
 - [Power Amp Sag](#power-amp-sag) - Simula a queda de tensão do amplificador de potência sob condições de alta carga
 - [Transient Shaper](#transient-shaper) - Controla as porções de transiente e sustentação do sinal
@@ -549,6 +550,117 @@ Esta configuração cria o som característico "pronto para rádio":
 - Ajuste fino do threshold de cada banda para a quantidade desejada de controle
 - Use os controles de ganho para moldar o balanço final de frequência
 - Monitore os medidores de redução de ganho para garantir processamento apropriado
+
+## Multiband Expander
+
+Um processador de dinâmica de nível profissional que divide seu áudio em cinco bandas de frequência e aplica expansão independente a cada uma. Este plugin é projetado para expandir a faixa dinâmica de faixas de frequência específicas, tornando os sons suaves mais suaves enquanto mantém os sons altos inalterados. É particularmente eficaz para restaurar a dinâmica natural de gravações sobre-comprimidas da masterização moderna ou criar um contraste dinâmico mais dramático específico por frequência.
+
+### Características Principais
+- Processamento de 5 bandas com frequências de crossover ajustáveis
+- Controles de expansão independentes para cada banda
+- Configurações padrão otimizadas seguindo a distribuição de energia 1/f
+- Visualização em tempo real do aumento de ganho por banda
+- Filtros de crossover Linkwitz-Riley de alta qualidade
+
+### Guia de Aprimoramento da Audição
+- **Música Pop/Rock:**
+  - Reduzir o efeito de "parede de som" da masterização sobre-comprimida
+  - Restaurar o contraste dinâmico entre versos e refrões
+  - Melhorar a impressão plana das fontes de áudio de streaming
+- **Música Clássica:**
+  - Restaurar o fluxo e refluxo dinâmico natural das gravações
+  - Melhorar o contraste entre passagens suaves e crescendos fortes
+  - Recuperar a expressão vívida das performances orquestrais
+- **Música Jazz:**
+  - Melhorar a dinâmica natural entre instrumentos
+  - Tornar os solos suaves mais íntimos e as seções fortes mais poderosas
+  - Restaurar a respiração natural das performances de jazz
+
+### Bandas de Frequência
+- Banda 1 (Grave): Abaixo de 100 Hz
+  - Controla os graves profundos e sub frequências
+  - Expansão suave com attack/release mais longo para dinâmica natural de graves
+- Banda 2 (Grave-Médio): 100-500 Hz
+  - Lida com os graves superiores e médios inferiores
+  - Expansão moderada para restaurar calor e corpo
+- Banda 3 (Médio): 500-2000 Hz
+  - Faixa crítica de presença vocal e instrumental
+  - Expansão equilibrada para preservar a naturalidade
+- Banda 4 (Médio-Agudo): 2000-8000 Hz
+  - Controla presença e ar
+  - Expansão leve com resposta mais rápida
+- Banda 5 (Agudo): Acima de 8000 Hz
+  - Gerencia brilho e cintilação
+  - Tempos de resposta rápidos com expansão mais suave
+
+### Parâmetros (Por Banda)
+- **Threshold** (-60dB a 0dB)
+  - Define o nível onde a expansão começa
+  - Sinais abaixo deste nível serão expandidos (mais suaves)
+- **Ratio** (1:0.05 a 1:20)
+  - Controla a quantidade de expansão aplicada
+  - Ratios mais altos para expansão de faixa dinâmica mais dramática
+- **Attack** (0.1ms a 100ms)
+  - Velocidade de resposta da expansão
+  - Tempos mais rápidos para controle preciso de transientes
+- **Release** (10ms a 1000ms)
+  - Velocidade de retorno do ganho ao normal
+  - Tempos mais longos para som mais suave e natural
+- **Knee** (0dB a 12dB)
+  - Suavidade do início da expansão
+  - Valores mais altos para transição mais natural
+- **Gain** (-12dB a +12dB)
+  - Ajuste de nível de saída por banda
+  - Ajuste fino do balanço de frequência
+
+### Restauração de Faixa Dinâmica
+Multiband Expander vem com configurações padrão otimizadas que seguem a distribuição natural de energia 1/f para restaurar a dinâmica de material sobre-comprimido:
+
+- Banda Grave (< 100 Hz)
+  - Expansão suave (1.2:1) para dinâmica de graves controlada
+  - Attack/release mais longo para manter o punch
+  - Threshold definido para acomodar a energia típica de graves
+
+- Banda Grave-Médio (100-500 Hz)
+  - Expansão moderada (1.2:1)
+  - Timing equilibrado para resposta natural
+  - Threshold segue o rolloff de energia de -6dB
+
+- Banda Médio (500-2000 Hz)
+  - Expansão equilibrada (1.2:1)
+  - Tempos de resposta médios
+  - Otimizada para dinâmica vocal e instrumental
+
+- Banda Médio-Agudo (2000-8000 Hz)
+  - Expansão leve (1.2:1)
+  - Attack/release mais rápido
+  - Restauração natural de presença
+
+- Banda Agudo (> 8000 Hz)
+  - Expansão mais suave (1.1:1)
+  - Tempos de resposta muito rápidos
+  - Melhoria sutil de ar e brilho
+
+Esta configuração cria restauração dinâmica de som natural:
+- Dinâmica natural restaurada em todas as frequências
+- Contraste melhorado entre passagens suaves e fortes
+- Controle específico por frequência para resultados ótimos
+- Expansão natural e musical sem artefatos
+- Clareza e separação melhoradas
+- Planitude reduzida em gravações sobre-comprimidas
+
+### Feedback Visual
+- Gráficos de função de transferência interativos para cada banda
+- Medidores de aumento de ganho em tempo real mostrando atividade de expansão
+- Visualização de atividade da banda de frequência
+- Indicadores claros de pontos de crossover
+
+### Dicas de Uso
+- Comece com as configurações padrão para restauração dinâmica geral
+- Ajuste as frequências de crossover para combinar com seu material
+- Ajuste fino do threshold de cada banda baseado no conteúdo de frequência
+- Use os controles de ganho para compensar mudanças de volume percebidas
+- Monitore os medidores de aumento de ganho para garantir expansão apropriada
 
 ## Multiband Transient
 

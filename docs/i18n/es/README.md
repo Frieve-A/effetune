@@ -273,6 +273,7 @@ Si el problema persiste, repórtalo a través de [GitHub Issues](https://github.
 | Dynamics  | Compressor | Compresión de rango dinámico con control de umbral, relación y curvatura | [Detalles](plugins/dynamics.md#compressor) |
 | Dynamics  | Gate | Puerta de ruido con control de umbral, relación y curvatura para reducción de ruido | [Detalles](plugins/dynamics.md#gate) |
 | Dynamics  | Multiband Compressor | Procesador dinámico profesional de 5 bandas con modelado de sonido al estilo radio FM | [Detalles](plugins/dynamics.md#multiband-compressor) |
+| Dynamics  | Multiband Expander | Expansor profesional de 5 bandas para expansión de rango dinámico específico por frecuencia | [Detalles](plugins/dynamics.md#multiband-expander) |
 | Dynamics  | Multiband Transient | Modelador de transitorios avanzado de 3 bandas para control específico de frecuencia en ataque y sustain | [Detalles](plugins/dynamics.md#multiband-transient) |
 | Dynamics  | Power Amp Sag | Simula la caída de voltaje del amplificador de potencia bajo condiciones de alta carga | [Detalles](plugins/dynamics.md#power-amp-sag) |
 | Dynamics  | Transient Shaper | Controla las partes transitorias y de sostenimiento de la señal | [Detalles](plugins/dynamics.md#transient-shaper) |
