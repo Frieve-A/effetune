@@ -3,6 +3,9 @@
   "version": "1.64.0",
   "description": "Desktop Audio Effect Processor",
   "main": "electron/main.js",
+  "overrides": {
+    "tar": "^7.5.3"
+  },
   "scripts": {
     "start": "electron .",
     "clean": "rimraf dist node_modules/.cache",
