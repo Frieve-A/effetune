@@ -306,6 +306,7 @@ CD 플레이어, 네트워크 플레이어 또는 기타 물리적 소스를 사
 | Resonator | Horn Resonator | 커스터마이징 가능한 치수를 갖춘 혼 공명 시뮬레이션 | [세부 정보](plugins/resonator.md#horn-resonator) |
 | Resonator | Horn Resonator Plus | 고급 반사를 갖춘 향상된 혼 모델 | [세부 정보](plugins/resonator.md#horn-resonator-plus) |
 | Resonator | Modal Resonator | 최대 5개의 레조네이터를 갖춘 주파수 공명 효과 | [세부 정보](plugins/resonator.md#modal-resonator) |
+| Reverb    | Dattorro Plate Reverb | Dattorro 알고리즘 기반의 클래식 플레이트 리버브 | [세부 정보](plugins/reverb.md#dattorro-plate-reverb) |
 | Reverb    | FDN Reverb | 풍부하고 조밀한 리버브 텍스처를 생성하는 피드백 딜레이 네트워크 리버브 | [세부 정보](plugins/reverb.md#fdn-reverb) |
 | Reverb    | RS Reverb | 자연스러운 확산을 갖춘 랜덤 스캐터링 리버브 | [세부 정보](plugins/reverb.md#rs-reverb) |
 | Saturation| Dynamic Saturation | 스피커 콘의 비선형 변위를 시뮬레이션 | [세부 정보](plugins/saturation.md#dynamic-saturation) |

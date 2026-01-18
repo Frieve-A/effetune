@@ -70,6 +70,7 @@ others/oscillator: Oscillator | Others | OscillatorPlugin
 resonator/horn_resonator: Horn Resonator | Resonator | HornResonatorPlugin
 resonator/horn_resonator_plus: Horn Resonator Plus | Resonator | HornResonatorPlusPlugin
 resonator/modal_resonator: Modal Resonator | Resonator | ModalResonatorPlugin | css
+reverb/dattorro_plate_reverb: Dattorro Plate Reverb | Reverb | DattorroPlateReverbPlugin
 reverb/fdn_reverb: FDN Reverb | Reverb | FDNReverbPlugin
 reverb/rs_reverb: RS Reverb | Reverb | RSReverbPlugin
 saturation/dynamic_saturation: Dynamic Saturation | Saturation | DynamicSaturationPlugin | css

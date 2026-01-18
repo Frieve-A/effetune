@@ -283,6 +283,7 @@ No audiophile myths, Just pure science.
 | Resonator | Horn Resonator | Симуляция резонанса рупора с настраиваемыми параметрами | [Подробнее](plugins/resonator.md#horn-resonator) |
 | Resonator | Horn Resonator Plus | Улучшенная модель рупора с продвинутыми отражениями | [Подробнее](plugins/resonator.md#horn-resonator-plus) |
 | Resonator | Modal Resonator | Эффект резонанса частот с поддержкой до 5 резонаторов | [Подробнее](plugins/resonator.md#modal-resonator) |
+| Reverb    | Dattorro Plate Reverb | Классический плейт-реверб на основе алгоритма Датторро | [Подробнее](plugins/reverb.md#dattorro-plate-reverb) |
 | Reverb    | FDN Reverb | Реверберация с сетью задержек с обратной связью, создающая богатые плотные текстуры | [Подробнее](plugins/reverb.md#fdn-reverb) |
 | Reverb    | RS Reverb | Реверберация с рандомным рассеянием и естественной диффузией | [Подробнее](plugins/reverb.md#rs-reverb) |
 | Saturation| Dynamic Saturation | Симулирует нелинейное смещение диффузоров динамиков | [Подробнее](plugins/saturation.md#dynamic-saturation) |

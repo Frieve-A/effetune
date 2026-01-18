@@ -4,8 +4,126 @@ Una colección de plugins que añaden espacio y atmósfera a tu música. Estos e
 
 ## Plugin List
 
+- [Dattorro Plate Reverb](#dattorro-plate-reverb) - Reverb de placa clásico basado en el algoritmo Dattorro
 - [FDN Reverb](#fdn-reverb) - Reverb de Red de Retardo de Retroalimentación con matriz de difusión avanzada
 - [RS Reverb](#rs-reverb) - Crea ambiente y espacio natural de habitación
+
+## Dattorro Plate Reverb
+
+Una implementación clásica de reverb de placa basada en el renombrado algoritmo de Jon Dattorro del artículo de 1997 "Effect Design, Part 1: Reverberator and Other Filters." Este algoritmo es celebrado por su calidad de sonido exuberante y suave y se ha convertido en un estándar de referencia en el diseño de reverb digital. Perfecto para añadir ambiente rico y brillante a tu música.
+
+### Guía de Experiencia de Escucha
+- Sonido de Placa Exuberante:
+  - Carácter clásico de reverb de placa de estudio
+  - Cola de reverb suave y densa sin artefactos metálicos
+  - Hermoso brillo y calidez característicos de los reverbs de placa
+- Ambiente Versátil:
+  - Desde mejora sutil de sala hasta salas expansivas
+  - Funciona hermosamente con cualquier género musical
+  - Añade pulido profesional a las grabaciones
+- Movimiento Natural:
+  - La modulación añade vida orgánica al reverb
+  - Previene colas estáticas y artificiales
+  - Crea un espacio vivo y respirante alrededor de tu música
+
+### Parameters
+- **Pre Delay** - Silencio inicial antes de que comience el reverb (0.0 a 100.0 ms)
+  - 0-10ms: Reverb inmediata, sensación íntima
+  - 10-30ms: Sensación natural de espacio
+  - 30-100ms: Crea impresión de espacios más grandes
+- **Bandwidth** - Filtrado de señal de entrada (0.0 a 1.0)
+  - Valores más bajos: Tono de entrada más oscuro y cálido
+  - Valores más altos (cerca de 1.0): Entrada más brillante, frecuencia completa
+  - Por defecto 0.9995: Óptimo según sugirió Dattorro
+- **Input Diff 1** - Primera etapa de difusión de entrada (0.0 a 1.0)
+  - Controla la dispersión inicial de la señal de entrada
+  - Por defecto 0.75: Valor recomendado del artículo de Dattorro
+  - Valores más altos: Reflexiones tempranas más difusas y suaves
+- **Input Diff 2** - Segunda etapa de difusión de entrada (0.0 a 1.0)
+  - Dispersa más la señal de entrada
+  - Por defecto 0.625: Valor recomendado del artículo de Dattorro
+  - Trabaja con Input Diff 1 para crear difusión compleja
+- **Decay** - Cuánto dura la cola del reverb (0.0 a 1.0)
+  - Bajo (0.1-0.3): Decaimiento corto y controlado
+  - Medio (0.4-0.6): Decaimiento natural tipo habitación
+  - Alto (0.7-1.0): Colas largas y expansivas
+- **Decay Diff 1** - Difusión de decaimiento en el tanque (0.0 a 1.0)
+  - Controla la densidad durante la fase de decaimiento
+  - Por defecto 0.70: Valor recomendado del artículo de Dattorro
+  - Afecta la suavidad de la cola del reverb
+- **Damping** - Absorción de alta frecuencia con el tiempo (0.0 a 1.0)
+  - 0.0: Sin amortiguación, reverb brillante en todo momento
+  - 0.0005 (por defecto): Amortiguación muy sutil y natural
+  - Valores más altos: Decaimiento más oscuro y cálido
+- **Mod Depth** - Cantidad de modulación de retardo (0.0 a 16.0 muestras)
+  - 0.0: Sin modulación, reverb estática
+  - 1.0-4.0: Movimiento sutil, añade vida
+  - 8.0-16.0: Efecto tipo chorus más notable
+- **Mod Rate** - Velocidad de modulación (0.0 a 10.0 Hz)
+  - 0.5-1.5Hz: Movimiento lento y suave
+  - 2.0-4.0Hz: Modulación más activa
+  - Valores más altos: Efecto rápido y brillante
+- **Wet Mix** - Cantidad de reverb añadida (0 a 100%)
+  - 10-30%: Mejora sutil
+  - 30-50%: Presencia notable
+  - 50-100%: Efecto de reverb dominante
+- **Dry Mix** - Cantidad de señal original (0 a 100%)
+  - Usualmente mantenida al 100% para escucha normal
+  - Reducir para efectos especiales o lavados ambientales
+
+### Configuraciones Recomendadas para Diferentes Estilos Musicales
+
+1. Piano Clásico
+   - Decay: 0.6-0.7
+   - Damping: 0.001
+   - Mod Depth: 1.0
+   - Wet Mix: 25-35%
+   - Perfecto para: Piano solo, música de cámara
+
+2. Voces y Acústico
+   - Decay: 0.4-0.5
+   - Damping: 0.002
+   - Pre Delay: 15-25ms
+   - Wet Mix: 20-30%
+   - Perfecto para: Voces, guitarra acústica
+
+3. Ambiente y Atmosférico
+   - Decay: 0.8-0.95
+   - Mod Depth: 4.0-8.0
+   - Mod Rate: 0.5-1.0Hz
+   - Wet Mix: 50-70%
+   - Perfecto para: Ambient, electrónica, paisajes sonoros
+
+4. Mejora General
+   - Decay: 0.5
+   - Damping: 0.0005
+   - Mod Depth: 1.0
+   - Wet Mix: 20-30%
+   - Perfecto para: Uso general, pulido sutil
+
+### Guía de Inicio Rápido
+
+1. Establecer el Carácter Básico
+   - Comienza con Decay para controlar la longitud del reverb
+   - Ajusta Pre Delay para la distancia percibida
+   - Establece Wet Mix para la presencia de reverb deseada
+
+2. Dar Forma al Tono
+   - Usa Bandwidth para controlar el brillo de entrada
+   - Ajusta Damping para el decaimiento de alta frecuencia
+   - Ajusta finamente los parámetros de difusión para la densidad
+
+3. Añadir Movimiento
+   - Establece Mod Depth para variación sutil (prueba 1.0)
+   - Ajusta Mod Rate para la velocidad (prueba 1.0Hz)
+   - Estos parámetros añaden vida al reverb
+
+4. Balance Final
+   - Ajusta la mezcla Wet/Dry al gusto
+   - Confía en tus oídos para los ajustes finales
+   - Los valores por defecto son un gran punto de partida
+
+¡El Dattorro Plate Reverb trae un reverb clásico de calidad profesional a tu experiencia de escucha. Su carácter suave y exuberante lo hace perfecto para mejorar cualquier grabación con un ambiente hermoso y natural!
 
 ## FDN Reverb
 

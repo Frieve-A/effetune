@@ -454,8 +454,12 @@ class MultibandCompressorPlugin extends PluginBase {
       if (bandParamsNeedUpdate) {
           for (let band = 0; band < 5; band++) {
               const bp = parameters.bands[band];
-              const ratio = Math.max(1, bp.r); // Ensure ratio >= 1
+              const ratio = Math.max(0.5, Math.min(20, bp.r)); // Ensure ratio is within valid range (0.5 to 20)
               const knee = Math.max(0, bp.k); // Ensure knee >= 0
+
+              // For ratio < 1 (upward expansion): slope = 1 - 1/ratio is negative, so gain increases below threshold
+              // For ratio >= 1 (compression): slope = 1 - 1/ratio is positive, so gain decreases above threshold
+              const slope = (ratio === 1.0) ? 0.0 : (1.0 - 1.0 / ratio);
 
               context.bandParams[band] = {
                   thresholdDb: bp.t,
@@ -464,7 +468,7 @@ class MultibandCompressorPlugin extends PluginBase {
                   makeupDb: bp.g,
                   // Precompute values used in gain calculation
                   halfKneeDb: knee * 0.5,
-                  invRatioMinusOne: (1 / ratio) - 1, // Used for gain reduction slope: GR = (1/R - 1) * over_threshold
+                  slope: slope, // slope for gain change: positive for compression, negative for expansion
                   makeupLinear: Math.exp(bp.g * GAIN_FACTOR) // Linear makeup gain
               };
               // Update lastBandParams with these values as well
@@ -553,7 +557,7 @@ class MultibandCompressorPlugin extends PluginBase {
           const thresholdDb = params.thresholdDb;
           const halfKneeDb = params.halfKneeDb;
           const kneeDb = params.kneeDb;
-          const invRatio = 1 - (1 / params.ratio); // (1 - 1/R)
+          const slope = params.slope; // (1 - 1/R): positive for compression, negative for expansion
           const makeupLinear = params.makeupLinear;
 
           let lastGainReduction = 0; // For metering
@@ -576,7 +580,8 @@ class MultibandCompressorPlugin extends PluginBase {
           const maxEnvelopeDb = fastDb(maxEnvelope);
           const maxDiff = maxEnvelopeDb - thresholdDb; // Max signal level relative to threshold
 
-          // If max level is below the start of the knee, no compression happens
+          // Skip detailed processing if all samples are below threshold-knee/2
+          // This applies to both compression and expansion (gainChange = 0 below knee)
           if (maxDiff <= -halfKneeDb) {
             // Apply only makeup gain
             if (makeupLinear !== 1.0) { // Avoid multiplication by 1
@@ -597,36 +602,39 @@ class MultibandCompressorPlugin extends PluginBase {
 
             // Loop unrolled by 8 (as in original)
             for (; i < blockSizeMod8; i += 8) {
-              // Process 8 samples - compute gain reduction then apply
-              // (Original interleaved calculation and application, let's keep that structure)
+              // Process 8 samples - compute gain change then apply
               for (let j=0; j<8; ++j) {
                   const idx = i + j;
                   const currentEnvelope = workBuffer[idx];
                   const envelopeDb = fastDb(currentEnvelope);
                   const diff = envelopeDb - thresholdDb; // Signal relative to threshold (dB)
 
-                  let gainReduction = 0; // This is -GR_dB as per original's calculation style
-                  if (diff >= halfKneeDb) { // Above knee: Linear reduction
-                      gainReduction = diff * invRatio;
-                  } else if (diff > -halfKneeDb) { // Within knee: Quadratic reduction
-                      // Original formula: tVal = (diff + halfKnee) / knee
-                      // gainReduction = invRatio * knee * tVal * tVal * 0.5;
-                      // Let's use the standard formula derivation for knee which is usually more robust:
-                      // gain = (1/R - 1) * (Input - Threshold + Knee/2)^2 / (2 * Knee)
-                      // But stick to original:
-                      const tVal = (diff + halfKneeDb) / kneeDb; // kneeDb can't be 0 here if halfKneeDb > 0
-                      gainReduction = invRatio * kneeDb * tVal * tVal * 0.5;
-                  } // else: Below knee, gainReduction remains 0
+                  // Unified formula for both compression and expansion
+                  // For compression (ratio >= 1): slope > 0, gainChange > 0 above threshold (reduction)
+                  // For expansion (ratio < 1): slope < 0, gainChange < 0 above threshold (boost)
+                  let gainChange = 0;
+                  if (diff <= -halfKneeDb) {
+                      // Below knee: no change
+                      gainChange = 0;
+                  } else if (diff >= halfKneeDb) {
+                      // Above knee: linear gain change
+                      gainChange = diff * slope;
+                  } else {
+                      // Within knee: quadratic transition
+                      const tVal = (diff + halfKneeDb) / kneeDb;
+                      gainChange = slope * kneeDb * tVal * tVal * 0.5;
+                  }
 
-                  // Apply gain: signal * makeup * reduction
-                  // totalGainLin = makeupLinear * exp(-gainReduction * GAIN_FACTOR)
-                  // Using fastExp which takes positive dB reduction value:
-                  const totalGainLin = makeupLinear * fastExp(gainReduction);
+                  // Apply gain: gainChange > 0 means reduction, gainChange < 0 means boost
+                  // fastExp expects positive dB values, so we handle sign
+                  const absGainChange = gainChange >= 0 ? gainChange : -gainChange;
+                  const gainMultiplier = gainChange >= 0 ? fastExp(absGainChange) : (1.0 / fastExp(absGainChange));
+                  const totalGainLin = makeupLinear * gainMultiplier;
                   outputBuffer[idx] += bandSignal[idx] * totalGainLin;
 
-                  // Store last gain reduction for metering (positive value)
+                  // Store last gain change for metering (use absolute value)
                   if (idx === blockSize - 1) {
-                    lastGainReduction = gainReduction;
+                    lastGainReduction = absGainChange;
                   }
               }
             }
@@ -637,19 +645,24 @@ class MultibandCompressorPlugin extends PluginBase {
               const envelopeDb = fastDb(currentEnvelope);
               const diff = envelopeDb - thresholdDb;
 
-              let gainReduction = 0;
-              if (diff >= halfKneeDb) {
-                  gainReduction = diff * invRatio;
-              } else if (diff > -halfKneeDb) {
+              // Unified formula for both compression and expansion
+              let gainChange = 0;
+              if (diff <= -halfKneeDb) {
+                  gainChange = 0;
+              } else if (diff >= halfKneeDb) {
+                  gainChange = diff * slope;
+              } else {
                   const tVal = (diff + halfKneeDb) / kneeDb;
-                  gainReduction = invRatio * kneeDb * tVal * tVal * 0.5;
+                  gainChange = slope * kneeDb * tVal * tVal * 0.5;
               }
 
-              const totalGainLin = makeupLinear * fastExp(gainReduction);
+              const absGainChange = gainChange >= 0 ? gainChange : -gainChange;
+              const gainMultiplier = gainChange >= 0 ? fastExp(absGainChange) : (1.0 / fastExp(absGainChange));
+              const totalGainLin = makeupLinear * gainMultiplier;
               outputBuffer[i] += bandSignal[i] * totalGainLin;
 
               if (i === blockSize - 1) {
-                lastGainReduction = gainReduction;
+                lastGainReduction = absGainChange;
               }
             }
           }
@@ -764,7 +777,7 @@ class MultibandCompressorPlugin extends PluginBase {
         if (i < 5) {
           const band = this.bands[i];
           if (bandParams.t !== undefined) band.t = Math.max(-60, Math.min(0, bandParams.t));
-          if (bandParams.r !== undefined) band.r = Math.max(1, Math.min(20, bandParams.r));
+          if (bandParams.r !== undefined) band.r = Math.max(0.5, Math.min(20, bandParams.r));
           if (bandParams.a !== undefined) band.a = Math.max(0.1, Math.min(100, bandParams.a));
           if (bandParams.rl !== undefined) band.rl = Math.max(10, Math.min(1000, bandParams.rl));
           if (bandParams.k !== undefined) band.k = Math.max(0, Math.min(12, bandParams.k));
@@ -785,7 +798,7 @@ class MultibandCompressorPlugin extends PluginBase {
         return;
       }
       if (params.t !== undefined) { band.t = Math.max(-60, Math.min(0, params.t)); graphNeedsUpdate = true; }
-      if (params.r !== undefined) { band.r = Math.max(1, Math.min(20, params.r)); graphNeedsUpdate = true; }
+      if (params.r !== undefined) { band.r = Math.max(0.5, Math.min(20, params.r)); graphNeedsUpdate = true; }
       if (params.a !== undefined) band.a = Math.max(0.1, Math.min(100, params.a));
       if (params.rl !== undefined) band.rl = Math.max(10, Math.min(1000, params.rl));
       if (params.k !== undefined) { band.k = Math.max(0, Math.min(12, params.k)); graphNeedsUpdate = true; }
@@ -919,30 +932,37 @@ class MultibandCompressorPlugin extends PluginBase {
       ctx.lineWidth = 2;
       ctx.beginPath();
       const halfKnee = band.k * 0.5;
-      const slope = 1 - 1 / band.r;
-      
+      const ratio = band.r;
+      const slope = (ratio === 1.0) ? 0.0 : (1.0 - 1.0 / ratio);
+
       // Use a smaller number of points for the curve to improve performance
       const numPoints = Math.min(width, 100); // Reduce from width to 100 points
       const pointSpacing = width / numPoints;
-      
+
       ctx.moveTo(0, height); // Start at bottom-left
-      
+
       for (let i = 0; i < numPoints; i++) {
         const x = i * pointSpacing;
         const inputDb = (x / width) * 60 - 60;
         const diff = inputDb - band.t;
-        let gainReduction = 0;
+
+        // Unified formula for both compression (ratio >= 1) and expansion (ratio < 1)
+        // For compression: slope > 0, gainChange > 0 above threshold (reduction)
+        // For expansion: slope < 0, gainChange < 0 above threshold (boost)
+        let gainChange = 0;
         if (diff <= -halfKnee) {
-          gainReduction = 0;
+          gainChange = 0;
         } else if (diff >= halfKnee) {
-          gainReduction = diff * slope;
+          gainChange = diff * slope;
         } else {
           const t = (diff + halfKnee) / band.k;
-          gainReduction = slope * band.k * t * t * 0.5;
+          gainChange = slope * band.k * t * t * 0.5;
         }
-        const outputDb = inputDb - gainReduction + band.g;
+
+        // gainChange > 0 means reduction, gainChange < 0 means boost
+        const outputDb = inputDb - gainChange + band.g;
         const y = height - ((outputDb + 60) / 60) * height;
-        ctx.lineTo(x, Math.max(0, Math.min(height, y)));
+        ctx.lineTo(x, y);// do not clamp y here to allow curve to go off-canvas
       }
       ctx.stroke();
 
@@ -1118,7 +1138,7 @@ class MultibandCompressorPlugin extends PluginBase {
 
       const band = this.bands[i];
       content.appendChild(createControl('Threshold (dB):', -60, 0, 1, band.t, this.setT.bind(this), i));
-      content.appendChild(createControl('Ratio:', 1, 20, 0.1, band.r, this.setR.bind(this), i));
+      content.appendChild(createControl('Ratio:', 0.5, 20, 0.01, band.r, this.setR.bind(this), i));
       content.appendChild(createControl('Attack (ms):', 0.1, 100, 0.1, band.a, this.setA.bind(this), i));
       content.appendChild(createControl('Release (ms):', 1, 1000, 1, band.rl, this.setRl.bind(this), i));
       content.appendChild(createControl('Knee (dB):', 0, 12, 1, band.k, this.setK.bind(this), i));

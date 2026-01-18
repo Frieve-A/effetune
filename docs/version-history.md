@@ -1,7 +1,7 @@
 # Version History
 
 ### Version 1.64 (Jan 18, 2026)
-- Added Multiband Expander effect
+- Added Multiband Expander and Dattorro Plate Reverb effects
 - Various minor improvements
 
 ### Version 1.63 (Nov 13, 2025)

@@ -302,6 +302,7 @@ Se o problema continuar, reporte em [GitHub Issues](https://github.com/Frieve-A/
 | Resonator | Horn Resonator | Simulação de ressonância de corno com dimensões personalizáveis | [Detalhes](plugins/resonator.md#horn-resonator) |
 | Resonator | Horn Resonator Plus | Modelo de corno aprimorado com reflexões avançadas | [Detalhes](plugins/resonator.md#horn-resonator-plus) |
 | Resonator | Modal Resonator | Efeito de ressonância de frequência com até 5 ressonadores | [Detalhes](plugins/resonator.md#modal-resonator) |
+| Reverb    | Dattorro Plate Reverb | Reverb de placa clássico baseado no algoritmo Dattorro | [Detalhes](plugins/reverb.md#dattorro-plate-reverb) |
 | Reverb    | FDN Reverb | Reverberação de rede de atraso com feedback que produz texturas de reverb ricas e densas | [Detalhes](plugins/reverb.md#fdn-reverb) |
 | Reverb    | RS Reverb | Reverberação por espalhamento randômico com difusão natural | [Detalhes](plugins/reverb.md#rs-reverb) |
 | Saturation| Dynamic Saturation | Simula o deslocamento não linear de cones de alto-falantes | [Detalhes](plugins/saturation.md#dynamic-saturation) |

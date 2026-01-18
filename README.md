@@ -308,6 +308,7 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Resonator | Horn Resonator | Horn resonance simulation with customizable dimensions | [Details](docs/plugins/resonator.md#horn-resonator) |
 | Resonator | Horn Resonator Plus | Enhanced horn model with advanced reflections | [Details](docs/plugins/resonator.md#horn-resonator-plus) |
 | Resonator | Modal Resonator | Frequency resonance effect with up to 5 resonators | [Details](docs/plugins/resonator.md#modal-resonator) |
+| Reverb    | Dattorro Plate Reverb | Classic plate reverb based on Dattorro algorithm | [Details](docs/plugins/reverb.md#dattorro-plate-reverb) |
 | Reverb    | FDN Reverb | Feedback Delay Network reverb with rich, dense reverb textures | [Details](docs/plugins/reverb.md#fdn-reverb) |
 | Reverb    | RS Reverb | Random scattering reverb with natural diffusion | [Details](docs/plugins/reverb.md#rs-reverb) |
 | Saturation| Dynamic Saturation | Simulates the nonlinear displacement of speaker cones | [Details](docs/plugins/saturation.md#dynamic-saturation) |

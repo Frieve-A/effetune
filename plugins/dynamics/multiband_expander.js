@@ -14,11 +14,11 @@ class MultibandExpanderPlugin extends PluginBase {
     // Band 0: ~100Hz (center ~50Hz), Band 1: 100-500Hz (center ~225Hz), Band 2: 500-2kHz (center ~1kHz)
     // Band 3: 2k-8kHz (center ~4kHz), Band 4: 8kHz+ (center ~12kHz)
     this.bands = [
-      { t: -30, r: 1.2, a: 10,   rl: 100, k: 6, g: 1.0, gb: 0 },  // Low: ~100Hz
+      { t: -30, r: 1.2, a: 10,   rl: 100,  k: 6, g: 1.0, gb: 0 },  // Low: ~100Hz
       { t: -16, r: 1.2, a: 7.75, rl: 87.5, k: 4, g: 1.0, gb: 0 }, // Low-Mid: 100-500Hz (-6dB from band 0)
-      { t: -22, r: 1.2, a: 5.5,  rl: 75, k: 4, g: 1.0, gb: 0 },   // Mid: 500Hz-2kHz (-6dB from band 1)
-      { t: -25, r: 1.2, a: 3.25, rl: 62.5, k: 3, g: 1.0, gb: 0 }, // High-Mid: 2k-8kHz (-3dB from band 2)
-      { t: -48, r: 1.1, a: 1,    rl: 50, k: 2, g: 1.0, gb: 0 }    // High: 8kHz+ (-3dB from band 3)
+      { t: -24, r: 1.2, a: 5.5,  rl: 75,   k: 4, g: 1.0, gb: 0 },   // Mid: 500Hz-2kHz (-6dB from band 1)
+      { t: -36, r: 1.1, a: 3.25, rl: 62.5, k: 3, g: 1.0, gb: 0 }, // High-Mid: 2k-8kHz (-3dB from band 2)
+      { t: -48, r: 1.1, a: 1,    rl: 50,   k: 2, g: 1.0, gb: 0 }    // High: 8kHz+ (-3dB from band 3)
     ];
 
     this.selectedBand = 0;
@@ -831,8 +831,6 @@ class MultibandExpanderPlugin extends PluginBase {
       const numPoints = Math.min(width, 100);
       const pointSpacing = width / numPoints;
 
-      ctx.moveTo(0, height);
-
       for (let i = 0; i < numPoints; i++) {
         const x = i * pointSpacing;
         const inputDb = (x / width) * 60 - 60;
@@ -851,10 +849,13 @@ class MultibandExpanderPlugin extends PluginBase {
         }
 
         const totalGain = gainBoost + band.g;
-        const clampedTotalGain = Math.max(-60, Math.min(20, totalGain));
-        const outputDb = inputDb + clampedTotalGain;
+        const outputDb = inputDb + totalGain;
         const y = height - ((outputDb + 60) / 60) * height;
-        ctx.lineTo(x, Math.max(0, Math.min(height, y)));
+        if (i === 0) {
+          ctx.moveTo(x, y);// do not clamp y here to allow curve to go off-canvas
+        } else {
+          ctx.lineTo(x, y);
+        }
       }
       ctx.stroke();
 

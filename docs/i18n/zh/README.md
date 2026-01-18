@@ -286,6 +286,7 @@ EffeTune 专为希望提升音乐聆听体验的音频爱好者而设计。无�
 | Resonator | Horn Resonator | 具有可自定义尺寸的号角共鸣模拟 | [详情](plugins/resonator.md#horn-resonator) |
 | Resonator | Horn Resonator Plus | 具有高级反射的增强号角模型 | [详情](plugins/resonator.md#horn-resonator-plus) |
 | Resonator | Modal Resonator | 支持最多5个谐振器的频率共鸣效果 | [详情](plugins/resonator.md#modal-resonator) |
+| Reverb    | Dattorro Plate Reverb | 基于Dattorro算法的经典板式混响 | [详情](plugins/reverb.md#dattorro-plate-reverb) |
 | Reverb    | FDN Reverb | 反馈延迟网络混响，产生丰富密集的混响纹理 | [详情](plugins/reverb.md#fdn-reverb) |
 | Reverb    | RS Reverb | 具有自然扩散的随机散射混响 | [详情](plugins/reverb.md#rs-reverb) |
 | Saturation| Dynamic Saturation | 模拟扬声器振膜的非线性位移 | [详情](plugins/saturation.md#dynamic-saturation) |
