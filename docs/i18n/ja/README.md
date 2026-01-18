@@ -1,4 +1,5 @@
 ---
+permalink: "/docs/i18n/ja/"
 title: "Frieve EffeTune - リアルタイムオーディオエフェクトプロセッサ"
 description: "オーディオ愛好家のためのリアルタイムオーディオエフェクトプロセッサ。EQ、コンプレッサー、リバーブなど50以上のエフェクトを搭載。Windows、macOS、Linux、Webブラウザで無料で利用可能。"
 lang: ja

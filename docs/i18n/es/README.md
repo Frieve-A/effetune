@@ -1,4 +1,5 @@
 ---
+permalink: "/docs/i18n/es/"
 title: "Frieve EffeTune - Procesador de Efectos de Audio en Tiempo Real"
 description: "Procesador de efectos de audio en tiempo real para entusiastas del audio. Más de 50 efectos incluyendo EQ, compresor y reverb. Gratis para Windows, macOS, Linux y navegadores web."
 lang: es

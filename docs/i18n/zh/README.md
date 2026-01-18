@@ -1,4 +1,5 @@
 ---
+permalink: "/docs/i18n/zh/"
 title: "Frieve EffeTune - 实时音频效果处理器"
 description: "专为音频爱好者设计的实时音频效果处理器。提供50多种效果，包括EQ、压缩器、混响等。免费支持Windows、macOS、Linux和网页浏览器。"
 lang: zh

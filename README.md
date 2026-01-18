@@ -1,4 +1,5 @@
 ---
+permalink: "/"
 title: "Frieve EffeTune - Real-time Audio Effect Processor for Music Enthusiasts"
 description: "Transform your music listening experience with EffeTune, a professional-grade real-time audio effect processor. Features 50+ effects including EQ, compressor, reverb, and more. Free for Windows, macOS, Linux, and web browsers."
 lang: en

@@ -1,4 +1,5 @@
 ---
+permalink: "/docs/i18n/ar/"
 title: "Frieve EffeTune - معالج تأثيرات صوتية في الوقت الفعلي"
 description: "معالج تأثيرات صوتية في الوقت الفعلي لعشاق الصوت. أكثر من 50 تأثيراً بما في ذلك EQ والضاغط والصدى. مجاني لـ Windows وmacOS وLinux ومتصفحات الويب."
 lang: ar
