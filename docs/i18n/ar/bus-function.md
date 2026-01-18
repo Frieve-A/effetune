@@ -1,3 +1,9 @@
+---
+title: "Bus Function Guide - EffeTune"
+description: "Learn how to use the Bus feature in EffeTune for flexible audio routing and complex effect chains."
+lang: en
+---
+
 # كيفية استخدام ميزة الحافلة
 
 ميزة الحافلة تتيح توجيه الصوت بين المؤثرات بمرونة، مما يسمح بمعالجة صوتية أكثر تعقيدًا وتنوعًا.

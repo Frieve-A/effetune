@@ -1,3 +1,9 @@
+---
+title: "Resonator Plugins - EffeTune"
+description: "Resonator effect plugins including Horn Resonator and Modal Resonator."
+lang: en
+---
+
 # Resonator Plugins
 
 Una colección de complementos que enfatizan características resonantes para añadir texturas tonales únicas y color a tu música. Estos efectos simulan resonancias presentes en objetos físicos o sistemas de altavoces, mejorando tu experiencia de escucha con calidez, brillo o carácter vintage.

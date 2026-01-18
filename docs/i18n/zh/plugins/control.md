@@ -1,3 +1,9 @@
+---
+title: "Control Plugins - EffeTune"
+description: "Control plugins for organizing effect chains with Section grouping."
+lang: en
+---
+
 # Control Effects
 
 Control effects are special utility effects that don't process audio directly but instead control how other effects operate. They help organize and manage complex effect chains.

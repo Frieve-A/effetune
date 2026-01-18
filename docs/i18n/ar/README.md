@@ -1,3 +1,10 @@
+---
+title: "Frieve EffeTune - معالج تأثيرات صوتية في الوقت الفعلي"
+description: "معالج تأثيرات صوتية في الوقت الفعلي لعشاق الصوت. أكثر من 50 تأثيراً بما في ذلك EQ والضاغط والصدى. مجاني لـ Windows وmacOS وLinux ومتصفحات الويب."
+lang: ar
+image: /images/screenshot.png
+---
+
 # Frieve EffeTune <img src="../../../images/icon_64x64.png" alt="EffeTune Icon" width="30" height="30" align="bottom">
 
 [Open Web App](https://effetune.frieve.com/effetune.html)  [Download Desktop App](https://github.com/Frieve-A/effetune/releases/)

@@ -1,3 +1,9 @@
+---
+title: "Control Plugins - EffeTune"
+description: "Control plugins for organizing effect chains with Section grouping."
+lang: en
+---
+
 # 制御エフェクト
 
 制御エフェクトは、オーディオを直接処理するのではなく、他のエフェクトの動作を制御する特殊なユーティリティエフェクトです。複雑なエフェクトチェーンの整理と管理に役立ちます。

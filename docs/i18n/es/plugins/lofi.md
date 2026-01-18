@@ -1,3 +1,9 @@
+---
+title: "Lo-Fi Plugins - EffeTune"
+description: "Lo-Fi effect plugins including Bit Crusher, Noise Blender, Vinyl Artifacts, and more."
+lang: en
+---
+
 # Plugins Lo-Fi
 
 Una colección de plugins que agregan carácter vintage y cualidades nostálgicas a tu música. Estos efectos pueden hacer que la música digital moderna suene como si se reprodujera a través de equipos clásicos o darle ese popular sonido "lo-fi" que es tanto relajante como atmosférico.

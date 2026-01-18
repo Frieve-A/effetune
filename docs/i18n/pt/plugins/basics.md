@@ -1,3 +1,9 @@
+---
+title: "Basic Plugins - EffeTune"
+description: "Essential audio plugins including Volume, Mute, Stereo Balance, Matrix routing, and more."
+lang: en
+---
+
 # Basic Audio Plugins
 
 Uma coleção de ferramentas essenciais para ajustar os aspectos fundamentais da reprodução da sua música. Esses plugins ajudam você a controlar o volume, o equilíbrio e outros aspectos básicos da sua experiência auditiva.

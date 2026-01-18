@@ -1,3 +1,9 @@
+---
+title: "Bus Function Guide - EffeTune"
+description: "Learn how to use the Bus feature in EffeTune for flexible audio routing and complex effect chains."
+lang: en
+---
+
 # बस फ़ीचर का उपयोग कैसे करें
 
 बस फ़ीचर प्रभावों के बीच लचीला ऑडियो रूटिंग सक्षम करता है, जिससे अधिक जटिल और बहुमुखी ऑडियो प्रसंस्करण संभव होता है।

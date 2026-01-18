@@ -1,3 +1,9 @@
+---
+title: "Other Plugins - EffeTune"
+description: "Additional utility plugins including Oscillator for audio signal generation."
+lang: en
+---
+
 # その他のオーディオツール
 
 主要なエフェクトカテゴリーを補完する、特殊なオーディオツールとジェネレーターのコレクションです。これらのプラグインは、サウンド生成とオーディオ実験のためのユニークな機能を提供します。

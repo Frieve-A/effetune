@@ -1,3 +1,9 @@
+---
+title: "Dynamics Plugins - EffeTune"
+description: "Dynamics processing plugins including Compressor, Limiter, Gate, Multiband Compressor, and Transient Shaper."
+lang: en
+---
+
 # Dynamics Plugins
 
 A collection of plugins that help balance the loud and quiet parts of your music, making your listening experience more enjoyable and comfortable.

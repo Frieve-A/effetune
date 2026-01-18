@@ -1,3 +1,9 @@
+---
+title: "Spatial Plugins - EffeTune"
+description: "Spatial audio plugins including Stereo Blend, Crossfeed Filter, MS Matrix, and Multiband Balance."
+lang: en
+---
+
 # Spatial Audio Plugins
 
 一组通过调整立体声(左右)平衡来增强音乐在耳机或扬声器中声音效果的插件。这些效果可以使您的音乐听起来更宽阔和自然,特别是在使用耳机聆听时。

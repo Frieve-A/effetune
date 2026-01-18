@@ -1,3 +1,9 @@
+---
+title: "Delay Plugins - EffeTune"
+description: "Delay effect plugins including standard Delay and Time Alignment for precise audio timing."
+lang: en
+---
+
 # Плагины Delay
 
 Коллекция инструментов для настройки времени ваших аудиосигналов или добавления отчетливых повторений. Эти плагины помогут вам точно настроить временное выравнивание вашего аудио, создать ритмичные эхо или добавить ощущение пространства и глубины в ваше прослушивание.

@@ -1,3 +1,9 @@
+---
+title: "Other Plugins - EffeTune"
+description: "Additional utility plugins including Oscillator for audio signal generation."
+lang: en
+---
+
 # Other Audio Tools
 
 A collection of specialized audio tools and generators that complement the main effect categories. These plugins provide unique capabilities for sound generation and audio experimentation.

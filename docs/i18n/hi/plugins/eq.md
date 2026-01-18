@@ -1,3 +1,9 @@
+---
+title: "EQ Plugins - EffeTune"
+description: "Equalizer plugins including Parametric EQ, Graphic EQ, Dynamic EQ, Filters, and Tone Control."
+lang: en
+---
+
 # इक्वलाइज़र प्लगइन्स
 
 आपके संगीत की ध्वनि के विभिन्न पहलुओं को समायोजित करने के लिए प्लगइन्स का एक संग्रह, गहरे बास से लेकर साफ़ हाईज़ तक। ये उपकरण विशिष्ट ध्वनि तत्वों को बढ़ाकर या घटाकर आपके सुनने के अनुभव को व्यक्तिगत बनाने में मदद करते हैं।

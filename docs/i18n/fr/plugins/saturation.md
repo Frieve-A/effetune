@@ -1,3 +1,9 @@
+---
+title: "Saturation Plugins - EffeTune"
+description: "Saturation and distortion plugins including Saturation, Exciter, Hard Clipping, and more."
+lang: en
+---
+
 # Saturation Plugins
 
 Une collection de plugins qui ajoutent de la chaleur et du caractère à votre musique. Ces effets peuvent donner à la musique numérique un son plus analogique et ajouter une richesse agréable au son, similaire à la coloration sonore des équipements audio vintage.

@@ -1,3 +1,9 @@
+---
+title: "Build - EffeTune"
+description: "Documentation for build in Frieve EffeTune audio processor."
+lang: en
+---
+
 # EffeTune Desktop Application Build Guide
 
 This document provides detailed instructions for setting up the development environment and building the EffeTune desktop application using Electron.

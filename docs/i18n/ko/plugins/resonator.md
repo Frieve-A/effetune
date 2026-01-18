@@ -1,3 +1,9 @@
+---
+title: "Resonator Plugins - EffeTune"
+description: "Resonator effect plugins including Horn Resonator and Modal Resonator."
+lang: en
+---
+
 # Resonator Plugins
 
 음악에 독특한 톤 질감과 색채를 더하기 위해 공명 특성을 강조하는 플러그인 모음입니다. 이 효과들은 물리적 객체나 스피커 시스템에서 발생하는 공명을 시뮬레이션하여 따뜻함, 반짝임 또는 빈티지 특성을 더해 청취 경험을 향상시킵니다.

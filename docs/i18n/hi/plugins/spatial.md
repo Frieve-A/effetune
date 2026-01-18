@@ -1,3 +1,9 @@
+---
+title: "Spatial Plugins - EffeTune"
+description: "Spatial audio plugins including Stereo Blend, Crossfeed Filter, MS Matrix, and Multiband Balance."
+lang: en
+---
+
 # स्पेशल ऑडियो प्लगइन
 
 स्टीरियो (बायां और दायां) संतुलन को समायोजित करके आपके हेडफ़ोन या स्पीकर में संगीत कैसा सुनाई देता है, इसे बढ़ाने वाले प्लगइन का संग्रह। ये प्रभाव आपके संगीत को अधिक विस्तृत और प्राकृतिक बना सकते हैं, विशेष रूप से हेडफ़ोन के साथ सुनते समय।

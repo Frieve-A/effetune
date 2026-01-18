@@ -1,3 +1,9 @@
+---
+title: "Modulation Plugins - EffeTune"
+description: "Modulation effect plugins including Tremolo, Wow Flutter, Pitch Shifter, and Doppler Distortion."
+lang: en
+---
+
 # Modulation Plugins
 
 Une collection de plugins qui ajoutent du mouvement et des variations à votre musique grâce aux effets de modulation. Ces effets peuvent rendre votre musique numérique plus organique et dynamique, améliorant votre expérience d'écoute avec des variations subtiles ou dramatiques du son.

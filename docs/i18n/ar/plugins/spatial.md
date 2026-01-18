@@ -1,3 +1,9 @@
+---
+title: "Spatial Plugins - EffeTune"
+description: "Spatial audio plugins including Stereo Blend, Crossfeed Filter, MS Matrix, and Multiband Balance."
+lang: en
+---
+
 # إضافات الصوت المكاني
 
 مجموعة من الإضافات التي تحسن كيفية سماع الموسيقى في سماعات الرأس أو السماعات من خلال ضبط توازن الستيريو (اليسار واليمين). هذه المؤثرات يمكن أن تجعل موسيقاك تبدو أكثر اتساعاً وطبيعية، خاصة عند الاستماع بسماعات الرأس.

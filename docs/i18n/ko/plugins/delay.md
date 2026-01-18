@@ -1,3 +1,9 @@
+---
+title: "Delay Plugins - EffeTune"
+description: "Delay effect plugins including standard Delay and Time Alignment for precise audio timing."
+lang: en
+---
+
 # Delay 플러그인
 
 오디오 신호의 타이밍을 조정하거나 뚜렷한 반복음을 추가하기 위한 도구 모음입니다. 이 플러그인들은 오디오의 시간적 정렬을 미세 조정하고, 리드미컬한 에코를 생성하거나, 청취 경험에 공간감과 깊이를 더하는 데 도움을 줍니다.

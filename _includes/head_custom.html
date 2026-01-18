@@ -1,0 +1,142 @@
+<!-- Favicon -->
+<link rel="icon" href="{{ '/images/favicon.ico' | relative_url }}" type="image/x-icon">
+<link rel="icon" href="{{ '/images/icon_192x192.png' | relative_url }}" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" sizes="180x180" href="{{ '/images/icon_180x180.png' | relative_url }}">
+<link rel="apple-touch-icon" sizes="192x192" href="{{ '/images/icon_192x192.png' | relative_url }}">
+
+<!-- Canonical URL -->
+<link rel="canonical" href="{{ page.url | absolute_url }}">
+
+<!-- hreflang tags for multilingual SEO -->
+{% assign current_path = page.path | remove: 'docs/' %}
+{% assign base_path = current_path | remove: 'i18n/ja/' | remove: 'i18n/ko/' | remove: 'i18n/zh/' | remove: 'i18n/es/' | remove: 'i18n/fr/' | remove: 'i18n/pt/' | remove: 'i18n/ru/' | remove: 'i18n/hi/' | remove: 'i18n/ar/' %}
+
+{% if page.path contains 'docs/' %}
+<!-- English (default) -->
+<link rel="alternate" hreflang="en" href="{{ site.url }}/docs/{{ base_path | remove: '.md' }}" />
+<link rel="alternate" hreflang="x-default" href="{{ site.url }}/docs/{{ base_path | remove: '.md' }}" />
+<!-- Japanese -->
+<link rel="alternate" hreflang="ja" href="{{ site.url }}/docs/i18n/ja/{{ base_path | remove: '.md' }}" />
+<!-- Korean -->
+<link rel="alternate" hreflang="ko" href="{{ site.url }}/docs/i18n/ko/{{ base_path | remove: '.md' }}" />
+<!-- Chinese -->
+<link rel="alternate" hreflang="zh" href="{{ site.url }}/docs/i18n/zh/{{ base_path | remove: '.md' }}" />
+<!-- Spanish -->
+<link rel="alternate" hreflang="es" href="{{ site.url }}/docs/i18n/es/{{ base_path | remove: '.md' }}" />
+<!-- French -->
+<link rel="alternate" hreflang="fr" href="{{ site.url }}/docs/i18n/fr/{{ base_path | remove: '.md' }}" />
+<!-- Portuguese -->
+<link rel="alternate" hreflang="pt" href="{{ site.url }}/docs/i18n/pt/{{ base_path | remove: '.md' }}" />
+<!-- Russian -->
+<link rel="alternate" hreflang="ru" href="{{ site.url }}/docs/i18n/ru/{{ base_path | remove: '.md' }}" />
+<!-- Hindi -->
+<link rel="alternate" hreflang="hi" href="{{ site.url }}/docs/i18n/hi/{{ base_path | remove: '.md' }}" />
+<!-- Arabic -->
+<link rel="alternate" hreflang="ar" href="{{ site.url }}/docs/i18n/ar/{{ base_path | remove: '.md' }}" />
+{% endif %}
+
+<!-- Additional Open Graph tags -->
+<meta property="og:site_name" content="{{ site.title }}">
+<meta property="og:locale" content="{% if page.lang == 'ja' %}ja_JP{% elsif page.lang == 'ko' %}ko_KR{% elsif page.lang == 'zh' %}zh_CN{% elsif page.lang == 'es' %}es_ES{% elsif page.lang == 'fr' %}fr_FR{% elsif page.lang == 'pt' %}pt_BR{% elsif page.lang == 'ru' %}ru_RU{% elsif page.lang == 'hi' %}hi_IN{% elsif page.lang == 'ar' %}ar_SA{% else %}en_US{% endif %}">
+
+<!-- Twitter Card enhancements -->
+<meta name="twitter:site" content="@{{ site.twitter.username }}">
+<meta name="twitter:creator" content="@{{ site.twitter.username }}">
+
+<!-- Schema.org structured data for Software Application -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Frieve EffeTune",
+  "description": "{{ site.description }}",
+  "url": "{{ site.url }}",
+  "applicationCategory": "MultimediaApplication",
+  "operatingSystem": "Windows, macOS, Linux, Web Browser",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "author": {
+    "@type": "Organization",
+    "name": "Frieve",
+    "url": "{{ site.url }}"
+  },
+  "screenshot": "{{ site.url }}/images/screenshot.png",
+  "softwareVersion": "Latest",
+  "downloadUrl": "https://github.com/Frieve-A/effetune/releases/",
+  "featureList": [
+    "Real-time audio processing",
+    "Drag-and-drop effect chain builder",
+    "Live audio visualization",
+    "Professional-grade audio effects",
+    "Multi-channel processing",
+    "Frequency response measurement"
+  ],
+  "sameAs": [
+    "https://github.com/Frieve-A/effetune",
+    "https://www.youtube.com/@frieveamusic"
+  ]
+}
+</script>
+
+<!-- Schema.org WebSite for search box -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "Frieve EffeTune",
+  "url": "{{ site.url }}",
+  "potentialAction": {
+    "@type": "SearchAction",
+    "target": "{{ site.url }}/docs/?q={search_term_string}",
+    "query-input": "required name=search_term_string"
+  }
+}
+</script>
+
+<!-- BreadcrumbList structured data -->
+{% if page.path contains 'docs/' %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "{{ site.url }}"
+    }
+    {% assign path_parts = page.path | split: '/' %}
+    {% assign current_path = '' %}
+    {% for part in path_parts %}
+      {% if part != '' and part != page.name %}
+        {% assign current_path = current_path | append: '/' | append: part %}
+        ,{
+          "@type": "ListItem",
+          "position": {{ forloop.index | plus: 1 }},
+          "name": "{{ part | capitalize }}",
+          "item": "{{ site.url }}{{ current_path }}"
+        }
+      {% endif %}
+    {% endfor %}
+    ,{
+      "@type": "ListItem",
+      "position": {{ path_parts.size | plus: 1 }},
+      "name": "{{ page.title | default: page.name | remove: '.md' | capitalize }}",
+      "item": "{{ page.url | absolute_url }}"
+    }
+  ]
+}
+</script>
+{% endif %}
+
+<!-- Preconnect for performance -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+<!-- DNS prefetch for external resources -->
+<link rel="dns-prefetch" href="https://github.com">
+<link rel="dns-prefetch" href="https://www.youtube.com">

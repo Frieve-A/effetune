@@ -1,3 +1,9 @@
+---
+title: "Reverb Plugins - EffeTune"
+description: "Reverb effect plugins including RS Reverb, Dattorro Plate Reverb, and FDN Reverb."
+lang: en
+---
+
 # Plugins de Reverberação
 
 Uma coleção de plugins que adicionam espaço e atmosfera à sua música. Esses efeitos podem fazer sua música soar como se estivesse sendo tocada em diferentes ambientes, desde salas íntimas até grandes salas de concerto, aprimorando sua experiência de audição com ambiência natural e profundidade.

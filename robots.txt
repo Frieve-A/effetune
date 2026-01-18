@@ -1,0 +1,26 @@
+# Robots.txt for Frieve EffeTune
+# https://effetune.frieve.com
+
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://effetune.frieve.com/sitemap.xml
+
+# Crawl-delay for politeness
+Crawl-delay: 1
+
+# Disallow development/test files
+Disallow: /dev/
+Disallow: /*.test.html
+Disallow: /*_test.html
+
+# Allow important pages explicitly
+Allow: /effetune.html
+Allow: /docs/
+Allow: /images/
+
+# Block node_modules and build artifacts
+Disallow: /node_modules/
+Disallow: /dist/
+Disallow: /.github/

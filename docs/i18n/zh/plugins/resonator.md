@@ -1,3 +1,9 @@
+---
+title: "Resonator Plugins - EffeTune"
+description: "Resonator effect plugins including Horn Resonator and Modal Resonator."
+lang: en
+---
+
 # Resonator Plugins
 
 一组强调共鸣特性以为您的音乐增添独特音色质感和色彩的插件集合。

@@ -1,3 +1,9 @@
+---
+title: "EQ Plugins - EffeTune"
+description: "Equalizer plugins including Parametric EQ, Graphic EQ, Dynamic EQ, Filters, and Tone Control."
+lang: en
+---
+
 # ملحقات المعادل الصوتي
 
 مجموعة من الملحقات التي تتيح لك تعديل جوانب مختلفة من صوت موسيقاك، بدءًا من الجهير العميق إلى الطبقات العالية الواضحة. تساعدك هذه الأدوات على تخصيص تجربة الاستماع الخاصة بك عن طريق تعزيز أو تقليل عناصر الصوت المحددة.

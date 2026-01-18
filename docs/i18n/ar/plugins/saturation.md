@@ -1,3 +1,9 @@
+---
+title: "Saturation Plugins - EffeTune"
+description: "Saturation and distortion plugins including Saturation, Exciter, Hard Clipping, and more."
+lang: en
+---
+
 # إضافات التشبع
 
 مجموعة من الإضافات التي تضيف دفئاً وطابعاً لموسيقاك. هذه المؤثرات يمكن أن تجعل الموسيقى الرقمية تبدو أكثر شبهاً بالتناظرية وتضيف ثراءً ممتعاً للصوت، مشابهة لكيفية تلوين معدات الصوت القديمة للصوت.

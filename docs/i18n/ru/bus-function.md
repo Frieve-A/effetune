@@ -1,3 +1,9 @@
+---
+title: "Bus Function Guide - EffeTune"
+description: "Learn how to use the Bus feature in EffeTune for flexible audio routing and complex effect chains."
+lang: en
+---
+
 # Как использовать функцию шины
 
 Функция шины обеспечивает гибкую маршрутизацию аудиосигнала между эффектами, что позволяет выполнять более сложную и универсальную обработку звука.

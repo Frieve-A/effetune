@@ -1,3 +1,9 @@
+---
+title: "FAQ & Troubleshooting - EffeTune"
+description: "Frequently asked questions and troubleshooting guide for Frieve EffeTune audio processor."
+lang: en
+---
+
 # ЧаВо (FAQ) EffeTune
 
 EffeTune — это приложение для обработки звука в реальном времени для энтузиастов аудио, доступное как веб-приложение и настольное приложение. Этот документ охватывает настройку, устранение неполадок, многоканальное использование, работу эффектов и коррекцию частот.

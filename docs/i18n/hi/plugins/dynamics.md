@@ -1,3 +1,9 @@
+---
+title: "Dynamics Plugins - EffeTune"
+description: "Dynamics processing plugins including Compressor, Limiter, Gate, Multiband Compressor, and Transient Shaper."
+lang: en
+---
+
 # डायनामिक्स प्लगइन
 
 आपके संगीत के तेज़ और धीमे हिस्सों को संतुलित करने में मदद करने वाले प्लगइन का संग्रह, जो आपके श्रवण अनुभव को अधिक आनंददायक और आरामदायक बनाता है।

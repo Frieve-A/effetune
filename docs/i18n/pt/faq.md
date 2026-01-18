@@ -1,3 +1,9 @@
+---
+title: "FAQ & Troubleshooting - EffeTune"
+description: "Frequently asked questions and troubleshooting guide for Frieve EffeTune audio processor."
+lang: en
+---
+
 # FAQ do EffeTune
 
 O EffeTune é uma aplicação DSP em tempo real para entusiastas de áudio disponível como aplicativo web e aplicativo desktop. Este documento aborda configuração, solução de problemas, uso multicanal, operação de efeitos e correção de frequência.

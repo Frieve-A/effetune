@@ -1,3 +1,9 @@
+---
+title: "EQ Plugins - EffeTune"
+description: "Equalizer plugins including Parametric EQ, Graphic EQ, Dynamic EQ, Filters, and Tone Control."
+lang: en
+---
+
 # Equalizer Plugins
 
 A collection of plugins that let you adjust different aspects of your music's sound, from deep bass to crisp highs. These tools help you personalize your listening experience by enhancing or reducing specific sound elements.

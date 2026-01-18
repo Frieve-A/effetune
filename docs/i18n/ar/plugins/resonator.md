@@ -1,3 +1,9 @@
+---
+title: "Resonator Plugins - EffeTune"
+description: "Resonator effect plugins including Horn Resonator and Modal Resonator."
+lang: en
+---
+
 # Resonator Plugins
 
 مجموعة من الإضافات التي تبرز الخصائص الرنينية لإضافة قوام صوتي ولوني فريد إلى موسيقاك. تحاكي هذه التأثيرات الرنينات الموجودة في الأجسام أو أنظمة السماعات، مما يعزز تجربتك السمعية بالدفء، اللمعان أو الطابع العتيق.

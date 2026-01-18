@@ -1,3 +1,9 @@
+---
+title: "Lo-Fi Plugins - EffeTune"
+description: "Lo-Fi effect plugins including Bit Crusher, Noise Blender, Vinyl Artifacts, and more."
+lang: en
+---
+
 # Lo-Fi Audio Plugins
 
 一组为音乐添加复古特色和怀旧品质的插件。这些效果可以使现代数字音乐听起来像是通过经典设备播放,或者赋予它那种既放松又富有氛围的流行"lo-fi"声音。

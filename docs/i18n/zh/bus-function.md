@@ -1,3 +1,9 @@
+---
+title: "Bus Function Guide - EffeTune"
+description: "Learn how to use the Bus feature in EffeTune for flexible audio routing and complex effect chains."
+lang: en
+---
+
 # 如何使用总线功能
 
 总线功能允许在各效果之间灵活地进行音频路由，从而实现更复杂和多样化的音频处理。

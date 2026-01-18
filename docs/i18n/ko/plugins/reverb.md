@@ -1,3 +1,9 @@
+---
+title: "Reverb Plugins - EffeTune"
+description: "Reverb effect plugins including RS Reverb, Dattorro Plate Reverb, and FDN Reverb."
+lang: en
+---
+
 # Reverb Plugins
 
 음악에 공간감과 분위기를 더하는 플러그인 모음입니다. 이러한 이펙트들은 음악이 아늑한 방에서부터 웅장한 콘서트홀까지 다양한 환경에서 연주되는 것처럼 들리게 만들어, 자연스러운 공간감과 깊이감으로 청취 경험을 향상시킵니다.

@@ -1,3 +1,9 @@
+---
+title: "EQ Plugins - EffeTune"
+description: "Equalizer plugins including Parametric EQ, Graphic EQ, Dynamic EQ, Filters, and Tone Control."
+lang: en
+---
+
 # イコライザープラグイン
 
 ディープベースからクリスピーな高音まで、音楽のさまざまな側面を調整できるプラグインのコレクションです。これらのツールは、特定の音要素を強調または抑制することで、あなたのリスニング体験をパーソナライズするのに役立ちます。

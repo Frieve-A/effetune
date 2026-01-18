@@ -1,3 +1,9 @@
+---
+title: "Spatial Plugins - EffeTune"
+description: "Spatial audio plugins including Stereo Blend, Crossfeed Filter, MS Matrix, and Multiband Balance."
+lang: en
+---
+
 # 空間オーディオプラグイン
 
 ステレオ(左右)バランスを調整することで、ヘッドホンやスピーカーでの音楽の聴こえ方を向上させるプラグインのコレクションです。これらのエフェクトは、特にヘッドホンでの視聴時に、音楽をより広がりのある自然な響きにすることができます。

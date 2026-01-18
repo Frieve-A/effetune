@@ -1,3 +1,9 @@
+---
+title: "Delay Plugins - EffeTune"
+description: "Delay effect plugins including standard Delay and Time Alignment for precise audio timing."
+lang: en
+---
+
 # Delay 插件
 
 一系列用于调整音频信号时序或添加清晰重复效果的工具。这些插件可帮助您微调音频的时间对齐、创建富有节奏的回声，或为您的听觉体验增添空间感和深度。

@@ -1,3 +1,9 @@
+---
+title: "Analyzer Plugins - EffeTune"
+description: "Audio analysis plugins including Level Meter, Oscilloscope, Spectrogram, Spectrum Analyzer, and Stereo Meter."
+lang: en
+---
+
 # Analyzer Plugins
 
 음악을 흥미로운 방식으로 시각화할 수 있는 플러그인 모음입니다. 이러한 시각적 도구들은 소리의 다양한 측면을 보여줌으로써 청취 경험을 더욱 몰입감 있고 상호작용적으로 만들어줍니다.

@@ -1,3 +1,9 @@
+---
+title: "Spatial Plugins - EffeTune"
+description: "Spatial audio plugins including Stereo Blend, Crossfeed Filter, MS Matrix, and Multiband Balance."
+lang: en
+---
+
 # Plugins de Audio Espacial
 
 Una colección de plugins que mejoran cómo suena la música en tus auriculares o altavoces ajustando el balance estéreo (izquierda y derecha). Estos efectos pueden hacer que tu música suene más espaciosa y natural, especialmente al escuchar con auriculares.

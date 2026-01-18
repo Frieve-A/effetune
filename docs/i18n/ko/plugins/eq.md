@@ -1,3 +1,9 @@
+---
+title: "EQ Plugins - EffeTune"
+description: "Equalizer plugins including Parametric EQ, Graphic EQ, Dynamic EQ, Filters, and Tone Control."
+lang: en
+---
+
 # 이퀄라이저 플러그인
 
 깊은 베이스부터 선명한 고음까지, 음악 사운드의 다양한 측면을 조정할 수 있는 플러그인 모음입니다. 이 도구들은 특정 사운드 요소를 강화하거나 줄여서 개인화된 청취 경험을 제공합니다.

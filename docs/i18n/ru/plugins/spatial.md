@@ -1,3 +1,9 @@
+---
+title: "Spatial Plugins - EffeTune"
+description: "Spatial audio plugins including Stereo Blend, Crossfeed Filter, MS Matrix, and Multiband Balance."
+lang: en
+---
+
 # Spatial Audio Plugins
 
 Коллекция плагинов, улучшающих звучание музыки в ваших наушниках или колонках путем настройки стерео (левого и правого) баланса. Эти эффекты могут сделать вашу музыку более пространственной и естественной, особенно при прослушивании в наушниках.

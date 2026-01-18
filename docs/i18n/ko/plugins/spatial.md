@@ -1,3 +1,9 @@
+---
+title: "Spatial Plugins - EffeTune"
+description: "Spatial audio plugins including Stereo Blend, Crossfeed Filter, MS Matrix, and Multiband Balance."
+lang: en
+---
+
 # Spatial Audio Plugins
 
 스테레오(좌우) 밸런스를 조정하여 헤드폰이나 스피커에서 음악이 어떻게 들리는지 향상시키는 플러그인 모음입니다. 이러한 이펙트들은 특히 헤드폰으로 청취할 때 음악을 더 공간감 있고 자연스럽게 들리게 만들 수 있습니다.

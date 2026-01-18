@@ -1,3 +1,9 @@
+---
+title: "Version History - EffeTune"
+description: "Complete version history and changelog for Frieve EffeTune audio processor."
+lang: en
+---
+
 # Version History
 
 ### Version 1.64 (Jan 18, 2026)

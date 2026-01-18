@@ -1,3 +1,9 @@
+---
+title: "Bus Function Guide - EffeTune"
+description: "Learn how to use the Bus feature in EffeTune for flexible audio routing and complex effect chains."
+lang: en
+---
+
 # Como Usar o Recurso de Barramento
 
 O recurso de Barramento permite o roteamento flexível de áudio entre efeitos, possibilitando um processamento de áudio mais complexo e versátil.

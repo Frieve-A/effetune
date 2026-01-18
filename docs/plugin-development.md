@@ -1,3 +1,9 @@
+---
+title: "Plugin Development Guide - EffeTune"
+description: "Complete guide to developing custom audio plugins for Frieve EffeTune."
+lang: en
+---
+
 # Plugin Development Guide
 
 This guide explains how to create new plugins for Frieve EffeTune.

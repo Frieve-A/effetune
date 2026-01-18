@@ -1,3 +1,9 @@
+---
+title: "Analyzer Plugins - EffeTune"
+description: "Audio analysis plugins including Level Meter, Oscilloscope, Spectrogram, Spectrum Analyzer, and Stereo Meter."
+lang: en
+---
+
 # Analyzer प्लगइन
 
 संगीत को रोचक तरीकों से देखने की सुविधा देने वाले प्लगइन का संग्रह। ये विज़ुअल टूल ध्वनि के विभिन्न पहलुओं को दिखाकर आपको सुनी जा रही चीज़ों को समझने में मदद करते हैं, जिससे आपका संगीत सुनने का अनुभव और भी आकर्षक और इंटरैक्टिव बन जाता है।

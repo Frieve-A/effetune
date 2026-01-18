@@ -1,3 +1,9 @@
+---
+title: "Other Plugins - EffeTune"
+description: "Additional utility plugins including Oscillator for audio signal generation."
+lang: en
+---
+
 # अन्य ऑडियो टूल
 
 मुख्य प्रभाव श्रेणियों के पूरक विशेष ऑडियो टूल और जनरेटर का संग्रह। ये प्लगइन ध्वनि उत्पादन और ऑडियो प्रयोग के लिए अनूठी क्षमताएं प्रदान करते हैं।

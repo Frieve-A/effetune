@@ -1,14 +1,38 @@
 title: "Frieve EffeTune"
-description: "A real-time audio effect processor designed for audio enthusiasts to enhance their music listening experience."
+description: "A real-time audio effect processor designed for audio enthusiasts to enhance their music listening experience. Features professional-grade effects, drag-and-drop interface, and live audio visualization."
 url: "https://effetune.frieve.com"
+baseurl: ""
+lang: en
 
+# Author/Organization info for SEO
+author:
+  name: "Frieve"
+  url: "https://www.frieve.com"
+
+# Social/SEO settings
+twitter:
+  username: frievea
+  card: summary_large_image
+
+social:
+  name: "Frieve EffeTune"
+  links:
+    - https://github.com/Frieve-A/effetune
+    - https://www.youtube.com/@frieveamusic
+    - https://discord.gg/gf95v3Gza2
+
+# Open Graph defaults
+logo: /images/icon_512x512.png
+image: /images/screenshot.png
+
+# Theme settings
 remote_theme: just-the-docs/just-the-docs
-
 color_scheme: dark
 
 search_enabled: true
 nav_enabled: false
 
+# Plugins
 plugins:
   - jekyll-feed
   - jekyll-gist
@@ -17,8 +41,82 @@ plugins:
   - jekyll-remote-theme
   - jekyll-seo-tag
 
+# Favicon configuration
+favicon_ico: "/images/favicon.ico"
+
+# Default front matter
 defaults:
+  # English (root) pages
   - scope:
       path: ""
     values:
       layout: "default"
+      image: /images/screenshot.png
+  - scope:
+      path: "docs"
+    values:
+      layout: "default"
+      image: /images/screenshot.png
+  # Japanese pages
+  - scope:
+      path: "docs/i18n/ja"
+    values:
+      layout: "default"
+      lang: "ja"
+      image: /images/screenshot.png
+  # Korean pages
+  - scope:
+      path: "docs/i18n/ko"
+    values:
+      layout: "default"
+      lang: "ko"
+      image: /images/screenshot.png
+  # Chinese pages
+  - scope:
+      path: "docs/i18n/zh"
+    values:
+      layout: "default"
+      lang: "zh"
+      image: /images/screenshot.png
+  # Spanish pages
+  - scope:
+      path: "docs/i18n/es"
+    values:
+      layout: "default"
+      lang: "es"
+      image: /images/screenshot.png
+  # French pages
+  - scope:
+      path: "docs/i18n/fr"
+    values:
+      layout: "default"
+      lang: "fr"
+      image: /images/screenshot.png
+  # Portuguese pages
+  - scope:
+      path: "docs/i18n/pt"
+    values:
+      layout: "default"
+      lang: "pt"
+      image: /images/screenshot.png
+  # Russian pages
+  - scope:
+      path: "docs/i18n/ru"
+    values:
+      layout: "default"
+      lang: "ru"
+      image: /images/screenshot.png
+  # Hindi pages
+  - scope:
+      path: "docs/i18n/hi"
+    values:
+      layout: "default"
+      lang: "hi"
+      image: /images/screenshot.png
+  # Arabic pages
+  - scope:
+      path: "docs/i18n/ar"
+    values:
+      layout: "default"
+      lang: "ar"
+      image: /images/screenshot.png

@@ -1,3 +1,9 @@
+---
+title: "Delay Plugins - EffeTune"
+description: "Delay effect plugins including standard Delay and Time Alignment for precise audio timing."
+lang: en
+---
+
 # ディレイプラグイン
 
 オーディオ信号のタイミング調整や、はっきりとした反響音を追加するためのツールのコレクションです。これらのプラグインは、オーディオの時間的なアライメントを微調整したり、リズミカルなエコーを作成したり、リスニング体験に空間感覚や深みを加えたりするのに役立ちます。

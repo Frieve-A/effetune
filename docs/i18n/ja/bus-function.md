@@ -1,3 +1,9 @@
+---
+title: "Bus Function Guide - EffeTune"
+description: "Learn how to use the Bus feature in EffeTune for flexible audio routing and complex effect chains."
+lang: en
+---
+
 # バス機能の使い方
 
 バス機能により、エフェクト間で柔軟なオーディオルーティングが可能となり、より複雑で多彩なオーディオ処理が実現します。

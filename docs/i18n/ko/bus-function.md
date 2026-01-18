@@ -1,3 +1,9 @@
+---
+title: "Bus Function Guide - EffeTune"
+description: "Learn how to use the Bus feature in EffeTune for flexible audio routing and complex effect chains."
+lang: en
+---
+
 # 버스 기능 사용 방법
 
 버스 기능은 효과들 간의 유연한 오디오 라우팅을 가능하게 하여 보다 복잡하고 다양한 오디오 처리를 수행할 수 있습니다.

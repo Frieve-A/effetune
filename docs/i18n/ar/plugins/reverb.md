@@ -1,3 +1,9 @@
+---
+title: "Reverb Plugins - EffeTune"
+description: "Reverb effect plugins including RS Reverb, Dattorro Plate Reverb, and FDN Reverb."
+lang: en
+---
+
 # إضافات الصدى
 
 مجموعة من الإضافات التي تضيف مساحة وأجواء لموسيقاك. هذه المؤثرات يمكن أن تجعل موسيقاك تبدو كأنها تُعزف في بيئات مختلفة، من الغرف الحميمة إلى قاعات الحفلات الكبرى، معززة تجربة استماعك بأجواء وعمق طبيعي.

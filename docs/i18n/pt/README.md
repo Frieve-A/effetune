@@ -1,3 +1,10 @@
+---
+title: "Frieve EffeTune - Processador de Efeitos de Áudio em Tempo Real"
+description: "Processador de efeitos de áudio em tempo real para entusiastas de áudio. Mais de 50 efeitos incluindo EQ, compressor e reverb. Grátis para Windows, macOS, Linux e navegadores web."
+lang: pt
+image: /images/screenshot.png
+---
+
 # Frieve EffeTune <img src="../../../images/icon_64x64.png" alt="EffeTune Icon" width="30" height="30" align="bottom">
 
 [Open Web App](https://effetune.frieve.com/effetune.html)  [Download Desktop App](https://github.com/Frieve-A/effetune/releases/)

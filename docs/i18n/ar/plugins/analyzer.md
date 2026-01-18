@@ -1,3 +1,9 @@
+---
+title: "Analyzer Plugins - EffeTune"
+description: "Audio analysis plugins including Level Meter, Oscilloscope, Spectrogram, Spectrum Analyzer, and Stereo Meter."
+lang: en
+---
+
 # إضافات التحليل
 
 مجموعة من الإضافات التي تتيح لك رؤية موسيقاك بطرق مذهلة. تساعدك هذه الأدوات البصرية على فهم ما تسمعه من خلال عرض جوانب مختلفة من الصوت، مما يجعل تجربة الاستماع أكثر تفاعلية وإثارة.

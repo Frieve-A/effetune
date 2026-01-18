@@ -1,3 +1,10 @@
+---
+title: "Frieve EffeTune - Real-time Audio Effect Processor for Music Enthusiasts"
+description: "Transform your music listening experience with EffeTune, a professional-grade real-time audio effect processor. Features 50+ effects including EQ, compressor, reverb, and more. Free for Windows, macOS, Linux, and web browsers."
+lang: en
+image: /images/screenshot.png
+---
+
 # Frieve EffeTune <img src="images/icon_64x64.png" alt="EffeTune Icon" width="30" height="30" align="bottom">
 
 [[中文 (简体)](docs/i18n/zh/README.md)] [[Español](docs/i18n/es/README.md)] [[हिन्दी](docs/i18n/hi/README.md)] [[العربية](docs/i18n/ar/README.md)] [[Português](docs/i18n/pt/README.md)] [[Русский](docs/i18n/ru/README.md)] [[日本語](docs/i18n/ja/README.md)] [[한국어](docs/i18n/ko/README.md)] [[Français](docs/i18n/fr/README.md)]

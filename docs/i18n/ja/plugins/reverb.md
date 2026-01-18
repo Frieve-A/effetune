@@ -1,3 +1,9 @@
+---
+title: "Reverb Plugins - EffeTune"
+description: "Reverb effect plugins including RS Reverb, Dattorro Plate Reverb, and FDN Reverb."
+lang: en
+---
+
 # リバーブプラグイン
 
 音楽に空間と雰囲気を加えるプラグインのコレクションです。これらのエフェクトは、親密な部屋から壮大なコンサートホールまで、様々な環境で演奏されているかのように音楽を響かせ、自然な空気感と奥行きでリスニング体験を向上させます。

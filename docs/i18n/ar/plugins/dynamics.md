@@ -1,3 +1,9 @@
+---
+title: "Dynamics Plugins - EffeTune"
+description: "Dynamics processing plugins including Compressor, Limiter, Gate, Multiband Compressor, and Transient Shaper."
+lang: en
+---
+
 # إضافات الديناميكيات
 
 مجموعة من الإضافات التي تساعد في موازنة الأجزاء العالية والهادئة من موسيقاك، مما يجعل تجربة الاستماع أكثر متعة وراحة.

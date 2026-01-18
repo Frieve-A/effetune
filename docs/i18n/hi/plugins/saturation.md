@@ -1,3 +1,9 @@
+---
+title: "Saturation Plugins - EffeTune"
+description: "Saturation and distortion plugins including Saturation, Exciter, Hard Clipping, and more."
+lang: en
+---
+
 # सैचुरेशन प्लगइन
 
 आपके संगीत में गर्माहट और चरित्र जोड़ने वाले प्लगइन का संग्रह। ये प्रभाव डिजिटल संगीत को अधिक एनालॉग जैसा बना सकते हैं और ध्वनि में सुखद समृद्धि जोड़ सकते हैं, जैसे विंटेज ऑडियो उपकरण ध्वनि को रंगते हैं।

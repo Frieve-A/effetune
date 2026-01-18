@@ -1,3 +1,9 @@
+---
+title: "Delay Plugins - EffeTune"
+description: "Delay effect plugins including standard Delay and Time Alignment for precise audio timing."
+lang: en
+---
+
 # Plugins de Delay
 
 Uma coleção de ferramentas para ajustar o timing dos seus sinais de áudio ou adicionar repetições distintas. Estes plugins ajudam a afinar o alinhamento temporal do seu áudio, criar ecos rítmicos ou adicionar uma sensação de espaço e profundidade à sua experiência auditiva.

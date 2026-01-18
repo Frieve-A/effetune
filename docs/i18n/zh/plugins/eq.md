@@ -1,3 +1,9 @@
+---
+title: "EQ Plugins - EffeTune"
+description: "Equalizer plugins including Parametric EQ, Graphic EQ, Dynamic EQ, Filters, and Tone Control."
+lang: en
+---
+
 # 均衡器插件
 
 一系列插件，允许您调整音乐声音的各个方面，从深沉的低音到清脆的高音。这些工具通过增强或减少特定的声音元素，帮助您个性化您的听觉体验。
