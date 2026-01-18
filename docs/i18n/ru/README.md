@@ -1,11 +1,3 @@
----
-permalink: "/docs/i18n/ru/"
-title: "Frieve EffeTune - Процессор Аудиоэффектов в Реальном Времени"
-description: "Процессор аудиоэффектов в реальном времени для аудиофилов. Более 50 эффектов, включая EQ, компрессор и ревербератор. Бесплатно для Windows, macOS, Linux и веб-браузеров."
-lang: ru
-image: /images/screenshot.png
----
-
 # Frieve EffeTune <img src="../../../images/icon_64x64.png" alt="EffeTune Icon" width="30" height="30" align="bottom">
 
 [Open Web App](https://effetune.frieve.com/effetune.html)  [Download Desktop App](https://github.com/Frieve-A/effetune/releases/)

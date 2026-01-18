@@ -1,11 +1,3 @@
----
-permalink: "/docs/i18n/ko/"
-title: "Frieve EffeTune - 실시간 오디오 이펙트 프로세서"
-description: "오디오 애호가를 위한 실시간 오디오 이펙트 프로세서. EQ, 컴프레서, 리버브 등 50개 이상의 이펙트 제공. Windows, macOS, Linux, 웹 브라우저에서 무료 사용."
-lang: ko
-image: /images/screenshot.png
----
-
 # Frieve EffeTune <img src="../../../images/icon_64x64.png" alt="EffeTune Icon" width="30" height="30" align="bottom">
 
 [Open Web App](https://effetune.frieve.com/effetune.html)  [Download Desktop App](https://github.com/Frieve-A/effetune/releases/)

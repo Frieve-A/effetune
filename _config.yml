@@ -46,6 +46,105 @@ favicon_ico: "/images/favicon.ico"
 
 # Default front matter
 defaults:
+  # Root README.md -> index.html
+  - scope:
+      path: "README.md"
+    values:
+      layout: "default"
+      title: "Frieve EffeTune - Real-time Audio Effect Processor"
+      description: "A real-time audio effect processor for audio enthusiasts. Features 50+ professional effects, drag-and-drop interface, and live visualization. Free for Windows, macOS, Linux, and web browsers."
+      image: /images/screenshot.png
+      permalink: /
+  # Japanese README
+  - scope:
+      path: "docs/i18n/ja/README.md"
+    values:
+      layout: "default"
+      title: "Frieve EffeTune - リアルタイムオーディオエフェクトプロセッサ"
+      description: "オーディオ愛好家のためのリアルタイムオーディオエフェクトプロセッサ。EQ、コンプレッサー、リバーブなど50以上のエフェクトを搭載。"
+      lang: "ja"
+      image: /images/screenshot.png
+      permalink: /docs/i18n/ja/
+  # Korean README
+  - scope:
+      path: "docs/i18n/ko/README.md"
+    values:
+      layout: "default"
+      title: "Frieve EffeTune - 실시간 오디오 이펙트 프로세서"
+      description: "오디오 애호가를 위한 실시간 오디오 이펙트 프로세서. EQ, 컴프레서, 리버브 등 50개 이상의 이펙트 제공."
+      lang: "ko"
+      image: /images/screenshot.png
+      permalink: /docs/i18n/ko/
+  # Chinese README
+  - scope:
+      path: "docs/i18n/zh/README.md"
+    values:
+      layout: "default"
+      title: "Frieve EffeTune - 实时音频效果处理器"
+      description: "专为音频爱好者设计的实时音频效果处理器。提供50多种效果，包括EQ、压缩器、混响等。"
+      lang: "zh"
+      image: /images/screenshot.png
+      permalink: /docs/i18n/zh/
+  # Spanish README
+  - scope:
+      path: "docs/i18n/es/README.md"
+    values:
+      layout: "default"
+      title: "Frieve EffeTune - Procesador de Efectos de Audio en Tiempo Real"
+      description: "Procesador de efectos de audio en tiempo real para entusiastas del audio. Más de 50 efectos incluyendo EQ, compresor y reverb."
+      lang: "es"
+      image: /images/screenshot.png
+      permalink: /docs/i18n/es/
+  # French README
+  - scope:
+      path: "docs/i18n/fr/README.md"
+    values:
+      layout: "default"
+      title: "Frieve EffeTune - Processeur d'Effets Audio en Temps Réel"
+      description: "Processeur d'effets audio en temps réel pour les passionnés d'audio. Plus de 50 effets dont EQ, compresseur et réverb."
+      lang: "fr"
+      image: /images/screenshot.png
+      permalink: /docs/i18n/fr/
+  # Portuguese README
+  - scope:
+      path: "docs/i18n/pt/README.md"
+    values:
+      layout: "default"
+      title: "Frieve EffeTune - Processador de Efeitos de Áudio em Tempo Real"
+      description: "Processador de efeitos de áudio em tempo real para entusiastas de áudio. Mais de 50 efeitos incluindo EQ, compressor e reverb."
+      lang: "pt"
+      image: /images/screenshot.png
+      permalink: /docs/i18n/pt/
+  # Russian README
+  - scope:
+      path: "docs/i18n/ru/README.md"
+    values:
+      layout: "default"
+      title: "Frieve EffeTune - Процессор Аудиоэффектов в Реальном Времени"
+      description: "Процессор аудиоэффектов в реальном времени для аудиофилов. Более 50 эффектов, включая EQ, компрессор и ревербератор."
+      lang: "ru"
+      image: /images/screenshot.png
+      permalink: /docs/i18n/ru/
+  # Hindi README
+  - scope:
+      path: "docs/i18n/hi/README.md"
+    values:
+      layout: "default"
+      title: "Frieve EffeTune - रीयल-टाइम ऑडियो इफेक्ट प्रोसेसर"
+      description: "ऑडियो प्रेमियों के लिए रीयल-टाइम ऑडियो इफेक्ट प्रोसेसर। EQ, कंप्रेसर, रिवर्ब सहित 50+ इफेक्ट्स।"
+      lang: "hi"
+      image: /images/screenshot.png
+      permalink: /docs/i18n/hi/
+  # Arabic README
+  - scope:
+      path: "docs/i18n/ar/README.md"
+    values:
+      layout: "default"
+      title: "Frieve EffeTune - معالج تأثيرات صوتية في الوقت الفعلي"
+      description: "معالج تأثيرات صوتية في الوقت الفعلي لعشاق الصوت. أكثر من 50 تأثيراً بما في ذلك EQ والضاغط والصدى."
+      lang: "ar"
+      image: /images/screenshot.png
+      permalink: /docs/i18n/ar/
   # English (root) pages
   - scope:
       path: ""

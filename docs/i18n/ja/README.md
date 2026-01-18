@@ -1,11 +1,3 @@
----
-permalink: "/docs/i18n/ja/"
-title: "Frieve EffeTune - リアルタイムオーディオエフェクトプロセッサ"
-description: "オーディオ愛好家のためのリアルタイムオーディオエフェクトプロセッサ。EQ、コンプレッサー、リバーブなど50以上のエフェクトを搭載。Windows、macOS、Linux、Webブラウザで無料で利用可能。"
-lang: ja
-image: /images/screenshot.png
----
-
 # Frieve EffeTune <img src="../../../images/icon_64x64.png" alt="EffeTune Icon" width="30" height="30" align="bottom">
 
 🔗[**Webアプリを開く**](https://effetune.frieve.com/effetune.html)  🔗[**デスクトップアプリをダウンロード**](https://github.com/Frieve-A/effetune/releases/)
