@@ -344,7 +344,7 @@ Pour des performances optimales avec des effets non linéaires, il est recommand
 ## Guide de développement
 
 Vous souhaitez créer vos propres plugins audio ? Consultez notre [Guide de développement de plugins](../../plugin-development.md).
-Vous souhaitez créer une application de bureau ? Consultez notre [Guide de construction](../../build.md).
+Vous souhaitez créer une application de bureau ? Consultez notre [Guide de construction](../../../BUILD.md).
 
 ## Liens
 

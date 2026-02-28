@@ -352,7 +352,7 @@ Frieve EffeTune은 Google Chrome에서 테스트 및 검증되었습니다.
 ## 개발 가이드
 
 자신만의 오디오 플러그인을 만들고 싶으신가요? [Plugin Development Guide](../../plugin-development.md)를 확인해보세요.
-데스크톱 앱을 만들고 싶으신가요? [Build Guide](../../build.md)를 확인해보세요.
+데스크톱 앱을 만들고 싶으신가요? [Build Guide](../../../BUILD.md)를 확인해보세요.
 
 ## 링크
 
