@@ -678,7 +678,7 @@ export class UIManager {
             if (this.userLanguage && this.userLanguage !== 'en') { // Only add language prefix if not English
                 return `${baseUrl}/docs/i18n/${this.userLanguage}/`;
             }
-            return `${baseUrl}`; // Default English path
+            return `${baseUrl}/docs/`; // Default English path
         }
 
         // Handle plugin documentation
@@ -700,7 +700,7 @@ export class UIManager {
             if (this.userLanguage && this.userLanguage !== 'en') { // Only add language prefix if not English
                 return `${baseUrl}/docs/i18n/${this.userLanguage}${cleanPath}`;
             }
-            return `${baseUrl}/${cleanPath}`; // Default English path
+            return `${baseUrl}/docs${cleanPath}`; // Default English path
         }
 
         // Handle index.html or empty path
@@ -708,14 +708,14 @@ export class UIManager {
             if (this.userLanguage && this.userLanguage !== 'en') { // Only add language prefix if not English
                 return `${baseUrl}/docs/i18n/${this.userLanguage}/`;
             }
-            return `${baseUrl}`; // Default English path
+            return `${baseUrl}/docs/`; // Default English path
         }
 
         // For other paths
          if (this.userLanguage && this.userLanguage !== 'en') { // Only add language prefix if not English
             return `${baseUrl}/docs/i18n/${this.userLanguage}${cleanPath}`;
         }
-        return `${baseUrl}/${cleanPath}`; // Default English path
+        return `${baseUrl}/docs${cleanPath}`; // Default English path
     }
 
 
