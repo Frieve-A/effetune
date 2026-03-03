@@ -346,7 +346,7 @@ Para un rendimiento óptimo con efectos no lineales, se recomienda usar EffeTune
 ## Guía de Desarrollo
 
 ¿Quieres crear tus propios plugins de audio? Consulta nuestra [Plugin Development Guide](../../plugin-development.md).
-¿Quieres construir una aplicación de escritorio? Consulta nuestra [Guía de Construcción](../../build.md).
+¿Quieres construir una aplicación de escritorio? Consulta nuestra [Guía de Construcción](../../../BUILD.md).
 
 ## Enlaces
 

@@ -354,7 +354,7 @@ For optimal performance with nonlinear effects, it is recommended to use EffeTun
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Frieve-A/effetune)
 
 Want to create your own audio plugins? Check out our [Plugin Development Guide](docs/plugin-development.md).
-Want to build a desktop app? Check out our [Build Guide](build.md).
+Want to build a desktop app? Check out our [Build Guide](BUILD.md).
 
 ## Links
 
