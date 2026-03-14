@@ -42,3 +42,4 @@ Thumbs.db
 .tmp/
 .temp/
 .qodo
+.npm-cache/

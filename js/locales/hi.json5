@@ -177,6 +177,9 @@
   "dialog.config.pipeline.default": "डिफ़ॉल्ट सेटिंग्स",
   "dialog.config.pipeline.last": "अंतिम निकास से सेटिंग्स",
   "dialog.config.pipeline.preset": "विशिष्ट प्रीसेट",
+  "dialog.config.language": "भाषा",
+  "dialog.config.language.auto": "स्वचालित (ब्राउज़र)",
+  "dialog.config.languageRestartNotice": "यदि आपने भाषा सेटिंग बदली है, तो कृपया ऐप को पुनः प्रारंभ करें।",
   "dialog.config.close": "बंद करें",
 
   // ट्रे मेनू

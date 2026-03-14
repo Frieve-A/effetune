@@ -177,6 +177,9 @@
   "dialog.config.pipeline.default": "الإعدادات الافتراضية",
   "dialog.config.pipeline.last": "الإعدادات من آخر خروج",
   "dialog.config.pipeline.preset": "إعداد مسبق معين",
+  "dialog.config.language": "اللغة",
+  "dialog.config.language.auto": "تلقائي (إعدادات المتصفح)",
+  "dialog.config.languageRestartNotice": "إذا غيّرت إعداد اللغة، فيرجى إعادة تشغيل التطبيق.",
   "dialog.config.close": "إغلاق",
 
   // قائمة علبة النظام
@@ -184,4 +187,3 @@
   "trayMenuQuit": "خروج",
   "trayMenuPresets": "الإعدادات المسبقة"
 }
-

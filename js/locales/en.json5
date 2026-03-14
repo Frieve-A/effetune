@@ -177,6 +177,9 @@
   "dialog.config.pipeline.default": "Default settings",
   "dialog.config.pipeline.last": "Settings from last exit",
   "dialog.config.pipeline.preset": "Specific preset",
+  "dialog.config.language": "Language",
+  "dialog.config.language.auto": "Auto (Browser)",
+  "dialog.config.languageRestartNotice": "If you changed the language setting, please restart the app.",
   "dialog.config.close": "Close",
 
   // Tray menu

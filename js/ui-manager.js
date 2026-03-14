@@ -3,9 +3,18 @@ import { PipelineManager } from './ui/pipeline-manager.js';
 import { StateManager } from './ui/state-manager.js';
 import { AudioPlayer } from './ui/audio-player.js';
 import {
+    TRANSLATED_LANGUAGE_CODES,
+    normalizeLanguagePreference,
+    resolveLanguagePreference
+} from './language-options.js';
+import {
     getSerializablePluginStateShort,
     convertPresetToShortFormat
 } from './utils/serialization-utils.js';
+import {
+    encodePipelineState,
+    decodePipelineState
+} from './utils/pipeline-state-codec.js';
 
 export class UIManager {
     constructor(pluginManager, audioManager) {
@@ -28,8 +37,9 @@ export class UIManager {
         this.sampleRate = document.getElementById('sampleRate');
 
         // Initialize supported languages
-        this.supportedLanguages = ['ar', 'es', 'fr', 'hi', 'ja', 'ko', 'pt', 'ru', 'zh'];
-        this.userLanguage = this.determineUserLanguage();
+        this.supportedLanguages = TRANSLATED_LANGUAGE_CODES;
+        this.languagePreference = this.getStoredLanguagePreference();
+        this.userLanguage = this.determineUserLanguage(this.languagePreference);
 
         // Initialize localization
         this.translations = {}; // Current language translations
@@ -141,9 +151,7 @@ export class UIManager {
                 throw new Error('Invalid base64 characters in pipeline parameter');
             }
 
-            // Convert base64 back to JSON
-            const jsonStr = atob(pipelineParam);
-            const state = JSON.parse(jsonStr);
+            const state = decodePipelineState(pipelineParam);
 
             // Validate that state is an array
             if (!Array.isArray(state)) {
@@ -217,7 +225,7 @@ export class UIManager {
             getSerializablePluginStateShort(plugin)
         );
 
-        return btoa(JSON.stringify(state));
+        return encodePipelineState(state);
     }
 
     updateURL() {
@@ -356,17 +364,42 @@ export class UIManager {
         }
     }
 
-    determineUserLanguage() {
-        // Get browser language (e.g., 'ja', 'en-US', 'fr')
-        const browserLang = navigator.language.split('-')[0];
+    getStoredLanguagePreference() {
+        return normalizeLanguagePreference(window.appConfig?.language);
+    }
 
-        // Check if browser language is supported
-        if (this.supportedLanguages.includes(browserLang)) {
-            return browserLang;
+    determineUserLanguage(languagePreference = this.getStoredLanguagePreference()) {
+        return resolveLanguagePreference(languagePreference, navigator.language);
+    }
+
+    async syncLanguageWithConfig(config = window.appConfig) {
+        const nextPreference = normalizeLanguagePreference(config?.language);
+        const nextUserLanguage = this.determineUserLanguage(nextPreference);
+
+        if (nextPreference === this.languagePreference && nextUserLanguage === this.userLanguage) {
+            return this.userLanguage;
         }
 
-        // Default to English (use default docs) if language is not supported
-        return 'en';
+        return this.setLanguagePreference(nextPreference, { persist: false });
+    }
+
+    async setLanguagePreference(languagePreference, { persist = true } = {}) {
+        const normalizedPreference = normalizeLanguagePreference(languagePreference);
+
+        this.languagePreference = normalizedPreference;
+        this.userLanguage = this.determineUserLanguage(normalizedPreference);
+
+        if (persist && window.electronIntegration && window.electronIntegration.isElectronEnvironment()) {
+            await window.electronIntegration.saveConfig({ language: normalizedPreference });
+        }
+
+        window.appConfig = {
+            ...(window.appConfig || {}),
+            language: normalizedPreference
+        };
+
+        await this.loadTranslations(this.userLanguage);
+        return this.userLanguage;
     }
 
     /**
@@ -446,6 +479,9 @@ export class UIManager {
         if (targetLocale === 'en') {
             this.translations = this.englishTranslations;
             this.updateUITexts();
+            if (window.electronIntegration && window.electronIntegration.isElectronEnvironment()) {
+                window.electronIntegration.updateApplicationMenu();
+            }
             return;
         }
 
@@ -458,6 +494,9 @@ export class UIManager {
                 console.warn(`Translation file for ${targetLocale} not found, falling back to English`);
                 this.translations = this.englishTranslations;
                 this.updateUITexts();
+                if (window.electronIntegration && window.electronIntegration.isElectronEnvironment()) {
+                    window.electronIntegration.updateApplicationMenu();
+                }
                 return;
             }
 
@@ -484,6 +523,9 @@ export class UIManager {
             // Fall back to English translations
             this.translations = this.englishTranslations;
             this.updateUITexts();
+            if (window.electronIntegration && window.electronIntegration.isElectronEnvironment()) {
+                window.electronIntegration.updateApplicationMenu();
+            }
         }
     }
 
@@ -533,6 +575,7 @@ export class UIManager {
         const whatsThisElement = document.querySelector('.whats-this');
         if (whatsThisElement) {
             whatsThisElement.textContent = this.t('ui.whatsThisApp');
+            this.updateWhatsThisLinkTarget();
         }
         const availableEffectsTitle = document.getElementById('availableEffectsTitle');
         if (availableEffectsTitle) {
@@ -673,12 +716,12 @@ export class UIManager {
             cleanPath = cleanPath.replace(/\.md$/, '.html');
         }
 
-        // If path is '/README.md' or '/README.html', convert it to root directory
+        // If path is '/README.md' or '/README.html', use the localized top page
         if (cleanPath === '/README.html' || cleanPath === '/README.md' || cleanPath === '/') {
             if (this.userLanguage && this.userLanguage !== 'en') { // Only add language prefix if not English
                 return `${baseUrl}/docs/i18n/${this.userLanguage}/`;
             }
-            return `${baseUrl}/docs/`; // Default English path
+            return `${baseUrl}/`; // Default English path
         }
 
         // Handle plugin documentation
@@ -722,12 +765,10 @@ export class UIManager {
     initWhatsThisLink() {
         const whatsThisLink = document.querySelector('.whats-this');
         if (whatsThisLink) {
-            // Get the localized path (now always returns a web URL)
-            const localizedPath = this.getLocalizedDocPath('/README.md');
-
             // For both Electron and web, open the URL in external browser
             whatsThisLink.addEventListener('click', (e) => {
                 e.preventDefault();
+                const localizedPath = this.getLocalizedDocPath('/README.md');
 
                 // In Electron, use shell.openExternal to open in default browser
                 if (window.electronAPI) {
@@ -743,12 +784,19 @@ export class UIManager {
                 }
             });
 
-            // Set href for right-click "Open in new tab" functionality
-            if (whatsThisLink) { // Added check
-                whatsThisLink.href = localizedPath;
-                whatsThisLink.target = '_blank';
-            }
+            this.updateWhatsThisLinkTarget();
         }
+    }
+
+    updateWhatsThisLinkTarget() {
+        const whatsThisLink = document.querySelector('.whats-this');
+        if (!whatsThisLink) {
+            return;
+        }
+
+        const localizedPath = this.getLocalizedDocPath('/README.md');
+        whatsThisLink.href = localizedPath;
+        whatsThisLink.target = '_blank';
     }
 
     initPipelineManager() {

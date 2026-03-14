@@ -177,6 +177,9 @@
   "dialog.config.pipeline.default": "기본 설정",
   "dialog.config.pipeline.last": "마지막 종료 시 설정",
   "dialog.config.pipeline.preset": "특정 프리셋",
+  "dialog.config.language": "언어",
+  "dialog.config.language.auto": "자동(브라우저 설정)",
+  "dialog.config.languageRestartNotice": "언어 설정을 변경한 경우 앱을 다시 시작해 주세요.",
   "dialog.config.close": "닫기",
 
   // 트레이 메뉴

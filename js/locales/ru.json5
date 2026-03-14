@@ -177,6 +177,9 @@
   "dialog.config.pipeline.default": "Настройки по умолчанию",
   "dialog.config.pipeline.last": "Настройки с последнего выхода",
   "dialog.config.pipeline.preset": "Определенный пресет",
+  "dialog.config.language": "Язык",
+  "dialog.config.language.auto": "Авто (настройки браузера)",
+  "dialog.config.languageRestartNotice": "Если вы изменили настройку языка, перезапустите приложение.",
   "dialog.config.close": "Закрыть",
 
   // Меню трея

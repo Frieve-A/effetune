@@ -16,6 +16,7 @@ const appVersion = packageJson.version;
 constants.setAppVersion(appVersion);
 
 let tray = null;
+let isAppQuitting = false;
 
 // Set up logging to file for debugging (disabled for release)
 function setupFileLogging() {
@@ -502,12 +503,17 @@ function createWindow() {
   
   // Flag to track if we're in the process of closing
   let isClosing = false;
+  const finalizeClose = () => {
+    isClosing = true;
+    if (isAppQuitting) {
+      app.quit();
+      return;
+    }
+    mainWindow.close();
+  };
 
   // Set up the trigger close function for IPC handler to use
-  constants.setTriggerClose(() => {
-    isClosing = true;
-    mainWindow.close();
-  });
+  constants.setTriggerClose(finalizeClose);
 
   // Handle window close event
   mainWindow.on('close', (event) => {
@@ -526,8 +532,7 @@ function createWindow() {
       // Set a timeout to ensure the app closes even if renderer doesn't respond
       const closeTimeout = setTimeout(() => {
         console.log('Pipeline state save timeout, closing window');
-        isClosing = true;
-        mainWindow.close();
+        finalizeClose();
       }, 3000);
 
       // Store the timeout ID so we can clear it when we receive the state
@@ -537,8 +542,7 @@ function createWindow() {
       mainWindow.webContents.send('request-pipeline-state-for-close');
     } else {
       // No renderer available, just close
-      isClosing = true;
-      mainWindow.close();
+      finalizeClose();
     }
   });
   
@@ -968,6 +972,7 @@ function initializeApp() {
     autoLaunch: false,
     startMinimized: false,
     minimizeToTray: false,
+    language: 'auto',
     pipelineStartup: 'last',
     startupPreset: '',
     checkForUpdatesOnStartup: true
@@ -1129,6 +1134,10 @@ app.whenReady().then(() => {
       createWindow();
     }
   });
+});
+
+app.on('before-quit', () => {
+  isAppQuitting = true;
 });
 
 // Quit the app when all windows are closed (except on macOS)

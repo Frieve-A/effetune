@@ -177,6 +177,9 @@
   "dialog.config.pipeline.default": "Configuración predeterminada",
   "dialog.config.pipeline.last": "Ajustes del último cierre",
   "dialog.config.pipeline.preset": "Preset específico",
+  "dialog.config.language": "Idioma",
+  "dialog.config.language.auto": "Automático (navegador)",
+  "dialog.config.languageRestartNotice": "Si cambió la configuración de idioma, reinicie la aplicación.",
   "dialog.config.close": "Cerrar",
 
   // Menú de la bandeja

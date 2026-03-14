@@ -177,6 +177,9 @@
   "dialog.config.pipeline.default": "Paramètres par défaut",
   "dialog.config.pipeline.last": "Paramètres de la dernière fermeture",
   "dialog.config.pipeline.preset": "Préréglage spécifique",
+  "dialog.config.language": "Langue",
+  "dialog.config.language.auto": "Automatique (navigateur)",
+  "dialog.config.languageRestartNotice": "Si vous avez modifié le paramètre de langue, veuillez redémarrer l'application.",
   "dialog.config.close": "Fermer",
 
   // Menu de la barre d'état système

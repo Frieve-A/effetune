@@ -241,8 +241,11 @@ function registerIpcHandlers() {
           anchor = '#' + parts[1];
         }
         
-        // Remove any existing extension and add .html
-        url = url.replace(/\.[^/.]+$/, '') + '.html';
+        const isDirectoryPath = url === '/' || url.endsWith('/');
+        if (!isDirectoryPath) {
+          // Remove any existing extension and add .html
+          url = url.replace(/\.[^/.]+$/, '') + '.html';
+        }
         
         // Add anchor back if it was present
         url = url + anchor;

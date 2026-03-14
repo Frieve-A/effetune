@@ -176,6 +176,9 @@
   "dialog.config.pipeline.default": "デフォルト設定",
   "dialog.config.pipeline.last": "終了時の設定",
   "dialog.config.pipeline.preset": "特定のプリセット",
+  "dialog.config.language": "言語",
+  "dialog.config.language.auto": "自動（ブラウザ設定）",
+  "dialog.config.languageRestartNotice": "言語設定を変更した場合はアプリを再起動してください",
   "dialog.config.close": "閉じる",
 
   // トレイメニュー

@@ -1,3 +1,10 @@
+﻿import {
+  AUTO_LANGUAGE_PREFERENCE,
+  LANGUAGE_OPTIONS,
+  getLanguageOptionLabel,
+  normalizeLanguagePreference
+} from '../language-options.js';
+
 export async function loadConfig(isElectron) {
   if (!isElectron) return {};
   try {
@@ -22,7 +29,11 @@ export async function showConfigDialog(isElectron, currentConfig) {
   if (!isElectron) return;
 
   // Load the latest config from file to ensure we have the most recent settings
-  const config = await loadConfig(isElectron);
+  const config = {
+    ...(currentConfig || {}),
+    ...await loadConfig(isElectron)
+  };
+  config.language = normalizeLanguagePreference(config.language || AUTO_LANGUAGE_PREFERENCE);
   
   const presets = (window.pipelineManager && window.pipelineManager.presetManager)
     ? await window.pipelineManager.presetManager.getPresets()
@@ -37,51 +48,55 @@ export async function showConfigDialog(isElectron, currentConfig) {
 
   const dialogHTML = `
     <div class="config-dialog">
-      <h2>${t('dialog.config.title')}</h2>
+      <h2 id="config-title"></h2>
       <div class="device-section">
         <div class="checkbox-container">
           <input type="checkbox" id="auto-launch" ${config.autoLaunch ? 'checked' : ''}>
-          <label for="auto-launch">${t('dialog.config.autoLaunch')}</label>
+          <label for="auto-launch" id="config-auto-launch-label"></label>
         </div>
       </div>
       <div class="device-section">
         <div class="checkbox-container">
           <input type="checkbox" id="start-min" ${config.startMinimized ? 'checked' : ''}>
-          <label for="start-min">${t('dialog.config.startMinimized')}</label>
+          <label for="start-min" id="config-start-min-label"></label>
         </div>
       </div>
       <div class="device-section">
         <div class="checkbox-container">
           <input type="checkbox" id="tray" ${config.minimizeToTray ? 'checked' : ''}>
-          <label for="tray">${t('dialog.config.minimizeToTray')}</label>
+          <label for="tray" id="config-tray-label"></label>
         </div>
       </div>
       <div class="device-section">
         <div class="checkbox-container">
           <input type="checkbox" id="check-updates" ${config.checkForUpdatesOnStartup !== false ? 'checked' : ''}>
-          <label for="check-updates">${t('dialog.config.checkForUpdatesOnStartup')}</label>
+          <label for="check-updates" id="config-check-updates-label"></label>
         </div>
       </div>
       <div class="device-section">
-        <label class="section-label">${t('dialog.config.pipeline')}</label>
+        <label class="section-label" for="language-select" id="config-language-label"></label>
+        <select id="language-select" class="config-select"></select>
+      </div>
+      <div class="device-section">
+        <label class="section-label" id="config-pipeline-label"></label>
         <div class="radio-container">
           <input type="radio" name="pipeline" id="pl-default" value="default" ${config.pipelineStartup === 'default' ? 'checked' : ''}>
-          <label for="pl-default">${t('dialog.config.pipeline.default')}</label>
+          <label for="pl-default" id="config-pipeline-default-label"></label>
         </div>
         <div class="radio-container">
           <input type="radio" name="pipeline" id="pl-last" value="last" ${!config.pipelineStartup || config.pipelineStartup === 'last' ? 'checked' : ''}>
-          <label for="pl-last">${t('dialog.config.pipeline.last')}</label>
+          <label for="pl-last" id="config-pipeline-last-label"></label>
         </div>
         <div class="radio-container">
           <input type="radio" name="pipeline" id="pl-preset" value="preset" ${config.pipelineStartup === 'preset' ? 'checked' : ''}>
-          <label for="pl-preset">${t('dialog.config.pipeline.preset')}</label>
-          <select id="preset-select" ${config.pipelineStartup === 'preset' ? '' : 'disabled'}>
+          <label for="pl-preset" id="config-pipeline-preset-label"></label>
+          <select id="preset-select" class="config-select" ${config.pipelineStartup === 'preset' ? '' : 'disabled'}>
             ${presetNames.map(n => `<option value="${n}" ${config.startupPreset === n ? 'selected' : ''}>${n}</option>`).join('')}
           </select>
         </div>
       </div>
       <div class="dialog-buttons">
-        <button id="close-btn">${t('dialog.config.close')}</button>
+        <button id="close-btn"></button>
       </div>
     </div>`;
 
@@ -153,7 +168,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
       color: #fff;
       cursor: pointer;
     }
-    .radio-container select {
+    .config-select {
       margin-left: auto;
       padding: 4px 8px;
       background-color: #333;
@@ -162,7 +177,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
       border-radius: 4px;
       min-width: 120px;
     }
-    .radio-container select:disabled {
+    .config-select:disabled {
       opacity: 0.5;
       cursor: not-allowed;
     }
@@ -186,16 +201,45 @@ export async function showConfigDialog(isElectron, currentConfig) {
   `;
   document.head.appendChild(style);
 
+  function renderLanguageOptions() {
+    const languageSelect = document.getElementById('language-select');
+    if (!languageSelect) {
+      return;
+    }
+
+    const selectedValue = normalizeLanguagePreference(config.language);
+    languageSelect.innerHTML = LANGUAGE_OPTIONS.map(option => {
+      const label = getLanguageOptionLabel(option.value, t);
+      const selected = option.value === selectedValue ? ' selected' : '';
+      return `<option value="${option.value}"${selected}>${label}</option>`;
+    }).join('');
+  }
+
+  function renderDialogTexts() {
+    document.getElementById('config-title').textContent = t('dialog.config.title');
+    document.getElementById('config-auto-launch-label').textContent = t('dialog.config.autoLaunch');
+    document.getElementById('config-start-min-label').textContent = t('dialog.config.startMinimized');
+    document.getElementById('config-tray-label').textContent = t('dialog.config.minimizeToTray');
+    document.getElementById('config-check-updates-label').textContent = t('dialog.config.checkForUpdatesOnStartup');
+    document.getElementById('config-language-label').textContent = t('dialog.config.language');
+    document.getElementById('config-pipeline-label').textContent = t('dialog.config.pipeline');
+    document.getElementById('config-pipeline-default-label').textContent = t('dialog.config.pipeline.default');
+    document.getElementById('config-pipeline-last-label').textContent = t('dialog.config.pipeline.last');
+    document.getElementById('config-pipeline-preset-label').textContent = t('dialog.config.pipeline.preset');
+    document.getElementById('close-btn').textContent = t('dialog.config.close');
+    renderLanguageOptions();
+  }
+
   function save() {
     saveConfig(isElectron, config);
     // Update global config objects to keep them in sync
     if (window.electronIntegration) {
       window.electronIntegration.config = config;
     }
-    if (window.appConfig) {
-      window.appConfig = config;
-    }
+    window.appConfig = config;
   }
+
+  renderDialogTexts();
 
   document.getElementById('auto-launch').addEventListener('change', e => {
     config.autoLaunch = e.target.checked; save();
@@ -221,10 +265,24 @@ export async function showConfigDialog(isElectron, currentConfig) {
   if (select) {
     select.addEventListener('change', e => { config.startupPreset = e.target.value; save(); });
   }
+  const languageSelect = document.getElementById('language-select');
+  if (languageSelect) {
+    languageSelect.addEventListener('change', async e => {
+      config.language = normalizeLanguagePreference(e.target.value);
+      save();
+
+      if (window.uiManager && typeof window.uiManager.setLanguagePreference === 'function') {
+        await window.uiManager.setLanguagePreference(config.language, { persist: false });
+        renderDialogTexts();
+      }
+    });
+  }
   function closeDialog() {
     document.body.removeChild(overlay);
     document.head.removeChild(style);
     document.removeEventListener('keydown', handleKeydown);
+    // const message = t('dialog.config.languageRestartNotice');
+    // alert(message);
   }
 
   function handleKeydown(e) {
@@ -236,4 +294,4 @@ export async function showConfigDialog(isElectron, currentConfig) {
 
   document.getElementById('close-btn').addEventListener('click', closeDialog);
   document.addEventListener('keydown', handleKeydown);
-} 
+}

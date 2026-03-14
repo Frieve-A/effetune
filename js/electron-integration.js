@@ -84,10 +84,10 @@ class ElectronIntegration {
             // Handle the main README
             if (basePath === '/README.md' || basePath === '/') {
               const language = window.uiManager.userLanguage;
-              if (language) {
-                return `docs/i18n/${language}/README.md`;
+              if (language && language !== 'en') {
+                return '/docs/i18n/' + language + '/';
               }
-              return 'README.md';
+              return '/';
             }
             
             // Handle plugin documentation
@@ -98,7 +98,7 @@ class ElectronIntegration {
               // Store the anchor if present
               const anchor = basePath.includes('#') ? basePath.split('#')[1] : '';
               
-              if (language) {
+              if (language && language !== 'en') {
                 return `docs/i18n/${language}${cleanPath}.md${anchor ? '#' + anchor : ''}`;
               }
               return `docs${cleanPath}.md${anchor ? '#' + anchor : ''}`;
@@ -107,15 +107,15 @@ class ElectronIntegration {
             // Handle index.html or empty path
             if (basePath === '/index.html' || basePath === './') {
               const language = window.uiManager.userLanguage;
-              if (language) {
-                return `docs/i18n/${language}/README.md`;
+              if (language && language !== 'en') {
+                return '/docs/i18n/' + language + '/';
               }
-              return 'README.md';
+              return '/';
             }
             
             // For other paths, just convert to local path
             const language = window.uiManager.userLanguage;
-            if (language && !basePath.includes(`/i18n/${language}/`)) {
+            if (language && language !== 'en' && !basePath.includes(`/i18n/${language}/`)) {
               // Make sure the path has a file extension
               if (!basePath.includes('.')) {
                 return `docs/i18n/${language}${basePath}/README.md`;
@@ -564,15 +564,19 @@ class ElectronIntegration {
   }
 
   async loadConfig() {
-    const cfg = await loadConfig(this.isElectron);
+    const cfg = (await loadConfig(this.isElectron)) || {};
     this.config = cfg;
     window.appConfig = cfg;
+    if (window.uiManager && typeof window.uiManager.syncLanguageWithConfig === 'function') {
+      await window.uiManager.syncLanguageWithConfig(cfg);
+    }
     return cfg;
   }
 
   async saveConfig(cfg) {
-    this.config = { ...this.config, ...cfg };
+    this.config = { ...(this.config || {}), ...cfg };
     await saveConfig(this.isElectron, this.config);
+    window.appConfig = this.config;
   }
 
   async showConfigDialog() {

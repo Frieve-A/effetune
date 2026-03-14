@@ -177,6 +177,9 @@
   "dialog.config.pipeline.default": "默认设置",
   "dialog.config.pipeline.last": "上次退出时的设置",
   "dialog.config.pipeline.preset": "特定预设",
+  "dialog.config.language": "语言",
+  "dialog.config.language.auto": "自动（浏览器设置）",
+  "dialog.config.languageRestartNotice": "如果您更改了语言设置，请重新启动应用程序。",
   "dialog.config.close": "关闭",
 
   // 托盘菜单
