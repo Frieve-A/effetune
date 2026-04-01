@@ -368,3 +368,5 @@ Frieve EffeTune का परीक्षण किया गया है औ�
 [YouTube](https://www.youtube.com/@frieveamusic)
 
 [Discord](https://discord.gg/gf95v3Gza2)
+
+[Ko-fi पर समर्थन करें](https://ko-fi.com/frievea)

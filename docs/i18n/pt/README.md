@@ -357,3 +357,5 @@ Quer construir um aplicativo desktop? Confira nosso [Guia de Construção](../..
 [YouTube](https://www.youtube.com/@frieveamusic)
 
 [Discord](https://discord.gg/gf95v3Gza2)
+
+[Apoie no Ko-fi](https://ko-fi.com/frievea)

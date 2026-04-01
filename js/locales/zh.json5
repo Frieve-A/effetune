@@ -149,6 +149,7 @@
 
   "menu.help": "帮助",
   "menu.help.help": "帮助",
+  "menu.help.support": "支持本项目",
   "menu.help.about": "关于",
 
   // 音频配置对话框

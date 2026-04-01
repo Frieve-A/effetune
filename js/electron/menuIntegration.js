@@ -117,6 +117,7 @@ export async function updateApplicationMenu(isElectron) {
         submenu: [
           { label: t('menu.help.help') },
           { label: 'Discord' },
+          { label: t('menu.help.support') },
           { type: 'separator' },
           { label: t('menu.help.about') }
         ]

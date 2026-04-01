@@ -338,3 +338,5 @@ Frieve EffeTune был протестирован и подтвержден дл
 [YouTube](https://www.youtube.com/@frieveamusic)
 
 [Discord](https://discord.gg/gf95v3Gza2)
+
+[Поддержать на Ko-fi](https://ko-fi.com/frievea)

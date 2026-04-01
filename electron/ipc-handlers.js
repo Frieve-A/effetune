@@ -625,9 +625,15 @@ function registerIpcHandlers() {
                 require('electron').shell.openExternal('https://discord.gg/gf95v3Gza2');
               }
             },
+            {
+              label: menuTemplate.help.submenu[2].label, // Support the Project
+              click: () => {
+                require('electron').shell.openExternal('https://ko-fi.com/frievea');
+              }
+            },
             { type: 'separator' },
             {
-              label: menuTemplate.help.submenu[3].label, // About
+              label: menuTemplate.help.submenu[4].label, // About
               click: () => {
                 const mainWin = constants.getMainWindow();
                 if (mainWin) {
@@ -1114,6 +1120,12 @@ function createMenu() {
           label: 'Discord',
           click: () => {
             require('electron').shell.openExternal('https://discord.gg/gf95v3Gza2');
+          }
+        },
+        {
+          label: 'Support the Project',
+          click: () => {
+            require('electron').shell.openExternal('https://ko-fi.com/frievea');
           }
         },
         { type: 'separator' },

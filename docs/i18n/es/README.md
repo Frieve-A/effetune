@@ -357,3 +357,5 @@ Para un rendimiento óptimo con efectos no lineales, se recomienda usar EffeTune
 [YouTube](https://www.youtube.com/@frieveamusic)
 
 [Discord](https://discord.gg/gf95v3Gza2)
+
+[Apóyanos en Ko-fi](https://ko-fi.com/frievea)

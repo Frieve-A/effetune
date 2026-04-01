@@ -365,3 +365,5 @@ Want to build a desktop app? Check out our [Build Guide](BUILD.md).
 [YouTube](https://www.youtube.com/@frieveamusic)
 
 [Discord](https://discord.gg/gf95v3Gza2)
+
+[Support on Ko-fi](https://ko-fi.com/frievea)

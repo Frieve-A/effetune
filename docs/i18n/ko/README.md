@@ -363,3 +363,5 @@ Frieve EffeTune은 Google Chrome에서 테스트 및 검증되었습니다.
 [YouTube](https://www.youtube.com/@frieveamusic)
 
 [Discord](https://discord.gg/gf95v3Gza2)
+
+[Ko-fi에서 후원하기](https://ko-fi.com/frievea)

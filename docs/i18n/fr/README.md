@@ -355,3 +355,5 @@ Vous souhaitez créer une application de bureau ? Consultez notre [Guide de cons
 [YouTube](https://www.youtube.com/@frieveamusic)
 
 [Discord](https://discord.gg/gf95v3Gza2)
+
+[Soutenez-nous sur Ko-fi](https://ko-fi.com/frievea)

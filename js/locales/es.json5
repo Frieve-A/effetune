@@ -149,6 +149,7 @@
 
   "menu.help": "Ayuda",
   "menu.help.help": "Ayuda",
+  "menu.help.support": "Apoyar el proyecto",
   "menu.help.about": "Acerca de",
 
   // Diálogo de configuración de audio

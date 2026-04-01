@@ -148,6 +148,7 @@
 
   "menu.help": "ヘルプ",
   "menu.help.help": "ヘルプ",
+  "menu.help.support": "プロジェクトを支援する",
   "menu.help.about": "アプリについて",
 
   // オーディオ設定ダイアログ
