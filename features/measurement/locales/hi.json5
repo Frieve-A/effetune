@@ -21,6 +21,10 @@
 "help:sampleRate": "माप लेते समय नमूना आवृत्ति निर्दिष्ट करें।", // Help text for sample rate
 "label:sweepLength": "स्वीप लंबाई (नमूने):", // Label for sweep length selection
 "help:sweepLength": "माप संकेत की लंबाई नमूनों में निर्दिष्ट करता है।", // Help text for sweep length
+"label:sweepMinFreq": "न्यूनतम स्वीप आवृत्ति (Hz):", // Label for sweep minimum frequency
+"help:sweepMinFreq": "स्वीप संकेत की न्यूनतम आवृत्ति Hz में। चयनित सैंपलिंग दर की नाइक्विस्ट आवृत्ति से ठीक नीचे तक 1 Hz से सेट की जा सकती है। टेस्ट संकेत भी इसी रेंज तक सीमित होता है। (डिफ़ॉल्ट: 20 Hz)", // Help text for sweep min frequency
+"label:sweepMaxFreq": "अधिकतम स्वीप आवृत्ति (Hz):", // Label for sweep maximum frequency
+"help:sweepMaxFreq": "स्वीप संकेत की अधिकतम आवृत्ति Hz में। चयनित सैंपलिंग दर की नाइक्विस्ट आवृत्ति से ऊपर के मान स्वचालित रूप से सीमित कर दिए जाते हैं। टेस्ट संकेत भी इसी रेंज तक सीमित होता है। (डिफ़ॉल्ट: 20000 Hz)", // Help text for sweep max frequency
 "label:averaging": "सामयिक औसत:", // Label for synchronous averaging selection
 "help:averaging": "अधिक सटीक माप के लिए एक ही माप बिंदु पर माप को दोहराने की संख्या निर्दिष्ट करें।", // Help text for averaging
 "button:next": "अगला", // Next button in configuration form to move to the Level Adjustment Screen

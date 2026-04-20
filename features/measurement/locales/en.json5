@@ -21,6 +21,10 @@
   "help:sampleRate": "Specify the sampling frequency when taking measurements.", // Help text for sample rate
   "label:sweepLength": "Sweep Length (samples):", // Label for sweep length selection
   "help:sweepLength": "Specifies the length of the measurement signal in samples.", // Help text for sweep length
+  "label:sweepMinFreq": "Sweep Minimum Frequency (Hz):", // Label for sweep minimum frequency
+  "help:sweepMinFreq": "The minimum frequency of the sweep signal in Hz. Set from 1 Hz up to just below the Nyquist frequency of the selected sampling rate. The test signal is also band-limited to this range. (Default: 20 Hz)", // Help text for sweep min frequency
+  "label:sweepMaxFreq": "Sweep Maximum Frequency (Hz):", // Label for sweep maximum frequency
+  "help:sweepMaxFreq": "The maximum frequency of the sweep signal in Hz. Values above the Nyquist frequency of the selected sampling rate are automatically clamped. The test signal is also band-limited to this range. (Default: 20000 Hz)", // Help text for sweep max frequency
   "label:averaging": "Synchronous Averaging:", // Label for synchronous averaging selection
   "help:averaging": "Specify the number of times to repeat the measurement at the same measurement point for more accurate measurement.", // Help text for averaging
   "button:next": "Next", // Next button in configuration form to move to the Level Adjustment Screen
@@ -126,7 +130,7 @@
   "option:sweepLength262144": "262,144 (2¹⁸)", // Option for 262144 sweep length
   "option:sweepLength524288": "524,288 (2¹⁹)", // Option for 524288 sweep length
   "option:sweepLength1048576": "1,048,576 (2²⁰)", // Option for 1048576 sweep length
-  
+
   // Averaging options
   "option:averaging1": "1", // Option for 1 averaging
   "option:averaging2": "2", // Option for 2 averaging

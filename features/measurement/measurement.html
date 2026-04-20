@@ -105,6 +105,16 @@
                         <div class="explanation-text" data-i18n="help:sweepLength">Specifies the length of the measurement signal in samples.</div>
                     </div>
                     <div class="form-group">
+                        <label for="sweepMinFreq" data-i18n="label:sweepMinFreq">Sweep Minimum Frequency (Hz):</label>
+                        <input type="number" id="sweepMinFreq" required min="1" step="1" value="20">
+                        <div class="explanation-text" data-i18n="help:sweepMinFreq">The minimum frequency of the sweep signal in Hz. Range: 1 Hz to just below the Nyquist frequency of the selected sampling rate. (Default: 20 Hz)</div>
+                    </div>
+                    <div class="form-group">
+                        <label for="sweepMaxFreq" data-i18n="label:sweepMaxFreq">Sweep Maximum Frequency (Hz):</label>
+                        <input type="number" id="sweepMaxFreq" required min="1" step="1" value="20000">
+                        <div class="explanation-text" data-i18n="help:sweepMaxFreq">The maximum frequency of the sweep signal in Hz. Values above the Nyquist frequency of the selected sampling rate are automatically clamped. (Default: 20000 Hz)</div>
+                    </div>
+                    <div class="form-group">
                         <label for="averaging" data-i18n="label:averaging">Synchronous Averaging:</label>
                         <select id="averaging" required>
                             <option value="1" data-i18n="option:averaging1">1</option>

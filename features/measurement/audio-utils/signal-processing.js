@@ -51,9 +51,10 @@ function calculateFFT(timeDomainData, sampleRate = 48000, normalizeWithLastSweep
     const singleSideCorrection = 10 * Math.log10(2);
     const totalCorrection = fftSizeCorrection + windowPowerCorrection + singleSideCorrection;
     
-    // For efficiency, use logarithmic spacing for frequency points
-    const minFreq = 20;
-    const maxFreq = 20000;
+    // For efficiency, use logarithmic spacing for frequency points.
+    // Use the sweep band when available so analysis matches what was actually played.
+    const minFreq = this.sweepMinFreq || 20;
+    const maxFreq = this.sweepMaxFreq || 20000;
     const octaveDivisions = 48; // Points per octave
     
     const minLog = Math.log2(minFreq);
@@ -225,8 +226,8 @@ function calculateFrequencyResponseWithSmoothing(timeDomainData, sampleRate = 48
     
     // Apply 0.01 octave spacing (100 points per decade)
     const octaveSpacing = 0.01;
-    const minFreq = 20;
-    const maxFreq = 20000;
+    const minFreq = this.sweepMinFreq || 20;
+    const maxFreq = this.sweepMaxFreq || 20000;
     
     // Calculate number of points needed
     const minLog = Math.log10(minFreq);

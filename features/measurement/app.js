@@ -116,14 +116,25 @@ function setupEventConnections() {
             audioOutputId: document.getElementById('audioOutput').value,
             sampleRate: parseInt(document.getElementById('sampleRate').value),
             sweepLength: document.getElementById('sweepLength').value,
+            sweepMinFreq: parseFloat(document.getElementById('sweepMinFreq').value),
+            sweepMaxFreq: parseFloat(document.getElementById('sweepMaxFreq').value),
             averaging: parseInt(document.getElementById('averaging').value),
             inputChannel: document.getElementById('inputChannel').value,
             outputChannel: document.getElementById('outputChannel').value
         };
-        
+
         // Validate form
         if (!config.name) {
             alert('Please enter a measurement name');
+            return;
+        }
+
+        // Validate sweep frequency range: 1 <= min < max <= Nyquist - 1
+        const nyquistLimit = Math.max(2, Math.floor(config.sampleRate / 2) - 1);
+        if (!isFinite(config.sweepMinFreq) || !isFinite(config.sweepMaxFreq) ||
+            config.sweepMinFreq < 1 || config.sweepMaxFreq > nyquistLimit ||
+            config.sweepMinFreq >= config.sweepMaxFreq) {
+            alert(`Invalid sweep frequency range. Set 1 <= min < max <= ${nyquistLimit} Hz.`);
             return;
         }
         
@@ -421,6 +432,8 @@ function saveUserSettings() {
         inputChannel: document.getElementById('inputChannel').value,
         outputChannel: document.getElementById('outputChannel').value,
         sweepLength: document.getElementById('sweepLength').value,
+        sweepMinFreq: document.getElementById('sweepMinFreq').value,
+        sweepMaxFreq: document.getElementById('sweepMaxFreq').value,
         averaging: document.getElementById('averaging').value,
     };
     
@@ -476,6 +489,8 @@ function loadUserSettings() {
         if (settings.inputChannel) document.getElementById('inputChannel').value = settings.inputChannel;
         if (settings.outputChannel) document.getElementById('outputChannel').value = settings.outputChannel;
         if (settings.sweepLength) document.getElementById('sweepLength').value = settings.sweepLength;
+        if (settings.sweepMinFreq) document.getElementById('sweepMinFreq').value = settings.sweepMinFreq;
+        if (settings.sweepMaxFreq) document.getElementById('sweepMaxFreq').value = settings.sweepMaxFreq;
         if (settings.averaging) document.getElementById('averaging').value = settings.averaging;
     }
 }
@@ -581,16 +596,49 @@ window.app = {
     selectSavedAudioDevices
 };
 
+/**
+ * Update min/max attributes of the sweep frequency inputs based on current
+ * sampling rate. The usable range is [1, Nyquist - 1] Hz. Existing values are
+ * clamped into range so the UI never presents an invalid configuration.
+ */
+function updateSweepFreqLimits() {
+    const sampleRate = parseInt(document.getElementById('sampleRate').value) || 48000;
+    const nyquist = Math.floor(sampleRate / 2);
+    const maxAllowed = Math.max(2, nyquist - 1);
+
+    const minInput = document.getElementById('sweepMinFreq');
+    const maxInput = document.getElementById('sweepMaxFreq');
+    if (!minInput || !maxInput) return;
+
+    minInput.max = String(maxAllowed - 1);
+    maxInput.max = String(maxAllowed);
+
+    const currentMin = parseFloat(minInput.value);
+    const currentMax = parseFloat(maxInput.value);
+
+    if (!isFinite(currentMax) || currentMax > maxAllowed) {
+        maxInput.value = maxAllowed;
+    }
+    if (!isFinite(currentMin) || currentMin < 1) {
+        minInput.value = 1;
+    } else if (currentMin >= parseFloat(maxInput.value)) {
+        minInput.value = Math.max(1, parseFloat(maxInput.value) - 1);
+    }
+}
+
 // Initialize the application when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     initializeApp();
-    
+
     // Load user settings when app starts
     loadUserSettings();
-    
+
+    // Apply Nyquist limits to the sweep frequency inputs based on current sample rate
+    updateSweepFreqLimits();
+
     // Load PEQ settings when app starts
     loadPEQSettings();
-    
+
     // Handle new measurement button click
     document.getElementById('newMeasurementBtn').addEventListener('click', async () => {
         // Populate audio devices when starting a new measurement
@@ -598,12 +646,17 @@ document.addEventListener('DOMContentLoaded', () => {
         // Select saved devices if available
         setTimeout(() => selectSavedAudioDevices(), 100);
     });
-    
+
     // Save measurement settings when values change
-    document.getElementById('sampleRate').addEventListener('change', saveUserSettings);
+    document.getElementById('sampleRate').addEventListener('change', () => {
+        updateSweepFreqLimits();
+        saveUserSettings();
+    });
     document.getElementById('inputChannel').addEventListener('change', saveUserSettings);
     document.getElementById('outputChannel').addEventListener('change', saveUserSettings);
     document.getElementById('sweepLength').addEventListener('change', saveUserSettings);
+    document.getElementById('sweepMinFreq').addEventListener('change', saveUserSettings);
+    document.getElementById('sweepMaxFreq').addEventListener('change', saveUserSettings);
     document.getElementById('averaging').addEventListener('change', saveUserSettings);
     document.getElementById('audioInput').addEventListener('change', saveUserSettings);
     document.getElementById('audioOutput').addEventListener('change', saveUserSettings);

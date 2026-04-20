@@ -9,13 +9,15 @@ import FFT from './fft.js';
  * @param {number} level - Noise level in dB (0 to -36)
  * @param {string} outputDeviceId - The output device ID, or null for default
  * @param {string} channel - The channel to output to ('left', 'right', 'all', or specific channel number '3'-'8')
+ * @param {number} minFreq - Lower band edge in Hz (default 1 = effectively unlimited)
+ * @param {number} maxFreq - Upper band edge in Hz (default null = up to Nyquist)
  */
-async function startWhiteNoise(level = -12, outputDeviceId = null, channel = 'all') {
+async function startWhiteNoise(level = -12, outputDeviceId = null, channel = 'all', minFreq = 1, maxFreq = null) {
     // Make sure any existing white noise is properly stopped first
     if (this.isWhiteNoiseActive) {
         this.stopWhiteNoise();
     }
-    
+
     // Check if AudioContext exists
     if (!this.audioContext) {
         try {
@@ -24,30 +26,113 @@ async function startWhiteNoise(level = -12, outputDeviceId = null, channel = 'al
             return false;
         }
     }
-    
+
     // Ensure audio context is running
     const contextReady = await this.ensureAudioContextRunning();
     if (!contextReady) {
         return false;
     }
-    
+
     try {
         // Get the maximum channel count for the device
         const maxChannels = await this.getDeviceMaxChannelCount(outputDeviceId);
         console.log(`Using max channel count: ${maxChannels}`);
-        
-        // Create a buffer with enough channels for the device
+
+        // Use a power-of-two buffer length (~2 seconds) so we can FFT-band-limit in place.
+        // AudioBufferSourceNode loops any length seamlessly; FFT treats the buffer as
+        // periodic, so the band-limited result is continuous across loop boundaries.
+        const sampleRate = this.audioContext.sampleRate;
         const bufferChannels = maxChannels;
-        const bufferSize = 2 * this.audioContext.sampleRate;
+        const bufferSize = 1 << Math.ceil(Math.log2(Math.max(2 * sampleRate, 2)));
         const noiseBuffer = this.audioContext.createBuffer(
-            bufferChannels, bufferSize, this.audioContext.sampleRate
+            bufferChannels, bufferSize, sampleRate
         );
-        
-        // Fill buffer with white noise on all channels
+
+        // Determine the band-limit range. Apply Sinc-equivalent brick-wall
+        // band-limiting only when the user actually requested a narrower band.
+        const nyquist = sampleRate / 2;
+        const nyquistLimit = Math.max(2, Math.floor(nyquist) - 1);
+        const fLo = Math.max(1, Math.min(minFreq ?? 1, nyquistLimit - 1));
+        const fHi = Math.max(fLo + 1, Math.min(maxFreq ?? nyquistLimit, nyquistLimit));
+        const needsBandlimit = fLo > 1 || fHi < nyquistLimit;
+
+        const halfBuf = bufferSize >>> 1;
+        const kLo = Math.max(1, Math.floor(fLo * bufferSize / sampleRate));
+        const kHi = Math.min(halfBuf - 1, Math.ceil(fHi * bufferSize / sampleRate));
+
+        // Raised-cosine taper outside [kLo, kHi] for suppressing sinc ringing.
+        // The specified band stays at unity gain; outside, a short skirt fades to 0.
+        const bandBins = kHi - kLo + 1;
+        const nominalTaperLen = 32;
+        const taperCap = Math.max(4, Math.min(nominalTaperLen, Math.floor(bandBins / 2)));
+        const taperLenLow = Math.min(taperCap, kLo - 1);
+        const taperLenHigh = Math.min(taperCap, (halfBuf - 1) - kHi);
+
+        const fft = needsBandlimit ? new FFT(bufferSize) : null;
+        const realIn = needsBandlimit ? new Float32Array(bufferSize) : null;
+        const imagIn = needsBandlimit ? new Float32Array(bufferSize) : null;
+        const realOut = needsBandlimit ? new Float32Array(bufferSize) : null;
+        const imagOut = needsBandlimit ? new Float32Array(bufferSize) : null;
+        const tdReal = needsBandlimit ? new Float32Array(bufferSize) : null;
+        const tdImag = needsBandlimit ? new Float32Array(bufferSize) : null;
+
+        // Precompute the taper-weight mask once; it's the same for every channel.
+        const weightMask = needsBandlimit ? new Float32Array(bufferSize) : null;
+        if (needsBandlimit) {
+            for (let k = 0; k < bufferSize; k++) {
+                // Fold the mirror bin so the conjugate pair gets the same weight
+                const kFold = k <= halfBuf ? k : bufferSize - k;
+                let w;
+                if (kFold >= kLo && kFold <= kHi) {
+                    w = 1;
+                } else if (kFold >= kLo - taperLenLow && kFold < kLo && taperLenLow > 0) {
+                    const t = (kFold - (kLo - taperLenLow) + 1) / (taperLenLow + 1);
+                    w = 0.5 * (1 - Math.cos(Math.PI * t));
+                } else if (kFold > kHi && kFold <= kHi + taperLenHigh && taperLenHigh > 0) {
+                    const t = ((kHi + taperLenHigh) - kFold + 1) / (taperLenHigh + 1);
+                    w = 0.5 * (1 - Math.cos(Math.PI * t));
+                } else {
+                    w = 0;
+                }
+                weightMask[k] = w;
+            }
+        }
+
+        // Fill buffer with white noise on all channels, optionally band-limited via FFT.
         for (let ch = 0; ch < bufferChannels; ch++) {
             const data = noiseBuffer.getChannelData(ch);
             for (let i = 0; i < bufferSize; i++) {
                 data[i] = Math.random() * 2 - 1;
+            }
+
+            if (!needsBandlimit) continue;
+
+            // Forward FFT
+            for (let i = 0; i < bufferSize; i++) {
+                realIn[i] = data[i];
+                imagIn[i] = 0;
+            }
+            fft.transform(realOut, imagOut, realIn, imagIn);
+
+            // Apply raised-cosine mask: unity inside [kLo, kHi], tapered outside
+            for (let k = 0; k < bufferSize; k++) {
+                const w = weightMask[k];
+                realOut[k] *= w;
+                imagOut[k] *= w;
+            }
+
+            // Inverse FFT back to time domain
+            fft.inverseTransform(tdReal, tdImag, realOut, imagOut);
+
+            // Normalize peak to 0.9 to avoid clipping; narrowband noise has a higher crest factor
+            let peak = 0;
+            for (let i = 0; i < bufferSize; i++) {
+                const v = Math.abs(tdReal[i]);
+                if (v > peak) peak = v;
+            }
+            const norm = peak > 1e-9 ? 0.9 / peak : 1;
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = tdReal[i] * norm;
             }
         }
         
@@ -237,11 +322,13 @@ function setNoiseLevel(levelDb) {
  * @param {number} length - Signal length in samples
  * @param {number} sampleRate - Sample rate in Hz
  * @param {string} channel - Output channel ('left', 'right', 'all', or specific channel number '2'-'7')
- * @returns {{left: Float32Array, right: Float32Array, length: number, frequencyResponse: Array, peakOffset: number, 
+ * @param {number} minFreq - Lower frequency bound of the sweep in Hz (default 20)
+ * @param {number} maxFreq - Upper frequency bound of the sweep in Hz (default 20000)
+ * @returns {{left: Float32Array, right: Float32Array, length: number, frequencyResponse: Array, peakOffset: number,
  *   inverseFilter: Float32Array
  * }}
  */
-function generateTSP(length = 65536, sampleRate = 48000, channel = 'all') {
+function generateTSP(length = 65536, sampleRate = 48000, channel = 'all', minFreq = 20, maxFreq = 20000) {
     if (!this.initialized) {
         return null;
     }
@@ -253,40 +340,71 @@ function generateTSP(length = 65536, sampleRate = 48000, channel = 'all') {
     const N = 1 << Math.ceil(Math.log2(length));
     const halfN = N >>> 1;
 
+    // Clamp and sanitize band limits. Allow the usable range [1, Nyquist - 1] Hz.
+    const nyquist = sampleRate / 2;
+    const nyquistLimit = Math.max(2, Math.floor(nyquist) - 1);
+    const fLo = Math.max(1, Math.min(minFreq, nyquistLimit - 1));
+    const fHi = Math.max(fLo + 1, Math.min(maxFreq, nyquistLimit));
+
+    // Record sweep band on the instance so analysis code can reference it
+    this.sweepMinFreq = fLo;
+    this.sweepMaxFreq = fHi;
+
+    // Translate band limits to FFT bin indices
+    const kLo = Math.max(1, Math.floor(fLo * N / sampleRate));
+    const kHi = Math.min(halfN - 1, Math.ceil(fHi * N / sampleRate));
+
+    // Compute raised-cosine taper lengths outside the flat band.
+    // The specified band [kLo, kHi] stays at unity gain; outside, a short
+    // cosine skirt replaces the brick-wall cut to suppress sinc-like time-domain
+    // ringing that would otherwise be audible as edge-frequency tones.
+    const bandBins = kHi - kLo + 1;
+    const nominalTaperLen = 32;
+    const taperCap = Math.max(4, Math.min(nominalTaperLen, Math.floor(bandBins / 2)));
+    const taperLenLow = Math.min(taperCap, kLo - 1);
+    const taperLenHigh = Math.min(taperCap, (halfN - 1) - kHi);
+    const kLoExt = kLo - taperLenLow;
+    const kHiExt = kHi + taperLenHigh;
+
     // Create frequency-domain representation of TSP signal
     const real = new Float32Array(N);
     const imag = new Float32Array(N);
     const invReal = new Float32Array(N);
     const invImag = new Float32Array(N);
 
-    // Populate frequency-domain arrays with quadratic phase values
-    // For a time-stretched pulse, the phase is proportional to the square of the frequency
-    for (let k = 1; k < halfN; k++) {
+    // Populate the extended range [kLoExt, kHiExt]. Inside [kLo, kHi] the weight
+    // is 1; outside, a raised-cosine half window fades to 0 over taperLen bins.
+    for (let k = kLoExt; k <= kHiExt; k++) {
+        let w;
+        if (k < kLo) {
+            const t = (k - kLoExt + 1) / (taperLenLow + 1);
+            w = 0.5 * (1 - Math.cos(Math.PI * t));
+        } else if (k > kHi) {
+            const t = (kHiExt - k + 1) / (taperLenHigh + 1);
+            w = 0.5 * (1 - Math.cos(Math.PI * t));
+        } else {
+            w = 1;
+        }
+
         // Phase function: -2πk²/N creates a quadratic phase shift
         // This results in a logarithmic frequency sweep when converted to time domain
         const phi = -2 * Math.PI * k * k / N;
 
-        // Calculate sine and cosine values for the phase
-        const c = Math.cos(phi);
-        const s = Math.sin(phi);
+        // Calculate sine and cosine values, weighted by the taper
+        const c = w * Math.cos(phi);
+        const s = w * Math.sin(phi);
 
-        // Forward TSP (quadratic phase spectrum)
+        // Forward TSP (quadratic phase spectrum, tapered at band edges)
         real[k] = c;
         imag[k] = s;
         real[N - k] = c;       // Conjugate symmetric for real output
         imag[N - k] = -s;      // Negative for complex conjugate
 
-        // Inverse filter (negative quadratic phase)
+        // Inverse filter (negative quadratic phase, same taper so product is w²)
         invReal[k] = c;
         invImag[k] = -s;       // Negative sign for inverse filter
         invReal[N - k] = c;    // Conjugate symmetric
         invImag[N - k] = s;    // Positive for complex conjugate
-    }
-
-    // Use real[0] = real[N/2] = 1 for a flat amplitude spectrum
-    real[0] = 1;
-    if (N % 2 === 0) {
-        real[N / 2] = 1;
     }
 
     // Create FFT processor
@@ -312,7 +430,15 @@ function generateTSP(length = 65536, sampleRate = 48000, channel = 'all') {
     for (let i = 0; i < N; i++) sumSq += tspSignal[i] * tspSignal[i];
     const rms = Math.sqrt(sumSq / N);
     const targetRms = Math.pow(10, -3 / 20); // -3dB
-    const norm = rms > 1e-9 ? targetRms / rms : 1;
+    let norm = rms > 1e-9 ? targetRms / rms : 1;
+
+    // Narrowband TSPs can have a higher crest factor, so cap the peak below full scale
+    let tspPeak = 0;
+    for (let i = 0; i < N; i++) tspPeak = Math.max(tspPeak, Math.abs(tspSignal[i]));
+    const peakCeiling = 0.95;
+    if (tspPeak * norm > peakCeiling) {
+        norm = peakCeiling / tspPeak;
+    }
     for (let i = 0; i < N; i++) tspSignal[i] *= norm;
 
     // Normalize inverse filter to peak of 1.0
@@ -374,12 +500,13 @@ function generateTSP(length = 65536, sampleRate = 48000, channel = 'all') {
     }
     this.tspPeakOffset = maxPos;
     
-    // Create a frequency response curve (flat for TSP)
+    // Create a frequency response curve (flat for TSP) across the sweep band
     const freqResponseLength = 128;
     const freqResponse = new Array(freqResponseLength);
+    const logRatio = Math.log10(fHi / fLo);
     for (let i = 0; i < freqResponseLength; i++) {
         freqResponse[i] = {
-            frequency: 20 * Math.pow(10, i * Math.log10(20000 / 20) / (freqResponseLength - 1)),
+            frequency: fLo * Math.pow(10, i * logRatio / (freqResponseLength - 1)),
             magnitude: 0
         };
     }

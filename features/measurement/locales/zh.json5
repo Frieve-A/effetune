@@ -21,6 +21,10 @@
 "help:sampleRate": "指定测量时的采样频率。", // Help text for sample rate
 "label:sweepLength": "扫描长度（采样点）：", // Label for sweep length selection
 "help:sweepLength": "指定测量信号的采样长度。", // Help text for sweep length
+"label:sweepMinFreq": "扫描最低频率（Hz）：", // Label for sweep minimum frequency
+"help:sweepMinFreq": "扫描信号的最低频率（Hz）。可从 1 Hz 设置到所选采样频率的奈奎斯特频率以下。测试信号也会被限制在此频带。（默认：20 Hz）", // Help text for sweep min frequency
+"label:sweepMaxFreq": "扫描最高频率（Hz）：", // Label for sweep maximum frequency
+"help:sweepMaxFreq": "扫描信号的最高频率（Hz）。超过所选采样频率的奈奎斯特频率的值会被自动限制。测试信号也会被限制在此频带。（默认：20000 Hz）", // Help text for sweep max frequency
 "label:averaging": "同步平均：", // Label for synchronous averaging selection
 "help:averaging": "指定在同一测量点重复测量的次数，以提高测量精度。", // Help text for averaging
 "button:next": "下一步", // Next button in configuration form to move to the Level Adjustment Screen

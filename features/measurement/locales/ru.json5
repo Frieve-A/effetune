@@ -21,6 +21,10 @@
   "help:sampleRate": "Укажите частоту дискретизации при проведении измерений.", // Help text for sample rate
   "label:sweepLength": "Длина сигнала (сэмплы):", // Label for sweep length selection
   "help:sweepLength": "Указывает длину измерительного сигнала в сэмплах.", // Help text for sweep length
+  "label:sweepMinFreq": "Минимальная частота свипа (Гц):", // Label for sweep minimum frequency
+  "help:sweepMinFreq": "Минимальная частота сигнала свипа в Гц. Можно установить от 1 Гц до значения чуть ниже частоты Найквиста выбранной частоты дискретизации. Тестовый сигнал также ограничивается этим диапазоном. (По умолчанию: 20 Гц)", // Help text for sweep min frequency
+  "label:sweepMaxFreq": "Максимальная частота свипа (Гц):", // Label for sweep maximum frequency
+  "help:sweepMaxFreq": "Максимальная частота сигнала свипа в Гц. Значения выше частоты Найквиста выбранной частоты дискретизации автоматически ограничиваются. Тестовый сигнал также ограничивается этим диапазоном. (По умолчанию: 20000 Гц)", // Help text for sweep max frequency
   "label:averaging": "Синхронное усреднение:", // Label for synchronous averaging selection
   "help:averaging": "Укажите количество повторений измерения в одной точке для повышения точности.", // Help text for averaging
   "button:next": "Далее", // Next button in configuration form to move to the Level Adjustment Screen

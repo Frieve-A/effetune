@@ -111,10 +111,14 @@ const SweepMeasurement = {
             
             const sweepLength = parseInt(this.measurementConfig.sweepLength);
             const sampleRate = audioUtils.audioContext.sampleRate;
+            const sweepMinFreq = this.currentMeasurement.sweepMinFreq;
+            const sweepMaxFreq = this.currentMeasurement.sweepMaxFreq;
             const sweepBuffer = audioUtils.generateTSP(
-                sweepLength, 
-                sampleRate, 
-                outputChannel
+                sweepLength,
+                sampleRate,
+                outputChannel,
+                sweepMinFreq,
+                sweepMaxFreq
             );
             
             // Update the graph to show the entire measurement duration

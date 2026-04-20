@@ -118,6 +118,12 @@ class MeasurementController {
         // Get actual sample rate that will be used
         const actualSampleRate = audioUtils.audioContext ? audioUtils.audioContext.sampleRate : preferredSampleRate;
         
+        // Clamp sweep min/max frequency to [1, Nyquist - 1] of the actual sample rate
+        const nyquistLimit = Math.max(2, Math.floor(actualSampleRate / 2) - 1);
+        const sweepMinFreq = Math.max(1, Math.min(parseFloat(config.sweepMinFreq) || 20, nyquistLimit - 1));
+        const requestedMax = parseFloat(config.sweepMaxFreq) || 20000;
+        const sweepMaxFreq = Math.max(sweepMinFreq + 1, Math.min(requestedMax, nyquistLimit));
+
         // Create new measurement object with actual sample rate
         this.currentMeasurement = {
             id: dataStorage.generateId(),
@@ -130,6 +136,8 @@ class MeasurementController {
             requestedSampleRate: preferredSampleRate, // Store the requested rate
             sampleRate: actualSampleRate, // Store the actual rate used
             sweepLength: config.sweepLength,
+            sweepMinFreq: sweepMinFreq,
+            sweepMaxFreq: sweepMaxFreq,
             averaging: config.averaging,
             points: [],
             correctionLowFreq: 20,

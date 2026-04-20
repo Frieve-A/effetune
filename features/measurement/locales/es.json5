@@ -21,6 +21,10 @@
 "help:sampleRate": "Especifica la frecuencia de muestreo al realizar mediciones.", // Help text for sample rate
 "label:sweepLength": "Longitud de barrido (muestras):", // Label for sweep length selection
 "help:sweepLength": "Especifica la longitud de la señal de medición en muestras.", // Help text for sweep length
+"label:sweepMinFreq": "Frecuencia mínima del barrido (Hz):", // Label for sweep minimum frequency
+"help:sweepMinFreq": "Frecuencia mínima de la señal de barrido en Hz. Configurable desde 1 Hz hasta justo por debajo de la frecuencia de Nyquist de la frecuencia de muestreo seleccionada. La señal de prueba también se limita a este rango. (Predeterminado: 20 Hz)", // Help text for sweep min frequency
+"label:sweepMaxFreq": "Frecuencia máxima del barrido (Hz):", // Label for sweep maximum frequency
+"help:sweepMaxFreq": "Frecuencia máxima de la señal de barrido en Hz. Los valores superiores a la frecuencia de Nyquist de la frecuencia de muestreo seleccionada se limitan automáticamente. La señal de prueba también se limita a este rango. (Predeterminado: 20000 Hz)", // Help text for sweep max frequency
 "label:averaging": "Promediado síncrono:", // Label for synchronous averaging selection
 "help:averaging": "Especifica el número de repeticiones de la medición en el mismo punto para mayor precisión.", // Help text for averaging
 "button:next": "Siguiente", // Next button in configuration form to move to the Level Adjustment Screen

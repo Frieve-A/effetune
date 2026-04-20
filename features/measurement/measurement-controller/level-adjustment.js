@@ -127,10 +127,18 @@ const LevelAdjustment = {
                 const noiseLevel = parseFloat(document.getElementById('noiseLevel').value);
                 console.log(`Starting white noise with level: ${noiseLevel}dB`);
                 
+                // Use the band limits from the current measurement (already clamped to
+                // the usable [1, Nyquist - 1] range) so the test signal is band-limited
+                // to match the sweep configuration.
+                const bandMin = this.currentMeasurement ? this.currentMeasurement.sweepMinFreq : undefined;
+                const bandMax = this.currentMeasurement ? this.currentMeasurement.sweepMaxFreq : undefined;
+
                 const result = await audioUtils.startWhiteNoise(
                     noiseLevel,
                     this.measurementConfig.audioOutputId,
-                    outputChannel
+                    outputChannel,
+                    bandMin,
+                    bandMax
                 );
                 
                 if (result) {
