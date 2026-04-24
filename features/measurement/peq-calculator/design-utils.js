@@ -3,7 +3,7 @@
  */
 import { smoothLog } from './smoothing.js';
 import { findPeaksDips } from './peak-detection.js';
-import { fitPEQ, DEFAULT_REGULARIZATION } from './optimization.js';
+import { fitPEQ, DEFAULT_REGULARIZATION, qMaxForGain } from './optimization.js';
 
 /**
  * Post-process optimized PEQ parameters: merge close bands and limit count.
@@ -65,9 +65,9 @@ export function processCollisions(bands, maxBands) {
                // Use lower Q (wider band)
                currentBand.Q = Math.min(currentBand.Q, nextBand.Q);
 
-               // Clamp parameters after merge
+               // Clamp parameters after merge (Q upper bound depends on peak/dip sign)
                currentBand.gain = Math.max(-18, Math.min(18, currentBand.gain));
-               currentBand.Q = Math.max(0.5, Math.min(10, currentBand.Q));
+               currentBand.Q = Math.max(0.5, Math.min(qMaxForGain(currentBand.gain), currentBand.Q));
                currentBand.frequency = Math.max(20, Math.min(20000, currentBand.frequency));
 
           } else {
@@ -310,7 +310,8 @@ export function designPEQ(freq, magDb, bandCount, binsPerOct, lowFreq, highFreq,
                   const bandwidth = f2 - f1;
                   if (bandwidth > 1e-3) { // Ensure bandwidth is positive
                       Q = fc / bandwidth;
-                      Q = Math.max(0.5, Math.min(10, Q)); // Clamp Q
+                      // Sign-dependent upper bound: peak up to 1/6 oct, dip up to 1/3 oct
+                      Q = Math.max(0.5, Math.min(qMaxForGain(limitedGain), Q));
                   }
               }
 

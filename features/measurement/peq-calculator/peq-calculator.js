@@ -5,7 +5,7 @@
 import { smoothLog } from './smoothing.js';
 import { findPeaksDips } from './peak-detection.js';
 import { peqResponse } from './filter-response.js';
-import { fitPEQ, errorFunctionLogSpace, DEFAULT_REGULARIZATION } from './optimization.js';
+import { fitPEQ, errorFunctionLogSpace, DEFAULT_REGULARIZATION, qMaxForGain } from './optimization.js';
 import { processCollisions, designPEQ, createDefaultBands } from './design-utils.js';
 
 class PEQCalculator {
@@ -70,12 +70,17 @@ class PEQCalculator {
       const peqParams = designPEQ(freq, magN, bandCount, binsPerOct, this.lowFreq, this.highFreq, this.fs, { regularization });
 
       // --- 3. Format and clamp the final parameters ---
-      return peqParams.map(b => ({
-        frequency: Math.max(20, Math.min(20000, Math.round(b.frequency))), // Clamp frequency to standard audio range
-        gain: Math.max(-18, Math.min(18, +b.gain.toFixed(1))), // Clamp gain and round
-        Q: Math.max(0.1, Math.min(10, +b.Q.toFixed(2))), // Clamp Q and round
-        type: 'peaking' // This implementation only uses peaking filters
-      }));
+      return peqParams.map(b => {
+        const clampedGain = Math.max(-18, Math.min(18, +b.gain.toFixed(1)));
+        // Sign-dependent Q upper bound: peaks <= 1/6 oct (Q ≈ 8.65), dips <= 1/3 oct (Q ≈ 4.32)
+        const qUpper = qMaxForGain(clampedGain);
+        return {
+          frequency: Math.max(20, Math.min(20000, Math.round(b.frequency))),
+          gain: clampedGain,
+          Q: Math.max(0.1, Math.min(qUpper, +b.Q.toFixed(2))),
+          type: 'peaking'
+        };
+      });
     } catch (error) {
       console.error("Error in calculatePEQParameters during PEQ design:", error);
       // Fallback to default bands in case of any error during design

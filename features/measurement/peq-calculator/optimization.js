@@ -13,13 +13,49 @@ export const DEFAULT_REGULARIZATION = {
    * Higher values promote smaller gain adjustments.
    */
   gainWeight: 0.0,
-  
+
   /**
    * Default weight for Q regularization (0-1 recommended).
    * Higher values promote wider bandwidth filters.
    */
   qWeight: 1.0
 };
+
+// Q upper bounds derived from minimum bandwidth (octaves):
+//   BW(oct) -> Q = sqrt(2^BW) / (2^BW - 1)
+// Peak: min 1/6 oct -> Q_MAX_PEAK ≈ 8.6511
+// Dip : min 1/3 oct -> Q_MAX_DIP  ≈ 4.3187
+export const Q_MAX_PEAK = Math.sqrt(Math.pow(2, 1 / 6)) / (Math.pow(2, 1 / 6) - 1);
+export const Q_MAX_DIP = Math.sqrt(Math.pow(2, 1 / 3)) / (Math.pow(2, 1 / 3) - 1);
+export const LOG_Q_MAX_PEAK = Math.log10(Q_MAX_PEAK);
+export const LOG_Q_MAX_DIP = Math.log10(Q_MAX_DIP);
+
+// Weight multiplier applied to Q regularization when Q exceeds the per-type cap.
+// Acts as a soft barrier so the optimizer is strongly discouraged from crossing it.
+const Q_CAP_BARRIER_WEIGHT = 10;
+
+// Hysteresis threshold (dB). Gains with |g| below this are treated as dips
+// (stricter cap) so the cap does not flip rapidly around g = 0.
+const PEAK_DIP_HYSTERESIS_DB = 0.3;
+
+/**
+ * Return Q upper bound for a given gain, using a hysteresis band around 0 dB.
+ * Only clearly positive gains (> hysteresis) are treated as peaks.
+ * @param {number} gainDb
+ * @returns {number}
+ */
+export function qMaxForGain(gainDb) {
+  return gainDb > PEAK_DIP_HYSTERESIS_DB ? Q_MAX_PEAK : Q_MAX_DIP;
+}
+
+/**
+ * Return log10(Q) upper bound for a given gain.
+ * @param {number} gainDb
+ * @returns {number}
+ */
+export function logQMaxForGain(gainDb) {
+  return gainDb > PEAK_DIP_HYSTERESIS_DB ? LOG_Q_MAX_PEAK : LOG_Q_MAX_DIP;
+}
 
 /**
  * Compute the error vector for least squares optimization (log-space parameters).
@@ -102,11 +138,16 @@ export function errorFunctionLogSpace(logParams, freq, targetDb, lowFreq, highFr
     // Add Q regularization errors (for each filter)
     if (regularization.qWeight > 0) {
       for (let i = 0; i < numFilters; i++) {
+        const gain = logParams[i * 3];
         const logQ = logParams[i * 3 + 1];
         const Q = 10**logQ; // Convert to actual Q
-        // Only penalize Q > 1 (narrow filters)
-        const qPenalty = Math.max(0, Q - 1.0);
-        const qRegError = regularization.qWeight * qPenalty;
+        // Sign-dependent cap: peaks allow up to Q_MAX_PEAK, dips up to Q_MAX_DIP.
+        const qCap = qMaxForGain(gain);
+        // Soft penalty above Q=1 (existing behavior, keeps filters wide by default)
+        const qSoft = Math.max(0, Q - 1.0);
+        // Hard barrier above the sign-dependent cap (strong disincentive to exceed it)
+        const qBarrier = Q_CAP_BARRIER_WEIGHT * Math.max(0, Q - qCap);
+        const qRegError = regularization.qWeight * (qSoft + qBarrier);
         errors.push(qRegError);
       }
     }
@@ -234,20 +275,25 @@ function calculateJacobian(params, freq, targetDb, boundsLow, boundsHigh, lowFre
         regTermIdx += numFilters; // Move to next block of regularization terms
       }
       
-      // Handle Q regularization term (qWeight * (Q - 1))
+      // Handle Q regularization term: qWeight * ( max(0, Q-1) + barrier*max(0, Q-qCap) )
+      // The cap qCap depends on the sign of the corresponding filter's gain, but as a
+      // piecewise-constant function of gain its derivative w.r.t. gain is 0 almost
+      // everywhere — so only the logQ derivative is non-zero.
       if (regularization.qWeight > 0) {
-        // For each filter, add the Q regularization derivative
         for (let k = 0; k < numFilters; k++) {
-          // Initialize derivative for the Q regularization of each filter
           jacobian[i][regTermIdx + k] = 0;
-          
+
           if (paramType === 1 && k === filterIdx) { // Only affects this specific Q parameter
+            const gainK = params[k * 3];
             const logQ = params[k * 3 + 1];
             const Q = 10**logQ;
-            // Only apply regularization for Q > 1
-            if (Q > 1.0) {
-              // d(qWeight * (Q - 1))/d(logQ) = qWeight * Q * ln(10)
-              const derivative = regularization.qWeight * Q * Math.log(10);
+            const qCap = qMaxForGain(gainK);
+            let factor = 0;
+            if (Q > 1.0) factor += 1;
+            if (Q > qCap) factor += Q_CAP_BARRIER_WEIGHT;
+            if (factor > 0) {
+              // d(Q)/d(logQ) = Q * ln(10)
+              const derivative = regularization.qWeight * factor * Q * Math.log(10);
               jacobian[i][regTermIdx + k] = derivative;
             }
           }
@@ -466,7 +512,9 @@ export function fitPEQ(freq, targetDb, initParams, lowFreq, highFreq, fs, option
   // [gain, log10(Q), log10(fc)]
   let params = [];
   const logQMin = Math.log10(0.5); // Q lower bound
-  const logQMax = Math.log10(10);  // Q upper bound
+  // Upper bound uses the looser (peak) cap; per-iteration sign-dependent clamping
+  // tightens it to the dip cap when the band's gain is non-positive.
+  const logQMax = LOG_Q_MAX_PEAK;
   const logFcMin = Math.log10(lowFreq * 0.9); // Fc lower bound (slightly below lowFreq)
   const logFcMax = Math.log10(highFreq * 1.1); // Fc upper bound (slightly above highFreq)
   const gainMin = -18;
@@ -475,12 +523,13 @@ export function fitPEQ(freq, targetDb, initParams, lowFreq, highFreq, fs, option
   for (let i = 0; i < numFilters; i++) {
       const baseIdx = i * 3;
       const gain = Math.max(gainMin, Math.min(gainMax, initParams[baseIdx]));
-      const Q = Math.max(0.5, Math.min(10, initParams[baseIdx + 1]));
+      const qCap = qMaxForGain(gain);
+      const Q = Math.max(0.5, Math.min(qCap, initParams[baseIdx + 1]));
       const fc = Math.max(lowFreq * 0.9, Math.min(highFreq * 1.1, initParams[baseIdx + 2]));
 
       params.push(
           gain,
-          Math.max(logQMin, Math.min(logQMax, Math.log10(Q))), // Clamp logQ
+          Math.max(logQMin, Math.min(logQMaxForGain(gain), Math.log10(Q))), // Clamp logQ
           Math.max(logFcMin, Math.min(logFcMax, Math.log10(fc))) // Clamp logFc
       );
   }
@@ -579,6 +628,17 @@ export function fitPEQ(freq, targetDb, initParams, lowFreq, highFreq, fs, option
 
     // Apply bounds constraints
     newParams = newParams.map((p, i) => Math.max(boundsLow[i], Math.min(boundsHigh[i], p)));
+
+    // Sign-dependent Q cap: dips (gain <= hysteresis threshold) use the stricter
+    // dip cap (1/3 oct). Peaks above the hysteresis band keep the peak cap (1/6 oct).
+    for (let f = 0; f < numFilters; f++) {
+      const gainIdx = f * 3;
+      const logQIdx = f * 3 + 1;
+      const logQUpper = logQMaxForGain(newParams[gainIdx]);
+      if (newParams[logQIdx] > logQUpper) {
+        newParams[logQIdx] = logQUpper;
+      }
+    }
 
     // Calculate cost with the new parameters
     const newErrors = errorFunctionLogSpace(newParams, freq, targetDb, lowFreq, highFreq, fs, regularization);
