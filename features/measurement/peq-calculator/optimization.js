@@ -34,6 +34,9 @@ export const LOG_Q_MAX_DIP = Math.log10(Q_MAX_DIP);
 // Acts as a soft barrier so the optimizer is strongly discouraged from crossing it.
 const Q_CAP_BARRIER_WEIGHT = 10;
 
+// Frequently-used mathematical constants hoisted to module scope
+const LN10 = Math.log(10);
+
 // Hysteresis threshold (dB). Gains with |g| below this are treated as dips
 // (stricter cap) so the cap does not flip rapidly around g = 0.
 const PEAK_DIP_HYSTERESIS_DB = 0.3;
@@ -73,8 +76,16 @@ export function logQMaxForGain(gainDb) {
  */
 export function errorFunctionLogSpace(logParams, freq, targetDb, lowFreq, highFreq, fs, regularization = DEFAULT_REGULARIZATION) {
   const nFreq = freq.length;
-  const combinedRespDb = new Array(nFreq).fill(0);
-  const numFilters = Math.floor(logParams.length / 3);
+  const numFilters = (logParams.length / 3) | 0;
+
+  const hasReg = !!regularization && (regularization.gainWeight > 0 || regularization.qWeight > 0);
+  const gainTerms = hasReg && regularization.gainWeight > 0 ? numFilters : 0;
+  const qTerms = hasReg && regularization.qWeight > 0 ? numFilters : 0;
+  const totalErrors = nFreq + gainTerms + qTerms;
+
+  // Preallocate combined response and final errors array (avoids push() resizing).
+  const combinedRespDb = new Array(nFreq);
+  for (let k = 0; k < nFreq; k++) combinedRespDb[k] = 0;
 
   // Calculate the combined response of all PEQ filters
   for (let i = 0; i < numFilters; i++) {
@@ -83,8 +94,10 @@ export function errorFunctionLogSpace(logParams, freq, targetDb, lowFreq, highFr
     const Q = 10**logParams[baseIdx + 1]; // Convert logQ to Q
     const fc = 10**logParams[baseIdx + 2]; // Convert logFc to fc
 
-    // Skip if parameters are invalid (e.g., during numerical differentiation)
-    if (fc <= 0 || Q <= 0 || !isFinite(gain) || !isFinite(Q) || !isFinite(fc)) {
+    // Skip if parameters are invalid (e.g., during numerical differentiation).
+    // Equivalent to the previous !isFinite + <=0 guard; NaN compares false so the
+    // (fc > 0 && Q > 0) test also rejects NaN. Inf is caught by peqResponse's own guards.
+    if (!(fc > 0) || !(Q > 0) || gain !== gain) {
          console.warn(`Skipping filter ${i} due to invalid parameters: gain=${gain}, Q=${Q}, fc=${fc}`);
          continue;
     }
@@ -95,64 +108,53 @@ export function errorFunctionLogSpace(logParams, freq, targetDb, lowFreq, highFr
     }
   }
 
-  // Calculate the error in the linear amplitude domain
-  // Error aims to make target * response = 1 (0 dB flat)
-  const errors = new Array(nFreq);
+  // Calculate the error in the linear amplitude domain.
+  // Error aims to make target * response = 1 (0 dB flat).
+  const errors = new Array(totalErrors);
   const lo = lowFreq, hi = highFreq;
+  const INV_20 = 1 / 20;
 
   for (let k = 0; k < nFreq; k++) {
-      // Apply weighting: 0 outside the [lowFreq, highFreq] range
-      const weight = (freq[k] < lo || freq[k] > hi) ? 0 : 1;
-
-      const targetLin = 10**(targetDb[k] / 20);
-      const respLin = 10**(combinedRespDb[k] / 20);
-
-      // Error = Target_Linear * Response_Linear - 1.0 (deviation from flat 0dB)
-      // Weighted error
-      errors[k] = weight * (targetLin * respLin - 1.0);
-
-       if (typeof errors[k] !== 'number' || !isFinite(errors[k])) {
-           console.warn(`errorFunctionLogSpace: Invalid error calculated at freq ${freq[k]}, setting to 0.`);
-           errors[k] = 0; // Set to 0 to avoid disrupting optimization
-       }
+      const fk = freq[k];
+      if (fk < lo || fk > hi) {
+          errors[k] = 0; // outside weighted range
+          continue;
+      }
+      const targetLin = 10**(targetDb[k] * INV_20);
+      const respLin = 10**(combinedRespDb[k] * INV_20);
+      const e = targetLin * respLin - 1.0;
+      // NaN/Inf guard (e !== e catches NaN; finite range catches Infinity cheaply)
+      errors[k] = (e === e && e < 1e308 && e > -1e308) ? e : 0;
   }
 
-  // Add regularization errors if regularization is enabled
-  if (regularization && (regularization.gainWeight > 0 || regularization.qWeight > 0)) {
-    // Calculate regularization scale factor based on response errors
-    // This helps balance regularization terms with frequency response errors
-    const responseErrorMagnitude = Math.sqrt(
-      errors.reduce((sum, err) => sum + err * err, 0) / errors.length
-    );
-    
-    // Add gain regularization errors (for each filter)
-    if (regularization.gainWeight > 0) {
+  // Add regularization errors at their preallocated slots
+  if (hasReg) {
+    let idx = nFreq;
+
+    if (gainTerms > 0) {
+      const gw = regularization.gainWeight;
       for (let i = 0; i < numFilters; i++) {
         const gain = logParams[i * 3];
-        // Use absolute value of gain to penalize large gains in either direction
-        const gainRegError = regularization.gainWeight * Math.abs(gain);
-        errors.push(gainRegError);
+        // |gain| via ternary (faster than Math.abs in this harness)
+        const absGain = gain < 0 ? -gain : gain;
+        errors[idx++] = gw * absGain;
       }
     }
-    
-    // Add Q regularization errors (for each filter)
-    if (regularization.qWeight > 0) {
+
+    if (qTerms > 0) {
+      const qw = regularization.qWeight;
       for (let i = 0; i < numFilters; i++) {
         const gain = logParams[i * 3];
-        const logQ = logParams[i * 3 + 1];
-        const Q = 10**logQ; // Convert to actual Q
-        // Sign-dependent cap: peaks allow up to Q_MAX_PEAK, dips up to Q_MAX_DIP.
-        const qCap = qMaxForGain(gain);
-        // Soft penalty above Q=1 (existing behavior, keeps filters wide by default)
-        const qSoft = Math.max(0, Q - 1.0);
-        // Hard barrier above the sign-dependent cap (strong disincentive to exceed it)
-        const qBarrier = Q_CAP_BARRIER_WEIGHT * Math.max(0, Q - qCap);
-        const qRegError = regularization.qWeight * (qSoft + qBarrier);
-        errors.push(qRegError);
+        const Q = 10**logParams[i * 3 + 1];
+        const qCap = gain > PEAK_DIP_HYSTERESIS_DB ? Q_MAX_PEAK : Q_MAX_DIP;
+        // max(0, Q-1) via ternary
+        const qSoft = Q > 1.0 ? Q - 1.0 : 0;
+        const qBarrier = Q > qCap ? Q_CAP_BARRIER_WEIGHT * (Q - qCap) : 0;
+        errors[idx++] = qw * (qSoft + qBarrier);
       }
     }
   }
-  
+
   return errors;
 }
 
@@ -174,29 +176,40 @@ function calculateJacobian(params, freq, targetDb, boundsLow, boundsHigh, lowFre
   const baseErrors = errorFunctionLogSpace(params, freq, targetDb, lowFreq, highFreq, fs, regularization);
   const numParams = params.length;
   const numErrorTerms = baseErrors.length; // Include regularization terms
-  const numFilters = Math.floor(params.length / 3);
-  
+  const numFilters = (params.length / 3) | 0;
+  const nFreq = freq.length;
+
   // Initialize Jacobian matrix with the correct size
-  const jacobian = Array(numParams).fill(null).map(() => new Array(numErrorTerms).fill(0));
+  const jacobian = new Array(numParams);
+  for (let i = 0; i < numParams; i++) {
+    const row = new Array(numErrorTerms);
+    for (let j = 0; j < numErrorTerms; j++) row[j] = 0;
+    jacobian[i] = row;
+  }
 
   // Optimal step size 'h' for numerical differentiation
   const eps = 2.22e-16; // Machine epsilon
   const baseStep = Math.sqrt(eps);
+  const hMin = eps * 100;
 
   for (let i = 0; i < numParams; i++) {
     const currentParam = params[i];
-    // Calculate step size 'h', scaled by parameter magnitude
-    let h = baseStep * Math.max(1.0, Math.abs(currentParam));
-    // Ensure h is not excessively small compared to parameter
-    h = Math.max(h, eps * 100);
+    // |currentParam| — ternary is faster than Math.abs in this harness
+    const absP = currentParam < 0 ? -currentParam : currentParam;
+    // h = baseStep * max(1, |p|), then ensured >= hMin
+    const scale = absP > 1.0 ? absP : 1.0;
+    let h = baseStep * scale;
+    if (h < hMin) h = hMin;
 
-    const paramsPlus = [...params];
-    const paramsMinus = [...params];
+    // .slice() is typically faster than spread for large numeric arrays
+    const paramsPlus = params.slice();
+    const paramsMinus = params.slice();
 
     // Check bounds and decide differentiation method
     let errorsPlus, errorsMinus;
     const canStepUp = currentParam + h <= boundsHigh[i];
     const canStepDown = currentParam - h >= boundsLow[i];
+    const jacRow = jacobian[i];
 
     if (canStepUp && canStepDown) {
       // Central difference
@@ -204,104 +217,83 @@ function calculateJacobian(params, freq, targetDb, boundsLow, boundsHigh, lowFre
       paramsMinus[i] = currentParam - h;
       errorsPlus = errorFunctionLogSpace(paramsPlus, freq, targetDb, lowFreq, highFreq, fs, regularization);
       errorsMinus = errorFunctionLogSpace(paramsMinus, freq, targetDb, lowFreq, highFreq, fs, regularization);
-      
-      // Ensure we're using the full error vector (including regularization terms)
+
+      const inv2h = 1 / (2 * h);
       for (let j = 0; j < numErrorTerms; j++) {
-        const derivative = (errorsPlus[j] - errorsMinus[j]) / (2 * h);
-        jacobian[i][j] = isFinite(derivative) ? derivative : 0;
+        const d = (errorsPlus[j] - errorsMinus[j]) * inv2h;
+        // Finite check via NaN self-compare + Infinity range — cheaper than isFinite()
+        jacRow[j] = (d === d && d < 1e308 && d > -1e308) ? d : 0;
       }
     } else if (canStepUp) {
       // Forward difference (at lower bound)
-      // Try a smaller step first if central diff failed due to bound
-      h = Math.min(h, (boundsHigh[i] - currentParam) * 0.5);
-      if (h < eps * 100) { // If step becomes too small, assume zero derivative
-        for(let j = 0; j < numErrorTerms; j++) {
-          jacobian[i][j] = 0;
-        }
+      const stepRoom = (boundsHigh[i] - currentParam) * 0.5;
+      if (stepRoom < h) h = stepRoom;
+      if (h < hMin) {
+        // already zero-initialized — nothing to do
       } else {
         paramsPlus[i] = currentParam + h;
         errorsPlus = errorFunctionLogSpace(paramsPlus, freq, targetDb, lowFreq, highFreq, fs, regularization);
+        const invH = 1 / h;
         for (let j = 0; j < numErrorTerms; j++) {
-          const derivative = (errorsPlus[j] - baseErrors[j]) / h;
-          jacobian[i][j] = isFinite(derivative) ? derivative : 0;
+          const d = (errorsPlus[j] - baseErrors[j]) * invH;
+          jacRow[j] = (d === d && d < 1e308 && d > -1e308) ? d : 0;
         }
       }
     } else if (canStepDown) {
       // Backward difference (at upper bound)
-      h = Math.min(h, (currentParam - boundsLow[i]) * 0.5);
-      if (h < eps * 100) {
-        for(let j = 0; j < numErrorTerms; j++) {
-          jacobian[i][j] = 0;
-        }
+      const stepRoom = (currentParam - boundsLow[i]) * 0.5;
+      if (stepRoom < h) h = stepRoom;
+      if (h < hMin) {
+        // already zero-initialized
       } else {
         paramsMinus[i] = currentParam - h;
         errorsMinus = errorFunctionLogSpace(paramsMinus, freq, targetDb, lowFreq, highFreq, fs, regularization);
+        const invH = 1 / h;
         for (let j = 0; j < numErrorTerms; j++) {
-          const derivative = (baseErrors[j] - errorsMinus[j]) / h;
-          jacobian[i][j] = isFinite(derivative) ? derivative : 0;
+          const d = (baseErrors[j] - errorsMinus[j]) * invH;
+          jacRow[j] = (d === d && d < 1e308 && d > -1e308) ? d : 0;
         }
-      }
-    } else {
-      // Cannot step in either direction (parameter likely fixed at bound)
-      for (let j = 0; j < numErrorTerms; j++) {
-        jacobian[i][j] = 0;
       }
     }
-    
-    // Special handling for direct regularization derivatives where we know the analytical form
-    // This avoids numerical differentiation imprecision for regularization terms
-    if (regularization && (regularization.gainWeight > 0 || regularization.qWeight > 0)) {
-      const freqLength = freq.length; // Number of frequency response error terms
-      let regTermIdx = freqLength; // Index where regularization terms start in error vector
-      
-      // Calculate which parameter type this is (gain, Q, or fc)
-      const paramType = i % 3; // 0=gain, 1=logQ, 2=logFc
-      const filterIdx = Math.floor(i / 3); // Which filter this parameter belongs to
-      
-      // Handle gain regularization term (|gain|)
-      if (regularization.gainWeight > 0) {
-        // For each filter, add the gain regularization derivative
-        for (let k = 0; k < numFilters; k++) {
-          // Initialize derivative for the regularization of each filter
-          jacobian[i][regTermIdx + k] = 0;
-          
-          if (paramType === 0 && k === filterIdx) { // Only affects the specific gain parameter
-            const gain = params[k * 3]; 
-            // d(gainWeight * |gain|)/d(gain) = gainWeight * sign(gain)
-            const derivative = regularization.gainWeight * (gain >= 0 ? 1.0 : -1.0);
-            jacobian[i][regTermIdx + k] = derivative;
-          }
-        }
-        regTermIdx += numFilters; // Move to next block of regularization terms
-      }
-      
-      // Handle Q regularization term: qWeight * ( max(0, Q-1) + barrier*max(0, Q-qCap) )
-      // The cap qCap depends on the sign of the corresponding filter's gain, but as a
-      // piecewise-constant function of gain its derivative w.r.t. gain is 0 almost
-      // everywhere — so only the logQ derivative is non-zero.
-      if (regularization.qWeight > 0) {
-        for (let k = 0; k < numFilters; k++) {
-          jacobian[i][regTermIdx + k] = 0;
+    // else: stuck at bound — row stays zero (already initialized)
 
-          if (paramType === 1 && k === filterIdx) { // Only affects this specific Q parameter
-            const gainK = params[k * 3];
-            const logQ = params[k * 3 + 1];
-            const Q = 10**logQ;
-            const qCap = qMaxForGain(gainK);
-            let factor = 0;
-            if (Q > 1.0) factor += 1;
-            if (Q > qCap) factor += Q_CAP_BARRIER_WEIGHT;
-            if (factor > 0) {
-              // d(Q)/d(logQ) = Q * ln(10)
-              const derivative = regularization.qWeight * factor * Q * Math.log(10);
-              jacobian[i][regTermIdx + k] = derivative;
-            }
+    // Analytical regularization derivatives (sparse: only the diagonal entry of
+    // the matching filter's block is non-zero). We first zero the regularization
+    // columns populated by numerical differentiation (they contain only noise since
+    // regularization depends on each filter's own gain/Q), then write the analytical
+    // value into the single relevant slot.
+    if (regularization && (regularization.gainWeight > 0 || regularization.qWeight > 0)) {
+      for (let j = nFreq; j < numErrorTerms; j++) jacRow[j] = 0;
+
+      const paramType = i % 3;               // 0=gain, 1=logQ, 2=logFc
+      const filterIdx = (i / 3) | 0;         // bit-shift floor (cheaper than Math.floor)
+      let regTermIdx = nFreq;
+
+      if (regularization.gainWeight > 0) {
+        if (paramType === 0) {
+          const gain = params[filterIdx * 3];
+          // d(w * |gain|)/d(gain) = w * sign(gain)
+          jacRow[regTermIdx + filterIdx] = regularization.gainWeight * (gain >= 0 ? 1.0 : -1.0);
+        }
+        regTermIdx += numFilters;
+      }
+
+      if (regularization.qWeight > 0) {
+        if (paramType === 1) {
+          const gainK = params[filterIdx * 3];
+          const Q = 10**params[filterIdx * 3 + 1];
+          const qCap = gainK > PEAK_DIP_HYSTERESIS_DB ? Q_MAX_PEAK : Q_MAX_DIP;
+          let factor = 0;
+          if (Q > 1.0) factor += 1;
+          if (Q > qCap) factor += Q_CAP_BARRIER_WEIGHT;
+          if (factor > 0) {
+            jacRow[regTermIdx + filterIdx] = regularization.qWeight * factor * Q * LN10;
           }
         }
       }
     }
   }
-  
+
   return jacobian;
 }
 
@@ -357,35 +349,43 @@ function calculateJtJandJte(jacobian, errors) {
   }
 
   // Initialize JᵀJ and Jᵀe arrays
-  const JtJ = Array(numParams).fill(null).map(() => Array(numParams).fill(0));
-  const Jte = Array(numParams).fill(0);
+  const JtJ = new Array(numParams);
+  for (let i = 0; i < numParams; i++) {
+    const row = new Array(numParams);
+    for (let j = 0; j < numParams; j++) row[j] = 0;
+    JtJ[i] = row;
+  }
+  const Jte = new Array(numParams);
+  for (let i = 0; i < numParams; i++) Jte[i] = 0;
 
   // Calculate JᵀJ = Jacobianᵀ * Jacobian
+  // jacobian entries and errors are guaranteed finite (guarded at write time),
+  // so the per-element isFinite checks from the previous implementation are dropped.
+  // Only the accumulated sum is sanity-checked (defensive, cheap).
   for (let i = 0; i < numParams; i++) {
-    for (let j = i; j < numParams; j++) { // Calculate only upper triangle + diagonal
+    const rowI = jacobian[i];
+    for (let j = i; j < numParams; j++) {
+      const rowJ = jacobian[j];
       let sum = 0;
       for (let k = 0; k < numErrorTerms; k++) {
-        // Ensure values are finite before multiplication
-        const val_i = isFinite(jacobian[i][k]) ? jacobian[i][k] : 0;
-        const val_j = isFinite(jacobian[j][k]) ? jacobian[j][k] : 0;
-        sum += val_i * val_j;
+        sum += rowI[k] * rowJ[k];
       }
-      JtJ[i][j] = isFinite(sum) ? sum : 0;
-      if (i !== j) {
-        JtJ[j][i] = JtJ[i][j]; // Symmetric matrix
-      }
+      // finite check via self-compare + range (no function call)
+      if (!(sum === sum && sum < 1e308 && sum > -1e308)) sum = 0;
+      JtJ[i][j] = sum;
+      if (i !== j) JtJ[j][i] = sum;
     }
   }
 
   // Calculate Jᵀe = Jacobianᵀ * errors
   for (let i = 0; i < numParams; i++) {
+    const rowI = jacobian[i];
     let sum = 0;
     for (let k = 0; k < numErrorTerms; k++) {
-      const val_jac = isFinite(jacobian[i][k]) ? jacobian[i][k] : 0;
-      const val_err = isFinite(errors[k]) ? errors[k] : 0;
-      sum += val_jac * val_err;
+      sum += rowI[k] * errors[k];
     }
-    Jte[i] = isFinite(sum) ? sum : 0;
+    if (!(sum === sum && sum < 1e308 && sum > -1e308)) sum = 0;
+    Jte[i] = sum;
   }
 
   return [JtJ, Jte];
@@ -400,49 +400,55 @@ function calculateJtJandJte(jacobian, errors) {
  */
 function solveEquation(A, b) {
   const n = b.length;
-  // Create copies to avoid modifying original arrays passed to fitPEQ
-  const a = A.map(row => [...row]);
-  const x = [...b]; // Will store results here temporarily
+  // Create copies to avoid modifying original arrays passed to fitPEQ (explicit
+  // loops avoid the double allocation of .map + spread).
+  const a = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const src = A[i];
+    const row = new Array(n);
+    for (let j = 0; j < n; j++) row[j] = src[j];
+    a[i] = row;
+  }
+  const x = new Array(n);
+  for (let i = 0; i < n; i++) x[i] = b[i];
 
   // Forward Elimination with Partial Pivoting
   for (let i = 0; i < n; i++) {
-    // Find pivot row (row with largest absolute value in column i, at or below row i)
+    // Find pivot row (row with largest |a[k][i]| at or below row i)
     let maxRow = i;
+    const pivVal = a[i][i];
+    let maxAbs = pivVal < 0 ? -pivVal : pivVal;
     for (let k = i + 1; k < n; k++) {
-      if (Math.abs(a[k][i]) > Math.abs(a[maxRow][i])) {
+      const v = a[k][i];
+      const av = v < 0 ? -v : v;
+      if (av > maxAbs) {
+        maxAbs = av;
         maxRow = k;
       }
     }
 
      // Swap rows i and maxRow in matrix A and vector x (representing b)
-     [a[i], a[maxRow]] = [a[maxRow], a[i]];
-     [x[i], x[maxRow]] = [x[maxRow], x[i]];
+     if (maxRow !== i) {
+       const tmpR = a[i]; a[i] = a[maxRow]; a[maxRow] = tmpR;
+       const tmpX = x[i]; x[i] = x[maxRow]; x[maxRow] = tmpX;
+     }
 
      // Check for singularity or near-singularity
      const pivot = a[i][i];
-     if (Math.abs(pivot) < 1e-12) {
+     if (pivot < 1e-12 && pivot > -1e-12) {
          // If pivot is near zero, the matrix is likely singular or ill-conditioned.
-          // Check if other elements in the column below are also near zero
           let nonZeroBelow = false;
-          for(let k=i+1; k<n; ++k) {
-              if(Math.abs(a[k][i]) >= 1e-12) {
-                  nonZeroBelow = true;
-                  break;
-              }
+          for (let k = i + 1; k < n; ++k) {
+              const v = a[k][i];
+              const av = v < 0 ? -v : v;
+              if (av >= 1e-12) { nonZeroBelow = true; break; }
           }
           if (!nonZeroBelow) {
-              // All elements below (and the pivot) are near zero.
-              // Treat column as linearly dependent. This step might fail if not handled.
-               console.warn(`solveEquation: Matrix appears singular at column ${i}. Pivot ~0.`);
-               // Option 1: Throw error (safer, forces LM to increase lambda)
-               throw new Error(`Matrix is singular or near-singular at column ${i}. Pivot: ${pivot}`);
-               // Option 2: Return zero vector (can sometimes allow LM to proceed)
-               // return new Array(n).fill(0);
+              console.warn(`solveEquation: Matrix appears singular at column ${i}. Pivot ~0.`);
+              throw new Error(`Matrix is singular or near-singular at column ${i}. Pivot: ${pivot}`);
           }
-          // If there's a non-zero element below, pivoting should have swapped it.
-          // Getting here might indicate a numerical issue.
-           console.warn(`solveEquation: Small pivot ${pivot} at column ${i} despite non-zero elements below.`);
-           throw new Error(`Potential numerical instability with small pivot at column ${i}`);
+          console.warn(`solveEquation: Small pivot ${pivot} at column ${i} despite non-zero elements below.`);
+          throw new Error(`Potential numerical instability with small pivot at column ${i}`);
      }
 
     // Eliminate column i for rows below row i
@@ -464,23 +470,22 @@ function solveEquation(A, b) {
   const solution = new Array(n);
   for (let i = n - 1; i >= 0; i--) {
       const diagElement = a[i][i];
-      if (Math.abs(diagElement) < 1e-12) {
-           // If diagonal element is zero during back substitution, matrix is singular
+      if (diagElement < 1e-12 && diagElement > -1e-12) {
            console.error(`solveEquation: Zero or near-zero diagonal element ${diagElement} at row ${i} during back substitution.`);
            throw new Error(`Zero diagonal element during back substitution at row ${i}. Matrix is singular.`);
       }
 
+      const rowI = a[i];
       let sum = 0;
       for (let j = i + 1; j < n; j++) {
-          sum += a[i][j] * solution[j];
+          sum += rowI[j] * solution[j];
       }
-      solution[i] = (x[i] - sum) / diagElement;
-
-      // Check for NaN/Infinity in solution (shouldn't happen if pivots are checked)
-       if (!isFinite(solution[i])) {
-           console.error(`solveEquation: Non-finite value (${solution[i]}) computed for solution element ${i}.`);
-           throw new Error(`Non-finite solution element ${i} computed.`);
-       }
+      const s = (x[i] - sum) / diagElement;
+      if (!(s === s && s < 1e308 && s > -1e308)) {
+          console.error(`solveEquation: Non-finite value (${s}) computed for solution element ${i}.`);
+          throw new Error(`Non-finite solution element ${i} computed.`);
+      }
+      solution[i] = s;
   }
 
   return solution;
@@ -510,36 +515,51 @@ export function fitPEQ(freq, targetDb, initParams, lowFreq, highFreq, fs, option
 
   // Convert initial parameters to log-space for optimization
   // [gain, log10(Q), log10(fc)]
-  let params = [];
+  const numParams = numFilters * 3;
+  let params = new Array(numParams);
   const logQMin = Math.log10(0.5); // Q lower bound
   // Upper bound uses the looser (peak) cap; per-iteration sign-dependent clamping
   // tightens it to the dip cap when the band's gain is non-positive.
   const logQMax = LOG_Q_MAX_PEAK;
-  const logFcMin = Math.log10(lowFreq * 0.9); // Fc lower bound (slightly below lowFreq)
-  const logFcMax = Math.log10(highFreq * 1.1); // Fc upper bound (slightly above highFreq)
+  const fcLo = lowFreq * 0.9;
+  const fcHi = highFreq * 1.1;
+  const logFcMin = Math.log10(fcLo);
+  const logFcMax = Math.log10(fcHi);
   const gainMin = -18;
   const gainMax = 18;
 
   for (let i = 0; i < numFilters; i++) {
       const baseIdx = i * 3;
-      const gain = Math.max(gainMin, Math.min(gainMax, initParams[baseIdx]));
-      const qCap = qMaxForGain(gain);
-      const Q = Math.max(0.5, Math.min(qCap, initParams[baseIdx + 1]));
-      const fc = Math.max(lowFreq * 0.9, Math.min(highFreq * 1.1, initParams[baseIdx + 2]));
+      let gain = initParams[baseIdx];
+      if (gain < gainMin) gain = gainMin; else if (gain > gainMax) gain = gainMax;
 
-      params.push(
-          gain,
-          Math.max(logQMin, Math.min(logQMaxForGain(gain), Math.log10(Q))), // Clamp logQ
-          Math.max(logFcMin, Math.min(logFcMax, Math.log10(fc))) // Clamp logFc
-      );
+      const qCap = gain > PEAK_DIP_HYSTERESIS_DB ? Q_MAX_PEAK : Q_MAX_DIP;
+      let Q = initParams[baseIdx + 1];
+      if (Q < 0.5) Q = 0.5; else if (Q > qCap) Q = qCap;
+
+      let fc = initParams[baseIdx + 2];
+      if (fc < fcLo) fc = fcLo; else if (fc > fcHi) fc = fcHi;
+
+      const logQUpper = gain > PEAK_DIP_HYSTERESIS_DB ? LOG_Q_MAX_PEAK : LOG_Q_MAX_DIP;
+      let logQ = Math.log10(Q);
+      if (logQ < logQMin) logQ = logQMin; else if (logQ > logQUpper) logQ = logQUpper;
+
+      let logFc = Math.log10(fc);
+      if (logFc < logFcMin) logFc = logFcMin; else if (logFc > logFcMax) logFc = logFcMax;
+
+      params[baseIdx] = gain;
+      params[baseIdx + 1] = logQ;
+      params[baseIdx + 2] = logFc;
   }
 
   // Parameter bounds for optimization
-  const boundsLow = [];
-  const boundsHigh = [];
+  const boundsLow = new Array(numParams);
+  const boundsHigh = new Array(numParams);
   for (let i = 0; i < numFilters; i++) {
-    boundsLow.push(gainMin, logQMin, logFcMin);
-    boundsHigh.push(gainMax, logQMax, logFcMax);
+    const b = i * 3;
+    boundsLow[b] = gainMin;     boundsHigh[b] = gainMax;
+    boundsLow[b + 1] = logQMin; boundsHigh[b + 1] = logQMax;
+    boundsLow[b + 2] = logFcMin; boundsHigh[b + 2] = logFcMax;
   }
 
   // Levenberg-Marquardt parameters
@@ -552,13 +572,17 @@ export function fitPEQ(freq, targetDb, initParams, lowFreq, highFreq, fs, option
   const paramEpsilon = 1e-7; // Tolerance for parameter change
 
   let errors = errorFunctionLogSpace(params, freq, targetDb, lowFreq, highFreq, fs, regularization);
-  let currentCost = errors.reduce((sum, err) => sum + err * err, 0) / errors.length; // Mean squared error
-  let lastCost = currentCost;
+  // Mean squared error (manual reduction avoids closure overhead)
+  let currentCost = 0;
+  for (let i = 0; i < errors.length; i++) currentCost += errors[i] * errors[i];
+  currentCost /= errors.length;
+
+  // Preallocate reusable buffers (recycled each iteration via reference swap)
+  let newParams = new Array(numParams);
+  const negJte = new Array(numParams);
 
   // Optimization loop
   for (let iter = 0; iter < maxIterations; iter++) {
-    lastCost = currentCost;
-    const oldParams = [...params];
 
     // Calculate Jacobian matrix J = ∂error / ∂param
     const jacobian = calculateJacobian(params, freq, targetDb, boundsLow, boundsHigh, lowFreq, highFreq, fs, regularization);
@@ -567,107 +591,105 @@ export function fitPEQ(freq, targetDb, initParams, lowFreq, highFreq, fs, option
     const [JtJ, Jte] = calculateJtJandJte(jacobian, errors);
 
     // Check for gradient convergence
-    const gradNorm = Math.sqrt(Jte.reduce((sum, val) => sum + val * val, 0));
-     if (gradNorm < gradEpsilon && iter > 0) { // Avoid stopping at iter 0 if gradient is already small
-         break;
-     }
+    let gradNormSq = 0;
+    for (let i = 0; i < numParams; i++) gradNormSq += Jte[i] * Jte[i];
+    const gradNorm = Math.sqrt(gradNormSq);
+    if (gradNorm < gradEpsilon && iter > 0) break;
 
-    // Levenberg-Marquardt step: Solve (JᵀJ + λ * diag(JᵀJ)) * deltaParams = -Jᵀe
+    // Negated Jᵀe (reused across attempts; solveEquation copies its input)
+    for (let i = 0; i < numParams; i++) negJte[i] = -Jte[i];
+
+    // Levenberg-Marquardt step: Solve (JᵀJ + λ · diag(|JᵀJ|+1e-6)) · Δ = −Jᵀe
      let deltaParams;
      let solved = false;
      let currentLambda = lambda;
 
-     // Try solving the system, increasing lambda if it fails (matrix is singular)
-     for(let attempt = 0; attempt < 5; attempt++) {
-          const augmentedJtJ = JtJ.map((row, i) => {
-              const newRow = [...row];
-              // Add damping factor: use max(diag(JtJ), 1e-6) to prevent issues with zero diagonal
-              const diagElement = Math.max(Math.abs(JtJ[i][i]), 1e-6);
-              newRow[i] += currentLambda * diagElement;
-              return newRow;
-          });
+     for (let attempt = 0; attempt < 5; attempt++) {
+          // Build the damped matrix in-place into a fresh copy (avoids mutating JtJ)
+          const augmentedJtJ = new Array(numParams);
+          for (let r = 0; r < numParams; r++) {
+              const src = JtJ[r];
+              const row = new Array(numParams);
+              for (let c = 0; c < numParams; c++) row[c] = src[c];
+              const d = src[r];
+              const absD = d < 0 ? -d : d;
+              const dampDiag = absD > 1e-6 ? absD : 1e-6;
+              row[r] += currentLambda * dampDiag;
+              augmentedJtJ[r] = row;
+          }
 
-          const negJte = Jte.map(val => -val);
           try {
               deltaParams = solveEquation(augmentedJtJ, negJte);
-              // Check if the solution is valid (not all zeros, not NaN/Infinity)
-               if (deltaParams.some(val => !isFinite(val))) {
-                   throw new Error("Solution contains non-finite values");
-               }
-               if (deltaParams.every(val => Math.abs(val) < 1e-15)) {
-                  // If delta is essentially zero, it might indicate convergence or a problem
-                  // Check if gradient norm is also very small
-                  if (gradNorm < gradEpsilon * 10) {
-                      solved = true; // Treat as solved/converged
-                      break;
-                  } else {
-                      // Gradient still large, but delta is zero - matrix likely singular
-                       throw new Error("Solution is zero vector despite non-zero gradient");
-                  }
-               }
+
+              // Validate solution: check for NaN/Infinity and near-zero
+              let allSmall = true;
+              let anyBad = false;
+              for (let i = 0; i < numParams; i++) {
+                  const v = deltaParams[i];
+                  if (!(v === v && v < 1e308 && v > -1e308)) { anyBad = true; break; }
+                  const av = v < 0 ? -v : v;
+                  if (av >= 1e-15) allSmall = false;
+              }
+              if (anyBad) throw new Error("Solution contains non-finite values");
+              if (allSmall) {
+                  if (gradNorm < gradEpsilon * 10) { solved = true; break; }
+                  throw new Error("Solution is zero vector despite non-zero gradient");
+              }
               solved = true;
-              break; // Success
+              break;
           } catch (error) {
-              currentLambda *= lambdaIncrease * 2; // Increase lambda more aggressively if solve fails
-               if (currentLambda > 1e10) {
-                   iter = maxIterations; // Force exit
-                   break;
-               }
+              currentLambda *= lambdaIncrease * 2;
+              if (currentLambda > 1e10) { iter = maxIterations; break; }
           }
      }
 
-     if (!solved) {
-          break;
-     }
-
-     // Update lambda based on the final lambda used for solving
+     if (!solved) break;
      lambda = currentLambda;
 
-    // Calculate candidate new parameters
-    let newParams = params.map((p, i) => p + deltaParams[i]);
-
-    // Apply bounds constraints
-    newParams = newParams.map((p, i) => Math.max(boundsLow[i], Math.min(boundsHigh[i], p)));
-
-    // Sign-dependent Q cap: dips (gain <= hysteresis threshold) use the stricter
-    // dip cap (1/3 oct). Peaks above the hysteresis band keep the peak cap (1/6 oct).
+    // Candidate new parameters with bounds + sign-dependent Q clamp fused into one pass
+    let paramChangeNormSq = 0;
+    for (let i = 0; i < numParams; i++) {
+      const dp = deltaParams[i];
+      paramChangeNormSq += dp * dp;
+      let p = params[i] + dp;
+      const lo = boundsLow[i], hi = boundsHigh[i];
+      if (p < lo) p = lo; else if (p > hi) p = hi;
+      newParams[i] = p;
+    }
+    // Sign-dependent Q cap (dips use the stricter 1/3-oct cap)
     for (let f = 0; f < numFilters; f++) {
       const gainIdx = f * 3;
-      const logQIdx = f * 3 + 1;
-      const logQUpper = logQMaxForGain(newParams[gainIdx]);
-      if (newParams[logQIdx] > logQUpper) {
-        newParams[logQIdx] = logQUpper;
-      }
+      const logQIdx = gainIdx + 1;
+      const logQUpper = newParams[gainIdx] > PEAK_DIP_HYSTERESIS_DB ? LOG_Q_MAX_PEAK : LOG_Q_MAX_DIP;
+      if (newParams[logQIdx] > logQUpper) newParams[logQIdx] = logQUpper;
     }
 
     // Calculate cost with the new parameters
     const newErrors = errorFunctionLogSpace(newParams, freq, targetDb, lowFreq, highFreq, fs, regularization);
-    const newCost = newErrors.reduce((sum, err) => sum + err * err, 0) / newErrors.length;
+    let newCost = 0;
+    for (let i = 0; i < newErrors.length; i++) newCost += newErrors[i] * newErrors[i];
+    newCost /= newErrors.length;
 
-    // Check if the cost improved
     if (newCost < currentCost) {
       const costChange = currentCost - newCost;
-      const paramChangeNorm = Math.sqrt(deltaParams.reduce((sum, dp, i) => sum + dp*dp, 0));
+      const paramChangeNorm = Math.sqrt(paramChangeNormSq);
 
+      // Swap references so `newParams` (old `params`) becomes the next iteration's
+      // scratch buffer — avoids reallocation each iteration.
+      const tmp = params;
       params = newParams;
+      newParams = tmp;
       errors = newErrors;
       currentCost = newCost;
-      lambda = Math.max(1e-9, lambda * lambdaDecrease); // Decrease lambda
+      const decayed = lambda * lambdaDecrease;
+      lambda = decayed > 1e-9 ? decayed : 1e-9;
 
-      if (iter > 0 && (costChange < costEpsilon || paramChangeNorm < paramEpsilon)) {
-           break;
-       }
-
+      if (iter > 0 && (costChange < costEpsilon || paramChangeNorm < paramEpsilon)) break;
     } else {
-      // Cost did not decrease. Increase lambda and keep old parameters.
       lambda *= lambdaIncrease;
-       if (lambda > 1e10) {
-         break;
-       }
+      if (lambda > 1e10) break;
     }
-     if (iter === maxIterations - 1) {
-         break;
-     }
+    if (iter === maxIterations - 1) break;
   } // End of optimization loop
 
   // Convert back to linear-space parameters [g, Q, fc]
