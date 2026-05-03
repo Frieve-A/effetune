@@ -78,7 +78,13 @@ contextBridge.exposeInMainWorld(
     
     // Reload window
     reloadWindow: () => ipcRenderer.invoke('reload-window'),
+
+    // Full app relaunch (kills renderer process — used for HDMI reconnect recovery)
+    relaunchApp: () => ipcRenderer.invoke('relaunch-app'),
     
+    // Request macOS microphone TCC permission (must be called before getUserMedia)
+    requestMicrophoneAccess: () => ipcRenderer.invoke('request-microphone-access'),
+
     // Clear permission overrides for microphone
     clearMicrophonePermission: () => ipcRenderer.invoke('clear-microphone-permission'),
     
@@ -161,7 +167,11 @@ contextBridge.exposeInMainWorld(
     // Force check for updates (used in About dialog)
     forceCheckForUpdates: () => {
       return ipcRenderer.invoke('force-check-for-updates');
-    }
+    },
+
+    // Diagnostic logging to file (for HDMI/audio debugging)
+    writeDebugLog: (message) => ipcRenderer.invoke('write-debug-log', message),
+    getDebugLogPath: () => ipcRenderer.invoke('get-debug-log-path')
   }
 );
 

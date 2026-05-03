@@ -86,6 +86,23 @@ export class AudioContextManager {
                 this.audioContext = new AudioContext(audioContextOptions);
                 console.log('AudioContext created with options:', audioContextOptions);
                 window.audioContext = this.audioContext; // Global reference
+
+                // Detect AudioContext interruption caused by audio device changes on macOS
+                this.audioContext.onstatechange = () => {
+                    const state = this.audioContext?.state;
+                    if (state === 'suspended') {
+                        this.audioContext.resume().catch(err =>
+                            console.warn('[AudioContext] resume after suspended failed:', err)
+                        );
+                    } else if (state === 'closed') {
+                        console.warn('[AudioContext] closed unexpectedly');
+                        if (window.audioManager) {
+                            window.electronIntegration?.loadAudioPreferences()
+                                .then(() => window.audioManager.reset(null))
+                                .catch(() => window.audioManager.reset(null));
+                        }
+                    }
+                };
                 
                 // Set audio context destination channel count based on preferences
                 if (window.electronAPI && window.electronIntegration) {
@@ -178,8 +195,11 @@ export class AudioContextManager {
                 try {
                     await this.audioContext.audioWorklet.addModule(`${basePath}/plugins/audio-processor.js`);
                 } catch (error) {
-                    console.error('Failed to load audio worklet module:', error);
-                    throw new Error(`AudioWorklet failed to load: ${error.message}`);
+                    // If module is already registered (reconnect recovery), ignore and continue
+                    if (!error.message?.includes('already')) {
+                        console.error('Failed to load audio worklet module:', error);
+                        throw new Error(`AudioWorklet failed to load: ${error.message}`);
+                    }
                 }
             } else {
                 throw new Error('AudioWorklet is not supported in this browser. Please use a modern browser.');
@@ -293,6 +313,8 @@ export class AudioContextManager {
         
         // Close audio context and clear global reference
         if (this.audioContext) {
+            // Detach handler before close to prevent spurious 'closed' state trigger
+            this.audioContext.onstatechange = null;
             await this.audioContext.close();
             this.audioContext = null;
             window.audioContext = null;
@@ -308,7 +330,14 @@ export class AudioContextManager {
      */
     async resumeAudioContext() {
         if (this.audioContext && this.audioContext.state === 'suspended') {
-            await this.audioContext.resume();
+            // resume() can hang when the AudioContext's sinkId points to an HDMI device
+            // that CoreAudio hasn't finished initialising yet.  Use a timeout so that
+            // a reconnect-triggered reset never freezes the app.  The HDMI retry
+            // mechanism will restore audio once the device is ready.
+            await Promise.race([
+                this.audioContext.resume(),
+                new Promise(resolve => setTimeout(resolve, 10000))
+            ]).catch(() => {});
         }
     }
     

@@ -198,6 +198,22 @@ class App {
         // Use a default value of false if window.isFirstLaunchConfirmed is not set
         this.audioManager.isFirstLaunch = false;
 
+        // Track whether preferred output device was absent on last devicechange scan
+        // Used to detect absent→present transitions for HDMI reconnect recovery
+        this._preferredDeviceWasAbsent = false;
+
+        // HDMI reconnect throttling: timestamp of last reconnect handling (0 = never)
+        this._lastHdmiReconnectResetTime = 0;
+        // Whether a wasAbsent handler is currently waiting (blocks concurrent sinkId reapply)
+        this._hdmiReconnectPending = false;
+        // Debounce timer for disconnect: avoids immediate fallback reset during HDMI oscillation
+        this._disconnectDebounceTimer = null;
+        // Guard against concurrent handleOutputDeviceChange executions
+        this._deviceChangeInProgress = false;
+        // App-start timestamp — used to skip auto-relaunch immediately after launch
+        // to prevent infinite relaunch loops when HDMI is unstable at startup
+        this._appStartTime = Date.now();
+
         // Make managers globally accessible for preset functionality
         window.pluginManager = this.pluginManager;
         window.pipelineManager = this.uiManager.pipelineManager;
@@ -800,14 +816,15 @@ class App {
 
         // Display microphone error message if there was one
         if (this.hasAudioError) {
-            // Show a non-blocking warning message to the user
-            this.uiManager.setError(this.uiManager.t('error.microphoneAccessDenied'), false);
-            setTimeout(() => window.uiManager.clearError(), 3000);
+            this.uiManager.setError('error.microphoneAccessDenied', false);
         }
     }
 
     /**
-     * Handle output device change events
+     * Handle output device change events.
+     * Uses a 3-second disconnect debounce to avoid reacting to brief HDMI state
+     * oscillations during re-plug, and a 30-second cooldown to prevent repeated
+     * reconnect resets from the same reconnect event.
      */
     async handleOutputDeviceChange() {
         if (!window.electronIntegration ||
@@ -816,6 +833,16 @@ class App {
             return;
         }
 
+        if (this._deviceChangeInProgress) return;
+        this._deviceChangeInProgress = true;
+        try {
+            await this._handleOutputDeviceChangeImpl();
+        } finally {
+            this._deviceChangeInProgress = false;
+        }
+    }
+
+    async _handleOutputDeviceChangeImpl() {
         const prefs = await window.electronIntegration.loadAudioPreferences();
         if (!prefs || !prefs.outputDeviceId) return;
 
@@ -827,27 +854,103 @@ class App {
             return;
         }
 
-        const found = devices.some(d => d.kind === 'audiooutput' && d.deviceId === prefs.outputDeviceId);
-        const currentSink = this.audioManager.ioManager.audioElement?.sinkId;
+        const outputs = devices.filter(d => d.kind === 'audiooutput');
+
+        // Try exact ID match; fall back to label match (HDMI may get new ID on reconnect)
+        let foundDevice = outputs.find(d => d.deviceId === prefs.outputDeviceId);
+        let foundByLabel = false;
+        if (!foundDevice && prefs.outputDeviceLabel) {
+            foundDevice = outputs.find(d => d.label === prefs.outputDeviceLabel);
+            foundByLabel = !!foundDevice;
+        }
+
+        const wasAbsent = this._preferredDeviceWasAbsent;
+        this._preferredDeviceWasAbsent = !foundDevice;
+
+        const ioMgr = this.audioManager.ioManager;
+        const ctx = this.audioManager.contextManager?.audioContext;
+        const useCtxSink = ioMgr.audioContextSinkMode && typeof ctx?.setSinkId === 'function';
+        const currentSink = useCtxSink
+            ? ctx?.sinkId
+            : ioMgr.audioElement?.sinkId;
+        const activeDeviceId = foundDevice?.deviceId ?? prefs.outputDeviceId;
 
         if (typeof currentSink === 'undefined') {
-            if (found) {
-                await this.audioManager.reset(prefs);
-            }
-        } else {
-            if (found) {
-                if (currentSink !== prefs.outputDeviceId) {
-                    const success = await this.audioManager.ioManager.reapplyOutputDevice(prefs.outputDeviceId);
-                    if (!success) {
-                        await this.audioManager.reset(prefs);
-                    }
+            if (foundDevice) await this.audioManager.reset(null);
+            return;
+        }
+
+        if (!foundDevice) {
+            // Device absent.  Don't reset immediately — HDMI often briefly disappears
+            // during re-plug (state oscillation).  Debounce 3s and only reset if still absent.
+            if (currentSink !== prefs.outputDeviceId) return;
+
+            // New disconnect cycle detected — clear cooldown so the next reconnect
+            // is handled as a fresh event even if it comes within 30 seconds.
+            this._lastHdmiReconnectResetTime = 0;
+            if (this._disconnectDebounceTimer) clearTimeout(this._disconnectDebounceTimer);
+            this._disconnectDebounceTimer = setTimeout(async () => {
+                this._disconnectDebounceTimer = null;
+                let devices2;
+                try { devices2 = await navigator.mediaDevices.enumerateDevices(); } catch (e) { return; }
+                const stillAbsent = !devices2.some(d =>
+                    d.kind === 'audiooutput' &&
+                    (d.deviceId === prefs.outputDeviceId ||
+                     (prefs.outputDeviceLabel && d.label === prefs.outputDeviceLabel)));
+                if (!stillAbsent) return;
+                // Confirmed long disconnect: reset to fallback
+                this._hdmiReconnectPending = false;
+                this._lastHdmiReconnectResetTime = 0;
+                await this.audioManager.reset(null);
+            }, 3000);
+            return;
+        }
+
+        // Device is present — cancel any pending disconnect debounce
+        if (this._disconnectDebounceTimer) {
+            clearTimeout(this._disconnectDebounceTimer);
+            this._disconnectDebounceTimer = null;
+        }
+
+        if (wasAbsent || foundByLabel) {
+            const now = Date.now();
+            const elapsed = now - this._lastHdmiReconnectResetTime;
+            if (elapsed < 30000) return;  // cooldown — same reconnect oscillation
+            this._lastHdmiReconnectResetTime = now;
+
+            // On macOS, the only reliable recovery for HDMI reconnect is a full
+            // app relaunch (renderer-process restart).  Page reload, AudioContext
+            // recreation, sinkId toggling, etc. all fail to restore audio.
+            // Skip auto-relaunch for the first 30s after app start to prevent
+            // infinite relaunch loops when HDMI is unstable around launch.
+            const timeSinceStart = Date.now() - this._appStartTime;
+            if (timeSinceStart < 30000) return;
+
+            // Save pipeline state before relaunch so user's work is preserved
+            try {
+                if (window.electronAPI?.savePipelineStateToFile && window.pipelineManager?.getPipelineState) {
+                    const state = window.pipelineManager.getPipelineState();
+                    await window.electronAPI.savePipelineStateToFile(state);
                 }
-            } else if (currentSink === prefs.outputDeviceId) {
-                await this.audioManager.reset(prefs);
+            } catch (_) { /* fall through to relaunch */ }
+
+            if (window.electronAPI?.relaunchApp) {
+                await window.electronAPI.relaunchApp();
+            } else {
+                window.location.reload();
             }
+            return;
+        } else if (currentSink !== activeDeviceId) {
+            if (this._hdmiReconnectPending) return;
+            const success = await this.audioManager.ioManager.reapplyOutputDevice(activeDeviceId);
+            if (!success) await this.audioManager.reset(null);
         }
     }
 
+    /**
+     * setSinkId with a timeout — setSinkId(deviceId) can hang indefinitely when
+     * CoreAudio hasn't finished initialising the HDMI device.
+     */
     /**
      * Process command line arguments after all initialization is complete
      * This method handles both preset files and music files passed via command line

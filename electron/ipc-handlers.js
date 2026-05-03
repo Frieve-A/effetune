@@ -39,6 +39,17 @@ function registerIpcHandlers() {
     return constants.getIsFirstLaunch();
   });
 
+  // Diagnostic log writer — appends timestamped messages to effetune-debug.log
+  // in the user data directory so HDMI/audio issues can be diagnosed without devtools.
+  const debugLogPath = path.join(app.getPath('userData'), 'effetune-debug.log');
+  ipcMain.handle('write-debug-log', (event, message) => {
+    try {
+      const line = `[${new Date().toISOString()}] ${message}\n`;
+      fs.appendFileSync(debugLogPath, line);
+    } catch (e) { /* ignore */ }
+  });
+  ipcMain.handle('get-debug-log-path', () => debugLogPath);
+
   // Get command line preset file
   ipcMain.handle('get-command-line-preset-file', () => {
     return constants.getCommandLinePresetFile();
@@ -107,6 +118,21 @@ function registerIpcHandlers() {
 
   ipcMain.handle('read-file-as-buffer', async (event, filePath) => {
     return await fileHandlers.readFileAsBuffer(filePath);
+  });
+
+  // Request macOS microphone TCC permission from the main process.
+  // Must be called before getUserMedia() in the renderer; otherwise macOS never
+  // shows the privacy dialog and CoreAudio silently denies access.
+  ipcMain.handle('request-microphone-access', async () => {
+    if (process.platform !== 'darwin') return true;
+    try {
+      const status = await systemPreferences.getMediaAccessStatus('microphone');
+      if (status === 'granted') return true;
+      return await systemPreferences.askForMediaAccess('microphone');
+    } catch (error) {
+      console.error('Error requesting microphone access:', error);
+      return false;
+    }
   });
 
   // Get audio devices
@@ -359,6 +385,13 @@ function registerIpcHandlers() {
       return { success: true };
     }
     return { success: false, error: 'Main window not available' };
+  });
+
+  // Handle full app relaunch (used for HDMI reconnect recovery on macOS,
+  // where renderer-process restart is required to recover audio output)
+  ipcMain.handle('relaunch-app', () => {
+    app.relaunch();
+    app.exit(0);
   });
 
   // Handle clear microphone permission request

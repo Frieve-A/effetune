@@ -42,6 +42,8 @@ export class AudioManager {
         this.offlineContext = null;
         this.offlineWorkletNode = null;
         this.isOfflineProcessing = false;
+        this._resetInProgress = false;
+        this._pendingResetPrefs = null;
         this.isCancelled = false;
         this._skipAudioInitDuringSampleRateChange = false;
         this.isFirstLaunch = false;
@@ -226,34 +228,17 @@ export class AudioManager {
      */
     async initAudio() {
         try {
-            // Initialize audio context (without AudioWorklet)
             const contextResult = await this.contextManager.initAudioContext();
-            if (contextResult) {
-                return contextResult;
-            }
-            
-            // Initialize audio input
+            if (contextResult) return contextResult;
+
             const inputResult = await this.ioManager.initAudioInput();
-            // No need to log input result
-            
-            // Initialize audio output
+
             const outputResult = await this.ioManager.initAudioOutput();
-            if (outputResult) {
-                return outputResult;
-            }
-            
-            // Note: We don't build the pipeline here anymore
-            // That will be done in initializeAudioWorklet after GUI is fully rendered
-            
-            // Resume context if suspended
+            if (outputResult) return outputResult;
+
             await this.contextManager.resumeAudioContext();
-            
-            // Update exposed properties for backward compatibility
-            // Note: workletNode will be null at this point
+
             this.updateExposedProperties();
-            
-            // Return any input error (like microphone access denied)
-            // This allows the app to continue with file playback even if mic access is denied
             return inputResult || '';
         } catch (error) {
             return `Audio Error: ${error.message}`;
@@ -358,31 +343,47 @@ export class AudioManager {
      * @returns {Promise<string>} - Empty string on success, error message on failure
      */
     async reset(audioPreferences = null) {
-        // Clean up audio I/O
+        if (this._resetInProgress) {
+            // Queue the latest prefs so we retry after current reset finishes
+            console.log('[AudioManager] reset queued — already in progress');
+            this._pendingResetPrefs = audioPreferences;
+            return '';
+        }
+        this._resetInProgress = true;
+        this._pendingResetPrefs = null;
+        try {
+            await this._doReset(audioPreferences);
+            // Run any reset that was queued while we were busy
+            if (this._pendingResetPrefs !== null) {
+                const pending = this._pendingResetPrefs;
+                this._pendingResetPrefs = null;
+                console.log('[AudioManager] running queued reset');
+                await this._doReset(pending);
+            }
+            return '';
+        } finally {
+            this._resetInProgress = false;
+        }
+    }
+
+    async _doReset(audioPreferences = null) {
         this.ioManager.cleanupAudio();
-        
-        // Close audio context
         await this.contextManager.closeAudioContext();
-        
-        // If audio preferences were provided, save them first
+
         if (audioPreferences && window.electronAPI && window.electronIntegration) {
             await window.electronIntegration.saveAudioPreferences(audioPreferences);
         }
-        
-        // Skip initialization if we're being called from the sample rate adjustment code
+
         if (this.contextManager.getSkipAudioInitDuringSampleRateChange()) {
             this.contextManager.setSkipAudioInitDuringSampleRateChange(false);
             return '';
         }
-        
-        // Initialize audio and rebuild pipeline
+
         await this.initAudio();
-        
-        // Make sure pipeline is rebuilt with the new audio context
-        if (this.pipeline && this.pipeline.length > 0) {
-            await this.rebuildPipeline(true);
-        }
-        
+        await this.initializeAudioWorklet();
+        await this.contextManager.resumeAudioContext();
+        await this.rebuildPipeline(true);
+
         return '';
     }
     

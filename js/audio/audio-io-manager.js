@@ -17,7 +17,18 @@ export class AudioIOManager {
         // When true, connect worklet output directly to AudioContext.destination
         // Used for multichannel and low-latency stereo modes
         this.directOutputMode = false;
+        // When true, output is routed via AudioContext.setSinkId() directly.
+        // This bypasses the MediaStream/audioElement path and uses the WebAudio
+        // engine's own CoreAudio renderer, which may be more reliable for HDMI.
+        this.audioContextSinkMode = false;
         this.currentOutputDeviceId = null;
+        this._devicePollIntervalId = null;
+        this._pollDeviceWasAbsent = false;
+        // Set true while a setSinkId toggle is in progress to prevent poll from
+        // misreading the transient empty sinkId and triggering a spurious reset.
+        this._toggleInProgress = false;
+        // Guard against overlapping poll tick executions
+        this._pollRunning = false;
     }
     
     /**
@@ -50,64 +61,38 @@ export class AudioIOManager {
                 }
             }
 
+            // On macOS, trigger TCC permission dialog from the main process before getUserMedia.
+            // We ignore the return value and let getUserMedia() be the final arbiter —
+            // askForMediaAccess can return false for ad-hoc signed builds even when
+            // System Settings shows the permission as allowed.
+            if (window.electronAPI && window.electronAPI.requestMicrophoneAccess) {
+                await window.electronAPI.requestMicrophoneAccess();
+            }
+
             // Try to get user media with audio constraints
+            let lastMicError = null;
             try {
                 this.stream = await navigator.mediaDevices.getUserMedia({
                     audio: audioConstraints
                 });
             } catch (error) {
+                lastMicError = error;
                 // If failed with saved device, try again with default device
                 if (audioConstraints.deviceId) {
-                    console.warn('Failed to use saved audio input device, falling back to default:', error);
+                    console.warn('Failed to use saved audio input device, falling back to default:', error.name, error.message);
                     delete audioConstraints.deviceId;
                     try {
                         this.stream = await navigator.mediaDevices.getUserMedia({
                             audio: audioConstraints
                         });
+                        lastMicError = null;
                     } catch (innerError) {
-                        // If permission is denied, try to clear permission overrides and ask again
-                        if (innerError.name === 'NotAllowedError' || innerError.name === 'PermissionDeniedError') {
-                            if (window.electronAPI && window.electronAPI.clearMicrophonePermission) {
-                                console.log('Microphone permission denied, attempting to clear permission overrides');
-                                try {
-                                    await window.electronAPI.clearMicrophonePermission();
-                                    // Try one more time after clearing permissions
-                                    this.stream = await navigator.mediaDevices.getUserMedia({
-                                        audio: audioConstraints
-                                    });
-                                } catch (finalError) {
-                                    console.warn('Failed to get microphone access after clearing permissions:', finalError);
-                                    usingMicrophoneInput = false;
-                                }
-                            } else {
-                                console.warn('Microphone permission denied:', innerError);
-                                usingMicrophoneInput = false;
-                            }
-                        } else {
-                            console.warn('Failed to get microphone access:', innerError);
-                            usingMicrophoneInput = false;
-                        }
-                    }
-                } else if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-                    // If permission is denied on first attempt, try to clear permission overrides and ask again
-                    if (window.electronAPI && window.electronAPI.clearMicrophonePermission) {
-                        console.log('Microphone permission denied, attempting to clear permission overrides');
-                        try {
-                            await window.electronAPI.clearMicrophonePermission();
-                            // Try one more time after clearing permissions
-                            this.stream = await navigator.mediaDevices.getUserMedia({
-                                audio: audioConstraints
-                            });
-                        } catch (finalError) {
-                            console.warn('Failed to get microphone access after clearing permissions:', finalError);
-                            usingMicrophoneInput = false;
-                        }
-                    } else {
-                        console.warn('Microphone permission denied:', error);
+                        lastMicError = innerError;
+                        console.warn('Failed to get microphone access (default device):', innerError.name, innerError.message);
                         usingMicrophoneInput = false;
                     }
                 } else {
-                    console.warn('Failed to get microphone access:', error);
+                    console.warn('Failed to get microphone access:', error.name, error.message);
                     usingMicrophoneInput = false;
                 }
             }
@@ -151,8 +136,7 @@ export class AudioIOManager {
                 // Store the error message if microphone access was denied, but don't return it yet
                 // This allows us to continue setting up the audio nodes for playback
                 if (!usingMicrophoneInput) {
-                    // Use the same error format as before so app.js can detect it properly
-                    microphoneError = `Audio Error: Microphone access denied. Music file playback mode will still work.`;
+                    microphoneError = 'Audio Error: Microphone access denied. Music file playback mode will still work.';
                 }
             }
             
@@ -204,6 +188,33 @@ export class AudioIOManager {
             
             // For Electron, prepare audio output device (only in stereo mode)
             if (!isMultiChannel && window.electronAPI && window.electronIntegration) {
+                // Route output through AudioContext.setSinkId() if the API is available.
+                // This uses Chromium's WebAudio CoreAudio renderer instead of the
+                // HTMLMediaElement renderer.  On macOS, these are separate code paths and
+                // the WebAudio path is more reliable for HDMI reconnect recovery.
+                if (preferences?.outputDeviceId &&
+                    typeof this.contextManager.audioContext?.setSinkId === 'function') {
+
+                    this.audioContextSinkMode = true;
+                    this.destinationNode = null; // use audioContext.destination via connectAudioNodes fallback
+                    this.currentOutputDeviceId = preferences.outputDeviceId;
+
+                    try {
+                        await this._setSinkIdWithTimeout(this.contextManager.audioContext, preferences.outputDeviceId);
+                    } catch (e) {
+                        console.warn('[audioCtxSink] setSinkId failed:', e.message);
+                    }
+
+                    if (window.electronIntegration?.isElectronEnvironment?.()) {
+                        this.startDevicePoll(
+                            () => window.electronIntegration.loadAudioPreferences(),
+                            (prefs) => window.audioManager?.reset(prefs) ?? Promise.resolve(),
+                            false
+                        );
+                    }
+                    return '';
+                }
+
                 // Rest of function continues for stereo output with device selection...
                 if (preferences && preferences.outputDeviceId) {
                     try {
@@ -419,7 +430,22 @@ export class AudioIOManager {
                 // Store reference to remove on cleanup
                 this.silenceNode = silenceNode;
             }
-            
+
+            // Start polling fallback for HDMI reconnection (macOS devicechange unreliable)
+            if (window.electronIntegration?.isElectronEnvironment?.() && this.audioElement) {
+                // If the audio element ended up on a different device than preferred (fallback after
+                // disconnect), treat the preferred device as absent so the first poll tick that finds
+                // it back triggers a full reset rather than a reapply.
+                const pollInitiallyAbsent = preferences?.outputDeviceId
+                    ? this.audioElement.sinkId !== preferences.outputDeviceId
+                    : false;
+                this.startDevicePoll(
+                    () => window.electronIntegration.loadAudioPreferences(),
+                    (prefs) => window.audioManager?.reset(prefs) ?? Promise.resolve(),
+                    pollInitiallyAbsent
+                );
+            }
+
             return '';
         } catch (error) {
             console.error('Audio output initialization error:', error);
@@ -547,6 +573,18 @@ export class AudioIOManager {
      * @returns {Promise<boolean>} Success status
      */
     async reapplyOutputDevice(deviceId) {
+        const ctx = this.contextManager?.audioContext;
+        if (this.audioContextSinkMode && typeof ctx?.setSinkId === 'function') {
+            try {
+                await ctx.setSinkId(deviceId);
+                this.currentOutputDeviceId = deviceId;
+                console.log('Reapplied output device (ctx):', deviceId);
+                return true;
+            } catch (error) {
+                console.warn('Failed to reapply output device (ctx):', error);
+                return false;
+            }
+        }
         if (!this.audioElement || typeof this.audioElement.setSinkId !== 'function') {
             return false;
         }
@@ -561,18 +599,141 @@ export class AudioIOManager {
             } catch (e) {
                 // Ignore play errors
             }
-            console.log('Reapplied output device:', deviceId);
+            console.log('Reapplied output device (el):', deviceId);
             return true;
         } catch (error) {
-            console.warn('Failed to reapply output device:', error);
+            console.warn('Failed to reapply output device (el):', error);
             return false;
         }
     }
     
     /**
+     * Start periodic polling to verify audio output device is active.
+     * Fallback for macOS where HDMI reconnection may not trigger devicechange.
+     * @param {Function} getPrefs - async function returning saved preferences
+     * @param {Function} onReset  - async function(prefs) for full reinit
+     */
+    startDevicePoll(getPrefs, onReset, initiallyAbsent = false) {
+        this.stopDevicePoll();
+        this._pollDeviceWasAbsent = initiallyAbsent;
+        this._devicePollIntervalId = setInterval(async () => {
+            if (!window.electronIntegration?.isElectronEnvironment?.()) return;
+            // Skip poll while a toggle is running to avoid misreading the transient empty sinkId
+            if (this._toggleInProgress) return;
+            // Skip if a previous poll tick is still running (avoids stacking)
+            if (this._pollRunning) return;
+            this._pollRunning = true;
+            try { await this._pollTick(getPrefs, onReset); } finally { this._pollRunning = false; }
+        }, 4000);
+    }
+
+    async _pollTick(getPrefs, onReset) {
+        let prefs;
+        try { prefs = await getPrefs(); } catch (e) { return; }
+        if (!prefs || !prefs.outputDeviceId) return;
+
+        let devices;
+        try { devices = await navigator.mediaDevices.enumerateDevices(); } catch (e) { return; }
+
+        const outputs = devices.filter(d => d.kind === 'audiooutput');
+
+        // Try exact ID match first; fall back to label match (HDMI may get new ID on reconnect)
+        let foundDevice = outputs.find(d => d.deviceId === prefs.outputDeviceId);
+        let foundByLabel = false;
+        if (!foundDevice && prefs.outputDeviceLabel) {
+            foundDevice = outputs.find(d => d.label === prefs.outputDeviceLabel);
+            foundByLabel = !!foundDevice;
+        }
+
+        const wasAbsent = this._pollDeviceWasAbsent;
+        this._pollDeviceWasAbsent = !foundDevice;
+
+        // Current sinkId: use AudioContext or audioElement depending on mode
+        const ctx = this.contextManager?.audioContext;
+        const el = this.audioContextSinkMode ? null : this.audioElement;
+        const currentSinkId = this.audioContextSinkMode
+            ? (ctx?.sinkId ?? 'no-ctx')
+            : (el?.sinkId ?? 'no-element');
+
+        if (!foundDevice) return;
+        if (!this.audioContextSinkMode && !el) return;
+
+        const activeDeviceId = foundDevice.deviceId;
+        const updatedPrefs = foundByLabel ? { ...prefs, outputDeviceId: activeDeviceId } : prefs;
+
+        if (currentSinkId !== activeDeviceId || foundByLabel) {
+            // sinkId mismatch or device got a new ID — full reset needed
+            if (wasAbsent || foundByLabel) {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+            // Cancel stale HDMI retry timers that reference the old AudioContext
+            window._hdmiCancelRetries?.();
+            await onReset(updatedPrefs);
+        } else if (wasAbsent) {
+            // sinkId is already correct after reconnect.
+            // If the context is already running, the devicechange handler handled
+            // the reconnect — don't interfere with another toggle.
+            if (this.audioContextSinkMode && ctx?.state === 'running') return;
+
+            // Context is not running — do a light toggle + resume.
+            try {
+                if (this.audioContextSinkMode && ctx) {
+                    await this._setSinkIdWithTimeout(ctx, '');
+                    await new Promise(r => setTimeout(r, 1000));
+                    await this._setSinkIdWithTimeout(ctx, activeDeviceId);
+                    await Promise.race([
+                        ctx.resume(),
+                        new Promise(resolve => setTimeout(resolve, 15000))
+                    ]).catch(() => {});
+                    if (ctx.state === 'running') {
+                        await window.audioManager?.rebuildPipeline(false).catch(() => {});
+                    }
+                } else if (el) {
+                    await this._setSinkIdWithTimeout(el, 'default');
+                    await new Promise(r => setTimeout(r, 300));
+                    await this._setSinkIdWithTimeout(el, activeDeviceId);
+                    if (this.destinationNode?.stream) el.srcObject = this.destinationNode.stream;
+                    await el.play().catch(() => {});
+                }
+            } catch (e) {
+                await onReset(updatedPrefs);
+            }
+        } else if (!this.audioContextSinkMode && (el.paused || el.readyState < 2)) {
+            try { await el.play(); } catch (e) { await onReset(prefs); }
+        }
+    }
+
+    _setSinkIdWithTimeout(target, sinkId, ms = 10000) {
+        return Promise.race([
+            target.setSinkId(sinkId),
+            new Promise((_, reject) =>
+                setTimeout(() => reject(new Error(`setSinkId('${sinkId}') timed out`)), ms)
+            )
+        ]);
+    }
+
+
+    /**
+     * Stop periodic device polling
+     */
+    stopDevicePoll() {
+        if (this._devicePollIntervalId !== null) {
+            clearInterval(this._devicePollIntervalId);
+            this._devicePollIntervalId = null;
+        }
+        this._pollRunning = false;
+    }
+
+    /**
      * Clean up audio input and output
      */
     cleanupAudio() {
+        // Stop polling before teardown to prevent race conditions
+        this.stopDevicePoll();
+
+        // Reset audioContextSinkMode so next initAudioOutput() re-evaluates it
+        this.audioContextSinkMode = false;
+
         // Stop audio element if it exists
         if (this.audioElement) {
             this.audioElement.pause();

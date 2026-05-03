@@ -18,6 +18,13 @@ constants.setAppVersion(appVersion);
 let tray = null;
 let isAppQuitting = false;
 
+// Tell Chromium to auto-approve getUserMedia() without showing its own
+// permission UI.  The actual hardware access still goes through macOS TCC,
+// so the system-level microphone permission is still respected and the
+// menu-bar indicator appears when audio is captured.
+// Must be set before app.ready.
+app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
+
 // Set up logging to file for debugging (disabled for release)
 function setupFileLogging() {
   // Disabled for release
@@ -64,7 +71,9 @@ function createWindow() {
       webSecurity: true,
       allowRunningInsecureContent: false,
       // Disable Electron's built-in zoom functionality
-      zoomFactor: 1.0
+      zoomFactor: 1.0,
+      // Keep timers running when window is hidden/minimized (needed for HDMI reconnect recovery)
+      backgroundThrottling: false
     }
   });
   
@@ -72,7 +81,19 @@ function createWindow() {
   constants.setMainWindow(mainWindow);
   ipcHandlers.setMainWindow(mainWindow);
   fileHandlers.setMainWindow(mainWindow);
-  
+
+  // Allow renderer to access microphone via getUserMedia on file:// origin.
+  // Without both handlers, Chromium falls back to its default content-settings
+  // which deny media on file:// pages before the request handler is even called.
+  const MEDIA_PERMISSIONS = ['media', 'microphone', 'camera'];
+  mainWindow.webContents.session.setPermissionCheckHandler((webContents, permission) => {
+    if (MEDIA_PERMISSIONS.includes(permission)) return true;
+    return false;
+  });
+  mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+    callback(MEDIA_PERMISSIONS.includes(permission));
+  });
+
   // Enable file drag and drop for the window
   mainWindow.webContents.session.on('will-download', (event, item, webContents) => {
     // Download event handler
