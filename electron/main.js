@@ -506,6 +506,7 @@ function createWindow() {
   const finalizeClose = () => {
     if (isClosing) return;
     isClosing = true;
+    if (!mainWindow || mainWindow.isDestroyed()) return;
     mainWindow.close();
   };
 
@@ -528,7 +529,7 @@ function createWindow() {
     if (mainWindow && mainWindow.webContents) {
       // Set a timeout to ensure the app closes even if renderer doesn't respond
       const closeTimeout = setTimeout(() => {
-        console.log('Pipeline state save timeout, closing window');
+        console.error('Pipeline state save timeout, closing window without saving state');
         finalizeClose();
       }, 3000);
 
@@ -1127,6 +1128,7 @@ app.whenReady().then(() => {
   
   // On macOS, recreate window when dock icon is clicked and no windows are open
   app.on('activate', () => {
+    if (isAppQuitting) return;
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     }

@@ -326,16 +326,27 @@ function registerIpcHandlers() {
     // Save the pipeline state
     if (pipelineState) {
       try {
-        await fileHandlers.savePipelineStateToFile(pipelineState);
+        const result = await fileHandlers.savePipelineStateToFile(pipelineState);
+        if (result && !result.success) {
+          console.error('Failed to save pipeline state on close:', result.error);
+        }
       } catch (error) {
         console.error('Failed to save pipeline state on close:', error);
       }
     }
 
     // Trigger the actual window close
-    const triggerClose = constants.getTriggerClose();
-    if (triggerClose) {
-      triggerClose();
+    try {
+      const triggerClose = constants.getTriggerClose();
+      if (triggerClose) {
+        triggerClose();
+      }
+    } catch (error) {
+      console.error('Failed to trigger window close:', error);
+      const mainWin = constants.getMainWindow();
+      if (mainWin && !mainWin.isDestroyed()) {
+        mainWin.destroy();
+      }
     }
   });
 
