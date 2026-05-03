@@ -1,4 +1,4 @@
-const { ipcMain, shell, systemPreferences, Menu } = require('electron');
+const { app, ipcMain, shell, systemPreferences, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const constants = require('./constants');
@@ -347,6 +347,7 @@ function registerIpcHandlers() {
       if (mainWin && !mainWin.isDestroyed()) {
         mainWin.destroy();
       }
+      app.quit();
     }
   });
 

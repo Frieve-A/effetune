@@ -505,8 +505,11 @@ function createWindow() {
   let isClosing = false;
   const finalizeClose = () => {
     if (isClosing) return;
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      if (isAppQuitting) app.quit();
+      return;
+    }
     isClosing = true;
-    if (!mainWindow || mainWindow.isDestroyed()) return;
     mainWindow.close();
   };
 
