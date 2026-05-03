@@ -43,3 +43,4 @@ Thumbs.db
 .temp/
 .qodo
 .npm-cache/
+.worktrees/
