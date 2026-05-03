@@ -504,11 +504,8 @@ function createWindow() {
   // Flag to track if we're in the process of closing
   let isClosing = false;
   const finalizeClose = () => {
+    if (isClosing) return;
     isClosing = true;
-    if (isAppQuitting) {
-      app.quit();
-      return;
-    }
     mainWindow.close();
   };
 
@@ -1140,9 +1137,9 @@ app.on('before-quit', () => {
   isAppQuitting = true;
 });
 
-// Quit the app when all windows are closed (except on macOS)
+// Quit the app when all windows are closed (except on macOS unless explicitly quitting)
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  if (process.platform !== 'darwin' || isAppQuitting) {
     app.quit();
   }
 });

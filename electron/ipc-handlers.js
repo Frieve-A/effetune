@@ -325,7 +325,11 @@ function registerIpcHandlers() {
 
     // Save the pipeline state
     if (pipelineState) {
-      await fileHandlers.savePipelineStateToFile(pipelineState);
+      try {
+        await fileHandlers.savePipelineStateToFile(pipelineState);
+      } catch (error) {
+        console.error('Failed to save pipeline state on close:', error);
+      }
     }
 
     // Trigger the actual window close
