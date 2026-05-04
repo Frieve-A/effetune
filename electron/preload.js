@@ -4,6 +4,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld(
   'electronAPI', {
+    // Platform identifier ('darwin' | 'win32' | 'linux'). Synchronous so the
+    // renderer can branch on it without an async round-trip.
+    platform: process.platform,
+
     // File system operations
     showSaveDialog: (options) => ipcRenderer.invoke('show-save-dialog', options),
     showOpenDialog: (options) => ipcRenderer.invoke('show-open-dialog', options),
@@ -78,7 +82,17 @@ contextBridge.exposeInMainWorld(
     
     // Reload window
     reloadWindow: () => ipcRenderer.invoke('reload-window'),
-    
+
+    // Full app relaunch (kills renderer process — used for HDMI reconnect recovery)
+    relaunchApp: () => ipcRenderer.invoke('relaunch-app'),
+
+    // Renderer ping for the main-process watchdog (fire-and-forget).  Sent every
+    // 2 s; if main does not see a ping for 15 s it forcibly relaunches the app.
+    rendererPing: () => ipcRenderer.send('renderer-ping'),
+
+    // Request macOS microphone TCC permission (must be called before getUserMedia)
+    requestMicrophoneAccess: () => ipcRenderer.invoke('request-microphone-access'),
+
     // Clear permission overrides for microphone
     clearMicrophonePermission: () => ipcRenderer.invoke('clear-microphone-permission'),
     

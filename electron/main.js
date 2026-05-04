@@ -1,4 +1,4 @@
-const { app, BrowserWindow, screen, Tray, Menu } = require('electron');
+const { app, BrowserWindow, screen, Tray, Menu, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
@@ -17,6 +17,107 @@ constants.setAppVersion(appVersion);
 
 let tray = null;
 let isAppQuitting = false;
+
+// Renderer watchdog state — the renderer is expected to call 'renderer-ping'
+// every 2 s.  If the main process does not see a ping for WATCHDOG_THRESHOLD_MS,
+// the renderer is assumed to be frozen (e.g., stuck in a native audio system
+// call on macOS HDMI flux) and the whole app is forcibly relaunched.  This is
+// the last-resort safety net behind the in-renderer timeouts.
+const WATCHDOG_PING_INTERVAL_MS = 2000;
+const WATCHDOG_THRESHOLD_MS = 15000;
+// If app.exit() repeatedly throws (deterministic invalid-lifecycle state),
+// fall back to a hard process.exit(1) after this many attempts so the
+// watchdog cannot become an infinite log-spam loop.
+const WATCHDOG_MAX_EXIT_ATTEMPTS = 5;
+let lastRendererPing = 0;
+let watchdogIntervalId = null;
+let watchdogArmed = false;
+// Set true once app.relaunch() has been registered, so a subsequent watchdog
+// tick (e.g., after app.exit() throws) does not queue a second relaunch.
+let watchdogRelaunchQueued = false;
+// Counts consecutive failed app.exit() attempts to bound the retry loop.
+let watchdogExitAttempts = 0;
+
+function rendererPingReceived() {
+  lastRendererPing = Date.now();
+  if (!watchdogArmed) {
+    watchdogArmed = true;
+    console.log('[watchdog] First renderer ping received — watchdog armed');
+  }
+}
+
+function startWatchdog() {
+  if (watchdogIntervalId) return;
+  watchdogIntervalId = setInterval(() => {
+    if (!watchdogArmed || isAppQuitting) return;
+    const elapsed = Date.now() - lastRendererPing;
+    if (elapsed <= WATCHDOG_THRESHOLD_MS) return;
+
+    console.error(`[watchdog] Renderer unresponsive for ${elapsed}ms — forcing relaunch`);
+    // Note: a queued relaunch cannot be cancelled if the renderer happens to
+    // recover between app.relaunch() and app.exit() taking effect — the
+    // relaunch will still happen.  This is an accepted trade-off for a
+    // last-resort safety net (Electron has no cancelRelaunch() API).
+    try {
+      // Step 1: register the relaunch (idempotent only against our own guard
+      // — Electron's app.relaunch() queues per-call and we don't want stacks).
+      if (!watchdogRelaunchQueued) {
+        app.relaunch();
+        watchdogRelaunchQueued = true;
+      }
+      // Step 2: terminate the current process.  app.exit() returns
+      // synchronously to JS but actual termination happens after the event
+      // loop unwinds, so the line below normally runs.  We clear the interval
+      // here so the watchdog does not fire again before exit takes effect.
+      app.exit(0);
+      clearInterval(watchdogIntervalId);
+      watchdogIntervalId = null;
+    } catch (e) {
+      // relaunch() or exit() threw (rare; usually invalid lifecycle state).
+      watchdogExitAttempts++;
+      console.error(
+        `[watchdog] relaunch/exit failed (attempt ${watchdogExitAttempts}/${WATCHDOG_MAX_EXIT_ATTEMPTS}), will retry on next tick:`,
+        e
+      );
+      if (watchdogExitAttempts >= WATCHDOG_MAX_EXIT_ATTEMPTS) {
+        // Hard fallback: bypass Electron's lifecycle entirely so we don't
+        // spin-loop forever logging.  Pipeline state was already saved before
+        // this watchdog fired (or the renderer was unresponsive — best effort).
+        console.error('[watchdog] exhausted retries — calling process.exit(1)');
+        clearInterval(watchdogIntervalId);
+        watchdogIntervalId = null;
+        process.exit(1);
+      }
+      // Otherwise keep the interval running for the next retry.
+    }
+  }, WATCHDOG_PING_INTERVAL_MS);
+}
+
+function stopWatchdog() {
+  if (watchdogIntervalId) {
+    clearInterval(watchdogIntervalId);
+    watchdogIntervalId = null;
+  }
+  watchdogArmed = false;
+}
+
+// Renderer-ping IPC: registered here (not in ipc-handlers.js) so it can update
+// the watchdog state directly without a circular dependency.
+ipcMain.on('renderer-ping', () => {
+  rendererPingReceived();
+});
+
+// macOS only: tell Chromium to auto-approve getUserMedia() without showing its
+// own permission UI.  The actual hardware access still goes through macOS TCC,
+// so the system-level microphone permission is still respected and the
+// menu-bar indicator appears when audio is captured.
+// Not applied on Windows/Linux because those platforms have no equivalent
+// system-level dialog, so silently auto-granting media-stream access there
+// would weaken the security posture without a corresponding benefit.
+// Must be set before app.ready.
+if (process.platform === 'darwin') {
+  app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
+}
 
 // Set up logging to file for debugging (disabled for release)
 function setupFileLogging() {
@@ -64,7 +165,9 @@ function createWindow() {
       webSecurity: true,
       allowRunningInsecureContent: false,
       // Disable Electron's built-in zoom functionality
-      zoomFactor: 1.0
+      zoomFactor: 1.0,
+      // Keep timers running when window is hidden/minimized (needed for HDMI reconnect recovery)
+      backgroundThrottling: false
     }
   });
   
@@ -73,6 +176,18 @@ function createWindow() {
   ipcHandlers.setMainWindow(mainWindow);
   fileHandlers.setMainWindow(mainWindow);
   
+  // Allow renderer to access microphone via getUserMedia on file:// origin.
+  // Without both handlers, Chromium falls back to its default content-settings
+  // which deny media on file:// pages before the request handler is even called.
+  const MEDIA_PERMISSIONS = ['media', 'microphone'];
+  mainWindow.webContents.session.setPermissionCheckHandler((webContents, permission) => {
+    if (MEDIA_PERMISSIONS.includes(permission)) return true;
+    return false;
+  });
+  mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+    callback(MEDIA_PERMISSIONS.includes(permission));
+  });
+
   // Enable file drag and drop for the window
   mainWindow.webContents.session.on('will-download', (event, item, webContents) => {
     // Download event handler
@@ -504,11 +619,12 @@ function createWindow() {
   // Flag to track if we're in the process of closing
   let isClosing = false;
   const finalizeClose = () => {
-    isClosing = true;
-    if (isAppQuitting) {
-      app.quit();
+    if (isClosing) return;
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      if (isAppQuitting) app.quit();
       return;
     }
+    isClosing = true;
     mainWindow.close();
   };
 
@@ -531,7 +647,7 @@ function createWindow() {
     if (mainWindow && mainWindow.webContents) {
       // Set a timeout to ensure the app closes even if renderer doesn't respond
       const closeTimeout = setTimeout(() => {
-        console.log('Pipeline state save timeout, closing window');
+        console.error('Pipeline state save timeout, closing window without saving state');
         finalizeClose();
       }, 3000);
 
@@ -818,6 +934,16 @@ function createSplashScreen() {
         splashWindow = null;
       }
       
+      // Persist the first-launch-done marker so future launches skip this
+      // splash + reload workaround.  Best-effort — if the write fails, we
+      // simply repeat the splash next time.
+      try {
+        const marker = path.join(app.getPath('userData'), '.first-launch-done');
+        fs.writeFileSync(marker, new Date().toISOString());
+      } catch (e) {
+        console.warn('Failed to write first-launch-done marker:', e);
+      }
+      
       // Reload the main window
       mainWindow.reload();
       
@@ -1017,8 +1143,24 @@ function initializeApp() {
     }
   });
   
-  // Create splash screen
-  createSplashScreen();
+  // Show the splash screen + 3-second reload workaround only on the actual
+  // first launch (when no first-launch-done marker exists in userData).
+  // Persisting this avoids paying the 3-second reload (which resets the
+  // renderer's startup-grace clock) on every launch and after every relaunch.
+  const firstLaunchMarker = path.join(app.getPath('userData'), '.first-launch-done');
+  let isActuallyFirstLaunch = false;
+  try {
+    isActuallyFirstLaunch = !fs.existsSync(firstLaunchMarker);
+  } catch (e) {
+    isActuallyFirstLaunch = true; // be safe — show splash if we can't tell
+  }
+
+  if (isActuallyFirstLaunch) {
+    createSplashScreen();
+  } else {
+    // Subsequent launch: skip splash + reload entirely.
+    constants.setIsFirstLaunch(false);
+  }
 }
 
 // Initialize global variables
@@ -1122,14 +1264,18 @@ app.on('open-file', (event, path) => {
 
 // Register the app as the default handler for effetune:// protocol
 app.setAsDefaultProtocolClient('effetune');
-
+  
 // Main entry point
 app.whenReady().then(() => {
   // Initialize the app
   initializeApp();
   
+  // Start the renderer watchdog — it self-arms once the first ping arrives.
+  startWatchdog();
+
   // On macOS, recreate window when dock icon is clicked and no windows are open
   app.on('activate', () => {
+    if (isAppQuitting) return;
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     }
@@ -1138,11 +1284,12 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   isAppQuitting = true;
+  stopWatchdog();
 });
 
-// Quit the app when all windows are closed (except on macOS)
+// Quit the app when all windows are closed (except on macOS unless explicitly quitting)
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  if (process.platform !== 'darwin' || isAppQuitting) {
     app.quit();
   }
 });

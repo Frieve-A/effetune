@@ -1,4 +1,4 @@
-const { ipcMain, shell, systemPreferences, Menu } = require('electron');
+const { app, ipcMain, shell, systemPreferences, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const constants = require('./constants');
@@ -107,6 +107,21 @@ function registerIpcHandlers() {
 
   ipcMain.handle('read-file-as-buffer', async (event, filePath) => {
     return await fileHandlers.readFileAsBuffer(filePath);
+  });
+
+  // Request macOS microphone TCC permission from the main process.
+  // Must be called before getUserMedia() in the renderer; otherwise macOS never
+  // shows the privacy dialog and CoreAudio silently denies access.
+  ipcMain.handle('request-microphone-access', async () => {
+    if (process.platform !== 'darwin') return true;
+    try {
+      const status = await systemPreferences.getMediaAccessStatus('microphone');
+      if (status === 'granted') return true;
+      return await systemPreferences.askForMediaAccess('microphone');
+    } catch (error) {
+      console.error('Error requesting microphone access:', error);
+      return false;
+    }
   });
 
   // Get audio devices
@@ -325,13 +340,29 @@ function registerIpcHandlers() {
 
     // Save the pipeline state
     if (pipelineState) {
-      await fileHandlers.savePipelineStateToFile(pipelineState);
+      try {
+        const result = await fileHandlers.savePipelineStateToFile(pipelineState);
+        if (result && !result.success) {
+          console.error('Failed to save pipeline state on close:', result.error);
+        }
+      } catch (error) {
+        console.error('Failed to save pipeline state on close:', error);
+      }
     }
 
     // Trigger the actual window close
-    const triggerClose = constants.getTriggerClose();
-    if (triggerClose) {
-      triggerClose();
+    try {
+      const triggerClose = constants.getTriggerClose();
+      if (triggerClose) {
+        triggerClose();
+      }
+    } catch (error) {
+      console.error('Failed to trigger window close:', error);
+      const mainWin = constants.getMainWindow();
+      if (mainWin && !mainWin.isDestroyed()) {
+        mainWin.destroy();
+      }
+      app.quit();
     }
   });
 
@@ -343,6 +374,19 @@ function registerIpcHandlers() {
       return { success: true };
     }
     return { success: false, error: 'Main window not available' };
+  });
+
+  // Handle full app relaunch (used for HDMI reconnect recovery on macOS,
+  // where renderer-process restart is required to recover audio output).
+  // Re-throw on failure so the renderer can fall back to window.location.reload().
+  ipcMain.handle('relaunch-app', () => {
+    try {
+      app.relaunch();
+      app.exit(0);
+    } catch (error) {
+      console.error('[relaunch-app] Failed to relaunch app:', error);
+      throw error;
+    }
   });
 
   // Handle clear microphone permission request
