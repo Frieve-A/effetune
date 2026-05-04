@@ -1,4 +1,12 @@
 /**
+ * Prefix used to identify the non-fatal mic-denied warning returned by initAudioInput().
+ * Callers (e.g. AudioManager._doReset) test against this prefix to distinguish a
+ * recoverable mic-permission failure from a fatal context/output failure.  Keep this
+ * exported so the prefix and the message stay coupled.
+ */
+export const MIC_DENIED_PREFIX = 'Audio Error: Microphone access denied';
+
+/**
  * AudioIOManager - Manages audio input and output devices
  */
 export class AudioIOManager {
@@ -17,7 +25,15 @@ export class AudioIOManager {
         // When true, connect worklet output directly to AudioContext.destination
         // Used for multichannel and low-latency stereo modes
         this.directOutputMode = false;
+        // When true, output is routed via AudioContext.setSinkId() directly.
+        // This bypasses the MediaStream/audioElement path and uses the WebAudio
+        // engine's own CoreAudio renderer, which may be more reliable for HDMI.
+        this.audioContextSinkMode = false;
         this.currentOutputDeviceId = null;
+        this._devicePollIntervalId = null;
+        this._pollDeviceWasAbsent = false;
+        // Guard against overlapping poll tick executions
+        this._pollRunning = false;
     }
     
     /**
@@ -50,32 +66,48 @@ export class AudioIOManager {
                 }
             }
 
+            // On macOS, trigger TCC permission dialog from the main process before getUserMedia.
+            // We ignore the return value and let getUserMedia() be the final arbiter —
+            // askForMediaAccess can return false for ad-hoc signed builds even when
+            // System Settings shows the permission as allowed.
+            if (window.electronAPI && window.electronAPI.requestMicrophoneAccess) {
+                await window.electronAPI.requestMicrophoneAccess();
+            }
+
             // Try to get user media with audio constraints
+            let lastMicError = null;
             try {
-                this.stream = await navigator.mediaDevices.getUserMedia({
+                this.stream = await this._getUserMediaWithTimeout({
                     audio: audioConstraints
                 });
             } catch (error) {
+                lastMicError = error;
                 // If failed with saved device, try again with default device
                 if (audioConstraints.deviceId) {
-                    console.warn('Failed to use saved audio input device, falling back to default:', error);
+                    console.warn('Failed to use saved audio input device, falling back to default:', error.name, error.message);
                     delete audioConstraints.deviceId;
                     try {
-                        this.stream = await navigator.mediaDevices.getUserMedia({
+                        this.stream = await this._getUserMediaWithTimeout({
                             audio: audioConstraints
                         });
+                        lastMicError = null;
                     } catch (innerError) {
-                        // If permission is denied, try to clear permission overrides and ask again
+                        // If permission is denied, try to clear permission overrides and ask again.
+                        // This recovers cases where Chromium's permission cache rejects despite
+                        // the user actually having granted access (commonly seen on Windows/Linux,
+                        // and on macOS ad-hoc signed builds where requestMicrophoneAccess returns false).
                         if (innerError.name === 'NotAllowedError' || innerError.name === 'PermissionDeniedError') {
                             if (window.electronAPI && window.electronAPI.clearMicrophonePermission) {
                                 console.log('Microphone permission denied, attempting to clear permission overrides');
                                 try {
                                     await window.electronAPI.clearMicrophonePermission();
                                     // Try one more time after clearing permissions
-                                    this.stream = await navigator.mediaDevices.getUserMedia({
+                                    this.stream = await this._getUserMediaWithTimeout({
                                         audio: audioConstraints
                                     });
+                                    lastMicError = null;
                                 } catch (finalError) {
+                                    lastMicError = finalError;
                                     console.warn('Failed to get microphone access after clearing permissions:', finalError);
                                     usingMicrophoneInput = false;
                                 }
@@ -95,10 +127,12 @@ export class AudioIOManager {
                         try {
                             await window.electronAPI.clearMicrophonePermission();
                             // Try one more time after clearing permissions
-                            this.stream = await navigator.mediaDevices.getUserMedia({
+                            this.stream = await this._getUserMediaWithTimeout({
                                 audio: audioConstraints
                             });
+                            lastMicError = null;
                         } catch (finalError) {
+                            lastMicError = finalError;
                             console.warn('Failed to get microphone access after clearing permissions:', finalError);
                             usingMicrophoneInput = false;
                         }
@@ -107,7 +141,7 @@ export class AudioIOManager {
                         usingMicrophoneInput = false;
                     }
                 } else {
-                    console.warn('Failed to get microphone access:', error);
+                    console.warn('Failed to get microphone access:', error.name, error.message);
                     usingMicrophoneInput = false;
                 }
             }
@@ -151,8 +185,10 @@ export class AudioIOManager {
                 // Store the error message if microphone access was denied, but don't return it yet
                 // This allows us to continue setting up the audio nodes for playback
                 if (!usingMicrophoneInput) {
-                    // Use the same error format as before so app.js can detect it properly
-                    microphoneError = `Audio Error: Microphone access denied. Music file playback mode will still work.`;
+                    // Use the same error format as before so app.js can detect it properly.
+                    // The MIC_DENIED_PREFIX shared constant guarantees the prefix stays in
+                    // sync with AudioManager._doReset's startsWith() check.
+                    microphoneError = `${MIC_DENIED_PREFIX}. Music file playback mode will still work.`;
                 }
             }
             
@@ -204,6 +240,43 @@ export class AudioIOManager {
             
             // For Electron, prepare audio output device (only in stereo mode)
             if (!isMultiChannel && window.electronAPI && window.electronIntegration) {
+                // Route output through AudioContext.setSinkId() if the API is available.
+                // This uses Chromium's WebAudio CoreAudio renderer instead of the
+                // HTMLMediaElement renderer.  On macOS, these are separate code paths and
+                // the WebAudio path is more reliable for HDMI reconnect recovery.
+                if (preferences?.outputDeviceId &&
+                    typeof this.contextManager.audioContext?.setSinkId === 'function') {
+                    this.audioContextSinkMode = true;
+                    this.destinationNode = null; // use audioContext.destination via connectAudioNodes fallback
+                    this.currentOutputDeviceId = preferences.outputDeviceId;
+                    try {
+                        // 3 s timeout instead of the default 10 s — on macOS HDMI flux,
+                        // setSinkId can hang and we want to fail fast and continue with
+                        // a usable (default-sink) audio context.
+                        await this._setSinkIdWithTimeout(this.contextManager.audioContext, preferences.outputDeviceId, 3000);
+                    } catch (e) {
+                        console.warn('[audioCtxSink] setSinkId failed:', e.message);
+                    }
+                    if (window.electronIntegration?.isElectronEnvironment?.()) {
+                        this.startDevicePoll(
+                            () => window.electronIntegration.loadAudioPreferences(),
+                            // On macOS HDMI (audioContextSinkMode), reset(null) cannot recover —
+                            // CoreAudio renderer needs full process restart.  Defer to App's
+                            // macOS relaunch handler (which is gated by cooldown + startup grace).
+                            // Otherwise pass null so _doReset does not call saveAudioPreferences,
+                            // which would schedule a mainWindow.reload() and undo the recovery.
+                            () => {
+                                if (window.electronAPI?.platform === 'darwin' && window.app?._doMacosRelaunch) {
+                                    return window.app._doMacosRelaunch();
+                                }
+                                return window.audioManager?.reset(null) ?? Promise.resolve();
+                            },
+                            false
+                        );
+                    }
+                    return '';
+                }
+
                 // Rest of function continues for stereo output with device selection...
                 if (preferences && preferences.outputDeviceId) {
                     try {
@@ -420,6 +493,30 @@ export class AudioIOManager {
                 this.silenceNode = silenceNode;
             }
             
+            // Start polling fallback for HDMI reconnection (macOS devicechange unreliable)
+            if (window.electronIntegration?.isElectronEnvironment?.() && this.audioElement) {
+                // If the audio element ended up on a different device than preferred (fallback after
+                // disconnect), treat the preferred device as absent so the first poll tick that finds
+                // it back triggers a full reset rather than a reapply.
+                const pollInitiallyAbsent = preferences?.outputDeviceId
+                    ? this.audioElement.sinkId !== preferences.outputDeviceId
+                    : false;
+                this.startDevicePoll(
+                    () => window.electronIntegration.loadAudioPreferences(),
+                    // On macOS, reset(null) cannot recover from stuck CoreAudio state —
+                    // route to App's macOS relaunch handler instead (gated by cooldown +
+                    // startup grace).  Otherwise pass null so _doReset does not call
+                    // saveAudioPreferences, which would schedule a mainWindow.reload().
+                    () => {
+                        if (window.electronAPI?.platform === 'darwin' && window.app?._doMacosRelaunch) {
+                            return window.app._doMacosRelaunch();
+                        }
+                        return window.audioManager?.reset(null) ?? Promise.resolve();
+                    },
+                    pollInitiallyAbsent
+                );
+            }
+
             return '';
         } catch (error) {
             console.error('Audio output initialization error:', error);
@@ -547,11 +644,30 @@ export class AudioIOManager {
      * @returns {Promise<boolean>} Success status
      */
     async reapplyOutputDevice(deviceId) {
+        // Use a shorter timeout (3 s) for runtime reapply than the 10 s used at init,
+        // so that macOS HDMI stuck states fail fast and route to the relaunch fallback
+        // instead of leaving the UI unresponsive for 10 s during multi-display flux.
+        const RUNTIME_SETSINK_TIMEOUT_MS = 3000;
+        const ctx = this.contextManager?.audioContext;
+        if (this.audioContextSinkMode && typeof ctx?.setSinkId === 'function') {
+            try {
+                // setSinkId can hang indefinitely on macOS when HDMI is in a
+                // re-re-connect / multi-display flux state — use the timeout wrapper.
+                await this._setSinkIdWithTimeout(ctx, deviceId, RUNTIME_SETSINK_TIMEOUT_MS);
+                this.currentOutputDeviceId = deviceId;
+                console.log('Reapplied output device (ctx):', deviceId);
+                return true;
+            } catch (error) {
+                console.warn('Failed to reapply output device (ctx):', error);
+                return false;
+            }
+        }
         if (!this.audioElement || typeof this.audioElement.setSinkId !== 'function') {
             return false;
         }
         try {
-            await this.audioElement.setSinkId(deviceId);
+            // Same hang risk on the audio-element renderer path — wrap with timeout.
+            await this._setSinkIdWithTimeout(this.audioElement, deviceId, RUNTIME_SETSINK_TIMEOUT_MS);
             this.currentOutputDeviceId = deviceId;
             if (this.destinationNode && this.destinationNode.stream) {
                 this.audioElement.srcObject = this.destinationNode.stream;
@@ -561,18 +677,207 @@ export class AudioIOManager {
             } catch (e) {
                 // Ignore play errors
             }
-            console.log('Reapplied output device:', deviceId);
+            console.log('Reapplied output device (el):', deviceId);
             return true;
         } catch (error) {
-            console.warn('Failed to reapply output device:', error);
+            console.warn('Failed to reapply output device (el):', error);
             return false;
         }
     }
     
     /**
+     * Start periodic polling to verify audio output device is active.
+     * Fallback for macOS where HDMI reconnection may not trigger devicechange.
+     * @param {Function} getPrefs - async function returning saved preferences
+     * @param {Function} onReset  - async function(prefs) for full reinit
+     */
+    startDevicePoll(getPrefs, onReset, initiallyAbsent = false) {
+        this.stopDevicePoll();
+        this._pollDeviceWasAbsent = initiallyAbsent;
+        this._devicePollIntervalId = setInterval(async () => {
+            if (!window.electronIntegration?.isElectronEnvironment?.()) return;
+            // Skip if a previous poll tick is still running (avoids stacking)
+            if (this._pollRunning) return;
+            this._pollRunning = true;
+            try { await this._pollTick(getPrefs, onReset); } finally { this._pollRunning = false; }
+        }, 4000);
+    }
+
+    async _pollTick(getPrefs, onReset) {
+        // On macOS, skip the poll's recovery actions during the 10 s startup grace
+        // (was 30 s — kept in sync with App._doMacosRelaunch's grace window).
+        if (window.electronAPI?.platform === 'darwin' && window.app?._appStartTime) {
+            const elapsed = Date.now() - window.app._appStartTime;
+            if (elapsed < 10000) {
+                return;
+            }
+        }
+
+        let prefs;
+        try { prefs = await getPrefs(); } catch (e) {
+            console.warn('[_pollTick] Failed to load audio preferences:', e.message);
+            return;
+        }
+        if (!prefs || !prefs.outputDeviceId) return;
+
+        let devices;
+        try { devices = await navigator.mediaDevices.enumerateDevices(); } catch (e) {
+            console.warn('[_pollTick] Failed to enumerate devices:', e.message);
+            return;
+        }
+
+        const outputs = devices.filter(d => d.kind === 'audiooutput');
+
+        // Try exact ID match first; fall back to label match (HDMI may get new ID on reconnect)
+        let foundDevice = outputs.find(d => d.deviceId === prefs.outputDeviceId);
+        let foundByLabel = false;
+        if (!foundDevice && prefs.outputDeviceLabel) {
+            foundDevice = outputs.find(d => d.label === prefs.outputDeviceLabel);
+            foundByLabel = !!foundDevice;
+        }
+
+        const wasAbsent = this._pollDeviceWasAbsent;
+        this._pollDeviceWasAbsent = !foundDevice;
+
+        // Current sinkId: use AudioContext or audioElement depending on mode
+        const ctx = this.contextManager?.audioContext;
+        const el = this.audioContextSinkMode ? null : this.audioElement;
+        const currentSinkId = this.audioContextSinkMode
+            ? (ctx?.sinkId ?? 'no-ctx')
+            : (el?.sinkId ?? 'no-element');
+
+        if (!foundDevice) return;
+        if (!this.audioContextSinkMode && !el) return;
+
+        const activeDeviceId = foundDevice.deviceId;
+        const updatedPrefs = foundByLabel ? { ...prefs, outputDeviceId: activeDeviceId } : prefs;
+
+
+        // Stuck non-'running' AudioContext check.
+        // Even when sinkId already matches and the device is present, the underlying
+        // CoreAudio renderer can stay in a 'suspended' state after macOS HDMI flux
+        // (the user perceives this as audio is dead but UI is alive — the original
+        // freeze report).  Recovery: try a quick resume; if it does not bring the
+        // ctx back to 'running', defer to onReset (= _doMacosRelaunch on macOS).
+        if (this.audioContextSinkMode && ctx && ctx.state !== 'running' && ctx.state !== 'closed') {
+            try {
+                await Promise.race([
+                    ctx.resume(),
+                    new Promise(resolve => setTimeout(resolve, 3000))
+                ]);
+            } catch (e) {
+            }
+            if (ctx.state !== 'running') {
+                try {
+                    await onReset(updatedPrefs);
+                } catch (e) {
+                }
+                return;
+            }
+            return;
+        }
+
+        if (currentSinkId !== activeDeviceId || foundByLabel) {
+            // sinkId mismatch or device got a new ID — full reset needed
+            if (wasAbsent || foundByLabel) {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+            try {
+                await onReset(updatedPrefs);
+            } catch (e) {
+                console.error('[_pollTick] onReset failed (sinkId mismatch path):', e.message ?? e);
+            }
+        } else if (wasAbsent) {
+            // sinkId is already correct after reconnect.
+            // If the context is already running, the devicechange handler handled
+            // the reconnect — don't interfere with another toggle.
+            if (this.audioContextSinkMode && ctx?.state === 'running') return;
+
+            // Context is not running — do a light toggle + resume.
+            try {
+                if (this.audioContextSinkMode && ctx) {
+                    await this._setSinkIdWithTimeout(ctx, '');
+                    await new Promise(r => setTimeout(r, 1000));
+                    await this._setSinkIdWithTimeout(ctx, activeDeviceId);
+                    await Promise.race([
+                        ctx.resume(),
+                        new Promise(resolve => setTimeout(resolve, 15000))
+                    ]).catch(() => {});
+                    if (ctx.state === 'running') {
+                        await window.audioManager?.rebuildPipeline(false).catch(() => {});
+                    }
+                } else if (el) {
+                    await this._setSinkIdWithTimeout(el, 'default');
+                    await new Promise(r => setTimeout(r, 300));
+                    await this._setSinkIdWithTimeout(el, activeDeviceId);
+                    if (this.destinationNode?.stream) el.srcObject = this.destinationNode.stream;
+                    await el.play().catch(() => {});
+                }
+            } catch (e) {
+                console.warn('[_pollTick] toggle+resume failed, falling back to full reset:', e.message ?? e);
+                await onReset(updatedPrefs);
+            }
+        } else if (!this.audioContextSinkMode && (el.paused || el.readyState < 2)) {
+            try { await el.play(); } catch (e) {
+                console.warn('[_pollTick] el.play() failed, falling back to full reset:', e.message ?? e);
+                await onReset(prefs);
+            }
+        }
+    }
+
+    _setSinkIdWithTimeout(target, sinkId, ms = 10000) {
+        let timerId;
+        return Promise.race([
+            target.setSinkId(sinkId).finally(() => clearTimeout(timerId)),
+            new Promise((_, reject) => {
+                timerId = setTimeout(
+                    () => reject(new Error(`setSinkId('${sinkId}') timed out after ${ms}ms`)),
+                    ms
+                );
+            })
+        ]);
+    }
+
+    /**
+     * getUserMedia with timeout — on macOS, getUserMedia can hang indefinitely when
+     * the audio system is in flux (HDMI re-re-connect, multi-display).  Apply a 5 s
+     * timeout so the renderer can fall back to silent-source mode and proceed instead
+     * of freezing.
+     */
+    _getUserMediaWithTimeout(constraints, ms = 5000) {
+        let timerId;
+        return Promise.race([
+            navigator.mediaDevices.getUserMedia(constraints).finally(() => clearTimeout(timerId)),
+            new Promise((_, reject) => {
+                timerId = setTimeout(
+                    () => reject(new Error(`getUserMedia timed out after ${ms}ms`)),
+                    ms
+                );
+            })
+        ]);
+    }
+
+    /**
+     * Stop periodic device polling
+     */
+    stopDevicePoll() {
+        if (this._devicePollIntervalId !== null) {
+            clearInterval(this._devicePollIntervalId);
+            this._devicePollIntervalId = null;
+        }
+        this._pollRunning = false;
+    }
+
+    /**
      * Clean up audio input and output
      */
     cleanupAudio() {
+        // Stop polling before teardown to prevent race conditions
+        this.stopDevicePoll();
+
+        // Reset audioContextSinkMode so next initAudioOutput() re-evaluates it
+        this.audioContextSinkMode = false;
+
         // Stop audio element if it exists
         if (this.audioElement) {
             this.audioElement.pause();

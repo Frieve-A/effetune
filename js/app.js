@@ -198,6 +198,20 @@ class App {
         // Use a default value of false if window.isFirstLaunchConfirmed is not set
         this.audioManager.isFirstLaunch = false;
 
+        // Track whether preferred output device was absent on last devicechange scan
+        // Used to detect absent→present transitions for HDMI reconnect recovery
+        this._preferredDeviceWasAbsent = false;
+
+        // HDMI reconnect throttling: timestamp of last reconnect handling (0 = never)
+        this._lastHdmiReconnectResetTime = 0;
+        // Debounce timer for disconnect: avoids immediate fallback reset during HDMI oscillation
+        this._disconnectDebounceTimer = null;
+        // Guard against concurrent handleOutputDeviceChange executions
+        this._deviceChangeInProgress = false;
+        // App-start timestamp — used to skip auto-relaunch immediately after launch
+        // to prevent infinite relaunch loops when HDMI is unstable at startup
+        this._appStartTime = Date.now();
+
         // Make managers globally accessible for preset functionality
         window.pluginManager = this.pluginManager;
         window.pipelineManager = this.uiManager.pipelineManager;
@@ -800,14 +814,18 @@ class App {
 
         // Display microphone error message if there was one
         if (this.hasAudioError) {
-            // Show a non-blocking warning message to the user
-            this.uiManager.setError(this.uiManager.t('error.microphoneAccessDenied'), false);
+            // Show a non-blocking warning message to the user, then auto-clear
+            // after 3 s so the warning does not linger indefinitely.
+            this.uiManager.setError('error.microphoneAccessDenied', false);
             setTimeout(() => window.uiManager.clearError(), 3000);
         }
     }
 
     /**
-     * Handle output device change events
+     * Handle output device change events.
+     * Uses a 3-second disconnect debounce to avoid reacting to brief HDMI state
+     * oscillations during re-plug, and a 10-second cooldown (in _doMacosRelaunch)
+     * to prevent repeated reconnect resets from the same reconnect event.
      */
     async handleOutputDeviceChange() {
         if (!window.electronIntegration ||
@@ -816,7 +834,25 @@ class App {
             return;
         }
 
-        const prefs = await window.electronIntegration.loadAudioPreferences();
+        if (this._deviceChangeInProgress) {
+            return;
+        }
+        this._deviceChangeInProgress = true;
+        try {
+            await this._handleOutputDeviceChangeImpl();
+        } finally {
+            this._deviceChangeInProgress = false;
+        }
+    }
+
+    async _handleOutputDeviceChangeImpl() {
+        let prefs;
+        try {
+            prefs = await window.electronIntegration.loadAudioPreferences();
+        } catch (err) {
+            console.warn('[_handleOutputDeviceChangeImpl] Failed to load audio preferences:', err);
+            return;
+        }
         if (!prefs || !prefs.outputDeviceId) return;
 
         let devices;
@@ -827,24 +863,202 @@ class App {
             return;
         }
 
-        const found = devices.some(d => d.kind === 'audiooutput' && d.deviceId === prefs.outputDeviceId);
-        const currentSink = this.audioManager.ioManager.audioElement?.sinkId;
+        const outputs = devices.filter(d => d.kind === 'audiooutput');
+
+        // Try exact ID match; fall back to label match (HDMI may get new ID on reconnect)
+        let foundDevice = outputs.find(d => d.deviceId === prefs.outputDeviceId);
+        let foundByLabel = false;
+        if (!foundDevice && prefs.outputDeviceLabel) {
+            foundDevice = outputs.find(d => d.label === prefs.outputDeviceLabel);
+            foundByLabel = !!foundDevice;
+        }
+
+        const wasAbsent = this._preferredDeviceWasAbsent;
+        this._preferredDeviceWasAbsent = !foundDevice;
+
+        const ioMgr = this.audioManager.ioManager;
+        const ctx = this.audioManager.contextManager?.audioContext;
+        const useCtxSink = ioMgr.audioContextSinkMode && typeof ctx?.setSinkId === 'function';
+        const currentSink = useCtxSink
+            ? ctx?.sinkId
+            : ioMgr.audioElement?.sinkId;
+        const activeDeviceId = foundDevice?.deviceId ?? prefs.outputDeviceId;
 
         if (typeof currentSink === 'undefined') {
-            if (found) {
-                await this.audioManager.reset(prefs);
+            if (foundDevice) await this.audioManager.reset(null);
+            return;
+        }
+
+        if (!foundDevice) {
+            // Device absent.  Don't reset immediately — HDMI often briefly disappears
+            // during re-plug (state oscillation).  Debounce 3s and only reset if still absent.
+            if (currentSink !== prefs.outputDeviceId) return;
+
+            if (this._disconnectDebounceTimer) clearTimeout(this._disconnectDebounceTimer);
+            this._disconnectDebounceTimer = setTimeout(async () => {
+                this._disconnectDebounceTimer = null;
+                let devices2;
+                try { devices2 = await navigator.mediaDevices.enumerateDevices(); } catch (e) { return; }
+                const stillAbsent = !devices2.some(d =>
+                    d.kind === 'audiooutput' &&
+                    (d.deviceId === prefs.outputDeviceId ||
+                     (prefs.outputDeviceLabel && d.label === prefs.outputDeviceLabel)));
+                if (!stillAbsent) return;
+                // Confirmed long disconnect: reset to fallback.
+                // Save pipeline state first so a watchdog-triggered force-relaunch
+                // (if reset() somehow hangs despite our timeouts) still preserves
+                // the user's plugin configuration.
+                this._lastHdmiReconnectResetTime = 0;
+                await this._savePipelineStateBeforeRisk();
+                try {
+                    await this.audioManager.reset(null);
+                } catch (err) {
+                    console.error('[disconnectDebounce] reset failed:', err);
+                }
+            }, 3000);
+            return;
+        }
+
+        // Device is present — cancel any pending disconnect debounce
+        if (this._disconnectDebounceTimer) {
+            clearTimeout(this._disconnectDebounceTimer);
+            this._disconnectDebounceTimer = null;
+        }
+
+        if (wasAbsent || foundByLabel) {
+            // The full app-relaunch path is a macOS-specific workaround for
+            // CoreAudio HDMI reconnect — Chromium's renderer must be killed
+            // before audio can be restored.  On Windows/Linux, sinkId reapply
+            // (or a full audio reset) recovers without restarting the process,
+            // so do not relaunch there.
+            if (window.electronAPI?.platform === 'darwin') {
+                await this._doMacosRelaunch();
+                return;
             }
-        } else {
-            if (found) {
-                if (currentSink !== prefs.outputDeviceId) {
-                    const success = await this.audioManager.ioManager.reapplyOutputDevice(prefs.outputDeviceId);
-                    if (!success) {
-                        await this.audioManager.reset(prefs);
+
+            // Non-macOS: sinkId reapply is sufficient on Windows/Linux.
+            // Force a reapply even when the cached sinkId still matches, since
+            // on those platforms the underlying audio binding can become stale
+            // after the device disappeared and reappeared.
+            const success = await this.audioManager.ioManager.reapplyOutputDevice(activeDeviceId);
+            if (!success) {
+                console.warn('[handleOutputDeviceChange] reapplyOutputDevice failed on non-macOS HDMI reconnect, falling back to full reset');
+                try {
+                    await this.audioManager.reset(null);
+                } catch (err) {
+                    console.error('[handleOutputDeviceChange] reset(null) after reapply failure threw:', err);
+                }
+            }
+            return;
+        }
+
+        if (currentSink !== activeDeviceId) {
+            const success = await this.audioManager.ioManager.reapplyOutputDevice(activeDeviceId);
+            if (!success) {
+                if (window.electronAPI?.platform === 'darwin') {
+                    // On macOS, sinkId reapply failure usually means CoreAudio is in a
+                    // stuck HDMI state — reset(null) cannot recover and tends to hang.
+                    // Defer to the relaunch handler (gated by cooldown + startup grace).
+                    console.warn('[handleOutputDeviceChange] reapplyOutputDevice failed on sinkId mismatch, deferring to macOS relaunch');
+                    await this._doMacosRelaunch();
+                } else {
+                    console.warn('[handleOutputDeviceChange] reapplyOutputDevice failed on sinkId mismatch, falling back to full reset');
+                    try {
+                        await this.audioManager.reset(null);
+                    } catch (err) {
+                        console.error('[handleOutputDeviceChange] reset(null) after reapply failure threw:', err);
                     }
                 }
-            } else if (currentSink === prefs.outputDeviceId) {
-                await this.audioManager.reset(prefs);
             }
+        }
+    }
+
+    /**
+     * Save current pipeline state to file (best-effort, non-blocking on failure).
+     * Used before risky audio operations so a watchdog-triggered force-relaunch
+     * still preserves the user's pipeline configuration.
+     */
+    async _savePipelineStateBeforeRisk() {
+        try {
+            const core = window.pipelineManager?.core;
+            if (window.electronAPI?.savePipelineStateToFile && core && this.audioManager) {
+                const serialize = (pl) => pl
+                    ? pl.map(p => core.getSerializablePluginState(p, false, false, false))
+                    : null;
+                const state = {
+                    pipelineA: serialize(this.audioManager.pipelineA),
+                    pipelineB: serialize(this.audioManager.pipelineB),
+                    currentPipeline: this.audioManager.currentPipeline
+                };
+                await window.electronAPI.savePipelineStateToFile(state);
+            }
+        } catch (err) {
+            console.warn('[savePipelineStateBeforeRisk] state save failed (continuing):', err);
+        }
+    }
+
+    /**
+     * macOS-only HDMI reconnect recovery via full app relaunch.
+     * Called from both the devicechange handler and the device-poll fallback.
+     * Gated by a 10 s cooldown and a 10 s startup grace (≤ 6 relaunches/min
+     * worst case) so that an unstable HDMI link around app launch cannot
+     * trigger an infinite relaunch loop.
+     * No-op outside the gate — caller may safely await without further checks.
+     */
+    async _doMacosRelaunch() {
+        const now = Date.now();
+        const elapsed = now - this._lastHdmiReconnectResetTime;
+        if (elapsed < 10000) {
+            return;
+        }
+
+        // Skip auto-relaunch for the first 10 s after app start to prevent
+        // infinite relaunch loops when HDMI is unstable around launch.
+        // (Was 30 s — shortened because user-driven HDMI tests within the
+        // first 30 s of startup were being silently blocked from recovery,
+        // and the cooldown alone is sufficient to bound loops at 6/min.)
+        const timeSinceStart = Date.now() - this._appStartTime;
+        if (timeSinceStart < 10000) {
+            return;
+        }
+
+        // Arm cooldown only once we've actually committed to relaunching,
+        // so the startup-grace early-return does not erroneously block
+        // legitimate reconnects within the next 10 seconds.
+        this._lastHdmiReconnectResetTime = now;
+
+        // Save pipeline state before relaunch so user's work is preserved.
+        // Use pipelineManager.core to produce the serializable form (name/enabled/parameters),
+        // not audioManager.getPipelineState() which returns raw plugin instances.
+        try {
+            const core = window.pipelineManager?.core;
+            if (window.electronAPI?.savePipelineStateToFile && core && this.audioManager) {
+                const serialize = (pl) => pl
+                    ? pl.map(p => core.getSerializablePluginState(p, false, false, false))
+                    : null;
+                const state = {
+                    pipelineA: serialize(this.audioManager.pipelineA),
+                    pipelineB: serialize(this.audioManager.pipelineB),
+                    currentPipeline: this.audioManager.currentPipeline
+                };
+                await window.electronAPI.savePipelineStateToFile(state);
+            } else if (!core) {
+                console.error('[_doMacosRelaunch] pipelineManager.core unavailable — skipping pipeline save before relaunch');
+            }
+        } catch (err) {
+            console.error('[_doMacosRelaunch] Failed to save pipeline state before relaunch — user work may be lost:', err);
+        }
+
+        try {
+            if (window.electronAPI?.relaunchApp) {
+                await window.electronAPI.relaunchApp();
+            } else {
+                console.warn('[_doMacosRelaunch] electronAPI.relaunchApp unavailable, falling back to window.location.reload()');
+                window.location.reload();
+            }
+        } catch (err) {
+            console.error('[_doMacosRelaunch] relaunchApp failed, falling back to reload:', err);
+            window.location.reload();
         }
     }
 
@@ -1001,6 +1215,18 @@ async function displayAppVersion() {
         }
     }
     
+}
+
+// Renderer-side watchdog ping.  Sent every 2 s; main process force-relaunches
+// the app if it does not see a ping for 15 s.  This is the last-resort safety
+// net catching renderer freezes that escape our in-renderer timeout wrappers
+// (e.g., a native audio call that synchronously blocks the JS thread).
+if (window.electronAPI?.rendererPing) {
+    setInterval(() => {
+        try { window.electronAPI.rendererPing(); } catch (_) { /* fire-and-forget */ }
+    }, 2000);
+    // Send one immediately so the watchdog arms on first event-loop tick.
+    try { window.electronAPI.rendererPing(); } catch (_) { /* ignore */ }
 }
 
 // Set up event listeners for tray menu functionality
