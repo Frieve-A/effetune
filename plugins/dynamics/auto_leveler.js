@@ -381,7 +381,7 @@ class AutoLevelerPlugin extends PluginBase {
     }
 
     startAnimation() {
-        if (!this.enabled || !this._sectionEnabled) return;
+        if (!this.enabled || !this._sectionEnabled || this._sleepMode) return;
         if (this.animationFrameId) return;
 
         const animate = () => {

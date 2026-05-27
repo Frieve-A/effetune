@@ -284,6 +284,17 @@ export class AudioManager {
                 this.workletNode.port.onmessage = (event) => {
                     const data = event.data;
                     if (data.type === 'sleepModeChanged') {
+                        // Propagate sleep state to every plugin so that
+                        // analyzer-style plugins can pause their main-thread
+                        // redraw loop while the audio path is idle. Plugins
+                        // that don't expose _setSleepMode are unaffected.
+                        if (this.pipeline) {
+                            for (const plugin of this.pipeline) {
+                                if (typeof plugin._setSleepMode === 'function') {
+                                    plugin._setSleepMode(data.isSleepMode);
+                                }
+                            }
+                        }
                         // Dispatch sleep mode changed event
                         this.dispatchEvent('sleepModeChanged', {
                             isSleepMode: data.isSleepMode,
