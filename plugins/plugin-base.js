@@ -502,10 +502,26 @@ class PluginBase {
     }
 
     // Enable or disable the plugin.
+    //
+    // When a plugin exposes startAnimation()/stopAnimation() (used by
+    // analyzer-style plugins to drive a per-frame canvas redraw), pause that
+    // loop while the plugin is disabled. Previously the redraw loop kept
+    // running at the display refresh rate even when the user toggled the
+    // plugin off via the ON button, which wastes main-thread CPU and is
+    // especially noticeable on low-power hardware. The animation is resumed
+    // when the plugin is re-enabled.
     setEnabled(enabled) {
         if (this.enabled !== enabled) {
             this.enabled = enabled;
             this.updateParameters();
+            if (typeof this.startAnimation === 'function' &&
+                typeof this.stopAnimation === 'function') {
+                if (enabled) {
+                    this.startAnimation();
+                } else {
+                    this.stopAnimation();
+                }
+            }
         }
     }
 
