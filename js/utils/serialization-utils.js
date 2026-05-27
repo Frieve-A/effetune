@@ -144,7 +144,7 @@ export function applySerializedState(plugin, state) {
         plugin.name = state.nm;
         
         if (state.en !== undefined) {
-            plugin.enabled = state.en;
+            plugin.setEnabled(state.en);
         }
         
         if (state.ib !== undefined) {
@@ -173,7 +173,7 @@ export function applySerializedState(plugin, state) {
         plugin.name = state.name;
         
         if (state.enabled !== undefined) {
-            plugin.enabled = state.enabled;
+            plugin.setEnabled(state.enabled);
         }
         
         if (state.inputBus !== undefined) {

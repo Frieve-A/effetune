@@ -166,7 +166,10 @@ export class PipelineItemBuilder {
             : 'Enable or disable effect';
         toggle.classList.toggle('off', !plugin.enabled);
         toggle.onclick = (e) => {
-            plugin.enabled = !plugin.enabled;
+            // Go through setEnabled() so plugins can react to the transition
+            // (e.g. analyzer plugins pause their per-frame redraw loop when
+            // disabled, freeing main-thread CPU on low-power hardware).
+            plugin.setEnabled(!plugin.enabled);
             toggle.classList.toggle('off', !plugin.enabled);
             
             // Use the common selection function
