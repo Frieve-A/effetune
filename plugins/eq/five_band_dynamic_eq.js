@@ -27,6 +27,10 @@ class FiveBandDynamicEQ extends PluginBase {
         // --- Canvas References ---
         this.canvas = null;
         this.ctx = null;
+        // Updated by IntersectionObserver once the canvas is mounted; the
+        // animation loop pauses while the canvas is scrolled out of view.
+        this.isVisible = true;
+        this.observer = null;
         // Remove fixed width/height, control via CSS
         // this.canvasWidth = 400;
         // this.canvasHeight = 200;
@@ -616,6 +620,19 @@ class FiveBandDynamicEQ extends PluginBase {
         graphContainer.appendChild(this.canvas);
         container.appendChild(graphContainer);
 
+        // Pause the redraw loop while the canvas is off-screen.
+        this.observer = new IntersectionObserver(entries => {
+            for (const entry of entries) {
+                this.isVisible = entry.isIntersecting;
+                if (this.isVisible) {
+                    this.startAnimation();
+                } else {
+                    this.stopAnimation();
+                }
+            }
+        });
+        this.observer.observe(this.canvas);
+
         // Initial setup
         this.startAnimation();
 
@@ -1147,8 +1164,13 @@ class FiveBandDynamicEQ extends PluginBase {
     startAnimation() {
         if (this.animationFrameId) return; // Already running
         if (!this.enabled || !this._sectionEnabled) return; // Skip if disabled or section is off.
+        if (this.isVisible === false) return;                // Skip if off-screen.
         const animate = () => {
-            this._drawGraph(); // Redraw graph with potentially updated (dynamic) data
+            if (this.isVisible === false) {
+                this.stopAnimation();
+                return;
+            }
+            this._drawGraph();
             this.animationFrameId = requestAnimationFrame(animate);
         };
         this.animationFrameId = requestAnimationFrame(animate);
@@ -1168,6 +1190,10 @@ class FiveBandDynamicEQ extends PluginBase {
         if (this.resizeObserver) {
              this.resizeObserver.disconnect(); // Disconnect observer
              this.resizeObserver = null;
+        }
+        if (this.observer) {
+            this.observer.disconnect();
+            this.observer = null;
         }
         this.canvas = null;
         this.ctx = null;
