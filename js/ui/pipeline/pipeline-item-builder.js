@@ -171,13 +171,20 @@ export class PipelineItemBuilder {
             // disabled, freeing main-thread CPU on low-power hardware).
             plugin.setEnabled(!plugin.enabled);
             toggle.classList.toggle('off', !plugin.enabled);
-            
+
+            // Toggling a Section's ON also bypasses every plugin inside it
+            // on the worklet side. Mirror that on the main thread so the
+            // analyzers inside the section pause their redraw loops too.
+            if (plugin.constructor.name === 'SectionPlugin') {
+                this._propagateSectionEnabledToAnimations(plugin);
+            }
+
             // Use the common selection function
             this.pipelineCore.handlePluginSelection(plugin, e);
-            
+
             // Update worklet directly without rebuilding pipeline
             this.pipelineCore.updateWorkletPlugin(plugin);
-            
+
             // Update UI display state for all plugins that might be affected by this change
             this.pipelineCore.updateAllPluginDisplayState();
             
@@ -809,5 +816,32 @@ export class PipelineItemBuilder {
                 ? (window.uiManager ? window.uiManager.t('ui.title.collapse') : 'Click to collapse')
                 : (window.uiManager ? window.uiManager.t('ui.title.expand') : 'Click to expand');
         });
+    }
+
+    // When a Section's ON/OFF state changes, pause or resume the per-frame
+    // redraw loop of every plugin that belongs to that section. A section
+    // spans from the toggled Section plugin up to (but not including) the
+    // next Section plugin in the pipeline, matching the worklet's
+    // section-active gating in plugins/audio-processor.js.
+    _propagateSectionEnabledToAnimations(sectionPlugin) {
+        const pipeline = this.audioManager && this.audioManager.pipeline;
+        if (!pipeline) return;
+        const startIdx = pipeline.indexOf(sectionPlugin);
+        if (startIdx < 0) return;
+        const sectionOn = sectionPlugin.enabled;
+        for (let i = startIdx + 1; i < pipeline.length; i++) {
+            const p = pipeline[i];
+            if (p.constructor.name === 'SectionPlugin') break;
+            if (typeof p.startAnimation !== 'function' ||
+                typeof p.stopAnimation !== 'function') {
+                continue;
+            }
+            if (sectionOn) {
+                // Resume only if the plugin itself is also enabled.
+                if (p.enabled) p.startAnimation();
+            } else {
+                p.stopAnimation();
+            }
+        }
     }
 }
