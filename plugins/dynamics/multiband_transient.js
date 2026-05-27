@@ -560,6 +560,7 @@ class MultibandTransientPlugin extends PluginBase {
     }
 
     startAnimation() {
+        if (!this.enabled) return;
         if (this.animationFrameId) return;
 
         const animate = () => {

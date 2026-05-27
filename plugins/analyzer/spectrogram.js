@@ -424,7 +424,7 @@ class SpectrogramPlugin extends PluginBase {
     }
 
     handleIntersect(entries) { /* ... (same as original) ... */ entries.forEach(entry => {this.isVisible = entry.isIntersecting; if (this.isVisible) {this.startAnimation();} else {this.stopAnimation();}}); }
-    startAnimation() { /* ... (same as original) ... */ if (this.animationFrameId) return; const animate = () => {if (!this.isVisible) {this.stopAnimation(); return;} this.drawGraph(); this.animationFrameId = requestAnimationFrame(animate);}; animate(); }
+    startAnimation() { /* ... (same as original) ... */ if (this.animationFrameId) return; if (!this.enabled) return; const animate = () => {if (!this.isVisible) {this.stopAnimation(); return;} this.drawGraph(); this.animationFrameId = requestAnimationFrame(animate);}; animate(); }
     stopAnimation() { /* ... (same as original) ... */ if (this.animationFrameId) {cancelAnimationFrame(this.animationFrameId); this.animationFrameId = null;} }
     cleanup() { /* ... (mostly same, ensure listeners are correctly removed if stored differently) ... */
         this.stopAnimation();

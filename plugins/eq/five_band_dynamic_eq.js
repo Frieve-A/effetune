@@ -1141,6 +1141,7 @@ class FiveBandDynamicEQ extends PluginBase {
     // --- Animation Loop for Dynamic Graph ---
     startAnimation() {
         if (this.animationFrameId) return; // Already running
+        if (!this.enabled) return; // Don't start the redraw loop while disabled.
         const animate = () => {
             this._drawGraph(); // Redraw graph with potentially updated (dynamic) data
             this.animationFrameId = requestAnimationFrame(animate);

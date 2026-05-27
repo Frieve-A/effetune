@@ -1206,6 +1206,7 @@ class MultibandCompressorPlugin extends PluginBase {
   }
 
   startAnimation() {
+      if (!this.enabled) return;
     if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
     
     let lastGraphState = null;

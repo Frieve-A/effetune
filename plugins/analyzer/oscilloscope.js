@@ -550,6 +550,7 @@ class OscilloscopePlugin extends PluginBase {
 
     startAnimation() {
         if (this.animationFrameId) return;
+        if (!this.enabled) return; // Don't start the redraw loop while disabled.
 
         const animate = () => {
             if (!this.isVisible) {
