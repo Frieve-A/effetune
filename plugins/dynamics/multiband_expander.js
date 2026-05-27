@@ -1085,7 +1085,7 @@ class MultibandExpanderPlugin extends PluginBase {
   }
 
   startAnimation() {
-      if (!this.enabled) return;
+      if (!this.enabled || !this._sectionEnabled) return;
     if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
 
     let lastGraphState = null;

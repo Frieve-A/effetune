@@ -256,7 +256,7 @@ class StereoMeterPlugin extends PluginBase {
   }
 
   startAnimation() {
-      if (!this.enabled) return;
+      if (!this.enabled || !this._sectionEnabled) return;
     if (this.animationFrameId) return;
 
     const animate = () => {

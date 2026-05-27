@@ -8,6 +8,11 @@ class PluginBase {
         this.name = name;
         this.description = description;
         this.enabled = true;
+        // Whether the section the plugin belongs to is enabled. The pipeline
+        // updates this when the user toggles a Section's ON button; used
+        // together with `enabled` to decide whether the plugin's redraw loop
+        // (startAnimation/stopAnimation) should run.
+        this._sectionEnabled = true;
         this.id = null; // Will be set by createPlugin
         this.errorState = null; // Holds error state
         this.inputBus = null; // Input bus (null = default Main bus, index 0)
@@ -505,23 +510,42 @@ class PluginBase {
     //
     // When a plugin exposes startAnimation()/stopAnimation() (used by
     // analyzer-style plugins to drive a per-frame canvas redraw), pause that
-    // loop while the plugin is disabled. Previously the redraw loop kept
-    // running at the display refresh rate even when the user toggled the
-    // plugin off via the ON button, which wastes main-thread CPU and is
-    // especially noticeable on low-power hardware. The animation is resumed
-    // when the plugin is re-enabled.
+    // loop while the plugin is effectively disabled (either by its own ON
+    // button or by its enclosing Section being OFF). Previously the redraw
+    // loop kept running at the display refresh rate even when disabled,
+    // which wasted main-thread CPU on low-power hardware.
     setEnabled(enabled) {
         if (this.enabled !== enabled) {
             this.enabled = enabled;
             this.updateParameters();
-            if (typeof this.startAnimation === 'function' &&
-                typeof this.stopAnimation === 'function') {
-                if (enabled) {
-                    this.startAnimation();
-                } else {
-                    this.stopAnimation();
-                }
-            }
+            this._refreshAnimationState();
+        }
+    }
+
+    // Called from the pipeline UI when the enclosing Section is toggled.
+    // Stops the redraw loop while the section is OFF and starts it again
+    // when the section comes back ON (provided the plugin itself is also
+    // enabled).
+    _setSectionEnabled(sectionEnabled) {
+        sectionEnabled = sectionEnabled !== false;
+        if (this._sectionEnabled !== sectionEnabled) {
+            this._sectionEnabled = sectionEnabled;
+            this._refreshAnimationState();
+        }
+    }
+
+    // Start or stop the redraw loop to match the current effective-enabled
+    // state. Plugins that do not expose startAnimation/stopAnimation are
+    // unaffected.
+    _refreshAnimationState() {
+        if (typeof this.startAnimation !== 'function' ||
+            typeof this.stopAnimation !== 'function') {
+            return;
+        }
+        if (this.enabled && this._sectionEnabled) {
+            this.startAnimation();
+        } else {
+            this.stopAnimation();
         }
     }
 

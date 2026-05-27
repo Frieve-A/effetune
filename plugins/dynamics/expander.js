@@ -592,7 +592,7 @@ class ExpanderPlugin extends PluginBase {
     }
 
     startAnimation() {
-        if (!this.enabled) return;
+        if (!this.enabled || !this._sectionEnabled) return;
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;

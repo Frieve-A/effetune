@@ -363,7 +363,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
 
     startAnimation() {
         if (this.animationFrameId) return;
-        if (!this.enabled) return; // Don't start the redraw loop while disabled.
+        if (!this.enabled || !this._sectionEnabled) return; // Skip if disabled or section is off.
         const animate = () => {
             if (!this.isVisible) {
                 this.stopAnimation();

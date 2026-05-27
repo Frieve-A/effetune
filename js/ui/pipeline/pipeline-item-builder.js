@@ -832,15 +832,11 @@ export class PipelineItemBuilder {
         for (let i = startIdx + 1; i < pipeline.length; i++) {
             const p = pipeline[i];
             if (p.constructor.name === 'SectionPlugin') break;
-            if (typeof p.startAnimation !== 'function' ||
-                typeof p.stopAnimation !== 'function') {
-                continue;
-            }
-            if (sectionOn) {
-                // Resume only if the plugin itself is also enabled.
-                if (p.enabled) p.startAnimation();
-            } else {
-                p.stopAnimation();
+            // Update the cached section-enabled state so that subsequent
+            // startAnimation() calls (e.g. from the IntersectionObserver
+            // when the canvas scrolls back into view) respect it.
+            if (typeof p._setSectionEnabled === 'function') {
+                p._setSectionEnabled(sectionOn);
             }
         }
     }
