@@ -522,6 +522,11 @@ input[type="checkbox"] {
     border-radius: 4px;
     transition: background-color 0.2s;
     width: auto; /* Changed from fixed width to auto */
+    /* Confine layout/style/paint inside each plugin card so scrolling does
+       not force the browser to re-evaluate hit-test and paint for plugins
+       outside the visible viewport. Significantly reduces main-thread cost
+       during scrolling on low-power hardware. */
+    contain: layout style paint;
 }
 
 /* Column control buttons */
