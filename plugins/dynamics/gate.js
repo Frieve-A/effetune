@@ -13,6 +13,8 @@ class GatePlugin extends PluginBase {
         this.lastProcessTime = performance.now() / 1000;
         this.animationFrameId = null;
         this._hasMessageHandler = false;
+        this.isVisible = true;
+        this.observer = null;
 
         this._setupMessageHandler();
 
@@ -715,12 +717,25 @@ class GatePlugin extends PluginBase {
         graphContainer.appendChild(canvas);
         container.appendChild(graphContainer);
 
+        this.observer = new IntersectionObserver(entries => {
+            for (const entry of entries) {
+                this.isVisible = entry.isIntersecting;
+                if (this.isVisible) {
+                    this.startAnimation();
+                } else {
+                    this.stopAnimation();
+                }
+            }
+        });
+        this.observer.observe(this.canvas);
+
         this.updateTransferGraph();
         this.startAnimation();
         return container;
     }
 
     startAnimation() {
+        if (!this.enabled || !this._sectionEnabled) return;
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;
@@ -734,16 +749,9 @@ class GatePlugin extends PluginBase {
                 this.cleanup();  // Stop animation if canvas is removed
                 return;
             }
-            
-            // Check if the element is in the viewport before updating
-            const rect = this.canvas.getBoundingClientRect();
-            const isVisible = (
-                rect.top < window.innerHeight &&
-                rect.bottom > 0 &&
-                rect.left < window.innerWidth &&
-                rect.right > 0
-            );
-            
+
+            const isVisible = this.isVisible;
+
             if (isVisible) {
                 // Check if we need to update the graph
                 const needsUpdate = this.needsGraphUpdate(lastGraphState);
@@ -801,6 +809,10 @@ class GatePlugin extends PluginBase {
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;
+        }
+        if (this.observer) {
+            this.observer.disconnect();
+            this.observer = null;
         }
         this.gr = 0;
         this.lastProcessTime = performance.now() / 1000;

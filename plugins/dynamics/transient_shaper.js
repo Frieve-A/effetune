@@ -160,6 +160,7 @@ class TransientShaperPlugin extends PluginBase {
     }
 
     startAnimation() {
+        if (!this.enabled || !this._sectionEnabled) return;
         if (this.animationFrameId) return;
 
         const animate = () => {

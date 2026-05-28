@@ -27,6 +27,10 @@ class FiveBandDynamicEQ extends PluginBase {
         // --- Canvas References ---
         this.canvas = null;
         this.ctx = null;
+        // Updated by IntersectionObserver once the canvas is mounted; the
+        // animation loop pauses while the canvas is scrolled out of view.
+        this.isVisible = true;
+        this.observer = null;
         // Remove fixed width/height, control via CSS
         // this.canvasWidth = 400;
         // this.canvasHeight = 200;
@@ -616,6 +620,19 @@ class FiveBandDynamicEQ extends PluginBase {
         graphContainer.appendChild(this.canvas);
         container.appendChild(graphContainer);
 
+        // Pause the redraw loop while the canvas is off-screen.
+        this.observer = new IntersectionObserver(entries => {
+            for (const entry of entries) {
+                this.isVisible = entry.isIntersecting;
+                if (this.isVisible) {
+                    this.startAnimation();
+                } else {
+                    this.stopAnimation();
+                }
+            }
+        });
+        this.observer.observe(this.canvas);
+
         // Initial setup
         this.startAnimation();
 
@@ -876,11 +893,20 @@ class FiveBandDynamicEQ extends PluginBase {
         const maxGain = 12;      // dB
         const gainRange = maxGain - minGain;
 
+        // Pre-computed constants for log-scale frequency mapping (used by
+        // every curve and grid-line below). Recomputed only if not yet set.
+        if (this._logMinFreq === undefined) {
+            this._logMinFreq = Math.log10(minFreq);
+            this._logFreqSpan = Math.log10(maxFreq) - this._logMinFreq;
+        }
+        const logMinFreq = this._logMinFreq;
+        const logFreqSpan = this._logFreqSpan;
+
         // --- Frequency Grid Lines (Vertical) ---
         const freqLines = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
         freqLines.forEach(freq => {
             // Calculate x position on a logarithmic scale
-            const x = width * (Math.log10(freq) - Math.log10(minFreq)) / (Math.log10(maxFreq) - Math.log10(minFreq));
+            const x = width * (Math.log10(freq) - logMinFreq) / logFreqSpan;
             // Draw the vertical line
             ctx.beginPath();
             ctx.moveTo(x, 0);
@@ -909,12 +935,24 @@ class FiveBandDynamicEQ extends PluginBase {
         });
 
         // --- Calculate Frequency Points for Curve Plotting ---
-        const numPoints = 500; // Number of points for smooth curves
-        const freqPoints = new Array(numPoints + 1).fill(0).map((_, i) => {
-            // Generate points logarithmically spaced across the frequency range
-            const t = i / numPoints;
-            return minFreq * Math.pow(maxFreq / minFreq, t);
-        });
+        // The frequency axis is static (minFreq/maxFreq are constants), so the
+        // sample-frequency array, its log values, and the constant zero-gains
+        // fallback array are all built once and reused. Previously, ~1000
+        // Float entries were freshly allocated every frame (60 Hz), which was
+        // the dominant main-thread allocation site on low-power hardware.
+        const numPoints = 500;
+        if (!this._freqPoints || this._freqPoints.length !== numPoints + 1) {
+            const fp = new Float64Array(numPoints + 1);
+            const ratio = maxFreq / minFreq;
+            for (let i = 0; i <= numPoints; i++) {
+                fp[i] = minFreq * Math.pow(ratio, i / numPoints);
+            }
+            this._freqPoints = fp;
+        }
+        if (!this._zeroGains || this._zeroGains.length !== this.numBands) {
+            this._zeroGains = new Float64Array(this.numBands);
+        }
+        const freqPoints = this._freqPoints;
 
         // --- Draw Static Curves for Selected Band (if enabled) ---
         if (this.currentBandIndex >= 0 && this.currentBandIndex < this.numBands) {
@@ -928,7 +966,7 @@ class FiveBandDynamicEQ extends PluginBase {
                     const freq = freqPoints[i];
                     // Calculate bandpass response (at 0dB gain, slightly amplified for visualization)
                     const gain = this._calculateBandResponse(freq, band.scf, 0, band.scq, 'bp');
-                    const x = width * (Math.log10(freq) - Math.log10(minFreq)) / (Math.log10(maxFreq) - Math.log10(minFreq));
+                    const x = width * (Math.log10(freq) - logMinFreq) / logFreqSpan;
                     const y = height * (1 - (gain - minGain) / gainRange);
                     if (i === 0) { ctx.moveTo(x, y); } else { ctx.lineTo(x, y); }
                 }
@@ -945,7 +983,7 @@ class FiveBandDynamicEQ extends PluginBase {
                 for (let i = 0; i < freqPoints.length; i++) {
                     const freq = freqPoints[i];
                     const gain = this._calculateBandResponse(freq, band.f, staticGain, band.q, band.ft);
-                    const x = width * (Math.log10(freq) - Math.log10(minFreq)) / (Math.log10(maxFreq) - Math.log10(minFreq));
+                    const x = width * (Math.log10(freq) - logMinFreq) / logFreqSpan;
                     const y = height * (1 - (gain - minGain) / gainRange);
                     if (i === 0) { ctx.moveTo(x, y); } else { ctx.lineTo(x, y); }
                 }
@@ -954,50 +992,34 @@ class FiveBandDynamicEQ extends PluginBase {
         }
 
         // --- Draw the Dynamic Combined Response Curve (Bright Green) ---
-        // Always draw the dynamic curve, using latest gains or zero if unavailable.
-        // Get the latest smoothed gains from the audio processor, or use a zero array as fallback.
+        // Get the latest smoothed gains from the audio processor, or fall
+        // back to the cached zero array if not available yet.
         const currentGains = (this.latestSmoothedGains && this.latestSmoothedGains.length === this.numBands)
                         ? this.latestSmoothedGains
-                        : new Array(this.numBands).fill(0);
+                        : this._zeroGains;
 
-        // Calculate the combined frequency response by summing individual band responses (in dB).
-        // Note: Simply adding dB responses is common for visualization but not strictly accurate.
-        // A precise calculation would involve multiplying complex transfer functions before converting to dB.
-        const responsePoints = freqPoints.map(freq => {
-            let totalResponse = 0; // Initialize combined response for this frequency
+        // Compute and stroke the curve in a single pass; the per-point
+        // response is no longer materialized into a temporary array.
+        ctx.beginPath();
+        ctx.strokeStyle = '#00ff00'; // Bright green (like PEQ)
+        ctx.lineWidth = 3;
+        for (let i = 0; i < freqPoints.length; i++) {
+            const freq = freqPoints[i];
+            let totalResponse = 0;
             for (let bandIdx = 0; bandIdx < this.numBands; bandIdx++) {
                 const band = this.bs[bandIdx];
-                if (!band.en) continue; // Skip disabled bands
-
-                // Use the actual dynamic gain received from the processor (or the fallback 0).
-                const effectiveGain = currentGains[bandIdx];
-
-                // Add the dB response of this band to the total.
-                totalResponse += this._calculateBandResponse(freq, band.f, effectiveGain, band.q, band.ft);
+                if (!band.en) continue;
+                totalResponse += this._calculateBandResponse(freq, band.f, currentGains[bandIdx], band.q, band.ft);
             }
-            return totalResponse;
-        });
-
-        // Draw the calculated dynamic response curve.
-        ctx.beginPath();
-        ctx.strokeStyle = '#00ff00'; // Bright green color (like PEQ)
-        ctx.lineWidth = 3;       // Thicker line for the main response curve
-
-        for (let i = 0; i < freqPoints.length; i++) {
-            // Map frequency to x-coordinate (logarithmic)
-            const x = width * (Math.log10(freqPoints[i]) - Math.log10(minFreq)) / (Math.log10(maxFreq) - Math.log10(minFreq));
-
-            // Map calculated gain (dB) to y-coordinate (linear)
-            const y = height * (1 - (responsePoints[i] - minGain) / gainRange);
-
-            // Draw line segments
+            const x = width * (Math.log10(freq) - logMinFreq) / logFreqSpan;
+            const y = height * (1 - (totalResponse - minGain) / gainRange);
             if (i === 0) {
-                ctx.moveTo(x, y); // Start the path at the first point
+                ctx.moveTo(x, y);
             } else {
-                ctx.lineTo(x, y); // Draw line to subsequent points
+                ctx.lineTo(x, y);
             }
         }
-        ctx.stroke(); // Render the curve
+        ctx.stroke();
 
         // --- Draw Axis Labels ---
         ctx.fillStyle = '#fff'; // Use white for axis labels for clarity
@@ -1141,8 +1163,14 @@ class FiveBandDynamicEQ extends PluginBase {
     // --- Animation Loop for Dynamic Graph ---
     startAnimation() {
         if (this.animationFrameId) return; // Already running
+        if (!this.enabled || !this._sectionEnabled) return; // Skip if disabled or section is off.
+        if (this.isVisible === false) return;                // Skip if off-screen.
         const animate = () => {
-            this._drawGraph(); // Redraw graph with potentially updated (dynamic) data
+            if (this.isVisible === false) {
+                this.stopAnimation();
+                return;
+            }
+            this._drawGraph();
             this.animationFrameId = requestAnimationFrame(animate);
         };
         this.animationFrameId = requestAnimationFrame(animate);
@@ -1162,6 +1190,10 @@ class FiveBandDynamicEQ extends PluginBase {
         if (this.resizeObserver) {
              this.resizeObserver.disconnect(); // Disconnect observer
              this.resizeObserver = null;
+        }
+        if (this.observer) {
+            this.observer.disconnect();
+            this.observer = null;
         }
         this.canvas = null;
         this.ctx = null;

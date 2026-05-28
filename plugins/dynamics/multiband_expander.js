@@ -24,6 +24,8 @@ class MultibandExpanderPlugin extends PluginBase {
     this.selectedBand = 0;
     this.lastProcessTime = performance.now() / 1000;
     this.animationFrameId = null;
+    this.isVisible = true;
+    this.observer = null;
 
     // Register the processor code (returned as a string)
     this.registerProcessor(this.getProcessorCode());
@@ -1078,6 +1080,19 @@ class MultibandExpanderPlugin extends PluginBase {
     container.appendChild(graphsContainer);
 
     this.canvas = container.querySelector('.multiband-expander-band-graph.active canvas');
+
+    this.observer = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        this.isVisible = entry.isIntersecting;
+        if (this.isVisible) {
+          this.startAnimation();
+        } else {
+          this.stopAnimation();
+        }
+      }
+    });
+    this.observer.observe(container);
+
     this.updateTransferGraphs();
     this.startAnimation();
 
@@ -1085,6 +1100,7 @@ class MultibandExpanderPlugin extends PluginBase {
   }
 
   startAnimation() {
+      if (!this.enabled || !this._sectionEnabled) return;
     if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
 
     let lastGraphState = null;
@@ -1096,15 +1112,7 @@ class MultibandExpanderPlugin extends PluginBase {
         return;
       }
 
-      const rect = container.getBoundingClientRect();
-      const isVisible = (
-        rect.top < window.innerHeight &&
-        rect.bottom > 0 &&
-        rect.left < window.innerWidth &&
-        rect.right > 0
-      );
-
-      if (isVisible) {
+      if (this.isVisible) {
         const needsUpdate = this.needsGraphUpdate(lastGraphState);
         if (needsUpdate) {
           this.updateTransferGraphs();
@@ -1148,6 +1156,10 @@ class MultibandExpanderPlugin extends PluginBase {
     if (this.animationFrameId) {
       cancelAnimationFrame(this.animationFrameId);
       this.animationFrameId = null;
+    }
+    if (this.observer) {
+      this.observer.disconnect();
+      this.observer = null;
     }
     this.canvas = null;
     this.bands.forEach(band => band.gb = 0);

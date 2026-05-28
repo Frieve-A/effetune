@@ -13,6 +13,12 @@ class CompressorPlugin extends PluginBase {
         this.lastProcessTime = performance.now() / 1000;
         this.animationFrameId = null;
         this._hasMessageHandler = false;
+        // Visibility / IntersectionObserver setup so the redraw loop can be
+        // paused while the canvas is scrolled out of view. Replaces a
+        // per-frame getBoundingClientRect() call which forces synchronous
+        // layout on the main thread.
+        this.isVisible = true;
+        this.observer = null;
 
         this._setupMessageHandler();
 
@@ -579,12 +585,26 @@ class CompressorPlugin extends PluginBase {
         graphContainer.appendChild(canvas);
         container.appendChild(graphContainer);
 
+        // Pause the redraw loop while the canvas is off-screen.
+        this.observer = new IntersectionObserver(entries => {
+            for (const entry of entries) {
+                this.isVisible = entry.isIntersecting;
+                if (this.isVisible) {
+                    this.startAnimation();
+                } else {
+                    this.stopAnimation();
+                }
+            }
+        });
+        this.observer.observe(this.canvas);
+
         this.updateTransferGraph();
         this.startAnimation();
         return container;
     }
 
     startAnimation() {
+        if (!this.enabled || !this._sectionEnabled) return;
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;
@@ -598,17 +618,8 @@ class CompressorPlugin extends PluginBase {
                 this.cleanup();  // Stop animation if canvas is removed
                 return;
             }
-            
-            // Check if the element is in the viewport before updating
-            const rect = this.canvas.getBoundingClientRect();
-            const isVisible = (
-                rect.top < window.innerHeight &&
-                rect.bottom > 0 &&
-                rect.left < window.innerWidth &&
-                rect.right > 0
-            );
-            
-            if (isVisible) {
+
+            if (this.isVisible) {
                 // Check if we need to update the graph
                 const needsUpdate = this.needsGraphUpdate(lastGraphState);
                 if (needsUpdate) {
@@ -665,6 +676,10 @@ class CompressorPlugin extends PluginBase {
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;
+        }
+        if (this.observer) {
+            this.observer.disconnect();
+            this.observer = null;
         }
         this.gr = 0;
         this.lastProcessTime = performance.now() / 1000;
