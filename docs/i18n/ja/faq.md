@@ -48,7 +48,7 @@ VB Cable使用時、24 kHz以上に折り返しノイズが発生する場合は
 ### 1.2. ストリーミングサービス入力(Spotify例)
 設定→システム→サウンド→音量ミキサーを開き、アプリ一覧からSpotify.exeの出力デバイスをCABLE Inputに変更します。
 この時点で曲を再生し、無音になっていればルーティング成功です。
-macOSでは Rogue Amoeba製の **SoundSource** などを使い、Spotifyの出力を同様に **CABLE Input** に割り当ててください.
+macOSでは Rogue Amoeba製の **SoundSource** などを使い、Spotifyの出力を同様に **CABLE Input** に割り当ててください。
 
 ### 1.3. EffeTuneのオーディオ設定
 アプリ版EffeTuneを起動し、右上**オーディオ設定**を開きます。  
