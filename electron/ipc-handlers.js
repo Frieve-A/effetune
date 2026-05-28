@@ -381,7 +381,7 @@ function registerIpcHandlers() {
   // Re-throw on failure so the renderer can fall back to window.location.reload().
   ipcMain.handle('relaunch-app', () => {
     try {
-      app.relaunch();
+      app.relaunch({ args: [...process.argv.slice(1), constants.AUTO_RESTART_FLAG] });
       app.exit(0);
     } catch (error) {
       console.error('[relaunch-app] Failed to relaunch app:', error);

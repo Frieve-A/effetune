@@ -18,6 +18,11 @@ constants.setAppVersion(appVersion);
 let tray = null;
 let isAppQuitting = false;
 
+// When true, mainWindow.show() is deferred from its ready-to-show handler to
+// the splash flow's post-reload did-finish-load — so the main UI is never
+// visible behind the splash.  Set only when a splash is going to be shown.
+let pendingMainWindowShow = false;
+
 // Renderer watchdog state — the renderer is expected to call 'renderer-ping'
 // every 2 s.  If the main process does not see a ping for WATCHDOG_THRESHOLD_MS,
 // the renderer is assumed to be frozen (e.g., stuck in a native audio system
@@ -62,7 +67,7 @@ function startWatchdog() {
       // Step 1: register the relaunch (idempotent only against our own guard
       // — Electron's app.relaunch() queues per-call and we don't want stacks).
       if (!watchdogRelaunchQueued) {
-        app.relaunch();
+        app.relaunch({ args: [...process.argv.slice(1), constants.AUTO_RESTART_FLAG] });
         watchdogRelaunchQueued = true;
       }
       // Step 2: terminate the current process.  app.exit() returns
@@ -122,6 +127,18 @@ if (process.platform === 'darwin') {
 // Set up logging to file for debugging (disabled for release)
 function setupFileLogging() {
   // Disabled for release
+}
+
+// Bring mainWindow into its persisted display state (maximized or normal).
+// Used by both the initial ready-to-show path and the post-splash-reload
+// did-finish-load path, so they cannot drift out of sync.
+function showMainWindowInRestoredState(mainWindow) {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isMinimized()) return;
+  if (constants.getWindowState().isMaximized) {
+    mainWindow.maximize(); // SW_MAXIMIZE implicitly shows the window
+  } else {
+    mainWindow.show();
+  }
 }
 
 // Create the main application window
@@ -390,10 +407,6 @@ function createWindow() {
 
   // When the window is ready to show
   mainWindow.once('ready-to-show', () => {
-    // Restore maximized state if needed
-    if (constants.getWindowState().isMaximized) {
-      mainWindow.maximize();
-    }
     if (constants.getAppConfig().startMinimized) {
       if (constants.getAppConfig().minimizeToTray) {
         mainWindow.hide();
@@ -402,8 +415,13 @@ function createWindow() {
         // For minimize to taskbar: show and minimize immediately
         mainWindow.minimize();
       }
-    } else {
-      mainWindow.show();
+    } else if (!pendingMainWindowShow) {
+      // NOTE: maximize() MUST stay inside this branch.  On Win32 it issues
+      // ShowWindow(SW_MAXIMIZE), which makes the (until then hidden) window
+      // visible as a side effect — defeating the splash defer.  So the
+      // maximize+show pair has to be co-deferred when a splash is pending,
+      // and re-applied in the post-reload did-finish-load handler.
+      showMainWindowInRestoredState(mainWindow);
     }
   });
   
@@ -933,17 +951,16 @@ function createSplashScreen() {
         splashWindow.close();
         splashWindow = null;
       }
-      
-      // Persist the first-launch-done marker so future launches skip this
-      // splash + reload workaround.  Best-effort — if the write fails, we
-      // simply repeat the splash next time.
-      try {
-        const marker = path.join(app.getPath('userData'), '.first-launch-done');
-        fs.writeFileSync(marker, new Date().toISOString());
-      } catch (e) {
-        console.warn('Failed to write first-launch-done marker:', e);
+
+      // If the maximize+show pair was deferred to hide the UI behind the
+      // splash, apply it once the reloaded content has finished loading.
+      if (pendingMainWindowShow) {
+        mainWindow.webContents.once('did-finish-load', () => {
+          pendingMainWindowShow = false;
+          showMainWindowInRestoredState(mainWindow);
+        });
       }
-      
+
       // Reload the main window
       mainWindow.reload();
       
@@ -1143,23 +1160,20 @@ function initializeApp() {
     }
   });
   
-  // Show the splash screen + 3-second reload workaround only on the actual
-  // first launch (when no first-launch-done marker exists in userData).
-  // Persisting this avoids paying the 3-second reload (which resets the
-  // renderer's startup-grace clock) on every launch and after every relaunch.
-  const firstLaunchMarker = path.join(app.getPath('userData'), '.first-launch-done');
-  let isActuallyFirstLaunch = false;
-  try {
-    isActuallyFirstLaunch = !fs.existsSync(firstLaunchMarker);
-  } catch (e) {
-    isActuallyFirstLaunch = true; // be safe — show splash if we can't tell
-  }
-
-  if (isActuallyFirstLaunch) {
-    createSplashScreen();
-  } else {
-    // Subsequent launch: skip splash + reload entirely.
+  // Show splash + 3s reload on every normal launch (Windows workaround for
+  // audio instability at startup).  Skip only on auto-restart (watchdog or
+  // HDMI-recovery IPC), since the reload would reset the renderer's
+  // startup-grace clock and could mask the recovery.
+  if (process.argv.includes(constants.AUTO_RESTART_FLAG)) {
     constants.setIsFirstLaunch(false);
+  } else {
+    // Defer mainWindow.show() to after the splash's 3s reload so the user
+    // never sees the main UI behind the splash.  Skip the defer when starting
+    // minimized — the ready-to-show handler hides/minimizes the window itself.
+    if (!constants.getAppConfig().startMinimized) {
+      pendingMainWindowShow = true;
+    }
+    createSplashScreen();
   }
 }
 

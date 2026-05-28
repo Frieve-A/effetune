@@ -608,9 +608,38 @@ export class AudioManager {
         const pipelineErr = await this.rebuildPipeline(true);
         if (pipelineErr) console.error('[AudioManager._doReset] rebuildPipeline failed:', pipelineErr);
 
+        // After a reset the new outputGainNode starts at 0; ramp it up now that
+        // the pipeline is in place. Same primitive as the startup path in App.
+        this.fadeInOutput();
+
         return '';
     }
-    
+
+    /**
+     * Ramp the output gain from its current value to 1.
+     * Called once per audio-context lifecycle, after every updatePlugins from
+     * the startup sequence (or _doReset) has settled into the worklet. Keeps
+     * speakers silent until the configured pipeline is actually running, then
+     * fades in smoothly to avoid any click on transition.
+     * @param {number} duration - fade duration in seconds (default 50 ms)
+     */
+    fadeInOutput(duration = 0.05) {
+        const gainNode = this.ioManager?.outputGainNode;
+        const ctx = this.contextManager?.audioContext;
+        if (!gainNode || !ctx) return;
+
+        try {
+            const now = ctx.currentTime;
+            const param = gainNode.gain;
+            param.cancelScheduledValues(now);
+            param.setValueAtTime(param.value, now);
+            param.linearRampToValueAtTime(1, now + duration);
+        } catch (err) {
+            console.warn('[AudioManager] fadeInOutput failed, applying immediate unmute:', err);
+            try { gainNode.gain.value = 1; } catch (_) { /* ignore */ }
+        }
+    }
+
     /**
      * Set the pipeline of audio plugins
      * @param {Array} pipeline - Array of plugin instances

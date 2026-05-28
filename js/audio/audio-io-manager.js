@@ -22,6 +22,12 @@ export class AudioIOManager {
         this.audioElement = null;
         this.defaultDestinationConnection = null;
         this.silenceNode = null;
+        // GainNode inserted between worklet and the final destination (audioContext
+        // .destination or MediaStreamDestination). Starts at 0 so nothing reaches
+        // the speakers until the host calls fadeInOutput() at the end of the
+        // startup sequence — i.e. after every updatePlugins (saved state, startup
+        // preset, pending tray/CLI preset, etc.) has settled into the worklet.
+        this.outputGainNode = null;
         // When true, connect worklet output directly to AudioContext.destination
         // Used for multichannel and low-latency stereo modes
         this.directOutputMode = false;
@@ -206,8 +212,15 @@ export class AudioIOManager {
      */
     async initAudioOutput() {
         try {
+            // Create the output gain node up front so every connect path below
+            // can route worklet output through it. Starts muted (gain=0); the host
+            // ramps to 1 via AudioManager.fadeInOutput() once the full startup
+            // pipeline chain (including any pending preset loads) is in place.
+            this.outputGainNode = this.contextManager.audioContext.createGain();
+            this.outputGainNode.gain.value = 0;
+
             // For Electron, check if we're using multichannel output
-            const preferences = window.electronAPI && window.electronIntegration ? 
+            const preferences = window.electronAPI && window.electronIntegration ?
                 await window.electronIntegration.loadAudioPreferences() : null;
             const isMultiChannel = preferences && preferences.outputChannels && preferences.outputChannels > 2;
             const lowLatencyStereo = preferences && preferences.outputChannels === 2 && preferences.lowLatencyOutput;
@@ -533,11 +546,11 @@ export class AudioIOManager {
             // Connect source to worklet
             try {
                 // Make sure both nodes exist
-                if (!this.sourceNode || !this.contextManager.workletNode) {
-                    console.error('Source or worklet node is missing');
+                if (!this.sourceNode || !this.contextManager.workletNode || !this.outputGainNode) {
+                    console.error('Source, worklet, or outputGain node is missing');
                     return `Audio Error: Audio initialization incomplete - missing audio nodes`;
                 }
-                
+
                 // Use the original connect method to avoid any overridden connect methods
                 if (window.originalConnectMethod && this.contextManager.isFirstLaunch) {
                     window.originalConnectMethod.call(this.sourceNode, this.contextManager.workletNode);
@@ -548,56 +561,54 @@ export class AudioIOManager {
                 console.error('Error connecting source to worklet:', error);
                 return `Audio Error: Failed to connect audio nodes: ${error.message}`;
             }
-            
-            // Connect based on our mode (direct output or via MediaStreamDestination)
+
+            // Insert outputGainNode between the worklet and the physical sink.
+            // gain=0 here keeps the path silent during startup/reset; the host
+            // ramps to 1 after the pipeline chain has fully settled.
+            try {
+                this.contextManager.workletNode.connect(this.outputGainNode);
+            } catch (error) {
+                console.error('Error connecting worklet to output gain:', error);
+                return `Audio Error: Failed to connect output gain: ${error.message}`;
+            }
+
+            // Connect outputGainNode to the actual sink based on our mode.
             if (this.directOutputMode) {
-                // Direct output mode - connect directly to destination
                 try {
-                    this.defaultDestinationConnection = this.contextManager.workletNode.connect(this.contextManager.audioContext.destination);
-                    
+                    this.defaultDestinationConnection = this.outputGainNode.connect(this.contextManager.audioContext.destination);
+
                     // Ensure proper multichannel configuration
                     this.contextManager.audioContext.destination.channelCountMode = 'explicit';
                     this.contextManager.audioContext.destination.channelInterpretation = 'discrete';
-                    
-                    const preferences = window.electronAPI && window.electronIntegration ? 
-                        await window.electronIntegration.loadAudioPreferences() : null;
-                    const channelCount = preferences?.outputChannels || 4;
                 } catch (error) {
                     console.error('Error connecting direct output:', error);
                     return `Audio Error: Failed to connect direct output: ${error.message}`;
                 }
             } else if (this.destinationNode) {
-                // Stereo mode with device selection - connect to MediaStreamDestination
                 try {
-                    this.contextManager.workletNode.connect(this.destinationNode);
+                    this.outputGainNode.connect(this.destinationNode);
                 } catch (error) {
-                    console.error('Error connecting worklet to destination:', error);
+                    console.error('Error connecting outputGain to destination:', error);
                     return `Audio Error: Failed to connect to audio destination: ${error.message}`;
                 }
             } else {
-                // Fallback for stereo mode without MediaStreamDestination - direct connection
                 try {
-                    this.defaultDestinationConnection = this.contextManager.workletNode.connect(this.contextManager.audioContext.destination);
+                    this.defaultDestinationConnection = this.outputGainNode.connect(this.contextManager.audioContext.destination);
                 } catch (error) {
                     console.error('Error connecting to default audio destination:', error);
                     return `Audio Error: Failed to connect to default audio destination: ${error.message}`;
                 }
             }
-            
-            // For web app (non-Electron), always connect to default destination
-            // This is crucial for audio output to work
+
+            // For web app (non-Electron), always route to default destination.
             if (!window.electronAPI || !window.electronIntegration) {
-                // Disconnect any existing connections first to avoid conflicts
                 try {
-                    this.contextManager.workletNode.disconnect();
-                } catch (e) {
-                    // Ignore errors if already disconnected
-                }
-                
-                // Always create a fresh connection for web app
+                    this.outputGainNode.disconnect();
+                } catch (e) { /* ignore */ }
+
                 try {
-                    this.defaultDestinationConnection = this.contextManager.workletNode.connect(this.contextManager.audioContext.destination);
-                    
+                    this.defaultDestinationConnection = this.outputGainNode.connect(this.contextManager.audioContext.destination);
+
                     // Ensure proper multichannel configuration for the destination
                     if (this.contextManager.audioContext.destination.channelCount > 2) {
                         this.contextManager.audioContext.destination.channelCountMode = 'explicit';
@@ -885,15 +896,18 @@ export class AudioIOManager {
             this.audioElement = null;
         }
         
-        // Disconnect from default destination if connected
-        if (this.defaultDestinationConnection && this.contextManager.workletNode && this.contextManager.audioContext) {
+        // Disconnect output gain node (which now sits between worklet and the
+        // physical destination). Disconnecting it implicitly unhooks the path
+        // to audioContext.destination / destinationNode.
+        if (this.outputGainNode) {
             try {
-                this.contextManager.workletNode.disconnect(this.contextManager.audioContext.destination);
+                this.outputGainNode.disconnect();
             } catch (error) {
-                console.warn('Error disconnecting from default destination:', error);
+                console.warn('Error disconnecting output gain node:', error);
             }
+            this.outputGainNode = null;
         }
-        
+
         // Disconnect silence node if it exists
         if (this.silenceNode && this.contextManager.audioContext) {
             try {
@@ -903,13 +917,13 @@ export class AudioIOManager {
                 console.warn('Error disconnecting silence node:', error);
             }
         }
-        
+
         // Stop all media tracks
         if (this.stream) {
             this.stream.getTracks().forEach(track => track.stop());
             this.stream = null;
         }
-        
+
         // Clear nodes
         this.sourceNode = null;
         this.destinationNode = null;

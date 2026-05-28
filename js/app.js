@@ -294,7 +294,14 @@ class App {
             // Initialize pipeline state and build audio pipeline as a single operation
             // This ensures plugins are created with AudioWorklet already initialized
             await this.initializeAndBuildPipeline();
-            
+
+            // All updatePlugins messages from the startup sequence (saved state,
+            // startup/CLI/tray preset) have been posted to the worklet by now.
+            // The output gain has been held at 0 since initAudioOutput so nothing
+            // could leak through; fade it in to make the configured pipeline
+            // audible without any click.
+            this.audioManager.fadeInOutput();
+
             // Set up event listeners and finalize initialization
             this.setupEventListeners();
             

@@ -1,4 +1,10 @@
 // electron/constants.js
+
+// CLI flag injected into argv when the app restarts itself (watchdog or
+// HDMI-recovery IPC).  Splash + 3s reload is skipped on these auto-restarts
+// to avoid resetting the renderer's startup-grace clock.
+const AUTO_RESTART_FLAG = '--from-auto-restart';
+
 let mainWindow = null;
 let windowState = { width: 1440, height: 900 };
 let isFirstLaunch = true;
@@ -17,6 +23,8 @@ let closeTimeout = null;
 let triggerClose = null;
 
 module.exports = {
+  AUTO_RESTART_FLAG,
+
   getMainWindow: () => mainWindow,
   setMainWindow: (win) => { mainWindow = win; },
 
