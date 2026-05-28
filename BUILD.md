@@ -169,6 +169,12 @@ To modify application metadata:
 To customize the installer behavior:
 1. Modify the `nsis` section in the `build` configuration in `package.json`
 
+### Bundled Files
+
+The `build.files` array in `package.json` is an explicit allowlist of top-level directories and files to bundle into the application. This keeps repo-only assets (Jekyll site files, dev scripts, docs metadata, untracked work-in-progress files outside the allowlisted directories, etc.) out of the installer.
+
+When adding a new top-level directory or root file that must ship with the app, add a matching entry to `build.files`. Otherwise the build will silently omit it.
+
 ## Troubleshooting
 
 ### Common Build Issues

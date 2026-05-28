@@ -183,9 +183,10 @@ Pour traiter l'audio des services de streaming (Spotify, YouTube Music, etc.) :
    - La barre de progression affiche l'état actuel du traitement
    - Le temps de traitement dépend de la taille du fichier et de la complexité de la chaîne d'effets
 
-3. Options de téléchargement :
-   - Les fichiers individuels sont téléchargés au format WAV
-   - Plusieurs fichiers sont automatiquement regroupés dans une archive ZIP
+3. Options de téléchargement ou de sauvegarde :
+   - Les fichiers traités sont exportés au format WAV
+   - Pour plusieurs fichiers, sélectionnez un dossier de sortie avant le traitement ; chaque fichier y est enregistré directement à la fin de son traitement
+   - Sur les navigateurs anciens sans sélection de dossier, plusieurs fichiers sont regroupés dans un ZIP à télécharger
 
 ### Mesure de réponse en fréquence
 

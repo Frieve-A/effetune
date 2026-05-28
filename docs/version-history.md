@@ -6,7 +6,13 @@ lang: en
 
 # Version History
 
-### Version 1.65 (xxx xx, 2026)
+### Version 1.65 (May 28, 2026)
+- Improved overall performance and reduced CPU usage, especially when plugins or sections are disabled
+- Added upper and lower frequency limit settings to the frequency response measurement
+- Added a language setting to the desktop app's Config menu
+- Fixed pipeline URL state (sharing and restore) not handling multi-byte characters
+- Fixed macOS issues including process lingering on quit and audio freeze after HDMI reconnect
+- Fixed sleep mode being affected by DC offset
 - Various minor improvements
 
 ### Version 1.64 (Jan 18, 2026)

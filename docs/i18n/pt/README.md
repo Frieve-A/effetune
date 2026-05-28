@@ -187,7 +187,8 @@ Para usar o EffeTune com players de CD, players de rede ou outras fontes física
 
 3. Opções de Download ou Salvamento:
    - O arquivo processado é gerado no formato WAV
-   - Múltiplos arquivos são automaticamente empacotados em um arquivo ZIP
+   - Para vários arquivos, selecione uma pasta de saída antes do processamento; cada arquivo é salvo diretamente nessa pasta ao ser concluído
+   - Em navegadores mais antigos sem suporte à seleção de pasta, vários arquivos são empacotados em um ZIP para download
 
 ### Medição de Resposta de Frequência
 

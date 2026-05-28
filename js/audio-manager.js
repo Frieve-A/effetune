@@ -330,6 +330,24 @@ export class AudioManager {
      * @returns {Promise<string>} - Empty string on success, error message on failure
      */
     async rebuildPipeline(isInitializing = false) {
+        // Propagate each Section's ON/OFF state to the inner plugins'
+        // _sectionEnabled flag so analyzer redraw loops stay paused inside
+        // OFF sections after preset/URL load, paste, undo and A<->B copy.
+        // Per-plugin setEnabled() during deserialization can't do this on
+        // its own because the section's children may not exist yet at that
+        // point. Idempotent: _setSectionEnabled only acts on state change.
+        if (Array.isArray(this.pipeline)) {
+            let sectionOn = true;
+            for (let i = 0; i < this.pipeline.length; i++) {
+                const p = this.pipeline[i];
+                if (p && p.constructor && p.constructor.name === 'SectionPlugin') {
+                    sectionOn = p.enabled !== false;
+                } else if (p && typeof p._setSectionEnabled === 'function') {
+                    p._setSectionEnabled(sectionOn);
+                }
+            }
+        }
+
         // Make sure the pipeline is synchronized with the PipelineProcessor
         this.pipelineProcessor.setPipeline(this.pipeline);
         

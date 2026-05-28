@@ -192,7 +192,8 @@ To use EffeTune with CD players, network players, or other physical sources:
 
 3. Download or Save Options:
    - The processed file is output in WAV format
-   - Multiple files are automatically packaged in a ZIP file
+   - For multiple files, select an output folder before processing begins; each file is saved directly to that folder as it completes
+   - On older browsers without folder selection support, multiple files are packaged into a ZIP file for download
 
 ### Sharing Effect Chains
 

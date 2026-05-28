@@ -187,7 +187,8 @@ Para usar EffeTune con reproductores de CD, reproductores de red u otras fuentes
 
 3. Opciones de Descarga o Guardado:
    - El archivo procesado se genera en formato WAV
-   - Los múltiples archivos se empaquetan automáticamente en un archivo ZIP
+   - Para múltiples archivos, seleccione una carpeta de salida antes de procesar; cada archivo se guarda directamente en esa carpeta al completarse
+   - En navegadores más antiguos sin soporte de selección de carpeta, los archivos múltiples se empaquetan en un ZIP para descargar
 
 ### Medición de Respuesta en Frecuencia
 
