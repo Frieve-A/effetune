@@ -1,5 +1,5 @@
 import { AudioContextManager } from './audio/audio-context-manager.js';
-import { AudioIOManager } from './audio/audio-io-manager.js';
+import { AudioIOManager, MIC_DENIED_PREFIX } from './audio/audio-io-manager.js';
 import { PipelineProcessor } from './audio/pipeline-processor.js';
 import { OfflineProcessor } from './audio/offline-processor.js';
 import { AudioEncoder } from './audio/audio-encoder.js';
@@ -42,6 +42,9 @@ export class AudioManager {
         this.offlineContext = null;
         this.offlineWorkletNode = null;
         this.isOfflineProcessing = false;
+        this._resetInProgress = false;
+        this._hasPendingReset = false;
+        this._pendingResetPrefs = null;
         this.isCancelled = false;
         this._skipAudioInitDuringSampleRateChange = false;
         this.isFirstLaunch = false;
@@ -358,31 +361,83 @@ export class AudioManager {
      * @returns {Promise<string>} - Empty string on success, error message on failure
      */
     async reset(audioPreferences = null) {
+        if (this._resetInProgress) {
+            // Queue the latest prefs so we retry after current reset finishes.
+            // Use a separate boolean flag so that audioPreferences === null is a
+            // valid queued payload (not confused with "no queued reset").
+            console.log('[AudioManager] reset queued — already in progress');
+            this._pendingResetPrefs = audioPreferences;
+            this._hasPendingReset = true;
+            return '';
+        }
+        this._resetInProgress = true;
+        this._hasPendingReset = false;
+        this._pendingResetPrefs = null;
+        try {
+            await this._doReset(audioPreferences);
+            // Run any reset that was queued while we were busy
+            if (this._hasPendingReset) {
+                const pending = this._pendingResetPrefs;
+                this._hasPendingReset = false;
+                this._pendingResetPrefs = null;
+                console.log('[AudioManager] running queued reset');
+                await this._doReset(pending);
+            }
+            return '';
+        } finally {
+            this._resetInProgress = false;
+        }
+    }
+
+    /**
+     * Internal reset implementation — serialised by reset()'s in-progress guard.
+     * Tears down the current audio graph, optionally persists new preferences,
+     * then rebuilds context → worklet → pipeline.
+     */
+    async _doReset(audioPreferences = null) {
         // Clean up audio I/O
         this.ioManager.cleanupAudio();
-        
+
         // Close audio context
         await this.contextManager.closeAudioContext();
-        
+
         // If audio preferences were provided, save them first
         if (audioPreferences && window.electronAPI && window.electronIntegration) {
             await window.electronIntegration.saveAudioPreferences(audioPreferences);
         }
-        
+
         // Skip initialization if we're being called from the sample rate adjustment code
         if (this.contextManager.getSkipAudioInitDuringSampleRateChange()) {
             this.contextManager.setSkipAudioInitDuringSampleRateChange(false);
             return '';
         }
-        
-        // Initialize audio and rebuild pipeline
-        await this.initAudio();
-        
-        // Make sure pipeline is rebuilt with the new audio context
-        if (this.pipeline && this.pipeline.length > 0) {
-            await this.rebuildPipeline(true);
+
+        // Initialize audio (context + input + output)
+        const audioErr = await this.initAudio();
+        if (audioErr) {
+            // initAudio() can return either a fatal context/output failure or a
+            // non-fatal mic-denied warning (file playback still works).  Only the
+            // mic-denied path is non-fatal — recognised via the shared MIC_DENIED_PREFIX
+            // constant so this stays in sync if the message is ever rephrased.
+            const isMicDenied = audioErr.startsWith(MIC_DENIED_PREFIX);
+            if (!isMicDenied) {
+                console.error('[AudioManager._doReset] initAudio failed:', audioErr);
+                return '';
+            }
+            console.warn('[AudioManager._doReset] initAudio non-fatal warning:', audioErr);
         }
-        
+
+        // Set up the AudioWorklet that hosts the plugin chain
+        const workletErr = await this.initializeAudioWorklet();
+        if (workletErr) console.error('[AudioManager._doReset] initializeAudioWorklet failed:', workletErr);
+
+        // Resume in case the new context started suspended (autoplay policy, HDMI race, etc.)
+        await this.contextManager.resumeAudioContext();
+
+        // Make sure pipeline is rebuilt with the new audio context
+        const pipelineErr = await this.rebuildPipeline(true);
+        if (pipelineErr) console.error('[AudioManager._doReset] rebuildPipeline failed:', pipelineErr);
+
         return '';
     }
     
