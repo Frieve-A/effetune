@@ -4,6 +4,7 @@ import { PipelineProcessor } from './audio/pipeline-processor.js';
 import { OfflineProcessor } from './audio/offline-processor.js';
 import { AudioEncoder } from './audio/audio-encoder.js';
 import { EventManager } from './audio/event-manager.js';
+import { InputActivityWatcher } from './audio/input-activity-watcher.js';
 import { getSerializablePluginStateShort, applySerializedState } from './utils/serialization-utils.js';
 
 /**
@@ -48,7 +49,13 @@ export class AudioManager {
         this.isCancelled = false;
         this._skipAudioInitDuringSampleRateChange = false;
         this.isFirstLaunch = false;
-        
+
+        // Sleep-mode output power saving (see _enterSleepPowerSave). True
+        // while the AudioContext is intentionally suspended so the output
+        // device (and DAC/Amp) can power down during idle sleep.
+        this._sleepSuspended = false;
+        this._inputActivityWatcher = null;
+
         // Set global reference
         window.audioManager = this;
     }
@@ -300,6 +307,17 @@ export class AudioManager {
                             isSleepMode: data.isSleepMode,
                             sampleRate: this.audioContext.sampleRate
                         });
+
+                        // Release the output device while idle so the DAC/Amp
+                        // can power down (non-macOS only; see methods below).
+                        if (data.isSleepMode) {
+                            this._enterSleepPowerSave();
+                        } else if (this._sleepSuspended) {
+                            // A wake reported by the worklet (only possible
+                            // after we already resumed it) - make sure our
+                            // power-save state is torn down.
+                            this.wakeFromSleep();
+                        }
                     }
                 };
             }
@@ -309,7 +327,120 @@ export class AudioManager {
             return `Audio Error: ${error.message}`;
         }
     }
-    
+
+    /**
+     * Whether sleep-mode output power saving may run.
+     *
+     * Intentionally a no-op on macOS: there, EffeTune carries a
+     * carefully-tuned audio-device recovery path for HDMI hotplug /
+     * CoreAudio behavior which, of necessity, treats AudioContext
+     * suspend/close transitions as failure signals. A deliberate suspend
+     * would collide with that hard-won machinery for little gain, since
+     * the power-saving target is a low-power always-on Linux host (Pi +
+     * DAC). So we simply don't engage it on macOS.
+     * @returns {boolean}
+     */
+    _sleepPowerSaveSupported() {
+        if (window.electronAPI?.platform === 'darwin') return false;
+        return !!this.audioContext;
+    }
+
+    /**
+     * Called when the worklet enters sleep mode. Suspends the AudioContext
+     * so the OS output device - and the downstream DAC/Amp - can power
+     * down. Auto-wake on returning input is preserved by watching the
+     * input track with a device-free MediaStreamTrackProcessor (the
+     * suspended worklet can no longer do it). If that watcher can't be
+     * established, we keep the context running rather than lose wake-on-input.
+     */
+    async _enterSleepPowerSave() {
+        if (this._sleepSuspended) return;
+        if (!this._sleepPowerSaveSupported()) return;
+
+        const track = this.stream?.getAudioTracks?.()[0] ?? null;
+        if (!track || !InputActivityWatcher.isSupported()) {
+            // No device-free way to detect input returning (e.g. file
+            // playback, or API unavailable) - leave the context running so
+            // the worklet keeps handling wake-on-input (status quo).
+            return;
+        }
+
+        this._sleepSuspended = true;
+        // Mark the suspend as deliberate so the context manager's
+        // onstatechange handler does not immediately auto-resume it.
+        this.contextManager.setIntentionalSuspend(true);
+        try {
+            await this.audioContext.suspend();
+        } catch (e) {
+            console.warn('[AudioManager] sleep-mode suspend failed:', e);
+        }
+
+        // We may have been woken (user activity) during the await above.
+        if (!this._sleepSuspended) {
+            this.contextManager.setIntentionalSuspend(false);
+            await this.audioContext.resume().catch(() => {});
+            return;
+        }
+
+        // In HTMLMediaElement output mode the <audio> element holds its own
+        // sink open, so pause it too. Context-sink / direct modes route
+        // through audioContext.destination, which suspend() already released.
+        const io = this.ioManager;
+        if (io?.audioElement && !io.audioContextSinkMode && !io.directOutputMode) {
+            try { io.audioElement.pause(); } catch { /* ignore */ }
+        }
+
+        if (!this._inputActivityWatcher) {
+            // Mirror the worklet's silence test: AC peak-to-peak above
+            // 2x the -84 dB amplitude threshold counts as signal.
+            const acThreshold = 2 * Math.pow(10, -84 / 20);
+            this._inputActivityWatcher = new InputActivityWatcher(acThreshold);
+        }
+        const watching = this._inputActivityWatcher.start(track, () => this.wakeFromSleep());
+        if (!watching) {
+            // Lost our only wake-on-input mechanism - resume rather than
+            // risk staying asleep with no audio path.
+            this.wakeFromSleep();
+            return;
+        }
+        const mode = io?.directOutputMode ? 'direct'
+            : io?.audioContextSinkMode ? 'audioContextSink'
+            : io?.audioElement ? 'mediaElement' : 'default';
+        console.log(`[AudioManager] sleep power-save active (output mode: ${mode}); output device released`);
+    }
+
+    /**
+     * Resume from sleep-mode power saving: re-open the output device and
+     * nudge the worklet awake. Safe to call repeatedly. Driven by the input
+     * watcher, by user activity, and by window-visibility changes.
+     */
+    async wakeFromSleep() {
+        if (!this._sleepSuspended) return;
+        this._sleepSuspended = false;
+
+        if (this._inputActivityWatcher) this._inputActivityWatcher.stop();
+        this.contextManager.setIntentionalSuspend(false);
+
+        try {
+            await this.audioContext.resume();
+        } catch (e) {
+            console.warn('[AudioManager] sleep-mode resume failed:', e);
+        }
+
+        const io = this.ioManager;
+        if (io?.audioElement && !io.audioContextSinkMode && !io.directOutputMode) {
+            try { await io.audioElement.play(); } catch { /* ignore */ }
+        }
+
+        // Nudge the worklet: clears its cached sleep state, resets the
+        // inactivity timers, and makes it emit sleepModeChanged:false so the
+        // UI and analyzer redraw loops resume normally.
+        if (this.workletNode) {
+            this.workletNode.port.postMessage({ type: 'userActivity' });
+        }
+        console.log('[AudioManager] sleep power-save: woke; output device resumed');
+    }
+
     /**
      * Update properties exposed for backward compatibility
      */
@@ -424,6 +555,16 @@ export class AudioManager {
      * then rebuilds context → worklet → pipeline.
      */
     async _doReset(audioPreferences = null) {
+        // Tear down any sleep-mode power-save state before rebuilding the
+        // audio graph: the watcher holds a clone of the old input track, and
+        // a lingering intentional-suspend flag would otherwise suppress
+        // legitimate auto-resume on the freshly created context.
+        if (this._sleepSuspended) {
+            this._sleepSuspended = false;
+            if (this._inputActivityWatcher) this._inputActivityWatcher.stop();
+            this.contextManager.setIntentionalSuspend(false);
+        }
+
         // Clean up audio I/O
         this.ioManager.cleanupAudio();
 
