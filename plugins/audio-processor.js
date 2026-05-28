@@ -230,15 +230,26 @@ class PluginProcessor extends AudioWorkletProcessor {
         const time = currentFrame / sampleRate; // Time in seconds
 
         // --- 4. Input Level Monitoring & Sleep Mode Update ---
+        // We treat a channel as silent only if its AC component (peak-to-peak
+        // range with the DC offset removed) is below 2 * threshold. This
+        // matters because some plugins (e.g. Exciter with a non-zero bias)
+        // emit a constant DC component for a silent input, which would
+        // otherwise be classified as "signal" and forever prevent sleep mode.
         let hasInputSignal = false;
-        // Iterate only necessary input channels (min of input channels and expected max like 2?)
-        const inputChannelsToCheck = Math.min(input.length, outputChannelCount); // Check up to output channel count
+        const inputChannelsToCheck = Math.min(input.length, outputChannelCount);
+        const acThreshold = 2 * silenceThresholdAmplitude;
         for (let channel = 0; channel < inputChannelsToCheck; channel++) {
             const channelData = input[channel];
-            // Use Array.prototype.some for potentially faster check (stops on first non-silent sample)
-            if (channelData.some(sample => Math.abs(sample) > silenceThresholdAmplitude)) {
+            let cmin = Infinity, cmax = -Infinity;
+            for (let i = 0; i < channelData.length; i++) {
+                const v = channelData[i];
+                if (v < cmin) cmin = v;
+                if (v > cmax) cmax = v;
+                if (cmax - cmin > acThreshold) break; // early exit
+            }
+            if (cmax - cmin > acThreshold) {
                 hasInputSignal = true;
-                break; // Exit channel loop once signal is found
+                break;
             }
         }
 
@@ -744,14 +755,24 @@ class PluginProcessor extends AudioWorkletProcessor {
 
 
         // --- 11. Output Level Monitoring ---
+        // Same AC-only check as input monitoring (see section 4) so that a
+        // constant DC offset on the output (e.g. introduced by Exciter with
+        // a non-zero bias) does not block sleep mode entry.
         let hasOutputSignal = false;
-        // Check the actual physical output buffer levels
         const outputChannelsToCheck = Math.min(output.length, outputChannelCount);
+        const outAcThreshold = 2 * silenceThresholdAmplitude;
         for (let channel = 0; channel < outputChannelsToCheck; channel++) {
             const channelData = output[channel];
-            if (channelData.some(sample => Math.abs(sample) > silenceThresholdAmplitude)) {
+            let cmin = Infinity, cmax = -Infinity;
+            for (let i = 0; i < channelData.length; i++) {
+                const v = channelData[i];
+                if (v < cmin) cmin = v;
+                if (v > cmax) cmax = v;
+                if (cmax - cmin > outAcThreshold) break; // early exit
+            }
+            if (cmax - cmin > outAcThreshold) {
                 hasOutputSignal = true;
-                break; // Exit loop early
+                break;
             }
         }
 
