@@ -6,7 +6,10 @@
 const AUTO_RESTART_FLAG = '--from-auto-restart';
 
 let mainWindow = null;
-let windowState = { width: 1440, height: 900 };
+let windowState = {
+  bounds: { width: 1440, height: 900 },
+  isMaximized: false
+};
 let isFirstLaunch = true;
 let isSplashReload = false;
 let shouldLoadPipelineState = true;

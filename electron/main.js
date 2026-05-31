@@ -1,4 +1,4 @@
-const { app, BrowserWindow, screen, Tray, Menu, ipcMain } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
@@ -14,6 +14,9 @@ const fileHandlers = require('./file-handlers');
 const packageJson = require('../package.json');
 const appVersion = packageJson.version;
 constants.setAppVersion(appVersion);
+
+const MIN_WINDOW_WIDTH = 1024;
+const MIN_WINDOW_HEIGHT = 768;
 
 let tray = null;
 let isAppQuitting = false;
@@ -169,38 +172,25 @@ function showMainWindowInRestoredState(mainWindow) {
   } else {
     mainWindow.show();
   }
+  // The window now holds its final restored geometry — allow state saving.
+  windowState.markRestoreComplete();
 }
 
 // Create the main application window
 function createWindow() {
-  // Load saved window state
+  // Load saved window state and resolve the (validated, on-screen) bounds the
+  // window should be created with.
   windowState.loadWindowState();
-  
-  // Get current display scaling factor
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const currentScaleFactor = primaryDisplay.scaleFactor || 1.0;
-  
-  // Get the window state
-  const state = constants.getWindowState();
-  
-  // Adjust window size if the display scale factor has changed
-  let adjustedWidth = state.width;
-  let adjustedHeight = state.height;
+  const restoredBounds = windowState.resolveWindowBoundsForRestore();
 
-  if (state.scaleFactor) {
-    const factor = currentScaleFactor / state.scaleFactor;
-    adjustedWidth = Math.round(state.width * factor);
-    adjustedHeight = Math.round(state.height * factor);
-  }
-  
   // Create the browser window
   const mainWindow = new BrowserWindow({
-    width: adjustedWidth,
-    height: adjustedHeight,
-    x: state.x,
-    y: state.y,
-    minWidth: 1024,
-    minHeight: 768,
+    width: restoredBounds.width,
+    height: restoredBounds.height,
+    x: restoredBounds.x,
+    y: restoredBounds.y,
+    minWidth: MIN_WINDOW_WIDTH,
+    minHeight: MIN_WINDOW_HEIGHT,
     icon: path.join(__dirname, '../images/favicon.ico'),
     acceptFirstMouse: true, // Accept mouse events on window activation
     show: false, // Don't show the window until it's ready
@@ -217,12 +207,23 @@ function createWindow() {
       backgroundThrottling: false
     }
   });
-  
+
+  // Windows DPI fix: the constructor sizes the window with the primary display's
+  // scale factor, so once it lands on a differently-scaled monitor the size is
+  // inflated by that monitor's scaleFactor (e.g. ×1.5) — which would compound on
+  // every save/restore cycle. The window is now positioned on its target
+  // display, so re-applying the bounds pins it to the intended logical size.
+  // macOS/Linux don't have this constructor inflation, so the guard keeps their
+  // behavior identical to before.
+  if (process.platform === 'win32') {
+    mainWindow.setBounds(restoredBounds);
+  }
+
   // Set the main window reference in modules
   constants.setMainWindow(mainWindow);
   ipcHandlers.setMainWindow(mainWindow);
   fileHandlers.setMainWindow(mainWindow);
-  
+
   // Allow renderer to access microphone via getUserMedia on file:// origin.
   // Without both handlers, Chromium falls back to its default content-settings
   // which deny media on file:// pages before the request handler is even called.
@@ -453,6 +454,8 @@ function createWindow() {
         // For minimize to taskbar: show and minimize immediately
         mainWindow.minimize();
       }
+      // Final state reached (hidden/minimized) — allow state saving.
+      windowState.markRestoreComplete();
     } else if (!pendingMainWindowShow) {
       // NOTE: maximize() MUST stay inside this branch.  On Win32 it issues
       // ShowWindow(SW_MAXIMIZE), which makes the (until then hidden) window
@@ -652,6 +655,8 @@ function createWindow() {
   // Save window state when window is moved or resized
   mainWindow.on('resize', () => windowState.saveWindowState());
   mainWindow.on('move', () => windowState.saveWindowState());
+  mainWindow.on('maximize', () => windowState.saveWindowState());
+  mainWindow.on('unmaximize', () => windowState.saveWindowState());
   
   mainWindow.on('minimize', (e) => {
     if (constants.getAppConfig().minimizeToTray) {
@@ -951,10 +956,12 @@ function createSplashScreen() {
       return;
     }
     
-    // Position splash window in the center of the main window
+    // Position splash window in the center of the main window's final
+    // restored bounds. Maximized startup is deferred until after the splash,
+    // so derive that final bounds explicitly while the main window is hidden.
     const mainWindow = constants.getMainWindow();
     if (mainWindow) {
-      const mainBounds = mainWindow.getBounds();
+      const mainBounds = windowState.getSplashTargetBounds();
       const splashBounds = splashWindow.getBounds();
       
       // Calculate the center position

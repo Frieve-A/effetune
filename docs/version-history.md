@@ -7,7 +7,7 @@ lang: en
 # Version History
 
 ### Version 1.65.1 (May 31, 2026)
-- Bug fixes
+- Bug fixes and various minor improvements
 
 ### Version 1.65 (May 28, 2026)
 - Improved overall performance and reduced CPU usage, especially when plugins or sections are disabled
