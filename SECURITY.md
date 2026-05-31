@@ -1,6 +1,6 @@
 ## Reporting Security Issues
 
-Effetune takes security issues very seriously. If you discover a vulnerability or security issue, please report the details to us using the contact information provided below.
+EffeTune takes security issues very seriously. If you discover a vulnerability or security issue, please report the details to us using the contact information provided below.
 
 ### How to Report
 

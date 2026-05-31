@@ -160,7 +160,7 @@ lang: en
 - Various minor improvements
 
 ### Version 1.26 (Mar 11, 2025)
-- Localized UI dnpisplay
+- Localized UI display
 - Various minor improvements
 
 ### Version 1.25 (Mar 9, 2025)
