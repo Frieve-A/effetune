@@ -212,6 +212,9 @@
     <script type="module">
         import { PluginManager } from '../js/plugin-manager.js';
         import { loadScript, loadCSS } from '../js/script-loader.js';
+        import { startRendererWatchdogHeartbeat } from '../js/electron-watchdog.js';
+
+        startRendererWatchdogHeartbeat('benchmark-page');
 
         let SAMPLE_RATE = 96000;
         const BUFFER_SIZE = 128;

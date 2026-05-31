@@ -43,12 +43,32 @@ let watchdogRelaunchQueued = false;
 // Counts consecutive failed app.exit() attempts to bound the retry loop.
 let watchdogExitAttempts = 0;
 
-function rendererPingReceived() {
+function armRendererWatchdog(reason = 'renderer') {
   lastRendererPing = Date.now();
+  watchdogRelaunchQueued = false;
+  watchdogExitAttempts = 0;
   if (!watchdogArmed) {
     watchdogArmed = true;
-    console.log('[watchdog] First renderer ping received — watchdog armed');
+    console.log(`[watchdog] armed (${reason})`);
   }
+}
+
+function disarmRendererWatchdog(reason = 'navigation') {
+  if (watchdogArmed) {
+    console.log(`[watchdog] disarmed (${reason})`);
+  }
+  watchdogArmed = false;
+  lastRendererPing = 0;
+  watchdogRelaunchQueued = false;
+  watchdogExitAttempts = 0;
+}
+
+function rendererPingReceived() {
+  if (!watchdogArmed) {
+    armRendererWatchdog('renderer-ping');
+    return;
+  }
+  lastRendererPing = Date.now();
 }
 
 function startWatchdog() {
@@ -110,6 +130,16 @@ function stopWatchdog() {
 // the watchdog state directly without a circular dependency.
 ipcMain.on('renderer-ping', () => {
   rendererPingReceived();
+});
+
+ipcMain.handle('renderer-watchdog-arm', (_event, reason) => {
+  armRendererWatchdog(reason || 'renderer-request');
+  return { success: true };
+});
+
+ipcMain.handle('renderer-watchdog-disarm', (_event, reason) => {
+  disarmRendererWatchdog(reason || 'renderer-request');
+  return { success: true };
 });
 
 // macOS only: tell Chromium to auto-approve getUserMedia() without showing its
@@ -203,6 +233,14 @@ function createWindow() {
   });
   mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
     callback(MEDIA_PERMISSIONS.includes(permission));
+  });
+
+  // Any full-page navigation replaces the renderer that is sending heartbeat
+  // pings. Disarm here; each loaded page must explicitly arm its own heartbeat.
+  mainWindow.webContents.on('did-start-navigation', (_event, url, isInPlace, isMainFrame) => {
+    if (isMainFrame && !isInPlace) {
+      disarmRendererWatchdog(`navigation:${url}`);
+    }
   });
 
   // Enable file drag and drop for the window

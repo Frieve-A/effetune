@@ -9,8 +9,11 @@ import uiManager from './uiManager.js';
 import measurementController from './measurementController.js';
 import i18n from './i18n.js'; // Import the i18n module
 import './peqCalculator.js'; // Import the new PEQ calculator
+import { startRendererWatchdogHeartbeat } from '../../js/electron-watchdog.js';
 
 let isAudioInitialized = false;
+
+startRendererWatchdogHeartbeat('measurement-page');
 
 /**
  * Initialize all application components
@@ -703,4 +706,4 @@ window.app.uiManager.logSliderToValue = function(sliderValue, minValue, maxValue
 
 window.app.uiManager.valueToLogSlider = function(value, minValue, maxValue) {
     return this.correctionHandler.valueToLogSlider(value, minValue, maxValue);
-}; 
+};
