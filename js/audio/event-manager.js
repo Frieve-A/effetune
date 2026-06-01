@@ -40,6 +40,13 @@ export class EventManager {
      * Handle user activity events
      */
     handleUserActivity() {
+        // If the context is suspended for sleep-mode power saving, the
+        // worklet is frozen and can't act on the message, so wake from the
+        // main thread (wakeFromSleep re-posts userActivity after resuming).
+        if (this.audioManager._sleepSuspended) {
+            this.audioManager.wakeFromSleep();
+            return;
+        }
         // Notify audio processor about user activity
         if (this.audioManager.workletNode) {
             this.audioManager.workletNode.port.postMessage({

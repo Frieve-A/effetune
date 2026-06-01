@@ -12,11 +12,24 @@ export class AudioContextManager {
         this.silenceGain = null;
         this.isFirstLaunch = false;
         this._skipAudioInitDuringSampleRateChange = false;
-        
+        // True while the context is suspended on purpose for sleep-mode
+        // power saving, so onstatechange knows not to auto-resume it.
+        this._intentionalSuspend = false;
+
         // Initialize global variable if not already set
         if (typeof window.originalConnectMethod === 'undefined') {
             window.originalConnectMethod = null;
         }
+    }
+
+    /**
+     * Mark (or clear) an intentional suspend for sleep-mode power saving.
+     * While set, the onstatechange handler will not auto-resume a
+     * 'suspended' context, since that suspend was deliberate.
+     * @param {boolean} value
+     */
+    setIntentionalSuspend(value) {
+        this._intentionalSuspend = !!value;
     }
     
     /**
@@ -91,6 +104,12 @@ export class AudioContextManager {
                 this.audioContext.onstatechange = () => {
                     const state = this.audioContext?.state;
                     if (state === 'suspended') {
+                        // A deliberate suspend for sleep-mode power saving must
+                        // not be auto-resumed; AudioManager.wakeFromSleep owns
+                        // the resume in that case.
+                        if (this._intentionalSuspend) {
+                            return;
+                        }
                         this.audioContext.resume().catch(err =>
                             console.warn('[AudioContext] resume after suspended failed:', err)
                         );

@@ -13,6 +13,15 @@ class PluginBase {
         // together with `enabled` to decide whether the plugin's redraw loop
         // (startAnimation/stopAnimation) should run.
         this._sectionEnabled = true;
+        // Whether the worklet is in sleep mode (no input/output signal and
+        // no user activity for the configured duration). The AudioManager
+        // propagates the sleep transitions here so analyzers can also pause
+        // their main-thread redraw loops while the audio path is idle.
+        // Any user interaction wakes the worklet up immediately via the
+        // existing 'userActivity' channel, so editing while in sleep is
+        // safe -- the wake-up reverts this flag before the user sees a
+        // stale UI.
+        this._sleepMode = false;
         this.id = null; // Will be set by createPlugin
         this.errorState = null; // Holds error state
         this.inputBus = null; // Input bus (null = default Main bus, index 0)
@@ -534,6 +543,19 @@ class PluginBase {
         }
     }
 
+    // Called from the AudioManager when the worklet enters or leaves sleep
+    // mode. While the audio path is idle, there's nothing meaningful for the
+    // analyzer to redraw, so we pause the main-thread loop too. Any user
+    // interaction wakes the worklet via 'userActivity', which causes this to
+    // be called again with sleepMode=false.
+    _setSleepMode(sleepMode) {
+        sleepMode = !!sleepMode;
+        if (this._sleepMode !== sleepMode) {
+            this._sleepMode = sleepMode;
+            this._refreshAnimationState();
+        }
+    }
+
     // Start or stop the redraw loop to match the current effective-enabled
     // state. Plugins that do not expose startAnimation/stopAnimation are
     // unaffected.
@@ -542,7 +564,7 @@ class PluginBase {
             typeof this.stopAnimation !== 'function') {
             return;
         }
-        if (this.enabled && this._sectionEnabled) {
+        if (this.enabled && this._sectionEnabled && !this._sleepMode) {
             this.startAnimation();
         } else {
             this.stopAnimation();

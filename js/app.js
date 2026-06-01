@@ -760,9 +760,16 @@ class App {
 
         // Auto-resume audio context when page gains focus
         document.addEventListener('visibilitychange', () => {
-            if (!document.hidden && this.audioManager.audioContext &&
-                this.audioManager.audioContext.state === 'suspended') {
-                this.audioManager.audioContext.resume();
+            if (document.hidden) return;
+            const am = this.audioManager;
+            // If suspended for sleep-mode power saving, go through the wake
+            // path so the worklet and watcher state are torn down properly.
+            if (am._sleepSuspended) {
+                am.wakeFromSleep();
+                return;
+            }
+            if (am.audioContext && am.audioContext.state === 'suspended') {
+                am.audioContext.resume();
             }
         });
 
