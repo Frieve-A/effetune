@@ -39,6 +39,10 @@ class OscillatorPlugin extends PluginBase {
             const TWO_PI = Math.PI * 2.0;
             const ONE_OVER_PI = 1.0 / Math.PI;
             const ONE_OVER_TWO_PI = 1.0 / TWO_PI;
+            const NYQUIST_GUARD_HZ = 1.0;
+            const MIN_BANDLIMITED_TABLE_SIZE = 2048;
+            const MAX_BANDLIMITED_TABLE_SIZE = 16384;
+            const MAX_BANDLIMITED_TABLE_CACHE_ENTRIES = 64;
 
             // Calculate linear volume gain from dB
             const volume = (volumeDb <= -96.0) ? 0.0 : Math.pow(10.0, volumeDb / 20.0);
@@ -46,6 +50,7 @@ class OscillatorPlugin extends PluginBase {
             // Calculate phase increment per sample for oscillators
             const safeSampleRate = (sampleRate > 0) ? sampleRate : 44100.0;
             const phaseIncrement = (TWO_PI * frequency) / safeSampleRate;
+            const usableNyquist = Math.max(0.0, safeSampleRate * 0.5 - NYQUIST_GUARD_HZ);
 
             // Pre-calculate panning gains
             let clampedPanning = panning;
@@ -105,52 +110,119 @@ class OscillatorPlugin extends PluginBase {
                 pinkNoiseState[0] = b0; pinkNoiseState[1] = b1; pinkNoiseState[2] = b2; pinkNoiseState[3] = b3;
                 pinkNoiseState[4] = b4; pinkNoiseState[5] = b5; pinkNoiseState[6] = b6;
             } else { // Oscillator Waveforms (or fallback)
-                // --- Select Generator Function based on waveform string ---
-                let generateSampleFunction;
-                // Define generator functions using arrow functions for conciseness
-                // These functions take the current phase and return the sample value.
-                switch (waveform) {
-                    case 'sine':
-                        generateSampleFunction = (phase) => Math.sin(phase);
-                        break;
-                    case 'square':
-                        generateSampleFunction = (phase) => (phase < Math.PI) ? 1.0 : -1.0;
-                        break;
-                    case 'triangle':
-                        generateSampleFunction = (phase) => {
-                            const normalizedPhase = phase * ONE_OVER_TWO_PI;
-                            // Equivalent to 2 * abs(2 * (normalizedPhase - round(normalizedPhase))) - 1
-                            const phaseValue = 2.0 * (normalizedPhase - ((normalizedPhase + 0.5) | 0));
-                            const absPhaseValue = (phaseValue >= 0.0) ? phaseValue : -phaseValue; // Manual abs
-                            return 2.0 * absPhaseValue - 1.0;
-                        };
-                        break;
-                    case 'sawtooth':
-                        generateSampleFunction = (phase) => phase * ONE_OVER_PI - 1.0;
-                        break;
-                    default: // Fallback for unknown waveforms (output silence)
-                        // If waveform is not white/pink and not a known oscillator, generate silence.
-                        generateSampleFunction = (phase) => 0.0;
-                        break;
-                }
+                const isBandLimitedWaveform = waveform === 'sawtooth' || waveform === 'square' || waveform === 'triangle';
+                const harmonicLimit = (frequency > 0.0 && frequency <= usableNyquist) ? Math.floor(usableNyquist / frequency) : 0;
 
-                // --- Oscillator Sample Loop using the selected function ---
-                for (let i = 0; i < blockSize; i++) {
-                    // Call the selected function to generate the sample
-                    samples[i] = generateSampleFunction(currentPhase);
-
-                    // Update phase for the next sample
-                    currentPhase += phaseIncrement;
-
-                    // Wrap phase using if statements (often faster than float modulo)
-                    if (currentPhase >= TWO_PI) {
-                        currentPhase -= TWO_PI;
-                    } else if (currentPhase < 0.0) {
-                        currentPhase += TWO_PI;
+                if (waveform !== 'sine' && !isBandLimitedWaveform) {
+                    for (let i = 0; i < blockSize; i++) {
+                        samples[i] = 0.0;
                     }
+                } else if (harmonicLimit < 1) {
+                    for (let i = 0; i < blockSize; i++) {
+                        samples[i] = 0.0;
+                    }
+                } else if (waveform === 'sine') {
+                    for (let i = 0; i < blockSize; i++) {
+                        samples[i] = Math.sin(currentPhase);
+
+                        currentPhase += phaseIncrement;
+                        if (currentPhase >= TWO_PI) {
+                            currentPhase -= TWO_PI;
+                        } else if (currentPhase < 0.0) {
+                            currentPhase += TWO_PI;
+                        }
+                    }
+                    context.phase = currentPhase;
+                } else {
+                    if (!context.bandLimitedTables) {
+                        context.bandLimitedTables = new Map();
+                    }
+
+                    let synthesisHarmonicLimit = harmonicLimit;
+                    if (synthesisHarmonicLimit > (MAX_BANDLIMITED_TABLE_SIZE >> 1) - 1) {
+                        synthesisHarmonicLimit = (MAX_BANDLIMITED_TABLE_SIZE >> 1) - 1;
+                    }
+
+                    let tableSize = MIN_BANDLIMITED_TABLE_SIZE;
+                    const requiredTableSize = (synthesisHarmonicLimit + 1) << 1;
+                    while (tableSize < requiredTableSize && tableSize < MAX_BANDLIMITED_TABLE_SIZE) {
+                        tableSize <<= 1;
+                    }
+
+                    const tableKey = waveform + ':' + synthesisHarmonicLimit + ':' + tableSize;
+                    let table = context.bandLimitedTables.get(tableKey);
+
+                    if (!table) {
+                        table = new Float32Array(tableSize + 1);
+
+                        for (let harmonic = 1; harmonic <= synthesisHarmonicLimit; harmonic++) {
+                            if ((waveform === 'square' || waveform === 'triangle') && (harmonic & 1) === 0) {
+                                continue;
+                            }
+
+                            let coefficient = 0.0;
+                            if (waveform === 'sawtooth') {
+                                coefficient = (2.0 * ONE_OVER_PI) * ((harmonic & 1) === 0 ? -1.0 : 1.0) / harmonic;
+                            } else if (waveform === 'square') {
+                                coefficient = 4.0 * ONE_OVER_PI / harmonic;
+                            } else {
+                                const oddIndex = (harmonic - 1) >> 1;
+                                coefficient = ((oddIndex & 1) === 0 ? 1.0 : -1.0) * 8.0 * ONE_OVER_PI * ONE_OVER_PI / (harmonic * harmonic);
+                            }
+
+                            const harmonicPhaseStep = TWO_PI * harmonic / tableSize;
+                            const sinStep = Math.sin(harmonicPhaseStep);
+                            const cosStep = Math.cos(harmonicPhaseStep);
+                            let sinValue = 0.0;
+                            let cosValue = 1.0;
+
+                            for (let i = 0; i < tableSize; i++) {
+                                table[i] += coefficient * sinValue;
+
+                                const nextSin = sinValue * cosStep + cosValue * sinStep;
+                                cosValue = cosValue * cosStep - sinValue * sinStep;
+                                sinValue = nextSin;
+                            }
+                        }
+
+                        let maxAbs = 0.0;
+                        for (let i = 0; i < tableSize; i++) {
+                            const absValue = table[i] >= 0.0 ? table[i] : -table[i];
+                            if (absValue > maxAbs) {
+                                maxAbs = absValue;
+                            }
+                        }
+                        if (maxAbs > 0.0) {
+                            const normalizeGain = 1.0 / maxAbs;
+                            for (let i = 0; i < tableSize; i++) {
+                                table[i] *= normalizeGain;
+                            }
+                        }
+                        table[tableSize] = table[0];
+
+                        context.bandLimitedTables.set(tableKey, table);
+                        while (context.bandLimitedTables.size > MAX_BANDLIMITED_TABLE_CACHE_ENTRIES) {
+                            const oldestKey = context.bandLimitedTables.keys().next().value;
+                            context.bandLimitedTables.delete(oldestKey);
+                        }
+                    }
+
+                    const tableScale = tableSize * ONE_OVER_TWO_PI;
+                    for (let i = 0; i < blockSize; i++) {
+                        const tablePosition = currentPhase * tableScale;
+                        const tableIndex = tablePosition | 0;
+                        const fraction = tablePosition - tableIndex;
+                        samples[i] = table[tableIndex] + (table[tableIndex + 1] - table[tableIndex]) * fraction;
+
+                        currentPhase += phaseIncrement;
+                        if (currentPhase >= TWO_PI) {
+                            currentPhase -= TWO_PI;
+                        } else if (currentPhase < 0.0) {
+                            currentPhase += TWO_PI;
+                        }
+                    }
+                    context.phase = currentPhase;
                 }
-                // Update context phase only if an oscillator was actually processed
-                context.phase = currentPhase;
 
             } // End waveform type check
 
