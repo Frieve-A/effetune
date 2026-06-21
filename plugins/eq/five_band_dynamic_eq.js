@@ -1163,7 +1163,7 @@ class FiveBandDynamicEQ extends PluginBase {
     // --- Animation Loop for Dynamic Graph ---
     startAnimation() {
         if (this.animationFrameId) return; // Already running
-        if (!this.enabled || !this._sectionEnabled) return; // Skip if disabled or section is off.
+        if (!this.enabled || !this._sectionEnabled || this._sleepMode) return; // Skip if disabled or section is off.
         if (this.isVisible === false) return;                // Skip if off-screen.
         const animate = () => {
             if (this.isVisible === false) {

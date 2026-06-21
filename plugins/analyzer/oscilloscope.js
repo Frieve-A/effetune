@@ -550,7 +550,7 @@ class OscilloscopePlugin extends PluginBase {
 
     startAnimation() {
         if (this.animationFrameId) return;
-        if (!this.enabled || !this._sectionEnabled) return; // Skip if disabled or section is off.
+        if (!this.enabled || !this._sectionEnabled || this._sleepMode) return; // Skip if disabled or section is off.
 
         const animate = () => {
             if (!this.isVisible) {
