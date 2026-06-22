@@ -296,6 +296,7 @@ CD 플레이어, 네트워크 플레이어 또는 기타 물리적 소스를 사
 | EQ        | Tone Control | 3밴드 톤 컨트롤 | [세부 정보](plugins/eq.md#tone-control) |
 | Lo-Fi     | Bit Crusher | 비트 심도 감소 및 제로 오더 홀드 효과 | [세부 정보](plugins/lofi.md#bit-crusher) |
 | Lo-Fi     | Digital Error Emulator | 다양한 디지털 오디오 전송 오류와 빈티지 디지털 장비 특성을 시뮬레이션 | [세부 정보](plugins/lofi.md#digital-error-emulator) |
+| Lo-Fi     | DSD64 IMD Simulator | DSD64 초음파 노이즈로 인한 가청 상호변조 왜곡을 시뮬레이션 | [세부 정보](plugins/lofi.md#dsd64-imd-simulator) |
 | Lo-Fi     | Hum Generator | 고정밀 전원 험 노이즈 생성기 | [세부 정보](plugins/lofi.md#hum-generator) |
 | Lo-Fi     | Noise Blender | 노이즈 생성 및 믹싱 | [세부 정보](plugins/lofi.md#noise-blender) |
 | Lo-Fi     | Simple Jitter | 디지털 지터 시뮬레이션 | [세부 정보](plugins/lofi.md#simple-jitter) |

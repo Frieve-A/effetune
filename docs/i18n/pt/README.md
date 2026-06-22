@@ -292,6 +292,7 @@ Se o problema continuar, reporte em [GitHub Issues](https://github.com/Frieve-A/
 | EQ        | Tone Control | Controle de tonalidade de três bandas | [Detalhes](plugins/eq.md#tone-control) |
 | Lo-Fi     | Bit Crusher | Redução de profundidade de bits e efeito de retenção de ordem zero | [Detalhes](plugins/lofi.md#bit-crusher) |
 | Lo-Fi     | Digital Error Emulator | Simula vários erros de transmissão de áudio digital e características de equipamentos digitais vintage | [Detalhes](plugins/lofi.md#digital-error-emulator) |
+| Lo-Fi     | DSD64 IMD Simulator | Simula a distorção de intermodulação audível causada pelo ruído ultrassônico do DSD64 | [Detalhes](plugins/lofi.md#dsd64-imd-simulator) |
 | Lo-Fi     | Hum Generator | Gerador de ruído de zumbido de alta precisão | [Detalhes](plugins/lofi.md#hum-generator) |
 | Lo-Fi     | Noise Blender | Geração e mistura de ruído | [Detalhes](plugins/lofi.md#noise-blender) |
 | Lo-Fi     | Simple Jitter | Simulação de jitter digital | [Detalhes](plugins/lofi.md#simple-jitter) |

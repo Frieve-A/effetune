@@ -302,6 +302,7 @@ CD प्लेयर्स, नेटवर्क प्लेयर्स, य
 | EQ        | Tone Control | तीन-बैंड टोन नियंत्रण | [विवरण](plugins/eq.md#tone-control) |
 | Lo-Fi     | Bit Crusher | बिट डेप्थ में कमी और ज़ीरो-ऑर्डर होल्ड प्रभाव | [विवरण](plugins/lofi.md#bit-crusher) |
 | Lo-Fi     | Digital Error Emulator | विभिन्न डिजिटल ऑडियो ट्रांसमिशन त्रुटियों और विंटेज डिजिटल उपकरण विशेषताओं का सिमुलेशन | [विवरण](plugins/lofi.md#digital-error-emulator) |
+| Lo-Fi     | DSD64 IMD Simulator | DSD64 के अल्ट्रासोनिक शोर से उत्पन्न श्रव्य इंटरमॉड्यूलेशन डिस्टॉर्शन का अनुकरण करता है | [विवरण](plugins/lofi.md#dsd64-imd-simulator) |
 | Lo-Fi     | Hum Generator | उच्च परिशुद्धता पावर हम शोर जेनरेटर | [विवरण](plugins/lofi.md#hum-generator) |
 | Lo-Fi     | Noise Blender | शोर उत्पन्न करना और मिलाना | [विवरण](plugins/lofi.md#noise-blender) |
 | Lo-Fi     | Simple Jitter | डिजिटल जिटर सिमुलेशन | [विवरण](plugins/lofi.md#simple-jitter) |

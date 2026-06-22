@@ -12,6 +12,7 @@ lang: en
 
 - [Bit Crusher](#bit-crusher) - 创造复古游戏和复古数字声音
 - [Digital Error Emulator](#digital-error-emulator) - 模拟各种数字音频传输错误
+- [DSD64 IMD Simulator](#dsd64-imd-simulator) - 模拟 DSD64 超声噪声引发的可闻互调失真
 - [Hum Generator](#hum-generator) - 高精度电源嗡鸣噪声生成器
 - [Noise Blender](#noise-blender) - 添加氛围背景纹理
 - [Simple Jitter](#simple-jitter) - 创造细微的复古数字瑕疵
@@ -148,6 +149,50 @@ lang: en
    - 完美适合:独特实验声音
 
 注意:所有推荐都使用100%湿混合以获得真实的数字错误行为。较低的湿混合值可用于创意效果，但它们不代表真实数字错误实际发生的方式。
+
+## DSD64 IMD Simulator
+
+一个重现 DSD64 回放中一种细微、且常引发争议的副作用的效果器:DSD 在可闻范围之上携带的超声噪声,会通过真实 DAC、放大器和音箱中那些细小的不完美之处,产生互调失真(IMD)——也就是额外的颗粒感与杂音,并重新落回到你能听见的频段中。这个效果器重现了这一可闻结果,让你能够听到并加以调整。它只是一种模拟,并不会生成真正的 DSD 流。
+
+**本效果器要求采样率为 88.2 kHz 或更高**(88.2 / 96 / 176.4 / 192 kHz)。在 44.1 / 48 kHz 下无法工作,会被旁路(干信号原样通过)并显示警告。请在应用的音频设置中将采样率设为 88.2 kHz 或更高以使用本效果器。
+
+### 声音特色指南
+- 极其细微的"数字颗粒感":一层微弱而持续的沙沙底噪,外加随音乐起伏的精细毛刺感。
+- 演示工具:让通常不可闻的 DSD64 超声 IMD 变得可听、可调。
+- 创意质感:配合较高的 Amount 与 Analog Nonlinearity,它会变成明显的 lo-fi 刮擦/边缘效果。
+
+### 参数
+
+主要参数
+- **Amount** (-40.0 到 +50.0 dB) - 所生成失真的总体电平。
+- **Dry-Wet** (100:0 到 0:100) - 干信号与所生成失真之间的平衡,以 dry:wet 比例表示。100:0 = 仅干信号;100:100(居中)= 完整干信号加完整失真;0:100 = 仅失真。
+- **Ultrasonic Level** (-48.0 到 -18.0 dBFS RMS) - 模拟 DSD 超声噪声的电平。噪声越多,产生的失真越多。
+- **Noise Color** (-100 到 +100%) - 将超声噪声的频率向低或向高移动,并调整其平衡。
+- **Analog Nonlinearity** (0.00 到 10.00%) - 模拟模拟设备的不完美(非线性)程度。数值越高,产生的失真越多。
+- **Even Bias** (0 到 100%) - 调整失真的构成比例。数值越低,越偏向跟随音乐的失真(Attached);数值越高,越偏向与输入无关的恒定噪声型失真(Additive)以及 Cross 成分。
+- **Signal Coupling** (0 到 200%) - 依赖音乐的失真(Attached 与 Cross)的强度。设为 0 时,仅保留恒定的 Additive 噪声。
+- **IMD Path HPF** (0.0 到 8.0 kHz) - 将失真生成限制在此频点以上的频率。0.0 = Off(全频段,类似放大器);约 2.5 kHz 时模拟一个仅由高音单元产生失真的系统。干信号永远不受影响。
+- **Scratch Tone** (3.0 到 14.0 kHz) - 可闻"刮擦"特色的中心频率。
+
+高级 / 实用参数
+- **Noise Texture** (0 到 100%) - 为超声噪声添加共振涟漪,带来略有不同的质感。
+- **Cross Sideband** (0 到 100%) - 由音乐与超声噪声混合所产生的失真量。
+- **Output Trim** (-24.0 到 +12.0 dB) - 最终输出电平调整。
+
+### 可视化
+- **Term Contribution 电平表** - 实时显示效果器各组成部分的电平:
+  - **Additive** - 仅来自噪声的恒定失真,即使没有输入也存在。
+  - **Attached** - 依附并跟随音乐的失真。
+  - **Cross** - 由音乐与超声噪声混合产生的失真。
+  - **Total IMD** - 所生成失真的合并结果。
+  - **Output** - 最终输出电平(干信号加失真,经 Dry-Wet 和 Output Trim 处理之后)。
+- **Analog Transfer Curve** - 显示由 Analog Nonlinearity 和 Even Bias 形成的失真曲线,采用与 Saturation 插件相同的输入/输出表现方式。
+- **Difference-Frequency 视图** - 一张静态图,根据当前噪声设置,展示超声噪声会产生哪些可闻频率。
+
+### 推荐设置
+- 细微(默认):Amount +24 dB,Ultrasonic Level -30 dBFS,Analog Nonlinearity 1.40%,Even Bias 50%。
+- 仅高音单元 IMD:IMD Path HPF 2.5 kHz,Signal Coupling 80–150%,Cross Sideband 50–100%,Scratch Tone 9–14 kHz。
+- 明显效果:提高 Amount、Ultrasonic Level 和 Analog Nonlinearity。
 
 ## Hum Generator
 

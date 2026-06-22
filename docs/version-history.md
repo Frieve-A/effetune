@@ -6,6 +6,10 @@ lang: en
 
 # Version History
 
+### Version 1.66.0
+- Added DSD64 IMD Simulator effect
+- Various minor improvements
+
 ### Version 1.65.1 (May 31, 2026)
 - Bug fixes and various minor improvements
 

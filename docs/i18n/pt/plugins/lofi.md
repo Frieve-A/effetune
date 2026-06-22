@@ -12,6 +12,7 @@ Uma coleção de plugins que adicionam caráter vintage e qualidades nostálgica
 
 - [Bit Crusher](#bit-crusher) - Cria sons de jogos retrô e digitais vintage
 - [Digital Error Emulator](#digital-error-emulator) - Simula vários erros de transmissão de áudio digital
+- [DSD64 IMD Simulator](#dsd64-imd-simulator) - Simula a distorção de intermodulação audível causada pelo ruído ultrassônico do DSD64
 - [Hum Generator](#hum-generator) - Gerador de ruído de zumbido de alta precisão
 - [Noise Blender](#noise-blender) - Adiciona textura atmosférica de fundo
 - [Simple Jitter](#simple-jitter) - Cria imperfeições digitais vintage sutis
@@ -148,6 +149,50 @@ Um efeito que simula o som de vários erros de transmissão de áudio digital, d
    - Perfeito para: Sons experimentais únicos
 
 Nota: Todas as recomendações usam 100% de Wet Mix para comportamento realista de erro digital. Valores de mix úmido mais baixos podem ser usados para efeitos criativos, mas não representam como erros digitais reais realmente ocorrem.
+
+## DSD64 IMD Simulator
+
+Um efeito que recria um efeito colateral sutil e frequentemente debatido da reprodução em DSD64: o ruído ultrassônico que o DSD carrega acima da faixa audível pode, por meio das pequenas imperfeições de DACs, amplificadores e alto-falantes reais, gerar distorção de intermodulação (IMD) — aspereza e tons extras que retornam para a faixa que você consegue ouvir. Este efeito reproduz esse resultado audível para que você possa ouvi-lo e ajustá-lo. Trata-se de uma simulação e não gera um fluxo DSD real.
+
+**Este efeito requer uma taxa de amostragem de 88.2 kHz ou superior** (88.2 / 96 / 176.4 / 192 kHz). A 44.1 / 48 kHz ele não funciona e é desativado (o sinal seco passa inalterado), com a exibição de um aviso. Defina a taxa de amostragem para 88.2 kHz ou superior nas configurações de áudio do aplicativo para usar este efeito.
+
+### Guia de Caráter Sonoro
+- "Aspereza digital" muito sutil: um leve e constante piso de ruído arenoso somado a uma dureza fina que acompanha a música.
+- Ferramenta de demonstração: torna audível e ajustável a IMD ultrassônica do DSD64, normalmente inaudível.
+- Textura criativa: com valores mais altos de Amount e Analog Nonlinearity, torna-se um evidente efeito lo-fi de aspereza/borda.
+
+### Parâmetros
+
+Parâmetros principais
+- **Amount** (-40.0 a +50.0 dB) - Nível geral da distorção gerada.
+- **Dry-Wet** (100:0 a 0:100) - Equilíbrio entre o sinal seco e a distorção gerada, exibido como uma proporção dry:wet. 100:0 = apenas seco; 100:100 (central) = sinal seco completo somado à distorção completa; 0:100 = apenas distorção.
+- **Ultrasonic Level** (-48.0 a -18.0 dBFS RMS) - Nível do ruído ultrassônico DSD simulado. Mais ruído produz mais distorção.
+- **Noise Color** (-100 a +100%) - Desloca o ruído ultrassônico para frequências mais baixas ou mais altas e inclina seu equilíbrio.
+- **Analog Nonlinearity** (0.00 a 10.00%) - Quão imperfeito (não linear) é o equipamento analógico simulado. Valores mais altos produzem mais distorção.
+- **Even Bias** (0 a 100%) - Equilibra a composição da distorção. Valores baixos favorecem a distorção que acompanha a música (Attached); valores altos favorecem a distorção constante, semelhante a ruído (Additive), além do componente Cross.
+- **Signal Coupling** (0 a 200%) - Intensidade da distorção dependente da música (Attached e Cross). Em 0, resta apenas o ruído Additive constante.
+- **IMD Path HPF** (0.0 a 8.0 kHz) - Limita a geração de distorção às frequências acima deste ponto. 0.0 = Off (faixa completa, como um amplificador); em torno de 2.5 kHz emula um sistema em que apenas o tweeter produz a distorção. O sinal seco nunca é afetado.
+- **Scratch Tone** (3.0 a 14.0 kHz) - Frequência central do caráter audível de "aspereza".
+
+Parâmetros avançados / utilitários
+- **Noise Texture** (0 a 100%) - Adiciona uma ondulação ressonante ao ruído ultrassônico para uma textura ligeiramente diferente.
+- **Cross Sideband** (0 a 100%) - Quantidade de distorção criada pela mistura da música com o ruído ultrassônico.
+- **Output Trim** (-24.0 a +12.0 dB) - Ajuste final do nível de saída.
+
+### Visualizações
+- **Medidores Term Contribution** - Níveis em tempo real de cada parte do efeito:
+  - **Additive** - a distorção constante apenas de ruído, presente mesmo sem entrada.
+  - **Attached** - distorção que se prende e acompanha a música.
+  - **Cross** - distorção da mistura da música com o ruído ultrassônico.
+  - **Total IMD** - a distorção combinada que é gerada.
+  - **Output** - o nível final de saída (seco mais distorção, após Dry-Wet e Output Trim).
+- **Analog Transfer Curve** - Mostra a curva de distorção criada por Analog Nonlinearity e Even Bias, no mesmo estilo de entrada/saída dos plugins de Saturation.
+- **Visualização Difference-Frequency** - Um gráfico estático que mostra quais frequências audíveis o ruído ultrassônico produz, com base nas configurações de ruído atuais.
+
+### Configurações Recomendadas
+- Sutil (padrão): Amount +24 dB, Ultrasonic Level -30 dBFS, Analog Nonlinearity 1.40%, Even Bias 50%.
+- IMD apenas no tweeter: IMD Path HPF 2.5 kHz, Signal Coupling 80–150%, Cross Sideband 50–100%, Scratch Tone 9–14 kHz.
+- Efeito evidente: aumente Amount, Ultrasonic Level e Analog Nonlinearity.
 
 ## Hum Generator
 

@@ -58,6 +58,7 @@ eq/tilt_eq: Tilt EQ | EQ | TiltEQPlugin | css
 eq/tone_control: Tone Control | EQ | ToneControlPlugin | css
 lofi/bit_crusher: Bit Crusher | Lo-Fi | BitCrusherPlugin
 lofi/digital_error_emulator: Digital Error Emulator | Lo-Fi | DigitalErrorEmulatorPlugin
+lofi/dsd64_imd_simulator: DSD64 IMD Simulator | Lo-Fi | DSD64IMDSimulatorPlugin | css
 lofi/hum_generator: Hum Generator | Lo-Fi | HumGeneratorPlugin
 lofi/noise_blender: Noise Blender | Lo-Fi | NoiseBlenderPlugin
 lofi/simple_jitter: Simple Jitter | Lo-Fi | SimpleJitterPlugin

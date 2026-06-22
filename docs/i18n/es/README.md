@@ -292,6 +292,7 @@ Si el problema persiste, repórtalo a través de [GitHub Issues](https://github.
 | EQ        | Tone Control | Control de tono de tres bandas | [Detalles](plugins/eq.md#tone-control) |
 | Lo-Fi     | Bit Crusher | Reducción de profundidad de bits y efecto de retención de orden cero | [Detalles](plugins/lofi.md#bit-crusher) |
 | Lo-Fi     | Digital Error Emulator | Simula varios errores de transmisión de audio digital y características de equipos digitales vintage | [Detalles](plugins/lofi.md#digital-error-emulator) |
+| Lo-Fi     | DSD64 IMD Simulator | Simula la distorsión por intermodulación audible que genera el ruido ultrasónico del DSD64 | [Detalles](plugins/lofi.md#dsd64-imd-simulator) |
 | Lo-Fi     | Hum Generator | Generador de ruido de zumbido de alta precisión | [Detalles](plugins/lofi.md#hum-generator) |
 | Lo-Fi     | Noise Blender | Generación y mezcla de ruido | [Detalles](plugins/lofi.md#noise-blender) |
 | Lo-Fi     | Simple Jitter | Simulación de jitter digital | [Detalles](plugins/lofi.md#simple-jitter) |
