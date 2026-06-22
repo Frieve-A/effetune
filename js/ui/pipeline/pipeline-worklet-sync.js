@@ -12,13 +12,24 @@ export class PipelineWorkletSync {
         this.audioManager = pipelineCore.audioManager;
     }
 
+    ensureProcessorsRegistered(plugins = null) {
+        if (typeof this.audioManager.registerPipelineProcessors === 'function') {
+            this.audioManager.registerPipelineProcessors(plugins);
+        }
+    }
+
+    getCurrentPipeline() {
+        return Array.isArray(this.audioManager.pipeline) ? this.audioManager.pipeline : [];
+    }
+
     /**
      * Update all plugins in the worklet
      */
     updateWorkletPlugins() {
         if (window.workletNode) {
+            this.ensureProcessorsRegistered();
             // Prepare plugin data
-            const plugins = this.audioManager.pipeline.map(plugin => {
+            const plugins = this.getCurrentPipeline().map(plugin => {
                 const parameters = plugin.getParameters();
                 
                 return {
@@ -47,6 +58,7 @@ export class PipelineWorkletSync {
      */
     updateWorkletPlugin(plugin) {
         if (window.workletNode) {
+            this.ensureProcessorsRegistered(plugin);
             const parameters = plugin.getParameters();
             
             window.workletNode.port.postMessage({
@@ -70,9 +82,13 @@ export class PipelineWorkletSync {
      * @param {boolean} masterBypass - The master bypass state
      */
     updateMasterBypass(masterBypass) {
+        this.audioManager.masterBypass = !!masterBypass;
+        this.audioManager.pipelineProcessor?.setMasterBypass?.(this.audioManager.masterBypass);
+
         if (window.workletNode) {
+            this.ensureProcessorsRegistered();
             // Prepare plugin data
-            const plugins = this.audioManager.pipeline.map(plugin => {
+            const plugins = this.getCurrentPipeline().map(plugin => {
                 const parameters = plugin.getParameters();
                 
                 return {
@@ -101,6 +117,7 @@ export class PipelineWorkletSync {
      */
     sendParameterUpdate(plugin) {
         if (window.workletNode) {
+            this.ensureProcessorsRegistered(plugin);
             const parameters = plugin.getParameters();
             window.workletNode.port.postMessage({
                 type: 'updatePlugin',
@@ -142,6 +159,7 @@ export class PipelineWorkletSync {
      */
     batchUpdatePlugins(plugins) {
         if (window.workletNode && plugins.length > 0) {
+            this.ensureProcessorsRegistered(plugins);
             const pluginData = plugins.map(plugin => this.preparePluginData(plugin));
             
             window.workletNode.port.postMessage({
@@ -173,6 +191,7 @@ export class PipelineWorkletSync {
      */
     addPlugin(plugin, index) {
         if (window.workletNode) {
+            this.ensureProcessorsRegistered(plugin);
             const pluginData = this.preparePluginData(plugin);
             
             window.workletNode.port.postMessage({

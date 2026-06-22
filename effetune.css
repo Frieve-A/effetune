@@ -317,9 +317,10 @@ input[type="checkbox"] {
     position: absolute;
     left: 0;
     top: 4px;
-    width: calc(100% - 40px);
-    height: 16px;
-    padding: 4px 4px;
+    width: calc(100% - 34px);
+    height: 26px;
+    box-sizing: border-box;
+    padding: 4px 26px 4px 4px;
     background-color: #3d3d3d;
     border: 1px solid #4d4d4d;
     color: #ffffff;
@@ -351,6 +352,38 @@ input[type="checkbox"] {
 
 .search-button:hover {
     background-color: #5d5d5d;
+}
+
+.input-clear-button {
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: #b8b8b8;
+    cursor: pointer;
+    border-radius: 50%;
+    font-size: 16px;
+    line-height: 18px;
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 3;
+}
+
+.input-clear-button.visible {
+    display: flex;
+}
+
+.input-clear-button:hover {
+    background-color: #555555;
+    color: #ffffff;
+}
+
+.effect-search-clear-button {
+    top: 8px;
+    right: 38px;
 }
 
 .plugin-list-content {
@@ -602,16 +635,21 @@ input[type="checkbox"] {
     appearance: none;
     -webkit-appearance: none;
     -moz-appearance: none;
-    padding: 4px;
+    box-sizing: border-box;
+    padding: 4px 52px 4px 4px;
     background-color: #3d3d3d;
     border: 1px solid #4d4d4d;
     color: #ffffff;
     border-radius: 4px;
-    width: 220px;
-    margin: 0px 5px;
-    height: 20px;
+    width: 100%;
+    margin: 0;
+    height: 30px;
     position: relative;
     z-index: 1;
+}
+
+.preset-select::-webkit-calendar-picker-indicator {
+    display: none !important;
 }
 
 .preset-select:focus {
@@ -623,18 +661,26 @@ input[type="checkbox"] {
 .select-container {
     position: relative;
     display: inline-block;
+    width: 230px;
+    margin: 0px 5px;
 }
 
 .select-container::after {
     content: "▼";
     position: absolute;
     top: 50%;
-    right: 12px;
+    right: 9px;
     transform: translateY(-50%);
     pointer-events: none;
     color: #ffffff;
     font-size: 12px;
     z-index: 2;
+}
+
+.preset-clear-button {
+    top: 50%;
+    right: 29px;
+    transform: translateY(-50%);
 }
 
 .preset-select:-webkit-autofill,
@@ -844,6 +890,7 @@ input[type="checkbox"] {
 .move-up-button,
 .move-down-button,
 .routing-button,
+.reset-effect-button,
 .undo-button,
 .redo-button,
 .cut-button,
@@ -864,6 +911,7 @@ input[type="checkbox"] {
 .save-button,
 .help-button,
 .ai-button,
+.reset-effect-button,
 .undo-button,
 .redo-button,
 .cut-button,
@@ -888,6 +936,10 @@ input[type="checkbox"] {
     margin-right: 5px;
 }
 
+.reset-effect-button {
+    font-size: 14px;
+}
+
 .share-button {
     margin-left: 10px;
 }
@@ -902,7 +954,8 @@ input[type="checkbox"] {
 .delete-button:hover,
 .move-up-button:hover,
 .move-down-button:hover,
-.routing-button:hover {
+.routing-button:hover,
+.reset-effect-button:hover {
     background-color: #5d5d5d;
 }
 

@@ -362,6 +362,9 @@ export class AudioContextManager {
         }
         
         // Clear worklet node
+        if (window.workletNode && (!this.workletNode || window.workletNode === this.workletNode)) {
+            window.workletNode = null;
+        }
         this.workletNode = null;
     }
     

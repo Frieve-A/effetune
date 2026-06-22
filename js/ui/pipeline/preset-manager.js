@@ -15,6 +15,7 @@ export class PresetManager {
         
         // Preset UI elements
         this.presetSelect = document.getElementById('presetSelect');
+        this.presetClearButton = document.getElementById('presetClearButton');
         this.savePresetButton = document.getElementById('savePresetButton');
         this.deletePresetButton = document.getElementById('deletePresetButton');
         
@@ -50,6 +51,7 @@ export class PresetManager {
         
         // Preset selection change
         this.presetSelect.addEventListener('change', async (e) => {
+            this.updatePresetClearButton();
             const name = e.target.value.trim();
             const presets = await this.getPresets();
             if (presets[name]) {
@@ -57,6 +59,23 @@ export class PresetManager {
                 // loadPresetList is already called inside loadPreset method
             }
         });
+
+        this.presetSelect.addEventListener('input', () => {
+            this.updatePresetClearButton();
+        });
+
+        if (this.presetClearButton) {
+            this.presetClearButton.addEventListener('click', () => {
+                this.presetSelect.value = '';
+                this.updatePresetClearButton();
+                this.presetSelect.focus();
+            });
+        }
+    }
+
+    updatePresetClearButton() {
+        if (!this.presetClearButton) return;
+        this.presetClearButton.classList.toggle('visible', this.presetSelect.value.length > 0);
     }
     
     /**
@@ -86,6 +105,7 @@ export class PresetManager {
         
         // Restore current value
         this.presetSelect.value = currentValue;
+        this.updatePresetClearButton();
     }
     
     /**
@@ -167,8 +187,7 @@ export class PresetManager {
             }
             
             // Update UI
-            this.loadPresetList();
-            this.presetSelect.value = name;
+            await this.loadPresetList(name);
             
             // Update plugin list presets tab if it's visible
             if (window.uiManager && window.uiManager.pluginListManager) {
@@ -396,8 +415,7 @@ export class PresetManager {
             }
             
             // Update UI
-            this.loadPresetList();
-            this.presetSelect.value = '';
+            await this.loadPresetList('');
             
             // Update plugin list presets tab if it's visible
             if (window.uiManager && window.uiManager.pluginListManager) {

@@ -11,6 +11,8 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.currentFrame = 0;
         this.pluginProcessors = new Map();
         this.pluginContexts = new Map();
+        this.processorRegistrationErrors = new Set();
+        this.reportedMissingProcessors = new Set();
         this.masterBypass = false;
 
         // Audio configuration
@@ -88,6 +90,23 @@ class PluginProcessor extends AudioWorkletProcessor {
                 case 'registerProcessor':
                     this.registerPluginProcessor(data.pluginType, data.processor);
                     break;
+                case 'batchUpdatePlugins':
+                    this.batchUpdatePlugins(data.plugins || []);
+                    break;
+                case 'addPlugin':
+                    this.addPlugin(data.plugin, data.index);
+                    break;
+                case 'removePlugin':
+                    this.removePlugin(data.pluginId);
+                    break;
+                case 'reorderPlugin':
+                    this.reorderPlugin(data.fromIndex, data.toIndex);
+                    break;
+                case 'reset':
+                    this.plugins = [];
+                    this.pluginContexts.clear();
+                    this.masterBypass = false;
+                    break;
                 case 'userActivity':
                     { // Block scope for const time
                         // Use performance.now() or a similar high-resolution timer if available and appropriate
@@ -142,26 +161,32 @@ class PluginProcessor extends AudioWorkletProcessor {
                  }`
             );
             this.pluginProcessors.set(pluginType, compiledFunction);
+            this.processorRegistrationErrors.delete(pluginType);
+            this.reportedMissingProcessors.delete(pluginType);
             // console.log(`Registered processor for type: ${pluginType}`);
         } catch (error) {
              console.error(`Failed to compile processor function for ${pluginType}:`, error);
-             // Set a dummy processor to avoid errors later, or handle differently
-             this.pluginProcessors.set(pluginType, (context, data) => data); // Passthrough on error
+             this.pluginProcessors.delete(pluginType);
+             this.processorRegistrationErrors.add(pluginType);
         }
     }
 
+    normalizePluginConfig(pluginConfig) {
+        const params = pluginConfig?.parameters ?? {};
+        return {
+            ...pluginConfig,
+            inputBus: params.inputBus ?? pluginConfig?.inputBus ?? 0,
+            outputBus: params.outputBus ?? pluginConfig?.outputBus ?? 0,
+            channel: params.channel ?? pluginConfig?.channel ?? null,
+        };
+    }
+
     updatePlugin(pluginConfig) {
+        if (!pluginConfig) return;
         const index = this.plugins.findIndex(p => p.id === pluginConfig.id);
         if (index !== -1) {
             // Update plugin config - ensure essential properties are correctly nested/accessed
-            this.plugins[index] = pluginConfig;
-
-            // Normalize bus/channel properties for consistent access later in process()
-            // Use nullish coalescing for cleaner defaults
-            const params = pluginConfig.parameters ?? {};
-            this.plugins[index].inputBus = params.inputBus ?? pluginConfig.inputBus ?? 0;
-            this.plugins[index].outputBus = params.outputBus ?? pluginConfig.outputBus ?? 0;
-            this.plugins[index].channel = params.channel ?? pluginConfig.channel ?? null; // null signifies default (Stereo usually)
+            this.plugins[index] = this.normalizePluginConfig(pluginConfig);
 
             // console.log(`Updated plugin: ${pluginConfig.id}`);
         } else {
@@ -174,20 +199,47 @@ class PluginProcessor extends AudioWorkletProcessor {
 
     updatePlugins(pluginConfigs) {
         // Perform a full update, potentially optimizing property access during update
-        this.plugins = pluginConfigs.map(p => {
-            const params = p.parameters ?? {};
-            return {
-                ...p, // Spread original config first
-                // Ensure normalized properties exist directly on the plugin object
-                inputBus: params.inputBus ?? p.inputBus ?? 0,
-                outputBus: params.outputBus ?? p.outputBus ?? 0,
-                channel: params.channel ?? p.channel ?? null,
-            };
-        });
+        this.plugins = pluginConfigs.map(p => this.normalizePluginConfig(p));
         // Clear contexts for plugins that might have been removed?
         // Or handle context cleanup based on removed IDs.
         // For simplicity, we keep existing contexts; they won't be used if plugin is gone.
         // console.log(`Updated plugin chain (${this.plugins.length} plugins)`);
+    }
+
+    batchUpdatePlugins(pluginConfigs) {
+        for (const pluginConfig of pluginConfigs) {
+            this.updatePlugin(pluginConfig);
+        }
+    }
+
+    addPlugin(pluginConfig, index) {
+        if (!pluginConfig) return;
+        const normalizedPlugin = this.normalizePluginConfig(pluginConfig);
+        const existingIndex = this.plugins.findIndex(p => p.id === normalizedPlugin.id);
+        if (existingIndex !== -1) {
+            this.plugins[existingIndex] = normalizedPlugin;
+            return;
+        }
+
+        const insertIndex = Number.isInteger(index)
+            ? (index < 0 ? 0 : (index > this.plugins.length ? this.plugins.length : index))
+            : this.plugins.length;
+        this.plugins.splice(insertIndex, 0, normalizedPlugin);
+    }
+
+    removePlugin(pluginId) {
+        const index = this.plugins.findIndex(p => p.id === pluginId);
+        if (index === -1) return;
+        this.plugins.splice(index, 1);
+        this.pluginContexts.delete(pluginId);
+    }
+
+    reorderPlugin(fromIndex, toIndex) {
+        if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex)) return;
+        if (fromIndex < 0 || fromIndex >= this.plugins.length) return;
+        const targetIndex = toIndex < 0 ? 0 : (toIndex >= this.plugins.length ? this.plugins.length - 1 : toIndex);
+        const [plugin] = this.plugins.splice(fromIndex, 1);
+        this.plugins.splice(targetIndex, 0, plugin);
     }
 
     // Optimized process method
@@ -423,8 +475,20 @@ class PluginProcessor extends AudioWorkletProcessor {
             // Get the compiled processor function for this plugin type
             const processor = pluginProcessors.get(plugin.type);
             if (!processor) {
-                console.warn(`Processor function not found for type: ${plugin.type}`);
-                continue; // Skip if no processor registered
+                if (!this.reportedMissingProcessors.has(plugin.type)) {
+                    this.reportedMissingProcessors.add(plugin.type);
+                    console.warn(`Processor function not found for type: ${plugin.type}`);
+                    port.postMessage({
+                        type: 'processorMissing',
+                        pluginId: plugin.id,
+                        pluginType: plugin.type
+                    });
+                }
+                for (let ch = 0; ch < output.length; ch++) {
+                    output[ch].fill(0);
+                }
+                this.lastMessageTime = lastMessageTime;
+                return true;
             }
 
             // Get or initialize plugin state/context

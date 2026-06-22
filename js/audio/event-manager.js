@@ -54,9 +54,10 @@ export class EventManager {
      * @param {Function} callback - Callback function
      */
     addEventListener(eventName, callback) {
-        if (this.eventListeners[eventName]) {
-            this.eventListeners[eventName].push(callback);
+        if (!this.eventListeners[eventName]) {
+            this.eventListeners[eventName] = [];
         }
+        this.eventListeners[eventName].push(callback);
     }
     
     /**

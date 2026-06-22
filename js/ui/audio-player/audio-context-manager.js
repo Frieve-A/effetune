@@ -56,6 +56,16 @@ export class AudioContextManager {
       return null;
     }
   }
+
+  /**
+   * Keep AudioManager's exposed source and IO source synchronized.
+   */
+  setManagedSourceNode(sourceNode) {
+    this.audioManager.sourceNode = sourceNode;
+    if (this.audioManager.ioManager) {
+      this.audioManager.ioManager.sourceNode = sourceNode;
+    }
+  }
   
   /**
    * Connect buffer source to audio manager
@@ -67,7 +77,7 @@ export class AudioContextManager {
       if (this.audioManager.workletNode) {
         bufferSource.connect(this.audioManager.workletNode);
       } else {
-        bufferSource.connect(this.audioPlayer.audioContext.destination);
+        console.warn('[AudioContextManager] Worklet node unavailable; refusing direct destination playback.');
       }
     } else {
       if (this.originalSourceNode) {
@@ -75,18 +85,18 @@ export class AudioContextManager {
           this.originalSourceNode.disconnect();
           const silentGain = this.createSilentGain();
           if (silentGain) {
-            this.audioManager.sourceNode = silentGain;
+            this.setManagedSourceNode(silentGain);
           }
         } catch (e) {
           // Silent fail
         }
       }
       
-      this.audioManager.sourceNode = bufferSource;
+      this.setManagedSourceNode(bufferSource);
       if (this.audioManager.workletNode) {
         bufferSource.connect(this.audioManager.workletNode);
       } else {
-        bufferSource.connect(this.audioPlayer.audioContext.destination);
+        console.warn('[AudioContextManager] Worklet node unavailable; refusing direct destination playback.');
       }
     }
   }
@@ -107,14 +117,14 @@ export class AudioContextManager {
           this.originalSourceNode.disconnect();
           const silentGain = this.createSilentGain();
           if (silentGain) {
-            this.audioManager.sourceNode = silentGain;
+            this.setManagedSourceNode(silentGain);
           }
         } catch (e) {
           // Silent fail
         }
       }
       
-      this.audioManager.sourceNode = mediaSource;
+      this.setManagedSourceNode(mediaSource);
       if (this.audioManager.workletNode) {
         try {
           mediaSource.connect(this.audioManager.workletNode);
@@ -155,10 +165,256 @@ export class AudioContextManager {
   maintainSilentSource() {
     const useInputWithPlayer = window.electronIntegration?.audioPreferences?.useInputWithPlayer || false;
     if (!useInputWithPlayer) {
+      if (this.originalSourceNode) {
+        try {
+          this.originalSourceNode.disconnect();
+        } catch (e) {
+          // Silent fail
+        }
+      }
+
       const silentGain = this.createSilentGain();
       if (silentGain) {
-        this.audioManager.sourceNode = silentGain;
+        this.setManagedSourceNode(silentGain);
       }
+    }
+  }
+
+  /**
+   * Capture the most accurate playback position before replacing graph nodes.
+   */
+  getPlaybackPositionForGraphRebind(state) {
+    let position = Number.isFinite(state?.currentTrackPosition) ? state.currentTrackPosition : 0;
+
+    if (state?.playbackMode === 'bufferSource' && this.currentBufferSource && this.audioPlayer.audioContext) {
+      try {
+        const duration = this.bufferDuration || state.currentTrackDuration || 0;
+        const elapsedTime = this.audioPlayer.audioContext.currentTime - this.bufferStartTime;
+        if (Number.isFinite(elapsedTime)) {
+          position = duration > 0 ? Math.max(0, Math.min(elapsedTime, duration)) : Math.max(0, elapsedTime);
+        }
+      } catch (e) {
+        // Fall back to StateManager's last known position.
+      }
+    } else if (state?.playbackMode === 'audioElement' && this.audioPlayer.audioElement) {
+      const elementTime = this.audioPlayer.audioElement.currentTime;
+      if (Number.isFinite(elementTime)) {
+        position = elementTime;
+      }
+    }
+
+    return Math.max(0, position);
+  }
+
+  /**
+   * Resolve the track that should remain attached across an audio graph reset.
+   */
+  getTrackForGraphRebind(state) {
+    if (state?.currentTrack) {
+      return state.currentTrack;
+    }
+
+    const currentIndex = this.audioPlayer.stateManager?.getCurrentTrackIndex?.() ??
+      this.audioPlayer.playbackManager?.currentTrackIndex ??
+      -1;
+
+    if (currentIndex >= 0) {
+      return this.audioPlayer.playbackManager?.getTrack?.(currentIndex) || null;
+    }
+
+    return null;
+  }
+
+  /**
+   * Detach nodes that belong to the previous AudioContext.
+   */
+  detachCurrentGraphNodesForRebind() {
+    if (this.currentBufferSource) {
+      try {
+        this.currentBufferSource.onended = null;
+        this.currentBufferSource.stop();
+        this.currentBufferSource.disconnect();
+      } catch (e) {
+        // Silent fail
+      }
+      this.currentBufferSource = null;
+    }
+
+    if (this.mediaSource) {
+      try {
+        this.mediaSource.disconnect();
+      } catch (e) {
+        // Silent fail
+      }
+      this.mediaSource = null;
+    }
+
+    if (this.audioPlayer.audioElement) {
+      try {
+        this.audioPlayer.audioElement.pause();
+      } catch (e) {
+        // Silent fail
+      }
+    }
+
+    this.clearBufferMonitoring();
+    this.currentInstanceId++;
+  }
+
+  /**
+   * Drop an element bound to an old AudioContext so fallback playback can bind
+   * a fresh MediaElementSource to the new context.
+   */
+  detachAudioElementForGraphRebuild() {
+    const audioElement = this.audioPlayer.audioElement;
+    if (!audioElement) return;
+
+    const handlers = [
+      ['ended', this.eventHandlers.ended],
+      ['timeupdate', this.eventHandlers.timeupdate],
+      ['error', this.eventHandlers.error],
+      ['loadedmetadata', this.eventHandlers.loadedmetadata]
+    ];
+
+    handlers.forEach(([eventName, handler]) => {
+      if (handler) {
+        try {
+          audioElement.removeEventListener(eventName, handler);
+        } catch (e) {
+          // Silent fail
+        }
+      }
+    });
+
+    try {
+      audioElement.pause();
+    } catch (e) {
+      // Silent fail
+    }
+
+    this.audioPlayer.audioElement = null;
+    this.eventHandlers = {
+      ended: null,
+      timeupdate: null,
+      error: null,
+      loadedmetadata: null
+    };
+  }
+
+  /**
+   * Rebind an existing player to a freshly recreated AudioContext/Worklet graph.
+   */
+  async handleAudioGraphRebuilt() {
+    const newAudioContext = this.audioManager.audioContext;
+    if (!newAudioContext) {
+      return;
+    }
+
+    const state = this.getCurrentState();
+    const currentTrack = this.getTrackForGraphRebind(state);
+    const wasPlaying = !!state?.isPlaying;
+    const wasPaused = !!state?.isPaused;
+    const wasStopped = !!state?.isStopped;
+    const restorePosition = this.getPlaybackPositionForGraphRebind(state);
+
+    this.detachCurrentGraphNodesForRebind();
+    this.audioPlayer.audioContext = newAudioContext;
+    this.originalSourceNode = this.audioManager.ioManager?.sourceNode || this.audioManager.sourceNode || null;
+    this.currentBuffer = null;
+    this.nextBuffer = null;
+
+    if (!currentTrack) {
+      this.updateState({
+        currentBuffer: null,
+        nextBuffer: null,
+        isTransitioning: false,
+        transitionType: null
+      }, 'Audio graph rebuilt without active track');
+      return;
+    }
+
+    this.updateState({
+      isTransitioning: true,
+      transitionType: 'audio-reset'
+    }, 'Audio graph rebuild rebinding playback');
+
+    try {
+      const buffer = await this.prepareTrackBuffer(currentTrack);
+      const duration = Number.isFinite(buffer.duration) ? buffer.duration : 0;
+      const clampedPosition = wasStopped ? 0 : Math.max(0, Math.min(restorePosition, duration));
+
+      this.currentBuffer = buffer;
+      this.updateState({
+        currentTrack,
+        currentTrackName: currentTrack.name,
+        currentBuffer: buffer,
+        nextBuffer: null,
+        currentTrackDuration: duration,
+        currentTrackPosition: clampedPosition,
+        playbackMode: 'bufferSource',
+        isTransitioning: false,
+        transitionType: null,
+        isPlaying: false,
+        isPaused: !wasStopped && (wasPaused || wasPlaying),
+        isStopped: wasStopped
+      }, 'Audio graph rebuilt and buffer rebound');
+
+      if (wasPlaying) {
+        await this.playBufferSource();
+      } else {
+        this.maintainSilentSource();
+      }
+
+      if (!wasStopped) {
+        this.prepareNextTrackBufferWithRepeatMode();
+      }
+    } catch (error) {
+      console.warn('[AudioContextManager] Buffer rebind after audio graph rebuild failed, falling back to audio element:', error);
+      await this.rebindAudioElementAfterGraphRebuild(currentTrack, restorePosition, wasPlaying, wasPaused, wasStopped);
+    }
+  }
+
+  /**
+   * Fallback path for tracks that cannot be decoded into an AudioBuffer.
+   */
+  async rebindAudioElementAfterGraphRebuild(track, position, wasPlaying, wasPaused, wasStopped) {
+    this.detachAudioElementForGraphRebuild();
+    this.setupAudioElement(track);
+
+    const audioElement = this.audioPlayer.audioElement;
+    if (audioElement) {
+      const applyPosition = () => {
+        try {
+          const duration = Number.isFinite(audioElement.duration) ? audioElement.duration : 0;
+          audioElement.currentTime = duration > 0 ? Math.max(0, Math.min(position, duration)) : Math.max(0, position);
+        } catch (e) {
+          // Silent fail
+        }
+      };
+
+      if (audioElement.readyState >= 1) {
+        applyPosition();
+      } else {
+        audioElement.addEventListener('loadedmetadata', applyPosition, { once: true });
+      }
+    }
+
+    this.updateState({
+      currentTrack: track,
+      currentTrackName: track.name,
+      currentBuffer: null,
+      nextBuffer: null,
+      currentTrackPosition: wasStopped ? 0 : Math.max(0, position),
+      playbackMode: 'audioElement',
+      isTransitioning: false,
+      transitionType: null,
+      isPlaying: false,
+      isPaused: !wasStopped && (wasPaused || wasPlaying),
+      isStopped: wasStopped
+    }, 'Audio graph rebuilt and audio element rebound');
+
+    if (wasPlaying) {
+      await this.playAudioElement();
     }
   }
   
@@ -837,6 +1093,7 @@ export class AudioContextManager {
       return;
     } else if (isLastTrack && repeatMode === 'OFF') {
       this.stopCurrentPlayback();
+      this.maintainSilentSource();
       
       if (this.audioPlayer.playbackManager && this.audioPlayer.playbackManager.playlist.length > 0) {
         const firstTrack = this.audioPlayer.playbackManager.playlist[0];
@@ -1344,7 +1601,7 @@ export class AudioContextManager {
       
       const useInputWithPlayer = window.electronIntegration?.audioPreferences?.useInputWithPlayer || false;
       if (!useInputWithPlayer && this.originalSourceNode) {
-        this.audioManager.sourceNode = this.originalSourceNode;
+        this.setManagedSourceNode(this.originalSourceNode);
         if (this.audioManager.workletNode) {
           try {
             this.audioManager.sourceNode.connect(this.audioManager.workletNode);

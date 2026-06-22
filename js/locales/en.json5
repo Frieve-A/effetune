@@ -82,6 +82,7 @@
   "ui.title.closePlayer": "Close player",
   "ui.title.enableEffect": "Enable or disable effect",
   "ui.title.configureBusRouting": "Configure bus routing",
+  "ui.title.resetEffect": "Reset effect settings",
   "ui.title.moveUp": "Move effect up",
   "ui.title.moveDown": "Move effect down",
   "ui.title.pluginDocs": "Open effect documentation",

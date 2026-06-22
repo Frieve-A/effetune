@@ -81,6 +81,7 @@
   "ui.title.closePlayer": "プレーヤーを閉じる",
   "ui.title.enableEffect": "エフェクトを有効/無効",
   "ui.title.configureBusRouting": "バスルーティングを設定",
+  "ui.title.resetEffect": "エフェクト設定をデフォルトに戻す",
   "ui.title.moveUp": "エフェクトを上へ移動",
   "ui.title.moveDown": "エフェクトを下へ移動",
   "ui.title.pluginDocs": "エフェクトのドキュメントを開く",

@@ -6,6 +6,7 @@ export class SearchManager {
         // Search functionality
         this.searchButton = document.getElementById('effectSearchButton');
         this.searchInput = document.getElementById('effectSearchInput');
+        this.searchClearButton = document.getElementById('effectSearchClearButton');
         this.availableEffectsTitle = document.getElementById('availableEffectsTitle');
         this.isSearchActive = false;
 
@@ -30,32 +31,49 @@ export class SearchManager {
                 this.searchInput.style.display = 'block';
                 this.searchInput.focus();
                 this.searchInput.select();
+                this.updateSearchClearButton();
             } else {
                 this.tabSwitcher.style.display = 'flex';
                 this.searchInput.style.display = 'none';
                 this.searchInput.value = '';
-                if (this.currentTab === 'effects') {
-                    this.filterPlugins('');
-                } else if (this.currentTab === 'systemPresets' || this.currentTab === 'userPresets') {
-                    this.filterPresets('');
-                }
+                this.updateSearchClearButton();
+                this.applySearchFilter('');
             }
         });
 
         // Search input handlers
         this.searchInput.addEventListener('input', (e) => {
-            if (this.currentTab === 'effects') {
-                this.filterPlugins(e.target.value);
-            } else if (this.currentTab === 'systemPresets' || this.currentTab === 'userPresets') {
-                this.filterPresets(e.target.value);
-            }
+            this.updateSearchClearButton();
+            this.applySearchFilter(e.target.value);
         });
+
+        if (this.searchClearButton) {
+            this.searchClearButton.addEventListener('click', () => {
+                this.searchInput.value = '';
+                this.updateSearchClearButton();
+                this.applySearchFilter('');
+                this.searchInput.focus();
+            });
+        }
 
         this.searchInput.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 this.searchButton.click();
             }
         });
+    }
+
+    updateSearchClearButton() {
+        if (!this.searchClearButton) return;
+        this.searchClearButton.classList.toggle('visible', this.isSearchActive && this.searchInput.value.length > 0);
+    }
+
+    applySearchFilter(searchText) {
+        if (this.currentTab === 'effects') {
+            this.filterPlugins(searchText);
+        } else if (this.currentTab === 'systemPresets' || this.currentTab === 'userPresets') {
+            this.filterPresets(searchText);
+        }
     }
 
     setupTabSwitching() {

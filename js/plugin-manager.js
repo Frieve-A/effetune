@@ -21,7 +21,29 @@ export class PluginManager {
         }
         const plugin = new this.pluginClasses[name]();
         plugin.id = this.nextPluginId++;
+        this.captureDefaultParameters(plugin);
         return plugin;
+    }
+
+    captureDefaultParameters(plugin) {
+        if (!plugin || typeof plugin.getParameters !== 'function') {
+            plugin.defaultParameters = {};
+            return;
+        }
+
+        try {
+            const defaultParameters = JSON.parse(JSON.stringify(plugin.getParameters()));
+            delete defaultParameters.type;
+            delete defaultParameters.id;
+            delete defaultParameters.enabled;
+            delete defaultParameters.inputBus;
+            delete defaultParameters.outputBus;
+            delete defaultParameters.channel;
+            plugin.defaultParameters = defaultParameters;
+        } catch (error) {
+            console.warn(`Failed to capture default parameters for ${plugin.name}:`, error);
+            plugin.defaultParameters = {};
+        }
     }
 
     async loadPlugins() {

@@ -103,6 +103,7 @@
                 </div>
                 <h2 id="availableEffectsTitle" style="display: none;">Available Effects</h2>
                 <input type="text" id="effectSearchInput" class="effect-search-input" placeholder="Search effects..." style="display: none;">
+                <button type="button" class="input-clear-button effect-search-clear-button" id="effectSearchClearButton" title="Clear search" aria-label="Clear search">&times;</button>
                 <button class="header-button search-button" id="effectSearchButton" title="Search effects">🔍</button>
             </div>
             <!-- Plugin list will be populated by JavaScript -->
@@ -132,6 +133,7 @@
                     <button class="header-button paste-button" id="pasteButton" title="Paste settings"><img src="images/paste_button.png" width="16" height="16" draggable="false"></button>
                     <div class="select-container">
                         <input type="text" class="preset-select" id="presetSelect" list="presetList" placeholder="">
+                        <button type="button" class="input-clear-button preset-clear-button" id="presetClearButton" title="Clear preset name" aria-label="Clear preset name">&times;</button>
                     </div>
                     <datalist id="presetList"></datalist>
                     <button class="header-button save-button" id="savePresetButton" title="Save preset"><img src="images/save_button.png" width="16" height="16" draggable="false"></button>

@@ -6,10 +6,12 @@ export class PipelineProcessor {
      * Create a new PipelineProcessor instance
      * @param {Object} contextManager - Reference to the AudioContextManager
      * @param {Object} ioManager - Reference to the AudioIOManager
+     * @param {Function} registerProcessors - Callback to register plugin processors
      */
-    constructor(contextManager, ioManager) {
+    constructor(contextManager, ioManager, registerProcessors = null) {
         this.contextManager = contextManager;
         this.ioManager = ioManager;
+        this.registerProcessors = registerProcessors;
         this.pipeline = [];
         this.masterBypass = false;
     }
@@ -24,7 +26,7 @@ export class PipelineProcessor {
      * @param {Array} pipeline - Array of plugin instances
      */
     setPipeline(pipeline) {
-        this.pipeline = pipeline;
+        this.pipeline = Array.isArray(pipeline) ? pipeline : [];
     }
     
     /**
@@ -68,6 +70,9 @@ export class PipelineProcessor {
             try {
                 this.contextManager.workletNode = new AudioWorkletNode(this.contextManager.audioContext, 'plugin-processor');
                 window.workletNode = this.contextManager.workletNode;
+                if (typeof this.registerProcessors === 'function') {
+                    this.registerProcessors();
+                }
             } catch (error) {
                 console.error('Failed to create worklet node:', error);
                 return `Audio Error: Failed to create audio processor: ${error.message}`;
@@ -81,8 +86,12 @@ export class PipelineProcessor {
         }
         
         // Make sure we have the latest pipeline from the AudioManager
-        if (window.pipeline) {
+        if (Array.isArray(window.pipeline)) {
             this.pipeline = window.pipeline;
+        }
+
+        if (typeof this.registerProcessors === 'function') {
+            this.registerProcessors();
         }
         
         // Update worklet with current pipeline state

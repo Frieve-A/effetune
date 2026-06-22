@@ -1152,6 +1152,13 @@ class MultibandExpanderPlugin extends PluginBase {
     };
   }
 
+  stopAnimation() {
+    if (this.animationFrameId) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
+    }
+  }
+
   cleanup() {
     if (this.animationFrameId) {
       cancelAnimationFrame(this.animationFrameId);

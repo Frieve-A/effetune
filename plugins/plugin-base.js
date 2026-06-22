@@ -31,6 +31,7 @@ class PluginBase {
 
         // Flag to track message handler registration
         this._hasMessageHandler = false;
+        this._messageHandlerWorkletNode = null;
 
         // Bind _handleMessage only once for performance
         this._boundHandleMessage = this._handleMessage.bind(this);
@@ -55,10 +56,26 @@ class PluginBase {
     }
 
     _setupMessageHandler() {
-        if (!this._hasMessageHandler && window.workletNode) {
-            window.workletNode.port.addEventListener('message', this._boundHandleMessage);
-            this._hasMessageHandler = true;
+        const currentWorkletNode = window.workletNode;
+        if (!currentWorkletNode?.port) {
+            return;
         }
+
+        if (this._messageHandlerWorkletNode === currentWorkletNode && this._hasMessageHandler) {
+            return;
+        }
+
+        if (this._messageHandlerWorkletNode?.port && this._hasMessageHandler) {
+            try {
+                this._messageHandlerWorkletNode.port.removeEventListener('message', this._boundHandleMessage);
+            } catch (error) {
+                // Ignore stale port cleanup failures.
+            }
+        }
+
+        currentWorkletNode.port.addEventListener('message', this._boundHandleMessage);
+        this._messageHandlerWorkletNode = currentWorkletNode;
+        this._hasMessageHandler = true;
     }
     
     // Clean up resources when plugin is removed
@@ -147,6 +164,7 @@ class PluginBase {
         this.compiledFunction = this._compileProcessor(this.processorString);
 
         if (window.workletNode) {
+            this._setupMessageHandler();
             window.workletNode.port.postMessage({
                 type: 'registerProcessor',
                 pluginType: this.constructor.name,
@@ -503,7 +521,21 @@ class PluginBase {
 
     // Cleanup resources (should be overridden by subclasses).
     cleanup() {
-        // Default implementation does nothing
+        if (this._messageHandlerWorkletNode?.port && this._hasMessageHandler) {
+            try {
+                this._messageHandlerWorkletNode.port.removeEventListener('message', this._boundHandleMessage);
+            } catch (error) {
+                // Ignore stale port cleanup failures.
+            }
+        }
+        this._messageHandlerWorkletNode = null;
+        this._hasMessageHandler = false;
+
+        if (this._pendingTimeoutId !== null) {
+            clearTimeout(this._pendingTimeoutId);
+            this._pendingTimeoutId = null;
+        }
+        this.pendingUpdate = null;
     }
 
     // Enable or disable the plugin.

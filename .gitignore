@@ -34,6 +34,10 @@ Thumbs.db
 *.sln
 *.sw?
 
+# Local agent instructions
+AGENTS.md
+CLAUDE.md
+
 # Electron specific
 .electron-builder.env
 

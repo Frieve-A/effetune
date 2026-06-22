@@ -114,6 +114,10 @@ export class PipelineItemBuilder {
             const routingBtn = this.createRoutingButton(plugin);
             header.appendChild(routingBtn);
         }
+
+        // Reset parameters button
+        const resetBtn = this.createResetButton(plugin);
+        header.appendChild(resetBtn);
         
         // Move up button
         const moveUpBtn = this.createMoveUpButton(plugin);
@@ -304,6 +308,68 @@ export class PipelineItemBuilder {
             this.pipelineCore.showRoutingDialog(plugin, routingBtn);
         };
         return routingBtn;
+    }
+
+    /**
+     * Create reset button for restoring plugin parameters to defaults
+     * @param {Object} plugin - The plugin
+     * @returns {HTMLElement} The reset button
+     */
+    createResetButton(plugin) {
+        const resetBtn = document.createElement('button');
+        resetBtn.className = 'reset-effect-button';
+        resetBtn.textContent = '🔄';
+        resetBtn.title = window.uiManager
+            ? window.uiManager.t('ui.title.resetEffect')
+            : 'Reset effect settings';
+        resetBtn.onclick = (e) => {
+            e.stopPropagation();
+            this.pipelineCore.handlePluginSelection(plugin, e);
+            this.resetPluginToDefaults(plugin);
+        };
+        return resetBtn;
+    }
+
+    /**
+     * Restore plugin parameters to the defaults captured at creation time
+     * @param {Object} plugin - The plugin to reset
+     */
+    resetPluginToDefaults(plugin) {
+        if (!plugin || typeof plugin.setParameters !== 'function') {
+            return;
+        }
+
+        const defaultParameters = JSON.parse(JSON.stringify(plugin.defaultParameters || {}));
+        const historyManager = this.pipelineManager && this.pipelineManager.historyManager;
+        const wasUndoRedoOperation = historyManager ? historyManager.isUndoRedoOperation : false;
+        const wasSuppressingHistory = plugin._suppressParameterHistory === true;
+
+        if (plugin.saveStateTimeout) {
+            clearTimeout(plugin.saveStateTimeout);
+            plugin.saveStateTimeout = null;
+        }
+
+        if (historyManager) {
+            historyManager.isUndoRedoOperation = true;
+        }
+        plugin._suppressParameterHistory = true;
+
+        try {
+            plugin.setParameters(defaultParameters);
+        } finally {
+            plugin._suppressParameterHistory = wasSuppressingHistory;
+            plugin.paramChangeStarted = false;
+            if (historyManager) {
+                historyManager.isUndoRedoOperation = wasUndoRedoOperation;
+            }
+        }
+
+        this.pipelineCore.updateWorkletPlugin(plugin);
+        this.pipelineCore.updatePipelineUI(true);
+
+        if (historyManager && !historyManager.isUndoRedoOperation) {
+            historyManager.saveState();
+        }
     }
 
     /**
@@ -541,7 +607,16 @@ export class PipelineItemBuilder {
      */
     setupParameterUpdateHandling(plugin) {
         if (plugin.updateParameters) {
+            plugin.audioManager = this.audioManager;
+
+            if (plugin._pipelineUpdateParametersWrapped) {
+                return;
+            }
+
             const originalUpdateParameters = plugin.updateParameters;
+            plugin._pipelineUpdateParametersWrapped = true;
+            plugin._pipelineOriginalUpdateParameters = originalUpdateParameters;
+
             // Add lastSaveTime property to track when the state was last saved
             plugin.lastSaveTime = 0;
             plugin.paramChangeStarted = false;
@@ -587,9 +662,10 @@ export class PipelineItemBuilder {
                 }
                 
                 const now = Date.now();
+                const suppressHistory = this._suppressParameterHistory === true;
                 
                 // If this is the first parameter change or it's been more than 500ms since the last save
-                if (!this.paramChangeStarted || (now - this.lastSaveTime > 500)) {
+                if (!suppressHistory && (!this.paramChangeStarted || (now - this.lastSaveTime > 500))) {
                     // Save state immediately for the first parameter change
                     if (this.audioManager && this.audioManager.pipelineManager) {
                         // Skip saving during pipeline switching operations
@@ -609,19 +685,20 @@ export class PipelineItemBuilder {
                 
                 // Set a timeout to mark the end of a parameter change session
                 // and save the final state
-                this.saveStateTimeout = setTimeout(() => {
-                    // Save the final state at the end of parameter changes
-                    if (this.audioManager && this.audioManager.pipelineManager) {
-                        // Skip saving during pipeline switching operations
-                        const historyManager = this.audioManager.pipelineManager.historyManager;
-                        if (!historyManager.isUndoRedoOperation) {
-                            historyManager.saveState();
+                if (!suppressHistory) {
+                    this.saveStateTimeout = setTimeout(() => {
+                        // Save the final state at the end of parameter changes
+                        if (this.audioManager && this.audioManager.pipelineManager) {
+                            // Skip saving during pipeline switching operations
+                            const historyManager = this.audioManager.pipelineManager.historyManager;
+                            if (!historyManager.isUndoRedoOperation) {
+                                historyManager.saveState();
+                            }
                         }
-                    }
-                    this.paramChangeStarted = false;
-                }, 500);
+                        this.paramChangeStarted = false;
+                    }, 500);
+                }
             }.bind(plugin);
-            plugin.audioManager = this.audioManager;
         }
     }
 

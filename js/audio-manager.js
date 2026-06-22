@@ -20,7 +20,11 @@ export class AudioManager {
         this.contextManager = new AudioContextManager();
         this.audioEncoder = new AudioEncoder();
         this.ioManager = new AudioIOManager(this.contextManager);
-        this.pipelineProcessor = new PipelineProcessor(this.contextManager, this.ioManager);
+        this.pipelineProcessor = new PipelineProcessor(
+            this.contextManager,
+            this.ioManager,
+            () => this.registerPipelineProcessors()
+        );
         this.offlineProcessor = new OfflineProcessor(this.contextManager, this.audioEncoder);
         this.eventManager = new EventManager(this);
         
@@ -58,7 +62,7 @@ export class AudioManager {
      * @returns {Array} Current pipeline array
      */
     getCurrentPipeline() {
-        return this.currentPipeline === 'A' ? this.pipelineA : this.pipelineB;
+        return this.currentPipeline === 'A' ? this.pipelineA : (this.pipelineB || []);
     }
 
     /**
@@ -185,10 +189,11 @@ export class AudioManager {
      * @param {Array} plugins - Array of plugins to set
      */
     updateCurrentPipeline(plugins) {
+        const nextPlugins = Array.isArray(plugins) ? plugins : [];
         if (this.currentPipeline === 'A') {
-            this.pipelineA = plugins;
+            this.pipelineA = nextPlugins;
         } else if (this.currentPipeline === 'B') {
-            this.pipelineB = plugins;
+            this.pipelineB = nextPlugins;
         }
         this.pipeline = this.getCurrentPipeline();
     }
@@ -278,6 +283,11 @@ export class AudioManager {
             
             // Update exposed properties for backward compatibility
             this.updateExposedProperties();
+
+            // A recreated AudioWorklet starts with an empty processor registry.
+            // Existing plugin instances do not run their constructors again, so
+            // their processor code must be sent before any updatePlugins message.
+            this.registerPipelineProcessors();
             
             // Setup worklet message handler
             if (this.workletNode) {
@@ -288,6 +298,12 @@ export class AudioManager {
                         this.dispatchEvent('sleepModeChanged', {
                             isSleepMode: data.isSleepMode,
                             sampleRate: this.audioContext.sampleRate
+                        });
+                    } else if (data.type === 'processorMissing') {
+                        console.warn(`[AudioManager] Worklet reported missing processor for ${data.pluginType}; re-registering processors.`);
+                        this.registerPipelineProcessors();
+                        this.rebuildPipeline(false).catch(error => {
+                            console.error('[AudioManager] Failed to rebuild after missing processor report:', error);
                         });
                     }
                 };
@@ -320,8 +336,55 @@ export class AudioManager {
         
         // Update pipeline in pipelineProcessor
         this.pipelineProcessor.setPipeline(this.pipeline);
+        this.pipelineProcessor.setMasterBypass(this.masterBypass);
         
         // Debug logging removed for production
+    }
+
+    /**
+     * Register processor functions for every plugin type currently present in
+     * either A/B pipeline. AudioWorkletNode instances do not retain processors
+     * across graph resets, while plugin instances are intentionally reused.
+     * @param {Array|Object|null} pluginsOrPlugin - Optional plugin(s) to register.
+     */
+    registerPipelineProcessors(pluginsOrPlugin = null) {
+        const workletNode = this.contextManager?.workletNode || this.workletNode || window.workletNode;
+        if (!workletNode?.port) return;
+
+        const pipelines = pluginsOrPlugin
+            ? [Array.isArray(pluginsOrPlugin) ? pluginsOrPlugin : [pluginsOrPlugin]]
+            : [this.pipelineA, this.pipelineB, this.pipeline];
+        const registeredTypes = new Set();
+
+        for (const pipeline of pipelines) {
+            if (!Array.isArray(pipeline)) continue;
+
+            for (const plugin of pipeline) {
+                if (!plugin?.constructor) continue;
+
+                if (typeof plugin._setupMessageHandler === 'function') {
+                    plugin._setupMessageHandler();
+                }
+
+                const pluginType = plugin.constructor.name;
+                if (registeredTypes.has(pluginType)) continue;
+
+                if (typeof plugin.processorString !== 'string' || plugin.processorString.length === 0) {
+                    if (plugin.enabled !== false && pluginType !== 'SectionPlugin') {
+                        console.warn(`[AudioManager] Processor string missing for ${pluginType}; plugin cannot be registered with the worklet.`);
+                    }
+                    continue;
+                }
+
+                workletNode.port.postMessage({
+                    type: 'registerProcessor',
+                    pluginType,
+                    processor: plugin.processorString,
+                    process: typeof plugin.process === 'function' ? plugin.process.toString() : ''
+                });
+                registeredTypes.add(pluginType);
+            }
+        }
     }
     
     /**
@@ -336,6 +399,10 @@ export class AudioManager {
         // Per-plugin setEnabled() during deserialization can't do this on
         // its own because the section's children may not exist yet at that
         // point. Idempotent: _setSectionEnabled only acts on state change.
+        if (!Array.isArray(this.pipeline)) {
+            this.pipeline = [];
+        }
+
         if (Array.isArray(this.pipeline)) {
             let sectionOn = true;
             for (let i = 0; i < this.pipeline.length; i++) {
@@ -350,9 +417,14 @@ export class AudioManager {
 
         // Make sure the pipeline is synchronized with the PipelineProcessor
         this.pipelineProcessor.setPipeline(this.pipeline);
+        this.pipelineProcessor.setMasterBypass(this.masterBypass);
         
         // Update global reference
         window.pipeline = this.pipeline;
+
+        // Ensure processor code exists in the current worklet before plugin
+        // configs are posted by PipelineProcessor.rebuildPipeline().
+        this.registerPipelineProcessors();
         
         const result = await this.pipelineProcessor.rebuildPipeline(isInitializing);
         this.updateExposedProperties();
@@ -392,16 +464,19 @@ export class AudioManager {
         this._hasPendingReset = false;
         this._pendingResetPrefs = null;
         try {
-            await this._doReset(audioPreferences);
+            let resetResult = await this._doReset(audioPreferences);
             // Run any reset that was queued while we were busy
             if (this._hasPendingReset) {
                 const pending = this._pendingResetPrefs;
                 this._hasPendingReset = false;
                 this._pendingResetPrefs = null;
                 console.log('[AudioManager] running queued reset');
-                await this._doReset(pending);
+                const pendingResult = await this._doReset(pending);
+                if (pendingResult) {
+                    resetResult = pendingResult;
+                }
             }
-            return '';
+            return resetResult || '';
         } finally {
             this._resetInProgress = false;
         }
@@ -440,27 +515,60 @@ export class AudioManager {
             const isMicDenied = audioErr.startsWith(MIC_DENIED_PREFIX);
             if (!isMicDenied) {
                 console.error('[AudioManager._doReset] initAudio failed:', audioErr);
-                return '';
+                return audioErr;
             }
             console.warn('[AudioManager._doReset] initAudio non-fatal warning:', audioErr);
         }
 
         // Set up the AudioWorklet that hosts the plugin chain
         const workletErr = await this.initializeAudioWorklet();
-        if (workletErr) console.error('[AudioManager._doReset] initializeAudioWorklet failed:', workletErr);
+        if (workletErr) {
+            console.error('[AudioManager._doReset] initializeAudioWorklet failed:', workletErr);
+            return workletErr;
+        }
 
         // Resume in case the new context started suspended (autoplay policy, HDMI race, etc.)
         await this.contextManager.resumeAudioContext();
 
         // Make sure pipeline is rebuilt with the new audio context
         const pipelineErr = await this.rebuildPipeline(true);
-        if (pipelineErr) console.error('[AudioManager._doReset] rebuildPipeline failed:', pipelineErr);
+        if (pipelineErr) {
+            console.error('[AudioManager._doReset] rebuildPipeline failed:', pipelineErr);
+            return pipelineErr;
+        }
+
+        await this._notifyAudioGraphRebuilt();
 
         // After a reset the new outputGainNode starts at 0; ramp it up now that
         // the pipeline is in place. Same primitive as the startup path in App.
         this.fadeInOutput();
 
         return '';
+    }
+
+    /**
+     * Let long-lived UI playback sources rebind to the newly-created audio graph.
+     * Hardware reconnect recovery intentionally keeps the page alive, so objects
+     * that captured the previous AudioContext must refresh before output unmutes.
+     */
+    async _notifyAudioGraphRebuilt() {
+        const playerContextManager = window.uiManager?.audioPlayer?.contextManager;
+        if (playerContextManager && typeof playerContextManager.handleAudioGraphRebuilt === 'function') {
+            try {
+                await playerContextManager.handleAudioGraphRebuilt({
+                    audioContext: this.audioContext,
+                    workletNode: this.workletNode
+                });
+            } catch (error) {
+                console.error('[AudioManager] Failed to rebind audio player after graph rebuild:', error);
+            }
+        }
+
+        this.dispatchEvent('audioGraphRebuilt', {
+            audioContext: this.audioContext,
+            workletNode: this.workletNode,
+            sourceNode: this.sourceNode
+        });
     }
 
     /**
@@ -494,11 +602,13 @@ export class AudioManager {
      * @returns {Promise<void>}
      */
     setPipeline(pipeline) {
+        pipeline = Array.isArray(pipeline) ? pipeline : [];
+        const currentPipeline = Array.isArray(this.pipeline) ? this.pipeline : [];
         // Check if pipeline structure has changed
-        const needsRebuild = this.pipeline.length !== pipeline.length ||
+        const needsRebuild = currentPipeline.length !== pipeline.length ||
             pipeline.some((plugin, index) =>
-                this.pipeline[index]?.id !== plugin.id ||
-                this.pipeline[index]?.enabled !== plugin.enabled
+                currentPipeline[index]?.id !== plugin.id ||
+                currentPipeline[index]?.enabled !== plugin.enabled
             );
         
         this.pipeline = pipeline;
@@ -510,6 +620,7 @@ export class AudioManager {
         } else {
             // Just update parameters without rebuilding
             if (this.workletNode) {
+                this.registerPipelineProcessors();
                 const pluginData = this.pipeline.map(plugin => ({
                     id: plugin.id,
                     type: plugin.constructor.name,
@@ -535,6 +646,7 @@ export class AudioManager {
     setMasterBypass(bypass) {
         if (this.masterBypass !== bypass) {
             this.masterBypass = bypass;
+            this.pipelineProcessor.setMasterBypass(this.masterBypass);
             return this.rebuildPipeline();
         }
         return Promise.resolve();
