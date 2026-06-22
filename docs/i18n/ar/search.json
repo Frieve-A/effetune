@@ -1,0 +1,5 @@
+---
+layout: null
+permalink: /docs/i18n/ar/search.json
+---
+{% include docs_search_index.json locale="ar" %}

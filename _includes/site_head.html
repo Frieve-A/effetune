@@ -1,0 +1,89 @@
+{% assign meta_title = page.title | default: site.title %}
+{% assign meta_description = page.description | default: site.description %}
+{% assign meta_image = page.image | default: site.image | default: '/images/screenshot.png' %}
+{% assign page_lang = page.lang | default: site.lang | default: 'en' %}
+{% if page.path contains 'docs/i18n/' %}
+  {% assign head_path_parts = page.path | split: '/' %}
+  {% assign page_lang = head_path_parts[2] %}
+{% endif %}
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ meta_title }}</title>
+<meta name="description" content="{{ meta_description | strip_html | strip | escape }}">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="{{ page.url | absolute_url }}">
+<meta name="theme-color" content="#0b0f0e">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="{{ site.title | escape }}">
+<meta property="og:url" content="{{ page.url | absolute_url }}">
+<meta property="og:title" content="{{ meta_title | escape }}">
+<meta property="og:description" content="{{ meta_description | strip_html | strip | escape }}">
+<meta property="og:image" content="{{ meta_image | absolute_url }}">
+<meta property="og:locale" content="{% if page_lang == 'ja' %}ja_JP{% elsif page_lang == 'ko' %}ko_KR{% elsif page_lang == 'zh' %}zh_CN{% elsif page_lang == 'es' %}es_ES{% elsif page_lang == 'fr' %}fr_FR{% elsif page_lang == 'pt' %}pt_BR{% elsif page_lang == 'ru' %}ru_RU{% elsif page_lang == 'hi' %}hi_IN{% elsif page_lang == 'ar' %}ar_SA{% else %}en_US{% endif %}">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@{{ site.twitter.username }}">
+<meta name="twitter:creator" content="@{{ site.twitter.username }}">
+<meta name="twitter:title" content="{{ meta_title | escape }}">
+<meta name="twitter:description" content="{{ meta_description | strip_html | strip | escape }}">
+<meta name="twitter:image" content="{{ meta_image | absolute_url }}">
+
+<link rel="icon" href="{{ '/images/favicon.ico' | relative_url }}" type="image/x-icon">
+<link rel="icon" href="{{ '/images/icon_192x192.png' | relative_url }}" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" sizes="180x180" href="{{ '/images/icon_180x180.png' | relative_url }}">
+<link rel="apple-touch-icon" sizes="192x192" href="{{ '/images/icon_192x192.png' | relative_url }}">
+<link rel="manifest" href="{{ '/manifest.json' | relative_url }}">
+<link rel="stylesheet" href="{{ '/assets/css/site.css' | relative_url }}">
+
+<script>
+  (function() {
+    var measurementId = 'G-8PJYJSS8MD';
+
+    if (window.location.hostname !== 'effetune.frieve.com') {
+      return;
+    }
+
+    window.dataLayer = window.dataLayer || [];
+    window.gtag = window.gtag || function() {
+      window.dataLayer.push(arguments);
+    };
+
+    var gtagScript = document.createElement('script');
+    gtagScript.async = true;
+    gtagScript.src = 'https://www.googletagmanager.com/gtag/js?id=' + measurementId;
+    document.head.appendChild(gtagScript);
+
+    window.gtag('js', new Date());
+    window.gtag('config', measurementId);
+  })();
+</script>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Frieve EffeTune",
+  "description": {{ site.description | jsonify }},
+  "url": {{ site.url | jsonify }},
+  "applicationCategory": "MultimediaApplication",
+  "operatingSystem": "Windows, macOS, Linux, Web Browser",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "author": {
+    "@type": "Organization",
+    "name": "Frieve",
+    "url": "https://www.frieve.com"
+  },
+  "screenshot": "{{ site.url }}/images/screenshot.png",
+  "downloadUrl": "https://github.com/Frieve-A/effetune/releases/",
+  "sameAs": [
+    "https://github.com/Frieve-A/effetune",
+    "https://www.youtube.com/@frieveamusic",
+    "https://discord.gg/gf95v3Gza2"
+  ]
+}
+</script>

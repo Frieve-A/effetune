@@ -4,6 +4,8 @@ node_modules/
 # Build output
 dist/
 out/
+_site/
+.jekyll-cache/
 
 # Logs
 logs

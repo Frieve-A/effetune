@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=1144, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://cdnjs.cloudflare.com blob: data:; script-src 'self' https://cdnjs.cloudflare.com 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline' blob:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://cdnjs.cloudflare.com blob: data:; script-src 'self' https://cdnjs.cloudflare.com https://www.googletagmanager.com 'unsafe-inline' 'unsafe-eval' blob:; connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://analytics.google.com; img-src 'self' https://www.google-analytics.com https://*.google-analytics.com data:; style-src 'self' 'unsafe-inline' blob:;">
     <title>EffeTune</title>
 
     <!-- SEO Meta Tags -->
@@ -76,6 +76,28 @@
     <link rel="apple-touch-icon" sizes="192x192" href="images/icon_192x192.png">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#000000">
+    <script>
+        (function() {
+            var measurementId = 'G-8PJYJSS8MD';
+
+            if (window.location.hostname !== 'effetune.frieve.com') {
+                return;
+            }
+
+            window.dataLayer = window.dataLayer || [];
+            window.gtag = window.gtag || function() {
+                window.dataLayer.push(arguments);
+            };
+
+            var gtagScript = document.createElement('script');
+            gtagScript.async = true;
+            gtagScript.src = 'https://www.googletagmanager.com/gtag/js?id=' + measurementId;
+            document.head.appendChild(gtagScript);
+
+            window.gtag('js', new Date());
+            window.gtag('config', measurementId);
+        })();
+    </script>
 </head>
 <body>
     <div class="title-container">

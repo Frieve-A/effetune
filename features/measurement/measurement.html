@@ -6,6 +6,28 @@
     <title data-i18n="title:main">Frequency Response Measurement</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="icon" href="../../images/favicon.ico" type="image/x-icon">
+    <script>
+        (function() {
+            var measurementId = 'G-8PJYJSS8MD';
+
+            if (window.location.hostname !== 'effetune.frieve.com') {
+                return;
+            }
+
+            window.dataLayer = window.dataLayer || [];
+            window.gtag = window.gtag || function() {
+                window.dataLayer.push(arguments);
+            };
+
+            var gtagScript = document.createElement('script');
+            gtagScript.async = true;
+            gtagScript.src = 'https://www.googletagmanager.com/gtag/js?id=' + measurementId;
+            document.head.appendChild(gtagScript);
+
+            window.gtag('js', new Date());
+            window.gtag('config', measurementId);
+        })();
+    </script>
 </head>
 <body>
     <button id="back-button" class="back-button">
@@ -353,4 +375,4 @@
         });
     </script>
 </body>
-</html> 
+</html>

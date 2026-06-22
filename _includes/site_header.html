@@ -1,0 +1,42 @@
+<a class="skip-link" href="#main-content">Skip to content</a>
+<script type="application/json" id="site-language-data">
+[
+  {% for language in site.data.languages %}
+    {
+      "code": {{ language.code | jsonify }},
+      "label": {{ language.label | jsonify }},
+      "short": {{ language.short | jsonify }},
+      "url": {{ language.url | relative_url | jsonify }}
+    }{% unless forloop.last %},{% endunless %}
+  {% endfor %}
+]
+</script>
+<header class="site-header" data-site-header>
+  <a class="site-brand" href="{{ '/' | relative_url }}" aria-label="EffeTune home">
+    <img src="{{ '/images/icon_64x64.png' | relative_url }}" alt="" width="32" height="32">
+    <span>Frieve EffeTune</span>
+  </a>
+  <div class="site-header-actions">
+    <nav class="site-nav" id="site-navigation" data-site-nav>
+      <a href="{{ '/effetune.html' | relative_url }}">Open App</a>
+      <a href="{{ '/#documentation' | relative_url }}">Docs</a>
+      <a href="{{ '/docs/plugins/eq.html' | relative_url }}">Plugins</a>
+      <a href="{{ '/docs/faq.html' | relative_url }}">FAQ</a>
+      <a href="https://github.com/Frieve-A/effetune/releases/">Download</a>
+      <a href="https://github.com/Frieve-A/effetune">GitHub</a>
+    </nav>
+    <div class="language-switcher">
+      <label class="visually-hidden" for="site-language-select">Language</label>
+      <select id="site-language-select" aria-label="Language" data-language-select>
+        {% for language in site.data.languages %}
+          <option value="{{ language.code }}">{{ language.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-navigation" data-nav-toggle>
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+  </div>
+</header>

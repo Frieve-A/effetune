@@ -1,0 +1,35 @@
+{% assign search_locale = include.locale | default: 'en' %}
+{% assign docs_pages = site.pages | sort: 'url' %}
+[
+{% assign has_previous = false %}
+{% for doc in docs_pages %}
+  {% assign doc_path = doc.path %}
+  {% assign include_doc = false %}
+  {% if search_locale == 'en' %}
+    {% if doc_path == 'index.md' %}
+      {% assign include_doc = true %}
+    {% elsif doc_path contains 'docs/' and doc_path contains '.md' %}
+      {% unless doc_path contains 'docs/i18n/' %}
+        {% assign include_doc = true %}
+      {% endunless %}
+    {% endif %}
+  {% else %}
+    {% assign locale_prefix = 'docs/i18n/' | append: search_locale | append: '/' %}
+    {% if doc_path contains locale_prefix and doc_path contains '.md' %}
+      {% assign include_doc = true %}
+    {% elsif doc_path == 'docs/plugin-development.md' or doc_path == 'docs/version-history.md' %}
+      {% assign include_doc = true %}
+    {% endif %}
+  {% endif %}
+  {% if include_doc %}
+    {% if has_previous %},{% endif %}
+    {
+      "url": {{ doc.url | relative_url | jsonify }},
+      "title": {{ doc.title | default: doc.name | replace: '.md', '' | jsonify }},
+      "description": {{ doc.description | default: '' | strip_html | jsonify }},
+      "content": {{ doc.content | strip_html | jsonify }}
+    }
+    {% assign has_previous = true %}
+  {% endif %}
+{% endfor %}
+]

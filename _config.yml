@@ -25,39 +25,43 @@ social:
 logo: /images/icon_512x512.png
 image: /images/screenshot.png
 
-# Theme settings
-remote_theme: just-the-docs/just-the-docs
-color_scheme: dark
+# Markdown and build settings
+markdown: kramdown
+highlighter: rouge
 
-search_enabled: true
-nav_enabled: false
+kramdown:
+  input: GFM
+  hard_wrap: false
+  syntax_highlighter: rouge
 
 # Plugins
 plugins:
   - jekyll-feed
-  - jekyll-gist
-  - jekyll-paginate
   - jekyll-sitemap
-  - jekyll-remote-theme
   - jekyll-seo-tag
+  - jekyll-relative-links
+
+relative_links:
+  enabled: true
+  collections: true
 
 # Favicon configuration
 favicon_ico: "/images/favicon.ico"
 
 # Default front matter
 defaults:
-  # Root README.md -> index.html
+  # Root index.md includes README.md -> index.html
   - scope:
-      path: "README.md"
+      path: "index.md"
     values:
-      layout: "default"
+      layout: "home"
       title: "Frieve EffeTune - Real-time Audio Effect Processor"
       description: "A real-time audio effect processor for audio enthusiasts. Features 50+ professional effects, drag-and-drop interface, and live visualization. Free for Windows, macOS, Linux, and web browsers."
       image: /images/screenshot.png
       permalink: /
-  # Japanese README
+  # Japanese overview
   - scope:
-      path: "docs/i18n/ja/README.md"
+      path: "docs/i18n/ja/index.md"
     values:
       layout: "default"
       title: "Frieve EffeTune - リアルタイムオーディオエフェクトプロセッサ"
@@ -65,9 +69,9 @@ defaults:
       lang: "ja"
       image: /images/screenshot.png
       permalink: /docs/i18n/ja/
-  # Korean README
+  # Korean overview
   - scope:
-      path: "docs/i18n/ko/README.md"
+      path: "docs/i18n/ko/index.md"
     values:
       layout: "default"
       title: "Frieve EffeTune - 실시간 오디오 이펙트 프로세서"
@@ -75,9 +79,9 @@ defaults:
       lang: "ko"
       image: /images/screenshot.png
       permalink: /docs/i18n/ko/
-  # Chinese README
+  # Chinese overview
   - scope:
-      path: "docs/i18n/zh/README.md"
+      path: "docs/i18n/zh/index.md"
     values:
       layout: "default"
       title: "Frieve EffeTune - 实时音频效果处理器"
@@ -85,9 +89,9 @@ defaults:
       lang: "zh"
       image: /images/screenshot.png
       permalink: /docs/i18n/zh/
-  # Spanish README
+  # Spanish overview
   - scope:
-      path: "docs/i18n/es/README.md"
+      path: "docs/i18n/es/index.md"
     values:
       layout: "default"
       title: "Frieve EffeTune - Procesador de Efectos de Audio en Tiempo Real"
@@ -95,9 +99,9 @@ defaults:
       lang: "es"
       image: /images/screenshot.png
       permalink: /docs/i18n/es/
-  # French README
+  # French overview
   - scope:
-      path: "docs/i18n/fr/README.md"
+      path: "docs/i18n/fr/index.md"
     values:
       layout: "default"
       title: "Frieve EffeTune - Processeur d'Effets Audio en Temps Réel"
@@ -105,9 +109,9 @@ defaults:
       lang: "fr"
       image: /images/screenshot.png
       permalink: /docs/i18n/fr/
-  # Portuguese README
+  # Portuguese overview
   - scope:
-      path: "docs/i18n/pt/README.md"
+      path: "docs/i18n/pt/index.md"
     values:
       layout: "default"
       title: "Frieve EffeTune - Processador de Efeitos de Áudio em Tempo Real"
@@ -115,9 +119,9 @@ defaults:
       lang: "pt"
       image: /images/screenshot.png
       permalink: /docs/i18n/pt/
-  # Russian README
+  # Russian overview
   - scope:
-      path: "docs/i18n/ru/README.md"
+      path: "docs/i18n/ru/index.md"
     values:
       layout: "default"
       title: "Frieve EffeTune - Процессор Аудиоэффектов в Реальном Времени"
@@ -125,9 +129,9 @@ defaults:
       lang: "ru"
       image: /images/screenshot.png
       permalink: /docs/i18n/ru/
-  # Hindi README
+  # Hindi overview
   - scope:
-      path: "docs/i18n/hi/README.md"
+      path: "docs/i18n/hi/index.md"
     values:
       layout: "default"
       title: "Frieve EffeTune - रीयल-टाइम ऑडियो इफेक्ट प्रोसेसर"
@@ -135,9 +139,9 @@ defaults:
       lang: "hi"
       image: /images/screenshot.png
       permalink: /docs/i18n/hi/
-  # Arabic README
+  # Arabic overview
   - scope:
-      path: "docs/i18n/ar/README.md"
+      path: "docs/i18n/ar/index.md"
     values:
       layout: "default"
       title: "Frieve EffeTune - معالج تأثيرات صوتية في الوقت الفعلي"

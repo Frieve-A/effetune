@@ -1,0 +1,106 @@
+{% assign page_lang = page.lang | default: site.lang | default: 'en' %}
+<!doctype html>
+<html lang="{{ page_lang }}">
+<head>
+  {% include site_head.html %}
+</head>
+<body class="site-body home-page">
+  {% include site_header.html %}
+  <main id="main-content">
+    <section class="home-hero" style="--hero-image: url('{{ '/images/screenshot.png' | relative_url }}')">
+      <div class="hero-content">
+        <p class="hero-kicker">Real-time Audio Effect Processor</p>
+        <h1>Frieve EffeTune</h1>
+        <p class="hero-copy">Color the music, unleash your senses. Build precise effect chains for streaming, local files, physical sources, measurement, and multichannel playback.</p>
+        <div class="hero-actions" aria-label="Primary actions">
+          <a class="button button-primary" href="{{ '/effetune.html' | relative_url }}">Open Web App</a>
+          <a class="button button-secondary" href="https://github.com/Frieve-A/effetune/releases/">Download Desktop App</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="home-metrics" aria-label="Product highlights">
+      <dl class="hero-stats">
+        <div>
+          <dt>50+</dt>
+          <dd>professional effects</dd>
+        </div>
+        <div>
+          <dt>8ch</dt>
+          <dd>routing and output</dd>
+        </div>
+        <div>
+          <dt>Web + Desktop</dt>
+          <dd>same processing model</dd>
+        </div>
+      </dl>
+    </section>
+
+    <section class="home-band" aria-label="Capabilities">
+      <div class="section-heading">
+        <p>Designed for listening systems</p>
+        <h2>From subtle correction to full signal-chain design</h2>
+      </div>
+      <div class="capability-grid">
+        <article>
+          <span>01</span>
+          <h3>Build chains visually</h3>
+          <p>Drag effects into a live pipeline, compare A/B settings, group sections, and save complete presets.</p>
+        </article>
+        <article>
+          <span>02</span>
+          <h3>Process real sources</h3>
+          <p>Use virtual audio devices, interfaces, HDMI multichannel output, or local files without leaving the app.</p>
+        </article>
+        <article>
+          <span>03</span>
+          <h3>Measure and correct</h3>
+          <p>Run frequency response measurement, generate correction EQ, and keep analysis tools in the same workflow.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="home-docs" id="documentation">
+      <div class="section-heading">
+        <p>Documentation</p>
+        <h2>Guides for setup, routing, effects, and development</h2>
+      </div>
+      <div class="doc-link-grid">
+        <a href="{{ '/docs/faq.html' | relative_url }}">
+          <span>Setup and troubleshooting</span>
+          <strong>FAQ</strong>
+        </a>
+        <a href="{{ '/docs/bus-function.html' | relative_url }}">
+          <span>Flexible routing</span>
+          <strong>Bus Function</strong>
+        </a>
+        <a href="{{ '/docs/plugins/eq.html' | relative_url }}">
+          <span>Effect reference</span>
+          <strong>Plugin Categories</strong>
+        </a>
+        <a href="{{ '/docs/plugin-development.html' | relative_url }}">
+          <span>Extend EffeTune</span>
+          <strong>Plugin Development</strong>
+        </a>
+      </div>
+      <div class="language-strip" aria-label="Translations">
+        {% for language in site.data.languages %}
+          <a href="{{ language.url | relative_url }}" lang="{{ language.code }}">{{ language.short }}</a>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="home-source">
+      <div class="section-heading">
+        <p>Complete guide</p>
+        <h2>Full product guide</h2>
+      </div>
+      <article class="markdown-body home-source-doc" data-content>
+        {{ content }}
+      </article>
+    </section>
+  </main>
+  {% include site_footer.html %}
+  <script src="{{ '/assets/js/site.js' | relative_url }}" defer></script>
+</body>
+</html>
