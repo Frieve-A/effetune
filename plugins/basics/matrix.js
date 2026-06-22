@@ -14,51 +14,64 @@ class MatrixPlugin extends PluginBase {
                 blockSize 
             } = parameters;
             
-            // Parse the matrix routing parameter
-            const routingMap = [];
-            let i = 0;
-            
-            while (i < matrixParam.length) {
-                let hasPhaseInvert = false;
-                
-                // Check for phase inversion flag
-                if (matrixParam[i] === 'p') {
-                    hasPhaseInvert = true;
-                    i++;
+            if (context.matrixParam !== matrixParam || context.channelCount !== channelCount) {
+                const routeCapacity = matrixParam.length > 0 ? matrixParam.length : 1;
+                if (!context.routeInputs || context.routeInputs.length < routeCapacity) {
+                    context.routeInputs = new Int16Array(routeCapacity);
+                    context.routeOutputs = new Int16Array(routeCapacity);
+                    context.routePhase = new Int8Array(routeCapacity);
                 }
-                
-                // Need at least 2 more characters for input/output
-                if (i + 1 >= matrixParam.length) break;
-                
-                // Parse input and output channel indices
-                const inputCh = parseInt(matrixParam[i], 10);
-                const outputCh = parseInt(matrixParam[i+1], 10);
-                
-                // Validate channel indices
-                if (!isNaN(inputCh) && !isNaN(outputCh) && 
-                    inputCh >= 0 && inputCh < channelCount && 
-                    outputCh >= 0 && outputCh < channelCount) {
-                    routingMap.push({
-                        input: inputCh,
-                        output: outputCh,
-                        phaseInvert: hasPhaseInvert
-                    });
+
+                let routeCount = 0;
+                let i = 0;
+                while (i < matrixParam.length) {
+                    let hasPhaseInvert = 0;
+
+                    // Check for phase inversion flag
+                    if (matrixParam[i] === 'p') {
+                        hasPhaseInvert = 1;
+                        i++;
+                    }
+
+                    // Need at least 2 more characters for input/output
+                    if (i + 1 >= matrixParam.length) break;
+
+                    // Parse input and output channel indices
+                    const inputCh = parseInt(matrixParam[i], 10);
+                    const outputCh = parseInt(matrixParam[i+1], 10);
+
+                    // Validate channel indices
+                    if (!isNaN(inputCh) && !isNaN(outputCh) &&
+                        inputCh >= 0 && inputCh < channelCount &&
+                        outputCh >= 0 && outputCh < channelCount) {
+                        context.routeInputs[routeCount] = inputCh;
+                        context.routeOutputs[routeCount] = outputCh;
+                        context.routePhase[routeCount] = hasPhaseInvert;
+                        routeCount++;
+                    }
+
+                    i += 2; // Move to next routing pair
                 }
-                
-                i += 2; // Move to next routing pair
+
+                context.routeCount = routeCount;
+                context.matrixParam = matrixParam;
+                context.channelCount = channelCount;
             }
-            
-            // Create a copy of the input data
-            const outputData = new Float32Array(data.length);
+
+            const dataLength = data.length;
+            if (!context.outputData || context.outputData.length !== dataLength) {
+                context.outputData = new Float32Array(dataLength);
+            }
+            const outputData = context.outputData;
             
             // Initialize output buffer with zeros (don't copy input data)
-            for (let i = 0; i < outputData.length; i++) {
-                outputData[i] = 0;
-            }
+            outputData.fill(0, 0, dataLength);
             
             // Apply routing for each input/output mapping
-            for (const route of routingMap) {
-                const { input, output, phaseInvert } = route;
+            for (let routeIndex = 0; routeIndex < context.routeCount; routeIndex++) {
+                const input = context.routeInputs[routeIndex];
+                const output = context.routeOutputs[routeIndex];
+                const phaseInvert = context.routePhase[routeIndex] !== 0;
                 const phaseMultiplier = phaseInvert ? -1 : 1;
                 
                 // Mix input channel to output channel
@@ -70,7 +83,7 @@ class MatrixPlugin extends PluginBase {
             }
             
             // Copy mixed data back to the original buffer
-            for (let i = 0; i < data.length; i++) {
+            for (let i = 0; i < dataLength; i++) {
                 data[i] = outputData[i];
             }
             
@@ -79,10 +92,7 @@ class MatrixPlugin extends PluginBase {
         `);
         
         // Matrix state - tracks which input/output pairs are active and phase-inverted
-        this.matrixState = Array(9).fill().map(() => Array(9).fill().map(() => ({
-            active: false,
-            phaseInvert: false
-        })));
+        this.matrixState = this._createEmptyMatrixState();
         
         // Initialize diagonal elements to ON by default
         for (let i = 0; i < 2; i++) {
@@ -92,16 +102,20 @@ class MatrixPlugin extends PluginBase {
         // Initialize mx parameter with diagonal routing
         this.mx = this.generateRouting();
     }
-    
-    // Parse routing string and update matrixState
-    parseRouting(routingStr) {
-        if (!routingStr) return;
-        
-        // Reset matrix state
-        this.matrixState = Array(9).fill().map(() => Array(9).fill().map(() => ({
+
+    _createEmptyMatrixState() {
+        return Array(9).fill().map(() => Array(9).fill().map(() => ({
             active: false,
             phaseInvert: false
         })));
+    }
+    
+    // Parse routing string and update matrixState
+    parseRouting(routingStr) {
+        // Reset matrix state
+        this.matrixState = this._createEmptyMatrixState();
+
+        if (typeof routingStr !== 'string' || routingStr.length === 0) return;
         
         let i = 0;
         while (i < routingStr.length) {
@@ -158,7 +172,7 @@ class MatrixPlugin extends PluginBase {
     // Set parameters
     setParameters(params) {
         if (params.mx !== undefined) {
-            this.mx = params.mx;
+            this.mx = typeof params.mx === 'string' ? params.mx : this.mx;
             this.parseRouting(this.mx);
         }
         
@@ -220,6 +234,7 @@ class MatrixPlugin extends PluginBase {
         // Create table element
         const table = document.createElement('table');
         table.className = 'matrix-table';
+        this.table = table;
         
         // Create table header row (output channels)
         const headerRow = document.createElement('tr');
@@ -320,7 +335,7 @@ class MatrixPlugin extends PluginBase {
     
     // Update channel availability based on actual channel count
     updateChannelAvailability(channelCount) {
-        const table = document.querySelector('.matrix-table');
+        const table = this.table;
         if (!table) return;
         
         // Update rows (input channels)
@@ -362,4 +377,4 @@ class MatrixPlugin extends PluginBase {
 }
 
 // Register the plugin
-window.MatrixPlugin = MatrixPlugin; 
+window.MatrixPlugin = MatrixPlugin;

@@ -161,7 +161,7 @@ Un ecualizador inteligente que ajusta automáticamente las bandas de frecuencia 
   - Q: Controla el ancho de banda/nitidez (0.1-10.0)
   - Max Gain: Establece la ganancia máxima (0-24dB)
   - Threshold: Define el nivel en que comienza el procesamiento (-60dB a 0dB)
-  - Ratio: Controla la intensidad del procesamiento (0.1-10.0)
+  - Ratio: Controla la intensidad del procesamiento (0.1-100.0)
     - Por debajo de 1.0: Expander (realza cuando la señal supera el threshold)
     - Por encima de 1.0: Compressor (reduce cuando la señal supera el threshold)
   - Knee Width: Transición suave alrededor del threshold (0-30dB)

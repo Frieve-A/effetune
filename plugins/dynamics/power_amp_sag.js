@@ -45,8 +45,8 @@ class PowerAmpSagPlugin extends PluginBase {
 
             const isMonoblock = parameters.mb;
 
-            // Initialize or reinitialize context state when the mode changes.
-            if (!context.initialized || context.monoblockMode !== isMonoblock) {
+            // Initialize or reinitialize context state when the mode or channel layout changes.
+            if (!context.initialized || context.monoblockMode !== isMonoblock || context.channelCount !== CHANNEL_COUNT) {
                 if (isMonoblock) {
                     // Monoblock mode: separate PSU and envelope follower per channel.
                     context.vPsu = new Array(CHANNEL_COUNT).fill(1.0);
@@ -57,6 +57,7 @@ class PowerAmpSagPlugin extends PluginBase {
                     context.envFollower = 0;
                 }
                 context.monoblockMode = isMonoblock;
+                context.channelCount = CHANNEL_COUNT;
                 context.initialized = true;
             }
 
@@ -98,7 +99,7 @@ class PowerAmpSagPlugin extends PluginBase {
                     for (let i = 0; i < BLOCK_SIZE; i++) {
                         const sample = data[offset + i];
                         const adjustedSample = sample * G_sens_sag;
-                        const inputLevel = Math.abs(adjustedSample);
+                        const inputLevel = adjustedSample >= 0 ? adjustedSample : -adjustedSample;
 
                         // Apply envelope follower to find the ideal output level.
                         if (inputLevel > envFollower) {
@@ -563,6 +564,8 @@ class PowerAmpSagPlugin extends PluginBase {
         this.gainReductionBuffer.fill(0);
         this.secondMarkers = [];
         this.prevTime = null;
+
+        super.cleanup();
     }
 }
 

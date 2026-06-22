@@ -37,6 +37,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.bufferPool = {
             // Pre-allocated buffers for different use cases
             combined: new Float32Array(8 * 128), // Max 8 channels support
+            allChannels: new Float32Array(8 * 128), // Scratch copy for all-channel bus sends
             stereo: new Float32Array(2 * 128),   // Stereo pair processing
             mono: new Float32Array(128),         // Mono channel processing
             mixing: new Float32Array(8 * 128),   // Dedicated buffer for additive mixing operations
@@ -384,9 +385,9 @@ class PluginProcessor extends AudioWorkletProcessor {
             combinedBuffer = this.combinedBuffer;
         }
 
-        // Copy input data (up to 2 channels) to the combined buffer.
-        // This assumes a standard stereo input source or taking the first 2 channels.
-        const inputChannelsToUse = Math.min(input.length, 2, outputChannelCount);
+        // Copy input data to the combined buffer. Channels beyond the configured
+        // output width are intentionally dropped; missing channels remain silent.
+        const inputChannelsToUse = Math.min(input.length, outputChannelCount);
         for (let i = 0; i < inputChannelsToUse; i++) {
             combinedBuffer.set(input[i], i * blockSize);
         }
@@ -601,10 +602,8 @@ class PluginProcessor extends AudioWorkletProcessor {
                     // Use Buffer Pool for all-channel processing when possible (Optimized)
                     if (outputChannelCount <= 8 && blockSize === 128) {
                         // Use pre-allocated buffer from pool
-                        tempBuffer = this.bufferPool.combined;
-                        // Zero out only the portion we'll use
+                        tempBuffer = this.bufferPool.allChannels;
                         const totalSize = blockSize * outputChannelCount;
-                        tempBuffer.fill(0, 0, totalSize);
                         // Copy input data to the buffer
                         tempBuffer.set(inputBuffer.subarray(0, totalSize));
                     } else {

@@ -193,6 +193,7 @@ class LevelMeterPlugin extends PluginBase {
 
     // Create UI elements for the plugin
     createUI() {
+        this.stopAnimation();
         if (this.observer) {
             this.observer.disconnect();
         }
@@ -304,8 +305,17 @@ class LevelMeterPlugin extends PluginBase {
 
     // Clean up resources when plugin is removed
     cleanup() {
-        // Note: Do not stop UI updates here
-        // Only clean up resources that need explicit cleanup
+        this.stopAnimation();
+        if (this.observer) {
+            if (this.foregroundCanvas) {
+                this.observer.unobserve(this.foregroundCanvas);
+            }
+            this.observer.disconnect();
+            this.observer = null;
+        }
+        this.foregroundCanvas = null;
+        this.overloadIndicator = null;
+        super.cleanup();
     }
    
     // Update meter display

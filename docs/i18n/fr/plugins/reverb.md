@@ -18,6 +18,8 @@ Une collection de plugins qui ajoutent de l'espace et de l'atmosphère à votre 
 
 Une implémentation classique de reverb à plaque basée sur le célèbre algorithme de Jon Dattorro de l'article de 1997 "Effect Design, Part 1: Reverberator and Other Filters." Cet algorithme est célébré pour sa qualité sonore riche et douce et est devenu une référence dans la conception de reverb numérique. Parfait pour ajouter une ambiance riche et scintillante à votre musique.
 
+Note de routage : Dattorro Plate Reverb est un modèle de plaque stéréo. Lorsqu'il est routé avec plus de deux canaux, tous les canaux d'entrée routés alimentent une plaque mono-vers-stéréo partagée, mais le mixage wet/dry est écrit uniquement vers la première paire stéréo routée. Les canaux supplémentaires contribuent à l'entrée de la plaque et passent sinon inchangés, même lorsque Dry Mix est à 0 % ; ils ne reçoivent pas de retour wet et ne sont pas des tanks de plaque indépendants.
+
 ### Guide d'Expérience d'Écoute
 - Son de Plaque Luxuriant :
   - Caractère classique de reverb de plaque de studio
@@ -134,6 +136,8 @@ Le Dattorro Plate Reverb apporte une reverb classique de qualité professionnell
 ## FDN Reverb
 
 Un effet de reverb sophistiqué basé sur l'architecture de réseau de délais à rétroaction (FDN) utilisant une matrice de diffusion Hadamard. Cela crée une réverbération riche et complexe avec une excellente densité et des caractéristiques de décroissance naturelles, parfait pour améliorer votre expérience d'écoute musicale avec des effets spatiaux immersifs.
+
+Note de routage : FDN Reverb est un modèle de reverb stéréo avec un feedback tank partagé. Lorsqu'il est routé avec plus de deux canaux, chaque canal fait avancer ce tank partagé en séquence plutôt que d'utiliser des tanks indépendants par canal. Le canal 1 reçoit le left wet et les canaux 2+ reçoivent le right wet.
 
 ### Guide d'Expérience d'Écoute
 - Sensation de Pièce Naturelle :

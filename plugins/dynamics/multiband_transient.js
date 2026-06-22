@@ -492,35 +492,70 @@ class MultibandTransientPlugin extends PluginBase {
         }
     }
 
+    _normalizeCrossoverFrequencies() {
+        let f1 = this.f1;
+        f1 = f1 < 20 ? 20 : (f1 > 2000 ? 2000 : f1);
+
+        let f2 = this.f2;
+        const minF2 = f1 > 200 ? f1 : 200;
+        f2 = f2 < minF2 ? minF2 : (f2 > 20000 ? 20000 : f2);
+
+        this.f1 = f1;
+        this.f2 = f2;
+    }
+
+    _syncCrossoverControls() {
+        if (typeof document === 'undefined' || !this.instanceId) return;
+        const values = [this.f1, this.f2];
+        for (let i = 0; i < values.length; i++) {
+            const freqNum = i + 1;
+            const slider = document.getElementById(`${this.instanceId}-freq${freqNum}-slider`);
+            const input = document.getElementById(`${this.instanceId}-freq${freqNum}-input`);
+            if (slider) slider.value = values[i];
+            if (input) input.value = values[i];
+        }
+    }
+
     setParameters(params) {
-        if (params.f1 !== undefined) this.f1 = Math.min(2000, Math.max(20, params.f1));
-        if (params.f2 !== undefined) this.f2 = Math.min(20000, Math.max(200, params.f2));
+        let crossoverChanged = false;
+        if (params.f1 !== undefined) {
+            this.f1 = this.parseFiniteNumber(params.f1, 20, 2000, this.f1);
+            crossoverChanged = true;
+        }
+        if (params.f2 !== undefined) {
+            this.f2 = this.parseFiniteNumber(params.f2, 200, 20000, this.f2);
+            crossoverChanged = true;
+        }
+        if (crossoverChanged) {
+            this._normalizeCrossoverFrequencies();
+            this._syncCrossoverControls();
+        }
         
         // Handle bands array for preset loading and copy/paste
         if (params.bands && Array.isArray(params.bands)) {
             params.bands.forEach((bandParams, i) => {
                 if (i < this.bands.length && bandParams) {
                     const band = this.bands[i];
-                    if (bandParams.fa !== undefined) band.fa = Math.min(10.0, Math.max(0.1, bandParams.fa));
-                    if (bandParams.fr !== undefined) band.fr = Math.min(200, Math.max(1, bandParams.fr));
-                    if (bandParams.sa !== undefined) band.sa = Math.min(100, Math.max(1, bandParams.sa));
-                    if (bandParams.sr !== undefined) band.sr = Math.min(1000, Math.max(50, bandParams.sr));
-                    if (bandParams.gt !== undefined) band.gt = Math.min(24, Math.max(-24, bandParams.gt));
-                    if (bandParams.gs !== undefined) band.gs = Math.min(24, Math.max(-24, bandParams.gs));
-                    if (bandParams.sm !== undefined) band.sm = Math.min(20.0, Math.max(0.1, bandParams.sm));
+                    if (bandParams.fa !== undefined) band.fa = this.parseFiniteNumber(bandParams.fa, 0.1, 10.0, band.fa);
+                    if (bandParams.fr !== undefined) band.fr = this.parseFiniteNumber(bandParams.fr, 1, 200, band.fr);
+                    if (bandParams.sa !== undefined) band.sa = this.parseFiniteNumber(bandParams.sa, 1, 100, band.sa);
+                    if (bandParams.sr !== undefined) band.sr = this.parseFiniteNumber(bandParams.sr, 50, 1000, band.sr);
+                    if (bandParams.gt !== undefined) band.gt = this.parseFiniteNumber(bandParams.gt, -24, 24, band.gt);
+                    if (bandParams.gs !== undefined) band.gs = this.parseFiniteNumber(bandParams.gs, -24, 24, band.gs);
+                    if (bandParams.sm !== undefined) band.sm = this.parseFiniteNumber(bandParams.sm, 0.1, 20.0, band.sm);
                 }
             });
         }
         // Handle individual band parameter updates
         else if (params.band !== undefined && params.band >= 0 && params.band < this.bands.length) {
             const band = this.bands[params.band];
-            if (params.fa !== undefined) band.fa = Math.min(10.0, Math.max(0.1, params.fa));
-            if (params.fr !== undefined) band.fr = Math.min(200, Math.max(1, params.fr));
-            if (params.sa !== undefined) band.sa = Math.min(100, Math.max(1, params.sa));
-            if (params.sr !== undefined) band.sr = Math.min(1000, Math.max(50, params.sr));
-            if (params.gt !== undefined) band.gt = Math.min(24, Math.max(-24, params.gt));
-            if (params.gs !== undefined) band.gs = Math.min(24, Math.max(-24, params.gs));
-            if (params.sm !== undefined) band.sm = Math.min(20.0, Math.max(0.1, params.sm));
+            if (params.fa !== undefined) band.fa = this.parseFiniteNumber(params.fa, 0.1, 10.0, band.fa);
+            if (params.fr !== undefined) band.fr = this.parseFiniteNumber(params.fr, 1, 200, band.fr);
+            if (params.sa !== undefined) band.sa = this.parseFiniteNumber(params.sa, 1, 100, band.sa);
+            if (params.sr !== undefined) band.sr = this.parseFiniteNumber(params.sr, 50, 1000, band.sr);
+            if (params.gt !== undefined) band.gt = this.parseFiniteNumber(params.gt, -24, 24, band.gt);
+            if (params.gs !== undefined) band.gs = this.parseFiniteNumber(params.gs, -24, 24, band.gs);
+            if (params.sm !== undefined) band.sm = this.parseFiniteNumber(params.sm, 0.1, 20.0, band.sm);
         }
         
         if (params.enabled !== undefined) this.enabled = params.enabled;
@@ -695,6 +730,8 @@ class MultibandTransientPlugin extends PluginBase {
             this.observer.disconnect();
             this.observer = null;
         }
+
+        super.cleanup();
     }
 
     createUI() {
@@ -748,14 +785,17 @@ class MultibandTransientPlugin extends PluginBase {
 
             rangeInput.addEventListener('input', (e) => {
                 setter(parseFloat(e.target.value));
-                numberInput.value = e.target.value;
+                const normalizedValue = this[`f${freqNum}`];
+                rangeInput.value = normalizedValue;
+                numberInput.value = normalizedValue;
             });
             numberInput.addEventListener('input', (e) => {
                 const parsedValue = parseFloat(e.target.value) || 0;
                 const val = parsedValue < min ? min : (parsedValue > max ? max : parsedValue);
                 setter(val);
-                rangeInput.value = val;
-                e.target.value = val;
+                const normalizedValue = this[`f${freqNum}`];
+                rangeInput.value = normalizedValue;
+                e.target.value = normalizedValue;
             });
 
             sliderContainer.appendChild(rangeInput);
@@ -890,4 +930,4 @@ class MultibandTransientPlugin extends PluginBase {
     }
 }
 
-window.MultibandTransientPlugin = MultibandTransientPlugin; 
+window.MultibandTransientPlugin = MultibandTransientPlugin;

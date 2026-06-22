@@ -159,7 +159,7 @@ Un égaliseur intelligent qui ajuste automatiquement les bandes de fréquences e
   - Q : contrôle de la bande passante/raideur (0.1-10.0)
   - Max Gain : réglez le gain maximal (0-24dB)
   - Threshold : réglez le niveau de déclenchement (-60dB à 0dB)
-  - Ratio : contrôle l'intensité du traitement (0.1-10.0)
+  - Ratio : contrôle l'intensité du traitement (0.1-100.0)
     - En dessous de 1.0 : Expander (améliore lorsque le signal dépasse le Threshold)
     - Au-dessus de 1.0 : Compressor (réduit lorsque le signal dépasse le Threshold)
   - Knee Width : transition douce autour du Threshold (0-30dB)

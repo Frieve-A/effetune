@@ -194,27 +194,25 @@ class TremoloPlugin extends PluginBase {
 
     setParameters(params) {
         if (params.rt !== undefined) {
-            this.rt = params.rt < 0.1 ? 0.1 : (params.rt > 50 ? 50 : params.rt);
+            this.rt = this.parseFiniteNumber(params.rt, 0.1, 50, this.rt);
         }
         if (params.dp !== undefined) {
-            this.dp = params.dp < 0 ? 0 : (params.dp > 12 ? 12 : params.dp);
+            this.dp = this.parseFiniteNumber(params.dp, 0, 12, this.dp);
         }
         if (params.rn !== undefined) {
-            this.rn = params.rn < 0 ? 0 : (params.rn > 96 ? 96 : params.rn);
+            this.rn = this.parseFiniteNumber(params.rn, 0, 96, this.rn);
         }
         if (params.rc !== undefined) {
-            this.rc = params.rc < 1 ? 1 : (params.rc > 1000 ? 1000 : params.rc);
+            this.rc = this.parseFiniteNumber(params.rc, 1, 1000, this.rc);
         }
-        // Add setter logic for the new parameter rs with range -12.0 to 0.0
         if (params.rs !== undefined) {
-            // Clamp value between -12.0 and 0.0
-            this.rs = Math.max(-12.0, Math.min(0.0, params.rs));
+            this.rs = this.parseFiniteNumber(params.rs, -12.0, 0.0, this.rs);
         }
         if (params.cp !== undefined) {
-            this.cp = params.cp < -180 ? -180 : (params.cp > 180 ? 180 : params.cp);
+            this.cp = this.parseFiniteNumber(params.cp, -180, 180, this.cp);
         }
         if (params.cs !== undefined) {
-            this.cs = params.cs < 0 ? 0 : (params.cs > 100 ? 100 : params.cs);
+            this.cs = this.parseFiniteNumber(params.cs, 0, 100, this.cs);
         }
         if (params.enabled !== undefined) {
             this.enabled = params.enabled;

@@ -34,6 +34,18 @@ class BitCrusherPlugin extends PluginBase {
             
             // Map parameters for clarity
             const { bd: bitDepth, td: tpdfDither, zf: zohFreq, be: bitError, sd: seed, channelCount, blockSize } = parameters;
+
+            if (!this.processorState.lastSample || this.processorState.lastSample.length !== channelCount) {
+                const previousLastSample = this.processorState.lastSample;
+                const resizedLastSample = new Float32Array(channelCount);
+                if (previousLastSample) {
+                    const copyCount = previousLastSample.length < channelCount ? previousLastSample.length : channelCount;
+                    for (let ch = 0; ch < copyCount; ch++) {
+                        resizedLastSample[ch] = previousLastSample[ch];
+                    }
+                }
+                this.processorState.lastSample = resizedLastSample;
+            }
             
             // Calculate quantization levels based on bit depth: 0 ... (2^bd - 1)
             const levels = Math.pow(2, bitDepth) - 1;
@@ -109,6 +121,11 @@ class BitCrusherPlugin extends PluginBase {
                     
                     // Quantize to integer code
                     let code = Math.round(x);
+                    if (code < 0) {
+                        code = 0;
+                    } else if (code > levels) {
+                        code = levels;
+                    }
                     
                     // Reconstruct analog value using the channel's bit amplitudes
                     let dacOut = 0;
@@ -135,25 +152,26 @@ class BitCrusherPlugin extends PluginBase {
 
     setParameters(params) {
         if (params.bd !== undefined) {
-            const rounded = Math.round(params.bd);
+            const rounded = Math.round(this.parseFiniteNumber(params.bd, 4, 24, this.bd));
             this.bd = rounded < 4 ? 4 : (rounded > 24 ? 24 : rounded);
         }
         if (params.td !== undefined) {
-            this.td = params.td;
+            this.td = this.isAllowedEnum(params.td, [true, false], this.td);
         }
         if (params.zf !== undefined) {
-            const rounded = Math.round(params.zf / 100) * 100;
+            const value = this.parseFiniteNumber(params.zf, 4000, 96000, this.zf);
+            const rounded = Math.round(value / 100) * 100;
             this.zf = rounded < 4000 ? 4000 : (rounded > 96000 ? 96000 : rounded);
         }
         if (params.be !== undefined) {
             // Clamp Bit Error (be) to 0.00 - 10.00% with 0.01% precision
-            let newBe = parseFloat(params.be);
+            const newBe = this.parseFiniteNumber(params.be, 0.00, 10.00, this.be);
             const rounded = Math.round(newBe * 100) / 100;
             this.be = rounded < 0.00 ? 0.00 : (rounded > 10.00 ? 10.00 : rounded);
         }
         if (params.sd !== undefined) {
             // Clamp seed to 0-1000 (integer steps)
-            let newSeed = Math.round(params.sd);
+            const newSeed = Math.round(this.parseFiniteNumber(params.sd, 0, 1000, this.sd));
             this.sd = newSeed < 0 ? 0 : (newSeed > 1000 ? 1000 : newSeed);
         }
         if (params.enabled !== undefined) {

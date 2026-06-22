@@ -55,6 +55,8 @@ class BrickwallLimiterPlugin extends PluginBase {
                 context.initialized = false;
 
                 // Clear state variables explicitly using undefined for clarity and potential predictability
+                context.delaySamples = undefined;
+                context.lookaheadTimeMs = undefined;
                 context.delayLength = undefined;
                 context.delayWritePos = undefined;
                 context.delayBuffers = undefined;
@@ -185,16 +187,18 @@ class BrickwallLimiterPlugin extends PluginBase {
             // === PROCESSING BRANCH 1: NO OVERSAMPLING (osFactor === 1) ===
             // ==============================================================
             if (osFactor === 1) {
+                const delaySamplesRaw = Math.ceil(lookaheadTimeMs * sampleRate * 0.001);
+                const delaySamples = delaySamplesRaw > 0 ? delaySamplesRaw : 1;
+                const requiredDelayLength = delaySamples;
+
                 // --- Initialize State (if first run or parameters changed) ---
-                if (!context.initialized) {
-                    // Calculate delay samples based on lookahead time (ms to samples)
-                    const delaySamples = Math.ceil(lookaheadTimeMs * sampleRate * 0.001);
-                    // Original logic: Total buffer length accommodates delay + one block size
-                    context.delayLength = delaySamples + blockSize;
-                    // Ensure buffer is at least blockSize if lookahead is very small/zero
-                    // This wasn't explicitly in the original but seems reasonable, though stick to original:
-                    // context.delayLength = Math.max(blockSize, delaySamples + blockSize); <= NO, stick to original
-                    context.delayLength = delaySamples + blockSize; // Keep original logic
+                if (!context.initialized ||
+                    context.delaySamples !== delaySamples ||
+                    context.delayLength !== requiredDelayLength ||
+                    context.lookaheadTimeMs !== lookaheadTimeMs) {
+                    context.delaySamples = delaySamples;
+                    context.lookaheadTimeMs = lookaheadTimeMs;
+                    context.delayLength = requiredDelayLength;
 
                     context.delayWritePos = 0; // Start writing at the beginning
                     context.delayBuffers = [];

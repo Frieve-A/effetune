@@ -35,19 +35,19 @@ class SaturationPlugin extends PluginBase {
     setParameters(params) {
         let graphNeedsUpdate = false;
         if (params.dr !== undefined) {
-            this.dr = params.dr < 0 ? 0 : (params.dr > 10 ? 10 : params.dr);
+            this.dr = this.parseFiniteNumber(params.dr, 0, 10, this.dr);
             graphNeedsUpdate = true;
         }
         if (params.bs !== undefined) {
-            this.bs = params.bs < -0.3 ? -0.3 : (params.bs > 0.3 ? 0.3 : params.bs);
+            this.bs = this.parseFiniteNumber(params.bs, -0.3, 0.3, this.bs);
             graphNeedsUpdate = true;
         }
         if (params.mx !== undefined) {
-            this.mx = params.mx < 0 ? 0 : (params.mx > 100 ? 100 : params.mx);
+            this.mx = this.parseFiniteNumber(params.mx, 0, 100, this.mx);
             graphNeedsUpdate = true;
         }
         if (params.gn !== undefined) {
-            this.gn = params.gn < -18 ? -18 : (params.gn > 18 ? 18 : params.gn);
+            this.gn = this.parseFiniteNumber(params.gn, -18, 18, this.gn);
             graphNeedsUpdate = true;
         }
         if (params.enabled !== undefined) {

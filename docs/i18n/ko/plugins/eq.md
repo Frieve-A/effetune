@@ -161,7 +161,7 @@ lang: en
   - Q: 대역폭/선명도 제어 (0.1-10.0)
   - Max Gain: 최대 게인 조정 설정 (0-24dB)
   - Threshold: 프로세싱 시작 레벨 설정 (-60dB~0dB)
-  - Ratio: 프로세싱 강도 제어 (0.1-10.0)
+  - Ratio: 프로세싱 강도 제어 (0.1-100.0)
     - 1.0 이하: Expander (신호가 Threshold를 초과할 때 강화)
     - 1.0 이상: Compressor (신호가 Threshold를 초과할 때 감쇄)
   - Knee Width: Threshold 주변 부드러운 전환 (0-30dB)

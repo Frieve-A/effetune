@@ -46,14 +46,18 @@ class MultiChannelPanelPlugin extends PluginBase {
             const delayTimesMs = parameters.d;   // Array of delay times in milliseconds.
 
             // Initialize or re-initialize delay buffers if necessary.
-            // This occurs if buffers don't exist or the number of channels to process has changed.
-            if (!context.delayBuffers || context.delayBuffers.length !== numChannelsToProcess) {
+            // This occurs if buffers don't exist, channel count changes, or the sample rate changes.
+            if (!context.delayBuffers ||
+                context.delayBuffers.length !== numChannelsToProcess ||
+                context.delaySampleRate !== sampleRate) {
                 const maxDelayMilliseconds = 30; // Maximum configurable delay.
                 // Calculate buffer size based on max delay and sample rate.
-                const maxDelaySamples = Math.ceil(sampleRate * maxDelayMilliseconds * 0.001);
+                const calculatedMaxDelaySamples = Math.ceil(sampleRate * maxDelayMilliseconds * 0.001);
+                const maxDelaySamples = calculatedMaxDelaySamples < 1 ? 1 : calculatedMaxDelaySamples;
                 
                 context.delayBuffers = Array.from({ length: numChannelsToProcess }, () => new Float32Array(maxDelaySamples));
                 context.delayWriteIndices = Array.from({ length: numChannelsToProcess }, () => 0); // Stores the current write position for each delay buffer.
+                context.delaySampleRate = sampleRate;
             }
 
             // Initialize context state for block-based peak tracking over 1/30 second window
@@ -107,13 +111,14 @@ class MultiChannelPanelPlugin extends PluginBase {
                 // Convert volume from decibels to a linear gain factor.
                 const linearGain = Math.pow(10, channelVolumeDB / 20);
 
-                // Convert delay time from milliseconds to an integer number of samples.
-                const delayInSamples = Math.floor(channelDelayTimeMs * sampleRate * 0.001);
-
                 // Access the delay buffer and its properties for the current channel.
                 const delayBuffer = context.delayBuffers[ch];
                 let writeIndex = context.delayWriteIndices[ch];
                 const delayBufferLength = delayBuffer.length; // Cache for performance.
+
+                // Convert delay time from milliseconds to samples, clamped to the allocated buffer.
+                let delayInSamples = Math.floor(channelDelayTimeMs * sampleRate * 0.001);
+                delayInSamples = delayInSamples < 0 ? 0 : (delayInSamples > delayBufferLength ? delayBufferLength : delayInSamples);
 
                 let channelBlockPeak = 0; // Stores the peak absolute sample value for this channel in the current block (pre-gain).
 
@@ -157,12 +162,16 @@ class MultiChannelPanelPlugin extends PluginBase {
                             channelBlockPeak = absInputSample;
                         }
 
+                        // Read before writing so the maximum delay, where read and write indices match,
+                        // still returns the sample currently stored in the delay line.
+                        const delayedSample = delayBuffer[readIndex];
+
                         // Apply gain and mute to the current input sample before storing it in the delay buffer.
                         const sampleToStoreInDelayBuffer = shouldEffectivelyMute ? 0 : currentInputSample * linearGain;
                         delayBuffer[writeIndex] = sampleToStoreInDelayBuffer;
 
                         // The output sample is the delayed sample read from the buffer.
-                        data[sampleIndex] = delayBuffer[readIndex];
+                        data[sampleIndex] = delayedSample;
 
                         // Advance write and read indices for the circular buffer.
                         writeIndex = (writeIndex + 1) % delayBufferLength;
@@ -242,17 +251,17 @@ class MultiChannelPanelPlugin extends PluginBase {
 
             const volParam = params[`v${i + 1}`] !== undefined ? params[`v${i + 1}`] : params.v?.[i];
             if (volParam !== undefined) {
-                const value = typeof volParam === 'number' ? volParam : parseFloat(volParam);
-                if (!isNaN(value)) {
-                    this.v[i] = Math.max(-20, Math.min(10, value));
+                const value = this.clampVolume(volParam);
+                if (value !== null) {
+                    this.v[i] = value;
                 }
             }
 
             const delayParam = params[`d${i + 1}`] !== undefined ? params[`d${i + 1}`] : params.d?.[i];
             if (delayParam !== undefined) {
-                const value = typeof delayParam === 'number' ? delayParam : parseFloat(delayParam);
-                if (!isNaN(value)) {
-                    this.d[i] = Math.max(0, Math.min(30, value));
+                const value = this.clampDelay(delayParam);
+                if (value !== null) {
+                    this.d[i] = value;
                 }
             }
         }
@@ -406,28 +415,51 @@ class MultiChannelPanelPlugin extends PluginBase {
         }
     }
 
-    isValidNumber(val) {
-        return typeof val === 'number' && Number.isFinite(val);
+    parseFiniteNumber(value) {
+        const numValue = typeof value === 'number' ? value : parseFloat(value);
+        return Number.isFinite(numValue) ? numValue : null;
+    }
+
+    clampVolume(value) {
+        const numValue = this.parseFiniteNumber(value);
+        if (numValue === null) return null;
+        return numValue < -20 ? -20 : (numValue > 10 ? 10 : numValue);
+    }
+
+    clampDelay(value) {
+        const numValue = this.parseFiniteNumber(value);
+        if (numValue === null) return null;
+        return numValue < 0 ? 0 : (numValue > 30 ? 30 : numValue);
+    }
+
+    syncVolumeControl(channel, value) {
+        const slider = document.getElementById(`${this.id}-${this.name}-v${channel + 1}-slider`);
+        const input = document.getElementById(`${this.id}-${this.name}-v${channel + 1}-input`);
+        if (slider) slider.value = value;
+        if (input) input.value = value;
+    }
+
+    syncDelayControl(channel, value) {
+        const slider = document.getElementById(`${this.id}-${this.name}-d${channel + 1}-slider`);
+        const input = document.getElementById(`${this.id}-${this.name}-d${channel + 1}-input`);
+        if (slider) slider.value = value;
+        if (input) input.value = value;
     }
     setVolume(channel, value) {
-        if (channel >= 0 && channel < this.MAX_CHANNELS && this.isValidNumber(value)) {
+        const clampedValue = this.clampVolume(value);
+        if (channel >= 0 && channel < this.MAX_CHANNELS && clampedValue !== null) {
             // Find linked channels first
             const linkedGroup = this.findLinkedGroup(channel);
 
             // Set volume for the primary channel
-            this.v[channel] = value;
+            this.v[channel] = clampedValue;
+            this.syncVolumeControl(channel, clampedValue);
 
             // Apply to all linked channels
             for (const linkedChannel of linkedGroup) {
                 if (linkedChannel !== channel) {
-                    this.v[linkedChannel] = value;
-
-                    // Update sliders and number inputs if they exist
-                    const slider = document.getElementById(`${this.id}-${this.name}-v${linkedChannel + 1}-slider`);
-                    const input = document.getElementById(`${this.id}-${this.name}-v${linkedChannel + 1}-input`);
-
-                    if (slider) slider.value = value;
-                    if (input) input.value = value;
+                    this.v[linkedChannel] = clampedValue;
+                    this.syncVolumeControl(linkedChannel, clampedValue);
                 }
             }
 
@@ -437,24 +469,20 @@ class MultiChannelPanelPlugin extends PluginBase {
     }
 
     setDelay(channel, value) {
-        if (channel >= 0 && channel < this.MAX_CHANNELS && this.isValidNumber(value)) {
+        const clampedValue = this.clampDelay(value);
+        if (channel >= 0 && channel < this.MAX_CHANNELS && clampedValue !== null) {
             // Find linked channels first
             const linkedGroup = this.findLinkedGroup(channel);
 
             // Set delay for the primary channel
-            this.d[channel] = value;
+            this.d[channel] = clampedValue;
+            this.syncDelayControl(channel, clampedValue);
 
             // Apply to all linked channels
             for (const linkedChannel of linkedGroup) {
                 if (linkedChannel !== channel) {
-                    this.d[linkedChannel] = value;
-
-                    // Update sliders and number inputs if they exist
-                    const slider = document.getElementById(`${this.id}-${this.name}-d${linkedChannel + 1}-slider`);
-                    const input = document.getElementById(`${this.id}-${this.name}-d${linkedChannel + 1}-input`);
-
-                    if (slider) slider.value = value;
-                    if (input) input.value = value;
+                    this.d[linkedChannel] = clampedValue;
+                    this.syncDelayControl(linkedChannel, clampedValue);
                 }
             }
 
@@ -694,7 +722,7 @@ class MultiChannelPanelPlugin extends PluginBase {
             volumeSlider.addEventListener('input', (e) => {
                 const value = parseFloat(e.target.value);
                 this.setVolume(ch, value);
-                volumeInput.value = value; // Sync input field
+                volumeInput.value = this.v[ch]; // Sync input field after clamp
             });
             row2.appendChild(volumeSlider);
 
@@ -712,7 +740,8 @@ class MultiChannelPanelPlugin extends PluginBase {
             volumeInput.addEventListener('input', (e) => {
                 const value = parseFloat(e.target.value);
                 this.setVolume(ch, value);
-                volumeSlider.value = value; // Sync slider
+                volumeSlider.value = this.v[ch]; // Sync slider after clamp
+                volumeInput.value = this.v[ch];
             });
             row2.appendChild(volumeInput);
 
@@ -735,7 +764,7 @@ class MultiChannelPanelPlugin extends PluginBase {
             delaySlider.addEventListener('input', (e) => {
                 const value = parseFloat(e.target.value);
                 this.setDelay(ch, value);
-                delayInput.value = value; // Sync input field
+                delayInput.value = this.d[ch]; // Sync input field after clamp
             });
             row2.appendChild(delaySlider);
 
@@ -753,7 +782,8 @@ class MultiChannelPanelPlugin extends PluginBase {
             delayInput.addEventListener('input', (e) => {
                 const value = parseFloat(e.target.value);
                 this.setDelay(ch, value);
-                delaySlider.value = value; // Sync slider
+                delaySlider.value = this.d[ch]; // Sync slider after clamp
+                delayInput.value = this.d[ch];
             });
             row2.appendChild(delayInput);
 
@@ -869,6 +899,7 @@ class MultiChannelPanelPlugin extends PluginBase {
     cleanup() {
         this.stopAnimation();
         // Any other cleanup (e.g., removing event listeners from global objects if any)
+        super.cleanup();
     }
 }
 

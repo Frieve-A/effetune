@@ -144,10 +144,10 @@ class DopplerDistortionPlugin extends PluginBase {
     }
 
     setParameters(params) {
-        if (params.cf !== undefined) this.cf = Math.max(0.0, params.cf);
-        if (params.sm !== undefined) this.sm = Math.max(0.001, Math.min(0.5, params.sm));
-        if (params.sc !== undefined) this.sc = Math.max(1, Math.min(100000, params.sc));
-        if (params.df !== undefined) this.df = Math.max(0.0, Math.min(50.0, params.df));
+        if (params.cf !== undefined) this.cf = this.parseFiniteNumber(params.cf, 0.0, 100.0, this.cf);
+        if (params.sm !== undefined) this.sm = this.parseFiniteNumber(params.sm, 0.001, 0.5, this.sm);
+        if (params.sc !== undefined) this.sc = this.parseFiniteNumber(params.sc, 1, 100000, this.sc);
+        if (params.df !== undefined) this.df = this.parseFiniteNumber(params.df, 0.0, 50.0, this.df);
         if (params.enabled !== undefined) this.enabled = Boolean(params.enabled);
         this.updateParameters();
     }

@@ -452,12 +452,21 @@ class MultibandBalancePlugin extends PluginBase {
             
             // Apply fade-in if needed and copy to result buffer
             if (context.fadeIn && context.fadeIn.counter < context.fadeIn.length) {
-                for (let i = 0; i < outputBuffer.length; i++) {
-                    // Replace Math.min with ternary for better performance
-                    const counterRatio = context.fadeIn.counter++ / context.fadeIn.length;
-                    const fadeGain = counterRatio > 1 ? 1 : counterRatio;
-                    result[i] = outputBuffer[i] * fadeGain;
-                    if (context.fadeIn.counter >= context.fadeIn.length) break;
+                const fadeInState = context.fadeIn;
+                const fadeStartCounter = fadeInState.counter;
+                const fadeLen = fadeInState.length;
+                for (let i = 0; i < parameters.blockSize; i++) {
+                    const fadeCounter = fadeStartCounter + i;
+                    const fadeGain = fadeCounter < fadeLen ? fadeCounter / fadeLen : 1;
+                    for (let ch = 0; ch < parameters.channelCount; ch++) {
+                        const index = ch * parameters.blockSize + i;
+                        result[index] = outputBuffer[index] * fadeGain;
+                    }
+                }
+                const fadeNextCounter = fadeStartCounter + parameters.blockSize;
+                fadeInState.counter = fadeNextCounter >= fadeLen ? fadeLen : fadeNextCounter;
+                if (fadeInState.counter >= fadeLen) {
+                    context.fadeIn = null;
                 }
             } else {
                 // Copy output buffer to result
@@ -480,22 +489,63 @@ class MultibandBalancePlugin extends PluginBase {
         };
     }
 
+    _normalizeCrossoverFrequencies() {
+        let f1 = this.f1;
+        f1 = f1 < 20 ? 20 : (f1 > 500 ? 500 : f1);
+
+        let f2 = this.f2;
+        const minF2 = f1 > 100 ? f1 : 100;
+        f2 = f2 < minF2 ? minF2 : (f2 > 2000 ? 2000 : f2);
+
+        let f3 = this.f3;
+        const minF3 = f2 > 500 ? f2 : 500;
+        f3 = f3 < minF3 ? minF3 : (f3 > 8000 ? 8000 : f3);
+
+        let f4 = this.f4;
+        const minF4 = f3 > 1000 ? f3 : 1000;
+        f4 = f4 < minF4 ? minF4 : (f4 > 20000 ? 20000 : f4);
+
+        this.f1 = f1;
+        this.f2 = f2;
+        this.f3 = f3;
+        this.f4 = f4;
+    }
+
+    _syncCrossoverControls() {
+        if (typeof document === 'undefined') return;
+        const values = [this.f1, this.f2, this.f3, this.f4];
+        for (let i = 0; i < values.length; i++) {
+            const freqNum = i + 1;
+            const slider = document.getElementById(`${this.id}-${this.name}-freq${freqNum}-slider`);
+            const input = document.getElementById(`${this.id}-${this.name}-freq${freqNum}-input`);
+            if (slider) slider.value = values[i];
+            if (input) input.value = values[i];
+        }
+    }
+
     setParameters(params) {
-        // Update crossover frequencies with bounds checking
+        let crossoverChanged = false;
+
+        // Update crossover frequencies and normalize the full chain afterward.
         if (params.f1 !== undefined) {
-            this.f1 = params.f1 < 20 ? 20 : (params.f1 > 500 ? 500 : params.f1);
+            this.f1 = this.parseFiniteNumber(params.f1, 20, 500, this.f1);
+            crossoverChanged = true;
         }
         if (params.f2 !== undefined) {
-            const minF2 = this.f1 > 100 ? this.f1 : 100;
-            this.f2 = params.f2 < minF2 ? minF2 : (params.f2 > 2000 ? 2000 : params.f2);
+            this.f2 = this.parseFiniteNumber(params.f2, 100, 2000, this.f2);
+            crossoverChanged = true;
         }
         if (params.f3 !== undefined) {
-            const minF3 = this.f2 > 500 ? this.f2 : 500;
-            this.f3 = params.f3 < minF3 ? minF3 : (params.f3 > 8000 ? 8000 : params.f3);
+            this.f3 = this.parseFiniteNumber(params.f3, 500, 8000, this.f3);
+            crossoverChanged = true;
         }
         if (params.f4 !== undefined) {
-            const minF4 = this.f3 > 1000 ? this.f3 : 1000;
-            this.f4 = params.f4 < minF4 ? minF4 : (params.f4 > 20000 ? 20000 : params.f4);
+            this.f4 = this.parseFiniteNumber(params.f4, 1000, 20000, this.f4);
+            crossoverChanged = true;
+        }
+        if (crossoverChanged) {
+            this._normalizeCrossoverFrequencies();
+            this._syncCrossoverControls();
         }
 
         // Update band parameters if provided as an array
@@ -563,15 +613,18 @@ class MultibandBalancePlugin extends PluginBase {
             
             rangeInput.addEventListener('input', (e) => {
                 setter(parseFloat(e.target.value));
-                numberInput.value = e.target.value;
+                const normalizedValue = this[`f${freqNum}`];
+                rangeInput.value = normalizedValue;
+                numberInput.value = normalizedValue;
             });
             
             numberInput.addEventListener('input', (e) => {
                 const parsedValue = parseFloat(e.target.value) || 0;
                 const val = parsedValue < min ? min : (parsedValue > max ? max : parsedValue);
                 setter(val);
-                rangeInput.value = val;
-                e.target.value = val;
+                const normalizedValue = this[`f${freqNum}`];
+                rangeInput.value = normalizedValue;
+                e.target.value = normalizedValue;
             });
             
             topRow.appendChild(labelEl);

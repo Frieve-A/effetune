@@ -161,7 +161,7 @@ Um equalizador inteligente que ajusta automaticamente as bandas de frequência c
   - Q: Controla largura de banda/nitidez (0.1-10.0)
   - Max Gain: Defina o ajuste máximo de ganho (0-24dB)
   - Threshold: Defina o nível em que o processamento começa (-60dB a 0dB)
-  - Ratio: Controle a intensidade do processamento (0.1-10.0)
+  - Ratio: Controle a intensidade do processamento (0.1-100.0)
     - Below 1.0: Expander (potencializa quando o sinal excede o Threshold)
     - Above 1.0: Compressor (reduz quando o sinal excede o Threshold)
   - Knee Width: Transição suave em torno do Threshold (0-30dB)

@@ -161,7 +161,7 @@ A smart equalizer that automatically adjusts frequency bands based on the conten
   - Q: Control bandwidth/sharpness (0.1-10.0)
   - Max Gain: Set maximum gain adjustment (0-24dB)
   - Threshold: Set level when processing begins (-60dB to 0dB)
-  - Ratio: Control processing intensity (0.1-10.0)
+  - Ratio: Control processing intensity (0.1-100.0)
     - Below 1.0: Expander (enhances when signal exceeds threshold)
     - Above 1.0: Compressor (reduces when signal exceeds threshold)
   - Knee Width: Smooth transition around threshold (0-30dB)

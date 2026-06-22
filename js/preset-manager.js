@@ -127,6 +127,14 @@ export class PresetManager {
                     }
                     
                     plugin.setParameters(params);
+                    if (pluginData.enabled !== undefined) {
+                        const enabled = Boolean(pluginData.enabled);
+                        if (typeof plugin.setEnabled === 'function') {
+                            plugin.setEnabled(enabled);
+                        } else {
+                            plugin.enabled = enabled;
+                        }
+                    }
                     presetPlugins.push(plugin);
                 } catch (error) {
                     console.warn(`Failed to create plugin "${pluginData.name}" from preset:`, error);
@@ -182,4 +190,4 @@ export class PresetManager {
             throw error;
         }
     }
-} 
+}

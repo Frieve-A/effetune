@@ -33,6 +33,7 @@ class OscilloscopePlugin extends PluginBase {
       this.canvas = null;
       this.ctx = null;
       this.animationId = null;
+      this.animationFrameId = null;
       this.drawInterval = 1000 / 30; // target 30 FPS
   
       // Circular buffer for waveform data.
@@ -707,15 +708,22 @@ class OscilloscopePlugin extends PluginBase {
     // cleanup: Cancel the animation and remove event listeners.
     // ---------------------------
     cleanup() {
-      if (this.animationId) {
-        cancelAnimationFrame(this.animationId);
-        this.animationId = null;
+      this.stopAnimation();
+      if (this.observer) {
+        if (this.canvas) {
+          this.observer.unobserve(this.canvas);
+        }
+        this.observer.disconnect();
+        this.observer = null;
       }
       for (const [element, listener] of this.boundEventListeners) {
         element.removeEventListener('change', listener);
         element.removeEventListener('input', listener);
       }
       this.boundEventListeners.clear();
+      this.canvas = null;
+      this.ctx = null;
+      super.cleanup();
     }
   }
   

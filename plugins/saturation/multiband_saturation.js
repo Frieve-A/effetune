@@ -252,6 +252,9 @@ class MultibandSaturationPlugin extends PluginBase {
             const cachedFilters = context.cachedFilters; // Contains coefficients
             const tempBuffers = context.tempBuffers;
             const fadeInState = context.fadeIn; // Cache fade-in state object reference
+            const fadeStartCounter = fadeInState ? fadeInState.counter : 0;
+            const fadeLen = fadeInState ? fadeInState.length : 0;
+            const fadeActive = fadeInState && fadeStartCounter < fadeLen;
     
             for (let ch = 0; ch < pChannelCount; ch++) {
                 const channelOffset = ch * pBlockSize; // Starting index for this channel in the main buffer
@@ -335,21 +338,14 @@ class MultibandSaturationPlugin extends PluginBase {
                 const highBand = channelBandSignals[2];
     
                 // Check if fade-in is active (only happens right after reset)
-                if (fadeInState && fadeInState.counter < fadeInState.length) {
-                    const fadeLen = fadeInState.length; // Cache fade length
-                    let fadeCounter = fadeInState.counter; // Use local counter for performance
+                if (fadeActive) {
+                    let fadeCounter = fadeStartCounter;
                     let i = 0;
-                    // Apply fade-in gain ramp
                     for (; i < pBlockSize && fadeCounter < fadeLen; i++, fadeCounter++) {
                         const summedSample = lowBand[i] + midBand[i] + highBand[i];
-                        // Linear fade-in ramp
                         const fadeGain = fadeCounter / fadeLen; 
                         result[channelOffset + i] = summedSample * fadeGain; 
                     }
-                    // Update the shared counter in the context object
-                    fadeInState.counter = fadeCounter; 
-    
-                    // If fade completed within this block, process the rest normally
                     for (; i < pBlockSize; i++) {
                          result[channelOffset + i] = lowBand[i] + midBand[i] + highBand[i];
                     }
@@ -358,12 +354,17 @@ class MultibandSaturationPlugin extends PluginBase {
                     for (let i = 0; i < pBlockSize; i++) {
                         result[channelOffset + i] = lowBand[i] + midBand[i] + highBand[i];
                     }
-                    // Ensure fade state is marked as completed if it existed
-                    if (fadeInState) {
-                         fadeInState.counter = fadeInState.length; 
-                    }
                 }
             } // End channel loop
+            if (fadeActive) {
+                const fadeNextCounter = fadeStartCounter + pBlockSize;
+                fadeInState.counter = fadeNextCounter >= fadeLen ? fadeLen : fadeNextCounter;
+                if (fadeInState.counter >= fadeLen) {
+                    context.fadeIn = null;
+                }
+            } else if (fadeInState) {
+                context.fadeIn = null;
+            }
             // --- End Main Processing Loop ---
     
             // Return the buffer containing the processed audio data
@@ -371,19 +372,46 @@ class MultibandSaturationPlugin extends PluginBase {
         `;
     }
 
+    _normalizeCrossoverFrequencies() {
+        let f1 = this.f1;
+        f1 = f1 < 20 ? 20 : (f1 > 2000 ? 2000 : f1);
+
+        let f2 = this.f2;
+        const minF2 = f1 > 200 ? f1 : 200;
+        f2 = f2 < minF2 ? minF2 : (f2 > 20000 ? 20000 : f2);
+
+        this.f1 = f1;
+        this.f2 = f2;
+    }
+
+    _syncCrossoverControls() {
+        if (typeof document === 'undefined' || !this.instanceId) return;
+        const values = [this.f1, this.f2];
+        for (let i = 0; i < values.length; i++) {
+            const freqNum = i + 1;
+            const slider = document.getElementById(`${this.instanceId}-freq${freqNum}-slider`);
+            const input = document.getElementById(`${this.instanceId}-freq${freqNum}-input`);
+            if (slider) slider.value = values[i];
+            if (input) input.value = values[i];
+        }
+    }
+
     setParameters(params) {
         let graphNeedsUpdate = false;
+        let crossoverChanged = false;
 
-        // Update crossover frequencies with bounds checking
+        // Update crossover frequencies and normalize the full chain afterward.
         if (params.f1 !== undefined) {
-            const f1Value = params.f1;
-            this.f1 = f1Value < 20 ? 20 : (f1Value > 2000 ? 2000 : f1Value);
-            graphNeedsUpdate = true;
+            this.f1 = this.parseFiniteNumber(params.f1, 20, 2000, this.f1);
+            crossoverChanged = true;
         }
         if (params.f2 !== undefined) {
-            const f2Value = params.f2;
-            const minF2 = this.f1 > 200 ? this.f1 : 200;
-            this.f2 = f2Value < minF2 ? minF2 : (f2Value > 20000 ? 20000 : f2Value);
+            this.f2 = this.parseFiniteNumber(params.f2, 200, 20000, this.f2);
+            crossoverChanged = true;
+        }
+        if (crossoverChanged) {
+            this._normalizeCrossoverFrequencies();
+            this._syncCrossoverControls();
             graphNeedsUpdate = true;
         }
 
@@ -555,6 +583,7 @@ class MultibandSaturationPlugin extends PluginBase {
 
     cleanup() {
         this.canvases = null;
+        super.cleanup();
     }
 
     createUI() {
@@ -608,14 +637,17 @@ class MultibandSaturationPlugin extends PluginBase {
 
             rangeInput.addEventListener('input', (e) => {
                 setter(parseFloat(e.target.value));
-                numberInput.value = e.target.value;
+                const normalizedValue = this[`f${freqNum}`];
+                rangeInput.value = normalizedValue;
+                numberInput.value = normalizedValue;
             });
             numberInput.addEventListener('input', (e) => {
                 const parsedValue = parseFloat(e.target.value) || 0;
                 const val = parsedValue < min ? min : (parsedValue > max ? max : parsedValue);
                 setter(val);
-                rangeInput.value = val;
-                e.target.value = val;
+                const normalizedValue = this[`f${freqNum}`];
+                rangeInput.value = normalizedValue;
+                e.target.value = normalizedValue;
             });
 
             sliderContainer.appendChild(rangeInput);

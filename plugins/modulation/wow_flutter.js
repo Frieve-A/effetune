@@ -30,7 +30,8 @@ class WowFlutterPlugin extends PluginBase {
 
             // --- Constants & Pre-calculated Coefficients ---
             // Define constants and pre-calculate values used repeatedly to avoid redundant computations
-            const MAX_BUFFER_SIZE = Math.ceil(0.1 * sampleRate); // Max delay buffer size (100ms worth of samples)
+            const maxBufferSizeRaw = Math.ceil(0.1 * sampleRate); // Max delay buffer size (100ms worth of samples)
+            const MAX_BUFFER_SIZE = maxBufferSizeRaw > 0 ? maxBufferSizeRaw : 1;
             const TWO_PI = 6.283185307179586; // Math.PI * 2
             const DEG_TO_RAD = 0.017453292519943295; // Math.PI / 180
             const SQRT2 = 1.4142135623730951;
@@ -58,20 +59,31 @@ class WowFlutterPlugin extends PluginBase {
                 context.ch_x2 = new Float32Array(channelCount); // Default value is 0.0
             }
 
-            // Initialize sample delay buffers (once) if they haven't been created yet
-            if (!context.initialized) {
+            // Initialize sample delay buffers when the routing or sample-rate derived length changes.
+            if (!context.sampleBuffer ||
+                context.sampleBuffer.length !== channelCount ||
+                context.sampleRate !== sampleRate ||
+                context.sampleBufferSize !== MAX_BUFFER_SIZE) {
                 context.sampleBuffer = new Array(channelCount);
                 for (let ch = 0; ch < channelCount; ++ch) {
                     // Use Float32Array for storing audio samples in the delay line
                     context.sampleBuffer[ch] = new Float32Array(MAX_BUFFER_SIZE); // Default value is 0.0
                 }
+                context.phase = 0.0;
+                context.sampleBufferPos = 0;
+                context.common_x1 = 0.0;
+                context.common_x2 = 0.0;
+                context.ch_x1.fill(0.0);
+                context.ch_x2.fill(0.0);
+                context.sampleRate = sampleRate;
+                context.sampleBufferSize = MAX_BUFFER_SIZE;
                 context.initialized = true;
             }
 
             // --- Calculate Biquad LPF Coefficients ---
             // Calculate filter Q value based on the randomnessSlope parameter using 10**x operator
             const calculatedQ = (10**((randomnessSlope + 6.0) / 6.0)) * (1.0 / SQRT2);
-            const Q = Math.max(MIN_Q, calculatedQ); // Clamp Q to ensure minimum stability
+            const Q = calculatedQ < MIN_Q ? MIN_Q : calculatedQ; // Clamp Q to ensure minimum stability
 
             const fc = randomnessCutoff;
             const fs = sampleRate;
@@ -249,26 +261,25 @@ class WowFlutterPlugin extends PluginBase {
 
     setParameters(params) {
         if (params.rt !== undefined) {
-            this.rt = params.rt < 0.1 ? 0.1 : (params.rt > 20 ? 20 : params.rt);
+            this.rt = this.parseFiniteNumber(params.rt, 0.1, 20, this.rt);
         }
         if (params.dp !== undefined) {
-            this.dp = params.dp < 0 ? 0 : (params.dp > 40 ? 40 : params.dp);
+            this.dp = this.parseFiniteNumber(params.dp, 0, 40, this.dp);
         }
         if (params.rn !== undefined) {
-            this.rn = params.rn < 0 ? 0 : (params.rn > 40 ? 40 : params.rn);
+            this.rn = this.parseFiniteNumber(params.rn, 0, 40, this.rn);
         }
         if (params.rc !== undefined) {
-            this.rc = params.rc < 0.1 ? 0.1 : (params.rc > 20 ? 20 : params.rc);
+            this.rc = this.parseFiniteNumber(params.rc, 0.1, 20, this.rc);
         }
-         // Add setter logic for the new parameter rs with range -12.0 to 0.0
         if (params.rs !== undefined) {
-            this.rs = Math.max(-12.0, Math.min(0.0, params.rs));
+            this.rs = this.parseFiniteNumber(params.rs, -12.0, 0.0, this.rs);
         }
         if (params.cp !== undefined) {
-            this.cp = params.cp < -180 ? -180 : (params.cp > 180 ? 180 : params.cp);
+            this.cp = this.parseFiniteNumber(params.cp, -180, 180, this.cp);
         }
         if (params.cs !== undefined) {
-            this.cs = params.cs < 0 ? 0 : (params.cs > 100 ? 100 : params.cs);
+            this.cs = this.parseFiniteNumber(params.cs, 0, 100, this.cs);
         }
         if (params.enabled !== undefined) {
             this.enabled = params.enabled;

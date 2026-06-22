@@ -75,8 +75,10 @@ class FDNReverbPlugin extends PluginBase {
                 context.initialized = true;
             }
             
-            // --- Pre-delay buffer allocation on channel count change ---
-            if (!context.preDelayBuffer || context.preDelayBuffer.length !== channelCount) {
+            // --- Pre-delay buffer allocation on channel count or sample rate change ---
+            if (!context.preDelayBuffer ||
+                context.preDelayBuffer.length !== channelCount ||
+                context.preDelaySampleRate !== sampleRate) {
                 const maxPreDelaySamples = Math.ceil(sampleRate * 0.1); // Max pre-delay is 100ms
                 context.preDelayBuffer = new Array(channelCount);
                 for (let ch = 0; ch < channelCount; ch++) {
@@ -85,6 +87,7 @@ class FDNReverbPlugin extends PluginBase {
                         pos: 0
                     };
                 }
+                context.preDelaySampleRate = sampleRate;
             }
 
             // --- Per-block parameter calculations ---
@@ -178,131 +181,131 @@ class FDNReverbPlugin extends PluginBase {
             const fdnOutputs_currentSample = context.fdnOutputs_block_cache;
             const hadamardMixingOutput_currentSample = context.hadamardMixingOutput_block_cache;
 
+            // Preserve the original FDN behavior for every routed channel. Each
+            // channel advances the shared feedback tank once; channel 0 receives
+            // the left wet tap and channels 1+ receive the right wet tap.
             // --- Main Sample Processing Loop (Hot Path) ---
-            for (let i = 0; i < blockSize; i++) { 
+            for (let i = 0; i < blockSize; i++) {
                 // Update LFO phases once per sample for all potential lines
-                for (let lineIdx = 0; lineIdx < 8; lineIdx++) { 
+                for (let lineIdx = 0; lineIdx < 8; lineIdx++) {
                     lfoPhases[lineIdx] += lfoIncrement;
                     if (lfoPhases[lineIdx] >= TWO_PI) {
                         lfoPhases[lineIdx] -= TWO_PI;
                     }
                 }
-                
+
                 for (let ch = 0; ch < channelCount; ch++) {
-                    const channelGlobalOffset = ch * blockSize + i; 
-                    const currentInputSample = data[channelGlobalOffset];
-                    
-                    // Pre-delay processing
-                    const preDelayLine = preDelayBuffers[ch];
-                    const preDelayBuffer = preDelayLine.buffer;
-                    const preDelayBufferLength = preDelayBuffer.length;
-                    let fdnTankInput; 
-            
-                    if (preDelaySamples > 0 && preDelayBufferLength > 0) {
-                        const readPos = (preDelayLine.pos - preDelaySamples + preDelayBufferLength) % preDelayBufferLength;
-                        fdnTankInput = preDelayBuffer[readPos];
-                    } else {
-                        fdnTankInput = currentInputSample; 
-                    }
-                    preDelayBuffer[preDelayLine.pos] = currentInputSample; 
-                    preDelayLine.pos = (preDelayLine.pos + 1) % preDelayBufferLength;
-                    
-                    // FDN Read Stage: Read from delay lines with modulation
-                    for (let line = 0; line < densityLines; line++) {
-                        const delayLineBuffer = delayLines[line];
-                        const allocatedBufferLength = delayLineBuffer.length; 
-                        const writePos = delayPositions[line]; 
-                        
-                        const lfoValue = Math.sin(lfoPhases[line] + lfoOffsets[line]);
-                        const modulatedDelay = unmodulatedDelayTimesSamples[line] * (1.0 + modDepthAsFraction * lfoValue);
-                        
-                        // Clamp delay time using ternary operators instead of Math.max/min
-                        const upperClampLimit = allocatedBufferLength - 1.00001;
-                        let clampedDelay = modulatedDelay < 0.0 ? 0.0 : modulatedDelay;
-                        clampedDelay = clampedDelay > upperClampLimit ? upperClampLimit : clampedDelay;
+                        const channelGlobalOffset = ch * blockSize + i;
+                        const currentInputSample = data[channelGlobalOffset];
 
-                        const readPosInt = clampedDelay | 0;
-                        const fraction = clampedDelay - readPosInt;
-                        
-                        // Robust modulo for buffer wrap-around
-                        const idx0 = (writePos - 1 - readPosInt + allocatedBufferLength) % allocatedBufferLength;
-                        const idx1 = (writePos - 1 - (readPosInt + 1) + allocatedBufferLength) % allocatedBufferLength; 
-                                                
-                        const sample0 = delayLineBuffer[idx0];
-                        const sample1 = delayLineBuffer[idx1];
-                        fdnOutputs_currentSample[line] = sample0 + (sample1 - sample0) * fraction; // Optimized lerp
-                    }
-                    
-                    // Hadamard Mixing Stage
-                    for (let row = 0; row < densityLines; row++) {
-                        let sum = 0.0;
-                        const hadamardRow = hadamardMatrix[row];
-                        for (let col = 0; col < densityLines; col++) {
-                            sum += hadamardRow[col] * fdnOutputs_currentSample[col];
-                        }
-                        hadamardMixingOutput_currentSample[row] = sum * invSqrtDensity;
-                    }
-                    
-                    // FDN Write Stage: Feedback, filtering, and writing to delay lines
-                    for (let line = 0; line < densityLines; line++) {
-                        const delayLineBuffer = delayLines[line];
-                        const allocatedBufferLength = delayLineBuffer.length;
-                        const writePos = delayPositions[line];
-                        
-                        // Apply diffusion and feedback
-                        const diffusedFeedback = hadamardMixingOutput_currentSample[line] * diffusionAmount;
-                        let signalToFilter = fdnTankInput + diffusedFeedback * feedbackGains[line];
-                        
-                        // HF Damp (LPF)
-                        if (lpfAlphaForHfDamp > 0.0) { 
-                            lpfStates[line] = (1.0 - lpfAlphaForHfDamp) * signalToFilter + lpfAlphaForHfDamp * lpfStates[line];
-                            signalToFilter = lpfStates[line];
-                        }
-                        
-                        // Low Cut (HPF)
-                        if (apply_hpf) { 
-                            const lpfComponentForHpf = (1.0 - hpfAlphaForLowCut) * signalToFilter + hpfAlphaForLowCut * hpfStates[line];
-                            signalToFilter = signalToFilter - lpfComponentForHpf; 
-                            hpfStates[line] = lpfComponentForHpf; 
-                        }
-                        
-                        delayLineBuffer[writePos] = signalToFilter;
-                        delayPositions[line] = (writePos + 1) % allocatedBufferLength; // Update position in cached array
-                    }
-                    
-                    // Output Tapping and Mixing
-                    let lTapSum = 0.0;
-                    let rTapSum = 0.0;
-                    for (let line = 0; line < densityLines; line++) {
-                        // Use bitwise AND for even/odd check, potentially faster
-                        if ((line & 1) === 0) { 
-                            lTapSum += fdnOutputs_currentSample[line]; 
-                        } else { 
-                            rTapSum += fdnOutputs_currentSample[line];
-                        }
-                    }
+                        // Pre-delay processing
+                        const preDelayLine = preDelayBuffers[ch];
+                        const preDelayBuffer = preDelayLine.buffer;
+                        const preDelayBufferLength = preDelayBuffer.length;
+                        let fdnTankInput;
 
-                    const lTapWet = lTapSum * invSqrtLTapCount;
-                    const rTapWet = rTapSum * invSqrtRTapCount;
-                    
-                    let wetSignalForThisChannel;
-                    if (channelCount === 1) { 
-                        wetSignalForThisChannel = (lTapWet + rTapWet) * 0.5; 
-                    } else { 
-                        // Stereo width processing
+                        if (preDelaySamples > 0 && preDelayBufferLength > 0) {
+                            const readPos = (preDelayLine.pos - preDelaySamples + preDelayBufferLength) % preDelayBufferLength;
+                            fdnTankInput = preDelayBuffer[readPos];
+                        } else {
+                            fdnTankInput = currentInputSample;
+                        }
+                        preDelayBuffer[preDelayLine.pos] = currentInputSample;
+                        preDelayLine.pos = (preDelayLine.pos + 1) % preDelayBufferLength;
+
+                        // FDN Read Stage: Read from delay lines with modulation
+                        for (let line = 0; line < densityLines; line++) {
+                            const delayLineBuffer = delayLines[line];
+                            const allocatedBufferLength = delayLineBuffer.length;
+                            const writePos = delayPositions[line];
+
+                            const lfoValue = Math.sin(lfoPhases[line] + lfoOffsets[line]);
+                            const modulatedDelay = unmodulatedDelayTimesSamples[line] * (1.0 + modDepthAsFraction * lfoValue);
+
+                            // Clamp delay time using ternary operators instead of Math.max/min
+                            const upperClampLimit = allocatedBufferLength - 1.00001;
+                            let clampedDelay = modulatedDelay < 0.0 ? 0.0 : modulatedDelay;
+                            clampedDelay = clampedDelay > upperClampLimit ? upperClampLimit : clampedDelay;
+
+                            const readPosInt = clampedDelay | 0;
+                            const fraction = clampedDelay - readPosInt;
+
+                            // Robust modulo for buffer wrap-around
+                            const idx0 = (writePos - 1 - readPosInt + allocatedBufferLength) % allocatedBufferLength;
+                            const idx1 = (writePos - 1 - (readPosInt + 1) + allocatedBufferLength) % allocatedBufferLength;
+
+                            const sample0 = delayLineBuffer[idx0];
+                            const sample1 = delayLineBuffer[idx1];
+                            fdnOutputs_currentSample[line] = sample0 + (sample1 - sample0) * fraction; // Optimized lerp
+                        }
+
+                        // Hadamard Mixing Stage
+                        for (let row = 0; row < densityLines; row++) {
+                            let sum = 0.0;
+                            const hadamardRow = hadamardMatrix[row];
+                            for (let col = 0; col < densityLines; col++) {
+                                sum += hadamardRow[col] * fdnOutputs_currentSample[col];
+                            }
+                            hadamardMixingOutput_currentSample[row] = sum * invSqrtDensity;
+                        }
+
+                        // FDN Write Stage: Feedback, filtering, and writing to delay lines
+                        for (let line = 0; line < densityLines; line++) {
+                            const delayLineBuffer = delayLines[line];
+                            const allocatedBufferLength = delayLineBuffer.length;
+                            const writePos = delayPositions[line];
+
+                            // Apply diffusion and feedback
+                            const diffusedFeedback = hadamardMixingOutput_currentSample[line] * diffusionAmount;
+                            let signalToFilter = fdnTankInput + diffusedFeedback * feedbackGains[line];
+
+                            // HF Damp (LPF)
+                            if (lpfAlphaForHfDamp > 0.0) {
+                                lpfStates[line] = (1.0 - lpfAlphaForHfDamp) * signalToFilter + lpfAlphaForHfDamp * lpfStates[line];
+                                signalToFilter = lpfStates[line];
+                            }
+
+                            // Low Cut (HPF)
+                            if (apply_hpf) {
+                                const lpfComponentForHpf = (1.0 - hpfAlphaForLowCut) * signalToFilter + hpfAlphaForLowCut * hpfStates[line];
+                                signalToFilter = signalToFilter - lpfComponentForHpf;
+                                hpfStates[line] = lpfComponentForHpf;
+                            }
+
+                            delayLineBuffer[writePos] = signalToFilter;
+                            delayPositions[line] = (writePos + 1) % allocatedBufferLength; // Update position in cached array
+                        }
+
+                        // Output Tapping and Mixing
+                        let lTapSum = 0.0;
+                        let rTapSum = 0.0;
+                        for (let line = 0; line < densityLines; line++) {
+                            // Use bitwise AND for even/odd check, potentially faster
+                            if ((line & 1) === 0) {
+                                lTapSum += fdnOutputs_currentSample[line];
+                            } else {
+                                rTapSum += fdnOutputs_currentSample[line];
+                            }
+                        }
+
+                        const lTapWet = lTapSum * invSqrtLTapCount;
+                        const rTapWet = rTapSum * invSqrtRTapCount;
                         const monoMixComponent = (lTapWet + rTapWet) * 0.5;
-                        const temp_m_s_factor = stereoWidthParam * 0.5;
-                        const mixToStereoFactor = temp_m_s_factor < 0.0 ? 0.0 : (temp_m_s_factor > 1.0 ? 1.0 : temp_m_s_factor);
-                        
-                        if (ch === 0) { // Left channel
-                            wetSignalForThisChannel = monoMixComponent * (1.0 - mixToStereoFactor) + lTapWet * mixToStereoFactor;
-                        } else { // Right channel (and any subsequent)
-                            wetSignalForThisChannel = monoMixComponent * (1.0 - mixToStereoFactor) + rTapWet * mixToStereoFactor;
+                        let wetSignalForThisChannel;
+                        if (channelCount === 1) {
+                            wetSignalForThisChannel = monoMixComponent;
+                        } else {
+                            const temp_m_s_factor = stereoWidthParam * 0.5;
+                            const mixToStereoFactor = temp_m_s_factor < 0.0 ? 0.0 : (temp_m_s_factor > 1.0 ? 1.0 : temp_m_s_factor);
+                            wetSignalForThisChannel = ch === 0
+                                ? monoMixComponent * (1.0 - mixToStereoFactor) + lTapWet * mixToStereoFactor
+                                : monoMixComponent * (1.0 - mixToStereoFactor) + rTapWet * mixToStereoFactor;
                         }
-                    }
-                    data[channelGlobalOffset] = currentInputSample * dryMix + wetSignalForThisChannel * wetMix;
-                } 
-            } 
+
+                        data[channelGlobalOffset] = currentInputSample * dryMix + wetSignalForThisChannel * wetMix;
+                }
+
+            }
             return data;
         `);
     }
@@ -330,19 +333,19 @@ class FDNReverbPlugin extends PluginBase {
 
     // Set parameters with validation
     setParameters(params) {
-        if (params.rt !== undefined) this.rt = Math.max(0.20, Math.min(10.00, Number(params.rt)));
-        if (params.dt !== undefined) this.dt = Math.max(4, Math.min(8, Math.floor(Number(params.dt))));
-        if (params.pd !== undefined) this.pd = Math.max(0.0, Math.min(100.0, Number(params.pd)));
-        if (params.bd !== undefined) this.bd = Math.max(10.0, Math.min(60.0, Number(params.bd)));
-        if (params.ds !== undefined) this.ds = Math.max(0.0, Math.min(25.0, Number(params.ds)));
-        if (params.hd !== undefined) this.hd = Math.max(0.0, Math.min(12.0, Number(params.hd)));
-        if (params.lc !== undefined) this.lc = Math.max(20, Math.min(500, Math.floor(Number(params.lc))));
-        if (params.md !== undefined) this.md = Math.max(0.0, Math.min(10.0, Number(params.md)));
-        if (params.mr !== undefined) this.mr = Math.max(0.10, Math.min(5.00, Number(params.mr)));
-        if (params.df !== undefined) this.df = Math.max(0, Math.min(100, Math.floor(Number(params.df))));
-        if (params.wm !== undefined) this.wm = Math.max(0, Math.min(100, Math.floor(Number(params.wm))));
-        if (params.dm !== undefined) this.dm = Math.max(0, Math.min(100, Math.floor(Number(params.dm))));
-        if (params.sw !== undefined) this.sw = Math.max(0, Math.min(200, Math.floor(Number(params.sw))));
+        if (params.rt !== undefined) this.rt = this.parseFiniteNumber(params.rt, 0.20, 10.00, this.rt);
+        if (params.dt !== undefined) this.dt = Math.floor(this.parseFiniteNumber(params.dt, 4, 8, this.dt));
+        if (params.pd !== undefined) this.pd = this.parseFiniteNumber(params.pd, 0.0, 100.0, this.pd);
+        if (params.bd !== undefined) this.bd = this.parseFiniteNumber(params.bd, 10.0, 60.0, this.bd);
+        if (params.ds !== undefined) this.ds = this.parseFiniteNumber(params.ds, 0.0, 25.0, this.ds);
+        if (params.hd !== undefined) this.hd = this.parseFiniteNumber(params.hd, 0.0, 12.0, this.hd);
+        if (params.lc !== undefined) this.lc = Math.floor(this.parseFiniteNumber(params.lc, 20, 500, this.lc));
+        if (params.md !== undefined) this.md = this.parseFiniteNumber(params.md, 0.0, 10.0, this.md);
+        if (params.mr !== undefined) this.mr = this.parseFiniteNumber(params.mr, 0.10, 5.00, this.mr);
+        if (params.df !== undefined) this.df = Math.floor(this.parseFiniteNumber(params.df, 0, 100, this.df));
+        if (params.wm !== undefined) this.wm = Math.floor(this.parseFiniteNumber(params.wm, 0, 100, this.wm));
+        if (params.dm !== undefined) this.dm = Math.floor(this.parseFiniteNumber(params.dm, 0, 100, this.dm));
+        if (params.sw !== undefined) this.sw = Math.floor(this.parseFiniteNumber(params.sw, 0, 200, this.sw));
         this.updateParameters();
     }
 

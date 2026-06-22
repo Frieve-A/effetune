@@ -242,17 +242,17 @@ class DelayPlugin extends PluginBase {
     }
 
     setParameters(params) {
-        if (params.pd !== undefined) this.pd = Math.max(0, Math.min(100, Number(params.pd)));       // 0..100 ms
-        if (params.ds !== undefined) this.ds = Math.max(1, Math.min(5000, Number(params.ds)));      // 1..5000 ms
-        if (params.dp !== undefined) this.dp = Math.max(0, Math.min(100, Number(params.dp)));       // 0..100 %
+        if (params.pd !== undefined) this.pd = this.parseFiniteNumber(params.pd, 0, 100, this.pd);       // 0..100 ms
+        if (params.ds !== undefined) this.ds = this.parseFiniteNumber(params.ds, 1, 5000, this.ds);      // 1..5000 ms
+        if (params.dp !== undefined) this.dp = this.parseFiniteNumber(params.dp, 0, 100, this.dp);       // 0..100 %
 
         // Make UI/validation consistent and actually usable
-        if (params.hd !== undefined) this.hd = Math.max(20, Math.min(20000, Number(params.hd)));    // 20..20000 Hz
-        if (params.ld !== undefined) this.ld = Math.max(20, Math.min(20000, Number(params.ld)));    // 20..20000 Hz
+        if (params.hd !== undefined) this.hd = this.parseFiniteNumber(params.hd, 20, 20000, this.hd);    // 20..20000 Hz
+        if (params.ld !== undefined) this.ld = this.parseFiniteNumber(params.ld, 20, 20000, this.ld);    // 20..20000 Hz
 
-        if (params.mx !== undefined) this.mx = Math.max(0, Math.min(100, Number(params.mx)));       // 0..100 %
-        if (params.fb !== undefined) this.fb = Math.max(0, Math.min(99, Number(params.fb)));        // 0..99 %
-        if (params.pp !== undefined) this.pp = Math.max(0, Math.min(100, Number(params.pp)));       // 0..100 %
+        if (params.mx !== undefined) this.mx = this.parseFiniteNumber(params.mx, 0, 100, this.mx);       // 0..100 %
+        if (params.fb !== undefined) this.fb = this.parseFiniteNumber(params.fb, 0, 99, this.fb);        // 0..99 %
+        if (params.pp !== undefined) this.pp = this.parseFiniteNumber(params.pp, 0, 100, this.pp);       // 0..100 %
 
         this.updateParameters();
     }

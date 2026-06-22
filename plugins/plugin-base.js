@@ -32,6 +32,7 @@ class PluginBase {
         // Flag to track message handler registration
         this._hasMessageHandler = false;
         this._messageHandlerWorkletNode = null;
+        this._messageHandlerObserver = null;
 
         // Bind _handleMessage only once for performance
         this._boundHandleMessage = this._handleMessage.bind(this);
@@ -42,13 +43,14 @@ class PluginBase {
         }
 
         // Observe mutations to detect when workletNode becomes available
-        const observer = new MutationObserver(() => {
+        this._messageHandlerObserver = new MutationObserver(() => {
             if (window.workletNode && !this._hasMessageHandler) {
                 this._setupMessageHandler();
-                observer.disconnect();
+                this._messageHandlerObserver?.disconnect();
+                this._messageHandlerObserver = null;
             }
         });
-        observer.observe(document, {
+        this._messageHandlerObserver.observe(document, {
             attributes: true,
             childList: true,
             subtree: true
@@ -80,6 +82,11 @@ class PluginBase {
     
     // Clean up resources when plugin is removed
     cleanup() {
+        if (this._messageHandlerObserver) {
+            this._messageHandlerObserver.disconnect();
+            this._messageHandlerObserver = null;
+        }
+
         // Remove message event listener to prevent memory leaks
         if (this._hasMessageHandler && window.workletNode) {
             window.workletNode.port.removeEventListener('message', this._boundHandleMessage);
@@ -278,6 +285,32 @@ class PluginBase {
         if (params === null || typeof params !== 'object') {
             throw new Error('Parameters must be an object');
         }
+    }
+
+    parseFiniteNumber(value, min, max, previous) {
+        let numericValue;
+        if (typeof value === 'number') {
+            numericValue = value;
+        } else if (typeof value === 'string') {
+            const trimmedValue = value.trim();
+            if (trimmedValue === '') {
+                return Number.isFinite(previous) ? previous : min;
+            }
+            numericValue = Number(trimmedValue);
+        } else {
+            return Number.isFinite(previous) ? previous : min;
+        }
+
+        if (!Number.isFinite(numericValue)) {
+            return Number.isFinite(previous) ? previous : min;
+        }
+        if (numericValue < min) return min;
+        if (numericValue > max) return max;
+        return numericValue;
+    }
+
+    isAllowedEnum(value, allowed, previous) {
+        return allowed.includes(value) ? value : previous;
     }
 
     // Apply validated parameters (must be implemented by subclasses).
@@ -521,6 +554,11 @@ class PluginBase {
 
     // Cleanup resources (should be overridden by subclasses).
     cleanup() {
+        if (this._messageHandlerObserver) {
+            this._messageHandlerObserver.disconnect();
+            this._messageHandlerObserver = null;
+        }
+
         if (this._messageHandlerWorkletNode?.port && this._hasMessageHandler) {
             try {
                 this._messageHandlerWorkletNode.port.removeEventListener('message', this._boundHandleMessage);

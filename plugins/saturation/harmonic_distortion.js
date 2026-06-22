@@ -97,23 +97,23 @@ class HarmonicDistortionPlugin extends PluginBase {
         let graphNeedsUpdate = false;
         
         if (params.h2 !== undefined) {
-            this.h2 = Math.max(-30, Math.min(30, Number(params.h2)));
+            this.h2 = this.parseFiniteNumber(params.h2, -30, 30, this.h2);
             graphNeedsUpdate = true;
         }
         if (params.h3 !== undefined) {
-            this.h3 = Math.max(-30, Math.min(30, Number(params.h3)));
+            this.h3 = this.parseFiniteNumber(params.h3, -30, 30, this.h3);
             graphNeedsUpdate = true;
         }
         if (params.h4 !== undefined) {
-            this.h4 = Math.max(-30, Math.min(30, Number(params.h4)));
+            this.h4 = this.parseFiniteNumber(params.h4, -30, 30, this.h4);
             graphNeedsUpdate = true;
         }
         if (params.h5 !== undefined) {
-            this.h5 = Math.max(-30, Math.min(30, Number(params.h5)));
+            this.h5 = this.parseFiniteNumber(params.h5, -30, 30, this.h5);
             graphNeedsUpdate = true;
         }
         if (params.sn !== undefined) {
-            this.sn = Math.max(0.1, Math.min(2.0, Number(params.sn)));
+            this.sn = this.parseFiniteNumber(params.sn, 0.1, 2.0, this.sn);
             graphNeedsUpdate = true;
         }
         if (params.enabled !== undefined) {

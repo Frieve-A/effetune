@@ -102,7 +102,7 @@ class GatePlugin extends PluginBase {
                 const threshold = parameters.th; // dB
                 const ratio = parameters.rt;     // e.g., 2 for 2:1
                 const knee = parameters.kn;      // dB
-                const gain = parameters.gn;      // dB (Make-up Gain / Reduction Amount Floor)
+                const gain = parameters.gn;      // dB (Output Gain)
     
                 const halfKnee = knee * 0.5;
                 // Original code used rt - 1. This assumes rt is the ratio (>= 1).
@@ -118,8 +118,8 @@ class GatePlugin extends PluginBase {
                     kneeWidth: knee // Cache knee width for calculations
                 };
     
-                // Invalidate precomputed makeup gain factor as 'gn' might have changed
-                context.precomputedMakeupGainFactor = undefined; // Use undefined to signal invalidation
+                // Invalidate precomputed output gain factor as 'gn' might have changed
+                context.precomputedOutputGainFactor = undefined; // Use undefined to signal invalidation
                 needsRecalculation = true; // Indicate parameters changed
             }
     
@@ -181,32 +181,14 @@ class GatePlugin extends PluginBase {
             const lutExpMaxIndex = expLookupSize - 1;
             const lutDbMaxIndex = dbLookupSize - 1;
     
-            // Precompute the linear gain factor related to parameters.gn (makeupGainFactor)
-            // This is equivalent to the original code's fastExp(-gainParam) used in the gain calculation.
-            // Recompute only if 'gn' changed (checked via context.precomputedMakeupGainFactor === undefined)
-            let makeupGainFactor;
-            if (context.precomputedMakeupGainFactor === undefined) { // Check if invalidated
-                const gainParamForExp = -gainParam; // We need to compute fastExp for -gn
-    
-                // --- Inlined fastExp(gainParamForExp) ---
-                // Original fastExp(x) returned 1.0 if x <= 0.
-                if (gainParamForExp <= 0) { // This happens if gainParam >= 0
-                    makeupGainFactor = 1.0;
-                } else if (gainParamForExp >= 60) { // Check against LUT range max (argument to fastExp is dB)
-                     makeupGainFactor = expLookup[lutExpMaxIndex]; // Use max attenuation from LUT
-                } else {
-                     // Scale and clamp to lookup table range
-                     const exp_idx_f = gainParamForExp * expLookupScale;
-                     // Ensure index is within bounds [0, size-1]
-                     const exp_idx = Math.max(0, Math.min(lutExpMaxIndex, Math.floor(exp_idx_f)));
-                     makeupGainFactor = expLookup[exp_idx];
-                }
-                // --- End Inlined fastExp ---
-    
-                context.precomputedMakeupGainFactor = makeupGainFactor; // Cache the computed value
+            // Precompute output gain independently from gate reduction.
+            let outputGainFactor;
+            if (context.precomputedOutputGainFactor === undefined) { // Check if invalidated
+                outputGainFactor = Math.exp(gainParam * gainFactor);
+                context.precomputedOutputGainFactor = outputGainFactor; // Cache the computed value
                 // context.lastGn is implicitly tracked by gateParams check above
             }
-            makeupGainFactor = context.precomputedMakeupGainFactor; // Use the precomputed/cached value
+            outputGainFactor = context.precomputedOutputGainFactor; // Use the precomputed/cached value
     
             // --- Main Processing Loop ---
             let blockMaxGainReduction = 0; // Track max GR for measurements
@@ -297,7 +279,8 @@ class GatePlugin extends PluginBase {
                         if (gainReduction1 < 0) gainReduction1 = 0;
                     }
                     if (gainReduction1 > blockMaxGainReduction) blockMaxGainReduction = gainReduction1;
-                    if (gainReduction1 > 1e-9) { // Apply gain only if reduction is significant
+                    let totalGainLin1 = outputGainFactor;
+                    if (gainReduction1 > 1e-9) { // Apply reduction only if it is significant
                         // --- Inlined fastExp(gainReduction1) ---
                         let reductionGainLin1;
                         if (gainReduction1 >= 60) { reductionGainLin1 = expLookup[lutExpMaxIndex]; }
@@ -309,9 +292,11 @@ class GatePlugin extends PluginBase {
                              reductionGainLin1 = expLookup[exp_idx1];
                         } // No need for <=0 check due to outer if (gainReduction1 > 1e-9)
                         // --- End Inlined fastExp ---
-                        const totalGainLin1 = reductionGainLin1 * makeupGainFactor; // Apply makeup factor
+                        totalGainLin1 *= reductionGainLin1;
+                    }
+                    if (totalGainLin1 !== 1.0) {
                         result[offset + i] *= totalGainLin1; // Apply gain to the result buffer
-                    } // Else: No significant gain reduction, sample remains unchanged
+                    }
     
                     // Gain Calc Sample 2 (using currentEnvelope2, diff2, etc.)
                     let envelopeDb2;
@@ -331,6 +316,7 @@ class GatePlugin extends PluginBase {
                         if (gainReduction2 < 0) gainReduction2 = 0;
                     }
                     if (gainReduction2 > blockMaxGainReduction) blockMaxGainReduction = gainReduction2;
+                    let totalGainLin2 = outputGainFactor;
                     if (gainReduction2 > 1e-9) {
                         let reductionGainLin2;
                         if (gainReduction2 >= 60) { reductionGainLin2 = expLookup[lutExpMaxIndex]; }
@@ -341,7 +327,9 @@ class GatePlugin extends PluginBase {
                             const exp_idx2 = exp_idx2_floor < 0 ? 0 : (exp_idx2_floor > lutExpMaxIndex ? lutExpMaxIndex : exp_idx2_floor);
                             reductionGainLin2 = expLookup[exp_idx2];
                         }
-                        const totalGainLin2 = reductionGainLin2 * makeupGainFactor;
+                        totalGainLin2 *= reductionGainLin2;
+                    }
+                    if (totalGainLin2 !== 1.0) {
                         result[offset + i + 1] *= totalGainLin2;
                     }
     
@@ -363,6 +351,7 @@ class GatePlugin extends PluginBase {
                         if (gainReduction3 < 0) gainReduction3 = 0;
                     }
                     if (gainReduction3 > blockMaxGainReduction) blockMaxGainReduction = gainReduction3;
+                    let totalGainLin3 = outputGainFactor;
                     if (gainReduction3 > 1e-9) {
                         let reductionGainLin3;
                         if (gainReduction3 >= 60) { reductionGainLin3 = expLookup[lutExpMaxIndex]; }
@@ -373,7 +362,9 @@ class GatePlugin extends PluginBase {
                             const exp_idx3 = exp_idx3_floor < 0 ? 0 : (exp_idx3_floor > lutExpMaxIndex ? lutExpMaxIndex : exp_idx3_floor);
                             reductionGainLin3 = expLookup[exp_idx3];
                         }
-                        const totalGainLin3 = reductionGainLin3 * makeupGainFactor;
+                        totalGainLin3 *= reductionGainLin3;
+                    }
+                    if (totalGainLin3 !== 1.0) {
                         result[offset + i + 2] *= totalGainLin3;
                     }
     
@@ -395,6 +386,7 @@ class GatePlugin extends PluginBase {
                         if (gainReduction4 < 0) gainReduction4 = 0;
                     }
                     if (gainReduction4 > blockMaxGainReduction) blockMaxGainReduction = gainReduction4;
+                    let totalGainLin4 = outputGainFactor;
                     if (gainReduction4 > 1e-9) {
                         let reductionGainLin4;
                         if (gainReduction4 >= 60) { reductionGainLin4 = expLookup[lutExpMaxIndex]; }
@@ -405,7 +397,9 @@ class GatePlugin extends PluginBase {
                             const exp_idx4 = exp_idx4_floor < 0 ? 0 : (exp_idx4_floor > lutExpMaxIndex ? lutExpMaxIndex : exp_idx4_floor);
                             reductionGainLin4 = expLookup[exp_idx4];
                         }
-                        const totalGainLin4 = reductionGainLin4 * makeupGainFactor;
+                        totalGainLin4 *= reductionGainLin4;
+                    }
+                    if (totalGainLin4 !== 1.0) {
                         result[offset + i + 3] *= totalGainLin4;
                     }
     
@@ -443,7 +437,8 @@ class GatePlugin extends PluginBase {
     
                     if (gainReduction > blockMaxGainReduction) blockMaxGainReduction = gainReduction;
     
-                    if (gainReduction > 1e-9) { // Apply gain only if reduction is significant
+                    let totalGainLin = outputGainFactor;
+                    if (gainReduction > 1e-9) { // Apply reduction only if it is significant
                         // --- Inlined fastExp(gainReduction) ---
                          let reductionGainLin;
                          if (gainReduction >= 60) { reductionGainLin = expLookup[lutExpMaxIndex]; }
@@ -455,10 +450,11 @@ class GatePlugin extends PluginBase {
                              reductionGainLin = expLookup[exp_idx];
                          }
                          // --- End Inlined fastExp ---
-                         const totalGainLin = reductionGainLin * makeupGainFactor;
+                         totalGainLin *= reductionGainLin;
+                     }
+                     if (totalGainLin !== 1.0) {
                          result[offset + i] *= totalGainLin;
                      }
-                     // Else: No significant gain reduction, sample remains unchanged.
                 }
     
                 // Update envelope state for the next block
@@ -514,31 +510,29 @@ class GatePlugin extends PluginBase {
 
     setParameters(params) {
         let graphNeedsUpdate = false;
+        super._setValidatedParameters(params);
 
         if (params.th !== undefined) {
-            this.th = params.th < -96 ? -96 : (params.th > 0 ? 0 : params.th);
+            this.th = this.parseFiniteNumber(params.th, -96, 0, this.th);
             graphNeedsUpdate = true;
         }
         if (params.rt !== undefined) {
-            this.rt = params.rt < 1 ? 1 : (params.rt > 100 ? 100 : params.rt);
+            this.rt = this.parseFiniteNumber(params.rt, 1, 100, this.rt);
             graphNeedsUpdate = true;
         }
         if (params.at !== undefined) {
-            this.at = params.at < 0.01 ? 0.01 : (params.at > 50 ? 50 : params.at);
+            this.at = this.parseFiniteNumber(params.at, 0.01, 50, this.at);
         }
         if (params.rl !== undefined) {
-            this.rl = params.rl < 10 ? 10 : (params.rl > 2000 ? 2000 : params.rl);
+            this.rl = this.parseFiniteNumber(params.rl, 10, 2000, this.rl);
         }
         if (params.kn !== undefined) {
-            this.kn = params.kn < 0 ? 0 : (params.kn > 6 ? 6 : params.kn);
+            this.kn = this.parseFiniteNumber(params.kn, 0, 6, this.kn);
             graphNeedsUpdate = true;
         }
         if (params.gn !== undefined) {
-            this.gn = params.gn < -12 ? -12 : (params.gn > 12 ? 12 : params.gn);
+            this.gn = this.parseFiniteNumber(params.gn, -12, 12, this.gn);
             graphNeedsUpdate = true;
-        }
-        if (params.enabled !== undefined) {
-            this.enabled = params.enabled;
         }
 
         this.updateParameters();
@@ -823,6 +817,7 @@ class GatePlugin extends PluginBase {
         }
         this.gr = 0;
         this.lastProcessTime = performance.now() / 1000;
+        super.cleanup();
     }
 }
 

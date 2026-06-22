@@ -843,6 +843,7 @@ class FiveBandPEQPlugin extends PluginBase {
     
     // Clean up other resources
     this.uiCreated = false;
+    super.cleanup();
   }
 }
 

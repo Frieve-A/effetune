@@ -26,20 +26,26 @@ class RSReverbPlugin extends PluginBase {
             const sampleRate = parameters.sampleRate; // Define sampleRate at the beginning
             // Room size scaling factor
             const roomScale = parameters.rs / 10.0;
+
+            const needsRandomizedDelays = !context.randomizedDelays || context.roomSize !== parameters.rs;
+            if (needsRandomizedDelays) {
+                const baseDelays = [19, 29, 41, 47, 23, 31, 37, 43];
+                context.randomizedDelays = new Array(baseDelays.length);
+                for (let i = 0; i < baseDelays.length; i++) {
+                    context.randomizedDelays[i] = (baseDelays[i] + Math.random() - 0.5) * roomScale;
+                }
+                context.roomSize = parameters.rs;
+            }
             
             // Initialize context state if needed
-            if (!context.initialized || context.sampleRate !== sampleRate) {
+            if (!context.initialized ||
+                context.sampleRate !== sampleRate ||
+                context.channelCount !== channelCount ||
+                needsRandomizedDelays) {
                 context.sampleRate = sampleRate;
-                const maxPreDelay = Math.ceil(sampleRate * 0.05); // 50ms
-                
-                // Initialize base delays and randomize them once
-                if (!context.randomizedDelays) {
-                    const baseDelays = [19, 29, 41, 47, 23, 31, 37, 43];
-                    context.randomizedDelays = new Array(baseDelays.length);
-                    for (let i = 0; i < baseDelays.length; i++) {
-                        context.randomizedDelays[i] = (baseDelays[i] + Math.random() - 0.5) * roomScale;
-                    }
-                }
+                context.channelCount = channelCount;
+                const maxPreDelayRaw = Math.ceil(sampleRate * 0.05); // 50ms
+                const maxPreDelay = maxPreDelayRaw > 0 ? maxPreDelayRaw : 1;
                 
                 // Pre-allocate arrays
                 context.preDelayBuffer = new Array(channelCount);
@@ -47,7 +53,8 @@ class RSReverbPlugin extends PluginBase {
                 context.allpassFilters = new Array(channelCount);
                 
                 // Calculate allpass filter delay once
-                const apfDelay = Math.ceil(0.005 * sampleRate); // 5ms
+                const apfDelayRaw = Math.ceil(0.005 * sampleRate); // 5ms
+                const apfDelay = apfDelayRaw > 0 ? apfDelayRaw : 1;
                 
                 // Initialize all buffers for all channels at once
                 for (let ch = 0; ch < channelCount; ch++) {
@@ -61,7 +68,8 @@ class RSReverbPlugin extends PluginBase {
                     const combs = new Array(context.randomizedDelays.length);
                     for (let j = 0; j < context.randomizedDelays.length; j++) {
                         const delay = context.randomizedDelays[j];
-                        const bufferLength = Math.ceil(delay * sampleRate * 0.001); // Convert ms to samples
+                        const bufferLengthRaw = Math.ceil(delay * sampleRate * 0.001); // Convert ms to samples
+                        const bufferLength = bufferLengthRaw > 0 ? bufferLengthRaw : 1;
                         combs[j] = {
                             buffer: new Float32Array(bufferLength),
                             pos: 0,
@@ -85,51 +93,6 @@ class RSReverbPlugin extends PluginBase {
                 context.initialized = true;
             }
 
-            // Reset if channel count changes - use similar optimizations as initialization
-            if (context.preDelayBuffer.length !== channelCount) {
-                const sRate = context.sampleRate;
-                const maxPreDelay = Math.ceil(sRate * 0.05);
-                const apfDelay = Math.ceil(0.005 * sRate);
-                
-                // Pre-allocate arrays
-                context.preDelayBuffer = new Array(channelCount);
-                context.combFilters = new Array(channelCount);
-                context.allpassFilters = new Array(channelCount);
-                
-                // Initialize all buffers for all channels at once
-                for (let ch = 0; ch < channelCount; ch++) {
-                    // Pre-delay buffer
-                    context.preDelayBuffer[ch] = {
-                        buffer: new Float32Array(maxPreDelay),
-                        pos: 0
-                    };
-                    
-                    // Comb filters
-                    const combs = new Array(context.randomizedDelays.length);
-                    for (let j = 0; j < context.randomizedDelays.length; j++) {
-                        const delay = context.randomizedDelays[j];
-                        const bufferLength = Math.ceil(delay * sRate * 0.001);
-                        combs[j] = {
-                            buffer: new Float32Array(bufferLength),
-                            pos: 0,
-                            hdState: 0,
-                            ldState: 0
-                        };
-                    }
-                    context.combFilters[ch] = combs;
-                    
-                    // Allpass filters - fixed at 2 filters
-                    const apfs = new Array(2);
-                    apfs[0] = { buffer: new Float32Array(apfDelay), pos: 0, lastOutput: 0 };
-                    apfs[1] = { buffer: new Float32Array(apfDelay), pos: 0, lastOutput: 0 };
-                    context.allpassFilters[ch] = apfs;
-                }
-                
-                // Reset damping filter states
-                context.hdStates = new Float32Array(channelCount);
-                context.ldStates = new Float32Array(channelCount);
-            }
-
             // Pre-calculate coefficients for the block - cache frequently used values
             const twoPI = 2 * Math.PI;
             
@@ -140,7 +103,7 @@ class RSReverbPlugin extends PluginBase {
             
             // Density and diffusion
             const numActiveCombs = parameters.ds;
-            const normalizationFactor = 0.4 / Math.max(1, numActiveCombs);
+            const normalizationFactor = 0.4 / (numActiveCombs < 1 ? 1 : numActiveCombs);
             const df = parameters.df;
             
             // Mix calculations
@@ -156,7 +119,7 @@ class RSReverbPlugin extends PluginBase {
             for (let i = 0; i < context.randomizedDelays.length; i++) {
                 const delayTime = context.randomizedDelays[i] * 0.001;
                 const gain = Math.pow(0.001, delayTime * rtCoeff);
-                feedbackGains[i] = Math.min(0.99, Math.max(-0.99, gain));
+                feedbackGains[i] = gain > 0.99 ? 0.99 : (gain < -0.99 ? -0.99 : gain);
             }
 
             // Precalculate values used in the inner loop
@@ -290,15 +253,15 @@ class RSReverbPlugin extends PluginBase {
 
     // Set parameters with validation
     setParameters(params) {
-        if (params.pd !== undefined) this.pd = Math.max(0, Math.min(50, Number(params.pd)));
-        if (params.rs !== undefined) this.rs = Math.max(2.0, Math.min(50.0, Number(params.rs)));
-        if (params.rt !== undefined) this.rt = Math.max(0.1, Math.min(10.0, Number(params.rt)));
-        if (params.ds !== undefined) this.ds = Math.max(4, Math.min(8, Math.floor(Number(params.ds))));
-        if (params.df !== undefined) this.df = Math.max(0.2, Math.min(0.8, Number(params.df)));
-        if (params.dp !== undefined) this.dp = Math.max(0, Math.min(100, Number(params.dp)));
-        if (params.hd !== undefined) this.hd = Math.max(1000, Math.min(20000, Number(params.hd)));
-        if (params.ld !== undefined) this.ld = Math.max(20, Math.min(500, Number(params.ld)));
-        if (params.mx !== undefined) this.mx = Math.max(0, Math.min(100, Number(params.mx)));
+        if (params.pd !== undefined) this.pd = this.parseFiniteNumber(params.pd, 0, 50, this.pd);
+        if (params.rs !== undefined) this.rs = this.parseFiniteNumber(params.rs, 2.0, 50.0, this.rs);
+        if (params.rt !== undefined) this.rt = this.parseFiniteNumber(params.rt, 0.1, 10.0, this.rt);
+        if (params.ds !== undefined) this.ds = Math.floor(this.parseFiniteNumber(params.ds, 4, 8, this.ds));
+        if (params.df !== undefined) this.df = this.parseFiniteNumber(params.df, 0.2, 0.8, this.df);
+        if (params.dp !== undefined) this.dp = this.parseFiniteNumber(params.dp, 0, 100, this.dp);
+        if (params.hd !== undefined) this.hd = this.parseFiniteNumber(params.hd, 1000, 20000, this.hd);
+        if (params.ld !== undefined) this.ld = this.parseFiniteNumber(params.ld, 20, 500, this.ld);
+        if (params.mx !== undefined) this.mx = this.parseFiniteNumber(params.mx, 0, 100, this.mx);
         this.updateParameters();
     }
 

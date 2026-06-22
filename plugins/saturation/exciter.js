@@ -69,6 +69,7 @@ class ExciterPlugin extends PluginBase {
             }
             
             const mixRatio = mix * 0.01;
+            const biasOffset = Math.tanh(drive * bias);
 
             // Cache parameters and filter coefficients for this processing block.
             const useHPF = context.useHPF;
@@ -92,7 +93,7 @@ class ExciterPlugin extends PluginBase {
                             const y = b0 * dry + b1 * x1 - a1 * y1;
                             x1 = dry;
                             y1 = (Math.abs(y) < 1.0e-25) ? 0 : y;
-                            const wet = Math.tanh(y1 * drive + bias);
+                            const wet = Math.tanh(drive * (y1 + bias)) - biasOffset;
                             data[offset + i] = dry + wet * mixRatio;
                         }
                     } else {
@@ -104,7 +105,7 @@ class ExciterPlugin extends PluginBase {
                             x1 = dry;
                             y2 = y1;
                             y1 = (Math.abs(y) < 1.0e-25) ? 0 : y;
-                            const wet = Math.tanh(y1 * drive + bias);
+                            const wet = Math.tanh(drive * (y1 + bias)) - biasOffset;
                             data[offset + i] = dry + wet * mixRatio;
                         }
                     }
@@ -112,7 +113,7 @@ class ExciterPlugin extends PluginBase {
                     // Process audio with HPF bypassed.
                     for (let i = 0; i < blockSize; i++) {
                         const dry = data[offset + i];
-                        const wet = Math.tanh(dry * drive + bias);
+                        const wet = Math.tanh(drive * (dry + bias)) - biasOffset;
                         data[offset + i] = dry + wet * mixRatio;
                     }
                 }
@@ -132,28 +133,24 @@ class ExciterPlugin extends PluginBase {
         let graphNeedsUpdate = false;
         
         if (params.hf !== undefined) {
-            const value = typeof params.hf === 'number' ? params.hf : parseFloat(params.hf);
-            this.hf = value < 500 ? 500 : (value > 10000 ? 10000 : value);
+            this.hf = this.parseFiniteNumber(params.hf, 500, 10000, this.hf);
             graphNeedsUpdate = true;
         }
         if (params.hs !== undefined) {
-            const value = typeof params.hs === 'number' ? params.hs : parseInt(params.hs);
-            this.hs = [0, 1, 2].includes(value) ? value : 1;
+            const value = this.parseFiniteNumber(params.hs, 0, 2, this.hs);
+            this.hs = this.isAllowedEnum(value, [0, 1, 2], this.hs);
             graphNeedsUpdate = true;
         }
         if (params.dr !== undefined) {
-            const value = typeof params.dr === 'number' ? params.dr : parseFloat(params.dr);
-            this.dr = value < 0 ? 0 : (value > 10 ? 10 : value);
+            this.dr = this.parseFiniteNumber(params.dr, 0, 10, this.dr);
             graphNeedsUpdate = true;
         }
         if (params.bs !== undefined) {
-            const value = typeof params.bs === 'number' ? params.bs : parseFloat(params.bs);
-            this.bs = value < -0.3 ? -0.3 : (value > 0.3 ? 0.3 : value);
+            this.bs = this.parseFiniteNumber(params.bs, -0.3, 0.3, this.bs);
             graphNeedsUpdate = true;
         }
         if (params.mx !== undefined) {
-            const value = typeof params.mx === 'number' ? params.mx : parseFloat(params.mx);
-            this.mx = value < 0 ? 0 : (value > 100 ? 100 : value);
+            this.mx = this.parseFiniteNumber(params.mx, 0, 100, this.mx);
         }
         if (params.enabled !== undefined) {
             this.enabled = params.enabled;

@@ -17,15 +17,23 @@ class TimeAlignmentPlugin extends PluginBase {
             // Define max delay time constant (ms)
             const maxDelayTime = 100;
 
+            const maxDelaySamplesRaw = Math.ceil(parameters.sampleRate * maxDelayTime * 0.001);
+            const maxDelaySamples = maxDelaySamplesRaw > 0 ? maxDelaySamplesRaw : 1;
+
             // Initialize delay buffers if needed
-            if (!context.delayBuffers || context.delayBuffers.length !== parameters.channelCount) {
-                const maxDelaySamples = Math.ceil(parameters.sampleRate * maxDelayTime * 0.001);
+            if (!context.delayBuffers ||
+                context.delayBuffers.length !== parameters.channelCount ||
+                context.sampleRate !== parameters.sampleRate ||
+                context.maxDelaySamples !== maxDelaySamples) {
                 context.delayBuffers = Array.from({ length: parameters.channelCount }, () => new Float32Array(maxDelaySamples));
                 context.delayIndices = Array.from({ length: parameters.channelCount }, () => 0);
+                context.sampleRate = parameters.sampleRate;
+                context.maxDelaySamples = maxDelaySamples;
             }
 
             // Calculate delay in samples
-            const delaySamples = Math.floor(parameters.dl * parameters.sampleRate / 1000);
+            const rawDelaySamples = Math.floor(parameters.dl * parameters.sampleRate / 1000);
+            const delaySamples = rawDelaySamples < 0 ? 0 : (rawDelaySamples > maxDelaySamples ? maxDelaySamples : rawDelaySamples);
 
             // Always process all channels
             for (let ch = 0; ch < parameters.channelCount; ch++) {

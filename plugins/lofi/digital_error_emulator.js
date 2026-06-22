@@ -39,8 +39,11 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
         "10": { name: 'CD Audio — CIRC Error Correction (Hold)',      unitSize: 588, bitsPerUnit: 0,    sampleFixed: true },  // 1 EFM frame = 588 ch-bits
         "10A": { name: 'CD Audio — CIRC Error Correction (Interpolated)',      unitSize: 588, bitsPerUnit: 0,    sampleFixed: true }  // 1 EFM frame = 588 ch-bits with improved interpolation
       };
+      this.REFERENCE_FS_KHZ_VALUES = [44.1, 48, 88.2, 96, 176.4, 192];
       this.registerProcessor(`
         if (!parameters.enabled) return data;
+        const { sampleRate: fs, blockSize, channelCount } = parameters;
+        const MAX_PLC_BUFFER_SAMPLES = 8192;
         // --- Processor State Initialization ---
         if (!context.initialized) {
           context.sampleCount = 0;
@@ -49,20 +52,10 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
           
           context.lastParams = {}; // Store last known parameters to detect changes
           
-          // Buffer for Packet Loss Concealment (PLC), sized for the largest possible error unit.
-          const MAX_PLC_BUFFER_SAMPLES = 8192;
-          context.plcBuffer = new Array(parameters.channelCount)
-            .fill(null).map(() => new Float32Array(MAX_PLC_BUFFER_SAMPLES));
-          
-          // Pink noise generator state for LC3 simulation
-          context.pinkNoiseState = new Float32Array(parameters.channelCount).fill(0);
-          
-          // Store the last good sample before an error, for interpolation
-          context.lastGoodSamples = new Float32Array(parameters.channelCount).fill(0);
-          
           // Delay buffer for next sample reference (1 sample delay) - only for 10A mode
           context.delayBuffer = null;
           context.delayBufferValid = false;
+          context.channelCount = -1;
           
           // CD-specific state for CIRC error correction simulation
           context.cdState = {
@@ -73,19 +66,38 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
           };
           context.initialized = true;
         }
-        const { sampleRate: fs, blockSize, channelCount } = parameters;
+        if (!context.plcBuffer || context.channelCount !== channelCount) {
+          // Buffer for Packet Loss Concealment (PLC), sized for the largest possible error unit.
+          context.plcBuffer = new Array(channelCount)
+            .fill(null).map(() => new Float32Array(MAX_PLC_BUFFER_SAMPLES));
+
+          // Pink noise generator state for LC3 simulation
+          context.pinkNoiseState = new Float32Array(channelCount).fill(0);
+
+          // Store the last good sample before an error, for interpolation
+          context.lastGoodSamples = new Float32Array(channelCount).fill(0);
+          context.delayBuffer = null;
+          context.delayBufferValid = false;
+          context.channelCount = channelCount;
+          context.nextEventTime = -1;
+          context.errorState.active = false;
+        }
         const CONSTANTS = ${JSON.stringify(this.CONSTANTS)};
         const modeInfo = ${JSON.stringify(this.MODE_DEFINITIONS)}[parameters.md];
         // --- Parameter Change Detection ---
         // If key parameters change, invalidate current schedule to apply new parameters.
         const paramsChanged = parameters.be !== context.lastParams.be ||
-                   parameters.md !== context.lastParams.md;
+                   parameters.md !== context.lastParams.md ||
+                   parameters.rf !== context.lastParams.rf ||
+                   fs !== context.lastParams.sampleRate;
         if (paramsChanged) {
           context.nextEventTime = -1; // Invalidate current schedule (will reschedule with new params)
           // Clear any active error state to apply new parameters immediately
-          context.errorState.active = false;
+          context.errorState = { active: false, samplesRemaining: 0, mode: null };
           context.lastParams.be = parameters.be;
           context.lastParams.md = parameters.md;
+          context.lastParams.rf = parameters.rf;
+          context.lastParams.sampleRate = fs;
         }
         // --- Dynamic Mode & Parameter Calculation ---
         const wetMix = parameters.wt / 100;
@@ -112,6 +124,11 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
           unitSamples = Math.max(1, Math.round(48 * fs / 48000)); // Scale 48 samples from 48kHz base
         } else if (parameters.md === "10" || parameters.md === "10A") { // CD Audio: EFM frame corresponds to audio samples
           unitSamples = Math.max(1, Math.round(fs / 7350)); // 1 EFM frame = 1/7350 second (44.1kHz/6 samples per frame)
+        }
+        if (!Number.isFinite(unitSamples) || unitSamples < 1) {
+          unitSamples = 1;
+        } else if (unitSamples > MAX_PLC_BUFFER_SAMPLES) {
+          unitSamples = MAX_PLC_BUFFER_SAMPLES;
         }
         // Calculate bits per error unit for probability calculation
         let bitsPerUnit = modeInfo.bitsPerUnit;
@@ -184,9 +201,10 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
         let delayedData = null;
         if (parameters.md === "10A") {
           // Initialize delay buffer if needed
-          if (!context.delayBuffer) {
-            context.delayBuffer = new Array(parameters.channelCount)
+          if (!context.delayBuffer || context.delayBuffer.length !== channelCount) {
+            context.delayBuffer = new Array(channelCount)
               .fill(null).map(() => new Float32Array(1));
+            context.delayBufferValid = false;
           }
           
           // Create delayed signal for interpolation
@@ -222,11 +240,54 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
           // --- Handle Ongoing Error State ---
           if (context.errorState.active) {
             const samplesToProcess = Math.min(blockSize - i, context.errorState.samplesRemaining);
-            // Mute modes are handled here. PLC modes are handled at event start.
+            // Mute modes are handled here. PLC modes with multi-block state are continued below.
             if (context.errorState.mode === '2B' || context.errorState.mode === '3B' || context.errorState.mode === '8' || context.errorState.mode === '9') {
               for (let j = 0; j < samplesToProcess; j++) {
                 for (let ch = 0; ch < channelCount; ch++) {
                   wetData[ch * blockSize + i + j] = 0;
+                }
+              }
+            } else if (context.errorState.mode === '6A' || context.errorState.mode === '6B') { // Bluetooth: Continue PLC over block boundaries
+              const totalErrorDuration = context.errorState.totalDuration || unitSamples;
+              const samplesProcessed = totalErrorDuration - context.errorState.samplesRemaining;
+              const storedLastGoodSamples = context.errorState.lastGoodSamples || context.lastGoodSamples;
+              const errorEndsInBlock = (i + samplesToProcess) < blockSize;
+
+              for (let j = 0; j < samplesToProcess; j++) {
+                const globalErrorProgress = samplesProcessed + j;
+                const warblePhase = 2 * Math.PI * CONSTANTS.BLUETOOTH_WARBLE_HZ * (currentGlobalSample + j) / fs;
+                for (let ch = 0; ch < channelCount; ch++) {
+                  const offset = ch * blockSize;
+                  const sampleIndex = i + j;
+                  const lastGoodSample = storedLastGoodSamples[ch];
+                  let concealedSample;
+
+                  if (context.errorState.mode === '6A') {
+                    const decay = Math.pow(CONSTANTS.BLUETOOTH_DECAY, globalErrorProgress);
+                    const warble = Math.sin(warblePhase) * CONSTANTS.BLUETOOTH_WARBLE_AMP;
+                    concealedSample = lastGoodSample * decay + warble;
+                  } else {
+                    const nextGoodSample = errorEndsInBlock ? data[offset + i + samplesToProcess] : lastGoodSample;
+                    const alpha6B = (globalErrorProgress + 1) / (totalErrorDuration + 1);
+                    concealedSample = lastGoodSample * (1 - alpha6B) + nextGoodSample * alpha6B;
+
+                    // Post-codec transmission error characteristic: High-frequency attenuation during concealment
+                    const hfRolloff = Math.exp(-globalErrorProgress * 0.1);
+                    concealedSample *= hfRolloff;
+
+                    // Add subtle pink noise artifact (digital transmission error characteristic)
+                    const white6B = Math.random() - 0.5;
+                    context.pinkNoiseState[ch] = (0.99765 * context.pinkNoiseState[ch]) + (white6B * 0.0990460);
+                    concealedSample += context.pinkNoiseState[ch] * CONSTANTS.LC3_ARTIFACT_AMP * 0.5;
+                    concealedSample = concealedSample * CONSTANTS.LC3_BLEND_FACTOR + lastGoodSample * (1 - CONSTANTS.LC3_BLEND_FACTOR);
+                  }
+
+                  if (concealedSample > 1.0) {
+                    concealedSample = 1.0;
+                  } else if (concealedSample < -1.0) {
+                    concealedSample = -1.0;
+                  }
+                  wetData[offset + sampleIndex] = concealedSample;
                 }
               }
             } else if (context.errorState.mode === '10' || context.errorState.mode === '10A') { // CD Audio: Continue concealment with real behavior
@@ -523,10 +584,12 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
             }
             
             const samplesInBlock = Math.min(blockSize - eventStart, errorDurationSamples);
+            const errorLastGoodSamples = new Float32Array(channelCount);
             // --- PLC Pre-computation ---
             // Capture previous good samples right before the error happens.
             for (let ch = 0; ch < channelCount; ch++) {
               const offset = ch * blockSize;
+              errorLastGoodSamples[ch] = eventStart > 0 ? wetData[offset + eventStart - 1] : context.lastGoodSamples[ch];
               const historyToCopy = Math.min(eventStart, unitSamples);
               if (historyToCopy > 0) {
                 const sourceStart = eventStart - historyToCopy;
@@ -543,7 +606,7 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
               // Channel-independent processing (only Mode 1)
               for (let ch = 0; ch < channelCount; ch++) {
                 const offset = ch * blockSize;
-                const lastGoodSample = eventStart > 0 ? wetData[offset + eventStart - 1] : context.lastGoodSamples[ch];
+                const lastGoodSample = errorLastGoodSamples[ch];
                 
                 for (let j = 0; j < samplesInBlock; j++) {
                   const sampleIndex = eventStart + j;
@@ -571,7 +634,7 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
                 const offset = ch * blockSize;
                 const plcBuffer = context.plcBuffer[ch];
                 
-                const lastGoodSample = eventStart > 0 ? wetData[offset + eventStart - 1] : context.lastGoodSamples[ch];
+                const lastGoodSample = errorLastGoodSamples[ch];
                 const errorEndsInBlock = (eventStart + errorDurationSamples) < blockSize;
                 let nextGoodSample;
                 if (parameters.md === "10A" && delayedData && context.delayBuffer) {
@@ -615,16 +678,8 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
                       wetData[offset + sampleIndex] = 0;
                       break;
                     case "4": // USB/1394/TB: Linear Interpolation PLC
-                    case "6B": // Bluetooth LE (LC3): Advanced PLC
                       const alpha = (j + 1) / (errorDurationSamples + 1);
                       let concealedSample = lastGoodSample * (1 - alpha) + nextGoodSample * alpha;
-                      if (parameters.md === '6B') {
-                        // Add 1/f (pink) noise artifact for LC3
-                        const white = Math.random() - 0.5;
-                        context.pinkNoiseState[ch] = (0.99765 * context.pinkNoiseState[ch]) + (white * 0.0990460);
-                        concealedSample += context.pinkNoiseState[ch] * CONSTANTS.LC3_ARTIFACT_AMP;
-                        concealedSample = concealedSample * CONSTANTS.LC3_BLEND_FACTOR + lastGoodSample * (1 - CONSTANTS.LC3_BLEND_FACTOR);
-                      }
                       wetData[offset + sampleIndex] = concealedSample;
                       break;
                     case "5A": // Dante/AES67/AVB: Packet Repeat PLC with fade (64 samp)
@@ -650,6 +705,7 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
                       const white6B = Math.random() - 0.5;
                       context.pinkNoiseState[ch] = (0.99765 * context.pinkNoiseState[ch]) + (white6B * 0.0990460);
                       concealedSample6B += context.pinkNoiseState[ch] * CONSTANTS.LC3_ARTIFACT_AMP * 0.5;
+                      concealedSample6B = concealedSample6B * CONSTANTS.LC3_BLEND_FACTOR + lastGoodSample * (1 - CONSTANTS.LC3_BLEND_FACTOR);
                       
                       wetData[offset + sampleIndex] = concealedSample6B;
                       break;
@@ -768,6 +824,7 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
                 active: true,
                 samplesRemaining: errorDurationSamples - samplesInBlock,
                 mode: parameters.md,
+                lastGoodSamples: errorLastGoodSamples,
                 totalDuration: errorDurationSamples // Store for CD concealment
               };
             } else {
@@ -799,9 +856,23 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
     }
     setParameters(params) {
       let needsUpdate = false;
-      if (params.be !== undefined && this.be !== params.be) {
-        this.be = Math.max(-12, Math.min(-2, params.be));
-        needsUpdate = true;
+      const parseNumber = (value) => {
+        if (typeof value === 'number') return value;
+        if (typeof value === 'string') {
+          const trimmedValue = value.trim();
+          if (trimmedValue !== '') return Number(trimmedValue);
+        }
+        return NaN;
+      };
+      if (params.be !== undefined) {
+        const value = parseNumber(params.be);
+        if (Number.isFinite(value)) {
+          const nextBe = value < -12 ? -12 : (value > -2 ? -2 : value);
+          if (this.be !== nextBe) {
+            this.be = nextBe;
+            needsUpdate = true;
+          }
+        }
       }
       if (params.md !== undefined && this.md !== params.md) {
         const validModes = ["1", "2A", "2B", "3A", "3B", "4", "5A", "5B", "5C", "6A", "6B", "8", "9", "10", "10A"];
@@ -810,13 +881,22 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
           needsUpdate = true;
         }
       }
-      if (params.rf !== undefined && this.rf !== params.rf) {
-        this.rf = params.rf;
-        needsUpdate = true;
+      if (params.rf !== undefined) {
+        const value = parseNumber(params.rf);
+        if (Number.isFinite(value) && this.REFERENCE_FS_KHZ_VALUES.includes(value) && this.rf !== value) {
+          this.rf = value;
+          needsUpdate = true;
+        }
       }
-      if (params.wt !== undefined && this.wt !== params.wt) {
-        this.wt = Math.max(0, Math.min(100, params.wt));
-        needsUpdate = true;
+      if (params.wt !== undefined) {
+        const value = parseNumber(params.wt);
+        if (Number.isFinite(value)) {
+          const nextWt = value < 0 ? 0 : (value > 100 ? 100 : value);
+          if (this.wt !== nextWt) {
+            this.wt = nextWt;
+            needsUpdate = true;
+          }
+        }
       }
       if (needsUpdate) {
         this.updateParameters();
@@ -888,7 +968,7 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
       const refFsRadioGroup = document.createElement('div');
       refFsRadioGroup.className = 'radio-group';
       
-      [44.1, 48, 88.2, 96, 176.4, 192].forEach(fsValue => {
+      this.REFERENCE_FS_KHZ_VALUES.forEach(fsValue => {
         const radioId = `${this.id}-${this.name}-fs-${fsValue}`;
         const radio = document.createElement('input');
         radio.type = 'radio';

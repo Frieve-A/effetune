@@ -41,16 +41,22 @@ class AutoLevelerPlugin extends PluginBase {
                 return data;
             }
 
-            // Initialize or reset context state if needed
-            let contextInitialized = context.initialized;
-            let contextSampleRate = context.sampleRate;
+            const windowSamplesRaw = Math.floor((parameters.tw / 1000) * SAMPLE_RATE);
+            const windowSamples = windowSamplesRaw > 0 ? windowSamplesRaw : 1;
 
-            if (!contextInitialized || contextSampleRate !== SAMPLE_RATE) {
-                const windowSamples = Math.floor((parameters.tw / 1000) * SAMPLE_RATE);
+            // Initialize or reset context state if needed
+            if (!context.initialized ||
+                context.sampleRate !== SAMPLE_RATE ||
+                context.channelCount !== CHANNEL_COUNT ||
+                context.blockSize !== BLOCK_SIZE ||
+                context.windowSamples !== windowSamples) {
                 context.buffer = new Float32Array(windowSamples);
                 context.bufferIndex = 0;
                 context.bufferFilled = false;
                 context.sampleRate = SAMPLE_RATE;
+                context.channelCount = CHANNEL_COUNT;
+                context.blockSize = BLOCK_SIZE;
+                context.windowSamples = windowSamples;
                 context.sum = 0;
                 context.currentGain = 1.0;
                 // K-weighting filter state
@@ -69,7 +75,6 @@ class AutoLevelerPlugin extends PluginBase {
             }
 
             // Per-block processing
-            const windowSamples = Math.floor((parameters.tw / 1000) * SAMPLE_RATE);
             const noiseGateLinear = Math.pow(10, parameters.gt / 10);
             const targetLufsLinear = Math.pow(10, parameters.tg / 10);
             const attackSamplesRaw = (parameters.at * SAMPLE_RATE) / 1000;
@@ -334,25 +339,25 @@ class AutoLevelerPlugin extends PluginBase {
 
     setParameters(params) {
         if (params.tg !== undefined) {
-            this.tg = params.tg > 0.0 ? 0.0 : (params.tg < -36.0 ? -36.0 : params.tg);
+            this.tg = this.parseFiniteNumber(params.tg, -36.0, 0.0, this.tg);
         }
         if (params.tw !== undefined) {
-            this.tw = params.tw > 10000 ? 10000 : (params.tw < 1000 ? 1000 : params.tw);
+            this.tw = this.parseFiniteNumber(params.tw, 1000, 10000, this.tw);
         }
         if (params.mg !== undefined) {
-            this.mg = params.mg > 12.0 ? 12.0 : (params.mg < 0.0 ? 0.0 : params.mg);
+            this.mg = this.parseFiniteNumber(params.mg, 0.0, 12.0, this.mg);
         }
         if (params.ng !== undefined) {
-            this.ng = params.ng > 0.0 ? 0.0 : (params.ng < -36.0 ? -36.0 : params.ng);
+            this.ng = this.parseFiniteNumber(params.ng, -36.0, 0.0, this.ng);
         }
         if (params.at !== undefined) {
-            this.at = params.at > 1000 ? 1000 : (params.at < 1 ? 1 : params.at);
+            this.at = this.parseFiniteNumber(params.at, 1, 1000, this.at);
         }
         if (params.rt !== undefined) {
-            this.rt = params.rt > 10000 ? 10000 : (params.rt < 10 ? 10 : params.rt);
+            this.rt = this.parseFiniteNumber(params.rt, 10, 10000, this.rt);
         }
         if (params.gt !== undefined) {
-            this.gt = params.gt > -24 ? -24 : (params.gt < -96 ? -96 : params.gt);
+            this.gt = this.parseFiniteNumber(params.gt, -96, -24, this.gt);
         }
         if (params.enabled !== undefined) {
             this.enabled = params.enabled;
@@ -563,6 +568,8 @@ class AutoLevelerPlugin extends PluginBase {
         this.outputLufsBuffer.fill(NaN);
         this.secondMarkers = [];
         this.prevTime = null;
+
+        super.cleanup();
     }
 }
 

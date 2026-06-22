@@ -294,7 +294,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         this.boundEventListeners.set(pointsSlider, pointsHandler);
         
         // Update slider when text input changes
-        pointsValue.addEventListener('change', (e) => {
+        const pointsValueHandler = (e) => {
             const numFFTPoints = parseInt(e.target.value);
             const exponent = Math.round(Math.log2(numFFTPoints)); // Allow nearest power of 2
             if (exponent >= 8 && exponent <= 14) {
@@ -304,7 +304,9 @@ class SpectrumAnalyzerPlugin extends PluginBase {
             } else {
                  pointsValue.value = 1 << this.pt; // Revert to current if invalid
             }
-        });
+        };
+        pointsValue.addEventListener('change', pointsValueHandler);
+        this.boundEventListeners.set(pointsValue, pointsValueHandler);
 
 
         pointsRow.appendChild(pointsLabel);
@@ -392,10 +394,17 @@ class SpectrumAnalyzerPlugin extends PluginBase {
             // Determine event type if not stored (assuming 'input' or 'click' primarily)
             // A more robust way is to store {event: 'input', handler: handler}
             element.removeEventListener('input', handler); 
+            element.removeEventListener('change', handler);
             element.removeEventListener('click', handler); 
         });
         this.boundEventListeners.clear();
+        if (this.observer) {
+            this.observer.disconnect();
+            this.observer = null;
+        }
+        this.canvas = null;
         this.lastProcessTime = performance.now() / 1000;
+        super.cleanup();
     }
 
     drawGraph() {

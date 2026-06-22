@@ -277,46 +277,37 @@ class OscillatorPlugin extends PluginBase {
 
     // Parameter setters with validation
     setFrequency(value) {
-        const parsedValue = typeof value === 'number' ? value : parseFloat(value);
-        this.fr = parsedValue < 20 ? 20 : (parsedValue > 96000 ? 96000 : parsedValue);
+        this.fr = this.parseFiniteNumber(value, 20, 96000, this.fr);
         this.updateParameters();
     }
 
     setVolume(value) {
-        const parsedValue = typeof value === 'number' ? value : parseFloat(value);
-        this.vl = parsedValue < -96 ? -96 : (parsedValue > 0 ? 0 : parsedValue);
+        this.vl = this.parseFiniteNumber(value, -96, 0, this.vl);
         this.updateParameters();
     }
 
     setPanning(value) {
-        const parsedValue = typeof value === 'number' ? value : parseFloat(value);
-        this.pn = parsedValue < -1 ? -1 : (parsedValue > 1 ? 1 : parsedValue);
+        this.pn = this.parseFiniteNumber(value, -1, 1, this.pn);
         this.updateParameters();
     }
 
     setWaveform(value) {
-        if (['sine', 'square', 'triangle', 'sawtooth', 'white', 'pink'].includes(value)) {
-            this.wf = value;
-            this.updateParameters();
-        }
+        this.wf = this.isAllowedEnum(value, ['sine', 'square', 'triangle', 'sawtooth', 'white', 'pink'], this.wf);
+        this.updateParameters();
     }
 
     setMode(value) {
-        if (['continuous', 'pulsed'].includes(value)) {
-            this.md = value;
-            this.updateParameters();
-        }
+        this.md = this.isAllowedEnum(value, ['continuous', 'pulsed'], this.md);
+        this.updateParameters();
     }
 
     setInterval(value) {
-        const parsedValue = typeof value === 'number' ? value : parseFloat(value);
-        this.it = parsedValue < 100 ? 100 : (parsedValue > 2000 ? 2000 : parsedValue);
+        this.it = this.parseFiniteNumber(value, 100, 2000, this.it);
         this.updateParameters();
     }
 
     setWidth(value) {
-        const parsedValue = typeof value === 'number' ? value : parseFloat(value);
-        this.wd = parsedValue < 2 ? 2 : (parsedValue > 100 ? 100 : parsedValue);
+        this.wd = this.parseFiniteNumber(value, 2, 100, this.wd);
         this.updateParameters();
     }
 

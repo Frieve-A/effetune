@@ -10,7 +10,7 @@ class FiveBandDynamicEQ extends PluginBase {
             q: 1.0,         // Q factor
             mg: 6.0,        // max gain (dB)
             th: -18.0 - i*3,// threshold (dB)
-            r: 30.1,        // ratio (linear)
+            r: 2.0,         // ratio (linear)
             kn: 3.0,        // knee (dB)
             a: 10.0,        // attack (ms)
             rl: 100.0,      // release (ms)
@@ -206,9 +206,6 @@ class FiveBandDynamicEQ extends PluginBase {
 
                     if (!params.enabled) {
                         if (i === blockSize - 1) { smoothedGainsForMessage[bandIdx] = 0.0; }
-                        // Output of this band is the input (already in processedSample)
-                        // Swap buffers for next band iteration
-                        [currentSample, processedSample] = [processedSample, currentSample];
                         continue; // Skip processing for this band
                     }
 
@@ -445,12 +442,11 @@ class FiveBandDynamicEQ extends PluginBase {
         }
     }
 
-    // Note: Ratio is stored as slider values (-100 to 200), not linear ratios
+    // Ratio is stored internally as a linear ratio. The UI converts slider positions at the boundary.
     setBandRatio(index, value) {
         const numValue = typeof value === 'number' ? value : parseFloat(value);
         if (index >= 0 && index < this.numBands && !isNaN(numValue)) {
-            // Input 'value' is the slider value (-100 to 200)
-            this.bs[index].r = Math.max(-100, Math.min(200.0, numValue)); // Clamp slider value
+            this.bs[index].r = Math.max(0.1, Math.min(100.0, numValue));
             this.updateParameters();
             this._drawGraph();
         }
@@ -509,6 +505,16 @@ class FiveBandDynamicEQ extends PluginBase {
 
     // --- UI Creation ---
     createUI() {
+        this.stopAnimation();
+        if (this.observer) {
+            this.observer.disconnect();
+            this.observer = null;
+        }
+        if (this.resizeObserver) {
+            this.resizeObserver.disconnect();
+            this.resizeObserver = null;
+        }
+
         const container = document.createElement('div');
         container.className = 'five-band-dynamic-eq-plugin-ui plugin-container';
         
@@ -1115,7 +1121,7 @@ class FiveBandDynamicEQ extends PluginBase {
                 // Ratio parameter - linear ratio value with precision formatting
                 updateNamedControl(
                     'Ratio', 
-                    band.r, 
+                    this._ratioToSlider(band.r),
                     band.r.toPrecision(3)
                 );
                 
@@ -1197,6 +1203,7 @@ class FiveBandDynamicEQ extends PluginBase {
         }
         this.canvas = null;
         this.ctx = null;
+        super.cleanup();
     }
 
     // --- Audio Processor Communication ---
@@ -1425,4 +1432,4 @@ class FiveBandDynamicEQ extends PluginBase {
 }
 
 // Register the plugin globally
-window.FiveBandDynamicEQ = FiveBandDynamicEQ; 
+window.FiveBandDynamicEQ = FiveBandDynamicEQ;

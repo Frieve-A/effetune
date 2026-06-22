@@ -890,6 +890,8 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;
         }
+
+        super.cleanup();
     }
 }
 

@@ -161,7 +161,7 @@ lang: en
   - Q: 控制带宽/锐度 (0.1-10.0)
   - Max Gain: 设置最大增益调整 (0-24dB)
   - Threshold: 设置处理开始电平 (-60dB 至 0dB)
-  - Ratio: 控制处理强度 (0.1-10.0)
+  - Ratio: 控制处理强度 (0.1-100.0)
     - Below 1.0: Expander (当信号超过阈值时增强)
     - Above 1.0: Compressor (当信号超过阈值时压缩)
   - Knee Width: 在阈值附近平滑过渡 (0-30dB)

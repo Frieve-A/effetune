@@ -24,7 +24,7 @@ class VolumePlugin extends PluginBase {
     // Set parameters
     setParameters(params) {
         if (params.vl !== undefined) {
-            this.vl = params.vl < -60 ? -60 : (params.vl > 24 ? 24 : params.vl);
+            this.vl = this.parseFiniteNumber(params.vl, -60, 24, this.vl);
         }
         if (params.enabled !== undefined) {
             this.enabled = params.enabled;

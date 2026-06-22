@@ -115,13 +115,13 @@ class TransientShaperPlugin extends PluginBase {
     }
 
     setParameters(params) {
-        if (params.fa !== undefined) this.fa = Math.min(10.0, Math.max(0.1, params.fa));
-        if (params.fr !== undefined) this.fr = Math.min(200, Math.max(1, params.fr));
-        if (params.sa !== undefined) this.sa = Math.min(100, Math.max(1, params.sa));
-        if (params.sr !== undefined) this.sr = Math.min(1000, Math.max(50, params.sr));
-        if (params.gt !== undefined) this.gt = Math.min(24, Math.max(-24, params.gt));
-        if (params.gs !== undefined) this.gs = Math.min(24, Math.max(-24, params.gs));
-        if (params.sm !== undefined) this.sm = Math.min(20.0, Math.max(0.1, params.sm));
+        if (params.fa !== undefined) this.fa = this.parseFiniteNumber(params.fa, 0.1, 10.0, this.fa);
+        if (params.fr !== undefined) this.fr = this.parseFiniteNumber(params.fr, 1, 200, this.fr);
+        if (params.sa !== undefined) this.sa = this.parseFiniteNumber(params.sa, 1, 100, this.sa);
+        if (params.sr !== undefined) this.sr = this.parseFiniteNumber(params.sr, 50, 1000, this.sr);
+        if (params.gt !== undefined) this.gt = this.parseFiniteNumber(params.gt, -24, 24, this.gt);
+        if (params.gs !== undefined) this.gs = this.parseFiniteNumber(params.gs, -24, 24, this.gs);
+        if (params.sm !== undefined) this.sm = this.parseFiniteNumber(params.sm, 0.1, 20.0, this.sm);
         if (params.enabled !== undefined) this.enabled = params.enabled;
         this.updateParameters();
     }
@@ -322,6 +322,8 @@ class TransientShaperPlugin extends PluginBase {
             this.observer.disconnect();
             this.observer = null;
         }
+
+        super.cleanup();
     }
 }
 

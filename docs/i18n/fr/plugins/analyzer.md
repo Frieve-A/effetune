@@ -45,8 +45,7 @@ Un oscilloscope de qualité professionnelle qui affiche les formes d'onde audio 
 - **Trigger Mode**
   - Auto : Mises à jour continues même sans déclenchement
   - Normal : Fige l'affichage jusqu'au prochain déclenchement
-- **Trigger Source** - Canal de déclenchement
-  - Sélection du canal gauche/droit
+- La détection du déclenchement utilise la moyenne des canaux gauche et droit. Une entrée mono est utilisée directement.
 - **Trigger Level** - Niveau d'amplitude qui démarre la capture
   - Plage : -1 à 1 (amplitude normalisée)
 - **Trigger Edge**
@@ -87,9 +86,7 @@ Crée de magnifiques motifs colorés qui montrent l'évolution de votre musique 
 - **Points** - Niveau de détail des motifs (256 à 16384)
   - Nombres plus hauts : Motifs plus précis
   - Nombres plus bas : Visuels plus fluides
-- **Channel** - Quelle partie du champ stéréo afficher
-  - All : Tout combiné
-  - Left/Right : Côtés individuels
+- L'analyseur utilise la moyenne des canaux gauche et droit. Une entrée mono est analysée directement.
 
 ## Spectrum Analyzer
 
@@ -115,9 +112,7 @@ Crée un affichage visuel en temps réel des fréquences de votre musique, des b
 - **Points** - Niveau de détail de l'affichage (256 à 16384)
   - Nombres plus hauts : Plus de détails précis
   - Nombres plus bas : Mouvement plus fluide
-- **Channel** - Quelle partie du champ stéréo afficher
-  - All : Tout combiné
-  - Left/Right : Côtés individuels
+- L'analyseur utilise la moyenne des canaux gauche et droit. Une entrée mono est analysée directement.
 
 ### Façons Amusantes d'Utiliser Ces Outils
 

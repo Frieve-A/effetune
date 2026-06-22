@@ -144,11 +144,11 @@ class HardClippingPlugin extends PluginBase {
         let graphNeedsUpdate = false;
 
         if (params.th !== undefined) {
-            this.th = params.th < -60 ? -60 : (params.th > 0 ? 0 : params.th);
+            this.th = this.parseFiniteNumber(params.th, -60, 0, this.th);
             graphNeedsUpdate = true;
         }
         if (params.md !== undefined) {
-            this.md = params.md;
+            this.md = this.isAllowedEnum(params.md, ['both', 'positive', 'negative'], this.md);
             graphNeedsUpdate = true;
         }
         if (params.enabled !== undefined) {

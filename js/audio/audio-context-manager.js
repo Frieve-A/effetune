@@ -238,6 +238,7 @@ export class AudioContextManager {
 
             // Create worklet node
             this.workletNode = new AudioWorkletNode(this.audioContext, 'plugin-processor', {
+                channelCount: this.audioContext.destination.channelCount,
                 outputChannelCount: [this.audioContext.destination.channelCount],
                 processorOptions: {
                     initialOutputChannelCount: this.audioContext.destination.channelCount,

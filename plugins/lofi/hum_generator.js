@@ -26,19 +26,26 @@ class HumGeneratorPlugin extends PluginBase {
             const INV_SAMPLE_RATE = 1.0 / sampleRate;
             const DENORMAL_OFFSET = 1.0e-25;
 
+            const maxCombDelaySamples = Math.ceil(sampleRate / 20.0) + 1;
+
             // Initialize context (state) if necessary
-            if (!context.initialized || context.lastChannelCount !== channelCount) {
+            if (!context.initialized ||
+                context.lastChannelCount !== channelCount ||
+                context.sampleRate !== sampleRate ||
+                context.delayBufferLength !== maxCombDelaySamples) {
                 context.lfoPhase1 = 0.0;
                 context.lfoPhase2 = 0.0;
                 context.oscillatorPhase = 0.0;
-                // Max delay for 20Hz fundamental to prevent buffer resizing
-                context.delayBuffers = Array.from({ length: channelCount }, () => new Float32Array(Math.ceil(sampleRate / 20.0)));
+                // Max delay for 10Hz fundamental plus one sample for safe circular reads.
+                context.delayBuffers = Array.from({ length: channelCount }, () => new Float32Array(maxCombDelaySamples));
                 context.delayPositions = new Uint32Array(channelCount).fill(0);
                 // Biquad filter states for each channel
                 context.harmonicFilterStates = Array.from({ length: channelCount }, () => ({ x1: 0.0, x2: 0.0, y1: 0.0, y2: 0.0 }));
                 context.toneFilterStates = Array.from({ length: channelCount }, () => ({ x1: 0.0, x2: 0.0, y1: 0.0, y2: 0.0 }));
                 
                 context.lastChannelCount = channelCount;
+                context.sampleRate = sampleRate;
+                context.delayBufferLength = maxCombDelaySamples;
                 context.initialized = true;
             }
 

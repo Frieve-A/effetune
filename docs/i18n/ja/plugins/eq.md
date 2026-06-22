@@ -161,7 +161,7 @@ lang: en
   - Q: 帯域幅/シャープネスを制御 (0.1-10.0)
   - Max Gain: 最大ゲイン調整を設定 (0-24dB)
   - Threshold: 処理開始レベルを設定 (-60dB to 0dB)
-  - Ratio: 処理の強度を制御 (0.1-10.0)
+  - Ratio: 処理の強度を制御 (0.1-100.0)
     - Below 1.0: Expander (信号がThresholdを超えたときに拡張する)
     - Above 1.0: Compressor (信号がThresholdを超えたときに減衰する)
   - Knee Width: Threshold周辺での滑らかな変化 (0-30dB)

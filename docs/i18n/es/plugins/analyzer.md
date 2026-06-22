@@ -45,8 +45,7 @@ Un osciloscopio de grado profesional que muestra formas de onda de audio en tiem
 - **Trigger Mode**
   - Auto: Actualizaciones continuas incluso sin disparo
   - Normal: Congela la visualización hasta el siguiente disparo
-- **Trigger Source** - Qué canal usar para el disparo
-  - Selección de canal izquierdo/derecho
+- La detección del disparo usa el promedio de los canales izquierdo y derecho. La entrada mono se usa directamente.
 - **Trigger Level** - Nivel de amplitud que inicia la captura
   - Rango: -1 a 1 (amplitud normalizada)
 - **Trigger Edge**
@@ -87,9 +86,7 @@ Crea hermosos patrones coloridos que muestran cómo tu música cambia con el tie
 - **Points** - Qué tan detallados son los patrones (256 a 16384)
   - Números más altos: Patrones más precisos
   - Números más bajos: Visuales más suaves
-- **Channel** - Qué parte del campo estéreo mostrar
-  - All: Todo combinado
-  - Left/Right: Lados individuales
+- El analizador usa el promedio de los canales izquierdo y derecho. La entrada mono se analiza directamente.
 
 ## Spectrum Analyzer
 
@@ -115,9 +112,7 @@ Crea una visualización en tiempo real de las frecuencias de tu música, desde g
 - **Points** - Qué tan detallada es la visualización (256 a 16384)
   - Números más altos: Más detalle preciso
   - Números más bajos: Movimiento más suave
-- **Channel** - Qué parte del campo estéreo mostrar
-  - All: Todo combinado
-  - Left/Right: Lados individuales
+- El analizador usa el promedio de los canales izquierdo y derecho. La entrada mono se analiza directamente.
 
 ### Formas Divertidas de Usar Estas Herramientas
 

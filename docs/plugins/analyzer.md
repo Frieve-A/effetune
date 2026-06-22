@@ -45,8 +45,7 @@ A professional-grade oscilloscope that displays real-time audio waveforms, helpi
 - **Trigger Mode**
   - Auto: Continuous updates even without trigger
   - Normal: Freezes display until next trigger
-- **Trigger Source** - Which channel to trigger from
-  - Left/Right channel selection
+- Trigger detection uses the averaged left/right waveform. Mono input is used directly.
 - **Trigger Level** - Amplitude level that starts capture
   - Range: -1 to 1 (normalized amplitude)
 - **Trigger Edge**
@@ -87,9 +86,7 @@ Creates beautiful, colorful patterns that show how your music changes over time.
 - **Points** - How detailed the patterns are (256 to 16384)
   - Higher numbers: More precise patterns
   - Lower numbers: Smoother visuals
-- **Channel** - Which part of the stereo field to show
-  - All: Everything combined
-  - Left/Right: Individual sides
+- The analyzer uses the average of the left and right channels. Mono input is analyzed directly.
 
 ## Spectrum Analyzer
 
@@ -115,9 +112,7 @@ Creates a real-time visual display of your music's frequencies, from deep bass t
 - **Points** - How detailed the display is (256 to 16384)
   - Higher numbers: More precise detail
   - Lower numbers: Smoother movement
-- **Channel** - Which part of the stereo field to show
-  - All: Everything combined
-  - Left/Right: Individual sides
+- The analyzer uses the average of the left and right channels. Mono input is analyzed directly.
 
 ### Fun Ways to Use These Tools
 

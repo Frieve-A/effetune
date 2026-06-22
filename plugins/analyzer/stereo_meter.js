@@ -9,6 +9,7 @@ class StereoMeterPlugin extends PluginBase {
     this.canvas = null;
     this.ctx = null;
     this.animationId = null;
+    this.animationFrameId = null;
     this.lastDrawTime = 0;
 
     // Sample rate (will be updated from processor parameters)
@@ -504,15 +505,22 @@ class StereoMeterPlugin extends PluginBase {
   }
 
   cleanup() {
-    if (this.animationId) {
-      cancelAnimationFrame(this.animationId);
-      this.animationId = null;
+    this.stopAnimation();
+    if (this.observer) {
+      if (this.canvas) {
+        this.observer.unobserve(this.canvas);
+      }
+      this.observer.disconnect();
+      this.observer = null;
     }
     for (const [element, listener] of this.boundEventListeners) {
       element.removeEventListener('change', listener);
       element.removeEventListener('input', listener);
     }
     this.boundEventListeners.clear();
+    this.canvas = null;
+    this.ctx = null;
+    super.cleanup();
   }
 }
 

@@ -232,6 +232,10 @@ class DattorroPlateReverbPlugin extends PluginBase {
             let tankAInterpState = context.tankAInterpState;
             let tankBInterpState = context.tankBInterpState;
 
+            // Stereo-only Dattorro model: keep one shared mono-to-stereo plate.
+            // Multichannel routed input is intentionally folded into this plate,
+            // preserving the original stereo algorithm instead of creating
+            // independent tanks per channel pair.
             // Process audio
             for (let i = 0; i < blockSize; i++) {
                 // Sum input channels to mono
@@ -491,17 +495,17 @@ class DattorroPlateReverbPlugin extends PluginBase {
     }
 
     setParameters(params) {
-        if (params.pd !== undefined) this.pd = Math.max(0.0, Math.min(100.0, Number(params.pd)));
-        if (params.bw !== undefined) this.bw = Math.max(0.0, Math.min(1.0, Number(params.bw)));
-        if (params.id1 !== undefined) this.id1 = Math.max(0.0, Math.min(1.0, Number(params.id1)));
-        if (params.id2 !== undefined) this.id2 = Math.max(0.0, Math.min(1.0, Number(params.id2)));
-        if (params.dc !== undefined) this.dc = Math.max(0.0, Math.min(1.0, Number(params.dc)));
-        if (params.dd1 !== undefined) this.dd1 = Math.max(0.0, Math.min(1.0, Number(params.dd1)));
-        if (params.dp !== undefined) this.dp = Math.max(0.0, Math.min(1.0, Number(params.dp)));
-        if (params.md !== undefined) this.md = Math.max(0.0, Math.min(16.0, Number(params.md)));
-        if (params.mr !== undefined) this.mr = Math.max(0.0, Math.min(10.0, Number(params.mr)));
-        if (params.wm !== undefined) this.wm = Math.max(0, Math.min(100, Math.floor(Number(params.wm))));
-        if (params.dm !== undefined) this.dm = Math.max(0, Math.min(100, Math.floor(Number(params.dm))));
+        if (params.pd !== undefined) this.pd = this.parseFiniteNumber(params.pd, 0.0, 100.0, this.pd);
+        if (params.bw !== undefined) this.bw = this.parseFiniteNumber(params.bw, 0.0, 1.0, this.bw);
+        if (params.id1 !== undefined) this.id1 = this.parseFiniteNumber(params.id1, 0.0, 1.0, this.id1);
+        if (params.id2 !== undefined) this.id2 = this.parseFiniteNumber(params.id2, 0.0, 1.0, this.id2);
+        if (params.dc !== undefined) this.dc = this.parseFiniteNumber(params.dc, 0.0, 1.0, this.dc);
+        if (params.dd1 !== undefined) this.dd1 = this.parseFiniteNumber(params.dd1, 0.0, 1.0, this.dd1);
+        if (params.dp !== undefined) this.dp = this.parseFiniteNumber(params.dp, 0.0, 1.0, this.dp);
+        if (params.md !== undefined) this.md = this.parseFiniteNumber(params.md, 0.0, 16.0, this.md);
+        if (params.mr !== undefined) this.mr = this.parseFiniteNumber(params.mr, 0.0, 10.0, this.mr);
+        if (params.wm !== undefined) this.wm = Math.floor(this.parseFiniteNumber(params.wm, 0, 100, this.wm));
+        if (params.dm !== undefined) this.dm = Math.floor(this.parseFiniteNumber(params.dm, 0, 100, this.dm));
         this.updateParameters();
     }
 

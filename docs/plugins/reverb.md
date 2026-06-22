@@ -18,6 +18,8 @@ A collection of plugins that add space and atmosphere to your music. These effec
 
 A classic plate reverb implementation based on Jon Dattorro's renowned algorithm from the 1997 paper "Effect Design, Part 1: Reverberator and Other Filters." This algorithm is celebrated for its lush, smooth sound quality and has become a reference standard in digital reverb design. Perfect for adding rich, shimmering ambience to your music.
 
+Routing note: Dattorro Plate Reverb is a stereo plate model. When routed with more than two channels, all routed input channels feed one shared mono-to-stereo plate, but the wet/dry mix is written only to the first routed stereo pair. Additional channels contribute to the plate input and otherwise pass through unchanged, including when Dry Mix is 0%; they do not receive a wet return and are not independent plate tanks.
+
 ### Listening Experience Guide
 - Lush Plate Sound:
   - Classic studio plate reverb character
@@ -134,6 +136,8 @@ The Dattorro Plate Reverb brings a classic, professional-quality reverb to your 
 ## FDN Reverb
 
 A sophisticated reverb effect based on Feedback Delay Network (FDN) architecture using a Hadamard diffusion matrix. This creates rich, complex reverberation with excellent density and natural decay characteristics, perfect for enhancing your music listening experience with immersive spatial effects.
+
+Routing note: FDN Reverb is a stereo reverb model with one shared feedback tank. When routed with more than two channels, each routed channel advances that shared tank in sequence rather than using independent per-channel tanks. Channel 1 receives the left wet signal, and channels 2+ receive the right wet signal.
 
 ### Listening Experience Guide
 - Natural Room Feel:

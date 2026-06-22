@@ -537,6 +537,10 @@ class MultibandCompressorPlugin extends PluginBase {
 
       // --- Envelope Detection and Gain Application Stage ---
       const envelopeStates = context.envelopeStates; // Local ref
+      const fadeInState = context.fadeIn;
+      const fadeStartCounter = fadeInState ? fadeInState.counter : 0;
+      const fadeLen = fadeInState ? fadeInState.length : 0;
+      const fadeActive = fadeInState && fadeStartCounter < fadeLen;
 
       for (let ch = 0; ch < channelCount; ch++) {
         const bandSignalsCh = context.bandSignals[ch];
@@ -681,28 +685,17 @@ class MultibandCompressorPlugin extends PluginBase {
         } // End of band loop
 
         // --- Final Output Generation for Channel ---
-        const fadeInState = context.fadeIn;
-        // Apply fade-in if active
-        if (fadeInState && fadeInState.counter < fadeInState.length) {
-          const fadeLen = fadeInState.length;
-          for (let i = 0; i < blockSize; i++) {
-              // Replace Math.min with ternary for better performance
-              const counterRatio = fadeInState.counter / fadeLen;
+        // Apply fade-in per frame so every channel gets the same ramp.
+        if (fadeActive) {
+          let fadeCounter = fadeStartCounter;
+          let i = 0;
+          for (; i < blockSize && fadeCounter < fadeLen; i++, fadeCounter++) {
+              const counterRatio = fadeCounter / fadeLen;
               const fadeGain = counterRatio > 1.0 ? 1.0 : counterRatio;
               result[resultOffset + i] = outputBuffer[i] * fadeGain;
-              fadeInState.counter++;
-              // Stop applying gain calculation once counter reaches length within the block
-              if (fadeInState.counter >= fadeLen) {
-                  // Copy remaining samples directly if fade finished mid-block
-                  for (let k = i + 1; k < blockSize; k++) {
-                      result[resultOffset + k] = outputBuffer[k];
-                  }
-                  break; // Exit inner fade loop
-              }
           }
-          // If fade completed exactly at block end or before
-          if (fadeInState.counter >= fadeLen) {
-              context.fadeIn = null; // Deactivate fade
+          for (; i < blockSize; i++) {
+              result[resultOffset + i] = outputBuffer[i];
           }
         } else {
           // No fade-in active, copy processed summed signal directly to the final result buffer
@@ -711,6 +704,16 @@ class MultibandCompressorPlugin extends PluginBase {
         }
 
       } // End of channel loop
+
+      if (fadeActive) {
+        const fadeNextCounter = fadeStartCounter + blockSize;
+        fadeInState.counter = fadeNextCounter >= fadeLen ? fadeLen : fadeNextCounter;
+        if (fadeInState.counter >= fadeLen) {
+          context.fadeIn = null;
+        }
+      } else if (fadeInState) {
+        context.fadeIn = null;
+      }
 
       // Attach measurements to the output
       result.measurements = {
@@ -752,24 +755,64 @@ class MultibandCompressorPlugin extends PluginBase {
     return;
   }
 
+  _normalizeCrossoverFrequencies() {
+    let f1 = this.f1;
+    f1 = f1 < 20 ? 20 : (f1 > 500 ? 500 : f1);
+
+    let f2 = this.f2;
+    const minF2 = f1 > 100 ? f1 : 100;
+    f2 = f2 < minF2 ? minF2 : (f2 > 2000 ? 2000 : f2);
+
+    let f3 = this.f3;
+    const minF3 = f2 > 500 ? f2 : 500;
+    f3 = f3 < minF3 ? minF3 : (f3 > 8000 ? 8000 : f3);
+
+    let f4 = this.f4;
+    const minF4 = f3 > 1000 ? f3 : 1000;
+    f4 = f4 < minF4 ? minF4 : (f4 > 20000 ? 20000 : f4);
+
+    this.f1 = f1;
+    this.f2 = f2;
+    this.f3 = f3;
+    this.f4 = f4;
+  }
+
+  _syncCrossoverControls() {
+    if (typeof document === 'undefined') return;
+    const values = [this.f1, this.f2, this.f3, this.f4];
+    for (let i = 0; i < values.length; i++) {
+      const freqNum = i + 1;
+      const slider = document.getElementById(`${this.id}-${this.name}-freq${freqNum}-slider`);
+      const number = document.getElementById(`${this.id}-${this.name}-freq${freqNum}-number`);
+      if (slider) slider.value = values[i];
+      if (number) number.value = values[i];
+    }
+  }
+
   setParameters(params) {
     let graphNeedsUpdate = false;
+    let crossoverChanged = false;
 
-    // Update crossover frequencies with bounds checking
+    // Update crossover frequencies and normalize the full chain afterward.
     if (params.f1 !== undefined) {
-      this.f1 = Math.max(20, Math.min(500, params.f1));
-      graphNeedsUpdate = true;
+      this.f1 = this.parseFiniteNumber(params.f1, 20, 500, this.f1);
+      crossoverChanged = true;
     }
     if (params.f2 !== undefined) {
-      this.f2 = Math.max(100, Math.min(2000, Math.max(this.f1, params.f2)));
-      graphNeedsUpdate = true;
+      this.f2 = this.parseFiniteNumber(params.f2, 100, 2000, this.f2);
+      crossoverChanged = true;
     }
     if (params.f3 !== undefined) {
-      this.f3 = Math.max(500, Math.min(8000, Math.max(this.f2, params.f3)));
-      graphNeedsUpdate = true;
+      this.f3 = this.parseFiniteNumber(params.f3, 500, 8000, this.f3);
+      crossoverChanged = true;
     }
     if (params.f4 !== undefined) {
-      this.f4 = Math.max(1000, Math.min(20000, Math.max(this.f3, params.f4)));
+      this.f4 = this.parseFiniteNumber(params.f4, 1000, 20000, this.f4);
+      crossoverChanged = true;
+    }
+    if (crossoverChanged) {
+      this._normalizeCrossoverFrequencies();
+      this._syncCrossoverControls();
       graphNeedsUpdate = true;
     }
 
@@ -778,12 +821,12 @@ class MultibandCompressorPlugin extends PluginBase {
       params.bands.forEach((bandParams, i) => {
         if (i < 5) {
           const band = this.bands[i];
-          if (bandParams.t !== undefined) band.t = Math.max(-60, Math.min(0, bandParams.t));
-          if (bandParams.r !== undefined) band.r = Math.max(0.5, Math.min(20, bandParams.r));
-          if (bandParams.a !== undefined) band.a = Math.max(0.1, Math.min(100, bandParams.a));
-          if (bandParams.rl !== undefined) band.rl = Math.max(10, Math.min(1000, bandParams.rl));
-          if (bandParams.k !== undefined) band.k = Math.max(0, Math.min(12, bandParams.k));
-          if (bandParams.g !== undefined) band.g = Math.max(-12, Math.min(12, bandParams.g));
+          if (bandParams.t !== undefined) band.t = this.parseFiniteNumber(bandParams.t, -60, 0, band.t);
+          if (bandParams.r !== undefined) band.r = this.parseFiniteNumber(bandParams.r, 0.5, 20, band.r);
+          if (bandParams.a !== undefined) band.a = this.parseFiniteNumber(bandParams.a, 0.1, 100, band.a);
+          if (bandParams.rl !== undefined) band.rl = this.parseFiniteNumber(bandParams.rl, 10, 1000, band.rl);
+          if (bandParams.k !== undefined) band.k = this.parseFiniteNumber(bandParams.k, 0, 12, band.k);
+          if (bandParams.g !== undefined) band.g = this.parseFiniteNumber(bandParams.g, -12, 12, band.g);
         }
       });
       graphNeedsUpdate = true;
@@ -799,12 +842,12 @@ class MultibandCompressorPlugin extends PluginBase {
         console.warn(`Band ${params.band} is undefined`);
         return;
       }
-      if (params.t !== undefined) { band.t = Math.max(-60, Math.min(0, params.t)); graphNeedsUpdate = true; }
-      if (params.r !== undefined) { band.r = Math.max(0.5, Math.min(20, params.r)); graphNeedsUpdate = true; }
-      if (params.a !== undefined) band.a = Math.max(0.1, Math.min(100, params.a));
-      if (params.rl !== undefined) band.rl = Math.max(10, Math.min(1000, params.rl));
-      if (params.k !== undefined) { band.k = Math.max(0, Math.min(12, params.k)); graphNeedsUpdate = true; }
-      if (params.g !== undefined) { band.g = Math.max(-12, Math.min(12, params.g)); graphNeedsUpdate = true; }
+      if (params.t !== undefined) { band.t = this.parseFiniteNumber(params.t, -60, 0, band.t); graphNeedsUpdate = true; }
+      if (params.r !== undefined) { band.r = this.parseFiniteNumber(params.r, 0.5, 20, band.r); graphNeedsUpdate = true; }
+      if (params.a !== undefined) band.a = this.parseFiniteNumber(params.a, 0.1, 100, band.a);
+      if (params.rl !== undefined) band.rl = this.parseFiniteNumber(params.rl, 10, 1000, band.rl);
+      if (params.k !== undefined) { band.k = this.parseFiniteNumber(params.k, 0, 12, band.k); graphNeedsUpdate = true; }
+      if (params.g !== undefined) { band.g = this.parseFiniteNumber(params.g, -12, 12, band.g); graphNeedsUpdate = true; }
     }
     if (params.enabled !== undefined) this.enabled = params.enabled;
 
@@ -991,7 +1034,7 @@ class MultibandCompressorPlugin extends PluginBase {
     freqSliders.className = 'multiband-compressor-frequency-sliders';
     freqContainer.appendChild(freqSliders);
 
-    const createFreqSlider = (label, min, max, value, setter) => {
+    const createFreqSlider = (label, min, max, value, setter, freqNum) => {
       const sliderContainer = document.createElement('div');
       sliderContainer.className = 'multiband-compressor-frequency-slider';
       const topRow = document.createElement('div');
@@ -1028,13 +1071,16 @@ class MultibandCompressorPlugin extends PluginBase {
       rangeInput.autocomplete = "off";
       rangeInput.addEventListener('input', (e) => {
         setter(parseFloat(e.target.value));
-        numberInput.value = e.target.value;
+        const normalizedValue = this[`f${freqNum}`];
+        rangeInput.value = normalizedValue;
+        numberInput.value = normalizedValue;
       });
       numberInput.addEventListener('input', (e) => {
         const val = Math.max(min, Math.min(max, parseFloat(e.target.value) || 0));
         setter(val);
-        rangeInput.value = val;
-        e.target.value = val;
+        const normalizedValue = this[`f${freqNum}`];
+        rangeInput.value = normalizedValue;
+        e.target.value = normalizedValue;
       });
       topRow.appendChild(labelEl);
       topRow.appendChild(numberInput);
@@ -1043,10 +1089,10 @@ class MultibandCompressorPlugin extends PluginBase {
       return sliderContainer;
     };
 
-    freqSliders.appendChild(createFreqSlider('Freq 1 (Hz):', 20, 500, this.f1, this.setF1.bind(this)));
-    freqSliders.appendChild(createFreqSlider('Freq 2 (Hz):', 100, 2000, this.f2, this.setF2.bind(this)));
-    freqSliders.appendChild(createFreqSlider('Freq 3 (Hz):', 500, 8000, this.f3, this.setF3.bind(this)));
-    freqSliders.appendChild(createFreqSlider('Freq 4 (Hz):', 1000, 20000, this.f4, this.setF4.bind(this)));
+    freqSliders.appendChild(createFreqSlider('Freq 1 (Hz):', 20, 500, this.f1, this.setF1.bind(this), 1));
+    freqSliders.appendChild(createFreqSlider('Freq 2 (Hz):', 100, 2000, this.f2, this.setF2.bind(this), 2));
+    freqSliders.appendChild(createFreqSlider('Freq 3 (Hz):', 500, 8000, this.f3, this.setF3.bind(this), 3));
+    freqSliders.appendChild(createFreqSlider('Freq 4 (Hz):', 1000, 20000, this.f4, this.setF4.bind(this), 4));
     container.appendChild(freqContainer);
 
     // Band settings UI
@@ -1303,6 +1349,7 @@ class MultibandCompressorPlugin extends PluginBase {
     this.canvas = null;  // Clear canvas reference
     this.bands.forEach(band => band.gr = 0);
     this.lastProcessTime = performance.now() / 1000;
+    super.cleanup();
   }
 }
 

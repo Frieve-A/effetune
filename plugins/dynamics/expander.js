@@ -377,25 +377,25 @@ class ExpanderPlugin extends PluginBase {
     setParameters(params) {
         let graphNeedsUpdate = false;
         if (params.th !== undefined) {
-            this.th = params.th > 0 ? 0 : (params.th < -60 ? -60 : params.th);
+            this.th = this.parseFiniteNumber(params.th, -60, 0, this.th);
             graphNeedsUpdate = true;
         }
         if (params.rt !== undefined) {
-            this.rt = params.rt > 20 ? 20 : (params.rt < 0.05 ? 0.05 : params.rt);
+            this.rt = this.parseFiniteNumber(params.rt, 0.05, 20, this.rt);
             graphNeedsUpdate = true;
         }
         if (params.at !== undefined) {
-            this.at = params.at > 100 ? 100 : (params.at < 0.1 ? 0.1 : params.at);
+            this.at = this.parseFiniteNumber(params.at, 0.1, 100, this.at);
         }
         if (params.rl !== undefined) {
-            this.rl = params.rl > 1000 ? 1000 : (params.rl < 10 ? 10 : params.rl);
+            this.rl = this.parseFiniteNumber(params.rl, 10, 1000, this.rl);
         }
         if (params.kn !== undefined) {
-            this.kn = params.kn > 12 ? 12 : (params.kn < 0 ? 0 : params.kn);
+            this.kn = this.parseFiniteNumber(params.kn, 0, 12, this.kn);
             graphNeedsUpdate = true;
         }
         if (params.gn !== undefined) {
-            this.gn = params.gn > 12 ? 12 : (params.gn < -12 ? -12 : params.gn);
+            this.gn = this.parseFiniteNumber(params.gn, -12, 12, this.gn);
             graphNeedsUpdate = true;
         }
         if (params.enabled !== undefined) {
@@ -694,6 +694,7 @@ class ExpanderPlugin extends PluginBase {
         }
         this.gb = 0;
         this.lastProcessTime = performance.now() / 1000;
+        super.cleanup();
     }
 }
 

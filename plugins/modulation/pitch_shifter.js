@@ -291,28 +291,24 @@ class PitchShifterPlugin extends PluginBase {
 
     setParameters(params) {
         if (params.ps !== undefined) {
-            const rounded = Math.round(params.ps);
+            const rounded = Math.round(this.parseFiniteNumber(params.ps, -6, 6, this.ps));
             this.ps = rounded < -6 ? -6 : (rounded > 6 ? 6 : rounded);
         }
         if (params.ft !== undefined) {
-            const rounded = Math.round(params.ft);
+            const rounded = Math.round(this.parseFiniteNumber(params.ft, -50, 50, this.ft));
             this.ft = rounded < -50 ? -50 : (rounded > 50 ? 50 : rounded);
         }
         if (params.ws !== undefined) {
-            const size = parseFloat(params.ws);
-            if (!isNaN(size)) {
-                // Window Size range: 80-500ms (1ms step)
-                const rounded = Math.round(size);
-                this.ws = rounded < 80 ? 80 : (rounded > 500 ? 500 : rounded);
-            }
+            const size = this.parseFiniteNumber(params.ws, 80, 500, this.ws);
+            // Window Size range: 80-500ms (1ms step)
+            const rounded = Math.round(size);
+            this.ws = rounded < 80 ? 80 : (rounded > 500 ? 500 : rounded);
         }
         if (params.xf !== undefined) {
-            const xfade = parseFloat(params.xf);
-            if (!isNaN(xfade)) {
-                // XFade Time range: 20-40ms (0.1ms step)
-                const rounded = Math.round(xfade * 10) / 10;
-                this.xf = rounded < 20 ? 20 : (rounded > 40 ? 40 : rounded);
-            }
+            const xfade = this.parseFiniteNumber(params.xf, 20, 40, this.xf);
+            // XFade Time range: 20-40ms (0.1ms step)
+            const rounded = Math.round(xfade * 10) / 10;
+            this.xf = rounded < 20 ? 20 : (rounded > 40 ? 40 : rounded);
         }
         if (params.enabled !== undefined) {
             this.enabled = params.enabled;
@@ -357,7 +353,7 @@ class PitchShifterPlugin extends PluginBase {
         ));
 
         container.appendChild(this.createParameterControl(
-            'XFade Time', 5, 40, 0.1, this.xf,
+            'XFade Time', 20, 40, 0.1, this.xf,
             this.setXFadeTime.bind(this), 'ms'
         ));
 

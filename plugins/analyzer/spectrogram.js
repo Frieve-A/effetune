@@ -446,6 +446,7 @@ class SpectrogramPlugin extends PluginBase {
         this.observer = null;
         this.secondMarkers = [];
         this.prevTime = null;
+        super.cleanup();
     }
 
 

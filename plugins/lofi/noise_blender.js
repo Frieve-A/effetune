@@ -171,7 +171,7 @@ class NoiseBlenderPlugin extends PluginBase {
                         const brown = lastBrown + white;
                         let output = brown - dcOffset;
                         dcOffset = dcOffset * brownDecayAlpha + (1.0 - brownDecayAlpha) * brown;
-                        output /= brownNoiseNormalizationFactor; // Apply normalization
+                        output *= brownNoiseNormalizationFactor; // Apply normalization
                         noiseBuffer[i] = output * levelGain; // Store normalized, scaled brown noise
                         lastBrown = brown; // Store the *un-normalized* value for integration
                     }
@@ -211,13 +211,13 @@ class NoiseBlenderPlugin extends PluginBase {
     // Set parameters
     setParameters(params) {
         if (params.nt !== undefined) {
-            this.nt = params.nt;
+            this.nt = this.isAllowedEnum(params.nt, ['white', 'pink', 'brown'], this.nt);
         }
         if (params.lv !== undefined) {
-            this.lv = params.lv < -96 ? -96 : (params.lv > 0 ? 0 : params.lv);
+            this.lv = this.parseFiniteNumber(params.lv, -96, 0, this.lv);
         }
         if (params.pc !== undefined) {
-            this.pc = params.pc;
+            this.pc = this.isAllowedEnum(params.pc, [true, false], this.pc);
         }
         if (params.enabled !== undefined) {
             this.enabled = params.enabled;
