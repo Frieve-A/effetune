@@ -26,6 +26,7 @@ pids
 Thumbs.db
 
 # Editor directories and files
+.cursor/
 .vscode/
 .idea/
 *.suo
@@ -42,6 +43,7 @@ CLAUDE.md
 .electron-builder.env
 
 # Temporary files
+tmp/
 .tmp/
 .temp/
 .qodo
