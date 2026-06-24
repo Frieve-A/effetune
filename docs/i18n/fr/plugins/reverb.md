@@ -1,14 +1,14 @@
 ---
-title: "Reverb Plugins - EffeTune"
-description: "Reverb effect plugins including RS Reverb, Dattorro Plate Reverb, and FDN Reverb."
-lang: en
+title: "Plugins Reverb - EffeTune"
+description: "Plugins d'effet de reverb incluant RS Reverb, Dattorro Plate Reverb et FDN Reverb."
+lang: fr
 ---
 
-# Reverb Plugins
+# Plugins Reverb
 
 Une collection de plugins qui ajoutent de l'espace et de l'atmosphère à votre musique. Ces effets peuvent faire sonner votre musique comme si elle était jouée dans différents environnements, des pièces intimes aux grandes salles de concert, améliorant votre expérience d'écoute avec une ambiance et une profondeur naturelles.
 
-## Plugin List
+## Liste des Plugins
 
 - [Dattorro Plate Reverb](#dattorro-plate-reverb) - Reverb à plaque classique basé sur l'algorithme Dattorro
 - [FDN Reverb](#fdn-reverb) - Reverb à réseau de délais à rétroaction avec matrice de diffusion avancée
@@ -18,27 +18,28 @@ Une collection de plugins qui ajoutent de l'espace et de l'atmosphère à votre 
 
 Une implémentation classique de reverb à plaque basée sur le célèbre algorithme de Jon Dattorro de l'article de 1997 "Effect Design, Part 1: Reverberator and Other Filters." Cet algorithme est célébré pour sa qualité sonore riche et douce et est devenu une référence dans la conception de reverb numérique. Parfait pour ajouter une ambiance riche et scintillante à votre musique.
 
-Note de routage : Dattorro Plate Reverb est un modèle de plaque stéréo. Lorsqu'il est routé avec plus de deux canaux, tous les canaux d'entrée routés alimentent une plaque mono-vers-stéréo partagée, mais le mixage wet/dry est écrit uniquement vers la première paire stéréo routée. Les canaux supplémentaires contribuent à l'entrée de la plaque et passent sinon inchangés, même lorsque Dry Mix est à 0 % ; ils ne reçoivent pas de retour wet et ne sont pas des tanks de plaque indépendants.
+Note de routage : Dattorro Plate Reverb est un modèle de plaque stéréo. Lorsqu'il est routé avec plus de deux canaux, tous les canaux d'entrée routés alimentent une plaque mono-vers-stéréo partagée, mais le mélange wet/dry est écrit uniquement vers la première paire stéréo routée. Les canaux supplémentaires contribuent à l'entrée de la plaque et passent sinon inchangés, même lorsque Dry Mix est à 0 % ; ils ne reçoivent pas de retour wet et ne sont pas des tanks de plaque indépendants.
 
 ### Guide d'Expérience d'Écoute
 - Son de Plaque Luxuriant :
-  - Caractère classique de reverb de plaque de studio
+  - Caractère classique de reverb à plaque
   - Queue de reverb douce et dense sans artefacts métalliques
   - Beau scintillement et chaleur caractéristiques des reverbs à plaque
 - Ambiance Polyvalente :
   - De l'amélioration subtile de pièce aux grandes salles expansives
   - Fonctionne magnifiquement avec tout genre musical
-  - Ajoute une finition professionnelle aux enregistrements
+  - Ajoute un poli doux et de l'espace à la musique
 - Mouvement Naturel :
   - La modulation ajoute une vie organique à la reverb
   - Empêche les queues statiques et artificielles
   - Crée un espace vivant et respirant autour de votre musique
 
-### Parameters
-- **Pre Delay** - Silence initial avant le début de la reverb (0.0 à 100.0 ms)
+### Paramètres
+- **Pre Delay** - Silence initial avant le début de la reverb (contrôle 0.0 à 100.0 ms ; utilisez des valeurs sous 100.0 ms pour un pre-delay effectif)
   - 0-10ms : Reverb immédiate, sensation intime
   - 10-30ms : Sensation naturelle d'espace
-  - 30-100ms : Crée l'impression d'espaces plus grands
+  - 30-99.9ms : Crée l'impression d'espaces plus grands
+  - Évitez exactement 100.0ms si vous voulez le pre-delay maximal ; l'implémentation actuelle traite ce point final comme sans pre-delay effectif
 - **Bandwidth** - Filtrage du signal d'entrée (0.0 à 1.0)
   - Valeurs plus basses : Ton d'entrée plus sombre et chaud
   - Valeurs plus hautes (près de 1.0) : Entrée plus brillante, pleine fréquence
@@ -131,7 +132,7 @@ Note de routage : Dattorro Plate Reverb est un modèle de plaque stéréo. Lorsq
    - Faites confiance à vos oreilles pour les réglages finaux
    - Les valeurs par défaut sont un excellent point de départ
 
-Le Dattorro Plate Reverb apporte une reverb classique de qualité professionnelle à votre expérience d'écoute. Son caractère doux et luxuriant le rend parfait pour améliorer tout enregistrement avec une ambiance belle et naturelle !
+Le Dattorro Plate Reverb apporte une reverb à plaque classique à votre expérience d'écoute. Son caractère doux et luxuriant aide à ajouter une ambiance belle et naturelle à vos morceaux.
 
 ## FDN Reverb
 
@@ -153,7 +154,7 @@ Note de routage : FDN Reverb est un modèle de reverb stéréo avec un feedback 
   - Contrôle fin du caractère et de la couleur de l'espace
   - La modulation douce ajoute mouvement naturel et vie
 
-### Parameters
+### Paramètres
 - **Reverb Time** - Durée de l'effet de reverb (0.20 à 10.00 s)
   - Court (0.2-1.0s) : Décroissance rapide et contrôlée pour la clarté
   - Moyen (1.0-3.0s) : Réverbération naturelle de type pièce
@@ -170,10 +171,9 @@ Note de routage : FDN Reverb est un modèle de reverb stéréo avec un feedback 
   - Valeurs plus basses : Caractère de reverb plus serré et focalisé
   - Valeurs plus hautes : Qualité sonore plus spacieuse et ouverte
   - Affecte les relations de timing fondamentales
-- **Delay Spread** - Variation des temps de délai entre les lignes (0.0 à 25.0 ms)
-  - Implémentation : Chaque ligne de délai devient progressivement plus longue en utilisant une courbe de puissance (exposant 0.8)
-  - 0.0ms : Toutes les lignes ont le même timing de base (motifs plus réguliers)
-  - Valeurs plus hautes : Motifs de réflexion plus naturels et irréguliers
+- **Delay Spread** - Ajoute une variation progressive entre lignes de délai en plus de petits décalages aléatoires par ligne (0.0 à 25.0 ms)
+  - 0.0ms : Utilise le delay de base avec de petits décalages aléatoires par ligne, donc les réflexions restent légèrement irrégulières
+  - Valeurs plus hautes : Ajoute plus d'écart progressif entre les lignes pour une queue plus large et moins régulière
   - Ajoute une variation réaliste trouvée dans les vrais espaces acoustiques
 - **HF Damp** - Comment les hautes fréquences s'estompent dans le temps (0.0 à 12.0 dB/s)
   - 0.0 : Pas d'amortissement, son brillant tout au long de la décroissance
@@ -191,11 +191,10 @@ Note de routage : FDN Reverb est un modèle de reverb stéréo avec un feedback 
   - 0.1-0.5Hz : Mouvement très lent et doux
   - 1.0-2.0Hz : Variation naturelle
   - 3.0-5.0Hz : Modulation rapide et plus évidente
-- **Diffusion** - Degré de mélange des signaux par la matrice Hadamard (0 à 100%)
-  - Implémentation : Contrôle la quantité de mélange matriciel appliqué
-  - 0% : Mélange minimal, motifs d'écho plus distincts
+- **Diffusion** - Contrôle la quantité de feedback mélangé renvoyée vers le réseau de délais (0 à 100%)
+  - 0% : Désactive la diffusion du feedback ; le son devient beaucoup plus clairsemé et la queue de reverb est fortement réduite
   - 50% : Diffusion équilibrée pour un son naturel
-  - 100% : Mélange maximal pour la densité la plus lisse
+  - 100% : Diffusion de feedback maximale pour la densité la plus lisse
 - **Wet Mix** - Quantité de reverb ajoutée au son (0 à 100%)
   - 10-30% : Amélioration spatiale subtile
   - 30-60% : Présence notable de reverb
@@ -203,11 +202,10 @@ Note de routage : FDN Reverb est un modèle de reverb stéréo avec un feedback 
 - **Dry Mix** - Quantité de signal original préservée (0 à 100%)
   - Habituellement maintenu à 100% pour l'écoute normale
   - Peut être réduit pour des effets atmosphériques spéciaux
-- **Stereo Width** - Largeur de diffusion de la reverb en stéréo (0 à 200%)
-  - Implémentation : 0% = mono, 100% = stéréo normal, 200% = largeur exagérée
-  - 0% : La reverb apparaît au centre (mono)
-  - 100% : Diffusion stéréo naturelle
-  - 200% : Image stéréo extra-large
+- **Stereo Width** - Mélange la reverb wet du mono vers des taps wet gauche/droite séparés (0 à 200%)
+  - 0% : La reverb wet apparaît au centre (mono)
+  - 100% : Largeur stéréo wet modérée par défaut
+  - 200% : Séparation complète des taps wet gauche/droite, pas une amplification side supplémentaire
 
 ### Réglages Recommandés pour Différentes Expériences d'Écoute
 
@@ -281,11 +279,10 @@ Un effet qui peut transporter votre musique dans différents espaces, des pièce
   - Parfait pour la musique ambiante et atmosphérique
   - Crée des paysages sonores captivants
 
-### Parameters
-- **Pre-Delay** - Contrôle la rapidité avec laquelle l'effet d'espace commence (0 à 50 ms)
-  - Valeurs plus basses : Sensation immédiate et intime
-  - Valeurs plus hautes : Plus de sensation de distance
-  - Commencez avec 10ms pour un son naturel
+### Paramètres
+- **Pre-Delay** - Contrôle stocké et affiché (0 à 50 ms)
+  - Dans l'implémentation actuelle, cette valeur n'est pas utilisée par le traitement de reverb
+  - La modifier ne change pas la distance ni la profondeur ; utilisez Room Size, Reverb Time et Mix pour les changements d'espace audibles
 - **Room Size** - Définit la taille ressentie de l'espace (2.0 à 50.0 m)
   - Petit (2-5m) : Sensation de pièce confortable
   - Moyen (5-15m) : Atmosphère de salle live
@@ -358,7 +355,7 @@ Un effet qui peut transporter votre musique dans différents espaces, des pièce
    - Réglez Density et Diffusion pour la texture
 
 3. Affinez l'Effet
-   - Ajoutez Pre-Delay pour plus de profondeur
+   - Utilisez Room Size et Reverb Time pour la profondeur ; la valeur du contrôle Pre-Delay n'est pas actuellement reflétée dans le traitement
    - Ajustez Mix pour l'équilibre final
    - Faites confiance à vos oreilles et ajustez selon vos goûts
 

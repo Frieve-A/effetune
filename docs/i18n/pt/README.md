@@ -1,14 +1,18 @@
 # Frieve EffeTune <img src="../../../images/icon_64x64.png" alt="EffeTune Icon" width="30" height="30" align="bottom">
 
-[Open Web App](https://effetune.frieve.com/effetune.html)  [Download Desktop App](https://github.com/Frieve-A/effetune/releases/)
+[Abrir Web App](https://effetune.frieve.com/effetune.html)  [Baixar Desktop App](https://github.com/Frieve-A/effetune/releases/)
 
 Um processador de efeitos de áudio em tempo real, projetado para entusiastas do áudio aprimorarem sua experiência de escuta. EffeTune permite que você processe qualquer fonte de áudio através de vários efeitos de alta qualidade, possibilitando personalizar e aperfeiçoar sua experiência de escuta em tempo real.
 
 [![Screenshot](../../../images/screenshot.png)](https://effetune.frieve.com/effetune.html)
 
+## Vídeo de Introdução
+
+[![YouTube Video](../../../images/video_thumbnail.jpg)](https://www.youtube.com/watch?v=--mtsy1t4HI)
+
 ## Conceito
 
-EffeTune foi criado para entusiastas do áudio que desejam melhorar sua experiência musical. Quer você esteja transmitindo música ou reproduzindo mídias físicas, EffeTune permite adicionar efeitos de nível profissional para personalizar o som conforme suas preferências exatas. Transforme seu computador em um poderoso processador de efeitos de áudio que se posiciona entre sua fonte de áudio e seus alto-falantes ou amplificador.
+EffeTune foi criado para entusiastas do áudio que desejam melhorar sua experiência musical. Quer você esteja transmitindo música ou reproduzindo mídias físicas, EffeTune permite adicionar efeitos de alta qualidade para personalizar o som conforme suas preferências exatas. Transforme seu computador em um poderoso processador de efeitos de áudio que se posiciona entre sua fonte de áudio e seus alto-falantes ou amplificador.
 
 Sem mitos audiófilos, apenas pura ciência.
 
@@ -20,8 +24,7 @@ Sem mitos audiófilos, apenas pura ciência.
 - Visualização de áudio ao vivo
 - Pipeline de áudio que pode ser modificado em tempo real
 - Processamento offline de arquivos de áudio com a cadeia de efeitos atual
-- Recurso de seção para agrupar e controlar múltiplos efeitos
-- Recurso de medição de resposta de frequência para equipamentos de áudio
+- Medição e correção de resposta em frequência para calibração do sistema
 - Processamento e saída multicanal
 
 ## Guia de Configuração
@@ -111,13 +114,13 @@ Para usar o EffeTune com players de CD, players de rede ou outras fontes física
    - Cada preset armazena a configuração completa da sua cadeia de efeitos
    - Inclui a ordem dos efeitos, os parâmetros e os estados
 
-### Usando a Funcionalidade de Seção
+### Usando a Funcionalidade Section
 
-1. Uso do Efeito de Seção:
-   - Adicione um efeito de Seção no início de um grupo de efeitos
-   - Digite um nome descritivo no campo Comentário
-   - Alternar a Seção ON/OFF habilitará/desabilitará todos os efeitos dentro dessa seção
-   - Use múltiplos efeitos de Seção para organizar sua cadeia de efeitos em grupos lógicos
+1. Uso do Efeito Section:
+   - Adicione um efeito Section no início de um grupo de efeitos
+   - Digite um nome descritivo no campo Comment
+   - Alternar o Section ON/OFF coloca essa seção em bypass ou a restaura, preservando o estado ON/OFF próprio de cada efeito
+   - Use múltiplos efeitos Section para organizar sua cadeia de efeitos em grupos lógicos
    - [Mais sobre efeitos de controle](plugins/control.md)
 
 ### Usando Recursos de Pipeline AB
@@ -190,14 +193,6 @@ Para usar o EffeTune com players de CD, players de rede ou outras fontes física
    - Para vários arquivos, selecione uma pasta de saída antes do processamento; cada arquivo é salvo diretamente nessa pasta ao ser concluído
    - Em navegadores mais antigos sem suporte à seleção de pasta, vários arquivos são empacotados em um ZIP para download
 
-### Medição de Resposta de Frequência
-
-1. Para a versão web, abra a [ferramenta de Medição da Resposta em Frequência](https://effetune.frieve.com/features/measurement/measurement.html). Para a versão do aplicativo, selecione "Medição da Resposta em Frequência" no menu Configurações
-2. Conecte seu equipamento de áudio à entrada e saída do seu computador
-3. Configure os parâmetros de medição (duração da varredura, faixa de frequência)
-4. Execute a medição para gerar um gráfico de resposta de frequência
-5. Analise os resultados ou exporte os dados de medição para análise adicional
-
 ### Compartilhando Cadeias de Efeitos
 
 Você pode compartilhar a configuração da sua cadeia de efeitos com outros usuários:
@@ -211,9 +206,18 @@ Você pode compartilhar a configuração da sua cadeia de efeitos com outros usu
 ### Reset de Áudio
 
 Se você estiver enfrentando problemas de áudio (interrupções, falhas):
-1. Clique no botão **Reset Audio** no canto superior esquerdo no aplicativo web ou selecione Reload no menu View no aplicativo desktop
+1. Clique no botão **Reset Audio** no canto superior esquerdo no aplicativo web ou selecione Recarregar no menu Visualizar no aplicativo desktop
 2. O pipeline de áudio será reconstruído automaticamente
 3. A configuração da sua cadeia de efeitos será preservada
+
+### Medição e Correção de Resposta em Frequência
+
+Para medir a resposta em frequência do seu sistema de áudio e criar uma correção de EQ plana:
+1. Na versão web, abra a [ferramenta de medição de resposta em frequência](https://effetune.frieve.com/features/measurement/measurement.html). Na versão do aplicativo, selecione Medição da resposta em frequência no menu Configurações.
+2. Siga a configuração guiada para ajustar seu microfone de medição e dispositivo de saída
+3. Meça a resposta em frequência do seu sistema em uma ou mais posições de escuta
+4. Gere uma correção de EQ paramétrico que pode ser importada diretamente no EffeTune
+5. Aplique a correção para obter uma reprodução sonora mais precisa e neutra
 
 ## Combinações Comuns de Efeitos
 
@@ -236,7 +240,7 @@ Aqui estão algumas combinações populares de efeitos para aprimorar sua experi
 1. Multiband Compressor -> Stereo Blend
    - **Multiband Compressor**: Cria aquele som de "rádio"
    - **Stereo Blend**: Ajusta a largura estéreo para conforto (100-150%)
-   - **Resultado**: Som com qualidade de transmissão profissional
+   - **Resultado**: Som polido no estilo de rádio FM
 
 ### Caráter Lo-Fi
 1. Bit Crusher -> Simple Jitter -> RS Reverb
@@ -252,14 +256,14 @@ Se o problema continuar, reporte em [GitHub Issues](https://github.com/Frieve-A/
 
 ## Efeitos Disponíveis
 
-| Categoria | Effect             | Descrição                                                               | Documentação                                         |
+| Categoria | Efeito             | Descrição                                                               | Documentação                                         |
 | --------- | ------------------ | ----------------------------------------------------------------------- | ---------------------------------------------------- |
 | Analyzer  | Level Meter        | Exibe o nível de áudio com retenção de pico                             | [Detalhes](plugins/analyzer.md#level-meter)          |
 | Analyzer  | Oscilloscope       | Visualização de forma de onda em tempo real                             | [Detalhes](plugins/analyzer.md#oscilloscope)         |
 | Analyzer  | Spectrogram        | Exibe variações do espectro de frequências ao longo do tempo            | [Detalhes](plugins/analyzer.md#spectrogram)          |
-| Analyzer  | Spectrum Analyzer  | Análise de espectro em tempo real                                       | [Detalhes](plugins/analyzer.md#spectrum-analyzer)    |
-| Analyzer  | Stereo Meter       | Visualiza o equilíbrio estéreo e o movimento do som                     | [Detalhes](plugins/analyzer.md#stereo-meter)         |
-| Basics    | Channel Divider    | Divide o sinal estéreo em bandas de frequência e direciona para canais separados | [Detalhes](plugins/basics.md#channel-divider)       |
+| Analyzer  | Spectrum Analyzer  | Mostra a força dos graves, médios e agudos em tempo real                | [Detalhes](plugins/analyzer.md#spectrum-analyzer)    |
+| Analyzer  | Stereo Meter       | Visualiza o equilíbrio estéreo e a correlação entre canais              | [Detalhes](plugins/analyzer.md#stereo-meter)         |
+| Basics    | Channel Divider    | Divide o sinal estéreo em bandas de frequência e roteia cada banda para pares de saída estéreo separados | [Detalhes](plugins/basics.md#channel-divider)       |
 | Basics    | DC Offset          | Ajuste de deslocamento DC                                               | [Detalhes](plugins/basics.md#dc-offset)              |
 | Basics    | Matrix             | Encaminha e mistura canais de áudio com controle flexível               | [Detalhes](plugins/basics.md#matrix)                 |
 | Basics    | MultiChannel Panel | Painel de controle para múltiplos canais com volume, mudo, solo e atraso | [Detalhes](plugins/basics.md#multichannel-panel)     |
@@ -268,22 +272,23 @@ Se o problema continuar, reporte em [GitHub Issues](https://github.com/Frieve-A/
 | Basics    | Stereo Balance     | Controle de equilíbrio dos canais estéreo                               | [Detalhes](plugins/basics.md#stereo-balance)         |
 | Basics    | Volume             | Controle básico de volume                                               | [Detalhes](plugins/basics.md#volume)                 |
 | Delay     | Delay | Efeito de atraso padrão | [Detalhes](plugins/delay.md#delay) |
-| Delay     | Time Alignment | Ajustes finos de sincronização para canais de áudio | [Detalhes](plugins/delay.md#time-alignment) |
+| Delay     | Time Alignment | Ajusta finamente o tempo de reprodução para alinhar caixas e posição de escuta | [Detalhes](plugins/delay.md#time-alignment) |
 | Dynamics  | Auto Leveler | Ajuste automático de volume baseado na medição LUFS para experiência de audição consistente | [Detalhes](plugins/dynamics.md#auto-leveler) |
 | Dynamics  | Brickwall Limiter | Controle transparente de picos para audição segura e confortável | [Detalhes](plugins/dynamics.md#brickwall-limiter) |
-| Dynamics  | Compressor | Compressão de faixa dinâmica com controle de limiar, razão e knee | [Detalhes](plugins/dynamics.md#compressor) |
-| Dynamics  | Gate | Portão de ruído com controle de limiar, razão e knee para redução de ruído | [Detalhes](plugins/dynamics.md#gate) |
-| Dynamics  | Multiband Compressor | Processador de dinâmica profissional de 5 bandas com modelagem sonora estilo rádio FM | [Detalhes](plugins/dynamics.md#multiband-compressor) |
-| Dynamics  | Multiband Expander | Expansor profissional de 5 bandas para expansão de faixa dinâmica específica por frequência | [Detalhes](plugins/dynamics.md#multiband-expander) |
-| Dynamics  | Multiband Transient | Modelador de transientes avançado de 3 bandas para controle específico de ataque e sustain por frequência | [Detalhes](plugins/dynamics.md#multiband-transient) |
+| Dynamics  | Compressor | Suaviza trechos que ficam altos de repente para uma audição mais confortável | [Detalhes](plugins/dynamics.md#compressor) |
+| Dynamics  | Expander | Restaura contraste dinâmico deixando sons abaixo do limiar ainda mais baixos | [Detalhes](plugins/dynamics.md#expander) |
+| Dynamics  | Gate | Reduz sons de baixo nível em pausas ou trechos silenciosos | [Detalhes](plugins/dynamics.md#gate) |
+| Dynamics  | Multiband Compressor | Balanceamento de volume em 5 bandas para um som estável, parecido com rádio | [Detalhes](plugins/dynamics.md#multiband-compressor) |
+| Dynamics  | Multiband Expander | Expansor de 5 bandas para recuperar contraste natural em gravações muito achatadas | [Detalhes](plugins/dynamics.md#multiband-expander) |
+| Dynamics  | Multiband Transient | Ajusta ataque e sustain separadamente nas faixas de graves, médios e agudos | [Detalhes](plugins/dynamics.md#multiband-transient) |
 | Dynamics  | Power Amp Sag | Simula a queda de tensão do amplificador de potência sob condições de alta carga | [Detalhes](plugins/dynamics.md#power-amp-sag) |
-| Dynamics  | Transient Shaper | Controla as partes transitórias e de sustain do sinal | [Detalhes](plugins/dynamics.md#transient-shaper) |
+| Dynamics  | Transient Shaper | Ajusta o impacto e o corpo da música moldando ataques e sustain | [Detalhes](plugins/dynamics.md#transient-shaper) |
 | EQ        | 15Band GEQ | Equalizador gráfico de 15 bandas | [Detalhes](plugins/eq.md#15band-geq) |
-| EQ        | 15Band PEQ | Equalizador paramétrico profissional com 15 bandas totalmente configuráveis | [Detalhes](plugins/eq.md#15band-peq) |
+| EQ        | 15Band PEQ | Equalizador paramétrico de 15 bandas para ajuste detalhado do tom na escuta | [Detalhes](plugins/eq.md#15band-peq) |
 | EQ        | 5Band Dynamic EQ | Equalizador dinâmico de 5 bandas com ajuste de frequência baseado em limiar | [Detalhes](plugins/eq.md#5band-dynamic-eq) |
-| EQ        | 5Band PEQ | Equalizador paramétrico profissional com 5 bandas totalmente configuráveis | [Detalhes](plugins/eq.md#5band-peq) |
+| EQ        | 5Band PEQ | Equalizador flexível de 5 bandas para moldar graves, médios e agudos | [Detalhes](plugins/eq.md#5band-peq) |
 | EQ        | Band Pass Filter | Foque em frequências específicas | [Detalhes](plugins/eq.md#band-pass-filter) |
-| EQ        | Comb Filter | Filtro pente digital para coloração harmônica e simulação de ressonância | [Detalhes](plugins/eq.md#comb-filter) |
+| EQ        | Comb Filter | Adiciona coloração faseada, oca ou metálica | [Detalhes](plugins/eq.md#comb-filter) |
 | EQ        | Hi Pass Filter | Remove frequências baixas indesejadas com precisão | [Detalhes](plugins/eq.md#hi-pass-filter) |
 | EQ        | Lo Pass Filter | Remove frequências altas indesejadas com precisão | [Detalhes](plugins/eq.md#lo-pass-filter) |
 | EQ        | Loudness Equalizer | Correção de balanço de frequência para audição em baixo volume | [Detalhes](plugins/eq.md#loudness-equalizer) |
@@ -293,16 +298,16 @@ Se o problema continuar, reporte em [GitHub Issues](https://github.com/Frieve-A/
 | Lo-Fi     | Bit Crusher | Redução de profundidade de bits e efeito de retenção de ordem zero | [Detalhes](plugins/lofi.md#bit-crusher) |
 | Lo-Fi     | Digital Error Emulator | Simula vários erros de transmissão de áudio digital e características de equipamentos digitais vintage | [Detalhes](plugins/lofi.md#digital-error-emulator) |
 | Lo-Fi     | DSD64 IMD Simulator | Simula a distorção de intermodulação audível causada pelo ruído ultrassônico do DSD64 | [Detalhes](plugins/lofi.md#dsd64-imd-simulator) |
-| Lo-Fi     | Hum Generator | Gerador de ruído de zumbido de alta precisão | [Detalhes](plugins/lofi.md#hum-generator) |
-| Lo-Fi     | Noise Blender | Geração e mistura de ruído | [Detalhes](plugins/lofi.md#noise-blender) |
+| Lo-Fi     | Hum Generator | Adiciona ambiência controlável de hum elétrico de 50/60 Hz para escuta vintage/lo-fi | [Detalhes](plugins/lofi.md#hum-generator) |
+| Lo-Fi     | Noise Blender | Adiciona textura ajustável de ruído de fundo para ambiência lo-fi | [Detalhes](plugins/lofi.md#noise-blender) |
 | Lo-Fi     | Simple Jitter | Simulação de jitter digital | [Detalhes](plugins/lofi.md#simple-jitter) |
-| Lo-Fi     | Vinyl Artifacts | Simulação física de ruído de discos analógicos | [Detalhes](plugins/lofi.md#vinyl-artifacts) |
+| Lo-Fi     | Vinyl Artifacts | Adiciona estalos, crackle, hiss, rumble e vazamento de ruído estéreo no estilo vinil | [Detalhes](plugins/lofi.md#vinyl-artifacts) |
 | Modulation | Doppler Distortion | Simula mudanças naturais e dinâmicas no som causadas por sutis movimentos do cone do alto-falante | [Detalhes](plugins/modulation.md#doppler-distortion) |
-| Modulation | Pitch Shifter | Efeito de alteração de pitch leve | [Detalhes](plugins/modulation.md#pitch-shifter) |
+| Modulation | Pitch Shifter | Sobe ou desce o pitch da música sem mudar o tempo | [Detalhes](plugins/modulation.md#pitch-shifter) |
 | Modulation | Tremolo | Efeito de modulação baseado em volume | [Detalhes](plugins/modulation.md#tremolo) |
-| Modulation | Wow Flutter | Efeito de modulação baseado em tempo | [Detalhes](plugins/modulation.md#wow-flutter) |
+| Modulation | Wow Flutter | Adiciona uma oscilação sutil de pitch no estilo fita ou disco para caráter vintage | [Detalhes](plugins/modulation.md#wow-flutter) |
 | Resonator | Horn Resonator | Simulação de ressonância de corno com dimensões personalizáveis | [Detalhes](plugins/resonator.md#horn-resonator) |
-| Resonator | Horn Resonator Plus | Modelo de corno aprimorado com reflexões avançadas | [Detalhes](plugins/resonator.md#horn-resonator-plus) |
+| Resonator | Horn Resonator Plus | Ressonância de alto-falante tipo corneta mais suave para coloração natural na escuta | [Detalhes](plugins/resonator.md#horn-resonator-plus) |
 | Resonator | Modal Resonator | Efeito de ressonância de frequência com até 5 ressonadores | [Detalhes](plugins/resonator.md#modal-resonator) |
 | Reverb    | Dattorro Plate Reverb | Reverb de placa clássico baseado no algoritmo Dattorro | [Detalhes](plugins/reverb.md#dattorro-plate-reverb) |
 | Reverb    | FDN Reverb | Reverberação de rede de atraso com feedback que produz texturas de reverb ricas e densas | [Detalhes](plugins/reverb.md#fdn-reverb) |
@@ -310,16 +315,16 @@ Se o problema continuar, reporte em [GitHub Issues](https://github.com/Frieve-A/
 | Saturation| Dynamic Saturation | Simula o deslocamento não linear de cones de alto-falantes | [Detalhes](plugins/saturation.md#dynamic-saturation) |
 | Saturation| Exciter | Adiciona conteúdo harmônico para melhorar clareza e presença | [Detalhes](plugins/saturation.md#exciter) |
 | Saturation| Hard Clipping | Efeito de hard clipping digital | [Detalhes](plugins/saturation.md#hard-clipping) |
-| Saturation | Harmonic Distortion | Adiciona caráter único através de distorção harmônica com controle independente de cada harmônico | [Detalhes](plugins/saturation.md#harmonic-distortion) |
-| Saturation| Multiband Saturation | Efeito de saturação de 3 bandas para aquecimento preciso baseado em frequência | [Detalhes](plugins/saturation.md#multiband-saturation) |
-| Saturation| Saturation | Efeito de saturação | [Detalhes](plugins/saturation.md#saturation) |
-| Saturation| Sub Synth | Mistura sinais sub-harmônicos para realce de graves | [Detalhes](plugins/saturation.md#sub-synth) |
+| Saturation | Harmonic Distortion | Adiciona caráter com distorção harmônica ajustável de 2ª a 5ª ordem | [Detalhes](plugins/saturation.md#harmonic-distortion) |
+| Saturation| Multiband Saturation | Adiciona calor ou aspereza separadamente em graves, médios e agudos | [Detalhes](plugins/saturation.md#multiband-saturation) |
+| Saturation| Saturation | Adiciona riqueza e caráter quentes no estilo analógico | [Detalhes](plugins/saturation.md#saturation) |
+| Saturation| Sub Synth | Mistura um sinal filtrado de baixa frequência para reforçar os graves | [Detalhes](plugins/saturation.md#sub-synth) |
 | Spatial   | Crossfeed Filter | Filtro de crossfeed para fones de ouvido para imagem estéreo natural | [Detalhes](plugins/spatial.md#crossfeed-filter) |
-| Spatial   | MS Matrix | Codificação e decodificação mid-side para manipulação estéreo | [Detalhes](plugins/spatial.md#ms-matrix) |
+| Spatial   | MS Matrix | Converte entre estéreo e Mid/Side para ajustes de centro e ambiência | [Detalhes](plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | Controle de balanço estéreo dependente de frequência de 5 bandas | [Detalhes](plugins/spatial.md#multiband-balance) |
-| Spatial   | Stereo Blend | Efeito de controle de largura estéreo | [Detalhes](plugins/spatial.md#stereo-blend) |
-| Others    | Oscillator | Gerador de sinal de áudio multi-forma de onda | [Detalhes](plugins/others.md#oscillator) |
-| Control   | Section | Agrupa múltiplos efeitos para controle unificado | [Detalhes](plugins/control.md) |
+| Spatial   | Stereo Blend | Controla a largura estéreo, de mono a estéreo ampliado | [Detalhes](plugins/spatial.md#stereo-blend) |
+| Others    | Oscillator | Gerador de tons de teste e ruído para verificar alto-falantes/fones | [Detalhes](plugins/others.md#oscillator) |
+| Control   | Section | Agrupa efeitos para que uma seção inteira possa ser colocada em bypass ou restaurada | [Detalhes](plugins/control.md) |
 
 ## Informações Técnicas
 
@@ -347,14 +352,14 @@ Para um desempenho ideal com efeitos não lineares, recomenda-se usar o EffeTune
 
 ## Guia de Desenvolvimento
 
-Quer criar seus próprios plugins de áudio? Confira nosso [Plugin Development Guide](../../plugin-development.md).
+Quer criar seus próprios plugins de áudio? Confira nosso [guia de desenvolvimento de plugins](../../plugin-development.md).
 Quer construir um aplicativo desktop? Confira nosso [Guia de Construção](../../../BUILD.md).
 
 ## Links
 
-[Version History](../../version-history.md)
+[Histórico de versões](../../version-history.md)
 
-[Source Code](https://github.com/Frieve-A/effetune)
+[Código-fonte](https://github.com/Frieve-A/effetune)
 
 [YouTube](https://www.youtube.com/@frieveamusic)
 

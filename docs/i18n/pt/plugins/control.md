@@ -1,39 +1,39 @@
 ---
-title: "Control Plugins - EffeTune"
-description: "Control plugins for organizing effect chains with Section grouping."
-lang: en
+title: "Plugins de Controle - EffeTune"
+description: "Plugins de controle para organizar cadeias de efeitos com agrupamento Section."
+lang: pt
 ---
 
-# Control Effects
+# Efeitos de Controle
 
-Control effects are special utility effects that don't process audio directly but instead control how other effects operate. They help organize and manage complex effect chains.
+Efeitos de controle são utilitários especiais que não processam o áudio diretamente, mas controlam como outros efeitos operam. Eles ajudam a organizar e gerenciar cadeias de efeitos complexas.
 
 ## Section
 
-The Section effect allows you to group multiple effects together and control them with a single ON/OFF toggle.
+O efeito Section agrupa vários efeitos para que você possa colocar toda aquela parte da cadeia em bypass ou restaurá-la com um único botão ON/OFF. Cada efeito mantém seu próprio estado ON/OFF.
 
-### Overview
+### Visão Geral
 
-- **Name**: Section
-- **Category**: Control
-- **Description**: Groups multiple effects together for unified control
+- **Nome**: Section
+- **Categoria**: Control
+- **Descrição**: Agrupa efeitos para que uma seção inteira possa ser colocada em bypass ou restaurada
 
-### Parameters
+### Parâmetros
 
-| Parameter | Description |
+| Parâmetro | Descrição |
 |-----------|-------------|
-| Comment   | A name or description of the section's purpose |
+| Comment   | Nome ou descrição da finalidade da seção |
 
-### Usage
+### Uso
 
-1. Place the Section effect at the beginning of a group of effects you want to control together
-2. Enter a descriptive name in the "Comment" field to identify the section's purpose
-3. Toggle the Section effect ON/OFF to enable/disable all effects within the section
-4. Effects placed after a Section effect will be controlled by that section until another Section effect is encountered
+1. Coloque o efeito Section no início do grupo de efeitos que você quer controlar junto
+2. Digite um nome descritivo no campo "Comment" para identificar a finalidade da seção
+3. Coloque o efeito Section em OFF para colocar os efeitos daquela seção em bypass; coloque em ON para restaurar a seção, preservando o estado ON/OFF próprio de cada efeito
+4. Efeitos colocados depois de um efeito Section serão controlados por essa seção até que outro efeito Section seja encontrado
 
-### Application Examples
+### Exemplos de Uso
 
-- Group related effects (e.g., "EQ Adjustments", "Spatial Effects")
-- Create alternative processing chains that can be easily toggled
-- Organize complex effect chains into logical sections
-- Temporarily disable a group of effects without removing them 
+- Agrupar efeitos relacionados (por exemplo, "EQ Adjustments", "Spatial Effects")
+- Criar cadeias de processamento alternativas que podem ser alternadas facilmente
+- Organizar cadeias de efeitos complexas em seções lógicas
+- Desativar temporariamente um grupo de efeitos sem removê-los

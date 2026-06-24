@@ -1,39 +1,39 @@
 ---
-title: "Control Plugins - EffeTune"
-description: "Control plugins for organizing effect chains with Section grouping."
-lang: en
+title: "Plugins de control - EffeTune"
+description: "Plugins de control para organizar cadenas de efectos con agrupación mediante Section."
+lang: es
 ---
 
-# Control Effects
+# Efectos de control
 
-Control effects are special utility effects that don't process audio directly but instead control how other effects operate. They help organize and manage complex effect chains.
+Los efectos de control son utilidades especiales: no procesan el audio directamente, sino que ayudan a organizar cómo se usan otros efectos dentro de la cadena.
 
 ## Section
 
-The Section effect allows you to group multiple effects together and control them with a single ON/OFF toggle.
+El efecto Section agrupa varios efectos para que puedas omitir o restaurar esa parte completa de la cadena con un solo conmutador ON/OFF. Cada efecto conserva su propio estado ON/OFF.
 
-### Overview
+### Resumen
 
-- **Name**: Section
-- **Category**: Control
-- **Description**: Groups multiple effects together for unified control
+- **Nombre**: Section
+- **Categoría**: Control
+- **Descripción**: Agrupa efectos para que toda una sección pueda omitirse o restaurarse
 
-### Parameters
+### Parámetros
 
-| Parameter | Description |
+| Parámetro | Descripción |
 |-----------|-------------|
-| Comment   | A name or description of the section's purpose |
+| Comment   | Nombre o descripción de la finalidad de la sección |
 
-### Usage
+### Uso
 
-1. Place the Section effect at the beginning of a group of effects you want to control together
-2. Enter a descriptive name in the "Comment" field to identify the section's purpose
-3. Toggle the Section effect ON/OFF to enable/disable all effects within the section
-4. Effects placed after a Section effect will be controlled by that section until another Section effect is encountered
+1. Coloca el efecto Section al principio del grupo de efectos que quieras controlar como bloque
+2. Introduce un nombre descriptivo en el campo "Comment" para identificar la finalidad de la sección
+3. Cambia Section a OFF para omitir los efectos de esa sección; vuelve a ponerlo en ON para restaurarla sin cambiar el estado ON/OFF propio de cada efecto
+4. Los efectos colocados después de Section pertenecen a esa sección hasta que aparece otro efecto Section
 
-### Application Examples
+### Ejemplos de uso
 
-- Group related effects (e.g., "EQ Adjustments", "Spatial Effects")
-- Create alternative processing chains that can be easily toggled
-- Organize complex effect chains into logical sections
-- Temporarily disable a group of effects without removing them 
+- Agrupar efectos relacionados, por ejemplo "EQ Adjustments" o "Spatial Effects"
+- Crear partes alternativas de una cadena que se puedan activar u omitir fácilmente
+- Ordenar cadenas complejas en secciones lógicas
+- Omitir temporalmente un grupo de efectos sin eliminarlo

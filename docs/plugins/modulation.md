@@ -21,8 +21,8 @@ Experience a unique audio effect that brings a touch of natural movement to your
 
 ### Parameters
 
-- **Coil Force (N)**  
-  Controls the strength of the simulated speaker coil movement. Higher values result in a more pronounced distortion.
+- **Coil Force (N / V)**
+  Controls how strongly the input signal drives the simulated speaker coil movement. Higher values result in a more pronounced Doppler distortion.
 
 - **Speaker Mass (kg)**  
   Simulates the weight of the speaker cone, affecting how naturally the movement is reproduced.  
@@ -40,7 +40,7 @@ Experience a unique audio effect that brings a touch of natural movement to your
 ### Recommended Settings
 
 For a balanced and natural enhancement, start with:
-- **Coil Force:** 8.0 N  
+- **Coil Force:** 8.0 N / V
 - **Speaker Mass:** 0.03 kg  
 - **Spring Constant:** 6000 N/m  
 - **Damping Factor:** 1.5 N·s/m  
@@ -87,10 +87,11 @@ An effect that adds rhythmic volume variations to your music, similar to the pul
   - Perfect for ambient and atmospheric listening
 
 ### Parameters
-- **Rate** - How fast the volume changes (0.1 to 20 Hz)
+- **Rate** - How fast the volume changes (0.1 to 50 Hz)
   - Slower (0.1-2 Hz): Gentle, subtle pulsing
   - Medium (2-6 Hz): Classic tremolo effect
   - Faster (6-20 Hz): Dramatic, choppy effects
+  - Very fast (20-50 Hz): Extremely rapid volume modulation that can add a rough or buzzy texture; use sparingly for comfortable listening
 - **Depth** - How much the volume changes (0 to 12 dB)
   - Subtle (0-3 dB): Gentle volume variations
   - Medium (3-6 dB): Noticeable pulsing effect
@@ -183,10 +184,10 @@ An effect that adds subtle pitch variations to your music, similar to the natura
   - Slower (0.1-2 Hz): Vinyl record-like movement
   - Medium (2-6 Hz): Cassette tape-like flutter
   - Faster (6-20 Hz): Creative effects
-- **Depth** - How much the pitch changes (0 to 40 ms)
-  - Subtle (0-10 ms): Gentle vintage character
-  - Medium (10-20 ms): Classic tape/vinyl feel
-  - Strong (20-40 ms): Dramatic effects
+- **Depth** - How strongly the delay time is modulated, which makes the pitch waver (0 to 40 ms)
+  - Subtle (0-6 ms): Gentle vintage character
+  - Medium (6-15 ms): Clearly audible tape/vinyl feel
+  - Strong (15-40 ms): Dramatic special effects
 - **Ch Phase** - Phase difference between stereo channels (-180 to 180 degrees)
   - 0°: Both channels waver together
   - 90° or -90°: Creates a swirling, rotating effect
@@ -210,18 +211,20 @@ An effect that adds subtle pitch variations to your music, similar to the natura
 ### Recommended Settings for Different Styles
 
 1. Classic Vinyl Experience
-   - Rate: 0.5-1 Hz (slow, gentle movement)
-   - Depth: 15-20 ms
-   - Randomness: 10-15 ms
+   - Rate: 0.3-0.8 Hz (slow, gentle movement)
+   - Depth: 2-6 ms
+   - Randomness: 1-4 ms
+   - Randomness Cutoff: 0.5-3 Hz
    - Ch Phase: 0°
    - Ch Sync: 100%
    - Perfect for: Jazz, Classical, Vintage Rock
 
 2. Retro Cassette Feel
-   - Rate: 4-5 Hz (faster flutter)
-   - Depth: 10-15 ms
-   - Randomness: 15-20 ms
-   - Ch Phase: 0-45°
+   - Rate: 4-6 Hz (faster flutter)
+   - Depth: 1-3 ms
+   - Randomness: 1-5 ms
+   - Randomness Cutoff: 3-8 Hz
+   - Ch Phase: 0-30°
    - Ch Sync: 80-100%
    - Perfect for: Lo-Fi, Pop, Rock
 
@@ -234,9 +237,9 @@ An effect that adds subtle pitch variations to your music, similar to the natura
    - Perfect for: Ambient, Electronic, Experimental
 
 4. Subtle Enhancement
-   - Rate: 2-3 Hz
-   - Depth: 5-10 ms
-   - Randomness: 5-10 ms
+   - Rate: 1-2 Hz
+   - Depth: 2-5 ms
+   - Randomness: 1-3 ms
    - Ch Phase: 0°
    - Ch Sync: 100%
    - Perfect for: Any music needing gentle vintage character
@@ -244,9 +247,10 @@ An effect that adds subtle pitch variations to your music, similar to the natura
 ### Quick Start Guide
 
 1. For a Natural Vintage Sound:
-   - Start with slow Rate (1 Hz)
-   - Add moderate Depth (15 ms)
-   - Include some Randomness (10 ms)
+   - Start with slow Rate (0.5-1 Hz)
+   - Add light Depth (2-6 ms)
+   - Include a little Randomness (1-4 ms)
+   - Use Randomness Cutoff around 0.5-3 Hz
    - Keep Ch Phase at 0° and Ch Sync at 100%
    - Adjust to taste
 

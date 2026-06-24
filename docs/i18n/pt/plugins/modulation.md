@@ -1,14 +1,14 @@
 ---
-title: "Modulation Plugins - EffeTune"
-description: "Modulation effect plugins including Tremolo, Wow Flutter, Pitch Shifter, and Doppler Distortion."
-lang: en
+title: "Plugins de Modulação - EffeTune"
+description: "Plugins de modulação, incluindo Tremolo, Wow Flutter, Pitch Shifter e Doppler Distortion."
+lang: pt
 ---
 
-# Modulation Plugins
+# Plugins de Modulação
 
 Uma coleção de plugins que adicionam movimento e variação à sua música através de efeitos de modulação. Esses efeitos podem fazer com que sua música digital pareça mais orgânica e dinâmica, aprimorando sua experiência auditiva com variações sutis ou dramáticas no som.
 
-## Plugin List
+## Lista de Plugins
 
 - [Doppler Distortion](#doppler-distortion) - Simula as mudanças naturais e dinâmicas no som decorrentes do sutil movimento do cone do alto-falante.
 - [Pitch Shifter](#pitch-shifter) - Altera o tom da sua música sem afetar a velocidade de reprodução
@@ -21,29 +21,29 @@ Experimente um efeito de áudio único que confere um toque de movimento natural
 
 ### Parâmetros
 
-- **Coil Force (N)**  
-  Controla a intensidade do movimento simulado da bobina do alto-falante. Valores mais altos resultam em uma distorção mais pronunciada.
+- **Coil Force (N / V)**
+  Controla o quanto o sinal de entrada aciona o movimento simulado da bobina do alto-falante. Valores mais altos resultam em uma Doppler distortion mais pronunciada.
 
-- **Speaker Mass (kg)**  
-  Simula o peso do cone do alto-falante, influenciando a naturalidade com que o movimento é reproduzido.  
-  - **Higher values:** Aumentam a inércia, resultando em uma resposta mais lenta e em distorções mais suaves e sutis.  
-  - **Lower values:** Reduzem a inércia, causando um efeito de modulação mais rápido e pronunciado.
+- **Speaker Mass (kg)**
+  Simula o peso do cone do alto-falante, influenciando a naturalidade com que o movimento é reproduzido.
+  - **Valores mais altos:** Aumentam a inércia, resultando em uma resposta mais lenta e em distorções mais suaves e sutis.
+  - **Valores mais baixos:** Reduzem a inércia, causando um efeito de modulação mais rápido e pronunciado.
 
-- **Spring Constant (N/m)**  
+- **Spring Constant (N/m)**
   Determina a rigidez da suspensão do alto-falante. Um Spring Constant maior produz uma resposta mais nítida e definida.
 
-- **Damping Factor (N·s/m)**  
-  Ajusta a rapidez com que o movimento simulado se estabiliza, equilibrando um movimento vibrante com transições suaves.  
-  - **Higher values:** Levam a uma estabilização mais rápida, reduzindo as oscilações e produzindo um efeito mais preciso e controlado.  
-  - **Lower values:** Permitem que o movimento persista por mais tempo, resultando em uma flutuação dinâmica mais solta e prolongada.
+- **Damping Factor (N·s/m)**
+  Ajusta a rapidez com que o movimento simulado se estabiliza, equilibrando um movimento vibrante com transições suaves.
+  - **Valores mais altos:** Levam a uma estabilização mais rápida, reduzindo as oscilações e produzindo um efeito mais preciso e controlado.
+  - **Valores mais baixos:** Permitem que o movimento persista por mais tempo, resultando em uma flutuação dinâmica mais solta e prolongada.
 
 ### Configurações Recomendadas
 
 Para um aprimoramento equilibrado e natural, comece com:
-- **Coil Force:** 8.0 N  
-- **Speaker Mass:** 0.03 kg  
-- **Spring Constant:** 6000 N/m  
-- **Damping Factor:** 1.5 N·s/m  
+- **Coil Force:** 8.0 N / V
+- **Speaker Mass:** 0.03 kg
+- **Spring Constant:** 6000 N/m
+- **Damping Factor:** 1.5 N·s/m
 
 Essas configurações proporcionam um Doppler Distortion sutil que enriquece a experiência de audição sem sobrecarregar o som original.
 
@@ -51,7 +51,7 @@ Essas configurações proporcionam um Doppler Distortion sutil que enriquece a e
 
 Um efeito que altera o tom da sua música sem afetar a velocidade de reprodução. Isso permite que você experimente suas músicas favoritas em diferentes tonalidades, fazendo com que soem mais altas ou mais baixas, mantendo o tempo e o ritmo originais.
 
-### Parameters
+### Parâmetros
 - **Pitch Shift** - Altera o tom geral em semitons (-6 a +6)
   - Valores negativos: Reduz o tom (som mais profundo e grave)
   - Zero: Sem alteração (tom original)
@@ -87,10 +87,11 @@ Um efeito que adiciona variações rítmicas de volume à sua música, semelhant
   - Perfeito para ouvir música ambiente e atmosférica
 
 ### Parâmetros
-- **Rate** - Quão rápido o volume muda (0.1 a 20 Hz)
+- **Rate** - Quão rápido o volume muda (0.1 a 50 Hz)
   - Mais lento (0.1-2 Hz): Pulsação suave e sutil
   - Médio (2-6 Hz): Efeito tremolo clássico
   - Mais rápido (6-20 Hz): Efeitos dramáticos e entrecortados
+  - Muito rápido (20-50 Hz): Modulação de volume extremamente rápida, que pode adicionar textura áspera ou zumbida; use com moderação para uma escuta confortável
 - **Depth** - Quanto o volume varia (0 a 12 dB)
   - Sutil (0-3 dB): Variações gentis de volume
   - Médio (3-6 dB): Efeito de pulsação notável
@@ -104,8 +105,8 @@ Um efeito que adiciona variações rítmicas de volume à sua música, semelhant
   - Médio: Variação vintage natural
   - Alto: Som mais instável e orgânico
 - **Randomness Cutoff** - Velocidade com que as mudanças aleatórias acontecem (1 a 1000 Hz)
-  - Lower: Variações aleatórias mais lentas e suaves
-  - Higher: Mudanças mais rápidas e imprevisíveis
+  - Mais baixo: Variações aleatórias mais lentas e suaves
+  - Mais alto: Mudanças mais rápidas e imprevisíveis
 - **Randomness Slope** - Controla a intensidade da filtragem de aleatoriedade (-12 a 0 dB)
   - -12 dB: Variações aleatórias mais suaves e graduais (efeito mais sutil)
   - -6 dB: Resposta equilibrada
@@ -183,10 +184,10 @@ Um efeito que adiciona sutis variações de pitch à sua música, semelhante ao 
   - Mais lento (0.1-2 Hz): Movimento semelhante a de um disco de vinil
   - Médio (2-6 Hz): Flutter semelhante ao de uma fita cassete
   - Mais rápido (6-20 Hz): Efeitos criativos
-- **Depth** - Quanto o pitch varia (0 a 40 ms)
-  - Sutil (0-10 ms): Caráter vintage suave
-  - Médio (10-20 ms): Sensação clássica de fita/disco
-  - Forte (20-40 ms): Efeitos dramáticos
+- **Depth** - O quanto o tempo de delay é modulado, criando a oscilação de pitch (0 a 40 ms)
+  - Sutil (0-6 ms): Caráter vintage suave
+  - Médio (6-15 ms): Sensação de fita/disco claramente audível
+  - Forte (15-40 ms): Efeitos especiais dramáticos
 - **Ch Phase** - Diferença de fase entre canais estéreo (-180 a 180 graus)
   - 0°: Ambos os canais oscilam juntos
   - 90° ou -90°: Cria um efeito giratório e de redemoinho
@@ -210,18 +211,20 @@ Um efeito que adiciona sutis variações de pitch à sua música, semelhante ao 
 ### Configurações Recomendadas para Diferentes Estilos
 
 1. Experiência Clássica de Vinil
-   - Rate: 0.5-1 Hz (movimento lento e suave)
-   - Depth: 15-20 ms
-   - Randomness: 10-15 ms
+   - Rate: 0.3-0.8 Hz (movimento lento e suave)
+   - Depth: 2-6 ms
+   - Randomness: 1-4 ms
+   - Randomness Cutoff: 0.5-3 Hz
    - Ch Phase: 0°
    - Ch Sync: 100%
    - Perfeito para: Jazz, Música Clássica, Vintage Rock
 
 2. Sensação de Cassete Retrô
-   - Rate: 4-5 Hz (flutter mais rápido)
-   - Depth: 10-15 ms
-   - Randomness: 15-20 ms
-   - Ch Phase: 0-45°
+   - Rate: 4-6 Hz (flutter mais rápido)
+   - Depth: 1-3 ms
+   - Randomness: 1-5 ms
+   - Randomness Cutoff: 3-8 Hz
+   - Ch Phase: 0-30°
    - Ch Sync: 80-100%
    - Perfeito para: Lo-Fi, Pop, Rock
 
@@ -234,9 +237,9 @@ Um efeito que adiciona sutis variações de pitch à sua música, semelhante ao 
    - Perfeito para: Ambient, Eletrônica, Experimental
 
 4. Realce Sutil
-   - Rate: 2-3 Hz
-   - Depth: 5-10 ms
-   - Randomness: 5-10 ms
+   - Rate: 1-2 Hz
+   - Depth: 2-5 ms
+   - Randomness: 1-3 ms
    - Ch Phase: 0°
    - Ch Sync: 100%
    - Perfeito para: Qualquer música que precise de um caráter vintage suave
@@ -244,9 +247,10 @@ Um efeito que adiciona sutis variações de pitch à sua música, semelhante ao 
 ### Guia de Início Rápido
 
 1. Para um Som Vintage Natural:
-   - Comece com Rate lento (1 Hz)
-   - Adicione Depth moderado (15 ms)
-   - Inclua um pouco de Randomness (10 ms)
+   - Comece com Rate lento (0.5-1 Hz)
+   - Adicione Depth leve (2-6 ms)
+   - Inclua um pouco de Randomness (1-4 ms)
+   - Use Randomness Cutoff em torno de 0.5-3 Hz
    - Mantenha Ch Phase em 0° e Ch Sync em 100%
    - Ajuste conforme o gosto
 

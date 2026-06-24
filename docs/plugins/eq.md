@@ -11,11 +11,11 @@ A collection of plugins that let you adjust different aspects of your music's so
 ## Plugin List
 
 - [15Band GEQ](#15band-geq) - Detailed sound adjustment with 15 precise controls
-- [15Band PEQ](#15band-peq) - Professional 15-band parametric equalizer with maximum flexibility
+- [15Band PEQ](#15band-peq) - Detailed 15-band tone shaping for music playback
 - [5Band Dynamic EQ](#5band-dynamic-eq) - Dynamics-based equalizer that responds to your music
-- [5Band PEQ](#5band-peq) - Professional parametric equalizer with flexible controls
+- [5Band PEQ](#5band-peq) - Flexible equalizer for shaping bass, mids, and treble
 - [Band Pass Filter](#band-pass-filter) - Focus on specific frequencies
-- [Comb Filter](#comb-filter) - Digital comb filter for harmonic coloration and resonance simulation
+- [Comb Filter](#comb-filter) - Phasey, hollow, or metallic sound coloration
 - [Hi Pass Filter](#hi-pass-filter) - Remove unwanted low frequencies with precision
 - [Lo Pass Filter](#lo-pass-filter) - Remove unwanted high frequencies with precision
 - [Loudness Equalizer](#loudness-equalizer) - Frequency balance correction for low volume listening
@@ -74,34 +74,36 @@ A detailed sound adjustment tool with 15 separate controls, each affecting a spe
 
 ## 15Band PEQ
 
-A professional-grade parametric equalizer with extensive 15-band control, offering precision frequency adjustments. Perfect for both subtle sound refinement and corrective audio processing with maximum flexibility.
+A 15-band parametric equalizer for fine-tuning bass, vocals, presence, and treble while listening. Use it when you want more detailed control than a graphic EQ, from small tone changes to narrowing down a specific annoying frequency.
 
 ### Sound Enhancement Guide
 - Vocal and Instrument Clarity:
-  - Use 3.2kHz band with moderate Q (1.0-2.0) for natural presence
-  - Apply narrow Q (4.0-8.0) cuts to remove resonances
-  - Add gentle air with 10kHz high shelf (+2 to +4dB)
+  - Set one band to around 3.2kHz with moderate Q (1.0-2.0) for natural presence
+  - Apply narrow Q (4.0-8.0) cuts only when a specific resonance is bothering you
+  - Add gentle air with a 10kHz high shelf (+2 to +4dB)
 - Bass Quality Control:
-  - Shape fundamentals with 100Hz peaking filter
-  - Remove room resonance using narrow Q at specific frequencies
-  - Create smooth bass extension with low shelf
-- Scientific Sound Adjustment:
-  - Target specific frequencies with precision
-  - Use analyzers to identify problem areas
-  - Apply measured corrections with minimal phase impact
+  - Shape bass fullness with a 100Hz peaking filter
+  - Use a narrow cut if one bass note or room boom stands out too much
+  - Create smooth bass extension with a low shelf
+- Fine Listening Adjustments:
+  - Use small, broad boosts or cuts for natural results
+  - Use narrow settings for targeted problems rather than overall tone
+  - Compare with bypass often so the music still sounds balanced
 
-### Technical Parameters
-- **Precision-Engineered Bands**
+### Parameters
+- **Configurable Bands**
   - 15 fully configurable frequency bands
   - Initial frequency settings:
     - 25Hz, 40Hz, 63Hz, 100Hz, 160Hz (Deep Bass)
     - 250Hz, 400Hz, 630Hz (Lower Sound)
     - 1kHz, 1.6kHz, 2.5kHz (Middle Sound)
     - 4kHz, 6.3kHz, 10kHz, 16kHz (High Sound)
-- **Professional Controls Per Band**
-  - Center Frequency: Logarithmically spaced for optimal coverage
-  - Gain Range: Precise ±20dB adjustment
-  - Q Factor: Wide 0.1 to Precise 10.0
+- **Controls Per Band**
+  - Center Frequency: Adjustable from 20Hz to 20kHz
+  - Gain Range: ±20dB for Peaking and Low/High Shelf filters
+  - Q Factor: 0.1-10.0 for most filter types; Low/High Shelf is limited to 0.1-2.0
+  - Higher Q affects a narrower range; lower Q sounds smoother and broader
+  - For Low/High Pass, Band Pass, Notch, and AllPass, Frequency and Q shape the filter; Gain is not used
   - Multiple Filter Types:
     - Peaking: Symmetrical frequency adjustment
     - Low/High Pass: 12dB/octave slope
@@ -110,20 +112,20 @@ A professional-grade parametric equalizer with extensive 15-band control, offeri
     - Notch: Precise frequency removal
     - AllPass: Phase-focused frequency alignment
 - **Preset Management**
-  - Import: Load EQ settings from text files in standard format
+  - Import: Load Equalizer APO-style TXT filter lines
+  - Up to 15 `ON` PK/LS/LSC/HS/HSC filters are imported; `Preamp` lines and unsupported filter types are ignored
     - Example format:
       ```
-      Preamp: -6.0 dB
       Filter 1: ON PK Fc 50 Hz Gain -3.0 dB Q 2.00
       Filter 2: ON HS Fc 12000 Hz Gain 4.0 dB Q 0.70
       ...
       ```
 
-### Technical Display
+### Visual Display
 - High-resolution frequency response visualization
 - Interactive control points with precise parameter display
-- Real-time transfer function calculation
-- Calibrated frequency and gain grid
+- Real-time curve updates as you adjust settings
+- Frequency and gain grid
 - Accurate numerical readouts for all parameters
 
 ## 5Band Dynamic EQ
@@ -136,7 +138,7 @@ A smart equalizer that automatically adjusts frequency bands based on the conten
   - Set moderate threshold (-24dB) and fast attack (10ms)
   - Automatically reduces harshness only when vocals get too aggressive
 - Enhance Clarity and Brilliance:
-  - Use BBE-style high-frequency enhancement (Filter Type: Highshelf, SC Freq: 1200Hz, Ratio: 0.5, Attack: 1ms)
+  - Use Band 5 with Filter Type: Highshelf, Frequency: around 10000Hz, SC Freq: around 1200Hz, Ratio: 0.5, Attack: 1ms
   - Mids trigger high frequencies for natural-sounding clarity
   - Adds sparkle to music without permanent brightness
 - Control Excessive Bass:
@@ -164,7 +166,7 @@ A smart equalizer that automatically adjusts frequency bands based on the conten
   - Ratio: Control processing intensity (0.1-100.0)
     - Below 1.0: Expander (enhances when signal exceeds threshold)
     - Above 1.0: Compressor (reduces when signal exceeds threshold)
-  - Knee Width: Smooth transition around threshold (0-30dB)
+  - Knee Width: Smooth transition around threshold (0-10dB)
   - Attack: How quickly processing begins (0.1-100ms)
   - Release: How quickly processing ends (1-1000ms)
   - Sidechain Frequency: Detection frequency (20Hz-20kHz)
@@ -172,38 +174,40 @@ A smart equalizer that automatically adjusts frequency bands based on the conten
 
 ### Visual Display
 - Real-time frequency response graph
-- Band-specific gain reduction indicators
+- Dynamic response curve showing the current boosts and cuts
 - Interactive frequency and gain controls
 
 ## 5Band PEQ
 
-A professional-grade parametric equalizer based on scientific principles, offering five fully configurable bands with precise frequency control. Perfect for both subtle sound refinement and corrective audio processing.
+A flexible 5-band equalizer for shaping music playback. Use it when bass feels boomy, vocals sound harsh, or the highs need a little more sparkle without opening the more detailed 15-band version.
 
 ### Sound Enhancement Guide
 - Vocal and Instrument Clarity:
-  - Use 3.2kHz band with moderate Q (1.0-2.0) for natural presence
-  - Apply narrow Q (4.0-8.0) cuts to remove resonances
-  - Add gentle air with 10kHz high shelf (+2 to +4dB)
+  - Use the 3.16kHz band with moderate Q (1.0-2.0) for natural presence
+  - Apply narrow Q (4.0-8.0) cuts only when a specific resonance is bothering you
+  - Add gentle air with the 10kHz high shelf (+2 to +4dB)
 - Bass Quality Control:
-  - Shape fundamentals with 100Hz peaking filter
-  - Remove room resonance using narrow Q at specific frequencies
+  - Shape bass fullness with the 100Hz peaking filter
+  - Use a narrow cut if one bass note or room boom stands out too much
   - Create smooth bass extension with low shelf
-- Scientific Sound Adjustment:
-  - Target specific frequencies with precision
-  - Use analyzers to identify problem areas
-  - Apply measured corrections with minimal phase impact
+- Everyday Sound Tuning:
+  - Use broad, small adjustments for natural tone changes
+  - Reduce harshness, boominess, or dullness by ear
+  - Compare with bypass often so the music still sounds balanced
 
-### Technical Parameters
-- **Precision-Engineered Bands**
+### Parameters
+- **Five Adjustable Bands**
   - Band 1: 100Hz (Sub & Bass Control)
   - Band 2: 316Hz (Lower Midrange Definition)
   - Band 3: 1.0kHz (Midrange Presence)
   - Band 4: 3.2kHz (Upper Midrange Detail)
   - Band 5: 10kHz (High Frequency Extension)
-- **Professional Controls Per Band**
-  - Center Frequency: Logarithmically spaced for optimal coverage
-  - Gain Range: Precise ±20dB adjustment
-  - Q Factor: Wide 0.1 to Precise 10.0
+- **Controls Per Band**
+  - Center Frequency: Adjustable from 20Hz to 20kHz
+  - Gain Range: ±20dB for Peaking and Low/High Shelf filters
+  - Q Factor: 0.1-10.0 for most filter types; Low/High Shelf is limited to 0.1-2.0
+  - Higher Q affects a narrower range; lower Q sounds smoother and broader
+  - For Low/High Pass, Band Pass, Notch, and AllPass, Frequency and Q shape the filter; Gain is not used
   - Multiple Filter Types:
     - Peaking: Symmetrical frequency adjustment
     - Low/High Pass: 12dB/octave slope
@@ -212,11 +216,11 @@ A professional-grade parametric equalizer based on scientific principles, offeri
     - Notch: Precise frequency removal
     - AllPass: Phase-focused frequency alignment
 
-### Technical Display
+### Visual Display
 - High-resolution frequency response visualization
 - Interactive control points with precise parameter display
-- Real-time transfer function calculation
-- Calibrated frequency and gain grid
+- Real-time curve updates as you adjust settings
+- Frequency and gain grid
 - Accurate numerical readouts for all parameters
 
 ## Band Pass Filter
@@ -238,7 +242,7 @@ A precision band-pass filter that combines high-pass and low-pass filters to all
   - Perfect for removing both rumble and high-frequency noise simultaneously
 
 ### Parameters
-- **HPF Frequency (Hz)** - Controls where low frequencies are filtered out (1Hz to 40000Hz)
+- **HPF Frequency (Hz)** - Controls where low frequencies are filtered out (10Hz to 40000Hz; the effective upper limit also depends on the audio sample rate)
   - Lower values: Only the very lowest frequencies are removed
   - Higher values: More low frequencies are removed
   - Adjust based on the specific low-frequency content you want to eliminate
@@ -248,7 +252,7 @@ A precision band-pass filter that combines high-pass and low-pass filters to all
   - -24dB/oct: Standard filtering (LR4 - 4th order Linkwitz-Riley)
   - -36dB/oct: Stronger filtering (LR6 - 6th order Linkwitz-Riley)
   - -48dB/oct: Very strong filtering (LR8 - 8th order Linkwitz-Riley)
-- **LPF Frequency (Hz)** - Controls where high frequencies are filtered out (1Hz to 40000Hz)
+- **LPF Frequency (Hz)** - Controls where high frequencies are filtered out (10Hz to 40000Hz; the effective upper limit also depends on the audio sample rate)
   - Lower values: More high frequencies are removed
   - Higher values: Only the very highest frequencies are removed
   - Adjust based on the specific high-frequency content you want to eliminate
@@ -267,31 +271,26 @@ A precision band-pass filter that combines high-pass and low-pass filters to all
 
 ## Comb Filter
 
-A digital comb filter that creates harmonic coloration and resonance effects through precise time delays. This plugin simulates acoustic phenomena like early reflections from walls and surfaces, making it perfect for audio enthusiasts who want to understand and recreate the complex interactions between sound and space.
+A comb filter that adds a phasey, hollow, metallic, or resonant character by mixing the sound with a very short delayed copy. Use it when you want a track to feel more colored, spacious, or experimental.
 
 ### Listening Enhancement Guide
-- Simulate Room Acoustics:
-  - Use fundamental frequencies between 100-500Hz to simulate wall reflections
-  - Adjust feedback gain to control reflection intensity
-  - Perfect for understanding how room dimensions affect sound
-- Create Harmonic Coloration:
-  - Use feedforward mode for subtle harmonic enhancement
-  - Use feedback mode for more pronounced resonance effects
+- Add Subtle Coloration:
+  - Start with Feedforward mode, Feedback Gain around 0.2-0.4, and Dry-Wet Mix around 20-40%
+  - Adjust the Fundamental Frequency until the hollow or phasey tone fits the music
+  - Keep feedback low for a gentler effect that blends with the original sound
+- Create Resonance and Echo Effects:
+  - Use Feedback mode or higher Feedback Gain for stronger ringing or echo-like effects
   - Experiment with different fundamental frequencies for unique tonal character
-- Early Reflection Simulation:
-  - Set fundamental frequency based on room dimensions (e.g., 343Hz for 1-meter distance)
-  - Use moderate feedback gain (0.3-0.7) for realistic reflection simulation
-  - Helps recreate the acoustic characteristics of different listening spaces
-- Resonance and Echo Effects:
-  - Higher feedback gain values create more pronounced resonance
-  - Lower fundamental frequencies create longer delay times
-  - Combine with other effects for complex spatial processing
+  - Use lower Dry-Wet Mix values if the effect becomes too obvious
+- Bright Metallic Color:
+  - Try higher Fundamental Frequency values for brighter, wider-spaced comb peaks and dips
+  - Use positive or negative Feedback Gain to change the pattern of peaks and dips
+  - Combine with other effects for more experimental listening effects
 
 ### Parameters
 - **Fundamental Frequency (Hz)** - Controls the delay time and harmonic spacing (20Hz to 20000Hz)
-  - Lower values: Longer delays, more spaced harmonics
-  - Higher values: Shorter delays, closer harmonics
-  - Based on room acoustics: Frequency = Speed of Sound / Distance
+  - Lower values: Longer delays, closer-spaced comb peaks and dips
+  - Higher values: Shorter delays, wider-spaced comb peaks and dips
 - **Feedback Gain** - Controls the intensity of the comb filter effect (-1.0 to 1.0)
   - Negative values: Creates inverse harmonic patterns
   - Positive values: Creates reinforcing harmonic patterns
@@ -307,8 +306,8 @@ A digital comb filter that creates harmonic coloration and resonance effects thr
 
 ### Technical Details
 - **Delay Calculation**: Delay time = 1 / Fundamental Frequency
-- **Harmonic Response**: Creates peaks and dips at integer multiples of the fundamental frequency
-- **Spatial Simulation**: Can simulate early reflections from walls and surfaces
+- **Harmonic Response**: Creates regularly spaced peaks and dips based on the fundamental frequency
+- **Spatial Coloration**: Can resemble short reflections, hollow coloration, or metallic resonance
 - **Real-time Visualization**: Shows frequency response with fundamental frequency marker
 
 ### Visual Display
@@ -332,12 +331,12 @@ A precision high-pass filter that removes unwanted low frequencies while preserv
   - Use moderate slopes (-12dB/oct to -24dB/oct) for natural transition
   - Helps prevent speaker overload and improves clarity
 - Create Special Effects:
-  - Set frequency between 200-500Hz for telephone-like voice effect
+  - Set frequency between 200-500Hz for a thinner, low-cut voice effect
   - Use steep slopes (-48dB/oct or higher) for dramatic filtering
-  - Combine with Lo Pass Filter for band-pass effects
+  - For a telephone-like voice effect, combine with Lo Pass Filter around 3-4kHz
 
 ### Parameters
-- **Frequency (Hz)** - Controls where low frequencies are filtered out (1Hz to 40000Hz)
+- **Frequency (Hz)** - Controls where low frequencies are filtered out (10Hz to 40000Hz; the effective upper limit also depends on the audio sample rate)
   - Lower values: Only the very lowest frequencies are removed
   - Higher values: More low frequencies are removed
   - Adjust based on the specific low-frequency content you want to eliminate
@@ -369,16 +368,16 @@ A precision low-pass filter that removes unwanted high frequencies while preserv
   - Use gentle slopes (-12dB/oct) for subtle warming effect
   - Creates a more analog-like sound character
 - Create Special Effects:
-  - Set frequency between 1-3kHz for vintage radio effect
+  - Set frequency between 1-3kHz with a steep slope for a muffled, narrow-band character
   - Use steep slopes (-48dB/oct or higher) for dramatic filtering
-  - Combine with Hi Pass Filter for band-pass effects
+  - For a vintage radio effect, combine with Hi Pass Filter to remove low frequencies as well
 - Control Noise and Hiss:
   - Set frequency just above the musical content (typically 14-18kHz)
   - Use steeper slopes (-36dB/oct or higher) for effective noise control
   - Reduces tape hiss or background noise while preserving most musical content
 
 ### Parameters
-- **Frequency (Hz)** - Controls where high frequencies are filtered out (1Hz to 40000Hz)
+- **Frequency (Hz)** - Controls where high frequencies are filtered out (10Hz to 40000Hz; the effective upper limit also depends on the audio sample rate)
   - Lower values: More high frequencies are removed
   - Higher values: Only the very highest frequencies are removed
   - Adjust based on the specific high-frequency content you want to eliminate
@@ -398,16 +397,16 @@ A precision low-pass filter that removes unwanted high frequencies while preserv
 
 ## Loudness Equalizer
 
-A specialized equalizer that automatically adjusts frequency balance based on your listening volume. This plugin compensates for the human ear's reduced sensitivity to low and high frequencies at lower volumes, ensuring a consistent and enjoyable listening experience regardless of playback level.
+A specialized equalizer that adjusts frequency balance based on the Average SPL value you set. Use it for quieter listening, where bass and treble can feel weaker, to keep the music balanced and enjoyable.
 
 ### Listening Enhancement Guide
 - Low Volume Listening:
   - Enhances bass and treble frequencies
   - Maintains musical balance at quiet levels
   - Compensates for human hearing characteristics
-- Volume-Dependent Processing:
-  - More enhancement at lower volumes
-  - Gradual reduction of processing as volume increases
+- Average SPL Setting:
+  - More enhancement at lower Average SPL settings
+  - Gradual reduction of processing as the setting increases
   - Natural sound at higher listening levels
 - Frequency Balance:
   - Low shelf for bass enhancement (100-300Hz)
@@ -415,10 +414,10 @@ A specialized equalizer that automatically adjusts frequency balance based on yo
   - Smooth transition between frequency ranges
 
 ### Parameters
-- **Average SPL** - Current listening level (60dB to 85dB)
+- **Average SPL** - Estimated average listening level used for correction (60dB to 85dB)
   - Lower values: More enhancement
   - Higher values: Less enhancement
-  - Represents typical listening volume
+  - Set this manually to match your typical listening volume
 - **Low Frequency Controls**
   - Frequency: Bass enhancement center (100Hz to 300Hz)
   - Gain: Maximum bass boost (0dB to 15dB)
@@ -443,24 +442,24 @@ A tool that lets you focus on specific parts of the music by filtering out unwan
   - "Telephone voice" effect
   - "Old radio" sound
   - "Underwater" effect
-- Focus on specific instruments:
-  - Isolate bass frequencies
+- Focus on a frequency range:
+  - Make bass-heavy parts easier to hear
   - Focus on vocal range
-  - Highlight specific instruments
+  - Narrow the sound to the range where vocals or instruments are most noticeable
 - Remove unwanted sounds:
   - Reduce low-frequency rumble
   - Cut excessive high-frequency hiss
-  - Focus on the most important parts of the music
+  - Focus on the range you want to hear most clearly
 
 ### Parameters
-- **HPF Frequency** - Controls where low sounds start being reduced (20Hz to 1000Hz)
+- **HPF Frequency** - Controls where low sounds start being reduced (20Hz to 4000Hz)
   - Higher values: Removes more bass
   - Lower values: Keeps more bass
   - Start with low values and adjust to taste
 - **HPF Slope** - How quickly low sounds are reduced (0 to -48 dB/octave)
   - 0dB: No reduction (off)
   - -6dB to -48dB: Increasingly stronger reduction in 6dB steps
-- **LPF Frequency** - Controls where high sounds start being reduced (200Hz to 20000Hz)
+- **LPF Frequency** - Controls where high sounds start being reduced (200Hz to 40000Hz)
   - Lower values: Removes more highs
   - Higher values: Keeps more highs
   - Start high and adjust down as needed
@@ -471,7 +470,7 @@ A tool that lets you focus on specific parts of the music by filtering out unwan
 ### Visual Display
 - Clear graph showing frequency response
 - Easy-to-adjust frequency controls
-- Simple slope selection buttons
+- Simple slope drop-down menus
 
 ## Tone Control
 
@@ -519,26 +518,27 @@ A simple yet effective equalizer that gently tilts the frequency balance of your
 
 ### Listening Enhancement Guide
 - Make Music Warmer:
-  - Use negative gain values to reduce high frequencies and increase low frequencies.
+  - Use negative slope values to reduce high frequencies and increase low frequencies.
   - Perfect for bright recordings or headphones that sound too sharp.
   - Creates a cozy and relaxed listening experience.
 - Make Music Brighter:
-  - Use positive gain values to increase high frequencies and reduce low frequencies.
+  - Use positive slope values to increase high frequencies and reduce low frequencies.
   - Ideal for dull recordings or speakers that sound muffled.
   - Adds clarity and sparkle to your music.
 - Subtle Tone Adjustments:
-  - Use small gain values for gentle overall tone shaping.
+  - Use small slope values for gentle overall tone shaping.
   - Fine-tune the balance to match your listening environment or mood.
 
 ### Parameters
 - **Pivot Frequency** - Controls the center frequency of the tilt (20Hz to ~20kHz)
   - Adjust to set the frequency point around which the tilt occurs.
-- **Slope** - Controls the steepness of the tilt around the Pivot Frequency (-12dB to +12dB)
-  - Adjust to control how steeply frequencies around the Pivot Frequency are tilted.
+- **Slope** - Controls the steepness of the tilt around the Pivot Frequency (-12 dB/oct to +12 dB/oct)
+  - Positive values make the sound brighter; negative values make it warmer.
+  - Smaller values make gentler changes.
 
 ### Visual Display
-- Simple slider for easy gain adjustment
+- Simple slider for easy slope adjustment
 - Real-time frequency response curve to show the tilt effect
-- Clear indication of current gain value
+- Clear indication of current slope value
 
 - Quick reset button

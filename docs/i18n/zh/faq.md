@@ -1,7 +1,7 @@
 ---
-title: "FAQ & Troubleshooting - EffeTune"
-description: "Frequently asked questions and troubleshooting guide for Frieve EffeTune audio processor."
-lang: en
+title: "常见问题与故障排除 - EffeTune"
+description: "Frieve EffeTune 音频处理器的常见问题和故障排除指南。"
+lang: zh
 ---
 
 # EffeTune 常见问题解答（FAQ）

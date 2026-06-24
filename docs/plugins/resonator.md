@@ -11,7 +11,7 @@ A collection of plugins that emphasize resonant characteristics to add unique to
 ## Plugin List
 
 - [Horn Resonator](#horn-resonator) - Simulates the resonance of horn speaker systems
-- [Horn Resonator Plus](#horn-resonator-plus) - Enhanced horn model with advanced reflections
+- [Horn Resonator Plus](#horn-resonator-plus) - Smoother horn-speaker resonance for natural listening color
 - [Modal Resonator](#modal-resonator) - Frequency resonance effect with up to 5 resonators
 
 ## Horn Resonator
@@ -27,7 +27,7 @@ A plugin that simulates the resonance of a horn-loaded speaker using a digital w
 ### Parameters
 
 - **Crossover (Hz)** - Sets the frequency split between the low-frequency path (delayed) and the high-frequency path processed by the horn model. (20–5000 Hz)
-- **Horn Length (cm)** - Adjusts the length of the simulated horn. Longer horns emphasize lower frequencies and increase resonance spacing, shorter horns emphasize higher frequencies and tighten the sound. (20–120 cm)
+- **Horn Length (cm)** - Adjusts the length of the simulated horn. Longer horns shift resonances lower and make them more closely spaced; shorter horns shift resonances higher and farther apart for a tighter sound. (20–120 cm)
 - **Throat Diameter (cm)** - Controls the opening size at the horn's throat (input). Smaller values tend to increase brightness and upper midrange emphasis, larger values add warmth. (0.5–50 cm)
 - **Mouth Diameter (cm)** - Controls the opening size at the horn's mouth (output). This affects the impedance matching to the surrounding air and influences the frequency-dependent reflection at the mouth. Larger values generally widen the perceived sound and reduce low-frequency reflection, smaller values focus it and increase low-frequency reflection. (5–200 cm)
 - **Curve (%)** - Tunes the horn's flare shape (how the radius increases from throat to mouth).
@@ -46,25 +46,24 @@ A plugin that simulates the resonance of a horn-loaded speaker using a digital w
 3.  Adjust **Throat Diameter** and **Mouth Diameter** to shape the core tone (brightness vs. warmth, focus vs. width).
 4.  Use **Curve** to fine-tune the resonant character (try 0% for conical, positive for exponential-like, negative for tractrix-like flare).
 5.  Tweak **Damping** and **Throat Reflection** for smoothness or emphasis of the horn's resonances.
-6.  Use **Output Gain** to balance the level of the horn sound against the bypassed low frequencies.
+6.  Use **Output Gain** to balance the level of the horn sound against the delayed low frequencies.
 
 ## Horn Resonator Plus
 
-An enhanced horn model that uses a 2nd-order mouth reflection filter and a frequency-dependent throat reflection for smoother resonance.
+Horn Resonator Plus adds a smoother, more natural horn-speaker character to music. Use it when you want vocals, brass, acoustic instruments, or full mixes to feel warmer and more lively, while keeping the resonance less sharp than the standard Horn Resonator.
 
-Horn Resonator Plus is an advanced implementation based on the [Horn Resonator](#horn-resonator), featuring a more rigorous horn transmission line model with the following technical improvements:
+It is based on the same horn model as [Horn Resonator](#horn-resonator), with a more detailed mouth and throat reflection model so resonances decay more smoothly.
+
+### Listening Guide
+
+- Smoother horn color: adds horn-loaded speaker character with less sharp ringing.
+- Warmer presence: can make vocals, brass, and acoustic music feel more lively.
+- Natural high-frequency behavior: the upper range is closer to an acoustic horn or horn-loaded speaker than the standard version.
 
 ### Technical Enhancements
 
-- **2nd-order mouth reflection filter**: More accurate modeling of frequency-dependent reflection at the mouth opening for smoother resonance characteristics
-- **Frequency-dependent throat reflection**: Throat reflection characteristics that adapt to frequency for more natural acoustic behavior
-
-### Acoustic Characteristics
-
-Horn Resonator Plus provides superior sound quality compared to the standard Horn Resonator in the following aspects:
-
-- **Smoother frequency response**: The 2nd-order mouth reflection filter creates more natural resonance peak decay
-- **More realistic high-frequency behavior**: Group delay characteristics in the high-frequency range more closely resemble real acoustic instruments
+- **2nd-order mouth reflection filter**: Smoother modeling of frequency-dependent reflection at the mouth opening.
+- **Frequency-dependent throat reflection**: Throat reflection changes with frequency for more natural horn behavior.
 
 ### Parameters and Usage
 
@@ -72,16 +71,16 @@ Horn Resonator Plus uses the same parameters as [Horn Resonator](#horn-resonator
 
 ### Usage Guidelines
 
-- **Horn Resonator**: Choose when you need lightweight processing with basic horn characteristics
-- **Horn Resonator Plus**: Choose when you require higher quality and more natural horn acoustic characteristics (approximately +10% CPU cost)
+- **Horn Resonator**: Choose when you want lighter processing with basic horn character.
+- **Horn Resonator Plus**: Choose when you want smoother, more natural horn coloration and can accept slightly higher CPU use.
 
 ### Quick Start Guide
 
-Use the same controls as the [Horn Resonator](#horn-resonator). Choose Horn Resonator Plus when you want higher quality results.
+Use the same controls as the [Horn Resonator](#horn-resonator). Choose Horn Resonator Plus when you want a smoother horn-speaker character.
 
 ## Modal Resonator
 
-A creative effect that adds resonant frequencies to your audio. This plugin creates tuned resonances at specific frequencies, similar to how physical objects vibrate at their natural resonant frequencies. It's perfect for adding unique tonal characteristics, simulating the resonant properties of different materials, or creating special effects.
+An effect that adds tuned resonances to your music, similar to the way physical objects or speaker parts ring at their natural frequencies. Use it when you want extra shimmer, body, metallic color, or speaker-like resonance during listening.
 
 ### Listening Experience Guide
 
@@ -99,8 +98,8 @@ A creative effect that adds resonant frequencies to your audio. This plugin crea
   - Helps simulate the characteristic sound of specific speaker types.
 - **Special Effects:**
   - Creates unusual timbral qualities and otherworldly textures.
-  - Excellent for sound design and experimental processing.
-  - Try extreme settings for creative sound transformation.
+  - Useful when you want an obvious resonance effect rather than natural enhancement.
+  - Try extreme settings only when you want the resonances to become part of the sound.
 
 ### Parameters
 
@@ -117,7 +116,10 @@ For each resonator:
 - **LPF Freq (Hz)** - Low-pass filter that shapes the tone of the resonance (20 to 20,000 Hz).
 - **HPF Freq (Hz)** - High-pass filter that removes unwanted low frequencies from the resonance (20 to 20,000 Hz).
 - **Gain (dB)** - Controls the individual output level of each resonator (-18 to +18 dB).
-- **Mix (%)** - Balances the volume of the resonances against the original sound (0 to 100%).
+
+Global control:
+
+- **Mix (%)** - Balances the combined output of all enabled resonators against the original sound (0 to 100%).
 
 ### Recommended Settings for Listening Enhancement
 
@@ -138,6 +140,7 @@ For each resonator:
 3. **Bass Enhancement:**
    - Enable 1-2 resonators
    - Freq settings: 50-150 Hz
+   - HPF Freq: 20-60 Hz, kept below the target resonance
    - Decay: 50-100ms
    - LPF Freq: 1000-2000 Hz
    - Mix: 10-25%
@@ -145,6 +148,7 @@ For each resonator:
 4. **Full-Range Speaker Simulation:**
    - Enable all 5 resonators
    - Freq settings: 100 Hz, 400 Hz, 800 Hz, 1600 Hz, 3000 Hz
+   - HPF Freq settings: 20 Hz, 120 Hz, 250 Hz, 500 Hz, 1000 Hz
    - Decay: Progressively shorter from low to high (100ms to 30ms)
    - LPF Freq: Progressively higher from low to high (2000Hz to 4000Hz)
    - Mix: 20-40%
@@ -159,6 +163,7 @@ For each resonator:
 2. **Adjust the Character:**
    - Use the `Decay` parameter to control how long resonances sustain.
    - Shape the tone with the `LPF Freq` control.
+   - Set `HPF Freq` below the resonance you want to keep, especially for bass settings.
    - Longer decay times create more obvious, bell-like tones.
 
 3. **Blend with Original:**

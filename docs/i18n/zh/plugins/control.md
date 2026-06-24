@@ -1,39 +1,39 @@
 ---
-title: "Control Plugins - EffeTune"
-description: "Control plugins for organizing effect chains with Section grouping."
-lang: en
+title: "控制效果 - EffeTune"
+description: "用于组织和控制效果链的控制效果。"
+lang: zh
 ---
 
-# Control Effects
+# 控制效果
 
-Control effects are special utility effects that don't process audio directly but instead control how other effects operate. They help organize and manage complex effect chains.
+控制效果是不直接处理音频的特殊工具。它们用于组织和管理 Effect Pipeline。
 
 ## Section
 
-The Section effect allows you to group multiple effects together and control them with a single ON/OFF toggle.
+Section 效果会把多个效果归为一个区段，让您可以用一个 ON/OFF 开关旁路或恢复这一整段效果。每个效果自身的 ON/OFF 状态会被保留。
 
-### Overview
+### 概述
 
-- **Name**: Section
-- **Category**: Control
-- **Description**: Groups multiple effects together for unified control
+- **名称**: Section
+- **类别**: Control
+- **描述**: 将效果分组，使整个区段可以被旁路或恢复
 
-### Parameters
+### 参数
 
-| Parameter | Description |
-|-----------|-------------|
-| Comment   | A name or description of the section's purpose |
+| 参数 | 说明 |
+|------|------|
+| Comment | 用于表示该区段用途的名称或说明 |
 
-### Usage
+### 使用方法
 
-1. Place the Section effect at the beginning of a group of effects you want to control together
-2. Enter a descriptive name in the "Comment" field to identify the section's purpose
-3. Toggle the Section effect ON/OFF to enable/disable all effects within the section
-4. Effects placed after a Section effect will be controlled by that section until another Section effect is encountered
+1. 将 Section 效果放在想要一起控制的一组效果前面
+2. 在 "Comment" 字段中输入描述性名称，便于识别区段用途
+3. 将 Section 设为 OFF 会旁路该区段内的效果；设回 ON 会恢复该区段，同时保留每个效果自身的 ON/OFF 状态
+4. 放在 Section 后面的效果会受该 Section 控制，直到遇到下一个 Section
 
-### Application Examples
+### 应用示例
 
-- Group related effects (e.g., "EQ Adjustments", "Spatial Effects")
-- Create alternative processing chains that can be easily toggled
-- Organize complex effect chains into logical sections
-- Temporarily disable a group of effects without removing them 
+- 将相关效果分组（例如 "EQ Adjustments"、"Spatial Effects"）
+- 创建可轻松切换的备用处理链
+- 将复杂效果链整理成逻辑区段
+- 暂时禁用一组效果而无需移除它们

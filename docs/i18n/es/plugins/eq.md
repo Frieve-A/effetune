@@ -1,7 +1,7 @@
 ---
-title: "EQ Plugins - EffeTune"
-description: "Equalizer plugins including Parametric EQ, Graphic EQ, Dynamic EQ, Filters, and Tone Control."
-lang: en
+title: "Plugins de EQ - EffeTune"
+description: "Plugins de ecualización, incluidos Parametric EQ, Graphic EQ, Dynamic EQ, filtros y Tone Control."
+lang: es
 ---
 
 # Plugins de Ecualización
@@ -11,17 +11,17 @@ Una colección de plugins que te permiten ajustar diferentes aspectos del sonido
 ## Lista de Plugins
 
 - [15Band GEQ](#15band-geq) - Ajuste detallado del sonido con 15 controles precisos
-- [15Band PEQ](#15band-peq) - Ecualizador paramétrico profesional con 15 bandas y máxima flexibilidad
+- [15Band PEQ](#15band-peq) - Ecualizador paramétrico de 15 bandas para ajustes detallados del tono de escucha
 - [5Band Dynamic EQ](#5band-dynamic-eq) - Ecualizador dinámico que responde a tu música
-- [5Band PEQ](#5band-peq) - Ecualizador paramétrico profesional con controles flexibles
+- [5Band PEQ](#5band-peq) - Ecualizador flexible de 5 bandas para moldear graves, medios y agudos
 - [Band Pass Filter](#band-pass-filter) - Enfoca frecuencias específicas
-- [Comb Filter](#comb-filter) - Filtro peine digital para coloración armónica y simulación de resonancia
+- [Comb Filter](#comb-filter) - Añade una coloración faseada, hueca o metálica
 - [Hi Pass Filter](#hi-pass-filter) - Elimina frecuencias bajas no deseadas con precisión
 - [Lo Pass Filter](#lo-pass-filter) - Elimina frecuencias altas no deseadas con precisión
 - [Loudness Equalizer](#loudness-equalizer) - Corrección del balance de frecuencias para escuchar a bajo volumen
 - [Narrow Range](#narrow-range) - Enfoca partes específicas del sonido
 - [Tilt EQ](#tilt-eq) - Ecualizador de inclinación para ajuste tonal simple
-- [Tone Control](#tone-control) - Ajuste sencillo de bajos, mid y treble
+- [Tone Control](#tone-control) - Ajuste sencillo de bajos, medios y agudos
 
 ## 15Band GEQ
 
@@ -74,23 +74,23 @@ Una herramienta de ajuste detallado del sonido con 15 controles individuales, ca
 
 ## 15Band PEQ
 
-Un ecualizador paramétrico de grado profesional con un amplio control de 15 bandas, ofreciendo ajustes de frecuencia precisos. Perfecto tanto para un refinamiento sutil del sonido como para un procesamiento de audio correctivo con máxima flexibilidad.
+Un ecualizador paramétrico de 15 bandas para ajustar con detalle graves, voces, presencia y agudos mientras escuchas. Úsalo cuando quieras más control que con un EQ gráfico, desde pequeños cambios de tono hasta acotar una frecuencia concreta que molesta.
 
 ### Guía de Mejora del Sonido
 - Claridad de Voces e Instrumentos:
-  - Utiliza la banda de 3.2kHz con un Q moderado (1.0-2.0) para una presencia natural
-  - Aplica cortes con Q estrecho (4.0-8.0) para eliminar resonancias
+  - Ajusta una banda alrededor de 3.2kHz con Q moderado (1.0-2.0) para una presencia natural
+  - Aplica cortes con Q estrecho (4.0-8.0) solo cuando una resonancia concreta te moleste
   - Añade un leve toque de aire con la estantería alta de 10kHz (+2 a +4dB)
 - Control de la Calidad de los Bajos:
   - Moldea los fundamentos con un filtro peaking de 100Hz
-  - Elimina la resonancia de la sala utilizando un Q estrecho en frecuencias específicas
+  - Usa un corte estrecho si una nota de bajo o una resonancia de sala destaca demasiado
   - Crea una extensión suave de los bajos con una estantería baja
-- Ajuste Científico del Sonido:
-  - Apunta a frecuencias específicas con precisión
-  - Utiliza analizadores para identificar áreas problemáticas
-  - Aplica correcciones medibles con un impacto mínimo en la fase
+- Ajustes Finos de Escucha:
+  - Usa realces o cortes pequeños y amplios para resultados naturales
+  - Usa ajustes estrechos para problemas concretos, no para el tono general
+  - Compara a menudo con bypass para que la música siga sonando equilibrada
 
-### Parámetros Técnicos
+### Parámetros
 - **Bandas de Precisión**
   - 15 bandas de frecuencia completamente configurables
   - Configuración inicial de frecuencias:
@@ -98,10 +98,12 @@ Un ecualizador paramétrico de grado profesional con un amplio control de 15 ban
     - 250Hz, 400Hz, 630Hz (Sonidos bajos)
     - 1kHz, 1.6kHz, 2.5kHz (Sonidos medios)
     - 4kHz, 6.3kHz, 10kHz, 16kHz (Sonidos altos)
-- **Controles Profesionales por Banda**
-  - Center Frequency: Espaciada logarítmicamente para una cobertura óptima
-  - Gain Range: Ajuste preciso de ±20dB
-  - Q Factor: De 0.1 (amplio) a 10.0 (preciso)
+- **Controles por Banda**
+  - Center Frequency: Ajustable de 20Hz a 20kHz
+  - Gain Range: ±20dB para filtros Peaking y Low/High Shelf
+  - Q Factor: 0.1-10.0 para la mayoría de tipos de filtro; Low/High Shelf está limitado a 0.1-2.0
+  - Un Q más alto afecta un rango más estrecho; un Q más bajo suena más suave y amplio
+  - En Low/High Pass, Band Pass, Notch y AllPass, Frequency y Q moldean el filtro; Gain no se usa
   - Múltiples Tipos de Filtro:
     - Peaking: Ajuste simétrico de frecuencia
     - Low/High Pass: Pendiente de 12dB/octave
@@ -110,16 +112,16 @@ Un ecualizador paramétrico de grado profesional con un amplio control de 15 ban
     - Notch: Eliminación precisa de frecuencia
     - AllPass: Alineación de frecuencia centrada en fase
 - **Gestión de Presets**
-  - Importar: Carga ajustes de EQ desde archivos de texto en formato estándar
+  - Import: Carga líneas de filtro TXT de estilo Equalizer APO
+  - Se importan hasta 15 filtros `ON` PK/LS/LSC/HS/HSC; se ignoran líneas `Preamp` y tipos de filtro no compatibles
     - Formato de ejemplo:
       ```
-      Preamp: -6.0 dB
       Filter 1: ON PK Fc 50 Hz Gain -3.0 dB Q 2.00
       Filter 2: ON HS Fc 12000 Hz Gain 4.0 dB Q 0.70
       ...
       ```
 
-### Visualización Técnica
+### Visualización
 - Visualización de la respuesta en frecuencia de alta resolución
 - Puntos de control interactivos con visualización precisa de parámetros
 - Cálculo en tiempo real de la función de transferencia
@@ -136,7 +138,7 @@ Un ecualizador inteligente que ajusta automáticamente las bandas de frecuencia 
   - Ajusta un threshold moderado (-24dB) y un attack rápido (10ms)
   - Reduce automáticamente la dureza solo cuando las voces sean demasiado agresivas
 - Potenciar claridad y brillo:
-  - Utiliza un realce de frecuencias altas estilo BBE (Filter Type: Highshelf, SC Freq: 1200Hz, Ratio: 0.5, Attack: 1ms)
+  - Usa Band 5 con Filter Type: Highshelf, Frequency: alrededor de 10000Hz, SC Freq: alrededor de 1200Hz, Ratio: 0.5, Attack: 1ms
   - Las frecuencias medias desencadenan las altas para lograr claridad natural
   - Añade chispa a la música sin un brillo permanente
 - Controlar graves excesivos:
@@ -164,7 +166,7 @@ Un ecualizador inteligente que ajusta automáticamente las bandas de frecuencia 
   - Ratio: Controla la intensidad del procesamiento (0.1-100.0)
     - Por debajo de 1.0: Expander (realza cuando la señal supera el threshold)
     - Por encima de 1.0: Compressor (reduce cuando la señal supera el threshold)
-  - Knee Width: Transición suave alrededor del threshold (0-30dB)
+  - Knee Width: Transición suave alrededor del threshold (0-10dB)
   - Attack: Rapidez con que comienza el procesamiento (0.1-100ms)
   - Release: Rapidez con que finaliza el procesamiento (1-1000ms)
   - Sidechain Frequency: Frecuencia de detección (20Hz-20kHz)
@@ -172,38 +174,40 @@ Un ecualizador inteligente que ajusta automáticamente las bandas de frecuencia 
 
 ### Visualización
 - Gráfico de respuesta de frecuencia en tiempo real
-- Indicadores de reducción de ganancia por banda
+- Curva de respuesta dinámica que muestra los realces y cortes actuales
 - Controles interactivos de frecuencia y ganancia
 
 ## 5Band PEQ
 
-Un ecualizador paramétrico de grado profesional basado en principios científicos, que ofrece cinco bandas completamente configurables con un control de frecuencia preciso. Perfecto tanto para un refinamiento sutil del sonido como para un procesamiento de audio correctivo.
+Un ecualizador flexible de 5 bandas para moldear la reproducción musical. Úsalo cuando los graves se sienten retumbantes, las voces suenan ásperas o los agudos necesitan un poco más de brillo sin abrir la versión más detallada de 15 bandas.
 
 ### Guía de Mejora del Sonido
 - Claridad de Voces e Instrumentos:
-  - Utiliza la banda de 3.2kHz con un Q moderado (1.0-2.0) para una presencia natural
-  - Aplica cortes con Q estrecho (4.0-8.0) para eliminar resonancias
+  - Usa la banda de 3.16kHz con Q moderado (1.0-2.0) para una presencia natural
+  - Aplica cortes con Q estrecho (4.0-8.0) solo cuando una resonancia concreta te moleste
   - Añade un leve toque de aire con la estantería alta de 10kHz (+2 a +4dB)
 - Control de la Calidad de los Bajos:
   - Moldea los fundamentos con un filtro peaking de 100Hz
-  - Elimina la resonancia de la sala utilizando un Q estrecho en frecuencias específicas
+  - Usa un corte estrecho si una nota de bajo o una resonancia de sala destaca demasiado
   - Crea una extensión suave de los bajos con una estantería baja
-- Ajuste Científico del Sonido:
-  - Apunta a frecuencias específicas con precisión
-  - Utiliza analizadores para identificar áreas problemáticas
-  - Aplica correcciones medibles con un impacto mínimo en la fase
+- Ajuste Cotidiano del Sonido:
+  - Usa ajustes amplios y pequeños para cambios de tono naturales
+  - Reduce aspereza, retumbe o falta de brillo de oído
+  - Compara a menudo con bypass para que la música siga sonando equilibrada
 
-### Parámetros Técnicos
+### Parámetros
 - **Bandas de Precisión**
   - Band 1: 100Hz (Control de Sub & Bass)
   - Band 2: 316Hz (Definición de Medios Bajos)
   - Band 3: 1.0kHz (Presencia de Medios)
   - Band 4: 3.2kHz (Detalle de Medios Altos)
   - Band 5: 10kHz (Extensión de Altas Frecuencias)
-- **Controles Profesionales por Banda**
-  - Center Frequency: Espaciada logarítmicamente para una cobertura óptima
-  - Gain Range: Ajuste preciso de ±20dB
-  - Q Factor: De 0.1 (amplio) a 10.0 (preciso)
+- **Controles por Banda**
+  - Center Frequency: Ajustable de 20Hz a 20kHz
+  - Gain Range: ±20dB para filtros Peaking y Low/High Shelf
+  - Q Factor: 0.1-10.0 para la mayoría de tipos de filtro; Low/High Shelf está limitado a 0.1-2.0
+  - Un Q más alto afecta un rango más estrecho; un Q más bajo suena más suave y amplio
+  - En Low/High Pass, Band Pass, Notch y AllPass, Frequency y Q moldean el filtro; Gain no se usa
   - Múltiples Tipos de Filtro:
     - Peaking: Ajuste simétrico de frecuencia
     - Low/High Pass: Pendiente de 12dB/octave
@@ -212,7 +216,7 @@ Un ecualizador paramétrico de grado profesional basado en principios científic
     - Notch: Eliminación precisa de frecuencia
     - AllPass: Alineación de frecuencia centrada en fase
 
-### Visualización Técnica
+### Visualización
 - Visualización de la respuesta en frecuencia de alta resolución
 - Puntos de control interactivos con visualización precisa de parámetros
 - Cálculo en tiempo real de la función de transferencia
@@ -227,7 +231,7 @@ Un filtro pasa-banda de precisión que combina filtros de paso alto y paso bajo 
 - Enfoque en el Rango Vocal:
   - Ajusta el HPF entre 100-300Hz y el LPF entre 4-8kHz para enfatizar la claridad vocal
   - Utiliza pendientes moderadas (-24dB/oct) para un sonido natural
-  - Ayuda a que las voces destaquen en mezclas complejas
+  - Ayuda a que las voces se perciban con más claridad en música densa
 - Crea Efectos Especiales:
   - Establece rangos de frecuencia estrechos para efectos de teléfono, radio o megáfono
   - Usa pendientes más pronunciadas (-36dB/oct o más) para un filtrado más dramático
@@ -238,7 +242,7 @@ Un filtro pasa-banda de precisión que combina filtros de paso alto y paso bajo 
   - Perfecto para eliminar simultáneamente ruido de baja frecuencia y ruido de alta frecuencia
 
 ### Parámetros
-- **HPF Frequency (Hz)** - Controla dónde se filtran las frecuencias bajas (1Hz a 40000Hz)
+- **HPF Frequency (Hz)** - Controla dónde se filtran las frecuencias bajas (10Hz a 40000Hz; el límite superior efectivo también depende de la tasa de muestreo)
   - Valores más bajos: Solo se eliminan las frecuencias más bajas
   - Valores más altos: Se eliminan más frecuencias bajas
   - Ajusta según el contenido específico de baja frecuencia que deseas eliminar
@@ -248,7 +252,7 @@ Un filtro pasa-banda de precisión que combina filtros de paso alto y paso bajo 
   - -24dB/oct: Filtrado estándar (LR4 - Linkwitz-Riley de 4º orden)
   - -36dB/oct: Filtrado más fuerte (LR6 - Linkwitz-Riley de 6º orden)
   - -48dB/oct: Filtrado muy fuerte (LR8 - Linkwitz-Riley de 8º orden)
-- **LPF Frequency (Hz)** - Controla dónde se filtran las frecuencias altas (1Hz a 40000Hz)
+- **LPF Frequency (Hz)** - Controla dónde se filtran las frecuencias altas (10Hz a 40000Hz; el límite superior efectivo también depende de la tasa de muestreo)
   - Valores más bajos: Se eliminan más frecuencias altas
   - Valores más altos: Solo se eliminan las frecuencias más altas
   - Ajusta según el contenido específico de alta frecuencia que deseas eliminar
@@ -267,48 +271,43 @@ Un filtro pasa-banda de precisión que combina filtros de paso alto y paso bajo 
 
 ## Comb Filter
 
-Un filtro peine digital que crea efectos de coloración armónica y resonancia a través de retardos de tiempo precisos. Este plugin simula fenómenos acústicos como las reflexiones tempranas de paredes y superficies, siendo perfecto para entusiastas del audio que quieren entender y recrear las complejas interacciones entre el sonido y el espacio.
+Un filtro peine que añade un carácter faseado, hueco, metálico o resonante al mezclar el sonido con una copia retrasada muy corta. Úsalo cuando quieras que una pista se sienta más coloreada, espaciosa o experimental.
 
 ### Guía de Mejora Auditiva
-- Simula la Acústica de la Habitación:
-  - Usa frecuencias fundamentales entre 100-500Hz para simular reflexiones de paredes
-  - Ajusta la ganancia de retroalimentación para controlar la intensidad de la reflexión
-  - Perfecto para entender cómo las dimensiones de la habitación afectan el sonido
-- Crea Coloración Armónica:
-  - Usa el modo de alimentación directa para realce armónico sutil
-  - Usa el modo de retroalimentación para efectos de resonancia más pronunciados
+- Añade Coloración Sutil:
+  - Empieza con Feedforward, Feedback Gain alrededor de 0.2-0.4 y Dry-Wet Mix alrededor de 20-40%
+  - Ajusta Fundamental Frequency hasta que el tono hueco o faseado encaje con la música
+  - Mantén el feedback bajo para un efecto más suave que se mezcle con el sonido original
+- Crea Resonancia y Efectos de Eco:
+  - Usa Feedback o un Feedback Gain más alto para una resonancia o un efecto tipo eco más marcado
   - Experimenta con diferentes frecuencias fundamentales para un carácter tonal único
-- Simulación de Reflexiones Tempranas:
-  - Establece la frecuencia fundamental basada en las dimensiones de la habitación (ej., 343Hz para 1 metro de distancia)
-  - Usa ganancia de retroalimentación moderada (0.3-0.7) para simulación realista de reflexiones
-  - Ayuda a recrear las características acústicas de diferentes espacios de escucha
-- Efectos de Resonancia y Eco:
-  - Valores más altos de ganancia de retroalimentación crean resonancia más pronunciada
-  - Frecuencias fundamentales más bajas crean tiempos de retardo más largos
-  - Combina con otros efectos para procesamiento espacial complejo
+  - Usa valores bajos de Dry-Wet Mix si el efecto se vuelve demasiado obvio
+- Color Metálico Brillante:
+  - Prueba valores altos de Fundamental Frequency para picos y valles más brillantes y espaciados
+  - Usa Feedback Gain positivo o negativo para cambiar el patrón de picos y valles
+  - Combina con otros efectos para sonidos de escucha más experimentales
 
 ### Parámetros
-- **Frecuencia Fundamental (Hz)** - Controla el tiempo de retardo y el espaciado armónico (20Hz a 20000Hz)
-  - Valores más bajos: Retardos más largos, armónicos más espaciados
-  - Valores más altos: Retardos más cortos, armónicos más cercanos
-  - Basado en acústica de habitación: Frecuencia = Velocidad del Sonido / Distancia
-- **Ganancia de Retroalimentación** - Controla la intensidad del efecto del filtro peine (-1.0 a 1.0)
+- **Fundamental Frequency (Hz)** - Controla el tiempo de retardo y el espaciado armónico (20Hz a 20000Hz)
+  - Valores más bajos: Retardos más largos, picos y valles del filtro más cercanos
+  - Valores más altos: Retardos más cortos, picos y valles más separados
+- **Feedback Gain** - Controla la intensidad del efecto del filtro peine (-1.0 a 1.0)
   - Valores negativos: Crea patrones armónicos inversos
   - Valores positivos: Crea patrones armónicos de refuerzo
   - Cero: Sin efecto (solo señal seca)
   - Valores absolutos más altos: Efecto más pronunciado
-- **Tipo de Peine** - Controla la estructura del filtro
-  - Alimentación Directa: Crea realce armónico sin retroalimentación
-  - Retroalimentación: Crea efectos de resonancia y eco
-- **Mezcla Seco/Húmedo** - Controla el balance entre la señal procesada y la original (0% a 100%)
+- **Comb Type** - Controla la estructura del filtro
+  - Feedforward: Crea realce armónico sin retroalimentación
+  - Feedback: Crea efectos de resonancia y eco
+- **Dry-Wet Mix** - Controla el balance entre la señal procesada y la original (0% a 100%)
   - 0%: Solo señal original
   - 50%: Mezcla igual de señal original y procesada
   - 100%: Solo señal procesada
 
 ### Detalles Técnicos
-- **Cálculo de Retardo**: Tiempo de retardo = 1 / Frecuencia Fundamental
-- **Respuesta Armónica**: Crea picos y valles en múltiplos enteros de la frecuencia fundamental
-- **Simulación Espacial**: Puede simular reflexiones tempranas de paredes y superficies
+- **Cálculo de Retardo**: Tiempo de retardo = 1 / Fundamental Frequency
+- **Respuesta Armónica**: Crea picos y valles espaciados regularmente a partir de la frecuencia fundamental
+- **Coloración Espacial**: Puede recordar reflexiones cortas, coloración hueca o resonancia metálica
 - **Visualización en Tiempo Real**: Muestra la respuesta de frecuencia con marcador de frecuencia fundamental
 
 ### Visualización
@@ -332,12 +331,12 @@ Un filtro pasa-altos de precisión que elimina las frecuencias bajas no deseadas
   - Utiliza pendientes moderadas (-12dB/oct a -24dB/oct) para una transición natural
   - Ayuda a prevenir la sobrecarga de los altavoces y mejora la claridad
 - Crea efectos especiales:
-  - Establece la frecuencia entre 200-500Hz para un efecto de voz similar al de un teléfono
+  - Establece la frecuencia entre 200-500Hz para una voz más delgada con graves recortados
   - Utiliza pendientes pronunciadas (-48dB/oct o mayores) para un filtrado dramático
-  - Combina con Lo Pass Filter para efectos de paso de banda
+  - Para un efecto de voz tipo teléfono, combínalo con Lo Pass Filter alrededor de 3-4kHz
 
 ### Parámetros
-- **Frequency (Hz)** - Controla dónde se filtran las frecuencias bajas (1Hz a 40000Hz)
+- **Frequency (Hz)** - Controla dónde se filtran las frecuencias bajas (10Hz a 40000Hz; el límite superior efectivo también depende de la tasa de muestreo)
   - Valores más bajos: Se eliminan únicamente las frecuencias más bajas
   - Valores más altos: Se eliminan más frecuencias bajas
   - Ajusta según el contenido de frecuencias bajas específico que deseas eliminar
@@ -369,16 +368,16 @@ Un filtro pasa-bajos de precisión que elimina las frecuencias altas no deseadas
   - Utiliza pendientes suaves (-12dB/oct) para un efecto sutil de calentamiento
   - Crea un carácter sonoro más parecido al analógico
 - Crea efectos especiales:
-  - Establece la frecuencia entre 1-3kHz para un efecto de radio vintage
+  - Establece la frecuencia entre 1-3kHz con una pendiente pronunciada para un carácter apagado y de banda estrecha
   - Utiliza pendientes pronunciadas (-48dB/oct o mayores) para un filtrado dramático
-  - Combina con Hi Pass Filter para efectos de paso de banda
+  - Para un efecto de radio vintage, combínalo con Hi Pass Filter para quitar también las frecuencias bajas
 - Controla el ruido y el siseo:
   - Establece la frecuencia justo por encima del contenido musical (típicamente 14-18kHz)
   - Utiliza pendientes más pronunciadas (-36dB/oct o mayores) para un control efectivo del ruido
   - Reduce el siseo de la cinta o el ruido de fondo mientras preserva la mayor parte del contenido musical
 
 ### Parámetros
-- **Frequency (Hz)** - Controla dónde se filtran las frecuencias altas (1Hz a 40000Hz)
+- **Frequency (Hz)** - Controla dónde se filtran las frecuencias altas (10Hz a 40000Hz; el límite superior efectivo también depende de la tasa de muestreo)
   - Valores más bajos: Se eliminan más frecuencias altas
   - Valores más altos: Se eliminan únicamente las frecuencias más altas
   - Ajusta según el contenido específico de frecuencias altas que deseas eliminar
@@ -398,16 +397,16 @@ Un filtro pasa-bajos de precisión que elimina las frecuencias altas no deseadas
 
 ## Loudness Equalizer
 
-Un ecualizador especializado que ajusta automáticamente el balance de frecuencias basado en tu volumen de escucha. Este plugin compensa la sensibilidad reducida del oído humano a las frecuencias bajas y altas a volúmenes bajos, garantizando una experiencia auditiva consistente y agradable sin importar el nivel de reproducción.
+Un ecualizador especializado que ajusta el balance de frecuencias según el valor Average SPL que configures. Úsalo para escuchar a bajo volumen, cuando graves y agudos pueden sentirse más débiles, y mantener la música equilibrada y agradable.
 
 ### Guía de Mejora Auditiva
 - Escucha a Bajo Volumen:
   - Realza las frecuencias de bajos y agudos
   - Mantiene el balance musical en niveles bajos
   - Compensa las características de la audición humana
-- Procesamiento Dependiente del Volumen:
-  - Mayor realce a volúmenes bajos
-  - Reducción gradual del procesamiento a medida que aumenta el volumen
+- Ajuste Average SPL:
+  - Más realce con valores Average SPL más bajos
+  - Reducción gradual del procesamiento a medida que sube el ajuste
   - Sonido natural a niveles de escucha más altos
 - Balance de Frecuencias:
   - Estantería baja para el realce de bajos (100-300Hz)
@@ -415,15 +414,15 @@ Un ecualizador especializado que ajusta automáticamente el balance de frecuenci
   - Transición suave entre rangos de frecuencia
 
 ### Parámetros
-- **Average SPL** - Nivel actual de escucha (60dB a 85dB)
+- **Average SPL** - Nivel medio estimado de escucha usado para la corrección (60dB a 85dB)
   - Valores más bajos: Mayor realce
   - Valores más altos: Menor realce
-  - Representa el volumen típico de escucha
-- **Low Frequency Controls**
+  - Ajusta este valor manualmente para que coincida con tu volumen típico de escucha
+- **Controles de bajas frecuencias**
   - Frequency: Centro de realce de bajos (100Hz a 300Hz)
   - Gain: Potenciación máxima de bajos (0dB a 15dB)
   - Q: Forma del realce de bajos (0.5 a 1.0)
-- **High Frequency Controls**
+- **Controles de altas frecuencias**
   - Frequency: Centro de realce de agudos (3kHz a 6kHz)
   - Gain: Potenciación máxima de agudos (0dB a 15dB)
   - Q: Forma del realce de agudos (0.5 a 1.0)
@@ -443,24 +442,24 @@ Una herramienta que te permite enfocarte en partes específicas de la música fi
   - Efecto de "voz de teléfono"
   - Sonido de "radio antigua"
   - Efecto de "bajo el agua"
-- Enfoca instrumentos específicos:
-  - Aísla las frecuencias de bajos
+- Enfoca un rango de frecuencia:
+  - Haz más fáciles de oír las partes con muchos graves
   - Enfoca el rango vocal
-  - Resalta instrumentos específicos
+  - Estrecha el sonido al rango donde voces o instrumentos se notan más
 - Elimina sonidos no deseados:
   - Reduce el retumbo de baja frecuencia
   - Elimina el siseo excesivo de alta frecuencia
   - Enfoca las partes más importantes de la música
 
 ### Parámetros
-- **HPF Frequency** - Controla dónde comienzan a reducirse los sonidos bajos (20Hz a 1000Hz)
+- **HPF Frequency** - Controla dónde comienzan a reducirse los sonidos bajos (20Hz a 4000Hz)
   - Valores más altos: Elimina más bajos
   - Valores más bajos: Conserva más bajos
   - Comienza con valores bajos y ajusta al gusto
 - **HPF Slope** - Cuán rápidamente se reducen los sonidos bajos (0 a -48 dB/octava)
   - 0dB: Sin reducción (off)
   - -6dB a -48dB: Reducción progresivamente más fuerte en pasos de 6dB
-- **LPF Frequency** - Controla dónde comienzan a reducirse los sonidos altos (200Hz a 20000Hz)
+- **LPF Frequency** - Controla dónde comienzan a reducirse los sonidos altos (200Hz a 40000Hz)
   - Valores más bajos: Elimina más agudos
   - Valores más altos: Conserva más agudos
   - Comienza con valores altos y ajusta hacia abajo según sea necesario
@@ -471,37 +470,7 @@ Una herramienta que te permite enfocarte en partes específicas de la música fi
 ### Visualización
 - Gráfico claro que muestra la respuesta en frecuencia
 - Controles de frecuencia fáciles de ajustar
-- Botones de selección de pendiente simples
-
-## Tilt EQ
-
-Un ecualizador simple pero efectivo que inclina suavemente el balance de frecuencia de tu música. Está diseñado para ajustes sutiles, haciendo que tu música suene más cálida o brillante sin controles complejos. Ideal para adaptar rápidamente el tono general a tu preferencia.
-
-### Guía de Mejora Auditiva
-- Haz la Música Más Cálida:
-  - Utiliza valores de ganancia negativos para reducir las frecuencias altas y aumentar las frecuencias bajas.
-  - Perfecto para grabaciones brillantes o auriculares que suenan demasiado nítidos.
-  - Crea una experiencia auditiva acogedora y relajada.
-- Haz la Música Más Brillante:
-  - Utiliza valores de ganancia positivos para aumentar las frecuencias altas y reducir las frecuencias bajas.
-  - Ideal para grabaciones opacas o altavoces que suenan apagados.
-  - Añade claridad y brillo a tu música.
-- Ajustes Sutiles de Tono:
-  - Utiliza pequeños valores de ganancia para dar forma suave al tono general.
-  - Ajusta con precisión el balance para que coincida con tu entorno auditivo o estado de ánimo.
-
-### Parámetros
-- **Pivot Frequency** - Controla la frecuencia central de la inclinación (20Hz a ~20kHz)
-  - Ajusta para establecer el punto de frecuencia alrededor del cual se produce la inclinación.
-- **Slope** - Controla la inclinación de la pendiente alrededor de la Frecuencia Pivote (-12 a +12dB/octava)
-  - Ajusta para controlar cuán inclinadas están las frecuencias alrededor de la Frecuencia Pivote.
-
-### Visualización
-- Deslizador simple para un fácil ajuste de ganancia
-- Curva de respuesta de frecuencia en tiempo real para mostrar el efecto de inclinación
-- Indicación clara del valor de ganancia actual
-
-- Botón de reinicio rápido
+- Selectores de pendiente sencillos
 
 ## Tone Control
 
@@ -526,15 +495,15 @@ Un ajustador de sonido de tres bandas sencillo para una personalización rápida
   - Agudos realzados para detalles nítidos
 
 ### Parámetros
-- **Bass** - Controls the low sounds (-24dB to +24dB)
+- **Bass** - Controla los sonidos graves (-24dB a +24dB)
   - Aumenta para obtener unos bajos más potentes
   - Disminuye para un sonido más ligero y limpio
   - Afecta el "peso" de la música
-- **Mid** - Controls the main body of sound (-24dB to +24dB)
+- **Mid** - Controla el cuerpo principal del sonido (-24dB a +24dB)
   - Aumenta para voces/instrumentos más destacados
   - Disminuye para un sonido más espacioso
   - Afecta la "plenitud" de la música
-- **Treble** - Controls the high sounds (-24dB to +24dB)
+- **Treble** - Controla los sonidos agudos (-24dB a +24dB)
   - Aumenta para más brillo y detalle
   - Disminuye para un sonido más suave y delicado
   - Afecta el "brillo" de la música
@@ -542,4 +511,33 @@ Un ajustador de sonido de tres bandas sencillo para una personalización rápida
 ### Visualización
 - Gráfico fácil de leer que muestra tus ajustes
 - Controles deslizantes simples para cada ajuste
+
+## Tilt EQ
+
+Un ecualizador simple pero efectivo que inclina suavemente el balance de frecuencia de tu música. Está diseñado para ajustes sutiles, haciendo que tu música suene más cálida o brillante sin controles complejos. Ideal para adaptar rápidamente el tono general a tu preferencia.
+
+### Guía de Mejora Auditiva
+- Haz la Música Más Cálida:
+  - Utiliza valores de Slope negativos para reducir las frecuencias altas y aumentar las frecuencias bajas.
+  - Perfecto para grabaciones brillantes o auriculares que suenan demasiado nítidos.
+  - Crea una experiencia auditiva acogedora y relajada.
+- Haz la Música Más Brillante:
+  - Utiliza valores de Slope positivos para aumentar las frecuencias altas y reducir las frecuencias bajas.
+  - Ideal para grabaciones opacas o altavoces que suenan apagados.
+  - Añade claridad y brillo a tu música.
+- Ajustes Sutiles de Tono:
+  - Utiliza valores pequeños de Slope para dar forma suave al tono general.
+  - Ajusta con precisión el balance para que coincida con tu entorno auditivo o estado de ánimo.
+
+### Parámetros
+- **Pivot Frequency** - Controla la frecuencia central de la inclinación (20Hz a ~20kHz)
+  - Ajusta para establecer el punto de frecuencia alrededor del cual se produce la inclinación.
+- **Slope** - Controla la inclinación de la pendiente alrededor de la Frecuencia Pivote (-12 a +12dB/octava)
+  - Los valores positivos hacen el sonido más brillante; los valores negativos lo hacen más cálido.
+  - Los valores más pequeños producen cambios más suaves.
+
+### Visualización
+- Deslizador simple para ajustar fácilmente la pendiente
+- Curva de respuesta de frecuencia en tiempo real para mostrar el efecto de inclinación
+- Indicación clara del valor de pendiente actual
 - Botón de reinicio rápido

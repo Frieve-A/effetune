@@ -1,39 +1,39 @@
 ---
-title: "Control Plugins - EffeTune"
-description: "Control plugins for organizing effect chains with Section grouping."
-lang: en
+title: "Control प्लगइन - EffeTune"
+description: "Section समूहों के साथ प्रभाव श्रृंखलाओं को व्यवस्थित करने के लिए Control प्लगइन।"
+lang: hi
 ---
 
-# Control Effects
+# Control प्रभाव
 
-Control effects are special utility effects that don't process audio directly but instead control how other effects operate. They help organize and manage complex effect chains.
+Control प्रभाव ऐसे विशेष उपयोगी प्रभाव हैं जो सीधे ऑडियो को संसाधित नहीं करते, बल्कि दूसरे प्रभावों के संचालन को नियंत्रित करते हैं। वे जटिल प्रभाव श्रृंखलाओं को व्यवस्थित और प्रबंधित करने में मदद करते हैं।
 
 ## Section
 
-The Section effect allows you to group multiple effects together and control them with a single ON/OFF toggle.
+Section प्रभाव कई प्रभावों को एक समूह में रखता है, ताकि श्रृंखला के उस पूरे हिस्से को एक ON/OFF स्विच से बायपास या फिर से सक्रिय किया जा सके। हर प्रभाव अपनी अलग ON/OFF सेटिंग बनाए रखता है।
 
-### Overview
+### अवलोकन
 
-- **Name**: Section
-- **Category**: Control
-- **Description**: Groups multiple effects together for unified control
+- **नाम**: Section
+- **श्रेणी**: Control
+- **विवरण**: प्रभावों को समूहित करता है, ताकि पूरे Section को बायपास या फिर से सक्रिय किया जा सके
 
-### Parameters
+### पैरामीटर
 
-| Parameter | Description |
+| पैरामीटर | विवरण |
 |-----------|-------------|
-| Comment   | A name or description of the section's purpose |
+| Comment   | Section के उद्देश्य का नाम या विवरण |
 
-### Usage
+### उपयोग
 
-1. Place the Section effect at the beginning of a group of effects you want to control together
-2. Enter a descriptive name in the "Comment" field to identify the section's purpose
-3. Toggle the Section effect ON/OFF to enable/disable all effects within the section
-4. Effects placed after a Section effect will be controlled by that section until another Section effect is encountered
+1. जिन प्रभावों को साथ नियंत्रित करना है, उनके समूह की शुरुआत में Section प्रभाव रखें
+2. Section का उद्देश्य पहचानने के लिए "Comment" फ़ील्ड में स्पष्ट नाम लिखें
+3. Section प्रभाव को OFF करने पर उस Section के प्रभाव बायपास होते हैं; ON करने पर Section फिर से सक्रिय होता है, और हर प्रभाव की अपनी ON/OFF स्थिति बनी रहती है
+4. Section प्रभाव के बाद रखे प्रभाव उसी Section से नियंत्रित होंगे, जब तक अगला Section प्रभाव न आ जाए
 
-### Application Examples
+### उपयोग के उदाहरण
 
-- Group related effects (e.g., "EQ Adjustments", "Spatial Effects")
-- Create alternative processing chains that can be easily toggled
-- Organize complex effect chains into logical sections
-- Temporarily disable a group of effects without removing them 
+- संबंधित प्रभावों को समूहित करें (जैसे "EQ Adjustments", "Spatial Effects")
+- ऐसी वैकल्पिक प्रोसेसिंग श्रृंखलाएं बनाएं जिन्हें आसानी से चालू या बायपास किया जा सके
+- जटिल प्रभाव श्रृंखलाओं को तार्किक Section में व्यवस्थित करें
+- प्रभाव हटाए बिना किसी समूह को अस्थायी रूप से बंद करें

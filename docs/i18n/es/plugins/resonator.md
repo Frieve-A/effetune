@@ -1,18 +1,18 @@
 ---
-title: "Resonator Plugins - EffeTune"
-description: "Resonator effect plugins including Horn Resonator and Modal Resonator."
-lang: en
+title: "Plugins resonadores - EffeTune"
+description: "Plugins resonadores como Horn Resonator y Modal Resonator."
+lang: es
 ---
 
-# Resonator Plugins
+# Plugins resonadores
 
 Una colección de complementos que enfatizan características resonantes para añadir texturas tonales únicas y color a tu música. Estos efectos simulan resonancias presentes en objetos físicos o sistemas de altavoces, mejorando tu experiencia de escucha con calidez, brillo o carácter vintage.
 
 ## Lista de Plugins
 
 - [Horn Resonator](#horn-resonator) - Simula la resonancia de sistemas de altavoces horn
-- [Horn Resonator Plus](#horn-resonator-plus) - Modelo horn mejorado con reflexiones avanzadas
-- [Modal Resonator](#modal-resonator) - Efecto de resonancia de frecuencia con hasta 5 resonators
+- [Horn Resonator Plus](#horn-resonator-plus) - Resonancia de altavoz horn más suave para añadir color natural a la escucha
+- [Modal Resonator](#modal-resonator) - Efecto de resonancia de frecuencia con hasta 5 resonadores
 
 ## Horn Resonator
 
@@ -27,7 +27,7 @@ Un complemento que simula la resonancia de un horn-loaded speaker utilizando un 
 ### Parámetros
 
 - **Crossover (Hz)** - Establece la división de frecuencia entre la ruta de baja frecuencia (retrasada) y la ruta de alta frecuencia procesada por el modelo horn. (20–5000 Hz)
-- **Horn Length (cm)** - Ajusta la longitud del horn simulado. Los horns más largos enfatizan frecuencias más bajas y aumentan el espaciado de resonancia, los horns más cortos enfatizan frecuencias más altas y ajustan el sonido. (20–120 cm)
+- **Horn Length (cm)** - Ajusta la longitud del horn simulado. Los horns más largos desplazan las resonancias hacia frecuencias más bajas y las acercan entre sí; los horns más cortos las desplazan hacia frecuencias más altas y las separan más para un sonido más compacto. (20–120 cm)
 - **Throat Diameter (cm)** - Controla el tamaño de apertura en la garganta del horn (entrada). Los valores más pequeños tienden a aumentar el brillo y el énfasis en los medios altos, los valores más grandes añaden calidez. (0.5–50 cm)
 - **Mouth Diameter (cm)** - Controla el tamaño de apertura en la boca del horn (salida). Esto afecta a la adaptación de impedancia con el aire circundante e influye en la reflexión dependiente de la frecuencia en la boca. Los valores más grandes generalmente amplían el sonido percibido y reducen la reflexión de baja frecuencia, los valores más pequeños lo focalizan y aumentan la reflexión de baja frecuencia. (5–200 cm)
 - **Curve (%)** - Ajusta la forma de expansión del horn (cómo aumenta el radio desde la garganta hasta la boca).
@@ -50,21 +50,20 @@ Un complemento que simula la resonancia de un horn-loaded speaker utilizando un 
 
 ## Horn Resonator Plus
 
-Un modelo horn mejorado que utiliza un filtro de reflexión de boca de 2º orden y reflexión de garganta dependiente de la frecuencia para una resonancia más suave.
+Horn Resonator Plus añade a la música un carácter de altavoz horn más suave y natural. Úsalo cuando quieras que voces, metales, instrumentos acústicos o mezclas completas se sientan más cálidos y vivos, manteniendo una resonancia menos marcada que con el Horn Resonator estándar.
 
-Horn Resonator Plus es una implementación avanzada basada en [Horn Resonator](#horn-resonator), con un modelo de línea de transmisión horn más riguroso con las siguientes mejoras técnicas:
+Se basa en el mismo modelo horn que [Horn Resonator](#horn-resonator), con un modelo más detallado de reflexión en la boca y la garganta para que las resonancias decaigan con mayor suavidad.
+
+### Guía de Escucha
+
+- Color horn más suave: añade carácter de altavoz horn con menos repique agudo.
+- Presencia más cálida: puede hacer que voces, metales y música acústica se sientan más vivos.
+- Comportamiento natural en altas frecuencias: el rango alto se acerca más al de un horn acústico o un altavoz horn que la versión estándar.
 
 ### Mejoras Técnicas
 
-- **Filtro de reflexión de boca de 2º orden**: Modelado más preciso de la reflexión dependiente de la frecuencia en la abertura de la boca para características de resonancia más suaves
-- **Reflexión de garganta dependiente de la frecuencia**: Características de reflexión de garganta que se adaptan a la frecuencia para un comportamiento acústico más natural
-
-### Características Acústicas
-
-Horn Resonator Plus proporciona calidad de sonido superior comparado con el Horn Resonator estándar en los siguientes aspectos:
-
-- **Respuesta de frecuencia más suave**: El filtro de reflexión de boca de 2º orden crea una caída de pico de resonancia más natural
-- **Comportamiento de alta frecuencia más realista**: Las características de retardo de grupo en el rango de alta frecuencia se asemejan más a instrumentos acústicos reales
+- **Filtro de reflexión de boca de 2º orden**: Modelado más suave de la reflexión dependiente de la frecuencia en la abertura de la boca.
+- **Reflexión de garganta dependiente de la frecuencia**: La reflexión de garganta cambia con la frecuencia para un comportamiento horn más natural.
 
 ### Parámetros y Uso
 
@@ -72,16 +71,16 @@ Horn Resonator Plus utiliza los mismos parámetros que [Horn Resonator](#horn-re
 
 ### Pautas de Uso
 
-- **Horn Resonator**: Elige cuando necesites procesamiento ligero con características horn básicas
-- **Horn Resonator Plus**: Elige cuando requieras mayor calidad y características acústicas horn más naturales (aproximadamente +10% costo de CPU)
+- **Horn Resonator**: Elige esta opción cuando quieras procesamiento más ligero con un carácter horn básico.
+- **Horn Resonator Plus**: Elige esta opción cuando quieras una coloración horn más suave y natural y puedas aceptar un uso de CPU ligeramente mayor.
 
 ### Guía de Inicio Rápido
 
-Utiliza los mismos controles que [Horn Resonator](#horn-resonator). Elige Horn Resonator Plus cuando quieras resultados de alta calidad.
+Utiliza los mismos controles que [Horn Resonator](#horn-resonator). Elige Horn Resonator Plus cuando quieras un carácter de altavoz horn más suave.
 
 ## Modal Resonator
 
-Un efecto creativo que añade frecuencias resonantes a tu audio. Este plugin crea resonancias afinadas en frecuencias específicas, similar a cómo los objetos físicos vibran en sus frecuencias resonantes naturales. Es perfecto para añadir características tonales únicas, simular las propiedades resonantes de diferentes materiales o crear efectos especiales.
+Un efecto que añade resonancias afinadas a tu música, de forma parecida a cómo los objetos físicos o las partes de un altavoz vibran en sus frecuencias naturales. Úsalo cuando quieras añadir brillo, cuerpo, color metálico o resonancia de tipo altavoz durante la escucha.
 
 ### Guía de Experiencia Auditiva
 
@@ -99,8 +98,8 @@ Un efecto creativo que añade frecuencias resonantes a tu audio. Este plugin cre
   - Ayuda a simular el sonido característico de tipos específicos de altavoces.
 - **Efectos Especiales:**
   - Crea cualidades tímbricas inusuales y texturas sobrenaturales.
-  - Excelente para diseño de sonido y procesamiento experimental.
-  - Prueba configuraciones extremas para transformación creativa del sonido.
+  - Útil cuando quieres un efecto de resonancia evidente en lugar de una mejora natural.
+  - Prueba configuraciones extremas solo cuando quieras que las resonancias pasen a formar parte del sonido.
 
 ### Parámetros
 
@@ -117,7 +116,10 @@ Para cada resonador:
 - **LPF Freq (Hz)** - Filtro paso bajo que da forma al tono de la resonancia (20 a 20,000 Hz).
 - **HPF Freq (Hz)** - Filtro paso alto que elimina frecuencias bajas no deseadas de la resonancia (20 a 20,000 Hz).
 - **Gain (dB)** - Controla el nivel de salida individual de cada resonador (-18 a +18 dB).
-- **Mix (%)** - Equilibra el volumen de las resonancias contra el sonido original (0 a 100%).
+
+Control global:
+
+- **Mix (%)** - Equilibra la salida combinada de todos los resonadores habilitados con el sonido original (0 a 100%).
 
 ### Configuraciones Recomendadas para Mejora Auditiva
 
@@ -138,6 +140,7 @@ Para cada resonador:
 3. **Mejora de Graves:**
    - Habilita 1-2 resonadores
    - Configuraciones de Freq: 50-150 Hz
+   - HPF Freq: 20-60 Hz, manteniéndolo por debajo de la resonancia objetivo
    - Decay: 50-100ms
    - LPF Freq: 1000-2000 Hz
    - Mix: 10-25%
@@ -145,6 +148,7 @@ Para cada resonador:
 4. **Simulación de Altavoz de Rango Completo:**
    - Habilita los 5 resonadores
    - Configuraciones de Freq: 100 Hz, 400 Hz, 800 Hz, 1600 Hz, 3000 Hz
+   - Configuraciones de HPF Freq: 20 Hz, 120 Hz, 250 Hz, 500 Hz, 1000 Hz
    - Decay: Progresivamente más corto de bajo a alto (100ms a 30ms)
    - LPF Freq: Progresivamente más alto de bajo a alto (2000Hz a 4000Hz)
    - Mix: 20-40%
@@ -159,6 +163,7 @@ Para cada resonador:
 2. **Ajusta el Carácter:**
    - Utiliza el parámetro `Decay` para controlar cuánto tiempo se mantienen las resonancias.
    - Da forma al tono con el control `LPF Freq`.
+   - Establece `HPF Freq` por debajo de la resonancia que quieres conservar, especialmente en ajustes de graves.
    - Los tiempos de decaimiento más largos crean tonos más obvios, similares a campanas.
 
 3. **Mezcla con el Original:**
@@ -171,4 +176,4 @@ Para cada resonador:
    - Activa/desactiva resonadores individuales para encontrar la combinación perfecta.
    - Recuerda que cambios sutiles pueden tener un impacto significativo en el sonido general.
 
-Recuerda que cambios sutiles pueden tener un impacto significativo en el sonido general. 
+Recuerda que cambios sutiles pueden tener un impacto significativo en el sonido general.

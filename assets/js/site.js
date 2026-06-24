@@ -4,6 +4,16 @@
   const languageCodes = new Set(languages.map((language) => language.code));
   const defaultLanguage = languageCodes.has("en") ? "en" : languages[0]?.code || "en";
   const preferredLanguage = getPreferredLanguage();
+  const defaultUiText = {
+    searching: "Searching...",
+    searchUnavailable: "Search unavailable",
+    noMatches: "No matches",
+    documentation: "Documentation",
+    copy: "Copy",
+    copied: "Copied",
+    select: "Select"
+  };
+  const uiText = { ...defaultUiText, ...readUiText() };
 
   const navToggle = document.querySelector("[data-nav-toggle]");
   const siteNav = document.querySelector("[data-site-nav]");
@@ -44,7 +54,7 @@
         return;
       }
 
-      showSearchMessage("Searching...");
+      showSearchMessage(uiText.searching);
       loadDocSearchIndex()
         .then(() => {
           if (requestId !== activeSearchRequest) return;
@@ -52,7 +62,7 @@
         })
         .catch(() => {
           if (requestId !== activeSearchRequest) return;
-          showSearchMessage("Search unavailable");
+          showSearchMessage(uiText.searchUnavailable);
         });
     });
   }
@@ -169,16 +179,16 @@
     const button = document.createElement("button");
     button.type = "button";
     button.className = "copy-code";
-    button.textContent = "Copy";
+    button.textContent = uiText.copy;
     button.addEventListener("click", async () => {
       try {
         await navigator.clipboard.writeText(code.textContent);
-        button.textContent = "Copied";
+        button.textContent = uiText.copied;
         window.setTimeout(() => {
-          button.textContent = "Copy";
+          button.textContent = uiText.copy;
         }, 1400);
       } catch (_error) {
-        button.textContent = "Select";
+        button.textContent = uiText.select;
       }
     });
     pre.appendChild(button);
@@ -193,6 +203,29 @@
       return Array.isArray(parsed) ? parsed.filter((language) => language.code && language.url) : [];
     } catch (_error) {
       return [];
+    }
+  }
+
+  function readUiText() {
+    const dataElement = document.getElementById("site-ui-text");
+    if (!dataElement) return {};
+
+    try {
+      const parsed = JSON.parse(dataElement.textContent);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+
+      const mapped = {
+        searching: parsed.searching,
+        searchUnavailable: parsed.search_unavailable,
+        noMatches: parsed.no_matches,
+        documentation: parsed.documentation,
+        copy: parsed.copy,
+        copied: parsed.copied,
+        select: parsed.select
+      };
+      return Object.fromEntries(Object.entries(mapped).filter((entry) => typeof entry[1] === "string"));
+    } catch (_error) {
+      return {};
     }
   }
 
@@ -279,7 +312,7 @@
     if (headingMatch && headingMatch[1]) {
       return headingMatch[1];
     }
-    return entry.title || "Documentation";
+    return entry.title || uiText.documentation;
   }
 
   function renderDocSearchResults(query) {
@@ -299,7 +332,7 @@
       .slice(0, 8);
 
     if (matches.length === 0) {
-      showSearchMessage("No matches");
+      showSearchMessage(uiText.noMatches);
       return;
     }
 

@@ -1,44 +1,43 @@
 ---
-title: "Analyzer Plugins - EffeTune"
-description: "Audio analysis plugins including Level Meter, Oscilloscope, Spectrogram, Spectrum Analyzer, and Stereo Meter."
-lang: en
+title: "Plugins d'analyse - EffeTune"
+description: "Plugins de visualisation audio, dont Level Meter, Oscilloscope, Spectrogram, Spectrum Analyzer et Stereo Meter."
+lang: fr
 ---
 
-# Analyzer Plugins
+# Plugins d'analyse
 
 Une collection de plugins qui vous permettent de visualiser votre musique de manière fascinante. Ces outils visuels vous aident à comprendre ce que vous entendez en montrant différents aspects du son, rendant votre expérience d'écoute plus immersive et interactive.
 
-## Plugin List
+## Liste des plugins
 
-- [Level Meter](#level-meter) - Affiche le volume sonore de la musique
+- [Level Meter](#level-meter) - Affiche le niveau du signal numérique et les risques de clipping
 - [Oscilloscope](#oscilloscope) - Affiche la visualisation de la forme d'onde en temps réel
 - [Spectrogram](#spectrogram) - Crée de magnifiques motifs visuels à partir de votre musique
 - [Spectrum Analyzer](#spectrum-analyzer) - Affiche les différentes fréquences de votre musique
-- [Stereo Meter](#stereo-meter) - Visualise l'équilibre stéréo et le mouvement du son
+- [Stereo Meter](#stereo-meter) - Visualise l'équilibre stéréo et la corrélation entre canaux
 
 ## Level Meter
 
-Un affichage visuel qui montre en temps réel le volume de votre musique. Il vous aide à vous assurer que vous écoutez à des niveaux confortables et à éviter toute distorsion due à un volume trop élevé.
+Un affichage visuel qui montre le niveau du signal en temps réel. Il vous aide à vérifier les niveaux après les effets et à repérer un éventuel clipping numérique.
 
 ### Guide de Visualisation
-- L'indicateur monte et descend avec le volume de la musique
-- Plus l'indicateur est haut, plus le son est fort
-- Le marqueur rouge indique le niveau le plus élevé récent
-- L'avertissement rouge en haut signifie que le volume pourrait être trop fort
-- Pour une écoute confortable, essayez de maintenir les niveaux dans la plage moyenne
+- La barre s'étend vers la droite quand le niveau du signal augmente
+- Le marqueur blanc conserve brièvement le niveau le plus élevé récent
+- L'avertissement OVERLOAD signifie que le signal a dépassé la plage numérique sûre et peut se déformer
+- Pour une lecture propre, évitez les niveaux rouges fréquents et les avertissements OVERLOAD ; réglez le volume d'écoute réel sur votre appareil
 
 ## Oscilloscope
 
-Un oscilloscope de qualité professionnelle qui affiche les formes d'onde audio en temps réel, vous aidant à visualiser la forme réelle de vos ondes sonores. Il dispose d'une fonction de déclenchement pour un affichage stable de la forme d'onde, facilitant l'analyse des signaux périodiques et des transitoires.
+Affiche la forme de l'onde sonore en temps réel, afin de voir les impacts, les battements et les changements de niveau pendant l'écoute. Les réglages de déclenchement peuvent stabiliser l'affichage lorsqu'une forme d'onde se répète.
 
 ### Guide de Visualisation
 - L'axe horizontal montre le temps (millisecondes)
-- L'axe vertical montre l'amplitude (-1 à 1)
+- L'axe vertical montre l'amplitude normalisée ; la plage visible change avec Display Level et Vertical Offset
 - La ligne verte trace la forme d'onde réelle
 - Les lignes de la grille aident à mesurer les valeurs de temps et d'amplitude
-- Le point de déclenchement marque où commence la capture de la forme d'onde
+- Quand un déclenchement est détecté, la forme d'onde affichée démarre depuis cette position ; aucun marqueur séparé n'est affiché
 
-### Parameters
+### Paramètres
 - **Display Time** - Durée d'affichage (1 à 100 ms)
   - Valeurs basses : Voir plus de détails dans les événements courts
   - Valeurs hautes : Voir des motifs plus longs
@@ -56,11 +55,11 @@ Un oscilloscope de qualité professionnelle qui affiche les formes d'onde audio 
 - **Vertical Offset** - Décale la forme d'onde vers le haut/bas (-1 à 1)
 
 ### Note sur l'Affichage de la Forme d'Onde
-L'affichage de la forme d'onde utilise une interpolation linéaire entre les points d'échantillonnage pour une visualisation fluide. Cela signifie que le signal audio réel entre les échantillons peut différer de ce qui est affiché. Pour une représentation plus précise, en particulier lors de l'analyse du contenu haute fréquence, envisagez d'utiliser des taux d'échantillonnage plus élevés (96kHz ou plus).
+La ligne est lissée entre les échantillons. Utilisez-la comme guide visuel plutôt que comme outil de mesure exact.
 
 ## Spectrogram
 
-Crée de magnifiques motifs colorés qui montrent l'évolution de votre musique dans le temps. C'est comme voir une peinture de votre musique, où différentes couleurs représentent différents sons et fréquences.
+Crée des motifs colorés qui montrent comment votre musique change au fil du temps. Les couleurs indiquent l'intensité de chaque son, tandis que la position verticale indique sa fréquence.
 
 ### Guide de Visualisation
 - Les couleurs montrent l'intensité des différentes fréquences :
@@ -79,13 +78,13 @@ Crée de magnifiques motifs colorés qui montrent l'évolution de votre musique 
 - Harmonies : Lignes parallèles multiples
 - Différents instruments créent des motifs uniques
 
-### Parameters
+### Paramètres
 - **DB Range** - Intensité des couleurs (-144dB à -48dB)
   - Nombres plus bas : Voir plus de détails subtils
   - Nombres plus hauts : Se concentrer sur les sons principaux
-- **Points** - Niveau de détail des motifs (256 à 16384)
-  - Nombres plus hauts : Motifs plus précis
-  - Nombres plus bas : Visuels plus fluides
+- **Points** - Taille FFT utilisée pour l'affichage (256 à 16384)
+  - Nombres plus hauts : plus de détail en fréquence, mais mises à jour temporelles plus lentes
+  - Nombres plus bas : mouvement plus rapide, mais moins de détail en fréquence
 - L'analyseur utilise la moyenne des canaux gauche et droit. Une entrée mono est analysée directement.
 
 ## Spectrum Analyzer
@@ -96,6 +95,8 @@ Crée un affichage visuel en temps réel des fréquences de votre musique, des b
 - La gauche montre les basses fréquences (batterie, basse)
 - Le milieu montre les fréquences principales (voix, guitares, piano)
 - La droite montre les hautes fréquences (cymbales, brillance, air)
+- La ligne vert foncé montre le son actuel
+- La ligne vert clair conserve brièvement les pics récents, ce qui permet de voir les sons forts qui viennent de passer
 - Les pics plus hauts indiquent une présence plus forte de ces fréquences
 - Observez comment différents instruments créent différents motifs
 
@@ -105,13 +106,13 @@ Crée un affichage visuel en temps réel des fréquences de votre musique, des b
 - Aigus cristallins : Étincelles à droite
 - Mix complet : Comment toutes les fréquences fonctionnent ensemble
 
-### Parameters
+### Paramètres
 - **DB Range** - Sensibilité de l'affichage (-144dB à -48dB)
   - Nombres plus bas : Voir plus de détails subtils
   - Nombres plus hauts : Se concentrer sur les sons principaux
-- **Points** - Niveau de détail de l'affichage (256 à 16384)
-  - Nombres plus hauts : Plus de détails précis
-  - Nombres plus bas : Mouvement plus fluide
+- **Points** - Finesse avec laquelle l'affichage sépare les fréquences proches (256 à 16384)
+  - Nombres plus hauts : plus de détail en fréquence, avec des mises à jour plus lentes
+  - Nombres plus bas : mises à jour plus rapides, avec moins de détail en fréquence
 - L'analyseur utilise la moyenne des canaux gauche et droit. Une entrée mono est analysée directement.
 
 ### Façons Amusantes d'Utiliser Ces Outils
@@ -127,7 +128,7 @@ Crée un affichage visuel en temps réel des fréquences de votre musique, des b
    - Observez comment la batterie crée des motifs nets
 
 3. Améliorer Votre Expérience
-   - Utilisez le Level Meter pour trouver des volumes d'écoute confortables
+   - Utilisez le Level Meter pour vérifier les pics du signal après l'ajout d'effets
    - Regardez le Spectrum Analyzer danser avec la musique
    - Créez un spectacle de lumière visuel avec le Spectrogram
 
@@ -136,17 +137,18 @@ Crée un affichage visuel en temps réel des fréquences de votre musique, des b
 Un outil de visualisation fascinant qui vous permet de voir comment votre musique crée une sensation d'espace à travers le son stéréo. Observez comment les différents instruments et sons se déplacent entre vos enceintes ou votre casque, ajoutant une dimension visuelle captivante à votre expérience d'écoute.
 
 ### Guide de Visualisation
-- **Affichage en Diamant** - La fenêtre principale où la musique prend vie :
-  - Centre : Quand le son est parfaitement équilibré
-  - Haut/Bas : Quand la musique remplit uniformément les deux enceintes
-  - Gauche/Droite : Quand le son provient davantage d'une enceinte
+- **Affichage en diamant** - La fenêtre principale où la musique prend vie :
+  - Centre : niveau très faible ou moment où la somme gauche/droite est proche de zéro
+  - Haut/Bas : composante commune aux deux canaux, proche du centre ou du mono (L + R)
+  - Gauche/Droite : différence entre les canaux ou composante en opposition de phase (R - L)
+  - Lorsqu'un seul côté domine, les points peuvent aussi se diriger vers les coins selon la polarité du signal
   - Les points verts dansent avec la musique actuelle
   - La ligne blanche trace les pics musicaux
-- **Barre de Mouvement** (Côté gauche)
-  - Montre comment vos enceintes travaillent ensemble
-  - Haut (+1.0) : Les deux enceintes jouent le même son
-  - Milieu (0.0) : Les enceintes créent un bel effet stéréo
-  - Bas (-1.0) : Les enceintes créent des effets spéciaux
+- **Barre de corrélation LR** (côté gauche)
+  - Montre la corrélation entre les canaux gauche et droit
+  - Haut (+1.0) : les canaux sont presque identiques, avec un son qui se regroupe facilement au centre
+  - Milieu (0.0) : la relation gauche/droite est faible, souvent avec plus d'ambiance ou de largeur
+  - Bas (-1.0) : les canaux sont proches de l'opposition de phase et peuvent sembler plus faibles sur enceintes
 - **Barre de Balance** (Bas)
   - Indique si une enceinte est plus forte que l'autre
   - Centre : Musique également forte dans les deux enceintes
@@ -158,10 +160,10 @@ Un outil de visualisation fascinant qui vous permet de voir comment votre musiqu
 - **Son Spacieux** : Activité répartie sur tout l'affichage
 - **Effets Spéciaux** : Motifs intéressants dans les coins
 - **Balance des Enceintes** : Où pointe la barre inférieure
-- **Mouvement du Son** : Hauteur de la barre gauche
+- **Corrélation du son** : Position de la barre gauche
 
-### Parameters
-- **Window Time** (10-1000 ms)
+### Paramètres
+- **Window** (10-1000 ms)
   - Valeurs basses : Voir les changements musicaux rapides
   - Valeurs hautes : Voir les motifs sonores globaux
   - Par défaut : 100 ms convient bien à la plupart des musiques

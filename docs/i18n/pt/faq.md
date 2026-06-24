@@ -1,7 +1,7 @@
 ---
-title: "FAQ & Troubleshooting - EffeTune"
-description: "Frequently asked questions and troubleshooting guide for Frieve EffeTune audio processor."
-lang: en
+title: "Perguntas frequentes e solução de problemas - EffeTune"
+description: "Perguntas frequentes e guia de solução de problemas do processador de áudio Frieve EffeTune."
+lang: pt
 ---
 
 # FAQ do EffeTune
@@ -39,19 +39,19 @@ Exemplo no Windows: Spotify → VB-CABLE → EffeTune → DAC/AMP. Os conceitos 
 
 ### 1.1. Instalando o VB-CABLE e habilitando 96 kHz
 
-Baixe o VB-CABLE Driver Pack45, execute o `VBCABLE_Setup_x64.exe` como administrador e reinicie. Retorne a saída padrão do sistema operacional para seus alto-falantes/DAC e defina ambos os formatos **CABLE Input** e **CABLE Output** para 24 bits, 96.000 Hz. Execute o `VBCABLE_ControlPanel.exe` como administrador, escolha **Menu▸Internal Sample Rate = 96000 Hz** e, em seguida, clique em **Restart Audio Engine**.
+Baixe o VB-CABLE Driver Pack45, execute o `VBCABLE_Setup_x64.exe` como administrador e reinicie. Retorne a saída padrão do sistema operacional para seus alto-falantes/DAC e defina ambos os formatos **CABLE Input** e **CABLE Output** para 24 bits, 96.000 Hz. Execute o `VBCABLE_ControlPanel.exe` como administrador, escolha **Menu▸Taxa de amostragem interna = 96000 Hz** e, em seguida, clique em **Reiniciar mecanismo de áudio**.
 
 ### 1.2. Roteamento do serviço de streaming (exemplo do Spotify)
 
-Abra **Settings▸System▸Sound▸Volume mixer** e defina a saída do `Spotify.exe` para **CABLE Input**. Reproduza uma faixa para confirmar o silêncio dos alto-falantes.
+Abra **Configurações▸Sistema▸Som▸Mixer de volume** e defina a saída do `Spotify.exe` para **CABLE Input**. Reproduza uma faixa para confirmar o silêncio dos alto-falantes.
 No macOS, utilize o **SoundSource** da Rogue Amoeba para atribuir a saída do Spotify ao **CABLE Input** da mesma forma.
 
 ### 1.3. Configurações de áudio do EffeTune
 
-Inicie o aplicativo desktop e abra **Config Audio**.
-- **Input Device:** CABLE Output (VB-Audio Virtual Cable)
-- **Output Device:** DAC/Alto-falantes físicos
-- **Sample Rate:** 96.000 Hz (taxas mais baixas podem degradar a qualidade)
+Inicie o aplicativo desktop e abra **Configurar áudio**.
+- **Dispositivo de entrada:** CABLE Output (VB-Audio Virtual Cable)
+- **Dispositivo de saída:** DAC/Alto-falantes físicos
+- **Taxa de amostragem:** 96.000 Hz (taxas mais baixas podem degradar a qualidade)
 
 ### 1.4. Verificação de operação
 
@@ -83,7 +83,7 @@ Seus dispositivos de entrada e saída podem estar em loop. Certifique-se de que 
 | ------ | ------ |
 | Sem entrada de áudio | Certifique-se de que o player esteja enviando saída para **CABLE Input**. Permita a permissão do microfone no navegador e selecione **CABLE Output** como dispositivo de entrada. |
 | Efeito não funcionando | Confirme se o master, cada efeito e qualquer **Section** estão **ON**. Redefina os parâmetros, se necessário. |
-| Sem saída de áudio | Para o aplicativo web, verifique se as saídas do sistema operacional e do navegador apontam para seu DAC/AMP. Para o aplicativo desktop, verifique o dispositivo de saída em **Config Audio**. |
+| Sem saída de áudio | Para o aplicativo web, verifique se as saídas do sistema operacional e do navegador apontam para seu DAC/AMP. Para o aplicativo desktop, verifique o dispositivo de saída em **Configurar áudio**. |
 | Outros players reportam "CABLE Input em uso" | Certifique-se de que nenhum outro aplicativo esteja usando **CABLE Input**. |
 
 ### 2.5. Incompatibilidade de saída multicanal

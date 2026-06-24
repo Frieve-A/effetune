@@ -1,29 +1,29 @@
 ---
-title: "Dynamics Plugins - EffeTune"
-description: "Dynamics processing plugins including Compressor, Limiter, Gate, Multiband Compressor, and Transient Shaper."
-lang: en
+title: "Plugins Dynamics - EffeTune"
+description: "Plugins de traitement de dynamique incluant Compressor, Limiter, Gate, Multiband Compressor et Transient Shaper."
+lang: fr
 ---
 
-# Dynamics Plugins
+# Plugins Dynamics
 
 Une collection de plugins qui aident à équilibrer les parties fortes et douces de votre musique, rendant votre expérience d'écoute plus agréable et confortable.
 
-## Plugin List
+## Liste des Plugins
 
 - [Auto Leveler](#auto-leveler) - Contrôle automatique du volume pour une expérience d'écoute uniforme
 - [Brickwall Limiter](#brickwall-limiter) - Contrôle transparent des crêtes pour une écoute sûre et confortable
 - [Compressor](#compressor) - Équilibre automatiquement les niveaux de volume pour une écoute plus confortable (inclut l'expansion vers le haut)
 - [Expander](#expander) - Expansion de plage dynamique en dessous du seuil avec contrôle de ratio et knee (inclut la compression vers le haut)
-- [Gate](#gate) - Réduit les bruits de fond indésirables en atténuant les signaux sous un seuil
-- [Multiband Compressor](#multiband-compressor) - Processeur de dynamique professionnel à 5 bandes avec mise en forme du son style radio FM
-- [Multiband Expander](#multiband-expander) - Expanseur professionnel 5 bandes pour l'expansion de plage dynamique spécifique par fréquence
-- [Multiband Transient](#multiband-transient) - Processeur avancé de mise en forme des transitoires 3 bandes pour un contrôle spécifique des attaques et sustains par fréquence
-- [Power Amp Sag](#power-amp-sag) - Simule l'affaissement de tension d'amplificateur de puissance sous conditions de charge élevée
+- [Gate](#gate) - Réduit les silences ou passages de faible niveau sous un seuil
+- [Multiband Compressor](#multiband-compressor) - Équilibrage du volume sur 5 bandes pour un son d'écoute stable, façon radio
+- [Multiband Expander](#multiband-expander) - Contrôle du contraste dynamique sur 5 bandes pour les enregistrements qui semblent trop plats
+- [Multiband Transient](#multiband-transient) - Ajuste séparément le punch et le sustain dans les graves, médiums et aigus
+- [Power Amp Sag](#power-amp-sag) - Ajoute une compression de type amplificateur qui adoucit légèrement les passages forts
 - [Transient Shaper](#transient-shaper) - Contrôle les parties d'attaque et de sustain du signal
 
 ## Auto Leveler
 
-Un contrôle intelligent du volume qui ajuste automatiquement votre musique pour maintenir un niveau d'écoute constant. Il utilise des mesures LUFS standard de l'industrie pour garantir que votre musique reste à un volume confortable, que vous écoutiez des pièces classiques calmes ou des morceaux pop dynamiques.
+Un contrôle intelligent du volume qui ajuste automatiquement votre musique pour maintenir un niveau d'écoute constant. Il utilise une estimation de niveau de type LUFS pour rapprocher la lecture de la cible choisie, que vous écoutiez des pièces classiques calmes ou des morceaux pop dynamiques.
 
 ### Guide d'Amélioration de l'Écoute
 - **Musique Classique :**
@@ -39,51 +39,51 @@ Un contrôle intelligent du volume qui ajuste automatiquement votre musique pour
   - Ni trop fort, ni trop faible.
   - Parfait pour les playlists à contenu mixte.
 
-### Parameters
+### Paramètres
 
-- **Target** (-36.0dB to 0.0dB LUFS)
+- **Target** (-36.0dB à 0.0dB LUFS)
   - Définit le niveau d'écoute souhaité.
   - La valeur par défaut de -18.0dB LUFS convient à la majorité des musiques.
   - Des valeurs plus basses pour une écoute de fond plus discrète.
   - Des valeurs plus élevées pour un son plus percutant.
 
-- **Time Window** (1000ms to 10000ms)
+- **Time Window** (1000ms à 10000ms)
   - Indique la rapidité de mesure du niveau.
   - Des temps plus courts offrent une réponse plus réactive aux variations.
   - Des temps plus longs produisent un son plus stable et naturel.
   - La valeur par défaut de 3000ms convient à la plupart des musiques.
 
-- **Max Gain** (0.0dB to 12.0dB)
+- **Max Gain** (0.0dB à 12.0dB)
   - Limite l'amplification des sons faibles.
   - Des valeurs plus élevées assurent un volume plus constant.
   - Des valeurs plus basses conservent une dynamique plus naturelle.
   - Commencez avec 6.0dB pour un contrôle en douceur.
 
-- **Min Gain** (-36.0dB to 0.0dB)
+- **Min Gain** (-36.0dB à 0.0dB)
   - Limite la réduction des sons forts.
   - Des valeurs plus élevées offrent un son plus naturel.
   - Des valeurs plus basses garantissent un volume plus constant.
   - Essayez -12.0dB comme point de départ.
 
-- **Attack Time** (1ms to 1000ms)
+- **Attack Time** (1ms à 1000ms)
   - Détermine la rapidité de réduction du volume.
   - Des temps plus rapides permettent un meilleur contrôle des pics soudains.
   - Des temps plus lents offrent des transitions plus naturelles.
   - La valeur par défaut de 50ms équilibre contrôle et naturel.
 
-- **Release Time** (10ms to 10000ms)
+- **Release Time** (10ms à 10000ms)
   - Indique la rapidité de retour du volume à son niveau normal.
   - Des temps plus rapides offrent une réponse plus réactive.
   - Des temps plus lents garantissent des transitions plus fluides.
-  - La valeur par défaut de 1000ms procure un son naturel.
+  - La valeur par défaut de 5000ms procure des changements de niveau fluides et naturels.
 
-- **Noise Gate** (-96dB to -24dB)
-  - Réduit le traitement des sons très faibles.
-  - Des valeurs plus élevées diminuent le bruit de fond.
-  - Des valeurs plus basses traitent davantage les sons faibles.
+- **Noise Gate** (-96dB à -24dB)
+  - Empêche les passages très faibles ou le bruit de fond d'être trop amplifiés.
+  - Des valeurs plus élevées limitent davantage l'amplification du bruit de fond discret.
+  - Des valeurs plus basses laissent le leveler réagir à des passages plus silencieux.
   - Commencez à -60dB et ajustez si nécessaire.
 
-### Visual Feedback
+### Retour Visuel
 - Affichage en temps réel du niveau LUFS.
 - Niveau d'entrée (ligne verte).
 - Niveau de sortie (ligne blanche).
@@ -145,7 +145,8 @@ Un limiteur de crêtes de haute qualité qui garantit que votre musique ne dépa
   - Valeur par défaut 0dB
 
 - **Threshold** (-24dB à 0dB)
-  - Définit le niveau maximal des crêtes
+  - Définit le niveau de crête où la limitation commence avant application de Margin
+  - Le plafond effectif est Threshold + Margin
   - Valeurs plus basses offrent plus de marge de sécurité
   - Valeurs plus hautes préservent plus de dynamique
   - Commencez à -3dB pour une protection douce
@@ -163,9 +164,10 @@ Un limiteur de crêtes de haute qualité qui garantit que votre musique ne dépa
   - 3ms est un bon compromis
 
 - **Margin** (-1.000dB à 0.000dB)
-  - Ajustement fin du seuil effectif
-  - Fournit une marge de sécurité supplémentaire
-  - Valeur par défaut -1.000dB convient à la plupart des matériaux
+  - Ajoute un décalage fin de sécurité au Threshold
+  - Le plafond réel est Threshold + Margin
+  - Par exemple, Threshold -3dB avec Margin -1.000dB limite autour de -4dB
+  - La valeur par défaut -1.000dB convient à la plupart des sources
   - Ajustez pour un contrôle précis des crêtes
 
 - **Oversampling** (1x, 2x, 4x, 8x)
@@ -173,11 +175,10 @@ Un limiteur de crêtes de haute qualité qui garantit que votre musique ne dépa
   - Valeurs plus basses pour moins d'utilisation CPU
   - 4x est un bon compromis entre qualité et performance
 
-### Affichage Visuel
-- Mesure de réduction de gain en temps réel
-- Indication claire du niveau de seuil
-- Ajustement interactif des paramètres
-- Surveillance du niveau des crêtes
+### Contrôles et Mesure
+- Contrôles directs pour Input Gain, Threshold, Margin, Release, Lookahead et Oversampling
+- Les informations de réduction de gain du limiteur sont signalées en interne pour l'hôte ou les indicateurs d'état
+- Le panneau du plugin n'affiche pas de graphique de niveau de crête séparé
 
 ### Réglages Recommandés
 
@@ -188,6 +189,7 @@ Un limiteur de crêtes de haute qualité qui garantit que votre musique ne dépa
 - Lookahead : 3ms
 - Margin : -1.000dB
 - Oversampling : 4x
+- Plafond effectif : environ -4dB
 
 #### Sécurité Maximale
 - Input Gain : -6dB
@@ -196,6 +198,7 @@ Un limiteur de crêtes de haute qualité qui garantit que votre musique ne dépa
 - Lookahead : 5ms
 - Margin : -1.000dB
 - Oversampling : 8x
+- Plafond effectif : environ -7dB
 
 #### Dynamique Naturelle
 - Input Gain : 0dB
@@ -204,10 +207,11 @@ Un limiteur de crêtes de haute qualité qui garantit que votre musique ne dépa
 - Lookahead : 2ms
 - Margin : -0.500dB
 - Oversampling : 4x
+- Plafond effectif : environ -2dB
 
 ## Compressor
 
-Un effet qui gère automatiquement les différences de volume dans votre musique en réduisant doucement les sons forts et en améliorant les sons faibles. Cela crée une expérience d'écoute plus équilibrée et agréable en lissant les changements de volume soudains qui pourraient être dérangeants ou inconfortables.
+Un effet qui lisse les différences de volume en réduisant doucement les crêtes fortes. Utilisez-le lorsque les passages soudainement forts deviennent gênants, ou lorsque vous souhaitez un niveau d'écoute plus régulier et confortable. Après la compression, augmentez Gain si vous voulez que l'ensemble du son, y compris les détails plus discrets, paraisse plus fort.
 
 ### Guide d'Amélioration de l'Écoute
 - Musique Classique :
@@ -223,7 +227,7 @@ Un effet qui gère automatiquement les différences de volume dans votre musique
   - Fait se fondre plus naturellement les sections solo avec l'ensemble
   - Maintient la clarté pendant les passages doux et forts
 
-### Parameters
+### Paramètres
 
 - **Threshold** - Définit le niveau de volume où l'effet commence à agir (-60dB à 0dB)
   - Réglages plus élevés : N'affecte que les parties les plus fortes de la musique
@@ -266,24 +270,28 @@ Un effet qui gère automatiquement les différences de volume dans votre musique
   - Attack : 20ms
   - Release : 200ms
   - Knee : 6dB
+  - Gain : +2dB
 - Sessions d'Écoute Critique :
   - Threshold : -18dB
   - Ratio : 1:1.5
   - Attack : 30ms
   - Release : 300ms
   - Knee : 3dB
+  - Gain : +1dB
 - Écoute Nocturne :
   - Threshold : -30dB
   - Ratio : 1:4
   - Attack : 10ms
   - Release : 150ms
   - Knee : 9dB
-- Amélioration des Sons Forts :
+  - Gain : +3dB
+- Accentuation des Sons Forts :
   - Threshold : -12dB
   - Ratio : 1:0.5
-  - Attack : 5ms
-  - Release : 100ms
-  - Knee : 0dB
+  - Attack : 50ms
+  - Release : 400ms
+  - Knee : 6dB
+  - Gain : 0dB
 
 ## Expander
 
@@ -367,7 +375,7 @@ Un processeur de plage dynamique qui étend la plage dynamique des signaux en de
 
 ## Gate
 
-Une porte de bruit qui aide à réduire les bruits de fond indésirables en atténuant automatiquement les signaux qui tombent sous un seuil spécifié. Ce plugin est particulièrement utile pour nettoyer les sources audio avec un bruit de fond constant, comme le bruit de ventilateur, le bourdonnement ou le bruit ambiant de la pièce.
+Une porte de bruit pleine bande qui baisse tout le signal lorsque le niveau passe sous un seuil défini. Elle est utile pour réduire les bruits de faible niveau pendant les silences, les fondus ou les intervalles entre phrases parlées. Elle ne sépare pas et ne supprime pas le bruit de ventilateur, le bourdonnement ou le bruit de pièce lorsqu'ils sont couverts par de la musique ou de la voix.
 
 ### Caractéristiques Principales
 - Contrôle précis du seuil pour une détection précise du bruit
@@ -377,7 +385,7 @@ Une porte de bruit qui aide à réduire les bruits de fond indésirables en att�
 - Mesure de réduction de gain en temps réel
 - Affichage interactif de la fonction de transfert
 
-### Parameters
+### Paramètres
 
 - **Threshold** (-96dB à 0dB)
   - Définit le niveau où commence la réduction du bruit
@@ -444,7 +452,8 @@ Une porte de bruit qui aide à réduire les bruits de fond indésirables en att�
 - Knee : 1dB
 - Gain : 0dB
 
-#### Suppression de Bruit Intense
+#### Gating Très Agressif
+- À utiliser seulement lorsque vous voulez des silences presque complets dans les pauses, par exemple pour des enregistrements parlés ou des passages très bruyants
 - Threshold : -30dB
 - Ratio : 50:1
 - Attack : 0.1ms
@@ -457,12 +466,13 @@ Une porte de bruit qui aide à réduire les bruits de fond indésirables en att�
 - Utilisez des temps de relâchement plus longs pour un son plus naturel
 - Ajoutez de la knee lors du traitement de matériel complexe
 - Surveillez le vumètre de réduction de gain pour assurer un gating approprié
+- Pour la musique, évitez les seuils ou ratios très élevés sauf si vous voulez couper volontairement les queues de notes discrètes
 - Combinez avec d'autres processeurs de dynamique pour un contrôle complet
 
 
 ## Multiband Compressor
 
-Un processeur de dynamique professionnel qui divise votre audio en cinq bandes de fréquences et traite chacune indépendamment. Ce plugin est particulièrement efficace pour créer ce son "radio FM" poli, où chaque partie du spectre de fréquences est parfaitement contrôlée et équilibrée.
+Un processeur d'écoute à cinq bandes qui équilibre le volume séparément dans différentes plages de fréquences. Utilisez-le lorsque les basses ressortent trop, que les voix semblent trop en avant ou que les aigus deviennent agressifs. Les réglages par défaut créent un son stable, proche d'une écoute radio, pour une écoute détendue.
 
 ### Caractéristiques Principales
 - Traitement 5 bandes avec fréquences de crossover ajustables
@@ -471,7 +481,9 @@ Un processeur de dynamique professionnel qui divise votre audio en cinq bandes d
 - Visualisation en temps réel de la réduction de gain par bande
 - Filtres de crossover Linkwitz-Riley de haute qualité
 
-### Bandes de Fréquences
+### Bandes de Fréquences par Défaut
+Les fréquences de crossover sont ajustables ; voici les plages par défaut.
+
 - Bande 1 (Basse) : Sous 100 Hz
   - Contrôle les basses profondes et les sous-fréquences
   - Ratio plus élevé et relâchement plus long pour des basses serrées et contrôlées
@@ -488,13 +500,28 @@ Un processeur de dynamique professionnel qui divise votre audio en cinq bandes d
   - Gère la brillance et l'éclat
   - Temps de réponse rapides avec ratio plus élevé
 
-### Parameters (Par Bande)
+### Paramètres
+
+#### Fréquences de Crossover
+- **Freq 1** (20Hz à 500Hz, défaut 100Hz)
+  - Définit le point de crossover Basse/Bas-médium
+- **Freq 2** (100Hz à 2000Hz, défaut 500Hz)
+  - Définit le point de crossover Bas-médium/Médium
+- **Freq 3** (500Hz à 8000Hz, défaut 2000Hz)
+  - Définit le point de crossover Médium/Haut-médium
+- **Freq 4** (1000Hz à 20000Hz, défaut 8000Hz)
+  - Définit le point de crossover Haut-médium/Aigu
+- Les fréquences sont automatiquement maintenues en ordre croissant ; déplacer un contrôle peut donc relever le crossover suivant si nécessaire
+
+#### Contrôles par Bande
 - **Threshold** (-60dB à 0dB)
   - Définit le niveau où commence la compression
   - Réglages plus bas créent des niveaux plus constants
-- **Ratio** (1:1 à 20:1)
-  - Contrôle la quantité de réduction de gain
-  - Ratios plus élevés pour un contrôle plus agressif
+- **Ratio** (0.5:1 à 20:1)
+  - 1:1 : Aucun changement
+  - Au-dessus de 1:1 : Compresse les parties fortes de cette bande
+  - En dessous de 1:1 : Remonte les sons au-dessus du seuil pour rendre cette bande plus présente
+  - Pour un contrôle d'écoute normal, commencez autour de 2:1 à 5:1
 - **Attack** (0.1ms à 100ms)
   - Rapidité de réponse de la compression
   - Temps plus rapides pour le contrôle des transitoires
@@ -509,7 +536,7 @@ Un processeur de dynamique professionnel qui divise votre audio en cinq bandes d
   - Affinez l'équilibre des fréquences
 
 ### Traitement Style Radio FM
-Le Multiband Compressor est livré avec des réglages par défaut optimisés qui recréent le son poli et professionnel de la radiodiffusion FM :
+Le Multiband Compressor est livré avec des réglages par défaut optimisés pour un son d'écoute stable, façon radio FM :
 
 - Bande Basse (< 100 Hz)
   - Ratio plus élevé (4:1) pour un contrôle serré des basses
@@ -519,7 +546,7 @@ Le Multiband Compressor est livré avec des réglages par défaut optimisés qui
 - Bande Bas-médium (100-500 Hz)
   - Compression modérée (3:1)
   - Timing équilibré pour une réponse naturelle
-  - Gain neutre pour maintenir la chaleur
+  - Gain neutre pour garder un équilibre naturel dans le bas-médium
 
 - Bande Médium (500-2000 Hz)
   - Compression douce (2.5:1)
@@ -540,7 +567,7 @@ Cette configuration crée le son caractéristique "prêt pour la radio" :
 - Basses constantes et impactantes
 - Voix claires et en avant
 - Dynamique contrôlée sur toutes les fréquences
-- Poli et brillance professionnels
+- Présentation globale plus douce et plus polie
 - Présence et clarté améliorées
 - Fatigue d'écoute réduite
 
@@ -551,7 +578,7 @@ Cette configuration crée le son caractéristique "prêt pour la radio" :
 - Indicateurs clairs des points de crossover
 
 ### Conseils d'Utilisation
-- Commencez avec le preset radio FM par défaut
+- Commencez avec les réglages par défaut de style radio FM
 - Ajustez les fréquences de crossover selon votre matériel
 - Affinez le seuil de chaque bande pour le niveau de contrôle souhaité
 - Utilisez les contrôles de gain pour façonner l'équilibre final des fréquences
@@ -559,18 +586,18 @@ Cette configuration crée le son caractéristique "prêt pour la radio" :
 
 ## Multiband Expander
 
-Un processeur de dynamique de qualité professionnelle qui divise votre audio en cinq bandes de fréquences et applique une expansion indépendante à chacune. Ce plugin est conçu pour étendre la plage dynamique de plages de fréquences spécifiques, rendant les sons doux plus doux tout en maintenant les sons forts inchangés. Il est particulièrement efficace pour restaurer la dynamique naturelle des enregistrements sur-compressés du mastering moderne ou créer un contraste dynamique plus dramatique spécifique par fréquence.
+Un processeur d'écoute à cinq bandes qui peut redonner un peu de contraste naturel aux enregistrements trop plats ou très compressés. Il travaille séparément dans chaque plage de fréquences : en général, il rend les sons sous le seuil plus discrets, tandis que les ratios sous 1:1 peuvent au contraire relever les sons plus faibles.
 
 ### Caractéristiques Principales
 - Traitement 5 bandes avec fréquences de crossover ajustables
 - Contrôles d'expansion indépendants pour chaque bande
-- Paramètres par défaut optimisés suivant la distribution d'énergie 1/f
-- Visualisation en temps réel du boost de gain par bande
+- Paramètres par défaut optimisés pour restaurer doucement le contraste dynamique
+- Visualisation en temps réel de l'activité d'expansion par bande
 - Filtres de crossover Linkwitz-Riley haute qualité
 
 ### Guide d'Amélioration de l'Écoute
 - **Musique Pop/Rock :**
-  - Réduire l'effet "mur de son" du mastering sur-compressé
+  - Réduire l'effet "mur de son" des enregistrements sur-compressés
   - Restaurer le contraste dynamique entre les couplets et les refrains
   - Améliorer l'impression plate des sources audio en streaming
 - **Musique Classique :**
@@ -582,7 +609,9 @@ Un processeur de dynamique de qualité professionnelle qui divise votre audio en
   - Rendre les solos doux plus intimes et les sections fortes plus puissantes
   - Restaurer la respiration naturelle des performances jazz
 
-### Bandes de Fréquences
+### Bandes de Fréquences par Défaut
+Les fréquences de crossover sont ajustables ; voici les plages par défaut.
+
 - Bande 1 (Grave) : En dessous de 100 Hz
   - Contrôle les basses profondes et les sous-fréquences
   - Expansion douce avec attaque/release plus long pour une dynamique de basses naturelle
@@ -599,13 +628,28 @@ Un processeur de dynamique de qualité professionnelle qui divise votre audio en
   - Gère la brillance et l'éclat
   - Temps de réponse rapides avec expansion plus douce
 
-### Paramètres (Par Bande)
+### Paramètres
+
+#### Fréquences de Crossover
+- **Freq 1** (20Hz à 500Hz, défaut 100Hz)
+  - Définit le point de crossover Grave/Grave-Médium
+- **Freq 2** (100Hz à 2000Hz, défaut 500Hz)
+  - Définit le point de crossover Grave-Médium/Médium
+- **Freq 3** (500Hz à 8000Hz, défaut 2000Hz)
+  - Définit le point de crossover Médium/Médium-Aigu
+- **Freq 4** (1000Hz à 20000Hz, défaut 8000Hz)
+  - Définit le point de crossover Médium-Aigu/Aigu
+- Les fréquences sont automatiquement maintenues en ordre croissant ; déplacer un contrôle peut donc relever le crossover suivant si nécessaire
+
+#### Contrôles par Bande
 - **Threshold** (-60dB à 0dB)
   - Définit le niveau où l'expansion commence
-  - Les signaux en dessous de ce niveau seront étendus (rendus plus doux)
+  - Les signaux sous ce niveau sont traités par le réglage Ratio
 - **Ratio** (1:0.05 à 1:20)
-  - Contrôle la quantité d'expansion appliquée
-  - Ratios plus élevés pour une expansion de plage dynamique plus dramatique
+  - 1:1 : Aucun changement
+  - Au-dessus de 1:1 : Rend les sons sous le seuil plus discrets
+  - En dessous de 1:1 : Remonte les sons plus faibles au lieu de les réduire
+  - Pour une restauration naturelle de la dynamique, commencez autour de 1.1:1 à 1.2:1
 - **Attack** (0.1ms à 100ms)
   - Vitesse de réponse de l'expansion
   - Temps plus rapides pour un contrôle précis des transitoires
@@ -620,7 +664,7 @@ Un processeur de dynamique de qualité professionnelle qui divise votre audio en
   - Affinage de l'équilibre fréquentiel
 
 ### Restauration de Plage Dynamique
-Multiband Expander est livré avec des paramètres par défaut optimisés qui suivent la distribution naturelle d'énergie 1/f pour restaurer la dynamique du matériel sur-compressé :
+Multiband Expander est livré avec des paramètres par défaut optimisés pour restaurer doucement le contraste dans les sources sur-compressées :
 
 - Bande Grave (< 100 Hz)
   - Expansion douce (1.2:1) pour une dynamique de basses contrôlée
@@ -630,7 +674,7 @@ Multiband Expander est livré avec des paramètres par défaut optimisés qui su
 - Bande Grave-Médium (100-500 Hz)
   - Expansion modérée (1.2:1)
   - Timing équilibré pour une réponse naturelle
-  - Seuil suivant le rolloff d'énergie de -6dB
+  - Seuil adapté à l'énergie typique du grave-médium
 
 - Bande Médium (500-2000 Hz)
   - Expansion équilibrée (1.2:1)
@@ -638,7 +682,7 @@ Multiband Expander est livré avec des paramètres par défaut optimisés qui su
   - Optimisée pour la dynamique vocale et instrumentale
 
 - Bande Médium-Aigu (2000-8000 Hz)
-  - Expansion légère (1.2:1)
+  - Expansion légère (1.1:1)
   - Attaque/release plus rapide
   - Restauration naturelle de la présence
 
@@ -657,7 +701,7 @@ Cette configuration crée une restauration dynamique au son naturel :
 
 ### Retour Visuel
 - Graphiques de fonction de transfert interactifs pour chaque bande
-- Vumètres de boost de gain en temps réel montrant l'activité d'expansion
+- Vumètres d'activité d'expansion en temps réel indiquant combien chaque bande est réduite ou relevée
 - Visualisation de l'activité des bandes de fréquences
 - Indicateurs clairs des points de crossover
 
@@ -666,35 +710,35 @@ Cette configuration crée une restauration dynamique au son naturel :
 - Ajustez les fréquences de crossover selon votre matériel
 - Affinez le seuil de chaque bande selon le contenu fréquentiel
 - Utilisez les contrôles de gain pour compenser les changements de volume perçus
-- Surveillez les vumètres de boost de gain pour assurer une expansion appropriée
+- Surveillez les vumètres d'activité d'expansion pour assurer un traitement approprié
 
 ## Multiband Transient
 
-Un processeur avancé de mise en forme des transitoires qui divise votre audio en trois bandes de fréquences (Grave, Médium, Aigu) et applique une mise en forme indépendante des transitoires à chaque bande. Cet outil sophistiqué vous permet d'améliorer ou de réduire simultanément les caractéristiques d'attaque et de sustain de différentes plages de fréquences, offrant un contrôle précis sur le punch, la clarté et le corps de votre musique.
+Un shaper de transitoires à trois bandes pour de la musique déjà finalisée. Il divise le son en plages Low, Mid et High, puis vous permet d'ajuster l'attaque et le sustain dans chaque plage afin de rendre la musique plus percutante, plus serrée, plus douce ou plus détendue sans modifier toutes les fréquences de la même manière.
 
 ### Guide d'Amélioration de l'Écoute
 - **Musique Classique :**
-  - Améliorer l'attaque des sections de cordes pour une meilleure clarté tout en contrôlant la réverbération de salle dans les basses fréquences
+  - Rendre les attaques de cordes un peu plus claires tout en contrôlant la résonance de salle dans les basses fréquences
   - Façonner les transitoires de piano différemment à travers le spectre fréquentiel pour un son plus équilibré
-  - Contrôler indépendamment le punch des timbales (grave) et des cymbales (aigu) pour un équilibre orchestral optimal
+  - Adoucir les attaques aiguës trop vives tout en gardant le poids orchestral
 
 - **Musique Rock/Pop :**
-  - Ajouter du punch à la grosse caisse (bande grave) tout en améliorant la présence de la caisse claire (bande médium)
-  - Contrôler l'attaque de la basse guitare séparément de la clarté vocale
-  - Façonner les attaques de médiator guitare dans les hautes fréquences sans affecter la réponse des basses
+  - Donner aux impacts de batterie dans des morceaux finalisés une sensation plus immédiate sans monter tout le morceau
+  - Resserrer le sustain boomy dans les basses fréquences tout en gardant une présence claire dans les médiums
+  - Adoucir les attaques aiguës lorsqu'un enregistrement semble agressif
 
 - **Musique Électronique :**
-  - Façonner indépendamment les drops de basse et les synthétiseurs leads
-  - Contrôler le punch des sub-bass tout en maintenant la clarté dans les hautes fréquences
-  - Ajouter de la définition aux éléments individuels à travers le spectre fréquentiel
+  - Rendre les impacts de basse plus fermes tout en gardant le reste du morceau contrôlé
+  - Réduire le sustain long dans le grave lorsque la basse semble floue
+  - Ajouter ou réduire le mordant dans les plages de synthés et percussions brillantes
 
 ### Bandes de Fréquences
 
-Le processeur Multiband Transient divise votre audio en trois bandes de fréquences soigneusement conçues :
+Le processeur Multiband Transient divise votre audio en trois bandes de fréquences soigneusement conçues. Comme il agit par bande de fréquences et non par séparation de sources, chaque réglage affecte tous les sons présents dans cette bande.
 
 - **Low Band** (En dessous de Freq 1)
   - Contrôle les fréquences graves et sub-graves
-  - Idéal pour façonner les grosses caisses, instruments de basse et éléments basse fréquence
+  - Utile pour façonner l'impact des basses, les coups graves et les résonances
   - Fréquence de coupure par défaut : 200 Hz
 
 - **Mid Band** (Entre Freq 1 et Freq 2)
@@ -716,10 +760,11 @@ Le processeur Multiband Transient divise votre audio en trois bandes de fréquen
   - Valeurs plus hautes : Plus de contenu dans la bande grave
   - Par défaut : 200Hz
 
-- **Freq 2** (200Hz à 20000Hz)
+- **Freq 2** (max(Freq 1, 200Hz) à 20000Hz)
   - Définit le point de coupure Médium/Aigu
   - Valeurs plus basses : Plus de contenu dans la bande aigu
   - Valeurs plus hautes : Plus de contenu dans la bande médium
+  - S'il est réglé sous Freq 1, il est automatiquement remonté à Freq 1
   - Par défaut : 4000Hz
 
 #### Contrôles par Bande (Low, Mid, High)
@@ -739,8 +784,8 @@ Chaque bande de fréquence a des contrôles indépendants de mise en forme des t
 
 - **Slow Attack** (1ms à 100ms)
   - Contrôle le temps de réponse de l'enveloppe lente
-  - Valeurs plus basses : Meilleure séparation transitoire vs sustain
-  - Valeurs plus hautes : Détection plus graduelle du sustain
+  - Valeurs plus basses : L'enveloppe lente suit les attaques plus tôt, produisant une accentuation des transitoires plus douce ou plus courte
+  - Valeurs plus hautes : Séparation plus grande entre attaque et sustain, rendant le façonnage des transitoires plus fort et plus long
   - Plage typique : 10ms à 50ms
 
 - **Slow Release** (50ms à 1000ms)
@@ -776,26 +821,26 @@ Chaque bande de fréquence a des contrôles indépendants de mise en forme des t
 
 ### Réglages Recommandés
 
-#### Amélioration de Batterie
-- **Low Band (Grosse Caisse) :**
+#### Écoute Pop/Rock Plus Percutante
+- **Low Band (Punch des Basses) :**
   - Fast Attack: 2.0ms, Fast Release: 50ms
   - Slow Attack: 25ms, Slow Release: 250ms
   - Transient Gain: +6dB, Sustain Gain: -3dB
   - Smoothing: 5.0ms
 
-- **Mid Band (Caisse Claire/Voix) :**
+- **Mid Band (Attaque et Présence) :**
   - Fast Attack: 1.0ms, Fast Release: 30ms
   - Slow Attack: 15ms, Slow Release: 150ms
   - Transient Gain: +9dB, Sustain Gain: 0dB
   - Smoothing: 3.0ms
 
-- **High Band (Cymbales/Hi-hat) :**
+- **High Band (Claque des Aigus) :**
   - Fast Attack: 0.5ms, Fast Release: 20ms
   - Slow Attack: 10ms, Slow Release: 100ms
   - Transient Gain: +3dB, Sustain Gain: -6dB
   - Smoothing: 2.0ms
 
-#### Mix Complet Équilibré
+#### Morceau Complet Équilibré
 - **Toutes les Bandes :**
   - Fast Attack: 2.0ms, Fast Release: 30ms
   - Slow Attack: 20ms, Slow Release: 200ms
@@ -827,28 +872,28 @@ Chaque bande de fréquence a des contrôles indépendants de mise en forme des t
 - Considérer le contenu musical lors du réglage des fréquences de coupure
 - Les bandes de hautes fréquences bénéficient généralement de temps d'attaque plus rapides
 - Les bandes de basses fréquences nécessitent souvent des temps de release plus longs pour un son naturel
-- Combiner avec d'autres processeurs de dynamique pour un contrôle compréhensif
+- Combiner avec d'autres processeurs de dynamique si un contrôle plus complet est nécessaire
 
 ## Power Amp Sag
 
-Simule le comportement d'affaissement de tension des amplificateurs de puissance sous des conditions de charge élevée. Cet effet recrée la compression naturelle et la chaleur qui se produisent lorsque l'alimentation d'un amplificateur est sollicitée par des passages musicaux exigeants, ajoutant du punch et du caractère musical à votre audio.
+Simule le comportement d'affaissement de tension des amplificateurs de puissance sous des conditions de charge élevée. Cet effet crée une compression dynamique de type amplificateur en abaissant doucement le niveau lors des passages exigeants, puis en récupérant lorsque le passage se relâche.
 
 ### Guide d'Amélioration de l'Écoute
 - Systèmes Audio Vintage :
   - Recrée le caractère d'amplificateur classique avec compression naturelle
-  - Ajoute la chaleur et la richesse des équipements hi-fi vintage
-  - Parfait pour obtenir un son analogique authentique
+  - Ajoute une compression douce de type amplificateur aux passages forts
+  - Utile lorsque vous voulez une réponse moins rigide sur les crêtes
 - Musique Rock/Pop :
   - Améliore le punch et la présence pendant les passages puissants
   - Ajoute une compression naturelle sans dureté
-  - Crée une sensation satisfaisante de "drive" d'amplificateur
+  - Crée une légère baisse de niveau puis une récupération dans les sections puissantes
 - Musique Classique :
-  - Fournit une dynamique naturelle aux crescendos orchestraux
-  - Ajoute la chaleur d'amplificateur aux sections de cordes et de cuivres
-  - Améliore le réalisme des performances amplifiées
+  - Adoucit les crescendos orchestraux sans limitation dure
+  - Adoucit les crêtes fortes des cordes et des cuivres
+  - Ajoute un mouvement rappelant une lecture amplifiée
 - Musique Jazz :
   - Recrée le comportement de compression d'amplificateur classique
-  - Ajoute chaleur et caractère aux instruments solo
+  - Ajoute un mouvement de compression subtil aux enregistrements centrés sur les solos
   - Maintient le flux dynamique naturel
 
 ### Paramètres
@@ -909,23 +954,23 @@ Simule le comportement d'affaissement de tension des amplificateurs de puissance
 
 ## Transient Shaper
 
-Un processeur de dynamique spécialisé qui vous permet d'améliorer ou de réduire indépendamment les parties d'attaque et de sustain de votre audio. Cet outil puissant vous donne un contrôle précis sur le punch et le corps de votre musique, vous permettant de remodeler le caractère des sons sans affecter leur niveau global.
+Un processeur de dynamique spécialisé qui vous permet d'améliorer ou de réduire indépendamment les parties d'attaque et de sustain de votre audio. Utilisez-le pour changer le punch et le corps de la musique, en gardant à l'esprit que des valeurs positives de Transient Gain ou Sustain Gain peuvent augmenter les crêtes et le volume perçu.
 
-### Listening Enhancement Guide
+### Guide d'Amélioration de l'Écoute
 - Percussion :
   - Ajoutez du punch et de la définition aux batteries en améliorant les transitoires
   - Réduisez la résonance de la pièce en maîtrisant la portion de sustain
-  - Créez des sons de batterie plus impactants sans augmenter le volume
+  - Créez une sensation d'impact plus forte en accentuant les attaques ; utilisez un limiteur après l'effet si les crêtes deviennent trop hautes
 - Guitare Acoustique :
   - Améliorez les attaques de médiator pour plus de clarté et de présence
-  - Contrôlez le sustain pour trouver l'équilibre parfait avec les autres instruments
-  - Façonnez les motifs de strumming pour mieux s'intégrer dans le mixage
+  - Contrôlez le sustain pour rendre l'instrument plus serré ou plus ample
+  - Façonnez les motifs de strumming pour une écoute plus claire ou plus détendue
 - Musique Électronique :
   - Accentuez les attaques de synthétiseur pour une sensation plus percussive
-  - Contrôlez le sustain des sons de basse pour des mixages plus serrés
-  - Ajoutez du punch aux batteries électroniques sans changer leur timbre
+  - Contrôlez le sustain des sons de basse pour une impression plus serrée
+  - Ajoutez du punch aux batteries électroniques en surveillant le niveau de crête
 
-### Parameters
+### Paramètres
 
 - **Fast Attack** (0.1ms à 10.0ms)
   - Contrôle la rapidité de réponse du suiveur d'enveloppe rapide
@@ -941,8 +986,8 @@ Un processeur de dynamique spécialisé qui vous permet d'améliorer ou de rédu
 
 - **Slow Attack** (1ms à 100ms)
   - Contrôle la rapidité de réponse du suiveur d'enveloppe lent
-  - Valeurs plus basses : Séparation plus prononcée entre transitoires et sustain
-  - Valeurs plus hautes : Détection plus naturelle de la portion de sustain
+  - Valeurs plus basses : L'enveloppe lente suit les attaques plus tôt, produisant une accentuation des transitoires plus douce ou plus courte
+  - Valeurs plus hautes : Séparation plus grande entre attaque et sustain, rendant le façonnage des transitoires plus fort et plus long
   - 20ms est un bon réglage par défaut
 
 - **Slow Release** (50ms à 1000ms)
@@ -952,15 +997,17 @@ Un processeur de dynamique spécialisé qui vous permet d'améliorer ou de rédu
   - Essayez 300ms comme point de départ
 
 - **Transient Gain** (-24dB à +24dB)
-  - Augmente ou supprime la partie d'attaque du son
+  - Augmente ou réduit la partie d'attaque du son
   - Valeurs positives : Accentue le punch et la clarté
   - Valeurs négatives : Crée un son plus doux et moins agressif
+  - Les valeurs positives peuvent augmenter le niveau de crête
   - Commencez avec +6dB pour accentuer les transitoires
 
 - **Sustain Gain** (-24dB à +24dB)
-  - Augmente ou supprime la partie de sustain du son
+  - Augmente ou réduit la partie de sustain du son
   - Valeurs positives : Ajoute plus de richesse et de corps
   - Valeurs négatives : Crée un son plus serré et contrôlé
+  - Les valeurs positives peuvent augmenter le volume perçu
   - Commencez à 0dB et ajustez selon vos goûts
 
 - **Smoothing** (0.1ms à 20.0ms)
@@ -969,13 +1016,13 @@ Un processeur de dynamique spécialisé qui vous permet d'améliorer ou de rédu
   - Valeurs plus hautes : Traitement plus naturel et transparent
   - 5.0ms offre un bon équilibre pour la plupart des matériaux
 
-### Visual Feedback
+### Retour Visuel
 - Visualisation du gain en temps réel
 - Affichage clair de l'historique de gain
 - Marqueurs temporels pour référence
 - Interface intuitive pour tous les paramètres
 
-### Recommended Settings
+### Réglages Recommandés
 
 #### Percussion Améliorée
 - Fast Attack : 0.5ms
@@ -995,7 +1042,7 @@ Un processeur de dynamique spécialisé qui vous permet d'améliorer ou de rédu
 - Sustain Gain : 0dB
 - Smoothing : 8.0ms
 
-#### Son Électronique Serré
+#### Sons Électroniques Plus Serrés
 - Fast Attack : 1.0ms
 - Fast Release : 15ms
 - Slow Attack : 10ms

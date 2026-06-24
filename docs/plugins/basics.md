@@ -10,20 +10,20 @@ A collection of essential tools for adjusting the fundamental aspects of your mu
 
 ## Plugin List
 
-- [Channel Divider](#channel-divider) - Splits audio into frequency bands across multiple channels
-- [DC Offset](#dc-offset) - Helps fix audio that sounds unbalanced
+- [Channel Divider](#channel-divider) - Splits stereo audio into frequency bands across stereo output pairs
+- [DC Offset](#dc-offset) - Adds or corrects a constant DC offset
 - [Matrix](#matrix) - Routes and mixes audio channels with flexible control
 - [MultiChannel Panel](#multichannel-panel) - Controls multiple audio channels with individual settings
 - [Mute](#mute) - Silences the audio output
-- [Polarity Inversion](#polarity-inversion) - Can improve how stereo music sounds
+- [Polarity Inversion](#polarity-inversion) - Flips signal polarity for correction or special routing cases
 - [Stereo Balance](#stereo-balance) - Adjusts the left-right balance of your music
 - [Volume](#volume) - Controls how loud the music plays
 
 ## Channel Divider
 
-A specialized tool that splits your stereo signal into separate frequency bands and routes each band to different output channels. Perfect for multi-channel systems or custom crossover configurations.
+A specialized tool that splits your stereo signal into separate frequency bands and routes each band to a different stereo output pair. It is useful for multi-amplifier, multi-speaker, or custom crossover playback setups.
 
-To use this effect, you need to use the desktop app, set the number of output channels in the audio settings to 4 or more, and set the channel in the effect bus routing to "All."
+To use this effect, you need to use the desktop app, set the number of output channels in the audio settings to 4, 6, or 8 depending on the number of bands, and set the channel in the effect bus routing to "All."
 
 ### When to Use
 - When using multi-channel audio outputs (4, 6, or 8 channels)
@@ -32,14 +32,17 @@ To use this effect, you need to use the desktop app, set the number of output ch
 
 ### Parameters
 - **Band Count** - Number of frequency bands to create (2-4 bands)
-  - 2 bands: Low/High split
-  - 3 bands: Low/Mid/High split
-  - 4 bands: Low/Mid-Low/Mid-High/High split
+  - 2 bands: Low/High split, requiring 4 output channels
+  - 3 bands: Low/Mid/High split, requiring 6 output channels
+  - 4 bands: Low/Mid-Low/Mid-High/High split, requiring 8 output channels
+  - Higher band counts are unavailable when the selected output channel count is too low
 
 - **Crossover Frequencies** - Define where audio splits between bands
   - F1: First crossover point
   - F2: Second crossover point (for 3+ bands)
   - F3: Third crossover point (for 4 bands)
+  - Each crossover can be set from 10 Hz to 40000 Hz
+  - The plugin keeps F1, F2, and F3 in ascending order with at least 1 Hz separation
 
 - **Slopes** - Control how sharply bands are separated
   - Options: -12dB to -96dB per octave
@@ -49,32 +52,35 @@ To use this effect, you need to use the desktop app, set the number of output ch
 ### Technical Notes
 - Processes first two input channels only
 - Output channels must be a multiple of 2 (4, 6, or 8)
+- Each band keeps the original stereo pair: 2-band mode outputs Low to channels 1-2 and High to channels 3-4; 3-band mode uses channels 1-2, 3-4, and 5-6; 4-band mode uses channels 1-2, 3-4, 5-6, and 7-8
 - Uses high-quality Linkwitz-Riley crossover filters
 - Visual frequency response graph for easy configuration
 
 ## DC Offset
 
-A utility that can help fix audio that sounds unbalanced or strange. Most listeners won't need this often, but it's helpful when you encounter audio that doesn't sound quite right.
+A utility for correcting a signal whose waveform is shifted away from the zero line. Most listeners should leave this at 0.0, but it can help with unusual files or processing chains that contain DC offset.
 
 ### When to Use
-- If music sounds unusually unbalanced
-- When one channel seems louder than it should
-- If other effects aren't working as expected
+- When audio has a constant DC bias or causes clicks/headroom problems after other processing
+- When a diagnostic tool or meter shows the waveform is shifted away from zero
+- Leave it at 0.0 for normal listening
 
 ### Parameters
-- **Offset** - Adjusts the audio balance (-1.0 to +1.0)
-  - 0.0: Normal setting
-  - Adjust if something sounds off
-  - Small adjustments usually work best
+- **Offset** - Adds a constant value to every sample (-1.0 to +1.0)
+  - 0.0: No offset
+  - Positive values shift the signal upward
+  - Negative values shift the signal downward
+  - Use very small adjustments when correction is needed
 
 ## Matrix
 
-A powerful channel routing tool that allows you to create custom signal paths between input and output channels. Offers complete flexibility in how audio signals are connected and mixed.
+A channel routing tool for fixing unusual speaker or headphone channel layouts, swapping channels, combining channels, or sending one channel to more than one available output.
 
 ### When to Use
 - To create custom routing between channels
 - When you need to mix or split signals in specific ways
-- For creative sound design using channel interactions
+- When left/right or multi-channel playback is coming from the wrong speakers
+- To combine stereo to mono or duplicate a channel to another available output
 
 ### Features
 - Flexible routing matrix for up to 8 channels
@@ -87,12 +93,14 @@ A powerful channel routing tool that allows you to create custom signal paths be
 - Active connections allow signal to flow between channels
 - Phase inversion option reverses the signal polarity
 - Multiple input connections to one output are mixed together
+- When several inputs are sent to the same output, their levels are added together, so you may need to lower the volume
+- Matrix does not create extra output channels by itself; it routes audio within the channels currently available
 
 ### Practical Applications
-- Custom downmixing or upmixing configurations
-- Isolating or combining specific channels
-- Creating phase relationships between channels
-- Solving complex routing requirements
+- Custom downmixing, channel swapping, or routing within the available channels
+- Combining left and right into mono
+- Duplicating a channel to another available output
+- Correcting unusual multi-channel playback layouts
 
 ## MultiChannel Panel
 
@@ -145,10 +153,10 @@ A comprehensive control panel for managing multiple audio channels individually.
   - Red: Near or at maximum level
 
 ### Practical Applications
-- Balancing surround sound systems
-- Creating custom headphone mixes
-- Time-aligning multi-microphone setups
-- Monitoring and adjusting multi-channel audio sources
+- Balancing surround sound or multi-speaker playback
+- Matching speaker timing when speakers are at different distances
+- Temporarily muting or soloing individual speakers during setup
+- Linking stereo pairs or speaker groups for easier adjustment
 
 ## Mute
 
@@ -161,14 +169,14 @@ A simple utility that silences all audio output by filling the buffer with zeros
 
 ## Polarity Inversion
 
-A tool that can improve how stereo music sounds in certain situations. It's like "flipping" the audio wave to potentially make it sound better.
+A utility that flips the polarity of the audio signal. Inverting all channels usually does not change what you hear by itself, but it can help when one speaker, cable, or channel appears to be wired with opposite polarity.
 
-You can also invert the polarity of only specific channels by limiting the channels to be processed in the effector common settings.
+To fix a suspected left/right or multi-channel polarity mismatch, limit the processed channels in the effect's common routing settings and invert only the affected channel.
 
 ### When to Use
-- When stereo music sounds "hollow" or "weird"
-- If combining this with other stereo effects
-- When trying to improve stereo imaging
+- When the center image sounds weak, hollow, or spread out because one channel may have opposite polarity
+- When checking or correcting speaker, cable, or channel polarity in a playback setup
+- When combining it with routing or stereo effects that need one channel's polarity reversed
 
 ## Stereo Balance
 

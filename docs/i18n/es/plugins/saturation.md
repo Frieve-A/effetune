@@ -1,7 +1,7 @@
 ---
-title: "Saturation Plugins - EffeTune"
-description: "Saturation and distortion plugins including Saturation, Exciter, Hard Clipping, and more."
-lang: en
+title: "Plugins de saturación - EffeTune"
+description: "Plugins de saturación y distorsión como Saturation, Exciter, Hard Clipping y otros."
+lang: es
 ---
 
 # Plugins de Saturación
@@ -13,10 +13,10 @@ Una colección de plugins que agregan calidez y carácter a tu música. Estos ef
 - [Dynamic Saturation](#dynamic-saturation) - Simula el desplazamiento no lineal de los conos de altavoces
 - [Exciter](#exciter) - Agrega contenido armónico para mejorar la claridad y presencia
 - [Hard Clipping](#hard-clipping) - Agrega intensidad y borde al sonido
-- [Harmonic Distortion](#harmonic-distortion) - Añade un carácter único a través de la distorsión armónica con control independiente de cada armónico
-- [Multiband Saturation](#multiband-saturation) - Moldea y mejora diferentes rangos de frecuencia independientemente
+- [Harmonic Distortion](#harmonic-distortion) - Añade carácter con distorsión no lineal ajustable de 2º a 5º orden
+- [Multiband Saturation](#multiband-saturation) - Moldea los rangos de frecuencia bajos, medios y altos de forma independiente
 - [Saturation](#saturation) - Agrega calidez y riqueza como equipo vintage
-- [Sub Synth](#sub-synth) - Genera y mezcla señales subarmónicas para mejorar los graves
+- [Sub Synth](#sub-synth) - Añade una señal filtrada de baja frecuencia para reforzar los graves
 
 ## Dynamic Saturation
 
@@ -24,17 +24,17 @@ Un efecto basado en la física que simula el desplazamiento no lineal de los con
 
 ### Guía de Mejora de Escucha
 - **Mejora Sutil:**
-  - Añade calidez suave y un comportamiento similar a la compresión
+  - Añade calidez suave y un ligero redondeo de picos
   - Crea un sonido naturalmente "empujado" sin distorsión obvia
-  - Agrega profundidad y dimensionalidad sutiles al sonido
+  - Agrega movimiento y profundidad sutiles al sonido
 - **Efecto Moderado:**
   - Crea una distorsión más dinámica y receptiva
-  - Añade movimiento único y vivacidad a los sonidos sostenidos
-  - Enfatiza los transientes con una compresión de sensación natural
+  - Añade movimiento único y vivacidad a pasajes sostenidos
+  - Da a los transientes un carácter móvil y sensible a la señal
 - **Efecto Creativo:**
   - Produce patrones de distorsión complejos que evolucionan con la entrada
   - Crea comportamientos resonantes similares a los de un altavoz
-  - Permite posibilidades dramáticas de diseño de sonido
+  - Crea un carácter intenso y cambiante para escucha experimental
 
 ### Parámetros
 - **Speaker Drive** (0.0-10.0) - Controla cuán fuertemente la señal de audio mueve el cono
@@ -43,8 +43,8 @@ Un efecto basado en la física que simula el desplazamiento no lineal de los con
 - **Speaker Stiffness** (0.0-10.0) - Simula la rigidez de la suspensión del cono
   - Valores bajos: Movimiento libre y suelto con decaimiento más largo
   - Valores altos: Movimiento controlado y ajustado con respuesta rápida
-- **Speaker Damping** (0.0-10.0) - Controla cuán rápidamente se asienta el movimiento del cono
-  - Valores bajos: Vibración y resonancia prolongadas
+- **Speaker Damping** (0.1-10.0) - Controla cuán rápidamente se asienta el movimiento del cono
+  - Valores bajos cerca de 0.1: Vibración y resonancia prolongadas
   - Valores altos: Amortiguación rápida para un sonido controlado
 - **Speaker Mass** (0.1-5.0) - Simula la inercia del cono
   - Valores bajos: Movimiento rápido y receptivo
@@ -53,9 +53,8 @@ Un efecto basado en la física que simula el desplazamiento no lineal de los con
   - Valores bajos: No linealidad sutil
   - Valores altos: Carácter de saturación fuerte
 - **Distortion Bias** (-1.0-1.0) - Ajusta la simetría de la curva de saturación
-  - Negativo: Enfatiza el desplazamiento negativo
   - Cero: Saturación simétrica
-  - Positivo: Enfatiza el desplazamiento positivo
+  - Positivo/Negativo: Añade carácter asimétrico al cambiar qué lado del desplazamiento se satura con más fuerza
 - **Distortion Mix** (0-100%) - Mezcla entre desplazamiento lineal y saturado
   - Valores bajos: Respuesta más lineal
   - Valores altos: Carácter más saturado
@@ -65,7 +64,7 @@ Un efecto basado en la física que simula el desplazamiento no lineal de los con
 - **Output Gain** (-18.0-18.0dB) - Ajusta el nivel de salida final
 
 ### Visualización
-- Gráfico interactivo de curva de transferencia que muestra cómo se satura el desplazamiento
+- Gráfico en vivo de curva de transferencia que muestra cómo se satura el desplazamiento
 - Retroalimentación visual clara de las características de distorsión
 - Representación visual de cómo el Distortion Drive y el Bias afectan al sonido
 
@@ -86,7 +85,7 @@ Un efecto basado en la física que simula el desplazamiento no lineal de los con
   - Distortion Bias: Prueba ±0.2 para carácter asimétrico
   - Cone Motion Mix: 40-70%
 
-- Para Diseño de Sonido Creativo:
+- Para Efecto Experimental Fuerte:
   - Speaker Drive: 6.0-10.0
   - Speaker Stiffness: Prueba valores extremos (muy bajos o altos)
   - Speaker Mass: 2.0-5.0 para movimiento exagerado
@@ -119,7 +118,7 @@ Un efecto que agrega contenido armónico para mejorar la claridad y presencia. A
 - **Efecto Creativo:**
   - Crea tonos brillantes y cortantes
   - Añade presencia agresiva
-  - Perfecto para estilos de producción modernos
+  - Útil cuando quieres un sonido más brillante y directo, pero conviene usarlo con moderación
 
 ### Parámetros
 - **HPF Freq** (500-10000Hz) - Establece la frecuencia de corte para el filtrado de paso alto
@@ -135,13 +134,12 @@ Un efecto que agrega contenido armónico para mejorar la claridad y presencia. A
   - Medio (3.0-6.0): Brillo notable
   - Alto (6.0-10.0): Excitación fuerte
 - **Bias** (-0.3 a 0.3) - Ajusta la asimetría de saturación
-  - Negativo: Enfatiza las porciones negativas de la señal
   - Cero: Saturación simétrica
-  - Positivo: Enfatiza las porciones positivas de la señal
-- **Mix** (0-100%) - Mezcla la señal excitada con la seca
-  - Bajo (0-30%): Mejora sutil
-  - Medio (30-60%): Efecto equilibrado
-  - Alto (60-100%): Excitación fuerte
+  - Positivo/Negativo: Añade carácter asimétrico al cambiar qué lado de la mejora generada se satura con más fuerza
+- **Mix** (0-100%) - Controla cuánta mejora armónica generada se añade al sonido original
+  - Bajo (0-30%): Brillo añadido sutil
+  - Medio (30-60%): Presencia y detalle más claros
+  - Alto (60-100%): Armónicos añadidos fuertes; úsalo con cuidado para evitar aspereza
 
 ### Visualización
 - Gráfico de respuesta de frecuencia del filtro paso alto
@@ -149,21 +147,21 @@ Un efecto que agrega contenido armónico para mejorar la claridad y presencia. A
 - Retroalimentación visual clara tanto para el filtro como para la saturación
 
 ### Consejos para Mejorar la Música
-- Para Presencia Vocal:
+- Para Voces más Claras en Canciones, Podcasts o Vídeos:
   - HPF Freq: 3000-5000Hz
   - HPF Slope: 6dB/oct
   - Drive: 2.0-4.0
   - Bias: 0.05 a 0.1
   - Mix: 20-40%
 
-- Para Claridad de Instrumentos:
+- Para Mayor Detalle Medio/Alto en Grabaciones Densas:
   - HPF Freq: 2000-4000Hz
   - HPF Slope: 12dB/oct
   - Drive: 3.0-5.0
   - Bias: 0.0
   - Mix: 30-50%
 
-- Para Mejora del Bus Maestro:
+- Para Brillo Sutil en una Pista Completa:
   - HPF Freq: 5000-8000Hz
   - HPF Slope: 6dB/oct
   - Drive: 1.0-3.0
@@ -174,19 +172,19 @@ Un efecto que agrega contenido armónico para mejorar la claridad y presencia. A
 1. Establece HPF Freq para apuntar al rango de frecuencia deseado
 2. Elige HPF Slope (comienza con 6dB/oct)
 3. Comienza con Drive moderado (3.0)
-4. Mantén Bias cerca de 0.1 para brillo
+4. Mantén Bias cerca de 0.1 para un carácter ligeramente asimétrico
 5. Establece Mix en 25% y ajusta a gusto
 6. Afina todos los parámetros mientras escuchas
 
 ## Hard Clipping
 
-Un efecto que puede agregar desde calidez sutil hasta carácter intenso a tu música. Funciona moldeando suave o agresivamente las ondas sonoras, creando desde mejoras sutiles hasta efectos dramáticos.
+Un efecto de clipping digital que limita los picos por encima de un umbral definido. Úsalo cuando quieras más borde, densidad o distorsión creativa; mantén Threshold alto para un control ligero de picos y bájalo gradualmente para un carácter más fuerte.
 
 ### Guía de Mejora de Escucha
 - Mejora Sutil:
-  - Hace que la música digital suene ligeramente más cálida
-  - Agrega una suave cualidad "tipo analógica"
-  - Mantiene la claridad mientras reduce la dureza
+  - Añade un poco de borde y densidad cuando Threshold permanece alto
+  - Puede recortar picos agudos si se usa con moderación
+  - Compara con bypass porque el clipping puede volverse áspero si se fuerza demasiado
 - Efecto Moderado:
   - Crea un sonido más enérgico
   - Agrega emoción a elementos rítmicos
@@ -198,13 +196,13 @@ Un efecto que puede agregar desde calidez sutil hasta carácter intenso a tu mú
 
 ### Parámetros
 - **Threshold** - Controla cuánto del sonido es afectado (-60dB a 0dB)
-  - Valores más altos (-6dB a 0dB): Calidez sutil
-  - Valores medios (-24dB a -6dB): Carácter notable
-  - Valores más bajos (-60dB a -24dB): Efecto dramático
+  - Valores más altos (-6dB a 0dB): Control ligero de picos o borde sutil
+  - Valores medios (-24dB a -6dB): Carácter de clipping y densidad notables
+  - Valores más bajos (-60dB a -24dB): Distorsión fuerte y efecto dramático
 - **Mode** - Elige qué partes del sonido afectar
-  - Both Sides: Efecto equilibrado y natural
-  - Positive Only: Sonido más brillante y agresivo
-  - Negative Only: Carácter más oscuro y único
+  - Both Sides: Recorta picos positivos y negativos de forma simétrica; es el modo más predecible
+  - Positive Only: Recorta solo los picos positivos, creando clipping asimétrico y un carácter tonal distinto
+  - Negative Only: Recorta solo los picos negativos, creando clipping asimétrico con una sensación diferente a Positive Only
 
 ### Visualización
 - Gráfico en tiempo real mostrando cómo se está moldeando el sonido
@@ -213,9 +211,9 @@ Un efecto que puede agregar desde calidez sutil hasta carácter intenso a tu mú
 
 ### Consejos de Escucha
 - Para mejora sutil:
-  1. Comienza con un Threshold alto (-6dB)
+  1. Comienza con Threshold en 0dB
   2. Usa modo "Both Sides"
-  3. Escucha la calidez agregada
+  3. Bájalo gradualmente hacia -3dB a -6dB y detente cuando el efecto apenas sea audible
 - Para efectos creativos:
   1. Baja el Threshold gradualmente
   2. Prueba diferentes Modos
@@ -223,7 +221,7 @@ Un efecto que puede agregar desde calidez sutil hasta carácter intenso a tu mú
 
 ## Harmonic Distortion
 
-El plugin Harmonic Distortion introduce un efecto de distorsión armónica que va más allá de la saturación tradicional. A diferencia de la saturación estándar que añade armónicos en un patrón fijo, este efecto permite un control independiente de cada componente armónico. Al inyectar intencionalmente componentes armónicos controlados con ajustes individuales precisos, crea interacciones complejas que enriquecen tu sonido con nuevas texturas y un carácter dinámico.
+Harmonic Distortion moldea la forma de onda con términos no lineales ajustables de 2º a 5º orden. Permite afinar el carácter de distorsión de orden par e impar, desde una calidez sutil hasta una coloración más fuerte, lo que puede ayudar a que música demasiado limpia, delgada o plana se sienta más viva.
 
 ### Guía para la Mejora Auditiva
 - **Efecto Sutil:**
@@ -231,68 +229,71 @@ El plugin Harmonic Distortion introduce un efecto de distorsión armónica que v
   - Realza el tono natural sin sobrecargar la señal original
   - Ideal para añadir una sutil profundidad similar a la analógica
 - **Efecto Moderado:**
-  - Enfatiza armónicos definidos para otorgar un carácter más pronunciado
-  - Aporta claridad y brillo a diversos elementos musicales
-  - Adecuado para géneros que requieren un sonido equilibrado pero enriquecido
+  - Añade un carácter armónico más pronunciado
+  - Puede añadir cuerpo, brillo o borde a toda la grabación
+  - Útil cuando el sonido se siente demasiado plano o contenido
 - **Efecto Agresivo:**
   - Intensifica múltiples armónicos para crear una distorsión rica y compleja
-  - Proporciona posibilidades creativas de diseño sonoro para pistas experimentales
-  - Perfecto para agregar texturas atrevidas y poco convencionales
+  - Crea texturas atrevidas para escucha experimental
+  - Puede sonar filoso o poco convencional cuando se fuerza mucho
 - **Valores Positivos vs. Negativos:**
-  - Valores positivos: Crean un efecto tipo compresión, controlando picos y añadiendo calidez con mayor densidad
-  - Valores negativos: Generan un efecto tipo expansión, enfatizando la dinámica y creando sonidos más abiertos
+  - Los valores positivos y negativos invierten la dirección de cada término no lineal
+  - Los términos de orden par cambian sobre todo la asimetría y el color tonal
+  - Los términos de orden impar cambian sobre todo el carácter de la distorsión simétrica
 
 ### Parámetros
-- **2nd Harm (%):** Controla la cantidad de segundo armónico añadido (-30 a 30%, predeterminado: 2%)
-- **3rd Harm (%):** Ajusta la contribución del tercer armónico (-30 a 30%, predeterminado: 3%)
-- **4th Harm (%):** Modifica la intensidad del cuarto armónico (-30 a 30%, predeterminado: 0.5%)
-- **5th Harm (%):** Establece el nivel del quinto armónico (-30 a 30%, predeterminado: 0.3%)
+- **2nd Harm (%):** Establece el término de distorsión de segundo orden (-30 a 30%, predeterminado: 2%)
+- **3rd Harm (%):** Establece el término de distorsión de tercer orden (-30 a 30%, predeterminado: 3%)
+- **4th Harm (%):** Establece el término de distorsión de cuarto orden (-30 a 30%, predeterminado: 0.5%)
+- **5th Harm (%):** Establece el término de distorsión de quinto orden (-30 a 30%, predeterminado: 0.3%)
 - **Sensitivity (x):** Ajusta la sensibilidad general de entrada (0.1–2.0, predeterminado: 0.5)
   - Una sensibilidad menor proporciona un efecto más sutil
   - Una sensibilidad mayor aumenta la intensidad de la distorsión
-  - Funciona como un control global que afecta a la intensidad de todos los armónicos
+  - Funciona como un control global que afecta a la intensidad del modelado no lineal
 
 ### Visualización
-- Visualización en tiempo real de la interacción armónica y la curva de distorsión
+- Curva de transferencia que muestra cómo los niveles de entrada se moldean en niveles de salida
 - Controles deslizantes e campos de entrada intuitivos que ofrecen retroalimentación inmediata
-- Gráfico dinámico que muestra los cambios en el contenido armónico a medida que se ajustan los parámetros
+- El gráfico se actualiza a medida que cambian los ajustes de armónicos y sensibilidad
 
 ### Guía de Inicio Rápido
 1. **Inicialización:** Comienza con la configuración predeterminada (2nd: 2%, 3rd: 3%, 4th: 0.5%, 5th: 0.3%, Sensitivity: 0.5)
-2. **Ajusta los Parámetros:** Utiliza la retroalimentación en tiempo real para ajustar finamente cada nivel armónico según tu contexto musical
+2. **Ajusta los Parámetros:** Cambia uno o dos controles armónicos cada vez mientras escuchas si aparece aspereza o pérdida de claridad
 3. **Mezcla Tu Sonido:** Equilibra el efecto utilizando Sensitivity para lograr una calidez sutil o una distorsión pronunciada
 
 ## Multiband Saturation
 
-Un efecto versátil que te permite agregar calidez y carácter a rangos de frecuencia específicos de tu música. Al dividir el sonido en bandas bajas, medias y altas, puedes moldear cada rango independientemente para una mejora precisa del sonido.
+Un efecto versátil que te permite añadir calidez y carácter a rangos de frecuencia específicos de toda la señal de reproducción. Al dividir el sonido en bandas bajas, medias y altas, puedes moldear cada rango de forma independiente para un realce preciso.
 
 ### Guía de Mejora de Escucha
 - Mejora de Graves:
-  - Agrega calidez y punch a las frecuencias bajas
-  - Perfecto para mejorar bajos y bombos
+  - Añade calidez y golpe suave a las frecuencias bajas
+  - Añade plenitud al rango grave de toda la señal de reproducción
   - Crea graves más llenos y ricos
-- Moldeado de Medios:
-  - Resalta el cuerpo de voces e instrumentos
-  - Agrega presencia a guitarras y teclados
-  - Crea un sonido más claro y definido
+- Claridad de Medios:
+  - Añade cuerpo y definición al rango medio, donde aparecen muchas voces e instrumentos
+  - Ayuda a que grabaciones densas se sientan más claras
+  - Crea un sonido más definido
 - Mejora de Agudos:
-  - Agrega brillo a platillos y hi-hats
+  - Añade brillo al rango de altas frecuencias
   - Mejora el aire y la brillantez
   - Crea agudos nítidos y detallados
+
+Como procesa bandas de frecuencia, afecta a todos los sonidos del rango seleccionado, no a instrumentos o voces aislados.
 
 ### Parámetros
 - **Frecuencias de Crossover**
   - Freq 1 (20Hz-2kHz): Define dónde termina la banda baja y comienza la media
-  - Freq 2 (200Hz-20kHz): Define dónde termina la banda media y comienza la alta
+  - Freq 2 (200Hz-20kHz, siempre mantenida en o por encima de Freq 1): Define dónde termina la banda media y comienza la alta
+  - Si Freq 2 se ajusta por debajo de Freq 1, se eleva automáticamente para preservar el orden baja-media-alta
 - **Controles de Banda** (para cada banda Baja, Media y Alta):
   - **Drive** (0.0-10.0): Controla la intensidad de saturación
     - Ligero (0.0-3.0): Mejora sutil
     - Medio (3.0-6.0): Calidez notable
     - Alto (6.0-10.0): Carácter fuerte
   - **Bias** (-0.3 a 0.3): Ajusta la simetría de la curva de saturación
-    - Negativo: Enfatiza picos negativos
     - Cero: Saturación simétrica
-    - Positivo: Enfatiza picos positivos
+    - Positivo/Negativo: Añade carácter asimétrico al cambiar qué lado de la forma de onda se satura con más fuerza
   - **Mix** (0-100%): Mezcla el efecto con el original
     - Bajo (0-30%): Mejora sutil
     - Medio (30-70%): Efecto equilibrado
@@ -319,7 +320,7 @@ Un efecto versátil que te permite agregar calidez y carácter a rangos de frecu
   3. Mantén Bias neutral para respuesta consistente
   4. Mantén Mix alrededor de 50-70%
 
-- Para Mejora de Voces:
+- Para Presencia de Medios:
   1. Concéntrate en la banda media
   2. Usa Drive ligero (1.0-3.0)
   3. Mantén Bias en 0.0 para sonido natural
@@ -364,8 +365,8 @@ Un efecto que simula el sonido cálido y agradable del equipo de válvulas vinta
   - Fuerte (6.0-10.0): Efecto audaz y dramático
 - **Bias** - Ajusta la simetría de la curva de saturación (-0.3 a 0.3)
   - 0.0: Saturación simétrica
-  - Positivo: Enfatiza picos positivos
-  - Negativo: Enfatiza picos negativos
+  - Positivo: Hace más prominente el lado negativo de la forma de onda
+  - Negativo: Hace más prominente el lado positivo de la forma de onda
 - **Mix** - Equilibra el efecto con el sonido original (0% a 100%)
   - 0-30%: Mejora sutil
   - 30-70%: Efecto equilibrado
@@ -402,7 +403,7 @@ Un efecto que simula el sonido cálido y agradable del equipo de válvulas vinta
 
 ## Sub Synth
 
-Un efecto especializado que mejora los graves de tu música mediante la generación y mezcla de señales subarmónicas. Perfecto para agregar profundidad y potencia a grabaciones con pocos graves o crear sonidos graves ricos y corpulentos.
+Un efecto especializado que refuerza el extremo grave mezclando una señal filtrada de baja frecuencia derivada del audio original. Es útil cuando música con pocos graves necesita más calidez, plenitud o impacto agradable en auriculares.
 
 ### Guía de Mejora de Escucha
 - Mejora de Graves:
@@ -410,23 +411,23 @@ Un efecto especializado que mejora los graves de tu música mediante la generaci
   - Crea graves más llenos y ricos
   - Perfecto para escucha con auriculares
 - Control de Frecuencia:
-  - Control preciso sobre frecuencias subarmónicas
+  - Controla qué rango de baja frecuencia añadido se conserva
   - Filtrado independiente para graves limpios
   - Mantiene la claridad mientras agrega potencia
 
 ### Parámetros
-- **Sub Level** - Controla el nivel de la señal subarmónica (0-200%)
+- **Sub Level** - Controla el nivel de la señal de baja frecuencia añadida (0-200%)
   - Ligero (0-50%): Mejora sutil de graves
   - Medio (50-100%): Refuerzo equilibrado de graves
   - Alto (100-200%): Efecto dramático de graves
 - **Dry Level** - Ajusta el nivel de la señal original (0-200%)
-  - Usado para equilibrar con la señal subarmónica
+  - Usado para equilibrar con la señal de baja frecuencia añadida
   - Mantiene la claridad del sonido original
-- **Sub LPF** - Filtro paso bajo para señal subarmónica (5-400Hz)
-  - Frecuencia: Controla el límite superior del sub
+- **Sub LPF** - Filtro paso bajo para la señal de baja frecuencia añadida (5-400Hz)
+  - Frecuencia: Controla el límite superior de la señal de baja frecuencia añadida
   - Pendiente: Ajusta la pendiente del filtro (Off a -24dB/oct)
-- **Sub HPF** - Filtro paso alto para señal subarmónica (5-400Hz)
-  - Frecuencia: Elimina retumbe no deseado
+- **Sub HPF** - Filtro paso alto para la señal de baja frecuencia añadida (5-400Hz)
+  - Frecuencia: Elimina retumbe no deseado de la señal de baja frecuencia añadida
   - Pendiente: Controla la pendiente del filtro (Off a -24dB/oct)
 - **Dry HPF** - Filtro paso alto para señal original (5-400Hz)
   - Frecuencia: Previene acumulación de graves
@@ -448,7 +449,7 @@ Un efecto especializado que mejora los graves de tu música mediante la generaci
   1. Ajusta Sub Level a 70-100%
   2. Usa Sub LPF en 80Hz (-18dB/oct)
   3. Ajusta Sub HPF a 30Hz (-12dB/oct)
-  4. Activa Dry HPF en 40Hz
+  4. Ajusta Dry HPF a 40Hz (-6dB/oct)
 
 - Para Máximo Impacto:
   1. Aumenta Sub Level a 150%
@@ -459,7 +460,7 @@ Un efecto especializado que mejora los graves de tu música mediante la generaci
 ### Guía de Inicio Rápido
 1. Comienza con Sub Level moderado (50-70%)
 2. Ajusta Sub LPF alrededor de 100Hz
-3. Activa Sub HPF alrededor de 20Hz
+3. Activa Sub HPF alrededor de 20Hz (-6dB/oct)
 4. Ajusta Dry Level para equilibrio
 5. Afina filtros a gusto
 6. ¡Confía en tus oídos y ajusta gradualmente!

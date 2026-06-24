@@ -1,19 +1,19 @@
 ---
-title: "Spatial Plugins - EffeTune"
-description: "Spatial audio plugins including Stereo Blend, Crossfeed Filter, MS Matrix, and Multiband Balance."
-lang: en
+title: "Plugins Spatial - EffeTune"
+description: "Plugins audio spatiaux incluant Stereo Blend, Crossfeed Filter, MS Matrix et Multiband Balance."
+lang: fr
 ---
 
-# Spatial Audio Plugins
+# Plugins Audio Spatiaux
 
 Une collection de plugins qui améliorent le rendu de votre musique dans vos casques ou enceintes en ajustant la balance stéréo (gauche et droite). Ces effets peuvent rendre votre musique plus spacieuse et naturelle, particulièrement lors de l'écoute au casque.
 
 ## Liste des Plugins
 
 - [Crossfeed Filter](#crossfeed-filter) - Filtre de crossfeed pour casques pour une image stéréo naturelle
-- [MS Matrix](#ms-matrix) - Ajuste l'image stéréo en contrôlant séparément les niveaux Mid et Side, avec option de permutation Left/Right  
+- [MS Matrix](#ms-matrix) - Convertit entre stéréo gauche/droite et format Mid/Side
 - [Multiband Balance](#multiband-balance) - Contrôle de balance stéréo dépendant de la fréquence à 5 bandes
-- [Stereo Blend](#stereo-blend) - Contrôle la largeur stéréo de mono à stéréo améliorée
+- [Stereo Blend](#stereo-blend) - Contrôle la largeur stéréo de mono à stéréo élargie ou inversion de side
 
 ## Crossfeed Filter
 
@@ -23,7 +23,7 @@ Un filtre de crossfeed pour casques qui simule la diaphonie acoustique naturelle
 - Simule la diaphonie acoustique naturelle pour l'écoute au casque
 - Niveau de crossfeed et timing ajustables
 - Filtrage passe-bas pour imiter la diaphonie dépendante de la fréquence
-- Traitement stéréo uniquement (automatiquement contourné pour les signaux mono)
+- Traitement stéréo uniquement (automatiquement contourné pour les signaux mono ou non stéréo)
 
 ### Paramètres
 - **Level** (-60 dB à 0 dB) : Contrôle la quantité de signal de crossfeed
@@ -66,8 +66,8 @@ Un filtre de crossfeed pour casques qui simule la diaphonie acoustique naturelle
 
 2. Considérations de Style Musical
    - Classique/Jazz : Niveaux plus bas (-15 à -10 dB) pour une présentation naturelle
-   - Rock/Pop : Niveaux modérés (-10 à -6 dB) pour l'énergie
-   - Électronique : Niveaux plus élevés (-6 à 0 dB) pour la spatialité
+   - Rock/Pop : Niveaux modérés (-12 à -8 dB) pour adoucir les guitares ou voix très latéralisées tout en gardant l'énergie
+   - Électronique ou mix très large : Niveaux bas à modérés (-18 à -10 dB) pour garder la largeur, ou plus hauts seulement pour calmer une séparation gauche/droite excessive
 
 3. Environnement d'Écoute
    - Environnements calmes : Niveaux plus bas pour un effet subtil
@@ -95,53 +95,57 @@ Rappel : Le Crossfeed Filter est conçu pour rendre l'écoute au casque plus nat
 
 ## MS Matrix
 
-Un processeur mid/side flexible qui vous permet de contrôler indépendamment le centre (mid) et la largeur (side) de votre signal stéréo. Utilisez des commandes de gain simples et une option de permutation Left/Right pour affiner la position de votre son dans le champ stéréo sans routage complexe.
+MS Matrix convertit un signal stéréo normal au format Mid/Side, ou reconvertit un signal Mid/Side en stéréo normale. Utilisez-le lorsque vous voulez ajuster séparément les informations de centre et de côté dans une chaîne d'effets, par exemple encoder en M/S, modifier le niveau Mid ou Side, puis décoder vers la stéréo. Pour un simple réglage de largeur stéréo sur de la musique normale, [Stereo Blend](#stereo-blend) est l'outil le plus direct.
 
 ### Fonctionnalités clés
 - Gains Mid et Side séparés (–18 dB à +18 dB)  
 - Sélecteur de Mode : Encode (Stereo→M/S) ou Decode (M/S→Stereo)  
 - Permutation Left/Right facultative avant l'encodage ou après le décodage  
-- Modifications de paramètres sans clic pour des ajustements fluides  
 
 ### Paramètres
-- **Mode** (Encode/Decode)  
-- **Mid Gain** (–18 dB à +18 dB) : Ajuste le niveau du contenu central  
-- **Side Gain** (–18 dB à +18 dB) : Ajuste le niveau de la différence stéréo (largeur)  
+- **Mode** (Encode/Decode) : Encode transforme la stéréo gauche/droite en Mid sur le canal gauche et Side sur le canal droit. Decode traite le canal gauche comme Mid et le canal droit comme Side, puis reconstruit une stéréo normale.
+- **Mid Gain** (–18 dB à +18 dB) : Ajuste le niveau Mid pendant la conversion sélectionnée
+- **Side Gain** (–18 dB à +18 dB) : Ajuste le niveau Side pendant la conversion sélectionnée
 - **Swap L/R** (Off/On) : Échange les canaux gauche et droit avant l'encodage ou après le décodage  
 
 ### Paramètres recommandés
 1. **Élargissement subtil**  
-   - Mode: Decode  
-   - Mid Gain: 0 dB  
-   - Side Gain: +3 dB  
-   - Swap: Off  
+   - Premier MS Matrix : Mode: Encode, Mid Gain: 0 dB, Side Gain: +3 dB, Swap: Off
+   - Second MS Matrix après lui : Mode: Decode, Mid Gain: 0 dB, Side Gain: 0 dB, Swap: Off
+   - Effet : Renforce légèrement la composante Side, puis ramène le résultat en stéréo normale
 2. **Focus central**  
-   - Mode: Decode  
-   - Mid Gain: +3 dB  
-   - Side Gain: –3 dB  
-   - Swap: Off  
-3. **Inversion créative**  
+   - Premier MS Matrix : Mode: Encode, Mid Gain: +3 dB, Side Gain: -3 dB, Swap: Off
+   - Second MS Matrix après lui : Mode: Decode, Mid Gain: 0 dB, Side Gain: 0 dB, Swap: Off
+   - Effet : Met les voix et sons centrés plus en avant tout en réduisant l'ambiance latérale
+3. **Décoder un Signal M/S Existant**
+   - Mode: Decode
+   - Mid Gain: 0 dB
+   - Side Gain: 0 dB
+   - Swap: Off
+   - À utiliser seulement lorsque le signal entrant est déjà au format Mid/Side
+4. **Inversion créative**
    - Mode: Encode  
    - Mid Gain: 0 dB  
    - Side Gain: 0 dB  
    - Swap: On  
 
 ### Guide de démarrage rapide
-1. Sélectionnez **Mode** pour la conversion  
-2. Ajustez **Mid Gain** et **Side Gain**  
-3. Activez **Swap L/R** pour la correction des canaux ou l'inversion créative  
-4. Bypass pour comparer et vérifier l'absence de problèmes de phase  
+1. Décidez si vous avez besoin d'une seule conversion ou d'une chaîne complète Encode -> ajustement -> Decode.
+2. Pour une écoute stéréo normale, placez un MS Matrix en mode Encode puis un second plus loin en mode Decode.
+3. Ajustez **Mid Gain** et **Side Gain** sur l'étage Encode.
+4. Activez **Swap L/R** seulement pour corriger les canaux ou créer une inversion.
+5. Bypass pour comparer et vérifier que l'image stéréo reste naturelle.
 
 ## Multiband Balance
 
-Un processeur spatial sophistiqué qui divise l'audio en cinq bandes de fréquences et permet un contrôle de balance stéréo indépendant de chaque bande. Ce plugin permet un contrôle précis de l'image stéréo à travers le spectre des fréquences, offrant des possibilités créatives pour le design sonore et le mixage, ainsi que des applications correctives pour les enregistrements stéréo problématiques.
+Un processeur de balance dépendant de la fréquence qui divise l'audio en cinq bandes et permet de déplacer chaque bande légèrement vers la gauche ou la droite. Utilisez-le lorsque les basses, voix, cymbales ou autres plages de fréquences semblent tirées d'un côté et que vous voulez rééquilibrer seulement cette partie du son sans déplacer tout le morceau.
 
 ### Caractéristiques Principales
 - Contrôle de balance stéréo dépendant de la fréquence à 5 bandes
 - Filtres de séparation Linkwitz-Riley de haute qualité
 - Contrôle de balance linéaire pour ajustement stéréo précis
 - Traitement indépendant des canaux gauche et droit
-- Changements de paramètres sans clics avec gestion automatique des fondus
+- Gestion automatique des fondus lorsque les filtres de crossover sont réinitialisés
 
 ### Paramètres
 
@@ -161,54 +165,53 @@ Chaque bande dispose d'un contrôle de balance indépendant :
 
 ### Réglages Recommandés
 
-1. Amélioration Stéréo Naturelle
+1. Corriger des Aigus Tirés vers la Droite
    - Bande Basse (20-100 Hz) : 0% (centré)
-   - Médium-Basse (100-500 Hz) : ±20%
-   - Médium (500-2000 Hz) : ±40%
-   - Médium-Haute (2000-8000 Hz) : ±60%
-   - Haute (8000+ Hz) : ±80%
-   - Effet : Crée une expansion stéréo progressive qui s'élargit avec la fréquence
+   - Médium-Basse (100-500 Hz) : 0%
+   - Médium (500-2000 Hz) : 0%
+   - Médium-Haute (2000-8000 Hz) : -10% à -25%
+   - Haute (8000+ Hz) : -10% à -30%
+   - Effet : Déplace légèrement le contenu brillant vers la gauche tout en gardant les basses et voix stables
 
-2. Mix Focalisé
+2. Corriger un Bas-Médium Tiré vers la Gauche
    - Bande Basse : 0%
-   - Médium-Basse : ±10%
-   - Médium : ±30%
-   - Médium-Haute : ±20%
-   - Haute : ±40%
-   - Effet : Maintient la focalisation centrale tout en ajoutant une largeur subtile
+   - Médium-Basse : +10% à +25%
+   - Médium : +5% à +15%
+   - Médium-Haute : 0%
+   - Haute : 0%
+   - Effet : Déplace légèrement le corps chaleureux et les voix basses vers la droite sans changer toute l'image stéréo
 
-3. Paysage Sonore Immersif
+3. Garder les Basses Centrées en Ajustant l'Air
    - Bande Basse : 0%
-   - Médium-Basse : ±40%
-   - Médium : ±60%
-   - Médium-Haute : ±80%
-   - Haute : ±100%
-   - Effet : Crée un champ sonore enveloppant avec des basses ancrées
+   - Médium-Basse : 0%
+   - Médium : 0%
+   - Médium-Haute : +5% à +15%
+   - Haute : +10% à +20%
+   - Effet : Déplace doucement l'ambiance haute vers la droite tandis que le grave reste centré
 
 ### Guide d'Application
 
-1. Amélioration du Mix
+1. Correction de Balance à l'Écoute
    - Gardez les basses fréquences (sous 100 Hz) centrées pour des basses stables
-   - Augmentez progressivement la largeur stéréo avec la fréquence
-   - Utilisez des réglages modérés (±30-50%) pour une amélioration naturelle
-   - Contrôlez en mono pour vérifier les problèmes de phase
+   - Déplacez seulement la plage de fréquences qui semble décentrée
+   - Utilisez d'abord de petites valeurs signées (environ 5-20%)
+   - Vérifiez l'écoute mono pour repérer les changements de tonalité ou de niveau
 
 2. Résolution de Problèmes
-   - Corrigez les problèmes de phase dans des plages de fréquences spécifiques
+   - Rééquilibrez les plages de fréquences qui semblent trop à gauche ou à droite
    - Resserrez les basses non focalisées en centrant les basses fréquences
    - Réduisez les artefacts stéréo agressifs dans les hautes fréquences
-   - Réparez les pistes stéréo mal enregistrées
+   - Améliorez les enregistrements où différentes parties du son penchent de côtés différents
 
-3. Design Sonore Créatif
-   - Créez des mouvements dépendants de la fréquence
-   - Concevez des effets spatiaux uniques
-   - Construisez des paysages sonores immersifs
-   - Améliorez des instruments ou éléments spécifiques
+3. Effets d'Écoute Créatifs
+   - Créez un placement inhabituel dépendant de la fréquence
+   - Faites pencher les hautes fréquences d'un côté tout en gardant les basses centrées
+   - Construisez une ambiance qui semble plus large avec de petits déplacements dans les bandes hautes
 
 4. Ajustement du Champ Stéréo
    - Ajustement fin de la balance stéréo par bande de fréquence
    - Correction de la distribution stéréo inégale
-   - Amélioration de la séparation stéréo où nécessaire
+   - Ne l'utilisez pas comme contrôle de largeur stéréo ; utilisez Stereo Blend pour élargir ou rétrécir l'image entière
    - Maintien de la compatibilité mono
 
 ### Guide de Démarrage Rapide
@@ -251,13 +254,17 @@ Un effet qui aide à obtenir un champ sonore plus naturel en ajustant la largeur
 - Contrôle du Champ Sonore :
   - Concentration sur une présentation naturelle et réaliste
   - Évitez une largeur excessive qui pourrait sonner artificielle
+  - Utilisez les valeurs négatives seulement pour une inversion de polarité du composant Side à des fins correctives ou créatives
   - Optimisez pour votre environnement d'écoute spécifique
 
-### Parameters
-- **Stereo** - Contrôle la largeur stéréo (0-200%)
+### Paramètres
+- **Stereo** - Contrôle la largeur stéréo (-200% à 200%)
+  - Valeurs négatives : Inversent la polarité du composant stéréo side (L-R) avant reconstruction
+  - -200% : Largeur maximale avec polarité side inversée ; à utiliser seulement pour correction ou cas particuliers
+  - -100% : Largeur stéréo originale avec image gauche/droite inversée
   - 0% : Mono complet (canaux gauche et droit additionnés)
   - 100% : Image stéréo originale
-  - 200% : Stéréo améliorée avec largeur maximale (L-R/R-L)
+  - 200% : Largeur maximale ; garde le centre tout en renforçant fortement la différence stéréo side
 
 ### Réglages Recommandés pour Différents Scénarios d'Écoute
 

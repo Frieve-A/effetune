@@ -1,7 +1,7 @@
 ---
-title: "Spatial Plugins - EffeTune"
-description: "Spatial audio plugins including Stereo Blend, Crossfeed Filter, MS Matrix, and Multiband Balance."
-lang: en
+title: "स्पैशियल प्लगइन - EffeTune"
+description: "Stereo Blend, Crossfeed Filter, MS Matrix और Multiband Balance सहित spatial audio प्लगइन।"
+lang: hi
 ---
 
 # स्पेशल ऑडियो प्लगइन
@@ -11,9 +11,9 @@ lang: en
 ## प्लगइन सूची
 
 - [Crossfeed Filter](#crossfeed-filter) - प्राकृतिक स्टीरियो इमेज के लिए हेडफोन क्रॉसफीड फ़िल्टर
-- [MS Matrix](#ms-matrix) - Mid और Side स्तरों को अलग-अलग नियंत्रित करके स्टेरियो इमेज को समायोजित करें, वैकल्पिक रूप से Left/Right स्वैप के साथ  
+- [MS Matrix](#ms-matrix) - advanced stereo adjustment chains के लिए stereo को Mid/Side में और वापस stereo में बदलता है
 - [Multiband Balance](#multiband-balance) - 5-बैंड आवृत्ति-आधारित स्टीरियो संतुलन नियंत्रण
-- [Stereo Blend](#stereo-blend) - मोनो से बढ़े हुए स्टीरियो तक स्टीरियो चौड़ाई को नियंत्रित करता है
+- [Stereo Blend](#stereo-blend) - polarity-swapped stereo से mono और enhanced stereo तक stereo width नियंत्रित करता है
 
 ## Crossfeed Filter
 
@@ -23,7 +23,7 @@ lang: en
 - हेडफोन सुनने के लिए प्राकृतिक ध्वनिक क्रॉसटॉक को सिमुलेट करता है
 - समायोज्य क्रॉसफीड स्तर और समय
 - आवृत्ति-निर्भर क्रॉसटॉक की नकल के लिए लो-पास फ़िल्टरिंग
-- केवल स्टीरियो प्रसंस्करण (मोनो सिग्नल के लिए स्वचालित रूप से बायपास)
+- केवल स्टीरियो प्रसंस्करण (mono या अन्य non-stereo signals के लिए स्वचालित रूप से bypass)
 
 ### पैरामीटर
 - **Level** (-60 dB से 0 dB): क्रॉसफीड सिग्नल की मात्रा को नियंत्रित करता है
@@ -66,8 +66,8 @@ lang: en
 
 2. संगीत शैली विचार
    - क्लासिकल/जैज़: प्राकृतिक प्रस्तुति के लिए कम स्तर (-15 से -10 dB)
-   - रॉक/पॉप: ऊर्जा के लिए मध्यम स्तर (-10 से -6 dB)
-   - इलेक्ट्रॉनिक: स्थानिकता के लिए उच्च स्तर (-6 से 0 dB)
+   - Rock/Pop: मध्यम levels (-12 से -8 dB) hard-panned guitars या vocals को नरम कर सकते हैं, जबकि music lively रहता है
+   - Electronic या बहुत wide mixes: width बनाए रखने के लिए कम से मध्यम स्तर (-18 से -10 dB) इस्तेमाल करें; उच्च स्तर केवल तब जब excessive left-right separation को tame करना हो
 
 3. सुनने का वातावरण
    - शांत वातावरण: सूक्ष्म प्रभाव के लिए कम स्तर
@@ -95,53 +95,56 @@ lang: en
 
 ## MS Matrix
 
-एक लचीला Mid/Side प्रोसेसर जो आपको आपके स्टेरियो सिग्नल के केंद्र (mid) और चौड़ाई (side) को स्वतंत्र रूप से नियंत्रित करने देता है। सरल गेन नियंत्रण और वैकल्पिक Left/Right स्वैप का उपयोग करके बिना जटिल रूटिंग के अपने ऑडियो को स्टेरियो फील्ड में कैसे सेट किया जाए उसे ठीक-ठीक समायोजित करें।
+MS Matrix normal stereo audio को Mid/Side format में बदलता है, या Mid/Side audio को वापस normal stereo में बदलता है। जब effect chain के अंदर center और side information को अलग-अलग adjust करना हो, जैसे M/S में encode करना, Mid या Side level बदलना, फिर वापस stereo में decode करना, तब इसका उपयोग करें। normal music पर simple stereo width adjustment के लिए [Stereo Blend](#stereo-blend) अधिक सीधा tool है।
 
 ### मुख्य विशेषताएँ
-- अलग-अलग Mid Gain और Side Gain (–18 dB से +18 dB तक)  
+- अलग Mid और Side gain (–18 dB से +18 dB)
 - Mode स्विच: Encode (Stereo→M/S) या Decode (M/S→Stereo)  
 - एन्कोडिंग से पहले या डिकोडिंग के बाद वैकल्पिक रूप से Left/Right स्वैप  
-- मुलायम समायोजन के लिए क्लिक-रहित पैरामीटर परिवर्तन  
 
 ### पैरामीटर
-- **Mode** (Encode/Decode)  
-- **Mid Gain** (–18 dB से +18 dB): केंद्र सामग्री का स्तर समायोजित करता है  
-- **Side Gain** (–18 dB से +18 dB): स्टेरियो अंतर (चौड़ाई) का स्तर समायोजित करता है  
+- **Mode** (Encode/Decode): Encode left/right stereo को left channel में Mid और right channel में Side के रूप में output करता है। Decode left channel को Mid और right channel को Side मानकर normal stereo बनाता है।
+- **Mid Gain** (–18 dB से +18 dB): selected conversion के दौरान Mid level समायोजित करता है
+- **Side Gain** (–18 dB से +18 dB): selected conversion के दौरान Side level समायोजित करता है
 - **Swap L/R** (Off/On): एन्कोडिंग से पहले या डिकोडिंग के बाद लेफ्ट और राइट चैनल स्वैप करता है  
 
 ### अनुशंसित सेटिंग्स
-1. **सूक्ष्म फैलाव**  
-   - Mode: Decode  
-   - Mid Gain: 0 dB  
-   - Side Gain: +3 dB  
-   - Swap: Off  
-2. **केंद्र फोकस**  
-   - Mode: Decode  
-   - Mid Gain: +3 dB  
-   - Side Gain: –3 dB  
-   - Swap: Off  
-3. **रचनात्मक फ्लिप**  
+1. **Normal Stereo के लिए सूक्ष्म widening**
+   - First MS Matrix: Mode: Encode, Mid Gain: 0 dB, Side Gain: +3 dB, Swap: Off
+   - Second MS Matrix after it: Mode: Decode, Mid Gain: 0 dB, Side Gain: 0 dB, Swap: Off
+   - प्रभाव: Side component को हल्का मजबूत करता है, फिर result को normal stereo में लौटाता है
+2. **Normal Stereo के लिए center focus**
+   - First MS Matrix: Mode: Encode, Mid Gain: +3 dB, Side Gain: -3 dB, Swap: Off
+   - Second MS Matrix after it: Mode: Decode, Mid Gain: 0 dB, Side Gain: 0 dB, Swap: Off
+   - प्रभाव: vocals और centered sounds को आगे लाता है और side ambience घटाता है
+3. **Existing M/S Audio Decode करें**
+   - Mode: Decode
+   - Mid Gain: 0 dB
+   - Side Gain: 0 dB
+   - Swap: Off
+   - केवल तब उपयोग करें जब incoming signal पहले से Mid/Side format में हो
+4. **Channel Swap Utility**
    - Mode: Encode  
    - Mid Gain: 0 dB  
    - Side Gain: 0 dB  
    - Swap: On  
 
 ### त्वरित प्रारंभ गाइड
-1. रूपांतरण के लिए **Mode** चुनें  
-2. **Mid Gain** और **Side Gain** समायोजित करें  
-3. चैनल सुधार या रचनात्मक इनवर्शन के लिए **Swap L/R** सक्षम करें  
-4. तुलना करने और कोई फेज-संबंधी समस्या न हो यह सत्यापित करने के लिए बाईपास करें  
+1. तय करें कि आपको single conversion चाहिए या full Encode -> adjust -> Decode chain।
+2. normal stereo listening के लिए, एक MS Matrix को Encode mode में रखें और उसके बाद दूसरा Decode mode में रखें।
+3. Encode stage पर **Mid Gain** और **Side Gain** समायोजित करें।
+4. **Swap L/R** केवल channel correction या creative inversion के लिए enable करें।
+5. तुलना के लिए bypass करें और सुनें कि stereo image अभी भी natural लगती है।
 
 ## Multiband Balance
 
-एक परिष्कृत स्थानिक प्रोसेसर जो ऑडियो को पांच आवृत्ति बैंड में विभाजित करता है और प्रत्येक बैंड के स्टीरियो संतुलन को स्वतंत्र रूप से नियंत्रित करने की अनुमति देता है। यह प्लगइन आवृत्ति स्पेक्ट्रम भर में स्टीरियो छवि का सटीक नियंत्रण प्रदान करता है, ध्वनि डिजाइन और मिक्सिंग के लिए रचनात्मक संभावनाएं प्रदान करता है, साथ ही समस्याग्रस्त स्टीरियो रिकॉर्डिंग के लिए सुधारात्मक अनुप्रयोग भी प्रदान करता है।
+एक frequency-dependent balance processor जो audio को पांच bands में विभाजित करता है और हर band को थोड़ा left या right shift करने देता है। जब bass, vocals, cymbals या कोई frequency range एक तरफ खिंची हुई लगे और पूरे track को हिलाए बिना केवल उस हिस्से को rebalance करना हो, तब इसका उपयोग करें।
 
 ### मुख्य विशेषताएं
 - 5-बैंड आवृत्ति-आधारित स्टीरियो संतुलन नियंत्रण
 - उच्च-गुणवत्ता वाले Linkwitz-Riley क्रॉसओवर फिल्टर
 - सटीक स्टीरियो समायोजन के लिए रैखिक संतुलन नियंत्रण
 - बाएं और दाएं चैनल का स्वतंत्र प्रसंस्करण
-- स्वचालित फेड हैंडलिंग के साथ क्लिक-मुक्त पैरामीटर परिवर्तन
 
 ### पैरामीटर
 
@@ -161,54 +164,54 @@ lang: en
 
 ### अनुशंसित सेटिंग्स
 
-1. प्राकृतिक स्टीरियो वृद्धि
+1. Treble का right pull सुधारें
    - निम्न बैंड (20-100 Hz): 0% (केंद्रित)
-   - निम्न-मध्य (100-500 Hz): ±20%
-   - मध्य (500-2000 Hz): ±40%
-   - उच्च-मध्य (2000-8000 Hz): ±60%
-   - उच्च (8000+ Hz): ±80%
-   - प्रभाव: आवृत्ति के साथ बढ़ने वाला क्रमिक स्टीरियो विस्तार बनाता है
+   - निम्न-मध्य (100-500 Hz): 0%
+   - मध्य (500-2000 Hz): 0%
+   - उच्च-मध्य (2000-8000 Hz): -10% से -25%
+   - उच्च (8000+ Hz): -10% से -30%
+   - प्रभाव: bright content को थोड़ा left ले जाता है, जबकि bass और vocals stable रहते हैं
 
-2. केंद्रित मिक्स
+2. Low-Mid का left pull सुधारें
    - निम्न बैंड: 0%
-   - निम्न-मध्य: ±10%
-   - मध्य: ±30%
-   - उच्च-मध्य: ±20%
-   - उच्च: ±40%
-   - प्रभाव: सूक्ष्म चौड़ाई जोड़ते हुए केंद्रीय फोकस बनाए रखता है
+   - निम्न-मध्य: +10% से +25%
+   - मध्य: +5% से +15%
+   - उच्च-मध्य: 0%
+   - उच्च: 0%
+   - प्रभाव: warm body और lower vocals को पूरे stereo image को बदले बिना थोड़ा right ले जाता है
 
-3. इमर्सिव साउंडस्केप
+3. Air adjust करते समय bass centered रखें
    - निम्न बैंड: 0%
-   - निम्न-मध्य: ±40%
-   - मध्य: ±60%
-   - उच्च-मध्य: ±80%
-   - उच्च: ±100%
-   - प्रभाव: एंकर किए गए बास के साथ घेरने वाला ध्वनि क्षेत्र बनाता है
+   - निम्न-मध्य: 0%
+   - मध्य: 0%
+   - उच्च-मध्य: +5% से +15%
+   - उच्च: +10% से +20%
+   - प्रभाव: low end centered रखते हुए upper ambience को हल्का right ले जाता है
 
 ### अनुप्रयोग गाइड
 
-1. मिक्स वृद्धि
+1. सुनने का संतुलन सुधार
    - स्थिर बास के लिए निम्न आवृत्तियों (100 Hz से नीचे) को केंद्रित रखें
-   - आवृत्ति के साथ क्रमिक रूप से स्टीरियो चौड़ाई बढ़ाएं
-   - प्राकृतिक वृद्धि के लिए मध्यम सेटिंग्स (±30-50%) का उपयोग करें
-   - फेज समस्याओं की जांच के लिए मोनो में मॉनिटर करें
+   - केवल उस frequency range को shift करें जो off-center लगती है
+   - पहले छोटे signed values इस्तेमाल करें (लगभग 5-20%)
+   - tonal या level changes के लिए mono playback check करें
 
 2. समस्या समाधान
-   - विशिष्ट आवृत्ति रेंज में फेज समस्याओं को सुधारें
+   - ऐसी frequency ranges rebalance करें जो बहुत left या right लगती हैं
    - निम्न आवृत्तियों को केंद्रित करके अस्पष्ट बास को कसें
    - उच्च आवृत्तियों में कठोर स्टीरियो आर्टिफैक्ट्स को कम करें
    - खराब रिकॉर्ड किए गए स्टीरियो ट्रैक को ठीक करें
 
-3. रचनात्मक ध्वनि डिजाइन
-   - आवृत्ति-आधारित गति बनाएं
-   - अनूठे स्थानिक प्रभाव डिजाइन करें
-   - इमर्सिव साउंडस्केप बनाएं
-   - विशिष्ट वाद्ययंत्रों या तत्वों को बढ़ाएं
+3. रचनात्मक संतुलन प्रभाव
+   - frequency-dependent left/right motion बनाएं
+   - unusual spatial balance effects आज़माएं
+   - selected ranges को हल्का अलग direction में रखें
+   - extreme settings को special effect की तरह इस्तेमाल करें
 
 4. स्टीरियो क्षेत्र समायोजन
    - प्रत्येक आवृत्ति बैंड के लिए स्टीरियो संतुलन का सूक्ष्म समायोजन
    - असमान स्टीरियो वितरण का सुधार
-   - आवश्यक स्थानों पर स्टीरियो पृथक्करण को बढ़ाएं
+   - इसे stereo width control न मानें; पूरी image widen या narrow करनी हो तो Stereo Blend इस्तेमाल करें
    - मोनो संगतता बनाए रखें
 
 ### त्वरित प्रारंभ गाइड
@@ -254,10 +257,13 @@ lang: en
   - अपने विशिष्ट श्रवण वातावरण के लिए अनुकूलित करें
 
 ### पैरामीटर
-- **Stereo** - स्टीरियो चौड़ाई को नियंत्रित करता है (0-200%)
+- **Stereo** - स्टीरियो चौड़ाई को नियंत्रित करता है (-200% से 200%)
+  - Negative values: reconstruction से पहले stereo side (L-R) component की polarity invert करते हैं
+  - -200%: inverted side polarity के साथ maximum width; केवल correction या special cases के लिए उपयोग करें
+  - -100%: left/right image swapped रखते हुए original stereo width
   - 0%: पूर्ण मोनो (बायां और दायां चैनल जोड़े गए)
   - 100%: मूल स्टीरियो छवि
-  - 200%: अधिकतम चौड़ाई के साथ बढ़ा हुआ स्टीरियो (L-R/R-L)
+  - 200%: maximum width enhancement; center component को बनाए रखते हुए stereo side difference को जोर से बढ़ाता है
 
 ### विभिन्न श्रवण परिदृश्यों के लिए अनुशंसित सेटिंग्स
 

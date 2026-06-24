@@ -1,7 +1,7 @@
 ---
-title: "Reverb Plugins - EffeTune"
-description: "Reverb effect plugins including RS Reverb, Dattorro Plate Reverb, and FDN Reverb."
-lang: en
+title: "Plugins de Reverberação - EffeTune"
+description: "Plugins de reverb, incluindo RS Reverb, Dattorro Plate Reverb e FDN Reverb."
+lang: pt
 ---
 
 # Plugins de Reverberação
@@ -18,27 +18,28 @@ Uma coleção de plugins que adicionam espaço e atmosfera à sua música. Esses
 
 Uma implementação clássica de reverb de placa baseada no renomado algoritmo de Jon Dattorro do artigo de 1997 "Effect Design, Part 1: Reverberator and Other Filters." Este algoritmo é celebrado por sua qualidade sonora rica e suave e tornou-se uma referência padrão no design de reverb digital. Perfeito para adicionar ambiência rica e brilhante à sua música.
 
-Nota de roteamento: Dattorro Plate Reverb é um modelo de placa estéreo. Quando roteado com mais de dois canais, todos os canais de entrada roteados alimentam uma placa mono para estéreo compartilhada, mas a mixagem wet/dry é escrita apenas no primeiro par estéreo roteado. Canais adicionais contribuem para a entrada da placa e, fora isso, passam sem alteração, inclusive quando Dry Mix está em 0%; eles não recebem retorno wet e não são tanks de placa independentes.
+Nota de roteamento: Dattorro Plate Reverb é um modelo de placa estéreo. Quando roteado com mais de dois canais, todos os canais de entrada roteados alimentam uma placa mono para estéreo compartilhada, mas a mistura wet/dry é escrita apenas no primeiro par estéreo roteado. Canais adicionais contribuem para a entrada da placa e, fora isso, passam sem alteração, inclusive quando Dry Mix está em 0%; eles não recebem retorno wet e não são tanks de placa independentes.
 
 ### Guia de Experiência de Audição
 - Som de Placa Exuberante:
-  - Caráter clássico de reverb de placa de estúdio
+  - Caráter clássico de reverb de placa
   - Cauda de reverb suave e densa sem artefatos metálicos
   - Belo brilho e calor característicos dos reverbs de placa
 - Ambiência Versátil:
   - De aprimoramento sutil de sala a salões expansivos
   - Funciona lindamente com qualquer gênero musical
-  - Adiciona acabamento profissional às gravações
+  - Adiciona polimento suave e espaço à música
 - Movimento Natural:
   - A modulação adiciona vida orgânica ao reverb
   - Previne caudas estáticas e artificiais
   - Cria um espaço vivo e respirante ao redor da sua música
 
 ### Parâmetros
-- **Pre Delay** - Silêncio inicial antes do início do reverb (0.0 a 100.0 ms)
+- **Pre Delay** - Silêncio inicial antes do início do reverb (controle de 0.0 a 100.0 ms; use valores abaixo de 100.0 ms para pre-delay efetivo)
   - 0-10ms: Reverb imediato, sensação íntima
   - 10-30ms: Sensação natural de espaço
-  - 30-100ms: Cria impressão de espaços maiores
+  - 30-99.9ms: Cria impressão de espaços maiores
+  - Evite exatamente 100.0ms quando quiser pre-delay máximo; a implementação atual trata esse ponto final como sem pre-delay efetivo
 - **Bandwidth** - Filtragem do sinal de entrada (0.0 a 1.0)
   - Valores mais baixos: Tom de entrada mais escuro e quente
   - Valores mais altos (perto de 1.0): Entrada mais brilhante, frequência completa
@@ -131,7 +132,7 @@ Nota de roteamento: Dattorro Plate Reverb é um modelo de placa estéreo. Quando
    - Confie em seus ouvidos para os ajustes finais
    - Os valores padrão são um ótimo ponto de partida
 
-O Dattorro Plate Reverb traz um reverb clássico de qualidade profissional para sua experiência de audição. Seu caráter suave e exuberante o torna perfeito para aprimorar qualquer gravação com uma ambiência bela e natural!
+O Dattorro Plate Reverb traz uma ambiência clássica em estilo de placa para sua experiência de escuta. Seu caráter suave e exuberante é útil para adicionar um espaço bonito e natural a uma gravação.
 
 ## FDN Reverb
 
@@ -170,10 +171,9 @@ Nota de roteamento: FDN Reverb é um modelo de reverb estéreo com um feedback t
   - Valores menores: Caráter de reverb mais apertado e focado
   - Valores maiores: Qualidade sonora mais espaçosa e aberta
   - Afeta as relações de timing fundamentais
-- **Delay Spread** - Quanto os tempos de atraso variam entre linhas (0.0 a 25.0 ms)
-  - Implementação: Cada linha de atraso fica progressivamente mais longa usando uma curva de potência (expoente 0.8)
-  - 0.0ms: Todas as linhas têm o mesmo timing base (padrões mais regulares)
-  - Valores maiores: Padrões de reflexão mais naturais e irregulares
+- **Delay Spread** - Adiciona variação progressiva de timing entre linhas de delay sobre pequenos offsets aleatórios por linha (0.0 a 25.0 ms)
+  - 0.0ms: Usa o delay base mais pequenos offsets aleatórios por linha, então as reflexões ainda ficam levemente irregulares
+  - Valores maiores: Adicionam mais espalhamento progressivo entre linhas para uma cauda maior e menos regular
   - Adiciona variação realista encontrada em espaços acústicos reais
 - **HF Damp** - Como as altas frequências desvanecem ao longo do tempo (0.0 a 12.0 dB/s)
   - 0.0: Sem amortecimento, som brilhante durante todo o decaimento
@@ -191,11 +191,10 @@ Nota de roteamento: FDN Reverb é um modelo de reverb estéreo com um feedback t
   - 0.1-0.5Hz: Movimento muito lento e suave
   - 1.0-2.0Hz: Variação de som natural
   - 3.0-5.0Hz: Modulação rápida e mais óbvia
-- **Diffusion** - Quanto a matriz Hadamard mistura sinais (0 a 100%)
-  - Implementação: Controla a quantidade de mistura matricial aplicada
-  - 0%: Mistura mínima, padrões de eco mais distintos
+- **Diffusion** - Controla quanto do feedback misturado retorna à rede de delays (0 a 100%)
+  - 0%: Desativa a difusão no feedback; o som fica muito mais esparso e a cauda de reverb é bastante reduzida
   - 50%: Difusão equilibrada para som natural
-  - 100%: Mistura máxima para a densidade mais suave
+  - 100%: Difusão máxima de feedback para a densidade mais suave
 - **Wet Mix** - Quantidade de reverb adicionada ao som (0 a 100%)
   - 10-30%: Aprimoramento espacial sutil
   - 30-60%: Presença notável de reverb
@@ -203,11 +202,10 @@ Nota de roteamento: FDN Reverb é um modelo de reverb estéreo com um feedback t
 - **Dry Mix** - Quantidade de sinal original preservada (0 a 100%)
   - Geralmente mantida em 100% para audição normal
   - Pode ser reduzida para efeitos atmosféricos especiais
-- **Stereo Width** - Quão amplo o reverb se espalha em estéreo (0 a 200%)
-  - Implementação: 0% = mono, 100% = estéreo normal, 200% = largura exagerada
-  - 0%: Reverb aparece no centro (mono)
-  - 100%: Espalhamento estéreo natural
-  - 200%: Imagem estéreo extra-ampla
+- **Stereo Width** - Mistura o reverb wet de mono para taps wet esquerdo/direito separados (0 a 200%)
+  - 0%: Reverb wet aparece no centro (mono)
+  - 100%: Largura estéreo wet moderada padrão
+  - 200%: Separação completa dos taps wet esquerdo/direito, não amplificação extra dos lados
 
 ### Configurações Recomendadas para Diferentes Experiências de Audição
 
@@ -282,10 +280,9 @@ Um efeito que pode transportar sua música para diferentes espaços, desde salas
   - Cria paisagens sonoras envolventes
 
 ### Parâmetros
-- **Pre-Delay** - Controla quão rapidamente o efeito de espaço começa (0 a 50 ms)
-  - Valores mais baixos: Sensação imediata e íntima
-  - Valores mais altos: Mais sensação de distância
-  - Comece com 10ms para som natural
+- **Pre-Delay** - Controle armazenado e exibido (0 a 50 ms)
+  - Na implementação atual, este valor não é usado pelo processamento do reverb
+  - Alterá-lo não muda distância nem profundidade; use Room Size, Reverb Time e Mix para mudanças audíveis de espaço
 - **Room Size** - Define quão grande o espaço parece (2.0 a 50.0 m)
   - Pequeno (2-5m): Sensação de sala aconchegante
   - Médio (5-15m): Atmosfera de sala ao vivo
@@ -358,7 +355,7 @@ Um efeito que pode transportar sua música para diferentes espaços, desde salas
    - Configure Density e Diffusion para textura
 
 3. Ajuste Fino do Efeito
-   - Adicione Pre-Delay para mais profundidade
+   - Use Room Size e Reverb Time para profundidade; o valor do controle Pre-Delay não é refletido no processamento atualmente
    - Ajuste Mix para equilíbrio final
    - Confie em seus ouvidos e ajuste ao gosto
 

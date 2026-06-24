@@ -1,19 +1,19 @@
 ---
-title: "Spatial Plugins - EffeTune"
-description: "Spatial audio plugins including Stereo Blend, Crossfeed Filter, MS Matrix, and Multiband Balance."
-lang: en
+title: "Plugins espaciales - EffeTune"
+description: "Plugins de audio espacial como Stereo Blend, Crossfeed Filter, MS Matrix y Multiband Balance."
+lang: es
 ---
 
-# Plugins de Audio Espacial
+# Plugins de audio espacial
 
 Una colección de plugins que mejoran cómo suena la música en tus auriculares o altavoces ajustando el balance estéreo (izquierda y derecha). Estos efectos pueden hacer que tu música suene más espaciosa y natural, especialmente al escuchar con auriculares.
 
 ## Lista de Plugins
 
 - [Crossfeed Filter](#crossfeed-filter) - Filtro de crossfeed para auriculares para imagen estéreo natural
-- [MS Matrix](#ms-matrix) - Ajusta la imagen estéreo controlando por separado los niveles Mid y Side, con un intercambio opcional Left/Right  
+- [MS Matrix](#ms-matrix) - Convierte estéreo a Mid/Side y de vuelta para cadenas avanzadas de ajuste estéreo
 - [Multiband Balance](#multiband-balance) - Control de balance estéreo dependiente de frecuencia de 5 bandas
-- [Stereo Blend](#stereo-blend) - Controla el ancho estéreo desde mono hasta estéreo mejorado
+- [Stereo Blend](#stereo-blend) - Controla el ancho estéreo desde estéreo con polaridad lateral invertida, pasando por mono, hasta estéreo ampliado
 
 ## Crossfeed Filter
 
@@ -23,7 +23,7 @@ Un filtro de crossfeed para auriculares que simula la diafonía acústica natura
 - Simula la diafonía acústica natural para escucha con auriculares
 - Nivel de crossfeed y temporización ajustables
 - Filtrado paso bajo para imitar la diafonía dependiente de frecuencia
-- Procesamiento solo estéreo (automáticamente bypassado para señales mono)
+- Procesamiento solo estéreo (se bypassa automáticamente con señales mono u otras señales no estéreo)
 
 ### Parámetros
 - **Level** (-60 dB a 0 dB): Controla la cantidad de señal de crossfeed
@@ -66,8 +66,8 @@ Un filtro de crossfeed para auriculares que simula la diafonía acústica natura
 
 2. Consideraciones de Estilo Musical
    - Clásica/Jazz: Niveles más bajos (-15 a -10 dB) para presentación natural
-   - Rock/Pop: Niveles moderados (-10 a -6 dB) para energía
-   - Electrónica: Niveles más altos (-6 a 0 dB) para espacialidad
+   - Rock/Pop: Niveles moderados (-12 a -8 dB) pueden suavizar guitarras o voces paneadas al extremo manteniendo la energía
+   - Electrónica o mezclas muy amplias: Usa niveles bajos a moderados (-18 a -10 dB) para conservar amplitud, o niveles más altos solo cuando quieras domar una separación izquierda-derecha excesiva
 
 3. Entorno de Escucha
    - Entornos tranquilos: Niveles más bajos para efecto sutil
@@ -95,53 +95,57 @@ Recuerda: El Crossfeed Filter está diseñado para hacer la escucha con auricula
 
 ## MS Matrix
 
-Un procesador mid/side flexible que te permite controlar de forma independiente el centro (mid) y el ancho (side) de tu señal estéreo. Utiliza controles de ganancia sencillos y un intercambio opcional Left/Right para ajustar con precisión cómo se sitúa tu audio en el campo estéreo sin enrutamientos complejos.
+MS Matrix convierte audio estéreo normal a formato Mid/Side, o convierte audio Mid/Side de vuelta a estéreo normal. Úsalo cuando quieras ajustar por separado la información central y lateral dentro de una cadena de efectos, por ejemplo codificar a M/S, cambiar el nivel Mid o Side y después decodificar de vuelta a estéreo. Para ajustar de forma simple el ancho estéreo en música normal, [Stereo Blend](#stereo-blend) es la herramienta más directa.
 
 ### Características principales
 - Ganancia Mid y Side por separado (–18 dB a +18 dB)  
 - Selector Mode: Encode (Stereo→M/S) o Decode (M/S→Stereo)  
 - Intercambio opcional Left/Right antes de la codificación o después de la decodificación  
-- Cambios de parámetros sin clics para ajustes fluidos  
 
 ### Parámetros
-- **Mode** (Encode/Decode)  
-- **Mid Gain** (–18 dB a +18 dB): Ajusta el nivel del contenido central  
-- **Side Gain** (–18 dB a +18 dB): Ajusta el nivel de la diferencia estéreo (ancho)  
+- **Mode** (Encode/Decode): Encode convierte estéreo izquierda/derecha en Mid en el canal izquierdo y Side en el canal derecho. Decode trata el canal izquierdo como Mid y el derecho como Side, y reconstruye estéreo normal.
+- **Mid Gain** (–18 dB a +18 dB): Ajusta el nivel de Mid durante la conversión seleccionada.
+- **Side Gain** (–18 dB a +18 dB): Ajusta el nivel de Side durante la conversión seleccionada.
 - **Swap L/R** (Off/On): Intercambia los canales izquierdo y derecho antes de la codificación o después de la decodificación  
 
 ### Ajustes recomendados
-1. **Ensanchamiento sutil**  
-   - Mode: Decode  
-   - Mid Gain: 0 dB  
-   - Side Gain: +3 dB  
-   - Swap: Off  
-2. **Enfoque central**  
-   - Mode: Decode  
-   - Mid Gain: +3 dB  
-   - Side Gain: –3 dB  
-   - Swap: Off  
-3. **Volteo creativo**  
+1. **Ensanchamiento sutil para estéreo normal**
+   - Primer MS Matrix: Mode: Encode, Mid Gain: 0 dB, Side Gain: +3 dB, Swap: Off
+   - Segundo MS Matrix después: Mode: Decode, Mid Gain: 0 dB, Side Gain: 0 dB, Swap: Off
+   - Efecto: Refuerza ligeramente el componente Side y devuelve el resultado a estéreo normal
+2. **Enfoque central para estéreo normal**
+   - Primer MS Matrix: Mode: Encode, Mid Gain: +3 dB, Side Gain: -3 dB, Swap: Off
+   - Segundo MS Matrix después: Mode: Decode, Mid Gain: 0 dB, Side Gain: 0 dB, Swap: Off
+   - Efecto: Adelanta voces y sonidos centrados mientras reduce el ambiente lateral
+3. **Decodificar audio M/S existente**
+   - Mode: Decode
+   - Mid Gain: 0 dB
+   - Side Gain: 0 dB
+   - Swap: Off
+   - Úsalo solo cuando la señal entrante ya esté en formato Mid/Side
+4. **Volteo creativo**
    - Mode: Encode  
    - Mid Gain: 0 dB  
    - Side Gain: 0 dB  
    - Swap: On  
 
 ### Guía de inicio rápido
-1. Selecciona **Mode** para la conversión  
-2. Ajusta **Mid Gain** y **Side Gain**  
-3. Activa **Swap L/R** para la corrección de canales o inversión creativa  
-4. Activa Bypass para comparar y verificar que no haya problemas de fase  
+1. Decide si necesitas una sola conversión o una cadena completa Encode -> ajustar -> Decode.
+2. Para escucha estéreo normal, coloca un MS Matrix en modo Encode y otro después en modo Decode.
+3. Ajusta **Mid Gain** y **Side Gain** en la etapa Encode.
+4. Activa **Swap L/R** solo para corrección de canales o inversión creativa.
+5. Activa Bypass para comparar y asegurarte de que la imagen estéreo siga sonando natural.
 
 ## Multiband Balance
 
-Un procesador espacial sofisticado que divide el audio en cinco bandas de frecuencia y permite el control de balance estéreo independiente de cada banda. Este plugin permite un control preciso de la imagen estéreo a través del espectro de frecuencias, ofreciendo posibilidades creativas para el diseño de sonido y la mezcla, así como aplicaciones correctivas para grabaciones estéreo problemáticas.
+Un procesador de balance dependiente de frecuencia que divide el audio en cinco bandas y permite desplazar cada banda ligeramente hacia la izquierda o la derecha. Úsalo cuando graves, voces, platillos u otros rangos de frecuencia parezcan tirados hacia un lado y quieras reequilibrar solo esa parte del sonido sin mover toda la pista.
 
 ### Características Principales
 - Control de balance estéreo dependiente de frecuencia de 5 bandas
 - Filtros de cruce Linkwitz-Riley de alta calidad
 - Control de balance lineal para ajuste estéreo preciso
 - Procesamiento independiente de canales izquierdo y derecho
-- Cambios de parámetros sin clics con manejo automático de fundidos
+- Manejo automático de fundidos cuando se reinician los filtros de cruce
 
 ### Parámetros
 
@@ -161,54 +165,53 @@ Cada banda tiene control de balance independiente:
 
 ### Ajustes Recomendados
 
-1. Mejora Estéreo Natural
+1. Corregir un Tirón de Agudos hacia la Derecha
    - Banda Baja (20-100 Hz): 0% (centrado)
-   - Medio-Baja (100-500 Hz): ±20%
-   - Media (500-2000 Hz): ±40%
-   - Medio-Alta (2000-8000 Hz): ±60%
-   - Alta (8000+ Hz): ±80%
-   - Efecto: Crea una expansión estéreo graduada que aumenta con la frecuencia
+   - Medio-Baja (100-500 Hz): 0%
+   - Media (500-2000 Hz): 0%
+   - Medio-Alta (2000-8000 Hz): -10% a -25%
+   - Alta (8000+ Hz): -10% a -30%
+   - Efecto: Mueve el contenido brillante ligeramente a la izquierda mientras mantiene estables los graves y las voces
 
-2. Mezcla Enfocada
+2. Corregir un Tirón de Medios-Graves hacia la Izquierda
    - Banda Baja: 0%
-   - Medio-Baja: ±10%
-   - Media: ±30%
-   - Medio-Alta: ±20%
-   - Alta: ±40%
-   - Efecto: Mantiene el enfoque central mientras añade amplitud sutil
+   - Medio-Baja: +10% a +25%
+   - Media: +5% a +15%
+   - Medio-Alta: 0%
+   - Alta: 0%
+   - Efecto: Mueve el cuerpo cálido y las voces graves ligeramente a la derecha sin cambiar toda la imagen estéreo
 
-3. Paisaje Sonoro Inmersivo
+3. Mantener Graves Centrados al Ajustar el Aire
    - Banda Baja: 0%
-   - Medio-Baja: ±40%
-   - Media: ±60%
-   - Medio-Alta: ±80%
-   - Alta: ±100%
-   - Efecto: Crea un campo sonoro envolvente con bajos anclados
+   - Medio-Baja: 0%
+   - Media: 0%
+   - Medio-Alta: +5% a +15%
+   - Alta: +10% a +20%
+   - Efecto: Mueve suavemente el ambiente superior hacia la derecha mientras el extremo grave permanece centrado
 
 ### Guía de Aplicación
 
-1. Mejora de Mezcla
+1. Corrección de Balance de Escucha
    - Mantén las frecuencias bajas (por debajo de 100 Hz) centradas para bajos estables
-   - Aumenta gradualmente el ancho estéreo con la frecuencia
-   - Usa ajustes moderados (±30-50%) para mejora natural
-   - Monitorea en mono para verificar problemas de fase
+   - Desplaza solo el rango de frecuencia que se siente descentrado
+   - Usa primero valores pequeños con signo (aprox. 5-20%)
+   - Comprueba la reproducción mono por si cambia el tono o el nivel
 
 2. Solución de Problemas
-   - Corrige problemas de fase en rangos de frecuencia específicos
+   - Reequilibra rangos de frecuencia que se sienten demasiado a la izquierda o a la derecha
    - Ajusta bajos sin foco centrando las frecuencias bajas
    - Reduce artefactos estéreo ásperos en altas frecuencias
-   - Arregla pistas estéreo mal grabadas
+   - Mejora grabaciones en las que distintas partes del sonido se inclinan hacia lados diferentes
 
-3. Diseño de Sonido Creativo
-   - Crea movimiento dependiente de frecuencia
-   - Diseña efectos espaciales únicos
-   - Construye paisajes sonoros inmersivos
-   - Mejora instrumentos o elementos específicos
+3. Efectos Creativos de Escucha
+   - Crea colocaciones inusuales dependientes de frecuencia
+   - Haz que las altas frecuencias se inclinen hacia un lado mientras los graves permanecen centrados
+   - Construye una sensación de ambiente más amplia con pequeños desplazamientos de balance en bandas superiores
 
 4. Ajuste del Campo Estéreo
    - Ajuste fino del balance estéreo por banda de frecuencia
    - Corrección de distribución estéreo desigual
-   - Mejora de la separación estéreo donde sea necesario
+   - Evita tratarlo como control de ancho estéreo; usa Stereo Blend cuando quieras ampliar o estrechar toda la imagen
    - Mantenimiento de compatibilidad mono
 
 ### Guía de Inicio Rápido
@@ -251,13 +254,17 @@ Un efecto que ayuda a lograr un campo sonoro más natural ajustando el ancho est
 - Control de Campo Sonoro:
   - Enfoque en presentación natural y realista
   - Evita ancho excesivo que podría sonar artificial
+  - Usa ancho negativo solo para inversión correctiva o creativa de polaridad lateral
   - Optimiza para tu entorno específico de escucha
 
 ### Parámetros
-- **Stereo** - Controla el ancho estéreo (0-200%)
+- **Stereo** - Controla el ancho estéreo (-200% a 200%)
+  - Valores negativos: Invierten la polaridad del componente lateral estéreo (L-R) antes de la reconstrucción
+  - -200%: Ancho máximo con polaridad lateral invertida; úsalo solo para corrección o casos especiales
+  - -100%: Ancho estéreo original con la imagen izquierda/derecha intercambiada
   - 0%: Mono completo (canales izquierdo y derecho sumados)
   - 100%: Imagen estéreo original
-  - 200%: Estéreo mejorado con ancho máximo (L-R/R-L)
+  - 200%: Ensanchamiento máximo; conserva el componente central mientras refuerza mucho la diferencia lateral estéreo
 
 ### Ajustes Recomendados para Diferentes Escenarios de Escucha
 

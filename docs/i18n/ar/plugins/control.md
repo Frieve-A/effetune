@@ -1,39 +1,39 @@
 ---
-title: "Control Plugins - EffeTune"
-description: "Control plugins for organizing effect chains with Section grouping."
-lang: en
+title: "إضافات التحكم - EffeTune"
+description: "إضافات تحكم لتنظيم سلاسل التأثيرات باستخدام تجميع Section."
+lang: ar
 ---
 
-# Control Effects
+# تأثيرات التحكم
 
-Control effects are special utility effects that don't process audio directly but instead control how other effects operate. They help organize and manage complex effect chains.
+تأثيرات التحكم هي أدوات خاصة لا تعالج الصوت مباشرة، بل تساعد على إدارة طريقة عمل التأثيرات الأخرى. تفيد في تنظيم سلاسل التأثيرات المعقدة وجعلها أسهل في الاستخدام.
 
 ## Section
 
-The Section effect allows you to group multiple effects together and control them with a single ON/OFF toggle.
+يجمع تأثير Section عدة تأثيرات بحيث يمكنك تجاوز ذلك الجزء الكامل من السلسلة أو إعادته باستخدام مفتاح ON/OFF واحد. يحتفظ كل تأثير داخل القسم بحالة ON/OFF الخاصة به.
 
-### Overview
+### نظرة عامة
 
-- **Name**: Section
-- **Category**: Control
-- **Description**: Groups multiple effects together for unified control
+- **الاسم**: Section
+- **الفئة**: Control
+- **الوصف**: يجمع التأثيرات بحيث يمكن تجاوز القسم الكامل أو إعادته
 
-### Parameters
+### المعلمات
 
-| Parameter | Description |
+| المعلمة | الوصف |
 |-----------|-------------|
-| Comment   | A name or description of the section's purpose |
+| Comment   | اسم أو وصف يوضح الغرض من القسم |
 
-### Usage
+### طريقة الاستخدام
 
-1. Place the Section effect at the beginning of a group of effects you want to control together
-2. Enter a descriptive name in the "Comment" field to identify the section's purpose
-3. Toggle the Section effect ON/OFF to enable/disable all effects within the section
-4. Effects placed after a Section effect will be controlled by that section until another Section effect is encountered
+1. ضع تأثير Section في بداية مجموعة التأثيرات التي تريد التحكم بها معًا
+2. أدخل اسمًا وصفيًا في حقل "Comment" لتوضيح الغرض من القسم
+3. أوقف تأثير Section عبر OFF لتجاوز التأثيرات داخل ذلك القسم؛ وأعده إلى ON لاسترجاع القسم مع الحفاظ على حالة ON/OFF الخاصة بكل تأثير داخله
+4. التأثيرات الموضوعة بعد تأثير Section تخضع لذلك القسم إلى أن يظهر تأثير Section آخر
 
-### Application Examples
+### أمثلة تطبيقية
 
-- Group related effects (e.g., "EQ Adjustments", "Spatial Effects")
-- Create alternative processing chains that can be easily toggled
-- Organize complex effect chains into logical sections
-- Temporarily disable a group of effects without removing them 
+- تجميع التأثيرات المرتبطة ببعضها، مثل "EQ Adjustments" أو "Spatial Effects"
+- إنشاء سلاسل معالجة بديلة يمكن تبديلها بسهولة
+- تنظيم سلاسل التأثيرات المعقدة في أقسام منطقية
+- تعطيل مجموعة من التأثيرات مؤقتًا من دون حذفها

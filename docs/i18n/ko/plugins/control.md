@@ -1,39 +1,39 @@
 ---
-title: "Control Plugins - EffeTune"
-description: "Control plugins for organizing effect chains with Section grouping."
-lang: en
+title: "컨트롤 플러그인 - EffeTune"
+description: "Section 그룹으로 이펙트 체인을 정리하기 위한 컨트롤 플러그인입니다."
+lang: ko
 ---
 
-# Control Effects
+# 컨트롤 이펙트
 
-Control effects are special utility effects that don't process audio directly but instead control how other effects operate. They help organize and manage complex effect chains.
+Control 이펙트는 오디오를 직접 처리하지 않고 다른 이펙트의 동작 방식을 관리하는 특수 유틸리티 이펙트입니다. 복잡한 이펙트 체인을 보기 좋게 정리하고 한꺼번에 다루기 쉽게 해줍니다.
 
 ## Section
 
-The Section effect allows you to group multiple effects together and control them with a single ON/OFF toggle.
+Section 이펙트는 여러 이펙트를 하나의 그룹으로 묶고, 하나의 ON/OFF 전환으로 해당 구간 전체를 바이패스하거나 복원할 수 있게 해줍니다.
 
-### Overview
+### 개요
 
-- **Name**: Section
-- **Category**: Control
-- **Description**: Groups multiple effects together for unified control
+- **이름**: Section
+- **카테고리**: Control
+- **설명**: 여러 이펙트를 하나로 묶어 함께 제어
 
-### Parameters
+### 파라미터
 
-| Parameter | Description |
+| 파라미터 | 설명 |
 |-----------|-------------|
-| Comment   | A name or description of the section's purpose |
+| Comment   | 섹션의 용도를 나타내는 이름 또는 설명 |
 
-### Usage
+### 사용법
 
-1. Place the Section effect at the beginning of a group of effects you want to control together
-2. Enter a descriptive name in the "Comment" field to identify the section's purpose
-3. Toggle the Section effect ON/OFF to enable/disable all effects within the section
-4. Effects placed after a Section effect will be controlled by that section until another Section effect is encountered
+1. 함께 제어하려는 이펙트 그룹의 시작 지점에 Section 이펙트를 배치합니다.
+2. 섹션의 용도를 알아보기 쉽도록 "Comment" 필드에 설명적인 이름을 입력합니다.
+3. Section 이펙트의 ON/OFF를 전환하면 각 이펙트 자체의 ON/OFF 상태를 유지한 채 해당 섹션 전체를 바이패스하거나 복원합니다.
+4. Section 이펙트 뒤에 놓인 이펙트들은 다음 Section 이펙트가 나오기 전까지 해당 섹션에 포함됩니다.
 
-### Application Examples
+### 활용 예
 
-- Group related effects (e.g., "EQ Adjustments", "Spatial Effects")
-- Create alternative processing chains that can be easily toggled
-- Organize complex effect chains into logical sections
-- Temporarily disable a group of effects without removing them 
+- 관련 이펙트 묶기(예: "EQ Adjustments", "Spatial Effects")
+- 쉽게 켜고 끌 수 있는 대체 처리 체인 만들기
+- 복잡한 이펙트 체인을 논리적인 섹션으로 정리
+- 이펙트를 삭제하지 않고 그룹 단위로 잠시 바이패스

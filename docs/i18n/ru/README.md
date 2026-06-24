@@ -1,16 +1,20 @@
 # Frieve EffeTune <img src="../../../images/icon_64x64.png" alt="EffeTune Icon" width="30" height="30" align="bottom">
 
-[Open Web App](https://effetune.frieve.com/effetune.html)  [Download Desktop App](https://github.com/Frieve-A/effetune/releases/)
+[Открыть веб-приложение](https://effetune.frieve.com/effetune.html)  [Скачать настольное приложение](https://github.com/Frieve-A/effetune/releases/)
 
 Приложение для обработки аудио в реальном времени, созданное для аудиофилов, стремящихся улучшить процесс прослушивания музыки. EffeTune позволяет обрабатывать любой аудио источник с помощью различных высококачественных эффектов, давая возможность настроить и усовершенствовать ваш опыт прослушивания в реальном времени.
 
 [![Screenshot](../../../images/screenshot.png)](https://effetune.frieve.com/effetune.html)
 
+## Вводное видео
+
+[![YouTube Video](../../../images/video_thumbnail.jpg)](https://www.youtube.com/watch?v=--mtsy1t4HI)
+
 ## Концепция
 
-EffeTune создан для аудиофилов, желающих улучшить прослушивание музыки. Независимо от того, транслируете ли вы музыку или воспроизводите её с физических носителей, EffeTune позволяет добавлять профессиональные эффекты для настройки звука по вашим точным предпочтениям. Превратите ваш компьютер в мощный процессор аудиоэффектов, расположенный между вашим аудио источником и динамиками или усилителем.
+EffeTune создан для аудиоэнтузиастов, которые хотят улучшить прослушивание музыки. Независимо от того, слушаете ли вы стриминг или воспроизводите музыку с физических носителей, EffeTune позволяет добавлять высококачественные эффекты и настраивать звук под свои предпочтения. Превратите компьютер в мощный процессор аудиоэффектов между источником звука и колонками или усилителем.
 
-No audiophile myths, Just pure science.
+Без аудиофильских мифов, только чистая наука.
 
 ## Особенности
 
@@ -20,8 +24,7 @@ No audiophile myths, Just pure science.
 - Визуализация аудио в реальном времени
 - Аудио Pipeline, который можно изменять в реальном времени
 - Офлайн обработка аудиофайлов с использованием текущей цепочки эффектов
-- Функция секций для группировки и управления несколькими эффектами
-- Функция измерения частотной характеристики для аудио оборудования
+- Измерение и коррекция частотной характеристики для калибровки системы
 - Многоканальная обработка и вывод
 
 ## Руководство по настройке
@@ -71,7 +74,7 @@ No audiophile myths, Just pure science.
 
 ### Создание цепочки эффектов
 
-1. Доступные эффекты перечислены слева на экране  
+1. **Available Effects** перечислены слева на экране
    - Используйте кнопку поиска рядом с "Available Effects", чтобы отфильтровать эффекты  
    - Введите текст для поиска эффектов по названию или категории  
    - Нажмите ESC, чтобы очистить поиск
@@ -111,12 +114,12 @@ No audiophile myths, Just pure science.
    - Каждый пресет сохраняет полную конфигурацию вашей цепочки эффектов
    - Включает порядок эффектов, параметры и их состояния
 
-### Использование Section Features
+### Использование функций Section
 
 1. **Использование эффекта Section:**
    - Добавьте эффект Section в начале группы эффектов
    - Введите описательное название в поле Comment
-   - Переключение ON/OFF эффекта Section включит/отключит все эффекты в этом разделе
+   - Переключение ON/OFF эффекта Section обходит или возвращает всю секцию, сохраняя собственное состояние ON/OFF каждого эффекта
    - Используйте несколько эффектов Section для организации вашей цепочки эффектов в логические группы
    - [Подробнее о управлении эффектами](plugins/control.md)
 
@@ -187,14 +190,6 @@ No audiophile myths, Just pure science.
    - Для нескольких файлов перед началом обработки выберите папку; каждый файл сохраняется в неё сразу по завершении
    - В старых браузерах без поддержки выбора папки несколько файлов упаковываются в ZIP-архив для скачивания
 
-### Измерение частотной характеристики
-
-1. Для веб-версии запустите [инструмент измерения амплитудно-частотной характеристики](https://effetune.frieve.com/features/measurement/measurement.html). Для версии приложения выберите «Измерение АЧХ» в меню «Настройки».
-2. Подключите ваше аудио оборудование к входу и выходу компьютера
-3. Настройте параметры измерения (длительность развертки, диапазон частот)
-4. Запустите измерение для создания графика частотной характеристики
-5. Анализируйте результаты или экспортируйте данные измерений для дальнейшего анализа
-
 ### Обмен цепочками эффектов
 
 Вы можете поделиться конфигурацией вашей цепочки эффектов с другими пользователями:
@@ -202,15 +197,24 @@ No audiophile myths, Just pure science.
 2. URL веб-приложения автоматически скопируется в буфер обмена
 3. Поделитесь скопированным URL с другими – они смогут воссоздать вашу цепочку эффектов, открыв его
 4. В веб-приложении все настройки эффектов сохраняются в URL, что облегчает их сохранение и обмен
-5. В версии настольного приложения экспортируйте настройки в файл effetune_preset из меню File
+5. В версии настольного приложения экспортируйте настройки в файл effetune_preset через «Экспортировать предустановку...» в меню «Файл»
 6. Поделитесь экспортированным файлом effetune_preset. Файл effetune_preset также можно загрузить, перетащив его в окно веб-приложения
 
 ### Сброс аудио
 
 Если вы сталкиваетесь с проблемами аудио (прерывания, искажения):
-1. Нажмите кнопку "Reset Audio" в верхнем левом углу в веб-приложении или выберите Reload из меню View в настольном приложении
+1. Нажмите кнопку "Reset Audio" в верхнем левом углу веб-приложения или выберите «Перезагрузить» в меню «Вид» в настольном приложении
 2. Аудио Pipeline будет автоматически перестроен
 3. Конфигурация вашей цепочки эффектов сохранится
+
+### Измерение и коррекция частотной характеристики
+
+Чтобы измерить частотную характеристику вашей аудиосистемы и создать ровную коррекцию EQ:
+1. В веб-версии запустите [инструмент измерения частотной характеристики](https://effetune.frieve.com/features/measurement/measurement.html). В настольном приложении выберите «Измерение частотной характеристики» в меню «Настройки».
+2. Следуйте пошаговой настройке, чтобы выбрать измерительный микрофон и устройство вывода
+3. Измерьте частотную характеристику системы в одной или нескольких точках прослушивания
+4. Создайте коррекцию параметрического EQ, которую можно напрямую импортировать в EffeTune
+5. Примените сгенерированную коррекцию в цепочке эффектов и при необходимости настройте ее по слуху
 
 ## Распространенные комбинации эффектов
 
@@ -233,7 +237,7 @@ No audiophile myths, Just pure science.
 1. **Multiband Compressor** -> **Stereo Blend**
    - **Multiband Compressor:** Создает характерное "радиозвучание"
    - **Stereo Blend:** Регулирует стерео ширину для комфортного прослушивания (100-150%)
-   - **Результат:** Звук, напоминающий профессиональное радио вещание
+   - **Результат:** Отполированное звучание в стиле FM-радио
 
 ### Lo-Fi характер
 1. **Bit Crusher** -> **Simple Jitter** -> **RS Reverb**
@@ -248,59 +252,75 @@ No audiophile myths, Just pure science.
 Если проблема сохраняется, сообщите об этом через [GitHub Issues](https://github.com/Frieve-A/effetune/issues).
 ## Доступные эффекты
 
+| Категория | Эффект | Описание | Документация |
+|-----------|--------|----------|--------------|
+| Analyzer  | Level Meter | Показывает уровень аудио с удержанием пиков | [Подробнее](plugins/analyzer.md#level-meter) |
+| Analyzer  | Oscilloscope | Визуализация формы сигнала в реальном времени | [Подробнее](plugins/analyzer.md#oscilloscope) |
+| Analyzer  | Spectrogram | Показывает изменение спектра частот во времени | [Подробнее](plugins/analyzer.md#spectrogram) |
+| Analyzer  | Spectrum Analyzer | В реальном времени показывает силу баса, середины и верхов | [Подробнее](plugins/analyzer.md#spectrum-analyzer) |
+| Analyzer  | Stereo Meter | Визуализирует стереобаланс и корреляцию каналов | [Подробнее](plugins/analyzer.md#stereo-meter) |
+| Basics    | Channel Divider | Делит стереосигнал на частотные полосы и направляет каждую полосу в отдельные стереопары выходов | [Подробнее](plugins/basics.md#channel-divider) |
+| Basics    | DC Offset | Регулировка DC offset | [Подробнее](plugins/basics.md#dc-offset) |
+| Basics    | Matrix | Гибко маршрутизирует и смешивает аудиоканалы | [Подробнее](plugins/basics.md#matrix) |
+| Basics    | MultiChannel Panel | Панель управления несколькими каналами: громкость, mute, solo и задержка | [Подробнее](plugins/basics.md#multichannel-panel) |
+| Basics    | Mute | Полностью отключает аудиосигнал | [Подробнее](plugins/basics.md#mute) |
+| Basics    | Polarity Inversion | Инвертирует полярность сигнала | [Подробнее](plugins/basics.md#polarity-inversion) |
+| Basics    | Stereo Balance | Управление балансом стереоканалов | [Подробнее](plugins/basics.md#stereo-balance) |
+| Basics    | Volume | Базовое управление громкостью | [Подробнее](plugins/basics.md#volume) |
 | Delay     | Delay | Стандартный эффект задержки | [Подробнее](plugins/delay.md#delay) |
-| Delay     | Time Alignment | Точная настройка временных задержек аудиоканалов | [Подробнее](plugins/delay.md#time-alignment) |
-| Dynamics  | Auto Leveler | Автоматическая регулировка громкости по измерению LUFS для равномерного звучания | [Подробнее](plugins/dynamics.md#auto-leveler) |
+| Delay     | Time Alignment | Точно настраивает время воспроизведения для согласования колонок и позиции слушателя | [Подробнее](plugins/delay.md#time-alignment) |
+| Dynamics  | Auto Leveler | Автоматически выравнивает громкость для стабильного прослушивания | [Подробнее](plugins/dynamics.md#auto-leveler) |
 | Dynamics  | Brickwall Limiter | Прозрачный контроль пиков для безопасного и комфортного прослушивания | [Подробнее](plugins/dynamics.md#brickwall-limiter) |
-| Dynamics  | Compressor | Компрессия динамического диапазона с регулировкой порога, коэффициента и «колена» | [Подробнее](plugins/dynamics.md#compressor) |
-| Dynamics  | Gate | Гейт шумоподавления с регулировкой порога, коэффициента и «колена» для уменьшения шума | [Подробнее](plugins/dynamics.md#gate) |
-| Dynamics  | Multiband Compressor | Профессиональный 5-полосный динамический процессор с FM-радио стилизацией звука | [Подробнее](plugins/dynamics.md#multiband-compressor) |
-| Dynamics  | Multiband Expander | Профессиональный 5-полосный экспандер для расширения динамического диапазона по частотам | [Подробнее](plugins/dynamics.md#multiband-expander) |
-| Dynamics  | Multiband Transient | Продвинутый 3-полосный формирователь переходных процессов для частотно-специфичного контроля атаки и сустейна | [Подробнее](plugins/dynamics.md#multiband-transient) |
-| Dynamics  | Power Amp Sag | Имитирует провал напряжения усилителя мощности при высоких нагрузках | [Подробнее](plugins/dynamics.md#power-amp-sag) |
-| Dynamics  | Transient Shaper | Контролирует переходные и затухающие части сигнала | [Подробнее](plugins/dynamics.md#transient-shaper) |
+| Dynamics  | Compressor | Сглаживает внезапно громкие места, делая прослушивание комфортнее | [Подробнее](plugins/dynamics.md#compressor) |
+| Dynamics  | Expander | Возвращает динамический контраст, делая тихие звуки ниже порога еще тише | [Подробнее](plugins/dynamics.md#expander) |
+| Dynamics  | Gate | Уменьшает тихий звук в паузах и спокойных местах | [Подробнее](plugins/dynamics.md#gate) |
+| Dynamics  | Multiband Compressor | 5-полосное выравнивание громкости для ровного, похожего на радио звучания | [Подробнее](plugins/dynamics.md#multiband-compressor) |
+| Dynamics  | Multiband Expander | 5-полосный экспандер для восстановления естественного контраста в слишком плоских записях | [Подробнее](plugins/dynamics.md#multiband-expander) |
+| Dynamics  | Multiband Transient | Настраивает атаку и сустейн отдельно в басе, середине и верхах | [Подробнее](plugins/dynamics.md#multiband-transient) |
+| Dynamics  | Power Amp Sag | Имитирует просадку напряжения усилителя мощности при высокой нагрузке | [Подробнее](plugins/dynamics.md#power-amp-sag) |
+| Dynamics  | Transient Shaper | Настраивает ударность и тело музыки через атаку и сустейн | [Подробнее](plugins/dynamics.md#transient-shaper) |
 | EQ        | 15Band GEQ | 15-полосный графический эквалайзер | [Подробнее](plugins/eq.md#15band-geq) |
-| EQ        | 15Band PEQ | Профессиональный параметрический эквалайзер с 15 полностью настраиваемыми полосами | [Подробнее](plugins/eq.md#15band-peq) |
-| EQ        | 5Band Dynamic EQ | 5-полосный динамический эквалайзер с регулировкой частот на основе порога | [Подробнее](plugins/eq.md#5band-dynamic-eq) |
-| EQ        | 5Band PEQ | Профессиональный параметрический эквалайзер с 5 полностью настраиваемыми полосами | [Подробнее](plugins/eq.md#5band-peq) |
-| EQ        | Band Pass Filter | Фокусировка на конкретных частотах | [Подробнее](plugins/eq.md#band-pass-filter) |
-| EQ        | Comb Filter | Цифровой гребенчатый фильтр для гармонической окраски и симуляции резонанса | [Подробнее](plugins/eq.md#comb-filter) |
-| EQ        | Hi Pass Filter | Удаление нежелательных низких частот с точностью | [Подробнее](plugins/eq.md#hi-pass-filter) |
-| EQ        | Lo Pass Filter | Удаление нежелательных высоких частот с точностью | [Подробнее](plugins/eq.md#lo-pass-filter) |
-| EQ        | Loudness Equalizer | Коррекция баланса частот для низкого уровня громкости | [Подробнее](plugins/eq.md#loudness-equalizer) |
+| EQ        | 15Band PEQ | 15-полосный параметрический эквалайзер для детальной настройки тембра при прослушивании | [Подробнее](plugins/eq.md#15band-peq) |
+| EQ        | 5Band Dynamic EQ | 5-полосный динамический эквалайзер с регулировкой частот по порогу | [Подробнее](plugins/eq.md#5band-dynamic-eq) |
+| EQ        | 5Band PEQ | Гибкий 5-полосный эквалайзер для настройки баса, середины и верхов | [Подробнее](plugins/eq.md#5band-peq) |
+| EQ        | Band Pass Filter | Выделяет определенный диапазон частот | [Подробнее](plugins/eq.md#band-pass-filter) |
+| EQ        | Comb Filter | Добавляет фазовую, полую или металлическую окраску | [Подробнее](plugins/eq.md#comb-filter) |
+| EQ        | Hi Pass Filter | Точно убирает нежелательные низкие частоты | [Подробнее](plugins/eq.md#hi-pass-filter) |
+| EQ        | Lo Pass Filter | Точно убирает нежелательные высокие частоты | [Подробнее](plugins/eq.md#lo-pass-filter) |
+| EQ        | Loudness Equalizer | Коррекция частотного баланса для тихого прослушивания | [Подробнее](plugins/eq.md#loudness-equalizer) |
 | EQ        | Narrow Range | Сочетание фильтров высоких и низких частот | [Подробнее](plugins/eq.md#narrow-range) |
 | EQ        | Tilt EQ | Наклонный эквалайзер для быстрой коррекции тембра | [Подробнее](plugins/eq.md#tilt-eq) |
-| EQ        | Tone Control | Трёхполосное управление тоном | [Подробнее](plugins/eq.md#tone-control) |
-| Lo-Fi     | Bit Crusher | Снижение битовой глубины и эффект «zero-order hold» | [Подробнее](plugins/lofi.md#bit-crusher) |
-| Lo-Fi     | Digital Error Emulator | Имитирует различные ошибки передачи цифрового аудио и характеристики винтажного цифрового оборудования | [Подробнее](plugins/lofi.md#digital-error-emulator) |
-| Lo-Fi     | DSD64 IMD Simulator | Воспроизводит слышимые интермодуляционные искажения от ультразвукового шума DSD64 | [Подробнее](plugins/lofi.md#dsd64-imd-simulator) |
-| Lo-Fi     | Hum Generator | Высокоточный генератор шума фона питания | [Подробнее](plugins/lofi.md#hum-generator) |
-| Lo-Fi     | Noise Blender | Генерация и смешивание шума | [Подробнее](plugins/lofi.md#noise-blender) |
-| Lo-Fi     | Simple Jitter | Эмуляция цифрового джиттера | [Подробнее](plugins/lofi.md#simple-jitter) |
-| Lo-Fi     | Vinyl Artifacts | Физическая симуляция шума аналоговых записей | [Подробнее](plugins/lofi.md#vinyl-artifacts) |
-| Modulation | Doppler Distortion | Симулирует естественные динамические изменения звука, вызванные небольшими движениями конуса динамика | [Подробнее](plugins/modulation.md#doppler-distortion) |
-| Modulation | Pitch Shifter | Лёгкий эффект изменения высоты тона | [Подробнее](plugins/modulation.md#pitch-shifter) |
+| EQ        | Tone Control | Трехполосное управление тоном | [Подробнее](plugins/eq.md#tone-control) |
+| Lo-Fi     | Bit Crusher | Снижение битовой глубины и эффект zero-order hold | [Подробнее](plugins/lofi.md#bit-crusher) |
+| Lo-Fi     | Digital Error Emulator | Имитирует разные ошибки передачи цифрового аудио и характер винтажной цифровой аппаратуры | [Подробнее](plugins/lofi.md#digital-error-emulator) |
+| Lo-Fi     | DSD64 IMD Simulator | Имитирует слышимые интермодуляционные искажения от ультразвукового шума DSD64 | [Подробнее](plugins/lofi.md#dsd64-imd-simulator) |
+| Lo-Fi     | Hum Generator | Добавляет настраиваемый фон электрического гула 50/60 Hz для винтажного или lo-fi прослушивания | [Подробнее](plugins/lofi.md#hum-generator) |
+| Lo-Fi     | Noise Blender | Добавляет регулируемую текстуру фонового шума для lo-fi атмосферы | [Подробнее](plugins/lofi.md#noise-blender) |
+| Lo-Fi     | Simple Jitter | Имитация цифрового джиттера | [Подробнее](plugins/lofi.md#simple-jitter) |
+| Lo-Fi     | Vinyl Artifacts | Добавляет виниловые pops, crackle, hiss, rumble и утечку стереошума | [Подробнее](plugins/lofi.md#vinyl-artifacts) |
+| Modulation | Doppler Distortion | Имитирует естественные динамические изменения звука от небольших движений диффузора динамика | [Подробнее](plugins/modulation.md#doppler-distortion) |
+| Modulation | Pitch Shifter | Повышает или понижает высоту музыки без изменения темпа | [Подробнее](plugins/modulation.md#pitch-shifter) |
 | Modulation | Tremolo | Эффект модуляции громкости | [Подробнее](plugins/modulation.md#tremolo) |
-| Modulation | Wow Flutter | Эффект модуляции во времени | [Подробнее](plugins/modulation.md#wow-flutter) |
-| Resonator | Horn Resonator | Симуляция резонанса рупора с настраиваемыми параметрами | [Подробнее](plugins/resonator.md#horn-resonator) |
-| Resonator | Horn Resonator Plus | Улучшенная модель рупора с продвинутыми отражениями | [Подробнее](plugins/resonator.md#horn-resonator-plus) |
-| Resonator | Modal Resonator | Эффект резонанса частот с поддержкой до 5 резонаторов | [Подробнее](plugins/resonator.md#modal-resonator) |
-| Reverb    | Dattorro Plate Reverb | Классический плейт-реверб на основе алгоритма Датторро | [Подробнее](plugins/reverb.md#dattorro-plate-reverb) |
-| Reverb    | FDN Reverb | Реверберация с сетью задержек с обратной связью, создающая богатые плотные текстуры | [Подробнее](plugins/reverb.md#fdn-reverb) |
-| Reverb    | RS Reverb | Реверберация с рандомным рассеянием и естественной диффузией | [Подробнее](plugins/reverb.md#rs-reverb) |
-| Saturation| Dynamic Saturation | Симулирует нелинейное смещение диффузоров динамиков | [Подробнее](plugins/saturation.md#dynamic-saturation) |
-| Saturation| Exciter | Добавляет гармонический контент для улучшения ясности и присутствия | [Подробнее](plugins/saturation.md#exciter) |
+| Modulation | Wow Flutter | Добавляет легкое дрожание высоты в стиле ленты или пластинки для винтажного характера | [Подробнее](plugins/modulation.md#wow-flutter) |
+| Resonator | Horn Resonator | Симуляция резонанса рупора с настраиваемыми размерами | [Подробнее](plugins/resonator.md#horn-resonator) |
+| Resonator | Horn Resonator Plus | Более мягкий резонанс рупорной акустики для естественной окраски при прослушивании | [Подробнее](plugins/resonator.md#horn-resonator-plus) |
+| Resonator | Modal Resonator | Частотный резонанс с поддержкой до 5 резонаторов | [Подробнее](plugins/resonator.md#modal-resonator) |
+| Reverb    | Dattorro Plate Reverb | Классический plate reverb на основе алгоритма Dattorro | [Подробнее](plugins/reverb.md#dattorro-plate-reverb) |
+| Reverb    | FDN Reverb | Feedback Delay Network reverb с насыщенными плотными реверберационными текстурами | [Подробнее](plugins/reverb.md#fdn-reverb) |
+| Reverb    | RS Reverb | Реверберация с случайным рассеянием и естественной диффузией | [Подробнее](plugins/reverb.md#rs-reverb) |
+| Saturation| Dynamic Saturation | Имитирует нелинейное смещение диффузоров динамиков | [Подробнее](plugins/saturation.md#dynamic-saturation) |
+| Saturation| Exciter | Добавляет гармоники для ясности и присутствия | [Подробнее](plugins/saturation.md#exciter) |
 | Saturation| Hard Clipping | Цифровой эффект жесткого клиппирования | [Подробнее](plugins/saturation.md#hard-clipping) |
-| Saturation | Harmonic Distortion | Добавляет уникальный характер через гармонические искажения с независимым управлением каждой гармоникой | [Подробнее](plugins/saturation.md#harmonic-distortion) |
-| Saturation| Multiband Saturation | 3-полосный эффект насыщения для точного придания теплоты на основе частот | [Подробнее](plugins/saturation.md#multiband-saturation) |
-| Saturation| Saturation | Эффект насыщения | [Подробнее](plugins/saturation.md#saturation) |
-| Saturation| Sub Synth | Смешивает субгармонические сигналы для усиления басов | [Подробнее](plugins/saturation.md#sub-synth) |
-| Spatial   | Crossfeed Filter | Фильтр кроссфида для наушников для естественного стерео изображения | [Подробнее](plugins/spatial.md#crossfeed-filter) |
-| Spatial   | MS Matrix | Кодирование и декодирование «середина-бок» для управления стерео | [Подробнее](plugins/spatial.md#ms-matrix) |
-| Spatial   | Multiband Balance | 5-полосное управление стереобалансом в зависимости от частоты | [Подробнее](plugins/spatial.md#multiband-balance) |
-| Spatial   | Stereo Blend | Эффект контроля ширины стерео | [Подробнее](plugins/spatial.md#stereo-blend) |
-| Others    | Oscillator | Генератор аудиосигнала с несколькими формами волн | [Подробнее](plugins/others.md#oscillator) |
-| Control   | Section | Группировка нескольких эффектов для единообразного управления | [Подробнее](plugins/control.md) |
+| Saturation | Harmonic Distortion | Добавляет характер с настраиваемыми гармоническими искажениями 2-5-го порядка | [Подробнее](plugins/saturation.md#harmonic-distortion) |
+| Saturation| Multiband Saturation | Отдельно добавляет теплоту или остроту в низах, середине и верхах | [Подробнее](plugins/saturation.md#multiband-saturation) |
+| Saturation| Saturation | Добавляет теплую аналоговую насыщенность и характер | [Подробнее](plugins/saturation.md#saturation) |
+| Saturation| Sub Synth | Подмешивает фильтрованный низкочастотный сигнал для усиления баса | [Подробнее](plugins/saturation.md#sub-synth) |
+| Spatial   | Crossfeed Filter | Наушниковый crossfeed-фильтр для естественной стереокартины | [Подробнее](plugins/spatial.md#crossfeed-filter) |
+| Spatial   | MS Matrix | Преобразует stereo и Mid/Side для настройки центра и пространства | [Подробнее](plugins/spatial.md#ms-matrix) |
+| Spatial   | Multiband Balance | 5-полосное управление стереобалансом по частотам | [Подробнее](plugins/spatial.md#multiband-balance) |
+| Spatial   | Stereo Blend | Управляет шириной стерео от mono до расширенного stereo | [Подробнее](plugins/spatial.md#stereo-blend) |
+| Others    | Oscillator | Генератор тестовых тонов и шума для проверки колонок и наушников | [Подробнее](plugins/others.md#oscillator) |
+| Control   | Section | Группирует эффекты, чтобы всю секцию можно было bypass или restore | [Подробнее](plugins/control.md) |
 
 ## Техническая информация
 
@@ -328,14 +348,14 @@ Frieve EffeTune был протестирован и подтвержден дл
 
 ## Руководство по разработке
 
-Хотите создать собственные аудиоплагины? Ознакомьтесь с нашим [Plugin Development Guide](../../plugin-development.md).
+Хотите создать собственные аудиоплагины? Ознакомьтесь с нашим [руководством по разработке плагинов](../../plugin-development.md).
 Хотите создать настольное приложение? Ознакомьтесь с нашим [Руководством по сборке](../../../BUILD.md).
 
 ## Ссылки
 
-[Version History](../../version-history.md)
+[История версий](../../version-history.md)
 
-[Source Code](https://github.com/Frieve-A/effetune)
+[Исходный код](https://github.com/Frieve-A/effetune)
 
 [YouTube](https://www.youtube.com/@frieveamusic)
 

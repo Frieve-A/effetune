@@ -22,23 +22,24 @@ Routing note: Dattorro Plate Reverb is a stereo plate model. When routed with mo
 
 ### Listening Experience Guide
 - Lush Plate Sound:
-  - Classic studio plate reverb character
+  - Classic plate reverb character
   - Smooth, dense reverb tail without metallic artifacts
   - Beautiful shimmer and warmth characteristic of plate reverbs
 - Versatile Ambience:
   - From subtle room enhancement to expansive halls
   - Works beautifully with any music genre
-  - Adds professional polish to recordings
+  - Adds smooth polish and space to music
 - Natural Movement:
   - Modulation adds organic life to the reverb
   - Prevents static, artificial-sounding tails
   - Creates a breathing, living space around your music
 
 ### Parameters
-- **Pre Delay** - Initial silence before reverb begins (0.0 to 100.0 ms)
+- **Pre Delay** - Initial silence before reverb begins (0.0 to 100.0 ms control; use values below 100.0 ms for effective pre-delay)
   - 0-10ms: Immediate reverb, intimate feeling
   - 10-30ms: Natural sense of space
-  - 30-100ms: Creates impression of larger spaces
+  - 30-99.9ms: Creates impression of larger spaces
+  - Avoid exactly 100.0ms when you want maximum pre-delay; the current implementation treats that endpoint like no effective pre-delay
 - **Bandwidth** - Input signal filtering (0.0 to 1.0)
   - Lower values: Darker, warmer input tone
   - Higher values (near 1.0): Brighter, full-frequency input
@@ -131,7 +132,7 @@ Routing note: Dattorro Plate Reverb is a stereo plate model. When routed with mo
    - Trust your ears for the final settings
    - The default values are a great starting point
 
-The Dattorro Plate Reverb brings a classic, professional-quality reverb to your listening experience. Its smooth, lush character makes it perfect for enhancing any recording with beautiful, natural-sounding ambience!
+The Dattorro Plate Reverb brings a classic plate-style ambience to your listening experience. Its smooth, lush character makes it useful for adding beautiful, natural-sounding space to a recording.
 
 ## FDN Reverb
 
@@ -170,10 +171,9 @@ Routing note: FDN Reverb is a stereo reverb model with one shared feedback tank.
   - Lower values: Tighter, more focused reverb character
   - Higher values: More spacious, open sound quality
   - Affects the fundamental timing relationships
-- **Delay Spread** - How much delay times vary between lines (0.0 to 25.0 ms)
-  - Implementation: Each delay line gets progressively longer using a power curve (0.8 exponent)
-  - 0.0ms: All lines have same base timing (more regular patterns)
-  - Higher values: More natural, irregular reflection patterns
+- **Delay Spread** - Adds progressive timing variation between delay lines on top of small per-line random offsets (0.0 to 25.0 ms)
+  - 0.0ms: Uses the base delay plus small randomized line offsets, so the reflections still stay slightly irregular
+  - Higher values: Adds more progressive spread between lines for a larger, less regular tail
   - Adds realistic variation found in real acoustic spaces
 - **HF Damp** - How high frequencies fade over time (0.0 to 12.0 dB/s)
   - 0.0: No damping, bright sound throughout decay
@@ -191,11 +191,10 @@ Routing note: FDN Reverb is a stereo reverb model with one shared feedback tank.
   - 0.1-0.5Hz: Very slow, gentle movement
   - 1.0-2.0Hz: Natural-sounding variation
   - 3.0-5.0Hz: Fast, more obvious modulation
-- **Diffusion** - How much the Hadamard matrix mixes signals (0 to 100%)
-  - Implementation: Controls the amount of matrix mixing applied
-  - 0%: Minimal mixing, more distinct echo patterns
+- **Diffusion** - Controls how much of the mixed feedback is returned to the delay network (0 to 100%)
+  - 0%: Disables feedback diffusion; the sound becomes much sparser and the reverb tail is greatly reduced
   - 50%: Balanced diffusion for natural sound
-  - 100%: Maximum mixing for smoothest density
+  - 100%: Maximum feedback diffusion for the smoothest density
 - **Wet Mix** - Amount of reverb added to the sound (0 to 100%)
   - 10-30%: Subtle spatial enhancement
   - 30-60%: Noticeable reverb presence
@@ -203,11 +202,10 @@ Routing note: FDN Reverb is a stereo reverb model with one shared feedback tank.
 - **Dry Mix** - Amount of original signal preserved (0 to 100%)
   - Usually kept at 100% for normal listening
   - Can be reduced for special atmospheric effects
-- **Stereo Width** - How wide the reverb spreads in stereo (0 to 200%)
-  - Implementation: 0% = mono, 100% = normal stereo, 200% = exaggerated width
-  - 0%: Reverb appears in center (mono)
-  - 100%: Natural stereo spread
-  - 200%: Extra-wide stereo image
+- **Stereo Width** - Blends the wet reverb from mono toward separate left/right wet taps (0 to 200%)
+  - 0%: Wet reverb appears in the center (mono)
+  - 100%: Default moderate wet stereo width
+  - 200%: Full left/right wet tap separation, not extra side amplification
 
 ### Recommended Settings for Different Listening Experiences
 
@@ -282,10 +280,9 @@ An effect that can transport your music into different spaces, from cozy rooms t
   - Creates engaging soundscapes
 
 ### Parameters
-- **Pre-Delay** - Controls how quickly the space effect begins (0 to 50 ms)
-  - Lower values: Immediate, intimate feeling
-  - Higher values: More sense of distance
-  - Start with 10ms for natural sound
+- **Pre-Delay** - Stored and displayed control (0 to 50 ms)
+  - In the current implementation, this value is not used by the reverb processing
+  - Changing it does not alter distance or depth; use Room Size, Reverb Time, and Mix for audible space changes
 - **Room Size** - Sets how large the space feels (2.0 to 50.0 m)
   - Small (2-5m): Cozy room feeling
   - Medium (5-15m): Live room atmosphere
@@ -358,7 +355,7 @@ An effect that can transport your music into different spaces, from cozy rooms t
    - Set Density and Diffusion for texture
 
 3. Fine-Tune the Effect
-   - Add Pre-Delay for more depth
+   - Use Room Size and Reverb Time for depth; the Pre-Delay control value is not currently reflected in processing
    - Adjust Mix for final balance
    - Trust your ears and adjust to taste
 

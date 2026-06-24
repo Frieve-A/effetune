@@ -1,7 +1,7 @@
 ---
-title: "FAQ & Troubleshooting - EffeTune"
-description: "Frequently asked questions and troubleshooting guide for Frieve EffeTune audio processor."
-lang: en
+title: "FAQ et dépannage - EffeTune"
+description: "Questions fréquentes et guide de dépannage pour le processeur audio Frieve EffeTune."
+lang: fr
 ---
 
 # FAQ EffeTune
@@ -37,17 +37,17 @@ EffeTune est une application DSP en temps réel pour les passionnés d'audio dis
 Exemple Windows : Spotify → VB-CABLE → EffeTune → DAC/AMP. Les concepts sont similaires pour d'autres services et systèmes d'exploitation.
 
 ### 1.1. Installation de VB-CABLE et activation du 96 kHz
-Téléchargez le pack de pilotes VB-CABLE, exécutez `VBCABLE_Setup_x64.exe` en tant qu'administrateur et redémarrez. Rétablissez la sortie par défaut du système d'exploitation vers vos haut-parleurs/DAC et définissez les formats **CABLE Input** et **CABLE Output** sur 24 bits, 96 000 Hz. Lancez `VBCABLE_ControlPanel.exe` en tant qu'administrateur, choisissez **Menu▸Internal Sample Rate = 96000 Hz**, puis cliquez sur **Restart Audio Engine**.
+Téléchargez le pack de pilotes VB-CABLE, exécutez `VBCABLE_Setup_x64.exe` en tant qu'administrateur et redémarrez. Rétablissez la sortie par défaut du système d'exploitation vers vos haut-parleurs/DAC et définissez les formats **CABLE Input** et **CABLE Output** sur 24 bits, 96 000 Hz. Lancez `VBCABLE_ControlPanel.exe` en tant qu'administrateur, choisissez **Menu▸Fréquence d'échantillonnage interne = 96000 Hz**, puis cliquez sur **Redémarrer le moteur audio**.
 
 ### 1.2. Routage du service de streaming (exemple Spotify)
-Ouvrez **Settings▸System▸Sound▸Volume mixer**, et définissez la sortie de `Spotify.exe` sur **CABLE Input**. Lisez une piste pour confirmer l'absence de son provenant des haut-parleurs.
+Ouvrez **Paramètres▸Système▸Son▸Mélangeur de volume**, et définissez la sortie de `Spotify.exe` sur **CABLE Input**. Lisez une piste pour confirmer l'absence de son provenant des haut-parleurs.
 Sous macOS, utilisez **SoundSource** de Rogue Amoeba pour affecter la sortie de Spotify à **CABLE Input** de la même façon.
 
 ### 1.3. Paramètres audio d'EffeTune
-Lancez l'application de bureau et ouvrez **Config Audio**.
-- **Input Device:** CABLE Output (VB-Audio Virtual Cable)
-- **Output Device:** DAC/Haut-parleurs physiques
-- **Sample Rate:** 96 000 Hz (des taux inférieurs peuvent dégrader la qualité)
+Lancez l'application de bureau et ouvrez **Configuration audio**.
+- **Périphérique d'entrée :** CABLE Output (VB-Audio Virtual Cable)
+- **Périphérique de sortie :** DAC/Haut-parleurs physiques
+- **Fréquence d'échantillonnage :** 96 000 Hz (des taux inférieurs peuvent dégrader la qualité)
 
 ### 1.4. Vérification du fonctionnement
 Avec Spotify en lecture, basculez le bouton principal **ON/OFF** dans EffeTune et confirmez que le son change.
@@ -76,7 +76,7 @@ Vos périphériques d'entrée et de sortie peuvent être en bouclage. Assurez-vo
 | ------ | ------ |
 | Pas d'entrée audio | Assurez-vous que le lecteur envoie sa sortie vers **CABLE Input**. Autorisez la permission du microphone dans le navigateur et sélectionnez **CABLE Output** comme périphérique d'entrée. |
 | L'effet ne fonctionne pas | Confirmez que le maître, chaque effet et toute **Section** sont sur **ON**. Réinitialisez les paramètres si nécessaire. |
-| Pas de sortie audio | Pour l'application web, vérifiez que les sorties du système d'exploitation et du navigateur pointent vers votre DAC/AMP. Pour l'application de bureau, vérifiez le périphérique de sortie dans **Config Audio**. |
+| Pas de sortie audio | Pour l'application web, vérifiez que les sorties du système d'exploitation et du navigateur pointent vers votre DAC/AMP. Pour l'application de bureau, vérifiez le périphérique de sortie dans **Configuration audio**. |
 | D'autres lecteurs signalent "CABLE Input en cours d'utilisation" | Assurez-vous qu'aucune autre application n'utilise **CABLE Input**. |
 
 ### 2.5. Discordance de sortie multicanal

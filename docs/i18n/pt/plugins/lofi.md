@@ -1,7 +1,7 @@
 ---
-title: "Lo-Fi Plugins - EffeTune"
-description: "Lo-Fi effect plugins including Bit Crusher, Noise Blender, Vinyl Artifacts, and more."
-lang: en
+title: "Plugins Lo-Fi - EffeTune"
+description: "Plugins de efeito lo-fi, incluindo Bit Crusher, Noise Blender, Vinyl Artifacts e outros."
+lang: pt
 ---
 
 # Plugins Lo-Fi
@@ -13,10 +13,10 @@ Uma coleção de plugins que adicionam caráter vintage e qualidades nostálgica
 - [Bit Crusher](#bit-crusher) - Cria sons de jogos retrô e digitais vintage
 - [Digital Error Emulator](#digital-error-emulator) - Simula vários erros de transmissão de áudio digital
 - [DSD64 IMD Simulator](#dsd64-imd-simulator) - Simula a distorção de intermodulação audível causada pelo ruído ultrassônico do DSD64
-- [Hum Generator](#hum-generator) - Gerador de ruído de zumbido de alta precisão
+- [Hum Generator](#hum-generator) - Adiciona ambiência controlável de hum elétrico para escuta vintage/lo-fi
 - [Noise Blender](#noise-blender) - Adiciona textura atmosférica de fundo
 - [Simple Jitter](#simple-jitter) - Cria imperfeições digitais vintage sutis
-- [Vinyl Artifacts](#vinyl-artifacts) - Simulação física de ruído de discos analógicos
+- [Vinyl Artifacts](#vinyl-artifacts) - Adiciona estalos, crackle, hiss, rumble e vazamento de ruído estéreo no estilo vinil
 
 ## Bit Crusher
 
@@ -49,23 +49,24 @@ Um efeito que recria o som de dispositivos digitais vintage como consoles de jog
   - Valores mais baixos: Mais retrô, menos claro
   - Valores mais altos: Efeito mais claro e sutil
 - **Bit Error** - Adiciona caráter de hardware vintage (0.00% a 10.00%)
-  - 0-1%: Calor vintage sutil
+  - 0%: Sem diferença de peso de bits do DAC; Random Seed não tem efeito audível
+  - 0.1-1%: Coloração digital sutil de DAC
   - 1-3%: Imperfeições clássicas de hardware
   - 3-10%: Caráter lo-fi criativo
 - **Random Seed** - Controla a unicidade das imperfeições (0 a 1000)
-  - Valores diferentes criam diferentes "personalidades" vintage
-  - O mesmo valor sempre reproduz o mesmo caráter
-  - Perfeito para encontrar e salvar seu som vintage favorito
+  - Muda o padrão fixo de imperfeição usado por Bit Error
+  - Só é audível quando Bit Error está acima de 0%
+  - O mesmo valor sempre recria o mesmo padrão de imperfeição
 
 ## Digital Error Emulator
 
-Um efeito que simula o som de vários erros de transmissão de áudio digital, desde glitches sutis de interface profissional até imperfeições de tocadores de CD vintage. Perfeito para adicionar caráter digital vintage ou criar experiências de audição únicas que lembram equipamentos de áudio digital clássicos.
+Um efeito que simula o som de erros de transmissão de áudio digital, de cliques discretos de interface a imperfeições de tocadores de CD vintage e quedas em áudio sem fio. Use quando quiser caráter digital nostálgico ou uma textura de glitch evidente na escuta.
 
 ### Guia de Caráter Sonoro
-- Glitches de Interface Digital Profissional:
+- Caráter Sutil de Reprodução Digital:
   - Simula artefatos de transmissão S/PDIF, AES3 e MADI
-  - Adiciona o caráter de equipamentos profissionais envelhecidos
-  - Perfeito para som de estúdio vintage
+  - Adiciona imperfeições digitais ocasionais e discretas
+  - Útil quando a reprodução limpa parece perfeita demais
 - Dropouts Digitais de Consumo:
   - Recria o comportamento de correção de erro de tocadores de CD clássicos
   - Simula glitches de interface de áudio USB
@@ -87,7 +88,7 @@ Um efeito que simula o som de vários erros de transmissão de áudio digital, d
   - Extremo (10^-4 a 10^-2): Efeitos experimentais criativos
   - Padrão: 10^-6 (equipamento de consumo típico)
 - **Mode** - Seleciona o tipo de transmissão digital a simular
-  - AES3/S-PDIF: Erros de bit de interface profissional com retenção de amostra
+  - AES3/S-PDIF: Erros de bit de interface digital com retenção de amostra
   - ADAT/TDIF/MADI: Erros de rajada multicanal (retenção ou silêncio)
   - HDMI/DP: Corrupção de linha de áudio de display ou silenciamento
   - USB/FireWire/Thunderbolt: Dropouts de microframe com interpolação
@@ -96,10 +97,10 @@ Um efeito que simula o som de vários erros de transmissão de áudio digital, d
   - WiSA: Erros de blocos FEC de alto-falantes sem fio
   - RF Systems: Silenciamento de radiofrequência e interferência
   - CD Audio: Simulação de correção de erro CIRC
-  - Padrão: CD Audio (mais familiar aos ouvintes de música)
-- **Reference Fs (kHz)** - Define a taxa de amostragem de referência para cálculos de timing
+  - Padrão: CD Audio — CIRC Error Correction (Interpolated)
+- **Reference Fs (kHz)** - Define a taxa de amostragem de referência usada apenas pelos modos Dante / AES67 / AVB de perda de pacotes para escalar o comprimento de pacote de 64/128/256 amostras
   - Taxas disponíveis: 44.1, 48, 88.2, 96, 176.4, 192 kHz
-  - Afeta a precisão do timing para modos de áudio de rede
+  - Outros modos usam timing próprio, fixo ou baseado na taxa de amostragem atual
   - Padrão: 48 kHz
 - **Wet Mix** - Controla a mistura entre áudio original e processado (0-100%)
   - Nota: Para simulação realista de erro digital, manter em 100%
@@ -108,7 +109,7 @@ Um efeito que simula o som de vários erros de transmissão de áudio digital, d
 
 ### Detalhes dos Modos
 
-**Interfaces Profissionais:**
+**Interfaces Digitais:**
 - AES3/S-PDIF: Erros de amostra única com retenção da amostra anterior
 - ADAT/TDIF/MADI: Erros de rajada de 32 amostras - reter últimas amostras boas ou silenciar
 - HDMI/DisplayPort: Corrupção de linha de 192 amostras com erros em nível de bit ou silenciamento completo
@@ -128,25 +129,25 @@ Um efeito que simula o som de vários erros de transmissão de áudio digital, d
 
 ### Configurações Recomendadas para Diferentes Estilos
 
-1. Caráter Sutil de Equipamento Profissional
-   - Modo: AES3/S-PDIF, BER: 10^-8, Fs: 48kHz, Wet: 100%
-   - Perfeito para: Adicionar envelhecimento sutil de equipamento profissional
+1. Caráter Sutil de Reprodução Digital
+   - Mode: AES3 / S-PDIF (I²S) — Bit Error (Hold), BER: 10^-8, Fs: 48kHz, Wet: 100%
+   - Perfeito para: Adicionar imperfeições digitais ocasionais e discretas
 
 2. Experiência Clássica de Tocador de CD
-   - Modo: CD Audio, BER: 10^-7, Fs: 44.1kHz, Wet: 100%
+   - Mode: CD Audio — CIRC Error Correction (Interpolated), BER: 10^-7, Fs: 44.1kHz, Wet: 100%
    - Perfeito para: Nostalgia de música digital dos anos 90
 
 3. Glitches de Streaming Moderno
-   - Modo: Dante/AES67 (128 samp), BER: 10^-6, Fs: 48kHz, Wet: 100%
+   - Mode: Dante / AES67 / AVB — UDP Drop (128 samp), BER: 10^-6, Fs: 48kHz, Wet: 100%
    - Perfeito para: Imperfeições da vida digital contemporânea
 
 4. Experiência de Audição Bluetooth
-   - Modo: Bluetooth A2DP, BER: 10^-6, Fs: 48kHz, Wet: 100%
+   - Mode: Bluetooth A2DP — Digital Transmission, BER: 10^-6, Fs: 48kHz, Wet: 100%
    - Perfeito para: Memórias de áudio sem fio
 
-5. Efeitos Experimentais Criativos
-   - Modo: RF Systems, BER: 10^-5, Fs: 48kHz, Wet: 100%
-   - Perfeito para: Sons experimentais únicos
+5. Textura de Queda Sem Fio
+   - Mode: WMAS / DECT / Axient — RF Squelch, BER: 10^-5, Fs: 48kHz, Wet: 100%
+   - Perfeito para: Interrupções evidentes no estilo rádio e textura de glitch
 
 Nota: Todas as recomendações usam 100% de Wet Mix para comportamento realista de erro digital. Valores de mix úmido mais baixos podem ser usados para efeitos criativos, mas não representam como erros digitais reais realmente ocorrem.
 
@@ -196,21 +197,21 @@ Parâmetros avançados / utilitários
 
 ## Hum Generator
 
-Um efeito que gera ruído de zumbido de energia elétrica de alta precisão e autenticidade com sua estrutura harmônica característica e instabilidades sutis. Perfeito para adicionar zumbido de fundo realista de equipamentos vintage, fontes de alimentação, ou criar aquela sensação autêntica de estar "conectado à rede" que muitas gravações clássicas possuem.
+Adiciona uma camada controlável de hum elétrico de 50/60 Hz para uma escuta vintage ou lo-fi. Use níveis baixos quando a reprodução limpa parecer estéril demais, ou aumente Level para um hum evidente, quase de efeito sonoro.
 
 ### Guia de Caráter Sonoro
 - Ambiente de Equipamento Vintage:
   - Recria o zumbido sutil de amplificadores e equipamentos clássicos
   - Adiciona o caráter de estar "conectado" à energia AC
-  - Cria autêntica atmosfera de estúdio vintage
+  - Cria uma atmosfera de reprodução vintage
 - Características de Fonte de Alimentação:
   - Simula diferentes tipos de ruído de fonte de alimentação
   - Recria características regionais da rede elétrica (50Hz vs 60Hz)
   - Adiciona caráter sutil de infraestrutura elétrica
 - Textura de Fundo:
   - Cria presença de fundo orgânica e de baixo nível
-  - Adiciona profundidade e "vida" a gravações digitais estéreis
-  - Perfeito para produções inspiradas em vintage
+  - Adiciona profundidade e "vida" a uma reprodução muito limpa
+  - Útil para uma escuta com clima vintage ou lo-fi
 
 ### Parâmetros
 - **Frequency** - Define a frequência fundamental do zumbido (10-120 Hz)
@@ -225,15 +226,15 @@ Um efeito que gera ruído de zumbido de energia elétrica de alta precisão e au
   - 0-30%: Zumbido quente e suave com harmônicos superiores mínimos
   - 30-70%: Conteúdo harmônico equilibrado típico de equipamentos reais
   - 70-100%: Zumbido brilhante e complexo com harmônicos superiores fortes
+  - No modo Dirty, valores mais altos de Harmonics também aumentam a distorção e a aspereza
 - **Tone** - Frequência de corte do filtro de modelagem tonal final (1.0-20.0 kHz)
   - 1-5 kHz: Caráter quente e abafado
   - 5-10 kHz: Tom natural tipo equipamento
   - 10-20 kHz: Caráter brilhante e presente
 - **Instability** - Quantidade de variação sutil de frequência e amplitude (0-10%)
   - 0%: Zumbido perfeitamente estável (precisão digital)
-  - 1-3%: Instabilidade sutil do mundo real
-  - 3-7%: Caráter notável de equipamento vintage
-  - 7-10%: Efeitos de modulação criativa
+  - 1-3%: Leve deriva natural
+  - 3-10%: Oscilação mais perceptível, mas ainda suave
 - **Level** - Nível de saída do sinal de zumbido (-80.0 a 0.0 dB)
   - -80 a -60 dB: Presença de fundo quase inaudível
   - -60 a -40 dB: Zumbido sutil mas perceptível
@@ -245,12 +246,12 @@ Um efeito que gera ruído de zumbido de energia elétrica de alta precisão e au
 1. Amplificador Vintage Sutil
    - Frequency: 50/60 Hz, Type: Standard, Harmonics: 25%
    - Tone: 8.0 kHz, Instability: 1.5%, Level: -54 dB
-   - Perfeito para: Adicionar caráter suave de amplificador vintage
+   - Perfeito para: Adicionar caráter suave de reprodução vintage
 
-2. Estúdio de Gravação Clássico
+2. Reprodução Vintage Clássica
    - Frequency: 60 Hz, Type: Rich, Harmonics: 45%
    - Tone: 6.0 kHz, Instability: 2.0%, Level: -48 dB
-   - Perfeito para: Atmosfera autêntica de estúdio da era analógica
+   - Perfeito para: Ambiência elétrica de fundo de equipamentos de reprodução antigos
 
 3. Equipamento Vintage com Válvulas
    - Frequency: 50 Hz, Type: Dirty, Harmonics: 60%
@@ -262,10 +263,10 @@ Um efeito que gera ruído de zumbido de energia elétrica de alta precisão e au
    - Tone: 10.0 kHz, Instability: 1.0%, Level: -60 dB
    - Perfeito para: Fundo realista de fonte de alimentação
 
-5. Efeitos Criativos de Zumbido
+5. Textura de Hum Mais Forte
    - Frequency: 40 Hz, Type: Dirty, Harmonics: 80%
    - Tone: 15.0 kHz, Instability: 6.0%, Level: -36 dB
-   - Perfeito para: Aplicações artísticas e experimentais
+   - Perfeito para: Uma textura de hum mais forte e audível
 
 ## Noise Blender
 
@@ -289,6 +290,7 @@ Um efeito que adiciona textura atmosférica de fundo à sua música, semelhante 
 - **Noise Type** - Escolhe o caráter da textura de fundo
   - White: Textura mais brilhante e presente
   - Pink: Som mais quente e natural
+  - Brown: Textura mais profunda e suave, com mais peso nos graves
 - **Level** - Controla quão perceptível é o efeito (-96dB a 0dB)
   - Muito Sutil (-96dB a -72dB): Apenas uma sugestão
   - Suave (-72dB a -48dB): Textura perceptível
@@ -325,7 +327,7 @@ Um efeito que adiciona variações sutis de tempo para criar aquele som digital 
 
 1. Quase Imperceptível
    - RMS Jitter: 1-5ps
-   - Perfeito para: Adicionar o mais sutil toque de calor analógico às gravações digitais
+   - Perfeito para: Fazer a reprodução parecer um pouco menos perfeitamente digital
 
 2. Caráter Clássico de CD Player
    - RMS Jitter: 50-100ps
@@ -340,12 +342,12 @@ Um efeito que adiciona variações sutis de tempo para criar aquele som digital 
    - Perfeito para: Criar o som de equipamentos digitais envelhecidos ou mal conservados
 
 5. Efeito Criativo de Oscilação
-   - RMS Jitter: 10-100µs (10000-100000ps)
+   - RMS Jitter: 10-100µs (0.01-0.1ms)
    - Perfeito para: Efeitos experimentais e modulação de pitch perceptível
 
 ## Vinyl Artifacts
 
-Um efeito que recria as características de ruído físico dos discos de vinil analógicos. Este plugin simula os vários artefatos que ocorrem ao reproduzir discos de vinil, desde o ruído de superfície até as características elétricas da cadeia de reprodução.
+Um efeito que adiciona artefatos de reprodução no estilo vinil, como pops, crackle, hiss, rumble e ruído de superfície reativo. Ele adiciona ruído de disco gerado à música; não altera o tom do sinal musical original como um modelo completo de toca-discos, cápsula ou pré de phono.
 
 ### Guia de Caráter Sonoro
 - Experiência de Disco de Vinil:
@@ -353,9 +355,9 @@ Um efeito que recria as características de ruído físico dos discos de vinil a
   - Adiciona o ruído de superfície característico e artefatos
   - Cria aquela sensação analógica aconchegante e nostálgica
 - Sistema de Reprodução Vintage:
-  - Simula a cadeia de reprodução analógica completa
-  - Inclui características de equalização RIAA
-  - Adiciona ruído reativo que responde à música
+  - Adiciona artefatos de reprodução gerados ao redor da música
+  - Modela o tom do ruído de vinil gerado
+  - Adiciona ruído reativo que pode responder à música
 - Textura Atmosférica:
   - Cria textura de fundo rica e orgânica
   - Adiciona profundidade e caráter às gravações digitais
@@ -386,18 +388,19 @@ Um efeito que recria as características de ruído físico dos discos de vinil a
   - -80 a -60 dB: Calor sutil nos graves
   - -60 a -40 dB: Ronco notável
   - -40 a 0 dB: Ronco pesado (configurações extremas)
-- **Crosstalk** - Controla o vazamento entre canais estéreo esquerdo e direito (0 a 100%)
-  - 0%: Separação estéreo perfeita
-  - 30-60%: Crosstalk realista de vinil
-  - 100%: Vazamento máximo entre canais
-- **Noise Profile** - Ajusta a resposta de frequência do ruído (0.0 a 10.0)
-  - 0: Reprodução da curva RIAA (resposta de frequência autêntica do vinil)
-  - 5: Resposta parcialmente corrigida
-  - 10: Resposta plana (bypassed)
-- **Wear** - Multiplicador mestre para a condição geral do disco (0 a 200%)
-  - 0-50%: Disco bem conservado
-  - 50-100%: Desgaste e idade normais
-  - 100-200%: Disco muito desgastado
+- **Crosstalk** - Mistura o ruído de artefatos gerado entre os canais esquerdo e direito; o sinal musical original mantém sua separação estéreo (0 a 100%)
+  - 0%: O ruído gerado mantém sua separação original entre canais
+  - 30-60%: Vazamento de ruído realista no estilo vinil
+  - 100%: O ruído gerado fica quase igual entre esquerda e direita
+- **Noise Profile** - Ajusta a resposta de frequência do ruído gerado (0.0 a 10.0)
+  - 0: Tom de ruído mais escuro e quente
+  - 5: Tom de ruído parcialmente modelado
+  - 10: Tom de ruído plano / modelagem tonal em bypass
+- **Wear** - Escala artefatos de desgaste de superfície, como pops, crackles e hiss (0 a 200%)
+  - 0-50%: Ruído de superfície mais limpo
+  - 50-100%: Desgaste normal da superfície
+  - 100-200%: Ruído de superfície muito desgastada
+  - Rumble, Crosstalk e Noise Profile são controlados separadamente
 - **React** - Quão responsivo o ruído é ao sinal de entrada (0 a 100%)
   - 0%: Níveis de ruído estáticos
   - 25-50%: Resposta moderada à música
@@ -418,7 +421,7 @@ Um efeito que recria as características de ruído físico dos discos de vinil a
    - Pops/min: 20, Pop Level: -48dB, Crackles/min: 200, Crackle Level: -48dB
    - Hiss: -48dB, Rumble: -60dB, Crosstalk: 30%, Noise Profile: 5.0
    - Wear: 25%, React: 20%, React Mode: Velocity, Mix: 100%
-   - Perfeito para: Adicionar aquecimento analógico suave
+   - Perfeito para: Adicionar textura suave de superfície de vinil
 
 2. Experiência de Vinil Clássica
    - Pops/min: 40, Pop Level: -36dB, Crackles/min: 400, Crackle Level: -36dB

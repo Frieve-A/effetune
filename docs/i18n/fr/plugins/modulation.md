@@ -1,10 +1,10 @@
 ---
-title: "Modulation Plugins - EffeTune"
-description: "Modulation effect plugins including Tremolo, Wow Flutter, Pitch Shifter, and Doppler Distortion."
-lang: en
+title: "Plugins Modulation - EffeTune"
+description: "Plugins d'effets de modulation incluant Tremolo, Wow Flutter, Pitch Shifter et Doppler Distortion."
+lang: fr
 ---
 
-# Modulation Plugins
+# Plugins Modulation
 
 Une collection de plugins qui ajoutent du mouvement et des variations à votre musique grâce aux effets de modulation. Ces effets peuvent rendre votre musique numérique plus organique et dynamique, améliorant votre expérience d'écoute avec des variations subtiles ou dramatiques du son.
 
@@ -21,26 +21,26 @@ Découvrez un effet audio unique qui apporte une touche de mouvement naturel à 
 
 ### Paramètres
 
-- **Coil Force (N)**  
-  Contrôle la force du mouvement simulé de la bobine du haut-parleur. Des valeurs plus élevées produisent une distorsion plus marquée.
+- **Coil Force (N / V)**
+  Contrôle avec quelle force le signal d'entrée entraîne le mouvement simulé de la bobine du haut-parleur. Des valeurs plus élevées produisent une distorsion Doppler plus marquée.
 
 - **Speaker Mass (kg)**  
   Simule le poids de la membrane du haut-parleur, influençant la reproduction naturelle du mouvement.  
-  - **Higher values:** Augmentent l'inertie, entraînant une réponse plus lente et des distorsions plus douces et subtiles.  
-  - **Lower values:** Réduisent l'inertie, provoquant un effet de modulation plus rapide et plus marqué.
+  - **Valeurs plus élevées :** Augmentent l'inertie, entraînant une réponse plus lente et des distorsions plus douces et subtiles.
+  - **Valeurs plus faibles :** Réduisent l'inertie, provoquant un effet de modulation plus rapide et plus marqué.
 
 - **Spring Constant (N/m)**  
   Détermine la rigidité de la suspension du haut-parleur. Une constante de ressort plus élevée produit une réponse plus nette et définie.
 
 - **Damping Factor (N·s/m)**  
   Ajuste la rapidité avec laquelle le mouvement simulé se stabilise, équilibrant un mouvement vif avec des transitions fluides.  
-  - **Higher values:** Conduisent à une stabilisation plus rapide, réduisant les oscillations et produisant un effet plus serré et contrôlé.  
-  - **Lower values:** Permettent au mouvement de persister plus longtemps, entraînant une fluctuation dynamique plus lâche et prolongée.
+  - **Valeurs plus élevées :** Conduisent à une stabilisation plus rapide, réduisant les oscillations et produisant un effet plus serré et contrôlé.
+  - **Valeurs plus faibles :** Permettent au mouvement de persister plus longtemps, entraînant une fluctuation dynamique plus lâche et prolongée.
 
 ### Réglages recommandés
 
 Pour une amélioration équilibrée et naturelle, commencez avec:
-- **Coil Force:** 8.0 N  
+- **Coil Force:** 8.0 N / V
 - **Speaker Mass:** 0.03 kg  
 - **Spring Constant:** 6000 N/m  
 - **Damping Factor:** 1.5 N·s/m  
@@ -87,25 +87,26 @@ Un effet qui ajoute des variations rythmiques du volume à votre musique, simila
   - Parfait pour une écoute ambiante et atmosphérique
 
 ### Paramètres
-- **Rate** - À quelle vitesse le volume change (0.1 to 20 Hz)
-  - Slower (0.1-2 Hz) : Pulsation douce et subtile
-  - Medium (2-6 Hz) : Effet tremolo classique
-  - Faster (6-20 Hz) : Effets dramatiques et saccadés
-- **Depth** - L'amplitude des variations de volume (0 to 12 dB)
-  - Subtle (0-3 dB) : Variations de volume légères
-  - Medium (3-6 dB) : Effet de pulsation perceptible
-  - Strong (6-12 dB) : Montées de volume dramatiques
+- **Rate** - À quelle vitesse le volume change (0,1 à 50 Hz)
+  - Plus lent (0.1-2 Hz) : Pulsation douce et subtile
+  - Moyen (2-6 Hz) : Effet tremolo classique
+  - Plus rapide (6-20 Hz) : Effets dramatiques et saccadés
+  - Très rapide (20-50 Hz) : Modulation de volume extrêmement rapide pouvant ajouter une texture rugueuse ou bourdonnante ; à utiliser avec retenue pour une écoute confortable
+- **Depth** - L'amplitude des variations de volume (0 à 12 dB)
+  - Subtil (0-3 dB) : Variations de volume légères
+  - Moyen (3-6 dB) : Effet de pulsation perceptible
+  - Fort (6-12 dB) : Montées de volume dramatiques
 - **Ch Phase** - Différence de phase entre les canaux stéréo (-180 à 180 degrés)
   - 0° : Les deux canaux pulsent ensemble (tremolo mono)
   - 90° ou -90° : Crée un effet de rotation tourbillonnant
   - 180° ou -180° : Les canaux pulsent en sens opposé (largeur stéréo maximale)
-- **Randomness** - Irrégularité des variations de volume (0 to 96 dB)
-  - Low : Pulsations plus prévisibles et régulières
-  - Medium : Variation vintage naturelle
-  - High : Son plus instable et organique
+- **Randomness** - Irrégularité des variations de volume (0 à 96 dB)
+  - Faible : Pulsations plus prévisibles et régulières
+  - Moyen : Variation vintage naturelle
+  - Élevé : Son plus instable et organique
 - **Randomness Cutoff** - Vitesse à laquelle les changements aléatoires se produisent (1 à 1000 Hz)
-  - Lower: Variations aléatoires plus lentes et douces
-  - Higher: Changements plus rapides et imprévisibles
+  - Plus bas : Variations aléatoires plus lentes et douces
+  - Plus haut : Changements plus rapides et imprévisibles
 - **Randomness Slope** - Contrôle l'intensité du filtrage aléatoire (-12 à 0 dB)
   - -12 dB: Variations aléatoires plus douces et progressives (effet plus subtil)
   - -6 dB: Réponse équilibrée
@@ -179,30 +180,30 @@ Un effet qui ajoute des variations subtiles de hauteur à votre musique, semblab
   - Parfait pour une écoute ambiante et expérimentale
 
 ### Paramètres
-- **Rate** - À quelle vitesse le son oscille (0.1 to 20 Hz)
-  - Slower (0.1-2 Hz) : Mouvement semblable à un disque vinyle
-  - Medium (2-6 Hz) : Flutter similaire à celui d'une cassette
-  - Faster (6-20 Hz) : Effets créatifs
-- **Depth** - L'amplitude des variations de hauteur (0 to 40 ms)
-  - Subtle (0-10 ms) : Caractère vintage subtil
-  - Medium (10-20 ms) : Sensation classique de cassette/vinyle
-  - Strong (20-40 ms) : Effets dramatiques
+- **Rate** - À quelle vitesse le son oscille (0,1 à 20 Hz)
+  - Plus lent (0.1-2 Hz) : Mouvement semblable à un disque vinyle
+  - Moyen (2-6 Hz) : Flutter similaire à celui d'une cassette
+  - Plus rapide (6-20 Hz) : Effets créatifs
+- **Depth** - Intensité de la modulation du temps de delay, qui fait osciller la hauteur (0 à 40 ms)
+  - Subtil (0-6 ms) : Caractère vintage doux
+  - Moyen (6-15 ms) : Sensation cassette/vinyle clairement audible
+  - Fort (15-40 ms) : Effets spéciaux dramatiques
 - **Ch Phase** - Différence de phase entre les canaux stéréo (-180 à 180 degrés)
   - 0° : Les deux canaux oscillent ensemble
   - 90° ou -90° : Crée un effet de rotation tourbillonnant
   - 180° ou -180° : Les canaux oscillent en sens opposé
-- **Randomness** - Irrégularité de l'oscillation (0 to 40 ms)
-  - Low : Mouvement plus prévisible et régulier
-  - Medium : Variation vintage naturelle
-  - High : Son plus instable, rappelant un équipement usé
-- **Randomness Cutoff** - Vitesse d'occurrence des variations aléatoires (0.1 to 20 Hz)
-  - Lower : Changements plus lents et doux
-  - Higher : Changements plus rapides et erratiques
+- **Randomness** - Irrégularité de l'oscillation (0 à 40 ms)
+  - Faible : Mouvement plus prévisible et régulier
+  - Moyen : Variation vintage naturelle
+  - Élevé : Son plus instable, rappelant un équipement usé
+- **Randomness Cutoff** - Vitesse d'occurrence des variations aléatoires (0,1 à 20 Hz)
+  - Plus bas : Changements plus lents et doux
+  - Plus haut : Changements plus rapides et erratiques
 - **Randomness Slope** - Contrôle l'intensité du filtrage aléatoire (-12 à 0 dB)
   - -12 dB: Variations aléatoires plus douces et progressives (effet plus subtil)
   - -6 dB: Réponse équilibrée
   - 0 dB: Variations aléatoires plus prononcées et accentuées (effet plus fort)
-- **Ch Sync** - Niveau de synchronisation de l'aléatoire entre les canaux (0 to 100%)
+- **Ch Sync** - Niveau de synchronisation de l'aléatoire entre les canaux (0 à 100%)
   - 0% : Chaque canal a une aléatoire indépendante
   - 50% : Synchronisation partielle entre les canaux
   - 100% : Les deux canaux partagent le même schéma d'aléatoire
@@ -210,17 +211,19 @@ Un effet qui ajoute des variations subtiles de hauteur à votre musique, semblab
 ### Réglages recommandés pour différents styles
 
 1. Expérience classique du vinyle
-   - Rate: 0.5-1 Hz (mouvement lent et doux)
-   - Depth: 15-20 ms
-   - Randomness: 10-15 ms
+   - Rate: 0.3-0.8 Hz (mouvement lent et doux)
+   - Depth: 2-6 ms
+   - Randomness: 1-4 ms
+   - Randomness Cutoff: 0.5-3 Hz
    - Ch Phase: 0°
    - Ch Sync: 100%
    - Parfait pour : Jazz, Classical, Vintage Rock
 2. Ambiance cassette rétro
-   - Rate: 4-5 Hz (flutter plus rapide)
-   - Depth: 10-15 ms
-   - Randomness: 15-20 ms
-   - Ch Phase: 0-45°
+   - Rate: 4-6 Hz (flutter plus rapide)
+   - Depth: 1-3 ms
+   - Randomness: 1-5 ms
+   - Randomness Cutoff: 3-8 Hz
+   - Ch Phase: 0-30°
    - Ch Sync: 80-100%
    - Parfait pour : Lo-Fi, Pop, Rock
 3. Ambiance onirique
@@ -231,9 +234,9 @@ Un effet qui ajoute des variations subtiles de hauteur à votre musique, semblab
    - Ch Sync: 50-70%
    - Parfait pour : Ambient, Electronic, Experimental
 4. Amélioration subtile
-   - Rate: 2-3 Hz
-   - Depth: 5-10 ms
-   - Randomness: 5-10 ms
+   - Rate: 1-2 Hz
+   - Depth: 2-5 ms
+   - Randomness: 1-3 ms
    - Ch Phase: 0°
    - Ch Sync: 100%
    - Parfait pour : Toute musique nécessitant un caractère vintage subtil
@@ -241,9 +244,10 @@ Un effet qui ajoute des variations subtiles de hauteur à votre musique, semblab
 ### Guide de démarrage rapide
 
 1. Pour un son vintage naturel :
-   - Commencez avec un Rate lent (1 Hz)
-   - Ajoutez un Depth modéré (15 ms)
-   - Ajoutez un peu de Randomness (10 ms)
+   - Commencez avec un Rate lent (0.5-1 Hz)
+   - Ajoutez un Depth léger (2-6 ms)
+   - Ajoutez un peu de Randomness (1-4 ms)
+   - Utilisez Randomness Cutoff autour de 0.5-3 Hz
    - Maintenez Ch Phase à 0° et Ch Sync à 100%
    - Ajustez selon vos préférences
 

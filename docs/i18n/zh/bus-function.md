@@ -1,7 +1,7 @@
 ---
-title: "Bus Function Guide - EffeTune"
-description: "Learn how to use the Bus feature in EffeTune for flexible audio routing and complex effect chains."
-lang: en
+title: "总线功能指南 - EffeTune"
+description: "了解如何在 EffeTune 中使用总线功能进行灵活的音频路由和复杂的效果链。"
+lang: zh
 ---
 
 # 如何使用总线功能

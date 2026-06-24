@@ -1,4 +1,21 @@
-<a class="skip-link" href="#main-content">Skip to content</a>
+{% assign header_lang = page_lang | default: page.lang | default: site.lang | default: 'en' %}
+{% if page.path contains 'docs/i18n/' %}
+  {% assign header_path_parts = page.path | split: '/' %}
+  {% assign header_lang = header_path_parts[2] %}
+{% endif %}
+{% assign header_ui = site.data.site_ui[header_lang] %}
+{% unless header_ui %}
+  {% assign header_ui = site.data.site_ui.en %}
+{% endunless %}
+{% assign header_docs_url = '/#documentation' %}
+{% assign header_plugins_url = '/docs/plugins/eq.html' %}
+{% assign header_faq_url = '/docs/faq.html' %}
+{% if header_lang != 'en' %}
+  {% assign header_docs_url = '/docs/i18n/' | append: header_lang | append: '/' %}
+  {% assign header_plugins_url = '/docs/i18n/' | append: header_lang | append: '/plugins/eq.html' %}
+  {% assign header_faq_url = '/docs/i18n/' | append: header_lang | append: '/faq.html' %}
+{% endif %}
+<a class="skip-link" href="#main-content">{{ header_ui.skip_to_content }}</a>
 <script type="application/json" id="site-language-data">
 [
   {% for language in site.data.languages %}
@@ -11,23 +28,26 @@
   {% endfor %}
 ]
 </script>
+<script type="application/json" id="site-ui-text">
+{{ header_ui.js | jsonify }}
+</script>
 <header class="site-header" data-site-header>
-  <a class="site-brand" href="{{ '/' | relative_url }}" aria-label="EffeTune home">
+  <a class="site-brand" href="{{ '/' | relative_url }}" aria-label="{{ header_ui.brand_home_label | escape }}">
     <img src="{{ '/images/icon_64x64.png' | relative_url }}" alt="" width="32" height="32">
     <span>Frieve EffeTune</span>
   </a>
   <div class="site-header-actions">
     <nav class="site-nav" id="site-navigation" data-site-nav>
-      <a href="{{ '/effetune.html' | relative_url }}">Open App</a>
-      <a href="{{ '/#documentation' | relative_url }}">Docs</a>
-      <a href="{{ '/docs/plugins/eq.html' | relative_url }}">Plugins</a>
-      <a href="{{ '/docs/faq.html' | relative_url }}">FAQ</a>
-      <a href="https://github.com/Frieve-A/effetune/releases/">Download</a>
-      <a href="https://github.com/Frieve-A/effetune">GitHub</a>
+      <a href="{{ '/effetune.html' | relative_url }}">{{ header_ui.nav_open_app }}</a>
+      <a href="{{ header_docs_url | relative_url }}">{{ header_ui.nav_docs }}</a>
+      <a href="{{ header_plugins_url | relative_url }}">{{ header_ui.nav_plugins }}</a>
+      <a href="{{ header_faq_url | relative_url }}">{{ header_ui.nav_faq }}</a>
+      <a href="https://github.com/Frieve-A/effetune/releases/">{{ header_ui.nav_download }}</a>
+      <a href="https://github.com/Frieve-A/effetune">{{ header_ui.nav_github }}</a>
     </nav>
     <div class="language-switcher">
-      <label class="visually-hidden" for="site-language-select">Language</label>
-      <select id="site-language-select" aria-label="Language" data-language-select>
+      <label class="visually-hidden" for="site-language-select">{{ header_ui.language_label }}</label>
+      <select id="site-language-select" aria-label="{{ header_ui.language_label | escape }}" data-language-select>
         {% for language in site.data.languages %}
           <option value="{{ language.code }}">{{ language.label }}</option>
         {% endfor %}

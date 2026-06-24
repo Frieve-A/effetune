@@ -1,11 +1,20 @@
+{% assign footer_lang = page_lang | default: page.lang | default: site.lang | default: 'en' %}
+{% if page.path contains 'docs/i18n/' %}
+  {% assign footer_path_parts = page.path | split: '/' %}
+  {% assign footer_lang = footer_path_parts[2] %}
+{% endif %}
+{% assign footer_ui = site.data.site_ui[footer_lang] %}
+{% unless footer_ui %}
+  {% assign footer_ui = site.data.site_ui.en %}
+{% endunless %}
 <footer class="site-footer">
   <div>
     <strong>Frieve EffeTune</strong>
-    <span>Real-time audio effect processor for browser and desktop listening systems.</span>
+    <span>{{ footer_ui.footer_tagline }}</span>
   </div>
-  <nav aria-label="Footer">
-    <a href="{{ '/effetune.html' | relative_url }}">Open App</a>
-    <a href="{{ '/docs/version-history.html' | relative_url }}">Version History</a>
-    <a href="https://github.com/Frieve-A/effetune">GitHub</a>
+  <nav aria-label="{{ footer_ui.footer_label | escape }}">
+    <a href="{{ '/effetune.html' | relative_url }}">{{ footer_ui.nav_open_app }}</a>
+    <a href="{{ '/docs/version-history.html' | relative_url }}">{{ footer_ui.version_history }}</a>
+    <a href="https://github.com/Frieve-A/effetune">{{ footer_ui.nav_github }}</a>
   </nav>
 </footer>

@@ -1,7 +1,7 @@
 ---
-title: "Bus Function Guide - EffeTune"
-description: "Learn how to use the Bus feature in EffeTune for flexible audio routing and complex effect chains."
-lang: en
+title: "Guía de la función Bus - EffeTune"
+description: "Aprende a usar la función Bus de EffeTune para rutas de audio flexibles y cadenas de efectos complejas."
+lang: es
 ---
 
 # Cómo usar la función Bus

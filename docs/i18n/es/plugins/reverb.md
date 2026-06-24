@@ -1,14 +1,14 @@
 ---
-title: "Reverb Plugins - EffeTune"
-description: "Reverb effect plugins including RS Reverb, Dattorro Plate Reverb, and FDN Reverb."
-lang: en
+title: "Plugins de reverb - EffeTune"
+description: "Plugins de reverb como RS Reverb, Dattorro Plate Reverb y FDN Reverb."
+lang: es
 ---
 
-# Reverb Plugins
+# Plugins de reverb
 
 Una colección de plugins que añaden espacio y atmósfera a tu música. Estos efectos pueden hacer que tu música suene como si estuviera siendo reproducida en diferentes ambientes, desde habitaciones íntimas hasta grandes salas de conciertos, mejorando tu experiencia de escucha con ambiente natural y profundidad.
 
-## Plugin List
+## Lista de Plugins
 
 - [Dattorro Plate Reverb](#dattorro-plate-reverb) - Reverb de placa clásico basado en el algoritmo Dattorro
 - [FDN Reverb](#fdn-reverb) - Reverb de Red de Retardo de Retroalimentación con matriz de difusión avanzada
@@ -22,23 +22,24 @@ Nota de enrutamiento: Dattorro Plate Reverb es un modelo de placa estéreo. Cuan
 
 ### Guía de Experiencia de Escucha
 - Sonido de Placa Exuberante:
-  - Carácter clásico de reverb de placa de estudio
+  - Carácter clásico de reverb de placa
   - Cola de reverb suave y densa sin artefactos metálicos
   - Hermoso brillo y calidez característicos de los reverbs de placa
 - Ambiente Versátil:
   - Desde mejora sutil de sala hasta salas expansivas
   - Funciona hermosamente con cualquier género musical
-  - Añade pulido profesional a las grabaciones
+  - Añade espacio y un acabado suave a la música
 - Movimiento Natural:
   - La modulación añade vida orgánica al reverb
   - Previene colas estáticas y artificiales
   - Crea un espacio vivo y respirante alrededor de tu música
 
-### Parameters
-- **Pre Delay** - Silencio inicial antes de que comience el reverb (0.0 a 100.0 ms)
+### Parámetros
+- **Pre Delay** - Silencio inicial antes de que comience el reverb (control de 0.0 a 100.0 ms; usa valores por debajo de 100.0 ms para un pre-delay efectivo)
   - 0-10ms: Reverb inmediata, sensación íntima
   - 10-30ms: Sensación natural de espacio
-  - 30-100ms: Crea impresión de espacios más grandes
+  - 30-99.9ms: Crea impresión de espacios más grandes
+  - Evita exactamente 100.0ms cuando quieras el pre-delay máximo; la implementación actual trata ese extremo como si no hubiera pre-delay efectivo
 - **Bandwidth** - Filtrado de señal de entrada (0.0 a 1.0)
   - Valores más bajos: Tono de entrada más oscuro y cálido
   - Valores más altos (cerca de 1.0): Entrada más brillante, frecuencia completa
@@ -131,7 +132,7 @@ Nota de enrutamiento: Dattorro Plate Reverb es un modelo de placa estéreo. Cuan
    - Confía en tus oídos para los ajustes finales
    - Los valores por defecto son un gran punto de partida
 
-¡El Dattorro Plate Reverb trae un reverb clásico de calidad profesional a tu experiencia de escucha. Su carácter suave y exuberante lo hace perfecto para mejorar cualquier grabación con un ambiente hermoso y natural!
+El Dattorro Plate Reverb aporta un ambiente clásico de estilo placa a tu experiencia de escucha. Su carácter suave y exuberante es útil para añadir espacio bello y natural a una grabación.
 
 ## FDN Reverb
 
@@ -153,7 +154,7 @@ Nota de enrutamiento: FDN Reverb es un modelo de reverb estéreo con un feedback
   - Control fino sobre el carácter y color del espacio
   - La modulación suave añade movimiento natural y vida
 
-### Parameters
+### Parámetros
 - **Reverb Time** - Cuánto dura el efecto de reverb (0.20 a 10.00 s)
   - Corto (0.2-1.0s): Decaimiento rápido y controlado para claridad
   - Medio (1.0-3.0s): Reverberación natural tipo habitación
@@ -170,10 +171,9 @@ Nota de enrutamiento: FDN Reverb es un modelo de reverb estéreo con un feedback
   - Valores más bajos: Carácter de reverb más ajustado y enfocado
   - Valores más altos: Calidad de sonido más espaciosa y abierta
   - Afecta las relaciones de tiempo fundamentales
-- **Delay Spread** - Cuánto varían los tiempos de retardo entre líneas (0.0 a 25.0 ms)
-  - Implementación: Cada línea de retardo se vuelve progresivamente más larga usando una curva de potencia (exponente 0.8)
-  - 0.0ms: Todas las líneas tienen el mismo tiempo base (patrones más regulares)
-  - Valores más altos: Patrones de reflexión más naturales e irregulares
+- **Delay Spread** - Añade variación progresiva de tiempo entre líneas de retardo encima de pequeños desplazamientos aleatorios por línea (0.0 a 25.0 ms)
+  - 0.0ms: Usa el retardo base más pequeños desplazamientos aleatorios de línea, por lo que las reflexiones siguen siendo ligeramente irregulares
+  - Valores más altos: Añaden más separación progresiva entre líneas para una cola más grande y menos regular
   - Añade variación realista encontrada en espacios acústicos reales
 - **HF Damp** - Cómo se desvanecen las altas frecuencias con el tiempo (0.0 a 12.0 dB/s)
   - 0.0: Sin amortiguación, sonido brillante durante todo el decaimiento
@@ -191,11 +191,10 @@ Nota de enrutamiento: FDN Reverb es un modelo de reverb estéreo con un feedback
   - 0.1-0.5Hz: Movimiento muy lento y suave
   - 1.0-2.0Hz: Variación de sonido natural
   - 3.0-5.0Hz: Modulación rápida y más obvia
-- **Diffusion** - Cuánto mezcla señales la matriz Hadamard (0 a 100%)
-  - Implementación: Controla la cantidad de mezcla matricial aplicada
-  - 0%: Mezcla mínima, patrones de eco más distintos
+- **Diffusion** - Controla cuánto del feedback mezclado vuelve a la red de retardo (0 a 100%)
+  - 0%: Desactiva la difusión de feedback; el sonido se vuelve mucho más escaso y la cola de reverb se reduce mucho
   - 50%: Difusión equilibrada para sonido natural
-  - 100%: Mezcla máxima para la densidad más suave
+  - 100%: Difusión de feedback máxima para la densidad más suave
 - **Wet Mix** - Cantidad de reverb añadida al sonido (0 a 100%)
   - 10-30%: Mejora espacial sutil
   - 30-60%: Presencia notable de reverb
@@ -203,11 +202,10 @@ Nota de enrutamiento: FDN Reverb es un modelo de reverb estéreo con un feedback
 - **Dry Mix** - Cantidad de señal original preservada (0 a 100%)
   - Usualmente mantenida al 100% para escucha normal
   - Puede reducirse para efectos atmosféricos especiales
-- **Stereo Width** - Qué tan amplia se extiende la reverb en estéreo (0 a 200%)
-  - Implementación: 0% = mono, 100% = estéreo normal, 200% = ancho exagerado
-  - 0%: La reverb aparece en el centro (mono)
-  - 100%: Extensión estéreo natural
-  - 200%: Imagen estéreo extra-ancha
+- **Stereo Width** - Mezcla la reverb wet desde mono hacia taps wet izquierdo/derecho separados (0 a 200%)
+  - 0%: La reverb wet aparece en el centro (mono)
+  - 100%: Ancho estéreo wet moderado por defecto
+  - 200%: Separación completa de taps wet izquierdo/derecho, no amplificación extra del componente lateral
 
 ### Configuraciones Recomendadas para Diferentes Experiencias de Escucha
 
@@ -261,7 +259,7 @@ Nota de enrutamiento: FDN Reverb es un modelo de reverb estéreo con un feedback
    - Mantén Dry Mix al 100% para escucha normal
    - Ajusta finamente basado en tu música y preferencias
 
-¡El FDN Reverb transforma tu experiencia de escucha añadiendo espacios acústicos realistas con hermosa reverberación de sonido natural a cualquier grabación. Perfecto para amantes de la música que quieren mejorar sus pistas favoritas con hermosa reverberación de sonido natural!
+FDN Reverb transforma tu experiencia de escucha añadiendo espacios acústicos realistas a cualquier grabación. Es útil para quienes quieren realzar sus pistas favoritas con una reverberación bella y natural.
 
 ## RS Reverb
 
@@ -281,11 +279,10 @@ Un efecto que puede transportar tu música a diferentes espacios, desde habitaci
   - Perfecto para música ambiental y atmosférica
   - Crea paisajes sonoros cautivadores
 
-### Parameters
-- **Pre-Delay** - Controla qué tan rápido comienza el efecto espacial (0 a 50 ms)
-  - Valores más bajos: Sensación inmediata e íntima
-  - Valores más altos: Mayor sensación de distancia
-  - Comienza con 10ms para sonido natural
+### Parámetros
+- **Pre-Delay** - Control almacenado y mostrado (0 a 50 ms)
+  - En la implementación actual, este valor no se usa en el procesamiento de la reverb
+  - Cambiarlo no altera la distancia ni la profundidad; usa Room Size, Reverb Time y Mix para cambios espaciales audibles
 - **Room Size** - Establece qué tan grande se siente el espacio (2.0 a 50.0 m)
   - Pequeño (2-5m): Sensación de habitación acogedora
   - Medio (5-15m): Atmósfera de sala en vivo
@@ -358,7 +355,7 @@ Un efecto que puede transportar tu música a diferentes espacios, desde habitaci
    - Establece Density y Diffusion para textura
 
 3. Ajusta Finamente el Efecto
-   - Añade Pre-Delay para más profundidad
+   - Usa Room Size y Reverb Time para la profundidad; el valor del control Pre-Delay no se refleja actualmente en el procesamiento
    - Ajusta Mix para equilibrio final
    - Confía en tus oídos y ajusta al gusto
 

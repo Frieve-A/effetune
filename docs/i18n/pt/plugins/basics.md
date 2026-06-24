@@ -1,29 +1,29 @@
 ---
-title: "Basic Plugins - EffeTune"
-description: "Essential audio plugins including Volume, Mute, Stereo Balance, Matrix routing, and more."
-lang: en
+title: "Plugins Básicos - EffeTune"
+description: "Plugins essenciais de áudio, incluindo Volume, Mute, Stereo Balance, roteamento Matrix e outros."
+lang: pt
 ---
 
-# Basic Audio Plugins
+# Plugins Básicos de Áudio
 
 Uma coleção de ferramentas essenciais para ajustar os aspectos fundamentais da reprodução da sua música. Esses plugins ajudam você a controlar o volume, o equilíbrio e outros aspectos básicos da sua experiência auditiva.
 
 ## Lista de Plugins
 
-* [Channel Divider](#channel-divider) - Divide o áudio em bandas de frequência por múltiplos canais
-* [DC Offset](#dc-offset) - Ajuda a corrigir áudio que soa desequilibrado
+* [Channel Divider](#channel-divider) - Divide áudio estéreo em bandas de frequência por pares de saída estéreo
+* [DC Offset](#dc-offset) - Adiciona ou corrige um offset DC constante
 * [Matrix](#matrix) - Roteia e mistura canais de áudio com controle flexível
 * [MultiChannel Panel](#multichannel-panel) - Controla múltiplos canais de áudio com configurações individuais
 * [Mute](#mute) - Silencia a saída de áudio
-* [Polarity Inversion](#polarity-inversion) - Pode melhorar como a música estéreo soa
+* [Polarity Inversion](#polarity-inversion) - Inverte a polaridade do sinal para correção ou casos especiais de roteamento
 * [Stereo Balance](#stereo-balance) - Ajusta o equilíbrio esquerdo-direito da sua música
 * [Volume](#volume) - Controla o quão alto a música é reproduzida
 
 ## Channel Divider
 
-Uma ferramenta especializada que divide seu sinal estéreo em bandas de frequência separadas e direciona cada banda para diferentes canais de saída. Perfeita para sistemas multicanal ou configurações de crossover personalizadas.
+Uma ferramenta especializada que divide seu sinal estéreo em bandas de frequência separadas e direciona cada banda para um par de saída estéreo diferente. É útil em sistemas com vários amplificadores, vários alto-falantes ou crossovers personalizados para reprodução.
 
-Para usar este efeito, você precisa usar o aplicativo para desktop, definir o número de canais de saída nas configurações de áudio para 4 ou mais e definir o canal no roteamento de efeitos para "Tudo".
+Para usar este efeito, você precisa usar o aplicativo desktop, definir o número de canais de saída nas configurações de áudio como 4, 6 ou 8 conforme a quantidade de bandas, e definir o canal no roteamento de bus do efeito como "All".
 
 ### Quando Usar
 
@@ -35,15 +35,18 @@ Para usar este efeito, você precisa usar o aplicativo para desktop, definir o n
 
 * **Band Count** - Número de bandas de frequência a serem criadas (2-4 bandas)
 
-  * 2 bandas: divisão Graves/Agudos
-  * 3 bandas: divisão Graves/Médias/Agudos
-  * 4 bandas: divisão Graves/Graves-Médias/Médias-Agudos/Agudos
+  * 2 bandas: divisão Graves/Agudos, exigindo 4 canais de saída
+  * 3 bandas: divisão Graves/Médias/Agudos, exigindo 6 canais de saída
+  * 4 bandas: divisão Graves/Graves-Médias/Médias-Agudos/Agudos, exigindo 8 canais de saída
+  * Quantidades maiores de bandas ficam indisponíveis quando a contagem de canais de saída selecionada é baixa demais
 
 * **Crossover Frequencies** - Define onde o áudio é dividido entre as bandas
 
   * F1: Primeiro ponto de crossover
   * F2: Segundo ponto de crossover (para 3 ou mais bandas)
   * F3: Terceiro ponto de crossover (para 4 bandas)
+  * Cada crossover pode ser ajustado de 10 Hz a 40000 Hz
+  * O plugin mantém F1, F2 e F3 em ordem crescente, com pelo menos 1 Hz de separação
 
 * **Slopes** - Controlam o quão abruptamente as bandas são separadas
 
@@ -55,36 +58,39 @@ Para usar este efeito, você precisa usar o aplicativo para desktop, definir o n
 
 * Processa apenas os dois primeiros canais de entrada
 * Os canais de saída devem ser múltiplos de 2 (4, 6 ou 8)
+* Cada banda preserva o par estéreo original: no modo de 2 bandas, Low sai nos canais 1-2 e High nos canais 3-4; no modo de 3 bandas, são usados os canais 1-2, 3-4 e 5-6; no modo de 4 bandas, são usados os canais 1-2, 3-4, 5-6 e 7-8
 * Utiliza filtros de crossover Linkwitz-Riley de alta qualidade
 * Gráfico de resposta em frequência visual para configuração fácil
 
 ## DC Offset
 
-Uma ferramenta que pode ajudar a corrigir áudio que soa desequilibrado ou estranho. A maioria dos ouvintes não precisará usar isso com frequência, mas é útil quando você encontrar áudio que não soe corretamente.
+Uma ferramenta para corrigir um sinal cuja forma de onda está deslocada em relação à linha zero. A maioria dos ouvintes deve deixar em 0.0, mas ela pode ajudar com arquivos ou cadeias de processamento incomuns que contenham offset DC.
 
 ### Quando Usar
 
-* Se a música soar incomumente desequilibrada
-* Quando um canal parecer mais alto do que deveria
-* Se outros efeitos não estiverem funcionando como esperado
+* Quando o áudio tem um viés DC constante ou causa cliques/problemas de headroom depois de outros processamentos
+* Quando uma ferramenta de diagnóstico ou medidor mostra que a forma de onda está deslocada em relação a zero
+* Deixe em 0.0 para audição normal
 
 ### Parâmetros
 
-* **Offset** - Ajusta o equilíbrio de áudio (-1.0 a +1.0)
+* **Offset** - Adiciona um valor constante a cada amostra (-1.0 a +1.0)
 
-  * 0.0: Configuração padrão
-  * Ajuste se algo soar estranho
-  * Pequenos ajustes geralmente funcionam melhor
+  * 0.0: Sem offset
+  * Valores positivos deslocam o sinal para cima
+  * Valores negativos deslocam o sinal para baixo
+  * Use ajustes bem pequenos quando uma correção for necessária
 
 ## Matrix
 
-Uma poderosa ferramenta de roteamento de canais que permite criar caminhos de sinal personalizados entre canais de entrada e saída. Oferece flexibilidade total em como os sinais de áudio são conectados e mixados.
+Uma ferramenta de roteamento de canais para corrigir layouts incomuns de alto-falantes ou fones, trocar canais, combinar canais ou enviar um canal para mais de uma saída disponível.
 
 ### Quando Usar
 
 * Para criar roteamentos personalizados entre canais
 * Quando precisar mixar ou dividir sinais de maneiras específicas
-* Para design de som criativo usando interações de canais
+* Quando a reprodução esquerda/direita ou multicanal está saindo dos alto-falantes errados
+* Para combinar estéreo em mono ou duplicar um canal para outra saída disponível
 
 ### Recursos
 
@@ -99,13 +105,15 @@ Uma poderosa ferramenta de roteamento de canais que permite criar caminhos de si
 * Conexões ativas permitem que o sinal flua entre canais
 * A opção de inversão de fase reverte a polaridade do sinal
 * Múltiplas conexões de entrada para uma saída são mixadas juntas
+* Quando várias entradas são enviadas para a mesma saída, seus níveis são somados, então talvez seja necessário reduzir o volume
+* Matrix não cria canais de saída extras por conta própria; ele roteia áudio dentro dos canais que já estão disponíveis
 
 ### Aplicações Práticas
 
-* Configurações personalizadas de downmixing ou upmixing
-* Isolamento ou combinação de canais específicos
-* Criando relações de fase entre canais
-* Resolvendo requisitos complexos de roteamento
+* Downmixing, troca de canais ou roteamento personalizado dentro dos canais disponíveis
+* Combinar esquerda e direita em mono
+* Duplicar um canal para outra saída disponível
+* Corrigir layouts multicanal incomuns na reprodução
 
 ## MultiChannel Panel
 
@@ -164,10 +172,10 @@ Um painel de controle abrangente para gerenciar múltiplos canais de áudio indi
 
 ### Aplicações Práticas
 
-* Balanceamento de sistemas de som surround
-* Criação de mixagens personalizadas para fones de ouvido
-* Alinhamento temporal de configurações multi-microfone
-* Monitoramento e ajuste de fontes de áudio multicanal
+* Balanceamento de reprodução surround ou com vários alto-falantes
+* Igualar o tempo de chegada dos alto-falantes quando eles estão a distâncias diferentes
+* Silenciar ou colocar alto-falantes individuais em solo temporariamente durante a configuração
+* Vincular pares estéreo ou grupos de alto-falantes para ajustes mais fáceis
 
 ## Mute
 
@@ -181,15 +189,15 @@ Uma ferramenta simples que silencia toda saída de áudio preenchendo o buffer c
 
 ## Polarity Inversion
 
-Uma ferramenta que pode melhorar como a música estéreo soa em certas situações. É como "inverter" a onda de áudio para potencialmente torná-la melhor.
+Uma ferramenta que inverte a polaridade do sinal de áudio. Inverter todos os canais geralmente não muda o que você ouve por si só, mas pode ajudar quando um alto-falante, cabo ou canal parece estar conectado com polaridade oposta.
 
-Você também pode inverter a polaridade de apenas canais específicos, limitando os canais a serem processados nas configurações comuns do efeito.
+Para corrigir uma suspeita de polaridade invertida entre esquerda/direita ou em um sistema multicanal, limite os canais processados nas configurações comuns de roteamento do efeito e inverta apenas o canal afetado.
 
 ### Quando Usar
 
-* Quando a música estéreo soar "vazia" ou "estranha"
-* Se combinado com outros efeitos estéreo
-* Ao tentar melhorar a espacialização estéreo
+* Quando a imagem central soa fraca, oca ou espalhada porque um canal pode estar com polaridade oposta
+* Ao verificar ou corrigir a polaridade de alto-falantes, cabos ou canais em um sistema de reprodução
+* Ao combinar com roteamento ou efeitos estéreo que precisam da polaridade de um canal invertida
 
 ## Stereo Balance
 

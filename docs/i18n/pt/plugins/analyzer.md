@@ -1,7 +1,7 @@
 ---
-title: "Analyzer Plugins - EffeTune"
-description: "Audio analysis plugins including Level Meter, Oscilloscope, Spectrogram, Spectrum Analyzer, and Stereo Meter."
-lang: en
+title: "Plugins de Análise - EffeTune"
+description: "Plugins de análise de áudio, incluindo Level Meter, Oscilloscope, Spectrogram, Spectrum Analyzer e Stereo Meter."
+lang: pt
 ---
 
 # Plugins de Análise
@@ -10,7 +10,7 @@ Uma coleção de plugins que permitem visualizar sua música de maneiras fascina
 
 ## Lista de Plugins
 
-- [Level Meter](#level-meter) - Mostra o volume da música
+- [Level Meter](#level-meter) - Mostra o nível do sinal digital e possível clipping
 - [Oscilloscope](#oscilloscope) - Exibe visualização da forma de onda em tempo real
 - [Spectrogram](#spectrogram) - Cria padrões visuais bonitos a partir da sua música
 - [Spectrum Analyzer](#spectrum-analyzer) - Mostra as diferentes frequências na sua música
@@ -18,25 +18,24 @@ Uma coleção de plugins que permitem visualizar sua música de maneiras fascina
 
 ## Level Meter
 
-Um display visual que mostra em tempo real o volume da sua música. Ajuda você a garantir que está ouvindo em níveis confortáveis e evitar qualquer distorção causada por volume muito alto.
+Um display visual que mostra em tempo real o nível digital do sinal da música. Ele ajuda a conferir os níveis depois de aplicar efeitos e a identificar possível clipping antes que vire distorção audível.
 
 ### Guia de Visualização
-- O medidor se move para cima e para baixo com o volume da música
-- Quanto mais alto no medidor, mais alto o som
-- O marcador vermelho mostra o nível mais alto recente
-- Aviso vermelho no topo indica que o volume pode estar muito alto
-- Para uma audição confortável, mantenha os níveis na faixa média
+- A barra horizontal se estende mais para a direita conforme o nível do sinal fica mais alto
+- O marcador branco mostra por alguns instantes o nível mais alto recente
+- OVERLOAD significa que o sinal passou da faixa digital segura e pode distorcer
+- Para uma reprodução limpa, evite níveis vermelhos frequentes ou avisos de OVERLOAD; ajuste o volume real de audição no seu dispositivo
 
 ## Oscilloscope
 
-Um osciloscópio profissional que exibe formas de onda de áudio em tempo real, ajudando você a visualizar a forma real das suas ondas sonoras. Possui funcionalidade de trigger para exibição estável da forma de onda, facilitando a análise de sinais periódicos e transientes.
+Mostra a forma da onda sonora em tempo real, para você ver batidas, ataques rápidos e mudanças de volume enquanto escuta. As configurações de trigger podem estabilizar a visualização quando a forma de onda se repete.
 
 ### Guia de Visualização
 - Eixo horizontal mostra o tempo (milissegundos)
-- Eixo vertical mostra a amplitude (-1 a 1)
+- Eixo vertical mostra a amplitude normalizada; a faixa visível muda com Display Level e Vertical Offset
 - Linha verde traça a forma de onda real
 - Linhas de grade ajudam a medir valores de tempo e amplitude
-- Ponto de trigger marca onde a captura da forma de onda começa
+- As configurações de trigger determinam onde a captura da forma de onda começa; não há um marcador separado
 
 ### Parâmetros
 - **Display Time** - Quanto tempo mostrar (1 a 100 ms)
@@ -56,11 +55,11 @@ Um osciloscópio profissional que exibe formas de onda de áudio em tempo real, 
 - **Vertical Offset** - Desloca a forma de onda para cima/baixo (-1 a 1)
 
 ### Nota sobre a Exibição da Forma de Onda
-A forma de onda exibida usa interpolação linear entre pontos de amostra para visualização suave. Isso significa que o sinal de áudio real entre as amostras pode diferir do que é mostrado. Para uma representação mais precisa, especialmente ao analisar conteúdo de alta frequência, considere usar taxas de amostragem mais altas (96kHz ou superior).
+A forma de onda exibida usa interpolação linear entre pontos de amostra para suavizar a visualização. Use-a como guia visual, não como ferramenta de medição exata.
 
 ## Spectrogram
 
-Cria padrões coloridos e bonitos que mostram como sua música muda ao longo do tempo. É como ver uma pintura da sua música, onde diferentes cores representam diferentes sons e frequências.
+Cria padrões coloridos que mostram como sua música muda ao longo do tempo. As cores indicam a intensidade de cada som, enquanto a posição vertical indica a frequência.
 
 ### Guia de Visualização
 - As cores mostram a intensidade de diferentes frequências:
@@ -83,9 +82,9 @@ Cria padrões coloridos e bonitos que mostram como sua música muda ao longo do 
 - **DB Range** - Quão vibrantes são as cores (-144dB a -48dB)
   - Números menores: Veja mais detalhes sutis
   - Números maiores: Foque nos sons principais
-- **Points** - Quão detalhados são os padrões (256 a 16384)
-  - Números maiores: Padrões mais precisos
-  - Números menores: Visuais mais suaves
+- **Points** - Tamanho de FFT usado na visualização (256 a 16384)
+  - Números maiores: Mais detalhe de frequência, mas atualização temporal mais lenta
+  - Números menores: Movimento mais rápido, mas menos detalhe de frequência
 - O analisador usa a média dos canais esquerdo e direito. A entrada mono é analisada diretamente.
 
 ## Spectrum Analyzer
@@ -97,6 +96,8 @@ Cria uma exibição visual em tempo real das frequências da sua música, dos gr
 - Meio mostra frequências principais (vocais, guitarras, piano)
 - Lado direito mostra frequências altas (pratos, brilho, ar)
 - Picos mais altos significam presença mais forte dessas frequências
+- A linha verde mais escura mostra o som atual
+- A linha verde mais clara retém brevemente os picos recentes, para você ver sons fortes que acabaram de passar
 - Observe como diferentes instrumentos criam padrões diferentes
 
 ### O Que Você Pode Ver
@@ -109,9 +110,9 @@ Cria uma exibição visual em tempo real das frequências da sua música, dos gr
 - **DB Range** - Quão sensível é o display (-144dB a -48dB)
   - Números menores: Veja mais detalhes sutis
   - Números maiores: Foque nos sons principais
-- **Points** - Quão detalhado é o display (256 a 16384)
-  - Números maiores: Mais detalhes precisos
-  - Números menores: Movimento mais suave
+- **Points** - O quanto a visualização separa frequências próximas (256 a 16384)
+  - Números maiores: Mais detalhe de frequência, com atualizações mais lentas
+  - Números menores: Atualizações mais rápidas, com menos detalhe de frequência
 - O analisador usa a média dos canais esquerdo e direito. A entrada mono é analisada diretamente.
 
 ### Formas Divertidas de Usar Essas Ferramentas
@@ -127,7 +128,7 @@ Cria uma exibição visual em tempo real das frequências da sua música, dos gr
    - Observe como a bateria cria padrões nítidos
 
 3. Melhorando Sua Experiência
-   - Use o Level Meter para encontrar volumes confortáveis de audição
+   - Use o Level Meter para conferir os picos do sinal depois de adicionar efeitos
    - Observe o Spectrum Analyzer dançar com a música
    - Crie um show de luzes visual com o Spectrogram
 
@@ -137,16 +138,17 @@ Uma ferramenta fascinante de visualização que permite ver como sua música cri
 
 ### Guia de Visualização
 - **Display em Diamante** - A janela principal onde a música ganha vida:
-  - Centro: Quando o som está perfeitamente balanceado
-  - Cima/Baixo: Quando a música preenche uniformemente ambos os alto-falantes
-  - Esquerda/Direita: Quando o som vem mais de um alto-falante
+  - Centro: Momentos muito silenciosos ou em que o sinal combinado fica perto de zero
+  - Cima/Baixo: Som compartilhado pelos canais esquerdo e direito, como conteúdo centralizado ou próximo de mono
+  - Esquerda/Direita: Diferença ou conteúdo fora de fase entre os canais
+  - Sons muito mais fortes de um lado podem aparecer perto dos cantos rotulados
   - Pontos verdes dançam com a música atual
   - Linha branca traça os picos musicais
-- **Barra de Movimento** (Lado esquerdo)
-  - Mostra como seus alto-falantes trabalham juntos
-  - Topo (+1.0): Ambos os alto-falantes tocando o mesmo som
-  - Meio (0.0): Alto-falantes criando um bom efeito estéreo
-  - Base (-1.0): Alto-falantes criando efeitos especiais
+- **Correlation Bar** (lado esquerdo)
+  - Mostra a correlação entre os canais esquerdo e direito
+  - Topo (+1.0): Esquerda e direita são quase iguais, normalmente soando centralizadas
+  - Meio (0.0): Relação fraca entre canais, comum em ambiências amplas ou conteúdo esquerdo/direito pouco relacionado
+  - Base (-1.0): Esquerda e direita têm polaridade quase oposta, o que pode soar fraco em alto-falantes
 - **Barra de Balanço** (Base)
   - Mostra se um alto-falante está mais alto que o outro
   - Centro: Música igualmente alta em ambos os alto-falantes
@@ -158,10 +160,10 @@ Uma ferramenta fascinante de visualização que permite ver como sua música cri
 - **Som Espacial**: Atividade espalhada por todo o display
 - **Efeitos Especiais**: Padrões interessantes nos cantos
 - **Balanço dos Alto-falantes**: Para onde a barra inferior aponta
-- **Movimento do Som**: Altura da barra esquerda
+- **Correlação dos Canais**: O que a barra de correlação à esquerda mostra
 
 ### Parâmetros
-- **Window Time** (10-1000 ms)
+- **Window** (10-1000 ms) - Quanto áudio recente aparece na visualização
   - Valores menores: Veja mudanças musicais rápidas
   - Valores maiores: Veja padrões sonoros gerais
   - Padrão: 100 ms funciona bem para a maioria das músicas

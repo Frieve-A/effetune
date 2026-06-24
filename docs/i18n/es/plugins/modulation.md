@@ -1,10 +1,10 @@
 ---
-title: "Modulation Plugins - EffeTune"
-description: "Modulation effect plugins including Tremolo, Wow Flutter, Pitch Shifter, and Doppler Distortion."
-lang: en
+title: "Plugins de modulación - EffeTune"
+description: "Plugins de modulación como Tremolo, Wow Flutter, Pitch Shifter y Doppler Distortion."
+lang: es
 ---
 
-# Modulation Plugins
+# Plugins de modulación
 
 Una colección de plugins que añaden movimiento y variación a tu música mediante efectos de modulación. Estos efectos pueden hacer que tu música digital se sienta más orgánica y dinámica, mejorando tu experiencia auditiva con variaciones sutiles o dramáticas en el sonido.
 
@@ -21,7 +21,7 @@ Experimenta un efecto de audio único que aporta un toque de movimiento natural 
 
 ### Parámetros
 
-- **Coil Force (N)**  
+- **Coil Force (N / V)**
   Controla la fuerza del movimiento simulado de la bobina del altavoz. Los valores más altos producen una distorsión más pronunciada.
 
 - **Speaker Mass (kg)**  
@@ -40,7 +40,7 @@ Experimenta un efecto de audio único que aporta un toque de movimiento natural 
 ### Configuración recomendada
 
 Para una mejora equilibrada y natural, comienza con:
-- **Coil Force:** 8.0 N  
+- **Coil Force:** 8.0 N / V
 - **Speaker Mass:** 0.03 kg  
 - **Spring Constant:** 6000 N/m  
 - **Damping Factor:** 1.5 N·s/m  
@@ -87,10 +87,11 @@ Un efecto que añade variaciones rítmicas en el volumen a tu música, similar a
   - Perfecto para música ambiental y de atmósfera
 
 ### Parámetros
-- **Rate** - La velocidad a la que cambia el volumen (0.1 a 20 Hz)
+- **Rate** - La velocidad a la que cambia el volumen (0.1 a 50 Hz)
   - Más lento (0.1-2 Hz): Pulsación suave y sutil
   - Medio (2-6 Hz): Efecto de tremolo clásico
   - Más rápido (6-20 Hz): Efectos dramáticos y entrecortados
+  - Muy rápido (20-50 Hz): modulación de volumen extremadamente rápida que puede añadir una textura áspera o zumbante; úsala con moderación para una escucha cómoda
 - **Depth** - La magnitud del cambio de volumen (0 a 12 dB)
   - Sutil (0-3 dB): Variaciones suaves de volumen
   - Medio (3-6 dB): Efecto de pulsación notable
@@ -104,8 +105,8 @@ Un efecto que añade variaciones rítmicas en el volumen a tu música, similar a
   - Medio: Variación vintage natural
   - Alto: Sonido más inestable y orgánico
 - **Randomness Cutoff** - Qué tan rápido ocurren los cambios aleatorios (1 a 1000 Hz)
-  - Lower: Variaciones aleatorias más lentas y suaves
-  - Higher: Cambios más rápidos e impredecibles
+  - Más bajo: Variaciones aleatorias más lentas y suaves
+  - Más alto: Cambios más rápidos e impredecibles
 - **Randomness Slope** - Controla la intensidad del filtrado de aleatoriedad (-12 a 0 dB)
   - -12 dB: Variaciones aleatorias más suaves y graduales (efecto más sutil)
   - -6 dB: Respuesta equilibrada
@@ -117,33 +118,33 @@ Un efecto que añade variaciones rítmicas en el volumen a tu música, similar a
 
 ### Configuraciones Recomendadas para Diferentes Estilos
 
-1. Classic Guitar Amp Tremolo
+1. Tremolo clásico de amplificador de guitarra
    - Rate: 4-6 Hz (velocidad media)
    - Depth: 6-8 dB
    - Ch Phase: 0° (mono)
    - Randomness: 0-5 dB
-   - Perfect for: Blues, Rock, Surf Music
+   - Perfecto para: Blues, rock, surf
 
-2. Stereo Psychedelic Effect
+2. Efecto psicodélico estéreo
    - Rate: 2-4 Hz
    - Depth: 4-6 dB
    - Ch Phase: 180° (canales opuestos)
    - Randomness: 10-20 dB
-   - Perfect for: Rock psicodélico, Electrónica, Experimental
+   - Perfecto para: Rock psicodélico, electrónica, experimental
 
-3. Subtle Enhancement
+3. Mejora sutil
    - Rate: 1-2 Hz
    - Depth: 2-3 dB
    - Ch Phase: 0-45°
    - Randomness: 5-10 dB
-   - Perfect for: Cualquier música que requiera un movimiento sutil
+   - Perfecto para: Cualquier música que necesite un movimiento sutil
 
-4. Dramatic Pulsing
+4. Pulsación dramática
    - Rate: 8-12 Hz
    - Depth: 8-12 dB
    - Ch Phase: 90°
    - Randomness: 20-30 dB
-   - Perfect for: Electrónica, Dance, Ambient
+   - Perfecto para: Electrónica, dance, ambient
 
 ### Guía Rápida de Inicio
 
@@ -183,10 +184,10 @@ Un efecto que añade sutiles variaciones en el tono a tu música, similar al son
   - Más lento (0.1-2 Hz): Movimiento similar al de un disco de vinilo
   - Medio (2-6 Hz): Flutter similar al de un casete
   - Más rápido (6-20 Hz): Efectos creativos
-- **Depth** - La magnitud del cambio de tono (0 a 40 ms)
-  - Sutil (0-10 ms): Carácter vintage suave
-  - Medio (10-20 ms): Sensación clásica de casete/vinilo
-  - Fuerte (20-40 ms): Efectos dramáticos
+- **Depth** - Qué tan fuerte se modula el tiempo de retardo, lo que hace oscilar el tono (0 a 40 ms)
+  - Sutil (0-6 ms): Carácter vintage suave
+  - Medio (6-15 ms): Sensación clásica de casete/vinilo
+  - Fuerte (15-40 ms): Efectos dramáticos
 - **Ch Phase** - Diferencia de fase entre canales estéreo (-180 a 180 grados)
   - 0°: Ambos canales fluctúan juntos
   - 90° o -90°: Crea un efecto giratorio y remolinado
@@ -209,44 +210,47 @@ Un efecto que añade sutiles variaciones en el tono a tu música, similar al son
 
 ### Configuraciones Recomendadas para Diferentes Estilos
 
-1. Classic Vinyl Experience
-   - Rate: 0.5-1 Hz (movimiento lento y suave)
-   - Depth: 15-20 ms
-   - Randomness: 10-15 ms
+1. Experiencia clásica de vinilo
+   - Rate: 0.3-0.8 Hz (movimiento lento y suave)
+   - Depth: 2-6 ms
+   - Randomness: 1-4 ms
+   - Randomness Cutoff: 0.5-3 Hz
    - Ch Phase: 0°
    - Ch Sync: 100%
-   - Perfect for: Jazz, Clásica, Vintage Rock
+   - Perfecto para: Jazz, clásica, rock vintage
 
-2. Retro Cassette Feel
-   - Rate: 4-5 Hz (flutter más rápido)
-   - Depth: 10-15 ms
-   - Randomness: 15-20 ms
-   - Ch Phase: 0-45°
+2. Sensación de casete retro
+   - Rate: 4-6 Hz (flutter más rápido)
+   - Depth: 1-3 ms
+   - Randomness: 1-5 ms
+   - Randomness Cutoff: 3-8 Hz
+   - Ch Phase: 0-30°
    - Ch Sync: 80-100%
-   - Perfect for: Lo-Fi, Pop, Rock
+   - Perfecto para: Lo-fi, pop, rock
 
-3. Dreamy Atmosphere
+3. Atmósfera de ensueño
    - Rate: 1-2 Hz
    - Depth: 25-30 ms
    - Randomness: 20-25 ms
    - Ch Phase: 90-180°
    - Ch Sync: 50-70%
-   - Perfect for: Ambient, Electronic, Experimental
+   - Perfecto para: Ambient, electrónica, experimental
 
-4. Subtle Enhancement
-   - Rate: 2-3 Hz
-   - Depth: 5-10 ms
-   - Randomness: 5-10 ms
+4. Mejora sutil
+   - Rate: 1-2 Hz
+   - Depth: 2-5 ms
+   - Randomness: 1-3 ms
    - Ch Phase: 0°
    - Ch Sync: 100%
-   - Perfect for: Cualquier música que requiera un carácter vintage sutil
+   - Perfecto para: Cualquier música que necesite un carácter vintage sutil
 
 ### Guía Rápida de Inicio
 
 1. Para un sonido vintage natural:
-   - Comienza con un Rate lento (1 Hz)
-   - Añade un Depth moderado (15 ms)
-   - Incluye algo de Randomness (10 ms)
+   - Comienza con un Rate lento (0.5-1 Hz)
+   - Añade un Depth ligero (2-6 ms)
+   - Incluye un poco de Randomness (1-4 ms)
+   - Ajusta Randomness Cutoff alrededor de 0.5-3 Hz
    - Mantén Ch Phase en 0° y Ch Sync en 100%
    - Ajusta a tu gusto
 

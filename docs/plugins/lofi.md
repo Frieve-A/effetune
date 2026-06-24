@@ -13,10 +13,10 @@ A collection of plugins that add vintage character and nostalgic qualities to yo
 - [Bit Crusher](#bit-crusher) - Creates retro gaming and vintage digital sounds
 - [Digital Error Emulator](#digital-error-emulator) - Simulates various digital audio transmission errors
 - [DSD64 IMD Simulator](#dsd64-imd-simulator) - Simulates audible intermodulation distortion from DSD64 ultrasonic noise
-- [Hum Generator](#hum-generator) - High-precision power hum noise generator
+- [Hum Generator](#hum-generator) - Adds controllable electrical hum ambience for vintage/lo-fi listening
 - [Noise Blender](#noise-blender) - Adds atmospheric background texture
 - [Simple Jitter](#simple-jitter) - Creates subtle vintage digital imperfections
-- [Vinyl Artifacts](#vinyl-artifacts) - Analog record noise physical simulation
+- [Vinyl Artifacts](#vinyl-artifacts) - Adds vinyl-style pops, crackle, hiss, rumble, and stereo noise bleed
 
 ## Bit Crusher
 
@@ -49,23 +49,24 @@ An effect that recreates the sound of vintage digital devices like old gaming co
   - Lower values: More retro, less clear
   - Higher values: Clearer, more subtle effect
 - **Bit Error** - Adds vintage hardware character (0.00% to 10.00%)
-  - 0-1%: Subtle vintage warmth
+  - 0%: No DAC bit-weight mismatch; Random Seed has no audible effect
+  - 0.1-1%: Subtle digital DAC coloration
   - 1-3%: Classic hardware imperfections
   - 3-10%: Creative lo-fi character
 - **Random Seed** - Controls the unique character of imperfections (0 to 1000)
-  - Different values create different vintage "personalities"
-  - Same value always creates the same character
-  - Perfect for finding and saving your favorite vintage sound
+  - Changes the fixed imperfection pattern used by Bit Error
+  - Audible only when Bit Error is above 0%
+  - Same value always recreates the same imperfection pattern
 
 ## Digital Error Emulator
 
-An effect that simulates the sound of various digital audio transmission errors, from subtle professional interface glitches to vintage CD player imperfections. Perfect for adding vintage digital character or creating unique listening experiences that remind you of classic digital audio equipment.
+An effect that simulates the sound of digital audio transmission errors, from faint interface clicks to vintage CD player imperfections and wireless dropouts. Use it when you want nostalgic digital character or obvious glitch texture during listening.
 
 ### Sound Character Guide
-- Professional Digital Interface Glitches:
+- Subtle Digital Playback Character:
   - Simulates S/PDIF, AES3, and MADI transmission artifacts
-  - Adds the character of aging professional gear
-  - Perfect for vintage studio sound
+  - Adds faint, occasional digital imperfections
+  - Useful when clean playback feels too perfect
 - Consumer Digital Dropouts:
   - Recreates classic CD player error correction behavior
   - Simulates USB audio interface glitches
@@ -96,10 +97,10 @@ An effect that simulates the sound of various digital audio transmission errors,
   - WiSA: Wireless speaker FEC block errors
   - RF Systems: Radio frequency squelch and interference
   - CD Audio: CIRC error correction simulation
-  - Default: CD Audio (most familiar to music listeners)
-- **Reference Fs (kHz)** - Sets the reference sample rate for timing calculations
+  - Default: CD Audio — CIRC Error Correction (Interpolated)
+- **Reference Fs (kHz)** - Sets the reference sample rate used only by Dante / AES67 / AVB packet-loss modes to scale the 64/128/256-sample packet length
   - Available rates: 44.1, 48, 88.2, 96, 176.4, 192 kHz
-  - Affects timing accuracy for network audio modes
+  - Other modes use their own fixed or current-sample-rate timing
   - Default: 48 kHz
 - **Wet Mix** - Controls the blend between original and processed audio (0-100%)
   - Note: For realistic digital error simulation, keep at 100%
@@ -128,25 +129,25 @@ An effect that simulates the sound of various digital audio transmission errors,
 
 ### Recommended Settings for Different Styles
 
-1. Subtle Professional Gear Character
-   - Mode: AES3/S-PDIF, BER: 10^-8, Fs: 48kHz, Wet: 100%
-   - Perfect for: Adding subtle professional gear aging
+1. Subtle Digital Playback Character
+   - Mode: AES3 / S-PDIF (I²S) — Bit Error (Hold), BER: 10^-8, Fs: 48kHz, Wet: 100%
+   - Perfect for: Adding faint, occasional digital imperfections
 
 2. Classic CD Player Experience
-   - Mode: CD Audio, BER: 10^-7, Fs: 44.1kHz, Wet: 100%
+   - Mode: CD Audio — CIRC Error Correction (Interpolated), BER: 10^-7, Fs: 44.1kHz, Wet: 100%
    - Perfect for: 90s digital music nostalgia
 
 3. Modern Streaming Glitches
-   - Mode: Dante/AES67 (128 samp), BER: 10^-6, Fs: 48kHz, Wet: 100%
+   - Mode: Dante / AES67 / AVB — UDP Drop (128 samp), BER: 10^-6, Fs: 48kHz, Wet: 100%
    - Perfect for: Contemporary digital life imperfections
 
 4. Bluetooth Listening Experience
-   - Mode: Bluetooth A2DP, BER: 10^-6, Fs: 48kHz, Wet: 100%
+   - Mode: Bluetooth A2DP — Digital Transmission, BER: 10^-6, Fs: 48kHz, Wet: 100%
    - Perfect for: Wireless audio memories
 
-5. Creative Experimental Effects
-   - Mode: RF Systems, BER: 10^-5, Fs: 48kHz, Wet: 100%
-   - Perfect for: Unique experimental sounds
+5. Wireless Dropout Texture
+   - Mode: WMAS / DECT / Axient — RF Squelch, BER: 10^-5, Fs: 48kHz, Wet: 100%
+   - Perfect for: Obvious radio-style interruptions and glitch texture
 
 Note: All recommendations use 100% Wet Mix for realistic digital error behavior. Lower wet mix values can be used for creative effects, but they don't represent how real digital errors actually occur.
 
@@ -196,21 +197,21 @@ Advanced / utility parameters
 
 ## Hum Generator
 
-An effect that generates high-precision, authentic electrical power hum noise with its characteristic harmonic structure and subtle instabilities. Perfect for adding realistic background hum from vintage equipment, power supplies, or creating that authentic "plugged-in" feel that many classic recordings possess.
+Adds a controllable 50/60 Hz electrical hum layer for a vintage, lo-fi listening mood. Use low levels when clean playback feels too sterile, or raise Level for an obvious sound-effect-like hum.
 
 ### Sound Character Guide
 - Vintage Equipment Ambience:
   - Recreates the subtle hum of classic amplifiers and equipment
   - Adds the character of being "plugged in" to AC power
-  - Creates authentic vintage studio atmosphere
+  - Creates a vintage playback atmosphere
 - Power Supply Characteristics:
   - Simulates different types of power supply noise
   - Recreates regional power grid characteristics (50Hz vs 60Hz)
   - Adds subtle electrical infrastructure character
 - Background Texture:
   - Creates organic, low-level background presence
-  - Adds depth and "life" to sterile digital recordings
-  - Perfect for vintage-inspired productions
+  - Adds depth and "life" to very clean playback
+  - Useful for a vintage or lo-fi listening mood
 
 ### Parameters
 - **Frequency** - Sets the fundamental hum frequency (10-120 Hz)
@@ -225,15 +226,15 @@ An effect that generates high-precision, authentic electrical power hum noise wi
   - 0-30%: Warm, mellow hum with minimal upper harmonics
   - 30-70%: Balanced harmonic content typical of real equipment
   - 70-100%: Bright, complex hum with strong upper harmonics
+  - In Dirty mode, higher Harmonics also increases distortion and roughness
 - **Tone** - Final tone shaping filter cutoff frequency (1.0-20.0 kHz)
   - 1-5 kHz: Warm, muffled character
   - 5-10 kHz: Natural equipment-like tone
   - 10-20 kHz: Bright, present character
 - **Instability** - Amount of subtle frequency and amplitude variation (0-10%)
   - 0%: Perfectly stable hum (digital precision)
-  - 1-3%: Subtle real-world instability
-  - 3-7%: Noticeable vintage equipment character
-  - 7-10%: Creative modulation effects
+  - 1-3%: Slight natural drift
+  - 3-10%: More noticeable but still gentle wobble
 - **Level** - Output level of the hum signal (-80.0 to 0.0 dB)
   - -80 to -60 dB: Barely audible background presence
   - -60 to -40 dB: Subtle but noticeable hum
@@ -245,12 +246,12 @@ An effect that generates high-precision, authentic electrical power hum noise wi
 1. Subtle Vintage Amplifier
    - Frequency: 50/60 Hz, Type: Standard, Harmonics: 25%
    - Tone: 8.0 kHz, Instability: 1.5%, Level: -54 dB
-   - Perfect for: Adding gentle vintage amplifier character
+   - Perfect for: Adding gentle vintage playback character
 
-2. Classic Recording Studio
+2. Classic Vintage Playback
    - Frequency: 60 Hz, Type: Rich, Harmonics: 45%
    - Tone: 6.0 kHz, Instability: 2.0%, Level: -48 dB
-   - Perfect for: Authentic studio atmosphere from the analog era
+   - Perfect for: Background electrical ambience from older playback gear
 
 3. Vintage Tube Equipment
    - Frequency: 50 Hz, Type: Dirty, Harmonics: 60%
@@ -262,10 +263,10 @@ An effect that generates high-precision, authentic electrical power hum noise wi
    - Tone: 10.0 kHz, Instability: 1.0%, Level: -60 dB
    - Perfect for: Realistic power supply background
 
-5. Creative Hum Effects
+5. Stronger Hum Texture
    - Frequency: 40 Hz, Type: Dirty, Harmonics: 80%
    - Tone: 15.0 kHz, Instability: 6.0%, Level: -36 dB
-   - Perfect for: Artistic and experimental applications
+   - Perfect for: A stronger, more audible hum texture
 
 ## Noise Blender
 
@@ -289,6 +290,7 @@ An effect that adds atmospheric background texture to your music, similar to the
 - **Noise Type** - Chooses the character of the background texture
   - White: Brighter, more present texture
   - Pink: Warmer, more natural sound
+  - Brown: Deeper, softer texture with more low-frequency weight
 - **Level** - Controls how noticeable the effect is (-96dB to 0dB)
   - Very Subtle (-96dB to -72dB): Just a hint
   - Gentle (-72dB to -48dB): Noticeable texture
@@ -325,7 +327,7 @@ An effect that adds subtle timing variations to create that imperfect, vintage d
 
 1. Barely Perceptible
    - RMS Jitter: 1-5ps
-   - Perfect for: Adding the subtlest hint of analog warmth to digital recordings
+   - Perfect for: Making playback feel slightly less perfectly digital
 
 2. Classic CD Player Character
    - RMS Jitter: 50-100ps
@@ -340,12 +342,12 @@ An effect that adds subtle timing variations to create that imperfect, vintage d
    - Perfect for: Creating the sound of aging or poorly maintained digital gear
 
 5. Creative Wobble Effect
-   - RMS Jitter: 10-100µs (10000-100000ps)
+   - RMS Jitter: 10-100µs (0.01-0.1ms)
    - Perfect for: Experimental effects and noticeable pitch modulation
 
 ## Vinyl Artifacts
 
-An effect that recreates the physical noise characteristics of analog vinyl records. This plugin simulates the various artifacts that occur when playing back vinyl records, from surface noise to the electrical characteristics of the playback chain.
+An effect that adds vinyl-style playback artifacts such as pops, crackle, hiss, rumble, and reactive surface noise. It adds generated record noise to the music; it does not change the tone of the original music signal like a full turntable, cartridge, or phono preamp model.
 
 ### Sound Character Guide
 - Vinyl Record Experience:
@@ -353,9 +355,9 @@ An effect that recreates the physical noise characteristics of analog vinyl reco
   - Adds the characteristic surface noise and artifacts
   - Creates that warm, nostalgic analog feeling
 - Vintage Playback System:
-  - Simulates the complete analog playback chain
-  - Includes RIAA equalization characteristics
-  - Adds reactive noise that responds to the music
+  - Adds generated playback artifacts around the music
+  - Shapes the tone of the generated vinyl noise
+  - Adds reactive noise that can respond to the music
 - Atmospheric Texture:
   - Creates rich, organic background texture
   - Adds depth and character to digital recordings
@@ -386,18 +388,19 @@ An effect that recreates the physical noise characteristics of analog vinyl reco
   - -80 to -60 dB: Subtle low-end warmth
   - -60 to -40 dB: Noticeable rumble
   - -40 to 0 dB: Heavy rumble (extreme settings)
-- **Crosstalk** - Controls stereo channel bleed between left and right (0 to 100%)
-  - 0%: Perfect stereo separation
-  - 30-60%: Realistic vinyl crosstalk
-  - 100%: Maximum channel bleed
-- **Noise Profile** - Adjusts the frequency response of the noise (0.0 to 10.0)
-  - 0: RIAA curve reproduction (authentic vinyl frequency response)
-  - 5: Partially corrected response
-  - 10: Flat response (bypassed)
-- **Wear** - Master multiplier for overall record condition (0 to 200%)
-  - 0-50%: Well-maintained record
-  - 50-100%: Normal wear and age
-  - 100-200%: Heavily worn record
+- **Crosstalk** - Blends the generated artifact noise between left and right channels; the original music signal keeps its stereo separation (0 to 100%)
+  - 0%: Generated noise keeps its original channel separation
+  - 30-60%: Realistic vinyl-style noise bleed
+  - 100%: Generated noise becomes nearly equal between left and right
+- **Noise Profile** - Adjusts the frequency response of the generated noise (0.0 to 10.0)
+  - 0: Darkest, warmest noise tone
+  - 5: Partially shaped noise tone
+  - 10: Flat noise tone / tone shaping bypassed
+- **Wear** - Scales surface wear artifacts such as pops, crackles, and hiss (0 to 200%)
+  - 0-50%: Cleaner surface noise
+  - 50-100%: Normal surface wear
+  - 100-200%: Heavily worn surface noise
+  - Rumble, Crosstalk, and Noise Profile are controlled separately
 - **React** - How much the noise responds to the input signal (0 to 100%)
   - 0%: Static noise levels
   - 25-50%: Moderate response to music
@@ -417,7 +420,7 @@ An effect that recreates the physical noise characteristics of analog vinyl reco
    - Pops/min: 20, Pop Level: -48dB, Crackles/min: 200, Crackle Level: -48dB
    - Hiss: -48dB, Rumble: -60dB, Crosstalk: 30%, Noise Profile: 5.0
    - Wear: 25%, React: 20%, React Mode: Velocity, Mix: 100%
-   - Perfect for: Adding gentle analog warmth
+   - Perfect for: Adding gentle vinyl surface texture
 
 2. Classic Vinyl Experience
    - Pops/min: 40, Pop Level: -36dB, Crackles/min: 400, Crackle Level: -36dB

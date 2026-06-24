@@ -11,9 +11,9 @@ A collection of plugins that enhance how your music sounds in your headphones or
 ## Plugin List
 
 - [Crossfeed Filter](#crossfeed-filter) - Headphone crossfeed filter for natural stereo imaging
-- [MS Matrix](#ms-matrix) - Adjust stereo image by separately controlling Mid and Side levels, with optional Left/Right swap  
+- [MS Matrix](#ms-matrix) - Converts stereo to Mid/Side and back for advanced stereo adjustment chains
 - [Multiband Balance](#multiband-balance) - 5-band frequency-dependent stereo balance control  
-- [Stereo Blend](#stereo-blend) - Controls stereo width from mono to enhanced stereo
+- [Stereo Blend](#stereo-blend) - Controls stereo width from polarity-swapped stereo through mono to enhanced stereo
 
 ## Crossfeed Filter
 
@@ -23,7 +23,7 @@ A headphone crossfeed filter that simulates the natural acoustic crosstalk that 
 - Simulates natural acoustic crosstalk for headphone listening
 - Adjustable crossfeed level and timing
 - Low-pass filtering to mimic frequency-dependent crosstalk
-- Stereo-only processing (automatically bypassed for mono signals)
+- Stereo-only processing (automatically bypassed for mono or other non-stereo signals)
 
 ### Parameters
 - **Level** (-60 dB to 0 dB): Controls the amount of crossfeed signal
@@ -66,8 +66,8 @@ A headphone crossfeed filter that simulates the natural acoustic crosstalk that 
 
 2. Music Style Considerations
    - Classical/Jazz: Lower levels (-15 to -10 dB) for natural presentation
-   - Rock/Pop: Moderate levels (-10 to -6 dB) for energy
-   - Electronic: Higher levels (-6 to 0 dB) for spaciousness
+   - Rock/Pop: Moderate levels (-12 to -8 dB) can soften hard-panned guitars or vocals while keeping the music lively
+   - Electronic or very wide mixes: Use lower to moderate levels (-18 to -10 dB) to keep width, or higher levels only when you want to tame excessive left-right separation
 
 3. Listening Environment
    - Quiet environments: Lower levels for subtle effect
@@ -95,53 +95,57 @@ Remember: The Crossfeed Filter is designed to make headphone listening more natu
 
 ## MS Matrix
 
-A flexible mid/side processor that lets you control the center (mid) and width (side) of your stereo signal independently. Use simple gain controls and an optional Left/Right swap to fine-tune how your audio sits in the stereo field without complex routing.
+MS Matrix converts normal stereo audio to Mid/Side format, or converts Mid/Side audio back to normal stereo. Use it when you want to adjust center and side information separately inside an effect chain, such as encoding to M/S, changing the Mid or Side level, then decoding back to stereo. For simple stereo width adjustment on normal music, [Stereo Blend](#stereo-blend) is the more direct tool.
 
 ### Key Features
 - Separate Mid and Side gain (–18 dB to +18 dB)  
 - Mode switch: Encode (Stereo→M/S) or Decode (M/S→Stereo)  
 - Optional Left/Right swap before encoding or after decoding  
-- Click-free parameter changes for smooth adjustments  
 
 ### Parameters
-- **Mode** (Encode/Decode)  
-- **Mid Gain** (–18 dB to +18 dB): Adjusts level of center content  
-- **Side Gain** (–18 dB to +18 dB): Adjusts level of stereo difference (width)  
+- **Mode** (Encode/Decode): Encode turns left/right stereo into Mid on the left channel and Side on the right channel. Decode treats the left channel as Mid and the right channel as Side, then rebuilds normal stereo.
+- **Mid Gain** (–18 dB to +18 dB): Adjusts the Mid level during the selected conversion.
+- **Side Gain** (–18 dB to +18 dB): Adjusts the Side level during the selected conversion.
 - **Swap L/R** (Off/On): Swaps left and right channels before encoding or after decoding  
 
 ### Recommended Settings
-1. **Subtle Widening**  
-   - Mode: Decode  
-   - Mid Gain: 0 dB  
-   - Side Gain: +3 dB  
-   - Swap: Off  
-2. **Center Focus**  
-   - Mode: Decode  
-   - Mid Gain: +3 dB  
-   - Side Gain: –3 dB  
-   - Swap: Off  
-3. **Creative Flip**  
+1. **Subtle Widening for Normal Stereo**
+   - First MS Matrix: Mode: Encode, Mid Gain: 0 dB, Side Gain: +3 dB, Swap: Off
+   - Second MS Matrix after it: Mode: Decode, Mid Gain: 0 dB, Side Gain: 0 dB, Swap: Off
+   - Effect: Slightly strengthens the Side component, then returns the result to normal stereo
+2. **Center Focus for Normal Stereo**
+   - First MS Matrix: Mode: Encode, Mid Gain: +3 dB, Side Gain: -3 dB, Swap: Off
+   - Second MS Matrix after it: Mode: Decode, Mid Gain: 0 dB, Side Gain: 0 dB, Swap: Off
+   - Effect: Brings vocals and centered sounds forward while reducing side ambience
+3. **Decode Existing M/S Audio**
+   - Mode: Decode
+   - Mid Gain: 0 dB
+   - Side Gain: 0 dB
+   - Swap: Off
+   - Use only when the incoming signal is already Mid/Side format
+4. **Creative Flip**
    - Mode: Encode  
    - Mid Gain: 0 dB  
    - Side Gain: 0 dB  
    - Swap: On  
 
 ### Quick Start Guide
-1. Select **Mode** for conversion  
-2. Adjust **Mid Gain** and **Side Gain**  
-3. Enable **Swap L/R** for channel correction or creative inversion  
-4. Bypass to compare and verify no phase issues  
+1. Decide whether you need a single conversion or a full Encode -> adjust -> Decode chain.
+2. For normal stereo listening, place one MS Matrix in Encode mode and a second one later in Decode mode.
+3. Adjust **Mid Gain** and **Side Gain** on the Encode stage.
+4. Enable **Swap L/R** only for channel correction or creative inversion.
+5. Bypass to compare and make sure the stereo image still feels natural.
 
 ## Multiband Balance
 
-A sophisticated spatial processor that divides the audio into five frequency bands and allows independent stereo balance control of each band. This plugin enables precise control over the stereo image across the frequency spectrum, offering creative possibilities for sound design and mixing, as well as corrective applications for problematic stereo recordings.
+A frequency-dependent balance processor that divides the audio into five bands and lets you shift each band slightly left or right. Use it when bass, vocals, cymbals, or other frequency ranges feel pulled to one side and you want to rebalance only that part of the sound without moving the whole track.
 
 ### Key Features
 - 5-band frequency-dependent stereo balance control
 - High-quality Linkwitz-Riley crossover filters
 - Linear balance control for precise stereo adjustment
 - Independent processing of left and right channels
-- Click-free parameter changes with automatic fade handling
+- Automatic fade handling when crossover filters are reset
 
 ### Parameters
 
@@ -161,54 +165,53 @@ Each band has independent balance control:
 
 ### Recommended Settings
 
-1. Natural Stereo Enhancement
+1. Correct a Treble Pull to the Right
    - Low Band (20-100 Hz): 0% (centered)
-   - Low-Mid (100-500 Hz): ±20%
-   - Mid (500-2000 Hz): ±40%
-   - High-Mid (2000-8000 Hz): ±60%
-   - High (8000+ Hz): ±80%
-   - Effect: Creates a graduated stereo spread that widens with frequency
+   - Low-Mid (100-500 Hz): 0%
+   - Mid (500-2000 Hz): 0%
+   - High-Mid (2000-8000 Hz): -10% to -25%
+   - High (8000+ Hz): -10% to -30%
+   - Effect: Moves bright content slightly left while keeping bass and vocals stable
 
-2. Focused Mix
+2. Correct a Low-Mid Pull to the Left
    - Low Band: 0%
-   - Low-Mid: ±10%
-   - Mid: ±30%
-   - High-Mid: ±20%
-   - High: ±40%
-   - Effect: Maintains central focus while adding subtle width
+   - Low-Mid: +10% to +25%
+   - Mid: +5% to +15%
+   - High-Mid: 0%
+   - High: 0%
+   - Effect: Moves warm body and lower vocals slightly right without changing the whole stereo image
 
-3. Immersive Soundscape
+3. Keep Bass Centered While Adjusting Air
    - Low Band: 0%
-   - Low-Mid: ±40%
-   - Mid: ±60%
-   - High-Mid: ±80%
-   - High: ±100%
-   - Effect: Creates an enveloping sound field with anchored bass
+   - Low-Mid: 0%
+   - Mid: 0%
+   - High-Mid: +5% to +15%
+   - High: +10% to +20%
+   - Effect: Gently moves upper ambience to the right while the low end stays centered
 
 ### Application Guide
 
-1. Mix Enhancement
+1. Listening Balance Correction
    - Keep low frequencies (below 100 Hz) centered for stable bass
-   - Gradually increase stereo width with frequency
-   - Use moderate settings (±30-50%) for natural enhancement
-   - Monitor in mono to check for phase issues
+   - Shift only the frequency range that feels off-center
+   - Use small signed values first (about 5-20%)
+   - Check mono playback for tonal or level changes
 
 2. Problem Solving
-   - Correct phase issues in specific frequency ranges
+   - Rebalance frequency ranges that feel too far left or right
    - Tighten unfocused bass by centering low frequencies
    - Reduce harsh stereo artifacts in high frequencies
-   - Fix poorly recorded stereo tracks
+   - Improve recordings where different parts of the sound lean to different sides
 
-3. Creative Sound Design
-   - Create frequency-dependent movement
-   - Design unique spatial effects
-   - Build immersive soundscapes
-   - Enhance specific instruments or elements
+3. Creative Listening Effects
+   - Create unusual frequency-dependent placement
+   - Make high frequencies lean one way while low frequencies stay centered
+   - Build a wider-feeling ambience by making small balance shifts in upper bands
 
 4. Stereo Field Adjustment
    - Fine-tune stereo balance per frequency band
    - Correct uneven stereo distribution
-   - Enhance stereo separation where needed
+   - Avoid treating this as a stereo width control; use Stereo Blend when you want to widen or narrow the whole image
    - Maintain mono compatibility
 
 ### Quick Start Guide
@@ -251,13 +254,17 @@ An effect that helps achieve a more natural sound field by adjusting the stereo 
 - Sound Field Control:
   - Focus on natural, realistic presentation
   - Avoid excessive width that could sound artificial
+  - Use negative width only for corrective or creative side-polarity inversion
   - Optimize for your specific listening environment
 
 ### Parameters
-- **Stereo** - Controls the stereo width (0-200%)
+- **Stereo** - Controls the stereo width (-200% to 200%)
+  - Negative values: Invert the polarity of the stereo side (L-R) component before reconstruction
+  - -200%: Maximum width with inverted side polarity; use only for correction or special cases
+  - -100%: Original stereo width with the left/right image swapped
   - 0%: Full mono (left and right channels summed)
   - 100%: Original stereo image
-  - 200%: Enhanced stereo with maximum width (L-R/R-L)
+  - 200%: Maximum width enhancement; keeps the center component while strongly boosting the stereo side difference
 
 ### Recommended Settings for Different Listening Scenarios
 

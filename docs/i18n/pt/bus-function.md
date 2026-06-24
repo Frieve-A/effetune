@@ -1,7 +1,7 @@
 ---
-title: "Bus Function Guide - EffeTune"
-description: "Learn how to use the Bus feature in EffeTune for flexible audio routing and complex effect chains."
-lang: en
+title: "Guia do recurso Bus - EffeTune"
+description: "Aprenda a usar o recurso Bus no EffeTune para roteamento de áudio flexível e cadeias de efeitos complexas."
+lang: pt
 ---
 
 # Como Usar o Recurso de Barramento

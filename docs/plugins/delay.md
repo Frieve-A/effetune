@@ -11,7 +11,7 @@ A collection of tools for adjusting the timing of your audio signals or adding d
 ## Plugin List
 
 - [Delay](#delay) - Creates echoes with control over timing, tone, and stereo spread.
-- [Time Alignment](#time-alignment) - Precise timing adjustments for audio channels
+- [Time Alignment](#time-alignment) - Fine-tunes playback timing for speaker and listening-position alignment
 
 ## Delay
 
@@ -38,9 +38,9 @@ This effect adds distinct echoes to your audio. You can control how quickly the 
 
 ### Parameters
 
-- **Pre-Delay (ms)** - How long before the *first* echo is heard (0 to 100 ms).
-  - Lower values (0-20ms): Echo starts almost immediately.
-  - Higher values (20-100ms): Creates a noticeable gap before the echo, separating it from the original sound.
+- **Pre-Delay (ms)** - Adds extra time before the signal enters the echo delay (0 to 100 ms). The first echo is heard after Pre-Delay + Delay Size.
+  - Lower values (0-20ms): Echo pattern starts almost immediately.
+  - Higher values (20-100ms): Adds a noticeable gap before the echo pattern, separating it from the original sound.
 - **Delay Size (ms)** - The time between each echo (1 to 5000 ms).
   - Short (1-100ms): Creates thickening or 'slapback' effects.
   - Medium (100-600ms): Standard echo effects, good for rhythmic enhancement.
@@ -51,14 +51,15 @@ This effect adds distinct echoes to your audio. You can control how quickly the 
   - 50%: A balanced, natural fade.
   - 100%: Echoes become significantly darker and thinner quickly (more muffled).
   - Use in conjunction with High/Low Damp.
-- **High Damp (Hz)** - Sets the frequency above which echoes start losing brightness (1000 to 20000 Hz).
+- **High Damp (Hz)** - Sets the frequency above which echoes start losing brightness (20 to 20000 Hz).
   - Lower values (e.g., 2000Hz): Echoes become dark quickly.
   - Higher values (e.g., 10000Hz): Echoes stay brighter for longer.
   - Adjust with Damping for tonal control of the echoes.
-- **Low Damp (Hz)** - Sets the frequency below which echoes start losing fullness (20 to 1000 Hz).
+- **Low Damp (Hz)** - Sets the frequency below which echoes start losing fullness (20 to 20000 Hz).
   - Lower values (e.g., 50Hz): Echoes retain more bass.
   - Higher values (e.g., 500Hz): Echoes become thinner more quickly.
   - Adjust with Damping for tonal control of the echoes.
+  - For predictable tone shaping, keep Low Damp below High Damp. If the values cross, the processor orders them internally.
 - **Feedback (%)** - How many echoes you hear, or how long they last (0 to 99%).
   - 0%: Only one echo is heard.
   - 10-40%: A few noticeable repeats.
@@ -107,7 +108,7 @@ This effect adds distinct echoes to your audio. You can control how quickly the 
 1.  **Set the Timing:**
     - Start with `Delay Size` to set the main echo rhythm.
     - Adjust `Feedback` to control how many echoes you hear.
-    - Use `Pre-Delay` if you want a gap before the first echo.
+    - Use `Pre-Delay` to add an extra gap before the echo pattern starts.
 2.  **Adjust the Tone:**
     - Use `Damping`, `High Damp`, and `Low Damp` together to shape how the echoes sound as they fade. Start with Damping around 50% and adjust the Damp frequencies.
 3.  **Position in Stereo (Optional):**
@@ -117,39 +118,27 @@ This effect adds distinct echoes to your audio. You can control how quickly the 
 
 ## Time Alignment
 
-A precision tool that lets you adjust the timing of audio channels with millisecond accuracy. Perfect for correcting phase issues or creating specific stereo effects.
+Adjusts playback timing by a small amount, useful when you want to compensate for speaker distance differences or tune how the sound arrives at your listening position.
 
 ### When to Use
-- Fixing phase alignment between stereo channels
-- Compensating for speaker distance differences
-- Fine-tuning stereo imaging
-- Correcting timing mismatches in recordings
+- Compensating for small distance differences between speakers and your listening position
+- Fine-tuning the timing of channels routed through this plugin
+- Checking whether a small delay makes the stereo image feel more stable or natural
 
 ### Parameters
-- **Delay** - Controls the delay time (0 to 100ms)
-  - 0ms: No delay (original timing)
-  - Higher values: Increased delay
-  - Fine adjustments for precise control
-- **Channel** - Select which channel to delay
-  - All: Affects both channels
-  - Left: Only delays left channel
-  - Right: Only delays right channel
+- **Delay** - Controls the delay time applied to the channels routed through this plugin (0 to 100 ms)
+  - 0 ms: No delay
+  - Small values: Useful for compensating tiny arrival-time differences between speakers
+  - Higher values: Creates a more noticeable timing shift
 
 ### Recommended Uses
 
-1. Speaker Alignment
-   - Compensate for different speaker distances
-   - Match timing between monitors
-   - Adjust for room acoustics
+1. Speaker Distance Compensation
+   - Add a small delay when one speaker or channel arrives earlier at the listening position
+   - Adjust in small steps while listening to centered vocals or other focused sounds
 
-2. Recording Correction
-   - Fix phase issues between microphones
-   - Align multiple audio sources
-   - Correct timing discrepancies
-
-3. Creative Effects
-   - Create subtle stereo widening
-   - Design spatial effects
-   - Experiment with channel timing
+2. Listening Position Fine-Tuning
+   - Try very small values first
+   - Stop when the center image feels stable and the sound remains natural
 
 Remember: The goal is to enhance your listening enjoyment. Experiment with the controls to find sounds that add interest and depth to your favorite music without overpowering it.

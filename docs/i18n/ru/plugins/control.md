@@ -1,39 +1,39 @@
 ---
-title: "Control Plugins - EffeTune"
-description: "Control plugins for organizing effect chains with Section grouping."
-lang: en
+title: "Плагины управления - EffeTune"
+description: "Плагины управления для организации цепочек эффектов с группировкой Section."
+lang: ru
 ---
 
-# Control Effects
+# Эффекты управления
 
-Control effects are special utility effects that don't process audio directly but instead control how other effects operate. They help organize and manage complex effect chains.
+Эффекты управления - это специальные служебные эффекты, которые не обрабатывают звук напрямую, а управляют работой других эффектов. Они помогают организовывать сложные цепочки и быстрее с ними работать.
 
 ## Section
 
-The Section effect allows you to group multiple effects together and control them with a single ON/OFF toggle.
+Эффект Section группирует несколько эффектов, чтобы можно было одним переключателем ON/OFF обойти или вернуть целую часть цепочки. При этом каждый эффект сохраняет собственное состояние ON/OFF.
 
-### Overview
+### Обзор
 
-- **Name**: Section
-- **Category**: Control
-- **Description**: Groups multiple effects together for unified control
+- **Название**: Section
+- **Категория**: Control
+- **Описание**: Группирует эффекты, чтобы целую секцию можно было обойти или восстановить
 
-### Parameters
+### Параметры
 
-| Parameter | Description |
+| Параметр | Описание |
 |-----------|-------------|
-| Comment   | A name or description of the section's purpose |
+| Comment   | Имя или описание назначения секции |
 
-### Usage
+### Использование
 
-1. Place the Section effect at the beginning of a group of effects you want to control together
-2. Enter a descriptive name in the "Comment" field to identify the section's purpose
-3. Toggle the Section effect ON/OFF to enable/disable all effects within the section
-4. Effects placed after a Section effect will be controlled by that section until another Section effect is encountered
+1. Поместите эффект Section в начало группы эффектов, которой нужно управлять вместе
+2. Введите понятное имя в поле "Comment", чтобы обозначить назначение секции
+3. Переключите Section в OFF, чтобы обойти эффекты в этой секции; переключите в ON, чтобы вернуть секцию, сохраняя собственное состояние ON/OFF каждого эффекта
+4. Эффекты после Section будут управляться этой секцией до следующего эффекта Section
 
-### Application Examples
+### Примеры применения
 
-- Group related effects (e.g., "EQ Adjustments", "Spatial Effects")
-- Create alternative processing chains that can be easily toggled
-- Organize complex effect chains into logical sections
-- Temporarily disable a group of effects without removing them 
+- Группировать связанные эффекты, например "EQ Adjustments" или "Spatial Effects"
+- Создавать альтернативные цепочки обработки, которые легко включать и обходить
+- Разбивать сложные цепочки эффектов на логические секции
+- Временно отключать группу эффектов, не удаляя их

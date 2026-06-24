@@ -1,17 +1,17 @@
 ---
-title: "Resonator Plugins - EffeTune"
-description: "Resonator effect plugins including Horn Resonator and Modal Resonator."
-lang: en
+title: "Plugins Resonator - EffeTune"
+description: "Plugins d'effet de résonateur incluant Horn Resonator et Modal Resonator."
+lang: fr
 ---
 
-# Resonator Plugins
+# Plugins Resonator
 
 Une collection de plugins qui mettent en valeur les caractéristiques résonantes pour ajouter des textures tonales uniques et de la couleur à votre musique. Ces effets simulent les résonances présentes dans des objets physiques ou des systèmes de haut-parleurs, améliorant votre expérience d'écoute avec chaleur, scintillement ou caractère vintage.
 
 ## Liste des plugins
 
 - [Horn Resonator](#horn-resonator) - Simule la résonance des systèmes d'enceintes à pavillon
-- [Horn Resonator Plus](#horn-resonator-plus) - Modèle de pavillon amélioré avec réflexions avancées
+- [Horn Resonator Plus](#horn-resonator-plus) - Résonance de haut-parleur à pavillon plus douce pour une couleur d'écoute naturelle
 - [Modal Resonator](#modal-resonator) - Effet de résonance de fréquence avec jusqu'à 5 résonateurs
 
 ## Horn Resonator
@@ -27,7 +27,7 @@ Un plugin qui simule la résonance d'un haut-parleur à pavillon (horn-loaded sp
 ### Paramètres
 
 - **Crossover (Hz)** - Définit la fréquence de coupure entre le chemin basse fréquence (délayé) et le chemin haute fréquence traité par le horn model. (20–5000 Hz)
-- **Horn Length (cm)** - Ajuste la longueur du pavillon simulé. Les pavillons plus longs mettent en avant les basses fréquences et augmentent l'espacement des résonances, les plus courts mettent en avant les hautes fréquences et renforcent la précision du son. (20–120 cm)
+- **Horn Length (cm)** - Ajuste la longueur du pavillon simulé. Les pavillons plus longs déplacent les résonances vers le bas et les rapprochent ; les plus courts les déplacent vers le haut et les espacent davantage pour un son plus serré. (20–120 cm)
 - **Throat Diameter (cm)** - Contrôle la taille de l'ouverture du goulot du pavillon (input). Des valeurs plus petites tendent à augmenter la brillance et l'accentuation des médiums supérieurs, des valeurs plus grandes ajoutent de la chaleur. (0.5–50 cm)
 - **Mouth Diameter (cm)** - Contrôle la taille de l'ouverture à la sortie du pavillon (output). Cela affecte l'adaptation d'impédance avec l'air environnant et influence la réflexion dépendante de la fréquence à la sortie. Des valeurs plus grandes élargissent généralement la perception du son et réduisent la réflexion des basses, des valeurs plus petites concentrent le son et augmentent cette réflexion. (5–200 cm)
 - **Curve (%)** - Ajuste la forme de la corne (flare) du pavillon (comment le rayon augmente du goulot à la sortie).
@@ -49,21 +49,20 @@ Un plugin qui simule la résonance d'un haut-parleur à pavillon (horn-loaded sp
 
 ## Horn Resonator Plus
 
-Un modèle de pavillon amélioré qui utilise un filtre de réflexion de bouche de 2ème ordre et une réflexion de gorge dépendante de la fréquence pour une résonance plus douce.
+Horn Resonator Plus ajoute à la musique un caractère de haut-parleur à pavillon plus doux et plus naturel. Utilisez-le lorsque vous voulez que les voix, cuivres, instruments acoustiques ou morceaux complets semblent plus chaleureux et vivants, avec une résonance moins tranchante que le Horn Resonator standard.
 
-Horn Resonator Plus est une implémentation avancée basée sur [Horn Resonator](#horn-resonator), comportant un modèle de ligne de transmission de pavillon plus rigoureux avec les améliorations techniques suivantes :
+Il est basé sur le même modèle de pavillon que [Horn Resonator](#horn-resonator), avec un modèle plus détaillé de réflexion à la bouche et à la gorge pour que les résonances décroissent plus doucement.
+
+### Guide d'écoute
+
+- Couleur de pavillon plus douce : ajoute un caractère de haut-parleur à pavillon avec moins de sonnerie pointue.
+- Présence plus chaleureuse : peut rendre les voix, cuivres et musiques acoustiques plus vivants.
+- Comportement naturel des hautes fréquences : le haut du spectre se rapproche davantage d'un pavillon acoustique ou d'une enceinte à pavillon que la version standard.
 
 ### Améliorations Techniques
 
 - **Filtre de réflexion de bouche de 2ème ordre** : Modélisation plus précise de la réflexion dépendante de la fréquence à l'ouverture de la bouche pour des caractéristiques de résonance plus douces
 - **Réflexion de gorge dépendante de la fréquence** : Caractéristiques de réflexion de gorge qui s'adaptent à la fréquence pour un comportement acoustique plus naturel
-
-### Caractéristiques Acoustiques
-
-Horn Resonator Plus fournit une qualité sonore supérieure comparée au Horn Resonator standard dans les aspects suivants :
-
-- **Réponse en fréquence plus douce** : Le filtre de réflexion de bouche de 2ème ordre crée une décroissance de pic de résonance plus naturelle
-- **Comportement haute fréquence plus réaliste** : Les caractéristiques de délai de groupe dans la plage haute fréquence ressemblent davantage aux vrais instruments acoustiques
 
 ### Paramètres et Utilisation
 
@@ -72,34 +71,34 @@ Horn Resonator Plus utilise les mêmes paramètres que [Horn Resonator](#horn-re
 ### Directives d'Utilisation
 
 - **Horn Resonator** : Choisissez quand vous avez besoin d'un traitement léger avec des caractéristiques de pavillon de base
-- **Horn Resonator Plus** : Choisissez quand vous nécessitez une qualité supérieure et des caractéristiques acoustiques de pavillon plus naturelles (environ +10% de coût CPU)
+- **Horn Resonator Plus** : Choisissez quand vous voulez une coloration de pavillon plus douce et plus naturelle, et que vous pouvez accepter une utilisation CPU légèrement plus élevée
 
 ### Guide de Démarrage Rapide
 
-Utilisez les mêmes contrôles que [Horn Resonator](#horn-resonator). Choisissez Horn Resonator Plus quand vous voulez des résultats de haute qualité.
+Utilisez les mêmes contrôles que [Horn Resonator](#horn-resonator). Choisissez Horn Resonator Plus quand vous voulez un caractère de haut-parleur à pavillon plus doux.
 
 ## Modal Resonator
 
-Un effet créatif qui ajoute des fréquences résonantes à votre audio. Ce plugin génère des résonances accordées à des fréquences spécifiques, similaire à la façon dont les objets physiques vibrent à leurs fréquences de résonance naturelles. Parfait pour ajouter des caractéristiques tonales uniques, simuler les propriétés résonantes de différents matériaux ou créer des effets spéciaux.
+Un effet qui ajoute des résonances accordées à votre musique, comme lorsque des objets physiques ou des éléments de haut-parleur résonnent à leurs fréquences naturelles. Utilisez-le lorsque vous voulez ajouter du scintillement, du corps, une couleur métallique ou une résonance de type haut-parleur pendant l'écoute.
 
 ### Guide d'expérience d'écoute
 
-- **Metallic Resonance :**
+- **Résonance métallique :**
   - Crée des tonalités de type cloche ou métalliques suivant la dynamique de la source.
-  - Utile pour ajouter de la brillance ou un caractère métallique aux percussions, synthés ou mixages complets.
+  - Utile pour ajouter de la brillance ou un caractère métallique aux percussions, synthés ou morceaux complets.
   - Utilisez plusieurs résonateurs à des fréquences soigneusement réglées avec des temps de décroissance modérés.
-- **Tonal Enhancement :**
+- **Renforcement tonal :**
   - Renforce subtilement des fréquences spécifiques dans la musique.
   - Peut accentuer les harmoniques ou ajouter de la richesse à certaines plages de fréquences.
   - Utilisez une valeur de mix faible (10-20 %) pour un renforcement discret.
-- **Full-Range Speaker Simulation :**
+- **Simulation d'enceinte large bande :**
   - Simule le comportement modal d'enceintes physiques.
   - Recrée les résonances distinctives qui se produisent lorsque les membranes vibrent à différentes fréquences.
   - Aide à simuler le son caractéristique de types d'enceintes spécifiques.
-- **Special Effects :**
-  - Produit des qualités timbrales inhabituelles et des textures autres mondes.
-  - Excellent pour le design sonore et le traitement expérimental.
-  - Essayez des réglages extrêmes pour des transformations créatives du son.
+- **Effets spéciaux :**
+  - Produit des qualités timbrales inhabituelles et des textures irréelles.
+  - Utile lorsque vous voulez un effet de résonance évident plutôt qu'une amélioration naturelle.
+  - Essayez des réglages extrêmes seulement lorsque les résonances doivent devenir une partie du son.
 
 ### Paramètres
 
@@ -116,56 +115,62 @@ Pour chaque résonateur :
 - **LPF Freq (Hz)** - Filtre passe-bas qui façonne le timbre de la résonance (20 à 20 000 Hz).
 - **HPF Freq (Hz)** - Filtre passe-haut qui supprime les basses indésirables de la résonance (20 à 20 000 Hz).
 - **Gain (dB)** - Contrôle le niveau de sortie individuel de chaque résonateur (-18 à +18 dB).
-- **Mix (%)** - Équilibre le volume des résonances par rapport au son original (0 à 100 %).
+
+Contrôle global :
+
+- **Mix (%)** - Équilibre la sortie combinée de tous les résonateurs activés par rapport au son original (0 à 100 %).
 
 ### Réglages recommandés pour l'amélioration d'écoute
 
-1. **Subtle Speaker Enhancement :**
+1. **Amélioration discrète du rendu d'enceinte :**
    - Activez 2-3 résonateurs
    - Fréquences : 400 Hz, 900 Hz, 1600 Hz
    - Decay : 60-100 ms
    - LPF Freq : 2000-4000 Hz
    - Mix : 10-20 %
 
-2. **Metallic Character :**
+2. **Caractère métallique :**
    - Activez 3-5 résonateurs
    - Fréquences : échelonnées entre 1000-6500 Hz
    - Decay : 100-200 ms
    - LPF Freq : 4000-8000 Hz
    - Mix : 15-30 %
 
-3. **Bass Enhancement :**
+3. **Renforcement des basses :**
    - Activez 1-2 résonateurs
    - Fréquences : 50-150 Hz
+   - HPF Freq : 20-60 Hz, maintenu sous la résonance cible
    - Decay : 50-100 ms
    - LPF Freq : 1000-2000 Hz
    - Mix : 10-25 %
 
-4. **Full-Range Speaker Simulation :**
+4. **Simulation d'enceinte large bande :**
    - Activez tous les 5 résonateurs
    - Fréquences : 100 Hz, 400 Hz, 800 Hz, 1600 Hz, 3000 Hz
+   - HPF Freq : 20 Hz, 120 Hz, 250 Hz, 500 Hz, 1000 Hz
    - Decay : plus court progressivement des basses vers les aigus (100 ms à 30 ms)
    - LPF Freq : plus élevé progressivement des basses vers les aigus (2000 Hz à 4000 Hz)
    - Mix : 20-40 %
 
 ### Guide de démarrage rapide
 
-1. **Choose Resonance Points :**
+1. **Choisir les points de résonance :**
    - Commencez par activer un ou deux résonateurs.
    - Réglez leurs fréquences pour cibler les zones à améliorer.
    - Pour des effets plus complexes, ajoutez des résonateurs complémentaires.
 
-2. **Adjust the Character :**
+2. **Ajuster le timbre :**
    - Utilisez le paramètre `Decay` pour contrôler la durée de sustain des résonances.
    - Façonnez le timbre avec le contrôle `LPF Freq`.
+   - Réglez `HPF Freq` sous la résonance que vous voulez conserver, surtout pour les réglages de basses.
    - Les temps de decay plus longs créent des tonalités plus prononcées, type cloche.
 
-3. **Blend with Original :**
-   - Utilisez `Mix` pour équilibrer l'effet avec votre matière première.
+3. **Mélanger avec le signal original :**
+   - Utilisez `Mix` pour équilibrer l'effet avec votre source sonore.
    - Commencez avec des valeurs faibles (10-20 %) pour un effet subtil.
-   - Augmentez pour un rendu plus dramatique.
+   - Augmentez pour un effet plus marqué.
 
-4. **Fine-Tune :**
+4. **Affiner :**
    - Apportez de petits ajustements aux fréquences et aux temps de decay.
    - Activez/désactivez des résonateurs individuels pour trouver la combinaison parfaite.
    - Rappelez-vous que de subtils changements peuvent avoir un impact significatif sur le son global.

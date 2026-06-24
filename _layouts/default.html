@@ -11,6 +11,10 @@
 {% if page_lang == 'ar' %}
   {% assign text_direction = 'rtl' %}
 {% endif %}
+{% assign ui = site.data.site_ui[page_lang] %}
+{% unless ui %}
+  {% assign ui = site.data.site_ui.en %}
+{% endunless %}
 {% assign docs_prefix = '/docs/' %}
 {% assign overview_url = '/' %}
 {% assign plugin_source_prefix = 'docs/plugins/' %}
@@ -27,18 +31,18 @@
 <body class="site-body docs-page{% if text_direction == 'rtl' %} is-rtl{% endif %}">
   {% include site_header.html %}
   <div class="docs-shell">
-    <aside class="docs-sidebar" id="docs-sidebar" aria-label="Documentation navigation">
+    <aside class="docs-sidebar" id="docs-sidebar" aria-label="{{ ui.docs_navigation_label | escape }}">
       <div class="docs-sidebar-panel">
         <div class="docs-sidebar-header">
-          <h2>Docs menu</h2>
-          <button class="docs-sidebar-close" type="button" aria-label="Close documentation navigation" data-docs-nav-close>&times;</button>
+          <h2>{{ ui.docs_menu }}</h2>
+          <button class="docs-sidebar-close" type="button" aria-label="{{ ui.docs_menu_close_label | escape }}" data-docs-nav-close>&times;</button>
         </div>
         <div class="sidebar-search">
-          <label for="doc-search">Search docs</label>
+          <label for="doc-search">{{ ui.search_docs }}</label>
           <input
             id="doc-search"
             type="search"
-            placeholder="Search all docs"
+            placeholder="{{ ui.search_all_docs | escape }}"
             autocomplete="off"
             aria-controls="doc-search-results"
             data-doc-search
@@ -47,22 +51,26 @@
         </div>
         <nav class="sidebar-nav" data-doc-nav>
           <div class="nav-section">
-            <h2>Start</h2>
-            <a href="{{ overview_url | relative_url }}">Overview</a>
-            <a href="{{ docs_prefix | append: 'faq.html' | relative_url }}">FAQ & Troubleshooting</a>
-            <a href="{{ docs_prefix | append: 'bus-function.html' | relative_url }}">Bus Function</a>
-            <a href="{{ '/docs/plugin-development.html' | relative_url }}">Plugin Development</a>
-            <a href="{{ '/docs/version-history.html' | relative_url }}">Version History</a>
+            <h2>{{ ui.nav_start }}</h2>
+            <a href="{{ overview_url | relative_url }}">{{ ui.overview }}</a>
+            <a href="{{ docs_prefix | append: 'faq.html' | relative_url }}">{{ ui.faq_troubleshooting }}</a>
+            <a href="{{ docs_prefix | append: 'bus-function.html' | relative_url }}">{{ ui.bus_function }}</a>
+            <a href="{{ '/docs/plugin-development.html' | relative_url }}">{{ ui.plugin_development }}</a>
+            <a href="{{ '/docs/version-history.html' | relative_url }}">{{ ui.version_history }}</a>
           </div>
           <div class="nav-section">
-            <h2>Plugin Categories</h2>
-            {% assign plugin_pages = site.pages | where_exp: "nav_page", "nav_page.path contains plugin_source_prefix" | sort: "title" %}
-            {% for nav_page in plugin_pages %}
-              <a href="{{ nav_page.url | relative_url }}">{{ nav_page.title | split: ' - ' | first }}</a>
+            <h2>{{ ui.plugin_categories }}</h2>
+            {% assign plugin_category_order = "analyzer|basics|delay|dynamics|eq|lofi|modulation|others|resonator|reverb|saturation|spatial|control" | split: "|" %}
+            {% for category_slug in plugin_category_order %}
+              {% assign plugin_page_path = plugin_source_prefix | append: category_slug | append: '.md' %}
+              {% assign nav_page = site.pages | where: "path", plugin_page_path | first %}
+              {% if nav_page %}
+                <a href="{{ nav_page.url | relative_url }}">{{ nav_page.title | split: ' - ' | first }}</a>
+              {% endif %}
             {% endfor %}
           </div>
           <div class="nav-section nav-section-languages">
-            <h2>Languages</h2>
+            <h2>{{ ui.languages }}</h2>
             {% for language in site.data.languages %}
               <a href="{{ language.url | relative_url }}" lang="{{ language.code }}">{{ language.label }}</a>
             {% endfor %}
@@ -73,10 +81,10 @@
 
     <main class="docs-main" id="main-content">
       <div class="doc-topline">
-        <span>Documentation</span>
+        <span>{{ ui.documentation }}</span>
         <div class="doc-actions">
-          <button class="docs-menu-open" type="button" aria-expanded="false" aria-controls="docs-sidebar" data-docs-nav-toggle>Docs menu</button>
-          <button class="toc-open" type="button" aria-expanded="false" aria-controls="page-toc" data-toc-toggle>On this page</button>
+          <button class="docs-menu-open" type="button" aria-expanded="false" aria-controls="docs-sidebar" data-docs-nav-toggle>{{ ui.docs_menu }}</button>
+          <button class="toc-open" type="button" aria-expanded="false" aria-controls="page-toc" data-toc-toggle>{{ ui.on_this_page }}</button>
         </div>
       </div>
       <article class="markdown-body doc-content" data-content>
@@ -84,11 +92,11 @@
       </article>
     </main>
 
-    <aside class="docs-toc" aria-label="On this page">
+    <aside class="docs-toc" aria-label="{{ ui.on_this_page | escape }}">
       <div class="toc-card">
         <div class="toc-card-header">
-          <h2>On this page</h2>
-          <button class="toc-close" type="button" aria-label="Close table of contents" data-toc-close>&times;</button>
+          <h2>{{ ui.on_this_page }}</h2>
+          <button class="toc-close" type="button" aria-label="{{ ui.close_toc_label | escape }}" data-toc-close>&times;</button>
         </div>
         <nav id="page-toc" data-page-toc></nav>
       </div>

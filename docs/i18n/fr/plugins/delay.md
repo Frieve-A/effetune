@@ -1,7 +1,7 @@
 ---
-title: "Delay Plugins - EffeTune"
-description: "Delay effect plugins including standard Delay and Time Alignment for precise audio timing."
-lang: en
+title: "Plugins Delay - EffeTune"
+description: "Plugins d'effet de delay incluant Delay et Time Alignment pour ajuster précisément le timing audio."
+lang: fr
 ---
 
 # Plugins Delay
@@ -11,7 +11,7 @@ Une collection d'outils pour ajuster la synchronisation de vos signaux audio ou 
 ## Liste des Plugins
 
 - [Delay](#delay) - Crée des échos avec contrôle sur le timing, la tonalité et la dispersion stéréo.
-- [Time Alignment](#time-alignment) - Ajustements précis du timing pour les canaux audio.
+- [Time Alignment](#time-alignment) - Ajuste finement le timing de lecture pour l'alignement des haut-parleurs et de la position d'écoute.
 
 ## Delay
 
@@ -38,9 +38,9 @@ Cet effet ajoute des échos distincts à votre audio. Vous pouvez contrôler la 
 
 ### Paramètres
 
-- **Pre-Delay (ms)** - Temps avant que le *premier* écho soit entendu (0 à 100 ms).
-  - Valeurs basses (0-20ms) : L'écho commence presque immédiatement.
-  - Valeurs hautes (20-100ms) : Crée un écart notable avant l'écho, le séparant du son original.
+- **Pre-Delay (ms)** - Ajoute un temps supplémentaire avant que le signal entre dans le delay d'écho (0 à 100 ms). Le premier écho est entendu après Pre-Delay + Delay Size.
+  - Valeurs basses (0-20ms) : Le motif d'écho commence presque immédiatement.
+  - Valeurs hautes (20-100ms) : Ajoute un écart notable avant le motif d'écho, le séparant du son original.
 - **Delay Size (ms)** - Le temps entre chaque écho (1 à 5000 ms).
   - Court (1-100ms) : Crée des effets d'épaississement ou de 'slapback'.
   - Moyen (100-600ms) : Effets d'écho standard, bons pour l'amélioration rythmique.
@@ -51,14 +51,15 @@ Cet effet ajoute des échos distincts à votre audio. Vous pouvez contrôler la 
   - 50% : Un estompage naturel et équilibré.
   - 100% : Les échos deviennent significativement plus sombres et plus fins rapidement (plus étouffés).
   - À utiliser conjointement avec High/Low Damp.
-- **High Damp (Hz)** - Définit la fréquence au-dessus de laquelle les échos commencent à perdre de la brillance (1000 à 20000 Hz).
+- **High Damp (Hz)** - Définit la fréquence au-dessus de laquelle les échos commencent à perdre de la brillance (20 à 20000 Hz).
   - Valeurs basses (par ex., 2000Hz) : Les échos s'assombrissent rapidement.
   - Valeurs hautes (par ex., 10000Hz) : Les échos restent brillants plus longtemps.
   - Ajuster avec Damping pour le contrôle tonal des échos.
-- **Low Damp (Hz)** - Définit la fréquence en dessous de laquelle les échos commencent à perdre du corps (20 à 1000 Hz).
+- **Low Damp (Hz)** - Définit la fréquence en dessous de laquelle les échos commencent à perdre du corps (20 à 20000 Hz).
   - Valeurs basses (par ex., 50Hz) : Les échos conservent plus de basses.
   - Valeurs hautes (par ex., 500Hz) : Les échos deviennent plus fins rapidement.
   - Ajuster avec Damping pour le contrôle tonal des échos.
+  - Pour une tonalité prévisible, gardez Low Damp sous High Damp. Si les valeurs se croisent, le processeur les remet en ordre en interne.
 - **Feedback (%)** - Combien d'échos vous entendez, ou combien de temps ils durent (0 à 99%).
   - 0% : Un seul écho est entendu.
   - 10-40% : Quelques répétitions notables.
@@ -107,7 +108,7 @@ Cet effet ajoute des échos distincts à votre audio. Vous pouvez contrôler la 
 1.  **Régler le Timing :**
     - Commencez avec `Delay Size` pour définir le rythme principal de l'écho.
     - Ajustez `Feedback` pour contrôler le nombre d'échos que vous entendez.
-    - Utilisez `Pre-Delay` si vous souhaitez un intervalle avant le premier écho.
+    - Utilisez `Pre-Delay` pour ajouter un intervalle supplémentaire avant le début du motif d'écho.
 2.  **Ajuster la Tonalité :**
     - Utilisez `Damping`, `High Damp` et `Low Damp` ensemble pour façonner le son des échos lorsqu'ils s'estompent. Commencez avec Damping autour de 50% et ajustez les fréquences Damp.
 3.  **Position en Stéréo (Optionnel) :**
@@ -119,39 +120,27 @@ Cet effet ajoute des échos distincts à votre audio. Vous pouvez contrôler la 
 
 ## Time Alignment
 
-Un outil de précision qui vous permet d'ajuster la synchronisation des canaux audio avec une précision à la milliseconde. Parfait pour corriger les problèmes de phase ou créer des effets stéréo spécifiques.
+Ajuste le timing de lecture par petites quantités, utile pour compenser les différences de distance entre haut-parleurs ou régler la façon dont le son arrive à votre position d'écoute.
 
 ### Quand Utiliser
-- Corriger l'alignement de phase entre les canaux stéréo
-- Compenser les différences de distance des haut-parleurs
-- Affiner l'image stéréo
-- Corriger les désynchronisations dans les enregistrements
+- Compenser de petites différences de distance entre les haut-parleurs et votre position d'écoute
+- Affiner le timing des canaux routés dans ce plugin
+- Vérifier si un léger delay rend l'image stéréo plus stable ou plus naturelle
 
 ### Paramètres
-- **Delay** - Contrôle le temps de delay (0 à 100ms)
-  - 0ms : Pas de delay (timing original)
-  - Valeurs hautes : Augmentation du delay
-  - Ajustements fins pour un contrôle précis
-- **Channel** - Sélectionne le canal à retarder
-  - All : Affecte les deux canaux
-  - Left : Retarde uniquement le canal gauche
-  - Right : Retarde uniquement le canal droit
+- **Delay** - Contrôle le temps de delay appliqué aux canaux routés dans ce plugin (0 à 100 ms)
+  - 0 ms : Pas de delay
+  - Petites valeurs : Utiles pour compenser de très faibles différences de temps d'arrivée entre haut-parleurs
+  - Valeurs plus hautes : Créent un décalage temporel plus perceptible
 
 ### Utilisations Recommandées
 
-1. Alignement des Haut-parleurs
-   - Compenser les différentes distances des haut-parleurs
-   - Faire correspondre le timing entre les moniteurs
-   - Ajuster à l'acoustique de la pièce
+1. Compensation de Distance des Haut-parleurs
+   - Ajoutez un léger delay lorsqu'un haut-parleur ou un canal arrive plus tôt à la position d'écoute
+   - Ajustez par petites étapes en écoutant des voix centrées ou d'autres sons bien focalisés
 
-2. Correction d'Enregistrement
-   - Corriger les problèmes de phase entre les microphones
-   - Aligner plusieurs sources audio
-   - Corriger les divergences de timing
-
-3. Effets Créatifs
-   - Créer un élargissement stéréo subtil
-   - Concevoir des effets spatiaux
-   - Expérimenter avec le timing des canaux
+2. Ajustement Fin de la Position d'Écoute
+   - Essayez d'abord de très petites valeurs
+   - Arrêtez-vous lorsque l'image centrale semble stable et que le son reste naturel
 
 Rappelez-vous : L'objectif est d'améliorer votre plaisir d'écoute. Expérimentez avec les commandes pour trouver des sons qui ajoutent de l'intérêt et de la profondeur à votre musique préférée sans la surcharger.

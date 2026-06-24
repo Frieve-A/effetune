@@ -1,14 +1,18 @@
 # Frieve EffeTune <img src="../../../images/icon_64x64.png" alt="EffeTune Icon" width="30" height="30" align="bottom">
 
-[Open Web App](https://effetune.frieve.com/effetune.html)  [Download Desktop App](https://github.com/Frieve-A/effetune/releases/)
+[افتح تطبيق الويب](https://effetune.frieve.com/effetune.html)  [نزّل تطبيق سطح المكتب](https://github.com/Frieve-A/effetune/releases/)
 
 معالج تأثيرات صوتية فوري، مصمم لعشاق الصوت لتحسين تجربة الاستماع للموسيقى. يتيح لك EffeTune معالجة أي مصدر صوتي عبر تأثيرات عالية الجودة متنوعة، مما يمكنك من تخصيص وتحسين تجربة الاستماع في الوقت الحقيقي.
 
 [![Screenshot](../../../images/screenshot.png)](https://effetune.frieve.com/effetune.html)
 
+## فيديو تعريفي
+
+[![YouTube Video](../../../images/video_thumbnail.jpg)](https://www.youtube.com/watch?v=--mtsy1t4HI)
+
 ## المفهوم
 
-تم إنشاء EffeTune لعشاق الصوت الذين يرغبون في تحسين تجربة الاستماع للموسيقى. سواء كنت تبث الموسيقى عبر الإنترنت أو تشغلها من وسائط مادية، يتيح لك EffeTune إضافة تأثيرات احترافية لتخصيص الصوت بما يتناسب مع تفضيلاتك الدقيقة. حوّل جهاز الكمبيوتر الخاص بك إلى معالج تأثيرات صوتية قوي يعمل كحلقة وصل بين مصدر الصوت ومكبرات الصوت أو مضخم الصوت الخاص بك.
+تم إنشاء EffeTune لعشاق الصوت الذين يريدون الارتقاء بتجربة الاستماع للموسيقى. سواء كنت تستمع عبر خدمة بث أو من وسائط مادية، يتيح لك EffeTune إضافة تأثيرات عالية الجودة لتخصيص الصوت بما يناسب ذوقك بدقة. حوّل جهاز الكمبيوتر إلى معالج تأثيرات صوتية قوي يقع بين مصدر الصوت ومكبرات الصوت أو المضخم.
 
 لا خرافات لعشاق الصوت، فقط العلم البحت.
 
@@ -18,10 +22,9 @@
 - واجهة سحب وإفلات لبناء سلاسل التأثيرات
 - نظام تأثيرات قابل للتوسعة مع تأثيرات مصنفة
 - تصور صوتي حي
-- خط معالجة صوت يمكن تعديله في الوقت الحقيقي
+- مسار معالجة صوتي يمكن تعديله في الوقت الحقيقي
 - معالجة ملفات صوتية غير متصلة مع سلسلة التأثيرات الحالية
-- ميزة جزء لتجميع وتحكم تأثيرات متعددة
-- ميزة قياس الاستجابة الترددية للمعدات الصوتية
+- قياس الاستجابة الترددية وتصحيحها لمعايرة النظام
 - المعالجة والإخراج متعدد القنوات
 
 ## دليل الإعداد
@@ -33,7 +36,7 @@
 - افتح تطبيق EffeTune الويب في متصفحك، أو قم بتشغيل تطبيق EffeTune لسطح المكتب
 - افتح وشغل ملف موسيقى للتأكد من التشغيل الصحيح
    - (تطبيق سطح المكتب فقط) افتح ملف موسيقى واختر EffeTune كتطبيق
-   - أو اختر فتح ملف موسيقى... من قائمة الملف (تطبيق سطح المكتب فقط)
+   - أو اختر فتح ملف موسيقي... من قائمة ملف (تطبيق سطح المكتب فقط)
    - أو اسحب ملف الموسيقى إلى النافذة
 
 ### إعداد خدمة البث
@@ -71,22 +74,22 @@
 
 ### بناء سلسلة التأثيرات الخاصة بك
 
-1. يتم سرد التأثيرات المتاحة على الجانب الأيسر من الشاشة  
+1. تظهر **Available Effects** على الجانب الأيسر من الشاشة
    - استخدم زر البحث بجوار "Available Effects" لتصفية التأثيرات  
    - اكتب أي نص للعثور على التأثيرات حسب الاسم أو الفئة  
    - اضغط على ESC لمسح البحث
 2. اسحب التأثيرات من القائمة إلى منطقة Effect Pipeline
 3. تتم معالجة التأثيرات بالترتيب من الأعلى إلى الأسفل
 4. اسحب المقبض (⋮) أو انقر على زري ▲▼ لإعادة ترتيب التأثيرات
-   - لتأثيرات Section: Shift+نقرة على زري ▲▼ لنقل قطاعات كاملة (من Section واحدة إلى Section التالية، بداية pipeline، أو نهاية pipeline)
+   - لتأثيرات Section: انقر مع Shift على زري ▲▼ لنقل أقسام كاملة (من Section إلى Section التالية، أو إلى بداية Effect Pipeline أو نهايته)
 5. انقر على اسم التأثير لتوسيع/طي إعداداته
-   - Shift+نقرة على تأثير Section لطي/توسيع جميع التأثيرات داخل ذلك القطاع
-   - Shift+نقرة على تأثيرات أخرى لطي/توسيع جميع التأثيرات باستثناء فئة Analyzer
-   - Ctrl+نقرة لطي/توسيع جميع التأثيرات
+   - انقر مع Shift على تأثير Section لطي/توسيع جميع التأثيرات داخل ذلك القسم
+   - انقر مع Shift على تأثيرات أخرى لطي/توسيع جميع التأثيرات باستثناء فئة Analyzer
+   - انقر مع Ctrl لطي/توسيع جميع التأثيرات
 6. استخدم زر ON لتجاوز التأثيرات الفردية
 7. انقر على زر ? لفتح وثائقها التفصيلية في علامة تبويب جديدة
 8. قم بإزالة التأثيرات باستخدام زر ×
-   - لتأثيرات Section: Shift+نقرة على زر × لإزالة قطاعات كاملة  
+   - لتأثيرات Section: انقر مع Shift على زر × لإزالة أقسام كاملة
 9. انقر فوق زر التوجيه لتعيين القنوات التي سيتم معالجتها وحافلات الإدخال والإخراج  
    - [المزيد عن وظائف الحافلات](bus-function.md)
 
@@ -116,50 +119,50 @@
 1. استخدام تأثير القسم:
    - أضف تأثير Section في بداية مجموعة من التأثيرات
    - أدخل اسمًا وصفيًا في حقل التعليق
-   - تبديل تأثير Section ON/OFF سيمكّن/يعطل جميع التأثيرات داخل هذا القسم
+   - تبديل Section بين ON/OFF يتجاوز ذلك القسم أو يعيده مع الحفاظ على حالة ON/OFF الخاصة بكل تأثير داخله
    - استخدم عدة تأثيرات Section لتنظيم سلسلة التأثيرات الخاصة بك في مجموعات منطقية
    - [المزيد عن تأثيرات التحكم](plugins/control.md)
 
-### استخدام ميزات خط الأنابيب AB
+### استخدام ميزات AB Pipeline
 
-1. نظرة عامة على خط الأنابيب AB:
-   - يمكن لـ EffeTune الحفاظ على خطي أنابيب تأثير منفصلين: خط الأنابيب A وخط الأنابيب B
-   - عند البدء، يتم تحميل خط الأنابيب A فقط؛ يتم إنشاء خط الأنابيب B عند الحاجة
-   - تعمل جميع عمليات المعالجة والحفظ والتحميل والتحرير على خط الأنابيب المحدد حاليًا
+1. نظرة عامة على AB Pipeline:
+   - يستطيع EffeTune الاحتفاظ بسلسلتين منفصلتين من التأثيرات: Pipeline A وPipeline B
+   - عند البدء، تُحمّل Pipeline A فقط؛ وتُنشأ Pipeline B عند الحاجة
+   - تعمل جميع عمليات المعالجة والحفظ والتحميل والتحرير على الـ pipeline المحدد حاليًا
 
 2. زر تبديل AB:
    - يقع على يمين عنوان Effect Pipeline
-   - يعرض "A" افتراضيًا (خط الأنابيب A نشط)
-   - انقر للتبديل بين خط الأنابيب A وخط الأنابيب B
-   - إذا لم يكن خط الأنابيب B موجودًا عند التبديل، يتم نسخ إعدادات خط الأنابيب A إلى خط الأنابيب B
+   - يعرض "A" افتراضيًا (Pipeline A نشطة)
+   - انقر للتبديل بين Pipeline A وPipeline B
+   - إذا لم تكن Pipeline B موجودة عند التبديل، تُنسخ إعدادات Pipeline A إلى Pipeline B
 
 3. قائمة AB (زر منسدل):
    - يقع على يمين زر تبديل AB
-   - "A → B": انسخ إعدادات خط الأنابيب A إلى خط الأنابيب B وانتقل إلى خط الأنابيب B
-   - "B → A": انسخ إعدادات خط الأنابيب B إلى خط الأنابيب A وانتقل إلى خط الأنابيب A
+   - "A → B": انسخ إعدادات Pipeline A إلى Pipeline B وانتقل إلى Pipeline B
+   - "B → A": انسخ إعدادات Pipeline B إلى Pipeline A وانتقل إلى Pipeline A
 
 ### اختيار التأثيرات واختصارات لوحة المفاتيح
 
 1. طرق اختيار التأثيرات:
    - انقر على رؤوس التأثيرات لاختيار تأثيرات فردية
    - اضغط على Ctrl أثناء النقر لاختيار تأثيرات متعددة
-   - انقر على المساحة الفارغة في منطقة Pipeline لإلغاء تحديد جميع التأثيرات
+   - انقر على المساحة الفارغة في منطقة Effect Pipeline لإلغاء تحديد جميع التأثيرات
 
 2. اختصارات لوحة المفاتيح:
    - Ctrl + Z: التراجع
    - Ctrl + Y: إعادة
-   - Ctrl + S: حفظ خط الأنابيب الحالي
-   - Ctrl + Shift + S: حفظ خط الأنابيب الحالي باسم
+   - Ctrl + S: حفظ الـ pipeline الحالي
+   - Ctrl + Shift + S: حفظ الـ pipeline الحالي باسم
    - Ctrl + X: قص التأثيرات المحددة
    - Ctrl + C: نسخ التأثيرات المحددة
    - Ctrl + V: لصق التأثيرات من الحافظة
    - Ctrl + F: البحث عن التأثيرات
-   - Ctrl + A: تحديد جميع التأثيرات في خط الأنابيب
+   - Ctrl + A: تحديد جميع التأثيرات في Effect Pipeline
    - Delete: حذف التأثيرات المحددة
    - ESC: إلغاء تحديد جميع التأثيرات
-   - T: التبديل بين خط الأنابيب A وخط الأنابيب B
-   - A: التبديل إلى خط الأنابيب A
-   - B: التبديل إلى خط الأنابيب B
+   - T: التبديل بين Pipeline A وPipeline B
+   - A: التبديل إلى Pipeline A
+   - B: التبديل إلى Pipeline B
 
 3. اختصارات لوحة المفاتيح (عند استخدام المشغل):
    - Space: تشغيل/إيقاف مؤقت
@@ -169,17 +172,17 @@
    - Shift + ← أو R أو ,: إرجاع 10 ثوانٍ
    - Ctrl + M: تبديل وضع التكرار
    - Ctrl + H: تبديل وضع التشغيل العشوائي
-   - T: التبديل بين خط الأنابيب A وخط الأنابيب B
-   - A: التبديل إلى خط الأنابيب A
-   - B: التبديل إلى خط الأنابيب B
+   - T: تبديل Pipeline A/B
+   - A: التبديل إلى Pipeline A
+   - B: التبديل إلى Pipeline B
 
 ### معالجة الملفات الصوتية
 
 1. منطقة سحب أو تحديد الملفات:
    - توجد منطقة مخصصة للسحب مرئية دائمًا أسفل منطقة Effect Pipeline
    - تدعم ملف صوتي واحد أو ملفات صوتية متعددة
-   - تتم معالجة الملفات باستخدام إعدادات السلسلة الحالية
-   - تتم جميع المعالجات بمعدل عينة السلسلة
+   - تتم معالجة الملفات باستخدام إعدادات Pipeline الحالية
+   - تتم جميع المعالجات بمعدل عينة Pipeline
 
 2. حالة المعالجة:
    - شريط التقدم يظهر حالة المعالجة الحالية
@@ -197,22 +200,24 @@
 2. سيتم نسخ عنوان URL لتطبيق الويب تلقائيًا إلى الحافظة
 3. شارك عنوان URL المنسوخ مع الآخرين - يمكنهم إعادة إنشاء سلسلة التأثيرات الخاصة بك بالضبط عند فتحه
 4. في تطبيق الويب، يتم تخزين جميع إعدادات التأثير في عنوان URL، مما يجعلها سهلة الحفظ والمشاركة
-5. في إصدار تطبيق سطح المكتب، قم بتصدير الإعدادات إلى ملف effetune_preset من قائمة الملف
+5. في إصدار تطبيق سطح المكتب، صدّر الإعدادات إلى ملف effetune_preset من قائمة ملف
 6. شارك ملف effetune_preset المصدر. يمكن أيضًا تحميل ملف effetune_preset عن طريق سحبه إلى نافذة تطبيق الويب
 
 ### إعادة تعيين الصوت
 
 إذا واجهت مشاكل صوتية (انقطاع، تشويش):
-1. انقر على زر "Reset Audio" في الزاوية العلوية اليسرى في تطبيق الويب أو اختر Reload من قائمة View في تطبيق سطح المكتب
-2. سيتم إعادة بناء خط الصوت تلقائيًا
+1. انقر على زر "Reset Audio" في الزاوية العلوية اليسرى في تطبيق الويب أو اختر إعادة تحميل من قائمة عرض في تطبيق سطح المكتب
+2. سيُعاد بناء مسار الصوت تلقائيًا
 3. سيتم الاحتفاظ بتكوين سلسلة التأثيرات الخاصة بك
 
-### قياس الاستجابة الترددية
-1. لإصدار الويب، شغّل [أداة قياس استجابة التردد](https://effetune.frieve.com/features/measurement/measurement.html). لإصدار التطبيق، اختر «قياس استجابة التردد» من قائمة الإعدادات.
-2. قم بتوصيل معداتك الصوتية بمدخل ومخرج جهاز الكمبيوتر الخاص بك
-3. قم بتكوين معلمات القياس (مدة المسح، نطاق التردد)
-4. قم بتشغيل القياس لإنشاء رسم بياني للاستجابة الترددية
-5. قم بتحليل النتائج أو تصدير بيانات القياس لمزيد من التحليل
+### قياس الاستجابة الترددية وتصحيحها
+
+لقياس الاستجابة الترددية لنظامك الصوتي وإنشاء تصحيح EQ مسطح:
+1. في نسخة الويب، شغّل [أداة قياس الاستجابة الترددية](https://effetune.frieve.com/features/measurement/measurement.html). في نسخة التطبيق، اختر قياس الاستجابة الترددية من قائمة الإعدادات.
+2. اتبع الإعداد الموجّه لتكوين ميكروفون القياس وجهاز الإخراج
+3. قِس الاستجابة الترددية للنظام في موضع استماع واحد أو أكثر
+4. أنشئ تصحيح معادل بارامتري يمكن استيراده مباشرة إلى EffeTune
+5. طبّق التصحيح للحصول على إعادة إنتاج صوتية أدق وأكثر حيادًا
 
 ## تركيبات التأثيرات الشائعة
 
@@ -235,7 +240,7 @@
 1. Multiband Compressor -> Stereo Blend  
    - Multiband Compressor: يخلق الصوت الشبيه بـ "الراديو"  
    - Stereo Blend: يضبط عرض الستيريو للراحة (100-150%)  
-   - النتيجة: صوت احترافي يشبه البث
+   - النتيجة: صوت مصقول بأسلوب راديو FM
 
 ### طابع Lo-Fi
 1. Bit Crusher -> Simple Jitter -> RS Reverb  
@@ -251,74 +256,75 @@
 
 ## التأثيرات المتاحة
 
-| الفئة   | التأثير             | الوصف                                                                    | التوثيق                                               |
-| -------- | ------------------ | ------------------------------------------------------------------------- | ----------------------------------------------------- |
-| Analyzer | Level Meter        | يعرض مستوى الصوت مع تثبيت القيمة القصوى                                     | [تفاصيل](plugins/analyzer.md#level-meter)            |
-| Analyzer | Oscilloscope       | تصوّر شكل الموجة في الوقت الحقيقي                                           | [تفاصيل](plugins/analyzer.md#oscilloscope)           |
-| Analyzer | Spectrogram        | يعرض تغيرات طيف التردد مع مرور الوقت                                       | [تفاصيل](plugins/analyzer.md#spectrogram)            |
-| Analyzer | Spectrum Analyzer  | تحليل الطيف في الوقت الحقيقي                                               | [تفاصيل](plugins/analyzer.md#spectrum-analyzer)      |
-| Analyzer | Stereo Meter       | يُظهر توازن الاستريو وحركة الصوت                                            | [تفاصيل](plugins/analyzer.md#stereo-meter)           |
-| Basics   | Channel Divider    | يقسم الإشارة الاستريو إلى نطاقات ترددية ويوجهها إلى قنوات منفصلة            | [تفاصيل](plugins/basics.md#channel-divider)          |
-| Basics   | DC Offset          | ضبط إزاحة التيار المستمر                                                    | [تفاصيل](plugins/basics.md#dc-offset)                |
-| Basics   | Matrix             | يوجّه ويخلط القنوات الصوتية مع التحكم المرن                                 | [تفاصيل](plugins/basics.md#matrix)                   |
-| Basics   | MultiChannel Panel | لوحة تحكم للقنوات المتعددة مع إعدادات فردية للصوت والكتم والعزل والتأخير    | [تفاصيل](plugins/basics.md#multichannel-panel)       |
-| Basics   | Mute               | يصمت الإشارة الصوتية تمامًا                                                 | [تفاصيل](plugins/basics.md#mute)                     |
-| Basics   | Polarity Inversion | عكس قطبية الإشارة                                                          | [تفاصيل](plugins/basics.md#polarity-inversion)       |
-| Basics   | Stereo Balance     | التحكم في توازن قنوات الاستريو                                             | [تفاصيل](plugins/basics.md#stereo-balance)           |
-| Basics   | Volume             | التحكم الأساسي في مستوى الصوت                                              | [تفاصيل](plugins/basics.md#volume)                   |
-| Delay     | Delay          | تأثير تأخير قياسي                                   | [تفاصيل](plugins/delay.md#delay) |
-| Delay     | Time Alignment | ضبط توقيت القنوات الصوتية بدقة | [تفاصيل](plugins/delay.md#time-alignment) |
-| Dynamics  | Auto Leveler | ضبط تلقائي لمستوى الصوت بناءً على قياس LUFS لتجربة استماع متسقة | [تفاصيل](plugins/dynamics.md#auto-leveler) |
-| Dynamics  | Brickwall Limiter | التحكم الشفاف في الذروة لأمان واستماع مريح | [تفاصيل](plugins/dynamics.md#brickwall-limiter) |
-| Dynamics  | Compressor | ضغط الديناميكيات مع التحكم في العتبة والنسبة والمنحدر | [تفاصيل](plugins/dynamics.md#compressor) |
-| Dynamics  | Gate | بوابة ضوضاء مع التحكم في العتبة والنسبة والمنحدر لتقليل الضوضاء | [تفاصيل](plugins/dynamics.md#gate) |
-| Dynamics  | Multiband Compressor | معالج ديناميكيات احترافي خماسي النطاق بتشكيل صوت يشبه راديو FM | [تفاصيل](plugins/dynamics.md#multiband-compressor) |
-| Dynamics  | Multiband Expander | موسع احترافي بخمس نطاقات لتوسيع النطاق الديناميكي حسب التردد | [تفاصيل](plugins/dynamics.md#multiband-expander) |
-| Dynamics  | Multiband Transient | مشكل عابر متقدم ثلاثي النطاق للتحكم المحدد بالتردد في الهجوم والاستدامة | [تفاصيل](plugins/dynamics.md#multiband-transient) |
-| Dynamics  | Power Amp Sag | يحاكي انخفاض الجهد في مكبر الصوت تحت ظروف الحمل العالي | [تفاصيل](plugins/dynamics.md#power-amp-sag) |
-| Dynamics  | Transient Shaper | التحكم في أجزاء العابر والاستدامة من الإشارة | [تفاصيل](plugins/dynamics.md#transient-shaper) |
-| EQ        | 15Band GEQ | معادل رسومي 15-نطاق | [تفاصيل](plugins/eq.md#15band-geq) |
-| EQ        | 15Band PEQ | معادل بارامتري احترافي مع 15 نطاق قابل للتكوين بالكامل | [تفاصيل](plugins/eq.md#15band-peq) |
-| EQ        | 5Band Dynamic EQ | معادل ديناميكي خماسي النطاق مع تعديل تردد بناءً على العتبة | [تفاصيل](plugins/eq.md#5band-dynamic-eq) |
-| EQ        | 5Band PEQ | معادل بارامتري احترافي بخمسة نطاقات قابلة للتكوين بالكامل | [تفاصيل](plugins/eq.md#5band-peq) |
-| EQ        | Band Pass Filter | ركز على ترددات محددة | [تفاصيل](plugins/eq.md#band-pass-filter) |
-| EQ        | Comb Filter | مرشح مشط رقمي للتلوين التوافقي ومحاكاة الرنين | [تفاصيل](plugins/eq.md#comb-filter) |
-| EQ        | Hi Pass Filter | إزالة الترددات المنخفضة غير المرغوب فيها بدقة | [تفاصيل](plugins/eq.md#hi-pass-filter) |
-| EQ        | Lo Pass Filter | إزالة الترددات العالية غير المرغوب فيها بدقة | [تفاصيل](plugins/eq.md#lo-pass-filter) |
-| EQ        | Loudness Equalizer | تصحيح توازن التردد للاستماع بمستويات منخفضة | [تفاصيل](plugins/eq.md#loudness-equalizer) |
-| EQ        | Narrow Range | مجموعة من مرشحات التمرير العالي والتمرير المنخفض | [تفاصيل](plugins/eq.md#narrow-range) |
-| EQ        | Tilt EQ      | معادل مائل لتشكيل النغمة بسرعة | [تفاصيل](plugins/eq.md#tilt-eq)      |
-| EQ        | Tone Control | تحكم في النغمة بثلاث نطاقات | [تفاصيل](plugins/eq.md#tone-control) |
-| Lo-Fi     | Bit Crusher | تقليل العمق الثنائي وتأثير التثبيت الصفري | [تفاصيل](plugins/lofi.md#bit-crusher) |
-| Lo-Fi     | Digital Error Emulator | يحاكي أخطاء الإرسال الصوتي الرقمي المختلفة وخصائص المعدات الرقمية القديمة | [تفاصيل](plugins/lofi.md#digital-error-emulator) |
-| Lo-Fi     | DSD64 IMD Simulator | يحاكي تشوه التداخل المسموع الناتج عن الضوضاء فوق الصوتية لـ DSD64 | [تفاصيل](plugins/lofi.md#dsd64-imd-simulator) |
-| Lo-Fi     | Hum Generator | مولد ضوضاء الطنين عالي الدقة | [تفاصيل](plugins/lofi.md#hum-generator) |
-| Lo-Fi     | Noise Blender | توليد الضوضاء ومزجها | [تفاصيل](plugins/lofi.md#noise-blender) |
-| Lo-Fi     | Simple Jitter | محاكاة التذبذب الرقمي | [تفاصيل](plugins/lofi.md#simple-jitter) |
-| Lo-Fi     | Vinyl Artifacts | محاكاة فيزيائية لضوضاء السجلات التناظرية | [تفاصيل](plugins/lofi.md#vinyl-artifacts) |
-| Modulation | Doppler Distortion | يحاكي التغيرات الديناميكية الطبيعية في الصوت الناتجة عن حركات مخددات السماعة الطفيفة | [تفاصيل](plugins/modulation.md#doppler-distortion) |
-| Modulation | Pitch Shifter | تأثير تغيير درجة الصوت خفيف الوزن | [تفاصيل](plugins/modulation.md#pitch-shifter) |
-| Modulation | Tremolo | تأثير التضمين بناءً على مستوى الصوت | [تفاصيل](plugins/modulation.md#tremolo) |
-| Modulation | Wow Flutter | تأثير التضمين الزمني | [تفاصيل](plugins/modulation.md#wow-flutter) |
-| Resonator | Horn Resonator | محاكاة رنين القرن بأبعاد قابلة للتخصيص | [تفاصيل](plugins/resonator.md#horn-resonator) |
-| Resonator | Horn Resonator Plus | نموذج قرن محسن مع انعكاسات متقدمة | [تفاصيل](plugins/resonator.md#horn-resonator-plus) |
+| الفئة | التأثير | الوصف | التوثيق |
+|-----------|--------|-------------|---------------|
+| Analyzer | Level Meter | يعرض مستوى الصوت مع تثبيت الذروة | [تفاصيل](plugins/analyzer.md#level-meter) |
+| Analyzer | Oscilloscope | يعرض شكل الموجة في الوقت الحقيقي | [تفاصيل](plugins/analyzer.md#oscilloscope) |
+| Analyzer | Spectrogram | يعرض تغير الطيف الترددي مع الوقت | [تفاصيل](plugins/analyzer.md#spectrogram) |
+| Analyzer | Spectrum Analyzer | يعرض قوة الجهير والوسط والعالي في الوقت الحقيقي | [تفاصيل](plugins/analyzer.md#spectrum-analyzer) |
+| Analyzer | Stereo Meter | يوضح توازن الستيريو وترابط القناتين | [تفاصيل](plugins/analyzer.md#stereo-meter) |
+| Basics | Channel Divider | يقسم الإشارة الاستريو إلى نطاقات ترددية ويوجه كل نطاق إلى زوج مخارج استريو منفصل | [تفاصيل](plugins/basics.md#channel-divider) |
+| Basics | DC Offset | يضبط إزاحة DC في الإشارة | [تفاصيل](plugins/basics.md#dc-offset) |
+| Basics | Matrix | يوجه القنوات الصوتية ويمزجها بتحكم مرن | [تفاصيل](plugins/basics.md#matrix) |
+| Basics | MultiChannel Panel | لوحة تحكم لقنوات متعددة مع الصوت والكتم والعزل والتأخير | [تفاصيل](plugins/basics.md#multichannel-panel) |
+| Basics | Mute | يكتم الإشارة الصوتية تمامًا | [تفاصيل](plugins/basics.md#mute) |
+| Basics | Polarity Inversion | يعكس قطبية الإشارة | [تفاصيل](plugins/basics.md#polarity-inversion) |
+| Basics | Stereo Balance | يتحكم في توازن قناتي الستيريو | [تفاصيل](plugins/basics.md#stereo-balance) |
+| Basics | Volume | تحكم أساسي في مستوى الصوت | [تفاصيل](plugins/basics.md#volume) |
+| Delay | Delay | تأثير تأخير قياسي | [تفاصيل](plugins/delay.md#delay) |
+| Delay | Time Alignment | يضبط توقيت التشغيل بدقة لمحاذاة السماعات وموضع الاستماع | [تفاصيل](plugins/delay.md#time-alignment) |
+| Dynamics | Auto Leveler | يضبط مستوى الصوت تلقائيًا بناءً على قياس LUFS لتجربة استماع أكثر اتساقًا | [تفاصيل](plugins/dynamics.md#auto-leveler) |
+| Dynamics | Brickwall Limiter | يتحكم في الذروات بشفافية للاستماع الآمن والمريح | [تفاصيل](plugins/dynamics.md#brickwall-limiter) |
+| Dynamics | Compressor | يخفف المقاطع العالية المفاجئة لاستماع أكثر راحة | [تفاصيل](plugins/dynamics.md#compressor) |
+| Dynamics | Expander | يعيد بعض التباين الديناميكي بجعل الأصوات الهادئة تحت العتبة أهدأ | [تفاصيل](plugins/dynamics.md#expander) |
+| Dynamics | Gate | يقلل الصوت المنخفض أثناء الفواصل أو المقاطع الهادئة | [تفاصيل](plugins/dynamics.md#gate) |
+| Dynamics | Multiband Compressor | موازنة مستوى خماسية النطاق لصوت ثابت شبيه بالراديو | [تفاصيل](plugins/dynamics.md#multiband-compressor) |
+| Dynamics | Multiband Expander | موسع خماسي النطاق لاستعادة تباين طبيعي في التسجيلات المسطحة أكثر من اللازم | [تفاصيل](plugins/dynamics.md#multiband-expander) |
+| Dynamics | Multiband Transient | يشكل الهجوم والاستدامة منفصلين عبر نطاقات الجهير والوسط والعالي | [تفاصيل](plugins/dynamics.md#multiband-transient) |
+| Dynamics | Power Amp Sag | يحاكي هبوط جهد مضخم القدرة تحت الحمل العالي | [تفاصيل](plugins/dynamics.md#power-amp-sag) |
+| Dynamics | Transient Shaper | يضبط قوة الضربات وامتلاء الصوت عبر تشكيل الهجوم والاستدامة | [تفاصيل](plugins/dynamics.md#transient-shaper) |
+| EQ | 15Band GEQ | معادل رسومي من 15 نطاقًا | [تفاصيل](plugins/eq.md#15band-geq) |
+| EQ | 15Band PEQ | معادل بارامتري من 15 نطاقًا لضبط نغمة الاستماع بتفصيل | [تفاصيل](plugins/eq.md#15band-peq) |
+| EQ | 5Band Dynamic EQ | معادل ديناميكي خماسي النطاق يغير الترددات حسب العتبة | [تفاصيل](plugins/eq.md#5band-dynamic-eq) |
+| EQ | 5Band PEQ | معادل مرن من 5 نطاقات لتشكيل الجهير والوسط والعالي | [تفاصيل](plugins/eq.md#5band-peq) |
+| EQ | Band Pass Filter | يركز على ترددات محددة | [تفاصيل](plugins/eq.md#band-pass-filter) |
+| EQ | Comb Filter | يضيف لونًا طوريًا أو أجوف أو معدنيًا | [تفاصيل](plugins/eq.md#comb-filter) |
+| EQ | Hi Pass Filter | يزيل الترددات المنخفضة غير المرغوبة بدقة | [تفاصيل](plugins/eq.md#hi-pass-filter) |
+| EQ | Lo Pass Filter | يزيل الترددات العالية غير المرغوبة بدقة | [تفاصيل](plugins/eq.md#lo-pass-filter) |
+| EQ | Loudness Equalizer | يصحح توازن الترددات عند الاستماع بمستوى منخفض | [تفاصيل](plugins/eq.md#loudness-equalizer) |
+| EQ | Narrow Range | مزيج من مرشحي تمرير عال وتمرير منخفض | [تفاصيل](plugins/eq.md#narrow-range) |
+| EQ | Tilt EQ | معادل ميل لتشكيل النغمة بسرعة | [تفاصيل](plugins/eq.md#tilt-eq) |
+| EQ | Tone Control | تحكم نغمي بثلاثة نطاقات | [تفاصيل](plugins/eq.md#tone-control) |
+| Lo-Fi | Bit Crusher | تقليل عمق البت وتأثير zero-order hold | [تفاصيل](plugins/lofi.md#bit-crusher) |
+| Lo-Fi | Digital Error Emulator | يحاكي أخطاء نقل الصوت الرقمي وخصائص الأجهزة الرقمية القديمة | [تفاصيل](plugins/lofi.md#digital-error-emulator) |
+| Lo-Fi | DSD64 IMD Simulator | يحاكي تشوه التداخل المسموع الناتج عن ضوضاء DSD64 فوق الصوتية | [تفاصيل](plugins/lofi.md#dsd64-imd-simulator) |
+| Lo-Fi | Hum Generator | يضيف طنينًا كهربائيًا 50/60 Hz قابلًا للتحكم لأجواء vintage/lo-fi | [تفاصيل](plugins/lofi.md#hum-generator) |
+| Lo-Fi | Noise Blender | يضيف نسيج ضوضاء خلفية قابلًا للضبط لأجواء lo-fi | [تفاصيل](plugins/lofi.md#noise-blender) |
+| Lo-Fi | Simple Jitter | يحاكي jitter رقميًا | [تفاصيل](plugins/lofi.md#simple-jitter) |
+| Lo-Fi | Vinyl Artifacts | يضيف طقطقات وفرقعة وهسيسًا ورمبلًا وتسرب ضوضاء ستيريو بطابع الفينيل | [تفاصيل](plugins/lofi.md#vinyl-artifacts) |
+| Modulation | Doppler Distortion | يحاكي تغيرات طبيعية ديناميكية في الصوت ناتجة عن حركات طفيفة في مخروط السماعة | [تفاصيل](plugins/modulation.md#doppler-distortion) |
+| Modulation | Pitch Shifter | يرفع أو يخفض درجة الموسيقى من دون تغيير السرعة | [تفاصيل](plugins/modulation.md#pitch-shifter) |
+| Modulation | Tremolo | تأثير تضمين يعتمد على مستوى الصوت | [تفاصيل](plugins/modulation.md#tremolo) |
+| Modulation | Wow Flutter | يضيف تمايلًا لطيفًا في الدرجة بطابع الشريط أو الأسطوانة | [تفاصيل](plugins/modulation.md#wow-flutter) |
+| Resonator | Horn Resonator | يحاكي رنين القرن بأبعاد قابلة للتخصيص | [تفاصيل](plugins/resonator.md#horn-resonator) |
+| Resonator | Horn Resonator Plus | رنين horn-speaker أكثر سلاسة للون استماع طبيعي | [تفاصيل](plugins/resonator.md#horn-resonator-plus) |
 | Resonator | Modal Resonator | تأثير رنين ترددي مع ما يصل إلى 5 رنانات | [تفاصيل](plugins/resonator.md#modal-resonator) |
-| Reverb    | Dattorro Plate Reverb | صدى لوحي كلاسيكي يعتمد على خوارزمية داتورو | [تفاصيل](plugins/reverb.md#dattorro-plate-reverb) |
-| Reverb    | FDN Reverb | صدى شبكة التأخير المرتد ينتج نسيج صدى غني وكثيف | [تفاصيل](plugins/reverb.md#fdn-reverb) |
-| Reverb    | RS Reverb | صدى منتشر عشوائي مع انتشار طبيعي | [تفاصيل](plugins/reverb.md#rs-reverb) |
-| Saturation| Dynamic Saturation | يحاكي الإزاحة غير الخطية لمخاريط السماعة | [تفاصيل](plugins/saturation.md#dynamic-saturation) |
-| Saturation| Exciter | يضيف محتوى توافقي لتعزيز الوضوح والحضور | [تفاصيل](plugins/saturation.md#exciter) |
-| Saturation| Hard Clipping | تأثير القص الرقمي الصلب | [تفاصيل](plugins/saturation.md#hard-clipping) |
-| Saturation | Harmonic Distortion | يضيف طابعًا فريدًا من خلال التشويه التوافقي مع التحكم المستقل في كل توافقي | [تفاصيل](plugins/saturation.md#harmonic-distortion) |
-| Saturation| Multiband Saturation | تأثير تشبع ثلاثي النطاقات لدفء دقيق حسب التردد | [تفاصيل](plugins/saturation.md#multiband-saturation) |
-| Saturation| Saturation | تأثير التشبع | [تفاصيل](plugins/saturation.md#saturation) |
-| Saturation| Sub Synth | مزج إشارات تحت-توافقي لتعزيز الجهير | [تفاصيل](plugins/saturation.md#sub-synth) |
-| Spatial   | Crossfeed Filter | مرشح التغذية المتقاطعة للسماعات للتصوير الستيريو الطبيعي | [تفاصيل](plugins/spatial.md#crossfeed-filter) |
-| Spatial   | MS Matrix | ترميز وفك ترميز منتصف-جانبي للتلاعب الستيريو | [تفاصيل](plugins/spatial.md#ms-matrix) |
-| Spatial   | Multiband Balance | التحكم في توازن الستيريو حسب التردد بخمسة نطاقات | [تفاصيل](plugins/spatial.md#multiband-balance) |
-| Spatial   | Stereo Blend | تأثير التحكم في عرض الستيريو | [تفاصيل](plugins/spatial.md#stereo-blend) |
-| Others    | Oscillator | مولد إشارة صوتية متعددة الأشكال | [تفاصيل](plugins/others.md#oscillator) |
-| Control   | Section | تجميع تأثيرات متعددة للتحكم الموحد | [تفاصيل](plugins/control.md) |
+| Reverb | Dattorro Plate Reverb | صدى plate كلاسيكي مبني على خوارزمية Dattorro | [تفاصيل](plugins/reverb.md#dattorro-plate-reverb) |
+| Reverb | FDN Reverb | صدى Feedback Delay Network بنسيج صدى غني وكثيف | [تفاصيل](plugins/reverb.md#fdn-reverb) |
+| Reverb | RS Reverb | صدى random scattering بانتشار طبيعي | [تفاصيل](plugins/reverb.md#rs-reverb) |
+| Saturation | Dynamic Saturation | يحاكي الإزاحة غير الخطية لمخاريط السماعات | [تفاصيل](plugins/saturation.md#dynamic-saturation) |
+| Saturation | Exciter | يضيف محتوى توافقيًا لتعزيز الوضوح والحضور | [تفاصيل](plugins/saturation.md#exciter) |
+| Saturation | Hard Clipping | تأثير قص رقمي صلب | [تفاصيل](plugins/saturation.md#hard-clipping) |
+| Saturation | Harmonic Distortion | يضيف طابعًا عبر تشويه توافقي قابل للضبط من الرتبة الثانية إلى الخامسة | [تفاصيل](plugins/saturation.md#harmonic-distortion) |
+| Saturation | Multiband Saturation | يضيف دفئًا أو حدة بشكل منفصل للنطاقات المنخفضة والمتوسطة والعالية | [تفاصيل](plugins/saturation.md#multiband-saturation) |
+| Saturation | Saturation | يضيف غنى وطابعًا دافئًا بأسلوب تناظري | [تفاصيل](plugins/saturation.md#saturation) |
+| Saturation | Sub Synth | يمزج إشارة منخفضة التردد ومرشحة لتعزيز الجهير | [تفاصيل](plugins/saturation.md#sub-synth) |
+| Spatial | Crossfeed Filter | مرشح crossfeed لسماعات الرأس للحصول على صورة ستيريو طبيعية | [تفاصيل](plugins/spatial.md#crossfeed-filter) |
+| Spatial | MS Matrix | يحول بين الستيريو وMid/Side لضبط المركز والأجواء | [تفاصيل](plugins/spatial.md#ms-matrix) |
+| Spatial | Multiband Balance | تحكم خماسي النطاق في توازن الستيريو حسب التردد | [تفاصيل](plugins/spatial.md#multiband-balance) |
+| Spatial | Stereo Blend | يتحكم في عرض الستيريو من mono إلى ستيريو معزز | [تفاصيل](plugins/spatial.md#stereo-blend) |
+| Others | Oscillator | مولد نغمات وضوضاء اختبار لفحص السماعات أو سماعات الرأس | [تفاصيل](plugins/others.md#oscillator) |
+| Control | Section | يجمع التأثيرات بحيث يمكن تجاوز قسم كامل أو إعادته | [تفاصيل](plugins/control.md) |
 
 ## المعلومات التقنية
 

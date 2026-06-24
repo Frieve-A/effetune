@@ -10,7 +10,7 @@ A collection of plugins that let you see your music in fascinating ways. These v
 
 ## Plugin List
 
-- [Level Meter](#level-meter) - Shows how loud the music is playing
+- [Level Meter](#level-meter) - Shows digital signal level and possible clipping
 - [Oscilloscope](#oscilloscope) - Shows real-time waveform visualization
 - [Spectrogram](#spectrogram) - Creates beautiful visual patterns from your music
 - [Spectrum Analyzer](#spectrum-analyzer) - Shows the different frequencies in your music
@@ -18,25 +18,24 @@ A collection of plugins that let you see your music in fascinating ways. These v
 
 ## Level Meter
 
-A visual display that shows you how loud your music is playing in real-time. It helps you ensure you're listening at comfortable levels and avoid any distortion from volume that's too high.
+A visual display that shows your music's digital signal level in real time. It helps you check levels after applying effects and spot possible clipping before it becomes audible distortion.
 
 ### Visualization Guide
-- The meter moves up and down with the music's volume
-- Higher on the meter means louder sound
-- Red marker shows the highest recent level
-- Red warning at the top means the volume might be too loud
-- For comfortable listening, try to keep levels in the middle range
+- The horizontal bar extends farther to the right as the signal level gets louder
+- White marker shows the highest recent level for a short time
+- OVERLOAD means the signal exceeded the safe digital range and may distort
+- For clean playback, avoid frequent red levels or OVERLOAD warnings; set your actual listening volume on your device
 
 ## Oscilloscope
 
-A professional-grade oscilloscope that displays real-time audio waveforms, helping you visualize the actual shape of your sound waves. It features trigger functionality for stable waveform display, making it easier to analyze periodic signals and transients.
+Shows the shape of the sound wave in real time, so you can see beats, sharp hits, and changes in loudness while listening. Trigger settings can steady the display when the waveform repeats.
 
 ### Visualization Guide
 - Horizontal axis shows time (milliseconds)
-- Vertical axis shows amplitude (-1 to 1)
+- Vertical axis shows normalized amplitude; the visible range changes with Display Level and Vertical Offset
 - Green line traces the actual waveform
 - Grid lines help measure time and amplitude values
-- Trigger point marks where the waveform capture begins
+- Trigger settings determine where the waveform capture begins; no separate marker is shown
 
 ### Parameters
 - **Display Time** - How much time to show (1 to 100 ms)
@@ -56,11 +55,11 @@ A professional-grade oscilloscope that displays real-time audio waveforms, helpi
 - **Vertical Offset** - Shifts waveform up/down (-1 to 1)
 
 ### Note on Waveform Display
-The displayed waveform uses linear interpolation between sample points for smooth visualization. This means the actual audio signal between samples may differ from what is shown. For the most accurate representation, especially when analyzing high-frequency content, consider using higher sample rates (96kHz or above).
+The displayed waveform uses linear interpolation between sample points for smooth visualization. Use it as a visual guide rather than an exact measurement tool.
 
 ## Spectrogram
 
-Creates beautiful, colorful patterns that show how your music changes over time. It's like seeing a painting of your music, where different colors represent different sounds and frequencies.
+Creates colorful patterns that show how your music changes over time. Colors show how strong each sound is, while vertical position shows its frequency.
 
 ### Visualization Guide
 - Colors show how strong different frequencies are:
@@ -83,9 +82,9 @@ Creates beautiful, colorful patterns that show how your music changes over time.
 - **DB Range** - How vibrant the colors are (-144dB to -48dB)
   - Lower numbers: See more subtle details
   - Higher numbers: Focus on the main sounds
-- **Points** - How detailed the patterns are (256 to 16384)
-  - Higher numbers: More precise patterns
-  - Lower numbers: Smoother visuals
+- **Points** - FFT size used for the display (256 to 16384)
+  - Higher numbers: More frequency detail, but slower time updates
+  - Lower numbers: Faster movement, but less frequency detail
 - The analyzer uses the average of the left and right channels. Mono input is analyzed directly.
 
 ## Spectrum Analyzer
@@ -97,6 +96,8 @@ Creates a real-time visual display of your music's frequencies, from deep bass t
 - Middle shows main frequencies (vocals, guitars, piano)
 - Right side shows high frequencies (cymbals, sparkle, air)
 - Higher peaks mean stronger presence of those frequencies
+- Darker green line shows the current sound
+- Brighter green line briefly holds recent peaks, so you can see strong sounds that just passed
 - Watch how different instruments create different patterns
 
 ### What You Can See
@@ -109,9 +110,9 @@ Creates a real-time visual display of your music's frequencies, from deep bass t
 - **DB Range** - How sensitive the display is (-144dB to -48dB)
   - Lower numbers: See more subtle details
   - Higher numbers: Focus on the main sounds
-- **Points** - How detailed the display is (256 to 16384)
-  - Higher numbers: More precise detail
-  - Lower numbers: Smoother movement
+- **Points** - How finely the display separates nearby frequencies (256 to 16384)
+  - Higher numbers: More frequency detail, with slower updates
+  - Lower numbers: Quicker updates, with less frequency detail
 - The analyzer uses the average of the left and right channels. Mono input is analyzed directly.
 
 ### Fun Ways to Use These Tools
@@ -127,7 +128,7 @@ Creates a real-time visual display of your music's frequencies, from deep bass t
    - Observe how drums create sharp patterns
 
 3. Enhancing Your Experience
-   - Use the Level Meter to find comfortable listening volumes
+   - Use the Level Meter to check signal peaks after adding effects
    - Watch the Spectrum Analyzer dance with the music
    - Create a visual light show with the Spectrogram
 
@@ -137,16 +138,17 @@ A fascinating visualization tool that lets you see how your music creates a sens
 
 ### Visualization Guide
 - **Diamond Display** - The main window where the music comes to life:
-  - Center: When the sound is equally balanced
-  - Top/Bottom: When the music fills both speakers evenly
-  - Left/Right: When music comes more from one speaker
+  - Center: Very quiet moments or moments where the combined signal is near zero
+  - Top/Bottom: Sound shared by left and right channels, such as centered or mono-like content
+  - Left/Right: Difference or out-of-phase content between the channels
+  - Sounds that are much stronger on one side can appear toward the labeled corners
   - Green dots dance with the current music
   - White line traces the musical peaks
-- **Movement Bar** (Left side)
-  - Shows how your speakers work together
-  - Top (+1.0): Both speakers playing the same sound
-  - Middle (0.0): Speakers creating a nice stereo effect
-  - Bottom (-1.0): Speakers creating special effects
+- **Correlation Bar** (Left side)
+  - Shows left/right channel correlation
+  - Top (+1.0): Left and right are nearly the same, often sounding centered
+  - Middle (0.0): Weak channel relationship, often from wide ambience or unrelated left/right content
+  - Bottom (-1.0): Left and right are nearly opposite polarity, which can sound weak on speakers
 - **Balance Bar** (Bottom)
   - Shows if one speaker is louder than the other
   - Center: Music equally loud in both speakers
@@ -158,10 +160,10 @@ A fascinating visualization tool that lets you see how your music creates a sens
 - **Spacious Sound**: Activity spread wide across the display
 - **Special Effects**: Interesting patterns in the corners
 - **Speaker Balance**: Where the bottom bar points
-- **Sound Movement**: How high the left bar goes
+- **Channel Correlation**: What the left correlation bar shows
 
 ### Parameters
-- **Window Time** (10-1000 ms)
+- **Window** (10-1000 ms) - How much recent audio is shown in the display
   - Lower values: See quick musical changes
   - Higher values: See overall sound patterns
   - Default: 100 ms works well for most music

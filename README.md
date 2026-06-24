@@ -14,7 +14,7 @@ A real-time audio effect processor designed for audio enthusiasts to enhance the
 
 ## Concept
 
-EffeTune was created for audio enthusiasts who want to elevate their music listening experience. Whether you're streaming music or playing from physical media, EffeTune lets you add professional-grade effects to customize the sound to your exact preferences. Transform your computer into a powerful audio effects processor that sits between your audio source and your speakers or amplifier.
+EffeTune was created for audio enthusiasts who want to elevate their music listening experience. Whether you're streaming music or playing from physical media, EffeTune lets you add high-quality effects to customize the sound to your exact preferences. Transform your computer into a powerful audio effects processor that sits between your audio source and your speakers or amplifier.
 
 No audiophile myths, Just pure science.
 
@@ -121,7 +121,7 @@ To use EffeTune with CD players, network players, or other physical sources:
 1. Section Effect Usage:
    - Add a Section effect at the beginning of a group of effects
    - Enter a descriptive name in the Comment field
-   - Toggling the Section ON/OFF will enable/disable all effects within that section
+   - Toggling the Section ON/OFF bypasses or restores that section while preserving each effect's own ON/OFF state
    - Use multiple Section effects to organize your effect chain into logical groups
    - [More about control effects](docs/plugins/control.md)
 
@@ -242,7 +242,7 @@ Here are some popular effect combinations to enhance your listening experience:
 1. Multiband Compressor -> Stereo Blend
    - Multiband Compressor: Creates that "radio" sound
    - Stereo Blend: Adjusts stereo width for comfort (100-150%)
-   - Result: Professional broadcast-like sound
+   - Result: FM-radio-style polished sound
 
 ### Lo-Fi Character
 1. Bit Crusher -> Simple Jitter -> RS Reverb
@@ -263,9 +263,9 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Analyzer  | Level Meter | Displays audio level with peak hold | [Details](docs/plugins/analyzer.md#level-meter) |
 | Analyzer  | Oscilloscope | Real-time waveform visualization | [Details](docs/plugins/analyzer.md#oscilloscope) |
 | Analyzer  | Spectrogram | Shows frequency spectrum changes over time | [Details](docs/plugins/analyzer.md#spectrogram) |
-| Analyzer  | Spectrum Analyzer | Real-time spectrum analysis | [Details](docs/plugins/analyzer.md#spectrum-analyzer) |
-| Analyzer  | Stereo Meter | Visualizes stereo balance and sound movement | [Details](docs/plugins/analyzer.md#stereo-meter) |
-| Basics    | Channel Divider | Splits stereo signal into frequency bands and routes to separate channels | [Details](docs/plugins/basics.md#channel-divider) |
+| Analyzer  | Spectrum Analyzer | Shows the strength of bass, mids, and treble in real time | [Details](docs/plugins/analyzer.md#spectrum-analyzer) |
+| Analyzer  | Stereo Meter | Visualizes stereo balance and channel correlation | [Details](docs/plugins/analyzer.md#stereo-meter) |
+| Basics    | Channel Divider | Splits stereo signal into frequency bands and routes each band to separate stereo output pairs | [Details](docs/plugins/basics.md#channel-divider) |
 | Basics    | DC Offset | DC offset adjustment | [Details](docs/plugins/basics.md#dc-offset) |
 | Basics    | Matrix | Routes and mixes audio channels with flexible control | [Details](docs/plugins/basics.md#matrix) |
 | Basics    | MultiChannel Panel | Control panel for multiple channels with volume, mute, solo and delay | [Details](docs/plugins/basics.md#multichannel-panel) |
@@ -274,22 +274,23 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Basics    | Stereo Balance | Stereo channel balance control | [Details](docs/plugins/basics.md#stereo-balance) |
 | Basics    | Volume | Basic volume control | [Details](docs/plugins/basics.md#volume) |
 | Delay     | Delay          | Standard delay effect                                   | [Details](docs/plugins/delay.md#delay) |
-| Delay     | Time Alignment | Fine-tuning timing adjustments for audio channels | [Details](docs/plugins/delay.md#time-alignment) |
+| Delay     | Time Alignment | Fine-tunes playback timing for speaker and listening-position alignment | [Details](docs/plugins/delay.md#time-alignment) |
 | Dynamics  | Auto Leveler | Automatic volume adjustment based on LUFS measurement for consistent listening experience | [Details](docs/plugins/dynamics.md#auto-leveler) |
 | Dynamics  | Brickwall Limiter | Transparent peak control for safe and comfortable listening | [Details](docs/plugins/dynamics.md#brickwall-limiter) |
-| Dynamics  | Compressor | Dynamic range compression with threshold, ratio, and knee control | [Details](docs/plugins/dynamics.md#compressor) |
-| Dynamics  | Gate | Noise gate with threshold, ratio, and knee control for noise reduction | [Details](docs/plugins/dynamics.md#gate) |
-| Dynamics  | Multiband Compressor | Professional 5-band dynamics processor with FM radio-style sound shaping | [Details](docs/plugins/dynamics.md#multiband-compressor) |
-| Dynamics  | Multiband Expander | Professional 5-band expander for restoring dynamics to over-compressed recordings | [Details](docs/plugins/dynamics.md#multiband-expander) |
-| Dynamics  | Multiband Transient | Advanced 3-band transient shaper for frequency-specific attack and sustain control | [Details](docs/plugins/dynamics.md#multiband-transient) |
+| Dynamics  | Compressor | Smooths sudden loud passages for more comfortable listening | [Details](docs/plugins/dynamics.md#compressor) |
+| Dynamics  | Expander | Restores dynamic contrast by making below-threshold quiet sounds quieter | [Details](docs/plugins/dynamics.md#expander) |
+| Dynamics  | Gate | Reduces low-level sound during gaps or quiet sections | [Details](docs/plugins/dynamics.md#gate) |
+| Dynamics  | Multiband Compressor | 5-band volume balancing for a steady, radio-like listening sound | [Details](docs/plugins/dynamics.md#multiband-compressor) |
+| Dynamics  | Multiband Expander | 5-band expander for restoring natural contrast in overly flat recordings | [Details](docs/plugins/dynamics.md#multiband-expander) |
+| Dynamics  | Multiband Transient | Shapes attack and sustain separately across bass, mid, and treble ranges | [Details](docs/plugins/dynamics.md#multiband-transient) |
 | Dynamics  | Power Amp Sag | Simulates power amplifier voltage sag under high load conditions | [Details](docs/plugins/dynamics.md#power-amp-sag) |
-| Dynamics  | Transient Shaper | Controls transient and sustain portions of the signal | [Details](docs/plugins/dynamics.md#transient-shaper) |
+| Dynamics  | Transient Shaper | Adjusts the punch and body of music by shaping attacks and sustain | [Details](docs/plugins/dynamics.md#transient-shaper) |
 | EQ        | 15Band GEQ | 15-band graphic equalizer | [Details](docs/plugins/eq.md#15band-geq) |
-| EQ        | 15Band PEQ | Professional parametric equalizer with 15 fully configurable bands | [Details](docs/plugins/eq.md#15band-peq) |
+| EQ        | 15Band PEQ | 15-band parametric equalizer for detailed listening tone adjustment | [Details](docs/plugins/eq.md#15band-peq) |
 | EQ        | 5Band Dynamic EQ | 5-band dynamic equalizer with threshold-based frequency adjustment | [Details](docs/plugins/eq.md#5band-dynamic-eq) |
-| EQ        | 5Band PEQ | Professional parametric equalizer with 5 fully configurable bands | [Details](docs/plugins/eq.md#5band-peq) |
+| EQ        | 5Band PEQ | Flexible 5-band equalizer for shaping bass, mids, and treble | [Details](docs/plugins/eq.md#5band-peq) |
 | EQ        | Band Pass Filter | Focus on specific frequencies | [Details](docs/plugins/eq.md#band-pass-filter) |
-| EQ        | Comb Filter | Digital comb filter for harmonic coloration and resonance simulation | [Details](docs/plugins/eq.md#comb-filter) |
+| EQ        | Comb Filter | Adds phasey, hollow, or metallic coloration | [Details](docs/plugins/eq.md#comb-filter) |
 | EQ        | Hi Pass Filter | Remove unwanted low frequencies with precision | [Details](docs/plugins/eq.md#hi-pass-filter) |
 | EQ        | Lo Pass Filter | Remove unwanted high frequencies with precision | [Details](docs/plugins/eq.md#lo-pass-filter) |
 | EQ        | Loudness Equalizer | Frequency balance correction for low-volume listening | [Details](docs/plugins/eq.md#loudness-equalizer) |
@@ -299,16 +300,16 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Lo-Fi     | Bit Crusher | Bit depth reduction and zero-order hold effect | [Details](docs/plugins/lofi.md#bit-crusher) |
 | Lo-Fi     | Digital Error Emulator | Simulates various digital audio transmission errors and vintage digital equipment characteristics | [Details](docs/plugins/lofi.md#digital-error-emulator) |
 | Lo-Fi     | DSD64 IMD Simulator | Simulates audible intermodulation distortion from DSD64 ultrasonic noise | [Details](docs/plugins/lofi.md#dsd64-imd-simulator) |
-| Lo-Fi     | Hum Generator | High-precision power hum noise generator | [Details](docs/plugins/lofi.md#hum-generator) |
-| Lo-Fi     | Noise Blender | Noise generation and mixing | [Details](docs/plugins/lofi.md#noise-blender) |
+| Lo-Fi     | Hum Generator | Adds controllable 50/60 Hz electrical hum ambience for vintage/lo-fi listening | [Details](docs/plugins/lofi.md#hum-generator) |
+| Lo-Fi     | Noise Blender | Adds adjustable background noise texture for lo-fi ambience | [Details](docs/plugins/lofi.md#noise-blender) |
 | Lo-Fi     | Simple Jitter | Digital jitter simulation | [Details](docs/plugins/lofi.md#simple-jitter) |
-| Lo-Fi     | Vinyl Artifacts | Analog record noise physical simulation | [Details](docs/plugins/lofi.md#vinyl-artifacts) |
+| Lo-Fi     | Vinyl Artifacts | Adds vinyl-style pops, crackle, hiss, rumble, and stereo noise bleed | [Details](docs/plugins/lofi.md#vinyl-artifacts) |
 | Modulation | Doppler Distortion | Simulates natural, dynamic changes in sound caused by subtle speaker cone movements | [Details](docs/plugins/modulation.md#doppler-distortion) |
-| Modulation | Pitch Shifter | Lightweight pitch shifting effect | [Details](docs/plugins/modulation.md#pitch-shifter) |
+| Modulation | Pitch Shifter | Raises or lowers music pitch without changing tempo | [Details](docs/plugins/modulation.md#pitch-shifter) |
 | Modulation | Tremolo | Volume-based modulation effect | [Details](docs/plugins/modulation.md#tremolo) |
-| Modulation | Wow Flutter | Time-based modulation effect | [Details](docs/plugins/modulation.md#wow-flutter) |
+| Modulation | Wow Flutter | Adds subtle tape or record-style pitch wavering for vintage character | [Details](docs/plugins/modulation.md#wow-flutter) |
 | Resonator | Horn Resonator | Horn resonance simulation with customizable dimensions | [Details](docs/plugins/resonator.md#horn-resonator) |
-| Resonator | Horn Resonator Plus | Enhanced horn model with advanced reflections | [Details](docs/plugins/resonator.md#horn-resonator-plus) |
+| Resonator | Horn Resonator Plus | Smoother horn-speaker resonance for natural listening color | [Details](docs/plugins/resonator.md#horn-resonator-plus) |
 | Resonator | Modal Resonator | Frequency resonance effect with up to 5 resonators | [Details](docs/plugins/resonator.md#modal-resonator) |
 | Reverb    | Dattorro Plate Reverb | Classic plate reverb based on Dattorro algorithm | [Details](docs/plugins/reverb.md#dattorro-plate-reverb) |
 | Reverb    | FDN Reverb | Feedback Delay Network reverb with rich, dense reverb textures | [Details](docs/plugins/reverb.md#fdn-reverb) |
@@ -316,16 +317,16 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Saturation| Dynamic Saturation | Simulates the nonlinear displacement of speaker cones | [Details](docs/plugins/saturation.md#dynamic-saturation) |
 | Saturation| Exciter | Add harmonic content to enhance clarity and presence | [Details](docs/plugins/saturation.md#exciter) |
 | Saturation| Hard Clipping | Digital hard clipping effect | [Details](docs/plugins/saturation.md#hard-clipping) |
-| Saturation | Harmonic Distortion | Adds unique character through harmonic distortion with independent control of each harmonic | [Details](docs/plugins/saturation.md#harmonic-distortion) |
-| Saturation| Multiband Saturation | 3-band saturation effect for precise frequency-based warmth | [Details](docs/plugins/saturation.md#multiband-saturation) |
-| Saturation| Saturation | Saturation effect | [Details](docs/plugins/saturation.md#saturation) |
-| Saturation| Sub Synth | Mixes in subharmonic signals for bass enhancement | [Details](docs/plugins/saturation.md#sub-synth) |
+| Saturation | Harmonic Distortion | Adds character with adjustable 2nd- to 5th-order harmonic distortion | [Details](docs/plugins/saturation.md#harmonic-distortion) |
+| Saturation| Multiband Saturation | Adds warmth or edge separately to low, mid, and high ranges | [Details](docs/plugins/saturation.md#multiband-saturation) |
+| Saturation| Saturation | Adds warm analog-style richness and character | [Details](docs/plugins/saturation.md#saturation) |
+| Saturation| Sub Synth | Mixes in a filtered low-frequency signal for bass enhancement | [Details](docs/plugins/saturation.md#sub-synth) |
 | Spatial   | Crossfeed Filter | Headphone crossfeed filter for natural stereo imaging | [Details](docs/plugins/spatial.md#crossfeed-filter) |
-| Spatial   | MS Matrix | Mid-side encoding and decoding for stereo manipulation | [Details](docs/plugins/spatial.md#ms-matrix) |
+| Spatial   | MS Matrix | Converts between stereo and Mid/Side for center/ambience adjustments | [Details](docs/plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | 5-band frequency-dependent stereo balance control | [Details](docs/plugins/spatial.md#multiband-balance) |
-| Spatial   | Stereo Blend | Stereo width control effect | [Details](docs/plugins/spatial.md#stereo-blend) |
-| Others    | Oscillator | Multi-waveform audio signal generator | [Details](docs/plugins/others.md#oscillator) |
-| Control   | Section | Group multiple effects for unified control | [Details](docs/plugins/control.md) |
+| Spatial   | Stereo Blend | Controls stereo width from mono to enhanced stereo | [Details](docs/plugins/spatial.md#stereo-blend) |
+| Others    | Oscillator | Test tone and noise generator for checking speakers/headphones | [Details](docs/plugins/others.md#oscillator) |
+| Control   | Section | Groups effects so a whole section can be bypassed or restored | [Details](docs/plugins/control.md) |
 
 ## Technical Information
 

@@ -1,264 +1,243 @@
 ---
-title: "Basic Plugins - EffeTune"
-description: "Essential audio plugins including Volume, Mute, Stereo Balance, Matrix routing, and more."
-lang: en
+title: "बेसिक प्लगइन - EffeTune"
+description: "Volume, Mute, Stereo Balance, Matrix routing आदि सहित बुनियादी ऑडियो प्लगइन।"
+lang: hi
 ---
 
-# Basic Audio Plugins
+# बेसिक ऑडियो प्लगइन
 
-आपके संगीत प्लेबैक के मौलिक पहलुओं को समायोजित करने के लिए आवश्यक उपकरणों का एक संग्रह। ये प्लगइन आपको वॉल्यूम, बैलेंस और आपकी सुनने के अनुभव के अन्य बुनियादी पहलुओं को नियंत्रित करने में मदद करते हैं।
+ये आपके music playback के बुनियादी पहलुओं को समायोजित करने वाले जरूरी tools हैं। Volume, balance और listening experience की मूल सेटिंग्स को नियंत्रित करने में ये plugin मदद करते हैं।
 
 ## प्लगइन सूची
 
-* [Channel Divider](#channel-divider) - ऑडियो को कई चैनलों में आवृत्ति बैंडों में विभाजित करता है
-* [DC Offset](#dc-offset) - जो ऑडियो असंतुलित लगता है उसे ठीक करने में मदद करता है
-* [Matrix](#matrix) - ऑडियो चैनलों को लचीले नियंत्रण के साथ रूट और मिक्स करता है
-* [MultiChannel Panel](#multichannel-panel) - व्यक्तिगत सेटिंग्स के साथ कई ऑडियो चैनलों को नियंत्रित करता है
-* [Mute](#mute) - ऑडियो आउटपुट को म्यूट करता है
-* [Polarity Inversion](#polarity-inversion) - स्टीरियो संगीत की आवाज़ को बेहतर बना सकता है
-* [Stereo Balance](#stereo-balance) - आपके संगीत के बाएं-दाएं बैलेंस को समायोजित करता है
-* [Volume](#volume) - संगीत की आवाज़ की तीव्रता को नियंत्रित करता है
+- [Channel Divider](#channel-divider) - stereo audio को frequency bands में बांटकर stereo output pairs पर भेजता है
+- [DC Offset](#dc-offset) - constant DC offset जोड़ता या ठीक करता है
+- [Matrix](#matrix) - audio channels को flexible control के साथ route और mix करता है
+- [MultiChannel Panel](#multichannel-panel) - कई audio channels को individual settings से नियंत्रित करता है
+- [Mute](#mute) - audio output को silent करता है
+- [Polarity Inversion](#polarity-inversion) - correction या special routing cases के लिए signal polarity flips करता है
+- [Stereo Balance](#stereo-balance) - आपके संगीत का left-right balance समायोजित करता है
+- [Volume](#volume) - music कितनी loud बजेगी, यह नियंत्रित करता है
 
 ## Channel Divider
 
-एक विशेष उपकरण जो आपके स्टीरियो सिग्नल को अलग-अलग आवृत्ति बैंडों में विभाजित करता है और प्रत्येक बैंड को विभिन्न आउटपुट चैनलों में मार्गित करता है। यह मल्टी-चैनल सिस्टम या कस्टम क्रॉसओवर कॉन्फ़िगरेशन के लिए आदर्श है।
+यह specialized tool आपके stereo signal को अलग frequency bands में बांटता है और हर band को अलग stereo output pair पर route करता है। multi-amplifier, multi-speaker या custom crossover playback setups के लिए उपयोगी है।
 
-To use this effect, you need to use the desktop app, set the number of output channels in the audio settings to 4 or more, and set the channel in the effect bus routing to "All."
+इस effect का उपयोग करने के लिए desktop app इस्तेमाल करें, audio settings में output channels की संख्या band count के अनुसार 4, 6 या 8 सेट करें, और effect bus routing में channel को "All" पर सेट करें।
 
 ### कब उपयोग करें
-
-* जब मल्टी-चैनल ऑडियो आउटपुट (4, 6, या 8 चैनल) का उपयोग कर रहे हों
-* कस्टम आवृत्ति-आधारित चैनल रूटिंग बनाने के लिए
-* मल्टी-एम्पलीफायर या मल्टी-स्पीकर सेटअप के लिए
+- multi-channel audio outputs (4, 6 या 8 channels) इस्तेमाल करते समय
+- custom frequency-based channel routing बनाने के लिए
+- multi-amplifier या multi-speaker setups के लिए
 
 ### पैरामीटर
+- **Band Count** - बनाए जाने वाले frequency bands की संख्या (2-4 bands)
+  - 2 bands: Low/High split, 4 output channels चाहिए
+  - 3 bands: Low/Mid/High split, 6 output channels चाहिए
+  - 4 bands: Low/Mid-Low/Mid-High/High split, 8 output channels चाहिए
+  - चुनी गई output channel count कम होने पर higher band counts उपलब्ध नहीं होते
 
-* **Band Count** - बनाए जाने वाले आवृत्ति बैंडों की संख्या (2-4 बैंड्स)
+- **Crossover Frequencies** - bands के बीच audio कहां split होगा, यह तय करती हैं
+  - F1: पहला crossover point
+  - F2: दूसरा crossover point (3+ bands के लिए)
+  - F3: तीसरा crossover point (4 bands के लिए)
+  - हर crossover 10 Hz से 40000 Hz तक set किया जा सकता है
+  - plugin F1, F2 और F3 को कम से कम 1 Hz separation के साथ ascending order में रखता है
 
-  * 2 बैंड्स: Low/High विभाजन
-  * 3 बैंड्स: Low/Mid/High विभाजन
-  * 4 बैंड्स: Low/Mid-Low/Mid-High/High विभाजन
-
-* **Crossover Frequencies** - निर्धारित करता है कि ऑडियो कहां बैंड्स के बीच विभाजित होता है
-
-  * F1: पहला क्रॉसओवर पॉइंट
-  * F2: दूसरा क्रॉसओवर पॉइंट (3+ बैंड्स के लिए)
-  * F3: तीसरा क्रॉसओवर पॉइंट (4 बैंड्स के लिए)
-
-* **Slopes** - नियंत्रित करता है कि बैंड कितनी तीव्रता से अलग होते हैं
-
-  * Options: प्रत्येक ऑक्टेव पर -12dB से -96dB
-  * तीव्र स्लोप्स बेहतर पृथक्करण प्रदान करते हैं
-  * कम स्लोप्स अधिक प्राकृतिक संक्रमण प्रदान करते हैं
+- **Slopes** - bands कितनी sharpness से अलग होंगे, यह नियंत्रित करता है
+  - Options: -12dB से -96dB per octave
+  - steeper slopes साफ separation देते हैं
+  - lower slopes अधिक natural transitions देते हैं
 
 ### तकनीकी नोट्स
-
-* केवल पहले दो इनपुट चैनलों को प्रोसेस करता है
-* आउटपुट चैनल की संख्या 2 का गुणज होनी चाहिए (4, 6, या 8)
-* उच्च-गुणवत्ता वाले Linkwitz-Riley क्रॉसओवर फ़िल्टर्स का उपयोग करता है
-* आसान कॉन्फ़िगरेशन के लिए विजुअल फ़्रीक्वेंसी प्रतिक्रिया ग्राफ
+- केवल पहले दो input channels process करता है
+- output channels 2 के multiple होने चाहिए (4, 6 या 8)
+- हर band original stereo pair बनाए रखता है: 2-band mode में Low channels 1-2 और High channels 3-4 पर जाता है; 3-band mode channels 1-2, 3-4 और 5-6 इस्तेमाल करता है; 4-band mode channels 1-2, 3-4, 5-6 और 7-8 इस्तेमाल करता है
+- high-quality Linkwitz-Riley crossover filters इस्तेमाल करता है
+- आसान configuration के लिए visual frequency response graph देता है
 
 ## DC Offset
 
-एक यूटिलिटी जो असंतुलित या अजीब लगने वाले ऑडियो को ठीक करने में मदद कर सकती है। अधिकांश उपयोगकर्ताओं को यह अक्सर ज़रूरत नहीं पड़ेगी, लेकिन जब ऑडियो अटपटे लगे तो यह सहायक होता है।
+यह utility ऐसे signal को ठीक करने के लिए है जिसकी waveform zero line से हटकर बैठी हो। अधिकतर listeners को इसे 0.0 पर ही छोड़ना चाहिए, लेकिन unusual files या processing chains में DC offset हो तो यह मदद कर सकता है।
 
 ### कब उपयोग करें
-
-* यदि संगीत असामान्य रूप से असंतुलित लगता है
-* जब एक चैनल अपेक्षा से अधिक जोर से लगता है
-* यदि अन्य इफेक्ट्स अपेक्षित रूप से काम नहीं कर रहे हों
+- जब audio में constant DC bias हो या दूसरे processing के बाद clicks/headroom problems पैदा हों
+- जब diagnostic tool या meter दिखाए कि waveform zero से shift है
+- normal listening में इसे 0.0 पर छोड़ें
 
 ### पैरामीटर
-
-* **Offset** - ऑडियो बैलेंस को समायोजित करता है (-1.0 से +1.0)
-
-  * 0.0: सामान्य सेटिंग
-  * समायोजन करें यदि कुछ अटपटा लगे
-  * छोटे समायोजन आमतौर पर सबसे अच्छे होते हैं
+- **Offset** - हर sample में constant value जोड़ता है (-1.0 से +1.0)
+  - 0.0: कोई offset नहीं
+  - positive values signal को ऊपर shift करती हैं
+  - negative values signal को नीचे shift करती हैं
+  - correction की जरूरत हो तो बहुत छोटे adjustments करें
 
 ## Matrix
 
-एक शक्तिशाली चैनल रूटिंग टूल जो आपको इनपुट और आउटपुट चैनलों के बीच कस्टम सिग्नल पाथ बनाने की अनुमति देता है। यह ऑडियो सिग्नलों को जोड़ने और मिक्स करने में पूर्ण लचीलापन प्रदान करता है।
+यह channel routing tool unusual speaker या headphone channel layouts ठीक करने, channels swap करने, channels combine करने, या एक channel को एक से अधिक available output पर भेजने के लिए है।
 
 ### कब उपयोग करें
-
-* चैनलों के बीच कस्टम रूटिंग बनाने के लिए
-* जब आपको सिग्नल्स को विशिष्ट तरीकों से मिक्स या स्प्लिट करने की आवश्यकता हो
-* चैनल इंटरैक्शन्स का उपयोग करके क्रिएटिव साउंड डिज़ाइन के लिए
+- channels के बीच custom routing बनाने के लिए
+- जब signals को खास तरीकों से mix या split करना हो
+- जब left/right या multi-channel playback गलत speakers से आ रहा हो
+- stereo को mono में combine करने या किसी channel को दूसरे available output पर duplicate करने के लिए
 
 ### विशेषताएं
-
-* 8 चैनलों तक के लिए लचीला रूटिंग मैट्रिक्स
-* किसी भी इनपुट/आउटपुट जोड़ी के बीच व्यक्तिगत कनेक्शन नियंत्रण
-* प्रत्येक कनेक्शन के लिए फेज इनवर्षन विकल्प
-* सहज कॉन्फ़िगरेशन के लिए विजुअल मैट्रिक्स इंटरफ़ेस
+- 8 channels तक के लिए flexible routing matrix
+- किसी भी input/output pair के बीच individual connection control
+- हर connection के लिए phase inversion options
+- सहज configuration के लिए visual matrix interface
 
 ### यह कैसे काम करता है
+- हर connection point input row से output column तक routing दिखाता है
+- active connections channels के बीच signal flow करने देते हैं
+- phase inversion option signal polarity को reverse करता है
+- एक output पर कई input connections हों तो वे साथ mix होते हैं
+- कई inputs एक ही output पर भेजे जाएं तो उनके levels जुड़ते हैं, इसलिए volume घटाने की जरूरत पड़ सकती है
+- Matrix अपने-आप extra output channels नहीं बनाता; यह केवल अभी उपलब्ध channels के भीतर audio route करता है
 
-* प्रत्येक कनेक्शन पॉइंट इनपुट रो से आउटपुट कॉलम तक रूटिंग का प्रतिनिधित्व करता है
-* सक्रिय कनेक्शन्स चैनलों के बीच सिग्नल के प्रवाह की अनुमति देते हैं
-* फेज इनवर्षन विकल्प सिग्नल की पोलैरिटी को रिवर्स करता है
-* एक आउटपुट के लिए एकाधिक इनपुट कनेक्शन्स को मिलाकर मिक्स किया जाता है
-
-### व्यावहारिक अनुप्रयोग
-
-* कस्टम डाउनमिक्सिंग या अपमिक्सिंग कॉन्फ़िगरेशन
-* विशिष्ट चैनलों को अलग करना या संयोजित करना
-* चैनलों के बीच फेज संबंध बनाना
-* जटिल रूटिंग आवश्यकताओं को हल करना
+### व्यावहारिक उपयोग
+- available channels के भीतर custom downmixing, channel swapping या routing
+- left और right को mono में combine करना
+- किसी channel को दूसरे available output पर duplicate करना
+- unusual multi-channel playback layouts ठीक करना
 
 ## MultiChannel Panel
 
-व्यक्तिगत रूप से कई ऑडियो चैनलों को प्रबंधित करने के लिए एक व्यापक नियंत्रण पैनल। यह प्लगइन 8 तक चैनलों के लिए वॉल्यूम, म्यूट, सोलो और डिले पर पूर्ण नियंत्रण प्रदान करता है, प्रत्येक चैनल के लिए एक दृश्य लेवल मीटर के साथ।
+कई audio channels को अलग-अलग manage करने वाला comprehensive control panel। यह plugin 8 channels तक volume, mute, solo और delay पर पूरा control देता है, और हर channel के लिए visual level meter दिखाता है।
 
 ### कब उपयोग करें
-- मल्टी-चैनल ऑडियो (8 चैनलों तक) के साथ काम करते समय
-- विभिन्न चैनलों के बीच कस्टम वॉल्यूम बैलेंस बनाने के लिए
-- जब विशिष्ट चैनलों पर व्यक्तिगत डिले लागू करने की आवश्यकता हो
-- एक साथ कई चैनलों पर लेवल की निगरानी के लिए
+- multi-channel audio (8 channels तक) के साथ काम करते समय
+- अलग channels के बीच custom volume balance बनाने के लिए
+- किसी खास channel पर individual delay लगाने की जरूरत हो
+- कई channels के levels एक साथ monitor करने के लिए
 
 ### विशेषताएं
-- 8 तक ऑडियो चैनलों के लिए व्यक्तिगत नियंत्रण
-- दृश्य निगरानी के लिए पीक होल्ड के साथ रीयल-टाइम लेवल मीटर
-- समूह पैरामीटर परिवर्तनों के लिए चैनल लिंकिंग क्षमता
+- 8 audio channels तक individual controls
+- दृश्य निगरानी के लिए peak hold वाले रीयल-टाइम level meters
+- grouped parameter changes के लिए channel linking
 
 ### पैरामीटर
 
-#### प्रति चैनल नियंत्रण
-- **Mute (M)** - व्यक्तिगत चैनलों को म्यूट करता है
-  - प्रत्येक चैनल के लिए टॉगल ऑन/ऑफ
-  - सोलो फंक्शन के साथ संयुक्त रूप से कार्य करता है
+#### प्रति-चैनल नियंत्रण
+- **Mute (M)** - individual channels को silent करता है
+  - हर channel के लिए on/off toggle
+  - solo feature के साथ मिलकर काम करता है
 
-- **Solo (S)** - व्यक्तिगत चैनलों को अलग करता है
-  - जब कोई भी चैनल सोलो में है, तो केवल सोलो चैनल ही बजते हैं
-  - एक साथ कई चैनलों को सोलो किया जा सकता है
+- **Solo (S)** - individual channels को isolate करता है
+  - किसी भी channel को solo करने पर केवल soloed channels बजते हैं
+  - कई channels एक साथ solo किए जा सकते हैं
 
-- **Volume** - व्यक्तिगत चैनलों का वॉल्यूम समायोजित करता है (-20dB से +10dB)
-  - स्लाइडर या प्रत्यक्ष मान इनपुट के माध्यम से सटीक नियंत्रण
-  - लिंक किए गए चैनल एक समान वॉल्यूम बनाए रखते हैं
+- **Volume** - individual channel loudness समायोजित करता है (-20dB से +10dB)
+  - slider या direct value input से fine control
+  - linked channels में समान volume रहता है
 
-- **Delay** - व्यक्तिगत चैनलों में समय विलंब जोड़ता है (0-30ms)
-  - मिलीसेकंड में सटीक डिले नियंत्रण
-  - चैनलों के बीच समय संरेखण के लिए उपयोगी
-  - चैनलों के बीच फेज समायोजन की अनुमति देता है
+- **Delay** - individual channels में time delay जोड़ता है (0-30ms)
+  - milliseconds में precise delay control
+  - channels के बीच time-alignment के लिए उपयोगी
+  - channels के बीच phase adjustment की अनुमति देता है
 
 #### चैनल लिंकिंग
-- **Link** - सिंक्रनाइज्ड नियंत्रण के लिए आसन्न चैनलों को जोड़ता है
-  - एक लिंक किए गए चैनल में परिवर्तन सभी जुड़े हुए चैनलों को प्रभावित करता है
-  - लिंक किए गए चैनल समूहों के बीच सुसंगत सेटिंग्स बनाए रखता है
-  - स्टीरियो जोड़े या मल्टी-चैनल समूहों के लिए उपयोगी
+- **Link** - synchronized control के लिए adjacent channels को जोड़ता है
+  - एक linked channel में बदलाव सभी connected channels को प्रभावित करता है
+  - linked channel groups में consistent settings बनाए रखता है
+  - stereo pairs या multi-channel groups के लिए उपयोगी
 
-### दृश्य निगरानी
-- रीयल-टाइम लेवल मीटर वर्तमान सिग्नल की तीव्रता दिखाते हैं
-- पीक होल्ड इंडिकेटर अधिकतम स्तर दिखाते हैं
-- dB में स्पष्ट संख्यात्मक पीक स्तर रीडिंग
-- स्तर की आसान पहचान के लिए रंग-कोडित मीटर:
-  - हरा: सुरक्षित स्तर
-  - पीला: अधिकतम के करीब
-  - लाल: अधिकतम के पास या अधिकतम पर
+### विज़ुअल मॉनिटरिंग
+- रीयल-टाइम level meters मौजूदा signal strength दिखाते हैं
+- peak hold indicators अधिकतम levels दिखाते हैं
+- peak levels का स्पष्ट संख्यात्मक dB readout
+- levels पहचानने के लिए रंग-कोडित meters:
+  - हरा: सुरक्षित levels
+  - पीला: maximum के करीब
+  - लाल: maximum level के पास या उसी पर
 
-### व्यावहारिक अनुप्रयोग
-- सराउंड साउंड सिस्टम को संतुलित करना
-- कस्टम हेडफोन मिक्स बनाना
-- मल्टी-माइक्रोफोन सेटअप का समय संरेखण
-- मल्टी-चैनल ऑडियो स्रोतों की निगरानी और समायोजन
+### व्यावहारिक उपयोग
+- surround sound या multi-speaker playback balance करना
+- speakers अलग दूरी पर हों तो speaker timing match करना
+- setup के दौरान individual speakers को अस्थायी रूप से mute या solo करना
+- आसान adjustment के लिए stereo pairs या speaker groups link करना
 
 ## Mute
 
-एक सरल यूटिलिटी जो बफ़र को शून्य से भरकर सभी ऑडियो आउटपुट को म्यूट करती है। यह तुरंत ऑडियो सिग्नल को म्यूट करने के लिए उपयोगी है।
+यह simple utility buffer को zeros से भरकर सभी audio output को silent करती है। audio signals को तुरंत mute करने के लिए उपयोगी है।
 
 ### कब उपयोग करें
-
-* बिना फेड के तुरंत ऑडियो को म्यूट करने के लिए
-* मौन Sek्शन या विराम के दौरान
-* अवांछित शोर आउटपुट को रोकने के लिए
+- fade के बिना audio तुरंत silent करने के लिए
+- silent sections या pauses के दौरान
+- unwanted noise output रोकने के लिए
 
 ## Polarity Inversion
 
-एक टूल जो कुछ परिस्थितियों में स्टीरियो संगीत की आवाज़ को बेहतर बना सकता है। यह ऑडियो वेव को "flipping" करने जैसा है ताकि इसकी ध्वनि बेहतर हो सके।
+यह utility audio signal की polarity flip करती है। सभी channels invert करने से आम तौर पर अकेले सुनाई देने वाला फर्क नहीं पड़ता, लेकिन अगर कोई speaker, cable या channel opposite polarity में wired लगता हो तो यह मदद कर सकता है।
 
-आप effector common settings में संसाधित किए जाने वाले चैनलों को सीमित करके केवल विशिष्ट चैनलों की ही पोलैरिटी इनवर्ट कर सकते हैं।
+suspected left/right या multi-channel polarity mismatch ठीक करने के लिए effect की common routing settings में processed channels सीमित करें और केवल affected channel invert करें।
 
 ### कब उपयोग करें
-
-* जब स्टीरियो संगीत "खोखला" या "अजीब" लगे
-* यदि इसे अन्य स्टीरियो इफेक्ट्स के साथ संयोजित कर रहे हों
-* जब स्टीरियो इमेजिंग को बेहतर बनाने का प्रयास कर रहे हों
+- जब center image weak, hollow या spread out लगे क्योंकि किसी channel की polarity उलटी हो सकती है
+- playback setup में speaker, cable या channel polarity जांचने या ठीक करने के लिए
+- routing या stereo effects के साथ उपयोग करते समय, जहां किसी एक channel की polarity reverse करनी हो
 
 ## Stereo Balance
 
-यह आपको निर्धारित करने देता है कि आपके बाएं और दाएं स्पीकर्स या हेडफ़ोन में संगीत कैसे वितरित होता है। असमान स्टीरियो को ठीक करने या अपनी पसंदीदा साउंड प्लेसमेंट बनाने के लिए आदर्श।
+यह तय करता है कि संगीत आपके left और right speakers या headphones में कैसे बंटे। uneven stereo ठीक करने या अपनी पसंद की sound placement बनाने के लिए उपयोगी है।
 
-### सुनने में सुधार गाइड
-
-* पूर्ण बैलेंस:
-
-  * प्राकृतिक स्टीरियो के लिए केंद्र स्थिति
-  * दोनों कानों में समान वॉल्यूम
-  * अधिकांश संगीत के लिए सर्वोत्तम
-* समायोजित बैलेंस:
-
-  * कमरे की ध्वनिकी के लिए समायोजन
-  * सुनने में अंतर के लिए समायोजित करें
-  * पसंदीदा साउंड स्टेज बनाएं
+### सुनने के अनुभव को बेहतर बनाने की गाइड
+- संतुलित स्थिति:
+  - natural stereo के लिए center position
+  - दोनों कानों में equal volume
+  - अधिकतर music के लिए best
+- समायोजित संतुलन:
+  - room acoustics की भरपाई करें
+  - hearing differences के लिए adjust करें
+  - पसंदीदा sound stage बनाएं
 
 ### पैरामीटर
-
-* **Balance** - बाएं-दाएं वितरण को नियंत्रित करता है (-100% से +100%)
-
-  * Center (0%): दोनों ओर समान
-  * Left (-100%): बाईं ओर अधिक ध्वनि
-  * Right (+100%): दाईं ओर अधिक ध्वनि
+- **Balance** - left-right distribution नियंत्रित करता है (-100% से +100%)
+  - Center (0%): दोनों sides में बराबर
+  - Left (-100%): left में ज्यादा sound
+  - Right (+100%): right में ज्यादा sound
 
 ### विज़ुअल डिस्प्ले
-
-* उपयोग में आसान स्लाइडर
-* स्पष्ट संख्या प्रदर्शन
-* स्टीरियो स्थिति का विज़ुअल संकेतक
+- उपयोग में आसान slider
+- स्पष्ट संख्या display
+- stereo position का दृश्य संकेतक
 
 ### अनुशंसित उपयोग
 
-1. सामान्य सुनना
+1. सामान्य श्रवण
+   - balance centered रखें (0%)
+   - stereo uneven लगे तो adjust करें
+   - subtle adjustments इस्तेमाल करें
 
-   * बैलेंस को केंद्रित रखें (0%)
-   * यदि स्टीरियो असमान लगे तो समायोजित करें
-   * सूक्ष्म समायोजन का उपयोग करें
+2. हेडफोन से सुनना
+   - comfort के लिए fine-tune करें
+   - hearing differences की भरपाई करें
+   - पसंदीदा stereo image बनाएं
 
-2. हेडफ़ोन सुनना
-
-   * आराम के लिए सावधानीपूर्वक समायोजित करें
-   * सुनने में अंतर के लिए समायोजन करें
-   * पसंदीदा स्टीरियो इमेज बनाएं
-
-3. स्पीकर सुनना
-
-   * कमरे की व्यवस्था के अनुसार समायोजित करें
-   * सुनने की स्थिति के लिए बैलेंस
-   * कमरे की ध्वनिकी के लिए समायोजन करें
+3. स्पीकर से सुनना
+   - room setup के अनुसार adjust करें
+   - listening position के लिए balance करें
+   - room acoustics की भरपाई करें
 
 ## Volume
 
-एक सरल लेकिन आवश्यक नियंत्रण जो आपको यह समायोजित करने देता है कि आपका संगीत कितनी तेज़ी से बजे। विभिन्न परिस्थितियों के लिए सही सुनने का स्तर खोजने के लिए आदर्श।
+यह simple लेकिन जरूरी control तय करता है कि आपका संगीत कितनी loud बजे। अलग-अलग स्थितियों के लिए सही listening level पाने में उपयोगी है।
 
-### सुनने में सुधार गाइड
-
-* विभिन्न सुनने की परिस्थितियों के लिए समायोजित करें:
-
-  * काम करते समय बैकग्राउंड म्यूजिक
-  * सक्रिय सुनने के सत्र
-  * देर रात शांत सुनना
-* निम्नलिखित से बचने के लिए वॉल्यूम को आरामदायक स्तर पर रखें:
-
-  * सुनने की थकान
-  * ध्वनि विरूपण
-  * संभावित श्रवण क्षति
+### सुनने के अनुभव को बेहतर बनाने की गाइड
+- अलग-अलग सुनने की स्थितियों के लिए adjust करें:
+  - काम करते समय पृष्ठभूमि संगीत
+  - ध्यान से सुनने के सत्र
+  - देर रात शांत सुनना
+- volume को आरामदायक स्तर पर रखें ताकि ये समस्याएँ न हों:
+  - सुनने की थकान
+  - ध्वनि विकृति
+  - संभावित श्रवण क्षति
 
 ### पैरामीटर
+- **Volume** - कुल loudness नियंत्रित करता है (-60dB से +24dB)
+  - कम मान: playback शांत होता है
+  - अधिक मान: playback तेज़ होता है
+  - 0dB: मूल volume level
 
-* **Volume** - समग्र ध्वनि तीव्रता को नियंत्रित करता है (-60dB से +24dB)
-
-  * Lower values: Quieter playback
-  * Higher values: Louder playback
-  * 0dB: मूल वॉल्यूम स्तर
-
-ध्यान रखें: ये बुनियादी नियंत्रण अच्छी ध्वनि की नींव हैं। अधिक जटिल इफेक्ट्स का उपयोग करने से पहले इन्हें समायोजित करके शुरू करें!
+याद रखें: ये basic controls अच्छी sound की नींव हैं। अधिक complex effects इस्तेमाल करने से पहले इन्हीं adjustments से शुरुआत करें!

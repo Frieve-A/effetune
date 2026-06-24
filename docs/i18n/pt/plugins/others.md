@@ -1,49 +1,53 @@
 ---
-title: "Other Plugins - EffeTune"
-description: "Additional utility plugins including Oscillator for audio signal generation."
-lang: en
+title: "Outros Plugins - EffeTune"
+description: "Plugins utilitários adicionais, incluindo Oscillator para gerar tons e ruído de teste."
+lang: pt
 ---
 
 # Outras Ferramentas de Áudio
 
-Uma coleção de ferramentas de áudio especializadas e geradores que complementam as principais categorias de efeitos. Esses plugins fornecem capacidades únicas para geração de som e experimentação de áudio.
+Uma coleção de ferramentas de áudio especializadas e geradores que complementam as principais categorias de efeitos. Esses plugins são úteis para verificar alto-falantes, fones, equilíbrio entre canais e o comportamento da reprodução antes ou durante a escuta.
 
 ## Lista de Plugins
 
-- [Oscillator](#oscillator) - Gerador de sinal de áudio multi-forma de onda com controle preciso de frequência
+- [Oscillator](#oscillator) - Gerador de tons de teste e ruído para verificar alto-falantes/fones
 
 ## Oscillator
 
-Um gerador de sinal de áudio versátil que produz várias formas de onda com controle preciso de frequência. Perfeito para testar sistemas de áudio, criar tons de referência ou experimentar com síntese sonora.
+Um gerador de tons de teste e ruído para verificar seu sistema de escuta. Use em níveis baixos para confirmar a saída de alto-falantes/fones, posicionamento esquerdo/direito, equilíbrio de nível, vibrações, zumbidos ou problemas simples de resposta em frequência.
+
+O tom ou ruído gerado é misturado ao caminho de áudio atual em vez de substituir a entrada. Abaixe Volume antes de ativá-lo, especialmente enquanto música já estiver tocando.
 
 ### Características
 - Múltiplos tipos de forma de onda:
-  - Onda senoidal pura para tons de referência
+  - Onda senoidal pura para verificações simples de tom
   - Onda quadrada para conteúdo harmônico rico
   - Onda triangular para harmônicos mais suaves
   - Onda dente de serra para timbres brilhantes
-  - Ruído branco para teste de sistema
-  - Ruído rosa para medições acústicas
-- Modo de operação pulsado para testes de rajada e sinais intermitentes
+  - Ruído branco para verificações de banda larga em alto-falantes/fones
+  - Ruído rosa para um equilíbrio de ruído mais suave e natural
+- Modo de operação pulsado para tons ou rajadas de ruído intermitentes
 
 ### Parâmetros
 - **Frequency (Hz)** - Controla a altura do tom gerado (20 Hz a 96 kHz)
   - Frequências baixas: Tons graves profundos
   - Frequências médias: Faixa musical
-  - Frequências altas: Teste de sistema
+  - Frequências altas: Use com cuidado e apenas em níveis de escuta seguros
+  - Aplica-se apenas a sine, square, triangle e sawtooth; fica desativado para white e pink noise
+  - A saída em frequências altas depende da taxa de amostragem atual; tons acima da frequência de Nyquist utilizável são silenciados
 - **Volume (dB)** - Ajusta o nível de saída (-96 dB a 0 dB)
-  - Use valores mais baixos para tons de referência
-  - Valores mais altos para teste de sistema
+  - Comece baixo e aumente devagar
+  - Valores mais altos podem soar altos ou cansativos
 - **Panning (L/R)** - Controla o posicionamento estéreo
   - Centro: Igual em ambos os canais
-  - Esquerda/Direita: Teste de balanço de canais
+  - Esquerda/Direita: Verifique o roteamento e o balanço dos canais
 - **Waveform Type** - Seleciona o tipo de sinal
   - Sine: Tom de referência limpo
   - Square: Rico em harmônicos ímpares
   - Triangle: Conteúdo harmônico mais suave
   - Sawtooth: Série harmônica completa
-  - White Noise: Energia igual por Hz
-  - Pink Noise: Energia igual por oitava
+  - White Noise: Energia igual por Hz; Frequency não o afeta
+  - Pink Noise: Energia igual por oitava; Frequency não o afeta
 - **Mode** - Controla o padrão de geração de sinal
   - Continuous: Geração de sinal contínuo padrão
   - Pulsed: Sinal intermitente com temporização controlável
@@ -51,67 +55,54 @@ Um gerador de sinal de áudio versátil que produz várias formas de onda com co
   - Intervalos curtos: Sequências de pulsos rápidas
   - Intervalos longos: Pulsos amplamente espaçados
   - Ativo apenas quando Mode está definido como Pulsed
-- **Width (ms)** - Duração do tempo de rampa do pulso no modo pulsado (2-100 ms, passo 1 ms)
+- **Width (ms)** - Tempo de rampa do pulso no modo pulsado (2-100 ms, limitado à metade de Interval, passo 1 ms)
   - Controla o tempo de entrada/saída gradual de cada pulso
+  - O pulso gerado dura cerca de duas vezes Width, sem trecho estável no meio
   - Larguras curtas: Bordas de pulso nítidas
   - Larguras longas: Transições de pulso mais suaves
   - Ativo apenas quando Mode está definido como Pulsed
 
 ### Exemplos de Uso
 
-1. Teste de Alto-falantes
-   - Verificar faixa de reprodução de frequência
+1. Verificação de Alto-falantes ou Fones
+   - Verificar a reprodução básica de frequência
      * Use varredura de onda senoidal de baixa a alta frequência
      * Note onde o som se torna inaudível ou distorcido
-   - Testar características de distorção
-     * Use ondas senoidais puras em diferentes frequências
-     * Ouça harmônicos ou distorção indesejados
+   - Ouvir vibrações, zumbidos ou ressonâncias ásperas
+     * Use Volume baixo primeiro
+     * Teste uma faixa de frequência por vez
+   - Comparar a saída esquerda e direita
+     * Faça pan totalmente para a esquerda e para a direita
+     * Confirme se cada lado toca no alto-falante ou driver esperado
+
+2. Equilíbrio de Canais e Nível
+   - Verificar posicionamento estéreo
+     * Use uma onda senoidal centralizada ou pink noise
+     * Confirme se o som parece centralizado
+   - Comparar volume esquerdo e direito
+     * Faça pan para cada lado usando o mesmo Volume
+     * Ajuste seu sistema de reprodução se um lado parecer mais alto
+   - Verificar cadeias de plugins
+     * Coloque o Oscillator antes ou depois de outros efeitos para ouvir como a cadeia trata um sinal simples
+
+3. Checagens de Ressonância da Sala ou Mesa
+   - Encontrar acúmulos de grave ou vibrações óbvias
+     * Use tons senoidais graves em níveis seguros
+     * Mova-se pela posição de escuta e observe picos ou quedas fortes
+   - Checar objetos que vibram facilmente
+     * Varra lentamente graves e médios-graves
+     * Reduza Volume imediatamente se algo vibrar forte
+
+4. Verificações com Ruído
+   - Use pink noise como referência ampla e estável
+     * Ouça desequilíbrios óbvios entre esquerda/direita ou no tom
+     * Mantenha o nível confortável e evite ruído alto por muito tempo
+   - Use white noise apenas quando precisar de um sinal de banda larga mais brilhante
+
+5. Verificações com Sinal Pulsado
+   - Use o modo pulsado para identificar rajadas curtas com mais facilidade
+     * Intervalos mais longos deixam cada rajada mais fácil de ouvir separadamente
+     * Valores menores de Width criam inícios e paradas mais bruscos
      * Compare o comportamento em diferentes níveis de volume
-   - Teste de sinal de rajada
-     * Use modo pulsado com intervalos e larguras curtas
-     * Analise resposta do sistema a sinais intermitentes
 
-2. Análise Acústica de Ambiente
-   - Identificar ondas estacionárias
-     * Use ondas senoidais nas frequências suspeitas de modos da sala
-     * Mova-se pelo ambiente para encontrar nós e antinós
-   - Verificar ressonância e reverberação
-     * Teste diferentes frequências para encontrar ressonâncias problemáticas
-     * Use ruído rosa para avaliar a resposta geral do ambiente
-   - Mapear resposta de frequência em diferentes posições
-     * Use varreduras senoidais para verificar consistência na área de audição
-   - Análise de eco e reflexão
-     * Use modo pulsado para separar claramente sons diretos e refletidos
-
-3. Teste de Fones de Ouvido
-   - Avaliar interferência entre canais
-     * Envie sinal para apenas um canal
-     * Verifique vazamento indesejado para o outro canal
-   - Testar resposta de frequência
-     * Use varreduras senoidais para verificar balanço de frequência
-     * Compare respostas dos canais esquerdo e direito
-   - Teste de resposta transitória
-     * Use modo pulsado para avaliar comportamento do sistema com sinais de rajada
-
-4. Testes de Audição
-   - Verificar faixa auditiva pessoal
-     * Varra frequências para encontrar limites superior e inferior
-     * Note quaisquer lacunas ou fraquezas de frequência
-   - Determinar volume mínimo audível
-     * Teste diferentes frequências em volumes variados
-     * Mapeie contornos pessoais de igual intensidade sonora
-   - Avaliação de processamento temporal
-     * Use modo pulsado com intervalos variados para testar resolução temporal
-
-5. Calibração de Sistema
-   - Correspondência de nível entre componentes
-     * Use ondas senoidais em frequências de referência
-     * Garanta níveis consistentes ao longo da cadeia de sinal
-   - Verificação de balanço de canais
-     * Teste balanço esquerda/direita em diferentes frequências
-     * Garanta imagem estéreo adequada
-   - Teste de resposta de sinal de rajada
-     * Use modo pulsado para testar resposta do sistema a sinais intermitentes
-     * Avalie comportamento de gate/compressor com sinais de rajada
-
-Lembre-se: O Oscillator é uma ferramenta de precisão - comece com volumes mais baixos e aumente gradualmente para evitar possíveis danos ao equipamento ou fadiga auditiva.
+Lembre-se: o Oscillator é um gerador de sinal de teste. Comece com Volume baixo, aumente gradualmente e evite tons altos ou de alta frequência que possam causar danos ao equipamento ou fadiga auditiva.
