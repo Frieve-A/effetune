@@ -7,6 +7,7 @@ lang: en
 # Version History
 
 ### Version 1.66.0
+- Added double blind test function
 - Added DSD64 IMD Simulator effect
 - Various minor improvements
 

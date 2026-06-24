@@ -940,7 +940,7 @@ function createSplashScreen() {
       <div class="splash-content">
         <div class="splash-version">Version ${constants.getAppVersion()}</div>
         <div class="splash-description">Desktop Audio Effect Processor</div>
-        <div class="splash-copyright">Copyright © Frieve 2025-2026</div>
+        <div class="splash-copyright">Copyright © Frieve 2025, 2026</div>
         <div class="splash-loading">Starting application...</div>
       </div>
     </div>
