@@ -19,6 +19,7 @@ export class PipelineCore {
      * @param {Object} audioManager - The audio manager instance
      * @param {Object} pluginManager - The plugin manager instance
      * @param {Set} expandedPlugins - Set of expanded plugins
+     * @param {Object} pipelineManager - The pipeline manager instance
      */
     constructor(audioManager, pluginManager, expandedPlugins, pipelineManager) {
         this.audioManager = audioManager;

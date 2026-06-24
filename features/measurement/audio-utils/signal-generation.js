@@ -198,11 +198,49 @@ async function startWhiteNoise(level = -12, outputDeviceId = null, channel = 'al
             }
         }
 
-        // Device-specific output routing is temporarily disabled for stability
-        if (outputDeviceId && false) {
-            console.log('Device-specific output routing disabled for measurement stability');
+        // If a specific output device is requested, route the audio through a
+        // MediaStreamDestination + <audio> element and select the device with setSinkId.
+        if (outputDeviceId) {
+            try {
+                // Create an audio element and media stream destination to route audio
+                const audioElement = new Audio();
+                const mediaStreamDestination = this.audioContext.createMediaStreamDestination();
+
+                // Set media stream destination channel count if possible
+                if (mediaStreamDestination.channelCount !== undefined) {
+                    mediaStreamDestination.channelCount = Math.min(maxChannels, mediaStreamDestination.maxChannelCount || maxChannels);
+                    mediaStreamDestination.channelCountMode = 'explicit';
+                    mediaStreamDestination.channelInterpretation = 'discrete';
+                }
+
+                // Store references for cleanup
+                this.whiteNoiseDestination = mediaStreamDestination;
+                this.whiteNoiseAudioElement = audioElement;
+
+                // Connect audio element to media stream
+                audioElement.srcObject = mediaStreamDestination.stream;
+
+                // Set the sink ID if supported
+                if (typeof audioElement.setSinkId === 'function') {
+                    await audioElement.setSinkId(outputDeviceId);
+                    console.log(`Output device set to ID: ${outputDeviceId}`);
+
+                    // Use the media stream destination instead of default
+                    audioDestination = mediaStreamDestination;
+
+                    // Start playback on the audio element
+                    audioElement.play().catch(e => {
+                        console.error('Failed to play audio element:', e);
+                    });
+                } else {
+                    console.warn('setSinkId is not supported in this browser - using default output device');
+                }
+            } catch (error) {
+                console.error('Error setting output device:', error);
+                // Fall back to default device
+            }
         }
-        
+
         // Connect merger to the destination
         this.channelMerger.connect(audioDestination);
         

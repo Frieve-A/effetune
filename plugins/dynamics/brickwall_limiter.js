@@ -771,6 +771,7 @@ class BrickwallLimiterPlugin extends PluginBase {
     }
     
     _setValidatedParameters(params) {
+        super._setValidatedParameters(params);
         if (params.th !== undefined) this.th = params.th;
         if (params.rl !== undefined) this.rl = params.rl;
         if (params.la !== undefined) this.la = params.la;

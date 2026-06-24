@@ -48,7 +48,7 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
         if (!context.initialized) {
           context.sampleCount = 0;
           context.nextEventTime = -1; // -1 forces scheduling on the first run
-          context.errorState = { active: false, samplesRemaining: 0, mode: null };
+          context.errorState = { active: false, samplesRemaining: 0, mode: null, lastGoodSamples: null, totalDuration: 0 };
           
           context.lastParams = {}; // Store last known parameters to detect changes
           
@@ -56,6 +56,12 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
           context.delayBuffer = null;
           context.delayBufferValid = false;
           context.channelCount = -1;
+          context.wetData = null;
+          context.delayedData = null;
+          context.sharedErrorProbability3A = null;
+          context.sharedBitPosition3A = null;
+          context.sharedWarblePhase = null;
+          context.symbolErrorFlags = new Uint8Array(24);
           
           // CD-specific state for CIRC error correction simulation
           context.cdState = {
@@ -76,11 +82,26 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
 
           // Store the last good sample before an error, for interpolation
           context.lastGoodSamples = new Float32Array(channelCount).fill(0);
-          context.delayBuffer = null;
+          context.delayBuffer = new Array(channelCount)
+            .fill(null).map(() => new Float32Array(1));
           context.delayBufferValid = false;
           context.channelCount = channelCount;
+          context.errorLastGoodSamples = new Float32Array(channelCount);
           context.nextEventTime = -1;
           context.errorState.active = false;
+          context.errorState.samplesRemaining = 0;
+          context.errorState.mode = null;
+          context.errorState.lastGoodSamples = null;
+          context.errorState.totalDuration = 0;
+        }
+        const dataLength = data.length;
+        if (!context.wetData || context.wetData.length !== dataLength) {
+          context.wetData = new Float32Array(dataLength);
+        }
+        if (!context.sharedErrorProbability3A || context.sharedErrorProbability3A.length !== blockSize) {
+          context.sharedErrorProbability3A = new Float64Array(blockSize);
+          context.sharedBitPosition3A = new Uint8Array(blockSize);
+          context.sharedWarblePhase = new Float64Array(blockSize);
         }
         const CONSTANTS = ${JSON.stringify(this.CONSTANTS)};
         const modeInfo = ${JSON.stringify(this.MODE_DEFINITIONS)}[parameters.md];
@@ -93,7 +114,11 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
         if (paramsChanged) {
           context.nextEventTime = -1; // Invalidate current schedule (will reschedule with new params)
           // Clear any active error state to apply new parameters immediately
-          context.errorState = { active: false, samplesRemaining: 0, mode: null };
+          context.errorState.active = false;
+          context.errorState.samplesRemaining = 0;
+          context.errorState.mode = null;
+          context.errorState.lastGoodSamples = null;
+          context.errorState.totalDuration = 0;
           context.lastParams.be = parameters.be;
           context.lastParams.md = parameters.md;
           context.lastParams.rf = parameters.rf;
@@ -112,18 +137,22 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
         } else if (parameters.md === "3A" || parameters.md === "3B") { // HDMI/DP: Fixed 192-sample rows
           unitSamples = 192;
         } else if (parameters.md === "4") { // USB/1394/TB: 125µs micro-frame (time-based)
-          unitSamples = Math.max(1, Math.round(fs * 0.000125));
+          unitSamples = Math.round(fs * 0.000125);
+          if (unitSamples < 1) unitSamples = 1;
         } else if (parameters.md === "5A" || parameters.md === "5B" || parameters.md === "5C") { // Dante: Actual sample count based on current Fs
           const scale = fs / (parameters.rf * 1000);
-          unitSamples = Math.max(1, Math.round(modeInfo.unitSize * scale));
+          unitSamples = Math.round(modeInfo.unitSize * scale);
+          if (unitSamples < 1) unitSamples = 1;
         } else if (parameters.md === "6A" || parameters.md === "6B") { // Bluetooth: Fixed frame sizes
           unitSamples = modeInfo.unitSize; // 360 or 480 samples
         } else if (parameters.md === "8") { // WiSA: Fixed 32-sample blocks
           unitSamples = 32;
         } else if (parameters.md === "9") { // RF Squelch: Base duration (will be randomized later)
-          unitSamples = Math.max(1, Math.round(48 * fs / 48000)); // Scale 48 samples from 48kHz base
+          unitSamples = Math.round(48 * fs / 48000); // Scale 48 samples from 48kHz base
+          if (unitSamples < 1) unitSamples = 1;
         } else if (parameters.md === "10" || parameters.md === "10A") { // CD Audio: EFM frame corresponds to audio samples
-          unitSamples = Math.max(1, Math.round(fs / 7350)); // 1 EFM frame = 1/7350 second (44.1kHz/6 samples per frame)
+          unitSamples = Math.round(fs / 7350); // 1 EFM frame = 1/7350 second (44.1kHz/6 samples per frame)
+          if (unitSamples < 1) unitSamples = 1;
         }
         if (!Number.isFinite(unitSamples) || unitSamples < 1) {
           unitSamples = 1;
@@ -176,26 +205,38 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
             }
             
             // Probability of at least one uncorrectable error in a unit of N bits
-            pEventPerUnit = 1.0 - Math.pow(Math.max(0, 1.0 - effectiveBER), bitsPerUnit);
+            let noErrorProbability = 1.0 - effectiveBER;
+            if (noErrorProbability < 0) noErrorProbability = 0;
+            pEventPerUnit = 1.0 - Math.pow(noErrorProbability, bitsPerUnit);
           }
         }
         // Clamp probability to prevent numerical instability with Math.log.
-        pEventPerUnit = Math.min(Math.max(pEventPerUnit, 0), 0.999999999999);
+        if (pEventPerUnit < 0) {
+          pEventPerUnit = 0;
+        } else if (pEventPerUnit > 0.999999999999) {
+          pEventPerUnit = 0.999999999999;
+        }
         
         // Schedule the next error event if one is not already scheduled or active.
         if (context.nextEventTime < context.sampleCount && !context.errorState.active) {
           if (pEventPerUnit > 1e-12) {
             // Use numerically stable geometric distribution
-            const randomU = Math.max(1e-15, Math.min(1 - 1e-15, Math.random())); // Avoid 0 and 1
+            let randomU = Math.random(); // Avoid 0 and 1
+            if (randomU < 1e-15) {
+              randomU = 1e-15;
+            } else if (randomU > 1 - 1e-15) {
+              randomU = 1 - 1e-15;
+            }
             const nextEventInUnits = Math.floor(Math.log1p(-randomU) / Math.log1p(-pEventPerUnit));
-            const nextEventOffset = Math.max(0, nextEventInUnits) * unitSamples;
+            const nextEventOffset = (nextEventInUnits > 0 ? nextEventInUnits : 0) * unitSamples;
             context.nextEventTime = context.sampleCount + nextEventOffset;
           } else {
             context.nextEventTime = Infinity; // Effectively no errors
           }
         }
         // --- Create Wet Signal Buffer ---
-        const wetData = new Float32Array(data);
+        const wetData = context.wetData;
+        wetData.set(data);
         
         // --- Setup 1-sample delay for next sample reference (only for 10A mode) ---
         let delayedData = null;
@@ -208,7 +249,11 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
           }
           
           // Create delayed signal for interpolation
-          delayedData = new Float32Array(data);
+          if (!context.delayedData || context.delayedData.length !== dataLength) {
+            context.delayedData = new Float32Array(dataLength);
+          }
+          delayedData = context.delayedData;
+          delayedData.set(data);
           
           // Apply 1 sample delay using delay buffer
           for (let ch = 0; ch < channelCount; ch++) {
@@ -239,7 +284,10 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
           
           // --- Handle Ongoing Error State ---
           if (context.errorState.active) {
-            const samplesToProcess = Math.min(blockSize - i, context.errorState.samplesRemaining);
+            const remainingBlockSamples = blockSize - i;
+            const samplesToProcess = remainingBlockSamples < context.errorState.samplesRemaining
+              ? remainingBlockSamples
+              : context.errorState.samplesRemaining;
             // Mute modes are handled here. PLC modes with multi-block state are continued below.
             if (context.errorState.mode === '2B' || context.errorState.mode === '3B' || context.errorState.mode === '8' || context.errorState.mode === '9') {
               for (let j = 0; j < samplesToProcess; j++) {
@@ -438,7 +486,8 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
                 const u1 = Math.random();
                 const u2 = Math.random();
                 const standardNormal = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-                channelBitErrors = Math.max(0, Math.round(expectedChannelErrors + Math.sqrt(variance) * standardNormal));
+                channelBitErrors = Math.round(expectedChannelErrors + Math.sqrt(variance) * standardNormal);
+                if (channelBitErrors < 0) channelBitErrors = 0;
               }
               
               // Step 2: EFM demodulation errors (efficient binomial sampling)  
@@ -459,7 +508,8 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
                   const u1 = Math.random();
                   const u2 = Math.random();
                   const standardNormal = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-                  efmDemodErrors = Math.max(0, Math.round(expectedEfmErrors + Math.sqrt(variance) * standardNormal));
+                  efmDemodErrors = Math.round(expectedEfmErrors + Math.sqrt(variance) * standardNormal);
+                  if (efmDemodErrors < 0) efmDemodErrors = 0;
                 }
               }
               
@@ -485,25 +535,32 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
                 const u1 = Math.random();
                 const u2 = Math.random();
                 const standardNormal = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-                dataBitErrors = Math.max(0, Math.round(expectedDataErrors + Math.sqrt(variance) * standardNormal));
+                dataBitErrors = Math.round(expectedDataErrors + Math.sqrt(variance) * standardNormal);
+                if (dataBitErrors < 0) dataBitErrors = 0;
               }
               
               // Step 4: Convert bit errors to symbol errors (real CD behavior)
-              const symbolErrorPositions = new Set();
+              const symbolErrorFlags = context.symbolErrorFlags;
+              symbolErrorFlags.fill(0);
+              let totalSymbolErrors = 0;
               
               // EFM demodulation errors directly create symbol errors
               for (let i = 0; i < efmDemodErrors; i++) {
                 const symbolPos = Math.floor(Math.random() * dataSymbolsPerFrame);
-                symbolErrorPositions.add(symbolPos);
+                if (symbolErrorFlags[symbolPos] === 0) {
+                  symbolErrorFlags[symbolPos] = 1;
+                  totalSymbolErrors++;
+                }
               }
               
               // Data bit errors create symbol errors
               for (let i = 0; i < dataBitErrors; i++) {
                 const symbolPos = Math.floor(Math.random() * dataSymbolsPerFrame);
-                symbolErrorPositions.add(symbolPos);
+                if (symbolErrorFlags[symbolPos] === 0) {
+                  symbolErrorFlags[symbolPos] = 1;
+                  totalSymbolErrors++;
+                }
               }
-              
-              const totalSymbolErrors = symbolErrorPositions.size;
               
               // Step 5: Realistic CIRC correction simulation (C1 decoder)
               // Real C1: RS(32,28) with t=2 correction capability, but organized in specific pattern
@@ -523,7 +580,8 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
                 c1FailedSymbols = Math.floor(totalSymbolErrors * (0.7 + Math.random() * 0.3));
               } else {
                 // 5+ errors: C1 correction completely fails, may even introduce more errors
-                c1FailedSymbols = Math.min(dataSymbolsPerFrame, Math.floor(totalSymbolErrors * (1.1 + Math.random() * 0.2)));
+                c1FailedSymbols = Math.floor(totalSymbolErrors * (1.1 + Math.random() * 0.2));
+                if (c1FailedSymbols > dataSymbolsPerFrame) c1FailedSymbols = dataSymbolsPerFrame;
               }
               
               // Step 6: C2 correction simulation
@@ -568,11 +626,13 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
                 }
                 
                 // Scale to current sample rate (base calculation is for 44.1kHz)
-                errorDurationSamples = Math.max(1, Math.round(errorDurationSamples * fs / 44100));
+                errorDurationSamples = Math.round(errorDurationSamples * fs / 44100);
+                if (errorDurationSamples < 1) errorDurationSamples = 1;
                 
                 // Add realistic random variation to mimic real CD player behavior
                 const variation = 0.8 + Math.random() * 0.4; // ±20% variation
-                errorDurationSamples = Math.max(1, Math.round(errorDurationSamples * variation));
+                errorDurationSamples = Math.round(errorDurationSamples * variation);
+                if (errorDurationSamples < 1) errorDurationSamples = 1;
               }
             }
             
@@ -583,19 +643,23 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
               continue;
             }
             
-            const samplesInBlock = Math.min(blockSize - eventStart, errorDurationSamples);
-            const errorLastGoodSamples = new Float32Array(channelCount);
+            const blockRemaining = blockSize - eventStart;
+            const samplesInBlock = blockRemaining < errorDurationSamples ? blockRemaining : errorDurationSamples;
+            const errorLastGoodSamples = context.errorLastGoodSamples;
             // --- PLC Pre-computation ---
             // Capture previous good samples right before the error happens.
             for (let ch = 0; ch < channelCount; ch++) {
               const offset = ch * blockSize;
               errorLastGoodSamples[ch] = eventStart > 0 ? wetData[offset + eventStart - 1] : context.lastGoodSamples[ch];
-              const historyToCopy = Math.min(eventStart, unitSamples);
+              const historyToCopy = eventStart < unitSamples ? eventStart : unitSamples;
               if (historyToCopy > 0) {
                 const sourceStart = eventStart - historyToCopy;
                 // Use original data (not wetData) to avoid cascading corruption
-                const plcHistory = data.subarray(offset + sourceStart, offset + eventStart);
-                context.plcBuffer[ch].set(plcHistory, unitSamples - historyToCopy);
+                const plcBuffer = context.plcBuffer[ch];
+                const destStart = unitSamples - historyToCopy;
+                for (let h = 0; h < historyToCopy; h++) {
+                  plcBuffer[destStart + h] = data[offset + sourceStart + h];
+                }
               }
             }
             // --- Apply Error Based on Mode ---
@@ -620,14 +684,13 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
             } else {
               // Channel-correlated processing (all other modes)
               // Pre-generate shared randomness for correlated errors
-              const sharedRandomValues = [];
+              const sharedErrorProbability3A = context.sharedErrorProbability3A;
+              const sharedBitPosition3A = context.sharedBitPosition3A;
+              const sharedWarblePhase = context.sharedWarblePhase;
               for (let j = 0; j < samplesInBlock; j++) {
-                sharedRandomValues[j] = {
-                  errorProbability3A: Math.random(),
-                  bitPosition3A: Math.floor(Math.random() * 24),
-                  warblePhase: 2 * Math.PI * CONSTANTS.BLUETOOTH_WARBLE_HZ * (currentGlobalSample + j) / fs,
-                  fadeOut: Math.max(0, 1 - (j / CONSTANTS.FADE_SAMPLES))
-                };
+                sharedErrorProbability3A[j] = Math.random();
+                sharedBitPosition3A[j] = Math.floor(Math.random() * 24);
+                sharedWarblePhase[j] = 2 * Math.PI * CONSTANTS.BLUETOOTH_WARBLE_HZ * (currentGlobalSample + j) / fs;
               }
               
               for (let ch = 0; ch < channelCount; ch++) {
@@ -650,7 +713,6 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
                 }
                 for (let j = 0; j < samplesInBlock; j++) {
                   const sampleIndex = eventStart + j;
-                  const shared = sharedRandomValues[j];
                   
                   switch (parameters.md) {
                     case "2A": // ADAT/TDIF/MADI: Hold last good block
@@ -662,15 +724,25 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
                     case "3A": // HDMI/DP (CRC Pass): Bit corruption in audio row
                       const originalSample3A = wetData[offset + sampleIndex];
                       let sampleInt3A = Math.round(originalSample3A * 8388607);
-                      sampleInt3A = Math.max(-8388608, Math.min(8388607, sampleInt3A));
+                      if (sampleInt3A > 8388607) {
+                        sampleInt3A = 8388607;
+                      } else if (sampleInt3A < -8388608) {
+                        sampleInt3A = -8388608;
+                      }
                       
                       // Use shared randomness so all channels get the same error pattern
                       const errorProbabilityPerSample = 2.0 / unitSamples;
-                      if (shared.errorProbability3A < errorProbabilityPerSample) {
-                        sampleInt3A ^= (1 << shared.bitPosition3A);
+                      if (sharedErrorProbability3A[j] < errorProbabilityPerSample) {
+                        sampleInt3A ^= (1 << sharedBitPosition3A[j]);
                       }
                       
-                      wetData[offset + sampleIndex] = Math.max(-1.0, Math.min(1.0, sampleInt3A / 8388607));
+                      let sample3A = sampleInt3A / 8388607;
+                      if (sample3A > 1.0) {
+                        sample3A = 1.0;
+                      } else if (sample3A < -1.0) {
+                        sample3A = -1.0;
+                      }
+                      wetData[offset + sampleIndex] = sample3A;
                       break;
                     case "3B": // HDMI/DP (CRC Fail): Mute
                     case "8":  // WiSA: Mute
@@ -685,12 +757,13 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
                     case "5A": // Dante/AES67/AVB: Packet Repeat PLC with fade (64 samp)
                     case "5B": // Dante/AES67/AVB: Packet Repeat PLC with fade (128 samp)
                     case "5C": // Dante/AES67/AVB: Packet Repeat PLC with fade (256 samp)
-                      const lambda = Math.min(1.0, (j / unitSamples) * 2);
+                      let lambda = (j / unitSamples) * 2;
+                      if (lambda > 1.0) lambda = 1.0;
                       wetData[offset + sampleIndex] = plcBuffer[(unitSamples - errorDurationSamples + j) % unitSamples] * (1 - lambda);
                       break;
                     case "6A": // Bluetooth A2DP transmission: Sample Repeat + Warble PLC (post-codec error concealment)
                       const decay = Math.pow(CONSTANTS.BLUETOOTH_DECAY, j);
-                      const warble = Math.sin(shared.warblePhase) * CONSTANTS.BLUETOOTH_WARBLE_AMP;
+                      const warble = Math.sin(sharedWarblePhase[j]) * CONSTANTS.BLUETOOTH_WARBLE_AMP;
                       wetData[offset + sampleIndex] = lastGoodSample * decay + warble;
                       break;
                     case "6B": // Bluetooth LE transmission: Enhanced PLC with adaptive concealment (post-codec error concealment)
@@ -814,20 +887,30 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
                       break;
                   }
                   // Clamp sample values to prevent overload
-                  wetData[offset + sampleIndex] = Math.max(-1.0, Math.min(1.0, wetData[offset + sampleIndex]));
+                  let clampedSample = wetData[offset + sampleIndex];
+                  if (clampedSample > 1.0) {
+                    clampedSample = 1.0;
+                  } else if (clampedSample < -1.0) {
+                    clampedSample = -1.0;
+                  }
+                  wetData[offset + sampleIndex] = clampedSample;
                 }
               }
             }
             // --- Update State for Next Iteration ---
+            const errorState = context.errorState;
             if (errorDurationSamples > samplesInBlock) {
-              context.errorState = {
-                active: true,
-                samplesRemaining: errorDurationSamples - samplesInBlock,
-                mode: parameters.md,
-                lastGoodSamples: errorLastGoodSamples,
-                totalDuration: errorDurationSamples // Store for CD concealment
-              };
+              errorState.active = true;
+              errorState.samplesRemaining = errorDurationSamples - samplesInBlock;
+              errorState.mode = parameters.md;
+              errorState.lastGoodSamples = errorLastGoodSamples;
+              errorState.totalDuration = errorDurationSamples; // Store for CD concealment
             } else {
+              errorState.active = false;
+              errorState.samplesRemaining = 0;
+              errorState.mode = null;
+              errorState.lastGoodSamples = null;
+              errorState.totalDuration = 0;
               // Error completed within this block, schedule next event
               context.nextEventTime = -1; // Force reschedule for the next event
             }

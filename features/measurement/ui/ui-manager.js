@@ -337,16 +337,25 @@ class UIManager {
         if (!file) return;
         
         const reader = new FileReader();
-        reader.onload = (e) => {
-            const jsonString = e.target.result;
-            const measurementId = dataStorage.importMeasurementFromJSON(jsonString);
-            
-            if (measurementId) {
-                this.updateMeasurementList();
-                this.selectMeasurement(measurementId);
-            } else {
+        reader.onload = async (e) => {
+            try {
+                const jsonString = e.target.result;
+                const measurementId = await dataStorage.importMeasurementFromJSON(jsonString);
+
+                if (measurementId) {
+                    this.updateMeasurementList();
+                    await this.selectMeasurement(measurementId);
+                } else {
+                    alert('Error importing measurement. Invalid format.');
+                }
+            } catch (error) {
+                console.error('Error importing measurement:', error);
                 alert('Error importing measurement. Invalid format.');
             }
+        };
+        reader.onerror = () => {
+            console.error('Error reading measurement import file:', reader.error);
+            alert('Error importing measurement. Invalid format.');
         };
         
         reader.readAsText(file);
@@ -442,4 +451,4 @@ class UIManager {
 
 // Create and export singleton instance
 const uiManager = new UIManager();
-export default uiManager; 
+export default uiManager;

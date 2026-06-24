@@ -17,6 +17,13 @@ constants.setAppVersion(appVersion);
 
 const MIN_WINDOW_WIDTH = 1024;
 const MIN_WINDOW_HEIGHT = 768;
+const PLAYBACK_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm'];
+const PLAYBACK_AUDIO_EXTENSION_PATTERN_SOURCE = `\\.(${PLAYBACK_AUDIO_EXTENSIONS.join('|')})$`;
+const PLAYBACK_AUDIO_EXTENSION_PATTERN = new RegExp(PLAYBACK_AUDIO_EXTENSION_PATTERN_SOURCE, 'i');
+
+function isSupportedPlaybackAudioPath(filePath) {
+  return PLAYBACK_AUDIO_EXTENSION_PATTERN.test(filePath || '');
+}
 
 let tray = null;
 let isAppQuitting = false;
@@ -265,6 +272,8 @@ function createWindow() {
       // - We must process File objects directly in the renderer using FileReader
       // - Do NOT try to use file.path as it will be undefined in the renderer process
       // =====================================================================
+      const supportedPlaybackAudioPattern = new RegExp(${JSON.stringify(PLAYBACK_AUDIO_EXTENSION_PATTERN_SOURCE)}, 'i');
+      const isSupportedPlaybackAudioFile = (file) => !!(file && supportedPlaybackAudioPattern.test(file.name || ''));
       
       // Override default drag and drop behavior
       // Only prevent default for file drags, allow UI element drags
@@ -291,8 +300,7 @@ function createWindow() {
               if (!file) return false;
               
               // Check for audio file types
-              if (file.type.startsWith('audio/') ||
-                  /\\.(mp3|wav|ogg|flac|m4a|aac|aiff|wma|alac)$/i.test(file.name)) {
+              if (isSupportedPlaybackAudioFile(file)) {
                 return true;
               }
             }
@@ -344,7 +352,7 @@ function createWindow() {
           
           // Check for music files
           const musicFiles = Array.from(e.dataTransfer.files).filter(file =>
-            file.type.startsWith('audio/') || /\.(mp3|wav|ogg|flac|m4a|aac|aiff|wma|alac)$/i.test(file.name)
+            isSupportedPlaybackAudioFile(file)
           );
           
           // Process files directly in the renderer
@@ -1295,7 +1303,7 @@ app.on('open-file', (event, path) => {
     } catch (error) {
       console.error('Error checking preset file:', error);
     }
-  } else if (/\.(mp3|wav|ogg|flac|m4a|aac)$/i.test(path)) {
+  } else if (isSupportedPlaybackAudioPath(path)) {
     try {
       // Check if file exists
       if (fs.existsSync(path)) {

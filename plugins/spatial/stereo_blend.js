@@ -3,7 +3,7 @@ class StereoBlendPlugin extends PluginBase {
         super('Stereo Blend', 'Stereo width control for natural sound field adjustment');
         
         // Initialize parameters
-        this.stereo = 60;  // stereo: Stereo width (0-200%)
+        this.stereo = 60;  // stereo: Stereo width (-200-200%)
         // Common use cases:
         // - 60-90%: Reduce stereo width for more natural headphone listening
         // - 100%: Original stereo image (neutral)
@@ -73,7 +73,7 @@ class StereoBlendPlugin extends PluginBase {
         this.updateParameters();
     }
 
-    // Set stereo width percentage (0-200%)
+    // Set stereo width percentage (-200-200%)
     setStereo(value) {
         this.setParameters({ stereo: value });
     }

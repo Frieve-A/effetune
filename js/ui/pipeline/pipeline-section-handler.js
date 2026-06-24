@@ -10,7 +10,10 @@ export class PipelineSectionHandler {
     constructor(pipelineCore) {
         this.pipelineCore = pipelineCore;
         this.audioManager = pipelineCore.audioManager;
-        this.pipelineManager = pipelineCore.pipelineManager;
+    }
+
+    get pipelineManager() {
+        return this.pipelineCore.pipelineManager;
     }
 
     /**

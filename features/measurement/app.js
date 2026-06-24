@@ -171,8 +171,12 @@ function setupEventConnections() {
     });
     
     // Save and continue button
-    document.getElementById('saveAndContinueBtn').addEventListener('click', () => {
-        measurementController.saveAndContinueMeasurement();
+    document.getElementById('saveAndContinueBtn').addEventListener('click', async () => {
+        try {
+            await measurementController.saveAndContinueMeasurement();
+        } catch (error) {
+            console.error('Error saving measurement progress:', error);
+        }
     });
     
     // Save and finish button

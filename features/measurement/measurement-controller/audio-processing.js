@@ -77,22 +77,12 @@ const AudioProcessing = {
                 // Create combined buffer of repeated TSP signals for each channel
                 const combinedBufferLength = sweepBuffer.length * (averagingCount + 1);
                 
-                // Pre-allocate buffer arrays for all channels with explicit initialization
+                // Pre-allocate buffer arrays for all channels (Float32Array is zero-initialized)
                 const combinedChannelBuffers = [];
                 for (let ch = 0; ch < maxChannels; ch++) {
-                    const buffer = new Float32Array(combinedBufferLength);
-                    // Explicitly zero the buffer for consistency
-                    buffer.fill(0.0);
-                    combinedChannelBuffers.push(buffer);
+                    combinedChannelBuffers.push(new Float32Array(combinedBufferLength));
                 }
-                
-                // Force garbage collection opportunity before heavy processing (if available)
-                if (typeof window !== 'undefined' && window.gc) {
-                    window.gc();
-                } else if (typeof global !== 'undefined' && global.gc) {
-                    global.gc();
-                }
-                
+
                 // Copy the sweep into the combined buffer multiple times for each channel
                 for (let i = 0; i < averagingCount + 1; i++) {
                     const offset = i * sweepBuffer.length;
@@ -302,10 +292,59 @@ const AudioProcessing = {
                         }
                         
                         // If specific output device is requested, try to use it
-                        if (outputDeviceId && false) { // Temporarily disabled for stability
-                            // Device-specific output routing is temporarily disabled
-                            // to improve playback stability. Using default output instead.
-                            console.log('Device-specific output routing disabled for measurement stability');
+                        if (outputDeviceId) {
+                            try {
+                                console.log(`Attempting to use output device ID: ${outputDeviceId}`);
+
+                                // Create an audio element for output device routing
+                                const audioElement = new Audio();
+                                const mediaStreamDestination = audioContext.createMediaStreamDestination();
+
+                                // Set media stream destination channel count if possible
+                                if (mediaStreamDestination.channelCount !== undefined) {
+                                    try {
+                                        mediaStreamDestination.channelCount = Math.min(maxChannels, mediaStreamDestination.maxChannelCount || maxChannels);
+                                        mediaStreamDestination.channelCountMode = 'explicit';
+                                        mediaStreamDestination.channelInterpretation = 'discrete';
+                                        console.log(`Set media stream destination channel count to ${mediaStreamDestination.channelCount}`);
+                                    } catch (e) {
+                                        console.warn('Error setting media stream destination channel count:', e);
+                                    }
+                                }
+
+                                // Store references for cleanup
+                                this.activeSweepElements.audioElement = audioElement;
+                                this.activeSweepElements.mediaStreamDestination = mediaStreamDestination;
+
+                                // Connect audio element to media stream
+                                audioElement.srcObject = mediaStreamDestination.stream;
+
+                                // Use setSinkId if available
+                                if (typeof audioElement.setSinkId === 'function') {
+                                    // Execute asynchronously using a Promise
+                                    (async () => {
+                                        try {
+                                            await audioElement.setSinkId(outputDeviceId);
+                                            console.log(`Sweep playback output device set to ID: ${outputDeviceId}`);
+
+                                            // Start playback on the audio element
+                                            audioElement.play().catch(e => {
+                                                console.error('Failed to play audio element:', e);
+                                            });
+                                        } catch (err) {
+                                            console.error('Error in setSinkId:', err);
+                                        }
+                                    })();
+
+                                    // Use the media stream destination
+                                    audioDestination = mediaStreamDestination;
+                                } else {
+                                    console.warn('setSinkId is not supported in this browser - using default output device');
+                                }
+                            } catch (error) {
+                                console.error('Failed to set output device for sweep playback:', error);
+                                // Fall back to default output
+                            }
                         }
                         
                         // Connect source -> gain -> output

@@ -4,6 +4,33 @@ const path = require('path');
 const constants = require('./constants');
 const fileUtils = require('./file-utils');
 
+const PLAYBACK_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm'];
+const PLAYBACK_AUDIO_FILTER_NAME = 'Audio Files (MP3, WAV, OGG, FLAC, OPUS, M4A, AAC, WEBM)';
+const PLAYBACK_AUDIO_EXTENSION_PATTERN = new RegExp(`\\.(${PLAYBACK_AUDIO_EXTENSIONS.join('|')})$`, 'i');
+const OFFLINE_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac'];
+const OFFLINE_AUDIO_FILTER_NAME = 'Audio Files for Processing (MP3, WAV, OGG, FLAC, M4A, AAC)';
+
+function isSupportedPlaybackAudioPath(filePath) {
+  return PLAYBACK_AUDIO_EXTENSION_PATTERN.test(filePath || '');
+}
+
+function normalizeAudioOpenDialogOptions(options = {}) {
+  if (!options || !Array.isArray(options.filters)) return options;
+
+  const isOfflineProcessingDialog = options.title === 'Select Audio Files to Process';
+  let changed = false;
+  const filters = options.filters.map(filter => {
+    if (!filter || filter.name !== 'Audio Files') return filter;
+
+    changed = true;
+    return isOfflineProcessingDialog
+      ? { name: OFFLINE_AUDIO_FILTER_NAME, extensions: OFFLINE_AUDIO_EXTENSIONS }
+      : { name: PLAYBACK_AUDIO_FILTER_NAME, extensions: PLAYBACK_AUDIO_EXTENSIONS };
+  });
+
+  return changed ? { ...options, filters } : options;
+}
+
 // Set the main window reference
 function setMainWindow(window) {
   constants.setMainWindow(window);
@@ -45,7 +72,7 @@ async function showSaveDialog(options) {
 
 async function showOpenDialog(options) {
   const mainWindow = constants.getMainWindow();
-  return await dialog.showOpenDialog(mainWindow, options);
+  return await dialog.showOpenDialog(mainWindow, normalizeAudioOpenDialogOptions(options));
 }
 
 // File operations - using fileUtils
@@ -79,7 +106,7 @@ async function getFilePath(fileInfo) {
       title: `Select ${fileInfo.name}`,
       properties: ['openFile'],
       filters: [
-        { name: 'Audio Files', extensions: ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm'] },
+        { name: PLAYBACK_AUDIO_FILTER_NAME, extensions: PLAYBACK_AUDIO_EXTENSIONS },
         { name: 'All Files', extensions: ['*'] }
       ]
     });
@@ -105,7 +132,7 @@ async function getFilePaths(filesInfo) {
       title: 'Select Music Files',
       properties: ['openFile', 'multiSelections'],
       filters: [
-        { name: 'Audio Files', extensions: ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm'] },
+        { name: PLAYBACK_AUDIO_FILTER_NAME, extensions: PLAYBACK_AUDIO_EXTENSIONS },
         { name: 'All Files', extensions: ['*'] }
       ]
     });
@@ -126,11 +153,8 @@ async function getFilePaths(filesInfo) {
 async function handleDroppedFilesWithPaths(filePaths) {
   try {
     // Filter for audio files
-    
-    // Filter for audio files
     const audioFilePaths = filePaths.filter(filePath => {
-      const ext = path.extname(filePath).toLowerCase();
-      return ['.mp3', '.wav', '.ogg', '.flac', '.opus', '.m4a', '.aac', '.webm'].includes(ext);
+      return isSupportedPlaybackAudioPath(filePath);
     });
     
     return audioFilePaths;
@@ -146,15 +170,6 @@ async function handleDroppedFiles(filesInfo) {
     // For security reasons, Electron doesn't provide direct access to file paths from the renderer process
     // We'll use a different approach to handle dropped files
     
-    // Extract file names and extensions
-    const fileNames = filesInfo.map(info => info.name).filter(Boolean);
-    const fileExtensions = fileNames
-      .map(name => {
-        const parts = name.split('.');
-        return parts.length > 1 ? parts.pop().toLowerCase() : '';
-      })
-      .filter(Boolean);
-    
     // Show a dialog to let the user select the files
     // This is the most reliable approach
     const mainWindow = constants.getMainWindow();
@@ -163,7 +178,7 @@ async function handleDroppedFiles(filesInfo) {
       defaultPath: require('electron').app.getPath('music'),
       properties: ['openFile', 'multiSelections'],
       filters: [
-        { name: 'Audio Files', extensions: ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', ...fileExtensions] },
+        { name: PLAYBACK_AUDIO_FILTER_NAME, extensions: PLAYBACK_AUDIO_EXTENSIONS },
         { name: 'All Files', extensions: ['*'] }
       ]
     });
@@ -273,7 +288,7 @@ function processCommandLineArgs(argv) {
         }
       }
       // Check if the argument is a music file
-      else if (arg && /\.(mp3|wav|ogg|flac|m4a|aac)$/i.test(arg)) {
+      else if (arg && isSupportedPlaybackAudioPath(arg)) {
         try {
           // Debug logs removed for release
           

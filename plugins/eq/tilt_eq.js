@@ -1,4 +1,9 @@
 class TiltEQPlugin extends PluginBase {
+    static DEFAULTS = Object.freeze({
+        f0: 6.91, // exp(6.91) ~= 1.0 kHz
+        sl: 0.0
+    });
+
     static processorFunction = `
 // --- Constants ---
 const PI = 3.141592653589793;
@@ -176,8 +181,8 @@ return data; // Return the modified buffer
         super('Tilt EQ', 'Frequency tilt equalizer');
 
         // Initialize parameters
-        this.f0 = 6.91;  // Default pivot frequency exponent (exp(6.91) ≈ 1/002kHz)
-        this.sl = 0.0;  // Default slope (0 dB/oct)
+        this.f0 = TiltEQPlugin.DEFAULTS.f0;
+        this.sl = TiltEQPlugin.DEFAULTS.sl;
 
         // Register processor function
         this.registerProcessor(TiltEQPlugin.processorFunction);
@@ -201,8 +206,8 @@ return data; // Return the modified buffer
 
     // Reset to default values
     reset() {
-        this.setPivotFreq(6.0);
-        this.setSlope(0.0);
+        this.setPivotFreq(TiltEQPlugin.DEFAULTS.f0);
+        this.setSlope(TiltEQPlugin.DEFAULTS.sl);
     }
 
     getParameters() {

@@ -104,6 +104,20 @@
         "description": "AAC Audio File",
         "icon": "icon",
         "role": "None"
+      },
+      {
+        "ext": "opus",
+        "name": "OPUS Audio",
+        "description": "OPUS Audio File",
+        "icon": "icon",
+        "role": "None"
+      },
+      {
+        "ext": "webm",
+        "name": "WEBM Audio",
+        "description": "WEBM Audio File",
+        "icon": "icon",
+        "role": "None"
       }
     ],
     "win": {

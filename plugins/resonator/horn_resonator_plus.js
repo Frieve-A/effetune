@@ -47,7 +47,7 @@ class HornResonatorPlusPlugin extends PluginBase {
                                 context.sr  !== sr ||
                                 context.chs !== chs ||
                                 // List of parameters that necessitate recalculation
-                                ['ln','th','mo','cv','dp','tr','co','wg']
+                                ['ln','th','mo','cv','dp','tr','co']
                                 .some(key => context[key] !== parameters[key]);
 
             /* ---------- 1. Recalculate geometry & filter coefficients if needed -------- */
@@ -62,7 +62,6 @@ class HornResonatorPlusPlugin extends PluginBase {
                 context.dp = parameters.dp;
                 context.tr = parameters.tr;
                 context.co = parameters.co;
-                context.wg = parameters.wg;
 
                 // --- Horn Geometry Calculation ---
                 const dx = C / sr; // Spatial step size based on sample rate
@@ -204,11 +203,14 @@ class HornResonatorPlusPlugin extends PluginBase {
                 context.lowDelayIdx.fill(0); // Reset indices
                 }
 
-                // Pre-compute output gain in linear scale
-                context.outputGain = Math.pow(10, context.wg / 20);
-
                 context.initialized = true;
             } // End of needsRecalc block
+
+            // Output gain is independent of horn geometry/filter state.
+            if (needsRecalc || context.wg !== parameters.wg) {
+                context.wg = parameters.wg;
+                context.outputGain = Math.pow(10, context.wg / 20);
+            }
 
             /* ------------------ 2. Sample processing loop ---------------- */
             const N = context.N;             // Number of waveguide segments

@@ -660,7 +660,19 @@ export class AudioManager {
      * @returns {Promise<Blob>} - Processed audio as a WAV blob
      */
     async processAudioFile(file, progressCallback = null) {
-        return this.offlineProcessor.processAudioFile(file, this.pipeline, progressCallback);
+        try {
+            return await this.offlineProcessor.processAudioFile(file, this.pipeline, progressCallback);
+        } finally {
+            this.updateExposedProperties();
+        }
+    }
+
+    /**
+     * Cancel the current offline audio processing operation.
+     */
+    cancelProcessing() {
+        this.offlineProcessor.cancelProcessing();
+        this.updateExposedProperties();
     }
     
     /**

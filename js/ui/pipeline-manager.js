@@ -25,7 +25,7 @@ export class PipelineManager {
         this.pluginListManager = pluginListManager;
         
         // Create core components
-        this.core = new PipelineCore(audioManager, pluginManager, expandedPlugins);
+        this.core = new PipelineCore(audioManager, pluginManager, expandedPlugins, this);
         
         // Set reference to this PipelineManager in the core
         this.core.pipelineManager = this;

@@ -2,6 +2,7 @@
  * ClipboardManager - Handles copy/cut/paste operations and URL parsing
  */
 import { getSerializablePluginStateShort, applySerializedState } from '../../utils/serialization-utils.js';
+import { decodePipelineState } from '../../utils/pipeline-state-codec.js';
 export class ClipboardManager {
     /**
      * Create a new ClipboardManager instance
@@ -98,9 +99,7 @@ export class ClipboardManager {
                                 throw new Error('Invalid base64 characters in p parameter');
                             }
                             
-                            // Convert base64 back to JSON
-                            const jsonStr = atob(pParam);
-                            const pipelineState = JSON.parse(jsonStr);
+                            const pipelineState = decodePipelineState(pParam);
                             
                             // Validate that state is an array
                             if (!Array.isArray(pipelineState)) {

@@ -882,8 +882,7 @@ class MultibandCompressorPlugin extends PluginBase {
         a: b.a,
         rl: b.rl,
         k: b.k,
-        g: b.g,
-        gr: b.gr
+        g: b.g
       })),
       enabled: this.enabled
     };

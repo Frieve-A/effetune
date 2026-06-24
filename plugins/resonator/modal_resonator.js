@@ -26,6 +26,7 @@ class ModalResonatorPlugin extends PluginBase {
             const sampleRate = parameters.sampleRate;
             const channelCount = parameters.channelCount;
             const blockSize = parameters.blockSize;
+            const TWO_PI = 6.283185307179586;
         
             // Dry/Wet calculation
             const mix = parameters.mx;
@@ -73,18 +74,33 @@ class ModalResonatorPlugin extends PluginBase {
                     }
                 }
                 context.accum = new Float32Array(blockSize);
+                context.resonators = new Array(5);
+                for (let r = 0; r < 5; r++) {
+                    context.resonators[r] = {
+                        enabled: false,
+                        delaySamples: 1,
+                        feedback: 0.0,
+                        alphaHPF: 0.0,
+                        alphaLPF: 0.0,
+                        gain: 0.0
+                    };
+                }
         
                 context.initialized = true;
                 context.sampleRate = sampleRate;
                 context.channelCount = channelCount;
             }
+            if (!context.accum || context.accum.length !== blockSize) {
+                context.accum = new Float32Array(blockSize);
+            }
         
             // Prepare resonator parameters
-            const resonators = [];
+            const resonators = context.resonators;
             for (let r = 0; r < 5; r++) {
                 const p = parameters.rs[r];
+                const cfg = resonators[r];
                 if (!p.en) {
-                    resonators[r] = null;
+                    cfg.enabled = false;
                     continue;
                 }
                 const freqHz = Math.exp(p.fr);
@@ -92,11 +108,11 @@ class ModalResonatorPlugin extends PluginBase {
                 if (delaySamp < 1) delaySamp = 1;
         
                 const decaySamples = p.dc * 0.001 * sampleRate;
-                const cycles = Math.max(0.1, decaySamples / delaySamp);
+                let cycles = decaySamples / delaySamp;
+                if (cycles < 0.1) cycles = 0.1;
                 let fb = Math.exp(Math.log(0.001) / cycles);
-                fb = Math.min(fb, 0.999);
+                if (fb > 0.999) fb = 0.999;
         
-                const TWO_PI = 6.283185307179586;
                 const hpfHz = Math.exp(p.hp);
                 const alphaHPF = Math.exp(-TWO_PI * hpfHz / sampleRate);
         
@@ -105,13 +121,12 @@ class ModalResonatorPlugin extends PluginBase {
         
                 const gainLinear = Math.pow(10, p.gn / 20.0);
         
-                resonators[r] = {
-                    delaySamples: delaySamp,
-                    feedback: fb,
-                    alphaHPF,
-                    alphaLPF,
-                    gain: gainLinear
-                };
+                cfg.enabled = true;
+                cfg.delaySamples = delaySamp;
+                cfg.feedback = fb;
+                cfg.alphaHPF = alphaHPF;
+                cfg.alphaLPF = alphaLPF;
+                cfg.gain = gainLinear;
             }
         
             const db = context.delayBuffers;
@@ -127,7 +142,7 @@ class ModalResonatorPlugin extends PluginBase {
         
                 for (let r = 0; r < 5; r++) {
                     const cfg = resonators[r];
-                    if (!cfg) continue;
+                    if (!cfg.enabled) continue;
         
                     const buf = db[ch][r];
                     const len = buf.length;

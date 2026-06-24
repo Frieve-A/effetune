@@ -167,23 +167,12 @@ export class PipelineColumnManager {
         pipeline.forEach((plugin, index) => {
             const item = this.pipelineCore.itemBuilder.createPipelineItem(plugin); // Returns the main item element
 
-            // --- Correctly get handle AFTER creating item ---
-            const handle = item.querySelector('.handle');
-
             // Determine target column index
             const columnIndex = Math.floor(index / pluginsPerColumn);
             const targetColumn = columns[Math.min(columnIndex, columnCount - 1)];
 
             if (targetColumn) {
                 targetColumn.appendChild(item);
-                // --- Setup drag events AFTER appending and having the handle ---
-                if (this.pipelineCore.pipelineManager && this.pipelineCore.pipelineManager.uiEventHandler && handle) {
-                    this.pipelineCore.pipelineManager.uiEventHandler.setupDragEvents(handle, item, plugin);
-                } else if (!handle) {
-                     console.warn(`No handle found for plugin item ${index} to set up drag events.`);
-                } else if (!this.pipelineCore.pipelineManager?.uiEventHandler) {
-                    console.warn("uiEventHandler not available in PipelineCore to set up drag events.");
-                }
             } else {
                  console.warn(`Could not find target column ${columnIndex} for plugin ${index}.`);
             }

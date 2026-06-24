@@ -62,7 +62,11 @@ class OscillatorPlugin extends PluginBase {
 
             // Pre-calculate pulse parameters for pulsed mode
             const intervalSamples = (interval / 1000.0) * safeSampleRate;
-            const pulseWidthSamples = (width / 1000.0) * safeSampleRate;
+            let pulseWidthSamples = (width / 1000.0) * safeSampleRate;
+            const maxPulseWidthSamples = intervalSamples * 0.5;
+            if (pulseWidthSamples > maxPulseWidthSamples) {
+                pulseWidthSamples = maxPulseWidthSamples;
+            }
             const pulseDurationSamples = pulseWidthSamples * 2.0; // Width * 2 for full cosine cycle
             const timeIncrementPerSample = 1.0 / safeSampleRate;
 
@@ -303,12 +307,19 @@ class OscillatorPlugin extends PluginBase {
 
     setInterval(value) {
         this.it = this.parseFiniteNumber(value, 100, 2000, this.it);
+        this.wd = this.clampWidthToInterval(this.wd, this.it);
         this.updateParameters();
     }
 
     setWidth(value) {
-        this.wd = this.parseFiniteNumber(value, 2, 100, this.wd);
+        const width = this.parseFiniteNumber(value, 2, 100, this.wd);
+        this.wd = this.clampWidthToInterval(width, this.it);
         this.updateParameters();
+    }
+
+    clampWidthToInterval(width, interval) {
+        const maxWidth = interval * 0.5;
+        return width > maxWidth ? maxWidth : width;
     }
 
     // Get current parameters
@@ -536,12 +547,16 @@ class OscillatorPlugin extends PluginBase {
             const interval = this.mapSliderToInterval(e.target.value);
             intervalValue.value = interval;
             this.setInterval(interval);
+            widthSlider.value = this.mapWidthToSlider(this.wd);
+            widthValue.value = this.wd;
         });
 
         intervalValue.addEventListener('input', (e) => {
             const interval = parseFloat(e.target.value);
             intervalSlider.value = this.mapIntervalToSlider(interval);
             this.setInterval(interval);
+            widthSlider.value = this.mapWidthToSlider(this.wd);
+            widthValue.value = this.wd;
         });
 
         intervalRow.appendChild(intervalLabel);
@@ -576,14 +591,16 @@ class OscillatorPlugin extends PluginBase {
 
         widthSlider.addEventListener('input', (e) => {
             const width = this.mapSliderToWidth(e.target.value);
-            widthValue.value = width;
             this.setWidth(width);
+            widthSlider.value = this.mapWidthToSlider(this.wd);
+            widthValue.value = this.wd;
         });
 
         widthValue.addEventListener('input', (e) => {
             const width = parseFloat(e.target.value);
-            widthSlider.value = this.mapWidthToSlider(width);
             this.setWidth(width);
+            widthSlider.value = this.mapWidthToSlider(this.wd);
+            widthValue.value = this.wd;
         });
 
         widthRow.appendChild(widthLabel);

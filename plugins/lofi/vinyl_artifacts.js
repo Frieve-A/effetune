@@ -28,8 +28,18 @@ class VinylArtifactsPlugin extends PluginBase {
             // --- Biquad Filter Coefficient Calculation Helpers ---
             // NOTE: The High Shelf and Low Shelf functions use canonical, verified implementations.
 
-            function calculateLowShelfCoeffs(f0, dbGain, Q, sr) {
-                if (Math.abs(dbGain) < 0.01) return null;
+            function setBiquadCoeffs(out, b0, b1, b2, a1, a2) {
+                out.b0 = b0; out.b1 = b1; out.b2 = b2; out.a1 = a1; out.a2 = a2;
+                return out;
+            }
+
+            function resetBiquadState(state) {
+                state.x1 = 0; state.x2 = 0; state.y1 = 0; state.y2 = 0;
+            }
+
+            function calculateLowShelfCoeffs(f0, dbGain, Q, sr, out) {
+                const absGain = dbGain < 0.0 ? -dbGain : dbGain;
+                if (absGain < 0.01) return null;
                 const A = Math.pow(10, dbGain / 40.0);
                 const w0 = 2 * Math.PI * f0 / sr;
                 const c = Math.cos(w0);
@@ -47,11 +57,12 @@ class VinylArtifactsPlugin extends PluginBase {
                 const a1 = -2 * (Am1 + Ap1 * c) * a0_inv;
                 const a2 = (Ap1 + Am1 * c - beta) * a0_inv;
 
-                return { b0, b1, b2, a1, a2 };
+                return setBiquadCoeffs(out, b0, b1, b2, a1, a2);
             }
 
-            function calculateHighShelfCoeffs(f0, dbGain, Q, sr) {
-                if (Math.abs(dbGain) < 0.01) return null;
+            function calculateHighShelfCoeffs(f0, dbGain, Q, sr, out) {
+                const absGain = dbGain < 0.0 ? -dbGain : dbGain;
+                if (absGain < 0.01) return null;
                 const A = Math.pow(10, dbGain / 40.0);
                 const w0 = 2 * Math.PI * f0 / sr;
                 const c = Math.cos(w0);
@@ -69,18 +80,18 @@ class VinylArtifactsPlugin extends PluginBase {
                 const a1 = 2 * (Am1 - Ap1 * c) * a0_inv;
                 const a2 = (Ap1 - Am1 * c - beta) * a0_inv;
                 
-                return { b0, b1, b2, a1, a2 };
+                return setBiquadCoeffs(out, b0, b1, b2, a1, a2);
             }
             
-            function calculateHpfCoeffs(f0, Q, sr) {
+            function calculateHpfCoeffs(f0, Q, sr, out) {
                 const w0 = 2 * Math.PI * f0 / sr, c = Math.cos(w0), a = Math.sin(w0) / (2 * Q), a0_inv = 1 / (1 + a);
                 const one_plus_c_half = (1 + c) * 0.5;
-                return { b0: one_plus_c_half * a0_inv, b1: -(1 + c) * a0_inv, b2: one_plus_c_half * a0_inv, a1: -2 * c * a0_inv, a2: (1 - a) * a0_inv };
+                return setBiquadCoeffs(out, one_plus_c_half * a0_inv, -(1 + c) * a0_inv, one_plus_c_half * a0_inv, -2 * c * a0_inv, (1 - a) * a0_inv);
             }
-            function calculateLpfCoeffs(f0, Q, sr) {
+            function calculateLpfCoeffs(f0, Q, sr, out) {
                 const w0 = 2 * Math.PI * f0 / sr, c = Math.cos(w0), a = Math.sin(w0) / (2 * Q), a0_inv = 1 / (1 + a);
                 const one_minus_c_half = (1 - c) * 0.5;
-                return { b0: one_minus_c_half * a0_inv, b1: (1 - c) * a0_inv, b2: one_minus_c_half * a0_inv, a1: -2 * c * a0_inv, a2: (1 - a) * a0_inv };
+                return setBiquadCoeffs(out, one_minus_c_half * a0_inv, (1 - c) * a0_inv, one_minus_c_half * a0_inv, -2 * c * a0_inv, (1 - a) * a0_inv);
             }
             
             function processSafeBiquad(input, state, coeffs) {
@@ -121,13 +132,18 @@ class VinylArtifactsPlugin extends PluginBase {
             
             if (!context.initialized || context.lastChannelCount !== channelCount) {
                 context.pinkState = Array.from({ length: channelCount }, () => new Float32Array(7).fill(0.0));
-                context.popState = Array.from({ length: channelCount }, () => ({ x1: 0, x2: 0, y1: 0, y2: 0, coeffs: null }));
+                context.popState = Array.from({ length: channelCount }, () => ({ x1: 0, x2: 0, y1: 0, y2: 0, coeffs: { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 } }));
                 context.crackleState = Array.from({ length: channelCount }, () => ({ crackleLevel: 0, x1: 0, x2: 0, y1: 0, y2: 0 }));
                 context.rumbleState = Array.from({ length: channelCount }, () => ({ brown: 0.0, x1: 0, x2: 0, y1: 0, y2: 0 }));
                 context.lowShelfState = Array.from({ length: channelCount }, () => ({ x1: 0, x2: 0, y1: 0, y2: 0 }));
                 context.highShelfState = Array.from({ length: channelCount }, () => ({ x1: 0, x2: 0, y1: 0, y2: 0 }));
                 context.energySmooth = 0.0;
                 context.lastInput = new Float32Array(channelCount).fill(0.0);
+                context.wetSamples = new Float32Array(channelCount);
+                context.crackleHpfCoeffs = { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 };
+                context.rumbleLpfCoeffs = { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 };
+                context.lowShelfCoeffs = { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 };
+                context.highShelfCoeffs = { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 };
                 context.lastChannelCount = channelCount;
                 context.lowShelfBypassed = true;
                 context.highShelfBypassed = true;
@@ -153,20 +169,20 @@ class VinylArtifactsPlugin extends PluginBase {
             const lowShelfDb = 20.0 * (1.0 - profileRatio); 
             const highShelfDb = -20.0 * (1.0 - profileRatio);
             
-            const crackleHpfCoeffs = calculateHpfCoeffs(3500.0, 0.707, sampleRate);
-            const rumbleLpfCoeffs = (rumbleGain > 0.0) ? calculateLpfCoeffs(70.0, 0.707, sampleRate) : null;
-            const lowShelfCoeffs = calculateLowShelfCoeffs(50.0, lowShelfDb, 0.707, sampleRate);
-            const highShelfCoeffs = calculateHighShelfCoeffs(2122.0, highShelfDb, 0.707, sampleRate);
+            const crackleHpfCoeffs = calculateHpfCoeffs(3500.0, 0.707, sampleRate, context.crackleHpfCoeffs);
+            const rumbleLpfCoeffs = (rumbleGain > 0.0) ? calculateLpfCoeffs(70.0, 0.707, sampleRate, context.rumbleLpfCoeffs) : null;
+            const lowShelfCoeffs = calculateLowShelfCoeffs(50.0, lowShelfDb, 0.707, sampleRate, context.lowShelfCoeffs);
+            const highShelfCoeffs = calculateHighShelfCoeffs(2122.0, highShelfDb, 0.707, sampleRate, context.highShelfCoeffs);
 
             const isLowShelfBypassed = (lowShelfCoeffs === null);
             if (isLowShelfBypassed !== context.lowShelfBypassed) {
-                for (let ch = 0; ch < channelCount; ch++) { Object.assign(context.lowShelfState[ch], { x1: 0, x2: 0, y1: 0, y2: 0 }); }
+                for (let ch = 0; ch < channelCount; ch++) { resetBiquadState(context.lowShelfState[ch]); }
                 context.lowShelfBypassed = isLowShelfBypassed;
             }
 
             const isHighShelfBypassed = (highShelfCoeffs === null);
             if (isHighShelfBypassed !== context.highShelfBypassed) {
-                for (let ch = 0; ch < channelCount; ch++) { Object.assign(context.highShelfState[ch], { x1: 0, x2: 0, y1: 0, y2: 0 }); }
+                for (let ch = 0; ch < channelCount; ch++) { resetBiquadState(context.highShelfState[ch]); }
                 context.highShelfBypassed = isHighShelfBypassed;
             }
 
@@ -213,7 +229,7 @@ class VinylArtifactsPlugin extends PluginBase {
             const crackleImpulseGain = crackleGain * CRACKLE_COMPENSATION_GAIN;
 
             // Avoid allocating memory in the main processing loop.
-            const wetSamples = new Float32Array(channelCount);
+            const wetSamples = context.wetSamples;
 
             for (let i = 0; i < blockSize; i++) {
                 const popTrigger = Math.random() < popProbReact;
@@ -230,7 +246,7 @@ class VinylArtifactsPlugin extends PluginBase {
                             const sizeInv = 1.0 - size;
                             const freq = 200.0 + 3800.0 * sizeInv * sizeInv;
                             const q = 0.7 + 0.8 * size;
-                            popState.coeffs = calculateHpfCoeffs(freq, q, sampleRate);
+                            calculateHpfCoeffs(freq, q, sampleRate, popState.coeffs);
                             popSampleIn = (Math.random() * 2.0 - 1.0) * popImpulseGain;
                         }
                         totalNoise += processSafeBiquad(popSampleIn, popState, popState.coeffs);

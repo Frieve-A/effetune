@@ -628,12 +628,20 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
     }
 
     startAnimation() {
+        if (!this.enabled || !this._sectionEnabled) return;
         if (this.animationFrameId) return;
         const animate = () => {
             this.drawMeters();
             this.animationFrameId = requestAnimationFrame(animate);
         };
         this.animationFrameId = requestAnimationFrame(animate);
+    }
+
+    stopAnimation() {
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
     }
 
     drawMeters() {
@@ -886,11 +894,7 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
     }
 
     cleanup() {
-        if (this.animationFrameId) {
-            cancelAnimationFrame(this.animationFrameId);
-            this.animationFrameId = null;
-        }
-
+        this.stopAnimation();
         super.cleanup();
     }
 }

@@ -790,8 +790,7 @@ class MultibandExpanderPlugin extends PluginBase {
         a: b.a,
         rl: b.rl,
         k: b.k,
-        g: b.g,
-        gb: b.gb
+        g: b.g
       })),
       enabled: this.enabled
     };

@@ -4,6 +4,13 @@
 import { PipelineCore } from './pipeline-core.js';
 import { PluginListManager } from '../plugin-list-manager.js'; // Temporary path
 
+const PLAYBACK_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm'];
+const PLAYBACK_AUDIO_EXTENSION_PATTERN = new RegExp(`\\.(${PLAYBACK_AUDIO_EXTENSIONS.join('|')})$`, 'i');
+
+function isSupportedPlaybackAudioFile(file) {
+    return !!(file && PLAYBACK_AUDIO_EXTENSION_PATTERN.test(file.name || ''));
+}
+
 export class UIEventHandler {
     /**
      * Create a new UIEventHandler instance
@@ -303,10 +310,7 @@ export class UIEventHandler {
                     );
                     
                     // Check for music files
-                    const musicFiles = files.filter(file =>
-                        file.type.startsWith('audio/') ||
-                        /\.(mp3|wav|ogg|flac|m4a|aac|aiff|wma|alac)$/i.test(file.name)
-                    );
+                    const musicFiles = files.filter(isSupportedPlaybackAudioFile);
                     
                     // Process preset files first (if any)
                     if (presetFiles.length > 0) {

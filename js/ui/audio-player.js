@@ -164,8 +164,8 @@ export class AudioPlayer {
     // Remove UI
     this.ui.removeUI();
     
-    // Clear playback manager
-    this.playbackManager.clear();
+    // Dispose playback manager
+    this.playbackManager.dispose();
     
     // Clear state manager
     this.stateManager.clearStateHistory();

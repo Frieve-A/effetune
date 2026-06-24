@@ -506,12 +506,69 @@ class MeasurementDisplay {
     }
 
     /**
+     * Recalculate average response data from the current measurement points
+     * @param {Object} measurement - Measurement object to update
+     */
+    recalculateAverageResponse(measurement) {
+        const points = measurement.points || [];
+        const responses = points
+            .map(point => point.frequencyResponse)
+            .filter(response => Array.isArray(response) && response.length > 0);
+
+        if (responses.length === 0) {
+            measurement.averageFrequencyResponse = [];
+            delete measurement.maxSignalLevel;
+            return;
+        }
+
+        const referenceResponse = responses[0];
+        const averageResponse = [];
+
+        for (let i = 0; i < referenceResponse.length; i++) {
+            const freq = referenceResponse[i][0];
+            let sum = 0;
+            let count = 0;
+
+            for (let j = 0; j < responses.length; j++) {
+                if (i < responses[j].length) {
+                    if (responses[j][i][0] !== freq) {
+                        console.warn(`Frequency mismatch at index ${i}: expected ${freq}, found ${responses[j][i][0]}`);
+                    }
+                    sum += responses[j][i][1];
+                    count++;
+                }
+            }
+
+            if (count > 0) {
+                averageResponse.push([freq, sum / count]);
+            }
+        }
+
+        let maxSignalLevelSum = 0;
+        let maxSignalLevelCount = 0;
+
+        points.forEach(point => {
+            if (point.maxSignalLevel !== undefined) {
+                maxSignalLevelSum += point.maxSignalLevel;
+                maxSignalLevelCount++;
+            }
+        });
+
+        measurement.averageFrequencyResponse = averageResponse;
+        if (maxSignalLevelCount > 0) {
+            measurement.maxSignalLevel = maxSignalLevelSum / maxSignalLevelCount;
+        } else {
+            delete measurement.maxSignalLevel;
+        }
+    }
+
+    /**
      * Delete a measurement point
      * @param {number} index - Point index to delete
      */
     deletePoint(index) {
         const measurement = dataStorage.getMeasurementById(this.uiManager.selectedMeasurementId);
-        if (!measurement || !measurement.points || index >= measurement.points.length) {
+        if (!measurement || !measurement.points || index < 0 || index >= measurement.points.length) {
             return;
         }
         
@@ -524,10 +581,20 @@ class MeasurementDisplay {
         
         // Update the measurement object temporarily (not saved to storage yet)
         measurement.points = updatedPoints;
-        
+        this.recalculateAverageResponse(measurement);
+
+        const hadPEQParameters = measurement.peqParameters && measurement.peqParameters.length > 0;
+        delete measurement.peqParameters;
+        delete measurement.correctedResponse;
+
         // Update the UI
-        this.displayMeasurementPoints(measurement);
-        this.uiManager.updateResultsGraph();
+        this.displayMeasurementDetails(this.uiManager.selectedMeasurementId, true);
+
+        if (hadPEQParameters && measurement.averageFrequencyResponse.length > 0) {
+            this.uiManager.correctionHandler.updateCorrection().catch(error => {
+                console.error('Error recalculating correction after point deletion:', error);
+            });
+        }
         
         // Show edit actions
         document.getElementById('editActions').style.display = 'flex';
@@ -614,4 +681,4 @@ class MeasurementDisplay {
     }
 }
 
-export default MeasurementDisplay; 
+export default MeasurementDisplay;

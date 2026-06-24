@@ -17,17 +17,20 @@ class GraphRenderer {
      */
     updateResultsGraph(pointIndex, skipPEQUpdate = false) {
         try {
+            const canvas = document.getElementById('resultsGraph');
+            if (!canvas) {
+                return;
+            }
+            const ctx = canvas.getContext('2d');
+            
+            // Clear canvas before any early return so deleted points do not leave stale traces.
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
             const measurement = dataStorage.getMeasurementById(this.uiManager.selectedMeasurementId);
             if (!measurement || !measurement.points || measurement.points.length === 0) {
                 return;
             }
-            
-            const canvas = document.getElementById('resultsGraph');
-            const ctx = canvas.getContext('2d');
-            
-            // Clear canvas
-            ctx.fillStyle = '#1a1a1a';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
             
             // Draw grid
             this.drawFrequencyGrid(ctx);
@@ -417,4 +420,4 @@ class GraphRenderer {
     }
 }
 
-export default GraphRenderer; 
+export default GraphRenderer;

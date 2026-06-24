@@ -60,10 +60,16 @@ class FiveBandDynamicEQ extends PluginBase {
             }
 
             // --- Biquad Coefficient Calculation ---
-            const calculateCoeffs = (type, f, Q, gainDB, sampleRate) => {
+            const setCoeffs = (out, b0, b1, b2, a1, a2) => {
+                out.b0 = b0; out.b1 = b1; out.b2 = b2; out.a1 = a1; out.a2 = a2;
+                return out;
+            };
+
+            const calculateCoeffs = (type, f, Q, gainDB, sampleRate, out) => {
+                const coeffs = out || { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 };
                 // Bypass for near-zero gain
                 if ((gainDB > -1e-5 && gainDB < 1e-5) && (type === 'pk' || type === 'ls' || type === 'hs')) {
-                    return { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 };
+                    return setCoeffs(coeffs, 1, 0, 0, 0, 0);
                 }
                 const w0 = 2 * Math.PI * f / sampleRate;
                 const cos_w0 = Math.cos(w0);
@@ -101,7 +107,7 @@ class FiveBandDynamicEQ extends PluginBase {
                 }
                 // Normalize coefficients
                 const norm = 1.0 / a0; // Assume a0 is not zero
-                return { b0: b0*norm, b1: b1*norm, b2: b2*norm, a1: a1*norm, a2: a2*norm };
+                return setCoeffs(coeffs, b0*norm, b1*norm, b2*norm, a1*norm, a2*norm);
             };
 
             // --- Processor Main Logic ---
@@ -135,21 +141,36 @@ class FiveBandDynamicEQ extends PluginBase {
                         mono_sc_w2: 0  // Mono state for sidechain filter
                     });
                 }
+                context.bandProcessingParams = new Array(numBands);
+                for (let bandIdx = 0; bandIdx < numBands; bandIdx++) {
+                    context.bandProcessingParams[bandIdx] = {
+                        enabled: false,
+                        ctxBand: null,
+                        scCoeffs: { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 },
+                        th: 0, ft: 'pk', f: 0, q: 1, kn: 0, r: 1, mg: 0,
+                        halfKnee: 0, ratio: 1, slopeFactor: 0, maxGain: 0
+                    };
+                }
+                context.currentSample = new Float32Array(channelCount);
+                context.processedSample = new Float32Array(channelCount);
+                context.smoothedGainsForMessage = new Float32Array(numBands);
+                context.measurements = { gains: context.smoothedGainsForMessage };
                 context.channelCount = channelCount; context.numBands = numBands; context.sampleRate = sampleRate; context.initialized = true;
             }
 
             // --- Pre-calculate parameters for the block ---
-            const bandProcessingParams = new Array(numBands);
+            const bandProcessingParams = context.bandProcessingParams;
             const GAIN_THRESHOLD = 1e-4;
 
             for (let bandIdx = 0; bandIdx < numBands; bandIdx++) {
                 const band = parameters.bs[bandIdx]; // Use 'bs' based on user provided code
                 const ctxBand = context.bs[bandIdx]; // Use 'bs' based on user provided code
                 const param_en = band.en;
+                const params = bandProcessingParams[bandIdx];
 
-                let scCoeffs = null, halfKnee = 0.0, slopeFactor = 0.0;
+                let halfKnee = 0.0, slopeFactor = 0.0;
                 if (param_en) {
-                    scCoeffs = calculateCoeffs('bp', band.scf, band.scq, 0, sampleRate);
+                    calculateCoeffs('bp', band.scf, band.scq, 0, sampleRate, params.scCoeffs);
                     halfKnee = band.kn * 0.5;
                     const ratio = band.r;
                     slopeFactor = (ratio === 1.0) ? 0.0 : ((1.0 - 1.0 / ratio) < 0 ? -(1.0 - 1.0 / ratio) : (1.0 - 1.0 / ratio)); // Faster abs
@@ -161,17 +182,18 @@ class FiveBandDynamicEQ extends PluginBase {
                     ctxBand.gainEnvelope.setRelease(band.rl);
                 }
 
-                bandProcessingParams[bandIdx] = {
-                    enabled: param_en, ctxBand, scCoeffs,
-                    th: band.th, ft: band.ft, f: band.f, q: band.q, kn: band.kn,
-                    r: band.r, mg: band.mg, halfKnee, ratio: band.r, slopeFactor, maxGain: band.mg
-                };
+                params.enabled = param_en;
+                params.ctxBand = ctxBand;
+                params.th = band.th; params.ft = band.ft; params.f = band.f; params.q = band.q; params.kn = band.kn;
+                params.r = band.r; params.mg = band.mg; params.halfKnee = halfKnee; params.ratio = band.r;
+                params.slopeFactor = slopeFactor; params.maxGain = band.mg;
             }
 
-            // --- Allocate temporary per-sample buffers ---
-            let currentSample = new Array(channelCount);
-            let processedSample = new Array(channelCount);
-            const smoothedGainsForMessage = new Array(numBands).fill(0);
+            // --- Reuse temporary per-sample buffers ---
+            let currentSample = context.currentSample;
+            let processedSample = context.processedSample;
+            const smoothedGainsForMessage = context.smoothedGainsForMessage;
+            smoothedGainsForMessage.fill(0.0);
 
             // --- Process Audio Sample by Sample ---
             for (let i = 0; i < blockSize; i++) {
@@ -255,8 +277,8 @@ class FiveBandDynamicEQ extends PluginBase {
                         if ((gainDiff > -GAIN_THRESHOLD && gainDiff < GAIN_THRESHOLD)) {
                             eqCoeffs = bandState.lastCoeffs;
                         } else {
-                            eqCoeffs = calculateCoeffs(ft, f, q, final_G_smoothed_mono, sampleRate);
-                            bandState.lastGain = final_G_smoothed_mono; bandState.lastCoeffs = eqCoeffs;
+                            eqCoeffs = calculateCoeffs(ft, f, q, final_G_smoothed_mono, sampleRate, bandState.lastCoeffs);
+                            bandState.lastGain = final_G_smoothed_mono;
                         }
 
                         // 3f. Apply EQ Filter (Per Channel)
@@ -267,7 +289,9 @@ class FiveBandDynamicEQ extends PluginBase {
                     } // End channel loop
 
                     // Swap buffers for next band
-                    [currentSample, processedSample] = [processedSample, currentSample];
+                    const sampleSwap = currentSample;
+                    currentSample = processedSample;
+                    processedSample = sampleSwap;
 
                 } // End band loop
 
@@ -279,7 +303,7 @@ class FiveBandDynamicEQ extends PluginBase {
             } // End sample loop
 
             // 5. Attach measurements to the output data buffer (as per user's code)
-            data.measurements = { gains: smoothedGainsForMessage };
+            data.measurements = context.measurements;
 
             // Return the modified data buffer
             return data;

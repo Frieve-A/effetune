@@ -12,7 +12,10 @@ export class PipelineItemBuilder {
         this.audioManager = pipelineCore.audioManager;
         this.pluginManager = pipelineCore.pluginManager;
         this.expandedPlugins = pipelineCore.expandedPlugins;
-        this.pipelineManager = pipelineCore.pipelineManager;
+    }
+
+    get pipelineManager() {
+        return this.pipelineCore.pipelineManager;
     }
 
     /**

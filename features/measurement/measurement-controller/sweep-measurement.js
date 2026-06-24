@@ -203,9 +203,10 @@ const SweepMeasurement = {
 
     /**
      * Save the current point and continue with measurement
+     * @returns {Promise<string|null>} Measurement ID or null if no data
      */
-    saveAndContinueMeasurement() {
-        if (!this.currentPoint) return;
+    async saveAndContinueMeasurement() {
+        if (!this.currentPoint) return null;
         
         // Add point to measurement
         this.currentMeasurement.points.push(this.currentPoint);
@@ -216,13 +217,17 @@ const SweepMeasurement = {
             this.calculateAverageResponse();
             
             // Save measurement in progress and make sure it's selected in UI
-            const measurementId = dataStorage.addMeasurement(this.currentMeasurement);
+            const measurementId = await dataStorage.addMeasurement(this.currentMeasurement);
             uiManager.selectedMeasurementId = measurementId;
             uiManager.measurementDisplay.updateSelectedMeasurementHighlight();
+
+            // Reset for next point but stay on sweep measurement screen
+            this.resetForNextSweepMeasurement();
+
+            return measurementId;
         }
         
-        // Reset for next point but stay on sweep measurement screen
-        this.resetForNextSweepMeasurement();
+        return null;
     },
     
     /**
@@ -379,4 +384,4 @@ const SweepMeasurement = {
     }
 };
 
-export default SweepMeasurement; 
+export default SweepMeasurement;

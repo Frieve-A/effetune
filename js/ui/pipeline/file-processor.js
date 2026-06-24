@@ -1,6 +1,14 @@
 /**
  * FileProcessor - Handles audio file processing, progress UI, and download handling
  */
+const OFFLINE_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac'];
+const OFFLINE_AUDIO_ACCEPT = OFFLINE_AUDIO_EXTENSIONS.map(ext => `.${ext}`).join(',');
+const OFFLINE_AUDIO_EXTENSION_PATTERN = new RegExp(`\\.(${OFFLINE_AUDIO_EXTENSIONS.join('|')})$`, 'i');
+
+function isSupportedOfflineAudioFile(file) {
+    return !!(file && OFFLINE_AUDIO_EXTENSION_PATTERN.test(file.name || ''));
+}
+
 export class FileProcessor {
     /**
      * Create a new FileProcessor instance
@@ -29,7 +37,7 @@ export class FileProcessor {
         // Create file input element
         const fileInput = document.createElement('input');
         fileInput.type = 'file';
-        fileInput.accept = 'audio/*';
+        fileInput.accept = OFFLINE_AUDIO_ACCEPT;
         fileInput.multiple = true;
         fileInput.style.display = 'none';
         document.body.appendChild(fileInput);
@@ -131,7 +139,7 @@ export class FileProcessor {
      */
     setupFileInputHandlers(fileInput) {
         fileInput.addEventListener('change', async (e) => {
-            const files = Array.from(e.target.files).filter(file => file.type.startsWith('audio/'));
+            const files = Array.from(e.target.files).filter(isSupportedOfflineAudioFile);
             if (files.length === 0) {
                 window.uiManager.setError('Please select audio files', true);
                 return;
@@ -210,16 +218,9 @@ export class FileProcessor {
                 const hasAudioFiles = items.some(item => {
                     if (item.kind !== 'file') return false;
 
-                    // Check by MIME type
-                    if (item.type.startsWith('audio/')) return true;
-
-                    // For items without a MIME type, check by file extension
+                    // Check by file extension because supported decode formats are explicit.
                     const file = item.getAsFile();
-                    if (file && /\.(mp3|wav|ogg|flac|m4a|aac)$/i.test(file.name)) {
-                        return true;
-                    }
-
-                    return false;
+                    return isSupportedOfflineAudioFile(file);
                 });
 
                 if (hasAudioFiles) {
@@ -255,7 +256,17 @@ export class FileProcessor {
                     return;
                 }
 
-                // For audio files, add drag-active class
+                const hasAudioFiles = Array.from(e.dataTransfer.items).some(item => {
+                    if (item.kind !== 'file') return false;
+                    return isSupportedOfflineAudioFile(item.getAsFile());
+                });
+
+                if (!hasAudioFiles) {
+                    this.dropArea.classList.remove('drag-active');
+                    return;
+                }
+
+                // For supported audio files, add drag-active class
                 e.preventDefault();
                 e.dataTransfer.dropEffect = 'copy';
                 this.dropArea.classList.add('drag-active');
@@ -299,9 +310,7 @@ export class FileProcessor {
             );
 
             // Check for audio files
-            const audioFiles = allFiles.filter(file =>
-                file.type.startsWith('audio/') || /\.(mp3|wav|ogg|flac|m4a|aac)$/i.test(file.name)
-            );
+            const audioFiles = allFiles.filter(isSupportedOfflineAudioFile);
 
 
             // If there are preset files, let them be handled by the global handler
@@ -367,7 +376,11 @@ export class FileProcessor {
             // Set both flags to ensure cancellation
             this.isCancelled = true;
             if (this.audioManager) {
-                this.audioManager.isCancelled = true;
+                if (typeof this.audioManager.cancelProcessing === 'function') {
+                    this.audioManager.cancelProcessing();
+                } else {
+                    this.audioManager.isCancelled = true;
+                }
             }
 
             // Hide progress and show message
@@ -774,13 +787,19 @@ export class FileProcessor {
      */
     async processDroppedAudioFiles(files) {
         try {
-            if (files.length === 1) {
+            const audioFiles = Array.from(files || []).filter(isSupportedOfflineAudioFile);
+            if (audioFiles.length === 0) {
+                window.uiManager.setError('Please select audio files', true);
+                return;
+            }
+
+            if (audioFiles.length === 1) {
                 this.showProgress();
-                await this._processSingleFile(files[0]);
+                await this._processSingleFile(audioFiles[0]);
             } else {
                 // For multiple files, request output location BEFORE any async processing
                 // to maintain user gesture context required by File System Access API
-                await this._processMultipleFiles(files);
+                await this._processMultipleFiles(audioFiles);
             }
         } catch (error) {
             window.uiManager.setError('error.failedToProcessAudioFiles', true, { errorMessage: error.message });

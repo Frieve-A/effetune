@@ -1293,6 +1293,10 @@ export class AudioContextManager {
       if (track.file instanceof File) {
         return await track.file.arrayBuffer();
       } else if (track.path) {
+        if (this.shouldUseElectronFileRead(track.path)) {
+          return await this.loadElectronFileTrackData(track.path);
+        }
+
         const response = await fetch(track.path);
         if (!response.ok) {
           throw new Error(`Failed to load track: ${response.statusText}`);
@@ -1305,6 +1309,43 @@ export class AudioContextManager {
       console.error('Error loading track data:', error);
       throw error;
     }
+  }
+
+  /**
+   * Check whether a track path should be loaded through Electron's file API.
+   */
+  shouldUseElectronFileRead(path) {
+    if (!window.electronAPI || !window.electronIntegration?.isElectron || typeof path !== 'string') {
+      return false;
+    }
+
+    if (/^[A-Za-z]:[\\/]/.test(path)) return true;
+    if (/^[A-Za-z][A-Za-z\d+\-.]*:/.test(path)) return false;
+    return path.startsWith('/') || path.startsWith('\\\\') || path.includes('\\');
+  }
+
+  /**
+   * Load an Electron local file path as ArrayBuffer for decodeAudioData.
+   */
+  async loadElectronFileTrackData(path) {
+    const result = await window.electronAPI.readFile(path, true);
+    if (!result?.success) {
+      throw new Error(`Failed to load local track: ${result?.error || 'Unknown error'}`);
+    }
+
+    return this.base64ToArrayBuffer(result.content);
+  }
+
+  /**
+   * Convert a base64 string returned by Electron IPC to an ArrayBuffer.
+   */
+  base64ToArrayBuffer(base64Data) {
+    const binaryString = atob(base64Data);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes.buffer;
   }
   
   /**

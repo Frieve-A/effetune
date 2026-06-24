@@ -11,6 +11,7 @@ export class PlaybackManager {
     // Additional properties for seamless playback
     this.transitionInProgress = false;
     this.seamlessMode = true; // Enable seamless mode by default
+    this.keydownHandler = null;
     
     // Initialize keyboard shortcuts
     this.initKeyboardShortcuts();
@@ -571,7 +572,9 @@ export class PlaybackManager {
    * Initialize keyboard shortcuts
    */
   initKeyboardShortcuts() {
-    document.addEventListener('keydown', (e) => {
+    if (this.keydownHandler) return;
+
+    this.keydownHandler = (e) => {
       // Check if audio player is initialized
       if (!this.audioPlayer) return;
       
@@ -682,7 +685,9 @@ export class PlaybackManager {
         default:
           break;
       }
-    });
+    };
+
+    document.addEventListener('keydown', this.keydownHandler);
   }
   
   /**
@@ -782,6 +787,8 @@ export class PlaybackManager {
     this.playlist = [];
     this.originalPlaylist = [];
     this.transitionInProgress = false;
+
+    if (!this.audioPlayer) return;
     
     if (this.audioPlayer.stateManager) {
       this.audioPlayer.stateManager.updateState({
@@ -798,5 +805,17 @@ export class PlaybackManager {
       this.audioPlayer.audioElement.pause();
       this.audioPlayer.audioElement.currentTime = 0;
     }
+  }
+
+  /**
+   * Dispose resources owned by this playback manager
+   */
+  dispose() {
+    if (this.keydownHandler) {
+      document.removeEventListener('keydown', this.keydownHandler);
+      this.keydownHandler = null;
+    }
+
+    this.clear();
   }
 }

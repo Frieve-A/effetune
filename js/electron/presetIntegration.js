@@ -498,8 +498,10 @@ export function getAudioMimeType(fileName) {
     'wav': 'audio/wav',
     'ogg': 'audio/ogg',
     'flac': 'audio/flac',
+    'opus': 'audio/opus',
     'm4a': 'audio/mp4',
-    'aac': 'audio/aac'
+    'aac': 'audio/aac',
+    'webm': 'audio/webm'
   };
   
   return mimeTypes[extension] || 'audio/mpeg'; // Default to audio/mpeg
