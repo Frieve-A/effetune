@@ -3,6 +3,21 @@
  * Manages user input and display updates
  * UNIFIED STATE MANAGEMENT: UI automatically updates based on state changes
  */
+
+// Inline transport-control icons (colored white via the .player-button CSS rule).
+// Kept as a shared map so play/pause and repeat icon swaps reuse the same markup.
+const PLAYER_ICONS = {
+  play: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round" draggable="false"><path d="M8 5.14a1 1 0 0 1 1.52-.85l10.5 6.86a1 1 0 0 1 0 1.7L9.52 19.71A1 1 0 0 1 8 18.86z"/></svg>',
+  pause: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round" stroke-linecap="round" draggable="false"><rect x="7" y="5" width="3.6" height="14" rx="1.4"/><rect x="13.4" y="5" width="3.6" height="14" rx="1.4"/></svg>',
+  stop: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round" stroke-linecap="round" draggable="false"><rect x="6" y="6" width="12" height="12" rx="2.2"/></svg>',
+  previous: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round" stroke-linecap="round" draggable="false"><path d="M11 6.6a.8.8 0 0 1 1.25-.66l7.2 5.05a.9.9 0 0 1 0 1.48l-7.2 5.05A.8.8 0 0 1 11 16.85z"/><path d="M4 6.6a.8.8 0 0 1 1.25-.66l6.2 4.45a.9.9 0 0 1 0 1.48l-6.2 4.45A.8.8 0 0 1 4 16.85z"/></svg>',
+  next: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round" stroke-linecap="round" draggable="false"><path d="M13 7.15a.8.8 0 0 0-1.25-.66l-7.2 5.05a.9.9 0 0 0 0 1.48l7.2 5.05A.8.8 0 0 0 13 17.4z"/><path d="M20 7.15a.8.8 0 0 0-1.25-.66l-6.2 4.45a.9.9 0 0 0 0 1.48l6.2 4.45A.8.8 0 0 0 20 17.4z"/></svg>',
+  shuffle: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.8-1.1 2-1.7 3.3-1.7H22"/><path d="m18 2 4 4-4 4"/><path d="M2 6h1.9c1.5 0 2.9.9 3.6 2.2"/><path d="M22 18h-5.9c-1.3 0-2.6-.7-3.3-1.8l-.5-.8"/><path d="m18 14 4 4-4 4"/></svg>',
+  repeat: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>',
+  repeat1: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/><path d="M11.3 10.3 13 9.5V15" stroke-width="1.8"/></svg>',
+  close: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M6 6l12 12M18 6L6 18"/></svg>'
+};
+
 export class AudioPlayerUI {
   constructor(audioPlayer) {
     this.audioPlayer = audioPlayer;
@@ -81,13 +96,11 @@ export class AudioPlayerUI {
     const container = document.createElement('div');
     container.className = 'audio-player';
     
-    // Set initial button image based on repeat mode
-    let repeatButtonImg = 'repeat_button.png';
+    // Set initial play/pause and repeat icons based on state
+    const ICON = PLAYER_ICONS;
     const state = this.audioPlayer.stateManager?.getStateSnapshot();
-    if (state?.repeatMode === 'ONE') {
-      repeatButtonImg = 'repeat1_button.png';
-    }
-    
+    const repeatIcon = state?.repeatMode === 'ONE' ? ICON.repeat1 : ICON.repeat;
+
     container.innerHTML = `
      <h2>Player</h2>
      <div class="track-name-container">
@@ -96,13 +109,13 @@ export class AudioPlayerUI {
      <div class="player-controls">
         <input type="range" class="seek-bar" min="0" max="100" value="0" step="0.1">
         <div class="time-display">00:00</div>
-        <button class="player-button play-pause-button" title="${window.uiManager ? window.uiManager.t('ui.title.playPause') : 'Play or pause'}"><img src="images/play_button.png" width="16" height="16"></button>
-        <button class="player-button stop-button" title="${window.uiManager ? window.uiManager.t('ui.title.stop') : 'Stop'}"><img src="images/stop_button.png" width="16" height="16"></button>
-        <button class="player-button prev-button" title="${window.uiManager ? window.uiManager.t('ui.title.prevTrack') : 'Previous track'}"><img src="images/previous_button.png" width="16" height="16"></button>
-        <button class="player-button next-button" title="${window.uiManager ? window.uiManager.t('ui.title.nextTrack') : 'Next track'}"><img src="images/next_button.png" width="16" height="16"></button>
-        <button class="player-button repeat-button" title="${window.uiManager ? window.uiManager.t('ui.title.repeat') : 'Toggle repeat mode'}"><img src="images/${repeatButtonImg}" width="16" height="16"></button>
-        <button class="player-button shuffle-button" title="${window.uiManager ? window.uiManager.t('ui.title.shuffle') : 'Toggle shuffle'}"><img src="images/shuffle_button.png" width="16" height="16"></button>
-        <button class="player-button close-button" title="${window.uiManager ? window.uiManager.t('ui.title.closePlayer') : 'Close player'}">✖</button>
+        <button class="player-button play-pause-button" title="${window.uiManager ? window.uiManager.t('ui.title.playPause') : 'Play or pause'}">${ICON.play}</button>
+        <button class="player-button stop-button" title="${window.uiManager ? window.uiManager.t('ui.title.stop') : 'Stop'}">${ICON.stop}</button>
+        <button class="player-button prev-button" title="${window.uiManager ? window.uiManager.t('ui.title.prevTrack') : 'Previous track'}">${ICON.previous}</button>
+        <button class="player-button next-button" title="${window.uiManager ? window.uiManager.t('ui.title.nextTrack') : 'Next track'}">${ICON.next}</button>
+        <button class="player-button repeat-button" title="${window.uiManager ? window.uiManager.t('ui.title.repeat') : 'Toggle repeat mode'}">${repeatIcon}</button>
+        <button class="player-button shuffle-button" title="${window.uiManager ? window.uiManager.t('ui.title.shuffle') : 'Toggle shuffle'}">${ICON.shuffle}</button>
+        <button class="player-button close-button" title="${window.uiManager ? window.uiManager.t('ui.title.closePlayer') : 'Close player'}">${ICON.close}</button>
       </div>
     `;
 
@@ -198,11 +211,11 @@ export class AudioPlayerUI {
     // Update repeat button state
     switch (repeatMode) {
       case 'ALL':
-        this.repeatButton.innerHTML = '<img src="images/repeat_button.png" width="16" height="16">';
+        this.repeatButton.innerHTML = PLAYER_ICONS.repeat;
         this.repeatButton.style.backgroundColor = '#4a9eff'; // Highlight button when active
         break;
       case 'ONE':
-        this.repeatButton.innerHTML = '<img src="images/repeat1_button.png" width="16" height="16">';
+        this.repeatButton.innerHTML = PLAYER_ICONS.repeat1;
         this.repeatButton.style.backgroundColor = '#4a9eff';
         
         // Disable shuffle button in ONE mode
@@ -211,7 +224,7 @@ export class AudioPlayerUI {
         break;
       case 'OFF':
       default:
-        this.repeatButton.innerHTML = '<img src="images/repeat_button.png" width="16" height="16">';
+        this.repeatButton.innerHTML = PLAYER_ICONS.repeat;
         this.repeatButton.style.backgroundColor = ''; // Reset button color
         
         // Enable shuffle button
@@ -246,9 +259,9 @@ export class AudioPlayerUI {
     }
     
     if (isPlaying) {
-      this.playPauseButton.innerHTML = '<img src="images/pause_button.png" width="16" height="16">';
+      this.playPauseButton.innerHTML = PLAYER_ICONS.pause;
     } else {
-      this.playPauseButton.innerHTML = '<img src="images/play_button.png" width="16" height="16">';
+      this.playPauseButton.innerHTML = PLAYER_ICONS.play;
     }
   }
 

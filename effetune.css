@@ -567,7 +567,7 @@ input[type="checkbox"] {
     padding: 4px;
     background-color: #2d2d2d;
     border: 1px solid #3d3d3d;
-    color: #ffffff;
+    color: #4a9eff;
     cursor: pointer;
     border-radius: 4px;
     width: 24px;
@@ -932,8 +932,17 @@ input[type="checkbox"] {
 
 .move-up-button,
 .move-down-button {
-    color: #a8a8a8;
+    color: #4a9eff;
     margin-right: 5px;
+}
+
+/* Unify remaining tool buttons to the blue-cyan accent (icons use currentColor) */
+.open-music-button,
+.sidebar-button,
+.search-button,
+.routing-button,
+.column-control-button {
+    color: #4a9eff;
 }
 
 .reset-effect-button {
@@ -957,6 +966,26 @@ input[type="checkbox"] {
 .routing-button:hover,
 .reset-effect-button:hover {
     background-color: #5d5d5d;
+}
+
+/* Inline SVG icons keep their intrinsic 16px inside flex buttons.
+   These buttons are border-box with horizontal padding, so the flex
+   content area is narrower than 16px; an inline <svg> has a flex
+   min-size of 0 (unlike <img>) and would otherwise be shrunk. */
+.header-button svg,
+.player-button svg,
+.routing-button svg,
+.ai-button svg,
+.reset-effect-button svg,
+.move-up-button svg,
+.move-down-button svg,
+.help-button svg,
+.delete-button svg,
+.column-control-button svg {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+    display: block;
 }
 
 /* Plugin UI */
@@ -1286,7 +1315,7 @@ input[type="checkbox"] {
 }
 
 .player-button {
-    color: #ff6b6b;
+    color: #ffffff;
     padding: 4px 8px;
     background-color: #4d4d4d;
     border: 1px solid #5d5d5d;

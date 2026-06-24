@@ -426,6 +426,19 @@ canvas {
     color: #ff6b6b;
 }
 
+.save-button {
+    color: #4a9eff;
+}
+
+.icon-btn svg,
+.save-button svg,
+.delete-button svg {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+    display: block;
+}
+
 
 .delete-point {
     position: absolute;

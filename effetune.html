@@ -103,11 +103,11 @@
     <div class="title-container">
         <h1>Frieve EffeTune<img src="images/icon_64x64.png" class="title-icon" alt="EffeTune Icon" draggable="false"><div class="message-display" id="errorDisplay">Loading...</div></h1>
         <div class="header-buttons">
-            <button class="header-button open-music-button" id="openMusicButton" title="Open music files"><img src="images/open_button.png" width="16" height="16" draggable="false"></button>
+            <button class="header-button open-music-button" id="openMusicButton" title="Open music files"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M6 14.5 7.7 11a2 2 0 0 1 1.8-1.1H21a1.5 1.5 0 0 1 1.45 1.9l-1.6 5.7A2 2 0 0 1 18.95 19H4a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2h3.7a2 2 0 0 1 1.66.9l.74 1.1a2 2 0 0 0 1.66.9H18a2 2 0 0 1 2 2v1.7"/></svg></button>
             <button class="header-button reset-button" id="resetButton">Reset Audio</button>
         </div>
         <div class="subtitle-container">
-            <button class="header-button sidebar-button" id="sidebarButton" title="Toggle plugin list"><img src="images/sidebar.png" width="16" height="16" draggable="false"></button>
+            <button class="header-button sidebar-button" id="sidebarButton" title="Toggle plugin list"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><rect x="3" y="4" width="18" height="16" rx="2.2"/><path d="M9.5 4v16"/><path d="M5.6 8h1.6"/><path d="M5.6 11h1.6"/><path d="M5.6 14h1.6"/></svg></button>
             <span class="subtitle">Color the music, unleash your senses. Craft your own signature sound.</span>
             <a href="javascript:void(0);" class="whats-this" id="whatsThisLink">What's this app?</a>
         </div>
@@ -126,7 +126,7 @@
                 <h2 id="availableEffectsTitle" style="display: none;">Available Effects</h2>
                 <input type="text" id="effectSearchInput" class="effect-search-input" placeholder="Search effects..." style="display: none;">
                 <button type="button" class="input-clear-button effect-search-clear-button" id="effectSearchClearButton" title="Clear search" aria-label="Clear search">&times;</button>
-                <button class="header-button search-button" id="effectSearchButton" title="Search effects">🔍</button>
+                <button class="header-button search-button" id="effectSearchButton" title="Search effects"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><circle cx="10.5" cy="10.5" r="6.2"/><path d="M20 20l-4.9-4.9"/></svg></button>
             </div>
             <!-- Plugin list will be populated by JavaScript -->
         </div>
@@ -150,19 +150,19 @@
                 <div class="pipeline-header-right">
                     <button class="header-button undo-button" id="undoButton" title="Undo">↶</button>
                     <button class="header-button redo-button" id="redoButton" title="Redo">↷</button>
-                    <button class="header-button cut-button" id="cutButton" title="Cut settings"><img src="images/cut_button.png" width="16" height="16" draggable="false"></button>
-                    <button class="header-button copy-button" id="copyButton" title="Copy settings"><img src="images/copy_button.png" width="16" height="16" draggable="false"></button>
-                    <button class="header-button paste-button" id="pasteButton" title="Paste settings"><img src="images/paste_button.png" width="16" height="16" draggable="false"></button>
+                    <button class="header-button cut-button" id="cutButton" title="Cut settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><circle cx="6" cy="6" r="2.6"/><circle cx="6" cy="18" r="2.6"/><path d="M8.2 7.7 20 19.5"/><path d="M20 4.5 8.2 16.3"/><path d="M11.5 12 13 13.2"/></svg></button>
+                    <button class="header-button copy-button" id="copyButton" title="Copy settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><rect x="8.5" y="8.5" width="12" height="12" rx="2.2"/><path d="M4.5 15.5A2 2 0 0 1 3 13.5v-9a2 2 0 0 1 2-2h9a2 2 0 0 1 2 1.9"/></svg></button>
+                    <button class="header-button paste-button" id="pasteButton" title="Paste settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><rect x="8" y="2.5" width="8" height="4" rx="1.2"/><path d="M16 4.5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-12a2 2 0 0 1 2-2h2"/></svg></button>
                     <div class="select-container">
                         <input type="text" class="preset-select" id="presetSelect" list="presetList" placeholder="">
                         <button type="button" class="input-clear-button preset-clear-button" id="presetClearButton" title="Clear preset name" aria-label="Clear preset name">&times;</button>
                     </div>
                     <datalist id="presetList"></datalist>
-                    <button class="header-button save-button" id="savePresetButton" title="Save preset"><img src="images/save_button.png" width="16" height="16" draggable="false"></button>
-                    <button class="header-button delete-preset-button" id="deletePresetButton" title="Delete preset">✖</button>
+                    <button class="header-button save-button" id="savePresetButton" title="Save preset"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M15.2 3.5a2 2 0 0 1 1.4.6l3.3 3.3a2 2 0 0 1 .6 1.4V18.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2z"/><path d="M16.5 20.5v-6a1 1 0 0 0-1-1h-7a1 1 0 0 0-1 1v6"/><path d="M8 3.5v3.2a1 1 0 0 0 1 1h5"/></svg></button>
+                    <button class="header-button delete-preset-button" id="deletePresetButton" title="Delete preset"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
                     <button class="header-button share-button" id="shareButton" title="Share pipeline">Share</button>
-                    <button class="column-control-button" id="decreaseColumnsButton" title="Decrease columns">-</button>
-                    <button class="column-control-button" id="increaseColumnsButton" title="Increase columns">+</button>
+                    <button class="column-control-button" id="decreaseColumnsButton" title="Decrease columns"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M5.5 12h13"/></svg></button>
+                    <button class="column-control-button" id="increaseColumnsButton" title="Increase columns"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M12 5.5v13M5.5 12h13"/></svg></button>
                 </div>
             </div>
             <div id="pipelineList">
@@ -178,7 +178,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js" integrity="sha384-JpTt7qxVx1X/pHeYiCfqFdKRu2HF1MBGr1kEXtbNIGwwryGWMbbW78onU3bdkAHZ" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script type="module" src="js/app.js"></script>
     <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
-        EffeTune version <span id="app-version"></span> (C) Frieve 2025
+        EffeTune version <span id="app-version"></span> (C) Frieve 2025, 2026
     </div>
 </body>
 </html>

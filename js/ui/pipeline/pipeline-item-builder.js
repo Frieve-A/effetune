@@ -295,11 +295,8 @@ export class PipelineItemBuilder {
             ? window.uiManager.t('ui.title.configureBusRouting')
             : 'Configure bus routing';
         
-        // Use the routing button image
-        const routingImg = document.createElement('img');
-        routingImg.src = 'images/routing_button.png';
-        routingImg.alt = 'Routing';
-        routingBtn.appendChild(routingImg);
+        // Routing icon: a 6.35mm phone-plug cable bent into an S (inline SVG, colored via CSS currentColor)
+        routingBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><g transform="translate(9 9) rotate(225)"><rect x="0" y="-2.2" width="4.8" height="4.4" rx="1.4"/><path d="M1.7 -2.2V2.2"/><path d="M4.8 0H8.4"/></g><path d="M9 9C9 14 15 10 15 15"/><g transform="translate(15 15) rotate(45)"><rect x="0" y="-2.2" width="4.8" height="4.4" rx="1.4"/><path d="M1.7 -2.2V2.2"/><path d="M4.8 0H8.4"/></g></svg>';
         
         routingBtn.onclick = (e) => {
             e.stopPropagation(); // Prevent event bubbling
@@ -321,7 +318,7 @@ export class PipelineItemBuilder {
     createResetButton(plugin) {
         const resetBtn = document.createElement('button');
         resetBtn.className = 'reset-effect-button';
-        resetBtn.textContent = '🔄';
+        resetBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>';
         resetBtn.title = window.uiManager
             ? window.uiManager.t('ui.title.resetEffect')
             : 'Reset effect settings';
@@ -383,7 +380,7 @@ export class PipelineItemBuilder {
     createMoveUpButton(plugin) {
         const moveUpBtn = document.createElement('button');
         moveUpBtn.className = 'move-up-button';
-        moveUpBtn.textContent = '▲';
+        moveUpBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round" draggable="false"><path d="M12 8l5.4 8.8H6.6z"/></svg>';
         moveUpBtn.title = window.uiManager
             ? window.uiManager.t('ui.title.moveUp')
             : 'Move effect up';
@@ -432,7 +429,7 @@ export class PipelineItemBuilder {
     createMoveDownButton(plugin) {
         const moveDownBtn = document.createElement('button');
         moveDownBtn.className = 'move-down-button';
-        moveDownBtn.textContent = '▼';
+        moveDownBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round" draggable="false"><path d="M12 16l5.4-8.8H6.6z"/></svg>';
         moveDownBtn.title = window.uiManager
             ? window.uiManager.t('ui.title.moveDown')
             : 'Move effect down';
@@ -485,11 +482,8 @@ export class PipelineItemBuilder {
             ? window.uiManager.t('ui.title.askAI')
             : 'Ask AI about this effector';
         
-        // Use the AI button image
-        const aiImg = document.createElement('img');
-        aiImg.src = 'images/ai_button.png';
-        aiImg.alt = 'AI';
-        aiBtn.appendChild(aiImg);
+        // AI icon (inline SVG, colored via CSS currentColor)
+        aiBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><rect x="5" y="7" width="14" height="13" rx="3"/><path d="M12 7V4.3"/><circle cx="12" cy="3.2" r="1.3" fill="currentColor"/><rect x="1.8" y="11.4" width="2.8" height="3.6" rx="1.1"/><rect x="19.4" y="11.4" width="2.8" height="3.6" rx="1.1"/><circle cx="9.4" cy="12" r="1.25" fill="currentColor" stroke="none"/><circle cx="14.6" cy="12" r="1.25" fill="currentColor" stroke="none"/><path d="M9.3 15.2Q12 17.2 14.7 15.2"/></svg>';
         
         aiBtn.onclick = (e) => {
             e.stopPropagation(); // Prevent event bubbling
@@ -511,7 +505,7 @@ export class PipelineItemBuilder {
     createHelpButton(plugin) {
         const helpBtn = document.createElement('button');
         helpBtn.className = 'help-button';
-        helpBtn.textContent = '?';
+        helpBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><circle cx="12" cy="12" r="9.2"/><path d="M9.3 9.3a2.8 2.8 0 0 1 5.4 1c0 1.9-2.8 2.6-2.8 2.6"/><path d="M12 17h.02"/></svg>';
         helpBtn.title = window.uiManager
             ? window.uiManager.t('ui.title.pluginDocs')
             : 'Open plugin documentation';
@@ -558,7 +552,7 @@ export class PipelineItemBuilder {
     createDeleteButton(plugin) {
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'delete-button';
-        deleteBtn.textContent = '✖';
+        deleteBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M6 6l12 12M18 6L6 18"/></svg>';
         deleteBtn.title = window.uiManager
             ? window.uiManager.t('ui.title.deleteEffect')
             : 'Delete effect';
