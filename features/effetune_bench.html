@@ -235,6 +235,7 @@
         import { PluginManager } from '../js/plugin-manager.js';
         import { loadScript, loadCSS } from '../js/script-loader.js';
         import { startRendererWatchdogHeartbeat } from '../js/electron-watchdog.js';
+        import { copyTextToClipboard } from '../js/utils/clipboard-utils.js';
 
         startRendererWatchdogHeartbeat('benchmark-page');
 
@@ -569,7 +570,9 @@
                             const rowData = Array.from(cells).map(cell => cell.textContent);
                             tableText += rowData.join('\t') + '\n';
                         });
-                        await navigator.clipboard.writeText(tableText);
+                        if (!(await copyTextToClipboard(tableText))) {
+                            throw new Error('Clipboard copy failed');
+                        }
 
                         successMessage.classList.add('show');
                         setTimeout(() => {

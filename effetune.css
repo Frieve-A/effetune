@@ -1342,6 +1342,239 @@ input[type="checkbox"] {
     cursor: not-allowed;
 }
 
+/* Double Blind Test Styles */
+.double-blind-test {
+    background-color: #2d2d2d;
+    border-radius: 4px;
+    padding: 20px;
+    margin: 0 0 20px 0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    width: 100%;
+    box-sizing: border-box;
+    color: #fff;
+}
+
+.dbt-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.dbt-header h2 {
+    margin: 0;
+    flex: 1;
+}
+
+.dbt-close-button {
+    flex: 0 0 auto;
+}
+
+.double-blind-test .hidden {
+    display: none !important;
+}
+
+.dbt-config-form {
+    display: flex;
+    flex-direction: column;
+    max-width: 640px;
+    margin: 0 auto;
+}
+
+.dbt-config-form label {
+    margin: 12px 0 4px 0;
+    font-size: 0.95rem;
+    color: #ddd;
+}
+
+.dbt-name-input,
+.dbt-count-input {
+    padding: 6px 8px;
+    background-color: #1e1e1e;
+    border: 1px solid #5d5d5d;
+    border-radius: 4px;
+    color: #fff;
+    font-size: 14px;
+}
+
+/* Test-name combobox follows the Effect Preset styling (.select-container,
+   .preset-select, .input-clear-button, .save-button, .delete-preset-button). */
+.dbt-testname-row {
+    display: flex;
+    align-items: center;
+}
+
+.dbt-testname-row .select-container {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+    margin: 0 5px 0 0;
+}
+
+/* Keep Save/Delete as compact 24px icon buttons (override the panel's wide
+   .header-button sizing used for Start/Switch/Vote buttons). */
+.double-blind-test .dbt-testname-row .save-button,
+.double-blind-test .dbt-testname-row .delete-preset-button {
+    min-width: 0;
+    width: 24px;
+    height: 24px;
+    padding: 4px 8px;
+    font-size: 14px;
+}
+
+.dbt-b-warning {
+    color: #ffb020;
+    text-align: center;
+    margin: 10px 0;
+    font-size: 0.95rem;
+}
+
+.dbt-config-share-row {
+    display: flex;
+    justify-content: center;
+    margin: 8px 0 4px 0;
+}
+
+.dbt-result-testname {
+    color: #4a9eff;
+    font-size: 0.95rem;
+    margin-bottom: 6px;
+}
+
+.dbt-count-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.dbt-count-input {
+    width: 80px;
+}
+
+.dbt-count-range {
+    flex: 1;
+}
+
+.dbt-start-buttons,
+.dbt-switch-buttons,
+.dbt-vote-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin: 16px 0;
+    flex-wrap: wrap;
+}
+
+.double-blind-test .header-button {
+    padding: 8px 16px;
+    font-size: 14px;
+    min-width: 120px;
+    height: auto;
+    justify-content: center;
+}
+
+.double-blind-test .header-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.dbt-switch-buttons .header-button.active {
+    background-color: #4a9eff;
+    border-color: #4a9eff;
+}
+
+.dbt-test {
+    text-align: center;
+}
+
+.dbt-listening {
+    min-height: 1.2em;
+    color: #4a9eff;
+    font-size: 0.95rem;
+}
+
+.dbt-samplerate {
+    font-size: 0.85rem;
+    color: #aaa;
+    margin-bottom: 8px;
+}
+
+.dbt-instruction {
+    font-size: 1.05rem;
+    margin: 12px 0;
+}
+
+.dbt-progress {
+    margin: 12px 0 8px 0;
+}
+
+.dbt-progress-container {
+    width: 100%;
+    max-width: 480px;
+    height: 8px;
+    margin: 0 auto;
+    background-color: #1e1e1e;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.dbt-progress-bar {
+    height: 100%;
+    width: 0;
+    background-color: #4a9eff;
+    transition: width 0.2s ease;
+}
+
+.dbt-config-info,
+.dbt-test-info {
+    margin: 20px auto 0 auto;
+    max-width: 640px;
+    line-height: 1.6;
+    color: #bbb;
+    font-size: 0.9rem;
+    /* Left-align the description text on the test screen too (the .dbt-test
+       wrapper is centered), matching the pre-test config layout. */
+    text-align: left;
+}
+
+.dbt-config-error {
+    color: #ff6b6b;
+    text-align: center;
+    margin-top: 12px;
+}
+
+.dbt-result {
+    background-color: #252525;
+    border: 1px solid #3d3d3d;
+    border-radius: 4px;
+    padding: 16px;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.dbt-result h3 {
+    margin: 0 0 12px 0;
+}
+
+.dbt-result > div {
+    margin: 6px 0;
+}
+
+.dbt-result .dbt-share-button {
+    margin-top: 14px;
+}
+
+.dbt-share-explanation {
+    color: #aaa;
+    font-size: 0.85rem;
+    margin-top: 10px;
+}
+
+.pipeline-menu-item:disabled,
+.pipeline-menu-item.disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
 /* Bus routing styles */
 .bus-info {
     color: #4a9eff;

@@ -266,7 +266,14 @@ class ElectronIntegration {
       // About menu item clicked
       this.showAboutDialog(data);
     });
-    
+
+    // Listen for Double Blind Test launch request from the application menu
+    window.electronAPI.onIPC('start-double-blind-test', () => {
+      if (window.uiManager && window.uiManager.getDoubleBlindTest) {
+        window.uiManager.getDoubleBlindTest().enterFresh();
+      }
+    });
+
     // Electron event listeners initialized
   }
   

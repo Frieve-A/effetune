@@ -184,11 +184,14 @@ export class AudioPlayerUI {
       }
     });
 
-    // Insert player into DOM
+    // Insert player into DOM. The player always stays at the top: above the
+    // Double Blind Test panel when one is open, otherwise just above the
+    // main-container.
     const mainContainer = document.querySelector('.main-container');
-    if (mainContainer) {
-      // Insert player before main-container instead of inside it
-      mainContainer.parentNode.insertBefore(container, mainContainer);
+    const dbtPanel = document.querySelector('.double-blind-test');
+    const insertTarget = dbtPanel || mainContainer;
+    if (insertTarget && insertTarget.parentNode) {
+      insertTarget.parentNode.insertBefore(container, insertTarget);
     }
 
     // Start update interval for time display

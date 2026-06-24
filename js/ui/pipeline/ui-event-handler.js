@@ -3,6 +3,7 @@
  */
 import { PipelineCore } from './pipeline-core.js';
 import { PluginListManager } from '../plugin-list-manager.js'; // Temporary path
+import { readTextFromClipboard } from '../../utils/clipboard-utils.js';
 
 const PLAYBACK_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm'];
 const PLAYBACK_AUDIO_EXTENSION_PATTERN = new RegExp(`\\.(${PLAYBACK_AUDIO_EXTENSIONS.join('|')})$`, 'i');
@@ -126,9 +127,9 @@ export class UIEventHandler {
                 });
             } else if (e.key === 'v' && (e.ctrlKey || e.metaKey)) {
                 // Paste plugin settings from clipboard
-                navigator.clipboard.readText()
+                readTextFromClipboard()
                     .then(text => {
-                        this.clipboardManager.handlePaste(text);
+                        if (text) this.clipboardManager.handlePaste(text);
                     })
                     .catch(err => {
                         // Failed to read clipboard

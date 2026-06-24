@@ -15,6 +15,8 @@ import {
     encodePipelineState,
     decodePipelineState
 } from './utils/pipeline-state-codec.js';
+import { DoubleBlindTest } from './ui/double-blind-test/double-blind-test.js';
+import { copyTextToClipboard, readTextFromClipboard } from './utils/clipboard-utils.js';
 
 export class UIManager {
     constructor(pluginManager, audioManager) {
@@ -26,6 +28,10 @@ export class UIManager {
 
         // Audio player reference
         this.audioPlayer = null;
+
+        // Double Blind Test controller (created lazily) and URL-reflection gate
+        this.doubleBlindTest = null;
+        this.urlReflectionEnabled = true;
 
         // UI elements
         this.errorDisplay = document.getElementById('errorDisplay');
@@ -73,6 +79,7 @@ export class UIManager {
         this.pipelineMenu = document.getElementById('pipelineMenu');
         this.copyAToBButton = document.getElementById('copyAToBButton');
         this.copyBToAButton = document.getElementById('copyBToAButton');
+        this.doubleBlindTestButton = document.getElementById('doubleBlindTestButton');
 
         // Initialize localization after everything else is set up
         // This is an async operation, but we can't make the constructor async
@@ -92,6 +99,11 @@ export class UIManager {
             this.audioManager.addEventListener('pipelineChanged', (event) => {
                 this.updatePipelineToggleButton();
                 this.pipelineManager.updatePipelineUI();
+                // If the Double Blind Test panel is open, B may have appeared or
+                // disappeared - refresh the start-button availability/warning.
+                if (this.doubleBlindTest && this.doubleBlindTest.isActive()) {
+                    this.doubleBlindTest._updateStartAvailability();
+                }
             });
         }).catch(error => {
             console.error('Failed to initialize localization:', error);
@@ -228,7 +240,37 @@ export class UIManager {
         return encodePipelineState(state);
     }
 
+    /**
+     * Get (creating on first use) the Double Blind Test controller.
+     * @returns {DoubleBlindTest}
+     */
+    getDoubleBlindTest() {
+        if (!this.doubleBlindTest) {
+            this.doubleBlindTest = new DoubleBlindTest(this);
+        }
+        return this.doubleBlindTest;
+    }
+
+    /** Is the Double Blind Test mode currently open? */
+    isDoubleBlindActive() {
+        return !!(this.doubleBlindTest && this.doubleBlindTest.isActive());
+    }
+
+    /** Rebuild the Electron application menu (enabled states depend on app state). */
+    refreshApplicationMenu() {
+        if (!window.electronIntegration || !window.electronIntegration.isElectronEnvironment?.()) {
+            return;
+        }
+        import('./electron/menuIntegration.js')
+            .then((m) => m.updateApplicationMenu(true))
+            .catch((err) => console.warn('Failed to refresh application menu:', err));
+    }
+
     updateURL() {
+        // Suppressed while the Double Blind Test is open so pipeline data never
+        // leaks into the address bar.
+        if (!this.urlReflectionEnabled) return;
+
         // Get current state
         const state = this.getPipelineState();
         const newURL = new URL(window.location.href);
@@ -593,6 +635,13 @@ export class UIManager {
         if (shareButton) {
             shareButton.textContent = this.t('ui.shareButton');
         }
+        if (this.doubleBlindTestButton) {
+            this.doubleBlindTestButton.textContent = this.t('menu.doubleBlindTest');
+        }
+        // Refresh the Double Blind Test panel text if it is open
+        if (this.doubleBlindTest && this.doubleBlindTest.isActive()) {
+            this.doubleBlindTest.updateTexts();
+        }
         const effectSearchInput = document.getElementById('effectSearchInput');
          if (effectSearchInput) {
             effectSearchInput.placeholder = this.t('ui.searchEffectsPlaceholder');
@@ -806,19 +855,17 @@ export class UIManager {
 
     initShareButton() {
         if (this.shareButton) { // Added check
-            this.shareButton.addEventListener('click', () => {
+            this.shareButton.addEventListener('click', async () => {
                 const state = this.getPipelineState();
                 const newURL = new URL('https://effetune.frieve.com/effetune.html');
                 newURL.searchParams.set('p', state);
-                navigator.clipboard.writeText(newURL.toString())
-                    .then(() => {
-                        this.setError('success.urlCopied', false);
-                        setTimeout(() => this.clearError(), 3000);
-                    })
-                    .catch(err => {
-                        console.error('Failed to copy URL:', err);
-                        this.setError('error.failedToCopyUrl', true);
-                    });
+                if (await copyTextToClipboard(newURL.toString())) {
+                    this.setError('success.urlCopied', false);
+                    setTimeout(() => this.clearError(), 3000);
+                } else {
+                    console.error('Failed to copy URL');
+                    this.setError('error.failedToCopyUrl', true);
+                }
             });
         }
     }
@@ -1007,18 +1054,19 @@ export class UIManager {
         }
         
         if (this.pasteButton) {
-            this.pasteButton.addEventListener('click', (e) => {
+            this.pasteButton.addEventListener('click', async (e) => {
                 // Stop event propagation to prevent pipeline click handler from clearing selection
                 e.stopPropagation();
-                
-                navigator.clipboard.readText()
-                    .then(text => {
+
+                try {
+                    const text = await readTextFromClipboard();
+                    if (text) {
                         this.pipelineManager.clipboardManager.handlePaste(text);
-                    })
-                    .catch(err => {
-                        // Failed to read clipboard
-                        this.setError('error.failedToReadClipboard', true);
-                    });
+                    }
+                } catch (err) {
+                    // Failed to read clipboard
+                    this.setError('error.failedToReadClipboard', true);
+                }
             });
         }
     }
@@ -1073,6 +1121,16 @@ export class UIManager {
                 e.stopPropagation();
                 this.copyBToA();
                 this.hidePipelineMenu();
+            });
+        }
+
+        if (this.doubleBlindTestButton) {
+            this.doubleBlindTestButton.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.hidePipelineMenu();
+                // The panel can always be opened; a saved test can be recalled
+                // from inside it even when Pipeline B is not currently set up.
+                this.getDoubleBlindTest().enterFresh();
             });
         }
 
@@ -1150,6 +1208,12 @@ export class UIManager {
 
             // Only handle pipeline shortcuts when no modifier keys are pressed
             if (e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) {
+                return;
+            }
+
+            // Disable A/B/T pipeline switching while the Double Blind Test is open
+            // so the listener cannot reveal or change the active pipeline.
+            if (this.isDoubleBlindActive()) {
                 return;
             }
 

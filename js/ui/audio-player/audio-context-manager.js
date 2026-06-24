@@ -75,7 +75,7 @@ export class AudioContextManager {
     
     if (useInputWithPlayer) {
       if (this.audioManager.workletNode) {
-        bufferSource.connect(this.audioManager.workletNode);
+        this.audioManager.connectSourceToPipeline(bufferSource);
       } else {
         console.warn('[AudioContextManager] Worklet node unavailable; refusing direct destination playback.');
       }
@@ -91,10 +91,10 @@ export class AudioContextManager {
           // Silent fail
         }
       }
-      
+
       this.setManagedSourceNode(bufferSource);
       if (this.audioManager.workletNode) {
-        bufferSource.connect(this.audioManager.workletNode);
+        this.audioManager.connectSourceToPipeline(bufferSource);
       } else {
         console.warn('[AudioContextManager] Worklet node unavailable; refusing direct destination playback.');
       }
@@ -109,7 +109,7 @@ export class AudioContextManager {
     
     if (useInputWithPlayer) {
       if (this.audioManager.workletNode) {
-        mediaSource.connect(this.audioManager.workletNode);
+        this.audioManager.connectSourceToPipeline(mediaSource);
       }
     } else {
       if (this.originalSourceNode) {
@@ -123,15 +123,15 @@ export class AudioContextManager {
           // Silent fail
         }
       }
-      
+
       this.setManagedSourceNode(mediaSource);
       if (this.audioManager.workletNode) {
         try {
-          mediaSource.connect(this.audioManager.workletNode);
+          this.audioManager.connectSourceToPipeline(mediaSource);
         } catch (e) {
           try {
             mediaSource.disconnect();
-            mediaSource.connect(this.audioManager.workletNode);
+            this.audioManager.connectSourceToPipeline(mediaSource);
           } catch (innerError) {
             // Silent fail
           }
@@ -1645,7 +1645,7 @@ export class AudioContextManager {
         this.setManagedSourceNode(this.originalSourceNode);
         if (this.audioManager.workletNode) {
           try {
-            this.audioManager.sourceNode.connect(this.audioManager.workletNode);
+            this.audioManager.connectSourceToPipeline(this.audioManager.sourceNode);
           } catch (e) {
             // Silent fail
           }

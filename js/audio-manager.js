@@ -428,6 +428,15 @@ export class AudioManager {
         
         const result = await this.pipelineProcessor.rebuildPipeline(isInitializing);
         this.updateExposedProperties();
+
+        // If a rebuild happens while the Double Blind Test is running its two
+        // pipelines in parallel (e.g. an audio-device change), the standard
+        // rebuild reconnects only the main worklet; re-establish the parallel
+        // branches so the blind test keeps working.
+        if (this._parallelActive) {
+            this._applyParallelRouting();
+        }
+
         return result;
     }
     
@@ -595,6 +604,273 @@ export class AudioManager {
             console.warn('[AudioManager] fadeInOutput failed, applying immediate unmute:', err);
             try { gainNode.gain.value = 1; } catch (_) { /* ignore */ }
         }
+    }
+
+    /**
+     * Ramp the output gain down to 0 (mute) without tearing down the graph.
+     * Mirror of fadeInOutput(); used by the Double Blind Test so that switching
+     * the active A/B pipeline can fade out, swap silently, then fade back in,
+     * preventing any switch-timing transient from revealing the pipeline.
+     * @param {number} duration - fade duration in seconds (default 50 ms)
+     */
+    fadeOutOutput(duration = 0.05) {
+        const gainNode = this.ioManager?.outputGainNode;
+        const ctx = this.contextManager?.audioContext;
+        if (!gainNode || !ctx) return;
+
+        try {
+            const now = ctx.currentTime;
+            const param = gainNode.gain;
+            param.cancelScheduledValues(now);
+            param.setValueAtTime(param.value, now);
+            param.linearRampToValueAtTime(0, now + duration);
+        } catch (err) {
+            console.warn('[AudioManager] fadeOutOutput failed, applying immediate mute:', err);
+            try { gainNode.gain.value = 0; } catch (_) { /* ignore */ }
+        }
+    }
+
+    // ================================================================== //
+    //  Double Blind Test: parallel A/B pipeline execution                //
+    //                                                                    //
+    //  Runs pipeline A and pipeline B at the same time through two       //
+    //  worklet nodes summed into the master output via per-branch        //
+    //  selector gains:                                                   //
+    //                                                                    //
+    //      source -> workletA -> selA \                                  //
+    //                                   >-> outputGainNode -> sink       //
+    //      source -> workletB -> selB /                                  //
+    //                                                                    //
+    //  Both branches always process, so CPU load is independent of the   //
+    //  selection and time-varying (dynamics) effects never reset their   //
+    //  state. Switching only cross-fades the selector gains, which keeps  //
+    //  the swap inaudible. Used while the Double Blind Test is open.      //
+    // ================================================================== //
+
+    isParallelActive() {
+        return !!this._parallelActive;
+    }
+
+    /** Build worklet plugin data for an arbitrary pipeline (section-aware). */
+    _buildBlindPluginData(pipeline) {
+        if (!Array.isArray(pipeline)) return [];
+        let sectionOn = true;
+        for (let i = 0; i < pipeline.length; i++) {
+            const p = pipeline[i];
+            if (p && p.constructor && p.constructor.name === 'SectionPlugin') {
+                sectionOn = p.enabled !== false;
+            } else if (p && typeof p._setSectionEnabled === 'function') {
+                p._setSectionEnabled(sectionOn);
+            }
+        }
+        return pipeline.map(plugin => ({
+            id: plugin.id,
+            type: plugin.constructor.name,
+            enabled: plugin.enabled,
+            parameters: plugin.getParameters(),
+            inputBus: plugin.inputBus,
+            outputBus: plugin.outputBus,
+            channel: plugin.channel
+        }));
+    }
+
+    /** Post the processor code for the given pipelines onto a worklet node. */
+    _registerProcessorsOnWorklet(workletNode, pipelines) {
+        if (!workletNode?.port) return;
+        const seen = new Set();
+        for (const pipeline of pipelines) {
+            if (!Array.isArray(pipeline)) continue;
+            for (const plugin of pipeline) {
+                if (!plugin?.constructor) continue;
+                const type = plugin.constructor.name;
+                if (seen.has(type)) continue;
+                if (typeof plugin.processorString !== 'string' || plugin.processorString.length === 0) continue;
+                workletNode.port.postMessage({
+                    type: 'registerProcessor',
+                    pluginType: type,
+                    processor: plugin.processorString,
+                    process: typeof plugin.process === 'function' ? plugin.process.toString() : ''
+                });
+                seen.add(type);
+            }
+        }
+    }
+
+    _postBlindPlugins(workletNode, pipeline) {
+        if (!workletNode?.port) return;
+        workletNode.port.postMessage({
+            type: 'updatePlugins',
+            plugins: this._buildBlindPluginData(pipeline),
+            masterBypass: false
+        });
+    }
+
+    /**
+     * Begin running pipelines A and B in parallel.
+     * @param {string} initialSelection - 'A' or 'B' (which branch starts audible)
+     * @returns {Promise<boolean>} true if the parallel graph was established
+     */
+    async enableParallelPipelines(initialSelection = 'A') {
+        const ctx = this.contextManager?.audioContext;
+        const wA = this.contextManager?.workletNode;
+        const out = this.ioManager?.outputGainNode;
+        if (!ctx || !wA || !out) return false;
+        if (this._parallelActive) {
+            this.setBlindSelection(initialSelection, 0);
+            return true;
+        }
+
+        try {
+            const ch = ctx.destination.channelCount || 2;
+            const lowLatency = !!this.contextManager.lowLatencyMode;
+            const wB = new AudioWorkletNode(ctx, 'plugin-processor', {
+                channelCount: ch,
+                outputChannelCount: [ch],
+                processorOptions: { initialOutputChannelCount: ch, lowLatencyMode: lowLatency },
+                channelCountMode: 'explicit',
+                channelInterpretation: 'discrete'
+            });
+            // The parallel branch's analyzers are hidden during the test, so we
+            // simply drop any messages it posts back to the main thread.
+            wB.port.onmessage = () => {};
+            wB.port.postMessage({ type: 'setLowLatencyMode', enabled: lowLatency });
+
+            const selA = ctx.createGain();
+            const selB = ctx.createGain();
+            const aOn = initialSelection === 'A' ? 1 : 0;
+            selA.gain.value = aOn;
+            selB.gain.value = 1 - aOn;
+
+            // Single tap node that every pipeline input source feeds; it fans the
+            // input into branch B. Sources connect to workletA (branch A) directly
+            // and to this tap (branch B) via connectSourceToPipeline(), so any
+            // source - including new player tracks created mid-test - reaches both.
+            const inputTap = ctx.createGain();
+            inputTap.gain.value = 1;
+
+            this._parallelWorkletB = wB;
+            this._parallelSelA = selA;
+            this._parallelSelB = selB;
+            this._parallelInputTap = inputTap;
+            this._parallelSelection = initialSelection;
+            this._parallelActive = true;
+
+            // Both worklets must know every plugin type used by either pipeline.
+            this._registerProcessorsOnWorklet(wA, [this.pipelineA, this.pipelineB]);
+            this._registerProcessorsOnWorklet(wB, [this.pipelineA, this.pipelineB]);
+
+            this._applyParallelRouting();
+            return true;
+        } catch (err) {
+            console.error('[AudioManager] enableParallelPipelines failed:', err);
+            this.disableParallelPipelines();
+            return false;
+        }
+    }
+
+    /** (Re)wire the parallel branches and (re)post both pipelines. Idempotent. */
+    _applyParallelRouting() {
+        if (!this._parallelActive) return;
+        const wA = this.contextManager?.workletNode;
+        const wB = this._parallelWorkletB;
+        const out = this.ioManager?.outputGainNode;
+        const src = this.ioManager?.sourceNode;
+        const selA = this._parallelSelA;
+        const selB = this._parallelSelB;
+        const tap = this._parallelInputTap;
+        if (!wA || !wB || !out || !selA || !selB || !tap) return;
+
+        // Full disconnect of each node first guarantees exactly one connection
+        // per edge even if a prior rebuild already wired wA -> out.
+        try { wA.disconnect(); } catch (_) { /* ignore */ }
+        try { selA.disconnect(); } catch (_) { /* ignore */ }
+        try { wB.disconnect(); } catch (_) { /* ignore */ }
+        try { selB.disconnect(); } catch (_) { /* ignore */ }
+        try { tap.disconnect(); } catch (_) { /* ignore */ }
+
+        wA.connect(selA); selA.connect(out);
+        wB.connect(selB); selB.connect(out);
+        tap.connect(wB);
+        // Live input (mic/stream) is wired straight to workletA by the IO manager;
+        // also feed it into the tap so branch B receives it. Player sources route
+        // through connectSourceToPipeline() instead. Disconnect-then-connect keeps
+        // this to a single edge if the source was already tapped.
+        if (src) {
+            try { src.disconnect(tap); } catch (_) { /* not connected */ }
+            try { src.connect(tap); } catch (_) { /* ignore */ }
+        }
+
+        this._postBlindPlugins(wA, this.pipelineA);
+        this._postBlindPlugins(wB, this.pipelineB || []);
+    }
+
+    /**
+     * Connect an input source node to the pipeline input(s). Normally this is
+     * just the main worklet; while the Double Blind Test runs both pipelines in
+     * parallel it also feeds the branch-B input tap. The audio player uses this
+     * for every source it creates so new tracks reach both pipelines.
+     * @param {AudioNode} node
+     */
+    connectSourceToPipeline(node) {
+        if (!node) return;
+        const wA = this.contextManager?.workletNode || this.workletNode;
+        try { if (wA) node.connect(wA); } catch (_) { /* ignore */ }
+        if (this._parallelActive && this._parallelInputTap) {
+            try { node.connect(this._parallelInputTap); } catch (_) { /* ignore */ }
+        }
+    }
+
+    /**
+     * Cross-fade which parallel branch is audible.
+     * @param {string} which - 'A' or 'B'
+     * @param {number} fade - cross-fade time in seconds (default 30 ms)
+     */
+    setBlindSelection(which, fade = 0.03) {
+        if (!this._parallelActive) return;
+        const ctx = this.contextManager?.audioContext;
+        if (!ctx || !this._parallelSelA || !this._parallelSelB) return;
+        const now = ctx.currentTime;
+        const aTarget = which === 'A' ? 1 : 0;
+        const ramp = (param, target) => {
+            try {
+                param.cancelScheduledValues(now);
+                param.setValueAtTime(param.value, now);
+                param.linearRampToValueAtTime(target, now + fade);
+            } catch (_) {
+                try { param.value = target; } catch (__) { /* ignore */ }
+            }
+        };
+        ramp(this._parallelSelA.gain, aTarget);
+        ramp(this._parallelSelB.gain, 1 - aTarget);
+        this._parallelSelection = which;
+    }
+
+    /** Tear down the parallel graph and restore the direct worklet output. */
+    disableParallelPipelines() {
+        const wA = this.contextManager?.workletNode;
+        const out = this.ioManager?.outputGainNode;
+        const src = this.ioManager?.sourceNode;
+        const wB = this._parallelWorkletB;
+        const selA = this._parallelSelA;
+        const selB = this._parallelSelB;
+        const tap = this._parallelInputTap;
+
+        // Disconnect the input tap first so branch B loses all its input edges
+        // (player sources connect through the tap), letting wB be released.
+        try { src?.disconnect(tap); } catch (_) { /* ignore */ }
+        try { tap?.disconnect(); } catch (_) { /* ignore */ }
+        try { wB?.disconnect(); } catch (_) { /* ignore */ }
+        try { selA?.disconnect(); } catch (_) { /* ignore */ }
+        try { selB?.disconnect(); } catch (_) { /* ignore */ }
+        // Full disconnect then single reconnect avoids any duplicate wA -> out edge.
+        try { wA?.disconnect(); } catch (_) { /* ignore */ }
+        try { if (wA && out) wA.connect(out); } catch (_) { /* ignore */ }
+
+        this._parallelWorkletB = null;
+        this._parallelSelA = null;
+        this._parallelSelB = null;
+        this._parallelInputTap = null;
+        this._parallelActive = false;
     }
 
     /**

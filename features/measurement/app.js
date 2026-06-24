@@ -10,6 +10,7 @@ import measurementController from './measurementController.js';
 import i18n from './i18n.js'; // Import the i18n module
 import './peqCalculator.js'; // Import the new PEQ calculator
 import { startRendererWatchdogHeartbeat } from '../../js/electron-watchdog.js';
+import { copyTextToClipboard } from '../../js/utils/clipboard-utils.js';
 
 let isAudioInitialized = false;
 
@@ -362,12 +363,13 @@ function copyPEQToClipboard() {
         const jsonString = JSON.stringify(peqJSON, null, 2);
         
         // Copy to clipboard
-        navigator.clipboard.writeText(jsonString).then(() => {
-            // Log success but don't show alert
-            console.log('PEQ parameters copied to clipboard.');
-        }).catch(err => {
-            console.error('Failed to copy PEQ parameters: ', err);
-            alert('Failed to copy PEQ parameters: ' + err);
+        copyTextToClipboard(jsonString).then((ok) => {
+            if (ok) {
+                console.log('PEQ parameters copied to clipboard.');
+            } else {
+                console.error('Failed to copy PEQ parameters');
+                alert('Failed to copy PEQ parameters');
+            }
         });
     } else {
         // Use 5Band PEQ for 5 bands or fewer
@@ -418,12 +420,13 @@ function copyPEQToClipboard() {
         const jsonString = JSON.stringify(peqJSON, null, 2);
         
         // Copy to clipboard
-        navigator.clipboard.writeText(jsonString).then(() => {
-            // Log success but don't show alert
-            console.log('PEQ parameters copied to clipboard.');
-        }).catch(err => {
-            console.error('Failed to copy PEQ parameters: ', err);
-            alert('Failed to copy PEQ parameters: ' + err);
+        copyTextToClipboard(jsonString).then((ok) => {
+            if (ok) {
+                console.log('PEQ parameters copied to clipboard.');
+            } else {
+                console.error('Failed to copy PEQ parameters');
+                alert('Failed to copy PEQ parameters');
+            }
         });
     }
 }

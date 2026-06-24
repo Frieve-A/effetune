@@ -105,6 +105,18 @@ function registerIpcHandlers() {
     return await fileHandlers.readFile(filePath, binary);
   });
 
+  // Read clipboard text via Electron's native clipboard. The web Clipboard API
+  // (navigator.clipboard.readText) is denied on file:// pages by the permission
+  // handler, so renderers use this for paste (e.g. pasting a share URL).
+  ipcMain.handle('read-clipboard-text', () => {
+    try {
+      return require('electron').clipboard.readText();
+    } catch (error) {
+      console.error('Error reading clipboard text:', error);
+      return '';
+    }
+  });
+
   ipcMain.handle('read-file-as-buffer', async (event, filePath) => {
     return await fileHandlers.readFileAsBuffer(filePath);
   });
@@ -426,17 +438,20 @@ function registerIpcHandlers() {
             {
               label: menuTemplate.file.submenu[0].label, // Save
               accelerator: 'CommandOrControl+S',
+              enabled: menuTemplate.file.submenu[0].enabled !== false,
               click: () => simulateKeyboardShortcut('S', ['control'])
             },
             {
               label: menuTemplate.file.submenu[1].label, // Save As...
               accelerator: 'CommandOrControl+Shift+S',
+              enabled: menuTemplate.file.submenu[1].enabled !== false,
               click: () => simulateKeyboardShortcut('S', ['control', 'shift'])
             },
             { type: 'separator' },
             {
               label: menuTemplate.file.submenu[3].label, // Open music file...
               accelerator: 'CommandOrControl+O',
+              enabled: menuTemplate.file.submenu[3].enabled !== false,
               click: () => {
                 const mainWin = constants.getMainWindow();
                 if (mainWin) {
@@ -446,6 +461,7 @@ function registerIpcHandlers() {
             },
             {
               label: menuTemplate.file.submenu[4].label, // Process Audio Files with Effects...
+              enabled: menuTemplate.file.submenu[4].enabled !== false,
               click: () => {
                 const mainWin = constants.getMainWindow();
                 if (mainWin) {
@@ -456,6 +472,7 @@ function registerIpcHandlers() {
             { type: 'separator' },
             {
               label: menuTemplate.file.submenu[6].label, // Export Preset...
+              enabled: menuTemplate.file.submenu[6].enabled !== false,
               click: () => {
                 const mainWin = constants.getMainWindow();
                 if (mainWin) {
@@ -465,6 +482,7 @@ function registerIpcHandlers() {
             },
             {
               label: menuTemplate.file.submenu[7].label, // Import Preset...
+              enabled: menuTemplate.file.submenu[7].enabled !== false,
               click: () => {
                 const mainWin = constants.getMainWindow();
                 if (mainWin) {
@@ -473,7 +491,18 @@ function registerIpcHandlers() {
               }
             },
             { type: 'separator' },
-            { role: 'quit', label: menuTemplate.file.submenu[9].label } // Quit
+            {
+              label: menuTemplate.file.submenu[9].label, // Double Blind Test
+              enabled: menuTemplate.file.submenu[9].enabled !== false,
+              click: () => {
+                const mainWin = constants.getMainWindow();
+                if (mainWin) {
+                  mainWin.webContents.send('start-double-blind-test');
+                }
+              }
+            },
+            { type: 'separator' },
+            { role: 'quit', label: menuTemplate.file.submenu[11].label } // Quit
           ]
         },
         {
@@ -482,38 +511,45 @@ function registerIpcHandlers() {
             {
               label: menuTemplate.edit.submenu[0].label, // Undo
               accelerator: 'CommandOrControl+Z',
+              enabled: menuTemplate.edit.submenu[0].enabled !== false,
               click: () => simulateKeyboardShortcut('Z', ['control'])
             },
             {
               label: menuTemplate.edit.submenu[1].label, // Redo
               accelerator: 'CommandOrControl+Y',
+              enabled: menuTemplate.edit.submenu[1].enabled !== false,
               click: () => simulateKeyboardShortcut('Y', ['control'])
             },
             { type: 'separator' },
             {
               label: menuTemplate.edit.submenu[3].label, // Cut
               accelerator: 'CommandOrControl+X',
+              enabled: menuTemplate.edit.submenu[3].enabled !== false,
               click: () => simulateKeyboardShortcut('X', ['control'])
             },
             {
               label: menuTemplate.edit.submenu[4].label, // Copy
               accelerator: 'CommandOrControl+C',
+              enabled: menuTemplate.edit.submenu[4].enabled !== false,
               click: () => simulateKeyboardShortcut('C', ['control'])
             },
             {
               label: menuTemplate.edit.submenu[5].label, // Paste
               accelerator: 'CommandOrControl+V',
+              enabled: menuTemplate.edit.submenu[5].enabled !== false,
               click: () => simulateKeyboardShortcut('V', ['control'])
             },
             { type: 'separator' },
             {
               label: menuTemplate.edit.submenu[7].label, // Delete
               accelerator: 'Delete',
+              enabled: menuTemplate.edit.submenu[7].enabled !== false,
               click: () => simulateKeyboardShortcut('Delete')
             },
             {
               label: menuTemplate.edit.submenu[8].label, // Select All
               accelerator: 'CommandOrControl+A',
+              enabled: menuTemplate.edit.submenu[8].enabled !== false,
               click: () => simulateKeyboardShortcut('A', ['control'])
             }
           ]
@@ -969,6 +1005,17 @@ function createMenu() {
             const mainWin = constants.getMainWindow();
             if (mainWin) {
               mainWin.webContents.send('import-preset');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Double Blind Test',
+          enabled: true, // can always be opened (re-evaluated via update-application-menu)
+          click: () => {
+            const mainWin = constants.getMainWindow();
+            if (mainWin) {
+              mainWin.webContents.send('start-double-blind-test');
             }
           }
         },

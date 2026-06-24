@@ -724,6 +724,17 @@ class App {
             console.log('Audio pipeline rebuilt after error');
         }
 
+        // If the page was opened from a Double Blind Test share URL, restore both
+        // pipelines and enter the blind test mode automatically (web version).
+        try {
+            const dbtParam = new URLSearchParams(window.location.search).get('dbt');
+            if (dbtParam && this.uiManager && this.uiManager.getDoubleBlindTest) {
+                this.uiManager.getDoubleBlindTest().restoreFromShare(dbtParam);
+            }
+        } catch (error) {
+            console.warn('Failed to restore Double Blind Test from URL:', error);
+        }
+
         if (window.pendingPresetName && window.pipelineManager && window.pipelineManager.presetManager) {
             await window.pipelineManager.presetManager.loadPreset(window.pendingPresetName);
             window.pendingPresetName = null;

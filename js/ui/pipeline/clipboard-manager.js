@@ -3,6 +3,7 @@
  */
 import { getSerializablePluginStateShort, applySerializedState } from '../../utils/serialization-utils.js';
 import { decodePipelineState } from '../../utils/pipeline-state-codec.js';
+import { copyTextToClipboard } from '../../utils/clipboard-utils.js';
 export class ClipboardManager {
     /**
      * Create a new ClipboardManager instance
@@ -29,8 +30,10 @@ export class ClipboardManager {
             const states = selectedPluginsArray.map(plugin =>
                 getSerializablePluginStateShort(plugin)
             );
-            await navigator.clipboard.writeText(JSON.stringify(states, null, 2));
-            
+            if (!(await copyTextToClipboard(JSON.stringify(states, null, 2)))) {
+                throw new Error('Clipboard copy failed');
+            }
+
             if (window.uiManager) {
                 window.uiManager.setError('success.settingsCopied', false);
                 setTimeout(() => window.uiManager.clearError(), 3000);
@@ -84,13 +87,34 @@ export class ClipboardManager {
      */
     async handlePaste(text) {
         try {
+            const dbtActive = !!(window.uiManager && window.uiManager.isDoubleBlindActive && window.uiManager.isDoubleBlindActive());
+
             // Check if the text is a URL with BASE64 encoded pipeline data
             if (text.startsWith('http://') || text.startsWith('https://')) {
                 try {
                     // Try to extract the 'p' parameter from the URL
                     const url = new URL(text);
+
+                    // A Double Blind Test share URL reproduces both pipelines and
+                    // enters the blind test mode (only when not already in it).
+                    const dbtParam = url.searchParams.get('dbt');
+                    if (dbtParam && window.uiManager) {
+                        if (window.uiManager.isDoubleBlindActive && window.uiManager.isDoubleBlindActive()) {
+                            return; // ignore paste while the test is open
+                        }
+                        const dbt = window.uiManager.getDoubleBlindTest();
+                        if (dbt.restoreFromShare(dbtParam)) {
+                            return;
+                        }
+                    }
+
+                    // Ignore all pipeline pasting while the Double Blind Test is open.
+                    if (window.uiManager && window.uiManager.isDoubleBlindActive && window.uiManager.isDoubleBlindActive()) {
+                        return;
+                    }
+
                     const pParam = url.searchParams.get('p');
-                    
+
                     if (pParam) {
                         // Try to decode the p parameter as BASE64
                         try {
@@ -180,6 +204,11 @@ export class ClipboardManager {
                 }
             }
             
+            // Pipeline pasting (raw JSON settings) is disabled while the test is open.
+            if (dbtActive) {
+                return;
+            }
+
             // If we get here, either the text wasn't a URL or we couldn't extract pipeline data from it
             // Try parsing the text as JSON directly
             const pluginStates = JSON.parse(text);

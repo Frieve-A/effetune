@@ -248,7 +248,10 @@ export class AudioContextManager {
                 channelInterpretation: 'discrete'
             });
             window.workletNode = this.workletNode;
-            
+            // Remember the low-latency mode so any auxiliary worklet (e.g. the
+            // Double Blind Test parallel pipeline) can be created to match.
+            this.lowLatencyMode = lowLatency;
+
             // Apply pending audio configuration if exists
             if (this._pendingAudioConfig) {
                 this.workletNode.port.postMessage({

@@ -59,36 +59,46 @@ export async function updateApplicationMenu(isElectron) {
   try {
     // Get the t function from UIManager
     const t = window.uiManager.t.bind(window.uiManager);
-    
+
+    // Determine gating state for the Double Blind Test:
+    //  - File (except Open music file / Quit) and all Edit items are disabled
+    //    while the test is open.
+    //  - The Double Blind Test entry can always be opened (a saved test can be
+    //    recalled from inside it); it is only disabled while already open.
+    const dbtActive = !!(window.uiManager && window.uiManager.isDoubleBlindActive && window.uiManager.isDoubleBlindActive());
+    const editEnabled = !dbtActive;
+
     // Create a menu template with translated labels
     const menuTemplate = {
       file: {
         label: t('menu.file'),
         submenu: [
-          { label: t('menu.file.save') },
-          { label: t('menu.file.saveAs') },
+          { label: t('menu.file.save'), enabled: !dbtActive },
+          { label: t('menu.file.saveAs'), enabled: !dbtActive },
           { type: 'separator' },
-          { label: t('menu.file.openMusicFile') },
-          { label: t('menu.file.processAudioFiles') },
+          { label: t('menu.file.openMusicFile'), enabled: true },
+          { label: t('menu.file.processAudioFiles'), enabled: !dbtActive },
           { type: 'separator' },
-          { label: t('menu.file.exportPreset') },
-          { label: t('menu.file.importPreset') },
+          { label: t('menu.file.exportPreset'), enabled: !dbtActive },
+          { label: t('menu.file.importPreset'), enabled: !dbtActive },
           { type: 'separator' },
-          { label: t('menu.file.quit') }
+          { label: t('menu.doubleBlindTest'), enabled: !dbtActive },
+          { type: 'separator' },
+          { label: t('menu.file.quit'), enabled: true }
         ]
       },
       edit: {
         label: t('menu.edit'),
         submenu: [
-          { label: t('menu.edit.undo') },
-          { label: t('menu.edit.redo') },
+          { label: t('menu.edit.undo'), enabled: editEnabled },
+          { label: t('menu.edit.redo'), enabled: editEnabled },
           { type: 'separator' },
-          { label: t('menu.edit.cut') },
-          { label: t('menu.edit.copy') },
-          { label: t('menu.edit.paste') },
+          { label: t('menu.edit.cut'), enabled: editEnabled },
+          { label: t('menu.edit.copy'), enabled: editEnabled },
+          { label: t('menu.edit.paste'), enabled: editEnabled },
           { type: 'separator' },
-          { label: t('menu.edit.delete') },
-          { label: t('menu.edit.selectAll') }
+          { label: t('menu.edit.delete'), enabled: editEnabled },
+          { label: t('menu.edit.selectAll'), enabled: editEnabled }
         ]
       },
       view: {
