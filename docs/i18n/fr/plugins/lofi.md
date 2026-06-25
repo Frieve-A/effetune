@@ -191,7 +191,7 @@ Paramètres avancés / utilitaires
 - **Vue Difference-Frequency** - Un graphique statique montrant quelles fréquences audibles le bruit ultrasonique produit, en fonction des réglages de bruit actuels.
 
 ### Réglages Recommandés
-- Subtil (par défaut) : Amount +24 dB, Ultrasonic Level -30 dBFS, Analog Nonlinearity 1.40%, Even Bias 50%.
+- Subtil (par défaut) : Amount +24 dB, Ultrasonic Level -30 dBFS, Analog Nonlinearity 1.40%, Even Bias 20%, Signal Coupling 150%, Cross Sideband 75%, Scratch Tone 10.5 kHz.
 - IMD du tweeter uniquement : IMD Path HPF 2.5 kHz, Signal Coupling 80–150%, Cross Sideband 50–100%, Scratch Tone 9–14 kHz.
 - Effet marqué : augmentez Amount, Ultrasonic Level et Analog Nonlinearity.
 

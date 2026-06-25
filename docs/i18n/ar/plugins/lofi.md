@@ -191,7 +191,7 @@ lang: ar
 - **عرض Difference-Frequency** - رسم بياني ثابت يوضّح أي الترددات المسموعة تُنتجها الضوضاء فوق الصوتية، بناءً على إعدادات الضوضاء الحالية.
 
 ### الإعدادات الموصى بها
-- خفيف (افتراضي): Amount +24 dB، Ultrasonic Level -30 dBFS، Analog Nonlinearity 1.40%، Even Bias 50%.
+- خفيف (افتراضي): Amount +24 dB، Ultrasonic Level -30 dBFS، Analog Nonlinearity 1.40%، Even Bias 20%، Signal Coupling 150%، Cross Sideband 75%، Scratch Tone 10.5 kHz.
 - تشوه مقتصر على tweeter: IMD Path HPF 2.5 kHz، Signal Coupling 80–150%، Cross Sideband 50–100%، Scratch Tone 9–14 kHz.
 - تأثير واضح: ارفع Amount وUltrasonic Level وAnalog Nonlinearity.
 

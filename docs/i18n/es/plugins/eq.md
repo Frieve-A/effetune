@@ -1,6 +1,6 @@
 ---
 title: "Plugins de EQ - EffeTune"
-description: "Plugins de ecualización, incluidos Parametric EQ, Graphic EQ, Dynamic EQ, filtros y Tone Control."
+description: "Plugins de ecualización, incluidos Parametric EQ, Graphic EQ, Dynamic EQ, Earphone Cable Sim, filtros y Tone Control."
 lang: es
 ---
 
@@ -16,6 +16,7 @@ Una colección de plugins que te permiten ajustar diferentes aspectos del sonido
 - [5Band PEQ](#5band-peq) - Ecualizador flexible de 5 bandas para moldear graves, medios y agudos
 - [Band Pass Filter](#band-pass-filter) - Enfoca frecuencias específicas
 - [Comb Filter](#comb-filter) - Añade una coloración faseada, hueca o metálica
+- [Earphone Cable Sim](#earphone-cable-sim) - Ayuda a comprobar lo pequeñas que suelen ser las variaciones de respuesta en frecuencia causadas por cables de auriculares normales
 - [Hi Pass Filter](#hi-pass-filter) - Elimina frecuencias bajas no deseadas con precisión
 - [Lo Pass Filter](#lo-pass-filter) - Elimina frecuencias altas no deseadas con precisión
 - [Loudness Equalizer](#loudness-equalizer) - Corrección del balance de frecuencias para escuchar a bajo volumen
@@ -316,6 +317,48 @@ Un filtro peine que añade un carácter faseado, hueco, metálico o resonante al
 - Marcador de frecuencia fundamental que muestra el tiempo de retardo
 - Controles interactivos para ajuste preciso
 - Cálculo de distancia de retardo en milímetros
+
+## Earphone Cable Sim
+
+Reproduce las pequeñas variaciones de respuesta en frecuencia que aparecen cuando un auricular se alimenta desde un amplificador a través de la resistencia e inductancia reales del cable y de una impedancia de salida no nula. Como la impedancia del auricular cambia con la frecuencia (por las resonancias del transductor y la inductancia de la bobina móvil), la impedancia de la fuente y del cable produce cambios de nivel propios de cada auricular. También sirve como comprobación práctica: con cables de construcción y calidad normales, una impedancia de salida de amplificador común y auriculares que no tengan una impedancia inusualmente baja ni otras condiciones anómalas, el cambio audible entre cables normales para auriculares suele ser lo bastante pequeño como para resultar despreciable. El efecto es más fuerte con auriculares de baja impedancia que tienen grandes picos de impedancia, y normalmente es sutil con amplificadores modernos de baja impedancia de salida.
+
+### Guía de Mejora Auditiva
+- Evalúa la interacción de la impedancia de la fuente:
+  - Sube Output Z para emular amplificadores de válvulas o salidas de auriculares de alta impedancia
+  - Compara con el bypass para escuchar cómo cambian los graves y las zonas cercanas a los picos de impedancia
+- Explora el comportamiento de auriculares con varios transductores:
+  - Activa Resonances adicionales para modelar auriculares de armadura balanceada o híbridos con varios picos de impedancia
+  - Los picos de impedancia más grandes, combinados con una impedancia de fuente más alta, generan una coloración más marcada
+- Simula la resistencia y la inductancia del cable:
+  - Aumenta Cable R para emular cables más largos o finos, con mayor resistencia de corriente continua
+  - Aumenta Cable L para emular cables con mayor inductancia; su efecto aparece sobre todo en los agudos superiores
+  - Cable R se suma a la resistencia total en serie, por lo que puede reforzar la interacción en toda la banda
+- Comprueba la audibilidad de cables normales:
+  - Usa valores realistas de Cable R y Cable L, y compáralos con el bypass para estimar lo pequeñas que son las diferencias habituales entre cables
+  - Si el cambio solo se vuelve evidente con Output Z, Cable R o Base Z muy extremos, esa comparación sugiere que los cables normales probablemente no tendrán una importancia audible con ese auricular y ese amplificador
+
+### Parámetros
+- **Output Z (Ω)** - Impedancia de salida del amplificador (0 a 20). Los valores por debajo de 1Ω son típicos en amplificadores modernos; valores más altos refuerzan la coloración relacionada con la impedancia.
+- **Cable R (Ω)** - Resistencia de corriente continua del cable (0 a 2). Los valores más altos representan cables más largos o finos y se suman a la resistencia total en serie.
+- **Cable L (µH)** - Inductancia del cable (0 a 5). Afecta principalmente la respuesta de los agudos superiores, especialmente con auriculares de baja impedancia.
+- **Voice Coil L (mH)** - Inductancia de la bobina móvil del auricular (0.01 a 2). Eleva la impedancia de carga hacia las frecuencias altas y cambia la interacción en la zona aguda.
+- **Base Z (Ω)** - Impedancia nominal del auricular en bajas frecuencias (4 a 64). Los valores más bajos hacen que la impedancia de la fuente y del cable tenga más influencia.
+- **Resonances (hasta 5)** - Cada una modela un pico de impedancia del transductor. La primera está activada por defecto; las demás están preajustadas a resonancias típicas de transductores y se pueden activar o desactivar.
+  - **Enable** - Activa o desactiva cada resonancia
+  - **Freq (Hz)** - Frecuencia de resonancia (20 a 20000)
+  - **Q** - Agudeza del pico de impedancia (0.5 a 10)
+  - **Peak Z (Ω)** - Impedancia en el pico de resonancia (16 a 116)
+
+### Detalles Técnicos
+- **Modelo físico**: Calcula `H(f) = Zload / (Zsource + Zload)`, donde `Zsource` es la impedancia de salida más la resistencia e inductancia del cable, y `Zload` es la impedancia del auricular (impedancia base, inductancia de la bobina móvil y picos de resonancia).
+- **Realización**: La función de transferencia se factoriza y se convierte en una cascada de filtros biquad mediante matched-Z, con latencia cero y comportamiento de fase mínima comparable al de los demás plugins de EQ.
+- **Normalización**: La respuesta se normaliza a una media de potencia de 0dB (20Hz a 20kHz), de modo que activar o desactivar el efecto no cambie el volumen general.
+
+### Visualización
+- Gráfico en tiempo real de la respuesta del filtro aplicada, con escala logarítmica de frecuencia
+- Las etiquetas de la cuadrícula cubren de 20Hz a 20kHz; la curva se extiende por todo el rango del gráfico, de 10Hz a 40kHz
+- Curva de respuesta verde sobre una cuadrícula oscura, con el eje de dB autoescalado alrededor de la referencia normalizada de 0dB
+- Las desviaciones más grandes de la curva indican dónde el modelo cambia más el nivel de reproducción
 
 ## Hi Pass Filter
 

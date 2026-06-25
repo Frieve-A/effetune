@@ -191,7 +191,7 @@ DSD64再生でしばしば議論される控えめな副作用を再現するエ
 - **Difference-Frequency表示** - 現在のノイズ設定に基づき、超音波ノイズがどの可聴周波数を作るかを示す静的グラフ。
 
 ### 推奨設定
-- 控えめ (デフォルト): Amount +24 dB、Ultrasonic Level -30 dBFS、Analog Nonlinearity 1.40%、Even Bias 50%。
+- 控えめ (デフォルト): Amount +24 dB、Ultrasonic Level -30 dBFS、Analog Nonlinearity 1.40%、Even Bias 20%、Signal Coupling 150%、Cross Sideband 75%、Scratch Tone 10.5 kHz。
 - ツイーター限定IMD: IMD Path HPF 2.5 kHz、Signal Coupling 80-150%、Cross Sideband 50-100%、Scratch Tone 9-14 kHz。
 - 効果をはっきりさせる: Amount、Ultrasonic Level、Analog Nonlinearityを上げる。
 

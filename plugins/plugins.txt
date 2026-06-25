@@ -50,6 +50,7 @@ eq/five_band_dynamic_eq: 5Band Dynamic EQ | EQ | FiveBandDynamicEQ | css
 eq/five_band_peq: 5Band PEQ | EQ | FiveBandPEQPlugin | css
 eq/band_pass_filter: Band Pass Filter | EQ | BandPassFilterPlugin | css
 eq/comb_filter: Comb Filter | EQ | CombFilterPlugin | css
+eq/earphone_cable_sim: Earphone Cable Sim | EQ | EarphoneCableSimPlugin | css
 eq/hi_pass_filter: Hi Pass Filter | EQ | HiPassFilterPlugin | css
 eq/lo_pass_filter: Lo Pass Filter | EQ | LoPassFilterPlugin | css
 eq/loudness_equalizer: Loudness Equalizer | EQ | LoudnessEqualizerPlugin | css

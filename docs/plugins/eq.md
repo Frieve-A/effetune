@@ -1,6 +1,6 @@
 ---
 title: "EQ Plugins - EffeTune"
-description: "Equalizer plugins including Parametric EQ, Graphic EQ, Dynamic EQ, Filters, and Tone Control."
+description: "Equalizer plugins including Parametric EQ, Graphic EQ, Dynamic EQ, Earphone Cable Sim, filters, and Tone Control."
 lang: en
 ---
 
@@ -16,6 +16,7 @@ A collection of plugins that let you adjust different aspects of your music's so
 - [5Band PEQ](#5band-peq) - Flexible equalizer for shaping bass, mids, and treble
 - [Band Pass Filter](#band-pass-filter) - Focus on specific frequencies
 - [Comb Filter](#comb-filter) - Phasey, hollow, or metallic sound coloration
+- [Earphone Cable Sim](#earphone-cable-sim) - Helps check how small normal earphone-cable response shifts usually are
 - [Hi Pass Filter](#hi-pass-filter) - Remove unwanted low frequencies with precision
 - [Lo Pass Filter](#lo-pass-filter) - Remove unwanted high frequencies with precision
 - [Loudness Equalizer](#loudness-equalizer) - Frequency balance correction for low volume listening
@@ -316,6 +317,48 @@ A comb filter that adds a phasey, hollow, metallic, or resonant character by mix
 - Fundamental frequency marker showing delay time
 - Interactive controls for precise adjustment
 - Delay distance calculation in millimeters
+
+## Earphone Cable Sim
+
+Reproduces the small frequency-response shifts that appear when an earphone is driven by an amplifier through real cable resistance/inductance and non-zero output impedance. Because an earphone's impedance varies with frequency (driver resonances plus voice-coil inductance), source and cable impedance create earphone-specific level changes. This is useful as a reality check: with cables of normal construction and quality, ordinary amplifier output impedance, and earphones that are not unusually low in impedance or otherwise abnormal, the audible change from ordinary earphone-cable differences is generally small enough to be negligible. The effect is strongest with low-impedance earphones that have large impedance peaks, and is usually subtle with modern low-output-impedance amplifiers.
+
+### Listening Enhancement Guide
+- Evaluate Source-Impedance Interaction:
+  - Raise Output Z to emulate tube amps or high-impedance headphone outputs
+  - Compare with bypass to hear how bass and impedance-peak regions change
+- Explore Multi-Driver Earphone Behavior:
+  - Enable additional Resonances to model balanced-armature or hybrid earphones with multiple impedance peaks
+  - Larger impedance peaks combined with higher source impedance create stronger coloration
+- Simulate Cable Resistance and Inductance:
+  - Increase Cable R to emulate longer or thinner cables with higher DC resistance
+  - Increase Cable L to emulate higher-inductance cables; its effect is mainly in the upper treble
+  - Cable R adds to the total series resistance, so it can strengthen the interaction across the band
+- Check Normal Cable Audibility:
+  - Use realistic Cable R and Cable L values, then compare with bypass to estimate how small ordinary cable differences are
+  - If only extreme Output Z, Cable R, or very low Base Z settings make the change obvious, the same comparison suggests normal cables are unlikely to be audibly significant with that earphone and amplifier
+
+### Parameters
+- **Output Z (Ω)** - Amplifier output impedance (0 to 20). Values below 1Ω are typical of modern amplifiers; higher values make impedance-related coloration stronger.
+- **Cable R (Ω)** - Cable DC resistance (0 to 2). Higher values represent longer or thinner cables and add to the total series resistance.
+- **Cable L (µH)** - Cable inductance (0 to 5). Mainly affects upper-treble response, especially with low-impedance earphones.
+- **Voice Coil L (mH)** - Earphone voice-coil inductance (0.01 to 2). Raises load impedance toward high frequencies and changes the high-frequency interaction.
+- **Base Z (Ω)** - Nominal earphone impedance at low frequencies (4 to 64). Lower values make source and cable impedance more influential.
+- **Resonances (up to 5)** - Each models one impedance peak of the driver. The first is enabled by default; the rest are pre-set to typical driver resonances and can be toggled on.
+  - **Enable** - Turn each resonance on or off
+  - **Freq (Hz)** - Resonance frequency (20 to 20000)
+  - **Q** - Sharpness of the impedance peak (0.5 to 10)
+  - **Peak Z (Ω)** - Impedance at the resonance peak (16 to 116)
+
+### Technical Details
+- **Physical Model**: Computes `H(f) = Zload / (Zsource + Zload)`, where `Zsource` is the output impedance plus cable resistance/inductance and `Zload` is the earphone impedance (base impedance, voice-coil inductance, and resonance peaks).
+- **Realization**: The transfer function is factored and converted to a matched-Z cascade of biquad filters, giving zero latency and minimum-phase behavior comparable to the other EQ plugins.
+- **Normalization**: The response is normalized to a 0 dB power average (20Hz to 20kHz) so toggling the effect does not change overall loudness.
+
+### Visual Display
+- Real-time graph of the realized filter response on a logarithmic frequency scale
+- Grid labels cover 20Hz to 20kHz; the plotted curve extends across the full 10Hz to 40kHz graph range
+- Green response curve over a dark grid, with an auto-scaled dB axis around the normalized 0dB reference
+- Larger curve deviations indicate where the model changes playback level most
 
 ## Hi Pass Filter
 

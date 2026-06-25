@@ -1,6 +1,6 @@
 ---
 title: "Plugins EQ - EffeTune"
-description: "Plugins d'égalisation incluant Parametric EQ, Graphic EQ, Dynamic EQ, Filters et Tone Control."
+description: "Plugins d'égalisation incluant Parametric EQ, Graphic EQ, Dynamic EQ, Earphone Cable Sim, des filtres et Tone Control."
 lang: fr
 ---
 
@@ -15,6 +15,7 @@ Une collection de plugins qui vous permet d'ajuster différents aspects du son d
 - [5Band PEQ](#5band-peq) - Égaliseur paramétrique à cinq bandes avec des contrôles flexibles
 - [Band Pass Filter](#band-pass-filter) - Concentrez-vous sur des fréquences spécifiques
 - [Comb Filter](#comb-filter) - Coloration sonore phasée, creuse ou métallique
+- [Earphone Cable Sim](#earphone-cable-sim) - Vérifie à quel point les variations de réponse en fréquence des câbles d'écouteurs ordinaires restent généralement faibles
 - [Hi Pass Filter](#hi-pass-filter) - Éliminez avec précision les basses fréquences indésirables
 - [Lo Pass Filter](#lo-pass-filter) - Éliminez avec précision les hautes fréquences indésirables
 - [Loudness Equalizer](#loudness-equalizer) - Correction de l'équilibre des fréquences pour une écoute à faible volume
@@ -313,6 +314,48 @@ Un filtre en peigne qui ajoute un caractère phasé, creux, métallique ou réso
 - Marqueur de fréquence fondamentale montrant le délai temporel
 - Contrôles interactifs pour un ajustement précis
 - Calcul de la distance de délai en millimètres
+
+## Earphone Cable Sim
+
+Reproduit les petites variations de réponse en fréquence qui apparaissent lorsqu'un écouteur est alimenté par un amplificateur via la résistance et l'inductance réelles du câble, avec une impédance de sortie non nulle. Comme l'impédance d'un écouteur varie selon la fréquence (résonances du transducteur et inductance de la bobine mobile), l'impédance de la source et du câble provoque des changements de niveau propres à chaque écouteur. Le plugin sert aussi de vérification pratique : avec des câbles de construction et de qualité courantes, une impédance de sortie d'amplificateur courante et des écouteurs qui n'ont pas une impédance exceptionnellement basse ni d'autre comportement atypique, l'effet audible des différences entre câbles d'écouteurs ordinaires reste généralement négligeable. L'effet est le plus marqué avec des écouteurs à faible impédance présentant de grands pics d'impédance, et il reste habituellement discret avec les amplificateurs modernes à faible impédance de sortie.
+
+### Guide d'amélioration de l'écoute
+- Évaluer l'interaction avec l'impédance de source:
+  - Augmentez Output Z pour simuler un amplificateur à tubes ou une sortie casque à haute impédance
+  - Comparez avec le bypass pour entendre l'évolution des graves et des zones proches des pics d'impédance
+- Explorer le comportement des écouteurs multi-transducteurs:
+  - Activez des Resonances supplémentaires pour modéliser des écouteurs à armature équilibrée ou hybrides avec plusieurs pics d'impédance
+  - De grands pics d'impédance associés à une impédance de source plus élevée créent une coloration plus forte
+- Simuler la résistance et l'inductance du câble:
+  - Augmentez Cable R pour représenter des câbles plus longs ou plus fins, avec une résistance continue plus élevée
+  - Augmentez Cable L pour représenter des câbles à plus forte inductance ; son effet se situe surtout dans l'extrême aigu
+  - Cable R s'ajoute à la résistance série totale et peut donc renforcer l'interaction sur l'ensemble du spectre
+- Vérifier l'audibilité des câbles ordinaires:
+  - Utilisez des valeurs réalistes de Cable R et Cable L, puis comparez avec le bypass pour estimer la faiblesse des différences entre câbles ordinaires
+  - Si seules des valeurs extrêmes de Output Z, de Cable R ou une Base Z très basse rendent le changement évident, la même comparaison indique que les câbles ordinaires sont peu susceptibles d'avoir un effet audible notable avec cet écouteur et cet amplificateur
+
+### Paramètres
+- **Output Z (Ω)** - Impédance de sortie de l'amplificateur (0 à 20). Les valeurs inférieures à 1Ω sont typiques des amplificateurs modernes ; des valeurs plus élevées renforcent la coloration liée à l'impédance.
+- **Cable R (Ω)** - Résistance continue du câble (0 à 2). Des valeurs plus élevées représentent des câbles plus longs ou plus fins et s'ajoutent à la résistance série totale.
+- **Cable L (µH)** - Inductance du câble (0 à 5). Elle affecte surtout la réponse dans l'extrême aigu, en particulier avec des écouteurs à faible impédance.
+- **Voice Coil L (mH)** - Inductance de la bobine mobile de l'écouteur (0.01 à 2). Elle augmente l'impédance de charge vers les hautes fréquences et modifie l'interaction dans l'aigu.
+- **Base Z (Ω)** - Impédance nominale de l'écouteur dans le grave (4 à 64). Plus la valeur est basse, plus l'impédance de la source et du câble a d'influence.
+- **Resonances (jusqu'à 5)** - Chacune modélise un pic d'impédance du transducteur. La première est activée par défaut ; les autres sont préréglées sur des résonances de transducteur typiques et peuvent être activées ou désactivées.
+  - **Enable** - Active ou désactive chaque résonance
+  - **Freq (Hz)** - Fréquence de résonance (20 à 20000)
+  - **Q** - Netteté du pic d'impédance (0.5 à 10)
+  - **Peak Z (Ω)** - Impédance au sommet de la résonance (16 à 116)
+
+### Détails Techniques
+- **Modèle Physique**: Calcule `H(f) = Zload / (Zsource + Zload)`, où `Zsource` est l'impédance de sortie plus la résistance et l'inductance du câble, et `Zload` l'impédance de l'écouteur (impédance de base, inductance de bobine mobile et pics de résonance).
+- **Réalisation**: La fonction de transfert est factorisée puis convertie en cascade de filtres biquad par méthode matched-Z, ce qui donne une latence nulle et un comportement à phase minimale comparable aux autres plugins d'EQ.
+- **Normalisation**: La réponse est normalisée sur une moyenne de puissance à 0dB (20Hz à 20kHz), afin que l'activation ou la désactivation de l'effet ne change pas le volume global.
+
+### Affichage Visuel
+- Graphique en temps réel de la réponse du filtre appliqué, avec une échelle de fréquence logarithmique
+- Les libellés de grille couvrent 20Hz à 20kHz ; la courbe tracée s'étend sur toute la plage du graphique, de 10Hz à 40kHz
+- Courbe de réponse verte sur une grille sombre, avec un axe dB automatiquement ajusté autour de la référence normalisée à 0dB
+- Les plus grands écarts de la courbe indiquent les zones où le modèle modifie le plus le niveau de lecture
 
 ## Hi Pass Filter
 Un filtre passe-haut de précision qui élimine les basses fréquences indésirables tout en préservant la clarté des fréquences élevées. Basé sur le design de filtre Linkwitz-Riley pour une réponse en phase optimale et une qualité sonore transparente.

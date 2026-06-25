@@ -6,6 +6,13 @@ import { AudioEncoder } from './audio/audio-encoder.js';
 import { EventManager } from './audio/event-manager.js';
 import { getSerializablePluginStateShort, applySerializedState } from './utils/serialization-utils.js';
 
+const PIPELINE_SWITCH_FADE_SECONDS = 0.04;
+const PIPELINE_SWITCH_SILENCE_SECONDS = 0.05;
+
+function waitForPipelineSwitch(seconds) {
+    return new Promise(resolve => setTimeout(resolve, seconds * 1000));
+}
+
 /**
  * AudioManager - Main class for audio processing
  * Acts as a facade for the various audio modules
@@ -52,6 +59,7 @@ export class AudioManager {
         this.isCancelled = false;
         this._skipAudioInitDuringSampleRateChange = false;
         this.isFirstLaunch = false;
+        this._pipelineSwitchSeq = 0;
         
         // Set global reference
         window.audioManager = this;
@@ -105,6 +113,88 @@ export class AudioManager {
             this.setCurrentPipeline('B');
         } else {
             this.setCurrentPipeline('A');
+        }
+    }
+
+    /**
+     * Switch between pipeline A and B with an output dip for user-triggered A/B switching.
+     * If B doesn't exist, copy A to B first.
+     * @returns {Promise<boolean>} Whether the transition completed
+     */
+    async togglePipelineWithTransition() {
+        if (this.currentPipeline === 'A') {
+            if (this.pipelineB === null) {
+                // Copy A to B if B doesn't exist
+                this.pipelineB = this._copyPipeline(this.pipelineA);
+            }
+            return this.setCurrentPipelineWithTransition('B');
+        }
+        return this.setCurrentPipelineWithTransition('A');
+    }
+
+    /**
+     * Set current pipeline after fade-out, keep a short silent interval, then fade in.
+     * This is for user-facing A/B switches; internal restore paths should use setCurrentPipeline().
+     * @param {string} pipeline - 'A' or 'B'
+     * @param {boolean} skipHistorySave - Skip saving to history (for internal operations)
+     * @param {Object} options - Optional fade/silence durations in seconds
+     * @returns {Promise<boolean>} Whether the transition completed
+     */
+    async setCurrentPipelineWithTransition(pipeline, skipHistorySave = false, options = {}) {
+        if (pipeline !== 'A' && pipeline !== 'B') {
+            throw new Error('Pipeline must be "A" or "B"');
+        }
+
+        if (pipeline === this.currentPipeline) {
+            return true;
+        }
+
+        const gainNode = this.ioManager?.outputGainNode;
+        const ctx = this.contextManager?.audioContext;
+        if (!gainNode || !ctx) {
+            this.setCurrentPipeline(pipeline, skipHistorySave);
+            return true;
+        }
+
+        const fadeDuration = typeof options.fadeDuration === 'number'
+            ? options.fadeDuration
+            : PIPELINE_SWITCH_FADE_SECONDS;
+        const silenceDuration = typeof options.silenceDuration === 'number'
+            ? options.silenceDuration
+            : PIPELINE_SWITCH_SILENCE_SECONDS;
+        const seq = ++this._pipelineSwitchSeq;
+
+        try {
+            this.fadeOutOutput(fadeDuration);
+            await waitForPipelineSwitch(fadeDuration);
+            if (seq !== this._pipelineSwitchSeq) return false;
+
+            this.currentPipeline = pipeline;
+            this.pipeline = this.getCurrentPipeline();
+
+            if (this.workletNode) {
+                const result = await this.rebuildPipeline();
+                if (result) {
+                    console.warn('[AudioManager] Pipeline switch rebuild reported:', result);
+                }
+            }
+
+            this.dispatchEvent('pipelineChanged', { pipeline: this.currentPipeline });
+
+            if (!skipHistorySave && this.pipelineManager && this.pipelineManager.historyManager) {
+                this.pipelineManager.historyManager.saveState();
+            }
+
+            await waitForPipelineSwitch(silenceDuration);
+            if (seq !== this._pipelineSwitchSeq) return false;
+
+            this.fadeInOutput(fadeDuration);
+            return true;
+        } catch (error) {
+            console.warn('[AudioManager] setCurrentPipelineWithTransition failed, falling back to immediate switch:', error);
+            this.setCurrentPipeline(pipeline, skipHistorySave);
+            this.fadeInOutput(fadeDuration);
+            return false;
         }
     }
 
@@ -608,9 +698,8 @@ export class AudioManager {
 
     /**
      * Ramp the output gain down to 0 (mute) without tearing down the graph.
-     * Mirror of fadeInOutput(); used by the Double Blind Test so that switching
-     * the active A/B pipeline can fade out, swap silently, then fade back in,
-     * preventing any switch-timing transient from revealing the pipeline.
+     * Mirror of fadeInOutput(); used when A/B switching needs to fade out,
+     * swap silently, then fade back in.
      * @param {number} duration - fade duration in seconds (default 50 ms)
      */
     fadeOutOutput(duration = 0.05) {
@@ -654,6 +743,7 @@ export class AudioManager {
     /** Build worklet plugin data for an arbitrary pipeline (section-aware). */
     _buildBlindPluginData(pipeline) {
         if (!Array.isArray(pipeline)) return [];
+        const sampleRate = this.contextManager?.audioContext?.sampleRate ?? null;
         let sectionOn = true;
         for (let i = 0; i < pipeline.length; i++) {
             const p = pipeline[i];
@@ -667,7 +757,7 @@ export class AudioManager {
             id: plugin.id,
             type: plugin.constructor.name,
             enabled: plugin.enabled,
-            parameters: plugin.getParameters(),
+            parameters: plugin.getParameters({ sampleRate, commitSampleRate: true }),
             inputBus: plugin.inputBus,
             outputBus: plugin.outputBus,
             channel: plugin.channel
@@ -898,11 +988,12 @@ export class AudioManager {
             // Just update parameters without rebuilding
             if (this.workletNode) {
                 this.registerPipelineProcessors();
+                const sampleRate = this.contextManager?.audioContext?.sampleRate ?? null;
                 const pluginData = this.pipeline.map(plugin => ({
                     id: plugin.id,
                     type: plugin.constructor.name,
                     enabled: plugin.enabled,
-                    parameters: plugin.getParameters()
+                    parameters: plugin.getParameters({ sampleRate, commitSampleRate: true })
                 }));
                 
                 this.workletNode.port.postMessage({

@@ -32,6 +32,7 @@ export class UIManager {
         // Double Blind Test controller (created lazily) and URL-reflection gate
         this.doubleBlindTest = null;
         this.urlReflectionEnabled = true;
+        this._pipelineSwitching = false;
 
         // UI elements
         this.errorDisplay = document.getElementById('errorDisplay');
@@ -1145,10 +1146,28 @@ export class UIManager {
     /**
      * Toggle between pipeline A and B
      */
-    togglePipeline() {
-        this.audioManager.togglePipeline();
-        this.updatePipelineToggleButton();
-        this.pipelineManager.updatePipelineUI();
+    async togglePipeline() {
+        if (this._pipelineSwitching) return;
+        this._pipelineSwitching = true;
+        try {
+            await this.audioManager.togglePipelineWithTransition();
+        } finally {
+            this._pipelineSwitching = false;
+        }
+    }
+
+    /**
+     * Switch to a specific pipeline with the same output dip as the A/B toggle.
+     * @param {string} pipeline - 'A' or 'B'
+     */
+    async switchPipelineWithTransition(pipeline) {
+        if (this._pipelineSwitching || this.audioManager.currentPipeline === pipeline) return;
+        this._pipelineSwitching = true;
+        try {
+            await this.audioManager.setCurrentPipelineWithTransition(pipeline);
+        } finally {
+            this._pipelineSwitching = false;
+        }
     }
 
     /**
@@ -1225,9 +1244,7 @@ export class UIManager {
                     break;
                 case 'a':
                     e.preventDefault();
-                    this.audioManager.setCurrentPipeline('A');
-                    this.updatePipelineToggleButton();
-                    this.pipelineManager.updatePipelineUI();
+                    this.switchPipelineWithTransition('A');
                     break;
                 case 'b':
                     e.preventDefault();
@@ -1236,9 +1253,7 @@ export class UIManager {
                         this.togglePipeline();
                     } else {
                         // Switch to B if it exists
-                        this.audioManager.setCurrentPipeline('B');
-                        this.updatePipelineToggleButton();
-                        this.pipelineManager.updatePipelineUI();
+                        this.switchPipelineWithTransition('B');
                     }
                     break;
             }

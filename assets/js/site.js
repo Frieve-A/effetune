@@ -600,7 +600,7 @@
   }
 
   function isLocalizedDocSuffix(suffix) {
-    return /^\/(?:faq|bus-function)\.html$/.test(suffix) || /^\/plugins\/[^/]+\.html$/.test(suffix);
+    return /^\/(?:faq|bus-function|double-blind-test)\.html$/.test(suffix) || /^\/plugins\/[^/]+\.html$/.test(suffix);
   }
 
   function withCurrentLocationParts(path) {

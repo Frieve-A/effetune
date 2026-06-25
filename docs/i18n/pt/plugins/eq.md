@@ -1,6 +1,6 @@
 ---
 title: "Plugins de EQ - EffeTune"
-description: "Plugins de equalização, incluindo Parametric EQ, Graphic EQ, Dynamic EQ, filtros e Tone Control."
+description: "Plugins de equalização, incluindo Parametric EQ, Graphic EQ, Dynamic EQ, Earphone Cable Sim, filtros e Tone Control."
 lang: pt
 ---
 
@@ -16,6 +16,7 @@ Uma coleção de plugins que permite ajustar diferentes aspectos do som da sua m
 - [5Band PEQ](#5band-peq) - Equalizador flexível para moldar graves, médios e agudos
 - [Band Pass Filter](#band-pass-filter) - Foco em frequências específicas
 - [Comb Filter](#comb-filter) - Coloração sonora faseada, oca ou metálica
+- [Earphone Cable Sim](#earphone-cable-sim) - Ajuda a verificar como as mudanças de resposta em frequência causadas por cabos comuns de fones de ouvido costumam ser pequenas
 - [Hi Pass Filter](#hi-pass-filter) - Remove frequências baixas indesejadas com precisão
 - [Lo Pass Filter](#lo-pass-filter) - Remove frequências altas indesejadas com precisão
 - [Loudness Equalizer](#loudness-equalizer) - Correção do balanço de frequência para audição em volumes baixos
@@ -316,6 +317,48 @@ Um filtro pente que adiciona caráter faseado, oco, metálico ou ressonante ao m
 - Marcador de frequência fundamental mostrando o tempo de atraso
 - Controles interativos para ajuste preciso
 - Cálculo da distância de atraso em milímetros
+
+## Earphone Cable Sim
+
+Reproduz as pequenas mudanças de resposta em frequência que aparecem quando um fone de ouvido é alimentado por um amplificador por meio da resistência e da indutância reais do cabo, além de uma impedância de saída diferente de zero. Como a impedância de um fone varia conforme a frequência (ressonâncias do driver e indutância da bobina de voz), a impedância da fonte e do cabo gera mudanças de nível específicas para cada fone. Isso é útil como verificação prática: com cabos de construção e qualidade normais, impedância de saída comum no amplificador e fones que não tenham impedância anormalmente baixa nem outro comportamento incomum, a mudança audível causada por diferenças comuns entre cabos de fones de ouvido costuma ser pequena o bastante para ser desprezível. O efeito é mais forte em fones de baixa impedância com grandes picos de impedância e, em geral, é sutil com amplificadores modernos de baixa impedância de saída.
+
+### Guia de aprimoramento da escuta
+- Avalie a interação com a impedância da fonte:
+  - Aumente Output Z para simular amplificadores valvulados ou saídas de fone de alta impedância
+  - Compare com bypass para ouvir como os graves e as regiões dos picos de impedância mudam
+- Explore o comportamento de fones com múltiplos drivers:
+  - Ative Resonances adicionais para modelar fones de armadura balanceada ou híbridos com vários picos de impedância
+  - Picos de impedância maiores combinados com maior impedância da fonte criam coloração mais forte
+- Simule resistência e indutância do cabo:
+  - Aumente Cable R para simular cabos mais longos ou mais finos, com maior resistência DC
+  - Aumente Cable L para simular cabos de maior indutância; o efeito aparece principalmente no extremo agudo
+  - Cable R se soma à resistência total em série, portanto pode intensificar a interação em toda a faixa
+- Verifique a audibilidade de cabos normais:
+  - Use valores realistas de Cable R e Cable L e compare com bypass para estimar quão pequenas são as diferenças comuns entre cabos
+  - Se a mudança só fica evidente com valores extremos de Output Z ou Cable R, ou com Base Z muito baixa, a comparação sugere que cabos normais dificilmente terão relevância audível com esse fone e esse amplificador
+
+### Parâmetros
+- **Output Z (Ω)** - Impedância de saída do amplificador (0 a 20). Valores abaixo de 1Ω são típicos de amplificadores modernos; valores mais altos tornam a coloração relacionada à impedância mais forte.
+- **Cable R (Ω)** - Resistência DC do cabo (0 a 2). Valores mais altos representam cabos mais longos ou mais finos e se somam à resistência total em série.
+- **Cable L (µH)** - Indutância do cabo (0 a 5). Afeta principalmente a resposta no extremo agudo, especialmente com fones de baixa impedância.
+- **Voice Coil L (mH)** - Indutância da bobina de voz do fone (0,01 a 2). Eleva a impedância da carga em direção às altas frequências e altera a interação nessa região.
+- **Base Z (Ω)** - Impedância nominal do fone nas baixas frequências (4 a 64). Valores mais baixos tornam a impedância da fonte e do cabo mais influente.
+- **Resonances (até 5)** - Cada uma modela um pico de impedância do driver. A primeira fica ativada por padrão; as demais vêm pré-ajustadas para ressonâncias típicas de driver e podem ser ligadas ou desligadas.
+  - **Enable** - Liga ou desliga cada ressonância
+  - **Freq (Hz)** - Frequência de ressonância (20 a 20000)
+  - **Q** - Quão estreito e acentuado é o pico de impedância (0,5 a 10)
+  - **Peak Z (Ω)** - Impedância no pico de ressonância (16 a 116)
+
+### Detalhes Técnicos
+- **Modelo Físico**: Calcula `H(f) = Zload / (Zsource + Zload)`, em que `Zsource` é a impedância de saída somada à resistência/indutância do cabo, e `Zload` é a impedância do fone (impedância base, indutância da bobina de voz e picos de ressonância).
+- **Implementação**: A função de transferência é fatorada e convertida em uma cascata matched-Z de filtros biquad, oferecendo latência zero e comportamento de fase mínima comparável ao dos outros plugins de EQ.
+- **Normalização**: A resposta é normalizada para média de potência de 0 dB (20Hz a 20kHz), para que ligar ou desligar o efeito não mude o volume geral.
+
+### Exibição Visual
+- Gráfico em tempo real da resposta do filtro implementado, em escala logarítmica de frequência
+- Os rótulos da grade cobrem 20Hz a 20kHz; a curva exibida se estende por toda a faixa do gráfico, de 10Hz a 40kHz
+- Curva de resposta verde sobre uma grade escura, com eixo em dB ajustado automaticamente em torno da referência normalizada de 0dB
+- Desvios maiores na curva indicam onde o modelo altera mais o nível de reprodução
 
 ## Hi Pass Filter
 

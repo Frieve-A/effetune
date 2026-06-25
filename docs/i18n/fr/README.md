@@ -141,6 +141,12 @@ Pour utiliser EffeTune avec des lecteurs CD, lecteurs réseau ou autres sources 
    - "A → B" : Copie les paramètres du Pipeline A vers le Pipeline B et bascule vers le Pipeline B
    - "B → A" : Copie les paramètres du Pipeline B vers le Pipeline A et bascule vers le Pipeline A
 
+4. Double Blind Test :
+   - Comparez Pipeline A et Pipeline B à l'écoute sans savoir lequel est en cours de lecture
+   - Lancez un ABX Test pour vérifier si vous pouvez réellement distinguer les deux pipelines, ou un A/B Preference Test pour savoir lequel vous préférez, avec une vérification de la significativité statistique
+   - Ouvrez-le depuis le menu de pipeline **▼** à droite du bouton de basculement AB (également disponible depuis le menu **Fichier** dans l'application de bureau)
+   - [En savoir plus sur Double Blind Test](double-blind-test.md)
+
 ### Sélection d'effets et raccourcis clavier
 
 1. Méthodes de sélection des effets :
@@ -289,6 +295,7 @@ Si le souci persiste, signalez-le sur [GitHub Issues](https://github.com/Frieve-
 | EQ        | 5Band PEQ | Égaliseur 5 bandes flexible pour modeler graves, médiums et aigus | [Détails](plugins/eq.md#5band-peq) |
 | EQ        | Band Pass Filter | Concentrez-vous sur des fréquences spécifiques | [Détails](plugins/eq.md#band-pass-filter) |
 | EQ        | Comb Filter | Ajoute une coloration déphasée, creuse ou métallique | [Détails](plugins/eq.md#comb-filter) |
+| EQ        | Earphone Cable Sim | Permet de vérifier à quel point les variations de réponse en fréquence dues aux câbles d'écouteurs ordinaires restent généralement faibles | [Détails](plugins/eq.md#earphone-cable-sim) |
 | EQ        | Hi Pass Filter | Élimine avec précision les basses indésirables | [Détails](plugins/eq.md#hi-pass-filter) |
 | EQ        | Lo Pass Filter | Élimine avec précision les hautes fréquences indésirables | [Détails](plugins/eq.md#lo-pass-filter) |
 | EQ        | Loudness Equalizer | Correction de l'équilibre fréquentiel pour l'écoute à faible volume | [Détails](plugins/eq.md#loudness-equalizer) |

@@ -191,7 +191,7 @@ Parâmetros avançados / utilitários
 - **Visualização Difference-Frequency** - Um gráfico estático que mostra quais frequências audíveis o ruído ultrassônico produz, com base nas configurações de ruído atuais.
 
 ### Configurações Recomendadas
-- Sutil (padrão): Amount +24 dB, Ultrasonic Level -30 dBFS, Analog Nonlinearity 1.40%, Even Bias 50%.
+- Sutil (padrão): Amount +24 dB, Ultrasonic Level -30 dBFS, Analog Nonlinearity 1.40%, Even Bias 20%, Signal Coupling 150%, Cross Sideband 75%, Scratch Tone 10.5 kHz.
 - IMD apenas no tweeter: IMD Path HPF 2.5 kHz, Signal Coupling 80–150%, Cross Sideband 50–100%, Scratch Tone 9–14 kHz.
 - Efeito evidente: aumente Amount, Ultrasonic Level e Analog Nonlinearity.
 

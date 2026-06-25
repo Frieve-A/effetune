@@ -1,0 +1,117 @@
+.earphone-cable-sim-plugin-ui {
+    position: relative;
+}
+
+.earphone-cable-sim-plugin-ui .earphone-cable-sim-graph {
+    position: relative;
+    width: 1024px;
+    height: 480px;
+    background-color: #1a1a1a;
+}
+
+.earphone-cable-sim-plugin-ui .earphone-cable-sim-grid {
+    position: absolute;
+    width: calc(100% - 40px);
+    height: calc(100% - 40px);
+    left: 20px;
+    top: 20px;
+    pointer-events: none;
+}
+
+.earphone-cable-sim-plugin-ui .earphone-cable-sim-grid line {
+    stroke: #333;
+    stroke-width: 1;
+}
+
+.earphone-cable-sim-plugin-ui .earphone-cable-sim-grid text {
+    fill: #666;
+    font-size: 10px;
+}
+
+.earphone-cable-sim-plugin-ui .earphone-cable-sim-response {
+    position: absolute;
+    width: calc(100% - 40px);
+    height: calc(100% - 40px);
+    left: 20px;
+    top: 20px;
+    pointer-events: none;
+}
+
+.earphone-cable-sim-plugin-ui .earphone-cable-sim-response path {
+    fill: none;
+    stroke: #4CAF50;
+    stroke-width: 2;
+    vector-effect: non-scaling-stroke;
+}
+
+.earphone-cable-sim-plugin-ui .earphone-cable-sim-amp {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: calc(1024px - 20px);
+    padding: 10px 0;
+}
+
+.earphone-cable-sim-plugin-ui .earphone-cable-sim-amp .parameter-row {
+    margin-bottom: 0;
+}
+
+.earphone-cable-sim-plugin-ui .earphone-cable-sim-controls {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px;
+    background-color: #2a2a2a;
+    border-radius: 4px;
+    width: calc(1024px - 20px);
+}
+
+.earphone-cable-sim-plugin-ui .earphone-cable-sim-res {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px;
+    border-radius: 4px;
+    background-color: #333;
+    width: calc(20% - 8px);
+    box-sizing: border-box;
+    min-width: 0;
+}
+
+.earphone-cable-sim-plugin-ui .earphone-cable-sim-res-label {
+    font-size: 12px;
+    color: #ccc;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+}
+
+.earphone-cable-sim-plugin-ui .earphone-cable-sim-res-checkbox {
+    margin: 0;
+}
+
+.earphone-cable-sim-plugin-ui .earphone-cable-sim-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.earphone-cable-sim-plugin-ui .earphone-cable-sim-row-label {
+    color: #ccc;
+    font-size: 12px;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+}
+
+.earphone-cable-sim-plugin-ui .earphone-cable-sim-row-input {
+    width: 48px;
+    padding: 2px 4px;
+    background-color: #222;
+    color: #ccc;
+    border: 1px solid #444;
+    border-radius: 3px;
+    font-size: 12px;
+}

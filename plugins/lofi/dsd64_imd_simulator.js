@@ -8,11 +8,11 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         this.ul = -30.0;  // ul: Ultrasonic Level (dBFS RMS) Range: -48.0 .. -18.0
         this.nc = 0;      // nc: Noise Color (%)             Range: -100 .. +100
         this.an = 1.40;   // an: Analog Nonlinearity (%)     Range: 0.00 .. 10.00
-        this.eb = 50;     // eb: Even Bias (%)               Range: 0 .. 100
-        this.sc = 100;    // sc: Signal Coupling (%)         Range: 0 .. 200
-        this.st = 8.5;    // st: Scratch Tone (kHz)          Range: 3.0 .. 14.0
+        this.eb = 20;     // eb: Even Bias (%)               Range: 0 .. 100
+        this.sc = 150;    // sc: Signal Coupling (%)         Range: 0 .. 200
+        this.st = 10.5;   // st: Scratch Tone (kHz)          Range: 3.0 .. 14.0
         this.nt = 25;     // nt: Noise Texture (%)           Range: 0 .. 100
-        this.cs = 50;     // cs: Cross Sideband (%)          Range: 0 .. 100
+        this.cs = 75;     // cs: Cross Sideband (%)          Range: 0 .. 100
         this.hf = 0.0;    // hf: IMD Path HPF (kHz)          Range: 0.0 .. 8.0 (0.0 = Off; HPFs the IMD input AND the summed IMD residual)
         this.ot = 0.0;    // ot: Output Trim (dB)            Range: -24.0 .. +12.0
 

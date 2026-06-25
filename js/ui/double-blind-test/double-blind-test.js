@@ -186,6 +186,10 @@ export class DoubleBlindTest {
         this._savedCurrentPipeline = this.audioManager.currentPipeline || 'A';
         this._applyGating(true);
         this._buildPanel();
+        // While the test is running, the A / B / X keys switch the active sample
+        // exactly as if the matching switch button had been pressed.
+        this._keydownHandler = (e) => this._onKeyDown(e);
+        document.addEventListener('keydown', this._keydownHandler);
         this._refreshNativeMenu();
     }
 
@@ -193,6 +197,11 @@ export class DoubleBlindTest {
     exit() {
         if (!this.active) return;
         this.active = false;
+
+        if (this._keydownHandler) {
+            document.removeEventListener('keydown', this._keydownHandler);
+            this._keydownHandler = null;
+        }
 
         // Tear down the parallel pipelines and make sure output is audible again.
         try { this.audioManager.disableParallelPipelines(); } catch (_) { /* ignore */ }
@@ -793,6 +802,48 @@ export class DoubleBlindTest {
         if (label === 'B') return this._aIsPhysicalA ? 'B' : 'A';
         // X follows whichever label it matches this trial.
         return this._physicalFor(this._xIsA ? 'A' : 'B');
+    }
+
+    /**
+     * Keyboard shortcuts during a running test: A / B / X (or 1 / 2 / 3 on the
+     * top row or numpad) switch the active sample, mirroring a click on the
+     * matching switch button, while Q / W cast the vote (X-matches-A / Prefer-A
+     * and the B equivalents). Ignored while a text field is focused or when a
+     * modifier key is held, so they don't interfere with typing the tester's
+     * name or normal browser/OS shortcuts.
+     */
+    _onKeyDown(e) {
+        if (!this.active || !this.testRunning) return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        if (e.repeat) return;
+
+        const target = e.target;
+        if (target) {
+            const tag = target.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) return;
+        }
+
+        // Q / W cast the vote for A / B, mirroring a click on the vote buttons.
+        switch (e.key) {
+            case 'q': case 'Q': e.preventDefault(); this._vote('A'); return;
+            case 'w': case 'W': e.preventDefault(); this._vote('B'); return;
+        }
+
+        // Accept both the A/B/X letters and the 1/2/3 keys (top-row and numpad,
+        // which both report '1'/'2'/'3' in e.key) so the active sample can be
+        // switched without moving the hand across the keyboard.
+        let label = null;
+        switch (e.key) {
+            case 'a': case 'A': case '1': label = 'A'; break;
+            case 'b': case 'B': case '2': label = 'B'; break;
+            case 'x': case 'X': case '3': label = 'X'; break;
+            default: return;
+        }
+        // X is only meaningful in ABX tests; let _switchToLabel reject it otherwise.
+        if (label === 'X' && this.testType !== 'ABX') return;
+
+        e.preventDefault();
+        this._switchToLabel(label);
     }
 
     _switchToLabel(label) {

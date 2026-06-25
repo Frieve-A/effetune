@@ -141,6 +141,12 @@
    - "A → B": انسخ إعدادات Pipeline A إلى Pipeline B وانتقل إلى Pipeline B
    - "B → A": انسخ إعدادات Pipeline B إلى Pipeline A وانتقل إلى Pipeline A
 
+4. Double Blind Test:
+   - قارن Pipeline A وPipeline B بالاستماع من دون معرفة أي pipeline قيد التشغيل
+   - استخدم ABX Test للتحقق مما إذا كنت تميّز فعلًا بين الـ pipelines، أو A/B Preference Test لمعرفة أيهما تفضّل، مع فحص الدلالة الإحصائية
+   - افتحه من قائمة ▼ الخاصة بالـ pipeline على يمين زر تبديل AB (ومتاح أيضًا من قائمة **ملف** في تطبيق سطح المكتب)
+   - [المزيد عن Double Blind Test](double-blind-test.md)
+
 ### اختيار التأثيرات واختصارات لوحة المفاتيح
 
 1. طرق اختيار التأثيرات:
@@ -289,6 +295,7 @@
 | EQ | 5Band PEQ | معادل مرن من 5 نطاقات لتشكيل الجهير والوسط والعالي | [تفاصيل](plugins/eq.md#5band-peq) |
 | EQ | Band Pass Filter | يركز على ترددات محددة | [تفاصيل](plugins/eq.md#band-pass-filter) |
 | EQ | Comb Filter | يضيف لونًا طوريًا أو أجوف أو معدنيًا | [تفاصيل](plugins/eq.md#comb-filter) |
+| EQ | Earphone Cable Sim | يساعد على التحقق من صغر تغيرات الاستجابة الترددية الناتجة عادةً عن كابلات سماعات الأذن العادية | [تفاصيل](plugins/eq.md#earphone-cable-sim) |
 | EQ | Hi Pass Filter | يزيل الترددات المنخفضة غير المرغوبة بدقة | [تفاصيل](plugins/eq.md#hi-pass-filter) |
 | EQ | Lo Pass Filter | يزيل الترددات العالية غير المرغوبة بدقة | [تفاصيل](plugins/eq.md#lo-pass-filter) |
 | EQ | Loudness Equalizer | يصحح توازن الترددات عند الاستماع بمستوى منخفض | [تفاصيل](plugins/eq.md#loudness-equalizer) |

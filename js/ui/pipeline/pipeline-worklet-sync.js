@@ -22,6 +22,18 @@ export class PipelineWorkletSync {
         return Array.isArray(this.audioManager.pipeline) ? this.audioManager.pipeline : [];
     }
 
+    getAudioSampleRate() {
+        return this.audioManager?.contextManager?.audioContext?.sampleRate ??
+            this.audioManager?.audioContext?.sampleRate ??
+            null;
+    }
+
+    getPluginParameters(plugin) {
+        return typeof plugin.getParameters === 'function'
+            ? plugin.getParameters({ sampleRate: this.getAudioSampleRate(), commitSampleRate: true })
+            : {};
+    }
+
     /**
      * Update all plugins in the worklet
      */
@@ -30,7 +42,7 @@ export class PipelineWorkletSync {
             this.ensureProcessorsRegistered();
             // Prepare plugin data
             const plugins = this.getCurrentPipeline().map(plugin => {
-                const parameters = plugin.getParameters();
+                const parameters = this.getPluginParameters(plugin);
                 
                 return {
                     id: plugin.id,
@@ -59,7 +71,7 @@ export class PipelineWorkletSync {
     updateWorkletPlugin(plugin) {
         if (window.workletNode) {
             this.ensureProcessorsRegistered(plugin);
-            const parameters = plugin.getParameters();
+            const parameters = this.getPluginParameters(plugin);
             
             window.workletNode.port.postMessage({
                 type: 'updatePlugin',
@@ -89,7 +101,7 @@ export class PipelineWorkletSync {
             this.ensureProcessorsRegistered();
             // Prepare plugin data
             const plugins = this.getCurrentPipeline().map(plugin => {
-                const parameters = plugin.getParameters();
+                const parameters = this.getPluginParameters(plugin);
                 
                 return {
                     id: plugin.id,
@@ -118,7 +130,7 @@ export class PipelineWorkletSync {
     sendParameterUpdate(plugin) {
         if (window.workletNode) {
             this.ensureProcessorsRegistered(plugin);
-            const parameters = plugin.getParameters();
+            const parameters = this.getPluginParameters(plugin);
             window.workletNode.port.postMessage({
                 type: 'updatePlugin',
                 plugin: {
@@ -140,7 +152,7 @@ export class PipelineWorkletSync {
      * @returns {Object} Prepared plugin data
      */
     preparePluginData(plugin) {
-        const parameters = plugin.getParameters();
+        const parameters = this.getPluginParameters(plugin);
         
         return {
             id: plugin.id,

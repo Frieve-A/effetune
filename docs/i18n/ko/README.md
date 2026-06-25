@@ -141,6 +141,12 @@ CD 플레이어, 네트워크 플레이어 또는 기타 물리적 소스를 사
    - "A → B": Pipeline A의 설정을 Pipeline B로 복사하고 Pipeline B로 전환합니다
    - "B → A": Pipeline B의 설정을 Pipeline A로 복사하고 Pipeline A로 전환합니다
 
+4. **Double Blind Test:**
+   - 무엇이 재생 중인지 모르는 상태에서 Pipeline A와 Pipeline B를 귀로 비교합니다
+   - ABX Test로 두 Pipeline을 실제로 구분할 수 있는지 확인하거나, A/B Preference Test로 어느 쪽을 더 선호하는지 판단하고 통계적 유의성도 확인할 수 있습니다
+   - AB 토글 버튼 오른쪽의 ▼ Pipeline 메뉴에서 엽니다(데스크톱 앱에서는 파일 메뉴에서도 열 수 있습니다)
+   - [Double Blind Test 자세히 보기](double-blind-test.md)
+
 ### 이펙트 선택 및 키보드 단축키
 
 1. **이펙트 선택 방법:**
@@ -293,6 +299,7 @@ CD 플레이어, 네트워크 플레이어 또는 기타 물리적 소스를 사
 | EQ | 5Band PEQ | 저역, 중역, 고역을 유연하게 다듬는 5밴드 이퀄라이저 | [세부 정보](plugins/eq.md#5band-peq) |
 | EQ | Band Pass Filter | 특정 주파수에 집중 | [세부 정보](plugins/eq.md#band-pass-filter) |
 | EQ | Comb Filter | 위상감, 빈 공간감, 금속성 색채를 추가 | [세부 정보](plugins/eq.md#comb-filter) |
+| EQ | Earphone Cable Sim | 일반적인 이어폰 케이블 차이로 생기는 주파수 응답 변화가 대개 얼마나 작은지 확인 | [세부 정보](plugins/eq.md#earphone-cable-sim) |
 | EQ | Hi Pass Filter | 불필요한 저주파를 정밀하게 제거 | [세부 정보](plugins/eq.md#hi-pass-filter) |
 | EQ | Lo Pass Filter | 불필요한 고주파를 정밀하게 제거 | [세부 정보](plugins/eq.md#lo-pass-filter) |
 | EQ | Loudness Equalizer | 낮은 볼륨 청취를 위한 주파수 밸런스 보정 | [세부 정보](plugins/eq.md#loudness-equalizer) |

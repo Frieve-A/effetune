@@ -191,7 +191,7 @@ lang: zh
 - **Difference-Frequency 视图** - 一张静态图,根据当前噪声设置,展示超声噪声会产生哪些可闻频率。
 
 ### 推荐设置
-- 细微(默认):Amount +24 dB,Ultrasonic Level -30 dBFS,Analog Nonlinearity 1.40%,Even Bias 50%。
+- 细微(默认):Amount +24 dB,Ultrasonic Level -30 dBFS,Analog Nonlinearity 1.40%,Even Bias 20%,Signal Coupling 150%,Cross Sideband 75%,Scratch Tone 10.5 kHz。
 - 仅高音单元 IMD:IMD Path HPF 2.5 kHz,Signal Coupling 80–150%,Cross Sideband 50–100%,Scratch Tone 9–14 kHz。
 - 明显效果:提高 Amount、Ultrasonic Level 和 Analog Nonlinearity。
 

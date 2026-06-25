@@ -8,7 +8,7 @@ lang: en
 
 ### Version 1.66.0
 - Added double blind test function
-- Added DSD64 IMD Simulator effect
+- Added DSD64 IMD Simulator and Earphone Cable Sim effects
 - Various minor improvements
 
 ### Version 1.65.1 (May 31, 2026)

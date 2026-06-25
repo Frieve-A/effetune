@@ -113,7 +113,7 @@ export class OfflineProcessor {
                         continue;
                     }
                     
-                    const pluginParameters = this.getPluginParameters(plugin);
+                    const pluginParameters = this.getPluginParameters(plugin, sampleRate);
                     const inputBus = this.getOfflineBusIndex(pluginParameters, plugin, 'inputBus');
                     const outputBus = this.getOfflineBusIndex(pluginParameters, plugin, 'outputBus');
 
@@ -152,7 +152,7 @@ export class OfflineProcessor {
                         continue;
                     }
 
-                    const pluginParameters = this.getPluginParameters(plugin);
+                    const pluginParameters = this.getPluginParameters(plugin, sampleRate);
                     const inputBus = this.getOfflineBusIndex(pluginParameters, plugin, 'inputBus');
                     const outputBus = this.getOfflineBusIndex(pluginParameters, plugin, 'outputBus');
                     const channel = pluginParameters.channel ?? plugin.channel ?? null;
@@ -320,8 +320,8 @@ export class OfflineProcessor {
         return outputChannelCount;
     }
 
-    getPluginParameters(plugin) {
-        return typeof plugin.getParameters === 'function' ? plugin.getParameters() : {};
+    getPluginParameters(plugin, sampleRate = null) {
+        return typeof plugin.getParameters === 'function' ? plugin.getParameters({ sampleRate }) : {};
     }
 
     getOfflineBusIndex(parameters, plugin, property) {

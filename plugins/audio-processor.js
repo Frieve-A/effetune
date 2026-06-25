@@ -498,6 +498,10 @@ class PluginProcessor extends AudioWorkletProcessor {
                 pluginContext = {}; // Initialize empty context
                 pluginContexts.set(plugin.id, pluginContext);
             }
+            if (pluginContext.reportedSampleRate !== sampleRate) {
+                pluginContext.reportedSampleRate = sampleRate;
+                port.postMessage({ pluginId: plugin.id, sampleRate });
+            }
             // Prepare the context object for the processor call.
             // Avoid spreading unless necessary; pass specific needed properties.
             // Here, we keep the original structure for compatibility.

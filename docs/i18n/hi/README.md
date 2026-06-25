@@ -141,6 +141,12 @@ CD प्लेयर, नेटवर्क प्लेयर या अन्
    - "A → B": Pipeline A की सेटिंग्स Pipeline B में कॉपी करता है और Pipeline B पर स्विच करता है
    - "B → A": Pipeline B की सेटिंग्स Pipeline A में कॉपी करता है और Pipeline A पर स्विच करता है
 
+4. Double Blind Test:
+   - Pipeline A और Pipeline B को यह जाने बिना सुनकर तुलना करें कि कौन-सी pipeline चल रही है
+   - ABX Test से जांचें कि आप दोनों pipelines को सचमुच अलग पहचान सकते हैं या नहीं, या A/B Preference Test से पता करें कि आपको कौन-सी पसंद है; परिणाम में statistical significance भी दिखाई जाती है
+   - AB toggle button के दाईं ओर ▼ pipeline menu से खोलें (डेस्कटॉप ऐप में **फ़ाइल** menu से भी उपलब्ध)
+   - [Double Blind Test के बारे में अधिक जानकारी](double-blind-test.md)
+
 ### इफेक्ट चयन और कीबोर्ड शॉर्टकट्स
 
 1. इफेक्ट चयन विधियां:
@@ -289,6 +295,7 @@ CD प्लेयर, नेटवर्क प्लेयर या अन्
 | EQ        | 5Band PEQ | bass, mids और treble shape करने के लिए flexible 5-band equalizer | [विवरण](plugins/eq.md#5band-peq) |
 | EQ        | Band Pass Filter | specific frequencies पर focus करता है | [विवरण](plugins/eq.md#band-pass-filter) |
 | EQ        | Comb Filter | फेज़िंग जैसी, खोखली या metallic coloration जोड़ता है | [विवरण](plugins/eq.md#comb-filter) |
+| EQ        | Earphone Cable Sim | सामान्य ईयरफोन केबल से होने वाले आवृत्ति-प्रतिक्रिया बदलाव आम तौर पर कितने छोटे रहते हैं, यह जांचने में मदद करता है | [विवरण](plugins/eq.md#earphone-cable-sim) |
 | EQ        | Hi Pass Filter | unwanted low frequencies को precision से हटाता है | [विवरण](plugins/eq.md#hi-pass-filter) |
 | EQ        | Lo Pass Filter | unwanted high frequencies को precision से हटाता है | [विवरण](plugins/eq.md#lo-pass-filter) |
 | EQ        | Loudness Equalizer | low-volume listening के लिए frequency balance correction | [विवरण](plugins/eq.md#loudness-equalizer) |

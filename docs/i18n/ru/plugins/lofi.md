@@ -191,7 +191,7 @@ lang: ru
 - **Difference-Frequency view** - Статический график, показывающий, какие слышимые частоты порождает ультразвуковой шум на основе текущих настроек шума.
 
 ### Рекомендуемые настройки
-- Тонко (по умолчанию): Amount +24 dB, Ultrasonic Level -30 dBFS, Analog Nonlinearity 1.40%, Even Bias 50%.
+- Тонко (по умолчанию): Amount +24 dB, Ultrasonic Level -30 dBFS, Analog Nonlinearity 1.40%, Even Bias 20%, Signal Coupling 150%, Cross Sideband 75%, Scratch Tone 10.5 kHz.
 - IMD только от твитера: IMD Path HPF 2.5 kHz, Signal Coupling 80–150%, Cross Sideband 50–100%, Scratch Tone 9–14 kHz.
 - Явный эффект: повысьте Amount, Ultrasonic Level и Analog Nonlinearity.
 

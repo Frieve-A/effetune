@@ -124,8 +124,9 @@ export class PipelineProcessor {
      * @returns {Array} Array of plugin data objects
      */
     prepareSectionAwarePluginData() {
+        const sampleRate = this.contextManager?.audioContext?.sampleRate ?? null;
         return this.pipeline.map(plugin => {
-            const params = plugin.getParameters();
+            const params = plugin.getParameters({ sampleRate, commitSampleRate: true });
             
             return {
                 id: plugin.id,

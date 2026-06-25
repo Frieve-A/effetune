@@ -141,6 +141,12 @@ Para usar EffeTune con reproductores de CD, reproductores de red u otras fuentes
    - "A → B": Copia la configuración del Pipeline A al Pipeline B y cambia al Pipeline B
    - "B → A": Copia la configuración del Pipeline B al Pipeline A y cambia al Pipeline A
 
+4. Double Blind Test:
+   - Compara Pipeline A y Pipeline B de oído sin saber cuál se está reproduciendo
+   - Ejecuta un ABX Test para comprobar si realmente puedes distinguir los dos pipelines, o un A/B Preference Test para saber cuál prefieres, con una comprobación de significación estadística
+   - Ábrelo desde el menú de pipeline **▼** situado a la derecha del botón de alternancia AB (también disponible desde el menú **Archivo** en la aplicación de escritorio)
+   - [Más información sobre Double Blind Test](double-blind-test.md)
+
 ### Selección de Efectos y Atajos de Teclado
 
 1. Métodos de Selección de Efectos:
@@ -289,6 +295,7 @@ Si el problema persiste, repórtalo a través de [GitHub Issues](https://github.
 | EQ        | 5Band PEQ | Ecualizador flexible de 5 bandas para moldear graves, medios y agudos | [Detalles](plugins/eq.md#5band-peq) |
 | EQ        | Band Pass Filter | Enfócate en frecuencias específicas | [Detalles](plugins/eq.md#band-pass-filter) |
 | EQ        | Comb Filter | Añade una coloración faseada, hueca o metálica | [Detalles](plugins/eq.md#comb-filter) |
+| EQ        | Earphone Cable Sim | Ayuda a comprobar lo pequeñas que suelen ser las variaciones de respuesta en frecuencia causadas por cables de auriculares normales | [Detalles](plugins/eq.md#earphone-cable-sim) |
 | EQ        | Hi Pass Filter | Elimina con precisión las frecuencias bajas no deseadas | [Detalles](plugins/eq.md#hi-pass-filter) |
 | EQ        | Lo Pass Filter | Elimina con precisión las frecuencias altas no deseadas | [Detalles](plugins/eq.md#lo-pass-filter) |
 | EQ        | Loudness Equalizer | Corrección del equilibrio de frecuencias para escucha a bajo volumen | [Detalles](plugins/eq.md#loudness-equalizer) |
