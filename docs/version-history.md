@@ -6,7 +6,7 @@ lang: en
 
 # Version History
 
-### Version 1.66.0
+### Version 1.66.0 (Jun 27, 2026)
 - Added double blind test function
 - Added DSD64 IMD Simulator and Earphone Cable Sim effects
 - Various minor improvements
