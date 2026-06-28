@@ -74,6 +74,7 @@
       return heading.textContent.trim().length > 0;
     });
 
+    const tocLinksByHeading = new Map();
     headings.forEach((heading) => {
       if (!heading.id) {
         heading.id = slugify(heading.textContent);
@@ -83,6 +84,7 @@
       item.textContent = heading.textContent;
       item.className = `toc-level-${heading.tagName.toLowerCase().replace("h", "")}`;
       toc.appendChild(item);
+      tocLinksByHeading.set(heading, item);
     });
 
     if (headings.length === 0 && toc.parentElement) {
@@ -93,7 +95,7 @@
       entries.forEach((entry) => {
         if (!entry.isIntersecting) return;
         toc.querySelectorAll("a").forEach((link) => link.classList.remove("is-active"));
-        const active = toc.querySelector(`a[href="#${escapeCss(entry.target.id)}"]`);
+        const active = tocLinksByHeading.get(entry.target);
         if (active) active.classList.add("is-active");
       });
     }, { rootMargin: "-20% 0px -70% 0px", threshold: 0.01 });
@@ -200,7 +202,13 @@
 
     try {
       const parsed = JSON.parse(dataElement.textContent);
-      return Array.isArray(parsed) ? parsed.filter((language) => language.code && language.url) : [];
+      if (!Array.isArray(parsed)) return [];
+
+      return parsed
+        .filter((language) => {
+          return language && typeof language === "object" && isLanguageCode(language.code) && typeof language.url === "string";
+        })
+        .map((language) => ({ ...language, code: language.code.toLowerCase() }));
     } catch (_error) {
       return [];
     }
@@ -374,7 +382,7 @@
   function createSearchResult(entry, terms) {
     const link = document.createElement("a");
     link.className = "search-result";
-    link.href = entry.url;
+    setInternalHref(link, entry.url);
 
     const title = document.createElement("span");
     title.className = "search-result-title";
@@ -480,8 +488,9 @@
         const nextLanguage = toSupportedLanguageCode(select.value);
         writeStoredLanguage(nextLanguage);
         const target = getLanguageTarget(nextLanguage);
-        if (target) {
-          window.location.assign(withCurrentLocationParts(target));
+        const targetUrl = target ? withCurrentLocationParts(target) : null;
+        if (targetUrl) {
+          window.location.assign(targetUrl);
         } else {
           select.value = nextLanguage;
         }
@@ -492,7 +501,7 @@
       const languageCode = toSupportedLanguageCode(link.getAttribute("lang"));
       const target = getLanguageTarget(languageCode);
       if (target) {
-        link.setAttribute("href", target);
+        setInternalHref(link, target);
       }
       link.addEventListener("click", () => {
         writeStoredLanguage(languageCode);
@@ -541,7 +550,11 @@
   function toSupportedLanguageCode(language, useDefault = true) {
     if (!language) return useDefault ? defaultLanguage : null;
 
-    const normalized = String(language).toLowerCase().replace("_", "-");
+    const normalized = String(language).toLowerCase().replace(/_/g, "-");
+    if (!/^[a-z]{2}(?:-[a-z0-9]+)*$/.test(normalized)) {
+      return useDefault ? defaultLanguage : null;
+    }
+
     if (languageCodes.has(normalized)) return normalized;
 
     const baseLanguage = normalized.split("-")[0];
@@ -554,14 +567,22 @@
     const target = getLanguageTarget(language);
     if (!target) return;
 
-    const targetPath = normalizePath(new URL(target, window.location.origin).pathname);
+    const targetUrl = toSameOriginUrl(target, window.location.origin);
+    if (!targetUrl) return;
+
+    const targetPath = normalizePath(targetUrl.pathname);
     if (targetPath === normalizePath(window.location.pathname)) return;
 
-    window.location.replace(withCurrentLocationParts(target));
+    const targetWithLocationParts = withCurrentLocationParts(targetUrl.href);
+    if (targetWithLocationParts) {
+      window.location.replace(targetWithLocationParts);
+    }
   }
 
   function getLanguageTarget(language) {
     const targetLanguage = toSupportedLanguageCode(language);
+    if (!isLanguageCode(targetLanguage)) return null;
+
     const pageInfo = getLocalizablePageInfo(window.location.pathname);
     if (!pageInfo.localizable) return null;
 
@@ -577,6 +598,9 @@
     const localizedMatch = path.match(/^\/docs\/i18n\/([a-z]{2})(\/.*)?$/);
 
     if (localizedMatch) {
+      if (!languageCodes.has(localizedMatch[1])) {
+        return { localizable: false };
+      }
       const suffix = localizedMatch[2] || "/";
       if (suffix === "/") {
         return { localizable: true, englishPath: "/", localizedSuffix: "/" };
@@ -600,11 +624,13 @@
   }
 
   function isLocalizedDocSuffix(suffix) {
-    return /^\/(?:faq|bus-function|double-blind-test)\.html$/.test(suffix) || /^\/plugins\/[^/]+\.html$/.test(suffix);
+    return /^\/(?:faq|bus-function|double-blind-test)\.html$/.test(suffix) || /^\/plugins\/[a-z0-9-]+\.html$/.test(suffix);
   }
 
   function withCurrentLocationParts(path) {
-    const url = new URL(path, window.location.origin);
+    const url = toSameOriginUrl(path, window.location.origin);
+    if (!url) return null;
+
     url.search = window.location.search;
     url.hash = window.location.hash;
     return url.href;
@@ -631,7 +657,7 @@
       rewritten = path.slice(0, -".md".length) + ".html";
     }
 
-    link.setAttribute("href", rewritten + hash);
+    setInternalHref(link, rewritten + hash);
   }
 
   function normalizePath(path) {
@@ -642,16 +668,28 @@
     return text
       .trim()
       .toLowerCase()
-      .replace(/<[^>]+>/g, "")
       .replace(/[^\p{Letter}\p{Number}]+/gu, "-")
       .replace(/^-+|-+$/g, "")
       .slice(0, 80) || "section";
   }
 
-  function escapeCss(value) {
-    if (window.CSS && typeof window.CSS.escape === "function") {
-      return window.CSS.escape(value);
+  function isLanguageCode(value) {
+    return typeof value === "string" && /^[a-z]{2}$/i.test(value);
+  }
+
+  function setInternalHref(link, path) {
+    const url = toSameOriginUrl(path);
+    if (url) {
+      link.href = url.href;
     }
-    return value.replace(/"/g, '\\"');
+  }
+
+  function toSameOriginUrl(path, base = window.location.href) {
+    try {
+      const url = new URL(path, base);
+      return url.origin === window.location.origin ? url : null;
+    } catch (_error) {
+      return null;
+    }
   }
 })();
