@@ -128,9 +128,8 @@ export function applySerializedState(plugin, state) {
         // Check for legacy 'All' value (was equivalent to null before multi-channel support)
         if (chValue === null) return null;
         
-        // Keep 'L', 'R', 'A', and '3'-'8' as is
-        if (chValue === 'L' || chValue === 'R' || chValue === 'A' || 
-            (typeof chValue === 'string' && chValue >= '3' && chValue <= '8')) {
+        // Keep normalized aliases as is. Numeric channels are handled above.
+        if (chValue === 'L' || chValue === 'R' || chValue === 'A') {
             return chValue;
         }
         

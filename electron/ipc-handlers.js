@@ -1,8 +1,9 @@
-const { app, ipcMain, shell, systemPreferences, Menu } = require('electron');
+const { app, ipcMain, shell, systemPreferences, Menu, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const constants = require('./constants');
 const config = require('./config');
+const { registerClipboardIpcHandlers } = require('./clipboard-ipc');
 
 // Import file handlers
 const fileHandlers = require('./file-handlers');
@@ -105,17 +106,7 @@ function registerIpcHandlers() {
     return await fileHandlers.readFile(filePath, binary);
   });
 
-  // Read clipboard text via Electron's native clipboard. The web Clipboard API
-  // (navigator.clipboard.readText) is denied on file:// pages by the permission
-  // handler, so renderers use this for paste (e.g. pasting a share URL).
-  ipcMain.handle('read-clipboard-text', () => {
-    try {
-      return require('electron').clipboard.readText();
-    } catch (error) {
-      console.error('Error reading clipboard text:', error);
-      return '';
-    }
-  });
+  registerClipboardIpcHandlers(ipcMain, clipboard);
 
   ipcMain.handle('read-file-as-buffer', async (event, filePath) => {
     return await fileHandlers.readFileAsBuffer(filePath);

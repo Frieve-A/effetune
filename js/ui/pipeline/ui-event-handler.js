@@ -4,6 +4,7 @@
 import { PipelineCore } from './pipeline-core.js';
 import { PluginListManager } from '../plugin-list-manager.js'; // Temporary path
 import { readTextFromClipboard } from '../../utils/clipboard-utils.js';
+import { handlePipelineKeyboardShortcut, handlePipelinePasteEvent } from './keyboard-shortcut-handler.js';
 
 const PLAYBACK_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm'];
 const PLAYBACK_AUDIO_EXTENSION_PATTERN = new RegExp(`\\.(${PLAYBACK_AUDIO_EXTENSIONS.join('|')})$`, 'i');
@@ -51,100 +52,21 @@ export class UIEventHandler {
     initKeyboardEvents() {
         // Handle keyboard shortcuts
         document.addEventListener('keydown', (e) => {
-            // Handle Ctrl+Z (Undo) and Ctrl+Y (Redo)
-            if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
-                // Skip Undo/Redo if focus is on an input/textarea element, but allow for range inputs (sliders)
-                if (!e.target.matches('input, textarea') || e.target.matches('input[type="range"]')) {
-                    if (e.key === 'z') {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        this.historyManager.undo();
-                        return;
-                    } else if (e.key === 'y') {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        this.historyManager.redo();
-                        return;
-                    }
-                }
-            }
-            
-            // Handle Ctrl+S and Ctrl+Shift+S first
-            // Always handle Ctrl+S regardless of focus
-            if (e.key && e.key.toLowerCase() === 's' && (e.ctrlKey || e.metaKey)) {
-                e.preventDefault();
-                e.stopPropagation();
-                
-                // Focus and select preset input text
-                this.pipelineManager.presetManager.presetSelect.focus();
-                this.pipelineManager.presetManager.presetSelect.select();
-                
-                // If not Shift key and input has value, save preset
-                if (!e.shiftKey && this.pipelineManager.presetManager.presetSelect.value.trim()) {
-                    this.pipelineManager.presetManager.savePreset(this.pipelineManager.presetManager.presetSelect.value.trim());
-                }
-                return;
-            }
+            handlePipelineKeyboardShortcut(e, {
+                historyManager: this.historyManager,
+                pipelineManager: this.pipelineManager,
+                core: this.core,
+                clipboardManager: this.clipboardManager,
+                readTextFromClipboard,
+                uiManager: window.uiManager,
+                documentRef: document
+            });
+        });
 
-            // Handle Escape key for preset select first
-            if (e.key === 'Escape' && e.target === this.pipelineManager.presetManager.presetSelect) {
-                this.pipelineManager.presetManager.presetSelect.value = '';
-                return;
-            }
-
-            // Skip other shortcuts if focus is on an input/textarea element
-            if (e.target.matches('input, textarea')) {
-                return;
-            }
-
-            if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
-                // Select all plugins
-                e.preventDefault();
-                this.core.selectedPlugins.clear();
-                this.pipelineManager.audioManager.pipeline.forEach(plugin => {
-                    this.core.selectedPlugins.add(plugin);
-                });
-                this.core.updateSelectionClasses();
-            } else if (e.key === 'x' && (e.ctrlKey || e.metaKey)) {
-                // Cut selected plugin settings to clipboard (copy + delete)
-                e.preventDefault();
-                this.clipboardManager.cutSelectedPlugins();
-            } else if (e.key === 'c' && (e.ctrlKey || e.metaKey)) {
-                // Copy selected plugin settings to clipboard
-                e.preventDefault();
-                this.clipboardManager.copySelectedPluginsToClipboard();
-            } else if (e.key === 'Escape') {
-                // Clear preset select text if it's focused
-                if (document.activeElement === this.pipelineManager.presetManager.presetSelect) {
-                    this.pipelineManager.presetManager.presetSelect.value = '';
-                    return;
-                }
-                
-                this.core.selectedPlugins.clear();
-                // Update only the selection state classes
-                this.core.pipelineList.querySelectorAll('.pipeline-item').forEach(item => {
-                    item.classList.remove('selected');
-                });
-            } else if (e.key === 'v' && (e.ctrlKey || e.metaKey)) {
-                // Paste plugin settings from clipboard
-                readTextFromClipboard()
-                    .then(text => {
-                        if (text) this.clipboardManager.handlePaste(text);
-                    })
-                    .catch(err => {
-                        // Failed to read clipboard
-                        if (window.uiManager) {
-                            window.uiManager.setError('error.failedToReadClipboard', true);
-                        }
-                    });
-            } else if (e.key === 'Delete') {
-                // Prevent default behavior and stop propagation to avoid repeated key events in Electron
-                e.preventDefault();
-                e.stopPropagation();
-                
-                // Use the common delete function
-                this.core.deleteSelectedPlugins();
-            }
+        document.addEventListener('paste', (e) => {
+            handlePipelinePasteEvent(e, {
+                clipboardManager: this.clipboardManager
+            });
         });
     }
     
@@ -307,7 +229,7 @@ export class UIEventHandler {
                     
                     // Check for preset files
                     const presetFiles = files.filter(file =>
-                        file.name.toLowerCase().endsWith('.effetune_preset')
+                        (file.name || '').toLowerCase().endsWith('.effetune_preset')
                     );
                     
                     // Check for music files

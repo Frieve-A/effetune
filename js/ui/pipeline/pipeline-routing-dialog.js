@@ -60,7 +60,9 @@ export class PipelineRoutingDialog {
     createDialogHeader() {
         const header = document.createElement('div');
         header.className = 'routing-dialog-header';
-        header.textContent = window.uiManager.t('ui.busRouting');
+        header.textContent = window.uiManager
+            ? window.uiManager.t('ui.busRouting')
+            : 'Bus Routing';
         
         // Create close button
         const closeBtn = document.createElement('button');
@@ -232,7 +234,8 @@ export class PipelineRoutingDialog {
             // Electron environment: Root cause analysis and mathematical correction
             
             // Get current CSS zoom level from document.body.style.zoom
-            const cssZoom = parseFloat(document.body.style.zoom || '1');
+            const parsedCssZoom = parseFloat(document.body.style.zoom || '1');
+            const cssZoom = Number.isFinite(parsedCssZoom) && parsedCssZoom > 0 ? parsedCssZoom : 1;
             
             // Get window scroll values (these are affected by CSS zoom)
             const scrollX = window.scrollX || window.pageXOffset || document.documentElement.scrollLeft;

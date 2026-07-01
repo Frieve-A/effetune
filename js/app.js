@@ -4,6 +4,12 @@ import { UIManager } from './ui-manager.js';
 import { electronIntegration } from './electron-integration.js';
 import { applySerializedState } from './utils/serialization-utils.js';
 import { startRendererWatchdogHeartbeat } from './electron-watchdog.js';
+import {
+    createFirstLaunchPromise,
+    handleFirstLaunchPromise,
+    registerPipelineStateCloseHandler,
+    startApplication
+} from './app-bootstrap.js';
 
 // Make electronIntegration globally accessible first
 window.electronIntegration = electronIntegration;
@@ -49,13 +55,7 @@ async function writePipelineStateToFile() {
 }
 
 // Set up listener for pipeline state request from main process (for window close)
-if (window.electronAPI && window.electronAPI.onRequestPipelineStateForClose) {
-    window.electronAPI.onRequestPipelineStateForClose(() => {
-        const pipelineState = getPipelineStateForSave();
-        // Send the pipeline state back to main process (even if null, to signal completion)
-        window.electronAPI.sendPipelineStateForClose(pipelineState);
-    });
-}
+registerPipelineStateCloseHandler(getPipelineStateForSave);
 
 // Function to load pipeline state from file when in Electron environment
 async function loadPipelineState() {
@@ -133,48 +133,10 @@ document.head.appendChild(tempStyle);
 // Check if this is the first launch (for audio workaround) - async
 
 // Initialize with a promise that will resolve with the first launch status
-let isFirstLaunchPromise;
-
-if (window.electronAPI && window.electronAPI.isFirstLaunch) {
-    try {
-        // Wrap in Promise.resolve to ensure we get a Promise
-        isFirstLaunchPromise = Promise.resolve(window.electronAPI.isFirstLaunch())
-            .catch(error => {
-                return false;
-            });
-    } catch (error) {
-        isFirstLaunchPromise = Promise.resolve(false);
-    }
-} else {
-    // For web version, always resolve to false immediately
-    isFirstLaunchPromise = Promise.resolve(false);
-}
+let isFirstLaunchPromise = createFirstLaunchPromise();
 
 // Handle the first launch status when it resolves
-isFirstLaunchPromise.then(isFirstLaunch => {
-    if (!isFirstLaunch) {
-        // If not first launch, remove the temporary hide style
-        if (tempStyle.parentNode) {
-            tempStyle.parentNode.removeChild(tempStyle);
-        }
-    } else {
-        // If first launch, keep the UI hidden
-        // Replace temporary style with permanent one
-        tempStyle.id = 'first-launch-style';
-    }
-    
-    // Store the first launch status for other components
-    window.isFirstLaunchConfirmed = isFirstLaunch;
-    window.isFirstLaunch = isFirstLaunch;
-}).catch(error => {
-    console.error('Error checking launch status:', error);
-    // In case of error, show the UI
-    if (tempStyle.parentNode) {
-        tempStyle.parentNode.removeChild(tempStyle);
-    }
-    window.isFirstLaunchConfirmed = false;
-    window.isFirstLaunch = false;
-});
+handleFirstLaunchPromise(isFirstLaunchPromise, tempStyle);
 
 // Configuration for initialization wait times (in milliseconds)
 const INITIALIZATION_CONFIG = {
@@ -184,13 +146,22 @@ const INITIALIZATION_CONFIG = {
 };
 
 class App {
-    constructor() {
+    constructor(dependencies = {}) {
+        const PluginManagerClass = dependencies.PluginManagerClass || PluginManager;
+        const AudioManagerClass = dependencies.AudioManagerClass || AudioManager;
+        const UIManagerClass = dependencies.UIManagerClass || UIManager;
+
         // Initialize core components
-        this.pluginManager = new PluginManager();
-        this.audioManager = new AudioManager();
+        this.pluginManager = dependencies.pluginManager || new PluginManagerClass();
+        this.audioManager = dependencies.audioManager || new AudioManagerClass();
         
         // Initialize UI components
-        this.uiManager = new UIManager(this.pluginManager, this.audioManager);
+        this.uiManager = dependencies.uiManager || new UIManagerClass(this.pluginManager, this.audioManager);
+        this.loadStartupConfig = dependencies.loadStartupConfig || (async () => {
+            const { loadConfig } = await import('./electron/configIntegration.js');
+            return loadConfig(true);
+        });
+        this.loadPipelineState = dependencies.loadPipelineState || loadPipelineState;
         
         // Set pipeline manager reference in audio manager
         this.audioManager.pipelineManager = this.uiManager.pipelineManager;
@@ -504,8 +475,7 @@ class App {
         // Check config settings for startup preset if in Electron environment
         if (isElectron && window.electronIntegration) {
             try {
-                const { loadConfig } = await import('./electron/configIntegration.js');
-                const config = await loadConfig(true);
+                const config = await this.loadStartupConfig();
                 
                 // If config specifies a preset for startup, load it instead of previous state
                 if (config.pipelineStartup === 'preset' && config.startupPreset) {
@@ -569,7 +539,7 @@ class App {
             
         if (isElectron && shouldLoadPipeline) {
             try {
-                savedState = await loadPipelineState();
+                savedState = await this.loadPipelineState();
             } catch (error) {
                 // Error loading pipeline state, will use default
                 console.error('Error loading pipeline state:', error);
@@ -1238,52 +1208,33 @@ async function displayAppVersion() {
     
 }
 
-startRendererWatchdogHeartbeat('main-page');
-
-// Set up event listeners for tray menu functionality
-if (window.electronAPI && window.electronIntegration && window.electronIntegration.isElectron) {
-  // Listen for preset load requests from tray menu
-  window.electronAPI.onIPC('load-preset-from-tray', (presetName) => {
-    // Wait for app to be initialized before loading preset
-    if (window.app && window.app.initialized && window.pipelineManager && window.pipelineManager.presetManager) {
-      window.pipelineManager.presetManager.loadPreset(presetName).catch(error => {
-        console.error('Error loading preset from tray:', error);
-      });
-    } else {
-      // If app is not initialized yet, store the preset name to load later
-      window.pendingTrayPresetName = presetName;
+function autoStartApplication({
+    windowRef = window,
+    AppClass = App,
+    firstLaunchPromise = isFirstLaunchPromise,
+    startHeartbeat = startRendererWatchdogHeartbeat,
+    startApplicationFn = startApplication
+} = {}) {
+    if (windowRef.__EFFECTUNE_DISABLE_APP_AUTO_START__) {
+        return null;
     }
-  });
+
+    return startApplicationFn({
+        AppClass,
+        firstLaunchPromise,
+        startHeartbeat,
+        windowRef
+    });
 }
 
-// Initialize application after first launch check is complete
-// Use the already defined isFirstLaunchPromise from above
-isFirstLaunchPromise.then(isFirstLaunch => {
-    // Store the first launch status for other components
-    window.isFirstLaunchConfirmed = isFirstLaunch;
-    window.isFirstLaunch = isFirstLaunch;
-    
-    // Create app instance
-    const app = new App();
-    
-    // Store app instance globally
-    window.app = app;
-    
-    // Initialize app
-    app.initialize().catch(error => {
-        console.error('Failed to initialize app:', error);
-    });
-}).catch(error => {
-    console.error('Failed to check first launch status:', error);
-    
-    // Create app instance anyway
-    const app = new App();
-    
-    // Store app instance globally
-    window.app = app;
-    
-    // Initialize app
-    app.initialize().catch(error => {
-        console.error('Failed to initialize app:', error);
-    });
-});
+autoStartApplication();
+
+export {
+    App,
+    INITIALIZATION_CONFIG,
+    autoStartApplication,
+    displayAppVersion,
+    getPipelineStateForSave,
+    loadPipelineState,
+    writePipelineStateToFile
+};

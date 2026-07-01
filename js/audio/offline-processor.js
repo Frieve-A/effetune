@@ -26,6 +26,7 @@ export class OfflineProcessor {
     async processAudioFile(file, pipeline, progressCallback = null) {
         this.isOfflineProcessing = true;
         this.isCancelled = false;
+        let processingError = null;
         try {
             // Read file as ArrayBuffer and decode audio data
             const arrayBuffer = await file.arrayBuffer();
@@ -224,7 +225,7 @@ export class OfflineProcessor {
                             : (routing.processMode === 'pair' ? blockSize * 2 : blockSize);
 
                         if (!(finalResultBuffer instanceof Float32Array) || finalResultBuffer.length !== expectedLength) {
-                            throw new Error(`Invalid plugin output for plugin ${plugin.id}. Expected length ${expectedLength}, got ${finalResultBuffer ? finalResultBuffer.length : 'null'}`);
+                            throw new Error(`Invalid plugin output for plugin ${plugin.id}. Expected length ${expectedLength}, got ${finalResultBuffer.length}`);
                         }
 
                         this.applyOfflineRoutingResult(outputBuffer, finalResultBuffer, routing, inputBus, outputBus, blockSize, totalSize);
@@ -239,7 +240,7 @@ export class OfflineProcessor {
                 }
 
                 // De-interleave processed data from Main bus back into the processed buffer
-                const finalBlock = busBuffers.get(0) || inputBlock;
+                const finalBlock = busBuffers.get(0);
                 for (let ch = 0; ch < outputChannelCount; ch++) {
                     const channelData = processedBuffer.getChannelData(ch);
                     const channelOffset = ch * blockSize;
@@ -262,7 +263,10 @@ export class OfflineProcessor {
                 }
 
                 // Check for cancellation
-                if (this.isCancelled) return null;
+                if (this.isCancelled) {
+                    this.cleanupOfflineResources();
+                    return null;
+                }
 
                 // Yield to UI updates between blocks
                 if (offset % (BLOCK_SIZE * 8) === 0) {
@@ -275,6 +279,7 @@ export class OfflineProcessor {
             sourceNode.buffer = processedBuffer;
             sourceNode.connect(this.offlineContext.destination);
 
+            let renderError = null;
             try {
                 sourceNode.start();
                 const renderedBuffer = await this.offlineContext.startRendering();
@@ -291,21 +296,41 @@ export class OfflineProcessor {
                 }
                 return this.audioEncoder.encodeWAV(renderedBuffer);
             } catch (error) {
-                throw new Error(`Processing failed: ${error.message}`);
+                renderError = error;
             } finally {
-                // Clean up offline nodes and context
-                sourceNode.disconnect();
-                if (this.offlineWorkletNode) {
-                    this.offlineWorkletNode.disconnect();
-                    this.offlineWorkletNode = null;
-                }
-                this.offlineContext = null;
+                this.cleanupOfflineResources(sourceNode);
             }
+
+            throw new Error(`Processing failed: ${renderError.message}`);
         } catch (error) {
-            throw new Error(`File processing error: ${error.message}`);
+            this.cleanupOfflineResources();
+            processingError = error;
         } finally {
             this.isOfflineProcessing = false;
         }
+
+        throw new Error(`File processing error: ${processingError.message}`);
+    }
+
+    cleanupOfflineResources(sourceNode = null) {
+        if (sourceNode && typeof sourceNode.disconnect === 'function') {
+            try {
+                sourceNode.disconnect();
+            } catch (error) {
+                console.warn('Error disconnecting offline source node:', error);
+            }
+        }
+
+        if (this.offlineWorkletNode) {
+            try {
+                this.offlineWorkletNode.disconnect();
+            } catch (error) {
+                console.warn('Error disconnecting offline worklet node:', error);
+            }
+            this.offlineWorkletNode = null;
+        }
+
+        this.offlineContext = null;
     }
 
     getOfflineOutputChannelCount(inputChannelCount) {

@@ -5,6 +5,7 @@
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
+    "test": "node tools/run-tests.mjs",
     "clean": "rimraf dist node_modules/.cache",
     "build": "npm run clean && electron-builder --win --publish never",
     "build:portable": "npm run clean && electron-builder --win portable --publish never",

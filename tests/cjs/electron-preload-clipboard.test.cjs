@@ -1,0 +1,315 @@
+const assert = require('node:assert/strict');
+const test = require('node:test');
+
+const {
+  loadFreshModule,
+  withModuleLoadStub,
+  withMutedConsoleAsync,
+  withPatchedProperty
+} = require('../helpers/cjs-module-utils.cjs');
+
+function createPreloadHarness() {
+  const exposed = {};
+  const invocations = [];
+  const sends = [];
+  const listeners = new Map();
+  const throwInvokeChannels = new Set();
+  const rejectInvokeChannels = new Set();
+  const electron = {
+    contextBridge: {
+      exposeInMainWorld(name, api) {
+        exposed[name] = api;
+      }
+    },
+    ipcRenderer: {
+      invoke(channel, ...args) {
+        invocations.push([channel, ...args]);
+        if (throwInvokeChannels.has(channel)) {
+          throw new Error(`invoke failed: ${channel}`);
+        }
+        if (rejectInvokeChannels.has(channel)) {
+          return Promise.reject(new Error(`invoke rejected: ${channel}`));
+        }
+        return Promise.resolve({ channel, args });
+      },
+      on(channel, callback) {
+        listeners.set(channel, callback);
+      },
+      send(channel, ...args) {
+        sends.push([channel, ...args]);
+      }
+    }
+  };
+  const documentListeners = new Map();
+  const document = {
+    addEventListener(type, callback) {
+      if (!documentListeners.has(type)) {
+        documentListeners.set(type, []);
+      }
+      documentListeners.get(type).push(callback);
+    },
+    dispatchEvent(type, event = {}) {
+      for (const callback of documentListeners.get(type) || []) {
+        callback(event);
+      }
+    }
+  };
+
+  return {
+    document,
+    documentListeners,
+    electron,
+    exposed,
+    invocations,
+    listeners,
+    rejectInvokeChannels,
+    sends,
+    throwInvokeChannels
+  };
+}
+
+function loadPreload(harness) {
+  const originalDocument = global.document;
+  const originalWindow = global.window;
+  global.document = harness.document;
+  global.window = {};
+
+  try {
+    withModuleLoadStub({ electron: harness.electron }, () => {
+      loadFreshModule('../../electron/preload.js');
+    });
+  } finally {
+    if (originalDocument === undefined) {
+      delete global.document;
+    } else {
+      global.document = originalDocument;
+    }
+    if (originalWindow === undefined) {
+      delete global.window;
+    } else {
+      global.window = originalWindow;
+    }
+  }
+}
+
+test('preload exposes electronAPI invoke and send wrappers', async () => {
+  const harness = createPreloadHarness();
+  loadPreload(harness);
+  const api = harness.exposed.electronAPI;
+
+  assert.equal(api.platform, process.platform);
+  assert.equal(api.ipcRenderer, harness.electron.ipcRenderer);
+
+  const invokeCases = [
+    ['showSaveDialog', ['save-options'], ['show-save-dialog', 'save-options']],
+    ['showOpenDialog', ['open-options'], ['show-open-dialog', 'open-options']],
+    ['saveFile', ['a.txt', 'content'], ['save-file', 'a.txt', 'content']],
+    ['readFile', ['a.txt'], ['read-file', 'a.txt', false]],
+    ['readFile', ['a.txt', true], ['read-file', 'a.txt', true]],
+    ['readClipboardText', [], ['read-clipboard-text']],
+    ['writeClipboardText', ['pipeline'], ['write-clipboard-text', 'pipeline']],
+    ['readFileAsBuffer', ['a.wav'], ['read-file-as-buffer', 'a.wav']],
+    ['openDocumentation', ['/docs'], ['open-documentation', '/docs']],
+    ['openExternalUrl', ['https://example.test'], ['open-external-url', 'https://example.test']],
+    ['openExternal', ['https://example.test'], ['open-external-url', 'https://example.test']],
+    ['getAudioDevices', [], ['get-audio-devices']],
+    ['saveAudioPreferences', [{ sampleRate: 48000 }], ['save-audio-preferences', { sampleRate: 48000 }]],
+    ['loadAudioPreferences', [], ['load-audio-preferences']],
+    ['getAppVersion', [], ['get-app-version']],
+    ['getCommandLinePresetFile', [], ['get-command-line-preset-file']],
+    ['reloadWindow', [], ['reload-window']],
+    ['relaunchApp', [], ['relaunch-app']],
+    ['armRendererWatchdog', ['reset'], ['renderer-watchdog-arm', 'reset']],
+    ['disarmRendererWatchdog', ['done'], ['renderer-watchdog-disarm', 'done']],
+    ['requestMicrophoneAccess', [], ['request-microphone-access']],
+    ['clearMicrophonePermission', [], ['clear-microphone-permission']],
+    ['updateApplicationMenu', [{ file: {} }], ['update-application-menu', { file: {} }]],
+    ['updateTrayMenu', [{ open: {} }], ['update-tray-menu', { open: {} }]],
+    ['loadPresetFromTray', ['Preset'], ['load-preset-from-tray', 'Preset']],
+    ['getUserPresetsForTray', [], ['get-user-presets-for-tray']],
+    ['hideApplicationMenu', [], ['hide-application-menu']],
+    ['restoreDefaultMenu', [], ['restore-default-menu']],
+    ['navigateToMain', [], ['navigate-to-main']],
+    ['getApplicationMenu', [], ['get-application-menu']],
+    ['getPath', ['userData'], ['getPath', 'userData']],
+    ['joinPaths', ['base', 'child', 'leaf'], ['joinPaths', 'base', 'child', 'leaf']],
+    ['fileExists', ['file'], ['fileExists', 'file']],
+    ['savePipelineStateToFile', [[{ name: 'Volume' }]], ['save-pipeline-state-to-file', [{ name: 'Volume' }]]],
+    ['signalReadyForUpdates', [], ['renderer-ready-for-updates']],
+    ['getUpdateInfo', [], ['get-update-info']],
+    ['forceCheckForUpdates', [], ['force-check-for-updates']],
+    ['loadConfig', [], ['load-config']],
+    ['saveConfig', [{ language: 'ja' }], ['save-config', { language: 'ja' }]]
+  ];
+
+  for (const [method, args, expectedInvocation] of invokeCases) {
+    const result = await api[method](...args);
+    assert.deepEqual(result, {
+      channel: expectedInvocation[0],
+      args: expectedInvocation.slice(1)
+    });
+  }
+
+  api.rendererPing();
+  api.sendPipelineStateForClose({ plugins: [] });
+  api.signalReadyForMusicFiles();
+
+  assert.deepEqual(harness.sends.slice(0, 3), [
+    ['renderer-ping'],
+    ['pipeline-state-for-close', { plugins: [] }],
+    ['renderer-ready-for-music-files']
+  ]);
+});
+
+test('preload exposes listener registration wrappers', () => {
+  const harness = createPreloadHarness();
+  loadPreload(harness);
+  const api = harness.exposed.electronAPI;
+  const calls = [];
+
+  const noArgListeners = [
+    ['onExportPreset', 'export-preset'],
+    ['onImportPreset', 'import-preset'],
+    ['onOpenMusicFile', 'open-music-file'],
+    ['onProcessAudioFiles', 'process-audio-files'],
+    ['onSavePreset', 'save-preset'],
+    ['onSavePresetAs', 'save-preset-as'],
+    ['onConfigAudio', 'config-audio'],
+    ['onConfigApp', 'config-app'],
+    ['onRequestPipelineStateForClose', 'request-pipeline-state-for-close']
+  ];
+  for (const [method, channel] of noArgListeners) {
+    api[method](() => calls.push([method]));
+    harness.listeners.get(channel)({});
+  }
+
+  api.onOpenPresetFile(filePath => calls.push(['onOpenPresetFile', filePath]));
+  harness.listeners.get('open-preset-file')({}, 'preset.effetune_preset');
+  api.onOpenMusicFiles(filePaths => calls.push(['onOpenMusicFiles', filePaths]));
+  harness.listeners.get('open-music-files')({}, ['song.wav']);
+  api.onLoadUserPreset(name => calls.push(['onLoadUserPreset', name]));
+  harness.listeners.get('load-user-preset')({}, 'Preset');
+  api.onShowAboutDialog(data => calls.push(['onShowAboutDialog', data]));
+  harness.listeners.get('show-about-dialog')({}, { version: '1.0.0' });
+  api.onAudioFilesDropped(filePaths => calls.push(['onAudioFilesDropped', filePaths]));
+  harness.listeners.get('audio-files-dropped')({}, ['drop.wav']);
+  api.onIPC('custom-channel', (...args) => calls.push(['onIPC', args]));
+  harness.listeners.get('custom-channel')({}, 'a', 'b');
+
+  assert.deepEqual(calls, [
+    ['onExportPreset'],
+    ['onImportPreset'],
+    ['onOpenMusicFile'],
+    ['onProcessAudioFiles'],
+    ['onSavePreset'],
+    ['onSavePresetAs'],
+    ['onConfigAudio'],
+    ['onConfigApp'],
+    ['onRequestPipelineStateForClose'],
+    ['onOpenPresetFile', 'preset.effetune_preset'],
+    ['onOpenMusicFiles', ['song.wav']],
+    ['onLoadUserPreset', 'Preset'],
+    ['onShowAboutDialog', { version: '1.0.0' }],
+    ['onAudioFilesDropped', ['drop.wav']],
+    ['onIPC', ['a', 'b']]
+  ]);
+});
+
+test('preload isFirstLaunch normalizes fulfilled and rejected IPC results', async () => {
+  const harness = createPreloadHarness();
+  loadPreload(harness);
+
+  assert.equal(await harness.exposed.electronAPI.isFirstLaunch(), true);
+  harness.rejectInvokeChannels.add('get-first-launch-flag');
+  assert.equal(await harness.exposed.electronAPI.isFirstLaunch(), false);
+});
+
+test('preload electronFileSystem wrappers map files and recover from failures', async () => {
+  const harness = createPreloadHarness();
+  loadPreload(harness);
+  const fileSystem = harness.exposed.electronFileSystem;
+  const files = [
+    { name: 'a.wav', size: 1, type: 'audio/wav', lastModified: 2, path: 'C:\\a.wav' },
+    { name: 'b.wav', size: 3, type: 'audio/wav', lastModified: 4, path: '' }
+  ];
+
+  assert.deepEqual(await fileSystem.getRealPath(files[0]), {
+    channel: 'get-file-path',
+    args: [{ name: 'a.wav', size: 1, type: 'audio/wav', lastModified: 2 }]
+  });
+  assert.deepEqual(await fileSystem.getRealPaths(files), {
+    channel: 'get-file-paths',
+    args: [[
+      { name: 'a.wav', size: 1, type: 'audio/wav', lastModified: 2 },
+      { name: 'b.wav', size: 3, type: 'audio/wav', lastModified: 4 }
+    ]]
+  });
+  assert.deepEqual(await fileSystem.handleDroppedFiles(files), {
+    channel: 'handle-dropped-files-with-paths',
+    args: [['C:\\a.wav']]
+  });
+  assert.deepEqual(await fileSystem.handleDroppedFiles([files[1]]), {
+    channel: 'handle-dropped-files',
+    args: [[{ name: 'b.wav', size: 3, type: 'audio/wav', lastModified: 4 }]]
+  });
+  assert.deepEqual(await fileSystem.handleDroppedPresetFile(files[0]), {
+    channel: 'handle-dropped-preset-file',
+    args: [{ name: 'a.wav', size: 1, type: 'audio/wav', lastModified: 2 }]
+  });
+
+  await withMutedConsoleAsync('error', async () => {
+    harness.throwInvokeChannels.add('get-file-path');
+    assert.equal(await fileSystem.getRealPath(files[0]), null);
+    harness.throwInvokeChannels.add('get-file-paths');
+    assert.deepEqual(await fileSystem.getRealPaths(files), []);
+    harness.throwInvokeChannels.add('handle-dropped-files-with-paths');
+    assert.deepEqual(await fileSystem.handleDroppedFiles(files), []);
+    harness.throwInvokeChannels.add('handle-dropped-preset-file');
+    assert.equal(await fileSystem.handleDroppedPresetFile(files[0]), null);
+  });
+});
+
+test('preload drag and drop diagnostics forward dropped file paths', () => {
+  const harness = createPreloadHarness();
+  loadPreload(harness);
+
+  const domLoaded = harness.documentListeners.get('DOMContentLoaded')[0];
+  const originalWindow = global.window;
+  const originalDocument = global.document;
+  global.window = {};
+  global.document = harness.document;
+  try {
+    domLoaded();
+    withPatchedProperty(Date, 'now', () => 1000, () => {
+      harness.document.dispatchEvent('dragover', {});
+      assert.equal(global.window._lastDragOverLog, 1000);
+    });
+    withPatchedProperty(Date, 'now', () => 1500, () => {
+      harness.document.dispatchEvent('dragover', {});
+      assert.equal(global.window._lastDragOverLog, 1000);
+    });
+    withPatchedProperty(Date, 'now', () => 2501, () => {
+      harness.document.dispatchEvent('dragover', {});
+      assert.equal(global.window._lastDragOverLog, 2501);
+    });
+  } finally {
+    if (originalWindow === undefined) {
+      delete global.window;
+    } else {
+      global.window = originalWindow;
+    }
+    if (originalDocument === undefined) {
+      delete global.document;
+    } else {
+      global.document = originalDocument;
+    }
+  }
+
+  harness.document.dispatchEvent('drop', {});
+  harness.document.dispatchEvent('drop', { dataTransfer: {} });
+  harness.document.dispatchEvent('drop', { dataTransfer: { files: [] } });
+  harness.document.dispatchEvent('drop', { dataTransfer: { files: [{ path: '' }] } });
+  harness.document.dispatchEvent('drop', { dataTransfer: { files: [{ path: 'C:\\song.wav' }] } });
+
+  assert.deepEqual(harness.sends.at(-1), ['files-dropped', ['C:\\song.wav']]);
+});

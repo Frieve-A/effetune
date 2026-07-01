@@ -927,7 +927,7 @@ export class AudioManager {
                 param.setValueAtTime(param.value, now);
                 param.linearRampToValueAtTime(target, now + fade);
             } catch (_) {
-                try { param.value = target; } catch (__) { /* ignore */ }
+                try { param.value = target; } catch (__) { void __; }
             }
         };
         ramp(this._parallelSelA.gain, aTarget);
@@ -969,7 +969,9 @@ export class AudioManager {
      * @returns {Promise<void>}
      */
     setPipeline(pipeline) {
-        pipeline = Array.isArray(pipeline) ? pipeline : [];
+        if (!Array.isArray(pipeline)) {
+            pipeline = [];
+        }
         const currentPipeline = Array.isArray(this.pipeline) ? this.pipeline : [];
         // Check if pipeline structure has changed
         const needsRebuild = currentPipeline.length !== pipeline.length ||

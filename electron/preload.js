@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld(
     saveFile: (filePath, content) => ipcRenderer.invoke('save-file', filePath, content),
     readFile: (filePath, binary = false) => ipcRenderer.invoke('read-file', filePath, binary),
     readClipboardText: () => ipcRenderer.invoke('read-clipboard-text'),
+    writeClipboardText: (text) => ipcRenderer.invoke('write-clipboard-text', text),
     readFileAsBuffer: (filePath) => ipcRenderer.invoke('read-file-as-buffer', filePath),
     
     // Documentation operations

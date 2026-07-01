@@ -717,20 +717,25 @@ export class FileProcessor {
                         // Convert blob to base64 string for IPC transfer
                         const reader = new FileReader();
                         reader.onload = async () => {
-                            // Get base64 data (remove data URL prefix)
-                            const base64data = reader.result.split(',')[1];
+                            try {
+                                // Get base64 data (remove data URL prefix)
+                                const base64data = reader.result.split(',')[1];
 
-                            // Save file using Electron API
-                            const saveResult = await window.electronAPI.saveFile(
-                                result.filePath,
-                                base64data
-                            );
+                                // Save file using Electron API
+                                const saveResult = await window.electronAPI.saveFile(
+                                    result.filePath,
+                                    base64data
+                                );
 
-                            if (saveResult.success) {
-                                window.uiManager.setError(`File saved successfully to ${result.filePath}`);
-                                setTimeout(() => window.uiManager.clearError(), 3000);
-                            } else {
-                                window.uiManager.setError(`Failed to save file: ${saveResult.error}`, true);
+                                if (saveResult.success) {
+                                    window.uiManager.setError(`File saved successfully to ${result.filePath}`);
+                                    setTimeout(() => window.uiManager.clearError(), 3000);
+                                } else {
+                                    window.uiManager.setError(`Failed to save file: ${saveResult.error}`, true);
+                                }
+                            } catch (error) {
+                                // Error saving file
+                                window.uiManager.setError(`Error saving file: ${error.message}`, true);
                             }
                         };
 

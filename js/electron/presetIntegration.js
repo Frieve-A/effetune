@@ -3,8 +3,12 @@
  * Provides preset and file handling functionality when running in Electron
  */
 
-// Import path module for file operations
-const path = window.require ? window.require('path') : { basename: (p, ext) => p.split('/').pop().replace(ext, '') };
+function getPresetNameFromPath(filePath) {
+  const fileName = filePath.split(/[\\/]/).pop() || filePath;
+  return fileName.endsWith('.effetune_preset')
+    ? fileName.slice(0, -'.effetune_preset'.length)
+    : fileName;
+}
 
 /**
  * Open a preset file from the file system
@@ -75,7 +79,7 @@ export async function openPresetFile(isElectron, filePath) {
       // Detected old preset format (array)
       // Old format: direct array of pipeline plugins
       presetData = {
-        name: path.basename(filePath, '.effetune_preset'),
+        name: getPresetNameFromPath(filePath),
         timestamp: Date.now(),
         pipeline: fileData
       };
@@ -87,7 +91,7 @@ export async function openPresetFile(isElectron, filePath) {
       presetData.timestamp = Date.now();
       // If no name is provided, use the filename
       if (!presetData.name) {
-        presetData.name = path.basename(filePath, '.effetune_preset');
+        presetData.name = getPresetNameFromPath(filePath);
       }
     } else {
       // Unknown format
@@ -98,7 +102,7 @@ export async function openPresetFile(isElectron, filePath) {
     }
     
     // Set name to filename for display in UI
-    const fileName = path.basename(filePath, '.effetune_preset');
+    const fileName = getPresetNameFromPath(filePath);
     presetData.name = fileName;
     
     // Check if this is first launch or app is already initialized
@@ -317,7 +321,7 @@ export async function importPreset(isElectron) {
     }
     
     // Set name to filename for display in UI
-    const fileName = path.basename(result.filePaths[0], '.effetune_preset');
+    const fileName = getPresetNameFromPath(result.filePaths[0]);
     presetData.name = fileName;
     
     // Load the preset

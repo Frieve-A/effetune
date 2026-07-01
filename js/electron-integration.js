@@ -25,7 +25,7 @@ import {
   showConfigDialog
 } from './electron/configIntegration.js';
 
-class ElectronIntegration {
+export class ElectronIntegration {
   constructor() {
     // More robust detection of Electron environment
     const userAgent = navigator.userAgent.toLowerCase();
@@ -571,7 +571,7 @@ class ElectronIntegration {
   }
 
   async loadConfig() {
-    const cfg = (await loadConfig(this.isElectron)) || {};
+    const cfg = await loadConfig(this.isElectron);
     this.config = cfg;
     window.appConfig = cfg;
     if (window.uiManager && typeof window.uiManager.syncLanguageWithConfig === 'function') {

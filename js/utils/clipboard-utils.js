@@ -1,12 +1,79 @@
 /**
  * Clipboard helpers that work across EffeTune's environments.
  *
- * The Electron permission handler denies the async Clipboard API on file://
- * pages (navigator.clipboard.writeText throws NotAllowedError), and non-secure
- * web contexts may not expose it either. copyTextToClipboard() tries the modern
- * API first and falls back to a hidden textarea + execCommand('copy'), which
- * needs no clipboard permission.
+ * Electron file:// pages use the native clipboard exposed by the preload
+ * bridge. Browser builds try a synchronous copy command before the async
+ * Clipboard API because permission-denied async writes can consume the user
+ * activation that the synchronous copy path needs.
  */
+
+function copyTextWithSelection(text) {
+    if (typeof document === 'undefined') {
+        return false;
+    }
+
+    let textarea = null;
+    const activeElement = document.activeElement;
+    const selection = document.getSelection ? document.getSelection() : null;
+    const ranges = [];
+
+    try {
+        if (!document.body || typeof document.execCommand !== 'function') {
+            return false;
+        }
+
+        if (selection) {
+            for (let i = 0; i < selection.rangeCount; i++) {
+                ranges.push(selection.getRangeAt(i).cloneRange());
+            }
+        }
+
+        textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'fixed';
+        textarea.style.top = '0';
+        textarea.style.left = '-9999px';
+        textarea.style.width = '1px';
+        textarea.style.height = '1px';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        try {
+            textarea.focus({ preventScroll: true });
+        } catch (err) {
+            textarea.focus();
+        }
+        textarea.select();
+        return document.execCommand('copy');
+    } catch (err) {
+        return false;
+    } finally {
+        if (textarea && textarea.parentNode) {
+            textarea.parentNode.removeChild(textarea);
+        }
+
+        if (selection) {
+            try {
+                selection.removeAllRanges();
+                ranges.forEach(range => selection.addRange(range));
+            } catch (err) {
+                // Best-effort restoration only; copying can still fall back.
+            }
+        }
+
+        if (activeElement && typeof activeElement.focus === 'function') {
+            try {
+                activeElement.focus({ preventScroll: true });
+            } catch (err) {
+                try {
+                    activeElement.focus();
+                } catch (focusErr) {
+                    // Best-effort restoration only; copying can still fall back.
+                }
+            }
+        }
+    }
+}
 
 /**
  * Copy text to the clipboard.
@@ -15,31 +82,29 @@
  */
 export async function copyTextToClipboard(text) {
     try {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
+        const electronAPI = typeof window !== 'undefined' ? window.electronAPI : null;
+        if (electronAPI && typeof electronAPI.writeClipboardText === 'function') {
+            if (await electronAPI.writeClipboardText(text)) {
+                return true;
+            }
+        }
+    } catch (err) {
+        // Fall through to browser clipboard paths.
+    }
+
+    if (copyTextWithSelection(text)) {
+        return true;
+    }
+
+    try {
+        if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
             await navigator.clipboard.writeText(text);
             return true;
         }
     } catch (err) {
-        // Permission denied / unavailable - fall through to the legacy path.
-    }
-
-    try {
-        const textarea = document.createElement('textarea');
-        textarea.value = text;
-        textarea.setAttribute('readonly', '');
-        textarea.style.position = 'fixed';
-        textarea.style.top = '-1000px';
-        textarea.style.opacity = '0';
-        document.body.appendChild(textarea);
-        textarea.focus();
-        textarea.select();
-        const ok = document.execCommand('copy');
-        document.body.removeChild(textarea);
-        return ok;
-    } catch (err) {
         console.error('[clipboard] copy failed:', err);
-        return false;
     }
+    return false;
 }
 
 /**
@@ -52,8 +117,9 @@ export async function copyTextToClipboard(text) {
  */
 export async function readTextFromClipboard() {
     try {
-        if (window.electronAPI && typeof window.electronAPI.readClipboardText === 'function') {
-            const text = await window.electronAPI.readClipboardText();
+        const electronAPI = typeof window !== 'undefined' ? window.electronAPI : null;
+        if (electronAPI && typeof electronAPI.readClipboardText === 'function') {
+            const text = await electronAPI.readClipboardText();
             if (typeof text === 'string') return text;
         }
     } catch (err) {
@@ -61,7 +127,7 @@ export async function readTextFromClipboard() {
     }
 
     try {
-        if (navigator.clipboard && navigator.clipboard.readText) {
+        if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.readText) {
             return await navigator.clipboard.readText();
         }
     } catch (err) {
