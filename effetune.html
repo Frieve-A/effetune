@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=1144, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://cdnjs.cloudflare.com blob: data:; script-src 'self' https://cdnjs.cloudflare.com https://www.googletagmanager.com 'unsafe-inline' 'unsafe-eval' blob:; connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://analytics.google.com; img-src 'self' https://www.google-analytics.com https://*.google-analytics.com data:; style-src 'self' 'unsafe-inline' blob:;">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data:; script-src 'self' https://www.googletagmanager.com 'unsafe-inline' 'unsafe-eval' blob:; connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://analytics.google.com; img-src 'self' https://www.google-analytics.com https://*.google-analytics.com data:; style-src 'self' 'unsafe-inline' blob:;">
     <title>EffeTune</title>
 
     <!-- SEO Meta Tags -->
@@ -70,11 +70,14 @@
     </script>
 
     <link rel="stylesheet" href="effetune.css">
+    <link rel="stylesheet" href="effetune-mobile.css">
     <link rel="icon" href="images/favicon.ico" type="image/x-icon">
     <link rel="icon" href="images/icon_192x192.png" type="image/png" sizes="192x192">
     <link rel="apple-touch-icon" sizes="180x180" href="images/icon_180x180.png">
     <link rel="apple-touch-icon" sizes="192x192" href="images/icon_192x192.png">
     <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#000000">
     <script>
         (function() {
@@ -154,14 +157,16 @@
                     <button class="header-button cut-button" id="cutButton" title="Cut settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><circle cx="6" cy="6" r="2.6"/><circle cx="6" cy="18" r="2.6"/><path d="M8.2 7.7 20 19.5"/><path d="M20 4.5 8.2 16.3"/><path d="M11.5 12 13 13.2"/></svg></button>
                     <button class="header-button copy-button" id="copyButton" title="Copy settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><rect x="8.5" y="8.5" width="12" height="12" rx="2.2"/><path d="M4.5 15.5A2 2 0 0 1 3 13.5v-9a2 2 0 0 1 2-2h9a2 2 0 0 1 2 1.9"/></svg></button>
                     <button class="header-button paste-button" id="pasteButton" title="Paste settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><rect x="8" y="2.5" width="8" height="4" rx="1.2"/><path d="M16 4.5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-12a2 2 0 0 1 2-2h2"/></svg></button>
-                    <div class="select-container">
-                        <input type="text" class="preset-select" id="presetSelect" list="presetList" placeholder="">
-                        <button type="button" class="input-clear-button preset-clear-button" id="presetClearButton" title="Clear preset name" aria-label="Clear preset name">&times;</button>
+                    <div class="pipeline-preset-controls">
+                        <div class="select-container">
+                            <input type="text" class="preset-select" id="presetSelect" list="presetList" placeholder="">
+                            <button type="button" class="input-clear-button preset-clear-button" id="presetClearButton" title="Clear preset name" aria-label="Clear preset name">&times;</button>
+                        </div>
+                        <datalist id="presetList"></datalist>
+                        <button class="header-button save-button" id="savePresetButton" title="Save preset"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M15.2 3.5a2 2 0 0 1 1.4.6l3.3 3.3a2 2 0 0 1 .6 1.4V18.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2z"/><path d="M16.5 20.5v-6a1 1 0 0 0-1-1h-7a1 1 0 0 0-1 1v6"/><path d="M8 3.5v3.2a1 1 0 0 0 1 1h5"/></svg></button>
+                        <button class="header-button delete-preset-button" id="deletePresetButton" title="Delete preset"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                        <button class="header-button share-button" id="shareButton" title="Share pipeline">Share</button>
                     </div>
-                    <datalist id="presetList"></datalist>
-                    <button class="header-button save-button" id="savePresetButton" title="Save preset"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M15.2 3.5a2 2 0 0 1 1.4.6l3.3 3.3a2 2 0 0 1 .6 1.4V18.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2z"/><path d="M16.5 20.5v-6a1 1 0 0 0-1-1h-7a1 1 0 0 0-1 1v6"/><path d="M8 3.5v3.2a1 1 0 0 0 1 1h5"/></svg></button>
-                    <button class="header-button delete-preset-button" id="deletePresetButton" title="Delete preset"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-                    <button class="header-button share-button" id="shareButton" title="Share pipeline">Share</button>
                     <button class="column-control-button" id="decreaseColumnsButton" title="Decrease columns"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M5.5 12h13"/></svg></button>
                     <button class="column-control-button" id="increaseColumnsButton" title="Increase columns"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M12 5.5v13M5.5 12h13"/></svg></button>
                 </div>
@@ -175,8 +180,8 @@
         </div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" integrity="sha512-XMVd28F1oH/O71fzwBnV7HucLxVwtxf26XV8P4wPk26EDxuGZ91N8bsOttmnomcCD3CS5ZMRL50H0GgOHvegtg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js" integrity="sha384-JpTt7qxVx1X/pHeYiCfqFdKRu2HF1MBGr1kEXtbNIGwwryGWMbbW78onU3bdkAHZ" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="js/vendor/jszip-3.10.1.min.js"></script>
+    <script src="js/vendor/jsmediatags-3.9.5.min.js"></script>
     <script type="module" src="js/app.js"></script>
     <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
         EffeTune version <span id="app-version"></span> (C) Frieve 2025, 2026

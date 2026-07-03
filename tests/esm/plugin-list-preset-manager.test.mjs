@@ -115,6 +115,10 @@ function createPluginListManager(options = {}) {
     searchManager: {
       currentTab: options.currentTab ?? 'effects'
     },
+    getListItemInsertionIndex({ mobile } = {}) {
+      calls.push(['getListItemInsertionIndex', mobile]);
+      return options.listItemInsertionIndex ?? null;
+    },
     hideLoadingSpinner() {
       calls.push(['hideLoadingSpinner']);
     }
@@ -376,6 +380,94 @@ test('category rows and preset items wire collapse, drag, hover, and fallback to
 
   assert.deepEqual(calls, [['addPresetToPipeline', 'Warm']]);
   assert.ok(pluginListManager.calls.some(call => call[0] === 'setupPresetItemDragEvents' && call[2] === false));
+});
+
+test('preset items add from tap and close the picker in mobile layout', async () => {
+  const calls = [];
+  const pluginListManager = createPluginListManager({ listItemInsertionIndex: 2 });
+  const manager = new PresetManager(pluginListManager);
+  manager.presetManager = {
+    async addPresetToPipeline(name, index) {
+      calls.push(['addPresetToPipeline', name, index]);
+      return true;
+    }
+  };
+  manager.addUserPresetToPipeline = async (name, index) => {
+    calls.push(['addUserPresetToPipeline', name, index]);
+    return true;
+  };
+
+  const windowRef = {
+    uiManager: {
+      layoutMode: { isMobile: true },
+      mobileNav: {
+        closePluginList() {
+          calls.push(['closePluginList']);
+        },
+        setView(view) {
+          calls.push(['setView', view]);
+        }
+      },
+      setError(message, isError) {
+        calls.push(['setError', message, isError]);
+      }
+    }
+  };
+
+  await withPresetGlobals(calls, { window: windowRef }, async () => {
+    let systemPrevented = 0;
+    let systemStopped = 0;
+    const systemItem = manager.createPresetItem('Warm', { description: 'Warm preset' });
+    await systemItem.dispatchEvent('click', {
+      preventDefault() {
+        systemPrevented += 1;
+      },
+      stopPropagation() {
+        systemStopped += 1;
+      }
+    });
+
+    let userPrevented = 0;
+    let userStopped = 0;
+    const userItem = manager.createUserPresetItem('Mobile User', 'User preset');
+    await userItem.dispatchEvent('click', {
+      preventDefault() {
+        userPrevented += 1;
+      },
+      stopPropagation() {
+        userStopped += 1;
+      }
+    });
+
+    windowRef.uiManager.layoutMode.isMobile = false;
+    const desktopItem = manager.createPresetItem('Desktop', { description: 'Desktop preset' });
+    await desktopItem.dispatchEvent('click', {
+      preventDefault() {
+        throw new Error('desktop click should not be intercepted');
+      }
+    });
+
+    assert.equal(systemPrevented, 1);
+    assert.equal(systemStopped, 1);
+    assert.equal(userPrevented, 1);
+    assert.equal(userStopped, 1);
+  });
+
+  assert.deepEqual(calls, [
+    ['addPresetToPipeline', 'Warm', 2],
+    ['closePluginList'],
+    ['setView', 'effects'],
+    ['addUserPresetToPipeline', 'Mobile User', 2],
+    ['closePluginList'],
+    ['setView', 'effects']
+  ]);
+  assert.deepEqual(
+    pluginListManager.calls.filter(call => call[0] === 'getListItemInsertionIndex'),
+    [
+      ['getListItemInsertionIndex', true],
+      ['getListItemInsertionIndex', true]
+    ]
+  );
 });
 
 test('preset item double-click failures and user item events report UI errors', async () => {

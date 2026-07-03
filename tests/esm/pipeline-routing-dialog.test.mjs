@@ -339,9 +339,22 @@ function createPipelineItem(calls, options = {}) {
   const item = new FakeElement('div', null, calls);
   item.busInfo = options.busInfo ?? null;
   item.routingButton = options.routingButton ?? null;
+  item.headerActions = options.headerActions ?? null;
   item.header = new FakeElement('div', null, calls);
   item.header.className = 'pipeline-item-header';
   item.header.children = options.headerChildren ?? [];
+  if (item.headerActions) {
+    item.headerActions.parentNode = item.header;
+    if (!item.header.children.includes(item.headerActions)) {
+      item.header.children.push(item.headerActions);
+    }
+    if (item.routingButton) {
+      item.routingButton.parentNode = item.headerActions;
+      item.headerActions.children.push(item.routingButton);
+    }
+  } else if (item.routingButton) {
+    item.routingButton.parentNode = item.header;
+  }
   item.header.insertBefore = (child, reference) => {
     child.parentNode = item.header;
     item.busInfo = child;
@@ -357,6 +370,7 @@ function createPipelineItem(calls, options = {}) {
   item.querySelector = selector => {
     if (selector === '.bus-info') return item.busInfo;
     if (selector === '.pipeline-item-header') return item.header;
+    if (selector === '.plugin-header-actions') return item.headerActions;
     if (selector === '.routing-button') return item.routingButton;
     return null;
   };
@@ -373,9 +387,11 @@ function createPipelineListForItem(item) {
 
 test('updateBusInfo creates, updates, clicks, and removes routing summaries', async () => {
   const calls = [];
+  const headerActions = new FakeElement('div', null, calls);
+  headerActions.className = 'plugin-header-actions';
   const routingButton = new FakeElement('button', null, calls);
   routingButton.className = 'routing-button';
-  const item = createPipelineItem(calls, { routingButton });
+  const item = createPipelineItem(calls, { routingButton, headerActions });
   const pipelineManager = {
     historyManager: {
       saveState() {
@@ -416,7 +432,7 @@ test('updateBusInfo creates, updates, clicks, and removes routing summaries', as
     assert.equal(item.busInfo.removed, true);
   });
 
-  assert.ok(calls.some(call => call[0] === 'headerInsertBefore' && call[2] === 'routing-button'));
+  assert.ok(calls.some(call => call[0] === 'headerInsertBefore' && call[2] === 'plugin-header-actions'));
   assert.equal(calls.filter(call => call[0] === 'saveState').length, 2);
 });
 

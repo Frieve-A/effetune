@@ -7,6 +7,7 @@ import { PlaybackManager } from './audio-player/playback-manager.js';
 import { AudioPlayerUI } from './audio-player/audio-player-ui.js';
 import { AudioContextManager } from './audio-player/audio-context-manager.js';
 import { StateManager } from './audio-player/state-manager.js';
+import { WakeLockManager } from '../utils/wake-lock-manager.js';
 
 export class AudioPlayer {
   constructor(audioManager) {
@@ -16,6 +17,13 @@ export class AudioPlayer {
     
     // Initialize centralized state manager first
     this.stateManager = new StateManager(this);
+    const windowRef = typeof window !== 'undefined' ? window : null;
+    this.wakeLockManager = new WakeLockManager({
+      layoutMode: windowRef?.uiManager?.layoutMode,
+      stateManager: this.stateManager,
+      navigatorRef: windowRef?.navigator,
+      documentRef: windowRef?.document
+    });
     
     // Initialize sub-modules with state manager reference
     this.playbackManager = new PlaybackManager(this);
@@ -166,6 +174,9 @@ export class AudioPlayer {
     
     // Dispose playback manager
     this.playbackManager.dispose();
+
+    // Release screen wake lock, if held
+    this.wakeLockManager?.dispose();
     
     // Clear state manager
     this.stateManager.clearStateHistory();

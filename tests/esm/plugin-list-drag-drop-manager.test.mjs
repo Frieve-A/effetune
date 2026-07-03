@@ -578,6 +578,48 @@ test('plugin item drag and touch handlers dispatch drops and clean up state', as
   });
 });
 
+test('plugin item touch handlers preserve synthetic clicks in mobile layout', async () => {
+  await withDragGlobals({
+    uiManager: { layoutMode: { isMobile: true } }
+  }, async ({ dom }) => {
+    const manager = new DragDropManager(createPluginListManager());
+    const item = createItem({
+      offsetWidth: 130,
+      rect: { left: 10, top: 20, right: 140, bottom: 70, width: 130, height: 50 }
+    });
+    const bodyChildCount = dom.body.children.length;
+    manager.setupPluginItemDragEvents(item, { name: 'Delay' });
+
+    assert.equal(await performTouch(item, 'touchstart', 40, 55), 0);
+    assert.equal(item.classList.contains('dragging'), false);
+    assert.equal(dom.body.children.length, bodyChildCount);
+    assert.equal(await performTouch(item, 'touchmove', 60, 80), 0);
+    assert.equal(await performTouch(item, 'touchend', 70, 90), 0);
+    assert.equal(dom.pipeline.dispatchedEvents.filter(event => event.type === 'drop').length, 0);
+  });
+});
+
+test('preset item touch handlers preserve synthetic clicks in mobile layout', async () => {
+  await withDragGlobals({
+    uiManager: { layoutMode: { isMobile: true } }
+  }, async ({ dom }) => {
+    const manager = new DragDropManager(createPluginListManager());
+    const item = createItem({
+      offsetWidth: 150,
+      rect: { left: 15, top: 25, right: 165, bottom: 85, width: 150, height: 60 }
+    });
+    const bodyChildCount = dom.body.children.length;
+    manager.setupPresetItemDragEvents(item, 'Factory');
+
+    assert.equal(await performTouch(item, 'touchstart', 45, 65), 0);
+    assert.equal(item.classList.contains('dragging'), false);
+    assert.equal(dom.body.children.length, bodyChildCount);
+    assert.equal(await performTouch(item, 'touchmove', 80, 100), 0);
+    assert.equal(await performTouch(item, 'touchend', 85, 105), 0);
+    assert.equal(dom.pipeline.dispatchedEvents.filter(event => event.type === 'drop').length, 0);
+  });
+});
+
 test('preset item mouse, drag, and touch handlers move preset and user preset items', async () => {
   await withDragGlobals({
     uiManager: {

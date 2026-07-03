@@ -4,8 +4,9 @@
 
 .earphone-cable-sim-plugin-ui .earphone-cable-sim-graph {
     position: relative;
-    width: 1024px;
-    height: 480px;
+    width: 100%;
+    max-width: 1024px;
+    aspect-ratio: 1024 / 480;
     background-color: #1a1a1a;
 }
 
@@ -48,7 +49,9 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
-    width: calc(1024px - 20px);
+    width: 100%;
+    max-width: 1024px;
+    box-sizing: border-box;
     padding: 10px 0;
 }
 
@@ -58,12 +61,15 @@
 
 .earphone-cable-sim-plugin-ui .earphone-cable-sim-controls {
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
     gap: 10px;
     padding: 10px;
     background-color: #2a2a2a;
     border-radius: 4px;
-    width: calc(1024px - 20px);
+    width: 100%;
+    max-width: 1024px;
+    box-sizing: border-box;
 }
 
 .earphone-cable-sim-plugin-ui .earphone-cable-sim-res {
@@ -73,7 +79,7 @@
     padding: 8px;
     border-radius: 4px;
     background-color: #333;
-    width: calc(20% - 8px);
+    flex: 1 1 180px;
     box-sizing: border-box;
     min-width: 0;
 }

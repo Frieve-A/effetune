@@ -34,17 +34,47 @@ npm install
 ```
 
 This will install:
-- Electron (v35.0.0 or as specified in package.json)
+- Electron (as specified in `package.json`)
 - Electron Builder
 - Other dependencies required by the application
 
-### 3. Run in Development Mode
+### 3. Run Quality Checks
+
+Run the default validation before handing code changes back:
+
+```bash
+npm run verify
+```
+
+This runs:
+
+- `npm run lint`: ESLint checks for JavaScript syntax and high-confidence correctness hazards across Electron, renderer, plugin, feature, tool, and test code
+- `npm test`: Node.js tests with the repository's coverage thresholds and test hygiene checks
+
+`npm run verify` also regenerates `sw-precache.js` before validation so PWA assets stay in sync.
+
+For narrower verification, use:
+
+```bash
+npm run lint
+npm test
+```
+
+### 4. Run in Development Mode
 
 To start the application in development mode:
 
 ```bash
 npm start
 ```
+
+To debug the web version in a browser with no-cache dynamic loading for plugins:
+
+```bash
+npm run dev
+```
+
+Then open `http://localhost:8000/effetune.html` or `http://localhost:8000/dev/effetune_test.html`.
 
 ## Building the Application
 
@@ -97,10 +127,17 @@ To build the application, use the following npm commands:
   npm run build:mac:x64
   ```
 
+- **Build Linux application**:
+  ```bash
+  npm run build:linux
+  ```
+
 - **Clean the build directory**:
   ```bash
   npm run clean
   ```
+
+The Electron build scripts and GitHub Pages workflow regenerate `sw-precache.js` automatically before packaging or deployment. If you add or remove web assets outside those flows, run `node scripts/generate-sw-precache.js` before committing.
 
 ## Build Output
 

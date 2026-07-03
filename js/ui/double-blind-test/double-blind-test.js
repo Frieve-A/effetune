@@ -245,9 +245,13 @@ export class DoubleBlindTest {
         // Blind Test panels normally take their width from the pipeline area
         // (.main-container). Once we empty + hide it that reference is gone and
         // the panels would collapse, so pin the body's min-width to the pipeline
-        // width that was on screen, keeping both panels exactly as wide.
+        // width that was on screen, keeping both panels exactly as wide. Mobile
+        // layout is already viewport constrained, so a desktop min-width would
+        // create horizontal overflow if the panel is opened after a resize.
         const pipelineWidth = Math.round(this._mainContainer.getBoundingClientRect().width);
-        if (pipelineWidth > 0) {
+        const isMobileLayout = !!window.uiManager?.layoutMode?.isMobile ||
+            document.body.classList.contains('layout-mobile');
+        if (pipelineWidth > 0 && !isMobileLayout) {
             this._savedBodyMinWidth = document.body.style.minWidth;
             document.body.style.minWidth = pipelineWidth + 'px';
         }

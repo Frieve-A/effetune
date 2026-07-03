@@ -281,6 +281,12 @@ test('constructor and audio input handle success, fallbacks, permission recovery
     assert.ok(calls.some(call => call[0] === 'createMediaStreamSource'));
   });
 
+  await withAudioIO({}, async ({ manager, calls }) => {
+    assert.equal(await manager.initAudioInput({ deferInput: true }), '');
+    assert.equal(calls.some(call => call[0] === 'getUserMedia'), false);
+    assert.equal(manager.sourceNode.name, 'gain');
+  });
+
   await withAudioIO({
     window: {
       electron: true,

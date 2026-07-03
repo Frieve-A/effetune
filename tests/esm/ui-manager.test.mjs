@@ -664,6 +664,8 @@ test('updates audio, sleep, sample-rate, language, translations, and UI text', a
     manager.pluginListManager.dragMessage = document.createElement('div');
     manager.updateUITexts();
     assert.equal(manager.shareButton.textContent, 'Share');
+    assert.equal(manager.pipelineEmpty.querySelector('.pipeline-empty-message').textContent, 'Drop here');
+    assert.equal(manager.pipelineEmpty.querySelector('.mobile-effects-open-music'), null);
     assert.equal(calls.some(call => call[0] === 'doubleBlind.updateTexts'), true);
     assert.equal(manager.pluginListManager.dragMessage.textContent, 'Drag effect');
   });
@@ -768,10 +770,10 @@ test('shares URLs, opens music, manages presets, and creates audio players', asy
       const fileInput = [...document.allElements].find(element => element.type === 'file');
       fileInput.files = [{ name: 'song.wav' }];
       await fileInput.dispatch('change', { target: fileInput });
-      assert.equal(objectUrls[0][0], 'create');
-      assert.equal(calls.some(call => call[0] === 'window.addEventListener' && call[1] === 'unload'), true);
-      calls.find(call => call[0] === 'window.addEventListener' && call[1] === 'unload')?.[2]();
-      assert.equal(objectUrls.some(call => call[0] === 'revoke'), true);
+      const loadFilesCall = calls.find(call => call[0] === 'AudioPlayer.loadFiles');
+      assert.equal(loadFilesCall[1][0].name, 'song.wav');
+      assert.equal(objectUrls.length, 0);
+      assert.equal(calls.some(call => call[0] === 'window.addEventListener' && call[1] === 'unload'), false);
       assert.ok(manager.audioPlayer);
     });
   } finally {

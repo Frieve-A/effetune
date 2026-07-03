@@ -32,6 +32,8 @@ export class AudioPlayerUI {
     this.repeatButton = null;
     this.shuffleButton = null;
     this.closeButton = null;
+    this.artworkImage = null;
+    this.playlistDisplay = null;
     this.updateInterval = null;
     
     // State change listeners
@@ -55,6 +57,22 @@ export class AudioPlayerUI {
     // Listen to specific state changes
     this.audioPlayer.stateManager.addListener('currentTrack', (track) => {
       this.updateTrackDisplay(track);
+    });
+
+    this.audioPlayer.stateManager.addListener('currentTrackName', () => {
+      this.updateTrackDisplay();
+    });
+
+    this.audioPlayer.stateManager.addListener('artworkUrl', (artworkUrl) => {
+      this.updateArtwork(artworkUrl);
+    });
+
+    this.audioPlayer.stateManager.addListener('playlist', () => {
+      this.updatePlaylistDisplay();
+    });
+
+    this.audioPlayer.stateManager.addListener('currentTrackIndex', () => {
+      this.updatePlaylistDisplay();
     });
     
     this.audioPlayer.stateManager.addListener('currentTrackPosition', (position) => {
@@ -103,6 +121,9 @@ export class AudioPlayerUI {
 
     container.innerHTML = `
      <h2>Player</h2>
+     <div class="player-artwork">
+       <img class="player-artwork-image" alt="" hidden>
+     </div>
      <div class="track-name-container">
        <div class="track-name">No track loaded</div>
      </div>
@@ -117,6 +138,7 @@ export class AudioPlayerUI {
         <button class="player-button shuffle-button" title="${window.uiManager ? window.uiManager.t('ui.title.shuffle') : 'Toggle shuffle'}">${ICON.shuffle}</button>
         <button class="player-button close-button" title="${window.uiManager ? window.uiManager.t('ui.title.closePlayer') : 'Close player'}">${ICON.close}</button>
       </div>
+      <div class="player-playlist" aria-label="Playlist"></div>
     `;
 
     // Store references to UI elements
@@ -131,6 +153,8 @@ export class AudioPlayerUI {
     this.repeatButton = container.querySelector('.repeat-button');
     this.shuffleButton = container.querySelector('.shuffle-button');
     this.closeButton = container.querySelector('.close-button');
+    this.artworkImage = container.querySelector('.player-artwork-image');
+    this.playlistDisplay = container.querySelector('.player-playlist');
 
     // Add event listeners
     this.playPauseButton.addEventListener('click', () => {
@@ -149,6 +173,8 @@ export class AudioPlayerUI {
     
     // Update UI based on loaded state
     this.updatePlayerUIState();
+    this.updateArtwork();
+    this.updatePlaylistDisplay();
     
     this.seekBar.addEventListener('input', () => {
       // Check if seeking is enabled
@@ -184,20 +210,46 @@ export class AudioPlayerUI {
       }
     });
 
-    // Insert player into DOM. The player always stays at the top: above the
-    // Double Blind Test panel when one is open, otherwise just above the
-    // main-container.
-    const mainContainer = document.querySelector('.main-container');
-    const dbtPanel = document.querySelector('.double-blind-test');
-    const insertTarget = dbtPanel || mainContainer;
-    if (insertTarget && insertTarget.parentNode) {
-      insertTarget.parentNode.insertBefore(container, insertTarget);
-    }
+    this.mountContainerForLayout();
 
     // Start update interval for time display
     this.startUpdateInterval();
 
     return container;
+  }
+
+  /**
+   * Move the existing player container to the active layout.
+   * @param {'mobile'|'desktop'=} mode Optional forced destination.
+   */
+  mountContainerForLayout(mode = undefined) {
+    if (!this.container) return;
+
+    const useMobile = mode === 'mobile' || (mode === undefined && window.uiManager?.layoutMode?.isMobile);
+    const mobilePlayerView = typeof document.getElementById === 'function'
+      ? document.getElementById('mobilePlayerView')
+      : null;
+
+    if (useMobile && mobilePlayerView) {
+      if (this.container.parentNode !== mobilePlayerView) {
+        mobilePlayerView.appendChild(this.container);
+      }
+      window.uiManager?.mobileNav?.updatePlayerPlaceholder?.();
+      return;
+    }
+
+    // Desktop keeps the player above the Double Blind Test panel when one is open,
+    // otherwise just above the main application container.
+    const mainContainer = document.querySelector('.main-container');
+    const dbtPanel = document.querySelector('.double-blind-test');
+    const insertTarget = dbtPanel || mainContainer;
+    if (insertTarget && insertTarget.parentNode) {
+      const targetParent = insertTarget.parentNode;
+      if (this.container.parentNode !== targetParent || this.container.nextSibling !== insertTarget) {
+        targetParent.insertBefore(this.container, insertTarget);
+      }
+    }
+    window.uiManager?.mobileNav?.updatePlayerPlaceholder?.();
   }
 
   /**
@@ -275,16 +327,68 @@ export class AudioPlayerUI {
     if (!this.trackNameDisplay) return;
     
     // Get track from state if not provided
+    let currentTrackName = '';
     if (!track && this.audioPlayer.stateManager) {
       const state = this.audioPlayer.stateManager.getStateSnapshot();
       track = state.currentTrack;
+      currentTrackName = state.currentTrackName || '';
     }
     
-    if (track && track.name) {
+    if (currentTrackName) {
+      this.trackNameDisplay.textContent = currentTrackName;
+    } else if (track && track.name) {
       this.trackNameDisplay.textContent = track.name;
     } else {
       this.trackNameDisplay.textContent = 'No track loaded';
     }
+  }
+
+  updateArtwork(artworkUrl = null) {
+    if (!this.artworkImage) return;
+
+    if (artworkUrl === null && this.audioPlayer.stateManager) {
+      const state = this.audioPlayer.stateManager.getStateSnapshot();
+      artworkUrl = state.artworkUrl || '';
+    }
+
+    this.artworkImage.src = artworkUrl || '';
+    this.artworkImage.hidden = !artworkUrl;
+    if (this.artworkImage.parentNode?.style) {
+      this.artworkImage.parentNode.style.display = artworkUrl ? '' : 'none';
+    }
+  }
+
+  updatePlaylistDisplay() {
+    if (!this.playlistDisplay || !this.audioPlayer.stateManager) return;
+
+    const state = this.audioPlayer.stateManager.getStateSnapshot();
+    const playlist = Array.isArray(state.playlist) ? state.playlist : [];
+    this.playlistDisplay.innerHTML = '';
+    this.playlistDisplay.style.display = playlist.length > 1 ? '' : 'none';
+
+    playlist.forEach((track, index) => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'player-playlist-item';
+      if (item.classList && typeof item.classList.toggle === 'function') {
+        item.classList.toggle('active', index === state.currentTrackIndex);
+      } else if (index === state.currentTrackIndex) {
+        item.className += ' active';
+      }
+      item.textContent = track?.name || `Track ${index + 1}`;
+      item.addEventListener('click', async () => {
+        const latestState = this.audioPlayer.stateManager?.getStateSnapshot?.();
+        this.audioPlayer.stateManager?.updateState?.({
+          currentTrackIndex: index,
+          currentTrack: track
+        }, 'AudioPlayerUI playlist select');
+        await this.audioPlayer.loadTrack(index);
+        if (latestState?.isPlaying) {
+          await this.audioPlayer.play();
+        }
+      });
+      this.playlistDisplay.appendChild(item);
+    });
   }
 
   /**
@@ -390,5 +494,8 @@ export class AudioPlayerUI {
     this.repeatButton = null;
     this.shuffleButton = null;
     this.closeButton = null;
+    this.artworkImage = null;
+    this.playlistDisplay = null;
+    window.uiManager?.mobileNav?.updatePlayerPlaceholder?.();
   }
 }

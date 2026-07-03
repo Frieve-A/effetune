@@ -396,13 +396,11 @@ class SpectrogramPlugin extends PluginBase {
         pointsRow.appendChild(pointsLabel); pointsRow.appendChild(pointsSlider); pointsRow.appendChild(pointsValue);
         container.appendChild(pointsRow);
 
-        const graphContainer = document.createElement('div');
-        graphContainer.className = 'graph-container';
-        graphContainer.style.position = 'relative'; graphContainer.style.width = '1024px'; graphContainer.style.height = '480px';
-        const canvas = document.createElement('canvas');
-        canvas.width = 2048; canvas.height = 960; // Internal buffer size
-        canvas.style.width = '1024px'; canvas.style.height = '480px'; // CSS display size
-        graphContainer.appendChild(canvas);
+        const { container: graphContainer, canvas } = this.createGraphContainer({
+            maxWidth: 1024,
+            canvasWidth: 2048,
+            canvasHeight: 960
+        });
         this.canvas = canvas;
         this.canvasCtx = this.canvas.getContext('2d', { alpha: false });
 

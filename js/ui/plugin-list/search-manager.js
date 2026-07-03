@@ -33,7 +33,7 @@ export class SearchManager {
                 this.searchInput.select();
                 this.updateSearchClearButton();
             } else {
-                this.tabSwitcher.style.display = 'flex';
+                this.tabSwitcher.style.display = this.isMobileLayout() ? 'grid' : 'flex';
                 this.searchInput.style.display = 'none';
                 this.searchInput.value = '';
                 this.updateSearchClearButton();
@@ -66,6 +66,10 @@ export class SearchManager {
     updateSearchClearButton() {
         if (!this.searchClearButton) return;
         this.searchClearButton.classList.toggle('visible', this.isSearchActive && this.searchInput.value.length > 0);
+    }
+
+    isMobileLayout() {
+        return !!globalThis.window?.uiManager?.layoutMode?.isMobile;
     }
 
     applySearchFilter(searchText) {

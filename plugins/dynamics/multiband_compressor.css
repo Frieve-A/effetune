@@ -9,6 +9,7 @@
 .multiband-compressor-frequency-sliders {
     display: flex;
     flex-direction: row;
+    flex-wrap: wrap;
     gap: 10px;
     padding: 10px;
     background: #2d2d2d;
@@ -16,7 +17,7 @@
 }
 
 .multiband-compressor-frequency-slider {
-    flex: 1;
+    flex: 1 1 180px;
     display: flex;
     flex-direction: column;
     gap: 5px;
@@ -39,6 +40,7 @@
 
 .multiband-compressor-band-tabs {
     display: flex;
+    flex-wrap: wrap;
     gap: 2px;
     margin-bottom: 20px;
 }
@@ -67,6 +69,7 @@
 /* Gain reduction graphs area */
 .multiband-compressor-graphs {
     display: flex;
+    flex-wrap: wrap;
     gap: 10px;
     justify-content: space-between;
     padding: 10px;
@@ -75,7 +78,7 @@
 }
 
 .multiband-compressor-band-graph {
-    flex: 1;
+    flex: 1 1 150px;
     position: relative;
     background: #222;
     border-radius: 4px;
@@ -89,6 +92,10 @@
 .multiband-compressor-band-graph canvas {
     margin: 10px auto;
     display: block;
+}
+
+.multiband-compressor-transfer-graph {
+    margin: 0 auto;
 }
 
 .multiband-compressor-band-graph-label {

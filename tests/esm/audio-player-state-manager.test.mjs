@@ -26,6 +26,7 @@ test('StateManager initializes defaults and returns defensive snapshots', () => 
 
   assert.equal(snapshot.isStopped, true);
   assert.equal(snapshot.repeatMode, 'OFF');
+  assert.equal(snapshot.artworkUrl, '');
   snapshot.isStopped = false;
   assert.equal(manager.getStateSnapshot().isStopped, true);
 });

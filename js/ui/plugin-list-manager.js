@@ -168,8 +168,13 @@ export class PluginListManager {
     }
 
     setupPluginItemEvents(item, plugin) {
+        const isMobileLayout = () => window.uiManager?.layoutMode?.isMobile;
+        let tapStart = null;
+        let suppressNextClick = false;
+
         // Mouse events
         item.addEventListener('mousedown', () => {
+            if (isMobileLayout()) return;
             this.dragDropManager.dragMessage.style.display = 'block';
         });
 
@@ -187,68 +192,48 @@ export class PluginListManager {
             });
         }
 
+        item.addEventListener('pointerdown', (e) => {
+            if (!isMobileLayout()) return;
+            tapStart = {
+                pointerId: e.pointerId,
+                x: e.clientX,
+                y: e.clientY
+            };
+            this.dragDropManager.dragMessage.style.display = 'none';
+        });
+
+        item.addEventListener('pointerup', (e) => {
+            if (!isMobileLayout() || !tapStart || tapStart.pointerId !== e.pointerId) return;
+            const dx = Math.abs(e.clientX - tapStart.x);
+            const dy = Math.abs(e.clientY - tapStart.y);
+            tapStart = null;
+            if (dx > 8 || dy > 8) return;
+            e.preventDefault();
+            e.stopPropagation();
+            suppressNextClick = true;
+            this.addPluginToPipeline(plugin, { mobile: true });
+        });
+
+        item.addEventListener('pointercancel', () => {
+            tapStart = null;
+        });
+
+        item.addEventListener('click', (e) => {
+            if (!isMobileLayout()) return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (suppressNextClick) {
+                suppressNextClick = false;
+                return;
+            }
+            this.addPluginToPipeline(plugin, { mobile: true });
+        });
+
         // Handle double click to add plugin to pipeline
         item.addEventListener('dblclick', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            
-            // Create a new instance of the plugin
-            const newPlugin = this.pluginManager.createPlugin(plugin.name);
-            if (!newPlugin) return;
-
-            // Get pipeline manager from UI manager
-            const pipelineManager = window.uiManager.pipelineManager;
-            if (!pipelineManager) return;
-
-            // Calculate insertion position:
-            // - If plugins are selected, insert before the first selected plugin
-            // - If no plugins are selected, append to the end of pipeline
-            let insertIndex;
-            if (pipelineManager.selectedPlugins.size > 0) {
-                insertIndex = Math.min(...Array.from(pipelineManager.selectedPlugins)
-                    .map(plugin => pipelineManager.audioManager.pipeline.indexOf(plugin)));
-            } else {
-                insertIndex = pipelineManager.audioManager.pipeline.length;
-            }
-
-            // Add the new plugin at calculated position
-            pipelineManager.audioManager.pipeline.splice(insertIndex, 0, newPlugin);
-            pipelineManager.expandedPlugins.add(newPlugin);
-
-            // Update selection to only include the new plugin
-            pipelineManager.selectedPlugins.clear();
-            pipelineManager.selectedPlugins.add(newPlugin);
-            pipelineManager.updateSelectionClasses();
-
-            // Update worklet directly without rebuilding pipeline (same as drag & drop)
-            pipelineManager.core.updateWorkletPlugins();
-            
-            // Save state for undo/redo
-            pipelineManager.historyManager.saveState();
-
-            // Use rAF to ensure UI update happens after event processing (same as drag & drop)
-            requestAnimationFrame(() => {
-                if (pipelineManager.core?.updatePipelineUI) {
-                    pipelineManager.core.updatePipelineUI(true); // Pass true for immediate update
-                } else {
-                    console.error("Missing core or updatePipelineUI in dblclick's rAF callback");
-                }
-            });
-            
-            pipelineManager.updateURL();
-            
-            // Check window width and adjust plugin list collapse state
-            this.collapseManager.checkWindowWidthAndAdjust();
-
-            // Auto-scroll to show newly added plugin if it was appended at the end
-            if (insertIndex === pipelineManager.audioManager.pipeline.length - 1) {
-                requestAnimationFrame(() => {
-                    window.scrollTo({
-                        top: document.body.scrollHeight,
-                        behavior: 'smooth'
-                    });
-                });
-            }
+            this.addPluginToPipeline(plugin, { mobile: false });
         });
 
         item.addEventListener('mouseup', () => {
@@ -260,6 +245,70 @@ export class PluginListManager {
 
         // Set up drag events via drag drop manager
         this.dragDropManager.setupPluginItemDragEvents(item, plugin);
+    }
+
+    getListItemInsertionIndex({ mobile = false } = {}) {
+        const pipelineManager = window.uiManager?.pipelineManager;
+        const pipeline = pipelineManager?.audioManager?.pipeline;
+        if (!pipelineManager || !Array.isArray(pipeline)) return null;
+
+        let insertIndex;
+        if (pipelineManager.selectedPlugins?.size > 0) {
+            const selectedIndexes = Array.from(pipelineManager.selectedPlugins)
+                .map(selectedPlugin => pipeline.indexOf(selectedPlugin))
+                .filter(index => index >= 0);
+            if (selectedIndexes.length > 0) {
+                insertIndex = mobile
+                    ? Math.max(...selectedIndexes) + 1
+                    : Math.min(...selectedIndexes);
+            }
+        }
+        return insertIndex ?? pipeline.length;
+    }
+
+    addPluginToPipeline(plugin, { mobile = false } = {}) {
+        const newPlugin = this.pluginManager.createPlugin(plugin.name);
+        if (!newPlugin) return null;
+
+        const pipelineManager = window.uiManager?.pipelineManager;
+        if (!pipelineManager) return null;
+
+        const insertIndex = this.getListItemInsertionIndex({ mobile });
+        if (insertIndex === null) return null;
+
+        pipelineManager.audioManager.pipeline.splice(insertIndex, 0, newPlugin);
+        pipelineManager.expandedPlugins.add(newPlugin);
+        pipelineManager.selectedPlugins.clear();
+        pipelineManager.selectedPlugins.add(newPlugin);
+        pipelineManager.updateSelectionClasses();
+        pipelineManager.core.updateWorkletPlugins();
+        pipelineManager.historyManager.saveState();
+
+        requestAnimationFrame(() => {
+            if (pipelineManager.core?.updatePipelineUI) {
+                pipelineManager.core.updatePipelineUI(true);
+            } else {
+                console.error('Missing core or updatePipelineUI in addPluginToPipeline callback');
+            }
+        });
+
+        pipelineManager.updateURL();
+        if (mobile) {
+            window.uiManager?.mobileNav?.closePluginList();
+            window.uiManager?.mobileNav?.setView('effects');
+        } else {
+            this.collapseManager.checkWindowWidthAndAdjust();
+            if (insertIndex === pipelineManager.audioManager.pipeline.length - 1) {
+                requestAnimationFrame(() => {
+                    window.scrollTo({
+                        top: document.body.scrollHeight,
+                        behavior: 'smooth'
+                    });
+                });
+            }
+        }
+
+        return newPlugin;
     }
 
     // Delegate preset methods to preset manager

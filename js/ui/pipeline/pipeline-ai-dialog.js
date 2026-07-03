@@ -194,6 +194,11 @@ export class PipelineAIDialog {
      * @param {HTMLElement} dialog - The dialog element
      */
     positionDialog(dialog) {
+        if (window.uiManager?.layoutMode?.isMobile) {
+            dialog.style.position = 'fixed';
+            dialog.style.zIndex = '1001';
+            return;
+        }
         dialog.style.position = 'fixed';
         dialog.style.top = '50%';
         dialog.style.left = '50%';

@@ -20,6 +20,7 @@ class FakeElement {
     this.style = {};
     this._innerHTML = '';
     this.offsetHeight = 20;
+    this.id = '';
   }
 
   set innerHTML(value) {
@@ -39,12 +40,18 @@ class FakeElement {
   }
 
   appendChild(child) {
+    if (child.parentNode) {
+      child.parentNode.removeChild(child);
+    }
     child.parentNode = this;
     this.children.push(child);
     return child;
   }
 
   insertBefore(child, reference) {
+    if (child.parentNode) {
+      child.parentNode.removeChild(child);
+    }
     child.parentNode = this;
     const index = this.children.indexOf(reference);
     if (index === -1) {
@@ -54,6 +61,13 @@ class FakeElement {
     }
     this.calls.push(['insertBefore', child.className, reference?.className ?? null]);
     return child;
+  }
+
+  get nextSibling() {
+    if (!this.parentNode) return null;
+    const siblings = this.parentNode.children;
+    const index = siblings.indexOf(this);
+    return index === -1 ? null : siblings[index + 1] ?? null;
   }
 
   removeChild(child) {
@@ -109,6 +123,10 @@ function createDocument(calls, options = {}) {
     dbtPanel: null,
     createElement(tagName) {
       return new FakeElement(tagName, documentRef, calls);
+    },
+    getElementById(id) {
+      if (id === 'mobilePlayerView') return documentRef.mobilePlayerView ?? null;
+      return null;
     },
     querySelector(selector) {
       calls.push(['documentQuerySelector', selector]);
@@ -175,17 +193,27 @@ function createDocument(calls, options = {}) {
     documentRef.body.insertBefore(documentRef.dbtPanel, documentRef.mainContainer);
   }
 
+  if (options.mobilePlayerView) {
+    documentRef.mobilePlayerView = documentRef.createElement('div');
+    documentRef.mobilePlayerView.id = 'mobilePlayerView';
+    documentRef.mobilePlayerView.className = 'mobile-player-view';
+    documentRef.body.appendChild(documentRef.mobilePlayerView);
+  }
+
   return documentRef;
 }
 
 function createWindow(calls, options = {}) {
+  if (options.uiManager === false) return { uiManager: null };
+  const uiManager = {
+    t(key) {
+      calls.push(['translate', key]);
+      return `T:${key}`;
+    },
+    ...(options.uiManager || {})
+  };
   return {
-    uiManager: options.uiManager === false ? null : {
-      t(key) {
-        calls.push(['translate', key]);
-        return `T:${key}`;
-      }
-    }
+    uiManager
   };
 }
 
@@ -334,12 +362,16 @@ test('creates translated controls, inserts before the double blind panel, and wi
 
     assert.deepEqual([...player.stateManager.listeners.keys()].sort(), [
       '*',
+      'artworkUrl',
       'currentTrack',
       'currentTrackDuration',
+      'currentTrackIndex',
+      'currentTrackName',
       'currentTrackPosition',
       'isPaused',
       'isPlaying',
-      'isStopped'
+      'isStopped',
+      'playlist'
     ].sort());
     assert.equal(documentRef.body.children[0], container);
     assert.equal(documentRef.body.children[1], documentRef.dbtPanel);
@@ -432,6 +464,37 @@ test('createPlayerUI uses fallback text and handles alternate insertion targets'
     const container = ui.createPlayerUI();
 
     assert.equal(container.parentNode, null);
+    assert.equal(documentRef.body.children.includes(container), false);
+  });
+});
+
+test('mountContainerForLayout moves an existing player between mobile and desktop roots', async () => {
+  await withAudioPlayerGlobals({
+    documentOptions: { mobilePlayerView: true },
+    windowOptions: {
+      uiManager: {
+        layoutMode: { isMobile: true },
+        mobileNav: {
+          updatePlayerPlaceholder() {}
+        }
+      }
+    }
+  }, async ({ documentRef, calls, windowRef }) => {
+    const ui = new AudioPlayerUI(createAudioPlayer(calls));
+    const container = ui.createPlayerUI();
+
+    assert.equal(container.parentNode, documentRef.mobilePlayerView);
+    assert.equal(documentRef.mobilePlayerView.children.includes(container), true);
+
+    windowRef.uiManager.layoutMode.isMobile = false;
+    ui.mountContainerForLayout('desktop');
+    assert.equal(container.parentNode, documentRef.body);
+    assert.equal(container.nextSibling, documentRef.mainContainer);
+    assert.equal(documentRef.mobilePlayerView.children.includes(container), false);
+
+    windowRef.uiManager.layoutMode.isMobile = true;
+    ui.mountContainerForLayout('mobile');
+    assert.equal(container.parentNode, documentRef.mobilePlayerView);
     assert.equal(documentRef.body.children.includes(container), false);
   });
 });
@@ -685,6 +748,8 @@ test('interval management and removeUI clean up timers, DOM nodes, and reference
     assert.equal(ui.repeatButton, null);
     assert.equal(ui.shuffleButton, null);
     assert.equal(ui.closeButton, null);
+    assert.equal(ui.artworkImage, null);
+    assert.equal(ui.playlistDisplay, null);
 
     ui.removeUI();
   });

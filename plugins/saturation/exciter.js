@@ -339,40 +339,18 @@ class ExciterPlugin extends PluginBase {
         );
         container.appendChild(freqRow);
 
-        // HPF Slope selector
-        const slopeRow = document.createElement('div');
-        slopeRow.className = 'parameter-row';
-        
-        const slopeLabel = document.createElement('label');
-        slopeLabel.textContent = 'HPF Slope:';
-        slopeLabel.className = 'parameter-label';
-        slopeRow.appendChild(slopeLabel);
-        
-        const slopeSelect = document.createElement('select');
-        slopeSelect.className = 'slope-select';
-        slopeSelect.id = `${this.id}-${this.name}-hpf-slope`;
-        slopeSelect.name = `${this.id}-${this.name}-hpf-slope`;
-        slopeSelect.autocomplete = 'off';
-        
         const slopes = [
             { value: 0, label: 'Off' },
             { value: 1, label: '6dB/oct' },
             { value: 2, label: '12dB/oct' }
         ];
-        
-        slopes.forEach(slope => {
-            const option = document.createElement('option');
-            option.value = slope.value;
-            option.textContent = slope.label;
-            option.selected = this.hs === slope.value;
-            slopeSelect.appendChild(option);
-        });
-        
-        slopeSelect.addEventListener('change', e => {
-            this.setHPFSlope(parseInt(e.target.value));
-        });
-        
-        slopeRow.appendChild(slopeSelect);
+        const slopeRow = this.createSelectControl(
+            'HPF Slope',
+            slopes,
+            this.hs,
+            value => this.setHPFSlope(parseInt(value))
+        );
+        slopeRow.querySelector('select')?.classList.add('slope-select');
         container.appendChild(slopeRow);
 
         // Drive control
@@ -396,34 +374,27 @@ class ExciterPlugin extends PluginBase {
         // Graphs container
         const graphsContainer = document.createElement('div');
         graphsContainer.className = 'graphs-container';
-        graphsContainer.style.display = 'flex';
-        graphsContainer.style.gap = '10px';
-        graphsContainer.style.marginTop = '10px';
 
         // HPF graph
-        const hpfGraphContainer = document.createElement('div');
-        hpfGraphContainer.style.position = 'relative';
-        const hpfCanvas = document.createElement('canvas');
-        hpfCanvas.width = 1200;
-        hpfCanvas.height = 400;
-        hpfCanvas.style.width = '600px';
-        hpfCanvas.style.height = '200px';
+        const { container: hpfGraphContainer, canvas: hpfCanvas } = this.createGraphContainer({
+            maxWidth: 600,
+            canvasWidth: 1200,
+            canvasHeight: 400,
+            className: 'exciter-hpf-graph'
+        });
         hpfCanvas.style.backgroundColor = '#222';
         this.hpfCanvas = hpfCanvas;
-        hpfGraphContainer.appendChild(hpfCanvas);
         graphsContainer.appendChild(hpfGraphContainer);
 
         // Saturation graph
-        const satGraphContainer = document.createElement('div');
-        satGraphContainer.style.position = 'relative';
-        const satCanvas = document.createElement('canvas');
-        satCanvas.width = 400;
-        satCanvas.height = 400;
-        satCanvas.style.width = '200px';
-        satCanvas.style.height = '200px';
+        const { container: satGraphContainer, canvas: satCanvas } = this.createGraphContainer({
+            maxWidth: 200,
+            canvasWidth: 400,
+            canvasHeight: 400,
+            className: 'exciter-saturation-graph'
+        });
         satCanvas.style.backgroundColor = '#222';
         this.satCanvas = satCanvas;
-        satGraphContainer.appendChild(satCanvas);
         graphsContainer.appendChild(satGraphContainer);
 
         container.appendChild(graphsContainer);

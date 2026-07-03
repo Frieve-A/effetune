@@ -1205,19 +1205,20 @@ class MultibandCompressorPlugin extends PluginBase {
       const graphDiv = document.createElement('div');
       graphDiv.className = `multiband-compressor-band-graph ${i === 0 ? 'active' : ''}`;
       graphDiv.setAttribute('data-instance-id', this.instanceId);
-      const canvas = document.createElement('canvas');
+      const { container: graphContainer, canvas } = this.createGraphContainer({
+        maxWidth: 160,
+        canvasWidth: 320,
+        canvasHeight: 320,
+        className: 'multiband-compressor-transfer-graph'
+      });
       // Set canvas buffer size for high-resolution display.
       // This size is intentionally larger than the display size (160x160px defined in CSS)
       // to ensure sharpness when scaled or on high-DPI screens.
-      canvas.width = 320;
-      canvas.height = 320;
-      canvas.style.width = '160px';
-      canvas.style.height = '160px';
       canvas.style.backgroundColor = '#222';
       const label = document.createElement('div');
       label.className = 'multiband-compressor-band-graph-label';
       label.textContent = `Band ${i + 1}`;
-      graphDiv.appendChild(canvas);
+      graphDiv.appendChild(graphContainer);
       graphDiv.appendChild(label);
       
       // Add click event to switch to this band when clicking on the graph

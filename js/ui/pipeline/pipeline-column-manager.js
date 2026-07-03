@@ -64,14 +64,19 @@ export class PipelineColumnManager {
     updateColumnButtonStates(columns) {
         const decreaseBtn = document.getElementById('decreaseColumnsButton');
         const increaseBtn = document.getElementById('increaseColumnsButton');
+        const isMobile = window.uiManager?.layoutMode?.isMobile;
         
         if (decreaseBtn) {
-            decreaseBtn.disabled = columns <= 1;
+            decreaseBtn.disabled = isMobile || columns <= 1;
         }
         
         if (increaseBtn) {
-            increaseBtn.disabled = columns >= 8;
+            increaseBtn.disabled = isMobile || columns >= 8;
         }
+    }
+
+    getEffectiveColumnCount(columns = this.currentColumns) {
+        return window.uiManager?.layoutMode?.isMobile ? 1 : columns;
     }
 
     /**
@@ -80,22 +85,26 @@ export class PipelineColumnManager {
      */
     updatePipelineColumns(columns) {
         if (columns < 1 || columns > 8) return; // Check valid range (1-8)
+        const effectiveColumns = this.getEffectiveColumnCount(columns);
         
         // Update CSS variable for tracking number of columns
-        document.documentElement.style.setProperty('--pipeline-columns', columns);
+        document.documentElement.style.setProperty('--pipeline-columns', effectiveColumns);
         
         // Calculate and set pipeline width
         const baseWidth = 1064; // Base width per column
         const gap = 10; // Gap between columns (must match CSS gap value)
-        const pipelineWidth = (baseWidth * columns) + (gap * (columns - 1));
+        const pipelineWidth = (baseWidth * effectiveColumns) + (gap * (effectiveColumns - 1));
         
         const pipeline = document.getElementById('pipeline');
         if (pipeline) {
-            pipeline.style.width = `${pipelineWidth}px`;
+            pipeline.style.width = window.uiManager?.layoutMode?.isMobile ? '100%' : `${pipelineWidth}px`;
+            if (window.uiManager?.layoutMode?.isMobile) {
+                pipeline.style.marginLeft = '0';
+            }
         }
         
         // Rather than using updatePipelineUI, we'll explicitly rebuild the columns
-        this.rebuildPipelineColumns(columns);
+        this.rebuildPipelineColumns(effectiveColumns);
         
         // Defer updating the pull tab position to the next animation frame.
         // This ensures layout changes (pipeline width, column rebuild) are processed
@@ -105,7 +114,10 @@ export class PipelineColumnManager {
         });
         
         // Save column count to localStorage for persistence
-        localStorage.setItem('pipelineColumns', columns);
+        if (!window.uiManager?.layoutMode?.isMobile) {
+            localStorage.setItem('pipelineColumns', columns);
+        }
+        this.updateColumnButtonStates(columns);
     }
 
     /**

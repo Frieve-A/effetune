@@ -221,6 +221,10 @@ export class PipelineRoutingDialog {
      * @param {HTMLElement} button - The button element
      */
     positionDialog(dialog, button) {
+        if (window.uiManager?.layoutMode?.isMobile) {
+            dialog.style.position = 'fixed';
+            return;
+        }
         // Use established Electron detection pattern from the codebase
         const isElectron = window.electronIntegration && window.electronIntegration.isElectronEnvironment();
         
@@ -323,7 +327,8 @@ export class PipelineRoutingDialog {
         // Find or create the bus info element
         let busInfo = pipelineItem.querySelector('.bus-info');
         const header = pipelineItem.querySelector('.pipeline-item-header');
-        const routingBtn = pipelineItem.querySelector('.routing-button'); // Find routing button for insertion point
+        const headerActions = pipelineItem.querySelector('.plugin-header-actions');
+        const routingBtn = pipelineItem.querySelector('.routing-button');
 
         // Determine if there's bus or channel info to display
         const hasBusInfo = plugin.inputBus !== null || plugin.outputBus !== null;
@@ -333,14 +338,8 @@ export class PipelineRoutingDialog {
             if (!busInfo) {
                 busInfo = document.createElement('div');
                 busInfo.className = 'bus-info';
-                // Insert before the routing button or as the first child if no routing button
-                if (routingBtn) {
-                    header.insertBefore(busInfo, routingBtn);
-                } else {
-                    // Fallback: insert before the first element (e.g., move up/down buttons)
-                    // This might need adjustment based on exact header structure if routingBtn is absent
-                    header.insertBefore(busInfo, header.children[2] || null); 
-                }
+                const directRoutingBtn = routingBtn?.parentNode === header ? routingBtn : null;
+                header.insertBefore(busInfo, headerActions || directRoutingBtn || header.children[2] || null);
             }
             
             let busText = '';

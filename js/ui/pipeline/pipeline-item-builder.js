@@ -111,36 +111,41 @@ export class PipelineItemBuilder {
 
         // Display bus routing info if set
         this.addBusInfo(header, plugin, item);
+
+        const actions = document.createElement('div');
+        actions.className = 'plugin-header-actions';
         
         if (!isSectionPlugin) {
             // Routing button
             const routingBtn = this.createRoutingButton(plugin);
-            header.appendChild(routingBtn);
+            actions.appendChild(routingBtn);
         }
 
         // Reset parameters button
         const resetBtn = this.createResetButton(plugin);
-        header.appendChild(resetBtn);
+        actions.appendChild(resetBtn);
         
         // Move up button
         const moveUpBtn = this.createMoveUpButton(plugin);
-        header.appendChild(moveUpBtn);
+        actions.appendChild(moveUpBtn);
 
         // Move down button
         const moveDownBtn = this.createMoveDownButton(plugin);
-        header.appendChild(moveDownBtn);
+        actions.appendChild(moveDownBtn);
 
         // Help button
         const helpBtn = this.createHelpButton(plugin);
-        header.appendChild(helpBtn);
+        actions.appendChild(helpBtn);
 
         // AI button
         const aiBtn = this.createAIButton(plugin);
-        header.appendChild(aiBtn);
+        actions.appendChild(aiBtn);
 
         // Delete button
         const deleteBtn = this.createDeleteButton(plugin);
-        header.appendChild(deleteBtn);
+        actions.appendChild(deleteBtn);
+
+        header.appendChild(actions);
 
         return header;
     }

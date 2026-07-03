@@ -615,6 +615,8 @@ input[type="checkbox"] {
 .pipeline-header {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 10px;
     padding-bottom: 10px;
 }
 
@@ -704,8 +706,29 @@ input[type="checkbox"] {
 .pipeline-header-right {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
     margin-left: auto;
-    gap: 10px 0px;
+    gap: 8px 0px;
+    min-width: 0;
+}
+
+.pipeline-preset-controls {
+    display: flex;
+    flex: 0 1 auto;
+    align-items: center;
+    width: max-content;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.pipeline-preset-controls .select-container {
+    flex: 0 1 230px;
+    min-width: 120px;
+}
+
+.pipeline-preset-controls .share-button {
+    flex: 0 0 auto;
 }
 
 /* Pipeline toggle and menu styles */
@@ -840,14 +863,27 @@ input[type="checkbox"] {
 .pipeline-item-header {
     display: flex;
     align-items: center;
-    width: calc(100% - 10px);;
+    flex-wrap: wrap;
+    gap: 4px 6px;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 .handle {
     cursor: move;
-    padding: 9px 15px 7px 15px;
+    flex: 0 0 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 24px;
+    padding: 0;
+    margin: 0;
     color: #ccc;
     font-size: 18px;
+    line-height: 1;
+    user-select: none;
 }
 
 .handle:hover {
@@ -875,11 +911,44 @@ input[type="checkbox"] {
     margin-left: 0px;
 }
 
+.pipeline-item-header .toggle-button {
+    flex: 0 0 48px;
+    margin-right: 0;
+}
+
 .plugin-name {
-    flex-grow: 1;
+    flex: 1 1 120px;
+    min-width: 96px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     cursor: pointer;
     font-size: 16px;
-    transform: translate(0px, 1px);
+    line-height: 24px;
+}
+
+.plugin-header-actions {
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 5px;
+    width: max-content;
+    max-width: 100%;
+    min-width: 0;
+    margin-left: auto;
+}
+
+.plugin-header-actions > .help-button,
+.plugin-header-actions > .ai-button,
+.plugin-header-actions > .delete-button,
+.plugin-header-actions > .move-up-button,
+.plugin-header-actions > .move-down-button,
+.plugin-header-actions > .routing-button,
+.plugin-header-actions > .reset-effect-button {
+    flex: 0 0 24px;
+    margin-right: 0;
 }
 
 .save-button,
@@ -1011,12 +1080,14 @@ input[type="checkbox"] {
 .plugin-parameter-ui .parameter-row {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 10px;
     margin: 2px 0;
 }
 
 .plugin-parameter-ui .parameter-row input[type="range"] {
-    flex-grow: 1;
+    flex: 1 1 120px;
+    min-width: 120px;
 }
 
 .plugin-parameter-ui .parameter-row input[type="number"]{
@@ -1047,6 +1118,18 @@ input[type="checkbox"] {
     color: #ffffff;
     border-radius: 4px;
     padding: 4px;
+}
+
+.graph-container {
+    width: 100%;
+    max-width: 1024px;
+    position: relative;
+}
+
+.graph-container canvas {
+    display: block;
+    max-width: 100%;
+    height: auto;
 }
 
 /* Error Display */
@@ -1281,6 +1364,21 @@ input[type="checkbox"] {
     margin-right: 20px;
 }
 
+.player-artwork {
+    flex: 0 0 56px;
+    width: 56px;
+    height: 56px;
+    margin-right: 15px;
+}
+
+.player-artwork-image {
+    width: 100%;
+    height: 100%;
+    border-radius: 4px;
+    object-fit: cover;
+    background: #1d1d1d;
+}
+
 .track-name-container {
     flex: 1;
     overflow: hidden;
@@ -1340,6 +1438,30 @@ input[type="checkbox"] {
 .player-button:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+.player-playlist {
+    display: none;
+}
+
+.player-playlist-item {
+    display: block;
+    width: 100%;
+    min-height: 36px;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: #ddd;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.player-playlist-item.active {
+    background: #3d3d3d;
+    color: #fff;
 }
 
 /* Double Blind Test Styles */
@@ -1584,6 +1706,11 @@ input[type="checkbox"] {
     background-color: rgba(74, 158, 255, 0.1);
     border-radius: 4px;
     border: 1px solid rgba(74, 158, 255, 0.2);
+}
+
+.pipeline-item-header .bus-info {
+    flex: 0 1 auto;
+    margin-right: 0;
 }
 
 .routing-button {

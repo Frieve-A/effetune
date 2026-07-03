@@ -772,13 +772,15 @@ The project includes a test tool for validating plugin implementations. To use i
 
 1. Start the development server:
 ```bash
-python server.py
+npm run dev
 ```
 
 2. Open the test page in your browser:
 ```
 http://localhost:8000/dev/effetune_test.html
 ```
+
+`npm run dev` serves the repository with no-cache headers and enables development-mode dynamic loading so changes to `plugins/plugins.txt`, plugin JavaScript, and plugin CSS are fetched again on reload.
 
 The test tool performs the following checks for each plugin:
 - Constructor implementation (plugin ID)
@@ -876,6 +878,10 @@ Use this tool during development to ensure your plugin follows the required impl
     - Keep plugin-specific CSS minimal and focused on unique styling needs
     - Use the base CSS classes for standard elements (e.g., `.parameter-row`, `.radio-group`) to ensure consistent layout and appearance
     - Only add custom CSS for plugin-specific UI elements that require unique styling
+    - Build plugin UIs for a 375px-wide mobile viewport as well as desktop. Parameter rows must wrap cleanly, controls must keep usable touch targets, and long labels must not force horizontal scrolling.
+    - Prefer the shared `PluginBase` helpers for common controls: `createSelectControl()`, `createCheckboxControl()`, `createRadioGroup()`, and `createGraphContainer()`. These helpers create IDs and base classes that participate in the mobile layout rules.
+    - For graph or visualization plugins, keep the canvas internal resolution fixed and make only the rendered CSS size responsive. Use `createGraphContainer()` for new canvas graphs, `getGraphCoords()` to map pointer coordinates back to the fixed canvas coordinate space, and `bindGraphPointer()` for drag/tap handling.
+    - Do not depend on mouse-only events for plugin interaction. Pointer events must cover touch and pen input, and marker positions should be stored as percentages when the graph can resize.
 
 4. **Accessibility and Input Element Attributes**
     - All input elements must have IDs that follow the format `${this.id}-${this.name}-[type]` where:

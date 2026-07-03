@@ -56,6 +56,7 @@ export class AudioManager {
         this._resetInProgress = false;
         this._hasPendingReset = false;
         this._pendingResetPrefs = null;
+        this._mobileAudioInputEnabled = false;
         this.isCancelled = false;
         this._skipAudioInitDuringSampleRateChange = false;
         this.isFirstLaunch = false;
@@ -331,7 +332,11 @@ export class AudioManager {
             }
             
             // Initialize audio input
-            const inputResult = await this.ioManager.initAudioInput();
+            const isElectron = window.electronAPI && window.electronIntegration;
+            const deferInput = window.uiManager?.layoutMode?.isMobile &&
+                !isElectron &&
+                !this._mobileAudioInputEnabled;
+            const inputResult = await this.ioManager.initAudioInput({ deferInput });
             // No need to log input result
             
             // Initialize audio output
@@ -356,6 +361,15 @@ export class AudioManager {
         } catch (error) {
             return `Audio Error: ${error.message}`;
         }
+    }
+
+    async enableAudioInput() {
+        this._mobileAudioInputEnabled = true;
+        const result = await this.reset(null);
+        if (result && result.startsWith(MIC_DENIED_PREFIX)) {
+            this._mobileAudioInputEnabled = false;
+        }
+        return result || '';
     }
     
     /**

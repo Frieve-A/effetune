@@ -546,6 +546,185 @@ class PluginBase {
         return row;
     }
 
+    createSelectControl(label, options, value, setter) {
+        const row = document.createElement('div');
+        row.className = 'parameter-row';
+        const paramName = label.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const selectId = `${this.id}-${this.name}-${paramName}-select`;
+
+        const labelEl = document.createElement('label');
+        labelEl.textContent = `${label}:`;
+        labelEl.htmlFor = selectId;
+
+        const select = document.createElement('select');
+        select.id = selectId;
+        select.name = selectId;
+        select.autocomplete = 'off';
+
+        options.forEach(option => {
+            const optionEl = document.createElement('option');
+            optionEl.value = typeof option === 'string' ? option : option.value;
+            optionEl.textContent = typeof option === 'string' ? option : option.label;
+            select.appendChild(optionEl);
+        });
+        select.value = value;
+        select.addEventListener('change', event => setter(event.target.value));
+
+        row.appendChild(labelEl);
+        row.appendChild(select);
+        return row;
+    }
+
+    createCheckboxControl(label, checked, setter) {
+        const row = document.createElement('div');
+        row.className = 'parameter-row checkbox-row';
+        const paramName = label.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const checkboxId = `${this.id}-${this.name}-${paramName}-checkbox`;
+
+        const labelEl = document.createElement('label');
+        labelEl.textContent = `${label}:`;
+        labelEl.htmlFor = checkboxId;
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = checkboxId;
+        checkbox.name = checkboxId;
+        checkbox.checked = !!checked;
+        checkbox.autocomplete = 'off';
+        checkbox.addEventListener('change', event => setter(event.target.checked));
+
+        row.appendChild(labelEl);
+        row.appendChild(checkbox);
+        return row;
+    }
+
+    createRadioGroup(label, options, value, setter) {
+        const row = document.createElement('div');
+        row.className = 'parameter-row radio-group';
+        const paramName = label.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const groupName = `${this.id}-${this.name}-${paramName}`;
+
+        const labelEl = document.createElement('label');
+        labelEl.textContent = `${label}:`;
+        row.appendChild(labelEl);
+
+        options.forEach((option, index) => {
+            const optionValue = typeof option === 'string' ? option : option.value;
+            const optionLabel = typeof option === 'string' ? option : option.label;
+            const radioId = `${groupName}-${index}`;
+
+            const radio = document.createElement('input');
+            radio.type = 'radio';
+            radio.id = radioId;
+            radio.name = groupName;
+            radio.value = optionValue;
+            radio.checked = optionValue === value;
+            radio.autocomplete = 'off';
+            radio.addEventListener('change', event => {
+                if (event.target.checked) setter(event.target.value);
+            });
+
+            const radioLabel = document.createElement('label');
+            radioLabel.htmlFor = radioId;
+            radioLabel.textContent = optionLabel;
+
+            row.appendChild(radio);
+            row.appendChild(radioLabel);
+        });
+
+        return row;
+    }
+
+    createGraphContainer({ maxWidth = 1024, canvasWidth, canvasHeight, className } = {}) {
+        const container = document.createElement('div');
+        container.className = className ? `graph-container ${className}` : 'graph-container';
+        container.style.width = '100%';
+        container.style.maxWidth = `${maxWidth}px`;
+        container.style.position = 'relative';
+
+        const canvas = document.createElement('canvas');
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
+        canvas.style.width = '100%';
+        canvas.style.height = 'auto';
+        canvas.style.aspectRatio = `${canvasWidth} / ${canvasHeight}`;
+        container.appendChild(canvas);
+
+        return { container, canvas };
+    }
+
+    getGraphCoords(canvas, ev) {
+        const rect = canvas.getBoundingClientRect();
+        const touch = ev.touches?.[0] || ev.changedTouches?.[0];
+        const clientX = ev.clientX ?? touch?.clientX ?? rect.left;
+        const clientY = ev.clientY ?? touch?.clientY ?? rect.top;
+        return {
+            x: (clientX - rect.left) * (canvas.width / rect.width),
+            y: (clientY - rect.top) * (canvas.height / rect.height)
+        };
+    }
+
+    bindGraphPointer(element, { onDragStart, onDragMove, onDragEnd, onTap } = {}) {
+        let activePointerId = null;
+        let startX = 0;
+        let startY = 0;
+        let startEvent = null;
+        let dragging = false;
+        const tapThreshold = 8;
+        element.style.touchAction = 'none';
+
+        const onPointerDown = event => {
+            activePointerId = event.pointerId;
+            startX = event.clientX;
+            startY = event.clientY;
+            startEvent = event;
+            dragging = false;
+            element.setPointerCapture?.(event.pointerId);
+            event.preventDefault();
+        };
+
+        const onPointerMove = event => {
+            if (activePointerId !== event.pointerId) return;
+            const dx = event.clientX - startX;
+            const dy = event.clientY - startY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            if (!dragging && distance >= tapThreshold) {
+                dragging = true;
+                onDragStart?.(startEvent || event);
+            }
+            if (dragging) {
+                onDragMove?.(event);
+                event.preventDefault();
+            }
+        };
+
+        const finishPointer = event => {
+            if (activePointerId !== event.pointerId) return;
+            element.releasePointerCapture?.(event.pointerId);
+            if (dragging) {
+                onDragEnd?.(event);
+            } else {
+                onTap?.(event);
+            }
+            activePointerId = null;
+            startEvent = null;
+            dragging = false;
+            event.preventDefault();
+        };
+
+        element.addEventListener('pointerdown', onPointerDown);
+        element.addEventListener('pointermove', onPointerMove);
+        element.addEventListener('pointerup', finishPointer);
+        element.addEventListener('pointercancel', finishPointer);
+
+        return () => {
+            element.removeEventListener('pointerdown', onPointerDown);
+            element.removeEventListener('pointermove', onPointerMove);
+            element.removeEventListener('pointerup', finishPointer);
+            element.removeEventListener('pointercancel', finishPointer);
+        };
+    }
+
     // Create UI elements for the plugin (must be implemented by subclasses).
     createUI() {
         // Default implementation returns an empty container

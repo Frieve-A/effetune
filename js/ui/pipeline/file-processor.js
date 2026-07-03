@@ -348,6 +348,7 @@ export class FileProcessor {
         // Reset cancellation flag
         this.isCancelled = false;
 
+        this.dropArea.classList.add('file-processing-active');
         this.progressContainer.style.display = 'block';
         this.downloadContainer.style.display = 'none';
         this.progressBar.style.width = '0%';
@@ -398,6 +399,15 @@ export class FileProcessor {
      */
     hideProgress() {
         this.progressContainer.style.display = 'none';
+
+        const hasVisibleDownloads = this.downloadContainer &&
+            this.downloadContainer.style.display !== 'none' &&
+            this.downloadContainer.children.length > 0;
+        if (hasVisibleDownloads) {
+            this.dropArea.classList.add('file-processing-active');
+        } else {
+            this.dropArea.classList.remove('file-processing-active');
+        }
 
         // Show drop message again when progress is hidden
         const dropMessage = this.dropArea.querySelector('.drop-message');
@@ -488,6 +498,7 @@ export class FileProcessor {
 
         this.downloadContainer.appendChild(msg);
         this.downloadContainer.style.display = 'block';
+        this.dropArea.classList.add('file-processing-active');
     }
 
     /**
@@ -784,6 +795,7 @@ export class FileProcessor {
         // Add to container
         this.downloadContainer.appendChild(downloadLink);
         this.downloadContainer.style.display = 'block';
+        this.dropArea.classList.add('file-processing-active');
     }
 
     /**

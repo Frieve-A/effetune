@@ -112,25 +112,12 @@ class MSMatrixPlugin extends PluginBase {
         const container = document.createElement('div');
         container.className = 'ms-matrix-plugin-ui plugin-parameter-ui';
 
-        const modeRow = document.createElement('div'); modeRow.className = 'parameter-row';
-        const modeLabel = document.createElement('label'); modeLabel.textContent = 'Mode:';
-        modeRow.appendChild(modeLabel);
-        const modeGroup = document.createElement('div'); modeGroup.className = 'radio-group';
-        const modes = [{label:'Encode',value:0},{label:'Decode',value:1}];
-        const baseId = this.id;
-        modes.forEach(opt => {
-            const id = `${baseId}-mode-${opt.value}`;
-            const lbl = document.createElement('label'); lbl.htmlFor = id;
-            const r = document.createElement('input');
-            r.type = 'radio'; r.id = id; r.name = `${baseId}-mode`;
-            r.value = opt.value; r.checked = (this.md === opt.value);
-            r.addEventListener('change', () => this.setMode(opt.value));
-            lbl.appendChild(r);
-            lbl.appendChild(document.createTextNode(opt.label));
-            modeGroup.appendChild(lbl);
-        });
-        modeRow.appendChild(modeGroup);
-        container.appendChild(modeRow);
+        container.appendChild(this.createRadioGroup(
+            'Mode',
+            [{ label: 'Encode', value: '0' }, { label: 'Decode', value: '1' }],
+            String(this.md),
+            value => this.setMode(parseInt(value, 10))
+        ));
 
         container.appendChild(this.createParameterControl(
             'Mid Gain', -18, 18, 0.1, this.mg,
@@ -142,14 +129,11 @@ class MSMatrixPlugin extends PluginBase {
             v => this.setSideGain(v), 'dB'
         ));
 
-        const swapRow = document.createElement('div'); swapRow.className = 'parameter-row';
-        const swapLabel = document.createElement('label'); swapLabel.textContent = 'Swap L/R';
-        swapRow.appendChild(swapLabel);
-        const chk = document.createElement('input');
-        chk.type = 'checkbox'; chk.checked = (this.sw === 1);
-        chk.addEventListener('change', () => this.setSwap(chk.checked ? 1 : 0));
-        swapRow.appendChild(chk);
-        container.appendChild(swapRow);
+        container.appendChild(this.createCheckboxControl(
+            'Swap L/R',
+            this.sw === 1,
+            checked => this.setSwap(checked ? 1 : 0)
+        ));
 
         return container;
     }

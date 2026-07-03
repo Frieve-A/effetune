@@ -80,7 +80,10 @@ export class PipelineCore {
 
         // --- Handle Non-Empty Pipeline --- 
         // Get the desired column count from storage or default
-        const columnCount = parseInt(localStorage.getItem('pipelineColumns') || '1');
+        const storedColumnCount = parseInt(localStorage.getItem('pipelineColumns') || '1');
+        const columnCount = typeof this.columnManager.getEffectiveColumnCount === 'function'
+            ? this.columnManager.getEffectiveColumnCount(storedColumnCount)
+            : storedColumnCount;
         const currentColumns = this.pipelineList.querySelectorAll('.pipeline-column');
 
         // Rebuild columns if the count differs or forceRedraw is true

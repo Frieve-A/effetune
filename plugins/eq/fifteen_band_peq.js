@@ -352,6 +352,7 @@ class FifteenBandPEQPlugin extends PluginBase {
   }
 
   createUI() {
+    this.disconnectGraphResizeObserver();
     const container = document.createElement('div');
     container.className = 'fifteen-band-peq-plugin-ui plugin-parameter-ui';
     
@@ -459,6 +460,7 @@ class FifteenBandPEQPlugin extends PluginBase {
     responseSvg.setAttribute('class', 'fifteen-band-peq-response');
     responseSvg.setAttribute('width', '100%');
     responseSvg.setAttribute('height', '100%');
+    responseSvg.setAttribute('preserveAspectRatio', 'none');
     graphContainer.appendChild(responseSvg);
     this.responseSvg = responseSvg;
 
@@ -484,56 +486,28 @@ class FifteenBandPEQPlugin extends PluginBase {
         this.activeDragMarker = i;
         marker.classList.add('active');
         this.selectBand(i);
-        
-        // Add event listeners only if they don't already exist
-        if (!this.boundMouseMoveHandler) {
-          this.boundMouseMoveHandler = this.handleDragMove.bind(this);
-          this.boundMouseUpHandler = this.handleDragEnd.bind(this);
-          document.addEventListener('mousemove', this.boundMouseMoveHandler);
-          document.addEventListener('mouseup', this.boundMouseUpHandler);
-        }
-        
+
         // Store initial position but don't update marker position on mousedown
         this.initialDragX = clientX;
         this.initialDragY = clientY;
         this.hasMoved = false;
       };
 
-      marker.addEventListener('mousedown', (e) => { 
-        handleDragStart(e.clientX, e.clientY); 
-        e.preventDefault(); 
-      });
-      
-      marker.addEventListener('touchstart', (e) => { 
-        const touch = e.touches[0]; 
-        handleDragStart(touch.clientX, touch.clientY); 
-        e.preventDefault(); 
-      }, { passive: false });
-      
-      marker.addEventListener('touchmove', (e) => { 
-        if (this.activeDragMarker === i) { 
-          const touch = e.touches[0]; 
-          this.handleDragMove({
-            clientX: touch.clientX, 
-            clientY: touch.clientY, 
-            targetContainer: graphContainer,
-            targetBand: i
-          });
-          e.preventDefault();
-        }
-      }, { passive: false });
-      
-      marker.addEventListener('touchend', () => {
-        if (this.activeDragMarker === i) {
-          this.handleDragEnd();
+      const cleanupPointer = this.bindGraphPointer(marker, {
+        onDragStart: (e) => handleDragStart(e.clientX, e.clientY),
+        onDragMove: (e) => this.handleDragMove({
+          clientX: e.clientX,
+          clientY: e.clientY,
+          targetContainer: graphContainer,
+          targetBand: i
+        }),
+        onDragEnd: () => this.handleDragEnd(),
+        onTap: () => {
+          if (window.uiManager?.layoutMode?.isMobile) this.toggleBandEnabled(i);
         }
       });
-      
-      marker.addEventListener('touchcancel', () => {
-        if (this.activeDragMarker === i) {
-          this.handleDragEnd();
-        }
-      });
+      this.boundEventListeners = this.boundEventListeners || [];
+      this.boundEventListeners.push(cleanupPointer);
       
       marker.addEventListener('contextmenu', (e) => { 
         e.preventDefault(); 
@@ -544,6 +518,7 @@ class FifteenBandPEQPlugin extends PluginBase {
     this.markers = markers;
     this.graphContainer = graphContainer;
     this.uiContainer = container;
+    this.observeGraphResize(graphContainer);
 
     // Band settings area
     const bandSettingsDiv = document.createElement('div');
@@ -885,21 +860,88 @@ class FifteenBandPEQPlugin extends PluginBase {
   gainToY(gain) { return 50 - (gain / 20.0) * 50; } // NEVER Clamp gain
   yToGain(yPercent) { return -(yPercent - 50) / 50.0 * 20.0; }
 
+  observeGraphResize(container) {
+    this.disconnectGraphResizeObserver();
+    if (!container) return;
+
+    this.lastGraphSize = { width: 0, height: 0 };
+    const handleResize = () => {
+      const rect = container.getBoundingClientRect?.() || { width: 0, height: 0 };
+      const width = container.clientWidth || rect.width;
+      const height = container.clientHeight || rect.height;
+      if (!width || !height) return;
+      if (this.lastGraphSize.width === width && this.lastGraphSize.height === height) return;
+      this.lastGraphSize = { width, height };
+      this.updateMarkers();
+      this.updateResponse();
+    };
+    this.graphResizeHandler = handleResize;
+
+    const ResizeObserverClass = typeof ResizeObserver !== 'undefined'
+      ? ResizeObserver
+      : (typeof window !== 'undefined' ? window.ResizeObserver : null);
+    if (typeof ResizeObserverClass === 'function') {
+      this.graphResizeObserver = new ResizeObserverClass(handleResize);
+      this.graphResizeObserver.observe(container);
+      return;
+    }
+
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      window.addEventListener('resize', handleResize);
+      this.graphResizeWindowListener = handleResize;
+    }
+  }
+
+  disconnectGraphResizeObserver() {
+    if (this.graphResizeObserver) {
+      this.graphResizeObserver.disconnect();
+      this.graphResizeObserver = null;
+    }
+    if (this.graphResizeWindowListener && typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+      window.removeEventListener('resize', this.graphResizeWindowListener);
+    }
+    this.graphResizeWindowListener = null;
+    this.graphResizeHandler = null;
+    this.lastGraphSize = null;
+  }
+
+  getGraphPlotArea(container = this.graphContainer) {
+    const margin = 20;
+    const rect = container?.getBoundingClientRect?.() || { left: 0, top: 0, width: 0, height: 0 };
+    const width = container?.clientWidth || rect.width;
+    const height = container?.clientHeight || rect.height;
+    const marginX = width > margin * 2 ? margin : 0;
+    const marginY = height > margin * 2 ? margin : 0;
+    const plotWidth = width - marginX * 2;
+    const plotHeight = height - marginY * 2;
+
+    return {
+      left: rect.left + marginX,
+      top: rect.top + marginY,
+      width: plotWidth > 0 ? plotWidth : width,
+      height: plotHeight > 0 ? plotHeight : height,
+      leftPercent: width > 0 ? (marginX / width) * 100 : 0,
+      topPercent: height > 0 ? (marginY / height) * 100 : 0,
+      widthPercent: width > 0 ? ((plotWidth > 0 ? plotWidth : width) / width) * 100 : 100,
+      heightPercent: height > 0 ? ((plotHeight > 0 ? plotHeight : height) / height) * 100 : 100
+    };
+  }
+
   updateMarkers() {
     if (!this.markers || !this.graphContainer || !this.uiCreated) return; // Check if UI is created
+    const plotArea = this.getGraphPlotArea();
     for (let i = 0; i < 15; i++) {
       const marker = this.markers[i]; if (!marker) continue;
       const freq = this['f' + i]; const gain = this['g' + i]; const enabled = this['e' + i];
       const x = this.freqToX(freq); const y = this.gainToY(gain);
-      const margin = 20; 
       const graphWidth = this.graphContainer.clientWidth; const graphHeight = this.graphContainer.clientHeight;
       if (graphWidth === 0 || graphHeight === 0) continue;
-      const xPos = (x / 100) * (graphWidth - 2 * margin) + margin;
-      const yPos = (y / 100) * (graphHeight - 2 * margin) + margin;
-      marker.style.left = `${xPos}px`; marker.style.top = `${yPos}px`;
+      const xPos = plotArea.leftPercent + (x / 100) * plotArea.widthPercent;
+      const yPos = plotArea.topPercent + (y / 100) * plotArea.heightPercent;
+      marker.style.left = `${xPos}%`; marker.style.top = `${yPos}%`;
       marker.classList.toggle('disabled', !enabled);
       const markerTextEl = marker.querySelector('.fifteen-band-peq-marker-text'); if (!markerTextEl) continue;
-      const centerY = graphHeight / 2; const isTop = yPos < centerY;
+      const isTop = yPos < 50;
       
       // Position marker text (maintain top/bottom position while centering horizontally)
       markerTextEl.className = `fifteen-band-peq-marker-text ${isTop ? 'bottom' : 'top'}`;
@@ -951,9 +993,11 @@ class FifteenBandPEQPlugin extends PluginBase {
   }
 
   updateResponse() {
-    if (!this.responseSvg || !this.responseSvg.clientWidth || !this.uiCreated) return; // Check if UI is created
+    if (!this.responseSvg || !this.responseSvg.clientWidth || !this.responseSvg.clientHeight || !this.uiCreated) return; // Check if UI is created
     const width = this.responseSvg.clientWidth;
     const height = this.responseSvg.clientHeight;
+    this.responseSvg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    this.responseSvg.setAttribute('preserveAspectRatio', 'none');
 
     const freqPoints = [];
     const numPoints = Math.max(200, width / 2);
@@ -1022,11 +1066,10 @@ class FifteenBandPEQPlugin extends PluginBase {
     
     if (!container) return;
     
-    const rect = container.getBoundingClientRect();
-    const margin = 20;
-    let x = (clientX - rect.left - margin) / (rect.width - 2 * margin);
+    const plotArea = this.getGraphPlotArea(container);
+    let x = (clientX - plotArea.left) / plotArea.width;
     x = Math.max(0, Math.min(1, x));
-    let y = (clientY - rect.top - margin) / (rect.height - 2 * margin);
+    let y = (clientY - plotArea.top) / plotArea.height;
     y = Math.max(0, Math.min(1, y));
     
     const freq = this.xToFreq(x * 100);
@@ -1053,7 +1096,6 @@ class FifteenBandPEQPlugin extends PluginBase {
     this.activeDragMarker = null;
     this.hasMoved = false; // Reset movement state
     
-    // Remove event listeners
     if (this.boundMouseMoveHandler) {
       document.removeEventListener('mousemove', this.boundMouseMoveHandler);
       document.removeEventListener('mouseup', this.boundMouseUpHandler);
@@ -1064,12 +1106,17 @@ class FifteenBandPEQPlugin extends PluginBase {
   
   // Add plugin cleanup method
   cleanup() {
+    this.disconnectGraphResizeObserver();
     // Clean up event listeners
     if (this.boundMouseMoveHandler) {
       document.removeEventListener('mousemove', this.boundMouseMoveHandler);
       document.removeEventListener('mouseup', this.boundMouseUpHandler);
       this.boundMouseMoveHandler = null;
       this.boundMouseUpHandler = null;
+    }
+    if (Array.isArray(this.boundEventListeners)) {
+      this.boundEventListeners.forEach(cleanup => cleanup());
+      this.boundEventListeners = [];
     }
     
     // Reset active state

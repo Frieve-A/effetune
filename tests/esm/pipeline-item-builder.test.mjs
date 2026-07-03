@@ -385,6 +385,12 @@ test('creates pipeline items and exercises header controls for regular plugins',
     assert.equal(item.className, 'pipeline-item');
     assert.equal(item.dataset.pluginId, 2);
     assert.ok(core.calls.some(call => call[0] === 'setupDragEvents'));
+    const header = find(item, '.pipeline-item-header');
+    const actions = find(item, '.plugin-header-actions');
+    assert.equal(actions.parentNode, header);
+    assert.equal(find(item, '.bus-info').parentNode, header);
+    assert.equal(find(item, '.routing-button').parentNode, actions);
+    assert.equal(find(item, '.delete-button').parentNode, actions);
 
     item.dispatch('click', { target: find(item, '.plugin-ui') });
     item.dispatch('click', { target: find(item, '.plugin-name') });

@@ -55,6 +55,26 @@
     padding: 0;
 }
 
+body.layout-mobile .fifteen-band-geq-plugin-ui .sliders-container {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px 6px;
+}
+
+body.layout-mobile .fifteen-band-geq-plugin-ui .slider-container {
+    flex: 0 1 46px;
+    width: 46px;
+    margin: 0;
+}
+
+body.layout-mobile .fifteen-band-geq-plugin-ui .value-display {
+    width: 46px;
+}
+
+body.layout-mobile .fifteen-band-geq-plugin-ui .vertical-slider {
+    height: 160px;
+}
+
 .fifteen-band-geq-plugin-ui canvas {
     margin: 10px auto;
     display: block;

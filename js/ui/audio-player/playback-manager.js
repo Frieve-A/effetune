@@ -723,31 +723,23 @@ export class PlaybackManager {
    * Load player state from storage
    */
   async loadPlayerState() {
-    if (!window.electronAPI || !window.electronIntegration) return Promise.resolve();
+    const windowRef = typeof window !== 'undefined' ? window : {};
+    if (!windowRef.electronAPI || !windowRef.electronIntegration) {
+      this.loadPlayerStateFromLocalStorage(windowRef);
+      return Promise.resolve();
+    }
     
     try {
-      const userDataPath = await window.electronAPI.getPath('userData');
-      const stateFilePath = await window.electronAPI.joinPaths(userDataPath, 'player-state.json');
-      const fileExists = await window.electronAPI.fileExists(stateFilePath);
+      const userDataPath = await windowRef.electronAPI.getPath('userData');
+      const stateFilePath = await windowRef.electronAPI.joinPaths(userDataPath, 'player-state.json');
+      const fileExists = await windowRef.electronAPI.fileExists(stateFilePath);
       
       if (fileExists) {
-        const result = await window.electronAPI.readFile(stateFilePath);
+        const result = await windowRef.electronAPI.readFile(stateFilePath);
         
         if (result.success) {
           const playerState = JSON.parse(result.content);
-          
-          if (this.audioPlayer.stateManager) {
-            const updates = {};
-            if (playerState.repeatMode) {
-              updates.repeatMode = playerState.repeatMode;
-            }
-            if (playerState.shuffleMode !== undefined) {
-              updates.shuffleMode = playerState.shuffleMode;
-            }
-            if (Object.keys(updates).length > 0) {
-              this.audioPlayer.stateManager.updateState(updates, 'PlaybackManager loadPlayerState');
-            }
-          }
+          this.applyPlayerState(playerState, 'PlaybackManager loadPlayerState');
         }
       }
       return Promise.resolve();
@@ -756,25 +748,60 @@ export class PlaybackManager {
       return Promise.resolve();
     }
   }
+
+  loadPlayerStateFromLocalStorage(windowRef = typeof window !== 'undefined' ? window : {}) {
+    try {
+      const rawState = windowRef.localStorage?.getItem('effetune_player_state');
+      if (!rawState) return;
+      this.applyPlayerState(JSON.parse(rawState), 'PlaybackManager loadPlayerState localStorage');
+    } catch (error) {
+      console.warn('Failed to load web player state:', error);
+    }
+  }
+
+  applyPlayerState(playerState, source) {
+    if (!this.audioPlayer.stateManager || !playerState || typeof playerState !== 'object') return;
+
+    const updates = {};
+    if (playerState.repeatMode) {
+      updates.repeatMode = playerState.repeatMode;
+    }
+    if (playerState.shuffleMode !== undefined) {
+      updates.shuffleMode = !!playerState.shuffleMode;
+    }
+    if (Object.keys(updates).length > 0) {
+      this.audioPlayer.stateManager.updateState(updates, source);
+    }
+  }
+
+  getPersistentPlayerState() {
+    const state = this.audioPlayer.stateManager?.getStateSnapshot();
+    return {
+      repeatMode: state?.repeatMode || 'OFF',
+      shuffleMode: state?.shuffleMode || false
+    };
+  }
   
   /**
    * Save player state to storage
    */
   async savePlayerState() {
-    if (!window.electronAPI || !window.electronIntegration) return;
+    const windowRef = typeof window !== 'undefined' ? window : {};
+    const playerState = this.getPersistentPlayerState();
+    if (!windowRef.electronAPI || !windowRef.electronIntegration) {
+      try {
+        windowRef.localStorage?.setItem('effetune_player_state', JSON.stringify(playerState));
+      } catch (error) {
+        console.warn('Failed to save web player state:', error);
+      }
+      return;
+    }
     
     try {
-      const userDataPath = await window.electronAPI.getPath('userData');
-      const stateFilePath = await window.electronAPI.joinPaths(userDataPath, 'player-state.json');
+      const userDataPath = await windowRef.electronAPI.getPath('userData');
+      const stateFilePath = await windowRef.electronAPI.joinPaths(userDataPath, 'player-state.json');
       
-      const state = this.audioPlayer.stateManager?.getStateSnapshot();
-      
-      const playerState = {
-        repeatMode: state?.repeatMode || 'OFF',
-        shuffleMode: state?.shuffleMode || false
-      };
-      
-      await window.electronAPI.saveFile(stateFilePath, JSON.stringify(playerState, null, 2));
+      await windowRef.electronAPI.saveFile(stateFilePath, JSON.stringify(playerState, null, 2));
     } catch (error) {
       console.error('Failed to save player state:', error);
     }

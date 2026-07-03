@@ -282,8 +282,8 @@ function installFakes(manager, calls, options = {}) {
     stream: options.stream ?? { id: 'stream' },
     sourceNode,
     outputGainNode,
-    async initAudioInput() {
-      calls.push(['io.initAudioInput']);
+    async initAudioInput(optionsArg) {
+      calls.push(['io.initAudioInput', optionsArg]);
       if (options.throwInitAudioInput) throw new Error('input failed');
       return options.inputResult ?? '';
     },
@@ -548,6 +548,13 @@ test('initializes audio and worklet phases with success, warnings, messages, and
     assert.equal(calls.some(call => call[0] === 'context.resumeAudioContext'), true);
   });
 
+  await withAudioManager({
+    uiManager: { layoutMode: { isMobile: true } }
+  }, async ({ calls, manager }) => {
+    assert.equal(await manager.initAudio(), '');
+    assert.deepEqual(calls.find(call => call[0] === 'io.initAudioInput')[1], { deferInput: true });
+  });
+
   await withAudioManager({ contextInitResult: 'context error' }, async ({ manager }) => {
     assert.equal(await manager.initAudio(), 'context error');
   });
@@ -668,6 +675,22 @@ test('serializes resets, handles reset outcomes, and notifies graph rebuild list
   await withAudioManager({}, async ({ manager }) => {
     manager._doReset = async () => undefined;
     assert.equal(await manager.reset(), '');
+  });
+
+  await withAudioManager({}, async ({ calls, manager }) => {
+    manager._doReset = async () => {
+      calls.push(['manager._doReset.enableAudioInput']);
+      return '';
+    };
+    assert.equal(await manager.enableAudioInput(), '');
+    assert.equal(manager._mobileAudioInputEnabled, true);
+    assert.ok(calls.some(call => call[0] === 'manager._doReset.enableAudioInput'));
+  });
+
+  await withAudioManager({}, async ({ manager }) => {
+    manager._doReset = async () => `${MIC_DENIED_PREFIX}.`;
+    assert.equal(await manager.enableAudioInput(), `${MIC_DENIED_PREFIX}.`);
+    assert.equal(manager._mobileAudioInputEnabled, false);
   });
 
   await withAudioManager({ skipAudioInit: true }, async ({ calls, manager }) => {

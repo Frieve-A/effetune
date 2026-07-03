@@ -17,6 +17,9 @@ import {
 } from './utils/pipeline-state-codec.js';
 import { DoubleBlindTest } from './ui/double-blind-test/double-blind-test.js';
 import { copyTextToClipboard, readTextFromClipboard } from './utils/clipboard-utils.js';
+import { LayoutModeManager } from './ui/layout-mode-manager.js';
+import { MobileMenu } from './ui/mobile-menu.js';
+import { MobileNav } from './ui/mobile-nav.js';
 
 export class UIManager {
     constructor(pluginManager, audioManager) {
@@ -43,6 +46,13 @@ export class UIManager {
         this.pipelineEmpty = document.getElementById('pipelineEmpty');
         this.sampleRate = document.getElementById('sampleRate');
 
+        // Initialize layout mode before child managers so mobile-specific
+        // branches can consult one shared source of truth.
+        this.layoutMode = new LayoutModeManager();
+
+        // Make UIManager instance globally available for URL updates and layout checks
+        window.uiManager = this;
+
         // Initialize supported languages
         this.supportedLanguages = TRANSLATED_LANGUAGE_CODES;
         this.languagePreference = this.getStoredLanguagePreference();
@@ -56,9 +66,14 @@ export class UIManager {
         this.pluginListManager = new PluginListManager(pluginManager);
         this.pipelineManager = new PipelineManager(audioManager, pluginManager, this.expandedPlugins, this.pluginListManager);
         this.stateManager = new StateManager(audioManager);
-
-        // Make UIManager instance globally available for URL updates
-        window.uiManager = this;
+        this.mobileMenu = new MobileMenu(this);
+        this.mobileNav = new MobileNav(this);
+        this.layoutMode.onChange(() => {
+            this.pipelineManager.core.columnManager.updatePipelineColumns(
+                this.pipelineManager.core.columnManager.getCurrentColumns()
+            );
+            this.pluginListManager.updatePositions();
+        });
 
         // Initialize UI elements
         this.initWhatsThisLink();
@@ -150,6 +165,18 @@ export class UIManager {
 
     clearError() {
         this.stateManager.clearError();
+    }
+
+    async enableAudioInput() {
+        if (!this.audioManager?.enableAudioInput) return;
+        this.setError('Requesting audio input...', false);
+        const result = await this.audioManager.enableAudioInput();
+        if (result) {
+            this.setError(result, result.startsWith('Audio Error:'));
+            return;
+        }
+        this.setError('Audio input enabled.', false);
+        setTimeout(() => this.clearError(), 3000);
     }
 
     // URL state management
@@ -274,6 +301,7 @@ export class UIManager {
 
         // Get current state
         const state = this.getPipelineState();
+        this.savePipelineStateToLocalStorage(state);
         const newURL = new URL(window.location.href);
         newURL.searchParams.set('p', state);
 
@@ -291,6 +319,47 @@ export class UIManager {
             window.history.replaceState({}, '', this._latestURL);
             this._updateURLTimeout = null;
         }, 100); // Throttle to once every 100ms
+    }
+
+    savePipelineStateToLocalStorage(encodedState = this.getPipelineState()) {
+        if (window.electronIntegration?.isElectronEnvironment?.()) return;
+        if (this._pipelineStorageTimeout) {
+            clearTimeout(this._pipelineStorageTimeout);
+        }
+        this._pipelineStorageTimeout = setTimeout(() => {
+            try {
+                localStorage.setItem('effetune_pipeline_state', encodedState);
+            } catch (error) {
+                console.warn('Failed to save web pipeline state:', error);
+            }
+            this._pipelineStorageTimeout = null;
+        }, 250);
+    }
+
+    loadPipelineStateFromLocalStorage() {
+        if (window.electronIntegration?.isElectronEnvironment?.()) return null;
+        try {
+            const encodedState = localStorage.getItem('effetune_pipeline_state');
+            if (!encodedState) return null;
+            if (!/^[A-Za-z0-9+/=]+$/.test(encodedState)) return null;
+            const decoded = decodePipelineState(encodedState);
+            if (!Array.isArray(decoded)) return null;
+            return decoded.map(serializedParams => {
+                const { nm: name, en: enabled, ib: inputBus, ob: outputBus, ch: channel, ...parameters } = serializedParams;
+                if (!name) return null;
+                return {
+                    name,
+                    enabled: enabled === undefined ? true : enabled,
+                    parameters,
+                    ...(inputBus !== undefined && { inputBus }),
+                    ...(outputBus !== undefined && { outputBus }),
+                    ...(channel !== undefined && { channel })
+                };
+            }).filter(Boolean);
+        } catch (error) {
+            console.warn('Failed to load web pipeline state:', error);
+            return null;
+        }
     }
 
     // Call this method after audio context is initialized
@@ -628,10 +697,7 @@ export class UIManager {
          if (pipelineHeaderTitle) {
             pipelineHeaderTitle.textContent = "Effect Pipeline";
          }
-        const pipelineEmpty = document.getElementById('pipelineEmpty');
-        if (pipelineEmpty) {
-            pipelineEmpty.textContent = this.t('ui.dragPluginsHere');
-        }
+        this.updatePipelineEmptyContent();
         const shareButton = document.getElementById('shareButton');
         if (shareButton) {
             shareButton.textContent = this.t('ui.shareButton');
@@ -752,6 +818,28 @@ export class UIManager {
         if (userPresetsTab) {
             userPresetsTab.title = this.t('ui.title.userPresets');
         }
+    }
+
+    updatePipelineEmptyContent() {
+        const pipelineEmpty = this.pipelineEmpty || document.getElementById('pipelineEmpty');
+        if (!pipelineEmpty) return;
+
+        let message = pipelineEmpty.querySelector?.('.pipeline-empty-message');
+        if (!message) {
+            Array.from(pipelineEmpty.children || []).forEach(child => {
+                if (typeof child.remove === 'function') {
+                    child.remove();
+                } else {
+                    pipelineEmpty.removeChild(child);
+                }
+            });
+            pipelineEmpty.textContent = '';
+            message = document.createElement('div');
+            message.className = 'pipeline-empty-message';
+            pipelineEmpty.appendChild(message);
+        }
+        message.textContent = this.t('ui.dragPluginsHere');
+        pipelineEmpty.querySelectorAll?.('.mobile-effects-open-music')?.forEach(button => button.remove());
     }
 
     getLocalizedDocPath(basePath) {
@@ -914,16 +1002,8 @@ export class UIManager {
                     // Add event listener for file selection
                     fileInput.addEventListener('change', (e) => {
                         if (e.target.files && e.target.files.length > 0) {
-                            // Convert File objects to URLs
-                            const fileUrls = Array.from(e.target.files).map(file => URL.createObjectURL(file));
-
-                            // Create audio player with the file URLs
-                            this.createAudioPlayer(fileUrls, false);
-
-                            // Clean up object URLs when they're no longer needed
-                            window.addEventListener('unload', () => {
-                                fileUrls.forEach(url => URL.revokeObjectURL(url));
-                            }, { once: true });
+                            this.createAudioPlayer(Array.from(e.target.files), false);
+                            this.mobileNav?.setView('player');
                         }
 
                         // Remove the file input element
@@ -972,6 +1052,7 @@ export class UIManager {
 
         // Create new player
         this.audioPlayer = new AudioPlayer(this.audioManager);
+        this.mobileNav?.attachPlayerState();
 
         // Load files
         if (filePaths && filePaths.length > 0) {

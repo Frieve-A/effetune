@@ -37,8 +37,7 @@ Thumbs.db
 *.sln
 *.sw?
 
-# Local agent instructions
-AGENTS.md
+# Local legacy agent instructions
 CLAUDE.md
 
 # Electron specific

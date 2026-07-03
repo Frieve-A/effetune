@@ -46,8 +46,13 @@ export class AudioIOManager {
      * Initialize audio input (microphone)
      * @returns {Promise<string>} - Empty string on success, error message on failure
      */
-    async initAudioInput() {
+    async initAudioInput({ deferInput = false } = {}) {
         try {
+            if (deferInput) {
+                this.createSilentSourceFallback();
+                return '';
+            }
+
             // Variable to store microphone error message
             let microphoneError = null;
             
@@ -156,32 +161,7 @@ export class AudioIOManager {
             if (usingMicrophoneInput && this.stream) {
                 this.sourceNode = this.contextManager.audioContext.createMediaStreamSource(this.stream);
             } else {
-                // No microphone access, create a stereo-compatible silent source as a fallback
-                console.log('Creating stereo-compatible silent source as fallback');
-                
-                // Create a buffer source instead of oscillator for better stereo support
-                const bufferSize = this.contextManager.audioContext.sampleRate * 2; // 2 seconds of silence
-                const silentBuffer = this.contextManager.audioContext.createBuffer(
-                    2, // 2 channels for stereo
-                    bufferSize,
-                    this.contextManager.audioContext.sampleRate
-                );
-                
-                // Create a buffer source node
-                const bufferSource = this.contextManager.audioContext.createBufferSource();
-                bufferSource.buffer = silentBuffer;
-                bufferSource.loop = true; // Loop the silent buffer
-                
-                // Create a gain node to ensure silence
-                const gainNode = this.contextManager.audioContext.createGain();
-                gainNode.gain.value = 0; // Mute
-                
-                // Connect buffer source to gain node
-                bufferSource.connect(gainNode);
-                bufferSource.start();
-                
-                // Use the gain node as our source node
-                this.sourceNode = gainNode;
+                this.createSilentSourceFallback();
                 
                 // Log message for Electron users
                 if (window.electronAPI && window.electronIntegration) {
@@ -204,6 +184,24 @@ export class AudioIOManager {
             console.error('Audio input initialization error:', error);
             return `Audio Error: ${error.message}`;
         }
+    }
+
+    createSilentSourceFallback() {
+        console.log('Creating stereo-compatible silent source as fallback');
+        const bufferSize = this.contextManager.audioContext.sampleRate * 2;
+        const silentBuffer = this.contextManager.audioContext.createBuffer(
+            2,
+            bufferSize,
+            this.contextManager.audioContext.sampleRate
+        );
+        const bufferSource = this.contextManager.audioContext.createBufferSource();
+        bufferSource.buffer = silentBuffer;
+        bufferSource.loop = true;
+        const gainNode = this.contextManager.audioContext.createGain();
+        gainNode.gain.value = 0;
+        bufferSource.connect(gainNode);
+        bufferSource.start();
+        this.sourceNode = gainNode;
     }
     
     /**

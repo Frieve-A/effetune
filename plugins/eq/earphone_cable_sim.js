@@ -501,6 +501,7 @@ class EarphoneCableSimPlugin extends PluginBase {
    *  UI
    * ============================================================ */
   createUI() {
+    this.disconnectGraphResizeObserver();
     const container = document.createElement('div');
     container.className = 'earphone-cable-sim-plugin-ui plugin-parameter-ui';
 
@@ -518,10 +519,13 @@ class EarphoneCableSimPlugin extends PluginBase {
     responseSvg.setAttribute('class', 'earphone-cable-sim-response');
     responseSvg.setAttribute('width', '100%');
     responseSvg.setAttribute('height', '100%');
+    responseSvg.setAttribute('preserveAspectRatio', 'none');
     graphContainer.appendChild(responseSvg);
 
+    this.graphContainer = graphContainer;
     this.gridSvg = gridSvg;
     this.responseSvg = responseSvg;
+    this.observeGraphResize(graphContainer);
     container.appendChild(graphContainer);
 
     // ---- Amplifier / cable parameters ----
@@ -642,6 +646,50 @@ class EarphoneCableSimPlugin extends PluginBase {
     return 50 - (gain / R) * 50;
   }
 
+  observeGraphResize(container) {
+    this.disconnectGraphResizeObserver();
+    if (!container) return;
+
+    this.lastGraphSize = { width: 0, height: 0 };
+    const handleResize = () => {
+      const rect = container.getBoundingClientRect?.() || { width: 0, height: 0 };
+      const width = container.clientWidth || rect.width;
+      const height = container.clientHeight || rect.height;
+      if (!width || !height) return;
+      if (this.lastGraphSize.width === width && this.lastGraphSize.height === height) return;
+      this.lastGraphSize = { width, height };
+      this.updateResponse();
+    };
+    this.graphResizeHandler = handleResize;
+
+    const ResizeObserverClass = typeof ResizeObserver !== 'undefined'
+      ? ResizeObserver
+      : (typeof window !== 'undefined' ? window.ResizeObserver : null);
+    if (typeof ResizeObserverClass === 'function') {
+      this.graphResizeObserver = new ResizeObserverClass(handleResize);
+      this.graphResizeObserver.observe(container);
+      return;
+    }
+
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      window.addEventListener('resize', handleResize);
+      this.graphResizeWindowListener = handleResize;
+    }
+  }
+
+  disconnectGraphResizeObserver() {
+    if (this.graphResizeObserver) {
+      this.graphResizeObserver.disconnect();
+      this.graphResizeObserver = null;
+    }
+    if (this.graphResizeWindowListener && typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+      window.removeEventListener('resize', this.graphResizeWindowListener);
+    }
+    this.graphResizeWindowListener = null;
+    this.graphResizeHandler = null;
+    this.lastGraphSize = null;
+  }
+
   // Rebuild the grid. The full-scale mapping range (this._dbMapRange) carries extra
   // headroom beyond the outermost label so every line and number stays inside the graph.
   buildGrid(labelMag) {
@@ -684,6 +732,8 @@ class EarphoneCableSimPlugin extends PluginBase {
     const width = this.responseSvg.clientWidth;
     const height = this.responseSvg.clientHeight;
     if (!width || !height) return;
+    this.responseSvg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    this.responseSvg.setAttribute('preserveAspectRatio', 'none');
 
     // Plot the response of the realised biquad cascade (what is actually applied to the
     // audio), not the ideal physical model. The digital filter is only defined up to
@@ -739,6 +789,7 @@ class EarphoneCableSimPlugin extends PluginBase {
   }
 
   cleanup() {
+    this.disconnectGraphResizeObserver();
     super.cleanup();
   }
 }

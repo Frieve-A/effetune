@@ -541,6 +541,94 @@ test('plugin item events add plugins at selected and appended positions', async 
       ['Existing A', 'Alpha', 'Existing B']
     );
     assert.ok(calls.some(call => call[0] === 'console.error'));
+
+    const beforePlugin = { name: 'Before' };
+    const selectedPlugin = { name: 'Selected' };
+    const afterPlugin = { name: 'After' };
+    const mobilePipelineManager = createPipelineManager({
+      pipeline: [beforePlugin, selectedPlugin, afterPlugin],
+      selectedPlugins: new Set([selectedPlugin])
+    });
+    const mobileNavCalls = [];
+    windowRef.uiManager = {
+      layoutMode: { isMobile: true },
+      pipelineManager: mobilePipelineManager,
+      mobileNav: {
+        closePluginList() {
+          mobileNavCalls.push(['closePluginList']);
+        },
+        setView(view) {
+          mobileNavCalls.push(['setView', view]);
+        }
+      }
+    };
+    manager.dragDropManager.dragMessage.style.display = 'none';
+    await item.dispatchEvent('mousedown');
+    assert.equal(manager.dragDropManager.dragMessage.style.display, 'none');
+    await item.dispatchEvent('pointerdown', {
+      pointerId: 1,
+      clientX: 10,
+      clientY: 20
+    });
+    assert.equal(manager.dragDropManager.dragMessage.style.display, 'none');
+    let pointerPrevented = 0;
+    let pointerStopped = 0;
+    await item.dispatchEvent('pointerup', {
+      pointerId: 1,
+      clientX: 13,
+      clientY: 22,
+      preventDefault() { pointerPrevented += 1; },
+      stopPropagation() { pointerStopped += 1; }
+    });
+    let suppressedClickPrevented = 0;
+    let suppressedClickStopped = 0;
+    await item.dispatchEvent('click', {
+      preventDefault() { suppressedClickPrevented += 1; },
+      stopPropagation() { suppressedClickStopped += 1; }
+    });
+    runFrames();
+    assert.deepEqual(
+      mobilePipelineManager.audioManager.pipeline.map(entry => entry.name),
+      ['Before', 'Selected', 'Alpha', 'After']
+    );
+    assert.equal(
+      mobilePipelineManager.audioManager.pipeline.filter(entry => entry.name === 'Alpha').length,
+      1
+    );
+    assert.deepEqual([pointerPrevented, pointerStopped], [1, 1]);
+    assert.deepEqual([suppressedClickPrevented, suppressedClickStopped], [1, 1]);
+    assert.deepEqual(mobileNavCalls, [
+      ['closePluginList'],
+      ['setView', 'effects']
+    ]);
+
+    const fallbackPipelineManager = createPipelineManager({ pipeline: [] });
+    const fallbackNavCalls = [];
+    windowRef.uiManager = {
+      layoutMode: { isMobile: true },
+      pipelineManager: fallbackPipelineManager,
+      mobileNav: {
+        closePluginList() {
+          fallbackNavCalls.push(['closePluginList']);
+        },
+        setView(view) {
+          fallbackNavCalls.push(['setView', view]);
+        }
+      }
+    };
+    let fallbackPrevented = 0;
+    let fallbackStopped = 0;
+    await item.dispatchEvent('click', {
+      preventDefault() { fallbackPrevented += 1; },
+      stopPropagation() { fallbackStopped += 1; }
+    });
+    runFrames();
+    assert.deepEqual(fallbackPipelineManager.audioManager.pipeline.map(entry => entry.name), ['Alpha']);
+    assert.deepEqual([fallbackPrevented, fallbackStopped], [1, 1]);
+    assert.deepEqual(fallbackNavCalls, [
+      ['closePluginList'],
+      ['setView', 'effects']
+    ]);
   });
 });
 

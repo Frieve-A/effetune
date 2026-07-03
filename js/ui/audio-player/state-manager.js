@@ -31,6 +31,7 @@ export class StateManager {
       // Current track info
       currentTrack: null,
       currentTrackName: '',
+      artworkUrl: '',
       currentTrackDuration: 0,
       currentTrackPosition: 0,
       
@@ -379,4 +380,4 @@ export class StateManager {
       )
     };
   }
-} 
+}

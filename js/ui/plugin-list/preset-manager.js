@@ -262,16 +262,16 @@ export class PresetManager {
     }
 
     setupPresetItemEvents(item, presetName) {
+        item.addEventListener('click', async (e) => {
+            if (!this.isMobileLayout()) return;
+            e.preventDefault?.();
+            e.stopPropagation?.();
+            await this.addPresetFromListItem(presetName, { mobile: true });
+        });
+
         // Handle double-click to add preset
         item.addEventListener('dblclick', async () => {
-            try {
-                await this.presetManager.addPresetToPipeline(presetName);
-            } catch (error) {
-                console.error('Error adding preset:', error);
-                if (window.uiManager) {
-                    window.uiManager.setError(`Error adding preset: ${error.message}`, true);
-                }
-            }
+            await this.addPresetFromListItem(presetName);
         });
 
         // Setup drag events via drag drop manager
@@ -298,16 +298,16 @@ export class PresetManager {
     }
 
     setupUserPresetItemEvents(item, presetName) {
+        item.addEventListener('click', async (e) => {
+            if (!this.isMobileLayout()) return;
+            e.preventDefault?.();
+            e.stopPropagation?.();
+            await this.addUserPresetFromListItem(presetName, { mobile: true });
+        });
+
         // Handle double-click to add user preset
         item.addEventListener('dblclick', async () => {
-            try {
-                await this.addUserPresetToPipeline(presetName);
-            } catch (error) {
-                console.error('Error adding user preset:', error);
-                if (window.uiManager) {
-                    window.uiManager.setError(`Error adding user preset: ${error.message}`, true);
-                }
-            }
+            await this.addUserPresetFromListItem(presetName);
         });
 
         // Setup drag events via drag drop manager
@@ -331,6 +331,45 @@ export class PresetManager {
         item.addEventListener('mouseleave', () => {
             item.style.backgroundColor = '';
         });
+    }
+
+    isMobileLayout() {
+        return window.uiManager?.layoutMode?.isMobile;
+    }
+
+    closeMobilePluginList() {
+        window.uiManager?.mobileNav?.closePluginList();
+        window.uiManager?.mobileNav?.setView('effects');
+    }
+
+    async addPresetFromListItem(presetName, { mobile = false } = {}) {
+        try {
+            const insertionIndex = mobile ? this.pluginListManager.getListItemInsertionIndex?.({ mobile: true }) : null;
+            await this.addPresetToPipeline(presetName, insertionIndex);
+            if (mobile) {
+                this.closeMobilePluginList();
+            }
+        } catch (error) {
+            console.error('Error adding preset:', error);
+            if (window.uiManager) {
+                window.uiManager.setError(`Error adding preset: ${error.message}`, true);
+            }
+        }
+    }
+
+    async addUserPresetFromListItem(presetName, { mobile = false } = {}) {
+        try {
+            const insertionIndex = mobile ? this.pluginListManager.getListItemInsertionIndex?.({ mobile: true }) : null;
+            await this.addUserPresetToPipeline(presetName, insertionIndex);
+            if (mobile) {
+                this.closeMobilePluginList();
+            }
+        } catch (error) {
+            console.error('Error adding user preset:', error);
+            if (window.uiManager) {
+                window.uiManager.setError(`Error adding user preset: ${error.message}`, true);
+            }
+        }
     }
 
     // Add user preset to pipeline

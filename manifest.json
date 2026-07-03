@@ -2,8 +2,15 @@
   "name": "Frieve EffeTune",
   "short_name": "EffeTune",
   "description": "Web-based Audio Effect Processor",
+  "id": "./effetune.html",
   "start_url": "./effetune.html",
+  "scope": "./",
   "display": "standalone",
+  "orientation": "any",
+  "categories": [
+    "music",
+    "utilities"
+  ],
   "background_color": "#000000",
   "theme_color": "#000000",
   "icons": [
@@ -11,13 +18,13 @@
       "src": "images/icon_180x180.png",
       "sizes": "180x180",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "images/icon_192x192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "images/icon_64x64.png",
@@ -28,6 +35,28 @@
       "src": "images/icon_512x512.png",
       "sizes": "512x512",
       "type": "image/png"
+    },
+    {
+      "src": "images/icon_512x512_maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "images/screenshot.png",
+      "sizes": "1449x1145",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "EffeTune effect pipeline"
+    },
+    {
+      "src": "images/screenshot-narrow.png",
+      "sizes": "375x812",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "EffeTune mobile player"
     }
   ]
 }

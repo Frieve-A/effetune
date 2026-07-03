@@ -237,6 +237,44 @@ test('loadPlugins loads resources, tracks progress, registers classes, and toler
   );
 });
 
+test('loadPlugins cache-busts dynamic resources on the development server', async () => {
+  const manager = new PluginManager();
+  class CompressorPlugin {
+    getParameters() {
+      return { ratio: 4 };
+    }
+  }
+
+  const harness = createLoaderHarness({
+    pluginsText: PLUGINS_TEXT,
+    window: {
+      EFFECTUNE_DEV_SERVER: true,
+      CompressorPlugin
+    }
+  });
+
+  class FixedDate extends Date {
+    static now() {
+      return 46655;
+    }
+  }
+
+  await withGlobals({
+    ...harness.globals,
+    Date: FixedDate
+  }, async () => {
+    await manager.loadPlugins();
+  });
+
+  assert.deepEqual(
+    harness.calls.filter(call => call[0] === 'fetch'),
+    [['fetch', 'plugins/plugins.txt?dev=zzz']]
+  );
+  assert.ok(harness.calls.some(call => call[0] === 'appendChild' && call[2] === 'plugins/plugin-base.js?dev=zzz'));
+  assert.ok(harness.calls.some(call => call[0] === 'appendChild' && call[2] === 'plugins/compressor.js?dev=zzz'));
+  assert.ok(harness.calls.some(call => call[0] === 'appendChild' && call[2] === 'plugins/compressor.css?dev=zzz'));
+});
+
 test('loadPlugins catches base, JS batch, CSS batch, and fetch-level failures', async () => {
   await withGlobals(createLoaderHarness({
     pluginsText: PLUGINS_TEXT,

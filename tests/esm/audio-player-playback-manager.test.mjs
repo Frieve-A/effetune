@@ -201,7 +201,8 @@ async function withPlaybackGlobals(options, callback) {
     console: createConsole(calls),
     window: {
       electronAPI: options.electronAPI,
-      electronIntegration: options.electronIntegration
+      electronIntegration: options.electronIntegration,
+      localStorage: options.localStorage
     }
   }, async () => {
     await callback({ documentRef, calls });
@@ -590,6 +591,31 @@ test('loadPlayerState and savePlayerState persist through Electron storage', asy
     const manager = makeManager(createAudioPlayer());
     await manager.loadPlayerState();
     await manager.savePlayerState();
+  });
+
+  const storage = new Map();
+  await withPlaybackGlobals({
+    document: createDocument(),
+    localStorage: {
+      getItem(key) {
+        return storage.get(key) || null;
+      },
+      setItem(key, value) {
+        storage.set(key, value);
+      }
+    }
+  }, async () => {
+    storage.set('effetune_player_state', '{"repeatMode":"ALL","shuffleMode":true}');
+    const audioPlayer = createAudioPlayer();
+    const manager = makeManager(audioPlayer);
+    await manager.loadPlayerState();
+    await manager.savePlayerState();
+    assert.equal(audioPlayer.state.repeatMode, 'ALL');
+    assert.equal(audioPlayer.state.shuffleMode, true);
+    assert.deepEqual(JSON.parse(storage.get('effetune_player_state')), {
+      repeatMode: 'ALL',
+      shuffleMode: true
+    });
   });
 
   const saved = [];

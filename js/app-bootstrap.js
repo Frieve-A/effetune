@@ -97,6 +97,21 @@ export function createAndInitializeApp(AppClass, {
     return app;
 }
 
+export function isDevelopmentServer(windowRef = getDefaultWindow()) {
+    return windowRef.EFFECTUNE_DEV_SERVER === true;
+}
+
+export function unregisterDevelopmentServiceWorkers(windowRef = getDefaultWindow(), logger = console) {
+    const serviceWorker = windowRef.navigator?.serviceWorker;
+    if (!serviceWorker?.getRegistrations) return;
+
+    serviceWorker.getRegistrations()
+        .then(registrations => Promise.all(registrations.map(registration => registration.unregister())))
+        .catch(error => {
+            logger.warn('Development service worker cleanup failed:', error);
+        });
+}
+
 export function startApplication({
     AppClass,
     firstLaunchPromise,
@@ -117,9 +132,26 @@ export function startApplication({
     return firstLaunchPromise.then(isFirstLaunch => {
         windowRef.isFirstLaunchConfirmed = isFirstLaunch;
         windowRef.isFirstLaunch = isFirstLaunch;
+        registerServiceWorker(windowRef, logger);
         return createAndInitializeAppFn(AppClass, { windowRef, logger });
     }).catch(error => {
         logger.error('Failed to check first launch status:', error);
+        registerServiceWorker(windowRef, logger);
         return createAndInitializeAppFn(AppClass, { windowRef, logger });
+    });
+}
+
+export function registerServiceWorker(windowRef = getDefaultWindow(), logger = console) {
+    const isElectron = windowRef.electronIntegration?.isElectronEnvironment?.() ||
+        windowRef.electronIntegration?.isElectron;
+    if (isElectron || !windowRef.navigator?.serviceWorker) return;
+    if (isDevelopmentServer(windowRef)) {
+        unregisterDevelopmentServiceWorkers(windowRef, logger);
+        return;
+    }
+    windowRef.addEventListener?.('load', () => {
+        windowRef.navigator.serviceWorker.register('./sw.js').catch(error => {
+            logger.warn('Service worker registration failed:', error);
+        });
     });
 }

@@ -17,8 +17,9 @@
 
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-graph {
     position: relative;
-    width: 1024px;
-    height: 480px;
+    width: 100%;
+    max-width: 1024px;
+    aspect-ratio: 1024 / 480;
     background-color: #1a1a1a;
 }
 
@@ -83,6 +84,13 @@
     font-size: 12px;
     color: #fff;
     user-select: none;
+    touch-action: none;
+}
+
+.fifteen-band-peq-plugin-ui .fifteen-band-peq-marker::before {
+    content: "";
+    position: absolute;
+    inset: -10px;
 }
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-marker:hover,
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-marker.active {
@@ -199,7 +207,7 @@
     color: #ccc;
     font-size: 12px;
     white-space: nowrap;
-    min-width: 80px;
+    min-width: 0;
 }
 
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-freq-label,
@@ -260,4 +268,4 @@
     stroke: #4CAF50;
     stroke-width: 2;
     vector-effect: non-scaling-stroke;
-} 
+}

@@ -29,6 +29,10 @@ export class CollapseManager {
         });
     }
 
+    isMobileLayout() {
+        return !!window.uiManager?.layoutMode?.isMobile;
+    }
+
     // Load collapsed category state from localStorage
     loadCollapsedState() {
         try {
@@ -95,6 +99,10 @@ export class CollapseManager {
     
     // Toggle the collapsed state of the plugin list
     togglePluginListCollapse() {
+        if (this.isMobileLayout()) {
+            window.uiManager?.mobileNav?.openPluginList();
+            return;
+        }
         this.isCollapsed = !this.isCollapsed;
         
         const pipeline = document.getElementById('pipeline');
@@ -215,7 +223,7 @@ export class CollapseManager {
      */
     updatePositions() {
         if (!this.pluginList || !this.pullTab) return; 
-        
+
         // Stop animation if running (e.g., resize during animation)
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
@@ -225,6 +233,20 @@ export class CollapseManager {
          if (this.handleTransitionEnd) {
             this.pluginList.removeEventListener('transitionend', this.handleTransitionEnd);
             this.handleTransitionEnd = null;
+        }
+
+        if (this.isMobileLayout()) {
+            const pipeline = document.getElementById('pipeline');
+            this.pluginList.classList.remove('collapsed');
+            this.pullTab.classList.remove('collapsed');
+            this.mainContainer?.classList?.remove('plugin-list-collapsed');
+            this.pullTab.style.left = '';
+            this.pullTab.textContent = '◀';
+            if (pipeline) {
+                pipeline.style.marginLeft = '0';
+                pipeline.style.transform = 'none';
+            }
+            return;
         }
 
         // Calculate necessary values for static state
@@ -296,10 +318,12 @@ export class CollapseManager {
             
             // Add touch event listeners to the document body
             document.body.addEventListener('touchstart', (e) => {
+                if (this.isMobileLayout()) return;
                 touchStartX = e.touches[0].clientX;
             }, { passive: true });
             
             document.body.addEventListener('touchend', (e) => {
+                if (this.isMobileLayout()) return;
                 touchEndX = e.changedTouches[0].clientX;
                 
                 // Calculate swipe distance
@@ -326,6 +350,9 @@ export class CollapseManager {
 
     // Check and adjust the collapse state based on pipeline position relative to window edge
     checkWindowWidthAndAdjust() {
+        if (this.isMobileLayout()) {
+            return;
+        }
         // Only proceed if the app is fully initialized
         if (!window.app || !window.app.initialized) {
             return;

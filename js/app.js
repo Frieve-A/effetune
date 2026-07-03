@@ -550,6 +550,10 @@ class App {
         if (!savedState) {
             savedState = this.uiManager.parsePipelineState();
         }
+
+        if (!savedState && !isElectron) {
+            savedState = this.uiManager.loadPipelineStateFromLocalStorage?.() || null;
+        }
         
         // Handle dual pipeline format
         if (savedState && savedState.pipelineA && savedState.pipelineB !== undefined) {
@@ -746,6 +750,17 @@ class App {
                 this.audioManager.audioContext.resume();
             }
         });
+
+        const resumeOnGesture = () => {
+            if (this.audioManager.audioContext &&
+                this.audioManager.audioContext.state === 'suspended') {
+                this.audioManager.audioContext.resume().catch(error => {
+                    console.warn('AudioContext resume after user gesture failed:', error);
+                });
+            }
+        };
+        document.addEventListener('pointerdown', resumeOnGesture, { passive: true });
+        document.addEventListener('keydown', resumeOnGesture);
 
         // Handle audio device changes (e.g., USB device reconnected)
         if (navigator.mediaDevices && typeof navigator.mediaDevices.addEventListener === 'function') {

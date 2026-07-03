@@ -10,7 +10,8 @@
     border: 1px solid #555;
     border-radius: 3px;
     font-size: 12px;
-    width: 90px;
+    width: 100%;
+    max-width: 120px;
     cursor: pointer;
 }
 
@@ -27,9 +28,19 @@
 
 .exciter-plugin-ui .graphs-container {
     display: flex;
+    flex-wrap: wrap;
     gap: 10px;
     margin-top: 10px;
     justify-content: center;
+    align-items: flex-start;
+}
+
+.exciter-plugin-ui .exciter-hpf-graph {
+    flex: 3 1 360px;
+}
+
+.exciter-plugin-ui .exciter-saturation-graph {
+    flex: 1 1 180px;
 }
 
 .exciter-plugin-ui canvas {

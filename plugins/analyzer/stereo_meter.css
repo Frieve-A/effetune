@@ -7,7 +7,9 @@
 }
 
 .stereo-meter canvas {
-  width: 480px;
-  height: 480px;
+  width: 100%;
+  max-width: 480px;
+  height: auto;
+  aspect-ratio: 1 / 1;
   image-rendering: pixelated;
 }

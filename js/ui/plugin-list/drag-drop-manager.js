@@ -288,6 +288,8 @@ export class DragDropManager {
     }
 
     setupPluginItemDragEvents(item, plugin) {
+        const isMobileLayout = () => window.uiManager?.layoutMode?.isMobile;
+
         item.addEventListener('dragstart', (e) => {
             e.dataTransfer.setData('text/plain', plugin.name);
             item.classList.add('dragging');
@@ -312,6 +314,8 @@ export class DragDropManager {
         let touchOffsetY = 0;
 
         item.addEventListener('touchstart', (e) => {
+            if (isMobileLayout()) return;
+
             const touch = e.touches[0];
             this.dragMessage.style.display = 'block';
 
@@ -339,6 +343,8 @@ export class DragDropManager {
         });
 
         item.addEventListener('touchmove', (e) => {
+            if (isMobileLayout()) return;
+
             e.preventDefault();
             const touch = e.touches[0];
 
@@ -354,6 +360,16 @@ export class DragDropManager {
         });
 
         item.addEventListener('touchend', (e) => {
+            if (isMobileLayout()) {
+                isDragging = false;
+                clone?.remove();
+                clone = null;
+                item.classList.remove('dragging');
+                this.dragMessage.style.display = 'none';
+                this.insertionIndicator.style.display = 'none';
+                return;
+            }
+
             this.dragMessage.style.display = 'none';
             
             if (isDragging) {
@@ -398,6 +414,7 @@ export class DragDropManager {
     }
 
     setupPresetItemDragEvents(item, presetName, isUserPreset = false) {
+        const isMobileLayout = () => window.uiManager?.layoutMode?.isMobile;
         let dragStartTime = 0;
 
         // Mouse events - show drag message on mousedown
@@ -455,6 +472,8 @@ export class DragDropManager {
         let touchOffsetY = 0;
 
         item.addEventListener('touchstart', (e) => {
+            if (isMobileLayout()) return;
+
             const touch = e.touches[0];
             
             // Update drag message text for presets (for touch devices)
@@ -487,6 +506,8 @@ export class DragDropManager {
         });
 
         item.addEventListener('touchmove', (e) => {
+            if (isMobileLayout()) return;
+
             e.preventDefault();
             const touch = e.touches[0];
 
@@ -502,6 +523,16 @@ export class DragDropManager {
         });
 
         item.addEventListener('touchend', async (e) => {
+            if (isMobileLayout()) {
+                isDragging = false;
+                clone?.remove();
+                clone = null;
+                item.classList.remove('dragging');
+                this.dragMessage.style.display = 'none';
+                this.insertionIndicator.style.display = 'none';
+                return;
+            }
+
             this.dragMessage.style.display = 'none';
             
             if (isDragging) {

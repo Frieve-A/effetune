@@ -1012,66 +1012,26 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
         (value) => this.setBERExponent(value), '10^x'
       ));
       
-      // Mode Selection using select (display only technical names, hide internal mode strings)
-      const modeRow = document.createElement('div');
-      modeRow.className = 'parameter-row';
-      const modeLabel = document.createElement('label');
-      modeLabel.textContent = 'Mode:';
-      const modeSelect = document.createElement('select');
-      modeSelect.id = `${this.id}-${this.name}-mode`;
-      modeSelect.name = `${this.id}-${this.name}-mode`;
-      modeSelect.autocomplete = "off";
-      modeLabel.htmlFor = modeSelect.id;
-      
       const modeOrder = ["1", "2A", "2B", "3A", "3B", "4", "5A", "5B", "5C", "6A", "6B", "8", "9", "10", "10A"];
-      modeOrder.forEach(modeId => {
-        const option = document.createElement('option');
-        option.value = modeId;
-        // Display only the technical name without the internal mode identifier
-        option.textContent = this.MODE_DEFINITIONS[modeId].name;
-        if (modeId === this.md) option.selected = true;
-        modeSelect.appendChild(option);
-      });
-      
-      modeSelect.addEventListener('change', (e) => {
-        this.setMode(e.target.value);
-        this.updateModeControls();
-      });
-      modeRow.appendChild(modeLabel);
-      modeRow.appendChild(modeSelect);
-      container.appendChild(modeRow);
-      
-      // Reference Fs Control using radio buttons
-      const refFsRow = document.createElement('div');
-      refFsRow.className = 'parameter-row';
-      
-      const refFsLabel = document.createElement('label');
-      refFsLabel.textContent = 'Fs (kHz):';
-      
-      const refFsRadioGroup = document.createElement('div');
-      refFsRadioGroup.className = 'radio-group';
-      
-      this.REFERENCE_FS_KHZ_VALUES.forEach(fsValue => {
-        const radioId = `${this.id}-${this.name}-fs-${fsValue}`;
-        const radio = document.createElement('input');
-        radio.type = 'radio';
-        radio.name = `${this.id}-${this.name}-fs`;
-        radio.id = radioId;
-        radio.value = fsValue;
-        radio.checked = this.rf === fsValue;
-        radio.autocomplete = "off";
-        radio.addEventListener('change', () => this.setReferenceFsKHz(fsValue));
-        
-        const radioLabel = document.createElement('label');
-        radioLabel.htmlFor = radioId;
-        radioLabel.appendChild(radio);
-        radioLabel.appendChild(document.createTextNode(`${fsValue}`));
-        refFsRadioGroup.appendChild(radioLabel);
-      });
-      
-      refFsRow.appendChild(refFsLabel);
-      refFsRow.appendChild(refFsRadioGroup);
-      container.appendChild(refFsRow);
+      container.appendChild(this.createSelectControl(
+        'Mode',
+        modeOrder.map(modeId => ({
+          value: modeId,
+          label: this.MODE_DEFINITIONS[modeId].name
+        })),
+        this.md,
+        value => this.setMode(value)
+      ));
+
+      container.appendChild(this.createRadioGroup(
+        'Fs (kHz)',
+        this.REFERENCE_FS_KHZ_VALUES.map(fsValue => ({
+          value: fsValue,
+          label: `${fsValue}`
+        })),
+        this.rf,
+        value => this.setReferenceFsKHz(value)
+      ));
       // Wet Mix
       container.appendChild(this.createParameterControl('Wet Mix', 0, 100, 1, this.wt, (val) => this.setWetMix(val), '%'));
       

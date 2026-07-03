@@ -655,6 +655,15 @@ test('gating fallbacks and panel insertion keep the panel usable', async () => {
     h.dbt._reattachPipelineUI();
   });
 
+  await withHarness({ mainWidth: 640 }, async h => {
+    h.document.body.classList.add('layout-mobile');
+    h.dbt._detachPipelineUI();
+    assert.equal(h.document.body.style.minWidth, '');
+    assert.equal(h.main.style.display, 'none');
+    h.dbt._reattachPipelineUI();
+    assert.equal(h.main.style.display, '');
+  });
+
   await withHarness({ includePlayer: false, includeMain: false }, async h => {
     h.dbt._buildPanel();
     assert.equal(h.dbt.container.parentNode, h.document.body);

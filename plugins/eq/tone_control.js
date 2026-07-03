@@ -273,8 +273,12 @@ class ToneControlPlugin extends PluginBase {
         // Keep original class structure unless standardizing is desired
         container.className = 'tone-control-plugin-ui plugin-parameter-ui';
 
-        // Create canvas reference needed for setters
-        const canvas = document.createElement('canvas');
+        const { container: graphContainer, canvas } = this.createGraphContainer({
+            maxWidth: 600,
+            canvasWidth: 1200,
+            canvasHeight: 480,
+            className: 'tone-control-graph-container'
+        });
 
         // Create parameter controls using createParameterControl
         const bassSetter = (value) => {
@@ -294,17 +298,6 @@ class ToneControlPlugin extends PluginBase {
             this.drawGraph(canvas); // Update graph
         };
         container.appendChild(this.createParameterControl('Treble', -24, 24, 0.1, this.tr, trebleSetter, 'dB'));
-
-        // Graph container - Keep original structure and class
-        const graphContainer = document.createElement('div');
-        graphContainer.className = 'tone-control-graph-container';
-
-        // Configure canvas (created earlier)
-        canvas.width = 1200;
-        canvas.height = 480;
-        canvas.style.width = '600px';
-        canvas.style.height = '240px';
-        graphContainer.appendChild(canvas);
 
         // Reset button - Keep original structure and class, append to graphContainer
         const resetButton = document.createElement('button');

@@ -10,6 +10,7 @@ export class AudioContextManager {
     this.mediaSource = null;
     this.originalSourceNode = null;
     this.currentObjectURL = null;
+    this.currentArtworkURL = null;
     
     // Store event handler references for proper removal
     this.eventHandlers = {
@@ -402,6 +403,7 @@ export class AudioContextManager {
     this.updateState({
       currentTrack: track,
       currentTrackName: track.name,
+      artworkUrl: '',
       currentBuffer: null,
       nextBuffer: null,
       currentTrackPosition: wasStopped ? 0 : Math.max(0, position),
@@ -476,6 +478,7 @@ export class AudioContextManager {
     this.updateState({
       currentTrack: track,
       currentTrackName: track.name,
+      artworkUrl: '',
       currentTrackIndex: this.audioPlayer.playbackManager?.currentTrackIndex ?? -1,
       playbackMode: 'audioElement'
     }, 'Track loaded and audio element setup completed');
@@ -594,22 +597,24 @@ export class AudioContextManager {
     if (window.jsmediatags) {
       window.jsmediatags.read(file, {
         onSuccess: (tag) => {
+          if (currentIndex !== this.audioPlayer.stateManager.getCurrentTrackIndex()) return;
+
           const tags = tag.tags;
           const title = tags.title || '';
           const artist = tags.artist || '';
           const album = tags.album || '';
+          const artworkUrl = this.createArtworkURL(tags.picture);
+          const displayText = title ? (artist ? `${artist} - ${title}` : title) : file.name;
           
-          if (this.audioPlayer.ui && this.audioPlayer.ui.trackNameDisplay) {
-            if (currentIndex === this.audioPlayer.stateManager.getCurrentTrackIndex()) {
-              let displayText = title;
-              if (artist) {
-                displayText = `${artist} - ${displayText}`;
-              }
-              this.audioPlayer.ui.trackNameDisplay.textContent = displayText || file.name;
-            }
+          this.updateState({
+            currentTrackName: displayText,
+            artworkUrl
+          }, 'ID3 metadata loaded');
+          if (this.audioPlayer.ui?.trackNameDisplay) {
+            this.audioPlayer.ui.trackNameDisplay.textContent = displayText;
           }
           
-          this.updateMediaSessionWithTags(title || file.name, artist, album);
+          this.updateMediaSessionWithTags(title || file.name, artist, album, artworkUrl);
         },
         onError: (error) => {
           if (error && error.type !== 'tagFormat') {
@@ -634,20 +639,24 @@ export class AudioContextManager {
         if (window.jsmediatags && this.audioPlayer.audioElement.src) {
           window.jsmediatags.read(this.audioPlayer.audioElement.src, {
             onSuccess: (tag) => {
+              if (currentIndex !== this.audioPlayer.stateManager.getCurrentTrackIndex()) return;
+
               const tags = tag.tags;
               const title = tags.title || '';
               const artist = tags.artist || '';
               const album = tags.album || '';
+              const artworkUrl = this.createArtworkURL(tags.picture);
+              const displayText = title ? (artist ? `${artist} - ${title}` : title) : track.name;
               
-              if (this.audioPlayer.ui && this.audioPlayer.ui.trackNameDisplay) {
-                let displayText = title;
-                if (artist) {
-                  displayText = `${artist} - ${displayText}`;
-                }
-                this.audioPlayer.ui.trackNameDisplay.textContent = displayText || track.name;
+              this.updateState({
+                currentTrackName: displayText,
+                artworkUrl
+              }, 'Source metadata loaded');
+              if (this.audioPlayer.ui?.trackNameDisplay) {
+                this.audioPlayer.ui.trackNameDisplay.textContent = displayText;
               }
               
-              this.updateMediaSessionWithTags(title || track.name, artist, album);
+              this.updateMediaSessionWithTags(title || track.name, artist, album, artworkUrl);
             },
             onError: (error) => {
               if (error && error.type !== 'tagFormat') {
@@ -669,50 +678,88 @@ export class AudioContextManager {
   /**
    * Update MediaSession API with metadata
    */
-  updateMediaSessionWithTags(title, artist, album) {
-    if ('mediaSession' in navigator) {
-      navigator.mediaSession.metadata = new MediaMetadata({
+  updateMediaSessionWithTags(title, artist, album, artworkUrl = '') {
+    const navigatorRef = typeof navigator !== 'undefined' ? navigator : null;
+    if (navigatorRef && 'mediaSession' in navigatorRef && typeof MediaMetadata !== 'undefined') {
+      const metadata = {
         title: title || 'Unknown Title',
         artist: artist || 'Unknown Artist',
         album: album || 'Unknown Album'
+      };
+      if (artworkUrl) {
+        metadata.artwork = [{ src: artworkUrl }];
+      }
+      navigatorRef.mediaSession.metadata = new MediaMetadata({
+        ...metadata
       });
       
       const state = this.getCurrentState();
-      navigator.mediaSession.playbackState = state?.isPlaying ? 'playing' : 'paused';
+      navigatorRef.mediaSession.playbackState = state?.isPlaying ? 'playing' : 'paused';
       this.setupMediaSessionHandlers();
     }
+  }
+
+  createArtworkURL(picture) {
+    if (!picture?.data?.length || !picture.format || typeof Blob === 'undefined' || typeof URL === 'undefined') {
+      this.clearArtworkURL();
+      return '';
+    }
+
+    try {
+      this.clearArtworkURL();
+      const bytes = picture.data instanceof Uint8Array ? picture.data : new Uint8Array(picture.data);
+      const blob = new Blob([bytes], { type: picture.format });
+      this.currentArtworkURL = URL.createObjectURL(blob);
+      return this.currentArtworkURL;
+    } catch (error) {
+      console.warn('Failed to create artwork URL:', error);
+      this.clearArtworkURL();
+      return '';
+    }
+  }
+
+  clearArtworkURL() {
+    if (this.currentArtworkURL && typeof URL !== 'undefined') {
+      try {
+        URL.revokeObjectURL(this.currentArtworkURL);
+      } catch (error) {
+        // Ignore stale object URLs.
+      }
+    }
+    this.currentArtworkURL = null;
   }
   
   /**
    * Set up MediaSession API action handlers for media controls
    */
   setupMediaSessionHandlers() {
-    if (!('mediaSession' in navigator)) return;
+    const navigatorRef = typeof navigator !== 'undefined' ? navigator : null;
+    if (!navigatorRef || !('mediaSession' in navigatorRef)) return;
     
-    navigator.mediaSession.setActionHandler('play', () => {
+    navigatorRef.mediaSession.setActionHandler('play', () => {
       this.play();
-      navigator.mediaSession.playbackState = 'playing';
+      navigatorRef.mediaSession.playbackState = 'playing';
     });
     
-    navigator.mediaSession.setActionHandler('pause', () => {
+    navigatorRef.mediaSession.setActionHandler('pause', () => {
       this.pause();
-      navigator.mediaSession.playbackState = 'paused';
+      navigatorRef.mediaSession.playbackState = 'paused';
     });
     
-    navigator.mediaSession.setActionHandler('nexttrack', () => {
+    navigatorRef.mediaSession.setActionHandler('nexttrack', () => {
       this.audioPlayer.playNext();
     });
     
-    navigator.mediaSession.setActionHandler('previoustrack', () => {
+    navigatorRef.mediaSession.setActionHandler('previoustrack', () => {
       this.audioPlayer.playPrevious();
     });
     
-    navigator.mediaSession.setActionHandler('stop', () => {
+    navigatorRef.mediaSession.setActionHandler('stop', () => {
       this.stop();
-      navigator.mediaSession.playbackState = 'paused';
+      navigatorRef.mediaSession.playbackState = 'paused';
     });
     
-    navigator.mediaSession.setActionHandler('seekto', (details) => {
+    navigatorRef.mediaSession.setActionHandler('seekto', (details) => {
       if (details.seekTime !== undefined) {
         this.seek(details.seekTime);
       }
@@ -723,22 +770,34 @@ export class AudioContextManager {
    * Fallback to MediaSession API with basic track info
    */
   fallbackToMediaSession(currentIndex) {
-    if (!this.audioPlayer.audioElement) return;
-    
     if (currentIndex !== this.audioPlayer.stateManager.getCurrentTrackIndex()) return;
     
-    if (this.audioPlayer.audioElement.duration > 0) {
+    if (this.audioPlayer.audioElement?.duration > 0) {
       if (this.audioPlayer.audioElement.title) {
-        if (this.audioPlayer.ui && this.audioPlayer.ui.trackNameDisplay) {
+        this.clearArtworkURL();
+        this.updateState({
+          currentTrackName: this.audioPlayer.audioElement.title,
+          artworkUrl: ''
+        }, 'Audio element metadata fallback');
+        if (this.audioPlayer.ui?.trackNameDisplay) {
           this.audioPlayer.ui.trackNameDisplay.textContent = this.audioPlayer.audioElement.title;
         }
+        this.updateMediaSessionWithTags(this.audioPlayer.audioElement.title, '', '', '');
         return;
       }
     }
     
     const track = this.audioPlayer.playbackManager?.getTrack(currentIndex);
-    if (track && track.name && this.audioPlayer.ui && this.audioPlayer.ui.trackNameDisplay) {
-      this.audioPlayer.ui.trackNameDisplay.textContent = track.name;
+    if (track && track.name) {
+      this.clearArtworkURL();
+      this.updateState({
+        currentTrackName: track.name,
+        artworkUrl: ''
+      }, 'Track name metadata fallback');
+      if (this.audioPlayer.ui?.trackNameDisplay) {
+        this.audioPlayer.ui.trackNameDisplay.textContent = track.name;
+      }
+      this.updateMediaSessionWithTags(track.name, '', '', '');
     }
   }
   
@@ -1101,6 +1160,7 @@ export class AudioContextManager {
         this.updateState({
           currentTrack: firstTrack,
           currentTrackName: firstTrack.name,
+          artworkUrl: '',
           currentTrackPosition: 0,
           currentTrackDuration: 0,
           isPlaying: false,
@@ -1134,6 +1194,7 @@ export class AudioContextManager {
           currentTrack: null,
           currentTrackIndex: -1,
           currentTrackName: '',
+          artworkUrl: '',
           currentTrackDuration: 0,
           currentTrackPosition: 0,
           currentBuffer: null,
@@ -1226,6 +1287,7 @@ export class AudioContextManager {
       this.updateState({
         currentTrack: track,
         currentTrackName: track.name,
+        artworkUrl: '',
         isTransitioning: true,
         transitionType: 'loading'
       }, 'Track loading started');
@@ -1462,8 +1524,10 @@ export class AudioContextManager {
         this.updateState({
           currentTrack: nextTrack,
           currentTrackName: nextTrack.name,
+          artworkUrl: '',
           currentTrackDuration: this.currentBuffer.duration
         }, 'Switched to next track buffer');
+        this.loadMetadata(nextTrack);
         
         await this.createAndStartBufferSource();
         
@@ -1573,13 +1637,14 @@ export class AudioContextManager {
    */
   disconnect() {
     try {
-      if ('mediaSession' in navigator) {
-        navigator.mediaSession.setActionHandler('play', null);
-        navigator.mediaSession.setActionHandler('pause', null);
-        navigator.mediaSession.setActionHandler('nexttrack', null);
-        navigator.mediaSession.setActionHandler('previoustrack', null);
-        navigator.mediaSession.setActionHandler('stop', null);
-        navigator.mediaSession.setActionHandler('seekto', null);
+      const navigatorRef = typeof navigator !== 'undefined' ? navigator : null;
+      if (navigatorRef && 'mediaSession' in navigatorRef) {
+        navigatorRef.mediaSession.setActionHandler('play', null);
+        navigatorRef.mediaSession.setActionHandler('pause', null);
+        navigatorRef.mediaSession.setActionHandler('nexttrack', null);
+        navigatorRef.mediaSession.setActionHandler('previoustrack', null);
+        navigatorRef.mediaSession.setActionHandler('stop', null);
+        navigatorRef.mediaSession.setActionHandler('seekto', null);
       }
       
       this.stopCurrentPlayback();
@@ -1600,12 +1665,14 @@ export class AudioContextManager {
       
       this.currentBuffer = null;
       this.nextBuffer = null;
+      this.clearArtworkURL();
       this.clearBufferMonitoring();
       
       this.updateState({
         currentTrack: null,
         currentTrackIndex: -1,
         currentTrackName: '',
+        artworkUrl: '',
         currentTrackDuration: 0,
         currentTrackPosition: 0,
         isPlaying: false,

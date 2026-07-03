@@ -49,17 +49,18 @@ export class PluginManager {
     async loadPlugins() {
         try {
             // Start loading resources
+            const devCacheToken = this.createDevelopmentCacheToken();
             
             // First load and parse plugins.txt to know what to load
-            const pluginsText = await fetch('plugins/plugins.txt').then(r => r.text());
+            const pluginsText = await fetch(this.withDevelopmentCacheBuster('plugins/plugins.txt', devCacheToken)).then(r => r.text());
             const { categories, pluginDefinitions } = this.parsePluginsDefinition(pluginsText);
 
             // Collect all resource URLs
-            const jsUrls = ['plugins/plugin-base.js'];
+            const jsUrls = [this.withDevelopmentCacheBuster('plugins/plugin-base.js', devCacheToken)];
             const cssUrls = [];
             for (const {path, hasCSS} of pluginDefinitions.values()) {
-                jsUrls.push(`${path}.js`);
-                if (hasCSS) cssUrls.push(`${path}.css`);
+                jsUrls.push(this.withDevelopmentCacheBuster(`${path}.js`, devCacheToken));
+                if (hasCSS) cssUrls.push(this.withDevelopmentCacheBuster(`${path}.css`, devCacheToken));
             }
 
             // Calculate total files to load for progress tracking
@@ -177,6 +178,19 @@ export class PluginManager {
             console.error('Error loading plugins:', error);
             throw error;
         }
+    }
+
+    isDevelopmentDynamicLoadingEnabled() {
+        return typeof window !== 'undefined' && window.EFFECTUNE_DEV_SERVER === true;
+    }
+
+    createDevelopmentCacheToken() {
+        return this.isDevelopmentDynamicLoadingEnabled() ? Date.now().toString(36) : null;
+    }
+
+    withDevelopmentCacheBuster(url, token) {
+        if (!token) return url;
+        return `${url}${url.includes('?') ? '&' : '?'}dev=${token}`;
     }
 
     parsePluginsDefinition(text) {
