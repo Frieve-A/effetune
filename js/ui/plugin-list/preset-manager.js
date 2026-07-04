@@ -224,7 +224,9 @@ export class PresetManager {
                 return [];
             }
             
-            const userPresets = await pipelineManager.presetManager.getPresets();
+            const userPresets = typeof pipelineManager.presetManager.getLoadablePresets === 'function'
+                ? await pipelineManager.presetManager.getLoadablePresets()
+                : await pipelineManager.presetManager.getPresets();
             return Object.keys(userPresets)
                 .sort()  // Sort alphabetically
                 .map(name => ({

@@ -254,7 +254,9 @@ function createHarness(options = {}) {
   const audioContext = options.audioContext ?? createAudioContext(calls, options.audioContextOptions);
   const originalSource = options.noOriginalSource ? null : createNode(calls, 'originalSource', options.originalSourceOptions);
   const workletNode = options.noWorklet ? null : createNode(calls, 'worklet');
-  const ioManager = options.noIoManager ? null : { sourceNode: originalSource };
+  const ioManager = options.noIoManager ? null : {
+    sourceNode: originalSource
+  };
   const audioManager = {
     audioContext,
     sourceNode: originalSource,
@@ -359,6 +361,22 @@ test('core graph connections and source management preserve playback wiring', as
 
     window.electronIntegration.audioPreferences = { useInputWithPlayer: true };
     maintained.manager.maintainSilentSource();
+
+    window.electronIntegration.audioPreferences = { useInputWithPlayer: false };
+    window.audioPreferences = { useInputWithPlayer: true };
+    calls.length = 0;
+    const webPreferenceMaintained = createHarness({ calls });
+    webPreferenceMaintained.manager.maintainSilentSource();
+    assert.equal(calls.some(call => call[0] === 'audioContext.createGain'), false);
+    delete window.audioPreferences;
+
+    window.electronIntegration = { audioPreferences: { useInputWithPlayer: true } };
+    window.audioPreferences = { useInputWithPlayer: false };
+    calls.length = 0;
+    const staleElectronPreference = createHarness({ calls });
+    staleElectronPreference.manager.maintainSilentSource();
+    assert.equal(calls.some(call => call[0] === 'audioContext.createGain'), true);
+    delete window.audioPreferences;
 
     const failingGain = createHarness({ calls, audioContextOptions: { createGainThrows: true } });
     assert.equal(failingGain.manager.createSilentGain(), null);
@@ -571,6 +589,27 @@ test('playback controls operate on buffer sources and audio elements', async () 
     await noBuffer.manager.playBufferSource();
     await noBuffer.manager.seekBufferSource(1);
 
+    calls.length = 0;
+    const resumeHarness = createHarness({
+      calls,
+      playbackMode: 'bufferSource',
+      isPaused: true,
+      currentTrackPosition: 1,
+      audioManager: {
+        contextManager: {
+          async resumeAudioContext() {
+            calls.push(['core.resumeAudioContext']);
+          }
+        }
+      }
+    });
+    resumeHarness.manager.currentBuffer = { duration: 10 };
+    await resumeHarness.manager.play();
+    const resumeIndex = calls.findIndex(call => call[0] === 'core.resumeAudioContext');
+    const startIndex = calls.findIndex(call => call[0] === 'node.start');
+    assert.ok(resumeIndex >= 0);
+    assert.ok(startIndex > resumeIndex);
+
     const audioElement = new Audio();
     const elementHarness = createHarness({ calls, playbackMode: 'audioElement', audioElement });
     await elementHarness.manager.play();
@@ -620,10 +659,12 @@ test('track-ended handling, monitoring, and load helpers advance playback state'
     state.repeatMode = 'OFF';
     state.currentTrackIndex = 1;
     manager.prepareTrackBuffer = async track => ({ duration: track.name.length });
+    manager.loadMetadata = track => calls.push(['endedLoadMetadata', track.name]);
     manager.prepareNextTrackBufferWithRepeatMode = () => calls.push(['prepareNext']);
     manager.handleTrackEnded();
     await flushMicrotasks();
     assert.equal(state.isStopped, true);
+    assert.equal(calls.some(call => call[0] === 'endedLoadMetadata' && call[1] === 'One'), true);
 
     const noPlaylist = createHarness({ calls, playlist: [], currentTrackIndex: 0, repeatMode: 'OFF' });
     noPlaylist.manager.handleTrackEnded();

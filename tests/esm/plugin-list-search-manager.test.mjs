@@ -293,9 +293,14 @@ test('search controls toggle input state, clear text, and handle keyboard search
 
     controls.searchInput.dispatchEvent('keydown', { key: 'Escape' });
     assert.equal(manager.isSearchActive, false);
-    assert.equal(controls.tabSwitcher.style.display, 'flex');
+    assert.equal(controls.tabSwitcher.style.display, '');
     assert.equal(controls.searchInput.style.display, 'none');
     assert.deepEqual(appliedFilters.at(-1), '');
+
+    windowRef.uiManager = { layoutMode: { isMobile: true } };
+    controls.searchButton.click();
+    controls.searchButton.click();
+    assert.equal(controls.tabSwitcher.style.display, '');
 
     const keydown = windowRef.listeners.get('keydown')[0];
     const keyEvent = {

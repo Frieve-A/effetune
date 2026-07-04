@@ -12,10 +12,80 @@ export class AudioContextManager {
         this.silenceGain = null;
         this.isFirstLaunch = false;
         this._skipAudioInitDuringSampleRateChange = false;
+        this._resumeGestureHandler = null;
         
         // Initialize global variable if not already set
         if (typeof window.originalConnectMethod === 'undefined') {
             window.originalConnectMethod = null;
+        }
+    }
+
+    async _loadAudioPreferences() {
+        if (window.electronIntegration && typeof window.electronIntegration.loadAudioPreferences === 'function') {
+            const preferences = await window.electronIntegration.loadAudioPreferences();
+            if (preferences) {
+                this._setEffectiveAudioPreferences(preferences);
+                return preferences;
+            }
+        }
+        return window.audioPreferences || null;
+    }
+
+    _setEffectiveAudioPreferences(preferences) {
+        if (!preferences) return null;
+        window.audioPreferences = preferences;
+        if (window.electronIntegration) {
+            window.electronIntegration.audioPreferences = preferences;
+        }
+        return preferences;
+    }
+
+    _isElectronEnvironment() {
+        return !!(window.electronAPI ||
+            window.electronIntegration?.isElectron ||
+            window.electronIntegration?.isElectronEnvironment?.());
+    }
+
+    _createAudioContextWithFallback(AudioContext, audioContextOptions) {
+        const fallbackOrder = ['sampleRate', 'latencyHint', 'sinkId'];
+        const options = { ...audioContextOptions };
+        const removedOptions = [];
+
+        while (true) {
+            try {
+                return {
+                    audioContext: new AudioContext(options),
+                    options,
+                    removedOptions
+                };
+            } catch (error) {
+                const removableOptions = fallbackOrder.filter(option => Object.prototype.hasOwnProperty.call(options, option));
+                if (!removableOptions.length) {
+                    throw error;
+                }
+
+                for (const optionToRemove of removableOptions) {
+                    const candidateOptions = { ...options };
+                    delete candidateOptions[optionToRemove];
+                    try {
+                        const audioContext = new AudioContext(candidateOptions);
+                        console.warn(`AudioContext rejected ${optionToRemove}; retrying without it:`, error);
+                        removedOptions.push(optionToRemove);
+                        return {
+                            audioContext,
+                            options: candidateOptions,
+                            removedOptions
+                        };
+                    } catch {
+                        // Try the next single-option fallback before removing a valid preference.
+                    }
+                }
+
+                const optionToRemove = removableOptions[0];
+                console.warn(`AudioContext rejected ${optionToRemove}; retrying without it:`, error);
+                delete options[optionToRemove];
+                removedOptions.push(optionToRemove);
+            }
         }
     }
     
@@ -56,36 +126,48 @@ export class AudioContextManager {
                     throw new Error('Web Audio API is not supported in this browser');
                 }
                 
+                const preferences = await this._loadAudioPreferences();
+
                 // Default audio context options
                 let audioContextOptions = { };
                 
-                // If running in Electron, try to use saved audio preferences
-                if (window.electronAPI && window.electronIntegration) {
-                    const preferences = await window.electronIntegration.loadAudioPreferences();
-                    if (preferences && preferences.sampleRate) {
-                        audioContextOptions.sampleRate = preferences.sampleRate;
-                    }
-                    
-                    // Add latencyHint from preferences if available
-                    if (preferences && preferences.latencyHint) {
-                        audioContextOptions.latencyHint = preferences.latencyHint;
-                    } else {
-                        // Default to interactive if not specified
-                        audioContextOptions.latencyHint = 'interactive';
-                    }
-                    
-                    // Try to set sinkId if available (experimental Chrome/Chromium feature)
-                    if (preferences && preferences.outputDeviceId) {
-                        // This is an experimental feature in Chrome/Chromium
-                        audioContextOptions.sinkId = preferences.outputDeviceId;
-                        console.log('Attempting to use sinkId in AudioContext:', preferences.outputDeviceId);
-                    }
+                if (preferences?.sampleRate) {
+                    audioContextOptions.sampleRate = preferences.sampleRate;
+                }
+
+                // Add latencyHint from preferences if available
+                if (preferences?.latencyHint) {
+                    audioContextOptions.latencyHint = preferences.latencyHint;
+                } else {
+                    // Default to interactive if not specified
+                    audioContextOptions.latencyHint = 'interactive';
+                }
+
+                // Try to set sinkId if available (experimental Chrome/Chromium feature)
+                if (preferences?.outputDeviceId && preferences.outputDeviceId !== 'default') {
+                    audioContextOptions.sinkId = preferences.outputDeviceId;
+                    console.log('Attempting to use sinkId in AudioContext:', preferences.outputDeviceId);
                 }
                 
                 // Create audio context with options
-                this.audioContext = new AudioContext(audioContextOptions);
-                console.log('AudioContext created with options:', audioContextOptions);
+                const contextResult = this._isElectronEnvironment()
+                    ? {
+                        audioContext: new AudioContext(audioContextOptions),
+                        options: audioContextOptions,
+                        removedOptions: []
+                    }
+                    : this._createAudioContextWithFallback(AudioContext, audioContextOptions);
+                this.audioContext = contextResult.audioContext;
+                console.log('AudioContext created with options:', contextResult.options);
                 window.audioContext = this.audioContext; // Global reference
+                this.resumeOnUserGesture();
+                if (preferences) {
+                    this._setEffectiveAudioPreferences({
+                        ...preferences,
+                        sampleRate: this.audioContext.sampleRate,
+                        ...(contextResult.removedOptions.includes('sinkId') ? { outputDeviceId: 'default', outputDeviceLabel: '' } : {})
+                    });
+                }
 
                 // Detect AudioContext interruption caused by audio device changes on macOS
                 this.audioContext.onstatechange = () => {
@@ -116,13 +198,13 @@ export class AudioContextManager {
                 };
                 
                 // Set audio context destination channel count based on preferences
-                if (window.electronAPI && window.electronIntegration) {
-                    const preferences = await window.electronIntegration.loadAudioPreferences();
-                    if (preferences && preferences.outputChannels) {
+                {
+                    const activePreferences = window.audioPreferences || preferences;
+                    if (activePreferences && activePreferences.outputChannels) {
                         // Check if requested channel count doesn't exceed the maximum supported
                         const maxChannels = this.audioContext.destination.maxChannelCount || 2;
-                        const requestedChannels = preferences.outputChannels;
-                        const actualChannels = Math.min(requestedChannels, maxChannels);
+                        const requestedChannels = activePreferences.outputChannels;
+                        const actualChannels = requestedChannels > maxChannels ? maxChannels : requestedChannels;
                         
                         // Log channel count information
                         console.log(`Audio output: requested=${requestedChannels}, maximum=${maxChannels}, actual=${actualChannels}`);
@@ -133,8 +215,9 @@ export class AudioContextManager {
                         this.audioContext.destination.channelCountMode = 'explicit';
                         
                         // Update global audio preferences for AudioWorklet context
-                        preferences.outputChannels = actualChannels;
-                        window.audioPreferences = preferences;
+                        activePreferences.outputChannels = actualChannels;
+                        activePreferences.sampleRate = this.audioContext.sampleRate;
+                        this._setEffectiveAudioPreferences(activePreferences);
                         
                         // Notify the worklet about audio config update
                         // (Will be applied after the worklet is created)
@@ -145,6 +228,15 @@ export class AudioContextManager {
                         // Default to stereo (2ch)
                         this.audioContext.destination.channelCount = 2;
                         this.audioContext.destination.channelInterpretation = 'discrete';
+                        this.audioContext.destination.channelCountMode = 'explicit';
+                        this._setEffectiveAudioPreferences({
+                            ...(activePreferences || {}),
+                            sampleRate: this.audioContext.sampleRate,
+                            outputChannels: 2
+                        });
+                        this._pendingAudioConfig = {
+                            outputChannels: 2
+                        };
                     }
                 }
                 
@@ -185,6 +277,45 @@ export class AudioContextManager {
             return `Audio Error: ${error.message}`;
         }
     }
+
+    async _addAudioWorkletModule(moduleUrl) {
+        let addModuleTimerId;
+        await Promise.race([
+            this.audioContext.audioWorklet
+                .addModule(moduleUrl)
+                .finally(() => clearTimeout(addModuleTimerId)),
+            new Promise((_, reject) => {
+                addModuleTimerId = setTimeout(
+                    () => reject(new Error('audioWorklet.addModule timed out after 5000ms')),
+                    5000
+                );
+            })
+        ]);
+    }
+
+    async _addAudioWorkletModuleFromBlob(moduleUrl) {
+        if (typeof fetch !== 'function' ||
+            typeof Blob === 'undefined' ||
+            typeof URL === 'undefined' ||
+            typeof URL.createObjectURL !== 'function') {
+            throw new Error('AudioWorklet Blob fallback is not available');
+        }
+
+        const response = await fetch(moduleUrl, { cache: 'no-store' });
+        if (!response?.ok) {
+            throw new Error(`AudioWorklet Blob fallback fetch failed: ${response?.status ?? 'unknown'}`);
+        }
+
+        const source = await response.text();
+        const blobUrl = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+        try {
+            await this._addAudioWorkletModule(blobUrl);
+        } finally {
+            if (typeof URL.revokeObjectURL === 'function') {
+                URL.revokeObjectURL(blobUrl);
+            }
+        }
+    }
     
     /**
      * Load audio worklet and create worklet node
@@ -204,20 +335,28 @@ export class AudioContextManager {
             // Check if AudioWorklet is supported
             if (this.audioContext.audioWorklet) {
                 try {
-                    // addModule can hang on macOS audio-system flux; apply a 5 s timeout
-                    // so the recovery path does not stall here.
-                    let addModuleTimerId;
-                    await Promise.race([
-                        this.audioContext.audioWorklet
-                            .addModule(`${basePath}/plugins/audio-processor.js`)
-                            .finally(() => clearTimeout(addModuleTimerId)),
-                        new Promise((_, reject) => {
-                            addModuleTimerId = setTimeout(
-                                () => reject(new Error('audioWorklet.addModule timed out after 5000ms')),
-                                5000
-                            );
-                        })
-                    ]);
+                    const moduleUrl = `${basePath}/plugins/audio-processor.js`;
+                    try {
+                        // addModule can hang on macOS audio-system flux; apply a 5 s timeout
+                        // so the recovery path does not stall here.
+                        await this._addAudioWorkletModule(moduleUrl);
+                    } catch (moduleError) {
+                        if (moduleError.message?.includes('already')) {
+                            throw moduleError;
+                        }
+                        if (!moduleError.message) {
+                            throw moduleError;
+                        }
+                        try {
+                            await this._addAudioWorkletModuleFromBlob(moduleUrl);
+                        } catch (fallbackError) {
+                            if (fallbackError.message?.includes('not available') ||
+                                moduleError.message?.includes('timed out')) {
+                                throw moduleError;
+                            }
+                            throw fallbackError;
+                        }
+                    }
                 } catch (error) {
                     // If module is already registered (reconnect recovery), ignore and continue
                     if (!error.message?.includes('already')) {
@@ -231,8 +370,8 @@ export class AudioContextManager {
             
             // Determine low latency mode from preferences
             let preferences = window.audioPreferences;
-            if (!preferences && window.electronAPI && window.electronIntegration) {
-                preferences = await window.electronIntegration.loadAudioPreferences();
+            if (!preferences) {
+                preferences = await this._loadAudioPreferences();
             }
             const lowLatency = preferences?.lowLatencyOutput || false;
 
@@ -318,6 +457,8 @@ export class AudioContextManager {
      * @returns {Promise<void>}
      */
     async closeAudioContext() {
+        this.stopResumeOnUserGesture();
+
         // Restore original connect method if it was overridden
         if (window.originalConnectMethod) {
             try {
@@ -377,6 +518,11 @@ export class AudioContextManager {
      * @returns {Promise<void>}
      */
     async resumeAudioContext() {
+        if (this.audioContext && this.audioContext.state === 'running') {
+            this.stopResumeOnUserGesture();
+            return;
+        }
+
         if (this.audioContext && this.audioContext.state === 'suspended') {
             // resume() can hang when the AudioContext's sinkId points to an HDMI device
             // that CoreAudio hasn't finished initialising yet.  Use a timeout so that
@@ -389,8 +535,56 @@ export class AudioContextManager {
             ]).catch(() => {});
             if (this.audioContext?.state !== 'running') {
                 console.warn('[AudioContext] resumeAudioContext: context not running after resume attempt, state:', this.audioContext?.state);
+            } else {
+                this.stopResumeOnUserGesture();
             }
         }
+    }
+
+    /**
+     * Register a web gesture hook that unlocks suspended AudioContexts.
+     * Touch input grants user activation at pointerup/touchend, not at
+     * pointerdown (which activates only for mouse), so listen on the
+     * activation-granting events and keep the hook armed until the context
+     * is actually running: resumeAudioContext() deregisters it on success.
+     */
+    resumeOnUserGesture() {
+        if (this._isElectronEnvironment() ||
+            this._resumeGestureHandler ||
+            !this.audioContext ||
+            this.audioContext.state !== 'suspended' ||
+            typeof document === 'undefined' ||
+            typeof document.addEventListener !== 'function') {
+            return;
+        }
+
+        const handler = () => {
+            this.resumeAudioContext().catch(error => {
+                console.warn('[AudioContext] resume on user gesture failed:', error);
+            });
+        };
+
+        this._resumeGestureHandler = handler;
+        document.addEventListener('pointerup', handler, { passive: true });
+        document.addEventListener('touchend', handler, { passive: true });
+        document.addEventListener('keydown', handler);
+    }
+
+    /**
+     * Remove the pending gesture resume hook (called once resume succeeds).
+     */
+    stopResumeOnUserGesture() {
+        if (!this._resumeGestureHandler ||
+            typeof document === 'undefined' ||
+            typeof document.removeEventListener !== 'function') {
+            this._resumeGestureHandler = null;
+            return;
+        }
+
+        document.removeEventListener('pointerup', this._resumeGestureHandler);
+        document.removeEventListener('touchend', this._resumeGestureHandler);
+        document.removeEventListener('keydown', this._resumeGestureHandler);
+        this._resumeGestureHandler = null;
     }
     
     /**

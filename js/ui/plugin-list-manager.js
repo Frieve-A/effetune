@@ -207,7 +207,10 @@ export class PluginListManager {
             const dx = Math.abs(e.clientX - tapStart.x);
             const dy = Math.abs(e.clientY - tapStart.y);
             tapStart = null;
-            if (dx > 8 || dy > 8) return;
+            if (dx > 8 || dy > 8) {
+                suppressNextClick = true;
+                return;
+            }
             e.preventDefault();
             e.stopPropagation();
             suppressNextClick = true;

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data:; script-src 'self' https://www.googletagmanager.com 'unsafe-inline' 'unsafe-eval' blob:; connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://analytics.google.com; img-src 'self' https://www.google-analytics.com https://*.google-analytics.com data:; style-src 'self' 'unsafe-inline' blob:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data:; script-src 'self' https://www.googletagmanager.com 'unsafe-inline' 'unsafe-eval' blob:; connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://analytics.google.com; img-src 'self' https://www.google-analytics.com https://*.google-analytics.com data: blob:; style-src 'self' 'unsafe-inline' blob:;">
     <title>EffeTune</title>
 
     <!-- SEO Meta Tags -->
@@ -107,7 +107,16 @@
         <h1>Frieve EffeTune<img src="images/icon_64x64.png" class="title-icon" alt="EffeTune Icon" draggable="false"><div class="message-display" id="errorDisplay">Loading...</div></h1>
         <div class="header-buttons">
             <button class="header-button open-music-button" id="openMusicButton" title="Open music files"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M6 14.5 7.7 11a2 2 0 0 1 1.8-1.1H21a1.5 1.5 0 0 1 1.45 1.9l-1.6 5.7A2 2 0 0 1 18.95 19H4a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2h3.7a2 2 0 0 1 1.66.9l.74 1.1a2 2 0 0 0 1.66.9H18a2 2 0 0 1 2 2v1.7"/></svg></button>
-            <button class="header-button reset-button" id="resetButton">Reset Audio</button>
+            <div class="settings-menu-container">
+                <button class="header-button settings-menu-button" id="settingsMenuButton" title="Settings" aria-label="Settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.05.05a2 2 0 0 1-2.83 2.83l-.05-.05a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 0 1-4 0v-.07A1.7 1.7 0 0 0 8.97 19.4a1.7 1.7 0 0 0-1.88.34l-.05.05a2 2 0 1 1-2.83-2.83l.05-.05A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 0 1 0-4h.07A1.7 1.7 0 0 0 4.6 8.97a1.7 1.7 0 0 0-.34-1.88l-.05-.05a2 2 0 1 1 2.83-2.83l.05.05A1.7 1.7 0 0 0 8.97 4.6 1.7 1.7 0 0 0 10 3.07V3a2 2 0 0 1 4 0v.07a1.7 1.7 0 0 0 1.03 1.53 1.7 1.7 0 0 0 1.88-.34l.05-.05a2 2 0 1 1 2.83 2.83l-.05.05A1.7 1.7 0 0 0 19.4 8.97 1.7 1.7 0 0 0 20.93 10H21a2 2 0 0 1 0 4h-.07A1.7 1.7 0 0 0 19.4 15z"/></svg></button>
+                <div class="settings-menu" id="settingsMenu">
+                    <button class="settings-menu-item" id="configSettingsButton">Config</button>
+                    <button class="settings-menu-item" id="audioConfigSettingsButton">Audio Configuration</button>
+                    <button class="settings-menu-item" id="benchmarkSettingsButton">Performance Benchmark</button>
+                    <button class="settings-menu-item" id="measurementSettingsButton">Frequency Response Measurement</button>
+                    <button class="settings-menu-item" id="resetAudioSettingsButton">Reset Audio</button>
+                </div>
+            </div>
         </div>
         <div class="subtitle-container">
             <button class="header-button sidebar-button" id="sidebarButton" title="Toggle plugin list"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><rect x="3" y="4" width="18" height="16" rx="2.2"/><path d="M9.5 4v16"/><path d="M5.6 8h1.6"/><path d="M5.6 11h1.6"/><path d="M5.6 14h1.6"/></svg></button>
@@ -159,7 +168,7 @@
                     <button class="header-button paste-button" id="pasteButton" title="Paste settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><rect x="8" y="2.5" width="8" height="4" rx="1.2"/><path d="M16 4.5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-12a2 2 0 0 1 2-2h2"/></svg></button>
                     <div class="pipeline-preset-controls">
                         <div class="select-container">
-                            <input type="text" class="preset-select" id="presetSelect" list="presetList" placeholder="">
+                            <input type="text" class="preset-select" id="presetSelect" list="presetList" placeholder="" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false">
                             <button type="button" class="input-clear-button preset-clear-button" id="presetClearButton" title="Clear preset name" aria-label="Clear preset name">&times;</button>
                         </div>
                         <datalist id="presetList"></datalist>

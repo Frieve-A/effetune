@@ -548,11 +548,13 @@ test('initializes audio and worklet phases with success, warnings, messages, and
     assert.equal(calls.some(call => call[0] === 'context.resumeAudioContext'), true);
   });
 
+  // Layout mode must not affect the audio input path: mobile initializes the
+  // input exactly like desktop.
   await withAudioManager({
     uiManager: { layoutMode: { isMobile: true } }
   }, async ({ calls, manager }) => {
     assert.equal(await manager.initAudio(), '');
-    assert.deepEqual(calls.find(call => call[0] === 'io.initAudioInput')[1], { deferInput: true });
+    assert.equal(calls.find(call => call[0] === 'io.initAudioInput')[1], undefined);
   });
 
   await withAudioManager({ contextInitResult: 'context error' }, async ({ manager }) => {
@@ -677,22 +679,6 @@ test('serializes resets, handles reset outcomes, and notifies graph rebuild list
     assert.equal(await manager.reset(), '');
   });
 
-  await withAudioManager({}, async ({ calls, manager }) => {
-    manager._doReset = async () => {
-      calls.push(['manager._doReset.enableAudioInput']);
-      return '';
-    };
-    assert.equal(await manager.enableAudioInput(), '');
-    assert.equal(manager._mobileAudioInputEnabled, true);
-    assert.ok(calls.some(call => call[0] === 'manager._doReset.enableAudioInput'));
-  });
-
-  await withAudioManager({}, async ({ manager }) => {
-    manager._doReset = async () => `${MIC_DENIED_PREFIX}.`;
-    assert.equal(await manager.enableAudioInput(), `${MIC_DENIED_PREFIX}.`);
-    assert.equal(manager._mobileAudioInputEnabled, false);
-  });
-
   await withAudioManager({ skipAudioInit: true }, async ({ calls, manager }) => {
     assert.equal(await manager._doReset(), '');
     assert.equal(calls.some(call => call[0] === 'context.setSkipAudioInitDuringSampleRateChange' && call[1] === false), true);
@@ -710,10 +696,34 @@ test('serializes resets, handles reset outcomes, and notifies graph rebuild list
     assert.equal(await manager._doReset({ saved: false }), 'fatal init');
   });
 
+  await withAudioManager({
+    electronIntegration: {
+      async saveAudioPreferences(prefs) {
+        prefs.savedInWeb = true;
+      }
+    }
+  }, async ({ manager }) => {
+    manager.initAudio = async () => 'fatal init';
+    const prefs = { savedInWeb: false };
+    assert.equal(await manager._doReset(prefs), 'fatal init');
+    assert.equal(prefs.savedInWeb, true);
+  });
+
   await withAudioManager({}, async ({ manager }) => {
     manager.initAudio = async () => `${MIC_DENIED_PREFIX}: denied`;
     manager.initializeAudioWorklet = async () => 'worklet failed';
     assert.equal(await manager._doReset(), 'worklet failed');
+  });
+
+  // Mic denial during a reset is non-fatal: the reset succeeds and file
+  // playback keeps working.
+  await withAudioManager({}, async ({ manager }) => {
+    manager.initAudio = async () => `${MIC_DENIED_PREFIX}: denied`;
+    manager.initializeAudioWorklet = async () => '';
+    manager.rebuildPipeline = async () => '';
+    manager._notifyAudioGraphRebuilt = async () => {};
+    manager.fadeInOutput = () => {};
+    assert.equal(await manager._doReset(), '');
   });
 
   await withAudioManager({}, async ({ manager }) => {

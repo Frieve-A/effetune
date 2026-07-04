@@ -28,6 +28,9 @@ No audiophile myths, Just pure science.
 - Offline audio file processing with current effect chain
 - Frequency response measurement and correction for system calibration
 - Multi-channel processing and output
+- Mobile-friendly web layout for phone and tablet use
+- Web app settings and audio configuration saved in the browser
+- Installable web app with offline app-shell support
 
 ## Setup Guide
 
@@ -53,7 +56,7 @@ To process audio from streaming services (Spotify, YouTube Music, etc.):
    - Open the EffeTune web app in your browser, or launch the EffeTune desktop app
    - Select the virtual audio device as the input source
      - In Chrome, the first time you open it, a dialog box appears asking you to select and allow audio input
-     - In the desktop app, set it up by clicking the Config Audio button in the top right of the screen
+     - Open Audio Configuration from the Settings menu to choose input/output devices and audio format
    - Start playing music from your streaming service
    - Verify that audio is flowing through EffeTune
    - For more detailed setup instructions, see the [FAQ](docs/faq.md)
@@ -66,7 +69,7 @@ To use EffeTune with CD players, network players, or other physical sources:
 - Open the EffeTune web app in your browser, or launch the EffeTune desktop app
 - Select your audio interface as the input and output source
    - In Chrome, the first time you open it, a dialog box appears asking you to select and allow audio input
-   - In the desktop app, set it up by clicking the Config Audio button in the top right of the screen
+   - Open Audio Configuration from the Settings menu to choose input/output devices and audio format
 - Your audio interface now functions as a multi-effects processor:
    * Input: Your CD player, network player, or other audio source
    * Processing: Real-time effects through EffeTune
@@ -81,6 +84,7 @@ To use EffeTune with CD players, network players, or other physical sources:
    - Type any text to find effects by name or category
    - Press ESC to clear the search
 2. Drag effects from the list to the Effect Pipeline area
+   - On mobile, open the Effects tab and tap the + button to add effects from the full-screen list
 3. Effects are processed in order from top to bottom
 4. Drag the handle (⋮) or click the ▲▼ buttons to reorder the effects
    - For Section effects: Shift+click the ▲▼ buttons to move entire sections (from one Section to the next Section, pipeline beginning, or end of pipeline)
@@ -207,21 +211,21 @@ You can share your effect chain configuration with other users:
 1. After setting up your desired effect chain, click the "Share" button in the top-right corner of the Effect Pipeline area
 2. The web app URL will be automatically copied to your clipboard
 3. Share the copied URL with others - they can recreate your exact effect chain by opening it
-4. In the web app, all effect settings are stored in the URL, making them easy to save and share
+4. Shared URLs store the effect settings needed for reproduction; the web app also restores your normal working state from browser storage
 5. In the desktop app version, export the settings to an effetune_preset file from the File menu
 6. Share the exported effetune_preset file. The effetune_preset file can also be loaded by dragging it into the web app window
 
 ### Audio Reset
 
 If you experience audio issues (dropouts, glitches):
-1. Click the "Reset Audio" button in the top-left corner on the web app or select Reload from the View menu on the desktop app
+1. Choose "Reset Audio" from the Settings menu or mobile overflow menu. In the desktop app, you can also select Reload from the View menu
 2. The audio pipeline will be rebuilt automatically
 3. Your effect chain configuration will be preserved
 
 ### Frequency Response Measurement and Correction
 
 To measure your audio system's frequency response and create a flat correction EQ:
-1. For the web version, launch the [Frequency Response Measurement tool](https://effetune.frieve.com/features/measurement/measurement.html). For the app version, select Frequency Response Measurement from the Settings menu.
+1. Launch the [Frequency Response Measurement tool](https://effetune.frieve.com/features/measurement/measurement.html), or select Frequency Response Measurement from the Settings menu.
 2. Follow the guided setup to configure your measurement microphone and output device
 3. Measure your system's frequency response at one or more listening positions
 4. Generate a parametric EQ correction that can be directly imported into EffeTune
@@ -344,6 +348,7 @@ Frieve EffeTune has been tested and verified to work on Google Chrome. The appli
 - Audio Worklet
 - getUserMedia API
 - Drag and Drop API
+- Service Worker, for installable/offline web app support
 
 ### Browser Support Details
 1. Chrome/Chromium
@@ -352,7 +357,7 @@ Frieve EffeTune has been tested and verified to work on Google Chrome. The appli
 
 2. Firefox/Safari
    - Limited support
-   - Some features may not work as expected
+   - Some features such as output device selection, Wake Lock, install behavior, or audio file formats may vary by browser
    - Consider using Chrome for best experience
 
 ### Recommended Sample Rate
@@ -364,7 +369,7 @@ For optimal performance with nonlinear effects, it is recommended to use EffeTun
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Frieve-A/effetune)
 
 Want to create your own audio plugins? Check out our [Plugin Development Guide](docs/plugin-development.md).
-Want to build a desktop app? Check out our [Build Guide](BUILD.md).
+Want to build or package EffeTune? Check out our [Build Guide](BUILD.md).
 
 ## Links
 

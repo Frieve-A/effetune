@@ -56,12 +56,10 @@ export class AudioManager {
         this._resetInProgress = false;
         this._hasPendingReset = false;
         this._pendingResetPrefs = null;
-        this._mobileAudioInputEnabled = false;
         this.isCancelled = false;
         this._skipAudioInitDuringSampleRateChange = false;
         this.isFirstLaunch = false;
         this._pipelineSwitchSeq = 0;
-        
         // Set global reference
         window.audioManager = this;
     }
@@ -331,12 +329,14 @@ export class AudioManager {
                 return contextResult;
             }
             
-            // Initialize audio input
-            const isElectron = window.electronAPI && window.electronIntegration;
-            const deferInput = window.uiManager?.layoutMode?.isMobile &&
-                !isElectron &&
-                !this._mobileAudioInputEnabled;
-            const inputResult = await this.ioManager.initAudioInput({ deferInput });
+            // Initialize audio input. Layout mode must never affect the audio
+            // path: mobile and desktop both request the input device here (a
+            // denied permission falls back to the silent source inside
+            // initAudioInput).
+            const isElectron = !!(window.electronAPI ||
+                window.electronIntegration?.isElectron ||
+                window.electronIntegration?.isElectronEnvironment?.());
+            const inputResult = await this.ioManager.initAudioInput();
             // No need to log input result
             
             // Initialize audio output
@@ -348,8 +348,16 @@ export class AudioManager {
             // Note: We don't build the pipeline here anymore
             // That will be done in initializeAudioWorklet after GUI is fully rendered
             
-            // Resume context if suspended
-            await this.contextManager.resumeAudioContext();
+            // Resume context if suspended. On the web the context may
+            // legitimately stay suspended until a user gesture (autoplay
+            // policy), and resumeAudioContext() would block startup for its
+            // full timeout — attempt it without awaiting there; the gesture
+            // hook and the playback path resume it later.
+            if (isElectron) {
+                await this.contextManager.resumeAudioContext();
+            } else {
+                this.contextManager.resumeAudioContext().catch(() => {});
+            }
             
             // Update exposed properties for backward compatibility
             // Note: workletNode will be null at this point
@@ -363,15 +371,6 @@ export class AudioManager {
         }
     }
 
-    async enableAudioInput() {
-        this._mobileAudioInputEnabled = true;
-        const result = await this.reset(null);
-        if (result && result.startsWith(MIC_DENIED_PREFIX)) {
-            this._mobileAudioInputEnabled = false;
-        }
-        return result || '';
-    }
-    
     /**
      * Initialize AudioWorklet and create worklet node
      * This is the second phase of audio initialization that happens after GUI is fully rendered
@@ -609,7 +608,7 @@ export class AudioManager {
         await this.contextManager.closeAudioContext();
 
         // If audio preferences were provided, save them first
-        if (audioPreferences && window.electronAPI && window.electronIntegration) {
+        if (audioPreferences && typeof window.electronIntegration?.saveAudioPreferences === 'function') {
             await window.electronIntegration.saveAudioPreferences(audioPreferences);
         }
 

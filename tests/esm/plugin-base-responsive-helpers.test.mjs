@@ -157,6 +157,11 @@ test('PluginBase creates responsive graph containers and maps pointer coordinate
   const coords = plugin.getGraphCoords(canvas, { clientX: 110, clientY: 70 });
   assert.equal(coords.x, 500);
   assert.equal(coords.y, 250);
+
+  canvas.getBoundingClientRect = () => ({ left: 10, top: 20, width: 0, height: 0 });
+  const zeroRectCoords = plugin.getGraphCoords(canvas, { clientX: 110, clientY: 70 });
+  assert.equal(Number.isFinite(zeroRectCoords.x), true);
+  assert.equal(Number.isFinite(zeroRectCoords.y), true);
 });
 
 test('PluginBase bindGraphPointer handles tap, drag, and cleanup', () => {
@@ -181,6 +186,29 @@ test('PluginBase bindGraphPointer handles tap, drag, and cleanup', () => {
     ['start', 20, 20],
     ['move', 40, 20],
     ['end', 50, 20]
+  ]);
+
+  calls.length = 0;
+  element.dispatch('pointerdown', { pointerId: 10, clientX: 5, clientY: 5 });
+  element.dispatch('pointerdown', { pointerId: 11, clientX: 20, clientY: 20 });
+  element.dispatch('pointerup', { pointerId: 11, clientX: 20, clientY: 20 });
+  element.dispatch('pointerup', { pointerId: 10, clientX: 5, clientY: 5 });
+  element.dispatch('pointerdown', { pointerId: 12, isPrimary: false, clientX: 30, clientY: 30 });
+  element.dispatch('pointerup', { pointerId: 12, isPrimary: false, clientX: 30, clientY: 30 });
+  assert.deepEqual(calls, [['tap', 5, 5]]);
+
+  calls.length = 0;
+  element.dispatch('pointerdown', { pointerId: 13, clientX: 10, clientY: 10 });
+  element.dispatch('pointercancel', { pointerId: 13, clientX: 10, clientY: 10 });
+  assert.deepEqual(calls, []);
+
+  element.dispatch('pointerdown', { pointerId: 14, clientX: 10, clientY: 10 });
+  element.dispatch('pointermove', { pointerId: 14, clientX: 30, clientY: 10 });
+  element.dispatch('pointercancel', { pointerId: 14, clientX: 30, clientY: 10 });
+  assert.deepEqual(calls, [
+    ['start', 10, 10],
+    ['move', 30, 10],
+    ['end', 30, 10]
   ]);
 
   cleanup();

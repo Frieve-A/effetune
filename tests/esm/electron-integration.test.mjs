@@ -354,7 +354,10 @@ test('web environment delegates safely and detects Electron changes', async () =
     assert.equal(await instance.loadAudioPreferences(), null);
     assert.equal(await instance.saveAudioPreferences({ sampleRate: 96000 }), false);
     assert.equal(await instance.saveAudioPreferences(null), false);
-    assert.deepEqual(await instance.getAudioDevices(), []);
+    assert.deepEqual(await instance.getAudioDevices(), [
+      { deviceId: 'default', label: 'Default Microphone', kind: 'audioinput' },
+      { deviceId: 'default', label: 'Default Speaker', kind: 'audiooutput' }
+    ]);
     assert.equal(await instance.showAudioConfigDialog(() => {}), undefined);
     assert.equal(await instance.exportPreset(), undefined);
     assert.equal(await instance.importPreset(), undefined);

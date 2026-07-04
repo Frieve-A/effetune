@@ -425,6 +425,34 @@ test('getPresets reads web and Electron storage while recovering from missing or
   });
 });
 
+test('loadable preset filtering excludes malformed presets and unavailable plugins', async () => {
+  await withPresetGlobals({
+    storage: {
+      effetune_presets: JSON.stringify({
+        Empty: { plugins: [] },
+        LoadableNew: { pipeline: [{ name: 'Plain', enabled: true, parameters: {} }] },
+        LoadableOld: { plugins: [{ nm: 'Cleanup', en: true }] },
+        MissingName: { plugins: [{ en: true }] },
+        Unavailable: { plugins: [{ nm: 'UnavailablePlugin', en: true }] },
+        InvalidFormat: { name: 'Bad' }
+      })
+    }
+  }, async ({ calls, dom, windowRef }) => {
+    windowRef.uiManager = createUiManager(calls);
+    const pipelineManager = createPipelineManager();
+    pipelineManager.pluginManager.isPluginAvailable = name => name !== 'UnavailablePlugin';
+    const manager = await createInitializedManager(pipelineManager);
+
+    const datalist = dom.elements.get('presetList');
+    assert.deepEqual(datalist.children.map(option => option.value), ['Empty', 'LoadableNew', 'LoadableOld']);
+    assert.deepEqual(Object.keys(await manager.getLoadablePresets()).sort(), ['Empty', 'LoadableNew', 'LoadableOld']);
+
+    await manager.loadPreset('Unavailable');
+    assert.ok(calls.some(call => call[0] === 'setError' && call[1] === 'error.invalidPresetData'));
+    assert.deepEqual(pipelineManager.audioManager.pipeline.map(plugin => plugin.name), ['Cleanup', 'Plain']);
+  });
+});
+
 test('savePreset and deletePreset persist web and Electron presets with UI feedback', async () => {
   await withPresetGlobals({
     storage: { effetune_presets: '{"Old":{"plugins":[]}}' }
@@ -567,7 +595,7 @@ test('loadPreset applies preset formats, restores state, and reports invalid dat
     windowRef.uiManager = createUiManager(calls);
     const manager = await createInitializedManager(createPipelineManager());
     await manager.loadPreset({ name: 'Bad' });
-    assert.ok(calls.some(call => call[0] === 'setError' && call[1] === 'error.failedToLoadPreset'));
+    assert.ok(calls.some(call => call[0] === 'setError' && call[1] === 'error.invalidPresetData'));
   });
 });
 

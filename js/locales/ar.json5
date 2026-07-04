@@ -32,6 +32,7 @@
 
   // رسائل الحالة
   "status.configuringAudio": "جاري إعداد أجهزة الصوت...",
+  "status.resettingAudio": "جارٍ إعادة ضبط الصوت...",
   "status.reloading": "جاري إعادة التحميل...",
   "status.processingFile": "جاري معالجة الملف {current}/{total} ({percent}%)",
   "status.processingCanceled": "تم إلغاء المعالجة",
@@ -171,6 +172,11 @@
   "dialog.audioConfig.apply": "تطبيق",
   "dialog.audioConfig.updatedTitle": "تم تحديث إعدادات الصوت",
   "dialog.audioConfig.updatedMessage": "إعادة التحميل...",
+  "dialog.audioConfig.outputDevice.secureContextRequired": "يتطلب اختيار جهاز الإخراج سياقًا آمنًا.",
+  "dialog.audioConfig.outputDevice.permissionsPolicyBlocked": "تم حظر اختيار جهاز الإخراج بواسطة Permissions-Policy.",
+  "dialog.audioConfig.outputDevice.unsupportedBrowser": "اختيار جهاز الإخراج غير متاح في هذا المتصفح.",
+  "dialog.audioConfig.outputChannels.stereoDefault": "2 - ستيريو (افتراضي)",
+  "dialog.audioConfig.sampleRate.default": "{rate} kHz (افتراضي)",
 
   "dialog.config.title": "إعدادات",
   "dialog.config.autoLaunch": "بدء التشغيل عند بدء تشغيل نظام التشغيل",

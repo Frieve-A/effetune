@@ -41,18 +41,94 @@ export class AudioIOManager {
         // Guard against overlapping poll tick executions
         this._pollRunning = false;
     }
-    
+
+    async _loadAudioPreferences() {
+        if (window.audioPreferences) {
+            return window.audioPreferences;
+        }
+        if (window.electronIntegration?.audioPreferences) {
+            window.audioPreferences = window.electronIntegration.audioPreferences;
+            return window.audioPreferences;
+        }
+        if (window.electronIntegration && typeof window.electronIntegration.loadAudioPreferences === 'function') {
+            const preferences = await window.electronIntegration.loadAudioPreferences();
+            if (preferences) {
+                this._setEffectiveAudioPreferences(preferences);
+                return preferences;
+            }
+        }
+        return window.audioPreferences || null;
+    }
+
+    _setEffectiveAudioPreferences(preferences, { updateIntegrationCache = true } = {}) {
+        if (!preferences) return null;
+        window.audioPreferences = preferences;
+        if (updateIntegrationCache && window.electronIntegration) {
+            window.electronIntegration.audioPreferences = preferences;
+        }
+        return preferences;
+    }
+
+    _isElectronEnvironment() {
+        return !!(window.electronAPI ||
+            window.electronIntegration?.isElectron ||
+            window.electronIntegration?.isElectronEnvironment?.());
+    }
+
+    _applyDefaultOutputPreference(preferences, { useDefaultDestination = false } = {}) {
+        const effectivePreferences = {
+            ...(preferences || window.audioPreferences || window.electronIntegration?.audioPreferences || {}),
+            outputDeviceId: 'default',
+            outputDeviceLabel: ''
+        };
+        this.currentOutputDeviceId = 'default';
+        this.audioContextSinkMode = false;
+        if (useDefaultDestination) {
+            this.destinationNode = null;
+        }
+        this._setEffectiveAudioPreferences(effectivePreferences, {
+            updateIntegrationCache: !this._isElectronEnvironment()
+        });
+        return effectivePreferences;
+    }
+
+    _connectOutputGainToDefaultDestination() {
+        const destination = this.contextManager?.audioContext?.destination;
+        if (!this.outputGainNode || !destination) {
+            return '';
+        }
+        if (this.defaultDestinationConnection) {
+            return '';
+        }
+        try {
+            this.outputGainNode.disconnect();
+        } catch (error) {
+            console.warn('Error disconnecting output gain before default fallback:', error);
+        }
+        try {
+            this.defaultDestinationConnection = this.outputGainNode.connect(destination);
+            if (destination.channelCount > 2) {
+                destination.channelCountMode = 'explicit';
+                destination.channelInterpretation = 'discrete';
+            }
+            return '';
+        } catch (error) {
+            console.error('Error connecting outputGain to default destination:', error);
+            return `Audio Error: Failed to connect to default audio destination: ${error.message}`;
+        }
+    }
+
+    _routeToDefaultOutput(preferences) {
+        this._applyDefaultOutputPreference(preferences, { useDefaultDestination: true });
+        return this._connectOutputGainToDefaultDestination();
+    }
+
     /**
      * Initialize audio input (microphone)
      * @returns {Promise<string>} - Empty string on success, error message on failure
      */
-    async initAudioInput({ deferInput = false } = {}) {
+    async initAudioInput() {
         try {
-            if (deferInput) {
-                this.createSilentSourceFallback();
-                return '';
-            }
-
             // Variable to store microphone error message
             let microphoneError = null;
             
@@ -66,15 +142,12 @@ export class AudioIOManager {
                 autoGainControl: false
             };
 
-            // If running in Electron, try to use saved audio preferences
-            if (window.electronAPI && window.electronIntegration) {
-                const preferences = await window.electronIntegration.loadAudioPreferences();
-                if (preferences && preferences.inputDeviceId) {
-                    audioConstraints.deviceId = { exact: preferences.inputDeviceId };
-                } else {
-                    console.log('No audio preferences found or no input device specified, using default audio input');
-                    // Use default input device by not specifying deviceId
-                }
+            const preferences = await this._loadAudioPreferences();
+            if (preferences && preferences.inputDeviceId) {
+                audioConstraints.deviceId = { exact: preferences.inputDeviceId };
+            } else {
+                console.log('No audio preferences found or no input device specified, using default audio input');
+                // Use default input device by not specifying deviceId
             }
 
             // On macOS, trigger TCC permission dialog from the main process before getUserMedia.
@@ -202,6 +275,7 @@ export class AudioIOManager {
         bufferSource.connect(gainNode);
         bufferSource.start();
         this.sourceNode = gainNode;
+        return gainNode;
     }
     
     /**
@@ -210,6 +284,10 @@ export class AudioIOManager {
      */
     async initAudioOutput() {
         try {
+            this.directOutputMode = false;
+            this.audioContextSinkMode = false;
+            this.currentOutputDeviceId = null;
+
             // Create the output gain node up front so every connect path below
             // can route worklet output through it. Starts muted (gain=0); the host
             // ramps to 1 via AudioManager.fadeInOutput() once the full startup
@@ -217,11 +295,12 @@ export class AudioIOManager {
             this.outputGainNode = this.contextManager.audioContext.createGain();
             this.outputGainNode.gain.value = 0;
 
-            // For Electron, check if we're using multichannel output
-            const preferences = window.electronAPI && window.electronIntegration ?
-                await window.electronIntegration.loadAudioPreferences() : null;
+            const preferences = await this._loadAudioPreferences();
             const isMultiChannel = preferences && preferences.outputChannels && preferences.outputChannels > 2;
             const lowLatencyStereo = preferences && preferences.outputChannels === 2 && preferences.lowLatencyOutput;
+            const isElectron = this._isElectronEnvironment();
+            const requestedOutputDeviceId = preferences?.outputDeviceId || 'default';
+            const hasExplicitOutputDevice = requestedOutputDeviceId !== 'default';
             
             // For multichannel mode, we'll use direct connection to AudioContext.destination
             // rather than MediaStreamDestination which only supports stereo
@@ -230,6 +309,26 @@ export class AudioIOManager {
                 // Skip MediaStreamDestination for multichannel mode
                 this.destinationNode = null;
                 this.directOutputMode = true;
+                if (!isElectron &&
+                    hasExplicitOutputDevice &&
+                    typeof this.contextManager.audioContext?.setSinkId === 'function') {
+                    this.audioContextSinkMode = true;
+                    this.currentOutputDeviceId = requestedOutputDeviceId;
+                    try {
+                        await this._setSinkIdWithTimeout(this.contextManager.audioContext, requestedOutputDeviceId, 3000);
+                    } catch (e) {
+                        console.warn('[audioCtxSink] setSinkId failed:', e.message);
+                        this._applyDefaultOutputPreference(preferences);
+                    }
+                } else if (!isElectron && hasExplicitOutputDevice) {
+                    console.warn('Output device selection requires AudioContext.setSinkId in direct or multichannel mode; using default output.');
+                    this._applyDefaultOutputPreference(preferences);
+                }
+                return '';
+            }
+
+            if (!isElectron && !hasExplicitOutputDevice) {
+                this._applyDefaultOutputPreference(preferences, { useDefaultDestination: true });
                 return '';
             }
             
@@ -249,13 +348,14 @@ export class AudioIOManager {
                 return `Audio Error: Failed to create audio destination: ${error.message}`;
             }
             
-            // For Electron, prepare audio output device (only in stereo mode)
-            if (!isMultiChannel && window.electronAPI && window.electronIntegration) {
+            // Prepare audio output device (only in stereo mode)
+            if (!isMultiChannel) {
                 // Route output through AudioContext.setSinkId() if the API is available.
                 // This uses Chromium's WebAudio CoreAudio renderer instead of the
                 // HTMLMediaElement renderer.  On macOS, these are separate code paths and
                 // the WebAudio path is more reliable for HDMI reconnect recovery.
                 if (preferences?.outputDeviceId &&
+                    (isElectron || preferences.outputDeviceId !== 'default') &&
                     typeof this.contextManager.audioContext?.setSinkId === 'function') {
                     this.audioContextSinkMode = true;
                     this.destinationNode = null; // use audioContext.destination via connectAudioNodes fallback
@@ -267,8 +367,13 @@ export class AudioIOManager {
                         await this._setSinkIdWithTimeout(this.contextManager.audioContext, preferences.outputDeviceId, 3000);
                     } catch (e) {
                         console.warn('[audioCtxSink] setSinkId failed:', e.message);
+                        this._applyDefaultOutputPreference(preferences);
+                        if (isElectron) {
+                            this.audioContextSinkMode = true;
+                        }
                     }
-                    if (window.electronIntegration?.isElectronEnvironment?.()) {
+                    if (isElectron &&
+                        typeof window.electronIntegration?.loadAudioPreferences === 'function') {
                         this.startDevicePoll(
                             () => window.electronIntegration.loadAudioPreferences(),
                             // On macOS HDMI (audioContextSinkMode), reset(null) cannot recover —
@@ -339,7 +444,7 @@ export class AudioIOManager {
                                         console.warn('Failed to set audio output to saved device, using default:', directSinkError);
                                         // Fall back to default device
                                         await this.audioElement.setSinkId('default');
-                                        this.currentOutputDeviceId = 'default';
+                                        this._applyDefaultOutputPreference(preferences);
                                     }
                                 }
                                 
@@ -356,11 +461,11 @@ export class AudioIOManager {
                                     await this.audioElement.play();
                                 } catch (playError) {
                                     console.warn('Failed to play audio:', playError);
-                                    // We already have a default connection from above
+                                    this._routeToDefaultOutput(preferences);
                                 }
                             } catch (sinkError) {
                                 console.warn('Failed to set audio output device:', sinkError);
-                                // We already have a default connection from above
+                                this._routeToDefaultOutput(preferences);
                                 
                                 // Still try to use the audio element as a fallback
                                 if (this.destinationNode && this.destinationNode.stream) {
@@ -369,7 +474,7 @@ export class AudioIOManager {
                             }
                         } else {
                             console.warn('Audio Output Devices API not supported in this browser');
-                            // We already have a default connection from above
+                            this._routeToDefaultOutput(preferences);
                             
                             // Still try to use the audio element as a fallback
                             if (this.destinationNode && this.destinationNode.stream) {
@@ -380,7 +485,9 @@ export class AudioIOManager {
                         // Add event listeners for debugging
                         this.audioElement.addEventListener('error', (e) => {
                             // If there's an error with the audio element, make sure we're using the default output
-                            // We already have a default connection from above
+                            if (!this.defaultDestinationConnection) {
+                                this._routeToDefaultOutput(preferences);
+                            }
                         });
                     } catch (error) {
                         console.warn('Error setting up audio element with preferences:', error);
@@ -424,12 +531,13 @@ export class AudioIOManager {
                                 await this.audioElement.play();
                             } catch (playError) {
                                 console.warn('Failed to play audio:', playError);
-                                // Fall back to default output
-                                this.defaultDestinationConnection = this.contextManager.workletNode.connect(this.contextManager.audioContext.destination);
+                                // Fall back to the AudioContext default destination when the
+                                // worklet graph is connected in the next initialization phase.
+                                this._routeToDefaultOutput(preferences);
                             }
                         } else {
-                            // If no destination stream, connect worklet to default destination
-                            this.defaultDestinationConnection = this.contextManager.workletNode.connect(this.contextManager.audioContext.destination);
+                            // If no destination stream, connect to default destination later.
+                            this._routeToDefaultOutput(preferences);
                         }
                         
                         // Ensure proper multichannel configuration for the destination connection
@@ -442,14 +550,14 @@ export class AudioIOManager {
                         this.audioElement.addEventListener('error', (e) => {
                             // If there's an error with the audio element, make sure we're using the default output
                             if (!this.defaultDestinationConnection) {
-                                this.defaultDestinationConnection = this.contextManager.workletNode.connect(this.contextManager.audioContext.destination);
+                                this._routeToDefaultOutput(preferences);
                             }
                         });
                     } catch (error) {
                         console.warn('Error setting up default audio device:', error);
                         // Ensure we have audio output in case of error
                         if (!this.defaultDestinationConnection) {
-                            this.defaultDestinationConnection = this.contextManager.workletNode.connect(this.contextManager.audioContext.destination);
+                            this._routeToDefaultOutput(preferences);
                         }
                     }
                 }
@@ -486,6 +594,11 @@ export class AudioIOManager {
                 
                 // Insert the silence node between worklet and destination
                 try {
+                    if (!this.contextManager.workletNode) {
+                        console.warn('AudioWorklet is not ready; deferring first-launch silence routing');
+                        this.silenceNode = silenceNode;
+                        return '';
+                    }
                     // Only disconnect if connected
                     if (this.destinationNode) {
                         this.contextManager.workletNode.disconnect(this.destinationNode);
@@ -590,34 +703,10 @@ export class AudioIOManager {
                     return `Audio Error: Failed to connect to audio destination: ${error.message}`;
                 }
             } else {
-                try {
-                    this.defaultDestinationConnection = this.outputGainNode.connect(this.contextManager.audioContext.destination);
-                } catch (error) {
-                    console.error('Error connecting to default audio destination:', error);
-                    return `Audio Error: Failed to connect to default audio destination: ${error.message}`;
-                }
+                const defaultOutputError = this._connectOutputGainToDefaultDestination();
+                if (defaultOutputError) return defaultOutputError;
             }
 
-            // For web app (non-Electron), always route to default destination.
-            if (!window.electronAPI || !window.electronIntegration) {
-                try {
-                    this.outputGainNode.disconnect();
-                } catch (e) { /* ignore */ }
-
-                try {
-                    this.defaultDestinationConnection = this.outputGainNode.connect(this.contextManager.audioContext.destination);
-
-                    // Ensure proper multichannel configuration for the destination
-                    if (this.contextManager.audioContext.destination.channelCount > 2) {
-                        this.contextManager.audioContext.destination.channelCountMode = 'explicit';
-                        this.contextManager.audioContext.destination.channelInterpretation = 'discrete';
-                    }
-                } catch (error) {
-                    console.error('Error connecting to default audio destination:', error);
-                    return `Audio Error: Failed to connect to default audio destination: ${error.message}`;
-                }
-            }
-            
             return '';
         } catch (error) {
             console.error('Error connecting audio nodes:', error);
@@ -644,6 +733,7 @@ export class AudioIOManager {
         bufferSource.connect(gainNode);
         bufferSource.start();
 
+        this.sourceNode = gainNode;
         return gainNode;
     }
 
@@ -884,7 +974,8 @@ export class AudioIOManager {
         // Stop polling before teardown to prevent race conditions
         this.stopDevicePoll();
 
-        // Reset audioContextSinkMode so next initAudioOutput() re-evaluates it
+        // Reset output modes so next initAudioOutput() re-evaluates them
+        this.directOutputMode = false;
         this.audioContextSinkMode = false;
 
         // Stop audio element if it exists

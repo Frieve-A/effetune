@@ -658,9 +658,11 @@ class PluginBase {
         const touch = ev.touches?.[0] || ev.changedTouches?.[0];
         const clientX = ev.clientX ?? touch?.clientX ?? rect.left;
         const clientY = ev.clientY ?? touch?.clientY ?? rect.top;
+        const rectWidth = rect.width || canvas.width || 1;
+        const rectHeight = rect.height || canvas.height || 1;
         return {
-            x: (clientX - rect.left) * (canvas.width / rect.width),
-            y: (clientY - rect.top) * (canvas.height / rect.height)
+            x: (clientX - rect.left) * (canvas.width / rectWidth),
+            y: (clientY - rect.top) * (canvas.height / rectHeight)
         };
     }
 
@@ -674,6 +676,7 @@ class PluginBase {
         element.style.touchAction = 'none';
 
         const onPointerDown = event => {
+            if (activePointerId !== null || event.isPrimary === false) return;
             activePointerId = event.pointerId;
             startX = event.clientX;
             startY = event.clientY;
@@ -712,16 +715,28 @@ class PluginBase {
             event.preventDefault();
         };
 
+        const cancelPointer = event => {
+            if (activePointerId !== event.pointerId) return;
+            element.releasePointerCapture?.(event.pointerId);
+            if (dragging) {
+                onDragEnd?.(event);
+            }
+            activePointerId = null;
+            startEvent = null;
+            dragging = false;
+            event.preventDefault();
+        };
+
         element.addEventListener('pointerdown', onPointerDown);
         element.addEventListener('pointermove', onPointerMove);
         element.addEventListener('pointerup', finishPointer);
-        element.addEventListener('pointercancel', finishPointer);
+        element.addEventListener('pointercancel', cancelPointer);
 
         return () => {
             element.removeEventListener('pointerdown', onPointerDown);
             element.removeEventListener('pointermove', onPointerMove);
             element.removeEventListener('pointerup', finishPointer);
-            element.removeEventListener('pointercancel', finishPointer);
+            element.removeEventListener('pointercancel', cancelPointer);
         };
     }
 

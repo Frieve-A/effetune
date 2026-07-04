@@ -66,6 +66,12 @@ export class PlaybackManager {
       this.audioPlayer.stateManager.updatePlaylist(this.playlist, 0);
     }
   }
+
+  syncPlaylistState(currentIndex = 0) {
+    if (this.audioPlayer.stateManager) {
+      this.audioPlayer.stateManager.updatePlaylist(this.playlist, currentIndex);
+    }
+  }
   
   /**
    * Get track at specified index
@@ -413,6 +419,7 @@ export class PlaybackManager {
     }
     
     const finalIndex = 0;
+    this.syncPlaylistState(finalIndex);
     
     if (this.audioPlayer.stateManager) {
       this.audioPlayer.stateManager.updateState({
@@ -480,6 +487,7 @@ export class PlaybackManager {
     );
     
     const finalIndex = newIndex === -1 ? 0 : newIndex;
+    this.syncPlaylistState(finalIndex);
     
     if (this.audioPlayer.stateManager) {
       this.audioPlayer.stateManager.updateState({

@@ -81,6 +81,44 @@
   gap: 10px;
 }
 
+.plugin-parameter-ui .channel-divider-frequency-slider-top > label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.plugin-parameter-ui .channel-divider-frequency-slider-top > input[type="number"] {
+  flex: 0 0 70px;
+  width: 70px;
+  min-width: 70px;
+  max-width: 70px;
+}
+
+.plugin-parameter-ui .channel-divider-frequency-slider-top > .slope-select {
+  flex: 0 0 90px;
+  width: 90px;
+  min-width: 90px;
+  max-width: 90px;
+}
+
+body.layout-mobile .plugin-parameter-ui .channel-divider-frequency-slider-top > label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+body.layout-mobile .plugin-parameter-ui .channel-divider-frequency-slider-top > input[type="number"] {
+  flex: 0 0 70px;
+  width: 70px;
+  min-width: 70px;
+  max-width: 70px;
+}
+
+body.layout-mobile .plugin-parameter-ui .channel-divider-frequency-slider-top > .slope-select {
+  flex: 0 0 90px;
+  width: 90px;
+  min-width: 90px;
+  max-width: 90px;
+}
+
 .channel-divider-slope-row {
   display: flex;
   align-items: center;

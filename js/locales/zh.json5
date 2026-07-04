@@ -32,6 +32,7 @@
 
   // 状态信息
   "status.configuringAudio": "配置音频设备中……",
+  "status.resettingAudio": "正在重置音频……",
   "status.reloading": "重新加载中……",
   "status.processingFile": "处理文件 {current}/{total} （{percent}%）",
   "status.processingCanceled": "处理已取消",
@@ -171,6 +172,11 @@
   "dialog.audioConfig.apply": "应用",
   "dialog.audioConfig.updatedTitle": "音频设置已更新",
   "dialog.audioConfig.updatedMessage": "重新加载...",
+  "dialog.audioConfig.outputDevice.secureContextRequired": "选择输出设备需要安全上下文。",
+  "dialog.audioConfig.outputDevice.permissionsPolicyBlocked": "输出设备选择被 Permissions-Policy 阻止。",
+  "dialog.audioConfig.outputDevice.unsupportedBrowser": "此浏览器不支持选择输出设备。",
+  "dialog.audioConfig.outputChannels.stereoDefault": "2 - 立体声（默认）",
+  "dialog.audioConfig.sampleRate.default": "{rate} kHz（默认）",
 
   "dialog.config.title": "设置",
   "dialog.config.autoLaunch": "在操作系统启动时启动",

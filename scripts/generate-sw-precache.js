@@ -14,6 +14,15 @@ const explicit = [
   'plugins/plugins.txt'
 ];
 const allowedExtensions = new Set(['.js', '.css', '.json', '.json5', '.png', '.ico', '.jpg', '.jpeg', '.svg', '.txt']);
+const excludedPathPatterns = [
+  /^images\/screenshot(?:-[^/]+)?\.png$/,
+  /^images\/ogp\.jpg$/,
+  /^images\/video_thumbnail\.jpg$/
+];
+
+function shouldPrecache(relativePath) {
+  return !excludedPathPatterns.some(pattern => pattern.test(relativePath));
+}
 
 function walk(dir, output) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -21,7 +30,10 @@ function walk(dir, output) {
     if (entry.isDirectory()) {
       walk(fullPath, output);
     } else if (allowedExtensions.has(path.extname(entry.name).toLowerCase())) {
-      output.add(path.relative(root, fullPath).replace(/\\/g, '/'));
+      const relativePath = path.relative(root, fullPath).replace(/\\/g, '/');
+      if (shouldPrecache(relativePath)) {
+        output.add(relativePath);
+      }
     }
   }
 }

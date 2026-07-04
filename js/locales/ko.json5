@@ -32,6 +32,7 @@
 
   // 상태 메시지
   "status.configuringAudio": "오디오 장치 설정 중...",
+  "status.resettingAudio": "오디오 재설정 중...",
   "status.reloading": "다시 로드 중...",
   "status.processingFile": "파일 처리 중 {current}/{total} ({percent}%)",
   "status.processingCanceled": "처리 취소됨",
@@ -171,6 +172,11 @@
   "dialog.audioConfig.apply": "적용",
   "dialog.audioConfig.updatedTitle": "오디오 설정 업데이트됨",
   "dialog.audioConfig.updatedMessage": "다시 로드 중...",
+  "dialog.audioConfig.outputDevice.secureContextRequired": "출력 장치를 선택하려면 보안 컨텍스트가 필요합니다.",
+  "dialog.audioConfig.outputDevice.permissionsPolicyBlocked": "Permissions-Policy로 인해 출력 장치 선택이 차단되었습니다.",
+  "dialog.audioConfig.outputDevice.unsupportedBrowser": "이 브라우저에서는 출력 장치 선택을 사용할 수 없습니다.",
+  "dialog.audioConfig.outputChannels.stereoDefault": "2 - 스테레오 (기본값)",
+  "dialog.audioConfig.sampleRate.default": "{rate} kHz (기본값)",
 
   "dialog.config.title": "설정",
   "dialog.config.autoLaunch": "OS 시작 시 자동 실행",

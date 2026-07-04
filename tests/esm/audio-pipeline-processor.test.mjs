@@ -95,9 +95,26 @@ test('state helpers and rebuild guards handle invalid pipeline state', async () 
 
   await withProcessorGlobals({}, async () => {
     assert.equal(await processor.rebuildPipeline(), undefined);
+  });
+});
 
-    const missingSource = new PipelineProcessor({ audioContext: {} }, { sourceNode: null });
-    assert.equal(await missingSource.rebuildPipeline(), undefined);
+test('rebuildPipeline creates a fallback source when input is deferred', async () => {
+  await withProcessorGlobals({ window: { pipeline: 'external value ignored' } }, async ({ calls }) => {
+    const contextManager = {
+      audioContext: { sampleRate: 48000 },
+      workletNode: createWorklet(calls)
+    };
+    const ioManager = createIoManager(calls, { sourceNode: null });
+    const processor = new PipelineProcessor(contextManager, ioManager);
+
+    assert.equal(await processor.rebuildPipeline(), '');
+    assert.ok(calls.some(call => call[0] === 'createFallbackSilentSource'));
+    assert.ok(calls.some(call => call[0] === 'connectAudioNodes'));
+    assert.deepEqual(calls.find(call => call[0] === 'postMessage')?.[1], {
+      type: 'updatePlugins',
+      plugins: [],
+      masterBypass: true
+    });
   });
 });
 
@@ -281,4 +298,3 @@ test('prepareSectionAwarePluginData tolerates a missing audio context sample rat
     commitSampleRate: true
   }]);
 });
-

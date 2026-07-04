@@ -21,6 +21,10 @@ export class WakeLockManager {
         this.documentRef = documentRef;
         this.lock = null;
         this.visible = !this.documentRef.hidden;
+        this.desiredLockState = false;
+        this.syncPromise = null;
+        this.syncVersion = 0;
+        this.disposed = false;
         this.onVisibilityChange = () => {
             this.visible = !this.documentRef.hidden;
             this.sync();
@@ -39,10 +43,35 @@ export class WakeLockManager {
     }
 
     async sync() {
-        if (this.shouldHoldLock()) {
-            await this.request();
-        } else {
-            await this.release();
+        if (this.disposed) return;
+        this.desiredLockState = this.shouldHoldLock();
+        this.syncVersion++;
+        if (!this.syncPromise) {
+            this.syncPromise = this.runSync();
+        }
+        await this.syncPromise;
+    }
+
+    async runSync() {
+        let seenVersion = 0;
+        try {
+            while (seenVersion !== this.syncVersion) {
+                seenVersion = this.syncVersion;
+                if (this.disposed) break;
+                if (this.desiredLockState) {
+                    await this.request();
+                } else {
+                    await this.release();
+                }
+            }
+        } finally {
+            if (this.disposed && this.lock) {
+                await this.release();
+            }
+            this.syncPromise = null;
+        }
+        if (!this.disposed && seenVersion !== this.syncVersion) {
+            await this.sync();
         }
     }
 
@@ -69,6 +98,9 @@ export class WakeLockManager {
     }
 
     dispose() {
+        this.disposed = true;
+        this.desiredLockState = false;
+        this.syncVersion++;
         this.documentRef.removeEventListener?.('visibilitychange', this.onVisibilityChange);
         this.stateManager?.removeListener?.('isPlaying', this.onPlayingChange);
         this.layoutUnsubscribe?.();

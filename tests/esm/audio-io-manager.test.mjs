@@ -161,7 +161,9 @@ function createContextManager(calls, options = {}) {
   const audioContext = createAudioContext(calls, options.audioContext);
   return {
     audioContext,
-    workletNode: options.workletNode ?? new FakeNode('worklet', calls, options.workletOptions),
+    workletNode: Object.prototype.hasOwnProperty.call(options, 'workletNode')
+      ? options.workletNode
+      : new FakeNode('worklet', calls, options.workletOptions),
     isFirstLaunch: Boolean(options.isFirstLaunch)
   };
 }
@@ -184,6 +186,7 @@ function createWindow(calls, options = {}) {
         return preferences;
       }
     } : null),
+    audioPreferences: options.audioPreferences,
     audioManager: Object.prototype.hasOwnProperty.call(options, 'audioManager')
       ? options.audioManager
       : {
@@ -281,12 +284,6 @@ test('constructor and audio input handle success, fallbacks, permission recovery
     assert.ok(calls.some(call => call[0] === 'createMediaStreamSource'));
   });
 
-  await withAudioIO({}, async ({ manager, calls }) => {
-    assert.equal(await manager.initAudioInput({ deferInput: true }), '');
-    assert.equal(calls.some(call => call[0] === 'getUserMedia'), false);
-    assert.equal(manager.sourceNode.name, 'gain');
-  });
-
   await withAudioIO({
     window: {
       electron: true,
@@ -359,6 +356,15 @@ test('constructor and audio input handle success, fallbacks, permission recovery
 test('audio input handles saved-device permission failures and non-permission fallbacks', async () => {
   await withAudioIO({
     window: {
+      audioPreferences: { inputDeviceId: 'web-mic' }
+    }
+  }, async ({ manager, calls }) => {
+    assert.equal(await manager.initAudioInput(), '');
+    assert.deepEqual(calls.find(call => call[0] === 'getUserMedia')[1].audio.deviceId, { exact: 'web-mic' });
+  });
+
+  await withAudioIO({
+    window: {
       electron: true,
       electronAPI: {
         clearMicrophonePermission: async () => { throw new Error('clear failed'); }
@@ -427,15 +433,18 @@ test('audio input handles saved-device permission failures and non-permission fa
 
 test('audio output initialization handles direct context sink and media destination paths', async () => {
   await withAudioIO({
+    context: { audioContext: { contextSetSinkId: true } },
     window: {
       electron: true,
       electronAPI: { platform: 'darwin' },
       app: { _doMacosRelaunch: async () => {} },
       preferences: { outputDeviceId: 'hdmi', outputChannels: 6 }
     }
-  }, async ({ manager }) => {
+  }, async ({ manager, calls }) => {
     assert.equal(await manager.initAudioOutput(), '');
     assert.equal(manager.directOutputMode, true);
+    assert.equal(manager.audioContextSinkMode, false);
+    assert.equal(calls.some(call => call[0] === 'ctx.setSinkId'), false);
   });
 
   await withAudioIO({
@@ -454,25 +463,51 @@ test('audio output initialization handles direct context sink and media destinat
   });
 
   await withAudioIO({
+    context: { audioContext: { contextSetSinkId: true } },
+    window: {
+      electron: true,
+      electronAPI: { platform: 'linux' },
+      preferences: { outputDeviceId: 'default', outputChannels: 2 }
+    }
+  }, async ({ manager, calls }) => {
+    assert.equal(await manager.initAudioOutput(), '');
+    assert.equal(manager.audioContextSinkMode, true);
+    assert.equal(manager.currentOutputDeviceId, 'default');
+    assert.ok(calls.some(call => call[0] === 'ctx.setSinkId' && call[1] === 'default'));
+    assert.ok(calls.some(call => call[0] === 'setInterval'));
+  });
+
+  await withAudioIO({
     context: { audioContext: { contextSetSinkId: true, contextSetSinkIdReject: true } },
     window: {
       electron: true,
       electronAPI: {},
       preferences: { outputDeviceId: 'ctx-device', outputChannels: 2 }
+    },
+    navigator: {
+      devices: [{ kind: 'audiooutput', deviceId: 'ctx-device', label: 'Ctx Device' }]
     }
-  }, async ({ manager, calls }) => {
+  }, async ({ manager, calls, intervals, windowRef }) => {
     assert.equal(await manager.initAudioOutput(), '');
     assert.ok(calls.some(call => call[0] === 'console.warn' && String(call[1]).includes('[audioCtxSink]')));
+    assert.equal(manager.audioContextSinkMode, true);
+    assert.ok(calls.some(call => call[0] === 'setInterval'));
+    assert.equal(windowRef.audioPreferences.outputDeviceId, 'default');
+    assert.equal(windowRef.electronIntegration.audioPreferences.outputDeviceId, 'ctx-device');
+    await intervals.values().next().value.callbackFn();
+    assert.ok(calls.some(call => call[0] === 'audioManager.reset'));
   });
 
   await withAudioIO({
-    context: { audioContext: { failMediaDestination: true } }
+    context: { audioContext: { failMediaDestination: true } },
+    window: { electron: true, preferences: null }
   }, async ({ manager }) => {
     assert.match(await manager.initAudioOutput(), /Failed to create audio destination/);
   });
 
   await withAudioIO({
-    context: { audioContext: { mediaDestination: false } }
+    context: { audioContext: { mediaDestination: false } },
+    window: { electron: true, preferences: null }
   }, async ({ manager, calls }) => {
     assert.equal(await manager.initAudioOutput(), '');
     assert.equal(manager.destinationNode, null);
@@ -489,6 +524,65 @@ test('audio output initialization handles direct context sink and media destinat
     assert.equal(await manager.initAudioOutput(), '');
     assert.equal(manager.directOutputMode, true);
     assert.ok(calls.some(call => call[0] === 'console.log' && String(call[1]).includes('low latency')));
+  });
+
+  await withAudioIO({
+    window: {
+      audioPreferences: { outputDeviceId: 'web-speaker', outputChannels: 2 }
+    },
+    navigator: {
+      devices: [{ kind: 'audiooutput', deviceId: 'web-speaker', label: 'Web Speaker' }]
+    }
+  }, async ({ manager, calls }) => {
+    assert.equal(await manager.initAudioOutput(), '');
+    assert.equal(manager.audioElement.srcObject.id, 'stream');
+    assert.equal(manager.currentOutputDeviceId, 'web-speaker');
+    assert.equal(calls.some(call => call[0] === 'setInterval'), false);
+  });
+
+  await withAudioIO({
+    context: { audioContext: { contextSetSinkId: true } },
+    window: {
+      audioPreferences: { outputDeviceId: 'web-direct', outputChannels: 2, lowLatencyOutput: true }
+    }
+  }, async ({ manager, calls }) => {
+    assert.equal(await manager.initAudioOutput(), '');
+    assert.equal(manager.directOutputMode, true);
+    assert.equal(manager.audioContextSinkMode, true);
+    assert.ok(calls.some(call => call[0] === 'ctx.setSinkId' && call[1] === 'web-direct'));
+  });
+
+  await withAudioIO({
+    window: {
+      audioPreferences: { outputDeviceId: 'default', outputChannels: 2 },
+      electronIntegration: {
+        audioPreferences: { outputDeviceId: 'default', outputChannels: 8 },
+        async loadAudioPreferences() {
+          throw new Error('saved preferences should not replace effective preferences');
+        }
+      }
+    }
+  }, async ({ manager }) => {
+    assert.equal(await manager.initAudioOutput(), '');
+    assert.equal(manager.directOutputMode, false);
+    assert.equal(manager.audioElement, null);
+    assert.equal(globalThis.window.audioPreferences.outputChannels, 2);
+  });
+
+  await withAudioIO({
+    context: { audioContext: { contextSetSinkId: true, contextSetSinkIdReject: true } },
+    window: {
+      audioPreferences: {
+        outputDeviceId: 'web-speaker',
+        outputDeviceLabel: 'Web Speaker',
+        outputChannels: 2
+      }
+    }
+  }, async ({ manager, windowRef }) => {
+    assert.equal(await manager.initAudioOutput(), '');
+    assert.equal(manager.currentOutputDeviceId, 'default');
+    assert.equal(windowRef.audioPreferences.outputDeviceId, 'default');
+    assert.equal(windowRef.audioPreferences.outputDeviceLabel, '');
   });
 
   await withAudioIO({
@@ -563,7 +657,8 @@ test('audio output initialization handles saved and default audio-element paths'
     assert.equal(manager.currentOutputDeviceId, 'default');
     assert.equal(contextManager.audioContext.destination.channelCountMode, 'explicit');
     manager.audioElement.dispatch('error');
-    assert.ok(manager.defaultDestinationConnection);
+    assert.equal(manager.destinationNode, null);
+    assert.notEqual(manager.defaultDestinationConnection, null);
   });
 
   await withAudioIO({
@@ -577,7 +672,8 @@ test('audio output initialization handles saved and default audio-element paths'
     }
   }, async ({ manager }) => {
     assert.equal(await manager.initAudioOutput(), '');
-    assert.ok(manager.defaultDestinationConnection);
+    assert.notEqual(manager.defaultDestinationConnection, null);
+    assert.equal(manager.destinationNode, null);
   });
 });
 
@@ -634,10 +730,32 @@ test('audio output initialization handles audio-element fallback failures and ev
       preferences: { outputDeviceId: 'speaker', outputChannels: 2 }
     },
     audio: { rejectSinkId: true }
-  }, async ({ manager, calls }) => {
+  }, async ({ manager, calls, windowRef }) => {
     assert.equal(await manager.initAudioOutput(), '');
     assert.ok(calls.some(call => call[0] === 'console.warn' && String(call[1]).includes('Failed to set audio output device')));
-    assert.equal(manager.audioElement.srcObject.id, 'stream');
+    assert.equal(manager.destinationNode, null);
+    assert.notEqual(manager.defaultDestinationConnection, null);
+    assert.equal(windowRef.audioPreferences.outputDeviceId, 'default');
+    assert.equal(windowRef.electronIntegration.audioPreferences.outputDeviceId, 'speaker');
+  });
+
+  await withAudioIO({
+    window: {
+      audioPreferences: {
+        outputDeviceId: 'speaker',
+        outputDeviceLabel: 'Speaker',
+        outputChannels: 2
+      }
+    },
+    audio: { rejectSinkId: true },
+    navigator: {
+      devices: [{ kind: 'audiooutput', deviceId: 'speaker', label: 'Speaker' }]
+    }
+  }, async ({ manager, windowRef }) => {
+    assert.equal(await manager.initAudioOutput(), '');
+    assert.equal(manager.currentOutputDeviceId, 'default');
+    assert.equal(windowRef.audioPreferences.outputDeviceId, 'default');
+    assert.equal(windowRef.audioPreferences.outputDeviceLabel, '');
   });
 
   await withAudioIO({
@@ -676,7 +794,22 @@ test('audio output initialization handles audio-element fallback failures and ev
     }
   }, async ({ manager }) => {
     assert.equal(await manager.initAudioOutput(), '');
-    assert.ok(manager.defaultDestinationConnection);
+    assert.notEqual(manager.defaultDestinationConnection, null);
+    assert.equal(manager.destinationNode, null);
+  });
+
+  await withAudioIO({
+    context: {
+      workletNode: null
+    },
+    audio: {
+      playReject: true
+    }
+  }, async ({ manager, windowRef }) => {
+    assert.equal(await manager.initAudioOutput(), '');
+    assert.equal(manager.defaultDestinationConnection, null);
+    assert.equal(manager.destinationNode, null);
+    assert.equal(windowRef.audioPreferences.outputDeviceId, 'default');
   });
 
   await withAudioIO({
@@ -689,7 +822,8 @@ test('audio output initialization handles audio-element fallback failures and ev
     assert.equal(await manager.initAudioOutput(), '');
     manager.defaultDestinationConnection = null;
     manager.audioElement.dispatch('error');
-    assert.ok(manager.defaultDestinationConnection);
+    assert.equal(manager.destinationNode, null);
+    assert.notEqual(manager.defaultDestinationConnection, null);
   });
 });
 
@@ -762,6 +896,18 @@ test('first-launch silence node handles processor variants and connection fallba
 });
 
 test('connectAudioNodes handles sink modes, web fallback, and error returns', async () => {
+  await withAudioIO({
+    window: {
+      audioPreferences: { outputDeviceId: 'default', outputChannels: 2 }
+    }
+  }, async ({ manager, contextManager, calls }) => {
+    assert.equal(await manager.initAudioOutput(), '');
+    assert.equal(manager.audioElement, null);
+    manager.sourceNode = new FakeNode('source', calls);
+    assert.equal(await manager.connectAudioNodes(), '');
+    assert.ok(calls.some(call => call[0] === 'connect' && call[1] === 'gain' && call[2] === 'destination'));
+  });
+
   await withAudioIO({}, async ({ manager, contextManager }) => {
     manager.sourceNode = new FakeNode('source', []);
     manager.outputGainNode = contextManager.audioContext.createGain();
@@ -871,7 +1017,7 @@ test('connectAudioNodes handles original connect, sink-specific failures, and we
   await withAudioIO({}, async ({ manager, contextManager }) => {
     manager.sourceNode = new FakeNode('source', []);
     manager.outputGainNode = new FakeNode('gain', [], { failConnectAfter: 2 });
-    assert.match(await manager.connectAudioNodes(), /Failed to connect to default audio destination/);
+    assert.equal(await manager.connectAudioNodes(), '');
   });
 
   await withAudioIO({}, async ({ manager, contextManager }) => {
@@ -890,9 +1036,10 @@ test('connectAudioNodes handles original connect, sink-specific failures, and we
 });
 
 test('fallback source, output reapply, timeout wrappers, polling, and cleanup maintain lifecycle state', async () => {
-  await withAudioIO({}, async ({ manager }) => {
+  await withAudioIO({}, async ({ manager, calls }) => {
     const node = manager.createFallbackSilentSource();
     assert.equal(node.name, 'gain');
+    assert.equal(calls.some(call => call[0] === 'console.warn' && String(call[1]).includes('Source node missing')), true);
   });
 
   await withAudioIO({
@@ -955,6 +1102,7 @@ test('fallback source, output reapply, timeout wrappers, polling, and cleanup ma
     manager.defaultDestinationConnection = {};
     manager.cleanupAudio();
     assert.equal(manager.audioContextSinkMode, false);
+    assert.equal(manager.directOutputMode, false);
     assert.equal(tracks[0].stopped, true);
     assert.equal(manager.sourceNode, null);
   });
@@ -1174,8 +1322,7 @@ test('init-registered poll callbacks ignore non-critical recovery errors', async
     },
     navigator: {
       devices: [{ kind: 'audiooutput', deviceId: 'ctx-device', label: 'Ctx' }]
-    },
-    immediateTimeouts: true
+    }
   }, async ({ manager, contextManager, intervals, calls }) => {
     assert.equal(await manager.initAudioOutput(), '');
     contextManager.audioContext.sinkId = 'old';
@@ -1193,8 +1340,7 @@ test('init-registered poll callbacks ignore non-critical recovery errors', async
     },
     navigator: {
       devices: [{ kind: 'audiooutput', deviceId: 'ctx-device', label: 'Ctx' }]
-    },
-    immediateTimeouts: true
+    }
   }, async ({ manager, contextManager, intervals }) => {
     assert.equal(await manager.initAudioOutput(), '');
     contextManager.audioContext.sinkId = 'old';
@@ -1210,8 +1356,7 @@ test('init-registered poll callbacks ignore non-critical recovery errors', async
     },
     navigator: {
       devices: [{ kind: 'audiooutput', deviceId: 'ctx-device', label: 'Ctx' }]
-    },
-    immediateTimeouts: true
+    }
   }, async ({ manager, contextManager, intervals, calls }) => {
     assert.equal(await manager.initAudioOutput(), '');
     contextManager.audioContext.sinkId = 'old';

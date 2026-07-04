@@ -4,9 +4,13 @@
   getLanguageOptionLabel,
   normalizeLanguagePreference
 } from '../language-options.js';
+import {
+  loadWebAppConfig,
+  saveWebAppConfig
+} from './webSettingsStorage.js';
 
 export async function loadConfig(isElectron) {
-  if (!isElectron) return {};
+  if (!isElectron) return loadWebAppConfig();
   try {
     const result = await window.electronAPI.loadConfig();
     if (result.success) return result.config || {};
@@ -17,17 +21,17 @@ export async function loadConfig(isElectron) {
 }
 
 export async function saveConfig(isElectron, cfg) {
-  if (!isElectron) return;
+  if (!isElectron) return saveWebAppConfig(cfg);
   try {
     await window.electronAPI.saveConfig(cfg);
+    return true;
   } catch (error) {
     console.error('Failed to save config:', error);
+    return false;
   }
 }
 
 export async function showConfigDialog(isElectron, currentConfig) {
-  if (!isElectron) return;
-
   // Load the latest config from file to ensure we have the most recent settings
   const config = {
     ...(currentConfig || {}),
@@ -35,20 +39,23 @@ export async function showConfigDialog(isElectron, currentConfig) {
   };
   config.language = normalizeLanguagePreference(config.language || AUTO_LANGUAGE_PREFERENCE);
   
-  const presets = (window.pipelineManager && window.pipelineManager.presetManager)
-    ? await window.pipelineManager.presetManager.getPresets()
+  const pipelinePresetManager = window.pipelineManager && window.pipelineManager.presetManager;
+  const presets = pipelinePresetManager
+    ? (typeof pipelinePresetManager.getLoadablePresets === 'function'
+      ? await pipelinePresetManager.getLoadablePresets()
+      : await pipelinePresetManager.getPresets())
     : {};
   const presetNames = Object.keys(presets).sort();
-  const t = window.uiManager.t.bind(window.uiManager);
+  const t = window.uiManager?.t
+    ? window.uiManager.t.bind(window.uiManager)
+    : key => key;
 
   // Fix for single preset case: auto-set startupPreset if pipelineStartup is 'preset' but startupPreset is empty
   if (config.pipelineStartup === 'preset' && (!config.startupPreset || config.startupPreset === '') && presetNames.length > 0) {
     config.startupPreset = presetNames[0];
   }
 
-  const dialogHTML = `
-    <div class="config-dialog">
-      <h2 id="config-title"></h2>
+  const electronOnlySections = isElectron ? `
       <div class="device-section">
         <div class="checkbox-container">
           <input type="checkbox" id="auto-launch" ${config.autoLaunch ? 'checked' : ''}>
@@ -72,7 +79,12 @@ export async function showConfigDialog(isElectron, currentConfig) {
           <input type="checkbox" id="check-updates" ${config.checkForUpdatesOnStartup !== false ? 'checked' : ''}>
           <label for="check-updates" id="config-check-updates-label"></label>
         </div>
-      </div>
+      </div>` : '';
+
+  const dialogHTML = `
+    <div class="config-dialog">
+      <h2 id="config-title"></h2>
+      ${electronOnlySections}
       <div class="device-section">
         <label class="section-label" for="language-select" id="config-language-label"></label>
         <select id="language-select" class="config-select"></select>
@@ -90,9 +102,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
         <div class="radio-container">
           <input type="radio" name="pipeline" id="pl-preset" value="preset" ${config.pipelineStartup === 'preset' ? 'checked' : ''}>
           <label for="pl-preset" id="config-pipeline-preset-label"></label>
-          <select id="preset-select" class="config-select" ${config.pipelineStartup === 'preset' ? '' : 'disabled'}>
-            ${presetNames.map(n => `<option value="${n}" ${config.startupPreset === n ? 'selected' : ''}>${n}</option>`).join('')}
-          </select>
+          <select id="preset-select" class="config-select" ${config.pipelineStartup === 'preset' ? '' : 'disabled'}></select>
         </div>
       </div>
       <div class="dialog-buttons">
@@ -201,6 +211,21 @@ export async function showConfigDialog(isElectron, currentConfig) {
   `;
   document.head.appendChild(style);
 
+  function replaceOptions(select, options, selectedValue, labelForValue = value => value) {
+    if (!select) return;
+    select.innerHTML = '';
+    const selectedValueString = String(selectedValue);
+    options.forEach(value => {
+      const optionValue = String(value);
+      const option = document.createElement('option');
+      option.value = optionValue;
+      option.textContent = labelForValue(value);
+      option.selected = optionValue === selectedValueString;
+      select.appendChild(option);
+    });
+    select.value = options.some(value => String(value) === selectedValueString) ? selectedValueString : String(options[0] || '');
+  }
+
   function renderLanguageOptions() {
     const languageSelect = document.getElementById('language-select');
     if (!languageSelect) {
@@ -208,19 +233,28 @@ export async function showConfigDialog(isElectron, currentConfig) {
     }
 
     const selectedValue = normalizeLanguagePreference(config.language);
-    languageSelect.innerHTML = LANGUAGE_OPTIONS.map(option => {
-      const label = getLanguageOptionLabel(option.value, t);
-      const selected = option.value === selectedValue ? ' selected' : '';
-      return `<option value="${option.value}"${selected}>${label}</option>`;
-    }).join('');
+    replaceOptions(
+      languageSelect,
+      LANGUAGE_OPTIONS.map(option => option.value),
+      selectedValue,
+      value => getLanguageOptionLabel(value, t)
+    );
+  }
+
+  function renderPresetOptions() {
+    replaceOptions(document.getElementById('preset-select'), presetNames, config.startupPreset || '');
   }
 
   function renderDialogTexts() {
     document.getElementById('config-title').textContent = t('dialog.config.title');
-    document.getElementById('config-auto-launch-label').textContent = t('dialog.config.autoLaunch');
-    document.getElementById('config-start-min-label').textContent = t('dialog.config.startMinimized');
-    document.getElementById('config-tray-label').textContent = t('dialog.config.minimizeToTray');
-    document.getElementById('config-check-updates-label').textContent = t('dialog.config.checkForUpdatesOnStartup');
+    const autoLaunchLabel = document.getElementById('config-auto-launch-label');
+    if (autoLaunchLabel) autoLaunchLabel.textContent = t('dialog.config.autoLaunch');
+    const startMinLabel = document.getElementById('config-start-min-label');
+    if (startMinLabel) startMinLabel.textContent = t('dialog.config.startMinimized');
+    const trayLabel = document.getElementById('config-tray-label');
+    if (trayLabel) trayLabel.textContent = t('dialog.config.minimizeToTray');
+    const checkUpdatesLabel = document.getElementById('config-check-updates-label');
+    if (checkUpdatesLabel) checkUpdatesLabel.textContent = t('dialog.config.checkForUpdatesOnStartup');
     document.getElementById('config-language-label').textContent = t('dialog.config.language');
     document.getElementById('config-pipeline-label').textContent = t('dialog.config.pipeline');
     document.getElementById('config-pipeline-default-label').textContent = t('dialog.config.pipeline.default');
@@ -228,6 +262,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
     document.getElementById('config-pipeline-preset-label').textContent = t('dialog.config.pipeline.preset');
     document.getElementById('close-btn').textContent = t('dialog.config.close');
     renderLanguageOptions();
+    renderPresetOptions();
   }
 
   function save() {
@@ -241,19 +276,34 @@ export async function showConfigDialog(isElectron, currentConfig) {
 
   renderDialogTexts();
 
-  document.getElementById('auto-launch').addEventListener('change', e => {
-    config.autoLaunch = e.target.checked; save();
-  });
-  document.getElementById('start-min').addEventListener('change', e => {
-    config.startMinimized = e.target.checked; save();
-  });
-  document.getElementById('tray').addEventListener('change', e => {
-    config.minimizeToTray = e.target.checked; save();
-  });
-  document.getElementById('check-updates').addEventListener('change', e => {
-    config.checkForUpdatesOnStartup = e.target.checked; save();
-  });
-  Array.from(overlay.querySelectorAll('input[name="pipeline"]')).forEach(el => {
+  const autoLaunch = document.getElementById('auto-launch');
+  if (autoLaunch) {
+    autoLaunch.addEventListener('change', e => {
+      config.autoLaunch = e.target.checked; save();
+    });
+  }
+  const startMin = document.getElementById('start-min');
+  if (startMin) {
+    startMin.addEventListener('change', e => {
+      config.startMinimized = e.target.checked; save();
+    });
+  }
+  const tray = document.getElementById('tray');
+  if (tray) {
+    tray.addEventListener('change', e => {
+      config.minimizeToTray = e.target.checked; save();
+    });
+  }
+  const checkUpdates = document.getElementById('check-updates');
+  if (checkUpdates) {
+    checkUpdates.addEventListener('change', e => {
+      config.checkForUpdatesOnStartup = e.target.checked; save();
+    });
+  }
+  const pipelineInputs = typeof overlay.querySelectorAll === 'function'
+    ? Array.from(overlay.querySelectorAll('input[name="pipeline"]'))
+    : [];
+  pipelineInputs.forEach(el => {
     el.addEventListener('change', () => {
       config.pipelineStartup = el.value;
       const select = document.getElementById('preset-select');

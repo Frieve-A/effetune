@@ -6,6 +6,13 @@ lang: en
 
 # Version History
 
+### Version 1.67.0 (Jul 4, 2026)
+- Added a mobile-friendly web layout with Player and Effects views
+- Added web support for Config and Audio Configuration settings
+- Added installable/offline web app support
+- Improved responsive plugin UI support
+- Various minor improvements
+
 ### Version 1.66.0 (Jun 27, 2026)
 - Added double blind test function
 - Added DSD64 IMD Simulator and Earphone Cable Sim effects

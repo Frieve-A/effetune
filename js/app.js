@@ -159,7 +159,10 @@ class App {
         this.uiManager = dependencies.uiManager || new UIManagerClass(this.pluginManager, this.audioManager);
         this.loadStartupConfig = dependencies.loadStartupConfig || (async () => {
             const { loadConfig } = await import('./electron/configIntegration.js');
-            return loadConfig(true);
+            const isElectron = window.electronIntegration?.isElectronEnvironment?.() ||
+                window.electronIntegration?.isElectron ||
+                false;
+            return loadConfig(isElectron);
         });
         this.loadPipelineState = dependencies.loadPipelineState || loadPipelineState;
         
@@ -183,6 +186,7 @@ class App {
         // App-start timestamp — used to skip auto-relaunch immediately after launch
         // to prevent infinite relaunch loops when HDMI is unstable at startup
         this._appStartTime = Date.now();
+        this.startupWarningMessage = null;
 
         // Make managers globally accessible for preset functionality
         window.pluginManager = this.pluginManager;
@@ -334,6 +338,24 @@ class App {
         }
     }
 
+    restoreDoubleBlindTestFromUrl() {
+        // If the page was opened from a Double Blind Test share URL, restore both
+        // pipelines and enter the blind test mode automatically (web version).
+        try {
+            const dbtParam = new URLSearchParams(window.location.search).get('dbt');
+            if (dbtParam && this.uiManager && this.uiManager.getDoubleBlindTest) {
+                this.uiManager.getDoubleBlindTest().restoreFromShare(dbtParam);
+            }
+        } catch (error) {
+            console.warn('Failed to restore Double Blind Test from URL:', error);
+        }
+    }
+
+    setStartupWarning(message) {
+        this.startupWarningMessage = message;
+        this.uiManager?.setError?.(message, false);
+    }
+
     /**
      * Initialize and build pipeline as a single operation
      * This ensures plugins are created with AudioWorklet already initialized
@@ -472,17 +494,53 @@ class App {
             }
         }
         
-        // Check config settings for startup preset if in Electron environment
-        if (isElectron && window.electronIntegration) {
+        let startupConfig = {};
+        let webUrlState = null;
+        if (!isElectron) {
+            webUrlState = this.uiManager.parsePipelineState();
+        }
+
+        // Check config settings for startup preset.
+        if (window.electronIntegration) {
             try {
-                const config = await this.loadStartupConfig();
+                startupConfig = await this.loadStartupConfig() || {};
+
+                if (!isElectron && !webUrlState && startupConfig.pipelineStartup === 'preset' && startupConfig.startupPreset) {
+                    const presetManager = this.uiManager.pipelineManager.presetManager;
+                    const presets = await presetManager.getPresets();
+
+                    if (presets[startupConfig.startupPreset]) {
+                        try {
+                            await presetManager.loadPreset(startupConfig.startupPreset);
+
+                            if (this.audioManager.workletNode) {
+                                try {
+                                    this.audioManager.workletNode.disconnect();
+                                } catch (e) {
+                                    // Ignore errors if already disconnected
+                                }
+                            }
+
+                            await this.audioManager.rebuildPipeline(true);
+                            this.restoreDoubleBlindTestFromUrl();
+                            return;
+                        } catch (error) {
+                            console.error('Error loading startup preset:', error);
+                            this.setStartupWarning(`Failed to load startup preset '${startupConfig.startupPreset}'.`);
+                        }
+                    } else {
+                        const message = `Startup preset '${startupConfig.startupPreset}' not found`;
+                        console.warn(message);
+                        this.setStartupWarning(message);
+                    }
+                }
                 
-                // If config specifies a preset for startup, load it instead of previous state
-                if (config.pipelineStartup === 'preset' && config.startupPreset) {
+                // If Electron config specifies a preset for startup, load it instead of previous state.
+                if (isElectron && startupConfig.pipelineStartup === 'preset' && startupConfig.startupPreset) {
                     const presetManager = this.uiManager.pipelineManager.presetManager;
                     const presets = await presetManager.getPresets();
                     
-                    if (presets[config.startupPreset]) {
+                    if (presets[startupConfig.startupPreset]) {
                         try {
                             // Set flags to prevent loading previous state
                             window.pipelineStateLoaded = false;
@@ -492,7 +550,7 @@ class App {
                             window.__FORCE_SKIP_PIPELINE_STATE_LOAD = true;
                             
                             // Load the specified preset
-                            await presetManager.loadPreset(config.startupPreset);
+                            await presetManager.loadPreset(startupConfig.startupPreset);
                             
                             // Force disconnect all existing connections first
                             if (this.audioManager.workletNode) {
@@ -511,12 +569,12 @@ class App {
                             console.error('Error loading startup preset:', error);
                         }
                     } else {
-                        console.warn(`Startup preset '${config.startupPreset}' not found`);
+                        console.warn(`Startup preset '${startupConfig.startupPreset}' not found`);
                     }
                 }
                 
                 // If config specifies default settings, skip loading previous state
-                if (config.pipelineStartup === 'default') {
+                if (isElectron && startupConfig.pipelineStartup === 'default') {
                     window.pipelineStateLoaded = false;
                     if (typeof window.ORIGINAL_PIPELINE_STATE_LOADED !== 'undefined') {
                         window.ORIGINAL_PIPELINE_STATE_LOADED = false;
@@ -548,10 +606,10 @@ class App {
         
         // If no saved state from file, try URL state (for web version)
         if (!savedState) {
-            savedState = this.uiManager.parsePipelineState();
+            savedState = webUrlState || this.uiManager.parsePipelineState();
         }
 
-        if (!savedState && !isElectron) {
+        if (!savedState && !isElectron && (!startupConfig.pipelineStartup || startupConfig.pipelineStartup === 'last')) {
             savedState = this.uiManager.loadPipelineStateFromLocalStorage?.() || null;
         }
         
@@ -698,16 +756,7 @@ class App {
             console.log('Audio pipeline rebuilt after error');
         }
 
-        // If the page was opened from a Double Blind Test share URL, restore both
-        // pipelines and enter the blind test mode automatically (web version).
-        try {
-            const dbtParam = new URLSearchParams(window.location.search).get('dbt');
-            if (dbtParam && this.uiManager && this.uiManager.getDoubleBlindTest) {
-                this.uiManager.getDoubleBlindTest().restoreFromShare(dbtParam);
-            }
-        } catch (error) {
-            console.warn('Failed to restore Double Blind Test from URL:', error);
-        }
+        this.restoreDoubleBlindTestFromUrl();
 
         if (window.pendingPresetName && window.pipelineManager && window.pipelineManager.presetManager) {
             await window.pipelineManager.presetManager.loadPreset(window.pendingPresetName);
@@ -815,6 +864,10 @@ class App {
 
         // Clear any existing error messages
         this.uiManager.clearError();
+
+        if (this.startupWarningMessage && !this.hasAudioError) {
+            this.uiManager.setError(this.startupWarningMessage, false);
+        }
 
         // Display microphone error message if there was one
         if (this.hasAudioError) {
@@ -1237,6 +1290,18 @@ function autoStartApplication({
     return startApplicationFn({
         AppClass,
         firstLaunchPromise,
+        loadInitialConfigFn: async () => {
+            const { loadConfig } = await import('./electron/configIntegration.js');
+            const isElectron = windowRef.electronIntegration?.isElectronEnvironment?.() ||
+                windowRef.electronIntegration?.isElectron ||
+                false;
+            const config = await loadConfig(isElectron);
+            windowRef.appConfig = config;
+            if (windowRef.electronIntegration) {
+                windowRef.electronIntegration.config = config;
+            }
+            return config;
+        },
         startHeartbeat,
         windowRef
     });

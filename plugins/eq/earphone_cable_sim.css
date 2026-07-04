@@ -121,3 +121,16 @@
     border-radius: 3px;
     font-size: 12px;
 }
+
+body.layout-mobile .earphone-cable-sim-plugin-ui .earphone-cable-sim-row-label {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+body.layout-mobile .earphone-cable-sim-plugin-ui .earphone-cable-sim-row-input {
+    flex: 0 0 48px;
+    width: 48px;
+    min-width: 48px;
+    max-width: 48px;
+    margin-left: auto;
+}

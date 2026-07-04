@@ -61,17 +61,32 @@ export class PipelineItemBuilder {
         header.className = 'pipeline-item-header';
         const isSectionPlugin = plugin.name == 'Section';
 
-        // Selection handling for entire pipeline item
+        const shouldSkipItemSelection = (target) => {
+            if (!target || typeof target.closest !== 'function') {
+                return true;
+            }
+
+            if (target.closest('.plugin-name, button, input, select, textarea, a, label, canvas, svg, .parameter-row')) {
+                return true;
+            }
+
+            for (let element = target; element && element !== item; element = element.parentNode) {
+                const className = typeof element.className === 'string' ? element.className : '';
+                if (/(^|\s)[^\s]*(?:button|tab|graph|marker)[^\s]*(?=\s|$)/.test(className)) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+
+        // Selection handling for non-interactive areas of the pipeline item
         const selectPlugin = (e) => {
-            // Prioritize UI item events
-            if (e.target.closest('.plugin-ui') || 
-                e.target.classList.contains('plugin-name') || 
-                e.target.tagName === 'BUTTON' || 
-                e.target.closest('button')) {
+            // Prioritize controls and plugin-specific interaction surfaces.
+            if (shouldSkipItemSelection(e.target)) {
                 return;
             }
 
-            // Stop event propagation
             e.stopPropagation();
 
             // Special handling for Ctrl/Cmd click to toggle selection
@@ -300,8 +315,22 @@ export class PipelineItemBuilder {
             ? window.uiManager.t('ui.title.configureBusRouting')
             : 'Configure bus routing';
         
-        // Routing icon: a 6.35mm phone-plug cable bent into an S (inline SVG, colored via CSS currentColor)
-        routingBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><g transform="translate(9 9) rotate(225)"><rect x="0" y="-2.2" width="4.8" height="4.4" rx="1.4"/><path d="M1.7 -2.2V2.2"/><path d="M4.8 0H8.4"/></g><path d="M9 9C9 14 15 10 15 15"/><g transform="translate(15 15) rotate(45)"><rect x="0" y="-2.2" width="4.8" height="4.4" rx="1.4"/><path d="M1.7 -2.2V2.2"/><path d="M4.8 0H8.4"/></g></svg>';
+        // Routing icon: two phone plugs connected by an S-shaped cable (inline SVG, colored via CSS currentColor)
+        routingBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 18" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true">'
+            + '<path d="M17.2 1.1c2.4.2 4.3 1.5 5.3 3.3.8 1.5.4 3-1.1 4.2-2 1.6-5.5 2.3-9.9 2.5-5 .2-8.1.9-8.1 2.1 0 .7 1.5 1.4 4.3 1.8v2.3c-3.8-.5-6.1-1.9-6.8-3.6-.5-1.2.1-2.5 1.6-3.5 2.2-1.5 5.6-2.1 10-2.2 4-.2 6.6-.9 7.4-1.9.5-.6.2-1.3-.5-2.1-.8-.9-2.1-1.4-3.6-1.6z" fill="currentColor" opacity=".82" stroke="none"/>'
+            + '<circle cx="1.1" cy="2.2" r=".85" fill="currentColor" opacity=".95" stroke-width=".45"/>'
+            + '<rect x="1.95" y="1.25" width="1.35" height="1.9" rx=".2" fill="currentColor" opacity=".86" stroke-width=".45"/>'
+            + '<rect x="3.35" y="1.45" width="5.9" height="1.5" rx=".15" fill="currentColor" opacity=".86" stroke-width=".45"/>'
+            + '<rect x="9.15" y=".15" width="8.35" height="4.1" rx=".55" fill="currentColor" opacity=".9" stroke-width=".55"/>'
+            + '<path d="M3.85 2.2h4.55" stroke-width=".35" opacity=".95"/>'
+            + '<path d="M9.75 3.15h6.95" stroke-width=".35" opacity=".95"/>'
+            + '<rect x="6.55" y="14.05" width="8.65" height="3.8" rx=".55" fill="currentColor" opacity=".9" stroke-width=".55"/>'
+            + '<rect x="15.15" y="15.15" width="5.65" height="1.45" rx=".15" fill="currentColor" opacity=".86" stroke-width=".45"/>'
+            + '<rect x="20.75" y="14.9" width="1.35" height="1.95" rx=".2" fill="currentColor" opacity=".86" stroke-width=".45"/>'
+            + '<circle cx="23" cy="15.85" r=".85" fill="currentColor" opacity=".95" stroke-width=".45"/>'
+            + '<path d="M7.15 16.95h7.35" stroke-width=".35" opacity=".95"/>'
+            + '<path d="M15.75 15.9h4.25" stroke-width=".35" opacity=".95"/>'
+            + '</svg>';
         
         routingBtn.onclick = (e) => {
             e.stopPropagation(); // Prevent event bubbling

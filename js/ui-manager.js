@@ -167,18 +167,6 @@ export class UIManager {
         this.stateManager.clearError();
     }
 
-    async enableAudioInput() {
-        if (!this.audioManager?.enableAudioInput) return;
-        this.setError('Requesting audio input...', false);
-        const result = await this.audioManager.enableAudioInput();
-        if (result) {
-            this.setError(result, result.startsWith('Audio Error:'));
-            return;
-        }
-        this.setError('Audio input enabled.', false);
-        setTimeout(() => this.clearError(), 3000);
-    }
-
     // URL state management
     parsePipelineState() {
         const params = new URLSearchParams(window.location.search);
@@ -702,6 +690,8 @@ export class UIManager {
         if (shareButton) {
             shareButton.textContent = this.t('ui.shareButton');
         }
+        this.stateManager?.updateLabels?.();
+        this.mobileMenu?.updateLabels?.();
         if (this.doubleBlindTestButton) {
             this.doubleBlindTestButton.textContent = this.t('menu.doubleBlindTest');
         }
@@ -713,12 +703,6 @@ export class UIManager {
          if (effectSearchInput) {
             effectSearchInput.placeholder = this.t('ui.searchEffectsPlaceholder');
          }
-
-        // Update reset button text based on environment
-        const isElectron = window.electronIntegration && window.electronIntegration.isElectronEnvironment();
-        if (this.resetButton) {
-            this.resetButton.textContent = isElectron ? this.t('ui.configAudioButton') : this.t('ui.resetButton');
-        }
 
         // Update drag message in plugin list manager
         if (this.pluginListManager && this.pluginListManager.dragMessage) {

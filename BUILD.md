@@ -4,9 +4,9 @@ description: "Documentation for build in Frieve EffeTune audio processor."
 lang: en
 ---
 
-# EffeTune Desktop Application Build Guide
+# EffeTune Build and Packaging Guide
 
-This document provides detailed instructions for setting up the development environment and building the EffeTune desktop application using Electron.
+This document provides instructions for setting up the development environment, validating the web app, and building the EffeTune desktop application using Electron.
 
 ## Prerequisites
 
@@ -139,6 +139,12 @@ To build the application, use the following npm commands:
 
 The Electron build scripts and GitHub Pages workflow regenerate `sw-precache.js` automatically before packaging or deployment. If you add or remove web assets outside those flows, run `node scripts/generate-sw-precache.js` before committing.
 
+### Web and PWA Assets
+
+The web app uses `manifest.json`, `sw.js`, and generated `sw-precache.js` for installable/offline app-shell support. Service Worker registration is web-only and is skipped in Electron.
+
+Before release, verify that the web app loads normally, can be installed where supported, and still opens after going offline once the app shell has been cached.
+
 ## Build Output
 
 After a successful build, you'll find the following in the `dist` directory:
@@ -211,6 +217,8 @@ To customize the installer behavior:
 The `build.files` array in `package.json` is an explicit allowlist of top-level directories and files to bundle into the application. This keeps repo-only assets (Jekyll site files, dev scripts, docs metadata, untracked work-in-progress files outside the allowlisted directories, etc.) out of the installer.
 
 When adding a new top-level directory or root file that must ship with the app, add a matching entry to `build.files`. Otherwise the build will silently omit it.
+
+Root web assets such as `effetune-mobile.css`, `sw.js`, `sw-precache.js`, `manifest.json`, icons, screenshots, and vendor scripts must be included when they are required at runtime.
 
 ## Troubleshooting
 

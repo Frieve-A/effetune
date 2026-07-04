@@ -43,7 +43,7 @@ export class PipelineProcessor {
      * @returns {Promise<string>} - Empty string on success, error message on failure
      */
     async rebuildPipeline(isInitializing = false) {
-        if (!this.contextManager.audioContext || !this.ioManager.sourceNode) {
+        if (!this.contextManager?.audioContext || !this.ioManager) {
             return;
         }
 

@@ -33,6 +33,52 @@ test('registerServiceWorker registers the web service worker on load', async () 
   assert.deepEqual(warnings, []);
 });
 
+test('registerServiceWorker registers immediately after load already completed', async () => {
+  const registrations = [];
+  const windowRef = {
+    document: { readyState: 'complete' },
+    navigator: {
+      serviceWorker: {
+        register(url) {
+          registrations.push(url);
+          return Promise.resolve();
+        }
+      }
+    },
+    addEventListener() {
+      throw new Error('should not wait for load');
+    }
+  };
+
+  registerServiceWorker(windowRef);
+  await Promise.resolve();
+
+  assert.deepEqual(registrations, ['./sw.js']);
+});
+
+test('registerServiceWorker reports registration failures', async () => {
+  const loadHandlers = [];
+  const warnings = [];
+  const windowRef = {
+    navigator: {
+      serviceWorker: {
+        register() {
+          return Promise.reject(new Error('register failed'));
+        }
+      }
+    },
+    addEventListener(type, handler) {
+      if (type === 'load') loadHandlers.push(handler);
+    }
+  };
+
+  registerServiceWorker(windowRef, { warn: (...args) => warnings.push(args) });
+  loadHandlers[0]();
+  await flushMicrotasks();
+
+  assert.equal(warnings.length, 1);
+});
+
 test('registerServiceWorker skips Electron and missing service worker support', () => {
   const electronWindow = {
     electronIntegration: { isElectronEnvironment: () => true },

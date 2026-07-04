@@ -1,5 +1,5 @@
 const MENU_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" draggable="false"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>';
-const PROCESS_AUDIO_LABEL = 'Process Audio File with Effects';
+const PROCESS_AUDIO_LABEL = 'Process Audio Files with Effects...';
 
 export class MobileMenu {
     constructor(uiManager) {
@@ -7,6 +7,7 @@ export class MobileMenu {
         this.button = null;
         this.panel = null;
         this.backdrop = null;
+        this.localizedActions = [];
         this.unsubscribe = this.uiManager.layoutMode?.onChange(() => this.sync()) || null;
         this.sync();
     }
@@ -24,8 +25,9 @@ export class MobileMenu {
             this.button = document.createElement('button');
             this.button.type = 'button';
             this.button.className = 'header-button mobile-menu-button';
-            this.button.title = 'Menu';
-            this.button.setAttribute('aria-label', 'Menu');
+            const menuLabel = this.translate('menu.settings', 'Menu');
+            this.button.title = menuLabel;
+            this.button.setAttribute('aria-label', menuLabel);
             this.button.innerHTML = MENU_ICON;
             this.button.addEventListener('click', () => this.toggle());
             const titleContainer = document.querySelector('.title-container');
@@ -43,14 +45,18 @@ export class MobileMenu {
             this.panel = document.createElement('div');
             this.panel.className = 'mobile-overflow-menu';
             this.panel.setAttribute('role', 'menu');
-            this.panel.appendChild(this.createAction('Open Music', () => document.getElementById('openMusicButton')?.click()));
-            this.panel.appendChild(this.createAction(PROCESS_AUDIO_LABEL, () => this.processAudioFilesWithEffects()));
-            this.panel.appendChild(this.createAction('Use audio input', () => this.uiManager.enableAudioInput?.()));
-            this.panel.appendChild(this.createAction('Reset Audio', () => document.getElementById('resetButton')?.click()));
-            this.panel.appendChild(this.createAction('Share', () => document.getElementById('shareButton')?.click()));
-            this.panel.appendChild(this.createAction("What's this app?", () => document.getElementById('whatsThisLink')?.click()));
+            this.panel.appendChild(this.createLocalizedAction('menu.file.openMusicFile', 'Open music file...', () => document.getElementById('openMusicButton')?.click()));
+            this.panel.appendChild(this.createLocalizedAction('menu.file.processAudioFiles', PROCESS_AUDIO_LABEL, () => this.processAudioFilesWithEffects()));
+            this.panel.appendChild(this.createLocalizedAction('dialog.config.title', 'Config', () => this.uiManager.stateManager?.openConfig?.()));
+            this.panel.appendChild(this.createLocalizedAction('dialog.audioConfig.title', 'Audio Configuration', () => this.uiManager.stateManager?.openAudioConfig?.()));
+            this.panel.appendChild(this.createLocalizedAction('menu.settings.performanceBenchmark', 'Performance Benchmark', () => this.uiManager.stateManager?.openFeaturePage?.('features/effetune_bench.html')));
+            this.panel.appendChild(this.createLocalizedAction('menu.settings.frequencyResponseMeasurement', 'Frequency Response Measurement', () => this.uiManager.stateManager?.openFeaturePage?.('features/measurement/measurement.html')));
+            this.panel.appendChild(this.createLocalizedAction('ui.resetButton', 'Reset Audio', () => this.uiManager.stateManager?.resetAudio?.()));
+            this.panel.appendChild(this.createLocalizedAction('ui.shareButton', 'Share', () => document.getElementById('shareButton')?.click()));
+            this.panel.appendChild(this.createLocalizedAction('ui.whatsThisApp', "What's this app?", () => document.getElementById('whatsThisLink')?.click()));
             document.body.appendChild(this.panel);
         }
+        this.updateLabels();
     }
 
     createAction(label, action) {
@@ -64,6 +70,28 @@ export class MobileMenu {
             action();
         });
         return button;
+    }
+
+    createLocalizedAction(key, fallback, action) {
+        const button = this.createAction(this.translate(key, fallback), action);
+        this.localizedActions.push({ button, key, fallback });
+        return button;
+    }
+
+    translate(key, fallback) {
+        const translated = this.uiManager?.t ? this.uiManager.t(key) : '';
+        return translated && translated !== key ? translated : fallback;
+    }
+
+    updateLabels() {
+        const menuLabel = this.translate('menu.settings', 'Menu');
+        if (this.button) {
+            this.button.title = menuLabel;
+            this.button.setAttribute?.('aria-label', menuLabel);
+        }
+        this.localizedActions.forEach(({ button, key, fallback }) => {
+            button.textContent = this.translate(key, fallback);
+        });
     }
 
     processAudioFilesWithEffects() {
@@ -106,6 +134,7 @@ export class MobileMenu {
         this.button = null;
         this.panel = null;
         this.backdrop = null;
+        this.localizedActions = [];
     }
 
     dispose() {

@@ -101,6 +101,7 @@ function createAudioPlayer(options = {}) {
     },
     updatePlaylist(playlist, index) {
       calls.push(['updatePlaylist', playlist.map(track => track?.name), index]);
+      state.playlist = [...playlist];
       state.currentTrackIndex = index;
     },
     updateState(update, label) {
@@ -478,8 +479,16 @@ test('shuffle, repeat, seek, clear, and dispose update playback state consistent
     const manager = makeManager(audioPlayer);
     setPlaylist(manager);
     manager.toggleShuffleMode();
+    assert.deepEqual(
+      audioPlayer.calls.filter(call => call[0] === 'updatePlaylist').at(-1).slice(1),
+      [manager.playlist.map(track => track.name), 0]
+    );
     audioPlayer.state.shuffleMode = true;
     manager.toggleShuffleMode();
+    assert.deepEqual(
+      audioPlayer.calls.filter(call => call[0] === 'updatePlaylist').at(-1).slice(1),
+      [manager.playlist.map(track => track.name), 0]
+    );
     audioPlayer.state.repeatMode = 'ONE';
     manager.toggleShuffleMode();
 
@@ -488,6 +497,16 @@ test('shuffle, repeat, seek, clear, and dispose update playback state consistent
       audioPlayer.state.shuffleMode = repeatMode === 'ALL';
       manager.toggleRepeatMode();
     }
+  });
+
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({ shuffleMode: true, repeatMode: 'ALL', currentTrackIndex: 1 });
+    const manager = makeManager(audioPlayer);
+    setPlaylist(manager);
+    manager.reshufflePlaylist();
+    const lastPlaylistUpdate = audioPlayer.calls.filter(call => call[0] === 'updatePlaylist').at(-1);
+    assert.deepEqual(lastPlaylistUpdate[1], manager.playlist.map(track => track.name));
+    assert.equal(lastPlaylistUpdate[2], audioPlayer.state.currentTrackIndex);
   });
 
   await withPlaybackGlobals({}, async () => {

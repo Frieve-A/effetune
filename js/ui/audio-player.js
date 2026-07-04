@@ -68,9 +68,24 @@ export class AudioPlayer {
   }
   
   /**
+   * Kick a suspended AudioContext resume synchronously within the caller's
+   * user-gesture call stack. WebKit only honors resume() while the gesture's
+   * transient activation is alive, so this must run before any awaits.
+   */
+  resumeAudioContextInGesture() {
+    try {
+      const result = this.audioManager?.contextManager?.resumeAudioContext?.();
+      if (result && typeof result.catch === 'function') {
+        result.catch(() => {});
+      }
+    } catch (_) { /* never block playback on resume failures */ }
+  }
+
+  /**
    * Play the current track
    */
   async play() {
+    this.resumeAudioContextInGesture();
     await this.playbackManager.play();
   }
   
@@ -85,6 +100,7 @@ export class AudioPlayer {
    * Toggle between play and pause
    */
   async togglePlayPause() {
+    this.resumeAudioContextInGesture();
     await this.playbackManager.togglePlayPause();
   }
   

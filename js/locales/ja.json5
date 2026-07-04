@@ -31,6 +31,7 @@
 
   // ステータスメッセージ
   "status.configuringAudio": "オーディオデバイスを設定中...",
+  "status.resettingAudio": "オーディオをリセットしています...",
   "status.reloading": "リロード中...",
   "status.processingFile": "ファイルを処理中 {current}/{total} ({percent}%)",
   "status.processingCanceled": "処理がキャンセルされました",
@@ -230,6 +231,11 @@
   "dialog.audioConfig.apply": "適用",
   "dialog.audioConfig.updatedTitle": "オーディオ設定が更新されました",
   "dialog.audioConfig.updatedMessage": "変更を適用するためにアプリケーションをリロードしています...",
+  "dialog.audioConfig.outputDevice.secureContextRequired": "出力デバイスの選択にはセキュアコンテキストが必要です。",
+  "dialog.audioConfig.outputDevice.permissionsPolicyBlocked": "Permissions-Policy により出力デバイスの選択がブロックされています。",
+  "dialog.audioConfig.outputDevice.unsupportedBrowser": "このブラウザでは出力デバイスの選択を利用できません。",
+  "dialog.audioConfig.outputChannels.stereoDefault": "2 - ステレオ (デフォルト)",
+  "dialog.audioConfig.sampleRate.default": "{rate} kHz (デフォルト)",
 
   "dialog.config.title": "設定",
   "dialog.config.autoLaunch": "OS起動時に自動起動",

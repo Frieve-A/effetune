@@ -80,7 +80,7 @@ class FakeElement {
   }
 
   dispatch(type, event = {}) {
-    const eventObject = createEvent(event.target ?? this, event);
+    const eventObject = createEvent(event.target ?? this, { ...event, type });
     for (const listener of this.eventListeners.get(type) || []) {
       listener(eventObject);
     }
@@ -173,6 +173,7 @@ function createDocument() {
 function createEvent(target, options = {}) {
   return {
     target,
+    type: options.type ?? '',
     ctrlKey: options.ctrlKey ?? false,
     metaKey: options.metaKey ?? false,
     shiftKey: options.shiftKey ?? false,
@@ -433,6 +434,65 @@ test('creates pipeline items and exercises header controls for regular plugins',
     assert.ok(core.calls.some(call => call[0] === 'showAIDialog'));
     assert.ok(core.calls.some(call => call[0] === 'deleteSelectedPlugins'));
     assert.ok(core.calls.filter(call => call[0] === 'saveState').length >= 1);
+  });
+});
+
+test('pipeline item blank areas select without stealing plugin control taps', async () => {
+  await withBuilderGlobals({}, async ({ documentRef }) => {
+    const plugin = new TestPlugin({ id: 40, name: 'Tone Control' });
+    const core = createCore({ pipeline: [plugin] });
+    const builder = new PipelineItemBuilder(core);
+    const item = builder.createPipelineItem(plugin);
+    documentRef.body.appendChild(item);
+
+    const ui = find(item, '.plugin-ui');
+    const selectionCount = () => core.calls.filter(call => call[0] === 'handlePluginSelection').length;
+
+    let before = selectionCount();
+    item.dispatch('click', { target: ui });
+    assert.equal(selectionCount(), before + 1);
+
+    const blankChild = documentRef.createElement('div');
+    blankChild.className = 'blank-space';
+    ui.appendChild(blankChild);
+    before = selectionCount();
+    const touchEvent = item.dispatch('touchstart', { target: blankChild });
+    assert.equal(selectionCount(), before + 1);
+    assert.equal(touchEvent.stopped, true);
+
+    const pluginContainer = documentRef.createElement('div');
+    pluginContainer.className = 'tone-control-plugin-ui plugin-parameter-ui';
+    ui.appendChild(pluginContainer);
+    before = selectionCount();
+    const clickEvent = item.dispatch('click', { target: pluginContainer });
+    assert.equal(selectionCount(), before + 1);
+    assert.equal(clickEvent.stopped, true);
+
+    const parameterRow = documentRef.createElement('div');
+    parameterRow.className = 'parameter-row';
+    ui.appendChild(parameterRow);
+    before = selectionCount();
+    item.dispatch('click', { target: parameterRow });
+    assert.equal(selectionCount(), before);
+
+    const input = documentRef.createElement('input');
+    parameterRow.appendChild(input);
+    before = selectionCount();
+    item.dispatch('click', { target: input });
+    assert.equal(selectionCount(), before);
+
+    const graph = documentRef.createElement('div');
+    graph.className = 'response-graph';
+    ui.appendChild(graph);
+    before = selectionCount();
+    item.dispatch('click', { target: graph });
+    assert.equal(selectionCount(), before);
+
+    const canvas = documentRef.createElement('canvas');
+    ui.appendChild(canvas);
+    before = selectionCount();
+    item.dispatch('click', { target: canvas });
+    assert.equal(selectionCount(), before);
   });
 });
 

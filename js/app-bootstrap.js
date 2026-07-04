@@ -118,6 +118,7 @@ export function startApplication({
     startHeartbeat,
     registerTrayPresetListenerFn = registerTrayPresetListener,
     createAndInitializeAppFn = createAndInitializeApp,
+    loadInitialConfigFn = null,
     windowRef = getDefaultWindow(),
     logger = console
 } = {}) {
@@ -133,10 +134,24 @@ export function startApplication({
         windowRef.isFirstLaunchConfirmed = isFirstLaunch;
         windowRef.isFirstLaunch = isFirstLaunch;
         registerServiceWorker(windowRef, logger);
+        if (typeof loadInitialConfigFn === 'function') {
+            return Promise.resolve(loadInitialConfigFn({ windowRef, logger }))
+                .catch(error => {
+                    logger.warn('Failed to load initial app config:', error);
+                })
+                .then(() => createAndInitializeAppFn(AppClass, { windowRef, logger }));
+        }
         return createAndInitializeAppFn(AppClass, { windowRef, logger });
     }).catch(error => {
         logger.error('Failed to check first launch status:', error);
         registerServiceWorker(windowRef, logger);
+        if (typeof loadInitialConfigFn === 'function') {
+            return Promise.resolve(loadInitialConfigFn({ windowRef, logger }))
+                .catch(configError => {
+                    logger.warn('Failed to load initial app config:', configError);
+                })
+                .then(() => createAndInitializeAppFn(AppClass, { windowRef, logger }));
+        }
         return createAndInitializeAppFn(AppClass, { windowRef, logger });
     });
 }
@@ -149,9 +164,14 @@ export function registerServiceWorker(windowRef = getDefaultWindow(), logger = c
         unregisterDevelopmentServiceWorkers(windowRef, logger);
         return;
     }
-    windowRef.addEventListener?.('load', () => {
+    const register = () => {
         windowRef.navigator.serviceWorker.register('./sw.js').catch(error => {
             logger.warn('Service worker registration failed:', error);
         });
-    });
+    };
+    if (windowRef.document?.readyState === 'complete') {
+        register();
+    } else {
+        windowRef.addEventListener?.('load', register, { once: true });
+    }
 }

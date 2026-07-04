@@ -415,6 +415,7 @@ test('mobile updatePositions clears desktop collapse animation state', async () 
     assert.ok(calls.some(call => call[0] === 'cancelAnimationFrame' && call[1] === 123));
     assert.equal(manager.animationFrameId, null);
     assert.equal(manager.handleTransitionEnd, null);
+    assert.equal(manager.isCollapsed, false);
     assert.equal(dom.pluginList.classList.contains('collapsed'), false);
     assert.equal(dom.pullTab.classList.contains('collapsed'), false);
     assert.equal(dom.mainContainer.classList.contains('plugin-list-collapsed'), false);

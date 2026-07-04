@@ -33,7 +33,7 @@ export class SearchManager {
                 this.searchInput.select();
                 this.updateSearchClearButton();
             } else {
-                this.tabSwitcher.style.display = this.isMobileLayout() ? 'grid' : 'flex';
+                this.tabSwitcher.style.display = '';
                 this.searchInput.style.display = 'none';
                 this.searchInput.value = '';
                 this.updateSearchClearButton();

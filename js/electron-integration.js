@@ -325,7 +325,8 @@ export class ElectronIntegration {
    * @param {Function} callback - Callback function to be called when devices are selected
    */
   async showAudioConfigDialog(callback) {
-    return showAudioConfigDialog(this.isElectron, this.audioPreferences, callback);
+    const preferences = this.audioPreferences || await this.loadAudioPreferences();
+    return showAudioConfigDialog(this.isElectron, preferences, callback);
   }
 
   /**

@@ -182,20 +182,17 @@
     flex-direction: column;
 }
 
-.fifteen-band-peq-plugin-ui .fifteen-band-peq-type-row,
-.fifteen-band-peq-plugin-ui .fifteen-band-peq-q-row,
-.fifteen-band-peq-plugin-ui .fifteen-band-peq-freq-row,
-.fifteen-band-peq-plugin-ui .fifteen-band-peq-gain-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 10px;
-}
-
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-control-row {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.fifteen-band-peq-plugin-ui .fifteen-band-peq-q-row {
+    display: flex;
+    align-items: center;
     gap: 10px;
     margin-bottom: 10px;
 }
@@ -207,7 +204,7 @@
     color: #ccc;
     font-size: 12px;
     white-space: nowrap;
-    min-width: 0;
+    min-width: 80px;
 }
 
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-freq-label,
@@ -242,6 +239,27 @@
     border: 1px solid #444;
     border-radius: 3px;
     font-size: 12px;
+}
+
+body.layout-mobile .fifteen-band-peq-plugin-ui .fifteen-band-peq-control-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 10px;
+    row-gap: 10px;
+}
+
+body.layout-mobile .fifteen-band-peq-plugin-ui .fifteen-band-peq-type-label,
+body.layout-mobile .fifteen-band-peq-plugin-ui .fifteen-band-peq-freq-label,
+body.layout-mobile .fifteen-band-peq-plugin-ui .fifteen-band-peq-gain-label {
+    justify-self: start;
+    min-width: 0;
+    margin-left: 0;
+}
+
+body.layout-mobile .fifteen-band-peq-plugin-ui .fifteen-band-peq-filter-type,
+body.layout-mobile .fifteen-band-peq-plugin-ui .fifteen-band-peq-freq-text,
+body.layout-mobile .fifteen-band-peq-plugin-ui .fifteen-band-peq-gain-text {
+    justify-self: end;
 }
 
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-grid {

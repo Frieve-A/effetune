@@ -437,6 +437,12 @@ test('initPluginList builds categorized plugin rows and loading state', async ()
     await rows[0].querySelector('h3').dispatchEvent('click');
     assert.deepEqual(dragSetupCalls.at(-1), ['toggleCategoryCollapse', 'Tone']);
 
+    manager.searchManager.applySearchFilter = () => {};
+    await dom.elements.get('effectSearchButton').click();
+    assert.equal(dom.elements.get('tabSwitcher').style.display, 'none');
+    await dom.elements.get('effectSearchButton').click();
+    assert.equal(dom.elements.get('tabSwitcher').style.display, '');
+
     manager.showLoadingSpinner();
     assert.equal(manager.loadingSpinner.style.display, 'block');
     assert.equal(manager.progressDisplay.textContent, '0%');
@@ -601,6 +607,34 @@ test('plugin item events add plugins at selected and appended positions', async 
       ['closePluginList'],
       ['setView', 'effects']
     ]);
+
+    const swipePipelineManager = createPipelineManager({ pipeline: [] });
+    windowRef.uiManager = {
+      layoutMode: { isMobile: true },
+      pipelineManager: swipePipelineManager,
+      mobileNav: {
+        closePluginList() {},
+        setView() {}
+      }
+    };
+    await item.dispatchEvent('pointerdown', {
+      pointerId: 2,
+      clientX: 10,
+      clientY: 20
+    });
+    await item.dispatchEvent('pointerup', {
+      pointerId: 2,
+      clientX: 19,
+      clientY: 20,
+      preventDefault() {},
+      stopPropagation() {}
+    });
+    await item.dispatchEvent('click', {
+      preventDefault() {},
+      stopPropagation() {}
+    });
+    runFrames();
+    assert.deepEqual(swipePipelineManager.audioManager.pipeline.map(entry => entry.name), []);
 
     const fallbackPipelineManager = createPipelineManager({ pipeline: [] });
     const fallbackNavCalls = [];

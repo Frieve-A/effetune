@@ -53,7 +53,7 @@ export class PresetManager {
         this.presetSelect.addEventListener('change', async (e) => {
             this.updatePresetClearButton();
             const name = e.target.value.trim();
-            const presets = await this.getPresets();
+            const presets = await this.getLoadablePresets();
             if (presets[name]) {
                 await this.loadPreset(name);
                 // loadPresetList is already called inside loadPreset method
@@ -94,7 +94,7 @@ export class PresetManager {
         datalist.innerHTML = '';
         
         // Get presets from local storage or file
-        const presets = await this.getPresets();
+        const presets = await this.getLoadablePresets();
         
         // Add preset options (sorted alphabetically)
         Object.keys(presets).sort().forEach(name => {
@@ -148,6 +148,60 @@ export class PresetManager {
             // Failed to load presets, return empty object
             return {};
         }
+    }
+
+    getPresetPluginStates(preset) {
+        if (!preset || typeof preset !== 'object') {
+            return null;
+        }
+
+        if (Array.isArray(preset.pipeline)) {
+            return preset.pipeline.map(pluginState => ({
+                name: pluginState && typeof pluginState.name === 'string' ? pluginState.name : ''
+            }));
+        }
+
+        if (Array.isArray(preset.plugins)) {
+            return preset.plugins.map(pluginState => ({
+                name: pluginState && typeof pluginState.nm === 'string' ? pluginState.nm : ''
+            }));
+        }
+
+        return null;
+    }
+
+    isPresetLoadable(preset) {
+        const pluginStates = this.getPresetPluginStates(preset);
+        if (!pluginStates) {
+            return false;
+        }
+
+        const pluginManager = this.pipelineManager && this.pipelineManager.pluginManager;
+        return pluginStates.every(({ name }) => {
+            if (!name.trim()) {
+                return false;
+            }
+
+            if (typeof pluginManager?.isPluginAvailable !== 'function') {
+                return true;
+            }
+
+            try {
+                return pluginManager.isPluginAvailable(name);
+            } catch (error) {
+                return false;
+            }
+        });
+    }
+
+    filterLoadablePresets(presets) {
+        return Object.fromEntries(
+            Object.entries(presets || {}).filter(([, preset]) => this.isPresetLoadable(preset))
+        );
+    }
+
+    async getLoadablePresets() {
+        return this.filterLoadablePresets(await this.getPresets());
     }
     
     /**
@@ -229,7 +283,7 @@ export class PresetManager {
             const presets = await this.getPresets();
             preset = presets[name];
             
-            if (!preset) {
+            if (!preset || !this.isPresetLoadable(preset)) {
                 if (window.uiManager) {
                     window.uiManager.setError('error.invalidPresetData');
                 }
@@ -239,6 +293,12 @@ export class PresetManager {
             // It's a preset object, use directly
             preset = nameOrPreset;
             name = preset.name || 'Imported Preset';
+            if (!this.isPresetLoadable(preset)) {
+                if (window.uiManager) {
+                    window.uiManager.setError('error.invalidPresetData');
+                }
+                return;
+            }
         } else {
             if (window.uiManager) {
                 window.uiManager.setError('error.invalidPresetData');

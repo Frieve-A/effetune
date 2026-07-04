@@ -20,6 +20,8 @@ export class MobileNav {
         this.stateUnsubscribers = [];
         this.resumePrompt = null;
         this.resumePromptListeners = [];
+        this.resumePromptAudioContext = null;
+        this.resumePromptAudioStateHandler = null;
         this.unsubscribe = this.uiManager.layoutMode?.onChange(mode => this.applyMode(mode)) || null;
         this.applyMode(this.uiManager.layoutMode?.mode || 'desktop');
     }
@@ -152,7 +154,7 @@ export class MobileNav {
         }
 
         if (this.resumePromptListeners.length === 0) {
-            const refresh = () => setTimeout(() => this.updateAudioResumePrompt(), 0);
+            const refresh = () => this.updateAudioResumePrompt();
             document.addEventListener('pointerdown', refresh, { passive: true });
             document.addEventListener('keydown', refresh);
             document.addEventListener('visibilitychange', refresh);
@@ -162,6 +164,8 @@ export class MobileNav {
                 () => document.removeEventListener('visibilitychange', refresh)
             );
         }
+
+        this.observeAudioContextState();
     }
 
     setView(view) {
@@ -192,6 +196,7 @@ export class MobileNav {
     removeMobileElements() {
         this.resumePromptListeners.forEach(unsubscribe => unsubscribe());
         this.resumePromptListeners = [];
+        this.detachAudioContextStateListener();
 
         this.playerView?.remove();
         this.miniPlayer?.remove();
@@ -206,6 +211,26 @@ export class MobileNav {
         this.nav = null;
         this.fab = null;
         this.pluginListCloseButton = null;
+    }
+
+    observeAudioContextState() {
+        const audioContext = this.uiManager.audioManager?.audioContext || null;
+        if (audioContext === this.resumePromptAudioContext) return;
+
+        this.detachAudioContextStateListener();
+        this.resumePromptAudioContext = audioContext;
+        if (audioContext?.addEventListener) {
+            this.resumePromptAudioStateHandler = () => this.updateAudioResumePrompt();
+            audioContext.addEventListener('statechange', this.resumePromptAudioStateHandler);
+        }
+    }
+
+    detachAudioContextStateListener() {
+        if (this.resumePromptAudioContext?.removeEventListener && this.resumePromptAudioStateHandler) {
+            this.resumePromptAudioContext.removeEventListener('statechange', this.resumePromptAudioStateHandler);
+        }
+        this.resumePromptAudioContext = null;
+        this.resumePromptAudioStateHandler = null;
     }
 
     attachPlayerState() {
@@ -248,6 +273,7 @@ export class MobileNav {
 
     updateAudioResumePrompt() {
         if (!this.resumePrompt) return;
+        this.observeAudioContextState();
         const isMobilePlayer = this.uiManager.layoutMode?.isMobile &&
             document.body.classList.contains('view-player');
         const isSuspended = this.uiManager.audioManager?.audioContext?.state === 'suspended';

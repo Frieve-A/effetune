@@ -118,3 +118,49 @@ test('WakeLockManager holds a screen lock only while mobile playback is active a
   assert.equal(layoutMode.listenerCount(), 0);
   assert.equal(documentListeners.size, 0);
 });
+
+test('WakeLockManager releases a pending request when playback stops before it resolves', async () => {
+  const releases = [];
+  let resolveRequest;
+  const documentRef = {
+    hidden: false,
+    addEventListener() {},
+    removeEventListener() {}
+  };
+  const navigatorRef = {
+    wakeLock: {
+      request() {
+        return new Promise(resolve => {
+          resolveRequest = () => resolve({
+            addEventListener() {},
+            async release() {
+              releases.push('screen');
+            }
+          });
+        });
+      }
+    }
+  };
+  const stateManager = createStateManager(false);
+  const layoutMode = createLayoutMode(true);
+  const manager = new WakeLockManager({
+    layoutMode,
+    stateManager,
+    navigatorRef,
+    documentRef
+  });
+
+  stateManager.setPlaying(true);
+  for (let i = 0; i < 5; i++) {
+    await Promise.resolve();
+    if (resolveRequest) break;
+  }
+  assert.equal(typeof resolveRequest, 'function');
+  stateManager.setPlaying(false);
+  const pendingSync = manager.syncPromise;
+  resolveRequest();
+  await pendingSync;
+
+  assert.deepEqual(releases, ['screen']);
+  assert.equal(manager.lock, null);
+});

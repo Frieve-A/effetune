@@ -142,7 +142,9 @@
 .five-band-peq-plugin-ui .five-band-peq-q-text,
 .five-band-peq-plugin-ui .five-band-peq-freq-text,
 .five-band-peq-plugin-ui .five-band-peq-gain-text {
+    flex: 0 0 auto;
     width: 40px;
+    min-width: 40px;
     padding: 2px 4px;
     background-color: #222;
     color: #ccc;
@@ -152,7 +154,7 @@
 }
 
 .five-band-peq-plugin-ui .five-band-peq-type-label {
-    min-width: 0;
+    min-width: 78px;
     color: #ccc;
     font-size: 12px;
     white-space: nowrap;
@@ -160,10 +162,16 @@
 
 .five-band-peq-plugin-ui .five-band-peq-freq-label,
 .five-band-peq-plugin-ui .five-band-peq-gain-label {
-    min-width: 0;
+    flex: 1 1 auto;
+    min-width: 78px;
     color: #ccc;
     font-size: 12px;
     white-space: nowrap;
+}
+
+.five-band-peq-plugin-ui .five-band-peq-freq-text,
+.five-band-peq-plugin-ui .five-band-peq-gain-text {
+    margin-left: auto;
 }
 
 .five-band-peq-plugin-ui .five-band-peq-band.active {
@@ -227,4 +235,24 @@
     stroke: #4CAF50;
     stroke-width: 2;
     vector-effect: non-scaling-stroke;
+}
+
+body.layout-mobile .five-band-peq-plugin-ui .five-band-peq-type-label {
+    min-width: 78px;
+    flex: 0 0 auto;
+}
+
+body.layout-mobile .five-band-peq-plugin-ui .five-band-peq-freq-label,
+body.layout-mobile .five-band-peq-plugin-ui .five-band-peq-gain-label {
+    flex: 1 1 auto;
+    min-width: 78px;
+}
+
+body.layout-mobile .five-band-peq-plugin-ui .five-band-peq-q-text,
+body.layout-mobile .five-band-peq-plugin-ui .five-band-peq-freq-text,
+body.layout-mobile .five-band-peq-plugin-ui .five-band-peq-gain-text {
+    flex: 0 0 40px;
+    width: 40px;
+    min-width: 40px;
+    max-width: 40px;
 }

@@ -32,6 +32,7 @@
 
   // Mensajes de estado
   "status.configuringAudio": "Configurando dispositivos de audio...",
+  "status.resettingAudio": "Restableciendo audio...",
   "status.reloading": "Recargando...",
   "status.processingFile": "Procesando archivo {current}/{total} ({percent}%)",
   "status.processingCanceled": "Procesamiento cancelado",
@@ -171,6 +172,11 @@
   "dialog.audioConfig.apply": "Aplicar",
   "dialog.audioConfig.updatedTitle": "Configuración de audio actualizada",
   "dialog.audioConfig.updatedMessage": "Recargando...",
+  "dialog.audioConfig.outputDevice.secureContextRequired": "La selección del dispositivo de salida requiere un contexto seguro.",
+  "dialog.audioConfig.outputDevice.permissionsPolicyBlocked": "La selección del dispositivo de salida está bloqueada por Permissions-Policy.",
+  "dialog.audioConfig.outputDevice.unsupportedBrowser": "La selección del dispositivo de salida no está disponible en este navegador.",
+  "dialog.audioConfig.outputChannels.stereoDefault": "2 - Estéreo (Predeterminado)",
+  "dialog.audioConfig.sampleRate.default": "{rate} kHz (Predeterminado)",
 
   "dialog.config.title": "Configuración",
   "dialog.config.autoLaunch": "Iniciar al arrancar el sistema operativo",

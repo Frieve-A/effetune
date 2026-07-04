@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { AudioContextManager } from '../../js/audio/audio-context-manager.js';
-import { withGlobals } from '../helpers/global-test-utils.mjs';
+import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
 
 function createConsole(calls) {
   return {
@@ -42,7 +42,10 @@ function createAudioNodeClass(calls) {
 function createAudioContextClass(calls, AudioNodeClass, options = {}) {
   return class FakeAudioContext {
     constructor(audioContextOptions = {}) {
-      calls.push(['newAudioContext', audioContextOptions]);
+      calls.push(['newAudioContext', { ...audioContextOptions }]);
+      if (options.throwWhenOptions?.(audioContextOptions)) {
+        throw new Error('AudioContext option rejected');
+      }
       this.options = audioContextOptions;
       this.destination = {
         maxChannelCount: options.maxChannelCount,
@@ -91,6 +94,27 @@ function createAudioWorkletNodeClass(calls) {
   };
 }
 
+function createDocumentTarget() {
+  const listeners = new Map();
+  return {
+    addEventListener(type, listener) {
+      if (!listeners.has(type)) listeners.set(type, []);
+      listeners.get(type).push(listener);
+    },
+    removeEventListener(type, listener) {
+      listeners.set(type, (listeners.get(type) || []).filter(candidate => candidate !== listener));
+    },
+    dispatchEvent(type, event = {}) {
+      for (const listener of [...(listeners.get(type) || [])]) {
+        listener({ type, ...event });
+      }
+    },
+    listenerCount(type) {
+      return (listeners.get(type) || []).length;
+    }
+  };
+}
+
 async function withAudioGlobals(options, callback) {
   const calls = [];
   const AudioNodeClass = options.AudioNodeClass ?? createAudioNodeClass(calls);
@@ -110,6 +134,9 @@ async function withAudioGlobals(options, callback) {
       calls.push(['clearTimeout', id]);
     }
   };
+  if ('document' in options) {
+    globals.document = options.document;
+  }
 
   for (const name of [
     'AudioContext',
@@ -119,7 +146,10 @@ async function withAudioGlobals(options, callback) {
     'OfflineAudioContext',
     'webkitOfflineAudioContext',
     'mozOfflineAudioContext',
-    'AudioWorkletNode'
+    'AudioWorkletNode',
+    'fetch',
+    'Blob',
+    'URL'
   ]) {
     if (name in options) {
       globals[name] = options[name];
@@ -154,11 +184,8 @@ test('initAudioContext applies Electron preferences, first-launch silence, and m
       },
       electronIntegration: {
         async loadAudioPreferences() {
-          const preferences = [
-            { sampleRate: 48000, latencyHint: 'balanced', outputDeviceId: 'hdmi' },
-            { outputChannels: 8 }
-          ];
-          return preferences[globalThis.window.preferenceCalls++ || 0];
+          globalThis.window.preferenceCalls += 1;
+          return { sampleRate: 48000, latencyHint: 'balanced', outputDeviceId: 'hdmi', outputChannels: 8 };
         }
       },
       preferenceCalls: 0,
@@ -208,6 +235,104 @@ test('initAudioContext applies Electron preferences, first-launch silence, and m
     await Promise.resolve();
     await Promise.resolve();
     assert.ok(calls.some(call => call[0] === 'consoleError' && String(call[1]).includes('_doMacosRelaunch')));
+  });
+});
+
+test('initAudioContext applies Web audioPreferences without Electron APIs', async () => {
+  await withAudioGlobals({
+    window: {
+      audioPreferences: {
+        sampleRate: 44100,
+        latencyHint: 'playback',
+        outputChannels: 4,
+        lowLatencyOutput: true
+      }
+    }
+  }, async ({ calls, AudioNodeClass }) => {
+    globalThis.window.AudioContext = createAudioContextClass(calls, AudioNodeClass, {
+      maxChannelCount: 8
+    });
+    const manager = new AudioContextManager();
+    assert.equal(await manager.initAudioContext(), '');
+    assert.deepEqual(calls.find(call => call[0] === 'newAudioContext')?.[1], {
+      sampleRate: 44100,
+      latencyHint: 'playback'
+    });
+    assert.equal(manager.audioContext.destination.channelCount, 4);
+    assert.equal(globalThis.window.audioPreferences.outputChannels, 4);
+  });
+});
+
+test('initAudioContext falls back for Web option rejection but not Electron', async () => {
+  await withAudioGlobals({
+    window: {
+      audioPreferences: {
+        sampleRate: 96000,
+        latencyHint: 'balanced',
+        outputDeviceId: 'speaker',
+        outputDeviceLabel: 'Speaker'
+      }
+    }
+  }, async ({ calls, AudioNodeClass }) => {
+    globalThis.window.AudioContext = createAudioContextClass(calls, AudioNodeClass, {
+      throwWhenOptions: options => Object.prototype.hasOwnProperty.call(options, 'sinkId')
+    });
+    const manager = new AudioContextManager();
+    assert.equal(await manager.initAudioContext(), '');
+    assert.deepEqual(calls.filter(call => call[0] === 'newAudioContext').map(call => call[1]), [
+      { sampleRate: 96000, latencyHint: 'balanced', sinkId: 'speaker' },
+      { latencyHint: 'balanced', sinkId: 'speaker' },
+      { sampleRate: 96000, sinkId: 'speaker' },
+      { sampleRate: 96000, latencyHint: 'balanced' }
+    ]);
+    assert.equal(globalThis.window.audioPreferences.outputDeviceId, 'default');
+    assert.equal(globalThis.window.audioPreferences.outputDeviceLabel, '');
+  });
+
+  await withAudioGlobals({
+    window: {
+      audioPreferences: {
+        sampleRate: 96000,
+        latencyHint: 'balanced',
+        outputDeviceId: 'speaker',
+        outputDeviceLabel: 'Speaker'
+      }
+    }
+  }, async ({ calls, AudioNodeClass }) => {
+    globalThis.window.AudioContext = createAudioContextClass(calls, AudioNodeClass, {
+      throwWhenOptions: options => Object.prototype.hasOwnProperty.call(options, 'sampleRate')
+    });
+    const manager = new AudioContextManager();
+    assert.equal(await manager.initAudioContext(), '');
+    assert.deepEqual(calls.filter(call => call[0] === 'newAudioContext').map(call => call[1]), [
+      { sampleRate: 96000, latencyHint: 'balanced', sinkId: 'speaker' },
+      { latencyHint: 'balanced', sinkId: 'speaker' }
+    ]);
+    assert.equal(globalThis.window.audioPreferences.outputDeviceId, 'speaker');
+    assert.equal(globalThis.window.audioPreferences.outputDeviceLabel, 'Speaker');
+  });
+
+  await withAudioGlobals({
+    window: {
+      electronAPI: {},
+      electronIntegration: {
+        isElectron: true,
+        async loadAudioPreferences() {
+          return {
+            sampleRate: 96000,
+            latencyHint: 'balanced',
+            outputDeviceId: 'speaker'
+          };
+        }
+      }
+    }
+  }, async ({ calls, AudioNodeClass }) => {
+    globalThis.window.AudioContext = createAudioContextClass(calls, AudioNodeClass, {
+      throwWhenOptions: options => Object.prototype.hasOwnProperty.call(options, 'sinkId')
+    });
+    const manager = new AudioContextManager();
+    assert.equal(await manager.initAudioContext(), 'Audio Error: AudioContext option rejected');
+    assert.equal(calls.filter(call => call[0] === 'newAudioContext').length, 1);
   });
 });
 
@@ -367,6 +492,63 @@ test('loadAudioWorklet creates a configured worklet and applies pending audio co
     assert.deepEqual(calls.filter(call => call[0] === 'workletPostMessage').map(call => call[1]), [
       { type: 'updateAudioConfig', outputChannels: 4 },
       { type: 'setLowLatencyMode', enabled: true }
+    ]);
+  });
+
+  const blobFallbackCalls = [];
+  await withAudioGlobals({
+    AudioWorkletNode: null,
+    window: {
+      location: { pathname: '/offline/index.html' },
+      audioPreferences: { lowLatencyOutput: false }
+    },
+    fetch: async url => {
+      return {
+        ok: true,
+        status: 200,
+        text: async () => {
+          return `registerProcessor('plugin-processor', class {}); // ${url}`;
+        }
+      };
+    },
+    Blob: class FakeBlob {
+      constructor(parts, options) {
+        this.parts = parts;
+        this.options = options;
+      }
+    },
+    URL: {
+      createObjectURL(blob) {
+        blobFallbackCalls.push(['createObjectURL', blob.options.type]);
+        return 'blob://processor';
+      },
+      revokeObjectURL(url) {
+        blobFallbackCalls.push(['revokeObjectURL', url]);
+      }
+    }
+  }, async ({ calls }) => {
+    globalThis.AudioWorkletNode = createAudioWorkletNodeClass(calls);
+    const manager = new AudioContextManager();
+    manager.audioContext = {
+      destination: { channelCount: 2 },
+      audioWorklet: {
+        async addModule(path) {
+          calls.push(['addModule', path]);
+          if (!String(path).startsWith('blob:')) {
+            throw new Error('offline module load failed');
+          }
+        }
+      }
+    };
+
+    assert.equal(await manager.loadAudioWorklet(), '');
+    assert.deepEqual(calls.filter(call => call[0] === 'addModule').map(call => call[1]), [
+      '/offline/plugins/audio-processor.js',
+      'blob://processor'
+    ]);
+    assert.deepEqual(blobFallbackCalls, [
+      ['createObjectURL', 'text/javascript'],
+      ['revokeObjectURL', 'blob://processor']
     ]);
   });
 });
@@ -641,5 +823,81 @@ test('resumeAudioContext resumes suspended contexts and warns when they stay sus
     };
     await manager.resumeAudioContext();
     assert.ok(calls.some(call => call[0] === 'consoleWarn' && String(call[1]).includes('not running')));
+  });
+});
+
+test('initAudioContext resumes suspended web contexts from the first user gesture', async () => {
+  const documentRef = createDocumentTarget();
+  await withAudioGlobals({ document: documentRef }, async ({ calls, AudioNodeClass }) => {
+    globalThis.window.AudioContext = createAudioContextClass(calls, AudioNodeClass, {
+      state: 'suspended'
+    });
+    const manager = new AudioContextManager();
+    assert.equal(await manager.initAudioContext(), '');
+    // Touch grants user activation at pointerup/touchend, not pointerdown.
+    assert.equal(documentRef.listenerCount('pointerdown'), 0);
+    assert.equal(documentRef.listenerCount('pointerup'), 1);
+    assert.equal(documentRef.listenerCount('touchend'), 1);
+    assert.equal(documentRef.listenerCount('keydown'), 1);
+
+    documentRef.dispatchEvent('pointerup');
+    // The resume chain spans several microtask ticks.
+    await flushMicrotasks();
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    assert.ok(calls.some(call => call[0] === 'audioContextResume'));
+    assert.equal(documentRef.listenerCount('pointerup'), 0);
+    assert.equal(documentRef.listenerCount('touchend'), 0);
+    assert.equal(documentRef.listenerCount('keydown'), 0);
+  });
+
+  // A gesture whose resume is still blocked must keep the hook armed so a
+  // later (activation-granting) gesture can retry.
+  const blockedDocument = createDocumentTarget();
+  await withAudioGlobals({ document: blockedDocument }, async ({ calls, AudioNodeClass }) => {
+    globalThis.window.AudioContext = createAudioContextClass(calls, AudioNodeClass, {
+      state: 'suspended',
+      resumeToRunning: false
+    });
+    const manager = new AudioContextManager();
+    assert.equal(await manager.initAudioContext(), '');
+    blockedDocument.dispatchEvent('touchend');
+    await flushMicrotasks();
+    await flushMicrotasks();
+    await flushMicrotasks();
+    assert.ok(calls.some(call => call[0] === 'audioContextResume'));
+    assert.equal(blockedDocument.listenerCount('pointerup'), 1);
+    assert.equal(blockedDocument.listenerCount('touchend'), 1);
+    assert.equal(blockedDocument.listenerCount('keydown'), 1);
+  });
+
+  const electronDocument = createDocumentTarget();
+  await withAudioGlobals({
+    document: electronDocument,
+    window: { electronAPI: {} }
+  }, async ({ calls, AudioNodeClass }) => {
+    globalThis.window.AudioContext = createAudioContextClass(calls, AudioNodeClass, {
+      state: 'suspended'
+    });
+    const manager = new AudioContextManager();
+    assert.equal(await manager.initAudioContext(), '');
+    assert.equal(electronDocument.listenerCount('pointerup'), 0);
+    assert.equal(electronDocument.listenerCount('touchend'), 0);
+    assert.equal(electronDocument.listenerCount('keydown'), 0);
+  });
+
+  const cleanupDocument = createDocumentTarget();
+  await withAudioGlobals({ document: cleanupDocument }, async ({ calls, AudioNodeClass }) => {
+    globalThis.window.AudioContext = createAudioContextClass(calls, AudioNodeClass, {
+      state: 'suspended'
+    });
+    const manager = new AudioContextManager();
+    assert.equal(await manager.initAudioContext(), '');
+    assert.equal(cleanupDocument.listenerCount('pointerup'), 1);
+    await manager.closeAudioContext();
+    assert.equal(cleanupDocument.listenerCount('pointerup'), 0);
+    assert.equal(cleanupDocument.listenerCount('touchend'), 0);
+    assert.equal(cleanupDocument.listenerCount('keydown'), 0);
   });
 });

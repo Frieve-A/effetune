@@ -89,9 +89,35 @@ function createAudioHarness(options = {}) {
   return { calls, uiCalls, window };
 }
 
-test('audio preferences load and save honor Electron availability and failures', async () => {
+function createLocalStorage(initial = {}) {
+  const values = new Map(Object.entries(initial));
+  return {
+    getItem(key) {
+      return values.has(key) ? values.get(key) : null;
+    },
+    setItem(key, value) {
+      values.set(key, String(value));
+    },
+    snapshot() {
+      return Object.fromEntries(values);
+    }
+  };
+}
+
+test('audio preferences load and save honor Electron and Web storage availability', async () => {
   assert.equal(await loadAudioPreferences(false), null);
   assert.equal(await saveAudioPreferences(false, { sampleRate: 44100 }), false);
+
+  const localStorage = createLocalStorage({
+    effetune_audio_preferences: JSON.stringify({ sampleRate: 88200, outputChannels: 4 })
+  });
+  await withGlobals({ window: { localStorage } }, async () => {
+    assert.deepEqual(await loadAudioPreferences(false), { sampleRate: 88200, outputChannels: 4 });
+    assert.equal(await saveAudioPreferences(false, { latencyHint: 'balanced' }), true);
+  });
+  assert.deepEqual(JSON.parse(localStorage.snapshot().effetune_audio_preferences), {
+    latencyHint: 'balanced'
+  });
 
   const loaded = createAudioHarness({ preferences: { outputChannels: 4 } });
   await withGlobals({ window: loaded.window }, async () => {
@@ -141,7 +167,6 @@ test('getAudioDevices uses Electron devices when available', async () => {
   const harness = createAudioHarness({ deviceResult: { success: true, devices } });
 
   await withGlobals({ window: harness.window }, async () => {
-    assert.deepEqual(await getAudioDevices(false), []);
     assert.deepEqual(await getAudioDevices(true), devices);
   });
 });
@@ -162,6 +187,12 @@ test('getAudioDevices falls back through browser and default devices', async () 
   const browserFallback = createAudioHarness({ deviceResult: { success: true, devices: [] } });
   await withGlobals({ window: browserFallback.window, navigator: navigatorWithDevices }, async () => {
     await withMutedConsole('log', async () => {
+      assert.deepEqual(await getAudioDevices(false), [
+        { deviceId: 'mic12345', kind: 'audioinput', label: 'Microphone (no permission)' },
+        { deviceId: 'speaker98765', kind: 'audiooutput', label: 'Speaker speak' },
+        { deviceId: 'camera', kind: 'videoinput', label: 'Unknown device' },
+        { deviceId: 'named', kind: 'audiooutput', label: 'Named Speaker' }
+      ]);
       assert.deepEqual(await getAudioDevices(true), [
         { deviceId: 'mic12345', kind: 'audioinput', label: 'Microphone (no permission)' },
         { deviceId: 'speaker98765', kind: 'audiooutput', label: 'Speaker speak' },
@@ -226,13 +257,16 @@ test('getAudioDevices falls back through browser and default devices', async () 
   });
 });
 
-test('showAudioConfigDialog exits outside Electron and reports missing UI manager', async () => {
+test('showAudioConfigDialog opens outside Electron and reports missing UI manager', async () => {
   const document = createFakeDocument();
   const nonElectron = createAudioHarness();
   await withGlobals({ window: nonElectron.window, document }, async () => {
-    await showAudioConfigDialog(false, {});
+    await withMutedConsole('log', async () => {
+      await showAudioConfigDialog(false, {});
+    });
   });
-  assert.equal(document.body.children.length, 0);
+  assert.equal(document.body.children.length, 1);
+  assert.equal(document.getElementById('output-device').disabled, true);
 
   const noUi = createAudioHarness({
     uiManager: null,
@@ -246,6 +280,161 @@ test('showAudioConfigDialog exits outside Electron and reports missing UI manage
     });
   });
   assert.equal(noUi.window.listenerCount('beforeunload'), 1);
+});
+
+test('showAudioConfigDialog disables unsupported Web output selection and resets through audioManager', async () => {
+  const resetCalls = [];
+  const harness = createAudioHarness({
+    deviceResult: { success: true, devices: [] },
+    window: {
+      isSecureContext: false,
+      audioManager: {
+        reset: async preferences => resetCalls.push(preferences)
+      }
+    }
+  });
+  const document = createFakeDocument();
+
+  await withGlobals({
+    window: harness.window,
+    document,
+    navigator: {}
+  }, async () => {
+    await withMutedConsole('log', async () => {
+      await showAudioConfigDialog(false, { outputDeviceId: 'speaker', sampleRate: 44100 });
+    });
+    assert.equal(document.getElementById('output-device').disabled, true);
+    assert.equal(
+      document.getElementById('output-device-support-message').textContent,
+      'label:dialog.audioConfig.outputDevice.secureContextRequired'
+    );
+    await document.getElementById('apply-button').dispatchEvent('click');
+    await flushMicrotasks();
+  });
+
+  assert.equal(harness.calls.some(call => call[0] === 'saveAudioPreferences'), false);
+  assert.equal(resetCalls.length, 1);
+  assert.equal(resetCalls[0].outputDeviceId, 'default');
+  assert.equal(document.body.children.length, 0);
+});
+
+test('showAudioConfigDialog localizes Web output support and default option labels', async () => {
+  const translations = {
+    'dialog.audioConfig.outputDevice.permissionsPolicyBlocked': 'Permissions-Policy により出力デバイスの選択がブロックされています。',
+    'dialog.audioConfig.outputChannels.stereoDefault': '2 - ステレオ (デフォルト)',
+    'dialog.audioConfig.sampleRate.default': '{rate} kHz (デフォルト)'
+  };
+  const harness = createAudioHarness({
+    window: {
+      isSecureContext: true
+    },
+    uiManager: {
+      t: (key, params = {}) => {
+        let text = translations[key] || `label:${key}`;
+        Object.entries(params).forEach(([name, value]) => {
+          text = text.replace(new RegExp(`{${name}}`, 'g'), value);
+        });
+        return text;
+      }
+    }
+  });
+  const document = createFakeDocument();
+  document.permissionsPolicy = {
+    allowsFeature: feature => feature !== 'speaker-selection'
+  };
+
+  await withGlobals({
+    window: harness.window,
+    document,
+    navigator: {}
+  }, async () => {
+    await withMutedConsole('log', async () => {
+      await showAudioConfigDialog(false, {});
+    });
+  });
+
+  assert.equal(
+    document.getElementById('output-device-support-message').textContent,
+    'Permissions-Policy により出力デバイスの選択がブロックされています。'
+  );
+  assert.equal(document.getElementById('output-channels').children[0].textContent, '2 - ステレオ (デフォルト)');
+  assert.equal(document.getElementById('sample-rate').children[3].textContent, '96 kHz (デフォルト)');
+});
+
+test('showAudioConfigDialog keeps Web output preferences aligned with available sink paths', async () => {
+  const selectOnlyHarness = createAudioHarness({
+    window: {
+      isSecureContext: true
+    }
+  });
+  const selectOnlyDocument = createFakeDocument();
+  await withGlobals({
+    window: selectOnlyHarness.window,
+    document: selectOnlyDocument,
+    navigator: {
+      mediaDevices: {
+        enumerateDevices: async () => [
+          { deviceId: 'mic1', kind: 'audioinput', label: 'Mic One' },
+          { deviceId: 'out1', kind: 'audiooutput', label: 'Out One' }
+        ],
+        selectAudioOutput: async () => ({ deviceId: 'out1', kind: 'audiooutput', label: 'Out One' })
+      }
+    }
+  }, async () => {
+    await withMutedConsole('log', async () => {
+      await showAudioConfigDialog(false, { outputDeviceId: 'out1' });
+    });
+    assert.equal(selectOnlyDocument.getElementById('output-device').disabled, true);
+  });
+
+  const resetCalls = [];
+  let directUnsupportedSelectCalls = 0;
+  const elementSinkHarness = createAudioHarness({
+    window: {
+      isSecureContext: true,
+      HTMLMediaElement: function HTMLMediaElement() {},
+      audioManager: {
+        reset: async preferences => resetCalls.push(preferences)
+      }
+    }
+  });
+  elementSinkHarness.window.HTMLMediaElement.prototype.setSinkId = async () => {};
+  const elementSinkDocument = createFakeDocument();
+  await withGlobals({
+    window: elementSinkHarness.window,
+    document: elementSinkDocument,
+    navigator: {
+      mediaDevices: {
+        enumerateDevices: async () => [
+          { deviceId: 'mic1', kind: 'audioinput', label: 'Mic One' },
+          { deviceId: 'out1', kind: 'audiooutput', label: 'Out One' }
+        ],
+        selectAudioOutput: async () => {
+          directUnsupportedSelectCalls += 1;
+          return { deviceId: 'out1', kind: 'audiooutput', label: 'Out One' };
+        }
+      }
+    }
+  }, async () => {
+    await withMutedConsole('log', async () => {
+      await showAudioConfigDialog(false, {
+        outputDeviceId: 'out1',
+        outputChannels: 4,
+        lowLatencyOutput: true
+      });
+    });
+    assert.equal(elementSinkDocument.getElementById('output-device').disabled, false);
+    await withMutedConsole('warn', async () => {
+      await elementSinkDocument.getElementById('apply-button').dispatchEvent('click');
+      await flushMicrotasks();
+    });
+  });
+
+  assert.equal(resetCalls.length, 1);
+  assert.equal(resetCalls[0].outputDeviceId, 'default');
+  assert.equal(resetCalls[0].outputChannels, 4);
+  assert.equal(resetCalls[0].lowLatencyOutput, true);
+  assert.equal(directUnsupportedSelectCalls, 0);
 });
 
 test('showAudioConfigDialog can be cancelled and closed with Escape', async () => {

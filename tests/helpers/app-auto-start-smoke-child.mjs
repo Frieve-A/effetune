@@ -324,7 +324,7 @@ setGlobal('console', {
 });
 
 const mod = await import('../../js/app.js');
-for (let i = 0; i < 8; i++) {
+for (let i = 0; i < 16; i++) {
   await Promise.resolve();
 }
 

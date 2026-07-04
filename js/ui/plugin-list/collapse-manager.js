@@ -237,6 +237,7 @@ export class CollapseManager {
 
         if (this.isMobileLayout()) {
             const pipeline = document.getElementById('pipeline');
+            this.isCollapsed = false;
             this.pluginList.classList.remove('collapsed');
             this.pullTab.classList.remove('collapsed');
             this.mainContainer?.classList?.remove('plugin-list-collapsed');

@@ -67,12 +67,38 @@ export class AudioContextManager {
       this.audioManager.ioManager.sourceNode = sourceNode;
     }
   }
+
+  getUseInputWithPlayer() {
+    const integration = window.electronIntegration;
+    const isElectron = !!(integration?.isElectronEnvironment?.() || integration?.isElectron);
+    const preferences = isElectron
+      ? (integration?.audioPreferences || window.audioPreferences)
+      : (window.audioPreferences || integration?.audioPreferences);
+    return preferences?.useInputWithPlayer === true;
+  }
+
+  async resumePlaybackAudioContext() {
+    const contextManager = this.audioManager?.contextManager;
+    if (typeof contextManager?.resumeAudioContext === 'function') {
+      await contextManager.resumeAudioContext();
+      return;
+    }
+
+    const audioContext = this.audioPlayer?.audioContext;
+    if (audioContext?.state === 'suspended' && typeof audioContext.resume === 'function') {
+      try {
+        await audioContext.resume();
+      } catch (error) {
+        console.warn('[AudioContextManager] AudioContext resume before playback failed:', error);
+      }
+    }
+  }
   
   /**
    * Connect buffer source to audio manager
    */
   connectBufferSource(bufferSource) {
-    const useInputWithPlayer = window.electronIntegration?.audioPreferences?.useInputWithPlayer || false;
+    const useInputWithPlayer = this.getUseInputWithPlayer();
     
     if (useInputWithPlayer) {
       if (this.audioManager.workletNode) {
@@ -106,7 +132,7 @@ export class AudioContextManager {
    * Connect media source to audio manager
    */
   connectMediaSource(mediaSource) {
-    const useInputWithPlayer = window.electronIntegration?.audioPreferences?.useInputWithPlayer || false;
+    const useInputWithPlayer = this.getUseInputWithPlayer();
     
     if (useInputWithPlayer) {
       if (this.audioManager.workletNode) {
@@ -164,7 +190,7 @@ export class AudioContextManager {
    * Maintain silent source for pipeline when useInputWithPlayer is false
    */
   maintainSilentSource() {
-    const useInputWithPlayer = window.electronIntegration?.audioPreferences?.useInputWithPlayer || false;
+    const useInputWithPlayer = this.getUseInputWithPlayer();
     if (!useInputWithPlayer) {
       if (this.originalSourceNode) {
         try {
@@ -810,7 +836,7 @@ export class AudioContextManager {
     const currentIndex = this.audioPlayer.stateManager.getCurrentTrackIndex();
     this.fallbackToMediaSession(currentIndex);
   }
-  
+
   // ===== PLAYBACK CONTROL =====
   
   /**
@@ -821,6 +847,8 @@ export class AudioContextManager {
     if (state?.isTransitioning && !forcePlay) {
       return;
     }
+
+    await this.resumePlaybackAudioContext();
     
     if (state?.playbackMode === 'bufferSource') {
       await this.playBufferSource();
@@ -1175,6 +1203,8 @@ export class AudioContextManager {
             currentTrackIndex: 0
           }, 'AudioContextManager handleTrackEnded repeat OFF');
         }
+
+        this.loadMetadata(firstTrack);
         
         this.prepareTrackBuffer(firstTrack).then(buffer => {
           this.currentBuffer = buffer;
@@ -1707,7 +1737,7 @@ export class AudioContextManager {
         this.audioPlayer.audioElement.src = silentDataUrl;
       }
       
-      const useInputWithPlayer = window.electronIntegration?.audioPreferences?.useInputWithPlayer || false;
+      const useInputWithPlayer = this.getUseInputWithPlayer();
       if (!useInputWithPlayer && this.originalSourceNode) {
         this.setManagedSourceNode(this.originalSourceNode);
         if (this.audioManager.workletNode) {

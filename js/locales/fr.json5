@@ -32,6 +32,7 @@
 
   // Messages d'état
   "status.configuringAudio": "Configuration des périphériques audio...",
+  "status.resettingAudio": "Réinitialisation de l'audio...",
   "status.reloading": "Rechargement...",
   "status.processingFile": "Traitement du fichier {current}/{total} ({percent}%)",
   "status.processingCanceled": "Traitement annulé",
@@ -171,6 +172,11 @@
   "dialog.audioConfig.apply": "Appliquer",
   "dialog.audioConfig.updatedTitle": "Configuration audio mise à jour",
   "dialog.audioConfig.updatedMessage": "Rechargement...",
+  "dialog.audioConfig.outputDevice.secureContextRequired": "La sélection du périphérique de sortie nécessite un contexte sécurisé.",
+  "dialog.audioConfig.outputDevice.permissionsPolicyBlocked": "La sélection du périphérique de sortie est bloquée par Permissions-Policy.",
+  "dialog.audioConfig.outputDevice.unsupportedBrowser": "La sélection du périphérique de sortie n'est pas disponible dans ce navigateur.",
+  "dialog.audioConfig.outputChannels.stereoDefault": "2 - Stéréo (Par défaut)",
+  "dialog.audioConfig.sampleRate.default": "{rate} kHz (Par défaut)",
 
   "dialog.config.title": "Configuration",
   "dialog.config.autoLaunch": "Lancer au démarrage du système d'exploitation",

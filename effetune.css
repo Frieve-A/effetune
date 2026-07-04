@@ -109,9 +109,50 @@ input[type="checkbox"] {
     top: 0;
     display: flex;
     gap: 10px;
+    align-items: center;
 }
 
-.open-music-button {
+.settings-menu-container {
+    position: relative;
+    display: inline-flex;
+}
+
+.settings-menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    min-width: 240px;
+    background: #222;
+    border: 1px solid #444;
+    border-radius: 4px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+    display: none;
+    overflow: hidden;
+    z-index: 1000;
+}
+
+.settings-menu.show {
+    display: block;
+}
+
+.settings-menu-item {
+    display: block;
+    width: 100%;
+    padding: 9px 12px;
+    background: transparent;
+    border: 0;
+    color: #fff;
+    cursor: pointer;
+    font-size: 13px;
+    text-align: left;
+}
+
+.settings-menu-item:hover {
+    background: #333;
+}
+
+.open-music-button,
+.settings-menu-button {
     width: 36px;
     height: 36px;
     padding: 8px;
@@ -615,8 +656,6 @@ input[type="checkbox"] {
 .pipeline-header {
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
-    gap: 8px 10px;
     padding-bottom: 10px;
 }
 
@@ -706,29 +745,12 @@ input[type="checkbox"] {
 .pipeline-header-right {
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
-    justify-content: flex-end;
     margin-left: auto;
-    gap: 8px 0px;
-    min-width: 0;
+    gap: 10px 0px;
 }
 
 .pipeline-preset-controls {
-    display: flex;
-    flex: 0 1 auto;
-    align-items: center;
-    width: max-content;
-    min-width: 0;
-    max-width: 100%;
-}
-
-.pipeline-preset-controls .select-container {
-    flex: 0 1 230px;
-    min-width: 120px;
-}
-
-.pipeline-preset-controls .share-button {
-    flex: 0 0 auto;
+    display: contents;
 }
 
 /* Pipeline toggle and menu styles */
@@ -863,27 +885,14 @@ input[type="checkbox"] {
 .pipeline-item-header {
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
-    gap: 4px 6px;
-    width: 100%;
-    max-width: 100%;
-    box-sizing: border-box;
+    width: calc(100% - 10px);;
 }
 
 .handle {
     cursor: move;
-    flex: 0 0 18px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 18px;
-    height: 24px;
-    padding: 0;
-    margin: 0;
+    padding: 9px 15px 7px 15px;
     color: #ccc;
     font-size: 18px;
-    line-height: 1;
-    user-select: none;
 }
 
 .handle:hover {
@@ -911,44 +920,15 @@ input[type="checkbox"] {
     margin-left: 0px;
 }
 
-.pipeline-item-header .toggle-button {
-    flex: 0 0 48px;
-    margin-right: 0;
-}
-
 .plugin-name {
-    flex: 1 1 120px;
-    min-width: 96px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    flex-grow: 1;
     cursor: pointer;
     font-size: 16px;
-    line-height: 24px;
+    transform: translate(0px, 1px);
 }
 
 .plugin-header-actions {
-    display: flex;
-    flex: 0 0 auto;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    align-items: center;
-    gap: 5px;
-    width: max-content;
-    max-width: 100%;
-    min-width: 0;
-    margin-left: auto;
-}
-
-.plugin-header-actions > .help-button,
-.plugin-header-actions > .ai-button,
-.plugin-header-actions > .delete-button,
-.plugin-header-actions > .move-up-button,
-.plugin-header-actions > .move-down-button,
-.plugin-header-actions > .routing-button,
-.plugin-header-actions > .reset-effect-button {
-    flex: 0 0 24px;
-    margin-right: 0;
+    display: contents;
 }
 
 .save-button,
@@ -1365,10 +1345,15 @@ input[type="checkbox"] {
 }
 
 .player-artwork {
+    display: none;
     flex: 0 0 56px;
     width: 56px;
     height: 56px;
     margin-right: 15px;
+}
+
+.player-artwork-placeholder {
+    display: none;
 }
 
 .player-artwork-image {
@@ -1706,11 +1691,6 @@ input[type="checkbox"] {
     background-color: rgba(74, 158, 255, 0.1);
     border-radius: 4px;
     border: 1px solid rgba(74, 158, 255, 0.2);
-}
-
-.pipeline-item-header .bus-info {
-    flex: 0 1 auto;
-    margin-right: 0;
 }
 
 .routing-button {

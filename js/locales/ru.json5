@@ -32,6 +32,7 @@
 
   // Сообщения о состоянии
   "status.configuringAudio": "Настройка аудиоустройств...",
+  "status.resettingAudio": "Сброс аудио...",
   "status.reloading": "Перезагрузка...",
   "status.processingFile": "Обработка файла {current}/{total} ({percent}%)",
   "status.processingCanceled": "Обработка отменена",
@@ -171,6 +172,11 @@
   "dialog.audioConfig.apply": "Применить",
   "dialog.audioConfig.updatedTitle": "Аудиоконфигурация обновлена",
   "dialog.audioConfig.updatedMessage": "Перезагрузка...",
+  "dialog.audioConfig.outputDevice.secureContextRequired": "Для выбора устройства вывода требуется защищенный контекст.",
+  "dialog.audioConfig.outputDevice.permissionsPolicyBlocked": "Выбор устройства вывода заблокирован Permissions-Policy.",
+  "dialog.audioConfig.outputDevice.unsupportedBrowser": "Выбор устройства вывода недоступен в этом браузере.",
+  "dialog.audioConfig.outputChannels.stereoDefault": "2 - Стерео (по умолчанию)",
+  "dialog.audioConfig.sampleRate.default": "{rate} kHz (по умолчанию)",
 
   "dialog.config.title": "Настройка",
   "dialog.config.autoLaunch": "Запускать при старте ОС",

@@ -32,6 +32,7 @@
 
   // स्थिति संदेश
   "status.configuringAudio": "ऑडियो उपकरण विन्यस्त कर रहे हैं...",
+  "status.resettingAudio": "ऑडियो रीसेट किया जा रहा है...",
   "status.reloading": "पुनः लोड कर रहे हैं...",
   "status.processingFile": "फ़ाइल संसाधित हो रही है {current}/{total} ({percent}%)",
   "status.processingCanceled": "संसाधन रद्द किया गया",
@@ -171,6 +172,11 @@
   "dialog.audioConfig.apply": "लागू करें",
   "dialog.audioConfig.updatedTitle": "ऑडियो विन्यास अपडेट हुआ",
   "dialog.audioConfig.updatedMessage": "पुनः लोड हो रहा है...",
+  "dialog.audioConfig.outputDevice.secureContextRequired": "आउटपुट डिवाइस चयन के लिए सुरक्षित संदर्भ आवश्यक है।",
+  "dialog.audioConfig.outputDevice.permissionsPolicyBlocked": "आउटपुट डिवाइस चयन Permissions-Policy द्वारा अवरुद्ध है।",
+  "dialog.audioConfig.outputDevice.unsupportedBrowser": "इस ब्राउज़र में आउटपुट डिवाइस चयन उपलब्ध नहीं है।",
+  "dialog.audioConfig.outputChannels.stereoDefault": "2 - स्टीरियो (डिफ़ॉल्ट)",
+  "dialog.audioConfig.sampleRate.default": "{rate} kHz (डिफ़ॉल्ट)",
 
   "dialog.config.title": "विन्यास",
   "dialog.config.autoLaunch": "ओएस स्टार्टअप पर लॉन्च करें",

@@ -283,6 +283,8 @@ class MyPlugin extends PluginBase {
   - `value`: The initial value for the parameter.
   - `callback`: A function that will be called when the parameter value changes. It receives the new value as an argument.
 
+- **Responsive UI Helpers:** For new controls, prefer the shared helpers before writing custom DOM. `createSelectControl()`, `createCheckboxControl()`, and `createRadioGroup()` create mobile-friendly rows with consistent IDs and labels. `createGraphContainer()` keeps a canvas's internal resolution fixed while making its displayed size responsive. Use `getGraphCoords()` and `bindGraphPointer()` for graph interaction so mouse, touch, and pen input share one path.
+
 - Example using `createParameterControl`:
   ```javascript
   createUI() {
@@ -877,6 +879,7 @@ Use this tool during development to ensure your plugin follows the required impl
     - Follow the standard CSS styles for common UI elements to maintain consistency across plugins
     - Keep plugin-specific CSS minimal and focused on unique styling needs
     - Use the base CSS classes for standard elements (e.g., `.parameter-row`, `.radio-group`) to ensure consistent layout and appearance
+    - Treat `effetune-mobile.css` as a compatibility fallback for existing plugins, not as the contract for new plugin UI. New plugins must avoid fixed-width-only layouts and define responsive sizing in their own structure when custom controls are needed.
     - Only add custom CSS for plugin-specific UI elements that require unique styling
     - Build plugin UIs for a 375px-wide mobile viewport as well as desktop. Parameter rows must wrap cleanly, controls must keep usable touch targets, and long labels must not force horizontal scrolling.
     - Prefer the shared `PluginBase` helpers for common controls: `createSelectControl()`, `createCheckboxControl()`, `createRadioGroup()`, and `createGraphContainer()`. These helpers create IDs and base classes that participate in the mobile layout rules.

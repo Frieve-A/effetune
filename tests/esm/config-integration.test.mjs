@@ -61,8 +61,30 @@ function createConfigHarness(options = {}) {
   return { calls, document, window: windowObject };
 }
 
-test('loadConfig returns empty objects outside Electron and on failed reads', async () => {
+function createLocalStorage(initial = {}) {
+  const values = new Map(Object.entries(initial));
+  return {
+    getItem(key) {
+      return values.has(key) ? values.get(key) : null;
+    },
+    setItem(key, value) {
+      values.set(key, String(value));
+    },
+    snapshot() {
+      return Object.fromEntries(values);
+    }
+  };
+}
+
+test('loadConfig returns web settings outside Electron and empty objects on failed reads', async () => {
   assert.deepEqual(await loadConfig(false), {});
+
+  const localStorage = createLocalStorage({
+    effetune_app_config: JSON.stringify({ language: 'ja', pipelineStartup: 'last' })
+  });
+  await withGlobals({ window: { localStorage } }, async () => {
+    assert.deepEqual(await loadConfig(false), { language: 'ja', pipelineStartup: 'last' });
+  });
 
   const missingConfig = createConfigHarness({ loadConfigResult: { success: true } });
   await withGlobals({ window: missingConfig.window }, async () => {
@@ -82,19 +104,28 @@ test('loadConfig returns empty objects outside Electron and on failed reads', as
   });
 });
 
-test('loadConfig returns loaded config and saveConfig persists only in Electron', async () => {
+test('loadConfig returns loaded config and saveConfig persists in Electron or localStorage', async () => {
   const harness = createConfigHarness({ config: { language: 'ja' } });
+  const localStorage = createLocalStorage({
+    effetune_app_config: JSON.stringify({ language: 'en', pipelineStartup: 'last' })
+  });
 
   await withGlobals({ window: harness.window }, async () => {
     assert.deepEqual(await loadConfig(true), { language: 'ja' });
-    await saveConfig(false, { ignored: true });
     await saveConfig(true, { autoLaunch: true });
+  });
+  await withGlobals({ window: { localStorage } }, async () => {
+    assert.equal(await saveConfig(false, { pipelineStartup: 'default' }), true);
   });
 
   assert.deepEqual(harness.calls, [
     ['loadConfig'],
     ['saveConfig', { autoLaunch: true }]
   ]);
+  assert.deepEqual(JSON.parse(localStorage.snapshot().effetune_app_config), {
+    language: 'en',
+    pipelineStartup: 'default'
+  });
 });
 
 test('saveConfig logs and recovers from Electron save failures', async () => {
@@ -111,15 +142,29 @@ test('saveConfig logs and recovers from Electron save failures', async () => {
   ]);
 });
 
-test('showConfigDialog exits outside Electron', async () => {
-  const harness = createConfigHarness();
-
-  await withGlobals({ window: harness.window, document: harness.document }, async () => {
-    await showConfigDialog(false, { autoLaunch: true });
+test('showConfigDialog opens in Web and hides Electron-only settings', async () => {
+  const harness = createConfigHarness({
+    config: { language: 'en', pipelineStartup: 'last' },
+    presets: { WebPreset: {} }
+  });
+  const localStorage = createLocalStorage({
+    effetune_app_config: JSON.stringify({ language: 'ja', pipelineStartup: 'preset', startupPreset: 'WebPreset' })
   });
 
-  assert.deepEqual(harness.calls, []);
-  assert.equal(harness.document.body.children.length, 0);
+  await withGlobals({ window: { ...harness.window, localStorage }, document: harness.document }, async () => {
+    await showConfigDialog(false, { autoLaunch: true });
+    assert.equal(harness.document.body.children.length, 1);
+    assert.equal(harness.document.getElementById('auto-launch'), null);
+    assert.equal(harness.document.getElementById('start-min'), null);
+    assert.equal(harness.document.getElementById('tray'), null);
+    assert.equal(harness.document.getElementById('check-updates'), null);
+    assert.equal(harness.document.getElementById('language-select').value, 'ja');
+    assert.equal(harness.document.getElementById('preset-select').value, 'WebPreset');
+
+    const pipelineDefault = harness.document.getElementById('pl-default');
+    pipelineDefault.dispatchEvent('change');
+    assert.equal(JSON.parse(localStorage.snapshot().effetune_app_config).pipelineStartup, 'default');
+  });
 });
 
 test('showConfigDialog renders settings, saves changes, and closes from the button', async () => {

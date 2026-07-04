@@ -555,6 +555,23 @@ test('getUserPresetsData handles missing managers, sorted output, and read failu
     ]);
   });
 
+  const loadablePipelineManager = {
+    presetManager: {
+      async getPresets() {
+        throw new Error('unfiltered presets should not be used');
+      },
+      async getLoadablePresets() {
+        return { Beta: {}, Alpha: {} };
+      }
+    }
+  };
+  await withPresetGlobals(calls, { window: createWindow(calls, { pipelineManager: loadablePipelineManager }) }, async () => {
+    assert.deepEqual(await manager.getUserPresetsData(), [
+      { name: 'Alpha', description: 'User preset', isUserPreset: true },
+      { name: 'Beta', description: 'User preset', isUserPreset: true }
+    ]);
+  });
+
   const errorCalls = [];
   const failingPipelineManager = {
     presetManager: {

@@ -368,11 +368,11 @@ test('MobileMenu removes overflow controls when leaving mobile mode', async () =
     assert.equal(documentRef.body.children.includes(panel), true);
     assert.equal(documentRef.body.children.includes(backdrop), true);
     assert.equal(button.innerHTML.includes('<svg'), true);
-    assert.equal(panel.children.some(item => item.textContent === 'Process Audio File with Effects'), true);
+    assert.equal(panel.children.some(item => item.textContent === 'Process Audio Files with Effects...'), true);
 
     menu.open();
     assert.equal(panel.classList.contains('mobile-open'), true);
-    panel.children.find(item => item.textContent === 'Process Audio File with Effects').click();
+    panel.children.find(item => item.textContent === 'Process Audio Files with Effects...').click();
     assert.deepEqual(calls, ['processAudioFiles']);
     assert.equal(panel.classList.contains('mobile-open'), false);
 
@@ -385,5 +385,50 @@ test('MobileMenu removes overflow controls when leaving mobile mode', async () =
     assert.equal(button.parentNode, null);
     assert.equal(panel.parentNode, null);
     assert.equal(backdrop.parentNode, null);
+  });
+});
+
+test('MobileMenu applies translated labels to settings actions', async () => {
+  const documentRef = createDocument();
+  const layoutMode = createLayoutMode('mobile');
+  const labels = {
+    'menu.settings': 'Translated Settings',
+    'menu.file.openMusicFile': 'Translated Open',
+    'menu.file.processAudioFiles': 'Translated Process',
+    'dialog.config.title': 'Translated Config',
+    'dialog.audioConfig.title': 'Translated Audio',
+    'menu.settings.performanceBenchmark': 'Translated Benchmark',
+    'menu.settings.frequencyResponseMeasurement': 'Translated Measurement',
+    'ui.resetButton': 'Translated Reset',
+    'ui.shareButton': 'Translated Share',
+    'ui.whatsThisApp': 'Translated Whats'
+  };
+  const uiManager = {
+    layoutMode,
+    t(key) {
+      return labels[key] ?? key;
+    }
+  };
+
+  await withGlobals({
+    document: documentRef,
+    window: { location: { search: '' } }
+  }, async () => {
+    const menu = new MobileMenu(uiManager);
+    assert.equal(menu.button.title, 'Translated Settings');
+    assert.equal(menu.button.attributes['aria-label'], 'Translated Settings');
+    assert.equal(menu.panel.children.some(item => item.textContent === 'Translated Open'), true);
+    assert.equal(menu.panel.children.some(item => item.textContent === 'Translated Process'), true);
+    assert.equal(menu.panel.children.some(item => item.textContent === 'Translated Config'), true);
+    assert.equal(menu.panel.children.some(item => item.textContent === 'Translated Audio'), true);
+    assert.equal(menu.panel.children.some(item => item.textContent === 'Translated Benchmark'), true);
+    assert.equal(menu.panel.children.some(item => item.textContent === 'Translated Share'), true);
+    assert.equal(menu.panel.children.some(item => item.textContent === 'Translated Whats'), true);
+    assert.equal(menu.panel.children.some(item => item.textContent === 'Translated Measurement'), true);
+    assert.equal(menu.panel.children.some(item => item.textContent === 'Translated Reset'), true);
+
+    labels['dialog.config.title'] = 'Updated Config';
+    menu.updateLabels();
+    assert.equal(menu.panel.children.some(item => item.textContent === 'Updated Config'), true);
   });
 });

@@ -25,6 +25,12 @@ class FakeElement {
 
   set innerHTML(value) {
     this._innerHTML = value;
+    if (value === '') {
+      this.children.forEach(child => {
+        child.parentNode = null;
+      });
+      this.children = [];
+    }
     if (this.classList().includes('audio-player')) {
       this.children = [];
       this.ownerDocument.populateAudioPlayerMarkup(value, this);
@@ -135,6 +141,16 @@ function createDocument(calls, options = {}) {
       return null;
     },
     populateAudioPlayerMarkup(html, parent) {
+      const artwork = this.createElement('div');
+      artwork.className = 'player-artwork';
+      const artworkPlaceholder = this.createElement('div');
+      artworkPlaceholder.className = 'player-artwork-placeholder';
+      const artworkImage = this.createElement('img');
+      artworkImage.className = 'player-artwork-image';
+      artwork.appendChild(artworkPlaceholder);
+      artwork.appendChild(artworkImage);
+      parent.appendChild(artwork);
+
       const trackContainer = this.createElement('div');
       trackContainer.className = 'track-name-container';
       const trackName = this.createElement('div');
@@ -174,6 +190,10 @@ function createDocument(calls, options = {}) {
       }
 
       parent.appendChild(controls);
+
+      const playlist = this.createElement('div');
+      playlist.className = 'player-playlist';
+      parent.appendChild(playlist);
     }
   };
 
@@ -290,6 +310,12 @@ function createAudioPlayer(calls, options = {}) {
     },
     close() {
       calls.push(['close']);
+    },
+    async loadTrack(index) {
+      calls.push(['loadTrack', index]);
+    },
+    async play() {
+      calls.push(['play']);
     }
   };
 }
@@ -710,6 +736,36 @@ test('display updates handle fallbacks, invalid values, and warning paths', asyn
     assert.ok(calls.some(call => call[0] === 'warn' && call[1].includes('StateManager not available for updatePlayPauseButton')));
     assert.ok(calls.some(call => call[0] === 'warn' && call[1].includes('StateManager not available for updateTimeDisplay')));
     assert.equal(ui.trackNameDisplay.textContent, 'No track loaded');
+  });
+});
+
+test('playlist display syncs active track and mobile tap starts playback', async () => {
+  await withAudioPlayerGlobals({
+    windowOptions: {
+      uiManager: {
+        layoutMode: { isMobile: true }
+      }
+    }
+  }, async ({ calls }) => {
+    const player = createAudioPlayer(calls, {
+      state: {
+        playlist: [
+          { name: 'One', path: '/one.wav' },
+          { name: 'Two', path: '/two.wav' }
+        ],
+        currentTrackIndex: 1,
+        isPlaying: false
+      }
+    });
+    const ui = new AudioPlayerUI(player);
+    ui.createPlayerUI();
+
+    assert.equal(ui.playlistDisplay.children.length, 2);
+    assert.match(ui.playlistDisplay.children[1].className, /active/);
+
+    await Promise.all(ui.playlistDisplay.children[0].dispatchEvent('click'));
+    assert.ok(calls.some(call => call[0] === 'loadTrack' && call[1] === 0));
+    assert.ok(calls.some(call => call[0] === 'play'));
   });
 });
 

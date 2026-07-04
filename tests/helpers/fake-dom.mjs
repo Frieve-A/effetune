@@ -44,6 +44,7 @@ export class FakeElement {
     this.name = '';
     this.value = '';
     this.checked = false;
+    this.selected = false;
     this.disabled = false;
     this.textContent = '';
     this.style = {};
@@ -78,6 +79,11 @@ export class FakeElement {
   appendChild(child) {
     child.parentNode = this;
     this.children.push(child);
+    if (this.tagName === 'SELECT' && child.tagName === 'OPTION') {
+      if (!this.value || child.selected) {
+        this.value = child.value;
+      }
+    }
     return child;
   }
 
@@ -164,7 +170,7 @@ export function createFakeDocument(options = {}) {
       return (documentListeners.get(type) || []).length;
     },
     registerElementsFromHTML(html, parent) {
-      const elementPattern = /<(input|select|button|label|h2)\b([^>]*)>/gi;
+      const elementPattern = /<(input|select|option|button|label|h2|div)\b([^>]*)>/gi;
       let match;
       while ((match = elementPattern.exec(html)) !== null) {
         const tagName = match[1];
@@ -181,6 +187,7 @@ export function createFakeDocument(options = {}) {
           ? parseSelectValue(html, attrs.id)
           : attrs.value || '';
         element.checked = attrs.checked === true;
+        element.selected = attrs.selected === true;
         element.disabled = attrs.disabled === true;
         element.attributes = attrs;
         elementsById.set(element.id, element);

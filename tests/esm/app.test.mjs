@@ -274,6 +274,10 @@ function createDependencies(calls, options = {}) {
       calls.push(['ui.parsePipelineState']);
       return options.urlState ?? null;
     },
+    loadPipelineStateFromLocalStorage() {
+      calls.push(['ui.loadPipelineStateFromLocalStorage']);
+      return options.localState ?? null;
+    },
     loadPreset(preset) { calls.push(['ui.loadPreset', preset]); },
     getDoubleBlindTest() {
       return {
@@ -1033,6 +1037,77 @@ test('initializeAndBuildPipeline restores first-launch and URL state payloads', 
     }));
     await app.initializeAndBuildPipeline();
     assert.equal(calls.some(call => call[0] === 'pluginManager.createPlugin' && call[1] === 'SingleRoute'), true);
+  });
+});
+
+test('initializeAndBuildPipeline applies Web startup config after shared URL priority', async () => {
+  await withAppModule({}, async ({ calls, mod, window }) => {
+    window.electronIntegration = { isElectron: false };
+    const app = new mod.App({
+      ...createDependencies(calls, {
+        localState: [{ name: 'SavedLocal', enabled: true, parameters: {} }]
+      }),
+      loadStartupConfig: async () => ({ pipelineStartup: 'default' })
+    });
+    await app.initializeAndBuildPipeline();
+    assert.equal(calls.some(call => call[0] === 'ui.loadPipelineStateFromLocalStorage'), false);
+    assert.equal(calls.some(call => call[0] === 'pluginManager.createPlugin' && call[1] === 'Volume'), true);
+  });
+
+  await withAppModule({}, async ({ calls, mod, window }) => {
+    window.electronIntegration = { isElectron: false };
+    const app = new mod.App({
+      ...createDependencies(calls, {
+        localState: [{ name: 'SavedLocal', enabled: true, parameters: {} }]
+      }),
+      loadStartupConfig: async () => ({ pipelineStartup: 'last' })
+    });
+    await app.initializeAndBuildPipeline();
+    assert.equal(calls.some(call => call[0] === 'ui.loadPipelineStateFromLocalStorage'), true);
+    assert.equal(calls.some(call => call[0] === 'pluginManager.createPlugin' && call[1] === 'SavedLocal'), true);
+  });
+
+  await withAppModule({ search: '?dbt=share' }, async ({ calls, mod, window }) => {
+    window.electronIntegration = { isElectron: false };
+    const app = new mod.App({
+      ...createDependencies(calls, {
+        presets: { WebStartup: { name: 'WebStartup' } }
+      }),
+      loadStartupConfig: async () => ({ pipelineStartup: 'preset', startupPreset: 'WebStartup' })
+    });
+    await app.initializeAndBuildPipeline();
+    assert.equal(calls.some(call => call[0] === 'presetManager.loadPreset' && call[1] === 'WebStartup'), true);
+    assert.equal(calls.some(call => call[0] === 'ui.parsePipelineState'), true);
+    assert.equal(calls.some(call => call[0] === 'dbt.restoreFromShare' && call[1] === 'share'), true);
+  });
+
+  await withAppModule({}, async ({ calls, mod, window }) => {
+    window.electronIntegration = { isElectron: false };
+    const app = new mod.App({
+      ...createDependencies(calls, {
+        urlState: [{ name: 'SharedUrl', enabled: true, parameters: {} }],
+        localState: [{ name: 'SavedLocal', enabled: true, parameters: {} }],
+        presets: { WebStartup: { name: 'WebStartup' } }
+      }),
+      loadStartupConfig: async () => ({ pipelineStartup: 'preset', startupPreset: 'WebStartup' })
+    });
+    await app.initializeAndBuildPipeline();
+    assert.equal(calls.some(call => call[0] === 'presetManager.loadPreset'), false);
+    assert.equal(calls.some(call => call[0] === 'ui.loadPipelineStateFromLocalStorage'), false);
+    assert.equal(calls.some(call => call[0] === 'pluginManager.createPlugin' && call[1] === 'SharedUrl'), true);
+  });
+
+  await withAppModule({}, async ({ calls, mod, window }) => {
+    window.electronIntegration = { isElectron: false };
+    const app = new mod.App({
+      ...createDependencies(calls, { presets: {} }),
+      loadStartupConfig: async () => ({ pipelineStartup: 'preset', startupPreset: 'Missing' })
+    });
+    await app.initializeAndBuildPipeline();
+    assert.equal(calls.some(call => call[0] === 'console.warn'), true);
+    assert.equal(calls.some(call => call[0] === 'ui.setError' && call[1] === "Startup preset 'Missing' not found"), true);
+    assert.equal(calls.some(call => call[0] === 'ui.loadPipelineStateFromLocalStorage'), false);
+    assert.equal(calls.some(call => call[0] === 'pluginManager.createPlugin' && call[1] === 'Volume'), true);
   });
 });
 

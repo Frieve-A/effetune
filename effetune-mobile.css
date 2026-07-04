@@ -3,6 +3,8 @@
     --et-mini-player-height: 52px;
     --et-mobile-gap: 10px;
     --et-mobile-page-padding: 8px;
+    --et-mobile-effect-slider-basis: 96px;
+    --et-mobile-effect-slider-min-width: 80px;
 }
 
 html.layout-mobile {
@@ -638,7 +640,7 @@ body.layout-mobile .pipeline-header {
 body.layout-mobile .pipeline-header-right {
     flex: 1 1 100%;
     flex-wrap: wrap;
-    justify-content: flex-end;
+    justify-content: flex-start;
     margin-left: 0;
     min-width: 0;
 }
@@ -650,6 +652,8 @@ body.layout-mobile .select-container {
 }
 
 body.layout-mobile .pipeline-preset-controls {
+    display: flex;
+    align-items: center;
     flex: 0 1 auto;
     width: max-content;
     max-width: 100%;
@@ -676,6 +680,8 @@ body.layout-mobile .pipeline-item {
 
 body.layout-mobile .pipeline-item-header {
     width: 100%;
+    box-sizing: border-box;
+    padding: 10px 10px 0;
     flex-wrap: wrap;
     align-items: center;
     gap: 4px 6px;
@@ -696,33 +702,72 @@ body.layout-mobile .redo-button,
 body.layout-mobile .cut-button,
 body.layout-mobile .copy-button,
 body.layout-mobile .paste-button {
-    min-width: 36px;
-    min-height: 36px;
+    min-width: 40px;
+    min-height: 40px;
 }
 
 body.layout-mobile .pipeline-item-header .handle {
     flex: 0 0 18px;
     width: 18px;
     min-width: 18px;
-    height: 24px;
-    min-height: 24px;
+    min-height: 40px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     padding: 0;
     margin: 0;
 }
 
 body.layout-mobile .pipeline-item-header .toggle-button {
+    position: relative;
+    z-index: 0;
     flex: 0 0 48px;
+    height: 40px;
+    min-height: 40px;
+    box-sizing: border-box;
+    padding: 8px 0;
+    border: 0;
+    background-color: transparent;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     margin-right: 0;
+}
+
+body.layout-mobile .pipeline-item-header .toggle-button::before {
+    content: "";
+    position: absolute;
+    top: 8px;
+    right: 0;
+    bottom: 8px;
+    left: 0;
+    border: 1px solid #606060;
+    border-radius: 4px;
+    background-color: #4CAF50;
+    pointer-events: none;
+    z-index: -1;
+}
+
+body.layout-mobile .pipeline-item-header .toggle-button.off::before {
+    background-color: #808080;
 }
 
 body.layout-mobile .pipeline-item-header .plugin-name {
     flex: 1 1 120px;
     min-width: 96px;
-    line-height: 24px;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    line-height: 20px;
 }
 
 body.layout-mobile .plugin-header-actions {
+    display: flex;
     flex: 0 0 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px;
     width: max-content;
     max-width: 100%;
     justify-content: flex-end;
@@ -736,7 +781,7 @@ body.layout-mobile .plugin-header-actions > .move-up-button,
 body.layout-mobile .plugin-header-actions > .move-down-button,
 body.layout-mobile .plugin-header-actions > .routing-button,
 body.layout-mobile .plugin-header-actions > .reset-effect-button {
-    flex-basis: 36px;
+    flex-basis: 40px;
     margin-right: 0;
 }
 
@@ -753,9 +798,15 @@ body.layout-mobile .plugin-parameter-ui .parameter-row {
     box-sizing: border-box;
 }
 
+body.layout-mobile .plugin-parameter-ui input[type="range"] {
+    min-width: var(--et-mobile-effect-slider-min-width);
+}
+
 body.layout-mobile .plugin-parameter-ui .parameter-row input[type="range"] {
-    flex: 1 1 150px;
-    min-width: 120px;
+    flex: 1 1 var(--et-mobile-effect-slider-basis);
+    width: auto;
+    min-width: var(--et-mobile-effect-slider-min-width);
+    max-width: 100%;
 }
 
 body.layout-mobile .plugin-parameter-ui .parameter-row input[type="number"],
@@ -799,13 +850,28 @@ body.layout-mobile .audio-player h2 {
 }
 
 body.layout-mobile .player-artwork {
+    display: grid;
+    place-items: center;
     width: min(68vw, 280px);
     height: min(68vw, 280px);
     margin: 0 auto;
+    border-radius: 10px;
+    background: #1d1d1d;
+    color: #5d5d5d;
+    overflow: hidden;
 }
 
 body.layout-mobile .player-artwork-image {
     border-radius: 8px;
+}
+
+body.layout-mobile .player-artwork-placeholder {
+    display: grid;
+    place-items: center;
+}
+
+body.layout-mobile .player-artwork-placeholder[hidden] {
+    display: none;
 }
 
 body.layout-mobile .track-name-container {
@@ -868,6 +934,9 @@ body.layout-mobile .ai-dialog {
     border-radius: 10px 10px 0 0;
     padding: 16px;
     padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    max-height: 70vh;
+    overflow-y: auto;
+    box-sizing: border-box;
     transform: none !important;
     z-index: 1200;
 }
@@ -995,9 +1064,9 @@ body.layout-mobile .multichannel-panel-ui label {
 }
 
 body.layout-mobile .multichannel-panel-ui input[type="range"] {
-    flex: 1 1 120px;
+    flex: 1 1 var(--et-mobile-effect-slider-basis);
     width: auto;
-    min-width: 120px;
+    min-width: var(--et-mobile-effect-slider-min-width);
     max-width: 100%;
 }
 
@@ -1037,7 +1106,9 @@ body.layout-mobile .fbdyn-two-columns {
 body.layout-mobile .channel-divider-frequency-sliders,
 body.layout-mobile .multiband-compressor-frequency-sliders,
 body.layout-mobile .multiband-expander-frequency-sliders,
-body.layout-mobile .multiband-balance-frequency-sliders {
+body.layout-mobile .multiband-balance-frequency-sliders,
+body.layout-mobile .mbs-freq-sliders,
+body.layout-mobile .mbt-freq-sliders {
     flex-wrap: wrap;
     width: 100%;
     max-width: 100%;
@@ -1048,15 +1119,19 @@ body.layout-mobile .multiband-balance-frequency-sliders {
 body.layout-mobile .channel-divider-frequency-slider,
 body.layout-mobile .multiband-compressor-frequency-slider,
 body.layout-mobile .multiband-expander-frequency-slider,
-body.layout-mobile .multiband-balance-frequency-slider {
-    flex: 1 1 120px;
-    min-width: 120px;
+body.layout-mobile .multiband-balance-frequency-slider,
+body.layout-mobile .mbs-freq-slider,
+body.layout-mobile .mbt-freq-slider {
+    flex: 1 1 var(--et-mobile-effect-slider-basis);
+    min-width: var(--et-mobile-effect-slider-min-width);
 }
 
 body.layout-mobile .channel-divider-frequency-slider-top,
 body.layout-mobile .multiband-compressor-frequency-slider-top,
 body.layout-mobile .multiband-expander-frequency-slider-top,
-body.layout-mobile .multiband-balance-frequency-slider-top {
+body.layout-mobile .multiband-balance-frequency-slider-top,
+body.layout-mobile .mbs-freq-slider-top,
+body.layout-mobile .mbt-freq-slider-top {
     flex-wrap: wrap;
     gap: 4px;
 }

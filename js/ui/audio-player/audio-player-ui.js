@@ -18,6 +18,8 @@ const PLAYER_ICONS = {
   close: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M6 6l12 12M18 6L6 18"/></svg>'
 };
 
+const PLAYER_ARTWORK_PLACEHOLDER = '<svg width="72" height="72" viewBox="0 0 72 72" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" draggable="false"><path d="M28 50V20l24-5v30"/><circle cx="22" cy="50" r="7"/><circle cx="46" cy="45" r="7"/></svg>';
+
 export class AudioPlayerUI {
   constructor(audioPlayer) {
     this.audioPlayer = audioPlayer;
@@ -122,6 +124,7 @@ export class AudioPlayerUI {
     container.innerHTML = `
      <h2>Player</h2>
      <div class="player-artwork">
+       <div class="player-artwork-placeholder" aria-hidden="true">${PLAYER_ARTWORK_PLACEHOLDER}</div>
        <img class="player-artwork-image" alt="" hidden>
      </div>
      <div class="track-name-container">
@@ -234,6 +237,7 @@ export class AudioPlayerUI {
       if (this.container.parentNode !== mobilePlayerView) {
         mobilePlayerView.appendChild(this.container);
       }
+      this.updateArtwork();
       window.uiManager?.mobileNav?.updatePlayerPlaceholder?.();
       return;
     }
@@ -249,6 +253,7 @@ export class AudioPlayerUI {
         targetParent.insertBefore(this.container, insertTarget);
       }
     }
+    this.updateArtwork();
     window.uiManager?.mobileNav?.updatePlayerPlaceholder?.();
   }
 
@@ -353,8 +358,14 @@ export class AudioPlayerUI {
 
     this.artworkImage.src = artworkUrl || '';
     this.artworkImage.hidden = !artworkUrl;
-    if (this.artworkImage.parentNode?.style) {
-      this.artworkImage.parentNode.style.display = artworkUrl ? '' : 'none';
+    const artworkContainer = this.artworkImage.parentNode;
+    const placeholder = artworkContainer?.querySelector?.('.player-artwork-placeholder');
+    if (placeholder) {
+      placeholder.hidden = !!artworkUrl;
+    }
+    if (artworkContainer?.style) {
+      const keepMobilePlaceholder = window.uiManager?.layoutMode?.isMobile;
+      artworkContainer.style.display = artworkUrl || keepMobilePlaceholder ? '' : 'none';
     }
   }
 
@@ -383,7 +394,7 @@ export class AudioPlayerUI {
           currentTrack: track
         }, 'AudioPlayerUI playlist select');
         await this.audioPlayer.loadTrack(index);
-        if (latestState?.isPlaying) {
+        if (latestState?.isPlaying || window.uiManager?.layoutMode?.isMobile) {
           await this.audioPlayer.play();
         }
       });

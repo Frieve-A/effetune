@@ -379,6 +379,8 @@ class FiveBandPEQPlugin extends PluginBase {
         this.initialDragY = clientY;
         this.hasMoved = false;
       };
+      let suppressTapUntil = 0;
+      const now = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
 
       const cleanupPointer = this.bindGraphPointer(marker, {
         onDragStart: (e) => handleDragStart(e.clientX, e.clientY),
@@ -390,6 +392,10 @@ class FiveBandPEQPlugin extends PluginBase {
         }),
         onDragEnd: () => this.handleDragEnd(),
         onTap: () => {
+          if (suppressTapUntil && now() < suppressTapUntil) {
+            suppressTapUntil = 0;
+            return;
+          }
           if (window.uiManager?.layoutMode?.isMobile) this.toggleBandEnabled(i);
         }
       });
@@ -398,6 +404,7 @@ class FiveBandPEQPlugin extends PluginBase {
 
       marker.addEventListener('contextmenu', (e) => { 
         e.preventDefault(); 
+        suppressTapUntil = now() + 700;
         this.toggleBandEnabled(i); 
       });
     }

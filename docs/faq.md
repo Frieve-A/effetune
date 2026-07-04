@@ -44,7 +44,7 @@ Open **Settings▸System▸Sound▸Volume mixer**, and set `Spotify.exe` output 
 On macOS, use Rogue Amoeba's **SoundSource** to assign Spotify output to **CABLE Input** in the same manner.
 
 ### 1.3. EffeTune audio settings
-Launch the desktop app and open **Config Audio**.
+Open EffeTune and choose **Audio Configuration** from the Settings menu.
 - **Input Device:** CABLE Output (VB-Audio Virtual Cable)
 - **Output Device:** Physical DAC/Speakers
 - **Sample Rate:** 96,000 Hz (lower rates may degrade quality)
@@ -60,7 +60,7 @@ With Spotify playing, toggle the master **ON/OFF** in EffeTune and confirm the s
 
 | Symptom | Solution |
 | ------ | ------ |
-| Dropouts or glitches | Click the **Reset Audio** button in the top-left corner of the web app or choose **Reload** from the **View** menu in the desktop app. Reduce the number of active effects if necessary. |
+| Dropouts or glitches | Choose **Reset Audio** from the Settings menu or mobile overflow menu. In the desktop app, you can also choose **Reload** from the **View** menu. Reduce the number of active effects if necessary. |
 | Distortion or clipping | Insert **Level Meter** at the end of the chain and keep levels below 0 dBFS. Add **Brickwall Limiter** before Level Meter if needed. |
 | Aliasing above 20 kHz | VB-CABLE may still run at 48 kHz. Recheck the initial setup. |
 
@@ -74,9 +74,9 @@ Your input and output devices may be looping back. Ensure EffeTune's output does
 
 | Symptom | Solution |
 | ------ | ------ |
-| No audio input | Make sure the player outputs to **CABLE Input**. Allow microphone permission in the browser and select **CABLE Output** as the input device. |
+| No audio input | Make sure the player outputs to **CABLE Input**. Allow microphone permission in the browser and select **CABLE Output** in **Audio Configuration**. |
 | Effect not working | Confirm the master, each effect, and any **Section** are **ON**. Reset parameters if needed. |
-| No audio output | For the web app, check that the OS and browser outputs point to your DAC/AMP. For the desktop app, check the output device in **Config Audio**. |
+| No audio output | Check **Audio Configuration**. If your browser cannot select an output device, check that the OS and browser default output point to your DAC/AMP. |
 | Other players report "CABLE Input in use" | Ensure no other application is using **CABLE Input**. |
 
 ### 2.5. Multichannel output mismatch
@@ -110,6 +110,11 @@ Current OS drivers support up to 8 channels. EffeTune can support more channels 
 | Recommended effect chain length? | Use as many effects as your CPU allows without causing dropouts or high latency. |
 | How to get the best sound quality? | Use 96 kHz or higher, start with subtle settings, monitor headroom with **Level Meter**, and add **Brickwall Limiter** if needed. |
 | Does it work with any source? | Yes. With a virtual audio device you can process streaming, local files, or physical equipment. |
+| Can the mobile web app process audio from other apps? | Usually no. Mobile browsers do not provide a general loopback input from other apps, so mobile use is centered on EffeTune's music player. |
+| Why is output device selection unavailable in the web app? | Browser support and permissions vary. Use Chrome/Chromium on a secure page, or set the desired DAC/AMP as the OS/browser default output. |
+| Why did Sample Rate or Output Channels fall back to another value? | Browsers and devices may clamp or ignore unsupported values. EffeTune uses the effective value reported by the audio device. |
+| Does the web player remember my playlist? | Repeat/shuffle settings are saved, but the selected music files are not restored after reload because browsers do not keep normal file selections. |
+| Does mobile playback continue when the screen turns off? | Not reliably on all browsers, especially iOS. EffeTune uses Wake Lock where available, but background playback is browser-dependent. |
 | AV receiver vs. interface cost? | Reusing an AV receiver with HDMI is simple. For PC-centric setups, a multichannel interface plus small amps offers good cost and quality. |
 | No sound from other apps right after installing VB-CABLE | The OS default output was switched to **CABLE Input**. Change it back in sound settings. |
 | Only channels 3+4 change volume after splitting | Place a **Volume** effect after the splitter and set **Channel** to 3+4. If placed before, all channels change. |
@@ -135,7 +140,8 @@ Copy the 5Band PEQ settings from the measurement page and paste into the **Effec
 
 ## 7. Reference Links
 * EffeTune Desktop: <https://github.com/Frieve-A/effetune/releases>
-* EffeTune Web version: <https://effetune.frieve.com/features/measurement/measurement.html>
+* EffeTune Web App: <https://effetune.frieve.com/effetune.html>
+* Frequency Response Measurement: <https://effetune.frieve.com/features/measurement/measurement.html>
 * VB-CABLE: <https://vb-audio.com/Cable/>
 * Voicemeeter: <https://vb-audio.com/Voicemeeter/>
 * ASIO Link Pro (unofficial fixed version): search for "ASIO Link Pro 2.4.1"
