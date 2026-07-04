@@ -1,7 +1,7 @@
 {
   "name": "Frieve EffeTune",
   "short_name": "EffeTune",
-  "description": "Web-based Audio Effect Processor",
+  "description": "Color the music, unleash your senses. Build precise effect chains for streaming, local files, physical sources, measurement, and multichannel playback.",
   "id": "./effetune.html",
   "start_url": "./effetune.html",
   "scope": "./",

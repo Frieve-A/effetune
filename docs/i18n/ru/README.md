@@ -1,6 +1,10 @@
 # Frieve EffeTune <img src="../../../images/icon_64x64.png" alt="EffeTune Icon" width="30" height="30" align="bottom">
 
-[Открыть веб-приложение](https://effetune.frieve.com/effetune.html)  [Скачать настольное приложение](https://github.com/Frieve-A/effetune/releases/)
+<div class="doc-primary-actions" aria-label="Основные действия">
+  <a class="button button-primary" href="https://effetune.frieve.com/effetune.html">Открыть веб-приложение</a>
+  <install class="button button-secondary"><a href="https://effetune.frieve.com/effetune.html">Установить PWA-версию</a></install>
+  <a class="button button-secondary" href="https://github.com/Frieve-A/effetune/releases/">Скачать настольное приложение</a>
+</div>
 
 Приложение для обработки аудио в реальном времени, созданное для аудиофилов, стремящихся улучшить процесс прослушивания музыки. EffeTune позволяет обрабатывать любой аудио источник с помощью различных высококачественных эффектов, давая возможность настроить и усовершенствовать ваш опыт прослушивания в реальном времени.
 

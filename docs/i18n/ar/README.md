@@ -1,6 +1,10 @@
 # Frieve EffeTune <img src="../../../images/icon_64x64.png" alt="EffeTune Icon" width="30" height="30" align="bottom">
 
-[افتح تطبيق الويب](https://effetune.frieve.com/effetune.html)  [نزّل تطبيق سطح المكتب](https://github.com/Frieve-A/effetune/releases/)
+<div class="doc-primary-actions" aria-label="الإجراءات الرئيسية">
+  <a class="button button-primary" href="https://effetune.frieve.com/effetune.html">افتح تطبيق الويب</a>
+  <install class="button button-secondary"><a href="https://effetune.frieve.com/effetune.html">تثبيت إصدار PWA</a></install>
+  <a class="button button-secondary" href="https://github.com/Frieve-A/effetune/releases/">نزّل تطبيق سطح المكتب</a>
+</div>
 
 معالج تأثيرات صوتية فوري، مصمم لعشاق الصوت لتحسين تجربة الاستماع للموسيقى. يتيح لك EffeTune معالجة أي مصدر صوتي عبر تأثيرات عالية الجودة متنوعة، مما يمكنك من تخصيص وتحسين تجربة الاستماع في الوقت الحقيقي.
 

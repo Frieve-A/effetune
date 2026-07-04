@@ -1,5 +1,5 @@
 title: "Frieve EffeTune"
-description: "A real-time audio effect processor designed for audio enthusiasts to enhance their music listening experience. Features professional-grade effects, drag-and-drop interface, and live audio visualization."
+description: "Color the music, unleash your senses. Build precise effect chains for streaming, local files, physical sources, measurement, and multichannel playback."
 url: "https://effetune.frieve.com"
 baseurl: ""
 lang: en
@@ -44,6 +44,33 @@ plugins:
 relative_links:
   enabled: true
   collections: true
+
+exclude:
+  - .agents/
+  - .codex/
+  - .cursor/
+  - .github/
+  - .jekyll-cache/
+  - .npm-cache/
+  - .qodo/
+  - .tmp/
+  - .VSCodeCounter/
+  - .worktrees/
+  - _site/
+  - AGENTS.md
+  - build/
+  - code_review.md
+  - dist/
+  - electron/
+  - eslint.config.mjs
+  - node_modules/
+  - out/
+  - package-lock.json
+  - scripts/
+  - server.py
+  - tests/
+  - tmp/
+  - tools/
 
 # Favicon configuration
 favicon_ico: "/images/favicon.ico"

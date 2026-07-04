@@ -2,7 +2,11 @@
 
 [[中文 (简体)](docs/i18n/zh/README.md)] [[Español](docs/i18n/es/README.md)] [[हिन्दी](docs/i18n/hi/README.md)] [[العربية](docs/i18n/ar/README.md)] [[Português](docs/i18n/pt/README.md)] [[Русский](docs/i18n/ru/README.md)] [[日本語](docs/i18n/ja/README.md)] [[한국어](docs/i18n/ko/README.md)] [[Français](docs/i18n/fr/README.md)]
 
-🔗[**Open Web App**](https://effetune.frieve.com/effetune.html)  🔗[**Download Desktop App**](https://github.com/Frieve-A/effetune/releases/)
+<div class="doc-primary-actions" aria-label="Primary actions">
+  <a class="button button-primary" href="https://effetune.frieve.com/effetune.html">Open Web App</a>
+  <install class="button button-secondary"><a href="https://effetune.frieve.com/effetune.html">Install PWA version</a></install>
+  <a class="button button-secondary" href="https://github.com/Frieve-A/effetune/releases/">Download Desktop App</a>
+</div>
 
 A real-time audio effect processor designed for audio enthusiasts to enhance their music listening experience. EffeTune allows you to process any audio source through various high-quality effects, enabling you to customize and perfect your listening experience in real-time.
 

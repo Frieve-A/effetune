@@ -1,6 +1,10 @@
 # Frieve EffeTune <img src="../../../images/icon_64x64.png" alt="EffeTune Icon" width="30" height="30" align="bottom">
 
-🔗[**वेब ऐप खोलें**](https://effetune.frieve.com/effetune.html)  🔗[**डेस्कटॉप ऐप डाउनलोड करें**](https://github.com/Frieve-A/effetune/releases/)
+<div class="doc-primary-actions" aria-label="मुख्य कार्रवाइयां">
+  <a class="button button-primary" href="https://effetune.frieve.com/effetune.html">वेब ऐप खोलें</a>
+  <install class="button button-secondary"><a href="https://effetune.frieve.com/effetune.html">PWA संस्करण इंस्टॉल करें</a></install>
+  <a class="button button-secondary" href="https://github.com/Frieve-A/effetune/releases/">डेस्कटॉप ऐप डाउनलोड करें</a>
+</div>
 
 EffeTune रियल-टाइम ऑडियो इफेक्ट प्रोसेसर है, जिसे संगीत सुनने के अनुभव को अपनी पसंद के अनुसार बेहतर बनाने वाले ऑडियो उत्साही लोगों के लिए बनाया गया है। यह किसी भी ऑडियो स्रोत को कई उच्च-गुणवत्ता वाले इफेक्ट्स से प्रोसेस कर सकता है, ताकि आप सुनते समय ही ध्वनि को अपने स्वाद के अनुसार ढाल सकें।
 

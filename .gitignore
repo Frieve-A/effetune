@@ -6,6 +6,7 @@ dist/
 out/
 _site/
 .jekyll-cache/
+.jekyll-metadata
 
 # Logs
 logs

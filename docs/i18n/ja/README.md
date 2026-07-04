@@ -1,6 +1,10 @@
 # Frieve EffeTune <img src="../../../images/icon_64x64.png" alt="EffeTune Icon" width="30" height="30" align="bottom">
 
-🔗[**Webアプリを開く**](https://effetune.frieve.com/effetune.html)  🔗[**デスクトップアプリをダウンロード**](https://github.com/Frieve-A/effetune/releases/)
+<div class="doc-primary-actions" aria-label="主な操作">
+  <a class="button button-primary" href="https://effetune.frieve.com/effetune.html">Webアプリを開く</a>
+  <install class="button button-secondary"><a href="https://effetune.frieve.com/effetune.html">PWA版をインストール</a></install>
+  <a class="button button-secondary" href="https://github.com/Frieve-A/effetune/releases/">デスクトップアプリをダウンロード</a>
+</div>
 
 オーディオ愛好家のためのリアルタイムオーディオエフェクトプロセッサです。EffeTuneを使うと、あらゆるオーディオソースに高品質なエフェクトをかけ、リスニング体験をリアルタイムで好みに合わせて調整できます。
 

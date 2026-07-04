@@ -16,7 +16,7 @@
     "prebuild:linux": "node scripts/generate-sw-precache.js",
     "prepack": "node scripts/generate-sw-precache.js",
     "predist": "node scripts/generate-sw-precache.js",
-    "lint": "eslint electron js plugins features tools tests --max-warnings=0",
+    "lint": "eslint electron js plugins features scripts tools tests --max-warnings=0",
     "test": "node tools/run-tests.mjs",
     "verify": "npm run lint && npm test",
     "clean": "rimraf dist node_modules/.cache",

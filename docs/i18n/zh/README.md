@@ -1,6 +1,10 @@
 # Frieve EffeTune <img src="../../../images/icon_64x64.png" alt="EffeTune Icon" width="30" height="30" align="bottom">
 
-[打开 Web App](https://effetune.frieve.com/effetune.html)  [下载桌面应用](https://github.com/Frieve-A/effetune/releases/)
+<div class="doc-primary-actions" aria-label="主要操作">
+  <a class="button button-primary" href="https://effetune.frieve.com/effetune.html">打开 Web App</a>
+  <install class="button button-secondary"><a href="https://effetune.frieve.com/effetune.html">安装 PWA 版</a></install>
+  <a class="button button-secondary" href="https://github.com/Frieve-A/effetune/releases/">下载桌面应用</a>
+</div>
 
 一个实时音频效果处理器，旨在为音频爱好者提升音乐聆听体验。EffeTune 允许您通过各种高质量效果处理任何音频源，从而实时定制并完善您的聆听体验。
 

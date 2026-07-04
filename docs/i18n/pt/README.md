@@ -1,6 +1,10 @@
 # Frieve EffeTune <img src="../../../images/icon_64x64.png" alt="EffeTune Icon" width="30" height="30" align="bottom">
 
-[Abrir Web App](https://effetune.frieve.com/effetune.html)  [Baixar Desktop App](https://github.com/Frieve-A/effetune/releases/)
+<div class="doc-primary-actions" aria-label="Ações principais">
+  <a class="button button-primary" href="https://effetune.frieve.com/effetune.html">Abrir Web App</a>
+  <install class="button button-secondary"><a href="https://effetune.frieve.com/effetune.html">Instalar versão PWA</a></install>
+  <a class="button button-secondary" href="https://github.com/Frieve-A/effetune/releases/">Baixar Desktop App</a>
+</div>
 
 Um processador de efeitos de áudio em tempo real, projetado para entusiastas do áudio aprimorarem sua experiência de escuta. EffeTune permite que você processe qualquer fonte de áudio através de vários efeitos de alta qualidade, possibilitando personalizar e aperfeiçoar sua experiência de escuta em tempo real.
 

@@ -1,6 +1,10 @@
 # Frieve EffeTune <img src="../../../images/icon_64x64.png" alt="EffeTune Icon" width="30" height="30" align="bottom">
 
-🔗[**웹 앱 열기**](https://effetune.frieve.com/effetune.html)  🔗[**데스크톱 앱 다운로드**](https://github.com/Frieve-A/effetune/releases/)
+<div class="doc-primary-actions" aria-label="주요 작업">
+  <a class="button button-primary" href="https://effetune.frieve.com/effetune.html">웹 앱 열기</a>
+  <install class="button button-secondary"><a href="https://effetune.frieve.com/effetune.html">PWA 버전 설치</a></install>
+  <a class="button button-secondary" href="https://github.com/Frieve-A/effetune/releases/">데스크톱 앱 다운로드</a>
+</div>
 
 음악 애호가들을 위해 설계된 실시간 오디오 이펙트 프로세서입니다.
 EffeTune은 다양한 고품질 이펙트를 통해 모든 오디오 소스를 처리할 수 있으며, 이를 통해 실시간으로 자신만의 청취 환경을 맞춤 설정하고 완벽하게 조정할 수 있습니다.

@@ -74,7 +74,14 @@ To debug the web version in a browser with no-cache dynamic loading for plugins:
 npm run dev
 ```
 
-Then open `http://localhost:8000/effetune.html` or `http://localhost:8000/dev/effetune_test.html`.
+Then open:
+
+- `http://localhost:8000/effetune.html` for the web app
+- `http://localhost:8000/` for the local documentation site home
+- `http://localhost:8000/docs/i18n/ja/` for a localized documentation page
+- `http://localhost:8000/dev/effetune_test.html` for the development test page
+
+The development server renders the documentation Markdown locally with the site layout, so the public site structure can be checked without running Jekyll separately.
 
 ## Building the Application
 

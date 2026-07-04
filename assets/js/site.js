@@ -27,6 +27,7 @@
 
   setupLanguageControls(preferredLanguage);
   redirectToPreferredLanguage(preferredLanguage);
+  setupInstallElements();
 
   const currentPath = normalizePath(window.location.pathname);
   document.querySelectorAll("a[href]").forEach((link) => {
@@ -269,6 +270,71 @@
     if (navToggle) {
       navToggle.setAttribute("aria-expanded", "false");
     }
+  }
+
+  function setupInstallElements() {
+    const installElements = Array.from(document.querySelectorAll("install"));
+    if (installElements.length === 0) return;
+
+    registerSiteServiceWorker();
+    if ("HTMLInstallElement" in window) return;
+
+    let deferredInstallPrompt = null;
+
+    window.addEventListener("beforeinstallprompt", (event) => {
+      event.preventDefault();
+      deferredInstallPrompt = event;
+      installElements.forEach((element) => element.classList.add("is-install-available"));
+    });
+
+    window.addEventListener("appinstalled", () => {
+      deferredInstallPrompt = null;
+      installElements.forEach((element) => element.classList.remove("is-install-available"));
+    });
+
+    installElements.forEach((element) => {
+      element.addEventListener("click", async (event) => {
+        if (!deferredInstallPrompt) return;
+
+        event.preventDefault();
+        const promptEvent = deferredInstallPrompt;
+        deferredInstallPrompt = null;
+        installElements.forEach((item) => item.classList.remove("is-install-available"));
+
+        try {
+          await promptEvent.prompt();
+          await promptEvent.userChoice;
+        } catch (_error) {
+          // The fallback link remains available when the browser cannot show a prompt.
+        }
+      });
+    });
+  }
+
+  function registerSiteServiceWorker() {
+    if (window.EFFECTUNE_DEV_SERVER === true) return;
+    if (!navigator.serviceWorker || !/^https?:$/.test(window.location.protocol)) return;
+
+    const register = () => {
+      navigator.serviceWorker.register(getServiceWorkerUrl()).catch((error) => {
+        console.warn("Service worker registration failed:", error);
+      });
+    };
+
+    if (document.readyState === "complete") {
+      register();
+    } else {
+      window.addEventListener("load", register, { once: true });
+    }
+  }
+
+  function getServiceWorkerUrl() {
+    const manifestLink = document.querySelector('link[rel="manifest"][href]');
+    if (manifestLink) {
+      return new URL("sw.js", manifestLink.href).href;
+    }
+
+    return new URL("/sw.js", window.location.origin).href;
   }
 
   function loadDocSearchIndex() {
