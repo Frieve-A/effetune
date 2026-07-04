@@ -100,6 +100,7 @@ function cacheBustLocalAsset(assetUrl) {
     assetUrl.startsWith('#') ||
     assetUrl.startsWith('data:') ||
     assetUrl.startsWith('javascript:') ||
+    assetUrl.startsWith('vbscript:') ||
     /^[a-z][a-z0-9+.-]*:/i.test(assetUrl)
   ) {
     return assetUrl;
