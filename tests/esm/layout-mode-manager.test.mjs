@@ -43,12 +43,25 @@ function createMatchMedia(matches = false) {
   return query;
 }
 
-test('LayoutModeManager applies mobile and desktop body classes', () => {
+function createWindow(queries) {
+  return {
+    matchMedia(queryString) {
+      return queries[queryString];
+    }
+  };
+}
+
+test('LayoutModeManager applies mobile and desktop body classes when installed', () => {
   const classList = createClassList();
   const rootClassList = createClassList();
   const query = createMatchMedia(true);
+  // Installed (standalone) so the layout follows the width media query.
+  const installedQuery = createMatchMedia(true);
   const manager = new LayoutModeManager({
-    windowRef: { matchMedia: () => query },
+    windowRef: createWindow({
+      '(max-width: 1158px)': query,
+      '(display-mode: standalone)': installedQuery
+    }),
     documentRef: { body: { classList }, documentElement: { classList: rootClassList } }
   });
 
@@ -72,6 +85,55 @@ test('LayoutModeManager applies mobile and desktop body classes', () => {
 
   manager.dispose();
   assert.equal(query.listenerCount(), 0);
+  assert.equal(installedQuery.listenerCount(), 0);
+});
+
+test('LayoutModeManager stays width-driven even when the PWA is not installed', () => {
+  const classList = createClassList();
+  const rootClassList = createClassList();
+  // Wide viewport and not installed -> desktop layout.
+  const query = createMatchMedia(false);
+  const installedQuery = createMatchMedia(false);
+  const manager = new LayoutModeManager({
+    windowRef: createWindow({
+      '(max-width: 1158px)': query,
+      '(display-mode: standalone)': installedQuery
+    }),
+    documentRef: { body: { classList }, documentElement: { classList: rootClassList } }
+  });
+
+  assert.equal(manager.isInstalled, false);
+  assert.equal(manager.mode, 'desktop');
+  assert.equal(classList.contains('layout-desktop'), true);
+
+  // Narrowing the viewport still switches to mobile.
+  const modes = [];
+  manager.onChange(mode => modes.push(mode));
+  query.setMatches(true);
+
+  assert.deepEqual(modes, ['mobile']);
+  assert.equal(manager.mode, 'mobile');
+  assert.equal(classList.contains('layout-mobile'), true);
+
+  manager.dispose();
+});
+
+test('LayoutModeManager treats iOS standalone launches as installed', () => {
+  const classList = createClassList();
+  const query = createMatchMedia(false);
+  const installedQuery = createMatchMedia(false);
+  const windowRef = createWindow({
+    '(max-width: 1158px)': query,
+    '(display-mode: standalone)': installedQuery
+  });
+  windowRef.navigator = { standalone: true };
+  const manager = new LayoutModeManager({
+    windowRef,
+    documentRef: { body: { classList } }
+  });
+
+  assert.equal(manager.isInstalled, true);
+  assert.equal(manager.mode, 'desktop');
 });
 
 test('LayoutModeManager keeps Electron in desktop mode', () => {

@@ -350,6 +350,7 @@ class ModalResonatorPlugin extends PluginBase {
 
         const tabsContainer = document.createElement('div');
         tabsContainer.className = 'modal-resonator-tabs';
+        tabsContainer.style.flexWrap = 'wrap';
 
         const contentContainer = document.createElement('div');
 

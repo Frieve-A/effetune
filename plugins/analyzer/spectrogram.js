@@ -59,6 +59,9 @@ class SpectrogramPlugin extends PluginBase {
         this.registerProcessor(SpectrogramPlugin.processorFunction);
 
         this.observer = null;
+        this.resizeGraphDisposer = null;
+        this.graphDpr = 1;
+        this.graphCssWidth = 1024;
     }
 
     // Processor function as a string (runs in separate context)
@@ -355,6 +358,10 @@ class SpectrogramPlugin extends PluginBase {
         if (this.observer) {
             this.observer.disconnect();
         }
+        if (this.resizeGraphDisposer) {
+            this.resizeGraphDisposer();
+            this.resizeGraphDisposer = null;
+        }
         const container = document.createElement('div');
         container.className = 'plugin-parameter-ui';
 
@@ -396,12 +403,20 @@ class SpectrogramPlugin extends PluginBase {
         pointsRow.appendChild(pointsLabel); pointsRow.appendChild(pointsSlider); pointsRow.appendChild(pointsValue);
         container.appendChild(pointsRow);
 
-        const { container: graphContainer, canvas } = this.createGraphContainer({
+        const { container: graphContainer, canvas, dispose } = this.createResponsiveGraph({
             maxWidth: 1024,
-            canvasWidth: 2048,
-            canvasHeight: 960
+            aspectRatio: '32 / 15',
+            mobileAspectRatio: '4 / 3',
+            onResize: ({ canvas, cssWidth, dpr }) => {
+                this.canvas = canvas;
+                this.graphCssWidth = cssWidth;
+                this.graphDpr = dpr;
+                this.canvasCtx = canvas.getContext('2d', { alpha: false });
+                this.drawGraph();
+            }
         });
         this.canvas = canvas;
+        this.resizeGraphDisposer = dispose;
         this.canvasCtx = this.canvas.getContext('2d', { alpha: false });
 
         this.tempCanvas = document.createElement('canvas');
@@ -421,14 +436,47 @@ class SpectrogramPlugin extends PluginBase {
         return container;
     }
 
-    handleIntersect(entries) { /* ... (same as original) ... */ entries.forEach(entry => {this.isVisible = entry.isIntersecting; if (this.isVisible) {this.startAnimation();} else {this.stopAnimation();}}); }
-    startAnimation() { /* ... (same as original) ... */ if (this.animationFrameId) return; if (!this.enabled || !this._sectionEnabled) return; const animate = () => {if (!this.isVisible) {this.stopAnimation(); return;} this.drawGraph(); this.animationFrameId = requestAnimationFrame(animate);}; animate(); }
-    stopAnimation() { /* ... (same as original) ... */ if (this.animationFrameId) {cancelAnimationFrame(this.animationFrameId); this.animationFrameId = null;} }
-    cleanup() { /* ... (mostly same, ensure listeners are correctly removed if stored differently) ... */
+    handleIntersect(entries) {
+        entries.forEach(entry => {
+            this.isVisible = entry.isIntersecting;
+            if (this.isVisible) {
+                this.startAnimation();
+            } else {
+                this.stopAnimation();
+            }
+        });
+    }
+
+    startAnimation() {
+        if (this.animationFrameId) return;
+        if (!this.enabled || !this._sectionEnabled) return;
+        const animate = () => {
+            if (!this.isVisible) {
+                this.stopAnimation();
+                return;
+            }
+            this.drawGraph();
+            this.animationFrameId = requestAnimationFrame(animate);
+        };
+        animate();
+    }
+
+    stopAnimation() {
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+    }
+
+    cleanup() {
         this.stopAnimation();
         if (this.observer && this.canvas) {
             this.observer.unobserve(this.canvas);
             this.observer.disconnect();
+        }
+        if (this.resizeGraphDisposer) {
+            this.resizeGraphDisposer();
+            this.resizeGraphDisposer = null;
         }
         this.boundEventListeners.forEach((listener, element) => {
             element.removeEventListener('input', listener);
@@ -440,7 +488,7 @@ class SpectrogramPlugin extends PluginBase {
         this.canvasCtx = null;
         this.canvas = null;
         this.imageDataCache = null;
-        this.spectrogramBuffer = null; /* etc. */
+        this.spectrogramBuffer = null;
         this.observer = null;
         this.secondMarkers = [];
         this.prevTime = null;
@@ -453,7 +501,15 @@ class SpectrogramPlugin extends PluginBase {
         const normalizedValue = (db - this.dr) / (-this.dr); // this.dr is negative
         const clampedValue = Math.max(0, Math.min(1, normalizedValue));
         
-        const colorStops = [ /* ... (same as original color stops) ... */ { pos: 0.000, r: 0,   g: 0,   b: 0 },{ pos: 0.166, r: 0,   g: 0,   b: 255 },{ pos: 0.333, r: 0,   g: 255, b: 255 },{ pos: 0.500, r: 0,   g: 255, b: 0 },{ pos: 0.666, r: 255, g: 255, b: 0 },{ pos: 0.833, r: 255, g: 0,   b: 0 },{ pos: 1.000, r: 255, g: 255, b: 255 }];
+        const colorStops = [
+            { pos: 0.000, r: 0,   g: 0,   b: 0 },
+            { pos: 0.166, r: 0,   g: 0,   b: 255 },
+            { pos: 0.333, r: 0,   g: 255, b: 255 },
+            { pos: 0.500, r: 0,   g: 255, b: 0 },
+            { pos: 0.666, r: 255, g: 255, b: 0 },
+            { pos: 0.833, r: 255, g: 0,   b: 0 },
+            { pos: 1.000, r: 255, g: 255, b: 255 }
+        ];
         let lower = colorStops[0], upper = colorStops[colorStops.length - 1];
         for (let i = 0; i < colorStops.length - 1; i++) {
             if (clampedValue >= colorStops[i].pos && clampedValue <= colorStops[i + 1].pos) {
@@ -475,6 +531,8 @@ class SpectrogramPlugin extends PluginBase {
         const ctx = this.canvasCtx;
         const targetWidth = this.canvas.width;  // Display canvas width
         const targetHeight = this.canvas.height; // Display canvas height
+        const dpr = this.graphDpr || 1;
+        const isNarrow = this.graphCssWidth < 500;
         
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, targetWidth, targetHeight);
@@ -484,7 +542,7 @@ class SpectrogramPlugin extends PluginBase {
         ctx.drawImage(this.tempCanvas, 0, 0, this.tempCanvas.width, this.tempCanvas.height, 0, 0, targetWidth, targetHeight);
 
         ctx.strokeStyle = '#888';
-        ctx.lineWidth = 2; // Thinner than spectrum analyzer grid for less prominence
+        ctx.lineWidth = dpr; // Thinner than spectrum analyzer grid for less prominence
 
         // --- Dynamic Frequency Grid for Spectrogram Y-Axis ---
         const minDisplayFreq = 20;
@@ -493,7 +551,9 @@ class SpectrogramPlugin extends PluginBase {
 
         if (this.sampleRate > 0 && nyquistFreq > minDisplayFreq) {
             // Base frequencies for labels, filter/adjust based on dynamic range
-            let baseGridFreqs = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+            let baseGridFreqs = isNarrow
+                ? [20, 100, 1000, 10000, 20000]
+                : [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
             let gridFreqsToDraw = baseGridFreqs.filter(f => f >= minDisplayFreq && f <= maxDisplayFreq);
             // Ensure min/max are candidates if not present, then sort.
             if (!gridFreqsToDraw.includes(minDisplayFreq) && minDisplayFreq > 0) gridFreqsToDraw.push(minDisplayFreq);
@@ -501,7 +561,7 @@ class SpectrogramPlugin extends PluginBase {
             gridFreqsToDraw = [...new Set(gridFreqsToDraw)].sort((a,b) => a-b);
 
             ctx.fillStyle = '#ccc';
-            ctx.font = '24px Arial'; // Consistent font size
+            ctx.font = `${(isNarrow ? 11 : 12) * dpr}px Arial`; // Consistent font size
             ctx.textAlign = 'right';
 
             gridFreqsToDraw.forEach(freq => {
@@ -517,28 +577,28 @@ class SpectrogramPlugin extends PluginBase {
                 ctx.stroke();
                 
                 // Draw label, avoid edges
-                if (yDrawPos > 15 && yDrawPos < targetHeight - 15) {
-                     ctx.fillText(freq >= 1000 ? `${Math.round(freq / 100)/10}k` : freq.toString(), 160, yDrawPos + 6); // Adjust offset
+                if (yDrawPos > 15 * dpr && yDrawPos < targetHeight - 15 * dpr) {
+                     ctx.fillText(freq >= 1000 ? `${Math.round(freq / 100)/10}k` : freq.toString(), (isNarrow ? 46 : 80) * dpr, yDrawPos + (6 * dpr)); // Adjust offset
                 }
             });
         }
 
         // Draw 1-second markers
         ctx.strokeStyle = '#888';
-        ctx.lineWidth = 4;
+        ctx.lineWidth = 2 * dpr;
         for (const idx of this.secondMarkers) {
             const x = targetWidth * idx / 1024;
             ctx.beginPath();
-            ctx.moveTo(x, targetHeight - 16);
+            ctx.moveTo(x, targetHeight - (16 * dpr));
             ctx.lineTo(x, targetHeight);
             ctx.stroke();
         }
 
         // Draw axis labels
-        ctx.fillStyle = '#fff'; ctx.font = '28px Arial'; ctx.textAlign = 'center';
-        ctx.fillText('Time', targetWidth / 2, targetHeight - 10);
+        ctx.fillStyle = '#fff'; ctx.font = `${(isNarrow ? 13 : 14) * dpr}px Arial`; ctx.textAlign = 'center';
+        ctx.fillText('Time', targetWidth / 2, targetHeight - (8 * dpr));
         ctx.save();
-        ctx.translate(40, targetHeight / 2); ctx.rotate(-Math.PI / 2);
+        ctx.translate((isNarrow ? 18 : 20) * dpr, targetHeight / 2); ctx.rotate(-Math.PI / 2);
         ctx.fillText('Frequency (Hz)', 0, 0);
         ctx.restore();
     }

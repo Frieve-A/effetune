@@ -128,9 +128,34 @@ body.layout-mobile .earphone-cable-sim-plugin-ui .earphone-cable-sim-row-label {
 }
 
 body.layout-mobile .earphone-cable-sim-plugin-ui .earphone-cable-sim-row-input {
-    flex: 0 0 48px;
-    width: 48px;
-    min-width: 48px;
-    max-width: 48px;
+    flex: 0 0 80px;
+    width: 80px;
+    min-width: 80px;
+    max-width: 80px;
     margin-left: auto;
+    box-sizing: border-box;
+    height: 40px;
+    min-height: 40px;
+    font-size: 16px;
+}
+
+body.layout-mobile .earphone-cable-sim-plugin-ui .earphone-cable-sim-graph {
+    aspect-ratio: 1024 / 480;
+    height: auto !important;
+}
+
+body.layout-mobile .earphone-cable-sim-plugin-ui .earphone-cable-sim-amp,
+body.layout-mobile .earphone-cable-sim-plugin-ui .earphone-cable-sim-controls {
+    width: 100% !important;
+    box-sizing: border-box;
+}
+
+body.layout-mobile .earphone-cable-sim-plugin-ui .earphone-cable-sim-controls {
+    flex-wrap: wrap;
+}
+
+body.layout-mobile .earphone-cable-sim-plugin-ui .earphone-cable-sim-res {
+    flex: 1 1 150px;
+    width: auto;
+    min-width: 150px;
 }

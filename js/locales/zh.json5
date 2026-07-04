@@ -148,6 +148,7 @@
   "menu.settings": "设置",
   "menu.settings.config": "配置...",
   "menu.settings.audioDevices": "音频设备…",
+  "menu.settings.install": "安装应用",
   "menu.settings.performanceBenchmark": "性能基准测试",
   "menu.settings.frequencyResponseMeasurement": "频率响应测量",
 

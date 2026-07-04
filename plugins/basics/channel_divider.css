@@ -4,12 +4,11 @@
 }
 
 .channel-divider-plugin-ui canvas {
-  margin: 10px auto;
   display: block;
   background: #222;
 }
 
-.channel-divider-plugin-ui label {
+.channel-divider-plugin-ui > .parameter-row > label {
   min-width: 120px;
 }
 
@@ -106,10 +105,14 @@ body.layout-mobile .plugin-parameter-ui .channel-divider-frequency-slider-top > 
 }
 
 body.layout-mobile .plugin-parameter-ui .channel-divider-frequency-slider-top > input[type="number"] {
-  flex: 0 0 70px;
-  width: 70px;
-  min-width: 70px;
-  max-width: 70px;
+  flex: 0 0 80px;
+  width: 80px;
+  min-width: 80px;
+  max-width: 80px;
+  box-sizing: border-box;
+  height: 40px;
+  min-height: 40px;
+  font-size: 16px;
 }
 
 body.layout-mobile .plugin-parameter-ui .channel-divider-frequency-slider-top > .slope-select {
@@ -117,6 +120,24 @@ body.layout-mobile .plugin-parameter-ui .channel-divider-frequency-slider-top > 
   width: 90px;
   min-width: 90px;
   max-width: 90px;
+}
+
+body.layout-mobile .channel-divider-frequency-sliders {
+  flex-wrap: wrap;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+body.layout-mobile .channel-divider-frequency-slider {
+  flex: 1 1 var(--et-mobile-effect-slider-basis);
+  min-width: var(--et-mobile-effect-slider-min-width);
+}
+
+body.layout-mobile .channel-divider-frequency-slider-top {
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .channel-divider-slope-row {
@@ -167,8 +188,15 @@ body.layout-mobile .plugin-parameter-ui .channel-divider-frequency-slider-top > 
   margin: 15px 0;
 }
 
-.channel-divider-graph-container canvas {
+.channel-divider-graph-container .graph-container {
   margin: 10px auto;
+}
+
+.channel-divider-graph-container canvas {
   display: block;
   background: #222;
+}
+
+.channel-divider-graph-container .responsive-graph-container canvas {
+  margin: 0;
 }

@@ -9,6 +9,7 @@
 .multiband-expander-frequency-sliders {
     display: flex;
     flex-direction: row;
+    flex-wrap: wrap;
     gap: 10px;
     padding: 10px;
     background: #2d2d2d;
@@ -16,7 +17,7 @@
 }
 
 .multiband-expander-frequency-slider {
-    flex: 1;
+    flex: 1 1 180px;
     display: flex;
     flex-direction: column;
     gap: 5px;
@@ -39,6 +40,7 @@
 
 .multiband-expander-band-tabs {
     display: flex;
+    flex-wrap: wrap;
     gap: 2px;
     margin-bottom: 20px;
 }
@@ -67,6 +69,7 @@
 /* Gain boost graphs area */
 .multiband-expander-graphs {
     display: flex;
+    flex-wrap: wrap;
     gap: 10px;
     justify-content: space-between;
     padding: 10px;
@@ -75,7 +78,7 @@
 }
 
 .multiband-expander-band-graph {
-    flex: 1;
+    flex: 1 1 150px;
     position: relative;
     background: #222;
     border-radius: 4px;
@@ -91,7 +94,62 @@
     display: block;
 }
 
+.multiband-expander-transfer-graph {
+    margin: 0 auto;
+}
+
 .multiband-expander-band-graph-label {
     text-align: center;
     margin-top: 5px;
+}
+
+body.layout-mobile .multiband-expander-container,
+body.layout-mobile .multiband-expander-band-settings {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    overflow-x: clip;
+}
+
+body.layout-mobile .multiband-expander-graphs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+body.layout-mobile .multiband-expander-band-graph {
+    flex: 0 1 calc(50% - 5px);
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+body.layout-mobile .multiband-expander-band-tabs {
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+body.layout-mobile .multiband-expander-band-tab {
+    flex: 1 1 56px;
+    min-width: 0;
+    min-height: 40px;
+}
+
+body.layout-mobile .multiband-expander-frequency-sliders {
+    flex-wrap: wrap;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+body.layout-mobile .multiband-expander-frequency-slider {
+    flex: 1 1 var(--et-mobile-effect-slider-basis);
+    min-width: var(--et-mobile-effect-slider-min-width);
+}
+
+body.layout-mobile .multiband-expander-frequency-slider-top {
+    flex-wrap: wrap;
+    gap: 4px;
 }

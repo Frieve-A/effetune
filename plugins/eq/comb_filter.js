@@ -145,14 +145,15 @@ class CombFilterPlugin extends PluginBase {
         container.className = "comb-filter-plugin-ui plugin-parameter-ui";
 
         // Create graph container and canvas
-        const graphContainer = document.createElement("div");
-        graphContainer.style.position = "relative";
-        const canvas = document.createElement("canvas");
-        canvas.width = 1200;
-        canvas.height = 480;
-        canvas.style.width = "600px";
-        canvas.style.height = "240px";
-        graphContainer.appendChild(canvas);
+        const { container: graphContainer, canvas } = this.createResponsiveGraph({
+            maxWidth: 600,
+            aspectRatio: "5 / 2",
+            mobileAspectRatio: "2 / 1",
+            className: "comb-filter-graph",
+            onResize: ({ canvas }) => this.drawGraph(canvas)
+        });
+        graphContainer.style.margin = "10px auto";
+        canvas.style.margin = "0 auto";
 
         // Create Fundamental Frequency row
         const freqRow = this.createParameterControl("Fundamental Frequency", 20, 20000, 1, this.ff,
@@ -244,12 +245,20 @@ class CombFilterPlugin extends PluginBase {
 
     drawGraph(canvas) {
         const ctx = canvas.getContext("2d");
-        const width = canvas.width, height = canvas.height;
+        const rect = canvas.getBoundingClientRect();
+        const cssWidth = rect.width || canvas.clientWidth || canvas.width;
+        const cssHeight = rect.height || canvas.clientHeight || canvas.height;
+        const dpr = canvas.width / cssWidth || 1;
+        const width = Math.max(1, Math.round(cssWidth));
+        const height = Math.max(1, Math.round(cssHeight));
+        const isMobileLayout = typeof document !== 'undefined' && document.body && document.body.classList.contains('layout-mobile');
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, width, height);
 
         // Draw grid (same as Band Pass Filter)
         ctx.strokeStyle = "#444";
-        ctx.lineWidth = 1;
+        ctx.lineWidth = isMobileLayout ? 1 : 0.5;
+        ctx.font = "12px Arial";
         const freqs = [2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
         freqs.forEach(freq => {
             const x = width * (Math.log10(freq) - Math.log10(1)) / (Math.log10(40000) - Math.log10(1));
@@ -259,9 +268,8 @@ class CombFilterPlugin extends PluginBase {
             ctx.stroke();
             if (freq >= 1 && freq <= 40000) {
                 ctx.fillStyle = "#666";
-                ctx.font = "20px Arial";
                 ctx.textAlign = "center";
-                ctx.fillText(freq >= 1000 ? `${freq/1000}k` : freq, x, height - 40);
+                ctx.fillText(freq >= 1000 ? `${freq/1000}k` : freq, x, height - 24);
             }
         });
         const dBs = [-24, -18, -12, -6, 0, 6, 12, 18, 24];
@@ -273,17 +281,16 @@ class CombFilterPlugin extends PluginBase {
             ctx.stroke();
             if (db > -24 && db < 24) {
                 ctx.fillStyle = "#666";
-                ctx.font = "20px Arial";
                 ctx.textAlign = "right";
-                ctx.fillText(`${db}dB`, 80, y + 6);
+                ctx.fillText(`${db}dB`, 48, y + 4);
             }
         });
         ctx.fillStyle = "#fff";
-        ctx.font = "24px Arial";
+        ctx.font = "14px Arial";
         ctx.textAlign = "center";
         ctx.fillText("Frequency (Hz)", width / 2, height - 5);
         ctx.save();
-        ctx.translate(20, height / 2);
+        ctx.translate(14, height / 2);
         ctx.rotate(-Math.PI / 2);
         ctx.fillText("Level (dB)", 0, 0);
         ctx.restore();
@@ -301,7 +308,7 @@ class CombFilterPlugin extends PluginBase {
         
         ctx.beginPath();
         ctx.strokeStyle = "#00ff00";
-        ctx.lineWidth = 2;
+        ctx.lineWidth = isMobileLayout ? 2 : 1;
         
         for (let i = 0; i < width; i++) {
             const freq = Math.pow(10, Math.log10(1) + (i / width) * (Math.log10(40000) - Math.log10(1)));
@@ -339,7 +346,7 @@ class CombFilterPlugin extends PluginBase {
         const markerX = width * (Math.log10(effectiveFreq) - Math.log10(1)) / (Math.log10(40000) - Math.log10(1));
         if (markerX >= 0 && markerX <= width) {
             ctx.strokeStyle = "#ff0000";
-            ctx.lineWidth = 2;
+            ctx.lineWidth = isMobileLayout ? 2 : 1;
             ctx.setLineDash([5, 5]);
             ctx.beginPath();
             ctx.moveTo(markerX, 0);
@@ -349,12 +356,12 @@ class CombFilterPlugin extends PluginBase {
             
             // Label the fundamental frequency and delay distance (larger text for 1/2 resolution)
             ctx.fillStyle = "#ff0000";
-            ctx.font = "24px Arial";
+            ctx.font = "13px Arial";
             ctx.textAlign = "center";
-            ctx.fillText(`${effectiveFreq.toFixed(1)} Hz`, markerX, 60);
-            ctx.fillText(`${delayDistanceMm.toFixed(1)} mm`, markerX, 85);
+            ctx.fillText(`${effectiveFreq.toFixed(1)} Hz`, markerX, 30);
+            ctx.fillText(`${delayDistanceMm.toFixed(1)} mm`, markerX, 46);
         }
     }
 }
 
-window.CombFilterPlugin = CombFilterPlugin; 
+window.CombFilterPlugin = CombFilterPlugin;

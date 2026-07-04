@@ -15,6 +15,7 @@ class TransientShaperPlugin extends PluginBase {
         this.canvasCtx = null;
         this.boundEventListeners = new Map();
         this.animationFrameId = null;
+        this.graphResizeDispose = null;
 
         // Gain history buffer (1024 points) initialized with NaN so that no initial bottom line is drawn
         this.gainBuffer = new Float32Array(1024).fill(NaN);
@@ -186,6 +187,16 @@ class TransientShaperPlugin extends PluginBase {
         const ctx = this.canvasCtx;
         const width = this.canvas.width;
         const height = this.canvas.height;
+        const cssWidth = this.canvas.clientWidth || width;
+        const dpr = cssWidth > 0 ? width / cssWidth : 1;
+        const tickFontSize = 12 * dpr;
+        const axisFontSize = 14 * dpr;
+        const labelX = 80 * dpr;
+        const axisX = 20 * dpr;
+        const tickOffset = 6 * dpr;
+        const bottomOffset = 5 * dpr;
+        const isMobileLayout = typeof document !== 'undefined' && document.body && document.body.classList.contains('layout-mobile');
+        const graphLineWidth = (isMobileLayout ? 2 : 1) * dpr;
 
         // Clear canvas
         ctx.fillStyle = '#1a1a1a';
@@ -193,9 +204,9 @@ class TransientShaperPlugin extends PluginBase {
 
         // Draw grid lines and labels
         ctx.strokeStyle = '#333';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = graphLineWidth;
         ctx.textAlign = 'right';
-        ctx.font = '24px Arial';
+        ctx.font = `${tickFontSize}px Arial`;
         ctx.fillStyle = '#ccc';
 
         // Draw horizontal grid lines (6dB steps from -24dB to +24dB)
@@ -205,35 +216,35 @@ class TransientShaperPlugin extends PluginBase {
             ctx.moveTo(0, y);
             ctx.lineTo(width, y);
             ctx.stroke();
-            ctx.fillText(`${db}`, 160, y + 12);
+            ctx.fillText(`${db}`, labelX, y + tickOffset);
         }
 
         // Draw axis labels
         ctx.save();
-        ctx.font = '28px Arial';
-        ctx.translate(40, height / 2);
+        ctx.font = `${axisFontSize}px Arial`;
+        ctx.translate(axisX, height / 2);
         ctx.rotate(-Math.PI / 2);
         ctx.textAlign = 'center';
         ctx.fillText('Gain (dB)', 0, 0);
         ctx.restore();
 
         ctx.textAlign = 'center';
-        ctx.fillText('Time', width / 2, height - 10);
+        ctx.fillText('Time', width / 2, height - bottomOffset);
 
         // Draw 1-second markers
         ctx.strokeStyle = '#555';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = graphLineWidth;
         for (const idx of this.secondMarkers) {
             const x = width * idx / this.gainBuffer.length;
             ctx.beginPath();
-            ctx.moveTo(x, height - 16);
+            ctx.moveTo(x, height - (8 * dpr));
             ctx.lineTo(x, height);
             ctx.stroke();
         }
 
         // Draw gain history; skip segments with NaN values
         ctx.strokeStyle = '#00ff00';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = graphLineWidth;
         ctx.beginPath();
         let started = false;
         for (let i = 0; i < this.gainBuffer.length; i++) {
@@ -256,6 +267,11 @@ class TransientShaperPlugin extends PluginBase {
     createUI() {
         if (this.observer) {
             this.observer.disconnect();
+            this.observer = null;
+        }
+        if (this.graphResizeDispose) {
+            this.graphResizeDispose();
+            this.graphResizeDispose = null;
         }
         const container = document.createElement('div');
         container.className = 'transient-shaper-plugin-ui plugin-parameter-ui';
@@ -268,18 +284,20 @@ class TransientShaperPlugin extends PluginBase {
         container.appendChild(this.createParameterControl('Sustain Gain', -24, 24, 0.1, this.gs, this.setGs.bind(this), 'dB'));
         container.appendChild(this.createParameterControl('Smoothing', 0.1, 20.0, 0.1, this.sm, this.setSm.bind(this), 'ms'));
 
-        // Create graph container
-        const graphContainer = document.createElement('div');
-        graphContainer.className = 'transient-shaper-graph';
-        
-        // Create canvas with same resolution as spectrogram
-        this.canvas = document.createElement('canvas');
-        this.canvas.width = 2048;
-        this.canvas.height = 300;
-        graphContainer.appendChild(this.canvas);
-
-        // Initialize canvas context
-        this.canvasCtx = this.canvas.getContext('2d');
+        const { container: graphContainer, canvas, dispose } = this.createResponsiveGraph({
+            maxWidth: 2048,
+            aspectRatio: '2048 / 300',
+            mobileAspectRatio: '2.5 / 1',
+            className: 'transient-shaper-graph',
+            onResize: ({ canvas }) => {
+                this.canvas = canvas;
+                this.canvasCtx = canvas.getContext('2d');
+                this.drawGraph();
+            }
+        });
+        this.canvas = canvas;
+        this.canvasCtx = canvas.getContext('2d');
+        this.graphResizeDispose = dispose;
         
         container.appendChild(graphContainer);
         
@@ -306,6 +324,10 @@ class TransientShaperPlugin extends PluginBase {
         this.boundEventListeners.clear();
 
         // Release canvas resources
+        if (this.graphResizeDispose) {
+            this.graphResizeDispose();
+            this.graphResizeDispose = null;
+        }
         if (this.canvas) {
             this.canvas.width = 0;
             this.canvas.height = 0;

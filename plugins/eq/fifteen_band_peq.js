@@ -324,6 +324,37 @@ class FifteenBandPEQPlugin extends PluginBase {
     }
   }
 
+  getNearestBandIndexForGraphPoint(clientX, clientY, container = this.graphContainer) {
+    if (!container || typeof clientX !== 'number' || typeof clientY !== 'number') {
+      return this.currentBandIndex;
+    }
+
+    const plotArea = this.getGraphPlotArea(container);
+    if (!plotArea.width || !plotArea.height) return this.currentBandIndex;
+
+    let nearestBand = 0;
+    let nearestDistance = Infinity;
+    for (let i = 0; i < 15; i++) {
+      const x = plotArea.left + (this.freqToX(this['f' + i]) / 100) * plotArea.width;
+      const y = plotArea.top + (this.gainToY(this['g' + i]) / 100) * plotArea.height;
+      const dx = clientX - x;
+      const dy = clientY - y;
+      const distance = dx * dx + dy * dy;
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestBand = i;
+      }
+    }
+
+    return nearestBand;
+  }
+
+  selectNearestBandFromGraphPoint(clientX, clientY, container = this.graphContainer) {
+    const bandIndex = this.getNearestBandIndexForGraphPoint(clientX, clientY, container);
+    this.selectBand(bandIndex);
+    return bandIndex;
+  }
+
   updateUI() {
     // Update tab active states
     if (this.bandTabs) {
@@ -483,9 +514,16 @@ class FifteenBandPEQPlugin extends PluginBase {
       
       // Improved drag and drop implementation with simplification
       const handleDragStart = (clientX, clientY) => {
-        this.activeDragMarker = i;
-        marker.classList.add('active');
-        this.selectBand(i);
+        // On mobile the enlarged hit areas of neighboring markers overlap, so
+        // resolve the grabbed band from the pointer position instead of the
+        // marker element that happened to receive the event.
+        const bandIndex = window.uiManager?.layoutMode?.isMobile
+          ? this.getNearestBandIndexForGraphPoint(clientX, clientY, graphContainer)
+          : i;
+        this.activeDragMarker = bandIndex;
+        const targetMarker = this.markers?.[bandIndex] || marker;
+        targetMarker.classList.add('active');
+        this.selectBand(bandIndex);
 
         // Store initial position but don't update marker position on mousedown
         this.initialDragX = clientX;
@@ -501,15 +539,17 @@ class FifteenBandPEQPlugin extends PluginBase {
           clientX: e.clientX,
           clientY: e.clientY,
           targetContainer: graphContainer,
-          targetBand: i
+          targetBand: this.activeDragMarker
         }),
         onDragEnd: () => this.handleDragEnd(),
-        onTap: () => {
+        onTap: (e) => {
           if (suppressTapUntil && now() < suppressTapUntil) {
             suppressTapUntil = 0;
             return;
           }
-          if (window.uiManager?.layoutMode?.isMobile) this.toggleBandEnabled(i);
+          if (window.uiManager?.layoutMode?.isMobile) {
+            this.selectNearestBandFromGraphPoint(e.clientX, e.clientY, graphContainer);
+          }
           else this.selectBand(i);
         }
       });
@@ -938,30 +978,32 @@ class FifteenBandPEQPlugin extends PluginBase {
   updateMarkers() {
     if (!this.markers || !this.graphContainer || !this.uiCreated) return; // Check if UI is created
     const plotArea = this.getGraphPlotArea();
+    const graphWidth = this.graphContainer.clientWidth;
+    const graphHeight = this.graphContainer.clientHeight;
+    if (graphWidth === 0 || graphHeight === 0) return;
+    const labelItems = [];
     for (let i = 0; i < 15; i++) {
       const marker = this.markers[i]; if (!marker) continue;
       const freq = this['f' + i]; const gain = this['g' + i]; const enabled = this['e' + i];
       const x = this.freqToX(freq); const y = this.gainToY(gain);
-      const graphWidth = this.graphContainer.clientWidth; const graphHeight = this.graphContainer.clientHeight;
-      if (graphWidth === 0 || graphHeight === 0) continue;
       const xPos = plotArea.leftPercent + (x / 100) * plotArea.widthPercent;
       const yPos = plotArea.topPercent + (y / 100) * plotArea.heightPercent;
       marker.style.left = `${xPos}%`; marker.style.top = `${yPos}%`;
       marker.classList.toggle('disabled', !enabled);
       const markerTextEl = marker.querySelector('.fifteen-band-peq-marker-text'); if (!markerTextEl) continue;
-      const isTop = yPos < 50;
-      
-      // Position marker text (maintain top/bottom position while centering horizontally)
-      markerTextEl.className = `fifteen-band-peq-marker-text ${isTop ? 'bottom' : 'top'}`;
-      markerTextEl.style.textAlign = 'center';
-      markerTextEl.style.left = '50%';
-      markerTextEl.style.transform = 'translateX(-50%)';
-      // Keep top/bottom positioning defined in CSS
-      
+      markerTextEl.className = 'fifteen-band-peq-marker-text';
       const freqDisplayText = freq >= 1000 ? `${(freq/1000).toFixed(1)}k` : freq.toFixed(0); // Adjusted kHz display
       const type = this['t' + i];
       markerTextEl.innerHTML = `${freqDisplayText}Hz${type === 'lp' || type === 'hp' || type === 'bp' || type === 'ap' || type === 'no' ? '' : `<br>${gain.toFixed(1)}dB`}`;
+      labelItems.push({
+        el: markerTextEl,
+        cx: (xPos / 100) * graphWidth,
+        cy: (yPos / 100) * graphHeight
+      });
     }
+    // Scatter the freq/gain labels so they don't overlap markers/each other or
+    // spill outside the graph. Prefer top/bottom placement for this plugin.
+    this.layoutMarkerLabels?.({ items: labelItems, width: graphWidth, height: graphHeight, axis: 'vertical' });
   }
 
   calculateBandResponse(freq, bandFreq, bandGain, bandQ, bandType) {

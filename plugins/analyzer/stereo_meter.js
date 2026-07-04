@@ -11,6 +11,9 @@ class StereoMeterPlugin extends PluginBase {
     this.animationId = null;
     this.animationFrameId = null;
     this.lastDrawTime = 0;
+    this.resizeGraphDisposer = null;
+    this.graphDpr = 1;
+    this.graphCssWidth = 480;
 
     // Sample rate (will be updated from processor parameters)
     this.sampleRate = 44100;
@@ -176,6 +179,10 @@ class StereoMeterPlugin extends PluginBase {
     if (this.observer) {
       this.observer.disconnect();
     }
+    if (this.resizeGraphDisposer) {
+      this.resizeGraphDisposer();
+      this.resizeGraphDisposer = null;
+    }
     const container = document.createElement('div');
     container.className = 'plugin-parameter-ui stereo-meter';
 
@@ -188,14 +195,21 @@ class StereoMeterPlugin extends PluginBase {
     ));
 
     // Create the graph container and canvas.
-    const graphContainer = document.createElement('div');
-    graphContainer.className = 'graph-container';
-
-    this.canvas = document.createElement('canvas');
-    this.canvas.width = 480;
-    this.canvas.height = 480;
+    const graph = this.createResponsiveGraph({
+      maxWidth: 480,
+      aspectRatio: '1 / 1',
+      onResize: ({ canvas, cssWidth, dpr }) => {
+        this.canvas = canvas;
+        this.graphCssWidth = cssWidth;
+        this.graphDpr = dpr;
+        this.ctx = canvas.getContext('2d', { alpha: false });
+        this.drawMeter();
+      }
+    });
+    const graphContainer = graph.container;
+    this.canvas = graph.canvas;
     this.ctx = this.canvas.getContext('2d', { alpha: false });
-    graphContainer.appendChild(this.canvas);
+    this.resizeGraphDisposer = graph.dispose;
 
     container.appendChild(graphContainer);
 
@@ -283,6 +297,8 @@ class StereoMeterPlugin extends PluginBase {
 
     const { ctx, canvas } = this;
     const { width, height } = canvas;
+    const dpr = this.graphDpr || 1;
+    const isNarrow = this.graphCssWidth < 400;
     const centerX = width / 2;
     const centerY = height / 2;
     const size = Math.min(width, height);
@@ -294,7 +310,7 @@ class StereoMeterPlugin extends PluginBase {
 
     // Draw the diamond shape.
     ctx.strokeStyle = '#333';
-    ctx.lineWidth = 1;
+    ctx.lineWidth = dpr;
     ctx.beginPath();
     ctx.moveTo(centerX, centerY - radius);
     ctx.lineTo(centerX + radius, centerY);
@@ -325,10 +341,10 @@ class StereoMeterPlugin extends PluginBase {
 
     // Draw labels.
     ctx.fillStyle = '#666';
-    ctx.font = '14px Arial';
+    ctx.font = `${14 * dpr}px Arial`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const labelOffset = 96;
+    const labelOffset = size * 0.2;
     ctx.fillText('L+', centerX - radius + labelOffset, centerY - radius + labelOffset);
     ctx.fillText('R-', centerX - radius + labelOffset, centerY + radius - labelOffset);
     ctx.fillText('R+', centerX + radius - labelOffset, centerY - radius + labelOffset);
@@ -362,6 +378,8 @@ class StereoMeterPlugin extends PluginBase {
     }
     
     // Batch draw points for each color bucket.
+    const pointSize = (isNarrow ? 2 : 1) * dpr;
+    const pointOffset = pointSize * 0.5;
     for (let g = 0; g < 256; g++) {
       const points = buckets[g];
       if (points.length === 0) continue;
@@ -369,7 +387,7 @@ class StereoMeterPlugin extends PluginBase {
       ctx.fillStyle = this._colorLookup[g];
       ctx.beginPath();
       for (let j = 0; j < points.length; j++) {
-        ctx.rect(points[j].x - 1, points[j].y - 1, 1, 1);
+        ctx.rect(points[j].x - pointOffset, points[j].y - pointOffset, pointSize, pointSize);
       }
       ctx.fill();
     }
@@ -393,7 +411,7 @@ class StereoMeterPlugin extends PluginBase {
     }
     
     ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1;
+    ctx.lineWidth = dpr;
     ctx.beginPath();
     for (let i = 0; i < 360; i++) {
       const rad = i * Math.PI / 180;
@@ -435,7 +453,7 @@ class StereoMeterPlugin extends PluginBase {
     const energyDiff = energyR_dB - energyL_dB;
 
     // Draw the correlation bar on the left edge.
-    const barThickness = 16;
+    const barThickness = 16 * dpr;
     const corrBarHeight = (correlation >= 0 ? correlation : -correlation) * centerY;
     ctx.fillStyle = '#008000';
     if (correlation >= 0) {
@@ -447,19 +465,19 @@ class StereoMeterPlugin extends PluginBase {
     // Draw correlation tick marks and labels.
     ctx.fillStyle = '#808080';
     ctx.strokeStyle = '#808080';
-    ctx.lineWidth = 1;
-    const corrTickX = 2;
+    ctx.lineWidth = dpr;
+    const corrTickX = 2 * dpr;
     const correlationTicks = [0.5, 0, -0.5];
     correlationTicks.forEach(tick => {
       const yTick = centerY - (tick * centerY);
       ctx.beginPath();
-      ctx.moveTo(corrTickX + 16, yTick);
-      ctx.lineTo(corrTickX + 21, yTick);
+      ctx.moveTo(corrTickX + (16 * dpr), yTick);
+      ctx.lineTo(corrTickX + (21 * dpr), yTick);
       ctx.stroke();
-      ctx.font = '12px Arial';
+      ctx.font = `${12 * dpr}px Arial`;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText(tick.toFixed(1), corrTickX + 23, yTick);
+      ctx.fillText(tick.toFixed(1), corrTickX + (23 * dpr), yTick);
     });
 
     // Draw the energy difference bar at the bottom.
@@ -478,29 +496,30 @@ class StereoMeterPlugin extends PluginBase {
     // Draw energy tick marks and labels.
     ctx.fillStyle = '#808080';
     ctx.strokeStyle = '#808080';
-    ctx.lineWidth = 1;
+    ctx.lineWidth = dpr;
     const energyTicks = [-12, -6, 0, 6, 12];
-    const energyTickY = height - 2;
+    const energyTickY = height - (2 * dpr);
     energyTicks.forEach(tick => {
       const xTick = centerX + (tick / energyMax) * halfCanvasWidth;
       ctx.beginPath();
-      ctx.moveTo(xTick, energyTickY - 21);
-      ctx.lineTo(xTick, energyTickY - 16);
+      ctx.moveTo(xTick, energyTickY - (21 * dpr));
+      ctx.lineTo(xTick, energyTickY - (16 * dpr));
       ctx.stroke();
-      ctx.font = '12px Arial';
+      ctx.font = `${12 * dpr}px Arial`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'bottom';
-      ctx.fillText(tick.toString() + 'dB', xTick, energyTickY - 23);
+      ctx.fillText(tick.toString() + 'dB', xTick, energyTickY - (23 * dpr));
     });
 
     // Draw axis labels.
     ctx.fillStyle = '#fff';
     ctx.textAlign = 'center';
-    ctx.fillText('LR Balance', width / 2, height - 1);
+    ctx.font = `${12 * dpr}px Arial`;
+    ctx.fillText('LR Balance', width / 2, height - dpr);
     ctx.save();
-    ctx.translate(20, height / 2);
+    ctx.translate(20 * dpr, height / 2);
     ctx.rotate(-Math.PI / 2);
-    ctx.fillText('LR Correlation', 0, -3);
+    ctx.fillText('LR Correlation', 0, -3 * dpr);
     ctx.restore();
   }
 
@@ -512,6 +531,10 @@ class StereoMeterPlugin extends PluginBase {
       }
       this.observer.disconnect();
       this.observer = null;
+    }
+    if (this.resizeGraphDisposer) {
+      this.resizeGraphDisposer();
+      this.resizeGraphDisposer = null;
     }
     for (const [element, listener] of this.boundEventListeners) {
       element.removeEventListener('change', listener);

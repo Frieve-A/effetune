@@ -148,6 +148,7 @@
   "menu.settings": "設定",
   "menu.settings.config": "環境設定...",
   "menu.settings.audioDevices": "オーディオデバイス...",
+  "menu.settings.install": "アプリをインストール",
   "menu.settings.performanceBenchmark": "パフォーマンスベンチマーク",
   "menu.settings.frequencyResponseMeasurement": "周波数応答測定",
 

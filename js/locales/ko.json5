@@ -148,6 +148,7 @@
   "menu.settings": "설정",
   "menu.settings.config": "구성...",
   "menu.settings.audioDevices": "오디오 장치...",
+  "menu.settings.install": "앱 설치",
   "menu.settings.performanceBenchmark": "성능 벤치마크",
   "menu.settings.frequencyResponseMeasurement": "주파수 응답 측정",
 

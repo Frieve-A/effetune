@@ -274,7 +274,15 @@ return data; // Return the modified buffer
         pivotHzInput.value = Math.round(Math.exp(this.f0)); // Input shows Hz value
         pivotHzInput.autocomplete = "off";
 
-        const canvas = document.createElement('canvas'); // Need canvas ref
+        const { container: graphContainer, canvas } = this.createResponsiveGraph({
+            maxWidth: 600,
+            aspectRatio: '5 / 2',
+            mobileAspectRatio: '2 / 1',
+            className: 'tilt-eq-graph-container',
+            onResize: ({ canvas }) => this.drawGraph(canvas)
+        });
+        graphContainer.style.margin = '10px auto';
+        canvas.style.margin = '0 auto';
 
         // Slider changes log value, updates Hz input
         pivotLogSlider.addEventListener('input', (e) => {
@@ -323,17 +331,6 @@ return data; // Return the modified buffer
         };
         controlsContainer.appendChild(this.createParameterControl('Slope', -12.0, 12.0, 0.1, this.sl, slopeSetter, 'dB/oct'));
 
-        // Graph container - Keep original structure and class
-        const graphContainer = document.createElement('div');
-        graphContainer.className = 'graph-container';
-
-        // Configure canvas (created earlier)
-        canvas.width = 1200;
-        canvas.height = 480;
-        canvas.style.width = '600px';
-        canvas.style.height = '240px';
-        graphContainer.appendChild(canvas);
-
         // Reset button - Keep original structure and class, append to graphContainer
         const resetButton = document.createElement('button');
         resetButton.className = 'eq-reset-button';
@@ -369,15 +366,22 @@ return data; // Return the modified buffer
 
     drawGraph(canvas) {
         const ctx = canvas.getContext('2d');
-        const width = canvas.width;
-        const height = canvas.height;
+        const rect = canvas.getBoundingClientRect();
+        const cssWidth = rect.width || canvas.clientWidth || canvas.width;
+        const cssHeight = rect.height || canvas.clientHeight || canvas.height;
+        const dpr = canvas.width / cssWidth || 1;
+        const width = Math.max(1, Math.round(cssWidth));
+        const height = Math.max(1, Math.round(cssHeight));
+        const isMobileLayout = typeof document !== 'undefined' && document.body && document.body.classList.contains('layout-mobile');
 
         // Clear canvas
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, width, height);
 
         // Draw grid
         ctx.strokeStyle = '#444';
-        ctx.lineWidth = 1;
+        ctx.lineWidth = isMobileLayout ? 1 : 0.5;
+        ctx.font = '12px Arial';
 
         // Vertical grid lines (frequency)
         const freqs = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
@@ -391,9 +395,8 @@ return data; // Return the modified buffer
             // Frequency labels
             if (freq !== 20 && freq !== 20000) {
                 ctx.fillStyle = '#666';
-                ctx.font = '20px Arial';
                 ctx.textAlign = 'center';
-                ctx.fillText(freq >= 1000 ? `${freq/1000}k` : freq, x, height - 40);
+                ctx.fillText(freq >= 1000 ? `${freq/1000}k` : freq, x, height - 24);
             }
         });
 
@@ -409,15 +412,14 @@ return data; // Return the modified buffer
             // dB labels
             if (db !== -24 && db !== 24) {
                 ctx.fillStyle = '#666';
-                ctx.font = '20px Arial';
                 ctx.textAlign = 'right';
-                ctx.fillText(`${db}dB`, 80, y + 6);
+                ctx.fillText(`${db}dB`, 48, y + 4);
             }
         });
 
         // Draw axis labels
         ctx.fillStyle = '#fff';
-        ctx.font = '24px Arial';
+        ctx.font = '14px Arial';
         ctx.textAlign = 'center';
 
         // Draw "Frequency (Hz)" label
@@ -425,7 +427,7 @@ return data; // Return the modified buffer
 
         // Draw "Level (dB)" label
         ctx.save();
-        ctx.translate(20, height/2);
+        ctx.translate(14, height/2);
         ctx.rotate(-Math.PI/2);
         ctx.fillText('Level (dB)', 0, 0);
         ctx.restore();
@@ -433,7 +435,7 @@ return data; // Return the modified buffer
         // Calculate and draw frequency response using the same algorithm as the audio processor
         ctx.beginPath();
         ctx.strokeStyle = '#00ff00';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = isMobileLayout ? 2 : 1;
 
         const pivotFreq = Math.exp(this.f0);
         const slopeDbOct = this.sl;

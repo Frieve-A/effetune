@@ -274,6 +274,31 @@ test('FifteenBand PEQ aligns markers and drag with the inset SVG plot area', () 
   assertPeqUsesInsetPlotArea('../../plugins/eq/fifteen_band_peq.js', 'FifteenBandPEQPlugin', 15, 'fifteen-band-peq');
 });
 
+test('FifteenBand PEQ resolves mobile graph taps to the nearest band without toggling enable state', () => {
+  const calls = [];
+  const PluginClass = loadPeqClass('../../plugins/eq/fifteen_band_peq.js', 'FifteenBandPEQPlugin', calls);
+  const plugin = new PluginClass();
+  plugin.uiCreated = false;
+  plugin.graphContainer = {
+    clientWidth: 375,
+    clientHeight: 281,
+    getBoundingClientRect() {
+      return { left: 10, top: 20, width: this.clientWidth, height: this.clientHeight };
+    }
+  };
+
+  const targetBand = 8;
+  const plotArea = plugin.getGraphPlotArea();
+  const clientX = plotArea.left + (plugin.freqToX(plugin[`f${targetBand}`]) / 100) * plotArea.width;
+  const clientY = plotArea.top + (plugin.gainToY(plugin[`g${targetBand}`]) / 100) * plotArea.height;
+  const enabledBefore = plugin[`e${targetBand}`];
+  const selectedBand = plugin.selectNearestBandFromGraphPoint(clientX, clientY);
+
+  assert.equal(selectedBand, targetBand);
+  assert.equal(plugin.currentBandIndex, targetBand);
+  assert.equal(plugin[`e${targetBand}`], enabledBefore);
+});
+
 test('FiveBand PEQ redraws markers and response when the graph is resized', () => {
   assertPeqRedrawsOnResize('../../plugins/eq/five_band_peq.js', 'FiveBandPEQPlugin');
 });

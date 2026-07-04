@@ -499,10 +499,8 @@ class MultibandSaturationPlugin extends PluginBase {
         const container = document.querySelector(`[data-instance-id="${this.instanceId}"]`);
         if (!container) return;
 
-        if (!this.canvases) {
-            this.canvases = Array.from(container.querySelectorAll('.mbs-band-graph canvas'));
-            if (!this.canvases.length) return;
-        }
+        this.canvases = Array.from(container.querySelectorAll('.mbs-band-graph canvas'));
+        if (!this.canvases.length) return;
 
         const GRID_COLOR = '#444';
         const LABEL_COLOR = '#666';
@@ -514,6 +512,12 @@ class MultibandSaturationPlugin extends PluginBase {
             const ctx = canvas.getContext('2d');
             const width = canvas.width;
             const height = canvas.height;
+            const dpr = this._getCanvasDpr(canvas);
+            const tickFont = Math.round(11 * dpr);
+            const axisFont = Math.round(13 * dpr);
+            const axisInset = 12 * dpr;
+            const bottomInset = 4 * dpr;
+            const isMobileLayout = typeof document !== 'undefined' && document.body && document.body.classList.contains('layout-mobile');
             const band = this.bands[bandIndex];
             if (!band) return;
 
@@ -521,7 +525,7 @@ class MultibandSaturationPlugin extends PluginBase {
 
             // Draw grid lines
             ctx.strokeStyle = GRID_COLOR;
-            ctx.lineWidth = 1;
+            ctx.lineWidth = (isMobileLayout ? 1 : 0.5) * dpr;
             ctx.beginPath();
             for (let x = 0; x <= width; x += width / 4) {
                 ctx.moveTo(x, 0);
@@ -535,34 +539,34 @@ class MultibandSaturationPlugin extends PluginBase {
 
             // Draw labels
             ctx.fillStyle = LABEL_COLOR;
-            ctx.font = '20px Arial';
+            ctx.font = `${tickFont}px Arial`;
             ctx.textAlign = 'center';
-            ctx.fillText('-6dB', width * 0.25, height - 5);
-            ctx.fillText('-6dB', width * 0.75, height - 5);
+            ctx.fillText('-6dB', width * 0.25, height - bottomInset);
+            ctx.fillText('-6dB', width * 0.75, height - bottomInset);
             ctx.save();
-            ctx.translate(20, height * 0.25);
+            ctx.translate(axisInset, height * 0.25);
             ctx.rotate(-Math.PI / 2);
             ctx.fillText('-6dB', 0, 0);
             ctx.restore();
             ctx.save();
-            ctx.translate(20, height * 0.75);
+            ctx.translate(axisInset, height * 0.75);
             ctx.rotate(-Math.PI / 2);
             ctx.fillText('-6dB', 0, 0);
             ctx.restore();
 
             // Draw axis labels
             ctx.fillStyle = '#fff';
-            ctx.font = '28px Arial';
-            ctx.fillText('in', width / 2, height - 5);
+            ctx.font = `${axisFont}px Arial`;
+            ctx.fillText('in', width / 2, height - bottomInset);
             ctx.save();
-            ctx.translate(20, height / 2);
+            ctx.translate(axisInset, height / 2);
             ctx.rotate(-Math.PI / 2);
             ctx.fillText('out', 0, 0);
             ctx.restore();
 
             // Draw transfer curve
             ctx.strokeStyle = CURVE_COLOR;
-            ctx.lineWidth = 2;
+            ctx.lineWidth = (isMobileLayout ? 2 : 1) * dpr;
             ctx.beginPath();
             const mixRatio = band.mx / 100;
             const biasOffset = Math.tanh(band.dr * band.bs);
@@ -581,7 +585,15 @@ class MultibandSaturationPlugin extends PluginBase {
         });
     }
 
+    _getCanvasDpr(canvas) {
+        const rect = canvas.getBoundingClientRect ? canvas.getBoundingClientRect() : null;
+        const cssWidth = canvas.clientWidth || (rect && rect.width) || canvas.width || 1;
+        return canvas.width / cssWidth;
+    }
+
     cleanup() {
+        this.graphDisposers?.forEach(dispose => dispose());
+        this.graphDisposers = null;
         this.canvases = null;
         super.cleanup();
     }
@@ -589,8 +601,10 @@ class MultibandSaturationPlugin extends PluginBase {
     createUI() {
         const container = document.createElement('div');
         this.instanceId = `mbs-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        container.className = 'mbs-container';
+        container.className = 'mbs-container plugin-parameter-ui';
         container.setAttribute('data-instance-id', this.instanceId);
+        this.graphDisposers?.forEach(dispose => dispose());
+        this.graphDisposers = [];
 
         // Frequency sliders UI
         const freqContainer = document.createElement('div');
@@ -601,7 +615,7 @@ class MultibandSaturationPlugin extends PluginBase {
             sliderContainer.className = 'mbs-freq-slider';
 
             const topRow = document.createElement('div');
-            topRow.className = 'mbs-freq-slider-top';
+            topRow.className = 'mbs-freq-slider-top parameter-row';
 
             // Create unique IDs for the inputs using provided prefix
             const sliderId = `${idPrefix}-freq${freqNum}-slider`;
@@ -742,16 +756,18 @@ class MultibandSaturationPlugin extends PluginBase {
             const graphDiv = document.createElement('div');
             graphDiv.className = `mbs-band-graph ${i === 0 ? 'active' : ''}`;
             graphDiv.setAttribute('data-instance-id', this.instanceId);
-            const canvas = document.createElement('canvas');
-            canvas.width = 320;
-            canvas.height = 320;
-            canvas.style.width = '160px';
-            canvas.style.height = '160px';
+            const { container: graphContainer, canvas, dispose } = this.createResponsiveGraph({
+                maxWidth: 160,
+                aspectRatio: '1 / 1',
+                className: 'mbs-transfer-curve',
+                onResize: () => this.updateTransferGraphs()
+            });
             canvas.style.backgroundColor = '#222';
+            this.graphDisposers.push(dispose);
             const label = document.createElement('div');
             label.className = 'mbs-band-graph-label';
             label.textContent = bandNames[i];
-            graphDiv.appendChild(canvas);
+            graphDiv.appendChild(graphContainer);
             graphDiv.appendChild(label);
             
             // Add click event to switch to this band when clicking on the graph

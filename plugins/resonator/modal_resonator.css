@@ -51,4 +51,25 @@
 /* Checkbox styles */
 .modal-resonator-container input[type="checkbox"] {
     width: auto;
-} 
+}
+
+body.layout-mobile .modal-resonator-container,
+body.layout-mobile .modal-resonator-frame {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    overflow-x: clip;
+}
+
+body.layout-mobile .modal-resonator-tabs {
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+body.layout-mobile .modal-resonator-tab {
+    flex: 1 1 56px;
+    min-width: 0;
+    min-height: 40px;
+}

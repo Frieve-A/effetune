@@ -21,6 +21,25 @@
 .dsd64-imd-df-wrap {
     display: flex;
     flex-direction: column;
+    min-width: 0;
+}
+
+.dsd64-imd-meter-wrap {
+    flex: 1 1 260px;
+}
+
+.dsd64-imd-tc-wrap {
+    flex: 0 1 200px;
+}
+
+.dsd64-imd-df-wrap {
+    flex: 1 1 320px;
+}
+
+.dsd64-imd-meter-graph,
+.dsd64-imd-tc-graph,
+.dsd64-imd-df-graph {
+    margin: 0;
 }
 
 .dsd64-imd-tc-canvas {
@@ -38,4 +57,10 @@
     background-color: #1a1a1a;
     border-radius: 4px;
     max-width: 100%;
+}
+
+body.layout-mobile .dsd64-imd-viz {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
 }

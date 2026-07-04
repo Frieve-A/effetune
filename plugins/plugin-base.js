@@ -18,6 +18,7 @@ class PluginBase {
         this.inputBus = null; // Input bus (null = default Main bus, index 0)
         this.outputBus = null; // Output bus (null = default Main bus, index 0)
         this.channel = null; // Channel processing: null ('All'), 'Left', 'Right'
+        this._responsiveGraphDisposers = new Set();
 
         // Message control properties
         this.lastUpdateTime = 0;
@@ -80,8 +81,23 @@ class PluginBase {
         this._hasMessageHandler = true;
     }
     
+    _disposeResponsiveGraphs() {
+        if (!this._responsiveGraphDisposers) return;
+        const disposers = Array.from(this._responsiveGraphDisposers);
+        this._responsiveGraphDisposers.clear();
+        for (const dispose of disposers) {
+            try {
+                dispose();
+            } catch (error) {
+                console.warn(`[${this.name}] Failed to dispose responsive graph:`, error);
+            }
+        }
+    }
+
     // Clean up resources when plugin is removed
     cleanup() {
+        this._disposeResponsiveGraphs();
+
         if (this._messageHandlerObserver) {
             this._messageHandlerObserver.disconnect();
             this._messageHandlerObserver = null;
@@ -653,6 +669,87 @@ class PluginBase {
         return { container, canvas };
     }
 
+    createResponsiveGraph({ maxWidth = 1024, aspectRatio = '2.5 / 1', mobileAspectRatio = null, className, onResize } = {}) {
+        const container = document.createElement('div');
+        container.className = className
+            ? `graph-container responsive-graph-container ${className}`
+            : 'graph-container responsive-graph-container';
+        container.style.width = '100%';
+        container.style.maxWidth = `${maxWidth}px`;
+        container.style.position = 'relative';
+        container.style.aspectRatio = aspectRatio;
+        if (mobileAspectRatio) {
+            if (typeof container.style.setProperty === 'function') {
+                container.style.setProperty('--mobile-aspect-ratio', mobileAspectRatio);
+            } else {
+                container.style['--mobile-aspect-ratio'] = mobileAspectRatio;
+            }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+        canvas.style.display = 'block';
+        container.appendChild(canvas);
+
+        let disposed = false;
+        let observer = null;
+        let windowResizeHandler = null;
+
+        const resize = () => {
+            if (disposed) return;
+            const rect = container.getBoundingClientRect();
+            const cssWidth = rect.width || container.clientWidth || 0;
+            const cssHeight = rect.height || container.clientHeight || 0;
+            if (!cssWidth || !cssHeight) return;
+
+            const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+            const width = Math.max(1, Math.round(cssWidth * dpr));
+            const height = Math.max(1, Math.round(cssHeight * dpr));
+            if (canvas.width !== width) canvas.width = width;
+            if (canvas.height !== height) canvas.height = height;
+
+            onResize?.({ canvas, cssWidth, cssHeight, dpr });
+        };
+
+        const ResizeObserverClass = typeof ResizeObserver !== 'undefined'
+            ? ResizeObserver
+            : (typeof window !== 'undefined' ? window.ResizeObserver : null);
+        if (typeof ResizeObserverClass === 'function') {
+            observer = new ResizeObserverClass(resize);
+            observer.observe(container);
+        } else if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+            windowResizeHandler = resize;
+            window.addEventListener('resize', windowResizeHandler);
+        }
+
+        const scheduleInitialResize = typeof requestAnimationFrame === 'function'
+            ? requestAnimationFrame
+            : (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function'
+                ? window.requestAnimationFrame.bind(window)
+                : null);
+        if (scheduleInitialResize) {
+            scheduleInitialResize(resize);
+        } else {
+            setTimeout(resize, 0);
+        }
+
+        const dispose = () => {
+            if (disposed) return;
+            disposed = true;
+            this._responsiveGraphDisposers?.delete(dispose);
+            observer?.disconnect();
+            observer = null;
+            if (windowResizeHandler && typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+                window.removeEventListener('resize', windowResizeHandler);
+            }
+            windowResizeHandler = null;
+        };
+
+        this._responsiveGraphDisposers?.add(dispose);
+        return { container, canvas, resize, dispose };
+    }
+
     getGraphCoords(canvas, ev) {
         const rect = canvas.getBoundingClientRect();
         const touch = ev.touches?.[0] || ev.changedTouches?.[0];
@@ -740,6 +837,125 @@ class PluginBase {
         };
     }
 
+    // Intelligently place the freq/gain text labels attached to graph markers
+    // (e.g. the PEQ family) so they do not collide with each other, do not sit
+    // on top of other markers, and never spill outside the graph box.
+    //
+    // Each label element is expected to be absolutely positioned inside its
+    // marker (the marker being its offsetParent). We try a set of candidate
+    // offsets around the marker in a preference order, score each by how much
+    // it overlaps already-placed labels / other markers and how far it had to
+    // be clamped to stay inside the box, then commit the best one.
+    //
+    // @param {Object} opts
+    // @param {Array}  opts.items  - [{ el, cx, cy }] label element + marker centre (px, container-local)
+    // @param {number} opts.width  - graph container width (px)
+    // @param {number} opts.height - graph container height (px)
+    // @param {string} [opts.axis='horizontal'] - preferred side: 'horizontal' (left/right) or 'vertical' (top/bottom)
+    // @param {number} [opts.radius=14] - marker radius (px), border box
+    // @param {number} [opts.gap=6]     - gap between marker edge and label (px)
+    layoutMarkerLabels({ items, width, height, axis = 'horizontal', radius = 14, gap = 6 } = {}) {
+        if (!items || !items.length || !width || !height) return;
+
+        // Pass 1: batch-read every label's rendered size (avoids layout thrash).
+        const labels = items.map(it => {
+            const el = it.el;
+            return { el, cx: it.cx, cy: it.cy, w: el ? el.offsetWidth : 0, h: el ? el.offsetHeight : 0 };
+        });
+        const markers = labels.map(l => ({ cx: l.cx, cy: l.cy, r: radius }));
+
+        const overlap = (a, b) => {
+            const ox = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
+            const oy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+            return ox * oy;
+        };
+
+        const placed = [];
+        // Pass 2: place and write inline styles for every label.
+        for (let i = 0; i < labels.length; i++) {
+            const { el, cx, cy, w, h } = labels[i];
+            if (!el || !w || !h) continue;
+
+            const d = radius + gap;          // straight offset (E/W/N/S)
+            const dd = radius * 0.7 + gap;    // diagonal offset (corners)
+            const dirs = {
+                E:  { x: cx + d,      y: cy - h / 2 },
+                W:  { x: cx - d - w,  y: cy - h / 2 },
+                N:  { x: cx - w / 2,  y: cy - d - h },
+                S:  { x: cx - w / 2,  y: cy + d },
+                NE: { x: cx + dd,     y: cy - dd - h },
+                NW: { x: cx - dd - w, y: cy - dd - h },
+                SE: { x: cx + dd,     y: cy + dd },
+                SW: { x: cx - dd - w, y: cy + dd }
+            };
+            // Prefer pushing the label toward the OUTSIDE of the graph (away
+            // from the centre) so labels fan out to the edges instead of
+            // bunching up in the middle. H/V are the outward directions for
+            // this marker; Hi/Vi the inward fallbacks. Straight up/down (N/S)
+            // and straight left/right (E/W) are always candidates.
+            const H = cx < width / 2 ? 'W' : 'E';
+            const Hi = H === 'W' ? 'E' : 'W';
+            const V = cy < height / 2 ? 'N' : 'S';
+            const Vi = V === 'N' ? 'S' : 'N';
+            const diag = (v, h) => v + h; // 'N'/'S' + 'W'/'E' -> NE/NW/SE/SW
+            let order;
+            if (axis === 'vertical') {
+                // Straight out along the vertical axis first, then fan sideways.
+                order = [V, diag(V, H), H, diag(V, Hi), Hi, diag(Vi, H), Vi, diag(Vi, Hi)];
+            } else {
+                // Straight out along the horizontal axis first, then fan up/down.
+                order = [H, diag(V, H), V, diag(Vi, H), Vi, diag(V, Hi), Hi, diag(Vi, Hi)];
+            }
+
+            let best = null;
+            let bestScore = Infinity;
+            for (let k = 0; k < order.length; k++) {
+                const cand = dirs[order[k]];
+                const bx = Math.max(0, Math.min(cand.x, width - w));
+                const by = Math.max(0, Math.min(cand.y, height - h));
+                const moved = Math.abs(bx - cand.x) + Math.abs(by - cand.y);
+                const box = { x: bx, y: by, w, h };
+                // Keep the label as close to its marker as possible: distance
+                // from marker centre to label centre is the main cost, so a
+                // straight N/S/E/W spot (nearer) always beats a diagonal one
+                // (farther) when both are collision-free. The outward-order
+                // rank (k) is only a gentle tie-breaker between similar spots,
+                // never enough to override a genuinely closer placement.
+                const dx = (bx + w / 2) - cx;
+                const dy = (by + h / 2) - cy;
+                let score = Math.sqrt(dx * dx + dy * dy) + moved + k * 1.5;
+                // Penalise overlap with EVERY marker, including this label's own
+                // marker: near the top/bottom edge a straight up/down candidate
+                // gets clamped back inside and would otherwise land on top of its
+                // marker. Counting self-overlap pushes it out to the side (E/W)
+                // or the opposite (down/up) side instead.
+                for (let m = 0; m < markers.length; m++) {
+                    const mk = markers[m];
+                    score += overlap(box, { x: mk.cx - mk.r, y: mk.cy - mk.r, w: mk.r * 2, h: mk.r * 2 }) * 4;
+                }
+                for (let p = 0; p < placed.length; p++) {
+                    score += overlap(box, placed[p]) * 5;
+                }
+                if (score < bestScore) { bestScore = score; best = box; }
+            }
+            if (!best) continue;
+            placed.push(best);
+
+            // Convert container-local box top-left into marker-relative offsets.
+            // The label's offsetParent is the marker; its containing block origin
+            // sits half a marker-width in from the marker centre.
+            const parent = el.offsetParent;
+            const halfW = parent ? parent.clientWidth / 2 : 12;
+            const halfH = parent ? parent.clientHeight / 2 : 12;
+            el.style.left = `${best.x - (cx - halfW)}px`;
+            el.style.top = `${best.y - (cy - halfH)}px`;
+            el.style.right = 'auto';
+            el.style.bottom = 'auto';
+            el.style.transform = 'none';
+            el.style.textAlign = 'center';
+        }
+    }
+
     // Create UI elements for the plugin (must be implemented by subclasses).
     createUI() {
         // Default implementation returns an empty container
@@ -748,6 +964,8 @@ class PluginBase {
 
     // Cleanup resources (should be overridden by subclasses).
     cleanup() {
+        this._disposeResponsiveGraphs();
+
         if (this._messageHandlerObserver) {
             this._messageHandlerObserver.disconnect();
             this._messageHandlerObserver = null;

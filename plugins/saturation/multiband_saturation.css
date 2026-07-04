@@ -80,6 +80,7 @@
 /* Transfer graphs area */
 .mbs-transfer-graphs {
     display: flex;
+    flex-wrap: wrap;
     gap: 10px;
     justify-content: space-between;
     padding: 10px;
@@ -88,11 +89,13 @@
 }
 
 .mbs-band-graph {
-    flex: 1;
+    flex: 1 1 150px;
+    min-width: 0;
     position: relative;
     background: #222;
     border-radius: 4px;
     padding: 10px;
+    box-sizing: border-box;
 }
 
 .mbs-band-graph.active {
@@ -104,7 +107,68 @@
     display: block;
 }
 
+.mbs-band-graph .mbs-transfer-curve {
+    margin: 10px auto;
+}
+
+.mbs-band-graph .responsive-graph-container canvas {
+    margin: 0;
+}
+
 .mbs-band-graph-label {
     text-align: center;
     margin-top: 5px;
+}
+
+body.layout-mobile .mbs-freq-slider-top.parameter-row {
+    margin-bottom: 0;
+}
+
+body.layout-mobile .mbs-transfer-graphs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+body.layout-mobile .mbs-band-graph {
+    flex: 1 1 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+body.layout-mobile .mbs-band-tabs {
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+body.layout-mobile .mbs-band-tab {
+    flex: 1 1 56px;
+    min-width: 0;
+    min-height: 40px;
+}
+
+body.layout-mobile .mbs-freq-sliders {
+    flex-wrap: wrap;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+body.layout-mobile .mbs-freq-slider {
+    flex: 1 1 var(--et-mobile-effect-slider-basis);
+    min-width: var(--et-mobile-effect-slider-min-width);
+}
+
+body.layout-mobile .mbs-freq-slider-top {
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+body.layout-mobile .mbs-freq-slider-top input[type="number"] {
+    height: var(--et-mobile-control-height);
+    min-height: var(--et-mobile-control-height);
+    min-width: var(--et-mobile-field-min-width);
+    box-sizing: border-box;
+    font-size: 16px;
 }

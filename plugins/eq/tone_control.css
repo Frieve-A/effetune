@@ -22,6 +22,11 @@
     margin-left: 10px;
 }
 
+body.layout-mobile .tone-control-plugin-ui input[type="number"] {
+    min-width: 80px;
+    box-sizing: border-box;
+}
+
 .tone-control-plugin-ui .eq-reset-button {
     position: absolute;
     right: 10px;

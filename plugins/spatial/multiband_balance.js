@@ -581,7 +581,7 @@ class MultibandBalancePlugin extends PluginBase {
             const sliderContainer = document.createElement('div');
             sliderContainer.className = 'multiband-balance-frequency-slider';
             const topRow = document.createElement('div');
-            topRow.className = 'multiband-balance-frequency-slider-top';
+            topRow.className = 'multiband-balance-frequency-slider-top parameter-row';
             
             // Create unique IDs for the inputs
             const sliderId = `${this.id}-${this.name}-freq${freqNum}-slider`;

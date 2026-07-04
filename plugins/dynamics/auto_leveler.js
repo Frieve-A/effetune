@@ -20,6 +20,7 @@ class AutoLevelerPlugin extends PluginBase {
         this.canvasCtx = null;
         this.boundEventListeners = new Map();
         this.animationFrameId = null;
+        this.graphResizeDispose = null;
 
         // LUFS history buffers (1024 points) initialized with NaN so that no initial bottom line is drawn
         this.inputLufsBuffer = new Float32Array(1024).fill(NaN);
@@ -412,6 +413,17 @@ class AutoLevelerPlugin extends PluginBase {
         const ctx = this.canvasCtx;
         const width = this.canvas.width;
         const height = this.canvas.height;
+        const cssWidth = this.canvas.clientWidth || width;
+        const dpr = cssWidth > 0 ? width / cssWidth : 1;
+        const tickFontSize = 12 * dpr;
+        const axisFontSize = 14 * dpr;
+        const valueFontSize = 13 * dpr;
+        const labelX = 80 * dpr;
+        const axisX = 20 * dpr;
+        const tickOffset = 6 * dpr;
+        const bottomOffset = 5 * dpr;
+        const isMobileLayout = typeof document !== 'undefined' && document.body && document.body.classList.contains('layout-mobile');
+        const graphLineWidth = (isMobileLayout ? 2 : 1) * dpr;
 
         // Clear canvas
         ctx.fillStyle = '#1a1a1a';
@@ -419,9 +431,9 @@ class AutoLevelerPlugin extends PluginBase {
 
         // Draw grid lines and labels
         ctx.strokeStyle = '#333';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = graphLineWidth;
         ctx.textAlign = 'right';
-        ctx.font = '24px Arial';
+        ctx.font = `${tickFontSize}px Arial`;
         ctx.fillStyle = '#ccc';
 
         // Draw horizontal grid lines (6dB steps from -42dB to -6dB)
@@ -431,28 +443,28 @@ class AutoLevelerPlugin extends PluginBase {
             ctx.moveTo(0, y);
             ctx.lineTo(width, y);
             ctx.stroke();
-            ctx.fillText(`${db}`, 160, y + 12);
+            ctx.fillText(`${db}`, labelX, y + tickOffset);
         }
 
         // Draw axis labels
         ctx.save();
-        ctx.font = '28px Arial';
-        ctx.translate(40, height / 2);
+        ctx.font = `${axisFontSize}px Arial`;
+        ctx.translate(axisX, height / 2);
         ctx.rotate(-Math.PI / 2);
         ctx.textAlign = 'center';
         ctx.fillText('LUFS (dB)', 0, 0);
         ctx.restore();
 
         ctx.textAlign = 'center';
-        ctx.fillText('Time', width / 2, height - 10);
+        ctx.fillText('Time', width / 2, height - bottomOffset);
 
         // Draw 1-second markers
         ctx.strokeStyle = '#555';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = graphLineWidth;
         for (const idx of this.secondMarkers) {
             const x = width * idx / this.inputLufsBuffer.length;
             ctx.beginPath();
-            ctx.moveTo(x, height - 16);
+            ctx.moveTo(x, height - (8 * dpr));
             ctx.lineTo(x, height);
             ctx.stroke();
         }
@@ -460,7 +472,7 @@ class AutoLevelerPlugin extends PluginBase {
         // Draw LUFS history; skip segments with NaN values
         const drawLufs = (buffer, color) => {
             ctx.strokeStyle = color;
-            ctx.lineWidth = 2;
+            ctx.lineWidth = graphLineWidth;
             ctx.beginPath();
             let started = false;
             for (let i = 0; i < buffer.length; i++) {
@@ -489,12 +501,12 @@ class AutoLevelerPlugin extends PluginBase {
         const currentOutputLufs = this.outputLufsBuffer[this.outputLufsBuffer.length - 1];
         if (!isNaN(currentOutputLufs)) {
             const clamped = currentOutputLufs > 0 ? 0 : (currentOutputLufs < -48 ? -48 : currentOutputLufs);
-            const x = width - 20; // Position near the right edge
-            const y = height * (1 - (clamped + 48) / 48) - 20; // Position above the line
+            const x = width - (10 * dpr); // Position near the right edge
+            const y = height * (1 - (clamped + 48) / 48) - (10 * dpr); // Position above the line
             
             ctx.fillStyle = '#ffffff';
             ctx.textAlign = 'right';
-            ctx.font = '25px Arial';
+            ctx.font = `${valueFontSize}px Arial`;
             ctx.fillText(currentOutputLufs.toFixed(1) + ' dB', x, y);
         }
     }
@@ -502,6 +514,11 @@ class AutoLevelerPlugin extends PluginBase {
     createUI() {
         if (this.observer) {
             this.observer.disconnect();
+            this.observer = null;
+        }
+        if (this.graphResizeDispose) {
+            this.graphResizeDispose();
+            this.graphResizeDispose = null;
         }
         const container = document.createElement('div');
         container.className = 'plugin-parameter-ui';
@@ -515,18 +532,20 @@ class AutoLevelerPlugin extends PluginBase {
         container.appendChild(this.createParameterControl('Release Time', 10, 10000, 10, this.rt, (value) => this.setParameters({ rt: value }), 'ms'));
         container.appendChild(this.createParameterControl('Noise Gate', -96, -24, 1, this.gt, (value) => this.setParameters({ gt: value }), 'dB'));
 
-        // Create graph container
-        const graphContainer = document.createElement('div');
-        graphContainer.className = 'auto-leveler-graph';
-        
-        // Create canvas with same resolution as spectrogram
-        this.canvas = document.createElement('canvas');
-        this.canvas.width = 2048;
-        this.canvas.height = 300;
-        graphContainer.appendChild(this.canvas);
-
-        // Initialize canvas context
-        this.canvasCtx = this.canvas.getContext('2d');
+        const { container: graphContainer, canvas, dispose } = this.createResponsiveGraph({
+            maxWidth: 2048,
+            aspectRatio: '2048 / 300',
+            mobileAspectRatio: '2.5 / 1',
+            className: 'auto-leveler-graph',
+            onResize: ({ canvas }) => {
+                this.canvas = canvas;
+                this.canvasCtx = canvas.getContext('2d');
+                this.drawGraph();
+            }
+        });
+        this.canvas = canvas;
+        this.canvasCtx = canvas.getContext('2d');
+        this.graphResizeDispose = dispose;
         
         container.appendChild(graphContainer);
         
@@ -556,6 +575,14 @@ class AutoLevelerPlugin extends PluginBase {
         this.boundEventListeners.clear();
 
         // Release canvas resources
+        if (this.graphResizeDispose) {
+            this.graphResizeDispose();
+            this.graphResizeDispose = null;
+        }
+        if (this.observer) {
+            this.observer.disconnect();
+            this.observer = null;
+        }
         if (this.canvas) {
             this.canvas.width = 0;
             this.canvas.height = 0;

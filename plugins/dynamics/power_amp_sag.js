@@ -21,6 +21,7 @@ class PowerAmpSagPlugin extends PluginBase {
         this.animationFrameId = null;
         this.isVisible = false;
         this.observer = null;
+        this.graphResizeDisposers = [];
         
         // History buffers for graph (512 points each) - half of auto_leveler since canvas width is half
         this.inputEnvelopeBuffer = new Float32Array(512).fill(0);
@@ -312,6 +313,11 @@ class PowerAmpSagPlugin extends PluginBase {
             this.animationFrameId = null;
         }
     }
+
+    disposeGraphResizeObservers() {
+        this.graphResizeDisposers.forEach(dispose => dispose());
+        this.graphResizeDisposers = [];
+    }
     
     drawGraphs() {
         // Draw left graph - Input Envelope
@@ -348,15 +354,31 @@ class PowerAmpSagPlugin extends PluginBase {
     }
     
     drawSingleGraph(ctx, width, height, title, buffer, color, minValue, maxValue, step, unit) {
+        const canvas = ctx.canvas;
+        const cssWidth = canvas.clientWidth || width;
+        const dpr = cssWidth > 0 ? width / cssWidth : 1;
+        const tickFontSize = 12 * dpr;
+        const axisFontSize = 14 * dpr;
+        const valueFontSize = 13 * dpr;
+        const labelX = 80 * dpr;
+        const axisX = 20 * dpr;
+        const tickOffset = 6 * dpr;
+        const bottomOffset = 5 * dpr;
+        const secondMarkerHeight = 8 * dpr;
+        const valueInset = 10 * dpr;
+        const labelEvery = cssWidth < 480 && unit === '%' ? step * 2 : step;
+        const isMobileLayout = typeof document !== 'undefined' && document.body && document.body.classList.contains('layout-mobile');
+        const graphLineWidth = (isMobileLayout ? 2 : 1) * dpr;
+
         // Clear canvas
         ctx.fillStyle = '#1a1a1a';
         ctx.fillRect(0, 0, width, height);
         
         // Draw grid lines and labels - matching auto_leveler style
         ctx.strokeStyle = '#333';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = graphLineWidth;
         ctx.textAlign = 'right';
-        ctx.font = '24px Arial';
+        ctx.font = `${tickFontSize}px Arial`;
         ctx.fillStyle = '#ccc';
         
         // Draw horizontal grid lines
@@ -369,15 +391,15 @@ class PowerAmpSagPlugin extends PluginBase {
             ctx.stroke();
             
             // Only draw text if it won't be cut off (text height is about 24px)
-            if (y >= 12 && y <= height - 12) {
-                ctx.fillText(`${value}`, 160, y + 12);
+            if (y >= tickFontSize / 2 && y <= height - tickFontSize / 2 && (value - minValue) % labelEvery === 0) {
+                ctx.fillText(`${value}`, labelX, y + tickOffset);
             }
         }
         
         // Draw axis labels
         ctx.save();
-        ctx.font = '28px Arial';
-        ctx.translate(40, height / 2);
+        ctx.font = `${axisFontSize}px Arial`;
+        ctx.translate(axisX, height / 2);
         ctx.rotate(-Math.PI / 2);
         ctx.textAlign = 'center';
         ctx.fillText(`${title} (${unit})`, 0, 0);
@@ -385,22 +407,22 @@ class PowerAmpSagPlugin extends PluginBase {
         
         // Draw Time label at bottom
         ctx.textAlign = 'center';
-        ctx.fillText('Time', width / 2, height - 10);
+        ctx.fillText('Time', width / 2, height - bottomOffset);
         
         // Draw 1-second markers
         ctx.strokeStyle = '#555';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = graphLineWidth;
         for (const idx of this.secondMarkers) {
             const x = width * idx / buffer.length;
             ctx.beginPath();
-            ctx.moveTo(x, height - 16);
+            ctx.moveTo(x, height - secondMarkerHeight);
             ctx.lineTo(x, height);
             ctx.stroke();
         }
         
         // Draw the graph line
         ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
+        ctx.lineWidth = graphLineWidth;
         ctx.beginPath();
         let started = false;
         for (let i = 0; i < buffer.length; i++) {
@@ -419,19 +441,21 @@ class PowerAmpSagPlugin extends PluginBase {
         
         // Display current value at top right - fixed position
         const currentValue = buffer[buffer.length - 1];
-        const x = width - 20;
-        const y = 40;  // Fixed position from top
+        const x = width - valueInset;
+        const y = 20 * dpr;  // Fixed position from top
         
         ctx.fillStyle = color;
         ctx.textAlign = 'right';
-        ctx.font = '25px Arial';
+        ctx.font = `${valueFontSize}px Arial`;
         ctx.fillText(currentValue.toFixed(1) + ' ' + unit, x, y);
     }
     
     createUI() {
         if (this.observer) {
             this.observer.disconnect();
+            this.observer = null;
         }
+        this.disposeGraphResizeObservers();
         
         const container = document.createElement('div');
         container.className = 'plugin-parameter-ui';
@@ -491,32 +515,37 @@ class PowerAmpSagPlugin extends PluginBase {
         const graphContainer = document.createElement('div');
         graphContainer.className = 'power-amp-sag-graphs';
         
-        // Create left canvas container
-        const leftContainer = document.createElement('div');
-        leftContainer.className = 'power-amp-sag-graph-left';
-        
-        // Create left canvas - (original width - 20) / 2
-        this.canvasLeft = document.createElement('canvas');
-        this.canvasLeft.width = (2048 - 20) / 2;  // (auto_leveler width - 20) / 2
-        this.canvasLeft.height = 300;  // Same height as auto_leveler
-        leftContainer.appendChild(this.canvasLeft);
-        
-        // Create right canvas container
-        const rightContainer = document.createElement('div');
-        rightContainer.className = 'power-amp-sag-graph-right';
-        
-        // Create right canvas
-        this.canvasRight = document.createElement('canvas');
-        this.canvasRight.width = (2048 - 20) / 2;  // (auto_leveler width - 20) / 2
-        this.canvasRight.height = 300;  // Same height as auto_leveler
-        rightContainer.appendChild(this.canvasRight);
-        
-        // Initialize canvas contexts
+        const leftGraph = this.createResponsiveGraph({
+            maxWidth: 1014,
+            aspectRatio: '1014 / 300',
+            mobileAspectRatio: '2.5 / 1',
+            className: 'power-amp-sag-graph-left',
+            onResize: ({ canvas }) => {
+                this.canvasLeft = canvas;
+                this.canvasCtxLeft = canvas.getContext('2d');
+                this.drawGraphs();
+            }
+        });
+        const rightGraph = this.createResponsiveGraph({
+            maxWidth: 1014,
+            aspectRatio: '1014 / 300',
+            mobileAspectRatio: '2.5 / 1',
+            className: 'power-amp-sag-graph-right',
+            onResize: ({ canvas }) => {
+                this.canvasRight = canvas;
+                this.canvasCtxRight = canvas.getContext('2d');
+                this.drawGraphs();
+            }
+        });
+
+        this.canvasLeft = leftGraph.canvas;
+        this.canvasRight = rightGraph.canvas;
         this.canvasCtxLeft = this.canvasLeft.getContext('2d');
         this.canvasCtxRight = this.canvasRight.getContext('2d');
+        this.graphResizeDisposers.push(leftGraph.dispose, rightGraph.dispose);
         
-        graphContainer.appendChild(leftContainer);
-        graphContainer.appendChild(rightContainer);
+        graphContainer.appendChild(leftGraph.container);
+        graphContainer.appendChild(rightGraph.container);
         container.appendChild(graphContainer);
         
         // Set up intersection observer
@@ -543,7 +572,9 @@ class PowerAmpSagPlugin extends PluginBase {
         // Disconnect observer
         if (this.observer) {
             this.observer.disconnect();
+            this.observer = null;
         }
+        this.disposeGraphResizeObservers();
         
         // Release canvas resources
         if (this.canvasLeft) {

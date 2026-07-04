@@ -7,6 +7,7 @@ export class StateManager {
         this.resetButton = document.getElementById('resetButton');
         this.settingsMenuButton = document.getElementById('settingsMenuButton');
         this.settingsMenu = document.getElementById('settingsMenu');
+        this.installAppButton = document.getElementById('installAppButton');
         this.configSettingsButton = document.getElementById('configSettingsButton');
         this.audioConfigSettingsButton = document.getElementById('audioConfigSettingsButton');
         this.benchmarkSettingsButton = document.getElementById('benchmarkSettingsButton');
@@ -22,6 +23,7 @@ export class StateManager {
 
     initEventListeners() {
         this.resetButton?.addEventListener('click', () => this.openAudioConfig());
+        this.installAppButton?.addEventListener('click', () => this.runMenuAction(() => this.installApp()));
         this.audioConfigSettingsButton?.addEventListener('click', () => this.runMenuAction(() => this.openAudioConfig()));
         this.configSettingsButton?.addEventListener('click', () => this.runMenuAction(() => this.openConfig()));
         this.benchmarkSettingsButton?.addEventListener('click', () => this.runMenuAction(() => this.openFeaturePage('features/effetune_bench.html')));
@@ -51,6 +53,12 @@ export class StateManager {
                 }
             });
         }
+
+        // The install prompt is captured in the page head; keep the menu item in
+        // sync with its availability.
+        window.addEventListener?.('pwa-install-available', () => this.updateInstallAvailability());
+        window.addEventListener?.('pwa-install-completed', () => this.updateInstallAvailability());
+        this.updateInstallAvailability();
     }
 
     translate(key, fallback) {
@@ -86,6 +94,9 @@ export class StateManager {
                 this.closeSettingsMenu();
             }
         }
+        if (this.installAppButton) {
+            this.installAppButton.textContent = this.translate('menu.settings.install', 'Install App');
+        }
         if (this.configSettingsButton) {
             this.configSettingsButton.textContent = this.translate('dialog.config.title', 'Config');
         }
@@ -106,6 +117,27 @@ export class StateManager {
     runMenuAction(action) {
         this.closeSettingsMenu();
         return action();
+    }
+
+    updateInstallAvailability() {
+        if (!this.installAppButton) return;
+        const available = !this.isElectronEnvironment() && Boolean(window.deferredInstallPrompt);
+        this.installAppButton.hidden = !available;
+    }
+
+    async installApp() {
+        const promptEvent = window.deferredInstallPrompt;
+        if (!promptEvent) return;
+        // The prompt can only be used once; drop the reference and hide the item
+        // regardless of the user's choice.
+        window.deferredInstallPrompt = null;
+        this.updateInstallAvailability();
+        try {
+            promptEvent.prompt();
+            await promptEvent.userChoice;
+        } catch (error) {
+            console.warn('Install prompt failed:', error);
+        }
     }
 
     toggleSettingsMenu() {

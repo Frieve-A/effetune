@@ -150,7 +150,10 @@ export class MobileNav {
             this.pluginListCloseButton.setAttribute('aria-label', 'Close effect list');
             this.pluginListCloseButton.innerHTML = MOBILE_ICONS.close;
             this.pluginListCloseButton.addEventListener('click', () => this.closePluginList());
-            document.getElementById('pluginList')?.prepend(this.pluginListCloseButton);
+            const pluginListElement = document.getElementById('pluginList');
+            if (typeof pluginListElement?.prepend === 'function') {
+                pluginListElement.prepend(this.pluginListCloseButton);
+            }
         }
 
         if (this.resumePromptListeners.length === 0) {

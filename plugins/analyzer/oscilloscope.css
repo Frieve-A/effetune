@@ -23,3 +23,13 @@
     color: #ffffff;
     border-radius: 4px;
 }
+
+body.layout-mobile .oscilloscope-plugin-ui .parameters-grid {
+    grid-template-columns: 1fr;
+}
+
+body.layout-mobile .oscilloscope-plugin-ui .radio-label {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+}

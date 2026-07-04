@@ -35,6 +35,9 @@ class OscilloscopePlugin extends PluginBase {
       this.animationId = null;
       this.animationFrameId = null;
       this.drawInterval = 1000 / 30; // target 30 FPS
+      this.resizeGraphDisposer = null;
+      this.graphDpr = 1;
+      this.graphCssWidth = 1024;
   
       // Circular buffer for waveform data.
       this.bufferSize = 65536;
@@ -178,8 +181,12 @@ class OscilloscopePlugin extends PluginBase {
       if (this.observer) {
         this.observer.disconnect();
       }
+      if (this.resizeGraphDisposer) {
+        this.resizeGraphDisposer();
+        this.resizeGraphDisposer = null;
+      }
       const container = document.createElement('div');
-      container.className = 'plugin-parameter-ui';
+      container.className = 'plugin-parameter-ui oscilloscope-plugin-ui';
   
       const parametersGrid = document.createElement('div');
       parametersGrid.className = 'parameters-grid';
@@ -321,14 +328,22 @@ class OscilloscopePlugin extends PluginBase {
       container.appendChild(parametersGrid);
   
       // --- Graph Container and Canvas ---
-      const graphContainer = document.createElement('div');
-      graphContainer.className = 'graph-container';
-  
-      this.canvas = document.createElement('canvas');
-      this.canvas.width = 1024;
-      this.canvas.height = 480;
+      const graph = this.createResponsiveGraph({
+        maxWidth: 1024,
+        aspectRatio: '32 / 15',
+        mobileAspectRatio: '4 / 3',
+        onResize: ({ canvas, cssWidth, dpr }) => {
+          this.canvas = canvas;
+          this.graphCssWidth = cssWidth;
+          this.graphDpr = dpr;
+          this.ctx = canvas.getContext('2d', { alpha: false });
+          this.drawWaveform();
+        }
+      });
+      const graphContainer = graph.container;
+      this.canvas = graph.canvas;
       this.ctx = this.canvas.getContext('2d', { alpha: false });
-      graphContainer.appendChild(this.canvas);
+      this.resizeGraphDisposer = graph.dispose;
   
       container.appendChild(graphContainer);
   
@@ -580,13 +595,15 @@ class OscilloscopePlugin extends PluginBase {
     drawWaveform() {
       const { ctx, canvas } = this;
       const { width, height } = canvas;
+      const dpr = this.graphDpr || 1;
+      const isNarrow = this.graphCssWidth < 500;
   
       // Clear the canvas.
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, width, height);
   
       // Left margin for vertical axis labels.
-      const leftMargin = 80;
+      const leftMargin = (isNarrow ? 52 : 80) * dpr;
   
       // Vertical scaling.
       const factor = 1 / Math.pow(10, this.displayLevel / 20);
@@ -597,8 +614,9 @@ class OscilloscopePlugin extends PluginBase {
       // Draw vertical grid and amplitude scale based on visible amplitude range.
       // ---------------------------
       ctx.strokeStyle = '#333';
-      ctx.lineWidth = 1;
-      ctx.font = '12px Arial';
+      ctx.lineWidth = dpr;
+      const tickFontSize = (isNarrow ? 11 : 12) * dpr;
+      ctx.font = `${tickFontSize}px Arial`;
       ctx.textAlign = 'right';
       ctx.fillStyle = '#666';
       ctx.textBaseline = 'middle';
@@ -611,7 +629,7 @@ class OscilloscopePlugin extends PluginBase {
       const visibleAmpMin = Math.min(ampTop, ampBottom);
       const visibleAmpMax = Math.max(ampTop, ampBottom);
   
-      const desiredTickCount = 20;
+      const desiredTickCount = isNarrow ? 8 : 20;
       const visibleAmpRange = visibleAmpMax - visibleAmpMin;
       const rawStep = visibleAmpRange / desiredTickCount;
       const exponent = Math.floor(Math.log10(rawStep));
@@ -636,7 +654,7 @@ class OscilloscopePlugin extends PluginBase {
       const decimals = exponent < 0 ? -exponent : 0;
   
       // Define a margin (in pixels) so that text drawn too near the top or bottom is omitted.
-      const textMargin = 6; // approximately half the font size
+      const textMargin = tickFontSize * 0.55;
   
       for (let tick = tickStart; tick <= tickEnd + tickStep * 0.5; tick += tickStep) {
         const y = centerY - (tick * factor) * (height / 2);
@@ -646,7 +664,7 @@ class OscilloscopePlugin extends PluginBase {
         ctx.stroke();
         // Only draw text if it does not overlap the top or bottom edge.
         if (y - textMargin >= 0 && y + textMargin <= height) {
-          ctx.fillText(tick.toFixed(decimals), 64, y);
+          ctx.fillText(tick.toFixed(decimals), leftMargin - (16 * dpr), y);
         }
       }
   
@@ -654,29 +672,30 @@ class OscilloscopePlugin extends PluginBase {
       // Draw horizontal grid and time scale.
       // ---------------------------
       ctx.strokeStyle = '#333';
-      ctx.lineWidth = 1;
-      for (let i = 0; i <= 10; i++) {
-        const x = leftMargin + ((width - leftMargin) * i) / 10;
+      ctx.lineWidth = dpr;
+      const timeDivisions = isNarrow ? 5 : 10;
+      for (let i = 0; i <= timeDivisions; i++) {
+        const x = leftMargin + ((width - leftMargin) * i) / timeDivisions;
         ctx.beginPath();
         ctx.moveTo(x, 0);
         ctx.lineTo(x, height);
         ctx.stroke();
-        if (i !== 0 && i !== 10) {
+        if (i !== 0 && i !== timeDivisions) {
           ctx.fillStyle = '#666';
-          ctx.font = '12px Arial';
+          ctx.font = `${tickFontSize}px Arial`;
           ctx.textAlign = 'center';
-          const t_ms = (i / 10) * (this.displayTime * 1000);
-          ctx.fillText(t_ms.toFixed(2) + ' ms', x, height - 40);
+          const t_ms = (i / timeDivisions) * (this.displayTime * 1000);
+          ctx.fillText(t_ms.toFixed(2) + ' ms', x, height - ((isNarrow ? 30 : 40) * dpr));
         }
       }
   
       // Draw axis labels.
       ctx.fillStyle = '#fff';
-      ctx.font = '14px Arial';
+      ctx.font = `${(isNarrow ? 12 : 14) * dpr}px Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('Time (ms)', leftMargin + (width - leftMargin) / 2, height - 10);
+      ctx.fillText('Time (ms)', leftMargin + (width - leftMargin) / 2, height - (10 * dpr));
       ctx.save();
-      ctx.translate(20, height / 2);
+      ctx.translate((isNarrow ? 16 : 20) * dpr, height / 2);
       ctx.rotate(-Math.PI / 2);
       ctx.fillText('Amplitude', 0, 0);
       ctx.restore();
@@ -687,7 +706,7 @@ class OscilloscopePlugin extends PluginBase {
       if (this.frozenDisplayBuffer) {
         const displayBuffer = this.frozenDisplayBuffer;
         ctx.strokeStyle = '#0f0';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2 * dpr;
         ctx.beginPath();
         // Draw continuous line: map each sample index to x coordinate.
         for (let i = 0; i < displayBuffer.length; i++) {
@@ -715,6 +734,10 @@ class OscilloscopePlugin extends PluginBase {
         }
         this.observer.disconnect();
         this.observer = null;
+      }
+      if (this.resizeGraphDisposer) {
+        this.resizeGraphDisposer();
+        this.resizeGraphDisposer = null;
       }
       for (const [element, listener] of this.boundEventListeners) {
         element.removeEventListener('change', listener);

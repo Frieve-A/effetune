@@ -604,7 +604,7 @@ class MultiChannelPanelPlugin extends PluginBase {
     // Create UI
     createUI() {
         const container = document.createElement('div');
-        container.className = 'multichannel-panel-ui';
+        container.className = 'multichannel-panel-ui plugin-parameter-ui';
 
         // Store UI elements for updates
         this.meterCanvases = [];
@@ -622,6 +622,7 @@ class MultiChannelPanelPlugin extends PluginBase {
             // Row 1: Channel name and level meter
             const row1 = document.createElement('div');
             row1.className = 'multichannel-panel-channel-row multichannel-panel-channel-header';
+            row1.style.alignItems = 'center';
 
             // Channel label
             const channelLabel = document.createElement('div');
@@ -632,8 +633,12 @@ class MultiChannelPanelPlugin extends PluginBase {
             // Level meter
             const meterCanvas = document.createElement('canvas');
             meterCanvas.className = 'multichannel-panel-level-meter';
-            meterCanvas.width = 932; // Consider making these configurable or CSS-driven
-            meterCanvas.height = 16;
+            meterCanvas.width = 640;
+            meterCanvas.height = 32;
+            meterCanvas.style.width = '100%';
+            meterCanvas.style.height = '32px';
+            meterCanvas.style.minHeight = '32px';
+            meterCanvas.style.display = 'block';
             this.meterCanvases[ch] = meterCanvas;
             this.meterContexts[ch] = meterCanvas.getContext('2d');
             row1.appendChild(meterCanvas);
@@ -797,6 +802,20 @@ class MultiChannelPanelPlugin extends PluginBase {
         return container;
     }
 
+    syncMeterCanvasSize(canvas) {
+        const rect = canvas.getBoundingClientRect?.() || { width: canvas.clientWidth || 0, height: canvas.clientHeight || 0 };
+        const cssWidth = canvas.clientWidth || rect.width || 320;
+        const cssHeight = canvas.clientHeight || rect.height || 32;
+        const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) ? window.devicePixelRatio : 1;
+        const targetWidth = Math.round(cssWidth * dpr);
+        const targetHeight = Math.round(cssHeight * dpr);
+        if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+            canvas.width = targetWidth;
+            canvas.height = targetHeight;
+        }
+        return dpr;
+    }
+
     startAnimation() {
         if (this.animationFrameId) return; // Animation already running
 
@@ -825,6 +844,7 @@ class MultiChannelPanelPlugin extends PluginBase {
 
             const canvas = this.meterCanvases[ch];
             const ctx = this.meterContexts[ch];
+            const dpr = this.syncMeterCanvasSize(canvas);
             const width = canvas.width;
             const height = canvas.height;
 
@@ -868,7 +888,7 @@ class MultiChannelPanelPlugin extends PluginBase {
             // Draw grid lines and labels
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)'; // Light grid lines
             ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';   // Light text color
-            ctx.font = '10px Arial';
+            ctx.font = `${Math.round(10 * dpr)}px Arial`;
             ctx.textAlign = 'center';
 
             for (let db = dbMin; db <= 0; db += 3) { // Grid line every 3dB
@@ -882,17 +902,17 @@ class MultiChannelPanelPlugin extends PluginBase {
 
                 // Draw label every 12dB (excluding 0dB and min dB for clarity if too cluttered)
                 if (db % 12 === 0 && db !== 0 && db !== dbMin) {
-                    ctx.fillText(db.toString(), xPos, height - 6);
+                    ctx.fillText(db.toString(), xPos, height - 6 * dpr);
                 }
             }
 
             // Display peak level value as text
             ctx.fillStyle = '#ffffff';
-            ctx.font = '12px Arial';
+            ctx.font = `${Math.round(12 * dpr)}px Arial`;
             ctx.textAlign = 'right';
             ctx.textBaseline = 'middle';
             const peakText = peakLevelDb.toFixed(1) + ' dB';
-            ctx.fillText(peakText, width - 10, height / 2 + 1);
+            ctx.fillText(peakText, width - 10 * dpr, height / 2 + 1 * dpr);
         }
     }
 

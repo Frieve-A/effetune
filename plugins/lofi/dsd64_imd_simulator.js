@@ -537,6 +537,12 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         this.errorEl.style.display = this.errorState ? 'block' : 'none';
     }
 
+    _getCanvasDpr(canvas) {
+        const rect = canvas.getBoundingClientRect ? canvas.getBoundingClientRect() : null;
+        const cssWidth = canvas.clientWidth || (rect && rect.width) || canvas.width || 1;
+        return canvas.width / cssWidth;
+    }
+
     // ===================== UI =====================
     createUI() {
         const c = document.createElement('div');
@@ -568,8 +574,9 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         // --- Visualizations ---
         const vizRow = document.createElement('div');
         vizRow.className = 'dsd64-imd-viz';
+        this.graphDisposers?.forEach(dispose => dispose());
+        this.graphDisposers = [];
 
-        // All three views share the same displayed height (200px) and 2x render resolution.
         // Term contribution meters
         const meterWrap = document.createElement('div');
         meterWrap.className = 'dsd64-imd-meter-wrap';
@@ -577,29 +584,35 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         meterTitle.className = 'dsd64-imd-viz-title';
         meterTitle.textContent = 'Term Contribution (dBFS RMS)';
         meterWrap.appendChild(meterTitle);
-        this.meterCanvas = document.createElement('canvas');
-        this.meterCanvas.width = 640;
-        this.meterCanvas.height = 400;
-        this.meterCanvas.style.width = '320px';
-        this.meterCanvas.style.height = '200px';
-        this.meterCanvas.className = 'dsd64-imd-canvas';
-        meterWrap.appendChild(this.meterCanvas);
+        const { container: meterGraph, canvas: meterCanvas, dispose: disposeMeterGraph } = this.createResponsiveGraph({
+            maxWidth: 320,
+            aspectRatio: '8 / 5',
+            className: 'dsd64-imd-meter-graph',
+            onResize: () => this.drawMeters()
+        });
+        meterCanvas.className = 'dsd64-imd-canvas';
+        this.meterCanvas = meterCanvas;
+        this.graphDisposers.push(disposeMeterGraph);
+        meterWrap.appendChild(meterGraph);
         vizRow.appendChild(meterWrap);
 
-        // Analog transfer curve (Saturation-style: 400x400 canvas shown at 200x200)
+        // Analog transfer curve
         const tcWrap = document.createElement('div');
         tcWrap.className = 'dsd64-imd-tc-wrap';
         const tcTitle = document.createElement('div');
         tcTitle.className = 'dsd64-imd-viz-title';
         tcTitle.textContent = 'Analog Transfer Curve';
         tcWrap.appendChild(tcTitle);
-        this.transferCanvas = document.createElement('canvas');
-        this.transferCanvas.width = 400;
-        this.transferCanvas.height = 400;
-        this.transferCanvas.style.width = '200px';
-        this.transferCanvas.style.height = '200px';
-        this.transferCanvas.className = 'dsd64-imd-tc-canvas';
-        tcWrap.appendChild(this.transferCanvas);
+        const { container: transferGraph, canvas: transferCanvas, dispose: disposeTransferGraph } = this.createResponsiveGraph({
+            maxWidth: 200,
+            aspectRatio: '1 / 1',
+            className: 'dsd64-imd-tc-graph',
+            onResize: () => this.drawTransferCurve()
+        });
+        transferCanvas.className = 'dsd64-imd-tc-canvas';
+        this.transferCanvas = transferCanvas;
+        this.graphDisposers.push(disposeTransferGraph);
+        tcWrap.appendChild(transferGraph);
         vizRow.appendChild(tcWrap);
 
         // Difference-frequency view (static; depends on the ultrasonic shaping H_U only)
@@ -609,13 +622,17 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         dfTitle.className = 'dsd64-imd-viz-title';
         dfTitle.textContent = 'Difference-Frequency (ref. 96 kHz)';
         dfWrap.appendChild(dfTitle);
-        this.diffCanvas = document.createElement('canvas');
-        this.diffCanvas.width = 800;
-        this.diffCanvas.height = 400;
-        this.diffCanvas.style.width = '400px';
-        this.diffCanvas.style.height = '200px';
-        this.diffCanvas.className = 'dsd64-imd-canvas';
-        dfWrap.appendChild(this.diffCanvas);
+        const { container: diffGraph, canvas: diffCanvas, dispose: disposeDiffGraph } = this.createResponsiveGraph({
+            maxWidth: 400,
+            aspectRatio: '2 / 1',
+            mobileAspectRatio: '2 / 1',
+            className: 'dsd64-imd-df-graph',
+            onResize: () => this.drawDifferenceFrequency()
+        });
+        diffCanvas.className = 'dsd64-imd-canvas';
+        this.diffCanvas = diffCanvas;
+        this.graphDisposers.push(disposeDiffGraph);
+        dfWrap.appendChild(diffGraph);
         vizRow.appendChild(dfWrap);
 
         c.appendChild(vizRow);
@@ -648,6 +665,8 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         if (!this.meterCanvas) return;
         const ctx = this.meterCanvas.getContext('2d');
         const W = this.meterCanvas.width, H = this.meterCanvas.height;
+        const dpr = this._getCanvasDpr(this.meterCanvas);
+        const cssWidth = W / dpr;
         ctx.clearRect(0, 0, W, H);
         ctx.fillStyle = '#1a1a1a';
         ctx.fillRect(0, 0, W, H);
@@ -655,22 +674,23 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         const labels = ['Additive', 'Attached', 'Cross', 'Total IMD', 'Output'];
         const keys = ['add', 'att', 'cross', 'tot', 'out'];
         const dbMin = -120, dbMax = 0, range = dbMax - dbMin;
-        const labelW = 140;          // 2x resolution
-        const valW = 90;
-        const barH = (H - 20) / labels.length;
+        const labelW = (cssWidth < 300 ? 86 : 96) * dpr;
+        const valW = 46 * dpr;
+        const topPad = 5 * dpr;
+        const barH = (H - topPad * 2) / labels.length;
 
-        ctx.font = '20px Arial';
+        ctx.font = `${Math.round(11 * dpr)}px Arial`;
         ctx.textBaseline = 'middle';
 
         for (let i = 0; i < labels.length; i++) {
-            const y = 10 + i * barH;
+            const y = topPad + i * barH;
             const v = Math.max(dbMin, Math.min(dbMax, this.meterLevels[keys[i]]));
             const trackW = W - labelW - valW;
             const w = trackW * (v - dbMin) / range;
 
             ctx.fillStyle = '#fff';
             ctx.textAlign = 'left';
-            ctx.fillText(labels[i], 8, y + barH / 2);
+            ctx.fillText(labels[i], 4 * dpr, y + barH / 2);
 
             ctx.fillStyle = '#333';
             ctx.fillRect(labelW, y + barH * 0.15, trackW, barH * 0.6);
@@ -679,7 +699,7 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
 
             ctx.fillStyle = '#ccc';
             ctx.textAlign = 'right';
-            ctx.fillText(v.toFixed(1), W - 8, y + barH / 2);
+            ctx.fillText(v.toFixed(1), W - 4 * dpr, y + barH / 2);
         }
     }
 
@@ -689,11 +709,17 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         if (!this.transferCanvas) return;
         const ctx = this.transferCanvas.getContext('2d');
         const width = this.transferCanvas.width, height = this.transferCanvas.height;
+        const dpr = this._getCanvasDpr(this.transferCanvas);
+        const tickFont = Math.round(11 * dpr);
+        const axisFont = Math.round(13 * dpr);
+        const axisInset = 12 * dpr;
+        const bottomInset = 4 * dpr;
+        const isMobileLayout = typeof document !== 'undefined' && document.body && document.body.classList.contains('layout-mobile');
         ctx.clearRect(0, 0, width, height);
 
         // Grid
         ctx.strokeStyle = '#444';
-        ctx.lineWidth = 1;
+        ctx.lineWidth = (isMobileLayout ? 1 : 0.5) * dpr;
         for (let x = 0; x <= width; x += width / 4) {
             ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
         }
@@ -703,22 +729,22 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
 
         // in / out labels
         ctx.fillStyle = '#fff';
-        ctx.font = '28px Arial';
+        ctx.font = `${axisFont}px Arial`;
         ctx.textAlign = 'center';
-        ctx.fillText('in', width / 2, height - 5);
+        ctx.fillText('in', width / 2, height - bottomInset);
         ctx.save();
-        ctx.translate(20, height / 2);
+        ctx.translate(axisInset, height / 2);
         ctx.rotate(-Math.PI / 2);
         ctx.fillText('out', 0, 0);
         ctx.restore();
 
         // -6dB markers
         ctx.fillStyle = '#666';
-        ctx.font = '20px Arial';
-        ctx.fillText('-6dB', width * 0.25, height - 5);
-        ctx.fillText('-6dB', width * 0.75, height - 5);
-        ctx.save(); ctx.translate(20, height * 0.25); ctx.rotate(-Math.PI / 2); ctx.fillText('-6dB', 0, 0); ctx.restore();
-        ctx.save(); ctx.translate(20, height * 0.75); ctx.rotate(-Math.PI / 2); ctx.fillText('-6dB', 0, 0); ctx.restore();
+        ctx.font = `${tickFont}px Arial`;
+        ctx.fillText('-6dB', width * 0.25, height - bottomInset);
+        ctx.fillText('-6dB', width * 0.75, height - bottomInset);
+        ctx.save(); ctx.translate(axisInset, height * 0.25); ctx.rotate(-Math.PI / 2); ctx.fillText('-6dB', 0, 0); ctx.restore();
+        ctx.save(); ctx.translate(axisInset, height * 0.75); ctx.rotate(-Math.PI / 2); ctx.fillText('-6dB', 0, 0); ctx.restore();
 
         const Hnl = this.an / 100, b = this.eb / 100;
         const a2 = 2 * (Hnl * Math.sin(Math.PI * b / 2));
@@ -726,7 +752,7 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
 
         // Reference identity y = v
         ctx.strokeStyle = '#555';
-        ctx.lineWidth = 1;
+        ctx.lineWidth = (isMobileLayout ? 1 : 0.5) * dpr;
         ctx.beginPath();
         ctx.moveTo(0, height);
         ctx.lineTo(width, 0);
@@ -734,7 +760,7 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
 
         // Transfer function phi(v)
         ctx.strokeStyle = '#00ff00';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = (isMobileLayout ? 2 : 1) * dpr;
         ctx.beginPath();
         for (let i = 0; i < width; i++) {
             const v = (i / width) * 2 - 1;          // map to [-1, 1]
@@ -810,6 +836,14 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         if (!this.diffCanvas) return;
         const ctx = this.diffCanvas.getContext('2d');
         const W = this.diffCanvas.width, H = this.diffCanvas.height;
+        const dpr = this._getCanvasDpr(this.diffCanvas);
+        const tickFont = Math.round(11 * dpr);
+        const axisFont = Math.round(13 * dpr);
+        const bottomTickY = H - 26 * dpr;
+        const axisBottomY = H - 4 * dpr;
+        const leftLabelX = 40 * dpr;
+        const axisLabelX = 12 * dpr;
+        const isMobileLayout = typeof document !== 'undefined' && document.body && document.body.classList.contains('layout-mobile');
         ctx.clearRect(0, 0, W, H);
         ctx.fillStyle = '#1a1a1a';
         ctx.fillRect(0, 0, W, H);
@@ -841,8 +875,8 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         const dbTop = 0, dbBot = -60, dbSpan = dbTop - dbBot;
 
         ctx.strokeStyle = '#444';
-        ctx.lineWidth = 1;
-        ctx.font = '20px Arial';
+        ctx.lineWidth = (isMobileLayout ? 1 : 0.5) * dpr;
+        ctx.font = `${tickFont}px Arial`;
 
         // Vertical grid + frequency labels (center-aligned, like the EQ plugins).
         // Labels whose value sits on a canvas edge are omitted, not shifted to fit.
@@ -853,7 +887,7 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
             ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
             if (freq > 0 && freq < fMax) {
                 ctx.fillStyle = '#666';
-                ctx.fillText(`${freq / 1000}k`, x, H - 40);
+                ctx.fillText(`${freq / 1000}k`, x, bottomTickY);
             }
         });
 
@@ -865,24 +899,24 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
             ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
             if (db < dbTop && db > dbBot) {
                 ctx.fillStyle = '#666';
-                ctx.fillText(`${db}dB`, 80, y + 6);
+                ctx.fillText(`${db}dB`, leftLabelX, y + 3 * dpr);
             }
         });
 
         // Axis titles
         ctx.fillStyle = '#fff';
-        ctx.font = '24px Arial';
+        ctx.font = `${axisFont}px Arial`;
         ctx.textAlign = 'center';
-        ctx.fillText('Frequency (Hz)', W / 2, H - 5);
+        ctx.fillText('Frequency (Hz)', W / 2, axisBottomY);
         ctx.save();
-        ctx.translate(20, H / 2);
+        ctx.translate(axisLabelX, H / 2);
         ctx.rotate(-Math.PI / 2);
         ctx.fillText('Level (dB)', 0, 0);
         ctx.restore();
 
         // Difference-frequency density curve (unified green)
         ctx.strokeStyle = '#00ff00';
-        ctx.lineWidth = 3;
+        ctx.lineWidth = (isMobileLayout ? 2 : 1.5) * dpr;
         ctx.beginPath();
         for (let j = 0; j < nF; j++) {
             const db = 10 * Math.log10(D[j] / maxD + 1e-24);
@@ -895,6 +929,8 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
 
     cleanup() {
         this.stopAnimation();
+        this.graphDisposers?.forEach(dispose => dispose());
+        this.graphDisposers = null;
         super.cleanup();
     }
 }

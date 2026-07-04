@@ -149,6 +149,7 @@
   "menu.settings": "Settings",
   "menu.settings.config": "Config...",
   "menu.settings.audioDevices": "Audio Devices...",
+  "menu.settings.install": "Install App",
   "menu.settings.performanceBenchmark": "Performance Benchmark",
   "menu.settings.frequencyResponseMeasurement": "Frequency Response Measurement",
 

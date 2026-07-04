@@ -13,3 +13,7 @@
   aspect-ratio: 1 / 1;
   image-rendering: pixelated;
 }
+
+body.layout-mobile .stereo-meter canvas {
+  image-rendering: auto;
+}

@@ -300,14 +300,15 @@ class LoPassFilterPlugin extends PluginBase {
     };
 
     // Create graph container and canvas *before* creating controls that need it
-    const graphContainer = document.createElement("div");
-    graphContainer.style.position = "relative";
-    const canvas = document.createElement("canvas");
-    canvas.width = 1200;
-    canvas.height = 480;
-    canvas.style.width = "600px";
-    canvas.style.height = "240px";
-    graphContainer.appendChild(canvas);
+    const { container: graphContainer, canvas } = this.createResponsiveGraph({
+      maxWidth: 600,
+      aspectRatio: "5 / 2",
+      mobileAspectRatio: "2 / 1",
+      className: "lo-pass-filter-graph",
+      onResize: ({ canvas }) => this.drawGraph(canvas)
+    });
+    graphContainer.style.margin = "10px auto";
+    canvas.style.margin = "0 auto";
 
     // Create frequency parameter row using the base helper
     // Pass the canvas reference to the event handler
@@ -330,14 +331,21 @@ class LoPassFilterPlugin extends PluginBase {
 
   drawGraph(canvas) {
     const ctx = canvas.getContext("2d");
-    const width = canvas.width, height = canvas.height;
+    const rect = canvas.getBoundingClientRect();
+    const cssWidth = rect.width || canvas.clientWidth || canvas.width;
+    const cssHeight = rect.height || canvas.clientHeight || canvas.height;
+    const dpr = canvas.width / cssWidth || 1;
+    const width = Math.max(1, Math.round(cssWidth));
+    const height = Math.max(1, Math.round(cssHeight));
     const minFreqLog = Math.log10(10);
     const maxFreqLog = Math.log10(40000);
 
+    const isMobileLayout = typeof document !== 'undefined' && document.body && document.body.classList.contains('layout-mobile');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
     ctx.strokeStyle = "#444";
-    ctx.lineWidth = 1;
-    ctx.font = "20px Arial";
+    ctx.lineWidth = isMobileLayout ? 1 : 0.5;
+    ctx.font = "12px Arial";
 
     const gridFreqs = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
     gridFreqs.forEach(freq => {
@@ -349,7 +357,7 @@ class LoPassFilterPlugin extends PluginBase {
       if (freq >= 10) {
         ctx.fillStyle = "#666";
         ctx.textAlign = "center";
-        ctx.fillText(freq >= 1000 ? `${freq/1000}k` : freq, x, height - 40);
+        ctx.fillText(freq >= 1000 ? `${freq/1000}k` : freq, x, height - 24);
       }
     });
 
@@ -365,16 +373,16 @@ class LoPassFilterPlugin extends PluginBase {
       if (db > -60) {
         ctx.fillStyle = "#666";
         ctx.textAlign = "right";
-        ctx.fillText(`${db}dB`, 80, y + 6);
+        ctx.fillText(`${db}dB`, 48, y + 4);
       }
     });
 
     ctx.fillStyle = "#fff";
-    ctx.font = "24px Arial";
+    ctx.font = "14px Arial";
     ctx.textAlign = "center";
     ctx.fillText("Frequency (Hz)", width / 2, height - 5);
     ctx.save();
-    ctx.translate(20, height / 2);
+    ctx.translate(14, height / 2);
     ctx.rotate(-Math.PI / 2);
     ctx.fillText("Level (dB)", 0, 0);
     ctx.restore();
@@ -388,7 +396,7 @@ class LoPassFilterPlugin extends PluginBase {
 
     ctx.beginPath();
     ctx.strokeStyle = "#00ff00";
-    ctx.lineWidth = 3;
+    ctx.lineWidth = isMobileLayout ? 3 : 1.5;
     for (let i = 0; i < width; i++) {
       let y = height * (1 - (response[i] - dbRange[0]) / totalDbSpan);
       if (i === 0) ctx.moveTo(i, y);

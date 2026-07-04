@@ -416,7 +416,17 @@ async function withUIHarness(options = {}, callback) {
       electronIntegration,
       electronAPI,
       open: (...args) => opened.push(args),
-      addEventListener: (...args) => calls.push(['window.addEventListener', ...args])
+      addEventListener: (...args) => calls.push(['window.addEventListener', ...args]),
+      removeEventListener: (...args) => calls.push(['window.removeEventListener', ...args]),
+      matchMedia: query => ({
+        // Simulate an installed (standalone) desktop session so the layout
+        // manager resolves to the desktop layout in these tests.
+        matches: query.includes('display-mode: standalone'),
+        addEventListener() {},
+        removeEventListener() {},
+        addListener() {},
+        removeListener() {}
+      })
     },
     navigator: {
       language: options.language ?? 'en-US',

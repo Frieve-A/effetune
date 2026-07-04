@@ -1,25 +1,49 @@
 export class LayoutModeManager {
     constructor({
-        mediaQuery = '(max-width: 767px)',
+        // The desktop layout (plugin list + pipeline) needs at least 1159px of
+        // viewport width before horizontal scrolling kicks in, so tablets and
+        // narrower windows get the mobile layout.
+        mediaQuery = '(max-width: 1158px)',
+        // Standalone (installed PWA) detection is tracked so UI such as the
+        // install action can react to it; the layout itself is width-driven.
+        installedQuery = '(display-mode: standalone)',
         windowRef = typeof window !== 'undefined' ? window : {},
         documentRef = typeof document !== 'undefined' ? document : { body: null }
     } = {}) {
         this.windowRef = windowRef;
         this.documentRef = documentRef;
         this.listeners = new Set();
+        const stubQuery = { matches: false, addEventListener() {}, removeEventListener() {} };
         this.query = this.windowRef.matchMedia
             ? this.windowRef.matchMedia(mediaQuery)
-            : { matches: false, addEventListener() {}, removeEventListener() {} };
+            : { ...stubQuery };
+        this.installedMedia = this.windowRef.matchMedia
+            ? this.windowRef.matchMedia(installedQuery)
+            : { ...stubQuery };
         this.appliedMode = null;
         this.handleQueryChange = () => this.applyMode();
 
-        if (typeof this.query.addEventListener === 'function') {
-            this.query.addEventListener('change', this.handleQueryChange);
-        } else if (typeof this.query.addListener === 'function') {
-            this.query.addListener(this.handleQueryChange);
+        for (const media of [this.query, this.installedMedia]) {
+            if (typeof media.addEventListener === 'function') {
+                media.addEventListener('change', this.handleQueryChange);
+            } else if (typeof media.addListener === 'function') {
+                media.addListener(this.handleQueryChange);
+            }
+        }
+
+        // Installing from a browser tab fires `appinstalled` without changing
+        // the current tab's display-mode, so re-evaluate the layout then too.
+        if (typeof this.windowRef.addEventListener === 'function') {
+            this.windowRef.addEventListener('appinstalled', this.handleQueryChange);
         }
 
         this.applyMode();
+    }
+
+    get isInstalled() {
+        if (this.installedMedia?.matches) return true;
+        // iOS Safari exposes standalone launches via navigator.standalone.
+        return !!this.windowRef.navigator?.standalone;
     }
 
     get isElectron() {
@@ -67,10 +91,15 @@ export class LayoutModeManager {
     }
 
     dispose() {
-        if (typeof this.query.removeEventListener === 'function') {
-            this.query.removeEventListener('change', this.handleQueryChange);
-        } else if (typeof this.query.removeListener === 'function') {
-            this.query.removeListener(this.handleQueryChange);
+        for (const media of [this.query, this.installedMedia]) {
+            if (typeof media.removeEventListener === 'function') {
+                media.removeEventListener('change', this.handleQueryChange);
+            } else if (typeof media.removeListener === 'function') {
+                media.removeListener(this.handleQueryChange);
+            }
+        }
+        if (typeof this.windowRef.removeEventListener === 'function') {
+            this.windowRef.removeEventListener('appinstalled', this.handleQueryChange);
         }
         this.listeners.clear();
     }

@@ -148,6 +148,7 @@
   "menu.settings": "Настройки",
   "menu.settings.config": "Конфигурация...",
   "menu.settings.audioDevices": "Аудиоустройства...",
+  "menu.settings.install": "Установить приложение",
   "menu.settings.performanceBenchmark": "Тест производительности",
   "menu.settings.frequencyResponseMeasurement": "Измерение частотной характеристики",
 

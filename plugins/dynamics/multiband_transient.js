@@ -19,6 +19,7 @@ class MultibandTransientPlugin extends PluginBase {
         this.canvases = [];
         this.boundEventListeners = new Map();
         this.animationFrameId = null;
+        this.graphResizeDisposers = [];
 
         // Gain history buffers for each band (306 points)
         this.gainBuffers = [
@@ -616,6 +617,11 @@ class MultibandTransientPlugin extends PluginBase {
         }
     }
 
+    disposeGraphResizeObservers() {
+        this.graphResizeDisposers.forEach(dispose => dispose());
+        this.graphResizeDisposers = [];
+    }
+
     drawGraphs() {
         if (!this.canvases || this.canvases.length === 0) return;
         
@@ -628,6 +634,17 @@ class MultibandTransientPlugin extends PluginBase {
 
             const width = canvas.width;
             const height = canvas.height;
+            const cssWidth = canvas.clientWidth || width;
+            const dpr = cssWidth > 0 ? width / cssWidth : 1;
+            const tickFontSize = 12 * dpr;
+            const axisFontSize = 14 * dpr;
+            const labelX = 50 * dpr;
+            const axisX = 20 * dpr;
+            const tickOffset = 6 * dpr;
+            const bottomOffset = 5 * dpr;
+            const secondMarkerHeight = 8 * dpr;
+            const isMobileLayout = typeof document !== 'undefined' && document.body && document.body.classList.contains('layout-mobile');
+            const graphLineWidth = (isMobileLayout ? 2 : 1) * dpr;
 
             // Clear canvas
             ctx.fillStyle = '#1a1a1a';
@@ -635,9 +652,9 @@ class MultibandTransientPlugin extends PluginBase {
 
             // Draw grid lines and labels
             ctx.strokeStyle = '#333';
-            ctx.lineWidth = 2;
+            ctx.lineWidth = graphLineWidth;
             ctx.textAlign = 'right';
-            ctx.font = '24px Arial';
+            ctx.font = `${tickFontSize}px Arial`;
             ctx.fillStyle = '#ccc';
 
             // Draw horizontal grid lines (6dB steps from -24dB to +24dB)
@@ -647,35 +664,35 @@ class MultibandTransientPlugin extends PluginBase {
                 ctx.moveTo(0, y);
                 ctx.lineTo(width, y);
                 ctx.stroke();
-                ctx.fillText(`${db}`, 100, y + 12);
+                ctx.fillText(`${db}`, labelX, y + tickOffset);
             }
 
             // Draw axis labels
             ctx.save();
-            ctx.font = '28px Arial';
-            ctx.translate(40, height / 2);
+            ctx.font = `${axisFontSize}px Arial`;
+            ctx.translate(axisX, height / 2);
             ctx.rotate(-Math.PI / 2);
             ctx.textAlign = 'center';
             ctx.fillText('Gain (dB)', 0, 0);
             ctx.restore();
 
             ctx.textAlign = 'center';
-            ctx.fillText(`Time`, width / 2, height - 10);
+            ctx.fillText('Time', width / 2, height - bottomOffset);
 
             // Draw 1-second markers
             ctx.strokeStyle = '#555';
-            ctx.lineWidth = 2;
+            ctx.lineWidth = graphLineWidth;
             for (const idx of this.secondMarkers[bandIdx]) {
                 const x = width * idx / this.gainBuffers[bandIdx].length;
                 ctx.beginPath();
-                ctx.moveTo(x, height - 16);
+                ctx.moveTo(x, height - secondMarkerHeight);
                 ctx.lineTo(x, height);
                 ctx.stroke();
             }
 
             // Draw gain history; skip segments with NaN values
             ctx.strokeStyle = "#00ff00";
-            ctx.lineWidth = 2;
+            ctx.lineWidth = graphLineWidth;
             ctx.beginPath();
             let started = false;
             for (let i = 0; i < this.gainBuffers[bandIdx].length; i++) {
@@ -711,6 +728,7 @@ class MultibandTransientPlugin extends PluginBase {
         this.boundEventListeners.clear();
 
         // Release canvas resources
+        this.disposeGraphResizeObservers();
         if (this.canvases) {
             this.canvases.forEach(canvas => {
                 if (canvas) {
@@ -735,6 +753,7 @@ class MultibandTransientPlugin extends PluginBase {
     }
 
     createUI() {
+        this.disposeGraphResizeObservers();
         const container = document.createElement('div');
         this.instanceId = `mbt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         container.className = 'mbt-container';
@@ -749,7 +768,7 @@ class MultibandTransientPlugin extends PluginBase {
             sliderContainer.className = 'mbt-freq-slider';
 
             const topRow = document.createElement('div');
-            topRow.className = 'mbt-freq-slider-top';
+            topRow.className = 'mbt-freq-slider-top parameter-row';
 
             // Create unique IDs for the inputs using provided prefix
             const sliderId = `${idPrefix}-freq${freqNum}-slider`;
@@ -881,17 +900,20 @@ class MultibandTransientPlugin extends PluginBase {
             const graphDiv = document.createElement('div');
             graphDiv.className = `mbt-band-graph ${i === 0 ? 'active' : ''}`;
             graphDiv.setAttribute('data-instance-id', this.instanceId);
-            const canvas = document.createElement('canvas');
-            canvas.width = 612;
-            canvas.height = 300;
-            canvas.style.width = '308px';
-            canvas.style.height = '150px';
+            const { container: graphContainer, canvas, dispose } = this.createResponsiveGraph({
+                maxWidth: 612,
+                aspectRatio: '612 / 300',
+                mobileAspectRatio: '2.5 / 1',
+                className: 'mbt-transfer-graph',
+                onResize: () => this.drawGraphs()
+            });
             canvas.style.backgroundColor = '#1a1a1a';
             const label = document.createElement('div');
             label.className = 'mbt-band-graph-label';
             label.textContent = bandNames[i];
-            graphDiv.appendChild(canvas);
+            graphDiv.appendChild(graphContainer);
             graphDiv.appendChild(label);
+            this.graphResizeDisposers.push(dispose);
             
             // Add click event to switch to this band when clicking on the graph
             const bandIndex = i; // Capture the current band index

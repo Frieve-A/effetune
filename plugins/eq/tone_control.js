@@ -273,12 +273,15 @@ class ToneControlPlugin extends PluginBase {
         // Keep original class structure unless standardizing is desired
         container.className = 'tone-control-plugin-ui plugin-parameter-ui';
 
-        const { container: graphContainer, canvas } = this.createGraphContainer({
+        const { container: graphContainer, canvas } = this.createResponsiveGraph({
             maxWidth: 600,
-            canvasWidth: 1200,
-            canvasHeight: 480,
-            className: 'tone-control-graph-container'
+            aspectRatio: '5 / 2',
+            mobileAspectRatio: '2 / 1',
+            className: 'tone-control-graph-container',
+            onResize: ({ canvas }) => this.drawGraph(canvas)
         });
+        graphContainer.style.margin = '10px auto';
+        canvas.style.margin = '0 auto';
 
         // Create parameter controls using createParameterControl
         const bassSetter = (value) => {
@@ -334,16 +337,23 @@ class ToneControlPlugin extends PluginBase {
 
     drawGraph(canvas) {
         const ctx = canvas.getContext('2d');
-        const width = canvas.width;
-        const height = canvas.height;
+        const rect = canvas.getBoundingClientRect();
+        const cssWidth = rect.width || canvas.clientWidth || canvas.width;
+        const cssHeight = rect.height || canvas.clientHeight || canvas.height;
+        const dpr = canvas.width / cssWidth || 1;
+        const width = Math.max(1, Math.round(cssWidth));
+        const height = Math.max(1, Math.round(cssHeight));
+        const isMobileLayout = typeof document !== 'undefined' && document.body && document.body.classList.contains('layout-mobile');
         const sr = 44100; // Standard sample rate
 
         // Clear canvas
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, width, height);
 
         // Draw grid (vertical: frequency, horizontal: dB)
         ctx.strokeStyle = '#444';
-        ctx.lineWidth = 1;
+        ctx.lineWidth = isMobileLayout ? 1 : 0.5;
+        ctx.font = '12px Arial';
 
         const freqs = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
         freqs.forEach(freq => {
@@ -354,9 +364,8 @@ class ToneControlPlugin extends PluginBase {
             ctx.stroke();
             if (freq !== 20 && freq !== 20000) {
                 ctx.fillStyle = '#666';
-                ctx.font = '20px Arial';
                 ctx.textAlign = 'center';
-                ctx.fillText(freq >= 1000 ? (freq/1000) + 'k' : freq, x, height - 40);
+                ctx.fillText(freq >= 1000 ? (freq/1000) + 'k' : freq, x, height - 24);
             }
         });
 
@@ -369,19 +378,18 @@ class ToneControlPlugin extends PluginBase {
             ctx.stroke();
             if (db !== -24 && db !== 24) {
                 ctx.fillStyle = '#666';
-                ctx.font = '20px Arial';
                 ctx.textAlign = 'right';
-                ctx.fillText(db + 'dB', 80, y + 6);
+                ctx.fillText(db + 'dB', 48, y + 4);
             }
         });
 
         // Draw axis labels
         ctx.fillStyle = '#fff';
-        ctx.font = '24px Arial';
+        ctx.font = '14px Arial';
         ctx.textAlign = 'center';
         ctx.fillText('Frequency (Hz)', width/2, height - 5);
         ctx.save();
-        ctx.translate(20, height/2);
+        ctx.translate(14, height/2);
         ctx.rotate(-Math.PI/2);
         ctx.fillText('Level (dB)', 0, 0);
         ctx.restore();
@@ -389,7 +397,7 @@ class ToneControlPlugin extends PluginBase {
         // Draw frequency response curve
         ctx.beginPath();
         ctx.strokeStyle = '#00ff00';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = isMobileLayout ? 2 : 1;
 
         // Helper function: compute second-order IIR frequency response using z-transform
         function computeResponse(b0, b1, b2, a1, a2, w) {

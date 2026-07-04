@@ -186,29 +186,49 @@ class ExciterPlugin extends PluginBase {
         if (this.satCanvas) this.drawSaturationGraph(this.satCanvas);
     }
 
+    _getCanvasDpr(canvas) {
+        const rect = canvas.getBoundingClientRect ? canvas.getBoundingClientRect() : null;
+        const cssWidth = canvas.clientWidth || (rect && rect.width) || canvas.width || 1;
+        return canvas.width / cssWidth;
+    }
+
     drawHPFGraph(canvas) {
         const ctx = canvas.getContext("2d");
         const width = canvas.width, height = canvas.height;
+        const dpr = this._getCanvasDpr(canvas);
+        const cssWidth = width / dpr;
+        const tickFont = Math.round(11 * dpr);
+        const axisFont = Math.round(13 * dpr);
+        const bottomTickY = height - 26 * dpr;
+        const axisBottomY = height - 4 * dpr;
+        const leftLabelX = 40 * dpr;
+        const axisLabelX = 12 * dpr;
+        const isMobileLayout = typeof document !== 'undefined' && document.body && document.body.classList.contains('layout-mobile');
+        const gridLineWidth = (isMobileLayout ? 1 : 0.5) * dpr;
+        const curveLineWidth = (isMobileLayout ? 2 : 1) * dpr;
         ctx.clearRect(0, 0, width, height);
 
         // Draw grid
         ctx.strokeStyle = "#444";
-        ctx.lineWidth = 1;
+        ctx.lineWidth = gridLineWidth;
         const freqs = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+        const labeledFreqs = cssWidth < 420
+            ? [50, 200, 1000, 5000, 10000]
+            : [50, 100, 200, 500, 1000, 2000, 5000, 10000];
         freqs.forEach(freq => {
             const x = width * (Math.log10(freq) - Math.log10(20)) / (Math.log10(20000) - Math.log10(20));
             ctx.beginPath();
             ctx.moveTo(x, 0);
             ctx.lineTo(x, height);
             ctx.stroke();
-            if (freq >= 50 && freq <= 10000) {
+            if (labeledFreqs.includes(freq)) {
                 ctx.fillStyle = "#666";
-                ctx.font = "20px Arial";
+                ctx.font = `${tickFont}px Arial`;
                 ctx.textAlign = "center";
-                ctx.fillText(freq >= 1000 ? `${freq/1000}k` : freq, x, height - 40);
+                ctx.fillText(freq >= 1000 ? `${freq/1000}k` : freq, x, bottomTickY);
             }
         });
-        const dBs = [-60, -48, -36, -24, -12, 0, 12];
+        const dBs = cssWidth < 420 ? [-60, -36, -12, 0, 12] : [-60, -48, -36, -24, -12, 0, 12];
         dBs.forEach(db => {
             const y = height * (1 - (db + 60) / 72);
             ctx.beginPath();
@@ -217,25 +237,25 @@ class ExciterPlugin extends PluginBase {
             // Brighten the 0dB line
             if (db === 0) {
                 ctx.strokeStyle = "#888";
-                ctx.lineWidth = 2;
+                ctx.lineWidth = curveLineWidth;
             } else {
                 ctx.strokeStyle = "#444";
-                ctx.lineWidth = 1;
+                ctx.lineWidth = gridLineWidth;
             }
             ctx.stroke();
             if (db > -60 && db < 12) {
                 ctx.fillStyle = "#666";
-                ctx.font = "20px Arial";
+                ctx.font = `${tickFont}px Arial`;
                 ctx.textAlign = "right";
-                ctx.fillText(`${db}dB`, 80, y + 6);
+                ctx.fillText(`${db}dB`, leftLabelX, y + 3 * dpr);
             }
         });
         ctx.fillStyle = "#fff";
-        ctx.font = "24px Arial";
+        ctx.font = `${axisFont}px Arial`;
         ctx.textAlign = "center";
-        ctx.fillText("Frequency (Hz)", width / 2, height - 5);
+        ctx.fillText("Frequency (Hz)", width / 2, axisBottomY);
         ctx.save();
-        ctx.translate(20, height / 2);
+        ctx.translate(axisLabelX, height / 2);
         ctx.rotate(-Math.PI / 2);
         ctx.fillText("Level (dB)", 0, 0);
         ctx.restore();
@@ -243,7 +263,7 @@ class ExciterPlugin extends PluginBase {
         // Calculate the frequency response
         ctx.beginPath();
         ctx.strokeStyle = "#00ff00";
-        ctx.lineWidth = 2;
+        ctx.lineWidth = curveLineWidth;
         for (let i = 0; i < width; i++) {
             const freq = Math.pow(10, Math.log10(20) + (i / width) * (Math.log10(20000) - Math.log10(20)));
 
@@ -272,9 +292,15 @@ class ExciterPlugin extends PluginBase {
         const ctx = canvas.getContext('2d');
         const width = canvas.width;
         const height = canvas.height;
+        const dpr = this._getCanvasDpr(canvas);
+        const tickFont = Math.round(11 * dpr);
+        const axisFont = Math.round(13 * dpr);
+        const axisInset = 12 * dpr;
+        const bottomInset = 4 * dpr;
+        const isMobileLayout = typeof document !== 'undefined' && document.body && document.body.classList.contains('layout-mobile');
         ctx.clearRect(0, 0, width, height);
         ctx.strokeStyle = '#444';
-        ctx.lineWidth = 1;
+        ctx.lineWidth = (isMobileLayout ? 1 : 0.5) * dpr;
         for (let x = 0; x <= width; x += width / 4) {
             ctx.beginPath();
             ctx.moveTo(x, 0);
@@ -288,30 +314,30 @@ class ExciterPlugin extends PluginBase {
             ctx.stroke();
         }
         ctx.fillStyle = '#fff';
-        ctx.font = '28px Arial';
+        ctx.font = `${axisFont}px Arial`;
         ctx.textAlign = 'center';
-        ctx.fillText('in', width / 2, height - 5);
+        ctx.fillText('in', width / 2, height - bottomInset);
         ctx.save();
-        ctx.translate(20, height / 2);
+        ctx.translate(axisInset, height / 2);
         ctx.rotate(-Math.PI / 2);
         ctx.fillText('out', 0, 0);
         ctx.restore();
         ctx.fillStyle = '#666';
-        ctx.font = '20px Arial';
-        ctx.fillText('-6dB', width * 0.25, height - 5);
-        ctx.fillText('-6dB', width * 0.75, height - 5);
+        ctx.font = `${tickFont}px Arial`;
+        ctx.fillText('-6dB', width * 0.25, height - bottomInset);
+        ctx.fillText('-6dB', width * 0.75, height - bottomInset);
         ctx.save();
-        ctx.translate(20, height * 0.25);
+        ctx.translate(axisInset, height * 0.25);
         ctx.rotate(-Math.PI / 2);
         ctx.fillText('-6dB', 0, 0);
         ctx.restore();
         ctx.save();
-        ctx.translate(20, height * 0.75);
+        ctx.translate(axisInset, height * 0.75);
         ctx.rotate(-Math.PI / 2);
         ctx.fillText('-6dB', 0, 0);
         ctx.restore();
         ctx.strokeStyle = '#0f0';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = (isMobileLayout ? 2 : 1) * dpr;
         ctx.beginPath();
         const mixRatio = this.mx / 100;
         for (let i = 0; i < width; i++) {
@@ -374,27 +400,32 @@ class ExciterPlugin extends PluginBase {
         // Graphs container
         const graphsContainer = document.createElement('div');
         graphsContainer.className = 'graphs-container';
+        this.graphDisposers?.forEach(dispose => dispose());
+        this.graphDisposers = [];
 
         // HPF graph
-        const { container: hpfGraphContainer, canvas: hpfCanvas } = this.createGraphContainer({
+        const { container: hpfGraphContainer, canvas: hpfCanvas, dispose: disposeHPFGraph } = this.createResponsiveGraph({
             maxWidth: 600,
-            canvasWidth: 1200,
-            canvasHeight: 400,
-            className: 'exciter-hpf-graph'
+            aspectRatio: '3 / 1',
+            mobileAspectRatio: '2 / 1',
+            className: 'exciter-hpf-graph',
+            onResize: ({ canvas }) => this.drawHPFGraph(canvas)
         });
         hpfCanvas.style.backgroundColor = '#222';
         this.hpfCanvas = hpfCanvas;
+        this.graphDisposers.push(disposeHPFGraph);
         graphsContainer.appendChild(hpfGraphContainer);
 
         // Saturation graph
-        const { container: satGraphContainer, canvas: satCanvas } = this.createGraphContainer({
+        const { container: satGraphContainer, canvas: satCanvas, dispose: disposeSatGraph } = this.createResponsiveGraph({
             maxWidth: 200,
-            canvasWidth: 400,
-            canvasHeight: 400,
-            className: 'exciter-saturation-graph'
+            aspectRatio: '1 / 1',
+            className: 'exciter-saturation-graph',
+            onResize: ({ canvas }) => this.drawSaturationGraph(canvas)
         });
         satCanvas.style.backgroundColor = '#222';
         this.satCanvas = satCanvas;
+        this.graphDisposers.push(disposeSatGraph);
         graphsContainer.appendChild(satGraphContainer);
 
         container.appendChild(graphsContainer);
@@ -403,6 +434,12 @@ class ExciterPlugin extends PluginBase {
         this.updateGraphs();
 
         return container;
+    }
+
+    cleanup() {
+        this.graphDisposers?.forEach(dispose => dispose());
+        this.graphDisposers = null;
+        super.cleanup();
     }
 }
 

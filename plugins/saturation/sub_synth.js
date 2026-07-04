@@ -254,6 +254,12 @@ class SubSynthPlugin extends PluginBase {
     this.drawGraph(this.canvas);
   }
 
+  _getCanvasDpr(canvas) {
+    const rect = canvas.getBoundingClientRect ? canvas.getBoundingClientRect() : null;
+    const cssWidth = canvas.clientWidth || (rect && rect.width) || canvas.width || 1;
+    return canvas.width / cssWidth;
+  }
+
   createUI() {
     const container = document.createElement("div");
     container.className = "sub-synth-plugin-ui plugin-parameter-ui";
@@ -304,16 +310,17 @@ class SubSynthPlugin extends PluginBase {
     }, 'Hz');
     dryHpfRow.appendChild(createSlopeSelect(this.dhs, v => this.setDhs(v), "dryhpfslope"));
 
-    // Create graph container and canvas (original position)
-    const graphContainer = document.createElement("div");
-    graphContainer.style.position = "relative";
-    const canvas = document.createElement("canvas");
-    canvas.width = 1200;
-    canvas.height = 480;
-    canvas.style.width = "600px";
-    canvas.style.height = "240px";
-    graphContainer.appendChild(canvas);
+    const { container: graphContainer, canvas, dispose } = this.createResponsiveGraph({
+      maxWidth: 600,
+      aspectRatio: "5 / 2",
+      mobileAspectRatio: "2 / 1",
+      className: "sub-synth-graph",
+      onResize: ({ canvas }) => this.drawGraph(canvas)
+    });
+    canvas.style.backgroundColor = "#222";
     this.canvas = canvas; // Store canvas reference on instance
+    this.graphDispose?.();
+    this.graphDispose = dispose;
 
     container.appendChild(subLevelRow);
     container.appendChild(subLpfRow);
@@ -336,22 +343,34 @@ class SubSynthPlugin extends PluginBase {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     const width = canvas.width, height = canvas.height;
+    const dpr = this._getCanvasDpr(canvas);
+    const cssWidth = width / dpr;
+    const tickFont = Math.round(11 * dpr);
+    const axisFont = Math.round(13 * dpr);
+    const bottomTickY = height - 26 * dpr;
+    const axisBottomY = height - 4 * dpr;
+    const leftLabelX = 40 * dpr;
+    const axisLabelX = 12 * dpr;
+    const isMobileLayout = typeof document !== 'undefined' && document.body && document.body.classList.contains('layout-mobile');
     ctx.clearRect(0, 0, width, height);
 
     // Draw grid
     ctx.strokeStyle = "#444";
-    ctx.lineWidth = 1;
+    ctx.lineWidth = (isMobileLayout ? 1 : 0.5) * dpr;
     const freqs = [5, 10, 20, 50, 100, 200, 500];
+    const labeledFreqs = cssWidth < 420 ? [10, 50, 200, 500] : freqs;
     freqs.forEach(freq => {
       const x = width * (Math.log10(freq) - Math.log10(5)) / (Math.log10(1000) - Math.log10(5));
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, height);
       ctx.stroke();
-      ctx.fillStyle = "#666";
-      ctx.font = "20px Arial";
-      ctx.textAlign = "center";
-      ctx.fillText(freq.toString(), x, height - 40);
+      if (labeledFreqs.includes(freq) && x > 12 * dpr && x < width - 12 * dpr) {
+        ctx.fillStyle = "#666";
+        ctx.font = `${tickFont}px Arial`;
+        ctx.textAlign = "center";
+        ctx.fillText(freq.toString(), x, bottomTickY);
+      }
     });
     const dBs = [-30, -24, -18, -12, -6, 0];
     dBs.forEach(db => {
@@ -362,17 +381,17 @@ class SubSynthPlugin extends PluginBase {
       ctx.stroke();
       if (db > -30 && db < 6) {
         ctx.fillStyle = "#666";
-        ctx.font = "20px Arial";
+        ctx.font = `${tickFont}px Arial`;
         ctx.textAlign = "right";
-        ctx.fillText(`${db}dB`, 80, y + 6);
+        ctx.fillText(`${db}dB`, leftLabelX, y + 3 * dpr);
       }
     });
     ctx.fillStyle = "#fff";
-    ctx.font = "24px Arial";
+    ctx.font = `${axisFont}px Arial`;
     ctx.textAlign = "center";
-    ctx.fillText("Frequency (Hz)", width / 2, height - 5);
+    ctx.fillText("Frequency (Hz)", width / 2, axisBottomY);
     ctx.save();
-    ctx.translate(20, height / 2);
+    ctx.translate(axisLabelX, height / 2);
     ctx.rotate(-Math.PI / 2);
     ctx.fillText("Level (dB)", 0, 0);
     ctx.restore();
@@ -391,7 +410,7 @@ class SubSynthPlugin extends PluginBase {
     // Draw dry signal response (white)
     ctx.beginPath();
     ctx.strokeStyle = "#fff";
-    ctx.lineWidth = 2;
+    ctx.lineWidth = (isMobileLayout ? 2 : 1) * dpr;
     const dryHpfStages = computeStages(this.dhs);
     for (let i = 0; i < width; i++) {
       const freq = Math.pow(10, Math.log10(5) + (i / width) * (Math.log10(1000) - Math.log10(5)));
@@ -415,7 +434,7 @@ class SubSynthPlugin extends PluginBase {
     // Draw sub signal response (green)
     ctx.beginPath();
     ctx.strokeStyle = "#00ff00";
-    ctx.lineWidth = 2;
+    ctx.lineWidth = (isMobileLayout ? 2 : 1) * dpr;
     const subLpfStages = computeStages(this.sls);
     const subHpfStages = computeStages(this.shs);
     for (let i = 0; i < width; i++) {
@@ -446,6 +465,12 @@ class SubSynthPlugin extends PluginBase {
       i === 0 ? ctx.moveTo(i, y) : ctx.lineTo(i, y);
     }
     ctx.stroke();
+  }
+
+  cleanup() {
+    this.graphDispose?.();
+    this.graphDispose = null;
+    super.cleanup();
   }
 }
 

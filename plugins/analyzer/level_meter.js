@@ -13,6 +13,9 @@ class LevelMeterPlugin extends PluginBase {
         this.lastMeterUpdateTime = 0;
         this.METER_UPDATE_INTERVAL = 16; // Match with plugin-base.js
         this.observer = null;
+        this.resizeGraphDisposer = null;
+        this.graphDpr = 1;
+        this.graphCssWidth = 1024;
 
         // Register processor function that measures audio levels over 1/60 second window
         this.registerProcessor(`
@@ -197,24 +200,42 @@ class LevelMeterPlugin extends PluginBase {
         if (this.observer) {
             this.observer.disconnect();
         }
-        const container = document.createElement('div');
-        container.className = 'level-meter-plugin-ui';
+        if (this.resizeGraphDisposer) {
+            this.resizeGraphDisposer();
+            this.resizeGraphDisposer = null;
+        }
+        let backgroundCanvas = null;
+        const graph = this.createResponsiveGraph({
+            maxWidth: 1024,
+            aspectRatio: '16 / 1',
+            mobileAspectRatio: '8 / 1',
+            className: 'level-meter-plugin-ui',
+            onResize: ({ canvas, cssWidth, dpr }) => {
+                this.foregroundCanvas = canvas;
+                this.graphDpr = dpr;
+                this.graphCssWidth = cssWidth;
+                this.canvasWidth = canvas.width;
+                this.canvasHeight = canvas.height;
+                if (backgroundCanvas) {
+                    if (backgroundCanvas.width !== canvas.width) backgroundCanvas.width = canvas.width;
+                    if (backgroundCanvas.height !== canvas.height) backgroundCanvas.height = canvas.height;
+                    this.drawStaticBackground();
+                }
+            }
+        });
+        const container = graph.container;
+        this.resizeGraphDisposer = graph.dispose;
 
         // Initialize animation frame ID
         this.animationFrameId = null;
 
         // Create foreground canvas for meter (displayed in background)
-        const foregroundCanvas = document.createElement('canvas');
+        const foregroundCanvas = graph.canvas;
         foregroundCanvas.className = 'meter-foreground';
-        foregroundCanvas.width = 1024;
-        foregroundCanvas.height = 64;
-        container.appendChild(foregroundCanvas);
 
         // Create background canvas for grid and labels (displayed in foreground)
-        const backgroundCanvas = document.createElement('canvas');
+        backgroundCanvas = document.createElement('canvas');
         backgroundCanvas.className = 'meter-background';
-        backgroundCanvas.width = 1024;
-        backgroundCanvas.height = 64;
         container.appendChild(backgroundCanvas);
 
         // Create overload indicator
@@ -224,43 +245,15 @@ class LevelMeterPlugin extends PluginBase {
         overloadIndicator.style.display = 'none';
         container.appendChild(overloadIndicator);
 
-        // Draw static background
-        const bgCtx = backgroundCanvas.getContext('2d');
-        const width = backgroundCanvas.width;
-        const height = backgroundCanvas.height;
-        const dbRange = 96;
-        const dbStart = -96;
-
-        // Clear background to transparent
-        bgCtx.clearRect(0, 0, width, height);
-
-        // Draw grid lines and labels
-        bgCtx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-        bgCtx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-        bgCtx.font = '10px Arial';
-        bgCtx.textAlign = 'center';
-        for (let db = dbStart; db <= 0; db += 3) {
-            const x = width * (db - dbStart) / dbRange;
-            
-            // Draw grid line
-            bgCtx.beginPath();
-            bgCtx.moveTo(x, 0);
-            bgCtx.lineTo(x, height);
-            bgCtx.stroke();
-            
-            // Draw label every 12dB (except 0dB and -96dB)
-            if (db % 12 === 0 && db !== 0 && db !== -96) {
-                bgCtx.fillText(db.toString(), x, height - 2);
-            }
-        }
-
         // Store UI elements for updates
         this.foregroundCanvas = foregroundCanvas;
+        this.backgroundCanvas = backgroundCanvas;
         this.overloadIndicator = overloadIndicator;
-        this.canvasWidth = width;
-        this.canvasHeight = height;
-        this.dbRange = dbRange;
-        this.dbStart = dbStart;
+        this.canvasWidth = foregroundCanvas.width || 1024;
+        this.canvasHeight = foregroundCanvas.height || 64;
+        this.dbRange = 96;
+        this.dbStart = -96;
+        graph.resize();
 
         if (this.observer == null) {
             this.observer = new IntersectionObserver(this.handleIntersect.bind(this));
@@ -268,6 +261,39 @@ class LevelMeterPlugin extends PluginBase {
         this.observer.observe(this.foregroundCanvas);
 
         return container;
+    }
+
+    drawStaticBackground() {
+        if (!this.backgroundCanvas) return;
+
+        const bgCtx = this.backgroundCanvas.getContext('2d');
+        const width = this.backgroundCanvas.width;
+        const height = this.backgroundCanvas.height;
+        const dpr = this.graphDpr || 1;
+        const isNarrow = this.graphCssWidth < 500;
+        const gridStep = isNarrow ? 6 : 3;
+        const labelStep = isNarrow ? 24 : 12;
+
+        bgCtx.clearRect(0, 0, width, height);
+
+        bgCtx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        bgCtx.lineWidth = dpr;
+        bgCtx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        bgCtx.font = `${10 * dpr}px Arial`;
+        bgCtx.textAlign = 'center';
+        bgCtx.textBaseline = 'alphabetic';
+        for (let db = this.dbStart; db <= 0; db += gridStep) {
+            const x = width * (db - this.dbStart) / this.dbRange;
+
+            bgCtx.beginPath();
+            bgCtx.moveTo(x, 0);
+            bgCtx.lineTo(x, height);
+            bgCtx.stroke();
+
+            if (db % labelStep === 0 && db !== 0 && db !== this.dbStart) {
+                bgCtx.fillText(db.toString(), x, height - (2 * dpr));
+            }
+        }
     }
 
     handleIntersect(entries) {
@@ -313,7 +339,12 @@ class LevelMeterPlugin extends PluginBase {
             this.observer.disconnect();
             this.observer = null;
         }
+        if (this.resizeGraphDisposer) {
+            this.resizeGraphDisposer();
+            this.resizeGraphDisposer = null;
+        }
         this.foregroundCanvas = null;
+        this.backgroundCanvas = null;
         this.overloadIndicator = null;
         super.cleanup();
     }
@@ -332,7 +363,9 @@ class LevelMeterPlugin extends PluginBase {
 
         // Draw each channel
         const numDrawableChannels = this.lv.length; // Use the actual number of channels
-        const channelHeight = numDrawableChannels > 0 ? (this.canvasHeight / numDrawableChannels) - (numDrawableChannels > 1 ? 2 : 0) : 0; // Calculate height per channel, add padding if more than one channel
+        const dpr = this.graphDpr || 1;
+        const channelGap = numDrawableChannels > 1 ? 2 * dpr : 0;
+        const channelHeight = numDrawableChannels > 0 ? (this.canvasHeight / numDrawableChannels) - channelGap : 0; // Calculate height per channel, add padding if more than one channel
 
         for (let channel = 0; channel < numDrawableChannels; channel++) {
             const y = channel * (this.canvasHeight / numDrawableChannels); // Calculate y position based on number of channels
@@ -351,23 +384,23 @@ class LevelMeterPlugin extends PluginBase {
             const rawLevelWidth = this.canvasWidth * (level - this.dbStart) / this.dbRange;
             const levelWidth = rawLevelWidth < 0 ? 0 : rawLevelWidth;
             ctx.fillStyle = gradient;
-            ctx.fillRect(0, y + 1, levelWidth, channelHeight);
+            ctx.fillRect(0, y + dpr, levelWidth, channelHeight);
 
             // Draw peak hold
             const peakLevel = this.pl[channel];
             const peakX = this.canvasWidth * (peakLevel - this.dbStart) / this.dbRange;
             ctx.fillStyle = '#ffffff';
-            ctx.fillRect(peakX - 1, y + 1, 2, channelHeight);
+            ctx.fillRect(peakX - dpr, y + dpr, 2 * dpr, channelHeight);
 
             // Display peak level value
             if (numDrawableChannels <= 4) { // Only show text for 4 or fewer channels
                 ctx.fillStyle = '#ffffff';
-                ctx.font = '12px Arial';
+                ctx.font = `${12 * dpr}px Arial`;
                 ctx.textAlign = 'right';
                 ctx.textBaseline = 'middle';
                 const peakText = peakLevel.toFixed(1) + ' dB';
                 // Adjust text position based on channel height
-                ctx.fillText(peakText, this.canvasWidth - 10, y + channelHeight / 2 + (numDrawableChannels === 1 ? 0 : 1));
+                ctx.fillText(peakText, this.canvasWidth - (10 * dpr), y + channelHeight / 2 + (numDrawableChannels === 1 ? 0 : dpr));
             }
         }
 

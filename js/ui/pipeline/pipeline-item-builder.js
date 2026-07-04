@@ -628,6 +628,9 @@ export class PipelineItemBuilder {
             }
         });
         
+        if (typeof plugin._disposeResponsiveGraphs === 'function') {
+            plugin._disposeResponsiveGraphs();
+        }
         ui.appendChild(plugin.createUI());
         return ui;
     }

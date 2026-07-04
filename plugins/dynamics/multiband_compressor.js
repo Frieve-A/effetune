@@ -912,6 +912,7 @@ class MultibandCompressorPlugin extends PluginBase {
 
     const graphContexts = canvases.map(canvas => ({
       ctx: canvas.getContext('2d'),
+      canvas,
       width: canvas.width,
       height: canvas.height
     }));
@@ -922,8 +923,18 @@ class MultibandCompressorPlugin extends PluginBase {
         console.warn(`Invalid band index: ${bandIndex}`);
         return;
       }
-      const { ctx, width, height } = graph;
+      const { ctx, canvas, width, height } = graph;
       const band = this.bands[bandIndex];
+      const cssWidth = canvas.clientWidth || width;
+      const scale = cssWidth > 0 ? width / cssWidth : 2;
+      const gridLabelFontSize = 11 * scale;
+      const axisFontSize = 14 * scale;
+      const gridLabelX = 40 * scale;
+      const gridLabelYOffset = 3 * scale;
+      const bottomLabelOffset = 20 * scale;
+      const axisBottomOffset = 3 * scale;
+      const axisX = 10 * scale;
+      const meterWidth = 5 * scale;
       
       // Skip processing if band is undefined
       if (!band) {
@@ -950,23 +961,23 @@ class MultibandCompressorPlugin extends PluginBase {
 
       // Draw labels for grid lines
       ctx.fillStyle = LABEL_COLOR;
-      ctx.font = '20px Arial';
+      ctx.font = `${gridLabelFontSize}px Arial`;
       DB_POINTS.forEach(db => {
         const x = ((db + 60) / 60) * width;
         const y = height - ((db + 60) / 60) * height;
         ctx.textAlign = 'right';
-        ctx.fillText(`${db}dB`, 80, y + 6);
+        ctx.fillText(`${db}dB`, gridLabelX, y + gridLabelYOffset);
         ctx.textAlign = 'center';
-        ctx.fillText(`${db}dB`, x, height - 40);
+        ctx.fillText(`${db}dB`, x, height - bottomLabelOffset);
       });
 
       // Draw axis labels
       ctx.fillStyle = '#fff';
-      ctx.font = '28px Arial';
+      ctx.font = `${axisFontSize}px Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('in', width / 2, height - 5);
+      ctx.fillText('in', width / 2, height - axisBottomOffset);
       ctx.save();
-      ctx.translate(20, height / 2);
+      ctx.translate(axisX, height / 2);
       ctx.rotate(-Math.PI / 2);
       ctx.fillText('out', 0, 0);
       ctx.restore();
@@ -1014,7 +1025,7 @@ class MultibandCompressorPlugin extends PluginBase {
       if (band.gr > 0) {
         ctx.fillStyle = METER_COLOR;
         const meterHeight = Math.min(height, (band.gr / 60) * height);
-        ctx.fillRect(width - 10, 0, 10, meterHeight);
+        ctx.fillRect(width - meterWidth, 0, meterWidth, meterHeight);
       }
     });
   }

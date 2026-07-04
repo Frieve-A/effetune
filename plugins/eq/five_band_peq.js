@@ -700,24 +700,33 @@ class FiveBandPEQPlugin extends PluginBase {
   updateMarkers() {
     if (!this.markers || !this.graphContainer || !this.uiCreated) return;
     const plotArea = this.getGraphPlotArea();
+    const graphWidth = this.graphContainer.clientWidth;
+    const graphHeight = this.graphContainer.clientHeight;
+    if (graphWidth === 0 || graphHeight === 0) return;
+    const labelItems = [];
     for (let i = 0; i < 5; i++) {
       const marker = this.markers[i]; if (!marker) continue;
       const freq = this['f' + i]; const gain = this['g' + i]; const enabled = this['e' + i];
       const x = this.freqToX(freq); const y = this.gainToY(gain);
-      const graphWidth = this.graphContainer.clientWidth; const graphHeight = this.graphContainer.clientHeight;
-      if (graphWidth === 0 || graphHeight === 0) continue;
       const xPos = plotArea.leftPercent + (x / 100) * plotArea.widthPercent;
       const yPos = plotArea.topPercent + (y / 100) * plotArea.heightPercent;
       marker.style.left = `${xPos}%`; marker.style.top = `${yPos}%`;
       marker.classList.toggle('disabled', !enabled);
       marker.dataset.pluginId = this.id;
       const markerTextEl = marker.querySelector('.five-band-peq-marker-text'); if (!markerTextEl) continue;
-      const isLeft = xPos < 50;
-      markerTextEl.className = `five-band-peq-marker-text ${isLeft ? 'left' : 'right'}`;
+      markerTextEl.className = 'five-band-peq-marker-text';
       const freqDisplayText = freq >= 1000 ? `${(freq/1000).toFixed(1)}k` : freq.toFixed(0); // Adjusted kHz display
       const type = this['t' + i];
       markerTextEl.innerHTML = `${freqDisplayText}Hz${type === 'lp' || type === 'hp' || type === 'bp' || type === 'ap' || type === 'no' ? '' : `<br>${gain.toFixed(1)}dB`}`;
+      labelItems.push({
+        el: markerTextEl,
+        cx: (xPos / 100) * graphWidth,
+        cy: (yPos / 100) * graphHeight
+      });
     }
+    // Scatter the freq/gain labels so they don't overlap markers/each other or
+    // spill outside the graph. Prefer left/right placement for this plugin.
+    this.layoutMarkerLabels?.({ items: labelItems, width: graphWidth, height: graphHeight, axis: 'horizontal' });
   }
 
   calculateBandResponse(freq, bandFreq, bandGain, bandQ, bandType) {

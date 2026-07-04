@@ -232,6 +232,9 @@ class MatrixPlugin extends PluginBase {
         }
         
         // Create table element
+        const tableWrapper = document.createElement('div');
+        tableWrapper.className = 'matrix-table-wrapper';
+
         const table = document.createElement('table');
         table.className = 'matrix-table';
         this.table = table;
@@ -301,7 +304,7 @@ class MatrixPlugin extends PluginBase {
                 // Create phase inversion button
                 const phaseButton = document.createElement('button');
                 phaseButton.innerHTML = '&Oslash;';
-                phaseButton.className = cellState.active && cellState.phaseInvert ? 
+                phaseButton.className = cellState.active && cellState.phaseInvert ?
                     'matrix-button phase-button active' : 'matrix-button phase-button';
                 phaseButton.addEventListener('click', () => {
                     if (this.matrixState[inputCh][outputCh].active) {
@@ -319,7 +322,8 @@ class MatrixPlugin extends PluginBase {
             table.appendChild(row);
         }
         
-        container.appendChild(table);
+        tableWrapper.appendChild(table);
+        container.appendChild(tableWrapper);
         
         return container;
     }

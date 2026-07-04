@@ -352,7 +352,7 @@ class OscillatorPlugin extends PluginBase {
     // Create UI
     createUI() {
         const container = document.createElement('div');
-        container.className = 'plugin-parameter-ui';
+        container.className = 'oscillator-plugin-ui plugin-parameter-ui';
 
         // Frequency Control
         const freqRow = document.createElement('div');
@@ -441,41 +441,43 @@ class OscillatorPlugin extends PluginBase {
         
         const waveLabel = document.createElement('label');
         waveLabel.textContent = 'Waveform Type:';
-        
-        const waveRadioGroup = document.createElement('div');
-        waveRadioGroup.className = 'radio-group';
-        
-        [
+
+        const waveSelect = document.createElement('select');
+        waveSelect.id = `${this.id}-${this.name}-waveform`;
+        waveSelect.name = `${this.id}-${this.name}-waveform`;
+        waveSelect.autocomplete = "off";
+        waveLabel.htmlFor = waveSelect.id;
+
+        const waveformOptions = [
             ['sine', 'Sine'],
             ['sawtooth', 'Sawtooth'],
             ['triangle', 'Triangle'],
             ['square', 'Square'],
             ['white', 'White Noise'],
             ['pink', 'Pink Noise']
-        ].forEach(([value, label]) => {
-            const radioId = `${this.id}-${this.name}-waveform-${value}`;
-            const radio = document.createElement('input');
-            radio.type = 'radio';
-            radio.name = `${this.id}-${this.name}-waveform`;
-            radio.id = radioId;
-            radio.value = value;
-            radio.checked = this.wf === value;
-            radio.autocomplete = "off";
-            radio.addEventListener('change', () => {
-                this.setWaveform(value);
-                freqSlider.disabled = value === 'white' || value === 'pink';
-                freqValue.disabled = value === 'white' || value === 'pink';
-            });
-            
-            const radioLabel = document.createElement('label');
-            radioLabel.htmlFor = radioId;
-            radioLabel.appendChild(radio);
-            radioLabel.appendChild(document.createTextNode(label));
-            waveRadioGroup.appendChild(radioLabel);
+        ];
+
+        waveformOptions.forEach(([value, label]) => {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = label;
+            waveSelect.appendChild(option);
+        });
+        waveSelect.value = this.wf;
+
+        const updateFrequencyControlState = (value) => {
+            const isNoise = value === 'white' || value === 'pink';
+            freqSlider.disabled = isNoise;
+            freqValue.disabled = isNoise;
+        };
+
+        waveSelect.addEventListener('change', () => {
+            this.setWaveform(waveSelect.value);
+            updateFrequencyControlState(waveSelect.value);
         });
 
         waveRow.appendChild(waveLabel);
-        waveRow.appendChild(waveRadioGroup);
+        waveRow.appendChild(waveSelect);
 
         // Mode Selection
         const modeRow = document.createElement('div');
@@ -613,6 +615,7 @@ class OscillatorPlugin extends PluginBase {
         intervalValue.disabled = !initialIsPulsed;
         widthSlider.disabled = !initialIsPulsed;
         widthValue.disabled = !initialIsPulsed;
+        updateFrequencyControlState(this.wf);
 
         // Add all controls to container
         container.appendChild(freqRow);

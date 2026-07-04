@@ -21,3 +21,22 @@
     display: block;
     background: #222;
 }
+
+.sub-synth-plugin-ui .sub-synth-graph {
+  margin: 10px auto;
+}
+
+.sub-synth-plugin-ui .responsive-graph-container canvas {
+  margin: 0;
+}
+
+body.layout-mobile .sub-synth-plugin-ui .parameter-row label {
+  width: auto;
+  margin-right: 0;
+}
+
+body.layout-mobile .sub-synth-plugin-ui .parameter-row .slope-select {
+  flex: 1 1 90px;
+  min-width: 90px;
+  font-size: 16px;
+}

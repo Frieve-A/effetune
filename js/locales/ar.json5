@@ -148,6 +148,7 @@
   "menu.settings": "الإعدادات",
   "menu.settings.config": "إعدادات...",
   "menu.settings.audioDevices": "أجهزة الصوت...",
+  "menu.settings.install": "تثبيت التطبيق",
   "menu.settings.performanceBenchmark": "معيار الأداء",
   "menu.settings.frequencyResponseMeasurement": "قياس الاستجابة الترددية",
 

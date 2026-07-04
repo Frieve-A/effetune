@@ -255,4 +255,10 @@ body.layout-mobile .five-band-peq-plugin-ui .five-band-peq-gain-text {
     width: 40px;
     min-width: 40px;
     max-width: 40px;
+    /* 16px prevents iOS Safari from zooming the page when the input gains focus */
+    font-size: 16px;
+}
+
+body.layout-mobile .five-band-peq-graph {
+    aspect-ratio: 4 / 3;
 }

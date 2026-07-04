@@ -37,6 +37,9 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         // Register processor function
         this.registerProcessor(SpectrumAnalyzerPlugin.processorFunction);
         this.observer = null;
+        this.resizeGraphDisposer = null;
+        this.graphDpr = 1;
+        this.graphCssWidth = 1024;
     }
 
     static processorFunction = `
@@ -266,6 +269,10 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         if (this.observer) {
             this.observer.disconnect();
         }
+        if (this.resizeGraphDisposer) {
+            this.resizeGraphDisposer();
+            this.resizeGraphDisposer = null;
+        }
         const container = document.createElement('div');
         container.className = 'plugin-parameter-ui';
 
@@ -314,12 +321,19 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         pointsRow.appendChild(pointsValue);
         container.appendChild(pointsRow);
 
-        const { container: graphContainer, canvas } = this.createGraphContainer({
+        const { container: graphContainer, canvas, dispose } = this.createResponsiveGraph({
             maxWidth: 1024,
-            canvasWidth: 2048,
-            canvasHeight: 960
+            aspectRatio: '32 / 15',
+            mobileAspectRatio: '4 / 3',
+            onResize: ({ canvas, cssWidth, dpr }) => {
+                this.canvas = canvas;
+                this.graphCssWidth = cssWidth;
+                this.graphDpr = dpr;
+                this.drawGraph();
+            }
         });
         this.canvas = canvas;
+        this.resizeGraphDisposer = dispose;
 
         const resetButton = document.createElement('button');
         resetButton.className = 'analyzer-reset-button'; resetButton.textContent = 'Reset';
@@ -399,6 +413,10 @@ class SpectrumAnalyzerPlugin extends PluginBase {
             this.observer.disconnect();
             this.observer = null;
         }
+        if (this.resizeGraphDisposer) {
+            this.resizeGraphDisposer();
+            this.resizeGraphDisposer = null;
+        }
         this.canvas = null;
         this.lastProcessTime = performance.now() / 1000;
         super.cleanup();
@@ -410,12 +428,14 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         const ctx = this.canvas.getContext('2d', { alpha: false });
         const width = this.canvas.width;
         const height = this.canvas.height;
+        const dpr = this.graphDpr || 1;
+        const isNarrow = this.graphCssWidth < 500;
 
         ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, width, height);
 
         ctx.strokeStyle = '#333';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = dpr;
 
         // --- Dynamic Frequency Axis Scaling ---
         const minDisplayFreq = 20; // Hz
@@ -425,7 +445,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
 
         if (this.sampleRate <= 0 || nyquistFreq <= minDisplayFreq) { // Not enough range or invalid sampleRate
             ctx.fillStyle = '#fff';
-            ctx.font = '28px Arial';
+            ctx.font = `${14 * dpr}px Arial`;
             ctx.textAlign = 'center';
             ctx.fillText('Invalid Sample Rate or Range', width / 2, height / 2);
             return;
@@ -436,13 +456,15 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         const logFreqRange = logMaxDisplayFreq - logMinDisplayFreq;
 
         if (logFreqRange <= 0) { // Avoid division by zero or negative log range
-             ctx.fillStyle = '#fff'; ctx.font = '28px Arial'; ctx.textAlign = 'center';
+             ctx.fillStyle = '#fff'; ctx.font = `${14 * dpr}px Arial`; ctx.textAlign = 'center';
              ctx.fillText('Invalid Frequency Range for Log Scale', width / 2, height / 2);
              return;
         }
 
         // Vertical grid lines (frequency) - Dynamic
-        let baseGridFreqs = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]; // Common audio freqs
+        let baseGridFreqs = isNarrow
+            ? [20, 100, 1000, 10000, 20000]
+            : [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]; // Common audio freqs
         // Add Nyquist to the list if it's not too close to another major tick, or for the max label
         // Filter and ensure min/max are present
         let gridFreqsToDraw = baseGridFreqs.filter(f => f >= minDisplayFreq && f <= maxDisplayFreq);
@@ -460,15 +482,15 @@ class SpectrumAnalyzerPlugin extends PluginBase {
 
                 if (freq !== minDisplayFreq && freq !== maxDisplayFreq && x > width*0.02 && x < width*0.98) { // Avoid clutter at edges
                     ctx.fillStyle = '#666';
-                    ctx.font = '24px Arial';
+                    ctx.font = `${(isNarrow ? 11 : 12) * dpr}px Arial`;
                     ctx.textAlign = 'center';
-                    ctx.fillText(freq >= 1000 ? `${Math.round(freq / 100)/10}k` : freq, x, height - 80);
+                    ctx.fillText(freq >= 1000 ? `${Math.round(freq / 100)/10}k` : freq, x, height - ((isNarrow ? 30 : 40) * dpr));
                 }
             }
         });
 
         // Horizontal grid lines (dB) - No change to this logic
-        const dbStep = 12;
+        const dbStep = isNarrow ? 24 : 12;
         for (let db = 0; db >= this.dr; db -= dbStep) {
             const y = height * (db / this.dr);
             ctx.beginPath();
@@ -476,16 +498,16 @@ class SpectrumAnalyzerPlugin extends PluginBase {
             ctx.lineTo(width, y);
             ctx.stroke();
             if (db !== 0 && db !== this.dr) {
-                ctx.fillStyle = '#666'; ctx.font = '24px Arial'; ctx.textAlign = 'right';
-                ctx.fillText(`${db}dB`, 160, y + 12);
+                ctx.fillStyle = '#666'; ctx.font = `${(isNarrow ? 11 : 12) * dpr}px Arial`; ctx.textAlign = 'right';
+                ctx.fillText(`${db}dB`, (isNarrow ? 46 : 80) * dpr, y + (6 * dpr));
             }
         }
 
         // Draw axis labels
-        ctx.fillStyle = '#fff'; ctx.font = '28px Arial'; ctx.textAlign = 'center';
-        ctx.fillText('Frequency (Hz)', width / 2, height - 10);
+        ctx.fillStyle = '#fff'; ctx.font = `${(isNarrow ? 13 : 14) * dpr}px Arial`; ctx.textAlign = 'center';
+        ctx.fillText('Frequency (Hz)', width / 2, height - (8 * dpr));
         ctx.save();
-        ctx.translate(40, height / 2); ctx.rotate(-Math.PI / 2);
+        ctx.translate((isNarrow ? 18 : 20) * dpr, height / 2); ctx.rotate(-Math.PI / 2);
         ctx.fillText('Level (dB)', 0, 0);
         ctx.restore();
 
@@ -521,7 +543,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
 
         // Draw spectrum line
         ctx.beginPath();
-        ctx.strokeStyle = '#008800'; ctx.lineWidth = 4;
+        ctx.strokeStyle = '#008800'; ctx.lineWidth = 2 * dpr;
         let first = true;
         for (const [x, [spectrumLevel]] of sortedXToLevels) {
             const y = height * (spectrumLevel / this.dr);
@@ -536,7 +558,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
 
         // Draw peak hold line
         ctx.beginPath();
-        ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 2;
+        ctx.strokeStyle = '#00ff00'; ctx.lineWidth = dpr;
         first = true;
         for (const [x, [, peakLevel]] of sortedXToLevels) {
             const y = height * (peakLevel / this.dr);

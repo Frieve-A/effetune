@@ -816,6 +816,7 @@ class MultibandExpanderPlugin extends PluginBase {
 
     const graphContexts = canvases.map(canvas => ({
       ctx: canvas.getContext('2d'),
+      canvas,
       width: canvas.width,
       height: canvas.height
     }));
@@ -825,8 +826,18 @@ class MultibandExpanderPlugin extends PluginBase {
         console.warn(`Invalid band index: ${bandIndex}`);
         return;
       }
-      const { ctx, width, height } = graph;
+      const { ctx, canvas, width, height } = graph;
       const band = this.bands[bandIndex];
+      const cssWidth = canvas.clientWidth || width;
+      const scale = cssWidth > 0 ? width / cssWidth : 2;
+      const gridLabelFontSize = 11 * scale;
+      const axisFontSize = 14 * scale;
+      const gridLabelX = 40 * scale;
+      const gridLabelYOffset = 3 * scale;
+      const bottomLabelOffset = 20 * scale;
+      const axisBottomOffset = 3 * scale;
+      const axisX = 10 * scale;
+      const meterWidth = 5 * scale;
 
       if (!band) {
         console.warn(`Band ${bandIndex} is undefined`);
@@ -849,22 +860,22 @@ class MultibandExpanderPlugin extends PluginBase {
       ctx.stroke();
 
       ctx.fillStyle = LABEL_COLOR;
-      ctx.font = '20px Arial';
+      ctx.font = `${gridLabelFontSize}px Arial`;
       DB_POINTS.forEach(db => {
         const x = ((db + 60) / 60) * width;
         const y = height - ((db + 60) / 60) * height;
         ctx.textAlign = 'right';
-        ctx.fillText(`${db}dB`, 80, y + 6);
+        ctx.fillText(`${db}dB`, gridLabelX, y + gridLabelYOffset);
         ctx.textAlign = 'center';
-        ctx.fillText(`${db}dB`, x, height - 40);
+        ctx.fillText(`${db}dB`, x, height - bottomLabelOffset);
       });
 
       ctx.fillStyle = '#fff';
-      ctx.font = '28px Arial';
+      ctx.font = `${axisFontSize}px Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('in', width / 2, height - 5);
+      ctx.fillText('in', width / 2, height - axisBottomOffset);
       ctx.save();
-      ctx.translate(20, height / 2);
+      ctx.translate(axisX, height / 2);
       ctx.rotate(-Math.PI / 2);
       ctx.fillText('out', 0, 0);
       ctx.restore();
@@ -912,7 +923,7 @@ class MultibandExpanderPlugin extends PluginBase {
       if (band.gb > 0) {
         ctx.fillStyle = METER_COLOR;
         const meterHeight = Math.min(height, (band.gb / 60) * height);
-        ctx.fillRect(width - 10, 0, 10, meterHeight);
+        ctx.fillRect(width - meterWidth, 0, meterWidth, meterHeight);
       }
     });
   }
@@ -1095,16 +1106,17 @@ class MultibandExpanderPlugin extends PluginBase {
       const graphDiv = document.createElement('div');
       graphDiv.className = `multiband-expander-band-graph ${i === 0 ? 'active' : ''}`;
       graphDiv.setAttribute('data-instance-id', this.instanceId);
-      const canvas = document.createElement('canvas');
-      canvas.width = 320;
-      canvas.height = 320;
-      canvas.style.width = '160px';
-      canvas.style.height = '160px';
+      const { container: graphContainer, canvas } = this.createGraphContainer({
+        maxWidth: 160,
+        canvasWidth: 320,
+        canvasHeight: 320,
+        className: 'multiband-expander-transfer-graph'
+      });
       canvas.style.backgroundColor = '#222';
       const label = document.createElement('div');
       label.className = 'multiband-expander-band-graph-label';
       label.textContent = `Band ${i + 1}`;
-      graphDiv.appendChild(canvas);
+      graphDiv.appendChild(graphContainer);
       graphDiv.appendChild(label);
 
       const bandIndex = i;

@@ -46,4 +46,11 @@
 .exciter-plugin-ui canvas {
     display: block;
     border: 1px solid #333;
+    box-sizing: border-box;
+}
+
+body.layout-mobile .exciter-plugin-ui .graphs-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
 }

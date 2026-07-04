@@ -540,7 +540,7 @@ class FiveBandDynamicEQ extends PluginBase {
         }
 
         const container = document.createElement('div');
-        container.className = 'five-band-dynamic-eq-plugin-ui plugin-container';
+        container.className = 'five-band-dynamic-eq-plugin-ui plugin-parameter-ui plugin-container';
         
         // Unique instance identifier (like multiband_compressor)
         this.instanceId = `five-band-dynamic-eq-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -671,11 +671,13 @@ class FiveBandDynamicEQ extends PluginBase {
             for (let entry of entries) {
                 const { width, height } = entry.contentRect;
                 if (width > 0 && height > 0) {
+                    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) ? window.devicePixelRatio : 1;
+                    const targetWidth = Math.round(width * dpr);
+                    const targetHeight = Math.round(height * dpr);
                     // Only update canvas dimensions if size actually changed
-                    if (this.canvas.width !== width*2 || this.canvas.height !== height*2) {
-                        // Use higher resolution for sharp display
-                        this.canvas.width = width * 2;
-                        this.canvas.height = height * 2;
+                    if (this.canvas.width !== targetWidth || this.canvas.height !== targetHeight) {
+                        this.canvas.width = targetWidth;
+                        this.canvas.height = targetHeight;
                         this._drawGraph();
                     }
                 }
@@ -900,6 +902,10 @@ class FiveBandDynamicEQ extends PluginBase {
         const ctx = this.ctx;
         const width = this.canvas.width;
         const height = this.canvas.height;
+        const cssWidth = this.canvas.clientWidth || width;
+        const dpr = cssWidth > 0 ? width / cssWidth : 1;
+        const gridFontSize = Math.round(12 * dpr);
+        const axisFontSize = Math.round(13 * dpr);
 
         // --- Clear and Draw Background ---
         // Ensure the canvas is cleared before drawing
@@ -911,9 +917,9 @@ class FiveBandDynamicEQ extends PluginBase {
         // --- Draw Grid ---
         // Set grid line style
         ctx.strokeStyle = '#444'; // Darker color for grid lines
-        ctx.lineWidth = 2;       // Thicker lines
+        ctx.lineWidth = Math.max(1, 1 * dpr);
         // Set grid label style
-        ctx.font = '20px Arial'; // Larger font size
+        ctx.font = `${gridFontSize}px Arial`;
         ctx.fillStyle = '#888';  // Darker text color for better visibility
 
         // Define frequency and gain ranges for the graph axis
@@ -945,7 +951,7 @@ class FiveBandDynamicEQ extends PluginBase {
 
             ctx.textAlign = 'center';
             const label = freq >= 1000 ? `${freq / 1000}k` : freq; // Use 'k' for kHz
-            ctx.fillText(label, x, height - 50); // Position labels near the bottom
+            ctx.fillText(label, x, height - 25 * dpr); // Position labels near the bottom
         });
 
         // --- Gain Grid Lines (Horizontal) ---
@@ -961,7 +967,7 @@ class FiveBandDynamicEQ extends PluginBase {
 
             // Add gain labels on the left
             ctx.textAlign = 'right';
-            ctx.fillText(`${gain}dB`, 80, y + 8); // Adjust position for readability
+            ctx.fillText(`${gain}dB`, 40 * dpr, y + 4 * dpr); // Adjust position for readability
         });
 
         // --- Calculate Frequency Points for Curve Plotting ---
@@ -991,7 +997,7 @@ class FiveBandDynamicEQ extends PluginBase {
                 // 1. Draw Sidechain Filter Curve (Gray)
                 ctx.beginPath();
                 ctx.strokeStyle = 'rgba(180, 180, 180, 0.8)'; // Gray color
-                ctx.lineWidth = 2;
+                ctx.lineWidth = Math.max(1, 1 * dpr);
                 for (let i = 0; i < freqPoints.length; i++) {
                     const freq = freqPoints[i];
                     // Calculate bandpass response (at 0dB gain, slightly amplified for visualization)
@@ -1005,7 +1011,7 @@ class FiveBandDynamicEQ extends PluginBase {
                 // 2. Draw Static EQ Curve (Light Green, representing potential max/min gain effect)
                 ctx.beginPath();
                 ctx.strokeStyle = 'rgba(120, 220, 120, 0.8)'; // Light green color
-                ctx.lineWidth = 2;
+                ctx.lineWidth = Math.max(1, 1 * dpr);
                 // Determine the static gain based on ratio (expander/compressor) and max gain setting
                 // Ratio < 1 (Expander) -> positive max gain (peak)
                 // Ratio >= 1 (Compressor) -> negative max gain (dip)
@@ -1032,7 +1038,7 @@ class FiveBandDynamicEQ extends PluginBase {
         // response is no longer materialized into a temporary array.
         ctx.beginPath();
         ctx.strokeStyle = '#00ff00'; // Bright green (like PEQ)
-        ctx.lineWidth = 3;
+        ctx.lineWidth = Math.max(1, 1.5 * dpr);
         for (let i = 0; i < freqPoints.length; i++) {
             const freq = freqPoints[i];
             let totalResponse = 0;
@@ -1053,15 +1059,15 @@ class FiveBandDynamicEQ extends PluginBase {
 
         // --- Draw Axis Labels ---
         ctx.fillStyle = '#fff'; // Use white for axis labels for clarity
-        ctx.font = '20px Arial'; // Match grid label font size
+        ctx.font = `${axisFontSize}px Arial`;
         ctx.textAlign = 'center';
 
         // Draw "Frequency (Hz)" label at the bottom center
-        ctx.fillText('Frequency (Hz)', width / 2, height - 5);
+        ctx.fillText('Frequency (Hz)', width / 2, height - 5 * dpr);
 
         // Draw "Level (dB)" label vertically on the left side
         ctx.save(); // Save current context state
-        ctx.translate(15, height / 2); // Move origin to the left-center edge
+        ctx.translate(12 * dpr, height / 2); // Move origin to the left-center edge
         ctx.rotate(-Math.PI / 2); // Rotate text to be vertical
         ctx.textAlign = 'center'; // Ensure text is centered after rotation
         ctx.fillText('Level (dB)', 0, 0);

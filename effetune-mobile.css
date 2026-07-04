@@ -3,6 +3,8 @@
     --et-mini-player-height: 52px;
     --et-mobile-gap: 10px;
     --et-mobile-page-padding: 8px;
+    --et-mobile-control-height: 40px;
+    --et-mobile-field-min-width: 80px;
     --et-mobile-effect-slider-basis: 96px;
     --et-mobile-effect-slider-min-width: 80px;
 }
@@ -45,6 +47,12 @@ body.layout-mobile .mobile-player-view {
     box-sizing: border-box;
 }
 
+/* Give the pipeline area the full viewport width; its children carry their
+   own padding, so the page-level side margin is wasted space here. */
+body.layout-mobile .main-container {
+    margin-inline: 0;
+}
+
 body.layout-mobile .pipeline,
 body.layout-mobile #pipelineList,
 body.layout-mobile .pipeline-column,
@@ -72,11 +80,11 @@ body.layout-mobile .plugin-parameter-ui {
 body.layout-mobile h1 {
     font-size: 20px;
     line-height: 32px;
-    padding-right: 44px;
+    /* Reserve room for the settings gear + overflow menu button (40px x 2 + gaps). */
+    padding-right: 96px;
 }
 
 body.layout-mobile .subtitle,
-body.layout-mobile .header-buttons,
 body.layout-mobile .whats-this,
 body.layout-mobile .sidebar-button,
 body.layout-mobile .plugin-list-pull-tab,
@@ -84,27 +92,74 @@ body.layout-mobile .column-control-button {
     display: none !important;
 }
 
+/* Keep the settings gear (install action + audio settings) available in the
+   mobile header. The overflow menu button (40px) owns the top-right corner,
+   so the gear sits directly to its left at the same size. Both match the
+   40px mobile control height. */
+body.layout-mobile .header-buttons {
+    display: flex !important;
+    top: 0;
+    right: 48px;
+    height: var(--et-mobile-control-height);
+    gap: 0;
+    z-index: 30;
+}
+
+body.layout-mobile .header-buttons .header-button {
+    width: var(--et-mobile-control-height);
+    height: var(--et-mobile-control-height);
+    min-width: var(--et-mobile-control-height);
+    min-height: var(--et-mobile-control-height);
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+}
+
+/* Mobile has its own Open Music controls, so the header only shows the gear. */
+body.layout-mobile .header-buttons .open-music-button {
+    display: none !important;
+}
+
 body.layout-mobile .subtitle-container {
     margin-top: 4px;
 }
 
+/* Status/copy/paste messages are shown as a toast overlay so the header
+   height never changes and the layout below does not shift. Messages are
+   cleared by the existing clearError() timers, which dismisses the toast. */
 body.layout-mobile .message-display {
+    display: none;
+}
+
+body.layout-mobile .message-display:not(:empty) {
     display: block;
+    position: fixed;
+    left: 50%;
+    bottom: calc(var(--et-bottom-nav-height) + var(--et-mini-player-height) + env(safe-area-inset-bottom) + 12px);
+    transform: translateX(-50%);
+    max-width: calc(100vw - 32px);
     margin-left: 0;
-    font-size: 12px;
-    line-height: 16px;
-    max-width: calc(100% - 64px);
+    padding: 10px 16px;
+    background-color: rgba(45, 45, 45, 0.95);
+    border: 1px solid #555;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    line-height: 18px;
+    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
+    z-index: 1400;
+    pointer-events: none;
 }
 
 body.layout-mobile .mobile-menu-button {
     position: absolute;
     right: 0;
     top: 0;
-    width: 36px;
-    height: 36px;
+    width: var(--et-mobile-control-height);
+    height: var(--et-mobile-control-height);
 }
 
 body.layout-mobile .mobile-menu-button,
@@ -265,15 +320,28 @@ body.layout-mobile.view-effects {
     padding-bottom: calc(var(--et-bottom-nav-height) + var(--et-mini-player-height) + env(safe-area-inset-bottom) + 8px);
 }
 
+/* Lay the Player tab out as a flex column so the player fills the space left
+   over by the title and the version/copyright footer. A fixed viewport-based
+   min-height cannot know those heights and always overflowed by their sum,
+   forcing a scroll even when everything fit. Flex-grow sizes the player to the
+   exact remaining space, so the page only scrolls when content truly overflows. */
+body.layout-mobile.view-player {
+    display: flex;
+    flex-direction: column;
+    min-height: 100svh;
+}
+
 body.layout-mobile .mobile-player-view {
-    min-height: calc(100svh - var(--et-bottom-nav-height) - 64px);
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
 }
 
 body.layout-mobile .mobile-player-empty {
+    flex: 1 1 auto;
     display: grid;
     align-content: center;
     justify-items: center;
-    min-height: calc(100svh - var(--et-bottom-nav-height) - 84px);
     gap: 16px;
 }
 
@@ -531,8 +599,9 @@ body.layout-mobile .tab-switcher {
 body.layout-mobile .tab-button {
     justify-content: center;
     min-width: 0;
-    min-height: 36px;
-    height: 36px;
+    min-height: var(--et-mobile-control-height);
+    height: var(--et-mobile-control-height);
+    box-sizing: border-box;
     padding: 0 8px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -637,11 +706,14 @@ body.layout-mobile .pipeline-header {
     gap: 8px;
 }
 
+/* Share the row with the master toggle / A-B controls when everything fits;
+   margin-left: auto keeps the undo-and-later group right-aligned both on the
+   shared row and after wrapping onto its own row. */
 body.layout-mobile .pipeline-header-right {
-    flex: 1 1 100%;
+    flex: 0 1 auto;
     flex-wrap: wrap;
-    justify-content: flex-start;
-    margin-left: 0;
+    justify-content: flex-end;
+    margin-left: auto;
     min-width: 0;
 }
 
@@ -649,6 +721,27 @@ body.layout-mobile .select-container {
     flex: 1 1 180px;
     width: auto;
     min-width: 0;
+}
+
+body.layout-mobile .preset-select {
+    height: var(--et-mobile-control-height);
+    min-height: var(--et-mobile-control-height);
+    min-width: var(--et-mobile-field-min-width);
+    box-sizing: border-box;
+}
+
+body.layout-mobile select {
+    height: var(--et-mobile-control-height);
+    min-height: var(--et-mobile-control-height);
+    min-width: var(--et-mobile-field-min-width);
+    box-sizing: border-box;
+}
+
+body.layout-mobile input:not([type="radio"]):not([type="checkbox"]) {
+    height: var(--et-mobile-control-height);
+    min-height: var(--et-mobile-control-height);
+    min-width: var(--et-mobile-field-min-width);
+    box-sizing: border-box;
 }
 
 body.layout-mobile .pipeline-preset-controls {
@@ -676,6 +769,7 @@ body.layout-mobile .pipeline-column {
 body.layout-mobile .pipeline-item {
     width: 100%;
     box-sizing: border-box;
+    padding: 0;
 }
 
 body.layout-mobile .pipeline-item-header {
@@ -684,7 +778,7 @@ body.layout-mobile .pipeline-item-header {
     padding: 10px 10px 0;
     flex-wrap: wrap;
     align-items: center;
-    gap: 4px 6px;
+    gap: 12px 6px;
 }
 
 body.layout-mobile .header-button,
@@ -706,6 +800,12 @@ body.layout-mobile .paste-button {
     min-height: 40px;
 }
 
+body.layout-mobile .toggle-button {
+    height: var(--et-mobile-control-height);
+    min-height: var(--et-mobile-control-height);
+    box-sizing: border-box;
+}
+
 body.layout-mobile .pipeline-item-header .handle {
     flex: 0 0 18px;
     width: 18px;
@@ -723,8 +823,8 @@ body.layout-mobile .pipeline-item-header .toggle-button {
     position: relative;
     z-index: 0;
     flex: 0 0 48px;
-    height: 40px;
-    min-height: 40px;
+    height: var(--et-mobile-control-height);
+    min-height: var(--et-mobile-control-height);
     box-sizing: border-box;
     padding: 8px 0;
     border: 0;
@@ -738,9 +838,9 @@ body.layout-mobile .pipeline-item-header .toggle-button {
 body.layout-mobile .pipeline-item-header .toggle-button::before {
     content: "";
     position: absolute;
-    top: 8px;
+    top: 0;
     right: 0;
-    bottom: 8px;
+    bottom: 0;
     left: 0;
     border: 1px solid #606060;
     border-radius: 4px;
@@ -814,7 +914,7 @@ body.layout-mobile .plugin-parameter-ui .parameter-row input[type="text"],
 body.layout-mobile .plugin-parameter-ui select,
 body.layout-mobile .routing-dialog-row select,
 body.layout-mobile .ai-dialog-textarea {
-    min-height: 36px;
+    min-height: var(--et-mobile-control-height);
     font-size: 16px;
 }
 
@@ -822,7 +922,7 @@ body.layout-mobile .plugin-parameter-ui .parameter-row input[type="text"],
 body.layout-mobile .plugin-parameter-ui .parameter-row > select {
     flex: 1 1 180px;
     width: auto;
-    min-width: 0;
+    min-width: var(--et-mobile-field-min-width);
     max-width: 100%;
     box-sizing: border-box;
 }
@@ -835,10 +935,10 @@ body.layout-mobile .parameter-row label {
 }
 
 body.layout-mobile .audio-player {
+    flex: 1 1 auto;
     display: grid;
     grid-template-rows: auto auto auto auto auto;
     gap: 16px;
-    min-height: calc(100svh - var(--et-bottom-nav-height) - 84px);
     padding: 16px;
     margin: 0;
     align-content: center;
@@ -968,178 +1068,77 @@ body.layout-mobile .graph-container svg {
     height: auto !important;
 }
 
-body.layout-mobile .auto-leveler-graph,
-body.layout-mobile .transient-shaper-graph,
-body.layout-mobile .power-amp-sag-graphs {
-    min-height: 150px;
-}
-
-body.layout-mobile .auto-leveler-graph canvas,
-body.layout-mobile .transient-shaper-graph canvas,
-body.layout-mobile .power-amp-sag-graph-left canvas,
-body.layout-mobile .power-amp-sag-graph-right canvas {
-    height: 100% !important;
-}
-
-body.layout-mobile .earphone-cable-sim-plugin-ui .earphone-cable-sim-graph {
-    aspect-ratio: 1024 / 480;
+body.layout-mobile .responsive-graph-container {
     height: auto !important;
 }
 
-body.layout-mobile .earphone-cable-sim-plugin-ui .earphone-cable-sim-amp,
-body.layout-mobile .earphone-cable-sim-plugin-ui .earphone-cable-sim-controls {
-    width: 100% !important;
-    box-sizing: border-box;
+body.layout-mobile .responsive-graph-container[style*="--mobile-aspect-ratio"] {
+    aspect-ratio: var(--mobile-aspect-ratio) !important;
 }
 
-body.layout-mobile .earphone-cable-sim-plugin-ui .earphone-cable-sim-controls {
-    flex-wrap: wrap;
+body.layout-mobile .responsive-graph-container canvas {
+    height: 100% !important;
 }
 
-body.layout-mobile .earphone-cable-sim-plugin-ui .earphone-cable-sim-res {
-    flex: 1 1 150px;
-    width: auto;
-    min-width: 150px;
-}
-
-body.layout-mobile .multiband-saturation-graphs,
-body.layout-mobile .multiband-compressor-graphs,
-body.layout-mobile .multiband-expander-graphs,
-body.layout-mobile .multiband-transient-graphs,
-body.layout-mobile .exciter-graphs,
-body.layout-mobile .dsd64-imd-viz-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-}
-
-body.layout-mobile .multichannel-panel-ui,
-body.layout-mobile .multichannel-panel-channel-container,
-body.layout-mobile .modal-resonator-container,
-body.layout-mobile .modal-resonator-frame,
-body.layout-mobile .five-band-dynamic-eq-plugin-ui,
-body.layout-mobile .fbdyn-band-settings,
-body.layout-mobile .multiband-compressor-container,
-body.layout-mobile .multiband-compressor-band-settings,
-body.layout-mobile .multiband-expander-container,
-body.layout-mobile .multiband-expander-band-settings,
-body.layout-mobile .multiband-balance-container,
-body.layout-mobile .multiband-balance-frequency-sliders {
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-    box-sizing: border-box;
-    overflow-x: hidden;
-    overflow-x: clip;
-}
-
-body.layout-mobile .multichannel-panel-channel-header {
-    min-width: 0;
-}
-
-body.layout-mobile .multichannel-panel-level-meter {
-    flex: 1 1 0;
-    width: auto;
-    min-width: 0;
-}
-
-body.layout-mobile .multichannel-panel-channel-controls {
-    flex-wrap: wrap;
+body.layout-mobile .radio-group label,
+body.layout-mobile .parameter-row input[type="checkbox"] + label,
+body.layout-mobile .parameter-row label:has(+ input[type="checkbox"]),
+body.layout-mobile label:has(> input[type="radio"]),
+body.layout-mobile label:has(> input[type="checkbox"]) {
+    min-height: 40px;
+    display: inline-flex;
     align-items: center;
-    gap: 6px 8px;
 }
 
-body.layout-mobile .multichannel-panel-channel-space {
-    flex: 0 0 40px;
-}
-
-body.layout-mobile .multichannel-panel-button-controls {
-    flex: 0 0 auto;
-}
-
-body.layout-mobile .multichannel-panel-ui label {
-    flex: 0 0 72px;
-    min-width: 0;
-    margin-right: 0;
-}
-
-body.layout-mobile .multichannel-panel-ui input[type="range"] {
-    flex: 1 1 var(--et-mobile-effect-slider-basis);
-    width: auto;
-    min-width: var(--et-mobile-effect-slider-min-width);
-    max-width: 100%;
-}
-
-body.layout-mobile .multichannel-panel-ui input[type="number"] {
-    flex: 0 0 64px;
-    width: 64px !important;
-    max-width: 64px;
+/* Radio/checkbox widgets ignore padding, so vertical margins give every glyph
+   a 40px-tall footprint (18px glyph + 11px * 2) matching the mobile control
+   height, while the glyph itself stays at 18px. */
+body.layout-mobile input[type="radio"],
+body.layout-mobile input[type="checkbox"] {
     box-sizing: border-box;
-}
-
-body.layout-mobile .modal-resonator-tabs,
-body.layout-mobile .fbdyn-band-tabs,
-body.layout-mobile .fifteen-band-peq-band-tabs,
-body.layout-mobile .multiband-compressor-band-tabs,
-body.layout-mobile .multiband-expander-band-tabs,
-body.layout-mobile .mbs-band-tabs,
-body.layout-mobile .mbt-band-tabs {
-    flex-wrap: wrap;
-    gap: 4px;
-}
-
-body.layout-mobile .modal-resonator-tab,
-body.layout-mobile .fbdyn-band-tab,
-body.layout-mobile .fifteen-band-peq-band-tab,
-body.layout-mobile .multiband-compressor-band-tab,
-body.layout-mobile .multiband-expander-band-tab,
-body.layout-mobile .mbs-band-tab,
-body.layout-mobile .mbt-band-tab {
-    flex: 1 1 120px;
-    min-width: 0;
-}
-
-body.layout-mobile .fbdyn-two-columns {
-    grid-template-columns: 1fr !important;
-}
-
-body.layout-mobile .channel-divider-frequency-sliders,
-body.layout-mobile .multiband-compressor-frequency-sliders,
-body.layout-mobile .multiband-expander-frequency-sliders,
-body.layout-mobile .multiband-balance-frequency-sliders,
-body.layout-mobile .mbs-freq-sliders,
-body.layout-mobile .mbt-freq-sliders {
-    flex-wrap: wrap;
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-    box-sizing: border-box;
-}
-
-body.layout-mobile .channel-divider-frequency-slider,
-body.layout-mobile .multiband-compressor-frequency-slider,
-body.layout-mobile .multiband-expander-frequency-slider,
-body.layout-mobile .multiband-balance-frequency-slider,
-body.layout-mobile .mbs-freq-slider,
-body.layout-mobile .mbt-freq-slider {
-    flex: 1 1 var(--et-mobile-effect-slider-basis);
-    min-width: var(--et-mobile-effect-slider-min-width);
-}
-
-body.layout-mobile .channel-divider-frequency-slider-top,
-body.layout-mobile .multiband-compressor-frequency-slider-top,
-body.layout-mobile .multiband-expander-frequency-slider-top,
-body.layout-mobile .multiband-balance-frequency-slider-top,
-body.layout-mobile .mbs-freq-slider-top,
-body.layout-mobile .mbt-freq-slider-top {
-    flex-wrap: wrap;
-    gap: 4px;
+    width: 18px;
+    height: 18px;
+    min-width: 18px;
+    min-height: 18px;
+    margin-top: 11px;
+    margin-bottom: 11px;
 }
 
 body.layout-mobile .plugin-parameter-ui select {
-    min-width: 0;
+    min-width: var(--et-mobile-field-min-width);
     max-width: 100%;
+    box-sizing: border-box;
     text-overflow: ellipsis;
+}
+
+/* Injected app dialogs (audio config / settings): their styles come from
+   <style> blocks in js/electron/audioIntegration.js and configIntegration.js,
+   so the mobile sizing is unified here. */
+body.layout-mobile .audio-config-dialog,
+body.layout-mobile .config-dialog {
+    width: min(400px, calc(100vw - 32px));
+    max-height: calc(100svh - 32px);
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+
+body.layout-mobile .checkbox-container,
+body.layout-mobile .radio-container {
+    min-height: var(--et-mobile-control-height);
+    align-items: center;
+}
+
+body.layout-mobile .checkbox-container label,
+body.layout-mobile .radio-container label {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--et-mobile-control-height);
+}
+
+body.layout-mobile .dialog-buttons button {
+    height: var(--et-mobile-control-height);
+    min-height: var(--et-mobile-control-height);
+    box-sizing: border-box;
 }
 
 @media (pointer: coarse) {

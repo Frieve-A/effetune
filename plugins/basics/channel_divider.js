@@ -452,6 +452,12 @@ class ChannelDividerPlugin extends PluginBase {
     this.errorEl.style.display = this.errorState ? 'block' : 'none';
   }
 
+  _getCanvasDpr(canvas) {
+    const rect = canvas.getBoundingClientRect ? canvas.getBoundingClientRect() : null;
+    const cssWidth = canvas.clientWidth || (rect && rect.width) || canvas.width || 1;
+    return canvas.width / cssWidth;
+  }
+
   _updateBandOptions() {
     if (!this.bandRadios) return;
     this.bandRadios.forEach((radio, index) => {
@@ -495,17 +501,24 @@ class ChannelDividerPlugin extends PluginBase {
     this.freq3Slider = this._createFreqControl(freqContainer, "Freq 3", 3, (val) => this.setParameters({ f3: val }), (val) => this.setParameters({ s3: val }), this.f3, this.s3);
     frag.appendChild(freqContainer);
 
-    const graphContainer = document.createElement("div");
-    graphContainer.className = "channel-divider-graph-container";
-    graphContainer.style.position = "relative"; 
-    this.canvas = document.createElement("canvas");
-    Object.assign(this.canvas, { width: 1200, height: 480 }); 
-    Object.assign(this.canvas.style, { width: "600px", height: "240px", display: "block", margin: "10px auto" }); 
-    graphContainer.appendChild(this.canvas);
-    frag.appendChild(graphContainer);
+    const graphWrap = document.createElement("div");
+    graphWrap.className = "channel-divider-graph-container";
+    const { container: graphContainer, canvas, dispose } = this.createResponsiveGraph({
+      maxWidth: 600,
+      aspectRatio: "5 / 2",
+      mobileAspectRatio: "2 / 1",
+      className: "channel-divider-graph",
+      onResize: () => this.drawGraph()
+    });
+    canvas.style.backgroundColor = "#222";
+    this.canvas = canvas;
+    this.graphDispose?.();
+    this.graphDispose = dispose;
+    graphWrap.appendChild(graphContainer);
+    frag.appendChild(graphWrap);
     
     const uiContainer = document.createElement("div");
-    uiContainer.className = "plugin-parameter-ui";
+    uiContainer.className = "channel-divider-plugin-ui plugin-parameter-ui";
     uiContainer.appendChild(frag);
 
     this.updateCrossoverControls();
@@ -584,7 +597,6 @@ class ChannelDividerPlugin extends PluginBase {
     this._createLabel(`${this.id}-freq${index}-number`, `${labelPrefix} (Hz):`, topRow, { marginRight: "5px"});
     
     const numberInput = this._createInput("number", `${this.id}-freq${index}-number`, currentFreq, topRow);
-    Object.assign(numberInput.style, { width: "70px" }); // Adjust width as needed
     Object.assign(numberInput, { min: minFreq, max: maxFreq, step: 1 });
 
     // Add Slope Select directly to the topRow, after numberInput
@@ -651,21 +663,33 @@ class ChannelDividerPlugin extends PluginBase {
     if (!this.canvas) return;
     const ctx = this.canvas.getContext("2d");
     const { width, height } = this.canvas;
-    const minFreqLog = Math.log10(10); 
-    const maxFreqLog = Math.log10(40000); 
+    const dpr = this._getCanvasDpr(this.canvas);
+    const cssWidth = width / dpr;
+    const tickFont = Math.round(11 * dpr);
+    const axisFont = Math.round(13 * dpr);
+    const bottomTickY = height - 26 * dpr;
+    const axisBottomY = height - 4 * dpr;
+    const leftLabelX = 40 * dpr;
+    const axisLabelX = 12 * dpr;
+    const minFreqLog = Math.log10(10);
+    const maxFreqLog = Math.log10(40000);
+    const isMobileLayout = typeof document !== 'undefined' && document.body && document.body.classList.contains('layout-mobile');
 
     ctx.clearRect(0, 0, width, height);
     ctx.strokeStyle = "#444";
-    ctx.lineWidth = 1;
-    ctx.font = "20px Arial"; 
+    ctx.lineWidth = (isMobileLayout ? 1 : 0.5) * dpr;
+    ctx.font = `${tickFont}px Arial`;
 
     const gridFreqs = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+    const labeledFreqs = cssWidth < 420
+      ? [20, 100, 500, 2000, 10000]
+      : gridFreqs;
     gridFreqs.forEach(freq => {
       const x = width * (Math.log10(freq) - minFreqLog) / (maxFreqLog - minFreqLog);
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
-      if (freq >= 10) { 
+      if (labeledFreqs.includes(freq)) {
         ctx.fillStyle = "#666"; ctx.textAlign = "center";
-        ctx.fillText(freq >= 1000 ? `${freq/1000}k` : freq, x, height - 40);
+        ctx.fillText(freq >= 1000 ? `${freq/1000}k` : freq, x, bottomTickY);
       }
     });
 
@@ -677,14 +701,14 @@ class ChannelDividerPlugin extends PluginBase {
       ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
       if (db > -60) { 
         ctx.fillStyle = "#666"; ctx.textAlign = "right";
-        ctx.fillText(`${db}dB`, 80, y + 6);
+        ctx.fillText(`${db}dB`, leftLabelX, y + 3 * dpr);
       }
     });
 
-    ctx.fillStyle = "#fff"; ctx.font = "24px Arial"; ctx.textAlign = "center";
-    ctx.fillText("Frequency (Hz)", width / 2, height - 5);
+    ctx.fillStyle = "#fff"; ctx.font = `${axisFont}px Arial`; ctx.textAlign = "center";
+    ctx.fillText("Frequency (Hz)", width / 2, axisBottomY);
     ctx.save();
-    ctx.translate(20, height / 2); ctx.rotate(-Math.PI / 2);
+    ctx.translate(axisLabelX, height / 2); ctx.rotate(-Math.PI / 2);
     ctx.fillText("Level (dB)", 0, 0);
     ctx.restore();
 
@@ -708,7 +732,7 @@ class ChannelDividerPlugin extends PluginBase {
     }
     
     ctx.strokeStyle = "#00ff00";
-    ctx.lineWidth = 3; 
+    ctx.lineWidth = (isMobileLayout ? 2 : 1.5) * dpr;
 
     bandDefinitions.forEach(bandDef => {
       const response = this.calculateBandResponse(freqPoints, bandDef.filters);
@@ -898,6 +922,12 @@ class ChannelDividerPlugin extends PluginBase {
         this.updateCrossoverControls(); 
       }
     }
+  }
+
+  cleanup() {
+    this.graphDispose?.();
+    this.graphDispose = null;
+    super.cleanup();
   }
 }
 

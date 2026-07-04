@@ -79,12 +79,16 @@ test('Earphone Cable Sim keeps resonance parameter inputs in the right-side colu
   const css = readCss('../../plugins/eq/earphone_cable_sim.css');
 
   assert.match(
+    getRule(css, '.earphone-cable-sim-plugin-ui .earphone-cable-sim-row-input'),
+    /width:\s*48px;/
+  );
+  assert.match(
     getRule(css, 'body.layout-mobile .earphone-cable-sim-plugin-ui .earphone-cable-sim-row-label'),
     /flex:\s*1 1 auto;[\s\S]*min-width:\s*0;/
   );
   assert.match(
     getRule(css, 'body.layout-mobile .earphone-cable-sim-plugin-ui .earphone-cable-sim-row-input'),
-    /flex:\s*0 0 48px;[\s\S]*width:\s*48px;[\s\S]*min-width:\s*48px;[\s\S]*max-width:\s*48px;[\s\S]*margin-left:\s*auto;/
+    /flex:\s*0 0 80px;[\s\S]*width:\s*80px;[\s\S]*min-width:\s*80px;[\s\S]*max-width:\s*80px;[\s\S]*margin-left:\s*auto;/
   );
 });
 
@@ -98,6 +102,10 @@ test('Channel Divider frequency rows keep compact numeric and slope controls on 
   assert.match(
     getRule(css, '.plugin-parameter-ui .channel-divider-frequency-slider-top > input[type="number"]'),
     /flex:\s*0 0 70px;[\s\S]*width:\s*70px;[\s\S]*min-width:\s*70px;[\s\S]*max-width:\s*70px;/
+  );
+  assert.match(
+    getRule(css, 'body.layout-mobile .plugin-parameter-ui .channel-divider-frequency-slider-top > input[type="number"]'),
+    /flex:\s*0 0 80px;[\s\S]*width:\s*80px;[\s\S]*min-width:\s*80px;[\s\S]*max-width:\s*80px;/
   );
   assert.match(
     getRule(css, '.plugin-parameter-ui .channel-divider-frequency-slider-top > .slope-select'),

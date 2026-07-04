@@ -80,6 +80,23 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#000000">
     <script>
+        // Capture the PWA install prompt as early as possible so the browser's
+        // default mini-infobar is suppressed and we can trigger installation
+        // from the settings menu instead.
+        (function() {
+            window.deferredInstallPrompt = window.deferredInstallPrompt || null;
+            window.addEventListener('beforeinstallprompt', function(event) {
+                event.preventDefault();
+                window.deferredInstallPrompt = event;
+                window.dispatchEvent(new Event('pwa-install-available'));
+            });
+            window.addEventListener('appinstalled', function() {
+                window.deferredInstallPrompt = null;
+                window.dispatchEvent(new Event('pwa-install-completed'));
+            });
+        })();
+    </script>
+    <script>
         (function() {
             var measurementId = 'G-8PJYJSS8MD';
 
@@ -115,6 +132,7 @@
                     <button class="settings-menu-item" id="benchmarkSettingsButton">Performance Benchmark</button>
                     <button class="settings-menu-item" id="measurementSettingsButton">Frequency Response Measurement</button>
                     <button class="settings-menu-item" id="resetAudioSettingsButton">Reset Audio</button>
+                    <button class="settings-menu-item" id="installAppButton" hidden>Install App</button>
                 </div>
             </div>
         </div>

@@ -82,4 +82,80 @@
 .multichannel-panel-ui label {
     margin-right: 5px;
     min-width: 80px;
-} 
+}
+
+body.layout-mobile .multichannel-panel-ui,
+body.layout-mobile .multichannel-panel-channel-container {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    overflow-x: clip;
+}
+
+body.layout-mobile .multichannel-panel-channel-header {
+    min-width: 0;
+}
+
+body.layout-mobile .multichannel-panel-level-meter {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+}
+
+body.layout-mobile .multichannel-panel-channel-controls {
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+}
+
+body.layout-mobile .multichannel-panel-channel-space {
+    flex: 0 0 40px;
+}
+
+body.layout-mobile .multichannel-panel-button-controls {
+    flex: 0 0 auto;
+}
+
+body.layout-mobile .multichannel-panel-link-button,
+body.layout-mobile .multichannel-panel-mute-button,
+body.layout-mobile .multichannel-panel-solo-button {
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px;
+    min-height: 40px;
+    padding: 0;
+    font-size: 16px;
+    line-height: 1;
+}
+
+body.layout-mobile .multichannel-panel-link-button {
+    margin: 0 !important;
+    position: static !important;
+    top: auto !important;
+}
+
+body.layout-mobile .multichannel-panel-ui label {
+    flex: 0 0 72px;
+    min-width: 0;
+    margin-right: 0;
+}
+
+body.layout-mobile .multichannel-panel-ui input[type="range"] {
+    flex: 1 1 var(--et-mobile-effect-slider-basis);
+    width: auto;
+    min-width: var(--et-mobile-effect-slider-min-width);
+    max-width: 100%;
+}
+
+body.layout-mobile .multichannel-panel-ui input[type="number"] {
+    flex: 0 0 var(--et-mobile-field-min-width);
+    height: var(--et-mobile-control-height) !important;
+    min-height: var(--et-mobile-control-height);
+    width: var(--et-mobile-field-min-width) !important;
+    min-width: var(--et-mobile-field-min-width);
+    max-width: var(--et-mobile-field-min-width);
+    box-sizing: border-box;
+    font-size: 16px;
+}

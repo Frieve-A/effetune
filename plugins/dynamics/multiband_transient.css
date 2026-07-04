@@ -9,6 +9,7 @@
 .mbt-freq-sliders {
     display: flex;
     flex-direction: row;
+    flex-wrap: wrap;
     gap: 10px;
     padding: 10px;
     background: #2a2a2a;
@@ -16,7 +17,7 @@
 }
 
 .mbt-freq-slider {
-    flex: 1;
+    flex: 1 1 180px;
     display: flex;
     flex-direction: column;
     gap: 5px;
@@ -52,6 +53,7 @@
 
 .mbt-band-tabs {
     display: flex;
+    flex-wrap: wrap;
     gap: 2px;
     margin-bottom: 20px;
 }
@@ -80,6 +82,7 @@
 /* Transfer graphs area */
 .mbt-transfer-graphs {
     display: flex;
+    flex-wrap: wrap;
     gap: 10px;
     justify-content: space-between;
     padding: 10px;
@@ -88,7 +91,7 @@
 }
 
 .mbt-band-graph {
-    flex: 1;
+    flex: 1 1 308px;
     position: relative;
     background: #1a1a1a;
     border: 1px solid #333;
@@ -103,12 +106,69 @@
 
 .mbt-band-graph canvas {
     width: 100%;
-    height: 150px;
+    height: 100%;
     display: block;
+}
+
+.mbt-transfer-graph {
+    margin: 0 auto;
 }
 
 .mbt-band-graph-label {
     text-align: center;
     margin-top: 5px;
     font-weight: bold;
-} 
+}
+
+body.layout-mobile .mbt-transfer-graph {
+    min-height: 150px;
+}
+
+body.layout-mobile .mbt-transfer-graphs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+body.layout-mobile .mbt-band-graph {
+    flex: 1 1 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+body.layout-mobile .mbt-band-tabs {
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+body.layout-mobile .mbt-band-tab {
+    flex: 1 1 56px;
+    min-width: 0;
+    min-height: 40px;
+}
+
+body.layout-mobile .mbt-freq-sliders {
+    flex-wrap: wrap;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+body.layout-mobile .mbt-freq-slider {
+    flex: 1 1 var(--et-mobile-effect-slider-basis);
+    min-width: var(--et-mobile-effect-slider-min-width);
+}
+
+body.layout-mobile .mbt-freq-slider-top {
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+body.layout-mobile .mbt-freq-slider-top input[type="number"] {
+    height: var(--et-mobile-control-height);
+    min-height: var(--et-mobile-control-height);
+    min-width: var(--et-mobile-field-min-width);
+    box-sizing: border-box;
+    font-size: 16px;
+}

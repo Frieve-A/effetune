@@ -164,6 +164,57 @@ test('PluginBase creates responsive graph containers and maps pointer coordinate
   assert.equal(Number.isFinite(zeroRectCoords.y), true);
 });
 
+test('PluginBase creates DPR-synced responsive graph containers', () => {
+  const plugin = createPlugin();
+  const resizeCalls = [];
+  const { container, canvas, resize, dispose } = plugin.createResponsiveGraph({
+    maxWidth: 500,
+    aspectRatio: '4 / 1',
+    mobileAspectRatio: '2 / 1',
+    className: 'meter-graph',
+    onResize: info => resizeCalls.push([info.canvas, info.cssWidth, info.cssHeight, info.dpr])
+  });
+
+  assert.equal(container.className, 'graph-container responsive-graph-container meter-graph');
+  assert.equal(container.style.width, '100%');
+  assert.equal(container.style.maxWidth, '500px');
+  assert.equal(container.style.aspectRatio, '4 / 1');
+  assert.equal(container.style['--mobile-aspect-ratio'], '2 / 1');
+  assert.equal(canvas.style.width, '100%');
+  assert.equal(canvas.style.height, '100%');
+
+  resize();
+  assert.equal(canvas.width, 200);
+  assert.equal(canvas.height, 100);
+  assert.deepEqual(resizeCalls.at(-1), [canvas, 200, 100, 1]);
+
+  canvas.width = 17;
+  canvas.height = 19;
+  dispose();
+  resize();
+  assert.equal(canvas.width, 17);
+  assert.equal(canvas.height, 19);
+});
+
+test('PluginBase cleanup disposes responsive graph observers', () => {
+  const plugin = createPlugin();
+  const { canvas, resize } = plugin.createResponsiveGraph();
+
+  resize();
+  assert.equal(canvas.width, 200);
+  assert.equal(canvas.height, 100);
+  assert.equal(plugin._responsiveGraphDisposers.size, 1);
+
+  canvas.width = 17;
+  canvas.height = 19;
+  plugin.cleanup();
+  assert.equal(plugin._responsiveGraphDisposers.size, 0);
+
+  resize();
+  assert.equal(canvas.width, 17);
+  assert.equal(canvas.height, 19);
+});
+
 test('PluginBase bindGraphPointer handles tap, drag, and cleanup', () => {
   const plugin = createPlugin();
   const element = new FakeElement('div');

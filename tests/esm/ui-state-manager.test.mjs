@@ -70,6 +70,7 @@ function createDocument(calls) {
     'sampleRate',
     'settingsMenuButton',
     'settingsMenu',
+    'installAppButton',
     'configSettingsButton',
     'audioConfigSettingsButton',
     'benchmarkSettingsButton',
@@ -351,6 +352,39 @@ test('settings labels update from localization keys with fallbacks', async () =>
     assert.equal(manager.settingsMenuButton.title, 'Translated Config Audio');
     assert.equal(manager.settingsMenuButton.getAttribute('aria-label'), 'Translated Config Audio');
     assert.equal(documentRef.elements.get('settingsMenu').hidden, true);
+  });
+});
+
+test('install menu item reflects deferred prompt availability and triggers installation', async () => {
+  await withStateGlobals({}, async ({ documentRef, windowRef }) => {
+    const manager = new StateManager({});
+    // No captured prompt yet -> item stays hidden.
+    assert.equal(documentRef.elements.get('installAppButton').hidden, true);
+
+    const promptCalls = [];
+    windowRef.deferredInstallPrompt = {
+      prompt() {
+        promptCalls.push('prompt');
+      },
+      userChoice: Promise.resolve({ outcome: 'accepted' })
+    };
+    manager.updateInstallAvailability();
+    assert.equal(documentRef.elements.get('installAppButton').hidden, false);
+    assert.equal(documentRef.elements.get('installAppButton').textContent, 'Install App');
+
+    await manager.installAppButton.click();
+    assert.deepEqual(promptCalls, ['prompt']);
+    assert.equal(windowRef.deferredInstallPrompt, null);
+    assert.equal(documentRef.elements.get('installAppButton').hidden, true);
+  });
+});
+
+test('install menu item stays hidden in Electron environments', async () => {
+  await withStateGlobals({ electronAPI: {} }, async ({ documentRef, windowRef }) => {
+    const manager = new StateManager({});
+    windowRef.deferredInstallPrompt = { prompt() {}, userChoice: Promise.resolve({}) };
+    manager.updateInstallAvailability();
+    assert.equal(documentRef.elements.get('installAppButton').hidden, true);
   });
 });
 

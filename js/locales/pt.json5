@@ -148,6 +148,7 @@
   "menu.settings": "Configurações",
   "menu.settings.config": "Configuração...",
   "menu.settings.audioDevices": "Dispositivos de Áudio...",
+  "menu.settings.install": "Instalar aplicativo",
   "menu.settings.performanceBenchmark": "Teste de desempenho",
   "menu.settings.frequencyResponseMeasurement": "Medição da resposta em frequência",
 

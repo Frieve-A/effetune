@@ -29,3 +29,35 @@
     align-items: center;
     gap: 10px;
 }
+
+body.layout-mobile .multiband-balance-container,
+body.layout-mobile .multiband-balance-frequency-sliders {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    overflow-x: clip;
+}
+
+body.layout-mobile .multiband-balance-frequency-sliders {
+    flex-wrap: wrap;
+}
+
+body.layout-mobile .multiband-balance-frequency-slider {
+    flex: 1 1 var(--et-mobile-effect-slider-basis);
+    min-width: var(--et-mobile-effect-slider-min-width);
+}
+
+body.layout-mobile .multiband-balance-frequency-slider-top {
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+body.layout-mobile .multiband-balance-frequency-slider-top input[type="number"] {
+    height: var(--et-mobile-control-height);
+    min-height: var(--et-mobile-control-height);
+    min-width: var(--et-mobile-field-min-width);
+    box-sizing: border-box;
+    font-size: 16px;
+}

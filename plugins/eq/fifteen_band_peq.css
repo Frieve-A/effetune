@@ -262,6 +262,28 @@ body.layout-mobile .fifteen-band-peq-plugin-ui .fifteen-band-peq-gain-text {
     justify-self: end;
 }
 
+body.layout-mobile .fifteen-band-peq-plugin-ui .fifteen-band-peq-q-text,
+body.layout-mobile .fifteen-band-peq-plugin-ui .fifteen-band-peq-freq-text,
+body.layout-mobile .fifteen-band-peq-plugin-ui .fifteen-band-peq-gain-text {
+    /* 16px prevents iOS Safari from zooming the page when the input gains focus */
+    font-size: 16px;
+}
+
+body.layout-mobile .fifteen-band-peq-band-tabs {
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+body.layout-mobile .fifteen-band-peq-band-tab {
+    flex: 1 1 56px;
+    min-width: 0;
+    min-height: 40px;
+}
+
+body.layout-mobile .fifteen-band-peq-graph {
+    aspect-ratio: 4 / 3;
+}
+
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-grid {
     position: absolute;
     width: calc(100% - 40px);

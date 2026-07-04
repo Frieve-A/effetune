@@ -292,19 +292,15 @@ return data; // Return the modified buffer
         });
 
         // Graph container
-        const graphContainer = document.createElement('div');
-        graphContainer.className = 'graph-container';
-        
-        const canvas = document.createElement('canvas');
-        // Set canvas buffer size for high-resolution display.
-        // This size is intentionally larger than the display size (600x240px defined in CSS)
-        // to ensure sharpness when scaled or on high-DPI screens.
-        canvas.width = 1200;
-        canvas.height = 480;
-        canvas.style.width = '600px';
-        canvas.style.height = '240px';
-        
-        graphContainer.appendChild(canvas);
+        const { container: graphContainer, canvas } = this.createResponsiveGraph({
+            maxWidth: 600,
+            aspectRatio: '5 / 2',
+            mobileAspectRatio: '2 / 1',
+            className: 'fifteen-band-geq-graph-container',
+            onResize: ({ canvas }) => this.drawGraph(canvas)
+        });
+        graphContainer.style.margin = '10px auto';
+        canvas.style.margin = '0 auto';
         // Store references to DOM elements for later updates
         this.container = container;
         this.graphCanvas = canvas;
@@ -338,9 +334,14 @@ return data; // Return the modified buffer
 
     drawGraph(canvas) {
         const ctx = canvas.getContext('2d');
-        const width  = canvas.width;
-        const height = canvas.height;
-    
+        const rect = canvas.getBoundingClientRect();
+        const cssWidth = rect.width || canvas.clientWidth || canvas.width;
+        const cssHeight = rect.height || canvas.clientHeight || canvas.height;
+        const dpr = canvas.width / cssWidth || 1;
+        const width = Math.max(1, Math.round(cssWidth));
+        const height = Math.max(1, Math.round(cssHeight));
+        const isMobileLayout = typeof document !== 'undefined' && document.body && document.body.classList.contains('layout-mobile');
+
         // ---------- constants ----------
         const SR = (this.audioContext && this.audioContext.sampleRate) || 48000;
         const Q  = 2.1;
@@ -382,11 +383,12 @@ return data; // Return the modified buffer
         };
     
         // ---------- clear ----------
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, width, height);
     
         // ---------- grid ----------
         ctx.strokeStyle = '#444';
-        ctx.lineWidth   = 1;
+        ctx.lineWidth   = isMobileLayout ? 1 : 0.5;
     
         const freqs = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
         freqs.forEach(f => {
@@ -403,7 +405,7 @@ return data; // Return the modified buffer
         // ---------- response ----------
         ctx.beginPath();
         ctx.strokeStyle = '#00ff00';
-        ctx.lineWidth   = 2;
+        ctx.lineWidth   = isMobileLayout ? 2 : 1;
     
         for (let xPix = 0; xPix < width; xPix++) {
             const f = Math.pow(10,

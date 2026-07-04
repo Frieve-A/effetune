@@ -105,6 +105,35 @@
     height: 100%;
 }
 
+body.layout-mobile .five-band-dynamic-eq-plugin-ui,
+body.layout-mobile .fbdyn-band-settings {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    overflow-x: clip;
+}
+
+body.layout-mobile .fbdyn-band-tabs {
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+body.layout-mobile .fbdyn-band-tab {
+    flex: 1 1 56px;
+    min-width: 0;
+    min-height: 40px;
+}
+
+body.layout-mobile .fbdyn-two-columns {
+    grid-template-columns: 1fr !important;
+}
+
+body.layout-mobile .fbdyn-graph {
+    aspect-ratio: 2 / 1;
+}
+
 :root {
     --graph-background-color: #1a1a1a;
     --graph-grid-color: #333;

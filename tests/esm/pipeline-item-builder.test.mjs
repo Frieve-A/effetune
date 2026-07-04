@@ -437,6 +437,24 @@ test('creates pipeline items and exercises header controls for regular plugins',
   });
 });
 
+test('createPluginUI disposes responsive graphs before rebuilding plugin UI', async () => {
+  await withBuilderGlobals({}, async () => {
+    const plugin = new TestPlugin({ id: 12, name: 'Tone Control' });
+    const events = [];
+    plugin._disposeResponsiveGraphs = () => events.push('disposeGraphs');
+    plugin.createUI = () => {
+      events.push('createUI');
+      return document.createElement('div');
+    };
+    const core = createCore({ pipeline: [plugin] });
+    const builder = new PipelineItemBuilder(core);
+
+    builder.createPipelineItem(plugin);
+
+    assert.deepEqual(events, ['disposeGraphs', 'createUI']);
+  });
+});
+
 test('pipeline item blank areas select without stealing plugin control taps', async () => {
   await withBuilderGlobals({}, async ({ documentRef }) => {
     const plugin = new TestPlugin({ id: 40, name: 'Tone Control' });
