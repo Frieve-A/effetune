@@ -203,6 +203,7 @@ class App {
 
             // Load plugins (definitions only, not instances)
             await this.pluginManager.loadPlugins();
+            await this.refreshPresetListAfterPluginLoad();
 
             // Initialize UI components (non-blocking)
             this.uiManager.initPluginList();
@@ -308,6 +309,19 @@ class App {
             
             // Set initialized flag to true even on error to allow UI to function
             this.initialized = true;
+        }
+    }
+
+    async refreshPresetListAfterPluginLoad() {
+        const presetManager = this.uiManager?.pipelineManager?.presetManager;
+        if (typeof presetManager?.loadPresetList !== 'function') {
+            return;
+        }
+
+        try {
+            await presetManager.loadPresetList();
+        } catch (error) {
+            console.error('Failed to refresh preset list after plugin load:', error);
         }
     }
 

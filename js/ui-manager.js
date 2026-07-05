@@ -150,6 +150,65 @@ export class UIManager {
 
     updatePipelineUI() {
         this.pipelineManager.updatePipelineUI();
+        this.refreshRangeFillStyling();
+    }
+
+    initRangeFillStyling() {
+        if (this._rangeFillStylingInitialized || typeof document === 'undefined') {
+            return;
+        }
+
+        this._rangeFillStylingInitialized = true;
+        this._rangeFillInput = (input) => {
+            if (!input?.matches?.('input[type="range"]')) return;
+
+            const min = input.min === '' ? 0 : Number(input.min);
+            const max = input.max === '' ? 100 : Number(input.max);
+            const value = Number(input.value);
+            const range = max - min;
+            const percent = range > 0 && Number.isFinite(value)
+                ? ((value - min) / range) * 100
+                : 0;
+            const clampedPercent = percent < 0 ? 0 : (percent > 100 ? 100 : percent);
+
+            if (input.style?.setProperty) {
+                input.style.setProperty('--et-range-fill', `${clampedPercent}%`);
+            }
+        };
+
+        this.refreshRangeFillStyling();
+
+        const handleRangeInput = (event) => {
+            this._rangeFillInput(event.target);
+        };
+        document.addEventListener?.('input', handleRangeInput, true);
+        document.addEventListener?.('change', handleRangeInput, true);
+
+        if (typeof MutationObserver !== 'undefined' && document.body) {
+            this._rangeFillObserver = new MutationObserver((mutations) => {
+                for (const mutation of mutations) {
+                    for (const node of Array.from(mutation.addedNodes || [])) {
+                        this.refreshRangeFillStyling(node);
+                    }
+                }
+            });
+            this._rangeFillObserver.observe(document.body, { childList: true, subtree: true });
+        }
+    }
+
+    refreshRangeFillStyling(root = document) {
+        if (!this._rangeFillInput || !root) {
+            return;
+        }
+
+        if (root.matches?.('input[type="range"]')) {
+            this._rangeFillInput(root);
+            return;
+        }
+
+        root.querySelectorAll?.('input[type="range"]').forEach(input => {
+            this._rangeFillInput(input);
+        });
     }
 
     // Delegate to StateManager with translation
@@ -381,6 +440,8 @@ export class UIManager {
             this.audioManager.addEventListener('sleepModeChanged', (data) => {
                 this.updateSleepModeDisplay(data.isSleepMode, data.sampleRate);
             });
+
+            this.initRangeFillStyling();
         }
     }
 

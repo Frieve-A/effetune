@@ -463,6 +463,7 @@ export class DoubleBlindTest {
         });
         this.els.countInput.addEventListener('input', () => {
             this.els.countRange.value = this.els.countInput.value;
+            this.uiManager.refreshRangeFillStyling?.(this.els.countRange);
         });
         this.els.countRange.addEventListener('input', () => {
             this.els.countInput.value = this.els.countRange.value;
@@ -512,6 +513,7 @@ export class DoubleBlindTest {
         this.els.testNameInput.value = this.testName || '';
         this.els.countInput.value = this.testCount;
         this.els.countRange.value = (this.testCount >= 5 && this.testCount <= 50) ? this.testCount : 20;
+        this.uiManager.refreshRangeFillStyling?.(this.els.countRange);
         this.els.nameInput.value = '';
         this._updateTestNameClear();
     }

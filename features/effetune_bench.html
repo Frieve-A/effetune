@@ -32,10 +32,19 @@
             font-family: Arial, sans-serif;
             margin: 0;
             padding: 20px;
-            background: #1e1e1e;
+            background: radial-gradient(circle at 38px 0, rgba(156, 39, 176, 0.10), transparent 360px), linear-gradient(145deg, #202020, #1b1b1b 58%, #181818);
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+            background-size: cover;
             color: #fff;
             box-sizing: border-box;
             width: 100%;
+        }
+        html {
+            background: linear-gradient(145deg, #202020, #191919 62%, #171717);
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+            background-size: cover;
         }
         .benchmark-table {
             width: 100%;
@@ -50,27 +59,30 @@
             text-align: left;
         }
         .benchmark-table th {
-            background-color: #333;
+            background: linear-gradient(180deg, #3d3d3d, #333333);
             color: #fff;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055);
         }
         .benchmark-table tr:nth-child(even) {
-            background-color: #2a2a2a;
+            background-color: rgba(255, 255, 255, 0.025);
         }
         .benchmark-table tr:hover {
-            background-color: #383838;
+            background-color: rgba(156, 39, 176, 0.13);
         }
         .benchmark-container {
             margin: 20px 0;
             padding: 15px;
-            background: #2d2d2d;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.042), rgba(255, 255, 255, 0) 42px), linear-gradient(145deg, #303030, #282828);
             border-radius: 4px;
             border-left: 4px solid #9C27B0;
             width: 100%;
             box-sizing: border-box;
+            box-shadow: 0 14px 36px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.055), inset 0 0 0 1px rgba(255, 255, 255, 0.035);
         }
         .benchmark-container h2 {
             margin-top: 0;
-            color: #9C27B0;
+            color: #d68be4;
+            text-shadow: 0 0 16px rgba(156, 39, 176, 0.28);
         }
         .benchmark-container h3 {
             margin-top: 20px;
@@ -94,19 +106,33 @@
         }
         .benchmark-button {
             padding: 8px 16px;
-            background-color: #9b27b0c0;
-            border: 1px solid #3d3d3d;
+            background: linear-gradient(180deg, #ba4dcb, #8f269f);
+            border: 1px solid #c56ad3;
             color: #ffffff;
             cursor: pointer;
             border-radius: 4px;
             margin-right: 15px;
+            box-shadow: 0 5px 16px rgba(156, 39, 176, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+            transition: background 140ms cubic-bezier(0.2, 0.8, 0.2, 1), border-color 140ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
         }
         .benchmark-button:hover {
-            background-color: #9C27B0;
+            background: linear-gradient(180deg, #cd61de, #9C27B0);
+            border-color: #df8cea;
+            box-shadow: 0 7px 20px rgba(156, 39, 176, 0.30), inset 0 1px 0 rgba(255, 255, 255, 0.20);
         }
         .benchmark-button:disabled {
             opacity: 0.5;
             cursor: not-allowed;
+        }
+        #sample-rate {
+            background: linear-gradient(180deg, #404040, #373737) !important;
+            border-color: #565656 !important;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.035);
+        }
+        #sample-rate:focus {
+            outline: none;
+            border-color: #c56ad3 !important;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.24), 0 0 0 2px rgba(156, 39, 176, 0.18), 0 0 18px rgba(156, 39, 176, 0.16);
         }
         #benchmark-status {
             margin-top: 10px;
@@ -115,24 +141,26 @@
         .progress-container {
             width: 100%;
             height: 20px;
-            background-color: #2a2a2a;
+            background: linear-gradient(180deg, #30343a, #22262c);
             border-radius: 4px;
             margin-top: 15px;
             overflow: hidden;
             display: none;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.54), inset 0 1px 0 rgba(255, 255, 255, 0.055);
         }
         .progress-bar {
             height: 100%;
-            background-color: #9C27B0;
+            background: linear-gradient(90deg, #8f269f, #cd61de);
             width: 0%;
             transition: width 0.3s ease;
+            box-shadow: 0 0 14px rgba(156, 39, 176, 0.32);
         }
         .progress-text {
             margin-top: 5px;
         }
         .copy-benchmark-result-button {
             padding: 6px 12px;
-            background-color: #444;
+            background: linear-gradient(180deg, #565656, #484848);
             border: 1px solid #555;
             color: #ffffff;
             cursor: pointer;
@@ -141,12 +169,16 @@
             display: inline-flex;
             align-items: center;
             font-size: 14px;
+            box-shadow: 0 2px 7px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.075);
+            transition: background 140ms cubic-bezier(0.2, 0.8, 0.2, 1), border-color 140ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
         }
         .copy-benchmark-result-button:hover {
-            background-color: #555;
+            background: linear-gradient(180deg, #626262, #535353);
+            border-color: #6e6e6e;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.09);
         }
         .copy-benchmark-result-button:active {
-            background-color: #666;
+            background: linear-gradient(180deg, #6c6c6c, #5c5c5c);
         }
         .copy-benchmark-result-button svg {
             margin-right: 6px;
@@ -168,8 +200,8 @@
             top: 20px;
             left: 20px;
             padding: 8px 16px;
-            background-color: #2d2d2d;
-            border: 1px solid #3d3d3d;
+            background: linear-gradient(180deg, #565656, #484848);
+            border: 1px solid #5f5f5f;
             color: #ffffff;
             cursor: pointer;
             border-radius: 4px;
@@ -177,9 +209,13 @@
             align-items: center;
             font-size: 14px;
             z-index: 100;
+            box-shadow: 0 2px 7px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.075);
+            transition: background 140ms cubic-bezier(0.2, 0.8, 0.2, 1), border-color 140ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
         }
         .back-button:hover {
-            background-color: #3d3d3d;
+            background: linear-gradient(180deg, #626262, #535353);
+            border-color: #6e6e6e;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.09);
         }
         .back-button svg {
             margin-right: 6px;

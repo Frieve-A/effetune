@@ -442,6 +442,7 @@ export class AudioPlayerUI {
       // Reset seek bar when no duration
       this.seekBar.value = 0;
     }
+    window.uiManager?.refreshRangeFillStyling?.(this.seekBar);
     
     // Force UI update by triggering a reflow
     this.seekBar.style.display = 'none';
