@@ -426,9 +426,15 @@ function createHarness(options = {}) {
   const urlUpdates = [];
   const historyReplacements = [];
 
+  const mobilePlayerView = options.includeMobilePlayerView
+    ? appendElement(document.body, 'div', 'mobile-player-view', { id: 'mobilePlayerView' })
+    : null;
+  const playerParent = options.playerInMobileView && mobilePlayerView
+    ? mobilePlayerView
+    : document.body;
   const player = options.includePlayer === false
     ? null
-    : appendElement(document.body, 'div', 'audio-player');
+    : appendElement(playerParent, 'div', 'audio-player');
   const main = options.includeMain === false
     ? null
     : appendElement(document.body, 'div', 'main-container', { width: options.mainWidth ?? 640 });
@@ -579,6 +585,7 @@ function createHarness(options = {}) {
     historyReplacements,
     main,
     menuRefreshes,
+    mobilePlayerView,
     player,
     runTimers() {
       while (timers.length) {
@@ -667,6 +674,43 @@ test('gating fallbacks and panel insertion keep the panel usable', async () => {
   await withHarness({ includePlayer: false, includeMain: false }, async h => {
     h.dbt._buildPanel();
     assert.equal(h.dbt.container.parentNode, h.document.body);
+  });
+});
+
+test('mobile panel insertion keeps DBT shared by Player and Effects tabs', async () => {
+  await withHarness({ includeMobilePlayerView: true, playerInMobileView: true }, async h => {
+    h.document.body.classList.add('layout-mobile');
+    h.document.body.classList.add('view-player');
+
+    h.dbt.enterFresh();
+    await flushMicrotasks();
+
+    assert.equal(h.player.parentNode, h.mobilePlayerView);
+    assert.equal(h.dbt.container.parentNode, h.document.body);
+    assert.equal(h.mobilePlayerView.children.includes(h.dbt.container), false);
+    assert.equal(h.main.children.includes(h.dbt.container), false);
+    assert.equal(
+      h.document.body.children[h.document.body.children.indexOf(h.main) - 1],
+      h.dbt.container
+    );
+
+    h.document.body.classList.remove('view-player');
+    h.document.body.classList.add('view-effects');
+    assert.equal(h.dbt.container.parentNode, h.document.body);
+    assert.equal(h.mobilePlayerView.children.includes(h.dbt.container), false);
+    assert.equal(h.main.children.includes(h.dbt.container), false);
+
+    h.dbt.exit();
+    h.dbt.enterFresh();
+    await flushMicrotasks();
+
+    assert.equal(h.dbt.container.parentNode, h.document.body);
+    assert.equal(h.mobilePlayerView.children.includes(h.dbt.container), false);
+    assert.equal(h.main.children.includes(h.dbt.container), false);
+    assert.equal(
+      h.document.body.children[h.document.body.children.indexOf(h.main) - 1],
+      h.dbt.container
+    );
   });
 });
 

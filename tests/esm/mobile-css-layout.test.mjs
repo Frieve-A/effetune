@@ -49,6 +49,22 @@ function assertFieldMinWidth(rule, selector) {
   assert.match(rule, /box-sizing:\s*border-box;/, `${selector} should include padding and border in width`);
 }
 
+function assertSquareIconButton(rule, selector) {
+  assert.match(
+    rule,
+    /width:\s*var\(--et-mobile-control-height\);/,
+    `${selector} should set 40px border-box width on mobile`
+  );
+  assert.match(
+    rule,
+    /min-width:\s*var\(--et-mobile-control-height\);/,
+    `${selector} should set 40px minimum width on mobile`
+  );
+  assertControlHeight(rule, selector);
+  assert.match(rule, /padding:\s*0;/, `${selector} should center its icon without extra padding`);
+  assert.match(rule, /display:\s*inline-flex;/, `${selector} should use icon-button flex layout`);
+}
+
 test('mobile controls use 40px border-box height and 80px field width', () => {
   const css = readCss('../../effetune-mobile.css');
 
@@ -97,5 +113,24 @@ test('mobile controls use 40px border-box height and 80px field width', () => {
     'body.layout-mobile .plugin-parameter-ui select'
   ]) {
     assertFieldMinWidth(getLastRule(css, selector), selector);
+  }
+
+  for (const selector of [
+    'body.layout-mobile .double-blind-test .dbt-close-button',
+    'body.layout-mobile .double-blind-test .dbt-testname-row .save-button',
+    'body.layout-mobile .double-blind-test .dbt-testname-row .delete-preset-button'
+  ]) {
+    assertSquareIconButton(getRule(css, selector), selector);
+  }
+
+  const dbtIconRule = getRule(css, 'body.layout-mobile .double-blind-test .dbt-close-button svg');
+  assert.match(dbtIconRule, /width:\s*16px;/, 'Double Blind Test mobile icon SVGs should stay 16px wide');
+  assert.match(dbtIconRule, /height:\s*16px;/, 'Double Blind Test mobile icon SVGs should stay 16px tall');
+
+  for (const selector of [
+    'body.layout-mobile.view-player .double-blind-test',
+    'body.layout-mobile.view-effects .double-blind-test'
+  ]) {
+    assert.match(getRule(css, selector), /display:\s*block;/, `${selector} should keep DBT visible`);
   }
 });

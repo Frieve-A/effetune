@@ -316,6 +316,11 @@ body.layout-mobile.view-effects .mobile-player-view {
     display: none;
 }
 
+body.layout-mobile.view-player .double-blind-test,
+body.layout-mobile.view-effects .double-blind-test {
+    display: block;
+}
+
 body.layout-mobile.view-effects {
     padding-bottom: calc(var(--et-bottom-nav-height) + var(--et-mini-player-height) + env(safe-area-inset-bottom) + 8px);
 }
@@ -1004,6 +1009,32 @@ body.layout-mobile .time-display {
 body.layout-mobile .player-button {
     width: 100%;
     height: 48px;
+}
+
+body.layout-mobile .double-blind-test .dbt-close-button,
+body.layout-mobile .double-blind-test .dbt-testname-row .save-button,
+body.layout-mobile .double-blind-test .dbt-testname-row .delete-preset-button {
+    flex: 0 0 var(--et-mobile-control-height);
+    width: var(--et-mobile-control-height);
+    min-width: var(--et-mobile-control-height);
+    max-width: var(--et-mobile-control-height);
+    height: var(--et-mobile-control-height);
+    min-height: var(--et-mobile-control-height);
+    max-height: var(--et-mobile-control-height);
+    padding: 0;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+body.layout-mobile .double-blind-test .dbt-close-button svg,
+body.layout-mobile .double-blind-test .dbt-testname-row .save-button svg,
+body.layout-mobile .double-blind-test .dbt-testname-row .delete-preset-button svg {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+    display: block;
 }
 
 body.layout-mobile .play-pause-button {

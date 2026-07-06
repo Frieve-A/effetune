@@ -2395,6 +2395,37 @@ h1 {
     transition: background var(--et-transition-fast), border-color var(--et-transition-fast), box-shadow var(--et-transition-fast), color var(--et-transition-fast);
 }
 
+.preset-select option,
+.plugin-parameter-ui select option,
+.routing-dialog-row select option,
+.audio-config-dialog select option,
+.config-dialog select option,
+.config-select option {
+    background-color: #373737 !important;
+    color: var(--et-text-primary) !important;
+    color-scheme: dark;
+}
+
+.preset-select option:hover,
+.plugin-parameter-ui select option:hover,
+.routing-dialog-row select option:hover,
+.audio-config-dialog select option:hover,
+.config-dialog select option:hover,
+.config-select option:hover {
+    background-color: #454545 !important;
+    color: #ffffff !important;
+}
+
+.preset-select option:checked,
+.plugin-parameter-ui select option:checked,
+.routing-dialog-row select option:checked,
+.audio-config-dialog select option:checked,
+.config-dialog select option:checked,
+.config-select option:checked {
+    background-color: var(--et-accent-pressed) !important;
+    color: #ffffff !important;
+}
+
 .effect-search-input:focus,
 .preset-select:focus,
 .plugin-parameter-ui input[type="number"]:focus,

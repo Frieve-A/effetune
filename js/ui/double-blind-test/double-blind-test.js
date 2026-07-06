@@ -477,15 +477,23 @@ export class DoubleBlindTest {
 
         this.container = container;
 
-        // Insert into the DOM: at the top, below the player if one is present.
+        // Insert into the DOM: mobile keeps DBT in a shared body position so
+        // both Player and Effects views can show it; desktop keeps it below the
+        // player if one is present.
         const mainContainer = document.querySelector('.main-container');
-        const player = document.querySelector('.audio-player');
-        if (player && player.parentNode) {
-            player.parentNode.insertBefore(container, player.nextSibling);
-        } else if (mainContainer && mainContainer.parentNode) {
+        const isMobileLayout = !!this.uiManager?.layoutMode?.isMobile ||
+            document.body.classList.contains('layout-mobile');
+        if (isMobileLayout && mainContainer && mainContainer.parentNode) {
             mainContainer.parentNode.insertBefore(container, mainContainer);
         } else {
-            document.body.appendChild(container);
+            const player = document.querySelector('.audio-player');
+            if (player && player.parentNode) {
+                player.parentNode.insertBefore(container, player.nextSibling);
+            } else if (mainContainer && mainContainer.parentNode) {
+                mainContainer.parentNode.insertBefore(container, mainContainer);
+            } else {
+                document.body.appendChild(container);
+            }
         }
     }
 
