@@ -353,6 +353,7 @@ test('MobileMenu removes overflow controls when leaving mobile mode', async () =
     window: {
       location: { search: '' },
       electronIntegration: {
+        isElectron: true,
         processAudioFiles() {
           calls.push('processAudioFiles');
         }
@@ -385,6 +386,43 @@ test('MobileMenu removes overflow controls when leaving mobile mode', async () =
     assert.equal(button.parentNode, null);
     assert.equal(panel.parentNode, null);
     assert.equal(backdrop.parentNode, null);
+  });
+});
+
+test('MobileMenu uses web file selection when Electron bridge is present but inactive', async () => {
+  const documentRef = createDocument();
+  const layoutMode = createLayoutMode('mobile');
+  const calls = [];
+  const dropArea = new FakeElement('div');
+  const selectFiles = new FakeElement('span');
+  selectFiles.className = 'select-files';
+  dropArea.appendChild(selectFiles);
+  const uiManager = {
+    layoutMode,
+    pipelineManager: {
+      fileProcessor: { dropArea }
+    }
+  };
+
+  await withGlobals({
+    document: documentRef,
+    window: {
+      location: { search: '' },
+      electronIntegration: {
+        isElectron: false,
+        isElectronEnvironment: () => false,
+        processAudioFiles() {
+          calls.push('electronProcessAudioFiles');
+        }
+      }
+    }
+  }, async () => {
+    const menu = new MobileMenu(uiManager);
+    const processItem = menu.panel.children.find(item => item.textContent === 'Process Audio Files with Effects...');
+    processItem.click();
+
+    assert.deepEqual(calls, []);
+    assert.equal(selectFiles.clicked, true);
   });
 });
 

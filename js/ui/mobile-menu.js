@@ -96,7 +96,8 @@ export class MobileMenu {
 
     processAudioFilesWithEffects() {
         const electronIntegration = globalThis.window?.electronIntegration;
-        if (typeof electronIntegration?.processAudioFiles === 'function') {
+        const isElectron = electronIntegration?.isElectronEnvironment?.() || electronIntegration?.isElectron;
+        if (isElectron && typeof electronIntegration?.processAudioFiles === 'function') {
             electronIntegration.processAudioFiles();
             return;
         }

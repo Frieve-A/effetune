@@ -837,7 +837,7 @@ body.layout-mobile .pipeline-item-header .toggle-button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    margin-right: 0;
+    margin-right: 16px;
 }
 
 body.layout-mobile .pipeline-item-header .toggle-button::before {

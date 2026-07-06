@@ -7,6 +7,7 @@ export class StateManager {
         this.resetButton = document.getElementById('resetButton');
         this.settingsMenuButton = document.getElementById('settingsMenuButton');
         this.settingsMenu = document.getElementById('settingsMenu');
+        this.installAppElement = document.getElementById('installAppElement');
         this.installAppButton = document.getElementById('installAppButton');
         this.configSettingsButton = document.getElementById('configSettingsButton');
         this.audioConfigSettingsButton = document.getElementById('audioConfigSettingsButton');
@@ -15,6 +16,8 @@ export class StateManager {
         this.resetAudioSettingsButton = document.getElementById('resetAudioSettingsButton');
         this.shareButton = document.getElementById('shareButton');
         this.sampleRate = document.getElementById('sampleRate');
+        this.installCompleted = this.isInstalledDisplayMode();
+        this.nativeInstallUnavailable = false;
         
         this.updateLabels();
         
@@ -24,6 +27,12 @@ export class StateManager {
     initEventListeners() {
         this.resetButton?.addEventListener('click', () => this.openAudioConfig());
         this.installAppButton?.addEventListener('click', () => this.runMenuAction(() => this.installApp()));
+        this.installAppElement?.addEventListener?.('validationstatuschanged', event => {
+            if (event?.target?.invalidReason) {
+                this.nativeInstallUnavailable = true;
+                this.updateInstallAvailability();
+            }
+        });
         this.audioConfigSettingsButton?.addEventListener('click', () => this.runMenuAction(() => this.openAudioConfig()));
         this.configSettingsButton?.addEventListener('click', () => this.runMenuAction(() => this.openConfig()));
         this.benchmarkSettingsButton?.addEventListener('click', () => this.runMenuAction(() => this.openFeaturePage('features/effetune_bench.html')));
@@ -56,8 +65,16 @@ export class StateManager {
 
         // The install prompt is captured in the page head; keep the menu item in
         // sync with its availability.
-        window.addEventListener?.('pwa-install-available', () => this.updateInstallAvailability());
-        window.addEventListener?.('pwa-install-completed', () => this.updateInstallAvailability());
+        window.addEventListener?.('pwa-install-available', () => {
+            this.installCompleted = false;
+            this.updateInstallAvailability();
+        });
+        const markInstallCompleted = () => {
+            this.installCompleted = true;
+            this.updateInstallAvailability();
+        };
+        window.addEventListener?.('pwa-install-completed', markInstallCompleted);
+        window.addEventListener?.('appinstalled', markInstallCompleted);
         this.updateInstallAvailability();
     }
 
@@ -74,6 +91,16 @@ export class StateManager {
             window.electronIntegration?.isElectronEnvironment?.() ||
             userAgent.includes(' electron/')
         );
+    }
+
+    supportsNativeInstallElement() {
+        return typeof window !== 'undefined' && 'HTMLInstallElement' in window;
+    }
+
+    isInstalledDisplayMode() {
+        const standaloneMedia = window.matchMedia?.('(display-mode: standalone)');
+        const iosStandalone = typeof navigator !== 'undefined' && navigator.standalone;
+        return Boolean(standaloneMedia?.matches || iosStandalone);
     }
 
     updateLabels() {
@@ -120,9 +147,22 @@ export class StateManager {
     }
 
     updateInstallAvailability() {
-        if (!this.installAppButton) return;
-        const available = !this.isElectronEnvironment() && Boolean(window.deferredInstallPrompt);
-        this.installAppButton.hidden = !available;
+        if (!this.installAppElement && !this.installAppButton) return;
+        const canOfferInstall = !this.isElectronEnvironment() &&
+            !this.installCompleted &&
+            !this.isInstalledDisplayMode();
+        const canUseNativeInstall = canOfferInstall &&
+            this.supportsNativeInstallElement() &&
+            this.installAppElement &&
+            !this.nativeInstallUnavailable;
+        const canUseDeferredPrompt = canOfferInstall && Boolean(window.deferredInstallPrompt);
+
+        if (this.installAppElement) {
+            this.installAppElement.hidden = !canUseNativeInstall;
+        }
+        if (this.installAppButton) {
+            this.installAppButton.hidden = canUseNativeInstall || !canUseDeferredPrompt;
+        }
     }
 
     async installApp() {

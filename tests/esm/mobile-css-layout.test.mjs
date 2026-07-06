@@ -123,6 +123,12 @@ test('mobile controls use 40px border-box height and 80px field width', () => {
     assertSquareIconButton(getRule(css, selector), selector);
   }
 
+  assert.match(
+    getRule(css, 'body.layout-mobile .pipeline-item-header .toggle-button'),
+    /margin-right:\s*16px;/,
+    'pipeline item toggles should keep the same right margin as the master toggle on mobile'
+  );
+
   const dbtIconRule = getRule(css, 'body.layout-mobile .double-blind-test .dbt-close-button svg');
   assert.match(dbtIconRule, /width:\s*16px;/, 'Double Blind Test mobile icon SVGs should stay 16px wide');
   assert.match(dbtIconRule, /height:\s*16px;/, 'Double Blind Test mobile icon SVGs should stay 16px tall');

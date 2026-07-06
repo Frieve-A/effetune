@@ -135,6 +135,14 @@ input[type="checkbox"] {
     display: block;
 }
 
+.settings-menu-install[hidden] {
+    display: none;
+}
+
+.settings-menu-install:not([hidden]) {
+    display: block;
+}
+
 .settings-menu-item {
     display: block;
     width: 100%;

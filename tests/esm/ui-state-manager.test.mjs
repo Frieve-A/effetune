@@ -70,6 +70,7 @@ function createDocument(calls) {
     'sampleRate',
     'settingsMenuButton',
     'settingsMenu',
+    'installAppElement',
     'installAppButton',
     'configSettingsButton',
     'audioConfigSettingsButton',
@@ -94,16 +95,36 @@ function createDocument(calls) {
 async function withStateGlobals(options, callback) {
   const calls = [];
   const documentRef = createDocument(calls);
+  const windowListeners = new Map();
   const windowRef = {
     electronAPI: options.electronAPI,
     electronIntegration: options.electronIntegration,
     uiManager: options.uiManager,
+    HTMLInstallElement: options.HTMLInstallElement,
+    matchMedia: options.matchMedia,
     location: {
       reload() {
         calls.push(['reload']);
       }
+    },
+    addEventListener(type, listener) {
+      calls.push(['window.addEventListener', type, typeof listener]);
+      if (!windowListeners.has(type)) windowListeners.set(type, []);
+      windowListeners.get(type).push(listener);
+    },
+    dispatchEvent(event) {
+      const type = typeof event === 'string' ? event : event.type;
+      for (const listener of windowListeners.get(type) || []) {
+        listener(event);
+      }
     }
   };
+  if (!('HTMLInstallElement' in options)) {
+    delete windowRef.HTMLInstallElement;
+  }
+  if (!options.matchMedia) {
+    delete windowRef.matchMedia;
+  }
   await withGlobals({
     document: documentRef,
     window: windowRef,
@@ -359,7 +380,7 @@ test('install menu item reflects deferred prompt availability and triggers insta
   await withStateGlobals({}, async ({ documentRef, windowRef }) => {
     const manager = new StateManager({});
     // No captured prompt yet -> item stays hidden.
-    assert.equal(documentRef.elements.get('installAppButton').hidden, true);
+    assert.equal(documentRef.elements.get('installAppElement').hidden, true);
 
     const promptCalls = [];
     windowRef.deferredInstallPrompt = {
@@ -369,6 +390,7 @@ test('install menu item reflects deferred prompt availability and triggers insta
       userChoice: Promise.resolve({ outcome: 'accepted' })
     };
     manager.updateInstallAvailability();
+    assert.equal(documentRef.elements.get('installAppElement').hidden, true);
     assert.equal(documentRef.elements.get('installAppButton').hidden, false);
     assert.equal(documentRef.elements.get('installAppButton').textContent, 'Install App');
 
@@ -379,12 +401,50 @@ test('install menu item reflects deferred prompt availability and triggers insta
   });
 });
 
+test('install menu item prefers native install element support until installation completes', async () => {
+  await withStateGlobals({
+    HTMLInstallElement: function HTMLInstallElement() {}
+  }, async ({ documentRef, windowRef }) => {
+    new StateManager({});
+
+    assert.equal(documentRef.elements.get('installAppElement').hidden, false);
+    assert.equal(documentRef.elements.get('installAppButton').hidden, true);
+
+    windowRef.dispatchEvent({ type: 'pwa-install-completed' });
+    assert.equal(documentRef.elements.get('installAppElement').hidden, true);
+  });
+});
+
+test('install menu item falls back to deferred prompt when native install validation fails', async () => {
+  await withStateGlobals({
+    HTMLInstallElement: function HTMLInstallElement() {}
+  }, async ({ documentRef, windowRef }) => {
+    const manager = new StateManager({});
+    const promptCalls = [];
+    windowRef.deferredInstallPrompt = {
+      prompt() {
+        promptCalls.push('prompt');
+      },
+      userChoice: Promise.resolve({ outcome: 'accepted' })
+    };
+    manager.installAppElement.listeners.get('validationstatuschanged')({
+      target: { invalidReason: 'install_data_invalid' }
+    });
+
+    assert.equal(documentRef.elements.get('installAppElement').hidden, true);
+    assert.equal(documentRef.elements.get('installAppButton').hidden, false);
+
+    await manager.installAppButton.click();
+    assert.deepEqual(promptCalls, ['prompt']);
+  });
+});
+
 test('install menu item stays hidden in Electron environments', async () => {
   await withStateGlobals({ electronAPI: {} }, async ({ documentRef, windowRef }) => {
     const manager = new StateManager({});
     windowRef.deferredInstallPrompt = { prompt() {}, userChoice: Promise.resolve({}) };
     manager.updateInstallAvailability();
-    assert.equal(documentRef.elements.get('installAppButton').hidden, true);
+    assert.equal(documentRef.elements.get('installAppElement').hidden, true);
   });
 });
 
