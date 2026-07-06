@@ -130,13 +130,8 @@ function registerIpcHandlers() {
   // Get audio devices
   ipcMain.handle('get-audio-devices', async () => {
     try {
-      // Get input devices (microphones)
-      const inputDevices = await systemPreferences.getMediaAccessStatus('microphone');
-      if (inputDevices !== 'granted') {
-        await systemPreferences.askForMediaAccess('microphone');
-      }
-      
-      // Use Electron's built-in method to get audio devices
+      // Enumerate devices without prompting for microphone access. Actual input
+      // permission is requested only when the selected input is opened.
       const mainWin = constants.getMainWindow();
       const devices = await mainWin.webContents.executeJavaScript(`
         navigator.mediaDevices.enumerateDevices()

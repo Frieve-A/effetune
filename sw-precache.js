@@ -15,6 +15,7 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/app.js",
   "./js/audio-manager.js",
   "./js/audio/audio-context-manager.js",
+  "./js/audio/audio-device-constants.js",
   "./js/audio/audio-encoder.js",
   "./js/audio/audio-io-manager.js",
   "./js/audio/event-manager.js",

@@ -160,6 +160,7 @@
   // Dialogue de configuration audio
   "dialog.audioConfig.title": "Configuration audio",
   "dialog.audioConfig.inputDevice": "Périphérique d'entrée :",
+  "dialog.audioConfig.inputDevice.none": "Aucun (lecteur de fichiers musicaux uniquement)",
   "dialog.audioConfig.outputDevice": "Périphérique de sortie :",
   "dialog.audioConfig.outputChannels": "Canaux de sortie :",
   "dialog.audioConfig.sampleRate": "Fréquence d'échantillonnage :",

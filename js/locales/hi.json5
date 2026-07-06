@@ -160,6 +160,7 @@
   // ऑडियो विन्यास संवाद
   "dialog.audioConfig.title": "ऑडियो विन्यास",
   "dialog.audioConfig.inputDevice": "इनपुट डिवाइस:",
+  "dialog.audioConfig.inputDevice.none": "कोई नहीं (केवल संगीत फ़ाइल प्लेयर)",
   "dialog.audioConfig.outputDevice": "आउटपुट डिवाइस:",
   "dialog.audioConfig.outputChannels": "आउटपुट चैनल:",
   "dialog.audioConfig.sampleRate": "नमूना दर:",

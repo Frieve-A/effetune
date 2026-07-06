@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { AudioIOManager, MIC_DENIED_PREFIX } from '../../js/audio/audio-io-manager.js';
+import { NO_AUDIO_INPUT_DEVICE_ID } from '../../js/audio/audio-device-constants.js';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
 
 class FakeNode {
@@ -354,6 +355,30 @@ test('constructor and audio input handle success, fallbacks, permission recovery
 });
 
 test('audio input handles saved-device permission failures and non-permission fallbacks', async () => {
+  let requestedMicrophoneAccess = false;
+  await withAudioIO({
+    window: {
+      electron: true,
+      electronAPI: {
+        requestMicrophoneAccess: async () => {
+          requestedMicrophoneAccess = true;
+        }
+      },
+      preferences: { inputDeviceId: NO_AUDIO_INPUT_DEVICE_ID }
+    }
+  }, async ({ manager, calls }) => {
+    assert.equal(await manager.initAudioInput(), '');
+    assert.equal(calls.some(call => call[0] === 'getUserMedia'), false);
+    assert.equal(requestedMicrophoneAccess, false);
+    assert.equal(manager.sourceNode.name, 'gain');
+
+    manager.contextManager.workletNode = new FakeNode('worklet', calls);
+    manager.outputGainNode = new FakeNode('outputGain', calls);
+    assert.equal(await manager.connectAudioNodes(), '');
+    assert.ok(calls.some(call => call[0] === 'connect' && call[1] === 'gain' && call[2] === 'worklet'));
+    assert.ok(calls.some(call => call[0] === 'connect' && call[1] === 'worklet' && call[2] === 'outputGain'));
+  });
+
   await withAudioIO({
     window: {
       audioPreferences: { inputDeviceId: 'web-mic' }

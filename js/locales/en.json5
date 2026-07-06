@@ -220,6 +220,7 @@
   // Audio Configuration Dialog
   "dialog.audioConfig.title": "Audio Configuration",
   "dialog.audioConfig.inputDevice": "Input Device:",
+  "dialog.audioConfig.inputDevice.none": "None (music file player only)",
   "dialog.audioConfig.outputDevice": "Output Device:",
   "dialog.audioConfig.outputChannels": "Output Channels:",
   "dialog.audioConfig.sampleRate": "Sample Rate:",

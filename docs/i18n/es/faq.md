@@ -60,7 +60,7 @@ Con Spotify reproduciendo, alterne el **ON/OFF** principal en EffeTune y confirm
 
 | Síntoma | Solución |
 | ------ | ------ |
-| Cortes o fallos | Haga clic en el botón **Reset Audio** en la esquina superior izquierda de la aplicación web o elija **Reload** del menú **View** en la aplicación de escritorio. Reduzca el número de efectos activos si es necesario. |
+| Cortes o fallos | Elija **Reiniciar audio** desde el menú **Configuración** o el menú de desbordamiento en móvil para reconstruir el pipeline de audio. En la aplicación de escritorio también puede usar **Ver▸Recargar**. Si es necesario, reduzca el número de efectos activos o aumente **Latencia:** en **Configuración de audio** para mejorar la estabilidad (puede afectar la sincronización con video). |
 | Distorsión o recorte | Inserte **Level Meter** al final de la cadena y mantenga los niveles por debajo de 0 dBFS. Añada **Brickwall Limiter** antes del Level Meter si es necesario. |
 | Aliasing por encima de 20 kHz | VB-CABLE puede seguir funcionando a 48 kHz. Revise la configuración inicial. |
 
@@ -106,10 +106,20 @@ Los controladores actuales del sistema operativo admiten hasta 8 canales. EffeTu
 
 | Pregunta | Respuesta |
 | ------ | ------ |
+| ¿En qué dispositivos se puede usar la versión PWA? | Se puede usar en los principales entornos móviles y de escritorio, incluidos teléfonos y tablets Android, iPhone/iPad, Windows, macOS, Linux y ChromeOS. Al ser una PWA, no es una aplicación nativa específica de cada dispositivo, sino que funciona en el navegador; el método de instalación, la selección de dispositivos de entrada/salida de audio y los formatos de música compatibles dependen del navegador y del sistema operativo. |
+| No puedo instalar la versión PWA | Use el botón **Instalar versión PWA** del sitio de EffeTune o, en la versión web, abra el menú de engranaje de la esquina superior derecha y elija **Instalar aplicación**. Si la opción no aparece, en Android o PC abra EffeTune con Chrome, Edge u otro navegador basado en Chrome. En iPhone/iPad, ábralo con Safari y use el menú Compartir para añadirlo a la pantalla de inicio. En navegadores integrados en otras aplicaciones, navegación privada o navegadores antiguos, puede que la opción de instalación no aparezca. |
 | ¿Entrada surround (5.1ch, etc.)? | La API Web Audio limita la entrada a 2 canales. La salida y los efectos admiten hasta 8 canales. |
 | ¿Longitud recomendada de la cadena de efectos? | Use tantos efectos como su CPU permita sin causar cortes o alta latencia. |
 | ¿Cómo obtener la mejor calidad de sonido? | Use 96 kHz o superior, comience con ajustes sutiles, monitoree el headroom con **Level Meter**, y añada **Brickwall Limiter** si es necesario. |
 | ¿Funciona con cualquier fuente? | Sí. Con un dispositivo de audio virtual puede procesar streaming, archivos locales o equipos físicos. |
+| ¿Puedo usar solo el reproductor de archivos de música, sin entrada de audio? | Sí. Si al iniciar EffeTune el sonido del micrófono se filtra a los auriculares, elija **Ninguno (solo reproductor de archivos de música)** en **Dispositivo de entrada:** dentro de **Configuración de audio**. EffeTune mantiene la cadena de efectos activa con una fuente silenciosa, por lo que el reproductor y los efectos generadores de señal como **Oscillator** siguen funcionando. Si selecciona una entrada de audio, puede procesar el sonido de equipos externos conectados mediante una interfaz de audio USB o comprobar la señal de entrada con **Spectrum Analyzer**. |
+| ¿La aplicación web móvil puede procesar el audio de otras aplicaciones? | Normalmente no. Los navegadores móviles no ofrecen una entrada de loopback general para el audio de otras aplicaciones, por lo que en móvil EffeTune se usa principalmente con el reproductor integrado. |
+| ¿Qué formatos de archivo de música admite? | Depende de la capacidad de decodificación de audio del navegador y del sistema operativo. Como referencia, MP3, WAV y AAC/M4A suelen funcionar en muchos entornos; FLAC, OGG/Vorbis, Opus/WebM y otros formatos varían según el entorno. Si un archivo no se reproduce, pruebe con MP3, AAC/M4A o WAV. |
+| ¿Puedo reproducir varios archivos de música? | Sí. Use **Abrir archivos de música** y, en el selector de archivos estándar del dispositivo, elija varios archivos antes de abrirlos; se cargarán como una lista de reproducción. Que sea posible seleccionar varios archivos o todos los archivos de una carpeta depende del dispositivo, el navegador y el selector de archivos. |
+| No puedo seleccionar el dispositivo de salida en la aplicación web | Depende de la compatibilidad del navegador y de los permisos. Pruebe en un contexto seguro con Chrome/Chromium o configure el DAC/AMP que quiere usar como salida predeterminada en el sistema operativo o el navegador. |
+| ¿Por qué **Tasa de muestreo:** o **Canales de salida:** no quedan en el valor elegido? | El navegador o el dispositivo pueden redondear o ignorar valores no admitidos. EffeTune funciona con el valor que realmente queda activo. |
+| ¿El reproductor web recuerda la lista de reproducción? | Se guardan los ajustes de repetición y aleatorio, pero la selección normal de archivos no se restaura tras recargar debido a las restricciones del navegador. |
+| ¿Se puede reproducir en móvil con la pantalla apagada? | Depende del navegador y no se puede garantizar, especialmente en iOS. En entornos compatibles se usa Wake Lock, pero la reproducción en segundo plano no está garantizada. |
 | ¿Costo de receptor AV vs. interfaz? | Reutilizar un receptor AV con HDMI es simple. Para configuraciones centradas en PC, una interfaz multicanal más amplificadores pequeños ofrece buen costo y calidad. |
 | No hay sonido de otras aplicaciones justo después de instalar VB-CABLE | La salida predeterminada del sistema operativo se cambió a **CABLE Input**. Cámbiela de nuevo en la configuración de sonido. |
 | Solo los canales 3+4 cambian de volumen después de dividir | Coloque un efecto **Volume** después del divisor y configure **Channel** a 3+4. Si se coloca antes, todos los canales cambian. |
@@ -135,7 +145,8 @@ Copie los ajustes de 5Band PEQ desde la página de medición y péguelos en la v
 
 ## 7. Enlaces de referencia
 * EffeTune Desktop: <https://github.com/Frieve-A/effetune/releases>
-* Versión web de EffeTune: <https://effetune.frieve.com/features/measurement/measurement.html>
+* Versión web de EffeTune: <https://effetune.frieve.com/effetune.html>
+* Medición de respuesta en frecuencia: <https://effetune.frieve.com/features/measurement/measurement.html>
 * VB-CABLE: <https://vb-audio.com/Cable/>
 * Voicemeeter: <https://vb-audio.com/Voicemeeter/>
 * ASIO Link Pro (versión fija no oficial): busque "ASIO Link Pro 2.4.1"

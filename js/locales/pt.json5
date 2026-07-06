@@ -160,6 +160,7 @@
   // Diálogo de configuração de áudio
   "dialog.audioConfig.title": "Configuração de Áudio",
   "dialog.audioConfig.inputDevice": "Dispositivo de Entrada:",
+  "dialog.audioConfig.inputDevice.none": "Nenhum (somente player de arquivos de música)",
   "dialog.audioConfig.outputDevice": "Dispositivo de Saída:",
   "dialog.audioConfig.outputChannels": "Canais de Saída:",
   "dialog.audioConfig.sampleRate": "Taxa de Amostragem:",

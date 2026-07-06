@@ -6,6 +6,7 @@ import {
   loadWebAudioPreferences,
   saveWebAudioPreferences
 } from './webSettingsStorage.js';
+import { NO_AUDIO_INPUT_DEVICE_ID } from '../audio/audio-device-constants.js';
 
 /**
  * Load saved audio preferences
@@ -164,6 +165,14 @@ function replaceOptions(select, devices, selectedValue) {
     : (devices[0]?.deviceId || 'default');
 }
 
+function getSelectedInputDeviceId(devices, selectedValue) {
+  if (devices.some(device => device.deviceId === selectedValue)) {
+    return selectedValue;
+  }
+  return devices.find(device => device.deviceId !== NO_AUDIO_INPUT_DEVICE_ID)?.deviceId ||
+    NO_AUDIO_INPUT_DEVICE_ID;
+}
+
 function replaceValueOptions(select, values, selectedValue, labelForValue) {
   if (!select) return;
   select.innerHTML = '';
@@ -234,6 +243,14 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       return;
     }
     const t = window.uiManager.t.bind(window.uiManager);
+    const inputDeviceOptions = [
+      {
+        deviceId: NO_AUDIO_INPUT_DEVICE_ID,
+        kind: 'audioinput',
+        label: t('dialog.audioConfig.inputDevice.none')
+      },
+      ...inputDevices
+    ];
     
     // Create dialog HTML
     const dialogHTML = `
@@ -366,7 +383,11 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
     const inputSelect = document.getElementById('input-device');
     const outputSelect = document.getElementById('output-device');
 
-    replaceOptions(inputSelect, inputDevices, audioPreferences?.inputDeviceId || 'default');
+    replaceOptions(
+      inputSelect,
+      inputDeviceOptions,
+      getSelectedInputDeviceId(inputDeviceOptions, audioPreferences?.inputDeviceId || 'default')
+    );
     replaceOptions(outputSelect, outputDevices, audioPreferences?.outputDeviceId || 'default');
     replaceValueOptions(
       document.getElementById('output-channels'),
@@ -407,14 +428,18 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       supportMessage.textContent = outputSupport.reasonKey ? t(outputSupport.reasonKey) : '';
     }
     
+    let dialogClosed = false;
     function closeDialog() {
-      document.body.removeChild(dialogElement);
-      document.head.removeChild(styleElement);
-      document.removeEventListener('keydown', handleKeydown);
-      // Clear the "Configuring audio devices..." message
-      if (window.uiManager) {
-        window.uiManager.clearError();
+      if (dialogClosed) return;
+      dialogClosed = true;
+      if (dialogElement.parentNode) {
+        dialogElement.parentNode.removeChild(dialogElement);
       }
+      if (styleElement.parentNode) {
+        styleElement.parentNode.removeChild(styleElement);
+      }
+      document.removeEventListener('keydown', handleKeydown);
+      clearErrorOnClose();
     }
 
     function handleKeydown(e) {
@@ -439,7 +464,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       const lowLatencyOutputCheckbox = document.getElementById('low-latency-output');
       const latencySelect = document.getElementById('latency');
       
-      const inputDevice = inputDevices.find(d => d.deviceId === inputDeviceSelect.value);
+      const inputDevice = inputDeviceOptions.find(d => d.deviceId === inputDeviceSelect.value);
       let selectedOutputDeviceId = outputDeviceSelect.disabled ? 'default' : outputDeviceSelect.value;
       let outputDevice = outputDevices.find(d => d.deviceId === selectedOutputDeviceId);
       const selectedSampleRate = parseInt(sampleRateSelect.value, 10);
@@ -487,14 +512,26 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       // Update global audio preferences for AudioWorklet context
       window.audioPreferences = preferences;
       
-      // Save and close
-      if (isElectron) {
-        await saveAudioPreferences(isElectron, preferences);
-      } else if (window.audioManager && typeof window.audioManager.reset === 'function') {
-        await window.audioManager.reset(preferences);
-      } else {
-        await saveAudioPreferences(isElectron, preferences);
+      if (!isElectron && window.audioManager && typeof window.audioManager.reset === 'function') {
+        closeDialog();
+        let resetResult = '';
+        try {
+          resetResult = await window.audioManager.reset(preferences);
+        } catch (error) {
+          console.error('Failed to apply audio preferences:', error);
+          resetResult = `Audio Error: ${error.message}`;
+        }
+        if (resetResult && window.uiManager) {
+          window.uiManager.setError(resetResult, true);
+        }
+        if (callback) {
+          callback(preferences);
+        }
+        return;
       }
+
+      // Save and close
+      await saveAudioPreferences(isElectron, preferences);
 
       // Update AudioWorklet with the new channel configuration
       if (isElectron && window.audioManager && window.audioManager.updateAudioConfig) {
@@ -508,18 +545,13 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       }
       
       // Remove dialog
-      document.body.removeChild(dialogElement);
-      document.head.removeChild(styleElement);
-      document.removeEventListener('keydown', handleKeydown);
+      closeDialog();
       
       // Call callback if provided
       if (callback) {
         callback(preferences);
       }
       
-      // Clear error message
-      clearErrorOnClose();
-
       if (!isElectron) {
         return;
       }

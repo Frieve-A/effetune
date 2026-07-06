@@ -7,6 +7,7 @@ import {
   saveAudioPreferences,
   showAudioConfigDialog
 } from '../../js/electron/audioIntegration.js';
+import { NO_AUDIO_INPUT_DEVICE_ID } from '../../js/audio/audio-device-constants.js';
 import { createFakeDocument } from '../helpers/fake-dom.mjs';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
 
@@ -318,6 +319,45 @@ test('showAudioConfigDialog disables unsupported Web output selection and resets
   assert.equal(document.body.children.length, 0);
 });
 
+test('showAudioConfigDialog closes the Web dialog before pending audio reset completes', async () => {
+  let resolveReset;
+  const resetPromise = new Promise(resolve => {
+    resolveReset = resolve;
+  });
+  const resetCalls = [];
+  const harness = createAudioHarness({
+    window: {
+      audioManager: {
+        reset: async preferences => {
+          resetCalls.push(preferences);
+          return resetPromise;
+        }
+      }
+    }
+  });
+  const document = createFakeDocument();
+
+  await withGlobals({
+    window: harness.window,
+    document,
+    navigator: {}
+  }, async () => {
+    await withMutedConsole('log', async () => {
+      await showAudioConfigDialog(false, {});
+    });
+    const applyPromise = document.getElementById('apply-button').dispatchEvent('click');
+    await flushMicrotasks();
+
+    assert.equal(resetCalls.length, 1);
+    assert.equal(document.body.children.length, 0);
+    assert.equal(document.head.children.length, 0);
+    assert.equal(harness.window.listenerCount('beforeunload'), 0);
+
+    resolveReset('');
+    await applyPromise;
+  });
+});
+
 test('showAudioConfigDialog localizes Web output support and default option labels', async () => {
   const translations = {
     'dialog.audioConfig.outputDevice.permissionsPolicyBlocked': 'Permissions-Policy により出力デバイスの選択がブロックされています。',
@@ -551,6 +591,48 @@ test('showAudioConfigDialog applies preferences through audioManager and callbac
   assert.equal(harness.window.listenerCount('beforeunload'), 0);
 });
 
+test('showAudioConfigDialog includes and saves the no-input player option', async () => {
+  const harness = createAudioHarness({
+    preferences: {},
+    deviceResult: {
+      success: true,
+      devices: [
+        { deviceId: 'mic1', kind: 'audioinput', label: 'Mic One' },
+        { deviceId: 'out1', kind: 'audiooutput', label: 'Out One' }
+      ]
+    }
+  });
+  const document = createFakeDocument();
+
+  await withGlobals({
+    window: harness.window,
+    document,
+    navigator: {},
+    setTimeout: callback => {
+      callback();
+      return 1;
+    }
+  }, async () => {
+    await withMutedConsole('log', async () => {
+      await showAudioConfigDialog(true, { inputDeviceId: NO_AUDIO_INPUT_DEVICE_ID });
+    });
+
+    const inputSelect = document.getElementById('input-device');
+    assert.equal(inputSelect.children[0].value, NO_AUDIO_INPUT_DEVICE_ID);
+    assert.equal(inputSelect.children[0].textContent, 'label:dialog.audioConfig.inputDevice.none');
+    assert.equal(inputSelect.value, NO_AUDIO_INPUT_DEVICE_ID);
+
+    await withMutedConsole('log', async () => {
+      await document.getElementById('apply-button').dispatchEvent('click');
+      await flushMicrotasks();
+    });
+  });
+
+  const saved = harness.calls.find(call => call[0] === 'saveAudioPreferences')[1];
+  assert.equal(saved.inputDeviceId, NO_AUDIO_INPUT_DEVICE_ID);
+  assert.equal(saved.inputDeviceLabel, 'label:dialog.audioConfig.inputDevice.none');
+});
+
 test('showAudioConfigDialog applies fallback labels and worklet updates without a callback', async () => {
   const messages = [];
   const harness = createAudioHarness({
@@ -680,6 +762,7 @@ test('showAudioConfigDialog handles missing defaults and dialog creation failure
       await showAudioConfigDialog(true, {});
     });
     assert.equal(onlyInputDocument.getElementById('input-device').value, 'mic-only');
+    assert.equal(onlyInputDocument.getElementById('input-device').children[0].value, NO_AUDIO_INPUT_DEVICE_ID);
     assert.equal(onlyInputDocument.getElementById('output-device').value, 'default');
   });
 

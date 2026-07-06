@@ -219,6 +219,7 @@
   // オーディオ設定ダイアログ
   "dialog.audioConfig.title": "オーディオ設定",
   "dialog.audioConfig.inputDevice": "入力デバイス:",
+  "dialog.audioConfig.inputDevice.none": "なし（音楽ファイルプレーヤー専用）",
   "dialog.audioConfig.outputDevice": "出力デバイス:",
   "dialog.audioConfig.outputChannels": "出力チャンネル数：",
   "dialog.audioConfig.sampleRate": "サンプルレート:",

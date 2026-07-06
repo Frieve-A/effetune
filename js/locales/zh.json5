@@ -160,6 +160,7 @@
   // 音频配置对话框
   "dialog.audioConfig.title": "音频设置",
   "dialog.audioConfig.inputDevice": "输入设备：",
+  "dialog.audioConfig.inputDevice.none": "无（仅音乐文件播放器）",
   "dialog.audioConfig.outputDevice": "输出设备：",
   "dialog.audioConfig.outputChannels": "输出通道：",
   "dialog.audioConfig.sampleRate": "采样率：",

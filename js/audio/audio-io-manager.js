@@ -1,3 +1,5 @@
+import { NO_AUDIO_INPUT_DEVICE_ID } from './audio-device-constants.js';
+
 /**
  * Prefix used to identify the non-fatal mic-denied warning returned by initAudioInput().
  * Callers (e.g. AudioManager._doReset) test against this prefix to distinguish a
@@ -143,6 +145,12 @@ export class AudioIOManager {
             };
 
             const preferences = await this._loadAudioPreferences();
+            if (preferences?.inputDeviceId === NO_AUDIO_INPUT_DEVICE_ID) {
+                this.createSilentSourceFallback();
+                console.log('Audio input disabled by preference. Music file playback mode will still work.');
+                return '';
+            }
+
             if (preferences && preferences.inputDeviceId) {
                 audioConstraints.deviceId = { exact: preferences.inputDeviceId };
             } else {

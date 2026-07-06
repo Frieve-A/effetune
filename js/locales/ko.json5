@@ -160,6 +160,7 @@
   // 오디오 설정 대화상자
   "dialog.audioConfig.title": "오디오 설정",
   "dialog.audioConfig.inputDevice": "입력 장치:",
+  "dialog.audioConfig.inputDevice.none": "없음(음악 파일 플레이어 전용)",
   "dialog.audioConfig.outputDevice": "출력 장치:",
   "dialog.audioConfig.outputChannels": "출력 채널:",
   "dialog.audioConfig.sampleRate": "샘플링 속도:",

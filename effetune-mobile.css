@@ -7,6 +7,7 @@
     --et-mobile-field-min-width: 80px;
     --et-mobile-effect-slider-basis: 96px;
     --et-mobile-effect-slider-min-width: 80px;
+    --et-mobile-player-primary-button-size: 72px;
 }
 
 html.layout-mobile {
@@ -991,24 +992,56 @@ body.layout-mobile .track-name {
 
 body.layout-mobile .player-controls {
     display: grid;
-    grid-template-columns: repeat(5, minmax(44px, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-areas:
+        "seek seek seek seek seek seek"
+        "time time time time time time"
+        "shuffle previous stop next repeat close"
+        "play play play play play play";
+    gap: 12px 8px;
+    align-items: center;
 }
 
 body.layout-mobile .seek-bar {
-    grid-column: 1 / -1;
+    grid-area: seek;
     width: 100%;
     margin: 0;
 }
 
 body.layout-mobile .time-display {
-    grid-column: 1 / -1;
+    grid-area: time;
     min-width: 0;
 }
 
 body.layout-mobile .player-button {
     width: 100%;
     height: 48px;
+    min-width: 0;
+    padding: 0;
+}
+
+body.layout-mobile .shuffle-button {
+    grid-area: shuffle;
+}
+
+body.layout-mobile .prev-button {
+    grid-area: previous;
+}
+
+body.layout-mobile .stop-button {
+    grid-area: stop;
+}
+
+body.layout-mobile .next-button {
+    grid-area: next;
+}
+
+body.layout-mobile .repeat-button {
+    grid-area: repeat;
+}
+
+body.layout-mobile .close-button {
+    grid-area: close;
 }
 
 body.layout-mobile .double-blind-test .dbt-close-button,
@@ -1038,8 +1071,39 @@ body.layout-mobile .double-blind-test .dbt-testname-row .delete-preset-button sv
 }
 
 body.layout-mobile .play-pause-button {
-    height: 48px;
-    grid-column: span 1;
+    grid-area: play;
+    justify-self: center;
+    width: var(--et-mobile-player-primary-button-size);
+    height: var(--et-mobile-player-primary-button-size);
+    border-radius: 50%;
+    color: #ffffff;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 38%), linear-gradient(180deg, #67b9ff, #3f8fe8);
+    border-color: #8ccaff;
+    box-shadow: 0 14px 32px rgba(74, 158, 255, 0.34), 0 6px 18px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+    transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.12s ease;
+}
+
+body.layout-mobile .play-pause-button svg {
+    width: 24px;
+    height: 24px;
+}
+
+body.layout-mobile .play-pause-button:active {
+    transform: translateY(1px);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0) 38%), linear-gradient(180deg, var(--et-accent), var(--et-accent-pressed));
+    box-shadow: 0 10px 24px rgba(74, 158, 255, 0.28), 0 4px 14px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+body.layout-mobile .play-pause-button:disabled {
+    transform: none;
+}
+
+@media (hover: hover) {
+    body.layout-mobile .play-pause-button:hover:not(:disabled) {
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0) 38%), linear-gradient(180deg, #77c2ff, var(--et-accent));
+        border-color: #a4d7ff;
+        box-shadow: 0 16px 36px rgba(74, 158, 255, 0.4), 0 8px 22px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.32);
+    }
 }
 
 body.layout-mobile .player-playlist {

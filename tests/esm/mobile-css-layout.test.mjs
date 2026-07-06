@@ -70,6 +70,7 @@ test('mobile controls use 40px border-box height and 80px field width', () => {
 
   assert.match(getRule(css, ':root'), /--et-mobile-control-height:\s*40px;/);
   assert.match(getRule(css, ':root'), /--et-mobile-field-min-width:\s*80px;/);
+  assert.match(getRule(css, ':root'), /--et-mobile-player-primary-button-size:\s*72px;/);
   const radioCheckboxRule = getRule(css, 'body.layout-mobile input[type="radio"]');
   for (const declaration of [
     /width:\s*18px;/,
@@ -139,4 +140,42 @@ test('mobile controls use 40px border-box height and 80px field width', () => {
   ]) {
     assert.match(getRule(css, selector), /display:\s*block;/, `${selector} should keep DBT visible`);
   }
+});
+
+test('mobile player places the primary play pause control below secondary buttons', () => {
+  const css = readCss('../../effetune-mobile.css');
+  const controlsRule = getRule(css, 'body.layout-mobile .player-controls');
+
+  assert.match(
+    controlsRule,
+    /grid-template-columns:\s*repeat\(6,\s*minmax\(0,\s*1fr\)\);/,
+    'mobile player controls should reserve a six-column secondary button row'
+  );
+  assert.match(
+    controlsRule,
+    /"shuffle previous stop next repeat close"\s*"play play play play play play"/,
+    'mobile player controls should place play/pause on its own lower centered row'
+  );
+
+  for (const [selector, area] of [
+    ['body.layout-mobile .shuffle-button', 'shuffle'],
+    ['body.layout-mobile .prev-button', 'previous'],
+    ['body.layout-mobile .stop-button', 'stop'],
+    ['body.layout-mobile .next-button', 'next'],
+    ['body.layout-mobile .repeat-button', 'repeat'],
+    ['body.layout-mobile .close-button', 'close']
+  ]) {
+    assert.match(getRule(css, selector), new RegExp(`grid-area:\\s*${area};`), `${selector} should use the ${area} grid area`);
+  }
+
+  const playPauseRule = getRule(css, 'body.layout-mobile .play-pause-button');
+  assert.match(playPauseRule, /grid-area:\s*play;/);
+  assert.match(playPauseRule, /justify-self:\s*center;/);
+  assert.match(playPauseRule, /width:\s*var\(--et-mobile-player-primary-button-size\);/);
+  assert.match(playPauseRule, /height:\s*var\(--et-mobile-player-primary-button-size\);/);
+  assert.match(playPauseRule, /border-radius:\s*50%;/);
+
+  const iconRule = getRule(css, 'body.layout-mobile .play-pause-button svg');
+  assert.match(iconRule, /width:\s*24px;/);
+  assert.match(iconRule, /height:\s*24px;/);
 });

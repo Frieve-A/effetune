@@ -441,6 +441,10 @@ export class UIManager {
                 this.updateSleepModeDisplay(data.isSleepMode, data.sampleRate);
             });
 
+            this.audioManager.addEventListener('audioGraphRebuilt', () => {
+                this.updateSampleRateDisplay();
+            });
+
             this.initRangeFillStyling();
         }
     }

@@ -594,7 +594,7 @@ test('IPC handlers recover from menu, tray preset, menu read, navigation, docs, 
   await withHarness({ microphoneStatuses: ['prompt'] }, async ({ calls, ipcMain, moduleUnderTest }) => {
     moduleUnderTest.registerIpcHandlers();
     assert.equal((await ipcMain.handlers.get('get-audio-devices')()).success, true);
-    assert.equal(calls.some(call => call[0] === 'systemPreferences.askForMediaAccess'), true);
+    assert.equal(calls.some(call => call[0] === 'systemPreferences.askForMediaAccess'), false);
   });
 });
 

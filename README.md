@@ -47,6 +47,7 @@ Before using EffeTune, you'll need to set up your audio routing. Here's how to c
    - Open a music file and select EffeTune as the application (desktop app only)
    - Or select Open music file... from the File menu (desktop app only)
    - Or drag the music file into the window
+- For player-only use, set Input Device to None (music file player only) in Audio Configuration to avoid using a live audio input
 
 ### Streaming Service Setup
 

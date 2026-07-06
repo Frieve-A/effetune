@@ -106,10 +106,20 @@ Les pilotes de système d'exploitation actuels prennent en charge jusqu'à 8 can
 
 | Question | Réponse |
 | ------ | ------ |
+| Sur quels appareils la version PWA fonctionne-t-elle ? | Elle peut être utilisée sur les principaux environnements mobiles et de bureau : smartphones et tablettes Android, iPhone/iPad, Windows, macOS, Linux et ChromeOS. Comme il s'agit d'une PWA, elle s'exécute dans le navigateur plutôt que comme une application native propre à chaque appareil. En revanche, la méthode d'installation, la sélection des périphériques audio d'entrée/sortie et les formats musicaux pris en charge dépendent du navigateur et du système d'exploitation. |
+| Je n'arrive pas à installer la version PWA | Utilisez le bouton **Installer la version PWA** du site EffeTune, ou, dans la version web, ouvrez le menu **Paramètres** en forme d'engrenage en haut à droite et choisissez **Installer l'application**. Si l'option n'apparaît pas, ouvrez EffeTune avec Chrome, Edge ou un autre navigateur Chromium sur Android ou sur ordinateur. Sur iPhone/iPad, ouvrez le site dans Safari, puis ajoutez-le à l'écran d'accueil depuis le menu de partage. Les navigateurs intégrés aux applications, la navigation privée et les anciens navigateurs peuvent ne pas afficher l'option d'installation. |
 | Entrée surround (5.1ch, etc.) ? | L'API Web Audio limite l'entrée à 2 canaux. La sortie et les effets prennent en charge jusqu'à 8 canaux. |
 | Longueur recommandée de la chaîne d'effets ? | Utilisez autant d'effets que votre CPU permet sans causer de coupures ou de latence élevée. |
 | Comment obtenir la meilleure qualité sonore ? | Utilisez 96 kHz ou plus, commencez avec des réglages subtils, surveillez la marge avec **Level Meter**, et ajoutez **Brickwall Limiter** si nécessaire. |
 | Fonctionne-t-il avec n'importe quelle source ? | Oui. Avec un périphérique audio virtuel, vous pouvez traiter le streaming, les fichiers locaux ou l'équipement physique. |
+| Puis-je utiliser uniquement le lecteur de fichiers musicaux sans entrée audio ? | Oui. Si le son du microphone revient dans vos écouteurs ou votre casque après le démarrage, ouvrez **Configuration audio**, puis, dans **Périphérique d'entrée :**, sélectionnez **Aucun (lecteur de fichiers musicaux uniquement)**. EffeTune maintient alors la chaîne d'effets avec une source silencieuse, afin que le lecteur et les effets générateurs de signal comme **Oscillator** continuent de fonctionner. Si vous sélectionnez une entrée audio, vous pouvez traiter le son d'un appareil externe connecté via une interface audio USB ou vérifier le signal entrant avec **Spectrum Analyzer**, par exemple. |
+| L'application web mobile peut-elle traiter le son d'autres applications ? | En général, non. Les navigateurs mobiles ne fournissent pas d'entrée de bouclage générique pour l'audio des autres applications. Sur mobile, EffeTune s'utilise donc surtout avec son lecteur intégré. |
+| Quels formats de fichiers musicaux sont pris en charge ? | Cela dépend des capacités de décodage audio du navigateur et du système d'exploitation. En pratique, MP3, WAV et AAC/M4A sont largement pris en charge ; FLAC, OGG/Vorbis et Opus/WebM varient davantage selon l'environnement. Si un fichier ne se lit pas, essayez MP3, AAC/M4A ou WAV. |
+| Puis-je lire plusieurs fichiers musicaux ? | Oui. Utilisez **Ouvrir des fichiers musicaux**, puis sélectionnez plusieurs fichiers dans la boîte de sélection standard de votre appareil avant de les ouvrir ; ils seront chargés comme liste de lecture. La sélection multiple ou la sélection de tous les fichiers d'un dossier dépend de l'appareil, du navigateur et du sélecteur de fichiers. |
+| Je ne peux pas sélectionner le périphérique de sortie dans l'application web | Cela dépend du navigateur et des autorisations. Essayez depuis une page sécurisée dans Chrome/Chromium, ou définissez le DAC/AMP souhaité comme sortie par défaut dans le système d'exploitation ou dans le navigateur. |
+| Les valeurs **Fréquence d'échantillonnage :** ou **Canaux de sortie :** ne sont pas appliquées | Certains navigateurs ou périphériques arrondissent les valeurs non prises en charge, ou les ignorent. EffeTune fonctionne avec les valeurs réellement activées. |
+| Le lecteur web mémorise-t-il la liste de lecture ? | Les réglages du mode répétition et du mode aléatoire sont enregistrés, mais les fichiers sélectionnés par la boîte de sélection standard ne sont généralement pas restaurés après un rechargement, en raison des restrictions du navigateur. |
+| La lecture mobile continue-t-elle lorsque l'écran est éteint ? | Cela dépend du navigateur, et ce n'est pas garanti, en particulier sur iOS. EffeTune utilise Wake Lock dans les environnements compatibles, mais la lecture en arrière-plan n'est pas garantie. |
 | Coût récepteur AV vs. interface ? | Réutiliser un récepteur AV avec HDMI est simple. Pour les configurations centrées sur PC, une interface multicanal plus de petits amplis offre un bon rapport coût/qualité. |
 | Pas de son des autres applications juste après l'installation de VB-CABLE | La sortie par défaut du système d'exploitation a été basculée vers **CABLE Input**. Changez-la dans les paramètres sonores. |
 | Seuls les canaux 3+4 changent de volume après la division | Placez un effet **Volume** après le diviseur et réglez **Channel** sur 3+4. Si placé avant, tous les canaux changent. |
@@ -135,7 +145,8 @@ Copiez les paramètres 5Band PEQ depuis la page de mesure et collez-les dans la 
 
 ## 7. Liens de référence
 * EffeTune Desktop : <https://github.com/Frieve-A/effetune/releases>
-* Version web EffeTune : <https://effetune.frieve.com/features/measurement/measurement.html>
+* Version web EffeTune : <https://effetune.frieve.com/effetune.html>
+* Mesure de la réponse en fréquence : <https://effetune.frieve.com/features/measurement/measurement.html>
 * VB-CABLE : <https://vb-audio.com/Cable/>
 * Voicemeeter : <https://vb-audio.com/Voicemeeter/>
 * ASIO Link Pro (version corrigée non officielle) : recherchez "ASIO Link Pro 2.4.1"

@@ -160,6 +160,7 @@
   // حوار إعدادات الصوت
   "dialog.audioConfig.title": "إعدادات الصوت",
   "dialog.audioConfig.inputDevice": "جهاز الإدخال:",
+  "dialog.audioConfig.inputDevice.none": "لا شيء (مشغل ملفات الموسيقى فقط)",
   "dialog.audioConfig.outputDevice": "جهاز الإخراج:",
   "dialog.audioConfig.outputChannels": "قنوات الإخراج:",
   "dialog.audioConfig.sampleRate": "معدل العينة:",

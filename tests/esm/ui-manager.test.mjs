@@ -654,6 +654,12 @@ test('updates audio, sleep, sample-rate, language, translations, and UI text', a
     assert.equal(manager.sampleRate.classList.contains('low-sample-rate'), false);
     assert.match(manager.sampleRate.textContent, /Sleep/);
     assert.match(manager.sampleRate.textContent, /6ch/);
+    manager.sampleRate.textContent = '48000 Hz';
+    manager.audioManager.audioContext = { sampleRate: 88200, destination: { channelCount: 4 } };
+    manager.audioManager.listeners.get('audioGraphRebuilt')?.({
+      audioContext: manager.audioManager.audioContext
+    });
+    assert.equal(manager.sampleRate.textContent, '88200 Hz 4ch');
 
     assert.equal(manager.getStoredLanguagePreference(), 'ja');
     assert.equal(manager.determineUserLanguage('auto'), 'ja');
