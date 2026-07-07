@@ -53,10 +53,10 @@
     },
     {
       "src": "images/screenshot-narrow.png",
-      "sizes": "375x812",
+      "sizes": "1290x2796",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "EffeTune mobile player"
+      "label": "EffeTune mobile spectrum analyzer"
     }
   ]
 }
