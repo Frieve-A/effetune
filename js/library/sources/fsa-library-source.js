@@ -1,5 +1,6 @@
 import { createFallbackDisplayName, getFileExtension, isSupportedAudioPath, normalizeRelativePath, stripExtension } from '../constants.js';
 import { createFallbackTrack } from '../metadata/metadata-mapper.js';
+import { repairLegacyMetadataMojibake } from '../metadata/text-encoding.js';
 
 export class FsaLibrarySource {
   constructor(windowRef = globalThis.window) {
@@ -115,6 +116,7 @@ export class FsaLibrarySource {
     let metadataWorker = null;
     const done = (async () => {
       metadataWorker = this.createMetadataWorker();
+      const languageHints = options.languageHints || null;
       try {
         let found = 0;
         for (const folder of options.folders) {
@@ -146,7 +148,15 @@ export class FsaLibrarySource {
               await sink({ type: 'skipped', folderId: folder.id, relativePath, count: 1 });
               continue;
             }
-            const parsed = await createTrackFromFile(this.windowRef, folder, fileRef.file, relativePath, metadataWorker, () => canceled);
+            const parsed = await createTrackFromFile(
+              this.windowRef,
+              folder,
+              fileRef.file,
+              relativePath,
+              metadataWorker,
+              () => canceled,
+              languageHints
+            );
             if (canceled || parsed.canceled) break;
             if (parsed.error) {
               await sink({
@@ -247,7 +257,7 @@ async function getFileFromHandlePath(handle, relativePath) {
   return fileHandle.getFile();
 }
 
-async function createTrackFromFile(windowRef, folder, file, relativePath, metadataWorker = null, isCanceled = () => false) {
+async function createTrackFromFile(windowRef, folder, file, relativePath, metadataWorker = null, isCanceled = () => false, languageHints = null) {
   const fileName = relativePath.split('/').pop() || file.name;
   const candidate = {
     folderId: folder.id,
@@ -260,22 +270,22 @@ async function createTrackFromFile(windowRef, folder, file, relativePath, metada
   };
   if (metadataWorker) {
     try {
-      const track = await metadataWorker.parse(file, withoutRuntimeFile(candidate));
+      const track = await metadataWorker.parse(file, withoutRuntimeFile(candidate), languageHints);
       if (isCanceled()) return { canceled: true };
       return { track: { ...track, file }, error: null };
     } catch (error) {
       if (isCanceled()) return { canceled: true };
-      const fallbackTrack = await createTrackFromBrowserTags(windowRef, candidate);
+      const fallbackTrack = await createTrackFromBrowserTags(windowRef, candidate, languageHints);
       if (isCanceled()) return { canceled: true };
       return { track: fallbackTrack, error };
     }
   }
-  const fallbackTrack = await createTrackFromBrowserTags(windowRef, candidate);
+  const fallbackTrack = await createTrackFromBrowserTags(windowRef, candidate, languageHints);
   if (isCanceled()) return { canceled: true };
   return { track: fallbackTrack, error: null };
 }
 
-async function createTrackFromBrowserTags(windowRef, candidate) {
+async function createTrackFromBrowserTags(windowRef, candidate, languageHints = null) {
   const track = {
     ...createFallbackTrack(candidate),
     file: candidate.file,
@@ -286,7 +296,7 @@ async function createTrackFromBrowserTags(windowRef, candidate) {
     codec: ''
   };
   const tags = await readBrowserTags(windowRef, candidate.file);
-  return tags ? applyBrowserTags(track, tags) : track;
+  return tags ? applyBrowserTags(track, tags, languageHints) : track;
 }
 
 function withoutRuntimeFile(candidate) {
@@ -312,13 +322,13 @@ class MetadataWorkerClient {
     }
   }
 
-  parse(file, candidate) {
+  parse(file, candidate, languageHints = null) {
     if (this.failed || this.terminated) return Promise.reject(new Error('Metadata worker is unavailable'));
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
       try {
-        this.worker.postMessage({ type: 'parse', id, file, candidate });
+        this.worker.postMessage({ type: 'parse', id, file, candidate, languageHints });
       } catch (error) {
         this.pending.delete(id);
         reject(error);
@@ -372,29 +382,29 @@ function readBrowserTags(windowRef, file) {
   });
 }
 
-function applyBrowserTags(track, tags) {
+function applyBrowserTags(track, tags, languageHints = null) {
   const picture = tags.picture && Array.isArray(tags.picture.data) ? tags.picture : null;
   return {
     ...track,
-    title: stringTag(tags.title) || track.title,
-    artist: stringTag(tags.artist),
-    albumArtist: stringTag(tags.albumartist) || stringTag(tags.albumArtist) || stringTag(tags.artist),
-    album: stringTag(tags.album),
-    genre: Array.isArray(tags.genre) ? stringTag(tags.genre[0]) : stringTag(tags.genre),
+    title: stringTag(tags.title, languageHints) || track.title,
+    artist: stringTag(tags.artist, languageHints),
+    albumArtist: stringTag(tags.albumartist, languageHints) || stringTag(tags.albumArtist, languageHints) || stringTag(tags.artist, languageHints),
+    album: stringTag(tags.album, languageHints),
+    genre: Array.isArray(tags.genre) ? stringTag(tags.genre[0], languageHints) : stringTag(tags.genre, languageHints),
     year: parseInteger(tags.year),
-    trackNo: parseFractionNumber(tags.track).value,
-    trackOf: parseFractionNumber(tags.track).total,
-    discNo: parseFractionNumber(tags.disk || tags.disc).value,
-    discOf: parseFractionNumber(tags.disk || tags.disc).total,
+    trackNo: parseFractionNumber(tags.track, languageHints).value,
+    trackOf: parseFractionNumber(tags.track, languageHints).total,
+    discNo: parseFractionNumber(tags.disk || tags.disc, languageHints).value,
+    discOf: parseFractionNumber(tags.disk || tags.disc, languageHints).total,
     artworkBytes: picture ? Uint8Array.from(picture.data).buffer : null,
-    artworkMime: picture ? (stringTag(picture.format) || 'application/octet-stream') : null,
+    artworkMime: picture ? (stringTag(picture.format, languageHints) || 'application/octet-stream') : null,
     artworkSourceKind: picture ? 'embedded' : null
   };
 }
 
-function stringTag(value) {
+function stringTag(value, languageHints = null) {
   if (value == null) return '';
-  return String(value).trim();
+  return repairLegacyMetadataMojibake(String(value).trim(), languageHints);
 }
 
 function parseInteger(value) {
@@ -402,8 +412,8 @@ function parseInteger(value) {
   return Number.isFinite(number) ? number : null;
 }
 
-function parseFractionNumber(value) {
-  const text = stringTag(value);
+function parseFractionNumber(value, languageHints = null) {
+  const text = stringTag(value, languageHints);
   if (!text) return { value: null, total: null };
   const [valueText, totalText] = text.split('/');
   return {

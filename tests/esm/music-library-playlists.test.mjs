@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { LibraryDatabase } from '../../js/library/library-database.js';
 import {
   decodePlaylistBytes,
   fileUriToPath,
@@ -18,6 +19,7 @@ import {
   resolvePlaylistEntries,
   resolvePlaylistEntry
 } from '../../js/library/playlists/path-resolver.js';
+import { ScanController } from '../../js/library/scan-controller.js';
 
 const folders = [
   { id: 'f_music', path: 'D:\\Music' }
@@ -266,6 +268,26 @@ test('path resolver uses unique relative suffixes and rejects ambiguous suffixes
   assert.equal(ambiguous.status, 'unresolved');
 });
 
+test('path resolver batch suffix matching prefers longest suffixes and rejects ambiguous suffixes', () => {
+  const suffixTracks = [
+    { id: 't_album_shared', folderId: 'f_music', relativePath: 'Album/Shared.flac' },
+    { id: 't_live_shared', folderId: 'f_music', relativePath: 'Live/Album/Shared.flac' }
+  ];
+
+  const result = resolvePlaylistEntries(
+    [
+      { path: 'Archive/Live/Album/Shared.flac' },
+      { path: 'Album/Shared.flac' }
+    ],
+    { tracks: suffixTracks, folders, platform: 'win32' }
+  );
+
+  assert.equal(result.items[0].status, 'resolved');
+  assert.equal(result.items[0].trackId, 't_live_shared');
+  assert.equal(result.items[0].strategy, 'relative-suffix');
+  assert.equal(result.items[1].status, 'unresolved');
+});
+
 test('path resolver applies Windows casefolding but keeps macOS comparisons case-sensitive', () => {
   const windowsResult = resolvePlaylistEntry(
     { path: 'd:/music/blue hour/cafe song.flac' },
@@ -437,4 +459,90 @@ test('path resolver builds shared lookup data once for batched entries', () => {
   assert.equal(titleReads, countedTracks.length);
   assert.equal(artistReads, countedTracks.length);
   assert.equal(durationReads, countedTracks.length);
+});
+
+test('scan controller resolves unresolved playlist items with a single shared resolution context', async () => {
+  const database = new LibraryDatabase({ indexedDB: null });
+  await database.putFolder({ id: 'f_music', path: 'D:\\Music' });
+  await database.putTracks([
+    {
+      id: 't_one',
+      folderId: 'f_music',
+      relativePath: 'Blue Hour/One.flac',
+      title: 'One',
+      artist: 'Blue Hour',
+      durationSec: 60
+    },
+    {
+      id: 't_two',
+      folderId: 'f_music',
+      relativePath: 'Live/Two.flac',
+      title: 'Two',
+      artist: 'Live Band',
+      durationSec: 120
+    },
+    {
+      id: 't_three',
+      folderId: 'f_music',
+      relativePath: 'Other/Three.flac',
+      title: 'Three',
+      artist: 'Other',
+      durationSec: 180
+    }
+  ]);
+  await database.putPlaylist({
+    id: 'p_mix',
+    name: 'Mix',
+    items: [
+      {
+        trackId: null,
+        label: 'first',
+        unresolved: {
+          sourceLine: 'Missing/Blue Hour/One.flac',
+          relativePathHint: 'Blue Hour/One.flac'
+        }
+      },
+      {
+        trackId: null,
+        label: 'second',
+        unresolved: {
+          sourceLine: 'Archive/Live/Two.flac'
+        }
+      },
+      {
+        trackId: 't_three',
+        label: 'kept'
+      }
+    ],
+    updatedAt: 1
+  });
+
+  let getAllTracksCalls = 0;
+  const getAllTracks = database.getAllTracks.bind(database);
+  database.getAllTracks = async () => {
+    getAllTracksCalls += 1;
+    return getAllTracks();
+  };
+  const controller = new ScanController({
+    database,
+    index: {},
+    source: {},
+    artworkProcessor: {},
+    emit() {}
+  });
+
+  const changedIds = await controller.resolveUnresolvedPlaylistItems();
+  const [playlist] = await database.getAllPlaylists();
+
+  assert.deepEqual(changedIds, ['p_mix']);
+  assert.equal(getAllTracksCalls, 1);
+  assert.equal(playlist.items[0].trackId, 't_one');
+  assert.equal(playlist.items[0].label, 'first');
+  assert.equal('unresolved' in playlist.items[0], false);
+  assert.equal(playlist.items[1].trackId, 't_two');
+  assert.equal(playlist.items[1].label, 'second');
+  assert.equal('unresolved' in playlist.items[1], false);
+  assert.equal(playlist.items[2].trackId, 't_three');
+  assert.equal(playlist.items[2].label, 'kept');
+  assert.notEqual(playlist.updatedAt, 1);
 });

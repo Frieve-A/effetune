@@ -137,9 +137,11 @@ export class PlaybackBridge {
     const snapshot = this.lastSnapshot;
     const player = this.uiManager.audioPlayer || this.uiManager.createAudioPlayer?.([], true);
     if (!player?.playbackManager) return false;
-    if (!snapshot.wasPlaying) {
-      await player.stop?.();
-    }
+    // Silence the current replacement queue before swapping playlists so the
+    // restored track loads from a clean, non-playing state. This stops any
+    // residual source from the replacement queue and lets play() below resume
+    // from the seeked position instead of restarting the buffer from 0:00.
+    await player.stop?.();
     player.playbackManager.playlist = snapshot.playlist.map(track => ({ ...track }));
     player.playbackManager.originalPlaylist = snapshot.originalPlaylist.map(track => ({ ...track }));
     if (!player.ui?.container) {
@@ -151,6 +153,8 @@ export class PlaybackBridge {
     }
     const loaded = await player.loadTrack?.(snapshot.index);
     if (loaded !== false && snapshot.position > 0) {
+      // Seek while stopped to set the resume position without starting
+      // playback; play() below then resumes from this position.
       await player.contextManager?.seek?.(snapshot.position);
     }
     if (snapshot.wasPlaying && loaded !== false) {

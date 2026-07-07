@@ -40,8 +40,17 @@ export class ImportLibrarySource extends FsaLibrarySource {
   }
 
   scan(options, sink) {
-    const folders = options.folders.map(folder => {
-      const files = folder.files || [];
+    const availableFolders = [];
+    const unavailableFolders = [];
+    for (const folder of options.folders) {
+      if (Array.isArray(folder.files)) {
+        availableFolders.push(folder);
+      } else {
+        unavailableFolders.push(folder);
+      }
+    }
+    const folders = availableFolders.map(folder => {
+      const files = folder.files;
       this.replaceSessionFiles(folder.id, files);
       return {
         ...folder,
@@ -58,7 +67,24 @@ export class ImportLibrarySource extends FsaLibrarySource {
         }
       };
     });
-    return super.scan({ ...options, folders }, sink);
+    const offlineEmissions = (async () => {
+      for (const folder of unavailableFolders) {
+        await sink({
+          type: 'error',
+          folderId: folder.id,
+          reason: 'Imported folder files are not available in this session. Re-import the folder.',
+          category: 'permission-denied'
+        });
+      }
+    })();
+    const handle = super.scan({ ...options, folders }, sink);
+    return {
+      ...handle,
+      done: (async () => {
+        await offlineEmissions;
+        await handle.done;
+      })()
+    };
   }
 
   replaceSessionFiles(folderId, files = []) {

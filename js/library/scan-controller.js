@@ -1,14 +1,15 @@
 import { DEFAULT_SCAN_BATCH_SIZE, normalizeRelativePath } from './constants.js';
 import { createTrackId } from './id-utils.js';
-import { resolvePlaylistEntry } from './playlists/path-resolver.js';
+import { resolvePlaylistEntries } from './playlists/path-resolver.js';
 
 export class ScanController {
-  constructor({ database, index, source, artworkProcessor, emit }) {
+  constructor({ database, index, source, artworkProcessor, emit, getLanguageHints = () => ({}) }) {
     this.database = database;
     this.index = index;
     this.source = source;
     this.artworkProcessor = artworkProcessor;
     this.emit = emit;
+    this.getLanguageHints = getLanguageHints;
     this.activeScans = new Map();
     this.folderScanGenerations = new Map();
   }
@@ -56,8 +57,12 @@ export class ScanController {
     controller.resultPromise = new Promise(resolve => {
       resolveScanResult = resolve;
     });
+    let settled = false;
     const finish = result => {
-      resolveScanResult?.(result);
+      if (!settled) {
+        settled = true;
+        resolveScanResult?.(result);
+      }
       return result;
     };
     this.activeScans.set(scanId, controller);
@@ -70,20 +75,6 @@ export class ScanController {
     const seenByFolder = new Map(targetFolders.map(folder => [folder.id, new Set()]));
     const foldersWithEnumerationErrors = new Set();
     const folderErrorStatuses = new Map();
-    const knownFiles = [];
-    for (const folder of targetFolders) {
-      knownFiles.push(...await this.database.getKnownFilesByFolder(folder.id));
-    }
-
-    if (controller.canceled) {
-      this.activeScans.delete(scanId);
-      return finish({ scanId, found, parsed, skipped, upserted, stale: true });
-    }
-    if (!hasCurrentTarget()) {
-      this.activeScans.delete(scanId);
-      return finish({ scanId, found, parsed, skipped, upserted, stale: true });
-    }
-    this.emit('scan-state', { scanId, phase: 'scanning', found, parsed, skipped, currentPath: '', reason });
 
     const flushBatch = async (tracks, artworks = []) => {
       const currentTracks = tracks.filter(track => isFolderCurrent(track.folderId));
@@ -96,9 +87,7 @@ export class ScanController {
           refCount: artwork.refCount || 1
         });
       }
-      const prepared = [];
-      let added = 0;
-      let updated = 0;
+      const preparedEntries = [];
       for (const track of currentTracks) {
         if (!isFolderCurrent(track.folderId)) continue;
         const relativePath = normalizeRelativePath(track.relativePath);
@@ -109,27 +98,31 @@ export class ScanController {
         if (!artworkId && track.artworkBytes) {
           artworkId = await this.artworkProcessor.storeArtworkBytes(track.artworkBytes, track.artworkSourceKind || 'embedded');
         }
-        if (existing) {
-          updated += 1;
-        } else {
-          added += 1;
-        }
-        prepared.push({
-          ...track,
-          id,
-          relativePath,
-          artworkId,
-          addedAt: existing?.addedAt || track.addedAt || now,
-          updatedAt: now,
-          albumKey: track.albumKey || this.index.createAlbumKey(track),
-          artworkBytes: undefined,
-          artworkSourceKind: undefined,
-          file: undefined,
-          handle: undefined,
-          provider: undefined
+        preparedEntries.push({
+          track: {
+            ...track,
+            id,
+            relativePath,
+            artworkId,
+            addedAt: existing?.addedAt || track.addedAt || now,
+            updatedAt: now,
+            albumKey: track.albumKey || this.index.createAlbumKey(track),
+            artworkBytes: undefined,
+            artworkSourceKind: undefined,
+            file: undefined,
+            handle: undefined,
+            provider: undefined
+          },
+          isNew: !existing
         });
       }
-      if (!prepared.length) return;
+      if (!preparedEntries.length) return;
+      if (controller.canceled) return;
+      const currentEntries = preparedEntries.filter(entry => isFolderCurrent(entry.track.folderId));
+      if (!currentEntries.length) return;
+      const prepared = currentEntries.map(entry => entry.track);
+      const added = currentEntries.filter(entry => entry.isNew).length;
+      const updated = currentEntries.length - added;
       await this.database.putTracks(prepared);
       this.index.applyChanges({ upsert: prepared });
       upserted.push(...prepared);
@@ -240,11 +233,25 @@ export class ScanController {
     };
 
     try {
+      const knownFiles = [];
+      for (const folder of targetFolders) {
+        knownFiles.push(...await this.database.getKnownFilesByFolder(folder.id));
+      }
+
+      if (controller.canceled) {
+        return finish({ scanId, found, parsed, skipped, upserted, stale: true });
+      }
+      if (!hasCurrentTarget()) {
+        return finish({ scanId, found, parsed, skipped, upserted, stale: true });
+      }
+      this.emit('scan-state', { scanId, phase: 'scanning', found, parsed, skipped, currentPath: '', reason });
+
       const handle = this.source.scan({
         scanId,
         folders: targetFolders,
         knownFiles,
-        batchSize: DEFAULT_SCAN_BATCH_SIZE
+        batchSize: DEFAULT_SCAN_BATCH_SIZE,
+        languageHints: this.getLanguageHints()
       }, sink);
       controller.cancel = () => handle?.cancel?.();
       await handle.done;
@@ -280,6 +287,7 @@ export class ScanController {
         await refreshFolders();
         this.emit('scan-state', { scanId, phase: 'done', found, parsed, skipped, added: addedTotal, updated: updatedTotal, removed: removedIds.length });
       }
+      return finish({ scanId, found, parsed, skipped, upserted });
     } catch (error) {
       const activeConflictScan = this.findReusableActiveScanFromConflict(error, targetFolderIds);
       if (!controller.canceled && activeConflictScan?.resultPromise) {
@@ -302,10 +310,13 @@ export class ScanController {
         await updateScanFolderStatuses(folderErrorStatuses);
         this.emit('scan-state', { scanId, phase: 'error', found, parsed, skipped, error: error.message || String(error) });
       }
+      return finish({ scanId, found, parsed, skipped, upserted });
     } finally {
       this.activeScans.delete(scanId);
+      if (!settled) {
+        finish({ scanId, found, parsed, skipped, upserted, stale: true });
+      }
     }
-    return finish({ scanId, found, parsed, skipped, upserted });
   }
 
   findActiveScanContainingFolderIds(folderIds) {
@@ -400,48 +411,55 @@ export class ScanController {
   }
 
   async recalculateArtworkRefCounts() {
-    const artworks = await this.database.getAll('artwork');
-    if (!artworks.length) return;
-    const refCounts = new Map();
-    for (const track of await this.database.getAllTracks()) {
-      if (!track.artworkId) continue;
-      refCounts.set(track.artworkId, (refCounts.get(track.artworkId) || 0) + 1);
-    }
-    for (const artwork of artworks) {
-      const refCount = refCounts.get(artwork.id) || 0;
-      if (refCount === 0) {
-        await this.database.delete('artwork', artwork.id);
-      } else if (artwork.refCount !== refCount) {
-        await this.database.putArtwork({ ...artwork, refCount });
-      }
-    }
+    return this.database.recalculateArtworkRefCounts();
   }
 
   async resolveUnresolvedPlaylistItems() {
     const playlists = await this.database.getAllPlaylists();
+    if (!playlists.length) return [];
+
+    const unresolvedItems = [];
+    const itemRefs = [];
+    for (const playlist of playlists) {
+      const items = playlist.items || [];
+      for (let index = 0; index < items.length; index += 1) {
+        const item = items[index];
+        if (item?.trackId || !item?.unresolved) continue;
+        unresolvedItems.push(item);
+        itemRefs.push({ playlistId: playlist.id, index });
+      }
+    }
+    if (!unresolvedItems.length) return [];
+
     const tracks = await this.database.getAllTracks();
-    if (!playlists.length || !tracks.length) return [];
+    if (!tracks.length) return [];
     const folders = await this.database.getAllFolders();
+    const resolution = resolvePlaylistEntries(unresolvedItems, { tracks, folders, platform: getRuntimePlatform() });
+    const resolvedByPlaylistId = new Map();
+    resolution.items.forEach((result, resultIndex) => {
+      if (result.status !== 'resolved' || !result.trackId) return;
+      const ref = itemRefs[resultIndex];
+      const matches = resolvedByPlaylistId.get(ref.playlistId) ?? new Map();
+      matches.set(ref.index, result);
+      resolvedByPlaylistId.set(ref.playlistId, matches);
+    });
     const changed = [];
 
     for (const playlist of playlists) {
-      let didChange = false;
-      const items = (playlist.items || []).map(item => {
-        if (item?.trackId || !item?.unresolved) return item;
-        const result = resolvePlaylistEntry(item, { tracks, folders, platform: getRuntimePlatform() });
-        if (result.status !== 'resolved' || !result.trackId) return item;
-        didChange = true;
+      const resolvedItems = resolvedByPlaylistId.get(playlist.id);
+      if (!resolvedItems) continue;
+      const items = (playlist.items || []).map((item, index) => {
+        const result = resolvedItems.get(index);
+        if (!result) return item;
         const { unresolved: _unresolved, ...rest } = item;
         return {
           ...rest,
           trackId: result.trackId
         };
       });
-      if (didChange) {
-        const next = { ...playlist, items, updatedAt: Date.now() };
-        await this.database.putPlaylist(next);
-        changed.push(next.id);
-      }
+      const next = { ...playlist, items, updatedAt: Date.now() };
+      await this.database.putPlaylist(next);
+      changed.push(next.id);
     }
 
     return changed;

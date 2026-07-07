@@ -931,9 +931,26 @@ export class AudioContextManager {
             return;
           }
           const ownedUrl = await this.adoptLibraryArtworkURL(artworkUrl);
+          const isOwnedArtworkUrl = !!ownedUrl && ownedUrl !== artworkUrl;
           if (!this.isActiveMetadataRequest(metadataRequest) ||
             currentIndex !== this.audioPlayer.stateManager.getCurrentTrackIndex()) {
+            // The request went stale while duplicating the artwork. Revoke only
+            // our freshly-created owned URL so a late sibling never revokes the
+            // current track's live artwork (and the duplicate does not leak).
+            if (isOwnedArtworkUrl && typeof URL !== 'undefined' &&
+              typeof URL.revokeObjectURL === 'function') {
+              try {
+                URL.revokeObjectURL(ownedUrl);
+              } catch (_) {
+                // Ignore revoke failures for stale URLs.
+              }
+            }
             return;
+          }
+          if (isOwnedArtworkUrl) {
+            // Install as the current owned URL, revoking the previous owned URL.
+            this.clearArtworkURL();
+            this.currentArtworkURL = ownedUrl;
           }
           this.updateState({ artworkUrl: ownedUrl || '' }, 'Catalog artwork loaded');
         }).catch(() => {});
@@ -1105,9 +1122,11 @@ export class AudioContextManager {
     try {
       const response = await fetch(artworkUrl);
       const blob = await response.blob();
-      this.clearArtworkURL();
-      this.currentArtworkURL = URL.createObjectURL(blob);
-      return this.currentArtworkURL;
+      // Only create and return the owned URL. The caller installs it as
+      // this.currentArtworkURL after re-checking staleness, or revokes it if
+      // the request went stale, so a late sibling never revokes the current
+      // track's live artwork URL.
+      return URL.createObjectURL(blob);
     } catch (_) {
       // Fall back to the shared cache URL if duplication fails.
       return artworkUrl;

@@ -169,6 +169,27 @@ export class LibraryDatabase {
     return this.get('artwork', id);
   }
 
+  async recalculateArtworkRefCounts() {
+    const artworkIds = await this.getAllKeys('artwork');
+    if (!artworkIds.length) return;
+    const refCounts = new Map();
+    for (const track of await this.getAllTracks()) {
+      if (!track.artworkId) continue;
+      refCounts.set(track.artworkId, (refCounts.get(track.artworkId) || 0) + 1);
+    }
+    for (const artworkId of artworkIds) {
+      const refCount = refCounts.get(artworkId) || 0;
+      if (refCount === 0) {
+        await this.delete('artwork', artworkId);
+      } else {
+        const artwork = await this.get('artwork', artworkId);
+        if (artwork.refCount !== refCount) {
+          await this.putArtwork({ ...artwork, refCount });
+        }
+      }
+    }
+  }
+
   async putPlaylist(playlist) {
     await this.put('playlists', playlist);
     return playlist;
@@ -190,6 +211,13 @@ export class LibraryDatabase {
       return [...this.memory[key].values()].map(cloneValue);
     }
     return this.request(this.db.transaction(key, 'readonly').objectStore(key).getAll());
+  }
+
+  async getAllKeys(key) {
+    if (!this.db) {
+      return [...this.memory[key].keys()];
+    }
+    return this.request(this.db.transaction(key, 'readonly').objectStore(key).getAllKeys());
   }
 
   async put(key, value) {

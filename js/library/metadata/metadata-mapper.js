@@ -1,4 +1,5 @@
 import { createFallbackDisplayName, getFileExtension, stripExtension } from '../constants.js';
+import { repairLegacyMetadataMojibake } from './text-encoding.js';
 
 export function createFallbackTrack(candidate = {}, now = Date.now()) {
   const fileName = candidate.fileName || String(candidate.relativePath || '').split('/').pop() || 'Unknown';
@@ -41,14 +42,14 @@ export function createFallbackTrack(candidate = {}, now = Date.now()) {
   };
 }
 
-export function createTrackFromMetadata(candidate, metadata, now = Date.now()) {
+export function createTrackFromMetadata(candidate, metadata, now = Date.now(), { languageHints = null } = {}) {
   const common = metadata?.common || {};
   const format = metadata?.format || {};
   const fallback = createFallbackTrack(candidate, now);
-  const artist = joinedArtists(common);
-  const albumArtist = stringOrEmpty(common.albumartist) || artist || '';
-  const genre = firstArrayString(common.genre) || stringOrEmpty(common.genre);
-  const title = stringOrEmpty(common.title) || fallback.title;
+  const artist = joinedArtists(common, languageHints);
+  const albumArtist = stringOrEmpty(common.albumartist, languageHints) || artist || '';
+  const genre = firstArrayString(common.genre, languageHints) || stringOrEmpty(common.genre, languageHints);
+  const title = stringOrEmpty(common.title, languageHints) || fallback.title;
   const lowerAlbumArtist = albumArtist.toLowerCase();
   const picture = selectPicture(common.picture);
   const pictureBytes = toArrayBuffer(picture?.data);
@@ -58,7 +59,7 @@ export function createTrackFromMetadata(candidate, metadata, now = Date.now()) {
     title,
     artist,
     albumArtist,
-    album: stringOrEmpty(common.album),
+    album: stringOrEmpty(common.album, languageHints),
     genre,
     year: integerOrNull(common.year),
     trackNo: common.track ? integerOrNull(common.track.no) : null,
@@ -66,17 +67,17 @@ export function createTrackFromMetadata(candidate, metadata, now = Date.now()) {
     discNo: common.disk ? integerOrNull(common.disk.no) : null,
     discOf: common.disk ? integerOrNull(common.disk.of) : null,
     compilation: common.compilation === true || lowerAlbumArtist === 'various artists',
-    sortTitle: getSortText(common, ['titlesort', 'titleSort', 'sorttitle']),
-    sortAlbum: getSortText(common, ['albumsort', 'albumSort', 'sortalbum']),
-    sortAlbumArtist: getSortText(common, ['albumartistsort', 'albumArtistSort', 'sortalbumartist']),
+    sortTitle: getSortText(common, ['titlesort', 'titleSort', 'sorttitle'], languageHints),
+    sortAlbum: getSortText(common, ['albumsort', 'albumSort', 'sortalbum'], languageHints),
+    sortAlbumArtist: getSortText(common, ['albumartistsort', 'albumArtistSort', 'sortalbumartist'], languageHints),
     durationSec: numberOrNull(format.duration),
     sampleRate: numberOrNull(format.sampleRate),
     bitrate: numberOrNull(format.bitrate),
     bitsPerSample: numberOrNull(format.bitsPerSample),
     channels: numberOrNull(format.numberOfChannels),
-    codec: stringOrEmpty(format.codec) || stringOrEmpty(format.dataformat).toUpperCase() || fallback.codec,
+    codec: stringOrEmpty(format.codec, languageHints) || stringOrEmpty(format.dataformat, languageHints).toUpperCase() || fallback.codec,
     artworkBytes: pictureBytes,
-    artworkMime: pictureBytes ? stringOrEmpty(picture.format) || 'application/octet-stream' : null,
+    artworkMime: pictureBytes ? stringOrEmpty(picture.format, languageHints) || 'application/octet-stream' : null,
     artworkSourceKind: pictureBytes ? 'embedded' : null
   };
 }
@@ -97,10 +98,10 @@ function toArrayBuffer(data) {
   return null;
 }
 
-function stringOrEmpty(value) {
-  if (typeof value === 'string') return value.trim();
+function stringOrEmpty(value, languageHints = null) {
+  if (typeof value === 'string') return repairLegacyMetadataMojibake(value.trim(), languageHints);
   if (value === null || value === undefined) return '';
-  return String(value).trim();
+  return repairLegacyMetadataMojibake(String(value).trim(), languageHints);
 }
 
 function numberOrNull(value) {
@@ -111,26 +112,26 @@ function integerOrNull(value) {
   return Number.isInteger(value) ? value : null;
 }
 
-function firstArrayString(value) {
+function firstArrayString(value, languageHints = null) {
   if (!Array.isArray(value)) return '';
   for (const item of value) {
-    const text = stringOrEmpty(item);
+    const text = stringOrEmpty(item, languageHints);
     if (text) return text;
   }
   return '';
 }
 
-function joinedArtists(common) {
+function joinedArtists(common, languageHints = null) {
   if (Array.isArray(common.artists)) {
-    const artists = common.artists.map(stringOrEmpty).filter(Boolean);
+    const artists = common.artists.map(artist => stringOrEmpty(artist, languageHints)).filter(Boolean);
     if (artists.length > 0) return artists.join('; ');
   }
-  return stringOrEmpty(common.artist);
+  return stringOrEmpty(common.artist, languageHints);
 }
 
-function getSortText(common, names) {
+function getSortText(common, names, languageHints = null) {
   for (const name of names) {
-    const value = stringOrEmpty(common[name]);
+    const value = stringOrEmpty(common[name], languageHints);
     if (value) return value;
   }
   return '';

@@ -716,6 +716,79 @@ test('LibraryView keyboard shortcuts focus search and route focused tracks', asy
   });
 });
 
+test('LibraryView type-jump consumes printable keys and ignores space', async () => {
+  const calls = [];
+  const documentRef = createDocument();
+  const content = new FakeElement('div');
+  content.ownerDocument = documentRef;
+  const tracks = new Map([
+    ['t_alpha', { id: 't_alpha', title: 'Alpha' }],
+    ['t_nirvana', { id: 't_nirvana', title: 'Nirvana' }]
+  ]);
+  const view = Object.assign(Object.create(LibraryView.prototype), {
+    manager: {
+      getTrackById(id) {
+        return tracks.get(id) || null;
+      }
+    },
+    content,
+    currentVisibleTrackIds: ['t_alpha', 't_nirvana'],
+    focusedTrackId: 't_alpha',
+    typeJumpBuffer: '',
+    typeJumpTimer: null,
+    scrollTrackIntoView(trackId) {
+      calls.push(['scroll', trackId]);
+    }
+  });
+
+  await withGlobals({ document: documentRef }, async () => {
+    const event = {
+      key: 'n',
+      target: content,
+      prevented: 0,
+      stopped: 0,
+      preventDefault() {
+        this.prevented++;
+      },
+      stopPropagation() {
+        this.stopped++;
+      }
+    };
+    view.handleContentKeyDown(event);
+
+    assert.equal(event.prevented, 1);
+    assert.equal(event.stopped, 1);
+    assert.equal(view.focusedTrackId, 't_nirvana');
+    assert.deepEqual(calls, [['scroll', 't_nirvana']]);
+
+    clearTimeout(view.typeJumpTimer);
+    view.typeJumpBuffer = '';
+    view.typeJumpTimer = null;
+
+    const spaceEvent = {
+      key: ' ',
+      target: content,
+      prevented: 0,
+      stopped: 0,
+      preventDefault() {
+        this.prevented++;
+      },
+      stopPropagation() {
+        this.stopped++;
+      }
+    };
+    view.handleContentKeyDown(spaceEvent);
+
+    assert.equal(spaceEvent.prevented, 0);
+    assert.equal(spaceEvent.stopped, 0);
+    assert.equal(view.typeJumpBuffer, '');
+  });
+
+  clearTimeout(view.typeJumpTimer);
+  view.typeJumpBuffer = '';
+  view.typeJumpTimer = null;
+});
+
 test('LibraryView marks the active desktop nav item as current', () => {
   const nav = new FakeElement('aside');
   const view = Object.assign(Object.create(LibraryView.prototype), {
@@ -863,7 +936,7 @@ test('LibraryView search results follow the current track sort', () => {
   assert.equal(appended.length, 2);
 });
 
-test('LibraryView detail and recent track lists apply the current sort', () => {
+test('LibraryView album detail keeps track order while recent lists apply the current sort', () => {
   const calls = [];
   const sortedTracks = [
     { id: 't_beta', title: 'Beta' },
@@ -877,6 +950,7 @@ test('LibraryView detail and recent track lists apply the current sort', () => {
     searchQuery: '',
     sort: 'title',
     sortDirection: 'desc',
+    detailSortOverride: false,
     selectedTrackIds: new Set(),
     currentVisibleTrackIds: [],
     manager: {
@@ -925,10 +999,79 @@ test('LibraryView detail and recent track lists apply the current sort', () => {
 
   assert.deepEqual(calls, [
     ['getAlbumTracks', 'album-one'],
+    ['actionBar', ['t_alpha', 't_beta']],
+    ['trackTable', ['t_alpha', 't_beta']],
+    ['getRecentlyAdded', 500],
     ['getTracks', { ids: ['t_alpha', 't_beta'], sort: 'title', direction: 'desc' }],
     ['actionBar', ['t_beta', 't_alpha']],
-    ['trackTable', ['t_beta', 't_alpha']],
-    ['getRecentlyAdded', 500],
+    ['trackTable', ['t_beta', 't_alpha']]
+  ]);
+});
+
+test('LibraryView album detail applies the current sort only after a header click override', () => {
+  const calls = [];
+  const sortedTracks = [
+    { id: 't_beta', title: 'Beta' },
+    { id: 't_alpha', title: 'Alpha' }
+  ];
+  const makeView = extra => Object.assign(Object.create(LibraryView.prototype), {
+    root: new FakeElement('section'),
+    nav: new FakeElement('nav'),
+    content: new FakeElement('div'),
+    status: new FakeElement('footer'),
+    searchQuery: '',
+    sort: 'title',
+    sortDirection: 'desc',
+    selectedTrackIds: new Set(),
+    currentVisibleTrackIds: [],
+    manager: {
+      getCounts() {
+        return { tracks: 2, albums: 1, artists: 1, genres: 1 };
+      },
+      getFolders() {
+        return [];
+      },
+      getAlbums() {
+        return [{ key: 'album-one', name: 'Album One', artist: 'Artist', trackIds: ['t_alpha', 't_beta'] }];
+      },
+      getAlbumTracks(key) {
+        calls.push(['getAlbumTracks', key]);
+        return [...sortedTracks].reverse();
+      },
+      getTracks(options) {
+        calls.push(['getTracks', options]);
+        return sortedTracks;
+      }
+    },
+    uiManager: { t: key => key },
+    closePlaylistMenu() {},
+    closeContextMenu() {},
+    syncNowPlayingTrack() {},
+    renderNav() {},
+    renderStatus() {},
+    renderArtwork() {},
+    createActionBar(trackIds) {
+      calls.push(['actionBar', trackIds]);
+      return new FakeElement('div');
+    },
+    createTrackTable(tracks) {
+      calls.push(['trackTable', tracks.map(track => track.id)]);
+      return new FakeElement('div');
+    },
+    ...extra
+  });
+
+  makeView({ detail: { type: 'album', key: 'album-one' }, detailSortOverride: false }).renderAlbumDetail('album-one');
+  assert.deepEqual(calls, [
+    ['getAlbumTracks', 'album-one'],
+    ['actionBar', ['t_alpha', 't_beta']],
+    ['trackTable', ['t_alpha', 't_beta']]
+  ]);
+
+  calls.length = 0;
+  makeView({ detail: { type: 'album', key: 'album-one' }, detailSortOverride: true }).renderAlbumDetail('album-one');
+  assert.deepEqual(calls, [
+    ['getAlbumTracks', 'album-one'],
     ['getTracks', { ids: ['t_alpha', 't_beta'], sort: 'title', direction: 'desc' }],
     ['actionBar', ['t_beta', 't_alpha']],
     ['trackTable', ['t_beta', 't_alpha']]
@@ -2097,6 +2240,60 @@ test('LibraryView playlist export passes the relative path checkbox state', asyn
       preferRelative: false
     }],
     ['saveFile', 'D:/Playlists/Daily.m3u8', '#EXTM3U\n']
+  ]);
+});
+
+test('LibraryView export dialogs use format-specific titles and extension filters', async () => {
+  const dialogs = [];
+  const saves = [];
+  const view = Object.assign(Object.create(LibraryView.prototype), {
+    manager: {
+      async exportPlaylist(_id, options) {
+        return options.format === 'xspf' ? '<?xml version="1.0"?>\n' : '#EXTM3U\n';
+      }
+    },
+    content: {
+      querySelector(selector) {
+        return selector === '.library-playlist-export-relative' ? { checked: true } : null;
+      }
+    },
+    uiManager: {
+      setError(message, sticky) {
+        saves.push(['setError', message, sticky]);
+      }
+    },
+    t(key) {
+      return key;
+    }
+  });
+
+  await withGlobals({
+    window: {
+      electronAPI: {
+        async showSaveDialog(options) {
+          dialogs.push(options);
+          return { filePath: `D:/Playlists/${options.defaultPath}` };
+        },
+        async saveFile(filePath, text) {
+          saves.push([filePath, text]);
+          return { success: true };
+        }
+      }
+    }
+  }, async () => {
+    await view.handleExportPlaylist({ id: 'p1', name: 'Daily' }, 'xspf');
+    await view.handleExportPlaylist({ id: 'p1', name: 'Daily' }, 'm3u8');
+  });
+
+  assert.equal(dialogs[0].title, 'library.action.exportXSPF');
+  assert.equal(dialogs[0].defaultPath, 'Daily.xspf');
+  assert.deepEqual(dialogs[0].filters, [{ name: 'Playlists', extensions: ['xspf'] }]);
+  assert.equal(dialogs[1].title, 'library.action.exportM3U8');
+  assert.equal(dialogs[1].defaultPath, 'Daily.m3u8');
+  assert.deepEqual(dialogs[1].filters, [{ name: 'Playlists', extensions: ['m3u8'] }]);
+  assert.deepEqual(saves, [
+    ['D:/Playlists/Daily.xspf', '<?xml version="1.0"?>\n'],
+    ['D:/Playlists/Daily.m3u8', '#EXTM3U\n']
   ]);
 });
 

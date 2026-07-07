@@ -23,6 +23,14 @@ import { MobileNav } from './ui/mobile-nav.js';
 import { LibraryManager } from './library/library-manager.js';
 import { LibraryView } from './ui/library/library-view.js';
 
+function usesIOSFilePicker(windowRef = window) {
+    const navigatorRef = windowRef?.navigator || globalThis.navigator;
+    const userAgent = String(navigatorRef?.userAgent || '');
+    const platform = String(navigatorRef?.platform || '');
+    return /iPad|iPhone|iPod/.test(userAgent)
+        || (platform === 'MacIntel' && Number(navigatorRef?.maxTouchPoints || 0) > 1);
+}
+
 export class UIManager {
     constructor(pluginManager, audioManager) {
         this.pluginManager = pluginManager;
@@ -1056,7 +1064,9 @@ export class UIManager {
                     const fileInput = document.createElement('input');
                     if (fileInput) { // Added check
                         fileInput.type = 'file';
-                        fileInput.accept = 'audio/*';
+                        if (!usesIOSFilePicker(window)) {
+                            fileInput.accept = 'audio/*';
+                        }
                         fileInput.multiple = true;
                         fileInput.style.display = 'none';
                     }

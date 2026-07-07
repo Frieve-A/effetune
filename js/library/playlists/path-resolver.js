@@ -143,13 +143,21 @@ function buildAbsolutePathIndex(tracks, folderMap, options) {
 
 function buildSuffixContext(tracks, options) {
   let maxSuffixLength = 0;
+  const suffixIndex = new Map();
   const suffixSegments = tracks.map(track => {
     const segments = pathSegmentsForSuffix(getTrackRelativePath(track), options);
     if (segments.length > maxSuffixLength) maxSuffixLength = segments.length;
+    for (let length = 1; length <= segments.length; length += 1) {
+      const key = suffixKey(segments, length);
+      const matches = suffixIndex.get(key) ?? [];
+      matches.push(track);
+      suffixIndex.set(key, matches);
+    }
     return { track, segments };
   });
   return {
     suffixSegments,
+    suffixIndex,
     maxSuffixLength
   };
 }
@@ -213,9 +221,7 @@ function findSuffixMatch(entryPath, context) {
 
   for (let length = Math.min(entrySegments.length, context.maxSuffixLength); length >= 1; length -= 1) {
     const target = suffixKey(entrySegments, length);
-    const matches = context.suffixSegments
-      .filter(item => item.segments.length >= length && suffixKey(item.segments, length) === target)
-      .map(item => item.track);
+    const matches = context.suffixIndex.get(target) ?? [];
     const uniqueMatch = uniqueTrackMatch(matches);
     if (uniqueMatch) return uniqueMatch;
   }

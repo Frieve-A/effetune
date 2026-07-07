@@ -16,6 +16,14 @@ import { createLibrarySource } from '../../js/library/sources/library-source.js'
 import { comparePathRoots } from '../../js/library/sources/root-containment.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
+function decodeWindows1252(bytes) {
+  return new TextDecoder('windows-1252').decode(Uint8Array.from(bytes));
+}
+
+function decodeUtf8AsWindows1252(text) {
+  return decodeWindows1252(new TextEncoder().encode(text));
+}
+
 function createArtworkProcessor() {
   const stored = [];
   return {
@@ -101,6 +109,57 @@ test('scan controller strips runtime-only objects before indexing and storage', 
   assert.ok(events.some(([event, payload]) => event === 'scan-state' && payload.phase === 'done'));
 });
 
+test('library manager forwards selected and browser languages as scan hints', async () => {
+  await withGlobals({
+    navigator: {
+      language: 'el-GR',
+      languages: ['el-GR', 'en-US']
+    }
+  }, async () => {
+    const database = new LibraryDatabase({ indexedDB: null });
+    await database.open();
+    await database.putFolder({
+      id: 'f_music',
+      displayName: 'Music',
+      path: 'D:/Music',
+      status: 'ok'
+    });
+
+    const requests = [];
+    const source = {
+      async checkFolder() {
+        return 'ok';
+      },
+      scan(request, sink) {
+        requests.push(request);
+        return {
+          done: (async () => {
+            await sink({ type: 'done', seenFiles: [] });
+          })()
+        };
+      }
+    };
+    const manager = new LibraryManager({
+      uiManager: {
+        userLanguage: 'ru',
+        languagePreference: 'ru'
+      },
+      database,
+      source
+    });
+
+    await manager.init();
+    await manager.scanFolders(['f_music']);
+
+    assert.deepEqual(requests[0].languageHints, {
+      language: 'ru',
+      languagePreference: 'ru',
+      browserLanguage: 'el-GR',
+      browserLanguages: ['el-GR', 'en-US']
+    });
+  });
+});
+
 test('library manager keeps import files in memory for the initial scan but not in persisted folders', async () => {
   const database = new LibraryDatabase({ indexedDB: null });
   await database.open();
@@ -145,6 +204,31 @@ test('library manager keeps import files in memory for the initial scan but not 
   await manager.removeFolder(folder.id);
 
   assert.deepEqual(releasedFolders, [folder.id]);
+});
+
+test('removing a folder preserves runtime files on the import folders that are kept', async () => {
+  const database = new LibraryDatabase({ indexedDB: null });
+  await database.open();
+  const keepFolder = { id: 'f_keep', kind: 'import', displayName: 'Keep', path: null, status: 'ok' };
+  const dropFolder = { id: 'f_drop', kind: 'import', displayName: 'Drop', path: null, status: 'ok' };
+  await database.putFolder(keepFolder);
+  await database.putFolder(dropFolder);
+  const keepFiles = [{ name: 'Keep.wav' }];
+  const source = {
+    kind: 'import',
+    async syncFolders() {},
+    async releaseFolder() {},
+    async checkFolder() {
+      return 'ok';
+    }
+  };
+  const manager = new LibraryManager({ uiManager: {}, database, source });
+  await manager.init();
+  manager.folders = manager.folders.map(folder => folder.id === 'f_keep' ? { ...folder, files: keepFiles } : folder);
+
+  await manager.removeFolder('f_drop');
+
+  assert.equal(manager.folders.find(folder => folder.id === 'f_keep').files, keepFiles);
 });
 
 test('library manager reconnects offline import folders without persisting File objects', async () => {
@@ -261,6 +345,30 @@ test('scan sweep recalculates artwork refCounts and deletes orphaned artwork', a
 
   assert.equal(await database.getArtwork('art_gone'), null);
   assert.equal((await database.getArtwork('art_keep')).refCount, 1);
+});
+
+test('removing a folder deletes orphaned artwork rows', async () => {
+  const database = new LibraryDatabase({ indexedDB: null });
+  await database.open();
+  const folder = { id: 'f_music', displayName: 'Music', path: 'D:/Music', status: 'ok' };
+  await database.putFolder(folder);
+  await database.putTracks([
+    { id: 't_music', folderId: 'f_music', relativePath: 'Track.flac', fileName: 'Track.flac', title: 'Track', artworkId: 'art_1' }
+  ]);
+  await database.putArtwork({ id: 'art_1', refCount: 1 });
+  const source = {
+    async syncFolders() {},
+    async releaseFolder() {},
+    async checkFolder() {
+      return 'ok';
+    }
+  };
+  const manager = new LibraryManager({ uiManager: {}, database, source });
+  await manager.init();
+
+  await manager.removeFolder('f_music');
+
+  assert.equal((await database.getAll('artwork')).length, 0);
 });
 
 test('scan sweep consumes streamed seen-files events', async () => {
@@ -411,6 +519,58 @@ test('scan controller preserves addedAt and reports updates separately from adds
   assert.equal(stored.title, 'New Title');
   assert.ok(events.some(([event, payload]) => event === 'catalog-changed' && payload.added === 0 && payload.updated === 1));
   assert.ok(events.some(([event, payload]) => event === 'scan-state' && payload.phase === 'done' && payload.added === 0 && payload.updated === 1));
+});
+
+test('scan does not commit tracks for a folder invalidated mid-batch', async () => {
+  const database = new LibraryDatabase({ indexedDB: null });
+  await database.open();
+  const folder = { id: 'f_music', displayName: 'Music', path: 'D:/Music', status: 'ok' };
+  await database.putFolder(folder);
+  const index = new CatalogIndex();
+  await index.build({ folders: await database.getAllFolders(), tracks: [] });
+  const controller = new ScanController({
+    database,
+    index,
+    source: {
+      scan(_request, sink) {
+        return {
+          done: (async () => {
+            await sink({
+              type: 'batch',
+              tracks: [
+                { folderId: 'f_music', relativePath: 'Album/One.flac', fileName: 'One.flac', title: 'One' },
+                { folderId: 'f_music', relativePath: 'Album/Two.flac', fileName: 'Two.flac', title: 'Two' }
+              ]
+            });
+            await sink({
+              type: 'done',
+              seenFiles: [
+                { folderId: 'f_music', relativePath: 'Album/One.flac' },
+                { folderId: 'f_music', relativePath: 'Album/Two.flac' }
+              ]
+            });
+          })()
+        };
+      }
+    },
+    artworkProcessor: createArtworkProcessor(),
+    emit() {}
+  });
+  const originalGet = database.get.bind(database);
+  let invalidated = false;
+  database.get = async (storeName, id) => {
+    const result = await originalGet(storeName, id);
+    if (storeName === 'tracks' && !invalidated) {
+      invalidated = true;
+      controller.folderScanGenerations.set('f_music', (controller.folderScanGenerations.get('f_music') || 0) + 1);
+    }
+    return result;
+  };
+
+  await controller.scanFolders([folder]);
+
+  assert.equal((await database.getAllTracks()).length, 0);
+  assert.deepEqual(index.getAllTracks(), []);
 });
 
 test('scan keeps known tracks when a folder reports an enumeration error', async () => {
@@ -950,6 +1110,82 @@ test('FSA library source maps browser tag metadata and embedded artwork when jsm
   assert.deepEqual(Array.from(new Uint8Array(track.artworkBytes)), [1, 2, 3]);
 });
 
+test('FSA library source repairs legacy Japanese mojibake from browser tags', async () => {
+  const file = { name: 'fallback.mp3', size: 128, lastModified: 2000 };
+  const source = new FsaLibrarySource({
+    jsmediatags: {
+      read(input, handlers) {
+        assert.equal(input, file);
+        handlers.onSuccess({
+          tags: {
+            title: '\u201A\u00B1\u201A\u00F1\u201A\u00C9\u201A\u00BF\u201A\u00CD',
+            artist: '\u0083A\u0081[\u0083e\u0083B\u0083X\u0083g'
+          }
+        });
+      }
+    }
+  });
+  const events = [];
+  const handle = {
+    async *values() {
+      yield {
+        kind: 'file',
+        name: 'Tagged.mp3',
+        getFile: async () => file
+      };
+    }
+  };
+
+  await source.scan({
+    folders: [{ id: 'f_music', handle }],
+    batchSize: 1
+  }, event => {
+    events.push(event);
+  }).done;
+
+  const [track] = events.filter(event => event.type === 'batch').flatMap(event => event.tracks);
+  assert.equal(track.title, 'こんにちは');
+  assert.equal(track.artist, 'アーティスト');
+});
+
+test('FSA library source preserves ambiguous browser tag fallback without corruption markers', async () => {
+  const legacyRussian = decodeWindows1252([0xcf, 0xf0, 0xe8, 0xe2, 0xe5, 0xf2]);
+  const file = { name: 'fallback.mp3', size: 128, lastModified: 2000 };
+  const source = new FsaLibrarySource({
+    jsmediatags: {
+      read(input, handlers) {
+        assert.equal(input, file);
+        handlers.onSuccess({
+          tags: {
+            title: legacyRussian
+          }
+        });
+      }
+    }
+  });
+  const events = [];
+  const handle = {
+    async *values() {
+      yield {
+        kind: 'file',
+        name: 'Tagged.mp3',
+        getFile: async () => file
+      };
+    }
+  };
+
+  await source.scan({
+    folders: [{ id: 'f_music', handle }],
+    batchSize: 1,
+    languageHints: { language: 'ru' }
+  }, event => {
+    events.push(event);
+  }).done;
+
+  const [track] = events.filter(event => event.type === 'batch').flatMap(event => event.tracks);
+  assert.equal(track.title, legacyRussian);
+});
+
 test('music metadata mapper maps common and format fields', () => {
   const track = createTrackFromMetadata({
     folderId: 'f_music',
@@ -1015,6 +1251,128 @@ test('music metadata mapper maps common and format fields', () => {
   assert.equal(shouldRetryDuration({ ext: 'flac' }, { format: {} }), false);
 });
 
+test('music metadata mapper repairs legacy metadata mojibake in common fields', () => {
+  const track = createTrackFromMetadata({
+    folderId: 'f_music',
+    relativePath: 'Album/Mojibake.flac',
+    fileName: 'Mojibake.flac',
+    ext: 'flac',
+    size: 128,
+    mtimeMs: 2000
+  }, {
+    common: {
+      title: '\u201A\u00B1\u201A\u00F1\u201A\u00C9\u201A\u00BF\u201A\u00CD',
+      artists: ['\u0083A\u0081[\u0083e\u0083B\u0083X\u0083g'],
+      album: 'Plain Album'
+    },
+    format: {}
+  }, 3000);
+
+  assert.equal(track.title, 'こんにちは');
+  assert.equal(track.artist, 'アーティスト');
+  assert.equal(track.album, 'Plain Album');
+});
+
+test('music metadata mapper repairs non-Japanese metadata mojibake and preserves valid Latin accents', () => {
+  const repaired = createTrackFromMetadata({
+    folderId: 'f_music',
+    relativePath: 'Album/Legacy.flac',
+    fileName: 'Legacy.flac',
+    ext: 'flac',
+    size: 128,
+    mtimeMs: 2000
+  }, {
+    common: {
+      title: decodeWindows1252([0x42, 0x65, 0x79, 0x6f, 0x6e, 0x63, 0xc3, 0xa9]),
+      artist: decodeWindows1252([0xd0, 0x9f, 0xd1, 0x80, 0xd0, 0xb8, 0xd0, 0xb2, 0xd0, 0xb5, 0xd1, 0x82]),
+      album: decodeWindows1252([0xbe, 0xc8, 0xb3, 0xe7, 0xc7, 0xcf, 0xbc, 0xbc, 0xbf, 0xe4]),
+      genre: decodeWindows1252([0xc4, 0xe3, 0xba, 0xc3, 0xca, 0xc0, 0xbd, 0xe7])
+    },
+    format: {}
+  }, 3000);
+
+  assert.equal(repaired.title, 'Beyoncé');
+  assert.equal(repaired.artist, 'Привет');
+  assert.equal(repaired.album, '안녕하세요');
+  assert.equal(repaired.genre, '你好世界');
+
+  const preserved = createTrackFromMetadata({
+    folderId: 'f_music',
+    relativePath: 'Album/Accents.flac',
+    fileName: 'Accents.flac',
+    ext: 'flac',
+    size: 128,
+    mtimeMs: 2000
+  }, {
+    common: {
+      title: 'Björk Guðmundsdóttir',
+      artist: 'Mötley Crüe',
+      album: 'François'
+    },
+    format: {}
+  }, 3000);
+
+  assert.equal(preserved.title, 'Björk Guðmundsdóttir');
+  assert.equal(preserved.artist, 'Mötley Crüe');
+  assert.equal(preserved.album, 'François');
+});
+
+test('music metadata mapper preserves ambiguous legacy code pages without corruption markers', () => {
+  const legacyRussian = decodeWindows1252([0xcf, 0xf0, 0xe8, 0xe2, 0xe5, 0xf2]);
+  const preserved = createTrackFromMetadata({
+    folderId: 'f_music',
+    relativePath: 'Album/LegacyRussian.flac',
+    fileName: 'LegacyRussian.flac',
+    ext: 'flac',
+    size: 128,
+    mtimeMs: 2000
+  }, {
+    common: { title: legacyRussian },
+    format: {}
+  }, 3000);
+
+  assert.equal(preserved.title, legacyRussian);
+
+  const cases = [
+    {
+      title: legacyRussian,
+      languageHints: { languagePreference: 'ru' },
+      expected: legacyRussian
+    },
+    {
+      title: decodeWindows1252([0xc3, 0xe5, 0xe9, 0xdc]),
+      languageHints: { language: 'en', browserLanguage: 'el-GR' },
+      expected: decodeWindows1252([0xc3, 0xe5, 0xe9, 0xdc])
+    },
+    {
+      title: decodeWindows1252([0xe3, 0xd1, 0xcd, 0xc8, 0xc7]),
+      languageHints: { language: 'ar' },
+      expected: decodeWindows1252([0xe3, 0xd1, 0xcd, 0xc8, 0xc7])
+    },
+    {
+      title: decodeUtf8AsWindows1252('नमस्ते'),
+      languageHints: { language: 'en', browserLanguage: 'hi-IN' },
+      expected: 'नमस्ते'
+    }
+  ];
+
+  for (const item of cases) {
+    const track = createTrackFromMetadata({
+      folderId: 'f_music',
+      relativePath: 'Album/Hinted.flac',
+      fileName: 'Hinted.flac',
+      ext: 'flac',
+      size: 128,
+      mtimeMs: 2000
+    }, {
+      common: { title: item.title },
+      format: {}
+    }, 3000, { languageHints: item.languageHints });
+
+    assert.equal(track.title, item.expected);
+  }
+});
+
 test('FSA library source parses metadata through the worker when available', async () => {
   const file = { name: 'Worker.flac', size: 256, lastModified: 5000 };
   const calls = [];
@@ -1029,7 +1387,7 @@ test('FSA library source parses metadata through the worker when available', asy
     }
 
     postMessage(message) {
-      calls.push(['postMessage', message.candidate.relativePath, message.file]);
+      calls.push(['postMessage', message.candidate.relativePath, message.file, message.languageHints]);
       queueMicrotask(() => {
         this.listeners.get('message')?.({
           data: {
@@ -1068,7 +1426,8 @@ test('FSA library source parses metadata through the worker when available', asy
 
   await source.scan({
     folders: [{ id: 'f_music', handle }],
-    batchSize: 1
+    batchSize: 1,
+    languageHints: { language: 'ko' }
   }, event => {
     events.push(event);
   }).done;
@@ -1081,7 +1440,7 @@ test('FSA library source parses metadata through the worker when available', asy
   assert.equal(calls[0][0], 'construct');
   assert.equal(calls[0][2].type, 'module');
   assert.ok(String(calls[0][1]).endsWith('/metadata-worker.js'));
-  assert.deepEqual(calls[1], ['postMessage', 'Worker.flac', file]);
+  assert.deepEqual(calls[1], ['postMessage', 'Worker.flac', file, { language: 'ko' }]);
   assert.equal(calls.at(-1)[0], 'terminate');
 });
 
@@ -1311,11 +1670,15 @@ test('playback bridge replaces the player, queues library entries, and starts at
   assert.equal(player.playbackManager.playlist[1].path, 'D:/Music/B/Two.flac');
 });
 
-test('playback bridge waits for restored player state before loading library tracks', async () => {
+test('playback bridge waits for restored player state before loading the library queue', async () => {
   const index = new CatalogIndex();
+  const tracks = [
+    { id: 't_one', folderId: 'f_music', relativePath: 'A/One.flac', fileName: 'One.flac', title: 'One' },
+    { id: 't_two', folderId: 'f_music', relativePath: 'B/Two.flac', fileName: 'Two.flac', title: 'Two' }
+  ];
   await index.build({
     folders: [{ id: 'f_music', path: 'D:/Music' }],
-    tracks: [{ id: 't_one', folderId: 'f_music', relativePath: 'One.flac', fileName: 'One.flac', title: 'One' }]
+    tracks
   });
 
   const calls = [];
@@ -1334,7 +1697,10 @@ test('playback bridge waits for restored player state before loading library tra
         this.originalPlaylist = files.map(file => ({ ...file }));
       }
     },
-    ui: { container: {}, createPlayerUI() {} },
+    ui: {
+      container: {},
+      createPlayerUI() {}
+    },
     stateManager: {
       getCurrentTrackIndex() {
         return 0;
@@ -1367,7 +1733,7 @@ test('playback bridge waits for restored player state before loading library tra
     getFolders: () => [{ id: 'f_music', path: 'D:/Music' }]
   });
 
-  await bridge.playTracks(['t_one']);
+  await bridge.playTracks(['t_one', 't_two'], { startIndex: 1 });
 
   assert.deepEqual(calls.find(call => call[0] === 'loadFiles'), ['loadFiles', true]);
 });
@@ -1450,7 +1816,7 @@ test('playback bridge restores the previous queue after a library replacement', 
   assert.equal(bridge.canRestoreSnapshot(), false);
 });
 
-test('playback bridge stops replacement playback when restoring a paused queue', async () => {
+test('playback bridge undo stops the replacement queue when the snapshot was captured paused', async () => {
   const index = new CatalogIndex();
   await index.build({
     folders: [{ id: 'f_music', path: 'D:/Music' }],
@@ -1486,6 +1852,12 @@ test('playback bridge stops replacement playback when restoring a paused queue',
       createPlayerUI() {}
     },
     stateManager: {
+      getCurrentTrackIndex() {
+        return 0;
+      },
+      getStateSnapshot() {
+        return { isPlaying: true, isPaused: false, isStopped: false };
+      },
       updatePlaylist(playlist, indexValue) {
         calls.push(['updatePlaylist', playlist.map(track => track.libraryTrackId), indexValue]);
       },
@@ -1518,13 +1890,15 @@ test('playback bridge stops replacement playback when restoring a paused queue',
   });
 
   await bridge.playTracks(['t_new']);
-  calls.length = 0;
+  const restoreStart = calls.length;
+  await bridge.restoreLastSnapshot();
 
-  assert.equal(await bridge.restoreLastSnapshot(), true);
-  assert.ok(calls.findIndex(call => call[0] === 'stop') < calls.findIndex(call => call[0] === 'loadTrack'));
-  assert.deepEqual(calls.find(call => call[0] === 'stop'), ['stop']);
-  assert.deepEqual(calls.find(call => call[0] === 'loadTrack'), ['loadTrack', 0]);
-  assert.equal(calls.some(call => call[0] === 'play'), false);
+  const restoreCalls = calls.slice(restoreStart);
+  assert.ok(restoreCalls.findIndex(call => call[0] === 'stop') < restoreCalls.findIndex(call => call[0] === 'loadTrack'));
+  assert.deepEqual(restoreCalls.find(call => call[0] === 'stop'), ['stop']);
+  assert.deepEqual(restoreCalls.find(call => call[0] === 'loadTrack'), ['loadTrack', 0]);
+  assert.equal(restoreCalls.some(call => call[0] === 'play'), false);
+  assert.deepEqual(replacementPlayer.playbackManager.playlist.map(track => track.libraryTrackId), ['t_old']);
 });
 
 test('catalog index groups tracks and keeps search results narrowed across queries', async () => {
@@ -2510,11 +2884,12 @@ test('removing a folder invalidates its in-flight scan so late batches are dropp
 
   const scanPromise = manager.scanFolders(['f_music']);
   await started;
-  await manager.removeFolder('f_music');
+  const removePromise = manager.removeFolder('f_music');
   assert.equal(cancelCalls, 1);
   await deliverLateBatch();
   await finishScan();
   await scanPromise;
+  await removePromise;
 
   assert.deepEqual(await database.getAllTracks(), []);
   assert.deepEqual(await database.getAllFolders(), []);
@@ -2828,6 +3203,25 @@ test('import library source keeps picked files available for playback in the ses
 
   source.releaseFolder('f_import');
   await assert.rejects(() => source.resolveForPlayback({ folderId: 'f_import', relativePath: 'Album/Song.mp3' }), /offline/);
+});
+
+test('import source reports a folder-level error when session files are missing', async () => {
+  const source = new ImportLibrarySource({});
+  const events = [];
+
+  const handle = source.scan({
+    folders: [{ id: 'f_offline' }],
+    batchSize: 10
+  }, async event => {
+    events.push(event);
+  });
+  await handle.done;
+
+  const error = events.find(event => event.type === 'error' && event.folderId === 'f_offline');
+  assert.ok(error);
+  assert.equal(error.category, 'permission-denied');
+  assert.equal('relativePath' in error, false);
+  assert.equal(events.some(event => event.type === 'batch' && event.tracks?.some(track => track.folderId === 'f_offline')), false);
 });
 
 test('import library source resolves NFD-named files against NFC track paths', async () => {

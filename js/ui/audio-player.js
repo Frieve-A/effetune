@@ -54,9 +54,15 @@ export class AudioPlayer {
     if (!this.ui.container) {
       this.ui.createPlayerUI();
     }
+    // Capture the stop/pause token before loading so we can distinguish a
+    // pause/stop requested DURING this load (must not auto-start) from a player
+    // that was merely already paused when reused to open new files (must start
+    // playback for the freshly-opened files).
+    const stopTokenBefore = this.contextManager?.stopRequestToken;
     const loaded = await this.loadTrack(this.stateManager.getCurrentTrackIndex());
-    const state = this.stateManager.getStateSnapshot?.() || {};
-    if (loaded !== false && !state.isPaused) {
+    const pausedDuringLoad = typeof stopTokenBefore === 'number' &&
+      this.contextManager?.stopRequestToken !== stopTokenBefore;
+    if (loaded !== false && !pausedDuringLoad) {
       await this.play();
     }
   }
@@ -70,6 +76,9 @@ export class AudioPlayer {
     if (!track) {
       return false;
     }
+    // UNIFIED STATE: Use context manager's loadTrack method.
+    // Propagate the load result so callers can skip the follow-up play()
+    // when the load was aborted by a user pause/stop.
     return await this.contextManager.loadTrack(track) !== false;
   }
   

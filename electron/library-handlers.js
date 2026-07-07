@@ -13,6 +13,8 @@ const MAX_LIBRARY_SCAN_ID_LENGTH = 128;
 const MAX_LIBRARY_SCAN_ROOTS = 128;
 const MAX_LIBRARY_SCAN_KNOWN_FILES = 100000;
 const MAX_LIBRARY_SCAN_STRING_LENGTH = 8192;
+const MAX_LIBRARY_LANGUAGE_HINT_STRING_LENGTH = 64;
+const MAX_LIBRARY_LANGUAGE_HINTS = 8;
 const MAX_LIBRARY_READ_FILE_BYTES = defaultScanner.MAX_READ_FILE_BYTES || 256 * 1024 * 1024;
 const MAX_LIBRARY_READ_ARTWORK_BYTES = defaultScanner.MAX_ARTWORK_BYTES || 20 * 1024 * 1024;
 const MAX_LIBRARY_READ_GLOBAL_CONCURRENCY = 8;
@@ -270,6 +272,34 @@ function normalizeKnownFiles(knownFiles) {
   return normalizedFiles;
 }
 
+function normalizeLanguageHintString(value) {
+  if (typeof value !== 'string') return '';
+  const text = value.trim();
+  if (!text || text.length > MAX_LIBRARY_LANGUAGE_HINT_STRING_LENGTH) return '';
+  return text;
+}
+
+function normalizeLanguageHints(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const normalized = {};
+  for (const field of ['language', 'languagePreference', 'browserLanguage']) {
+    const text = normalizeLanguageHintString(value[field]);
+    if (text) normalized[field] = text;
+  }
+  if (Array.isArray(value.browserLanguages)) {
+    const browserLanguages = [];
+    const limit = value.browserLanguages.length < MAX_LIBRARY_LANGUAGE_HINTS
+      ? value.browserLanguages.length
+      : MAX_LIBRARY_LANGUAGE_HINTS;
+    for (let index = 0; index < limit; index += 1) {
+      const text = normalizeLanguageHintString(value.browserLanguages[index]);
+      if (text) browserLanguages.push(text);
+    }
+    if (browserLanguages.length > 0) normalized.browserLanguages = browserLanguages;
+  }
+  return Object.keys(normalized).length > 0 ? normalized : null;
+}
+
 function copyScanOption(target, source, field) {
   if (hasOwn(source, field)) target[field] = source[field];
 }
@@ -295,6 +325,8 @@ function normalizeScanRequest(request = {}) {
   ]) {
     copyScanOption(normalizedRequest, source, field);
   }
+  const languageHints = normalizeLanguageHints(source.languageHints);
+  if (languageHints) normalizedRequest.languageHints = languageHints;
   return normalizedRequest;
 }
 

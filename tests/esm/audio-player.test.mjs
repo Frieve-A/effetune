@@ -114,48 +114,44 @@ test('loadFiles delegates playlist loading, creates missing UI, then loads and p
   });
 });
 
-test('loadFiles skips play when track load is aborted and loadTrack reports context result', async () => {
+test('loadFiles skips play when the track load is aborted or pause/stop is requested during load', async () => {
   await withAudioPlayerGlobals({}, async ({ calls }) => {
     const player = createPlayer();
-    player.playbackManager.loadFiles = (files, append) => calls.push(['loadFiles', files, append]);
-    player.ui.container = { id: 'existing' };
-    player.ui.createPlayerUI = () => calls.push(['createPlayerUI']);
-    player.stateManager.getCurrentTrackIndex = () => 3;
-    player.stateManager.getStateSnapshot = () => ({ isPaused: false });
-    player.loadTrack = async index => {
-      calls.push(['loadTrack', index]);
-      return false;
-    };
+    player.playbackManager.loadFiles = () => calls.push(['loadFiles']);
+    player.ui.container = { id: 'ui' };
+    player.stateManager.getCurrentTrackIndex = () => 0;
     player.play = async () => calls.push(['play']);
 
-    await player.loadFiles(['a.wav'], false);
-    assert.deepEqual(calls.filter(call => call[0] === 'loadFiles' || call[0] === 'loadTrack'), [
-      ['loadFiles', ['a.wav'], false],
-      ['loadTrack', 3]
-    ]);
+    player.loadTrack = async () => false;
+    await player.loadFiles(['a.wav']);
     assert.equal(calls.some(call => call[0] === 'play'), false);
-  });
 
-  await withAudioPlayerGlobals({}, async () => {
-    const player = createPlayer();
-    const track = { name: 'Song' };
-    player.playbackManager = {
-      getTrack(index) {
-        return index === 1 ? track : null;
-      }
+    calls.length = 0;
+    player.loadTrack = async () => true;
+    player.stateManager.getStateSnapshot = () => ({ isPaused: true });
+    await player.loadFiles(['b.wav']);
+    assert.ok(calls.some(call => call[0] === 'play'));
+
+    calls.length = 0;
+    player.loadTrack = async () => {
+      player.contextManager.stopRequestToken++;
+      return true;
     };
+    await player.loadFiles(['c.wav']);
+    assert.equal(calls.some(call => call[0] === 'play'), false);
+
+    player.loadTrack = AudioPlayer.prototype.loadTrack.bind(player);
+    player.playbackManager.getTrack = () => ({ name: 'Song' });
     player.contextManager = {
       async loadTrack() {
         return false;
       }
     };
-
-    assert.equal(await player.loadTrack(1), false);
+    assert.equal(await player.loadTrack(0), false);
     player.contextManager.loadTrack = async () => undefined;
-    assert.equal(await player.loadTrack(1), true);
-    player.contextManager.loadTrack = async () => true;
-    assert.equal(await player.loadTrack(1), true);
-    assert.equal(await player.loadTrack(2), false);
+    assert.equal(await player.loadTrack(0), true);
+    player.playbackManager.getTrack = () => null;
+    assert.equal(await player.loadTrack(0), false);
   });
 });
 

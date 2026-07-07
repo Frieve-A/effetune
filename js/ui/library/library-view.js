@@ -61,12 +61,15 @@ export class LibraryView {
     this.searchQuery = '';
     this.sort = 'artist';
     this.sortDirection = 'asc';
+    this.detailSortOverride = false;
     this.loadUIState();
     this.unsubscribe = [];
     this.lastScanState = null;
     this.trackScrollCleanup = null;
     this.renderVersion = 0;
+    this.pendingBreakpointRebuild = false;
     this.playlistMenu = null;
+    this.playlistMenuCleanup = null;
     this.playlistMenuReturnFocus = null;
     this.contextMenu = null;
     this.contextMenuCleanup = null;
@@ -207,8 +210,13 @@ export class LibraryView {
   hide(options = {}) {
     const { restoreFocus = true, returnFocus = null, fallbackFocus = null } = options || {};
     const shouldRestoreFocus = restoreFocus && this.shouldRestoreLibraryFocus();
+    this.pendingBreakpointRebuild = false;
     this.closeContextMenu({ restoreFocus: false });
     this.closePlaylistMenu({ restoreFocus: false });
+    // Tear down the track-table scroll/resize listeners so the window 'resize'
+    // handler does not survive teardown and re-render the hidden view.
+    this.trackScrollCleanup?.();
+    this.trackScrollCleanup = null;
     if (this.mobileHistoryDepth > 0 && typeof globalThis.history?.go === 'function') {
       this.suppressPopStateCount += 1;
       globalThis.history.go(-this.mobileHistoryDepth);
@@ -252,6 +260,17 @@ export class LibraryView {
 
   hasActiveDialog() {
     return Boolean(getActiveLibraryDialogBackdrop());
+  }
+
+  isLibraryVisible() {
+    return Boolean(this.root && this.root.isConnected !== false && document.body?.classList.contains('view-library'));
+  }
+
+  flushPendingBreakpointRebuild() {
+    if (!this.pendingBreakpointRebuild) return;
+    if (this.playlistMenu || this.contextMenu || this.hasActiveDialog?.()) return;
+    this.pendingBreakpointRebuild = false;
+    if (this.isLibraryVisible()) this.render();
   }
 
   syncNowPlayingTrack() {
@@ -346,6 +365,7 @@ export class LibraryView {
 
   render() {
     if (!this.root) return;
+    this.pendingBreakpointRebuild = false;
     const renderVersion = ++this.renderVersion;
     this.syncNowPlayingTrack();
     this.closePlaylistMenu({ restoreFocus: false });
@@ -424,6 +444,7 @@ export class LibraryView {
   applyNavigationSnapshot(snapshot = {}) {
     this.currentView = snapshot.currentView || 'tracks';
     this.detail = snapshot.detail ? { ...snapshot.detail } : null;
+    this.detailSortOverride = false;
     this.searchQuery = snapshot.searchQuery || '';
     this.focusedTrackId = snapshot.focusedTrackId || this.focusedTrackId || null;
     if (this.searchInput) this.searchInput.value = this.searchQuery;
@@ -452,6 +473,7 @@ export class LibraryView {
     const previousSnapshot = this.getNavigationSnapshot();
     this.currentView = view || 'tracks';
     this.detail = null;
+    this.detailSortOverride = false;
     this.searchQuery = '';
     this.clearSelection({ keepMobileSelectionMode: false });
     if (this.searchInput) this.searchInput.value = '';
@@ -471,6 +493,7 @@ export class LibraryView {
           detail.type === 'genre' ? 'genres' :
             detail.type === 'folder' ? 'folders' : this.currentView);
     this.detail = { ...detail };
+    this.detailSortOverride = false;
     this.searchQuery = '';
     this.clearSelection({ keepMobileSelectionMode: false });
     if (this.searchInput) this.searchInput.value = '';
@@ -671,7 +694,8 @@ export class LibraryView {
 
   renderAlbumDetail(albumKey) {
     const album = this.manager.getAlbums().find(item => item.key === albumKey);
-    const tracks = this.getTracksForCurrentSort(this.manager.getAlbumTracks(albumKey));
+    const albumTracks = this.manager.getAlbumTracks(albumKey);
+    const tracks = this.detailSortOverride ? this.getTracksForCurrentSort(albumTracks) : albumTracks;
     if (!album) {
       this.detail = null;
       this.renderAlbums();
@@ -1122,6 +1146,14 @@ export class LibraryView {
       this.content.appendChild(menu);
     }
     this.playlistMenu = menu;
+    const closeOnPointerDown = pointerEvent => {
+      if (menu.contains?.(pointerEvent.target)) return;
+      this.closePlaylistMenu();
+    };
+    document.addEventListener?.('pointerdown', closeOnPointerDown);
+    this.playlistMenuCleanup = () => {
+      document.removeEventListener?.('pointerdown', closeOnPointerDown);
+    };
     menu.scrollIntoView?.({ block: 'nearest' });
     menu.querySelector('button:not(:disabled)')?.focus?.();
   }
@@ -1137,12 +1169,15 @@ export class LibraryView {
   }
 
   closePlaylistMenu(options = {}) {
-    const { restoreFocus = true } = options || {};
+    const { restoreFocus = true, flushPendingBreakpointRebuild = true } = options || {};
     const returnFocus = this.playlistMenuReturnFocus;
+    this.playlistMenuCleanup?.();
+    this.playlistMenuCleanup = null;
     removeElement(this.playlistMenu);
     this.playlistMenu = null;
     this.playlistMenuReturnFocus = null;
     if (restoreFocus) getRestorableFocusElement(returnFocus)?.focus?.();
+    if (flushPendingBreakpointRebuild) this.flushPendingBreakpointRebuild();
   }
 
   openContextMenu(event, track, trackIds, index, context = {}) {
@@ -1185,7 +1220,7 @@ export class LibraryView {
     });
     menu.querySelector('[data-action="playlist"]')?.addEventListener('click', async () => {
       const returnFocus = this.contextMenuReturnFocus;
-      this.closeContextMenu({ restoreFocus: false });
+      this.closeContextMenu({ restoreFocus: false, flushPendingBreakpointRebuild: false });
       await this.openAddToPlaylistMenu(returnFocus, selectedIds, { returnFocus });
     });
     menu.querySelector('[data-action="album"]')?.addEventListener('click', () => {
@@ -1202,7 +1237,7 @@ export class LibraryView {
     });
     menu.querySelector('[data-action="properties"]')?.addEventListener('click', () => {
       const returnFocus = this.contextMenuReturnFocus;
-      this.closeContextMenu({ restoreFocus: false });
+      this.closeContextMenu({ restoreFocus: false, flushPendingBreakpointRebuild: false });
       this.showTrackProperties(track, { returnFocus });
     });
     menu.querySelector('[data-action="remove-playlist"]')?.addEventListener('click', async () => {
@@ -1279,6 +1314,7 @@ export class LibraryView {
       if (onKeyDown) document.removeEventListener?.('keydown', onKeyDown);
       removeElement(backdrop);
       restoreDialogFocus?.();
+      this.flushPendingBreakpointRebuild();
     };
     backdrop.addEventListener('click', event => {
       if (event.target === backdrop) close();
@@ -1296,7 +1332,7 @@ export class LibraryView {
   }
 
   closeContextMenu(options = {}) {
-    const { restoreFocus = true } = options || {};
+    const { restoreFocus = true, flushPendingBreakpointRebuild = true } = options || {};
     const returnFocus = this.contextMenuReturnFocus;
     this.contextMenuCleanup?.();
     this.contextMenuCleanup = null;
@@ -1304,6 +1340,7 @@ export class LibraryView {
     this.contextMenu = null;
     this.contextMenuReturnFocus = null;
     if (restoreFocus) returnFocus?.focus?.();
+    if (flushPendingBreakpointRebuild) this.flushPendingBreakpointRebuild();
   }
 
   handleMenuKeyDown(event, close) {
@@ -1320,6 +1357,15 @@ export class LibraryView {
       event.stopPropagation?.();
       if (!items.length) return;
       const step = event.key === 'ArrowDown' ? 1 : -1;
+      const next = items[(index + step + items.length) % items.length] || items[0];
+      next?.focus?.();
+      return;
+    }
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      event.stopPropagation?.();
+      if (!items.length) return;
+      const step = event.shiftKey ? -1 : 1;
       const next = items[(index + step + items.length) % items.length] || items[0];
       next?.focus?.();
       return;
@@ -1736,12 +1782,15 @@ export class LibraryView {
 
   async handleExportPlaylist(playlist, format) {
     try {
-      const fileName = `${sanitizeFileName(playlist.name)}.${format === 'xspf' ? 'xspf' : 'm3u8'}`;
+      const isXspf = format === 'xspf';
+      const dialogTitle = this.t(isXspf ? 'library.action.exportXSPF' : 'library.action.exportM3U8');
+      const filters = [{ name: 'Playlists', extensions: [isXspf ? 'xspf' : 'm3u8'] }];
+      const fileName = `${sanitizeFileName(playlist.name)}.${isXspf ? 'xspf' : 'm3u8'}`;
       if (window.electronAPI?.showSaveDialog && window.electronAPI?.saveFile) {
         const result = await window.electronAPI.showSaveDialog({
-          title: this.t('library.action.exportM3U8'),
+          title: dialogTitle,
           defaultPath: fileName,
-          filters: [{ name: 'Playlists', extensions: ['m3u8', 'xspf'] }]
+          filters
         });
         if (result?.canceled || !result?.filePath) return;
         const text = await this.manager.exportPlaylist(playlist.id, {
@@ -1756,7 +1805,7 @@ export class LibraryView {
         return;
       }
       const text = await this.manager.exportPlaylist(playlist.id, { format });
-      await this.savePlaylistFile(text, fileName);
+      await this.savePlaylistFile(text, fileName, format);
     } catch (error) {
       this.uiManager?.setError?.(error.message || String(error), true);
     }
@@ -1767,12 +1816,15 @@ export class LibraryView {
     return checkbox ? Boolean(checkbox.checked) : true;
   }
 
-  async savePlaylistFile(text, fileName) {
+  async savePlaylistFile(text, fileName, format = 'm3u8') {
+    const isXspf = format === 'xspf';
+    const dialogTitle = this.t(isXspf ? 'library.action.exportXSPF' : 'library.action.exportM3U8');
+    const filters = [{ name: 'Playlists', extensions: [isXspf ? 'xspf' : 'm3u8'] }];
     if (window.electronAPI?.showSaveDialog && window.electronAPI?.saveFile) {
       const result = await window.electronAPI.showSaveDialog({
-        title: this.t('library.action.exportM3U8'),
+        title: dialogTitle,
         defaultPath: fileName,
-        filters: [{ name: 'Playlists', extensions: ['m3u8', 'xspf'] }]
+        filters
       });
       if (result?.canceled || !result?.filePath) return;
       const saveResult = await window.electronAPI.saveFile(result.filePath, text);
@@ -1782,7 +1834,8 @@ export class LibraryView {
       return;
     }
 
-    const blob = new Blob([text], { type: 'audio/x-mpegurl;charset=utf-8' });
+    const mimeType = isXspf ? 'application/xspf+xml;charset=utf-8' : 'audio/x-mpegurl;charset=utf-8';
+    const blob = new Blob([text], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -1826,6 +1879,7 @@ export class LibraryView {
         settled = true;
         removeElement(backdrop);
         restoreDialogFocus?.();
+        this.flushPendingBreakpointRebuild();
         resolve(value == null ? '' : String(value).trim());
       };
       backdrop.addEventListener('click', event => {
@@ -1894,6 +1948,7 @@ export class LibraryView {
         this.sortDirection = this.sort === sort && this.sortDirection === 'asc' ? 'desc' : 'asc';
         this.sort = sort;
         this.saveUIState();
+        if (this.detail?.type === 'album') this.detailSortOverride = true;
         this.render();
       });
     });
@@ -1937,6 +1992,12 @@ export class LibraryView {
     const onResize = () => {
       const nextHeight = this.getTrackRowHeight();
       if (nextHeight !== rowHeight) {
+        // A breakpoint crossed. Rebuilding via render() would tear down an open
+        // menu/dialog and reset scroll, so defer the rebuild while one is open.
+        if (this.playlistMenu || this.contextMenu || this.hasActiveDialog?.()) {
+          this.pendingBreakpointRebuild = true;
+          return;
+        }
         this.render();
         return;
       }

@@ -22,6 +22,14 @@ function arrayBufferBytes(arrayBuffer) {
   return Array.from(new Uint8Array(arrayBuffer));
 }
 
+function decodeWindows1252(bytes) {
+  return new TextDecoder('windows-1252').decode(Uint8Array.from(bytes));
+}
+
+function decodeUtf8AsWindows1252(text) {
+  return decodeWindows1252(new TextEncoder().encode(text));
+}
+
 function createDirectoryLink(targetPath, linkPath) {
   try {
     fs.mkdirSync(path.dirname(linkPath), { recursive: true });
@@ -465,6 +473,220 @@ test('scanLibrary maps music metadata without loading embedded artwork by defaul
   assert.equal(track.artworkSourceKind, null);
   assert.equal(track.artworkBytes, null);
   assert.deepEqual(batchEvent.artworks, []);
+});
+
+test('scanLibrary repairs legacy Japanese mojibake in metadata text', async () => {
+  const root = createTempDir('effetune-library-japanese-mojibake');
+  writeFile(path.join(root, 'mojibake.mp3'), 'metadata');
+  const metadataModule = {
+    async parseFile() {
+      return {
+        common: {
+          title: '\u201A\u00B1\u201A\u00F1\u201A\u00C9\u201A\u00BF\u201A\u00CD',
+          artist: '\u0083A\u0081[\u0083e\u0083B\u0083X\u0083g',
+          album: 'Plain Album'
+        },
+        format: {}
+      };
+    }
+  };
+  const events = [];
+
+  await runWithScanner(metadataModule, scanner => scanner.scanLibrary({
+    roots: [{ folderId: 'f_music', path: root }]
+  }, event => {
+    events.push(event);
+  }));
+
+  const [track] = events.filter(event => event.type === 'batch').flatMap(event => event.tracks);
+  assert.equal(track.title, 'こんにちは');
+  assert.equal(track.artist, 'アーティスト');
+  assert.equal(track.album, 'Plain Album');
+});
+
+test('scanLibrary repairs legacy metadata mojibake for other scripts', async () => {
+  const root = createTempDir('effetune-library-metadata-mojibake');
+  const cases = [
+    {
+      fileName: 'cyrillic.mp3',
+      title: decodeWindows1252([0xd0, 0x9f, 0xd1, 0x80, 0xd0, 0xb8, 0xd0, 0xb2, 0xd0, 0xb5, 0xd1, 0x82]),
+      expected: 'Привет'
+    },
+    {
+      fileName: 'korean.mp3',
+      title: decodeWindows1252([0xbe, 0xc8, 0xb3, 0xe7, 0xc7, 0xcf, 0xbc, 0xbc, 0xbf, 0xe4]),
+      expected: '안녕하세요'
+    },
+    {
+      fileName: 'chinese.mp3',
+      title: decodeWindows1252([0xc4, 0xe3, 0xba, 0xc3, 0xca, 0xc0, 0xbd, 0xe7]),
+      expected: '你好世界'
+    },
+    {
+      fileName: 'greek.mp3',
+      title: decodeWindows1252([0xce, 0x93, 0xce, 0xb5, 0xce, 0xb9, 0xce, 0xac]),
+      expected: 'Γειά'
+    },
+    {
+      fileName: 'arabic.mp3',
+      title: decodeWindows1252([0xd9, 0x85, 0xd8, 0xb1, 0xd8, 0xad, 0xd8, 0xa8, 0xd8, 0xa7]),
+      expected: 'مرحبا'
+    },
+    {
+      fileName: 'hebrew.mp3',
+      title: decodeWindows1252([0xd7, 0xa9, 0xd7, 0x9c, 0xd7, 0x95, 0xd7, 0x9d]),
+      expected: 'שלום'
+    },
+    {
+      fileName: 'utf8-western.mp3',
+      title: decodeWindows1252([0x42, 0x65, 0x79, 0x6f, 0x6e, 0x63, 0xc3, 0xa9]),
+      expected: 'Beyoncé'
+    }
+  ];
+  const byFileName = new Map(cases.map(item => [item.fileName, item]));
+  for (const item of cases) {
+    writeFile(path.join(root, item.fileName), 'metadata');
+  }
+  const metadataModule = {
+    async parseFile(filePath) {
+      const item = byFileName.get(path.basename(filePath));
+      return {
+        common: {
+          title: item.title
+        },
+        format: {}
+      };
+    }
+  };
+  const events = [];
+
+  await runWithScanner(metadataModule, scanner => scanner.scanLibrary({
+    roots: [{ folderId: 'f_music', path: root }],
+    batchSize: cases.length
+  }, event => {
+    events.push(event);
+  }));
+
+  const tracks = events.filter(event => event.type === 'batch').flatMap(event => event.tracks);
+  const byName = new Map(tracks.map(track => [track.fileName, track]));
+  for (const item of cases) {
+    assert.equal(byName.get(item.fileName).title, item.expected);
+  }
+});
+
+test('scanLibrary preserves clean accented Latin metadata with single-byte language hints', async () => {
+  const cases = [
+    {
+      name: 'french-cyrillic-hint',
+      title: 'Éçàùîô',
+      languageHints: { language: 'ru' }
+    },
+    {
+      name: 'cafe-cyrillic-hint',
+      title: 'Café',
+      languageHints: { language: 'ru' }
+    },
+    {
+      name: 'german-greek-hint',
+      title: 'Grüße',
+      languageHints: { language: 'el' }
+    }
+  ];
+
+  for (const item of cases) {
+    const root = createTempDir(`effetune-library-clean-accented-latin-${item.name}`);
+    writeFile(path.join(root, 'track.mp3'), 'metadata');
+    const events = [];
+
+    await runWithScanner({
+      async parseFile() {
+        return {
+          common: { title: item.title },
+          format: {}
+        };
+      }
+    }, scanner => scanner.scanLibrary({
+      roots: [{ folderId: 'f_music', path: root }],
+      languageHints: item.languageHints
+    }, event => {
+      events.push(event);
+    }));
+
+    const [track] = events.filter(event => event.type === 'batch').flatMap(event => event.tracks);
+    assert.equal(track.title, item.title);
+  }
+});
+
+test('scanLibrary preserves ambiguous legacy metadata code pages without corruption markers', async () => {
+  const legacyRussian = decodeWindows1252([0xcf, 0xf0, 0xe8, 0xe2, 0xe5, 0xf2]);
+  const preservedRoot = createTempDir('effetune-library-hinted-mojibake-preserved');
+  writeFile(path.join(preservedRoot, 'russian.mp3'), 'metadata');
+  const preservedEvents = [];
+
+  await runWithScanner({
+    async parseFile() {
+      return {
+        common: { title: legacyRussian },
+        format: {}
+      };
+    }
+  }, scanner => scanner.scanLibrary({
+    roots: [{ folderId: 'f_music', path: preservedRoot }]
+  }, event => {
+    preservedEvents.push(event);
+  }));
+
+  const [preservedTrack] = preservedEvents.filter(event => event.type === 'batch').flatMap(event => event.tracks);
+  assert.equal(preservedTrack.title, legacyRussian);
+
+  const cases = [
+    {
+      name: 'russian',
+      title: legacyRussian,
+      languageHints: { language: 'ru' },
+      expected: legacyRussian
+    },
+    {
+      name: 'greek',
+      title: decodeWindows1252([0xc3, 0xe5, 0xe9, 0xdc]),
+      languageHints: { language: 'en', browserLanguage: 'el-GR' },
+      expected: decodeWindows1252([0xc3, 0xe5, 0xe9, 0xdc])
+    },
+    {
+      name: 'arabic',
+      title: decodeWindows1252([0xe3, 0xd1, 0xcd, 0xc8, 0xc7]),
+      languageHints: { language: 'ar' },
+      expected: decodeWindows1252([0xe3, 0xd1, 0xcd, 0xc8, 0xc7])
+    },
+    {
+      name: 'hindi',
+      title: decodeUtf8AsWindows1252('नमस्ते'),
+      languageHints: { language: 'en', browserLanguage: 'hi-IN' },
+      expected: 'नमस्ते'
+    }
+  ];
+
+  for (const item of cases) {
+    const root = createTempDir(`effetune-library-hinted-mojibake-${item.name}`);
+    writeFile(path.join(root, 'track.mp3'), 'metadata');
+    const events = [];
+    await runWithScanner({
+      async parseFile() {
+        return {
+          common: { title: item.title },
+          format: {}
+        };
+      }
+    }, scanner => scanner.scanLibrary({
+      roots: [{ folderId: 'f_music', path: root }],
+      languageHints: item.languageHints
+    }, event => {
+      events.push(event);
+    }));
+
+    const [track] = events.filter(event => event.type === 'batch').flatMap(event => event.tracks);
+    assert.equal(track.title, item.expected);
+  }
 });
 
 test('scanLibrary flushes embedded artwork while parsing and clamps oversized batch artwork limits', async () => {
@@ -1774,6 +1996,13 @@ test('library-scan-start forwards only allowlisted scan request payload', async 
       }
     ],
     batchSize: 25,
+    languageHints: {
+      language: 'ru',
+      languagePreference: 'auto',
+      browserLanguage: 'el-GR',
+      browserLanguages: ['ru-RU', 42, '', 'x'.repeat(65), 'ja-JP'],
+      payload: { shouldNotForward: true }
+    },
     unknownLargeProperty: 'x'.repeat(4096)
   });
 
@@ -1781,6 +2010,7 @@ test('library-scan-start forwards only allowlisted scan request payload', async 
   assert.deepEqual(Object.keys(forwardedRequest).sort(), [
     'batchSize',
     'knownFiles',
+    'languageHints',
     'roots',
     'scanId'
   ]);
@@ -1797,6 +2027,12 @@ test('library-scan-start forwards only allowlisted scan request payload', async 
     trackId: 'track_ok',
     artworkId: 'art_ok'
   }]);
+  assert.deepEqual(forwardedRequest.languageHints, {
+    language: 'ru',
+    languagePreference: 'auto',
+    browserLanguage: 'el-GR',
+    browserLanguages: ['ru-RU', 'ja-JP']
+  });
 });
 
 test('library-scan-start emits nonfatal errors for blocked roots and scans allowed roots', async () => {

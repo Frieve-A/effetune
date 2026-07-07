@@ -1,4 +1,4 @@
-self.EFFECTUNE_CACHE_VERSION = "effetune-v1.67.0-406a159f56375fb8";
+self.EFFECTUNE_CACHE_VERSION = "effetune-v2.0.0-c1cf81dbcffa9d6c";
 self.EFFECTUNE_PRECACHE_URLS = [
   "./effetune-library.css",
   "./effetune-mobile.css",
@@ -38,6 +38,7 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/library/metadata/artwork-processor.js",
   "./js/library/metadata/metadata-mapper.js",
   "./js/library/metadata/metadata-worker.js",
+  "./js/library/metadata/text-encoding.js",
   "./js/library/playback-bridge.js",
   "./js/library/playlists/path-resolver.js",
   "./js/library/playlists/playlist-formats.js",

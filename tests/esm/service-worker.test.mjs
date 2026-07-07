@@ -19,15 +19,25 @@ function createResponse(name, ok = true) {
   };
 }
 
+class StubRequest {
+  constructor(url, init = {}) {
+    this.url = url;
+    this.cache = init.cache;
+  }
+}
+
 function loadServiceWorker(options = {}) {
   const source = fs.readFileSync(new URL('../../sw.js', import.meta.url), 'utf8');
   const listeners = new Map();
+  const addAllCalls = [];
   const putCalls = [];
   const matchCalls = [];
   const fetchCalls = [];
 
   const cache = {
-    async addAll() {},
+    async addAll(requests) {
+      addAllCalls.push(requests);
+    },
     async put(request, response) {
       putCalls.push([request, response]);
     }
@@ -53,7 +63,7 @@ function loadServiceWorker(options = {}) {
       origin: 'https://example.test'
     },
     EFFECTUNE_CACHE_VERSION: 'test-cache',
-    EFFECTUNE_PRECACHE_URLS: [],
+    EFFECTUNE_PRECACHE_URLS: options.precacheUrls ?? [],
     addEventListener(type, listener) {
       listeners.set(type, listener);
     },
@@ -66,6 +76,7 @@ function loadServiceWorker(options = {}) {
     self: selfRef,
     caches,
     URL,
+    Request: StubRequest,
     importScripts() {},
     fetch: async request => {
       fetchCalls.push(request);
@@ -74,7 +85,7 @@ function loadServiceWorker(options = {}) {
     }
   };
   vm.runInNewContext(source, context);
-  return { fetchCalls, listeners, matchCalls, putCalls };
+  return { addAllCalls, fetchCalls, listeners, matchCalls, putCalls };
 }
 
 function loadPrecacheUrls() {
@@ -173,6 +184,26 @@ test('precache cache version changes when precached asset content changes', t =>
   assert.match(second.cacheVersion, /^effetune-v9\.9\.9-[a-f0-9]{16}$/);
   assert.notEqual(second.cacheVersion, first.cacheVersion);
   assert.notEqual(second.body, first.body);
+});
+
+test('service worker precaches with HTTP-cache-bypassing reload requests', async () => {
+  const worker = loadServiceWorker({ precacheUrls: ['./a.js', './b.css'] });
+  let waited = null;
+
+  worker.listeners.get('install')({
+    waitUntil(promise) {
+      waited = promise;
+    }
+  });
+
+  await waited;
+
+  assert.equal(worker.addAllCalls.length, 1);
+  const requests = worker.addAllCalls[0];
+  assert.deepEqual(requests.map(request => request.url), ['./a.js', './b.css']);
+  for (const request of requests) {
+    assert.equal(request.cache, 'reload');
+  }
 });
 
 test('service worker stores only effetune.html navigations as the app shell', async () => {

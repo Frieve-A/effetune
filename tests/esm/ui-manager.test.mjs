@@ -431,6 +431,8 @@ async function withUIHarness(options = {}, callback) {
     navigator: {
       language: options.language ?? 'en-US',
       userAgent: options.userAgent ?? 'Mozilla/5.0',
+      platform: options.platform ?? '',
+      maxTouchPoints: options.maxTouchPoints ?? 0,
       clipboard: {
         async writeText(text) {
           if (options.clipboardWriteError) throw options.clipboardWriteError;
@@ -784,6 +786,7 @@ test('shares URLs, opens music, manages presets, and creates audio players', asy
       activeCalls = calls;
       await manager.openMusicButton.click();
       const fileInput = [...document.allElements].find(element => element.type === 'file');
+      assert.equal(fileInput.accept, 'audio/*');
       fileInput.files = [{ name: 'song.wav' }];
       await fileInput.dispatch('change', { target: fileInput });
       const loadFilesCall = calls.find(call => call[0] === 'AudioPlayer.loadFiles');
@@ -791,6 +794,16 @@ test('shares URLs, opens music, manages presets, and creates audio players', asy
       assert.equal(objectUrls.length, 0);
       assert.equal(calls.some(call => call[0] === 'window.addEventListener' && call[1] === 'unload'), false);
       assert.ok(manager.audioPlayer);
+    });
+
+    await withUIHarness({
+      isElectron: false,
+      userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)'
+    }, async ({ document, manager }) => {
+      await manager.openMusicButton.click();
+      const fileInput = [...document.allElements].find(element => element.type === 'file');
+      assert.equal(fileInput.accept, '');
+      assert.equal(fileInput.multiple, true);
     });
   } finally {
     activeCalls = null;

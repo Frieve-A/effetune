@@ -1,13 +1,20 @@
 :root {
-  --library-bg: #080808;
-  --library-panel: #101010;
-  --library-panel-strong: #171717;
-  --library-row-hover: #1f1f1f;
-  --library-border: #303030;
-  --library-muted: #9a9a9a;
-  --library-text: #f2f2f2;
-  --library-accent: #4a9eff;
+  --library-bg: var(--et-panel-gradient, linear-gradient(145deg, #303030, #282828));
+  --library-panel: var(--et-panel-gradient, linear-gradient(145deg, #303030, #282828));
+  --library-panel-strong: var(--et-card-gradient, linear-gradient(180deg, #424242, #383838));
+  --library-row-hover: var(--et-card-hover-gradient, linear-gradient(180deg, #4a4a4a, #3f3f3f));
+  --library-input: var(--et-input-gradient, linear-gradient(180deg, #404040, #373737));
+  --library-table: linear-gradient(180deg, #343434, #2c2c2c);
+  --library-border: var(--et-border-strong, rgba(255, 255, 255, 0.14));
+  --library-row-border: rgba(255, 255, 255, 0.07);
+  --library-muted: var(--et-text-muted, #90959c);
+  --library-text: var(--et-text-primary, #f6f8fb);
+  --library-accent: var(--et-accent, #4a9eff);
   --library-warning: #d6a23a;
+  --library-shadow: var(--et-panel-shadow, 0 14px 36px rgba(0, 0, 0, 0.32));
+  --library-card-shadow: var(--et-card-shadow, 0 6px 18px rgba(0, 0, 0, 0.22));
+  --library-control-shadow: var(--et-control-shadow, 0 2px 7px rgba(0, 0, 0, 0.2));
+  --library-focus-ring: var(--et-focus-ring, 0 0 0 2px rgba(74, 158, 255, 0.18));
 }
 
 body.view-library:not(.layout-mobile) .main-container {
@@ -19,6 +26,10 @@ body.view-library:not(.layout-mobile) .main-container {
   transition: none;
 }
 
+body.view-library:not(.layout-mobile) .sidebar-button {
+  display: none;
+}
+
 body.layout-mobile.view-library .main-container,
 body.view-library.layout-mobile .main-container {
   display: none;
@@ -28,9 +39,13 @@ body.view-library.layout-mobile .main-container {
   display: none;
   width: 100%;
   height: calc(100vh - 180px);
+  box-sizing: border-box;
   background: var(--library-bg);
   color: var(--library-text);
-  border-top: 1px solid var(--library-border);
+  border: 1px solid var(--library-border);
+  border-radius: 4px;
+  box-shadow: var(--library-shadow);
+  overflow: hidden;
 }
 
 body.view-library .library-view {
@@ -40,7 +55,7 @@ body.view-library .library-view {
 }
 
 .library-nav {
-  background: #050505;
+  background: var(--library-panel);
   border-right: 1px solid var(--library-border);
   padding: 12px 8px;
   overflow-y: auto;
@@ -102,9 +117,11 @@ body.view-library .library-view {
   height: 34px;
   padding: 0 12px;
   color: var(--library-text);
-  background: #050505;
-  border: 1px solid var(--library-border);
+  caret-color: var(--library-accent);
+  background: var(--library-input);
+  border: 1px solid #565656;
   border-radius: 6px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.035);
 }
 
 .library-search:focus-visible,
@@ -118,8 +135,8 @@ body.view-library .library-view {
 .library-card-play:focus-visible,
 .library-simple-row:focus-visible,
 .library-folder-main:focus-visible {
-  outline: 2px solid var(--library-accent);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--library-focus-ring);
 }
 
 .library-header-actions,
@@ -143,6 +160,7 @@ body.view-library .library-view {
   background: var(--library-panel-strong);
   border: 1px solid var(--library-border);
   border-radius: 6px;
+  box-shadow: var(--library-control-shadow);
   cursor: pointer;
 }
 
@@ -156,6 +174,7 @@ body.view-library .library-view {
 
 .library-icon-button,
 .library-row-play {
+  box-sizing: content-box;
   display: inline-grid;
   place-items: center;
   width: 30px;
@@ -167,7 +186,7 @@ body.view-library .library-view {
 .library-icon-button:hover,
 .library-row-play:hover,
 .library-link:hover {
-  background: #242424;
+  background: var(--library-row-hover);
 }
 
 .library-content {
@@ -178,6 +197,7 @@ body.view-library .library-view {
 }
 
 .library-section-head {
+  height: 32px;
   justify-content: space-between;
   margin-bottom: 12px;
 }
@@ -229,7 +249,8 @@ body.view-library .library-view {
   border: 1px solid var(--library-border);
   border-radius: 8px;
   overflow: hidden;
-  background: #070707;
+  background: var(--library-table);
+  box-shadow: var(--library-card-shadow);
 }
 
 .library-track-header,
@@ -304,7 +325,7 @@ body.view-library .library-view {
 }
 
 .library-track-row {
-  border-top: 1px solid #202020;
+  border-top: 1px solid var(--library-row-border);
 }
 
 .library-track-row:hover {
@@ -313,6 +334,7 @@ body.view-library .library-view {
 
 .library-track-row.selected {
   background: rgba(74, 158, 255, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(74, 158, 255, 0.28);
 }
 
 .library-track-row.focused {
@@ -431,9 +453,10 @@ body.view-library .library-view {
   margin-bottom: 8px;
   display: grid;
   place-items: center;
-  background: linear-gradient(135deg, #202020, #111);
+  background: linear-gradient(135deg, #3a3a3a, #292929);
   border: 1px solid var(--library-border);
   border-radius: 8px;
+  box-shadow: var(--library-card-shadow);
 }
 
 .library-artwork span,
@@ -442,7 +465,12 @@ body.view-library .library-view {
   aspect-ratio: 1;
   border: 2px solid #565656;
   border-radius: 50%;
-  box-shadow: inset 0 0 0 12px #151515;
+  box-shadow: inset 0 0 0 12px #282828;
+}
+
+body.view-library:not(.layout-mobile) .library-empty-icon {
+  width: 96px;
+  max-width: 42%;
 }
 
 .library-artwork-image {
@@ -519,6 +547,7 @@ body.view-library .library-view {
   background: var(--library-panel);
   border: 1px solid var(--library-border);
   border-radius: 8px;
+  box-shadow: var(--library-card-shadow);
 }
 
 .library-simple-row {
@@ -555,8 +584,8 @@ body.view-library .library-view {
 .library-badge {
   flex: 0 0 auto;
   padding: 3px 7px;
-  color: #dcdcdc;
-  background: #242424;
+  color: var(--library-text);
+  background: var(--library-panel-strong);
   border-radius: 999px;
   font-size: 12px;
 }
@@ -592,6 +621,7 @@ body.view-library .library-view {
   background: var(--library-panel);
   border: 1px solid var(--library-border);
   border-radius: 8px;
+  box-shadow: var(--library-card-shadow);
 }
 
 .library-playlist-menu-item {
@@ -626,7 +656,7 @@ body.view-library .library-view {
   background: var(--library-panel);
   border: 1px solid var(--library-border);
   border-radius: 8px;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.44), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .library-context-menu button {
@@ -644,7 +674,7 @@ body.view-library .library-view {
 }
 
 .library-context-menu button:hover {
-  background: var(--library-panel-strong);
+  background: var(--library-row-hover);
 }
 
 .library-context-menu button:disabled {
@@ -681,7 +711,7 @@ body.view-library .library-view {
   background: var(--library-panel);
   border: 1px solid var(--library-border);
   border-radius: 8px;
-  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.52);
+  box-shadow: 0 22px 54px rgba(0, 0, 0, 0.50), inset 0 1px 0 rgba(255, 255, 255, 0.065);
 }
 
 .library-properties-head {
@@ -710,7 +740,7 @@ body.view-library .library-view {
   grid-template-columns: 120px minmax(0, 1fr);
   gap: 14px;
   padding: 8px 0;
-  border-bottom: 1px solid #242424;
+  border-bottom: 1px solid var(--library-row-border);
 }
 
 .library-properties-list div:last-child {
@@ -732,7 +762,8 @@ body.view-library .library-view {
   border: 1px solid var(--library-border);
   border-radius: 8px;
   overflow: hidden;
-  background: #070707;
+  background: var(--library-table);
+  box-shadow: var(--library-card-shadow);
 }
 
 .library-playlist-row {
@@ -742,7 +773,7 @@ body.view-library .library-view {
   min-height: 40px;
   gap: 8px;
   padding: 0 10px;
-  border-top: 1px solid #202020;
+  border-top: 1px solid var(--library-row-border);
 }
 
 .library-playlist-row:first-child {
@@ -791,7 +822,7 @@ body.view-library .library-view {
   min-width: 0;
   padding: 0 14px;
   color: var(--library-muted);
-  background: #050505;
+  background: var(--library-panel);
   border-top: 1px solid var(--library-border);
   font-size: 12px;
 }
@@ -815,7 +846,7 @@ body.view-library .library-view {
 }
 
 .library-status-button:hover {
-  background: #242424;
+  background: var(--library-row-hover);
 }
 
 body.layout-mobile.view-library .library-view,

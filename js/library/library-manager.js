@@ -24,7 +24,8 @@ export class LibraryManager {
       index: this.index,
       source,
       artworkProcessor: this.artwork,
-      emit: (event, payload) => this.handleScanEvent(event, payload)
+      emit: (event, payload) => this.handleScanEvent(event, payload),
+      getLanguageHints: () => this.getLanguageHints()
     });
     this.playbackBridge = new PlaybackBridge({
       index: this.index,
@@ -176,12 +177,16 @@ export class LibraryManager {
     }
     const removedIds = [];
     for (const child of containment.replace) {
-      this.invalidateFolderScans(child.id);
+      const canceledScans = this.invalidateFolderScans(child.id);
+      await Promise.allSettled(canceledScans);
       removedIds.push(...await this.database.deleteFolder(child.id));
       await this.releaseSourceFolder(child.id);
     }
+    if (containment.replace.length) {
+      await this.database.recalculateArtworkRefCounts();
+    }
     await this.database.putFolder(folder);
-    this.folders = await this.database.getAllFolders();
+    this.folders = this.mergeRuntimeFolderState(await this.database.getAllFolders());
     if (runtimeFiles) {
       this.folders = this.folders.map(item => item.id === folder.id ? { ...item, files: runtimeFiles } : item);
     }
@@ -241,19 +246,32 @@ export class LibraryManager {
     );
   }
 
+  getLanguageHints() {
+    const nav = globalThis.navigator || {};
+    const browserLanguages = Array.isArray(nav.languages) ? nav.languages.slice(0, 8) : [];
+    return {
+      language: this.uiManager?.userLanguage || '',
+      languagePreference: this.uiManager?.languagePreference || '',
+      browserLanguage: nav.language || '',
+      browserLanguages
+    };
+  }
+
   invalidateFolderScans(folderId) {
     const controller = this.scanController;
     const generations = controller?.folderScanGenerations;
-    if (!generations) return;
+    if (!generations) return [];
     generations.set(folderId, (generations.get(folderId) || 0) + 1);
-    controller.cancelScanByFolderId?.(folderId);
+    return controller.cancelOverlappingScansByFolderIds?.([folderId]) || [];
   }
 
   async removeFolder(folderId) {
-    this.invalidateFolderScans(folderId);
+    const canceledScans = this.invalidateFolderScans(folderId);
+    await Promise.allSettled(canceledScans);
     const removedIds = await this.database.deleteFolder(folderId);
+    await this.database.recalculateArtworkRefCounts();
     await this.releaseSourceFolder(folderId);
-    this.folders = await this.database.getAllFolders();
+    this.folders = this.mergeRuntimeFolderState(await this.database.getAllFolders());
     this.index.applyChanges({ removedIds, folders: this.folders });
     this.emit('folders-changed', { folders: this.folders });
     await this.syncFolderMirror();
@@ -298,9 +316,13 @@ export class LibraryManager {
     }
     const removedIds = [];
     for (const child of containment.replace) {
-      this.invalidateFolderScans(child.id);
+      const canceledScans = this.invalidateFolderScans(child.id);
+      await Promise.allSettled(canceledScans);
       removedIds.push(...await this.database.deleteFolder(child.id));
       await this.releaseSourceFolder(child.id);
+    }
+    if (containment.replace.length) {
+      await this.database.recalculateArtworkRefCounts();
     }
     const updates = {
       displayName: candidate.displayName,
@@ -309,7 +331,7 @@ export class LibraryManager {
       status
     };
     const updated = await this.database.updateFolder(folder.id, updates) || { ...folder, ...updates };
-    this.folders = (await this.database.getAllFolders()).map(item => item.id === folderId ? {
+    this.folders = this.mergeRuntimeFolderState(await this.database.getAllFolders()).map(item => item.id === folderId ? {
       ...updated,
       ...(candidate.handle ? { handle: candidate.handle } : {}),
       ...(candidate.files ? { files: candidate.files } : {})
