@@ -118,9 +118,9 @@ function createMenuTemplate() {
     enabled: index % 2 === 0
   }));
   return {
-    file: { label: 'File X', submenu: items(12, 'file') },
+    file: { label: 'File X', submenu: items(14, 'file') },
     edit: { label: 'Edit X', submenu: items(9, 'edit') },
-    view: { label: 'View X', submenu: items(7, 'view') },
+    view: { label: 'View X', submenu: items(9, 'view') },
     settings: { label: 'Settings X', submenu: items(4, 'settings') },
     help: { label: 'Help X', submenu: items(5, 'help') }
   };
@@ -450,6 +450,58 @@ test('registers core handlers and delegates file, config, update, path, and URL 
     assert.deepEqual(await handlers.get('open-external-url')({}, 'https://example.test/page'), { success: true });
     assert.equal(electron.shell.openExternal instanceof Function, true);
     assert.equal(calls.some(call => call[0] === 'app.setLoginItemSettings'), true);
+  });
+});
+
+test('save-file refuses to write the library folder mirror', async () => {
+  await withHarness({}, async ({ calls, ipcMain, moduleUnderTest, tempDir }) => {
+    moduleUnderTest.registerIpcHandlers();
+    const mirrorPath = path.join(tempDir, 'subdir', '..', 'library-folders.json');
+
+    const result = await ipcMain.handlers.get('save-file')({}, mirrorPath, '{}');
+
+    assert.equal(result.success, false);
+    assert.match(result.error, /library-folders\.json/);
+    assert.equal(calls.some(call =>
+      call[0] === 'fileHandlers.saveFile' &&
+      path.resolve(call[1]) === path.resolve(mirrorPath)
+    ), false);
+  });
+});
+
+test('save-file blocks settings-dir writes and Windows alias bypasses of the mirror guard', async () => {
+  await withHarness({}, async ({ calls, ipcMain, moduleUnderTest, tempDir }) => {
+    moduleUnderTest.registerIpcHandlers();
+    const saveFileWasCalledFor = filePath => calls.some(call =>
+      call[0] === 'fileHandlers.saveFile' &&
+      call[1] === filePath
+    );
+    const deniedPaths = [
+      path.join(tempDir, 'library-folders.json'),
+      path.join(tempDir, 'library-folders.json') + '::$DATA',
+      path.join(tempDir, 'library-folders.json.'),
+      path.join(tempDir, 'LIBRAR~1.JSO'),
+      path.join(tempDir, 'evil.txt'),
+      path.join(tempDir, 'sub', 'library-folders.json')
+    ];
+
+    for (const deniedPath of deniedPaths) {
+      const result = await ipcMain.handlers.get('save-file')({}, deniedPath, '{}');
+      assert.equal(result.success, false);
+      assert.match(result.error, /library-folders\.json/);
+      assert.equal(saveFileWasCalledFor(deniedPath), false);
+    }
+
+    const presetsPath = path.join(tempDir, 'effetune_presets.json');
+    const playerStatePath = path.join(tempDir, 'player-state.json');
+    const outsidePath = path.join(path.dirname(tempDir), `effetune-outside-${path.basename(tempDir)}.txt`);
+
+    assert.deepEqual(await ipcMain.handlers.get('save-file')({}, presetsPath, '{}'), { success: true });
+    assert.deepEqual(await ipcMain.handlers.get('save-file')({}, playerStatePath, '{}'), { success: true });
+    assert.deepEqual(await ipcMain.handlers.get('save-file')({}, outsidePath, 'outside'), { success: true });
+    assert.equal(saveFileWasCalledFor(presetsPath), true);
+    assert.equal(saveFileWasCalledFor(playerStatePath), true);
+    assert.equal(saveFileWasCalledFor(outsidePath), true);
   });
 });
 

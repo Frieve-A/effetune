@@ -155,8 +155,13 @@ test('updateApplicationMenu sends enabled menu labels and updates the tray', asy
   assert.equal(appMenu.file.label, 'label:menu.file');
   assert.equal(appMenu.file.submenu[0].enabled, true);
   assert.equal(appMenu.file.submenu[3].enabled, true);
+  assert.equal(appMenu.file.submenu[4].label, 'label:menu.file.addMusicFolder');
+  assert.equal(appMenu.file.submenu[4].enabled, true);
+  assert.equal(appMenu.file.submenu[5].label, 'label:menu.file.rescanLibrary');
+  assert.equal(appMenu.file.submenu[5].enabled, true);
   assert.equal(appMenu.file.submenu[9].enabled, true);
   assert.equal(appMenu.edit.submenu[0].enabled, true);
+  assert.equal(appMenu.view.submenu[6].label, 'label:menu.view.musicLibrary');
   assert.equal(appMenu.help.submenu[1].label, 'Discord');
   assert.equal(harness.calls[2][0], 'updateTrayMenu');
 });
@@ -176,9 +181,11 @@ test('updateApplicationMenu disables gated items while double blind test is acti
   const appMenu = harness.calls[0][1];
   assert.equal(appMenu.file.submenu[0].enabled, false);
   assert.equal(appMenu.file.submenu[3].enabled, true);
-  assert.equal(appMenu.file.submenu[4].enabled, false);
+  assert.equal(appMenu.file.submenu[4].enabled, true);
+  assert.equal(appMenu.file.submenu[5].enabled, true);
+  assert.equal(appMenu.file.submenu[6].enabled, false);
   assert.equal(appMenu.file.submenu[9].enabled, false);
-  assert.equal(appMenu.file.submenu[11].enabled, true);
+  assert.equal(appMenu.file.submenu[11].enabled, false);
   assert.equal(appMenu.edit.submenu[0].enabled, false);
   assert.equal(appMenu.edit.submenu[8].enabled, false);
 });

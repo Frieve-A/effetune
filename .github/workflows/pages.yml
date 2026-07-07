@@ -28,8 +28,11 @@ jobs:
         with:
           node-version: 22
 
-      - name: Generate service worker precache
-        run: node scripts/generate-sw-precache.js
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate web assets
+        run: npm run assets:web
 
       - name: Setup Pages
         uses: actions/configure-pages@v6

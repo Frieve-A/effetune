@@ -6,16 +6,18 @@
   "scripts": {
     "dev": "node scripts/dev-server.mjs",
     "start": "electron .",
-    "preverify": "node scripts/generate-sw-precache.js",
-    "prebuild": "node scripts/generate-sw-precache.js",
-    "prebuild:portable": "node scripts/generate-sw-precache.js",
-    "prebuild:installer": "node scripts/generate-sw-precache.js",
-    "prebuild:mac": "node scripts/generate-sw-precache.js",
-    "prebuild:mac:arm64": "node scripts/generate-sw-precache.js",
-    "prebuild:mac:x64": "node scripts/generate-sw-precache.js",
-    "prebuild:linux": "node scripts/generate-sw-precache.js",
-    "prepack": "node scripts/generate-sw-precache.js",
-    "predist": "node scripts/generate-sw-precache.js",
+    "build:vendor": "node scripts/build-music-metadata-vendor.mjs",
+    "assets:web": "npm run build:vendor && node scripts/generate-sw-precache.js",
+    "preverify": "npm run assets:web",
+    "prebuild": "npm run assets:web",
+    "prebuild:portable": "npm run assets:web",
+    "prebuild:installer": "npm run assets:web",
+    "prebuild:mac": "npm run assets:web",
+    "prebuild:mac:arm64": "npm run assets:web",
+    "prebuild:mac:x64": "npm run assets:web",
+    "prebuild:linux": "npm run assets:web",
+    "prepack": "npm run assets:web",
+    "predist": "npm run assets:web",
     "lint": "eslint electron js plugins features scripts tools tests --max-warnings=0",
     "test": "node tools/run-tests.mjs",
     "verify": "npm run lint && npm test",
@@ -37,6 +39,7 @@
     "cross-env": "^10.1.0",
     "electron": "^42.3.0",
     "electron-builder": "^26.8.1",
+    "esbuild": "^0.28.1",
     "eslint": "^9.39.4",
     "eslint-plugin-electron": "^7.0.0",
     "eslint-plugin-import": "^2.32.0",
@@ -65,6 +68,7 @@
       "effetune.html",
       "effetune.css",
       "effetune-mobile.css",
+      "effetune-library.css",
       "sw.js",
       "sw-precache.js",
       "manifest.json",
@@ -204,5 +208,8 @@
     "electronDownload": {
       "strictSSL": false
     }
+  },
+  "dependencies": {
+    "music-metadata": "^11.13.0"
   }
 }

@@ -21,6 +21,7 @@ class FakeElement {
     this._innerHTML = '';
     this.offsetHeight = 20;
     this.id = '';
+    this.attributes = new Map();
   }
 
   set innerHTML(value) {
@@ -84,6 +85,11 @@ class FakeElement {
     }
     this.calls.push(['removeChild', child.className]);
     return child;
+  }
+
+  setAttribute(name, value) {
+    this.attributes.set(name, String(value));
+    this[name] = String(value);
   }
 
   addEventListener(type, listener) {
@@ -766,6 +772,121 @@ test('playlist display syncs active track and mobile tap starts playback', async
     await Promise.all(ui.playlistDisplay.children[0].dispatchEvent('click'));
     assert.ok(calls.some(call => call[0] === 'loadTrack' && call[1] === 0));
     assert.ok(calls.some(call => call[0] === 'play'));
+  });
+});
+
+test('library queue helpers notify now playing and save library queues as playlists', async () => {
+  const playlistCreates = [];
+  const nowPlaying = [];
+  const queueAdds = [];
+  await withAudioPlayerGlobals({
+    windowOptions: {
+      uiManager: {
+        libraryView: {
+          setNowPlayingTrack(trackId) {
+            nowPlaying.push(trackId);
+          }
+        },
+        async ensureLibraryManager() {
+          return {
+            playlists: {
+              async create(name, trackIds) {
+                playlistCreates.push([name, trackIds]);
+              },
+              async list() {
+                return [];
+              }
+            },
+            async addToQueue(trackIds) {
+              queueAdds.push(trackIds);
+            },
+            findTrackForPlaybackEntry(track) {
+              return track?.path === 'D:/Music/one.flac' ? { id: 'track-one' } : null;
+            },
+            createPlaylistItemsFromQueueEntries(entries) {
+              return entries.map(track => (
+                track.libraryTrackId
+                  ? { trackId: track.libraryTrackId }
+                  : { trackId: null, unresolved: { sourceLine: track.path || track.name, title: track.name } }
+              ));
+            }
+          };
+        }
+      }
+    }
+  }, async ({ calls, documentRef }) => {
+    const player = createAudioPlayer(calls, {
+      state: {
+        playlist: [
+          { path: 'D:/Music/one.flac', meta: { title: 'One' } },
+          { libraryTrackId: 'track-two', meta: { title: 'Two' } },
+          { name: 'Loose file' }
+        ],
+        currentTrackIndex: 1,
+        currentTrack: { libraryTrackId: 'track-two', meta: { title: 'Two' } }
+      }
+    });
+    const ui = new AudioPlayerUI(player);
+    ui.createPlayerUI();
+
+    ui.notifyLibraryNowPlaying();
+    assert.deepEqual(nowPlaying, ['track-two']);
+
+    await ui.openLibraryTrackMenu({
+      preventDefault() {
+        calls.push(['preventDefault']);
+      },
+      clientX: 20,
+      clientY: 30
+    }, player.stateManager.state.playlist[0]);
+    assert.ok(documentRef.body.children.some(child => child.className === 'player-library-context-menu'));
+    assert.ok(calls.some(call => call[0] === 'preventDefault'));
+
+    const savePromise = ui.saveQueueAsPlaylist();
+    await new Promise(resolve => setImmediate(resolve));
+    const promptBackdrop = documentRef.body.children.find(child => child.classList().includes('player-prompt-backdrop'));
+    assert.ok(promptBackdrop, 'expected in-app prompt dialog instead of window.prompt');
+    const promptInput = promptBackdrop.querySelector('.player-prompt-input');
+    assert.equal(promptInput.value, 'T:library.prompt.queuePlaylistName');
+    promptInput.value = 'Saved Queue';
+    promptBackdrop.querySelector('.player-prompt-dialog').dispatchEvent('submit');
+    await savePromise;
+    assert.equal(documentRef.body.children.includes(promptBackdrop), false);
+    assert.deepEqual(playlistCreates, [['Saved Queue', [
+      { trackId: null, unresolved: { sourceLine: 'D:/Music/one.flac', title: undefined } },
+      { trackId: 'track-two' },
+      { trackId: null, unresolved: { sourceLine: 'Loose file', title: 'Loose file' } }
+    ]]]);
+
+    let dragPrevented = 0;
+    const dragOver = {
+      dataTransfer: {
+        types: ['application/x-effetune-library-tracks'],
+        dropEffect: ''
+      },
+      preventDefault() {
+        dragPrevented++;
+      }
+    };
+    ui.container.dispatchEvent('dragover', dragOver);
+    assert.equal(dragPrevented, 1);
+    assert.equal(dragOver.dataTransfer.dropEffect, 'copy');
+
+    let dropPrevented = 0;
+    const drop = {
+      dataTransfer: {
+        types: ['application/x-effetune-library-tracks'],
+        getData() {
+          return JSON.stringify(['track-one', 'track-two']);
+        }
+      },
+      preventDefault() {
+        dropPrevented++;
+      }
+    };
+    await Promise.all(ui.container.dispatchEvent('drop', drop));
+    assert.equal(dropPrevented, 1);
+    assert.deepEqual(queueAdds, [['track-one', 'track-two']]);
   });
 });
 

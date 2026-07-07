@@ -27,8 +27,8 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      - name: Generate service worker precache
-        run: node scripts/generate-sw-precache.js
+      - name: Generate web assets
+        run: npm run assets:web
 
       - name: Build
         run: |

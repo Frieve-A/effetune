@@ -123,8 +123,8 @@ function createAudioPlayer(options = {}) {
       calls.push(['hasCurrentBuffer']);
       return options.hasCurrentBuffer ?? false;
     },
-    async seamlessTransition(track) {
-      calls.push(['seamlessTransition', track?.name]);
+    async seamlessTransition(track, targetIndex) {
+      calls.push(['seamlessTransition', track?.name, targetIndex]);
       if (options.seamlessReject) throw new Error('seamless failed');
     },
     async play() {
@@ -136,12 +136,12 @@ function createAudioPlayer(options = {}) {
     async stop() {
       calls.push(['contextStop']);
     },
-    async loadTrack(track) {
-      calls.push(['contextLoadTrack', track?.name]);
+    async loadTrack(track, targetIndex) {
+      calls.push(['contextLoadTrack', track?.name, targetIndex]);
       if (options.loadTrackReject) throw new Error('load failed');
     },
-    async transitionToNextTrack(track) {
-      calls.push(['transitionToNextTrack', track?.name]);
+    async transitionToNextTrack(track, targetIndex) {
+      calls.push(['transitionToNextTrack', track?.name, targetIndex]);
       if (options.transitionReject) throw new Error('transition failed');
     },
     getCurrentState() {
@@ -154,8 +154,13 @@ function createAudioPlayer(options = {}) {
     seek(time) {
       calls.push(['seek', time]);
     },
+    nextBuffer: options.nextBuffer ?? null,
+    prepareNextTrackBufferWithRepeatMode() {
+      calls.push(['prepareNextTrackBufferWithRepeatMode']);
+    },
     clearNextTrackBuffer() {
       calls.push(['clearNextTrackBuffer']);
+      this.nextBuffer = null;
     }
   };
 
@@ -279,6 +284,43 @@ test('loadFiles, getTrack, and basic commands handle unavailable state and deleg
   });
 });
 
+test('loadFiles append and insert invalidate a stale pre-decoded next-track buffer', async () => {
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({ nextBuffer: { duration: 10 }, currentTrackIndex: 0 });
+    const manager = makeManager(audioPlayer);
+    setPlaylist(manager, ['One', 'Two']);
+    manager.loadFiles(['inserted.wav'], true, 1);
+    assert.deepEqual(manager.playlist.map(track => track.name), ['One', 'inserted.wav', 'Two']);
+    assert.ok(audioPlayer.calls.some(call => call[0] === 'clearNextTrackBuffer'));
+    assert.ok(audioPlayer.calls.some(call => call[0] === 'prepareNextTrackBufferWithRepeatMode'));
+    assert.equal(audioPlayer.contextManager.nextBuffer, null);
+  });
+
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({ nextBuffer: { duration: 10 }, currentTrackIndex: 0 });
+    const manager = makeManager(audioPlayer);
+    setPlaylist(manager, ['One']);
+    manager.loadFiles(['queued.wav'], true);
+    assert.ok(audioPlayer.calls.some(call => call[0] === 'clearNextTrackBuffer'));
+    assert.ok(audioPlayer.calls.some(call => call[0] === 'prepareNextTrackBufferWithRepeatMode'));
+  });
+
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer();
+    const manager = makeManager(audioPlayer);
+    manager.loadFiles(['a.wav']);
+    manager.loadFiles(['b.wav'], true);
+    assert.ok(!audioPlayer.calls.some(call => call[0] === 'clearNextTrackBuffer'));
+  });
+
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({ nextBuffer: { duration: 10 } });
+    const manager = makeManager(audioPlayer);
+    manager.loadFiles(['fresh.wav']);
+    assert.ok(!audioPlayer.calls.some(call => call[0] === 'clearNextTrackBuffer'));
+  });
+});
+
 test('playPrevious restarts, wraps, falls back, and uses seamless transitions', async () => {
   await withPlaybackGlobals({}, async () => {
     const empty = makeManager(createAudioPlayer());
@@ -336,6 +378,57 @@ test('playPrevious restarts, wraps, falls back, and uses seamless transitions', 
     const manager = makeManager(audioPlayer);
     setPlaylist(manager);
     await manager.playPrevious();
+  });
+});
+
+test('playPrevious waits for fallback load and play work before resolving', async () => {
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({
+      currentTrackIndex: 1,
+      isPlaying: false,
+      hasCurrentBuffer: true
+    });
+    const manager = makeManager(audioPlayer);
+    setPlaylist(manager);
+    let resolveLoad;
+    let resolvePlay;
+    let resolved = false;
+
+    audioPlayer.loadTrack = index => new Promise(resolve => {
+      audioPlayer.calls.push(['audioPlayerLoadTrack.start', index]);
+      resolveLoad = () => {
+        audioPlayer.calls.push(['audioPlayerLoadTrack.done']);
+        resolve();
+      };
+    });
+    audioPlayer.contextManager.play = () => new Promise(resolve => {
+      audioPlayer.calls.push(['contextPlay.start']);
+      resolvePlay = () => {
+        audioPlayer.calls.push(['contextPlay.done']);
+        resolve();
+      };
+    });
+
+    const promise = manager.playPrevious().then(() => {
+      resolved = true;
+    });
+    await flushMicrotasks();
+    assert.equal(resolved, false);
+    assert.deepEqual(audioPlayer.calls.filter(call => call[0].endsWith('.start')), [
+      ['audioPlayerLoadTrack.start', 0]
+    ]);
+
+    resolveLoad();
+    await flushMicrotasks();
+    assert.equal(resolved, false);
+    assert.deepEqual(audioPlayer.calls.filter(call => call[0].endsWith('.start')), [
+      ['audioPlayerLoadTrack.start', 0],
+      ['contextPlay.start']
+    ]);
+
+    resolvePlay();
+    await promise;
+    assert.equal(resolved, true);
   });
 });
 
@@ -422,6 +515,240 @@ test('playNext and onTrackEnded handle repeat, shuffle, errors, and terminal sta
     setPlaylist(manager);
     manager.onTrackEnded();
     await flushMicrotasks();
+  });
+});
+
+test('pause releases a stuck playNext transition guard so later next commands are accepted', async () => {
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({ currentTrackIndex: 0, isPlaying: true });
+    const manager = makeManager(audioPlayer);
+    setPlaylist(manager);
+    let transitionAttempts = 0;
+
+    audioPlayer.contextManager.transitionToNextTrack = (track, targetIndex) => {
+      transitionAttempts += 1;
+      audioPlayer.calls.push(['transitionToNextTrack.pending', track?.name, targetIndex]);
+      if (transitionAttempts === 1) {
+        return new Promise(() => {});
+      }
+      return Promise.resolve();
+    };
+
+    const firstPlayNext = manager.playNext();
+    await flushMicrotasks();
+    assert.equal(firstPlayNext instanceof Promise, true);
+    assert.equal(transitionAttempts, 1);
+    assert.equal(manager.transitionInProgress, true);
+
+    await manager.pause();
+    assert.equal(manager.transitionInProgress, false);
+
+    await manager.playNext();
+    assert.equal(transitionAttempts, 2);
+    assert.deepEqual(
+      audioPlayer.calls.filter(call => call[0] === 'transitionToNextTrack.pending'),
+      [
+        ['transitionToNextTrack.pending', 'Two', 1],
+        ['transitionToNextTrack.pending', 'Two', 1]
+      ]
+    );
+    assert.equal(manager.transitionInProgress, false);
+  });
+});
+
+test('playNext forwards target indexes for duplicate queue entries and failed-track skips', async () => {
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({ currentTrackIndex: 0 });
+    const manager = makeManager(audioPlayer);
+    manager.playlist = [
+      { name: 'Same Path A', path: '/same.wav' },
+      { name: 'Same Path B', path: '/same.wav' }
+    ];
+
+    await manager.playNext();
+
+    assert.deepEqual(
+      audioPlayer.calls.find(call => call[0] === 'transitionToNextTrack'),
+      ['transitionToNextTrack', 'Same Path B', 1]
+    );
+  });
+
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({ currentTrackIndex: 0 });
+    const manager = makeManager(audioPlayer);
+    manager.playlist = [
+      { name: 'Library A', path: '/library-a.wav', libraryTrackId: 'duplicate-id' },
+      { name: 'Library B', path: '/library-b.wav', libraryTrackId: 'duplicate-id' }
+    ];
+
+    await manager.playNext();
+
+    assert.deepEqual(
+      audioPlayer.calls.find(call => call[0] === 'transitionToNextTrack'),
+      ['transitionToNextTrack', 'Library B', 1]
+    );
+  });
+
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({ repeatMode: 'ONE', currentTrackIndex: 0 });
+    const manager = makeManager(audioPlayer);
+    manager.playlist = [
+      { name: 'Bad', path: '/bad.wav' },
+      { name: 'Good', path: '/good.wav' }
+    ];
+
+    await manager.playNext(false, { ignoreRepeatOne: true, failedIndex: 0 });
+
+    assert.deepEqual(
+      audioPlayer.calls.find(call => call[0] === 'transitionToNextTrack'),
+      ['transitionToNextTrack', 'Good', 1]
+    );
+  });
+
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({ repeatMode: 'ONE', currentTrackIndex: 0 });
+    const manager = makeManager(audioPlayer);
+    manager.playlist = [
+      { name: 'Bad', path: '/bad.wav' },
+      { name: 'Good', path: '/good.wav' }
+    ];
+    manager.transitionInProgress = true;
+
+    await manager.playNext(false, {
+      allowDuringTransition: true,
+      ignoreRepeatOne: true,
+      failedIndex: 0
+    });
+
+    assert.deepEqual(
+      audioPlayer.calls.find(call => call[0] === 'transitionToNextTrack'),
+      ['transitionToNextTrack', 'Good', 1]
+    );
+    assert.equal(manager.transitionInProgress, true);
+  });
+
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({ repeatMode: 'ONE', currentTrackIndex: -1 });
+    const manager = makeManager(audioPlayer);
+    manager.playlist = [{ name: 'Bad', path: '/bad.wav' }];
+
+    await manager.playNext(false, { ignoreRepeatOne: true, failedIndex: 0 });
+
+    assert.equal(audioPlayer.calls.some(call => call[0] === 'transitionToNextTrack'), false);
+  });
+
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({
+      repeatMode: 'ALL',
+      currentTrackIndex: 0,
+      isPlaying: true,
+      isPaused: false,
+      isStopped: false
+    });
+    const manager = makeManager(audioPlayer);
+    manager.playlist = [
+      { name: 'Bad One', path: '/bad-one.wav' },
+      { name: 'Bad Two', path: '/bad-two.wav' }
+    ];
+    const attemptedIndexes = [];
+
+    audioPlayer.contextManager.transitionToNextTrack = async (track, targetIndex) => {
+      audioPlayer.calls.push(['transitionToNextTrack.failed', track?.name, targetIndex]);
+      attemptedIndexes.push(targetIndex);
+      audioPlayer.state.currentTrackIndex = targetIndex;
+      await manager.playNext(false, {
+        allowDuringTransition: true,
+        ignoreRepeatOne: true,
+        failedIndex: targetIndex
+      });
+      return false;
+    };
+
+    await manager.playNext(false, {
+      allowDuringTransition: true,
+      ignoreRepeatOne: true,
+      failedIndex: 0
+    });
+
+    assert.deepEqual(attemptedIndexes, [1]);
+    assert.equal(audioPlayer.calls.filter(call => call[0] === 'contextStop').length, 1);
+    assert.equal(audioPlayer.calls.some(call => call[0] === 'transitionToNextTrack' && call[2] === 0), false);
+    assert.equal(audioPlayer.state.isPlaying, false);
+    assert.equal(audioPlayer.state.isPaused, false);
+    assert.equal(audioPlayer.state.isStopped, true);
+    assert.equal(manager.transitionInProgress, false);
+  });
+});
+
+test('reset and shuffle can load the first track without starting playback', async () => {
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({ currentTrackIndex: 2, isPlaying: false });
+    const manager = makeManager(audioPlayer);
+    setPlaylist(manager);
+
+    manager.resetToFirstTrack(false);
+
+    assert.deepEqual(
+      audioPlayer.calls.filter(call => call[0] === 'contextLoadTrack'),
+      [['contextLoadTrack', 'One', 0]]
+    );
+    assert.equal(audioPlayer.calls.some(call => call[0] === 'seamlessTransition'), false);
+    assert.equal(audioPlayer.calls.some(call => call[0] === 'contextPlay'), false);
+  });
+
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({ currentTrackIndex: 2, isPlaying: false });
+    const manager = makeManager(audioPlayer);
+    setPlaylist(manager);
+
+    manager.shufflePlaylistFromBeginning(false);
+
+    assert.deepEqual(
+      audioPlayer.calls.filter(call => call[0] === 'contextLoadTrack'),
+      [['contextLoadTrack', manager.playlist[0].name, 0]]
+    );
+    assert.equal(audioPlayer.calls.some(call => call[0] === 'seamlessTransition'), false);
+    assert.equal(audioPlayer.calls.some(call => call[0] === 'contextPlay'), false);
+  });
+});
+
+test('repeat ALL to ONE disables shuffle without stopping current playback', async () => {
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({
+      shuffleMode: true,
+      repeatMode: 'ALL',
+      currentTrackIndex: 1,
+      isPlaying: true,
+      isPaused: false,
+      isStopped: false
+    });
+    const manager = makeManager(audioPlayer);
+    const originalPlaylist = ['One', 'Two', 'Three'].map(name => ({ path: `${name}.wav`, name, file: null }));
+    manager.originalPlaylist = originalPlaylist.map(track => ({ ...track }));
+    manager.playlist = [
+      { ...originalPlaylist[1] },
+      { ...originalPlaylist[2] },
+      { ...originalPlaylist[0] }
+    ];
+
+    manager.toggleRepeatMode();
+
+    assert.deepEqual(manager.playlist.map(track => track.name), ['One', 'Two', 'Three']);
+    assert.equal(audioPlayer.state.repeatMode, 'ONE');
+    assert.equal(audioPlayer.state.shuffleMode, false);
+    assert.equal(audioPlayer.state.currentTrackIndex, 2);
+    assert.equal(manager.playlist[audioPlayer.state.currentTrackIndex].name, 'Three');
+    assert.equal(audioPlayer.state.isPlaying, true);
+    assert.equal(audioPlayer.state.isPaused, false);
+    assert.equal(audioPlayer.state.isStopped, false);
+    assert.deepEqual(
+      audioPlayer.calls.filter(call => call[0] === 'updatePlaylist').at(-1).slice(1),
+      [['One', 'Two', 'Three'], 2]
+    );
+    assert.equal(audioPlayer.calls.some(call => call[0] === 'contextStop'), false);
+    assert.equal(audioPlayer.calls.some(call => call[0] === 'contextLoadTrack'), false);
+    assert.equal(audioPlayer.calls.some(call => call[0] === 'seamlessTransition'), false);
+    assert.equal(audioPlayer.calls.some(call => call[0] === 'audioElementPause'), false);
   });
 });
 
@@ -530,6 +857,9 @@ test('shuffle, repeat, seek, clear, and dispose update playback state consistent
     const audioPlayer = createAudioPlayer();
     const manager = makeManager(audioPlayer);
     setPlaylist(manager);
+    manager.transitionInProgress = true;
+    await manager.stop();
+    assert.equal(manager.transitionInProgress, false);
     manager.clear();
     assert.equal(manager.playlist.length, 0);
     manager.dispose();
@@ -634,6 +964,38 @@ test('loadPlayerState and savePlayerState persist through Electron storage', asy
     assert.deepEqual(JSON.parse(storage.get('effetune_player_state')), {
       repeatMode: 'ALL',
       shuffleMode: true
+    });
+
+    storage.set('effetune_player_state', '{"repeatMode":"ONE","shuffleMode":true}');
+    const normalizedAudioPlayer = createAudioPlayer({ shuffleMode: true });
+    const normalizedManager = makeManager(normalizedAudioPlayer);
+    await normalizedManager.loadPlayerState();
+    assert.equal(normalizedAudioPlayer.state.repeatMode, 'ONE');
+    assert.equal(normalizedAudioPlayer.state.shuffleMode, false);
+    await normalizedManager.savePlayerState();
+    assert.deepEqual(JSON.parse(storage.get('effetune_player_state')), {
+      repeatMode: 'ONE',
+      shuffleMode: false
+    });
+  });
+
+  const normalizedSaved = new Map();
+  await withPlaybackGlobals({
+    document: createDocument(),
+    localStorage: {
+      getItem(key) {
+        return normalizedSaved.get(key) || null;
+      },
+      setItem(key, value) {
+        normalizedSaved.set(key, value);
+      }
+    }
+  }, async () => {
+    const manager = makeManager(createAudioPlayer({ repeatMode: 'ONE', shuffleMode: true }));
+    await manager.savePlayerState();
+    assert.deepEqual(JSON.parse(normalizedSaved.get('effetune_player_state')), {
+      repeatMode: 'ONE',
+      shuffleMode: false
     });
   });
 

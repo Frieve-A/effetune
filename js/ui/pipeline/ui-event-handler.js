@@ -8,9 +8,28 @@ import { handlePipelineKeyboardShortcut, handlePipelinePasteEvent } from './keyb
 
 const PLAYBACK_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm'];
 const PLAYBACK_AUDIO_EXTENSION_PATTERN = new RegExp(`\\.(${PLAYBACK_AUDIO_EXTENSIONS.join('|')})$`, 'i');
+const PLAYLIST_EXTENSION_PATTERN = /\.(m3u8?|pls|xspf)$/i;
 
 function isSupportedPlaybackAudioFile(file) {
     return !!(file && PLAYBACK_AUDIO_EXTENSION_PATTERN.test(file.name || ''));
+}
+
+function isPlaylistFile(file) {
+    return !!(file && PLAYLIST_EXTENSION_PATTERN.test(file.name || ''));
+}
+
+function isInsideLibraryContent(target) {
+    return !!(target?.closest?.('.library-content') && target?.closest?.('.library-view'));
+}
+
+function isLibraryPlaylistDrag(event) {
+    return isInsideLibraryContent(event.target)
+        && Array.from(event.dataTransfer?.types || []).includes('Files');
+}
+
+function isLibraryPlaylistDrop(event) {
+    return isInsideLibraryContent(event.target)
+        && Array.from(event.dataTransfer?.files || []).some(isPlaylistFile);
 }
 
 export class UIEventHandler {
@@ -172,6 +191,11 @@ export class UIEventHandler {
                      !e.dataTransfer.types.includes('text/plain') // Also exclude plain text which is used for new plugins
                     )
                 )) {
+                    if (isLibraryPlaylistDrag(e)) {
+                        document.body.classList.remove('drag-over');
+                        e.dataTransfer.dropEffect = 'copy';
+                        return;
+                    }
                     e.stopPropagation();
                     e.dataTransfer.dropEffect = 'copy';
                     
@@ -211,6 +235,10 @@ export class UIEventHandler {
                     !e.dataTransfer.types.includes('application/plugin-id') &&
                     !e.dataTransfer.types.includes('application/plugin-index') &&
                     !e.dataTransfer.types.includes('text/plain')) {
+                    if (isLibraryPlaylistDrop(e)) {
+                        document.body.classList.remove('drag-over');
+                        return;
+                    }
                     // Check if the target is the file-drop-area or a child of it
                     const fileDropArea = e.target.closest('.file-drop-area');
                     if (fileDropArea) {

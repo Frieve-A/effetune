@@ -142,6 +142,16 @@ test('mobile controls use 40px border-box height and 80px field width', () => {
   }
 });
 
+test('mobile effect list keeps effect items at the fixed minimum column width', () => {
+  const css = readCss('../../effetune-mobile.css');
+  const rule = getLastRule(css, 'body.layout-mobile .plugin-category-items');
+
+  assert.match(rule, /display:\s*grid\s*!important;/);
+  assert.match(rule, /grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(150px,\s*150px\)\);/);
+  assert.match(rule, /justify-content:\s*start;/);
+  assert.doesNotMatch(rule, /1fr/, 'mobile effect items should not stretch to fill leftover row width');
+});
+
 test('mobile player places the primary play pause control below secondary buttons', () => {
   const css = readCss('../../effetune-mobile.css');
   const controlsRule = getRule(css, 'body.layout-mobile .player-controls');

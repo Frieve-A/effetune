@@ -12,8 +12,8 @@ This document provides instructions for setting up the development environment, 
 
 Before you begin, ensure you have the following installed on your system:
 
-- **Node.js** (v18 or later)
-- **npm** (v8 or later)
+- **Node.js** (v22.12 or later)
+- **npm** (v10 or later)
 - **Git** (for cloning the repository)
 
 ## Development Environment Setup
@@ -51,7 +51,7 @@ This runs:
 - `npm run lint`: ESLint checks for JavaScript syntax and high-confidence correctness hazards across Electron, renderer, plugin, feature, tool, and test code
 - `npm test`: Node.js tests with the repository's coverage thresholds and test hygiene checks
 
-`npm run verify` also regenerates `sw-precache.js` before validation so PWA assets stay in sync.
+`npm run verify` also runs `npm run assets:web` before validation so the browser metadata parser bundle, third-party notices, and PWA precache stay in sync.
 
 For narrower verification, use:
 
@@ -144,7 +144,7 @@ To build the application, use the following npm commands:
   npm run clean
   ```
 
-The Electron build scripts and GitHub Pages workflow regenerate `sw-precache.js` automatically before packaging or deployment. If you add or remove web assets outside those flows, run `node scripts/generate-sw-precache.js` before committing.
+The Electron build scripts and GitHub Pages workflow run `npm run assets:web` automatically before packaging or deployment. This regenerates the browser metadata parser bundle, its third-party notice file, and `sw-precache.js`. If you add or remove web assets outside those flows, run `npm run assets:web` before committing.
 
 ### Web and PWA Assets
 

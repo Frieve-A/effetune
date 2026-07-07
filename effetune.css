@@ -160,6 +160,7 @@ input[type="checkbox"] {
 }
 
 .open-music-button,
+.open-library-button,
 .settings-menu-button {
     width: 36px;
     height: 36px;
@@ -1482,6 +1483,43 @@ body.layout-mobile .plugin-parameter-ui .parameter-row:has(> input[type="number"
 .player-playlist-item.active {
     background: #3d3d3d;
     color: #fff;
+}
+
+.player-library-context-menu {
+    position: fixed;
+    z-index: 10000;
+    min-width: 210px;
+    padding: 6px;
+    background: #151515;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+}
+
+.player-library-context-menu button {
+    display: block;
+    width: 100%;
+    min-height: 30px;
+    padding: 0 9px;
+    color: #f1f1f1;
+    text-align: left;
+    background: transparent;
+    border: 0;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.player-library-context-menu button:hover,
+.player-library-context-menu button:focus-visible {
+    background: #2a2a2a;
+    outline: none;
+}
+
+.player-library-context-menu hr {
+    height: 1px;
+    margin: 5px 0;
+    background: #333;
+    border: 0;
 }
 
 /* Double Blind Test Styles */

@@ -77,6 +77,8 @@ export async function updateApplicationMenu(isElectron) {
           { label: t('menu.file.saveAs'), enabled: !dbtActive },
           { type: 'separator' },
           { label: t('menu.file.openMusicFile'), enabled: true },
+          { label: t('menu.file.addMusicFolder'), enabled: true },
+          { label: t('menu.file.rescanLibrary'), enabled: true },
           { label: t('menu.file.processAudioFiles'), enabled: !dbtActive },
           { type: 'separator' },
           { label: t('menu.file.exportPreset'), enabled: !dbtActive },
@@ -109,6 +111,8 @@ export async function updateApplicationMenu(isElectron) {
           { label: t('menu.view.resetZoom') },
           { label: t('menu.view.zoomIn') },
           { label: t('menu.view.zoomOut') },
+          { type: 'separator' },
+          { label: t('menu.view.musicLibrary') },
           { type: 'separator' },
           { label: t('menu.view.toggleFullscreen') }
         ]

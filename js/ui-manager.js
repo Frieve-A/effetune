@@ -20,6 +20,8 @@ import { copyTextToClipboard, readTextFromClipboard } from './utils/clipboard-ut
 import { LayoutModeManager } from './ui/layout-mode-manager.js';
 import { MobileMenu } from './ui/mobile-menu.js';
 import { MobileNav } from './ui/mobile-nav.js';
+import { LibraryManager } from './library/library-manager.js';
+import { LibraryView } from './ui/library/library-view.js';
 
 export class UIManager {
     constructor(pluginManager, audioManager) {
@@ -31,6 +33,9 @@ export class UIManager {
 
         // Audio player reference
         this.audioPlayer = null;
+        this.libraryManager = null;
+        this.libraryView = null;
+        this.libraryInitPromise = null;
 
         // Double Blind Test controller (created lazily) and URL-reflection gate
         this.doubleBlindTest = null;
@@ -81,6 +86,7 @@ export class UIManager {
         this.initShareButton();
         this.initPresetManagement();
         this.initOpenMusicButton();
+        this.initOpenLibraryButton();
 
         // Initialize clipboard buttons
         this.undoButton = document.getElementById('undoButton');
@@ -783,6 +789,13 @@ export class UIManager {
             openMusicButton.title = this.t('ui.title.openMusic');
         }
 
+        const openLibraryButton = document.getElementById('openLibraryButton');
+        if (openLibraryButton) {
+            const title = this.t('ui.title.openLibrary');
+            openLibraryButton.title = title;
+            openLibraryButton.setAttribute('aria-label', title);
+        }
+
         const sidebarButton = document.getElementById('sidebarButton');
         if (sidebarButton) {
             sidebarButton.title = this.t('ui.title.sidebar');
@@ -1070,6 +1083,105 @@ export class UIManager {
     }
 
     /**
+     * Initialize music library button and Electron menu events.
+     */
+    initOpenLibraryButton() {
+        this.openLibraryButton = document.getElementById('openLibraryButton');
+        this.openLibraryButton?.addEventListener('click', (event) => {
+            this.toggleLibraryView({
+                focusSearch: false,
+                returnFocus: event.currentTarget
+            });
+        });
+
+        if (window.electronAPI?.onIPC) {
+            window.electronAPI.onIPC('open-library-view', () => this.showLibraryView());
+            window.electronAPI.onIPC('add-music-folder', async () => {
+                await this.showLibraryView({ focusSearch: false });
+                await this.libraryManager?.addFolder();
+                this.libraryView?.render();
+            });
+            window.electronAPI.onIPC('rescan-library', async () => {
+                await this.ensureLibraryManager();
+                await this.libraryManager?.scanFolders();
+            });
+        }
+    }
+
+    async ensureLibraryManager() {
+        if (this.libraryManager && this.libraryView) {
+            return this.libraryManager;
+        }
+        if (!this.libraryInitPromise) {
+            this.libraryInitPromise = (async () => {
+                this.libraryManager = new LibraryManager({ uiManager: this });
+                window.libraryManager = this.libraryManager;
+                await this.libraryManager.init();
+                this.libraryView = new LibraryView({
+                    manager: this.libraryManager,
+                    uiManager: this
+                });
+                this.libraryView.mount();
+                this.mobileNav?.attachLibraryView?.();
+                return this.libraryManager;
+            })().catch(error => {
+                this.libraryInitPromise = null;
+                this.setError(error.message || String(error), true);
+                throw error;
+            });
+        }
+        return this.libraryInitPromise;
+    }
+
+    async showLibraryView(options = {}) {
+        await this.ensureLibraryManager();
+        if (options.isCurrentRequest?.() === false) {
+            return false;
+        }
+        const focusSearch = options.focusSearch ?? !this.layoutMode?.isMobile;
+        this.libraryView.show({
+            focusSearch,
+            returnFocus: options.returnFocus || options.opener
+        });
+        this.openLibraryButton?.classList.add('active');
+        this.mobileNav?.setView?.('library', { fromLibraryView: true });
+        return true;
+    }
+
+    async showLibraryTrack(trackId, options = {}) {
+        await this.showLibraryView({
+            focusSearch: false,
+            returnFocus: options.returnFocus
+        });
+        return this.libraryView?.showTrack?.(trackId, options) || false;
+    }
+
+    hideLibraryView(options = {}) {
+        const fallbackFocus = options.returnFocus ||
+            (this.layoutMode?.isMobile ? this.mobileNav?.getViewButton?.('library') : this.openLibraryButton) ||
+            this.openLibraryButton ||
+            this.mobileNav?.getViewButton?.('library');
+        this.libraryView?.hide({
+            restoreFocus: options.restoreFocus,
+            returnFocus: options.returnFocus,
+            fallbackFocus
+        });
+        this.openLibraryButton?.classList.remove('active');
+    }
+
+    async toggleLibraryView(options = {}) {
+        if (document.body.classList.contains('view-library')) {
+            if (this.libraryView?.hasActiveDialog?.()) {
+                return false;
+            }
+            this.hideLibraryView(options);
+            this.mobileNav?.setView?.('effects', { fromLibraryView: true });
+            return true;
+        }
+        return this.showLibraryView(options);
+    }
+
+    /**
      * Get current preset data for export
      * Delegates to PipelineManager
      * @returns {Object} Current preset data
@@ -1350,8 +1462,16 @@ export class UIManager {
      */
     initKeyboardShortcuts() {
         document.addEventListener('keydown', (e) => {
-            // Only handle shortcuts when not typing in input fields
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+            if (isEditableShortcutTarget(e.target)) {
+                return;
+            }
+
+            if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && String(e.key).toLowerCase() === 'l') {
+                e.preventDefault();
+                if (document.body.classList.contains('view-library') && this.libraryView?.hasActiveDialog?.()) {
+                    return;
+                }
+                this.toggleLibraryView();
                 return;
             }
 
@@ -1389,4 +1509,12 @@ export class UIManager {
             }
         });
     }
+}
+
+function isEditableShortcutTarget(target) {
+    const tagName = target?.tagName?.toLowerCase?.() || '';
+    return tagName === 'input' ||
+        tagName === 'textarea' ||
+        tagName === 'select' ||
+        Boolean(target?.isContentEditable);
 }

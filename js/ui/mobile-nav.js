@@ -5,7 +5,14 @@ const MOBILE_ICONS = {
     plus: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true" draggable="false"><path d="M12 5v14M5 12h14"/></svg>',
     close: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true" draggable="false"><path d="M6 6l12 12M18 6 6 18"/></svg>',
     player: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" draggable="false"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>',
+    library: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" draggable="false"><path d="M4 19.5V5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2.5"/><path d="M8 7h8M8 11h6M8 15h7"/></svg>',
     effects: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" draggable="false"><path d="M4 6h10"/><path d="M18 6h2"/><path d="M4 12h3"/><path d="M11 12h9"/><path d="M4 18h12"/><path d="M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>'
+};
+
+const MOBILE_NAV_LABELS = {
+    player: { key: 'ui.mobileNav.player', fallback: 'Player' },
+    library: { key: 'ui.mobileNav.library', fallback: 'Library' },
+    effects: { key: 'ui.mobileNav.effects', fallback: 'Effects' }
 };
 
 export class MobileNav {
@@ -15,6 +22,9 @@ export class MobileNav {
         this.emptyPlayer = null;
         this.miniPlayer = null;
         this.nav = null;
+        this.libraryView = null;
+        this.libraryShell = null;
+        this.libraryOpenRequestId = 0;
         this.fab = null;
         this.pluginListCloseButton = null;
         this.stateUnsubscribers = [];
@@ -22,6 +32,8 @@ export class MobileNav {
         this.resumePromptListeners = [];
         this.resumePromptAudioContext = null;
         this.resumePromptAudioStateHandler = null;
+        this.restoreUpdateUITexts = null;
+        this.installUpdateUITextsHook();
         this.unsubscribe = this.uiManager.layoutMode?.onChange(mode => this.applyMode(mode)) || null;
         this.applyMode(this.uiManager.layoutMode?.mode || 'desktop');
     }
@@ -31,7 +43,8 @@ export class MobileNav {
             this.ensureElements();
             this.mountAudioPlayer('mobile');
             const hasSharedPipeline = new URLSearchParams(window.location.search).has('p');
-            this.setView(document.body.classList.contains('view-effects') || hasSharedPipeline ? 'effects' : 'player');
+            const currentView = this.getCurrentView();
+            this.setView(currentView === 'library' ? 'library' : (currentView === 'effects' || hasSharedPipeline ? 'effects' : 'player'));
             this.attachPlayerState();
             this.updateMiniPlayer();
             this.updatePlayerPlaceholder();
@@ -53,8 +66,8 @@ export class MobileNav {
             this.emptyPlayer = document.createElement('div');
             this.emptyPlayer.className = 'mobile-player-empty';
             this.emptyPlayer.innerHTML = `
-                <div class="mobile-player-empty-title">No track loaded</div>
-                <button type="button" class="header-button mobile-open-music">Open Music</button>
+                <div class="mobile-player-empty-title"></div>
+                <button type="button" class="header-button mobile-open-music"></button>
             `;
             this.emptyPlayer.querySelector('.mobile-open-music')?.addEventListener('click', () => {
                 document.getElementById('openMusicButton')?.click();
@@ -63,7 +76,6 @@ export class MobileNav {
             this.resumePrompt = document.createElement('button');
             this.resumePrompt.type = 'button';
             this.resumePrompt.className = 'mobile-audio-resume-prompt';
-            this.resumePrompt.textContent = 'Tap to start playback';
             this.resumePrompt.addEventListener('click', () => this.resumeAudioContext());
             this.playerView.appendChild(this.resumePrompt);
             const mainContainer = document.querySelector('.main-container');
@@ -75,24 +87,16 @@ export class MobileNav {
             this.miniPlayer.className = 'mobile-mini-player';
             const miniTrack = document.createElement('div');
             miniTrack.className = 'mobile-mini-track';
-            miniTrack.textContent = 'No track loaded';
             const openMusicButton = document.createElement('button');
             openMusicButton.type = 'button';
             openMusicButton.className = 'mobile-mini-open-music';
-            openMusicButton.title = 'Open music files';
-            openMusicButton.setAttribute('aria-label', 'Open music files');
-            openMusicButton.textContent = 'Open Music';
             const playButton = document.createElement('button');
             playButton.type = 'button';
             playButton.className = 'mobile-mini-button mobile-mini-play';
-            playButton.title = 'Play or pause';
-            playButton.setAttribute('aria-label', 'Play or pause');
             playButton.innerHTML = MOBILE_ICONS.play;
             const nextButton = document.createElement('button');
             nextButton.type = 'button';
             nextButton.className = 'mobile-mini-button mobile-mini-next';
-            nextButton.title = 'Next track';
-            nextButton.setAttribute('aria-label', 'Next track');
             nextButton.innerHTML = MOBILE_ICONS.next;
             this.miniPlayer.appendChild(miniTrack);
             this.miniPlayer.appendChild(openMusicButton);
@@ -110,6 +114,15 @@ export class MobileNav {
             document.body.appendChild(this.miniPlayer);
         }
 
+        if (!this.libraryShell) {
+            this.libraryShell = document.createElement('div');
+            this.libraryShell.id = 'mobileLibraryView';
+            this.libraryShell.className = 'mobile-library-view';
+            const mainContainer = document.querySelector('.main-container');
+            mainContainer?.parentNode?.insertBefore(this.libraryShell, mainContainer);
+            this.attachLibraryView();
+        }
+
         if (!this.nav) {
             this.nav = document.createElement('nav');
             this.nav.className = 'mobile-bottom-nav';
@@ -119,6 +132,10 @@ export class MobileNav {
                     <span class="mobile-bottom-button-icon">${MOBILE_ICONS.player}</span>
                     <span class="mobile-bottom-button-label">Player</span>
                 </button>
+                <button type="button" class="mobile-bottom-button" data-view="library" aria-label="Library">
+                    <span class="mobile-bottom-button-icon">${MOBILE_ICONS.library}</span>
+                    <span class="mobile-bottom-button-label">Library</span>
+                </button>
                 <button type="button" class="mobile-bottom-button" data-view="effects" aria-label="Effects">
                     <span class="mobile-bottom-button-icon">${MOBILE_ICONS.effects}</span>
                     <span class="mobile-bottom-button-label">Effects</span>
@@ -126,17 +143,21 @@ export class MobileNav {
             `;
             this.nav.addEventListener('click', event => {
                 const button = event.target.closest('button[data-view]');
-                if (button) this.setView(button.dataset.view);
+                if (button) {
+                    this.setView(button.dataset.view, {
+                        focusSearch: false,
+                        returnFocus: button
+                    });
+                }
             });
             document.body.appendChild(this.nav);
+            this.updateLabels();
         }
 
         if (!this.fab) {
             this.fab = document.createElement('button');
             this.fab.type = 'button';
             this.fab.className = 'mobile-plugin-fab';
-            this.fab.title = 'Add effect';
-            this.fab.setAttribute('aria-label', 'Add effect');
             this.fab.innerHTML = MOBILE_ICONS.plus;
             this.fab.addEventListener('click', () => this.openPluginList());
             document.body.appendChild(this.fab);
@@ -146,8 +167,6 @@ export class MobileNav {
             this.pluginListCloseButton = document.createElement('button');
             this.pluginListCloseButton.type = 'button';
             this.pluginListCloseButton.className = 'mobile-plugin-list-close';
-            this.pluginListCloseButton.title = 'Close';
-            this.pluginListCloseButton.setAttribute('aria-label', 'Close effect list');
             this.pluginListCloseButton.innerHTML = MOBILE_ICONS.close;
             this.pluginListCloseButton.addEventListener('click', () => this.closePluginList());
             const pluginListElement = document.getElementById('pluginList');
@@ -168,20 +187,188 @@ export class MobileNav {
             );
         }
 
+        this.updateLabels();
         this.observeAudioContextState();
     }
 
-    setView(view) {
-        const nextView = view === 'effects' ? 'effects' : 'player';
+    setView(view, options = {}) {
+        const nextView = view === 'library' ? 'library' : (view === 'effects' ? 'effects' : 'player');
+        if (nextView === 'library' && !options.fromLibraryView) {
+            return this.showLibraryViewFromNav(options);
+        }
+        if (nextView !== 'library' && !options.fromLibraryView) {
+            this.cancelPendingLibraryOpen();
+        }
+        this.applyViewState(nextView, options);
+        return undefined;
+    }
+
+    async showLibraryViewFromNav(options = {}) {
+        const previousView = this.getCurrentView();
+        const requestId = this.beginLibraryOpenRequest();
+        try {
+            const shown = await this.uiManager.showLibraryView?.({
+                focusSearch: false,
+                returnFocus: options.returnFocus,
+                isCurrentRequest: () => this.isLibraryOpenRequestCurrent(requestId)
+            });
+            if (!this.isLibraryOpenRequestCurrent(requestId) || shown === false) return;
+            this.applyViewState('library', { fromLibraryView: true });
+        } catch (_) {
+            if (this.isLibraryOpenRequestCurrent(requestId)) {
+                this.applyViewState(previousView, { fromLibraryView: true });
+            }
+        }
+    }
+
+    beginLibraryOpenRequest() {
+        this.libraryOpenRequestId = (this.libraryOpenRequestId || 0) + 1;
+        return this.libraryOpenRequestId;
+    }
+
+    cancelPendingLibraryOpen() {
+        this.libraryOpenRequestId = (this.libraryOpenRequestId || 0) + 1;
+    }
+
+    isLibraryOpenRequestCurrent(requestId) {
+        return requestId === this.libraryOpenRequestId;
+    }
+
+    applyViewState(nextView, options = {}) {
         document.body.classList.toggle('view-player', nextView === 'player');
         document.body.classList.toggle('view-effects', nextView === 'effects');
+        document.body.classList.toggle('view-library', nextView === 'library');
         this.nav?.querySelectorAll('button[data-view]').forEach(button => {
-            button.classList.toggle('active', button.dataset.view === nextView);
+            const active = button.dataset.view === nextView;
+            button.classList.toggle('active', active);
+            if (active) {
+                button.setAttribute('aria-current', 'page');
+            } else {
+                button.removeAttribute?.('aria-current');
+            }
         });
         if (nextView === 'player') {
             this.closePluginList();
         }
+        if (nextView === 'library' && !options.fromLibraryView) {
+            this.uiManager.showLibraryView?.({
+                focusSearch: options.focusSearch ?? false,
+                returnFocus: options.returnFocus
+            });
+        }
+        if (nextView !== 'library' && !options.fromLibraryView) {
+            this.uiManager.hideLibraryView?.({
+                returnFocus: options.returnFocus
+            });
+        }
         this.updateAudioResumePrompt();
+    }
+
+    getCurrentView() {
+        if (document.body.classList.contains('view-library')) return 'library';
+        if (document.body.classList.contains('view-effects')) return 'effects';
+        return 'player';
+    }
+
+    getViewButton(view) {
+        return Array.from(this.nav?.querySelectorAll?.('button[data-view]') || [])
+            .find(button => button.dataset?.view === view) || null;
+    }
+
+    updateLabels() {
+        this.nav?.setAttribute('aria-label', this.t('ui.mobileNav.primary', 'Primary mobile navigation'));
+        this.nav?.querySelectorAll?.('button[data-view]').forEach(button => {
+            const config = MOBILE_NAV_LABELS[button.dataset.view];
+            if (!config) return;
+            const label = this.t(config.key, config.fallback);
+            button.setAttribute('aria-label', label);
+            const labelElement = button.querySelector?.('.mobile-bottom-button-label');
+            if (labelElement) labelElement.textContent = label;
+        });
+        const noTrackLabel = this.t('ui.mobileNav.noTrack', 'No track loaded');
+        const openMusicText = this.t('ui.mobileNav.openMusic', 'Open Music');
+        const openMusicTitle = this.t('ui.title.openMusic', 'Open music files');
+        const playPauseLabel = this.t('ui.title.playPause', 'Play or pause');
+        const nextTrackLabel = this.t('ui.title.nextTrack', 'Next track');
+        const resumePlaybackLabel = this.t('ui.mobileNav.resumePlayback', 'Tap to start playback');
+        const addEffectLabel = this.t('ui.mobileNav.addEffect', 'Add effect');
+        const closeEffectListLabel = this.t('ui.mobileNav.closeEffectList', 'Close effect list');
+
+        const emptyTitle = this.emptyPlayer?.querySelector?.('.mobile-player-empty-title');
+        const emptyOpenMusic = this.emptyPlayer?.querySelector?.('.mobile-open-music');
+        if (emptyTitle) emptyTitle.textContent = noTrackLabel;
+        if (emptyOpenMusic) {
+            emptyOpenMusic.textContent = openMusicText;
+            emptyOpenMusic.title = openMusicTitle;
+            emptyOpenMusic.setAttribute('aria-label', openMusicTitle);
+        }
+        if (this.resumePrompt) {
+            this.resumePrompt.textContent = resumePlaybackLabel;
+            this.resumePrompt.setAttribute('aria-label', resumePlaybackLabel);
+        }
+        const miniTrack = this.miniPlayer?.querySelector?.('.mobile-mini-track');
+        const openMusic = this.miniPlayer?.querySelector?.('.mobile-mini-open-music');
+        const play = this.miniPlayer?.querySelector?.('.mobile-mini-play');
+        const next = this.miniPlayer?.querySelector?.('.mobile-mini-next');
+        if (miniTrack && !this.hasMiniPlayerTrack()) miniTrack.textContent = noTrackLabel;
+        if (openMusic) {
+            openMusic.textContent = openMusicText;
+            openMusic.title = openMusicTitle;
+            openMusic.setAttribute('aria-label', openMusicTitle);
+        }
+        if (play) {
+            play.title = playPauseLabel;
+            play.setAttribute('aria-label', playPauseLabel);
+        }
+        if (next) {
+            next.title = nextTrackLabel;
+            next.setAttribute('aria-label', nextTrackLabel);
+        }
+        if (this.fab) {
+            this.fab.title = addEffectLabel;
+            this.fab.setAttribute('aria-label', addEffectLabel);
+        }
+        if (this.pluginListCloseButton) {
+            this.pluginListCloseButton.title = closeEffectListLabel;
+            this.pluginListCloseButton.setAttribute('aria-label', closeEffectListLabel);
+        }
+    }
+
+    hasMiniPlayerTrack() {
+        const state = this.uiManager.audioPlayer?.stateManager?.getStateSnapshot?.() || null;
+        return Boolean(state?.currentTrackName || state?.currentTrack);
+    }
+
+    t(key, fallback) {
+        const text = this.uiManager?.t?.(key);
+        return text && text !== key ? text : fallback;
+    }
+
+    installUpdateUITextsHook() {
+        if (typeof this.uiManager?.updateUITexts !== 'function' || this.uiManager.updateUITexts.__mobileNavLabelsPatched) {
+            return;
+        }
+        const original = this.uiManager.updateUITexts;
+        const patched = function(...args) {
+            const result = original.apply(this, args);
+            this.mobileNav?.updateLabels?.();
+            this.mobileNav?.updateMiniPlayer?.();
+            return result;
+        };
+        patched.__mobileNavLabelsPatched = true;
+        this.uiManager.updateUITexts = patched;
+        this.restoreUpdateUITexts = () => {
+            if (this.uiManager.updateUITexts === patched) {
+                this.uiManager.updateUITexts = original;
+            }
+        };
+    }
+
+    attachLibraryView() {
+        this.libraryView = this.uiManager.libraryView || null;
+        if (this.libraryShell && this.libraryView?.root && this.libraryView.root.parentNode !== this.libraryShell) {
+            this.libraryShell.appendChild(this.libraryView.root);
+        }
     }
 
     openPluginList() {
@@ -201,19 +388,30 @@ export class MobileNav {
         this.resumePromptListeners = [];
         this.detachAudioContextStateListener();
 
+        this.restoreLibraryViewMount();
         this.playerView?.remove();
+        this.libraryShell?.remove();
         this.miniPlayer?.remove();
         this.nav?.remove();
         this.fab?.remove();
         this.pluginListCloseButton?.remove();
 
         this.playerView = null;
+        this.libraryView = null;
+        this.libraryShell = null;
         this.emptyPlayer = null;
         this.resumePrompt = null;
         this.miniPlayer = null;
         this.nav = null;
         this.fab = null;
         this.pluginListCloseButton = null;
+    }
+
+    restoreLibraryViewMount() {
+        const root = this.libraryView?.root;
+        if (!root || root.parentNode !== this.libraryShell) return;
+        const mainContainer = document.querySelector('.main-container');
+        mainContainer?.parentNode?.insertBefore(root, mainContainer.nextSibling);
     }
 
     observeAudioContextState() {
@@ -286,7 +484,7 @@ export class MobileNav {
     updateMiniPlayer() {
         if (!this.miniPlayer) return;
         const state = this.uiManager.audioPlayer?.stateManager?.getStateSnapshot?.() || null;
-        const trackName = state?.currentTrackName || state?.currentTrack?.name || 'No track loaded';
+        const trackName = state?.currentTrackName || state?.currentTrack?.name || this.t('ui.mobileNav.noTrack', 'No track loaded');
         const hasTrack = Boolean(state?.currentTrackName || state?.currentTrack);
         const title = this.miniPlayer.querySelector('.mobile-mini-track');
         const openMusic = this.miniPlayer.querySelector('.mobile-mini-open-music');
@@ -302,6 +500,8 @@ export class MobileNav {
     }
 
     dispose() {
+        this.restoreUpdateUITexts?.();
+        this.restoreUpdateUITexts = null;
         this.unsubscribe?.();
         this.stateUnsubscribers.forEach(unsubscribe => unsubscribe());
         this.stateUnsubscribers = [];

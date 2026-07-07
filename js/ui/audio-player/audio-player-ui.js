@@ -36,6 +36,9 @@ export class AudioPlayerUI {
     this.closeButton = null;
     this.artworkImage = null;
     this.playlistDisplay = null;
+    this.libraryContextMenu = null;
+    this.libraryContextMenuCleanup = null;
+    this.libraryContextMenuReturnFocus = null;
     this.updateInterval = null;
     
     // State change listeners
@@ -59,6 +62,7 @@ export class AudioPlayerUI {
     // Listen to specific state changes
     this.audioPlayer.stateManager.addListener('currentTrack', (track) => {
       this.updateTrackDisplay(track);
+      this.notifyLibraryNowPlaying(track);
     });
 
     this.audioPlayer.stateManager.addListener('currentTrackName', () => {
@@ -71,10 +75,12 @@ export class AudioPlayerUI {
 
     this.audioPlayer.stateManager.addListener('playlist', () => {
       this.updatePlaylistDisplay();
+      this.notifyLibraryNowPlaying();
     });
 
     this.audioPlayer.stateManager.addListener('currentTrackIndex', () => {
       this.updatePlaylistDisplay();
+      this.notifyLibraryNowPlaying();
     });
     
     this.audioPlayer.stateManager.addListener('currentTrackPosition', (position) => {
@@ -158,6 +164,29 @@ export class AudioPlayerUI {
     this.closeButton = container.querySelector('.close-button');
     this.artworkImage = container.querySelector('.player-artwork-image');
     this.playlistDisplay = container.querySelector('.player-playlist');
+    container.addEventListener('dragover', event => {
+      if (!hasLibraryTrackDrag(event.dataTransfer)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+    });
+    container.addEventListener('drop', event => this.handleLibraryTrackDrop(event));
+    this.trackNameDisplay.tabIndex = 0;
+    this.trackNameDisplay.addEventListener('contextmenu', event => {
+      this.openLibraryTrackMenu(event, this.getCurrentTrack());
+    });
+    this.trackNameDisplay.addEventListener('keydown', event => {
+      if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+        const track = this.getCurrentTrack();
+        if (!track) return;
+        event.preventDefault();
+        const rect = this.trackNameDisplay.getBoundingClientRect?.() || { left: 16, bottom: 48 };
+        this.openLibraryTrackMenu({
+          preventDefault() {},
+          clientX: rect.left + 12,
+          clientY: rect.bottom + 4
+        }, track);
+      }
+    });
 
     // Add event listeners
     this.playPauseButton.addEventListener('click', () => {
@@ -342,10 +371,21 @@ export class AudioPlayerUI {
     if (currentTrackName) {
       this.trackNameDisplay.textContent = currentTrackName;
     } else if (track && track.name) {
-      this.trackNameDisplay.textContent = track.name;
+      this.trackNameDisplay.textContent = this.getDisplayTrackName(track);
     } else {
       this.trackNameDisplay.textContent = 'No track loaded';
     }
+  }
+
+  getCurrentTrack() {
+    const state = this.audioPlayer.stateManager?.getStateSnapshot?.();
+    const playlist = Array.isArray(state?.playlist) ? state.playlist : [];
+    return state?.currentTrack || playlist[state?.currentTrackIndex ?? -1] || null;
+  }
+
+  notifyLibraryNowPlaying(track = null) {
+    const current = track || this.getCurrentTrack();
+    window.uiManager?.libraryView?.setNowPlayingTrack?.(current?.libraryTrackId || null);
   }
 
   updateArtwork(artworkUrl = null) {
@@ -369,6 +409,14 @@ export class AudioPlayerUI {
     }
   }
 
+  getDisplayTrackName(track) {
+    const title = track?.meta?.title;
+    const artist = track?.meta?.artist;
+    if (title && artist) return `${artist} - ${title}`;
+    if (title) return title;
+    return track?.name || '';
+  }
+
   updatePlaylistDisplay() {
     if (!this.playlistDisplay || !this.audioPlayer.stateManager) return;
 
@@ -386,7 +434,8 @@ export class AudioPlayerUI {
       } else if (index === state.currentTrackIndex) {
         item.className += ' active';
       }
-      item.textContent = track?.name || `Track ${index + 1}`;
+      item.textContent = this.getDisplayTrackName(track) || `Track ${index + 1}`;
+      item.addEventListener('contextmenu', event => this.openLibraryTrackMenu(event, track));
       item.addEventListener('click', async () => {
         const latestState = this.audioPlayer.stateManager?.getStateSnapshot?.();
         this.audioPlayer.stateManager?.updateState?.({
@@ -400,6 +449,263 @@ export class AudioPlayerUI {
       });
       this.playlistDisplay.appendChild(item);
     });
+  }
+
+  async openLibraryTrackMenu(event, track) {
+    if (!track) return;
+    event.preventDefault?.();
+    const manager = await this.getLibraryManager();
+    const libraryTrack = manager?.findTrackForPlaybackEntry?.(track);
+    const libraryTrackId = track?.libraryTrackId || libraryTrack?.id;
+    this.closeLibraryContextMenu();
+    const menu = document.createElement('div');
+    menu.className = 'player-library-context-menu';
+    menu.setAttribute('role', 'menu');
+    menu.style.left = `${Math.max(4, event.clientX || 0)}px`;
+    menu.style.top = `${Math.max(4, event.clientY || 0)}px`;
+    menu.innerHTML = `
+      ${libraryTrackId ? `
+        <button type="button" role="menuitem" data-action="show">${escapeHtml(this.t('library.action.showInLibrary'))}</button>
+        <button type="button" role="menuitem" data-action="album">${escapeHtml(this.t('library.action.goToAlbum'))}</button>
+        <button type="button" role="menuitem" data-action="artist">${escapeHtml(this.t('library.action.goToArtist'))}</button>
+        <button type="button" role="menuitem" data-action="playlist">${escapeHtml(this.t('library.action.addToPlaylist'))}</button>
+        <hr>
+      ` : ''}
+      <button type="button" role="menuitem" data-action="save-queue">${escapeHtml(this.t('library.action.saveQueueAsPlaylist'))}</button>
+    `;
+    menu.querySelector('[data-action="show"]')?.addEventListener('click', async () => {
+      await window.uiManager?.showLibraryTrack?.(libraryTrackId);
+      this.closeLibraryContextMenu();
+    });
+    menu.querySelector('[data-action="album"]')?.addEventListener('click', async () => {
+      await window.uiManager?.showLibraryTrack?.(libraryTrackId, { view: 'album' });
+      this.closeLibraryContextMenu();
+    });
+    menu.querySelector('[data-action="artist"]')?.addEventListener('click', async () => {
+      await window.uiManager?.showLibraryTrack?.(libraryTrackId, { view: 'artist' });
+      this.closeLibraryContextMenu();
+    });
+    menu.querySelector('[data-action="playlist"]')?.addEventListener('click', async () => {
+      const rect = menu.getBoundingClientRect?.() || { left: event.clientX || 0, top: event.clientY || 0 };
+      await this.openPlayerPlaylistMenu({ clientX: rect.left, clientY: rect.top }, [libraryTrackId]);
+    });
+    menu.querySelector('[data-action="save-queue"]')?.addEventListener('click', async () => {
+      this.closeLibraryContextMenu();
+      await this.saveQueueAsPlaylist();
+    });
+    document.body.appendChild(menu);
+    this.libraryContextMenu = menu;
+    this.libraryContextMenuReturnFocus = event.currentTarget || event.target || null;
+    menu.addEventListener('keydown', keyEvent => this.handleLibraryMenuKeyDown(keyEvent));
+    this.attachLibraryContextMenuDismiss(menu);
+    clampMenuToViewport(menu);
+    menu.querySelector('button:not(:disabled)')?.focus?.();
+  }
+
+  async openPlayerPlaylistMenu(point, trackIds) {
+    try {
+      const manager = await this.getLibraryManager();
+      if (!manager) return;
+      const playlists = await manager.playlists.list();
+      this.closeLibraryContextMenu();
+      const menu = document.createElement('div');
+      menu.className = 'player-library-context-menu';
+      menu.setAttribute('role', 'menu');
+      menu.style.left = `${Math.max(4, point.clientX || 0)}px`;
+      menu.style.top = `${Math.max(4, point.clientY || 0)}px`;
+      menu.innerHTML = `
+        <button type="button" role="menuitem" data-action="new">${escapeHtml(this.t('library.action.newPlaylist'))}</button>
+        ${playlists.map(playlist => `<button type="button" role="menuitem" data-playlist-id="${escapeHtml(playlist.id)}">${escapeHtml(playlist.name)}</button>`).join('')}
+      `;
+      menu.querySelector('[data-action="new"]')?.addEventListener('click', async () => {
+        this.closeLibraryContextMenu();
+        try {
+          const name = await this.promptText('library.prompt.playlistName', this.t('library.prompt.queuePlaylistName'));
+          if (name) await manager.playlists.create(name, trackIds);
+        } catch (error) {
+          window.uiManager?.setError?.(error.message || String(error), true);
+        }
+      });
+      menu.querySelectorAll('[data-playlist-id]').forEach(button => {
+        button.addEventListener('click', async () => {
+          await manager.playlists.addTracks(button.dataset.playlistId, trackIds);
+          this.closeLibraryContextMenu();
+        });
+      });
+      document.body.appendChild(menu);
+      this.libraryContextMenu = menu;
+      this.libraryContextMenuReturnFocus = document.activeElement || null;
+      menu.addEventListener('keydown', keyEvent => this.handleLibraryMenuKeyDown(keyEvent));
+      this.attachLibraryContextMenuDismiss(menu);
+      clampMenuToViewport(menu);
+      menu.querySelector('button:not(:disabled)')?.focus?.();
+    } catch (error) {
+      window.uiManager?.setError?.(error.message || String(error), true);
+    }
+  }
+
+  async saveQueueAsPlaylist() {
+    try {
+      const manager = await this.getLibraryManager();
+      if (!manager) return;
+      const state = this.audioPlayer.stateManager?.getStateSnapshot?.();
+      const items = manager.createPlaylistItemsFromQueueEntries
+        ? manager.createPlaylistItemsFromQueueEntries(Array.isArray(state?.playlist) ? state.playlist : [])
+        : (Array.isArray(state?.playlist) ? state.playlist : []).map(track => track?.libraryTrackId).filter(Boolean);
+      if (!items.length) {
+        window.uiManager?.setError?.(this.t('library.state.noResolvedTracks'), true);
+        return;
+      }
+      const name = await this.promptText('library.prompt.playlistName', this.t('library.prompt.queuePlaylistName'));
+      if (name) await manager.playlists.create(name, items);
+    } catch (error) {
+      window.uiManager?.setError?.(error.message || String(error), true);
+    }
+  }
+
+  async handleLibraryTrackDrop(event) {
+    const trackIds = getLibraryTrackDragIds(event.dataTransfer);
+    if (!trackIds.length) return;
+    event.preventDefault?.();
+    try {
+      const manager = await this.getLibraryManager();
+      await manager?.addToQueue?.(trackIds);
+    } catch (error) {
+      window.uiManager?.setError?.(error.message || String(error), true);
+    }
+  }
+
+  async getLibraryManager() {
+    if (window.uiManager?.ensureLibraryManager) {
+      return window.uiManager.ensureLibraryManager();
+    }
+    return window.uiManager?.libraryManager || null;
+  }
+
+  // In-app replacement for window.prompt(): Electron defines prompt() but it
+  // always throws, so playlist naming must use a DOM dialog instead.
+  promptText(key, fallbackValue = '') {
+    return new Promise(resolve => {
+      const backdrop = document.createElement('div');
+      backdrop.className = 'library-dialog-backdrop player-prompt-backdrop';
+      const dialog = document.createElement('form');
+      dialog.className = 'library-properties-dialog player-prompt-dialog';
+      dialog.setAttribute('role', 'dialog');
+      dialog.setAttribute('aria-modal', 'true');
+      dialog.setAttribute('aria-label', this.t(key));
+      dialog.style.width = 'min(360px, 100%)';
+      dialog.style.padding = '14px';
+      dialog.style.display = 'grid';
+      dialog.style.gap = '10px';
+      const label = document.createElement('label');
+      label.className = 'player-prompt-label';
+      label.textContent = this.t(key);
+      const input = document.createElement('input');
+      input.className = 'player-prompt-input';
+      input.type = 'text';
+      input.value = fallbackValue;
+      const buttons = document.createElement('div');
+      buttons.className = 'player-prompt-buttons';
+      buttons.style.display = 'flex';
+      buttons.style.justifyContent = 'flex-end';
+      buttons.style.gap = '8px';
+      const cancelButton = document.createElement('button');
+      cancelButton.type = 'button';
+      cancelButton.className = 'player-prompt-cancel';
+      cancelButton.textContent = this.t('library.action.cancel');
+      const okButton = document.createElement('button');
+      okButton.type = 'submit';
+      okButton.className = 'player-prompt-ok';
+      okButton.textContent = this.t('library.state.ok');
+      buttons.appendChild(cancelButton);
+      buttons.appendChild(okButton);
+      dialog.appendChild(label);
+      dialog.appendChild(input);
+      dialog.appendChild(buttons);
+      backdrop.appendChild(dialog);
+      let settled = false;
+      const finish = value => {
+        if (settled) return;
+        settled = true;
+        if (backdrop.parentNode) {
+          backdrop.parentNode.removeChild(backdrop);
+        }
+        resolve(value == null ? '' : String(value).trim());
+      };
+      dialog.addEventListener('submit', event => {
+        event.preventDefault?.();
+        finish(input.value);
+      });
+      cancelButton.addEventListener('click', () => finish(null));
+      backdrop.addEventListener('pointerdown', event => {
+        if (event.target === backdrop) finish(null);
+      });
+      dialog.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+          event.preventDefault?.();
+          finish(null);
+        }
+      });
+      document.body.appendChild(backdrop);
+      input.focus?.();
+      input.select?.();
+    });
+  }
+
+  attachLibraryContextMenuDismiss(menu) {
+    const closeOnPointerDown = event => {
+      if (menu.contains?.(event.target)) return;
+      this.closeLibraryContextMenu();
+    };
+    const closeOnKeyDown = event => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        this.closeLibraryContextMenu();
+      }
+    };
+    document.addEventListener?.('pointerdown', closeOnPointerDown);
+    document.addEventListener?.('keydown', closeOnKeyDown);
+    this.libraryContextMenuCleanup = () => {
+      document.removeEventListener?.('pointerdown', closeOnPointerDown);
+      document.removeEventListener?.('keydown', closeOnKeyDown);
+    };
+  }
+
+  closeLibraryContextMenu() {
+    const returnFocus = this.libraryContextMenuReturnFocus;
+    this.libraryContextMenuCleanup?.();
+    this.libraryContextMenuCleanup = null;
+    if (this.libraryContextMenu?.parentNode) {
+      this.libraryContextMenu.parentNode.removeChild(this.libraryContextMenu);
+    }
+    this.libraryContextMenu = null;
+    this.libraryContextMenuReturnFocus = null;
+    returnFocus?.focus?.();
+  }
+
+  handleLibraryMenuKeyDown(event) {
+    const items = Array.from(event.currentTarget.querySelectorAll?.('button:not(:disabled)') || []);
+    const index = items.indexOf(document.activeElement);
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      this.closeLibraryContextMenu();
+      return;
+    }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const step = event.key === 'ArrowDown' ? 1 : -1;
+      (items[(index + step + items.length) % items.length] || items[0])?.focus?.();
+      return;
+    }
+    if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault();
+      (event.key === 'Home' ? items[0] : items.at(-1))?.focus?.();
+      return;
+    }
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      (items[index] || document.activeElement)?.click?.();
+    }
   }
 
   /**
@@ -490,6 +796,7 @@ export class AudioPlayerUI {
    */
   removeUI() {
     this.stopUpdateInterval();
+    this.closeLibraryContextMenu();
     
     if (this.container && this.container.parentNode) {
       this.container.parentNode.removeChild(this.container);
@@ -509,5 +816,58 @@ export class AudioPlayerUI {
     this.artworkImage = null;
     this.playlistDisplay = null;
     window.uiManager?.mobileNav?.updatePlayerPlaceholder?.();
+  }
+
+  t(key, params = {}) {
+    const text = window.uiManager?.t ? window.uiManager.t(key, params) : key;
+    if (text !== key) return text;
+    const fallback = {
+      'library.action.showInLibrary': 'Show in Library',
+      'library.action.goToAlbum': 'Go to Album',
+      'library.action.goToArtist': 'Go to Artist',
+      'library.action.addToPlaylist': 'Add to Playlist',
+      'library.action.saveQueueAsPlaylist': 'Save Queue as Playlist',
+      'library.action.newPlaylist': 'New Playlist',
+      'library.prompt.playlistName': 'Playlist name',
+      'library.prompt.queuePlaylistName': 'Queue',
+      'library.action.cancel': 'Cancel',
+      'library.state.ok': 'OK',
+      'library.state.noResolvedTracks': 'There are no available library tracks.'
+    };
+    return fallback[key] || String(key).replace(/\{(\w+)\}/g, (_, name) => params[name] ?? '');
+  }
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function clampMenuToViewport(menu) {
+  const rect = menu.getBoundingClientRect?.();
+  if (!rect || typeof window === 'undefined') return;
+  const margin = 8;
+  if (rect.right > window.innerWidth - margin) {
+    menu.style.left = `${Math.max(margin, window.innerWidth - rect.width - margin)}px`;
+  }
+  if (rect.bottom > window.innerHeight - margin) {
+    menu.style.top = `${Math.max(margin, window.innerHeight - rect.height - margin)}px`;
+  }
+}
+
+function hasLibraryTrackDrag(dataTransfer) {
+  return Array.from(dataTransfer?.types || []).includes('application/x-effetune-library-tracks');
+}
+
+function getLibraryTrackDragIds(dataTransfer) {
+  try {
+    const raw = dataTransfer?.getData?.('application/x-effetune-library-tracks');
+    const parsed = JSON.parse(raw || '[]');
+    return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+  } catch (_) {
+    return [];
   }
 }

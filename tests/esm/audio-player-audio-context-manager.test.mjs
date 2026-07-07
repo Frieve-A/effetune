@@ -298,6 +298,9 @@ function createHarness(options = {}) {
       calls.push(['playback.getTrack', index]);
       return playlist[index] ?? null;
     },
+    async playNext(userInitiated, playNextOptions) {
+      calls.push(['playback.playNext', userInitiated, playNextOptions ? { ...playNextOptions } : playNextOptions]);
+    },
     onTrackEnded() {
       calls.push(['playback.onTrackEnded']);
     }
@@ -321,6 +324,16 @@ function createHarness(options = {}) {
 
 function runTimers(timers) {
   timers.splice(0).forEach(timer => timer.fn());
+}
+
+function setPreparedNextBuffer(manager, track, buffer, targetIndex = null) {
+  const request = manager.beginNextBufferRequest(track, targetIndex);
+  manager.nextBuffer = {
+    buffer,
+    track,
+    targetIndex: request.targetIndex,
+    requestToken: request.token
+  };
 }
 
 test('core graph connections and source management preserve playback wiring', async () => {
@@ -461,6 +474,32 @@ test('buffer source lifecycle and graph rebuilds keep playback recoverable', asy
   });
 });
 
+test('buffer source onended remains active after pause and resume', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    const { audioContext, manager, state } = createHarness({
+      calls,
+      playbackMode: 'bufferSource',
+      isPlaying: true,
+      isPaused: false,
+      state: { isStopped: false }
+    });
+    manager.currentBuffer = { duration: 12 };
+    manager.handleTrackEnded = () => calls.push(['manager.handleTrackEnded.afterResume']);
+
+    audioContext.currentTime = 10;
+    await manager.playBufferSource();
+    audioContext.currentTime = 14;
+    await manager.pauseBufferSource();
+    assert.equal(state.currentTrackPosition, 4);
+
+    audioContext.currentTime = 20;
+    await manager.playBufferSource();
+    manager.currentBufferSource.onended();
+
+    assert.equal(calls.some(call => call[0] === 'manager.handleTrackEnded.afterResume'), true);
+  });
+});
+
 test('audio element setup, metadata, media session, and fallback naming stay synchronized', async () => {
   await withAudioContextGlobals({
     electronIntegration: { isElectron: true },
@@ -509,6 +548,46 @@ test('audio element setup, metadata, media session, and fallback naming stay syn
 
     manager.setupAudioElement({ name: 'Path Track', path: 'C:\\Music\\song.wav' });
     assert.equal(audioPlayer.audioElement.src, 'file://C:/Music/song.wav');
+
+    const invalidState = Object.assign(new Error('already connected once'), {
+      name: 'InvalidStateError',
+      message: 'already connected'
+    });
+    const staleElementHarness = createHarness({
+      calls,
+      audioContextOptions: { mediaElementSourceErrors: [invalidState] }
+    });
+    const firstNewElementIndex = FakeAudioElement.instances.length;
+    staleElementHarness.manager.setupAudioElement({ name: 'Reconnect', path: '/reconnect.wav' });
+    const oldElement = FakeAudioElement.instances[firstNewElementIndex];
+    const replacementElement = FakeAudioElement.instances[firstNewElementIndex + 1];
+    assert.equal(oldElement.paused, true);
+    assert.equal(oldElement.src, '');
+    assert.equal((oldElement.listeners.get('timeupdate') || []).length, 0);
+
+    staleElementHarness.state.playbackMode = 'audioElement';
+    staleElementHarness.manager.handleTrackEnded = () => calls.push(['staleElementEnded']);
+    oldElement.currentTime = 7;
+    oldElement.duration = 77;
+    oldElement.dispatch('timeupdate', { target: oldElement });
+    oldElement.dispatch('loadedmetadata', { target: oldElement });
+    oldElement.dispatch('ended', { target: oldElement });
+    assert.notEqual(staleElementHarness.state.currentTrackPosition, 7);
+    assert.notEqual(staleElementHarness.state.currentTrackDuration, 77);
+    assert.equal(calls.some(call => call[0] === 'staleElementEnded'), false);
+
+    replacementElement.currentTime = 5;
+    replacementElement.duration = 55;
+    replacementElement.dispatch('timeupdate', { target: replacementElement });
+    replacementElement.dispatch('loadedmetadata', { target: replacementElement });
+    assert.equal(staleElementHarness.state.currentTrackPosition, 5);
+    assert.equal(staleElementHarness.state.currentTrackDuration, 55);
+
+    const fallbackIndex = createHarness({ calls, currentTrackIndex: 0 });
+    fallbackIndex.audioPlayer.playbackManager.currentTrackIndex = undefined;
+    fallbackIndex.manager.setupAudioElement({ name: 'Two Fallback', path: '/two.wav' });
+    assert.equal(fallbackIndex.state.currentTrackIndex, 1);
+
     manager.setupAudioElement({ name: 'No Source' });
 
     manager.readID3Tags(new FakeFile('bad.mp3'), 0);
@@ -568,6 +647,15 @@ test('playback controls operate on buffer sources and audio elements', async () 
     audioPlayer.audioContext.currentTime = 14;
     await manager.pauseBufferSource();
     assert.equal(state.isPaused, true);
+
+    calls.length = 0;
+    await manager.seek(7);
+    assert.equal(state.currentTrackPosition, 7);
+    assert.equal(state.isPlaying, false);
+    assert.equal(state.isPaused, true);
+    assert.equal(state.isStopped, false);
+    assert.equal(manager.currentBufferSource, null);
+    assert.equal(calls.some(call => call[0] === 'node.start'), false);
 
     await manager.playBufferSource();
     await manager.stop();
@@ -631,6 +719,14 @@ test('track-ended handling, monitoring, and load helpers advance playback state'
   await withAudioContextGlobals({
     electronIntegration: { isElectron: true },
     electronAPI: {
+      library: {
+        async readFileBytes(request) {
+          if (request.path !== 'C:\\song.wav') {
+            throw new Error('missing');
+          }
+          return new Uint8Array([1, 2, 3]).buffer;
+        }
+      },
       async readFile(path, asBuffer) {
         if (path.includes('missing')) return { success: false, error: 'missing' };
         assert.equal(asBuffer, true);
@@ -652,9 +748,30 @@ test('track-ended handling, monitoring, and load helpers advance playback state'
     assert.equal(calls.some(call => call[0] === 'seamlessTransition'), true);
 
     state.repeatMode = 'ALL';
-    manager.transitionToNextTrack = async track => calls.push(['transitionToNextTrack', track.name]);
+    const repeatAllEndedCalls = calls.filter(call => call[0] === 'playback.onTrackEnded').length;
+    manager.transitionToNextTrack = async track => calls.push(['unexpectedRepeatAllTransition', track.name]);
     manager.handleTrackEnded();
-    assert.equal(state.currentTrackIndex, 0);
+    assert.equal(calls.filter(call => call[0] === 'playback.onTrackEnded').length, repeatAllEndedCalls + 1);
+    assert.equal(state.currentTrackIndex, 1);
+    assert.equal(calls.some(call => call[0] === 'unexpectedRepeatAllTransition'), false);
+
+    const shuffleRepeatAll = createHarness({
+      calls,
+      playlist: [
+        { name: 'Shuffle One', path: '/shuffle-one.wav' },
+        { name: 'Shuffle Two', path: '/shuffle-two.wav' },
+        { name: 'Shuffle Three', path: '/shuffle-three.wav' }
+      ],
+      currentTrackIndex: 2,
+      repeatMode: 'ALL',
+      state: { shuffleMode: true }
+    });
+    const shuffleEndedCalls = calls.filter(call => call[0] === 'playback.onTrackEnded').length;
+    shuffleRepeatAll.manager.transitionToNextTrack = async track => calls.push(['unexpectedShuffleRepeatAllTransition', track.name]);
+    shuffleRepeatAll.manager.handleTrackEnded();
+    assert.equal(calls.filter(call => call[0] === 'playback.onTrackEnded').length, shuffleEndedCalls + 1);
+    assert.equal(shuffleRepeatAll.state.currentTrackIndex, 2);
+    assert.equal(calls.some(call => call[0] === 'unexpectedShuffleRepeatAllTransition'), false);
 
     state.repeatMode = 'OFF';
     state.currentTrackIndex = 1;
@@ -718,12 +835,801 @@ test('track-ended handling, monitoring, and load helpers advance playback state'
     await loadHarness.manager.loadTrack(playlist[0]);
     assert.equal(loadHarness.state.playbackMode, 'bufferSource');
 
+    const duplicatePathPlaylist = [
+      { name: 'Same Path A', path: '/same.wav' },
+      { name: 'Same Path B', path: '/same.wav' }
+    ];
+    const duplicatePathLoad = createHarness({ calls, playlist: duplicatePathPlaylist, currentTrackIndex: 0 });
+    duplicatePathLoad.manager.prepareTrackBuffer = async () => ({ duration: 6 });
+    duplicatePathLoad.manager.loadMetadata = () => {};
+    duplicatePathLoad.manager.prepareNextTrackBufferWithRepeatMode = () => {};
+    await duplicatePathLoad.manager.loadTrack(duplicatePathPlaylist[1], 1);
+    assert.equal(duplicatePathLoad.state.currentTrackIndex, 1);
+
+    const duplicateLibraryPlaylist = [
+      { name: 'Library A', path: '/library-a.wav', libraryTrackId: 'duplicate-id' },
+      { name: 'Library B', path: '/library-b.wav', libraryTrackId: 'duplicate-id' }
+    ];
+    const duplicateLibraryLoad = createHarness({ calls, playlist: duplicateLibraryPlaylist, currentTrackIndex: 0 });
+    duplicateLibraryLoad.manager.prepareTrackBuffer = async () => ({ duration: 7 });
+    duplicateLibraryLoad.manager.loadMetadata = () => {};
+    duplicateLibraryLoad.manager.prepareNextTrackBufferWithRepeatMode = () => {};
+    await duplicateLibraryLoad.manager.loadTrack(duplicateLibraryPlaylist[1], 1);
+    assert.equal(duplicateLibraryLoad.state.currentTrackIndex, 1);
+
+    const resetLoad = createHarness({
+      calls,
+      playlist,
+      currentTrackIndex: 0,
+      currentTrackDuration: 99,
+      currentTrackPosition: 7
+    });
+    resetLoad.manager.currentBuffer = { duration: 99 };
+    resetLoad.manager.prepareTrackBuffer = async () => {
+      assert.equal(resetLoad.manager.currentBuffer, null);
+      assert.equal(resetLoad.state.currentTrackDuration, 0);
+      assert.equal(resetLoad.state.currentTrackPosition, 0);
+      return { duration: 8 };
+    };
+    resetLoad.manager.loadMetadata = () => {};
+    resetLoad.manager.prepareNextTrackBufferWithRepeatMode = () => {};
+    await resetLoad.manager.loadTrack(playlist[0]);
+    assert.equal(resetLoad.state.currentTrackDuration, 8);
+
     const fallbackLoad = createHarness({ calls, playlist, currentTrackIndex: 0 });
     fallbackLoad.manager.prepareTrackBuffer = async () => { throw new Error('decode failed'); };
     fallbackLoad.manager.setupAudioElement = track => calls.push(['fallbackSetupAudioElement', track.name]);
     await fallbackLoad.manager.loadTrack(playlist[0]);
     assert.equal(fallbackLoad.state.playbackMode, 'audioElement');
+
+    const repeatOneSkipPlaylist = [
+      { name: 'Bad', path: '/bad.wav' },
+      { name: 'Good', path: '/good.wav' }
+    ];
+    const repeatOneSkip = createHarness({
+      calls,
+      playlist: repeatOneSkipPlaylist,
+      currentTrackIndex: 0,
+      repeatMode: 'ONE'
+    });
+    const loadAttempts = [];
+    repeatOneSkip.manager.prepareTrackBuffer = async track => {
+      loadAttempts.push(track.name);
+      if (track.name === 'Bad') throw new Error('bad decode');
+      return { duration: 9 };
+    };
+    repeatOneSkip.manager.setupResolvedAudioElement = async () => {
+      throw new Error('fallback failed');
+    };
+    repeatOneSkip.manager.loadMetadata = track => calls.push(['repeatOneSkipMetadata', track.name]);
+    repeatOneSkip.manager.prepareNextTrackBufferWithRepeatMode = () => calls.push(['repeatOneSkipPrepareNext']);
+    repeatOneSkip.audioPlayer.playbackManager.playNext = async (userInitiated, playNextOptions) => {
+      calls.push(['repeatOneSkipPlayNext', userInitiated, { ...playNextOptions }]);
+      await repeatOneSkip.manager.loadTrack(repeatOneSkipPlaylist[1], 1);
+    };
+
+    await repeatOneSkip.manager.loadTrack(repeatOneSkipPlaylist[0], 0);
+
+    assert.deepEqual(loadAttempts, ['Bad', 'Good']);
+    assert.equal(repeatOneSkip.state.currentTrackIndex, 1);
+    assert.deepEqual(
+      calls.find(call => call[0] === 'repeatOneSkipPlayNext'),
+      ['repeatOneSkipPlayNext', false, { allowDuringTransition: true, ignoreRepeatOne: true, failedIndex: 0 }]
+    );
   });
+});
+
+test('out-of-order loadTrack completions do not overwrite the active track', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    const playlist = [
+      { name: 'One', path: '/one.wav' },
+      { name: 'Two', path: '/two.wav' }
+    ];
+    const { manager, state } = createHarness({ calls, playlist, currentTrackIndex: 0 });
+    const pending = new Map();
+
+    manager.prepareTrackBuffer = async track => new Promise(resolve => {
+      pending.set(track.name, resolve);
+    });
+    manager.loadMetadata = track => calls.push(['loadMetadata', track.name]);
+    manager.prepareNextTrackBufferWithRepeatMode = () => calls.push(['prepareNextAfterLoad']);
+
+    const firstLoad = manager.loadTrack(playlist[0]);
+    const secondLoad = manager.loadTrack(playlist[1]);
+
+    pending.get('Two')({ duration: 22 });
+    await secondLoad;
+    assert.equal(state.currentTrackName, 'Two');
+    assert.equal(manager.currentBuffer.duration, 22);
+
+    pending.get('One')({ duration: 11 });
+    await firstLoad;
+    assert.equal(state.currentTrackName, 'Two');
+    assert.equal(manager.currentBuffer.duration, 22);
+    assert.deepEqual(calls.filter(call => call[0] === 'loadMetadata'), [
+      ['loadMetadata', 'Two']
+    ]);
+  });
+});
+
+test('repeat OFF first-track preparation is discarded after a newer load starts', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    const playlist = [
+      { name: 'One', path: '/one.wav' },
+      { name: 'Two', path: '/two.wav' }
+    ];
+    const { manager, state } = createHarness({
+      calls,
+      playlist,
+      currentTrackIndex: 1,
+      repeatMode: 'OFF'
+    });
+    const pending = new Map();
+
+    manager.prepareTrackBuffer = async (track, isStale) => new Promise(resolve => {
+      pending.set(track.name, { resolve, isStale });
+    });
+    manager.loadMetadata = track => calls.push(['loadMetadata', track.name]);
+    manager.prepareNextTrackBufferWithRepeatMode = () => calls.push(['prepareNextAfterLoad']);
+
+    manager.handleTrackEnded();
+    assert.equal(state.currentTrackIndex, 0);
+    assert.equal(state.currentTrackName, 'One');
+    assert.equal(pending.get('One').isStale(), false);
+
+    const secondLoad = manager.loadTrack(playlist[1]);
+    assert.equal(pending.get('One').isStale(), true);
+    pending.get('Two').resolve({ duration: 22 });
+    await secondLoad;
+    assert.equal(state.currentTrackName, 'Two');
+    assert.equal(manager.currentBuffer.duration, 22);
+
+    pending.get('One').resolve({ duration: 11 });
+    await flushMicrotasks();
+    assert.equal(state.currentTrackName, 'Two');
+    assert.equal(manager.currentBuffer.duration, 22);
+    assert.equal(calls.some(call =>
+      call[0] === 'state.updateState' &&
+      call[2] === 'First track buffer prepared for next playback'
+    ), false);
+  });
+});
+
+test('repeat OFF first-track ready state clears stale ended buffer before prebuffer resolves', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    const playlist = [
+      { name: 'One', path: '/one.wav' },
+      { name: 'Two', path: '/two.wav' }
+    ];
+    const endedBuffer = { duration: 99 };
+    const { manager, state } = createHarness({
+      calls,
+      playlist,
+      currentTrackIndex: 1,
+      repeatMode: 'OFF',
+      state: {
+        currentTrack: playlist[1],
+        currentBuffer: endedBuffer
+      }
+    });
+    let resolvePrepare;
+
+    manager.currentBuffer = endedBuffer;
+    manager.bufferDuration = endedBuffer.duration;
+    manager.prepareTrackBuffer = async () => new Promise(resolve => {
+      resolvePrepare = resolve;
+    });
+    manager.loadMetadata = () => {};
+    manager.prepareNextTrackBufferWithRepeatMode = () => calls.push(['prepareNextAfterStoppedPrebuffer']);
+
+    manager.handleTrackEnded();
+
+    assert.equal(state.currentTrackIndex, 0);
+    assert.equal(state.currentTrackName, 'One');
+    assert.equal(state.currentBuffer, null);
+    assert.equal(manager.currentBuffer, null);
+    assert.equal(manager.bufferDuration, 0);
+    assert.equal(manager.hasCurrentBuffer(), false);
+
+    resolvePrepare({ duration: 11 });
+    await flushMicrotasks();
+    assert.equal(manager.currentBuffer.duration, 11);
+  });
+});
+
+test('repeat OFF first-track prebuffer does not start monitoring while stopped', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    const playlist = [
+      { name: 'One', path: '/one.wav' },
+      { name: 'Two', path: '/two.wav' }
+    ];
+    const { manager, state } = createHarness({
+      calls,
+      playlist,
+      currentTrackIndex: 1,
+      repeatMode: 'OFF'
+    });
+
+    manager.prepareTrackBuffer = async () => ({ duration: 11 });
+    manager.loadMetadata = () => {};
+    manager.prepareNextTrackBufferWithRepeatMode = () => calls.push(['prepareNextAfterStoppedPrebuffer']);
+
+    manager.handleTrackEnded();
+    await flushMicrotasks();
+
+    assert.equal(state.isStopped, true);
+    assert.equal(manager.currentBuffer.duration, 11);
+    assert.equal(manager.bufferMonitoringInterval, null);
+    assert.equal(calls.some(call => call[0] === 'setInterval'), false);
+  });
+});
+
+test('stale catalog artwork callbacks do not update the current track state', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    const oldTrack = { name: 'Old', meta: { title: 'Old Title', artworkId: 'old-art' } };
+    const newTrack = { name: 'New', meta: { title: 'New Title' } };
+    const { audioPlayer, manager, state } = createHarness({
+      calls,
+      playlist: [oldTrack],
+      state: { currentTrack: oldTrack }
+    });
+    let resolveOldArtwork;
+
+    window.libraryManager = {
+      getArtworkThumbURL(artworkId) {
+        calls.push(['getArtworkThumbURL', artworkId]);
+        return new Promise(resolve => {
+          resolveOldArtwork = resolve;
+        });
+      }
+    };
+
+    manager.loadMetadata(oldTrack);
+    state.currentTrack = newTrack;
+    manager.loadMetadata(newTrack);
+
+    resolveOldArtwork('blob:old-art');
+    await flushMicrotasks();
+
+    assert.equal(state.currentTrackName, 'New Title');
+    assert.equal(state.artworkUrl, '');
+    assert.equal(audioPlayer.ui.trackNameDisplay.textContent, 'New Title');
+  });
+});
+
+test('stale ID3 metadata callbacks do not update the current track state', async () => {
+  const tagHandlers = new Map();
+  await withAudioContextGlobals({
+    jsmediatags: {
+      read(file, handlers) {
+        tagHandlers.set(file.name, handlers);
+      }
+    }
+  }, async ({ calls, objectUrls }) => {
+    const oldTrack = { name: 'Old', file: new FakeFile('old.mp3') };
+    const newTrack = { name: 'New', file: new FakeFile('new.mp3') };
+    const { audioPlayer, manager, state } = createHarness({
+      calls,
+      playlist: [oldTrack],
+      state: { currentTrack: oldTrack }
+    });
+
+    manager.loadMetadata(oldTrack);
+    state.currentTrack = newTrack;
+    manager.loadMetadata(newTrack);
+
+    tagHandlers.get('new.mp3').onSuccess({ tags: { title: 'New Title' } });
+    tagHandlers.get('old.mp3').onSuccess({
+      tags: {
+        title: 'Old Title',
+        artist: 'Old Artist',
+        picture: {
+          data: new Uint8Array([1, 2, 3]),
+          format: 'image/png'
+        }
+      }
+    });
+
+    assert.equal(state.currentTrackName, 'New Title');
+    assert.equal(state.artworkUrl, '');
+    assert.equal(audioPlayer.ui.trackNameDisplay.textContent, 'New Title');
+    assert.equal(objectUrls.some(call => call[0] === 'create'), false);
+  });
+});
+
+test('disconnect invalidates pending metadata so late ID3 artwork is ignored', async () => {
+  const tagHandlers = new Map();
+  await withAudioContextGlobals({
+    jsmediatags: {
+      read(file, handlers) {
+        tagHandlers.set(file.name, handlers);
+      }
+    }
+  }, async ({ calls, objectUrls }) => {
+    const fileTrack = { name: 'Pending Track', file: new FakeFile('pending.mp3') };
+    const { manager, state } = createHarness({
+      calls,
+      playlist: [fileTrack],
+      currentTrackIndex: 0,
+      state: {
+        currentTrack: fileTrack,
+        currentTrackName: 'Pending Track'
+      }
+    });
+    const loadRequest = manager.beginLoadRequest(fileTrack, 0);
+    manager.beginTransitionRequest(fileTrack, 0);
+
+    manager.loadMetadata(fileTrack, loadRequest, 0);
+    assert.notEqual(manager.activeLoadRequest, null);
+    assert.notEqual(manager.activeMetadataRequest, null);
+    assert.notEqual(manager.activeTransitionRequest, null);
+
+    manager.disconnect();
+    assert.equal(manager.activeLoadRequest, null);
+    assert.equal(manager.activeMetadataRequest, null);
+    assert.equal(manager.activeTransitionRequest, null);
+
+    tagHandlers.get('pending.mp3').onSuccess({
+      tags: {
+        title: 'Late Title',
+        artist: 'Late Artist',
+        picture: {
+          data: new Uint8Array([1, 2, 3]),
+          format: 'image/png'
+        }
+      }
+    });
+
+    assert.equal(state.currentTrack, null);
+    assert.equal(state.currentTrackName, '');
+    assert.equal(state.artworkUrl, '');
+    assert.equal(manager.currentArtworkURL, null);
+    assert.equal(objectUrls.some(call => call[0] === 'create'), false);
+  });
+});
+
+test('catalog metadata revokes previous embedded artwork URL', async () => {
+  const tagHandlers = new Map();
+  await withAudioContextGlobals({
+    jsmediatags: {
+      read(file, handlers) {
+        tagHandlers.set(file.name, handlers);
+      }
+    }
+  }, async ({ calls, objectUrls }) => {
+    const embeddedTrack = { name: 'Embedded Track', file: new FakeFile('embedded.mp3') };
+    const catalogTrack = {
+      name: 'Catalog Track',
+      meta: {
+        title: 'Catalog Title',
+        artist: 'Catalog Artist'
+      }
+    };
+    const { audioPlayer, manager, state } = createHarness({
+      calls,
+      playlist: [embeddedTrack, catalogTrack],
+      currentTrackIndex: 0,
+      state: { currentTrack: embeddedTrack }
+    });
+
+    manager.loadMetadata(embeddedTrack, null, 0);
+    tagHandlers.get('embedded.mp3').onSuccess({
+      tags: {
+        title: 'Embedded Title',
+        artist: 'Embedded Artist',
+        picture: {
+          data: new Uint8Array([4, 5, 6]),
+          format: 'image/png'
+        }
+      }
+    });
+
+    const artworkUrl = state.artworkUrl;
+    assert.ok(artworkUrl);
+    assert.equal(manager.currentArtworkURL, artworkUrl);
+    assert.equal(objectUrls.some(call => call[0] === 'create' && call[1] === artworkUrl), true);
+
+    state.currentTrack = catalogTrack;
+    state.currentTrackIndex = 1;
+    manager.loadMetadata(catalogTrack, null, 1);
+
+    assert.equal(state.currentTrackName, 'Catalog Artist - Catalog Title');
+    assert.equal(state.artworkUrl, '');
+    assert.equal(manager.currentArtworkURL, null);
+    assert.equal(objectUrls.some(call => call[0] === 'revoke' && call[1] === artworkUrl), true);
+    assert.equal(audioPlayer.ui.trackNameDisplay.textContent, 'Catalog Artist - Catalog Title');
+  });
+});
+
+test('stale nextBuffer preparation and consumption are discarded', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    const trackA = { name: 'A', path: '/a.wav' };
+    const trackB = { name: 'B', path: '/b.wav' };
+    const inserted = { name: 'Inserted', path: '/inserted.wav' };
+    const playlist = [trackA, trackB];
+    const { manager } = createHarness({ calls, playlist, currentTrackIndex: 0 });
+    let resolvePrepared;
+
+    manager.prepareTrackBuffer = async track => new Promise(resolve => {
+      calls.push(['prepareTrackBuffer', track.name]);
+      resolvePrepared = resolve;
+    });
+
+    const preparePromise = manager.prepareNextTrackBufferWithRepeatMode();
+    playlist.splice(1, 0, inserted);
+    resolvePrepared({ duration: 5 });
+    await preparePromise;
+    assert.equal(manager.nextBuffer, null);
+
+    setPreparedNextBuffer(manager, trackB, { duration: 9 });
+    manager.loadTrack = async track => calls.push(['fallbackLoadTrack', track.name]);
+    manager.play = async () => calls.push(['fallbackPlay']);
+
+    await manager.transitionToNextTrack(inserted);
+    assert.equal(manager.nextBuffer, null);
+    assert.deepEqual(calls.filter(call => ['fallbackLoadTrack', 'fallbackPlay'].includes(call[0])), [
+      ['fallbackLoadTrack', 'Inserted'],
+      ['fallbackPlay']
+    ]);
+  });
+});
+
+test('handled transition load failures do not publish success after scheduling a skip', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    const playlist = [
+      { name: 'One', path: '/one.wav' },
+      { name: 'Bad', path: '/bad.wav' },
+      { name: 'Good', path: '/good.wav' }
+    ];
+    const { manager, state } = createHarness({ calls, playlist, currentTrackIndex: 0 });
+
+    manager.prepareTrackBuffer = async track => {
+      if (track.name === 'Bad') throw new Error('decode failed');
+      return { duration: 12 };
+    };
+    manager.setupResolvedAudioElement = async () => {
+      throw new Error('fallback failed');
+    };
+    manager.play = async () => {
+      calls.push(['transitionFailurePlay']);
+      return true;
+    };
+
+    assert.equal(await manager.transitionToNextTrack(playlist[1], 1), false);
+    assert.equal(calls.some(call => call[0] === 'transitionFailurePlay'), false);
+    assert.equal(
+      calls.filter(call => call[0] === 'state.updateState' && call[2] === 'Transition completed').length,
+      0
+    );
+    assert.deepEqual(
+      calls.find(call => call[0] === 'playback.playNext'),
+      ['playback.playNext', false, { allowDuringTransition: true, ignoreRepeatOne: true, failedIndex: 1 }]
+    );
+    assert.equal(state.isTransitioning, false);
+    assert.equal(state.isPlaying, false);
+  });
+});
+
+test('stop invalidates pending transition loads before they can restart playback', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    const playlist = [
+      { name: 'One', path: '/one.wav' },
+      { name: 'Two', path: '/two.wav' }
+    ];
+    const { manager, state } = createHarness({
+      calls,
+      playlist,
+      currentTrackIndex: 0,
+      isPlaying: true,
+      isStopped: false,
+      state: { isTransitioning: false, transitionType: null }
+    });
+    let resolveLoad;
+    let isLoadStale;
+
+    manager.prepareTrackBuffer = async (_track, isStale) => new Promise(resolve => {
+      isLoadStale = isStale;
+      resolveLoad = resolve;
+    });
+    manager.loadMetadata = track => calls.push(['stopRaceLoadMetadata', track.name]);
+    manager.prepareNextTrackBufferWithRepeatMode = () => calls.push(['stopRacePrepareNext']);
+    manager.play = async () => {
+      calls.push(['stopRacePlay']);
+      return true;
+    };
+
+    const transitionPromise = manager.transitionToNextTrack(playlist[1], 1);
+    await flushMicrotasks();
+    assert.equal(state.isTransitioning, true);
+
+    await manager.stop();
+    assert.equal(isLoadStale(), true);
+    assert.equal(manager.activeLoadRequest, null);
+    assert.equal(manager.activeTransitionRequest, null);
+    assert.equal(state.isTransitioning, false);
+    assert.equal(state.transitionType, null);
+
+    resolveLoad({ duration: 12 });
+    assert.equal(await transitionPromise, false);
+    assert.equal(calls.some(call => call[0] === 'stopRacePlay'), false);
+    assert.equal(calls.some(call => call[0] === 'stopRaceLoadMetadata'), false);
+    assert.equal(state.isStopped, true);
+    assert.equal(state.isPlaying, false);
+  });
+});
+
+test('pause invalidates pending transition loads before they can restart playback', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    const playlist = [
+      { name: 'One', path: '/one.wav' },
+      { name: 'Two', path: '/two.wav' }
+    ];
+    const { audioContext, manager, state } = createHarness({
+      calls,
+      playlist,
+      currentTrackIndex: 0,
+      isPlaying: true,
+      isPaused: false,
+      isStopped: false,
+      playbackMode: 'bufferSource',
+      state: {
+        currentTrack: playlist[0],
+        isTransitioning: false,
+        transitionType: null
+      }
+    });
+    let resolveLoad;
+    let isLoadStale;
+
+    manager.currentBuffer = { duration: 20 };
+    manager.currentBufferSource = createNode(calls, 'pauseTransitionSource');
+    manager.bufferStartTime = 10;
+    manager.bufferDuration = 20;
+    audioContext.currentTime = 15;
+    manager.prepareTrackBuffer = async (_track, isStale) => new Promise(resolve => {
+      isLoadStale = isStale;
+      resolveLoad = resolve;
+    });
+    manager.loadMetadata = track => calls.push(['pauseRaceLoadMetadata', track.name]);
+    manager.prepareNextTrackBufferWithRepeatMode = () => calls.push(['pauseRacePrepareNext']);
+    manager.play = async () => {
+      calls.push(['pauseRacePlay']);
+      return true;
+    };
+
+    const transitionPromise = manager.transitionToNextTrack(playlist[1], 1);
+    await flushMicrotasks();
+    assert.equal(state.isTransitioning, true);
+    assert.equal(typeof isLoadStale, 'function');
+
+    await manager.pause();
+    assert.equal(isLoadStale(), true);
+    assert.equal(manager.activeLoadRequest, null);
+    assert.equal(manager.activeTransitionRequest, null);
+    assert.equal(state.isTransitioning, false);
+    assert.equal(state.transitionType, null);
+    assert.equal(state.isPaused, true);
+    assert.equal(state.isStopped, false);
+    assert.equal(state.isPlaying, false);
+    assert.equal(calls.some(call => call[0] === 'node.stop' && call[1] === 'pauseTransitionSource'), true);
+
+    resolveLoad({ duration: 12 });
+    assert.equal(await transitionPromise, false);
+    assert.equal(calls.some(call => call[0] === 'pauseRacePlay'), false);
+    assert.equal(calls.some(call => call[0] === 'pauseRaceLoadMetadata'), false);
+    assert.equal(calls.some(call => call[0] === 'node.start'), false);
+    assert.equal(state.isPaused, true);
+    assert.equal(state.isPlaying, false);
+    assert.equal(state.isStopped, false);
+  });
+});
+
+test('buffer source stop paths clear monitoring intervals', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    const { manager } = createHarness({ calls, playbackMode: 'bufferSource' });
+
+    manager.currentBufferSource = createNode(calls, 'stopSource');
+    manager.bufferMonitoringInterval = 3;
+    await manager.stopBufferSource();
+    assert.equal(manager.bufferMonitoringInterval, null);
+    assert.equal(calls.some(call => call[0] === 'clearInterval' && call[1] === 3), true);
+
+    manager.currentBufferSource = createNode(calls, 'stopCurrentSource');
+    manager.bufferMonitoringInterval = 4;
+    await manager.stopCurrentPlayback();
+    assert.equal(manager.bufferMonitoringInterval, null);
+    assert.equal(calls.some(call => call[0] === 'clearInterval' && call[1] === 4), true);
+  });
+});
+
+test('seeking while stopped pauses at the target position for the next play', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    const bufferHarness = createHarness({
+      calls,
+      playbackMode: 'bufferSource',
+      isStopped: true
+    });
+    bufferHarness.manager.currentBuffer = { duration: 10 };
+
+    await bufferHarness.manager.seekBufferSource(4);
+    assert.equal(bufferHarness.state.currentTrackPosition, 4);
+    assert.equal(bufferHarness.state.isPaused, true);
+    assert.equal(bufferHarness.state.isStopped, false);
+
+    calls.length = 0;
+    await bufferHarness.manager.playBufferSource();
+    assert.equal(calls.some(call => call[0] === 'node.start' && call[3] === 4), true);
+
+    const audioElement = new Audio();
+    const elementHarness = createHarness({
+      calls,
+      playbackMode: 'audioElement',
+      audioElement,
+      isStopped: true
+    });
+    await elementHarness.manager.seekAudioElement(6);
+    assert.equal(elementHarness.state.currentTrackPosition, 6);
+    assert.equal(elementHarness.state.isPaused, true);
+    assert.equal(elementHarness.state.isStopped, false);
+  });
+});
+
+test('Electron file loading falls back to the legacy base64 IPC when byte reads are unavailable', async () => {
+  await withAudioContextGlobals({
+    electronIntegration: { isElectron: true },
+    electronAPI: {
+      async readFile(path, asBuffer) {
+        assert.equal(path, 'C:\\legacy.wav');
+        assert.equal(asBuffer, true);
+        return { success: true, content: Buffer.from('abc').toString('base64') };
+      }
+    }
+  }, async () => {
+    const { manager } = createHarness();
+    const data = await manager.loadTrackData({ name: 'Legacy', path: 'C:\\legacy.wav' });
+    assert.deepEqual(Array.from(new Uint8Array(data)), [97, 98, 99]);
+  });
+});
+
+test('Electron direct file loading falls back to the legacy base64 IPC when library byte reads reject', async () => {
+  const apiCalls = [];
+  await withAudioContextGlobals({
+    electronIntegration: { isElectron: true },
+    electronAPI: {
+      library: {
+        async readFileBytes(request) {
+          apiCalls.push(['readFileBytes', request.path]);
+          throw new Error('Path is outside the selected music library folders');
+        }
+      },
+      async readFile(path, asBuffer) {
+        apiCalls.push(['readFile', path, asBuffer]);
+        return { success: true, content: Buffer.from('fallback').toString('base64') };
+      }
+    }
+  }, async () => {
+    const { manager } = createHarness();
+    const data = await manager.loadTrackData({ name: 'Legacy Fallback', path: 'C:\\outside.wav' });
+    assert.deepEqual(Array.from(new Uint8Array(data)), Array.from(Buffer.from('fallback')));
+  });
+
+  assert.deepEqual(apiCalls, [
+    ['readFileBytes', 'C:\\outside.wav'],
+    ['readFile', 'C:\\outside.wav', true]
+  ]);
+});
+
+test('Electron library playback does not bypass outside-root rejection with legacy IPC or file streaming', async () => {
+  const apiCalls = [];
+  await withAudioContextGlobals({
+    electronIntegration: { isElectron: true },
+    electronAPI: {
+      library: {
+        async readFileBytes(request) {
+          apiCalls.push(['readFileBytes', request.path]);
+          throw new Error('Path is outside the selected music library folders');
+        }
+      },
+      async readFile(path) {
+        apiCalls.push(['readFile', path]);
+        return { success: true, content: Buffer.from('bypass').toString('base64') };
+      }
+    }
+  }, async ({ calls }) => {
+    const track = {
+      name: 'Outside Library',
+      path: 'C:\\outside-library.wav',
+      libraryTrackId: 't_outside',
+      meta: { title: 'Outside Library' }
+    };
+    const { audioPlayer, manager, state } = createHarness({
+      calls,
+      playlist: [track],
+      currentTrackIndex: 0
+    });
+
+    await manager.loadTrack(track);
+
+    assert.equal(audioPlayer.audioElement, null);
+    assert.equal(state.playbackMode, 'bufferSource');
+    assert.equal(state.isPlaying, false);
+  });
+
+  assert.deepEqual(apiCalls, [
+    ['readFileBytes', 'C:\\outside-library.wav']
+  ]);
+});
+
+test('Electron library playback does not bypass ERR_LIBRARY_READ_LIMIT with legacy IPC or file streaming', async () => {
+  const apiCalls = [];
+  await withAudioContextGlobals({
+    electronIntegration: { isElectron: true },
+    electronAPI: {
+      library: {
+        async readFileBytes(request) {
+          apiCalls.push(['readFileBytes', request.path]);
+          const error = new Error('ERR_LIBRARY_READ_LIMIT: Requested byte range exceeds maximum read size of 268435456 bytes');
+          error.code = 'ERR_LIBRARY_READ_LIMIT';
+          throw error;
+        }
+      },
+      async readFile(path) {
+        apiCalls.push(['readFile', path]);
+        return { success: true, content: Buffer.from('too-large').toString('base64') };
+      }
+    }
+  }, async ({ calls }) => {
+    const track = {
+      name: 'Large Library',
+      path: 'C:\\large-library.wav',
+      libraryTrackId: 't_large',
+      meta: { title: 'Large Library' }
+    };
+    const { audioPlayer, manager, state } = createHarness({
+      calls,
+      playlist: [track],
+      currentTrackIndex: 0
+    });
+
+    await manager.loadTrack(track);
+
+    assert.equal(audioPlayer.audioElement, null);
+    assert.equal(state.playbackMode, 'bufferSource');
+    assert.equal(state.isPlaying, false);
+  });
+
+  assert.deepEqual(apiCalls, [
+    ['readFileBytes', 'C:\\large-library.wav']
+  ]);
+});
+
+test('Electron file loading does not bypass library byte read size limits with legacy IPC', async () => {
+  const apiCalls = [];
+  await withAudioContextGlobals({
+    electronIntegration: { isElectron: true },
+    electronAPI: {
+      library: {
+        async readFileBytes(request) {
+          apiCalls.push(['readFileBytes', request.path]);
+          throw new Error('Requested byte range exceeds maximum read size of 268435456 bytes');
+        }
+      },
+      async readFile(path) {
+        apiCalls.push(['readFile', path]);
+        return { success: true, content: Buffer.from('too-large').toString('base64') };
+      }
+    }
+  }, async () => {
+    const { manager } = createHarness();
+    await assert.rejects(
+      () => manager.loadTrackData({ name: 'Large', path: 'C:\\large.wav' }),
+      /maximum read size/
+    );
+  });
+
+  assert.deepEqual(apiCalls, [
+    ['readFileBytes', 'C:\\large.wav']
+  ]);
 });
 
 test('next-buffer preparation, transitions, cleanup, and utilities coordinate playback', async () => {
@@ -738,7 +1644,8 @@ test('next-buffer preparation, transitions, cleanup, and utilities coordinate pl
 
     manager.prepareTrackBuffer = async track => ({ duration: track.name.length });
     await manager.prepareNextTrackBufferWithRepeatMode();
-    assert.equal(manager.nextBuffer.duration, 3);
+    assert.equal(manager.nextBuffer.buffer.duration, 3);
+    assert.equal(manager.nextBuffer.track, playlist[1]);
 
     state.currentTrackIndex = 2;
     state.repeatMode = 'OFF';
@@ -747,7 +1654,8 @@ test('next-buffer preparation, transitions, cleanup, and utilities coordinate pl
     assert.equal(manager.nextBuffer, null);
     state.repeatMode = 'ALL';
     await manager.prepareNextTrackBufferWithRepeatMode();
-    assert.equal(manager.nextBuffer.duration, 3);
+    assert.equal(manager.nextBuffer.buffer.duration, 3);
+    assert.equal(manager.nextBuffer.track, playlist[0]);
     await manager.prepareNextTrackBufferForTrack(null);
     manager.prepareTrackBuffer = async () => { throw new Error('prepare next failed'); };
     await manager.prepareNextTrackBufferForTrack(playlist[1]);
@@ -757,10 +1665,42 @@ test('next-buffer preparation, transitions, cleanup, and utilities coordinate pl
     assert.equal(noPlayback.manager.getNextTrack(), null);
 
     const transition = createHarness({ calls, playlist, currentTrackIndex: 0, repeatMode: 'ALL' });
-    transition.manager.nextBuffer = { duration: 12 };
+    setPreparedNextBuffer(transition.manager, playlist[1], { duration: 12 });
     transition.manager.prepareNextTrackBufferForTrack = async track => calls.push(['prepareSpecificNext', track.name]);
     await transition.manager.transitionToNextTrack(playlist[1]);
     assert.equal(transition.state.currentTrackName, 'Two');
+
+    const duplicatePathTransitionPlaylist = [
+      { name: 'Current', path: '/current.wav' },
+      { name: 'Same Path A', path: '/same.wav' },
+      { name: 'Same Path B', path: '/same.wav' }
+    ];
+    const duplicatePathTransition = createHarness({
+      calls,
+      playlist: duplicatePathTransitionPlaylist,
+      currentTrackIndex: 0
+    });
+    duplicatePathTransition.manager.loadMetadata = () => {};
+    duplicatePathTransition.manager.prepareNextTrackBufferWithRepeatMode = () => {};
+    setPreparedNextBuffer(duplicatePathTransition.manager, duplicatePathTransitionPlaylist[2], { duration: 4 }, 2);
+    await duplicatePathTransition.manager.transitionToNextTrack(duplicatePathTransitionPlaylist[2], 2);
+    assert.equal(duplicatePathTransition.state.currentTrackIndex, 2);
+
+    const duplicateLibraryTransitionPlaylist = [
+      { name: 'Current', path: '/current.wav' },
+      { name: 'Library A', path: '/library-a.wav', libraryTrackId: 'duplicate-id' },
+      { name: 'Library B', path: '/library-b.wav', libraryTrackId: 'duplicate-id' }
+    ];
+    const duplicateLibraryTransition = createHarness({
+      calls,
+      playlist: duplicateLibraryTransitionPlaylist,
+      currentTrackIndex: 0
+    });
+    duplicateLibraryTransition.manager.loadMetadata = () => {};
+    duplicateLibraryTransition.manager.prepareNextTrackBufferWithRepeatMode = () => {};
+    setPreparedNextBuffer(duplicateLibraryTransition.manager, duplicateLibraryTransitionPlaylist[2], { duration: 5 }, 2);
+    await duplicateLibraryTransition.manager.transitionToNextTrack(duplicateLibraryTransitionPlaylist[2], 2);
+    assert.equal(duplicateLibraryTransition.state.currentTrackIndex, 2);
 
     const transitionLoad = createHarness({ calls, playlist });
     transitionLoad.manager.loadTrack = async track => calls.push(['transitionLoadTrack', track.name]);
@@ -768,7 +1708,7 @@ test('next-buffer preparation, transitions, cleanup, and utilities coordinate pl
     await transitionLoad.manager.transitionToNextTrack(playlist[2]);
 
     const transitionFail = createHarness({ calls, playlist });
-    transitionFail.manager.nextBuffer = { duration: 4 };
+    setPreparedNextBuffer(transitionFail.manager, playlist[1], { duration: 4 });
     transitionFail.manager.createBufferSource = () => { throw new Error('source failed'); };
     await assert.rejects(() => transitionFail.manager.transitionToNextTrack(playlist[1]));
 
@@ -787,7 +1727,7 @@ test('next-buffer preparation, transitions, cleanup, and utilities coordinate pl
     manager.mediaSource = createNode(calls, 'disconnectMedia');
     manager.currentObjectURL = 'blob:old';
     manager.currentBuffer = { duration: 1 };
-    manager.nextBuffer = { duration: 2 };
+    setPreparedNextBuffer(manager, playlist[1], { duration: 2 });
     manager.bufferMonitoringInterval = 3;
     window.electronIntegration.audioPreferences = { useInputWithPlayer: false };
     objectUrls.push(['create', 'blob:old']);
@@ -890,7 +1830,7 @@ test('defensive failures leave playback state recoverable', async () => {
 
     const noPlayback = createHarness({ calls, noPlaybackManager: true });
     noPlayback.manager.setupAudioElement({ name: 'No Playback File', file: new FakeFile('nop.wav') });
-    assert.equal(noPlayback.state.currentTrackIndex, -1);
+    assert.equal(noPlayback.state.currentTrackIndex, 0);
 
     const unknownError = createHarness({ calls, uiManager: { setError: message => calls.push(['ui.error', message]) } });
     unknownError.audioPlayer.audioElement = new Audio();
@@ -1108,7 +2048,7 @@ test('defensive failures leave playback state recoverable', async () => {
       currentTrackIndex: 0,
       repeatMode: 'ALL'
     });
-    transitionLastAll.manager.nextBuffer = { duration: 2 };
+    setPreparedNextBuffer(transitionLastAll.manager, transitionLastAll.playlist[1], { duration: 2 });
     transitionLastAll.manager.prepareNextTrackBufferForTrack = async track => calls.push(['transitionLastAllNext', track.name]);
     await transitionLastAll.manager.transitionToNextTrack({ name: 'B', path: '/b' });
 
@@ -1118,7 +2058,7 @@ test('defensive failures leave playback state recoverable', async () => {
       currentTrackIndex: 0,
       repeatMode: 'OFF'
     });
-    transitionLastOff.manager.nextBuffer = { duration: 2 };
+    setPreparedNextBuffer(transitionLastOff.manager, transitionLastOff.playlist[1], { duration: 2 });
     transitionLastOff.manager.prepareNextTrackBufferWithRepeatMode = () => calls.push(['transitionPrepareFallback']);
     await transitionLastOff.manager.transitionToNextTrack({ name: 'B', path: '/b' });
 
@@ -1127,7 +2067,7 @@ test('defensive failures leave playback state recoverable', async () => {
       playlist: [{ name: 'File', file: new FakeFile('next.wav') }],
       currentTrackIndex: 0
     });
-    transitionFile.manager.nextBuffer = { duration: 5 };
+    setPreparedNextBuffer(transitionFile.manager, transitionFile.playlist[0], { duration: 5 });
     await transitionFile.manager.transitionToNextTrack({ name: 'Different', file: new FakeFile('next.wav') });
 
     const disconnectFailures = createHarness({ calls, connectSourceThrows: true });

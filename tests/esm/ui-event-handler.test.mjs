@@ -489,6 +489,38 @@ test('initDragAndDrop handles browser files, presets, music, errors, and Electro
       })
     });
 
+    const libraryView = harness.documentRef.createElement('section');
+    libraryView.className = 'library-view';
+    const libraryContent = harness.documentRef.createElement('div');
+    libraryContent.className = 'library-content';
+    libraryView.appendChild(libraryContent);
+    harness.documentRef.body.appendChild(libraryView);
+    harness.documentRef.body.classList.add('drag-over');
+    const libraryDrag = harness.documentRef.dispatch('dragover', {
+      target: libraryContent,
+      dataTransfer: createDataTransfer({
+        types: ['Files'],
+        items: [{ kind: 'file' }],
+        files: []
+      })
+    }).event;
+    assert.ok(libraryDrag.prevented >= 1);
+    assert.equal(libraryDrag.stopped, 0);
+    assert.equal(libraryDrag.dataTransfer.dropEffect, 'copy');
+    assert.equal(harness.documentRef.body.classList.contains('drag-over'), false);
+
+    const beforeLibraryDropCalls = harness.calls.length;
+    const libraryDrop = harness.documentRef.dispatch('drop', {
+      target: libraryContent,
+      dataTransfer: createDataTransfer({
+        types: ['Files'],
+        files: [createFile('daily.m3u8')]
+      })
+    }).event;
+    assert.equal(libraryDrop.prevented, 0);
+    assert.equal(libraryDrop.stopped, 0);
+    assert.deepEqual(harness.calls.slice(beforeLibraryDropCalls), []);
+
     harness.documentRef.dispatch('drop', {
       target: harness.pipeline,
       dataTransfer: createDataTransfer({

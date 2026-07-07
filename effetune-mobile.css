@@ -81,8 +81,8 @@ body.layout-mobile .plugin-parameter-ui {
 body.layout-mobile h1 {
     font-size: 20px;
     line-height: 32px;
-    /* Reserve room for the settings gear + overflow menu button (40px x 2 + gaps). */
-    padding-right: 96px;
+    /* Reserve room for library, settings, and overflow header buttons. */
+    padding-right: 146px;
 }
 
 body.layout-mobile .subtitle,
@@ -93,16 +93,15 @@ body.layout-mobile .column-control-button {
     display: none !important;
 }
 
-/* Keep the settings gear (install action + audio settings) available in the
-   mobile header. The overflow menu button (40px) owns the top-right corner,
-   so the gear sits directly to its left at the same size. Both match the
-   40px mobile control height. */
+/* Keep the library and settings buttons available in the mobile header. The
+   overflow menu button (40px) owns the top-right corner, so this group sits
+   to its left at the same 40px mobile control height. */
 body.layout-mobile .header-buttons {
     display: flex !important;
     top: 0;
     right: 48px;
     height: var(--et-mobile-control-height);
-    gap: 0;
+    gap: 10px;
     z-index: 30;
 }
 
@@ -664,7 +663,8 @@ body.layout-mobile .category-effects-count {
 
 body.layout-mobile .plugin-category-items {
     display: grid !important;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(150px, 150px));
+    justify-content: start;
     gap: 8px;
 }
 

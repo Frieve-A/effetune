@@ -71,6 +71,7 @@
 
     <link rel="stylesheet" href="effetune.css">
     <link rel="stylesheet" href="effetune-mobile.css">
+    <link rel="stylesheet" href="effetune-library.css">
     <link rel="icon" href="images/favicon.ico" type="image/x-icon">
     <link rel="icon" href="images/icon_192x192.png" type="image/png" sizes="192x192">
     <link rel="apple-touch-icon" sizes="180x180" href="images/icon_180x180.png">
@@ -124,6 +125,7 @@
         <h1>Frieve EffeTune<img src="images/icon_64x64.png" class="title-icon" alt="EffeTune Icon" draggable="false"><div class="message-display" id="errorDisplay">Loading...</div></h1>
         <div class="header-buttons">
             <button class="header-button open-music-button" id="openMusicButton" title="Open music files"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M6 14.5 7.7 11a2 2 0 0 1 1.8-1.1H21a1.5 1.5 0 0 1 1.45 1.9l-1.6 5.7A2 2 0 0 1 18.95 19H4a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2h3.7a2 2 0 0 1 1.66.9l.74 1.1a2 2 0 0 0 1.66.9H18a2 2 0 0 1 2 2v1.7"/></svg></button>
+            <button class="header-button open-library-button" id="openLibraryButton" title="Music Library" aria-label="Music Library"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M4 19.5V5.2A2.2 2.2 0 0 1 6.2 3H20v16H6.2A2.2 2.2 0 0 0 4 21.2"/><path d="M8 7h8M8 11h6M8 15h7"/></svg></button>
             <div class="settings-menu-container">
                 <button class="header-button settings-menu-button" id="settingsMenuButton" title="Settings" aria-label="Settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.05.05a2 2 0 0 1-2.83 2.83l-.05-.05a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 0 1-4 0v-.07A1.7 1.7 0 0 0 8.97 19.4a1.7 1.7 0 0 0-1.88.34l-.05.05a2 2 0 1 1-2.83-2.83l.05-.05A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 0 1 0-4h.07A1.7 1.7 0 0 0 4.6 8.97a1.7 1.7 0 0 0-.34-1.88l-.05-.05a2 2 0 1 1 2.83-2.83l.05.05A1.7 1.7 0 0 0 8.97 4.6 1.7 1.7 0 0 0 10 3.07V3a2 2 0 0 1 4 0v.07a1.7 1.7 0 0 0 1.03 1.53 1.7 1.7 0 0 0 1.88-.34l.05-.05a2 2 0 1 1 2.83 2.83l-.05.05A1.7 1.7 0 0 0 19.4 8.97 1.7 1.7 0 0 0 20.93 10H21a2 2 0 0 1 0 4h-.07A1.7 1.7 0 0 0 19.4 15z"/></svg></button>
                 <div class="settings-menu" id="settingsMenu">

@@ -35,6 +35,11 @@ function createPreloadHarness() {
       on(channel, callback) {
         listeners.set(channel, callback);
       },
+      removeListener(channel, callback) {
+        if (listeners.get(channel) === callback) {
+          listeners.delete(channel);
+        }
+      },
       send(channel, ...args) {
         sends.push([channel, ...args]);
       }
@@ -98,7 +103,7 @@ test('preload exposes electronAPI invoke and send wrappers', async () => {
   const api = harness.exposed.electronAPI;
 
   assert.equal(api.platform, process.platform);
-  assert.equal(api.ipcRenderer, harness.electron.ipcRenderer);
+  assert.equal(Object.hasOwn(api, 'ipcRenderer'), false);
 
   const invokeCases = [
     ['showSaveDialog', ['save-options'], ['show-save-dialog', 'save-options']],
@@ -179,11 +184,13 @@ test('preload exposes listener registration wrappers', () => {
     ['onRequestPipelineStateForClose', 'request-pipeline-state-for-close']
   ];
   for (const [method, channel] of noArgListeners) {
-    api[method](() => calls.push([method]));
+    const unsubscribe = api[method](() => calls.push([method]));
+    assert.equal(typeof unsubscribe, 'function');
     harness.listeners.get(channel)({});
   }
 
-  api.onOpenPresetFile(filePath => calls.push(['onOpenPresetFile', filePath]));
+  const unsubscribeOpenPreset = api.onOpenPresetFile(filePath => calls.push(['onOpenPresetFile', filePath]));
+  assert.equal(typeof unsubscribeOpenPreset, 'function');
   harness.listeners.get('open-preset-file')({}, 'preset.effetune_preset');
   api.onOpenMusicFiles(filePaths => calls.push(['onOpenMusicFiles', filePaths]));
   harness.listeners.get('open-music-files')({}, ['song.wav']);
@@ -193,8 +200,28 @@ test('preload exposes listener registration wrappers', () => {
   harness.listeners.get('show-about-dialog')({}, { version: '1.0.0' });
   api.onAudioFilesDropped(filePaths => calls.push(['onAudioFilesDropped', filePaths]));
   harness.listeners.get('audio-files-dropped')({}, ['drop.wav']);
-  api.onIPC('custom-channel', (...args) => calls.push(['onIPC', args]));
-  harness.listeners.get('custom-channel')({}, 'a', 'b');
+  api.onRequestTrayMenuUpdate(() => calls.push(['onRequestTrayMenuUpdate']));
+  harness.listeners.get('request-tray-menu-update')({});
+  api.onStartDoubleBlindTest(() => calls.push(['onStartDoubleBlindTest']));
+  harness.listeners.get('start-double-blind-test')({});
+  api.onOpenLibraryView(() => calls.push(['onOpenLibraryView']));
+  harness.listeners.get('open-library-view')({});
+  api.onAddMusicFolder(() => calls.push(['onAddMusicFolder']));
+  harness.listeners.get('add-music-folder')({});
+  api.onRescanLibrary(() => calls.push(['onRescanLibrary']));
+  harness.listeners.get('rescan-library')({});
+  api.onUpdateAvailable(updateInfo => calls.push(['onUpdateAvailable', updateInfo]));
+  harness.listeners.get('update-available')({}, { version: '2.0.0' });
+  api.onLoadPresetFromTray(presetName => calls.push(['onLoadPresetFromTray', presetName]));
+  harness.listeners.get('load-preset-from-tray')({}, 'Tray Preset');
+  api.onIPC('request-tray-menu-update', (...args) => calls.push(['onIPC', args]));
+  harness.listeners.get('request-tray-menu-update')({}, 'a', 'b');
+  assert.throws(
+    () => api.onIPC('custom-channel', () => {}),
+    /not allowed/
+  );
+  unsubscribeOpenPreset();
+  assert.equal(harness.listeners.has('open-preset-file'), false);
 
   assert.deepEqual(calls, [
     ['onExportPreset'],
@@ -211,6 +238,13 @@ test('preload exposes listener registration wrappers', () => {
     ['onLoadUserPreset', 'Preset'],
     ['onShowAboutDialog', { version: '1.0.0' }],
     ['onAudioFilesDropped', ['drop.wav']],
+    ['onRequestTrayMenuUpdate'],
+    ['onStartDoubleBlindTest'],
+    ['onOpenLibraryView'],
+    ['onAddMusicFolder'],
+    ['onRescanLibrary'],
+    ['onUpdateAvailable', { version: '2.0.0' }],
+    ['onLoadPresetFromTray', 'Tray Preset'],
     ['onIPC', ['a', 'b']]
   ]);
 });

@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import os from 'node:os';
+import path from 'node:path';
 import fs from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+
+const require = createRequire(import.meta.url);
+const { buildPrecacheSource } = require('../../scripts/generate-sw-precache.js');
 
 function createResponse(name, ok = true) {
   return {
@@ -71,6 +77,61 @@ function loadServiceWorker(options = {}) {
   return { fetchCalls, listeners, matchCalls, putCalls };
 }
 
+function loadPrecacheUrls() {
+  const source = fs.readFileSync(new URL('../../sw-precache.js', import.meta.url), 'utf8');
+  const selfRef = {};
+  vm.runInNewContext(source, { self: selfRef });
+  return new Set(selfRef.EFFECTUNE_PRECACHE_URLS);
+}
+
+function writeFixtureFile(root, relativePath, contents = `${relativePath}\n`) {
+  const filePath = path.join(root, ...relativePath.split('/'));
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, contents);
+}
+
+function createPrecacheFixture(t) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-precache-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  for (const directory of ['js', 'plugins', 'images', 'presets']) {
+    fs.mkdirSync(path.join(root, directory), { recursive: true });
+  }
+
+  for (const relativePath of [
+    'effetune.html',
+    'effetune.css',
+    'effetune-mobile.css',
+    'effetune-library.css',
+    'manifest.json',
+    'sw.js'
+  ]) {
+    writeFixtureFile(root, relativePath);
+  }
+
+  writeFixtureFile(root, 'package.json', JSON.stringify({ version: '9.9.9' }));
+  writeFixtureFile(root, 'js/app.js', 'console.log("first");\n');
+  writeFixtureFile(root, 'plugins/plugins.txt', 'plugins/test.js\n');
+  writeFixtureFile(root, 'plugins/test.js', 'class TestPlugin {}\n');
+  writeFixtureFile(root, 'images/icon.png', Buffer.from([0, 1, 2, 3]));
+  writeFixtureFile(root, 'presets/test.effetune_preset', 'preset=first\n');
+
+  return root;
+}
+
+function collectPresetUrls(directoryUrl = new URL('../../presets/', import.meta.url), prefix = 'presets') {
+  const urls = [];
+  for (const entry of fs.readdirSync(directoryUrl, { withFileTypes: true })) {
+    const relativePath = `${prefix}/${entry.name}`;
+    if (entry.isDirectory()) {
+      urls.push(...collectPresetUrls(new URL(`${entry.name}/`, directoryUrl), relativePath));
+    } else if (entry.name === 'presets.txt' || entry.name.endsWith('.effetune_preset')) {
+      urls.push(`./${relativePath}`);
+    }
+  }
+  return urls.sort();
+}
+
 function createNavigateRequest(url) {
   return {
     method: 'GET',
@@ -89,6 +150,30 @@ async function dispatchFetch(listener, request) {
   });
   return responsePromise;
 }
+
+test('precache contains system preset metadata and preset files', () => {
+  const precacheUrls = loadPrecacheUrls();
+  const presetUrls = collectPresetUrls();
+
+  assert.ok(presetUrls.some(url => url.endsWith('.effetune_preset')));
+  for (const presetUrl of presetUrls) {
+    assert.ok(precacheUrls.has(presetUrl), `${presetUrl} should be precached`);
+  }
+});
+
+test('precache cache version changes when precached asset content changes', t => {
+  const root = createPrecacheFixture(t);
+  const first = buildPrecacheSource({ root });
+
+  writeFixtureFile(root, 'js/app.js', 'console.log("second");\n');
+  const second = buildPrecacheSource({ root });
+
+  assert.deepEqual(second.urls, first.urls);
+  assert.match(first.cacheVersion, /^effetune-v9\.9\.9-[a-f0-9]{16}$/);
+  assert.match(second.cacheVersion, /^effetune-v9\.9\.9-[a-f0-9]{16}$/);
+  assert.notEqual(second.cacheVersion, first.cacheVersion);
+  assert.notEqual(second.body, first.body);
+});
 
 test('service worker stores only effetune.html navigations as the app shell', async () => {
   const worker = loadServiceWorker();

@@ -66,6 +66,7 @@ test('constructor wires sub-managers and refreshes UI only when a container exis
     assert.ok(player.playbackManager);
     assert.ok(player.ui);
     assert.ok(player.contextManager);
+    assert.ok(player.mediaSessionManager);
     assert.ok(calls.some(call => call[0] === 'documentAddEventListener' && call[1] === 'keydown'));
 
     player.ui.container = { id: 'player' };
@@ -113,10 +114,56 @@ test('loadFiles delegates playlist loading, creates missing UI, then loads and p
   });
 });
 
+test('loadFiles skips play when track load is aborted and loadTrack reports context result', async () => {
+  await withAudioPlayerGlobals({}, async ({ calls }) => {
+    const player = createPlayer();
+    player.playbackManager.loadFiles = (files, append) => calls.push(['loadFiles', files, append]);
+    player.ui.container = { id: 'existing' };
+    player.ui.createPlayerUI = () => calls.push(['createPlayerUI']);
+    player.stateManager.getCurrentTrackIndex = () => 3;
+    player.stateManager.getStateSnapshot = () => ({ isPaused: false });
+    player.loadTrack = async index => {
+      calls.push(['loadTrack', index]);
+      return false;
+    };
+    player.play = async () => calls.push(['play']);
+
+    await player.loadFiles(['a.wav'], false);
+    assert.deepEqual(calls.filter(call => call[0] === 'loadFiles' || call[0] === 'loadTrack'), [
+      ['loadFiles', ['a.wav'], false],
+      ['loadTrack', 3]
+    ]);
+    assert.equal(calls.some(call => call[0] === 'play'), false);
+  });
+
+  await withAudioPlayerGlobals({}, async () => {
+    const player = createPlayer();
+    const track = { name: 'Song' };
+    player.playbackManager = {
+      getTrack(index) {
+        return index === 1 ? track : null;
+      }
+    };
+    player.contextManager = {
+      async loadTrack() {
+        return false;
+      }
+    };
+
+    assert.equal(await player.loadTrack(1), false);
+    player.contextManager.loadTrack = async () => undefined;
+    assert.equal(await player.loadTrack(1), true);
+    player.contextManager.loadTrack = async () => true;
+    assert.equal(await player.loadTrack(1), true);
+    assert.equal(await player.loadTrack(2), false);
+  });
+});
+
 test('loadTrack and playback command methods delegate to their managers', async () => {
   await withAudioPlayerGlobals({}, async ({ calls }) => {
     const player = createPlayer();
     const track = { name: 'Song' };
+    let resolvePause;
     player.playbackManager = {
       getTrack(index) {
         calls.push(['getTrack', index]);
@@ -127,6 +174,12 @@ test('loadTrack and playback command methods delegate to their managers', async 
       },
       pause() {
         calls.push(['playbackPause']);
+        return new Promise(resolve => {
+          resolvePause = () => {
+            calls.push(['playbackPauseDone']);
+            resolve();
+          };
+        });
       },
       async togglePlayPause() {
         calls.push(['togglePlayPause']);
@@ -134,11 +187,13 @@ test('loadTrack and playback command methods delegate to their managers', async 
       async stop() {
         calls.push(['playbackStop']);
       },
-      playPrevious() {
+      async playPrevious() {
         calls.push(['playPrevious']);
+        return 'previous-result';
       },
-      playNext(userInitiated) {
+      async playNext(userInitiated) {
         calls.push(['playNext', userInitiated]);
+        return `next-result-${userInitiated}`;
       },
       fastForward() {
         calls.push(['fastForward']);
@@ -157,12 +212,15 @@ test('loadTrack and playback command methods delegate to their managers', async 
     await player.loadTrack(1);
     await player.loadTrack(2);
     await player.play();
-    player.pause();
+    const pausePromise = player.pause();
+    assert.equal(typeof pausePromise?.then, 'function');
+    resolvePause();
+    await pausePromise;
     await player.togglePlayPause();
     await player.stop();
-    await player.playPrevious();
-    await player.playNext();
-    await player.playNext(false);
+    assert.equal(await player.playPrevious(), 'previous-result');
+    assert.equal(await player.playNext(), 'next-result-true');
+    assert.equal(await player.playNext(false), 'next-result-false');
     player.fastForward();
     player.rewind();
 
@@ -172,6 +230,7 @@ test('loadTrack and playback command methods delegate to their managers', async 
       ['getTrack', 2],
       ['playbackPlay'],
       ['playbackPause'],
+      ['playbackPauseDone'],
       ['togglePlayPause'],
       ['playbackStop'],
       ['playPrevious'],

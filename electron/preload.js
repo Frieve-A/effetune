@@ -1,5 +1,41 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+const ALLOWED_IPC_LISTENER_CHANNELS = new Set([
+  'add-music-folder',
+  'load-preset-from-tray',
+  'open-library-view',
+  'request-tray-menu-update',
+  'rescan-library',
+  'start-double-blind-test',
+  'update-available'
+]);
+
+function addIpcListener(channel, callback, mapArgs = args => args) {
+  if (typeof callback !== 'function') {
+    throw new TypeError('IPC listener callback must be a function');
+  }
+
+  const listener = (event, ...args) => {
+    callback(...mapArgs(args));
+  };
+  ipcRenderer.on(channel, listener);
+
+  let removed = false;
+  return () => {
+    if (removed) return;
+    removed = true;
+    ipcRenderer.removeListener(channel, listener);
+  };
+}
+
+function addNoArgIpcListener(channel, callback) {
+  return addIpcListener(channel, callback, () => []);
+}
+
+function addSingleArgIpcListener(channel, callback) {
+  return addIpcListener(channel, callback, args => [args[0]]);
+}
+
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld(
@@ -16,6 +52,20 @@ contextBridge.exposeInMainWorld(
     readClipboardText: () => ipcRenderer.invoke('read-clipboard-text'),
     writeClipboardText: (text) => ipcRenderer.invoke('write-clipboard-text', text),
     readFileAsBuffer: (filePath) => ipcRenderer.invoke('read-file-as-buffer', filePath),
+    library: {
+      selectFolder: () => ipcRenderer.invoke('library-select-folder'),
+      validateRoots: (paths) => ipcRenderer.invoke('library-validate-roots', paths),
+      scanStart: (request) => ipcRenderer.invoke('library-scan-start', request),
+      scanCancel: (scanId) => ipcRenderer.invoke('library-scan-cancel', scanId),
+      readArtwork: (request) => ipcRenderer.invoke('library-read-artwork', request),
+      readFileBytes: (request) => ipcRenderer.invoke('library-read-file-bytes', request),
+      showInFolder: (filePath) => ipcRenderer.invoke('library-show-in-folder', filePath),
+      saveFolders: (folders) => ipcRenderer.invoke('library-save-folders', folders),
+      loadFolders: () => ipcRenderer.invoke('library-load-folders'),
+      onScanEvent: (callback) => {
+        return addSingleArgIpcListener('library-scan-event', callback);
+      }
+    },
     
     // Documentation operations
     openDocumentation: (path) => ipcRenderer.invoke('open-documentation', path),
@@ -40,40 +90,40 @@ contextBridge.exposeInMainWorld(
     
     // Listen for events from main process
     onExportPreset: (callback) => {
-      ipcRenderer.on('export-preset', () => callback());
+      return addNoArgIpcListener('export-preset', callback);
     },
     onImportPreset: (callback) => {
-      ipcRenderer.on('import-preset', () => callback());
+      return addNoArgIpcListener('import-preset', callback);
     },
     onOpenPresetFile: (callback) => {
-      ipcRenderer.on('open-preset-file', (_, filePath) => callback(filePath));
+      return addSingleArgIpcListener('open-preset-file', callback);
     },
     onOpenMusicFile: (callback) => {
-      ipcRenderer.on('open-music-file', () => callback());
+      return addNoArgIpcListener('open-music-file', callback);
     },
     onOpenMusicFiles: (callback) => {
-      ipcRenderer.on('open-music-files', (_, filePaths) => callback(filePaths));
+      return addSingleArgIpcListener('open-music-files', callback);
     },
     onLoadUserPreset: (callback) => {
-      ipcRenderer.on('load-user-preset', (_, name) => callback(name));
+      return addSingleArgIpcListener('load-user-preset', callback);
     },
     onProcessAudioFiles: (callback) => {
-      ipcRenderer.on('process-audio-files', () => callback());
+      return addNoArgIpcListener('process-audio-files', callback);
     },
     onSavePreset: (callback) => {
-      ipcRenderer.on('save-preset', () => callback());
+      return addNoArgIpcListener('save-preset', callback);
     },
     onSavePresetAs: (callback) => {
-      ipcRenderer.on('save-preset-as', () => callback());
+      return addNoArgIpcListener('save-preset-as', callback);
     },
     onConfigAudio: (callback) => {
-      ipcRenderer.on('config-audio', () => callback());
+      return addNoArgIpcListener('config-audio', callback);
     },
     onConfigApp: (callback) => {
-      ipcRenderer.on('config-app', () => callback());
+      return addNoArgIpcListener('config-app', callback);
     },
     onShowAboutDialog: (callback) => {
-      ipcRenderer.on('show-about-dialog', (_, data) => callback(data));
+      return addSingleArgIpcListener('show-about-dialog', callback);
     },
     
     // Get app version
@@ -112,9 +162,21 @@ contextBridge.exposeInMainWorld(
   // Get user presets for tray menu
   getUserPresetsForTray: () => ipcRenderer.invoke('get-user-presets-for-tray'),
   
-  // Listen for IPC events
+  onRequestTrayMenuUpdate: (callback) => addNoArgIpcListener('request-tray-menu-update', callback),
+  onStartDoubleBlindTest: (callback) => addNoArgIpcListener('start-double-blind-test', callback),
+  onOpenLibraryView: (callback) => addNoArgIpcListener('open-library-view', callback),
+  onAddMusicFolder: (callback) => addNoArgIpcListener('add-music-folder', callback),
+  onRescanLibrary: (callback) => addNoArgIpcListener('rescan-library', callback),
+  onUpdateAvailable: (callback) => addSingleArgIpcListener('update-available', callback),
+  onLoadPresetFromTray: (callback) => addSingleArgIpcListener('load-preset-from-tray', callback),
+
+  // Compatibility wrapper for existing renderer call sites. Only the channels
+  // above may be subscribed from the renderer.
   onIPC: (channel, callback) => {
-    ipcRenderer.on(channel, (event, ...args) => callback(...args));
+    if (!ALLOWED_IPC_LISTENER_CHANNELS.has(channel)) {
+      throw new Error(`IPC listener channel is not allowed: ${channel}`);
+    }
+    return addIpcListener(channel, callback);
   },
     
     // Hide application menu
@@ -146,19 +208,16 @@ contextBridge.exposeInMainWorld(
 
     // Listen for pipeline state request from main process (for window close)
     onRequestPipelineStateForClose: (callback) => {
-      ipcRenderer.on('request-pipeline-state-for-close', () => callback());
+      return addNoArgIpcListener('request-pipeline-state-for-close', callback);
     },
     
     // Load and save config
     loadConfig: () => ipcRenderer.invoke('load-config'),
     saveConfig: (cfg) => ipcRenderer.invoke('save-config', cfg),
     
-    // Expose ipcRenderer for event listeners
-    ipcRenderer: ipcRenderer,
-    
     // Listen for audio files dropped event
     onAudioFilesDropped: (callback) => {
-      ipcRenderer.on('audio-files-dropped', (event, filePaths) => callback(filePaths));
+      return addSingleArgIpcListener('audio-files-dropped', callback);
     },
     
     // Signal that the renderer is ready to receive music files

@@ -7,6 +7,7 @@ import { PlaybackManager } from './audio-player/playback-manager.js';
 import { AudioPlayerUI } from './audio-player/audio-player-ui.js';
 import { AudioContextManager } from './audio-player/audio-context-manager.js';
 import { StateManager } from './audio-player/state-manager.js';
+import { MediaSessionManager } from './audio-player/media-session-manager.js';
 import { WakeLockManager } from '../utils/wake-lock-manager.js';
 
 export class AudioPlayer {
@@ -29,30 +30,35 @@ export class AudioPlayer {
     this.playbackManager = new PlaybackManager(this);
     this.ui = new AudioPlayerUI(this);
     this.contextManager = new AudioContextManager(this, audioManager);
+    this.mediaSessionManager = new MediaSessionManager(this);
     
     // Set up state manager listeners
     this.setupStateManagerListeners();
     
     // Load saved player state
-    this.playbackManager.loadPlayerState().then(() => {
+    this.stateRestored = this.playbackManager.loadPlayerState().then(() => {
       if (this.ui.container) {
         this.ui.updatePlayerUIState();
       }
-    });
+    }).catch(() => {});
   }
   
   /**
    * Enhanced loadFiles with seamless playback support
    * @param {(string[]|File[])} files - Array of file paths or File objects to load
    * @param {boolean} append - Whether to append to existing playlist or replace it
+   * @param {number|null} insertAt - Optional insertion index for append operations
    */
-  async loadFiles(files, append = false) {
-    this.playbackManager.loadFiles(files, append);
+  async loadFiles(files, append = false, insertAt = null) {
+    this.playbackManager.loadFiles(files, append, insertAt);
     if (!this.ui.container) {
       this.ui.createPlayerUI();
     }
-    await this.loadTrack(this.stateManager.getCurrentTrackIndex());
-    await this.play();
+    const loaded = await this.loadTrack(this.stateManager.getCurrentTrackIndex());
+    const state = this.stateManager.getStateSnapshot?.() || {};
+    if (loaded !== false && !state.isPaused) {
+      await this.play();
+    }
   }
   
   /**
@@ -61,10 +67,10 @@ export class AudioPlayer {
    */
   async loadTrack(index) {
     const track = this.playbackManager.getTrack(index);
-    if (track) {
-      // UNIFIED STATE: Use context manager's loadTrack method
-      await this.contextManager.loadTrack(track);
+    if (!track) {
+      return false;
     }
+    return await this.contextManager.loadTrack(track) !== false;
   }
   
   /**
@@ -92,8 +98,8 @@ export class AudioPlayer {
   /**
    * Pause the current track
    */
-  pause() {
-    this.playbackManager.pause();
+  async pause() {
+    await this.playbackManager.pause();
   }
   
   /**
@@ -115,7 +121,7 @@ export class AudioPlayer {
    * Play the previous track
    */
   async playPrevious() {
-    this.playbackManager.playPrevious();
+    return this.playbackManager.playPrevious();
   }
   
   /**
@@ -123,7 +129,7 @@ export class AudioPlayer {
    * @param {boolean} userInitiated - Whether this was initiated by user action (default: true)
    */
   async playNext(userInitiated = true) {
-    this.playbackManager.playNext(userInitiated);
+    return this.playbackManager.playNext(userInitiated);
   }
   
   /**
@@ -190,6 +196,9 @@ export class AudioPlayer {
     
     // Dispose playback manager
     this.playbackManager.dispose();
+
+    // Clear OS-level media controls and metadata
+    this.mediaSessionManager?.dispose();
 
     // Release screen wake lock, if held
     this.wakeLockManager?.dispose();

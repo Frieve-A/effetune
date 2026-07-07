@@ -4,9 +4,81 @@ const fs = require('fs');
 const constants = require('./constants');
 const config = require('./config');
 const { registerClipboardIpcHandlers } = require('./clipboard-ipc');
+const { registerLibraryIpcHandlers } = require('./library-handlers');
 
 // Import file handlers
 const fileHandlers = require('./file-handlers');
+
+const SETTINGS_DIR_SAVE_FILE_ALLOWLIST = new Set([
+  'effetune_presets.json',
+  'player-state.json',
+  'effetune_dbt_tests.json'
+]);
+const SETTINGS_DIR_SAVE_FILE_DENIAL = 'Writing to the EffeTune settings folder is not allowed: library-folders.json and other settings files are managed by the application';
+
+function normalizePathForComparison(filePath) {
+  const resolvedPath = path.resolve(filePath);
+  return process.platform === 'win32' ? resolvedPath.toLowerCase() : resolvedPath;
+}
+
+function getCanonicalWriteTarget(resolvedPath) {
+  try {
+    return fs.realpathSync(resolvedPath);
+  } catch {
+    let parentPath = path.dirname(resolvedPath);
+    try {
+      parentPath = fs.realpathSync(parentPath);
+    } catch {
+      // Keep the resolved parent for paths that do not exist yet.
+    }
+    let basename = path.basename(resolvedPath);
+    if (process.platform === 'win32') {
+      basename = basename.replace(/[. ]+$/, '');
+    }
+    return path.join(parentPath, basename);
+  }
+}
+
+function getCanonicalSettingsDir() {
+  const settingsDir = fileHandlers.getUserDataPath();
+  try {
+    return fs.realpathSync(settingsDir);
+  } catch {
+    return path.resolve(settingsDir);
+  }
+}
+
+function getSaveFileBasenameForComparison(filePath) {
+  let basename = path.basename(filePath);
+  if (process.platform === 'win32') {
+    basename = basename.replace(/[. ]+$/, '').toLowerCase();
+  }
+  return basename;
+}
+
+function getSaveFileDenialReason(filePath) {
+  if (typeof filePath !== 'string' || filePath.trim() === '') return null;
+  const resolvedPath = path.resolve(filePath);
+  if (process.platform === 'win32' && resolvedPath.replace(/^[a-zA-Z]:/, '').includes(':')) {
+    return SETTINGS_DIR_SAVE_FILE_DENIAL;
+  }
+
+  const canonicalTarget = getCanonicalWriteTarget(resolvedPath);
+  const canonicalSettingsDir = getCanonicalSettingsDir();
+  const targetPath = normalizePathForComparison(canonicalTarget);
+  const settingsPath = normalizePathForComparison(canonicalSettingsDir);
+  const relativePath = path.relative(settingsPath, targetPath);
+  const isInsideSettingsDir = relativePath === '' || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath));
+  if (!isInsideSettingsDir) return null;
+
+  const targetParent = normalizePathForComparison(path.dirname(canonicalTarget));
+  if (targetParent !== settingsPath) return SETTINGS_DIR_SAVE_FILE_DENIAL;
+
+  if (SETTINGS_DIR_SAVE_FILE_ALLOWLIST.has(getSaveFileBasenameForComparison(canonicalTarget))) {
+    return null;
+  }
+  return SETTINGS_DIR_SAVE_FILE_DENIAL;
+}
 
 // Set the main window reference
 function setMainWindow(window) {
@@ -99,6 +171,13 @@ function registerIpcHandlers() {
 
   // File operations
   ipcMain.handle('save-file', async (event, filePath, content) => {
+    const denialReason = getSaveFileDenialReason(filePath);
+    if (denialReason) {
+      return {
+        success: false,
+        error: denialReason
+      };
+    }
     return await fileHandlers.saveFile(filePath, content);
   });
 
@@ -107,6 +186,9 @@ function registerIpcHandlers() {
   });
 
   registerClipboardIpcHandlers(ipcMain, clipboard);
+  registerLibraryIpcHandlers(ipcMain, {
+    getUserDataPath: fileHandlers.getUserDataPath
+  });
 
   ipcMain.handle('read-file-as-buffer', async (event, filePath) => {
     return await fileHandlers.readFileAsBuffer(filePath);
@@ -446,8 +528,28 @@ function registerIpcHandlers() {
               }
             },
             {
-              label: menuTemplate.file.submenu[4].label, // Process Audio Files with Effects...
+              label: menuTemplate.file.submenu[4].label, // Add Music Folder...
               enabled: menuTemplate.file.submenu[4].enabled !== false,
+              click: () => {
+                const mainWin = constants.getMainWindow();
+                if (mainWin) {
+                  mainWin.webContents.send('add-music-folder');
+                }
+              }
+            },
+            {
+              label: menuTemplate.file.submenu[5].label, // Rescan Music Library
+              enabled: menuTemplate.file.submenu[5].enabled !== false,
+              click: () => {
+                const mainWin = constants.getMainWindow();
+                if (mainWin) {
+                  mainWin.webContents.send('rescan-library');
+                }
+              }
+            },
+            {
+              label: menuTemplate.file.submenu[6].label, // Process Audio Files with Effects...
+              enabled: menuTemplate.file.submenu[6].enabled !== false,
               click: () => {
                 const mainWin = constants.getMainWindow();
                 if (mainWin) {
@@ -457,8 +559,8 @@ function registerIpcHandlers() {
             },
             { type: 'separator' },
             {
-              label: menuTemplate.file.submenu[6].label, // Export Preset...
-              enabled: menuTemplate.file.submenu[6].enabled !== false,
+              label: menuTemplate.file.submenu[8].label, // Export Preset...
+              enabled: menuTemplate.file.submenu[8].enabled !== false,
               click: () => {
                 const mainWin = constants.getMainWindow();
                 if (mainWin) {
@@ -467,8 +569,8 @@ function registerIpcHandlers() {
               }
             },
             {
-              label: menuTemplate.file.submenu[7].label, // Import Preset...
-              enabled: menuTemplate.file.submenu[7].enabled !== false,
+              label: menuTemplate.file.submenu[9].label, // Import Preset...
+              enabled: menuTemplate.file.submenu[9].enabled !== false,
               click: () => {
                 const mainWin = constants.getMainWindow();
                 if (mainWin) {
@@ -478,8 +580,8 @@ function registerIpcHandlers() {
             },
             { type: 'separator' },
             {
-              label: menuTemplate.file.submenu[9].label, // Double Blind Test
-              enabled: menuTemplate.file.submenu[9].enabled !== false,
+              label: menuTemplate.file.submenu[11].label, // Double Blind Test
+              enabled: menuTemplate.file.submenu[11].enabled !== false,
               click: () => {
                 const mainWin = constants.getMainWindow();
                 if (mainWin) {
@@ -488,7 +590,7 @@ function registerIpcHandlers() {
               }
             },
             { type: 'separator' },
-            { role: 'quit', label: menuTemplate.file.submenu[11].label } // Quit
+            { role: 'quit', label: menuTemplate.file.submenu[13].label } // Quit
           ]
         },
         {
@@ -617,8 +719,19 @@ function registerIpcHandlers() {
             },
             { type: 'separator' },
             {
+              label: menuTemplate.view.submenu[6].label, // Music Library
+              accelerator: 'CommandOrControl+L',
+              click: () => {
+                const mainWin = constants.getMainWindow();
+                if (mainWin) {
+                  mainWin.webContents.send('open-library-view');
+                }
+              }
+            },
+            { type: 'separator' },
+            {
               role: 'togglefullscreen',
-              label: menuTemplate.view.submenu[6].label // Toggle Fullscreen
+              label: menuTemplate.view.submenu[8].label // Toggle Fullscreen
             }
           ]
         },
@@ -967,6 +1080,24 @@ function createMenu() {
           }
         },
         {
+          label: 'Add Music Folder...',
+          click: () => {
+            const mainWin = constants.getMainWindow();
+            if (mainWin) {
+              mainWin.webContents.send('add-music-folder');
+            }
+          }
+        },
+        {
+          label: 'Rescan Music Library',
+          click: () => {
+            const mainWin = constants.getMainWindow();
+            if (mainWin) {
+              mainWin.webContents.send('rescan-library');
+            }
+          }
+        },
+        {
           label: 'Process Audio Files with Effects...',
           click: () => {
             const mainWin = constants.getMainWindow();
@@ -1123,6 +1254,17 @@ function createMenu() {
               `).catch(err => {
                 console.error('Error executing zoom out script:', err.message || String(err));
               });
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Music Library',
+          accelerator: 'CommandOrControl+L',
+          click: () => {
+            const mainWin = constants.getMainWindow();
+            if (mainWin) {
+              mainWin.webContents.send('open-library-view');
             }
           }
         },
