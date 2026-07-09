@@ -357,9 +357,31 @@ function readMarkdownPage(filePath) {
   };
 }
 
+function replaceHtmlTags(value, replacement = '') {
+  const text = String(value);
+  let output = '';
+  let insideTag = false;
+
+  for (const char of text) {
+    if (char === '<') {
+      if (!insideTag) output += replacement;
+      insideTag = true;
+      continue;
+    }
+    if (char === '>') {
+      insideTag = false;
+      continue;
+    }
+    if (!insideTag) {
+      output += char;
+    }
+  }
+
+  return output;
+}
+
 function stripMarkdownSyntax(value) {
-  return String(value)
-    .replace(/<[^>]+>/g, '')
+  return replaceHtmlTags(value)
     .replace(/!\[([^\]]*)]\([^)]*\)/g, '$1')
     .replace(/\[([^\]]+)]\([^)]*\)/g, '$1')
     .replace(/`([^`]+)`/g, '$1')
@@ -927,9 +949,8 @@ function getSearchPagePaths(locale) {
 }
 
 function cleanSearchContent(markdown) {
-  return stripMarkdownSyntax(markdown
-    .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/<[^>]+>/g, ' '));
+  const withoutCodeBlocks = markdown.replace(/```[\s\S]*?```/g, ' ');
+  return stripMarkdownSyntax(replaceHtmlTags(withoutCodeBlocks, ' '));
 }
 
 function renderSearchIndex(locale) {
@@ -1077,7 +1098,8 @@ export {
   getDynamicSiteResponse,
   handleRequest,
   renderMarkdownPage,
-  resolveMarkdownPage
+  resolveMarkdownPage,
+  stripMarkdownSyntax
 };
 
 function startDevServer(argv = process.argv.slice(2)) {
