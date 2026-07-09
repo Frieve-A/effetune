@@ -59,6 +59,7 @@
 
   // Hints displayed when hovering over UI
   "ui.title.openMusic": "음악 파일 열기",
+  "ui.title.effectPipeline": "Effect Pipeline",
   "ui.title.openLibrary": "음악 라이브러리",
   "ui.title.sidebar": "이펙트 목록 전환",
   "ui.title.searchEffects": "이펙트 검색",
@@ -156,6 +157,7 @@
   "menu.view.resetZoom": "줌 초기화",
   "menu.view.zoomIn": "확대",
   "menu.view.zoomOut": "축소",
+  "menu.view.effectPipeline": "Effect Pipeline",
   "menu.view.musicLibrary": "음악 라이브러리",
   "menu.view.toggleFullscreen": "전체 화면 전환",
 
@@ -302,6 +304,9 @@
   "dialog.config.pipeline.default": "기본 설정",
   "dialog.config.pipeline.last": "마지막 종료 시 설정",
   "dialog.config.pipeline.preset": "특정 프리셋",
+  "dialog.config.startupView": "시작 시 표시:",
+  "dialog.config.startupView.effects": "Effect Pipeline (기본값)",
+  "dialog.config.startupView.library": "음악 라이브러리",
   "dialog.config.language": "언어",
   "dialog.config.language.auto": "자동(브라우저 설정)",
   "dialog.config.languageRestartNotice": "언어 설정을 변경한 경우 앱을 다시 시작해 주세요.",

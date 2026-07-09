@@ -161,7 +161,8 @@ test('updateApplicationMenu sends enabled menu labels and updates the tray', asy
   assert.equal(appMenu.file.submenu[5].enabled, true);
   assert.equal(appMenu.file.submenu[9].enabled, true);
   assert.equal(appMenu.edit.submenu[0].enabled, true);
-  assert.equal(appMenu.view.submenu[6].label, 'label:menu.view.musicLibrary');
+  assert.equal(appMenu.view.submenu[6].label, 'label:menu.view.effectPipeline');
+  assert.equal(appMenu.view.submenu[7].label, 'label:menu.view.musicLibrary');
   assert.equal(appMenu.help.submenu[1].label, 'Discord');
   assert.equal(harness.calls[2][0], 'updateTrayMenu');
 });

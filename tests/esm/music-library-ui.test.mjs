@@ -279,9 +279,10 @@ function createDialogDocument() {
   return documentRef;
 }
 
-test('updateUITexts localizes the open library button title and aria label', async () => {
+test('updateUITexts localizes the view switch button titles and aria labels', async () => {
+  const effectPipelineButton = new FakeElement('button');
   const openLibraryButton = new FakeElement('button');
-  const documentRef = createDocument({ openLibraryButton });
+  const documentRef = createDocument({ effectPipelineButton, openLibraryButton });
   const manager = Object.assign(Object.create(UIManager.prototype), {
     doubleBlindTest: null,
     doubleBlindTestButton: null,
@@ -290,6 +291,7 @@ test('updateUITexts localizes the open library button title and aria label', asy
     pluginListManager: null,
     stateManager: null,
     t(key) {
+      if (key === 'ui.title.effectPipeline') return 'Localized Pipeline';
       return key === 'ui.title.openLibrary' ? 'Localized Library' : key;
     },
     updatePipelineEmptyContent() {}
@@ -299,14 +301,17 @@ test('updateUITexts localizes the open library button title and aria label', asy
     manager.updateUITexts();
   });
 
+  assert.equal(effectPipelineButton.title, 'Localized Pipeline');
+  assert.equal(effectPipelineButton.attributes.get('aria-label'), 'Localized Pipeline');
   assert.equal(openLibraryButton.title, 'Localized Library');
   assert.equal(openLibraryButton.attributes.get('aria-label'), 'Localized Library');
 });
 
-test('initOpenLibraryButton wires the toolbar button and Electron IPC callbacks', async () => {
+test('initOpenLibraryButton wires the view switch buttons and Electron IPC callbacks', async () => {
   const calls = [];
+  const effectPipelineButton = new FakeElement('button');
   const openLibraryButton = new FakeElement('button');
-  const documentRef = createDocument({ openLibraryButton });
+  const documentRef = createDocument({ effectPipelineButton, openLibraryButton });
   const ipcCallbacks = {};
   const manager = Object.assign(Object.create(UIManager.prototype), {
     libraryManager: {
@@ -329,6 +334,9 @@ test('initOpenLibraryButton wires the toolbar button and Electron IPC callbacks'
     async showLibraryView() {
       calls.push(['showLibraryView']);
     },
+    showEffectPipelineView() {
+      calls.push(['showEffectPipelineView']);
+    },
     toggleLibraryView() {
       calls.push(['toggleLibraryView']);
     }
@@ -347,23 +355,53 @@ test('initOpenLibraryButton wires the toolbar button and Electron IPC callbacks'
   }, async () => {
     manager.initOpenLibraryButton();
     await openLibraryButton.click();
+    await effectPipelineButton.click();
     await ipcCallbacks['open-library-view']();
+    await ipcCallbacks['open-effect-pipeline-view']();
     await ipcCallbacks['add-music-folder']();
     await ipcCallbacks['rescan-library']();
   });
 
   assert.deepEqual(calls, [
     ['onIPC', 'open-library-view'],
+    ['onIPC', 'open-effect-pipeline-view'],
     ['onIPC', 'add-music-folder'],
     ['onIPC', 'rescan-library'],
     ['toggleLibraryView'],
+    ['showEffectPipelineView'],
     ['showLibraryView'],
+    ['showEffectPipelineView'],
     ['showLibraryView'],
     ['libraryManager.addFolder'],
     ['libraryView.render'],
     ['ensureLibraryManager'],
     ['libraryManager.scanFolders']
   ]);
+});
+
+test('view switch buttons expose the selected view state', async () => {
+  const effectPipelineButton = new FakeElement('button');
+  const openLibraryButton = new FakeElement('button');
+  const documentRef = createDocument({ effectPipelineButton, openLibraryButton });
+  const manager = Object.assign(Object.create(UIManager.prototype), {
+    effectPipelineButton,
+    openLibraryButton
+  });
+
+  await withGlobals({ document: documentRef }, async () => {
+    manager.updateViewSwitchButtons();
+    assert.equal(effectPipelineButton.classList.contains('active'), true);
+    assert.equal(effectPipelineButton.attributes.get('aria-pressed'), 'true');
+    assert.equal(openLibraryButton.classList.contains('active'), false);
+    assert.equal(openLibraryButton.attributes.get('aria-pressed'), 'false');
+
+    documentRef.body.classList.add('view-library');
+    manager.updateViewSwitchButtons();
+    assert.equal(effectPipelineButton.classList.contains('active'), false);
+    assert.equal(effectPipelineButton.attributes.get('aria-pressed'), 'false');
+    assert.equal(openLibraryButton.classList.contains('active'), true);
+    assert.equal(openLibraryButton.attributes.get('aria-pressed'), 'true');
+  });
 });
 
 test('showLibraryTrack opens the library view and focuses the requested track', async () => {
@@ -520,6 +558,128 @@ test('LibraryView show can skip search focus and hide restores the opener', asyn
     view.show({ returnFocus: opener });
     assert.equal(documentRef.activeElement, searchInput);
   });
+});
+
+test('desktop library avoids page overflow while preserving a usable minimum height', async () => {
+  const version = new FakeElement('span');
+  const documentRef = createDocument({ 'app-version': version });
+  const root = new FakeElement('section');
+  const versionFooter = new FakeElement('div');
+  let top = 220;
+  root.getBoundingClientRect = () => ({ top });
+  versionFooter.getBoundingClientRect = () => ({ height: 18 });
+  versionFooter.appendChild(version);
+  const view = Object.assign(Object.create(LibraryView.prototype), {
+    root
+  });
+
+  await withGlobals({
+    document: documentRef,
+    window: {
+      innerHeight: 800,
+      getComputedStyle(element) {
+        return element === versionFooter
+          ? { display: 'block', marginTop: '20px', marginBottom: '0px' }
+          : { display: 'block', marginTop: '0px', marginBottom: '0px' };
+      }
+    }
+  }, async () => {
+    view.updateDesktopLayoutHeight();
+    assert.equal(root.style['--library-desktop-height'], '522px');
+
+    top = 620;
+    view.updateDesktopLayoutHeight();
+    assert.equal(root.style['--library-desktop-height'], '360px');
+
+    documentRef.body.classList.add('layout-mobile');
+    view.updateDesktopLayoutHeight();
+    assert.equal(root.style['--library-desktop-height'], undefined);
+  });
+});
+
+test('LibraryView syncs the status inset to the content scrollbar width', () => {
+  const root = new FakeElement('section');
+  const content = new FakeElement('div');
+  const view = Object.assign(Object.create(LibraryView.prototype), {
+    root,
+    content
+  });
+
+  content.offsetWidth = 480;
+  content.clientWidth = 463;
+  view.syncContentScrollbarInset();
+  assert.equal(root.style['--library-content-scrollbar-width'], '17px');
+
+  content.clientWidth = 480;
+  view.syncContentScrollbarInset();
+  assert.equal(root.style['--library-content-scrollbar-width'], '0px');
+});
+
+test('desktop library resizes when player or blind test panels change', async () => {
+  const documentRef = createDocument();
+  const root = new FakeElement('section');
+  let top = 160;
+  let mutationCallback = null;
+  let animationCallback = null;
+  const calls = [];
+  root.getBoundingClientRect = () => ({ top });
+  const view = Object.assign(Object.create(LibraryView.prototype), {
+    root,
+    desktopLayoutHeightCleanup: null,
+    refreshDesktopLayoutHeightObservers: null,
+    desktopLayoutHeightFrame: null,
+    desktopLayoutHeightFrameType: null
+  });
+  class FakeMutationObserver {
+    constructor(callback) {
+      mutationCallback = callback;
+    }
+
+    observe(target, options) {
+      calls.push(['mutationObserve', target, options]);
+    }
+
+    disconnect() {
+      calls.push(['mutationDisconnect']);
+    }
+  }
+
+  await withGlobals({
+    document: documentRef,
+    window: {
+      innerHeight: 900,
+      addEventListener(type, listener) {
+        calls.push(['windowAdd', type, listener]);
+      },
+      removeEventListener(type, listener) {
+        calls.push(['windowRemove', type, listener]);
+      }
+    },
+    MutationObserver: FakeMutationObserver,
+    requestAnimationFrame(callback) {
+      animationCallback = callback;
+      return 42;
+    },
+    cancelAnimationFrame(id) {
+      calls.push(['cancelAnimationFrame', id]);
+    }
+  }, async () => {
+    view.startDesktopLayoutHeightTracking();
+    assert.equal(root.style['--library-desktop-height'], '720px');
+
+    top = 300;
+    mutationCallback();
+    assert.equal(root.style['--library-desktop-height'], '720px');
+    animationCallback();
+    assert.equal(root.style['--library-desktop-height'], '580px');
+
+    view.stopDesktopLayoutHeightTracking();
+    assert.equal(root.style['--library-desktop-height'], undefined);
+  });
+
+  assert.ok(calls.some(call => call[0] === 'mutationObserve' && call[1] === documentRef.body && call[2].childList === true));
+  assert.ok(calls.some(call => call[0] === 'mutationDisconnect'));
+  assert.ok(calls.some(call => call[0] === 'windowRemove' && call[1] === 'resize'));
 });
 
 test('LibraryView hide closes context and playlist menus', async () => {
@@ -1168,7 +1328,7 @@ test('LibraryView track rows expose gridcells and fallback labels for unknown me
   });
 });
 
-test('LibraryView album cards use sibling open and play buttons', async () => {
+test('LibraryView album cards use sibling open and play buttons and play in album order', async () => {
   const calls = [];
   const documentRef = createDocument();
   const content = new FakeElement('div');
@@ -1181,8 +1341,12 @@ test('LibraryView album cards use sibling open and play buttons', async () => {
           name: 'Album One',
           artist: 'Artist',
           year: 2026,
-          trackIds: ['t_one']
+          trackIds: ['t_two', 't_one']
         }];
+      },
+      getAlbumTracks(key) {
+        calls.push(['getAlbumTracks', key]);
+        return [{ id: 't_one' }, { id: 't_two' }];
       },
       playTrackIds(ids) {
         calls.push(['playTrackIds', ids]);
@@ -1211,7 +1375,8 @@ test('LibraryView album cards use sibling open and play buttons', async () => {
 
   assert.deepEqual(calls, [
     ['navigateToDetail', { type: 'album', key: 'album-one' }, 'albums'],
-    ['playTrackIds', ['t_one']]
+    ['getAlbumTracks', 'album-one'],
+    ['playTrackIds', ['t_one', 't_two']]
   ]);
 });
 

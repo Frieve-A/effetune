@@ -164,6 +164,7 @@ input[type="checkbox"] {
 }
 
 .open-music-button,
+.effect-pipeline-button,
 .open-library-button,
 .settings-menu-button {
     width: 36px;
@@ -1000,6 +1001,8 @@ input[type="checkbox"] {
 
 /* Unify remaining tool buttons to the blue-cyan accent (icons use currentColor) */
 .open-music-button,
+.effect-pipeline-button,
+.open-library-button,
 .sidebar-button,
 .search-button,
 .routing-button,
@@ -2129,6 +2132,7 @@ body {
 }
 
 .tab-button.active,
+.view-switch-button.active,
 .dbt-switch-buttons .header-button.active {
     background: linear-gradient(180deg, rgba(74, 158, 255, 0.95), #3f8fe8);
     border-color: #72b9ff;

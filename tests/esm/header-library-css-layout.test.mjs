@@ -16,22 +16,28 @@ function getRule(css, selector) {
   return css.slice(blockStart + 1, blockEnd);
 }
 
-test('desktop library button matches neighboring header icon button size', () => {
+test('desktop view switch buttons match neighboring header icon button size', () => {
   const css = readCss('../../effetune.css');
+  const pipelineButtonRule = getRule(css, '.effect-pipeline-button');
   const libraryButtonRule = getRule(css, '.open-library-button');
   const desktopSubtitleContainerRule = getRule(css, 'body:not(.layout-mobile) .subtitle-container');
 
+  assert.match(pipelineButtonRule, /width:\s*36px;/);
+  assert.match(pipelineButtonRule, /height:\s*36px;/);
+  assert.match(pipelineButtonRule, /padding:\s*8px;/);
   assert.match(libraryButtonRule, /width:\s*36px;/);
   assert.match(libraryButtonRule, /height:\s*36px;/);
   assert.match(libraryButtonRule, /padding:\s*8px;/);
   assert.match(desktopSubtitleContainerRule, /height:\s*36px;/);
 });
 
-test('mobile header keeps 10px space between library and settings buttons', () => {
+test('mobile header hides desktop view switch buttons and reserves settings space', () => {
   const css = readCss('../../effetune-mobile.css');
 
-  assert.match(getRule(css, 'body.layout-mobile h1'), /padding-right:\s*146px;/);
+  assert.match(getRule(css, 'body.layout-mobile h1'), /padding-right:\s*96px;/);
   assert.match(getRule(css, 'body.layout-mobile .header-buttons'), /gap:\s*10px;/);
+  assert.match(getRule(css, 'body.layout-mobile .header-buttons .effect-pipeline-button'), /display:\s*none !important;/);
+  assert.match(getRule(css, 'body.layout-mobile .header-buttons .open-library-button'), /display:\s*none !important;/);
 });
 
 test('desktop library view keeps the effect layout width as its sizing basis', () => {
@@ -47,11 +53,85 @@ test('desktop library view keeps the effect layout width as its sizing basis', (
   assert.match(mobileRule, /display:\s*none;/);
 });
 
+test('mobile library screen keeps scrolling inside the content pane', () => {
+  const css = readCss('../../effetune-library.css');
+  const bodyRule = getRule(css, 'body.layout-mobile.view-library {');
+  const shellRule = getRule(css, 'body.layout-mobile.view-library .mobile-library-view');
+  const viewRule = getRule(css, 'body.layout-mobile.view-library .library-view,\nbody.view-library.layout-mobile .library-view');
+
+  assert.match(bodyRule, /display:\s*flex;/);
+  assert.match(bodyRule, /flex-direction:\s*column;/);
+  assert.match(bodyRule, /height:\s*100svh;/);
+  assert.match(bodyRule, /padding-bottom:\s*calc\(var\(--et-bottom-nav-height\) \+ var\(--et-mini-player-height\) \+ env\(safe-area-inset-bottom\) \+ 8px\);/);
+  assert.match(bodyRule, /overflow-y:\s*hidden;/);
+  assert.match(shellRule, /display:\s*flex;/);
+  assert.match(shellRule, /flex:\s*1 1 auto;/);
+  assert.match(shellRule, /min-height:\s*0;/);
+  assert.match(shellRule, /overflow:\s*hidden;/);
+  assert.match(viewRule, /height:\s*100%;/);
+  assert.match(viewRule, /min-height:\s*0;/);
+  assert.doesNotMatch(viewRule, /padding-bottom:/);
+  assert.doesNotMatch(viewRule, /calc\(100vh - 64px\)/);
+});
+
+test('desktop library view uses measured viewport height with a usable minimum', () => {
+  const css = readCss('../../effetune-library.css');
+  const rootRule = getRule(css, ':root');
+  const desktopLibraryRule = getRule(css, 'body.view-library:not(.layout-mobile) .library-view');
+
+  assert.match(rootRule, /--library-desktop-min-height:\s*360px;/);
+  assert.match(desktopLibraryRule, /height:\s*var\(--library-desktop-height,\s*calc\(100vh - 180px\)\);/);
+  assert.match(desktopLibraryRule, /min-height:\s*var\(--library-desktop-min-height\);/);
+});
+
+test('desktop library panels match the audio player inner spacing', () => {
+  const appCss = readCss('../../effetune.css');
+  const libraryCss = readCss('../../effetune-library.css');
+  const audioPlayerRule = getRule(appCss, '.audio-player');
+  const desktopLibraryNavRule = getRule(libraryCss, 'body.view-library:not(.layout-mobile) .library-nav');
+  const desktopLibraryHeaderRule = getRule(libraryCss, 'body.view-library:not(.layout-mobile) .library-header');
+
+  assert.match(audioPlayerRule, /padding:\s*20px;/);
+  assert.match(desktopLibraryNavRule, /padding:\s*20px;/);
+  assert.match(desktopLibraryHeaderRule, /padding:\s*20px;/);
+});
+
+test('desktop library content keeps the scrollbar inside the right inset', () => {
+  const css = readCss('../../effetune-library.css');
+  const contentRule = getRule(css, '.library-content');
+  const desktopContentRule = getRule(css, 'body.view-library:not(.layout-mobile) .library-content');
+
+  assert.match(contentRule, /padding:\s*14px;/);
+  assert.match(desktopContentRule, /padding:\s*20px max\(0px,\s*calc\(20px - var\(--library-content-scrollbar-width,\s*0px\)\)\) 20px 20px;/);
+});
+
 test('desktop library view hides the plugin list toggle button', () => {
   const css = readCss('../../effetune-library.css');
   const desktopSidebarRule = getRule(css, 'body.view-library:not(.layout-mobile) .sidebar-button');
 
   assert.match(desktopSidebarRule, /display:\s*none;/);
+});
+
+test('library status actions align to the library content inner edge', () => {
+  const css = readCss('../../effetune-library.css');
+  const statusRule = getRule(css, '.library-status');
+  const desktopStatusButtonRule = getRule(css, 'body.view-library:not(.layout-mobile) .library-status-button');
+  const mobileStatusRule = getRule(css, 'body.layout-mobile .library-status');
+
+  assert.match(statusRule, /padding:\s*0 calc\(14px \+ var\(--library-content-scrollbar-width,\s*0px\)\) 0 14px;/);
+  assert.match(desktopStatusButtonRule, /padding:\s*0 20px;/);
+  assert.match(mobileStatusRule, /padding:\s*0 10px;/);
+});
+
+test('library navigation counts align lower with their labels', () => {
+  const css = readCss('../../effetune-library.css');
+  const navItemRule = getRule(css, '.library-nav-item');
+  const countRule = getRule(css, '.library-count');
+
+  assert.match(navItemRule, /align-items:\s*center;/);
+  assert.match(countRule, /position:\s*relative;/);
+  assert.match(countRule, /top:\s*0\.12em;/);
+  assert.match(countRule, /margin-left:\s*6px;/);
 });
 
 test('desktop empty library icon has a bounded display size', () => {
@@ -62,6 +142,49 @@ test('desktop empty library icon has a bounded display size', () => {
   assert.match(emptyIconRule, /max-width:\s*42%;/);
 });
 
+test('library artwork images stay centered within the artwork frame', () => {
+  const css = readCss('../../effetune-library.css');
+  const artworkRule = getRule(css, '.library-artwork {');
+  const imageRule = getRule(css, '.library-artwork-image');
+
+  assert.match(artworkRule, /overflow:\s*hidden;/);
+  assert.match(imageRule, /display:\s*block;/);
+  assert.match(imageRule, /width:\s*100%;/);
+  assert.match(imageRule, /height:\s*100%;/);
+  assert.match(imageRule, /min-width:\s*0;/);
+  assert.match(imageRule, /min-height:\s*0;/);
+  assert.match(imageRule, /max-width:\s*100%;/);
+  assert.match(imageRule, /max-height:\s*100%;/);
+  assert.match(imageRule, /object-fit:\s*contain;/);
+  assert.match(imageRule, /object-position:\s*center;/);
+});
+
+test('library album card play button uses the mobile primary player styling', () => {
+  const css = readCss('../../effetune-library.css');
+  const playRule = getRule(css, '.library-card-play {');
+  const iconRule = getRule(css, '.library-card-play svg');
+
+  assert.match(playRule, /width:\s*42px;/);
+  assert.match(playRule, /height:\s*42px;/);
+  assert.match(playRule, /color:\s*#ffffff;/);
+  assert.match(playRule, /background:\s*linear-gradient\(180deg,\s*rgba\(255,\s*255,\s*255,\s*0\.22\)/);
+  assert.match(playRule, /linear-gradient\(180deg,\s*#67b9ff,\s*#3f8fe8\);/);
+  assert.match(playRule, /border:\s*1px solid #8ccaff;/);
+  assert.match(playRule, /box-shadow:\s*0 12px 28px rgba\(74,\s*158,\s*255,\s*0\.32\)/);
+  assert.match(playRule, /transition:[^;]*transform 0\.12s ease;/);
+  assert.match(iconRule, /width:\s*18px;/);
+  assert.match(iconRule, /height:\s*18px;/);
+});
+
+test('library album card titles reserve line height for descenders', () => {
+  const css = readCss('../../effetune-library.css');
+  const titleRule = getRule(css, '.library-card-title {');
+
+  assert.match(titleRule, /font-size:\s*14px;/);
+  assert.match(titleRule, /line-height:\s*1\.35;/);
+  assert.match(titleRule, /min-height:\s*1\.35em;/);
+});
+
 test('library icon buttons keep a 30px content square', () => {
   const css = readCss('../../effetune-library.css');
   const iconButtonRule = getRule(css, '.library-icon-button,\n.library-row-play {');
@@ -70,6 +193,15 @@ test('library icon buttons keep a 30px content square', () => {
   assert.match(iconButtonRule, /width:\s*30px;/);
   assert.match(iconButtonRule, /height:\s*30px;/);
   assert.match(iconButtonRule, /padding:\s*0;/);
+});
+
+test('library track rows include their separator inside the virtual row height', () => {
+  const css = readCss('../../effetune-library.css');
+  const trackRowBaseRule = getRule(css, '.library-track-header,\n.library-track-row {');
+
+  assert.match(trackRowBaseRule, /box-sizing:\s*border-box;/);
+  assert.match(trackRowBaseRule, /min-height:\s*40px;/);
+  assert.match(css, /\.library-track-row\s*\{\s*border-top:\s*1px solid var\(--library-row-border\);/);
 });
 
 test('library view reuses the main effect surface theme', () => {

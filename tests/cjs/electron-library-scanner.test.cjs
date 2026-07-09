@@ -26,8 +26,53 @@ function decodeWindows1252(bytes) {
   return new TextDecoder('windows-1252').decode(Uint8Array.from(bytes));
 }
 
+function decodeLatin1(bytes) {
+  return String.fromCharCode(...bytes);
+}
+
+function decodeHighBitsCleared(bytes) {
+  let end = bytes.length;
+  while (end > 0 && bytes[end - 1] === 0x00) end -= 1;
+  return String.fromCharCode(...bytes.slice(0, end).map(byte => byte & 0x7f));
+}
+
 function decodeUtf8AsWindows1252(text) {
   return decodeWindows1252(new TextEncoder().encode(text));
+}
+
+function createChunk(id, data) {
+  const payload = Buffer.from(data);
+  const header = Buffer.alloc(8);
+  header.write(id, 0, 4, 'ascii');
+  header.writeUInt32LE(payload.length, 4);
+  return payload.length % 2
+    ? Buffer.concat([header, payload, Buffer.from([0])])
+    : Buffer.concat([header, payload]);
+}
+
+function createRiffInfoWave(tags) {
+  const fmt = Buffer.alloc(16);
+  fmt.writeUInt16LE(1, 0);
+  fmt.writeUInt16LE(1, 2);
+  fmt.writeUInt32LE(44100, 4);
+  fmt.writeUInt32LE(88200, 8);
+  fmt.writeUInt16LE(2, 12);
+  fmt.writeUInt16LE(16, 14);
+  const infoPayload = Buffer.concat([
+    Buffer.from('INFO', 'ascii'),
+    ...tags.map(tag => createChunk(tag.id, tag.data))
+  ]);
+  const chunks = [
+    createChunk('fmt ', fmt),
+    createChunk('data', Buffer.alloc(0)),
+    createChunk('LIST', infoPayload)
+  ];
+  const riffSize = 4 + chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const header = Buffer.alloc(12);
+  header.write('RIFF', 0, 4, 'ascii');
+  header.writeUInt32LE(riffSize, 4);
+  header.write('WAVE', 8, 4, 'ascii');
+  return Buffer.concat([header, ...chunks]);
 }
 
 function createDirectoryLink(targetPath, linkPath) {
@@ -475,6 +520,221 @@ test('scanLibrary maps music metadata without loading embedded artwork by defaul
   assert.deepEqual(batchEvent.artworks, []);
 });
 
+test('scanLibrary prefers explicit native track totals over malformed common numbers', async () => {
+  const root = createTempDir('effetune-library-native-track-number');
+  const audioPath = path.join(root, 'track.mp3');
+  writeFile(audioPath, 'metadata');
+  const metadataModule = {
+    async parseFile() {
+      return {
+        common: {
+          title: 'Mapped Title',
+          track: { no: 32, of: null },
+          disk: { no: null, of: null }
+        },
+        native: {
+          'ID3v2.3': [
+            { id: 'TRCK', value: '03/12' },
+            { id: 'TPOS', value: '1/2' }
+          ]
+        },
+        format: {}
+      };
+    }
+  };
+  const events = [];
+
+  await runWithScanner(metadataModule, scanner => scanner.scanLibrary({
+    roots: [{ folderId: 'f_music', path: root }]
+  }, event => {
+    events.push(event);
+  }));
+
+  const [track] = events.filter(event => event.type === 'batch').flatMap(event => event.tracks);
+  assert.equal(track.trackNo, 3);
+  assert.equal(track.trackOf, 12);
+  assert.equal(track.discNo, 1);
+  assert.equal(track.discOf, 2);
+});
+
+test('scanLibrary prefers ID3v2 track numbers over malformed common ID3v1 numbers', async () => {
+  const root = createTempDir('effetune-library-native-id3v2-track-number');
+  const audioPath = path.join(root, 'track.mp3');
+  writeFile(audioPath, 'metadata');
+  const metadataModule = {
+    async parseFile() {
+      return {
+        common: {
+          title: 'Mapped Title',
+          track: { no: 32, of: null },
+          disk: { no: null, of: null }
+        },
+        native: {
+          'ID3v2.3': [
+            { id: 'TRCK', value: '03' }
+          ],
+          ID3v1: [
+            { id: 'track', value: 32 }
+          ]
+        },
+        format: {}
+      };
+    }
+  };
+  const events = [];
+
+  await runWithScanner(metadataModule, scanner => scanner.scanLibrary({
+    roots: [{ folderId: 'f_music', path: root }]
+  }, event => {
+    events.push(event);
+  }));
+
+  const [track] = events.filter(event => event.type === 'batch').flatMap(event => event.tracks);
+  assert.equal(track.trackNo, 3);
+  assert.equal(track.trackOf, null);
+});
+
+test('scanLibrary prefers modern native text fields over malformed common values', async () => {
+  const root = createTempDir('effetune-library-native-text-fields');
+  const audioPath = path.join(root, 'track.mp3');
+  writeFile(audioPath, 'metadata');
+  const metadataModule = {
+    async parseFile() {
+      return {
+        common: {
+          title: 'Legacy Title',
+          artists: ['Legacy Artist'],
+          albumartist: 'Legacy Album Artist',
+          album: 'Legacy Album',
+          genre: ['Legacy Genre'],
+          year: 1999,
+          compilation: false,
+          titlesort: 'Legacy Sort Title',
+          albumsort: 'Legacy Sort Album',
+          albumartistsort: 'Legacy Sort Album Artist'
+        },
+        native: {
+          APEv2: [
+            { id: 'TITLE', value: 'APE Title' },
+            { id: 'ARTIST', value: 'APE Artist' }
+          ],
+          'ID3v2.3': [
+            { id: 'TIT2', value: 'Native Title' },
+            { id: 'TPE1', value: 'Native Artist' },
+            { id: 'TPE2', value: 'Native Album Artist' },
+            { id: 'TALB', value: 'Native Album' },
+            { id: 'TCON', value: 'Native Genre' },
+            { id: 'TDRC', value: '2024-12-25' },
+            { id: 'TSOT', value: 'Native Sort Title' },
+            { id: 'TSOA', value: 'Native Sort Album' },
+            { id: 'TSO2', value: 'Native Sort Album Artist' },
+            { id: 'TCMP', value: '1' }
+          ],
+          ID3v1: [
+            { id: 'title', value: 'ID3v1 Title' },
+            { id: 'artist', value: 'ID3v1 Artist' },
+            { id: 'album', value: 'ID3v1 Album' },
+            { id: 'genre', value: 'ID3v1 Genre' },
+            { id: 'year', value: '1999' }
+          ]
+        },
+        format: {}
+      };
+    }
+  };
+  const events = [];
+
+  await runWithScanner(metadataModule, scanner => scanner.scanLibrary({
+    roots: [{ folderId: 'f_music', path: root }]
+  }, event => {
+    events.push(event);
+  }));
+
+  const [track] = events.filter(event => event.type === 'batch').flatMap(event => event.tracks);
+  assert.equal(track.title, 'Native Title');
+  assert.equal(track.artist, 'Native Artist');
+  assert.equal(track.albumArtist, 'Native Album Artist');
+  assert.equal(track.album, 'Native Album');
+  assert.equal(track.genre, 'Native Genre');
+  assert.equal(track.year, 2024);
+  assert.equal(track.compilation, true);
+  assert.equal(track.sortTitle, 'Native Sort Title');
+  assert.equal(track.sortAlbum, 'Native Sort Album');
+  assert.equal(track.sortAlbumArtist, 'Native Sort Album Artist');
+});
+
+test('scanLibrary does not let ID3v1 text override common text', async () => {
+  const root = createTempDir('effetune-library-id3v1-text-fallback');
+  const audioPath = path.join(root, 'track.mp3');
+  writeFile(audioPath, 'metadata');
+  const metadataModule = {
+    async parseFile() {
+      return {
+        common: {
+          title: 'Long Common Title',
+          artists: ['Long Common Artist'],
+          album: 'Long Common Album',
+          genre: ['Long Common Genre']
+        },
+        native: {
+          ID3v1: [
+            { id: 'title', value: 'Truncated Title' },
+            { id: 'artist', value: 'Truncated Artist' },
+            { id: 'album', value: 'Truncated Album' },
+            { id: 'genre', value: 'Truncated Genre' }
+          ]
+        },
+        format: {}
+      };
+    }
+  };
+  const events = [];
+
+  await runWithScanner(metadataModule, scanner => scanner.scanLibrary({
+    roots: [{ folderId: 'f_music', path: root }]
+  }, event => {
+    events.push(event);
+  }));
+
+  const [track] = events.filter(event => event.type === 'batch').flatMap(event => event.tracks);
+  assert.equal(track.title, 'Long Common Title');
+  assert.equal(track.artist, 'Long Common Artist');
+  assert.equal(track.album, 'Long Common Album');
+  assert.equal(track.genre, 'Long Common Genre');
+});
+
+test('scanLibrary keeps decoded common genre over numeric ID3 genre codes', async () => {
+  const root = createTempDir('effetune-library-id3-genre-code');
+  const audioPath = path.join(root, 'track.mp3');
+  writeFile(audioPath, 'metadata');
+  const metadataModule = {
+    async parseFile() {
+      return {
+        common: {
+          title: 'Mapped Title',
+          genre: ['Rock']
+        },
+        native: {
+          'ID3v2.3': [
+            { id: 'TCON', value: '17' }
+          ]
+        },
+        format: {}
+      };
+    }
+  };
+  const events = [];
+
+  await runWithScanner(metadataModule, scanner => scanner.scanLibrary({
+    roots: [{ folderId: 'f_music', path: root }]
+  }, event => {
+    events.push(event);
+  }));
+
+  const [track] = events.filter(event => event.type === 'batch').flatMap(event => event.tracks);
+  assert.equal(track.genre, 'Rock');
+});
+
 test('scanLibrary repairs legacy Japanese mojibake in metadata text', async () => {
   const root = createTempDir('effetune-library-japanese-mojibake');
   writeFile(path.join(root, 'mojibake.mp3'), 'metadata');
@@ -502,6 +762,295 @@ test('scanLibrary repairs legacy Japanese mojibake in metadata text', async () =
   assert.equal(track.title, 'こんにちは');
   assert.equal(track.artist, 'アーティスト');
   assert.equal(track.album, 'Plain Album');
+});
+
+test('scanLibrary uses clean Japanese context to repair legacy CP932 ID3 text without forcing other scripts', async () => {
+  const root = createTempDir('effetune-library-cp932-context');
+  const cases = [
+    {
+      fileName: 'ando.mp3',
+      title: 'ロマンチック',
+      artist: decodeLatin1([0x88, 0xc0, 0x93, 0xa1, 0x97, 0x54, 0x8e, 0x71]),
+      album: 'Middle Tempo Magic',
+      expectedArtist: '安藤裕子',
+      expectedAlbum: 'Middle Tempo Magic'
+    },
+    {
+      fileName: 'mori.mp3',
+      title: '土曜日の嘘',
+      artist: decodeLatin1([0x90, 0x58, 0x8e, 0x52, 0x92, 0xbc, 0x91, 0xbe, 0x98, 0x4e]),
+      album: decodeLatin1([0x8c, 0x86, 0x8d, 0xec, 0x90, 0xef, 0x20, 0x32, 0x30, 0x30, 0x31, 0x81, 0x60, 0x32, 0x30, 0x30, 0x35, 0x20, 0x5b, 0x42, 0x6f, 0x6e, 0x75, 0x73, 0x20, 0x44, 0x69, 0x73, 0x63, 0x5d]),
+      expectedArtist: '森山直太朗',
+      expectedAlbum: '傑作撰 2001～2005 [Bonus Disc]'
+    },
+    {
+      fileName: 'denki.mp3',
+      title: '聖☆おじさん',
+      artist: decodeLatin1([0x93, 0x64, 0x8b, 0x43, 0x83, 0x4f, 0x83, 0x8b, 0x81, 0x5b, 0x83, 0x94, 0x81, 0x7e, 0x83, 0x58, 0x83, 0x60, 0x83, 0x83, 0x83, 0x5f, 0x83, 0x89, 0x83, 0x70, 0x81, 0x5b]),
+      album: decodeLatin1([0x93, 0x64, 0x8b, 0x43, 0x83, 0x4f, 0x83, 0x8b, 0x81, 0x5b, 0x83, 0x75, 0x81, 0x7e, 0x83, 0x58, 0x83, 0x60, 0x83, 0x83, 0x83, 0x5f, 0x83, 0x89, 0x83, 0x70, 0x81, 0x5b]),
+      expectedArtist: '電気グルーヴ×スチャダラパー',
+      expectedAlbum: '電気グルーブ×スチャダラパー'
+    },
+    {
+      fileName: '01-もどかしさが奏でるブルース.mp3',
+      title: 'もどかしさが奏でるブルース',
+      artist: decodeLatin1([0x95, 0x97, 0x96, 0xa1, 0x93, 0xb0]),
+      album: decodeLatin1([0x95, 0x97, 0x96, 0xa1, 0x93, 0xb0]),
+      expectedArtist: '風味堂',
+      expectedAlbum: '風味堂'
+    },
+    {
+      fileName: '13-人生一路.mp3',
+      title: decodeLatin1([0x90, 0x6c, 0x90, 0xb6, 0x88, 0xea, 0x98, 0x48]),
+      artist: decodeLatin1([0x94, 0xfc, 0x8b, 0xf3, 0x82, 0xd0, 0x82, 0xce, 0x82, 0xe8]),
+      album: decodeLatin1([0x94, 0xfc, 0x8b, 0xf3, 0x82, 0xd0, 0x82, 0xce, 0x82, 0xe8, 0x20, 0x83, 0x58, 0x83, 0x79, 0x83, 0x56, 0x83, 0x83, 0x83, 0x8b, 0x83, 0x78, 0x83, 0x58, 0x83, 0x67]),
+      expectedTitle: '人生一路',
+      expectedArtist: '美空ひばり',
+      expectedAlbum: '美空ひばり スペシャルベスト'
+    },
+    {
+      fileName: '11-歩.mp3',
+      relativePath: '北島三郎/ベスト16/11-歩.mp3',
+      title: decodeLatin1([0x95, 0xe0]),
+      artist: decodeLatin1([0x96, 0x6b, 0x93, 0x87, 0x8e, 0x4f, 0x98, 0x59]),
+      album: decodeLatin1([0x83, 0x78, 0x83, 0x58, 0x83, 0x67, 0x31, 0x36]),
+      expectedTitle: '歩',
+      expectedArtist: '北島三郎',
+      expectedAlbum: 'ベスト16'
+    },
+    {
+      fileName: '02-竹.mp3',
+      relativePath: '北島三郎/ベスト16/02-竹.mp3',
+      title: decodeLatin1([0x92, 0x7c]),
+      artist: decodeLatin1([0x96, 0x6b, 0x93, 0x87, 0x8e, 0x4f, 0x98, 0x59]),
+      album: decodeLatin1([0x83, 0x78, 0x83, 0x58, 0x83, 0x67, 0x31, 0x36]),
+      expectedTitle: '竹',
+      expectedArtist: '北島三郎',
+      expectedAlbum: 'ベスト16'
+    },
+    {
+      fileName: '03-橋.mp3',
+      relativePath: '北島三郎/ベスト16/03-橋.mp3',
+      title: decodeLatin1([0x8b, 0xb4]),
+      artist: decodeLatin1([0x96, 0x6b, 0x93, 0x87, 0x8e, 0x4f, 0x98, 0x59]),
+      album: decodeLatin1([0x83, 0x78, 0x83, 0x58, 0x83, 0x67, 0x31, 0x36]),
+      expectedTitle: '橋',
+      expectedArtist: '北島三郎',
+      expectedAlbum: 'ベスト16'
+    },
+    {
+      fileName: '09-夢.mp3',
+      relativePath: '北島三郎/ベスト16/09-夢.mp3',
+      title: decodeLatin1([0x96, 0xb2]),
+      artist: decodeLatin1([0x96, 0x6b, 0x93, 0x87, 0x8e, 0x4f, 0x98, 0x59]),
+      album: decodeLatin1([0x83, 0x78, 0x83, 0x58, 0x83, 0x67, 0x31, 0x36]),
+      expectedTitle: '夢',
+      expectedArtist: '北島三郎',
+      expectedAlbum: 'ベスト16'
+    },
+    {
+      fileName: '01-童神.mp3',
+      relativePath: '花_花/コモリウタ/01-童神.mp3',
+      title: decodeLatin1([0x93, 0xb6, 0x90, 0x5f]),
+      artist: decodeLatin1([0x89, 0xd4, 0x2a, 0x89, 0xd4]),
+      albumArtist: decodeLatin1([0x89, 0xd4, 0x81, 0x96, 0x89, 0xd4]),
+      album: decodeLatin1([0x83, 0x52, 0x83, 0x82, 0x83, 0x8a, 0x83, 0x45, 0x83, 0x5e]),
+      expectedTitle: '童神',
+      expectedArtist: '花*花',
+      expectedAlbumArtist: '花＊花',
+      expectedAlbum: 'コモリウタ'
+    },
+    {
+      fileName: '01-ピアノ協奏曲 第一番変ホ長調 アレグロ・マエストーソ.mp3',
+      relativePath: 'FRANZ LISZT/ロマン派の巨匠/01-ピアノ協奏曲 第一番変ホ長調 アレグロ・マエストーソ.mp3',
+      title: 'ピアノ協奏曲 第一番変ホ長調 アレグロ・マエストーソ',
+      artist: 'FRANZ LISZT',
+      albumArtist: decodeLatin1([0x83, 0x8a, 0x83, 0x58, 0x83, 0x67]),
+      album: decodeLatin1([0x83, 0x8d, 0x83, 0x7d, 0x83, 0x93, 0x94, 0x68, 0x82, 0xcc, 0x8b, 0x90, 0x8f, 0xa0]),
+      expectedArtist: 'FRANZ LISZT',
+      expectedAlbumArtist: 'リスト',
+      expectedAlbum: 'ロマン派の巨匠'
+    },
+    {
+      fileName: '01-釣りに行こう.mp3',
+      relativePath: 'THE BOOM/Singles＋ (Bonus Tracks)/01-釣りに行こう.mp3',
+      title: '釣りに行こう',
+      artist: 'THE BOOM',
+      album: decodeLatin1([...Buffer.from('Singles', 'ascii'), 0x81, 0x7b, ...Buffer.from(' (Bonus Tracks)', 'ascii')]),
+      expectedArtist: 'THE BOOM',
+      expectedAlbum: 'Singles＋ (Bonus Tracks)'
+    },
+    {
+      fileName: '01-Theme of 018.mp3',
+      relativePath: 'SMAP/Poｐ Uｐ SMAP/01-Theme of 018.mp3',
+      title: 'Theme of 018',
+      artist: 'SMAP',
+      album: decodeLatin1([0x50, 0x6f, 0x82, 0x90, 0x20, 0x55, 0x82, 0x90, 0x20, 0x53, 0x4d, 0x41, 0x50]),
+      expectedArtist: 'SMAP',
+      expectedAlbum: 'Poｐ Uｐ SMAP'
+    },
+    {
+      fileName: '01-カルロス・ディ・サルリ楽団 _ エル・チョクロ.mp3',
+      relativePath: 'Omnibus/Ｔｈｅ　Ｂｅｓｔ　ｏｆ　Ａｒｇｅｎｔｉｎｅ　Ｔａｎｇｏ/01-カルロス・ディ・サルリ楽団 _ エル・チョクロ.mp3',
+      title: 'カルロス・ディ・サルリ楽団 / エル・チョクロ',
+      artist: 'omnibus',
+      album: decodeLatin1([
+        0x82, 0x73, 0x82, 0x88, 0x82, 0x85, 0x81, 0x40,
+        0x82, 0x61, 0x82, 0x85, 0x82, 0x93, 0x82, 0x94,
+        0x81, 0x40, 0x82, 0x8f, 0x82, 0x86, 0x81, 0x40,
+        0x82, 0x60, 0x82, 0x92, 0x82, 0x87, 0x82, 0x85,
+        0x82, 0x8e, 0x82, 0x94, 0x82, 0x89, 0x82, 0x8e,
+        0x82, 0x85, 0x81, 0x40, 0x82, 0x73, 0x82, 0x81,
+        0x82, 0x8e, 0x82, 0x87, 0x82, 0x8f
+      ]),
+      expectedArtist: 'omnibus',
+      expectedAlbum: 'Ｔｈｅ　Ｂｅｓｔ　ｏｆ　Ａｒｇｅｎｔｉｎｅ　Ｔａｎｇｏ'
+    },
+    {
+      fileName: 'chinese-artist.mp3',
+      title: '日本語タイトル',
+      artist: decodeLatin1([0xc4, 0xe3, 0xba, 0xc3, 0xca, 0xc0, 0xbd, 0xe7]),
+      album: 'Mixed Script Album',
+      expectedArtist: '你好世界',
+      expectedAlbum: 'Mixed Script Album'
+    },
+    {
+      fileName: 'korean-artist.mp3',
+      title: '日本語タイトル',
+      artist: decodeLatin1([0xbe, 0xc8, 0xb3, 0xe7, 0xc7, 0xcf, 0xbc, 0xbc, 0xbf, 0xe4]),
+      album: 'Mixed Script Album',
+      expectedArtist: '안녕하세요',
+      expectedAlbum: 'Mixed Script Album'
+    }
+  ];
+  const byFileName = new Map(cases.map(item => [item.fileName, item]));
+  for (const item of cases) {
+    writeFile(path.join(root, item.relativePath || item.fileName), 'metadata');
+  }
+  const metadataModule = {
+    async parseFile(filePath) {
+      const item = byFileName.get(path.basename(filePath));
+      return {
+        common: {
+          title: item.title,
+          artist: item.artist,
+          albumartist: item.albumArtist,
+          album: item.album
+        },
+        format: {}
+      };
+    }
+  };
+  const events = [];
+
+  await runWithScanner(metadataModule, scanner => scanner.scanLibrary({
+    roots: [{ folderId: 'f_music', path: root }],
+    batchSize: cases.length,
+    languageHints: { language: 'ja' }
+  }, event => {
+    events.push(event);
+  }));
+
+  const tracks = events.filter(event => event.type === 'batch').flatMap(event => event.tracks);
+  const byName = new Map(tracks.map(track => [track.fileName, track]));
+  for (const item of cases) {
+    assert.equal(byName.get(item.fileName).title, item.expectedTitle || item.title);
+    assert.equal(byName.get(item.fileName).artist, item.expectedArtist);
+    if (item.expectedAlbumArtist !== undefined) {
+      assert.equal(byName.get(item.fileName).albumArtist, item.expectedAlbumArtist);
+    }
+    assert.equal(byName.get(item.fileName).album, item.expectedAlbum);
+  }
+});
+
+test('scanLibrary reads raw CP932 RIFF INFO tags from WAV before string data is lost', async () => {
+  const root = createTempDir('effetune-library-wav-riff-info-cp932');
+  const artistBytes = Buffer.from('95bd89ea837d838a834a00', 'hex');
+  const albumBytes = Buffer.from('83828369a5838a8354202081608367838a83728385815b836781458367834481458369836283678145834c8393834f81458352815b838b816000', 'hex');
+  const wavPath = path.join(
+    root,
+    '平賀マリカ',
+    'モナ･リサ ～トリビュート・トゥ・ナット・キング・コール～',
+    'ddcb130163-3_1_01.wav'
+  );
+  writeFile(wavPath, createRiffInfoWave([
+    { id: 'INAM', data: Buffer.from('MONA LISA\0', 'ascii') },
+    { id: 'IART', data: artistBytes },
+    { id: 'IPRD', data: albumBytes }
+  ]));
+  const metadataModule = {
+    async parseFile() {
+      return {
+        common: {
+          title: 'MONA LISA',
+          artist: decodeHighBitsCleared([...artistBytes]),
+          album: decodeHighBitsCleared([...albumBytes])
+        },
+        native: {
+          exif: [
+            { id: 'INAM', value: 'MONA LISA' },
+            { id: 'IART', value: decodeHighBitsCleared([...artistBytes]) },
+            { id: 'IPRD', value: decodeHighBitsCleared([...albumBytes]) }
+          ]
+        },
+        format: {
+          container: 'WAVE',
+          codec: 'PCM'
+        }
+      };
+    }
+  };
+  const events = [];
+
+  await runWithScanner(metadataModule, scanner => scanner.scanLibrary({
+    roots: [{ folderId: 'f_music', path: root }],
+    languageHints: { language: 'ja' }
+  }, event => {
+    events.push(event);
+  }));
+
+  const [track] = events.filter(event => event.type === 'batch').flatMap(event => event.tracks);
+  assert.equal(track.title, 'MONA LISA');
+  assert.equal(track.artist, '平賀マリカ');
+  assert.equal(track.albumArtist, '平賀マリカ');
+  assert.equal(track.album, 'モナ･リサ  ～トリビュート・トゥ・ナット・キング・コール～');
+});
+
+test('scanLibrary maps alternate RIFF INFO title, album, and date ids', async () => {
+  const root = createTempDir('effetune-library-wav-riff-info-alternate-ids');
+  const wavPath = path.join(root, 'alternate.wav');
+  writeFile(wavPath, createRiffInfoWave([
+    { id: 'TITL', data: Buffer.from('Alternate Title\0', 'ascii') },
+    { id: 'IART', data: Buffer.from('Alternate Artist\0', 'ascii') },
+    { id: 'IRPD', data: Buffer.from('Alternate Album\0', 'ascii') },
+    { id: 'ICRD', data: Buffer.from('2021-04-03\0', 'ascii') }
+  ]));
+  const metadataModule = {
+    async parseFile() {
+      return {
+        common: {},
+        native: {},
+        format: {
+          container: 'WAVE',
+          codec: 'PCM'
+        }
+      };
+    }
+  };
+  const events = [];
+
+  await runWithScanner(metadataModule, scanner => scanner.scanLibrary({
+    roots: [{ folderId: 'f_music', path: root }]
+  }, event => {
+    events.push(event);
+  }));
+
+  const [track] = events.filter(event => event.type === 'batch').flatMap(event => event.tracks);
+  assert.equal(track.title, 'Alternate Title');
+  assert.equal(track.artist, 'Alternate Artist');
+  assert.equal(track.albumArtist, 'Alternate Artist');
+  assert.equal(track.album, 'Alternate Album');
+  assert.equal(track.year, 2021);
 });
 
 test('scanLibrary repairs legacy metadata mojibake for other scripts', async () => {

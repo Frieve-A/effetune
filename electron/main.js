@@ -1169,6 +1169,7 @@ function initializeApp() {
     startMinimized: false,
     minimizeToTray: false,
     language: 'auto',
+    startupView: 'effects',
     pipelineStartup: 'last',
     startupPreset: '',
     checkForUpdatesOnStartup: true

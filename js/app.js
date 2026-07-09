@@ -145,6 +145,56 @@ const INITIALIZATION_CONFIG = {
     AUDIOWORKLET_TO_PIPELINE_WAIT: 500
 };
 
+function isElectronStartupWindow(windowRef = window) {
+    return Boolean(
+        windowRef.electronIntegration?.isElectronEnvironment?.() ||
+        windowRef.electronIntegration?.isElectron
+    );
+}
+
+function getStartupDocument(windowRef = window) {
+    return windowRef.document || (typeof document !== 'undefined' ? document : null);
+}
+
+function hasExplicitStartupViewRequest(windowRef = window) {
+    if (windowRef.isFirstLaunch === true && isElectronStartupWindow(windowRef)) {
+        return true;
+    }
+
+    try {
+        const params = new URLSearchParams(windowRef.location?.search || '');
+        return params.has('p') || params.has('dbt');
+    } catch (error) {
+        return false;
+    }
+}
+
+function getCachedStartupConfig(windowRef = window) {
+    return windowRef.appConfig || windowRef.electronIntegration?.config || null;
+}
+
+function shouldUseLibraryStartupView(config, windowRef = window) {
+    return config?.startupView === 'library' && !hasExplicitStartupViewRequest(windowRef);
+}
+
+function addDocumentBodyClass(documentRef, className) {
+    const body = documentRef?.body;
+    if (!body) return;
+    if (body.classList?.add) {
+        body.classList.add(className);
+        return;
+    }
+    const classes = new Set(String(body.className || '').split(/\s+/).filter(Boolean));
+    classes.add(className);
+    body.className = Array.from(classes).join(' ');
+}
+
+function applyInitialStartupViewClass(config, windowRef = window) {
+    if (shouldUseLibraryStartupView(config, windowRef)) {
+        addDocumentBodyClass(getStartupDocument(windowRef), 'view-library');
+    }
+}
+
 class App {
     constructor(dependencies = {}) {
         const PluginManagerClass = dependencies.PluginManagerClass || PluginManager;
@@ -284,6 +334,7 @@ class App {
             
             // Display any errors
             this.handleErrors();
+
             // Signal to the main process that we're ready to receive music files
             if (window.electronAPI && window.electronAPI.signalReadyForMusicFiles) {
                 // Debug logs removed for release
@@ -299,6 +350,9 @@ class App {
             
             // Process command line arguments after all initialization is complete
             this.processCommandLineArguments();
+
+            // Apply the configured initial view after startup content has been handled.
+            await this.applyStartupViewPreference();
             
             // Set initialized flag to true
             this.initialized = true;
@@ -370,6 +424,33 @@ class App {
         this.uiManager?.setError?.(message, false);
     }
 
+    hasExplicitStartupViewRequest() {
+        return hasExplicitStartupViewRequest(window);
+    }
+
+    async applyStartupViewPreference() {
+        let startupConfig = getCachedStartupConfig(window) || {};
+        if (!startupConfig.startupView) {
+            try {
+                startupConfig = await this.loadStartupConfig() || {};
+            } catch (error) {
+                console.error('Error loading config for startup view:', error);
+                return;
+            }
+        }
+
+        if (!shouldUseLibraryStartupView(startupConfig, window)) {
+            return;
+        }
+
+        try {
+            applyInitialStartupViewClass(startupConfig, window);
+            await this.uiManager?.showLibraryView?.({ focusSearch: false });
+        } catch (error) {
+            console.error('Error opening startup view:', error);
+        }
+    }
+
     /**
      * Initialize and build pipeline as a single operation
      * This ensures plugins are created with AudioWorklet already initialized
@@ -413,6 +494,7 @@ class App {
         
         // If a command line preset file was specified, load it instead of the previous state
         if (commandLinePresetFile) {
+            this._handledCommandLinePresetAtStartup = true;
             // Debug logs removed for release
             
             // Set pipeline state flags to false to prevent loading previous state
@@ -1314,6 +1396,7 @@ function autoStartApplication({
             if (windowRef.electronIntegration) {
                 windowRef.electronIntegration.config = config;
             }
+            applyInitialStartupViewClass(config, windowRef);
             return config;
         },
         startHeartbeat,

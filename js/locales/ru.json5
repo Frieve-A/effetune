@@ -59,6 +59,7 @@
 
   // Hints displayed when hovering over UI
   "ui.title.openMusic": "Открыть музыкальные файлы",
+  "ui.title.effectPipeline": "Effect Pipeline",
   "ui.title.openLibrary": "Музыкальная библиотека",
   "ui.title.sidebar": "Показать/скрыть список эффектов",
   "ui.title.searchEffects": "Поиск эффектов",
@@ -156,6 +157,7 @@
   "menu.view.resetZoom": "Сбросить масштаб",
   "menu.view.zoomIn": "Увеличить",
   "menu.view.zoomOut": "Уменьшить",
+  "menu.view.effectPipeline": "Effect Pipeline",
   "menu.view.musicLibrary": "Музыкальная библиотека",
   "menu.view.toggleFullscreen": "Переключить полноэкранный режим",
 
@@ -302,6 +304,9 @@
   "dialog.config.pipeline.default": "Настройки по умолчанию",
   "dialog.config.pipeline.last": "Настройки с последнего выхода",
   "dialog.config.pipeline.preset": "Определенный пресет",
+  "dialog.config.startupView": "Вид при запуске:",
+  "dialog.config.startupView.effects": "Effect Pipeline (по умолчанию)",
+  "dialog.config.startupView.library": "Музыкальная библиотека",
   "dialog.config.language": "Язык",
   "dialog.config.language.auto": "Авто (настройки браузера)",
   "dialog.config.languageRestartNotice": "Если вы изменили настройку языка, перезапустите приложение.",

@@ -719,7 +719,17 @@ function registerIpcHandlers() {
             },
             { type: 'separator' },
             {
-              label: menuTemplate.view.submenu[6].label, // Music Library
+              label: menuTemplate.view.submenu[6].label, // Effect Pipeline
+              accelerator: 'CommandOrControl+E',
+              click: () => {
+                const mainWin = constants.getMainWindow();
+                if (mainWin) {
+                  mainWin.webContents.send('open-effect-pipeline-view');
+                }
+              }
+            },
+            {
+              label: menuTemplate.view.submenu[7].label, // Music Library
               accelerator: 'CommandOrControl+L',
               click: () => {
                 const mainWin = constants.getMainWindow();
@@ -731,7 +741,7 @@ function registerIpcHandlers() {
             { type: 'separator' },
             {
               role: 'togglefullscreen',
-              label: menuTemplate.view.submenu[8].label // Toggle Fullscreen
+              label: menuTemplate.view.submenu[9].label // Toggle Fullscreen
             }
           ]
         },
@@ -1258,6 +1268,16 @@ function createMenu() {
           }
         },
         { type: 'separator' },
+        {
+          label: 'Effect Pipeline',
+          accelerator: 'CommandOrControl+E',
+          click: () => {
+            const mainWin = constants.getMainWindow();
+            if (mainWin) {
+              mainWin.webContents.send('open-effect-pipeline-view');
+            }
+          }
+        },
         {
           label: 'Music Library',
           accelerator: 'CommandOrControl+L',

@@ -59,6 +59,7 @@
 
   // Hints displayed when hovering over UI
   "ui.title.openMusic": "فتح ملفات الموسيقى",
+  "ui.title.effectPipeline": "Effect Pipeline",
   "ui.title.openLibrary": "مكتبة الموسيقى",
   "ui.title.sidebar": "عرض أو إخفاء قائمة المؤثرات",
   "ui.title.searchEffects": "البحث عن المؤثرات",
@@ -156,6 +157,7 @@
   "menu.view.resetZoom": "إعادة ضبط التكبير",
   "menu.view.zoomIn": "تكبير",
   "menu.view.zoomOut": "تصغير",
+  "menu.view.effectPipeline": "Effect Pipeline",
   "menu.view.musicLibrary": "مكتبة الموسيقى",
   "menu.view.toggleFullscreen": "تبديل وضع الشاشة الكاملة",
 
@@ -302,6 +304,9 @@
   "dialog.config.pipeline.default": "الإعدادات الافتراضية",
   "dialog.config.pipeline.last": "الإعدادات من آخر خروج",
   "dialog.config.pipeline.preset": "إعداد مسبق معين",
+  "dialog.config.startupView": "طريقة العرض عند بدء التشغيل:",
+  "dialog.config.startupView.effects": "Effect Pipeline (افتراضي)",
+  "dialog.config.startupView.library": "مكتبة الموسيقى",
   "dialog.config.language": "اللغة",
   "dialog.config.language.auto": "تلقائي (إعدادات المتصفح)",
   "dialog.config.languageRestartNotice": "إذا غيّرت إعداد اللغة، فيرجى إعادة تشغيل التطبيق.",

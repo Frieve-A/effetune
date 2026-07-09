@@ -58,6 +58,7 @@
 
   // Hints displayed when hovering over UI
   "ui.title.openMusic": "音楽ファイルを開く",
+  "ui.title.effectPipeline": "Effect Pipeline",
   "ui.title.openLibrary": "Music Library",
   "ui.title.sidebar": "エフェクト一覧の表示/非表示",
   "ui.title.searchEffects": "エフェクトを検索",
@@ -156,6 +157,7 @@
   "menu.view.resetZoom": "ズームリセット",
   "menu.view.zoomIn": "ズームイン",
   "menu.view.zoomOut": "ズームアウト",
+  "menu.view.effectPipeline": "Effect Pipeline",
   "menu.view.musicLibrary": "Music Library",
   "menu.view.toggleFullscreen": "全画面切替",
 
@@ -361,6 +363,9 @@
   "dialog.config.pipeline.default": "デフォルト設定",
   "dialog.config.pipeline.last": "終了時の設定",
   "dialog.config.pipeline.preset": "特定のプリセット",
+  "dialog.config.startupView": "起動時の表示:",
+  "dialog.config.startupView.effects": "Effect Pipeline (デフォルト)",
+  "dialog.config.startupView.library": "Music Library",
   "dialog.config.language": "言語",
   "dialog.config.language.auto": "自動（ブラウザ設定）",
   "dialog.config.languageRestartNotice": "言語設定を変更した場合はアプリを再起動してください",

@@ -59,6 +59,7 @@
 
   // 当鼠标悬停在 UI 上时显示的提示
   "ui.title.openMusic": "打开音乐文件",
+  "ui.title.effectPipeline": "Effect Pipeline",
   "ui.title.openLibrary": "音乐库",
   "ui.title.sidebar": "切换效果列表",
   "ui.title.searchEffects": "搜索效果",
@@ -156,6 +157,7 @@
   "menu.view.resetZoom": "重置缩放",
   "menu.view.zoomIn": "放大",
   "menu.view.zoomOut": "缩小",
+  "menu.view.effectPipeline": "Effect Pipeline",
   "menu.view.musicLibrary": "音乐库",
   "menu.view.toggleFullscreen": "切换全屏",
 
@@ -302,6 +304,9 @@
   "dialog.config.pipeline.default": "默认设置",
   "dialog.config.pipeline.last": "上次退出时的设置",
   "dialog.config.pipeline.preset": "特定预设",
+  "dialog.config.startupView": "启动时显示:",
+  "dialog.config.startupView.effects": "Effect Pipeline（默认）",
+  "dialog.config.startupView.library": "音乐库",
   "dialog.config.language": "语言",
   "dialog.config.language.auto": "自动（浏览器设置）",
   "dialog.config.languageRestartNotice": "如果您更改了语言设置，请重新启动应用程序。",

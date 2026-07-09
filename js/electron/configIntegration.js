@@ -38,6 +38,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
     ...await loadConfig(isElectron)
   };
   config.language = normalizeLanguagePreference(config.language || AUTO_LANGUAGE_PREFERENCE);
+  config.startupView = config.startupView === 'library' ? 'library' : 'effects';
   
   const pipelinePresetManager = window.pipelineManager && window.pipelineManager.presetManager;
   const presets = pipelinePresetManager
@@ -88,6 +89,17 @@ export async function showConfigDialog(isElectron, currentConfig) {
       <div class="device-section">
         <label class="section-label" for="language-select" id="config-language-label"></label>
         <select id="language-select" class="config-select"></select>
+      </div>
+      <div class="device-section">
+        <label class="section-label" id="config-startup-view-label"></label>
+        <div class="radio-container">
+          <input type="radio" name="startup-view" id="startup-view-effects" value="effects" ${config.startupView === 'effects' ? 'checked' : ''}>
+          <label for="startup-view-effects" id="config-startup-view-effects-label"></label>
+        </div>
+        <div class="radio-container">
+          <input type="radio" name="startup-view" id="startup-view-library" value="library" ${config.startupView === 'library' ? 'checked' : ''}>
+          <label for="startup-view-library" id="config-startup-view-library-label"></label>
+        </div>
       </div>
       <div class="device-section">
         <label class="section-label" id="config-pipeline-label"></label>
@@ -256,6 +268,9 @@ export async function showConfigDialog(isElectron, currentConfig) {
     const checkUpdatesLabel = document.getElementById('config-check-updates-label');
     if (checkUpdatesLabel) checkUpdatesLabel.textContent = t('dialog.config.checkForUpdatesOnStartup');
     document.getElementById('config-language-label').textContent = t('dialog.config.language');
+    document.getElementById('config-startup-view-label').textContent = t('dialog.config.startupView');
+    document.getElementById('config-startup-view-effects-label').textContent = t('dialog.config.startupView.effects');
+    document.getElementById('config-startup-view-library-label').textContent = t('dialog.config.startupView.library');
     document.getElementById('config-pipeline-label').textContent = t('dialog.config.pipeline');
     document.getElementById('config-pipeline-default-label').textContent = t('dialog.config.pipeline.default');
     document.getElementById('config-pipeline-last-label').textContent = t('dialog.config.pipeline.last');
@@ -300,6 +315,15 @@ export async function showConfigDialog(isElectron, currentConfig) {
       config.checkForUpdatesOnStartup = e.target.checked; save();
     });
   }
+  [
+    document.getElementById('startup-view-effects'),
+    document.getElementById('startup-view-library')
+  ].filter(Boolean).forEach(el => {
+    el.addEventListener('change', () => {
+      config.startupView = el.value === 'library' ? 'library' : 'effects';
+      save();
+    });
+  });
   const pipelineInputs = typeof overlay.querySelectorAll === 'function'
     ? Array.from(overlay.querySelectorAll('input[name="pipeline"]'))
     : [];

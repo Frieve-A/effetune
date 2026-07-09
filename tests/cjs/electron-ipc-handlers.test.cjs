@@ -120,7 +120,7 @@ function createMenuTemplate() {
   return {
     file: { label: 'File X', submenu: items(14, 'file') },
     edit: { label: 'Edit X', submenu: items(9, 'edit') },
-    view: { label: 'View X', submenu: items(9, 'view') },
+    view: { label: 'View X', submenu: items(10, 'view') },
     settings: { label: 'Settings X', submenu: items(4, 'settings') },
     help: { label: 'Help X', submenu: items(5, 'help') }
   };
@@ -568,7 +568,10 @@ test('IPC handlers manage menus, tray presets, documentation, default menu creat
 
     const updateResult = handlers.get('update-application-menu')({}, createMenuTemplate());
     assert.deepEqual(updateResult, { success: true });
-    clickMenu(electron.Menu.getApplicationMenu());
+    const translatedMenu = electron.Menu.getApplicationMenu();
+    assert.equal(translatedMenu.template[2].submenu[6].accelerator, 'CommandOrControl+E');
+    assert.equal(translatedMenu.template[2].submenu[7].accelerator, 'CommandOrControl+L');
+    clickMenu(translatedMenu);
     await Promise.resolve();
 
     const appMenu = handlers.get('get-application-menu')();
@@ -577,7 +580,10 @@ test('IPC handlers manage menus, tray presets, documentation, default menu creat
     assert.deepEqual(handlers.get('hide-application-menu')(), { success: true });
     assert.equal(handlers.get('get-application-menu')(), null);
     assert.deepEqual(handlers.get('restore-default-menu')(), { success: true });
-    clickMenu(electron.Menu.getApplicationMenu());
+    const defaultMenu = electron.Menu.getApplicationMenu();
+    assert.equal(defaultMenu.template[2].submenu[6].accelerator, 'CommandOrControl+E');
+    assert.equal(defaultMenu.template[2].submenu[7].accelerator, 'CommandOrControl+L');
+    clickMenu(defaultMenu);
     await Promise.resolve();
 
     assert.deepEqual(handlers.get('navigate-to-main')(), { success: true });

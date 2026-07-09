@@ -28,6 +28,7 @@ Sin mitos audiophiles, solo pura ciencia.
 - Visualización de audio en vivo
 - Cadena de procesamiento de audio que se puede modificar en tiempo real
 - Procesamiento de archivos de audio sin conexión con la cadena de efectos actual
+- Exploración de carpetas locales, metadatos y listas de reproducción con la Biblioteca musical
 - Medición y corrección de respuesta en frecuencia para calibración del sistema
 - Procesamiento y salida multicanal
 
@@ -76,6 +77,19 @@ Para usar EffeTune con reproductores de CD, reproductores de red u otras fuentes
    * **Salida:** Audio procesado hacia tu amplificador o altavoces
 
 ## Uso
+
+### Configuración de la aplicación
+
+En el menú **Configuración**, abre **Configuración...** para elegir el idioma, la vista al inicio y el comportamiento del pipeline de efectos al iniciar. La vista al inicio puede ser **Effect Pipeline (predeterminado)** o **Biblioteca musical**.
+
+### Buscar música en la Biblioteca musical
+
+1. En PC, ábrela con el botón **Biblioteca musical** del encabezado; en móvil, con la pestaña **Biblioteca**; en la aplicación de escritorio, desde **Ver > Biblioteca musical**.
+2. Selecciona **Añadir carpeta de música** e indexa la carpeta que contiene tus archivos de música.
+3. Explora por **Pistas**, **Álbumes**, **Artistas**, **Géneros**, **Carpetas**, **Añadidas recientemente** y **Listas de reproducción**, y usa **Buscar en la biblioteca** para buscar en todo el catálogo.
+4. Las pistas que encuentres pueden reproducirse a través del pipeline de efectos actual, y puedes gestionar el orden de reproducción y las listas de reproducción con **Reproducir a continuación**, **Añadir a la cola** y **Añadir a lista**.
+5. Después de cambiar archivos, usa **Volver a escanear**; si caducan los permisos del navegador o de una carpeta, usa **Reconectar**.
+   - [Más detalles sobre la Biblioteca musical](music-library.md)
 
 ### Creando tu Cadena de Efectos
 

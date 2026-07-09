@@ -152,6 +152,22 @@ test('mobile effect list keeps effect items at the fixed minimum column width', 
   assert.doesNotMatch(rule, /1fr/, 'mobile effect items should not stretch to fill leftover row width');
 });
 
+test('mobile player keeps scrolling inside the player pane', () => {
+  const css = readCss('../../effetune-mobile.css');
+  const bodyRule = getRule(css, 'body.layout-mobile.view-player {');
+  const playerViewRule = getLastRule(css, 'body.layout-mobile .mobile-player-view');
+  const audioPlayerRule = getRule(css, 'body.layout-mobile .audio-player');
+
+  assert.match(bodyRule, /height:\s*100svh;/);
+  assert.match(bodyRule, /overflow-y:\s*hidden;/);
+  assert.doesNotMatch(bodyRule, /min-height:\s*100svh;/);
+  assert.match(playerViewRule, /min-height:\s*0;/);
+  assert.match(playerViewRule, /overflow:\s*hidden;/);
+  assert.match(audioPlayerRule, /min-height:\s*0;/);
+  assert.match(audioPlayerRule, /max-height:\s*100%;/);
+  assert.match(audioPlayerRule, /overflow-y:\s*auto;/);
+});
+
 test('mobile player places the primary play pause control below secondary buttons', () => {
   const css = readCss('../../effetune-mobile.css');
   const controlsRule = getRule(css, 'body.layout-mobile .player-controls');

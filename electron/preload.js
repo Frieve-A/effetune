@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 const ALLOWED_IPC_LISTENER_CHANNELS = new Set([
   'add-music-folder',
   'load-preset-from-tray',
+  'open-effect-pipeline-view',
   'open-library-view',
   'request-tray-menu-update',
   'rescan-library',
@@ -164,6 +165,7 @@ contextBridge.exposeInMainWorld(
   
   onRequestTrayMenuUpdate: (callback) => addNoArgIpcListener('request-tray-menu-update', callback),
   onStartDoubleBlindTest: (callback) => addNoArgIpcListener('start-double-blind-test', callback),
+  onOpenEffectPipelineView: (callback) => addNoArgIpcListener('open-effect-pipeline-view', callback),
   onOpenLibraryView: (callback) => addNoArgIpcListener('open-library-view', callback),
   onAddMusicFolder: (callback) => addNoArgIpcListener('add-music-folder', callback),
   onRescanLibrary: (callback) => addNoArgIpcListener('rescan-library', callback),

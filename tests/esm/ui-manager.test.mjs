@@ -812,6 +812,32 @@ test('shares URLs, opens music, manages presets, and creates audio players', asy
   }
 });
 
+test('audio player replacement reserves layout until the new player mounts', async () => {
+  await withUIHarness({}, async ({ document, manager, timers }) => {
+    const container = document.createElement('div');
+    container.className = 'audio-player';
+    container.rect = { left: 0, top: 0, right: 640, bottom: 72, width: 640, height: 72 };
+    container.style.margin = '1px 2px 3px 4px';
+    document.body.appendChild(container);
+    manager.audioPlayer = { ui: { container } };
+
+    manager.preserveAudioPlayerLayoutForReplacement();
+
+    const placeholder = manager.audioPlayerLayoutPlaceholder;
+    assert.ok(placeholder);
+    assert.equal(placeholder.className, 'audio-player-layout-placeholder');
+    assert.equal(placeholder.style.height, '72px');
+    assert.equal(placeholder.style.margin, '1px 2px 3px 4px');
+    assert.equal(placeholder.parentNode, document.body);
+    assert.equal(timers.at(-1).delay, 5000);
+
+    manager.releaseAudioPlayerLayoutPlaceholder();
+
+    assert.equal(manager.audioPlayerLayoutPlaceholder, null);
+    assert.equal(placeholder.parentNode, null);
+  });
+});
+
 test('wires clipboard, history, pipeline toggles, menus, and keyboard shortcuts', async () => {
   await withUIHarness({}, async ({ audioManager, calls, document, manager }) => {
     await manager.cutButton.click();

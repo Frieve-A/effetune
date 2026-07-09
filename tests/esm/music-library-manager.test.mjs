@@ -9,6 +9,7 @@ import { createTrackFromMetadata, shouldRetryDuration } from '../../js/library/m
 import { PlaybackBridge } from '../../js/library/playback-bridge.js';
 import { PlaylistStore } from '../../js/library/playlists/playlist-store.js';
 import { ScanController } from '../../js/library/scan-controller.js';
+import { parseRiffInfoTagsFromBytes } from '../../js/library/metadata/riff-info.js';
 import { ElectronLibrarySource } from '../../js/library/sources/electron-library-source.js';
 import { FsaLibrarySource } from '../../js/library/sources/fsa-library-source.js';
 import { ImportLibrarySource } from '../../js/library/sources/import-library-source.js';
@@ -18,6 +19,76 @@ import { withGlobals } from '../helpers/global-test-utils.mjs';
 
 function decodeWindows1252(bytes) {
   return new TextDecoder('windows-1252').decode(Uint8Array.from(bytes));
+}
+
+function decodeLatin1(bytes) {
+  return String.fromCharCode(...bytes);
+}
+
+function decodeHighBitsCleared(bytes) {
+  let end = bytes.length;
+  while (end > 0 && bytes[end - 1] === 0x00) end -= 1;
+  return String.fromCharCode(...bytes.slice(0, end).map(byte => byte & 0x7f));
+}
+
+function bytesFromHex(hex) {
+  const clean = hex.replace(/\s+/g, '');
+  const bytes = [];
+  for (let index = 0; index + 1 < clean.length; index += 2) {
+    bytes.push(Number.parseInt(clean.slice(index, index + 2), 16));
+  }
+  return Uint8Array.from(bytes);
+}
+
+function asciiBytes(text) {
+  return Uint8Array.from([...text].map(char => char.charCodeAt(0) & 0xff));
+}
+
+function concatBytes(parts) {
+  const length = parts.reduce((sum, part) => sum + part.length, 0);
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const part of parts) {
+    bytes.set(part, offset);
+    offset += part.length;
+  }
+  return bytes;
+}
+
+function uint32Le(value) {
+  return Uint8Array.from([
+    value & 0xff,
+    (value >>> 8) & 0xff,
+    (value >>> 16) & 0xff,
+    (value >>> 24) & 0xff
+  ]);
+}
+
+function createChunkBytes(id, data) {
+  const payload = data instanceof Uint8Array ? data : Uint8Array.from(data);
+  const padding = payload.length % 2 ? Uint8Array.from([0]) : Uint8Array.from([]);
+  return concatBytes([asciiBytes(id), uint32Le(payload.length), payload, padding]);
+}
+
+function createRiffInfoWaveBytes(tags) {
+  const fmt = new Uint8Array(16);
+  fmt[0] = 1;
+  fmt[2] = 1;
+  fmt.set(uint32Le(44100), 4);
+  fmt.set(uint32Le(88200), 8);
+  fmt[12] = 2;
+  fmt[14] = 16;
+  const infoPayload = concatBytes([
+    asciiBytes('INFO'),
+    ...tags.map(tag => createChunkBytes(tag.id, tag.data))
+  ]);
+  const chunks = [
+    createChunkBytes('fmt ', fmt),
+    createChunkBytes('data', new Uint8Array(0)),
+    createChunkBytes('LIST', infoPayload)
+  ];
+  const riffSize = 4 + chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  return concatBytes([asciiBytes('RIFF'), uint32Le(riffSize), asciiBytes('WAVE'), ...chunks]);
 }
 
 function decodeUtf8AsWindows1252(text) {
@@ -1070,7 +1141,8 @@ test('FSA library source maps browser tag metadata and embedded artwork when jsm
             album: 'Tagged Album',
             genre: ['Tagged Genre'],
             year: '2026',
-            track: '4/10',
+            track: '\uFF10\uFF13\uFF0F\uFF11\uFF12',
+            disk: '1 of 2',
             picture: {
               format: 'image/png',
               data: [1, 2, 3]
@@ -1104,8 +1176,10 @@ test('FSA library source maps browser tag metadata and embedded artwork when jsm
   assert.equal(track.album, 'Tagged Album');
   assert.equal(track.genre, 'Tagged Genre');
   assert.equal(track.year, 2026);
-  assert.equal(track.trackNo, 4);
-  assert.equal(track.trackOf, 10);
+  assert.equal(track.trackNo, 3);
+  assert.equal(track.trackOf, 12);
+  assert.equal(track.discNo, 1);
+  assert.equal(track.discOf, 2);
   assert.equal(track.artworkMime, 'image/png');
   assert.deepEqual(Array.from(new Uint8Array(track.artworkBytes)), [1, 2, 3]);
 });
@@ -1251,6 +1325,181 @@ test('music metadata mapper maps common and format fields', () => {
   assert.equal(shouldRetryDuration({ ext: 'flac' }, { format: {} }), false);
 });
 
+test('music metadata mapper prefers explicit native track totals over malformed common numbers', () => {
+  const track = createTrackFromMetadata({
+    folderId: 'f_music',
+    relativePath: 'Album/Tagged.mp3',
+    fileName: 'Tagged.mp3',
+    ext: 'mp3',
+    size: 128,
+    mtimeMs: 2000
+  }, {
+    common: {
+      title: 'Tagged Title',
+      track: { no: 32, of: null },
+      disk: { no: null, of: null }
+    },
+    native: {
+      'ID3v2.3': [
+        { id: 'TRCK', value: '03/12' },
+        { id: 'TPOS', value: '1/2' }
+      ]
+    },
+    format: {}
+  }, 3000);
+
+  assert.equal(track.trackNo, 3);
+  assert.equal(track.trackOf, 12);
+  assert.equal(track.discNo, 1);
+  assert.equal(track.discOf, 2);
+});
+
+test('music metadata mapper prefers ID3v2 track numbers over malformed common ID3v1 numbers', () => {
+  const track = createTrackFromMetadata({
+    folderId: 'f_music',
+    relativePath: 'Album/Tagged.mp3',
+    fileName: 'Tagged.mp3',
+    ext: 'mp3',
+    size: 128,
+    mtimeMs: 2000
+  }, {
+    common: {
+      title: 'Tagged Title',
+      track: { no: 32, of: null },
+      disk: { no: null, of: null }
+    },
+    native: {
+      'ID3v2.3': [
+        { id: 'TRCK', value: '03' }
+      ],
+      ID3v1: [
+        { id: 'track', value: 32 }
+      ]
+    },
+    format: {}
+  }, 3000);
+
+  assert.equal(track.trackNo, 3);
+  assert.equal(track.trackOf, null);
+});
+
+test('music metadata mapper prefers modern native text fields over malformed common values', () => {
+  const track = createTrackFromMetadata({
+    folderId: 'f_music',
+    relativePath: 'Album/Tagged.mp3',
+    fileName: 'Tagged.mp3',
+    ext: 'mp3',
+    size: 128,
+    mtimeMs: 2000
+  }, {
+    common: {
+      title: 'Legacy Title',
+      artists: ['Legacy Artist'],
+      albumartist: 'Legacy Album Artist',
+      album: 'Legacy Album',
+      genre: ['Legacy Genre'],
+      year: 1999,
+      compilation: false,
+      titlesort: 'Legacy Sort Title',
+      albumsort: 'Legacy Sort Album',
+      albumartistsort: 'Legacy Sort Album Artist'
+    },
+    native: {
+      APEv2: [
+        { id: 'TITLE', value: 'APE Title' },
+        { id: 'ARTIST', value: 'APE Artist' }
+      ],
+      'ID3v2.3': [
+        { id: 'TIT2', value: 'Native Title' },
+        { id: 'TPE1', value: 'Native Artist' },
+        { id: 'TPE2', value: 'Native Album Artist' },
+        { id: 'TALB', value: 'Native Album' },
+        { id: 'TCON', value: 'Native Genre' },
+        { id: 'TDRC', value: '2024-12-25' },
+        { id: 'TSOT', value: 'Native Sort Title' },
+        { id: 'TSOA', value: 'Native Sort Album' },
+        { id: 'TSO2', value: 'Native Sort Album Artist' },
+        { id: 'TCMP', value: '1' }
+      ],
+      ID3v1: [
+        { id: 'title', value: 'ID3v1 Title' },
+        { id: 'artist', value: 'ID3v1 Artist' },
+        { id: 'album', value: 'ID3v1 Album' },
+        { id: 'genre', value: 'ID3v1 Genre' },
+        { id: 'year', value: '1999' }
+      ]
+    },
+    format: {}
+  }, 3000);
+
+  assert.equal(track.title, 'Native Title');
+  assert.equal(track.artist, 'Native Artist');
+  assert.equal(track.albumArtist, 'Native Album Artist');
+  assert.equal(track.album, 'Native Album');
+  assert.equal(track.genre, 'Native Genre');
+  assert.equal(track.year, 2024);
+  assert.equal(track.compilation, true);
+  assert.equal(track.sortTitle, 'Native Sort Title');
+  assert.equal(track.sortAlbum, 'Native Sort Album');
+  assert.equal(track.sortAlbumArtist, 'Native Sort Album Artist');
+});
+
+test('music metadata mapper does not let ID3v1 text override common text', () => {
+  const track = createTrackFromMetadata({
+    folderId: 'f_music',
+    relativePath: 'Album/Tagged.mp3',
+    fileName: 'Tagged.mp3',
+    ext: 'mp3',
+    size: 128,
+    mtimeMs: 2000
+  }, {
+    common: {
+      title: 'Long Common Title',
+      artists: ['Long Common Artist'],
+      album: 'Long Common Album',
+      genre: ['Long Common Genre']
+    },
+    native: {
+      ID3v1: [
+        { id: 'title', value: 'Truncated Title' },
+        { id: 'artist', value: 'Truncated Artist' },
+        { id: 'album', value: 'Truncated Album' },
+        { id: 'genre', value: 'Truncated Genre' }
+      ]
+    },
+    format: {}
+  }, 3000);
+
+  assert.equal(track.title, 'Long Common Title');
+  assert.equal(track.artist, 'Long Common Artist');
+  assert.equal(track.album, 'Long Common Album');
+  assert.equal(track.genre, 'Long Common Genre');
+});
+
+test('music metadata mapper keeps decoded common genre over numeric ID3 genre codes', () => {
+  const track = createTrackFromMetadata({
+    folderId: 'f_music',
+    relativePath: 'Album/Tagged.mp3',
+    fileName: 'Tagged.mp3',
+    ext: 'mp3',
+    size: 128,
+    mtimeMs: 2000
+  }, {
+    common: {
+      title: 'Tagged Title',
+      genre: ['Rock']
+    },
+    native: {
+      'ID3v2.3': [
+        { id: 'TCON', value: '17' }
+      ]
+    },
+    format: {}
+  }, 3000);
+
+  assert.equal(track.genre, 'Rock');
+});
+
 test('music metadata mapper repairs legacy metadata mojibake in common fields', () => {
   const track = createTrackFromMetadata({
     folderId: 'f_music',
@@ -1315,6 +1564,343 @@ test('music metadata mapper repairs non-Japanese metadata mojibake and preserves
   assert.equal(preserved.title, 'Björk Guðmundsdóttir');
   assert.equal(preserved.artist, 'Mötley Crüe');
   assert.equal(preserved.album, 'François');
+});
+
+test('music metadata mapper uses clean title and path context for legacy CP932 tags', () => {
+  const track = createTrackFromMetadata({
+    folderId: 'f_music',
+    relativePath: '森山直太朗/傑作撰 2001～2005 [Bonus Disc]/01-土曜日の嘘.mp3',
+    fileName: '01-土曜日の嘘.mp3',
+    ext: 'mp3',
+    size: 128,
+    mtimeMs: 2000
+  }, {
+    common: {
+      title: '土曜日の嘘',
+      artist: decodeLatin1([0x90, 0x58, 0x8e, 0x52, 0x92, 0xbc, 0x91, 0xbe, 0x98, 0x4e]),
+      album: decodeLatin1([0x8c, 0x86, 0x8d, 0xec, 0x90, 0xef, 0x20, 0x32, 0x30, 0x30, 0x31, 0x81, 0x60, 0x32, 0x30, 0x30, 0x35, 0x20, 0x5b, 0x42, 0x6f, 0x6e, 0x75, 0x73, 0x20, 0x44, 0x69, 0x73, 0x63, 0x5d])
+    },
+    format: {}
+  }, 3000, { languageHints: { language: 'ja' } });
+
+  assert.equal(track.title, '土曜日の嘘');
+  assert.equal(track.artist, '森山直太朗');
+  assert.equal(track.album, '傑作撰 2001～2005 [Bonus Disc]');
+});
+
+test('music metadata mapper uses filename context for short CP932 kanji titles', () => {
+  const track = createTrackFromMetadata({
+    folderId: 'f_music',
+    relativePath: '美空ひばり/美空ひばり スペシャルベスト/13-人生一路.mp3',
+    fileName: '13-人生一路.mp3',
+    ext: 'mp3',
+    size: 128,
+    mtimeMs: 2000
+  }, {
+    common: {
+      title: decodeLatin1([0x90, 0x6c, 0x90, 0xb6, 0x88, 0xea, 0x98, 0x48]),
+      artist: decodeLatin1([0x94, 0xfc, 0x8b, 0xf3, 0x82, 0xd0, 0x82, 0xce, 0x82, 0xe8]),
+      album: decodeLatin1([0x94, 0xfc, 0x8b, 0xf3, 0x82, 0xd0, 0x82, 0xce, 0x82, 0xe8, 0x20, 0x83, 0x58, 0x83, 0x79, 0x83, 0x56, 0x83, 0x83, 0x83, 0x8b, 0x83, 0x78, 0x83, 0x58, 0x83, 0x67])
+    },
+    native: {
+      'ID3v2.3': [
+        { id: 'TIT2', value: decodeLatin1([0x90, 0x6c, 0x90, 0xb6, 0x88, 0xea, 0x98, 0x48]) }
+      ]
+    },
+    format: {}
+  }, 3000, { languageHints: { language: 'ja' } });
+
+  assert.equal(track.title, '人生一路');
+  assert.equal(track.artist, '美空ひばり');
+  assert.equal(track.album, '美空ひばり スペシャルベスト');
+});
+
+test('music metadata mapper repairs single-kanji CP932 titles only when filename context matches', () => {
+  const cases = [
+    { fileName: '11-歩.mp3', title: [0x95, 0xe0], expected: '歩' },
+    { fileName: '02-竹.mp3', title: [0x92, 0x7c], expected: '竹' },
+    { fileName: '03-橋.mp3', title: [0x8b, 0xb4], expected: '橋' },
+    { fileName: '09-夢.mp3', title: [0x96, 0xb2], expected: '夢' }
+  ];
+
+  for (const item of cases) {
+    const track = createTrackFromMetadata({
+      folderId: 'f_music',
+      relativePath: `北島三郎/ベスト16/${item.fileName}`,
+      fileName: item.fileName,
+      ext: 'mp3',
+      size: 128,
+      mtimeMs: 2000
+    }, {
+      common: {
+        title: decodeLatin1(item.title),
+        artist: decodeLatin1([0x96, 0x6b, 0x93, 0x87, 0x8e, 0x4f, 0x98, 0x59]),
+        album: decodeLatin1([0x83, 0x78, 0x83, 0x58, 0x83, 0x67, 0x31, 0x36])
+      },
+      native: {
+        'ID3v2.3': [
+          { id: 'TIT2', value: decodeLatin1(item.title) }
+        ]
+      },
+      format: {}
+    }, 3000, { languageHints: { language: 'ja' } });
+
+    assert.equal(track.title, item.expected);
+    assert.equal(track.artist, '北島三郎');
+    assert.equal(track.album, 'ベスト16');
+  }
+
+  const ambiguous = createTrackFromMetadata({
+    folderId: 'f_music',
+    relativePath: '北島三郎/ベスト16/11-Unknown.mp3',
+    fileName: '11-Unknown.mp3',
+    ext: 'mp3',
+    size: 128,
+    mtimeMs: 2000
+  }, {
+    common: {
+      title: decodeLatin1([0x95, 0xe0])
+    },
+    format: {}
+  }, 3000, { languageHints: { language: 'ja' } });
+
+  assert.equal(ambiguous.title, decodeLatin1([0x95, 0xe0]));
+});
+
+test('music metadata mapper repairs CP932 fullwidth album names only when folder context matches', () => {
+  const smapAlbumBytes = [0x50, 0x6f, 0x82, 0x90, 0x20, 0x55, 0x82, 0x90, 0x20, 0x53, 0x4d, 0x41, 0x50];
+  const cases = [
+    {
+      relativePath: 'THE BOOM/Singles＋ (Bonus Tracks)/01-釣りに行こう.mp3',
+      fileName: '01-釣りに行こう.mp3',
+      title: '釣りに行こう',
+      artist: 'THE BOOM',
+      album: decodeLatin1([...Buffer.from('Singles', 'ascii'), 0x81, 0x7b, ...Buffer.from(' (Bonus Tracks)', 'ascii')]),
+      expectedAlbum: 'Singles＋ (Bonus Tracks)'
+    },
+    {
+      relativePath: 'SMAP/Poｐ Uｐ SMAP/01-Theme of 018.mp3',
+      fileName: '01-Theme of 018.mp3',
+      title: 'Theme of 018',
+      artist: 'SMAP',
+      album: decodeLatin1(smapAlbumBytes),
+      expectedAlbum: 'Poｐ Uｐ SMAP'
+    },
+    {
+      relativePath: 'Omnibus/Ｔｈｅ　Ｂｅｓｔ　ｏｆ　Ａｒｇｅｎｔｉｎｅ　Ｔａｎｇｏ/01-カルロス・ディ・サルリ楽団 _ エル・チョクロ.mp3',
+      fileName: '01-カルロス・ディ・サルリ楽団 _ エル・チョクロ.mp3',
+      title: 'カルロス・ディ・サルリ楽団 / エル・チョクロ',
+      artist: 'omnibus',
+      album: decodeLatin1([
+        0x82, 0x73, 0x82, 0x88, 0x82, 0x85, 0x81, 0x40,
+        0x82, 0x61, 0x82, 0x85, 0x82, 0x93, 0x82, 0x94,
+        0x81, 0x40, 0x82, 0x8f, 0x82, 0x86, 0x81, 0x40,
+        0x82, 0x60, 0x82, 0x92, 0x82, 0x87, 0x82, 0x85,
+        0x82, 0x8e, 0x82, 0x94, 0x82, 0x89, 0x82, 0x8e,
+        0x82, 0x85, 0x81, 0x40, 0x82, 0x73, 0x82, 0x81,
+        0x82, 0x8e, 0x82, 0x87, 0x82, 0x8f
+      ]),
+      expectedAlbum: 'Ｔｈｅ　Ｂｅｓｔ　ｏｆ　Ａｒｇｅｎｔｉｎｅ　Ｔａｎｇｏ'
+    }
+  ];
+
+  for (const item of cases) {
+    const track = createTrackFromMetadata({
+      folderId: 'f_music',
+      relativePath: item.relativePath,
+      fileName: item.fileName,
+      ext: 'mp3',
+      size: 128,
+      mtimeMs: 2000
+    }, {
+      common: {
+        title: item.title,
+        artist: item.artist,
+        album: item.album
+      },
+      native: {
+        'ID3v2.3': [
+          { id: 'TALB', value: item.album }
+        ]
+      },
+      format: {}
+    }, 3000, { languageHints: { language: 'ja' } });
+
+    assert.equal(track.album, item.expectedAlbum);
+  }
+
+  const ambiguous = createTrackFromMetadata({
+    folderId: 'f_music',
+    relativePath: 'SMAP/Other Album/01-Theme of 018.mp3',
+    fileName: '01-Theme of 018.mp3',
+    ext: 'mp3',
+    size: 128,
+    mtimeMs: 2000
+  }, {
+    common: {
+      title: 'Theme of 018',
+      artist: 'SMAP',
+      album: decodeLatin1(smapAlbumBytes)
+    },
+    format: {}
+  }, 3000, { languageHints: { language: 'ja' } });
+
+  assert.equal(ambiguous.album, decodeLatin1(smapAlbumBytes));
+});
+
+test('music metadata mapper uses multibyte folder skeleton context for CP932 artist names', () => {
+  const track = createTrackFromMetadata({
+    folderId: 'f_music',
+    relativePath: '花_花/コモリウタ/01-童神.mp3',
+    fileName: '01-童神.mp3',
+    ext: 'mp3',
+    size: 128,
+    mtimeMs: 2000
+  }, {
+    common: {
+      title: decodeLatin1([0x93, 0xb6, 0x90, 0x5f]),
+      artist: decodeLatin1([0x89, 0xd4, 0x2a, 0x89, 0xd4]),
+      albumartist: decodeLatin1([0x89, 0xd4, 0x81, 0x96, 0x89, 0xd4]),
+      album: decodeLatin1([0x83, 0x52, 0x83, 0x82, 0x83, 0x8a, 0x83, 0x45, 0x83, 0x5e])
+    },
+    native: {
+      'ID3v2.3': [
+        { id: 'TIT2', value: decodeLatin1([0x93, 0xb6, 0x90, 0x5f]) },
+        { id: 'TPE1', value: decodeLatin1([0x89, 0xd4, 0x2a, 0x89, 0xd4]) },
+        { id: 'TPE2', value: decodeLatin1([0x89, 0xd4, 0x81, 0x96, 0x89, 0xd4]) },
+        { id: 'TALB', value: decodeLatin1([0x83, 0x52, 0x83, 0x82, 0x83, 0x8a, 0x83, 0x45, 0x83, 0x5e]) }
+      ]
+    },
+    format: {}
+  }, 3000, { languageHints: { language: 'ja' } });
+
+  assert.equal(track.title, '童神');
+  assert.equal(track.artist, '花*花');
+  assert.equal(track.albumArtist, '花＊花');
+  assert.equal(track.album, 'コモリウタ');
+});
+
+test('music metadata mapper repairs CP932 text before trimming trailing NBSP bytes', () => {
+  const albumBytes = [0x83, 0x8d, 0x83, 0x7d, 0x83, 0x93, 0x94, 0x68, 0x82, 0xcc, 0x8b, 0x90, 0x8f, 0xa0];
+  const track = createTrackFromMetadata({
+    folderId: 'f_music',
+    relativePath: 'FRANZ LISZT/ロマン派の巨匠/01-ピアノ協奏曲 第一番変ホ長調 アレグロ・マエストーソ.mp3',
+    fileName: '01-ピアノ協奏曲 第一番変ホ長調 アレグロ・マエストーソ.mp3',
+    ext: 'mp3',
+    size: 128,
+    mtimeMs: 2000
+  }, {
+    common: {
+      title: 'ピアノ協奏曲 第一番変ホ長調 アレグロ・マエストーソ',
+      artist: 'FRANZ LISZT',
+      albumartist: decodeLatin1([0x83, 0x8a, 0x83, 0x58, 0x83, 0x67]),
+      album: decodeLatin1(albumBytes)
+    },
+    native: {
+      'ID3v2.3': [
+        { id: 'TPE2', value: decodeLatin1([0x83, 0x8a, 0x83, 0x58, 0x83, 0x67]) },
+        { id: 'TALB', value: decodeLatin1(albumBytes) }
+      ]
+    },
+    format: {}
+  }, 3000, { languageHints: { language: 'ja' } });
+
+  assert.equal(track.albumArtist, 'リスト');
+  assert.equal(track.album, 'ロマン派の巨匠');
+
+  const riffTrack = createTrackFromMetadata({
+    folderId: 'f_music',
+    relativePath: 'FRANZ LISZT/ロマン派の巨匠/example.wav',
+    fileName: 'example.wav',
+    ext: 'wav',
+    size: 128,
+    mtimeMs: 2000
+  }, {
+    common: {
+      title: 'Example'
+    },
+    format: {}
+  }, 3000, {
+    languageHints: { language: 'ja' },
+    riffInfoTags: [
+      { id: 'IPRD', data: Uint8Array.from(albumBytes) }
+    ]
+  });
+
+  assert.equal(riffTrack.album, 'ロマン派の巨匠');
+});
+
+test('music metadata mapper prefers raw RIFF INFO bytes for WAV tags lost by generic parsing', () => {
+  const artistBytes = bytesFromHex('95bd89ea837d838a834a00');
+  const albumBytes = bytesFromHex('83828369a5838a8354202081608367838a83728385815b836781458367834481458369836283678145834c8393834f81458352815b838b816000');
+  const riffInfoTags = parseRiffInfoTagsFromBytes(createRiffInfoWaveBytes([
+    { id: 'INAM', data: asciiBytes('MONA LISA\0') },
+    { id: 'IART', data: artistBytes },
+    { id: 'IPRD', data: albumBytes }
+  ]));
+  const track = createTrackFromMetadata({
+    folderId: 'f_music',
+    relativePath: '平賀マリカ/モナ･リサ ～トリビュート・トゥ・ナット・キング・コール～/ddcb130163-3_1_01.wav',
+    fileName: 'ddcb130163-3_1_01.wav',
+    ext: 'wav',
+    size: 128,
+    mtimeMs: 2000
+  }, {
+    common: {
+      title: 'MONA LISA',
+      artist: decodeHighBitsCleared([...artistBytes]),
+      album: decodeHighBitsCleared([...albumBytes])
+    },
+    native: {
+      exif: [
+        { id: 'INAM', value: 'MONA LISA' },
+        { id: 'IART', value: decodeHighBitsCleared([...artistBytes]) },
+        { id: 'IPRD', value: decodeHighBitsCleared([...albumBytes]) }
+      ]
+    },
+    format: {
+      container: 'WAVE',
+      codec: 'PCM'
+    }
+  }, 3000, {
+    languageHints: { language: 'ja' },
+    riffInfoTags
+  });
+
+  assert.equal(track.title, 'MONA LISA');
+  assert.equal(track.artist, '平賀マリカ');
+  assert.equal(track.albumArtist, '平賀マリカ');
+  assert.equal(track.album, 'モナ･リサ  ～トリビュート・トゥ・ナット・キング・コール～');
+});
+
+test('music metadata mapper maps alternate RIFF INFO title, album, and date ids', () => {
+  const riffInfoTags = parseRiffInfoTagsFromBytes(createRiffInfoWaveBytes([
+    { id: 'TITL', data: asciiBytes('Alternate Title\0') },
+    { id: 'IART', data: asciiBytes('Alternate Artist\0') },
+    { id: 'IRPD', data: asciiBytes('Alternate Album\0') },
+    { id: 'ICRD', data: asciiBytes('2021-04-03\0') }
+  ]));
+  const track = createTrackFromMetadata({
+    folderId: 'f_music',
+    relativePath: 'Alt/alternate.wav',
+    fileName: 'alternate.wav',
+    ext: 'wav',
+    size: 128,
+    mtimeMs: 2000
+  }, {
+    common: {},
+    native: {},
+    format: {
+      container: 'WAVE',
+      codec: 'PCM'
+    }
+  }, 3000, { riffInfoTags });
+
+  assert.equal(track.title, 'Alternate Title');
+  assert.equal(track.artist, 'Alternate Artist');
+  assert.equal(track.albumArtist, 'Alternate Artist');
+  assert.equal(track.album, 'Alternate Album');
+  assert.equal(track.year, 2021);
 });
 
 test('music metadata mapper preserves ambiguous legacy code pages without corruption markers', () => {
@@ -2742,6 +3328,65 @@ test('playback bridge keeps the requested track when the player shuffle mode reo
 
   assert.deepEqual(calls, [
     ['updatePlaylist', ['t_two', 't_one'], 0],
+    ['updateState', { currentTrackIndex: 0 }, 'Library playback start index'],
+    ['loadTrack', 0],
+    ['play']
+  ]);
+});
+
+test('playback bridge uses the shuffled first track when no start index is requested', async () => {
+  const index = new CatalogIndex();
+  const folders = [{ id: 'f_music', path: 'D:/Music', status: 'ok' }];
+  await index.build({
+    folders,
+    tracks: [
+      { id: 't_one', folderId: 'f_music', relativePath: 'One.flac', fileName: 'One.flac', title: 'One' },
+      { id: 't_two', folderId: 'f_music', relativePath: 'Two.flac', fileName: 'Two.flac', title: 'Two' }
+    ]
+  });
+
+  const calls = [];
+  const player = {
+    playbackManager: {
+      playlist: [],
+      originalPlaylist: [],
+      loadFiles(files) {
+        this.playlist = files.map(file => ({ ...file })).reverse();
+        this.originalPlaylist = files.map(file => ({ ...file }));
+      }
+    },
+    ui: { container: {}, createPlayerUI() {} },
+    stateManager: {
+      getCurrentTrackIndex() {
+        return 0;
+      },
+      updatePlaylist(playlist, indexValue) {
+        calls.push(['updatePlaylist', playlist.map(track => track.libraryTrackId), indexValue]);
+      },
+      updateState(state, reason) {
+        calls.push(['updateState', state, reason]);
+      }
+    },
+    async loadTrack(indexValue) {
+      calls.push(['loadTrack', indexValue]);
+    },
+    async play() {
+      calls.push(['play']);
+    }
+  };
+  const uiManager = {
+    audioPlayer: null,
+    createAudioPlayer() {
+      this.audioPlayer = player;
+      return player;
+    }
+  };
+  const bridge = new PlaybackBridge({ index, source: {}, uiManager, getFolders: () => folders });
+
+  await bridge.playTracks(['t_two', 't_one']);
+
+  assert.deepEqual(calls, [
+    ['updatePlaylist', ['t_one', 't_two'], 0],
     ['updateState', { currentTrackIndex: 0 }, 'Library playback start index'],
     ['loadTrack', 0],
     ['play']

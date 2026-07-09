@@ -41,6 +41,8 @@ export class UIManager {
 
         // Audio player reference
         this.audioPlayer = null;
+        this.audioPlayerLayoutPlaceholder = null;
+        this.audioPlayerLayoutPlaceholderTimer = null;
         this.libraryManager = null;
         this.libraryView = null;
         this.libraryInitPromise = null;
@@ -797,6 +799,13 @@ export class UIManager {
             openMusicButton.title = this.t('ui.title.openMusic');
         }
 
+        const effectPipelineButton = document.getElementById('effectPipelineButton');
+        if (effectPipelineButton) {
+            const title = this.t('ui.title.effectPipeline');
+            effectPipelineButton.title = title;
+            effectPipelineButton.setAttribute('aria-label', title);
+        }
+
         const openLibraryButton = document.getElementById('openLibraryButton');
         if (openLibraryButton) {
             const title = this.t('ui.title.openLibrary');
@@ -1096,7 +1105,13 @@ export class UIManager {
      * Initialize music library button and Electron menu events.
      */
     initOpenLibraryButton() {
+        this.effectPipelineButton = document.getElementById('effectPipelineButton');
         this.openLibraryButton = document.getElementById('openLibraryButton');
+        this.effectPipelineButton?.addEventListener('click', (event) => {
+            this.showEffectPipelineView({
+                returnFocus: event.currentTarget
+            });
+        });
         this.openLibraryButton?.addEventListener('click', (event) => {
             this.toggleLibraryView({
                 focusSearch: false,
@@ -1106,6 +1121,7 @@ export class UIManager {
 
         if (window.electronAPI?.onIPC) {
             window.electronAPI.onIPC('open-library-view', () => this.showLibraryView());
+            window.electronAPI.onIPC('open-effect-pipeline-view', () => this.showEffectPipelineView());
             window.electronAPI.onIPC('add-music-folder', async () => {
                 await this.showLibraryView({ focusSearch: false });
                 await this.libraryManager?.addFolder();
@@ -1116,6 +1132,7 @@ export class UIManager {
                 await this.libraryManager?.scanFolders();
             });
         }
+        this.updateViewSwitchButtons();
     }
 
     async ensureLibraryManager() {
@@ -1153,7 +1170,7 @@ export class UIManager {
             focusSearch,
             returnFocus: options.returnFocus || options.opener
         });
-        this.openLibraryButton?.classList.add('active');
+        this.updateViewSwitchButtons(true);
         this.mobileNav?.setView?.('library', { fromLibraryView: true });
         return true;
     }
@@ -1168,7 +1185,8 @@ export class UIManager {
 
     hideLibraryView(options = {}) {
         const fallbackFocus = options.returnFocus ||
-            (this.layoutMode?.isMobile ? this.mobileNav?.getViewButton?.('library') : this.openLibraryButton) ||
+            (this.layoutMode?.isMobile ? this.mobileNav?.getViewButton?.('library') : this.effectPipelineButton) ||
+            this.effectPipelineButton ||
             this.openLibraryButton ||
             this.mobileNav?.getViewButton?.('library');
         this.libraryView?.hide({
@@ -1176,17 +1194,39 @@ export class UIManager {
             returnFocus: options.returnFocus,
             fallbackFocus
         });
-        this.openLibraryButton?.classList.remove('active');
+        this.updateViewSwitchButtons(false);
+    }
+
+    showEffectPipelineView(options = {}) {
+        if (document.body.classList.contains('view-library') && this.libraryView?.hasActiveDialog?.()) {
+            return false;
+        }
+        this.hideLibraryView({
+            ...options,
+            returnFocus: options.returnFocus || options.opener
+        });
+        this.mobileNav?.setView?.('effects', { fromLibraryView: true });
+        this.updateViewSwitchButtons(false);
+        return true;
+    }
+
+    updateViewSwitchButtons(isLibraryVisible = document.body?.classList.contains('view-library')) {
+        const setButtonState = (button, active) => {
+            if (!button) return;
+            if (active) {
+                button.classList?.add?.('active');
+            } else {
+                button.classList?.remove?.('active');
+            }
+            button.setAttribute?.('aria-pressed', active ? 'true' : 'false');
+        };
+        setButtonState(this.effectPipelineButton, !isLibraryVisible);
+        setButtonState(this.openLibraryButton, Boolean(isLibraryVisible));
     }
 
     async toggleLibraryView(options = {}) {
         if (document.body.classList.contains('view-library')) {
-            if (this.libraryView?.hasActiveDialog?.()) {
-                return false;
-            }
-            this.hideLibraryView(options);
-            this.mobileNav?.setView?.('effects', { fromLibraryView: true });
-            return true;
+            return this.showEffectPipelineView(options);
         }
         return this.showLibraryView(options);
     }
@@ -1198,6 +1238,65 @@ export class UIManager {
      */
     getCurrentPresetData() {
         return this.pipelineManager.getCurrentPresetData();
+    }
+
+    preserveAudioPlayerLayoutForReplacement() {
+        this.releaseAudioPlayerLayoutPlaceholder();
+
+        const container = this.audioPlayer?.ui?.container;
+        const parent = container?.parentNode;
+        if (!container || !parent || typeof document === 'undefined' || typeof document.createElement !== 'function') {
+            return;
+        }
+
+        const placeholder = document.createElement('div');
+        placeholder.className = 'audio-player-layout-placeholder';
+        placeholder.setAttribute?.('aria-hidden', 'true');
+        placeholder.style.visibility = 'hidden';
+        placeholder.style.pointerEvents = 'none';
+        placeholder.style.boxSizing = 'border-box';
+        placeholder.style.width = '100%';
+
+        const rect = container.getBoundingClientRect?.();
+        const height = Number.isFinite(rect?.height) && rect.height > 0
+            ? rect.height
+            : (Number.isFinite(container.offsetHeight) ? container.offsetHeight : 0);
+        if (height > 0) {
+            placeholder.style.height = `${height}px`;
+        }
+
+        const computedStyle = typeof window !== 'undefined' && typeof window.getComputedStyle === 'function'
+            ? window.getComputedStyle(container)
+            : null;
+        if (computedStyle) {
+            placeholder.style.marginTop = computedStyle.marginTop;
+            placeholder.style.marginRight = computedStyle.marginRight;
+            placeholder.style.marginBottom = computedStyle.marginBottom;
+            placeholder.style.marginLeft = computedStyle.marginLeft;
+        } else {
+            placeholder.style.margin = container.style?.margin || '0 0 20px 0';
+        }
+
+        if (typeof parent.insertBefore === 'function') {
+            parent.insertBefore(placeholder, container);
+        } else {
+            parent.appendChild?.(placeholder);
+        }
+
+        this.audioPlayerLayoutPlaceholder = placeholder;
+        this.audioPlayerLayoutPlaceholderTimer = setTimeout(() => {
+            this.releaseAudioPlayerLayoutPlaceholder();
+        }, 5000);
+    }
+
+    releaseAudioPlayerLayoutPlaceholder() {
+        if (this.audioPlayerLayoutPlaceholderTimer !== null) {
+            clearTimeout(this.audioPlayerLayoutPlaceholderTimer);
+            this.audioPlayerLayoutPlaceholderTimer = null;
+        }
+        const placeholder = this.audioPlayerLayoutPlaceholder;
+        this.audioPlayerLayoutPlaceholder = null;
+        placeholder?.parentNode?.removeChild?.(placeholder);
     }
 
     /**
@@ -1218,6 +1317,7 @@ export class UIManager {
 
         // Close existing player if any
         if (this.audioPlayer) {
+            this.preserveAudioPlayerLayoutForReplacement();
             this.audioPlayer.close();
         }
 

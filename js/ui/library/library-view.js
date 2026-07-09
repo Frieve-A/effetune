@@ -46,6 +46,8 @@ const PLAYLIST_ITEM_DRAG_TYPE = 'application/x-effetune-playlist-item-index';
 const FOCUSABLE_DIALOG_SELECTOR = 'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
 let libraryDialogId = 0;
 const PLAYLIST_PICKER_FOCUS_TIMEOUT_MS = 1000;
+const DESKTOP_LIBRARY_MIN_HEIGHT_PX = 360;
+const DESKTOP_LIBRARY_BOTTOM_GAP_PX = 20;
 
 export class LibraryView {
   constructor({ manager, uiManager }) {
@@ -66,6 +68,10 @@ export class LibraryView {
     this.unsubscribe = [];
     this.lastScanState = null;
     this.trackScrollCleanup = null;
+    this.desktopLayoutHeightCleanup = null;
+    this.refreshDesktopLayoutHeightObservers = null;
+    this.desktopLayoutHeightFrame = null;
+    this.desktopLayoutHeightFrameType = null;
     this.renderVersion = 0;
     this.pendingBreakpointRebuild = false;
     this.playlistMenu = null;
@@ -202,6 +208,8 @@ export class LibraryView {
     this.mount();
     this.captureLibraryReturnFocus(returnFocus || document.activeElement);
     document.body.classList.add('view-library');
+    this.startDesktopLayoutHeightTracking();
+    this.updateDesktopLayoutHeight();
     this.syncNowPlayingTrack();
     this.render();
     if (focusSearch) this.searchInput?.focus();
@@ -213,6 +221,7 @@ export class LibraryView {
     this.pendingBreakpointRebuild = false;
     this.closeContextMenu({ restoreFocus: false });
     this.closePlaylistMenu({ restoreFocus: false });
+    this.stopDesktopLayoutHeightTracking();
     // Tear down the track-table scroll/resize listeners so the window 'resize'
     // handler does not survive teardown and re-render the hidden view.
     this.trackScrollCleanup?.();
@@ -233,6 +242,119 @@ export class LibraryView {
       target?.focus?.();
     }
     this.libraryReturnFocus = null;
+  }
+
+  startDesktopLayoutHeightTracking() {
+    if (this.desktopLayoutHeightCleanup) {
+      this.refreshDesktopLayoutHeightObservers?.();
+      this.updateDesktopLayoutHeight();
+      return;
+    }
+
+    const scheduleUpdate = () => this.scheduleDesktopLayoutHeightUpdate();
+    const observedElements = new Set();
+    const resizeObserver = typeof ResizeObserver === 'function'
+      ? new ResizeObserver(scheduleUpdate)
+      : null;
+    const observeElement = element => {
+      if (!element || observedElements.has(element)) return;
+      resizeObserver?.observe?.(element);
+      observedElements.add(element);
+    };
+    const refreshObservedElements = () => {
+      observeElement(this.root);
+      observeElement(globalThis.document?.querySelector?.('.audio-player'));
+      observeElement(globalThis.document?.querySelector?.('.double-blind-test'));
+      observeElement(getAppVersionDisplayElement());
+      scheduleUpdate();
+    };
+    const mutationObserver = typeof MutationObserver === 'function' && globalThis.document?.body
+      ? new MutationObserver(refreshObservedElements)
+      : null;
+
+    globalThis.window?.addEventListener?.('resize', scheduleUpdate);
+    globalThis.window?.visualViewport?.addEventListener?.('resize', scheduleUpdate);
+    mutationObserver?.observe?.(globalThis.document.body, { childList: true });
+    this.refreshDesktopLayoutHeightObservers = refreshObservedElements;
+    this.desktopLayoutHeightCleanup = () => {
+      globalThis.window?.removeEventListener?.('resize', scheduleUpdate);
+      globalThis.window?.visualViewport?.removeEventListener?.('resize', scheduleUpdate);
+      resizeObserver?.disconnect?.();
+      mutationObserver?.disconnect?.();
+      this.cancelDesktopLayoutHeightFrame();
+      this.refreshDesktopLayoutHeightObservers = null;
+      this.desktopLayoutHeightCleanup = null;
+      this.resetDesktopLayoutHeight();
+    };
+    refreshObservedElements();
+    this.updateDesktopLayoutHeight();
+  }
+
+  stopDesktopLayoutHeightTracking() {
+    this.desktopLayoutHeightCleanup?.();
+  }
+
+  scheduleDesktopLayoutHeightUpdate() {
+    if (this.desktopLayoutHeightFrame != null) return;
+    const run = () => {
+      this.desktopLayoutHeightFrame = null;
+      this.desktopLayoutHeightFrameType = null;
+      if (this.desktopLayoutHeightCleanup) this.updateDesktopLayoutHeight();
+    };
+    if (typeof requestAnimationFrame === 'function') {
+      this.desktopLayoutHeightFrameType = 'animation';
+      this.desktopLayoutHeightFrame = requestAnimationFrame(run);
+    } else {
+      this.desktopLayoutHeightFrameType = 'timeout';
+      this.desktopLayoutHeightFrame = setTimeout(run, 0);
+    }
+  }
+
+  cancelDesktopLayoutHeightFrame() {
+    if (this.desktopLayoutHeightFrame == null) return;
+    if (this.desktopLayoutHeightFrameType === 'animation' && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(this.desktopLayoutHeightFrame);
+    } else {
+      clearTimeout(this.desktopLayoutHeightFrame);
+    }
+    this.desktopLayoutHeightFrame = null;
+    this.desktopLayoutHeightFrameType = null;
+  }
+
+  updateDesktopLayoutHeight() {
+    if (!this.root) return;
+    if (isMobileLayout()) {
+      this.resetDesktopLayoutHeight();
+      return;
+    }
+    const viewportHeight = getViewportHeight();
+    if (!(viewportHeight > 0)) {
+      this.resetDesktopLayoutHeight();
+      return;
+    }
+    const viewportTop = getViewportTop();
+    const rect = this.root.getBoundingClientRect?.();
+    const top = Number.isFinite(rect?.top) ? rect.top : 0;
+    const bottomReservedHeight = getElementOuterBlockSize(getAppVersionDisplayElement());
+    const availableHeight = Math.floor(viewportTop + viewportHeight - top - bottomReservedHeight - DESKTOP_LIBRARY_BOTTOM_GAP_PX);
+    const height = availableHeight > DESKTOP_LIBRARY_MIN_HEIGHT_PX
+      ? availableHeight
+      : DESKTOP_LIBRARY_MIN_HEIGHT_PX;
+    setStyleProperty(this.root, '--library-desktop-height', `${height}px`);
+  }
+
+  resetDesktopLayoutHeight() {
+    removeStyleProperty(this.root, '--library-desktop-height');
+  }
+
+  syncContentScrollbarInset() {
+    if (!this.root || !this.content) return;
+    const offsetWidth = Number(this.content.offsetWidth);
+    const clientWidth = Number(this.content.clientWidth);
+    const scrollbarWidth = Number.isFinite(offsetWidth) && Number.isFinite(clientWidth)
+      ? Math.max(0, offsetWidth - clientWidth)
+      : 0;
+    setStyleProperty(this.root, '--library-content-scrollbar-width', `${scrollbarWidth}px`);
   }
 
   toggle(options = {}) {
@@ -655,7 +777,8 @@ export class LibraryView {
       playButton.setAttribute('aria-label', `${this.t('library.action.play')} ${album.name}`);
       playButton.innerHTML = ICONS.play;
       playButton.addEventListener('click', () => {
-        this.manager.playTrackIds(album.trackIds);
+        const trackIds = this.manager.getAlbumTracks(album.key).map(track => track.id);
+        this.manager.playTrackIds(trackIds);
       });
 
       card.appendChild(artwork);
@@ -1990,6 +2113,7 @@ export class LibraryView {
     };
     const onScroll = () => renderWindow();
     const onResize = () => {
+      this.syncContentScrollbarInset();
       const nextHeight = this.getTrackRowHeight();
       if (nextHeight !== rowHeight) {
         // A breakpoint crossed. Rebuilding via render() would tear down an open
@@ -2210,6 +2334,7 @@ export class LibraryView {
 
   renderStatus(scanState = this.lastScanState) {
     if (!this.status) return;
+    this.syncContentScrollbarInset();
     const counts = this.manager.getCounts();
     const parts = [
       `${counts.tracks} ${this.t('library.status.tracks')}`,
@@ -2382,8 +2507,70 @@ function setClass(element, className, enabled) {
   }
 }
 
+function getViewportHeight() {
+  const visualViewportHeight = Number(globalThis.window?.visualViewport?.height);
+  if (Number.isFinite(visualViewportHeight) && visualViewportHeight > 0) return visualViewportHeight;
+  const innerHeight = Number(globalThis.window?.innerHeight);
+  if (Number.isFinite(innerHeight) && innerHeight > 0) return innerHeight;
+  const documentHeight = Number(globalThis.document?.documentElement?.clientHeight);
+  return Number.isFinite(documentHeight) && documentHeight > 0 ? documentHeight : 0;
+}
+
+function getViewportTop() {
+  const offsetTop = Number(globalThis.window?.visualViewport?.offsetTop);
+  return Number.isFinite(offsetTop) ? offsetTop : 0;
+}
+
+function getAppVersionDisplayElement() {
+  const versionElement = globalThis.document?.getElementById?.('app-version');
+  return versionElement?.parentElement || versionElement?.parentNode || null;
+}
+
+function getElementOuterBlockSize(element) {
+  if (!element) return 0;
+  const style = getComputedStyleSafe(element);
+  if (style?.display === 'none') return 0;
+  const rect = element.getBoundingClientRect?.();
+  const height = Number(rect?.height);
+  const marginTop = parseCssPixelValue(style?.marginTop);
+  const marginBottom = parseCssPixelValue(style?.marginBottom);
+  return (Number.isFinite(height) && height > 0 ? height : 0) + marginTop + marginBottom;
+}
+
+function getComputedStyleSafe(element) {
+  const getComputedStyle = globalThis.window?.getComputedStyle || globalThis.getComputedStyle;
+  try {
+    return typeof getComputedStyle === 'function' ? getComputedStyle(element) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function parseCssPixelValue(value) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function setStyleProperty(element, name, value) {
+  if (!element?.style) return;
+  if (typeof element.style.setProperty === 'function') {
+    element.style.setProperty(name, value);
+  } else {
+    element.style[name] = value;
+  }
+}
+
+function removeStyleProperty(element, name) {
+  if (!element?.style) return;
+  if (typeof element.style.removeProperty === 'function') {
+    element.style.removeProperty(name);
+  } else {
+    delete element.style[name];
+  }
+}
+
 function isMobileLayout() {
-  return document.body?.classList.contains('layout-mobile');
+  return globalThis.document?.body?.classList.contains('layout-mobile');
 }
 
 function isEditableTarget(target) {

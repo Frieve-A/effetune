@@ -204,6 +204,8 @@ test('preload exposes listener registration wrappers', () => {
   harness.listeners.get('request-tray-menu-update')({});
   api.onStartDoubleBlindTest(() => calls.push(['onStartDoubleBlindTest']));
   harness.listeners.get('start-double-blind-test')({});
+  api.onOpenEffectPipelineView(() => calls.push(['onOpenEffectPipelineView']));
+  harness.listeners.get('open-effect-pipeline-view')({});
   api.onOpenLibraryView(() => calls.push(['onOpenLibraryView']));
   harness.listeners.get('open-library-view')({});
   api.onAddMusicFolder(() => calls.push(['onAddMusicFolder']));
@@ -240,6 +242,7 @@ test('preload exposes listener registration wrappers', () => {
     ['onAudioFilesDropped', ['drop.wav']],
     ['onRequestTrayMenuUpdate'],
     ['onStartDoubleBlindTest'],
+    ['onOpenEffectPipelineView'],
     ['onOpenLibraryView'],
     ['onAddMusicFolder'],
     ['onRescanLibrary'],

@@ -81,8 +81,8 @@ body.layout-mobile .plugin-parameter-ui {
 body.layout-mobile h1 {
     font-size: 20px;
     line-height: 32px;
-    /* Reserve room for library, settings, and overflow header buttons. */
-    padding-right: 146px;
+    /* Reserve room for settings and overflow header buttons. */
+    padding-right: 96px;
 }
 
 body.layout-mobile .subtitle,
@@ -93,9 +93,9 @@ body.layout-mobile .column-control-button {
     display: none !important;
 }
 
-/* Keep the library and settings buttons available in the mobile header. The
-   overflow menu button (40px) owns the top-right corner, so this group sits
-   to its left at the same 40px mobile control height. */
+/* Keep the settings button available in the mobile header. The overflow menu button
+   (40px) owns the top-right corner, so this group sits to its left at the same
+   40px mobile control height. */
 body.layout-mobile .header-buttons {
     display: flex !important;
     top: 0;
@@ -117,8 +117,11 @@ body.layout-mobile .header-buttons .header-button {
     box-sizing: border-box;
 }
 
-/* Mobile has its own Open Music controls, so the header only shows the gear. */
-body.layout-mobile .header-buttons .open-music-button {
+/* Mobile has its own Open Music and view navigation controls, so the header only
+   shows the gear. */
+body.layout-mobile .header-buttons .open-music-button,
+body.layout-mobile .header-buttons .effect-pipeline-button,
+body.layout-mobile .header-buttons .open-library-button {
     display: none !important;
 }
 
@@ -333,13 +336,16 @@ body.layout-mobile.view-effects {
 body.layout-mobile.view-player {
     display: flex;
     flex-direction: column;
-    min-height: 100svh;
+    height: 100svh;
+    overflow-y: hidden;
 }
 
 body.layout-mobile .mobile-player-view {
     flex: 1 1 auto;
     display: flex;
     flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
 }
 
 body.layout-mobile .mobile-player-empty {
@@ -945,9 +951,12 @@ body.layout-mobile .audio-player {
     display: grid;
     grid-template-rows: auto auto auto auto auto;
     gap: 16px;
-    padding: 16px;
+    min-height: 0;
+    max-height: 100%;
+    padding: 10px;
     margin: 0;
     align-content: center;
+    overflow-y: auto;
 }
 
 body.layout-mobile .audio-player h2 {

@@ -112,6 +112,7 @@ export async function updateApplicationMenu(isElectron) {
           { label: t('menu.view.zoomIn') },
           { label: t('menu.view.zoomOut') },
           { type: 'separator' },
+          { label: t('menu.view.effectPipeline') },
           { label: t('menu.view.musicLibrary') },
           { type: 'separator' },
           { label: t('menu.view.toggleFullscreen') }

@@ -59,6 +59,7 @@
 
   // Hints displayed when hovering over UI
   "ui.title.openMusic": "Abrir archivos de música",
+  "ui.title.effectPipeline": "Effect Pipeline",
   "ui.title.openLibrary": "Biblioteca musical",
   "ui.title.sidebar": "Mostrar u ocultar la lista de efectos",
   "ui.title.searchEffects": "Buscar efectos",
@@ -156,6 +157,7 @@
   "menu.view.resetZoom": "Restablecer zoom",
   "menu.view.zoomIn": "Acercar",
   "menu.view.zoomOut": "Alejar",
+  "menu.view.effectPipeline": "Effect Pipeline",
   "menu.view.musicLibrary": "Biblioteca musical",
   "menu.view.toggleFullscreen": "Alternar pantalla completa",
 
@@ -302,6 +304,9 @@
   "dialog.config.pipeline.default": "Configuración predeterminada",
   "dialog.config.pipeline.last": "Ajustes del último cierre",
   "dialog.config.pipeline.preset": "Preset específico",
+  "dialog.config.startupView": "Vista al inicio:",
+  "dialog.config.startupView.effects": "Effect Pipeline (predeterminado)",
+  "dialog.config.startupView.library": "Biblioteca musical",
   "dialog.config.language": "Idioma",
   "dialog.config.language.auto": "Automático (navegador)",
   "dialog.config.languageRestartNotice": "Si cambió la configuración de idioma, reinicie la aplicación.",

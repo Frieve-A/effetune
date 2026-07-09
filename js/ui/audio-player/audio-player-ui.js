@@ -266,6 +266,7 @@ export class AudioPlayerUI {
       if (this.container.parentNode !== mobilePlayerView) {
         mobilePlayerView.appendChild(this.container);
       }
+      window.uiManager?.releaseAudioPlayerLayoutPlaceholder?.();
       this.updateArtwork();
       window.uiManager?.mobileNav?.updatePlayerPlaceholder?.();
       return;
@@ -282,6 +283,7 @@ export class AudioPlayerUI {
         targetParent.insertBefore(this.container, insertTarget);
       }
     }
+    window.uiManager?.releaseAudioPlayerLayoutPlaceholder?.();
     this.updateArtwork();
     window.uiManager?.mobileNav?.updatePlayerPlaceholder?.();
   }

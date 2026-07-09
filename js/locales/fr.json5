@@ -59,6 +59,7 @@
 
   // Infos-bulles affichées au survol de l'interface
   "ui.title.openMusic": "Ouvrir des fichiers musicaux",
+  "ui.title.effectPipeline": "Effect Pipeline",
   "ui.title.openLibrary": "Bibliothèque musicale",
   "ui.title.sidebar": "Basculer la liste des effets",
   "ui.title.searchEffects": "Rechercher des effets",
@@ -156,6 +157,7 @@
   "menu.view.resetZoom": "Réinitialiser le zoom",
   "menu.view.zoomIn": "Agrandir",
   "menu.view.zoomOut": "Rétrécir",
+  "menu.view.effectPipeline": "Effect Pipeline",
   "menu.view.musicLibrary": "Bibliothèque musicale",
   "menu.view.toggleFullscreen": "Plein écran",
 
@@ -302,6 +304,9 @@
   "dialog.config.pipeline.default": "Paramètres par défaut",
   "dialog.config.pipeline.last": "Paramètres de la dernière fermeture",
   "dialog.config.pipeline.preset": "Préréglage spécifique",
+  "dialog.config.startupView": "Vue au démarrage :",
+  "dialog.config.startupView.effects": "Effect Pipeline (par défaut)",
+  "dialog.config.startupView.library": "Bibliothèque musicale",
   "dialog.config.language": "Langue",
   "dialog.config.language.auto": "Automatique (navigateur)",
   "dialog.config.languageRestartNotice": "Si vous avez modifié le paramètre de langue, veuillez redémarrer l'application.",

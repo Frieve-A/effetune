@@ -30,6 +30,7 @@ No audiophile myths, Just pure science.
 - Live audio visualization
 - Audio pipeline that can be modified in real-time
 - Offline audio file processing with current effect chain
+- Music Library for browsing local folders, metadata, and playlists
 - Frequency response measurement and correction for system calibration
 - Multi-channel processing and output
 - Mobile-friendly web layout for phone and tablet use
@@ -81,6 +82,19 @@ To use EffeTune with CD players, network players, or other physical sources:
    * Output: Processed audio to your amplifier or speakers
 
 ## Usage
+
+### Application Settings
+
+Open **Settings > Config...** to choose **Language**, set **Startup view:**, and configure **Effect Pipeline at startup:**. **Startup view:** can be **Effect Pipeline (Default)** or **Music Library**.
+
+### Browsing Your Music Library
+
+1. Open **Music Library** from the PC header, the mobile **Library** tab, or **View > Music Library** in the desktop app.
+2. Select **Add Music Folder** to index a folder of music files.
+3. Browse **Tracks**, **Albums**, **Artists**, **Genres**, **Folders**, **Recently Added**, or **Playlists**, and use **Search library** to search the catalog.
+4. Use **Play** to listen through the current effect pipeline, or use **Play Next**, **Add to Queue**, and **Add to Playlist** to manage playback.
+5. Use **Rescan** after changing files, and **Reconnect** if a browser or folder permission is lost.
+   - [More about Music Library](docs/music-library.md)
 
 ### Building Your Effect Chain
 

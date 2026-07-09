@@ -148,7 +148,7 @@ test('showConfigDialog opens in Web and hides Electron-only settings', async () 
     presets: { WebPreset: {} }
   });
   const localStorage = createLocalStorage({
-    effetune_app_config: JSON.stringify({ language: 'ja', pipelineStartup: 'preset', startupPreset: 'WebPreset' })
+    effetune_app_config: JSON.stringify({ language: 'ja', startupView: 'library', pipelineStartup: 'preset', startupPreset: 'WebPreset' })
   });
 
   await withGlobals({ window: { ...harness.window, localStorage }, document: harness.document }, async () => {
@@ -159,11 +159,16 @@ test('showConfigDialog opens in Web and hides Electron-only settings', async () 
     assert.equal(harness.document.getElementById('tray'), null);
     assert.equal(harness.document.getElementById('check-updates'), null);
     assert.equal(harness.document.getElementById('language-select').value, 'ja');
+    assert.equal(harness.document.getElementById('startup-view-library').checked, true);
     assert.equal(harness.document.getElementById('preset-select').value, 'WebPreset');
 
     const pipelineDefault = harness.document.getElementById('pl-default');
     pipelineDefault.dispatchEvent('change');
     assert.equal(JSON.parse(localStorage.snapshot().effetune_app_config).pipelineStartup, 'default');
+
+    const startupViewEffects = harness.document.getElementById('startup-view-effects');
+    startupViewEffects.dispatchEvent('change');
+    assert.equal(JSON.parse(localStorage.snapshot().effetune_app_config).startupView, 'effects');
   });
 });
 
@@ -176,6 +181,7 @@ test('showConfigDialog renders settings, saves changes, and closes from the butt
       minimizeToTray: false,
       checkForUpdatesOnStartup: false,
       language: 'ja',
+      startupView: 'library',
       pipelineStartup: 'preset',
       startupPreset: ''
     },
@@ -196,6 +202,7 @@ test('showConfigDialog renders settings, saves changes, and closes from the butt
     assert.equal(harness.document.getElementById('auto-launch').checked, true);
     assert.equal(harness.document.getElementById('start-min').checked, true);
     assert.equal(harness.document.getElementById('check-updates').checked, false);
+    assert.equal(harness.document.getElementById('startup-view-library').checked, true);
     assert.equal(harness.document.getElementById('preset-select').value, 'Alpha');
     assert.equal(harness.document.getElementById('language-select').value, 'ja');
 
@@ -219,6 +226,9 @@ test('showConfigDialog renders settings, saves changes, and closes from the butt
     pipelinePreset.dispatchEvent('change');
     assert.equal(harness.document.getElementById('preset-select').disabled, false);
 
+    const startupViewEffects = harness.document.getElementById('startup-view-effects');
+    startupViewEffects.dispatchEvent('change');
+
     const presetSelect = harness.document.getElementById('preset-select');
     presetSelect.value = 'Zeta';
     presetSelect.dispatchEvent('change');
@@ -229,6 +239,7 @@ test('showConfigDialog renders settings, saves changes, and closes from the butt
     await flushMicrotasks();
 
     assert.deepEqual(languageCalls, [['auto', { persist: false }]]);
+    assert.equal(harness.window.appConfig.startupView, 'effects');
     assert.equal(harness.window.appConfig.startupPreset, 'Zeta');
     assert.equal(harness.window.electronIntegration.config.language, 'auto');
 
@@ -289,6 +300,7 @@ test('showConfigDialog supports last/default startup states and Escape close', a
   await withGlobals({ window: implicitDefaults.window, document: implicitDefaults.document }, async () => {
     await showConfigDialog(true, null);
     assert.equal(implicitDefaults.document.getElementById('pl-last').checked, true);
+    assert.equal(implicitDefaults.document.getElementById('startup-view-effects').checked, true);
     assert.equal(implicitDefaults.document.getElementById('language-select').value, 'auto');
   });
 

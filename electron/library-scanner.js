@@ -21,10 +21,29 @@ const MAX_PARSE_FILE_TIMEOUT_MS = 5 * 60 * 1000;
 
 const SUPPORTED_AUDIO_EXTENSIONS = Object.freeze(['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm']);
 const SUPPORTED_AUDIO_EXTENSION_SET = new Set(SUPPORTED_AUDIO_EXTENSIONS);
+const RIFF_INFO_NATIVE_TAG_TYPE = 'riff-info';
+const NATIVE_TAG_PRIORITY = ['matroska', 'vorbis', 'ID3v2.4', 'ID3v2.3', 'ID3v2.2', 'iTunes', 'asf', 'AIFF', 'APEv2', RIFF_INFO_NATIVE_TAG_TYPE, 'exif', 'ID3v1'];
+const LOW_PRIORITY_TEXT_NATIVE_TAG_TYPES = new Set(['ID3v1']);
+const TITLE_NATIVE_IDS = new Set(['TITLE', 'TIT2', 'TT2', 'INAM', 'TITL', '\u00A9NAM', 'WM/TITLE']);
+const ARTIST_NATIVE_IDS = new Set(['ARTIST', 'ARTISTS', 'TPE1', 'TP1', 'IART', '\u00A9ART', 'AUTHOR', 'WM/AUTHOR']);
+const ALBUM_ARTIST_NATIVE_IDS = new Set(['ALBUMARTIST', 'ALBUM ARTIST', 'ALBUM_ARTIST', 'ALBUMARTISTS', 'TPE2', 'TP2', 'AART', 'WM/ALBUMARTIST']);
+const ALBUM_NATIVE_IDS = new Set(['ALBUM', 'TALB', 'TAL', 'IPRD', 'IRPD', '\u00A9ALB', 'WM/ALBUMTITLE']);
+const GENRE_NATIVE_IDS = new Set(['GENRE', 'TCON', 'TCO', 'IGNR', '\u00A9GEN', 'WM/GENRE']);
+const YEAR_NATIVE_IDS = new Set(['DATE', 'YEAR', 'ORIGINALDATE', 'ORIGINALYEAR', 'TDRC', 'TYER', 'TYE', 'TDAT', 'TORY', 'TDOR', 'TDRL', 'ICRD', '\u00A9DAY', 'WM/YEAR', 'WM/ORIGINALRELEASEYEAR']);
+const TITLE_SORT_NATIVE_IDS = new Set(['TITLESORT', 'TITLE SORT', 'TITLE_SORT', 'SORTTITLE', 'SORT TITLE', 'TSOT', 'SONM']);
+const ALBUM_SORT_NATIVE_IDS = new Set(['ALBUMSORT', 'ALBUM SORT', 'ALBUM_SORT', 'SORTALBUM', 'SORT ALBUM', 'TSOA', 'SOAL']);
+const ALBUM_ARTIST_SORT_NATIVE_IDS = new Set(['ALBUMARTISTSORT', 'ALBUM ARTIST SORT', 'ALBUM_ARTIST_SORT', 'SORTALBUMARTIST', 'SORT ALBUM ARTIST', 'TSO2', 'SOAA']);
+const COMPILATION_NATIVE_IDS = new Set(['COMPILATION', 'TCMP', 'TCP', 'CPIL', 'ITUNESCOMPILATION', 'WM/ISCOMPILATION']);
+const TRACK_NATIVE_IDS = new Set(['PART_NUMBER', 'TRACK', 'TRACKNUMBER', 'TRCK', 'TRK', 'ITRK', 'IPRT', 'TRKN']);
+const DISC_NATIVE_IDS = new Set(['TOTAL_PARTS', 'DISC', 'DISK', 'DISCNUMBER', 'DISKNUMBER', 'TPOS', 'TPA', 'DISKNUMBER']);
 const SKIPPED_DIRECTORY_NAMES = new Set(['$recycle.bin', 'system volume information', 'node_modules']);
 const ARTWORK_BASENAMES = Object.freeze(['cover', 'folder', 'front', 'album']);
 const ARTWORK_EXTENSIONS = Object.freeze(['.jpg', '.jpeg', '.png', '.webp']);
 const ARTWORK_EXTENSION_SET = new Set(ARTWORK_EXTENSIONS);
+const RIFF_INFO_TAG_IDS = new Set(['IART', 'ICMT', 'ICOP', 'ICRD', 'IGNR', 'INAM', 'IPRD', 'IPRT', 'IRPD', 'ITRK', 'TITL', 'YEAR']);
+const MAX_RIFF_SCAN_CHUNKS = 8192;
+const MAX_RIFF_INFO_LIST_BYTES = 1024 * 1024;
+const MAX_RIFF_INFO_VALUE_BYTES = 64 * 1024;
 const LEGACY_METADATA_ENCODINGS = Object.freeze([
   { label: 'utf-8', script: 'unicode', minChars: 0 },
   { label: 'shift_jis', script: 'japanese', minChars: 2 },
@@ -101,6 +120,9 @@ const WINDOWS_1252_MARKER_PATTERN = /[\u0080-\u009F\u0192\u201A\u201E\u2026\u202
 const UTF8_MOJIBAKE_SEQUENCE_PATTERN = /(?:[ÃÂ][\u0080-\u00BF\u00A0-\u00BF]|â[\u0080-\u009F\u201A-\u201E\u20AC\u2122]|ã[\u0080-\u009F\u201A-\u201E])/g;
 const LATIN1_SYMBOL_PATTERN = /[\u00A1-\u00BF\u00D7\u00F7]/;
 const REPLACEMENT_CHAR_PATTERN = /\uFFFD/;
+const COMMON_CJK_CHARACTERS = new Set(Array.from(
+  '的一是在不了有和人这中大为上个国我以要他时来用们生到作地于出就分对成会可主发年动同工也能下过子说产种面而方后多定行学法所民得经十三之进着等部度家电力里如水化高自二理起小物现实加量都两体制机当使点从业本去把性好应开它合还因由其些然前外天政四日那社义事平形相全表间样与关各重新线内数正心反你明看原又么利比或但质气第向道命此变条只没结解问意建月公无系军很情者最立代想已通并提直题党程展五果料象员革位入常文总次品式活设及管特件长求老头基资边流路级少图山统接知较将组见计别她手角期根论运农指几九区强放决西被干做必战先回则任取据处队南给色光门即保治北造百规热领七海口东导器压志世金增争济阶油思术极交受联认六共权收证改清美再采转更单风切打白教速花带安场身车例真务具万每目至达走积示议声报斗完类八离华名确才科张信马节话米整空元况今集温传土许步群广石记需段研界'
+));
 const textDecoders = new Map();
 
 let metadataModulePromise;
@@ -950,9 +972,11 @@ function repairLegacyMetadataMojibake(text, languageHints = null) {
 
   const languageCodes = getLanguageCodes(languageHints);
   const languageScripts = getLanguageScripts(languageCodes);
-  let bestText = text;
+  const contextTexts = getContextTexts(languageHints);
+  const contextScripts = getContextScriptsFromTexts(contextTexts);
+  const repairContext = { languageScripts, contextScripts, contextTexts };
+  const candidates = [];
   let bestScore = originalScore;
-  let bestRepairScore = 0;
   let bestEncodingScript = null;
 
   for (const encoding of getLegacyMetadataEncodings(languageCodes)) {
@@ -963,16 +987,46 @@ function repairLegacyMetadataMojibake(text, languageHints = null) {
     const decoded = decodeBytes(bytes, encoding.label);
     if (!decoded || decoded === text) continue;
     const decodedScore = scoreDecodedText(decoded);
-    const repairScore = scoreRepairCandidate(originalScore, bestScore, decodedScore, encoding, languageScripts);
-    if (repairScore > bestRepairScore) {
-      bestText = decoded;
+    const repairScore = scoreRepairCandidate(originalScore, bestScore, decodedScore, encoding, repairContext, decoded);
+    if (repairScore > 0) {
+      candidates.push({ text: decoded, score: decodedScore, repairScore, encoding });
+    }
+    if (repairScore > 0 && isBetterIntermediateScore(decodedScore, bestScore, encoding, bestEncodingScript)) {
       bestScore = decodedScore;
-      bestRepairScore = repairScore;
       bestEncodingScript = encoding.script;
     }
   }
 
-  return bestText;
+  return chooseRepairCandidate(text, candidates, repairContext);
+}
+
+function decodeLegacyMetadataBytes(data, languageHints = null) {
+  const rawBytes = normalizeByteArray(data);
+  if (!rawBytes || rawBytes.length === 0) return '';
+
+  const utf16Text = decodeLikelyUtf16Bytes(rawBytes);
+  if (utf16Text) return utf16Text;
+
+  const bytes = trimSingleByteNullTerminators(rawBytes);
+  if (bytes.length === 0) return '';
+
+  const latin1Text = bytesToLatin1String(bytes);
+  const repaired = repairLegacyMetadataMojibake(latin1Text, languageHints);
+  if (repaired !== latin1Text) return repaired.trim();
+
+  const latin1Score = scoreDecodedText(latin1Text);
+  const windows1252Text = decodeBytes(bytes, 'windows-1252');
+  if (windows1252Text && windows1252Text !== latin1Text) {
+    const windows1252Score = scoreDecodedText(windows1252Text);
+    if (latin1Score.controls > 0 &&
+      windows1252Score.controls === 0 &&
+      windows1252Score.windowsMarkers === 0 &&
+      windows1252Score.replacements === 0) {
+      return windows1252Text.trim();
+    }
+  }
+
+  return latin1Text.trim();
 }
 
 function mayContainLegacyMetadataMojibake(text, score) {
@@ -1055,6 +1109,38 @@ function getLanguageScripts(languageCodes) {
   return scripts;
 }
 
+function getContextScriptsFromTexts(contextTexts) {
+  const scripts = new Set();
+  for (const text of contextTexts) {
+    const score = scoreDecodedText(text);
+    if (score.japanese > 0) scripts.add('japanese');
+    if (score.hangul > 0) scripts.add('hangul');
+    if (score.cyrillic > 0) scripts.add('cyrillic');
+    if (score.greek > 0) scripts.add('greek');
+    if (score.hebrew > 0) scripts.add('hebrew');
+    if (score.arabic > 0) scripts.add('arabic');
+    if (score.thai > 0) scripts.add('thai');
+    if (score.devanagari > 0) scripts.add('devanagari');
+    if (score.cjk > 0 && score.japanese === 0) scripts.add('cjk');
+  }
+  return scripts;
+}
+
+function getContextTexts(languageHints) {
+  if (!languageHints || typeof languageHints !== 'object') return [];
+  const texts = [];
+  for (const field of ['referenceText', 'title', 'fileName', 'relativePath', 'path']) {
+    if (typeof languageHints[field] === 'string') texts.push(languageHints[field]);
+  }
+  for (const field of ['referenceTexts', 'contextTexts']) {
+    if (!Array.isArray(languageHints[field])) continue;
+    for (const text of languageHints[field]) {
+      if (typeof text === 'string') texts.push(text);
+    }
+  }
+  return texts.map(text => text.trim()).filter(Boolean);
+}
+
 function recoverSingleByteText(text) {
   const bytes = [];
   for (const character of text) {
@@ -1068,6 +1154,92 @@ function recoverSingleByteText(text) {
     bytes.push(code);
   }
   return Uint8Array.from(bytes);
+}
+
+function normalizeByteArray(data) {
+  if (!data) return null;
+  if (Buffer.isBuffer(data)) return data;
+  if (data instanceof Uint8Array) return data;
+  if (data instanceof ArrayBuffer) return new Uint8Array(data);
+  if (ArrayBuffer.isView(data)) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  if (Array.isArray(data)) return Uint8Array.from(data);
+  return null;
+}
+
+function trimSingleByteNullTerminators(bytes) {
+  let end = bytes.length;
+  while (end > 0 && bytes[end - 1] === 0x00) end -= 1;
+  return bytes.subarray(0, end);
+}
+
+function bytesToLatin1String(bytes) {
+  const chunks = [];
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    chunks.push(String.fromCharCode(...bytes.subarray(index, index + chunkSize)));
+  }
+  return chunks.join('');
+}
+
+function decodeLikelyUtf16Bytes(bytes) {
+  const bomEncoding = getUtf16BomEncoding(bytes);
+  if (bomEncoding) {
+    return cleanupDecodedMetadataText(decodeUtf16Bytes(bytes.subarray(2), bomEncoding));
+  }
+
+  if (bytes.length < 4) return '';
+  const pairs = Math.floor(bytes.length / 2);
+  let evenZeros = 0;
+  let oddZeros = 0;
+  for (let index = 0; index + 1 < bytes.length; index += 2) {
+    if (bytes[index] === 0x00) evenZeros += 1;
+    if (bytes[index + 1] === 0x00) oddZeros += 1;
+  }
+
+  const evenRatio = evenZeros / pairs;
+  const oddRatio = oddZeros / pairs;
+  if (oddRatio >= 0.35 && evenRatio <= 0.1) {
+    return cleanupDecodedMetadataText(decodeUtf16Bytes(bytes, 'utf-16le'));
+  }
+  if (evenRatio >= 0.35 && oddRatio <= 0.1) {
+    return cleanupDecodedMetadataText(decodeUtf16Bytes(bytes, 'utf-16be'));
+  }
+  return '';
+}
+
+function getUtf16BomEncoding(bytes) {
+  if (bytes.length < 2) return '';
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return 'utf-16le';
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) return 'utf-16be';
+  return '';
+}
+
+function decodeUtf16Bytes(bytes, encoding) {
+  const chars = [];
+  const chunk = [];
+  const littleEndian = encoding === 'utf-16le';
+  for (let index = 0; index + 1 < bytes.length; index += 2) {
+    const code = littleEndian
+      ? bytes[index] | (bytes[index + 1] << 8)
+      : (bytes[index] << 8) | bytes[index + 1];
+    chunk.push(code);
+    if (chunk.length >= 0x8000) {
+      chars.push(String.fromCharCode(...chunk));
+      chunk.length = 0;
+    }
+  }
+  if (chunk.length > 0) chars.push(String.fromCharCode(...chunk));
+  return chars.join('');
+}
+
+function cleanupDecodedMetadataText(text) {
+  const value = String(text || '');
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 0x00) end -= 1;
+  const cleaned = value.slice(0, end).trim();
+  if (!cleaned) return '';
+  const score = scoreDecodedText(cleaned);
+  return score.controls === 0 && score.replacements === 0 ? cleaned : '';
 }
 
 function decodeBytes(bytes, encoding) {
@@ -1113,6 +1285,10 @@ function scoreDecodedText(text) {
     arabic: 0,
     thai: 0,
     devanagari: 0,
+    privateUse: 0,
+    cjkCompatibility: 0,
+    commonCjk: 0,
+    cjkMojibakeArtifacts: 0,
     suspicious: 0
   };
 
@@ -1137,8 +1313,16 @@ function scoreDecodedText(text) {
     } else if (isJapanese(code)) {
       score.japanese += 1;
       score.letters += 1;
+    } else if (isCjkCompatibility(code)) {
+      score.cjk += 1;
+      score.cjkCompatibility += 1;
+      if (isCommonCjk(code)) score.commonCjk += 1;
+      if (isCjkMojibakeArtifact(code)) score.cjkMojibakeArtifacts += 1;
+      score.letters += 1;
     } else if (isCjk(code)) {
       score.cjk += 1;
+      if (isCommonCjk(code)) score.commonCjk += 1;
+      if (isCjkMojibakeArtifact(code)) score.cjkMojibakeArtifacts += 1;
       score.letters += 1;
     } else if (isHangul(code)) {
       score.hangul += 1;
@@ -1161,19 +1345,22 @@ function scoreDecodedText(text) {
     } else if (isInRange(code, 0x0900, 0x097f)) {
       score.devanagari += 1;
       score.letters += 1;
+    } else if (isPrivateUse(code)) {
+      score.privateUse += 1;
     }
   }
 
-  score.suspicious = score.windowsMarkers + score.utf8Markers + score.latinSymbols + score.controls * 2 + score.replacements * 5;
+  score.suspicious = score.windowsMarkers + score.utf8Markers + score.latinSymbols + score.controls * 2 +
+    score.replacements * 5 + score.privateUse * 4;
   return score;
 }
 
-function scoreRepairCandidate(originalScore, bestScore, decodedScore, encoding, languageScripts) {
-  if (decodedScore.replacements > 0 || decodedScore.controls > 0) return 0;
+function scoreRepairCandidate(originalScore, bestScore, decodedScore, encoding, repairContext, decodedText = '') {
+  if (decodedScore.replacements > 0 || decodedScore.controls > 0 || decodedScore.privateUse > 0) return 0;
   if (encoding.script === 'unicode') {
     return scoreUnicodeRepair(originalScore, bestScore, decodedScore);
   }
-  return scoreScriptRepair(originalScore, bestScore, decodedScore, encoding, languageScripts);
+  return scoreScriptRepair(originalScore, bestScore, decodedScore, encoding, repairContext, decodedText);
 }
 
 function countUtf8MojibakeMarkers(text) {
@@ -1189,24 +1376,83 @@ function scoreUnicodeRepair(originalScore, bestScore, decodedScore) {
   return 100 + suspiciousGain * 20 + scriptGain * 8 + decodedScore.letters;
 }
 
-function scoreScriptRepair(originalScore, bestScore, decodedScore, encoding, languageScripts) {
+function scoreScriptRepair(originalScore, bestScore, decodedScore, encoding, repairContext, decodedText = '') {
   const target = getScriptScore(decodedScore, encoding.script);
   const originalTarget = getScriptScore(originalScore, encoding.script);
-  if (target <= originalTarget || target < encoding.minChars) return 0;
-  if (encoding.script === 'japanese' && decodedScore.japanese === 0) return 0;
+  const contextTextBonus = getContextTextBonus(decodedText, repairContext);
+  const hasStrongContextMatch = contextTextBonus >= 220;
+  if (target <= originalTarget && !hasStrongContextMatch) return 0;
+  if (target < encoding.minChars && contextTextBonus <= 0) return 0;
   if (encoding.script !== 'unicode' && !hasStrongMultibyteMojibakeSignal(originalScore)) return 0;
-  if (decodedScore.suspicious > 0) return 0;
-  const targetRatio = target / Math.max(1, decodedScore.letters);
-  if (targetRatio < 0.45) return 0;
-  if (target < 4 && decodedScore.asciiLatin > 0) return 0;
+  if (getDecodedCorruptionScore(decodedScore) > 0) return 0;
+  const targetRatio = getScriptRatio(decodedScore, encoding.script);
+  if (targetRatio < 0.45 && !hasStrongContextMatch) return 0;
+  if (target < 4 && decodedScore.asciiLatin > 0 && !hasTextScriptContext(repairContext, encoding.script) && !hasStrongContextMatch) return 0;
   const suspiciousGain = originalScore.suspicious - decodedScore.suspicious;
   const highLatinGain = originalScore.highLatin - decodedScore.highLatin;
   const multibyteBonus = getMultibyteScriptBonus(originalScore, decodedScore, encoding.script);
   const bestTarget = getScriptScore(bestScore, encoding.script);
-  if (target < bestTarget && decodedScore.suspicious >= bestScore.suspicious) return 0;
+  if (target < bestTarget && getDecodedCorruptionScore(decodedScore) >= getDecodedCorruptionScore(bestScore)) return 0;
   return 80 + target * 8 + targetRatio * 20 + suspiciousGain * 10 + highLatinGain * 2
     + multibyteBonus + getScriptPriorityBonus(decodedScore, encoding.script)
-    + getLanguageScriptBonus(languageScripts, encoding.script);
+    + contextTextBonus
+    + getScriptContextBonus(repairContext, encoding.script, decodedScore)
+    + getEncodingPriorityBonus(encoding, repairContext)
+    - getScriptArtifactPenalty(decodedScore, encoding.script);
+}
+
+function chooseRepairCandidate(originalText, candidates, repairContext) {
+  if (!candidates.length) return originalText;
+  const sorted = [...candidates].sort((a, b) => b.repairScore - a.repairScore);
+  const best = sorted[0];
+  const second = sorted[1] || null;
+  if (best.repairScore < 90) return originalText;
+  if (isAmbiguousEastAsianRepair(best, second, repairContext)) return originalText;
+  return best.text;
+}
+
+function isBetterIntermediateScore(candidateScore, bestScore, encoding, bestEncodingScript) {
+  if (getDecodedCorruptionScore(candidateScore) < getDecodedCorruptionScore(bestScore)) return true;
+  if (getDominantNonLatinScriptScore(candidateScore) > getDominantNonLatinScriptScore(bestScore)) return true;
+  return !bestEncodingScript && encoding.script === 'unicode';
+}
+
+function isAmbiguousEastAsianRepair(best, second, repairContext) {
+  if (!second) return false;
+  const bestScript = best.encoding.script;
+  const secondScript = second.encoding.script;
+  if (!isAmbiguousEastAsianScript(bestScript) || !isAmbiguousEastAsianScript(secondScript)) return false;
+  if (bestScript === secondScript) return false;
+  if (best.repairScore - second.repairScore > 50) return false;
+  if (hasTextScriptContext(repairContext, bestScript)) return false;
+  return !hasDistinctiveScriptEvidence(best.score, bestScript);
+}
+
+function isAmbiguousEastAsianScript(script) {
+  return script === 'japanese' || script === 'cjk';
+}
+
+function hasDistinctiveScriptEvidence(score, script) {
+  if (script === 'japanese') return score.japanese > 0;
+  if (script === 'cjk') {
+    return score.cjk >= 2 && score.cjkMojibakeArtifacts === 0 &&
+      score.commonCjk / Math.max(1, score.cjk) >= 0.55;
+  }
+  if (script === 'hangul') return score.hangul > 0;
+  return false;
+}
+
+function getDecodedCorruptionScore(score) {
+  return score.controls * 2 + score.replacements * 5 + score.privateUse * 4;
+}
+
+function getScriptRatio(score, script) {
+  const target = getScriptScore(score, script);
+  if (isMultibyteScript(script)) {
+    const nonLatinLetters = score.letters - score.latin;
+    return target / Math.max(1, nonLatinLetters);
+  }
+  return target / Math.max(1, score.letters);
 }
 
 function getDominantNonLatinScriptScore(score) {
@@ -1234,14 +1480,150 @@ function getMultibyteScriptBonus(originalScore, decodedScore, script) {
 }
 
 function getScriptPriorityBonus(score, script) {
-  if (script === 'hangul' && score.hangul > 0) return 6;
-  if (script === 'japanese' && score.japanese > 0) return 6;
+  if (script === 'hangul' && score.hangul > 0) return 30;
+  if (script === 'japanese' && score.japanese > 0) return 30 + score.japanese * 18;
+  if (script === 'cjk' && score.commonCjk > 0) return score.commonCjk * 8;
   return 0;
 }
 
-function getLanguageScriptBonus(languageScripts, script) {
-  if (!languageScripts?.has(script)) return 0;
-  return 18;
+function getScriptContextBonus(repairContext, script, score) {
+  let bonus = 0;
+  const hasTextContext = !!repairContext?.contextScripts?.size;
+  if (!hasTextContext && repairContext?.languageScripts?.has(script)) bonus += 6;
+  if (repairContext?.contextScripts?.has(script)) {
+    bonus += script === 'japanese' && score.japanese === 0 ? 18 : 28;
+  }
+  if (!hasTextContext && script === 'cjk' && repairContext?.languageScripts?.has('japanese')) bonus -= 6;
+  if (script === 'cjk' && repairContext?.contextScripts?.has('japanese')) {
+    bonus -= hasDistinctiveScriptEvidence(score, 'cjk') ? 6 : 30;
+  }
+  if (!hasTextContext && script === 'japanese' && repairContext?.languageScripts?.has('cjk')) bonus -= 6;
+  if (script === 'japanese' && repairContext?.contextScripts?.has('cjk')) {
+    bonus -= hasDistinctiveScriptEvidence(score, 'japanese') ? 6 : 26;
+  }
+  return bonus;
+}
+
+function hasScriptContext(repairContext, script) {
+  return repairContext?.languageScripts?.has(script) || repairContext?.contextScripts?.has(script);
+}
+
+function hasTextScriptContext(repairContext, script) {
+  return repairContext?.contextScripts?.has(script);
+}
+
+function getEncodingPriorityBonus(encoding, repairContext) {
+  if (encoding.label === 'shift_jis' && hasTextScriptContext(repairContext, 'japanese')) return 6;
+  if ((encoding.label === 'gbk' || encoding.label === 'gb18030') && hasTextScriptContext(repairContext, 'cjk')) return 6;
+  if (encoding.label === 'euc-kr' && hasTextScriptContext(repairContext, 'hangul')) return 6;
+  return 0;
+}
+
+function getContextTextBonus(text, repairContext) {
+  const candidate = normalizeContextMatchText(text);
+  if (candidate.length < 2) {
+    return hasSingleCharacterContextTokenMatch(candidate, repairContext) ? 140 : 0;
+  }
+  if (candidate.length >= 4 && hasContextTokenMatch(candidate, repairContext)) return 220;
+  if (hasMultibyteContextSkeletonMatch(candidate, repairContext)) return 220;
+  const compactCandidate = compactContextMatchText(candidate);
+  let bonus = 0;
+  for (const contextText of repairContext && repairContext.contextTexts || []) {
+    const context = normalizeContextMatchText(contextText);
+    if (!context || context === candidate) continue;
+    if (context.includes(candidate)) {
+      bonus = Math.max(bonus, candidate.length >= 4 ? 160 : 120);
+      continue;
+    }
+    if (compactCandidate.length >= 4 && compactContextMatchText(context).includes(compactCandidate)) {
+      bonus = Math.max(bonus, 100);
+    }
+  }
+  return bonus;
+}
+
+function hasContextTokenMatch(candidate, repairContext) {
+  if (!candidate) return false;
+  for (const contextText of repairContext && repairContext.contextTexts || []) {
+    if (getContextMatchTokens(contextText).has(candidate)) return true;
+  }
+  return false;
+}
+
+function hasMultibyteContextSkeletonMatch(candidate, repairContext) {
+  const candidateSkeleton = getMultibyteContextSkeleton(candidate);
+  if ([...candidateSkeleton].length < 2) return false;
+  for (const contextText of repairContext && repairContext.contextTexts || []) {
+    for (const token of getContextMatchTokens(contextText)) {
+      if (getMultibyteContextSkeleton(token) === candidateSkeleton) return true;
+    }
+  }
+  return false;
+}
+
+function hasSingleCharacterContextTokenMatch(candidate, repairContext) {
+  if (!candidate || !isSingleCjkLikeText(candidate)) return false;
+  return hasContextTokenMatch(candidate, repairContext);
+}
+
+function isSingleCjkLikeText(text) {
+  if ([...text].length !== 1) return false;
+  const code = text.codePointAt(0);
+  return isJapanese(code) || isCjk(code) || isCjkCompatibility(code) || isHangul(code);
+}
+
+function getContextMatchTokens(contextText) {
+  const context = normalizeContextMatchText(contextText);
+  const tokens = new Set();
+  for (const part of context.split(/[\\/]+/)) {
+    addContextTokenVariants(tokens, part);
+  }
+  return tokens;
+}
+
+function addContextTokenVariants(tokens, value) {
+  const text = String(value || '').trim();
+  if (!text) return;
+  addContextToken(tokens, text);
+
+  const extensionIndex = text.lastIndexOf('.');
+  if (extensionIndex > 0) addContextToken(tokens, text.slice(0, extensionIndex));
+
+  for (const part of text.split(/[\s._\-()[\]{}]+/)) {
+    addContextToken(tokens, part);
+  }
+
+  const withoutTrackPrefix = text.replace(/^\d+\s*[\-_. ]+\s*/, '');
+  if (withoutTrackPrefix !== text) addContextTokenVariants(tokens, withoutTrackPrefix);
+}
+
+function addContextToken(tokens, value) {
+  const token = String(value || '').trim();
+  if (token) tokens.add(token);
+}
+
+function normalizeContextMatchText(text) {
+  return String(text || '').normalize('NFKC').toLowerCase().trim();
+}
+
+function compactContextMatchText(text) {
+  return text.replace(/[\s._\-()[\]{}]+/g, '');
+}
+
+function getMultibyteContextSkeleton(text) {
+  let skeleton = '';
+  for (const character of normalizeContextMatchText(text)) {
+    const code = character.codePointAt(0);
+    if (isJapanese(code) || isCjk(code) || isCjkCompatibility(code) || isHangul(code)) {
+      skeleton += character;
+    }
+  }
+  return skeleton;
+}
+
+function getScriptArtifactPenalty(score, script) {
+  if (script !== 'cjk') return 0;
+  return score.cjkMojibakeArtifacts * 18;
 }
 
 function isMultibyteScript(script) {
@@ -1265,11 +1647,27 @@ function isJapanese(code) {
 }
 
 function isCjk(code) {
-  return isInRange(code, 0x3400, 0x4dbf) || isInRange(code, 0x4e00, 0x9fff) || isInRange(code, 0xf900, 0xfaff);
+  return isInRange(code, 0x3400, 0x4dbf) || isInRange(code, 0x4e00, 0x9fff);
+}
+
+function isCjkCompatibility(code) {
+  return isInRange(code, 0xf900, 0xfaff);
+}
+
+function isCommonCjk(code) {
+  return COMMON_CJK_CHARACTERS.has(String.fromCodePoint(code));
+}
+
+function isCjkMojibakeArtifact(code) {
+  return code === 0x4e55 || code === 0x4e63 || code === 0x4e8a || isInRange(code, 0x50c0, 0x50ff);
 }
 
 function isHangul(code) {
   return isInRange(code, 0x1100, 0x11ff) || isInRange(code, 0x3130, 0x318f) || isInRange(code, 0xac00, 0xd7af);
+}
+
+function isPrivateUse(code) {
+  return isInRange(code, 0xe000, 0xf8ff);
 }
 
 function isInRange(code, start, end) {
@@ -1277,9 +1675,70 @@ function isInRange(code, start, end) {
 }
 
 function stringOrEmpty(value, languageHints = null) {
-  if (typeof value === 'string') return repairLegacyMetadataMojibake(value.trim(), languageHints);
+  if (typeof value === 'string') return repairAndTrimMetadataText(value, languageHints);
   if (value === null || value === undefined) return '';
-  return repairLegacyMetadataMojibake(String(value).trim(), languageHints);
+  return repairAndTrimMetadataText(String(value), languageHints);
+}
+
+function repairAndTrimMetadataText(value, languageHints = null) {
+  return repairLegacyMetadataMojibake(String(value), languageHints).trim();
+}
+
+function createMetadataRepairHints(languageHints, candidate = {}, metadata = {}) {
+  return addRepairReferenceTexts(languageHints, [
+    candidate.fileName,
+    candidate.relativePath,
+    candidate.path,
+    metadata && metadata.common ? metadata.common.title : null
+  ]);
+}
+
+function addRepairReferenceTexts(languageHints, referenceTexts) {
+  const cleanReferences = referenceTexts
+    .filter(value => typeof value === 'string')
+    .map(value => value.trim())
+    .filter(Boolean);
+  if (!cleanReferences.length) return languageHints;
+
+  const base = typeof languageHints === 'string'
+    ? { language: languageHints }
+    : { ...(languageHints || {}) };
+  const existingReferences = Array.isArray(base.referenceTexts) ? base.referenceTexts : [];
+  return {
+    ...base,
+    referenceTexts: [...existingReferences, ...cleanReferences]
+  };
+}
+
+function withRiffInfoTags(metadata, riffInfoTags, languageHints = null) {
+  const nativeTags = normalizeRiffInfoTags(riffInfoTags, languageHints);
+  if (!nativeTags.length) return metadata || {};
+  const native = { ...((metadata && metadata.native) || {}) };
+  const existing = Array.isArray(native[RIFF_INFO_NATIVE_TAG_TYPE]) ? native[RIFF_INFO_NATIVE_TAG_TYPE] : [];
+  native[RIFF_INFO_NATIVE_TAG_TYPE] = [...nativeTags, ...existing];
+  return {
+    ...(metadata || {}),
+    native
+  };
+}
+
+function normalizeRiffInfoTags(riffInfoTags, languageHints = null) {
+  if (!Array.isArray(riffInfoTags)) return [];
+  const tags = [];
+  for (const tag of riffInfoTags) {
+    const id = normalizeNativeId(tag && tag.id);
+    if (!id) continue;
+    const value = decodeRiffInfoTagValue(tag, languageHints);
+    if (!value) continue;
+    tags.push({ id, value });
+  }
+  return tags;
+}
+
+function decodeRiffInfoTagValue(tag, languageHints = null) {
+  if (typeof (tag && tag.value) === 'string') return repairAndTrimMetadataText(tag.value, languageHints);
+  const bytes = tag && (tag.data || tag.bytes || tag.value);
+  return decodeLegacyMetadataBytes(bytes, languageHints);
 }
 
 function numberOrNull(value) {
@@ -1287,7 +1746,231 @@ function numberOrNull(value) {
 }
 
 function integerOrNull(value) {
-  return Number.isInteger(value) ? value : null;
+  if (Number.isInteger(value)) return value;
+  if (typeof value === 'number') return Number.isFinite(value) ? Math.trunc(value) : null;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const number = integerOrNull(item);
+      if (number !== null) return number;
+    }
+    return null;
+  }
+  if (value && typeof value === 'object') {
+    return integerOrNull(value.no ?? value.value ?? value.total ?? value.of);
+  }
+  const text = normalizeNumericText(stringOrEmpty(value));
+  const match = text.match(/\d+/);
+  if (!match) return null;
+  const number = Number.parseInt(match[0], 10);
+  return Number.isSafeInteger(number) ? number : null;
+}
+
+function parseNumberPair(value, languageHints = null) {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const parsed = parseNumberPair(item, languageHints);
+      if (parsed.value !== null || parsed.total !== null) return parsed;
+    }
+    return { value: null, total: null, hasExplicitTotal: false };
+  }
+  if (value && typeof value === 'object') {
+    const valuePair = parseNumberPair(value.no ?? value.value ?? value.track ?? value.trackNo, languageHints);
+    const total = integerOrNull(value.of ?? value.total ?? value.trackOf);
+    return {
+      value: valuePair.value,
+      total: total ?? valuePair.total,
+      hasExplicitTotal: total !== null || valuePair.hasExplicitTotal
+    };
+  }
+
+  const text = normalizeNumericText(stringOrEmpty(value, languageHints))
+    .replace(/[\u2044\u2215\uFF0F\\]/g, '/')
+    .replace(/\bof\b/gi, '/')
+    .trim();
+  if (!text) return { value: null, total: null, hasExplicitTotal: false };
+
+  const hasExplicitTotal = text.includes('/');
+  const [valueText, totalText] = text.split('/', 2);
+  return {
+    value: integerOrNull(valueText),
+    total: totalText === undefined ? null : integerOrNull(totalText),
+    hasExplicitTotal
+  };
+}
+
+function normalizeNumericText(value) {
+  return String(value || '').replace(/[\u0660-\u0669\u06F0-\u06F9\u0966-\u096F\uFF10-\uFF19]/g, char => {
+    const code = char.charCodeAt(0);
+    if (code >= 0x0660 && code <= 0x0669) return String(code - 0x0660);
+    if (code >= 0x06f0 && code <= 0x06f9) return String(code - 0x06f0);
+    if (code >= 0x0966 && code <= 0x096f) return String(code - 0x0966);
+    return String(code - 0xff10);
+  });
+}
+
+function getMetadataText(metadata, nativeIds, commonText, languageHints = null, { join = false, rejectNative = null } = {}) {
+  const commonValue = stringOrEmpty(commonText, languageHints);
+  const nativeText = getNativeText(metadata, nativeIds, languageHints, { join });
+  if (nativeText.value &&
+    (commonValue === '' || !LOW_PRIORITY_TEXT_NATIVE_TAG_TYPES.has(nativeText.tagType)) &&
+    !(commonValue && rejectNative?.(nativeText.value))) {
+    return nativeText.value;
+  }
+  return commonValue || nativeText.value || '';
+}
+
+function looksLikeId3GenreCode(value) {
+  return /^\(?\d{1,3}\)?$/.test(String(value || '').trim());
+}
+
+function getNativeText(metadata, nativeIds, languageHints = null, { join = false } = {}) {
+  const native = metadata && metadata.native ? metadata.native : {};
+  for (const tagType of getNativeTagTypes(native)) {
+    const values = [];
+    for (const tag of native[tagType] || []) {
+      if (!hasNativeId(nativeIds, tag && tag.id)) continue;
+      values.push(...textValues(tag.value, languageHints));
+    }
+    if (values.length > 0) {
+      return {
+        value: join ? joinTextValues(values) : values[0],
+        tagType
+      };
+    }
+  }
+  return { value: '', tagType: '' };
+}
+
+function textValues(value, languageHints = null) {
+  if (Array.isArray(value)) return value.flatMap(item => textValues(item, languageHints));
+  if (value && typeof value === 'object') {
+    return textValues(value.text ?? value.value ?? value.name ?? value.description, languageHints);
+  }
+  const text = stringOrEmpty(value, languageHints);
+  return text ? [text] : [];
+}
+
+function joinTextValues(values) {
+  return [...new Set(values.map(value => value.trim()).filter(Boolean))].join('; ');
+}
+
+function getMetadataYear(metadata, commonYear, languageHints = null) {
+  const commonValue = integerOrNull(commonYear);
+  const nativeYear = getNativeYear(metadata, languageHints);
+  if (nativeYear.value !== null &&
+    (commonValue === null || (nativeYear.value >= 1000 && !LOW_PRIORITY_TEXT_NATIVE_TAG_TYPES.has(nativeYear.tagType)))) {
+    return nativeYear.value;
+  }
+  return commonValue ?? nativeYear.value;
+}
+
+function getNativeYear(metadata, languageHints = null) {
+  const native = metadata && metadata.native ? metadata.native : {};
+  for (const tagType of getNativeTagTypes(native)) {
+    for (const tag of native[tagType] || []) {
+      if (!hasNativeId(YEAR_NATIVE_IDS, tag && tag.id)) continue;
+      const value = yearOrNull(tag.value, languageHints);
+      if (value !== null) return { value, tagType };
+    }
+  }
+  return { value: null, tagType: '' };
+}
+
+function yearOrNull(value, languageHints = null) {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const year = yearOrNull(item, languageHints);
+      if (year !== null) return year;
+    }
+    return null;
+  }
+  if (value && typeof value === 'object') {
+    return yearOrNull(value.year ?? value.text ?? value.value ?? value.date, languageHints);
+  }
+  const text = normalizeNumericText(stringOrEmpty(value, languageHints));
+  const match = text.match(/(?:^|\D)([12]\d{3})(?:\D|$)/);
+  return match ? Number.parseInt(match[1], 10) : integerOrNull(value);
+}
+
+function getMetadataBoolean(metadata, nativeIds, commonValue) {
+  const nativeValue = getNativeBoolean(metadata, nativeIds);
+  if (nativeValue !== null) return nativeValue;
+  return commonValue === true ? true : commonValue === false ? false : null;
+}
+
+function getNativeBoolean(metadata, nativeIds) {
+  const native = metadata && metadata.native ? metadata.native : {};
+  for (const tagType of getNativeTagTypes(native)) {
+    for (const tag of native[tagType] || []) {
+      if (!hasNativeId(nativeIds, tag && tag.id)) continue;
+      const value = booleanOrNull(tag.value);
+      if (value !== null) return value;
+    }
+  }
+  return null;
+}
+
+function booleanOrNull(value) {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const parsed = booleanOrNull(item);
+      if (parsed !== null) return parsed;
+    }
+    return null;
+  }
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return Number.isFinite(value) ? value !== 0 : null;
+  const text = String(value ?? '').trim().toLowerCase();
+  if (text === '1' || text === 'true' || text === 'yes') return true;
+  if (text === '0' || text === 'false' || text === 'no') return false;
+  return null;
+}
+
+function getMetadataNumberPair(metadata, commonKey, nativeIds, languageHints = null) {
+  const common = normalizeCommonObject(metadata);
+  const commonPair = parseNumberPair(common[commonKey], languageHints);
+  const nativePair = getNativeNumberPair(metadata, nativeIds, languageHints);
+  if (nativePair.value !== null) {
+    return {
+      value: nativePair.value,
+      total: nativePair.total ?? commonPair.total,
+      hasExplicitTotal: nativePair.hasExplicitTotal || commonPair.hasExplicitTotal
+    };
+  }
+  if (commonPair.value !== null || commonPair.total !== null) {
+    return {
+      value: commonPair.value,
+      total: commonPair.total ?? nativePair.total,
+      hasExplicitTotal: commonPair.hasExplicitTotal || nativePair.hasExplicitTotal
+    };
+  }
+  return nativePair;
+}
+
+function getNativeNumberPair(metadata, nativeIds, languageHints = null) {
+  const native = metadata && metadata.native ? metadata.native : {};
+  for (const tagType of getNativeTagTypes(native)) {
+    for (const tag of native[tagType] || []) {
+      if (!hasNativeId(nativeIds, tag && tag.id)) continue;
+      const parsed = parseNumberPair(tag.value, languageHints);
+      if (parsed.value !== null || parsed.total !== null) return parsed;
+    }
+  }
+  return { value: null, total: null, hasExplicitTotal: false };
+}
+
+function getNativeTagTypes(native) {
+  const known = NATIVE_TAG_PRIORITY.filter(tagType => Array.isArray(native[tagType]));
+  const rest = Object.keys(native).filter(tagType => !known.includes(tagType));
+  return [...known, ...rest];
+}
+
+function hasNativeId(nativeIds, id) {
+  return nativeIds.has(normalizeNativeId(id));
+}
+
+function normalizeNativeId(id) {
+  return String(id || '').trim().replace(/\s+/g, ' ').toUpperCase();
 }
 
 function firstArrayString(value, languageHints = null) {
@@ -1403,42 +2086,53 @@ function createFallbackTrack(candidate, now = Date.now()) {
   };
 }
 
-function createTrackFromMetadata(candidate, metadata, now = Date.now(), { includeArtwork = true, maxArtworkBytes = MAX_ARTWORK_BYTES, languageHints = null } = {}) {
-  const common = normalizeCommonObject(metadata);
-  const format = normalizeFormatObject(metadata);
+function createTrackFromMetadata(candidate, metadata, now = Date.now(), { includeArtwork = true, maxArtworkBytes = MAX_ARTWORK_BYTES, languageHints = null, riffInfoTags = null } = {}) {
   const fallback = createFallbackTrack(candidate, now);
-  const artist = joinedArtists(common, languageHints);
-  const albumArtist = stringOrEmpty(common.albumartist, languageHints) || artist || '';
-  const genre = firstArrayString(common.genre, languageHints) || stringOrEmpty(common.genre, languageHints);
-  const title = stringOrEmpty(common.title, languageHints) || fallback.title;
+  const baseTextHints = createMetadataRepairHints(languageHints, candidate, metadata);
+  const mappedMetadata = withRiffInfoTags(metadata, riffInfoTags, baseTextHints);
+  const common = normalizeCommonObject(mappedMetadata);
+  const format = normalizeFormatObject(mappedMetadata);
+  const commonTitle = stringOrEmpty(common.title, baseTextHints);
+  const title = getMetadataText(mappedMetadata, TITLE_NATIVE_IDS, commonTitle, baseTextHints) || fallback.title;
+  const textHints = addRepairReferenceTexts(baseTextHints, [title]);
+  const commonArtist = joinedArtists(common, textHints);
+  const artist = getMetadataText(mappedMetadata, ARTIST_NATIVE_IDS, commonArtist, textHints, { join: true });
+  const commonAlbumArtist = stringOrEmpty(common.albumartist, textHints);
+  const albumArtist = getMetadataText(mappedMetadata, ALBUM_ARTIST_NATIVE_IDS, commonAlbumArtist, textHints, { join: true }) || artist || '';
+  const commonGenre = firstArrayString(common.genre, textHints) || stringOrEmpty(common.genre, textHints);
+  const genre = getMetadataText(mappedMetadata, GENRE_NATIVE_IDS, commonGenre, textHints, { rejectNative: looksLikeId3GenreCode });
   const lowerAlbumArtist = albumArtist.toLowerCase();
   const picture = includeArtwork ? selectPicture(common.picture) : null;
   const pictureBuffer = picture ? normalizeArtworkBuffer(picture.data, maxArtworkBytes) : null;
+  const trackNumber = getMetadataNumberPair(mappedMetadata, 'track', TRACK_NATIVE_IDS, textHints);
+  const discNumber = getMetadataNumberPair(mappedMetadata, 'disk', DISC_NATIVE_IDS, textHints);
+  const compilation = getMetadataBoolean(mappedMetadata, COMPILATION_NATIVE_IDS, common.compilation) === true ||
+    lowerAlbumArtist === 'various artists';
 
   return {
     ...fallback,
     title,
     artist,
     albumArtist,
-    album: stringOrEmpty(common.album, languageHints),
+    album: getMetadataText(mappedMetadata, ALBUM_NATIVE_IDS, stringOrEmpty(common.album, textHints), textHints),
     genre,
-    year: integerOrNull(common.year),
-    trackNo: common.track ? integerOrNull(common.track.no) : null,
-    trackOf: common.track ? integerOrNull(common.track.of) : null,
-    discNo: common.disk ? integerOrNull(common.disk.no) : null,
-    discOf: common.disk ? integerOrNull(common.disk.of) : null,
-    compilation: common.compilation === true || lowerAlbumArtist === 'various artists',
-    sortTitle: getSortText(common, ['titlesort', 'titleSort', 'sorttitle'], languageHints),
-    sortAlbum: getSortText(common, ['albumsort', 'albumSort', 'sortalbum'], languageHints),
-    sortAlbumArtist: getSortText(common, ['albumartistsort', 'albumArtistSort', 'sortalbumartist'], languageHints),
+    year: getMetadataYear(mappedMetadata, common.year, textHints),
+    trackNo: trackNumber.value,
+    trackOf: trackNumber.total,
+    discNo: discNumber.value,
+    discOf: discNumber.total,
+    compilation,
+    sortTitle: getMetadataText(mappedMetadata, TITLE_SORT_NATIVE_IDS, getSortText(common, ['titlesort', 'titleSort', 'sorttitle'], textHints), textHints),
+    sortAlbum: getMetadataText(mappedMetadata, ALBUM_SORT_NATIVE_IDS, getSortText(common, ['albumsort', 'albumSort', 'sortalbum'], textHints), textHints),
+    sortAlbumArtist: getMetadataText(mappedMetadata, ALBUM_ARTIST_SORT_NATIVE_IDS, getSortText(common, ['albumartistsort', 'albumArtistSort', 'sortalbumartist'], textHints), textHints),
     durationSec: numberOrNull(format.duration),
     sampleRate: numberOrNull(format.sampleRate),
     bitrate: numberOrNull(format.bitrate),
     bitsPerSample: numberOrNull(format.bitsPerSample),
     channels: numberOrNull(format.numberOfChannels),
-    codec: stringOrEmpty(format.codec, languageHints) || stringOrEmpty(format.dataformat, languageHints).toUpperCase() || fallback.codec,
+    codec: stringOrEmpty(format.codec, textHints) || stringOrEmpty(format.dataformat, textHints).toUpperCase() || fallback.codec,
     artworkBytes: pictureBuffer ? toArrayBuffer(pictureBuffer) : null,
-    artworkMime: pictureBuffer ? stringOrEmpty(picture.format, languageHints) || 'application/octet-stream' : null,
+    artworkMime: pictureBuffer ? stringOrEmpty(picture.format, textHints) || 'application/octet-stream' : null,
     artworkSourceKind: pictureBuffer ? 'embedded' : null
   };
 }
@@ -1544,6 +2238,99 @@ async function parseMetadataFile(candidate, parseFile, signal, parseFileTimeoutM
     if (isAbortError(error)) throw error;
     return { metadata: null, error };
   }
+}
+
+async function readRiffInfoTagsForCandidate(candidate, signal) {
+  if (String(candidate && candidate.ext || '').toLowerCase() !== 'wav') return [];
+  try {
+    return await readRiffInfoTagsFromFile(candidate.path, signal);
+  } catch (error) {
+    if (isAbortError(error)) throw error;
+    return [];
+  }
+}
+
+async function readRiffInfoTagsFromFile(filePath, signal) {
+  const fileHandle = await fs.promises.open(filePath, 'r');
+  try {
+    throwIfAborted(signal);
+    const stat = await fileHandle.stat();
+    throwIfAborted(signal);
+    if (!stat.isFile() || stat.size < 12) return [];
+
+    const header = await readFileHandleBytes(fileHandle, 0, 12, signal);
+    if (!isRiffWaveHeader(header)) return [];
+
+    const riffSize = header.readUInt32LE(4);
+    const scanEnd = Math.min(stat.size, riffSize === 0xffffffff ? stat.size : riffSize + 8);
+    const tags = [];
+    let offset = 12;
+    let chunkCount = 0;
+
+    while (offset + 8 <= scanEnd && chunkCount < MAX_RIFF_SCAN_CHUNKS) {
+      throwIfAborted(signal);
+      const chunkHeader = await readFileHandleBytes(fileHandle, offset, 8, signal);
+      const chunkId = chunkHeader.toString('ascii', 0, 4);
+      const chunkSize = chunkHeader.readUInt32LE(4);
+      const dataOffset = offset + 8;
+      const nextOffset = dataOffset + chunkSize + (chunkSize % 2);
+      if (nextOffset <= offset || dataOffset + chunkSize > scanEnd) break;
+
+      if (chunkId === 'LIST' && chunkSize >= 4 && chunkSize <= MAX_RIFF_INFO_LIST_BYTES) {
+        const listData = await readFileHandleBytes(fileHandle, dataOffset, chunkSize, signal);
+        tags.push(...parseRiffInfoListBuffer(listData));
+      }
+
+      offset = nextOffset;
+      chunkCount += 1;
+    }
+
+    return tags;
+  } finally {
+    await fileHandle.close();
+  }
+}
+
+async function readFileHandleBytes(fileHandle, position, length, signal) {
+  const buffer = Buffer.allocUnsafe(length);
+  let bytesRead = 0;
+  while (bytesRead < length) {
+    throwIfAborted(signal);
+    const result = await fileHandle.read(buffer, bytesRead, length - bytesRead, position + bytesRead);
+    if (result.bytesRead === 0) break;
+    bytesRead += result.bytesRead;
+  }
+  return bytesRead === length ? buffer : buffer.subarray(0, bytesRead);
+}
+
+function parseRiffInfoListBuffer(listData) {
+  if (listData.toString('ascii', 0, 4) !== 'INFO') return [];
+  const tags = [];
+  let offset = 4;
+
+  while (offset + 8 <= listData.length) {
+    const id = listData.toString('ascii', offset, offset + 4).trim().toUpperCase();
+    const size = listData.readUInt32LE(offset + 4);
+    const dataOffset = offset + 8;
+    const nextOffset = dataOffset + size + (size % 2);
+    if (nextOffset <= offset || dataOffset + size > listData.length) break;
+
+    if (RIFF_INFO_TAG_IDS.has(id) && size <= MAX_RIFF_INFO_VALUE_BYTES) {
+      tags.push({
+        id,
+        data: Buffer.from(listData.subarray(dataOffset, dataOffset + size))
+      });
+    }
+
+    offset = nextOffset;
+  }
+
+  return tags;
+}
+
+function isRiffWaveHeader(header) {
+  const riffId = header.toString('ascii', 0, 4);
+  return (riffId === 'RIFF' || riffId === 'RF64') && header.toString('ascii', 8, 12) === 'WAVE';
 }
 
 async function resolveFolderArtworkDescriptor(directoryPath, cache, signal) {
@@ -1679,8 +2466,10 @@ async function attachFolderArtwork(track, candidate, artworkCache, signal) {
 
 async function parseLibraryFile(candidate, parseFile, artworkCache, signal, parseFileTimeoutMs, now = Date.now(), { skipCovers = true, maxArtworkBytes = MAX_ARTWORK_BYTES, languageHints = null } = {}) {
   const parsed = await parseMetadataFile(candidate, parseFile, signal, parseFileTimeoutMs, { skipCovers, maxArtworkBytes });
-  const track = parsed.metadata
-    ? createTrackFromMetadata(candidate, parsed.metadata, now, { includeArtwork: !skipCovers, maxArtworkBytes, languageHints })
+  const riffInfoTags = await readRiffInfoTagsForCandidate(candidate, signal);
+  const hasRiffInfoTags = riffInfoTags.length > 0;
+  const track = parsed.metadata || hasRiffInfoTags
+    ? createTrackFromMetadata(candidate, parsed.metadata || {}, now, { includeArtwork: !skipCovers, maxArtworkBytes, languageHints, riffInfoTags })
     : createFallbackTrack(candidate, now);
 
   return {

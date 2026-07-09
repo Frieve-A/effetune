@@ -15,6 +15,87 @@ class FakeFile {
   }
 }
 
+function decodeLatin1(bytes) {
+  return String.fromCharCode(...bytes);
+}
+
+function bytesFromHex(hex) {
+  const clean = hex.replace(/\s+/g, '');
+  const bytes = [];
+  for (let index = 0; index + 1 < clean.length; index += 2) {
+    bytes.push(Number.parseInt(clean.slice(index, index + 2), 16));
+  }
+  return Uint8Array.from(bytes);
+}
+
+function asciiBytes(text) {
+  return Uint8Array.from([...text].map(char => char.charCodeAt(0) & 0xff));
+}
+
+function concatBytes(parts) {
+  const length = parts.reduce((sum, part) => sum + part.length, 0);
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const part of parts) {
+    bytes.set(part, offset);
+    offset += part.length;
+  }
+  return bytes;
+}
+
+function uint32Le(value) {
+  return Uint8Array.from([
+    value & 0xff,
+    (value >>> 8) & 0xff,
+    (value >>> 16) & 0xff,
+    (value >>> 24) & 0xff
+  ]);
+}
+
+function createChunkBytes(id, data) {
+  const payload = data instanceof Uint8Array ? data : Uint8Array.from(data);
+  const padding = payload.length % 2 ? Uint8Array.from([0]) : Uint8Array.from([]);
+  return concatBytes([asciiBytes(id), uint32Le(payload.length), payload, padding]);
+}
+
+function createRiffInfoWaveBytes(tags) {
+  const fmt = new Uint8Array(16);
+  fmt[0] = 1;
+  fmt[2] = 1;
+  fmt.set(uint32Le(44100), 4);
+  fmt.set(uint32Le(88200), 8);
+  fmt[12] = 2;
+  fmt[14] = 16;
+  const infoPayload = concatBytes([
+    asciiBytes('INFO'),
+    ...tags.map(tag => createChunkBytes(tag.id, tag.data))
+  ]);
+  const chunks = [
+    createChunkBytes('fmt ', fmt),
+    createChunkBytes('data', new Uint8Array(0)),
+    createChunkBytes('LIST', infoPayload)
+  ];
+  const riffSize = 4 + chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  return concatBytes([asciiBytes('RIFF'), uint32Le(riffSize), asciiBytes('WAVE'), ...chunks]);
+}
+
+class FakeBlobFile extends FakeFile {
+  constructor(name, bytes) {
+    const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    super(name, buffer);
+    this.size = bytes.byteLength;
+  }
+
+  slice(start = 0, end = this.size) {
+    const bytes = new Uint8Array(this._buffer).slice(start, end);
+    return {
+      async arrayBuffer() {
+        return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+      }
+    };
+  }
+}
+
 class FakeAudioElement {
   static calls = [];
   static nextOptions = [];
@@ -1134,6 +1215,71 @@ test('stale ID3 metadata callbacks do not update the current track state', async
     assert.equal(state.artworkUrl, '');
     assert.equal(audioPlayer.ui.trackNameDisplay.textContent, 'New Title');
     assert.equal(objectUrls.some(call => call[0] === 'create'), false);
+  });
+});
+
+test('ID3 metadata normalizes legacy CP932 text before updating playback display', async () => {
+  await withAudioContextGlobals({
+    jsmediatags: {
+      read(file, handlers) {
+        assert.equal(file.name, '01-土曜日の嘘.mp3');
+        handlers.onSuccess({
+          tags: {
+            title: '土曜日の嘘',
+            artist: decodeLatin1([0x90, 0x58, 0x8e, 0x52, 0x92, 0xbc, 0x91, 0xbe, 0x98, 0x4e]),
+            album: decodeLatin1([0x8c, 0x86, 0x8d, 0xec, 0x90, 0xef, 0x20, 0x32, 0x30, 0x30, 0x31, 0x81, 0x60, 0x32, 0x30, 0x30, 0x35, 0x20, 0x5b, 0x42, 0x6f, 0x6e, 0x75, 0x73, 0x20, 0x44, 0x69, 0x73, 0x63, 0x5d])
+          }
+        });
+      }
+    }
+  }, async ({ calls, mediaSession }) => {
+    const track = { name: '01-土曜日の嘘.mp3', file: new FakeFile('01-土曜日の嘘.mp3') };
+    const { audioPlayer, manager, state } = createHarness({
+      calls,
+      playlist: [track],
+      currentTrackIndex: 0,
+      state: { currentTrack: track }
+    });
+
+    manager.loadMetadata(track, null, 0);
+
+    assert.equal(state.currentTrackName, '森山直太朗 - 土曜日の嘘');
+    assert.equal(audioPlayer.ui.trackNameDisplay.textContent, '森山直太朗 - 土曜日の嘘');
+    assert.equal(mediaSession.metadata.metadata.title, '土曜日の嘘');
+    assert.equal(mediaSession.metadata.metadata.artist, '森山直太朗');
+    assert.equal(mediaSession.metadata.metadata.album, '傑作撰 2001～2005 [Bonus Disc]');
+  });
+});
+
+test('WAV RIFF INFO metadata normalizes raw CP932 tags before updating playback display', async () => {
+  await withAudioContextGlobals({
+    jsmediatags: null
+  }, async ({ calls, mediaSession }) => {
+    const artistBytes = bytesFromHex('95bd89ea837d838a834a00');
+    const albumBytes = bytesFromHex('83828369a5838a8354202081608367838a83728385815b836781458367834481458369836283678145834c8393834f81458352815b838b816000');
+    const file = new FakeBlobFile('ddcb130163-3_1_01.wav', createRiffInfoWaveBytes([
+      { id: 'INAM', data: asciiBytes('MONA LISA\0') },
+      { id: 'IART', data: artistBytes },
+      { id: 'IPRD', data: albumBytes }
+    ]));
+    const track = { name: file.name, file };
+    const { audioPlayer, manager, state } = createHarness({
+      calls,
+      playlist: [track],
+      currentTrackIndex: 0,
+      state: { currentTrack: track }
+    });
+
+    manager.loadMetadata(track, null, 0);
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      await flushMicrotasks();
+    }
+
+    assert.equal(state.currentTrackName, '平賀マリカ - MONA LISA');
+    assert.equal(audioPlayer.ui.trackNameDisplay.textContent, '平賀マリカ - MONA LISA');
+    assert.equal(mediaSession.metadata.metadata.title, 'MONA LISA');
+    assert.equal(mediaSession.metadata.metadata.artist, '平賀マリカ');
+    assert.equal(mediaSession.metadata.metadata.album, 'モナ･リサ  ～トリビュート・トゥ・ナット・キング・コール～');
   });
 });
 

@@ -11,6 +11,7 @@ export class PlaybackBridge {
     let entries = this.createQueueEntries(trackIds);
     this.notifyOfflineExcluded(this.countOfflineExcluded(trackIds, entries));
     const requestedStartIndex = resolveStartIndex(trackIds, entries, startIndex);
+    const shouldPreserveRequestedTrack = requestedStartIndex !== null;
     if (shuffle) {
       entries = shuffleEntries(entries, requestedStartIndex);
       startIndex = 0;
@@ -21,7 +22,9 @@ export class PlaybackBridge {
     this.captureSnapshot();
     const player = this.uiManager.createAudioPlayer([], true);
     if (player?.stateManager) {
-      const requestedTrackId = entries[startIndex]?.libraryTrackId ?? null;
+      const requestedTrackId = shouldPreserveRequestedTrack
+        ? (entries[startIndex]?.libraryTrackId ?? null)
+        : null;
       if (player.stateRestored) {
         // Wait for persisted repeat/shuffle state (async IPC on Electron) so
         // loadFiles applies the restored shuffle mode to the new queue.

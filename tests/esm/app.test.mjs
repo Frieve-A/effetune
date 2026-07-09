@@ -283,6 +283,10 @@ function createDependencies(calls, options = {}) {
       return options.localState ?? null;
     },
     loadPreset(preset) { calls.push(['ui.loadPreset', preset]); },
+    async showLibraryView(viewOptions) {
+      calls.push(['ui.showLibraryView', viewOptions]);
+      if (options.showLibraryReject) throw new Error('library failed');
+    },
     getDoubleBlindTest() {
       return {
         restoreFromShare(value) {
@@ -691,6 +695,7 @@ test('App initialize handles success, audio warnings, and initialization failure
       workletResult: 'Audio Error: no worklet',
       urlState: [{ name: 'Volume', enabled: true, parameters: { volume: -3 } }]
     });
+    deps.loadStartupConfig = async () => ({ startupView: 'library' });
     const app = new mod.App(deps);
     await app.initialize();
     assert.equal(app.initialized, true);
@@ -701,6 +706,7 @@ test('App initialize handles success, audio warnings, and initialization failure
       calls.findIndex(call => call[0] === 'presetManager.loadPresetList'));
     assert.ok(calls.findIndex(call => call[0] === 'presetManager.loadPresetList') <
       calls.findIndex(call => call[0] === 'ui.initPluginList'));
+    assert.equal(calls.some(call => call[0] === 'ui.showLibraryView' && call[1]?.focusSearch === false), true);
   });
 
   await withAppModule({}, async ({ calls, mod }) => {
@@ -734,6 +740,90 @@ test('initializeAudioWorklet honors first-launch and forced-skip guards', async 
     window.__FORCE_SKIP_PIPELINE_STATE_LOAD = false;
     await app.initializeAudioWorklet();
     assert.equal(calls.some(call => call[0] === 'audio.initializeAudioWorklet'), true);
+  });
+});
+
+test('startup view preference opens library unless URL or first-launch content takes priority', async () => {
+  await withAppModule({}, async ({ calls, mod, window }) => {
+    window.electronIntegration = { isElectron: false };
+    const app = new mod.App({
+      ...createDependencies(calls),
+      loadStartupConfig: async () => ({ startupView: 'library' })
+    });
+
+    await app.applyStartupViewPreference();
+    assert.equal(calls.some(call => call[0] === 'ui.showLibraryView' && call[1]?.focusSearch === false), true);
+  });
+
+  await withAppModule({ search: '?p=shared' }, async ({ calls, mod, window }) => {
+    window.electronIntegration = { isElectron: false };
+    const app = new mod.App({
+      ...createDependencies(calls),
+      loadStartupConfig: async () => ({ startupView: 'library' })
+    });
+
+    await app.applyStartupViewPreference();
+    assert.equal(calls.some(call => call[0] === 'ui.showLibraryView'), false);
+  });
+
+  await withAppModule({ search: '?dbt=shared' }, async ({ calls, mod, window }) => {
+    window.electronIntegration = { isElectron: false };
+    const app = new mod.App({
+      ...createDependencies(calls),
+      loadStartupConfig: async () => ({ startupView: 'library' })
+    });
+
+    await app.applyStartupViewPreference();
+    assert.equal(calls.some(call => call[0] === 'ui.showLibraryView'), false);
+  });
+
+  await withAppModule({ pendingMusicFiles: ['C:\\Music\\one.mp3'] }, async ({ calls, mod, window }) => {
+    window.electronIntegration = { isElectron: true };
+    const app = new mod.App({
+      ...createDependencies(calls),
+      loadStartupConfig: async () => ({ startupView: 'library' })
+    });
+
+    await app.applyStartupViewPreference();
+    assert.equal(calls.some(call => call[0] === 'ui.showLibraryView' && call[1]?.focusSearch === false), true);
+  });
+
+  await withAppModule({ pendingPresetFilePath: 'C:\\Presets\\Startup.effetune_preset' }, async ({ calls, mod, window }) => {
+    window.electronIntegration = { isElectron: true };
+    const app = new mod.App({
+      ...createDependencies(calls),
+      loadStartupConfig: async () => ({ startupView: 'library' })
+    });
+    app._handledCommandLinePresetAtStartup = true;
+
+    await app.applyStartupViewPreference();
+    assert.equal(calls.some(call => call[0] === 'ui.showLibraryView' && call[1]?.focusSearch === false), true);
+  });
+
+  await withAppModule({}, async ({ calls, document, mod, window }) => {
+    window.appConfig = { startupView: 'library' };
+    window.electronIntegration = { isElectron: true, isElectronEnvironment: () => true };
+    const app = new mod.App({
+      ...createDependencies(calls),
+      loadStartupConfig: async () => {
+        throw new Error('cached startup config should be used');
+      }
+    });
+
+    await app.applyStartupViewPreference();
+    assert.equal(document.body.className.split(/\s+/).includes('view-library'), true);
+    assert.equal(calls.some(call => call[0] === 'ui.showLibraryView' && call[1]?.focusSearch === false), true);
+  });
+
+  await withAppModule({}, async ({ calls, document, mod, window }) => {
+    window.appConfig = { startupView: 'library' };
+    window.electronIntegration = { isElectron: true, isElectronEnvironment: () => true };
+    window.isFirstLaunch = true;
+    const app = new mod.App(createDependencies(calls));
+
+    await app.applyStartupViewPreference();
+    assert.equal(document.body.className.split(/\s+/).includes('view-library'), false);
+    assert.equal(calls.some(call => call[0] === 'ui.showLibraryView'), false);
   });
 });
 
@@ -1689,7 +1779,7 @@ test('command-line music and version fallbacks stay recoverable', async () => {
 });
 
 test('autoStartApplication starts bootstrap only when auto-start is enabled', async () => {
-  await withAppModule({}, async ({ calls, mod }) => {
+  await withAppModule({}, async ({ calls, document, mod, window }) => {
     const disabledResult = mod.autoStartApplication({
       windowRef: { __EFFECTUNE_DISABLE_APP_AUTO_START__: true },
       startApplicationFn() {
@@ -1726,5 +1816,53 @@ test('autoStartApplication starts bootstrap only when auto-start is enabled', as
       enabledWindow
     ]);
     assert.equal(calls.some(call => call[0] === 'testHeartbeat' && call[1] === 'main-page'), true);
+
+    window.__EFFECTUNE_DISABLE_APP_AUTO_START__ = false;
+    window.electronIntegration = { isElectron: true, isElectronEnvironment: () => true };
+    window.electronAPI.loadConfig = async () => ({ success: true, config: { startupView: 'library' } });
+
+    const configuredResult = await mod.autoStartApplication({
+      windowRef: window,
+      AppClass: FakeApp,
+      firstLaunchPromise: Promise.resolve(false),
+      startHeartbeat: page => calls.push(['configuredHeartbeat', page]),
+      async startApplicationFn(options) {
+        options.windowRef.isFirstLaunch = false;
+        await options.loadInitialConfigFn({ windowRef: options.windowRef, logger: console });
+        return 'configured';
+      }
+    });
+
+    assert.equal(configuredResult, 'configured');
+    assert.equal(window.appConfig.startupView, 'library');
+    assert.equal(window.electronIntegration.config.startupView, 'library');
+    assert.equal(document.body.className.split(/\s+/).includes('view-library'), true);
+
+    document.body.className = '';
+    window.appConfig = null;
+    window.electronIntegration = { isElectron: false, isElectronEnvironment: () => false };
+    window.localStorage = {
+      getItem(key) {
+        return key === 'effetune_app_config' ? JSON.stringify({ startupView: 'library' }) : null;
+      },
+      setItem() {}
+    };
+
+    const webConfiguredResult = await mod.autoStartApplication({
+      windowRef: window,
+      AppClass: FakeApp,
+      firstLaunchPromise: Promise.resolve(false),
+      startHeartbeat: page => calls.push(['webConfiguredHeartbeat', page]),
+      async startApplicationFn(options) {
+        options.windowRef.isFirstLaunch = false;
+        await options.loadInitialConfigFn({ windowRef: options.windowRef, logger: console });
+        return 'web-configured';
+      }
+    });
+
+    assert.equal(webConfiguredResult, 'web-configured');
+    assert.equal(window.appConfig.startupView, 'library');
+    assert.equal(window.electronIntegration.config.startupView, 'library');
+    assert.equal(document.body.className.split(/\s+/).includes('view-library'), true);
   });
 });

@@ -3,6 +3,9 @@
  * Manages media sources and audio connections
  * UNIFIED STATE MANAGEMENT: All state managed in StateManager only
  */
+import { readRiffInfoTagsFromBlob } from '../../library/metadata/riff-info.js';
+import { decodeLegacyMetadataBytes, repairLegacyMetadataMojibake } from '../../library/metadata/text-encoding.js';
+
 export class AudioContextManager {
   constructor(audioPlayer, audioManager) {
     this.audioPlayer = audioPlayer;
@@ -274,6 +277,59 @@ export class AudioContextManager {
     if (title && artist) return `${artist} - ${title}`;
     if (title) return title;
     return track?.name || '';
+  }
+
+  getMetadataRepairHints(referenceTexts = []) {
+    const cleanReferences = referenceTexts
+      .filter(value => typeof value === 'string')
+      .map(value => value.trim())
+      .filter(Boolean);
+    const navigatorRef = typeof navigator !== 'undefined' ? navigator : null;
+    const uiManager = typeof window !== 'undefined' ? window.uiManager : null;
+    return {
+      languagePreference: uiManager?.languagePreference || '',
+      language: uiManager?.userLanguage || '',
+      browserLanguage: navigatorRef?.language || '',
+      browserLanguages: Array.isArray(navigatorRef?.languages) ? navigatorRef.languages.slice(0, 8) : [],
+      referenceTexts: cleanReferences
+    };
+  }
+
+  normalizeMetadataTagText(value, referenceTexts = []) {
+    if (value === null || value === undefined) return '';
+    return repairLegacyMetadataMojibake(String(value), this.getMetadataRepairHints(referenceTexts)).trim();
+  }
+
+  createRiffInfoMetadataPromise(file) {
+    if (!this.shouldReadRiffInfoMetadata(file)) return null;
+    return this.readRiffInfoMetadata(file).catch(() => null);
+  }
+
+  shouldReadRiffInfoMetadata(file) {
+    return Boolean(
+      file &&
+      typeof file.name === 'string' &&
+      file.name.toLowerCase().endsWith('.wav') &&
+      typeof file.slice === 'function'
+    );
+  }
+
+  async readRiffInfoMetadata(file) {
+    const tags = await readRiffInfoTagsFromBlob(file);
+    if (!tags.length) return null;
+    const title = this.decodeRiffInfoText(tags, ['INAM', 'TITL'], [file.name]);
+    const referenceTexts = [title, file.name];
+    const artist = this.decodeRiffInfoText(tags, ['IART'], referenceTexts);
+    const album = this.decodeRiffInfoText(tags, ['IPRD', 'IRPD'], referenceTexts);
+    return title || artist || album ? { title, artist, album } : null;
+  }
+
+  decodeRiffInfoText(tags, ids, referenceTexts = []) {
+    const idSet = new Set(ids);
+    const tag = tags.find(item => idSet.has(String(item?.id || '').trim().toUpperCase()));
+    if (!tag) return '';
+    if (typeof tag.value === 'string') return this.normalizeMetadataTagText(tag.value, referenceTexts);
+    return decodeLegacyMetadataBytes(tag.data ?? tag.bytes ?? tag.value, this.getMetadataRepairHints(referenceTexts));
   }
 
   /**
@@ -970,38 +1026,59 @@ export class AudioContextManager {
    * Read ID3 tags from a file
    */
   readID3Tags(file, currentIndex, metadataRequest = null) {
+    const riffInfoPromise = this.createRiffInfoMetadataPromise(file);
+    const applyMetadata = (tags = {}, riffInfo = null) => {
+      if ((metadataRequest && !this.isActiveMetadataRequest(metadataRequest)) ||
+        currentIndex !== this.audioPlayer.stateManager.getCurrentTrackIndex()) {
+        return false;
+      }
+
+      const title = riffInfo?.title || this.normalizeMetadataTagText(tags.title || '', [file.name]);
+      const tagReferenceTexts = [title, file.name];
+      const artist = riffInfo?.artist || this.normalizeMetadataTagText(tags.artist || '', tagReferenceTexts);
+      const album = riffInfo?.album || this.normalizeMetadataTagText(tags.album || '', tagReferenceTexts);
+      const artworkUrl = this.createArtworkURL(tags.picture);
+      const displayText = title ? (artist ? `${artist} - ${title}` : title) : file.name;
+
+      this.updateState({
+        currentTrackName: displayText,
+        artworkUrl
+      }, 'ID3 metadata loaded');
+      if (this.audioPlayer.ui?.trackNameDisplay) {
+        this.audioPlayer.ui.trackNameDisplay.textContent = displayText;
+      }
+
+      this.updateMediaSessionWithTags(title || file.name, artist, album, artworkUrl);
+      return true;
+    };
+    const applyRiffInfoFallback = riffInfo => {
+      if (riffInfo && applyMetadata({}, riffInfo)) return;
+      this.fallbackToMediaSession(currentIndex, metadataRequest);
+    };
+
     if (window.jsmediatags) {
       window.jsmediatags.read(file, {
         onSuccess: (tag) => {
-          if ((metadataRequest && !this.isActiveMetadataRequest(metadataRequest)) ||
-            currentIndex !== this.audioPlayer.stateManager.getCurrentTrackIndex()) {
-            return;
+          const tags = tag.tags || {};
+          if (riffInfoPromise) {
+            riffInfoPromise.then(riffInfo => applyMetadata(tags, riffInfo));
+          } else {
+            applyMetadata(tags, null);
           }
-
-          const tags = tag.tags;
-          const title = tags.title || '';
-          const artist = tags.artist || '';
-          const album = tags.album || '';
-          const artworkUrl = this.createArtworkURL(tags.picture);
-          const displayText = title ? (artist ? `${artist} - ${title}` : title) : file.name;
-          
-          this.updateState({
-            currentTrackName: displayText,
-            artworkUrl
-          }, 'ID3 metadata loaded');
-          if (this.audioPlayer.ui?.trackNameDisplay) {
-            this.audioPlayer.ui.trackNameDisplay.textContent = displayText;
-          }
-          
-          this.updateMediaSessionWithTags(title || file.name, artist, album, artworkUrl);
         },
         onError: (error) => {
           if (error && error.type !== 'tagFormat') {
             console.warn('Error reading ID3 tags:', error);
           }
-          this.fallbackToMediaSession(currentIndex, metadataRequest);
+          if (riffInfoPromise) {
+            riffInfoPromise.then(applyRiffInfoFallback);
+          } else {
+            this.fallbackToMediaSession(currentIndex, metadataRequest);
+          }
         }
       });
+    } else if (riffInfoPromise) {
+      riffInfoPromise.then(applyRiffInfoFallback);
     } else {
       this.fallbackToMediaSession(currentIndex, metadataRequest);
     }
@@ -1027,9 +1104,10 @@ export class AudioContextManager {
               }
 
               const tags = tag.tags;
-              const title = tags.title || '';
-              const artist = tags.artist || '';
-              const album = tags.album || '';
+              const title = this.normalizeMetadataTagText(tags.title || '', [track.name]);
+              const tagReferenceTexts = [title, track.name];
+              const artist = this.normalizeMetadataTagText(tags.artist || '', tagReferenceTexts);
+              const album = this.normalizeMetadataTagText(tags.album || '', tagReferenceTexts);
               const artworkUrl = this.createArtworkURL(tags.picture);
               const displayText = title ? (artist ? `${artist} - ${title}` : title) : track.name;
               

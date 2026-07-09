@@ -59,6 +59,7 @@
 
   // Hints displayed when hovering over UI
   "ui.title.openMusic": "Open music files",
+  "ui.title.effectPipeline": "Effect Pipeline",
   "ui.title.openLibrary": "Music Library",
   "ui.title.sidebar": "Toggle effect list",
   "ui.title.searchEffects": "Search effects",
@@ -157,6 +158,7 @@
   "menu.view.resetZoom": "Reset Zoom",
   "menu.view.zoomIn": "Zoom In",
   "menu.view.zoomOut": "Zoom Out",
+  "menu.view.effectPipeline": "Effect Pipeline",
   "menu.view.musicLibrary": "Music Library",
   "menu.view.toggleFullscreen": "Toggle Fullscreen",
 
@@ -362,6 +364,9 @@
   "dialog.config.pipeline.default": "Default settings",
   "dialog.config.pipeline.last": "Settings from last exit",
   "dialog.config.pipeline.preset": "Specific preset",
+  "dialog.config.startupView": "Startup view:",
+  "dialog.config.startupView.effects": "Effect Pipeline (Default)",
+  "dialog.config.startupView.library": "Music Library",
   "dialog.config.language": "Language",
   "dialog.config.language.auto": "Auto (Browser)",
   "dialog.config.languageRestartNotice": "If you changed the language setting, please restart the app.",

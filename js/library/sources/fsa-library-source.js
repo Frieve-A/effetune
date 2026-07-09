@@ -1,6 +1,6 @@
 import { createFallbackDisplayName, getFileExtension, isSupportedAudioPath, normalizeRelativePath, stripExtension } from '../constants.js';
-import { createFallbackTrack } from '../metadata/metadata-mapper.js';
-import { repairLegacyMetadataMojibake } from '../metadata/text-encoding.js';
+import { createFallbackTrack, createTrackFromMetadata } from '../metadata/metadata-mapper.js';
+import { readRiffInfoTagsFromBlob } from '../metadata/riff-info.js';
 
 export class FsaLibrarySource {
   constructor(windowRef = globalThis.window) {
@@ -295,8 +295,11 @@ async function createTrackFromBrowserTags(windowRef, candidate, languageHints = 
     mtimeMs: candidate.mtimeMs,
     codec: ''
   };
-  const tags = await readBrowserTags(windowRef, candidate.file);
-  return tags ? applyBrowserTags(track, tags, languageHints) : track;
+  const [tags, riffInfoTags] = await Promise.all([
+    readBrowserTags(windowRef, candidate.file),
+    readRiffInfoTagsFromBlob(candidate.file).catch(() => [])
+  ]);
+  return tags || riffInfoTags.length ? applyBrowserTags(track, tags || {}, languageHints, riffInfoTags) : track;
 }
 
 function withoutRuntimeFile(candidate) {
@@ -382,44 +385,43 @@ function readBrowserTags(windowRef, file) {
   });
 }
 
-function applyBrowserTags(track, tags, languageHints = null) {
-  const picture = tags.picture && Array.isArray(tags.picture.data) ? tags.picture : null;
+function applyBrowserTags(track, tags, languageHints = null, riffInfoTags = []) {
+  const mappedTrack = createTrackFromMetadata(track, createMetadataFromBrowserTags(tags), track.addedAt || Date.now(), {
+    languageHints,
+    riffInfoTags
+  });
   return {
-    ...track,
-    title: stringTag(tags.title, languageHints) || track.title,
-    artist: stringTag(tags.artist, languageHints),
-    albumArtist: stringTag(tags.albumartist, languageHints) || stringTag(tags.albumArtist, languageHints) || stringTag(tags.artist, languageHints),
-    album: stringTag(tags.album, languageHints),
-    genre: Array.isArray(tags.genre) ? stringTag(tags.genre[0], languageHints) : stringTag(tags.genre, languageHints),
-    year: parseInteger(tags.year),
-    trackNo: parseFractionNumber(tags.track, languageHints).value,
-    trackOf: parseFractionNumber(tags.track, languageHints).total,
-    discNo: parseFractionNumber(tags.disk || tags.disc, languageHints).value,
-    discOf: parseFractionNumber(tags.disk || tags.disc, languageHints).total,
-    artworkBytes: picture ? Uint8Array.from(picture.data).buffer : null,
-    artworkMime: picture ? (stringTag(picture.format, languageHints) || 'application/octet-stream') : null,
-    artworkSourceKind: picture ? 'embedded' : null
+    ...mappedTrack,
+    file: track.file
   };
 }
 
-function stringTag(value, languageHints = null) {
-  if (value == null) return '';
-  return repairLegacyMetadataMojibake(String(value).trim(), languageHints);
+function createMetadataFromBrowserTags(tags = {}) {
+  const picture = tags.picture && Array.isArray(tags.picture.data) ? tags.picture : null;
+  return {
+    common: {
+      title: tags.title,
+      artist: tags.artist,
+      artists: tags.artist ? [tags.artist] : undefined,
+      albumartist: tags.albumartist || tags.albumArtist,
+      album: tags.album,
+      genre: Array.isArray(tags.genre) ? tags.genre : (tags.genre ? [tags.genre] : undefined),
+      year: parseInteger(tags.year),
+      track: tags.track,
+      disk: tags.disk || tags.disc,
+      picture: picture ? [{
+        format: picture.format,
+        data: Uint8Array.from(picture.data)
+      }] : undefined
+    },
+    format: {},
+    native: {}
+  };
 }
 
 function parseInteger(value) {
   const number = Number.parseInt(value, 10);
   return Number.isFinite(number) ? number : null;
-}
-
-function parseFractionNumber(value, languageHints = null) {
-  const text = stringTag(value, languageHints);
-  if (!text) return { value: null, total: null };
-  const [valueText, totalText] = text.split('/');
-  return {
-    value: parseInteger(valueText),
-    total: parseInteger(totalText)
-  };
 }
 
 function sameMtime(a, b) {
