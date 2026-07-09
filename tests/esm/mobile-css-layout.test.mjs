@@ -165,25 +165,96 @@ test('mobile player keeps scrolling inside the player pane', () => {
   assert.match(playerViewRule, /overflow:\s*hidden;/);
   assert.match(audioPlayerRule, /min-height:\s*0;/);
   assert.match(audioPlayerRule, /max-height:\s*100%;/);
+  assert.match(audioPlayerRule, /align-items:\s*stretch;/);
+  assert.match(audioPlayerRule, /align-content:\s*start;/);
   assert.match(audioPlayerRule, /overflow-y:\s*auto;/);
 });
 
-test('mobile player places the primary play pause control below secondary buttons', () => {
+test('mobile player places the queue list below the primary play pause control', () => {
   const css = readCss('../../effetune-mobile.css');
+  const audioPlayerRule = getRule(css, 'body.layout-mobile .audio-player');
   const controlsRule = getRule(css, 'body.layout-mobile .player-controls');
+  const controlsItemRule = getRule(css, 'body.layout-mobile .player-controls > *');
 
+  assert.match(
+    audioPlayerRule,
+    /grid-template-columns:\s*minmax\(0,\s*1fr\);/,
+    'mobile player should provide the outer single-column layout'
+  );
+  assert.match(
+    audioPlayerRule,
+    /grid-template-rows:\s*auto\s*auto\s*auto\s*auto;/,
+    'mobile player should reserve an outer row for the control cluster'
+  );
+  assert.match(
+    audioPlayerRule,
+    /"title"\s*"artwork"\s*"track"\s*"controls"/,
+    'mobile player should keep the control cluster in one outer grid area'
+  );
+  for (const [selector, area] of [
+    ['body.layout-mobile .audio-player h2', 'title'],
+    ['body.layout-mobile .player-artwork', 'artwork'],
+    ['body.layout-mobile .track-name-container', 'track']
+  ]) {
+    assert.match(getRule(css, selector), new RegExp(`grid-area:\\s*${area};`), `${selector} should use the ${area} grid area`);
+  }
+  const trackContainerRule = getRule(css, 'body.layout-mobile .track-name-container');
+  assert.match(trackContainerRule, /display:\s*block;/);
+  assert.match(trackContainerRule, /min-width:\s*0;/);
+  assert.match(trackContainerRule, /max-width:\s*100%;/);
+  assert.match(trackContainerRule, /min-height:\s*0;/);
+  assert.match(trackContainerRule, /overflow:\s*hidden;/);
+  assert.match(trackContainerRule, /margin:\s*0;/);
+
+  const trackNameRule = getRule(css, 'body.layout-mobile .track-name {');
+  assert.match(trackNameRule, /display:\s*block;/);
+  assert.match(trackNameRule, /width:\s*100%;/);
+  assert.match(trackNameRule, /white-space:\s*normal;/);
+  assert.match(trackNameRule, /overflow-wrap:\s*anywhere;/);
+  assert.match(trackNameRule, /line-height:\s*1\.35;/);
+
+  assert.match(
+    controlsRule,
+    /grid-area:\s*controls;/,
+    'mobile player controls should occupy the outer controls grid area'
+  );
+  assert.match(
+    controlsRule,
+    /display:\s*grid;/,
+    'mobile player controls should remain a real box with measurable layout'
+  );
   assert.match(
     controlsRule,
     /grid-template-columns:\s*repeat\(6,\s*minmax\(0,\s*1fr\)\);/,
-    'mobile player controls should reserve a six-column secondary button row'
+    'mobile player controls should own the six-column control grid'
   );
   assert.match(
     controlsRule,
-    /"shuffle previous stop next repeat close"\s*"play play play play play play"/,
-    'mobile player controls should place play/pause on its own lower centered row'
+    /grid-template-rows:\s*var\(--et-mobile-control-height\)\s*auto\s*48px\s*var\(--et-mobile-player-primary-button-size\)\s*auto;/,
+    'mobile player controls should reserve a real row for the primary play/pause button before the playlist'
   );
+  assert.match(
+    controlsRule,
+    /"shuffle previous stop next repeat close"\s*"play play play play play play"\s*"playlist playlist playlist playlist playlist playlist"/,
+    'mobile player controls should place the playlist after the primary play/pause row in the same grid'
+  );
+  assert.match(
+    controlsRule,
+    /align-items:\s*stretch;/,
+    'mobile player controls should not center oversized grid items into neighboring rows'
+  );
+  assert.match(controlsRule, /min-height:\s*0;/);
+  assert.match(controlsRule, /width:\s*100%;/);
+  assert.match(controlsRule, /max-width:\s*100%;/);
+  assert.match(controlsRule, /box-sizing:\s*border-box;/);
+  assert.doesNotMatch(controlsRule, /display:\s*contents;/);
+  assert.match(controlsItemRule, /min-width:\s*0;/);
+  assert.match(controlsItemRule, /min-height:\s*0;/);
+  assert.match(controlsItemRule, /box-sizing:\s*border-box;/);
 
   for (const [selector, area] of [
+    ['body.layout-mobile .seek-bar', 'seek'],
+    ['body.layout-mobile .time-display', 'time'],
     ['body.layout-mobile .shuffle-button', 'shuffle'],
     ['body.layout-mobile .prev-button', 'previous'],
     ['body.layout-mobile .stop-button', 'stop'],
@@ -193,15 +264,40 @@ test('mobile player places the primary play pause control below secondary button
   ]) {
     assert.match(getRule(css, selector), new RegExp(`grid-area:\\s*${area};`), `${selector} should use the ${area} grid area`);
   }
+  const seekBarRule = getRule(css, 'body.layout-mobile .seek-bar');
+  assert.match(seekBarRule, /align-self:\s*center;/);
+  assert.match(seekBarRule, /display:\s*block;/);
+  assert.match(seekBarRule, /width:\s*100%;/);
+  assert.match(seekBarRule, /min-width:\s*0;/);
+  assert.match(seekBarRule, /max-width:\s*100%;/);
+  assert.match(seekBarRule, /margin:\s*0;/);
+  assert.match(seekBarRule, /box-sizing:\s*border-box;/);
+
+  const timeDisplayRule = getRule(css, 'body.layout-mobile .time-display');
+  assert.match(timeDisplayRule, /align-self:\s*center;/);
+
+  const playerButtonRule = getRule(css, 'body.layout-mobile .player-button');
+  assert.match(playerButtonRule, /align-self:\s*center;/);
 
   const playPauseRule = getRule(css, 'body.layout-mobile .play-pause-button');
   assert.match(playPauseRule, /grid-area:\s*play;/);
   assert.match(playPauseRule, /justify-self:\s*center;/);
+  assert.match(playPauseRule, /align-self:\s*center;/);
   assert.match(playPauseRule, /width:\s*var\(--et-mobile-player-primary-button-size\);/);
   assert.match(playPauseRule, /height:\s*var\(--et-mobile-player-primary-button-size\);/);
+  assert.match(playPauseRule, /min-height:\s*var\(--et-mobile-player-primary-button-size\);/);
   assert.match(playPauseRule, /border-radius:\s*50%;/);
 
   const iconRule = getRule(css, 'body.layout-mobile .play-pause-button svg');
   assert.match(iconRule, /width:\s*24px;/);
   assert.match(iconRule, /height:\s*24px;/);
+
+  const playlistRule = getRule(css, 'body.layout-mobile .player-playlist');
+  assert.match(playlistRule, /grid-area:\s*playlist;/);
+  assert.match(playlistRule, /align-self:\s*stretch;/);
+  assert.match(playlistRule, /height:\s*100%;/);
+  assert.match(playlistRule, /min-height:\s*220px;/);
+  assert.match(playlistRule, /overflow-y:\s*auto;/);
+  assert.match(playlistRule, /box-sizing:\s*border-box;/);
+  assert.doesNotMatch(playlistRule, /margin-top:/);
 });

@@ -106,6 +106,34 @@ function createArtworkProcessor() {
   };
 }
 
+function createTimerHarness(calls) {
+  const timers = new Map();
+  let nextTimerId = 1;
+  return {
+    timers,
+    globals: {
+      setTimeout(callback, delay) {
+        const id = nextTimerId++;
+        timers.set(id, callback);
+        calls.push(['setTimeout', delay, id]);
+        return id;
+      },
+      clearTimeout(id) {
+        timers.delete(id);
+        calls.push(['clearTimeout', id]);
+      }
+    },
+    run(id) {
+      const callback = timers.get(id);
+      timers.delete(id);
+      callback?.();
+    },
+    lastId() {
+      return [...timers.keys()].at(-1);
+    }
+  };
+}
+
 test('scan controller strips runtime-only objects before indexing and storage', async () => {
   const database = new LibraryDatabase({ indexedDB: null });
   await database.open();
@@ -3272,6 +3300,75 @@ test('playback bridge notifies without playback when every requested track is of
   await bridge.playTracks(['t_gone'], { startIndex: 0 });
 
   assert.deepEqual(calls, [['setError', 'status.libraryTracksSkippedOffline', false, { count: 1 }]]);
+});
+
+test('playback bridge clears offline skipped notifications after the toast delay', async () => {
+  const calls = [];
+  const uiManager = {
+    errorDisplay: { textContent: '' },
+    setError(message, isError, params) {
+      this.errorDisplay.textContent = `${params.count} skipped`;
+      calls.push(['setError', message, isError, params]);
+    },
+    clearError() {
+      this.errorDisplay.textContent = '';
+      calls.push(['clearError']);
+    }
+  };
+  const timers = createTimerHarness(calls);
+
+  await withGlobals(timers.globals, async () => {
+    const bridge = new PlaybackBridge({ index: {}, source: {}, uiManager, getFolders: () => [] });
+
+    bridge.notifyOfflineExcluded(1);
+    const firstTimerId = timers.lastId();
+    bridge.notifyOfflineExcluded(2);
+    const secondTimerId = timers.lastId();
+
+    assert.equal(timers.timers.has(firstTimerId), false);
+    assert.equal(timers.timers.has(secondTimerId), true);
+
+    timers.run(secondTimerId);
+  });
+
+  assert.deepEqual(calls, [
+    ['setError', 'status.libraryTracksSkippedOffline', false, { count: 1 }],
+    ['setTimeout', 3000, 1],
+    ['setError', 'status.libraryTracksSkippedOffline', false, { count: 2 }],
+    ['clearTimeout', 1],
+    ['setTimeout', 3000, 2],
+    ['clearError']
+  ]);
+});
+
+test('playback bridge does not clear a newer status with the offline skipped timer', async () => {
+  const calls = [];
+  const uiManager = {
+    errorDisplay: { textContent: '' },
+    setError(message, isError, params) {
+      this.errorDisplay.textContent = `${params.count} skipped`;
+      calls.push(['setError', message, isError, params]);
+    },
+    clearError() {
+      this.errorDisplay.textContent = '';
+      calls.push(['clearError']);
+    }
+  };
+  const timers = createTimerHarness(calls);
+
+  await withGlobals(timers.globals, async () => {
+    const bridge = new PlaybackBridge({ index: {}, source: {}, uiManager, getFolders: () => [] });
+
+    bridge.notifyOfflineExcluded(1);
+    const timerId = timers.lastId();
+    uiManager.errorDisplay.textContent = 'Another status';
+    timers.run(timerId);
+  });
+
+  assert.deepEqual(calls, [
+    ['setError', 'status.libraryTracksSkippedOffline', false, { count: 1 }],
+    ['setTimeout', 3000, 1]
+  ]);
 });
 
 test('playback bridge keeps the requested track when the player shuffle mode reorders the queue', async () => {

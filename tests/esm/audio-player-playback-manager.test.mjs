@@ -862,6 +862,13 @@ test('shuffle, repeat, seek, clear, and dispose update playback state consistent
     assert.equal(manager.transitionInProgress, false);
     manager.clear();
     assert.equal(manager.playlist.length, 0);
+    const clearUpdate = audioPlayer.calls.filter(call =>
+      call[0] === 'updateState' && call[2] === 'PlaybackManager clear'
+    ).at(-1);
+    assert.equal(clearUpdate[1].playlistLength, 0);
+    assert.deepEqual(clearUpdate[1].playlist, []);
+    assert.equal(clearUpdate[1].currentTrack, null);
+    assert.equal(clearUpdate[1].currentTrackIndex, 0);
     manager.dispose();
     assert.equal(documentRef.listeners.get('keydown').length, 0);
     manager.dispose();

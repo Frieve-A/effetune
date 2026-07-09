@@ -946,25 +946,36 @@ body.layout-mobile .parameter-row label {
     flex: 0 0 auto;
 }
 
+/* Mobile player uses an outer grid for major rows only; transport controls
+   and the queue are laid out together inside .player-controls below. */
 body.layout-mobile .audio-player {
     flex: 1 1 auto;
     display: grid;
-    grid-template-rows: auto auto auto auto auto;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto auto;
+    grid-template-areas:
+        "title"
+        "artwork"
+        "track"
+        "controls";
     gap: 16px;
+    align-items: stretch;
     min-height: 0;
     max-height: 100%;
     padding: 10px;
     margin: 0;
-    align-content: center;
+    align-content: start;
     overflow-y: auto;
 }
 
 body.layout-mobile .audio-player h2 {
+    grid-area: title;
     margin: 0;
     text-align: center;
 }
 
 body.layout-mobile .player-artwork {
+    grid-area: artwork;
     display: grid;
     place-items: center;
     width: min(68vw, 280px);
@@ -990,39 +1001,77 @@ body.layout-mobile .player-artwork-placeholder[hidden] {
 }
 
 body.layout-mobile .track-name-container {
+    grid-area: track;
+    display: block;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 0;
+    overflow: hidden;
     margin: 0;
     text-align: center;
 }
 
 body.layout-mobile .track-name {
+    display: block;
+    width: 100%;
     white-space: normal;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    line-height: 1.35;
     font-size: 18px;
 }
 
+/* Keep this as a real grid box. Stretch grid items so the playlist stays
+   inside its own row instead of centering upward over the play button. */
 body.layout-mobile .player-controls {
+    grid-area: controls;
     display: grid;
     grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-rows:
+        var(--et-mobile-control-height)
+        auto
+        48px
+        var(--et-mobile-player-primary-button-size)
+        auto;
     grid-template-areas:
         "seek seek seek seek seek seek"
         "time time time time time time"
         "shuffle previous stop next repeat close"
-        "play play play play play play";
+        "play play play play play play"
+        "playlist playlist playlist playlist playlist playlist";
     gap: 12px 8px;
-    align-items: center;
+    align-items: stretch;
+    width: 100%;
+    max-width: 100%;
+    min-height: 0;
+    box-sizing: border-box;
+}
+
+body.layout-mobile .player-controls > * {
+    min-width: 0;
+    min-height: 0;
+    box-sizing: border-box;
 }
 
 body.layout-mobile .seek-bar {
     grid-area: seek;
+    display: block;
+    align-self: center;
     width: 100%;
+    min-width: 0;
+    max-width: 100%;
     margin: 0;
+    box-sizing: border-box;
 }
 
 body.layout-mobile .time-display {
     grid-area: time;
+    align-self: center;
     min-width: 0;
 }
 
 body.layout-mobile .player-button {
+    align-self: center;
     width: 100%;
     height: 48px;
     min-width: 0;
@@ -1082,8 +1131,10 @@ body.layout-mobile .double-blind-test .dbt-testname-row .delete-preset-button sv
 body.layout-mobile .play-pause-button {
     grid-area: play;
     justify-self: center;
+    align-self: center;
     width: var(--et-mobile-player-primary-button-size);
     height: var(--et-mobile-player-primary-button-size);
+    min-height: var(--et-mobile-player-primary-button-size);
     border-radius: 50%;
     color: #ffffff;
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 38%), linear-gradient(180deg, #67b9ff, #3f8fe8);
@@ -1116,9 +1167,14 @@ body.layout-mobile .play-pause-button:disabled {
 }
 
 body.layout-mobile .player-playlist {
+    grid-area: playlist;
     display: block;
+    align-self: stretch;
+    height: 100%;
+    min-height: 220px;
     max-height: 28svh;
     overflow-y: auto;
+    box-sizing: border-box;
 }
 
 body.layout-mobile .player-playlist-item {

@@ -1040,9 +1040,16 @@ export class PlaybackManager {
     
     if (this.audioPlayer.stateManager) {
       this.audioPlayer.stateManager.updateState({
+        playlist: [],
+        playlistLength: 0,
+        currentTrack: null,
+        currentTrackIndex: 0,
+        currentTrackName: '',
+        artworkUrl: '',
         isPlaying: false,
         isPaused: false,
         isStopped: true,
+        currentTrackDuration: 0,
         currentTrackPosition: 0
       }, 'PlaybackManager clear');
     }

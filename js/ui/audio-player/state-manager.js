@@ -113,10 +113,16 @@ export class StateManager {
       }
     }
     
-    // Validate track index
-    if (this.state.currentTrackIndex < 0 || this.state.currentTrackIndex >= this.state.playlistLength) {
+    // Validate track index. Empty playlists use 0 as the default idle index and
+    // -1 as the teardown/no-current-track sentinel.
+    if (this.state.playlistLength > 0) {
+      if (this.state.currentTrackIndex < 0 || this.state.currentTrackIndex >= this.state.playlistLength) {
+        console.warn('[StateManager] Invalid track index:', this.state.currentTrackIndex, 'playlist length:', this.state.playlistLength);
+        this.state.currentTrackIndex = Math.max(0, Math.min(this.state.currentTrackIndex, this.state.playlistLength - 1));
+      }
+    } else if (this.state.currentTrackIndex < -1 || this.state.currentTrackIndex > 0) {
       console.warn('[StateManager] Invalid track index:', this.state.currentTrackIndex, 'playlist length:', this.state.playlistLength);
-      this.state.currentTrackIndex = Math.max(0, Math.min(this.state.currentTrackIndex, this.state.playlistLength - 1));
+      this.state.currentTrackIndex = this.state.currentTrackIndex < -1 ? -1 : 0;
     }
     
     // Validate repeat mode

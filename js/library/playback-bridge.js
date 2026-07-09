@@ -1,3 +1,5 @@
+const OFFLINE_NOTIFICATION_CLEAR_DELAY_MS = 3000;
+
 export class PlaybackBridge {
   constructor({ index, source, uiManager, getFolders }) {
     this.index = index;
@@ -5,6 +7,7 @@ export class PlaybackBridge {
     this.uiManager = uiManager;
     this.getFolders = getFolders;
     this.lastSnapshot = null;
+    this.offlineNotificationClearTimer = null;
   }
 
   async playTracks(trackIds, { startIndex = null, shuffle = false } = {}) {
@@ -81,9 +84,40 @@ export class PlaybackBridge {
   }
 
   notifyOfflineExcluded(count) {
-    if (count > 0) {
-      this.uiManager.setError?.('status.libraryTracksSkippedOffline', false, { count });
+    if (count <= 0 || typeof this.uiManager?.setError !== 'function') return;
+    this.uiManager.setError('status.libraryTracksSkippedOffline', false, { count });
+    this.scheduleOfflineNotificationClear();
+  }
+
+  scheduleOfflineNotificationClear() {
+    if (this.offlineNotificationClearTimer !== null && typeof clearTimeout === 'function') {
+      clearTimeout(this.offlineNotificationClearTimer);
     }
+    if (typeof setTimeout !== 'function' || typeof this.uiManager?.clearError !== 'function') {
+      this.offlineNotificationClearTimer = null;
+      return;
+    }
+
+    const expectedText = this.getCurrentStatusText();
+    const timer = setTimeout(() => {
+      if (this.offlineNotificationClearTimer !== timer) return;
+      this.offlineNotificationClearTimer = null;
+      if (
+        expectedText !== null &&
+        this.getCurrentStatusText() !== expectedText
+      ) {
+        return;
+      }
+      this.uiManager.clearError?.();
+    }, OFFLINE_NOTIFICATION_CLEAR_DELAY_MS);
+    this.offlineNotificationClearTimer = timer;
+    this.offlineNotificationClearTimer?.unref?.();
+  }
+
+  getCurrentStatusText() {
+    return this.uiManager?.stateManager?.errorDisplay?.textContent
+      ?? this.uiManager?.errorDisplay?.textContent
+      ?? null;
   }
 
   createQueueEntries(trackIds) {

@@ -13,6 +13,17 @@ async function withMutedConsole(method, callback) {
   }
 }
 
+async function withCapturedConsole(method, callback) {
+  const original = console[method];
+  const calls = [];
+  console[method] = (...args) => calls.push(args);
+  try {
+    return await callback(calls);
+  } finally {
+    console[method] = original;
+  }
+}
+
 function createStableStateManager() {
   const manager = new StateManager({});
   manager.state.playlist = [{ name: 'Stable' }];
@@ -77,6 +88,29 @@ test('StateManager validates playback state, track bounds, and enum values', asy
   });
   assert.equal(manager.state.isStopped, true);
   assert.equal(manager.state.currentTrackIndex, 0);
+
+  await withCapturedConsole('warn', async warnings => {
+    manager.updateState({
+      playlist: [],
+      playlistLength: 0,
+      currentTrackIndex: 0
+    }, 'empty_queue_default_index');
+    manager.updateState({
+      playlist: [],
+      playlistLength: 0,
+      currentTrackIndex: -1
+    }, 'empty_queue_teardown_index');
+
+    assert.equal(warnings.some(warning => warning[0] === '[StateManager] Invalid track index:'), false);
+
+    manager.updateState({
+      playlist: [],
+      playlistLength: 0,
+      currentTrackIndex: 4
+    }, 'empty_queue_invalid_positive_index');
+    assert.equal(manager.state.currentTrackIndex, 0);
+    assert.equal(warnings.some(warning => warning[0] === '[StateManager] Invalid track index:'), true);
+  });
 });
 
 test('StateManager records bounded history only for actual changes', () => {

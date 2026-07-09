@@ -195,11 +195,11 @@ function createDocument(calls, options = {}) {
         controls.appendChild(button);
       }
 
-      parent.appendChild(controls);
-
       const playlist = this.createElement('div');
       playlist.className = 'player-playlist';
-      parent.appendChild(playlist);
+      controls.appendChild(playlist);
+
+      parent.appendChild(controls);
     }
   };
 
@@ -263,6 +263,11 @@ function createStateManager(initialState, calls) {
         listeners.set(key, []);
       }
       listeners.get(key).push(listener);
+    },
+    removeListener(key, listener) {
+      calls.push(['removeListener', key]);
+      if (!listeners.has(key)) return;
+      listeners.set(key, listeners.get(key).filter(candidate => candidate !== listener));
     },
     getStateSnapshot() {
       calls.push(['getStateSnapshot']);
@@ -766,6 +771,7 @@ test('playlist display syncs active track and mobile tap starts playback', async
     const ui = new AudioPlayerUI(player);
     ui.createPlayerUI();
 
+    assert.equal(ui.playlistDisplay.parentNode.classList().includes('player-controls'), true);
     assert.equal(ui.playlistDisplay.children.length, 2);
     assert.match(ui.playlistDisplay.children[1].className, /active/);
 
@@ -891,8 +897,9 @@ test('library queue helpers notify now playing and save library queues as playli
 });
 
 test('interval management and removeUI clean up timers, DOM nodes, and references', async () => {
-  await withAudioPlayerGlobals({}, async ({ calls, documentRef, timers }) => {
-    const ui = new AudioPlayerUI(createAudioPlayer(calls));
+  await withAudioPlayerGlobals({}, async ({ calls, documentRef, frames, timers }) => {
+    const player = createAudioPlayer(calls);
+    const ui = new AudioPlayerUI(player);
     const container = ui.createPlayerUI();
     const firstInterval = ui.updateInterval;
 
@@ -913,6 +920,17 @@ test('interval management and removeUI clean up timers, DOM nodes, and reference
     assert.equal(ui.updateInterval, null);
 
     ui.removeUI();
+    const frameCountAfterRemove = frames.length;
+    const warningCountAfterRemove = calls.filter(call =>
+      call[0] === 'warn' && call[1].includes('Time display')
+    ).length;
+    player.stateManager.emit('currentTrackPosition', 1);
+    player.stateManager.emit('isStopped', true);
+    assert.equal(frames.length, frameCountAfterRemove);
+    assert.equal(calls.filter(call =>
+      call[0] === 'warn' && call[1].includes('Time display')
+    ).length, warningCountAfterRemove);
+    assert.equal(calls.filter(call => call[0] === 'removeListener').length, 11);
     assert.equal(documentRef.body.children.includes(container), false);
     assert.equal(ui.container, null);
     assert.equal(ui.trackNameDisplay, null);

@@ -3,8 +3,12 @@ import fs from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
+function getEffetuneHtml() {
+  return fs.readFileSync(new URL('../../effetune.html', import.meta.url), 'utf8');
+}
+
 function getEarlyStartupViewScript() {
-  const html = fs.readFileSync(new URL('../../effetune.html', import.meta.url), 'utf8');
+  const html = getEffetuneHtml();
   const markerIndex = html.indexOf('Apply the Web startup view preference');
   assert.notEqual(markerIndex, -1, 'Missing early startup view script marker');
   const scriptStart = html.lastIndexOf('<script>', markerIndex);
@@ -66,4 +70,18 @@ test('effetune.html applies the Web library startup class before the app module 
   assert.deepEqual(electronRun.calls, []);
 
   assert.equal(runEarlyStartupViewScript({ throwOnStorage: true }).classes.has('view-library'), false);
+});
+
+test('effetune.html permits blob artwork duplication fetches in connect-src', () => {
+  const html = getEffetuneHtml();
+  const cspMatch = html.match(/<meta\s+[^>]*http-equiv="Content-Security-Policy"[^>]*content="([^"]+)"/);
+  assert.ok(cspMatch, 'Missing Content-Security-Policy meta tag');
+
+  const connectSrc = cspMatch[1]
+    .split(';')
+    .map(part => part.trim())
+    .find(part => part.startsWith('connect-src '));
+
+  assert.ok(connectSrc, 'Missing connect-src directive');
+  assert.equal(connectSrc.split(/\s+/).includes('blob:'), true);
 });

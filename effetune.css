@@ -1470,6 +1470,7 @@ body.layout-mobile .plugin-parameter-ui .parameter-row:has(> input[type="number"
 
 .player-playlist {
     display: none;
+    min-height: 180px;
 }
 
 .player-playlist-item {

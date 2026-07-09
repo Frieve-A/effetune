@@ -6,8 +6,9 @@ lang: en
 
 # Version History
 
-### Version 2.0.0 (TBD, 2026)
+### Version 2.0.0 (Jul 10, 2026)
 - Added music file library function
+- Added no-input playback mode
 - Various minor improvements
 
 ### Version 1.67.0 (Jul 4, 2026)

@@ -1778,6 +1778,8 @@ export class AudioContextManager {
         });
       } else {
         this.updateState({
+          playlist: [],
+          playlistLength: 0,
           currentTrack: null,
           currentTrackIndex: -1,
           currentTrackName: '',
@@ -2446,6 +2448,8 @@ export class AudioContextManager {
       this.clearBufferMonitoring();
       
       this.updateState({
+        playlist: [],
+        playlistLength: 0,
         currentTrack: null,
         currentTrackIndex: -1,
         currentTrackName: '',

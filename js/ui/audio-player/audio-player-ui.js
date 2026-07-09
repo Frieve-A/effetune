@@ -40,6 +40,7 @@ export class AudioPlayerUI {
     this.libraryContextMenuCleanup = null;
     this.libraryContextMenuReturnFocus = null;
     this.updateInterval = null;
+    this.isDisposed = false;
     
     // State change listeners
     this.stateListeners = [];
@@ -52,59 +53,77 @@ export class AudioPlayerUI {
    * Initialize state monitoring for automatic UI updates
    */
   initStateMonitoring() {
-    if (!this.audioPlayer.stateManager) return;
+    const stateManager = this.audioPlayer.stateManager;
+    if (!stateManager || this.stateListeners.length > 0) return;
+
+    const addStateListener = (key, callback) => {
+      stateManager.addListener(key, callback);
+      this.stateListeners.push({ key, callback });
+    };
     
     // Listen to all state changes
-    this.audioPlayer.stateManager.addListener('*', (newValue, key, source) => {
+    addStateListener('*', (newValue, key, source) => {
       this.handleStateChange(key, newValue, source);
     });
     
     // Listen to specific state changes
-    this.audioPlayer.stateManager.addListener('currentTrack', (track) => {
+    addStateListener('currentTrack', (track) => {
       this.updateTrackDisplay(track);
       this.notifyLibraryNowPlaying(track);
     });
 
-    this.audioPlayer.stateManager.addListener('currentTrackName', () => {
+    addStateListener('currentTrackName', () => {
       this.updateTrackDisplay();
     });
 
-    this.audioPlayer.stateManager.addListener('artworkUrl', (artworkUrl) => {
+    addStateListener('artworkUrl', (artworkUrl) => {
       this.updateArtwork(artworkUrl);
     });
 
-    this.audioPlayer.stateManager.addListener('playlist', () => {
+    addStateListener('playlist', () => {
       this.updatePlaylistDisplay();
       this.notifyLibraryNowPlaying();
     });
 
-    this.audioPlayer.stateManager.addListener('currentTrackIndex', () => {
+    addStateListener('currentTrackIndex', () => {
       this.updatePlaylistDisplay();
       this.notifyLibraryNowPlaying();
     });
     
-    this.audioPlayer.stateManager.addListener('currentTrackPosition', (position) => {
+    addStateListener('currentTrackPosition', (position) => {
       requestAnimationFrame(() => {
-        this.updateTimeDisplay();
+        if (!this.isDisposed) {
+          this.updateTimeDisplay();
+        }
       });
     });
     
-    this.audioPlayer.stateManager.addListener('currentTrackDuration', (duration) => {
+    addStateListener('currentTrackDuration', (duration) => {
       this.updateTimeDisplay();
     });
     
-    this.audioPlayer.stateManager.addListener('isPlaying', (isPlaying) => {
+    addStateListener('isPlaying', (isPlaying) => {
       this.updatePlayPauseButton();
     });
     
-    this.audioPlayer.stateManager.addListener('isPaused', (isPaused) => {
+    addStateListener('isPaused', (isPaused) => {
       this.updatePlayPauseButton();
     });
     
-    this.audioPlayer.stateManager.addListener('isStopped', (isStopped) => {
+    addStateListener('isStopped', (isStopped) => {
       this.updateTimeDisplay();
       this.updatePlayPauseButton();
     });
+  }
+
+  removeStateListeners() {
+    const stateManager = this.audioPlayer?.stateManager;
+    if (stateManager?.removeListener) {
+      this.stateListeners.forEach(({ key, callback }) => {
+        stateManager.removeListener(key, callback);
+      });
+    }
+    this.stateListeners = [];
   }
   
   /**
@@ -118,6 +137,9 @@ export class AudioPlayerUI {
    * Create the player UI
    */
   createPlayerUI() {
+    this.isDisposed = false;
+    this.initStateMonitoring();
+
     // Create container
     const container = document.createElement('div');
     container.className = 'audio-player';
@@ -146,8 +168,8 @@ export class AudioPlayerUI {
         <button class="player-button repeat-button" title="${window.uiManager ? window.uiManager.t('ui.title.repeat') : 'Toggle repeat mode'}">${repeatIcon}</button>
         <button class="player-button shuffle-button" title="${window.uiManager ? window.uiManager.t('ui.title.shuffle') : 'Toggle shuffle'}">${ICON.shuffle}</button>
         <button class="player-button close-button" title="${window.uiManager ? window.uiManager.t('ui.title.closePlayer') : 'Close player'}">${ICON.close}</button>
+        <div class="player-playlist" aria-label="Playlist"></div>
       </div>
-      <div class="player-playlist" aria-label="Playlist"></div>
     `;
 
     // Store references to UI elements
@@ -715,6 +737,9 @@ export class AudioPlayerUI {
    */
   updateTimeDisplay() {
     if (!this.timeDisplay || !this.seekBar) {
+      if (this.isDisposed) {
+        return;
+      }
       console.warn('[AudioPlayerUI] Time display or seek bar not available');
       return;
     }
@@ -797,8 +822,10 @@ export class AudioPlayerUI {
    * Remove player UI from DOM
    */
   removeUI() {
+    this.isDisposed = true;
     this.stopUpdateInterval();
     this.closeLibraryContextMenu();
+    this.removeStateListeners();
     
     if (this.container && this.container.parentNode) {
       this.container.parentNode.removeChild(this.container);
