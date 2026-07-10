@@ -63,7 +63,9 @@ async function readNoticeFiles(packageRoot) {
 
   const notices = [];
   for (const name of noticeNames) {
-    const text = (await readFile(path.join(packageRoot, name), 'utf8')).trim();
+    const text = (await readFile(path.join(packageRoot, name), 'utf8'))
+      .replace(/\r\n?/g, '\n')
+      .trim();
     if (text) {
       notices.push({ name, text });
     }

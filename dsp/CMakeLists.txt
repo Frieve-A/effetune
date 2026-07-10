@@ -71,6 +71,10 @@ target_compile_definitions(
           $<$<CONFIG:Debug>:ET_ALLOCATION_GUARD=1>
           $<$<AND:$<CONFIG:Debug>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:ET_WRAP_MALLOC=1>
           $<$<BOOL:${BUILD_TESTING}>:ET_ENABLE_TEST_KERNEL=1>)
+target_link_options(
+  effetune_dsp_core
+  INTERFACE
+    $<$<AND:$<CONFIG:Debug>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-Wl,--wrap=malloc>)
 
 if(MSVC)
   target_compile_options(effetune_dsp_core PRIVATE /W4 /WX /GR-)
