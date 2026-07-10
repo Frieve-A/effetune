@@ -16,6 +16,7 @@ const explicit = [
   'plugins/plugins.txt'
 ];
 const allowedExtensions = new Set(['.js', '.mjs', '.css', '.json', '.json5', '.png', '.ico', '.jpg', '.jpeg', '.svg', '.txt', '.wasm', '.effetune_preset']);
+const binaryExtensions = new Set(['.ico', '.jpeg', '.jpg', '.png', '.wasm']);
 const excludedPathPatterns = [
   /^images\/screenshot(?:-[^/]+)?\.png$/,
   /^images\/ogp\.jpg$/,
@@ -56,7 +57,10 @@ function readPackageJson(root = defaultRoot) {
 function createPrecacheDigest(root, urls) {
   const hash = crypto.createHash('sha256');
   for (const relativePath of urls) {
-    const contents = fs.readFileSync(path.join(root, relativePath));
+    let contents = fs.readFileSync(path.join(root, relativePath));
+    if (!binaryExtensions.has(path.extname(relativePath).toLowerCase())) {
+      contents = Buffer.from(contents.toString('utf8').replace(/\r\n?/g, '\n'));
+    }
     hash.update(`${relativePath.length}:${relativePath}\n`);
     hash.update(`${contents.length}:`);
     hash.update(contents);

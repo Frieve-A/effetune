@@ -224,6 +224,31 @@ test('precache cache version changes when precached asset content changes', t =>
   assert.notEqual(second.body, first.body);
 });
 
+test('precache cache version ignores text line-ending differences', t => {
+  const root = createPrecacheFixture(t);
+  writeFixtureFile(root, 'js/app.js', 'const first = true;\nconst second = true;\n');
+  const lf = buildPrecacheSource({ root });
+
+  writeFixtureFile(root, 'js/app.js', 'const first = true;\r\nconst second = true;\r\n');
+  const crlf = buildPrecacheSource({ root });
+
+  assert.equal(crlf.digest, lf.digest);
+  assert.equal(crlf.cacheVersion, lf.cacheVersion);
+  assert.equal(crlf.body, lf.body);
+});
+
+test('precache cache version preserves binary byte differences', t => {
+  const root = createPrecacheFixture(t);
+  writeFixtureFile(root, 'images/icon.png', Buffer.from([0x0d, 0x0a]));
+  const crlf = buildPrecacheSource({ root });
+
+  writeFixtureFile(root, 'images/icon.png', Buffer.from([0x0a]));
+  const lf = buildPrecacheSource({ root });
+
+  assert.notEqual(lf.digest, crlf.digest);
+  assert.notEqual(lf.cacheVersion, crlf.cacheVersion);
+});
+
 test('precache check succeeds for fresh output and rejects stale output without rewriting it', t => {
   const root = createPrecacheFixture(t);
   const fixtureScript = path.join(root, 'scripts', 'generate-sw-precache.js');
