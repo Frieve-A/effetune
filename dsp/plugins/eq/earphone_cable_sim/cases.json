@@ -1,0 +1,55 @@
+{
+  "defaults": {
+    "sampleRate": 96000,
+    "blockSize": 64,
+    "channels": 2,
+    "channelMode": "stereo",
+    "frames": 2049
+  },
+  "cases": [
+    { "id": "default-impulse", "stimulus": "imp" },
+    { "id": "default-noise", "stimulus": "noise" },
+    {
+      "id": "all-resonances",
+      "stimulus": "noise",
+      "params": { "re1": true, "re2": true, "re3": true, "re4": true }
+    },
+    {
+      "id": "high-series-impedance",
+      "stimulus": "sq50",
+      "params": { "zo": 20, "rc": 2, "lc": 5, "lv": 2, "zb": 64, "re1": true, "re3": true }
+    },
+    {
+      "id": "minimum-model",
+      "stimulus": "noise",
+      "params": { "zo": 0, "rc": 0, "lc": 0, "lv": 0.01, "zb": 4, "rf0": 20, "rq0": 0.5, "rz0": 16 }
+    },
+    {
+      "id": "mono-odd-block",
+      "stimulus": "noise",
+      "channels": 1,
+      "channelMode": "mono",
+      "blockSize": 83,
+      "params": { "zo": 4, "re1": true, "re2": true }
+    },
+    {
+      "id": "all4",
+      "stimulus": "noise",
+      "channels": 4,
+      "channelMode": "all4",
+      "channel": "A",
+      "blockSize": 127,
+      "params": { "zo": 8, "rc": 1, "re2": true, "re4": true }
+    },
+    {
+      "id": "coefficient-crossfades",
+      "stimulus": "noise",
+      "frames": 6001,
+      "events": [
+        { "frame": 257, "params": { "zo": 6, "re1": true } },
+        { "frame": 2177, "params": { "re0": false, "re2": true, "lc": 3 } },
+        { "frame": 4099, "params": { "re0": true, "re1": false, "re2": false, "zo": 0.5, "lc": 0.5 } }
+      ]
+    }
+  ]
+}

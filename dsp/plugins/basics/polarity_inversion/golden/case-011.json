@@ -1,0 +1,24 @@
+{
+  "formatVersion": 1,
+  "type": "PolarityInversionPlugin",
+  "id": "single-frame-all-channels",
+  "stimulus": "fs",
+  "sampleRate": 48000,
+  "channels": 4,
+  "frameCount": 1,
+  "blockSize": 128,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 10,
+  "seed": "0xeffe7a54",
+  "params": {},
+  "events": [],
+  "tolerance": {
+    "abs": 1e-7,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "59df03444181f56e94839357b7646a41954909ac0f95768585d6fa968c9ff095",
+  "outputFloats": 4,
+  "byteLength": 16,
+  "binary": "case-011.f32"
+}

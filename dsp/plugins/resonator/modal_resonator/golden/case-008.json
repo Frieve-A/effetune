@@ -1,0 +1,62 @@
+{
+  "formatVersion": 1,
+  "type": "ModalResonatorPlugin",
+  "id": "mix-breakpoints-preserve-tail",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 777,
+  "blockSize": 101,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "rs": [
+      {
+        "en": true
+      },
+      {
+        "en": true
+      },
+      {
+        "en": false
+      },
+      {
+        "en": false
+      },
+      {
+        "en": false
+      }
+    ],
+    "mx": 25
+  },
+  "events": [
+    {
+      "frame": 37,
+      "params": {
+        "mx": 49
+      }
+    },
+    {
+      "frame": 259,
+      "params": {
+        "mx": 50
+      }
+    },
+    {
+      "frame": 515,
+      "params": {
+        "mx": 51
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "d41d6e2d1fb2fe87b01b55ec8c42bbd18ac79eb14d96e46c178614192c870b0b",
+  "outputFloats": 1554,
+  "byteLength": 6216,
+  "binary": "case-008.f32"
+}

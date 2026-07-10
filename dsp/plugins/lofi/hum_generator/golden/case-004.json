@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "HumGeneratorPlugin",
+  "id": "dirty-maximum-controls",
+  "stimulus": "noise",
+  "sampleRate": 192000,
+  "channels": 4,
+  "frameCount": 259,
+  "blockSize": 127,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "fr": 120,
+    "tp": "Dirty",
+    "hm": 100,
+    "tn": 20,
+    "in": 10,
+    "lv": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "166f1408c62448bb9fc5bea54cdc15192d8eacb04f807afa302c83b04de132ce",
+  "outputFloats": 1036,
+  "byteLength": 4144,
+  "binary": "case-004.f32"
+}

@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "TimeAlignmentPlugin",
+  "id": "one-millisecond",
+  "stimulus": "imp",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 259,
+  "blockSize": 63,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "dl": 1
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "6a03a46f3d7378bb3fa7964fe884151ee709f0cc27a5eed02ccd5e05385b1481",
+  "outputFloats": 518,
+  "byteLength": 2072,
+  "binary": "case-003.f32"
+}

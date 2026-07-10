@@ -1,0 +1,47 @@
+{
+  "formatVersion": 1,
+  "type": "MultibandSaturationPlugin",
+  "id": "fractional-band-controls",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 4201,
+  "blockSize": 95,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "f1": 731.25,
+    "f2": 6789.5,
+    "bands": [
+      {
+        "dr": 2.75,
+        "bs": -0.125,
+        "mx": 17.5,
+        "gn": -7.25
+      },
+      {
+        "dr": 4.125,
+        "bs": 0.0625,
+        "mx": 53.25,
+        "gn": 2.5
+      },
+      {
+        "dr": 7.5,
+        "bs": 0.225,
+        "mx": 88.75,
+        "gn": 9.125
+      }
+    ]
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00003,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "a57adcce343ecf7c73469f1b3484fdab809bc4caa712a567abdc9d85805141c4",
+  "outputFloats": 8402,
+  "byteLength": 33608,
+  "binary": "case-004.f32"
+}

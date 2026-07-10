@@ -1,0 +1,47 @@
+{
+  "formatVersion": 1,
+  "type": "MultibandSaturationPlugin",
+  "id": "32k-nyquist-minus-one-clamp",
+  "stimulus": "sweep",
+  "sampleRate": 32000,
+  "channels": 2,
+  "frameCount": 4001,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "f1": 2000,
+    "f2": 20000,
+    "bands": [
+      {
+        "dr": 1.5,
+        "bs": 0.1,
+        "mx": 100,
+        "gn": 0
+      },
+      {
+        "dr": 1.5,
+        "bs": 0.1,
+        "mx": 100,
+        "gn": 0
+      },
+      {
+        "dr": 1.5,
+        "bs": 0.1,
+        "mx": 100,
+        "gn": 0
+      }
+    ]
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00003,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "a57adcce343ecf7c73469f1b3484fdab809bc4caa712a567abdc9d85805141c4",
+  "outputFloats": 8002,
+  "byteLength": 32008,
+  "binary": "case-007.f32"
+}

@@ -1,0 +1,28 @@
+{
+  "formatVersion": 1,
+  "type": "ToneControlPlugin",
+  "id": "all-bands-opposed",
+  "stimulus": "noise",
+  "sampleRate": 44100,
+  "channels": 4,
+  "frameCount": 131,
+  "blockSize": 33,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "bs": 24,
+    "md": -24,
+    "tr": 24
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "594cab40e39d1332770bdf04b8898ad6f0f0bdb28fb9feab8e915038504ceaad",
+  "outputFloats": 524,
+  "byteLength": 2096,
+  "binary": "case-008.f32"
+}

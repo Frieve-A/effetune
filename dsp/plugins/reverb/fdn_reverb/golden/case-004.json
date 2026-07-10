@@ -1,0 +1,38 @@
+{
+  "formatVersion": 1,
+  "type": "FDNReverbPlugin",
+  "id": "density-five-boundary",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 20001,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "rt": 10,
+    "dt": 5,
+    "pd": 0,
+    "bd": 10,
+    "ds": 0,
+    "hd": 0,
+    "lc": 20,
+    "md": 0,
+    "mr": 0.3,
+    "df": 100,
+    "wm": 100,
+    "dm": 0,
+    "sw": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "1fb216d4d85041102b275b9621e435bdfa586c448be0fcf8f954a8117826252d",
+  "outputFloats": 40002,
+  "byteLength": 160008,
+  "binary": "case-004.f32"
+}

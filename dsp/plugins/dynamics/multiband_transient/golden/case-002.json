@@ -1,0 +1,56 @@
+{
+  "formatVersion": 1,
+  "type": "MultibandTransientPlugin",
+  "id": "minimum-times-cut",
+  "stimulus": "step",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 1033,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "f1": 20,
+    "f2": 200,
+    "bands": [
+      {
+        "fa": 0.1,
+        "fr": 1,
+        "sa": 1,
+        "sr": 50,
+        "gt": -24,
+        "gs": -24,
+        "sm": 0.1
+      },
+      {
+        "fa": 0.1,
+        "fr": 1,
+        "sa": 1,
+        "sr": 50,
+        "gt": -24,
+        "gs": -24,
+        "sm": 0.1
+      },
+      {
+        "fa": 0.1,
+        "fr": 1,
+        "sa": 1,
+        "sr": 50,
+        "gt": -24,
+        "gs": -24,
+        "sm": 0.1
+      }
+    ]
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00002,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "8ce5e9729b6d92d33faf8bfc9199d1cd148e30e6dcd03fbba60e55a4b91ee094",
+  "outputFloats": 2066,
+  "byteLength": 8264,
+  "binary": "case-002.f32"
+}

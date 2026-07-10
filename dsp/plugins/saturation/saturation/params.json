@@ -1,0 +1,43 @@
+{
+  "type": "SaturationPlugin",
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "fields": [
+    {
+      "name": "drive",
+      "key": "dr",
+      "kind": "float",
+      "min": 0,
+      "max": 10,
+      "default": 1.5
+    },
+    {
+      "name": "bias",
+      "key": "bs",
+      "kind": "float",
+      "min": -0.3,
+      "max": 0.3,
+      "default": 0.1
+    },
+    {
+      "name": "mix",
+      "key": "mx",
+      "kind": "float",
+      "min": 0,
+      "max": 100,
+      "default": 100,
+      "unit": "%"
+    },
+    {
+      "name": "gain",
+      "key": "gn",
+      "kind": "float",
+      "min": -18,
+      "max": 18,
+      "default": -2,
+      "unit": "dB"
+    }
+  ]
+}

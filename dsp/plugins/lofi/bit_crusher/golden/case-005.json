@@ -1,0 +1,30 @@
+{
+  "formatVersion": 1,
+  "type": "BitCrusherPlugin",
+  "id": "one-frame-dither-boundaries",
+  "stimulus": "noise",
+  "sampleRate": 192000,
+  "channels": 1,
+  "frameCount": 67,
+  "blockSize": 1,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "bd": 4,
+    "td": true,
+    "zf": 4000,
+    "be": 10,
+    "sd": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "3b195a5a241df26f51b7d75b422c3dd80b3cec6df6029342c228769fb516f7a3",
+  "outputFloats": 67,
+  "byteLength": 268,
+  "binary": "case-005.f32"
+}

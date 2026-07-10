@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "VolumePlugin",
+  "id": "default-sine",
+  "stimulus": "sin1k",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 12000,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "vl": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "e9fd5d0ac08f7fbb249cfb88ee4d75949c61a67c071c2b4c0512e32956c8f458",
+  "outputFloats": 24000,
+  "byteLength": 96000,
+  "binary": "case-002.f32"
+}

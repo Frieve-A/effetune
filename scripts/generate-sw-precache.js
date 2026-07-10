@@ -9,16 +9,18 @@ const explicit = [
   'effetune.css',
   'effetune-mobile.css',
   'effetune-library.css',
+  'features/effetune-benchmark.js',
   'manifest.json',
   'package.json',
   'sw.js',
   'plugins/plugins.txt'
 ];
-const allowedExtensions = new Set(['.js', '.mjs', '.css', '.json', '.json5', '.png', '.ico', '.jpg', '.jpeg', '.svg', '.txt', '.effetune_preset']);
+const allowedExtensions = new Set(['.js', '.mjs', '.css', '.json', '.json5', '.png', '.ico', '.jpg', '.jpeg', '.svg', '.txt', '.wasm', '.effetune_preset']);
 const excludedPathPatterns = [
   /^images\/screenshot(?:-[^/]+)?\.png$/,
   /^images\/ogp\.jpg$/,
-  /^images\/video_thumbnail\.jpg$/
+  /^images\/video_thumbnail\.jpg$/,
+  /^plugins\/dsp\/effetune-dsp\.debug\.wasm$/
 ];
 
 function shouldPrecache(relativePath) {
@@ -87,12 +89,39 @@ function generatePrecache({ root = defaultRoot, outputPath = path.join(root, 'sw
   return result;
 }
 
+function checkPrecache({ root = defaultRoot, outputPath = path.join(root, 'sw-precache.js') } = {}) {
+  const result = buildPrecacheSource({ root });
+  const actual = fs.existsSync(outputPath) ? fs.readFileSync(outputPath, 'utf8') : null;
+  if (actual !== result.body) {
+    const relativePath = path.relative(root, outputPath).replace(/\\/g, '/');
+    throw new Error(`${relativePath} is stale; run npm run assets:web`);
+  }
+  return result;
+}
+
 if (require.main === module) {
-  generatePrecache();
+  const args = process.argv.slice(2);
+  const unknown = args.filter(argument => argument !== '--check');
+  if (unknown.length > 0) {
+    console.error(`Unknown argument(s): ${unknown.join(', ')}`);
+    process.exitCode = 1;
+  } else {
+    try {
+      if (args.includes('--check')) {
+        checkPrecache();
+      } else {
+        generatePrecache();
+      }
+    } catch (error) {
+      console.error(error.message);
+      process.exitCode = 1;
+    }
+  }
 }
 
 module.exports = {
   buildPrecacheSource,
+  checkPrecache,
   collectPrecacheUrls,
   createPrecacheDigest,
   generatePrecache

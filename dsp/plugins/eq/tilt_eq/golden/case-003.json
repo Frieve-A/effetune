@@ -1,0 +1,27 @@
+{
+  "formatVersion": 1,
+  "type": "TiltEQPlugin",
+  "id": "minimum-pivot-negative",
+  "stimulus": "step",
+  "sampleRate": 44100,
+  "channels": 2,
+  "frameCount": 257,
+  "blockSize": 63,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "f0": 3,
+    "sl": -12
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "724d9b516ac2e3a882f3e16b7c94dd438eb1acf2dc50017254646beacddc2790",
+  "outputFloats": 514,
+  "byteLength": 2056,
+  "binary": "case-003.f32"
+}

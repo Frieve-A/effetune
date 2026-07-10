@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "type": "AutoLevelerPlugin",
+  "id": "stereo-96000-variable-block",
+  "stimulus": "sweep",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 1151,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "tg": -12,
+    "tw": 1500,
+    "mg": 9,
+    "ng": -24,
+    "at": 125,
+    "rt": 750,
+    "gt": -48
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00002,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "ccd1a8da9c67f43352c51551a49a31cce01fa129a10d25ec47e47bfe8230bb04",
+  "outputFloats": 2302,
+  "byteLength": 9208,
+  "binary": "case-006.f32"
+}

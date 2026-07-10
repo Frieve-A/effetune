@@ -1,0 +1,24 @@
+{
+  "formatVersion": 1,
+  "type": "PolarityInversionPlugin",
+  "id": "non-aligned-mono",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 1,
+  "frameCount": 513,
+  "blockSize": 64,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 8,
+  "seed": "0xeffe7a56",
+  "params": {},
+  "events": [],
+  "tolerance": {
+    "abs": 1e-7,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "59df03444181f56e94839357b7646a41954909ac0f95768585d6fa968c9ff095",
+  "outputFloats": 513,
+  "byteLength": 2052,
+  "binary": "case-009.f32"
+}

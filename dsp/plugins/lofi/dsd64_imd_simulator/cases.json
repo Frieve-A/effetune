@@ -1,0 +1,36 @@
+{
+  "defaults": {
+    "sampleRate": 96000,
+    "blockSize": 63,
+    "channels": 2,
+    "channelMode": "stereo",
+    "frames": 521,
+    "params": { "am": 24, "dw": 50, "ul": -30, "nc": 0, "an": 1.4, "eb": 20, "sc": 150, "st": 10.5, "nt": 25, "cs": 75, "hf": 0, "ot": 0 }
+  },
+  "cases": [
+    { "id": "default-imd", "stimulus": "sin1k" },
+    { "id": "unsupported-rate-dry-passthrough", "stimulus": "noise", "sampleRate": 48000, "channels": 4, "channelMode": "all4", "frames": 259, "blockSize": 65 },
+    { "id": "minimum-controls-at-lower-bound", "stimulus": "fs", "sampleRate": 88200, "channels": 1, "channelMode": "mono", "frames": 257, "blockSize": 1, "params": { "am": -40, "dw": 0, "ul": -48, "nc": -100, "an": 0, "eb": 0, "sc": 0, "st": 3, "nt": 0, "cs": 0, "hf": 0, "ot": -24 } },
+    { "id": "maximum-controls-four-channel", "stimulus": "noise", "sampleRate": 192000, "channels": 4, "channelMode": "all4", "frames": 263, "blockSize": 127, "params": { "am": 50, "dw": 100, "ul": -18, "nc": 100, "an": 10, "eb": 100, "sc": 200, "st": 14, "nt": 100, "cs": 100, "hf": 8, "ot": 12 } },
+    { "id": "dry-only-delayed-path", "stimulus": "step", "sampleRate": 96000, "channels": 4, "channelMode": "all4", "frames": 257, "blockSize": 31, "params": { "dw": 0, "ot": 6 } },
+    { "id": "attached-only", "stimulus": "sq50", "sampleRate": 176400, "channels": 1, "channelMode": "mono", "frames": 521, "blockSize": 65, "params": { "am": 36, "dw": 75, "ul": -24, "nc": -35, "an": 7.5, "eb": 0, "sc": 200, "st": 6.5, "nt": 80, "cs": 0, "hf": 2.5, "ot": -3 } },
+    { "id": "additive-and-cross", "stimulus": "sweep", "sampleRate": 96000, "channels": 2, "channelMode": "stereo", "frames": 1001, "blockSize": 128, "params": { "am": 18, "dw": 50, "ul": -36, "nc": 45, "an": 5, "eb": 100, "sc": 125, "st": 12, "nt": 60, "cs": 100, "hf": 6, "ot": 2 } },
+    {
+      "id": "coefficient-and-smoother-transitions",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "channels": 4,
+      "channelMode": "all4",
+      "frames": 777,
+      "blockSize": 64,
+      "events": [
+        { "frame": 31, "params": { "am": -12, "dw": 0, "ot": -6 } },
+        { "frame": 159, "params": { "ul": -18, "nc": -100, "nt": 100 } },
+        { "frame": 287, "params": { "st": 3, "hf": 8 } },
+        { "frame": 415, "params": { "an": 10, "eb": 100, "sc": 200, "cs": 100 } },
+        { "frame": 543, "params": { "am": 50, "dw": 100, "ot": 12 } },
+        { "frame": 671, "params": { "nc": 100, "nt": 0, "st": 14, "hf": 0 } }
+      ]
+    }
+  ]
+}

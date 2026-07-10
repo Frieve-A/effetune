@@ -1,0 +1,88 @@
+{
+  "formatVersion": 1,
+  "type": "ModalResonatorPlugin",
+  "id": "disabled-mode-freeze-resume",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 1,
+  "frameCount": 901,
+  "blockSize": 113,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "rs": [
+      {
+        "en": true
+      },
+      {
+        "en": false
+      },
+      {
+        "en": false
+      },
+      {
+        "en": false
+      },
+      {
+        "en": false
+      }
+    ],
+    "mx": 100
+  },
+  "events": [
+    {
+      "frame": 257,
+      "params": {
+        "rs": [
+          {
+            "en": false
+          },
+          {
+            "en": false
+          },
+          {
+            "en": false
+          },
+          {
+            "en": false
+          },
+          {
+            "en": false
+          }
+        ]
+      }
+    },
+    {
+      "frame": 521,
+      "params": {
+        "rs": [
+          {
+            "en": true
+          },
+          {
+            "en": false
+          },
+          {
+            "en": false
+          },
+          {
+            "en": false
+          },
+          {
+            "en": false
+          }
+        ]
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "d41d6e2d1fb2fe87b01b55ec8c42bbd18ac79eb14d96e46c178614192c870b0b",
+  "outputFloats": 901,
+  "byteLength": 3604,
+  "binary": "case-006.f32"
+}

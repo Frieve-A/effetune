@@ -1,0 +1,40 @@
+{
+  "formatVersion": 1,
+  "type": "SubSynthPlugin",
+  "id": "direct-first-to-second-order-topology-reset",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 4,
+  "frameCount": 521,
+  "blockSize": 64,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 10,
+  "seed": "0xeffe7a54",
+  "params": {
+    "sl": 137,
+    "dl": 83,
+    "slf": 173,
+    "sls": -6,
+    "shf": 17,
+    "shs": -12,
+    "dhf": 43,
+    "dhs": -18
+  },
+  "events": [
+    {
+      "frame": 211,
+      "params": {
+        "sls": -12
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "8436f585dbeb985ffe8bd8da5144bb86fb34001e136d98dc6e21fcab9c9ed3c8",
+  "outputFloats": 2084,
+  "byteLength": 8336,
+  "binary": "case-011.f32"
+}

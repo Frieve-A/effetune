@@ -1,0 +1,37 @@
+{
+  "formatVersion": 1,
+  "type": "DSD64IMDSimulatorPlugin",
+  "id": "unsupported-rate-dry-passthrough",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 4,
+  "frameCount": 259,
+  "blockSize": 65,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "am": 24,
+    "dw": 50,
+    "ul": -30,
+    "nc": 0,
+    "an": 1.4,
+    "eb": 20,
+    "sc": 150,
+    "st": 10.5,
+    "nt": 25,
+    "cs": 75,
+    "hf": 0,
+    "ot": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "c28ddc873d8e8dba67c03bcbcf99dd6bc7f1761ce6c15e5e7fc2dfdd7e5ca0d1",
+  "outputFloats": 1036,
+  "byteLength": 4144,
+  "binary": "case-002.f32"
+}

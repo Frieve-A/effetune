@@ -1,0 +1,55 @@
+{
+  "formatVersion": 1,
+  "type": "LoPassFilterPlugin",
+  "id": "non-aligned-transitions",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 4,
+  "frameCount": 259,
+  "blockSize": 64,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 8,
+  "seed": "0xeffe7a56",
+  "params": {
+    "fr": 36000,
+    "sl": -12
+  },
+  "events": [
+    {
+      "frame": 17,
+      "params": {
+        "fr": 1400,
+        "sl": -36
+      }
+    },
+    {
+      "frame": 66,
+      "params": {
+        "sl": 0
+      }
+    },
+    {
+      "frame": 129,
+      "params": {
+        "fr": 10,
+        "sl": -96
+      }
+    },
+    {
+      "frame": 194,
+      "params": {
+        "fr": 40000,
+        "sl": -24
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "3a75eb5ef72497dd61a7a11f15e96c9c820c08acc02cd66a8439d44494610ea4",
+  "outputFloats": 1036,
+  "byteLength": 4144,
+  "binary": "case-009.f32"
+}

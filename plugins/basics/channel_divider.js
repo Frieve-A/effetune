@@ -1,6 +1,10 @@
 // Channel Divider Plugin implementation
 // Divides input channels into frequency bands, routing them to separate output channels.
 // Reads channels 1-2, splits into 2-4 bands, routes each band to separate output channels.
+const CHANNEL_DIVIDER_CHANNEL_COUNT_FRAME = 9;
+const CHANNEL_DIVIDER_TELEMETRY_VERSION = 1;
+const CHANNEL_DIVIDER_CHANNEL_COUNT_BYTES = 4;
+
 class ChannelDividerPlugin extends PluginBase {
   constructor() {
     super("Channel Divider", "Split stereo signal into frequency bands and route to separate channels");
@@ -15,6 +19,10 @@ class ChannelDividerPlugin extends PluginBase {
 
     this.errorState = null;
     this.maxBands = 2; // Max bands allowed by bus config
+    this._dspTelemetryHub = null;
+    this._dspTelemetryTapId = null;
+    this._dspTelemetryUnsubscribe = null;
+    this._boundDspChannelCountTelemetry = frame => this.handleDspChannelCountTelemetry(frame);
 
     this.registerProcessor(`
       // Audio processing logic
@@ -360,6 +368,7 @@ class ChannelDividerPlugin extends PluginBase {
   }
 
   getParameters() {
+    this.ensureDspTelemetrySubscription();
     return {
       type: this.constructor.name, enabled: this.enabled,
       bc: this.bc, f1: this.f1, s1: this.s1,
@@ -890,9 +899,86 @@ class ChannelDividerPlugin extends PluginBase {
     return { b0: b0 / a0, b1: b1 / a0, b2: b2 / a0, a1: a1 / a0, a2: a2 / a0 };
   }
 
-  onMessage(message) {
-    if (message.type === 'processBuffer' && message.pluginId === this.id && message.measurements) {
-      const { channels } = message.measurements;
+  _setupMessageHandler() {
+    super._setupMessageHandler();
+    this.ensureDspTelemetrySubscription?.();
+  }
+
+  ensureDspTelemetrySubscription() {
+    const hub = window.dspTelemetryHub;
+    const tapId = this.id;
+    const validTapId = Number.isInteger(tapId) && tapId >= 0 && tapId <= 0xffffffff;
+    const validHub = hub && typeof hub.subscribe === 'function';
+    if (!validTapId || !validHub) {
+      if (this._dspTelemetryUnsubscribe &&
+          (hub !== this._dspTelemetryHub || tapId !== this._dspTelemetryTapId)) {
+        this.disposeDspTelemetrySubscription();
+      }
+      return false;
+    }
+    if (this._dspTelemetryUnsubscribe &&
+        hub === this._dspTelemetryHub && tapId === this._dspTelemetryTapId) {
+      return true;
+    }
+    this.disposeDspTelemetrySubscription();
+    try {
+      const unsubscribe = hub.subscribe(
+        tapId,
+        CHANNEL_DIVIDER_CHANNEL_COUNT_FRAME,
+        this._boundDspChannelCountTelemetry
+      );
+      if (typeof unsubscribe !== 'function') {
+        hub.unsubscribe?.(
+          tapId,
+          CHANNEL_DIVIDER_CHANNEL_COUNT_FRAME,
+          this._boundDspChannelCountTelemetry
+        );
+        return false;
+      }
+      this._dspTelemetryHub = hub;
+      this._dspTelemetryTapId = tapId;
+      this._dspTelemetryUnsubscribe = unsubscribe;
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  disposeDspTelemetrySubscription() {
+    const unsubscribe = this._dspTelemetryUnsubscribe;
+    this._dspTelemetryHub = null;
+    this._dspTelemetryTapId = null;
+    this._dspTelemetryUnsubscribe = null;
+    if (!unsubscribe) return;
+    try {
+      unsubscribe();
+    } catch (error) {
+      // Ignore stale telemetry subscription cleanup failures.
+    }
+  }
+
+  parseDspChannelCountTelemetryFrame(frame) {
+    if (frame?.frameType !== CHANNEL_DIVIDER_CHANNEL_COUNT_FRAME ||
+        frame.formatVersion !== CHANNEL_DIVIDER_TELEMETRY_VERSION) {
+      return null;
+    }
+    const payload = frame.payload;
+    if (!payload || typeof payload.getUint32 !== 'function' ||
+        !Number.isInteger(payload.byteLength) ||
+        payload.byteLength !== CHANNEL_DIVIDER_CHANNEL_COUNT_BYTES) {
+      return null;
+    }
+    const channels = payload.getUint32(0, true);
+    return channels >= 1 && channels <= 8 ? channels : null;
+  }
+
+  handleDspChannelCountTelemetry(frame) {
+    const channels = this.parseDspChannelCountTelemetryFrame(frame);
+    if (channels === null || !this.enabled || !this._sectionEnabled) return;
+    this.applyMeasuredChannelCount(channels);
+  }
+
+  applyMeasuredChannelCount(channels) {
       let newMaxBands = 2; 
       let error = null;
 
@@ -921,10 +1007,17 @@ class ChannelDividerPlugin extends PluginBase {
         this._updateBandOptions(); 
         this.updateCrossoverControls(); 
       }
+  }
+
+  onMessage(message) {
+    this.ensureDspTelemetrySubscription();
+    if (message.type === 'processBuffer' && message.pluginId === this.id && message.measurements) {
+      this.applyMeasuredChannelCount(message.measurements.channels);
     }
   }
 
   cleanup() {
+    this.disposeDspTelemetrySubscription();
     this.graphDispose?.();
     this.graphDispose = null;
     super.cleanup();

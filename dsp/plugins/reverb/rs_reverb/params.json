@@ -1,0 +1,15 @@
+{
+  "type": "RSReverbPlugin",
+  "tolerance": { "abs": 0.0001, "policy": "per-sample" },
+  "fields": [
+    { "name": "preDelay", "key": "pd", "kind": "float", "min": 0, "max": 50, "default": 10, "unit": "ms" },
+    { "name": "roomSize", "key": "rs", "kind": "float", "min": 2, "max": 50, "default": 10, "unit": "m" },
+    { "name": "reverbTime", "key": "rt", "kind": "float", "min": 0.1, "max": 10, "default": 2.4, "unit": "s" },
+    { "name": "density", "key": "ds", "kind": "int", "min": 4, "max": 8, "default": 8, "unit": "lines" },
+    { "name": "diffusion", "key": "df", "kind": "float", "min": 0.2, "max": 0.8, "default": 0.7, "unit": "ratio" },
+    { "name": "damping", "key": "dp", "kind": "int", "min": 0, "max": 100, "default": 80, "unit": "%" },
+    { "name": "highDamp", "key": "hd", "kind": "int", "min": 1000, "max": 20000, "default": 2000, "unit": "Hz" },
+    { "name": "lowDamp", "key": "ld", "kind": "int", "min": 20, "max": 500, "default": 200, "unit": "Hz" },
+    { "name": "mix", "key": "mx", "kind": "int", "min": 0, "max": 100, "default": 16, "unit": "%" }
+  ]
+}

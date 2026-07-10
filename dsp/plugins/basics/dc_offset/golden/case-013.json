@@ -1,0 +1,51 @@
+{
+  "formatVersion": 1,
+  "type": "DCOffsetPlugin",
+  "id": "non-aligned-transitions",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 513,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 12,
+  "seed": "0xeffe7a52",
+  "params": {
+    "of": 0
+  },
+  "events": [
+    {
+      "frame": 63,
+      "params": {
+        "of": -1
+      }
+    },
+    {
+      "frame": 128,
+      "params": {
+        "of": 0.1
+      }
+    },
+    {
+      "frame": 257,
+      "params": {
+        "of": 1
+      }
+    },
+    {
+      "frame": 512,
+      "params": {
+        "of": 0
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "0a4f4dbed0c34f516ad78ad38876a83807b12fb07b525c83ca7ffa3fa773020f",
+  "outputFloats": 1026,
+  "byteLength": 4104,
+  "binary": "case-013.f32"
+}

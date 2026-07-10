@@ -1,0 +1,27 @@
+{
+  "formatVersion": 1,
+  "type": "SpectrogramPlugin",
+  "id": "four-channel-passthrough",
+  "stimulus": "fs",
+  "sampleRate": 48000,
+  "channels": 4,
+  "frameCount": 635,
+  "blockSize": 127,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "dr": -96,
+    "pt": 13
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "52bc8f91f442a2af524a84ebe6be6ce80dfa90d2c90883afae6b0c63a28cfc26",
+  "outputFloats": 2540,
+  "byteLength": 10160,
+  "binary": "case-005.f32"
+}

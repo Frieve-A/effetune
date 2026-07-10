@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "CombFilterPlugin",
+  "id": "default-feedforward-impulse",
+  "stimulus": "imp",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 259,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "ff": 440,
+    "fg": 0.4,
+    "dw": 50,
+    "ct": "ff"
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "e9f6a0d7de09798941f7e43816a8c2b9b78bdf096efb89fc34847065c648ef0d",
+  "outputFloats": 518,
+  "byteLength": 2072,
+  "binary": "case-001.f32"
+}

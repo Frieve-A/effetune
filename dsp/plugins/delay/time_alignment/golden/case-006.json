@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "TimeAlignmentPlugin",
+  "id": "one-frame-blocks",
+  "stimulus": "noise",
+  "sampleRate": 192000,
+  "channels": 1,
+  "frameCount": 257,
+  "blockSize": 1,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "dl": 0.75
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "6a03a46f3d7378bb3fa7964fe884151ee709f0cc27a5eed02ccd5e05385b1481",
+  "outputFloats": 257,
+  "byteLength": 1028,
+  "binary": "case-006.f32"
+}

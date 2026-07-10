@@ -1,0 +1,46 @@
+{
+  "formatVersion": 1,
+  "type": "MultibandBalancePlugin",
+  "id": "one-frame-blocks",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 257,
+  "blockSize": 1,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 8,
+  "seed": "0xeffe7a56",
+  "params": {
+    "f1": 100,
+    "f2": 500,
+    "f3": 2000,
+    "f4": 8000,
+    "bands": [
+      {
+        "balance": 0
+      },
+      {
+        "balance": 0
+      },
+      {
+        "balance": 0
+      },
+      {
+        "balance": 0
+      },
+      {
+        "balance": 0
+      }
+    ]
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00002,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "b50536f566a81ab4ba291f0b5e78e797960579d0ed164d4a5490dc678ae1cfea",
+  "outputFloats": 514,
+  "byteLength": 2056,
+  "binary": "case-009.f32"
+}

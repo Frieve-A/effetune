@@ -1,0 +1,83 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 64,
+    "channels": 2,
+    "channelMode": "stereo"
+  },
+  "cases": [
+    { "id": "default-noise", "stimulus": "noise", "frames": 1153 },
+    {
+      "id": "maximum-sag",
+      "stimulus": "sq50",
+      "frames": 1301,
+      "params": { "ss": 18, "ps": 0, "rs": 0 }
+    },
+    {
+      "id": "maximum-stability",
+      "stimulus": "fs",
+      "frames": 1027,
+      "params": { "ss": -18, "ps": 100, "rs": 100 }
+    },
+    {
+      "id": "shared-all4",
+      "stimulus": "noise",
+      "channels": 4,
+      "channelMode": "all4",
+      "channel": "A",
+      "frames": 1217,
+      "params": { "ss": 6.5, "ps": 73, "rs": 21, "mb": false }
+    },
+    {
+      "id": "monoblock-all4",
+      "stimulus": "sweep",
+      "channels": 4,
+      "channelMode": "all4",
+      "channel": "A",
+      "frames": 1193,
+      "params": { "ss": 9, "ps": 32, "rs": 68, "mb": true }
+    },
+    {
+      "id": "mode-toggle-reset",
+      "stimulus": "noise",
+      "frames": 1289,
+      "events": [
+        { "frame": 129, "params": { "mb": true } },
+        { "frame": 511, "params": { "mb": false } },
+        { "frame": 1000, "params": { "mb": true } }
+      ]
+    },
+    {
+      "id": "state-preserving-events",
+      "stimulus": "noise",
+      "frames": 1237,
+      "events": [
+        { "frame": 31, "params": { "ss": -6.5 } },
+        { "frame": 128, "params": { "ps": 91 } },
+        { "frame": 513, "params": { "rs": 7 } },
+        { "frame": 1001, "params": { "ss": 12, "ps": 14, "rs": 86 } }
+      ]
+    },
+    {
+      "id": "mono-44100-odd-block",
+      "stimulus": "sq50",
+      "sampleRate": 44100,
+      "blockSize": 83,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 997,
+      "params": { "ss": 4.2, "ps": 61, "rs": 37, "mb": true }
+    },
+    {
+      "id": "all4-192000-block-one",
+      "stimulus": "noise",
+      "sampleRate": 192000,
+      "blockSize": 1,
+      "channels": 4,
+      "channelMode": "all4",
+      "channel": "A",
+      "frames": 777,
+      "params": { "ss": 7.5, "ps": 44, "rs": 53, "mb": false }
+    }
+  ]
+}

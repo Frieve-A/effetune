@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "type": "TransientShaperPlugin",
+  "id": "stereo-96000-variable-block",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 1151,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "fa": 2,
+    "fr": 120,
+    "sa": 60,
+    "sr": 850,
+    "gt": -9,
+    "gs": 15,
+    "sm": 12
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "6902858a072d2c8c7dc161bc156839fea3b7989addf0db208150086cf96695a3",
+  "outputFloats": 2302,
+  "byteLength": 9208,
+  "binary": "case-006.f32"
+}

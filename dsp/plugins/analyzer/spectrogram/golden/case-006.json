@@ -1,0 +1,42 @@
+{
+  "formatVersion": 1,
+  "type": "SpectrogramPlugin",
+  "id": "parameter-transition",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 801,
+  "blockSize": 89,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "dr": -96,
+    "pt": 12
+  },
+  "events": [
+    {
+      "frame": 267,
+      "params": {
+        "dr": -120,
+        "pt": 8
+      }
+    },
+    {
+      "frame": 534,
+      "params": {
+        "dr": -60,
+        "pt": 14
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "52bc8f91f442a2af524a84ebe6be6ce80dfa90d2c90883afae6b0c63a28cfc26",
+  "outputFloats": 1602,
+  "byteLength": 6408,
+  "binary": "case-006.f32"
+}

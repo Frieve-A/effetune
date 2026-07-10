@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "DigitalErrorEmulatorPlugin",
+  "id": "rf-squelch-192k-long-duration",
+  "stimulus": "step",
+  "sampleRate": 192000,
+  "channels": 1,
+  "frameCount": 12001,
+  "blockSize": 127,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "be": -2,
+    "md": "9",
+    "rf": 48,
+    "wt": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "0d2ff76003f7af6a30569695d8b30aaee461e4e52e3d78077aa3f00854f6de3f",
+  "outputFloats": 12001,
+  "byteLength": 48004,
+  "binary": "case-006.f32"
+}

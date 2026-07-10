@@ -1,0 +1,125 @@
+{
+  "formatVersion": 1,
+  "type": "MultibandTransientPlugin",
+  "id": "object-band-transitions-preserve-state",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 1151,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "f1": 200,
+    "f2": 4000,
+    "bands": [
+      {
+        "fa": 5,
+        "fr": 50,
+        "sa": 25,
+        "sr": 250,
+        "gt": 6,
+        "gs": 0,
+        "sm": 5
+      },
+      {
+        "fa": 2,
+        "fr": 30,
+        "sa": 10,
+        "sr": 150,
+        "gt": 6,
+        "gs": 0,
+        "sm": 5
+      },
+      {
+        "fa": 0.5,
+        "fr": 20,
+        "sa": 5,
+        "sr": 100,
+        "gt": 6,
+        "gs": 0,
+        "sm": 5
+      }
+    ]
+  },
+  "events": [
+    {
+      "frame": 17,
+      "params": {
+        "bands": [
+          {
+            "fa": 0.1,
+            "fr": 200,
+            "sa": 100,
+            "sr": 50,
+            "gt": 24,
+            "gs": -24,
+            "sm": 0.1
+          },
+          {
+            "fa": 2,
+            "fr": 30,
+            "sa": 10,
+            "sr": 150,
+            "gt": 6,
+            "gs": 0,
+            "sm": 5
+          },
+          {
+            "fa": 0.5,
+            "fr": 20,
+            "sa": 5,
+            "sr": 100,
+            "gt": 6,
+            "gs": 0,
+            "sm": 5
+          }
+        ]
+      }
+    },
+    {
+      "frame": 641,
+      "params": {
+        "bands": [
+          {
+            "fa": 10,
+            "fr": 1,
+            "sa": 1,
+            "sr": 1000,
+            "gt": -24,
+            "gs": 24,
+            "sm": 20
+          },
+          {
+            "fa": 0.1,
+            "fr": 200,
+            "sa": 100,
+            "sr": 50,
+            "gt": 12,
+            "gs": -12,
+            "sm": 0.1
+          },
+          {
+            "fa": 5,
+            "fr": 50,
+            "sa": 25,
+            "sr": 250,
+            "gt": 0,
+            "gs": 0,
+            "sm": 5
+          }
+        ]
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00002,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "8ce5e9729b6d92d33faf8bfc9199d1cd148e30e6dcd03fbba60e55a4b91ee094",
+  "outputFloats": 2302,
+  "byteLength": 9208,
+  "binary": "case-007.f32"
+}

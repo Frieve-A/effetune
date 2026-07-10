@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "type": "OscilloscopePlugin",
+  "id": "normal-rising-trigger",
+  "stimulus": "sweep",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 12000,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "dt": 0.01,
+    "tm": "Normal",
+    "tl": 0.25,
+    "te": "Rising",
+    "ho": 0.0001,
+    "dl": 0,
+    "vo": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "461b4c813862374c3c0d80b8e9d7f079f90cd459bf2abfa451c297cee9203d43",
+  "outputFloats": 24000,
+  "byteLength": 96000,
+  "binary": "case-002.f32"
+}

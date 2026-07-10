@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "NarrowRangePlugin",
+  "id": "default-impulse",
+  "stimulus": "imp",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 259,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "hf": 60,
+    "hs": -24,
+    "lf": 5000,
+    "ls": -12
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "e523682522343e17ac48c76df33b816d238ebaef418bbb890d473ab5cab2f607",
+  "outputFloats": 518,
+  "byteLength": 2072,
+  "binary": "case-001.f32"
+}

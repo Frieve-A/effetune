@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "MSMatrixPlugin",
+  "id": "all-channels-bypass",
+  "stimulus": "fs",
+  "sampleRate": 48000,
+  "channels": 4,
+  "frameCount": 131,
+  "blockSize": 64,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "md": 0,
+    "mg": 18,
+    "sg": 18,
+    "sw": 1
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "ea13e207837045ba6ec2944e0f8436084a8c6629351def3bdbabb5d72f048e26",
+  "outputFloats": 524,
+  "byteLength": 2096,
+  "binary": "case-008.f32"
+}

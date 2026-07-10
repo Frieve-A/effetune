@@ -1,0 +1,98 @@
+{
+  "formatVersion": 1,
+  "type": "MultibandSaturationPlugin",
+  "id": "band-events-preserve-filter-state",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 4201,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 8,
+  "seed": "0xeffe7a56",
+  "params": {
+    "f1": 200,
+    "f2": 4000,
+    "bands": [
+      {
+        "dr": 1.5,
+        "bs": 0.1,
+        "mx": 100,
+        "gn": 0
+      },
+      {
+        "dr": 1.5,
+        "bs": 0.1,
+        "mx": 100,
+        "gn": 0
+      },
+      {
+        "dr": 1.5,
+        "bs": 0.1,
+        "mx": 100,
+        "gn": 0
+      }
+    ]
+  },
+  "events": [
+    {
+      "frame": 17,
+      "params": {
+        "bands": [
+          {
+            "dr": 10,
+            "bs": -0.3,
+            "mx": 100,
+            "gn": 18
+          },
+          {
+            "dr": 0,
+            "bs": 0,
+            "mx": 0,
+            "gn": 0
+          },
+          {
+            "dr": 3,
+            "bs": 0.3,
+            "mx": 50,
+            "gn": -18
+          }
+        ]
+      }
+    },
+    {
+      "frame": 2051,
+      "params": {
+        "bands": [
+          {
+            "dr": 1,
+            "bs": 0.2,
+            "mx": 25,
+            "gn": -6
+          },
+          {
+            "dr": 6,
+            "bs": -0.1,
+            "mx": 75,
+            "gn": 4
+          },
+          {
+            "dr": 10,
+            "bs": 0,
+            "mx": 100,
+            "gn": 12
+          }
+        ]
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00003,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "a57adcce343ecf7c73469f1b3484fdab809bc4caa712a567abdc9d85805141c4",
+  "outputFloats": 8402,
+  "byteLength": 33608,
+  "binary": "case-009.f32"
+}

@@ -1,0 +1,45 @@
+{
+  "type": "NarrowRangePlugin",
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "fields": [
+    {
+      "name": "highPassFrequency",
+      "key": "hf",
+      "kind": "float",
+      "min": 20,
+      "max": 4000,
+      "default": 60,
+      "unit": "Hz"
+    },
+    {
+      "name": "highPassSlope",
+      "key": "hs",
+      "kind": "int",
+      "min": -48,
+      "max": 0,
+      "default": -24,
+      "unit": "dB/oct"
+    },
+    {
+      "name": "lowPassFrequency",
+      "key": "lf",
+      "kind": "float",
+      "min": 200,
+      "max": 40000,
+      "default": 5000,
+      "unit": "Hz"
+    },
+    {
+      "name": "lowPassSlope",
+      "key": "ls",
+      "kind": "int",
+      "min": -48,
+      "max": 0,
+      "default": -12,
+      "unit": "dB/oct"
+    }
+  ]
+}

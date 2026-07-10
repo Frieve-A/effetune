@@ -1,0 +1,13 @@
+{
+  "type": "OscillatorPlugin",
+  "tolerance": { "abs": 0.00001, "policy": "per-sample" },
+  "fields": [
+    { "name": "frequency", "key": "fr", "kind": "float", "min": 20, "max": 96000, "default": 880, "unit": "Hz" },
+    { "name": "volume", "key": "vl", "kind": "float", "min": -96, "max": 0, "default": -12, "unit": "dB" },
+    { "name": "panning", "key": "pn", "kind": "float", "min": -1, "max": 1, "default": 0 },
+    { "name": "waveform", "key": "wf", "kind": "enum", "values": ["sine", "square", "triangle", "sawtooth", "white", "pink"], "default": "sine" },
+    { "name": "mode", "key": "md", "kind": "enum", "values": ["continuous", "pulsed"], "default": "continuous" },
+    { "name": "interval", "key": "it", "kind": "float", "min": 100, "max": 2000, "default": 500, "unit": "ms" },
+    { "name": "width", "key": "wd", "kind": "float", "min": 2, "max": 100, "default": 5, "unit": "ms" }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "formatVersion": 1,
+  "type": "MultibandSaturationPlugin",
+  "id": "maximum-asymmetric-saturation",
+  "stimulus": "fs",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 4101,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "f1": 20,
+    "f2": 20000,
+    "bands": [
+      {
+        "dr": 10,
+        "bs": -0.3,
+        "mx": 100,
+        "gn": 18
+      },
+      {
+        "dr": 10,
+        "bs": 0.3,
+        "mx": 100,
+        "gn": -18
+      },
+      {
+        "dr": 10,
+        "bs": 0,
+        "mx": 50,
+        "gn": 18
+      }
+    ]
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00003,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "a57adcce343ecf7c73469f1b3484fdab809bc4caa712a567abdc9d85805141c4",
+  "outputFloats": 8202,
+  "byteLength": 32808,
+  "binary": "case-003.f32"
+}

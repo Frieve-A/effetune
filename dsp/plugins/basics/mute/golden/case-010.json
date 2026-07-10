@@ -1,0 +1,24 @@
+{
+  "formatVersion": 1,
+  "type": "MutePlugin",
+  "id": "short-final-block-all-channels",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 4,
+  "frameCount": 257,
+  "blockSize": 63,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 9,
+  "seed": "0xeffe7a57",
+  "params": {},
+  "events": [],
+  "tolerance": {
+    "abs": 1e-7,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "144b0918ec84f804577d41fecdd634bc808fcb20c4805902ab5ad689e1e57e36",
+  "outputFloats": 1028,
+  "byteLength": 4112,
+  "binary": "case-010.f32"
+}

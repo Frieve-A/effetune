@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "type": "TransientShaperPlugin",
+  "id": "mono-44100-odd-block",
+  "stimulus": "sweep",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 997,
+  "blockSize": 83,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "fa": 0.7,
+    "fr": 33,
+    "sa": 17,
+    "sr": 431,
+    "gt": 12.5,
+    "gs": -6.5,
+    "sm": 2.3
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "6902858a072d2c8c7dc161bc156839fea3b7989addf0db208150086cf96695a3",
+  "outputFloats": 997,
+  "byteLength": 3988,
+  "binary": "case-005.f32"
+}

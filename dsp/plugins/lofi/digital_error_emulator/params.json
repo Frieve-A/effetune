@@ -1,0 +1,10 @@
+{
+  "type": "DigitalErrorEmulatorPlugin",
+  "tolerance": { "abs": 0.00001, "policy": "per-sample" },
+  "fields": [
+    { "name": "bitErrorRateExponent", "key": "be", "kind": "float", "min": -12, "max": -2, "default": -6 },
+    { "name": "mode", "key": "md", "kind": "enum", "values": ["1", "2A", "2B", "3A", "3B", "4", "5A", "5B", "5C", "6A", "6B", "8", "9", "10", "10A"], "default": "10A" },
+    { "name": "referenceFs", "key": "rf", "kind": "float", "min": 44.1, "max": 192, "default": 48, "unit": "kHz" },
+    { "name": "wetMix", "key": "wt", "kind": "float", "min": 0, "max": 100, "default": 100, "unit": "%" }
+  ]
+}

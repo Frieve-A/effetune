@@ -1,0 +1,53 @@
+{
+  "formatVersion": 1,
+  "type": "FiveBandDynamicEQ",
+  "id": "mono-expander-one-frame-blocks",
+  "stimulus": "sq50",
+  "sampleRate": 192000,
+  "channels": 1,
+  "frameCount": 193,
+  "blockSize": 1,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "bs": [
+      {
+        "en": true,
+        "ft": "ls",
+        "f": 80,
+        "q": 0.707,
+        "mg": 12,
+        "th": -30,
+        "r": 0.25,
+        "kn": 4,
+        "a": 0.5,
+        "rl": 20,
+        "scf": 100,
+        "scq": 1
+      },
+      {
+        "en": false
+      },
+      {
+        "en": false
+      },
+      {
+        "en": false
+      },
+      {
+        "en": false
+      }
+    ]
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "03bab089177565d05d79d2e23f09c982732a361ea9e1949df5535067343c5eb2",
+  "outputFloats": 193,
+  "byteLength": 772,
+  "binary": "case-004.f32"
+}

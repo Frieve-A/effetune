@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "StereoBlendPlugin",
+  "id": "all-channels-first-pair-only",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 4,
+  "frameCount": 131,
+  "blockSize": 64,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "stereo": 125
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "e46aa5dc32dd3605bf560c5296e7d35001a71df1b648a7ba0eaaf19870d00007",
+  "outputFloats": 524,
+  "byteLength": 2096,
+  "binary": "case-008.f32"
+}

@@ -1,0 +1,36 @@
+{
+  "formatVersion": 1,
+  "type": "DattorroPlateReverbPlugin",
+  "id": "odd-block-modulation",
+  "stimulus": "sq50",
+  "sampleRate": 44100,
+  "channels": 2,
+  "frameCount": 10001,
+  "blockSize": 73,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 8,
+  "seed": "0xeffe7a56",
+  "params": {
+    "pd": 23.7,
+    "bw": 0.9995,
+    "id1": 0.75,
+    "id2": 0.625,
+    "dc": 0.8,
+    "dd1": 0.7,
+    "dp": 0.35,
+    "md": 16,
+    "mr": 10,
+    "wm": 100,
+    "dm": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "bb119de680bebc08f6386a46611e53ae1f151703d18f094c81b903bf2a42fc38",
+  "outputFloats": 20002,
+  "byteLength": 80008,
+  "binary": "case-009.f32"
+}

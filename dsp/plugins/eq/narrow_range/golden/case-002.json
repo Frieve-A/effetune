@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "NarrowRangePlugin",
+  "id": "startup-seeds-silence",
+  "stimulus": "silence",
+  "sampleRate": 44100,
+  "channels": 2,
+  "frameCount": 131,
+  "blockSize": 63,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "hf": 60,
+    "hs": -24,
+    "lf": 5000,
+    "ls": -12
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "e523682522343e17ac48c76df33b816d238ebaef418bbb890d473ab5cab2f607",
+  "outputFloats": 262,
+  "byteLength": 1048,
+  "binary": "case-002.f32"
+}

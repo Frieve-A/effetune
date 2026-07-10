@@ -1,0 +1,41 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 128,
+    "channels": 2,
+    "channelMode": "stereo",
+    "frames": 2053,
+    "params": {}
+  },
+  "cases": [
+    { "id": "stereo-impulse-tail", "stimulus": "imp", "frames": 2053 },
+    {
+      "id": "four-channel-full-scale",
+      "stimulus": "fs",
+      "channels": 4,
+      "channelMode": "all4",
+      "channel": "A",
+      "frames": 1024
+    },
+    {
+      "id": "mono-variable-block",
+      "stimulus": "noise",
+      "sampleRate": 44100,
+      "channels": 1,
+      "channelMode": "mono",
+      "channel": "L",
+      "blockSize": 97,
+      "frames": 997
+    },
+    {
+      "id": "eight-channel-high-rate",
+      "stimulus": "step",
+      "sampleRate": 192000,
+      "channels": 8,
+      "channelMode": "all8",
+      "channel": "A",
+      "blockSize": 64,
+      "frames": 777
+    }
+  ]
+}

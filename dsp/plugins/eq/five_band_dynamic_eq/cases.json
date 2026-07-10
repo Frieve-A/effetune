@@ -1,0 +1,108 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 63,
+    "channels": 2,
+    "channelMode": "stereo",
+    "frames": 521,
+    "params": {
+      "bs": [
+        { "en": false, "ft": "pk", "f": 100, "q": 1, "mg": 6, "th": -18, "r": 2, "kn": 3, "a": 10, "rl": 100, "scf": 100, "scq": 1 },
+        { "en": false, "ft": "pk", "f": 300, "q": 1, "mg": 6, "th": -21, "r": 2, "kn": 3, "a": 10, "rl": 100, "scf": 300, "scq": 1 },
+        { "en": true, "ft": "pk", "f": 1000, "q": 1, "mg": 6, "th": -24, "r": 2, "kn": 3, "a": 10, "rl": 100, "scf": 1000, "scq": 1 },
+        { "en": false, "ft": "pk", "f": 3000, "q": 1, "mg": 6, "th": -27, "r": 2, "kn": 3, "a": 10, "rl": 100, "scf": 3000, "scq": 1 },
+        { "en": false, "ft": "pk", "f": 10000, "q": 1, "mg": 6, "th": -30, "r": 2, "kn": 3, "a": 10, "rl": 100, "scf": 10000, "scq": 1 }
+      ]
+    }
+  },
+  "cases": [
+    { "id": "default-middle-band", "stimulus": "sweep" },
+    {
+      "id": "all-bands-disabled-identity",
+      "stimulus": "noise",
+      "sampleRate": 44100,
+      "channels": 4,
+      "channelMode": "all4",
+      "frames": 259,
+      "blockSize": 65,
+      "params": { "bs": [{ "en": false }, { "en": false }, { "en": false }, { "en": false }, { "en": false }] }
+    },
+    {
+      "id": "five-bands-mixed-types-and-ratios",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "channels": 4,
+      "channelMode": "all4",
+      "frames": 1001,
+      "blockSize": 65,
+      "params": {
+        "bs": [
+          { "en": true, "ft": "ls", "f": 20, "q": 0.1, "mg": 24, "th": -60, "r": 0.1, "kn": 0, "a": 0.1, "rl": 1, "scf": 20, "scq": 0.1 },
+          { "en": true, "ft": "pk", "f": 200, "q": 10, "mg": 18, "th": -36, "r": 0.5, "kn": 10, "a": 1, "rl": 10, "scf": 300, "scq": 4 },
+          { "en": true, "ft": "pk", "f": 1000, "q": 2, "mg": 12, "th": -24, "r": 1, "kn": 3, "a": 10, "rl": 100, "scf": 1200, "scq": 2 },
+          { "en": true, "ft": "pk", "f": 5000, "q": 0.5, "mg": 9, "th": -12, "r": 4, "kn": 6, "a": 50, "rl": 500, "scf": 4000, "scq": 0.5 },
+          { "en": true, "ft": "hs", "f": 20000, "q": 10, "mg": 24, "th": 0, "r": 100, "kn": 10, "a": 100, "rl": 1000, "scf": 20000, "scq": 10 }
+        ]
+      }
+    },
+    {
+      "id": "mono-expander-one-frame-blocks",
+      "stimulus": "sq50",
+      "sampleRate": 192000,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 193,
+      "blockSize": 1,
+      "params": { "bs": [{ "en": true, "ft": "ls", "f": 80, "q": 0.707, "mg": 12, "th": -30, "r": 0.25, "kn": 4, "a": 0.5, "rl": 20, "scf": 100, "scq": 1 }, { "en": false }, { "en": false }, { "en": false }, { "en": false }] }
+    },
+    {
+      "id": "ratio-one-and-zero-max-gain",
+      "stimulus": "fs",
+      "sampleRate": 88200,
+      "frames": 263,
+      "blockSize": 127,
+      "params": { "bs": [{ "en": true, "ft": "pk", "f": 300, "q": 3, "mg": 0, "th": -60, "r": 1, "kn": 0, "a": 0.1, "rl": 1, "scf": 300, "scq": 3 }, { "en": false }, { "en": true, "ft": "hs", "f": 3000, "q": 0.5, "mg": 0, "th": 0, "r": 1, "kn": 10, "a": 100, "rl": 1000, "scf": 3000, "scq": 0.5 }, { "en": false }, { "en": false }] }
+    },
+    {
+      "id": "disabled-band-freeze-and-resume",
+      "stimulus": "sin1k",
+      "sampleRate": 96000,
+      "frames": 777,
+      "blockSize": 64,
+      "events": [
+        { "frame": 159, "params": { "bs": [{}, {}, { "en": false }, {}, {}] } },
+        { "frame": 351, "params": { "bs": [{}, {}, { "f": 7000, "q": 6, "th": -6, "a": 0.1, "en": false }, {}, {}] } },
+        { "frame": 543, "params": { "bs": [{}, {}, { "en": true, "ft": "pk", "f": 7000, "q": 6, "mg": 6, "th": -6, "r": 2, "kn": 3, "a": 0.1, "rl": 100, "scf": 1000, "scq": 1 }, {}, {}] } }
+      ]
+    },
+    {
+      "id": "coefficient-hold-quirk-then-gain-refresh",
+      "stimulus": "step",
+      "sampleRate": 48000,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 2001,
+      "blockSize": 128,
+      "params": { "bs": [{ "en": true, "ft": "pk", "f": 200, "q": 1, "mg": 18, "th": -48, "r": 8, "kn": 0, "a": 0.1, "rl": 10, "scf": 200, "scq": 1 }, { "en": false }, { "en": false }, { "en": false }, { "en": false }] },
+      "events": [
+        { "frame": 1000, "params": { "bs": [{ "en": true, "ft": "hs", "f": 8000, "q": 7, "mg": 18, "th": -48, "r": 8, "kn": 0, "a": 0.1, "rl": 10, "scf": 200, "scq": 1 }, {}, {}, {}, {}] } },
+        { "frame": 1500, "params": { "bs": [{ "en": true, "ft": "hs", "f": 8000, "q": 7, "mg": 18, "th": -6, "r": 8, "kn": 0, "a": 0.1, "rl": 10, "scf": 200, "scq": 1 }, {}, {}, {}, {}] } }
+      ]
+    },
+    {
+      "id": "odd-even-enabled-pointer-orientation-transitions",
+      "stimulus": "noise",
+      "sampleRate": 176400,
+      "channels": 4,
+      "channelMode": "all4",
+      "frames": 521,
+      "blockSize": 31,
+      "events": [
+        { "frame": 63, "params": { "bs": [{ "en": true }, {}, {}, {}, {}] } },
+        { "frame": 159, "params": { "bs": [{ "en": true }, { "en": true, "ft": "ls" }, {}, {}, {}] } },
+        { "frame": 255, "params": { "bs": [{ "en": true }, { "en": true, "ft": "ls" }, { "en": false }, { "en": true, "ft": "hs" }, {}] } },
+        { "frame": 351, "params": { "bs": [{ "en": false }, { "en": false, "ft": "ls" }, { "en": false }, { "en": false, "ft": "hs" }, { "en": true, "ft": "pk" }] } }
+      ]
+    }
+  ]
+}

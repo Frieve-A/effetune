@@ -1,0 +1,67 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 63,
+    "channels": 2,
+    "channelMode": "stereo",
+    "frames": 1001,
+    "params": { "sl": 100, "dl": 100, "slf": 160, "sls": -12, "shf": 5, "shs": -6, "dhf": 40, "dhs": 0 }
+  },
+  "cases": [
+    { "id": "default-rectified-sub", "stimulus": "sq50" },
+    { "id": "dry-only-identity", "stimulus": "fs", "sampleRate": 44100, "channels": 1, "channelMode": "mono", "frames": 259, "blockSize": 65, "params": { "sl": 0, "dl": 100, "slf": 5, "sls": 0, "shf": 5, "shs": 0, "dhf": 5, "dhs": 0 } },
+    { "id": "rectifier-only-maximum", "stimulus": "sq50", "sampleRate": 44100, "channels": 4, "channelMode": "all4", "frames": 263, "blockSize": 31, "params": { "sl": 200, "dl": 0, "slf": 400, "sls": 0, "shf": 400, "shs": 0, "dhf": 400, "dhs": 0 } },
+    { "id": "maximum-frequency-and-slope", "stimulus": "noise", "sampleRate": 192000, "channels": 4, "channelMode": "all4", "frames": 1003, "blockSize": 127, "params": { "sl": 200, "dl": 200, "slf": 400, "sls": -24, "shf": 400, "shs": -24, "dhf": 400, "dhs": -24 } },
+    { "id": "minimum-frequency-mixed-slopes", "stimulus": "step", "sampleRate": 96000, "frames": 1001, "blockSize": 65, "params": { "sl": 200, "dl": 200, "slf": 5, "sls": -18, "shf": 5, "shs": -12, "dhf": 5, "dhs": -6 } },
+    { "id": "double-state-odd-blocks", "stimulus": "sin1k", "sampleRate": 96000, "channels": 1, "channelMode": "mono", "frames": 257, "blockSize": 63, "params": { "sl": 137, "dl": 83, "slf": 173, "sls": -18, "shf": 17, "shs": -12, "dhf": 43, "dhs": -6 } },
+    { "id": "double-state-one-frame", "stimulus": "sin1k", "sampleRate": 96000, "channels": 1, "channelMode": "mono", "frames": 257, "blockSize": 1, "params": { "sl": 137, "dl": 83, "slf": 173, "sls": -18, "shf": 17, "shs": -12, "dhf": 43, "dhs": -6 } },
+    { "id": "one-frame-default", "stimulus": "noise", "sampleRate": 192000, "channels": 1, "channelMode": "mono", "frames": 67, "blockSize": 1 },
+    {
+      "id": "every-slope-with-state-rebuilds",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "channels": 4,
+      "channelMode": "all4",
+      "frames": 521,
+      "blockSize": 64,
+      "params": { "sl": 100, "dl": 100, "slf": 160, "sls": 0, "shf": 5, "shs": 0, "dhf": 40, "dhs": 0 },
+      "events": [
+        { "frame": 31, "params": { "sls": -6, "shs": -6, "dhs": -6 } },
+        { "frame": 97, "params": { "sls": 0, "shs": 0, "dhs": 0 } },
+        { "frame": 155, "params": { "sls": -12, "shs": -12, "dhs": -12 } },
+        { "frame": 223, "params": { "sls": 0, "shs": 0, "dhs": 0 } },
+        { "frame": 301, "params": { "sls": -18, "shs": -18, "dhs": -18 } },
+        { "frame": 379, "params": { "sls": 0, "shs": 0, "dhs": 0 } },
+        { "frame": 435, "params": { "sls": -24, "shs": -24, "dhs": -24 } }
+      ]
+    },
+    {
+      "id": "level-and-frequency-state-preserving-transitions",
+      "stimulus": "sq50",
+      "sampleRate": 96000,
+      "channels": 4,
+      "channelMode": "all4",
+      "frames": 1001,
+      "blockSize": 64,
+      "params": { "sl": 0, "dl": 0, "slf": 5, "sls": -12, "shf": 5, "shs": -6, "dhf": 5, "dhs": -18 },
+      "events": [
+        { "frame": 31, "params": { "sl": 200, "dl": 200 } },
+        { "frame": 321, "params": { "slf": 400, "shf": 400, "dhf": 400 } },
+        { "frame": 700, "params": { "sl": 100, "dl": 100, "slf": 160, "shf": 5, "dhf": 40 } }
+      ]
+    },
+    {
+      "id": "direct-first-to-second-order-topology-reset",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "channels": 4,
+      "channelMode": "all4",
+      "frames": 521,
+      "blockSize": 64,
+      "params": { "sl": 137, "dl": 83, "slf": 173, "sls": -6, "shf": 17, "shs": -12, "dhf": 43, "dhs": -18 },
+      "events": [
+        { "frame": 211, "params": { "sls": -12 } }
+      ]
+    }
+  ]
+}

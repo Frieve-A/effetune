@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "type": "TransientShaperPlugin",
+  "id": "neutral-gains",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 777,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "fa": 3.7,
+    "fr": 75,
+    "sa": 42,
+    "sr": 640,
+    "gt": 0,
+    "gs": 0,
+    "sm": 7.5
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "6902858a072d2c8c7dc161bc156839fea3b7989addf0db208150086cf96695a3",
+  "outputFloats": 1554,
+  "byteLength": 6216,
+  "binary": "case-004.f32"
+}

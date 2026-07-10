@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "PitchShifterPlugin",
+  "id": "all4-96k-flat-window",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 4,
+  "frameCount": 32001,
+  "blockSize": 127,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 8,
+  "seed": "0xeffe7a56",
+  "params": {
+    "ps": -4,
+    "ft": 0,
+    "ws": 80,
+    "xf": 20
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "18f30430161f9690ee99e70d58bf8580721ecb94fbe74c7c73466c6f9a07e894",
+  "outputFloats": 128004,
+  "byteLength": 512016,
+  "binary": "case-009.f32"
+}

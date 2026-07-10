@@ -3,6 +3,791 @@
 // Plugin implementations should be created in their own files under the plugins directory.
 // See docs/plugin-development.md for plugin development guidelines.
 
+// __ETDSP_BINDING_INJECT_START__
+const REQUIRED_FUNCTION_EXPORTS = [
+    'malloc',
+    'free',
+    'et_abi_version',
+    'et_build_flags',
+    'et_kernel_count',
+    'et_kernel_name',
+    'et_kernel_params_hash',
+    'et_kernel_param_bytes_capacity',
+    'et_engine_memory_required',
+    'et_engine_create',
+    'et_engine_destroy',
+    'et_engine_prepare',
+    'et_engine_reset',
+    'et_engine_set_telemetry_rate',
+    'et_instance_create',
+    'et_instance_destroy',
+    'et_instance_reset',
+    'et_instance_latency',
+    'et_instance_set_tap',
+    'et_instance_set_seed',
+    'et_instance_set_params',
+    'et_instance_set_param_bytes',
+    'et_instance_process',
+    'et_arena_combined_ptr',
+    'et_arena_bus_ptr',
+    'et_arena_scratch_ptr',
+    'et_scratch_ptr',
+    'et_telemetry_staging_ptr',
+    'et_telemetry_capacity',
+    'et_telemetry_read',
+    'et_pipeline_configure',
+    'et_pipeline_process'
+];
+
+const ET_OK = 0;
+const ET_ERR_STATE = -2;
+const SCRATCH_BYTES = 4096;
+const WASI_ERRNO_SUCCESS = 0;
+
+function defaultWarning(message) {
+    if (globalThis.console?.warn) {
+        globalThis.console.warn(message);
+    }
+}
+
+function defaultDebugWrite(message) {
+    if (globalThis.console?.error) {
+        globalThis.console.error(message);
+    }
+}
+
+function isArrayBuffer(value) {
+    return value instanceof ArrayBuffer;
+}
+
+function toUint8View(value, label) {
+    if (value instanceof Uint8Array) {
+        return value;
+    }
+    if (isArrayBuffer(value)) {
+        return new Uint8Array(value);
+    }
+    if (ArrayBuffer.isView(value)) {
+        return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+    }
+    throw new TypeError(`${label} must be an ArrayBuffer or typed-array view`);
+}
+
+function decodeUtf8(bytes) {
+    if (typeof TextDecoder === 'function') {
+        return new TextDecoder().decode(bytes);
+    }
+    let text = '';
+    for (let i = 0; i < bytes.length; i++) {
+        text += String.fromCharCode(bytes[i]);
+    }
+    return text;
+}
+
+function encodeUtf8(text) {
+    if (typeof TextEncoder === 'function') {
+        return new TextEncoder().encode(text);
+    }
+    const bytes = new Uint8Array(text.length);
+    for (let i = 0; i < text.length; i++) {
+        const code = text.charCodeAt(i);
+        if (code > 0x7f) {
+            throw new TypeError('A TextEncoder is required for non-ASCII DSP names');
+        }
+        bytes[i] = code;
+    }
+    return bytes;
+}
+
+function mergeImports(base, extra) {
+    if (!extra) return base;
+    const merged = { ...base };
+    for (const [moduleName, imports] of Object.entries(extra)) {
+        merged[moduleName] = { ...(base[moduleName] || {}), ...imports };
+    }
+    return merged;
+}
+
+class DspBindingError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = 'DspBindingError';
+    }
+}
+
+function createDspImports({
+    getMemory = () => null,
+    debug = false,
+    debugWrite = defaultDebugWrite,
+    onMemoryGrowth = () => {}
+} = {}) {
+    const fdWrite = (fd, iovPtr, iovCount, writtenPtr) => {
+        const memory = getMemory();
+        if (!memory?.buffer) return WASI_ERRNO_SUCCESS;
+
+        let written = 0;
+        const chunks = [];
+        try {
+            const data = new DataView(memory.buffer);
+            for (let i = 0; i < iovCount; i++) {
+                const entry = iovPtr + i * 8;
+                const ptr = data.getUint32(entry, true);
+                const length = data.getUint32(entry + 4, true);
+                if (ptr + length > memory.buffer.byteLength) break;
+                written += length;
+                if (debug && length > 0) {
+                    chunks.push(new Uint8Array(memory.buffer, ptr, length));
+                }
+            }
+            if (writtenPtr + 4 <= memory.buffer.byteLength) {
+                data.setUint32(writtenPtr, written, true);
+            }
+        } catch {
+            return WASI_ERRNO_SUCCESS;
+        }
+
+        if (debug && chunks.length > 0 && (fd === 1 || fd === 2)) {
+            const total = new Uint8Array(written);
+            let offset = 0;
+            for (const chunk of chunks) {
+                total.set(chunk, offset);
+                offset += chunk.length;
+            }
+            debugWrite(decodeUtf8(total));
+        }
+        return WASI_ERRNO_SUCCESS;
+    };
+
+    return {
+        wasi_snapshot_preview1: {
+            proc_exit(code) {
+                throw new DspBindingError(`WASM requested proc_exit(${code})`);
+            },
+            fd_write: fdWrite,
+            fd_close() {
+                return WASI_ERRNO_SUCCESS;
+            },
+            fd_seek() {
+                return WASI_ERRNO_SUCCESS;
+            }
+        },
+        env: {
+            emscripten_notify_memory_growth() {
+                onMemoryGrowth();
+            }
+        }
+    };
+}
+
+class DspEngineBinding {
+    constructor(instance, {
+        warning = defaultWarning,
+        onUnexpectedMemoryGrowth = null
+    } = {}) {
+        this.instance = instance?.instance || instance;
+        this.exports = this.instance?.exports;
+        this.warning = warning;
+        this.onUnexpectedMemoryGrowth = onUnexpectedMemoryGrowth;
+        this.engine = 0;
+        this.prepared = false;
+        this.failed = false;
+        this.memoryGrowthViolation = false;
+        this.lastTelemetryDroppedFrames = 0;
+        this._preparing = false;
+        this._memoryBuffer = null;
+        this._warned = new Set();
+        this._arenaViews = null;
+        this._arenaRanges = [];
+        this._maxChannels = 0;
+        this._maxFrames = 0;
+        this._telemetryStagingPtr = 0;
+        this._telemetryDroppedPtr = 0;
+        this._telemetryCapacity = 0;
+
+        this._validateExports();
+        this.memory = this.exports.memory;
+        this._refreshViews(true);
+    }
+
+    _validateExports() {
+        if (!this.exports || typeof this.exports !== 'object') {
+            throw new DspBindingError('WASM instance exports are unavailable');
+        }
+        if (!this.exports.memory?.buffer) {
+            throw new DspBindingError('Missing WASM export: memory');
+        }
+        for (const name of REQUIRED_FUNCTION_EXPORTS) {
+            if (typeof this.exports[name] !== 'function') {
+                throw new DspBindingError(`Missing WASM export: ${name}`);
+            }
+        }
+    }
+
+    _warnOnce(key, message) {
+        if (this._warned.has(key)) return;
+        this._warned.add(key);
+        this.warning(`[dsp-wasm] ${message}`);
+    }
+
+    _refreshViews(initial = false) {
+        const buffer = this.memory.buffer;
+        if (buffer === this._memoryBuffer) return false;
+
+        const unexpected = !initial && !this._preparing && this._memoryBuffer !== null;
+        this._memoryBuffer = buffer;
+        this.u8 = new Uint8Array(buffer);
+        this.f32 = new Float32Array(buffer);
+        this.dataView = new DataView(buffer);
+        this._arenaViews = null;
+        this._arenaRanges = [];
+
+        if (unexpected) {
+            this.memoryGrowthViolation = true;
+            this._warnOnce('memory-growth', 'memory.buffer changed outside engine preparation');
+            if (typeof this.onUnexpectedMemoryGrowth === 'function') {
+                this.onUnexpectedMemoryGrowth();
+            }
+        }
+        return true;
+    }
+
+    handleMemoryGrowthNotification() {
+        return this._refreshViews();
+    }
+
+    checkMemoryBuffer() {
+        const changed = this._refreshViews();
+        return changed && this.memoryGrowthViolation && !this._preparing;
+    }
+
+    _assertRange(ptr, byteLength, label) {
+        if (!Number.isInteger(ptr) || ptr < 0 || !Number.isInteger(byteLength) || byteLength < 0 ||
+            ptr > this._memoryBuffer.byteLength - byteLength) {
+            throw new DspBindingError(`${label} points outside WASM memory`);
+        }
+    }
+
+    _writeScratchString(text) {
+        if (!this.engine || !this.prepared) {
+            throw new DspBindingError('DSP engine has not been prepared');
+        }
+        const bytes = encodeUtf8(String(text));
+        if (bytes.length + 1 > SCRATCH_BYTES) {
+            throw new DspBindingError('DSP name exceeds the scratch-buffer capacity');
+        }
+        this._refreshViews();
+        const ptr = this.exports.et_scratch_ptr(this.engine) >>> 0;
+        this._assertRange(ptr, SCRATCH_BYTES, 'DSP scratch buffer');
+        this.u8.fill(0, ptr, ptr + bytes.length + 1);
+        this.u8.set(bytes, ptr);
+        return ptr;
+    }
+
+    getAbiVersion() {
+        return this.exports.et_abi_version() >>> 0;
+    }
+
+    getBuildFlags() {
+        return this.exports.et_build_flags() >>> 0;
+    }
+
+    getKernelCount() {
+        return this.exports.et_kernel_count() >>> 0;
+    }
+
+    getKernelName(index) {
+        if (!Number.isInteger(index) || index < 0 || index >= this.getKernelCount()) {
+            throw new RangeError('Kernel index is out of range');
+        }
+        this._refreshViews();
+        const useEngineScratch = Boolean(this.engine && this.prepared);
+        const ptr = useEngineScratch
+            ? this.exports.et_scratch_ptr(this.engine) >>> 0
+            : this.exports.malloc(SCRATCH_BYTES) >>> 0;
+        if (!ptr) throw new DspBindingError('Unable to allocate kernel-name staging memory');
+        try {
+            this._refreshViews();
+            this._assertRange(ptr, SCRATCH_BYTES, 'DSP kernel-name buffer');
+            const length = this.exports.et_kernel_name(index, ptr, SCRATCH_BYTES);
+            if (!Number.isInteger(length) || length < 0 || length >= SCRATCH_BYTES) {
+                throw new DspBindingError(`Invalid kernel name length for index ${index}`);
+            }
+            return decodeUtf8(this.u8.subarray(ptr, ptr + length));
+        } finally {
+            if (!useEngineScratch) this.exports.free(ptr);
+        }
+    }
+
+    getKernelParamsHash(index) {
+        if (!Number.isInteger(index) || index < 0 || index >= this.getKernelCount()) {
+            throw new RangeError('Kernel index is out of range');
+        }
+        return this.exports.et_kernel_params_hash(index) >>> 0;
+    }
+
+    getKernelParamBytesCapacity(index) {
+        if (!Number.isInteger(index) || index < 0 || index >= this.getKernelCount()) {
+            throw new RangeError('Kernel index is out of range');
+        }
+        return this.exports.et_kernel_param_bytes_capacity(index) >>> 0;
+    }
+
+    getCapabilities() {
+        const kernels = [];
+        const count = this.getKernelCount();
+        for (let index = 0; index < count; index++) {
+            kernels.push({
+                name: this.getKernelName(index),
+                hash: this.getKernelParamsHash(index),
+                byteCapacity: this.getKernelParamBytesCapacity(index),
+                kernelIndex: index
+            });
+        }
+        const buildFlags = this.getBuildFlags();
+        return {
+            abiVersion: this.getAbiVersion(),
+            buildFlags,
+            simd: (buildFlags & 1) !== 0,
+            kernels
+        };
+    }
+
+    memoryRequired(sampleRate, maxChannels, maxFrames, telemetryRingBytes) {
+        return this.exports.et_engine_memory_required(
+            sampleRate,
+            maxChannels,
+            maxFrames,
+            telemetryRingBytes
+        ) >>> 0;
+    }
+
+    createEngine() {
+        if (this.engine) {
+            throw new DspBindingError('DSP engine already exists');
+        }
+        const engine = this.exports.et_engine_create() >>> 0;
+        if (!engine) {
+            throw new DspBindingError('DSP engine creation failed');
+        }
+        this.engine = engine;
+        return engine;
+    }
+
+    destroyEngine() {
+        if (!this.engine) return;
+        const engine = this.engine;
+        this.engine = 0;
+        this.prepared = false;
+        this._arenaViews = null;
+        this._arenaRanges = [];
+        this.exports.et_engine_destroy(engine);
+        this._telemetryStagingPtr = 0;
+        this._telemetryDroppedPtr = 0;
+        this._telemetryCapacity = 0;
+    }
+
+    prepare(sampleRate, maxChannels, maxFrames, telemetryRingBytes) {
+        if (!this.engine) return ET_ERR_STATE;
+        this.prepared = false;
+        this._arenaViews = null;
+        this._arenaRanges = [];
+        this._telemetryStagingPtr = 0;
+        this._telemetryDroppedPtr = 0;
+        this._telemetryCapacity = 0;
+        this._preparing = true;
+        try {
+            const status = this.exports.et_engine_prepare(
+                this.engine,
+                sampleRate,
+                maxChannels,
+                maxFrames,
+                telemetryRingBytes
+            );
+            this._refreshViews();
+            if (status === ET_OK) {
+                this.prepared = true;
+                this._maxChannels = maxChannels;
+                this._maxFrames = maxFrames;
+                this._telemetryStagingPtr = this.exports.et_telemetry_staging_ptr(this.engine) >>> 0;
+                this._telemetryDroppedPtr = this.exports.et_scratch_ptr(this.engine) >>> 0;
+                this._telemetryCapacity = this.exports.et_telemetry_capacity(this.engine) >>> 0;
+                this._assertRange(
+                    this._telemetryStagingPtr,
+                    this._telemetryCapacity,
+                    'Telemetry staging buffer'
+                );
+                this._assertRange(this._telemetryDroppedPtr, 4, 'Telemetry drop counter');
+                this.getArenaViews();
+            }
+            return status;
+        } finally {
+            this._preparing = false;
+        }
+    }
+
+    reset() {
+        if (!this.engine) return ET_ERR_STATE;
+        return this.exports.et_engine_reset(this.engine);
+    }
+
+    setTelemetryRate(rateHz) {
+        if (!this.engine) return ET_ERR_STATE;
+        return this.exports.et_engine_set_telemetry_rate(this.engine, rateHz);
+    }
+
+    createInstance(typeName) {
+        if (!this.engine || !this.prepared) return 0;
+        const namePtr = this._writeScratchString(typeName);
+        this._preparing = true;
+        let instanceId = 0;
+        try {
+            instanceId = this.exports.et_instance_create(this.engine, namePtr) >>> 0;
+        } finally {
+            // Kernel prepare may grow memory at this control-rate lifecycle boundary.
+            this._refreshViews();
+            this._preparing = false;
+        }
+        if (instanceId) this.getArenaViews();
+        return instanceId;
+    }
+
+    destroyInstance(instanceId) {
+        if (!this.engine || !instanceId) return;
+        this.exports.et_instance_destroy(this.engine, instanceId);
+    }
+
+    resetInstance(instanceId) {
+        if (!this.engine) return ET_ERR_STATE;
+        return this.exports.et_instance_reset(this.engine, instanceId);
+    }
+
+    instanceLatency(instanceId) {
+        if (!this.engine) return 0;
+        return this.exports.et_instance_latency(this.engine, instanceId) >>> 0;
+    }
+
+    instanceSetTap(instanceId, tapId) {
+        if (!this.engine) return ET_ERR_STATE;
+        return this.exports.et_instance_set_tap(this.engine, instanceId, tapId >>> 0);
+    }
+
+    instanceSetSeed(instanceId, seedLow, seedHigh = 0) {
+        if (!this.engine) return ET_ERR_STATE;
+        return this.exports.et_instance_set_seed(
+            this.engine,
+            instanceId,
+            seedLow >>> 0,
+            seedHigh >>> 0
+        );
+    }
+
+    instanceSetParams(instanceId, packed, paramsHash, offsetFrames = 0) {
+        if (!this.engine || !this.prepared) return ET_ERR_STATE;
+        const values = packed instanceof Float32Array ? packed : Float32Array.from(packed || []);
+        const byteLength = values.length * Float32Array.BYTES_PER_ELEMENT;
+        if (byteLength > SCRATCH_BYTES) {
+            throw new DspBindingError('Packed parameters exceed the scratch-buffer capacity');
+        }
+        const ptr = this.exports.et_scratch_ptr(this.engine) >>> 0;
+        this._refreshViews();
+        this._assertRange(ptr, byteLength, 'Packed parameter block');
+        new Float32Array(this._memoryBuffer, ptr, values.length).set(values);
+        return this.exports.et_instance_set_params(
+            this.engine,
+            instanceId,
+            ptr,
+            values.length,
+            paramsHash >>> 0,
+            offsetFrames >>> 0
+        );
+    }
+
+    instanceSetParamBytes(instanceId, packed, paramsHash, offsetFrames = 0) {
+        if (!this.engine || !this.prepared) return ET_ERR_STATE;
+        const values = toUint8View(packed, 'Structured parameter block');
+        if (values.byteLength > SCRATCH_BYTES) {
+            throw new DspBindingError('Structured parameters exceed the scratch-buffer capacity');
+        }
+        const ptr = this.exports.et_scratch_ptr(this.engine) >>> 0;
+        this._refreshViews();
+        this._assertRange(ptr, values.byteLength, 'Structured parameter block');
+        new Uint8Array(this._memoryBuffer, ptr, values.byteLength).set(values);
+        return this.exports.et_instance_set_param_bytes(
+            this.engine,
+            instanceId,
+            ptr,
+            values.byteLength,
+            paramsHash >>> 0,
+            offsetFrames >>> 0
+        );
+    }
+
+    instanceProcess(instanceId, audioPtr, channelCount, frameCount, timeSeconds) {
+        if (!this.engine) return ET_ERR_STATE;
+        this._refreshViews();
+        return this.exports.et_instance_process(
+            this.engine,
+            instanceId,
+            audioPtr,
+            channelCount,
+            frameCount,
+            timeSeconds
+        );
+    }
+
+    arenaCombinedPtr() {
+        if (!this.engine) return 0;
+        return this.exports.et_arena_combined_ptr(this.engine) >>> 0;
+    }
+
+    arenaBusPtr(bus) {
+        if (!this.engine) return 0;
+        return this.exports.et_arena_bus_ptr(this.engine, bus) >>> 0;
+    }
+
+    arenaScratchPtr(which) {
+        if (!this.engine) return 0;
+        return this.exports.et_arena_scratch_ptr(this.engine, which) >>> 0;
+    }
+
+    scratchPtr() {
+        if (!this.engine) return 0;
+        return this.exports.et_scratch_ptr(this.engine) >>> 0;
+    }
+
+    _arenaView(ptr, floatLength, label) {
+        this._assertRange(ptr, floatLength * Float32Array.BYTES_PER_ELEMENT, label);
+        const view = new Float32Array(this._memoryBuffer, ptr, floatLength);
+        this._arenaRanges.push({
+            start: ptr,
+            end: ptr + view.byteLength
+        });
+        return view;
+    }
+
+    getArenaViews() {
+        if (!this.engine || !this.prepared) {
+            throw new DspBindingError('DSP engine must be prepared before adopting arena views');
+        }
+        this._refreshViews();
+        if (this._arenaViews?.buffer === this._memoryBuffer) return this._arenaViews;
+
+        const floatLength = this._maxChannels * this._maxFrames;
+        this._arenaRanges = [];
+        const combinedPtr = this.arenaCombinedPtr();
+        const combined = this._arenaView(combinedPtr, floatLength, 'Combined arena');
+        const buses = new Map([[0, combined]]);
+        const busOffsets = new Map([[0, combinedPtr]]);
+        for (let bus = 1; bus <= 4; bus++) {
+            const ptr = this.arenaBusPtr(bus);
+            buses.set(bus, this._arenaView(ptr, floatLength, `Bus ${bus} arena`));
+            busOffsets.set(bus, ptr);
+        }
+
+        const scratchNames = ['allChannels', 'mixing', 'stereo', 'mono'];
+        const scratchLengths = [
+            floatLength,
+            floatLength,
+            (this._maxChannels < 2 ? this._maxChannels : 2) * this._maxFrames,
+            this._maxFrames
+        ];
+        const scratch = {};
+        const scratchOffsets = {};
+        for (let which = 0; which < scratchNames.length; which++) {
+            const name = scratchNames[which];
+            const ptr = this.arenaScratchPtr(which);
+            scratch[name] = this._arenaView(ptr, scratchLengths[which], `${name} scratch arena`);
+            scratchOffsets[name] = ptr;
+        }
+
+        this._arenaViews = {
+            buffer: this._memoryBuffer,
+            combined,
+            buses,
+            scratch,
+            offsets: {
+                combined: combinedPtr,
+                buses: busOffsets,
+                scratch: scratchOffsets
+            }
+        };
+        return this._arenaViews;
+    }
+
+    pointerForArenaView(view) {
+        if (!ArrayBuffer.isView(view) || view.buffer !== this._memoryBuffer) return null;
+        const start = view.byteOffset;
+        const end = start + view.byteLength;
+        for (const range of this._arenaRanges) {
+            if (start >= range.start && end <= range.end) return start;
+        }
+        return null;
+    }
+
+    telemetryRead(target) {
+        if (!this.engine || !this.prepared) return 0;
+        const targetView = toUint8View(target, 'Telemetry packet');
+        const maxBytes = targetView.byteLength < this._telemetryCapacity
+            ? targetView.byteLength
+            : this._telemetryCapacity;
+        if (maxBytes === 0) return 0;
+
+        this._refreshViews();
+        this.dataView.setUint32(this._telemetryDroppedPtr, 0, true);
+        const bytes = this.exports.et_telemetry_read(
+            this.engine,
+            this._telemetryStagingPtr,
+            maxBytes,
+            this._telemetryDroppedPtr
+        );
+        this._refreshViews();
+        if (!Number.isInteger(bytes) || bytes < 0 || bytes > maxBytes) {
+            throw new DspBindingError('Telemetry reader returned an invalid byte count');
+        }
+        this.lastTelemetryDroppedFrames = this.dataView.getUint32(this._telemetryDroppedPtr, true);
+        if (bytes > 0) {
+            targetView.set(this.u8.subarray(this._telemetryStagingPtr, this._telemetryStagingPtr + bytes), 0);
+        }
+        return bytes;
+    }
+
+    pipelineConfigure(descriptor) {
+        if (!this.engine) return ET_ERR_STATE;
+        const bytes = toUint8View(descriptor, 'Pipeline descriptor');
+        const allocationSize = bytes.byteLength || 1;
+        const ptr = this.exports.malloc(allocationSize) >>> 0;
+        this._refreshViews();
+        if (!ptr) throw new DspBindingError('Unable to allocate pipeline descriptor staging memory');
+        try {
+            this._assertRange(ptr, allocationSize, 'Pipeline descriptor');
+            this.u8.set(bytes, ptr);
+            return this.exports.et_pipeline_configure(this.engine, ptr, bytes.byteLength);
+        } finally {
+            this.exports.free(ptr);
+        }
+    }
+
+    pipelineProcess(channelCount, frameCount, timeSeconds, masterBypass = false) {
+        if (!this.engine) return ET_ERR_STATE;
+        this._refreshViews();
+        return this.exports.et_pipeline_process(
+            this.engine,
+            channelCount,
+            frameCount,
+            timeSeconds,
+            masterBypass ? 1 : 0
+        );
+    }
+
+    markFailed() {
+        this.failed = true;
+    }
+
+    get live() {
+        return Boolean(this.engine && this.prepared && !this.failed && !this.memoryGrowthViolation);
+    }
+
+    close() {
+        this.destroyEngine();
+    }
+}
+
+async function instantiateDspBinding(moduleOrBytes, {
+    webAssembly = globalThis.WebAssembly,
+    imports = null,
+    debug = false,
+    debugWrite = defaultDebugWrite,
+    warning = defaultWarning,
+    onUnexpectedMemoryGrowth = null
+} = {}) {
+    if (!webAssembly || typeof webAssembly.instantiate !== 'function') {
+        throw new DspBindingError('WebAssembly.instantiate is unavailable');
+    }
+
+    let memory = null;
+    let binding = null;
+    let pendingGrowthNotification = false;
+    const baseImports = createDspImports({
+        getMemory: () => memory,
+        debug,
+        debugWrite,
+        onMemoryGrowth: () => {
+            if (binding) {
+                binding.handleMemoryGrowthNotification();
+            } else {
+                pendingGrowthNotification = true;
+            }
+        }
+    });
+    const result = await webAssembly.instantiate(moduleOrBytes, mergeImports(baseImports, imports));
+    const instance = result?.instance || result;
+    memory = instance?.exports?.memory || null;
+    binding = new DspEngineBinding(instance, { warning, onUnexpectedMemoryGrowth });
+    if (pendingGrowthNotification) {
+        binding.handleMemoryGrowthNotification();
+    }
+    return binding;
+}
+// __ETDSP_BINDING_INJECT_END__
+
+const ET_DSP_MAX_CHANNELS = 8;
+const ET_DSP_MAX_FRAMES = 128;
+const ET_DSP_ERR_ARGS = -1;
+const ET_DSP_TELEMETRY_BYTES = 256 * 1024;
+const ET_DSP_PACKET_POOL_SIZE = 3;
+const ET_DSP_PIPELINE_FALLBACK = 0;
+const ET_DSP_PIPELINE_PROCESSED = 1;
+const ET_DSP_PIPELINE_ARENA_INVALID = -1;
+const ET_DSP_PIPELINE_VERSION = 1;
+const ET_DSP_PIPELINE_HEADER_BYTES = 8;
+const ET_DSP_PIPELINE_NODE_BYTES = 12;
+const ET_DSP_PIPELINE_MAX_NODES = 128;
+
+function encodeWorkletDspChannelSpec(channel) {
+    if (channel === null || channel === undefined) return -1;
+    if (channel === 'A') return -2;
+    if (channel === 'L') return 0;
+    if (channel === 'R') return 1;
+    if (channel === '34') return 17;
+    if (channel === '56') return 18;
+    if (channel === '78') return 19;
+    if (typeof channel === 'string' && /^[1-8]$/.test(channel)) return Number(channel) - 1;
+    throw new TypeError(`Unsupported DSP pipeline channel: ${String(channel)}`);
+}
+
+function encodeWorkletDspPipeline(nodes) {
+    if (nodes.length > ET_DSP_PIPELINE_MAX_NODES) {
+        throw new RangeError(`DSP pipeline exceeds ${ET_DSP_PIPELINE_MAX_NODES} nodes`);
+    }
+    const bytes = new Uint8Array(
+        ET_DSP_PIPELINE_HEADER_BYTES + nodes.length * ET_DSP_PIPELINE_NODE_BYTES
+    );
+    const view = new DataView(bytes.buffer);
+    view.setUint32(0, ET_DSP_PIPELINE_VERSION, true);
+    view.setUint32(4, nodes.length, true);
+    const seenInstances = new Set();
+    for (let index = 0; index < nodes.length; index++) {
+        const node = nodes[index];
+        if (!Number.isInteger(node.instanceId) || node.instanceId <= 0 || node.instanceId > 0xffffffff ||
+            seenInstances.has(node.instanceId)) {
+            throw new TypeError(`Invalid DSP pipeline instance at node ${index}`);
+        }
+        if (!Number.isInteger(node.inputBus) || node.inputBus < 0 || node.inputBus > 4 ||
+            !Number.isInteger(node.outputBus) || node.outputBus < 0 || node.outputBus > 4) {
+            throw new TypeError(`Invalid DSP pipeline bus at node ${index}`);
+        }
+        seenInstances.add(node.instanceId);
+        const offset = ET_DSP_PIPELINE_HEADER_BYTES + index * ET_DSP_PIPELINE_NODE_BYTES;
+        view.setUint32(offset, node.instanceId, true);
+        view.setUint8(offset + 4, 1);
+        view.setUint8(offset + 5, node.inputBus);
+        view.setUint8(offset + 6, node.outputBus);
+        view.setInt8(offset + 7, encodeWorkletDspChannelSpec(node.channel));
+        view.setUint8(offset + 8, 1);
+    }
+    return bytes;
+}
+
 class PluginProcessor extends AudioWorkletProcessor {
     constructor(options) {
         super();
@@ -14,6 +799,34 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.processorRegistrationErrors = new Set();
         this.reportedMissingProcessors = new Set();
         this.masterBypass = false;
+
+        // WebAssembly DSP state. The legacy processor registry remains authoritative
+        // until a parity-gated type has a live instance with current packed params.
+        this.dspBinding = null;
+        this.dspLive = false;
+        this.dspSimd = false;
+        this.dspEnabledTypes = new Set();
+        this.wasmKernels = new Map();
+        this.wasmInstances = new Map();
+        this.dspRuntimeFailures = new Map();
+        this.dspFailedTypes = new Set();
+        this.dspReportedFailures = new Set();
+        this.dspPacketPool = [];
+        this.dspTelemetryRateHz = null;
+        this.dspSampleRate = globalThis.sampleRate;
+        this.dspPendingInstanceDestroy = [];
+        this.dspEngineNeedsCleanup = false;
+        this.dspHybridInputBackup = new Float32Array(ET_DSP_MAX_CHANNELS * ET_DSP_MAX_FRAMES);
+        this.dspInitGeneration = 0;
+        this.dspPipelineReady = false;
+        this.dspPipelineLatencySamples = 0;
+        this.dspBenchEnabled = false;
+        this.dspStats = {
+            singleCallBlocks: 0,
+            hybridInstanceCalls: 0,
+            telemetryDroppedFrames: 0,
+            lastPublishedOperations: 0
+        };
 
         // Audio configuration
         this.outputChannelCount = options?.processorOptions?.initialOutputChannelCount ?? 2;
@@ -34,20 +847,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.MAX_BUSES = 4; // Maximum number of buses (Informational, not directly used in process optimization)
 
         // Buffer Pool for performance optimization
-        this.bufferPool = {
-            // Pre-allocated buffers for different use cases
-            combined: new Float32Array(8 * 128), // Max 8 channels support
-            allChannels: new Float32Array(8 * 128), // Scratch copy for all-channel bus sends
-            stereo: new Float32Array(2 * 128),   // Stereo pair processing
-            mono: new Float32Array(128),         // Mono channel processing
-            mixing: new Float32Array(8 * 128),   // Dedicated buffer for additive mixing operations
-            buses: new Map()                     // Bus buffers
-        };
-        
-        // Pre-allocate bus buffers (up to 4 buses)
-        for (let i = 0; i < 4; i++) {
-            this.bufferPool.buses.set(i, new Float32Array(8 * 128));
-        }
+        this.bufferPool = this.createLegacyBufferPool();
 
         // Offline processing flag (Not used in process, but kept for context)
         // this.isOfflineProcessing = false;
@@ -87,6 +887,44 @@ class PluginProcessor extends AudioWorkletProcessor {
                         this.lowLatencyMode = data.lowLatencyMode;
                         this.MESSAGE_INTERVAL = this.lowLatencyMode ? 8 : 16;
                     }
+                    if (typeof data.sampleRate === 'number' && data.sampleRate > 0) {
+                        this.dspSampleRate = data.sampleRate;
+                    }
+                    break;
+                case 'dspModule':
+                    this.initializeDsp(data);
+                    break;
+                case 'dspEnableTypes':
+                    this.dspEnabledTypes = new Set(
+                        (Array.isArray(data.types) ? data.types : [])
+                            .filter(type => !this.dspFailedTypes.has(type))
+                    );
+                    this.reconcileDspInstances();
+                    this.refreshDspPipeline();
+                    break;
+                case 'dspSetTelemetryRate':
+                    if (typeof data.hz === 'number') {
+                        this.dspTelemetryRateHz = data.hz;
+                    }
+                    if (this.dspLive && this.dspTelemetryRateHz !== null) {
+                        const status = this.dspBinding.setTelemetryRate(this.dspTelemetryRateHz);
+                        if (status !== 0) this.reportDspFailure('telemetry-rate', `status ${status}`);
+                    }
+                    break;
+                case 'dspSetBench':
+                    this.dspBenchEnabled = data.enabled === true;
+                    this.dspStats.singleCallBlocks = 0;
+                    this.dspStats.hybridInstanceCalls = 0;
+                    this.dspStats.telemetryDroppedFrames = 0;
+                    this.dspStats.lastPublishedOperations = 0;
+                    break;
+                case 'dspTelemetryReturn':
+                    if (data.packet instanceof ArrayBuffer && this.dspPacketPool.length < ET_DSP_PACKET_POOL_SIZE) {
+                        this.dspPacketPool.push(new Uint8Array(data.packet));
+                    }
+                    break;
+                case 'dspCleanupFailed':
+                    this.cleanupDspFailures();
                     break;
                 case 'registerProcessor':
                     this.registerPluginProcessor(data.pluginType, data.processor);
@@ -104,6 +942,8 @@ class PluginProcessor extends AudioWorkletProcessor {
                     this.reorderPlugin(data.fromIndex, data.toIndex);
                     break;
                 case 'reset':
+                    this.destroyAllDspInstances();
+                    if (this.dspLive) this.dspBinding.reset();
                     this.plugins = [];
                     this.pluginContexts.clear();
                     this.masterBypass = false;
@@ -139,6 +979,596 @@ class PluginProcessor extends AudioWorkletProcessor {
                     break;
             }
         };
+    }
+
+    async initializeDsp(data) {
+        const generation = ++this.dspInitGeneration;
+        const moduleOrBytes = data?.module ?? data?.bytes;
+        if (!moduleOrBytes) {
+            this.reportDspFailure('instantiate', 'module payload is missing');
+            return;
+        }
+
+        this.disableDspEngine();
+        let binding = null;
+        try {
+            binding = await instantiateDspBinding(moduleOrBytes, {
+                onUnexpectedMemoryGrowth: () => {
+                    this.failDspEngine('runtime', 'memory grew outside prepare');
+                }
+            });
+            if (generation !== this.dspInitGeneration) {
+                binding.close();
+                return;
+            }
+            binding.createEngine();
+            const status = binding.prepare(
+                this.dspSampleRate || globalThis.sampleRate,
+                ET_DSP_MAX_CHANNELS,
+                ET_DSP_MAX_FRAMES,
+                ET_DSP_TELEMETRY_BYTES
+            );
+            if (status !== 0) {
+                binding.close();
+                throw new Error(`prepare returned ${status}`);
+            }
+
+            const capabilities = binding.getCapabilities();
+            this.dspBinding = binding;
+            this.dspLive = true;
+            if (this.dspTelemetryRateHz !== null) {
+                const telemetryStatus = binding.setTelemetryRate(this.dspTelemetryRateHz);
+                if (telemetryStatus !== 0) {
+                    this.reportDspFailure('telemetry-rate', `status ${telemetryStatus}`);
+                }
+            }
+            this.dspSimd = data.simd ?? capabilities.simd;
+            this.wasmKernels = new Map(
+                capabilities.kernels.map(kernel => [kernel.name, {
+                    paramsHash: kernel.hash >>> 0,
+                    byteCapacity: kernel.byteCapacity ?? 0
+                }])
+            );
+            this.adoptDspArena();
+            this.dspPacketPool = Array.from(
+                { length: ET_DSP_PACKET_POOL_SIZE },
+                () => new Uint8Array(ET_DSP_TELEMETRY_BYTES)
+            );
+            this.reconcileDspInstances();
+            this.refreshDspPipeline();
+            this.port.postMessage({
+                type: 'dspReady',
+                abiVersion: capabilities.abiVersion,
+                kernels: capabilities.kernels.map(kernel => ({
+                    name: kernel.name,
+                    hash: kernel.hash >>> 0,
+                    byteCapacity: kernel.byteCapacity ?? 0
+                })),
+                simd: this.dspSimd
+            });
+        } catch (error) {
+            if (generation !== this.dspInitGeneration) {
+                try { binding?.close(); } catch (_) { /* stale initialization cleanup */ }
+                return;
+            }
+            this.disableDspEngine();
+            this.reportDspFailure('instantiate', error?.message || String(error));
+        }
+    }
+
+    createLegacyBufferPool() {
+        const buses = new Map();
+        for (let bus = 1; bus <= 4; bus++) {
+            buses.set(bus, new Float32Array(ET_DSP_MAX_CHANNELS * ET_DSP_MAX_FRAMES));
+        }
+        return {
+            combined: new Float32Array(ET_DSP_MAX_CHANNELS * ET_DSP_MAX_FRAMES),
+            allChannels: new Float32Array(ET_DSP_MAX_CHANNELS * ET_DSP_MAX_FRAMES),
+            stereo: new Float32Array(2 * ET_DSP_MAX_FRAMES),
+            mono: new Float32Array(ET_DSP_MAX_FRAMES),
+            mixing: new Float32Array(ET_DSP_MAX_CHANNELS * ET_DSP_MAX_FRAMES),
+            buses
+        };
+    }
+
+    adoptDspArena() {
+        const arena = this.dspBinding.getArenaViews();
+        this.bufferPool = {
+            combined: arena.combined,
+            allChannels: arena.scratch.allChannels,
+            stereo: arena.scratch.stereo,
+            mono: arena.scratch.mono,
+            mixing: arena.scratch.mixing,
+            buses: new Map(Array.from(arena.buses).filter(([bus]) => bus !== 0))
+        };
+        this.combinedBuffer = null;
+    }
+
+    disableDspEngine() {
+        this.destroyAllDspInstances();
+        if (this.dspBinding) {
+            try {
+                this.dspBinding.close();
+            } catch (error) {
+                this.reportDspFailure('destroy', error?.message || String(error));
+            }
+        }
+        this.dspBinding = null;
+        this.dspLive = false;
+        this.dspPipelineReady = false;
+        this.publishDspPipelineLatency(0);
+        this.wasmKernels.clear();
+        this.dspPacketPool = [];
+        this.dspPendingInstanceDestroy = [];
+        this.dspEngineNeedsCleanup = false;
+        this.bufferPool = this.createLegacyBufferPool();
+    }
+
+    failDspEngine(stage, error) {
+        if (!this.dspLive) return;
+        this.dspLive = false;
+        this.dspPipelineReady = false;
+        this.publishDspPipelineLatency(0);
+        this.wasmInstances.clear();
+        this.dspPendingInstanceDestroy = [];
+        this.dspEngineNeedsCleanup = true;
+        this.bufferPool = this.createLegacyBufferPool();
+        this.reportDspFailure(stage, error);
+        this.port.postMessage({ type: 'dspCleanupNeeded' });
+    }
+
+    cleanupDspFailures() {
+        if (this.dspEngineNeedsCleanup) {
+            if (this.dspBinding) {
+                try {
+                    this.dspBinding.close();
+                } catch (error) {
+                    console.warn(`[dsp-wasm] Deferred engine cleanup failed: ${error?.message || String(error)}`);
+                }
+            }
+            this.dspBinding = null;
+            this.dspEngineNeedsCleanup = false;
+            this.dspPendingInstanceDestroy = [];
+            return;
+        }
+        if (!this.dspBinding) {
+            this.dspPendingInstanceDestroy = [];
+            return;
+        }
+        for (const instanceId of this.dspPendingInstanceDestroy) {
+            this.dspBinding.destroyInstance(instanceId);
+        }
+        this.dspPendingInstanceDestroy = [];
+    }
+
+    reportDspFailure(stage, error) {
+        const key = `${stage}:${error}`;
+        if (this.dspReportedFailures.has(key)) return;
+        this.dspReportedFailures.add(key);
+        console.warn(`[dsp-wasm] ${stage} failed: ${error}`);
+        this.port.postMessage({ type: 'dspFailed', stage, error: String(error) });
+    }
+
+    destroyAllDspInstances() {
+        this.dspPipelineReady = false;
+        if (this.dspBinding) {
+            for (const entry of this.wasmInstances.values()) {
+                this.dspBinding.destroyInstance(entry.id);
+            }
+        }
+        this.wasmInstances.clear();
+    }
+
+    destroyDspInstance(pluginId) {
+        this.dspPipelineReady = false;
+        const entry = this.wasmInstances.get(pluginId);
+        if (!entry) return;
+        if (this.dspBinding) this.dspBinding.destroyInstance(entry.id);
+        this.wasmInstances.delete(pluginId);
+    }
+
+    reconcileDspInstances() {
+        if (!this.dspLive) return false;
+        const currentIds = new Set(this.plugins.map(plugin => plugin.id));
+        try {
+            for (const pluginId of this.wasmInstances.keys()) {
+                if (!currentIds.has(pluginId)) this.destroyDspInstance(pluginId);
+            }
+        } catch (error) {
+            this.failDspEngine('reconcile', error?.message || String(error));
+            return false;
+        }
+        let reconciled = true;
+        for (const plugin of this.plugins) {
+            if (!this.reconcileDspPluginSafely(plugin)) reconciled = false;
+            if (!this.dspLive) break;
+        }
+        return reconciled;
+    }
+
+    reconcileDspPluginSafely(plugin) {
+        try {
+            this.reconcileDspPlugin(plugin);
+            return true;
+        } catch (error) {
+            this.dspPipelineReady = false;
+            if (this.dspLive) {
+                this.runtimeFallback(
+                    plugin,
+                    `reconcile failed: ${error?.message || String(error)}`,
+                    'reconcile'
+                );
+            }
+            return false;
+        }
+    }
+
+    reconcileDspPlugin(plugin) {
+        if (!plugin) return;
+        const kernel = this.wasmKernels.get(plugin.type);
+        const eligible = this.dspLive && this.dspEnabledTypes.has(plugin.type) &&
+            !this.dspFailedTypes.has(plugin.type) && kernel;
+        let entry = this.wasmInstances.get(plugin.id);
+        if (!eligible) {
+            if (entry) this.destroyDspInstance(plugin.id);
+            return;
+        }
+        if (entry && entry.type !== plugin.type) {
+            this.destroyDspInstance(plugin.id);
+            entry = null;
+        }
+        if (!entry) {
+            const previousMemory = this.bufferPool.combined?.buffer;
+            let id = 0;
+            try {
+                id = this.dspBinding.createInstance(plugin.type);
+            } finally {
+                const currentMemory = this.dspBinding.memory?.buffer;
+                if (currentMemory && previousMemory !== currentMemory) {
+                    this.adoptDspArena();
+                }
+            }
+            if (!id) {
+                this.reportDspFailure(`instance:${plugin.id}`, `unable to create ${plugin.type}`);
+                return;
+            }
+            entry = { id, type: plugin.type, ready: false };
+            this.wasmInstances.set(plugin.id, entry);
+            const tapStatus = this.dspBinding.instanceSetTap(id, plugin.id >>> 0);
+            if (tapStatus !== 0) {
+                this.reportDspFailure(`instance:${plugin.id}`, `tap binding returned ${tapStatus}`);
+            }
+        }
+
+        if (plugin.wasmParams instanceof Float32Array && (plugin.wasmParamsHash >>> 0) === kernel.paramsHash) {
+            const numericStatus = this.dspBinding.instanceSetParams(
+                entry.id,
+                plugin.wasmParams,
+                plugin.wasmParamsHash >>> 0
+            );
+            let byteStatus = 0;
+            if (numericStatus === 0 && kernel.byteCapacity > 0) {
+                if (!(plugin.wasmParamBytes instanceof Uint8Array) ||
+                    plugin.wasmParamBytes.byteLength > kernel.byteCapacity) {
+                    byteStatus = ET_DSP_ERR_ARGS;
+                } else {
+                    byteStatus = this.dspBinding.instanceSetParamBytes(
+                        entry.id,
+                        plugin.wasmParamBytes,
+                        plugin.wasmParamsHash >>> 0
+                    );
+                }
+            }
+            entry.ready = numericStatus === 0 && byteStatus === 0;
+            if (numericStatus !== 0) {
+                this.reportDspFailure(
+                    `instance:${plugin.id}`,
+                    `set_params returned ${numericStatus}`
+                );
+            } else if (byteStatus !== 0) {
+                this.reportDspFailure(
+                    `instance:${plugin.id}`,
+                    `set_param_bytes returned ${byteStatus}`
+                );
+            }
+        } else {
+            entry.ready = false;
+        }
+    }
+
+    refreshDspPipeline() {
+        this.dspPipelineReady = false;
+        if (!this.dspLive || !this.dspBinding) {
+            this.publishDspPipelineLatency(0);
+            return;
+        }
+
+        this.updateDspPipelineLatency();
+
+        const nodes = [];
+        let insideSection = false;
+        let sectionEnabled = true;
+        for (const plugin of this.plugins) {
+            if (plugin.type === 'SectionPlugin') {
+                insideSection = true;
+                sectionEnabled = Boolean(plugin.enabled);
+                continue;
+            }
+            if (!plugin.enabled || (insideSection && !sectionEnabled)) continue;
+
+            const entry = this.wasmInstances.get(plugin.id);
+            if (!entry?.ready) return;
+            nodes.push({
+                instanceId: entry.id,
+                inputBus: plugin.inputBus,
+                outputBus: plugin.outputBus,
+                channel: plugin.channel
+            });
+        }
+
+        try {
+            const status = this.dspBinding.pipelineConfigure(encodeWorkletDspPipeline(nodes));
+            if (status !== 0) {
+                this.reportDspFailure('pipeline-configure', `status ${status}`);
+                return;
+            }
+            this.dspPipelineReady = true;
+        } catch (error) {
+            this.reportDspFailure('pipeline-configure', error?.message || String(error));
+        }
+    }
+
+    publishDspPipelineLatency(samples) {
+        const normalized = Number.isInteger(samples) && samples > 0 ? samples : 0;
+        if (normalized === this.dspPipelineLatencySamples) return;
+        this.dspPipelineLatencySamples = normalized;
+        this.port.postMessage({
+            type: 'dspLatency',
+            samples: normalized,
+            sampleRate: this.dspSampleRate || globalThis.sampleRate,
+            compensated: false
+        });
+    }
+
+    updateDspPipelineLatency() {
+        const busLatency = [0, 0, 0, 0, 0];
+        let insideSection = false;
+        let sectionEnabled = true;
+        for (const plugin of this.plugins) {
+            if (plugin.type === 'SectionPlugin') {
+                insideSection = true;
+                sectionEnabled = Boolean(plugin.enabled);
+                continue;
+            }
+            if (!plugin.enabled || (insideSection && !sectionEnabled)) continue;
+
+            const inputBus = plugin.inputBus;
+            const outputBus = plugin.outputBus;
+            if (!Number.isInteger(inputBus) || inputBus < 0 || inputBus >= busLatency.length ||
+                !Number.isInteger(outputBus) || outputBus < 0 || outputBus >= busLatency.length) {
+                continue;
+            }
+            const entry = this.wasmInstances.get(plugin.id);
+            let pluginLatency = 0;
+            if (entry?.ready) {
+                try {
+                    pluginLatency = this.dspBinding.instanceLatency(entry.id) >>> 0;
+                } catch (error) {
+                    this.reportDspFailure(`latency:${plugin.id}`, error?.message || String(error));
+                }
+            }
+            const routedLatency = busLatency[inputBus] + pluginLatency;
+            if (inputBus === outputBus || routedLatency > busLatency[outputBus]) {
+                busLatency[outputBus] = routedLatency;
+            }
+        }
+        this.publishDspPipelineLatency(busLatency[0]);
+    }
+
+    restoreDspPipelineInput(combinedBuffer, totalSize, input, channelCount, frameCount) {
+        combinedBuffer.fill(0, 0, totalSize);
+        const channelsToCopy = input.length < channelCount ? input.length : channelCount;
+        for (let channel = 0; channel < channelsToCopy; channel++) {
+            const source = input[channel];
+            const offset = channel * frameCount;
+            for (let frame = 0; frame < frameCount; frame++) {
+                combinedBuffer[offset + frame] = source[frame];
+            }
+        }
+    }
+
+    snapshotDspHybridInput(processingBuffer, sampleCount) {
+        for (let index = 0; index < sampleCount; index++) {
+            this.dspHybridInputBackup[index] = processingBuffer[index];
+        }
+    }
+
+    restoreDspHybridInput(processingBuffer, sampleCount) {
+        for (let index = 0; index < sampleCount; index++) {
+            processingBuffer[index] = this.dspHybridInputBackup[index];
+        }
+    }
+
+    isDspArenaViewCurrent(view, expectedMemory, sampleCount) {
+        if (!this.dspLive || !view || view.byteLength < sampleCount * Float32Array.BYTES_PER_ELEMENT) {
+            return false;
+        }
+        if (!expectedMemory) return true;
+        return this.dspBinding?.memory?.buffer === expectedMemory && view.buffer === expectedMemory;
+    }
+
+    bypassCurrentBlock(input, output, outputChannelCount, frameCount) {
+        const channelsToWrite = output.length < outputChannelCount ? output.length : outputChannelCount;
+        for (let channel = 0; channel < output.length; channel++) {
+            const target = output[channel];
+            if (channel < channelsToWrite && channel < input.length) {
+                const source = input[channel];
+                for (let frame = 0; frame < frameCount; frame++) {
+                    target[frame] = source[frame];
+                }
+            } else {
+                target.fill(0);
+            }
+        }
+    }
+
+    tryDspPipeline(combinedBuffer, totalSize, input, channelCount, frameCount, time) {
+        if (!this.dspPipelineReady || !this.dspLive || channelCount > ET_DSP_MAX_CHANNELS ||
+            frameCount !== ET_DSP_MAX_FRAMES) {
+            return ET_DSP_PIPELINE_FALLBACK;
+        }
+
+        const expectedMemory = this.dspBinding.memory?.buffer;
+        if (!this.isDspArenaViewCurrent(combinedBuffer, expectedMemory, totalSize)) {
+            if (this.dspLive) this.failDspEngine('runtime', 'arena invalid before pipeline processing');
+            return ET_DSP_PIPELINE_ARENA_INVALID;
+        }
+
+        let status = 0;
+        let processError = null;
+        try {
+            status = this.dspBinding.pipelineProcess(channelCount, frameCount, time, false);
+        } catch (error) {
+            processError = error;
+        }
+
+        if (!this.isDspArenaViewCurrent(combinedBuffer, expectedMemory, totalSize)) {
+            if (this.dspLive) this.failDspEngine('runtime', 'arena invalid during pipeline processing');
+            return ET_DSP_PIPELINE_ARENA_INVALID;
+        }
+        if (status === 0 && !processError) {
+            this.recordDspProcessing('singleCallBlocks');
+            return ET_DSP_PIPELINE_PROCESSED;
+        }
+
+        this.restoreDspPipelineInput(combinedBuffer, totalSize, input, channelCount, frameCount);
+        this.dspPipelineReady = false;
+        if (processError) {
+            this.reportDspFailure('pipeline-process', processError?.message || String(processError));
+        } else {
+            this.reportDspFailure('pipeline-process', `status ${status}`);
+        }
+        return ET_DSP_PIPELINE_FALLBACK;
+    }
+
+    recordDspProcessing(counter) {
+        if (!this.dspBenchEnabled) return;
+        this.dspStats[counter]++;
+        const processedOperations = this.dspStats.singleCallBlocks + this.dspStats.hybridInstanceCalls;
+        if (processedOperations !== 1 && processedOperations - this.dspStats.lastPublishedOperations < 4096) return;
+        this.dspStats.lastPublishedOperations = processedOperations;
+        this.port.postMessage({
+            type: 'dspStats',
+            singleCallBlocks: this.dspStats.singleCallBlocks,
+            hybridInstanceCalls: this.dspStats.hybridInstanceCalls,
+            telemetryDroppedFrames: this.dspStats.telemetryDroppedFrames,
+            pipelineReady: this.dspPipelineReady,
+            readyInstances: Array.from(this.wasmInstances.values()).filter(entry => entry.ready).length,
+            simd: this.dspSimd
+        });
+    }
+
+    finishDspPipelineBlock(output, combinedBuffer, outputChannelCount, blockSize, sampleRate, time) {
+        let insideSection = false;
+        let sectionEnabled = true;
+        for (const plugin of this.plugins) {
+            if (plugin.type === 'SectionPlugin') {
+                insideSection = true;
+                sectionEnabled = Boolean(plugin.enabled);
+                continue;
+            }
+            if (!plugin.enabled || (insideSection && !sectionEnabled)) continue;
+            let context = this.pluginContexts.get(plugin.id);
+            if (!context) {
+                context = {};
+                this.pluginContexts.set(plugin.id, context);
+            }
+            if (context.reportedSampleRate !== sampleRate) {
+                context.reportedSampleRate = sampleRate;
+                this.port.postMessage({ pluginId: plugin.id, sampleRate });
+            }
+        }
+
+        const channelsToWrite = output.length < outputChannelCount ? output.length : outputChannelCount;
+        for (let channel = 0; channel < output.length; channel++) output[channel].fill(0);
+        for (let channel = 0; channel < channelsToWrite; channel++) {
+            const offset = channel * blockSize;
+            const target = output[channel];
+            for (let frame = 0; frame < blockSize; frame++) {
+                target[frame] = combinedBuffer[offset + frame];
+            }
+        }
+
+        const threshold = 2 * this.audioLevelMonitoring._silenceThresholdAmplitude;
+        let hasOutputSignal = false;
+        for (let channel = 0; channel < channelsToWrite && !hasOutputSignal; channel++) {
+            const data = output[channel];
+            let minimum = Infinity;
+            let maximum = -Infinity;
+            for (let index = 0; index < data.length; index++) {
+                const value = data[index];
+                if (value < minimum) minimum = value;
+                if (value > maximum) maximum = value;
+                if (maximum - minimum > threshold) {
+                    hasOutputSignal = true;
+                    break;
+                }
+            }
+        }
+        if (hasOutputSignal) this.audioLevelMonitoring.lastOutputActiveTime = time;
+        this.pumpDspTelemetry();
+    }
+
+    runtimeFallback(plugin, error, stage = 'runtime') {
+        this.dspPipelineReady = false;
+        const entry = this.wasmInstances.get(plugin.id);
+        if (entry) {
+            entry.ready = false;
+            this.wasmInstances.delete(plugin.id);
+            this.dspPendingInstanceDestroy.push(entry.id);
+        }
+        const failures = (this.dspRuntimeFailures.get(plugin.type) || 0) + 1;
+        this.dspRuntimeFailures.set(plugin.type, failures);
+        this.reportDspFailure(`${stage}:${plugin.id}`, error);
+        if (failures >= 3) {
+            this.dspFailedTypes.add(plugin.type);
+            this.dspEnabledTypes.delete(plugin.type);
+            for (const candidate of this.plugins) {
+                if (candidate.type !== plugin.type) continue;
+                const candidateEntry = this.wasmInstances.get(candidate.id);
+                if (candidateEntry) {
+                    candidateEntry.ready = false;
+                    this.wasmInstances.delete(candidate.id);
+                    this.dspPendingInstanceDestroy.push(candidateEntry.id);
+                }
+            }
+        }
+        this.port.postMessage({ type: 'dspCleanupNeeded' });
+    }
+
+    pumpDspTelemetry() {
+        if (!this.dspLive || this.dspPacketPool.length === 0) return;
+        const packetView = this.dspPacketPool.pop();
+        try {
+            const bytes = this.dspBinding.telemetryRead(packetView);
+            if (this.dspBenchEnabled) {
+                this.dspStats.telemetryDroppedFrames += this.dspBinding.lastTelemetryDroppedFrames >>> 0;
+            }
+            if (bytes > 0) {
+                const packet = packetView.buffer;
+                this.port.postMessage({
+                    type: 'dspTelemetry',
+                    packet,
+                    bytes,
+                    droppedFrames: this.dspBinding.lastTelemetryDroppedFrames >>> 0
+                }, [packet]);
+            } else {
+                this.dspPacketPool.push(packetView);
+            }
+        } catch (error) {
+            this.dspPacketPool.push(packetView);
+            this.failDspEngine('runtime', error?.message || String(error));
+        }
     }
 
     registerPluginProcessor(pluginType, processorFunction) {
@@ -186,8 +1616,14 @@ class PluginProcessor extends AudioWorkletProcessor {
         if (!pluginConfig) return;
         const index = this.plugins.findIndex(p => p.id === pluginConfig.id);
         if (index !== -1) {
-            // Update plugin config - ensure essential properties are correctly nested/accessed
-            this.plugins[index] = this.normalizePluginConfig(pluginConfig);
+            const normalizedPlugin = this.normalizePluginConfig(pluginConfig);
+            this.dspPipelineReady = false;
+            try {
+                this.plugins[index] = normalizedPlugin;
+                this.reconcileDspPluginSafely(normalizedPlugin);
+            } finally {
+                this.refreshDspPipeline();
+            }
 
             // console.log(`Updated plugin: ${pluginConfig.id}`);
         } else {
@@ -199,8 +1635,14 @@ class PluginProcessor extends AudioWorkletProcessor {
     }
 
     updatePlugins(pluginConfigs) {
-        // Perform a full update, potentially optimizing property access during update
-        this.plugins = pluginConfigs.map(p => this.normalizePluginConfig(p));
+        const normalizedPlugins = pluginConfigs.map(p => this.normalizePluginConfig(p));
+        this.dspPipelineReady = false;
+        try {
+            this.plugins = normalizedPlugins;
+            this.reconcileDspInstances();
+        } finally {
+            this.refreshDspPipeline();
+        }
         // Clear contexts for plugins that might have been removed?
         // Or handle context cleanup based on removed IDs.
         // For simplicity, we keep existing contexts; they won't be used if plugin is gone.
@@ -217,30 +1659,56 @@ class PluginProcessor extends AudioWorkletProcessor {
         if (!pluginConfig) return;
         const normalizedPlugin = this.normalizePluginConfig(pluginConfig);
         const existingIndex = this.plugins.findIndex(p => p.id === normalizedPlugin.id);
+        this.dspPipelineReady = false;
         if (existingIndex !== -1) {
-            this.plugins[existingIndex] = normalizedPlugin;
+            try {
+                this.plugins[existingIndex] = normalizedPlugin;
+                this.reconcileDspPluginSafely(normalizedPlugin);
+            } finally {
+                this.refreshDspPipeline();
+            }
             return;
         }
 
         const insertIndex = Number.isInteger(index)
             ? (index < 0 ? 0 : (index > this.plugins.length ? this.plugins.length : index))
             : this.plugins.length;
-        this.plugins.splice(insertIndex, 0, normalizedPlugin);
+        try {
+            this.plugins.splice(insertIndex, 0, normalizedPlugin);
+            this.reconcileDspPluginSafely(normalizedPlugin);
+        } finally {
+            this.refreshDspPipeline();
+        }
     }
 
     removePlugin(pluginId) {
         const index = this.plugins.findIndex(p => p.id === pluginId);
         if (index === -1) return;
-        this.plugins.splice(index, 1);
-        this.pluginContexts.delete(pluginId);
+        this.dspPipelineReady = false;
+        try {
+            this.plugins.splice(index, 1);
+            this.pluginContexts.delete(pluginId);
+            try {
+                this.destroyDspInstance(pluginId);
+            } catch (error) {
+                this.failDspEngine('reconcile', error?.message || String(error));
+            }
+        } finally {
+            this.refreshDspPipeline();
+        }
     }
 
     reorderPlugin(fromIndex, toIndex) {
         if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex)) return;
         if (fromIndex < 0 || fromIndex >= this.plugins.length) return;
         const targetIndex = toIndex < 0 ? 0 : (toIndex >= this.plugins.length ? this.plugins.length - 1 : toIndex);
-        const [plugin] = this.plugins.splice(fromIndex, 1);
-        this.plugins.splice(targetIndex, 0, plugin);
+        this.dspPipelineReady = false;
+        try {
+            const [plugin] = this.plugins.splice(fromIndex, 1);
+            this.plugins.splice(targetIndex, 0, plugin);
+        } finally {
+            this.refreshDspPipeline();
+        }
     }
 
     // Optimized process method
@@ -277,6 +1745,12 @@ class PluginProcessor extends AudioWorkletProcessor {
         const outputChannelCount = this.outputChannelCount;
         // Use the cached amplitude threshold
         const silenceThresholdAmplitude = audioLevelMonitoring._silenceThresholdAmplitude;
+
+        if (this.dspLive) {
+            if (this.dspBinding.checkMemoryBuffer()) {
+                this.failDspEngine('runtime', 'memory.buffer identity changed');
+            }
+        }
 
 
         // --- 3. Calculate Current Time ---
@@ -401,6 +1875,30 @@ class PluginProcessor extends AudioWorkletProcessor {
             }
         }
 
+        const dspPipelineResult = this.tryDspPipeline(
+            combinedBuffer,
+            totalSize,
+            input,
+            outputChannelCount,
+            blockSize,
+            time
+        );
+        if (dspPipelineResult === ET_DSP_PIPELINE_PROCESSED) {
+            this.finishDspPipelineBlock(
+                output,
+                combinedBuffer,
+                outputChannelCount,
+                blockSize,
+                sampleRate,
+                time
+            );
+            return true;
+        }
+        if (dspPipelineResult === ET_DSP_PIPELINE_ARENA_INVALID) {
+            this.bypassCurrentBlock(input, output, outputChannelCount, blockSize);
+            return true;
+        }
+
 
         // --- 8. Bus Buffer Management ---
         const busBuffers = this.busBuffers; // Local reference
@@ -475,7 +1973,8 @@ class PluginProcessor extends AudioWorkletProcessor {
 
             // Get the compiled processor function for this plugin type
             const processor = pluginProcessors.get(plugin.type);
-            if (!processor) {
+            const wasmEntry = this.dspLive ? this.wasmInstances.get(plugin.id) : null;
+            if (!processor && !wasmEntry?.ready) {
                 if (!this.reportedMissingProcessors.has(plugin.type)) {
                     this.reportedMissingProcessors.add(plugin.type);
                     console.warn(`Processor function not found for type: ${plugin.type}`);
@@ -502,12 +2001,6 @@ class PluginProcessor extends AudioWorkletProcessor {
                 pluginContext.reportedSampleRate = sampleRate;
                 port.postMessage({ pluginId: plugin.id, sampleRate });
             }
-            // Prepare the context object for the processor call.
-            // Avoid spreading unless necessary; pass specific needed properties.
-            // Here, we keep the original structure for compatibility.
-            const context = { ...pluginContext, port: port }; // Pass port for potential messaging from plugin
-
-
             // Determine input and output buses for this plugin
             const inputBus = plugin.inputBus; // Use normalized property
             const outputBus = plugin.outputBus; // Use normalized property
@@ -652,24 +2145,69 @@ class PluginProcessor extends AudioWorkletProcessor {
                  // Result will be written back from tempBuffer later
             }
 
-            // --- 9c. Prepare Parameters for Plugin ---
-            const processingParams = {
-                ...(plugin.parameters ?? {}), // Include plugin-specific parameters
-                id: plugin.id, // Pass plugin ID for context/logging
-                channelCount: numProcessingChannels, // Tell plugin how many channels it's getting
-                blockSize: blockSize,
-                sampleRate: sampleRate
-            };
-
             // --- 9d. Execute Plugin Processor Function ---
-            let result; // Can be the modified processingBuffer or a new buffer returned by processor
-            try {
-                 result = processor.call(context, context, processingBuffer, processingParams, time);
-                 // Update context state potentially modified by the processor
-                 pluginContexts.set(plugin.id, context);
-            } catch(e) {
-                 console.error(`Error executing plugin ${plugin.id} (${plugin.type}):`, e);
-                 result = processingBuffer; // On error, pass through the original buffer data
+            let result = processingBuffer;
+            let processedInWasm = false;
+            if (wasmEntry?.ready && this.dspLive &&
+                outputChannelCount <= ET_DSP_MAX_CHANNELS && blockSize === ET_DSP_MAX_FRAMES) {
+                const sampleCount = numProcessingChannels * blockSize;
+                const expectedMemory = this.dspBinding.memory?.buffer;
+                if (!this.isDspArenaViewCurrent(processingBuffer, expectedMemory, sampleCount)) {
+                    if (this.dspLive) this.failDspEngine('runtime', 'arena invalid before instance processing');
+                    this.bypassCurrentBlock(input, output, outputChannelCount, blockSize);
+                    return true;
+                }
+                const audioPtr = this.dspBinding.pointerForArenaView(processingBuffer);
+                if (audioPtr !== null) {
+                    this.snapshotDspHybridInput(processingBuffer, sampleCount);
+                    let status = 0;
+                    let processError = null;
+                    try {
+                        status = this.dspBinding.instanceProcess(
+                            wasmEntry.id,
+                            audioPtr,
+                            numProcessingChannels,
+                            blockSize,
+                            time
+                        );
+                    } catch (error) {
+                        processError = error;
+                    }
+                    if (!this.isDspArenaViewCurrent(processingBuffer, expectedMemory, sampleCount)) {
+                        if (this.dspLive) this.failDspEngine('runtime', 'arena invalid during instance processing');
+                        this.bypassCurrentBlock(input, output, outputChannelCount, blockSize);
+                        return true;
+                    }
+                    if (status === 0 && !processError) {
+                        processedInWasm = true;
+                        this.recordDspProcessing('hybridInstanceCalls');
+                    } else {
+                        this.restoreDspHybridInput(processingBuffer, sampleCount);
+                        this.runtimeFallback(
+                            plugin,
+                            processError ? (processError?.message || String(processError)) : `process returned ${status}`
+                        );
+                    }
+                }
+            }
+
+            if (!processedInWasm && processor) {
+                // Preserve legacy clone-and-store semantics only when JavaScript runs.
+                const context = { ...pluginContext, port };
+                const processingParams = {
+                    ...(plugin.parameters ?? {}),
+                    id: plugin.id,
+                    channelCount: numProcessingChannels,
+                    blockSize,
+                    sampleRate
+                };
+                try {
+                    result = processor.call(context, context, processingBuffer, processingParams, time);
+                    pluginContexts.set(plugin.id, context);
+                } catch(e) {
+                    console.error(`Error executing plugin ${plugin.id} (${plugin.type}):`, e);
+                    result = processingBuffer;
+                }
             }
 
 
@@ -757,9 +2295,8 @@ class PluginProcessor extends AudioWorkletProcessor {
 
 
             // --- 9f. Handle Measurements & Message Throttling ---
-            // Check if the plugin's context or result contains measurements
-            // Assuming measurements are attached to the context object after processing
-            const measurements = result.measurements;
+            // Legacy JavaScript analyzers attach measurements to their result buffer.
+            const measurements = result?.measurements;
             if (measurements) {
                 const currentTimeMs = time * 1000;
                 if (currentTimeMs - lastMessageTime >= MESSAGE_INTERVAL) {
@@ -777,9 +2314,8 @@ class PluginProcessor extends AudioWorkletProcessor {
                     // Queue the message if interval hasn't passed
                     messageQueue.set(plugin.id, { measurements });
                 }
-                // Clear measurements from context after handling to avoid re-sending
+                // Clear measurements after handling to avoid re-sending.
                 result.measurements = null;
-                // pluginContexts.set(plugin.id, context); // Ensure context update if not done implicitly
             }
         } // End of plugin processing loop
 
@@ -847,6 +2383,8 @@ class PluginProcessor extends AudioWorkletProcessor {
         if (hasOutputSignal) {
             audioLevelMonitoring.lastOutputActiveTime = time;
         }
+
+        this.pumpDspTelemetry();
 
         // --- 12. Return Status ---
         // Return true to keep the processor alive

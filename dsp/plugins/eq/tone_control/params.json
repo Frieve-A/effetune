@@ -1,0 +1,36 @@
+{
+  "type": "ToneControlPlugin",
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "fields": [
+    {
+      "name": "bass",
+      "key": "bs",
+      "kind": "float",
+      "min": -24,
+      "max": 24,
+      "default": 0,
+      "unit": "dB"
+    },
+    {
+      "name": "mid",
+      "key": "md",
+      "kind": "float",
+      "min": -24,
+      "max": 24,
+      "default": 0,
+      "unit": "dB"
+    },
+    {
+      "name": "treble",
+      "key": "tr",
+      "kind": "float",
+      "min": -24,
+      "max": 24,
+      "default": 0,
+      "unit": "dB"
+    }
+  ]
+}

@@ -548,7 +548,8 @@ test('showAudioConfigDialog applies preferences through audioManager and callbac
         outputChannels: 8,
         latencyHint: 'playback',
         useInputWithPlayer: true,
-        lowLatencyOutput: true
+        lowLatencyOutput: true,
+        useWasmDsp: false
       }, preferences => callbackCalls.push(preferences));
     });
 
@@ -559,12 +560,14 @@ test('showAudioConfigDialog applies preferences through audioManager and callbac
     assert.equal(document.getElementById('latency').value, 'playback');
     assert.equal(document.getElementById('use-input-with-player').checked, true);
     assert.equal(document.getElementById('low-latency-output').checked, true);
+    assert.equal(document.getElementById('use-wasm-dsp').checked, false);
 
     document.getElementById('sample-rate').value = '88200';
     document.getElementById('output-channels').value = '6';
     document.getElementById('latency').value = 'balanced';
     document.getElementById('use-input-with-player').checked = false;
     document.getElementById('low-latency-output').checked = false;
+    document.getElementById('use-wasm-dsp').checked = true;
     await withMutedConsole('log', async () => {
       await document.getElementById('apply-button').dispatchEvent('click');
       await flushMicrotasks();
@@ -580,6 +583,7 @@ test('showAudioConfigDialog applies preferences through audioManager and callbac
     sampleRate: 88200,
     useInputWithPlayer: false,
     lowLatencyOutput: false,
+    useWasmDsp: true,
     outputChannels: 6,
     latencyHint: 'balanced'
   });

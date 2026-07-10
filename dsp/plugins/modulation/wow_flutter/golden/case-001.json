@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "type": "WowFlutterPlugin",
+  "id": "default-noise",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 6001,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "rt": 0.5,
+    "dp": 6,
+    "rn": 10,
+    "rc": 5,
+    "rs": -6,
+    "cp": 0,
+    "cs": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00002,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "3f8f16fb8a9d734c3ca8df17527c996a2fa3387537b9d49940b7938fd3dc9a2a",
+  "outputFloats": 12002,
+  "byteLength": 48008,
+  "binary": "case-001.f32"
+}

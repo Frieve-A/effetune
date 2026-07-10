@@ -1,0 +1,28 @@
+{
+  "formatVersion": 1,
+  "type": "CrossfeedFilterPlugin",
+  "id": "stereo-192000-odd-block",
+  "stimulus": "noise",
+  "sampleRate": 192000,
+  "channels": 2,
+  "frameCount": 48000,
+  "blockSize": 83,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "lv": -9,
+    "dl": 0.37,
+    "lf": 1200
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000003,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "964dfc088020dfd701be08b12dac4693f8221a2e86b8dfba38fecf0d52f3e2db",
+  "outputFloats": 96000,
+  "byteLength": 384000,
+  "binary": "case-007.f32"
+}

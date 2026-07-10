@@ -1,3 +1,10 @@
+const SPECTROGRAM_TAP_FRAME = 5;
+const SPECTROGRAM_TELEMETRY_VERSION = 1;
+const SPECTROGRAM_PAYLOAD_BYTES = 268;
+const SPECTROGRAM_PAYLOAD_HEADER_BYTES = 12;
+const SPECTROGRAM_CELL_COUNT = 256;
+const SPECTROGRAM_HISTORY_WIDTH = 1024;
+
 class SpectrogramPlugin extends PluginBase {
     constructor() {
         super('Spectrogram', 'Real-time spectrogram analyzer');
@@ -39,6 +46,17 @@ class SpectrogramPlugin extends PluginBase {
 
         // Initialize spectrogram buffer (256 frequency bins x 1024 time points)
         this.spectrogramBuffer = new Float32Array(256 * 1024).fill(-144);
+        this.spectrogramIntensityBuffer = new Uint8Array(
+            SPECTROGRAM_CELL_COUNT * SPECTROGRAM_HISTORY_WIDTH
+        );
+        this.spectrogramColorLut = this.createSpectrogramColorLut();
+        this.spectrogramWriteColumn = 0;
+        this.spectrogramColumnCount = 0;
+        this.dspSpectrogramActive = false;
+        this._dspTelemetryHub = null;
+        this._dspTelemetryTapId = null;
+        this._dspTelemetryUnsubscribe = null;
+        this._boundDspSpectrogramTelemetry = frame => this.handleDspSpectrogramTelemetry(frame);
 
         // Initialize ImageData cache and temporary canvas for drawing
         this.imageDataCache = null;
@@ -206,10 +224,8 @@ class SpectrogramPlugin extends PluginBase {
         
         // Reset spectrogram buffer (dimensions are fixed, but content should clear on FFT change)
         this.spectrogramBuffer.fill(-144);
-        if (this.imageDataCache) { // Also clear image data if it exists
-             const data = this.imageDataCache.data;
-             for (let i = 0, len = data.length; i < len; i += 4) { data[i]=0; data[i+1]=0; data[i+2]=0; data[i+3]=255;}
-        }
+        this.resetDspSpectrogramHistory();
+        this.clearSpectrogramImage();
 
         this.lastProcessTime = performance.now() / 1000;
         this.updateParameters();
@@ -219,16 +235,15 @@ class SpectrogramPlugin extends PluginBase {
         this.setDBRange(-96);
         this.setPoints(10); // Original reset used 10, constructor 12. Sticking to 10 for reset.
         this.spectrogramBuffer.fill(-144);
-        if (this.imageDataCache) {
-             const data = this.imageDataCache.data;
-             for (let i = 0, len = data.length; i < len; i += 4) { data[i]=0; data[i+1]=0; data[i+2]=0; data[i+3]=255;}
-        }
+        this.resetDspSpectrogramHistory();
+        this.clearSpectrogramImage();
         this.secondMarkers = [];
         this.prevTime = null;
         this.updateParameters();
     }
 
     getParameters() {
+        this.ensureDspTelemetrySubscription();
         return {
             type: this.constructor.name,
             enabled: this.enabled,
@@ -244,7 +259,175 @@ class SpectrogramPlugin extends PluginBase {
         this.updateParameters();
     }
 
+    _setupMessageHandler() {
+        super._setupMessageHandler();
+        this.ensureDspTelemetrySubscription?.();
+    }
+
+    ensureDspTelemetrySubscription() {
+        const hub = window.dspTelemetryHub;
+        const tapId = this.id;
+        const validTapId = Number.isInteger(tapId) && tapId >= 0 && tapId <= 0xffffffff;
+        const validHub = hub && typeof hub.subscribe === 'function';
+
+        if (!validTapId || !validHub) {
+            if (this._dspTelemetryUnsubscribe &&
+                (hub !== this._dspTelemetryHub || tapId !== this._dspTelemetryTapId)) {
+                this.disposeDspTelemetrySubscription();
+            }
+            return false;
+        }
+        if (this._dspTelemetryUnsubscribe &&
+            hub === this._dspTelemetryHub && tapId === this._dspTelemetryTapId) {
+            return true;
+        }
+
+        this.disposeDspTelemetrySubscription();
+        try {
+            const unsubscribe = hub.subscribe(
+                tapId,
+                SPECTROGRAM_TAP_FRAME,
+                this._boundDspSpectrogramTelemetry
+            );
+            if (typeof unsubscribe !== 'function') {
+                hub.unsubscribe?.(
+                    tapId,
+                    SPECTROGRAM_TAP_FRAME,
+                    this._boundDspSpectrogramTelemetry
+                );
+                return false;
+            }
+            this._dspTelemetryHub = hub;
+            this._dspTelemetryTapId = tapId;
+            this._dspTelemetryUnsubscribe = unsubscribe;
+            return true;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    disposeDspTelemetrySubscription() {
+        const unsubscribe = this._dspTelemetryUnsubscribe;
+        this._dspTelemetryHub = null;
+        this._dspTelemetryTapId = null;
+        this._dspTelemetryUnsubscribe = null;
+        if (!unsubscribe) return;
+        try {
+            unsubscribe();
+        } catch (error) {
+            // Ignore stale telemetry subscription cleanup failures.
+        }
+    }
+
+    parseDspSpectrogramTelemetryFrame(frame) {
+        if (frame?.frameType !== SPECTROGRAM_TAP_FRAME ||
+            frame.formatVersion !== SPECTROGRAM_TELEMETRY_VERSION) {
+            return null;
+        }
+        const payload = frame.payload;
+        if (!payload || typeof payload.getFloat32 !== 'function' ||
+            typeof payload.getUint16 !== 'function' ||
+            typeof payload.getUint8 !== 'function' ||
+            !Number.isInteger(payload.byteLength) ||
+            payload.byteLength !== SPECTROGRAM_PAYLOAD_BYTES) {
+            return null;
+        }
+
+        const sampleRate = payload.getFloat32(0, true);
+        const timeSeconds = payload.getFloat32(4, true);
+        const cellCount = payload.getUint16(8, true);
+        const points = payload.getUint16(10, true);
+        if (!Number.isFinite(sampleRate) || sampleRate <= 0 ||
+            !Number.isFinite(timeSeconds) ||
+            cellCount !== SPECTROGRAM_CELL_COUNT ||
+            points < 8 || points > 14) {
+            return null;
+        }
+
+        const intensities = new Uint8Array(SPECTROGRAM_CELL_COUNT);
+        for (let cell = 0; cell < SPECTROGRAM_CELL_COUNT; cell++) {
+            intensities[cell] = payload.getUint8(SPECTROGRAM_PAYLOAD_HEADER_BYTES + cell);
+        }
+        return { sampleRate, timeSeconds, cellCount, points, intensities };
+    }
+
+    handleDspSpectrogramTelemetry(frame) {
+        const snapshot = this.parseDspSpectrogramTelemetryFrame(frame);
+        if (!snapshot || !this.enabled || !this._sectionEnabled ||
+            !this.spectrogramIntensityBuffer) {
+            return;
+        }
+        if (!this.dspSpectrogramActive) {
+            this.resetDspSpectrogramHistory();
+            this.clearSpectrogramImage();
+            this.secondMarkers = [];
+            this.prevTime = null;
+            this.dspSpectrogramActive = true;
+        }
+
+        this.sampleRate = snapshot.sampleRate;
+        this.updateSecondMarkers(snapshot.timeSeconds);
+        const column = this.spectrogramWriteColumn;
+        for (let row = 0; row < SPECTROGRAM_CELL_COUNT; row++) {
+            this.spectrogramIntensityBuffer[
+                row * SPECTROGRAM_HISTORY_WIDTH + column
+            ] = snapshot.intensities[row];
+        }
+        this.paintDspSpectrogramColumn(column, snapshot.intensities);
+        this.spectrogramWriteColumn = (column + 1) % SPECTROGRAM_HISTORY_WIDTH;
+        if (this.spectrogramColumnCount < SPECTROGRAM_HISTORY_WIDTH) {
+            this.spectrogramColumnCount++;
+        }
+    }
+
+    updateSecondMarkers(timeSeconds) {
+        if (this.prevTime === null) {
+            this.prevTime = timeSeconds;
+            return;
+        }
+        if (timeSeconds < this.prevTime) {
+            this.secondMarkers = [];
+            this.prevTime = timeSeconds;
+            return;
+        }
+
+        this.secondMarkers = this.secondMarkers.map(value => value - 1).filter(value => value >= 0);
+        if (timeSeconds > this.prevTime &&
+            Math.floor(timeSeconds) > Math.floor(this.prevTime)) {
+            this.secondMarkers.push(SPECTROGRAM_HISTORY_WIDTH - 1);
+        }
+        this.prevTime = timeSeconds;
+    }
+
+    resetDspSpectrogramHistory() {
+        this.spectrogramIntensityBuffer?.fill(0);
+        this.spectrogramWriteColumn = 0;
+        this.spectrogramColumnCount = 0;
+    }
+
+    clearSpectrogramImage() {
+        if (!this.imageDataCache) return;
+        const data = this.imageDataCache.data;
+        for (let index = 0; index < data.length; index += 4) {
+            data[index] = 0;
+            data[index + 1] = 0;
+            data[index + 2] = 0;
+            data[index + 3] = 255;
+        }
+        this.tempCtx?.putImageData(this.imageDataCache, 0, 0);
+    }
+
+    activateLegacySpectrogram() {
+        if (!this.dspSpectrogramActive) return;
+        this.dspSpectrogramActive = false;
+        this.spectrogramBuffer.fill(-144);
+        this.clearSpectrogramImage();
+        this.secondMarkers = [];
+        this.prevTime = null;
+    }
+
     onMessage(message) {
+        this.ensureDspTelemetrySubscription();
         if (message.type === 'processBuffer') {
             this.process(message);
         }
@@ -268,6 +451,8 @@ class SpectrogramPlugin extends PluginBase {
         }
         
         if (!averageBuffer || fftSize !== averageBuffer.length || !this.imag ) return;
+
+        this.activateLegacySpectrogram();
 
         this.imag.fill(0);
         for (let i = 0; i < fftSize; i++) {
@@ -305,14 +490,8 @@ class SpectrogramPlugin extends PluginBase {
             }
         }
 
-        // Shift marker positions
-        this.secondMarkers = this.secondMarkers.map(v => v - 1).filter(v => v >= 0);
-
         const t = message.measurements.time;
-        if (this.prevTime !== null && !Number.isNaN(t) && Math.floor(this.prevTime) !== Math.floor(t)) {
-            this.secondMarkers.push(spectroWidth - 1);
-        }
-        this.prevTime = t;
+        if (Number.isFinite(t)) this.updateSecondMarkers(t);
         
         // Add new spectrum data to the rightmost column of the spectrogram display buffer
         const minDisplayFreq = 20;
@@ -426,6 +605,10 @@ class SpectrogramPlugin extends PluginBase {
         this.imageDataCache = this.tempCtx.createImageData(1024, 256);
         const data = this.imageDataCache.data; // Fill initial cache with black
         for (let i = 0, len = data.length; i < len; i += 4) { data[i]=0; data[i+1]=0; data[i+2]=0; data[i+3]=255; }
+        if (this.dspSpectrogramActive) {
+            this.paintDspSpectrogramImage();
+        }
+        this.tempCtx.putImageData(this.imageDataCache, 0, 0);
         
         container.appendChild(graphContainer); // Add graph after controls
 
@@ -470,6 +653,7 @@ class SpectrogramPlugin extends PluginBase {
 
     cleanup() {
         this.stopAnimation();
+        this.disposeDspTelemetrySubscription();
         if (this.observer && this.canvas) {
             this.observer.unobserve(this.canvas);
             this.observer.disconnect();
@@ -489,10 +673,94 @@ class SpectrogramPlugin extends PluginBase {
         this.canvas = null;
         this.imageDataCache = null;
         this.spectrogramBuffer = null;
+        this.spectrogramIntensityBuffer = null;
+        this.spectrogramColorLut = null;
         this.observer = null;
         this.secondMarkers = [];
         this.prevTime = null;
         super.cleanup();
+    }
+
+    createSpectrogramColorLut() {
+        const lut = new Uint8ClampedArray(256 * 3);
+        const colorStops = [
+            { pos: 0.000, r: 0,   g: 0,   b: 0 },
+            { pos: 0.166, r: 0,   g: 0,   b: 255 },
+            { pos: 0.333, r: 0,   g: 255, b: 255 },
+            { pos: 0.500, r: 0,   g: 255, b: 0 },
+            { pos: 0.666, r: 255, g: 255, b: 0 },
+            { pos: 0.833, r: 255, g: 0,   b: 0 },
+            { pos: 1.000, r: 255, g: 255, b: 255 }
+        ];
+        const brightness = 0.75;
+        for (let intensity = 0; intensity < 256; intensity++) {
+            const normalized = intensity / 255;
+            let lower = colorStops[0];
+            let upper = colorStops[colorStops.length - 1];
+            for (let index = 0; index < colorStops.length - 1; index++) {
+                if (normalized >= colorStops[index].pos &&
+                    normalized <= colorStops[index + 1].pos) {
+                    lower = colorStops[index];
+                    upper = colorStops[index + 1];
+                    break;
+                }
+            }
+            const range = upper.pos - lower.pos;
+            const position = range === 0 ? 0 : (normalized - lower.pos) / range;
+            const offset = intensity * 3;
+            lut[offset] = Math.round(
+                (lower.r + (upper.r - lower.r) * position) * brightness
+            );
+            lut[offset + 1] = Math.round(
+                (lower.g + (upper.g - lower.g) * position) * brightness
+            );
+            lut[offset + 2] = Math.round(
+                (lower.b + (upper.b - lower.b) * position) * brightness
+            );
+        }
+        return lut;
+    }
+
+    paintDspSpectrogramColumn(column, intensities) {
+        if (!this.imageDataCache || !this.spectrogramColorLut) return;
+        const pixels = this.imageDataCache.data;
+        for (let row = 0; row < SPECTROGRAM_CELL_COUNT; row++) {
+            const colorOffset = intensities[row] * 3;
+            const pixelOffset =
+                (row * SPECTROGRAM_HISTORY_WIDTH + column) * 4;
+            pixels[pixelOffset] = this.spectrogramColorLut[colorOffset];
+            pixels[pixelOffset + 1] = this.spectrogramColorLut[colorOffset + 1];
+            pixels[pixelOffset + 2] = this.spectrogramColorLut[colorOffset + 2];
+            pixels[pixelOffset + 3] = 255;
+        }
+        this.tempCtx?.putImageData(
+            this.imageDataCache,
+            0,
+            0,
+            column,
+            0,
+            1,
+            SPECTROGRAM_CELL_COUNT
+        );
+    }
+
+    paintDspSpectrogramImage() {
+        if (!this.imageDataCache || !this.spectrogramIntensityBuffer ||
+            !this.spectrogramColorLut) {
+            return;
+        }
+        const pixels = this.imageDataCache.data;
+        for (let row = 0; row < SPECTROGRAM_CELL_COUNT; row++) {
+            for (let column = 0; column < SPECTROGRAM_HISTORY_WIDTH; column++) {
+                const sourceOffset = row * SPECTROGRAM_HISTORY_WIDTH + column;
+                const colorOffset = this.spectrogramIntensityBuffer[sourceOffset] * 3;
+                const pixelOffset = sourceOffset * 4;
+                pixels[pixelOffset] = this.spectrogramColorLut[colorOffset];
+                pixels[pixelOffset + 1] = this.spectrogramColorLut[colorOffset + 1];
+                pixels[pixelOffset + 2] = this.spectrogramColorLut[colorOffset + 2];
+                pixels[pixelOffset + 3] = 255;
+            }
+        }
     }
 
 
@@ -537,9 +805,50 @@ class SpectrogramPlugin extends PluginBase {
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, targetWidth, targetHeight);
         
-        this.tempCtx.putImageData(this.imageDataCache, 0, 0);
-        // Draw the spectrogram (from tempCanvas) onto the main display canvas, scaled.
-        ctx.drawImage(this.tempCanvas, 0, 0, this.tempCanvas.width, this.tempCanvas.height, 0, 0, targetWidth, targetHeight);
+        if (this.dspSpectrogramActive) {
+            const split = this.spectrogramWriteColumn;
+            const firstWidth = SPECTROGRAM_HISTORY_WIDTH - split;
+            const firstTargetWidth = targetWidth * firstWidth / SPECTROGRAM_HISTORY_WIDTH;
+            if (firstWidth > 0) {
+                ctx.drawImage(
+                    this.tempCanvas,
+                    split,
+                    0,
+                    firstWidth,
+                    SPECTROGRAM_CELL_COUNT,
+                    0,
+                    0,
+                    firstTargetWidth,
+                    targetHeight
+                );
+            }
+            if (split > 0) {
+                ctx.drawImage(
+                    this.tempCanvas,
+                    0,
+                    0,
+                    split,
+                    SPECTROGRAM_CELL_COUNT,
+                    firstTargetWidth,
+                    0,
+                    targetWidth - firstTargetWidth,
+                    targetHeight
+                );
+            }
+        } else {
+            this.tempCtx.putImageData(this.imageDataCache, 0, 0);
+            ctx.drawImage(
+                this.tempCanvas,
+                0,
+                0,
+                this.tempCanvas.width,
+                this.tempCanvas.height,
+                0,
+                0,
+                targetWidth,
+                targetHeight
+            );
+        }
 
         ctx.strokeStyle = '#888';
         ctx.lineWidth = dpr; // Thinner than spectrum analyzer grid for less prominence

@@ -1,9 +1,17 @@
+const MATRIX_CHANNEL_COUNT_FRAME = 9;
+const MATRIX_TELEMETRY_VERSION = 1;
+const MATRIX_CHANNEL_COUNT_BYTES = 4;
+
 class MatrixPlugin extends PluginBase {
     constructor() {
         super('Matrix', 'Routes and mixes audio channels with optional phase inversion');
         
         // Initialize parameter - mx: Matrix Routing
         this.mx = "";
+        this._dspTelemetryHub = null;
+        this._dspTelemetryTapId = null;
+        this._dspTelemetryUnsubscribe = null;
+        this._boundDspChannelCountTelemetry = frame => this.handleDspChannelCountTelemetry(frame);
         
         // Register processor function
         this.registerProcessor(`
@@ -185,6 +193,7 @@ class MatrixPlugin extends PluginBase {
     
     // Get parameters
     getParameters() {
+        this.ensureDspTelemetrySubscription();
         return {
             type: this.constructor.name,
             mx: this.mx,
@@ -328,8 +337,88 @@ class MatrixPlugin extends PluginBase {
         return container;
     }
     
+    _setupMessageHandler() {
+        super._setupMessageHandler();
+        this.ensureDspTelemetrySubscription?.();
+    }
+
+    ensureDspTelemetrySubscription() {
+        const hub = window.dspTelemetryHub;
+        const tapId = this.id;
+        const validTapId = Number.isInteger(tapId) && tapId >= 0 && tapId <= 0xffffffff;
+        const validHub = hub && typeof hub.subscribe === 'function';
+        if (!validTapId || !validHub) {
+            if (this._dspTelemetryUnsubscribe &&
+                (hub !== this._dspTelemetryHub || tapId !== this._dspTelemetryTapId)) {
+                this.disposeDspTelemetrySubscription();
+            }
+            return false;
+        }
+        if (this._dspTelemetryUnsubscribe &&
+            hub === this._dspTelemetryHub && tapId === this._dspTelemetryTapId) {
+            return true;
+        }
+        this.disposeDspTelemetrySubscription();
+        try {
+            const unsubscribe = hub.subscribe(
+                tapId,
+                MATRIX_CHANNEL_COUNT_FRAME,
+                this._boundDspChannelCountTelemetry
+            );
+            if (typeof unsubscribe !== 'function') {
+                hub.unsubscribe?.(
+                    tapId,
+                    MATRIX_CHANNEL_COUNT_FRAME,
+                    this._boundDspChannelCountTelemetry
+                );
+                return false;
+            }
+            this._dspTelemetryHub = hub;
+            this._dspTelemetryTapId = tapId;
+            this._dspTelemetryUnsubscribe = unsubscribe;
+            return true;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    disposeDspTelemetrySubscription() {
+        const unsubscribe = this._dspTelemetryUnsubscribe;
+        this._dspTelemetryHub = null;
+        this._dspTelemetryTapId = null;
+        this._dspTelemetryUnsubscribe = null;
+        if (!unsubscribe) return;
+        try {
+            unsubscribe();
+        } catch (error) {
+            // Ignore stale telemetry subscription cleanup failures.
+        }
+    }
+
+    parseDspChannelCountTelemetryFrame(frame) {
+        if (frame?.frameType !== MATRIX_CHANNEL_COUNT_FRAME ||
+            frame.formatVersion !== MATRIX_TELEMETRY_VERSION) {
+            return null;
+        }
+        const payload = frame.payload;
+        if (!payload || typeof payload.getUint32 !== 'function' ||
+            !Number.isInteger(payload.byteLength) ||
+            payload.byteLength !== MATRIX_CHANNEL_COUNT_BYTES) {
+            return null;
+        }
+        const channels = payload.getUint32(0, true);
+        return channels >= 1 && channels <= 8 ? channels : null;
+    }
+
+    handleDspChannelCountTelemetry(frame) {
+        const channels = this.parseDspChannelCountTelemetryFrame(frame);
+        if (channels === null || !this.enabled || !this._sectionEnabled) return;
+        this.updateChannelAvailability(channels);
+    }
+
     // Handle messages from audio processor
     onMessage(message) {
+        this.ensureDspTelemetrySubscription();
         // Update UI if channel count changes
         if (message.type === 'processBuffer' && message.pluginId === this.id && message.measurements) {
             const actualChannelCount = message.measurements.channels || 2;
@@ -377,6 +466,11 @@ class MatrixPlugin extends PluginBase {
                 }
             });
         }
+    }
+
+    cleanup() {
+        this.disposeDspTelemetrySubscription();
+        super.cleanup();
     }
 }
 

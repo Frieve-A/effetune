@@ -1,0 +1,10 @@
+{
+  "type": "DopplerDistortionPlugin",
+  "tolerance": { "abs": 0.00001, "policy": "per-sample" },
+  "fields": [
+    { "name": "coilForce", "key": "cf", "kind": "float", "min": 0, "max": 100, "default": 8, "unit": "N / V" },
+    { "name": "speakerMass", "key": "sm", "kind": "float", "min": 0.001, "max": 0.5, "default": 0.03, "unit": "kg" },
+    { "name": "springConstant", "key": "sc", "kind": "float", "min": 1, "max": 100000, "default": 6000, "unit": "N/m" },
+    { "name": "dampingFactor", "key": "df", "kind": "float", "min": 0, "max": 50, "default": 1.5, "unit": "N*s/m" }
+  ]
+}

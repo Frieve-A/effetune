@@ -1,0 +1,58 @@
+{
+  "formatVersion": 1,
+  "type": "ModalResonatorPlugin",
+  "id": "mixed-modes-44100-mono",
+  "stimulus": "sq50",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 901,
+  "blockSize": 63,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "rs": [
+      {
+        "en": true,
+        "fr": 9.2,
+        "dc": 1,
+        "lp": 9.9,
+        "hp": 3,
+        "gn": 18
+      },
+      {
+        "en": false
+      },
+      {
+        "en": true,
+        "fr": 8.1,
+        "dc": 250,
+        "lp": 8.5,
+        "hp": 5.5,
+        "gn": -18
+      },
+      {
+        "en": false
+      },
+      {
+        "en": true,
+        "fr": 7,
+        "dc": 500,
+        "lp": 9.2,
+        "hp": 6.2,
+        "gn": 6
+      }
+    ],
+    "mx": 50
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "d41d6e2d1fb2fe87b01b55ec8c42bbd18ac79eb14d96e46c178614192c870b0b",
+  "outputFloats": 901,
+  "byteLength": 3604,
+  "binary": "case-003.f32"
+}

@@ -1,0 +1,56 @@
+{
+  "formatVersion": 1,
+  "type": "HornResonatorPlugin",
+  "id": "same-n-shape-reset",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 1301,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "co": 600,
+    "ln": 70,
+    "th": 3,
+    "mo": 60,
+    "cv": 40,
+    "dp": 0.03,
+    "tr": 0.99,
+    "wg": 30
+  },
+  "events": [
+    {
+      "frame": 256,
+      "params": {
+        "th": 12,
+        "mo": 90,
+        "cv": -60,
+        "dp": 4,
+        "tr": 0.4,
+        "co": 1800
+      }
+    },
+    {
+      "frame": 768,
+      "params": {
+        "th": 1.5,
+        "mo": 150,
+        "cv": 75,
+        "dp": 0.2,
+        "tr": 0.9,
+        "co": 320
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "c8426fa0fab3cdd27c4d60b2ce826d12112cbbfd669ac3e573248b3fd89e738b",
+  "outputFloats": 2602,
+  "byteLength": 10408,
+  "binary": "case-006.f32"
+}

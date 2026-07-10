@@ -1,0 +1,30 @@
+{
+  "formatVersion": 1,
+  "type": "BitCrusherPlugin",
+  "id": "mid-depth-dither-ladder",
+  "stimulus": "sin1k",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 263,
+  "blockSize": 31,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "bd": 14,
+    "td": true,
+    "zf": 12300,
+    "be": 3.33,
+    "sd": 509
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "3b195a5a241df26f51b7d75b422c3dd80b3cec6df6029342c228769fb516f7a3",
+  "outputFloats": 526,
+  "byteLength": 2104,
+  "binary": "case-004.f32"
+}

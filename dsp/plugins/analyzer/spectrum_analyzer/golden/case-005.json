@@ -1,0 +1,27 @@
+{
+  "formatVersion": 1,
+  "type": "SpectrumAnalyzerPlugin",
+  "id": "four-channel-passthrough",
+  "stimulus": "fs",
+  "sampleRate": 48000,
+  "channels": 4,
+  "frameCount": 635,
+  "blockSize": 127,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "dr": -96,
+    "pt": 13
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "20b7e59ee92de56571f250ca850d2bc5dfc3442485a805765e1393af6e652512",
+  "outputFloats": 2540,
+  "byteLength": 10160,
+  "binary": "case-005.f32"
+}

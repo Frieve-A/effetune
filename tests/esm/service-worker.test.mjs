@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -7,7 +8,10 @@ import test from 'node:test';
 import vm from 'node:vm';
 
 const require = createRequire(import.meta.url);
-const { buildPrecacheSource } = require('../../scripts/generate-sw-precache.js');
+const {
+  buildPrecacheSource,
+  generatePrecache
+} = require('../../scripts/generate-sw-precache.js');
 
 function createResponse(name, ok = true) {
   return {
@@ -121,9 +125,12 @@ function createPrecacheFixture(t) {
   }
 
   writeFixtureFile(root, 'package.json', JSON.stringify({ version: '9.9.9' }));
+  writeFixtureFile(root, 'features/effetune-benchmark.js', 'export const benchmark = true;\n');
   writeFixtureFile(root, 'js/app.js', 'console.log("first");\n');
   writeFixtureFile(root, 'plugins/plugins.txt', 'plugins/test.js\n');
   writeFixtureFile(root, 'plugins/test.js', 'class TestPlugin {}\n');
+  writeFixtureFile(root, 'plugins/dsp/effetune-dsp.wasm', Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]));
+  writeFixtureFile(root, 'plugins/dsp/effetune-dsp.debug.wasm', Buffer.from([0, 97, 115, 109]));
   writeFixtureFile(root, 'images/icon.png', Buffer.from([0, 1, 2, 3]));
   writeFixtureFile(root, 'presets/test.effetune_preset', 'preset=first\n');
 
@@ -172,6 +179,37 @@ test('precache contains system preset metadata and preset files', () => {
   }
 });
 
+test('committed precache source matches the current precached assets', () => {
+  const committedSource = fs.readFileSync(
+    new URL('../../sw-precache.js', import.meta.url),
+    'utf8'
+  );
+
+  assert.equal(committedSource, buildPrecacheSource().body);
+});
+
+test('precache contains committed baseline and SIMD DSP modules', () => {
+  const precacheUrls = loadPrecacheUrls();
+
+  assert.ok(precacheUrls.has('./plugins/dsp/effetune-dsp.wasm'));
+  assert.ok(precacheUrls.has('./plugins/dsp/effetune-dsp.simd.wasm'));
+  assert.ok(precacheUrls.has('./plugins/dsp/effetune-dsp.meta.json'));
+});
+
+test('precache contains the performance benchmark runtime', () => {
+  const precacheUrls = loadPrecacheUrls();
+
+  assert.ok(precacheUrls.has('./features/effetune-benchmark.js'));
+});
+
+test('precache includes release WebAssembly DSP artifacts and omits debug builds', t => {
+  const root = createPrecacheFixture(t);
+  const { urls } = buildPrecacheSource({ root });
+
+  assert.ok(urls.includes('plugins/dsp/effetune-dsp.wasm'));
+  assert.equal(urls.includes('plugins/dsp/effetune-dsp.debug.wasm'), false);
+});
+
 test('precache cache version changes when precached asset content changes', t => {
   const root = createPrecacheFixture(t);
   const first = buildPrecacheSource({ root });
@@ -184,6 +222,34 @@ test('precache cache version changes when precached asset content changes', t =>
   assert.match(second.cacheVersion, /^effetune-v9\.9\.9-[a-f0-9]{16}$/);
   assert.notEqual(second.cacheVersion, first.cacheVersion);
   assert.notEqual(second.body, first.body);
+});
+
+test('precache check succeeds for fresh output and rejects stale output without rewriting it', t => {
+  const root = createPrecacheFixture(t);
+  const fixtureScript = path.join(root, 'scripts', 'generate-sw-precache.js');
+  fs.mkdirSync(path.dirname(fixtureScript), { recursive: true });
+  fs.copyFileSync(
+    new URL('../../scripts/generate-sw-precache.js', import.meta.url),
+    fixtureScript
+  );
+  generatePrecache({ root });
+
+  const fresh = spawnSync(process.execPath, [fixtureScript, '--check'], {
+    cwd: root,
+    encoding: 'utf8'
+  });
+  assert.equal(fresh.status, 0, fresh.stderr);
+
+  const generatedSource = fs.readFileSync(path.join(root, 'sw-precache.js'), 'utf8');
+  writeFixtureFile(root, 'js/app.js', 'console.log("stale");\n');
+  const stale = spawnSync(process.execPath, [fixtureScript, '--check'], {
+    cwd: root,
+    encoding: 'utf8'
+  });
+
+  assert.equal(stale.status, 1);
+  assert.match(stale.stderr, /sw-precache\.js is stale/);
+  assert.equal(fs.readFileSync(path.join(root, 'sw-precache.js'), 'utf8'), generatedSource);
 });
 
 test('service worker precaches with HTTP-cache-bypassing reload requests', async () => {

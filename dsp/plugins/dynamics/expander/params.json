@@ -1,0 +1,12 @@
+{
+  "type": "ExpanderPlugin",
+  "tolerance": { "abs": 0.00001, "policy": "per-sample" },
+  "fields": [
+    { "name": "threshold", "key": "th", "kind": "float", "min": -60, "max": 0, "default": -24, "unit": "dB" },
+    { "name": "ratio", "key": "rt", "kind": "float", "min": 0.05, "max": 20, "default": 2 },
+    { "name": "attack", "key": "at", "kind": "float", "min": 0.1, "max": 100, "default": 10, "unit": "ms" },
+    { "name": "release", "key": "rl", "kind": "float", "min": 10, "max": 1000, "default": 100, "unit": "ms" },
+    { "name": "knee", "key": "kn", "kind": "float", "min": 0, "max": 12, "default": 3, "unit": "dB" },
+    { "name": "gain", "key": "gn", "kind": "float", "min": -12, "max": 12, "default": 0, "unit": "dB" }
+  ]
+}

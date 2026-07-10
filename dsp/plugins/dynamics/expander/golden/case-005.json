@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "ExpanderPlugin",
+  "id": "mono-44100-odd-block",
+  "stimulus": "noise",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 997,
+  "blockSize": 83,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "th": -36,
+    "rt": 6,
+    "at": 3.7,
+    "rl": 321,
+    "kn": 5.5,
+    "gn": 2.5
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "434b250ab46eeb6f31274e74abb8a5276c8c7d815e588d5521ecd18b195a9a88",
+  "outputFloats": 997,
+  "byteLength": 3988,
+  "binary": "case-005.f32"
+}

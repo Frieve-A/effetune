@@ -1,0 +1,60 @@
+{
+  "formatVersion": 1,
+  "type": "DigitalErrorEmulatorPlugin",
+  "id": "schedule-reset-and-wet-continuity",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 3001,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "be": -6,
+    "md": "3A",
+    "rf": 48,
+    "wt": 0
+  },
+  "events": [
+    {
+      "frame": 31,
+      "params": {
+        "wt": 100
+      }
+    },
+    {
+      "frame": 513,
+      "params": {
+        "be": -2
+      }
+    },
+    {
+      "frame": 1027,
+      "params": {
+        "rf": 96
+      }
+    },
+    {
+      "frame": 1541,
+      "params": {
+        "md": "6B"
+      }
+    },
+    {
+      "frame": 2303,
+      "params": {
+        "wt": 25
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "0d2ff76003f7af6a30569695d8b30aaee461e4e52e3d78077aa3f00854f6de3f",
+  "outputFloats": 6002,
+  "byteLength": 24008,
+  "binary": "case-008.f32"
+}

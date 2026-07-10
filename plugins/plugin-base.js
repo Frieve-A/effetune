@@ -221,20 +221,53 @@ class PluginBase {
             
             window.workletNode.port.postMessage({
                 type: 'updatePlugin',
-                plugin: {
-                    id: this.id,
-                    type: this.constructor.name,
-                    enabled: this.enabled,
-                    parameters: parameters,
-                    inputBus: this.inputBus,
-                    outputBus: this.outputBus,
-                    channel: this.channel
-                }
+                plugin: this.getWorkletPluginData(parameters)
             });
             if (window.uiManager) {
                 window.uiManager.updateURL();
             }
         }
+    }
+
+    // Build the control-rate payload shared by direct, bulk, and DBT worklet updates.
+    getWorkletPluginData(parameters = this.getParameters()) {
+        const type = this.constructor.name;
+        const payload = {
+            id: this.id,
+            type,
+            enabled: this.enabled,
+            parameters,
+            inputBus: this.inputBus,
+            outputBus: this.outputBus,
+            channel: this.channel
+        };
+        const packer = window.dspParamPackers?.get(type);
+        if (!packer) return payload;
+
+        try {
+            const wasmParams = packer.pack(parameters);
+            if (!(wasmParams instanceof Float32Array)) {
+                throw new TypeError('parameter packer did not return Float32Array');
+            }
+            let wasmParamBytes = null;
+            if (typeof packer.packBytes === 'function') {
+                wasmParamBytes = packer.packBytes(parameters);
+                if (!(wasmParamBytes instanceof Uint8Array) ||
+                    wasmParamBytes.byteLength > packer.byteCapacity) {
+                    throw new TypeError('structured parameter packer returned an invalid byte block');
+                }
+            }
+            payload.wasmParams = wasmParams;
+            payload.wasmParamsHash = packer.hash >>> 0;
+            if (wasmParamBytes) payload.wasmParamBytes = wasmParamBytes;
+            this._dspPackingFailed = false;
+        } catch (error) {
+            if (!this._dspPackingFailed) {
+                console.warn(`[dsp-wasm] Parameter packing failed for ${type}; using the JS path.`, error);
+                this._dspPackingFailed = true;
+            }
+        }
+        return payload;
     }
 
     // Get current parameters; can be overridden by subclasses.

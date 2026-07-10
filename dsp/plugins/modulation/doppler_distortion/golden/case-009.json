@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "DopplerDistortionPlugin",
+  "id": "all8-variable-block",
+  "stimulus": "sweep",
+  "sampleRate": 96000,
+  "channels": 8,
+  "frameCount": 8303,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 8,
+  "seed": "0xeffe7a56",
+  "params": {
+    "cf": 18,
+    "sm": 0.04,
+    "sc": 7200,
+    "df": 3.2
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "3e2d3415b86537e4b25255aa2f6b99f04aa9e6b9e39dcc74e3cce1d12d59ccee",
+  "outputFloats": 66424,
+  "byteLength": 265696,
+  "binary": "case-009.f32"
+}

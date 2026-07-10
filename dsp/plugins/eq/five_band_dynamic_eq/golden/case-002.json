@@ -1,0 +1,42 @@
+{
+  "formatVersion": 1,
+  "type": "FiveBandDynamicEQ",
+  "id": "all-bands-disabled-identity",
+  "stimulus": "noise",
+  "sampleRate": 44100,
+  "channels": 4,
+  "frameCount": 259,
+  "blockSize": 65,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "bs": [
+      {
+        "en": false
+      },
+      {
+        "en": false
+      },
+      {
+        "en": false
+      },
+      {
+        "en": false
+      },
+      {
+        "en": false
+      }
+    ]
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "03bab089177565d05d79d2e23f09c982732a361ea9e1949df5535067343c5eb2",
+  "outputFloats": 1036,
+  "byteLength": 4144,
+  "binary": "case-002.f32"
+}

@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "MSMatrixPlugin",
+  "id": "encode-swap",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 257,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "md": 0,
+    "mg": 0,
+    "sg": 0,
+    "sw": 1
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "ea13e207837045ba6ec2944e0f8436084a8c6629351def3bdbabb5d72f048e26",
+  "outputFloats": 514,
+  "byteLength": 2056,
+  "binary": "case-003.f32"
+}

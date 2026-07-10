@@ -1,0 +1,63 @@
+{
+  "formatVersion": 1,
+  "type": "ExpanderPlugin",
+  "id": "parameter-transitions",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 1237,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "th": -24,
+    "rt": 2,
+    "at": 10,
+    "rl": 100,
+    "kn": 3,
+    "gn": 0
+  },
+  "events": [
+    {
+      "frame": 31,
+      "params": {
+        "th": -50,
+        "rt": 8,
+        "at": 0.1
+      }
+    },
+    {
+      "frame": 128,
+      "params": {
+        "kn": 0,
+        "gn": 12
+      }
+    },
+    {
+      "frame": 513,
+      "params": {
+        "th": -12,
+        "rt": 0.05,
+        "rl": 1000,
+        "kn": 12
+      }
+    },
+    {
+      "frame": 1001,
+      "params": {
+        "rt": 1,
+        "gn": -12
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "434b250ab46eeb6f31274e74abb8a5276c8c7d815e588d5521ecd18b195a9a88",
+  "outputFloats": 2474,
+  "byteLength": 9896,
+  "binary": "case-008.f32"
+}

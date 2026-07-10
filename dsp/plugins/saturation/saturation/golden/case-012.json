@@ -1,0 +1,56 @@
+{
+  "formatVersion": 1,
+  "type": "SaturationPlugin",
+  "id": "parameter-transitions",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 259,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 11,
+  "seed": "0xeffe7a55",
+  "params": {
+    "dr": 1.5,
+    "bs": 0.1,
+    "mx": 100,
+    "gn": -2
+  },
+  "events": [
+    {
+      "frame": 17,
+      "params": {
+        "dr": 10,
+        "gn": 0
+      }
+    },
+    {
+      "frame": 64,
+      "params": {
+        "bs": -0.3
+      }
+    },
+    {
+      "frame": 129,
+      "params": {
+        "mx": 0
+      }
+    },
+    {
+      "frame": 193,
+      "params": {
+        "mx": 100,
+        "gn": 18
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "a9127eabc85de27bb7f876e66ef33c7ccc5614d3de0588f546d84a94cfb0c966",
+  "outputFloats": 518,
+  "byteLength": 2072,
+  "binary": "case-012.f32"
+}

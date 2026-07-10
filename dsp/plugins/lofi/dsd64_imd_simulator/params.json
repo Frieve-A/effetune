@@ -1,0 +1,18 @@
+{
+  "type": "DSD64IMDSimulatorPlugin",
+  "tolerance": { "abs": 0.00001, "policy": "per-sample" },
+  "fields": [
+    { "name": "amount", "key": "am", "kind": "float", "min": -40, "max": 50, "default": 24, "unit": "dB" },
+    { "name": "dryWet", "key": "dw", "kind": "int", "min": 0, "max": 100, "default": 50, "unit": "%" },
+    { "name": "ultrasonicLevel", "key": "ul", "kind": "float", "min": -48, "max": -18, "default": -30, "unit": "dBFS RMS" },
+    { "name": "noiseColor", "key": "nc", "kind": "int", "min": -100, "max": 100, "default": 0, "unit": "%" },
+    { "name": "analogNonlinearity", "key": "an", "kind": "float", "min": 0, "max": 10, "default": 1.4, "unit": "%" },
+    { "name": "evenBias", "key": "eb", "kind": "int", "min": 0, "max": 100, "default": 20, "unit": "%" },
+    { "name": "signalCoupling", "key": "sc", "kind": "int", "min": 0, "max": 200, "default": 150, "unit": "%" },
+    { "name": "scratchTone", "key": "st", "kind": "float", "min": 3, "max": 14, "default": 10.5, "unit": "kHz" },
+    { "name": "noiseTexture", "key": "nt", "kind": "int", "min": 0, "max": 100, "default": 25, "unit": "%" },
+    { "name": "crossSideband", "key": "cs", "kind": "int", "min": 0, "max": 100, "default": 75, "unit": "%" },
+    { "name": "imdPathHpf", "key": "hf", "kind": "float", "min": 0, "max": 8, "default": 0, "unit": "kHz" },
+    { "name": "outputTrim", "key": "ot", "kind": "float", "min": -24, "max": 12, "default": 0, "unit": "dB" }
+  ]
+}

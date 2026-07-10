@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "type": "SubSynthPlugin",
+  "id": "dry-only-identity",
+  "stimulus": "fs",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 259,
+  "blockSize": 65,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "sl": 0,
+    "dl": 100,
+    "slf": 5,
+    "sls": 0,
+    "shf": 5,
+    "shs": 0,
+    "dhf": 5,
+    "dhs": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "8436f585dbeb985ffe8bd8da5144bb86fb34001e136d98dc6e21fcab9c9ed3c8",
+  "outputFloats": 259,
+  "byteLength": 1036,
+  "binary": "case-002.f32"
+}

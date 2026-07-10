@@ -1,0 +1,27 @@
+{
+  "formatVersion": 1,
+  "type": "SpectrogramPlugin",
+  "id": "maximum-points-high-rate",
+  "stimulus": "sweep",
+  "sampleRate": 192000,
+  "channels": 2,
+  "frameCount": 911,
+  "blockSize": 113,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "dr": -144,
+    "pt": 14
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "52bc8f91f442a2af524a84ebe6be6ce80dfa90d2c90883afae6b0c63a28cfc26",
+  "outputFloats": 1822,
+  "byteLength": 7288,
+  "binary": "case-003.f32"
+}

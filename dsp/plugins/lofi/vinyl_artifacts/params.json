@@ -1,0 +1,18 @@
+{
+  "type": "VinylArtifactsPlugin",
+  "tolerance": { "abs": 0.00001, "policy": "per-sample" },
+  "fields": [
+    { "name": "popsPerMinute", "key": "pp", "kind": "int", "min": 0, "max": 120, "default": 20 },
+    { "name": "popLevel", "key": "pl", "kind": "float", "min": -80, "max": 0, "default": -24, "unit": "dB" },
+    { "name": "cracklesPerMinute", "key": "cm", "kind": "int", "min": 0, "max": 2000, "default": 500 },
+    { "name": "crackleLevel", "key": "cl", "kind": "float", "min": -80, "max": 0, "default": -33, "unit": "dB" },
+    { "name": "hissLevel", "key": "hs", "kind": "float", "min": -80, "max": 0, "default": -42, "unit": "dB" },
+    { "name": "rumbleLevel", "key": "rb", "kind": "float", "min": -80, "max": 0, "default": -50, "unit": "dB" },
+    { "name": "crosstalk", "key": "xt", "kind": "int", "min": 0, "max": 100, "default": 60, "unit": "%" },
+    { "name": "noiseProfile", "key": "tn", "kind": "float", "min": 0, "max": 10, "default": 0 },
+    { "name": "wear", "key": "wr", "kind": "int", "min": 0, "max": 200, "default": 100, "unit": "%" },
+    { "name": "react", "key": "rt", "kind": "int", "min": 0, "max": 100, "default": 25, "unit": "%" },
+    { "name": "reactMode", "key": "rm", "kind": "enum", "values": ["Velocity", "Amplitude"], "default": "Velocity" },
+    { "name": "mix", "key": "mx", "kind": "int", "min": 0, "max": 100, "default": 100, "unit": "%" }
+  ]
+}

@@ -1,0 +1,123 @@
+name: DSP Core
+
+on:
+  push:
+    paths:
+      - 'dsp/**'
+      - 'plugins/**'
+      - 'js/audio/**'
+      - 'js/audio-manager.js'
+      - 'js/electron/audioIntegration.js'
+      - 'js/ui/pipeline/pipeline-worklet-sync.js'
+      - 'features/effetune-benchmark.js'
+      - 'features/effetune_bench.html'
+      - 'scripts/gen-dsp-params.mjs'
+      - 'scripts/build-dsp-wasm.mjs'
+      - 'tools/dsp-parity/**'
+      - 'tools/verify-dsp-package.mjs'
+      - 'tests/esm/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/dsp.yml'
+  pull_request:
+    paths:
+      - 'dsp/**'
+      - 'plugins/**'
+      - 'js/audio/**'
+      - 'js/audio-manager.js'
+      - 'js/electron/audioIntegration.js'
+      - 'js/ui/pipeline/pipeline-worklet-sync.js'
+      - 'features/effetune-benchmark.js'
+      - 'features/effetune_bench.html'
+      - 'scripts/gen-dsp-params.mjs'
+      - 'scripts/build-dsp-wasm.mjs'
+      - 'tools/dsp-parity/**'
+      - 'tools/verify-dsp-package.mjs'
+      - 'tests/esm/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/dsp.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  source-verification:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run verify
+
+  dsp-build:
+    needs: source-verification
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - uses: emscripten-core/setup-emsdk@v16
+        with:
+          version: 6.0.2
+          actions-cache-folder: emsdk-cache
+      - run: npm ci
+      - run: npm run build:dsp
+      - name: Verify committed generated files and artifacts
+        run: git diff --exit-code && test -z "$(git status --porcelain)"
+
+  dsp-native-tests:
+    needs: source-verification
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:dsp
+      - name: Run native parity with the realtime allocation guard
+        run: node tools/dsp-parity/run.mjs --native --allocations
+
+  dsp-parity:
+    needs: source-verification
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:dsp:parity
+
+  electron-package-smoke:
+    needs: [source-verification, dsp-build]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run pack
+      - run: npm run smoke:dsp-package
+
+  format:
+    needs: source-verification
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check C++ formatting
+        shell: bash
+        run: find dsp -path dsp/vendor -prune -o \( -name '*.cpp' -o -name '*.h' \) -print0 | xargs -0 clang-format --dry-run --Werror

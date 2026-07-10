@@ -1,0 +1,39 @@
+{
+  "formatVersion": 1,
+  "type": "StereoMeterPlugin",
+  "id": "window-transition",
+  "stimulus": "step",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 801,
+  "blockSize": 89,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "wt": 0.1
+  },
+  "events": [
+    {
+      "frame": 267,
+      "params": {
+        "wt": 0.01
+      }
+    },
+    {
+      "frame": 534,
+      "params": {
+        "wt": 1
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "1ff9d0a048f06934f1ac8c2dced0bab9b181a16cc76d9af8378abc66ab7e97f5",
+  "outputFloats": 1602,
+  "byteLength": 6408,
+  "binary": "case-006.f32"
+}

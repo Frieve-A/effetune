@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "SaturationPlugin",
+  "id": "dry-with-gain",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 257,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "dr": 10,
+    "bs": -0.3,
+    "mx": 0,
+    "gn": 6
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "a9127eabc85de27bb7f876e66ef33c7ccc5614d3de0588f546d84a94cfb0c966",
+  "outputFloats": 514,
+  "byteLength": 2056,
+  "binary": "case-003.f32"
+}

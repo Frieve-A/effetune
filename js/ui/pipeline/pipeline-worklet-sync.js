@@ -41,19 +41,7 @@ export class PipelineWorkletSync {
         if (window.workletNode) {
             this.ensureProcessorsRegistered();
             // Prepare plugin data
-            const plugins = this.getCurrentPipeline().map(plugin => {
-                const parameters = this.getPluginParameters(plugin);
-                
-                return {
-                    id: plugin.id,
-                    type: plugin.constructor.name,
-                    enabled: plugin.enabled,
-                    parameters: parameters,
-                    inputBus: plugin.inputBus,
-                    outputBus: plugin.outputBus,
-                    channel: plugin.channel
-                };
-            });
+            const plugins = this.getCurrentPipeline().map(plugin => this.preparePluginData(plugin));
             
             window.workletNode.port.postMessage({
                 type: 'updatePlugins',
@@ -71,19 +59,9 @@ export class PipelineWorkletSync {
     updateWorkletPlugin(plugin) {
         if (window.workletNode) {
             this.ensureProcessorsRegistered(plugin);
-            const parameters = this.getPluginParameters(plugin);
-            
             window.workletNode.port.postMessage({
                 type: 'updatePlugin',
-                plugin: {
-                    id: plugin.id,
-                    type: plugin.constructor.name,
-                    enabled: plugin.enabled,
-                    parameters: parameters,
-                    inputBus: plugin.inputBus,
-                    outputBus: plugin.outputBus,
-                    channel: plugin.channel
-                }
+                plugin: this.preparePluginData(plugin)
             });
         }
         this.updateURL();
@@ -100,19 +78,7 @@ export class PipelineWorkletSync {
         if (window.workletNode) {
             this.ensureProcessorsRegistered();
             // Prepare plugin data
-            const plugins = this.getCurrentPipeline().map(plugin => {
-                const parameters = this.getPluginParameters(plugin);
-                
-                return {
-                    id: plugin.id,
-                    type: plugin.constructor.name,
-                    enabled: plugin.enabled,
-                    parameters: parameters,
-                    inputBus: plugin.inputBus,
-                    outputBus: plugin.outputBus,
-                    channel: plugin.channel
-                };
-            });
+            const plugins = this.getCurrentPipeline().map(plugin => this.preparePluginData(plugin));
             
             window.workletNode.port.postMessage({
                 type: 'updatePlugins',
@@ -130,18 +96,9 @@ export class PipelineWorkletSync {
     sendParameterUpdate(plugin) {
         if (window.workletNode) {
             this.ensureProcessorsRegistered(plugin);
-            const parameters = this.getPluginParameters(plugin);
             window.workletNode.port.postMessage({
                 type: 'updatePlugin',
-                plugin: {
-                    id: plugin.id,
-                    type: plugin.constructor.name,
-                    enabled: plugin.enabled,
-                    parameters: parameters,
-                    inputBus: plugin.inputBus,
-                    outputBus: plugin.outputBus,
-                    channel: plugin.channel
-                }
+                plugin: this.preparePluginData(plugin)
             });
         }
     }
@@ -153,7 +110,9 @@ export class PipelineWorkletSync {
      */
     preparePluginData(plugin) {
         const parameters = this.getPluginParameters(plugin);
-        
+        if (typeof plugin.getWorkletPluginData === 'function') {
+            return plugin.getWorkletPluginData(parameters);
+        }
         return {
             id: plugin.id,
             type: plugin.constructor.name,

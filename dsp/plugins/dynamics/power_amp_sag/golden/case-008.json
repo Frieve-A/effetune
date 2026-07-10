@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "PowerAmpSagPlugin",
+  "id": "mono-44100-odd-block",
+  "stimulus": "sq50",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 997,
+  "blockSize": 83,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "ss": 4.2,
+    "ps": 61,
+    "rs": 37,
+    "mb": true
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "41b7ebe357e8158fc654f6f159070686664028017f87ba53002bb8a3235fee69",
+  "outputFloats": 997,
+  "byteLength": 3988,
+  "binary": "case-008.f32"
+}

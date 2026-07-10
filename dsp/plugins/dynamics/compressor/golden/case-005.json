@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "CompressorPlugin",
+  "id": "mono-44100-odd-block",
+  "stimulus": "sq50",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 997,
+  "blockSize": 83,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "th": -36,
+    "rt": 6,
+    "at": 3.7,
+    "rl": 321,
+    "kn": 5.5,
+    "gn": 2.5
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "3e2d5fd3273c7fff8828c3c04033a5b7fa2e41f4192b760258701a6786c7fe93",
+  "outputFloats": 997,
+  "byteLength": 3988,
+  "binary": "case-005.f32"
+}

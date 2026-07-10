@@ -1,0 +1,37 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 127,
+    "channels": 2,
+    "channelMode": "stereo",
+    "frames": 7403,
+    "params": { "pd": 0, "ds": 150, "dp": 50, "hd": 5000, "ld": 100, "mx": 16, "fb": 50, "pp": 0 }
+  },
+  "cases": [
+    { "id": "default-first-echo", "stimulus": "imp" },
+    { "id": "dry-only-warms-lines", "stimulus": "noise", "sampleRate": 96000, "channels": 1, "channelMode": "mono", "frames": 259, "blockSize": 65, "params": { "ds": 1, "mx": 0, "fb": 99, "dp": 100 } },
+    { "id": "maximum-pre-delay", "stimulus": "imp", "sampleRate": 44100, "channels": 1, "channelMode": "mono", "frames": 4461, "blockSize": 63, "params": { "pd": 100, "ds": 1, "dp": 0, "mx": 100, "fb": 0 } },
+    { "id": "maximum-delay-config", "stimulus": "fs", "sampleRate": 192000, "channels": 1, "channelMode": "mono", "frames": 131, "blockSize": 31, "params": { "pd": 100, "ds": 5000, "dp": 100, "hd": 20, "ld": 20000, "mx": 100, "fb": 99 } },
+    { "id": "stereo-independent", "stimulus": "imp", "sampleRate": 96000, "frames": 401, "blockSize": 63, "params": { "ds": 1, "dp": 0, "mx": 100, "fb": 99, "pp": 0 } },
+    { "id": "stereo-mono-feedback", "stimulus": "imp", "sampleRate": 96000, "frames": 401, "blockSize": 65, "params": { "ds": 1, "dp": 0, "mx": 100, "fb": 99, "pp": 50 } },
+    { "id": "stereo-cross-feedback", "stimulus": "imp", "sampleRate": 96000, "frames": 401, "blockSize": 127, "params": { "ds": 1, "dp": 0, "mx": 100, "fb": 99, "pp": 100 } },
+    { "id": "four-channel-cutoff-swap", "stimulus": "noise", "sampleRate": 192000, "channels": 4, "channelMode": "all4", "frames": 401, "blockSize": 63, "params": { "ds": 1, "dp": 100, "hd": 20, "ld": 20000, "mx": 100, "fb": 80, "pp": 100 } },
+    { "id": "one-frame-blocks", "stimulus": "noise", "sampleRate": 44100, "channels": 1, "channelMode": "mono", "frames": 257, "blockSize": 1, "params": { "pd": 0, "ds": 1, "dp": 73, "hd": 9000, "ld": 280, "mx": 67, "fb": 81, "pp": 35 } },
+    {
+      "id": "non-aligned-delay-transitions",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "channels": 4,
+      "channelMode": "all4",
+      "frames": 1001,
+      "blockSize": 64,
+      "params": { "pd": 0, "ds": 1, "dp": 0, "hd": 18000, "ld": 20, "mx": 0, "fb": 99, "pp": 0 },
+      "events": [
+        { "frame": 31, "params": { "mx": 100 } },
+        { "frame": 130, "params": { "pd": 3.5, "ds": 2.5, "dp": 100 } },
+        { "frame": 321, "params": { "hd": 200, "ld": 12000, "pp": 100 } },
+        { "frame": 700, "params": { "pd": 0, "ds": 1, "fb": 0, "mx": 50 } }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "formatVersion": 1,
+  "type": "HiPassFilterPlugin",
+  "id": "nyquist-clamp",
+  "stimulus": "sweep",
+  "sampleRate": 44100,
+  "channels": 2,
+  "frameCount": 255,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "fr": 40000,
+    "sl": -48
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "3791bc033d29b93e1d5143cdce4ddfc0d195cc17e6e17091e1811802b8cf47c0",
+  "outputFloats": 510,
+  "byteLength": 2040,
+  "binary": "case-006.f32"
+}

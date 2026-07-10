@@ -1,0 +1,27 @@
+{
+  "formatVersion": 1,
+  "type": "HiPassFilterPlugin",
+  "id": "startup-seeds-silence",
+  "stimulus": "silence",
+  "sampleRate": 44100,
+  "channels": 2,
+  "frameCount": 131,
+  "blockSize": 63,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "fr": 1000,
+    "sl": -24
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "3791bc033d29b93e1d5143cdce4ddfc0d195cc17e6e17091e1811802b8cf47c0",
+  "outputFloats": 262,
+  "byteLength": 1048,
+  "binary": "case-002.f32"
+}

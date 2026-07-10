@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "SimpleJitterPlugin",
+  "id": "maximum-jitter-all-channels",
+  "stimulus": "noise",
+  "sampleRate": 192000,
+  "channels": 4,
+  "frameCount": 4003,
+  "blockSize": 127,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "rj": 200
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "d5e6cf96ac910e732b5e6499446141c7df339451ee8ed4d90ac98a9e9b945796",
+  "outputFloats": 16012,
+  "byteLength": 64048,
+  "binary": "case-003.f32"
+}

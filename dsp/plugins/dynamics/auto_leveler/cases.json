@@ -1,0 +1,69 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 64,
+    "channels": 2,
+    "channelMode": "stereo"
+  },
+  "cases": [
+    { "id": "default-impulse", "stimulus": "imp", "frames": 1025 },
+    {
+      "id": "maximum-upward-leveling",
+      "stimulus": "noise",
+      "frames": 1201,
+      "params": { "tg": 0, "tw": 1000, "mg": 12, "ng": -36, "at": 1, "rt": 10, "gt": -96 }
+    },
+    {
+      "id": "noise-gate-silence",
+      "stimulus": "silence",
+      "frames": 777,
+      "params": { "tg": -6, "tw": 10000, "mg": 12, "ng": 0, "at": 1000, "rt": 10000, "gt": -24 }
+    },
+    {
+      "id": "maximum-downward-leveling",
+      "stimulus": "fs",
+      "frames": 1033,
+      "params": { "tg": -36, "tw": 1000, "mg": 0, "ng": -36, "at": 1, "rt": 10000, "gt": -96 }
+    },
+    {
+      "id": "mono-44100-odd-block",
+      "stimulus": "sq50",
+      "sampleRate": 44100,
+      "blockSize": 83,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 997,
+      "params": { "tg": -21.5, "tw": 2345, "mg": 7.5, "ng": -19, "at": 37, "rt": 2345, "gt": -72 }
+    },
+    {
+      "id": "stereo-96000-variable-block",
+      "stimulus": "sweep",
+      "sampleRate": 96000,
+      "blockSize": 127,
+      "frames": 1151,
+      "params": { "tg": -12, "tw": 1500, "mg": 9, "ng": -24, "at": 125, "rt": 750, "gt": -48 }
+    },
+    {
+      "id": "all4-192000",
+      "stimulus": "noise",
+      "sampleRate": 192000,
+      "blockSize": 127,
+      "channels": 4,
+      "channelMode": "all4",
+      "channel": "A",
+      "frames": 1301,
+      "params": { "tg": -24, "tw": 1000, "mg": 3, "ng": -30, "at": 8, "rt": 8000, "gt": -84 }
+    },
+    {
+      "id": "parameter-transitions",
+      "stimulus": "noise",
+      "frames": 1237,
+      "events": [
+        { "frame": 31, "params": { "tg": -6, "mg": 12, "at": 1 } },
+        { "frame": 128, "params": { "ng": -36, "rt": 10, "gt": -96 } },
+        { "frame": 513, "params": { "tw": 1000, "tg": -36, "gt": -24 } },
+        { "frame": 1001, "params": { "tw": 10000, "mg": 0, "ng": 0, "at": 1000, "rt": 10000 } }
+      ]
+    }
+  ]
+}

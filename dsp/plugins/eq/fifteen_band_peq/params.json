@@ -1,0 +1,11 @@
+{
+  "type": "FifteenBandPEQPlugin",
+  "tolerance": { "abs": 0.00001, "policy": "per-sample" },
+  "fields": [
+    { "name": "frequency", "key": "f", "kind": "float", "count": 15, "min": 20, "max": 20000, "default": [25, 40, 63, 100, 160, 250, 400, 630, 1000, 1600, 2500, 4000, 6300, 10000, 16000], "unit": "Hz" },
+    { "name": "gain", "key": "g", "kind": "float", "count": 15, "min": -20, "max": 20, "default": 0, "unit": "dB" },
+    { "name": "q", "key": "q", "kind": "float", "count": 15, "min": 0.1, "max": 10, "default": 1 },
+    { "name": "filterType", "key": "t", "kind": "enum", "count": 15, "values": ["pk", "lp", "hp", "ls", "hs", "bp", "no", "ap"], "default": "pk" },
+    { "name": "bandEnabled", "key": "e", "kind": "bool", "count": 15, "default": true }
+  ]
+}

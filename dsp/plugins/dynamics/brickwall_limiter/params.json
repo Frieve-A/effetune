@@ -1,0 +1,12 @@
+{
+  "type": "BrickwallLimiterPlugin",
+  "tolerance": { "abs": 0.00003, "policy": "per-sample" },
+  "fields": [
+    { "name": "threshold", "key": "th", "kind": "float", "min": -24, "max": 0, "default": 0, "unit": "dB" },
+    { "name": "release", "key": "rl", "kind": "float", "min": 10, "max": 500, "default": 100, "unit": "ms" },
+    { "name": "lookahead", "key": "la", "kind": "float", "min": 0, "max": 10, "default": 3, "unit": "ms" },
+    { "name": "oversampling", "key": "os", "kind": "int", "min": 1, "max": 8, "default": 1 },
+    { "name": "inputGain", "key": "ig", "kind": "float", "min": -18, "max": 18, "default": 0, "unit": "dB" },
+    { "name": "margin", "key": "sm", "kind": "float", "min": -3, "max": 0, "default": -1, "unit": "dB" }
+  ]
+}

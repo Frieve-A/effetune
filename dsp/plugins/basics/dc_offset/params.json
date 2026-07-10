@@ -1,0 +1,17 @@
+{
+  "type": "DCOffsetPlugin",
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "fields": [
+    {
+      "name": "offset",
+      "key": "of",
+      "kind": "float",
+      "min": -1,
+      "max": 1,
+      "default": 0
+    }
+  ]
+}

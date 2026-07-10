@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "MatrixPlugin",
+  "id": "malformed-routes-are-dropped",
+  "stimulus": "sweep",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 1536,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "mx": "x000q11p"
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "e8549976a0668ad5f674a9b6124c7a533c0c82a9b0f0db4c62ba2a6ffeae7ad6",
+  "outputFloats": 3072,
+  "byteLength": 12288,
+  "binary": "case-005.f32"
+}

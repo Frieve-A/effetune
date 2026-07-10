@@ -1,0 +1,37 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 128,
+    "channels": 2,
+    "channelMode": "stereo",
+    "frames": 257,
+    "params": { "bs": 0, "md": 0, "tr": 0 }
+  },
+  "cases": [
+    { "id": "flat-identity", "stimulus": "noise", "frames": 259 },
+    { "id": "bass-maximum", "stimulus": "step", "sampleRate": 44100, "frames": 257, "blockSize": 63, "params": { "bs": 24 } },
+    { "id": "bass-minimum", "stimulus": "noise", "sampleRate": 96000, "channels": 1, "channelMode": "mono", "frames": 193, "blockSize": 65, "params": { "bs": -24 } },
+    { "id": "mid-maximum", "stimulus": "sin1k", "sampleRate": 192000, "channels": 4, "channelMode": "all4", "frames": 129, "blockSize": 31, "params": { "md": 24 } },
+    { "id": "mid-minimum", "stimulus": "sweep", "sampleRate": 44100, "frames": 255, "blockSize": 127, "params": { "md": -24 } },
+    { "id": "treble-maximum", "stimulus": "fs", "sampleRate": 96000, "frames": 197, "blockSize": 63, "params": { "tr": 24 } },
+    { "id": "treble-minimum", "stimulus": "noise", "sampleRate": 192000, "frames": 197, "blockSize": 63, "params": { "tr": -24 } },
+    { "id": "all-bands-opposed", "stimulus": "noise", "sampleRate": 44100, "channels": 4, "channelMode": "all4", "frames": 131, "blockSize": 33, "params": { "bs": 24, "md": -24, "tr": 24 } },
+    { "id": "one-frame-binary64-state", "stimulus": "noise", "sampleRate": 192000, "channels": 1, "channelMode": "mono", "frames": 67, "blockSize": 1, "params": { "bs": -12, "md": 9, "tr": 18 } },
+    {
+      "id": "per-band-freeze-transitions",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "channels": 4,
+      "channelMode": "all4",
+      "frames": 259,
+      "blockSize": 64,
+      "params": { "bs": 12, "md": 0, "tr": -8 },
+      "events": [
+        { "frame": 17, "params": { "bs": 0, "md": 18 } },
+        { "frame": 66, "params": { "md": 0, "tr": 0 } },
+        { "frame": 129, "params": { "bs": -24, "tr": 24 } },
+        { "frame": 194, "params": { "bs": 0, "md": -12, "tr": 0 } }
+      ]
+    }
+  ]
+}

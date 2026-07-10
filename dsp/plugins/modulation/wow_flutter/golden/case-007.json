@@ -1,0 +1,67 @@
+{
+  "formatVersion": 1,
+  "type": "WowFlutterPlugin",
+  "id": "state-preserving-events",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 7007,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "rt": 0.5,
+    "dp": 6,
+    "rn": 10,
+    "rc": 5,
+    "rs": -6,
+    "cp": 0,
+    "cs": 100
+  },
+  "events": [
+    {
+      "frame": 31,
+      "params": {
+        "rt": 12,
+        "dp": 2
+      }
+    },
+    {
+      "frame": 1024,
+      "params": {
+        "rn": 28,
+        "rc": 0.5,
+        "rs": -12
+      }
+    },
+    {
+      "frame": 3073,
+      "params": {
+        "cp": -135,
+        "cs": 5
+      }
+    },
+    {
+      "frame": 5500,
+      "params": {
+        "rt": 0.25,
+        "dp": 40,
+        "rn": 40,
+        "rc": 20,
+        "rs": 0,
+        "cp": 180,
+        "cs": 100
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00002,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "3f8f16fb8a9d734c3ca8df17527c996a2fa3387537b9d49940b7938fd3dc9a2a",
+  "outputFloats": 14014,
+  "byteLength": 56056,
+  "binary": "case-007.f32"
+}

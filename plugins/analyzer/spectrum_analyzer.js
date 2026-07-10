@@ -1,3 +1,12 @@
+const SPECTRUM_TAP_FRAME = 4;
+const SPECTRUM_TELEMETRY_VERSION = 1;
+// f32 sampleRate, u32 binCount, u16 points, u16 flags, then current[] and peaks[].
+const SPECTRUM_PAYLOAD_HEADER_BYTES = 12;
+// v1 bit 0 is required at pt=14, where the top three bins are omitted.
+const SPECTRUM_FLAG_BINS_TRUNCATED = 1;
+const SPECTRUM_MAX_POINTS = 14;
+const SPECTRUM_MAX_POINT_BIN_COUNT = 8190;
+
 class SpectrumAnalyzerPlugin extends PluginBase {
     constructor() {
         super('Spectrum Analyzer', 'Real-time spectrum analyzer with peak hold');
@@ -10,6 +19,13 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         this.peaks = new Float32Array(fftSize >> 1).fill(-144);
         this.lastProcessTime = performance.now() / 1000;
         this.sampleRate = 48000; // Default, updated from processor messages
+        this.spectrumPoints = this.pt;
+        this.spectrumFlags = 0;
+        this.dspSpectrumSnapshot = null;
+        this._dspTelemetryHub = null;
+        this._dspTelemetryTapId = null;
+        this._dspTelemetryUnsubscribe = null;
+        this._boundDspSpectrumTelemetry = frame => this.handleDspSpectrumTelemetry(frame);
 
         // dB correction factors for 0dBFS scaling (assuming 1/N FFT normalization & Hann window)
         this.correctionAC = 10 * Math.log10(16); // For AC components (approx. +12.04dB)
@@ -155,6 +171,9 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         this.window = new Float32Array(fftSize);
         this.sinTable = new Float32Array(fftSize);
         this.cosTable = new Float32Array(fftSize);
+        this.spectrumPoints = newPoints;
+        this.spectrumFlags = 0;
+        this.dspSpectrumSnapshot = null;
 
         const factor = 2 * Math.PI / fftSize;
         for (let i = 0; i < fftSize; i++) {
@@ -175,6 +194,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
     }
 
     getParameters() {
+        this.ensureDspTelemetrySubscription();
         return {
             type: this.constructor.name,
             enabled: this.enabled,
@@ -190,7 +210,132 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         this.updateParameters();
     }
 
+    _setupMessageHandler() {
+        super._setupMessageHandler();
+        this.ensureDspTelemetrySubscription?.();
+    }
+
+    ensureDspTelemetrySubscription() {
+        const hub = window.dspTelemetryHub;
+        const tapId = this.id;
+        const validTapId = Number.isInteger(tapId) && tapId >= 0 && tapId <= 0xffffffff;
+        const validHub = hub && typeof hub.subscribe === 'function';
+
+        if (!validTapId || !validHub) {
+            if (this._dspTelemetryUnsubscribe &&
+                (hub !== this._dspTelemetryHub || tapId !== this._dspTelemetryTapId)) {
+                this.disposeDspTelemetrySubscription();
+            }
+            return false;
+        }
+        if (this._dspTelemetryUnsubscribe &&
+            hub === this._dspTelemetryHub && tapId === this._dspTelemetryTapId) {
+            return true;
+        }
+
+        this.disposeDspTelemetrySubscription();
+        try {
+            const unsubscribe = hub.subscribe(
+                tapId,
+                SPECTRUM_TAP_FRAME,
+                this._boundDspSpectrumTelemetry
+            );
+            if (typeof unsubscribe !== 'function') {
+                hub.unsubscribe?.(tapId, SPECTRUM_TAP_FRAME, this._boundDspSpectrumTelemetry);
+                return false;
+            }
+            this._dspTelemetryHub = hub;
+            this._dspTelemetryTapId = tapId;
+            this._dspTelemetryUnsubscribe = unsubscribe;
+            return true;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    disposeDspTelemetrySubscription() {
+        const unsubscribe = this._dspTelemetryUnsubscribe;
+        this._dspTelemetryHub = null;
+        this._dspTelemetryTapId = null;
+        this._dspTelemetryUnsubscribe = null;
+        if (!unsubscribe) return;
+        try {
+            unsubscribe();
+        } catch (error) {
+            // Ignore stale telemetry subscription cleanup failures.
+        }
+    }
+
+    parseDspSpectrumTelemetryFrame(frame) {
+        if (frame?.frameType !== SPECTRUM_TAP_FRAME ||
+            frame.formatVersion !== SPECTRUM_TELEMETRY_VERSION) {
+            return null;
+        }
+        const payload = frame.payload;
+        if (!payload || typeof payload.getUint16 !== 'function' ||
+            typeof payload.getUint32 !== 'function' ||
+            typeof payload.getFloat32 !== 'function' ||
+            !Number.isInteger(payload.byteLength) ||
+            payload.byteLength < SPECTRUM_PAYLOAD_HEADER_BYTES + 16) {
+            return null;
+        }
+
+        const sampleRate = payload.getFloat32(0, true);
+        const binCount = payload.getUint32(4, true);
+        const points = payload.getUint16(8, true);
+        const flags = payload.getUint16(10, true);
+        if (!Number.isFinite(sampleRate) || sampleRate <= 0 ||
+            points < 8 || points > SPECTRUM_MAX_POINTS ||
+            (flags & ~SPECTRUM_FLAG_BINS_TRUNCATED) !== 0) {
+            return null;
+        }
+
+        const fullBinCount = (1 << (points - 1)) + 1;
+        const binsTruncated = (flags & SPECTRUM_FLAG_BINS_TRUNCATED) !== 0;
+        if (points === SPECTRUM_MAX_POINTS) {
+            if (!binsTruncated || binCount !== SPECTRUM_MAX_POINT_BIN_COUNT ||
+                fullBinCount - binCount !== 3) {
+                return null;
+            }
+        } else if (binsTruncated || binCount !== fullBinCount) {
+            return null;
+        }
+        if (payload.byteLength !== SPECTRUM_PAYLOAD_HEADER_BYTES + binCount * 8) {
+            return null;
+        }
+
+        const current = new Float32Array(binCount);
+        const peaks = new Float32Array(binCount);
+        const peakOffset = SPECTRUM_PAYLOAD_HEADER_BYTES + binCount * 4;
+        for (let bin = 0; bin < binCount; bin++) {
+            const currentLevel = payload.getFloat32(
+                SPECTRUM_PAYLOAD_HEADER_BYTES + bin * 4,
+                true
+            );
+            const peakLevel = payload.getFloat32(peakOffset + bin * 4, true);
+            if (!Number.isFinite(currentLevel) || !Number.isFinite(peakLevel) ||
+                peakLevel < -145 || peakLevel > 0) {
+                return null;
+            }
+            current[bin] = currentLevel;
+            peaks[bin] = peakLevel;
+        }
+        return { sampleRate, binCount, points, flags, binsTruncated, current, peaks };
+    }
+
+    handleDspSpectrumTelemetry(frame) {
+        const snapshot = this.parseDspSpectrumTelemetryFrame(frame);
+        if (!snapshot || !this.enabled) return;
+        this.sampleRate = snapshot.sampleRate;
+        this.spectrum = snapshot.current;
+        this.peaks = snapshot.peaks;
+        this.spectrumPoints = snapshot.points;
+        this.spectrumFlags = snapshot.flags;
+        this.dspSpectrumSnapshot = snapshot;
+    }
+
     onMessage(message) {
+        this.ensureDspTelemetrySubscription();
         if (message.type === 'processBuffer') {
             this.process(message);
         }
@@ -204,6 +349,10 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         if (!this.enabled) {
             return;
         }
+
+        this.dspSpectrumSnapshot = null;
+        this.spectrumPoints = this.pt;
+        this.spectrumFlags = 0;
 
         const fftSize = 1 << this.pt;
         const halfFft = fftSize >> 1;
@@ -266,6 +415,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
     }
 
     createUI() {
+        this.ensureDspTelemetrySubscription();
         if (this.observer) {
             this.observer.disconnect();
         }
@@ -396,6 +546,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
     }
 
     cleanup() {
+        this.disposeDspTelemetrySubscription();
         this.stopAnimation(); // Stop animation first
         if (this.observer && this.canvas) { // Check if canvas exists before trying to unobserve
             this.observer.unobserve(this.canvas);
@@ -418,6 +569,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
             this.resizeGraphDisposer = null;
         }
         this.canvas = null;
+        this.dspSpectrumSnapshot = null;
         this.lastProcessTime = performance.now() / 1000;
         super.cleanup();
     }
@@ -512,8 +664,8 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         ctx.restore();
 
         // Draw spectrum
-        const fftSize = 1 << this.pt;
-        const binCount = fftSize >> 1;
+        const fftSize = 1 << this.spectrumPoints;
+        const binCount = this.spectrum.length;
         const xToLevels = new Map();
         
         for (let i = 0; i < binCount; i++) {

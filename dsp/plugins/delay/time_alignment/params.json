@@ -1,0 +1,10 @@
+{
+  "type": "TimeAlignmentPlugin",
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "fields": [
+    { "name": "delay", "key": "dl", "kind": "float", "min": 0, "max": 100, "default": 0, "unit": "ms" }
+  ]
+}

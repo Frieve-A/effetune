@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "DCOffsetPlugin",
+  "id": "fractional-positive-stereo",
+  "stimulus": "fs",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 257,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 11,
+  "seed": "0xeffe7a55",
+  "params": {
+    "of": 0.1
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "0a4f4dbed0c34f516ad78ad38876a83807b12fb07b525c83ca7ffa3fa773020f",
+  "outputFloats": 514,
+  "byteLength": 2056,
+  "binary": "case-012.f32"
+}

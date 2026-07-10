@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "ExpanderPlugin",
+  "id": "stereo-96000-variable-block",
+  "stimulus": "sweep",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 1151,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "th": -30,
+    "rt": 4,
+    "at": 25,
+    "rl": 240,
+    "kn": 8,
+    "gn": -3
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "434b250ab46eeb6f31274e74abb8a5276c8c7d815e588d5521ecd18b195a9a88",
+  "outputFloats": 2302,
+  "byteLength": 9208,
+  "binary": "case-006.f32"
+}

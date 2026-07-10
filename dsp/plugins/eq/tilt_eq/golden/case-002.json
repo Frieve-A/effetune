@@ -1,0 +1,27 @@
+{
+  "formatVersion": 1,
+  "type": "TiltEQPlugin",
+  "id": "subthreshold-identity",
+  "stimulus": "fs",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 131,
+  "blockSize": 63,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "f0": 3,
+    "sl": 0.009
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "724d9b516ac2e3a882f3e16b7c94dd438eb1acf2dc50017254646beacddc2790",
+  "outputFloats": 131,
+  "byteLength": 524,
+  "binary": "case-002.f32"
+}

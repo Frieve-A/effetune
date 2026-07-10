@@ -1,0 +1,27 @@
+{
+  "formatVersion": 1,
+  "type": "SpectrumAnalyzerPlugin",
+  "id": "mono-variable-block",
+  "stimulus": "step",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 719,
+  "blockSize": 83,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "dr": -48,
+    "pt": 10
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "20b7e59ee92de56571f250ca850d2bc5dfc3442485a805765e1393af6e652512",
+  "outputFloats": 719,
+  "byteLength": 2876,
+  "binary": "case-004.f32"
+}

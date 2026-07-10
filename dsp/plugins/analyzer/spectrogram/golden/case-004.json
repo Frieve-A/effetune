@@ -1,0 +1,27 @@
+{
+  "formatVersion": 1,
+  "type": "SpectrogramPlugin",
+  "id": "mono-variable-block",
+  "stimulus": "step",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 719,
+  "blockSize": 83,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "dr": -48,
+    "pt": 10
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "52bc8f91f442a2af524a84ebe6be6ce80dfa90d2c90883afae6b0c63a28cfc26",
+  "outputFloats": 719,
+  "byteLength": 2876,
+  "binary": "case-004.f32"
+}

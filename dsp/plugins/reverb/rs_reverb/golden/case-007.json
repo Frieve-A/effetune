@@ -1,0 +1,53 @@
+{
+  "formatVersion": 1,
+  "type": "RSReverbPlugin",
+  "id": "predelay-parameter-ignored",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 12001,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "pd": 0,
+    "rs": 2,
+    "rt": 2.4,
+    "ds": 8,
+    "df": 0.7,
+    "dp": 80,
+    "hd": 2000,
+    "ld": 200,
+    "mx": 100
+  },
+  "events": [
+    {
+      "frame": 37,
+      "params": {
+        "pd": 25
+      }
+    },
+    {
+      "frame": 4099,
+      "params": {
+        "pd": 50
+      }
+    },
+    {
+      "frame": 9001,
+      "params": {
+        "pd": 0
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "dfa7e203c232a3fbb94ef9ab206070e3ef17d9558c1bebf7b42a6b83c0e931c1",
+  "outputFloats": 24002,
+  "byteLength": 96008,
+  "binary": "case-007.f32"
+}

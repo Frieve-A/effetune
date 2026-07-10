@@ -1,0 +1,69 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 64,
+    "channels": 2,
+    "channelMode": "stereo"
+  },
+  "cases": [
+    { "id": "default-impulse", "stimulus": "imp", "frames": 1025 },
+    {
+      "id": "unity-ratio-hard-knee",
+      "stimulus": "noise",
+      "frames": 777,
+      "params": { "th": -96, "rt": 1, "at": 0.01, "rl": 10, "kn": 0, "gn": 12 }
+    },
+    {
+      "id": "maximum-gating",
+      "stimulus": "step",
+      "frames": 901,
+      "params": { "th": 0, "rt": 100, "at": 0.01, "rl": 10, "kn": 0, "gn": -12 }
+    },
+    {
+      "id": "wide-knee-slow-envelope",
+      "stimulus": "sq50",
+      "frames": 1033,
+      "params": { "th": -18, "rt": 35, "at": 50, "rl": 2000, "kn": 6, "gn": 6 }
+    },
+    {
+      "id": "mono-44100-odd-block",
+      "stimulus": "noise",
+      "sampleRate": 44100,
+      "blockSize": 83,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 997,
+      "params": { "th": -54, "rt": 8, "at": 2.7, "rl": 431, "kn": 2.5, "gn": 2.5 }
+    },
+    {
+      "id": "stereo-96000-variable-block",
+      "stimulus": "sweep",
+      "sampleRate": 96000,
+      "blockSize": 127,
+      "frames": 1151,
+      "params": { "th": -42, "rt": 16, "at": 12, "rl": 750, "kn": 4, "gn": -3 }
+    },
+    {
+      "id": "all4-192000",
+      "stimulus": "noise",
+      "sampleRate": 192000,
+      "blockSize": 127,
+      "channels": 4,
+      "channelMode": "all4",
+      "channel": "A",
+      "frames": 1301,
+      "params": { "th": -72, "rt": 80, "at": 0.25, "rl": 1600, "kn": 0.5, "gn": 9 }
+    },
+    {
+      "id": "parameter-transitions",
+      "stimulus": "noise",
+      "frames": 1237,
+      "events": [
+        { "frame": 31, "params": { "th": -80, "rt": 100, "at": 0.01 } },
+        { "frame": 128, "params": { "kn": 0, "gn": 12 } },
+        { "frame": 513, "params": { "th": -6, "rt": 3, "rl": 2000, "kn": 6 } },
+        { "frame": 1001, "params": { "rt": 1, "gn": -12 } }
+      ]
+    }
+  ]
+}

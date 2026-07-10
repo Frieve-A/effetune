@@ -1,0 +1,38 @@
+{
+  "formatVersion": 1,
+  "type": "FDNReverbPlugin",
+  "id": "minimum-controls-44100",
+  "stimulus": "noise",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 10001,
+  "blockSize": 63,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "rt": 0.2,
+    "dt": 4,
+    "pd": 0,
+    "bd": 10,
+    "ds": 0,
+    "hd": 0,
+    "lc": 20,
+    "md": 0,
+    "mr": 0.1,
+    "df": 0,
+    "wm": 100,
+    "dm": 0,
+    "sw": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "1fb216d4d85041102b275b9621e435bdfa586c448be0fcf8f954a8117826252d",
+  "outputFloats": 10001,
+  "byteLength": 40004,
+  "binary": "case-002.f32"
+}

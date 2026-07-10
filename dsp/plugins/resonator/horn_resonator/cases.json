@@ -1,0 +1,78 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 128,
+    "channels": 2,
+    "channelMode": "stereo"
+  },
+  "cases": [
+    { "id": "default-impulse", "stimulus": "imp", "frames": 1025 },
+    {
+      "id": "minimum-44100",
+      "stimulus": "step",
+      "sampleRate": 44100,
+      "blockSize": 63,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 901,
+      "params": { "co": 20, "ln": 20, "th": 0.5, "mo": 5, "cv": -100, "dp": 0, "tr": 0, "wg": -36 }
+    },
+    {
+      "id": "maximum-192000",
+      "stimulus": "noise",
+      "sampleRate": 192000,
+      "blockSize": 127,
+      "frames": 1801,
+      "params": { "co": 5000, "ln": 120, "th": 50, "mo": 200, "cv": 100, "dp": 10, "tr": 0.99, "wg": 36 }
+    },
+    {
+      "id": "all4-96000",
+      "stimulus": "sq50",
+      "sampleRate": 96000,
+      "blockSize": 97,
+      "channels": 4,
+      "channelMode": "all4",
+      "channel": "A",
+      "frames": 1103,
+      "params": { "co": 2400, "ln": 85, "th": 2, "mo": 110, "cv": -35, "dp": 1.25, "tr": 0.72, "wg": 8 }
+    },
+    { "id": "one-frame-blocks", "stimulus": "noise", "blockSize": 1, "channels": 1, "channelMode": "mono", "frames": 257 },
+    {
+      "id": "same-n-shape-reset",
+      "stimulus": "noise",
+      "frames": 1301,
+      "events": [
+        { "frame": 256, "params": { "th": 12, "mo": 90, "cv": -60, "dp": 4, "tr": 0.4, "co": 1800 } },
+        { "frame": 768, "params": { "th": 1.5, "mo": 150, "cv": 75, "dp": 0.2, "tr": 0.9, "co": 320 } }
+      ]
+    },
+    {
+      "id": "length-reset",
+      "stimulus": "noise",
+      "frames": 1301,
+      "events": [
+        { "frame": 384, "params": { "ln": 120 } },
+        { "frame": 896, "params": { "ln": 20 } }
+      ]
+    },
+    {
+      "id": "wg-state-preserving",
+      "stimulus": "noise",
+      "blockSize": 127,
+      "frames": 1201,
+      "events": [
+        { "frame": 191, "params": { "wg": -18 } },
+        { "frame": 707, "params": { "wg": 12 } }
+      ]
+    },
+    {
+      "id": "nonaligned-geometry-event",
+      "stimulus": "noise",
+      "frames": 1201,
+      "events": [
+        { "frame": 37, "params": { "co": 1450, "th": 8 } },
+        { "frame": 515, "params": { "cv": -20, "dp": 2.5 } }
+      ]
+    }
+  ]
+}

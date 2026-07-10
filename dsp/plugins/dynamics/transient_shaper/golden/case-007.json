@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "type": "TransientShaperPlugin",
+  "id": "all4-192000",
+  "stimulus": "fs",
+  "sampleRate": 192000,
+  "channels": 4,
+  "frameCount": 1301,
+  "blockSize": 127,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "fa": 0.2,
+    "fr": 5,
+    "sa": 80,
+    "sr": 950,
+    "gt": 20,
+    "gs": -20,
+    "sm": 0.5
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "6902858a072d2c8c7dc161bc156839fea3b7989addf0db208150086cf96695a3",
+  "outputFloats": 5204,
+  "byteLength": 20816,
+  "binary": "case-007.f32"
+}

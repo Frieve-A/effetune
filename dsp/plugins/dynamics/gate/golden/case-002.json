@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "GatePlugin",
+  "id": "unity-ratio-hard-knee",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 777,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "th": -96,
+    "rt": 1,
+    "at": 0.01,
+    "rl": 10,
+    "kn": 0,
+    "gn": 12
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "f3395732572e52ee3b8311ebbf26c93d951b6bd6af3a6f3357caa2811be5897a",
+  "outputFloats": 1554,
+  "byteLength": 6216,
+  "binary": "case-002.f32"
+}

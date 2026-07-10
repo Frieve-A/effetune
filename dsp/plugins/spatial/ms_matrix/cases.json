@@ -1,0 +1,84 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 64,
+    "channels": 2,
+    "channelMode": "stereo",
+    "frames": 257,
+    "params": {
+      "md": 0,
+      "mg": 0,
+      "sg": 0,
+      "sw": 0
+    }
+  },
+  "cases": [
+    { "id": "default-encode-noise", "stimulus": "noise", "frames": 257 },
+    {
+      "id": "encode-full-scale-gain-extremes",
+      "stimulus": "fs",
+      "frames": 257,
+      "params": { "md": 0, "mg": 18, "sg": -18, "sw": 0 }
+    },
+    {
+      "id": "encode-swap",
+      "stimulus": "noise",
+      "frames": 257,
+      "params": { "md": 0, "mg": 0, "sg": 0, "sw": 1 }
+    },
+    {
+      "id": "default-decode-noise",
+      "stimulus": "noise",
+      "frames": 257,
+      "params": { "md": 1, "mg": 0, "sg": 0, "sw": 0 }
+    },
+    {
+      "id": "decode-full-scale-gain-extremes",
+      "stimulus": "fs",
+      "frames": 257,
+      "params": { "md": 1, "mg": -18, "sg": 18, "sw": 0 }
+    },
+    {
+      "id": "decode-swap",
+      "stimulus": "noise",
+      "frames": 257,
+      "params": { "md": 1, "mg": 0, "sg": 0, "sw": 1 }
+    },
+    {
+      "id": "mono-bypass",
+      "stimulus": "noise",
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 127,
+      "blockSize": 32,
+      "params": { "md": 1, "mg": 18, "sg": -18, "sw": 1 }
+    },
+    {
+      "id": "all-channels-bypass",
+      "stimulus": "fs",
+      "channels": 4,
+      "channelMode": "all4",
+      "channel": "A",
+      "frames": 131,
+      "params": { "md": 0, "mg": 18, "sg": 18, "sw": 1 }
+    },
+    {
+      "id": "odd-full-slice",
+      "stimulus": "noise",
+      "frames": 63,
+      "blockSize": 128,
+      "params": { "md": 0, "mg": -3.7, "sg": 4.2, "sw": 1 }
+    },
+    {
+      "id": "parameter-transitions",
+      "stimulus": "noise",
+      "frames": 259,
+      "events": [
+        { "frame": 31, "params": { "md": 1, "mg": 6, "sg": -6 } },
+        { "frame": 96, "params": { "sw": 1 } },
+        { "frame": 130, "params": { "md": 0, "mg": -18, "sg": 18 } },
+        { "frame": 193, "params": { "mg": 0, "sg": 0, "sw": 0 } }
+      ]
+    }
+  ]
+}

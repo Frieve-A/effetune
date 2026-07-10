@@ -1,0 +1,26 @@
+{
+  "type": "SpectrogramPlugin",
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "fields": [
+    {
+      "name": "dBRange",
+      "key": "dr",
+      "kind": "float",
+      "min": -144,
+      "max": -48,
+      "default": -96,
+      "unit": "dB"
+    },
+    {
+      "name": "points",
+      "key": "pt",
+      "kind": "int",
+      "min": 8,
+      "max": 14,
+      "default": 12
+    }
+  ]
+}

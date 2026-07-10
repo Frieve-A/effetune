@@ -1,0 +1,8 @@
+{
+  "type": "MutePlugin",
+  "tolerance": {
+    "abs": 0.0000001,
+    "policy": "per-sample"
+  },
+  "fields": []
+}

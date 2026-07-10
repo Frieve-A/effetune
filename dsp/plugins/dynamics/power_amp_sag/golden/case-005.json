@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "PowerAmpSagPlugin",
+  "id": "monoblock-all4",
+  "stimulus": "sweep",
+  "sampleRate": 48000,
+  "channels": 4,
+  "frameCount": 1193,
+  "blockSize": 64,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "ss": 9,
+    "ps": 32,
+    "rs": 68,
+    "mb": true
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "41b7ebe357e8158fc654f6f159070686664028017f87ba53002bb8a3235fee69",
+  "outputFloats": 4772,
+  "byteLength": 19088,
+  "binary": "case-005.f32"
+}

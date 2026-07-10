@@ -1,0 +1,34 @@
+{
+  "formatVersion": 1,
+  "type": "DynamicSaturationPlugin",
+  "id": "zero-drive-identity",
+  "stimulus": "sweep",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 1003,
+  "blockSize": 65,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "sd": 0,
+    "ss": 0,
+    "sp": 0.1,
+    "sm": 5,
+    "dd": 0,
+    "db": 0,
+    "dm": 0,
+    "cm": 0,
+    "og": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "33770a3f4e7ed3608281a1060db6304f2a2bf28bfc61aa1e7b783c4293ec8d58",
+  "outputFloats": 1003,
+  "byteLength": 4012,
+  "binary": "case-002.f32"
+}

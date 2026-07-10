@@ -1,0 +1,112 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 127,
+    "channels": 2,
+    "channelMode": "stereo",
+    "params": { "ps": 3, "ft": 0, "ws": 150, "xf": 35 }
+  },
+  "cases": [
+    {
+      "id": "upward-default-window",
+      "stimulus": "noise",
+      "frames": 26001
+    },
+    {
+      "id": "downward-maximum-window-mono",
+      "stimulus": "sweep",
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 112001,
+      "blockSize": 113,
+      "params": { "ps": -6, "ft": -50, "ws": 500, "xf": 20 }
+    },
+    {
+      "id": "fine-tune-only",
+      "stimulus": "sin1k",
+      "frames": 14001,
+      "blockSize": 65,
+      "params": { "ps": 0, "ft": 50, "ws": 80, "xf": 20 }
+    },
+    {
+      "id": "pitch-factor-bypass-freezes-state",
+      "stimulus": "noise",
+      "frames": 24001,
+      "blockSize": 64,
+      "params": { "ps": 6, "ft": 0, "ws": 80, "xf": 30 },
+      "events": [
+        { "frame": 7001, "params": { "ps": 0 } },
+        { "frame": 11003, "params": { "ps": 6 } },
+        { "frame": 16007, "params": { "ft": -50 } }
+      ]
+    },
+    {
+      "id": "pitch-state-preserving-events",
+      "stimulus": "sq50",
+      "frames": 24001,
+      "blockSize": 63,
+      "params": { "ps": -3, "ft": 25, "ws": 100, "xf": 25 },
+      "events": [
+        { "frame": 6001, "params": { "ps": 2 } },
+        { "frame": 12005, "params": { "ft": -25 } },
+        { "frame": 18007, "params": { "ps": -6, "ft": 50 } }
+      ]
+    },
+    {
+      "id": "window-shape-resets",
+      "stimulus": "step",
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 52001,
+      "blockSize": 129,
+      "params": { "ps": -4, "ws": 80, "xf": 20 },
+      "events": [
+        { "frame": 9001, "params": { "ws": 500 } },
+        { "frame": 35003, "params": { "ws": 80 } }
+      ]
+    },
+    {
+      "id": "crossfade-shape-resets",
+      "stimulus": "noise",
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 27001,
+      "blockSize": 96,
+      "params": { "ps": -2, "ws": 80, "xf": 20 },
+      "events": [
+        { "frame": 6001, "params": { "xf": 40 } },
+        { "frame": 13003, "params": { "xf": 35.5 } }
+      ]
+    },
+    {
+      "id": "one-frame-blocks-44k1",
+      "stimulus": "step",
+      "sampleRate": 44100,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 17001,
+      "blockSize": 1,
+      "params": { "ps": -6, "ft": 0, "ws": 80, "xf": 40 }
+    },
+    {
+      "id": "all4-96k-flat-window",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "channels": 4,
+      "channelMode": "all4",
+      "frames": 32001,
+      "blockSize": 127,
+      "params": { "ps": -4, "ft": 0, "ws": 80, "xf": 20 }
+    },
+    {
+      "id": "maximum-capacity-192k-all4",
+      "stimulus": "fs",
+      "sampleRate": 192000,
+      "channels": 4,
+      "channelMode": "all4",
+      "frames": 1025,
+      "blockSize": 31,
+      "params": { "ps": 6, "ft": 50, "ws": 500, "xf": 40 }
+    }
+  ]
+}

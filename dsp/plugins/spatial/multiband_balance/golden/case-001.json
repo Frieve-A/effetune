@@ -1,0 +1,46 @@
+{
+  "formatVersion": 1,
+  "type": "MultibandBalancePlugin",
+  "id": "default-impulse-fade",
+  "stimulus": "imp",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 4097,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "f1": 100,
+    "f2": 500,
+    "f3": 2000,
+    "f4": 8000,
+    "bands": [
+      {
+        "balance": 0
+      },
+      {
+        "balance": 0
+      },
+      {
+        "balance": 0
+      },
+      {
+        "balance": 0
+      },
+      {
+        "balance": 0
+      }
+    ]
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00002,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "b50536f566a81ab4ba291f0b5e78e797960579d0ed164d4a5490dc678ae1cfea",
+  "outputFloats": 8194,
+  "byteLength": 32776,
+  "binary": "case-001.f32"
+}

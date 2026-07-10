@@ -1,0 +1,16 @@
+{
+  "type": "TremoloPlugin",
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "fields": [
+    { "name": "rate", "key": "rt", "kind": "float", "min": 0.1, "max": 50, "default": 10, "unit": "Hz" },
+    { "name": "depth", "key": "dp", "kind": "float", "min": 0, "max": 12, "default": 2, "unit": "dB" },
+    { "name": "randomness", "key": "rn", "kind": "float", "min": 0, "max": 96, "default": 6, "unit": "dB" },
+    { "name": "randomnessCutoff", "key": "rc", "kind": "float", "min": 1, "max": 1000, "default": 200, "unit": "Hz" },
+    { "name": "randomnessSlope", "key": "rs", "kind": "float", "min": -12, "max": 0, "default": -6, "unit": "dB" },
+    { "name": "channelPhase", "key": "cp", "kind": "float", "min": -180, "max": 180, "default": 0, "unit": "degrees" },
+    { "name": "channelSync", "key": "cs", "kind": "float", "min": 0, "max": 100, "default": 100, "unit": "%" }
+  ]
+}

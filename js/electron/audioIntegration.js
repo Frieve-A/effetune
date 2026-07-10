@@ -276,6 +276,10 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
             <input type="checkbox" id="low-latency-output" ${audioPreferences?.lowLatencyOutput ? 'checked' : ''}>
             <label for="low-latency-output">${t('dialog.audioConfig.lowLatencyOutput')}</label>
           </div>
+          <div class="checkbox-container">
+            <input type="checkbox" id="use-wasm-dsp" ${audioPreferences?.useWasmDsp !== false ? 'checked' : ''}>
+            <label for="use-wasm-dsp">${t('dialog.audioConfig.useWasmDsp')}</label>
+          </div>
         </div>
         <div class="device-section">
           <label for="sample-rate">${t('dialog.audioConfig.sampleRate')}</label>
@@ -462,6 +466,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       const useInputWithPlayerCheckbox = document.getElementById('use-input-with-player');
       const outputChannelsSelect = document.getElementById('output-channels');
       const lowLatencyOutputCheckbox = document.getElementById('low-latency-output');
+      const useWasmDspCheckbox = document.getElementById('use-wasm-dsp');
       const latencySelect = document.getElementById('latency');
       
       const inputDevice = inputDeviceOptions.find(d => d.deviceId === inputDeviceSelect.value);
@@ -471,6 +476,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       const useInputWithPlayer = useInputWithPlayerCheckbox.checked;
       const outputChannels = parseInt(outputChannelsSelect.value, 10);
       const lowLatencyOutput = lowLatencyOutputCheckbox.checked;
+      const useWasmDsp = useWasmDspCheckbox.checked;
       const selectedLatency = latencySelect.value;
       const directOutputRequested = outputChannels > 2 || lowLatencyOutput;
       if (!isElectron &&
@@ -505,6 +511,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         sampleRate: selectedSampleRate,
         useInputWithPlayer: useInputWithPlayer,
         lowLatencyOutput: lowLatencyOutput,
+        useWasmDsp: useWasmDsp,
         outputChannels: outputChannels,
         latencyHint: selectedLatency
       };

@@ -1,0 +1,37 @@
+{
+  "formatVersion": 1,
+  "type": "DSD64IMDSimulatorPlugin",
+  "id": "additive-and-cross",
+  "stimulus": "sweep",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 1001,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "am": 18,
+    "dw": 50,
+    "ul": -36,
+    "nc": 45,
+    "an": 5,
+    "eb": 100,
+    "sc": 125,
+    "st": 12,
+    "nt": 60,
+    "cs": 100,
+    "hf": 6,
+    "ot": 2
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "c28ddc873d8e8dba67c03bcbcf99dd6bc7f1761ce6c15e5e7fc2dfdd7e5ca0d1",
+  "outputFloats": 2002,
+  "byteLength": 8008,
+  "binary": "case-007.f32"
+}

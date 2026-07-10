@@ -1,0 +1,17 @@
+{
+  "type": "DelayPlugin",
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "fields": [
+    { "name": "preDelay", "key": "pd", "kind": "float", "min": 0, "max": 100, "default": 0, "unit": "ms" },
+    { "name": "delaySize", "key": "ds", "kind": "float", "min": 1, "max": 5000, "default": 150, "unit": "ms" },
+    { "name": "damping", "key": "dp", "kind": "float", "min": 0, "max": 100, "default": 50, "unit": "%" },
+    { "name": "highDamp", "key": "hd", "kind": "float", "min": 20, "max": 20000, "default": 5000, "unit": "Hz" },
+    { "name": "lowDamp", "key": "ld", "kind": "float", "min": 20, "max": 20000, "default": 100, "unit": "Hz" },
+    { "name": "mix", "key": "mx", "kind": "float", "min": 0, "max": 100, "default": 16, "unit": "%" },
+    { "name": "feedback", "key": "fb", "kind": "float", "min": 0, "max": 99, "default": 50, "unit": "%" },
+    { "name": "pingPong", "key": "pp", "kind": "float", "min": 0, "max": 100, "default": 0, "unit": "%" }
+  ]
+}

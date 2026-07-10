@@ -1,0 +1,43 @@
+{
+  "type": "MSMatrixPlugin",
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "fields": [
+    {
+      "name": "mode",
+      "key": "md",
+      "kind": "int",
+      "min": 0,
+      "max": 1,
+      "default": 0
+    },
+    {
+      "name": "midGain",
+      "key": "mg",
+      "kind": "float",
+      "min": -18,
+      "max": 18,
+      "default": 0,
+      "unit": "dB"
+    },
+    {
+      "name": "sideGain",
+      "key": "sg",
+      "kind": "float",
+      "min": -18,
+      "max": 18,
+      "default": 0,
+      "unit": "dB"
+    },
+    {
+      "name": "swap",
+      "key": "sw",
+      "kind": "int",
+      "min": 0,
+      "max": 1,
+      "default": 0
+    }
+  ]
+}

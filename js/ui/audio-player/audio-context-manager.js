@@ -81,6 +81,31 @@ export class AudioContextManager {
     }
   }
 
+  releasePipelineSource(sourceNode, stop = false) {
+    if (!sourceNode) return;
+
+    if (stop) {
+      sourceNode.onended = null;
+      try {
+        sourceNode.stop();
+      } catch (error) {
+        // Continue releasing manager-owned edges when the source is already stopped.
+      }
+    }
+
+    try {
+      this.audioManager.disconnectSourceFromPipeline?.(sourceNode);
+    } catch (error) {
+      // Source teardown must continue even if manager-owned edge cleanup fails.
+    }
+
+    try {
+      sourceNode.disconnect();
+    } catch (error) {
+      // Source teardown is complete even when the underlying node was already disconnected.
+    }
+  }
+
   getUseInputWithPlayer() {
     const integration = window.electronIntegration;
     const isElectron = !!(integration?.isElectronEnvironment?.() || integration?.isElectron);
@@ -121,14 +146,10 @@ export class AudioContextManager {
       }
     } else {
       if (this.originalSourceNode) {
-        try {
-          this.originalSourceNode.disconnect();
-          const silentGain = this.createSilentGain();
-          if (silentGain) {
-            this.setManagedSourceNode(silentGain);
-          }
-        } catch (e) {
-          // Silent fail
+        this.releasePipelineSource(this.originalSourceNode);
+        const silentGain = this.createSilentGain();
+        if (silentGain) {
+          this.setManagedSourceNode(silentGain);
         }
       }
 
@@ -153,14 +174,10 @@ export class AudioContextManager {
       }
     } else {
       if (this.originalSourceNode) {
-        try {
-          this.originalSourceNode.disconnect();
-          const silentGain = this.createSilentGain();
-          if (silentGain) {
-            this.setManagedSourceNode(silentGain);
-          }
-        } catch (e) {
-          // Silent fail
+        this.releasePipelineSource(this.originalSourceNode);
+        const silentGain = this.createSilentGain();
+        if (silentGain) {
+          this.setManagedSourceNode(silentGain);
         }
       }
 
@@ -169,8 +186,8 @@ export class AudioContextManager {
         try {
           this.audioManager.connectSourceToPipeline(mediaSource);
         } catch (e) {
+          this.releasePipelineSource(mediaSource);
           try {
-            mediaSource.disconnect();
             this.audioManager.connectSourceToPipeline(mediaSource);
           } catch (innerError) {
             // Silent fail
@@ -190,6 +207,7 @@ export class AudioContextManager {
     this.connectBufferSource(bufferSource);
     
     bufferSource.onended = () => {
+      this.releasePipelineSource(bufferSource);
       const state = this.audioPlayer.stateManager?.getStateSnapshot();
       if (this.currentInstanceId === instanceId && !state?.isTransitioning && !state?.isStopped) {
         this.handleTrackEnded();
@@ -212,11 +230,7 @@ export class AudioContextManager {
     const useInputWithPlayer = this.getUseInputWithPlayer();
     if (!useInputWithPlayer) {
       if (this.originalSourceNode) {
-        try {
-          this.originalSourceNode.disconnect();
-        } catch (e) {
-          // Silent fail
-        }
+        this.releasePipelineSource(this.originalSourceNode);
       }
 
       const silentGain = this.createSilentGain();
@@ -337,22 +351,12 @@ export class AudioContextManager {
    */
   detachCurrentGraphNodesForRebind() {
     if (this.currentBufferSource) {
-      try {
-        this.currentBufferSource.onended = null;
-        this.currentBufferSource.stop();
-        this.currentBufferSource.disconnect();
-      } catch (e) {
-        // Silent fail
-      }
+      this.releasePipelineSource(this.currentBufferSource, true);
       this.currentBufferSource = null;
     }
 
     if (this.mediaSource) {
-      try {
-        this.mediaSource.disconnect();
-      } catch (e) {
-        // Silent fail
-      }
+      this.releasePipelineSource(this.mediaSource);
       this.mediaSource = null;
     }
 
@@ -916,11 +920,7 @@ export class AudioContextManager {
   connectToAudioContext() {
     try {
       if (this.mediaSource) {
-        try {
-          this.mediaSource.disconnect();
-        } catch (e) {
-          // Silent fail
-        }
+        this.releasePipelineSource(this.mediaSource);
         this.mediaSource = null;
       }
       
@@ -1479,14 +1479,8 @@ export class AudioContextManager {
     }
     
     if (this.currentBufferSource) {
-      try {
-        this.currentBufferSource.onended = null;
-        this.currentBufferSource.stop();
-        this.currentBufferSource.disconnect();
-        this.currentBufferSource = null;
-      } catch (error) {
-        // Silent fail
-      }
+      this.releasePipelineSource(this.currentBufferSource, true);
+      this.currentBufferSource = null;
     }
     
     this.clearBufferMonitoring();
@@ -1535,13 +1529,7 @@ export class AudioContextManager {
    */
   async stopBufferSource() {
     if (this.currentBufferSource) {
-      try {
-        this.currentBufferSource.onended = null;
-        this.currentBufferSource.stop();
-        this.currentBufferSource.disconnect();
-      } catch (error) {
-        // Silent fail
-      }
+      this.releasePipelineSource(this.currentBufferSource, true);
     }
     
     this.clearBufferMonitoring();
@@ -1805,13 +1793,7 @@ export class AudioContextManager {
    */
   async stopCurrentPlayback() {
     if (this.currentBufferSource) {
-      try {
-        this.currentBufferSource.onended = null;
-        this.currentBufferSource.stop();
-        this.currentBufferSource.disconnect();
-      } catch (error) {
-        // Silent fail
-      }
+      this.releasePipelineSource(this.currentBufferSource, true);
       this.currentBufferSource = null;
     }
     
@@ -2429,11 +2411,7 @@ export class AudioContextManager {
       this.stopCurrentPlayback();
       
       if (this.mediaSource) {
-        try {
-          this.mediaSource.disconnect();
-        } catch (e) {
-          // Silent fail
-        }
+        this.releasePipelineSource(this.mediaSource);
         this.mediaSource = null;
       }
       

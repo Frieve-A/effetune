@@ -1,0 +1,38 @@
+{
+  "formatVersion": 1,
+  "type": "FDNReverbPlugin",
+  "id": "one-frame-blocks-seeded",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 1,
+  "frameCount": 2001,
+  "blockSize": 1,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 8,
+  "seed": "0xeffe7a56",
+  "params": {
+    "rt": 1.2,
+    "dt": 6,
+    "pd": 0,
+    "bd": 20,
+    "ds": 5,
+    "hd": 6,
+    "lc": 100,
+    "md": 3,
+    "mr": 0.3,
+    "df": 100,
+    "wm": 100,
+    "dm": 0,
+    "sw": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "1fb216d4d85041102b275b9621e435bdfa586c448be0fcf8f954a8117826252d",
+  "outputFloats": 2001,
+  "byteLength": 8004,
+  "binary": "case-009.f32"
+}

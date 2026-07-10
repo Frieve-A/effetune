@@ -1,0 +1,28 @@
+{
+  "formatVersion": 1,
+  "type": "ToneControlPlugin",
+  "id": "bass-maximum",
+  "stimulus": "step",
+  "sampleRate": 44100,
+  "channels": 2,
+  "frameCount": 257,
+  "blockSize": 63,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "bs": 24,
+    "md": 0,
+    "tr": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "594cab40e39d1332770bdf04b8898ad6f0f0bdb28fb9feab8e915038504ceaad",
+  "outputFloats": 514,
+  "byteLength": 2056,
+  "binary": "case-002.f32"
+}

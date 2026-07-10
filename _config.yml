@@ -61,6 +61,7 @@ exclude:
   - build/
   - code_review.md
   - dist/
+  - dsp/
   - electron/
   - eslint.config.mjs
   - node_modules/

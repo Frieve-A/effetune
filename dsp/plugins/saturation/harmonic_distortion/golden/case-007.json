@@ -1,0 +1,30 @@
+{
+  "formatVersion": 1,
+  "type": "HarmonicDistortionPlugin",
+  "id": "one-frame-mixed-extrema",
+  "stimulus": "noise",
+  "sampleRate": 192000,
+  "channels": 1,
+  "frameCount": 67,
+  "blockSize": 1,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "h2": -30,
+    "h3": 30,
+    "h4": -30,
+    "h5": 30,
+    "sn": 2
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "80d6409c41763ff48546889b1f8bb55c49daf4dd0fcccabb529c533da102b491",
+  "outputFloats": 67,
+  "byteLength": 268,
+  "binary": "case-007.f32"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "FifteenBandGEQPlugin",
+  "tolerance": { "abs": 0.00001, "policy": "per-sample" },
+  "fields": [
+    { "name": "bandGain", "key": "b", "kind": "float", "count": 15, "min": -12, "max": 12, "default": 0, "unit": "dB" }
+  ]
+}

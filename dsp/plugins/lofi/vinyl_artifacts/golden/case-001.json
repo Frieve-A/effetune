@@ -1,0 +1,37 @@
+{
+  "formatVersion": 1,
+  "type": "VinylArtifactsPlugin",
+  "id": "default-seeded-noise",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 12000,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "pp": 20,
+    "pl": -24,
+    "cm": 500,
+    "cl": -33,
+    "hs": -42,
+    "rb": -50,
+    "xt": 60,
+    "tn": 0,
+    "wr": 100,
+    "rt": 25,
+    "rm": "Velocity",
+    "mx": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "eab9d086b22155e71cbfa50044eab3794689d202244558388eb7cafd99c61478",
+  "outputFloats": 24000,
+  "byteLength": 96000,
+  "binary": "case-001.f32"
+}

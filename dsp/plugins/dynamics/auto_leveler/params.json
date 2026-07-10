@@ -1,0 +1,13 @@
+{
+  "type": "AutoLevelerPlugin",
+  "tolerance": { "abs": 0.00002, "policy": "per-sample" },
+  "fields": [
+    { "name": "targetLufs", "key": "tg", "kind": "float", "min": -36, "max": 0, "default": -18, "unit": "LUFS" },
+    { "name": "timeWindow", "key": "tw", "kind": "float", "min": 1000, "max": 10000, "default": 3000, "unit": "ms" },
+    { "name": "maxGain", "key": "mg", "kind": "float", "min": 0, "max": 12, "default": 0, "unit": "dB" },
+    { "name": "minGain", "key": "ng", "kind": "float", "min": -36, "max": 0, "default": -12, "unit": "dB" },
+    { "name": "attack", "key": "at", "kind": "float", "min": 1, "max": 1000, "default": 50, "unit": "ms" },
+    { "name": "release", "key": "rt", "kind": "float", "min": 10, "max": 10000, "default": 5000, "unit": "ms" },
+    { "name": "noiseGate", "key": "gt", "kind": "float", "min": -96, "max": -24, "default": -60, "unit": "dB" }
+  ]
+}

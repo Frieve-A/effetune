@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "type": "OscillatorPlugin",
+  "id": "one-frame-pink",
+  "stimulus": "silence",
+  "sampleRate": 192000,
+  "channels": 2,
+  "frameCount": 67,
+  "blockSize": 1,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "fr": 880,
+    "vl": -12,
+    "pn": 0,
+    "wf": "pink",
+    "md": "continuous",
+    "it": 500,
+    "wd": 5
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "9da2eedc277a847830baea81602fcb42dbdc5c06f922e3fd4506919e5f459cb2",
+  "outputFloats": 134,
+  "byteLength": 536,
+  "binary": "case-008.f32"
+}

@@ -1,0 +1,28 @@
+{
+  "formatVersion": 1,
+  "type": "ToneControlPlugin",
+  "id": "one-frame-binary64-state",
+  "stimulus": "noise",
+  "sampleRate": 192000,
+  "channels": 1,
+  "frameCount": 67,
+  "blockSize": 1,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 8,
+  "seed": "0xeffe7a56",
+  "params": {
+    "bs": -12,
+    "md": 9,
+    "tr": 18
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "594cab40e39d1332770bdf04b8898ad6f0f0bdb28fb9feab8e915038504ceaad",
+  "outputFloats": 67,
+  "byteLength": 268,
+  "binary": "case-009.f32"
+}

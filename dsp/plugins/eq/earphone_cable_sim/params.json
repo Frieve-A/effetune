@@ -1,0 +1,15 @@
+{
+  "type": "EarphoneCableSimPlugin",
+  "tolerance": { "abs": 0.00001, "policy": "per-sample" },
+  "fields": [
+    { "name": "outputImpedance", "key": "zo", "kind": "float", "min": 0, "max": 20, "default": 0.5, "unit": "ohm" },
+    { "name": "cableResistance", "key": "rc", "kind": "float", "min": 0, "max": 2, "default": 0.3, "unit": "ohm" },
+    { "name": "cableInductance", "key": "lc", "kind": "float", "min": 0, "max": 5, "default": 0.5, "unit": "uH" },
+    { "name": "voiceCoilInductance", "key": "lv", "kind": "float", "min": 0.01, "max": 2, "default": 0.2, "unit": "mH" },
+    { "name": "baseImpedance", "key": "zb", "kind": "float", "min": 4, "max": 64, "default": 16, "unit": "ohm" },
+    { "name": "resonanceFrequency", "key": "rf", "kind": "float", "count": 5, "min": 20, "max": 20000, "default": [120, 2000, 5000, 9000, 60], "unit": "Hz" },
+    { "name": "resonanceQ", "key": "rq", "kind": "float", "count": 5, "min": 0.5, "max": 10, "default": [2, 1.5, 2, 3, 1.5] },
+    { "name": "resonanceImpedance", "key": "rz", "kind": "float", "count": 5, "min": 16, "max": 116, "default": [48, 36, 64, 80, 64], "unit": "ohm" },
+    { "name": "resonanceEnabled", "key": "re", "kind": "bool", "count": 5, "default": [true, false, false, false, false] }
+  ]
+}

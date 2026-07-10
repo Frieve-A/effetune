@@ -1,0 +1,62 @@
+{
+  "formatVersion": 1,
+  "type": "VinylArtifactsPlugin",
+  "id": "mix-zero-freezes-state",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 3001,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 8,
+  "seed": "0xeffe7a56",
+  "params": {
+    "pp": 120,
+    "pl": 0,
+    "cm": 2000,
+    "cl": 0,
+    "hs": 0,
+    "rb": 0,
+    "xt": 60,
+    "tn": 0,
+    "wr": 200,
+    "rt": 100,
+    "rm": "Velocity",
+    "mx": 100
+  },
+  "events": [
+    {
+      "frame": 511,
+      "params": {
+        "mx": 0
+      }
+    },
+    {
+      "frame": 1279,
+      "params": {
+        "rm": "Amplitude"
+      }
+    },
+    {
+      "frame": 1793,
+      "params": {
+        "mx": 100
+      }
+    },
+    {
+      "frame": 2431,
+      "params": {
+        "rm": "Velocity"
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "eab9d086b22155e71cbfa50044eab3794689d202244558388eb7cafd99c61478",
+  "outputFloats": 6002,
+  "byteLength": 24008,
+  "binary": "case-009.f32"
+}

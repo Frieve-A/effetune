@@ -1,0 +1,114 @@
+{
+  "formatVersion": 1,
+  "type": "DigitalErrorEmulatorPlugin",
+  "id": "mode-transition-matrix",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 4097,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "be": -2,
+    "md": "1",
+    "rf": 48,
+    "wt": 100
+  },
+  "events": [
+    {
+      "frame": 257,
+      "params": {
+        "md": "2A"
+      }
+    },
+    {
+      "frame": 514,
+      "params": {
+        "md": "2B"
+      }
+    },
+    {
+      "frame": 771,
+      "params": {
+        "md": "3A"
+      }
+    },
+    {
+      "frame": 1028,
+      "params": {
+        "md": "3B"
+      }
+    },
+    {
+      "frame": 1285,
+      "params": {
+        "md": "4"
+      }
+    },
+    {
+      "frame": 1542,
+      "params": {
+        "md": "5A"
+      }
+    },
+    {
+      "frame": 1799,
+      "params": {
+        "md": "5B"
+      }
+    },
+    {
+      "frame": 2056,
+      "params": {
+        "md": "5C"
+      }
+    },
+    {
+      "frame": 2313,
+      "params": {
+        "md": "6A"
+      }
+    },
+    {
+      "frame": 2570,
+      "params": {
+        "md": "6B"
+      }
+    },
+    {
+      "frame": 2827,
+      "params": {
+        "md": "8"
+      }
+    },
+    {
+      "frame": 3084,
+      "params": {
+        "md": "9"
+      }
+    },
+    {
+      "frame": 3341,
+      "params": {
+        "md": "10"
+      }
+    },
+    {
+      "frame": 3598,
+      "params": {
+        "md": "10A"
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "0d2ff76003f7af6a30569695d8b30aaee461e4e52e3d78077aa3f00854f6de3f",
+  "outputFloats": 8194,
+  "byteLength": 32776,
+  "binary": "case-001.f32"
+}

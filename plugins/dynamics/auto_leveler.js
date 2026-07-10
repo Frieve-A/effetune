@@ -1,3 +1,7 @@
+const AUTO_LEVELER_TAP_LOUDNESS_LEVELS = 7;
+const AUTO_LEVELER_TELEMETRY_VERSION = 1;
+const AUTO_LEVELER_TELEMETRY_PAYLOAD_BYTES = 8;
+
 class AutoLevelerPlugin extends PluginBase {
     constructor() {
         super('Auto Leveler', 'Automatic level control based on LUFS measurement');
@@ -29,6 +33,12 @@ class AutoLevelerPlugin extends PluginBase {
         this.prevTime = null;
 
         this.observer = null;
+        this._dspTelemetryHub = null;
+        this._dspTelemetryTapId = null;
+        this._dspTelemetryUnsubscribe = null;
+        this._boundDspLoudnessTelemetry = frame => this.handleDspLoudnessTelemetry(frame);
+
+        this._setupMessageHandler();
 
         this.registerProcessor(`
             // Audio Processor
@@ -303,7 +313,96 @@ class AutoLevelerPlugin extends PluginBase {
         `);
     }
 
+    _setupMessageHandler() {
+        super._setupMessageHandler();
+        this.ensureDspTelemetrySubscription?.();
+    }
+
+    ensureDspTelemetrySubscription() {
+        const hub = window.dspTelemetryHub;
+        const tapId = this.id;
+        const validTapId = Number.isInteger(tapId) && tapId >= 0 && tapId <= 0xffffffff;
+        const validHub = hub && typeof hub.subscribe === 'function';
+
+        if (!validTapId || !validHub) {
+            if (this._dspTelemetryUnsubscribe &&
+                (hub !== this._dspTelemetryHub || tapId !== this._dspTelemetryTapId)) {
+                this.disposeDspTelemetrySubscription();
+            }
+            return false;
+        }
+        if (this._dspTelemetryUnsubscribe &&
+            hub === this._dspTelemetryHub && tapId === this._dspTelemetryTapId) {
+            return true;
+        }
+
+        this.disposeDspTelemetrySubscription();
+        try {
+            const unsubscribe = hub.subscribe(
+                tapId,
+                AUTO_LEVELER_TAP_LOUDNESS_LEVELS,
+                this._boundDspLoudnessTelemetry
+            );
+            if (typeof unsubscribe !== 'function') {
+                hub.unsubscribe?.(
+                    tapId,
+                    AUTO_LEVELER_TAP_LOUDNESS_LEVELS,
+                    this._boundDspLoudnessTelemetry
+                );
+                return false;
+            }
+            this._dspTelemetryHub = hub;
+            this._dspTelemetryTapId = tapId;
+            this._dspTelemetryUnsubscribe = unsubscribe;
+            return true;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    disposeDspTelemetrySubscription() {
+        const unsubscribe = this._dspTelemetryUnsubscribe;
+        this._dspTelemetryHub = null;
+        this._dspTelemetryTapId = null;
+        this._dspTelemetryUnsubscribe = null;
+        if (!unsubscribe) return;
+        try {
+            unsubscribe();
+        } catch (error) {
+            // Ignore stale telemetry subscription cleanup failures.
+        }
+    }
+
+    parseDspLoudnessTelemetryFrame(frame) {
+        if (frame?.frameType !== AUTO_LEVELER_TAP_LOUDNESS_LEVELS ||
+            frame.formatVersion !== AUTO_LEVELER_TELEMETRY_VERSION) {
+            return null;
+        }
+        const payload = frame.payload;
+        if (!payload || typeof payload.getFloat32 !== 'function' ||
+            payload.byteLength !== AUTO_LEVELER_TELEMETRY_PAYLOAD_BYTES) {
+            return null;
+        }
+        const inputLufs = payload.getFloat32(0, true);
+        const outputLufs = payload.getFloat32(4, true);
+        if (!Number.isFinite(inputLufs) || inputLufs < -144 ||
+            !Number.isFinite(outputLufs) || outputLufs < -144) {
+            return null;
+        }
+        return { inputLufs, outputLufs };
+    }
+
+    handleDspLoudnessTelemetry(frame) {
+        const levels = this.parseDspLoudnessTelemetryFrame(frame);
+        if (!levels) return;
+        this.onMessage({
+            type: 'processBuffer',
+            measurements: { ...levels, time: performance.now() / 1000 }
+        });
+    }
+
     onMessage(message) {
+        this.ensureDspTelemetrySubscription();
         if (message.type === 'processBuffer' && message.measurements) {
             // Shift history buffers
             this.inputLufsBuffer.copyWithin(0, 1);
@@ -325,6 +424,7 @@ class AutoLevelerPlugin extends PluginBase {
     }
 
     getParameters() {
+        this.ensureDspTelemetrySubscription();
         return {
             type: this.constructor.name,
             enabled: this.enabled,
@@ -512,6 +612,7 @@ class AutoLevelerPlugin extends PluginBase {
     }
 
     createUI() {
+        this.ensureDspTelemetrySubscription();
         if (this.observer) {
             this.observer.disconnect();
             this.observer = null;
@@ -558,6 +659,7 @@ class AutoLevelerPlugin extends PluginBase {
     }
 
     cleanup() {
+        this.disposeDspTelemetrySubscription();
         this.currentGain = 1.0;
         this.lastProcessTime = performance.now() / 1000;
 

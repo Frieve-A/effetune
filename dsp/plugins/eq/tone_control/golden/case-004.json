@@ -1,0 +1,28 @@
+{
+  "formatVersion": 1,
+  "type": "ToneControlPlugin",
+  "id": "mid-maximum",
+  "stimulus": "sin1k",
+  "sampleRate": 192000,
+  "channels": 4,
+  "frameCount": 129,
+  "blockSize": 31,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "bs": 0,
+    "md": 24,
+    "tr": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "594cab40e39d1332770bdf04b8898ad6f0f0bdb28fb9feab8e915038504ceaad",
+  "outputFloats": 516,
+  "byteLength": 2064,
+  "binary": "case-004.f32"
+}

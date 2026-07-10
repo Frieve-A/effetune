@@ -1,0 +1,68 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 128,
+    "params": {
+      "bc": 2,
+      "f1": 2000,
+      "s1": -24,
+      "f2": 4000,
+      "s2": -24,
+      "f3": 8000,
+      "s3": -24
+    }
+  },
+  "cases": [
+    {
+      "id": "unsupported-stereo-pass-through",
+      "stimulus": "imp",
+      "frames": 1024,
+      "channels": 2
+    },
+    {
+      "id": "two-band-noise",
+      "stimulus": "noise",
+      "frames": 4800,
+      "channels": 4
+    },
+    {
+      "id": "three-band-sweep",
+      "stimulus": "sweep",
+      "frames": 4800,
+      "channels": 6,
+      "params": { "bc": 3, "f1": 900, "s1": -36, "f2": 6200, "s2": -60 }
+    },
+    {
+      "id": "four-band-steep-impulse",
+      "stimulus": "imp",
+      "frames": 4096,
+      "channels": 8,
+      "params": {
+        "bc": 4,
+        "f1": 240,
+        "s1": -12,
+        "f2": 2100,
+        "s2": -48,
+        "f3": 12000,
+        "s3": -96
+      }
+    },
+    {
+      "id": "sample-rate-clamp",
+      "stimulus": "sin1k",
+      "frames": 2048,
+      "channels": 4,
+      "sampleRates": [44100, 96000, 192000],
+      "params": { "f1": 40000, "s1": -72 }
+    },
+    {
+      "id": "crossover-event-reset",
+      "stimulus": "noise",
+      "frames": 3072,
+      "channels": 4,
+      "events": [
+        { "frame": 1024, "params": { "f1": 7000, "s1": -48 } }
+      ]
+    }
+  ]
+}

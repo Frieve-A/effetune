@@ -1,3 +1,8 @@
+const FIVE_BAND_DYNAMIC_EQ_TAP_GAINS = 14;
+const FIVE_BAND_DYNAMIC_EQ_TELEMETRY_VERSION = 1;
+const FIVE_BAND_DYNAMIC_EQ_TELEMETRY_PAYLOAD_BYTES = 24;
+const FIVE_BAND_DYNAMIC_EQ_TELEMETRY_BANDS = 5;
+
 class FiveBandDynamicEQ extends PluginBase {
     constructor() {
         super('5Band Dynamic EQ', 'Five-band dynamic equalizer');
@@ -36,6 +41,12 @@ class FiveBandDynamicEQ extends PluginBase {
         // this.canvasHeight = 200;
 
         this.latestSmoothedGains = new Array(this.numBands).fill(0); // Store latest gains for graph
+        this._dspTelemetryHub = null;
+        this._dspTelemetryTapId = null;
+        this._dspTelemetryUnsubscribe = null;
+        this._boundDspDynamicEqTelemetry = frame => this.handleDspDynamicEqTelemetry(frame);
+
+        this._setupMessageHandler();
 
         this.registerProcessor(`
             // --- Helper Envelope Follower ---
@@ -312,6 +323,7 @@ class FiveBandDynamicEQ extends PluginBase {
 
     // --- Parameter Handling ---
     getParameters() {
+        this.ensureDspTelemetrySubscription();
         const params = {
             type: this.constructor.name,
             enabled: this.enabled,
@@ -529,6 +541,7 @@ class FiveBandDynamicEQ extends PluginBase {
 
     // --- UI Creation ---
     createUI() {
+        this.ensureDspTelemetrySubscription();
         this.stopAnimation();
         if (this.observer) {
             this.observer.disconnect();
@@ -1222,6 +1235,7 @@ class FiveBandDynamicEQ extends PluginBase {
 
     // --- Cleanup ---
     cleanup() {
+        this.disposeDspTelemetrySubscription();
         this.stopAnimation();
         if (this.resizeObserver) {
              this.resizeObserver.disconnect(); // Disconnect observer
@@ -1237,7 +1251,102 @@ class FiveBandDynamicEQ extends PluginBase {
     }
 
     // --- Audio Processor Communication ---
+    _setupMessageHandler() {
+        super._setupMessageHandler();
+        this.ensureDspTelemetrySubscription?.();
+    }
+
+    ensureDspTelemetrySubscription() {
+        const hub = window.dspTelemetryHub;
+        const tapId = this.id;
+        const validTapId = Number.isInteger(tapId) && tapId >= 0 && tapId <= 0xffffffff;
+        const validHub = hub && typeof hub.subscribe === 'function';
+
+        if (!validTapId || !validHub) {
+            if (this._dspTelemetryUnsubscribe &&
+                (hub !== this._dspTelemetryHub || tapId !== this._dspTelemetryTapId)) {
+                this.disposeDspTelemetrySubscription();
+            }
+            return false;
+        }
+        if (this._dspTelemetryUnsubscribe &&
+            hub === this._dspTelemetryHub && tapId === this._dspTelemetryTapId) {
+            return true;
+        }
+
+        this.disposeDspTelemetrySubscription();
+        try {
+            const unsubscribe = hub.subscribe(
+                tapId,
+                FIVE_BAND_DYNAMIC_EQ_TAP_GAINS,
+                this._boundDspDynamicEqTelemetry
+            );
+            if (typeof unsubscribe !== 'function') {
+                hub.unsubscribe?.(
+                    tapId,
+                    FIVE_BAND_DYNAMIC_EQ_TAP_GAINS,
+                    this._boundDspDynamicEqTelemetry
+                );
+                return false;
+            }
+            this._dspTelemetryHub = hub;
+            this._dspTelemetryTapId = tapId;
+            this._dspTelemetryUnsubscribe = unsubscribe;
+            return true;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    disposeDspTelemetrySubscription() {
+        const unsubscribe = this._dspTelemetryUnsubscribe;
+        this._dspTelemetryHub = null;
+        this._dspTelemetryTapId = null;
+        this._dspTelemetryUnsubscribe = null;
+        if (!unsubscribe) return;
+        try {
+            unsubscribe();
+        } catch (error) {
+            // Ignore stale telemetry subscription cleanup failures.
+        }
+    }
+
+    parseDspDynamicEqTelemetryFrame(frame) {
+        if (frame?.frameType !== FIVE_BAND_DYNAMIC_EQ_TAP_GAINS ||
+            frame.formatVersion !== FIVE_BAND_DYNAMIC_EQ_TELEMETRY_VERSION) {
+            return null;
+        }
+        const payload = frame.payload;
+        if (!payload || typeof payload.getUint8 !== 'function' ||
+            typeof payload.getUint16 !== 'function' ||
+            typeof payload.getFloat32 !== 'function' ||
+            payload.byteLength !== FIVE_BAND_DYNAMIC_EQ_TELEMETRY_PAYLOAD_BYTES ||
+            payload.getUint8(0) !== FIVE_BAND_DYNAMIC_EQ_TELEMETRY_BANDS ||
+            payload.getUint8(1) !== 0 || payload.getUint16(2, true) !== 0) {
+            return null;
+        }
+
+        const gains = new Array(FIVE_BAND_DYNAMIC_EQ_TELEMETRY_BANDS);
+        for (let band = 0; band < gains.length; band++) {
+            const gain = payload.getFloat32(4 + band * 4, true);
+            if (!Number.isFinite(gain) || gain < -24 || gain > 24) return null;
+            gains[band] = gain;
+        }
+        return gains;
+    }
+
+    handleDspDynamicEqTelemetry(frame) {
+        const gains = this.parseDspDynamicEqTelemetryFrame(frame);
+        if (!gains) return;
+        this.onMessage({
+            type: 'processBuffer',
+            pluginId: this.id,
+            measurements: { gains }
+        });
+    }
+
     onMessage(message) {
+        this.ensureDspTelemetrySubscription();
         // Handle messages from the audio processor, e.g., updated dynamic gain levels
         if (message.type === 'processBuffer' && message.measurements && message.measurements.gains) {
              this.latestSmoothedGains = message.measurements.gains;

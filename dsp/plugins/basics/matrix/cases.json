@@ -1,0 +1,59 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 128,
+    "params": { "mx": "0011" }
+  },
+  "cases": [
+    {
+      "id": "default-diagonal",
+      "stimulus": "noise",
+      "frames": 2048,
+      "channels": 2
+    },
+    {
+      "id": "stereo-swap",
+      "stimulus": "sin1k",
+      "frames": 2048,
+      "channels": 2,
+      "params": { "mx": "0110" }
+    },
+    {
+      "id": "duplicates-order-and-phase",
+      "stimulus": "imp",
+      "frames": 1024,
+      "channels": 2,
+      "params": { "mx": "0000p0011p11" }
+    },
+    {
+      "id": "four-channel-mix",
+      "stimulus": "noise",
+      "frames": 2048,
+      "channels": 4,
+      "params": { "mx": "00102030p0313" }
+    },
+    {
+      "id": "malformed-routes-are-dropped",
+      "stimulus": "sweep",
+      "frames": 1536,
+      "channels": 2,
+      "params": { "mx": "x000q11p" }
+    },
+    {
+      "id": "runtime-filters-index-eight",
+      "stimulus": "noise",
+      "frames": 1024,
+      "channels": 8,
+      "params": { "mx": "880011223344556677" }
+    },
+    {
+      "id": "route-event",
+      "stimulus": "noise",
+      "frames": 2048,
+      "channels": 2,
+      "events": [
+        { "frame": 1024, "params": { "mx": "p0011" } }
+      ]
+    }
+  ]
+}

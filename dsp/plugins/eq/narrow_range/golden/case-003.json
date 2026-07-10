@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "NarrowRangePlugin",
+  "id": "slopes-off-identity",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 1,
+  "frameCount": 193,
+  "blockSize": 65,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "hf": 60,
+    "hs": 0,
+    "lf": 5000,
+    "ls": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "e523682522343e17ac48c76df33b816d238ebaef418bbb890d473ab5cab2f607",
+  "outputFloats": 193,
+  "byteLength": 772,
+  "binary": "case-003.f32"
+}

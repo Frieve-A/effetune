@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "StereoBalancePlugin",
+  "id": "mono-bypass",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 1,
+  "frameCount": 513,
+  "blockSize": 64,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 12,
+  "seed": "0xeffe7a52",
+  "params": {
+    "bl": 1
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "2190f867d7a44b4e06d00e0e5e52e2f3a8040876dbc7838ad583e483628bbf21",
+  "outputFloats": 513,
+  "byteLength": 2052,
+  "binary": "case-013.f32"
+}

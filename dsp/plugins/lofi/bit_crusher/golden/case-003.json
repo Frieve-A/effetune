@@ -1,0 +1,30 @@
+{
+  "formatVersion": 1,
+  "type": "BitCrusherPlugin",
+  "id": "maximum-depth-rate-error",
+  "stimulus": "fs",
+  "sampleRate": 192000,
+  "channels": 4,
+  "frameCount": 257,
+  "blockSize": 127,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "bd": 24,
+    "td": false,
+    "zf": 96000,
+    "be": 10,
+    "sd": 1000
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "3b195a5a241df26f51b7d75b422c3dd80b3cec6df6029342c228769fb516f7a3",
+  "outputFloats": 1028,
+  "byteLength": 4112,
+  "binary": "case-003.f32"
+}

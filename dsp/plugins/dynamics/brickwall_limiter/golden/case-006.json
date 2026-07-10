@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "BrickwallLimiterPlugin",
+  "id": "mono-44100-odd-block",
+  "stimulus": "noise",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 997,
+  "blockSize": 83,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "th": -9.5,
+    "rl": 137,
+    "la": 4.2,
+    "os": 2,
+    "ig": 3.5,
+    "sm": -1.25
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00003,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "3457f4fb73138b7b7a99394ef0f0b5bfeeb5901dc15072754160111543bd4661",
+  "outputFloats": 997,
+  "byteLength": 3988,
+  "binary": "case-006.f32"
+}

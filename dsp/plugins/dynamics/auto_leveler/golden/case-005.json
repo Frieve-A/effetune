@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "type": "AutoLevelerPlugin",
+  "id": "mono-44100-odd-block",
+  "stimulus": "sq50",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 997,
+  "blockSize": 83,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "tg": -21.5,
+    "tw": 2345,
+    "mg": 7.5,
+    "ng": -19,
+    "at": 37,
+    "rt": 2345,
+    "gt": -72
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00002,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "ccd1a8da9c67f43352c51551a49a31cce01fa129a10d25ec47e47bfe8230bb04",
+  "outputFloats": 997,
+  "byteLength": 3988,
+  "binary": "case-005.f32"
+}

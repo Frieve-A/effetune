@@ -1,0 +1,110 @@
+{
+  "formatVersion": 1,
+  "type": "MultiChannelPanelPlugin",
+  "id": "parameter-event",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 4,
+  "frameCount": 3072,
+  "blockSize": 128,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "m": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ],
+    "s": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ],
+    "v": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "d": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "l": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "events": [
+    {
+      "frame": 1024,
+      "params": {
+        "s": [
+          true,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "v": [
+          6,
+          -3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "d": [
+          5,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "f40a8e234bd1cdede5279f063b2bdc92fa9777de7cfab530b201810f2825e77f",
+  "outputFloats": 12288,
+  "byteLength": 49152,
+  "binary": "case-007.f32"
+}

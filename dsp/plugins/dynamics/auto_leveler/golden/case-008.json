@@ -1,0 +1,67 @@
+{
+  "formatVersion": 1,
+  "type": "AutoLevelerPlugin",
+  "id": "parameter-transitions",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 1237,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "tg": -18,
+    "tw": 3000,
+    "mg": 0,
+    "ng": -12,
+    "at": 50,
+    "rt": 5000,
+    "gt": -60
+  },
+  "events": [
+    {
+      "frame": 31,
+      "params": {
+        "tg": -6,
+        "mg": 12,
+        "at": 1
+      }
+    },
+    {
+      "frame": 128,
+      "params": {
+        "ng": -36,
+        "rt": 10,
+        "gt": -96
+      }
+    },
+    {
+      "frame": 513,
+      "params": {
+        "tw": 1000,
+        "tg": -36,
+        "gt": -24
+      }
+    },
+    {
+      "frame": 1001,
+      "params": {
+        "tw": 10000,
+        "mg": 0,
+        "ng": 0,
+        "at": 1000,
+        "rt": 10000
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00002,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "ccd1a8da9c67f43352c51551a49a31cce01fa129a10d25ec47e47bfe8230bb04",
+  "outputFloats": 2474,
+  "byteLength": 9896,
+  "binary": "case-008.f32"
+}

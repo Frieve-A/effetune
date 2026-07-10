@@ -1,0 +1,43 @@
+{
+  "formatVersion": 1,
+  "type": "ModalResonatorPlugin",
+  "id": "all-disabled-dry-path",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 701,
+  "blockSize": 97,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "rs": [
+      {
+        "en": false
+      },
+      {
+        "en": false
+      },
+      {
+        "en": false
+      },
+      {
+        "en": false
+      },
+      {
+        "en": false
+      }
+    ],
+    "mx": 75
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "d41d6e2d1fb2fe87b01b55ec8c42bbd18ac79eb14d96e46c178614192c870b0b",
+  "outputFloats": 1402,
+  "byteLength": 5608,
+  "binary": "case-002.f32"
+}

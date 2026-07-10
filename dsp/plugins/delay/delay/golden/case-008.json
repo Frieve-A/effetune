@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "type": "DelayPlugin",
+  "id": "four-channel-cutoff-swap",
+  "stimulus": "noise",
+  "sampleRate": 192000,
+  "channels": 4,
+  "frameCount": 401,
+  "blockSize": 63,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "pd": 0,
+    "ds": 1,
+    "dp": 100,
+    "hd": 20,
+    "ld": 20000,
+    "mx": 100,
+    "fb": 80,
+    "pp": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "826b2372817ea49223d2af27b54ec6cfdec248c81b5d30d5923aa37bde4f2fa5",
+  "outputFloats": 1604,
+  "byteLength": 6416,
+  "binary": "case-008.f32"
+}

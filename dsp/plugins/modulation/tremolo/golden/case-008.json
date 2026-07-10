@@ -1,0 +1,67 @@
+{
+  "formatVersion": 1,
+  "type": "TremoloPlugin",
+  "id": "phase-filter-and-stereo-transitions",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 4,
+  "frameCount": 1001,
+  "blockSize": 64,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "rt": 0.1,
+    "dp": 0,
+    "rn": 0,
+    "rc": 1,
+    "rs": -12,
+    "cp": -180,
+    "cs": 0
+  },
+  "events": [
+    {
+      "frame": 31,
+      "params": {
+        "dp": 12,
+        "rn": 96
+      }
+    },
+    {
+      "frame": 130,
+      "params": {
+        "rt": 50,
+        "rc": 1000,
+        "rs": 0
+      }
+    },
+    {
+      "frame": 321,
+      "params": {
+        "cp": 180,
+        "cs": 100
+      }
+    },
+    {
+      "frame": 700,
+      "params": {
+        "rt": 10,
+        "dp": 2,
+        "rn": 6,
+        "rc": 200,
+        "rs": -6,
+        "cp": 0,
+        "cs": 50
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "6d873adff940f4488d104dff7e63d2058aa35ec9fe55c28d98412e0b2381a9e5",
+  "outputFloats": 4004,
+  "byteLength": 16016,
+  "binary": "case-008.f32"
+}

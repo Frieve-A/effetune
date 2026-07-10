@@ -127,7 +127,9 @@ export class PipelineProcessor {
         const sampleRate = this.contextManager?.audioContext?.sampleRate ?? null;
         return this.pipeline.map(plugin => {
             const params = plugin.getParameters({ sampleRate, commitSampleRate: true });
-            
+            if (typeof plugin.getWorkletPluginData === 'function') {
+                return plugin.getWorkletPluginData(params);
+            }
             return {
                 id: plugin.id,
                 type: plugin.constructor.name,

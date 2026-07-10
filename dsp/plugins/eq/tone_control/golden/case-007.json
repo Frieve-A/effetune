@@ -1,0 +1,28 @@
+{
+  "formatVersion": 1,
+  "type": "ToneControlPlugin",
+  "id": "treble-minimum",
+  "stimulus": "noise",
+  "sampleRate": 192000,
+  "channels": 2,
+  "frameCount": 197,
+  "blockSize": 63,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "bs": 0,
+    "md": 0,
+    "tr": -24
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "594cab40e39d1332770bdf04b8898ad6f0f0bdb28fb9feab8e915038504ceaad",
+  "outputFloats": 394,
+  "byteLength": 1576,
+  "binary": "case-007.f32"
+}

@@ -30,6 +30,7 @@ const mimeTypes = new Map([
   ['.png', 'image/png'],
   ['.svg', 'image/svg+xml; charset=utf-8'],
   ['.txt', 'text/plain; charset=utf-8'],
+  ['.wasm', 'application/wasm'],
   ['.wav', 'audio/wav'],
   ['.webm', 'audio/webm']
 ]);
@@ -1030,7 +1031,7 @@ ${rows}
 
 function sendFile(response, request, filePath) {
   const extension = path.extname(filePath).toLowerCase();
-  const contentType = mimeTypes.get(extension) || 'application/octet-stream';
+  const contentType = getMimeType(filePath);
   setNoCacheHeaders(response, contentType);
 
   if (request.method === 'HEAD') {
@@ -1055,6 +1056,10 @@ function sendFile(response, request, filePath) {
 
   response.writeHead(200);
   fs.createReadStream(filePath).pipe(response);
+}
+
+function getMimeType(filePath) {
+  return mimeTypes.get(path.extname(filePath).toLowerCase()) || 'application/octet-stream';
 }
 
 function handleRequest(request, response) {
@@ -1095,6 +1100,7 @@ function handleRequest(request, response) {
 }
 
 export {
+  getMimeType,
   getDynamicSiteResponse,
   handleRequest,
   renderMarkdownPage,

@@ -1,0 +1,27 @@
+{
+  "formatVersion": 1,
+  "type": "HardClippingPlugin",
+  "id": "default-impulse",
+  "stimulus": "imp",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 257,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "th": -18,
+    "md": "both"
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "aaec46b70a3abefd1621bddba57d4e5af910b4cc7934bb186784247844e7752a",
+  "outputFloats": 514,
+  "byteLength": 2056,
+  "binary": "case-001.f32"
+}

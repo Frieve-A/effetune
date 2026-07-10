@@ -1,0 +1,37 @@
+{
+  "formatVersion": 1,
+  "type": "VinylArtifactsPlugin",
+  "id": "all4-192k-coefficients",
+  "stimulus": "fs",
+  "sampleRate": 192000,
+  "channels": 4,
+  "frameCount": 1025,
+  "blockSize": 31,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "pp": 120,
+    "pl": -6,
+    "cm": 2000,
+    "cl": -6,
+    "hs": -12,
+    "rb": -12,
+    "xt": 100,
+    "tn": 7.5,
+    "wr": 200,
+    "rt": 100,
+    "rm": "Velocity",
+    "mx": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "eab9d086b22155e71cbfa50044eab3794689d202244558388eb7cafd99c61478",
+  "outputFloats": 4100,
+  "byteLength": 16400,
+  "binary": "case-008.f32"
+}

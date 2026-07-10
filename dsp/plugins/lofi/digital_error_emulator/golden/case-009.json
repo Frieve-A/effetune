@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "DigitalErrorEmulatorPlugin",
+  "id": "rare-event-pass-through",
+  "stimulus": "fs",
+  "sampleRate": 96000,
+  "channels": 4,
+  "frameCount": 1001,
+  "blockSize": 33,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 8,
+  "seed": "0xeffe7a56",
+  "params": {
+    "be": -12,
+    "md": "2A",
+    "rf": 48,
+    "wt": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "0d2ff76003f7af6a30569695d8b30aaee461e4e52e3d78077aa3f00854f6de3f",
+  "outputFloats": 4004,
+  "byteLength": 16016,
+  "binary": "case-009.f32"
+}

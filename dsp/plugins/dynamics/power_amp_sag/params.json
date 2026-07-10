@@ -1,0 +1,10 @@
+{
+  "type": "PowerAmpSagPlugin",
+  "tolerance": { "abs": 0.00001, "policy": "per-sample" },
+  "fields": [
+    { "name": "sagSensitivity", "key": "ss", "kind": "float", "min": -18, "max": 18, "default": 3, "unit": "dB" },
+    { "name": "powerStability", "key": "ps", "kind": "int", "min": 0, "max": 100, "default": 50, "unit": "%" },
+    { "name": "recoverySpeed", "key": "rs", "kind": "int", "min": 0, "max": 100, "default": 40, "unit": "%" },
+    { "name": "monoblock", "key": "mb", "kind": "bool", "default": false }
+  ]
+}

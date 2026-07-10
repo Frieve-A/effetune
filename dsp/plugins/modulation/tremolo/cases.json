@@ -1,0 +1,35 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 128,
+    "channels": 2,
+    "channelMode": "stereo",
+    "frames": 1001,
+    "params": { "rt": 10, "dp": 2, "rn": 6, "rc": 200, "rs": -6, "cp": 0, "cs": 100 }
+  },
+  "cases": [
+    { "id": "default-stochastic-sine", "stimulus": "fs" },
+    { "id": "zero-depth-random-state", "stimulus": "noise", "sampleRate": 96000, "channels": 1, "channelMode": "mono", "frames": 259, "blockSize": 65, "params": { "dp": 0, "rn": 0, "rt": 50 } },
+    { "id": "pure-sine-minimum-rate", "stimulus": "fs", "sampleRate": 44100, "frames": 1001, "blockSize": 63, "params": { "rt": 0.1, "dp": 12, "rn": 0, "cp": -180, "cs": 0 } },
+    { "id": "pure-sine-maximum-rate", "stimulus": "fs", "sampleRate": 192000, "channels": 4, "channelMode": "all4", "frames": 1001, "blockSize": 127, "params": { "rt": 50, "dp": 12, "rn": 0, "cp": 180, "cs": 100 } },
+    { "id": "independent-randomness-extreme", "stimulus": "noise", "sampleRate": 96000, "channels": 4, "channelMode": "all4", "frames": 259, "blockSize": 31, "params": { "rt": 7.5, "dp": 9, "rn": 96, "rc": 1, "rs": -12, "cp": 90, "cs": 0 } },
+    { "id": "common-randomness-extreme", "stimulus": "sin1k", "sampleRate": 44100, "frames": 259, "blockSize": 63, "params": { "rt": 17, "dp": 12, "rn": 96, "rc": 1000, "rs": 0, "cp": -90, "cs": 100 } },
+    { "id": "one-frame-blocks", "stimulus": "noise", "sampleRate": 192000, "channels": 1, "channelMode": "mono", "frames": 67, "blockSize": 1, "params": { "rt": 33.3, "dp": 7.5, "rn": 48, "rc": 333, "rs": -3, "cp": 45, "cs": 37 } },
+    {
+      "id": "phase-filter-and-stereo-transitions",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "channels": 4,
+      "channelMode": "all4",
+      "frames": 1001,
+      "blockSize": 64,
+      "params": { "rt": 0.1, "dp": 0, "rn": 0, "rc": 1, "rs": -12, "cp": -180, "cs": 0 },
+      "events": [
+        { "frame": 31, "params": { "dp": 12, "rn": 96 } },
+        { "frame": 130, "params": { "rt": 50, "rc": 1000, "rs": 0 } },
+        { "frame": 321, "params": { "cp": 180, "cs": 100 } },
+        { "frame": 700, "params": { "rt": 10, "dp": 2, "rn": 6, "rc": 200, "rs": -6, "cp": 0, "cs": 50 } }
+      ]
+    }
+  ]
+}

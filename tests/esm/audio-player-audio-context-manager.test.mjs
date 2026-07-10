@@ -351,6 +351,9 @@ function createHarness(options = {}) {
         throw new Error('connect once failed');
       }
     },
+    disconnectSourceFromPipeline(source) {
+      calls.push(['disconnectSourceFromPipeline', source?.name]);
+    },
     ...options.audioManager
   };
   const stateManager = options.noStateManager ? null : {
@@ -430,6 +433,8 @@ test('core graph connections and source management preserve playback wiring', as
 
     manager.connectBufferSource(createNode(calls, 'bufferA'));
     assert.equal(calls.some(call => call[0] === 'connectSourceToPipeline' && call[1] === 'bufferA'), true);
+    assert.equal(calls.some(call => call[0] === 'disconnectSourceFromPipeline' &&
+      call[1] === 'originalSource'), true);
 
     window.electronIntegration.audioPreferences = { useInputWithPlayer: true };
     manager.connectBufferSource(createNode(calls, 'bufferB'));
@@ -487,6 +492,8 @@ test('buffer source lifecycle and graph rebuilds keep playback recoverable', asy
     const bufferSource = manager.createBufferSource({ duration: 8 }, 7);
     bufferSource.onended();
     assert.equal(calls.some(call => call[0] === 'manager.handleTrackEnded'), true);
+    assert.equal(calls.some(call => call[0] === 'disconnectSourceFromPipeline' &&
+      call[1] === bufferSource.name), true);
 
     state.isStopped = true;
     bufferSource.onended();
@@ -1579,6 +1586,8 @@ test('buffer source stop paths clear monitoring intervals', async () => {
     await manager.stopBufferSource();
     assert.equal(manager.bufferMonitoringInterval, null);
     assert.equal(calls.some(call => call[0] === 'clearInterval' && call[1] === 3), true);
+    assert.equal(calls.some(call => call[0] === 'disconnectSourceFromPipeline' &&
+      call[1] === 'stopSource'), true);
 
     manager.currentBufferSource = createNode(calls, 'stopCurrentSource');
     manager.bufferMonitoringInterval = 4;
@@ -1883,6 +1892,8 @@ test('next-buffer preparation, transitions, cleanup, and utilities coordinate pl
     assert.equal(objectUrls.some(call => call[0] === 'revoke' && call[1] === 'blob:old'), true);
     assert.equal(mediaSession.handlers.size, 0);
     assert.equal(audioManager.sourceNode.name, 'originalSource');
+    assert.equal(calls.some(call => call[0] === 'disconnectSourceFromPipeline' &&
+      call[1] === 'disconnectMedia'), true);
 
     const throwingDisconnect = createHarness({ calls });
     throwingDisconnect.manager.stopCurrentPlayback = () => { throw new Error('stop failed'); };

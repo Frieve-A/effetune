@@ -1,0 +1,64 @@
+{
+  "formatVersion": 1,
+  "type": "FiveBandDynamicEQ",
+  "id": "ratio-one-and-zero-max-gain",
+  "stimulus": "fs",
+  "sampleRate": 88200,
+  "channels": 2,
+  "frameCount": 263,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "bs": [
+      {
+        "en": true,
+        "ft": "pk",
+        "f": 300,
+        "q": 3,
+        "mg": 0,
+        "th": -60,
+        "r": 1,
+        "kn": 0,
+        "a": 0.1,
+        "rl": 1,
+        "scf": 300,
+        "scq": 3
+      },
+      {
+        "en": false
+      },
+      {
+        "en": true,
+        "ft": "hs",
+        "f": 3000,
+        "q": 0.5,
+        "mg": 0,
+        "th": 0,
+        "r": 1,
+        "kn": 10,
+        "a": 100,
+        "rl": 1000,
+        "scf": 3000,
+        "scq": 0.5
+      },
+      {
+        "en": false
+      },
+      {
+        "en": false
+      }
+    ]
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "03bab089177565d05d79d2e23f09c982732a361ea9e1949df5535067343c5eb2",
+  "outputFloats": 526,
+  "byteLength": 2104,
+  "binary": "case-005.f32"
+}

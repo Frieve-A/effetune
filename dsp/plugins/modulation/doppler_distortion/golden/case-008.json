@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "DopplerDistortionPlugin",
+  "id": "one-frame-blocks",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 1,
+  "frameCount": 4301,
+  "blockSize": 1,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "cf": 8,
+    "sm": 0.03,
+    "sc": 6000,
+    "df": 1.5
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "3e2d3415b86537e4b25255aa2f6b99f04aa9e6b9e39dcc74e3cce1d12d59ccee",
+  "outputFloats": 4301,
+  "byteLength": 17204,
+  "binary": "case-008.f32"
+}

@@ -1,0 +1,16 @@
+{
+  "type": "MultibandCompressorPlugin",
+  "tolerance": { "abs": 0.00002, "policy": "per-sample" },
+  "fields": [
+    { "name": "frequency1", "key": "f1", "kind": "float", "min": 20, "max": 500, "default": 100, "unit": "Hz" },
+    { "name": "frequency2", "key": "f2", "kind": "float", "min": 100, "max": 2000, "default": 500, "unit": "Hz" },
+    { "name": "frequency3", "key": "f3", "kind": "float", "min": 500, "max": 8000, "default": 2000, "unit": "Hz" },
+    { "name": "frequency4", "key": "f4", "kind": "float", "min": 1000, "max": 20000, "default": 8000, "unit": "Hz" },
+    { "name": "threshold", "key": "t", "objectArrayKey": "bands", "memberKey": "t", "kind": "float", "count": 5, "min": -60, "max": 0, "default": [-20, -22, -25, -28, -18], "unit": "dB" },
+    { "name": "ratio", "key": "r", "objectArrayKey": "bands", "memberKey": "r", "kind": "float", "count": 5, "min": 0.5, "max": 20, "default": [4, 3, 2.5, 2, 5] },
+    { "name": "attack", "key": "a", "objectArrayKey": "bands", "memberKey": "a", "kind": "float", "count": 5, "min": 0.1, "max": 100, "default": [30, 20, 15, 10, 5], "unit": "ms" },
+    { "name": "release", "key": "rl", "objectArrayKey": "bands", "memberKey": "rl", "kind": "float", "count": 5, "min": 10, "max": 1000, "default": [150, 120, 80, 60, 40], "unit": "ms" },
+    { "name": "knee", "key": "k", "objectArrayKey": "bands", "memberKey": "k", "kind": "float", "count": 5, "min": 0, "max": 12, "default": [6, 4, 4, 3, 2], "unit": "dB" },
+    { "name": "gain", "key": "g", "objectArrayKey": "bands", "memberKey": "g", "kind": "float", "count": 5, "min": -12, "max": 12, "default": [-1, 0, 1, 1.5, -2], "unit": "dB" }
+  ]
+}

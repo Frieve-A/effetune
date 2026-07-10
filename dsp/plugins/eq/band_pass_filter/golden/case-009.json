@@ -1,0 +1,61 @@
+{
+  "formatVersion": 1,
+  "type": "BandPassFilterPlugin",
+  "id": "non-aligned-transitions",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 4,
+  "frameCount": 259,
+  "blockSize": 64,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 8,
+  "seed": "0xeffe7a56",
+  "params": {
+    "hf": 60,
+    "lf": 36000,
+    "hs": -12,
+    "ls": -24
+  },
+  "events": [
+    {
+      "frame": 17,
+      "params": {
+        "hf": 1400,
+        "hs": -36
+      }
+    },
+    {
+      "frame": 66,
+      "params": {
+        "hf": 1500,
+        "lf": 7200,
+        "ls": 0
+      }
+    },
+    {
+      "frame": 129,
+      "params": {
+        "hs": 0,
+        "ls": -48
+      }
+    },
+    {
+      "frame": 194,
+      "params": {
+        "hf": 40000,
+        "lf": 40000,
+        "hs": -48,
+        "ls": -12
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "285ad3d162ea5f56636051d7cfa541756afe5ccb162f1e9551b2d8185cc40030",
+  "outputFloats": 1036,
+  "byteLength": 4144,
+  "binary": "case-009.f32"
+}

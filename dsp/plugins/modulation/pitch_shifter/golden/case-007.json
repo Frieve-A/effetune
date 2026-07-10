@@ -1,0 +1,42 @@
+{
+  "formatVersion": 1,
+  "type": "PitchShifterPlugin",
+  "id": "crossfade-shape-resets",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 1,
+  "frameCount": 27001,
+  "blockSize": 96,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "ps": -2,
+    "ft": 0,
+    "ws": 80,
+    "xf": 20
+  },
+  "events": [
+    {
+      "frame": 6001,
+      "params": {
+        "xf": 40
+      }
+    },
+    {
+      "frame": 13003,
+      "params": {
+        "xf": 35.5
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "18f30430161f9690ee99e70d58bf8580721ecb94fbe74c7c73466c6f9a07e894",
+  "outputFloats": 27001,
+  "byteLength": 108004,
+  "binary": "case-007.f32"
+}

@@ -445,11 +445,13 @@ function createHarness(options = {}) {
   }
 
   const calls = [];
+  const audioEvents = new Map();
   const audioManager = {
     pipelineA: options.pipelineA ?? [createPlugin('Alpha', { gain: 1, inputBus: 0, outputBus: 1, channel: 'L' })],
     pipelineB: options.pipelineB ?? [createPlugin('Beta', { gain: 2 })],
     currentPipeline: options.currentPipeline ?? 'B',
     audioContext: options.audioContext ?? { sampleRate: 48000 },
+    _outputFadeToken: 0,
     setCurrentPipeline(label, silent) {
       calls.push(['setCurrentPipeline', label, silent]);
       if (options.throwSetCurrentPipeline) throw new Error('set current failed');
@@ -457,24 +459,41 @@ function createHarness(options = {}) {
     },
     enableParallelPipelines(label) {
       calls.push(['enableParallelPipelines', label]);
+      if (options.enableParallelPromise) return options.enableParallelPromise;
       return options.rejectEnableParallel
         ? Promise.reject(new Error('parallel failed'))
-        : Promise.resolve();
+        : Promise.resolve(options.enableParallelResult ?? true);
     },
-    disableParallelPipelines() {
-      calls.push(['disableParallelPipelines']);
+    disableParallelPipelines(disableOptions) {
+      calls.push(['disableParallelPipelines', disableOptions]);
       if (options.throwDisableParallel) throw new Error('disable failed');
+      return options.disableParallelPromise ?? true;
     },
     fadeInOutput(seconds) {
       calls.push(['fadeInOutput', seconds]);
       if (options.throwFadeIn) throw new Error('fade in failed');
     },
+    fadeInOutputForToken(token, seconds) {
+      calls.push(['fadeInOutputForToken', token, seconds]);
+      if (token !== this._outputFadeToken) return false;
+      this.fadeInOutput(seconds);
+      return true;
+    },
     fadeOutOutput(seconds) {
       calls.push(['fadeOutOutput', seconds]);
+      const token = ++this._outputFadeToken;
       if (options.throwFadeOut) throw new Error('fade out failed');
+      return token;
     },
     setBlindSelection(label, seconds) {
       calls.push(['setBlindSelection', label, seconds]);
+    },
+    addEventListener(type, listener) {
+      if (!audioEvents.has(type)) audioEvents.set(type, []);
+      audioEvents.get(type).push(listener);
+    },
+    emit(type, detail) {
+      for (const listener of audioEvents.get(type) || []) listener(detail);
     }
   };
 
@@ -628,6 +647,7 @@ test('validates pipeline availability and manages entry/exit gating', async () =
     assert.equal(h.document.listenerCount('keydown'), 1);
 
     h.dbt.exit();
+    await flushMicrotasks();
     assert.equal(h.dbt.isActive(), false);
     assert.equal(h.document.listenerCount('keydown'), 0);
     assert.equal(h.uiManager.urlReflectionEnabled, true);
@@ -636,6 +656,7 @@ test('validates pipeline availability and manages entry/exit gating', async () =
     assert.equal(h.main.children.length, 2);
     assert.equal(h.document.body.style.minWidth, '');
     assert.deepEqual(h.calls.filter(call => call[0] === 'setCurrentPipeline').at(-1), ['setCurrentPipeline', 'B', true]);
+    assert.equal(h.calls.some(call => call[0] === 'fadeInOutput'), false);
 
     h.dbt.exit();
     assert.equal(h.menuRefreshes.length, 2);
@@ -1004,8 +1025,13 @@ test('starts tests, randomizes trials, switches labels, and handles keyboard sho
     const originalRandom = Math.random;
     Math.random = () => 0.25;
     try {
-      h.dbt._startTest('ABX');
-      await flushMicrotasks();
+      await h.dbt._startTest('ABX');
+      assert.equal(h.dbt.testRunning, false);
+      h.dbt.audioManager.enableParallelPipelines = label => {
+        h.calls.push(['enableParallelPipelines', label]);
+        return Promise.resolve(true);
+      };
+      await h.dbt._startTest('ABX');
       assert.equal(h.dbt.testRunning, true);
       assert.equal(h.dbt._aIsPhysicalA, true);
       assert.equal(h.dbt._xIsA, true);
@@ -1059,7 +1085,7 @@ test('starts tests, randomizes trials, switches labels, and handles keyboard sho
     const originalRandom = Math.random;
     Math.random = () => values.shift() ?? 0.75;
     try {
-      h.dbt._startTest('ABPREF');
+      await h.dbt._startTest('ABPREF');
       assert.equal(h.dbt._aIsPhysicalA, false);
       assert.equal(h.dbt._xIsA, false);
       assert.equal(h.dbt.els.switchX.style.display, 'none');
@@ -1067,6 +1093,113 @@ test('starts tests, randomizes trials, switches labels, and handles keyboard sho
       Math.random = originalRandom;
     }
   });
+});
+
+test('blind switches complete only the fade token owned by the latest switch', async () => {
+  await withHarness({}, async h => {
+    h.dbt.enterFresh();
+    await flushMicrotasks();
+    h.dbt.els.countInput.value = '2';
+    await h.dbt._startTest('ABX');
+    h.runTimers();
+    h.calls.length = 0;
+
+    h.dbt._switchToLabel('A');
+    const completedToken = h.uiManager.audioManager._outputFadeToken;
+    h.runTimers();
+    assert.deepEqual(
+      h.calls.filter(call => call[0] === 'fadeInOutputForToken'),
+      [['fadeInOutputForToken', completedToken, 0.04]]
+    );
+    assert.equal(h.calls.filter(call => call[0] === 'fadeInOutput').length, 1);
+
+    h.calls.length = 0;
+    h.dbt._switchToLabel('A');
+    const staleToken = h.uiManager.audioManager._outputFadeToken;
+    h.dbt._switchToLabel('B');
+    const latestToken = h.uiManager.audioManager._outputFadeToken;
+    assert.ok(latestToken > staleToken);
+    h.runTimers();
+    assert.deepEqual(
+      h.calls.filter(call => call[0] === 'fadeInOutputForToken'),
+      [['fadeInOutputForToken', latestToken, 0.04]]
+    );
+    assert.equal(h.calls.filter(call => call[0] === 'fadeInOutput').length, 1);
+  });
+});
+
+test('waits for parallel readiness and ignores stale completion after close or finish', async () => {
+  for (const stopMode of ['close', 'finish']) {
+    let resolveParallel;
+    const parallelPromise = new Promise(resolve => { resolveParallel = resolve; });
+    await withHarness({ enableParallelPromise: parallelPromise }, async h => {
+      h.dbt.enterFresh();
+      await flushMicrotasks();
+      h.dbt.els.countInput.value = '1';
+      let trials = 0;
+      h.dbt._nextTrial = () => { trials++; };
+
+      const starting = h.dbt._startTest('ABX');
+      await flushMicrotasks();
+      assert.equal(trials, 0);
+      assert.equal(h.dbt.testRunning, true);
+      h.dbt._vote('A');
+      h.dbt._switchToLabel('A');
+      assert.equal(trials, 0);
+      if (stopMode === 'close') {
+        h.dbt.exit();
+      } else {
+        h.dbt._finishTest();
+      }
+      resolveParallel(true);
+      await starting;
+
+      assert.equal(trials, 0);
+      assert.equal(h.dbt.testRunning, false);
+    });
+  }
+
+  await withHarness({ enableParallelResult: false }, async h => {
+    h.dbt.enterFresh();
+    await flushMicrotasks();
+    h.dbt.els.countInput.value = '1';
+    let trials = 0;
+    h.dbt._nextTrial = () => { trials++; };
+    await h.dbt._startTest('ABX');
+    assert.equal(trials, 0);
+    assert.equal(h.dbt.testRunning, false);
+  });
+});
+
+test('parallel invalidation aborts active trials and rejects further votes', async () => {
+  for (const detail of [
+    { reason: 'dspFailed', restorePrimaryDsp: true },
+    { reason: 'audioReset', restorePrimaryDsp: false }
+  ]) {
+    await withHarness({}, async h => {
+      h.dbt.enterFresh();
+      await flushMicrotasks();
+      h.dbt.els.countInput.value = '2';
+      await h.dbt._startTest('ABX');
+      h.dbt._switchToLabel('A');
+      const switchSeq = h.dbt._switchSeq;
+      const total = h.dbt.totalCount;
+
+      h.dbt.audioManager.emit('parallelInvalidated', detail);
+      assert.equal(h.dbt.testRunning, false);
+      assert.equal(h.dbt._startPending, false);
+      assert.ok(h.dbt._switchSeq > switchSeq);
+      assert.equal(h.dbt.els.config.classList.contains('hidden'), false);
+      assert.equal(h.dbt.els.test.classList.contains('hidden'), true);
+      h.dbt._vote('A');
+      assert.equal(h.dbt.totalCount, total);
+
+      const teardown = h.calls.filter(call => call[0] === 'disableParallelPipelines').at(-1);
+      assert.equal(teardown[1].restorePrimaryDsp, detail.restorePrimaryDsp);
+      h.runTimers();
+      await flushMicrotasks();
+    });
+  }
 });
 
 test('resolves physical labels, votes, finishes, and displays result variants', async () => {

@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "type": "AutoLevelerPlugin",
+  "id": "default-impulse",
+  "stimulus": "imp",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 1025,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "tg": -18,
+    "tw": 3000,
+    "mg": 0,
+    "ng": -12,
+    "at": 50,
+    "rt": 5000,
+    "gt": -60
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00002,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "ccd1a8da9c67f43352c51551a49a31cce01fa129a10d25ec47e47bfe8230bb04",
+  "outputFloats": 2050,
+  "byteLength": 8200,
+  "binary": "case-001.f32"
+}

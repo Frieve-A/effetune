@@ -1,0 +1,15 @@
+{
+  "type": "MultibandTransientPlugin",
+  "tolerance": { "abs": 0.00002, "policy": "per-sample" },
+  "fields": [
+    { "name": "frequency1", "key": "f1", "kind": "float", "min": 20, "max": 2000, "default": 200, "unit": "Hz" },
+    { "name": "frequency2", "key": "f2", "kind": "float", "min": 200, "max": 20000, "default": 4000, "unit": "Hz" },
+    { "name": "fastAttack", "key": "fa", "objectArrayKey": "bands", "memberKey": "fa", "kind": "float", "count": 3, "min": 0.1, "max": 10, "default": [5, 2, 0.5], "unit": "ms" },
+    { "name": "fastRelease", "key": "fr", "objectArrayKey": "bands", "memberKey": "fr", "kind": "float", "count": 3, "min": 1, "max": 200, "default": [50, 30, 20], "unit": "ms" },
+    { "name": "slowAttack", "key": "sa", "objectArrayKey": "bands", "memberKey": "sa", "kind": "float", "count": 3, "min": 1, "max": 100, "default": [25, 10, 5], "unit": "ms" },
+    { "name": "slowRelease", "key": "sr", "objectArrayKey": "bands", "memberKey": "sr", "kind": "float", "count": 3, "min": 50, "max": 1000, "default": [250, 150, 100], "unit": "ms" },
+    { "name": "transientGain", "key": "gt", "objectArrayKey": "bands", "memberKey": "gt", "kind": "float", "count": 3, "min": -24, "max": 24, "default": 6, "unit": "dB" },
+    { "name": "sustainGain", "key": "gs", "objectArrayKey": "bands", "memberKey": "gs", "kind": "float", "count": 3, "min": -24, "max": 24, "default": 0, "unit": "dB" },
+    { "name": "gainSmoothing", "key": "sm", "objectArrayKey": "bands", "memberKey": "sm", "kind": "float", "count": 3, "min": 0.1, "max": 20, "default": 5, "unit": "ms" }
+  ]
+}

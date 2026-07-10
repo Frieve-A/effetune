@@ -1,0 +1,65 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 128,
+    "channels": 2,
+    "channelMode": "stereo",
+    "frames": 2048,
+    "params": {
+      "of": 0
+    }
+  },
+  "cases": [
+    { "id": "default-impulse", "stimulus": "imp", "frames": 2048 },
+    { "id": "default-sine", "stimulus": "sin1k", "frames": 2048 },
+    { "id": "default-sweep", "stimulus": "sweep", "frames": 2048 },
+    { "id": "default-noise", "stimulus": "noise", "frames": 2048 },
+    { "id": "default-square", "stimulus": "sq50", "frames": 2048 },
+    { "id": "default-silence", "stimulus": "silence", "frames": 2048 },
+    { "id": "default-full-scale", "stimulus": "fs", "frames": 2048 },
+    { "id": "default-step", "stimulus": "step", "frames": 2048 },
+    {
+      "id": "minimum-mono",
+      "stimulus": "noise",
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 513,
+      "blockSize": 64,
+      "params": { "of": -1 }
+    },
+    {
+      "id": "maximum-stereo",
+      "stimulus": "noise",
+      "frames": 257,
+      "blockSize": 63,
+      "params": { "of": 1 }
+    },
+    {
+      "id": "fractional-negative-all-channels",
+      "stimulus": "sin1k",
+      "channels": 4,
+      "channelMode": "all4",
+      "channel": "A",
+      "frames": 257,
+      "blockSize": 63,
+      "params": { "of": -0.125 }
+    },
+    {
+      "id": "fractional-positive-stereo",
+      "stimulus": "fs",
+      "frames": 257,
+      "params": { "of": 0.1 }
+    },
+    {
+      "id": "non-aligned-transitions",
+      "stimulus": "noise",
+      "frames": 513,
+      "events": [
+        { "frame": 63, "params": { "of": -1 } },
+        { "frame": 128, "params": { "of": 0.1 } },
+        { "frame": 257, "params": { "of": 1 } },
+        { "frame": 512, "params": { "of": 0 } }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "formatVersion": 1,
+  "type": "HarmonicDistortionPlugin",
+  "id": "harmonic-and-sensitivity-transitions",
+  "stimulus": "step",
+  "sampleRate": 96000,
+  "channels": 4,
+  "frameCount": 521,
+  "blockSize": 64,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "h2": -30,
+    "h3": -30,
+    "h4": -30,
+    "h5": -30,
+    "sn": 0.1
+  },
+  "events": [
+    {
+      "frame": 31,
+      "params": {
+        "h2": 30,
+        "h3": 30,
+        "h4": 30,
+        "h5": 30
+      }
+    },
+    {
+      "frame": 130,
+      "params": {
+        "sn": 2
+      }
+    },
+    {
+      "frame": 259,
+      "params": {
+        "h2": 0,
+        "h3": 0,
+        "h4": 0,
+        "h5": 0
+      }
+    },
+    {
+      "frame": 400,
+      "params": {
+        "h2": 2,
+        "h3": 3,
+        "h4": 0.5,
+        "h5": 0.3,
+        "sn": 0.5
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "80d6409c41763ff48546889b1f8bb55c49daf4dd0fcccabb529c533da102b491",
+  "outputFloats": 2084,
+  "byteLength": 8336,
+  "binary": "case-008.f32"
+}

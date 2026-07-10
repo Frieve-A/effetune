@@ -1,0 +1,24 @@
+{
+  "formatVersion": 1,
+  "type": "LevelMeterPlugin",
+  "id": "stereo-impulse-tail",
+  "stimulus": "imp",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 2053,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {},
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "7a86435d58ca21426e6701d31011b2f811e56fad538c08bf4d1583dfff7ece58",
+  "outputFloats": 4106,
+  "byteLength": 16424,
+  "binary": "case-001.f32"
+}

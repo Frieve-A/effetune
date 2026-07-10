@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "type": "OscilloscopePlugin",
+  "id": "auto-bucket-window-high-rate",
+  "stimulus": "imp",
+  "sampleRate": 192000,
+  "channels": 2,
+  "frameCount": 577,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "dt": 0.1,
+    "tm": "Auto",
+    "tl": 0,
+    "te": "Rising",
+    "ho": 0.01,
+    "dl": 0,
+    "vo": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "461b4c813862374c3c0d80b8e9d7f079f90cd459bf2abfa451c297cee9203d43",
+  "outputFloats": 1154,
+  "byteLength": 4616,
+  "binary": "case-004.f32"
+}

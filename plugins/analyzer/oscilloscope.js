@@ -1,3 +1,9 @@
+const OSCILLOSCOPE_TAP_SCOPE_SNAPSHOT = 3;
+const OSCILLOSCOPE_TELEMETRY_VERSION = 1;
+const OSCILLOSCOPE_MAX_RAW_SAMPLES = 2048;
+const OSCILLOSCOPE_BUCKET_COUNT = 1024;
+const OSCILLOSCOPE_PAYLOAD_HEADER_BYTES = 16;
+
 class OscilloscopePlugin extends PluginBase {
     constructor() {
       super('Oscilloscope', 'Real-time waveform visualization');
@@ -38,6 +44,11 @@ class OscilloscopePlugin extends PluginBase {
       this.resizeGraphDisposer = null;
       this.graphDpr = 1;
       this.graphCssWidth = 1024;
+      this.scopeSnapshot = null;
+      this._dspTelemetryHub = null;
+      this._dspTelemetryTapId = null;
+      this._dspTelemetryUnsubscribe = null;
+      this._boundDspScopeTelemetry = frame => this.handleDspScopeTelemetry(frame);
   
       // Circular buffer for waveform data.
       this.bufferSize = 65536;
@@ -90,6 +101,7 @@ class OscilloscopePlugin extends PluginBase {
       this.accumulationBuffer = null;
       this.accumulationBufferIndex = 0;
       this.lastAccumulationBufferPos = 0;
+      this.scopeSnapshot = null;
     }
   
     // ================================================================
@@ -178,6 +190,7 @@ class OscilloscopePlugin extends PluginBase {
     // All comments are in English.
     // ================================================================
     createUI() {
+      this.ensureDspTelemetrySubscription();
       if (this.observer) {
         this.observer.disconnect();
       }
@@ -426,6 +439,7 @@ class OscilloscopePlugin extends PluginBase {
     // Return parameters with short names as per the development guide.
     // ---------------------------
     getParameters() {
+      this.ensureDspTelemetrySubscription();
       return {
         type: this.constructor.name,
         enabled: this.enabled,
@@ -449,11 +463,145 @@ class OscilloscopePlugin extends PluginBase {
       if (params.vo !== undefined) this.setVerticalOffset(params.vo);
       this.updateParameters();
     }
+
+    _setupMessageHandler() {
+      super._setupMessageHandler();
+      this.ensureDspTelemetrySubscription?.();
+    }
+
+    ensureDspTelemetrySubscription() {
+      const hub = window.dspTelemetryHub;
+      const tapId = this.id;
+      const validTapId = Number.isInteger(tapId) && tapId >= 0 && tapId <= 0xffffffff;
+      const validHub = hub && typeof hub.subscribe === 'function';
+
+      if (!validTapId || !validHub) {
+        if (this._dspTelemetryUnsubscribe &&
+            (hub !== this._dspTelemetryHub || tapId !== this._dspTelemetryTapId)) {
+          this.disposeDspTelemetrySubscription();
+        }
+        return false;
+      }
+      if (this._dspTelemetryUnsubscribe &&
+          hub === this._dspTelemetryHub && tapId === this._dspTelemetryTapId) {
+        return true;
+      }
+
+      this.disposeDspTelemetrySubscription();
+      try {
+        const unsubscribe = hub.subscribe(
+          tapId,
+          OSCILLOSCOPE_TAP_SCOPE_SNAPSHOT,
+          this._boundDspScopeTelemetry
+        );
+        if (typeof unsubscribe !== 'function') {
+          hub.unsubscribe?.(
+            tapId,
+            OSCILLOSCOPE_TAP_SCOPE_SNAPSHOT,
+            this._boundDspScopeTelemetry
+          );
+          return false;
+        }
+        this._dspTelemetryHub = hub;
+        this._dspTelemetryTapId = tapId;
+        this._dspTelemetryUnsubscribe = unsubscribe;
+        return true;
+      } catch (error) {
+        return false;
+      }
+    }
+
+    disposeDspTelemetrySubscription() {
+      const unsubscribe = this._dspTelemetryUnsubscribe;
+      this._dspTelemetryHub = null;
+      this._dspTelemetryTapId = null;
+      this._dspTelemetryUnsubscribe = null;
+      if (!unsubscribe) return;
+      try {
+        unsubscribe();
+      } catch (error) {
+        // Ignore stale telemetry subscription cleanup failures.
+      }
+    }
+
+    parseDspScopeTelemetryFrame(frame) {
+      if (frame?.frameType !== OSCILLOSCOPE_TAP_SCOPE_SNAPSHOT ||
+          frame.formatVersion !== OSCILLOSCOPE_TELEMETRY_VERSION) {
+        return null;
+      }
+      const payload = frame.payload;
+      if (!payload || typeof payload.getUint8 !== 'function' ||
+          typeof payload.getUint16 !== 'function' ||
+          typeof payload.getUint32 !== 'function' ||
+          typeof payload.getFloat32 !== 'function' ||
+          !Number.isInteger(payload.byteLength) ||
+          payload.byteLength < OSCILLOSCOPE_PAYLOAD_HEADER_BYTES + 4) {
+        return null;
+      }
+
+      const sampleRate = payload.getFloat32(0, true);
+      const triggerOffsetInSnapshot = payload.getUint32(4, true);
+      const sampleCount = payload.getUint32(8, true);
+      const mode = payload.getUint8(12);
+      const triggeredValue = payload.getUint8(13);
+      const reserved = payload.getUint16(14, true);
+      if (!Number.isFinite(sampleRate) || sampleRate <= 0 || reserved !== 0 ||
+          triggeredValue > 1 || triggerOffsetInSnapshot >= sampleCount) {
+        return null;
+      }
+
+      let valueCount;
+      if (mode === 0) {
+        if (sampleCount < 1 || sampleCount > OSCILLOSCOPE_MAX_RAW_SAMPLES) return null;
+        valueCount = sampleCount;
+      } else if (mode === 1) {
+        if (sampleCount !== OSCILLOSCOPE_BUCKET_COUNT) return null;
+        valueCount = sampleCount * 2;
+      } else {
+        return null;
+      }
+      if (payload.byteLength !== OSCILLOSCOPE_PAYLOAD_HEADER_BYTES + valueCount * 4) {
+        return null;
+      }
+
+      const values = new Float32Array(valueCount);
+      for (let index = 0; index < valueCount; index++) {
+        const value = payload.getFloat32(
+          OSCILLOSCOPE_PAYLOAD_HEADER_BYTES + index * 4,
+          true
+        );
+        if (!Number.isFinite(value)) return null;
+        values[index] = value;
+      }
+      if (mode === 1) {
+        for (let bucket = 0; bucket < sampleCount; bucket++) {
+          if (values[bucket * 2] > values[bucket * 2 + 1]) return null;
+        }
+      }
+
+      return {
+        sampleRate,
+        triggerOffsetInSnapshot,
+        sampleCount,
+        mode,
+        triggered: triggeredValue === 1,
+        values
+      };
+    }
+
+    handleDspScopeTelemetry(frame) {
+      const snapshot = this.parseDspScopeTelemetryFrame(frame);
+      if (!snapshot || !this.enabled) return;
+      this.sampleRate = snapshot.sampleRate;
+      this.scopeSnapshot = snapshot;
+      this.frozenDisplayBuffer = snapshot.mode === 0 ? snapshot.values : null;
+    }
   
     // ---------------------------
     // onMessage: Receive messages from the Audio Worklet.
     // ---------------------------
     onMessage(message) {
+      this.ensureDspTelemetrySubscription();
       // Check that measurements and buffer exist.
       if (
         message.type === 'processBuffer' &&
@@ -545,6 +693,7 @@ class OscilloscopePlugin extends PluginBase {
         // If we have accumulated enough samples, finalize the accumulation.
         if (this.accumulationBufferIndex >= displaySamples) {
           this.frozenDisplayBuffer = this.accumulationBuffer;
+          this.scopeSnapshot = null;
           this.accumulating = false;
         }
       }
@@ -703,14 +852,31 @@ class OscilloscopePlugin extends PluginBase {
       // ---------------------------
       // Draw the waveform if a frozen snapshot is available.
       // ---------------------------
-      if (this.frozenDisplayBuffer) {
+      if (this.scopeSnapshot?.mode === 1) {
+        const { values, sampleCount } = this.scopeSnapshot;
+        ctx.strokeStyle = '#0f0';
+        ctx.lineWidth = 2 * dpr;
+        ctx.beginPath();
+        const denominator = sampleCount > 1 ? sampleCount - 1 : 1;
+        for (let bucket = 0; bucket < sampleCount; bucket++) {
+          const x = leftMargin + (bucket / denominator) * (width - leftMargin);
+          const minimum = values[bucket * 2];
+          const maximum = values[bucket * 2 + 1];
+          const top = centerY - (maximum * factor) * (height / 2);
+          const bottom = centerY - (minimum * factor) * (height / 2);
+          ctx.moveTo(x, top);
+          ctx.lineTo(x, bottom);
+        }
+        ctx.stroke();
+      } else if (this.frozenDisplayBuffer) {
         const displayBuffer = this.frozenDisplayBuffer;
         ctx.strokeStyle = '#0f0';
         ctx.lineWidth = 2 * dpr;
         ctx.beginPath();
         // Draw continuous line: map each sample index to x coordinate.
+        const denominator = displayBuffer.length > 1 ? displayBuffer.length - 1 : 1;
         for (let i = 0; i < displayBuffer.length; i++) {
-          const x = leftMargin + (i / (displayBuffer.length - 1)) * (width - leftMargin);
+          const x = leftMargin + (i / denominator) * (width - leftMargin);
           const sample = displayBuffer[i];
           const y = centerY - (sample * factor) * (height / 2);
           if (i === 0) {
@@ -727,6 +893,7 @@ class OscilloscopePlugin extends PluginBase {
     // cleanup: Cancel the animation and remove event listeners.
     // ---------------------------
     cleanup() {
+      this.disposeDspTelemetrySubscription();
       this.stopAnimation();
       if (this.observer) {
         if (this.canvas) {
@@ -744,6 +911,7 @@ class OscilloscopePlugin extends PluginBase {
         element.removeEventListener('input', listener);
       }
       this.boundEventListeners.clear();
+      this.scopeSnapshot = null;
       this.canvas = null;
       this.ctx = null;
       super.cleanup();

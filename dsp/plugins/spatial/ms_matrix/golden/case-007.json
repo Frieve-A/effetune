@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "MSMatrixPlugin",
+  "id": "mono-bypass",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 1,
+  "frameCount": 127,
+  "blockSize": 32,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "md": 1,
+    "mg": 18,
+    "sg": -18,
+    "sw": 1
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "ea13e207837045ba6ec2944e0f8436084a8c6629351def3bdbabb5d72f048e26",
+  "outputFloats": 127,
+  "byteLength": 508,
+  "binary": "case-007.f32"
+}

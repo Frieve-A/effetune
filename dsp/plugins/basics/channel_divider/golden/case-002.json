@@ -1,0 +1,34 @@
+{
+  "formatVersion": 1,
+  "type": "ChannelDividerPlugin",
+  "id": "two-band-noise",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 4,
+  "frameCount": 4800,
+  "blockSize": 128,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "bc": 2,
+    "f1": 2000,
+    "s1": -24,
+    "f2": 4000,
+    "s2": -24,
+    "f3": 8000,
+    "s3": -24
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.0001,
+    "rel": 0.0001,
+    "floorDb": -90,
+    "policy": "spectral"
+  },
+  "jsEngineHash": "4a5ca4e48ab49e9c7955894e45ebabe6f59fca54e8fa938b2a30f1572a07e438",
+  "outputFloats": 19200,
+  "byteLength": 76800,
+  "binary": "case-002.f32"
+}

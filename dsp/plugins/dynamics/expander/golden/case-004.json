@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "ExpanderPlugin",
+  "id": "minimum-ratio-soft-knee",
+  "stimulus": "sq50",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 1033,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "th": -18,
+    "rt": 0.05,
+    "at": 100,
+    "rl": 1000,
+    "kn": 12,
+    "gn": 6
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "434b250ab46eeb6f31274e74abb8a5276c8c7d815e588d5521ecd18b195a9a88",
+  "outputFloats": 2066,
+  "byteLength": 8264,
+  "binary": "case-004.f32"
+}

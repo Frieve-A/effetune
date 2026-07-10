@@ -36,34 +36,44 @@ class SubSynthPlugin extends PluginBase {
       const subHpfStages = computeStages(shs);
       const dryHpfStages = computeStages(dhs);
       
-      // Reinitialize filter states if stage counts have changed
-      if (!context.filterStates ||
-          context.filterStates.subLpf.length !== (subLpfStages.order1 + subLpfStages.order2) ||
-          context.filterStates.subHpf.length !== (subHpfStages.order1 + subHpfStages.order2) ||
-          context.filterStates.dryHpf.length !== (dryHpfStages.order1 + dryHpfStages.order2)
-         ) {
-        const createState = (order) => {
-          return (order === 1)
-            ? { x1: new Array(channelCount).fill(0), y1: new Array(channelCount).fill(0) }
-            : { x1: new Array(channelCount).fill(0), x2: new Array(channelCount).fill(0),
-                y1: new Array(channelCount).fill(0), y2: new Array(channelCount).fill(0) };
-        };
-
-        context.filterStates = {
-          subLpf: [],
-          subHpf: [],
-          dryHpf: [],
-          rectifier: new Array(channelCount).fill(0)
-        };
-
-        for (let i = 0; i < subLpfStages.order1; i++) context.filterStates.subLpf.push(createState(1));
-        for (let i = 0; i < subLpfStages.order2; i++) context.filterStates.subLpf.push(createState(2));
-        for (let i = 0; i < subHpfStages.order1; i++) context.filterStates.subHpf.push(createState(1));
-        for (let i = 0; i < subHpfStages.order2; i++) context.filterStates.subHpf.push(createState(2));
-        for (let i = 0; i < dryHpfStages.order1; i++) context.filterStates.dryHpf.push(createState(1));
-        for (let i = 0; i < dryHpfStages.order2; i++) context.filterStates.dryHpf.push(createState(2));
-        context.initialized = true;
+      // Preserve channel state across routing changes and reset only chains whose
+      // first/second-order topology changed.
+      if (!context.filterStates || !context.filterShapes) {
+        context.filterStates = { subLpf: [], subHpf: [], dryHpf: [] };
+        context.filterShapes = { subLpf: -1, subHpf: -1, dryHpf: -1 };
+        context.channelCapacity = 0;
       }
+
+      const channelCapacity = channelCount > context.channelCapacity
+        ? channelCount
+        : context.channelCapacity;
+      const createState = (order) => (order === 1)
+        ? { x1: [], y1: [] }
+        : { x1: [], x2: [], y1: [], y2: [] };
+      const ensureStateCapacity = (state) => {
+        while (state.x1.length < channelCapacity) state.x1.push(0);
+        while (state.y1.length < channelCapacity) state.y1.push(0);
+        if (state.x2) {
+          while (state.x2.length < channelCapacity) state.x2.push(0);
+          while (state.y2.length < channelCapacity) state.y2.push(0);
+        }
+      };
+      const ensureChain = (key, stages) => {
+        const shape = stages.order1 * 16 + stages.order2;
+        if (context.filterShapes[key] !== shape) {
+          const states = [];
+          for (let i = 0; i < stages.order1; i++) states.push(createState(1));
+          for (let i = 0; i < stages.order2; i++) states.push(createState(2));
+          context.filterStates[key] = states;
+          context.filterShapes[key] = shape;
+        }
+        for (const state of context.filterStates[key]) ensureStateCapacity(state);
+      };
+
+      ensureChain('subLpf', subLpfStages);
+      ensureChain('subHpf', subHpfStages);
+      ensureChain('dryHpf', dryHpfStages);
+      context.channelCapacity = channelCapacity;
       
       // Calculate filter coefficients only if needed
       let subLpf1, subLpf2, subHpf1, subHpf2, dryHpf1, dryHpf2;

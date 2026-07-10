@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "type": "OscillatorPlugin",
+  "id": "square-pulsed-left",
+  "stimulus": "sin1k",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 1003,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "fr": 2000,
+    "vl": 0,
+    "pn": -1,
+    "wf": "square",
+    "md": "pulsed",
+    "it": 100,
+    "wd": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "9da2eedc277a847830baea81602fcb42dbdc5c06f922e3fd4506919e5f459cb2",
+  "outputFloats": 2006,
+  "byteLength": 8024,
+  "binary": "case-004.f32"
+}

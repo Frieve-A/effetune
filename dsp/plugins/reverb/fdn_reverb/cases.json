@@ -1,0 +1,81 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 128,
+    "channels": 2,
+    "channelMode": "stereo"
+  },
+  "cases": [
+    { "id": "default-impulse", "stimulus": "imp", "frames": 16001, "fullLength": true },
+    {
+      "id": "minimum-controls-44100",
+      "stimulus": "noise",
+      "sampleRate": 44100,
+      "blockSize": 63,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 10001,
+      "params": { "rt": 0.2, "dt": 4, "pd": 0, "bd": 10, "ds": 0, "hd": 0, "lc": 20, "md": 0, "mr": 0.1, "df": 0, "wm": 100, "dm": 0, "sw": 0 }
+    },
+    {
+      "id": "maximum-controls-192000",
+      "stimulus": "noise",
+      "sampleRate": 192000,
+      "blockSize": 127,
+      "frames": 40001,
+      "params": { "rt": 10, "dt": 8, "pd": 100, "bd": 60, "ds": 25, "hd": 12, "lc": 500, "md": 10, "mr": 5, "df": 100, "wm": 100, "dm": 100, "sw": 200 }
+    },
+    {
+      "id": "density-five-boundary",
+      "stimulus": "noise",
+      "frames": 20001,
+      "params": { "rt": 10, "dt": 5, "pd": 0, "bd": 10, "ds": 0, "hd": 0, "lc": 20, "md": 0, "df": 100, "wm": 100, "dm": 0 }
+    },
+    {
+      "id": "eight-channel-shared-tank-96000",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "blockSize": 97,
+      "channels": 8,
+      "frames": 16001,
+      "params": { "pd": 0, "wm": 100, "dm": 0, "sw": 200 }
+    },
+    {
+      "id": "mono-wet",
+      "stimulus": "imp",
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 12001,
+      "params": { "pd": 0, "wm": 100, "dm": 0 }
+    },
+    {
+      "id": "density-state-transitions",
+      "stimulus": "noise",
+      "frames": 12001,
+      "events": [
+        { "frame": 37, "params": { "dt": 4 } },
+        { "frame": 4099, "params": { "dt": 7, "df": 75 } },
+        { "frame": 9001, "params": { "dt": 8, "df": 100 } }
+      ]
+    },
+    {
+      "id": "predelay-full-ring",
+      "stimulus": "imp",
+      "frames": 20001,
+      "params": { "pd": 0, "wm": 100, "dm": 0 },
+      "events": [
+        { "frame": 5000, "params": { "pd": 99.9 } },
+        { "frame": 12000, "params": { "pd": 100 } }
+      ]
+    },
+    {
+      "id": "one-frame-blocks-seeded",
+      "stimulus": "noise",
+      "blockSize": 1,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 2001,
+      "params": { "pd": 0, "dt": 6, "wm": 100, "dm": 0 }
+    }
+  ]
+}

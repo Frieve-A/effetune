@@ -1,0 +1,11 @@
+{
+  "type": "BitCrusherPlugin",
+  "tolerance": { "abs": 0.00001, "policy": "per-sample" },
+  "fields": [
+    { "name": "bitDepth", "key": "bd", "kind": "int", "min": 4, "max": 24, "default": 8 },
+    { "name": "tpdfDither", "key": "td", "kind": "bool", "default": false },
+    { "name": "zohFrequency", "key": "zf", "kind": "float", "min": 4000, "max": 96000, "default": 44100, "unit": "Hz" },
+    { "name": "bitError", "key": "be", "kind": "float", "min": 0, "max": 10, "default": 0, "unit": "%" },
+    { "name": "seed", "key": "sd", "kind": "int", "min": 0, "max": 1000, "default": 11 }
+  ]
+}

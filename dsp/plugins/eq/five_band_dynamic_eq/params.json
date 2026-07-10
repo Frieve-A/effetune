@@ -1,0 +1,18 @@
+{
+  "type": "FiveBandDynamicEQ",
+  "tolerance": { "abs": 0.00001, "policy": "per-sample" },
+  "fields": [
+    { "name": "enabled", "key": "en", "objectArrayKey": "bs", "memberKey": "en", "kind": "bool", "count": 5, "default": [false, false, true, false, false] },
+    { "name": "filterType", "key": "ft", "objectArrayKey": "bs", "memberKey": "ft", "kind": "enum", "count": 5, "values": ["pk", "ls", "hs"], "default": ["pk", "pk", "pk", "pk", "pk"] },
+    { "name": "frequency", "key": "f", "objectArrayKey": "bs", "memberKey": "f", "kind": "float", "count": 5, "min": 20, "max": 20000, "default": [100, 300, 1000, 3000, 10000], "unit": "Hz" },
+    { "name": "q", "key": "q", "objectArrayKey": "bs", "memberKey": "q", "kind": "float", "count": 5, "min": 0.1, "max": 10, "default": 1 },
+    { "name": "maxGain", "key": "mg", "objectArrayKey": "bs", "memberKey": "mg", "kind": "float", "count": 5, "min": 0, "max": 24, "default": 6, "unit": "dB" },
+    { "name": "threshold", "key": "th", "objectArrayKey": "bs", "memberKey": "th", "kind": "float", "count": 5, "min": -60, "max": 0, "default": [-18, -21, -24, -27, -30], "unit": "dB" },
+    { "name": "ratio", "key": "r", "objectArrayKey": "bs", "memberKey": "r", "kind": "float", "count": 5, "min": 0.1, "max": 100, "default": 2 },
+    { "name": "knee", "key": "kn", "objectArrayKey": "bs", "memberKey": "kn", "kind": "float", "count": 5, "min": 0, "max": 10, "default": 3, "unit": "dB" },
+    { "name": "attack", "key": "a", "objectArrayKey": "bs", "memberKey": "a", "kind": "float", "count": 5, "min": 0.1, "max": 100, "default": 10, "unit": "ms" },
+    { "name": "release", "key": "rl", "objectArrayKey": "bs", "memberKey": "rl", "kind": "float", "count": 5, "min": 1, "max": 1000, "default": 100, "unit": "ms" },
+    { "name": "sidechainFrequency", "key": "scf", "objectArrayKey": "bs", "memberKey": "scf", "kind": "float", "count": 5, "min": 20, "max": 20000, "default": [100, 300, 1000, 3000, 10000], "unit": "Hz" },
+    { "name": "sidechainQ", "key": "scq", "objectArrayKey": "bs", "memberKey": "scq", "kind": "float", "count": 5, "min": 0.1, "max": 10, "default": 1 }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "formatVersion": 1,
+  "type": "ExciterPlugin",
+  "id": "second-order-maximum-frequency",
+  "stimulus": "sweep",
+  "sampleRate": 192000,
+  "channels": 1,
+  "frameCount": 1001,
+  "blockSize": 127,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "hf": 10000,
+    "hs": 2,
+    "dr": 10,
+    "bs": 0.3,
+    "mx": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "23e2394eaae09c2efae387880d7fe441f2f6226f75e6c4201215af6703d7c72e",
+  "outputFloats": 1001,
+  "byteLength": 4004,
+  "binary": "case-005.f32"
+}

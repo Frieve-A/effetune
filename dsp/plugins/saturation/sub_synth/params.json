@@ -1,0 +1,14 @@
+{
+  "type": "SubSynthPlugin",
+  "tolerance": { "abs": 0.00001, "policy": "per-sample" },
+  "fields": [
+    { "name": "subLevel", "key": "sl", "kind": "float", "min": 0, "max": 200, "default": 100, "unit": "%" },
+    { "name": "dryLevel", "key": "dl", "kind": "float", "min": 0, "max": 200, "default": 100, "unit": "%" },
+    { "name": "subLowPassFrequency", "key": "slf", "kind": "float", "min": 5, "max": 400, "default": 160, "unit": "Hz" },
+    { "name": "subLowPassSlope", "key": "sls", "kind": "int", "min": -24, "max": 0, "default": -12, "unit": "dB/oct" },
+    { "name": "subHighPassFrequency", "key": "shf", "kind": "float", "min": 5, "max": 400, "default": 5, "unit": "Hz" },
+    { "name": "subHighPassSlope", "key": "shs", "kind": "int", "min": -24, "max": 0, "default": -6, "unit": "dB/oct" },
+    { "name": "dryHighPassFrequency", "key": "dhf", "kind": "float", "min": 5, "max": 400, "default": 40, "unit": "Hz" },
+    { "name": "dryHighPassSlope", "key": "dhs", "kind": "int", "min": -24, "max": 0, "default": 0, "unit": "dB/oct" }
+  ]
+}

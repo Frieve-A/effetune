@@ -1,0 +1,13 @@
+{
+  "type": "ModalResonatorPlugin",
+  "tolerance": { "abs": 0.0001, "policy": "per-sample" },
+  "fields": [
+    { "name": "resonatorEnabled", "key": "en", "objectArrayKey": "rs", "memberKey": "en", "kind": "bool", "count": 5, "default": true },
+    { "name": "frequencyLog", "key": "fr", "objectArrayKey": "rs", "memberKey": "fr", "kind": "float", "count": 5, "min": 3, "max": 9.9, "default": [6.86, 7.52, 7.99, 8.34, 8.75] },
+    { "name": "decay", "key": "dc", "objectArrayKey": "rs", "memberKey": "dc", "kind": "float", "count": 5, "min": 1, "max": 500, "default": [15, 12, 10, 8, 6], "unit": "ms" },
+    { "name": "lowPassLog", "key": "lp", "objectArrayKey": "rs", "memberKey": "lp", "kind": "float", "count": 5, "min": 3, "max": 9.9, "default": [7.19, 7.86, 8.33, 8.68, 9.08] },
+    { "name": "highPassLog", "key": "hp", "objectArrayKey": "rs", "memberKey": "hp", "kind": "float", "count": 5, "min": 3, "max": 9.9, "default": [5.8, 6.48, 6.94, 7.29, 7.7] },
+    { "name": "gain", "key": "gn", "objectArrayKey": "rs", "memberKey": "gn", "kind": "float", "count": 5, "min": -18, "max": 18, "default": [0, -3, -6, -9, -12], "unit": "dB" },
+    { "name": "mix", "key": "mx", "kind": "float", "min": 0, "max": 100, "default": 25, "unit": "%" }
+  ]
+}

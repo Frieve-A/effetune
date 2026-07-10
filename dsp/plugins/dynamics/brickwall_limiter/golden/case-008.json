@@ -1,0 +1,68 @@
+{
+  "formatVersion": 1,
+  "type": "BrickwallLimiterPlugin",
+  "id": "parameter-and-topology-transitions",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 1237,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "th": 0,
+    "rl": 100,
+    "la": 3,
+    "os": 1,
+    "ig": 0,
+    "sm": -1
+  },
+  "events": [
+    {
+      "frame": 31,
+      "params": {
+        "th": -24,
+        "ig": 18,
+        "sm": -3,
+        "la": 0
+      }
+    },
+    {
+      "frame": 128,
+      "params": {
+        "os": 2,
+        "rl": 10,
+        "la": 2
+      }
+    },
+    {
+      "frame": 513,
+      "params": {
+        "os": 8,
+        "th": -6,
+        "ig": -18,
+        "sm": 0,
+        "la": 10
+      }
+    },
+    {
+      "frame": 1001,
+      "params": {
+        "os": 1,
+        "th": 0,
+        "rl": 500,
+        "la": 3
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00003,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "3457f4fb73138b7b7a99394ef0f0b5bfeeb5901dc15072754160111543bd4661",
+  "outputFloats": 2474,
+  "byteLength": 9896,
+  "binary": "case-008.f32"
+}

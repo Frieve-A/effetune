@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "VolumePlugin",
+  "id": "minimum-mono",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 1,
+  "frameCount": 2048,
+  "blockSize": 128,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 8,
+  "seed": "0xeffe7a56",
+  "params": {
+    "vl": -60
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "e9fd5d0ac08f7fbb249cfb88ee4d75949c61a67c071c2b4c0512e32956c8f458",
+  "outputFloats": 2048,
+  "byteLength": 8192,
+  "binary": "case-009.f32"
+}

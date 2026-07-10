@@ -1,0 +1,27 @@
+{
+  "formatVersion": 1,
+  "type": "TiltEQPlugin",
+  "id": "zero-slope-identity",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 259,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "f0": 6.91,
+    "sl": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "724d9b516ac2e3a882f3e16b7c94dd438eb1acf2dc50017254646beacddc2790",
+  "outputFloats": 518,
+  "byteLength": 2072,
+  "binary": "case-001.f32"
+}

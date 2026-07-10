@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "HumGeneratorPlugin",
+  "id": "default-standard-silence",
+  "stimulus": "silence",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 12000,
+  "blockSize": 63,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "fr": 50,
+    "tp": "Standard",
+    "hm": 50,
+    "tn": 10,
+    "in": 1,
+    "lv": -40
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "166f1408c62448bb9fc5bea54cdc15192d8eacb04f807afa302c83b04de132ce",
+  "outputFloats": 24000,
+  "byteLength": 96000,
+  "binary": "case-001.f32"
+}

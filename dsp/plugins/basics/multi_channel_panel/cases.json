@@ -1,0 +1,67 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 128,
+    "params": {
+      "m": [false, false, false, false, false, false, false, false],
+      "s": [false, false, false, false, false, false, false, false],
+      "v": [0, 0, 0, 0, 0, 0, 0, 0],
+      "d": [0, 0, 0, 0, 0, 0, 0, 0],
+      "l": [false, false, false, false, false, false, false]
+    }
+  },
+  "cases": [
+    {
+      "id": "default-stereo",
+      "stimulus": "noise",
+      "frames": 2048,
+      "channels": 2
+    },
+    {
+      "id": "four-channel-gain-and-mute",
+      "stimulus": "sin1k",
+      "frames": 2048,
+      "channels": 4,
+      "params": {
+        "m": [false, true, false, false, false, false, false, false],
+        "v": [-20, 10, -6, 3, 0, 0, 0, 0]
+      }
+    },
+    {
+      "id": "eight-channel-solo",
+      "stimulus": "noise",
+      "frames": 2048,
+      "channels": 8,
+      "params": {
+        "m": [false, false, true, false, false, false, false, false],
+        "s": [false, false, false, true, false, false, false, true]
+      }
+    },
+    {
+      "id": "delay-boundaries",
+      "stimulus": "imp",
+      "frames": 4096,
+      "channels": 4,
+      "sampleRates": [44100, 48000, 96000],
+      "params": {
+        "d": [0, 0.5, 10, 30, 0, 0, 0, 0]
+      }
+    },
+    {
+      "id": "parameter-event",
+      "stimulus": "noise",
+      "frames": 3072,
+      "channels": 4,
+      "events": [
+        {
+          "frame": 1024,
+          "params": {
+            "s": [true, false, false, false, false, false, false, false],
+            "v": [6, -3, 0, 0, 0, 0, 0, 0],
+            "d": [5, 0, 0, 0, 0, 0, 0, 0]
+          }
+        }
+      ]
+    }
+  ]
+}

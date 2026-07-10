@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "BrickwallLimiterPlugin",
+  "id": "all4-192000-eight-x",
+  "stimulus": "imp",
+  "sampleRate": 192000,
+  "channels": 4,
+  "frameCount": 769,
+  "blockSize": 127,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "th": -18,
+    "rl": 400,
+    "la": 7.5,
+    "os": 8,
+    "ig": 12,
+    "sm": -0.5
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00003,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "3457f4fb73138b7b7a99394ef0f0b5bfeeb5901dc15072754160111543bd4661",
+  "outputFloats": 3076,
+  "byteLength": 12304,
+  "binary": "case-007.f32"
+}

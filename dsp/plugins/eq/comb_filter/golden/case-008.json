@@ -1,0 +1,58 @@
+{
+  "formatVersion": 1,
+  "type": "CombFilterPlugin",
+  "id": "mode-delay-and-mix-transitions",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 4,
+  "frameCount": 259,
+  "blockSize": 64,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "ff": 4000,
+    "fg": 0.75,
+    "dw": 0,
+    "ct": "ff"
+  },
+  "events": [
+    {
+      "frame": 31,
+      "params": {
+        "dw": 100
+      }
+    },
+    {
+      "frame": 66,
+      "params": {
+        "ct": "fb",
+        "fg": -0.5
+      }
+    },
+    {
+      "frame": 129,
+      "params": {
+        "ff": 440,
+        "fg": 1
+      }
+    },
+    {
+      "frame": 194,
+      "params": {
+        "ff": 441,
+        "ct": "ff",
+        "dw": 50
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "e9f6a0d7de09798941f7e43816a8c2b9b78bdf096efb89fc34847065c648ef0d",
+  "outputFloats": 1036,
+  "byteLength": 4144,
+  "binary": "case-008.f32"
+}

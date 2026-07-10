@@ -1,0 +1,74 @@
+{
+  "formatVersion": 1,
+  "type": "MultibandSaturationPlugin",
+  "id": "crossover-events-reset-and-fade",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 4301,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "f1": 200,
+    "f2": 4000,
+    "bands": [
+      {
+        "dr": 1.5,
+        "bs": 0.1,
+        "mx": 100,
+        "gn": 0
+      },
+      {
+        "dr": 1.5,
+        "bs": 0.1,
+        "mx": 100,
+        "gn": 0
+      },
+      {
+        "dr": 1.5,
+        "bs": 0.1,
+        "mx": 100,
+        "gn": 0
+      }
+    ]
+  },
+  "events": [
+    {
+      "frame": 31,
+      "params": {
+        "f1": 400
+      }
+    },
+    {
+      "frame": 1024,
+      "params": {
+        "f2": 12000
+      }
+    },
+    {
+      "frame": 2049,
+      "params": {
+        "f1": 80,
+        "f2": 600
+      }
+    },
+    {
+      "frame": 3500,
+      "params": {
+        "f1": 1600,
+        "f2": 18000
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00003,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "a57adcce343ecf7c73469f1b3484fdab809bc4caa712a567abdc9d85805141c4",
+  "outputFloats": 8602,
+  "byteLength": 34408,
+  "binary": "case-008.f32"
+}

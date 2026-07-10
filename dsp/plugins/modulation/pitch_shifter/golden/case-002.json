@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "PitchShifterPlugin",
+  "id": "downward-maximum-window-mono",
+  "stimulus": "sweep",
+  "sampleRate": 48000,
+  "channels": 1,
+  "frameCount": 112001,
+  "blockSize": 113,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "ps": -6,
+    "ft": -50,
+    "ws": 500,
+    "xf": 20
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "18f30430161f9690ee99e70d58bf8580721ecb94fbe74c7c73466c6f9a07e894",
+  "outputFloats": 112001,
+  "byteLength": 448004,
+  "binary": "case-002.f32"
+}

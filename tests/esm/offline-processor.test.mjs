@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { OfflineProcessor } from '../../js/audio/offline-processor.js';
+import { decodeDspPipelineDescriptor } from '../../js/audio/dsp-pipeline-descriptor.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
 class SectionPlugin {
@@ -153,7 +154,11 @@ function createHarness(calls, options = {}) {
   };
 
   let processorRef = null;
-  const processor = new OfflineProcessor(contextManager, audioEncoder);
+  const processor = new OfflineProcessor(
+    contextManager,
+    audioEncoder,
+    options.offlineProcessorOptions
+  );
   processorRef = processor;
   return { processor, file, encoded, offlineContexts };
 }
@@ -197,6 +202,226 @@ function createPlugin(calls, options = {}) {
   };
 
   return plugin;
+}
+
+function createFakeDspBinding(calls, options = {}) {
+  const floatCapacity = 8 * 128;
+  const combined = new Float32Array(floatCapacity);
+  const buses = new Map([
+    [0, combined],
+    [1, new Float32Array(floatCapacity)],
+    [2, new Float32Array(floatCapacity)],
+    [3, new Float32Array(floatCapacity)],
+    [4, new Float32Array(floatCapacity)]
+  ]);
+  const scratch = {
+    allChannels: new Float32Array(floatCapacity),
+    mixing: new Float32Array(floatCapacity),
+    stereo: new Float32Array(2 * 128),
+    mono: new Float32Array(128)
+  };
+  const pointerViews = new Map();
+  const parameters = new Map();
+  const instances = new Map();
+  let descriptorNodes = [];
+  let nextInstanceId = 1;
+  let nextPointer = 4096;
+  let parameterCallCount = 0;
+
+  const binding = {
+    live: true,
+    createEngine() {
+      calls.push(['dspCreateEngine']);
+      return options.createEngineResult ?? 1;
+    },
+    prepare(sampleRate, channels, frames, ringBytes) {
+      calls.push(['dspPrepare', sampleRate, channels, frames, ringBytes]);
+      return options.prepareStatus ?? 0;
+    },
+    getArenaViews() {
+      calls.push(['dspGetArenaViews']);
+      if (typeof options.getArenaViews === 'function') {
+        return options.getArenaViews({ combined, buses, scratch });
+      }
+      return { combined, buses, scratch };
+    },
+    createInstance(typeName) {
+      calls.push(['dspCreateInstance', typeName]);
+      const createResult = typeof options.createInstanceResult === 'function'
+        ? options.createInstanceResult(typeName)
+        : options.createInstanceResult;
+      if (createResult === 0) return 0;
+      const instanceId = nextInstanceId++;
+      instances.set(instanceId, typeName);
+      return instanceId;
+    },
+    destroyInstance(instanceId) {
+      calls.push(['dspDestroyInstance', instanceId]);
+      instances.delete(instanceId);
+    },
+    instanceSetParams(instanceId, packed, hash) {
+      parameterCallCount++;
+      calls.push(['dspSetParams', instanceId, [...packed], hash]);
+      const status = typeof options.parameterStatus === 'function'
+        ? options.parameterStatus(parameterCallCount, instanceId, packed)
+        : (options.parameterStatus ?? 0);
+      if (status === 0) parameters.set(instanceId, new Float32Array(packed));
+      return status;
+    },
+    instanceSetParamBytes(instanceId, packed, hash) {
+      calls.push(['dspSetParamBytes', instanceId, [...packed], hash]);
+      return options.paramBytesStatus ?? 0;
+    },
+    pointerForArenaView(view) {
+      const pointer = nextPointer;
+      nextPointer += view.byteLength + 16;
+      pointerViews.set(pointer, view);
+      calls.push(['dspPointerForArenaView', view.length, pointer]);
+      return options.pointerUnavailable ? null : pointer;
+    },
+    instanceProcess(instanceId, pointer, channels, frames, time) {
+      calls.push(['dspInstanceProcess', instanceId, channels, frames, time]);
+      const view = pointerViews.get(pointer);
+      const status = typeof options.instanceProcessStatus === 'function'
+        ? options.instanceProcessStatus(view, instanceId)
+        : (options.instanceProcessStatus ?? 0);
+      if (status !== 0) return status;
+      const gain = parameters.get(instanceId)?.[0] ?? 1;
+      for (let index = 0; index < channels * frames; index++) view[index] *= gain;
+      return 0;
+    },
+    pipelineConfigure(descriptor) {
+      calls.push(['dspPipelineConfigure', [...descriptor]]);
+      const status = options.pipelineConfigureStatus ?? 0;
+      if (status === 0) descriptorNodes = decodeDspPipelineDescriptor(descriptor).nodes;
+      return status;
+    },
+    pipelineProcess(channels, frames, time, masterBypass) {
+      calls.push(['dspPipelineProcess', channels, frames, time, masterBypass]);
+      const status = typeof options.pipelineProcessStatus === 'function'
+        ? options.pipelineProcessStatus(combined, channels, frames)
+        : (options.pipelineProcessStatus ?? 0);
+      if (status !== 0 || masterBypass) return status;
+
+      const totalSize = channels * frames;
+      for (let bus = 1; bus <= 4; bus++) buses.get(bus).fill(0, 0, totalSize);
+      for (const node of descriptorNodes) {
+        if (!node.enabled || !node.sectionGate) continue;
+        const input = buses.get(node.inputBus);
+        const output = buses.get(node.outputBus);
+        const gain = parameters.get(node.instanceId)?.[0] ?? 1;
+        let firstChannel = 0;
+        let routedChannels = 1;
+        if (node.channelSpec === -2) {
+          routedChannels = channels;
+        } else if (node.channelSpec === -1) {
+          routedChannels = 2;
+        } else if (node.channelSpec >= 16) {
+          firstChannel = (node.channelSpec - 16) * 2;
+          routedChannels = 2;
+        } else {
+          firstChannel = node.channelSpec;
+        }
+        if (firstChannel + routedChannels > channels) continue;
+
+        for (let channel = firstChannel; channel < firstChannel + routedChannels; channel++) {
+          const channelOffset = channel * frames;
+          for (let frame = 0; frame < frames; frame++) {
+            const index = channelOffset + frame;
+            const value = input[index] * gain;
+            if (node.inputBus === node.outputBus) output[index] = value;
+            else output[index] += value;
+          }
+        }
+      }
+      return 0;
+    },
+    close() {
+      calls.push(['dspClose']);
+    }
+  };
+  return binding;
+}
+
+function createFakeDspRuntime(calls, options = {}) {
+  const hash = options.hash ?? 0x12345678;
+  const packerHash = options.packerHash ?? hash;
+  const moduleInfo = {
+    module: { name: 'cached-test-module' },
+    meta: {
+      abiVersion: 1,
+      kernels: [{
+        name: 'OfflineTestPlugin',
+        hash,
+        byteCapacity: options.byteCapacity ?? 0
+      }]
+    },
+    paramPackers: new Map([[
+      'OfflineTestPlugin',
+      {
+        hash: packerHash,
+        pack(parameters) {
+          calls.push(['dspPackParams', parameters.gain ?? 1]);
+          return Float32Array.of(parameters.gain ?? 1);
+        },
+        ...(options.structuredBytes ? {
+          byteCapacity: options.byteCapacity ?? 3076,
+          packBytes(parameters) {
+            const packed = typeof options.structuredBytes === 'function'
+              ? options.structuredBytes(parameters)
+              : options.structuredBytes;
+            calls.push(['dspPackParamBytes', [...packed]]);
+            return Uint8Array.from(packed);
+          }
+        } : {})
+      }
+    ]])
+  };
+  const bindings = [];
+  const dependencies = {
+    async getModuleInfo() {
+      calls.push(['dspGetModuleInfo']);
+      if (options.moduleInfoError) throw options.moduleInfoError;
+      return options.moduleInfo === null ? null : moduleInfo;
+    },
+    async loadDspModule(loadOptions) {
+      calls.push(['dspLoadModule', loadOptions]);
+      return options.loadResult === undefined ? moduleInfo : options.loadResult;
+    },
+    getDspRolloutConfig(rolloutOptions) {
+      calls.push(['dspRollout', Boolean(rolloutOptions.meta)]);
+      if (options.forceOff) return { forceOff: true, debug: false, enabledTypes: [] };
+      return {
+        forceOff: false,
+        debug: Boolean(options.debug),
+        enabledTypes: rolloutOptions.meta ? ['OfflineTestPlugin'] : []
+      };
+    },
+    async instantiateDsp(modulePayload) {
+      calls.push(['dspInstantiate', modulePayload]);
+      if (options.instantiateError) throw options.instantiateError;
+      const binding = createFakeDspBinding(calls, options.bindingOptions);
+      bindings.push(binding);
+      return binding;
+    },
+    warning(message) {
+      calls.push(['dspWarning', message]);
+    }
+  };
+  return { dependencies, bindings, moduleInfo };
+}
+
+function createGainPlugin(calls, options = {}) {
+  return createPlugin(calls, {
+    ...options,
+    parameters: {
+      ...(options.parameters || {}),
+      gain: options.gain ?? 1
+    },
+    execute(context, buffer, parameters) {
+      return Float32Array.from(buffer, value => value * parameters.gain);
+    }
+  });
 }
 
 test('helper methods resolve routing, bus, parameter, cancellation, and section logic', async () => {
@@ -624,5 +849,382 @@ test('processAudioFile cancels without rendering and releases offline resources'
     assert.equal(calls.some(call => call[0] === 'startRendering'), false);
     assert.equal(calls.some(call => call[0] === 'encodeWAV'), false);
     assert.equal(calls.some(call => call[0] === 'offlineWorkletDisconnect'), true);
+  });
+});
+
+test('offline descriptor execution matches JavaScript routing across buses, channels, and sections', async () => {
+  await withOfflineGlobals({
+    window: { audioPreferences: { outputChannels: 4 } }
+  }, async ({ calls }) => {
+    const audioBuffer = createAudioBuffer([
+      [1, 2, 3],
+      [10, 20, 30],
+      [100, 200, 300],
+      [1000, 2000, 3000]
+    ]);
+    const createPipeline = () => [
+      createGainPlugin(calls, { id: 'left', gain: 2, parameters: { channel: 'L' } }),
+      createGainPlugin(calls, { id: 'right', gain: 3, parameters: { channel: 'R' } }),
+      createGainPlugin(calls, {
+        id: 'send-34',
+        gain: 0.5,
+        parameters: { inputBus: 0, outputBus: 1, channel: '34' }
+      }),
+      createGainPlugin(calls, {
+        id: 'return-34',
+        gain: 2,
+        parameters: { inputBus: 1, outputBus: 0, channel: '34' }
+      }),
+      new SectionPlugin(false),
+      createGainPlugin(calls, { id: 'section-skipped', gain: 99, parameters: { channel: 'A' } }),
+      new SectionPlugin(true),
+      createGainPlugin(calls, { id: 'after-section', gain: 0.5, parameters: { channel: 'A' } })
+    ];
+
+    const jsRuntime = createFakeDspRuntime(calls, { forceOff: true });
+    const jsHarness = createHarness(calls, {
+      audioBuffer,
+      offlineProcessorOptions: jsRuntime.dependencies
+    });
+    const jsResult = await jsHarness.processor.processAudioFile(jsHarness.file, createPipeline());
+
+    const wasmRuntime = createFakeDspRuntime(calls);
+    const wasmHarness = createHarness(calls, {
+      audioBuffer,
+      offlineProcessorOptions: wasmRuntime.dependencies
+    });
+    const wasmResult = await wasmHarness.processor.processAudioFile(wasmHarness.file, createPipeline());
+
+    for (let channel = 0; channel < 4; channel++) {
+      assert.deepEqual(
+        [...wasmResult.encodedBuffer.getChannelData(channel)],
+        [...jsResult.encodedBuffer.getChannelData(channel)]
+      );
+    }
+    assert.ok(calls.some(call => call[0] === 'dspPipelineConfigure'));
+    assert.ok(calls.some(call => call[0] === 'dspPipelineProcess'));
+    assert.equal(
+      calls.some(call => call[0] === 'executeProcessor' && call[1] === 'section-skipped'),
+      false
+    );
+  });
+});
+
+test('offline hybrid dispatch runs ready instances in WASM and JavaScript islands in place', async () => {
+  await withOfflineGlobals({ window: {} }, async ({ calls }) => {
+    const runtime = createFakeDspRuntime(calls);
+    const { processor, file } = createHarness(calls, {
+      audioBuffer: createAudioBuffer([[1, 2], [10, 20]]),
+      offlineProcessorOptions: runtime.dependencies
+    });
+    const wasmPlugin = createGainPlugin(calls, { id: 'wasm', gain: 2 });
+    const jsPlugin = createGainPlugin(calls, { id: 'island', gain: 3 });
+    class OfflineJsIslandPlugin {}
+    Object.defineProperty(jsPlugin, 'constructor', { value: OfflineJsIslandPlugin });
+
+    const result = await processor.processAudioFile(file, [wasmPlugin, jsPlugin]);
+
+    assert.deepEqual([...result.encodedBuffer.getChannelData(0)], [6, 12]);
+    assert.deepEqual([...result.encodedBuffer.getChannelData(1)], [60, 120]);
+    assert.ok(calls.some(call => call[0] === 'dspInstanceProcess'));
+    assert.equal(calls.some(call => call[0] === 'dspPipelineProcess'), false);
+    assert.equal(calls.some(call => call[0] === 'executeProcessor' && call[1] === 'wasm'), false);
+    assert.ok(calls.some(call => call[0] === 'executeProcessor' && call[1] === 'island'));
+  });
+});
+
+test('failed instance creation refreshes grown-memory arena and preserves earlier WASM entries',
+  async () => {
+    await withOfflineGlobals({ window: {} }, async ({ calls }) => {
+      const memory = new WebAssembly.Memory({ initial: 1, maximum: 2 });
+      let createCount = 0;
+      const runtime = createFakeDspRuntime(calls, {
+        bindingOptions: {
+          createInstanceResult() {
+            createCount++;
+            if (createCount !== 2) return undefined;
+            const previousBuffer = memory.buffer;
+            memory.grow(1);
+            assert.equal(previousBuffer.byteLength, 0);
+            calls.push(['dspMemoryGrow']);
+            return 0;
+          },
+          getArenaViews({ combined, buses }) {
+            return {
+              combined,
+              buses,
+              scratch: {
+                allChannels: new Float32Array(memory.buffer, 0, 8 * 128),
+                mixing: new Float32Array(memory.buffer, 4096, 8 * 128),
+                stereo: new Float32Array(memory.buffer, 8192, 2 * 128),
+                mono: new Float32Array(memory.buffer, 9216, 128)
+              }
+            };
+          }
+        }
+      });
+      const { processor, file } = createHarness(calls, {
+        audioBuffer: createAudioBuffer([[1, 2], [10, 20]]),
+        offlineProcessorOptions: runtime.dependencies
+      });
+      const first = createGainPlugin(calls, { id: 'wasm-before-grow', gain: 2 });
+      const failed = createGainPlugin(calls, { id: 'failed-after-grow', gain: 3 });
+
+      const result = await processor.processAudioFile(file, [first, failed]);
+
+      assert.deepEqual([...result.encodedBuffer.getChannelData(0)], [6, 12]);
+      assert.deepEqual([...result.encodedBuffer.getChannelData(1)], [60, 120]);
+      assert.equal(calls.filter(call => call[0] === 'dspGetArenaViews').length, 3);
+      assert.ok(calls.some(call => call[0] === 'dspMemoryGrow'));
+      assert.ok(calls.some(call => call[0] === 'dspInstanceProcess'));
+      assert.equal(calls.some(call =>
+        call[0] === 'executeProcessor' && call[1] === 'wasm-before-grow'), false);
+      assert.ok(calls.some(call =>
+        call[0] === 'executeProcessor' && call[1] === 'failed-after-grow'));
+      assert.ok(calls.some(call => call[0] === 'dspWarning' &&
+        call[1].includes('instance creation failed')));
+    });
+  });
+
+test('offline WASM staging sends structured parameter bytes after numeric parameters', async () => {
+  await withOfflineGlobals({ window: {} }, async ({ calls }) => {
+    const runtime = createFakeDspRuntime(calls, {
+      byteCapacity: 3076,
+      structuredBytes: Uint8Array.of(1, 0, 2, 0, 0, 0, 0, 1, 1, 0)
+    });
+    const { processor, file } = createHarness(calls, {
+      audioBuffer: createAudioBuffer([[1, 2], [10, 20]]),
+      offlineProcessorOptions: runtime.dependencies
+    });
+    const result = await processor.processAudioFile(file, [
+      createGainPlugin(calls, { id: 'structured', gain: 2 })
+    ]);
+
+    assert.deepEqual([...result.encodedBuffer.getChannelData(0)], [2, 4]);
+    assert.ok(calls.some(call => call[0] === 'dspSetParams'));
+    assert.ok(calls.some(call => call[0] === 'dspSetParamBytes' &&
+      String(call[2]) === '1,0,2,0,0,0,0,1,1,0'));
+  });
+});
+
+test('offline structured parameter failures disable the instance and use JavaScript', async () => {
+  await withOfflineGlobals({ window: {} }, async ({ calls }) => {
+    const runtime = createFakeDspRuntime(calls, {
+      byteCapacity: 3076,
+      structuredBytes: Uint8Array.of(1, 0, 0, 0),
+      bindingOptions: { paramBytesStatus: -2 }
+    });
+    const { processor, file } = createHarness(calls, {
+      audioBuffer: createAudioBuffer([[1, 2], [10, 20]]),
+      offlineProcessorOptions: runtime.dependencies
+    });
+    const result = await processor.processAudioFile(file, [
+      createGainPlugin(calls, { id: 'structured-fallback', gain: 3 })
+    ]);
+
+    assert.deepEqual([...result.encodedBuffer.getChannelData(0)], [3, 6]);
+    assert.ok(calls.some(call => call[0] === 'dspDestroyInstance'));
+    assert.ok(calls.some(call => call[0] === 'dspWarning' &&
+      call[1].includes('structured parameter update failed')));
+  });
+});
+
+test('pipeline configuration failure falls back to per-instance WASM processing', async () => {
+  await withOfflineGlobals({ window: {} }, async ({ calls }) => {
+    const runtime = createFakeDspRuntime(calls, {
+      bindingOptions: { pipelineConfigureStatus: -6 }
+    });
+    const { processor, file } = createHarness(calls, {
+      audioBuffer: createAudioBuffer([[1, 2], [10, 20]]),
+      offlineProcessorOptions: runtime.dependencies
+    });
+
+    const result = await processor.processAudioFile(file, [
+      createGainPlugin(calls, { id: 'gain', gain: 2 })
+    ]);
+
+    assert.deepEqual([...result.encodedBuffer.getChannelData(0)], [2, 4]);
+    assert.deepEqual([...result.encodedBuffer.getChannelData(1)], [20, 40]);
+    assert.ok(calls.some(call => call[0] === 'dspPipelineConfigure'));
+    assert.ok(calls.some(call => call[0] === 'dspInstanceProcess'));
+    assert.equal(calls.some(call => call[0] === 'executeProcessor'), false);
+  });
+});
+
+test('pipeline processing failure discards mutated arena audio and falls back to JavaScript', async () => {
+  await withOfflineGlobals({ window: {} }, async ({ calls }) => {
+    const runtime = createFakeDspRuntime(calls, {
+      bindingOptions: {
+        pipelineProcessStatus(combined) {
+          combined.fill(999);
+          return -2;
+        }
+      }
+    });
+    const { processor, file } = createHarness(calls, {
+      audioBuffer: createAudioBuffer([[1, 2], [10, 20]]),
+      offlineProcessorOptions: runtime.dependencies
+    });
+
+    const result = await processor.processAudioFile(file, [
+      createGainPlugin(calls, { id: 'gain', gain: 2 })
+    ]);
+
+    assert.deepEqual([...result.encodedBuffer.getChannelData(0)], [2, 4]);
+    assert.deepEqual([...result.encodedBuffer.getChannelData(1)], [20, 40]);
+    assert.ok(calls.some(call => call[0] === 'executeProcessor' && call[1] === 'gain'));
+    assert.equal(calls.filter(call => call[0] === 'dspDestroyInstance').length, 1);
+    assert.equal(calls.filter(call => call[0] === 'dspClose').length, 1);
+  });
+});
+
+test('hybrid instance failure preserves the JavaScript input block and disables only that instance', async () => {
+  await withOfflineGlobals({ window: {} }, async ({ calls }) => {
+    const runtime = createFakeDspRuntime(calls, {
+      bindingOptions: {
+        instanceProcessStatus(view) {
+          view.fill(999);
+          return -1;
+        }
+      }
+    });
+    const { processor, file } = createHarness(calls, {
+      audioBuffer: createAudioBuffer([[1, 2], [10, 20]]),
+      offlineProcessorOptions: runtime.dependencies
+    });
+    const wasmPlugin = createGainPlugin(calls, { id: 'wasm-fallback', gain: 2 });
+    const jsPlugin = createGainPlugin(calls, { id: 'island', gain: 3 });
+    class OfflineJsIslandPlugin {}
+    Object.defineProperty(jsPlugin, 'constructor', { value: OfflineJsIslandPlugin });
+
+    const result = await processor.processAudioFile(file, [wasmPlugin, jsPlugin]);
+
+    assert.deepEqual([...result.encodedBuffer.getChannelData(0)], [6, 12]);
+    assert.deepEqual([...result.encodedBuffer.getChannelData(1)], [60, 120]);
+    assert.ok(calls.some(call => call[0] === 'executeProcessor' && call[1] === 'wasm-fallback'));
+    assert.equal(calls.filter(call => call[0] === 'dspDestroyInstance').length, 1);
+    assert.equal(calls.filter(call => call[0] === 'dspWarning').length, 1);
+  });
+});
+
+test('offline rollout validates parameter hashes before creating an engine', async () => {
+  await withOfflineGlobals({ window: {} }, async ({ calls }) => {
+    const runtime = createFakeDspRuntime(calls, { packerHash: 0x87654321 });
+    const { processor, file } = createHarness(calls, {
+      audioBuffer: createAudioBuffer([[1, 2], [10, 20]]),
+      offlineProcessorOptions: runtime.dependencies
+    });
+
+    const result = await processor.processAudioFile(file, [
+      createGainPlugin(calls, { id: 'hash-mismatch', gain: 2 })
+    ]);
+
+    assert.deepEqual([...result.encodedBuffer.getChannelData(0)], [2, 4]);
+    assert.equal(calls.some(call => call[0] === 'dspInstantiate'), false);
+    assert.ok(calls.some(call => call[0] === 'executeProcessor'));
+  });
+});
+
+test('offline preference and engine channel limits prevent WASM instantiation', async () => {
+  const cases = [
+    { window: { audioPreferences: { useWasmDsp: false } }, channels: 2 },
+    { window: { audioPreferences: { outputChannels: 9 } }, channels: 2 }
+  ];
+
+  for (const testCase of cases) {
+    await withOfflineGlobals({ window: testCase.window }, async ({ calls }) => {
+      const runtime = createFakeDspRuntime(calls);
+      const { processor, file } = createHarness(calls, {
+        audioBuffer: createGeneratedAudioBuffer(testCase.channels, 2),
+        offlineProcessorOptions: runtime.dependencies
+      });
+
+      await processor.processAudioFile(file, [
+        createGainPlugin(calls, { id: 'javascript-only', gain: 2 })
+      ]);
+
+      assert.equal(calls.some(call => call[0] === 'dspInstantiate'), false);
+      assert.ok(calls.some(call => call[0] === 'executeProcessor'));
+    });
+  }
+});
+
+test('offline setup failures remain JavaScript-only and release partially prepared engines', async () => {
+  const cases = [
+    { runtimeOptions: { moduleInfoError: new Error('module lookup failed') }, closes: 0 },
+    { runtimeOptions: { instantiateError: new Error('instantiate failed') }, closes: 0 },
+    { runtimeOptions: { bindingOptions: { prepareStatus: -1 } }, closes: 1 },
+    { runtimeOptions: { bindingOptions: { parameterStatus: -5 } }, closes: 1 }
+  ];
+
+  for (const failureCase of cases) {
+    await withOfflineGlobals({ window: {} }, async ({ calls }) => {
+      const runtime = createFakeDspRuntime(calls, failureCase.runtimeOptions);
+      const { processor, file } = createHarness(calls, {
+        audioBuffer: createAudioBuffer([[1, 2], [10, 20]]),
+        offlineProcessorOptions: runtime.dependencies
+      });
+
+      const result = await processor.processAudioFile(file, [
+        createGainPlugin(calls, { id: 'setup-fallback', gain: 2 })
+      ]);
+
+      assert.deepEqual([...result.encodedBuffer.getChannelData(0)], [2, 4]);
+      assert.ok(calls.some(call => call[0] === 'executeProcessor'));
+      assert.ok(calls.some(call => call[0] === 'dspWarning'));
+      assert.equal(calls.filter(call => call[0] === 'dspClose').length, failureCase.closes);
+    });
+  }
+});
+
+test('each offline export gets a fresh engine from the cached module and destroys it', async () => {
+  await withOfflineGlobals({ window: {} }, async ({ calls }) => {
+    const runtime = createFakeDspRuntime(calls);
+    const { processor, file } = createHarness(calls, {
+      audioBuffer: createAudioBuffer([[1, 2], [10, 20]]),
+      offlineProcessorOptions: runtime.dependencies
+    });
+    const plugin = createGainPlugin(calls, { id: 'gain', gain: 2 });
+
+    await processor.processAudioFile(file, [plugin]);
+    await processor.processAudioFile(file, [plugin]);
+
+    assert.equal(runtime.bindings.length, 2);
+    assert.equal(calls.filter(call => call[0] === 'dspInstantiate').length, 2);
+    assert.equal(calls.filter(call => call[0] === 'dspCreateEngine').length, 2);
+    assert.equal(calls.filter(call => call[0] === 'dspClose').length, 2);
+    assert.equal(calls.some(call => call[0] === 'dspLoadModule'), false);
+  });
+});
+
+test('offline cancellation and render errors destroy active WASM instances and engines', async () => {
+  await withOfflineGlobals({ window: {} }, async ({ calls }) => {
+    const cancellationRuntime = createFakeDspRuntime(calls);
+    const cancellationHarness = createHarness(calls, {
+      audioBuffer: createAudioBuffer([[1, 2], [10, 20]]),
+      offlineProcessorOptions: cancellationRuntime.dependencies
+    });
+    const cancelled = await cancellationHarness.processor.processAudioFile(
+      cancellationHarness.file,
+      [createGainPlugin(calls, { id: 'cancelled', gain: 2 })],
+      () => cancellationHarness.processor.cancelProcessing()
+    );
+    assert.equal(cancelled, null);
+
+    const errorRuntime = createFakeDspRuntime(calls);
+    const errorHarness = createHarness(calls, {
+      audioBuffer: createAudioBuffer([[1, 2], [10, 20]]),
+      offlineProcessorOptions: errorRuntime.dependencies,
+      offlineContextOptions: { renderError: new Error('render failed') }
+    });
+    await assert.rejects(
+      () => errorHarness.processor.processAudioFile(errorHarness.file, [
+        createGainPlugin(calls, { id: 'render-error', gain: 2 })
+      ]),
+      /File processing error: Processing failed: render failed/
+    );
+
+    assert.equal(calls.filter(call => call[0] === 'dspDestroyInstance').length, 2);
+    assert.equal(calls.filter(call => call[0] === 'dspClose').length, 2);
   });
 });

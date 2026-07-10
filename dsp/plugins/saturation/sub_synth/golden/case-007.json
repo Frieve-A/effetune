@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "type": "SubSynthPlugin",
+  "id": "double-state-one-frame",
+  "stimulus": "sin1k",
+  "sampleRate": 96000,
+  "channels": 1,
+  "frameCount": 257,
+  "blockSize": 1,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "sl": 137,
+    "dl": 83,
+    "slf": 173,
+    "sls": -18,
+    "shf": 17,
+    "shs": -12,
+    "dhf": 43,
+    "dhs": -6
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "8436f585dbeb985ffe8bd8da5144bb86fb34001e136d98dc6e21fcab9c9ed3c8",
+  "outputFloats": 257,
+  "byteLength": 1028,
+  "binary": "case-007.f32"
+}

@@ -1,0 +1,68 @@
+{
+  "formatVersion": 1,
+  "type": "TransientShaperPlugin",
+  "id": "parameter-transitions",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 1237,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "fa": 1,
+    "fr": 20,
+    "sa": 20,
+    "sr": 300,
+    "gt": 6,
+    "gs": 0,
+    "sm": 5
+  },
+  "events": [
+    {
+      "frame": 31,
+      "params": {
+        "fa": 0.1,
+        "fr": 1,
+        "gt": 24
+      }
+    },
+    {
+      "frame": 128,
+      "params": {
+        "sa": 100,
+        "sr": 1000,
+        "gs": -24
+      }
+    },
+    {
+      "frame": 513,
+      "params": {
+        "fa": 10,
+        "fr": 200,
+        "sa": 1,
+        "sr": 50,
+        "gt": -24,
+        "gs": 24
+      }
+    },
+    {
+      "frame": 1001,
+      "params": {
+        "gt": 0,
+        "gs": 0,
+        "sm": 20
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "6902858a072d2c8c7dc161bc156839fea3b7989addf0db208150086cf96695a3",
+  "outputFloats": 2474,
+  "byteLength": 9896,
+  "binary": "case-008.f32"
+}

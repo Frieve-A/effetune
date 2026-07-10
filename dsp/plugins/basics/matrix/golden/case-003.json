@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "MatrixPlugin",
+  "id": "duplicates-order-and-phase",
+  "stimulus": "imp",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 1024,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "mx": "0000p0011p11"
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "e8549976a0668ad5f674a9b6124c7a533c0c82a9b0f0db4c62ba2a6ffeae7ad6",
+  "outputFloats": 2048,
+  "byteLength": 8192,
+  "binary": "case-003.f32"
+}

@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "type": "DelayPlugin",
+  "id": "stereo-independent",
+  "stimulus": "imp",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 401,
+  "blockSize": 63,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "pd": 0,
+    "ds": 1,
+    "dp": 0,
+    "hd": 5000,
+    "ld": 100,
+    "mx": 100,
+    "fb": 99,
+    "pp": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "826b2372817ea49223d2af27b54ec6cfdec248c81b5d30d5923aa37bde4f2fa5",
+  "outputFloats": 802,
+  "byteLength": 3208,
+  "binary": "case-005.f32"
+}

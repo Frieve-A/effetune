@@ -1,0 +1,34 @@
+{
+  "formatVersion": 1,
+  "type": "RSReverbPlugin",
+  "id": "minimum-controls-44100",
+  "stimulus": "noise",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 10001,
+  "blockSize": 63,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "pd": 0,
+    "rs": 2,
+    "rt": 0.1,
+    "ds": 4,
+    "df": 0.2,
+    "dp": 0,
+    "hd": 1000,
+    "ld": 20,
+    "mx": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "dfa7e203c232a3fbb94ef9ab206070e3ef17d9558c1bebf7b42a6b83c0e931c1",
+  "outputFloats": 10001,
+  "byteLength": 40004,
+  "binary": "case-002.f32"
+}

@@ -1,0 +1,103 @@
+{
+  "formatVersion": 1,
+  "type": "ModalResonatorPlugin",
+  "id": "live-parameter-change-preserves-state",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 1,
+  "frameCount": 5201,
+  "blockSize": 127,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "rs": [
+      {
+        "en": true,
+        "fr": 6.86,
+        "dc": 15,
+        "lp": 7.19,
+        "hp": 5.8,
+        "gn": 0
+      },
+      {
+        "en": false
+      },
+      {
+        "en": false
+      },
+      {
+        "en": false
+      },
+      {
+        "en": false
+      }
+    ],
+    "mx": 65
+  },
+  "events": [
+    {
+      "frame": 191,
+      "params": {
+        "rs": [
+          {
+            "en": true,
+            "fr": 8.2,
+            "dc": 240,
+            "lp": 9.3,
+            "hp": 4.2,
+            "gn": 12
+          },
+          {
+            "en": false
+          },
+          {
+            "en": false
+          },
+          {
+            "en": false
+          },
+          {
+            "en": false
+          }
+        ]
+      }
+    },
+    {
+      "frame": 2707,
+      "params": {
+        "rs": [
+          {
+            "en": true,
+            "fr": 7.1,
+            "dc": 3,
+            "lp": 7.5,
+            "hp": 6.9,
+            "gn": -12
+          },
+          {
+            "en": false
+          },
+          {
+            "en": false
+          },
+          {
+            "en": false
+          },
+          {
+            "en": false
+          }
+        ]
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "d41d6e2d1fb2fe87b01b55ec8c42bbd18ac79eb14d96e46c178614192c870b0b",
+  "outputFloats": 5201,
+  "byteLength": 20804,
+  "binary": "case-007.f32"
+}

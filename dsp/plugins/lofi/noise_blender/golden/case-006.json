@@ -1,0 +1,28 @@
+{
+  "formatVersion": 1,
+  "type": "NoiseBlenderPlugin",
+  "id": "brown-shared-muted-state",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 259,
+  "blockSize": 65,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "nt": "brown",
+    "lv": -96,
+    "pc": false
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "13f074fcdd04e744e76a47be12f14d87fc8f05643b6d5f1c1a5a1bfb0a5113cd",
+  "outputFloats": 518,
+  "byteLength": 2072,
+  "binary": "case-006.f32"
+}

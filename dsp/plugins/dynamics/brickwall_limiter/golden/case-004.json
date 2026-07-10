@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "BrickwallLimiterPlugin",
+  "id": "four-x-96000",
+  "stimulus": "sweep",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 1151,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "th": -6,
+    "rl": 500,
+    "la": 10,
+    "os": 4,
+    "ig": -6,
+    "sm": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00003,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "3457f4fb73138b7b7a99394ef0f0b5bfeeb5901dc15072754160111543bd4661",
+  "outputFloats": 2302,
+  "byteLength": 9208,
+  "binary": "case-004.f32"
+}

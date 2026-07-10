@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "PowerAmpSagPlugin",
+  "id": "default-noise",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 1153,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "ss": 3,
+    "ps": 50,
+    "rs": 40,
+    "mb": false
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "41b7ebe357e8158fc654f6f159070686664028017f87ba53002bb8a3235fee69",
+  "outputFloats": 2306,
+  "byteLength": 9224,
+  "binary": "case-001.f32"
+}

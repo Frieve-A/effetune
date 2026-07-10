@@ -1,0 +1,45 @@
+{
+  "formatVersion": 1,
+  "type": "VolumePlugin",
+  "id": "block-aligned-transitions",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 1024,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 15,
+  "seed": "0xeffe7a51",
+  "params": {
+    "vl": 0
+  },
+  "events": [
+    {
+      "frame": 256,
+      "params": {
+        "vl": -60
+      }
+    },
+    {
+      "frame": 512,
+      "params": {
+        "vl": 24
+      }
+    },
+    {
+      "frame": 768,
+      "params": {
+        "vl": -0.1
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "e9fd5d0ac08f7fbb249cfb88ee4d75949c61a67c071c2b4c0512e32956c8f458",
+  "outputFloats": 2048,
+  "byteLength": 8192,
+  "binary": "case-016.f32"
+}

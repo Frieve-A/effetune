@@ -1,0 +1,38 @@
+{
+  "formatVersion": 1,
+  "type": "FDNReverbPlugin",
+  "id": "eight-channel-shared-tank-96000",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 8,
+  "frameCount": 16001,
+  "blockSize": 97,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "rt": 1.2,
+    "dt": 8,
+    "pd": 0,
+    "bd": 20,
+    "ds": 5,
+    "hd": 6,
+    "lc": 100,
+    "md": 3,
+    "mr": 0.3,
+    "df": 100,
+    "wm": 100,
+    "dm": 0,
+    "sw": 200
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "1fb216d4d85041102b275b9621e435bdfa586c448be0fcf8f954a8117826252d",
+  "outputFloats": 128008,
+  "byteLength": 512032,
+  "binary": "case-005.f32"
+}

@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "PitchShifterPlugin",
+  "id": "one-frame-blocks-44k1",
+  "stimulus": "step",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 17001,
+  "blockSize": 1,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "ps": -6,
+    "ft": 0,
+    "ws": 80,
+    "xf": 40
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "18f30430161f9690ee99e70d58bf8580721ecb94fbe74c7c73466c6f9a07e894",
+  "outputFloats": 17001,
+  "byteLength": 68004,
+  "binary": "case-008.f32"
+}

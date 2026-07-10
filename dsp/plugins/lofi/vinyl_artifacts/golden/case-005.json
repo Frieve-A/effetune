@@ -1,0 +1,56 @@
+{
+  "formatVersion": 1,
+  "type": "VinylArtifactsPlugin",
+  "id": "shelf-bypass-transitions",
+  "stimulus": "silence",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 2051,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "pp": 0,
+    "pl": -80,
+    "cm": 0,
+    "cl": -80,
+    "hs": 0,
+    "rb": 0,
+    "xt": 60,
+    "tn": 0,
+    "wr": 100,
+    "rt": 0,
+    "rm": "Velocity",
+    "mx": 100
+  },
+  "events": [
+    {
+      "frame": 383,
+      "params": {
+        "tn": 10
+      }
+    },
+    {
+      "frame": 897,
+      "params": {
+        "tn": 5
+      }
+    },
+    {
+      "frame": 1409,
+      "params": {
+        "tn": 10
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "eab9d086b22155e71cbfa50044eab3794689d202244558388eb7cafd99c61478",
+  "outputFloats": 4102,
+  "byteLength": 16408,
+  "binary": "case-005.f32"
+}

@@ -1,0 +1,68 @@
+{
+  "formatVersion": 1,
+  "type": "ModalResonatorPlugin",
+  "id": "default-impulse",
+  "stimulus": "imp",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 1025,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "rs": [
+      {
+        "en": true,
+        "fr": 6.86,
+        "dc": 15,
+        "lp": 7.19,
+        "hp": 5.8,
+        "gn": 0
+      },
+      {
+        "en": true,
+        "fr": 7.52,
+        "dc": 12,
+        "lp": 7.86,
+        "hp": 6.48,
+        "gn": -3
+      },
+      {
+        "en": true,
+        "fr": 7.99,
+        "dc": 10,
+        "lp": 8.33,
+        "hp": 6.94,
+        "gn": -6
+      },
+      {
+        "en": true,
+        "fr": 8.34,
+        "dc": 8,
+        "lp": 8.68,
+        "hp": 7.29,
+        "gn": -9
+      },
+      {
+        "en": true,
+        "fr": 8.75,
+        "dc": 6,
+        "lp": 9.08,
+        "hp": 7.7,
+        "gn": -12
+      }
+    ],
+    "mx": 25
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "d41d6e2d1fb2fe87b01b55ec8c42bbd18ac79eb14d96e46c178614192c870b0b",
+  "outputFloats": 2050,
+  "byteLength": 8200,
+  "binary": "case-001.f32"
+}

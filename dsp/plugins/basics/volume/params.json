@@ -1,0 +1,18 @@
+{
+  "type": "VolumePlugin",
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "fields": [
+    {
+      "name": "volume",
+      "key": "vl",
+      "kind": "float",
+      "min": -60,
+      "max": 24,
+      "default": 0,
+      "unit": "dB"
+    }
+  ]
+}

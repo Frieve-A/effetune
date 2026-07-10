@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "PitchShifterPlugin",
+  "id": "upward-default-window",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 26001,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "ps": 3,
+    "ft": 0,
+    "ws": 150,
+    "xf": 35
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "18f30430161f9690ee99e70d58bf8580721ecb94fbe74c7c73466c6f9a07e894",
+  "outputFloats": 52002,
+  "byteLength": 208008,
+  "binary": "case-001.f32"
+}

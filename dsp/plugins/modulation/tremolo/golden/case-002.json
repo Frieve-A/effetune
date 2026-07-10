@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "type": "TremoloPlugin",
+  "id": "zero-depth-random-state",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 1,
+  "frameCount": 259,
+  "blockSize": 65,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "rt": 50,
+    "dp": 0,
+    "rn": 0,
+    "rc": 200,
+    "rs": -6,
+    "cp": 0,
+    "cs": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "6d873adff940f4488d104dff7e63d2058aa35ec9fe55c28d98412e0b2381a9e5",
+  "outputFloats": 259,
+  "byteLength": 1036,
+  "binary": "case-002.f32"
+}

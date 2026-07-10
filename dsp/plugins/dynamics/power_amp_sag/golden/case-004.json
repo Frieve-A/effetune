@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "PowerAmpSagPlugin",
+  "id": "shared-all4",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 4,
+  "frameCount": 1217,
+  "blockSize": 64,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "ss": 6.5,
+    "ps": 73,
+    "rs": 21,
+    "mb": false
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "41b7ebe357e8158fc654f6f159070686664028017f87ba53002bb8a3235fee69",
+  "outputFloats": 4868,
+  "byteLength": 19472,
+  "binary": "case-004.f32"
+}

@@ -1,0 +1,84 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 64,
+    "channels": 2,
+    "channelMode": "stereo",
+    "frames": 257,
+    "params": {
+      "th": -18,
+      "md": "both"
+    }
+  },
+  "cases": [
+    { "id": "default-impulse", "stimulus": "imp", "frames": 257 },
+    { "id": "default-noise", "stimulus": "noise", "frames": 257 },
+    {
+      "id": "threshold-zero-full-scale",
+      "stimulus": "fs",
+      "frames": 257,
+      "params": { "th": 0, "md": "both" }
+    },
+    {
+      "id": "minimum-threshold-both",
+      "stimulus": "fs",
+      "frames": 257,
+      "params": { "th": -60, "md": "both" }
+    },
+    {
+      "id": "positive-only",
+      "stimulus": "fs",
+      "frames": 257,
+      "params": { "th": -12, "md": "positive" }
+    },
+    {
+      "id": "negative-only",
+      "stimulus": "fs",
+      "frames": 257,
+      "params": { "th": -12, "md": "negative" }
+    },
+    {
+      "id": "mono-odd-tail",
+      "stimulus": "step",
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 257,
+      "params": { "th": -6, "md": "both" }
+    },
+    {
+      "id": "all-channels-odd-tail",
+      "stimulus": "noise",
+      "channels": 4,
+      "channelMode": "all4",
+      "channel": "A",
+      "frames": 131,
+      "blockSize": 32,
+      "params": { "th": -24, "md": "both" }
+    },
+    {
+      "id": "odd-full-slice",
+      "stimulus": "sq50",
+      "frames": 63,
+      "blockSize": 128,
+      "params": { "th": -9, "md": "positive" }
+    },
+    {
+      "id": "one-frame-blocks",
+      "stimulus": "noise",
+      "frames": 17,
+      "blockSize": 1,
+      "params": { "th": -18, "md": "negative" }
+    },
+    {
+      "id": "parameter-transitions",
+      "stimulus": "fs",
+      "frames": 259,
+      "events": [
+        { "frame": 31, "params": { "th": -6, "md": "positive" } },
+        { "frame": 96, "params": { "th": -30, "md": "negative" } },
+        { "frame": 130, "params": { "th": 0, "md": "both" } },
+        { "frame": 193, "params": { "th": -18, "md": "both" } }
+      ]
+    }
+  ]
+}

@@ -1,3 +1,16 @@
+const STEREO_FIELD_TAP_FRAME = 6;
+const STEREO_FIELD_TELEMETRY_VERSION = 1;
+const STEREO_FIELD_GRID_SIZE = 64;
+const STEREO_FIELD_HISTOGRAM_CELLS = 4096;
+const STEREO_FIELD_PAYLOAD_BYTES = 5554;
+const STEREO_FIELD_HISTOGRAM_OFFSET = 2;
+const STEREO_FIELD_ENVELOPE_OFFSET = 4098;
+const STEREO_FIELD_ENVELOPE_BINS = 360;
+const STEREO_FIELD_CORRELATION_OFFSET = 5538;
+const STEREO_FIELD_BALANCE_OFFSET = 5542;
+const STEREO_FIELD_PEAK_LEFT_OFFSET = 5546;
+const STEREO_FIELD_PEAK_RIGHT_OFFSET = 5550;
+
 class StereoMeterPlugin extends PluginBase {
   constructor() {
     super('Stereo Meter', 'Stereo balance and phase visualization');
@@ -34,6 +47,14 @@ class StereoMeterPlugin extends PluginBase {
       this.buckets[i] = [];
     }
     this.smoothedPeaks = new Float32Array(360);
+    this.dspStereoFieldSnapshot = null;
+    this.stereoFieldCanvas = null;
+    this.stereoFieldCtx = null;
+    this.stereoFieldImageData = null;
+    this._dspTelemetryHub = null;
+    this._dspTelemetryTapId = null;
+    this._dspTelemetryUnsubscribe = null;
+    this._boundDspStereoFieldTelemetry = frame => this.handleDspStereoFieldTelemetry(frame);
 
     // Register the Audio Worklet Processor
     this.registerProcessor(`
@@ -211,6 +232,18 @@ class StereoMeterPlugin extends PluginBase {
     this.ctx = this.canvas.getContext('2d', { alpha: false });
     this.resizeGraphDisposer = graph.dispose;
 
+    this.stereoFieldCanvas = document.createElement('canvas');
+    this.stereoFieldCanvas.width = STEREO_FIELD_GRID_SIZE;
+    this.stereoFieldCanvas.height = STEREO_FIELD_GRID_SIZE;
+    this.stereoFieldCtx = this.stereoFieldCanvas.getContext('2d');
+    this.stereoFieldImageData = this.stereoFieldCtx.createImageData(
+      STEREO_FIELD_GRID_SIZE,
+      STEREO_FIELD_GRID_SIZE
+    );
+    if (this.dspStereoFieldSnapshot) {
+      this.renderDspStereoFieldHistogram(this.dspStereoFieldSnapshot.histogram);
+    }
+
     container.appendChild(graphContainer);
 
     if (this.observer == null) {
@@ -231,6 +264,7 @@ class StereoMeterPlugin extends PluginBase {
   }
 
   getParameters() {
+    this.ensureDspTelemetrySubscription();
     return {
       type: this.constructor.name,
       enabled: this.enabled,
@@ -243,7 +277,137 @@ class StereoMeterPlugin extends PluginBase {
     this.updateParameters();
   }
 
+  _setupMessageHandler() {
+    super._setupMessageHandler();
+    this.ensureDspTelemetrySubscription?.();
+  }
+
+  ensureDspTelemetrySubscription() {
+    const hub = window.dspTelemetryHub;
+    const tapId = this.id;
+    const validTapId = Number.isInteger(tapId) && tapId >= 0 && tapId <= 0xffffffff;
+    const validHub = hub && typeof hub.subscribe === 'function';
+
+    if (!validTapId || !validHub) {
+      if (this._dspTelemetryUnsubscribe &&
+          (hub !== this._dspTelemetryHub || tapId !== this._dspTelemetryTapId)) {
+        this.disposeDspTelemetrySubscription();
+      }
+      return false;
+    }
+    if (this._dspTelemetryUnsubscribe &&
+        hub === this._dspTelemetryHub && tapId === this._dspTelemetryTapId) {
+      return true;
+    }
+
+    this.disposeDspTelemetrySubscription();
+    try {
+      const unsubscribe = hub.subscribe(
+        tapId,
+        STEREO_FIELD_TAP_FRAME,
+        this._boundDspStereoFieldTelemetry
+      );
+      if (typeof unsubscribe !== 'function') {
+        hub.unsubscribe?.(
+          tapId,
+          STEREO_FIELD_TAP_FRAME,
+          this._boundDspStereoFieldTelemetry
+        );
+        return false;
+      }
+      this._dspTelemetryHub = hub;
+      this._dspTelemetryTapId = tapId;
+      this._dspTelemetryUnsubscribe = unsubscribe;
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  disposeDspTelemetrySubscription() {
+    const unsubscribe = this._dspTelemetryUnsubscribe;
+    this._dspTelemetryHub = null;
+    this._dspTelemetryTapId = null;
+    this._dspTelemetryUnsubscribe = null;
+    if (!unsubscribe) return;
+    try {
+      unsubscribe();
+    } catch (error) {
+      // Ignore stale telemetry subscription cleanup failures.
+    }
+  }
+
+  parseDspStereoFieldTelemetryFrame(frame) {
+    if (frame?.frameType !== STEREO_FIELD_TAP_FRAME ||
+        frame.formatVersion !== STEREO_FIELD_TELEMETRY_VERSION) {
+      return null;
+    }
+    const payload = frame.payload;
+    if (!payload || typeof payload.getUint8 !== 'function' ||
+        typeof payload.getUint16 !== 'function' ||
+        typeof payload.getFloat32 !== 'function' ||
+        !Number.isInteger(payload.byteLength) ||
+        payload.byteLength !== STEREO_FIELD_PAYLOAD_BYTES ||
+        payload.getUint16(0, true) !== STEREO_FIELD_GRID_SIZE) {
+      return null;
+    }
+
+    const histogram = new Uint8Array(STEREO_FIELD_HISTOGRAM_CELLS);
+    for (let cell = 0; cell < STEREO_FIELD_HISTOGRAM_CELLS; cell++) {
+      histogram[cell] = payload.getUint8(STEREO_FIELD_HISTOGRAM_OFFSET + cell);
+    }
+    const peakBuffer = new Float32Array(STEREO_FIELD_ENVELOPE_BINS);
+    for (let bin = 0; bin < STEREO_FIELD_ENVELOPE_BINS; bin++) {
+      const peak = payload.getFloat32(STEREO_FIELD_ENVELOPE_OFFSET + bin * 4, true);
+      if (!Number.isFinite(peak) || peak < 0) return null;
+      peakBuffer[bin] = peak;
+    }
+
+    const correlation = payload.getFloat32(STEREO_FIELD_CORRELATION_OFFSET, true);
+    const balance = payload.getFloat32(STEREO_FIELD_BALANCE_OFFSET, true);
+    const peakL = payload.getFloat32(STEREO_FIELD_PEAK_LEFT_OFFSET, true);
+    const peakR = payload.getFloat32(STEREO_FIELD_PEAK_RIGHT_OFFSET, true);
+    if (!Number.isFinite(correlation) || correlation < -1 || correlation > 1 ||
+        !Number.isFinite(balance) ||
+        !Number.isFinite(peakL) || peakL < 0 ||
+        !Number.isFinite(peakR) || peakR < 0) {
+      return null;
+    }
+    return {
+      gridSize: STEREO_FIELD_GRID_SIZE,
+      histogram,
+      peakBuffer,
+      correlation,
+      balance,
+      peakL,
+      peakR
+    };
+  }
+
+  handleDspStereoFieldTelemetry(frame) {
+    const snapshot = this.parseDspStereoFieldTelemetryFrame(frame);
+    if (!snapshot || !this.enabled || !this._sectionEnabled) return;
+    this.dspStereoFieldSnapshot = snapshot;
+    this.currentMeasurements = snapshot;
+    this.renderDspStereoFieldHistogram(snapshot.histogram);
+  }
+
+  renderDspStereoFieldHistogram(histogram) {
+    if (!this.stereoFieldImageData || !this.stereoFieldCtx) return;
+    const pixels = this.stereoFieldImageData.data;
+    for (let cell = 0; cell < STEREO_FIELD_HISTOGRAM_CELLS; cell++) {
+      const intensity = histogram[cell];
+      const offset = cell * 4;
+      pixels[offset] = 0;
+      pixels[offset + 1] = intensity;
+      pixels[offset + 2] = 0;
+      pixels[offset + 3] = intensity === 0 ? 0 : 255;
+    }
+    this.stereoFieldCtx.putImageData(this.stereoFieldImageData, 0, 0);
+  }
+
   onMessage(message) {
+    this.ensureDspTelemetrySubscription();
     if (message.type === 'processBuffer' && message.measurements) {
       this.process(message.measurements);
     }
@@ -256,6 +420,7 @@ class StereoMeterPlugin extends PluginBase {
     if (measurements.sampleRate) {
       this.sampleRate = measurements.sampleRate;
     }
+    this.dspStereoFieldSnapshot = null;
     this.currentMeasurements = measurements;
   }
 
@@ -350,46 +515,56 @@ class StereoMeterPlugin extends PluginBase {
     ctx.fillText('R+', centerX + radius - labelOffset, centerY - radius + labelOffset);
     ctx.fillText('L-', centerX + radius - labelOffset, centerY + radius - labelOffset);
 
-    // Optimized drawing of xy samples.
-    const samplesNeeded = Math.ceil(this.windowTime * this.sampleRate);
-    const { xBuffer, yBuffer } = this.currentMeasurements;
-    const bufferLength = xBuffer.length;
-    const endPos = this.currentMeasurements.currentPosition;
-    const startIndex = (endPos - samplesNeeded + bufferLength) % bufferLength;
-
-    // Reset persistent buckets
-    const buckets = this.buckets;
-    for (let i = 0; i < 256; i++) {
-      buckets[i].length = 0;
-    }
-    
-    // Distribute samples into buckets based on intensity.
-    for (let i = 0; i < samplesNeeded; i++) {
-      const pos = (startIndex + i) % bufferLength;
-      const sampleX = xBuffer[pos];
-      const sampleY = yBuffer[pos];
-      const screenX = centerX + (sampleX * 0.5) * radius;
-      const screenY = centerY - (sampleY * 0.5) * radius;
-      
-      // Calculate intensity from 0 to 1 (older samples are darker).
-      const intensity = samplesNeeded > 1 ? (i / (samplesNeeded - 1)) : 0;
-      const green = Math.floor(255 * intensity);
-      buckets[green].push({ x: screenX, y: screenY });
-    }
-    
-    // Batch draw points for each color bucket.
-    const pointSize = (isNarrow ? 2 : 1) * dpr;
-    const pointOffset = pointSize * 0.5;
-    for (let g = 0; g < 256; g++) {
-      const points = buckets[g];
-      if (points.length === 0) continue;
-      
-      ctx.fillStyle = this._colorLookup[g];
-      ctx.beginPath();
-      for (let j = 0; j < points.length; j++) {
-        ctx.rect(points[j].x - pointOffset, points[j].y - pointOffset, pointSize, pointSize);
+    if (this.dspStereoFieldSnapshot) {
+      if (this.stereoFieldCanvas) {
+        const previousSmoothing = ctx.imageSmoothingEnabled;
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(
+          this.stereoFieldCanvas,
+          centerX - radius,
+          centerY - radius,
+          radius * 2,
+          radius * 2
+        );
+        ctx.imageSmoothingEnabled = previousSmoothing;
       }
-      ctx.fill();
+    } else {
+      // Legacy processBuffer fallback keeps its age-graded point rendering.
+      const samplesNeeded = Math.ceil(this.windowTime * this.sampleRate);
+      const { xBuffer, yBuffer } = this.currentMeasurements;
+      const bufferLength = xBuffer.length;
+      const endPos = this.currentMeasurements.currentPosition;
+      const startIndex = (endPos - samplesNeeded + bufferLength) % bufferLength;
+
+      const buckets = this.buckets;
+      for (let i = 0; i < 256; i++) {
+        buckets[i].length = 0;
+      }
+
+      for (let i = 0; i < samplesNeeded; i++) {
+        const pos = (startIndex + i) % bufferLength;
+        const sampleX = xBuffer[pos];
+        const sampleY = yBuffer[pos];
+        const screenX = centerX + (sampleX * 0.5) * radius;
+        const screenY = centerY - (sampleY * 0.5) * radius;
+        const intensity = samplesNeeded > 1 ? (i / (samplesNeeded - 1)) : 0;
+        const green = Math.floor(255 * intensity);
+        buckets[green].push({ x: screenX, y: screenY });
+      }
+
+      const pointSize = (isNarrow ? 2 : 1) * dpr;
+      const pointOffset = pointSize * 0.5;
+      for (let g = 0; g < 256; g++) {
+        const points = buckets[g];
+        if (points.length === 0) continue;
+
+        ctx.fillStyle = this._colorLookup[g];
+        ctx.beginPath();
+        for (let j = 0; j < points.length; j++) {
+          ctx.rect(points[j].x - pointOffset, points[j].y - pointOffset, pointSize, pointSize);
+        }
+        ctx.fill();
+      }
     }
 
     // Smooth the 360° peak buffer using a Gaussian (sigma = 5°).
@@ -427,30 +602,42 @@ class StereoMeterPlugin extends PluginBase {
     ctx.closePath();
     ctx.stroke();
 
-    // Calculate correlation and energy difference.
-    let sumLR = 0, sumL2 = 0, sumR2 = 0;
-    let energyL = 0, energyR = 0;
-    for (let i = 0; i < samplesNeeded; i++) {
-      const pos = (startIndex + i) % bufferLength;
-      const x = xBuffer[pos];
-      const y = yBuffer[pos];
-      // Restore left (L) and right (R) channels.
-      const L = (y - x) / 2;
-      const R = (x + y) / 2;
-      sumLR += L * R;
-      sumL2 += L * L;
-      sumR2 += R * R;
-      energyL += L * L;
-      energyR += R * R;
-    }
     let correlation = 0;
-    if (sumL2 > 0 && sumR2 > 0) {
-      correlation = sumLR / Math.sqrt(sumL2 * sumR2);
+    let energyDiff = 0;
+    if (this.dspStereoFieldSnapshot) {
+      correlation = this.dspStereoFieldSnapshot.correlation;
+      energyDiff = this.dspStereoFieldSnapshot.balance;
+    } else {
+      const samplesNeeded = Math.ceil(this.windowTime * this.sampleRate);
+      const { xBuffer, yBuffer } = this.currentMeasurements;
+      const bufferLength = xBuffer.length;
+      const endPos = this.currentMeasurements.currentPosition;
+      const startIndex = (endPos - samplesNeeded + bufferLength) % bufferLength;
+      let sumLR = 0;
+      let sumL2 = 0;
+      let sumR2 = 0;
+      let energyL = 0;
+      let energyR = 0;
+      for (let i = 0; i < samplesNeeded; i++) {
+        const pos = (startIndex + i) % bufferLength;
+        const x = xBuffer[pos];
+        const y = yBuffer[pos];
+        const left = (y - x) / 2;
+        const right = (x + y) / 2;
+        sumLR += left * right;
+        sumL2 += left * left;
+        sumR2 += right * right;
+        energyL += left * left;
+        energyR += right * right;
+      }
+      if (sumL2 > 0 && sumR2 > 0) {
+        correlation = sumLR / Math.sqrt(sumL2 * sumR2);
+      }
+      const epsilon = 1e-12;
+      const energyL_dB = 10 * Math.log10(energyL + epsilon);
+      const energyR_dB = 10 * Math.log10(energyR + epsilon);
+      energyDiff = energyR_dB - energyL_dB;
     }
-    const epsilon = 1e-12;
-    const energyL_dB = 10 * Math.log10(energyL + epsilon);
-    const energyR_dB = 10 * Math.log10(energyR + epsilon);
-    const energyDiff = energyR_dB - energyL_dB;
 
     // Draw the correlation bar on the left edge.
     const barThickness = 16 * dpr;
@@ -525,6 +712,7 @@ class StereoMeterPlugin extends PluginBase {
 
   cleanup() {
     this.stopAnimation();
+    this.disposeDspTelemetrySubscription();
     if (this.observer) {
       if (this.canvas) {
         this.observer.unobserve(this.canvas);
@@ -543,6 +731,10 @@ class StereoMeterPlugin extends PluginBase {
     this.boundEventListeners.clear();
     this.canvas = null;
     this.ctx = null;
+    this.stereoFieldCanvas = null;
+    this.stereoFieldCtx = null;
+    this.stereoFieldImageData = null;
+    this.dspStereoFieldSnapshot = null;
     super.cleanup();
   }
 }

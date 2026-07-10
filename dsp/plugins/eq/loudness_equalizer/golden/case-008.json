@@ -1,0 +1,64 @@
+{
+  "formatVersion": 1,
+  "type": "LoudnessEqualizerPlugin",
+  "id": "cached-coefficient-transitions",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 4,
+  "frameCount": 259,
+  "blockSize": 64,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "sp": 65,
+    "lg": 10,
+    "lf": 180,
+    "lq": 0.6,
+    "hq": 0.6,
+    "hg": 0,
+    "hf": 4000
+  },
+  "events": [
+    {
+      "frame": 17,
+      "params": {
+        "sp": 80,
+        "hg": 12
+      }
+    },
+    {
+      "frame": 66,
+      "params": {
+        "lg": 0,
+        "hf": 6000
+      }
+    },
+    {
+      "frame": 129,
+      "params": {
+        "sp": 85,
+        "lg": 15,
+        "hg": 15
+      }
+    },
+    {
+      "frame": 194,
+      "params": {
+        "sp": 60,
+        "lf": 100,
+        "lq": 1,
+        "hq": 0.5
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "0dbeab6da3dab6769e86bdfd61cdff403972a6f2924a3956b24b5993711e73a6",
+  "outputFloats": 1036,
+  "byteLength": 4144,
+  "binary": "case-008.f32"
+}

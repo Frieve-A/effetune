@@ -1,0 +1,46 @@
+{
+  "formatVersion": 1,
+  "type": "MultibandBalancePlugin",
+  "id": "all4-192000-crossover-extremes",
+  "stimulus": "sweep",
+  "sampleRate": 192000,
+  "channels": 4,
+  "frameCount": 5003,
+  "blockSize": 127,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "f1": 500,
+    "f2": 2000,
+    "f3": 8000,
+    "f4": 20000,
+    "bands": [
+      {
+        "balance": 0
+      },
+      {
+        "balance": 0
+      },
+      {
+        "balance": 0
+      },
+      {
+        "balance": 0
+      },
+      {
+        "balance": 0
+      }
+    ]
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00002,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "b50536f566a81ab4ba291f0b5e78e797960579d0ed164d4a5490dc678ae1cfea",
+  "outputFloats": 20012,
+  "byteLength": 80048,
+  "binary": "case-006.f32"
+}

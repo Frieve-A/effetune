@@ -1,0 +1,24 @@
+{
+  "formatVersion": 1,
+  "type": "LevelMeterPlugin",
+  "id": "four-channel-full-scale",
+  "stimulus": "fs",
+  "sampleRate": 48000,
+  "channels": 4,
+  "frameCount": 1024,
+  "blockSize": 128,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {},
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "7a86435d58ca21426e6701d31011b2f811e56fad538c08bf4d1583dfff7ece58",
+  "outputFloats": 4096,
+  "byteLength": 16384,
+  "binary": "case-002.f32"
+}

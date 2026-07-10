@@ -1,0 +1,70 @@
+{
+  "type": "LoudnessEqualizerPlugin",
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "fields": [
+    {
+      "name": "averageSpl",
+      "key": "sp",
+      "kind": "float",
+      "min": 60,
+      "max": 85,
+      "default": 65,
+      "unit": "dB"
+    },
+    {
+      "name": "lowGain",
+      "key": "lg",
+      "kind": "float",
+      "min": 0,
+      "max": 15,
+      "default": 10,
+      "unit": "dB"
+    },
+    {
+      "name": "lowFrequency",
+      "key": "lf",
+      "kind": "int",
+      "min": 100,
+      "max": 300,
+      "default": 180,
+      "unit": "Hz"
+    },
+    {
+      "name": "lowQ",
+      "key": "lq",
+      "kind": "float",
+      "min": 0.5,
+      "max": 1,
+      "default": 0.6
+    },
+    {
+      "name": "highQ",
+      "key": "hq",
+      "kind": "float",
+      "min": 0.5,
+      "max": 1,
+      "default": 0.6
+    },
+    {
+      "name": "highGain",
+      "key": "hg",
+      "kind": "float",
+      "min": 0,
+      "max": 15,
+      "default": 0,
+      "unit": "dB"
+    },
+    {
+      "name": "highFrequency",
+      "key": "hf",
+      "kind": "int",
+      "min": 3000,
+      "max": 6000,
+      "default": 4000,
+      "unit": "Hz"
+    }
+  ]
+}

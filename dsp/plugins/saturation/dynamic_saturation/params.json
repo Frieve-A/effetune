@@ -1,0 +1,15 @@
+{
+  "type": "DynamicSaturationPlugin",
+  "tolerance": { "abs": 0.00001, "policy": "per-sample" },
+  "fields": [
+    { "name": "speakerDrive", "key": "sd", "kind": "float", "min": 0, "max": 10, "default": 3 },
+    { "name": "speakerStiffness", "key": "ss", "kind": "float", "min": 0, "max": 10, "default": 2 },
+    { "name": "speakerDamping", "key": "sp", "kind": "float", "min": 0.1, "max": 10, "default": 1 },
+    { "name": "speakerMass", "key": "sm", "kind": "float", "min": 0.1, "max": 5, "default": 1 },
+    { "name": "distortionDrive", "key": "dd", "kind": "float", "min": 0, "max": 10, "default": 1.5 },
+    { "name": "distortionBias", "key": "db", "kind": "float", "min": -1, "max": 1, "default": 0.1 },
+    { "name": "distortionMix", "key": "dm", "kind": "float", "min": 0, "max": 100, "default": 100, "unit": "%" },
+    { "name": "coneMotionMix", "key": "cm", "kind": "float", "min": 0, "max": 100, "default": 20, "unit": "%" },
+    { "name": "outputGain", "key": "og", "kind": "float", "min": -18, "max": 18, "default": 0, "unit": "dB" }
+  ]
+}

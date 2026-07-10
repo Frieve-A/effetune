@@ -1,0 +1,58 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 128,
+    "channels": 2,
+    "channelMode": "stereo",
+    "frames": 1027,
+    "params": {}
+  },
+  "cases": [
+    { "id": "default-stereo-noise", "stimulus": "noise" },
+    {
+      "id": "minimum-points-impulse",
+      "stimulus": "imp",
+      "blockSize": 97,
+      "frames": 769,
+      "params": { "pt": 8 }
+    },
+    {
+      "id": "maximum-points-high-rate",
+      "stimulus": "sweep",
+      "sampleRate": 192000,
+      "blockSize": 113,
+      "frames": 911,
+      "params": { "dr": -144, "pt": 14 }
+    },
+    {
+      "id": "mono-variable-block",
+      "stimulus": "step",
+      "sampleRate": 44100,
+      "channels": 1,
+      "channelMode": "mono",
+      "blockSize": 83,
+      "frames": 719,
+      "params": { "dr": -48, "pt": 10 }
+    },
+    {
+      "id": "four-channel-passthrough",
+      "stimulus": "fs",
+      "channels": 4,
+      "channelMode": "all4",
+      "blockSize": 127,
+      "frames": 635,
+      "params": { "pt": 13 }
+    },
+    {
+      "id": "parameter-transition",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "blockSize": 89,
+      "frames": 801,
+      "events": [
+        { "frame": 267, "params": { "dr": -120, "pt": 8 } },
+        { "frame": 534, "params": { "dr": -60, "pt": 14 } }
+      ]
+    }
+  ]
+}

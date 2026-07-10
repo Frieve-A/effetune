@@ -1,0 +1,60 @@
+{
+  "formatVersion": 1,
+  "type": "MSMatrixPlugin",
+  "id": "parameter-transitions",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 259,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 9,
+  "seed": "0xeffe7a57",
+  "params": {
+    "md": 0,
+    "mg": 0,
+    "sg": 0,
+    "sw": 0
+  },
+  "events": [
+    {
+      "frame": 31,
+      "params": {
+        "md": 1,
+        "mg": 6,
+        "sg": -6
+      }
+    },
+    {
+      "frame": 96,
+      "params": {
+        "sw": 1
+      }
+    },
+    {
+      "frame": 130,
+      "params": {
+        "md": 0,
+        "mg": -18,
+        "sg": 18
+      }
+    },
+    {
+      "frame": 193,
+      "params": {
+        "mg": 0,
+        "sg": 0,
+        "sw": 0
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "ea13e207837045ba6ec2944e0f8436084a8c6629351def3bdbabb5d72f048e26",
+  "outputFloats": 518,
+  "byteLength": 2072,
+  "binary": "case-010.f32"
+}

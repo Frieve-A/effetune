@@ -1,0 +1,176 @@
+{
+  "formatVersion": 1,
+  "type": "FiveBandDynamicEQ",
+  "id": "odd-even-enabled-pointer-orientation-transitions",
+  "stimulus": "noise",
+  "sampleRate": 176400,
+  "channels": 4,
+  "frameCount": 521,
+  "blockSize": 31,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "bs": [
+      {
+        "en": false,
+        "ft": "pk",
+        "f": 100,
+        "q": 1,
+        "mg": 6,
+        "th": -18,
+        "r": 2,
+        "kn": 3,
+        "a": 10,
+        "rl": 100,
+        "scf": 100,
+        "scq": 1
+      },
+      {
+        "en": false,
+        "ft": "pk",
+        "f": 300,
+        "q": 1,
+        "mg": 6,
+        "th": -21,
+        "r": 2,
+        "kn": 3,
+        "a": 10,
+        "rl": 100,
+        "scf": 300,
+        "scq": 1
+      },
+      {
+        "en": true,
+        "ft": "pk",
+        "f": 1000,
+        "q": 1,
+        "mg": 6,
+        "th": -24,
+        "r": 2,
+        "kn": 3,
+        "a": 10,
+        "rl": 100,
+        "scf": 1000,
+        "scq": 1
+      },
+      {
+        "en": false,
+        "ft": "pk",
+        "f": 3000,
+        "q": 1,
+        "mg": 6,
+        "th": -27,
+        "r": 2,
+        "kn": 3,
+        "a": 10,
+        "rl": 100,
+        "scf": 3000,
+        "scq": 1
+      },
+      {
+        "en": false,
+        "ft": "pk",
+        "f": 10000,
+        "q": 1,
+        "mg": 6,
+        "th": -30,
+        "r": 2,
+        "kn": 3,
+        "a": 10,
+        "rl": 100,
+        "scf": 10000,
+        "scq": 1
+      }
+    ]
+  },
+  "events": [
+    {
+      "frame": 63,
+      "params": {
+        "bs": [
+          {
+            "en": true
+          },
+          {},
+          {},
+          {},
+          {}
+        ]
+      }
+    },
+    {
+      "frame": 159,
+      "params": {
+        "bs": [
+          {
+            "en": true
+          },
+          {
+            "en": true,
+            "ft": "ls"
+          },
+          {},
+          {},
+          {}
+        ]
+      }
+    },
+    {
+      "frame": 255,
+      "params": {
+        "bs": [
+          {
+            "en": true
+          },
+          {
+            "en": true,
+            "ft": "ls"
+          },
+          {
+            "en": false
+          },
+          {
+            "en": true,
+            "ft": "hs"
+          },
+          {}
+        ]
+      }
+    },
+    {
+      "frame": 351,
+      "params": {
+        "bs": [
+          {
+            "en": false
+          },
+          {
+            "en": false,
+            "ft": "ls"
+          },
+          {
+            "en": false
+          },
+          {
+            "en": false,
+            "ft": "hs"
+          },
+          {
+            "en": true,
+            "ft": "pk"
+          }
+        ]
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "03bab089177565d05d79d2e23f09c982732a361ea9e1949df5535067343c5eb2",
+  "outputFloats": 2084,
+  "byteLength": 8336,
+  "binary": "case-008.f32"
+}

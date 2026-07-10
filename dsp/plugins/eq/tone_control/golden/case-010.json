@@ -1,0 +1,58 @@
+{
+  "formatVersion": 1,
+  "type": "ToneControlPlugin",
+  "id": "per-band-freeze-transitions",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 4,
+  "frameCount": 259,
+  "blockSize": 64,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 9,
+  "seed": "0xeffe7a57",
+  "params": {
+    "bs": 12,
+    "md": 0,
+    "tr": -8
+  },
+  "events": [
+    {
+      "frame": 17,
+      "params": {
+        "bs": 0,
+        "md": 18
+      }
+    },
+    {
+      "frame": 66,
+      "params": {
+        "md": 0,
+        "tr": 0
+      }
+    },
+    {
+      "frame": 129,
+      "params": {
+        "bs": -24,
+        "tr": 24
+      }
+    },
+    {
+      "frame": 194,
+      "params": {
+        "bs": 0,
+        "md": -12,
+        "tr": 0
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "594cab40e39d1332770bdf04b8898ad6f0f0bdb28fb9feab8e915038504ceaad",
+  "outputFloats": 1036,
+  "byteLength": 4144,
+  "binary": "case-010.f32"
+}

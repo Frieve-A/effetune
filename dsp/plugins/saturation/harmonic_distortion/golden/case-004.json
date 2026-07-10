@@ -1,0 +1,30 @@
+{
+  "formatVersion": 1,
+  "type": "HarmonicDistortionPlugin",
+  "id": "third-harmonic-only",
+  "stimulus": "sin1k",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 24000,
+  "blockSize": 63,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "h2": 0,
+    "h3": -30,
+    "h4": 0,
+    "h5": 0,
+    "sn": 2
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "80d6409c41763ff48546889b1f8bb55c49daf4dd0fcccabb529c533da102b491",
+  "outputFloats": 48000,
+  "byteLength": 192000,
+  "binary": "case-004.f32"
+}

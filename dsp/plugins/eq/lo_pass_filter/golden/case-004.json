@@ -1,0 +1,27 @@
+{
+  "formatVersion": 1,
+  "type": "LoPassFilterPlugin",
+  "id": "minimum-frequency-lr16",
+  "stimulus": "step",
+  "sampleRate": 44100,
+  "channels": 2,
+  "frameCount": 257,
+  "blockSize": 63,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "fr": 10,
+    "sl": -96
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "3a75eb5ef72497dd61a7a11f15e96c9c820c08acc02cd66a8439d44494610ea4",
+  "outputFloats": 514,
+  "byteLength": 2056,
+  "binary": "case-004.f32"
+}

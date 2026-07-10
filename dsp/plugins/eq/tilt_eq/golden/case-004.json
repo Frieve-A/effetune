@@ -1,0 +1,27 @@
+{
+  "formatVersion": 1,
+  "type": "TiltEQPlugin",
+  "id": "maximum-pivot-positive",
+  "stimulus": "sweep",
+  "sampleRate": 192000,
+  "channels": 4,
+  "frameCount": 129,
+  "blockSize": 31,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "f0": 9.9,
+    "sl": 12
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "724d9b516ac2e3a882f3e16b7c94dd438eb1acf2dc50017254646beacddc2790",
+  "outputFloats": 516,
+  "byteLength": 2064,
+  "binary": "case-004.f32"
+}

@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "type": "HornResonatorPlusPlugin",
+  "id": "maximum-192000",
+  "stimulus": "noise",
+  "sampleRate": 192000,
+  "channels": 2,
+  "frameCount": 1801,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "co": 5000,
+    "ln": 120,
+    "th": 50,
+    "mo": 200,
+    "cv": 100,
+    "dp": 10,
+    "tr": 0.99,
+    "wg": 36
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "cd8bcbb936ed7dd81479e215b693341df7ff05327c1e3bc0995746e0ea6b45c4",
+  "outputFloats": 3602,
+  "byteLength": 14408,
+  "binary": "case-003.f32"
+}

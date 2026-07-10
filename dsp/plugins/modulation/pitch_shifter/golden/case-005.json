@@ -1,0 +1,49 @@
+{
+  "formatVersion": 1,
+  "type": "PitchShifterPlugin",
+  "id": "pitch-state-preserving-events",
+  "stimulus": "sq50",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 24001,
+  "blockSize": 63,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "ps": -3,
+    "ft": 25,
+    "ws": 100,
+    "xf": 25
+  },
+  "events": [
+    {
+      "frame": 6001,
+      "params": {
+        "ps": 2
+      }
+    },
+    {
+      "frame": 12005,
+      "params": {
+        "ft": -25
+      }
+    },
+    {
+      "frame": 18007,
+      "params": {
+        "ps": -6,
+        "ft": 50
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "18f30430161f9690ee99e70d58bf8580721ecb94fbe74c7c73466c6f9a07e894",
+  "outputFloats": 48002,
+  "byteLength": 192008,
+  "binary": "case-005.f32"
+}

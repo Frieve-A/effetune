@@ -1,0 +1,57 @@
+{
+  "formatVersion": 1,
+  "type": "ExciterPlugin",
+  "id": "slope-frequency-drive-transitions",
+  "stimulus": "imp",
+  "sampleRate": 96000,
+  "channels": 4,
+  "frameCount": 1001,
+  "blockSize": 64,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 8,
+  "seed": "0xeffe7a56",
+  "params": {
+    "hf": 500,
+    "hs": 0,
+    "dr": 0,
+    "bs": -0.3,
+    "mx": 0
+  },
+  "events": [
+    {
+      "frame": 31,
+      "params": {
+        "hs": 1,
+        "dr": 10,
+        "mx": 100
+      }
+    },
+    {
+      "frame": 321,
+      "params": {
+        "hf": 10000,
+        "hs": 2,
+        "bs": 0.3
+      }
+    },
+    {
+      "frame": 700,
+      "params": {
+        "hf": 3000,
+        "hs": 1,
+        "dr": 3,
+        "bs": 0.1,
+        "mx": 25
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "23e2394eaae09c2efae387880d7fe441f2f6226f75e6c4201215af6703d7c72e",
+  "outputFloats": 4004,
+  "byteLength": 16016,
+  "binary": "case-009.f32"
+}

@@ -1,0 +1,13 @@
+{
+  "type": "TransientShaperPlugin",
+  "tolerance": { "abs": 0.00001, "policy": "per-sample" },
+  "fields": [
+    { "name": "fastAttack", "key": "fa", "kind": "float", "min": 0.1, "max": 10, "default": 1, "unit": "ms" },
+    { "name": "fastRelease", "key": "fr", "kind": "float", "min": 1, "max": 200, "default": 20, "unit": "ms" },
+    { "name": "slowAttack", "key": "sa", "kind": "float", "min": 1, "max": 100, "default": 20, "unit": "ms" },
+    { "name": "slowRelease", "key": "sr", "kind": "float", "min": 50, "max": 1000, "default": 300, "unit": "ms" },
+    { "name": "transientGain", "key": "gt", "kind": "float", "min": -24, "max": 24, "default": 6, "unit": "dB" },
+    { "name": "sustainGain", "key": "gs", "kind": "float", "min": -24, "max": 24, "default": 0, "unit": "dB" },
+    { "name": "gainSmoothing", "key": "sm", "kind": "float", "min": 0.1, "max": 20, "default": 5, "unit": "ms" }
+  ]
+}

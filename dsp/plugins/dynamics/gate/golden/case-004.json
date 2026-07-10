@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "GatePlugin",
+  "id": "wide-knee-slow-envelope",
+  "stimulus": "sq50",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 1033,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "th": -18,
+    "rt": 35,
+    "at": 50,
+    "rl": 2000,
+    "kn": 6,
+    "gn": 6
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "f3395732572e52ee3b8311ebbf26c93d951b6bd6af3a6f3357caa2811be5897a",
+  "outputFloats": 2066,
+  "byteLength": 8264,
+  "binary": "case-004.f32"
+}

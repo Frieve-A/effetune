@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "SimpleJitterPlugin",
+  "id": "minimum-jitter",
+  "stimulus": "noise",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 1003,
+  "blockSize": 65,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "rj": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "d5e6cf96ac910e732b5e6499446141c7df339451ee8ed4d90ac98a9e9b945796",
+  "outputFloats": 1003,
+  "byteLength": 4012,
+  "binary": "case-002.f32"
+}

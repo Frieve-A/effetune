@@ -1,0 +1,34 @@
+{
+  "formatVersion": 1,
+  "type": "DynamicSaturationPlugin",
+  "id": "default-transient",
+  "stimulus": "imp",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 12000,
+  "blockSize": 63,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "sd": 3,
+    "ss": 2,
+    "sp": 1,
+    "sm": 1,
+    "dd": 1.5,
+    "db": 0.1,
+    "dm": 100,
+    "cm": 20,
+    "og": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "33770a3f4e7ed3608281a1060db6304f2a2bf28bfc61aa1e7b783c4293ec8d58",
+  "outputFloats": 24000,
+  "byteLength": 96000,
+  "binary": "case-001.f32"
+}

@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "ExpanderPlugin",
+  "id": "default-impulse",
+  "stimulus": "imp",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 1025,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "th": -24,
+    "rt": 2,
+    "at": 10,
+    "rl": 100,
+    "kn": 3,
+    "gn": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "434b250ab46eeb6f31274e74abb8a5276c8c7d815e588d5521ecd18b195a9a88",
+  "outputFloats": 2050,
+  "byteLength": 8200,
+  "binary": "case-001.f32"
+}

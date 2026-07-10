@@ -1,0 +1,56 @@
+{
+  "formatVersion": 1,
+  "type": "MultibandTransientPlugin",
+  "id": "all4-192000",
+  "stimulus": "noise",
+  "sampleRate": 192000,
+  "channels": 4,
+  "frameCount": 1301,
+  "blockSize": 127,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "f1": 2000,
+    "f2": 20000,
+    "bands": [
+      {
+        "fa": 5,
+        "fr": 50,
+        "sa": 25,
+        "sr": 250,
+        "gt": 6,
+        "gs": 0,
+        "sm": 5
+      },
+      {
+        "fa": 2,
+        "fr": 30,
+        "sa": 10,
+        "sr": 150,
+        "gt": 6,
+        "gs": 0,
+        "sm": 5
+      },
+      {
+        "fa": 0.5,
+        "fr": 20,
+        "sa": 5,
+        "sr": 100,
+        "gt": 6,
+        "gs": 0,
+        "sm": 5
+      }
+    ]
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00002,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "8ce5e9729b6d92d33faf8bfc9199d1cd148e30e6dcd03fbba60e55a4b91ee094",
+  "outputFloats": 5204,
+  "byteLength": 20816,
+  "binary": "case-005.f32"
+}

@@ -1,0 +1,35 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 128,
+    "channels": 2,
+    "channelMode": "stereo",
+    "frames": 257,
+    "params": { "sp": 65, "lg": 10, "lf": 180, "lq": 0.6, "hq": 0.6, "hg": 0, "hf": 4000 }
+  },
+  "cases": [
+    { "id": "default-impulse", "stimulus": "imp", "frames": 259 },
+    { "id": "reference-level-identity", "stimulus": "noise", "sampleRate": 96000, "channels": 1, "channelMode": "mono", "frames": 193, "blockSize": 65, "params": { "sp": 85, "lg": 15, "lf": 100, "lq": 0.5, "hq": 1, "hg": 15, "hf": 6000 } },
+    { "id": "minimum-settings", "stimulus": "step", "sampleRate": 44100, "frames": 257, "blockSize": 63, "params": { "sp": 60, "lg": 0, "lf": 100, "lq": 0.5, "hq": 0.5, "hg": 0, "hf": 3000 } },
+    { "id": "maximum-boost", "stimulus": "fs", "sampleRate": 192000, "channels": 4, "channelMode": "all4", "frames": 129, "blockSize": 31, "params": { "sp": 60, "lg": 15, "lf": 300, "lq": 1, "hq": 1, "hg": 15, "hf": 6000 } },
+    { "id": "low-shelf-only", "stimulus": "sweep", "sampleRate": 44100, "frames": 255, "blockSize": 127, "params": { "sp": 72.5, "lg": 12.5, "lf": 230, "lq": 0.75, "hg": 0 } },
+    { "id": "high-shelf-only", "stimulus": "noise", "sampleRate": 96000, "frames": 197, "blockSize": 63, "params": { "sp": 70, "lg": 0, "hq": 0.85, "hg": 13.5, "hf": 5100 } },
+    { "id": "one-frame-binary64-state", "stimulus": "noise", "sampleRate": 192000, "channels": 1, "channelMode": "mono", "frames": 67, "blockSize": 1, "params": { "sp": 61.25, "lg": 14.5, "lf": 299, "lq": 0.51, "hq": 0.99, "hg": 11.75, "hf": 5990 } },
+    {
+      "id": "cached-coefficient-transitions",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "channels": 4,
+      "channelMode": "all4",
+      "frames": 259,
+      "blockSize": 64,
+      "params": { "sp": 65, "lg": 10, "lf": 180, "lq": 0.6, "hq": 0.6, "hg": 0, "hf": 4000 },
+      "events": [
+        { "frame": 17, "params": { "sp": 80, "hg": 12 } },
+        { "frame": 66, "params": { "lg": 0, "hf": 6000 } },
+        { "frame": 129, "params": { "sp": 85, "lg": 15, "hg": 15 } },
+        { "frame": 194, "params": { "sp": 60, "lf": 100, "lq": 1, "hq": 0.5 } }
+      ]
+    }
+  ]
+}

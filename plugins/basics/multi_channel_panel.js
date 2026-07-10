@@ -1,3 +1,8 @@
+const MULTI_CHANNEL_LEVELS_FRAME = 10;
+const MULTI_CHANNEL_LEVELS_VERSION = 1;
+const MULTI_CHANNEL_LEVELS_HEADER_BYTES = 4;
+const MULTI_CHANNEL_LEVELS_RECORD_BYTES = 8;
+
 class MultiChannelPanelPlugin extends PluginBase {
     constructor() {
         super('MultiChannel Panel', 'Control panel for multiple channels');
@@ -23,6 +28,11 @@ class MultiChannelPanelPlugin extends PluginBase {
         this.lastProcessTime = performance.now() / 1000;
         this.animationFrameId = null;
         this.isVisible = true;
+        this._dspTelemetryHub = null;
+        this._dspTelemetryTapId = null;
+        this._dspTelemetryUnsubscribe = null;
+        this._boundDspMultiChannelLevelsTelemetry = frame =>
+            this.handleDspMultiChannelLevelsTelemetry(frame);
 
         // Register processor function that measures audio levels over 1/30 second window
         this.registerProcessor(`
@@ -224,6 +234,7 @@ class MultiChannelPanelPlugin extends PluginBase {
 
     // Get current parameters
     getParameters() {
+        this.ensureDspTelemetrySubscription();
         return {
             type: this.constructor.name,
             m: this.m,      // Mute states
@@ -541,8 +552,110 @@ class MultiChannelPanelPlugin extends PluginBase {
         return 20 * Math.log10(amplitude < epsilon ? epsilon : amplitude);
     }
 
+    _setupMessageHandler() {
+        super._setupMessageHandler();
+        this.ensureDspTelemetrySubscription?.();
+    }
+
+    ensureDspTelemetrySubscription() {
+        const hub = window.dspTelemetryHub;
+        const tapId = this.id;
+        const validTapId = Number.isInteger(tapId) && tapId >= 0 && tapId <= 0xffffffff;
+        const validHub = hub && typeof hub.subscribe === 'function';
+        if (!validTapId || !validHub) {
+            if (this._dspTelemetryUnsubscribe &&
+                (hub !== this._dspTelemetryHub || tapId !== this._dspTelemetryTapId)) {
+                this.disposeDspTelemetrySubscription();
+            }
+            return false;
+        }
+        if (this._dspTelemetryUnsubscribe &&
+            hub === this._dspTelemetryHub && tapId === this._dspTelemetryTapId) {
+            return true;
+        }
+        this.disposeDspTelemetrySubscription();
+        try {
+            const unsubscribe = hub.subscribe(
+                tapId,
+                MULTI_CHANNEL_LEVELS_FRAME,
+                this._boundDspMultiChannelLevelsTelemetry
+            );
+            if (typeof unsubscribe !== 'function') {
+                hub.unsubscribe?.(
+                    tapId,
+                    MULTI_CHANNEL_LEVELS_FRAME,
+                    this._boundDspMultiChannelLevelsTelemetry
+                );
+                return false;
+            }
+            this._dspTelemetryHub = hub;
+            this._dspTelemetryTapId = tapId;
+            this._dspTelemetryUnsubscribe = unsubscribe;
+            return true;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    disposeDspTelemetrySubscription() {
+        const unsubscribe = this._dspTelemetryUnsubscribe;
+        this._dspTelemetryHub = null;
+        this._dspTelemetryTapId = null;
+        this._dspTelemetryUnsubscribe = null;
+        if (!unsubscribe) return;
+        try {
+            unsubscribe();
+        } catch (error) {
+            // Ignore stale telemetry subscription cleanup failures.
+        }
+    }
+
+    parseDspMultiChannelLevelsTelemetryFrame(frame) {
+        if (frame?.frameType !== MULTI_CHANNEL_LEVELS_FRAME ||
+            frame.formatVersion !== MULTI_CHANNEL_LEVELS_VERSION) {
+            return null;
+        }
+        const payload = frame.payload;
+        if (!payload || typeof payload.getUint8 !== 'function' ||
+            typeof payload.getFloat32 !== 'function' ||
+            !Number.isInteger(payload.byteLength) ||
+            payload.byteLength < MULTI_CHANNEL_LEVELS_HEADER_BYTES) {
+            return null;
+        }
+        const count = payload.getUint8(0);
+        const expectedBytes = MULTI_CHANNEL_LEVELS_HEADER_BYTES +
+            count * MULTI_CHANNEL_LEVELS_RECORD_BYTES;
+        if (count < 1 || count > this.MAX_CHANNELS || payload.byteLength !== expectedBytes ||
+            payload.getUint8(1) !== 0 || payload.getUint8(2) !== 0 ||
+            payload.getUint8(3) !== 0) {
+            return null;
+        }
+        const channels = new Array(count);
+        for (let channel = 0; channel < count; channel++) {
+            const offset = MULTI_CHANNEL_LEVELS_HEADER_BYTES +
+                channel * MULTI_CHANNEL_LEVELS_RECORD_BYTES;
+            const peak = payload.getFloat32(offset, true);
+            const muted = payload.getUint8(offset + 4);
+            if (!Number.isFinite(peak) || peak < 0 || muted > 1 ||
+                payload.getUint8(offset + 5) !== 0 ||
+                payload.getUint8(offset + 6) !== 0 ||
+                payload.getUint8(offset + 7) !== 0) {
+                return null;
+            }
+            channels[channel] = { peak, muted: muted === 1 };
+        }
+        return channels;
+    }
+
+    handleDspMultiChannelLevelsTelemetry(frame) {
+        const channels = this.parseDspMultiChannelLevelsTelemetryFrame(frame);
+        if (!channels || !this.enabled || !this._sectionEnabled) return;
+        this.process({ measurements: { channels } });
+    }
+
     // Handle messages from audio processor
     onMessage(message) {
+        this.ensureDspTelemetrySubscription();
         if (message.type === 'processBuffer') {
             this.process(message);
         }
@@ -917,6 +1030,7 @@ class MultiChannelPanelPlugin extends PluginBase {
     }
 
     cleanup() {
+        this.disposeDspTelemetrySubscription();
         this.stopAnimation();
         // Any other cleanup (e.g., removing event listeners from global objects if any)
         super.cleanup();

@@ -1,0 +1,27 @@
+{
+  "formatVersion": 1,
+  "type": "LoPassFilterPlugin",
+  "id": "one-frame-blocks",
+  "stimulus": "noise",
+  "sampleRate": 192000,
+  "channels": 1,
+  "frameCount": 67,
+  "blockSize": 1,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "fr": 32000,
+    "sl": -36
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "3a75eb5ef72497dd61a7a11f15e96c9c820c08acc02cd66a8439d44494610ea4",
+  "outputFloats": 67,
+  "byteLength": 268,
+  "binary": "case-008.f32"
+}

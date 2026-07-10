@@ -1,0 +1,28 @@
+{
+  "formatVersion": 1,
+  "type": "NoiseBlenderPlugin",
+  "id": "white-per-channel-muted-state",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 4,
+  "frameCount": 263,
+  "blockSize": 31,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "nt": "white",
+    "lv": -96,
+    "pc": true
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "13f074fcdd04e744e76a47be12f14d87fc8f05643b6d5f1c1a5a1bfb0a5113cd",
+  "outputFloats": 1052,
+  "byteLength": 4208,
+  "binary": "case-003.f32"
+}

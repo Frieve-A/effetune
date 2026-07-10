@@ -1,0 +1,61 @@
+{
+  "formatVersion": 1,
+  "type": "CrossfeedFilterPlugin",
+  "id": "parameter-transitions",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 901,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "lv": -6,
+    "dl": 0.3,
+    "lf": 700
+  },
+  "events": [
+    {
+      "frame": 17,
+      "params": {
+        "lv": -12,
+        "dl": 0,
+        "lf": 400
+      }
+    },
+    {
+      "frame": 129,
+      "params": {
+        "lv": -3,
+        "dl": 1,
+        "lf": 5000
+      }
+    },
+    {
+      "frame": 388,
+      "params": {
+        "lv": -60,
+        "dl": 0.25,
+        "lf": 20000
+      }
+    },
+    {
+      "frame": 700,
+      "params": {
+        "lv": -6,
+        "dl": 0.3,
+        "lf": 700
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.000003,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "964dfc088020dfd701be08b12dac4693f8221a2e86b8dfba38fecf0d52f3e2db",
+  "outputFloats": 1802,
+  "byteLength": 7208,
+  "binary": "case-008.f32"
+}

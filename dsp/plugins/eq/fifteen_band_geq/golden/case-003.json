@@ -1,0 +1,40 @@
+{
+  "formatVersion": 1,
+  "type": "FifteenBandGEQPlugin",
+  "id": "alternating-gains",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 12000,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "b0": 12,
+    "b1": -12,
+    "b2": 10.5,
+    "b3": -10.5,
+    "b4": 9,
+    "b5": -9,
+    "b6": 7.5,
+    "b7": -7.5,
+    "b8": 6,
+    "b9": -6,
+    "b10": 4.5,
+    "b11": -4.5,
+    "b12": 3,
+    "b13": -3,
+    "b14": 1.5
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "06c0035cf8c8f3fdcd6a856dfc8b383678ed94fad3d4c13270a7e49867ab1b3a",
+  "outputFloats": 24000,
+  "byteLength": 96000,
+  "binary": "case-003.f32"
+}

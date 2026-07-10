@@ -1,0 +1,346 @@
+{
+  "abiVersion": 1,
+  "sourceDigest": "sha256:9c2a4d5821fc785bf0992a13b3be342336ed591751884e7ce5a1f58c983a76fc",
+  "emsdkVersion": "6.0.2",
+  "kernels": [
+    {
+      "name": "LevelMeterPlugin",
+      "hash": 2166136261,
+      "byteCapacity": 0
+    },
+    {
+      "name": "OscilloscopePlugin",
+      "hash": 2229411282,
+      "byteCapacity": 0
+    },
+    {
+      "name": "SpectrogramPlugin",
+      "hash": 3382561824,
+      "byteCapacity": 0
+    },
+    {
+      "name": "SpectrumAnalyzerPlugin",
+      "hash": 3382561824,
+      "byteCapacity": 0
+    },
+    {
+      "name": "StereoMeterPlugin",
+      "hash": 2967351826,
+      "byteCapacity": 0
+    },
+    {
+      "name": "ChannelDividerPlugin",
+      "hash": 3926343008,
+      "byteCapacity": 0
+    },
+    {
+      "name": "DCOffsetPlugin",
+      "hash": 1104945464,
+      "byteCapacity": 0
+    },
+    {
+      "name": "MatrixPlugin",
+      "hash": 117968709,
+      "byteCapacity": 3076
+    },
+    {
+      "name": "MultiChannelPanelPlugin",
+      "hash": 4191368224,
+      "byteCapacity": 0
+    },
+    {
+      "name": "MutePlugin",
+      "hash": 2166136261,
+      "byteCapacity": 0
+    },
+    {
+      "name": "PolarityInversionPlugin",
+      "hash": 2166136261,
+      "byteCapacity": 0
+    },
+    {
+      "name": "StereoBalancePlugin",
+      "hash": 289332571,
+      "byteCapacity": 0
+    },
+    {
+      "name": "VolumePlugin",
+      "hash": 1719233191,
+      "byteCapacity": 0
+    },
+    {
+      "name": "DelayPlugin",
+      "hash": 1607012936,
+      "byteCapacity": 0
+    },
+    {
+      "name": "TimeAlignmentPlugin",
+      "hash": 669252438,
+      "byteCapacity": 0
+    },
+    {
+      "name": "AutoLevelerPlugin",
+      "hash": 3769758541,
+      "byteCapacity": 0
+    },
+    {
+      "name": "BrickwallLimiterPlugin",
+      "hash": 3039928906,
+      "byteCapacity": 0
+    },
+    {
+      "name": "CompressorPlugin",
+      "hash": 763850658,
+      "byteCapacity": 0
+    },
+    {
+      "name": "ExpanderPlugin",
+      "hash": 763850658,
+      "byteCapacity": 0
+    },
+    {
+      "name": "GatePlugin",
+      "hash": 763850658,
+      "byteCapacity": 0
+    },
+    {
+      "name": "MultibandCompressorPlugin",
+      "hash": 3844787426,
+      "byteCapacity": 0
+    },
+    {
+      "name": "MultibandExpanderPlugin",
+      "hash": 3844787426,
+      "byteCapacity": 0
+    },
+    {
+      "name": "MultibandTransientPlugin",
+      "hash": 1428242716,
+      "byteCapacity": 0
+    },
+    {
+      "name": "PowerAmpSagPlugin",
+      "hash": 745762387,
+      "byteCapacity": 0
+    },
+    {
+      "name": "TransientShaperPlugin",
+      "hash": 3795078379,
+      "byteCapacity": 0
+    },
+    {
+      "name": "BandPassFilterPlugin",
+      "hash": 2360494665,
+      "byteCapacity": 0
+    },
+    {
+      "name": "CombFilterPlugin",
+      "hash": 2689435779,
+      "byteCapacity": 0
+    },
+    {
+      "name": "EarphoneCableSimPlugin",
+      "hash": 1106244643,
+      "byteCapacity": 0
+    },
+    {
+      "name": "FifteenBandGEQPlugin",
+      "hash": 1817151884,
+      "byteCapacity": 0
+    },
+    {
+      "name": "FifteenBandPEQPlugin",
+      "hash": 1637338438,
+      "byteCapacity": 0
+    },
+    {
+      "name": "FiveBandDynamicEQ",
+      "hash": 2955184071,
+      "byteCapacity": 0
+    },
+    {
+      "name": "FiveBandPEQPlugin",
+      "hash": 2285236921,
+      "byteCapacity": 0
+    },
+    {
+      "name": "HiPassFilterPlugin",
+      "hash": 299011831,
+      "byteCapacity": 0
+    },
+    {
+      "name": "LoPassFilterPlugin",
+      "hash": 299011831,
+      "byteCapacity": 0
+    },
+    {
+      "name": "LoudnessEqualizerPlugin",
+      "hash": 2288594783,
+      "byteCapacity": 0
+    },
+    {
+      "name": "NarrowRangePlugin",
+      "hash": 925285799,
+      "byteCapacity": 0
+    },
+    {
+      "name": "TiltEQPlugin",
+      "hash": 3110132925,
+      "byteCapacity": 0
+    },
+    {
+      "name": "ToneControlPlugin",
+      "hash": 4085396528,
+      "byteCapacity": 0
+    },
+    {
+      "name": "BitCrusherPlugin",
+      "hash": 3414646542,
+      "byteCapacity": 0
+    },
+    {
+      "name": "DigitalErrorEmulatorPlugin",
+      "hash": 929157540,
+      "byteCapacity": 0
+    },
+    {
+      "name": "DSD64IMDSimulatorPlugin",
+      "hash": 1223862878,
+      "byteCapacity": 0
+    },
+    {
+      "name": "HumGeneratorPlugin",
+      "hash": 2503317040,
+      "byteCapacity": 0
+    },
+    {
+      "name": "NoiseBlenderPlugin",
+      "hash": 394198189,
+      "byteCapacity": 0
+    },
+    {
+      "name": "SimpleJitterPlugin",
+      "hash": 3196737583,
+      "byteCapacity": 0
+    },
+    {
+      "name": "VinylArtifactsPlugin",
+      "hash": 1145282217,
+      "byteCapacity": 0
+    },
+    {
+      "name": "DopplerDistortionPlugin",
+      "hash": 10372816,
+      "byteCapacity": 0
+    },
+    {
+      "name": "PitchShifterPlugin",
+      "hash": 1998192054,
+      "byteCapacity": 0
+    },
+    {
+      "name": "TremoloPlugin",
+      "hash": 1836520376,
+      "byteCapacity": 0
+    },
+    {
+      "name": "WowFlutterPlugin",
+      "hash": 1836520376,
+      "byteCapacity": 0
+    },
+    {
+      "name": "OscillatorPlugin",
+      "hash": 3281483379,
+      "byteCapacity": 0
+    },
+    {
+      "name": "HornResonatorPlugin",
+      "hash": 3233763204,
+      "byteCapacity": 0
+    },
+    {
+      "name": "HornResonatorPlusPlugin",
+      "hash": 3233763204,
+      "byteCapacity": 0
+    },
+    {
+      "name": "ModalResonatorPlugin",
+      "hash": 1547233380,
+      "byteCapacity": 0
+    },
+    {
+      "name": "DattorroPlateReverbPlugin",
+      "hash": 582778991,
+      "byteCapacity": 0
+    },
+    {
+      "name": "FDNReverbPlugin",
+      "hash": 1755319973,
+      "byteCapacity": 0
+    },
+    {
+      "name": "RSReverbPlugin",
+      "hash": 3284023116,
+      "byteCapacity": 0
+    },
+    {
+      "name": "DynamicSaturationPlugin",
+      "hash": 3365051379,
+      "byteCapacity": 0
+    },
+    {
+      "name": "ExciterPlugin",
+      "hash": 4235094650,
+      "byteCapacity": 0
+    },
+    {
+      "name": "HardClippingPlugin",
+      "hash": 837158957,
+      "byteCapacity": 0
+    },
+    {
+      "name": "HarmonicDistortionPlugin",
+      "hash": 83146208,
+      "byteCapacity": 0
+    },
+    {
+      "name": "MultibandSaturationPlugin",
+      "hash": 698810406,
+      "byteCapacity": 0
+    },
+    {
+      "name": "SaturationPlugin",
+      "hash": 1115003603,
+      "byteCapacity": 0
+    },
+    {
+      "name": "SubSynthPlugin",
+      "hash": 116561234,
+      "byteCapacity": 0
+    },
+    {
+      "name": "CrossfeedFilterPlugin",
+      "hash": 715048833,
+      "byteCapacity": 0
+    },
+    {
+      "name": "MSMatrixPlugin",
+      "hash": 607668476,
+      "byteCapacity": 0
+    },
+    {
+      "name": "MultibandBalancePlugin",
+      "hash": 3715792583,
+      "byteCapacity": 0
+    },
+    {
+      "name": "StereoBlendPlugin",
+      "hash": 648556109,
+      "byteCapacity": 0
+    }
+  ],
+  "sizes": {
+    "baseline": 325000,
+    "simd": 366027
+  }
+}

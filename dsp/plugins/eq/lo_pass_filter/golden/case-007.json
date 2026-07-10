@@ -1,0 +1,27 @@
+{
+  "formatVersion": 1,
+  "type": "LoPassFilterPlugin",
+  "id": "odd-order-lr14",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 197,
+  "blockSize": 63,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "fr": 17000,
+    "sl": -84
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "3a75eb5ef72497dd61a7a11f15e96c9c820c08acc02cd66a8439d44494610ea4",
+  "outputFloats": 394,
+  "byteLength": 1576,
+  "binary": "case-007.f32"
+}

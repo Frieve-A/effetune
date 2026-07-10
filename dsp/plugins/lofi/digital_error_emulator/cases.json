@@ -1,0 +1,110 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 127,
+    "channels": 2,
+    "channelMode": "stereo",
+    "frames": 4096,
+    "params": { "be": -2, "md": "1", "rf": 48, "wt": 100 }
+  },
+  "cases": [
+    {
+      "id": "mode-transition-matrix",
+      "stimulus": "noise",
+      "frames": 4097,
+      "events": [
+        { "frame": 257, "params": { "md": "2A" } },
+        { "frame": 514, "params": { "md": "2B" } },
+        { "frame": 771, "params": { "md": "3A" } },
+        { "frame": 1028, "params": { "md": "3B" } },
+        { "frame": 1285, "params": { "md": "4" } },
+        { "frame": 1542, "params": { "md": "5A" } },
+        { "frame": 1799, "params": { "md": "5B" } },
+        { "frame": 2056, "params": { "md": "5C" } },
+        { "frame": 2313, "params": { "md": "6A" } },
+        { "frame": 2570, "params": { "md": "6B" } },
+        { "frame": 2827, "params": { "md": "8" } },
+        { "frame": 3084, "params": { "md": "9" } },
+        { "frame": 3341, "params": { "md": "10" } },
+        { "frame": 3598, "params": { "md": "10A" } }
+      ]
+    },
+    {
+      "id": "cd-standard-branch-sensitive",
+      "stimulus": "sin1k",
+      "sampleRate": 44100,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 4099,
+      "blockSize": 63,
+      "params": { "md": "10" }
+    },
+    {
+      "id": "cd-interpolated-one-frame-blocks",
+      "stimulus": "sweep",
+      "sampleRate": 44100,
+      "frames": 2049,
+      "blockSize": 1,
+      "params": { "md": "10A" }
+    },
+    {
+      "id": "bluetooth-a2dp-spanning-errors",
+      "stimulus": "sq50",
+      "sampleRate": 96000,
+      "frames": 2501,
+      "blockSize": 65,
+      "params": { "md": "6A" }
+    },
+    {
+      "id": "bluetooth-le-all4-pink-state",
+      "stimulus": "noise",
+      "channels": 4,
+      "channelMode": "all4",
+      "frames": 2501,
+      "params": { "md": "6B" }
+    },
+    {
+      "id": "rf-squelch-192k-long-duration",
+      "stimulus": "step",
+      "sampleRate": 192000,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 12001,
+      "params": { "md": "9" }
+    },
+    {
+      "id": "packet-history-5c-scaled",
+      "stimulus": "noise",
+      "sampleRate": 192000,
+      "channels": 4,
+      "channelMode": "all4",
+      "frames": 5001,
+      "blockSize": 95,
+      "params": { "md": "5C", "rf": 44.1 }
+    },
+    {
+      "id": "schedule-reset-and-wet-continuity",
+      "stimulus": "noise",
+      "frames": 3001,
+      "blockSize": 64,
+      "params": { "be": -6, "md": "3A", "wt": 0 },
+      "events": [
+        { "frame": 31, "params": { "wt": 100 } },
+        { "frame": 513, "params": { "be": -2 } },
+        { "frame": 1027, "params": { "rf": 96 } },
+        { "frame": 1541, "params": { "md": "6B" } },
+        { "frame": 2303, "params": { "wt": 25 } }
+      ]
+    },
+    {
+      "id": "rare-event-pass-through",
+      "stimulus": "fs",
+      "sampleRate": 96000,
+      "channels": 4,
+      "channelMode": "all4",
+      "frames": 1001,
+      "blockSize": 33,
+      "params": { "be": -12, "md": "2A" }
+    }
+  ]
+}

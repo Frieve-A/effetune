@@ -1,0 +1,56 @@
+{
+  "formatVersion": 1,
+  "type": "PowerAmpSagPlugin",
+  "id": "state-preserving-events",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 1237,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "ss": 3,
+    "ps": 50,
+    "rs": 40,
+    "mb": false
+  },
+  "events": [
+    {
+      "frame": 31,
+      "params": {
+        "ss": -6.5
+      }
+    },
+    {
+      "frame": 128,
+      "params": {
+        "ps": 91
+      }
+    },
+    {
+      "frame": 513,
+      "params": {
+        "rs": 7
+      }
+    },
+    {
+      "frame": 1001,
+      "params": {
+        "ss": 12,
+        "ps": 14,
+        "rs": 86
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "41b7ebe357e8158fc654f6f159070686664028017f87ba53002bb8a3235fee69",
+  "outputFloats": 2474,
+  "byteLength": 9896,
+  "binary": "case-007.f32"
+}

@@ -1,0 +1,62 @@
+{
+  "formatVersion": 1,
+  "type": "DattorroPlateReverbPlugin",
+  "id": "state-preserving-parameter-events",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 12001,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "pd": 10,
+    "bw": 0.9995,
+    "id1": 0.75,
+    "id2": 0.625,
+    "dc": 0.5,
+    "dd1": 0.7,
+    "dp": 0.0005,
+    "md": 1,
+    "mr": 1,
+    "wm": 30,
+    "dm": 100
+  },
+  "events": [
+    {
+      "frame": 37,
+      "params": {
+        "bw": 0.25,
+        "id1": 0.1,
+        "id2": 0.9,
+        "dc": 0.95
+      }
+    },
+    {
+      "frame": 4099,
+      "params": {
+        "dd1": 0.2,
+        "dp": 0.8,
+        "md": 12,
+        "mr": 7.5
+      }
+    },
+    {
+      "frame": 9001,
+      "params": {
+        "wm": 85,
+        "dm": 20
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "bb119de680bebc08f6386a46611e53ae1f151703d18f094c81b903bf2a42fc38",
+  "outputFloats": 24002,
+  "byteLength": 96008,
+  "binary": "case-007.f32"
+}

@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "DCOffsetPlugin",
+  "id": "fractional-negative-all-channels",
+  "stimulus": "sin1k",
+  "sampleRate": 48000,
+  "channels": 4,
+  "frameCount": 257,
+  "blockSize": 63,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 10,
+  "seed": "0xeffe7a54",
+  "params": {
+    "of": -0.125
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "0a4f4dbed0c34f516ad78ad38876a83807b12fb07b525c83ca7ffa3fa773020f",
+  "outputFloats": 1028,
+  "byteLength": 4112,
+  "binary": "case-011.f32"
+}

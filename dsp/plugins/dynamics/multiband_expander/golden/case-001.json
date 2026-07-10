@@ -1,0 +1,71 @@
+{
+  "formatVersion": 1,
+  "type": "MultibandExpanderPlugin",
+  "id": "default-impulse",
+  "stimulus": "imp",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 1025,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "f1": 100,
+    "f2": 500,
+    "f3": 2000,
+    "f4": 8000,
+    "bands": [
+      {
+        "t": -30,
+        "r": 1.2,
+        "a": 10,
+        "rl": 100,
+        "k": 6,
+        "g": 1
+      },
+      {
+        "t": -16,
+        "r": 1.2,
+        "a": 7.75,
+        "rl": 87.5,
+        "k": 4,
+        "g": 1
+      },
+      {
+        "t": -24,
+        "r": 1.2,
+        "a": 5.5,
+        "rl": 75,
+        "k": 4,
+        "g": 1
+      },
+      {
+        "t": -36,
+        "r": 1.1,
+        "a": 3.25,
+        "rl": 62.5,
+        "k": 3,
+        "g": 1
+      },
+      {
+        "t": -48,
+        "r": 1.1,
+        "a": 1,
+        "rl": 50,
+        "k": 2,
+        "g": 1
+      }
+    ]
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00002,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "92a60afc25892c032df2120d81fc2e8430831c769d9e58cf015fed3e5e82354d",
+  "outputFloats": 2050,
+  "byteLength": 8200,
+  "binary": "case-001.f32"
+}

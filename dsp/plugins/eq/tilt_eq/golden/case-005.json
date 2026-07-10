@@ -1,0 +1,27 @@
+{
+  "formatVersion": 1,
+  "type": "TiltEQPlugin",
+  "id": "positive-mid-pivot",
+  "stimulus": "imp",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 255,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "f0": 6.91,
+    "sl": 6
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "724d9b516ac2e3a882f3e16b7c94dd438eb1acf2dc50017254646beacddc2790",
+  "outputFloats": 510,
+  "byteLength": 2040,
+  "binary": "case-005.f32"
+}

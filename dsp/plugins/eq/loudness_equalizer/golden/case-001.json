@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "type": "LoudnessEqualizerPlugin",
+  "id": "default-impulse",
+  "stimulus": "imp",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 259,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "sp": 65,
+    "lg": 10,
+    "lf": 180,
+    "lq": 0.6,
+    "hq": 0.6,
+    "hg": 0,
+    "hf": 4000
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "0dbeab6da3dab6769e86bdfd61cdff403972a6f2924a3956b24b5993711e73a6",
+  "outputFloats": 518,
+  "byteLength": 2072,
+  "binary": "case-001.f32"
+}

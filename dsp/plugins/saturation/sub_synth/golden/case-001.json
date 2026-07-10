@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "type": "SubSynthPlugin",
+  "id": "default-rectified-sub",
+  "stimulus": "sq50",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 12000,
+  "blockSize": 63,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "sl": 100,
+    "dl": 100,
+    "slf": 160,
+    "sls": -12,
+    "shf": 5,
+    "shs": -6,
+    "dhf": 40,
+    "dhs": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "8436f585dbeb985ffe8bd8da5144bb86fb34001e136d98dc6e21fcab9c9ed3c8",
+  "outputFloats": 24000,
+  "byteLength": 96000,
+  "binary": "case-001.f32"
+}

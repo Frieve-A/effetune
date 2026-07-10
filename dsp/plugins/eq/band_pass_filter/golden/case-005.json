@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "BandPassFilterPlugin",
+  "id": "low-pass-only-maximum",
+  "stimulus": "fs",
+  "sampleRate": 192000,
+  "channels": 4,
+  "frameCount": 129,
+  "blockSize": 31,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "hf": 1000,
+    "lf": 40000,
+    "hs": 0,
+    "ls": -48
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "285ad3d162ea5f56636051d7cfa541756afe5ccb162f1e9551b2d8185cc40030",
+  "outputFloats": 516,
+  "byteLength": 2064,
+  "binary": "case-005.f32"
+}

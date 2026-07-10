@@ -1,0 +1,56 @@
+{
+  "formatVersion": 1,
+  "type": "HardClippingPlugin",
+  "id": "parameter-transitions",
+  "stimulus": "fs",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 259,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 10,
+  "seed": "0xeffe7a54",
+  "params": {
+    "th": -18,
+    "md": "both"
+  },
+  "events": [
+    {
+      "frame": 31,
+      "params": {
+        "th": -6,
+        "md": "positive"
+      }
+    },
+    {
+      "frame": 96,
+      "params": {
+        "th": -30,
+        "md": "negative"
+      }
+    },
+    {
+      "frame": 130,
+      "params": {
+        "th": 0,
+        "md": "both"
+      }
+    },
+    {
+      "frame": 193,
+      "params": {
+        "th": -18,
+        "md": "both"
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "aaec46b70a3abefd1621bddba57d4e5af910b4cc7934bb186784247844e7752a",
+  "outputFloats": 518,
+  "byteLength": 2072,
+  "binary": "case-011.f32"
+}

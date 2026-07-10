@@ -1,3 +1,7 @@
+const LEVEL_METER_TAP_LEVEL = 1;
+const LEVEL_METER_TELEMETRY_VERSION = 1;
+const LEVEL_METER_MAX_TELEMETRY_CHANNELS = 8;
+
 class LevelMeterPlugin extends PluginBase {
     constructor() {
         super('Level Meter', 'Displays audio level with peak hold');
@@ -16,6 +20,10 @@ class LevelMeterPlugin extends PluginBase {
         this.resizeGraphDisposer = null;
         this.graphDpr = 1;
         this.graphCssWidth = 1024;
+        this._dspTelemetryHub = null;
+        this._dspTelemetryTapId = null;
+        this._dspTelemetryUnsubscribe = null;
+        this._boundDspLevelTelemetry = frame => this.handleDspLevelTelemetry(frame);
 
         // Register processor function that measures audio levels over 1/60 second window
         this.registerProcessor(`
@@ -95,6 +103,7 @@ class LevelMeterPlugin extends PluginBase {
 
     // Get current parameters
     getParameters() {
+        this.ensureDspTelemetrySubscription();
         return {
             type: 'LevelMeterPlugin', // Use class name instead of constructor name
             id: this.id,
@@ -115,8 +124,109 @@ class LevelMeterPlugin extends PluginBase {
         return 20 * Math.log10(amplitude < 1e-8 ? 1e-8 : amplitude);
     }
 
+    _setupMessageHandler() {
+        super._setupMessageHandler();
+        this.ensureDspTelemetrySubscription?.();
+    }
+
+    ensureDspTelemetrySubscription() {
+        const hub = window.dspTelemetryHub;
+        const tapId = this.id;
+        const validTapId = Number.isInteger(tapId) && tapId >= 0 && tapId <= 0xffffffff;
+        const validHub = hub && typeof hub.subscribe === 'function';
+
+        if (!validTapId || !validHub) {
+            if (this._dspTelemetryUnsubscribe &&
+                (hub !== this._dspTelemetryHub || tapId !== this._dspTelemetryTapId)) {
+                this.disposeDspTelemetrySubscription();
+            }
+            return false;
+        }
+        if (this._dspTelemetryUnsubscribe &&
+            hub === this._dspTelemetryHub && tapId === this._dspTelemetryTapId) {
+            return true;
+        }
+
+        this.disposeDspTelemetrySubscription();
+        try {
+            const unsubscribe = hub.subscribe(
+                tapId,
+                LEVEL_METER_TAP_LEVEL,
+                this._boundDspLevelTelemetry
+            );
+            if (typeof unsubscribe !== 'function') {
+                hub.unsubscribe?.(tapId, LEVEL_METER_TAP_LEVEL, this._boundDspLevelTelemetry);
+                return false;
+            }
+            this._dspTelemetryHub = hub;
+            this._dspTelemetryTapId = tapId;
+            this._dspTelemetryUnsubscribe = unsubscribe;
+            return true;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    disposeDspTelemetrySubscription() {
+        const unsubscribe = this._dspTelemetryUnsubscribe;
+        this._dspTelemetryHub = null;
+        this._dspTelemetryTapId = null;
+        this._dspTelemetryUnsubscribe = null;
+        if (!unsubscribe) return;
+        try {
+            unsubscribe();
+        } catch (error) {
+            // Ignore stale telemetry subscription cleanup failures.
+        }
+    }
+
+    parseDspLevelTelemetryFrame(frame) {
+        if (frame?.frameType !== LEVEL_METER_TAP_LEVEL ||
+            frame.formatVersion !== LEVEL_METER_TELEMETRY_VERSION) {
+            return null;
+        }
+        const payload = frame.payload;
+        if (!payload || typeof payload.getUint32 !== 'function' ||
+            typeof payload.getFloat32 !== 'function') {
+            return null;
+        }
+        if (!Number.isInteger(payload.byteLength) || payload.byteLength < 8) return null;
+
+        const channelCount = payload.getUint32(0, true);
+        if (channelCount < 1 || channelCount > LEVEL_METER_MAX_TELEMETRY_CHANNELS) return null;
+        const expectedBytes = 8 + channelCount * 8;
+        if (payload.byteLength !== expectedBytes) return null;
+
+        const clipFlags = payload.getUint32(4 + channelCount * 8, true);
+        const validClipMask = (1 << channelCount) - 1;
+        if ((clipFlags & ~validClipMask) !== 0) return null;
+
+        const channels = new Array(channelCount);
+        for (let channel = 0; channel < channelCount; channel++) {
+            const offset = 4 + channel * 8;
+            const peak = payload.getFloat32(offset, true);
+            const rms = payload.getFloat32(offset + 4, true);
+            if (!Number.isFinite(peak) || peak < 0 || !Number.isFinite(rms) || rms < 0) {
+                return null;
+            }
+            channels[channel] = {
+                peak,
+                rms,
+                clipped: (clipFlags & (1 << channel)) !== 0
+            };
+        }
+        return { channels, clipFlags };
+    }
+
+    handleDspLevelTelemetry(frame) {
+        const measurements = this.parseDspLevelTelemetryFrame(frame);
+        if (!measurements) return;
+        this.process({ measurements });
+    }
+
     // Handle messages from audio processor
     onMessage(message) {
+        this.ensureDspTelemetrySubscription();
         if (message.type === 'processBuffer') {
             this.process(message);
         }
@@ -175,13 +285,16 @@ class LevelMeterPlugin extends PluginBase {
         const wasOverloaded = this.ol;
         // Find maximum peak manually instead of using Math.max
         let maxPeak = 0;
+        let clipped = false;
         for (let i = 0; i < message.measurements.channels.length; i++) {
-            const peak = message.measurements.channels[i].peak;
+            const channel = message.measurements.channels[i];
+            const peak = channel.peak;
             if (peak > maxPeak) {
                 maxPeak = peak;
             }
+            if (channel.clipped === true) clipped = true;
         }
-        if (maxPeak > 1.0) {
+        if (clipped || maxPeak > 1.0) {
             this.ol = true;
             this.ot = time;
         } else if (time > this.ot + this.OVERLOAD_DISPLAY_TIME) {
@@ -196,6 +309,7 @@ class LevelMeterPlugin extends PluginBase {
 
     // Create UI elements for the plugin
     createUI() {
+        this.ensureDspTelemetrySubscription();
         this.stopAnimation();
         if (this.observer) {
             this.observer.disconnect();
@@ -331,6 +445,7 @@ class LevelMeterPlugin extends PluginBase {
 
     // Clean up resources when plugin is removed
     cleanup() {
+        this.disposeDspTelemetrySubscription();
         this.stopAnimation();
         if (this.observer) {
             if (this.foregroundCanvas) {

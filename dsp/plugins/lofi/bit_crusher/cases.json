@@ -1,0 +1,65 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 63,
+    "channels": 2,
+    "channelMode": "stereo",
+    "frames": 257,
+    "params": { "bd": 8, "td": false, "zf": 44100, "be": 0, "sd": 11 }
+  },
+  "cases": [
+    { "id": "default-zoh-quantizer", "stimulus": "sweep" },
+    { "id": "minimum-depth-rate-dither", "stimulus": "noise", "sampleRate": 44100, "channels": 4, "channelMode": "all4", "frames": 259, "blockSize": 65, "params": { "bd": 4, "td": true, "zf": 4000, "be": 0, "sd": 0 } },
+    { "id": "maximum-depth-rate-error", "stimulus": "fs", "sampleRate": 192000, "channels": 4, "channelMode": "all4", "frames": 257, "blockSize": 127, "params": { "bd": 24, "td": false, "zf": 96000, "be": 10, "sd": 1000 } },
+    { "id": "mid-depth-dither-ladder", "stimulus": "sin1k", "sampleRate": 96000, "frames": 263, "blockSize": 31, "params": { "bd": 14, "td": true, "zf": 12300, "be": 3.33, "sd": 509 } },
+    { "id": "one-frame-dither-boundaries", "stimulus": "noise", "sampleRate": 192000, "channels": 1, "channelMode": "mono", "frames": 67, "blockSize": 1, "params": { "bd": 4, "td": true, "zf": 4000, "be": 10, "sd": 0 } },
+    {
+      "id": "every-bit-depth",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 97,
+      "blockSize": 17,
+      "params": { "bd": 4, "td": true, "zf": 96000, "be": 10, "sd": 77 },
+      "events": [
+        { "frame": 4, "params": { "bd": 5 } },
+        { "frame": 8, "params": { "bd": 6 } },
+        { "frame": 12, "params": { "bd": 7 } },
+        { "frame": 16, "params": { "bd": 8 } },
+        { "frame": 20, "params": { "bd": 9 } },
+        { "frame": 24, "params": { "bd": 10 } },
+        { "frame": 28, "params": { "bd": 11 } },
+        { "frame": 32, "params": { "bd": 12 } },
+        { "frame": 36, "params": { "bd": 13 } },
+        { "frame": 40, "params": { "bd": 14 } },
+        { "frame": 44, "params": { "bd": 15 } },
+        { "frame": 48, "params": { "bd": 16 } },
+        { "frame": 52, "params": { "bd": 17 } },
+        { "frame": 56, "params": { "bd": 18 } },
+        { "frame": 60, "params": { "bd": 19 } },
+        { "frame": 64, "params": { "bd": 20 } },
+        { "frame": 68, "params": { "bd": 21 } },
+        { "frame": 72, "params": { "bd": 22 } },
+        { "frame": 76, "params": { "bd": 23 } },
+        { "frame": 80, "params": { "bd": 24 } }
+      ]
+    },
+    {
+      "id": "dither-zoh-error-seed-transitions",
+      "stimulus": "fs",
+      "sampleRate": 44100,
+      "channels": 4,
+      "channelMode": "all4",
+      "frames": 521,
+      "blockSize": 127,
+      "params": { "bd": 8, "td": false, "zf": 4000, "be": 0, "sd": 0 },
+      "events": [
+        { "frame": 31, "params": { "td": true } },
+        { "frame": 130, "params": { "bd": 24, "zf": 96000 } },
+        { "frame": 259, "params": { "be": 10, "sd": 1000 } },
+        { "frame": 400, "params": { "bd": 4, "td": false, "zf": 44100, "be": 3.33, "sd": 11 } }
+      ]
+    }
+  ]
+}

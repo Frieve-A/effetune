@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "HumGeneratorPlugin",
+  "id": "phase-continuity-one-frame",
+  "stimulus": "silence",
+  "sampleRate": 96000,
+  "channels": 1,
+  "frameCount": 257,
+  "blockSize": 1,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "fr": 73,
+    "tp": "Rich",
+    "hm": 37,
+    "tn": 7,
+    "in": 4,
+    "lv": -12
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "166f1408c62448bb9fc5bea54cdc15192d8eacb04f807afa302c83b04de132ce",
+  "outputFloats": 257,
+  "byteLength": 1028,
+  "binary": "case-007.f32"
+}

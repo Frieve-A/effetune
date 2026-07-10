@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "MatrixPlugin",
+  "id": "four-channel-mix",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 4,
+  "frameCount": 2048,
+  "blockSize": 128,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "mx": "00102030p0313"
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "e8549976a0668ad5f674a9b6124c7a533c0c82a9b0f0db4c62ba2a6ffeae7ad6",
+  "outputFloats": 8192,
+  "byteLength": 32768,
+  "binary": "case-004.f32"
+}

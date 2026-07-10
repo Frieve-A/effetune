@@ -1,0 +1,36 @@
+{
+  "formatVersion": 1,
+  "type": "DattorroPlateReverbPlugin",
+  "id": "eight-channel-routing",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 8,
+  "frameCount": 12001,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "pd": 0,
+    "bw": 0.9995,
+    "id1": 0.75,
+    "id2": 0.625,
+    "dc": 0.5,
+    "dd1": 0.7,
+    "dp": 0.0005,
+    "md": 1,
+    "mr": 1,
+    "wm": 100,
+    "dm": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "bb119de680bebc08f6386a46611e53ae1f151703d18f094c81b903bf2a42fc38",
+  "outputFloats": 96008,
+  "byteLength": 384032,
+  "binary": "case-005.f32"
+}

@@ -1,0 +1,18 @@
+{
+  "type": "StereoBlendPlugin",
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "fields": [
+    {
+      "name": "stereo",
+      "key": "stereo",
+      "kind": "float",
+      "min": -200,
+      "max": 200,
+      "default": 60,
+      "unit": "%"
+    }
+  ]
+}

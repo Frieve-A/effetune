@@ -1,0 +1,19 @@
+{
+  "type": "FDNReverbPlugin",
+  "tolerance": { "abs": 0.0001, "policy": "per-sample" },
+  "fields": [
+    { "name": "reverbTime", "key": "rt", "kind": "float", "min": 0.2, "max": 10, "default": 1.2, "unit": "s" },
+    { "name": "density", "key": "dt", "kind": "int", "min": 4, "max": 8, "default": 8, "unit": "lines" },
+    { "name": "preDelay", "key": "pd", "kind": "float", "min": 0, "max": 100, "default": 10, "unit": "ms" },
+    { "name": "baseDelay", "key": "bd", "kind": "float", "min": 10, "max": 60, "default": 20, "unit": "ms" },
+    { "name": "delaySpread", "key": "ds", "kind": "float", "min": 0, "max": 25, "default": 5, "unit": "ms" },
+    { "name": "highFrequencyDamp", "key": "hd", "kind": "float", "min": 0, "max": 12, "default": 6, "unit": "dB/s" },
+    { "name": "lowCut", "key": "lc", "kind": "int", "min": 20, "max": 500, "default": 100, "unit": "Hz" },
+    { "name": "modulationDepth", "key": "md", "kind": "float", "min": 0, "max": 10, "default": 3, "unit": "ct" },
+    { "name": "modulationRate", "key": "mr", "kind": "float", "min": 0.1, "max": 5, "default": 0.3, "unit": "Hz" },
+    { "name": "diffusion", "key": "df", "kind": "int", "min": 0, "max": 100, "default": 100, "unit": "%" },
+    { "name": "wetMix", "key": "wm", "kind": "int", "min": 0, "max": 100, "default": 30, "unit": "%" },
+    { "name": "dryMix", "key": "dm", "kind": "int", "min": 0, "max": 100, "default": 100, "unit": "%" },
+    { "name": "stereoWidth", "key": "sw", "kind": "int", "min": 0, "max": 200, "default": 100, "unit": "%" }
+  ]
+}

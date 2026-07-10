@@ -1,0 +1,47 @@
+{
+  "formatVersion": 1,
+  "type": "RSReverbPlugin",
+  "id": "room-size-reset-events",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 18001,
+  "blockSize": 91,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "pd": 10,
+    "rs": 2,
+    "rt": 2.4,
+    "ds": 8,
+    "df": 0.7,
+    "dp": 80,
+    "hd": 2000,
+    "ld": 200,
+    "mx": 100
+  },
+  "events": [
+    {
+      "frame": 5003,
+      "params": {
+        "rs": 7.5
+      }
+    },
+    {
+      "frame": 11009,
+      "params": {
+        "rs": 2
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "dfa7e203c232a3fbb94ef9ab206070e3ef17d9558c1bebf7b42a6b83c0e931c1",
+  "outputFloats": 36002,
+  "byteLength": 144008,
+  "binary": "case-006.f32"
+}

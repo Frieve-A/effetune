@@ -1,0 +1,27 @@
+{
+  "formatVersion": 1,
+  "type": "SpectrumAnalyzerPlugin",
+  "id": "minimum-points-impulse",
+  "stimulus": "imp",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 769,
+  "blockSize": 97,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "dr": -96,
+    "pt": 8
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "20b7e59ee92de56571f250ca850d2bc5dfc3442485a805765e1393af6e652512",
+  "outputFloats": 1538,
+  "byteLength": 6152,
+  "binary": "case-002.f32"
+}

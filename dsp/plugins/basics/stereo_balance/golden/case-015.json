@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "StereoBalancePlugin",
+  "id": "right-bias-all-channels",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 4,
+  "frameCount": 257,
+  "blockSize": 63,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 14,
+  "seed": "0xeffe7a50",
+  "params": {
+    "bl": 0.5
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "2190f867d7a44b4e06d00e0e5e52e2f3a8040876dbc7838ad583e483628bbf21",
+  "outputFloats": 1028,
+  "byteLength": 4112,
+  "binary": "case-015.f32"
+}

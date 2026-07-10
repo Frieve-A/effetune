@@ -222,7 +222,10 @@ export class AudioContextManager {
                         // Notify the worklet about audio config update
                         // (Will be applied after the worklet is created)
                         this._pendingAudioConfig = {
-                            outputChannels: actualChannels
+                            outputChannels: actualChannels,
+                            ...(this.audioContext.sampleRate !== undefined && {
+                                sampleRate: this.audioContext.sampleRate
+                            })
                         };
                     } else {
                         // Default to stereo (2ch)
@@ -235,7 +238,10 @@ export class AudioContextManager {
                             outputChannels: 2
                         });
                         this._pendingAudioConfig = {
-                            outputChannels: 2
+                            outputChannels: 2,
+                            ...(this.audioContext.sampleRate !== undefined && {
+                                sampleRate: this.audioContext.sampleRate
+                            })
                         };
                     }
                 }
@@ -395,7 +401,10 @@ export class AudioContextManager {
             if (this._pendingAudioConfig) {
                 this.workletNode.port.postMessage({
                     type: 'updateAudioConfig',
-                    outputChannels: this._pendingAudioConfig.outputChannels
+                    outputChannels: this._pendingAudioConfig.outputChannels,
+                    ...(this._pendingAudioConfig.sampleRate !== undefined && {
+                        sampleRate: this._pendingAudioConfig.sampleRate
+                    })
                 });
                 this._pendingAudioConfig = null;
             }

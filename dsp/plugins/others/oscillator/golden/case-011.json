@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "type": "OscillatorPlugin",
+  "id": "phase-continuity-odd-blocks",
+  "stimulus": "silence",
+  "sampleRate": 96000,
+  "channels": 1,
+  "frameCount": 257,
+  "blockSize": 63,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 10,
+  "seed": "0xeffe7a54",
+  "params": {
+    "fr": 1234,
+    "vl": -6,
+    "pn": 0,
+    "wf": "triangle",
+    "md": "continuous",
+    "it": 500,
+    "wd": 5
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "9da2eedc277a847830baea81602fcb42dbdc5c06f922e3fd4506919e5f459cb2",
+  "outputFloats": 257,
+  "byteLength": 1028,
+  "binary": "case-011.f32"
+}

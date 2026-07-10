@@ -1,0 +1,30 @@
+{
+  "formatVersion": 1,
+  "type": "ExciterPlugin",
+  "id": "filter-off-maximum-saturation",
+  "stimulus": "fs",
+  "sampleRate": 96000,
+  "channels": 4,
+  "frameCount": 263,
+  "blockSize": 31,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "hf": 10000,
+    "hs": 0,
+    "dr": 10,
+    "bs": 0.3,
+    "mx": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "23e2394eaae09c2efae387880d7fe441f2f6226f75e6c4201215af6703d7c72e",
+  "outputFloats": 1052,
+  "byteLength": 4208,
+  "binary": "case-003.f32"
+}

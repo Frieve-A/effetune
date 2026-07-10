@@ -44,8 +44,11 @@ export class DoubleBlindTest {
 
         this._savedCurrentPipeline = 'A';
         this._switchSeq = 0;             // guards rapid presses' delayed fade-ins
+        this._startSeq = 0;              // guards delayed parallel-readiness completion
         this._mainContainer = null;
         this._savedMainChildren = null;
+        this._parallelInvalidatedHandler = detail => this._handleParallelInvalidated(detail);
+        this.audioManager.addEventListener?.('parallelInvalidated', this._parallelInvalidatedHandler);
 
         this._resetTestState();
     }
@@ -78,6 +81,7 @@ export class DoubleBlindTest {
         this.timeSpent = 0;
         this.restoredFromURI = false;
         this.testRunning = false;
+        this._startPending = false;
         this._activeLabel = null;    // 'A' | 'B' | 'X'
         this._aIsPhysicalA = true;   // does on-screen label A map to physical pipeline A?
         this._xIsA = true;           // does X match on-screen label A?
@@ -197,6 +201,9 @@ export class DoubleBlindTest {
     exit() {
         if (!this.active) return;
         this.active = false;
+        this.testRunning = false;
+        this._startPending = false;
+        this._startSeq++;
 
         if (this._keydownHandler) {
             document.removeEventListener('keydown', this._keydownHandler);
@@ -204,8 +211,7 @@ export class DoubleBlindTest {
         }
 
         // Tear down the parallel pipelines and make sure output is audible again.
-        try { this.audioManager.disableParallelPipelines(); } catch (_) { /* ignore */ }
-        try { this.audioManager.fadeInOutput(FADE_SECONDS); } catch (_) { /* ignore */ }
+        this._teardownParallelPipelines();
 
         this._removePanel();
         this._applyGating(false);
@@ -218,6 +224,30 @@ export class DoubleBlindTest {
         } catch (_) { /* ignore */ }
 
         this._refreshNativeMenu();
+    }
+
+    _teardownParallelPipelines(options = {}) {
+        let teardown;
+        try {
+            teardown = this.audioManager.disableParallelPipelines(options);
+        } catch (_) {
+            teardown = false;
+        }
+        void Promise.resolve(teardown)
+            .catch(() => false);
+    }
+
+    _handleParallelInvalidated(detail = {}) {
+        if (!this.active || (!this.testRunning && !this._startPending)) return;
+        this._startSeq++;
+        this._switchSeq++;
+        this._startPending = false;
+        this.testRunning = false;
+        this._activeLabel = null;
+        this._teardownParallelPipelines({ restorePrimaryDsp: detail.restorePrimaryDsp !== false });
+        this._showConfigScreen();
+        this.updateTexts();
+        this._updateStartAvailability();
     }
 
     _applyGating(on) {
@@ -752,7 +782,7 @@ export class DoubleBlindTest {
     //  Test flow                                                            //
     // ===================================================================== //
 
-    _startTest(type) {
+    async _startTest(type) {
         // Both pipelines are required to run a test (Pipeline B may be missing
         // when the panel is opened just to recall a saved test).
         if (!DoubleBlindTest.abValid(this.audioManager)) {
@@ -773,10 +803,12 @@ export class DoubleBlindTest {
         this.correctCount = 0;
         this.totalCount = 0;
         this.prefACount = 0;
-        this.startTime = Date.now();
+        this.startTime = 0;
         this.timeSpent = 0;
         this.restoredFromURI = false;
         this.testRunning = true;
+        this._startPending = true;
+        const startSeq = ++this._startSeq;
 
         this.els.result.classList.add('hidden');
         this._showTestScreen();
@@ -784,9 +816,23 @@ export class DoubleBlindTest {
 
         // Run both pipelines in parallel for the duration of the test so that
         // switching is a glitch-free, constant-CPU cross-fade.
-        Promise.resolve(this.audioManager.enableParallelPipelines('A')).catch((err) =>
-            console.warn('[DoubleBlindTest] Failed to enable parallel pipelines:', err));
+        let parallelReady = false;
+        try {
+            parallelReady = await this.audioManager.enableParallelPipelines('A');
+        } catch (err) {
+            console.warn('[DoubleBlindTest] Failed to enable parallel pipelines:', err);
+        }
+        if (startSeq !== this._startSeq || !this.active || !this.testRunning) return;
+        this._startPending = false;
+        if (!parallelReady) {
+            this.testRunning = false;
+            this._showConfigScreen();
+            this.updateTexts();
+            this._updateStartAvailability();
+            return;
+        }
 
+        this.startTime = Date.now();
         this._nextTrial();
     }
 
@@ -827,7 +873,7 @@ export class DoubleBlindTest {
      * name or normal browser/OS shortcuts.
      */
     _onKeyDown(e) {
-        if (!this.active || !this.testRunning) return;
+        if (!this.active || !this.testRunning || this._startPending) return;
         if (e.ctrlKey || e.metaKey || e.altKey) return;
         if (e.repeat) return;
 
@@ -861,7 +907,7 @@ export class DoubleBlindTest {
     }
 
     _switchToLabel(label) {
-        if (!this.testRunning) return;
+        if (!this.testRunning || this._startPending) return;
         if (label === 'X' && this.testType !== 'ABX') return;
 
         this._activeLabel = label;
@@ -876,11 +922,12 @@ export class DoubleBlindTest {
         // selected branch is already in steady state (no dynamics/CPU tell).
         const seq = ++this._switchSeq;
         const am = this.audioManager;
-        try { am.fadeOutOutput(DIP_FADE); } catch (_) { /* ignore */ }
+        let fadeToken = null;
+        try { fadeToken = am.fadeOutOutput(DIP_FADE); } catch (_) { /* ignore */ }
         am.setBlindSelection(this._physicalFor(label), DIP_FADE);
         setTimeout(() => {
             if (seq !== this._switchSeq || !this.active || !this.testRunning) return;
-            try { am.fadeInOutput(DIP_FADE); } catch (_) { /* ignore */ }
+            try { am.fadeInOutputForToken(fadeToken, DIP_FADE); } catch (_) { /* ignore */ }
         }, DIP_MS);
     }
 
@@ -891,7 +938,7 @@ export class DoubleBlindTest {
     }
 
     _vote(label) {
-        if (!this.testRunning) return;
+        if (!this.testRunning || this._startPending) return;
 
         if (this.testType === 'ABX') {
             // Correct when the chosen label matches the label X was assigned to.
@@ -906,14 +953,15 @@ export class DoubleBlindTest {
     }
 
     _finishTest() {
+        this._startSeq++;
+        this._startPending = false;
         this.timeSpent = this.startTime ? (Date.now() - this.startTime) : this.timeSpent;
         this.testRunning = false;
         this.name = this.localName || this.t('dbt.anonymous');
         // Stop the parallel pipelines now that switching is over, and make sure
         // the master output is restored (a switch dip may have been in progress).
         this._switchSeq++;
-        try { this.audioManager.disableParallelPipelines(); } catch (_) { /* ignore */ }
-        try { this.audioManager.fadeInOutput(FADE_SECONDS); } catch (_) { /* ignore */ }
+        this._teardownParallelPipelines();
         this._showConfigScreen();
         this._displayResult();
     }

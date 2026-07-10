@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "type": "SubSynthPlugin",
+  "id": "minimum-frequency-mixed-slopes",
+  "stimulus": "step",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 1001,
+  "blockSize": 65,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "sl": 200,
+    "dl": 200,
+    "slf": 5,
+    "sls": -18,
+    "shf": 5,
+    "shs": -12,
+    "dhf": 5,
+    "dhs": -6
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "8436f585dbeb985ffe8bd8da5144bb86fb34001e136d98dc6e21fcab9c9ed3c8",
+  "outputFloats": 2002,
+  "byteLength": 8008,
+  "binary": "case-005.f32"
+}

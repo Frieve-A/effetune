@@ -1,0 +1,90 @@
+{
+  "formatVersion": 1,
+  "type": "SubSynthPlugin",
+  "id": "every-slope-with-state-rebuilds",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 4,
+  "frameCount": 521,
+  "blockSize": 64,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 8,
+  "seed": "0xeffe7a56",
+  "params": {
+    "sl": 100,
+    "dl": 100,
+    "slf": 160,
+    "sls": 0,
+    "shf": 5,
+    "shs": 0,
+    "dhf": 40,
+    "dhs": 0
+  },
+  "events": [
+    {
+      "frame": 31,
+      "params": {
+        "sls": -6,
+        "shs": -6,
+        "dhs": -6
+      }
+    },
+    {
+      "frame": 97,
+      "params": {
+        "sls": 0,
+        "shs": 0,
+        "dhs": 0
+      }
+    },
+    {
+      "frame": 155,
+      "params": {
+        "sls": -12,
+        "shs": -12,
+        "dhs": -12
+      }
+    },
+    {
+      "frame": 223,
+      "params": {
+        "sls": 0,
+        "shs": 0,
+        "dhs": 0
+      }
+    },
+    {
+      "frame": 301,
+      "params": {
+        "sls": -18,
+        "shs": -18,
+        "dhs": -18
+      }
+    },
+    {
+      "frame": 379,
+      "params": {
+        "sls": 0,
+        "shs": 0,
+        "dhs": 0
+      }
+    },
+    {
+      "frame": 435,
+      "params": {
+        "sls": -24,
+        "shs": -24,
+        "dhs": -24
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "8436f585dbeb985ffe8bd8da5144bb86fb34001e136d98dc6e21fcab9c9ed3c8",
+  "outputFloats": 2084,
+  "byteLength": 8336,
+  "binary": "case-009.f32"
+}

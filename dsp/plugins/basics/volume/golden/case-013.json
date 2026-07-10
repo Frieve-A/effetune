@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "VolumePlugin",
+  "id": "maximum-stereo",
+  "stimulus": "fs",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 2048,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 12,
+  "seed": "0xeffe7a52",
+  "params": {
+    "vl": 24
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "e9fd5d0ac08f7fbb249cfb88ee4d75949c61a67c071c2b4c0512e32956c8f458",
+  "outputFloats": 4096,
+  "byteLength": 16384,
+  "binary": "case-013.f32"
+}

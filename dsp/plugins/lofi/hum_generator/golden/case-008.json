@@ -1,0 +1,60 @@
+{
+  "formatVersion": 1,
+  "type": "HumGeneratorPlugin",
+  "id": "type-and-control-transitions",
+  "stimulus": "sin1k",
+  "sampleRate": 96000,
+  "channels": 4,
+  "frameCount": 1001,
+  "blockSize": 64,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "fr": 10,
+    "tp": "Standard",
+    "hm": 0,
+    "tn": 1,
+    "in": 0,
+    "lv": -80
+  },
+  "events": [
+    {
+      "frame": 31,
+      "params": {
+        "fr": 120,
+        "tp": "Rich",
+        "hm": 100
+      }
+    },
+    {
+      "frame": 321,
+      "params": {
+        "tp": "Dirty",
+        "tn": 20,
+        "in": 10,
+        "lv": 0
+      }
+    },
+    {
+      "frame": 700,
+      "params": {
+        "fr": 50,
+        "tp": "Standard",
+        "hm": 50,
+        "tn": 10,
+        "in": 1,
+        "lv": -40
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "166f1408c62448bb9fc5bea54cdc15192d8eacb04f807afa302c83b04de132ce",
+  "outputFloats": 4004,
+  "byteLength": 16016,
+  "binary": "case-008.f32"
+}

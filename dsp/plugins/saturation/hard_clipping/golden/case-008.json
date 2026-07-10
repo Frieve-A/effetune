@@ -1,0 +1,27 @@
+{
+  "formatVersion": 1,
+  "type": "HardClippingPlugin",
+  "id": "all-channels-odd-tail",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 4,
+  "frameCount": 131,
+  "blockSize": 32,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "th": -24,
+    "md": "both"
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "aaec46b70a3abefd1621bddba57d4e5af910b4cc7934bb186784247844e7752a",
+  "outputFloats": 524,
+  "byteLength": 2096,
+  "binary": "case-008.f32"
+}

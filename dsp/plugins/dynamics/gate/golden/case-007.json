@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "GatePlugin",
+  "id": "all4-192000",
+  "stimulus": "noise",
+  "sampleRate": 192000,
+  "channels": 4,
+  "frameCount": 1301,
+  "blockSize": 127,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "th": -72,
+    "rt": 80,
+    "at": 0.25,
+    "rl": 1600,
+    "kn": 0.5,
+    "gn": 9
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "f3395732572e52ee3b8311ebbf26c93d951b6bd6af3a6f3357caa2811be5897a",
+  "outputFloats": 5204,
+  "byteLength": 20816,
+  "binary": "case-007.f32"
+}

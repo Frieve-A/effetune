@@ -1,0 +1,54 @@
+{
+  "formatVersion": 1,
+  "type": "TiltEQPlugin",
+  "id": "freeze-and-coefficient-transitions",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 4,
+  "frameCount": 259,
+  "blockSize": 64,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "f0": 5,
+    "sl": -8
+  },
+  "events": [
+    {
+      "frame": 17,
+      "params": {
+        "sl": 0
+      }
+    },
+    {
+      "frame": 66,
+      "params": {
+        "f0": 9,
+        "sl": 0.009
+      }
+    },
+    {
+      "frame": 129,
+      "params": {
+        "sl": 8
+      }
+    },
+    {
+      "frame": 194,
+      "params": {
+        "f0": 3,
+        "sl": -12
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "724d9b516ac2e3a882f3e16b7c94dd438eb1acf2dc50017254646beacddc2790",
+  "outputFloats": 1036,
+  "byteLength": 4144,
+  "binary": "case-008.f32"
+}

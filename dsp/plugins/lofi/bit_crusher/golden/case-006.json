@@ -1,0 +1,151 @@
+{
+  "formatVersion": 1,
+  "type": "BitCrusherPlugin",
+  "id": "every-bit-depth",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 1,
+  "frameCount": 97,
+  "blockSize": 17,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "bd": 4,
+    "td": true,
+    "zf": 96000,
+    "be": 10,
+    "sd": 77
+  },
+  "events": [
+    {
+      "frame": 4,
+      "params": {
+        "bd": 5
+      }
+    },
+    {
+      "frame": 8,
+      "params": {
+        "bd": 6
+      }
+    },
+    {
+      "frame": 12,
+      "params": {
+        "bd": 7
+      }
+    },
+    {
+      "frame": 16,
+      "params": {
+        "bd": 8
+      }
+    },
+    {
+      "frame": 20,
+      "params": {
+        "bd": 9
+      }
+    },
+    {
+      "frame": 24,
+      "params": {
+        "bd": 10
+      }
+    },
+    {
+      "frame": 28,
+      "params": {
+        "bd": 11
+      }
+    },
+    {
+      "frame": 32,
+      "params": {
+        "bd": 12
+      }
+    },
+    {
+      "frame": 36,
+      "params": {
+        "bd": 13
+      }
+    },
+    {
+      "frame": 40,
+      "params": {
+        "bd": 14
+      }
+    },
+    {
+      "frame": 44,
+      "params": {
+        "bd": 15
+      }
+    },
+    {
+      "frame": 48,
+      "params": {
+        "bd": 16
+      }
+    },
+    {
+      "frame": 52,
+      "params": {
+        "bd": 17
+      }
+    },
+    {
+      "frame": 56,
+      "params": {
+        "bd": 18
+      }
+    },
+    {
+      "frame": 60,
+      "params": {
+        "bd": 19
+      }
+    },
+    {
+      "frame": 64,
+      "params": {
+        "bd": 20
+      }
+    },
+    {
+      "frame": 68,
+      "params": {
+        "bd": 21
+      }
+    },
+    {
+      "frame": 72,
+      "params": {
+        "bd": 22
+      }
+    },
+    {
+      "frame": 76,
+      "params": {
+        "bd": 23
+      }
+    },
+    {
+      "frame": 80,
+      "params": {
+        "bd": 24
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "3b195a5a241df26f51b7d75b422c3dd80b3cec6df6029342c228769fb516f7a3",
+  "outputFloats": 97,
+  "byteLength": 388,
+  "binary": "case-006.f32"
+}

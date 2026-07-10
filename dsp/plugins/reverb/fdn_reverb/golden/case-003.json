@@ -1,0 +1,38 @@
+{
+  "formatVersion": 1,
+  "type": "FDNReverbPlugin",
+  "id": "maximum-controls-192000",
+  "stimulus": "noise",
+  "sampleRate": 192000,
+  "channels": 2,
+  "frameCount": 40001,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "rt": 10,
+    "dt": 8,
+    "pd": 100,
+    "bd": 60,
+    "ds": 25,
+    "hd": 12,
+    "lc": 500,
+    "md": 10,
+    "mr": 5,
+    "df": 100,
+    "wm": 100,
+    "dm": 100,
+    "sw": 200
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "1fb216d4d85041102b275b9621e435bdfa586c448be0fcf8f954a8117826252d",
+  "outputFloats": 80002,
+  "byteLength": 320008,
+  "binary": "case-003.f32"
+}

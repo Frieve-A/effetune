@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "type": "LoudnessEqualizerPlugin",
+  "id": "high-shelf-only",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 197,
+  "blockSize": 63,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "sp": 70,
+    "lg": 0,
+    "lf": 180,
+    "lq": 0.6,
+    "hq": 0.85,
+    "hg": 13.5,
+    "hf": 5100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "0dbeab6da3dab6769e86bdfd61cdff403972a6f2924a3956b24b5993711e73a6",
+  "outputFloats": 394,
+  "byteLength": 1576,
+  "binary": "case-006.f32"
+}

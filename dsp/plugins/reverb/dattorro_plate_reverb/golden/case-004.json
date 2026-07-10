@@ -1,0 +1,36 @@
+{
+  "formatVersion": 1,
+  "type": "DattorroPlateReverbPlugin",
+  "id": "mono-wet-96000",
+  "stimulus": "imp",
+  "sampleRate": 96000,
+  "channels": 1,
+  "frameCount": 18001,
+  "blockSize": 97,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "pd": 0,
+    "bw": 0.9995,
+    "id1": 0.75,
+    "id2": 0.625,
+    "dc": 0.5,
+    "dd1": 0.7,
+    "dp": 0.0005,
+    "md": 1,
+    "mr": 1,
+    "wm": 100,
+    "dm": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "bb119de680bebc08f6386a46611e53ae1f151703d18f094c81b903bf2a42fc38",
+  "outputFloats": 18001,
+  "byteLength": 72004,
+  "binary": "case-004.f32"
+}

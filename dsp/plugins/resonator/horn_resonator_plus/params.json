@@ -1,0 +1,14 @@
+{
+  "type": "HornResonatorPlusPlugin",
+  "tolerance": { "abs": 0.0001, "policy": "per-sample" },
+  "fields": [
+    { "name": "crossover", "key": "co", "kind": "float", "min": 20, "max": 5000, "default": 600, "unit": "Hz" },
+    { "name": "length", "key": "ln", "kind": "float", "min": 20, "max": 120, "default": 70, "unit": "cm" },
+    { "name": "throatDiameter", "key": "th", "kind": "float", "min": 0.5, "max": 50, "default": 3, "unit": "cm" },
+    { "name": "mouthDiameter", "key": "mo", "kind": "float", "min": 5, "max": 200, "default": 60, "unit": "cm" },
+    { "name": "curve", "key": "cv", "kind": "float", "min": -100, "max": 100, "default": 40, "unit": "%" },
+    { "name": "damping", "key": "dp", "kind": "float", "min": 0, "max": 10, "default": 0.03, "unit": "dB/m" },
+    { "name": "throatReflection", "key": "tr", "kind": "float", "min": 0, "max": 0.99, "default": 0.99 },
+    { "name": "waveguideGain", "key": "wg", "kind": "float", "min": -36, "max": 36, "default": 30, "unit": "dB" }
+  ]
+}

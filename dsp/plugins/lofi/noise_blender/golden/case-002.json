@@ -1,0 +1,28 @@
+{
+  "formatVersion": 1,
+  "type": "NoiseBlenderPlugin",
+  "id": "white-shared-maximum",
+  "stimulus": "sin1k",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 259,
+  "blockSize": 65,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "nt": "white",
+    "lv": 0,
+    "pc": false
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "13f074fcdd04e744e76a47be12f14d87fc8f05643b6d5f1c1a5a1bfb0a5113cd",
+  "outputFloats": 259,
+  "byteLength": 1036,
+  "binary": "case-002.f32"
+}

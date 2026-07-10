@@ -1,3 +1,8 @@
+const DSD64_IMD_TAP_FRAME = 11;
+const DSD64_IMD_TELEMETRY_VERSION = 1;
+const DSD64_IMD_TELEMETRY_PAYLOAD_BYTES = 32;
+const DSD64_IMD_TELEMETRY_VALID = 1;
+
 class DSD64IMDSimulatorPlugin extends PluginBase {
     constructor() {
         super('DSD64 IMD Simulator', 'Simulates audible intermodulation distortion caused by DSD64 ultrasonic noise (requires 88.2 kHz or higher)');
@@ -20,6 +25,12 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         this.errorState = null;            // warning message when not running at 96 kHz
         this.meterLevels = { add: -140, att: -140, cross: -140, tot: -140, out: -140 };
         this.animationFrameId = null;
+        this._dspTelemetryHub = null;
+        this._dspTelemetryTapId = null;
+        this._dspTelemetryUnsubscribe = null;
+        this._boundDspImdTelemetry = frame => this.handleDspImdTelemetry(frame);
+
+        this._setupMessageHandler();
 
         this.registerProcessor(`
             // ===================== Constants =====================
@@ -407,6 +418,7 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
 
     // ===================== Parameter management =====================
     getParameters() {
+        this.ensureDspTelemetrySubscription();
         return {
             type: this.constructor.name,
             enabled: this.enabled,
@@ -514,7 +526,112 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
     setOt(v) { this.setParameters({ ot: v }); }
 
     // ===================== Messaging (warning + meters) =====================
+    _setupMessageHandler() {
+        super._setupMessageHandler();
+        this.ensureDspTelemetrySubscription?.();
+    }
+
+    ensureDspTelemetrySubscription() {
+        const hub = window.dspTelemetryHub;
+        const tapId = this.id;
+        const validTapId = Number.isInteger(tapId) && tapId >= 0 && tapId <= 0xffffffff;
+        const validHub = hub && typeof hub.subscribe === 'function';
+
+        if (!validTapId || !validHub) {
+            if (this._dspTelemetryUnsubscribe &&
+                (hub !== this._dspTelemetryHub || tapId !== this._dspTelemetryTapId)) {
+                this.disposeDspTelemetrySubscription();
+            }
+            return false;
+        }
+        if (this._dspTelemetryUnsubscribe &&
+            hub === this._dspTelemetryHub && tapId === this._dspTelemetryTapId) {
+            return true;
+        }
+
+        this.disposeDspTelemetrySubscription();
+        try {
+            const unsubscribe = hub.subscribe(
+                tapId,
+                DSD64_IMD_TAP_FRAME,
+                this._boundDspImdTelemetry
+            );
+            if (typeof unsubscribe !== 'function') {
+                hub.unsubscribe?.(
+                    tapId,
+                    DSD64_IMD_TAP_FRAME,
+                    this._boundDspImdTelemetry
+                );
+                return false;
+            }
+            this._dspTelemetryHub = hub;
+            this._dspTelemetryTapId = tapId;
+            this._dspTelemetryUnsubscribe = unsubscribe;
+            return true;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    disposeDspTelemetrySubscription() {
+        const unsubscribe = this._dspTelemetryUnsubscribe;
+        this._dspTelemetryHub = null;
+        this._dspTelemetryTapId = null;
+        this._dspTelemetryUnsubscribe = null;
+        if (!unsubscribe) return;
+        try {
+            unsubscribe();
+        } catch (error) {
+            // Ignore stale telemetry subscription cleanup failures.
+        }
+    }
+
+    parseDspImdTelemetryFrame(frame) {
+        if (frame?.frameType !== DSD64_IMD_TAP_FRAME ||
+            frame.formatVersion !== DSD64_IMD_TELEMETRY_VERSION) {
+            return null;
+        }
+        const payload = frame.payload;
+        if (!payload || typeof payload.getUint32 !== 'function' ||
+            typeof payload.getFloat32 !== 'function' ||
+            payload.byteLength !== DSD64_IMD_TELEMETRY_PAYLOAD_BYTES) {
+            return null;
+        }
+
+        const channels = payload.getUint32(0, true);
+        const sampleRate = payload.getFloat32(4, true);
+        const flags = payload.getUint32(8, true);
+        const add = payload.getFloat32(12, true);
+        const att = payload.getFloat32(16, true);
+        const cross = payload.getFloat32(20, true);
+        const tot = payload.getFloat32(24, true);
+        const out = payload.getFloat32(28, true);
+        if (channels < 1 || channels > 8 || !Number.isFinite(sampleRate) || sampleRate <= 0 ||
+            (flags & ~DSD64_IMD_TELEMETRY_VALID) !== 0 ||
+            !Number.isFinite(add) || !Number.isFinite(att) ||
+            !Number.isFinite(cross) || !Number.isFinite(tot) || !Number.isFinite(out)) {
+            return null;
+        }
+        const valid = (flags & DSD64_IMD_TELEMETRY_VALID) !== 0;
+        if (valid && sampleRate < 88200) return null;
+
+        const measurements = { channels, sampleRate };
+        if (valid) measurements.meters = { add, att, cross, tot, out };
+        return measurements;
+    }
+
+    handleDspImdTelemetry(frame) {
+        const measurements = this.parseDspImdTelemetryFrame(frame);
+        if (!measurements) return;
+        this.onMessage({
+            type: 'processBuffer',
+            pluginId: this.id,
+            measurements
+        });
+    }
+
     onMessage(message) {
+        this.ensureDspTelemetrySubscription();
         if (message.type === 'processBuffer' && message.pluginId === this.id && message.measurements) {
             const m = message.measurements;
             // Sample-rate warning (mirrors the multichannel-mode warning style).
@@ -545,6 +662,7 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
 
     // ===================== UI =====================
     createUI() {
+        this.ensureDspTelemetrySubscription();
         const c = document.createElement('div');
         c.className = 'dsd64-imd-plugin-ui plugin-parameter-ui';
 
@@ -928,6 +1046,7 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
     }
 
     cleanup() {
+        this.disposeDspTelemetrySubscription();
         this.stopAnimation();
         this.graphDisposers?.forEach(dispose => dispose());
         this.graphDisposers = null;

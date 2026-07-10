@@ -1,0 +1,59 @@
+{
+  "formatVersion": 1,
+  "type": "SubSynthPlugin",
+  "id": "level-and-frequency-state-preserving-transitions",
+  "stimulus": "sq50",
+  "sampleRate": 96000,
+  "channels": 4,
+  "frameCount": 1001,
+  "blockSize": 64,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 9,
+  "seed": "0xeffe7a57",
+  "params": {
+    "sl": 0,
+    "dl": 0,
+    "slf": 5,
+    "sls": -12,
+    "shf": 5,
+    "shs": -6,
+    "dhf": 5,
+    "dhs": -18
+  },
+  "events": [
+    {
+      "frame": 31,
+      "params": {
+        "sl": 200,
+        "dl": 200
+      }
+    },
+    {
+      "frame": 321,
+      "params": {
+        "slf": 400,
+        "shf": 400,
+        "dhf": 400
+      }
+    },
+    {
+      "frame": 700,
+      "params": {
+        "sl": 100,
+        "dl": 100,
+        "slf": 160,
+        "shf": 5,
+        "dhf": 40
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "8436f585dbeb985ffe8bd8da5144bb86fb34001e136d98dc6e21fcab9c9ed3c8",
+  "outputFloats": 4004,
+  "byteLength": 16016,
+  "binary": "case-010.f32"
+}

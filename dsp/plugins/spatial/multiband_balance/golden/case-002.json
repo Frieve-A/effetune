@@ -1,0 +1,46 @@
+{
+  "formatVersion": 1,
+  "type": "MultibandBalancePlugin",
+  "id": "alternating-hard-balance",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 4201,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "f1": 100,
+    "f2": 500,
+    "f3": 2000,
+    "f4": 8000,
+    "bands": [
+      {
+        "balance": -100
+      },
+      {
+        "balance": 100
+      },
+      {
+        "balance": -100
+      },
+      {
+        "balance": 100
+      },
+      {
+        "balance": -100
+      }
+    ]
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00002,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "b50536f566a81ab4ba291f0b5e78e797960579d0ed164d4a5490dc678ae1cfea",
+  "outputFloats": 8402,
+  "byteLength": 33608,
+  "binary": "case-002.f32"
+}

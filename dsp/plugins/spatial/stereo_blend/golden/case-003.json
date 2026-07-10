@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "StereoBlendPlugin",
+  "id": "mono-bypass",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 1,
+  "frameCount": 127,
+  "blockSize": 32,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "stereo": 200
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "e46aa5dc32dd3605bf560c5296e7d35001a71df1b648a7ba0eaaf19870d00007",
+  "outputFloats": 127,
+  "byteLength": 508,
+  "binary": "case-003.f32"
+}

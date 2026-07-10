@@ -1,0 +1,37 @@
+{
+  "formatVersion": 1,
+  "type": "DSD64IMDSimulatorPlugin",
+  "id": "maximum-controls-four-channel",
+  "stimulus": "noise",
+  "sampleRate": 192000,
+  "channels": 4,
+  "frameCount": 263,
+  "blockSize": 127,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "am": 50,
+    "dw": 100,
+    "ul": -18,
+    "nc": 100,
+    "an": 10,
+    "eb": 100,
+    "sc": 200,
+    "st": 14,
+    "nt": 100,
+    "cs": 100,
+    "hf": 8,
+    "ot": 12
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "c28ddc873d8e8dba67c03bcbcf99dd6bc7f1761ce6c15e5e7fc2dfdd7e5ca0d1",
+  "outputFloats": 1052,
+  "byteLength": 4208,
+  "binary": "case-004.f32"
+}

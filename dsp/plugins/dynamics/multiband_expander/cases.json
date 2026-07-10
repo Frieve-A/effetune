@@ -1,0 +1,86 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 64,
+    "channels": 2,
+    "channelMode": "stereo"
+  },
+  "cases": [
+    { "id": "default-impulse", "stimulus": "imp", "frames": 1025 },
+    { "id": "startup-seeds-silence", "stimulus": "silence", "sampleRate": 44100, "blockSize": 63, "frames": 131 },
+    {
+      "id": "maximum-downward-expansion",
+      "stimulus": "step",
+      "frames": 1033,
+      "params": {
+        "bands": [
+          { "t": 0, "r": 20, "a": 0.1, "rl": 10, "k": 0, "g": -12 },
+          { "t": 0, "r": 20, "a": 0.1, "rl": 10, "k": 0, "g": -12 },
+          { "t": 0, "r": 20, "a": 0.1, "rl": 10, "k": 0, "g": -12 },
+          { "t": 0, "r": 20, "a": 0.1, "rl": 10, "k": 0, "g": -12 },
+          { "t": 0, "r": 20, "a": 0.1, "rl": 10, "k": 0, "g": -12 }
+        ]
+      }
+    },
+    {
+      "id": "minimum-ratio-soft-knee",
+      "stimulus": "noise",
+      "frames": 901,
+      "params": {
+        "bands": [
+          { "t": -60, "r": 0.05, "a": 100, "rl": 1000, "k": 12, "g": 12 },
+          { "t": -60, "r": 0.05, "a": 100, "rl": 1000, "k": 12, "g": 12 },
+          { "t": -60, "r": 0.05, "a": 100, "rl": 1000, "k": 12, "g": 12 },
+          { "t": -60, "r": 0.05, "a": 100, "rl": 1000, "k": 12, "g": 12 },
+          { "t": -60, "r": 0.05, "a": 100, "rl": 1000, "k": 12, "g": 12 }
+        ]
+      }
+    },
+    { "id": "mono-odd-block", "stimulus": "sq50", "sampleRate": 44100, "blockSize": 83, "channels": 1, "channelMode": "mono", "frames": 997 },
+    { "id": "all4-192000", "stimulus": "noise", "sampleRate": 192000, "blockSize": 127, "channels": 4, "channelMode": "all4", "channel": "A", "frames": 1301, "params": { "f1": 500, "f2": 2000, "f3": 8000, "f4": 20000 } },
+    {
+      "id": "crossover-transitions-preserve-envelope",
+      "stimulus": "noise",
+      "frames": 1237,
+      "events": [
+        { "frame": 31, "params": { "f1": 180 } },
+        { "frame": 128, "params": { "f2": 900, "f3": 3200 } },
+        { "frame": 513, "params": { "f1": 80, "f2": 600, "f3": 2400, "f4": 9000 } },
+        { "frame": 1001, "params": { "f4": 12000 } }
+      ]
+    },
+    {
+      "id": "object-band-transitions",
+      "stimulus": "noise",
+      "blockSize": 127,
+      "frames": 1151,
+      "events": [
+        {
+          "frame": 17,
+          "params": {
+            "bands": [
+              { "t": -12, "r": 8, "a": 0.1, "rl": 10, "k": 0, "g": 3 },
+              { "t": -16, "r": 1.2, "a": 7.75, "rl": 87.5, "k": 4, "g": 1 },
+              { "t": -24, "r": 1.2, "a": 5.5, "rl": 75, "k": 4, "g": 1 },
+              { "t": -36, "r": 1.1, "a": 3.25, "rl": 62.5, "k": 3, "g": 1 },
+              { "t": -48, "r": 1.1, "a": 1, "rl": 50, "k": 2, "g": 1 }
+            ]
+          }
+        },
+        {
+          "frame": 641,
+          "params": {
+            "bands": [
+              { "t": -50, "r": 0.05, "a": 100, "rl": 1000, "k": 12, "g": -6 },
+              { "t": -20, "r": 1, "a": 0.1, "rl": 10, "k": 0, "g": 12 },
+              { "t": -30, "r": 20, "a": 3, "rl": 400, "k": 8, "g": 0 },
+              { "t": -40, "r": 4, "a": 50, "rl": 900, "k": 6, "g": 6 },
+              { "t": -60, "r": 12, "a": 1, "rl": 50, "k": 1, "g": -12 }
+            ]
+          }
+        }
+      ]
+    },
+    { "id": "one-frame-blocks", "stimulus": "noise", "sampleRate": 96000, "blockSize": 1, "channels": 1, "channelMode": "mono", "frames": 97 }
+  ]
+}

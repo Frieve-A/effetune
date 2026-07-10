@@ -1,0 +1,34 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 63,
+    "channels": 2,
+    "channelMode": "stereo",
+    "frames": 1001,
+    "params": { "fr": 50, "tp": "Standard", "hm": 50, "tn": 10, "in": 1, "lv": -40 }
+  },
+  "cases": [
+    { "id": "default-standard-silence", "stimulus": "silence" },
+    { "id": "generator-input-independence", "stimulus": "fs" },
+    { "id": "rich-minimum-controls", "stimulus": "silence", "sampleRate": 44100, "channels": 1, "channelMode": "mono", "frames": 1003, "blockSize": 65, "params": { "fr": 10, "tp": "Rich", "hm": 0, "tn": 1, "in": 0, "lv": -80 } },
+    { "id": "dirty-maximum-controls", "stimulus": "noise", "sampleRate": 192000, "channels": 4, "channelMode": "all4", "frames": 259, "blockSize": 127, "params": { "fr": 120, "tp": "Dirty", "hm": 100, "tn": 20, "in": 10, "lv": 0 } },
+    { "id": "standard-comb-history", "stimulus": "silence", "sampleRate": 44100, "channels": 4, "channelMode": "all4", "frames": 521, "blockSize": 127, "params": { "fr": 120, "tp": "Standard", "hm": 100, "tn": 20, "in": 10, "lv": 0 } },
+    { "id": "phase-continuity-odd-blocks", "stimulus": "silence", "sampleRate": 96000, "channels": 1, "channelMode": "mono", "frames": 257, "blockSize": 63, "params": { "fr": 73, "tp": "Rich", "hm": 37, "tn": 7, "in": 4, "lv": -12 } },
+    { "id": "phase-continuity-one-frame", "stimulus": "silence", "sampleRate": 96000, "channels": 1, "channelMode": "mono", "frames": 257, "blockSize": 1, "params": { "fr": 73, "tp": "Rich", "hm": 37, "tn": 7, "in": 4, "lv": -12 } },
+    {
+      "id": "type-and-control-transitions",
+      "stimulus": "sin1k",
+      "sampleRate": 96000,
+      "channels": 4,
+      "channelMode": "all4",
+      "frames": 1001,
+      "blockSize": 64,
+      "params": { "fr": 10, "tp": "Standard", "hm": 0, "tn": 1, "in": 0, "lv": -80 },
+      "events": [
+        { "frame": 31, "params": { "fr": 120, "tp": "Rich", "hm": 100 } },
+        { "frame": 321, "params": { "tp": "Dirty", "tn": 20, "in": 10, "lv": 0 } },
+        { "frame": 700, "params": { "fr": 50, "tp": "Standard", "hm": 50, "tn": 10, "in": 1, "lv": -40 } }
+      ]
+    }
+  ]
+}

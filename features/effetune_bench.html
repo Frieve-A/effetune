@@ -124,12 +124,12 @@
             opacity: 0.5;
             cursor: not-allowed;
         }
-        #sample-rate {
+        .benchmark-select {
             background: linear-gradient(180deg, #404040, #373737) !important;
             border-color: #565656 !important;
             box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.035);
         }
-        #sample-rate:focus {
+        .benchmark-select:focus {
             outline: none;
             border-color: #c56ad3 !important;
             box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.24), 0 0 0 2px rgba(156, 39, 176, 0.18), 0 0 18px rgba(156, 39, 176, 0.16);
@@ -137,6 +137,11 @@
         #benchmark-status {
             margin-top: 10px;
             color: #e0e0e0;
+        }
+        .benchmark-engine-note {
+            margin: -5px 0 12px;
+            color: #bdbdbd;
+            font-size: 0.9em;
         }
         .progress-container {
             width: 100%;
@@ -244,11 +249,11 @@
     <h1>EffeTune Performance Benchmark</h1>
     <div id="benchmark-results" class="benchmark-container">
         <h2>Performance Benchmark</h2>
-        <div style="display: flex; align-items: center; margin-bottom: 15px;">
+        <div style="display: flex; align-items: center; flex-wrap: wrap; margin-bottom: 15px;">
             <div style="margin-right: 15px; display: flex; align-items: center;">
                 <button id="run-benchmarks" class="benchmark-button" style="height: 35px;">Run Benchmarks</button>
                 <label for="sample-rate" style="margin-right: 8px;">Sampling Frequency:</label>
-                <select id="sample-rate" style="padding: 8px; background-color: #2d2d2d; color: #fff; border: 1px solid #3d3d3d; border-radius: 4px; height: 35px;">
+                <select id="sample-rate" class="benchmark-select" style="padding: 8px; background-color: #2d2d2d; color: #fff; border: 1px solid #3d3d3d; border-radius: 4px; height: 35px;">
                     <option value="44100">44.1kHz</option>
                     <option value="48000">48kHz</option>
                     <option value="88200">88.2kHz</option>
@@ -259,6 +264,16 @@
                     <option value="384000">384kHz</option>
                 </select>
             </div>
+            <div style="display: flex; align-items: center;">
+                <label for="dsp-mode" style="margin-right: 8px;">Processing Engine:</label>
+                <select id="dsp-mode" class="benchmark-select" style="padding: 8px; background-color: #2d2d2d; color: #fff; border: 1px solid #3d3d3d; border-radius: 4px; height: 35px;">
+                    <option value="javascript">JavaScript</option>
+                    <option value="webassembly" selected>WebAssembly (automatic)</option>
+                </select>
+            </div>
+        </div>
+        <div class="benchmark-engine-note">
+            The initial engine follows the “Use WebAssembly audio processing” setting. WebAssembly automatically uses SIMD when supported.
         </div>
         <div id="benchmark-status">Click "Run Benchmarks" to start performance testing.</div>
         <div id="progress-container" class="progress-container">
@@ -271,13 +286,19 @@
         import { PluginManager } from '../js/plugin-manager.js';
         import { loadScript, loadCSS } from '../js/script-loader.js';
         import { startRendererWatchdogHeartbeat } from '../js/electron-watchdog.js';
+        import { loadAudioPreferences } from '../js/electron/audioIntegration.js';
         import { copyTextToClipboard } from '../js/utils/clipboard-utils.js';
+        import {
+            BENCHMARK_DSP_MODES,
+            createDspBenchmarkRuntime
+        } from './effetune-benchmark.js';
 
         startRendererWatchdogHeartbeat('benchmark-page');
 
         let SAMPLE_RATE = 96000;
         const BUFFER_SIZE = 128;
         const CHANNEL_COUNT = 2;
+        let benchmarkAudioPreferences = {};
 
         class TestPluginManager extends PluginManager {
             async loadPlugins() {
@@ -384,40 +405,40 @@
             return buffer;
         }
 
-        async function benchmarkPlugin(plugin, audioBuffer, sampleRate, blockSize, channelCount) {
-            const params = plugin.getParameters();
-            params.channelCount = channelCount;
-            params.blockSize = blockSize;
-            params.sampleRate = sampleRate;
-            plugin.setEnabled(true);
-
-            const context = {
-                sampleRate: sampleRate,
-                initialized: false
-            };
-
+        async function benchmarkPlugin(runtime, plugin, audioBuffer, sampleRate, blockSize, channelCount) {
             const totalBlocks = Math.floor(audioBuffer.length / (blockSize * channelCount));
             let processCount = 0;
             let blockIndex = 0;
-            const startTime = performance.now();
             const duration = 1000;
+            const session = runtime.createPluginSession(plugin, { channelCount });
+            let elapsedTime;
 
-            while (performance.now() - startTime < duration) {
-                const blockOffset = (blockIndex % totalBlocks) * blockSize * channelCount;
-                const inputData = audioBuffer.slice(blockOffset, blockOffset + blockSize * channelCount);
-                const time = blockIndex * blockSize / sampleRate;
-                plugin.executeProcessor(context, inputData, params, time);
-                processCount++;
+            try {
+                const warmupInput = audioBuffer.slice(0, blockSize * channelCount);
+                session.process(warmupInput, 0);
                 blockIndex++;
+
+                const startTime = performance.now();
+                while (performance.now() - startTime < duration) {
+                    const blockOffset = (blockIndex % totalBlocks) * blockSize * channelCount;
+                    const inputData = audioBuffer.slice(blockOffset, blockOffset + blockSize * channelCount);
+                    const time = blockIndex * blockSize / sampleRate;
+                    session.process(inputData, time);
+                    processCount++;
+                    blockIndex++;
+                }
+                elapsedTime = (performance.now() - startTime) / 1000;
+            } finally {
+                session.close();
             }
 
-            const elapsedTime = (performance.now() - startTime) / 1000;
-            const samplesPerSecond = Math.round((processCount * BUFFER_SIZE) / elapsedTime);
-            const speedupFactor = samplesPerSecond / SAMPLE_RATE;
+            const samplesPerSecond = Math.round((processCount * blockSize) / elapsedTime);
+            const speedupFactor = samplesPerSecond / sampleRate;
 
             return {
                 category: '', // Filled by runBenchmarks
                 name: plugin.name,
+                implementation: runtime.label,
                 samplesPerSecond: samplesPerSecond,
                 totalCalls: processCount,
                 elapsedTime: elapsedTime.toFixed(3),
@@ -432,18 +453,35 @@
             const progressBar = document.getElementById('progress-bar');
             const runButton = document.getElementById('run-benchmarks');
             const sampleRateSelect = document.getElementById('sample-rate');
+            const dspModeSelect = document.getElementById('dsp-mode');
 
             SAMPLE_RATE = parseInt(sampleRateSelect.value);
+            const dspMode = dspModeSelect.value;
             runButton.disabled = true;
             sampleRateSelect.disabled = true;
+            dspModeSelect.disabled = true;
             benchmarkStatus.textContent = 'Initializing benchmarks...';
+            benchmarkTableContainer.innerHTML = '';
+            let runtime = null;
 
             try {
                 const manager = new TestPluginManager();
                 const { pluginClasses, pluginDefinitions } = await manager.loadPlugins();
+                const preference = {
+                    ...benchmarkAudioPreferences,
+                    useWasmDsp: dspMode === BENCHMARK_DSP_MODES.WEBASSEMBLY
+                };
+                runtime = await createDspBenchmarkRuntime({
+                    mode: dspMode,
+                    sampleRate: SAMPLE_RATE,
+                    blockSize: BUFFER_SIZE,
+                    preference,
+                    location: window.location,
+                    basePath: '..'
+                });
 
                 const BUFFER_DURATION = 1.5;
-                benchmarkStatus.textContent = 'Creating audio buffer...';
+                benchmarkStatus.textContent = `Creating audio buffer for ${runtime.label}...`;
                 const audioBuffer = createRandomAudioBuffer(SAMPLE_RATE, BUFFER_DURATION, CHANNEL_COUNT);
 
                 const results = [];
@@ -455,7 +493,7 @@
                 progressBar.style.width = '0%';
 
                 for (const name of pluginNames) {
-                    benchmarkStatus.textContent = `Benchmarking ${name} (${completedCount + 1}/${pluginCount})...`;
+                    benchmarkStatus.textContent = `Benchmarking ${name} with ${runtime.label} (${completedCount + 1}/${pluginCount})...`;
                     const plugin = manager.createPlugin(name);
 
                     let note = '';
@@ -504,7 +542,29 @@
                         note = 'Slope + 1db/oct';
                     }
 
-                    const result = await benchmarkPlugin(plugin, audioBuffer, SAMPLE_RATE, BUFFER_SIZE, channelCount);
+                    let result;
+                    if (runtime.supportsPlugin(plugin)) {
+                        result = await benchmarkPlugin(
+                            runtime,
+                            plugin,
+                            audioBuffer,
+                            SAMPLE_RATE,
+                            BUFFER_SIZE,
+                            channelCount
+                        );
+                    } else {
+                        result = {
+                            category: '',
+                            name: plugin.name,
+                            implementation: runtime.label,
+                            samplesPerSecond: null,
+                            speedupFactor: null,
+                            skipped: true
+                        };
+                        note = note
+                            ? `${note}; WebAssembly DSP is not enabled for this plugin`
+                            : 'WebAssembly DSP is not enabled for this plugin';
+                    }
 
                     // Retrieve category from pluginDefinitions
                     const def = pluginDefinitions.get(name);
@@ -517,7 +577,7 @@
                     await new Promise(resolve => setTimeout(resolve, 10));
                 }
 
-                benchmarkStatus.textContent = 'Benchmark completed!';
+                benchmarkStatus.textContent = `Benchmark completed with ${runtime.label}!`;
                 progressContainer.style.display = 'none';
 
                 const table = document.createElement('table');
@@ -525,7 +585,7 @@
 
                 const thead = document.createElement('thead');
                 const headerRow = document.createElement('tr');
-                ['Category', 'Effect', 'Samples/sec', 'Real-Time Factor(x)', 'CPU usage (%)', 'Note'].forEach(text => {
+                ['Category', 'Effect', 'Implementation', 'Samples/sec', 'Real-Time Factor(x)', 'CPU usage (%)', 'Note'].forEach(text => {
                     const th = document.createElement('th');
                     th.textContent = text;
                     headerRow.appendChild(th);
@@ -545,17 +605,27 @@
                     nameCell.textContent = result.name;
                     row.appendChild(nameCell);
 
+                    const implementationCell = document.createElement('td');
+                    implementationCell.textContent = result.implementation;
+                    row.appendChild(implementationCell);
+
                     const samplesPerSecondCell = document.createElement('td');
-                    samplesPerSecondCell.textContent = result.samplesPerSecond.toLocaleString();
+                    samplesPerSecondCell.textContent = result.skipped
+                        ? 'N/A'
+                        : result.samplesPerSecond.toLocaleString();
                     row.appendChild(samplesPerSecondCell);
 
                     const speedupCell = document.createElement('td');
-                    speedupCell.textContent = result.speedupFactor;
+                    speedupCell.textContent = result.skipped ? 'N/A' : result.speedupFactor;
                     row.appendChild(speedupCell);
 
                     const cpuUsageCell = document.createElement('td');
-                    const cpuUsage = (1 / parseFloat(result.speedupFactor)) * 100;
-                    cpuUsageCell.textContent = cpuUsage.toFixed(1);
+                    if (result.skipped) {
+                        cpuUsageCell.textContent = 'N/A';
+                    } else {
+                        const cpuUsage = (1 / parseFloat(result.speedupFactor)) * 100;
+                        cpuUsageCell.textContent = cpuUsage.toFixed(1);
+                    }
                     row.appendChild(cpuUsageCell);
 
                     const noteCell = document.createElement('td');
@@ -569,7 +639,7 @@
                 benchmarkTableContainer.innerHTML = '';
                 const tableTitle = document.createElement('h3');
                 const sampleRateKHz = SAMPLE_RATE / 1000;
-                tableTitle.textContent = `Processing Speed at ${sampleRateKHz}kHz Sampling Frequency`;
+                tableTitle.textContent = `${runtime.label} Processing Speed at ${sampleRateKHz}kHz Sampling Frequency`;
                 benchmarkTableContainer.appendChild(tableTitle);
                 benchmarkTableContainer.appendChild(table);
 
@@ -623,15 +693,30 @@
                 benchmarkStatus.textContent = `Error during benchmarking: ${error.message}`;
                 console.error('Benchmark error:', error);
             } finally {
+                runtime?.close();
                 runButton.disabled = false;
                 sampleRateSelect.disabled = false;
+                dspModeSelect.disabled = false;
                 progressContainer.style.display = 'none';
             }
         }
 
-        window.addEventListener('load', () => {
+        window.addEventListener('load', async () => {
             const runButton = document.getElementById('run-benchmarks');
             runButton.addEventListener('click', runBenchmarks);
+
+            const dspModeSelect = document.getElementById('dsp-mode');
+            runButton.disabled = true;
+            dspModeSelect.disabled = true;
+            try {
+                benchmarkAudioPreferences = await loadAudioPreferences(Boolean(window.electronAPI)) || {};
+                dspModeSelect.value = benchmarkAudioPreferences.useWasmDsp === false
+                    ? BENCHMARK_DSP_MODES.JAVASCRIPT
+                    : BENCHMARK_DSP_MODES.WEBASSEMBLY;
+            } finally {
+                runButton.disabled = false;
+                dspModeSelect.disabled = false;
+            }
 
             const backButton = document.getElementById('back-button');
             backButton.addEventListener('click', () => {

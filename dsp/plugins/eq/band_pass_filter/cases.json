@@ -1,0 +1,41 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 128,
+    "channels": 2,
+    "channelMode": "stereo",
+    "frames": 257,
+    "params": {
+      "hf": 1000,
+      "lf": 1000,
+      "hs": -24,
+      "ls": -24
+    }
+  },
+  "cases": [
+    { "id": "default-impulse", "stimulus": "imp", "frames": 259 },
+    { "id": "startup-seeds-silence", "stimulus": "silence", "sampleRate": 44100, "frames": 131, "blockSize": 63 },
+    { "id": "both-off-identity", "stimulus": "noise", "sampleRate": 96000, "channels": 1, "channelMode": "mono", "frames": 193, "blockSize": 65, "params": { "hs": 0, "ls": 0 } },
+    { "id": "high-pass-only-minimum", "stimulus": "step", "sampleRate": 44100, "frames": 257, "blockSize": 63, "params": { "hf": 10, "hs": -12, "ls": 0 } },
+    { "id": "low-pass-only-maximum", "stimulus": "fs", "sampleRate": 192000, "channels": 4, "channelMode": "all4", "frames": 129, "blockSize": 31, "params": { "lf": 40000, "hs": 0, "ls": -48 } },
+    { "id": "crossed-extremes", "stimulus": "sweep", "sampleRate": 96000, "frames": 255, "blockSize": 127, "params": { "hf": 40000, "lf": 10, "hs": -48, "ls": -12 } },
+    { "id": "odd-order-cascades", "stimulus": "noise", "sampleRate": 192000, "frames": 197, "blockSize": 63, "params": { "hf": 80, "lf": 30000, "hs": -36, "ls": -36 } },
+    { "id": "one-frame-blocks", "stimulus": "noise", "sampleRate": 44100, "channels": 1, "channelMode": "mono", "frames": 67, "blockSize": 1, "params": { "hf": 180, "lf": 9000, "hs": -48, "ls": -48 } },
+    {
+      "id": "non-aligned-transitions",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "channels": 4,
+      "channelMode": "all4",
+      "frames": 259,
+      "blockSize": 64,
+      "params": { "hf": 60, "lf": 36000, "hs": -12, "ls": -24 },
+      "events": [
+        { "frame": 17, "params": { "hf": 1400, "hs": -36 } },
+        { "frame": 66, "params": { "hf": 1500, "lf": 7200, "ls": 0 } },
+        { "frame": 129, "params": { "hs": 0, "ls": -48 } },
+        { "frame": 194, "params": { "hf": 40000, "lf": 40000, "hs": -48, "ls": -12 } }
+      ]
+    }
+  ]
+}

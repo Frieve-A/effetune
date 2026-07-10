@@ -1,0 +1,69 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 64,
+    "channels": 2,
+    "channelMode": "stereo"
+  },
+  "cases": [
+    { "id": "default-impulse", "stimulus": "imp", "frames": 1537 },
+    {
+      "id": "one-x-hard-limit-no-lookahead",
+      "stimulus": "fs",
+      "frames": 1025,
+      "params": { "th": -24, "rl": 10, "la": 0, "os": 1, "ig": 18, "sm": -3 }
+    },
+    {
+      "id": "two-x-oversampling",
+      "stimulus": "sq50",
+      "frames": 901,
+      "params": { "th": -12, "rl": 250, "la": 1.5, "os": 2, "ig": 9, "sm": -2 }
+    },
+    {
+      "id": "four-x-96000",
+      "stimulus": "sweep",
+      "sampleRate": 96000,
+      "blockSize": 127,
+      "frames": 1151,
+      "params": { "th": -6, "rl": 500, "la": 10, "os": 4, "ig": -6, "sm": 0 }
+    },
+    {
+      "id": "eight-x-maximum-drive",
+      "stimulus": "noise",
+      "frames": 777,
+      "params": { "th": 0, "rl": 10, "la": 0, "os": 8, "ig": 18, "sm": -3 }
+    },
+    {
+      "id": "mono-44100-odd-block",
+      "stimulus": "noise",
+      "sampleRate": 44100,
+      "blockSize": 83,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 997,
+      "params": { "th": -9.5, "rl": 137, "la": 4.2, "os": 2, "ig": 3.5, "sm": -1.25 }
+    },
+    {
+      "id": "all4-192000-eight-x",
+      "stimulus": "imp",
+      "sampleRate": 192000,
+      "blockSize": 127,
+      "channels": 4,
+      "channelMode": "all4",
+      "channel": "A",
+      "frames": 769,
+      "params": { "th": -18, "rl": 400, "la": 7.5, "os": 8, "ig": 12, "sm": -0.5 }
+    },
+    {
+      "id": "parameter-and-topology-transitions",
+      "stimulus": "noise",
+      "frames": 1237,
+      "events": [
+        { "frame": 31, "params": { "th": -24, "ig": 18, "sm": -3, "la": 0 } },
+        { "frame": 128, "params": { "os": 2, "rl": 10, "la": 2 } },
+        { "frame": 513, "params": { "os": 8, "th": -6, "ig": -18, "sm": 0, "la": 10 } },
+        { "frame": 1001, "params": { "os": 1, "th": 0, "rl": 500, "la": 3 } }
+      ]
+    }
+  ]
+}

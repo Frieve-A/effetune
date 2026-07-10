@@ -1,0 +1,37 @@
+{
+  "formatVersion": 1,
+  "type": "VinylArtifactsPlugin",
+  "id": "velocity-react-one-frame-blocks",
+  "stimulus": "step",
+  "sampleRate": 44100,
+  "channels": 2,
+  "frameCount": 1025,
+  "blockSize": 1,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "pp": 120,
+    "pl": 0,
+    "cm": 2000,
+    "cl": 0,
+    "hs": -12,
+    "rb": -12,
+    "xt": 60,
+    "tn": 0,
+    "wr": 200,
+    "rt": 100,
+    "rm": "Velocity",
+    "mx": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "eab9d086b22155e71cbfa50044eab3794689d202244558388eb7cafd99c61478",
+  "outputFloats": 2050,
+  "byteLength": 8200,
+  "binary": "case-006.f32"
+}

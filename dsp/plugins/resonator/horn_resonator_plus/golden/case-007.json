@@ -1,0 +1,46 @@
+{
+  "formatVersion": 1,
+  "type": "HornResonatorPlusPlugin",
+  "id": "length-reset",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 1301,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "co": 600,
+    "ln": 70,
+    "th": 3,
+    "mo": 60,
+    "cv": 40,
+    "dp": 0.03,
+    "tr": 0.99,
+    "wg": 30
+  },
+  "events": [
+    {
+      "frame": 384,
+      "params": {
+        "ln": 120
+      }
+    },
+    {
+      "frame": 896,
+      "params": {
+        "ln": 20
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "cd8bcbb936ed7dd81479e215b693341df7ff05327c1e3bc0995746e0ea6b45c4",
+  "outputFloats": 2602,
+  "byteLength": 10408,
+  "binary": "case-007.f32"
+}

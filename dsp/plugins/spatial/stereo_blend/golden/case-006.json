@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "StereoBlendPlugin",
+  "id": "minimum-width",
+  "stimulus": "fs",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 257,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "stereo": -200
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "e46aa5dc32dd3605bf560c5296e7d35001a71df1b648a7ba0eaaf19870d00007",
+  "outputFloats": 514,
+  "byteLength": 2056,
+  "binary": "case-006.f32"
+}

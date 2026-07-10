@@ -1,965 +1,338 @@
 ---
 title: "Plugin Development Guide - EffeTune"
-description: "Complete guide to developing custom audio plugins for Frieve EffeTune."
+description: "How to add an EffeTune plugin with a JavaScript UI, C++ DSP kernel, generated parameter ABI, and parity tests."
 lang: en
 ---
 
 # Plugin Development Guide
 
-This guide explains how to create new plugins for Frieve EffeTune.
+EffeTune plugins have two cooperating parts:
 
-## Basic Structure
+- A JavaScript class under `plugins/` owns the UI, parameter validation, preset data,
+  and a reference processor used by compatibility mode and golden-vector generation.
+- A C++ kernel under `dsp/plugins/` is the production audio processor. The generated
+  parameter ABI connects the JavaScript host to the native and WebAssembly builds.
 
-All plugins must extend the `PluginBase` class and implement its core methods. Each method has specific responsibilities and timing considerations:
+Routing, buses, channel selection, master bypass, and Section gating are host concerns.
+A DSP kernel processes the channel-major buffer it receives and does not implement those
+features again.
 
-### Function Responsibilities
+## Files for a DSP Plugin
 
-1. **constructor**
-   - When: Executed once when the plugin instance is created
-   - Role:
-     * Set basic information (name, description via super())
-     * Initialize parameters with default values (e.g., this.gain = 1.0)
-     * Initialize state variables (buffers, arrays, etc.)
-     * Register processor function (registerProcessor)
-   - Notes:
-     * Do not create UI or set up event listeners here
-     * Avoid heavy initialization operations
+For a plugin named `MyPlugin` in category `example`, add or update:
 
-2. **registerProcessor**
-   - When: Called from constructor to register processing function with Audio Worklet
-   - Role:
-     * Define audio processing function
-     * Check context state initialization
-     * Handle enabled state check and skip processing
-   - Notes:
-     * Always check enabled state first
-     * Initialize context only when necessary
-     * Reset state when channel count changes
+```text
+plugins/example/my_plugin.js                 # UI and JavaScript reference DSP
+plugins/example/my_plugin.css                # only when custom UI styling is needed
+dsp/plugins/example/my_plugin/params.json    # generated ABI source
+dsp/plugins/example/my_plugin/cases.json     # reviewed parity matrix
+dsp/plugins/example/my_plugin/kernel.cpp     # production DSP
+dsp/plugins/example/my_plugin/golden/        # generated JavaScript outputs
+dsp/plugins/example/my_plugin/native_test.cpp # complex state/allocation tests, when needed
+dsp/registry.inc                             # one registration line
+js/audio/dsp-rollout.js                      # enable only after all parity gates pass
+```
 
-3. **process**
-   - When: Called periodically during audio buffer processing
-   - Role:
-     * Validate messages and buffers
-     * Check enabled state (early return if disabled)
-     * Execute audio processing (only if enabled=true)
-     * Update state for UI updates
-   - Notes:
-     * Continue UI updates regardless of enabled state
-     * Avoid heavy processing operations
+Keep the plugin list and user documentation in sync when adding a new plugin. Entries in
+`plugins/plugins.txt` and plugin documentation are ordered alphabetically by category and
+plugin name; `Others` and `Control` remain last.
 
-4. **cleanup**
-   - When: Called when plugin is disabled or removed
-   - Role:
-     * Cancel animation frames
-     * Remove event listeners
-     * Release temporary resources
-   - Notes:
-     * Do not stop UI updates
-     * Maintain state variables
-     * Perform minimal cleanup only
+## 1. Build the JavaScript Class
 
-Here's the basic structure of a plugin:
+The class still extends `PluginBase`. It owns user-facing state and must implement
+`getParameters()`, `setParameters()`, and `createUI()`.
 
 ```javascript
 class MyPlugin extends PluginBase {
     constructor() {
-        super('Plugin Name', 'Plugin Description');
-        
-        // Initialize plugin parameters
-        this.myParameter = 0;
-
-        // Register the audio processing function
+        super('My Plugin', 'Short, factual description');
+        this.gn = 0;
         this.registerProcessor(`
-            // Your audio processing code here
-            // This runs in the Audio Worklet
+            if (!parameters.enabled) return data;
+            const gain = 10 ** (parameters.gn / 20);
+            for (let i = 0; i < data.length; ++i) data[i] *= gain;
             return data;
         `);
     }
 
-    // Get current parameters (required)
     getParameters() {
         return {
             type: this.constructor.name,
-            myParameter: this.myParameter,
-            enabled: this.enabled
+            enabled: this.enabled,
+            gn: this.gn
         };
     }
 
-    // Create UI elements (required)
-    createUI() {
-        const container = document.createElement('div');
-        // Add your UI elements here
-        return container;
-    }
-}
-
-// Register the plugin globally
-window.MyPlugin = MyPlugin;
-```
-
-## Key Components
-
-### 1. Constructor
-- Call `super()` with the plugin name and description
-- Initialize plugin parameters with default values
-- Initialize state variables (e.g., buffers, arrays) with appropriate sizes
-- Register the audio processing function using `this.registerProcessor()`
-- Example:
-  ```javascript
-  constructor() {
-      super('My Plugin', 'Description');
-      
-      // Initialize parameters with defaults
-      this.gain = 1.0;
-      
-      // Initialize state variables
-      this.buffer = new Float32Array(1024);
-      this.lastProcessTime = performance.now() / 1000;
-      
-      // Register processor
-      this.registerProcessor(`...`);
-  }
-  ```
-
-### 2. Audio Processing Function
-
-### 2. Audio Processing Function
-- Runs in the Audio Worklet context
-- Receives these parameters:
-  - `data`: Float32Array containing interleaved audio samples from all channels
-    * For stereo: [L0,L1,...,L127,R0,R1,...,R127]
-    * Length is (blockSize × channelCount)
-  - `parameters`: Object containing your plugin's parameters
-    * `channelCount`: Number of audio channels (e.g., 2 for stereo)
-    * `blockSize`: Number of samples per channel (typically 128)
-    * `enabled`: Boolean indicating if the plugin is enabled
-    * Your custom parameters as defined in getParameters()
-  - `time`: Current audio context time
-- Must return the processed audio data in the same interleaved format
-- Always check enabled state first and return unmodified data if disabled
-- Initialize context state if needed (e.g., filter states, buffers)
-- Example:
-  ```javascript
-  registerProcessor(`
-      // Skip processing if disabled
-      if (!parameters.enabled) return data;
-
-      // Initialize context state if needed
-      if (!context.initialized) {
-          context.buffer = new Array(parameters.channelCount)
-              .fill()
-              .map(() => new Float32Array(1024));
-          context.initialized = true;
-      }
-
-      // Reset state if channel count changes
-      if (context.buffer.length !== parameters.channelCount) {
-          context.buffer = new Array(parameters.channelCount)
-              .fill()
-              .map(() => new Float32Array(1024));
-      }
-
-      // Process audio data...
-      return data;
-  `);
-  ```
-
-### 3. Parameter Management
-- Parameter Naming Convention
-  * Use shortened parameter names **for parameters exposed externally** (via `getParameters`, `setParameters`, and passed to the audio processor) to optimize storage (e.g., in save files or URLs) and transmission.
-  * **Internal state variables** used only within the plugin class do not need to follow this shortening convention and can use more descriptive names.
-  * Shorten external parameter names using the following patterns:
-    - For single words: Use the first letters (e.g., volume → vl, bass → bs)
-    - For compound words: Use the first letter of each word (e.g., tpdfDither → td, zohFreq → zf)
-  * Document the original parameter name in comments for clarity
-  * The following parameter names are reserved and cannot be used: nm (plugin name abbreviation), en (enabled state abbreviation), uc(ui collapsed), ib (inputBus abbreviation), ob (outputBus abbreviation), ch (channel abbreviation), type, id, inputBus, outputBus, and channel
-
-- Implement `getParameters()` to return current plugin state
-  * Must include `type` and `enabled` fields
-  * Return all parameters that affect audio processing
-  * Example: `{ type: this.constructor.name, enabled: this.enabled, gain: this.gain }`
-
-- Implement `setParameters(params)` to handle parameter updates
-  * Validate all input parameters before applying
-  * Use type checking and range validation
-  * Ignore invalid values, keeping current state
-  * Call `this.updateParameters()` after successful changes
-
-- Use `setEnabled(enabled)` for enable/disable control
-  * This method is provided by PluginBase
-  * Automatically handles state updates
-  * Do not modify `this.enabled` directly
-  * Example: `plugin.setEnabled(false)` instead of `plugin.enabled = false`
-
-- Parameter Validation Best Practices
-  * Always validate parameter types (e.g., `typeof value === 'number'`)
-  * Check value ranges (e.g., `value >= 0 && value <= 1`)
-  * Provide fallback values for invalid inputs
-  * Document valid parameter ranges in comments
-- Example:
-  ```javascript
-  getParameters() {
-      return {
-          type: this.constructor.name,
-          enabled: this.enabled,
-          gain: this.gain,
-          // Include all parameters that affect audio processing
-      };
-  }
-
-  setParameters(params) {
-      if (params.gain !== undefined) {
-          this.setGain(params.gain); // Use dedicated setter for validation
-      }
-      this.updateParameters();
-  }
-
-  // Individual parameter setter with validation
-  setGain(value) {
-      this.gain = Math.max(0, Math.min(2, 
-          typeof value === 'number' ? value : parseFloat(value)
-      ));
-      this.updateParameters();
-  }
-  ```
-
-Example parameter management:
-```javascript
-class MyPlugin extends PluginBase {
-    constructor() {
-        super('My Plugin', 'Description');
-        this.gain = 1.0;  // Default value
-    }
-
-    // Get current parameters
-    getParameters() {
-        return {
-            type: this.constructor.name,  // Required
-            enabled: this.enabled,        // Required
-            gain: this.gain              // Plugin-specific
-        };
-    }
-
-    // Set parameters with validation
     setParameters(params) {
-        if (params.gain !== undefined) {
-            // Type check
-            const value = typeof params.gain === 'number' 
-                ? params.gain 
-                : parseFloat(params.gain);
-            
-            // Range validation
-            if (!isNaN(value)) {
-                this.gain = Math.max(0, Math.min(2, value));
-            }
+        if (params.gn !== undefined) {
+            this.gn = this.parseFiniteNumber(params.gn, -18, 18, this.gn);
         }
-        // Note: Don't handle enabled here, use setEnabled instead
+        if (params.enabled !== undefined) this.enabled = Boolean(params.enabled);
         this.updateParameters();
     }
 
-    // Individual parameter setter with validation
-    setGain(value) {
-        this.setParameters({ gain: value });
-    }
-}
-```
-
-### 4. User Interface
-- Implement `createUI()` to return a DOM element containing your plugin's controls
-- Use event listeners to update parameters when UI elements change
-- Store UI element references if needed for updates
-- Initialize animation frames for visualization plugins
-- Clean up event listeners and animation frames in cleanup()
-
-- **Helper Function for Parameter Controls:** `PluginBase` provides a convenient helper function `createParameterControl` to easily create common UI elements for controlling parameters. This function generates a row containing a label, a range slider, and a number input field, all linked together.
-
-  ```javascript
-  createParameterControl(label, min, max, step, value, callback)
-  ```
-  - `label`: The text label for the parameter.
-  - `min`: The minimum value for the slider and input.
-  - `max`: The maximum value for the slider and input.
-  - `step`: The step increment for the slider and input.
-  - `value`: The initial value for the parameter.
-  - `callback`: A function that will be called when the parameter value changes. It receives the new value as an argument.
-
-- **Responsive UI Helpers:** For new controls, prefer the shared helpers before writing custom DOM. `createSelectControl()`, `createCheckboxControl()`, and `createRadioGroup()` create mobile-friendly rows with consistent IDs and labels. `createGraphContainer()` keeps a canvas's internal resolution fixed while making its displayed size responsive. Use `getGraphCoords()` and `bindGraphPointer()` for graph interaction so mouse, touch, and pen input share one path.
-
-- Example using `createParameterControl`:
-  ```javascript
-  createUI() {
-      const container = document.createElement('div');
-      container.className = 'my-plugin-ui';
-
-      // Use the helper function to create a gain control
-      const gainControl = this.createParameterControl(
-          'Gain', 0, 2, 0.01, this.gain, (newValue) => {
-              this.setGain(newValue);
-          }
-      );
-      container.appendChild(gainControl);
-
-      // Add other UI elements as needed...
-      // For visualization plugins, add canvas and start animation
-      const canvas = document.createElement('canvas');
-      this.canvas = canvas; // Store reference if needed for updates
-      this.startAnimation(); // Start animation if needed
-
-      container.appendChild(canvas);
-      return container;
-  }
-  ```
-
-- Example (Manual UI creation):
-  ```javascript
-  createUI() {
-      const container = document.createElement('div');
-      container.className = 'my-plugin-ui';
-
-      // Create parameter controls manually, following accessibility guidelines
-      const paramLabel = 'Gain';
-      const paramIdBase = `${this.id}-${this.name}-gain`; // Base ID for related elements
-
-      // Label
-      const label = document.createElement('label');
-      label.textContent = `${paramLabel}:`;
-      label.htmlFor = `${paramIdBase}-slider`; // Associate with the slider
-      
-      // Slider Input
-      const slider = document.createElement('input');
-      slider.type = 'range';
-      slider.id = `${paramIdBase}-slider`;
-      slider.name = `${paramIdBase}-slider`; // Use consistent name
-      slider.min = 0;
-      slider.max = 2;
-      slider.step = 0.01;
-      slider.value = this.gn; // Use internal (possibly shortened) state variable
-      slider.autocomplete = "off"; // Disable browser autocomplete
-      slider.addEventListener('input', e => {
-          this.setGain(parseFloat(e.target.value)); // Call the setter
-      });
-      
-      // (Optional) Text Input for precise value - also following guidelines
-      const valueInput = document.createElement('input');
-      valueInput.type = 'number';
-      valueInput.id = `${paramIdBase}-input`;
-      valueInput.name = `${paramIdBase}-input`;
-      valueInput.min = 0;
-      valueInput.max = 2;
-      valueInput.step = 0.01;
-      valueInput.value = this.gn;
-      valueInput.autocomplete = "off";
-      valueInput.addEventListener('input', e => {
-          this.setGain(parseFloat(e.target.value));
-          slider.value = e.target.value; // Sync slider if text input changes
-      });
-      slider.addEventListener('input', e => { // Sync text input if slider changes
-          valueInput.value = e.target.value;
-          this.setGain(parseFloat(e.target.value));
-      });
-      
-      // Append elements to the container
-      container.appendChild(label);
-      container.appendChild(slider);
-      container.appendChild(valueInput); // Append the text input too
-
-      // For visualization plugins
-      const canvas = document.createElement('canvas');
-      this.canvas = canvas; // Store reference if needed for updates
-
-      // Start animation if needed
-      this.startAnimation();
-
-      container.appendChild(canvas);
-      return container;
-  }
-
-  // Animation control for visualization plugins
-  startAnimation() {
-      const animate = () => {
-          this.updateDisplay(); // Assuming updateDisplay exists for visualization
-          this.animationFrameId = requestAnimationFrame(animate);
-      };
-      this.animationFrameId = requestAnimationFrame(animate);
-  }
-
-  cleanup() {
-      // Cancel animation frame if exists
-      if (this.animationFrameId) {
-          cancelAnimationFrame(this.animationFrameId);
-          this.animationFrameId = null;
-      }
-      // Remove other event listeners if added manually
-  }
-  ```
-
-## Example Plugins
-
-### 1. Basic Gain Plugin
-
-A simple example showing parameter control:
-
-```javascript
-class GainPlugin extends PluginBase {
-    constructor() {
-        super('Gain', 'Simple gain adjustment');
-        this.gn = 1.0; // gn: Gain (formerly gain) - Range: 0 to 2
-
-        this.registerProcessor(`
-            if (!parameters.enabled) return data;
-            const gain = parameters.gn; // Use shortened parameter name
-            
-            // Process all channels
-            for (let ch = 0; ch < parameters.channelCount; ch++) {
-                const offset = ch * parameters.blockSize;
-                for (let i = 0; i < parameters.blockSize; i++) {
-                    data[offset + i] *= gain;
-                }
-            }
-            return data;
-        `);
-    }
-
-    // Get current parameters
-    getParameters() {
-        return {
-            type: this.constructor.name,
-            gn: this.gn, // Use shortened parameter name
-            enabled: this.enabled
-        };
-    }
-
-    // Set parameters (only handles 'gn' parameter)
-    setParameters(params) {
-        if (params.gn !== undefined) {
-            const value = typeof params.gn === 'number' 
-                ? params.gn 
-                : parseFloat(params.gn);
-            if (!isNaN(value)) {
-                this.gn = Math.max(0, Math.min(2, value)); // Clamp value
-            }
-        }
-        // Note: 'enabled' is handled by PluginBase.setEnabled()
-        this.updateParameters(); // Notify host about changes
-    }
-
-    // Individual parameter setter for convenience
-    setGain(value) {
-        this.setParameters({ gn: value }); // Use shortened parameter name
-    }
-
     createUI() {
         const container = document.createElement('div');
-        
-        // Use the helper function to create the gain control
-        // Label remains 'Gain', state variable is 'this.gn'
-        const gainControl = this.createParameterControl(
-            'Gain', 0, 2, 0.01, this.gn, (newValue) => {
-                this.setGain(newValue); // Calls setParameters({ gn: ... })
-            }
-        );
-        container.appendChild(gainControl);
-        
+        container.appendChild(this.createParameterControl(
+            'Gain', -18, 18, 0.1, this.gn,
+            value => this.setParameters({ gn: value }), 'dB'
+        ));
         return container;
     }
 }
+
+window.MyPlugin = MyPlugin;
 ```
 
-### 2. Level Meter Plugin
+The registered processor is the behavioral reference. Keep it readable and deterministic:
 
-An advanced example showing visualization and message passing:
+- Return the input unchanged when disabled.
+- Store persistent state on `context` and define exactly which changes reset it.
+- Use `parameters.channelCount` and `parameters.blockSize`; audio is channel-major:
+  all frames for channel 0, then all frames for channel 1, and so on.
+- Avoid per-sample allocation. Preallocate or reuse typed arrays for stateful reference DSP.
+- Use `context.__seededRandom ?? Math.random` when the algorithm needs random values so
+  golden generation can reproduce the sequence.
+- In hot signal-processing code, prefer a comparison or ternary expression to
+  `Math.abs`, `Math.max`, or `Math.min` when it is equally clear.
 
-```javascript
-class LevelMeterPlugin extends PluginBase {
-    constructor() {
-        super('Level Meter', 'Displays audio level');
-        
-        // Initialize state (e.g., for stereo)
-        this.levels = new Array(2).fill(-96); // Current dB levels
-        this.animationFrameId = null;
-        
-        // Register processor function to calculate peak levels
-        this.registerProcessor(`
-            const numChannels = parameters.channelCount;
-            const blockSize = parameters.blockSize;
-            const peaks = new Float32Array(numChannels);
-            
-            // Calculate peak absolute value for each channel
-            for (let ch = 0; ch < numChannels; ch++) {
-                const offset = ch * blockSize;
-                const end = offset + blockSize;
-                let peak = 0.0;
-                for (let i = offset; i < end; i++) {
-                    const sample = data[i];
-                    const absSample = sample < 0 ? -sample : sample; // Fast abs()
-                    if (absSample > peak) {
-                        peak = absSample;
-                    }
-                }
-                peaks[ch] = peak;
-            }
-        
-            // Create measurements object
-            const channelMeasurements = new Array(numChannels);
-            for (let ch = 0; ch < numChannels; ch++) {
-                channelMeasurements[ch] = { peak: peaks[ch] }; // Send peak linear amplitude
-            }
-        
-            // Attach measurements to the data buffer for the main thread
-            data.measurements = {
-                channels: channelMeasurements,
-                time: time // Current audio context time
-            };
-            return data; // Return original audio data unmodified
-        `);
+The reference processor must remain available while `?dsp=off` and the documented
+fallback policy are supported. Do not delete it merely because the C++ port is enabled.
+
+## 2. Declare the Parameter ABI
+
+`params.json` is the source for both the C++ parameter struct and the JavaScript packer.
+Field keys must match the DSP-specific values returned by `getParameters()`. Do not
+redeclare host-owned `type`, `enabled`, bus, or channel-routing fields in the schema.
+
+```json
+{
+  "type": "MyPlugin",
+  "tolerance": { "abs": 0.000001, "policy": "per-sample" },
+  "fields": [
+    {
+      "name": "gainDb",
+      "key": "gn",
+      "kind": "float",
+      "min": -18,
+      "max": 18,
+      "default": 0,
+      "unit": "dB"
     }
-
-    // Handle messages from audio processor
-    onMessage(message) {
-        // Check if the message is for this plugin and contains measurements
-        if (message.type === 'processBuffer' && message.buffer?.measurements && message.pluginId === this.id) {
-            this.processMeasurements(message.buffer.measurements);
-        }
-    }
-
-    // Convert linear amplitude to dBFS
-    amplitudeToDB(amplitude) {
-        // Prevent log(0) issues
-        return 20 * Math.log10(amplitude < 1e-5 ? 1e-5 : amplitude);
-    }
-
-    // Process measurements received from the audio thread
-    processMeasurements(measurements) {
-        // Update internal levels based on received peak values
-        for (let ch = 0; ch < measurements.channels.length; ch++) {
-            if (ch < this.levels.length) { // Ensure we don't exceed array bounds
-                const peakAmplitude = measurements.channels[ch].peak;
-                this.levels[ch] = this.amplitudeToDB(peakAmplitude);
-            }
-        }
-        // Note: UI update happens in the animation frame loop
-    }
-
-    createUI() {
-        const container = document.createElement('div');
-        container.className = 'level-meter-plugin-ui';
-
-        // Create canvas for meter display
-        const canvas = document.createElement('canvas');
-        canvas.width = 200; // Simple width
-        canvas.height = 40; // Simple height for stereo
-        container.appendChild(canvas);
-        this.canvas = canvas;
-        this.ctx = canvas.getContext('2d');
-        
-        // Start the animation loop when UI is created
-        this.startAnimation();
-
-        return container;
-    }
-
-    // Start drawing loop
-    startAnimation() {
-        if (this.animationFrameId) return; // Prevent multiple loops
-        const animate = () => {
-            this.updateMeterDisplay();
-            this.animationFrameId = requestAnimationFrame(animate);
-        };
-        this.animationFrameId = requestAnimationFrame(animate);
-    }
-
-    // Stop drawing loop
-    stopAnimation() {
-        if (this.animationFrameId) {
-            cancelAnimationFrame(this.animationFrameId);
-            this.animationFrameId = null;
-        }
-    }
-
-    // Update meter display (called in animation loop)
-    updateMeterDisplay() {
-        if (!this.ctx) return;
-        const ctx = this.ctx;
-        const width = this.canvas.width;
-        const height = this.canvas.height;
-        const numChannels = this.levels.length;
-        const channelHeight = height / numChannels;
-        const dbRange = 96; // Display range (-96dB to 0dB)
-        const dbStart = -96;
-
-        // Clear canvas
-        ctx.clearRect(0, 0, width, height);
-        ctx.fillStyle = '#333'; // Background
-        ctx.fillRect(0, 0, width, height);
-
-        // Draw simple meter bar for each channel
-        for (let ch = 0; ch < numChannels; ch++) {
-            const y = ch * channelHeight;
-            const levelWidth = width * Math.max(0, (this.levels[ch] - dbStart)) / dbRange;
-            
-            // Simple green bar, red if above -6dB
-            ctx.fillStyle = this.levels[ch] > -6 ? '#ff0000' : '#00ff00'; 
-            ctx.fillRect(0, y + channelHeight * 0.1, levelWidth, channelHeight * 0.8);
-        }
-    }
-
-    // Cleanup resources
-    cleanup() {
-        this.stopAnimation();
-        // No IntersectionObserver in this simple example
-    }
+  ]
 }
 ```
 
-## Advanced Features
+Supported numeric kinds include `float`, `int`, `bool`, and declared enums. Repeated
+structured UI data uses an object-array field instead of handwritten packing logic. For
+example, a five-band `bands[i].gain` parameter declares `objectArrayKey`, `memberKey`,
+and `count: 5`. Use the top-level bounded `structured` descriptor only when the numeric
+layout cannot represent the data.
 
-### Message Passing with Audio Worklet
+Run code generation after every schema change:
 
-Plugins can communicate between the main thread and Audio Worklet using message passing:
-
-1. From Audio Worklet to main thread:
-```javascript
-port.postMessage({
-    type: 'myMessageType',
-    pluginId: parameters.id,
-    data: myData
-});
-```
-
-2. Receive messages in the main thread:
-```javascript
-constructor() {
-    super('My Plugin', 'Description');
-    
-    // Listen for messages from Audio Worklet
-    if (window.workletNode) {
-        window.workletNode.port.addEventListener('message', (e) => {
-            if (e.data.pluginId === this.id) {
-                // Handle message
-            }
-        });
-    }
-}
-```
-
-## Instance-Specific State Management
-
-Plugins can maintain instance-specific state in the audio processor using the `context` object. This is particularly useful for effects that need to track state between processing blocks, such as filters, modulation effects, or any effect requiring sample history.
-
-### Using the Context Object
-
-The `context` object is unique to each plugin instance and persists across processing calls. Here's how to use it:
-
-1. **Initialize State Variables**
-```javascript
-// Check if state exists first
-context.myState = context.myState || initialValue;
-
-// Or use an initialization flag
-if (!context.initialized) {
-    context.myState = initialValue;
-    context.initialized = true;
-}
-```
-
-2. **Handle Channel Count Changes**
-```javascript
-// Reset state if channel configuration changes
-if (context.buffers?.length !== parameters.channelCount) {
-    context.buffers = new Array(parameters.channelCount)
-        .fill()
-        .map(() => new Float32Array(bufferSize));
-}
-```
-
-### Examples
-
-1. **Filter State (from Narrow Range plugin)**
-```javascript
-// Initialize filter states for all channels
-if (!context.initialized) {
-    context.filterStates = {
-        // HPF states (first stage)
-        hpf1: new Array(channelCount).fill(0),
-        hpf2: new Array(channelCount).fill(0),
-        // ... more filter states
-    };
-    context.initialized = true;
-}
-
-// Reset if channel count changes
-if (context.filterStates.hpf1.length !== channelCount) {
-    Object.keys(context.filterStates).forEach(key => {
-        context.filterStates[key] = new Array(channelCount).fill(0);
-    });
-}
-```
-
-2. **Modulation State (from Wow Flutter plugin)**
-```javascript
-// Initialize modulation state
-context.phase = context.phase || 0;
-context.lpfState = context.lpfState || 0;
-context.sampleBufferPos = context.sampleBufferPos || 0;
-
-// Initialize delay buffer if needed
-if (!context.initialized) {
-    context.sampleBuffer = new Array(parameters.channelCount)
-        .fill()
-        .map(() => new Float32Array(MAX_BUFFER_SIZE).fill(0));
-    context.initialized = true;
-}
-```
-
-3. **Envelope State (from Compressor plugin)**
-```javascript
-// Initialize envelope states for dynamics processing
-if (!context.initialized) {
-    context.envelopeStates = new Array(channelCount).fill(0);
-    context.initialized = true;
-}
-
-// Reset envelope states if channel count changes
-if (context.envelopeStates.length !== channelCount) {
-    context.envelopeStates = new Array(channelCount).fill(0);
-}
-
-// Example usage in dynamics processing
-for (let ch = 0; ch < channelCount; ch++) {
-    let envelope = context.envelopeStates[ch];
-    
-    // Process samples with envelope follower
-    for (let i = 0; i < blockSize; i++) {
-        const inputAbs = Math.abs(data[offset + i]);
-        if (inputAbs > envelope) {
-            envelope = attackSamples * (envelope - inputAbs) + inputAbs;
-        } else {
-            envelope = releaseSamples * (envelope - inputAbs) + inputAbs;
-        }
-        // Apply envelope-based processing...
-    }
-    
-    // Store envelope state for next buffer
-    context.envelopeStates[ch] = envelope;
-}
-```
-
-### Best Practices for State Management
-
-1. **Initialization**
-   - Always check if state exists before using it
-   - Use an initialization flag for complex setup
-   - Initialize arrays and buffers to appropriate sizes
-
-2. **Channel Count Changes**
-   - Monitor and handle changes in channel configuration
-   - Reset or resize state arrays when needed
-   - Maintain state per channel when appropriate
-
-3. **Memory Management**
-   - Pre-allocate buffers to avoid garbage collection
-   - Use typed arrays (Float32Array) for better performance
-   - Clear or reset large buffers when plugin is disabled
-
-4. **State Access**
-   - Access state variables through the context object
-   - Update state consistently across processing blocks
-   - Consider thread safety in state modifications
-
-## Testing and Debugging
-
-### Using the Test Tool
-
-The project includes a test tool for validating plugin implementations. To use it:
-
-1. Start the development server:
 ```bash
-npm run dev
+npm run gen:dsp
 ```
 
-2. Open the test page in your browser:
+Generated files under `dsp/generated/` and `js/audio/dsp-params.generated.js` are
+committed. Never edit them by hand.
+
+## 3. Freeze the JavaScript Reference
+
+Create `cases.json` before writing the kernel. Cases should cover:
+
+- Constructor defaults and every enum or algorithm mode.
+- Parameter boundaries and representative fractional values.
+- Mono, stereo, supported multichannel routing, and odd block sizes.
+- 44.1, 48, 96, and 192 kHz when sample rate affects the algorithm.
+- Parameter events that distinguish state preservation from reset behavior.
+- Silence, impulse, full-scale, or seeded noise where relevant.
+- One-frame blocks for algorithms whose state update order is important.
+
+Generate and self-check the golden set:
+
+```bash
+node tools/dsp-parity/generate.mjs --type MyPlugin
+node tools/dsp-parity/run.mjs --type MyPlugin --self-check
 ```
-http://localhost:8000/dev/effetune_test.html
+
+Each plugin's committed `golden/` directory must remain within the 2 MiB budget. A golden
+case must contain finite output unless the current plugin contract intentionally specifies
+otherwise and the tolerance policy can evaluate it.
+
+## 4. Implement the C++ Kernel
+
+Use the generated struct and the registration macro:
+
+```cpp
+#include "effetune/kernel.h"
+#include "MyPluginParams.h"
+
+#include <cmath>
+#include <cstdint>
+
+namespace effetune::plugins::example {
+
+class MyKernel final : public PluginKernel {
+  EFFETUNE_PARAMS(generated::MyPluginParams)
+
+public:
+  void prepare(const PrepareInfo& info) override {
+    max_channels_ = info.maxChannels;
+    max_frames_ = info.maxFrames;
+  }
+  void reset() noexcept override {}
+
+  void process(float* audio, std::uint32_t channel_count,
+               std::uint32_t frame_count, const ProcessInfo&) noexcept override {
+    if (audio == nullptr || channel_count == 0u || channel_count > max_channels_ ||
+        frame_count == 0u || frame_count > max_frames_) {
+      return;
+    }
+    const double gain = std::pow(10.0, static_cast<double>(params_.gainDb) / 20.0);
+    const std::uint32_t samples = channel_count * frame_count;
+    for (std::uint32_t index = 0u; index < samples; ++index) {
+      audio[index] = static_cast<float>(static_cast<double>(audio[index]) * gain);
+    }
+  }
+
+private:
+  std::uint32_t max_channels_ = 0u;
+  std::uint32_t max_frames_ = 0u;
+};
+
+} // namespace effetune::plugins::example
+
+EFFETUNE_REGISTER_KERNEL(MyPlugin, effetune::plugins::example::MyKernel)
 ```
 
-`npm run dev` serves the repository with no-cache headers and enables development-mode dynamic loading so changes to `plugins/plugins.txt`, plugin JavaScript, and plugin CSS are fetched again on reload.
+Add the registry entry in category and plugin order:
 
-The test tool performs the following checks for each plugin:
-- Constructor implementation (plugin ID)
-- Parameter management (required fields)
-- UI creation
-- Enabled state handling
-- Parameter update notifications
+```cpp
+EFFETUNE_PLUGIN(MyPlugin, example/my_plugin)
+```
 
-Results are color-coded:
-- 🟢 Green: Test passed successfully
-- 🟡 Yellow: Warning (potential issue)
-- 🔴 Red: Test failed
+### Real-Time Rules
 
-Use this tool during development to ensure your plugin follows the required implementation guidelines.
+- Allocate all worst-case buffers in `prepare()`. `process()` must not allocate, resize,
+  lock, log, perform file I/O, or call into JavaScript.
+- Size for the ABI limits: up to eight channels, the prepared maximum block size, and the
+  supported sample-rate range. If the legacy implementation overallocates, a smaller ring
+  is acceptable only when it is mathematically equivalent and covered by wraparound tests.
+- Validate pointers and prepared bounds before indexing. Invalid process shapes return
+  without modifying audio.
+- Preserve the JavaScript numeric boundaries. A `Float32Array` write is an explicit
+  `static_cast<float>` in C++; ordinary JavaScript object fields normally retain `double`.
+- Match the reference update order. Feedback filters, delay lines, and accumulators can
+  diverge quickly when rounding moves across an operation.
+- Use shared primitives under `dsp/include/effetune/dsp/` where their semantics match.
+  Do not force a shared helper onto a legacy coefficient clamp or state rule that differs.
+- For hot DSP comparisons, use `if` or a ternary expression instead of generic min/max or
+  absolute-value helpers when doing so remains readable.
+- `enabled` is host-owned. Disabled instances are skipped before kernel dispatch.
+- Report algorithmic latency with `latencySamples()`; do not hide lookahead in state.
 
-### Manual Testing
+Document large worst-case allocations in `dsp/README.md`. A tolerance above the
+archetype default requires a `toleranceNote` in `cases.json`; benchmark results and
+performance exceptions belong in `tools/dsp-parity/BENCHMARKS.md`.
 
-1. **Parameter Testing**
-   - Test parameter validation thoroughly
-   - Verify type checking and range validation
-   - Test with invalid inputs to ensure proper handling
-   - Use the provided `setEnabled` method for enable/disable
-   - Example test cases:
-     ```javascript
-     // Test invalid type
-     plugin.setParameters({ gain: 'invalid' });
-     assert(plugin.gain === originalGain);  // Should keep original value
+## 5. Add Native State Tests
 
-     // Test out of range
-     plugin.setParameters({ gain: 999 });
-     assert(plugin.gain <= 2);  // Should clamp to valid range
+Golden parity covers rectangular audio cases. Add `native_test.cpp` when behavior also
+depends on lifecycle transitions that the golden format cannot express cleanly:
 
-     // Test enable/disable
-     plugin.setEnabled(false);
-     assert(plugin.getParameters().enabled === false);
-     ```
+- `reset()` replay.
+- Sample-rate, channel-count, or topology changes.
+- Parameters that must preserve state.
+- Disabled modes that freeze rather than advance state.
+- Maximum 192 kHz, eight-channel capacity.
+- Latency changes and telemetry cadence.
 
-2. **Audio Processing Testing**
-   - Note: Audio Worklet code runs in a separate context
-   - Cannot directly test processor function
-   - Focus on parameter validation and state management
-   - Test enabled state handling:
-     ```javascript
-     process(audioBuffer, message) {
-         if (!audioBuffer || !message?.measurements?.channels) {
-             return audioBuffer;
-         }
+Wrap every direct `process()` call in `effetune::allocation_guard::Scope`. Register the
+test target in `dsp/CMakeLists.txt` with the same warning-as-error settings as neighboring
+DSP tests.
 
-         // Skip processing if disabled
-         if (!this.enabled) {
-             return audioBuffer;
-         }
+## 6. Verify Native and WebAssembly Parity
 
-         // Continue with audio processing...
-     }
-     ```
+Run the native suite and the plugin's native parity cases first:
 
-3. **UI Testing**
-   - Verify UI updates reflect parameter changes
-   - Test UI responsiveness in both enabled/disabled states
-   - For visualization plugins:
-     * Continue UI updates even when disabled
-     * Only skip audio processing when disabled
-     * Do not stop animations in cleanup()
+```bash
+npm run test:dsp
+node tools/dsp-parity/run.mjs --type MyPlugin --native
+```
 
-2. **Parameter Validation**
-   - Always validate and sanitize parameter values
-   - Use appropriate min/max bounds for numerical values
-   - Check channelCount and blockSize parameters
+Then build both committed WebAssembly variants and test the actual artifacts:
 
-3. **Performance**
-   - Keep audio processing code efficient
-   - Minimize object creation in the processing function
-   - Pre-calculate constants outside loops
-   - Use simple mathematical operations where possible
+```bash
+npm run build:dsp
+node tools/dsp-parity/run.mjs --type MyPlugin --wasm
+node tools/dsp-parity/run.mjs --type MyPlugin --wasm --simd
+```
 
-3. **UI Design**
-    - Keep controls intuitive and responsive
-    - Provide appropriate value ranges and steps
-    - Include units in labels where applicable
-    - When using radio buttons, include plugin ID in the name attribute (e.g., `name="radio-group-${this.id}"`) to ensure each plugin instance has its own independent radio button group. This is critical when multiple instances of plugins with radio buttons are used simultaneously, as radio buttons with the same name attribute will interfere with each other. Example:
-      ```javascript
-      const radio = document.createElement('input');
-      radio.type = 'radio';
-      radio.name = `channel-${this.id}`; // Include plugin ID to make it unique
-      radio.value = 'Left';
-      ```
-    - Use effetune.css styles as much as possible to maintain consistent look and feel across plugins
-    - When defining plugin-specific CSS, include the plugin name in class names to avoid style conflicts and duplication. Example:
-      ```css
-      .my-plugin-container { /* Plugin-specific styles */ }
-      .my-plugin-slider { /* Custom slider styles */ }
-      ```
-    - Follow the standard CSS styles for common UI elements to maintain consistency across plugins
-    - Keep plugin-specific CSS minimal and focused on unique styling needs
-    - Use the base CSS classes for standard elements (e.g., `.parameter-row`, `.radio-group`) to ensure consistent layout and appearance
-    - Treat `effetune-mobile.css` as a compatibility fallback for existing plugins, not as the contract for new plugin UI. New plugins must avoid fixed-width-only layouts and define responsive sizing in their own structure when custom controls are needed.
-    - Only add custom CSS for plugin-specific UI elements that require unique styling
-    - Build plugin UIs for a 375px-wide mobile viewport as well as desktop. Parameter rows must wrap cleanly, controls must keep usable touch targets, and long labels must not force horizontal scrolling.
-    - Prefer the shared `PluginBase` helpers for common controls: `createSelectControl()`, `createCheckboxControl()`, `createRadioGroup()`, and `createGraphContainer()`. These helpers create IDs and base classes that participate in the mobile layout rules.
-    - For graph or visualization plugins, keep the canvas internal resolution fixed and make only the rendered CSS size responsive. Use `createGraphContainer()` for new canvas graphs, `getGraphCoords()` to map pointer coordinates back to the fixed canvas coordinate space, and `bindGraphPointer()` for drag/tap handling.
-    - Do not depend on mouse-only events for plugin interaction. Pointer events must cover touch and pen input, and marker positions should be stored as percentages when the graph can resize.
+Benchmark JavaScript, baseline WebAssembly, and SIMD at the required sample-rate and
+channel combinations:
 
-4. **Accessibility and Input Element Attributes**
-    - All input elements must have IDs that follow the format `${this.id}-${this.name}-[type]` where:
-      * `this.id` is the plugin's unique ID
-      * `this.name` is the plugin's name
-      * `[type]` is a descriptor for the input (e.g., "slider", "input", "checkbox")
-    - For radio button groups, use a consistent name attribute that follows the same format as IDs: `${this.id}-${this.name}-[group-name]`
-    - All input elements must have the `autocomplete="off"` attribute to prevent browser autocomplete from interfering with plugin controls
-    - Associate labels with inputs using the `htmlFor` attribute that matches the input's ID
-    - Example for a slider and text input pair:
-      ```javascript
-      // Slider
-      const slider = document.createElement('input');
-      slider.type = 'range';
-      slider.id = `${this.id}-${this.name}-slider`;
-      slider.name = `${this.id}-${this.name}-slider`;
-      slider.autocomplete = "off";
-      
-      // Text input
-      const valueInput = document.createElement('input');
-      valueInput.type = 'number';
-      valueInput.id = `${this.id}-${this.name}-input`;
-      valueInput.name = `${this.id}-${this.name}-input`;
-      valueInput.autocomplete = "off";
-      
-      // Label (associated with slider)
-      const label = document.createElement('label');
-      label.textContent = 'Parameter:';
-      label.htmlFor = `${this.id}-${this.name}-slider`;
-      ```
-    - Example for radio buttons:
-      ```javascript
-      const options = ['option1', 'option2', 'option3'];
-      
-      options.forEach(option => {
-          // Radio button
-          const radio = document.createElement('input');
-          radio.type = 'radio';
-          radio.name = `${this.id}-${this.name}-options`;
-          radio.id = `${this.id}-${this.name}-${option}`;
-          radio.value = option;
-          radio.autocomplete = "off";
-          
-          // Label for this radio button
-          const label = document.createElement('label');
-          label.htmlFor = `${this.id}-${this.name}-${option}`;
-          label.textContent = option.charAt(0).toUpperCase() + option.slice(1);
-          
-          // Add to container
-          container.appendChild(radio);
-          container.appendChild(label);
-      });
-      ```
+```bash
+node tools/dsp-parity/bench.mjs --type MyPlugin --modes js,wasm,simd
+```
 
-4. **Error Handling**
-   - Validate all inputs in both UI and processing code
-   - Provide fallback values for invalid parameters
-   - Handle edge cases gracefully (e.g., mono vs stereo)
+Record reviewed results in `tools/dsp-parity/BENCHMARKS.md`. A tolerance increase is not a
+substitute for locating a state, coefficient, routing, or precision mismatch.
 
-## Plugin Categories
+## 7. Enable the Port
 
-Plugins are organized into categories defined in `plugins/plugins.txt`:
+Add the exact type to `SHIPPED_ENABLED_TYPES` in `js/audio/dsp-rollout.js` only after:
 
-- `Analyzer`: Analysis tools (level meters, spectrum analyzers, etc.)
-- `Basics`: Basic audio effects (volume, balance, DC offset, etc.)
-- `Dynamics`: Dynamic range processors (compressors, gates, etc.)
-- `EQ`: Equalization effects (filters, frequency shaping)
-- `Filter`: Time-based filter effects (modulation, wow flutter)
-- `Lo-Fi`: Lo-Fi audio effects (bit crushing, jitter)
-- `Others`: Miscellaneous effects (oscillators, etc.)
-- `Reverb`: Reverberation effects (room simulation, etc.)
-- `Saturation`: Saturation and distortion effects
-- `Spatial`: Spatial audio effects (stereo field processing)
+1. Native, baseline WebAssembly, and SIMD parity pass.
+2. Stateful and allocation tests pass at maximum supported capacity.
+3. The benchmark and any justified exception are documented.
+4. The committed artifact metadata contains the matching type and parameter hash.
 
-To add a new category:
-1. Add it to the `[categories]` section in `plugins.txt`
-2. Provide a clear description of what types of plugins belong in this category
-3. Create an appropriate subdirectory in the `plugins` directory
+The host falls back to JavaScript per plugin instance when construction, parameter
+staging, or processing fails. Module or ABI startup failure disables WebAssembly for the
+session. Keep both fallback levels working; rollout is not permission to remove them.
+
+## Analyzer Telemetry
+
+Analyzers and meters emit bounded binary telemetry frames from the kernel instead of
+attaching JavaScript measurement objects. Use the shared telemetry writer and assign a
+versioned frame type. Tests must cover:
+
+- Header, tap ID, payload length, and finite-value validation.
+- Cadence at 44.1, 48, 96, and 192 kHz.
+- Overflow/drop accounting and malformed-frame rejection.
+- The JavaScript adapter that updates the existing visualization state.
+
+Do not post messages or allocate payloads from `process()`.
+
+## UI and Parameter Requirements
+
+- Prefer `PluginBase` helpers: `createParameterControl()`, `createSelectControl()`,
+  `createCheckboxControl()`, `createRadioGroup()`, and `createGraphContainer()`.
+- Give inputs stable IDs and names containing the plugin instance ID, associate labels
+  with `htmlFor`, and set `autocomplete="off"`.
+- Validate with `parseFiniteNumber()` and `isAllowedEnum()` or equivalent explicit checks.
+- Make custom controls usable at a 375 px viewport and with pointer, touch, and pen input.
+- Cancel animation frames and remove listeners in `cleanup()`.
+- Keep analyzer drawing on the main thread; only capture and reduction belong in the DSP
+  kernel.
+
+## Final Checklist
+
+Before handing the change back:
+
+```bash
+npm run gen:dsp
+npm run test:dsp
+npm run build:dsp
+npm run assets:web
+npm run verify
+```
+
+Also run the plugin's native/baseline/SIMD parity commands, focused host tests, benchmark,
+artifact freshness check, and `git diff --check`. Review the final diff with
+`code_review.md`. Do not start the Electron app or a local server unless that manual run
+was explicitly requested.
+
+Further ABI, build, and parity details are maintained in [the DSP README](https://github.com/Frieve-A/effetune/blob/main/dsp/README.md).

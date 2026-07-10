@@ -1,0 +1,27 @@
+{
+  "formatVersion": 1,
+  "type": "HiPassFilterPlugin",
+  "id": "maximum-frequency-lr16",
+  "stimulus": "fs",
+  "sampleRate": 192000,
+  "channels": 4,
+  "frameCount": 129,
+  "blockSize": 31,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "fr": 40000,
+    "sl": -96
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "3791bc033d29b93e1d5143cdce4ddfc0d195cc17e6e17091e1811802b8cf47c0",
+  "outputFloats": 516,
+  "byteLength": 2064,
+  "binary": "case-005.f32"
+}

@@ -1,0 +1,71 @@
+{
+  "formatVersion": 1,
+  "type": "MultibandCompressorPlugin",
+  "id": "minimum-ratio-soft-knee",
+  "stimulus": "step",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 1033,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "f1": 100,
+    "f2": 500,
+    "f3": 2000,
+    "f4": 8000,
+    "bands": [
+      {
+        "t": -18,
+        "r": 0.5,
+        "a": 100,
+        "rl": 1000,
+        "k": 12,
+        "g": 6
+      },
+      {
+        "t": -18,
+        "r": 0.5,
+        "a": 100,
+        "rl": 1000,
+        "k": 12,
+        "g": 6
+      },
+      {
+        "t": -18,
+        "r": 0.5,
+        "a": 100,
+        "rl": 1000,
+        "k": 12,
+        "g": 6
+      },
+      {
+        "t": -18,
+        "r": 0.5,
+        "a": 100,
+        "rl": 1000,
+        "k": 12,
+        "g": 6
+      },
+      {
+        "t": -18,
+        "r": 0.5,
+        "a": 100,
+        "rl": 1000,
+        "k": 12,
+        "g": 6
+      }
+    ]
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00002,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "d6b8dd49b65bd608d0b68631ac2571b9c2ada0c100a6274799d9382d1dcad3aa",
+  "outputFloats": 2066,
+  "byteLength": 8264,
+  "binary": "case-004.f32"
+}

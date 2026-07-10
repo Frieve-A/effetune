@@ -1,3 +1,7 @@
+const GATE_TAP_GAIN_REDUCTION = 2;
+const GATE_GAIN_REDUCTION_TELEMETRY_VERSION = 1;
+const GATE_GAIN_REDUCTION_PAYLOAD_BYTES = 4;
+
 class GatePlugin extends PluginBase {
     constructor() {
         super('Gate', 'Noise gate with threshold, ratio, and knee control');
@@ -15,6 +19,10 @@ class GatePlugin extends PluginBase {
         this._hasMessageHandler = false;
         this.isVisible = true;
         this.observer = null;
+        this._dspTelemetryHub = null;
+        this._dspTelemetryTapId = null;
+        this._dspTelemetryUnsubscribe = null;
+        this._boundDspGainReductionTelemetry = frame => this.handleDspGainReductionTelemetry(frame);
 
         this._setupMessageHandler();
 
@@ -472,7 +480,88 @@ class GatePlugin extends PluginBase {
         `; // End of function body string
     }
     
+    _setupMessageHandler() {
+        super._setupMessageHandler();
+        this.ensureDspTelemetrySubscription?.();
+    }
+
+    ensureDspTelemetrySubscription() {
+        const hub = window.dspTelemetryHub;
+        const tapId = this.id;
+        const validTapId = Number.isInteger(tapId) && tapId >= 0 && tapId <= 0xffffffff;
+        const validHub = hub && typeof hub.subscribe === 'function';
+
+        if (!validTapId || !validHub) {
+            if (this._dspTelemetryUnsubscribe &&
+                (hub !== this._dspTelemetryHub || tapId !== this._dspTelemetryTapId)) {
+                this.disposeDspTelemetrySubscription();
+            }
+            return false;
+        }
+        if (this._dspTelemetryUnsubscribe &&
+            hub === this._dspTelemetryHub && tapId === this._dspTelemetryTapId) {
+            return true;
+        }
+
+        this.disposeDspTelemetrySubscription();
+        try {
+            const unsubscribe = hub.subscribe(
+                tapId,
+                GATE_TAP_GAIN_REDUCTION,
+                this._boundDspGainReductionTelemetry
+            );
+            if (typeof unsubscribe !== 'function') {
+                hub.unsubscribe?.(
+                    tapId,
+                    GATE_TAP_GAIN_REDUCTION,
+                    this._boundDspGainReductionTelemetry
+                );
+                return false;
+            }
+            this._dspTelemetryHub = hub;
+            this._dspTelemetryTapId = tapId;
+            this._dspTelemetryUnsubscribe = unsubscribe;
+            return true;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    disposeDspTelemetrySubscription() {
+        const unsubscribe = this._dspTelemetryUnsubscribe;
+        this._dspTelemetryHub = null;
+        this._dspTelemetryTapId = null;
+        this._dspTelemetryUnsubscribe = null;
+        if (!unsubscribe) return;
+        try {
+            unsubscribe();
+        } catch (error) {
+            // Ignore stale telemetry subscription cleanup failures.
+        }
+    }
+
+    parseDspGainReductionTelemetryFrame(frame) {
+        if (frame?.frameType !== GATE_TAP_GAIN_REDUCTION ||
+            frame.formatVersion !== GATE_GAIN_REDUCTION_TELEMETRY_VERSION) {
+            return null;
+        }
+        const payload = frame.payload;
+        if (!payload || typeof payload.getFloat32 !== 'function' ||
+            payload.byteLength !== GATE_GAIN_REDUCTION_PAYLOAD_BYTES) {
+            return null;
+        }
+        const amountDb = payload.getFloat32(0, true);
+        return Number.isFinite(amountDb) && amountDb >= 0 ? amountDb : null;
+    }
+
+    handleDspGainReductionTelemetry(frame) {
+        const amountDb = this.parseDspGainReductionTelemetryFrame(frame);
+        if (amountDb === null) return;
+        this.process({ measurements: { gainReduction: amountDb } });
+    }
+
     onMessage(message) {
+        this.ensureDspTelemetrySubscription();
         if (message.type === 'processBuffer') {
             const result = this.process(message);
             
@@ -549,6 +638,7 @@ class GatePlugin extends PluginBase {
     setGn(value) { this.setParameters({ gn: value }); }
 
     getParameters() {
+        this.ensureDspTelemetrySubscription();
         return {
             type: this.constructor.name,
             th: this.th,
@@ -684,6 +774,7 @@ class GatePlugin extends PluginBase {
     }
 
     createUI() {
+        this.ensureDspTelemetrySubscription();
         const container = document.createElement('div');
         container.className = 'gate-plugin-ui plugin-parameter-ui';
 
@@ -807,6 +898,7 @@ class GatePlugin extends PluginBase {
     }
 
     cleanup() {
+        this.disposeDspTelemetrySubscription();
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;

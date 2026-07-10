@@ -1,0 +1,67 @@
+{
+  "formatVersion": 1,
+  "type": "DynamicSaturationPlugin",
+  "id": "mechanical-distortion-gain-transitions",
+  "stimulus": "sq50",
+  "sampleRate": 96000,
+  "channels": 4,
+  "frameCount": 1001,
+  "blockSize": 64,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 8,
+  "seed": "0xeffe7a56",
+  "params": {
+    "sd": 0,
+    "ss": 0,
+    "sp": 0.1,
+    "sm": 0.1,
+    "dd": 0,
+    "db": -1,
+    "dm": 0,
+    "cm": 0,
+    "og": -18
+  },
+  "events": [
+    {
+      "frame": 31,
+      "params": {
+        "sd": 10,
+        "ss": 10,
+        "sp": 10,
+        "sm": 5
+      }
+    },
+    {
+      "frame": 321,
+      "params": {
+        "dd": 10,
+        "db": 1,
+        "dm": 100,
+        "cm": 100
+      }
+    },
+    {
+      "frame": 700,
+      "params": {
+        "sd": 3,
+        "ss": 2,
+        "sp": 1,
+        "sm": 1,
+        "dd": 1.5,
+        "db": 0.1,
+        "dm": 100,
+        "cm": 20,
+        "og": 18
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "33770a3f4e7ed3608281a1060db6304f2a2bf28bfc61aa1e7b783c4293ec8d58",
+  "outputFloats": 4004,
+  "byteLength": 16016,
+  "binary": "case-009.f32"
+}

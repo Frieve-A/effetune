@@ -1,0 +1,27 @@
+{
+  "formatVersion": 1,
+  "type": "HardClippingPlugin",
+  "id": "one-frame-blocks",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 17,
+  "blockSize": 1,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 9,
+  "seed": "0xeffe7a57",
+  "params": {
+    "th": -18,
+    "md": "negative"
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "aaec46b70a3abefd1621bddba57d4e5af910b4cc7934bb186784247844e7752a",
+  "outputFloats": 34,
+  "byteLength": 136,
+  "binary": "case-010.f32"
+}

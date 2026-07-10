@@ -1,0 +1,35 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 128,
+    "channels": 2,
+    "channelMode": "stereo",
+    "frames": 257,
+    "params": { "f0": 6.91, "sl": 0 }
+  },
+  "cases": [
+    { "id": "zero-slope-identity", "stimulus": "noise", "frames": 259 },
+    { "id": "subthreshold-identity", "stimulus": "fs", "sampleRate": 44100, "channels": 1, "channelMode": "mono", "frames": 131, "blockSize": 63, "params": { "f0": 3, "sl": 0.009 } },
+    { "id": "minimum-pivot-negative", "stimulus": "step", "sampleRate": 44100, "frames": 257, "blockSize": 63, "params": { "f0": 3, "sl": -12 } },
+    { "id": "maximum-pivot-positive", "stimulus": "sweep", "sampleRate": 192000, "channels": 4, "channelMode": "all4", "frames": 129, "blockSize": 31, "params": { "f0": 9.9, "sl": 12 } },
+    { "id": "positive-mid-pivot", "stimulus": "imp", "sampleRate": 96000, "frames": 255, "blockSize": 127, "params": { "f0": 6.91, "sl": 6 } },
+    { "id": "negative-mid-pivot", "stimulus": "noise", "sampleRate": 192000, "frames": 197, "blockSize": 63, "params": { "f0": 6.91, "sl": -6 } },
+    { "id": "one-frame-blocks", "stimulus": "noise", "sampleRate": 44100, "channels": 1, "channelMode": "mono", "frames": 67, "blockSize": 1, "params": { "f0": 8, "sl": 12 } },
+    {
+      "id": "freeze-and-coefficient-transitions",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "channels": 4,
+      "channelMode": "all4",
+      "frames": 259,
+      "blockSize": 64,
+      "params": { "f0": 5, "sl": -8 },
+      "events": [
+        { "frame": 17, "params": { "sl": 0 } },
+        { "frame": 66, "params": { "f0": 9, "sl": 0.009 } },
+        { "frame": 129, "params": { "sl": 8 } },
+        { "frame": 194, "params": { "f0": 3, "sl": -12 } }
+      ]
+    }
+  ]
+}

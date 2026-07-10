@@ -1,0 +1,40 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 128,
+    "channels": 2,
+    "channelMode": "stereo",
+    "frames": 257,
+    "params": { "hf": 60, "hs": -24, "lf": 5000, "ls": -12 }
+  },
+  "cases": [
+    { "id": "default-impulse", "stimulus": "imp", "frames": 259 },
+    { "id": "startup-seeds-silence", "stimulus": "silence", "sampleRate": 44100, "frames": 131, "blockSize": 63 },
+    { "id": "slopes-off-identity", "stimulus": "noise", "sampleRate": 96000, "channels": 1, "channelMode": "mono", "frames": 193, "blockSize": 65, "params": { "hs": 0, "ls": 0 } },
+    { "id": "slopes-6-48", "stimulus": "step", "sampleRate": 44100, "frames": 257, "blockSize": 63, "params": { "hf": 20, "hs": -6, "lf": 40000, "ls": -48 } },
+    { "id": "slopes-12-42", "stimulus": "sweep", "sampleRate": 96000, "frames": 255, "blockSize": 127, "params": { "hf": 4000, "hs": -12, "lf": 200, "ls": -42 } },
+    { "id": "slopes-18-36", "stimulus": "noise", "sampleRate": 192000, "channels": 4, "channelMode": "all4", "frames": 129, "blockSize": 31, "params": { "hf": 80, "hs": -18, "lf": 30000, "ls": -36 } },
+    { "id": "slopes-24-30", "stimulus": "fs", "sampleRate": 44100, "frames": 197, "blockSize": 33, "params": { "hf": 300, "hs": -24, "lf": 9000, "ls": -30 } },
+    { "id": "slopes-30-24", "stimulus": "sq50", "sampleRate": 96000, "frames": 197, "blockSize": 63, "params": { "hf": 1200, "hs": -30, "lf": 18000, "ls": -24 } },
+    { "id": "slopes-36-18", "stimulus": "sin1k", "sampleRate": 192000, "frames": 197, "blockSize": 65, "params": { "hf": 4000, "hs": -36, "lf": 40000, "ls": -18 } },
+    { "id": "slopes-42-12", "stimulus": "noise", "sampleRate": 44100, "channels": 4, "channelMode": "all4", "frames": 131, "blockSize": 63, "params": { "hf": 20, "hs": -42, "lf": 200, "ls": -12 } },
+    { "id": "slopes-48-6", "stimulus": "noise", "sampleRate": 96000, "channels": 1, "channelMode": "mono", "frames": 193, "blockSize": 65, "params": { "hf": 4000, "hs": -48, "lf": 40000, "ls": -6 } },
+    { "id": "one-frame-blocks", "stimulus": "noise", "sampleRate": 192000, "channels": 1, "channelMode": "mono", "frames": 67, "blockSize": 1, "params": { "hf": 180, "hs": -42, "lf": 16000, "ls": -30 } },
+    {
+      "id": "frequency-and-slope-transitions",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "channels": 4,
+      "channelMode": "all4",
+      "frames": 259,
+      "blockSize": 64,
+      "params": { "hf": 40, "hs": -6, "lf": 36000, "ls": -18 },
+      "events": [
+        { "frame": 17, "params": { "hf": 1400 } },
+        { "frame": 66, "params": { "lf": 7200 } },
+        { "frame": 129, "params": { "hs": -48 } },
+        { "frame": 194, "params": { "ls": 0 } }
+      ]
+    }
+  ]
+}

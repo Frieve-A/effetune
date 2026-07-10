@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "BandPassFilterPlugin",
+  "id": "crossed-extremes",
+  "stimulus": "sweep",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 255,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "hf": 40000,
+    "lf": 10,
+    "hs": -48,
+    "ls": -12
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "285ad3d162ea5f56636051d7cfa541756afe5ccb162f1e9551b2d8185cc40030",
+  "outputFloats": 510,
+  "byteLength": 2040,
+  "binary": "case-006.f32"
+}

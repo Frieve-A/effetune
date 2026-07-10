@@ -1,0 +1,15 @@
+{
+  "type": "MatrixPlugin",
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "fields": [],
+  "structured": {
+    "name": "matrixRoutes",
+    "key": "mx",
+    "codec": "matrix-routes-v1",
+    "maxItems": 1024,
+    "default": "0011"
+  }
+}

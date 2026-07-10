@@ -1,0 +1,56 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 64,
+    "channels": 2,
+    "channelMode": "stereo",
+    "frames": 521
+  },
+  "cases": [
+    { "id": "default-impulse", "stimulus": "imp" },
+    { "id": "default-noise", "stimulus": "noise" },
+    {
+      "id": "zero-delay-full-crossfeed",
+      "stimulus": "sq50",
+      "params": { "lv": 0, "dl": 0, "lf": 20000 }
+    },
+    {
+      "id": "maximum-delay-minimum-level",
+      "stimulus": "noise",
+      "params": { "lv": -60, "dl": 1, "lf": 100 }
+    },
+    {
+      "id": "mono-bypass",
+      "stimulus": "noise",
+      "channels": 1,
+      "channelMode": "mono",
+      "params": { "lv": 0, "dl": 1, "lf": 20000 }
+    },
+    {
+      "id": "all4-bypass",
+      "stimulus": "noise",
+      "channels": 4,
+      "channelMode": "all4",
+      "channel": "A",
+      "params": { "lv": -3, "dl": 0.5, "lf": 3000 }
+    },
+    {
+      "id": "stereo-192000-odd-block",
+      "stimulus": "noise",
+      "sampleRate": 192000,
+      "blockSize": 83,
+      "params": { "lv": -9, "dl": 0.37, "lf": 1200 }
+    },
+    {
+      "id": "parameter-transitions",
+      "stimulus": "noise",
+      "frames": 901,
+      "events": [
+        { "frame": 17, "params": { "lv": -12, "dl": 0, "lf": 400 } },
+        { "frame": 129, "params": { "lv": -3, "dl": 1, "lf": 5000 } },
+        { "frame": 388, "params": { "lv": -60, "dl": 0.25, "lf": 20000 } },
+        { "frame": 700, "params": { "lv": -6, "dl": 0.3, "lf": 700 } }
+      ]
+    }
+  ]
+}

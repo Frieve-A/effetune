@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "type": "SubSynthPlugin",
+  "id": "rectifier-only-maximum",
+  "stimulus": "sq50",
+  "sampleRate": 44100,
+  "channels": 4,
+  "frameCount": 263,
+  "blockSize": 31,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "sl": 200,
+    "dl": 0,
+    "slf": 400,
+    "sls": 0,
+    "shf": 400,
+    "shs": 0,
+    "dhf": 400,
+    "dhs": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "8436f585dbeb985ffe8bd8da5144bb86fb34001e136d98dc6e21fcab9c9ed3c8",
+  "outputFloats": 1052,
+  "byteLength": 4208,
+  "binary": "case-003.f32"
+}

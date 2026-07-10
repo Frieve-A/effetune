@@ -1,0 +1,104 @@
+{
+  "formatVersion": 1,
+  "type": "FiveBandDynamicEQ",
+  "id": "coefficient-hold-quirk-then-gain-refresh",
+  "stimulus": "step",
+  "sampleRate": 48000,
+  "channels": 1,
+  "frameCount": 2001,
+  "blockSize": 128,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "bs": [
+      {
+        "en": true,
+        "ft": "pk",
+        "f": 200,
+        "q": 1,
+        "mg": 18,
+        "th": -48,
+        "r": 8,
+        "kn": 0,
+        "a": 0.1,
+        "rl": 10,
+        "scf": 200,
+        "scq": 1
+      },
+      {
+        "en": false
+      },
+      {
+        "en": false
+      },
+      {
+        "en": false
+      },
+      {
+        "en": false
+      }
+    ]
+  },
+  "events": [
+    {
+      "frame": 1000,
+      "params": {
+        "bs": [
+          {
+            "en": true,
+            "ft": "hs",
+            "f": 8000,
+            "q": 7,
+            "mg": 18,
+            "th": -48,
+            "r": 8,
+            "kn": 0,
+            "a": 0.1,
+            "rl": 10,
+            "scf": 200,
+            "scq": 1
+          },
+          {},
+          {},
+          {},
+          {}
+        ]
+      }
+    },
+    {
+      "frame": 1500,
+      "params": {
+        "bs": [
+          {
+            "en": true,
+            "ft": "hs",
+            "f": 8000,
+            "q": 7,
+            "mg": 18,
+            "th": -6,
+            "r": 8,
+            "kn": 0,
+            "a": 0.1,
+            "rl": 10,
+            "scf": 200,
+            "scq": 1
+          },
+          {},
+          {},
+          {},
+          {}
+        ]
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "03bab089177565d05d79d2e23f09c982732a361ea9e1949df5535067343c5eb2",
+  "outputFloats": 2001,
+  "byteLength": 8004,
+  "binary": "case-007.f32"
+}

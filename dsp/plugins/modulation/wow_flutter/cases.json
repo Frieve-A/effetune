@@ -1,0 +1,79 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 64,
+    "channels": 2,
+    "channelMode": "stereo"
+  },
+  "cases": [
+    { "id": "default-noise", "stimulus": "noise", "frames": 6001 },
+    {
+      "id": "maximum-depth-randomness",
+      "stimulus": "sweep",
+      "frames": 7001,
+      "params": { "rt": 20, "dp": 40, "rn": 40, "rc": 20, "rs": 0, "cp": 180, "cs": 0 }
+    },
+    {
+      "id": "lfo-only-common-sync",
+      "stimulus": "sq50",
+      "frames": 6103,
+      "params": { "rt": 0.1, "dp": 30, "rn": 0, "rc": 0.1, "rs": -12, "cp": -180, "cs": 100 }
+    },
+    {
+      "id": "random-only-independent",
+      "stimulus": "noise",
+      "frames": 6203,
+      "params": { "rt": 4.5, "dp": 0, "rn": 35, "rc": 12, "rs": -3, "cp": 73, "cs": 0 }
+    },
+    {
+      "id": "mono-44100-odd-block",
+      "stimulus": "sq50",
+      "sampleRate": 44100,
+      "blockSize": 83,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 5003,
+      "params": { "rt": 1.5, "dp": 7.5, "rn": 9.5, "rc": 3, "rs": -9, "cp": 0, "cs": 42 }
+    },
+    {
+      "id": "all4-192000",
+      "stimulus": "noise",
+      "sampleRate": 192000,
+      "blockSize": 127,
+      "channels": 4,
+      "channelMode": "all4",
+      "channel": "A",
+      "frames": 20003,
+      "params": { "rt": 8, "dp": 21, "rn": 17, "rc": 7, "rs": -4, "cp": 120, "cs": 65 }
+    },
+    {
+      "id": "state-preserving-events",
+      "stimulus": "noise",
+      "frames": 7007,
+      "events": [
+        { "frame": 31, "params": { "rt": 12, "dp": 2 } },
+        { "frame": 1024, "params": { "rn": 28, "rc": 0.5, "rs": -12 } },
+        { "frame": 3073, "params": { "cp": -135, "cs": 5 } },
+        { "frame": 5500, "params": { "rt": 0.25, "dp": 40, "rn": 40, "rc": 20, "rs": 0, "cp": 180, "cs": 100 } }
+      ]
+    },
+    {
+      "id": "one-frame-blocks",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "blockSize": 1,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 10001
+    },
+    {
+      "id": "all8-variable-block",
+      "stimulus": "sweep",
+      "sampleRate": 96000,
+      "blockSize": 127,
+      "channels": 8,
+      "frames": 10003,
+      "params": { "rt": 2.3, "dp": 15, "rn": 22, "rc": 9, "rs": -7.5, "cp": 45, "cs": 33 }
+    }
+  ]
+}

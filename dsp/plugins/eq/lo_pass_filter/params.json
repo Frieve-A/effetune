@@ -1,0 +1,27 @@
+{
+  "type": "LoPassFilterPlugin",
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "fields": [
+    {
+      "name": "frequency",
+      "key": "fr",
+      "kind": "float",
+      "min": 10,
+      "max": 40000,
+      "default": 1000,
+      "unit": "Hz"
+    },
+    {
+      "name": "slope",
+      "key": "sl",
+      "kind": "int",
+      "min": -96,
+      "max": 0,
+      "default": -24,
+      "unit": "dB/oct"
+    }
+  ]
+}

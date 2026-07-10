@@ -1,0 +1,30 @@
+{
+  "formatVersion": 1,
+  "type": "DopplerDistortionPlugin",
+  "id": "maximum-force-minimum-mass",
+  "stimulus": "sq50",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 4301,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "cf": 100,
+    "sm": 0.001,
+    "sc": 1,
+    "df": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.001,
+    "policy": "per-sample"
+  },
+  "toleranceNote": "The undamped minimum-mass stress case amplifies float parameter ABI quantization.",
+  "jsEngineHash": "3e2d3415b86537e4b25255aa2f6b99f04aa9e6b9e39dcc74e3cce1d12d59ccee",
+  "outputFloats": 8602,
+  "byteLength": 34408,
+  "binary": "case-002.f32"
+}

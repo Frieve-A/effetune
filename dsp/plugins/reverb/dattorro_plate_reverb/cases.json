@@ -1,0 +1,84 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 128,
+    "channels": 2,
+    "channelMode": "stereo"
+  },
+  "cases": [
+    { "id": "default-impulse", "stimulus": "imp", "frames": 16001, "fullLength": true },
+    {
+      "id": "minimum-controls-44100",
+      "stimulus": "step",
+      "sampleRate": 44100,
+      "blockSize": 63,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 5001,
+      "params": { "pd": 0, "bw": 0, "id1": 0, "id2": 0, "dc": 0, "dd1": 0, "dp": 0, "md": 0, "mr": 0, "wm": 0, "dm": 100 }
+    },
+    {
+      "id": "maximum-controls-192000",
+      "stimulus": "noise",
+      "sampleRate": 192000,
+      "blockSize": 127,
+      "frames": 32003,
+      "params": { "pd": 100, "bw": 1, "id1": 1, "id2": 1, "dc": 1, "dd1": 1, "dp": 1, "md": 16, "mr": 10, "wm": 100, "dm": 100 }
+    },
+    {
+      "id": "mono-wet-96000",
+      "stimulus": "imp",
+      "sampleRate": 96000,
+      "blockSize": 97,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 18001,
+      "params": { "pd": 0, "wm": 100, "dm": 0 }
+    },
+    {
+      "id": "eight-channel-routing",
+      "stimulus": "noise",
+      "blockSize": 127,
+      "channels": 8,
+      "frames": 12001,
+      "params": { "pd": 0, "wm": 100, "dm": 0 }
+    },
+    {
+      "id": "predelay-boundaries",
+      "stimulus": "imp",
+      "frames": 20001,
+      "params": { "pd": 0, "wm": 100, "dm": 0 },
+      "events": [
+        { "frame": 5000, "params": { "pd": 99.9 } },
+        { "frame": 12000, "params": { "pd": 100 } }
+      ]
+    },
+    {
+      "id": "state-preserving-parameter-events",
+      "stimulus": "noise",
+      "frames": 12001,
+      "events": [
+        { "frame": 37, "params": { "bw": 0.25, "id1": 0.1, "id2": 0.9, "dc": 0.95 } },
+        { "frame": 4099, "params": { "dd1": 0.2, "dp": 0.8, "md": 12, "mr": 7.5 } },
+        { "frame": 9001, "params": { "wm": 85, "dm": 20 } }
+      ]
+    },
+    {
+      "id": "one-frame-blocks",
+      "stimulus": "noise",
+      "blockSize": 1,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 1501,
+      "params": { "pd": 0, "wm": 100, "dm": 0 }
+    },
+    {
+      "id": "odd-block-modulation",
+      "stimulus": "sq50",
+      "sampleRate": 44100,
+      "blockSize": 73,
+      "frames": 10001,
+      "params": { "pd": 23.7, "dc": 0.8, "dp": 0.35, "md": 16, "mr": 10, "wm": 100, "dm": 0 }
+    }
+  ]
+}

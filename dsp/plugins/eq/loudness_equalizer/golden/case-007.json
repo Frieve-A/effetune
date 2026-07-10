@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "type": "LoudnessEqualizerPlugin",
+  "id": "one-frame-binary64-state",
+  "stimulus": "noise",
+  "sampleRate": 192000,
+  "channels": 1,
+  "frameCount": 67,
+  "blockSize": 1,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "sp": 61.25,
+    "lg": 14.5,
+    "lf": 299,
+    "lq": 0.51,
+    "hq": 0.99,
+    "hg": 11.75,
+    "hf": 5990
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "0dbeab6da3dab6769e86bdfd61cdff403972a6f2924a3956b24b5993711e73a6",
+  "outputFloats": 67,
+  "byteLength": 268,
+  "binary": "case-007.f32"
+}

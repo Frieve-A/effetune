@@ -1,0 +1,51 @@
+{
+  "formatVersion": 1,
+  "type": "StereoBalancePlugin",
+  "id": "non-aligned-transitions",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 513,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 15,
+  "seed": "0xeffe7a51",
+  "params": {
+    "bl": 0
+  },
+  "events": [
+    {
+      "frame": 63,
+      "params": {
+        "bl": -1
+      }
+    },
+    {
+      "frame": 128,
+      "params": {
+        "bl": -0.25
+      }
+    },
+    {
+      "frame": 257,
+      "params": {
+        "bl": 1
+      }
+    },
+    {
+      "frame": 512,
+      "params": {
+        "bl": 0
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "2190f867d7a44b4e06d00e0e5e52e2f3a8040876dbc7838ad583e483628bbf21",
+  "outputFloats": 1026,
+  "byteLength": 4104,
+  "binary": "case-016.f32"
+}

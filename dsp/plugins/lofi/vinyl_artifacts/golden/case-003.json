@@ -1,0 +1,37 @@
+{
+  "formatVersion": 1,
+  "type": "VinylArtifactsPlugin",
+  "id": "all4-state-but-stereo-output",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 4,
+  "frameCount": 2049,
+  "blockSize": 65,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "pp": 120,
+    "pl": 0,
+    "cm": 2000,
+    "cl": 0,
+    "hs": 0,
+    "rb": 0,
+    "xt": 100,
+    "tn": 0,
+    "wr": 200,
+    "rt": 100,
+    "rm": "Velocity",
+    "mx": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "eab9d086b22155e71cbfa50044eab3794689d202244558388eb7cafd99c61478",
+  "outputFloats": 8196,
+  "byteLength": 32784,
+  "binary": "case-003.f32"
+}

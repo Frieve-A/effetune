@@ -1,0 +1,36 @@
+{
+  "formatVersion": 1,
+  "type": "DattorroPlateReverbPlugin",
+  "id": "maximum-controls-192000",
+  "stimulus": "noise",
+  "sampleRate": 192000,
+  "channels": 2,
+  "frameCount": 32003,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "pd": 100,
+    "bw": 1,
+    "id1": 1,
+    "id2": 1,
+    "dc": 1,
+    "dd1": 1,
+    "dp": 1,
+    "md": 16,
+    "mr": 10,
+    "wm": 100,
+    "dm": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "bb119de680bebc08f6386a46611e53ae1f151703d18f094c81b903bf2a42fc38",
+  "outputFloats": 64006,
+  "byteLength": 256024,
+  "binary": "case-003.f32"
+}

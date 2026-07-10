@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "TimeAlignmentPlugin",
+  "id": "maximum-delay",
+  "stimulus": "imp",
+  "sampleRate": 192000,
+  "channels": 1,
+  "frameCount": 19203,
+  "blockSize": 127,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "dl": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "6a03a46f3d7378bb3fa7964fe884151ee709f0cc27a5eed02ccd5e05385b1481",
+  "outputFloats": 19203,
+  "byteLength": 76812,
+  "binary": "case-004.f32"
+}

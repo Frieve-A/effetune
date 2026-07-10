@@ -1,0 +1,48 @@
+{
+  "formatVersion": 1,
+  "type": "PitchShifterPlugin",
+  "id": "pitch-factor-bypass-freezes-state",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 24001,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "ps": 6,
+    "ft": 0,
+    "ws": 80,
+    "xf": 30
+  },
+  "events": [
+    {
+      "frame": 7001,
+      "params": {
+        "ps": 0
+      }
+    },
+    {
+      "frame": 11003,
+      "params": {
+        "ps": 6
+      }
+    },
+    {
+      "frame": 16007,
+      "params": {
+        "ft": -50
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "18f30430161f9690ee99e70d58bf8580721ecb94fbe74c7c73466c6f9a07e894",
+  "outputFloats": 48002,
+  "byteLength": 192008,
+  "binary": "case-004.f32"
+}

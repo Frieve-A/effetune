@@ -285,6 +285,7 @@
   "dialog.audioConfig.latency.high": "Alta (Mais estável)",
   "dialog.audioConfig.useInputWithPlayer": "Entrada de áudio mesmo ao usar o Player",
   "dialog.audioConfig.lowLatencyOutput": "Saída de baixa latência (direta)",
+  "dialog.audioConfig.useWasmDsp": "Usar processamento de áudio WebAssembly",
   "dialog.audioConfig.cancel": "Cancelar",
   "dialog.audioConfig.apply": "Aplicar",
   "dialog.audioConfig.updatedTitle": "Configuração de Áudio Atualizada",

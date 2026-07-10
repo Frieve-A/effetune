@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "type": "OscilloscopePlugin",
+  "id": "four-channel-passthrough",
+  "stimulus": "fs",
+  "sampleRate": 48000,
+  "channels": 4,
+  "frameCount": 449,
+  "blockSize": 113,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "dt": 0.01,
+    "tm": "Auto",
+    "tl": -1,
+    "te": "Rising",
+    "ho": 0.0001,
+    "dl": 0,
+    "vo": -1
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "461b4c813862374c3c0d80b8e9d7f079f90cd459bf2abfa451c297cee9203d43",
+  "outputFloats": 1796,
+  "byteLength": 7184,
+  "binary": "case-006.f32"
+}

@@ -1,0 +1,13 @@
+{
+  "type": "WowFlutterPlugin",
+  "tolerance": { "abs": 0.00002, "policy": "per-sample" },
+  "fields": [
+    { "name": "rate", "key": "rt", "kind": "float", "min": 0.1, "max": 20, "default": 0.5, "unit": "Hz" },
+    { "name": "depth", "key": "dp", "kind": "float", "min": 0, "max": 40, "default": 6, "unit": "ms" },
+    { "name": "randomness", "key": "rn", "kind": "float", "min": 0, "max": 40, "default": 10, "unit": "ms" },
+    { "name": "randomnessCutoff", "key": "rc", "kind": "float", "min": 0.1, "max": 20, "default": 5, "unit": "Hz" },
+    { "name": "randomnessSlope", "key": "rs", "kind": "float", "min": -12, "max": 0, "default": -6, "unit": "dB" },
+    { "name": "channelPhase", "key": "cp", "kind": "float", "min": -180, "max": 180, "default": 0, "unit": "deg" },
+    { "name": "channelSync", "key": "cs", "kind": "float", "min": 0, "max": 100, "default": 100, "unit": "%" }
+  ]
+}

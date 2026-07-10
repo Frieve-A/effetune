@@ -1,3 +1,9 @@
+const MULTIBAND_EXPANDER_TAP_DYNAMICS = 13;
+const MULTIBAND_EXPANDER_TELEMETRY_VERSION = 1;
+const MULTIBAND_EXPANDER_TELEMETRY_BANDS = 5;
+const MULTIBAND_EXPANDER_TELEMETRY_KIND = 1;
+const MULTIBAND_EXPANDER_TELEMETRY_BYTES = 24;
+
 class MultibandExpanderPlugin extends PluginBase {
   constructor() {
     super('Multiband Expander', '5-band expander with crossover filters');
@@ -26,6 +32,12 @@ class MultibandExpanderPlugin extends PluginBase {
     this.animationFrameId = null;
     this.isVisible = true;
     this.observer = null;
+    this._dspTelemetryHub = null;
+    this._dspTelemetryTapId = null;
+    this._dspTelemetryUnsubscribe = null;
+    this._boundDspMultibandTelemetry = frame => this.handleDspMultibandTelemetry(frame);
+
+    this._setupMessageHandler();
 
     // Register the processor code (returned as a string)
     this.registerProcessor(this.getProcessorCode());
@@ -640,7 +652,96 @@ class MultibandExpanderPlugin extends PluginBase {
     `;
   }
 
+  _setupMessageHandler() {
+    super._setupMessageHandler();
+    this.ensureDspTelemetrySubscription?.();
+  }
+
+  ensureDspTelemetrySubscription() {
+    const hub = window.dspTelemetryHub;
+    const tapId = this.id;
+    const validTapId = Number.isInteger(tapId) && tapId >= 0 && tapId <= 0xffffffff;
+    const validHub = hub && typeof hub.subscribe === 'function';
+    if (!validTapId || !validHub) {
+      if (this._dspTelemetryUnsubscribe &&
+          (hub !== this._dspTelemetryHub || tapId !== this._dspTelemetryTapId)) {
+        this.disposeDspTelemetrySubscription();
+      }
+      return false;
+    }
+    if (this._dspTelemetryUnsubscribe && hub === this._dspTelemetryHub &&
+        tapId === this._dspTelemetryTapId) {
+      return true;
+    }
+
+    this.disposeDspTelemetrySubscription();
+    try {
+      const unsubscribe = hub.subscribe(
+        tapId,
+        MULTIBAND_EXPANDER_TAP_DYNAMICS,
+        this._boundDspMultibandTelemetry
+      );
+      if (typeof unsubscribe !== 'function') {
+        hub.unsubscribe?.(
+          tapId,
+          MULTIBAND_EXPANDER_TAP_DYNAMICS,
+          this._boundDspMultibandTelemetry
+        );
+        return false;
+      }
+      this._dspTelemetryHub = hub;
+      this._dspTelemetryTapId = tapId;
+      this._dspTelemetryUnsubscribe = unsubscribe;
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  disposeDspTelemetrySubscription() {
+    const unsubscribe = this._dspTelemetryUnsubscribe;
+    this._dspTelemetryHub = null;
+    this._dspTelemetryTapId = null;
+    this._dspTelemetryUnsubscribe = null;
+    if (!unsubscribe) return;
+    try {
+      unsubscribe();
+    } catch (error) {
+      // Ignore stale telemetry subscription cleanup failures.
+    }
+  }
+
+  parseDspMultibandTelemetryFrame(frame) {
+    if (frame?.frameType !== MULTIBAND_EXPANDER_TAP_DYNAMICS ||
+        frame.formatVersion !== MULTIBAND_EXPANDER_TELEMETRY_VERSION) {
+      return null;
+    }
+    const payload = frame.payload;
+    if (!payload || typeof payload.getUint8 !== 'function' ||
+        typeof payload.getFloat32 !== 'function' ||
+        payload.byteLength !== MULTIBAND_EXPANDER_TELEMETRY_BYTES ||
+        payload.getUint8(0) !== MULTIBAND_EXPANDER_TELEMETRY_BANDS ||
+        payload.getUint8(1) !== MULTIBAND_EXPANDER_TELEMETRY_KIND ||
+        payload.getUint8(2) !== 0 || payload.getUint8(3) !== 0) {
+      return null;
+    }
+    const values = new Float32Array(MULTIBAND_EXPANDER_TELEMETRY_BANDS);
+    for (let band = 0; band < values.length; band++) {
+      const value = payload.getFloat32(4 + band * 4, true);
+      if (!Number.isFinite(value) || value < 0) return null;
+      values[band] = value;
+    }
+    return values;
+  }
+
+  handleDspMultibandTelemetry(frame) {
+    const gainBoosts = this.parseDspMultibandTelemetryFrame(frame);
+    if (gainBoosts === null) return;
+    this.onMessage({ type: 'processBuffer', measurements: { gainBoosts } });
+  }
+
   onMessage(message) {
+    this.ensureDspTelemetrySubscription();
     if (message.type === 'processBuffer') {
       const result = this.process(message);
       const GB_THRESHOLD = 0.05;
@@ -778,6 +879,7 @@ class MultibandExpanderPlugin extends PluginBase {
   setG(value) { this.setParameters({ band: this.selectedBand, g: value }); }
 
   getParameters() {
+    this.ensureDspTelemetrySubscription();
     return {
       type: this.constructor.name,
       f1: this.f1,
@@ -1222,6 +1324,7 @@ class MultibandExpanderPlugin extends PluginBase {
   }
 
   cleanup() {
+    this.disposeDspTelemetrySubscription();
     if (this.animationFrameId) {
       cancelAnimationFrame(this.animationFrameId);
       this.animationFrameId = null;

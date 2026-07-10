@@ -1,0 +1,54 @@
+{
+  "formatVersion": 1,
+  "type": "NarrowRangePlugin",
+  "id": "frequency-and-slope-transitions",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 4,
+  "frameCount": 259,
+  "blockSize": 64,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 12,
+  "seed": "0xeffe7a52",
+  "params": {
+    "hf": 40,
+    "hs": -6,
+    "lf": 36000,
+    "ls": -18
+  },
+  "events": [
+    {
+      "frame": 17,
+      "params": {
+        "hf": 1400
+      }
+    },
+    {
+      "frame": 66,
+      "params": {
+        "lf": 7200
+      }
+    },
+    {
+      "frame": 129,
+      "params": {
+        "hs": -48
+      }
+    },
+    {
+      "frame": 194,
+      "params": {
+        "ls": 0
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "e523682522343e17ac48c76df33b816d238ebaef418bbb890d473ab5cab2f607",
+  "outputFloats": 1036,
+  "byteLength": 4144,
+  "binary": "case-013.f32"
+}

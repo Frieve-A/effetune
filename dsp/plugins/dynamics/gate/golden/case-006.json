@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "GatePlugin",
+  "id": "stereo-96000-variable-block",
+  "stimulus": "sweep",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 1151,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "th": -42,
+    "rt": 16,
+    "at": 12,
+    "rl": 750,
+    "kn": 4,
+    "gn": -3
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "f3395732572e52ee3b8311ebbf26c93d951b6bd6af3a6f3357caa2811be5897a",
+  "outputFloats": 2302,
+  "byteLength": 9208,
+  "binary": "case-006.f32"
+}

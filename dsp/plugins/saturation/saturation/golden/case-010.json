@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "SaturationPlugin",
+  "id": "odd-full-slice",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 63,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 9,
+  "seed": "0xeffe7a57",
+  "params": {
+    "dr": 2.3,
+    "bs": -0.17,
+    "mx": 37,
+    "gn": 4.2
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "a9127eabc85de27bb7f876e66ef33c7ccc5614d3de0588f546d84a94cfb0c966",
+  "outputFloats": 126,
+  "byteLength": 504,
+  "binary": "case-010.f32"
+}

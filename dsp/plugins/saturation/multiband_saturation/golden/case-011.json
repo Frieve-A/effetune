@@ -1,0 +1,47 @@
+{
+  "formatVersion": 1,
+  "type": "MultibandSaturationPlugin",
+  "id": "fade-longer-than-5ms",
+  "stimulus": "step",
+  "sampleRate": 44100,
+  "channels": 2,
+  "frameCount": 1025,
+  "blockSize": 512,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 10,
+  "seed": "0xeffe7a54",
+  "params": {
+    "f1": 2000,
+    "f2": 20000,
+    "bands": [
+      {
+        "dr": 1.5,
+        "bs": 0.1,
+        "mx": 100,
+        "gn": 0
+      },
+      {
+        "dr": 1.5,
+        "bs": 0.1,
+        "mx": 100,
+        "gn": 0
+      },
+      {
+        "dr": 1.5,
+        "bs": 0.1,
+        "mx": 100,
+        "gn": 0
+      }
+    ]
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00003,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "a57adcce343ecf7c73469f1b3484fdab809bc4caa712a567abdc9d85805141c4",
+  "outputFloats": 2050,
+  "byteLength": 8200,
+  "binary": "case-011.f32"
+}

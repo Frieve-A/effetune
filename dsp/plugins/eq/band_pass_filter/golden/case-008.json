@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "BandPassFilterPlugin",
+  "id": "one-frame-blocks",
+  "stimulus": "noise",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 67,
+  "blockSize": 1,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "hf": 180,
+    "lf": 9000,
+    "hs": -48,
+    "ls": -48
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "285ad3d162ea5f56636051d7cfa541756afe5ccb162f1e9551b2d8185cc40030",
+  "outputFloats": 67,
+  "byteLength": 268,
+  "binary": "case-008.f32"
+}

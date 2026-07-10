@@ -1,0 +1,68 @@
+{
+  "formatVersion": 1,
+  "type": "ModalResonatorPlugin",
+  "id": "all4-192000-extremes",
+  "stimulus": "noise",
+  "sampleRate": 192000,
+  "channels": 4,
+  "frameCount": 1801,
+  "blockSize": 127,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "rs": [
+      {
+        "en": true,
+        "fr": 9.9,
+        "dc": 1,
+        "lp": 9.9,
+        "hp": 3,
+        "gn": 18
+      },
+      {
+        "en": true,
+        "fr": 9.4,
+        "dc": 500,
+        "lp": 3,
+        "hp": 9.9,
+        "gn": -18
+      },
+      {
+        "en": true,
+        "fr": 8.9,
+        "dc": 73,
+        "lp": 8.2,
+        "hp": 6.1,
+        "gn": 3
+      },
+      {
+        "en": true,
+        "fr": 8.4,
+        "dc": 211,
+        "lp": 9.1,
+        "hp": 5.4,
+        "gn": -7.5
+      },
+      {
+        "en": true,
+        "fr": 7.9,
+        "dc": 19,
+        "lp": 7.6,
+        "hp": 7.2,
+        "gn": 11
+      }
+    ],
+    "mx": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "d41d6e2d1fb2fe87b01b55ec8c42bbd18ac79eb14d96e46c178614192c870b0b",
+  "outputFloats": 7204,
+  "byteLength": 28816,
+  "binary": "case-004.f32"
+}

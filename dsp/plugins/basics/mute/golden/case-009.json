@@ -1,0 +1,24 @@
+{
+  "formatVersion": 1,
+  "type": "MutePlugin",
+  "id": "non-aligned-mono",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 1,
+  "frameCount": 513,
+  "blockSize": 64,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 8,
+  "seed": "0xeffe7a56",
+  "params": {},
+  "events": [],
+  "tolerance": {
+    "abs": 1e-7,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "144b0918ec84f804577d41fecdd634bc808fcb20c4805902ab5ad689e1e57e36",
+  "outputFloats": 513,
+  "byteLength": 2052,
+  "binary": "case-009.f32"
+}

@@ -1,0 +1,28 @@
+{
+  "formatVersion": 1,
+  "type": "CrossfeedFilterPlugin",
+  "id": "maximum-delay-minimum-level",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 12000,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "lv": -60,
+    "dl": 1,
+    "lf": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000003,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "964dfc088020dfd701be08b12dac4693f8221a2e86b8dfba38fecf0d52f3e2db",
+  "outputFloats": 24000,
+  "byteLength": 96000,
+  "binary": "case-004.f32"
+}

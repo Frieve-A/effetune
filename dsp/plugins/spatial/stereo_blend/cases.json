@@ -1,0 +1,81 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 64,
+    "channels": 2,
+    "channelMode": "stereo",
+    "frames": 257,
+    "params": {
+      "stereo": 60
+    }
+  },
+  "cases": [
+    { "id": "default-noise", "stimulus": "noise", "frames": 257 },
+    {
+      "id": "original-width-full-scale",
+      "stimulus": "fs",
+      "frames": 257,
+      "params": { "stereo": 100 }
+    },
+    {
+      "id": "mono-bypass",
+      "stimulus": "noise",
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 127,
+      "blockSize": 32,
+      "params": { "stereo": 200 }
+    },
+    {
+      "id": "mono-width",
+      "stimulus": "noise",
+      "frames": 257,
+      "params": { "stereo": 0 }
+    },
+    {
+      "id": "swap-width",
+      "stimulus": "noise",
+      "frames": 257,
+      "params": { "stereo": -100 }
+    },
+    {
+      "id": "minimum-width",
+      "stimulus": "fs",
+      "frames": 257,
+      "params": { "stereo": -200 }
+    },
+    {
+      "id": "maximum-width",
+      "stimulus": "fs",
+      "frames": 257,
+      "params": { "stereo": 200 }
+    },
+    {
+      "id": "all-channels-first-pair-only",
+      "stimulus": "noise",
+      "channels": 4,
+      "channelMode": "all4",
+      "channel": "A",
+      "frames": 131,
+      "params": { "stereo": 125 }
+    },
+    {
+      "id": "odd-full-slice",
+      "stimulus": "noise",
+      "frames": 63,
+      "blockSize": 128,
+      "params": { "stereo": 37 }
+    },
+    {
+      "id": "parameter-transitions",
+      "stimulus": "noise",
+      "frames": 259,
+      "events": [
+        { "frame": 17, "params": { "stereo": 0 } },
+        { "frame": 64, "params": { "stereo": 100 } },
+        { "frame": 129, "params": { "stereo": -200 } },
+        { "frame": 193, "params": { "stereo": 200 } }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "formatVersion": 1,
+  "type": "MultibandTransientPlugin",
+  "id": "shared-channel-detector",
+  "stimulus": "imp",
+  "sampleRate": 96000,
+  "channels": 4,
+  "frameCount": 509,
+  "blockSize": 63,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 8,
+  "seed": "0xeffe7a56",
+  "params": {
+    "f1": 200,
+    "f2": 4000,
+    "bands": [
+      {
+        "fa": 5,
+        "fr": 50,
+        "sa": 25,
+        "sr": 250,
+        "gt": 6,
+        "gs": 0,
+        "sm": 5
+      },
+      {
+        "fa": 2,
+        "fr": 30,
+        "sa": 10,
+        "sr": 150,
+        "gt": 6,
+        "gs": 0,
+        "sm": 5
+      },
+      {
+        "fa": 0.5,
+        "fr": 20,
+        "sa": 5,
+        "sr": 100,
+        "gt": 6,
+        "gs": 0,
+        "sm": 5
+      }
+    ]
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00002,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "8ce5e9729b6d92d33faf8bfc9199d1cd148e30e6dcd03fbba60e55a4b91ee094",
+  "outputFloats": 2036,
+  "byteLength": 8144,
+  "binary": "case-009.f32"
+}

@@ -1,0 +1,10 @@
+{
+  "formatVersion": 1,
+  "type": "LevelMeterPlugin",
+  "cases": [
+    "case-001.json",
+    "case-002.json",
+    "case-003.json",
+    "case-004.json"
+  ]
+}

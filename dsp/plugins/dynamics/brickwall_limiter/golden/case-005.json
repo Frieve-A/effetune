@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "BrickwallLimiterPlugin",
+  "id": "eight-x-maximum-drive",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 777,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "th": 0,
+    "rl": 10,
+    "la": 0,
+    "os": 8,
+    "ig": 18,
+    "sm": -3
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00003,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "3457f4fb73138b7b7a99394ef0f0b5bfeeb5901dc15072754160111543bd4661",
+  "outputFloats": 1554,
+  "byteLength": 6216,
+  "binary": "case-005.f32"
+}

@@ -1,0 +1,30 @@
+{
+  "formatVersion": 1,
+  "type": "ExciterPlugin",
+  "id": "default-first-order-transient",
+  "stimulus": "step",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 12000,
+  "blockSize": 63,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "hf": 3000,
+    "hs": 1,
+    "dr": 3,
+    "bs": 0.1,
+    "mx": 25
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "23e2394eaae09c2efae387880d7fe441f2f6226f75e6c4201215af6703d7c72e",
+  "outputFloats": 24000,
+  "byteLength": 96000,
+  "binary": "case-001.f32"
+}

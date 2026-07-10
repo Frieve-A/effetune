@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "ExpanderPlugin",
+  "id": "unity-ratio-hard-knee",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 777,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "th": -60,
+    "rt": 1,
+    "at": 0.1,
+    "rl": 10,
+    "kn": 0,
+    "gn": 12
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "434b250ab46eeb6f31274e74abb8a5276c8c7d815e588d5521ecd18b195a9a88",
+  "outputFloats": 1554,
+  "byteLength": 6216,
+  "binary": "case-002.f32"
+}

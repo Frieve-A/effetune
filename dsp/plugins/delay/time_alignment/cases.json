@@ -1,0 +1,34 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 128,
+    "channels": 2,
+    "channelMode": "stereo",
+    "frames": 257,
+    "params": { "dl": 0 }
+  },
+  "cases": [
+    { "id": "zero-delay-identity", "stimulus": "noise", "frames": 259 },
+    { "id": "subsample-delay-floors-zero", "stimulus": "fs", "sampleRate": 44100, "channels": 1, "channelMode": "mono", "frames": 193, "blockSize": 65, "params": { "dl": 0.01 } },
+    { "id": "one-millisecond", "stimulus": "imp", "sampleRate": 96000, "frames": 259, "blockSize": 63, "params": { "dl": 1 } },
+    { "id": "maximum-delay", "stimulus": "imp", "sampleRate": 192000, "channels": 1, "channelMode": "mono", "frames": 19203, "blockSize": 127, "params": { "dl": 100 } },
+    { "id": "four-channel-maximum", "stimulus": "imp", "sampleRate": 44100, "channels": 4, "channelMode": "all4", "frames": 4413, "blockSize": 63, "params": { "dl": 100 } },
+    { "id": "one-frame-blocks", "stimulus": "noise", "sampleRate": 192000, "channels": 1, "channelMode": "mono", "frames": 257, "blockSize": 1, "params": { "dl": 0.75 } },
+    {
+      "id": "warm-buffer-transitions",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "channels": 4,
+      "channelMode": "all4",
+      "frames": 1001,
+      "blockSize": 64,
+      "params": { "dl": 0 },
+      "events": [
+        { "frame": 31, "params": { "dl": 1 } },
+        { "frame": 130, "params": { "dl": 3.5 } },
+        { "frame": 321, "params": { "dl": 100 } },
+        { "frame": 700, "params": { "dl": 0 } }
+      ]
+    }
+  ]
+}

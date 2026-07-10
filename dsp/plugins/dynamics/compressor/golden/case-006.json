@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "CompressorPlugin",
+  "id": "stereo-96000-variable-block",
+  "stimulus": "sweep",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 1151,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "th": -30,
+    "rt": 4,
+    "at": 25,
+    "rl": 240,
+    "kn": 8,
+    "gn": -3
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "3e2d5fd3273c7fff8828c3c04033a5b7fa2e41f4192b760258701a6786c7fe93",
+  "outputFloats": 2302,
+  "byteLength": 9208,
+  "binary": "case-006.f32"
+}

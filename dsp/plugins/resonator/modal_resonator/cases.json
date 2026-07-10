@@ -1,0 +1,151 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 128,
+    "channels": 2,
+    "channelMode": "stereo"
+  },
+  "cases": [
+    { "id": "default-impulse", "stimulus": "imp", "frames": 1025 },
+    {
+      "id": "all-disabled-dry-path",
+      "stimulus": "noise",
+      "blockSize": 97,
+      "frames": 701,
+      "params": {
+        "rs": [
+          { "en": false }, { "en": false }, { "en": false },
+          { "en": false }, { "en": false }
+        ],
+        "mx": 75
+      }
+    },
+    {
+      "id": "mixed-modes-44100-mono",
+      "stimulus": "sq50",
+      "sampleRate": 44100,
+      "blockSize": 63,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 901,
+      "params": {
+        "rs": [
+          { "en": true, "fr": 9.2, "dc": 1, "lp": 9.9, "hp": 3, "gn": 18 },
+          { "en": false },
+          { "en": true, "fr": 8.1, "dc": 250, "lp": 8.5, "hp": 5.5, "gn": -18 },
+          { "en": false },
+          { "en": true, "fr": 7, "dc": 500, "lp": 9.2, "hp": 6.2, "gn": 6 }
+        ],
+        "mx": 50
+      }
+    },
+    {
+      "id": "all4-192000-extremes",
+      "stimulus": "noise",
+      "sampleRate": 192000,
+      "blockSize": 127,
+      "channels": 4,
+      "channelMode": "all4",
+      "channel": "A",
+      "frames": 1801,
+      "params": {
+        "rs": [
+          { "en": true, "fr": 9.9, "dc": 1, "lp": 9.9, "hp": 3, "gn": 18 },
+          { "en": true, "fr": 9.4, "dc": 500, "lp": 3, "hp": 9.9, "gn": -18 },
+          { "en": true, "fr": 8.9, "dc": 73, "lp": 8.2, "hp": 6.1, "gn": 3 },
+          { "en": true, "fr": 8.4, "dc": 211, "lp": 9.1, "hp": 5.4, "gn": -7.5 },
+          { "en": true, "fr": 7.9, "dc": 19, "lp": 7.6, "hp": 7.2, "gn": 11 }
+        ],
+        "mx": 100
+      }
+    },
+    {
+      "id": "one-frame-blocks",
+      "stimulus": "imp",
+      "blockSize": 1,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 257
+    },
+    {
+      "id": "disabled-mode-freeze-resume",
+      "stimulus": "noise",
+      "blockSize": 113,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 901,
+      "params": {
+        "rs": [
+          { "en": true }, { "en": false }, { "en": false },
+          { "en": false }, { "en": false }
+        ],
+        "mx": 100
+      },
+      "events": [
+        {
+          "frame": 257,
+          "params": { "rs": [
+            { "en": false }, { "en": false }, { "en": false },
+            { "en": false }, { "en": false }
+          ] }
+        },
+        {
+          "frame": 521,
+          "params": { "rs": [
+            { "en": true }, { "en": false }, { "en": false },
+            { "en": false }, { "en": false }
+          ] }
+        }
+      ]
+    },
+    {
+      "id": "live-parameter-change-preserves-state",
+      "stimulus": "noise",
+      "blockSize": 127,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 5201,
+      "params": {
+        "rs": [
+          { "en": true, "fr": 6.86, "dc": 15, "lp": 7.19, "hp": 5.8, "gn": 0 },
+          { "en": false }, { "en": false }, { "en": false }, { "en": false }
+        ],
+        "mx": 65
+      },
+      "events": [
+        {
+          "frame": 191,
+          "params": { "rs": [
+            { "en": true, "fr": 8.2, "dc": 240, "lp": 9.3, "hp": 4.2, "gn": 12 },
+            { "en": false }, { "en": false }, { "en": false }, { "en": false }
+          ] }
+        },
+        {
+          "frame": 2707,
+          "params": { "rs": [
+            { "en": true, "fr": 7.1, "dc": 3, "lp": 7.5, "hp": 6.9, "gn": -12 },
+            { "en": false }, { "en": false }, { "en": false }, { "en": false }
+          ] }
+        }
+      ]
+    },
+    {
+      "id": "mix-breakpoints-preserve-tail",
+      "stimulus": "noise",
+      "blockSize": 101,
+      "frames": 777,
+      "params": {
+        "rs": [
+          { "en": true }, { "en": true }, { "en": false },
+          { "en": false }, { "en": false }
+        ],
+        "mx": 25
+      },
+      "events": [
+        { "frame": 37, "params": { "mx": 49 } },
+        { "frame": 259, "params": { "mx": 50 } },
+        { "frame": 515, "params": { "mx": 51 } }
+      ]
+    }
+  ]
+}

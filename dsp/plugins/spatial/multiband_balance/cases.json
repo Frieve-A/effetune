@@ -1,0 +1,100 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 64,
+    "channels": 2,
+    "channelMode": "stereo"
+  },
+  "cases": [
+    { "id": "default-impulse-fade", "stimulus": "imp", "frames": 4097 },
+    {
+      "id": "alternating-hard-balance",
+      "stimulus": "noise",
+      "frames": 4201,
+      "params": { "bands": [
+        { "balance": -100 }, { "balance": 100 }, { "balance": -100 },
+        { "balance": 100 }, { "balance": -100 }
+      ] }
+    },
+    {
+      "id": "fractional-balance",
+      "stimulus": "sweep",
+      "frames": 4103,
+      "params": { "bands": [
+        { "balance": -73.5 }, { "balance": -12.25 }, { "balance": 0 },
+        { "balance": 28.75 }, { "balance": 91.5 }
+      ] }
+    },
+    {
+      "id": "mono-bypass",
+      "stimulus": "noise",
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 997,
+      "params": { "bands": [
+        { "balance": 100 }, { "balance": 100 }, { "balance": 100 },
+        { "balance": 100 }, { "balance": 100 }
+      ] }
+    },
+    {
+      "id": "all4-right-rule",
+      "stimulus": "noise",
+      "channels": 4,
+      "channelMode": "all4",
+      "channel": "A",
+      "blockSize": 127,
+      "frames": 4099,
+      "params": { "bands": [
+        { "balance": 80 }, { "balance": -60 }, { "balance": 40 },
+        { "balance": -20 }, { "balance": 100 }
+      ] }
+    },
+    {
+      "id": "all4-192000-crossover-extremes",
+      "stimulus": "sweep",
+      "sampleRate": 192000,
+      "blockSize": 127,
+      "channels": 4,
+      "channelMode": "all4",
+      "channel": "A",
+      "frames": 5003,
+      "params": { "f1": 500, "f2": 2000, "f3": 8000, "f4": 20000 }
+    },
+    {
+      "id": "crossover-events-reset-and-fade",
+      "stimulus": "noise",
+      "frames": 4301,
+      "events": [
+        { "frame": 64, "params": { "f1": 240 } },
+        { "frame": 1024, "params": { "f2": 1200, "f3": 4600 } },
+        { "frame": 2048, "params": { "f1": 80, "f2": 600, "f3": 2400, "f4": 12000 } },
+        { "frame": 3520, "params": { "f4": 9000 } }
+      ]
+    },
+    {
+      "id": "balance-events-preserve-filter-state",
+      "stimulus": "noise",
+      "blockSize": 127,
+      "frames": 4201,
+      "events": [
+        { "frame": 127, "params": { "bands": [
+          { "balance": -100 }, { "balance": -50 }, { "balance": 0 },
+          { "balance": 50 }, { "balance": 100 }
+        ] } },
+        { "frame": 2032, "params": { "bands": [
+          { "balance": 100 }, { "balance": 25 }, { "balance": -25 },
+          { "balance": -75 }, { "balance": 0 }
+        ] } }
+      ]
+    },
+    {
+      "id": "one-frame-blocks",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "blockSize": 1,
+      "channels": 2,
+      "channelMode": "stereo",
+      "frames": 257
+    }
+  ]
+}

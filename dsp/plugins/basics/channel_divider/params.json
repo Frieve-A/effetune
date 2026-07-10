@@ -1,0 +1,18 @@
+{
+  "type": "ChannelDividerPlugin",
+  "tolerance": {
+    "abs": 0.0001,
+    "rel": 0.0001,
+    "floorDb": -90,
+    "policy": "spectral"
+  },
+  "fields": [
+    { "name": "bandCount", "key": "bc", "kind": "int", "min": 2, "max": 4, "default": 2 },
+    { "name": "frequency1", "key": "f1", "kind": "float", "min": 10, "max": 40000, "default": 2000, "unit": "Hz" },
+    { "name": "slope1", "key": "s1", "kind": "int", "min": -96, "max": -12, "default": -24, "unit": "dB/oct" },
+    { "name": "frequency2", "key": "f2", "kind": "float", "min": 10, "max": 40000, "default": 4000, "unit": "Hz" },
+    { "name": "slope2", "key": "s2", "kind": "int", "min": -96, "max": -12, "default": -24, "unit": "dB/oct" },
+    { "name": "frequency3", "key": "f3", "kind": "float", "min": 10, "max": 40000, "default": 8000, "unit": "Hz" },
+    { "name": "slope3", "key": "s3", "kind": "int", "min": -96, "max": -12, "default": -24, "unit": "dB/oct" }
+  ]
+}

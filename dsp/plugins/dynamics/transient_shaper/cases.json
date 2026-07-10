@@ -1,0 +1,69 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 64,
+    "channels": 2,
+    "channelMode": "stereo"
+  },
+  "cases": [
+    { "id": "default-impulse", "stimulus": "imp", "frames": 1025 },
+    {
+      "id": "maximum-transient-minimum-sustain",
+      "stimulus": "step",
+      "frames": 901,
+      "params": { "fa": 0.1, "fr": 1, "sa": 100, "sr": 1000, "gt": 24, "gs": -24, "sm": 0.1 }
+    },
+    {
+      "id": "minimum-transient-maximum-sustain",
+      "stimulus": "sq50",
+      "frames": 1033,
+      "params": { "fa": 10, "fr": 200, "sa": 1, "sr": 50, "gt": -24, "gs": 24, "sm": 20 }
+    },
+    {
+      "id": "neutral-gains",
+      "stimulus": "noise",
+      "frames": 777,
+      "params": { "fa": 3.7, "fr": 75, "sa": 42, "sr": 640, "gt": 0, "gs": 0, "sm": 7.5 }
+    },
+    {
+      "id": "mono-44100-odd-block",
+      "stimulus": "sweep",
+      "sampleRate": 44100,
+      "blockSize": 83,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 997,
+      "params": { "fa": 0.7, "fr": 33, "sa": 17, "sr": 431, "gt": 12.5, "gs": -6.5, "sm": 2.3 }
+    },
+    {
+      "id": "stereo-96000-variable-block",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "blockSize": 127,
+      "frames": 1151,
+      "params": { "fa": 2, "fr": 120, "sa": 60, "sr": 850, "gt": -9, "gs": 15, "sm": 12 }
+    },
+    {
+      "id": "all4-192000",
+      "stimulus": "fs",
+      "sampleRate": 192000,
+      "blockSize": 127,
+      "channels": 4,
+      "channelMode": "all4",
+      "channel": "A",
+      "frames": 1301,
+      "params": { "fa": 0.2, "fr": 5, "sa": 80, "sr": 950, "gt": 20, "gs": -20, "sm": 0.5 }
+    },
+    {
+      "id": "parameter-transitions",
+      "stimulus": "noise",
+      "frames": 1237,
+      "events": [
+        { "frame": 31, "params": { "fa": 0.1, "fr": 1, "gt": 24 } },
+        { "frame": 128, "params": { "sa": 100, "sr": 1000, "gs": -24 } },
+        { "frame": 513, "params": { "fa": 10, "fr": 200, "sa": 1, "sr": 50, "gt": -24, "gs": 24 } },
+        { "frame": 1001, "params": { "gt": 0, "gs": 0, "sm": 20 } }
+      ]
+    }
+  ]
+}

@@ -531,6 +531,65 @@ test('switches pipelines with fade transitions, cancellation, and fallback paths
     assert.equal(await pending, false);
   });
 
+  await withAudioManager({ autoRunTimers: false }, async ({ manager, timers }) => {
+    const fades = [];
+    manager.fadeInOutput = () => fades.push(manager.ioManager.outputGainNode);
+    const pending = manager.setCurrentPipelineWithTransition('B');
+    const replacementOutput = { name: 'replacement-output' };
+    manager.contextManager.audioContext = { currentTime: 2 };
+    manager.ioManager.outputGainNode = replacementOutput;
+    manager._advanceAudioGraphGeneration();
+    timers.shift()();
+
+    assert.equal(await pending, false);
+    assert.equal(manager.currentPipeline, 'A');
+    assert.deepEqual(fades, []);
+  });
+
+  await withAudioManager({ autoRunTimers: false }, async ({ manager, timers }) => {
+    const fades = [];
+    let rejectRebuild;
+    manager.fadeInOutput = () => fades.push(manager.ioManager.outputGainNode);
+    manager.rebuildPipeline = () => new Promise((resolve, reject) => {
+      rejectRebuild = reject;
+    });
+    const pending = manager.setCurrentPipelineWithTransition('B');
+    timers.shift()();
+    await flushMicrotasks();
+    assert.equal(manager.currentPipeline, 'B');
+
+    manager.contextManager.audioContext = { currentTime: 2 };
+    manager.ioManager.outputGainNode = { name: 'replacement-output' };
+    manager._advanceAudioGraphGeneration();
+    manager.currentPipeline = 'A';
+    manager.pipeline = manager.pipelineA;
+    rejectRebuild(new Error('stale rebuild failed'));
+
+    assert.equal(await pending, false);
+    assert.equal(manager.currentPipeline, 'A');
+    assert.deepEqual(fades, []);
+  });
+
+  await withAudioManager({ autoRunTimers: false }, async ({ manager, timers }) => {
+    const events = [];
+    let resolveRebuild;
+    manager.dispatchEvent = (...args) => events.push(args);
+    manager.rebuildPipeline = () => new Promise(resolve => {
+      resolveRebuild = resolve;
+    });
+    const pending = manager.setCurrentPipelineWithTransition('B');
+    timers.shift()();
+    await flushMicrotasks();
+
+    manager.contextManager.audioContext = { currentTime: 2 };
+    manager.ioManager.outputGainNode = { name: 'replacement-output' };
+    manager._advanceAudioGraphGeneration();
+    resolveRebuild('');
+
+    assert.equal(await pending, false);
+    assert.deepEqual(events, []);
+  });
+
   await withAudioManager({}, async ({ manager }) => {
     manager.fadeOutOutput = () => {
       throw new Error('fade out exploded');
@@ -768,7 +827,15 @@ test('serializes resets, handles reset outcomes, and notifies graph rebuild list
 test('fades output with scheduled ramps and immediate fallbacks', async () => {
   await withAudioManager({}, async ({ calls, manager }) => {
     manager.fadeInOutput(0.1);
-    manager.fadeOutOutput(0.2);
+    const firstToken = manager.fadeOutOutput(0.2);
+    const secondToken = manager.fadeOutOutput(0.2);
+    const fadeInRamps = () => calls.filter(call => call[0] === 'param.ramp' && call[2] === 1).length;
+    const fadeInCount = fadeInRamps();
+    assert.ok(secondToken > firstToken);
+    assert.equal(manager.fadeInOutputForToken(firstToken, 0.1), false);
+    assert.equal(fadeInRamps(), fadeInCount);
+    assert.equal(manager.fadeInOutputForToken(secondToken, 0.1), true);
+    assert.equal(fadeInRamps(), fadeInCount + 1);
     assert.equal(calls.some(call => call[0] === 'param.ramp' && call[2] === 1), true);
     assert.equal(calls.some(call => call[0] === 'param.ramp' && call[2] === 0), true);
   });

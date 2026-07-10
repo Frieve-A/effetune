@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "type": "HornResonatorPlugin",
+  "id": "minimum-44100",
+  "stimulus": "step",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 901,
+  "blockSize": 63,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "co": 20,
+    "ln": 20,
+    "th": 0.5,
+    "mo": 5,
+    "cv": -100,
+    "dp": 0,
+    "tr": 0,
+    "wg": -36
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "c8426fa0fab3cdd27c4d60b2ce826d12112cbbfd669ac3e573248b3fd89e738b",
+  "outputFloats": 901,
+  "byteLength": 3604,
+  "binary": "case-002.f32"
+}

@@ -1,0 +1,30 @@
+{
+  "formatVersion": 1,
+  "type": "ExciterPlugin",
+  "id": "one-frame-silence",
+  "stimulus": "silence",
+  "sampleRate": 192000,
+  "channels": 2,
+  "frameCount": 67,
+  "blockSize": 1,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "hf": 10000,
+    "hs": 2,
+    "dr": 10,
+    "bs": 0.3,
+    "mx": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "23e2394eaae09c2efae387880d7fe441f2f6226f75e6c4201215af6703d7c72e",
+  "outputFloats": 134,
+  "byteLength": 536,
+  "binary": "case-008.f32"
+}

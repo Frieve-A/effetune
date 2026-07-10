@@ -1,0 +1,14 @@
+{
+  "type": "MultiChannelPanelPlugin",
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "fields": [
+    { "name": "mute", "key": "m", "arrayKey": "m", "kind": "bool", "count": 8, "default": false },
+    { "name": "solo", "key": "s", "arrayKey": "s", "kind": "bool", "count": 8, "default": false },
+    { "name": "volume", "key": "v", "arrayKey": "v", "kind": "float", "count": 8, "min": -20, "max": 10, "default": 0, "unit": "dB" },
+    { "name": "delay", "key": "d", "arrayKey": "d", "kind": "float", "count": 8, "min": 0, "max": 30, "default": 0, "unit": "ms" },
+    { "name": "link", "key": "l", "arrayKey": "l", "kind": "bool", "count": 7, "default": false }
+  ]
+}

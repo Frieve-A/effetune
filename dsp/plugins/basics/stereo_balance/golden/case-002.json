@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "StereoBalancePlugin",
+  "id": "default-sine",
+  "stimulus": "sin1k",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 2048,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "bl": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "2190f867d7a44b4e06d00e0e5e52e2f3a8040876dbc7838ad583e483628bbf21",
+  "outputFloats": 4096,
+  "byteLength": 16384,
+  "binary": "case-002.f32"
+}

@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "TimeAlignmentPlugin",
+  "id": "subsample-delay-floors-zero",
+  "stimulus": "fs",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 193,
+  "blockSize": 65,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "dl": 0.01
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "6a03a46f3d7378bb3fa7964fe884151ee709f0cc27a5eed02ccd5e05385b1481",
+  "outputFloats": 193,
+  "byteLength": 772,
+  "binary": "case-002.f32"
+}

@@ -1,0 +1,10 @@
+{
+  "type": "PitchShifterPlugin",
+  "tolerance": { "abs": 0.00001, "policy": "per-sample" },
+  "fields": [
+    { "name": "pitchShift", "key": "ps", "kind": "int", "min": -6, "max": 6, "default": 0, "unit": "semitones" },
+    { "name": "fineTune", "key": "ft", "kind": "int", "min": -50, "max": 50, "default": 0, "unit": "cents" },
+    { "name": "windowSize", "key": "ws", "kind": "int", "min": 80, "max": 500, "default": 150, "unit": "ms" },
+    { "name": "crossfadeTime", "key": "xf", "kind": "float", "min": 20, "max": 40, "default": 35, "unit": "ms" }
+  ]
+}

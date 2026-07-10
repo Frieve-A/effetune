@@ -73,5 +73,17 @@ export default [
     languageOptions: {
       sourceType: 'script'
     }
+  },
+  {
+    files: ['plugins/audio-processor.js'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'ImportExpression',
+          message: 'The AudioWorklet must remain a single file for Blob URL fallback support.'
+        }
+      ]
+    }
   }
 ];

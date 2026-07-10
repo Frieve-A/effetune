@@ -1,0 +1,90 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 128,
+    "channels": 2,
+    "channelMode": "stereo",
+    "frames": 2048,
+    "params": {
+      "bl": 0
+    }
+  },
+  "cases": [
+    { "id": "default-impulse", "stimulus": "imp", "frames": 2048 },
+    { "id": "default-sine", "stimulus": "sin1k", "frames": 2048 },
+    { "id": "default-sweep", "stimulus": "sweep", "frames": 2048 },
+    { "id": "default-noise", "stimulus": "noise", "frames": 2048 },
+    { "id": "default-square", "stimulus": "sq50", "frames": 2048 },
+    { "id": "default-silence", "stimulus": "silence", "frames": 2048 },
+    { "id": "default-full-scale", "stimulus": "fs", "frames": 2048 },
+    { "id": "default-step", "stimulus": "step", "frames": 2048 },
+    {
+      "id": "full-left-stereo",
+      "stimulus": "noise",
+      "frames": 513,
+      "blockSize": 64,
+      "params": { "bl": -1 }
+    },
+    {
+      "id": "full-right-stereo",
+      "stimulus": "noise",
+      "frames": 513,
+      "blockSize": 64,
+      "params": { "bl": 1 }
+    },
+    {
+      "id": "fractional-left-stereo",
+      "stimulus": "sin1k",
+      "frames": 257,
+      "blockSize": 63,
+      "params": { "bl": -0.25 }
+    },
+    {
+      "id": "fractional-right-stereo",
+      "stimulus": "sin1k",
+      "frames": 257,
+      "blockSize": 63,
+      "params": { "bl": 0.25 }
+    },
+    {
+      "id": "mono-bypass",
+      "stimulus": "noise",
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 513,
+      "blockSize": 64,
+      "params": { "bl": 1 }
+    },
+    {
+      "id": "left-bias-all-channels",
+      "stimulus": "noise",
+      "channels": 4,
+      "channelMode": "all4",
+      "channel": "A",
+      "frames": 257,
+      "blockSize": 63,
+      "params": { "bl": -0.5 }
+    },
+    {
+      "id": "right-bias-all-channels",
+      "stimulus": "noise",
+      "channels": 4,
+      "channelMode": "all4",
+      "channel": "A",
+      "frames": 257,
+      "blockSize": 63,
+      "params": { "bl": 0.5 }
+    },
+    {
+      "id": "non-aligned-transitions",
+      "stimulus": "noise",
+      "frames": 513,
+      "events": [
+        { "frame": 63, "params": { "bl": -1 } },
+        { "frame": 128, "params": { "bl": -0.25 } },
+        { "frame": 257, "params": { "bl": 1 } },
+        { "frame": 512, "params": { "bl": 0 } }
+      ]
+    }
+  ]
+}

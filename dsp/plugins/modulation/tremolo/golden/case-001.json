@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "type": "TremoloPlugin",
+  "id": "default-stochastic-sine",
+  "stimulus": "fs",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 12000,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "rt": 10,
+    "dp": 2,
+    "rn": 6,
+    "rc": 200,
+    "rs": -6,
+    "cp": 0,
+    "cs": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "6d873adff940f4488d104dff7e63d2058aa35ec9fe55c28d98412e0b2381a9e5",
+  "outputFloats": 24000,
+  "byteLength": 96000,
+  "binary": "case-001.f32"
+}

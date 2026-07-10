@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "StereoBalancePlugin",
+  "id": "fractional-right-stereo",
+  "stimulus": "sin1k",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 257,
+  "blockSize": 63,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 11,
+  "seed": "0xeffe7a55",
+  "params": {
+    "bl": 0.25
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "2190f867d7a44b4e06d00e0e5e52e2f3a8040876dbc7838ad583e483628bbf21",
+  "outputFloats": 514,
+  "byteLength": 2056,
+  "binary": "case-012.f32"
+}

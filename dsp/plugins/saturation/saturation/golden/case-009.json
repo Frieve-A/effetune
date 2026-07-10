@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "SaturationPlugin",
+  "id": "all-channels-full-scale",
+  "stimulus": "fs",
+  "sampleRate": 48000,
+  "channels": 4,
+  "frameCount": 131,
+  "blockSize": 32,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 8,
+  "seed": "0xeffe7a56",
+  "params": {
+    "dr": 1.5,
+    "bs": 0.1,
+    "mx": 100,
+    "gn": -2
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "a9127eabc85de27bb7f876e66ef33c7ccc5614d3de0588f546d84a94cfb0c966",
+  "outputFloats": 524,
+  "byteLength": 2096,
+  "binary": "case-009.f32"
+}

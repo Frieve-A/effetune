@@ -1,0 +1,74 @@
+{
+  "formatVersion": 1,
+  "type": "MultiChannelPanelPlugin",
+  "id": "delay-boundaries",
+  "stimulus": "imp",
+  "sampleRate": 96000,
+  "channels": 4,
+  "frameCount": 4096,
+  "blockSize": 128,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "m": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ],
+    "s": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ],
+    "v": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "d": [
+      0,
+      0.5,
+      10,
+      30,
+      0,
+      0,
+      0,
+      0
+    ],
+    "l": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "f40a8e234bd1cdede5279f063b2bdc92fa9777de7cfab530b201810f2825e77f",
+  "outputFloats": 16384,
+  "byteLength": 65536,
+  "binary": "case-006.f32"
+}

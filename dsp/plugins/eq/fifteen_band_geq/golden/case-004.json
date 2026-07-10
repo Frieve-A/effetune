@@ -1,0 +1,40 @@
+{
+  "formatVersion": 1,
+  "type": "FifteenBandGEQPlugin",
+  "id": "mono-44100",
+  "stimulus": "sq50",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 11025,
+  "blockSize": 83,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "b0": -12,
+    "b1": 0,
+    "b2": 0,
+    "b3": 0,
+    "b4": 8,
+    "b5": 0,
+    "b6": 0,
+    "b7": 0,
+    "b8": -6,
+    "b9": 0,
+    "b10": 0,
+    "b11": 0,
+    "b12": 10,
+    "b13": 0,
+    "b14": -3
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "06c0035cf8c8f3fdcd6a856dfc8b383678ed94fad3d4c13270a7e49867ab1b3a",
+  "outputFloats": 11025,
+  "byteLength": 44100,
+  "binary": "case-004.f32"
+}

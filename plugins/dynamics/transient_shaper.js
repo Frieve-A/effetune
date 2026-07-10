@@ -1,3 +1,7 @@
+const TRANSIENT_SHAPER_TAP_GAIN = 8;
+const TRANSIENT_SHAPER_TELEMETRY_VERSION = 1;
+const TRANSIENT_SHAPER_TELEMETRY_PAYLOAD_BYTES = 4;
+
 class TransientShaperPlugin extends PluginBase {
     constructor() {
         super('Transient Shaper', 'Controls transient and sustain portions of the signal');
@@ -23,6 +27,12 @@ class TransientShaperPlugin extends PluginBase {
         this.prevTime = null;
 
         this.observer = null;
+        this._dspTelemetryHub = null;
+        this._dspTelemetryTapId = null;
+        this._dspTelemetryUnsubscribe = null;
+        this._boundDspTransientGainTelemetry = frame => this.handleDspTransientGainTelemetry(frame);
+
+        this._setupMessageHandler();
 
         this.registerProcessor(`
             if (!parameters.enabled) return data;
@@ -96,7 +106,91 @@ class TransientShaperPlugin extends PluginBase {
         `);
     }
 
+    _setupMessageHandler() {
+        super._setupMessageHandler();
+        this.ensureDspTelemetrySubscription?.();
+    }
+
+    ensureDspTelemetrySubscription() {
+        const hub = window.dspTelemetryHub;
+        const tapId = this.id;
+        const validTapId = Number.isInteger(tapId) && tapId >= 0 && tapId <= 0xffffffff;
+        const validHub = hub && typeof hub.subscribe === 'function';
+
+        if (!validTapId || !validHub) {
+            if (this._dspTelemetryUnsubscribe &&
+                (hub !== this._dspTelemetryHub || tapId !== this._dspTelemetryTapId)) {
+                this.disposeDspTelemetrySubscription();
+            }
+            return false;
+        }
+        if (this._dspTelemetryUnsubscribe &&
+            hub === this._dspTelemetryHub && tapId === this._dspTelemetryTapId) {
+            return true;
+        }
+
+        this.disposeDspTelemetrySubscription();
+        try {
+            const unsubscribe = hub.subscribe(
+                tapId,
+                TRANSIENT_SHAPER_TAP_GAIN,
+                this._boundDspTransientGainTelemetry
+            );
+            if (typeof unsubscribe !== 'function') {
+                hub.unsubscribe?.(
+                    tapId,
+                    TRANSIENT_SHAPER_TAP_GAIN,
+                    this._boundDspTransientGainTelemetry
+                );
+                return false;
+            }
+            this._dspTelemetryHub = hub;
+            this._dspTelemetryTapId = tapId;
+            this._dspTelemetryUnsubscribe = unsubscribe;
+            return true;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    disposeDspTelemetrySubscription() {
+        const unsubscribe = this._dspTelemetryUnsubscribe;
+        this._dspTelemetryHub = null;
+        this._dspTelemetryTapId = null;
+        this._dspTelemetryUnsubscribe = null;
+        if (!unsubscribe) return;
+        try {
+            unsubscribe();
+        } catch (error) {
+            // Ignore stale telemetry subscription cleanup failures.
+        }
+    }
+
+    parseDspTransientGainTelemetryFrame(frame) {
+        if (frame?.frameType !== TRANSIENT_SHAPER_TAP_GAIN ||
+            frame.formatVersion !== TRANSIENT_SHAPER_TELEMETRY_VERSION) {
+            return null;
+        }
+        const payload = frame.payload;
+        if (!payload || typeof payload.getFloat32 !== 'function' ||
+            payload.byteLength !== TRANSIENT_SHAPER_TELEMETRY_PAYLOAD_BYTES) {
+            return null;
+        }
+        const gainDb = payload.getFloat32(0, true);
+        return Number.isFinite(gainDb) ? gainDb : null;
+    }
+
+    handleDspTransientGainTelemetry(frame) {
+        const gainDb = this.parseDspTransientGainTelemetryFrame(frame);
+        if (gainDb === null) return;
+        this.onMessage({
+            type: 'processBuffer',
+            measurements: { gain: gainDb, time: performance.now() / 1000 }
+        });
+    }
+
     onMessage(message) {
+        this.ensureDspTelemetrySubscription();
         if (message.type === 'processBuffer' && message.measurements) {
             // Shift gain buffer
             this.gainBuffer.copyWithin(0, 1);
@@ -136,6 +230,7 @@ class TransientShaperPlugin extends PluginBase {
     setSm(value) { this.setParameters({ sm: value }); }
 
     getParameters() {
+        this.ensureDspTelemetrySubscription();
         return {
             type: this.constructor.name,
             fa: this.fa,
@@ -265,6 +360,7 @@ class TransientShaperPlugin extends PluginBase {
     }
 
     createUI() {
+        this.ensureDspTelemetrySubscription();
         if (this.observer) {
             this.observer.disconnect();
             this.observer = null;
@@ -310,6 +406,7 @@ class TransientShaperPlugin extends PluginBase {
     }
 
     cleanup() {
+        this.disposeDspTelemetrySubscription();
         // Cancel animation frame
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);

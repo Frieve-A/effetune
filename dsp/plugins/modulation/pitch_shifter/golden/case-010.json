@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "PitchShifterPlugin",
+  "id": "maximum-capacity-192k-all4",
+  "stimulus": "fs",
+  "sampleRate": 192000,
+  "channels": 4,
+  "frameCount": 1025,
+  "blockSize": 31,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 9,
+  "seed": "0xeffe7a57",
+  "params": {
+    "ps": 6,
+    "ft": 50,
+    "ws": 500,
+    "xf": 40
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "18f30430161f9690ee99e70d58bf8580721ecb94fbe74c7c73466c6f9a07e894",
+  "outputFloats": 4100,
+  "byteLength": 16400,
+  "binary": "case-010.f32"
+}

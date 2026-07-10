@@ -1,0 +1,27 @@
+{
+  "formatVersion": 1,
+  "type": "HiPassFilterPlugin",
+  "id": "off-identity",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 1,
+  "frameCount": 193,
+  "blockSize": 65,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "fr": 1000,
+    "sl": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "3791bc033d29b93e1d5143cdce4ddfc0d195cc17e6e17091e1811802b8cf47c0",
+  "outputFloats": 193,
+  "byteLength": 772,
+  "binary": "case-003.f32"
+}

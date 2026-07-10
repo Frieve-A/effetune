@@ -1,0 +1,155 @@
+{
+  "formatVersion": 1,
+  "type": "FiveBandDynamicEQ",
+  "id": "disabled-band-freeze-and-resume",
+  "stimulus": "sin1k",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 777,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "bs": [
+      {
+        "en": false,
+        "ft": "pk",
+        "f": 100,
+        "q": 1,
+        "mg": 6,
+        "th": -18,
+        "r": 2,
+        "kn": 3,
+        "a": 10,
+        "rl": 100,
+        "scf": 100,
+        "scq": 1
+      },
+      {
+        "en": false,
+        "ft": "pk",
+        "f": 300,
+        "q": 1,
+        "mg": 6,
+        "th": -21,
+        "r": 2,
+        "kn": 3,
+        "a": 10,
+        "rl": 100,
+        "scf": 300,
+        "scq": 1
+      },
+      {
+        "en": true,
+        "ft": "pk",
+        "f": 1000,
+        "q": 1,
+        "mg": 6,
+        "th": -24,
+        "r": 2,
+        "kn": 3,
+        "a": 10,
+        "rl": 100,
+        "scf": 1000,
+        "scq": 1
+      },
+      {
+        "en": false,
+        "ft": "pk",
+        "f": 3000,
+        "q": 1,
+        "mg": 6,
+        "th": -27,
+        "r": 2,
+        "kn": 3,
+        "a": 10,
+        "rl": 100,
+        "scf": 3000,
+        "scq": 1
+      },
+      {
+        "en": false,
+        "ft": "pk",
+        "f": 10000,
+        "q": 1,
+        "mg": 6,
+        "th": -30,
+        "r": 2,
+        "kn": 3,
+        "a": 10,
+        "rl": 100,
+        "scf": 10000,
+        "scq": 1
+      }
+    ]
+  },
+  "events": [
+    {
+      "frame": 159,
+      "params": {
+        "bs": [
+          {},
+          {},
+          {
+            "en": false
+          },
+          {},
+          {}
+        ]
+      }
+    },
+    {
+      "frame": 351,
+      "params": {
+        "bs": [
+          {},
+          {},
+          {
+            "f": 7000,
+            "q": 6,
+            "th": -6,
+            "a": 0.1,
+            "en": false
+          },
+          {},
+          {}
+        ]
+      }
+    },
+    {
+      "frame": 543,
+      "params": {
+        "bs": [
+          {},
+          {},
+          {
+            "en": true,
+            "ft": "pk",
+            "f": 7000,
+            "q": 6,
+            "mg": 6,
+            "th": -6,
+            "r": 2,
+            "kn": 3,
+            "a": 0.1,
+            "rl": 100,
+            "scf": 1000,
+            "scq": 1
+          },
+          {},
+          {}
+        ]
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "03bab089177565d05d79d2e23f09c982732a361ea9e1949df5535067343c5eb2",
+  "outputFloats": 1554,
+  "byteLength": 6216,
+  "binary": "case-006.f32"
+}

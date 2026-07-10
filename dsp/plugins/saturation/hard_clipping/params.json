@@ -1,0 +1,25 @@
+{
+  "type": "HardClippingPlugin",
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "fields": [
+    {
+      "name": "threshold",
+      "key": "th",
+      "kind": "float",
+      "min": -60,
+      "max": 0,
+      "default": -18,
+      "unit": "dB"
+    },
+    {
+      "name": "mode",
+      "key": "md",
+      "kind": "enum",
+      "values": ["both", "positive", "negative"],
+      "default": "both"
+    }
+  ]
+}

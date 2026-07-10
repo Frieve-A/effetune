@@ -1,0 +1,87 @@
+{
+  "formatVersion": 1,
+  "type": "DSD64IMDSimulatorPlugin",
+  "id": "coefficient-and-smoother-transitions",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 4,
+  "frameCount": 777,
+  "blockSize": 64,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "am": 24,
+    "dw": 50,
+    "ul": -30,
+    "nc": 0,
+    "an": 1.4,
+    "eb": 20,
+    "sc": 150,
+    "st": 10.5,
+    "nt": 25,
+    "cs": 75,
+    "hf": 0,
+    "ot": 0
+  },
+  "events": [
+    {
+      "frame": 31,
+      "params": {
+        "am": -12,
+        "dw": 0,
+        "ot": -6
+      }
+    },
+    {
+      "frame": 159,
+      "params": {
+        "ul": -18,
+        "nc": -100,
+        "nt": 100
+      }
+    },
+    {
+      "frame": 287,
+      "params": {
+        "st": 3,
+        "hf": 8
+      }
+    },
+    {
+      "frame": 415,
+      "params": {
+        "an": 10,
+        "eb": 100,
+        "sc": 200,
+        "cs": 100
+      }
+    },
+    {
+      "frame": 543,
+      "params": {
+        "am": 50,
+        "dw": 100,
+        "ot": 12
+      }
+    },
+    {
+      "frame": 671,
+      "params": {
+        "nc": 100,
+        "nt": 0,
+        "st": 14,
+        "hf": 0
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "c28ddc873d8e8dba67c03bcbcf99dd6bc7f1761ce6c15e5e7fc2dfdd7e5ca0d1",
+  "outputFloats": 3108,
+  "byteLength": 12432,
+  "binary": "case-008.f32"
+}

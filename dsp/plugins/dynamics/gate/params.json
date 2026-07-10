@@ -1,0 +1,12 @@
+{
+  "type": "GatePlugin",
+  "tolerance": { "abs": 0.00001, "policy": "per-sample" },
+  "fields": [
+    { "name": "threshold", "key": "th", "kind": "float", "min": -96, "max": 0, "default": -40, "unit": "dB" },
+    { "name": "ratio", "key": "rt", "kind": "float", "min": 1, "max": 100, "default": 10 },
+    { "name": "attack", "key": "at", "kind": "float", "min": 0.01, "max": 50, "default": 1, "unit": "ms" },
+    { "name": "release", "key": "rl", "kind": "float", "min": 10, "max": 2000, "default": 200, "unit": "ms" },
+    { "name": "knee", "key": "kn", "kind": "float", "min": 0, "max": 6, "default": 1, "unit": "dB" },
+    { "name": "gain", "key": "gn", "kind": "float", "min": -12, "max": 12, "default": 0, "unit": "dB" }
+  ]
+}

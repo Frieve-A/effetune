@@ -1,0 +1,79 @@
+{
+  "formatVersion": 1,
+  "type": "OscillatorPlugin",
+  "id": "waveform-mode-pan-transitions",
+  "stimulus": "sin1k",
+  "sampleRate": 96000,
+  "channels": 4,
+  "frameCount": 449,
+  "blockSize": 64,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 12,
+  "seed": "0xeffe7a52",
+  "params": {
+    "fr": 1000,
+    "vl": -12,
+    "pn": -1,
+    "wf": "sine",
+    "md": "continuous",
+    "it": 100,
+    "wd": 50
+  },
+  "events": [
+    {
+      "frame": 31,
+      "params": {
+        "wf": "sawtooth",
+        "md": "pulsed"
+      }
+    },
+    {
+      "frame": 97,
+      "params": {
+        "wf": "white",
+        "pn": 0
+      }
+    },
+    {
+      "frame": 155,
+      "params": {
+        "wf": "pink",
+        "vl": -96
+      }
+    },
+    {
+      "frame": 223,
+      "params": {
+        "wf": "square",
+        "vl": 0,
+        "pn": 1
+      }
+    },
+    {
+      "frame": 301,
+      "params": {
+        "wf": "triangle",
+        "md": "continuous",
+        "fr": 4000
+      }
+    },
+    {
+      "frame": 379,
+      "params": {
+        "wf": "sine",
+        "fr": 880,
+        "pn": 0,
+        "vl": -12
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "9da2eedc277a847830baea81602fcb42dbdc5c06f922e3fd4506919e5f459cb2",
+  "outputFloats": 1796,
+  "byteLength": 7184,
+  "binary": "case-013.f32"
+}

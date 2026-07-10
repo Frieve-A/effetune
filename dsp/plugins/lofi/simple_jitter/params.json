@@ -1,0 +1,7 @@
+{
+  "type": "SimpleJitterPlugin",
+  "tolerance": { "abs": 0.00001, "policy": "per-sample" },
+  "fields": [
+    { "name": "rmsJitter", "key": "rj", "kind": "float", "min": 0, "max": 200, "default": 100 }
+  ]
+}

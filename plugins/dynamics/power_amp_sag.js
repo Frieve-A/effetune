@@ -1,3 +1,7 @@
+const POWER_AMP_SAG_TAP_MEASUREMENTS = 12;
+const POWER_AMP_SAG_TELEMETRY_VERSION = 1;
+const POWER_AMP_SAG_TELEMETRY_PAYLOAD_BYTES = 8;
+
 class PowerAmpSagPlugin extends PluginBase {
     constructor() {
         super('Power Amp Sag', 'Simulates power amp voltage sag under load');
@@ -22,12 +26,18 @@ class PowerAmpSagPlugin extends PluginBase {
         this.isVisible = false;
         this.observer = null;
         this.graphResizeDisposers = [];
+        this._dspTelemetryHub = null;
+        this._dspTelemetryTapId = null;
+        this._dspTelemetryUnsubscribe = null;
+        this._boundDspPowerAmpSagTelemetry = frame => this.handleDspPowerAmpSagTelemetry(frame);
         
         // History buffers for graph (512 points each) - half of auto_leveler since canvas width is half
         this.inputEnvelopeBuffer = new Float32Array(512).fill(0);
         this.gainReductionBuffer = new Float32Array(512).fill(0);
         this.secondMarkers = [];
         this.prevTime = null;
+
+        this._setupMessageHandler();
         
         this.registerProcessor(`
             // Audio Processor for Power Amp Sag
@@ -214,7 +224,96 @@ class PowerAmpSagPlugin extends PluginBase {
         `);
     }
     
+    _setupMessageHandler() {
+        super._setupMessageHandler();
+        this.ensureDspTelemetrySubscription?.();
+    }
+
+    ensureDspTelemetrySubscription() {
+        const hub = window.dspTelemetryHub;
+        const tapId = this.id;
+        const validTapId = Number.isInteger(tapId) && tapId >= 0 && tapId <= 0xffffffff;
+        const validHub = hub && typeof hub.subscribe === 'function';
+
+        if (!validTapId || !validHub) {
+            if (this._dspTelemetryUnsubscribe &&
+                (hub !== this._dspTelemetryHub || tapId !== this._dspTelemetryTapId)) {
+                this.disposeDspTelemetrySubscription();
+            }
+            return false;
+        }
+        if (this._dspTelemetryUnsubscribe &&
+            hub === this._dspTelemetryHub && tapId === this._dspTelemetryTapId) {
+            return true;
+        }
+
+        this.disposeDspTelemetrySubscription();
+        try {
+            const unsubscribe = hub.subscribe(
+                tapId,
+                POWER_AMP_SAG_TAP_MEASUREMENTS,
+                this._boundDspPowerAmpSagTelemetry
+            );
+            if (typeof unsubscribe !== 'function') {
+                hub.unsubscribe?.(
+                    tapId,
+                    POWER_AMP_SAG_TAP_MEASUREMENTS,
+                    this._boundDspPowerAmpSagTelemetry
+                );
+                return false;
+            }
+            this._dspTelemetryHub = hub;
+            this._dspTelemetryTapId = tapId;
+            this._dspTelemetryUnsubscribe = unsubscribe;
+            return true;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    disposeDspTelemetrySubscription() {
+        const unsubscribe = this._dspTelemetryUnsubscribe;
+        this._dspTelemetryHub = null;
+        this._dspTelemetryTapId = null;
+        this._dspTelemetryUnsubscribe = null;
+        if (!unsubscribe) return;
+        try {
+            unsubscribe();
+        } catch (error) {
+            // Ignore stale telemetry subscription cleanup failures.
+        }
+    }
+
+    parseDspPowerAmpSagTelemetryFrame(frame) {
+        if (frame?.frameType !== POWER_AMP_SAG_TAP_MEASUREMENTS ||
+            frame.formatVersion !== POWER_AMP_SAG_TELEMETRY_VERSION) {
+            return null;
+        }
+        const payload = frame.payload;
+        if (!payload || typeof payload.getFloat32 !== 'function' ||
+            payload.byteLength !== POWER_AMP_SAG_TELEMETRY_PAYLOAD_BYTES) {
+            return null;
+        }
+        const inputEnvelope = payload.getFloat32(0, true);
+        const gainReduction = payload.getFloat32(4, true);
+        if (!Number.isFinite(inputEnvelope) || inputEnvelope < 0 ||
+            !Number.isFinite(gainReduction) || gainReduction > 0) {
+            return null;
+        }
+        return { inputEnvelope, gainReduction };
+    }
+
+    handleDspPowerAmpSagTelemetry(frame) {
+        const measurements = this.parseDspPowerAmpSagTelemetryFrame(frame);
+        if (!measurements) return;
+        this.onMessage({
+            type: 'processBuffer',
+            measurements: { ...measurements, time: performance.now() / 1000 }
+        });
+    }
+
     onMessage(message) {
+        this.ensureDspTelemetrySubscription();
         if (message.type === 'processBuffer' && message.measurements) {
             // Update visualization data
             this.inputEnvelope = message.measurements.inputEnvelope;
@@ -240,6 +339,7 @@ class PowerAmpSagPlugin extends PluginBase {
     }
     
     getParameters() {
+        this.ensureDspTelemetrySubscription();
         return {
             type: this.constructor.name,
             enabled: this.enabled,
@@ -559,6 +659,7 @@ class PowerAmpSagPlugin extends PluginBase {
     }
     
     cleanup() {
+        this.disposeDspTelemetrySubscription();
         // Reset internal state
         this.inputEnvelope = 0;
         this.gainReduction = 0;

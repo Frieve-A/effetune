@@ -1,0 +1,30 @@
+{
+  "formatVersion": 1,
+  "type": "HarmonicDistortionPlugin",
+  "id": "fifth-harmonic-only",
+  "stimulus": "fs",
+  "sampleRate": 96000,
+  "channels": 4,
+  "frameCount": 259,
+  "blockSize": 31,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "h2": 0,
+    "h3": 0,
+    "h4": 0,
+    "h5": -30,
+    "sn": 2
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "80d6409c41763ff48546889b1f8bb55c49daf4dd0fcccabb529c533da102b491",
+  "outputFloats": 1036,
+  "byteLength": 4144,
+  "binary": "case-006.f32"
+}

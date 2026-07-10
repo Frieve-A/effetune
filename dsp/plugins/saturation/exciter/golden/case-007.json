@@ -1,0 +1,30 @@
+{
+  "formatVersion": 1,
+  "type": "ExciterPlugin",
+  "id": "double-state-one-frame",
+  "stimulus": "sin1k",
+  "sampleRate": 96000,
+  "channels": 1,
+  "frameCount": 257,
+  "blockSize": 1,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "hf": 3500,
+    "hs": 2,
+    "dr": 7,
+    "bs": -0.2,
+    "mx": 73
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "23e2394eaae09c2efae387880d7fe441f2f6226f75e6c4201215af6703d7c72e",
+  "outputFloats": 257,
+  "byteLength": 1028,
+  "binary": "case-007.f32"
+}

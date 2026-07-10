@@ -1,0 +1,66 @@
+{
+  "type": "OscilloscopePlugin",
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "fields": [
+    {
+      "name": "displayTime",
+      "key": "dt",
+      "kind": "float",
+      "min": 0.001,
+      "max": 0.1,
+      "default": 0.01,
+      "unit": "s"
+    },
+    {
+      "name": "triggerMode",
+      "key": "tm",
+      "kind": "enum",
+      "values": ["Auto", "Normal"],
+      "default": "Auto"
+    },
+    {
+      "name": "triggerLevel",
+      "key": "tl",
+      "kind": "float",
+      "min": -1,
+      "max": 1,
+      "default": 0
+    },
+    {
+      "name": "triggerEdge",
+      "key": "te",
+      "kind": "enum",
+      "values": ["Rising", "Falling"],
+      "default": "Rising"
+    },
+    {
+      "name": "holdoff",
+      "key": "ho",
+      "kind": "float",
+      "min": 0.0001,
+      "max": 0.01,
+      "default": 0.0001,
+      "unit": "s"
+    },
+    {
+      "name": "displayLevel",
+      "key": "dl",
+      "kind": "float",
+      "min": -96,
+      "max": 0,
+      "default": 0,
+      "unit": "dB"
+    },
+    {
+      "name": "verticalOffset",
+      "key": "vo",
+      "kind": "float",
+      "min": -1,
+      "max": 1,
+      "default": 0
+    }
+  ]
+}

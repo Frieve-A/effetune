@@ -1,0 +1,61 @@
+{
+  "formatVersion": 1,
+  "type": "BitCrusherPlugin",
+  "id": "dither-zoh-error-seed-transitions",
+  "stimulus": "fs",
+  "sampleRate": 44100,
+  "channels": 4,
+  "frameCount": 521,
+  "blockSize": 127,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "bd": 8,
+    "td": false,
+    "zf": 4000,
+    "be": 0,
+    "sd": 0
+  },
+  "events": [
+    {
+      "frame": 31,
+      "params": {
+        "td": true
+      }
+    },
+    {
+      "frame": 130,
+      "params": {
+        "bd": 24,
+        "zf": 96000
+      }
+    },
+    {
+      "frame": 259,
+      "params": {
+        "be": 10,
+        "sd": 1000
+      }
+    },
+    {
+      "frame": 400,
+      "params": {
+        "bd": 4,
+        "td": false,
+        "zf": 44100,
+        "be": 3.33,
+        "sd": 11
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "3b195a5a241df26f51b7d75b422c3dd80b3cec6df6029342c228769fb516f7a3",
+  "outputFloats": 2084,
+  "byteLength": 8336,
+  "binary": "case-007.f32"
+}

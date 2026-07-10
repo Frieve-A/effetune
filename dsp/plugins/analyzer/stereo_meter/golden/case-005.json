@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "StereoMeterPlugin",
+  "id": "four-channel-passthrough",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 4,
+  "frameCount": 635,
+  "blockSize": 127,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "wt": 0.5
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "1ff9d0a048f06934f1ac8c2dced0bab9b181a16cc76d9af8378abc66ab7e97f5",
+  "outputFloats": 2540,
+  "byteLength": 10160,
+  "binary": "case-005.f32"
+}

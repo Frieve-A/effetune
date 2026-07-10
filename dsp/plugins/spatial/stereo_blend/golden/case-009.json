@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "StereoBlendPlugin",
+  "id": "odd-full-slice",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 63,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 8,
+  "seed": "0xeffe7a56",
+  "params": {
+    "stereo": 37
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "e46aa5dc32dd3605bf560c5296e7d35001a71df1b648a7ba0eaaf19870d00007",
+  "outputFloats": 126,
+  "byteLength": 504,
+  "binary": "case-009.f32"
+}

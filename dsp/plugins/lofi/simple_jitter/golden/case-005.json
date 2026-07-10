@@ -1,0 +1,45 @@
+{
+  "formatVersion": 1,
+  "type": "SimpleJitterPlugin",
+  "id": "jitter-depth-transitions",
+  "stimulus": "sin1k",
+  "sampleRate": 96000,
+  "channels": 4,
+  "frameCount": 1001,
+  "blockSize": 64,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "rj": 0
+  },
+  "events": [
+    {
+      "frame": 31,
+      "params": {
+        "rj": 200
+      }
+    },
+    {
+      "frame": 321,
+      "params": {
+        "rj": 100
+      }
+    },
+    {
+      "frame": 700,
+      "params": {
+        "rj": 0
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "d5e6cf96ac910e732b5e6499446141c7df339451ee8ed4d90ac98a9e9b945796",
+  "outputFloats": 4004,
+  "byteLength": 16016,
+  "binary": "case-005.f32"
+}

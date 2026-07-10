@@ -1,0 +1,71 @@
+{
+  "formatVersion": 1,
+  "type": "MultibandCompressorPlugin",
+  "id": "mono-odd-block",
+  "stimulus": "sq50",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 997,
+  "blockSize": 83,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "f1": 100,
+    "f2": 500,
+    "f3": 2000,
+    "f4": 8000,
+    "bands": [
+      {
+        "t": -20,
+        "r": 4,
+        "a": 30,
+        "rl": 150,
+        "k": 6,
+        "g": -1
+      },
+      {
+        "t": -22,
+        "r": 3,
+        "a": 20,
+        "rl": 120,
+        "k": 4,
+        "g": 0
+      },
+      {
+        "t": -25,
+        "r": 2.5,
+        "a": 15,
+        "rl": 80,
+        "k": 4,
+        "g": 1
+      },
+      {
+        "t": -28,
+        "r": 2,
+        "a": 10,
+        "rl": 60,
+        "k": 3,
+        "g": 1.5
+      },
+      {
+        "t": -18,
+        "r": 5,
+        "a": 5,
+        "rl": 40,
+        "k": 2,
+        "g": -2
+      }
+    ]
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00002,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "d6b8dd49b65bd608d0b68631ac2571b9c2ada0c100a6274799d9382d1dcad3aa",
+  "outputFloats": 997,
+  "byteLength": 3988,
+  "binary": "case-005.f32"
+}

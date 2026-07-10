@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "StereoMeterPlugin",
+  "id": "minimum-window-mono",
+  "stimulus": "sin1k",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 719,
+  "blockSize": 83,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "wt": 0.01
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "1ff9d0a048f06934f1ac8c2dced0bab9b181a16cc76d9af8378abc66ab7e97f5",
+  "outputFloats": 719,
+  "byteLength": 2876,
+  "binary": "case-002.f32"
+}

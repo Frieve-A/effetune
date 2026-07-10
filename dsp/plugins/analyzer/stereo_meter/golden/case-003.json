@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "StereoMeterPlugin",
+  "id": "maximum-window-high-rate",
+  "stimulus": "sweep",
+  "sampleRate": 192000,
+  "channels": 2,
+  "frameCount": 911,
+  "blockSize": 113,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "wt": 1
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "1ff9d0a048f06934f1ac8c2dced0bab9b181a16cc76d9af8378abc66ab7e97f5",
+  "outputFloats": 1822,
+  "byteLength": 7288,
+  "binary": "case-003.f32"
+}

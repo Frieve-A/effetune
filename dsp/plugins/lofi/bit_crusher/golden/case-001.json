@@ -1,0 +1,30 @@
+{
+  "formatVersion": 1,
+  "type": "BitCrusherPlugin",
+  "id": "default-zoh-quantizer",
+  "stimulus": "sweep",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 12000,
+  "blockSize": 63,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "bd": 8,
+    "td": false,
+    "zf": 44100,
+    "be": 0,
+    "sd": 11
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "3b195a5a241df26f51b7d75b422c3dd80b3cec6df6029342c228769fb516f7a3",
+  "outputFloats": 24000,
+  "byteLength": 96000,
+  "binary": "case-001.f32"
+}

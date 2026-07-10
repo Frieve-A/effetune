@@ -1,0 +1,12 @@
+{
+  "type": "HumGeneratorPlugin",
+  "tolerance": { "abs": 0.00001, "policy": "per-sample" },
+  "fields": [
+    { "name": "frequency", "key": "fr", "kind": "float", "min": 10, "max": 120, "default": 50, "unit": "Hz" },
+    { "name": "humType", "key": "tp", "kind": "enum", "values": ["Standard", "Rich", "Dirty"], "default": "Standard" },
+    { "name": "harmonics", "key": "hm", "kind": "int", "min": 0, "max": 100, "default": 50, "unit": "%" },
+    { "name": "tone", "key": "tn", "kind": "float", "min": 1, "max": 20, "default": 10, "unit": "kHz" },
+    { "name": "instability", "key": "in", "kind": "float", "min": 0, "max": 10, "default": 1, "unit": "%" },
+    { "name": "level", "key": "lv", "kind": "float", "min": -80, "max": 0, "default": -40, "unit": "dB" }
+  ]
+}

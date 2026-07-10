@@ -1,0 +1,46 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 128,
+    "channels": 2,
+    "channelMode": "stereo",
+    "frames": 2048,
+    "params": {}
+  },
+  "cases": [
+    { "id": "default-impulse", "stimulus": "imp", "frames": 2048 },
+    { "id": "default-sine", "stimulus": "sin1k", "frames": 2048 },
+    { "id": "default-sweep", "stimulus": "sweep", "frames": 2048 },
+    { "id": "default-noise", "stimulus": "noise", "frames": 2048 },
+    { "id": "default-square", "stimulus": "sq50", "frames": 2048 },
+    { "id": "default-silence", "stimulus": "silence", "frames": 2048 },
+    { "id": "default-full-scale", "stimulus": "fs", "frames": 2048 },
+    { "id": "default-step", "stimulus": "step", "frames": 2048 },
+    {
+      "id": "non-aligned-mono",
+      "stimulus": "noise",
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 513,
+      "blockSize": 64
+    },
+    {
+      "id": "short-final-block-all-channels",
+      "stimulus": "noise",
+      "channels": 4,
+      "channelMode": "all4",
+      "channel": "A",
+      "frames": 257,
+      "blockSize": 63
+    },
+    {
+      "id": "single-frame-all-channels",
+      "stimulus": "fs",
+      "channels": 4,
+      "channelMode": "all4",
+      "channel": "A",
+      "frames": 1,
+      "blockSize": 128
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "type": "OscillatorPlugin",
+  "id": "pink-pulsed-muted-state",
+  "stimulus": "fs",
+  "sampleRate": 96000,
+  "channels": 4,
+  "frameCount": 259,
+  "blockSize": 31,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "fr": 96000,
+    "vl": -96,
+    "pn": 0,
+    "wf": "pink",
+    "md": "pulsed",
+    "it": 2000,
+    "wd": 2
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "9da2eedc277a847830baea81602fcb42dbdc5c06f922e3fd4506919e5f459cb2",
+  "outputFloats": 1036,
+  "byteLength": 4144,
+  "binary": "case-007.f32"
+}

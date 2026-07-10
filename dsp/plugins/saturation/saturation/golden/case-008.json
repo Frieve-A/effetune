@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "SaturationPlugin",
+  "id": "mono-odd-tail",
+  "stimulus": "step",
+  "sampleRate": 48000,
+  "channels": 1,
+  "frameCount": 257,
+  "blockSize": 64,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "dr": 1.5,
+    "bs": 0.1,
+    "mx": 100,
+    "gn": -2
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "a9127eabc85de27bb7f876e66ef33c7ccc5614d3de0588f546d84a94cfb0c966",
+  "outputFloats": 257,
+  "byteLength": 1028,
+  "binary": "case-008.f32"
+}

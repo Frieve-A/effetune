@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "MatrixPlugin",
+  "id": "runtime-filters-index-eight",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 8,
+  "frameCount": 1024,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "mx": "880011223344556677"
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "e8549976a0668ad5f674a9b6124c7a533c0c82a9b0f0db4c62ba2a6ffeae7ad6",
+  "outputFloats": 8192,
+  "byteLength": 32768,
+  "binary": "case-006.f32"
+}

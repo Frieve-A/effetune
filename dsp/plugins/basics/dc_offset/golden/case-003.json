@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "DCOffsetPlugin",
+  "id": "default-sweep",
+  "stimulus": "sweep",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 2048,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "of": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "0a4f4dbed0c34f516ad78ad38876a83807b12fb07b525c83ca7ffa3fa773020f",
+  "outputFloats": 4096,
+  "byteLength": 16384,
+  "binary": "case-003.f32"
+}

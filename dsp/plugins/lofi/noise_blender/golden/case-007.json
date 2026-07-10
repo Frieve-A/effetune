@@ -1,0 +1,28 @@
+{
+  "formatVersion": 1,
+  "type": "NoiseBlenderPlugin",
+  "id": "one-frame-pink",
+  "stimulus": "silence",
+  "sampleRate": 192000,
+  "channels": 1,
+  "frameCount": 67,
+  "blockSize": 1,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "nt": "pink",
+    "lv": -12,
+    "pc": true
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "13f074fcdd04e744e76a47be12f14d87fc8f05643b6d5f1c1a5a1bfb0a5113cd",
+  "outputFloats": 67,
+  "byteLength": 268,
+  "binary": "case-007.f32"
+}

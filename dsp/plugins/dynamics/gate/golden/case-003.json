@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "GatePlugin",
+  "id": "maximum-gating",
+  "stimulus": "step",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 901,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "th": 0,
+    "rt": 100,
+    "at": 0.01,
+    "rl": 10,
+    "kn": 0,
+    "gn": -12
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "f3395732572e52ee3b8311ebbf26c93d951b6bd6af3a6f3357caa2811be5897a",
+  "outputFloats": 1802,
+  "byteLength": 7208,
+  "binary": "case-003.f32"
+}

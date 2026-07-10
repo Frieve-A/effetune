@@ -51,7 +51,10 @@ This runs:
 - `npm run lint`: ESLint checks for JavaScript syntax and high-confidence correctness hazards across Electron, renderer, plugin, feature, tool, and test code
 - `npm test`: Node.js tests with the repository's coverage thresholds and test hygiene checks
 
-`npm run verify` also runs `npm run assets:web` before validation so the browser metadata parser bundle, third-party notices, and PWA precache stay in sync.
+Before lint and tests, `npm run verify` rebuilds the browser vendor assets and performs a
+non-writing freshness check of the committed PWA precache. It does not regenerate a stale
+`sw-precache.js`; if that check fails, run `npm run assets:web` and then rerun
+`npm run verify`.
 
 For narrower verification, use:
 
@@ -60,7 +63,44 @@ npm run lint
 npm test
 ```
 
-### 4. Run in Development Mode
+### 4. Build and Test the DSP Core
+
+The committed WebAssembly DSP artifacts let JavaScript-only contributors run the app
+without Emscripten. Changes under `dsp/`, `plugins/dsp/`, or a plugin's DSP parameter
+schema require the pinned toolchain recorded in `dsp/EMSDK_VERSION` (currently 6.0.2),
+CMake 3.24 or newer, Ninja, and a C++20 compiler.
+
+```bash
+npm run gen:dsp
+npm run test:dsp
+npm run build:dsp
+npm run test:dsp:parity
+```
+
+- `gen:dsp` validates every `params.json` and updates the generated C++ and JavaScript
+  parameter layouts.
+- `test:dsp` builds the native core, allocation guard, and parity runner, then runs CTest.
+- `build:dsp` verifies the active Emscripten version and rebuilds the committed baseline
+  and SIMD modules plus deterministic metadata under `plugins/dsp/`.
+- `test:dsp:parity` checks both shipped modules against the committed JavaScript goldens.
+
+Set `EMSDK` to the activated SDK root on Windows. Use `npm run build:dsp -- --check` for
+a write-free freshness check and `npm run build:dsp -- --debug` for the local debug
+artifact. The debug module is excluded from the service-worker precache and packaged
+applications. Kernel preparation and instance creation run between audio quanta and may
+grow WASM memory; processing itself must never allocate, lock, perform I/O, or grow
+memory. See `dsp/README.md` for the ABI and kernel workflow.
+
+For a browser runtime check, open the served app with `?dspBench=1`, start the audio
+graph with a user gesture, and inspect the console. A successful production path reports
+`Ready: 67 kernels (SIMD)` (or `baseline`) followed by `Processing active` with a
+positive `single-call blocks` count. The same statistics are available as
+`window.dspStats`; `telemetryDroppedFrames` should remain zero during the check. Repeat
+once with `?dsp=off` and confirm that the JavaScript compatibility path starts without
+any `[dsp-wasm]` messages. Browsers that do not acknowledge a cloned compiled module
+are retried automatically with the retained WASM bytes.
+
+### 5. Run in Development Mode
 
 To start the application in development mode:
 

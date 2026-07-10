@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "MatrixPlugin",
+  "id": "stereo-swap",
+  "stimulus": "sin1k",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 2048,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "mx": "0110"
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "e8549976a0668ad5f674a9b6124c7a533c0c82a9b0f0db4c62ba2a6ffeae7ad6",
+  "outputFloats": 4096,
+  "byteLength": 16384,
+  "binary": "case-002.f32"
+}

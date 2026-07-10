@@ -4,10 +4,15 @@ import { PipelineProcessor } from './audio/pipeline-processor.js';
 import { OfflineProcessor } from './audio/offline-processor.js';
 import { AudioEncoder } from './audio/audio-encoder.js';
 import { EventManager } from './audio/event-manager.js';
+import { loadDspModule } from './audio/dsp-wasm-loader.js';
+import { getDspRolloutConfig } from './audio/dsp-rollout.js';
+import { TelemetryHub } from './audio/telemetry-hub.js';
 import { getSerializablePluginStateShort, applySerializedState } from './utils/serialization-utils.js';
 
 const PIPELINE_SWITCH_FADE_SECONDS = 0.04;
 const PIPELINE_SWITCH_SILENCE_SECONDS = 0.05;
+const DSP_MODULE_READY_TIMEOUT_MS = 1000;
+const DSP_BYTES_READY_TIMEOUT_MS = 3000;
 
 function waitForPipelineSwitch(seconds) {
     return new Promise(resolve => setTimeout(resolve, seconds * 1000));
@@ -34,6 +39,28 @@ export class AudioManager {
         );
         this.offlineProcessor = new OfflineProcessor(this.contextManager, this.audioEncoder);
         this.eventManager = new EventManager(this);
+        this.telemetryHub = new TelemetryHub();
+        window.dspTelemetryHub = this.telemetryHub;
+        this.dspModuleInfo = null;
+        this.dspCapabilities = null;
+        this.dspPipelineLatencySamples = 0;
+        this._dspReadyFallbacks = new Map();
+        this._dspCapabilitiesByNode = new Map();
+        this._dspReadyTokens = new Map();
+        this._pendingDspActivationRequests = new Map();
+        this._dspReadyTransitionPromise = null;
+        this._dspTransitionGeneration = -1;
+        this._audioGraphGeneration = 0;
+        this._primaryWorkletEpoch = 0;
+        this._outputFadeToken = 0;
+        this._parallelDspBarrier = null;
+        this._parallelPreparing = false;
+        this._connectedPipelineSources = new Set();
+        this._dspModuleLoadPromise = null;
+        this._dspModuleLoadRequest = null;
+        this._dspModuleLoadRequestSequence = 0;
+        this._boundDspVisibilityChange = () => this.updateDspTelemetryRate();
+        globalThis.document?.addEventListener?.('visibilitychange', this._boundDspVisibilityChange);
         
         // Store reference to pipeline manager
         this.pipelineManager = pipelineManager;
@@ -162,37 +189,44 @@ export class AudioManager {
             ? options.silenceDuration
             : PIPELINE_SWITCH_SILENCE_SECONDS;
         const seq = ++this._pipelineSwitchSeq;
+        let outputOwner = this._captureOutputOwner();
+        const isCurrent = () => seq === this._pipelineSwitchSeq &&
+            this._isOutputOwnerCurrent(outputOwner);
 
         try {
             this.fadeOutOutput(fadeDuration);
+            outputOwner = this._captureOutputOwner();
             await waitForPipelineSwitch(fadeDuration);
-            if (seq !== this._pipelineSwitchSeq) return false;
+            if (!isCurrent()) return false;
 
             this.currentPipeline = pipeline;
             this.pipeline = this.getCurrentPipeline();
 
             if (this.workletNode) {
                 const result = await this.rebuildPipeline();
+                if (!isCurrent()) return false;
                 if (result) {
                     console.warn('[AudioManager] Pipeline switch rebuild reported:', result);
                 }
             }
 
             this.dispatchEvent('pipelineChanged', { pipeline: this.currentPipeline });
+            if (!isCurrent()) return false;
 
             if (!skipHistorySave && this.pipelineManager && this.pipelineManager.historyManager) {
                 this.pipelineManager.historyManager.saveState();
             }
 
             await waitForPipelineSwitch(silenceDuration);
-            if (seq !== this._pipelineSwitchSeq) return false;
+            if (!isCurrent()) return false;
 
-            this.fadeInOutput(fadeDuration);
+            this._fadeInOutputIfOwned(outputOwner, fadeDuration);
             return true;
         } catch (error) {
+            if (!isCurrent()) return false;
             console.warn('[AudioManager] setCurrentPipelineWithTransition failed, falling back to immediate switch:', error);
             this.setCurrentPipeline(pipeline, skipHistorySave);
-            this.fadeInOutput(fadeDuration);
+            this._fadeInOutputIfOwned(outputOwner, fadeDuration);
             return false;
         }
     }
@@ -378,6 +412,17 @@ export class AudioManager {
      */
     async initializeAudioWorklet() {
         try {
+            // WASM is optional. Start loading it alongside the worklet, but do
+            // not let a slow or unavailable artifact delay JavaScript audio.
+            const dspModulePromise = Promise.resolve()
+                .then(() => this.loadDspForWorklet())
+                .catch(error => {
+                    console.warn(
+                        `[dsp-wasm] Load failed: ${error?.message || String(error)}; ` +
+                        'continuing with JavaScript DSP.'
+                    );
+                    return null;
+                });
             // Load AudioWorklet and create worklet node
             const workletResult = await this.contextManager.loadAudioWorklet();
             if (workletResult) {
@@ -386,6 +431,8 @@ export class AudioManager {
             
             // Update exposed properties for backward compatibility
             this.updateExposedProperties();
+            this._primaryWorkletEpoch++;
+            this._advanceAudioGraphGeneration();
 
             // A recreated AudioWorklet starts with an empty processor registry.
             // Existing plugin instances do not run their constructors again, so
@@ -394,27 +441,784 @@ export class AudioManager {
             
             // Setup worklet message handler
             if (this.workletNode) {
-                this.workletNode.port.onmessage = (event) => {
-                    const data = event.data;
-                    if (data.type === 'sleepModeChanged') {
-                        // Dispatch sleep mode changed event
-                        this.dispatchEvent('sleepModeChanged', {
-                            isSleepMode: data.isSleepMode,
-                            sampleRate: this.audioContext.sampleRate
-                        });
-                    } else if (data.type === 'processorMissing') {
-                        console.warn(`[AudioManager] Worklet reported missing processor for ${data.pluginType}; re-registering processors.`);
-                        this.registerPipelineProcessors();
-                        this.rebuildPipeline(false).catch(error => {
-                            console.error('[AudioManager] Failed to rebuild after missing processor report:', error);
-                        });
-                    }
-                };
+                const sourceWorkletNode = this.workletNode;
+                this.telemetryHub.setPort(sourceWorkletNode.port);
+                sourceWorkletNode.port.onmessage = event => this.handleWorkletMessage(event, sourceWorkletNode);
             }
+            this._pruneInactiveDspWorklets();
+            this.dspModuleInfo = null;
+            this.dspCapabilities = null;
+            window.dspCapabilities = undefined;
+
+            const workletNode = this.workletNode;
+            const workletEpoch = this._primaryWorkletEpoch;
+            void this._requestDspModuleLoad({
+                primaryWorklet: workletNode,
+                primaryEpoch: workletEpoch,
+                loadPromise: dspModulePromise,
+                startupFailureLabel: 'Worklet startup failed'
+            });
             
             return '';
         } catch (error) {
             return `Audio Error: ${error.message}`;
+        }
+    }
+
+    async loadDspForWorklet() {
+        const pathname = window.location?.pathname || '';
+        const basePath = pathname.substring(0, pathname.lastIndexOf('/'));
+        const preference = window.audioPreferences || window.electronIntegration?.audioPreferences || {};
+        const rollout = getDspRolloutConfig({ preference, location: window.location });
+        if (rollout.forceOff || preference.useWasmDsp === false) return null;
+        return loadDspModule({ basePath, debug: rollout.debug });
+    }
+
+    getEnabledDspTypes(preferenceOverride = null) {
+        if (!this.dspModuleInfo) return [];
+        const preference = preferenceOverride ||
+            window.audioPreferences || window.electronIntegration?.audioPreferences || {};
+        return getDspRolloutConfig({
+            meta: this.dspModuleInfo.meta,
+            paramPackers: this.dspModuleInfo.paramPackers,
+            preference,
+            location: window.location
+        }).enabledTypes;
+    }
+
+    _getPrimaryWorkletNode() {
+        return this.contextManager?.workletNode || this.workletNode || null;
+    }
+
+    _isDspModuleLoadRequestCurrent(request) {
+        return this._dspModuleLoadRequest === request &&
+            this._getPrimaryWorkletNode() === request.primaryWorklet &&
+            this._primaryWorkletEpoch === request.primaryEpoch;
+    }
+
+    _requestDspModuleLoad(options = {}) {
+        const primaryWorklet = options.primaryWorklet ?? this._getPrimaryWorkletNode();
+        const primaryEpoch = options.primaryEpoch ?? this._primaryWorkletEpoch;
+        if (!primaryWorklet?.port) return Promise.resolve(false);
+
+        const activeRequest = this._dspModuleLoadRequest;
+        if (activeRequest && !activeRequest.settled &&
+            activeRequest.primaryWorklet === primaryWorklet &&
+            activeRequest.primaryEpoch === primaryEpoch) {
+            return activeRequest.promise;
+        }
+
+        const request = {
+            id: ++this._dspModuleLoadRequestSequence,
+            primaryWorklet,
+            primaryEpoch,
+            settled: false,
+            promise: null
+        };
+        const loadPromise = options.loadPromise ?? Promise.resolve().then(() => this.loadDspForWorklet());
+        const failureLabel = options.failureLabel || 'Preference reload failed';
+        const startupFailureLabel = options.startupFailureLabel || 'Worklet startup failed';
+        const completion = Promise.resolve(loadPromise).then(info => {
+            if (!this._isDspModuleLoadRequestCurrent(request)) return false;
+            if (!info) {
+                this._completeParallelDspWithoutModule();
+                return false;
+            }
+            this.dspModuleInfo = info;
+            try {
+                this.startDspOnActiveWorklets();
+                return true;
+            } catch (error) {
+                console.warn(
+                    `[dsp-wasm] ${startupFailureLabel}: ${error?.message || String(error)}; ` +
+                    'continuing with JavaScript DSP.'
+                );
+                this._completeParallelDspWithoutModule();
+                return false;
+            }
+        }).catch(error => {
+            if (!this._isDspModuleLoadRequestCurrent(request)) return false;
+            console.warn(`[dsp-wasm] ${failureLabel}: ${error?.message || String(error)}`);
+            this._completeParallelDspWithoutModule();
+            return false;
+        }).finally(() => {
+            request.settled = true;
+            if (this._dspModuleLoadRequest === request) {
+                this._dspModuleLoadRequest = null;
+                this._dspModuleLoadPromise = null;
+            }
+        });
+        request.promise = completion;
+        this._dspModuleLoadRequest = request;
+        this._dspModuleLoadPromise = completion;
+        return completion;
+    }
+
+    _invalidateDspModuleLoadRequest() {
+        this._dspModuleLoadRequest = null;
+        this._dspModuleLoadPromise = null;
+    }
+
+    _getActiveDspWorklets() {
+        const nodes = new Set();
+        const primary = this._getPrimaryWorkletNode();
+        if (primary?.port) nodes.add(primary);
+        if ((this._parallelActive || this._parallelPreparing) && this._parallelWorkletB?.port) {
+            nodes.add(this._parallelWorkletB);
+        }
+        return nodes;
+    }
+
+    _isActiveDspWorklet(workletNode) {
+        return !!workletNode && this._getActiveDspWorklets().has(workletNode);
+    }
+
+    _nextDspReadyToken(workletNode) {
+        const token = (this._dspReadyTokens?.get(workletNode) || 0) + 1;
+        this._dspReadyTokens.set(workletNode, token);
+        return token;
+    }
+
+    _completeDspActivationRequest(workletNode, result) {
+        const request = this._pendingDspActivationRequests?.get(workletNode);
+        if (!request) return;
+        if (request.timer !== null) clearTimeout(request.timer);
+        this._pendingDspActivationRequests.delete(workletNode);
+        request.resolve(result);
+    }
+
+    _invalidateDspReadyState(workletNode) {
+        if (!workletNode) return;
+        this._nextDspReadyToken(workletNode);
+        this._completeDspActivationRequest(workletNode, false);
+    }
+
+    _reinitializeDspWorklet(workletNode, targetTypes) {
+        if (!workletNode?.port || !this.dspModuleInfo) return Promise.resolve(false);
+        this._completeDspActivationRequest(workletNode, false);
+        let resolve;
+        const promise = new Promise(done => { resolve = done; });
+        const posted = this.startDspOnWorklet(workletNode);
+        if (!posted) {
+            resolve(false);
+            return promise;
+        }
+        const request = {
+            token: this._dspReadyTokens.get(workletNode),
+            targetTypes: [...targetTypes],
+            timer: null,
+            resolve,
+            promise
+        };
+        request.timer = setTimeout(() => {
+            if (this._pendingDspActivationRequests.get(workletNode) !== request) return;
+            this._completeDspActivationRequest(workletNode, false);
+        }, DSP_MODULE_READY_TIMEOUT_MS + DSP_BYTES_READY_TIMEOUT_MS);
+        this._pendingDspActivationRequests.set(workletNode, request);
+        return promise;
+    }
+
+    _advanceAudioGraphGeneration() {
+        this._audioGraphGeneration = (this._audioGraphGeneration || 0) + 1;
+        const barrier = this._parallelDspBarrier;
+        if (barrier && !barrier.settled) {
+            barrier.settled = true;
+            barrier.mode = 'cancelled';
+            if (barrier.timer !== null) clearTimeout(barrier.timer);
+            barrier.timer = null;
+            barrier.resolve('cancelled');
+        }
+        this._parallelDspBarrier = null;
+        return this._audioGraphGeneration;
+    }
+
+    _pruneInactiveDspWorklets() {
+        const active = this._getActiveDspWorklets();
+        if (this._dspReadyFallbacks instanceof Map) {
+            for (const workletNode of this._dspReadyFallbacks.keys()) {
+                if (!active.has(workletNode)) this.clearDspReadyFallback(workletNode);
+            }
+        }
+        if (this._dspCapabilitiesByNode instanceof Map) {
+            for (const workletNode of this._dspCapabilitiesByNode.keys()) {
+                if (!active.has(workletNode)) this._dspCapabilitiesByNode.delete(workletNode);
+            }
+        }
+        if (this._dspReadyTokens instanceof Map) {
+            for (const workletNode of this._dspReadyTokens.keys()) {
+                if (!active.has(workletNode)) this._dspReadyTokens.delete(workletNode);
+            }
+        }
+        if (this._pendingDspActivationRequests instanceof Map) {
+            for (const workletNode of this._pendingDspActivationRequests.keys()) {
+                if (!active.has(workletNode)) this._completeDspActivationRequest(workletNode, false);
+            }
+        }
+    }
+
+    startDspOnActiveWorklets() {
+        let posted = false;
+        let firstError = null;
+        for (const workletNode of this._getActiveDspWorklets()) {
+            if (this._parallelPreparing && workletNode === this._getPrimaryWorkletNode() &&
+                this._dspCapabilitiesByNode?.has(workletNode)) {
+                continue;
+            }
+            try {
+                posted = this.startDspOnWorklet(workletNode) || posted;
+            } catch (error) {
+                firstError ??= error;
+            }
+        }
+        if (firstError) throw firstError;
+        return posted;
+    }
+
+    _waitForDspTransition(seconds) {
+        return waitForPipelineSwitch(seconds);
+    }
+
+    _applyDspReadyPipeline(workletNode, enabledTypes = this.getEnabledDspTypes()) {
+        workletNode.port.postMessage({
+            type: 'dspEnableTypes',
+            types: enabledTypes
+        });
+        if (this._parallelActive) {
+            if (workletNode === this._getPrimaryWorkletNode()) {
+                this._postBlindPlugins(workletNode, this.pipelineA);
+                return;
+            }
+            if (workletNode === this._parallelWorkletB) {
+                this._postBlindPlugins(workletNode, this.pipelineB || []);
+                return;
+            }
+        }
+
+        const plugins = this.pipelineProcessor.prepareSectionAwarePluginData();
+        workletNode.port.postMessage({
+            type: 'updatePlugins',
+            plugins,
+            masterBypass: this.masterBypass
+        });
+    }
+
+    _isDspTransitionSnapshotCurrent(snapshot) {
+        if (this._audioGraphGeneration !== snapshot.generation ||
+            (this.contextManager?.audioContext || null) !== snapshot.context ||
+            (this.ioManager?.outputGainNode || null) !== snapshot.outputGainNode) {
+            return false;
+        }
+        for (const workletNode of snapshot.workletNodes) {
+            if (!this._isActiveDspWorklet(workletNode)) return false;
+        }
+        return true;
+    }
+
+    _runDspOutputTransition(workletNodes, apply, generation = this._audioGraphGeneration) {
+        const snapshot = {
+            generation,
+            context: this.contextManager?.audioContext || null,
+            outputGainNode: this.ioManager?.outputGainNode || null,
+            workletNodes: new Set([...workletNodes].filter(node => node?.port))
+        };
+        const previous = this._dspReadyTransitionPromise && this._dspTransitionGeneration === generation
+            ? this._dspReadyTransitionPromise
+            : null;
+        let transitionPromise;
+        const execute = async () => {
+            if (previous) {
+                await previous;
+                if (!this._isDspTransitionSnapshotCurrent(snapshot)) return false;
+            }
+            if (!this._isDspTransitionSnapshotCurrent(snapshot)) return false;
+
+            const useOutputTransition = !!(snapshot.context && snapshot.outputGainNode);
+            let faded = false;
+            let fadeToken = null;
+            try {
+                if (useOutputTransition) {
+                    fadeToken = this.fadeOutOutput(PIPELINE_SWITCH_FADE_SECONDS);
+                    faded = true;
+                    await this._waitForDspTransition(PIPELINE_SWITCH_FADE_SECONDS);
+                    if (!this._isDspTransitionSnapshotCurrent(snapshot)) return false;
+                }
+
+                const applied = await apply(snapshot);
+                if (!this._isDspTransitionSnapshotCurrent(snapshot) || applied === false) return false;
+
+                if (useOutputTransition) {
+                    await this._waitForDspTransition(PIPELINE_SWITCH_SILENCE_SECONDS);
+                    if (!this._isDspTransitionSnapshotCurrent(snapshot)) return false;
+                }
+                return true;
+            } finally {
+                if (faded && this._isDspTransitionSnapshotCurrent(snapshot)) {
+                    this.fadeInOutputForToken(fadeToken, PIPELINE_SWITCH_FADE_SECONDS);
+                }
+            }
+        };
+        transitionPromise = execute().catch(error => {
+            console.warn(`[dsp-wasm] Output transition failed: ${error?.message || String(error)}`);
+            return false;
+        });
+        this._dspReadyTransitionPromise = transitionPromise;
+        this._dspTransitionGeneration = generation;
+        const clearIfCurrent = () => {
+            if (this._dspReadyTransitionPromise === transitionPromise) {
+                this._dspReadyTransitionPromise = null;
+                this._dspTransitionGeneration = -1;
+            }
+        };
+        transitionPromise.then(clearIfCurrent, clearIfCurrent);
+        return transitionPromise;
+    }
+
+    _createParallelDspBarrier(workletNodes) {
+        const previous = this._parallelDspBarrier;
+        if (previous && !previous.settled) {
+            previous.settled = true;
+            previous.mode = 'cancelled';
+            if (previous.timer !== null) clearTimeout(previous.timer);
+            previous.timer = null;
+            previous.resolve('cancelled');
+        }
+        let resolve;
+        const barrier = {
+            generation: this._audioGraphGeneration,
+            workletNodes: new Set(workletNodes),
+            ready: new Map(),
+            readyTokens: new Map(),
+            dispatchedReady: new Set(),
+            settled: false,
+            mode: 'pending',
+            timer: null,
+            requestVersion: 0,
+            requestedMode: null,
+            targetTypes: [],
+            desiredTypes: null,
+            activationPromise: null,
+            promise: new Promise(done => { resolve = done; }),
+            resolve
+        };
+        this._parallelDspBarrier = barrier;
+        return barrier;
+    }
+
+    _isParallelDspBarrierCurrent(barrier) {
+        return this._parallelDspBarrier === barrier &&
+            this._audioGraphGeneration === barrier.generation &&
+            (this._parallelPreparing || this._parallelActive);
+    }
+
+    _armParallelDspBarrierTimeout(barrier) {
+        if (!this._isParallelDspBarrierCurrent(barrier) || barrier.settled || barrier.timer !== null) return;
+        barrier.timer = setTimeout(() => {
+            barrier.timer = null;
+            if (!this._isParallelDspBarrierCurrent(barrier) || barrier.settled) return;
+            console.warn('[dsp-wasm] Parallel worklets did not become ready together; using JavaScript DSP.');
+            this._finalizeParallelDspBarrier(barrier, [], 'js');
+        }, DSP_MODULE_READY_TIMEOUT_MS + DSP_BYTES_READY_TIMEOUT_MS);
+    }
+
+    _settleParallelDspBarrier(barrier, mode) {
+        if (barrier.timer !== null) clearTimeout(barrier.timer);
+        barrier.timer = null;
+        barrier.mode = mode;
+        if (!barrier.settled) {
+            barrier.settled = true;
+            barrier.resolve(mode);
+        }
+    }
+
+    _finalizeParallelDspBarrier(barrier, targetTypes, mode) {
+        if (!this._isParallelDspBarrierCurrent(barrier)) {
+            this._settleParallelDspBarrier(barrier, 'cancelled');
+            return Promise.resolve(false);
+        }
+        barrier.targetTypes = [...targetTypes];
+        barrier.requestedMode = mode;
+        barrier.requestVersion++;
+        if (barrier.activationPromise) return barrier.activationPromise;
+
+        const startTransition = () => {
+            let appliedRequest = null;
+            const transition = this._runDspOutputTransition(
+                barrier.workletNodes,
+                () => {
+                    if (!this._isParallelDspBarrierCurrent(barrier)) return false;
+                    appliedRequest = {
+                        version: barrier.requestVersion,
+                        mode: barrier.requestedMode,
+                        targetTypes: [...barrier.targetTypes]
+                    };
+                    if (appliedRequest.targetTypes.length > 0) {
+                        for (const workletNode of barrier.workletNodes) {
+                            const readyData = barrier.ready.get(workletNode);
+                            if (!readyData || this._dspCapabilitiesByNode?.get(workletNode) !== readyData ||
+                                (this._dspReadyTokens?.get(workletNode) || 0) !==
+                                    barrier.readyTokens.get(workletNode)) {
+                                return false;
+                            }
+                        }
+                    }
+                    const [workletA, workletB] = barrier.workletNodes;
+                    for (const workletNode of barrier.workletNodes) {
+                        workletNode.port.postMessage({ type: 'dspEnableTypes', types: [] });
+                    }
+                    this._postBlindPlugins(workletA, this.pipelineA);
+                    this._postBlindPlugins(workletB, this.pipelineB || []);
+                    if (appliedRequest.targetTypes.length > 0) {
+                        for (const workletNode of barrier.workletNodes) {
+                            workletNode.port.postMessage({
+                                type: 'dspEnableTypes',
+                                types: appliedRequest.targetTypes
+                            });
+                        }
+                        this._postBlindPlugins(workletA, this.pipelineA);
+                        this._postBlindPlugins(workletB, this.pipelineB || []);
+                    }
+                    this._parallelPreparing = false;
+                    this._parallelActive = true;
+                    this._applyParallelRouting();
+                    for (const [node, readyData] of barrier.ready) {
+                        if (barrier.dispatchedReady.has(node)) continue;
+                        barrier.dispatchedReady.add(node);
+                        this.dispatchEvent('dspReady', readyData);
+                    }
+                    return true;
+                },
+                barrier.generation
+            ).then(applied => {
+                barrier.activationPromise = null;
+                if (!applied || !this._isParallelDspBarrierCurrent(barrier)) {
+                    this._settleParallelDspBarrier(barrier, 'cancelled');
+                    return false;
+                }
+                if (!appliedRequest || appliedRequest.version !== barrier.requestVersion) {
+                    return startTransition();
+                }
+                for (const workletNode of barrier.workletNodes) {
+                    this.clearDspReadyFallback(workletNode);
+                }
+                this._settleParallelDspBarrier(barrier, appliedRequest.mode);
+                return true;
+            });
+            barrier.activationPromise = transition;
+            return transition;
+        };
+        return startTransition();
+    }
+
+    _completeParallelDspWithoutModule() {
+        const barrier = this._parallelDspBarrier;
+        if (!barrier || barrier.settled || !this._isParallelDspBarrierCurrent(barrier)) return;
+        this._finalizeParallelDspBarrier(barrier, [], 'js');
+    }
+
+    _handleParallelDspReady(workletNode, data, token) {
+        let barrier = this._parallelDspBarrier;
+        if (!barrier && (this._parallelPreparing || this._parallelActive)) {
+            barrier = this._createParallelDspBarrier(this._getActiveDspWorklets());
+        }
+        if (!barrier || !this._isParallelDspBarrierCurrent(barrier) ||
+            !barrier.workletNodes.has(workletNode)) return false;
+
+        if (barrier.settled) {
+            if (barrier.mode === 'js') {
+                workletNode.port.postMessage({ type: 'dspEnableTypes', types: [] });
+                if (!barrier.dispatchedReady.has(workletNode)) {
+                    barrier.dispatchedReady.add(workletNode);
+                    this.dispatchEvent('dspReady', data);
+                }
+            } else if (barrier.mode === 'wasm') {
+                const replacement = this._createParallelDspBarrier(this._getActiveDspWorklets());
+                for (const node of replacement.workletNodes) {
+                    const capabilities = this._dspCapabilitiesByNode?.get(node);
+                    if (!capabilities) continue;
+                    replacement.ready.set(node, capabilities);
+                    replacement.readyTokens.set(node, this._dspReadyTokens?.get(node) || 0);
+                    if (node !== workletNode) replacement.dispatchedReady.add(node);
+                }
+                const allReady = [...replacement.workletNodes].every(node => replacement.ready.has(node));
+                if (allReady) {
+                    const targetTypes = this.getEnabledDspTypes();
+                    this._finalizeParallelDspBarrier(
+                        replacement,
+                        targetTypes,
+                        targetTypes.length > 0 ? 'wasm' : 'js'
+                    );
+                } else {
+                    this._armParallelDspBarrierTimeout(replacement);
+                }
+            }
+            return true;
+        }
+        barrier.ready.set(workletNode, data);
+        barrier.readyTokens.set(workletNode, token);
+        const allReady = [...barrier.workletNodes].every(node => barrier.ready.has(node));
+        if (allReady) {
+            const targetTypes = barrier.desiredTypes ?? this.getEnabledDspTypes();
+            this._finalizeParallelDspBarrier(
+                barrier,
+                targetTypes,
+                targetTypes.length > 0 ? 'wasm' : 'js'
+            );
+        }
+        return true;
+    }
+
+    _queueDspReadyTransition(workletNode, data, options = {}) {
+        if (!this._isActiveDspWorklet(workletNode)) return Promise.resolve(false);
+        const token = options.token ?? this._dspReadyTokens?.get(workletNode) ?? 0;
+        if (this._parallelPreparing || this._parallelActive) {
+            if (this._handleParallelDspReady(workletNode, data, token)) {
+                return this._parallelDspBarrier?.promise || Promise.resolve(true);
+            }
+        }
+        return this._runDspOutputTransition([workletNode], () => {
+            if (!this._isActiveDspWorklet(workletNode) ||
+                (this._dspReadyTokens?.get(workletNode) || 0) !== token ||
+                this._dspCapabilitiesByNode?.get(workletNode) !== data) return false;
+            this._applyDspReadyPipeline(workletNode, options.enabledTypes ?? this.getEnabledDspTypes());
+            this.dispatchEvent('dspReady', data);
+            return true;
+        });
+    }
+
+    postDspModuleToWorklet(workletNode) {
+        if (!workletNode?.port || !this.dspModuleInfo) return false;
+        const info = this.dspModuleInfo;
+        let modulePosted = false;
+        if (info.module && info.moduleCloneable !== false) {
+            try {
+                workletNode.port.postMessage({ type: 'dspModule', module: info.module, simd: info.simd });
+                modulePosted = true;
+            } catch (error) {
+                if (error?.name !== 'DataCloneError') throw error;
+                info.moduleCloneable = false;
+            }
+        }
+        if (!modulePosted) {
+            if (!(info.bytes instanceof ArrayBuffer)) return false;
+            workletNode.port.postMessage({
+                type: 'dspModule',
+                bytes: info.bytes.slice(0),
+                simd: info.simd
+            });
+        }
+        // Keep the freshly initialized engine inactive until the main thread
+        // can hide the state reset behind its bounded output transition.
+        workletNode.port.postMessage({ type: 'dspEnableTypes', types: [] });
+        workletNode.port.postMessage({ type: 'dspSetTelemetryRate', hz: globalThis.document?.hidden ? 15 : 60 });
+        workletNode.port.postMessage({
+            type: 'dspSetBench',
+            enabled: getDspRolloutConfig({ location: window.location }).bench
+        });
+        return true;
+    }
+
+    startDspOnWorklet(workletNode) {
+        if (!(this._dspCapabilitiesByNode instanceof Map)) {
+            this._dspCapabilitiesByNode = new Map();
+        }
+        this._nextDspReadyToken(workletNode);
+        this._dspCapabilitiesByNode.delete(workletNode);
+        if (workletNode === this._getPrimaryWorkletNode()) {
+            this.dspCapabilities = null;
+            window.dspCapabilities = undefined;
+        }
+        const posted = this.postDspModuleToWorklet(workletNode);
+        if (posted) this.armDspReadyFallback(workletNode);
+        return posted;
+    }
+
+    clearDspReadyFallback(workletNode = null) {
+        if (!(this._dspReadyFallbacks instanceof Map)) {
+            this._dspReadyFallbacks = new Map();
+            return;
+        }
+        const nodes = workletNode ? [workletNode] : [...this._dspReadyFallbacks.keys()];
+        for (const node of nodes) {
+            const state = this._dspReadyFallbacks.get(node);
+            if (!state) continue;
+            if (state.moduleTimer !== null) clearTimeout(state.moduleTimer);
+            if (state.failureTimer !== null) clearTimeout(state.failureTimer);
+            this._dspReadyFallbacks.delete(node);
+        }
+    }
+
+    armDspReadyFallback(workletNode) {
+        this.clearDspReadyFallback(workletNode);
+        const info = this.dspModuleInfo;
+        if (!workletNode?.port || !info || !(info.bytes instanceof ArrayBuffer)) return;
+
+        const state = { info, moduleTimer: null, failureTimer: null };
+        this._dspReadyFallbacks.set(workletNode, state);
+        const scheduleBytesFailure = () => {
+            state.failureTimer = setTimeout(() => {
+                state.failureTimer = null;
+                if (this._dspReadyFallbacks.get(workletNode) !== state ||
+                    this._dspCapabilitiesByNode?.has(workletNode)) return;
+                this._dspReadyFallbacks.delete(workletNode);
+                console.warn('[dsp-wasm] Worklet did not acknowledge the bytes payload; continuing with JavaScript DSP.');
+                this._handleDspReadyTimeout(workletNode);
+            }, DSP_BYTES_READY_TIMEOUT_MS);
+        };
+        if (!info.module || info.moduleCloneable === false) {
+            scheduleBytesFailure();
+            return;
+        }
+        state.moduleTimer = setTimeout(() => {
+            state.moduleTimer = null;
+            if (this._dspReadyFallbacks.get(workletNode) !== state ||
+                this._dspCapabilitiesByNode?.has(workletNode) || this.dspModuleInfo !== info) {
+                return;
+            }
+            info.moduleCloneable = false;
+            console.info('[dsp-wasm] Worklet did not acknowledge the compiled module; using bytes for this session.');
+            try {
+                workletNode.port.postMessage({
+                    type: 'dspModule',
+                    bytes: info.bytes.slice(0),
+                    simd: info.simd
+                });
+                workletNode.port.postMessage({ type: 'dspEnableTypes', types: [] });
+            } catch (error) {
+                this._dspReadyFallbacks.delete(workletNode);
+                console.warn(`[dsp-wasm] Worklet bytes retry failed: ${error?.message || String(error)}`);
+                return;
+            }
+            scheduleBytesFailure();
+        }, DSP_MODULE_READY_TIMEOUT_MS);
+    }
+
+    _handleDspReadyTimeout(workletNode) {
+        this._completeDspActivationRequest(workletNode, false);
+        const barrier = this._parallelDspBarrier;
+        if (!barrier || barrier.settled || !this._isParallelDspBarrierCurrent(barrier) ||
+            !barrier.workletNodes.has(workletNode)) return;
+        this._finalizeParallelDspBarrier(barrier, [], 'js');
+    }
+
+    updateDspTelemetryRate() {
+        const hz = globalThis.document?.hidden ? 15 : 60;
+        const nodes = new Set([
+            this.contextManager?.workletNode,
+            this.workletNode,
+            this._parallelWorkletB
+        ]);
+        for (const node of nodes) {
+            node?.port?.postMessage({ type: 'dspSetTelemetryRate', hz });
+        }
+    }
+
+    _isFatalDspFailure(data) {
+        return data?.stage === 'instantiate' || data?.stage === 'runtime' ||
+            data?.stage === 'reconcile' || data?.stage === 'destroy';
+    }
+
+    _coordinateParallelDspFailure() {
+        const barrier = this._parallelDspBarrier;
+        if (!barrier || !this._isParallelDspBarrierCurrent(barrier)) return;
+        this._finalizeParallelDspBarrier(barrier, [], 'js');
+    }
+
+    handleWorkletMessage(event, workletNode = this.workletNode) {
+        const data = event?.data || {};
+        if (!this._isActiveDspWorklet(workletNode)) return;
+        if (data.type === 'sleepModeChanged') {
+            this.dispatchEvent('sleepModeChanged', {
+                isSleepMode: data.isSleepMode,
+                sampleRate: this.audioContext.sampleRate
+            });
+        } else if (data.type === 'processorMissing') {
+            console.warn(`[AudioManager] Worklet reported missing processor for ${data.pluginType}; re-registering processors.`);
+            this.registerPipelineProcessors();
+            this.rebuildPipeline(false).catch(error => {
+                console.error('[AudioManager] Failed to rebuild after missing processor report:', error);
+            });
+        } else if (data.type === 'dspReady') {
+            this.clearDspReadyFallback(workletNode);
+            if (!(this._dspCapabilitiesByNode instanceof Map)) {
+                this._dspCapabilitiesByNode = new Map();
+            }
+            const token = this._dspReadyTokens?.get(workletNode) || 0;
+            this._dspCapabilitiesByNode.set(workletNode, data);
+            if (workletNode === this._getPrimaryWorkletNode()) {
+                this.dspCapabilities = data;
+                window.dspCapabilities = data;
+            }
+            console.info(
+                `[dsp-wasm] Ready: ${Array.isArray(data.kernels) ? data.kernels.length : 0} kernels ` +
+                `(${data.simd ? 'SIMD' : 'baseline'}).`
+            );
+            const activationRequest = this._pendingDspActivationRequests?.get(workletNode);
+            const transition = this._queueDspReadyTransition(workletNode, data, {
+                token,
+                enabledTypes: activationRequest?.token === token
+                    ? activationRequest.targetTypes
+                    : undefined
+            });
+            if (activationRequest?.token === token) {
+                void transition.then(result => {
+                    if (this._pendingDspActivationRequests.get(workletNode) === activationRequest) {
+                        this._completeDspActivationRequest(workletNode, result === true);
+                    }
+                });
+            }
+        } else if (data.type === 'dspFailed') {
+            this.clearDspReadyFallback(workletNode);
+            if (this._isFatalDspFailure(data)) {
+                this._invalidateDspReadyState(workletNode);
+                this._dspCapabilitiesByNode?.delete(workletNode);
+                this._parallelDspBarrier?.ready.delete(workletNode);
+                this._parallelDspBarrier?.readyTokens.delete(workletNode);
+                if (workletNode === this._getPrimaryWorkletNode()) {
+                    this.dspCapabilities = null;
+                    window.dspCapabilities = undefined;
+                }
+            }
+            if (this._parallelActive) {
+                this.dispatchEvent('parallelInvalidated', {
+                    reason: 'dspFailed',
+                    restorePrimaryDsp: true,
+                    failure: data
+                });
+                if (this._parallelActive) {
+                    void Promise.resolve(this.disableParallelPipelines()).catch(() => {});
+                }
+            } else if (this._parallelPreparing) {
+                this._coordinateParallelDspFailure();
+            }
+            console.warn(`[dsp-wasm] Worklet ${data.stage || 'runtime'} failure: ${data.error || 'unknown error'}`);
+            workletNode?.port?.postMessage({ type: 'dspCleanupFailed' });
+            this.dispatchEvent('dspFailed', data);
+        } else if (data.type === 'dspLatency') {
+            const samples = Number.isInteger(data.samples) && data.samples > 0 ? data.samples : 0;
+            const sampleRate = typeof data.sampleRate === 'number' && data.sampleRate > 0
+                ? data.sampleRate
+                : this.audioContext?.sampleRate;
+            this.dspPipelineLatencySamples = samples;
+            if (samples > 0) {
+                const milliseconds = sampleRate > 0 ? samples * 1000 / sampleRate : 0;
+                console.info(
+                    `[dsp-wasm] Pipeline latency: ${samples} samples (${milliseconds.toFixed(2)} ms); ` +
+                    'delay compensation is not applied.'
+                );
+            }
+            this.dispatchEvent('dspLatency', { ...data, samples, sampleRate });
+        } else if (data.type === 'dspCleanupNeeded') {
+            workletNode?.port?.postMessage({ type: 'dspCleanupFailed' });
+        } else if (data.type === 'dspTelemetry') {
+            this.telemetryHub.handleMessage(data);
+        } else if (data.type === 'dspStats') {
+            window.dspStats = data;
+            if (data.singleCallBlocks === 1 || data.hybridInstanceCalls === 1) {
+                console.info(
+                    `[dsp-wasm] Processing active: single-call blocks=${data.singleCallBlocks}, ` +
+                    `hybrid calls=${data.hybridInstanceCalls}, telemetry drops=${data.telemetryDroppedFrames}.`
+                );
+            }
         }
     }
     
@@ -543,19 +1347,101 @@ export class AudioManager {
         return result;
     }
     
+    _transitionDspConfiguration(workletNodes, targetTypes) {
+        const nodes = new Set([...workletNodes].filter(node => node?.port));
+        if (nodes.size === 0) return Promise.resolve(false);
+        if (this._parallelPreparing || this._parallelActive) {
+            let barrier = this._parallelDspBarrier;
+            if (!barrier || !this._isParallelDspBarrierCurrent(barrier)) {
+                barrier = this._createParallelDspBarrier(nodes);
+            }
+            barrier.desiredTypes = [...targetTypes];
+            if (targetTypes.length > 0) {
+                const missing = [...nodes].filter(node => !this._dspCapabilitiesByNode?.has(node));
+                if (missing.length > 0) {
+                    if (barrier.settled) {
+                        barrier = this._createParallelDspBarrier(nodes);
+                        barrier.desiredTypes = [...targetTypes];
+                    }
+                    for (const node of nodes) {
+                        const capabilities = this._dspCapabilitiesByNode?.get(node);
+                        if (capabilities) {
+                            barrier.ready.set(node, capabilities);
+                            barrier.readyTokens.set(node, this._dspReadyTokens?.get(node) || 0);
+                            barrier.dispatchedReady.add(node);
+                        }
+                    }
+                    for (const node of missing) {
+                        if (!this._dspReadyFallbacks?.has(node)) this.startDspOnWorklet(node);
+                    }
+                    this._armParallelDspBarrierTimeout(barrier);
+                    return barrier.promise;
+                }
+            }
+            if (this._parallelPreparing && targetTypes.length > 0) {
+                const allReady = [...barrier.workletNodes].every(node => barrier.ready.has(node));
+                if (!allReady) {
+                    this._armParallelDspBarrierTimeout(barrier);
+                    return barrier.promise;
+                }
+            }
+            for (const node of nodes) {
+                const capabilities = this._dspCapabilitiesByNode?.get(node);
+                if (!capabilities) continue;
+                barrier.ready.set(node, capabilities);
+                barrier.readyTokens.set(node, this._dspReadyTokens?.get(node) || 0);
+                barrier.dispatchedReady.add(node);
+            }
+            return this._finalizeParallelDspBarrier(
+                barrier,
+                targetTypes,
+                targetTypes.length > 0 ? 'wasm' : 'js'
+            );
+        }
+        if (targetTypes.length > 0) {
+            const missing = [...nodes].filter(node => !this._dspCapabilitiesByNode?.has(node));
+            if (missing.length > 0) {
+                return Promise.all(missing.map(node => this._reinitializeDspWorklet(node, targetTypes)))
+                    .then(results => results.every(Boolean));
+            }
+        }
+        return this._runDspOutputTransition(nodes, () => {
+            for (const workletNode of nodes) {
+                this._applyDspReadyPipeline(workletNode, targetTypes);
+            }
+            return true;
+        });
+    }
+
     /**
-     * Update audio configuration in the worklet node
+     * Update audio configuration in every active worklet node.
      * @param {Object} audioPreferences - Audio preferences object
+     * @returns {Promise<boolean>|undefined} DSP transition result when applicable
      */
     updateAudioConfig(audioPreferences) {
-        if (!this.workletNode) return;
+        const nodes = this._getActiveDspWorklets();
+        if (nodes.size === 0) return undefined;
 
         const outputChannels = audioPreferences.outputChannels || 2;
-        this.workletNode.port.postMessage({
-            type: 'updateAudioConfig',
-            outputChannels,
-            lowLatencyMode: !!audioPreferences.lowLatencyOutput
-        });
+        for (const workletNode of nodes) {
+            workletNode.port.postMessage({
+                type: 'updateAudioConfig',
+                outputChannels,
+                lowLatencyMode: !!audioPreferences.lowLatencyOutput,
+                ...(this.audioContext?.sampleRate !== undefined && {
+                    sampleRate: this.audioContext.sampleRate
+                })
+            });
+        }
+        if (this.dspModuleInfo) {
+            return this._transitionDspConfiguration(
+                nodes,
+                this.getEnabledDspTypes(audioPreferences)
+            );
+        }
+        if (audioPreferences.useWasmDsp !== true) return undefined;
+
+        return this._requestDspModuleLoad();
     }
     
     /**
@@ -601,6 +1487,21 @@ export class AudioManager {
      * then rebuilds context → worklet → pipeline.
      */
     async _doReset(audioPreferences = null) {
+        this._primaryWorkletEpoch++;
+        this._invalidateDspModuleLoadRequest();
+        const invalidatedParallel = this._parallelPreparing || this._parallelActive;
+        if (invalidatedParallel) {
+            this.dispatchEvent('parallelInvalidated', {
+                reason: 'audioReset',
+                restorePrimaryDsp: false
+            });
+        }
+        if (this._parallelPreparing || this._parallelActive || this._hasParallelResources()) {
+            this.disableParallelPipelines({ restorePrimaryDsp: false });
+        } else {
+            this._advanceAudioGraphGeneration();
+        }
+        this._connectedPipelineSources.clear();
         // Clean up audio I/O
         this.ioManager.cleanupAudio();
 
@@ -710,15 +1611,30 @@ export class AudioManager {
     }
 
     /**
+     * Fade in only if no newer fade-out has claimed the output.
+     * @param {number} token - Token returned by fadeOutOutput()
+     * @param {number} duration - fade duration in seconds
+     * @returns {boolean} whether this fade-in still owned the output
+     */
+    fadeInOutputForToken(token, duration = 0.05) {
+        if (token !== this._outputFadeToken) return false;
+        this.fadeInOutput(duration);
+        return true;
+    }
+
+    /**
      * Ramp the output gain down to 0 (mute) without tearing down the graph.
      * Mirror of fadeInOutput(); used when A/B switching needs to fade out,
      * swap silently, then fade back in.
      * @param {number} duration - fade duration in seconds (default 50 ms)
+     * @returns {number} ownership token required by the corresponding fade-in
      */
     fadeOutOutput(duration = 0.05) {
+        this._outputFadeToken = (this._outputFadeToken || 0) + 1;
+        const token = this._outputFadeToken;
         const gainNode = this.ioManager?.outputGainNode;
         const ctx = this.contextManager?.audioContext;
-        if (!gainNode || !ctx) return;
+        if (!gainNode || !ctx) return token;
 
         try {
             const now = ctx.currentTime;
@@ -730,6 +1646,7 @@ export class AudioManager {
             console.warn('[AudioManager] fadeOutOutput failed, applying immediate mute:', err);
             try { gainNode.gain.value = 0; } catch (_) { /* ignore */ }
         }
+        return token;
     }
 
     // ================================================================== //
@@ -753,6 +1670,37 @@ export class AudioManager {
         return !!this._parallelActive;
     }
 
+    _hasParallelResources() {
+        return !!(this._parallelPreparing || this._parallelActive || this._parallelWorkletB ||
+            this._parallelSelA || this._parallelSelB || this._parallelInputTap ||
+            this._parallelDspBarrier);
+    }
+
+    _captureOutputOwner() {
+        return {
+            generation: this._audioGraphGeneration,
+            primaryEpoch: this._primaryWorkletEpoch,
+            primaryWorklet: this._getPrimaryWorkletNode(),
+            context: this.contextManager?.audioContext || null,
+            outputGainNode: this.ioManager?.outputGainNode || null,
+            fadeToken: this._outputFadeToken
+        };
+    }
+
+    _isOutputOwnerCurrent(owner) {
+        return !!owner && this._audioGraphGeneration === owner.generation &&
+            this._primaryWorkletEpoch === owner.primaryEpoch &&
+            this._getPrimaryWorkletNode() === owner.primaryWorklet &&
+            (this.contextManager?.audioContext || null) === owner.context &&
+            (this.ioManager?.outputGainNode || null) === owner.outputGainNode &&
+            this._outputFadeToken === owner.fadeToken;
+    }
+
+    _fadeInOutputIfOwned(owner, duration) {
+        if (!this._isOutputOwnerCurrent(owner)) return false;
+        return this.fadeInOutputForToken(owner.fadeToken, duration);
+    }
+
     /** Build worklet plugin data for an arbitrary pipeline (section-aware). */
     _buildBlindPluginData(pipeline) {
         if (!Array.isArray(pipeline)) return [];
@@ -766,15 +1714,21 @@ export class AudioManager {
                 p._setSectionEnabled(sectionOn);
             }
         }
-        return pipeline.map(plugin => ({
-            id: plugin.id,
-            type: plugin.constructor.name,
-            enabled: plugin.enabled,
-            parameters: plugin.getParameters({ sampleRate, commitSampleRate: true }),
-            inputBus: plugin.inputBus,
-            outputBus: plugin.outputBus,
-            channel: plugin.channel
-        }));
+        return pipeline.map(plugin => {
+            const parameters = plugin.getParameters({ sampleRate, commitSampleRate: true });
+            if (typeof plugin.getWorkletPluginData === 'function') {
+                return plugin.getWorkletPluginData(parameters);
+            }
+            return {
+                id: plugin.id,
+                type: plugin.constructor.name,
+                enabled: plugin.enabled,
+                parameters,
+                inputBus: plugin.inputBus,
+                outputBus: plugin.outputBus,
+                channel: plugin.channel
+            };
+        });
     }
 
     /** Post the processor code for the given pipelines onto a worklet node. */
@@ -820,9 +1774,18 @@ export class AudioManager {
         if (!ctx || !wA || !out) return false;
         if (this._parallelActive) {
             this.setBlindSelection(initialSelection, 0);
+            await this._parallelDspBarrier?.activationPromise;
+            return true;
+        }
+        if (this._parallelPreparing && this._parallelDspBarrier) {
+            const mode = await this._parallelDspBarrier.promise;
+            if (mode === 'cancelled' || !this._parallelActive) return false;
+            this.setBlindSelection(initialSelection, 0);
             return true;
         }
 
+        this._advanceAudioGraphGeneration();
+        const failureOutputOwner = this._captureOutputOwner();
         try {
             const ch = ctx.destination.channelCount || 2;
             const lowLatency = !!this.contextManager.lowLatencyMode;
@@ -835,7 +1798,15 @@ export class AudioManager {
             });
             // The parallel branch's analyzers are hidden during the test, so we
             // simply drop any messages it posts back to the main thread.
-            wB.port.onmessage = () => {};
+            wB.port.onmessage = event => {
+                const data = event?.data;
+                if (data?.type === 'dspTelemetry' && data.packet instanceof ArrayBuffer) {
+                    wB.port.postMessage({ type: 'dspTelemetryReturn', packet: data.packet }, [data.packet]);
+                } else if (data?.type === 'dspReady' || data?.type === 'dspFailed' ||
+                    data?.type === 'dspCleanupNeeded') {
+                    this.handleWorkletMessage(event, wB);
+                }
+            };
             wB.port.postMessage({ type: 'setLowLatencyMode', enabled: lowLatency });
 
             const selA = ctx.createGain();
@@ -856,17 +1827,69 @@ export class AudioManager {
             this._parallelSelB = selB;
             this._parallelInputTap = inputTap;
             this._parallelSelection = initialSelection;
-            this._parallelActive = true;
+            this._parallelPreparing = true;
+            this._parallelActive = false;
 
             // Both worklets must know every plugin type used by either pipeline.
             this._registerProcessorsOnWorklet(wA, [this.pipelineA, this.pipelineB]);
             this._registerProcessorsOnWorklet(wB, [this.pipelineA, this.pipelineB]);
+            this._postBlindPlugins(wB, this.pipelineB || []);
 
-            this._applyParallelRouting();
-            return true;
+            const barrier = this._createParallelDspBarrier([wA, wB]);
+            const preferredTypes = this.getEnabledDspTypes();
+            barrier.desiredTypes = this.dspModuleInfo ? [...preferredTypes] : null;
+            const preference = window.audioPreferences || window.electronIntegration?.audioPreferences || {};
+            const dspRequested = preference.useWasmDsp !== false &&
+                !getDspRolloutConfig({ location: window.location }).forceOff;
+            const primaryCapabilities = this._dspCapabilitiesByNode?.get(wA);
+            if (primaryCapabilities) {
+                barrier.ready.set(wA, primaryCapabilities);
+                barrier.readyTokens.set(wA, this._dspReadyTokens?.get(wA) || 0);
+                barrier.dispatchedReady.add(wA);
+            }
+
+            // A remains on its current direct path while B initializes. The
+            // transition that resolves this barrier performs the first A/B
+            // state reset and graph routing under the master output mute.
+            this.fadeInOutput(PIPELINE_SWITCH_FADE_SECONDS);
+            if (!dspRequested || (this.dspModuleInfo && preferredTypes.length === 0)) {
+                this._completeParallelDspWithoutModule();
+            } else if (this.dspModuleInfo) {
+                if (!primaryCapabilities && !this._dspReadyFallbacks?.has(wA)) {
+                    this.startDspOnWorklet(wA);
+                }
+                this.startDspOnWorklet(wB);
+                this._armParallelDspBarrierTimeout(barrier);
+            } else if (this._dspModuleLoadPromise) {
+                this._armParallelDspBarrierTimeout(barrier);
+            } else {
+                this._completeParallelDspWithoutModule();
+            }
+
+            const mode = await barrier.promise;
+            return mode !== 'cancelled' && this._parallelActive;
         } catch (err) {
             console.error('[AudioManager] enableParallelPipelines failed:', err);
             this.disableParallelPipelines();
+            this._fadeInOutputIfOwned(failureOutputOwner, PIPELINE_SWITCH_FADE_SECONDS);
+            return false;
+        }
+    }
+
+    _getPipelineInputSources() {
+        const sources = new Set(this._connectedPipelineSources);
+        const liveInput = this.ioManager?.sourceNode;
+        if (liveInput) sources.add(liveInput);
+        return sources;
+    }
+
+    _connectSourceOnce(node, target) {
+        if (!node || !target) return false;
+        try { node.disconnect(target); } catch (_) { /* not connected */ }
+        try {
+            node.connect(target);
+            return true;
+        } catch (_) {
             return false;
         }
     }
@@ -877,7 +1900,6 @@ export class AudioManager {
         const wA = this.contextManager?.workletNode;
         const wB = this._parallelWorkletB;
         const out = this.ioManager?.outputGainNode;
-        const src = this.ioManager?.sourceNode;
         const selA = this._parallelSelA;
         const selB = this._parallelSelB;
         const tap = this._parallelInputTap;
@@ -894,13 +1916,11 @@ export class AudioManager {
         wA.connect(selA); selA.connect(out);
         wB.connect(selB); selB.connect(out);
         tap.connect(wB);
-        // Live input (mic/stream) is wired straight to workletA by the IO manager;
-        // also feed it into the tap so branch B receives it. Player sources route
-        // through connectSourceToPipeline() instead. Disconnect-then-connect keeps
-        // this to a single edge if the source was already tapped.
-        if (src) {
-            try { src.disconnect(tap); } catch (_) { /* not connected */ }
-            try { src.connect(tap); } catch (_) { /* ignore */ }
+        // Live input is managed by the IO manager, while player sources enter
+        // through connectSourceToPipeline(). Feed every currently known source
+        // into branch B, including sources connected before parallel mode began.
+        for (const source of this._getPipelineInputSources()) {
+            this._connectSourceOnce(source, tap);
         }
 
         this._postBlindPlugins(wA, this.pipelineA);
@@ -917,9 +1937,21 @@ export class AudioManager {
     connectSourceToPipeline(node) {
         if (!node) return;
         const wA = this.contextManager?.workletNode || this.workletNode;
-        try { if (wA) node.connect(wA); } catch (_) { /* ignore */ }
+        let connected = this._connectSourceOnce(node, wA);
         if (this._parallelActive && this._parallelInputTap) {
-            try { node.connect(this._parallelInputTap); } catch (_) { /* ignore */ }
+            connected = this._connectSourceOnce(node, this._parallelInputTap) || connected;
+        }
+        if (connected) this._connectedPipelineSources.add(node);
+    }
+
+    /** Stop routing a source through edges owned by this manager. */
+    disconnectSourceFromPipeline(node) {
+        if (!node) return;
+        this._connectedPipelineSources.delete(node);
+        const wA = this.contextManager?.workletNode || this.workletNode;
+        const targets = new Set([wA, this._parallelInputTap].filter(Boolean));
+        for (const target of targets) {
+            try { node.disconnect(target); } catch (_) { /* not connected */ }
         }
     }
 
@@ -948,19 +1980,30 @@ export class AudioManager {
         this._parallelSelection = which;
     }
 
-    /** Tear down the parallel graph and restore the direct worklet output. */
-    disableParallelPipelines() {
+    /**
+     * Tear down the parallel graph and restore the direct worklet output.
+     * @param {Object} options
+     * @returns {Promise<boolean>|boolean} primary DSP restoration result, or false for a no-op
+     */
+    disableParallelPipelines(options = {}) {
+        if (!this._hasParallelResources()) return false;
         const wA = this.contextManager?.workletNode;
         const out = this.ioManager?.outputGainNode;
-        const src = this.ioManager?.sourceNode;
         const wB = this._parallelWorkletB;
         const selA = this._parallelSelA;
         const selB = this._parallelSelB;
         const tap = this._parallelInputTap;
 
+        this._parallelPreparing = false;
+        this._parallelActive = false;
+        this._advanceAudioGraphGeneration();
+        const outputOwner = this._captureOutputOwner();
+
         // Disconnect the input tap first so branch B loses all its input edges
         // (player sources connect through the tap), letting wB be released.
-        try { src?.disconnect(tap); } catch (_) { /* ignore */ }
+        for (const source of this._getPipelineInputSources()) {
+            try { source.disconnect(tap); } catch (_) { /* ignore */ }
+        }
         try { tap?.disconnect(); } catch (_) { /* ignore */ }
         try { wB?.disconnect(); } catch (_) { /* ignore */ }
         try { selA?.disconnect(); } catch (_) { /* ignore */ }
@@ -969,11 +2012,51 @@ export class AudioManager {
         try { wA?.disconnect(); } catch (_) { /* ignore */ }
         try { if (wA && out) wA.connect(out); } catch (_) { /* ignore */ }
 
+        if (wB) {
+            this.clearDspReadyFallback(wB);
+            this._completeDspActivationRequest(wB, false);
+            this._dspCapabilitiesByNode?.delete(wB);
+            this._dspReadyTokens?.delete(wB);
+            if (wB.port) wB.port.onmessage = null;
+        }
+
         this._parallelWorkletB = null;
         this._parallelSelA = null;
         this._parallelSelB = null;
         this._parallelInputTap = null;
-        this._parallelActive = false;
+        if (options.restorePrimaryDsp === false || !wA?.port) {
+            this._fadeInOutputIfOwned(outputOwner, PIPELINE_SWITCH_FADE_SECONDS);
+            return Promise.resolve(true);
+        }
+
+        let restoration;
+        try {
+            const preferredTypes = this.getEnabledDspTypes();
+            if (preferredTypes.length === 0) {
+                wA.port.postMessage({ type: 'dspEnableTypes', types: [] });
+                this._fadeInOutputIfOwned(outputOwner, PIPELINE_SWITCH_FADE_SECONDS);
+                return Promise.resolve(true);
+            }
+            if (this._dspCapabilitiesByNode?.has(wA)) {
+                return this._transitionDspConfiguration(new Set([wA]), preferredTypes);
+            }
+            restoration = this._reinitializeDspWorklet(wA, preferredTypes);
+        } catch (error) {
+            this._fadeInOutputIfOwned(outputOwner, PIPELINE_SWITCH_FADE_SECONDS);
+            throw error;
+        }
+        return Promise.resolve(restoration).then(
+            restored => {
+                if (!restored) {
+                    this._fadeInOutputIfOwned(outputOwner, PIPELINE_SWITCH_FADE_SECONDS);
+                }
+                return restored;
+            },
+            error => {
+                this._fadeInOutputIfOwned(outputOwner, PIPELINE_SWITCH_FADE_SECONDS);
+                throw error;
+            }
+        );
     }
 
     /**

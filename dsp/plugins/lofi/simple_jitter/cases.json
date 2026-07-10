@@ -1,0 +1,31 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 63,
+    "channels": 2,
+    "channelMode": "stereo",
+    "frames": 1001,
+    "params": { "rj": 100 }
+  },
+  "cases": [
+    { "id": "default-buffer-wrap", "stimulus": "sweep" },
+    { "id": "minimum-jitter", "stimulus": "noise", "sampleRate": 44100, "channels": 1, "channelMode": "mono", "frames": 1003, "blockSize": 65, "params": { "rj": 0 } },
+    { "id": "maximum-jitter-all-channels", "stimulus": "noise", "sampleRate": 192000, "channels": 4, "channelMode": "all4", "frames": 4003, "blockSize": 127, "params": { "rj": 200 } },
+    { "id": "one-frame-blocks", "stimulus": "fs", "sampleRate": 96000, "channels": 1, "channelMode": "mono", "frames": 67, "blockSize": 1, "params": { "rj": 200 } },
+    {
+      "id": "jitter-depth-transitions",
+      "stimulus": "sin1k",
+      "sampleRate": 96000,
+      "channels": 4,
+      "channelMode": "all4",
+      "frames": 1001,
+      "blockSize": 64,
+      "params": { "rj": 0 },
+      "events": [
+        { "frame": 31, "params": { "rj": 200 } },
+        { "frame": 321, "params": { "rj": 100 } },
+        { "frame": 700, "params": { "rj": 0 } }
+      ]
+    }
+  ]
+}

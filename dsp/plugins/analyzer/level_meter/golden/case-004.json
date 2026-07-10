@@ -1,0 +1,24 @@
+{
+  "formatVersion": 1,
+  "type": "LevelMeterPlugin",
+  "id": "eight-channel-high-rate",
+  "stimulus": "step",
+  "sampleRate": 192000,
+  "channels": 8,
+  "frameCount": 777,
+  "blockSize": 64,
+  "channelMode": "all8",
+  "channel": "A",
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {},
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "7a86435d58ca21426e6701d31011b2f811e56fad538c08bf4d1583dfff7ece58",
+  "outputFloats": 6216,
+  "byteLength": 24864,
+  "binary": "case-004.f32"
+}

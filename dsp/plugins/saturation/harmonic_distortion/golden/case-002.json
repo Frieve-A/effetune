@@ -1,0 +1,30 @@
+{
+  "formatVersion": 1,
+  "type": "HarmonicDistortionPlugin",
+  "id": "linear-minimum-sensitivity",
+  "stimulus": "sweep",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 259,
+  "blockSize": 65,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "h2": 0,
+    "h3": 0,
+    "h4": 0,
+    "h5": 0,
+    "sn": 0.1
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "80d6409c41763ff48546889b1f8bb55c49daf4dd0fcccabb529c533da102b491",
+  "outputFloats": 259,
+  "byteLength": 1036,
+  "binary": "case-002.f32"
+}

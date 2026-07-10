@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "SaturationPlugin",
+  "id": "half-mix-unbiased",
+  "stimulus": "fs",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 257,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "dr": 3.7,
+    "bs": 0,
+    "mx": 50,
+    "gn": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "a9127eabc85de27bb7f876e66ef33c7ccc5614d3de0588f546d84a94cfb0c966",
+  "outputFloats": 514,
+  "byteLength": 2056,
+  "binary": "case-007.f32"
+}

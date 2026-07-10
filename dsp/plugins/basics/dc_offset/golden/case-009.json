@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "DCOffsetPlugin",
+  "id": "minimum-mono",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 1,
+  "frameCount": 513,
+  "blockSize": 64,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 8,
+  "seed": "0xeffe7a56",
+  "params": {
+    "of": -1
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "0a4f4dbed0c34f516ad78ad38876a83807b12fb07b525c83ca7ffa3fa773020f",
+  "outputFloats": 513,
+  "byteLength": 2052,
+  "binary": "case-009.f32"
+}
