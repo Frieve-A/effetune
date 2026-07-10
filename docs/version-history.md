@@ -6,6 +6,10 @@ lang: en
 
 # Version History
 
+### Version 2.1.0 (TBD, 2026)
+- Supports native processing via WebAssembly, significantly reducing effect processing overhead
+- Various minor improvements
+
 ### Version 2.0.0 (Jul 10, 2026)
 - Added music file library function
 - Added no-input playback mode
