@@ -40,7 +40,7 @@ designLinkwitzRiley24(double sample_rate, double requested_cutoff) noexcept {
   const double k = 2.0 * sample_rate;
   const double warped =
       2.0 * sample_rate * std::tan(std::numbers::pi_v<double> * cutoff / sample_rate);
-  const double q = 1.0 / (2.0 * std::sin(std::numbers::pi_v<double> / 4.0));
+  const double q = kSecondOrderButterworthQ;
   const double k_squared = k * k;
   const double warped_squared = warped * warped;
   const double k_squared_q = k_squared * q;

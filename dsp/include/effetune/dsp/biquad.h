@@ -7,6 +7,9 @@
 
 namespace effetune::dsp {
 
+// Fixed, correctly rounded binary64 1/sqrt(2) avoids host-dependent libm constant folding.
+inline constexpr double kSecondOrderButterworthQ = 0x1.6a09e667f3bcdp-1;
+
 // Coefficients are normalized by a0 and use the denominator
 // 1 + a1*z^-1 + a2*z^-2.
 struct BiquadCoefficients final {

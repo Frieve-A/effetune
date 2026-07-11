@@ -1695,7 +1695,7 @@ test('registerLibraryIpcHandlers wires folder, scan, read, and show channels', a
   writeFile(textPath, 'not audio');
   writeFile(artworkPath, Buffer.from([9, 9, 9]));
   writeFile(outsidePath, 'outside');
-  const canonicalAudioPath = fs.realpathSync(audioPath);
+  const canonicalAudioPath = await fs.promises.realpath(audioPath);
 
   const handlers = new Map();
   const shellCalls = [];
@@ -2005,7 +2005,7 @@ test('library-read-artwork IPC rejects over global and per-sender concurrency ca
   const selectedPath = path.join(root, 'Selected Music');
   const audioPath = path.join(selectedPath, 'track.mp3');
   writeFile(audioPath, 'audio');
-  const canonicalAudioPath = fs.realpathSync(audioPath);
+  const canonicalAudioPath = await fs.promises.realpath(audioPath);
   const handlers = new Map();
   let pendingArtworkReads = [];
   let artworkReadCalls = 0;
@@ -2078,7 +2078,7 @@ test('library-read-file-bytes IPC rejects requests over active byte budgets', as
   const selectedPath = path.join(root, 'Selected Music');
   const audioPath = path.join(selectedPath, 'track.mp3');
   writeFile(audioPath, 'audio');
-  const canonicalAudioPath = fs.realpathSync(audioPath);
+  const canonicalAudioPath = await fs.promises.realpath(audioPath);
   const handlers = new Map();
   const pendingReads = [];
   let readCalls = 0;
@@ -2792,7 +2792,7 @@ test('main-owned persisted folder mirror rehydrates read and scan access', async
   const selectedPath = path.join(root, 'Selected Music');
   const audioPath = path.join(selectedPath, 'track.mp3');
   writeFile(audioPath, 'seeded');
-  const canonicalAudioPath = fs.realpathSync(audioPath);
+  const canonicalAudioPath = await fs.promises.realpath(audioPath);
   await writeLibraryFoldersMirror({ getPath: () => root }, [{
     id: 'f_music',
     kind: 'electron',
@@ -3152,7 +3152,7 @@ test('library-save-folders immediately removes deleted roots from allowed paths'
   const selectedPath = path.join(root, 'Selected Music');
   const audioPath = path.join(selectedPath, 'track.mp3');
   writeFile(audioPath, 'selected');
-  const canonicalAudioPath = fs.realpathSync(audioPath);
+  const canonicalAudioPath = await fs.promises.realpath(audioPath);
 
   const handlers = new Map();
   const ipcMain = {

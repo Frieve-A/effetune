@@ -7,6 +7,10 @@
 #include <malloc.h>
 #endif
 
+#if defined(ET_ALLOCATION_GUARD) && defined(ET_WRAP_MALLOC)
+extern "C" void *__real_malloc(std::size_t bytes);
+#endif
+
 namespace effetune::allocation_guard {
 namespace {
 
@@ -78,9 +82,21 @@ extern "C" __attribute__((export_name("malloc"))) void *et_wasm_malloc(std::size
 
 #if defined(ET_ALLOCATION_GUARD)
 
+namespace {
+
+void *allocateUnaligned(std::size_t bytes) noexcept {
+#if defined(ET_WRAP_MALLOC)
+  return __real_malloc(bytes);
+#else
+  return std::malloc(bytes);
+#endif
+}
+
+} // namespace
+
 void *operator new(std::size_t bytes) {
   effetune::allocation_guard::abortIfActive();
-  if (void *memory = std::malloc(bytes)) {
+  if (void *memory = allocateUnaligned(bytes)) {
     return memory;
   }
   std::abort();
@@ -90,7 +106,7 @@ void *operator new[](std::size_t bytes) { return ::operator new(bytes); }
 
 void *operator new(std::size_t bytes, const std::nothrow_t &) noexcept {
   effetune::allocation_guard::abortIfActive();
-  return std::malloc(bytes);
+  return allocateUnaligned(bytes);
 }
 
 void *operator new[](std::size_t bytes, const std::nothrow_t &tag) noexcept {
@@ -165,7 +181,6 @@ void operator delete[](void *memory, std::align_val_t, const std::nothrow_t &) n
 #endif
 
 #if defined(ET_ALLOCATION_GUARD) && defined(ET_WRAP_MALLOC)
-extern "C" void *__real_malloc(std::size_t bytes);
 extern "C" void *__wrap_malloc(std::size_t bytes) {
   effetune::allocation_guard::abortIfActive();
   return __real_malloc(bytes);
