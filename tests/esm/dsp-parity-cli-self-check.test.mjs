@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runBenchCli } from '../../tools/dsp-parity/bench.mjs';
 import { runGenerateCli } from '../../tools/dsp-parity/generate.mjs';
+import { loadReferencePlugin } from '../../tools/dsp-parity/node-host.mjs';
 import { runParityCli } from '../../tools/dsp-parity/run.mjs';
 import { DSP_PARAM_PACKERS } from '../../js/audio/dsp-params.generated.js';
 import { computeLayoutHash, validateParamSpec } from '../../scripts/gen-dsp-params.mjs';
@@ -51,6 +52,37 @@ test('generator self-check executes an unported legacy plugin twice deterministi
   assert.equal(result.selfCheck, true);
   assert.equal(result.caseCount, 1);
   assert.match(messages[0], /^PASS self-check-noise:/);
+});
+
+test('JS reference hashes ignore source line-ending differences', async t => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-dsp-line-endings-'));
+  t.after(() => fs.rm(tempRoot, { recursive: true, force: true }));
+  const pluginsDir = path.join(tempRoot, 'plugins');
+  const delayDir = path.join(pluginsDir, 'delay');
+  await fs.mkdir(delayDir, { recursive: true });
+  const [baseSource, pluginSource] = await Promise.all([
+    fs.readFile(path.join(repoRoot, 'plugins', 'plugin-base.js'), 'utf8'),
+    fs.readFile(path.join(repoRoot, 'plugins', 'delay', 'time_alignment.js'), 'utf8')
+  ]);
+  const basePath = path.join(pluginsDir, 'plugin-base.js');
+  const pluginPath = path.join(delayDir, 'time_alignment.js');
+  await Promise.all([
+    fs.writeFile(basePath, baseSource.replace(/\r\n?/g, '\n')),
+    fs.writeFile(pluginPath, pluginSource.replace(/\r\n?/g, '\n')),
+    fs.writeFile(
+      path.join(pluginsDir, 'plugins.txt'),
+      'delay/time_alignment: Time Alignment | Delay | TimeAlignmentPlugin\n'
+    )
+  ]);
+  const lf = await loadReferencePlugin('TimeAlignmentPlugin', { repoRoot: tempRoot });
+
+  await Promise.all([
+    fs.writeFile(basePath, baseSource.replace(/\r\n?/g, '\n').replace(/\n/g, '\r\n')),
+    fs.writeFile(pluginPath, pluginSource.replace(/\r\n?/g, '\n').replace(/\n/g, '\r\n'))
+  ]);
+  const crlf = await loadReferencePlugin('TimeAlignmentPlugin', { repoRoot: tempRoot });
+
+  assert.equal(crlf.jsEngineHash, lf.jsEngineHash);
 });
 
 test('JS benchmark mode reports a finite realtime factor without DSP artifacts', async () => {

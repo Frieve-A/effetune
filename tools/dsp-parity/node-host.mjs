@@ -117,7 +117,12 @@ async function readReferenceSources(definition, repoRoot) {
       fs.readFile(basePath, 'utf8'),
       fs.readFile(pluginPath, 'utf8')
     ]);
-    return { basePath, pluginPath, baseSource, pluginSource };
+    return {
+      basePath,
+      pluginPath,
+      baseSource: baseSource.replace(/\r\n?/g, '\n'),
+      pluginSource: pluginSource.replace(/\r\n?/g, '\n')
+    };
   } catch (error) {
     throw new Error(`Unable to load JS reference for ${definition.type}: ${error.message}`, { cause: error });
   }

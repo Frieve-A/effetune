@@ -25,27 +25,30 @@ function getCanonicalWriteTarget(resolvedPath) {
   try {
     return fs.realpathSync(resolvedPath);
   } catch {
-    let parentPath = path.dirname(resolvedPath);
-    try {
-      parentPath = fs.realpathSync(parentPath);
-    } catch {
-      // Keep the resolved parent for paths that do not exist yet.
-    }
     let basename = path.basename(resolvedPath);
     if (process.platform === 'win32') {
       basename = basename.replace(/[. ]+$/, '');
     }
-    return path.join(parentPath, basename);
+    const unresolvedParts = [basename];
+    let ancestorPath = path.dirname(resolvedPath);
+
+    while (true) {
+      try {
+        return path.join(fs.realpathSync(ancestorPath), ...unresolvedParts);
+      } catch {
+        const parentPath = path.dirname(ancestorPath);
+        if (parentPath === ancestorPath) {
+          return path.join(ancestorPath, ...unresolvedParts);
+        }
+        unresolvedParts.unshift(path.basename(ancestorPath));
+        ancestorPath = parentPath;
+      }
+    }
   }
 }
 
 function getCanonicalSettingsDir() {
-  const settingsDir = fileHandlers.getUserDataPath();
-  try {
-    return fs.realpathSync(settingsDir);
-  } catch {
-    return path.resolve(settingsDir);
-  }
+  return getCanonicalWriteTarget(path.resolve(fileHandlers.getUserDataPath()));
 }
 
 function getSaveFileBasenameForComparison(filePath) {

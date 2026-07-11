@@ -505,8 +505,68 @@ test('save-file blocks settings-dir writes and Windows alias bypasses of the mir
   });
 });
 
+test('save-file canonicalizes an existing settings ancestor for missing nested targets', async () => {
+  await withHarness({ platform: 'linux' }, async ({ calls, ipcMain, moduleUnderTest, tempDir }) => {
+    moduleUnderTest.registerIpcHandlers();
+    const resolvedSettingsDir = path.resolve(tempDir);
+    const canonicalSettingsDir = path.join(
+      path.dirname(resolvedSettingsDir),
+      `canonical-${path.basename(resolvedSettingsDir)}`
+    );
+    const missingPath = path.join(tempDir, 'missing', 'nested', 'library-folders.json');
+    const originalRealpathSync = fs.realpathSync;
+
+    await withPatchedPropertyAsync(fs, 'realpathSync', filePath => {
+      const resolvedPath = path.resolve(filePath);
+      if (resolvedPath === resolvedSettingsDir) return canonicalSettingsDir;
+      if (resolvedPath.startsWith(`${resolvedSettingsDir}${path.sep}`)) {
+        const error = new Error(`ENOENT: no such file or directory, realpath '${filePath}'`);
+        error.code = 'ENOENT';
+        throw error;
+      }
+      return originalRealpathSync(filePath);
+    }, async () => {
+      const result = await ipcMain.handlers.get('save-file')({}, missingPath, '{}');
+      assert.equal(result.success, false);
+      assert.match(result.error, /library-folders\.json/);
+      assert.equal(calls.some(call => call[0] === 'fileHandlers.saveFile'), false);
+    });
+  });
+});
+
+test('save-file canonicalizes a missing settings directory from its existing ancestor', async () => {
+  await withHarness({ platform: 'linux' }, async ({ calls, ipcMain, moduleUnderTest, tempDir }) => {
+    moduleUnderTest.registerIpcHandlers();
+    const resolvedSettingsDir = path.resolve(tempDir);
+    const resolvedSettingsParent = path.dirname(resolvedSettingsDir);
+    const canonicalSettingsParent = path.join(
+      path.dirname(resolvedSettingsParent),
+      `canonical-${path.basename(resolvedSettingsParent)}`
+    );
+    const missingPath = path.join(tempDir, 'missing', 'nested', 'library-folders.json');
+    const originalRealpathSync = fs.realpathSync;
+
+    await withPatchedPropertyAsync(fs, 'realpathSync', filePath => {
+      const resolvedPath = path.resolve(filePath);
+      if (resolvedPath === resolvedSettingsParent) return canonicalSettingsParent;
+      if (resolvedPath === resolvedSettingsDir || resolvedPath.startsWith(`${resolvedSettingsDir}${path.sep}`)) {
+        const error = new Error(`ENOENT: no such file or directory, realpath '${filePath}'`);
+        error.code = 'ENOENT';
+        throw error;
+      }
+      return originalRealpathSync(filePath);
+    }, async () => {
+      const result = await ipcMain.handlers.get('save-file')({}, missingPath, '{}');
+      assert.equal(result.success, false);
+      assert.match(result.error, /library-folders\.json/);
+      assert.equal(calls.some(call => call[0] === 'fileHandlers.saveFile'), false);
+    });
+  });
+});
+
 test('IPC handlers recover from update, permission, config, preference, relaunch, close, and dropped-file failures', async () => {
   await withHarness({
+    platform: 'linux',
     throwGetPendingUpdateInfo: true,
     throwCheckForUpdates: true,
     throwLoadConfig: true,

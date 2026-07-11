@@ -1695,6 +1695,7 @@ test('registerLibraryIpcHandlers wires folder, scan, read, and show channels', a
   writeFile(textPath, 'not audio');
   writeFile(artworkPath, Buffer.from([9, 9, 9]));
   writeFile(outsidePath, 'outside');
+  const canonicalAudioPath = fs.realpathSync(audioPath);
 
   const handlers = new Map();
   const shellCalls = [];
@@ -1721,11 +1722,11 @@ test('registerLibraryIpcHandlers wires folder, scan, read, and show channels', a
       };
     },
     async readArtworkBytes(filePath) {
-      assert.equal(filePath, audioPath);
+      assert.equal(filePath, canonicalAudioPath);
       return toArrayBuffer(Buffer.from([1, 2, 3]));
     },
     async readFileBytes(filePath, options) {
-      assert.equal(filePath, audioPath);
+      assert.equal(filePath, canonicalAudioPath);
       assert.deepEqual(options, { offset: 2, length: 4 });
       return toArrayBuffer(Buffer.from([2, 3, 4, 5]));
     }
@@ -1830,7 +1831,7 @@ test('registerLibraryIpcHandlers wires folder, scan, read, and show channels', a
     /requires a supported audio file/
   );
   assert.deepEqual(await handlers.get('library-show-in-folder')({}, audioPath), { success: true });
-  assert.deepEqual(shellCalls, [path.resolve(audioPath)]);
+  assert.deepEqual(shellCalls, [canonicalAudioPath]);
   await assert.rejects(
     handlers.get('library-read-file-bytes')({}, { path: outsidePath }),
     /outside the selected music library folders/
@@ -2004,6 +2005,7 @@ test('library-read-artwork IPC rejects over global and per-sender concurrency ca
   const selectedPath = path.join(root, 'Selected Music');
   const audioPath = path.join(selectedPath, 'track.mp3');
   writeFile(audioPath, 'audio');
+  const canonicalAudioPath = fs.realpathSync(audioPath);
   const handlers = new Map();
   let pendingArtworkReads = [];
   let artworkReadCalls = 0;
@@ -2024,7 +2026,7 @@ test('library-read-artwork IPC rejects over global and per-sender concurrency ca
     scanner: {
       async readArtworkBytes(filePath) {
         artworkReadCalls += 1;
-        assert.equal(filePath, path.resolve(audioPath));
+        assert.equal(filePath, canonicalAudioPath);
         return await new Promise(resolve => {
           pendingArtworkReads.push(() => resolve(toArrayBuffer(Buffer.from([4, 5, 6]))));
         });
@@ -2076,6 +2078,7 @@ test('library-read-file-bytes IPC rejects requests over active byte budgets', as
   const selectedPath = path.join(root, 'Selected Music');
   const audioPath = path.join(selectedPath, 'track.mp3');
   writeFile(audioPath, 'audio');
+  const canonicalAudioPath = fs.realpathSync(audioPath);
   const handlers = new Map();
   const pendingReads = [];
   let readCalls = 0;
@@ -2096,7 +2099,7 @@ test('library-read-file-bytes IPC rejects requests over active byte budgets', as
     scanner: {
       async readFileBytes(filePath) {
         readCalls += 1;
-        assert.equal(filePath, path.resolve(audioPath));
+        assert.equal(filePath, canonicalAudioPath);
         return await new Promise(resolve => {
           pendingReads.push(() => resolve(toArrayBuffer(Buffer.from([1, 2, 3]))));
         });
@@ -2789,6 +2792,7 @@ test('main-owned persisted folder mirror rehydrates read and scan access', async
   const selectedPath = path.join(root, 'Selected Music');
   const audioPath = path.join(selectedPath, 'track.mp3');
   writeFile(audioPath, 'seeded');
+  const canonicalAudioPath = fs.realpathSync(audioPath);
   await writeLibraryFoldersMirror({ getPath: () => root }, [{
     id: 'f_music',
     kind: 'electron',
@@ -2819,7 +2823,7 @@ test('main-owned persisted folder mirror rehydrates read and scan access', async
     },
     async readFileBytes(filePath) {
       readCalls += 1;
-      assert.equal(filePath, path.resolve(audioPath));
+      assert.equal(filePath, canonicalAudioPath);
       return toArrayBuffer(Buffer.from([9, 8, 7]));
     }
   };
@@ -3148,6 +3152,7 @@ test('library-save-folders immediately removes deleted roots from allowed paths'
   const selectedPath = path.join(root, 'Selected Music');
   const audioPath = path.join(selectedPath, 'track.mp3');
   writeFile(audioPath, 'selected');
+  const canonicalAudioPath = fs.realpathSync(audioPath);
 
   const handlers = new Map();
   const ipcMain = {
@@ -3169,7 +3174,7 @@ test('library-save-folders immediately removes deleted roots from allowed paths'
       return toArrayBuffer(Buffer.from([4, 5, 6]));
     },
     async readFileBytes(filePath) {
-      assert.equal(filePath, path.resolve(audioPath));
+      assert.equal(filePath, canonicalAudioPath);
       return toArrayBuffer(Buffer.from([1, 2, 3]));
     }
   };
