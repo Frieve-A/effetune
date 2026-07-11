@@ -101,8 +101,61 @@ test('desktop library content keeps the scrollbar inside the right inset', () =>
   const contentRule = getRule(css, '.library-content');
   const desktopContentRule = getRule(css, 'body.view-library:not(.layout-mobile) .library-content');
 
+  assert.match(contentRule, /min-width:\s*0;/);
   assert.match(contentRule, /padding:\s*14px;/);
   assert.match(desktopContentRule, /padding:\s*20px max\(0px,\s*calc\(20px - var\(--library-content-scrollbar-width,\s*0px\)\)\) 20px 20px;/);
+});
+
+test('library metadata stays within the content width for long values', () => {
+  const css = readCss('../../effetune-library.css');
+  const desktopLibraryRule = getRule(css, 'body.view-library:not(.layout-mobile) .library-view');
+  const sectionRule = getRule(css, '.library-section-head {');
+  const sectionTitleRule = getRule(css, '.library-section-head h2 {');
+  const sectionCountRule = getRule(css, '.library-section-head > span');
+  const simpleListRule = getRule(css, '.library-simple-list {');
+  const simpleRowRule = getRule(css, '.library-simple-row {');
+  const simpleValueRule = getRule(css, '.library-simple-row > span {');
+  const simpleNameRule = getRule(css, '.library-simple-row > span:first-child');
+  const simpleCountRule = getRule(css, '.library-simple-row > span:last-child');
+  const detailRule = getRule(css, '.library-detail-head {\n  align-items: flex-start;');
+  const detailCopyRule = getRule(css, '.library-detail-head > div:last-child');
+  const detailTextRule = getRule(css, '.library-detail-head h2,\n.library-detail-head p');
+  const metadataCellRule = getRule(css, '.library-track-title,\n.library-link,\n.library-gridcell,\n.library-track-row span,\n.library-playlist-row > span');
+  const folderNameRule = getRule(css, '.library-folder-main strong');
+
+  assert.match(desktopLibraryRule, /contain:\s*inline-size;/);
+  assert.match(sectionRule, /min-width:\s*0;/);
+  assert.match(sectionRule, /max-width:\s*100%;/);
+  assert.match(sectionTitleRule, /flex:\s*1 1 auto;/);
+  assert.match(sectionTitleRule, /min-width:\s*0;/);
+  assert.match(sectionTitleRule, /overflow:\s*hidden;/);
+  assert.match(sectionTitleRule, /text-overflow:\s*ellipsis;/);
+  assert.match(sectionTitleRule, /white-space:\s*nowrap;/);
+  assert.match(sectionCountRule, /flex:\s*0 1 auto;/);
+  assert.match(sectionCountRule, /min-width:\s*0;/);
+  assert.match(simpleListRule, /grid-template-columns:\s*minmax\(0,\s*1fr\);/);
+  assert.match(simpleListRule, /min-width:\s*0;/);
+  assert.match(simpleListRule, /max-width:\s*100%;/);
+  assert.match(simpleRowRule, /box-sizing:\s*border-box;/);
+  assert.match(simpleRowRule, /width:\s*100%;/);
+  assert.match(simpleRowRule, /min-width:\s*0;/);
+  assert.match(simpleRowRule, /max-width:\s*100%;/);
+  assert.match(simpleValueRule, /min-width:\s*0;/);
+  assert.match(simpleValueRule, /overflow-wrap:\s*anywhere;/);
+  assert.match(simpleNameRule, /flex:\s*1 1 auto;/);
+  assert.match(simpleCountRule, /flex:\s*0 1 auto;/);
+  assert.match(detailRule, /min-width:\s*0;/);
+  assert.match(detailRule, /max-width:\s*100%;/);
+  assert.match(detailCopyRule, /flex:\s*1 1 auto;/);
+  assert.match(detailCopyRule, /min-width:\s*0;/);
+  assert.match(detailCopyRule, /max-width:\s*100%;/);
+  assert.match(detailTextRule, /overflow-wrap:\s*anywhere;/);
+  assert.match(metadataCellRule, /min-width:\s*0;/);
+  assert.match(metadataCellRule, /overflow:\s*hidden;/);
+  assert.match(metadataCellRule, /text-overflow:\s*ellipsis;/);
+  assert.match(metadataCellRule, /white-space:\s*nowrap;/);
+  assert.match(folderNameRule, /min-width:\s*0;/);
+  assert.match(folderNameRule, /text-overflow:\s*ellipsis;/);
 });
 
 test('desktop library view hides the plugin list toggle button', () => {

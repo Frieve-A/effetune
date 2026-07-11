@@ -1380,6 +1380,126 @@ test('LibraryView album cards use sibling open and play buttons and play in albu
   ]);
 });
 
+test('LibraryView keeps more than 200 cold-loaded artwork URLs alive until each image settles', async () => {
+  const documentRef = createDocument();
+  const createdUrls = [];
+  const revokedUrls = [];
+  const activeUrls = new Set();
+  const artworkCount = 205;
+  const view = new LibraryView({
+    manager: {
+      async getArtworkThumbBlob(artworkId) {
+        return new Blob([artworkId], { type: 'image/jpeg' });
+      },
+      async getArtworkThumbURL() {
+        throw new Error('The album grid must use caller-owned artwork URLs');
+      }
+    },
+    uiManager: {}
+  });
+  const containers = Array.from({ length: artworkCount }, (_, index) => {
+    const container = new FakeElement('div');
+    container.dataset.artworkId = `art_${index}`;
+    return container;
+  });
+
+  await withGlobals({
+    document: documentRef,
+    URL: {
+      createObjectURL() {
+        const url = `blob:test-${createdUrls.length}`;
+        createdUrls.push(url);
+        activeUrls.add(url);
+        return url;
+      },
+      revokeObjectURL(url) {
+        revokedUrls.push(url);
+        activeUrls.delete(url);
+      }
+    }
+  }, async () => {
+    await Promise.all(containers.map((container, index) => (
+      view.renderArtwork(container, `art_${index}`)
+    )));
+
+    assert.equal(createdUrls.length, artworkCount);
+    assert.equal(revokedUrls.length, 0);
+    assert.equal(activeUrls.size, artworkCount);
+    const images = containers.map(container => container.children[0]);
+    assert.equal(images.every(image => image?.tagName === 'IMG'), true);
+    assert.equal(images.every(image => activeUrls.has(image.src)), true);
+
+    await Promise.all(images.map((image, index) => image.dispatch(index % 2 === 0 ? 'load' : 'error')));
+    assert.equal(revokedUrls.length, artworkCount);
+    assert.equal(new Set(revokedUrls).size, artworkCount);
+    assert.equal(activeUrls.size, 0);
+
+    await Promise.all(images.map((image, index) => image.dispatch(index % 2 === 0 ? 'error' : 'load')));
+    assert.equal(revokedUrls.length, artworkCount);
+  });
+});
+
+test('LibraryView releases unfinished artwork URLs and ignores stale Blob reads', async () => {
+  const documentRef = createDocument();
+  const createdUrls = [];
+  const revokedUrls = [];
+  let resolveDelayedBlob;
+  const view = new LibraryView({
+    manager: {
+      getArtworkThumbBlob(artworkId) {
+        if (artworkId === 'art_delayed') {
+          return new Promise(resolve => {
+            resolveDelayedBlob = resolve;
+          });
+        }
+        return Promise.resolve(new Blob([artworkId], { type: 'image/jpeg' }));
+      }
+    },
+    uiManager: {}
+  });
+  view.closeContextMenu = () => {};
+  view.closePlaylistMenu = () => {};
+  view.stopDesktopLayoutHeightTracking = () => {};
+
+  const createContainer = artworkId => {
+    const container = new FakeElement('div');
+    container.dataset.artworkId = artworkId;
+    return container;
+  };
+
+  await withGlobals({
+    document: documentRef,
+    URL: {
+      createObjectURL() {
+        const url = `blob:test-${createdUrls.length}`;
+        createdUrls.push(url);
+        return url;
+      },
+      revokeObjectURL(url) {
+        revokedUrls.push(url);
+      }
+    }
+  }, async () => {
+    await view.renderArtwork(createContainer('art_first'), 'art_first');
+    assert.deepEqual(createdUrls, ['blob:test-0']);
+    assert.deepEqual(revokedUrls, []);
+
+    view.invalidateArtworkRequests();
+    assert.deepEqual(revokedUrls, ['blob:test-0']);
+
+    const delayedRender = view.renderArtwork(createContainer('art_delayed'), 'art_delayed');
+    view.invalidateArtworkRequests();
+    resolveDelayedBlob(new Blob(['delayed'], { type: 'image/jpeg' }));
+    await delayedRender;
+    assert.deepEqual(createdUrls, ['blob:test-0']);
+
+    await view.renderArtwork(createContainer('art_last'), 'art_last');
+    assert.deepEqual(createdUrls, ['blob:test-0', 'blob:test-1']);
+    view.hide({ restoreFocus: false });
+    assert.deepEqual(revokedUrls, ['blob:test-0', 'blob:test-1']);
+  });
+});
+
 test('LibraryView artist links navigate to the displayed performer artist key', async () => {
   const calls = [];
   const controls = new Map([

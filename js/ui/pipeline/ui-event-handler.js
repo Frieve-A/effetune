@@ -6,7 +6,7 @@ import { PluginListManager } from '../plugin-list-manager.js'; // Temporary path
 import { readTextFromClipboard } from '../../utils/clipboard-utils.js';
 import { handlePipelineKeyboardShortcut, handlePipelinePasteEvent } from './keyboard-shortcut-handler.js';
 
-const PLAYBACK_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm'];
+const PLAYBACK_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', 'mp4'];
 const PLAYBACK_AUDIO_EXTENSION_PATTERN = new RegExp(`\\.(${PLAYBACK_AUDIO_EXTENSIONS.join('|')})$`, 'i');
 const PLAYLIST_EXTENSION_PATTERN = /\.(m3u8?|pls|xspf)$/i;
 

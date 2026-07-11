@@ -208,6 +208,113 @@ test('scan controller strips runtime-only objects before indexing and storage', 
   assert.ok(events.some(([event, payload]) => event === 'scan-state' && payload.phase === 'done'));
 });
 
+test('pure additions avoid per-track reads and whole-library artwork recounts', async () => {
+  const database = new LibraryDatabase({ indexedDB: null });
+  await database.open();
+  const folder = { id: 'f_music', displayName: 'Music', path: 'D:/Music', status: 'ok' };
+  await database.putFolder(folder);
+  const originalGet = database.get.bind(database);
+  const originalRecalculate = database.recalculateArtworkRefCounts.bind(database);
+  let trackReads = 0;
+  let recounts = 0;
+  database.get = async (store, id) => {
+    if (store === 'tracks') trackReads += 1;
+    return originalGet(store, id);
+  };
+  database.recalculateArtworkRefCounts = async () => {
+    recounts += 1;
+    return originalRecalculate();
+  };
+  const index = new CatalogIndex();
+  await index.build({ folders: [folder], tracks: [] });
+  const controller = new ScanController({
+    database,
+    index,
+    source: {
+      scan(_request, sink) {
+        return {
+          done: (async () => {
+            await sink({
+              type: 'batch',
+              tracks: [
+                { id: 't_one', folderId: folder.id, relativePath: 'One.flac', fileName: 'One.flac', title: 'One' },
+                { id: 't_two', folderId: folder.id, relativePath: 'Two.flac', fileName: 'Two.flac', title: 'Two' }
+              ]
+            });
+            await sink({
+              type: 'done',
+              seenFiles: [
+                { folderId: folder.id, relativePath: 'One.flac' },
+                { folderId: folder.id, relativePath: 'Two.flac' }
+              ]
+            });
+          })()
+        };
+      }
+    },
+    artworkProcessor: createArtworkProcessor(),
+    emit() {}
+  });
+
+  await controller.scanFolders([folder]);
+
+  assert.equal(trackReads, 0);
+  assert.equal(recounts, 0);
+  assert.equal((await database.getAllTracks()).length, 2);
+});
+
+test('scan controller accepts 130001 known files in one folder', async () => {
+  const database = new LibraryDatabase({ indexedDB: null });
+  await database.open();
+  const folder = { id: 'f_music', displayName: 'Music', path: 'D:/Music', status: 'ok' };
+  await database.putFolder(folder);
+  const knownFile = {
+    folderId: folder.id,
+    relativePath: 'Album/Track.flac',
+    size: 1024,
+    mtimeMs: 1000,
+    trackId: 't_known',
+    addedAt: 1
+  };
+  database.getKnownFilesByFolder = async () => new Array(130001).fill(knownFile);
+  let requestKnownFiles = [];
+  const index = new CatalogIndex();
+  await index.build({ folders: [folder], tracks: [] });
+  const controller = new ScanController({
+    database,
+    index,
+    source: {
+      scan(request, sink) {
+        requestKnownFiles = request.knownFiles;
+        return {
+          done: (async () => {
+            await sink({
+              type: 'error',
+              fatal: false,
+              folderId: folder.id,
+              relativePath: 'Unreadable',
+              reason: 'entry could not be read'
+            });
+            await sink({ type: 'done' });
+          })()
+        };
+      }
+    },
+    artworkProcessor: createArtworkProcessor(),
+    emit() {}
+  });
+
+  await controller.scanFolders([folder]);
+
+  assert.equal(requestKnownFiles.length, 130001);
+  assert.deepEqual(requestKnownFiles[0], {
+    folderId: folder.id,
+    relativePath: knownFile.relativePath,
+    size: knownFile.size,
+    mtimeMs: knownFile.mtimeMs
+  });
+});
+
 test('library manager forwards selected and browser languages as scan hints', async () => {
   await withGlobals({
     navigator: {
@@ -446,6 +553,157 @@ test('scan sweep recalculates artwork refCounts and deletes orphaned artwork', a
   assert.equal((await database.getArtwork('art_keep')).refCount, 1);
 });
 
+test('library database recalculates artwork references in one cursor transaction', async () => {
+  const tracks = [
+    { id: 't_one', artworkId: 'art_keep' },
+    { id: 't_two', artworkId: 'art_keep' },
+    { id: 't_three', artworkId: 'art_once' },
+    { id: 't_none', artworkId: null }
+  ];
+  const artworks = [
+    { id: 'art_keep', refCount: 99, thumb: { size: 1 } },
+    { id: 'art_once', refCount: 1, thumb: { size: 1 } },
+    { id: 'art_orphan', refCount: 1, thumb: { size: 1 } }
+  ];
+  const updates = [];
+  const deletes = [];
+  const transactions = [];
+  const createCursorRequest = (values, onExhausted = () => {}) => {
+    const request = {};
+    let index = 0;
+    const advance = () => {
+      queueMicrotask(() => {
+        if (index >= values.length) {
+          request.result = null;
+          request.onsuccess?.();
+          onExhausted();
+          return;
+        }
+        const value = values[index];
+        request.result = {
+          value,
+          update(next) {
+            updates.push(next);
+          },
+          delete() {
+            deletes.push(value.id);
+          },
+          continue() {
+            index += 1;
+            advance();
+          }
+        };
+        request.onsuccess?.();
+      });
+    };
+    advance();
+    return request;
+  };
+  const indexedDb = {
+    transaction(storeNames, mode) {
+      const tx = {
+        objectStore(name) {
+          if (name === 'tracks') {
+            return { openCursor: () => createCursorRequest(tracks) };
+          }
+          return {
+            openCursor: () => createCursorRequest(artworks, () => queueMicrotask(() => tx.oncomplete?.()))
+          };
+        }
+      };
+      transactions.push([storeNames, mode]);
+      return tx;
+    }
+  };
+  const database = new LibraryDatabase({ indexedDB: null });
+  database.db = indexedDb;
+
+  await database.recalculateArtworkRefCounts();
+
+  assert.deepEqual(transactions, [[['tracks', 'artwork'], 'readwrite']]);
+  assert.deepEqual(updates.map(artwork => [artwork.id, artwork.refCount]), [['art_keep', 2]]);
+  assert.deepEqual(deletes, ['art_orphan']);
+});
+
+test('library database reads large track ID sets in bounded transactions', async () => {
+  const records = new Map(Array.from({ length: 1001 }, (_value, index) => {
+    const id = `t_${index}`;
+    return [id, { id, title: `Track ${index}` }];
+  }));
+  const transactionSizes = [];
+  const indexedDb = {
+    transaction(storeName, mode) {
+      assert.equal(storeName, 'tracks');
+      assert.equal(mode, 'readonly');
+      let pending = 0;
+      let requestCount = 0;
+      const tx = {
+        objectStore() {
+          return {
+            get(id) {
+              pending += 1;
+              requestCount += 1;
+              const request = {};
+              queueMicrotask(() => {
+                request.result = records.get(id);
+                request.onsuccess?.();
+                pending -= 1;
+                if (pending === 0) {
+                  queueMicrotask(() => {
+                    transactionSizes.push(requestCount);
+                    tx.oncomplete?.();
+                  });
+                }
+              });
+              return request;
+            }
+          };
+        }
+      };
+      return tx;
+    }
+  };
+  const database = new LibraryDatabase({ indexedDB: null });
+  database.db = indexedDb;
+
+  const tracks = await database.getTracksByIds([...records.keys()]);
+
+  assert.equal(tracks.length, 1001);
+  assert.deepEqual(transactionSizes, [1000, 1]);
+});
+
+test('library database preserves request errors when a transaction aborts', async () => {
+  const requestError = new Error('artwork write failed');
+  const indexedDb = {
+    transaction() {
+      const tx = {
+        error: null,
+        objectStore() {
+          return {
+            get() {
+              const request = {};
+              queueMicrotask(() => {
+                tx.onerror?.({ target: { error: requestError } });
+                tx.onabort?.();
+              });
+              return request;
+            },
+            put() {}
+          };
+        }
+      };
+      return tx;
+    }
+  };
+  const database = new LibraryDatabase({ indexedDB: null });
+  database.db = indexedDb;
+
+  await assert.rejects(
+    database.incrementArtworkRefCount('art_missing'),
+    error => error === requestError
+  );
+});
+
 test('removing a folder deletes orphaned artwork rows', async () => {
   const database = new LibraryDatabase({ indexedDB: null });
   await database.open();
@@ -468,6 +726,75 @@ test('removing a folder deletes orphaned artwork rows', async () => {
   await manager.removeFolder('f_music');
 
   assert.equal((await database.getAll('artwork')).length, 0);
+});
+
+test('folder removal waits for an active scan batch to commit its artwork and track', async () => {
+  const database = new LibraryDatabase({ indexedDB: null });
+  await database.open();
+  const folderA = { id: 'f_a', displayName: 'A', path: 'D:/A', status: 'ok' };
+  const folderB = { id: 'f_b', displayName: 'B', path: 'D:/B', status: 'ok' };
+  await database.putFolder(folderA);
+  await database.putFolder(folderB);
+  const source = {
+    async checkFolder() {
+      return 'ok';
+    },
+    async releaseFolder() {},
+    scan(_request, sink) {
+      return {
+        done: (async () => {
+          await sink({
+            type: 'batch',
+            tracks: [{
+              id: 't_a',
+              folderId: folderA.id,
+              relativePath: 'A.flac',
+              fileName: 'A.flac',
+              title: 'A',
+              artworkBytes: Uint8Array.from([1, 2, 3]),
+              artworkSourceKind: 'embedded'
+            }]
+          });
+          await sink({ type: 'done', seenFiles: [{ folderId: folderA.id, relativePath: 'A.flac' }] });
+        })()
+      };
+    }
+  };
+  const manager = new LibraryManager({ uiManager: {}, database, source });
+  await manager.init();
+  let artworkStored;
+  const artworkStoreStarted = new Promise(resolve => {
+    artworkStored = resolve;
+  });
+  let releaseArtworkStore;
+  const artworkStoreGate = new Promise(resolve => {
+    releaseArtworkStore = resolve;
+  });
+  const originalStoreArtwork = manager.artwork.storeArtworkBytes.bind(manager.artwork);
+  manager.artwork.storeArtworkBytes = async (...args) => {
+    const artworkId = await originalStoreArtwork(...args);
+    artworkStored();
+    await artworkStoreGate;
+    return artworkId;
+  };
+
+  const scan = manager.scanFolders([folderA.id]);
+  await artworkStoreStarted;
+  let removalSettled = false;
+  const removal = manager.removeFolder(folderB.id).then(() => {
+    removalSettled = true;
+  });
+  await Promise.resolve();
+
+  assert.equal(removalSettled, false);
+  assert.ok(await database.getFolder(folderB.id));
+  releaseArtworkStore();
+  await Promise.all([scan, removal]);
+
+  const [track] = await database.getAllTracks();
+  assert.equal(track.id, 't_a');
+  assert.equal((await database.getArtwork(track.artworkId)).refCount, 1);
+  assert.equal(await database.getFolder(folderB.id), null);
 });
 
 test('scan sweep consumes streamed seen-files events', async () => {
@@ -620,13 +947,24 @@ test('scan controller preserves addedAt and reports updates separately from adds
   assert.ok(events.some(([event, payload]) => event === 'scan-state' && payload.phase === 'done' && payload.added === 0 && payload.updated === 1));
 });
 
-test('scan does not commit tracks for a folder invalidated mid-batch', async () => {
+test('failed scans clean up artwork references from committed track updates', async () => {
   const database = new LibraryDatabase({ indexedDB: null });
   await database.open();
   const folder = { id: 'f_music', displayName: 'Music', path: 'D:/Music', status: 'ok' };
+  const existing = {
+    id: 't_song',
+    folderId: folder.id,
+    relativePath: 'Album/Song.flac',
+    fileName: 'Song.flac',
+    title: 'Old',
+    artworkId: 'art_old',
+    addedAt: 1
+  };
   await database.putFolder(folder);
+  await database.putTracks([existing]);
+  await database.putArtwork({ id: 'art_old', thumb: new Blob([Uint8Array.from([1])]), refCount: 1 });
   const index = new CatalogIndex();
-  await index.build({ folders: await database.getAllFolders(), tracks: [] });
+  await index.build({ folders: [folder], tracks: [existing] });
   const controller = new ScanController({
     database,
     index,
@@ -636,8 +974,163 @@ test('scan does not commit tracks for a folder invalidated mid-batch', async () 
           done: (async () => {
             await sink({
               type: 'batch',
+              tracks: [{
+                ...existing,
+                title: 'Updated',
+                artworkId: null,
+                artworkBytes: Uint8Array.from([2, 3, 4]),
+                artworkSourceKind: 'embedded'
+              }]
+            });
+            throw new Error('scan source failed after the batch');
+          })()
+        };
+      }
+    },
+    artworkProcessor: new ArtworkProcessor(database),
+    emit() {}
+  });
+
+  await controller.scanFolders([folder]);
+
+  const [updated] = await database.getAllTracks();
+  assert.notEqual(updated.artworkId, 'art_old');
+  assert.equal(await database.getArtwork('art_old'), null);
+  assert.equal((await database.getArtwork(updated.artworkId)).refCount, 1);
+});
+
+test('canceled scan results wait for artwork cleanup before an immediate rescan', async () => {
+  const database = new LibraryDatabase({ indexedDB: null });
+  await database.open();
+  const folder = { id: 'f_music', displayName: 'Music', path: 'D:/Music', status: 'ok' };
+  const existing = {
+    id: 't_song',
+    folderId: folder.id,
+    relativePath: 'Song.flac',
+    fileName: 'Song.flac',
+    title: 'Old',
+    addedAt: 1
+  };
+  await database.putFolder(folder);
+  await database.putTracks([existing]);
+  const index = new CatalogIndex();
+  await index.build({ folders: [folder], tracks: [existing] });
+  let scanCount = 0;
+  let firstBatchCommitted;
+  const batchCommitted = new Promise(resolve => {
+    firstBatchCommitted = resolve;
+  });
+  let finishFirstScan;
+  const source = {
+    scan(_request, sink) {
+      scanCount += 1;
+      if (scanCount === 1) {
+        return {
+          done: (async () => {
+            await sink({
+              type: 'batch',
+              tracks: [{ ...existing, title: 'Updated' }]
+            });
+            firstBatchCommitted();
+            await new Promise(resolve => {
+              finishFirstScan = resolve;
+            });
+          })(),
+          cancel() {
+            finishFirstScan?.();
+          }
+        };
+      }
+      return {
+        done: sink({
+          type: 'done',
+          seenFiles: [{ folderId: folder.id, relativePath: existing.relativePath }]
+        }),
+        cancel() {}
+      };
+    }
+  };
+  let releaseCleanup;
+  let cleanupStarted;
+  const cleanupGate = new Promise(resolve => {
+    releaseCleanup = resolve;
+  });
+  const cleanupStart = new Promise(resolve => {
+    cleanupStarted = resolve;
+  });
+  const originalRecalculate = database.recalculateArtworkRefCounts.bind(database);
+  let delayCleanup = true;
+  database.recalculateArtworkRefCounts = async () => {
+    if (delayCleanup) {
+      delayCleanup = false;
+      cleanupStarted();
+      await cleanupGate;
+    }
+    return originalRecalculate();
+  };
+  const controller = new ScanController({
+    database,
+    index,
+    source,
+    artworkProcessor: createArtworkProcessor(),
+    emit() {}
+  });
+
+  const firstScan = controller.scanFolders([folder]);
+  await batchCommitted;
+  const [firstScanId, firstController] = controller.activeScans.entries().next().value;
+  let internalResultSettled = false;
+  firstController.resultPromise.then(() => {
+    internalResultSettled = true;
+  });
+  assert.equal(controller.cancel(firstScanId), true);
+  const secondScan = controller.scanFolders([folder]);
+  await cleanupStart;
+
+  assert.equal(internalResultSettled, false);
+  assert.equal(scanCount, 1);
+  releaseCleanup();
+  await Promise.all([firstScan, secondScan]);
+
+  assert.equal(internalResultSettled, true);
+  assert.equal(scanCount, 2);
+});
+
+test('scan does not commit tracks for a folder invalidated mid-batch', async () => {
+  const database = new LibraryDatabase({ indexedDB: null });
+  await database.open();
+  const folder = { id: 'f_music', displayName: 'Music', path: 'D:/Music', status: 'ok' };
+  await database.putFolder(folder);
+  const index = new CatalogIndex();
+  await index.build({ folders: await database.getAllFolders(), tracks: [] });
+  let controller;
+  let invalidated = false;
+  const artworkProcessor = {
+    async storeArtworkBytes() {
+      if (!invalidated) {
+        invalidated = true;
+        controller.folderScanGenerations.set('f_music', (controller.folderScanGenerations.get('f_music') || 0) + 1);
+      }
+      return null;
+    }
+  };
+  controller = new ScanController({
+    database,
+    index,
+    source: {
+      scan(_request, sink) {
+        return {
+          done: (async () => {
+            await sink({
+              type: 'batch',
               tracks: [
-                { folderId: 'f_music', relativePath: 'Album/One.flac', fileName: 'One.flac', title: 'One' },
+                {
+                  folderId: 'f_music',
+                  relativePath: 'Album/One.flac',
+                  fileName: 'One.flac',
+                  title: 'One',
+                  artworkBytes: Uint8Array.from([1])
+                },
                 { folderId: 'f_music', relativePath: 'Album/Two.flac', fileName: 'Two.flac', title: 'Two' }
               ]
             });
@@ -652,24 +1145,64 @@ test('scan does not commit tracks for a folder invalidated mid-batch', async () 
         };
       }
     },
-    artworkProcessor: createArtworkProcessor(),
+    artworkProcessor,
     emit() {}
   });
-  const originalGet = database.get.bind(database);
-  let invalidated = false;
-  database.get = async (storeName, id) => {
-    const result = await originalGet(storeName, id);
-    if (storeName === 'tracks' && !invalidated) {
-      invalidated = true;
-      controller.folderScanGenerations.set('f_music', (controller.folderScanGenerations.get('f_music') || 0) + 1);
-    }
-    return result;
-  };
 
   await controller.scanFolders([folder]);
 
   assert.equal((await database.getAllTracks()).length, 0);
   assert.deepEqual(index.getAllTracks(), []);
+});
+
+test('mixed-folder batches discard artwork for an invalidated folder', async () => {
+  const database = new LibraryDatabase({ indexedDB: null });
+  await database.open();
+  const folderA = { id: 'f_a', displayName: 'A', path: 'D:/A', status: 'ok' };
+  const folderB = { id: 'f_b', displayName: 'B', path: 'D:/B', status: 'ok' };
+  await database.putFolder(folderA);
+  await database.putFolder(folderB);
+  const index = new CatalogIndex();
+  await index.build({ folders: [folderA, folderB], tracks: [] });
+  const storedArtwork = [];
+  let controller;
+  controller = new ScanController({
+    database,
+    index,
+    source: {
+      scan(_request, sink) {
+        controller.folderScanGenerations.set(folderB.id, controller.folderScanGenerations.get(folderB.id) + 1);
+        return {
+          done: (async () => {
+            await sink({
+              type: 'batch',
+              tracks: [
+                { id: 't_a', folderId: folderA.id, relativePath: 'A.flac', title: 'A', artworkId: 'art_a' },
+                { id: 't_b', folderId: folderB.id, relativePath: 'B.flac', title: 'B', artworkId: 'art_b' }
+              ],
+              artworks: [
+                { id: 'art_a', bytes: Uint8Array.from([1]), refCount: 1 },
+                { id: 'art_b', bytes: Uint8Array.from([2]), refCount: 1 }
+              ]
+            });
+            await sink({ type: 'done', seenFiles: [{ folderId: folderA.id, relativePath: 'A.flac' }] });
+          })()
+        };
+      }
+    },
+    artworkProcessor: {
+      async storeArtworkBytes(_bytes, _sourceKind, options) {
+        storedArtwork.push([options.id, options.refCount]);
+        return options.id;
+      }
+    },
+    emit() {}
+  });
+
+  await controller.scanFolders([folderA, folderB]);
+
+  assert.deepEqual(storedArtwork, [['art_a', 1]]);
+  assert.deepEqual((await database.getAllTracks()).map(track => track.id), ['t_a']);
 });
 
 test('scan keeps known tracks when a folder reports an enumeration error', async () => {
@@ -1116,8 +1649,9 @@ test('scan cancels overlapping active scans before starting a wider replacement'
   assert.equal(index.getAllTracks()[0].relativePath, 'Replacement.flac');
 });
 
-test('electron library source serializes scan events before resolving done', async () => {
+test('electron library source requests embedded artwork and serializes scan events before resolving done', async () => {
   let scanListener;
+  let scanStartRequest;
   let resolveBatch;
   const order = [];
   const source = new ElectronLibrarySource({
@@ -1125,7 +1659,8 @@ test('electron library source serializes scan events before resolving done', asy
       scanListener = callback;
       return () => {};
     },
-    async scanStart() {
+    async scanStart(request) {
+      scanStartRequest = request;
       return { success: true };
     },
     async scanCancel() {}
@@ -1139,6 +1674,7 @@ test('electron library source serializes scan events before resolving done', asy
     }
     order.push(`${event.type}:end`);
   });
+  assert.equal(scanStartRequest.skipCovers, false);
   let doneResolved = false;
   scan.done.then(() => {
     doneResolved = true;
@@ -2139,7 +2675,7 @@ test('FSA library source reports a cumulative found count across folders', async
   await source.scan({
     folders: [
       { id: 'f_one', handle: makeHandle('One.mp3') },
-      { id: 'f_two', handle: makeHandle('Two.mp3') }
+      { id: 'f_two', handle: makeHandle('Two.MP4') }
     ],
     batchSize: 10
   }, event => {
@@ -2599,6 +3135,65 @@ test('catalog index groups tracks and keeps search results narrowed across queri
   assert.equal(index.getFolders()[0].displayName, 'Updated');
 });
 
+test('catalog index updates folder metadata without rebuilding track aggregates', async () => {
+  const folder = { id: 'f_music', displayName: 'Music', path: 'D:/Music' };
+  const index = new CatalogIndex();
+  await index.build({
+    folders: [folder],
+    tracks: [{
+      id: 't_song',
+      folderId: folder.id,
+      relativePath: 'Artist/Song.flac',
+      fileName: 'Song.flac',
+      title: 'Song',
+      artist: 'Artist',
+      albumArtist: 'Artist',
+      album: 'Album',
+      genre: 'Rock'
+    }]
+  });
+
+  const references = {
+    tracks: index.tracks,
+    trackById: index.trackById,
+    albums: index.albums,
+    artists: index.artists,
+    genres: index.genres,
+    folderTracks: index.folderTracks,
+    track: index.getTrackById('t_song'),
+    album: index.getAlbums()[0],
+    artist: index.getArtists()[0],
+    genre: index.getGenres()[0]
+  };
+  const counts = index.getCounts();
+
+  index.setFolders([{ ...folder, displayName: 'Renamed', path: 'E:/Renamed' }]);
+
+  assert.deepEqual(index.getCounts(), counts);
+  assert.strictEqual(index.tracks, references.tracks);
+  assert.strictEqual(index.trackById, references.trackById);
+  assert.strictEqual(index.albums, references.albums);
+  assert.strictEqual(index.artists, references.artists);
+  assert.strictEqual(index.genres, references.genres);
+  assert.strictEqual(index.folderTracks, references.folderTracks);
+  assert.strictEqual(index.getTrackById('t_song'), references.track);
+  assert.strictEqual(index.getAlbums()[0], references.album);
+  assert.strictEqual(index.getArtists()[0], references.artist);
+  assert.strictEqual(index.getGenres()[0], references.genre);
+  assert.equal(index.getFolders()[0].displayName, 'Renamed');
+  assert.equal(index.getFolders()[0].trackCount, 1);
+  assert.equal(index.findByAbsolutePath('E:/Renamed/Artist/Song.flac')?.id, 't_song');
+  assert.equal(index.findByAbsolutePath('D:/Music/Artist/Song.flac'), null);
+
+  index.applyChanges({ folders: [{ ...folder, displayName: 'Moved', path: 'F:/Moved' }] });
+
+  assert.strictEqual(index.albums, references.albums);
+  assert.strictEqual(index.artists, references.artists);
+  assert.strictEqual(index.genres, references.genres);
+  assert.strictEqual(index.folderTracks, references.folderTracks);
+  assert.equal(index.findByAbsolutePath('F:/Moved/Artist/Song.flac')?.id, 't_song');
+});
+
 test('catalog index keeps performer artist navigation separate from album artist aggregation', async () => {
   const index = new CatalogIndex();
   await index.build({
@@ -2679,6 +3274,7 @@ test('library manager facade returns indexed catalog data and delegates playback
   assert.equal(manager.getRecentlyAdded(1)[0].id, 't_song');
   assert.equal(manager.getTrackById('t_song').title, 'Song');
   assert.equal(await manager.getArtworkThumbURL(null), '');
+  assert.equal(await manager.getArtworkThumbBlob(null), null);
   assert.equal(manager.cancelScan('missing'), false);
 
   const playbackCalls = [];
@@ -2765,6 +3361,20 @@ test('artwork processor stores reusable thumbnails and revokes old object URLs',
     assert.equal((await database.getArtwork(firstId)).refCount, 2);
     const secondId = await processor.storeArtworkBytes(Uint8Array.from([4, 5, 6]).buffer, 'external');
     assert.notEqual(secondId, firstId);
+
+    const concurrentProcessor = new ArtworkProcessor(database);
+    const [concurrentIdA, concurrentIdB] = await Promise.all([
+      concurrentProcessor.storeArtworkBytes(Uint8Array.from([7, 8, 9]), 'embedded'),
+      concurrentProcessor.storeArtworkBytes(Uint8Array.from([7, 8, 9]), 'embedded')
+    ]);
+    assert.equal(concurrentIdA, concurrentIdB);
+    assert.equal((await database.getArtwork(concurrentIdA)).refCount, 2);
+
+    const coldProcessor = new ArtworkProcessor(database);
+    const restoredThumb = await coldProcessor.getThumbBlob(firstId);
+    assert.equal(restoredThumb instanceof Blob, true);
+    assert.deepEqual(Array.from(new Uint8Array(await restoredThumb.arrayBuffer())), [1, 2, 3]);
+    assert.equal(createdUrls.length, 0);
 
     assert.equal(await processor.getThumbURL('missing'), '');
     const [firstUrlA, firstUrlB] = await Promise.all([

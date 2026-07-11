@@ -12,6 +12,7 @@ export class ScanController {
     this.getLanguageHints = getLanguageHints;
     this.activeScans = new Map();
     this.folderScanGenerations = new Map();
+    this.catalogMutationQueue = Promise.resolve();
   }
 
   async scanFolders(folders, { reason = 'manual', retryActiveScanConflict = true } = {}) {
@@ -58,10 +59,11 @@ export class ScanController {
       resolveScanResult = resolve;
     });
     let settled = false;
+    let settledResult = null;
     const finish = result => {
       if (!settled) {
         settled = true;
-        resolveScanResult?.(result);
+        settledResult = result;
       }
       return result;
     };
@@ -71,21 +73,33 @@ export class ScanController {
     let skipped = 0;
     let addedTotal = 0;
     let updatedTotal = 0;
-    const upserted = [];
+    let artworkRefCountsDirty = false;
     const seenByFolder = new Map(targetFolders.map(folder => [folder.id, new Set()]));
+    const knownFilesByFolder = new Map(targetFolders.map(folder => [folder.id, []]));
     const foldersWithEnumerationErrors = new Set();
     const folderErrorStatuses = new Map();
 
-    const flushBatch = async (tracks, artworks = []) => {
+    const commitBatch = async (tracks, artworks = []) => {
       const currentTracks = tracks.filter(track => isFolderCurrent(track.folderId));
       if (!currentTracks.length) return;
+      const dirtyBeforeBatch = artworkRefCountsDirty;
+      let wroteArtwork = false;
+      const artworkRefCounts = new Map();
+      for (const track of currentTracks) {
+        if (!track.artworkId) continue;
+        artworkRefCounts.set(track.artworkId, (artworkRefCounts.get(track.artworkId) || 0) + 1);
+      }
       for (const artwork of artworks) {
         if (!artwork?.id || !artwork.bytes) continue;
+        const refCount = artworkRefCounts.get(artwork.id) || 0;
+        if (refCount === 0) continue;
         await this.artworkProcessor.storeArtworkBytes(artwork.bytes, artwork.sourceKind || 'embedded', {
           id: artwork.id,
           mime: artwork.mime,
-          refCount: artwork.refCount || 1
+          refCount
         });
+        wroteArtwork = true;
+        artworkRefCountsDirty = true;
       }
       const preparedEntries = [];
       for (const track of currentTracks) {
@@ -93,10 +107,12 @@ export class ScanController {
         const relativePath = normalizeRelativePath(track.relativePath);
         const id = track.id || await createTrackId(track.folderId, relativePath);
         const now = Date.now();
-        const existing = await this.database.get('tracks', id);
+        const existing = this.index.getTrackById(id);
         let artworkId = track.artworkId || null;
         if (!artworkId && track.artworkBytes) {
           artworkId = await this.artworkProcessor.storeArtworkBytes(track.artworkBytes, track.artworkSourceKind || 'embedded');
+          wroteArtwork = Boolean(artworkId) || wroteArtwork;
+          artworkRefCountsDirty = Boolean(artworkId) || artworkRefCountsDirty;
         }
         preparedEntries.push({
           track: {
@@ -124,12 +140,20 @@ export class ScanController {
       const added = currentEntries.filter(entry => entry.isNew).length;
       const updated = currentEntries.length - added;
       await this.database.putTracks(prepared);
+      if (updated > 0) {
+        artworkRefCountsDirty = true;
+      } else if (wroteArtwork && !dirtyBeforeBatch) {
+        artworkRefCountsDirty = false;
+      }
       this.index.applyChanges({ upsert: prepared });
-      upserted.push(...prepared);
       addedTotal += added;
       updatedTotal += updated;
       this.emit('catalog-changed', { added, updated, removed: 0, tracks: prepared });
     };
+
+    const flushBatch = (tracks, artworks = []) => this.runCatalogMutation(
+      () => commitBatch(tracks, artworks)
+    );
 
     const refreshFolders = async () => {
       const folders = await this.database.getAllFolders();
@@ -235,14 +259,24 @@ export class ScanController {
     try {
       const knownFiles = [];
       for (const folder of targetFolders) {
-        knownFiles.push(...await this.database.getKnownFilesByFolder(folder.id));
+        const folderKnownFiles = await this.database.getKnownFilesByFolder(folder.id);
+        const snapshot = knownFilesByFolder.get(folder.id);
+        for (const file of folderKnownFiles) {
+          snapshot.push(file);
+          knownFiles.push({
+            folderId: file.folderId,
+            relativePath: file.relativePath,
+            size: file.size,
+            mtimeMs: file.mtimeMs
+          });
+        }
       }
 
       if (controller.canceled) {
-        return finish({ scanId, found, parsed, skipped, upserted, stale: true });
+        return finish({ scanId, found, parsed, skipped, stale: true });
       }
       if (!hasCurrentTarget()) {
-        return finish({ scanId, found, parsed, skipped, upserted, stale: true });
+        return finish({ scanId, found, parsed, skipped, stale: true });
       }
       this.emit('scan-state', { scanId, phase: 'scanning', found, parsed, skipped, currentPath: '', reason });
 
@@ -257,8 +291,16 @@ export class ScanController {
       await handle.done;
       if (!controller.canceled && hasCurrentTarget()) {
         const sweepFolders = getCurrentTargetFolders().filter(folder => !foldersWithEnumerationErrors.has(folder.id));
-        const removedIds = await this.sweepRemovedTracks(sweepFolders, seenByFolder, isFolderCurrent);
-        if (!hasCurrentTarget()) return finish({ scanId, found, parsed, skipped, upserted, stale: true });
+        const removedIds = await this.runCatalogMutation(async () => {
+          const ids = await this.sweepRemovedTracks(sweepFolders, seenByFolder, isFolderCurrent, knownFilesByFolder);
+          if (ids.length > 0) artworkRefCountsDirty = true;
+          if (artworkRefCountsDirty) {
+            await this.recalculateArtworkRefCounts();
+            artworkRefCountsDirty = false;
+          }
+          return ids;
+        });
+        if (!hasCurrentTarget()) return finish({ scanId, found, parsed, skipped, stale: true });
         const currentFolders = getCurrentTargetFolders();
         const okFolders = currentFolders.filter(folder => !folderErrorStatuses.has(folder.id));
         const restoredPlaylistIds = await this.resolveUnresolvedPlaylistItems();
@@ -287,7 +329,7 @@ export class ScanController {
         await refreshFolders();
         this.emit('scan-state', { scanId, phase: 'done', found, parsed, skipped, added: addedTotal, updated: updatedTotal, removed: removedIds.length });
       }
-      return finish({ scanId, found, parsed, skipped, upserted });
+      return finish({ scanId, found, parsed, skipped });
     } catch (error) {
       const activeConflictScan = this.findReusableActiveScanFromConflict(error, targetFolderIds);
       if (!controller.canceled && activeConflictScan?.resultPromise) {
@@ -301,21 +343,37 @@ export class ScanController {
         if (retryActiveScanConflict) {
           return finish(await this.scanFolders(targetFolders, { reason, retryActiveScanConflict: false }));
         }
-        return finish({ scanId, found, parsed, skipped, upserted, stale: true, activeScanId: error.activeScanId });
+        return finish({ scanId, found, parsed, skipped, stale: true, activeScanId: error.activeScanId });
       }
       if (!controller.canceled && hasCurrentTarget()) {
         if (folderErrorStatuses.size === 0) {
           getCurrentTargetFolders().forEach(folder => folderErrorStatuses.set(folder.id, 'error'));
         }
         await updateScanFolderStatuses(folderErrorStatuses);
-        this.emit('scan-state', { scanId, phase: 'error', found, parsed, skipped, error: error.message || String(error) });
+        this.emit('scan-state', {
+          scanId,
+          phase: 'error',
+          found,
+          parsed,
+          skipped,
+          error: error?.message || String(error || 'Scan failed')
+        });
       }
-      return finish({ scanId, found, parsed, skipped, upserted });
+      return finish({ scanId, found, parsed, skipped });
     } finally {
-      this.activeScans.delete(scanId);
-      if (!settled) {
-        finish({ scanId, found, parsed, skipped, upserted, stale: true });
+      if (artworkRefCountsDirty) {
+        try {
+          await this.runCatalogMutation(() => this.recalculateArtworkRefCounts());
+          artworkRefCountsDirty = false;
+        } catch (_) {
+          // Preserve the original scan outcome if best-effort cleanup also fails.
+        }
       }
+      if (!settled) {
+        finish({ scanId, found, parsed, skipped, stale: true });
+      }
+      this.activeScans.delete(scanId);
+      resolveScanResult?.(settledResult);
     }
   }
 
@@ -325,6 +383,12 @@ export class ScanController {
       return controller;
     }
     return null;
+  }
+
+  runCatalogMutation(callback) {
+    const operation = this.catalogMutationQueue.then(callback, callback);
+    this.catalogMutationQueue = operation.catch(() => {});
+    return operation;
   }
 
   findActiveScanByFolderIds(folderIds) {
@@ -389,24 +453,26 @@ export class ScanController {
     return this.cancelScansByFolderIds([folderId]) > 0;
   }
 
-  async sweepRemovedTracks(folders, seenByFolder, isFolderCurrent = () => true) {
-    const removedTracks = [];
+  async sweepRemovedTracks(folders, seenByFolder, isFolderCurrent = () => true, knownFilesByFolder = null) {
+    const removedIds = [];
     for (const folder of folders) {
       if (!isFolderCurrent(folder.id)) continue;
       const seen = seenByFolder.get(folder.id) || new Set();
-      const known = await this.database.getTracksByFolder(folder.id);
+      const hasSnapshot = knownFilesByFolder?.has(folder.id);
+      const known = hasSnapshot
+        ? knownFilesByFolder.get(folder.id)
+        : await this.database.getTracksByFolder(folder.id);
       if (!isFolderCurrent(folder.id)) continue;
       for (const track of known) {
-        if (!seen.has(normalizeRelativePath(track.relativePath))) {
-          removedTracks.push(track);
+        if (track.trackId && !seen.has(normalizeRelativePath(track.relativePath))) {
+          removedIds.push(track.trackId);
+        } else if (track.id && !seen.has(normalizeRelativePath(track.relativePath))) {
+          removedIds.push(track.id);
         }
       }
     }
-    const removedIds = removedTracks
-      .filter(track => isFolderCurrent(track.folderId))
-      .map(track => track.id);
+    if (!removedIds.length) return removedIds;
     await this.database.deleteTracks(removedIds);
-    await this.recalculateArtworkRefCounts();
     return removedIds;
   }
 

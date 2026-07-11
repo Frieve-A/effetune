@@ -17,14 +17,9 @@ export class ArtworkProcessor {
     const raw = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
     const id = options.id || await createArtworkId(raw);
     const refCountDelta = normalizeRefCount(options.refCount);
-    const existing = await this.database.getArtwork(id);
-    if (existing) {
-      existing.refCount = (existing.refCount || 0) + refCountDelta;
-      await this.database.putArtwork(existing);
-      return id;
-    }
+    if (await this.database.incrementArtworkRefCount(id, refCountDelta)) return id;
     const blob = await this.createThumbBlob(raw, options.mime);
-    await this.database.putArtwork({ id, thumb: blob, sourceKind, refCount: refCountDelta });
+    await this.database.upsertArtworkReference({ id, thumb: blob, sourceKind }, refCountDelta);
     return id;
   }
 
@@ -68,6 +63,12 @@ export class ArtworkProcessor {
     return inputBlob;
   }
 
+  async getThumbBlob(artworkId) {
+    if (!artworkId) return null;
+    const artwork = await this.database.getArtwork(artworkId);
+    return artwork?.thumb || null;
+  }
+
   async getThumbURL(artworkId) {
     if (!artworkId || typeof URL === 'undefined') return '';
     if (this.urlCache.has(artworkId)) {
@@ -89,9 +90,9 @@ export class ArtworkProcessor {
   }
 
   async loadThumbURL(artworkId) {
-    const artwork = await this.database.getArtwork(artworkId);
-    if (!artwork?.thumb) return '';
-    const url = URL.createObjectURL(artwork.thumb);
+    const thumb = await this.getThumbBlob(artworkId);
+    if (!thumb) return '';
+    const url = URL.createObjectURL(thumb);
     this.urlCache.set(artworkId, url);
     this.pruneCache();
     return url;

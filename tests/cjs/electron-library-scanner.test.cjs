@@ -119,6 +119,13 @@ async function runWithScanner(metadataModule, callback) {
   }
 }
 
+test('supported audio file detection includes MP4 containers', async () => {
+  await runWithScanner({}, scanner => {
+    assert.equal(scanner.isSupportedAudioFile('movie.MP4'), true);
+    assert.equal(scanner.SUPPORTED_AUDIO_EXTENSIONS.includes('mp4'), true);
+  });
+});
+
 test('scanLibrary skips unchanged files and builds fallback records for changed audio files', async () => {
   const root = createTempDir('effetune-library-scan');
   const knownPath = path.join(root, 'known.mp3');
@@ -201,6 +208,30 @@ test('scanLibrary chunks seen files separately from the done event', async () =>
   ]);
   assert.equal(done.seenFiles, undefined);
   assert.equal(done.seenPaths, undefined);
+});
+
+test('scanLibrary coalesces enumeration progress and omits per-track parse progress', async () => {
+  const root = createTempDir('effetune-library-coalesced-progress');
+  for (let index = 1; index <= 5; index += 1) {
+    writeFile(path.join(root, `track-${index}.mp3`), `track-${index}`);
+  }
+  const events = [];
+
+  const result = await runWithScanner({}, scanner => scanner.scanLibrary({
+    roots: [{ folderId: 'f_music', path: root }],
+    batchSize: 2,
+    batchIntervalMs: Number.MAX_SAFE_INTEGER
+  }, event => {
+    events.push(event);
+  }));
+
+  const enumerateProgress = events.filter(event => event.type === 'enumerate-progress');
+  const done = events.find(event => event.type === 'done');
+  assert.deepEqual(enumerateProgress.map(event => event.found), [1, 2, 4, 5]);
+  assert.equal(events.some(event => event.type === 'progress'), false);
+  assert.equal(enumerateProgress.at(-1).folderId, 'f_music');
+  assert.equal(result.found, 5);
+  assert.equal(done.found, 5);
 });
 
 test('scanLibrary preserves decomposed Unicode relative paths for filesystem reads', async t => {
@@ -2426,15 +2457,11 @@ test('library-scan-start rejects oversized roots before creating a scan', async 
   assert.equal(scanCalls, 0);
 });
 
-test('library-scan-start rejects oversized knownFiles before creating a scan', async () => {
-  const {
-    MAX_LIBRARY_SCAN_KNOWN_FILES,
-    MAX_LIBRARY_SCAN_STRING_LENGTH,
-    registerLibraryIpcHandlers
-  } = loadFreshModule('../../electron/library-handlers.js');
-  const root = createTempDir('effetune-library-oversized-known-files');
+test('library-scan-start accepts the reported 109994-track library size', async () => {
+  const { registerLibraryIpcHandlers } = loadFreshModule('../../electron/library-handlers.js');
+  const root = createTempDir('effetune-library-large-known-files');
   const handlers = new Map();
-  let scanCalls = 0;
+  let forwardedKnownFiles = 0;
 
   registerLibraryIpcHandlers({
     handle(channel, handler) {
@@ -2444,23 +2471,88 @@ test('library-scan-start rejects oversized knownFiles before creating a scan', a
     app: { getPath: name => (name === 'music' || name === 'userData' ? root : '') },
     dialog: {
       async showOpenDialog() {
-        throw new Error('dialog should not open');
+        return { canceled: false, filePaths: [root] };
       }
     },
     shell: { showItemInFolder() {} },
     getMainWindow: () => null,
     scanner: {
-      createLibraryScan() {
-        scanCalls += 1;
-        throw new Error('scan should not start');
+      createLibraryScan(request) {
+        forwardedKnownFiles = request.knownFiles.length;
+        return {
+          scanId: request.scanId,
+          promise: Promise.resolve(),
+          cancel() {}
+        };
       }
     }
   });
 
+  await handlers.get('library-select-folder')({});
+  const knownFile = {
+    folderId: 'f_music',
+    relativePath: 'Album/Track.flac',
+    size: 1024,
+    mtimeMs: 1000
+  };
+  const result = await handlers.get('library-scan-start')({}, {
+    scanId: 'scan_large_known',
+    roots: [{ folderId: 'f_music', path: root }],
+    knownFiles: new Array(109994).fill(knownFile)
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(forwardedKnownFiles, 109994);
+});
+
+test('library-scan-start caps knownFiles above its safety ceiling without rejecting the scan', async () => {
+  const {
+    MAX_LIBRARY_SCAN_KNOWN_FILES,
+    MAX_LIBRARY_SCAN_STRING_LENGTH,
+    registerLibraryIpcHandlers
+  } = loadFreshModule('../../electron/library-handlers.js');
+  const root = createTempDir('effetune-library-oversized-known-files');
+  const handlers = new Map();
+  let scanCalls = 0;
+  let forwardedKnownFiles = 0;
+
+  registerLibraryIpcHandlers({
+    handle(channel, handler) {
+      handlers.set(channel, handler);
+    }
+  }, {
+    app: { getPath: name => (name === 'music' || name === 'userData' ? root : '') },
+    dialog: {
+      async showOpenDialog() {
+        return { canceled: false, filePaths: [root] };
+      }
+    },
+    shell: { showItemInFolder() {} },
+    getMainWindow: () => null,
+    scanner: {
+      createLibraryScan(request) {
+        scanCalls += 1;
+        forwardedKnownFiles = request.knownFiles.length;
+        return {
+          scanId: request.scanId,
+          promise: Promise.resolve(),
+          cancel() {}
+        };
+      }
+    }
+  });
+
+  await handlers.get('library-select-folder')({});
+  const knownFile = {
+    folderId: 'f_music',
+    relativePath: 'Album/Track.flac',
+    size: 1024,
+    mtimeMs: 1000
+  };
   const tooManyKnownFiles = await handlers.get('library-scan-start')({}, {
     scanId: 'scan_too_many_known',
     roots: [{ folderId: 'f_music', path: root }],
-    knownFiles: new Array(MAX_LIBRARY_SCAN_KNOWN_FILES + 1)
+    knownFiles: new Array(MAX_LIBRARY_SCAN_KNOWN_FILES + 1).fill(knownFile)
   });
   const tooLongKnownFilePath = await handlers.get('library-scan-start')({}, {
     scanId: 'scan_too_long_known',
@@ -2471,13 +2563,13 @@ test('library-scan-start rejects oversized knownFiles before creating a scan', a
     }]
   });
 
-  assert.equal(tooManyKnownFiles.success, false);
+  assert.equal(tooManyKnownFiles.success, true);
   assert.equal(tooManyKnownFiles.scanId, 'scan_too_many_known');
-  assert.match(tooManyKnownFiles.error, /at most .* known files/);
+  assert.equal(forwardedKnownFiles, MAX_LIBRARY_SCAN_KNOWN_FILES);
   assert.equal(tooLongKnownFilePath.success, false);
   assert.equal(tooLongKnownFilePath.scanId, 'scan_too_long_known');
   assert.match(tooLongKnownFilePath.error, /knownFiles\[0\]\.relativePath is too long/);
-  assert.equal(scanCalls, 0);
+  assert.equal(scanCalls, 1);
 });
 
 test('library-scan-start forwards only allowlisted scan request payload', async () => {

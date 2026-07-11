@@ -127,6 +127,13 @@
         "role": "None"
       },
       {
+        "ext": "mp4",
+        "name": "MP4 Audio",
+        "description": "MP4 Audio File",
+        "icon": "icon",
+        "role": "None"
+      },
+      {
         "ext": "aac",
         "name": "AAC Audio",
         "description": "AAC Audio File",

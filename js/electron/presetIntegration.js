@@ -349,7 +349,7 @@ export async function openMusicFile(isElectron) {
       title: 'Select Music Files',
       properties: ['openFile', 'multiSelections'],
       filters: [
-        { name: 'Audio Files', extensions: ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac'] },
+        { name: 'Audio Files', extensions: ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'mp4'] },
         { name: 'All Files', extensions: ['*'] }
       ]
     });

@@ -36,15 +36,18 @@ export class CatalogIndex {
   setFolders(folders = []) {
     this.folders = [...folders];
     this.folderById = new Map(this.folders.map(folder => [folder.id, folder]));
-    this.rebuildAggregates();
   }
 
   applyChanges({ upsert = [], removedIds = [], folders = null } = {}) {
     const hasRemovals = removedIds.length > 0;
-    const hasFolderChanges = Boolean(folders);
     const hasUpdates = upsert.some(track => track?.id && this.trackById.has(track.id));
 
-    if (!hasRemovals && !hasFolderChanges && !hasUpdates) {
+    if (folders) {
+      this.folders = [...folders];
+      this.folderById = new Map(this.folders.map(folder => [folder.id, folder]));
+    }
+
+    if (!hasRemovals && !hasUpdates) {
       for (const track of upsert) {
         if (!track?.id) continue;
         const prepared = this.prepareTrack(track);
@@ -61,10 +64,6 @@ export class CatalogIndex {
     }
     for (const track of upsert) {
       this.trackById.set(track.id, this.prepareTrack(track));
-    }
-    if (folders) {
-      this.folders = [...folders];
-      this.folderById = new Map(this.folders.map(folder => [folder.id, folder]));
     }
     this.tracks = [...this.trackById.values()];
     this.rebuildAggregates();

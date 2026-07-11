@@ -8,6 +8,7 @@ lang: en
 
 ### Version 2.1.0 (TBD, 2026)
 - Supports native processing via WebAssembly, significantly reducing effect processing overhead
+- Added playback of audio tracks in MP4 files without displaying video
 - Various minor improvements
 
 ### Version 2.0.0 (Jul 10, 2026)

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dspRoot = path.join(repoRoot, 'dsp');
@@ -22,11 +22,10 @@ function fail(message) {
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
-    cwd: repoRoot,
+    cwd: options.cwd ?? repoRoot,
     env: options.env ?? process.env,
     encoding: options.capture ? 'utf8' : undefined,
     stdio: options.capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
-    shell: options.shell ?? false,
     windowsHide: true
   });
   if (result.error) {
@@ -146,6 +145,17 @@ function findVsDevCmd() {
   return fs.existsSync(candidate) ? candidate : null;
 }
 
+export function createVsEnvironmentInvocation(vsDevCmd) {
+  return {
+    command: 'cmd.exe',
+    args: [
+      '/d', '/s', '/c',
+      'call VsDevCmd.bat -arch=x64 -host_arch=x64 >nul && set'
+    ],
+    cwd: path.dirname(vsDevCmd)
+  };
+}
+
 function nativeEnvironment() {
   if (!isWindows || process.env.VCINSTALLDIR) {
     return process.env;
@@ -154,13 +164,11 @@ function nativeEnvironment() {
   if (!vsDevCmd) {
     fail('Visual C++ tools were not found; install the Desktop C++ workload');
   }
-  fs.mkdirSync(buildRoot, { recursive: true });
-  const helper = path.join(buildRoot, 'load-vs-environment.cmd');
-  fs.writeFileSync(helper,
-    `@echo off\r\ncall "${vsDevCmd}" -arch=x64 -host_arch=x64 >nul\r\n` +
-    'if errorlevel 1 exit /b %errorlevel%\r\nset\r\n', 'utf8');
-  const comspec = process.env.ComSpec ?? 'cmd.exe';
-  const output = run(comspec, ['/d', '/c', helper], { capture: true });
+  const invocation = createVsEnvironmentInvocation(vsDevCmd);
+  const output = run(invocation.command, invocation.args, {
+    capture: true,
+    cwd: invocation.cwd
+  });
   const env = { ...process.env };
   for (const line of output.split(/\r?\n/)) {
     const separator = line.indexOf('=');
@@ -183,26 +191,24 @@ function runNativeTests() {
   run('ctest', ['--test-dir', buildDirectory, '--output-on-failure'], { env });
 }
 
+export function emscriptenExecutableName(name, windows = isWindows) {
+  return windows ? `${name}.exe` : name;
+}
+
 function emsdkPaths() {
   const pinned = fs.readFileSync(path.join(dspRoot, 'EMSDK_VERSION'), 'utf8').trim();
   const root = path.resolve(process.env.EMSDK || path.join(dspRoot, '.emsdk'));
   const emscripten = path.join(root, 'upstream', 'emscripten');
   const findCommand = name => {
-    const names = isWindows
-      ? [`${name}.bat`, `${name}.exe`, `${name}.cmd`, name]
-      : [name];
-    return names.map(candidate => path.join(emscripten, candidate))
-      .find(candidate => fs.existsSync(candidate)) ?? null;
+    const candidate = path.join(emscripten, emscriptenExecutableName(name));
+    return fs.existsSync(candidate) ? candidate : null;
   };
   const emcc = findCommand('emcc');
   const emcmake = findCommand('emcmake');
   if (emcc === null || emcmake === null) {
     fail(`Emscripten ${pinned} not found under ${root}. Set EMSDK to the activated SDK root.`);
   }
-  const versionText = run(emcc, ['--version'], {
-    capture: true,
-    shell: /\.(?:bat|cmd)$/i.test(emcc)
-  });
+  const versionText = run(emcc, ['--version'], { capture: true });
   const match = versionText.match(/\b(\d+\.\d+\.\d+)\b/);
   if (!match || match[1] !== pinned) {
     fail(`Expected Emscripten ${pinned}, got ${match?.[1] ?? 'an unknown version'}`);
@@ -218,7 +224,7 @@ function configureAndBuildWasm({ emcmake, name, simd, debug }) {
     'cmake', '-S', dspRoot, '-B', buildDirectory, '-G', 'Ninja',
     `-DCMAKE_BUILD_TYPE=${buildType}`, `-DET_SIMD=${simd ? 'ON' : 'OFF'}`,
     '-DBUILD_TESTING=OFF'
-  ], { shell: /\.(?:bat|cmd)$/i.test(emcmake) });
+  ]);
   run('cmake', ['--build', buildDirectory, '--parallel']);
   const artifact = path.join(buildDirectory, 'effetune-dsp.wasm');
   if (!fs.existsSync(artifact)) {
@@ -429,7 +435,11 @@ async function main() {
   await buildWasm({ check, debug });
 }
 
-main().catch(error => {
-  console.error(error.message);
-  process.exitCode = 1;
-});
+const isMain = process.argv[1] &&
+  pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url;
+if (isMain) {
+  main().catch(error => {
+    console.error(error.message);
+    process.exitCode = 1;
+  });
+}

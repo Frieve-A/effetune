@@ -1074,7 +1074,7 @@ export class UIManager {
                     if (fileInput) { // Added check
                         fileInput.type = 'file';
                         if (!usesIOSFilePicker(window)) {
-                            fileInput.accept = 'audio/*';
+                            fileInput.accept = 'audio/*,video/mp4,.mp4';
                         }
                         fileInput.multiple = true;
                         fileInput.style.display = 'none';

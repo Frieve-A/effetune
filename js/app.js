@@ -1279,7 +1279,8 @@ class App {
                                 'opus': 'audio/opus',
                                 'm4a': 'audio/mp4',
                                 'aac': 'audio/aac',
-                                'webm': 'audio/webm'
+                                'webm': 'audio/webm',
+                                'mp4': 'video/mp4'
                             };
                             const mimeType = mimeTypes[extension] || 'audio/mpeg';
                             

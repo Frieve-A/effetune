@@ -889,7 +889,7 @@ test('initializeAndBuildPipeline loads pending, URL, and saved pipeline state', 
 
 test('event listeners, output-device changes, relaunch, and command-line music coordinate app state', async () => {
   await withAppModule({
-    pendingMusicFiles: ['C:\\Music\\one.mp3', 'C:\\Music\\bad.wav'],
+    pendingMusicFiles: ['C:\\Music\\one.MP4', 'C:\\Music\\bad.wav'],
     electronAPI: {
       platform: 'win32',
       async readFile(path) {
@@ -933,6 +933,12 @@ test('event listeners, output-device changes, relaunch, and command-line music c
       pipelineB: null,
       reapplyResult: false
     });
+    let openedFiles = [];
+    const createAudioPlayer = deps.uiManager.createAudioPlayer.bind(deps.uiManager);
+    deps.uiManager.createAudioPlayer = (files, replace) => {
+      openedFiles = files;
+      return createAudioPlayer(files, replace);
+    };
     window.pipelineManager = deps.pipelineManager;
     const app = new mod.App(deps);
     app.setupEventListeners();
@@ -963,6 +969,8 @@ test('event listeners, output-device changes, relaunch, and command-line music c
     await flushMicrotasks();
     await runTimers(timers);
     assert.equal(calls.some(call => call[0] === 'ui.createAudioPlayer'), true);
+    assert.equal(openedFiles[0].name, 'one.MP4');
+    assert.equal(openedFiles[0].type, 'video/mp4');
     assert.deepEqual(window.pendingMusicFiles, []);
   });
 });

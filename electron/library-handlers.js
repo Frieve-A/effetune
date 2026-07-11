@@ -11,7 +11,8 @@ const MAX_LIBRARY_VALIDATE_ROOTS = 128;
 const MAX_LIBRARY_VALIDATE_CONCURRENCY = 8;
 const MAX_LIBRARY_SCAN_ID_LENGTH = 128;
 const MAX_LIBRARY_SCAN_ROOTS = 128;
-const MAX_LIBRARY_SCAN_KNOWN_FILES = 100000;
+// Bound the main-process stat cache; excess entries are reparsed instead of rejecting the scan.
+const MAX_LIBRARY_SCAN_KNOWN_FILES = 250000;
 const MAX_LIBRARY_SCAN_STRING_LENGTH = 8192;
 const MAX_LIBRARY_LANGUAGE_HINT_STRING_LENGTH = 64;
 const MAX_LIBRARY_LANGUAGE_HINTS = 8;
@@ -261,11 +262,11 @@ function normalizeKnownFile(file, index) {
 
 function normalizeKnownFiles(knownFiles) {
   if (!Array.isArray(knownFiles)) return [];
-  if (knownFiles.length > MAX_LIBRARY_SCAN_KNOWN_FILES) {
-    throw createScanRequestLimitError(`Library scan supports at most ${MAX_LIBRARY_SCAN_KNOWN_FILES} known files`);
-  }
   const normalizedFiles = [];
-  for (let index = 0; index < knownFiles.length; index += 1) {
+  const inputLimit = knownFiles.length < MAX_LIBRARY_SCAN_KNOWN_FILES
+    ? knownFiles.length
+    : MAX_LIBRARY_SCAN_KNOWN_FILES;
+  for (let index = 0; index < inputLimit; index += 1) {
     const normalizedFile = normalizeKnownFile(knownFiles[index], index);
     if (normalizedFile) normalizedFiles.push(normalizedFile);
   }

@@ -84,6 +84,7 @@ export class ElectronLibrarySource {
     let cancelRequested = false;
     const request = {
       ...options,
+      skipCovers: false,
       roots: (options.folders || []).map(folder => ({
         folderId: folder.id,
         id: folder.id,

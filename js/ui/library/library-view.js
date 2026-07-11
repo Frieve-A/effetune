@@ -95,6 +95,8 @@ export class LibraryView {
     this.typeJumpTimer = null;
     this.renderScheduled = false;
     this.libraryReturnFocus = null;
+    this.artworkRequestVersion = 0;
+    this.pendingArtworkUrlReleases = new Set();
   }
 
   mount() {
@@ -226,6 +228,7 @@ export class LibraryView {
     // handler does not survive teardown and re-render the hidden view.
     this.trackScrollCleanup?.();
     this.trackScrollCleanup = null;
+    this.invalidateArtworkRequests();
     if (this.mobileHistoryDepth > 0 && typeof globalThis.history?.go === 'function') {
       this.suppressPopStateCount += 1;
       globalThis.history.go(-this.mobileHistoryDepth);
@@ -487,6 +490,7 @@ export class LibraryView {
 
   render() {
     if (!this.root) return;
+    this.invalidateArtworkRequests();
     this.pendingBreakpointRebuild = false;
     const renderVersion = ++this.renderVersion;
     this.syncNowPlayingTrack();
@@ -792,14 +796,86 @@ export class LibraryView {
     this.content.appendChild(grid);
   }
 
+  invalidateArtworkRequests() {
+    this.artworkRequestVersion = (this.artworkRequestVersion || 0) + 1;
+    const releases = [...(this.pendingArtworkUrlReleases || [])];
+    for (const release of releases) {
+      release();
+    }
+  }
+
+  trackOwnedArtworkURL(url) {
+    if (!this.pendingArtworkUrlReleases) {
+      this.pendingArtworkUrlReleases = new Set();
+    }
+    let active = true;
+    const release = () => {
+      if (!active) return;
+      active = false;
+      this.pendingArtworkUrlReleases.delete(release);
+      if (typeof URL === 'undefined' || typeof URL.revokeObjectURL !== 'function') return;
+      try {
+        URL.revokeObjectURL(url);
+      } catch (_) {
+        // Ignore stale object URLs.
+      }
+    };
+    this.pendingArtworkUrlReleases.add(release);
+    return release;
+  }
+
+  isArtworkRequestCurrent(container, artworkId, requestVersion) {
+    return requestVersion === (this.artworkRequestVersion || 0) &&
+      container?.dataset?.artworkId === artworkId;
+  }
+
+  showArtworkPlaceholder(container, artworkId, image = null, requestVersion = this.artworkRequestVersion || 0) {
+    if (!this.isArtworkRequestCurrent(container, artworkId, requestVersion)) return;
+    image?.remove?.();
+    if (!container.querySelector?.('span')) {
+      container.appendChild(document.createElement('span'));
+    }
+  }
+
   async renderArtwork(container, artworkId) {
     if (!container || !artworkId) return;
+    const requestVersion = this.artworkRequestVersion || 0;
+    let releaseOwnedUrl = null;
     try {
-      const url = await this.manager.getArtworkThumbURL(artworkId);
-      if (!url || container.dataset?.artworkId !== artworkId) return;
+      let url = '';
+      if (typeof this.manager.getArtworkThumbBlob === 'function' &&
+        typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+        const blob = await this.manager.getArtworkThumbBlob(artworkId);
+        if (!this.isArtworkRequestCurrent(container, artworkId, requestVersion)) return;
+        if (!blob) {
+          this.showArtworkPlaceholder(container, artworkId, null, requestVersion);
+          return;
+        }
+        url = URL.createObjectURL(blob);
+        releaseOwnedUrl = this.trackOwnedArtworkURL(url);
+      } else {
+        url = await this.manager.getArtworkThumbURL(artworkId);
+      }
+      if (!url || !this.isArtworkRequestCurrent(container, artworkId, requestVersion)) {
+        releaseOwnedUrl?.();
+        if (!url) this.showArtworkPlaceholder(container, artworkId, null, requestVersion);
+        return;
+      }
+
       const img = document.createElement('img');
       img.className = 'library-artwork-image';
       img.alt = '';
+      const release = () => {
+        releaseOwnedUrl?.();
+        releaseOwnedUrl = null;
+      };
+      img.addEventListener?.('load', release, { once: true });
+      img.addEventListener?.('error', () => {
+        release();
+        if (this.isArtworkRequestCurrent(container, artworkId, requestVersion)) {
+          this.showArtworkPlaceholder(container, artworkId, img, requestVersion);
+        }
+      }, { once: true });
       img.src = url;
       const placeholder = container.querySelector?.('span');
       if (placeholder?.parentNode) {
@@ -811,7 +887,8 @@ export class LibraryView {
         container.appendChild(img);
       }
     } catch (_) {
-      // Artwork is optional; keep the placeholder when a cached thumbnail is unavailable.
+      releaseOwnedUrl?.();
+      this.showArtworkPlaceholder(container, artworkId, null, requestVersion);
     }
   }
 

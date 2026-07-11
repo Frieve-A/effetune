@@ -132,8 +132,8 @@ test('showOpenDialog normalizes playback audio filters and leaves unrelated filt
     filters: [{ name: 'Audio Files', extensions: ['mp3'] }]
   });
   assert.deepEqual(playback.calls[0][2].filters, [{
-    name: 'Audio Files (MP3, WAV, OGG, FLAC, OPUS, M4A, AAC, WEBM)',
-    extensions: ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm']
+    name: 'Audio Files (MP3, WAV, OGG, FLAC, OPUS, M4A, AAC, WEBM, MP4)',
+    extensions: ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', 'mp4']
   }]);
 
   const offline = createHarness();
@@ -263,10 +263,11 @@ test('handleDroppedFilesWithPaths filters supported playback audio paths and rec
   assert.deepEqual(await harness.module.handleDroppedFilesWithPaths([
     'song.mp3',
     'VOICE.WEBM',
+    'movie.MP4',
     'cover.png',
     '',
     null
-  ]), ['song.mp3', 'VOICE.WEBM']);
+  ]), ['song.mp3', 'VOICE.WEBM', 'movie.MP4']);
 
   await withMutedConsoleAsync('error', async () => {
     assert.deepEqual(await harness.module.handleDroppedFilesWithPaths(null), []);
@@ -415,15 +416,17 @@ test('processCommandLineArgs logs renderer flag update failures after loading a 
 test('processCommandLineArgs stores existing music files in packaged mode', () => {
   const dir = createTempDir('effetune-cli');
   const musicPath = path.join(dir, 'song.OPUS');
+  const mp4Path = path.join(dir, 'movie.MP4');
   fs.writeFileSync(musicPath, 'audio');
+  fs.writeFileSync(mp4Path, 'media');
   const harness = createHarness({ isFirstLaunch: false, mainWindow: null });
 
   withPatchedProperty(process, 'defaultApp', false, () => {
-    harness.module.processCommandLineArgs(['app.exe', musicPath, path.join(dir, 'missing.wav'), 'notes.txt']);
+    harness.module.processCommandLineArgs(['app.exe', musicPath, mp4Path, path.join(dir, 'missing.wav'), 'notes.txt']);
   });
 
-  assert.deepEqual(harness.commandLineMusicFiles, [musicPath]);
-  assert.deepEqual(harness.savedCommandLineMusicFiles, [path.resolve(musicPath)]);
+  assert.deepEqual(harness.commandLineMusicFiles, [musicPath, mp4Path]);
+  assert.deepEqual(harness.savedCommandLineMusicFiles, [path.resolve(musicPath), path.resolve(mp4Path)]);
 });
 
 test('processCommandLineArgs recovers from fs errors while checking preset and music files', () => {

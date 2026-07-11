@@ -15,6 +15,12 @@ const reservedKeys = new Set([
 const kinds = new Set(['float', 'int', 'bool', 'enum']);
 const policies = new Set(['per-sample', 'spectral']);
 const structuredCodecs = new Set(['matrix-routes-v1']);
+const unsafeJsLiteralCharacters = Object.freeze({
+  '<': '\\u003C',
+  '>': '\\u003E',
+  '\u2028': '\\u2028',
+  '\u2029': '\\u2029'
+});
 
 function fail(message, source = null) {
   const prefix = source ? `${source}: ` : '';
@@ -385,7 +391,10 @@ function jsStructuredPacker(spec) {
 }
 
 function jsLiteral(value) {
-  return JSON.stringify(value);
+  return JSON.stringify(value).replace(
+    /[<>\u2028\u2029]/g,
+    character => unsafeJsLiteralCharacters[character]
+  );
 }
 
 function jsReadExpression(field, index) {

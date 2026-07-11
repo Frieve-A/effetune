@@ -1046,7 +1046,7 @@ function registerIpcHandlers() {
       // Filter for audio files
       const audioFilePaths = filePaths.filter(filePath => {
         const ext = path.extname(filePath).toLowerCase();
-        const isAudio = ['.mp3', '.wav', '.ogg', '.flac', '.opus', '.m4a', '.aac', '.webm'].includes(ext);
+        const isAudio = ['.mp3', '.wav', '.ogg', '.flac', '.opus', '.m4a', '.aac', '.webm', '.mp4'].includes(ext);
         return isAudio;
       });
       

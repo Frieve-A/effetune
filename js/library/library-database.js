@@ -1,6 +1,7 @@
 import { MUSIC_LIBRARY_DB_NAME, MUSIC_LIBRARY_DB_VERSION } from './constants.js';
 
 const STORE_NAMES = Object.freeze(['folders', 'tracks', 'artwork', 'playlists', 'meta']);
+const TRACK_ID_READ_BATCH_SIZE = 1000;
 
 export class LibraryDatabase {
   constructor({ indexedDB = globalThis.indexedDB } = {}) {
@@ -96,8 +97,7 @@ export class LibraryDatabase {
 
   async deleteTracks(ids = []) {
     if (ids.length === 0) return;
-    const idSet = new Set(ids);
-    const tracks = (await this.getAllTracks()).filter(track => idSet.has(track.id));
+    const tracks = await this.getTracksByIds(ids);
     await this.markPlaylistTracksUnresolved(tracks);
     await this.transaction(['tracks'], 'readwrite', stores => {
       for (const id of ids) {
@@ -144,8 +144,39 @@ export class LibraryDatabase {
   }
 
   async getTracksByFolder(folderId) {
-    const tracks = await this.getAllTracks();
-    return tracks.filter(track => track.folderId === folderId);
+    if (!this.db) {
+      return [...this.memory.tracks.values()]
+        .filter(track => track.folderId === folderId)
+        .map(cloneValue);
+    }
+    const store = this.db.transaction('tracks', 'readonly').objectStore('tracks');
+    return this.request(store.index('byFolder').getAll(folderId));
+  }
+
+  async getTracksByIds(ids = []) {
+    if (!ids.length) return [];
+    if (!this.db) {
+      return ids.map(id => this.memory.tracks.get(id)).filter(Boolean).map(cloneValue);
+    }
+    const tracks = [];
+    for (let start = 0; start < ids.length; start += TRACK_ID_READ_BATCH_SIZE) {
+      const batchIds = ids.slice(start, start + TRACK_ID_READ_BATCH_SIZE);
+      const batch = await new Promise((resolve, reject) => {
+        const tx = this.db.transaction('tracks', 'readonly');
+        const store = tx.objectStore('tracks');
+        const results = new Array(batchIds.length);
+        tx.oncomplete = () => resolve(results.filter(Boolean));
+        attachTransactionFailureHandlers(tx, reject);
+        for (let index = 0; index < batchIds.length; index += 1) {
+          const request = store.get(batchIds[index]);
+          request.onsuccess = () => {
+            results[index] = request.result;
+          };
+        }
+      });
+      for (const track of batch) tracks.push(track);
+    }
+    return tracks;
   }
 
   async getKnownFilesByFolder(folderId) {
@@ -169,25 +200,118 @@ export class LibraryDatabase {
     return this.get('artwork', id);
   }
 
-  async recalculateArtworkRefCounts() {
-    const artworkIds = await this.getAllKeys('artwork');
-    if (!artworkIds.length) return;
-    const refCounts = new Map();
-    for (const track of await this.getAllTracks()) {
-      if (!track.artworkId) continue;
-      refCounts.set(track.artworkId, (refCounts.get(track.artworkId) || 0) + 1);
+  async incrementArtworkRefCount(id, refCountDelta = 1) {
+    if (!this.db) {
+      const artwork = this.memory.artwork.get(id);
+      if (!artwork) return false;
+      this.memory.artwork.set(id, cloneValue({
+        ...artwork,
+        refCount: (artwork.refCount || 0) + refCountDelta
+      }));
+      return true;
     }
-    for (const artworkId of artworkIds) {
-      const refCount = refCounts.get(artworkId) || 0;
-      if (refCount === 0) {
-        await this.delete('artwork', artworkId);
-      } else {
-        const artwork = await this.get('artwork', artworkId);
-        if (artwork.refCount !== refCount) {
-          await this.putArtwork({ ...artwork, refCount });
+
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction('artwork', 'readwrite');
+      const store = tx.objectStore('artwork');
+      let incremented = false;
+      tx.oncomplete = () => resolve(incremented);
+      attachTransactionFailureHandlers(tx, reject);
+      const request = store.get(id);
+      request.onsuccess = () => {
+        const artwork = request.result;
+        if (!artwork) return;
+        incremented = true;
+        store.put({
+          ...artwork,
+          refCount: (artwork.refCount || 0) + refCountDelta
+        });
+      };
+    });
+  }
+
+  async upsertArtworkReference(artwork, refCountDelta = 1) {
+    if (!this.db) {
+      const existing = this.memory.artwork.get(artwork.id);
+      this.memory.artwork.set(artwork.id, cloneValue(existing
+        ? { ...existing, refCount: (existing.refCount || 0) + refCountDelta }
+        : { ...artwork, refCount: refCountDelta }));
+      return artwork.id;
+    }
+
+    await new Promise((resolve, reject) => {
+      const tx = this.db.transaction('artwork', 'readwrite');
+      const store = tx.objectStore('artwork');
+      tx.oncomplete = () => resolve();
+      attachTransactionFailureHandlers(tx, reject);
+      const request = store.get(artwork.id);
+      request.onsuccess = () => {
+        const existing = request.result;
+        store.put(existing
+          ? { ...existing, refCount: (existing.refCount || 0) + refCountDelta }
+          : { ...artwork, refCount: refCountDelta });
+      };
+    });
+    return artwork.id;
+  }
+
+  async recalculateArtworkRefCounts() {
+    if (!this.db) {
+      const refCounts = new Map();
+      for (const track of this.memory.tracks.values()) {
+        if (!track.artworkId) continue;
+        refCounts.set(track.artworkId, (refCounts.get(track.artworkId) || 0) + 1);
+      }
+      for (const [artworkId, artwork] of this.memory.artwork) {
+        const refCount = refCounts.get(artworkId) || 0;
+        if (refCount === 0) {
+          this.memory.artwork.delete(artworkId);
+        } else if (artwork.refCount !== refCount) {
+          this.memory.artwork.set(artworkId, cloneValue({ ...artwork, refCount }));
         }
       }
+      return;
     }
+
+    const refCounts = new Map();
+    await new Promise((resolve, reject) => {
+      const tx = this.db.transaction(['tracks', 'artwork'], 'readwrite');
+      const trackStore = tx.objectStore('tracks');
+      const artworkStore = tx.objectStore('artwork');
+
+      tx.oncomplete = () => resolve();
+      attachTransactionFailureHandlers(tx, reject);
+
+      const scanArtwork = () => {
+        const request = artworkStore.openCursor();
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (!cursor) return;
+          const artwork = cursor.value;
+          const refCount = refCounts.get(artwork.id) || 0;
+          if (refCount === 0) {
+            cursor.delete();
+          } else if (artwork.refCount !== refCount) {
+            cursor.update({ ...artwork, refCount });
+          }
+          cursor.continue();
+        };
+      };
+
+      const request = trackStore.openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          scanArtwork();
+          return;
+        }
+        const artworkId = cursor.value?.artworkId;
+        if (artworkId) {
+          refCounts.set(artworkId, (refCounts.get(artworkId) || 0) + 1);
+        }
+        cursor.continue();
+      };
+    });
   }
 
   async putPlaylist(playlist) {
@@ -253,8 +377,7 @@ export class LibraryDatabase {
         stores[name] = tx.objectStore(name);
       }
       tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error || new Error('IndexedDB transaction aborted'));
+      attachTransactionFailureHandlers(tx, reject);
       callback(stores);
     });
   }
@@ -307,4 +430,14 @@ function cloneValue(value) {
     }
   }
   return JSON.parse(JSON.stringify(value));
+}
+
+function attachTransactionFailureHandlers(tx, reject) {
+  let requestError = null;
+  tx.onerror = event => {
+    requestError = event?.target?.error || requestError;
+  };
+  tx.onabort = () => reject(
+    tx.error || requestError || new Error('IndexedDB transaction aborted')
+  );
 }

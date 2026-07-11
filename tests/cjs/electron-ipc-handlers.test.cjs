@@ -671,8 +671,11 @@ test('IPC handlers manage menus, tray presets, documentation, default menu creat
 
     assert.deepEqual(await handlers.get('open-documentation')({}, '/docs/readme.md#intro'), { success: true });
     assert.deepEqual(await handlers.get('open-documentation')({}, 'https://example.test/docs'), { success: true });
-    listeners.get('files-dropped')({}, ['/tmp/a.mp3', '/tmp/b.txt']);
-    assert.equal(calls.some(call => call[0] === 'webContents.send' && call[1] === 'audio-files-dropped'), true);
+    listeners.get('files-dropped')({}, ['/tmp/a.mp3', '/tmp/movie.MP4', '/tmp/b.txt']);
+    assert.deepEqual(
+      calls.find(call => call[0] === 'webContents.send' && call[1] === 'audio-files-dropped'),
+      ['webContents.send', 'audio-files-dropped', ['/tmp/a.mp3', '/tmp/movie.MP4']]
+    );
   });
 });
 

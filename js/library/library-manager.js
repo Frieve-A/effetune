@@ -175,15 +175,27 @@ export class LibraryManager {
       this.emit('folder-add-rejected', { reason: 'merge-canceled', folder, existing: containment.replace[0] });
       return null;
     }
-    const removedIds = [];
+    const canceledScans = [];
     for (const child of containment.replace) {
-      const canceledScans = this.invalidateFolderScans(child.id);
-      await Promise.allSettled(canceledScans);
-      removedIds.push(...await this.database.deleteFolder(child.id));
-      await this.releaseSourceFolder(child.id);
+      for (const canceledScan of this.invalidateFolderScans(child.id)) {
+        canceledScans.push(canceledScan);
+      }
     }
-    if (containment.replace.length) {
-      await this.database.recalculateArtworkRefCounts();
+    await Promise.allSettled(canceledScans);
+    const removedIds = await this.scanController.runCatalogMutation(async () => {
+      const ids = [];
+      for (const child of containment.replace) {
+        for (const removedId of await this.database.deleteFolder(child.id)) {
+          ids.push(removedId);
+        }
+      }
+      if (containment.replace.length) {
+        await this.database.recalculateArtworkRefCounts();
+      }
+      return ids;
+    });
+    for (const child of containment.replace) {
+      await this.releaseSourceFolder(child.id);
     }
     await this.database.putFolder(folder);
     this.folders = this.mergeRuntimeFolderState(await this.database.getAllFolders());
@@ -268,8 +280,11 @@ export class LibraryManager {
   async removeFolder(folderId) {
     const canceledScans = this.invalidateFolderScans(folderId);
     await Promise.allSettled(canceledScans);
-    const removedIds = await this.database.deleteFolder(folderId);
-    await this.database.recalculateArtworkRefCounts();
+    const removedIds = await this.scanController.runCatalogMutation(async () => {
+      const ids = await this.database.deleteFolder(folderId);
+      await this.database.recalculateArtworkRefCounts();
+      return ids;
+    });
     await this.releaseSourceFolder(folderId);
     this.folders = this.mergeRuntimeFolderState(await this.database.getAllFolders());
     this.index.applyChanges({ removedIds, folders: this.folders });
@@ -314,15 +329,27 @@ export class LibraryManager {
     if (status === 'needs-permission' && candidate.files) {
       status = 'ok';
     }
-    const removedIds = [];
+    const canceledScans = [];
     for (const child of containment.replace) {
-      const canceledScans = this.invalidateFolderScans(child.id);
-      await Promise.allSettled(canceledScans);
-      removedIds.push(...await this.database.deleteFolder(child.id));
-      await this.releaseSourceFolder(child.id);
+      for (const canceledScan of this.invalidateFolderScans(child.id)) {
+        canceledScans.push(canceledScan);
+      }
     }
-    if (containment.replace.length) {
-      await this.database.recalculateArtworkRefCounts();
+    await Promise.allSettled(canceledScans);
+    const removedIds = await this.scanController.runCatalogMutation(async () => {
+      const ids = [];
+      for (const child of containment.replace) {
+        for (const removedId of await this.database.deleteFolder(child.id)) {
+          ids.push(removedId);
+        }
+      }
+      if (containment.replace.length) {
+        await this.database.recalculateArtworkRefCounts();
+      }
+      return ids;
+    });
+    for (const child of containment.replace) {
+      await this.releaseSourceFolder(child.id);
     }
     const updates = {
       displayName: candidate.displayName,
@@ -436,6 +463,10 @@ export class LibraryManager {
 
   async getArtworkThumbURL(artworkId) {
     return this.artwork.getThumbURL(artworkId);
+  }
+
+  async getArtworkThumbBlob(artworkId) {
+    return this.artwork.getThumbBlob(artworkId);
   }
 
   async playTrackIds(trackIds, options = {}) {

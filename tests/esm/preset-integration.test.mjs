@@ -514,6 +514,7 @@ test('openMusicFile opens selected files and reports cancellation or errors', as
   }, async ({ calls }) => {
     await openMusicFile(true);
     assert.deepEqual(calls.find(call => call[0] === 'createAudioPlayer'), ['createAudioPlayer', ['a.mp3', 'b.wav'], false]);
+    assert.equal(calls.find(call => call[0] === 'showOpenDialog')[1].filters[0].extensions.includes('mp4'), true);
   });
 
   await withPresetGlobals({

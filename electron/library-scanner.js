@@ -19,7 +19,7 @@ const MAX_PARSE_QUEUE_SIZE = 1000;
 const DEFAULT_PARSE_FILE_TIMEOUT_MS = 30000;
 const MAX_PARSE_FILE_TIMEOUT_MS = 5 * 60 * 1000;
 
-const SUPPORTED_AUDIO_EXTENSIONS = Object.freeze(['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm']);
+const SUPPORTED_AUDIO_EXTENSIONS = Object.freeze(['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', 'mp4']);
 const SUPPORTED_AUDIO_EXTENSION_SET = new Set(SUPPORTED_AUDIO_EXTENSIONS);
 const RIFF_INFO_NATIVE_TAG_TYPE = 'riff-info';
 const NATIVE_TAG_PRIORITY = ['matroska', 'vorbis', 'ID3v2.4', 'ID3v2.3', 'ID3v2.2', 'iTunes', 'asf', 'AIFF', 'APEv2', RIFF_INFO_NATIVE_TAG_TYPE, 'exif', 'ID3v1'];
@@ -665,9 +665,7 @@ function createKnownFileMap(knownFiles) {
     if (!folderId) continue;
     knownFileMap.set(getKnownFileKey(folderId, file.relativePath), {
       size: Number(file.size),
-      mtimeMs: Number(file.mtimeMs),
-      trackId: typeof file.trackId === 'string' ? file.trackId : null,
-      artworkId: typeof file.artworkId === 'string' ? file.artworkId : null
+      mtimeMs: Number(file.mtimeMs)
     });
   }
 
@@ -2641,9 +2639,22 @@ async function scanLibrary(options = {}, sink = () => {}) {
     skipped: 0
   };
   let skippedSinceLastEmit = 0;
-  let processed = 0;
+  let lastEnumeratedEntry = null;
+  let lastEnumerateProgressFound = 0;
   let lastBatchAt = Date.now();
   let batchState = createEmptyBatchPayloadState();
+
+  async function emitEnumerateProgress(entry, force = false) {
+    if (!entry || stats.found === lastEnumerateProgressFound) return;
+    if (!force && stats.found !== 1 && stats.found % batchSize !== 0) return;
+    lastEnumerateProgressFound = stats.found;
+    await emitToSink(sink, {
+      type: 'enumerate-progress',
+      found: stats.found,
+      folderId: entry.folderId,
+      currentPath: entry.relativePath
+    });
+  }
 
   async function flushBatch(force = false) {
     if (batchState.tracks.length === 0) return;
@@ -2757,17 +2768,6 @@ async function scanLibrary(options = {}, sink = () => {}) {
           await appendTrackToBatch(result.track);
           await flushBatch(false);
         }
-
-        processed += 1;
-        await emitToSink(sink, {
-          type: 'progress',
-          parsed: processed,
-          total: stats.found - stats.skipped,
-          currentPath: candidate.relativePath,
-          folderId: candidate.folderId,
-          found: stats.found,
-          skipped: stats.skipped
-        });
       }
     }
 
@@ -2832,13 +2832,9 @@ async function scanLibrary(options = {}, sink = () => {}) {
       }
 
       stats.found += 1;
+      lastEnumeratedEntry = entry;
       await emitSeenFile({ folderId: entry.folderId, relativePath: entry.relativePath });
-      await emitToSink(sink, {
-        type: 'enumerate-progress',
-        found: stats.found,
-        folderId: entry.folderId,
-        currentPath: entry.relativePath
-      });
+      await emitEnumerateProgress(entry);
       throwIfAborted(signal);
 
       const knownFile = knownFileMap.get(getKnownFileKey(entry.folderId, entry.relativePath));
@@ -2857,6 +2853,10 @@ async function scanLibrary(options = {}, sink = () => {}) {
       }
     }
   }
+
+  throwIfAborted(signal);
+  await emitEnumerateProgress(lastEnumeratedEntry, true);
+  throwIfAborted(signal);
 
   if (skippedSinceLastEmit > 0) {
     await emitToSink(sink, { type: 'skipped', count: skippedSinceLastEmit });

@@ -16,7 +16,7 @@ La Bibliothèque musicale enregistre le catalogue interne de l'application, le c
 - **Navigateurs Chromium sur ordinateur :** utilisent File System Access dans les environnements compatibles. L'accès aux dossiers peut parfois être conservé, mais le navigateur peut aussi redemander une autorisation.
 - **Navigateurs mobiles, Safari et Firefox :** utilisent la sélection de dossier ou de fichier disponible dans le navigateur. Avec la méthode de repli, les fichiers du dossier choisi peuvent être indexés, mais il peut être nécessaire de sélectionner à nouveau le dossier ou les fichiers après un rechargement ou l'expiration des autorisations.
 
-La Bibliothèque musicale indexe les extensions de fichiers audio courantes, notamment MP3, WAV, OGG, FLAC, Opus, M4A, AAC et WebM. La possibilité de lire ces fichiers dépend aussi des capacités de décodage audio du navigateur et du système d'exploitation.
+La Bibliothèque musicale indexe les extensions de fichiers multimédias courantes, notamment MP3, WAV, OGG, FLAC, Opus, M4A, AAC, WebM et MP4. Pour les fichiers MP4, EffeTune lit uniquement la piste audio et n'affiche pas la vidéo. La lecture effective, y compris la prise en charge du codec audio contenu dans le MP4, dépend aussi des capacités de décodage du navigateur et du système d'exploitation.
 
 ## Ouvrir la Bibliothèque musicale
 

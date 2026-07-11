@@ -17,7 +17,7 @@ constants.setAppVersion(appVersion);
 
 const MIN_WINDOW_WIDTH = 1024;
 const MIN_WINDOW_HEIGHT = 768;
-const PLAYBACK_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm'];
+const PLAYBACK_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', 'mp4'];
 const PLAYBACK_AUDIO_EXTENSION_PATTERN_SOURCE = `\\.(${PLAYBACK_AUDIO_EXTENSIONS.join('|')})$`;
 const PLAYBACK_AUDIO_EXTENSION_PATTERN = new RegExp(PLAYBACK_AUDIO_EXTENSION_PATTERN_SOURCE, 'i');
 

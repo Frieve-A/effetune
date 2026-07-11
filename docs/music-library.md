@@ -16,7 +16,7 @@ Music Library stores its catalog, artwork cache, and playlists inside the app. I
 - **PC Chromium browsers:** Use File System Access when available. Folder access can usually be kept, but the browser may ask for permission again.
 - **Mobile browsers, Safari, and Firefox:** Use the browser's available folder or file picker. In fallback mode, you can index selected folder files, but after a reload or lost permission you may need to select the folder or files again.
 
-Music Library indexes common audio file extensions such as MP3, WAV, OGG, FLAC, Opus, M4A, AAC, and WebM. Actual playback support still depends on the browser or OS audio decoder.
+Music Library indexes common media file extensions such as MP3, WAV, OGG, FLAC, Opus, M4A, AAC, WebM, and MP4. For MP4 files, EffeTune plays only the audio track and does not display video. Actual playback support, including the audio codec inside an MP4 file, still depends on the browser or OS decoder.
 
 ## Opening Music Library
 

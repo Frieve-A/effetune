@@ -10,7 +10,8 @@ export const SUPPORTED_AUDIO_EXTENSIONS = Object.freeze([
   'opus',
   'm4a',
   'aac',
-  'webm'
+  'webm',
+  'mp4'
 ]);
 
 export const SUPPORTED_PLAYLIST_EXTENSIONS = Object.freeze([
