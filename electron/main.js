@@ -1170,6 +1170,7 @@ function initializeApp() {
     minimizeToTray: false,
     language: 'auto',
     startupView: 'effects',
+    libraryStartupView: 'tracks',
     pipelineStartup: 'last',
     startupPreset: '',
     checkForUpdatesOnStartup: true

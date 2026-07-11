@@ -28,7 +28,7 @@ Sin mitos audiophiles, solo pura ciencia.
 - Visualización de audio en vivo
 - Cadena de procesamiento de audio que se puede modificar en tiempo real
 - Procesamiento de archivos de audio sin conexión con la cadena de efectos actual
-- Exploración de carpetas locales, metadatos y listas de reproducción con la Biblioteca musical
+- Exploración de subcarpetas locales, metadatos y listas de reproducción con la Biblioteca musical
 - Medición y corrección de respuesta en frecuencia para calibración del sistema
 - Procesamiento y salida multicanal
 
@@ -80,13 +80,13 @@ Para usar EffeTune con reproductores de CD, reproductores de red u otras fuentes
 
 ### Configuración de la aplicación
 
-En el menú **Configuración**, abre **Configuración...** para elegir el idioma, la vista al inicio y el comportamiento del pipeline de efectos al iniciar. La vista al inicio puede ser **Effect Pipeline (predeterminado)** o **Biblioteca musical**.
+En el menú **Configuración**, abre **Configuración...** para elegir el idioma, la vista al inicio y el comportamiento del pipeline de efectos al iniciar. La vista al inicio puede ser **Effect Pipeline (predeterminado)** o **Biblioteca musical**. Si eliges **Biblioteca musical**, usa la lista de al lado para elegir qué sección aparecerá primero: **Pistas**, **Álbumes**, **Artistas**, **Géneros** o **Subcarpetas**.
 
 ### Buscar música en la Biblioteca musical
 
 1. En PC, ábrela con el botón **Biblioteca musical** del encabezado; en móvil, con la pestaña **Biblioteca**; en la aplicación de escritorio, desde **Ver > Biblioteca musical**.
 2. Selecciona **Añadir carpeta de música** e indexa la carpeta que contiene tus archivos de música.
-3. Explora por **Pistas**, **Álbumes**, **Artistas**, **Géneros**, **Carpetas**, **Añadidas recientemente** y **Listas de reproducción**, y usa **Buscar en la biblioteca** para buscar en todo el catálogo.
+3. Explora por **Pistas**, **Álbumes**, **Artistas**, **Géneros**, **Subcarpetas**, **Carpetas**, **Añadidas recientemente** y **Listas de reproducción**, y usa **Buscar en la biblioteca** para buscar en todo el catálogo. La sección **Subcarpetas** agrupa las pistas por la ruta que las contiene dentro de cada carpeta de música indexada, mientras que la sección **Carpetas** gestiona esas carpetas raíz. Las bibliotecas existentes obtienen esta clasificación sin volver a escanear ni migrar el formato de almacenamiento.
 4. Las pistas que encuentres pueden reproducirse a través del pipeline de efectos actual, y puedes gestionar el orden de reproducción y las listas de reproducción con **Reproducir a continuación**, **Añadir a la cola** y **Añadir a lista**.
 5. Después de cambiar archivos, usa **Volver a escanear**; si caducan los permisos del navegador o de una carpeta, usa **Reconectar**.
    - [Más detalles sobre la Biblioteca musical](music-library.md)

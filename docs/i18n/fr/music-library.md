@@ -1,12 +1,12 @@
 ---
 title: "Utiliser la Bibliothèque musicale - EffeTune"
-description: "Découvrez comment créer une Bibliothèque musicale dans EffeTune, rechercher et lire de la musique à partir de dossiers et de métadonnées, et gérer les listes de lecture."
+description: "Découvrez comment créer une Bibliothèque musicale dans EffeTune, rechercher et lire de la musique à partir de sous-dossiers ou de métadonnées, et gérer les listes de lecture."
 lang: fr
 ---
 
 # Utiliser la Bibliothèque musicale
 
-La Bibliothèque musicale indexe les dossiers de musique que vous choisissez et vous permet de parcourir votre collection locale par morceaux, albums, artistes, genres, dossiers, ajouts récents et listes de lecture. Comme pour la lecture normale des fichiers musicaux, le son passe par le pipeline d'effets EffeTune actuel.
+La Bibliothèque musicale indexe les dossiers de musique que vous choisissez et vous permet de parcourir votre collection locale par morceaux, albums, artistes, genres, sous-dossiers, dossiers, ajouts récents et listes de lecture. Comme pour la lecture normale des fichiers musicaux, le son passe par le pipeline d'effets EffeTune actuel.
 
 La Bibliothèque musicale enregistre le catalogue interne de l'application, le cache des illustrations et les listes de lecture. Elle ne modifie, ne renomme, ne déplace et ne supprime jamais les fichiers musicaux eux-mêmes.
 
@@ -26,7 +26,7 @@ La Bibliothèque musicale indexe les extensions de fichiers multimédias courant
 
 Pour revenir à l'édition des effets, cliquez sur le bouton **Effect Pipeline** en disposition ordinateur, ou revenez à l'onglet **Effets** en disposition mobile. Dans l'application de bureau, vous pouvez aussi utiliser **Affichage > Effect Pipeline** ou **Ctrl+E** (**Command+E** sur macOS).
 
-Si vous voulez afficher la Bibliothèque musicale en premier au démarrage, ouvrez **Paramètres > Configuration...** et réglez **Vue au démarrage :** sur **Bibliothèque musicale**.
+Si vous voulez afficher la Bibliothèque musicale en premier au démarrage, ouvrez **Paramètres > Configuration...** et réglez **Vue au démarrage :** sur **Bibliothèque musicale**. Dans la liste située à côté de **Bibliothèque musicale**, choisissez la section qui s'affichera en premier : **Morceaux**, **Albums**, **Artistes**, **Genres** ou **Sous-dossiers**.
 
 ## Ajouter un dossier de musique
 
@@ -45,9 +45,12 @@ Les onglets de navigation permettent de changer de catalogue.
 - **Albums** - regroupe les morceaux par album à partir des métadonnées.
 - **Artistes** - regroupe les morceaux par artiste ou artiste de l'album dans les métadonnées.
 - **Genres** - regroupe les morceaux par genre dans les métadonnées.
+- **Sous-dossiers** - regroupe les morceaux selon le sous-dossier qui les contient.
 - **Dossiers** - affiche les dossiers de bibliothèque enregistrés et leur état d'analyse.
 - **Ajouts récents** - affiche les morceaux récemment indexés.
 - **Listes de lecture** - affiche les listes de lecture créées ou importées dans la Bibliothèque musicale.
+
+Les groupes **Sous-dossiers** utilisent le chemin du sous-dossier qui contient directement chaque morceau, relatif à son dossier de musique importé. Des chemins relatifs identiques appartenant à des dossiers importés différents restent dans des groupes distincts. Les fichiers placés directement à la racine importée ne créent pas de groupe de sous-dossier, mais restent disponibles dans **Morceaux** et **Dossiers**.
 
 **Rechercher dans la bibliothèque** permet de rechercher dans les morceaux, albums, artistes et listes de lecture. En disposition ordinateur, l'en-tête de la liste des morceaux permet de trier par titre, artiste, album, genre ou durée.
 
@@ -55,7 +58,7 @@ Quand les métadonnées sont absentes ou illisibles, EffeTune utilise le nom du 
 
 ## Lire depuis la bibliothèque
 
-Sélectionnez des morceaux, albums, artistes, genres, dossiers, résultats de recherche ou listes de lecture, puis utilisez les actions suivantes.
+Sélectionnez des morceaux, albums, artistes, genres, sous-dossiers, dossiers, résultats de recherche ou listes de lecture, puis utilisez les actions suivantes.
 
 - **Lire** - remplace la file d'attente actuelle du lecteur et lance la lecture.
 - **Aléatoire** - lit les morceaux sélectionnés dans un ordre aléatoire.
@@ -101,6 +104,7 @@ Lors de l'exportation, si vous choisissez **Chemins relatifs**, les chemins sont
 
 - La Bibliothèque musicale lit les fichiers musicaux et les métadonnées, mais n'écrit aucune modification dans les fichiers musicaux.
 - Le cache des illustrations et les listes de lecture sont des données internes à l'application, pas des modifications intégrées aux fichiers musicaux.
+- Le classement par **Sous-dossiers** est déduit des chemins relatifs déjà enregistrés : il apparaît donc dans les bibliothèques existantes sans nouvelle analyse ni migration. Le schéma IndexedDB et le format de stockage restent inchangés.
 - L'espace de stockage du navigateur peut être effacé par les paramètres du navigateur ou par une action de l'utilisateur. Exportez les listes de lecture importantes si nécessaire.
 - Dans l'application web, la disponibilité des dossiers après un rechargement dépend de la gestion des autorisations par le navigateur.
 

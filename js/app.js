@@ -10,6 +10,7 @@ import {
     registerPipelineStateCloseHandler,
     startApplication
 } from './app-bootstrap.js';
+import { normalizeMusicLibraryStartupView } from './library/constants.js';
 
 // Make electronIntegration globally accessible first
 window.electronIntegration = electronIntegration;
@@ -445,7 +446,10 @@ class App {
 
         try {
             applyInitialStartupViewClass(startupConfig, window);
-            await this.uiManager?.showLibraryView?.({ focusSearch: false });
+            await this.uiManager?.showLibraryView?.({
+                focusSearch: false,
+                initialView: normalizeMusicLibraryStartupView(startupConfig.libraryStartupView)
+            });
         } catch (error) {
             console.error('Error opening startup view:', error);
         }

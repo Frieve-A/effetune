@@ -1,7 +1,8 @@
 import {
   MUSIC_LIBRARY_UI_STORAGE_KEY,
   UNKNOWN_ALBUM,
-  UNKNOWN_ARTIST
+  UNKNOWN_ARTIST,
+  normalizeMusicLibraryStartupView
 } from '../../library/constants.js';
 
 const VIEW_LABELS = {
@@ -9,6 +10,7 @@ const VIEW_LABELS = {
   albums: 'library.nav.albums',
   artists: 'library.nav.artists',
   genres: 'library.nav.genres',
+  subfolders: 'library.nav.subfolders',
   folders: 'library.nav.folders',
   playlists: 'library.nav.playlists',
   recent: 'library.nav.recentlyAdded'
@@ -91,6 +93,8 @@ export class LibraryView {
     this.mobileHistoryDepth = 0;
     this.suppressPopStateCount = 0;
     this.mobileSelectionMode = false;
+    this.isViewShown = false;
+    this.lastRevealedMobileNavView = null;
     this.typeJumpBuffer = '';
     this.typeJumpTimer = null;
     this.renderScheduled = false;
@@ -206,13 +210,23 @@ export class LibraryView {
   }
 
   show(options = {}) {
-    const { focusSearch = true, returnFocus = null } = options || {};
+    const { focusSearch = true, returnFocus = null, initialView } = options || {};
+    this.isViewShown = false;
+    this.lastRevealedMobileNavView = null;
+    if (initialView !== undefined) {
+      this.currentView = normalizeMusicLibraryStartupView(initialView);
+      this.detail = null;
+      this.detailSortOverride = false;
+      this.searchQuery = '';
+      if (this.searchInput) this.searchInput.value = '';
+    }
     this.mount();
     this.captureLibraryReturnFocus(returnFocus || document.activeElement);
     document.body.classList.add('view-library');
     this.startDesktopLayoutHeightTracking();
     this.updateDesktopLayoutHeight();
     this.syncNowPlayingTrack();
+    this.isViewShown = true;
     this.render();
     if (focusSearch) this.searchInput?.focus();
   }
@@ -220,6 +234,7 @@ export class LibraryView {
   hide(options = {}) {
     const { restoreFocus = true, returnFocus = null, fallbackFocus = null } = options || {};
     const shouldRestoreFocus = restoreFocus && this.shouldRestoreLibraryFocus();
+    this.isViewShown = false;
     this.pendingBreakpointRebuild = false;
     this.closeContextMenu({ restoreFocus: false });
     this.closePlaylistMenu({ restoreFocus: false });
@@ -512,6 +527,8 @@ export class LibraryView {
       this.renderArtistDetail(this.detail.key);
     } else if (this.detail?.type === 'genre') {
       this.renderTrackList(this.manager.getGenreTracks(this.detail.key), this.detail.title);
+    } else if (this.detail?.type === 'subfolder') {
+      this.renderTrackList(this.manager.getSubfolderTracks(this.detail.key), this.detail.title);
     } else if (this.detail?.type === 'folder') {
       this.renderTrackList(this.manager.getFolderTracks(this.detail.key), this.detail.title);
     } else if (this.currentView === 'albums') {
@@ -520,6 +537,8 @@ export class LibraryView {
       this.renderArtists();
     } else if (this.currentView === 'genres') {
       this.renderGenres();
+    } else if (this.currentView === 'subfolders') {
+      this.renderSubfolders();
     } else if (this.currentView === 'folders') {
       this.renderFolders();
     } else if (this.currentView === 'playlists') {
@@ -538,13 +557,14 @@ export class LibraryView {
 
   renderNav() {
     const counts = this.manager.getCounts();
-    const items = ['tracks', 'albums', 'artists', 'genres', 'folders', 'recent', 'playlists'];
+    const items = ['tracks', 'albums', 'artists', 'genres', 'subfolders', 'folders', 'recent', 'playlists'];
     this.nav.innerHTML = items.map(view => {
       const count = view === 'tracks' ? counts.tracks :
         view === 'albums' ? counts.albums :
           view === 'artists' ? counts.artists :
             view === 'genres' ? counts.genres :
-              view === 'folders' ? this.manager.getFolders().length : '';
+              view === 'subfolders' ? (counts.subfolders ?? this.manager.getSubfolders?.().length ?? 0) :
+                view === 'folders' ? this.manager.getFolders().length : '';
       const active = this.currentView === view;
       return `<button type="button" class="library-nav-item ${active ? 'active' : ''}" data-view="${view}"${active ? ' aria-current="page"' : ''}>
         <span>${escapeHtml(this.t(VIEW_LABELS[view]))}</span>
@@ -556,6 +576,18 @@ export class LibraryView {
         this.navigateToView(button.dataset.view);
       });
     });
+    if (!isMobileLayout()) {
+      this.lastRevealedMobileNavView = null;
+    } else if (
+      this.isViewShown &&
+      this.lastRevealedMobileNavView !== this.currentView
+    ) {
+      this.nav.querySelector('[aria-current="page"]')?.scrollIntoView?.({
+        block: 'nearest',
+        inline: 'nearest'
+      });
+      this.lastRevealedMobileNavView = this.currentView;
+    }
   }
 
   getNavigationSnapshot() {
@@ -617,7 +649,8 @@ export class LibraryView {
       detail.type === 'artist' ? 'artists' :
         detail.type === 'playlist' ? 'playlists' :
           detail.type === 'genre' ? 'genres' :
-            detail.type === 'folder' ? 'folders' : this.currentView);
+            detail.type === 'subfolder' ? 'subfolders' :
+              detail.type === 'folder' ? 'folders' : this.currentView);
     this.detail = { ...detail };
     this.detailSortOverride = false;
     this.searchQuery = '';
@@ -969,6 +1002,40 @@ export class LibraryView {
       button.innerHTML = `<span>${escapeHtml(genre.name)}</span><span>${genre.trackIds.length}</span>`;
       button.addEventListener('click', () => {
         this.navigateToDetail({ type: 'genre', key: genre.key, title: genre.name }, 'genres');
+      });
+      list.appendChild(button);
+    });
+    this.content.appendChild(list);
+  }
+
+  renderSubfolders() {
+    const subfolders = this.manager.getSubfolders();
+    this.content.innerHTML = `<div class="library-section-head"><h2>${escapeHtml(this.t('library.nav.subfolders'))}</h2><span>${subfolders.length}</span></div>`;
+    if (!subfolders.length) {
+      this.content.appendChild(this.emptyState(this.t('library.state.noSubfolders')));
+      return;
+    }
+    const list = document.createElement('div');
+    list.className = 'library-simple-list';
+    const baseTitles = subfolders.map(subfolder => {
+      return [subfolder.rootPath || subfolder.rootName, subfolder.path].filter(Boolean).join(' / ');
+    });
+    const titleCounts = new Map();
+    for (const title of baseTitles) {
+      titleCounts.set(title, (titleCounts.get(title) || 0) + 1);
+    }
+    const titleOccurrences = new Map();
+    subfolders.forEach((subfolder, index) => {
+      const baseTitle = baseTitles[index];
+      const occurrence = (titleOccurrences.get(baseTitle) || 0) + 1;
+      titleOccurrences.set(baseTitle, occurrence);
+      const title = titleCounts.get(baseTitle) > 1 ? `${baseTitle} (${occurrence})` : baseTitle;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'library-simple-row';
+      button.innerHTML = `<span>${escapeHtml(title)}</span><span>${subfolder.trackIds.length}</span>`;
+      button.addEventListener('click', () => {
+        this.navigateToDetail({ type: 'subfolder', key: subfolder.key, title }, 'subfolders');
       });
       list.appendChild(button);
     });
@@ -2470,6 +2537,7 @@ function fallbackText(key, params = {}) {
     'library.nav.albums': 'Albums',
     'library.nav.artists': 'Artists',
     'library.nav.genres': 'Genres',
+    'library.nav.subfolders': 'Subfolders',
     'library.nav.folders': 'Folders',
     'library.nav.playlists': 'Playlists',
     'library.nav.recentlyAdded': 'Recently Added',
@@ -2539,6 +2607,7 @@ function fallbackText(key, params = {}) {
     'library.status.moreTracks': `${params.count || 0} more`,
     'library.state.empty': 'Build your music library',
     'library.state.noResults': `No results for "${params.query || ''}"`,
+    'library.state.noSubfolders': 'No subfolders contain music yet.',
     'library.state.noPlaylists': 'No playlists yet',
     'library.state.noResolvedTracks': 'This playlist has no available tracks.',
     'library.state.noMatchingTrack': 'No matching track was found in the current library.',

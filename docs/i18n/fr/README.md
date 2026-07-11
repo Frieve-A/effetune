@@ -28,7 +28,7 @@ Aucun mythe audiophile, juste de la science pure.
 - Visualisation audio en direct
 - Pipeline audio pouvant être modifié en temps réel
 - Traitement de fichiers audio hors ligne avec la chaîne d'effets actuelle
-- Bibliothèque musicale pour parcourir les dossiers locaux, les métadonnées et les listes de lecture
+- Bibliothèque musicale pour parcourir les sous-dossiers locaux, les métadonnées et les listes de lecture
 - Mesure et correction de la réponse en fréquence pour calibrer votre système
 - Traitement et sortie multicanal
 
@@ -80,13 +80,13 @@ Pour utiliser EffeTune avec des lecteurs CD, lecteurs réseau ou autres sources 
 
 ### Paramètres de l'application
 
-Ouvrez **Paramètres > Configuration...** pour choisir la langue, la vue au démarrage et le comportement du pipeline d'effets au démarrage. **Vue au démarrage :** peut être réglée sur **Effect Pipeline (par défaut)** ou **Bibliothèque musicale**.
+Ouvrez **Paramètres > Configuration...** pour choisir la langue, la vue au démarrage et le comportement du pipeline d'effets au démarrage. **Vue au démarrage :** peut être réglée sur **Effect Pipeline (par défaut)** ou **Bibliothèque musicale**. Si vous choisissez **Bibliothèque musicale**, utilisez la liste juste à côté pour choisir la section qui s'affichera en premier : **Morceaux**, **Albums**, **Artistes**, **Genres** ou **Sous-dossiers**.
 
 ### Rechercher de la musique dans la Bibliothèque musicale
 
 1. Sur ordinateur, ouvrez-la avec le bouton **Bibliothèque musicale** dans l'en-tête ; sur mobile, avec l'onglet **Bibliothèque** ; dans l'application de bureau, avec **Affichage > Bibliothèque musicale**.
 2. Sélectionnez **Ajouter un dossier de musique** pour indexer le dossier qui contient vos fichiers musicaux.
-3. Parcourez les **Morceaux**, **Albums**, **Artistes**, **Genres**, **Dossiers**, **Ajouts récents** et **Listes de lecture**, et utilisez **Rechercher dans la bibliothèque** pour rechercher dans tout le catalogue.
+3. Parcourez les **Morceaux**, **Albums**, **Artistes**, **Genres**, **Sous-dossiers**, **Dossiers**, **Ajouts récents** et **Listes de lecture**, et utilisez **Rechercher dans la bibliothèque** pour rechercher dans tout le catalogue. La vue **Sous-dossiers** classe les morceaux selon leur chemin au sein de chaque dossier de musique indexé, tandis que la vue **Dossiers** sert à gérer ces dossiers racine. Les bibliothèques existantes bénéficient de ce classement sans nouvelle analyse ni migration du format de stockage.
 4. Les morceaux trouvés peuvent être lus via le pipeline d'effets actuel. Utilisez **Lire ensuite**, **Ajouter à la file** et **Ajouter à une liste** pour gérer l'ordre de lecture et les listes de lecture.
 5. Après avoir modifié des fichiers, utilisez **Analyser à nouveau** ; si les autorisations du navigateur ou du dossier expirent, utilisez **Reconnecter**.
    - [Détails de la Bibliothèque musicale](music-library.md)

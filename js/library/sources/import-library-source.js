@@ -1,5 +1,9 @@
 import { FsaLibrarySource } from './fsa-library-source.js';
-import { createFallbackDisplayName, normalizeRelativePath } from '../constants.js';
+import {
+  createFallbackDisplayName,
+  normalizeRelativePath,
+  normalizeRelativePathForMatching
+} from '../constants.js';
 
 export class ImportLibrarySource extends FsaLibrarySource {
   constructor(windowRef = globalThis.window) {
@@ -11,6 +15,7 @@ export class ImportLibrarySource extends FsaLibrarySource {
       showInFolder: false
     };
     this.sessionFiles = new Map();
+    this.normalizedSessionFileKeys = new Map();
   }
 
   async pickFolder() {
@@ -92,7 +97,15 @@ export class ImportLibrarySource extends FsaLibrarySource {
     this.releaseFolder(folderId);
     files.forEach(file => {
       const relativePath = normalizeImportPath(file);
-      this.sessionFiles.set(`${folderId}/${relativePath}`, file);
+      const exactKey = `${folderId}/${relativePath}`;
+      const matchingKey = `${folderId}/${normalizeRelativePathForMatching(relativePath)}`;
+      this.sessionFiles.set(exactKey, file);
+      const existingKey = this.normalizedSessionFileKeys.get(matchingKey);
+      if (existingKey === undefined || existingKey === exactKey) {
+        this.normalizedSessionFileKeys.set(matchingKey, exactKey);
+      } else {
+        this.normalizedSessionFileKeys.set(matchingKey, null);
+      }
     });
   }
 
@@ -104,11 +117,22 @@ export class ImportLibrarySource extends FsaLibrarySource {
         this.sessionFiles.delete(key);
       }
     }
+    for (const key of [...this.normalizedSessionFileKeys.keys()]) {
+      if (key.startsWith(prefix)) {
+        this.normalizedSessionFileKeys.delete(key);
+      }
+    }
   }
 
   async resolveForPlayback(track) {
-    const key = `${track.folderId}/${track.relativePath}`;
-    const file = this.sessionFiles.get(key);
+    const relativePath = normalizeRelativePath(track.relativePath);
+    const key = `${track.folderId}/${relativePath}`;
+    let file = this.sessionFiles.get(key);
+    if (!file) {
+      const matchingKey = `${track.folderId}/${normalizeRelativePathForMatching(relativePath)}`;
+      const compatibleKey = this.normalizedSessionFileKeys.get(matchingKey);
+      if (compatibleKey) file = this.sessionFiles.get(compatibleKey);
+    }
     if (!file) throw new Error('Imported file is offline. Re-import the folder.');
     return { file };
   }

@@ -454,6 +454,42 @@ test('showLibraryView skips showing a stale mobile library request', async () =>
   ]);
 });
 
+test('showLibraryView forwards the configured startup subview', async () => {
+  const calls = [];
+  const opener = new FakeElement('button');
+  const manager = Object.assign(Object.create(UIManager.prototype), {
+    layoutMode: { isMobile: false },
+    mobileNav: {
+      setView(view, options) {
+        calls.push(['mobileNav.setView', view, options]);
+      }
+    },
+    async ensureLibraryManager() {
+      calls.push(['ensureLibraryManager']);
+      this.libraryView = {
+        show(options) {
+          calls.push(['libraryView.show', options]);
+        }
+      };
+    },
+    updateViewSwitchButtons(visible) {
+      calls.push(['updateViewSwitchButtons', visible]);
+    }
+  });
+
+  assert.equal(await manager.showLibraryView({
+    focusSearch: false,
+    initialView: 'artists',
+    opener
+  }), true);
+  assert.deepEqual(calls, [
+    ['ensureLibraryManager'],
+    ['libraryView.show', { focusSearch: false, returnFocus: opener, initialView: 'artists' }],
+    ['updateViewSwitchButtons', true],
+    ['mobileNav.setView', 'library', { fromLibraryView: true }]
+  ]);
+});
+
 test('Ctrl or Cmd plus L toggles the music library view', async () => {
   const calls = [];
   const documentRef = createDocument();
@@ -538,6 +574,10 @@ test('LibraryView show can skip search focus and hide restores the opener', asyn
     root,
     searchInput,
     uiManager: {},
+    currentView: 'tracks',
+    detail: { type: 'album', key: 'old' },
+    detailSortOverride: true,
+    searchQuery: 'old query',
     mount() {
       return root;
     },
@@ -546,9 +586,13 @@ test('LibraryView show can skip search focus and hide restores the opener', asyn
   });
 
   await withGlobals({ document: documentRef }, async () => {
-    view.show({ focusSearch: false, returnFocus: opener });
+    view.show({ focusSearch: false, returnFocus: opener, initialView: 'subfolders' });
     assert.equal(documentRef.body.classList.contains('view-library'), true);
     assert.equal(documentRef.activeElement, opener);
+    assert.equal(view.currentView, 'subfolders');
+    assert.equal(view.detail, null);
+    assert.equal(view.detailSortOverride, false);
+    assert.equal(view.searchQuery, '');
 
     searchInput.focus();
     view.hide();
@@ -557,6 +601,9 @@ test('LibraryView show can skip search focus and hide restores the opener', asyn
 
     view.show({ returnFocus: opener });
     assert.equal(documentRef.activeElement, searchInput);
+
+    view.show({ focusSearch: false, initialView: 'folders' });
+    assert.equal(view.currentView, 'tracks');
   });
 });
 
@@ -956,7 +1003,7 @@ test('LibraryView marks the active desktop nav item as current', () => {
     currentView: 'albums',
     manager: {
       getCounts() {
-        return { tracks: 3, albums: 1, artists: 2, genres: 0 };
+        return { tracks: 3, albums: 1, artists: 2, genres: 0, subfolders: 4 };
       },
       getFolders() {
         return [];
@@ -969,6 +1016,215 @@ test('LibraryView marks the active desktop nav item as current', () => {
 
   assert.match(nav.innerHTML, /class="library-nav-item active" data-view="albums" aria-current="page"/);
   assert.doesNotMatch(nav.innerHTML, /data-view="tracks" aria-current="page"/);
+  assert.match(nav.innerHTML, /data-view="subfolders"[^]*?<span class="library-count">4<\/span>/);
+});
+
+test('LibraryView reveals the configured active nav only after startup placement is ready', async () => {
+  const nav = new FakeElement('aside');
+  const activeButton = new FakeElement('button');
+  const scrollCalls = [];
+  let view;
+  activeButton.scrollIntoView = options => scrollCalls.push([view.currentView, options]);
+  nav.querySelector = selector => selector === '[aria-current="page"]' ? activeButton : null;
+  const root = new FakeElement('section');
+  let mounted = false;
+  view = Object.assign(Object.create(LibraryView.prototype), {
+    root,
+    nav,
+    currentView: 'tracks',
+    detail: null,
+    detailSortOverride: false,
+    searchQuery: '',
+    searchInput: null,
+    isViewShown: false,
+    lastRevealedMobileNavView: null,
+    mobileHistoryDepth: 0,
+    libraryReturnFocus: null,
+    trackScrollCleanup: null,
+    manager: {
+      getCounts() {
+        return { tracks: 3, albums: 1, artists: 2, genres: 1, subfolders: 4 };
+      },
+      getFolders() {
+        return [];
+      }
+    },
+    uiManager: { t: key => key },
+    mount() {
+      if (!mounted) {
+        mounted = true;
+        this.renderNav();
+      }
+      return root;
+    },
+    captureLibraryReturnFocus() {},
+    startDesktopLayoutHeightTracking() {},
+    updateDesktopLayoutHeight() {},
+    stopDesktopLayoutHeightTracking() {},
+    syncNowPlayingTrack() {},
+    closeContextMenu() {},
+    closePlaylistMenu() {},
+    invalidateArtworkRequests() {},
+    render() {
+      this.renderNav();
+    }
+  });
+  const documentRef = createDocument();
+  documentRef.body.classList.add('layout-mobile', 'view-library');
+
+  await withGlobals({ document: documentRef }, async () => {
+    view.mount();
+    assert.deepEqual(scrollCalls, []);
+
+    view.show({ focusSearch: false, initialView: 'subfolders' });
+    assert.deepEqual(scrollCalls, [[
+      'subfolders',
+      { block: 'nearest', inline: 'nearest' }
+    ]]);
+
+    view.renderNav();
+    assert.equal(scrollCalls.length, 1);
+
+    view.currentView = 'genres';
+    view.renderNav();
+    assert.deepEqual(scrollCalls, [
+      ['subfolders', { block: 'nearest', inline: 'nearest' }],
+      ['genres', { block: 'nearest', inline: 'nearest' }]
+    ]);
+
+    documentRef.body.classList.remove('layout-mobile');
+    view.currentView = 'artists';
+    view.renderNav();
+    assert.equal(scrollCalls.length, 2);
+
+    view.hide({ restoreFocus: false });
+    documentRef.body.classList.add('layout-mobile', 'view-library');
+    view.currentView = 'tracks';
+    view.renderNav();
+    assert.equal(scrollCalls.length, 2);
+  });
+});
+
+test('LibraryView renders subfolder groups and opens the selected detail', async () => {
+  const calls = [];
+  const content = new FakeElement('main');
+  const documentRef = createDocument();
+  const subfolders = [
+    {
+      key: 'f_music\0Artist/Album',
+      folderId: 'f_music',
+      path: 'Artist/Album',
+      name: 'Album',
+      rootName: 'Music',
+      trackIds: ['t_one', 't_two']
+    },
+    {
+      key: 'f_archive\0Disc',
+      folderId: 'f_archive',
+      path: 'Disc',
+      name: 'Disc',
+      rootName: 'Archive',
+      trackIds: ['t_three']
+    },
+    {
+      key: 'f_other\0Artist/Album',
+      folderId: 'f_other',
+      path: 'Artist/Album',
+      name: 'Album',
+      rootName: 'Music',
+      trackIds: ['t_four']
+    }
+  ];
+  const view = Object.assign(Object.create(LibraryView.prototype), {
+    content,
+    manager: {
+      getSubfolders() {
+        return subfolders;
+      }
+    },
+    uiManager: { t: key => key },
+    navigateToDetail(detail, viewName) {
+      calls.push(['navigateToDetail', detail, viewName]);
+    }
+  });
+
+  await withGlobals({ document: documentRef }, async () => {
+    view.renderSubfolders();
+    const list = content.children[0];
+    assert.equal(list.className, 'library-simple-list');
+    assert.equal(list.children.length, 3);
+    assert.match(content.innerHTML, /<h2>Subfolders<\/h2>/);
+    assert.match(content.innerHTML, /<span>3<\/span>/);
+    assert.match(list.children[0].innerHTML, /Music \/ Artist\/Album \(1\)/);
+    assert.match(list.children[0].innerHTML, /<span>2<\/span>/);
+    assert.match(list.children[2].innerHTML, /Music \/ Artist\/Album \(2\)/);
+
+    await list.children[0].click();
+  });
+
+  assert.deepEqual(calls, [[
+    'navigateToDetail',
+    {
+      type: 'subfolder',
+      key: 'f_music\0Artist/Album',
+      title: 'Music / Artist/Album (1)'
+    },
+    'subfolders'
+  ]]);
+});
+
+test('LibraryView dispatches subfolder list and detail rendering', () => {
+  const calls = [];
+  const detailTracks = [{ id: 't_song' }];
+  const view = Object.assign(Object.create(LibraryView.prototype), {
+    root: new FakeElement('section'),
+    renderVersion: 0,
+    currentView: 'subfolders',
+    detail: null,
+    searchQuery: '',
+    currentVisibleTrackIds: ['stale'],
+    trackScrollCleanup: null,
+    manager: {
+      getSubfolderTracks(key) {
+        calls.push(['getSubfolderTracks', key]);
+        return detailTracks;
+      }
+    },
+    invalidateArtworkRequests() {},
+    syncNowPlayingTrack() {},
+    closePlaylistMenu() {},
+    closeContextMenu() {},
+    renderNav() {
+      calls.push(['renderNav']);
+    },
+    renderSubfolders() {
+      calls.push(['renderSubfolders']);
+    },
+    renderTrackList(tracks, title) {
+      calls.push(['renderTrackList', tracks, title]);
+    },
+    renderStatus() {
+      calls.push(['renderStatus']);
+    }
+  });
+
+  view.render();
+  assert.deepEqual(calls, [
+    ['renderNav'],
+    ['renderSubfolders'],
+    ['renderStatus']
+  ]);
+  assert.deepEqual(view.currentVisibleTrackIds, []);
+
+  calls.length = 0;
+  view.detail = { type: 'subfolder', key: 'subfolder-key', title: 'Music / Album' };
+  view.render();
+  assert.deepEqual(calls, [
+    ['renderNav'],
+    ['getSubfolderTracks', 'subfolder-key'],
+    ['renderTrackList', detailTracks, 'Music / Album'],
+    ['renderStatus']
+  ]);
 });
 
 test('LibraryView handleAddFolder only navigates when a folder is actually added', async () => {

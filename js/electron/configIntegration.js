@@ -8,6 +8,10 @@ import {
   loadWebAppConfig,
   saveWebAppConfig
 } from './webSettingsStorage.js';
+import {
+  MUSIC_LIBRARY_STARTUP_VIEWS,
+  normalizeMusicLibraryStartupView
+} from '../library/constants.js';
 
 export async function loadConfig(isElectron) {
   if (!isElectron) return loadWebAppConfig();
@@ -39,6 +43,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
   };
   config.language = normalizeLanguagePreference(config.language || AUTO_LANGUAGE_PREFERENCE);
   config.startupView = config.startupView === 'library' ? 'library' : 'effects';
+  config.libraryStartupView = normalizeMusicLibraryStartupView(config.libraryStartupView);
   
   const pipelinePresetManager = window.pipelineManager && window.pipelineManager.presetManager;
   const presets = pipelinePresetManager
@@ -99,6 +104,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
         <div class="radio-container">
           <input type="radio" name="startup-view" id="startup-view-library" value="library" ${config.startupView === 'library' ? 'checked' : ''}>
           <label for="startup-view-library" id="config-startup-view-library-label"></label>
+          <select id="library-startup-view-select" class="config-select" aria-labelledby="config-startup-view-library-label" ${config.startupView === 'library' ? '' : 'disabled'}></select>
         </div>
       </div>
       <div class="device-section">
@@ -257,6 +263,15 @@ export async function showConfigDialog(isElectron, currentConfig) {
     replaceOptions(document.getElementById('preset-select'), presetNames, config.startupPreset || '');
   }
 
+  function renderLibraryStartupViewOptions() {
+    replaceOptions(
+      document.getElementById('library-startup-view-select'),
+      MUSIC_LIBRARY_STARTUP_VIEWS,
+      config.libraryStartupView,
+      view => t(`library.nav.${view}`)
+    );
+  }
+
   function renderDialogTexts() {
     document.getElementById('config-title').textContent = t('dialog.config.title');
     const autoLaunchLabel = document.getElementById('config-auto-launch-label');
@@ -277,6 +292,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
     document.getElementById('config-pipeline-preset-label').textContent = t('dialog.config.pipeline.preset');
     document.getElementById('close-btn').textContent = t('dialog.config.close');
     renderLanguageOptions();
+    renderLibraryStartupViewOptions();
     renderPresetOptions();
   }
 
@@ -321,9 +337,20 @@ export async function showConfigDialog(isElectron, currentConfig) {
   ].filter(Boolean).forEach(el => {
     el.addEventListener('change', () => {
       config.startupView = el.value === 'library' ? 'library' : 'effects';
+      const libraryStartupViewSelect = document.getElementById('library-startup-view-select');
+      if (libraryStartupViewSelect) {
+        libraryStartupViewSelect.disabled = config.startupView !== 'library';
+      }
       save();
     });
   });
+  const libraryStartupViewSelect = document.getElementById('library-startup-view-select');
+  if (libraryStartupViewSelect) {
+    libraryStartupViewSelect.addEventListener('change', e => {
+      config.libraryStartupView = normalizeMusicLibraryStartupView(e.target.value);
+      save();
+    });
+  }
   const pipelineInputs = typeof overlay.querySelectorAll === 'function'
     ? Array.from(overlay.querySelectorAll('input[name="pipeline"]'))
     : [];

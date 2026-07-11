@@ -1166,10 +1166,14 @@ export class UIManager {
             return false;
         }
         const focusSearch = options.focusSearch ?? !this.layoutMode?.isMobile;
-        this.libraryView.show({
+        const showOptions = {
             focusSearch,
             returnFocus: options.returnFocus || options.opener
-        });
+        };
+        if (options.initialView !== undefined) {
+            showOptions.initialView = options.initialView;
+        }
+        this.libraryView.show(showOptions);
         this.updateViewSwitchButtons(true);
         this.mobileNav?.setView?.('library', { fromLibraryView: true });
         return true;

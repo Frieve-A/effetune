@@ -1,11 +1,18 @@
-import { createFallbackDisplayName, UNKNOWN_ALBUM, UNKNOWN_ARTIST, VARIOUS_ARTISTS } from './constants.js';
+import {
+  createFallbackDisplayName,
+  normalizeRelativePath,
+  UNKNOWN_ALBUM,
+  UNKNOWN_ARTIST,
+  VARIOUS_ARTISTS
+} from './constants.js';
 import { includesAllTokens, normalizeSearchText, tokenizeSearchQuery } from './search-normalizer.js';
 
 const EMPTY_COUNTS = Object.freeze({
   tracks: 0,
   albums: 0,
   artists: 0,
-  genres: 0
+  genres: 0,
+  subfolders: 0
 });
 const DISPLAY_ARTIST_KEY_PREFIX = 'display-artist\u0000';
 
@@ -20,6 +27,7 @@ export class CatalogIndex {
     this.albums = new Map();
     this.artists = new Map();
     this.genres = new Map();
+    this.subfolders = new Map();
     this.folderTracks = new Map();
     this.lastSearch = { query: '', ids: null };
   }
@@ -76,7 +84,8 @@ export class CatalogIndex {
       tracks: this.tracks.length,
       albums: this.albums.size,
       artists: this.artists.size,
-      genres: this.genres.size
+      genres: this.genres.size,
+      subfolders: this.subfolders.size
     };
   }
 
@@ -172,6 +181,29 @@ export class CatalogIndex {
     return genre ? this.sortTracks(this.getTracksByIds(genre.trackIds), 'artist') : [];
   }
 
+  getSubfolders() {
+    const subfolders = [...this.subfolders.values()].map(subfolder => {
+      const folder = this.folderById.get(subfolder.folderId);
+      return {
+        ...subfolder,
+        rootName: folder?.displayName || folder?.path || folder?.kind || '',
+        rootPath: folder?.path || ''
+      };
+    });
+    subfolders.sort((a, b) => {
+      return this.collator.compare(a.rootName, b.rootName) ||
+        this.collator.compare(a.rootPath, b.rootPath) ||
+        this.collator.compare(a.path, b.path) ||
+        this.collator.compare(a.folderId, b.folderId);
+    });
+    return subfolders;
+  }
+
+  getSubfolderTracks(subfolderKey) {
+    const subfolder = this.subfolders.get(subfolderKey);
+    return subfolder ? this.sortTracks(this.getTracksByIds(subfolder.trackIds), 'path') : [];
+  }
+
   getFolders() {
     return this.folders.map(folder => ({
       ...folder,
@@ -185,15 +217,24 @@ export class CatalogIndex {
   }
 
   findByAbsolutePath(absPath) {
-    const normalized = normalizeSearchText(String(absPath || '').replace(/\\/g, '/'));
-    if (!normalized) return null;
+    const path = normalizeAbsolutePathSyntax(absPath);
+    if (!path) return null;
+    const normalized = normalizeAbsolutePathForMatching(path);
+    let compatibleMatch = null;
+    let hasMultipleCompatibleMatches = false;
     for (const track of this.tracks) {
       const folder = this.folderById.get(track.folderId);
       if (!folder?.path) continue;
-      const full = `${folder.path.replace(/\\/g, '/')}/${track.relativePath}`;
-      if (normalizeSearchText(full) === normalized) return track;
+      const full = normalizeAbsolutePathSyntax(`${folder.path}/${track.relativePath}`);
+      if (full === path) return track;
+      if (normalizeAbsolutePathForMatching(full) !== normalized) continue;
+      if (compatibleMatch) {
+        hasMultipleCompatibleMatches = true;
+      } else {
+        compatibleMatch = track;
+      }
     }
-    return null;
+    return hasMultipleCompatibleMatches ? null : compatibleMatch;
   }
 
   prepareTrack(track) {
@@ -202,6 +243,9 @@ export class CatalogIndex {
     const albumArtist = track.albumArtist || artist || '';
     const album = track.album || '';
     const genre = track.genre || '';
+    const relativePath = normalizeRelativePath(track.relativePath || track.fileName || '');
+    const lastSeparator = relativePath.lastIndexOf('/');
+    const subfolderPath = lastSeparator >= 0 ? relativePath.slice(0, lastSeparator) : '';
     const searchBlob = normalizeSearchText([
       title,
       artist,
@@ -209,21 +253,26 @@ export class CatalogIndex {
       album,
       genre,
       track.fileName,
-      track.relativePath
+      relativePath
     ].filter(Boolean).join('\n'));
     const prepared = {
       ...track,
+      relativePath,
       title,
       artist,
       albumArtist,
       album,
       genre,
+      subfolderPath,
       searchBlob
     };
     prepared.albumKey = track.albumKey || this.createAlbumKey(prepared);
     prepared.artistKey = normalizeSearchText(prepared.albumArtist || artist || UNKNOWN_ARTIST);
     prepared.artistDisplayKey = this.createDisplayArtistKey(prepared);
     prepared.genreKey = genre ? normalizeSearchText(genre) : '';
+    prepared.subfolderKey = subfolderPath && track.folderId
+      ? this.createSubfolderKey(track.folderId, subfolderPath)
+      : '';
     return prepared;
   }
 
@@ -231,6 +280,7 @@ export class CatalogIndex {
     this.albums = new Map();
     this.artists = new Map();
     this.genres = new Map();
+    this.subfolders = new Map();
     this.folderTracks = new Map();
     for (const track of this.tracks) {
       this.addPreparedTrack(track);
@@ -241,6 +291,7 @@ export class CatalogIndex {
     this.addToAlbum(track);
     this.addToArtist(track);
     this.addToGenre(track);
+    this.addToSubfolder(track);
     const folderTracks = this.folderTracks.get(track.folderId) || [];
     folderTracks.push(track.id);
     this.folderTracks.set(track.folderId, folderTracks);
@@ -295,6 +346,20 @@ export class CatalogIndex {
     this.genres.set(track.genreKey, genre);
   }
 
+  addToSubfolder(track) {
+    if (!track.subfolderKey) return;
+    const path = track.subfolderPath;
+    const subfolder = this.subfolders.get(track.subfolderKey) || {
+      key: track.subfolderKey,
+      folderId: track.folderId,
+      path,
+      name: path.split('/').pop() || path,
+      trackIds: []
+    };
+    subfolder.trackIds.push(track.id);
+    this.subfolders.set(track.subfolderKey, subfolder);
+  }
+
   createAlbumKey(track) {
     const artist = track.compilation ? VARIOUS_ARTISTS : (track.albumArtist || track.artist || UNKNOWN_ARTIST);
     return `${normalizeSearchText(artist)}\u0000${normalizeSearchText(track.album || UNKNOWN_ALBUM)}`;
@@ -302,6 +367,10 @@ export class CatalogIndex {
 
   createDisplayArtistKey(track) {
     return `${DISPLAY_ARTIST_KEY_PREFIX}${normalizeSearchText(track.artist || track.albumArtist || UNKNOWN_ARTIST)}`;
+  }
+
+  createSubfolderKey(folderId, subfolderPath) {
+    return `${String(folderId)}\u0000${normalizeRelativePath(subfolderPath)}`;
   }
 
   isDisplayArtistKey(key) {
@@ -333,4 +402,20 @@ export class CatalogIndex {
       ((a.trackNo || 0) - (b.trackNo || 0)) ||
       this.collator.compare(a.relativePath || a.title || '', b.relativePath || b.title || '');
   }
+}
+
+function normalizeAbsolutePathSyntax(path = '') {
+  let normalized = String(path).replace(/\\/g, '/');
+  if (normalized.startsWith('//')) {
+    normalized = `//${normalized.slice(2).replace(/^\/+/, '').replace(/\/+/g, '/')}`;
+  } else {
+    normalized = normalized.replace(/\/+/g, '/');
+  }
+  return normalized.replace(/\/+$/, '');
+}
+
+function normalizeAbsolutePathForMatching(path = '') {
+  const normalized = normalizeAbsolutePathSyntax(path).normalize('NFC');
+  const isWindowsPath = /^[a-z]:/i.test(normalized) || normalized.startsWith('//');
+  return isWindowsPath ? normalized.toLowerCase() : normalized;
 }

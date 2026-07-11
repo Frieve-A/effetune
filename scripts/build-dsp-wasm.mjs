@@ -15,9 +15,26 @@ const workletSource = path.join(repoRoot, 'plugins', 'audio-processor.js');
 const injectionStart = '// __ETDSP_BINDING_INJECT_START__';
 const injectionEnd = '// __ETDSP_BINDING_INJECT_END__';
 const isWindows = process.platform === 'win32';
+const vsEnvironmentArgs = [
+  '/d', '/s', '/c',
+  'call VsDevCmd.bat -arch=x64 -host_arch=x64 >nul && set'
+];
 
 function fail(message) {
   throw new Error(message);
+}
+
+function finishRun(command, result, capture) {
+  if (result.error) {
+    fail(`failed to start ${command}: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    const details = capture
+      ? `\n${result.stdout ?? ''}${result.stderr ?? ''}`.trimEnd()
+      : '';
+    fail(`${command} exited with status ${result.status}${details}`);
+  }
+  return result.stdout ?? '';
 }
 
 function run(command, args, options = {}) {
@@ -28,16 +45,7 @@ function run(command, args, options = {}) {
     stdio: options.capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
     windowsHide: true
   });
-  if (result.error) {
-    fail(`failed to start ${command}: ${result.error.message}`);
-  }
-  if (result.status !== 0) {
-    const details = options.capture
-      ? `\n${result.stdout ?? ''}${result.stderr ?? ''}`.trimEnd()
-      : '';
-    fail(`${command} exited with status ${result.status}${details}`);
-  }
-  return result.stdout ?? '';
+  return finishRun(command, result, options.capture);
 }
 
 function normalized(contents) {
@@ -148,12 +156,21 @@ function findVsDevCmd() {
 export function createVsEnvironmentInvocation(vsDevCmd) {
   return {
     command: 'cmd.exe',
-    args: [
-      '/d', '/s', '/c',
-      'call VsDevCmd.bat -arch=x64 -host_arch=x64 >nul && set'
-    ],
+    args: [...vsEnvironmentArgs],
     cwd: path.dirname(vsDevCmd)
   };
+}
+
+function readVsEnvironment(vsDevCmd) {
+  // Keep the command shell isolated from run(), which receives dynamic build paths.
+  const result = spawnSync('cmd.exe', vsEnvironmentArgs, {
+    cwd: path.dirname(vsDevCmd),
+    env: process.env,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true
+  });
+  return finishRun('cmd.exe', result, true);
 }
 
 function nativeEnvironment() {
@@ -164,11 +181,7 @@ function nativeEnvironment() {
   if (!vsDevCmd) {
     fail('Visual C++ tools were not found; install the Desktop C++ workload');
   }
-  const invocation = createVsEnvironmentInvocation(vsDevCmd);
-  const output = run(invocation.command, invocation.args, {
-    capture: true,
-    cwd: invocation.cwd
-  });
+  const output = readVsEnvironment(vsDevCmd);
   const env = { ...process.env };
   for (const line of output.split(/\r?\n/)) {
     const separator = line.indexOf('=');

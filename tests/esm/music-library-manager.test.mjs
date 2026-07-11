@@ -208,6 +208,81 @@ test('scan controller strips runtime-only objects before indexing and storage', 
   assert.ok(events.some(([event, payload]) => event === 'scan-state' && payload.phase === 'done'));
 });
 
+test('scan controller preserves Unicode path identity through storage, indexing, and playback queues', async () => {
+  const nfcDirectory = 'Caf\u00e9'.normalize('NFC');
+  const nfdDirectory = nfcDirectory.normalize('NFD');
+  const nfcPath = `${nfcDirectory}/Song.flac`;
+  const nfdPath = `${nfdDirectory}/Song.flac`;
+  assert.notEqual(nfcPath, nfdPath);
+
+  const database = new LibraryDatabase({ indexedDB: null });
+  await database.open();
+  const folder = { id: 'f_music', displayName: 'Music', path: 'D:/Music', status: 'ok' };
+  await database.putFolder(folder);
+  const index = new CatalogIndex();
+  await index.build({ folders: [folder], tracks: [] });
+  const tracks = [nfcPath, nfdPath].map(relativePath => ({
+    folderId: folder.id,
+    relativePath,
+    fileName: 'Song.flac',
+    title: relativePath
+  }));
+  const controller = new ScanController({
+    database,
+    index,
+    source: {
+      scan(_request, sink) {
+        return {
+          done: (async () => {
+            await sink({ type: 'batch', tracks });
+            await sink({
+              type: 'done',
+              seenFiles: tracks.map(track => ({
+                folderId: track.folderId,
+                relativePath: track.relativePath
+              }))
+            });
+          })()
+        };
+      }
+    },
+    artworkProcessor: createArtworkProcessor(),
+    emit() {}
+  });
+
+  await controller.scanFolders([folder]);
+
+  const storedTracks = await database.getAllTracks();
+  const storedByPath = new Map(storedTracks.map(track => [track.relativePath, track]));
+  assert.equal(storedByPath.size, 2);
+  assert.ok(storedByPath.has(nfcPath));
+  assert.ok(storedByPath.has(nfdPath));
+  assert.notEqual(storedByPath.get(nfcPath).id, storedByPath.get(nfdPath).id);
+  assert.equal(index.getTrackById(storedByPath.get(nfdPath).id).relativePath, nfdPath);
+
+  const subfolderByPath = new Map(index.getSubfolders().map(subfolder => [subfolder.path, subfolder]));
+  assert.equal(subfolderByPath.size, 2);
+  assert.notEqual(subfolderByPath.get(nfcDirectory).key, subfolderByPath.get(nfdDirectory).key);
+  assert.equal(index.findByAbsolutePath(`D:/Music/${nfcPath}`).id, storedByPath.get(nfcPath).id);
+  assert.equal(index.findByAbsolutePath(`D:/Music/${nfdPath}`).id, storedByPath.get(nfdPath).id);
+  assert.equal(index.findByAbsolutePath(`d:/music/${nfcPath}`), null);
+
+  const bridge = new PlaybackBridge({
+    index,
+    source: {},
+    uiManager: {},
+    getFolders: () => [folder]
+  });
+  const queue = bridge.createQueueEntries([
+    storedByPath.get(nfcPath).id,
+    storedByPath.get(nfdPath).id
+  ]);
+  assert.deepEqual(queue.map(entry => entry.path), [
+    `D:/Music/${nfcPath}`,
+    `D:/Music/${nfdPath}`
+  ]);
+});
+
 test('pure additions avoid per-track reads and whole-library artwork recounts', async () => {
   const database = new LibraryDatabase({ indexedDB: null });
   await database.open();
@@ -2744,6 +2819,68 @@ test('FSA library source skips unreadable entries and keeps scanning the folder'
   assert.deepEqual(doneEvent.seenPaths, ['Good.mp3']);
 });
 
+test('FSA playback uses exact Unicode path identities and an unambiguous NFC compatibility fallback', async () => {
+  const nfcName = 'Caf\u00e9.mp3'.normalize('NFC');
+  const nfdName = nfcName.normalize('NFD');
+  const nfcFile = { name: nfcName };
+  const nfdFile = { name: nfdName };
+  const notFound = () => {
+    const error = new Error('missing');
+    error.name = 'NotFoundError';
+    return error;
+  };
+  const createDirectoryHandle = files => {
+    const entries = files.map(file => ({
+      kind: 'file',
+      name: file.name,
+      async getFile() {
+        return file;
+      }
+    }));
+    return {
+      async getFileHandle(name) {
+        const entry = entries.find(item => item.name === name);
+        if (!entry) throw notFound();
+        return entry;
+      },
+      async *values() {
+        yield* entries;
+      }
+    };
+  };
+  const createRootHandle = albumHandle => ({
+    async getDirectoryHandle(name) {
+      if (name === 'Album') return albumHandle;
+      throw notFound();
+    }
+  });
+  const source = new FsaLibrarySource({});
+
+  const siblingRoot = createRootHandle(createDirectoryHandle([nfcFile, nfdFile]));
+  assert.deepEqual(await source.resolveForPlayback({
+    folder: { handle: siblingRoot },
+    relativePath: `Album/${nfcName}`
+  }), { file: nfcFile });
+  assert.deepEqual(await source.resolveForPlayback({
+    folder: { handle: siblingRoot },
+    relativePath: `Album/${nfdName}`
+  }), { file: nfdFile });
+
+  const legacyRoot = createRootHandle(createDirectoryHandle([nfdFile]));
+  assert.deepEqual(await source.resolveForPlayback({
+    folder: { handle: legacyRoot },
+    relativePath: `Album/${nfcName}`
+  }), { file: nfdFile });
+
+  const leftPartialFile = { name: `e\u0301\u00e9.mp3` };
+  const rightPartialFile = { name: `\u00e9e\u0301.mp3` };
+  const ambiguousRoot = createRootHandle(createDirectoryHandle([leftPartialFile, rightPartialFile]));
+  await assert.rejects(() => source.resolveForPlayback({
+    folder: { handle: ambiguousRoot },
+    relativePath: 'Album/\u00e9\u00e9.mp3'
+  }), /missing/);
+});
+
 test('playback bridge replaces the player, queues library entries, and starts at the requested index', async () => {
   const index = new CatalogIndex();
   const tracks = [
@@ -3106,7 +3243,7 @@ test('catalog index groups tracks and keeps search results narrowed across queri
   const index = new CatalogIndex();
   await index.build({ folders, tracks });
 
-  assert.deepEqual(index.getCounts(), { tracks: 3, albums: 2, artists: 2, genres: 2 });
+  assert.deepEqual(index.getCounts(), { tracks: 3, albums: 2, artists: 2, genres: 2, subfolders: 2 });
   assert.deepEqual(index.getTracksByIds(['missing', 't_one']).map(track => track.id), ['t_one']);
   assert.deepEqual(index.getAllTracks({ sort: 'title', direction: 'desc' }).map(track => track.id), ['t_two', 't_comp', 't_one']);
   assert.deepEqual(index.getRecentlyAdded(2).map(track => track.id), ['t_comp', 't_two']);
@@ -3135,6 +3272,185 @@ test('catalog index groups tracks and keeps search results narrowed across queri
   assert.equal(index.getFolders()[0].displayName, 'Updated');
 });
 
+test('catalog index groups tracks by their direct subfolder without merging roots', async () => {
+  const folders = [
+    { id: 'f_music', displayName: 'Music', path: 'D:/Music' },
+    { id: 'f_archive', displayName: 'Archive', path: 'E:/Archive' }
+  ];
+  const tracks = [
+    {
+      id: 't_second',
+      folderId: 'f_music',
+      relativePath: 'Artist/Album/02 Second.flac',
+      fileName: '02 Second.flac',
+      title: 'Second'
+    },
+    {
+      id: 't_first',
+      folderId: 'f_music',
+      relativePath: 'Artist/Album/01 First.flac',
+      fileName: '01 First.flac',
+      title: 'First'
+    },
+    {
+      id: 't_single',
+      folderId: 'f_music',
+      relativePath: 'Singles/Only.flac',
+      fileName: 'Only.flac',
+      title: 'Only'
+    },
+    {
+      id: 't_legacy',
+      folderId: 'f_music',
+      relativePath: 'Legacy\\Disc\\Song.flac',
+      fileName: 'Song.flac',
+      title: 'Legacy Song'
+    },
+    {
+      id: 't_root',
+      folderId: 'f_music',
+      relativePath: 'Loose.flac',
+      fileName: 'Loose.flac',
+      title: 'Loose'
+    },
+    {
+      id: 't_archive',
+      folderId: 'f_archive',
+      relativePath: 'Artist/Album/Archived.flac',
+      fileName: 'Archived.flac',
+      title: 'Archived'
+    }
+  ];
+  const index = new CatalogIndex();
+  await index.build({ folders, tracks });
+
+  const subfolders = index.getSubfolders();
+  assert.equal(index.getCounts().subfolders, 4);
+  assert.deepEqual(subfolders.map(subfolder => ({
+    folderId: subfolder.folderId,
+    path: subfolder.path,
+    name: subfolder.name,
+    rootName: subfolder.rootName,
+    trackIds: subfolder.trackIds
+  })), [
+    {
+      folderId: 'f_archive',
+      path: 'Artist/Album',
+      name: 'Album',
+      rootName: 'Archive',
+      trackIds: ['t_archive']
+    },
+    {
+      folderId: 'f_music',
+      path: 'Artist/Album',
+      name: 'Album',
+      rootName: 'Music',
+      trackIds: ['t_second', 't_first']
+    },
+    {
+      folderId: 'f_music',
+      path: 'Legacy/Disc',
+      name: 'Disc',
+      rootName: 'Music',
+      trackIds: ['t_legacy']
+    },
+    {
+      folderId: 'f_music',
+      path: 'Singles',
+      name: 'Singles',
+      rootName: 'Music',
+      trackIds: ['t_single']
+    }
+  ]);
+  assert.equal(subfolders.some(subfolder => subfolder.path === 'Artist'), false);
+  assert.equal(subfolders.some(subfolder => subfolder.trackIds.includes('t_root')), false);
+
+  const archiveAlbum = subfolders.find(subfolder => subfolder.folderId === 'f_archive');
+  const musicAlbum = subfolders.find(subfolder => subfolder.folderId === 'f_music' && subfolder.path === 'Artist/Album');
+  assert.notEqual(archiveAlbum.key, musicAlbum.key);
+  assert.deepEqual(index.getSubfolderTracks(musicAlbum.key).map(track => track.id), ['t_first', 't_second']);
+  assert.deepEqual(index.getSubfolderTracks('missing'), []);
+});
+
+test('catalog index keeps subfolder groups correct across incremental changes', async () => {
+  const folder = { id: 'f_music', displayName: 'Music', path: 'D:/Music' };
+  const first = {
+    id: 't_first',
+    folderId: folder.id,
+    relativePath: 'Alpha/First.flac',
+    fileName: 'First.flac',
+    title: 'First'
+  };
+  const index = new CatalogIndex();
+  await index.build({ folders: [folder], tracks: [first] });
+
+  const second = {
+    id: 't_second',
+    folderId: folder.id,
+    relativePath: 'Beta/Second.flac',
+    fileName: 'Second.flac',
+    title: 'Second'
+  };
+  index.applyChanges({ upsert: [second] });
+  assert.deepEqual(index.getSubfolders().map(subfolder => subfolder.path), ['Alpha', 'Beta']);
+  assert.equal(index.getCounts().subfolders, 2);
+
+  index.applyChanges({
+    upsert: [{ ...second, relativePath: 'Gamma/Second.flac' }]
+  });
+  assert.deepEqual(index.getSubfolders().map(subfolder => subfolder.path), ['Alpha', 'Gamma']);
+  assert.deepEqual(index.getSubfolderTracks(index.getSubfolders()[1].key).map(track => track.id), ['t_second']);
+
+  index.applyChanges({ removedIds: ['t_first'] });
+  assert.deepEqual(index.getSubfolders().map(subfolder => subfolder.path), ['Gamma']);
+  assert.equal(index.getCounts().subfolders, 1);
+});
+
+test('catalog absolute path lookup limits compatibility matching to unique NFC equivalents', async () => {
+  const nfcName = 'Caf\u00e9.flac'.normalize('NFC');
+  const nfdName = nfcName.normalize('NFD');
+  const folder = { id: 'f_music', displayName: 'Music', path: 'D:/Music' };
+  const uniqueIndex = new CatalogIndex();
+  await uniqueIndex.build({
+    folders: [folder],
+    tracks: [{
+      id: 't_nfd',
+      folderId: folder.id,
+      relativePath: `Album/${nfdName}`,
+      fileName: nfdName,
+      title: 'NFD'
+    }]
+  });
+
+  assert.equal(uniqueIndex.findByAbsolutePath(`D:/Music/Album/${nfcName}`)?.id, 't_nfd');
+  assert.equal(uniqueIndex.findByAbsolutePath('D:/Music/Album/Cafe.flac'), null);
+
+  const siblingIndex = new CatalogIndex();
+  await siblingIndex.build({
+    folders: [folder],
+    tracks: [
+      {
+        id: 't_nfc',
+        folderId: folder.id,
+        relativePath: `Album/${nfcName}`,
+        fileName: nfcName,
+        title: 'NFC'
+      },
+      {
+        id: 't_nfd',
+        folderId: folder.id,
+        relativePath: `Album/${nfdName}`,
+        fileName: nfdName,
+        title: 'NFD'
+      }
+    ]
+  });
+
+  assert.equal(siblingIndex.findByAbsolutePath(`D:/Music/Album/${nfcName}`)?.id, 't_nfc');
+  assert.equal(siblingIndex.findByAbsolutePath(`D:/Music/Album/${nfdName}`)?.id, 't_nfd');
+  assert.equal(siblingIndex.findByAbsolutePath(`d:/music/album/${nfcName}`), null);
+});
+
 test('catalog index updates folder metadata without rebuilding track aggregates', async () => {
   const folder = { id: 'f_music', displayName: 'Music', path: 'D:/Music' };
   const index = new CatalogIndex();
@@ -3159,11 +3475,13 @@ test('catalog index updates folder metadata without rebuilding track aggregates'
     albums: index.albums,
     artists: index.artists,
     genres: index.genres,
+    subfolders: index.subfolders,
     folderTracks: index.folderTracks,
     track: index.getTrackById('t_song'),
     album: index.getAlbums()[0],
     artist: index.getArtists()[0],
-    genre: index.getGenres()[0]
+    genre: index.getGenres()[0],
+    subfolder: index.getSubfolders()[0]
   };
   const counts = index.getCounts();
 
@@ -3175,11 +3493,14 @@ test('catalog index updates folder metadata without rebuilding track aggregates'
   assert.strictEqual(index.albums, references.albums);
   assert.strictEqual(index.artists, references.artists);
   assert.strictEqual(index.genres, references.genres);
+  assert.strictEqual(index.subfolders, references.subfolders);
   assert.strictEqual(index.folderTracks, references.folderTracks);
   assert.strictEqual(index.getTrackById('t_song'), references.track);
   assert.strictEqual(index.getAlbums()[0], references.album);
   assert.strictEqual(index.getArtists()[0], references.artist);
   assert.strictEqual(index.getGenres()[0], references.genre);
+  assert.equal(index.getSubfolders()[0].key, references.subfolder.key);
+  assert.equal(index.getSubfolders()[0].rootName, 'Renamed');
   assert.equal(index.getFolders()[0].displayName, 'Renamed');
   assert.equal(index.getFolders()[0].trackCount, 1);
   assert.equal(index.findByAbsolutePath('E:/Renamed/Artist/Song.flac')?.id, 't_song');
@@ -3190,7 +3511,9 @@ test('catalog index updates folder metadata without rebuilding track aggregates'
   assert.strictEqual(index.albums, references.albums);
   assert.strictEqual(index.artists, references.artists);
   assert.strictEqual(index.genres, references.genres);
+  assert.strictEqual(index.subfolders, references.subfolders);
   assert.strictEqual(index.folderTracks, references.folderTracks);
+  assert.equal(index.getSubfolders()[0].rootName, 'Moved');
   assert.equal(index.findByAbsolutePath('F:/Moved/Artist/Song.flac')?.id, 't_song');
 });
 
@@ -3270,6 +3593,10 @@ test('library manager facade returns indexed catalog data and delegates playback
   assert.equal(manager.getArtistTracks(manager.getArtists()[0].key)[0].id, 't_song');
   assert.equal(manager.getGenres()[0].name, 'Rock');
   assert.equal(manager.getGenreTracks(manager.getGenres()[0].key)[0].id, 't_song');
+  const subfolder = manager.getSubfolders()[0];
+  assert.equal(subfolder.path, 'Artist');
+  assert.equal(subfolder.rootName, 'Merged');
+  assert.deepEqual(manager.getSubfolderTracks(subfolder.key).map(item => item.id), ['t_song']);
   assert.equal(manager.getFolderTracks('f_music')[0].id, 't_song');
   assert.equal(manager.getRecentlyAdded(1)[0].id, 't_song');
   assert.equal(manager.getTrackById('t_song').title, 'Song');
@@ -4586,4 +4913,37 @@ test('import library source resolves NFD-named files against NFC track paths', a
   const nfcPath = `Album/${nfdName}`.normalize('NFC');
   assert.notEqual(nfcPath, `Album/${nfdName}`);
   assert.deepEqual(await source.resolveForPlayback({ folderId: 'f_import', relativePath: nfcPath }), { file: files[0] });
+});
+
+test('import playback prefers exact Unicode path identities and rejects ambiguous NFC fallback', async () => {
+  const nfcName = 'Caf\u00e9.mp3'.normalize('NFC');
+  const nfdName = nfcName.normalize('NFD');
+  const nfcFile = { name: nfcName, webkitRelativePath: `Root/Album/${nfcName}` };
+  const nfdFile = { name: nfdName, webkitRelativePath: `Root/Album/${nfdName}` };
+  const source = new ImportLibrarySource({});
+  source.replaceSessionFiles('f_import', [nfcFile, nfdFile]);
+
+  assert.deepEqual(await source.resolveForPlayback({
+    folderId: 'f_import',
+    relativePath: `Album/${nfcName}`
+  }), { file: nfcFile });
+  assert.deepEqual(await source.resolveForPlayback({
+    folderId: 'f_import',
+    relativePath: `Album/${nfdName}`
+  }), { file: nfdFile });
+
+  const leftPartialName = `e\u0301\u00e9.mp3`;
+  const rightPartialName = `\u00e9e\u0301.mp3`;
+  const normalizedName = '\u00e9\u00e9.mp3';
+  assert.equal(leftPartialName.normalize('NFC'), normalizedName);
+  assert.equal(rightPartialName.normalize('NFC'), normalizedName);
+  source.replaceSessionFiles('f_import', [
+    { name: leftPartialName, webkitRelativePath: `Root/Album/${leftPartialName}` },
+    { name: rightPartialName, webkitRelativePath: `Root/Album/${rightPartialName}` }
+  ]);
+
+  await assert.rejects(() => source.resolveForPlayback({
+    folderId: 'f_import',
+    relativePath: `Album/${normalizedName}`
+  }), /offline/);
 });

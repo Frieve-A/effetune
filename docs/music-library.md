@@ -1,12 +1,12 @@
 ---
 title: "Music Library Guide - EffeTune"
-description: "Learn how to set up Music Library in EffeTune, find and play music by folder or metadata, and manage playlists."
+description: "Learn how to set up Music Library in EffeTune, find and play music by subfolder or metadata, and manage playlists."
 lang: en
 ---
 
 # How to Use Music Library
 
-Music Library indexes selected music folders so you can browse your local collection by tracks, albums, artists, genres, folders, recently added tracks, or playlists. Playback still goes through the current EffeTune effect pipeline, so you can listen with the same effects used for normal music file playback.
+Music Library indexes selected music folders so you can browse your local collection by tracks, albums, artists, genres, subfolders, folders, recently added tracks, or playlists. Playback still goes through the current EffeTune effect pipeline, so you can listen with the same effects used for normal music file playback.
 
 Music Library stores its catalog, artwork cache, and playlists inside the app. It does not edit, rename, move, or delete your audio files.
 
@@ -26,7 +26,7 @@ Music Library indexes common media file extensions such as MP3, WAV, OGG, FLAC, 
 
 To return to effect editing, click the **Effect Pipeline** button in the PC layout, switch back to the **Effects** tab in the mobile layout, or use **View > Effect Pipeline** or **Ctrl+E** (**Command+E** on macOS) in the desktop app.
 
-You can also make Music Library the first view shown at startup: open **Settings > Config...**, then set **Startup view:** to **Music Library**.
+You can also make Music Library the first view shown at startup: open **Settings > Config...**, then set **Startup view:** to **Music Library**. Use the list beside Music Library to choose whether **Tracks**, **Albums**, **Artists**, **Genres**, or **Subfolders** appears first.
 
 ## Adding Music Folders
 
@@ -45,9 +45,12 @@ Use the navigation tabs to browse the catalog:
 - **Albums** - Albums grouped from metadata.
 - **Artists** - Artists and album artists from metadata.
 - **Genres** - Genre groups from metadata.
-- **Folders** - Library folders and their scan status.
+- **Subfolders** - Tracks grouped by the direct parent subfolder path relative to each indexed music folder.
+- **Folders** - Registered music folder roots and their scan status.
 - **Recently Added** - Recently indexed tracks.
 - **Playlists** - Playlists created or imported inside Music Library.
+
+For example, `Artist/Album/01 Song.flac` appears in the `Artist/Album` subfolder group. Identical relative paths in different indexed roots remain separate. Files stored directly in a root do not create a subfolder group; they remain available in **Tracks** and from that root in **Folders**.
 
 Use **Search library** to search across tracks, albums, artists, and playlists. In the PC layout, track table headers sort by **Title**, **Artist**, **Album**, **Genre**, or **Time**.
 
@@ -55,7 +58,7 @@ If metadata is missing or unreadable, EffeTune falls back to the file name and f
 
 ## Playing from the Library
 
-Select a track, album, artist, genre, folder, search result, or playlist, then use:
+Select a track, album, artist, genre, subfolder, folder, search result, or playlist, then use:
 
 - **Play** to replace the current player queue and start playback.
 - **Shuffle** to play the selected group in random order.
@@ -101,6 +104,7 @@ When exporting, choosing **Relative paths** writes paths relative to the export 
 
 - Music Library reads audio files and metadata but does not write changes to audio files.
 - Artwork caching and playlists are app data, not embedded file changes.
+- Subfolder groups are derived from relative paths already stored in the catalog. Existing libraries gain them without a rescan, IndexedDB migration, or storage-format change.
 - Browser storage can be cleared by the browser or user settings. Export important playlists if you need a portable copy.
 - If you use the web app, browser permissions control whether folder handles remain usable after reload.
 

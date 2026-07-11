@@ -1,12 +1,12 @@
 ---
 title: "Guia da Biblioteca de música - EffeTune"
-description: "Aprenda a criar uma Biblioteca de música no EffeTune, navegar por pastas e metadados, reproduzir faixas pelo Effect Pipeline e gerenciar playlists."
+description: "Aprenda a criar uma Biblioteca de música no EffeTune, navegar por subpastas e metadados, reproduzir faixas pelo Effect Pipeline e gerenciar playlists."
 lang: pt
 ---
 
 # Como Usar a Biblioteca de música
 
-A Biblioteca de música indexa as pastas de música selecionadas para que você possa explorar sua coleção local por faixa, álbum, artista, gênero, pasta, faixas adicionadas recentemente ou playlist. A reprodução passa pelo Effect Pipeline atual do EffeTune, assim como na reprodução normal de arquivos de música.
+A Biblioteca de música indexa as pastas de música selecionadas para que você possa explorar sua coleção local por faixa, álbum, artista, gênero, subpasta, pasta, faixas adicionadas recentemente ou playlist. A reprodução passa pelo Effect Pipeline atual do EffeTune, assim como na reprodução normal de arquivos de música.
 
 A Biblioteca de música armazena o catálogo, o cache de capas e as playlists dentro do aplicativo. Ela não edita, renomeia, move nem exclui os arquivos de música.
 
@@ -26,7 +26,7 @@ A Biblioteca de música indexa extensões comuns de arquivos de mídia, como MP3
 
 Para voltar à edição de efeitos, clique no botão **Effect Pipeline** no layout para PC e, no layout móvel, volte para a aba **Efeitos**. No aplicativo desktop, também é possível usar **Visualizar > Effect Pipeline** ou **Ctrl+E** (**Command+E** no macOS).
 
-Se quiser que a Biblioteca de música seja a primeira tela exibida ao iniciar, abra **Configurações > Configuração...** e defina **Visualização ao iniciar:** como **Biblioteca de música**.
+Se quiser que a Biblioteca de música seja a primeira tela exibida ao iniciar, abra **Configurações > Configuração...** e defina **Visualização ao iniciar:** como **Biblioteca de música**. Na lista ao lado de **Biblioteca de música**, escolha qual seção será exibida primeiro: **Faixas**, **Álbuns**, **Artistas**, **Gêneros** ou **Subpastas**.
 
 ## Adicionar pastas de música
 
@@ -45,9 +45,12 @@ Use as abas de navegação para alternar o catálogo.
 - **Álbuns** - Agrupa por álbum a partir dos metadados.
 - **Artistas** - Agrupa por artista e artista do álbum nos metadados.
 - **Gêneros** - Agrupa por gênero nos metadados.
-- **Pastas** - Mostra as pastas registradas na biblioteca e o estado da varredura.
+- **Subpastas** - Agrupa as faixas pelo caminho relativo da subpasta que contém diretamente cada arquivo em cada pasta de música indexada.
+- **Pastas** - Mostra as raízes de música registradas e o estado da varredura.
 - **Adicionadas recentemente** - Mostra as faixas indexadas recentemente.
 - **Playlists** - Mostra as playlists criadas ou importadas dentro da Biblioteca de música.
+
+Por exemplo, `Artist/Album/01 Song.flac` aparece no grupo de subpasta `Artist/Album`. Caminhos relativos idênticos em raízes indexadas diferentes permanecem separados. Arquivos armazenados diretamente na raiz não criam um grupo de subpasta; eles continuam disponíveis em **Faixas** e nessa raiz em **Pastas**.
 
 Com **Pesquisar na biblioteca**, você pode pesquisar faixas, álbuns, artistas e playlists ao mesmo tempo. No layout para PC, é possível ordenar a lista de faixas pelo cabeçalho usando **Título**, **Artista**, **Álbum**, **Gênero** e **Tempo**.
 
@@ -55,7 +58,7 @@ Quando os metadados estão ausentes ou não podem ser lidos, o EffeTune usa o no
 
 ## Reproduzir a partir da biblioteca
 
-Selecione faixas, álbuns, artistas, gêneros, pastas, resultados de pesquisa ou playlists e use as ações abaixo.
+Selecione faixas, álbuns, artistas, gêneros, subpastas, pastas, resultados de pesquisa ou playlists e use as ações abaixo.
 
 - **Reproduzir** - Substitui a fila atual do player e inicia a reprodução.
 - **Aleatório** - Reproduz o conjunto de faixas selecionado em ordem aleatória.
@@ -101,6 +104,7 @@ Ao exportar, escolher **Caminhos relativos** grava, quando possível, caminhos r
 
 - A Biblioteca de música lê os arquivos de música e seus metadados, mas não grava alterações nos arquivos de música.
 - O cache de capas e as playlists são dados internos do aplicativo, não alterações incorporadas aos arquivos de música.
+- Os grupos de subpastas são derivados dos caminhos relativos já salvos no catálogo. Bibliotecas existentes os recebem sem nova varredura, migração do IndexedDB ou mudança no formato de armazenamento.
 - A área de armazenamento do navegador pode ser apagada pelas configurações do navegador ou por ações do usuário. Exporte playlists importantes conforme necessário.
 - No aplicativo web, a possibilidade de continuar usando uma pasta após recarregar a página depende do gerenciamento de permissões do navegador.
 

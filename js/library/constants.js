@@ -1,6 +1,13 @@
 export const MUSIC_LIBRARY_DB_NAME = 'effetune_music_library';
 export const MUSIC_LIBRARY_DB_VERSION = 1;
 export const MUSIC_LIBRARY_UI_STORAGE_KEY = 'effetune_library_ui';
+export const MUSIC_LIBRARY_STARTUP_VIEWS = Object.freeze([
+  'tracks',
+  'albums',
+  'artists',
+  'genres',
+  'subfolders'
+]);
 
 export const SUPPORTED_AUDIO_EXTENSIONS = Object.freeze([
   'mp3',
@@ -26,6 +33,10 @@ export const DEFAULT_SCAN_BATCH_SIZE = 200;
 export const UNKNOWN_ALBUM = 'Unknown Album';
 export const UNKNOWN_ARTIST = 'Unknown Artist';
 export const VARIOUS_ARTISTS = 'Various Artists';
+
+export function normalizeMusicLibraryStartupView(value) {
+  return MUSIC_LIBRARY_STARTUP_VIEWS.includes(value) ? value : 'tracks';
+}
 
 export function getFileExtension(pathOrName = '') {
   const clean = String(pathOrName).split(/[?#]/)[0];
@@ -54,8 +65,11 @@ export function normalizeRelativePath(relativePath = '') {
     .replace(/^\/+/, '')
     .split('/')
     .filter(Boolean)
-    .join('/')
-    .normalize('NFC');
+    .join('/');
+}
+
+export function normalizeRelativePathForMatching(relativePath = '') {
+  return normalizeRelativePath(relativePath).normalize('NFC');
 }
 
 export function joinRelativePath(...parts) {

@@ -1,4 +1,11 @@
-import { createFallbackDisplayName, getFileExtension, isSupportedAudioPath, normalizeRelativePath, stripExtension } from '../constants.js';
+import {
+  createFallbackDisplayName,
+  getFileExtension,
+  isSupportedAudioPath,
+  normalizeRelativePath,
+  normalizeRelativePathForMatching,
+  stripExtension
+} from '../constants.js';
 import { createFallbackTrack, createTrackFromMetadata } from '../metadata/metadata-mapper.js';
 import { readRiffInfoTagsFromBlob } from '../metadata/riff-info.js';
 
@@ -251,10 +258,40 @@ async function getFileFromHandlePath(handle, relativePath) {
   const parts = normalizeRelativePath(relativePath).split('/').filter(Boolean);
   let current = handle;
   for (let i = 0; i < parts.length - 1; i++) {
-    current = await current.getDirectoryHandle(parts[i]);
+    current = await getChildHandle(current, parts[i], 'directory');
   }
-  const fileHandle = await current.getFileHandle(parts[parts.length - 1]);
+  const fileHandle = await getChildHandle(current, parts[parts.length - 1], 'file');
   return fileHandle.getFile();
+}
+
+async function getChildHandle(parent, name, kind) {
+  const getterName = kind === 'directory' ? 'getDirectoryHandle' : 'getFileHandle';
+  try {
+    return await parent[getterName](name);
+  } catch (error) {
+    if (error?.name !== 'NotFoundError') throw error;
+    const compatibleHandle = await findCompatibleChildHandle(parent, name, kind);
+    if (compatibleHandle) return compatibleHandle;
+    throw error;
+  }
+}
+
+async function findCompatibleChildHandle(parent, name, kind) {
+  if (typeof parent?.values !== 'function') return null;
+  const normalizedName = normalizeRelativePathForMatching(name);
+  let compatibleHandle = null;
+  let hasMultipleCompatibleHandles = false;
+  for await (const entry of parent.values()) {
+    if (entry?.kind !== kind) continue;
+    if (entry.name === name) return entry;
+    if (normalizeRelativePathForMatching(entry.name) !== normalizedName) continue;
+    if (compatibleHandle) {
+      hasMultipleCompatibleHandles = true;
+    } else {
+      compatibleHandle = entry;
+    }
+  }
+  return hasMultipleCompatibleHandles ? null : compatibleHandle;
 }
 
 async function createTrackFromFile(windowRef, folder, file, relativePath, metadataWorker = null, isCanceled = () => false, languageHints = null) {

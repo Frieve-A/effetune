@@ -1,12 +1,12 @@
 ---
 title: "Cómo usar la Biblioteca musical - EffeTune"
-description: "Explica cómo crear una Biblioteca musical en EffeTune, buscar y reproducir música por carpetas y metadatos, y gestionar listas de reproducción."
+description: "Explica cómo crear una Biblioteca musical en EffeTune, buscar y reproducir música por subcarpetas o metadatos, y gestionar listas de reproducción."
 lang: es
 ---
 
 # Cómo usar la Biblioteca musical
 
-La Biblioteca musical indexa las carpetas de música que seleccionas y te permite explorar tu colección local por pistas, álbumes, artistas, géneros, carpetas, elementos añadidos recientemente y listas de reproducción. El audio reproducido pasa por el pipeline de efectos actual de EffeTune, igual que durante la reproducción normal de archivos de música.
+La Biblioteca musical indexa las carpetas de música que seleccionas y te permite explorar tu colección local por pistas, álbumes, artistas, géneros, subcarpetas, carpetas, elementos añadidos recientemente y listas de reproducción. El audio reproducido pasa por el pipeline de efectos actual de EffeTune, igual que durante la reproducción normal de archivos de música.
 
 La Biblioteca musical guarda dentro de la aplicación su catálogo, la caché de carátulas y las listas de reproducción. No edita, cambia de nombre, mueve ni elimina los archivos de audio.
 
@@ -26,7 +26,7 @@ La Biblioteca musical indexa extensiones de archivos multimedia habituales, como
 
 Para volver a editar efectos, haz clic en el botón **Effect Pipeline** en el diseño de PC o vuelve a la pestaña **Efectos** en el diseño móvil. En la aplicación de escritorio también puedes usar **Ver > Effect Pipeline** o **Ctrl+E** (**Command+E** en macOS).
 
-Si quieres que la Biblioteca musical sea la primera vista al iniciar, abre **Configuración > Configuración...** y cambia **Vista al inicio:** a **Biblioteca musical**.
+Si quieres que la Biblioteca musical sea la primera vista al iniciar, abre **Configuración > Configuración...** y cambia **Vista al inicio:** a **Biblioteca musical**. En la lista situada junto a **Biblioteca musical**, elige la sección que aparecerá primero: **Pistas**, **Álbumes**, **Artistas**, **Géneros** o **Subcarpetas**.
 
 ## Añadir carpetas de música
 
@@ -45,9 +45,12 @@ Usa las pestañas de navegación para cambiar de vista en el catálogo.
 - **Álbumes** - Agrupa los álbumes a partir de los metadatos.
 - **Artistas** - Agrupa por artistas y artistas de álbum indicados en los metadatos.
 - **Géneros** - Agrupa por los géneros indicados en los metadatos.
+- **Subcarpetas** - Agrupa las pistas por la subcarpeta que las contiene.
 - **Carpetas** - Muestra las carpetas registradas en la biblioteca y su estado de escaneo.
 - **Añadidas recientemente** - Muestra las pistas indexadas recientemente.
 - **Listas de reproducción** - Muestra las listas de reproducción creadas o importadas dentro de la Biblioteca musical.
+
+Los grupos de **Subcarpetas** se crean con la ruta de la subcarpeta que contiene directamente cada pista, relativa a su carpeta de música importada. Las rutas relativas idénticas de distintas carpetas importadas se mantienen en grupos separados. Los archivos situados directamente en la raíz importada no crean un grupo de subcarpeta, pero siguen apareciendo en **Pistas** y **Carpetas**.
 
 Con **Buscar en la biblioteca** puedes buscar en pistas, álbumes, artistas y listas de reproducción. En el diseño de PC, los encabezados de la lista de pistas permiten ordenar por título, artista, álbum, género o duración.
 
@@ -55,7 +58,7 @@ Si faltan metadatos o no se pueden leer, EffeTune usa el nombre del archivo y la
 
 ## Reproducir desde la biblioteca
 
-Selecciona una pista, álbum, artista, género, carpeta, resultado de búsqueda o lista de reproducción y usa estas acciones.
+Selecciona una pista, álbum, artista, género, subcarpeta, carpeta, resultado de búsqueda o lista de reproducción y usa estas acciones.
 
 - **Reproducir** - Sustituye la cola actual del reproductor e inicia la reproducción.
 - **Aleatorio** - Reproduce el grupo seleccionado en orden aleatorio.
@@ -101,6 +104,7 @@ Al exportar, si eliges **Rutas relativas**, las rutas se escriben, cuando es pos
 
 - La Biblioteca musical lee archivos de audio y metadatos, pero no escribe cambios en los archivos de audio.
 - La caché de carátulas y las listas de reproducción son datos de la aplicación, no cambios incrustados en los archivos de música.
+- La clasificación por **Subcarpetas** se obtiene de las rutas relativas ya guardadas, por lo que también aparece en las bibliotecas existentes sin volver a escanear ni migrar datos. El esquema de IndexedDB y el formato de almacenamiento no cambian.
 - El almacenamiento del navegador puede borrarse desde la configuración del navegador o por acciones del usuario. Exporta las listas de reproducción importantes si lo necesitas.
 - En la aplicación web, la gestión de permisos del navegador determina si las carpetas siguen disponibles después de recargar.
 

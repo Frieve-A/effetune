@@ -148,7 +148,13 @@ test('showConfigDialog opens in Web and hides Electron-only settings', async () 
     presets: { WebPreset: {} }
   });
   const localStorage = createLocalStorage({
-    effetune_app_config: JSON.stringify({ language: 'ja', startupView: 'library', pipelineStartup: 'preset', startupPreset: 'WebPreset' })
+    effetune_app_config: JSON.stringify({
+      language: 'ja',
+      startupView: 'library',
+      libraryStartupView: 'artists',
+      pipelineStartup: 'preset',
+      startupPreset: 'WebPreset'
+    })
   });
 
   await withGlobals({ window: { ...harness.window, localStorage }, document: harness.document }, async () => {
@@ -160,6 +166,8 @@ test('showConfigDialog opens in Web and hides Electron-only settings', async () 
     assert.equal(harness.document.getElementById('check-updates'), null);
     assert.equal(harness.document.getElementById('language-select').value, 'ja');
     assert.equal(harness.document.getElementById('startup-view-library').checked, true);
+    assert.equal(harness.document.getElementById('library-startup-view-select').value, 'artists');
+    assert.equal(harness.document.getElementById('library-startup-view-select').disabled, false);
     assert.equal(harness.document.getElementById('preset-select').value, 'WebPreset');
 
     const pipelineDefault = harness.document.getElementById('pl-default');
@@ -169,6 +177,14 @@ test('showConfigDialog opens in Web and hides Electron-only settings', async () 
     const startupViewEffects = harness.document.getElementById('startup-view-effects');
     startupViewEffects.dispatchEvent('change');
     assert.equal(JSON.parse(localStorage.snapshot().effetune_app_config).startupView, 'effects');
+    assert.equal(harness.document.getElementById('library-startup-view-select').disabled, true);
+
+    harness.document.getElementById('startup-view-library').dispatchEvent('change');
+    const libraryStartupViewSelect = harness.document.getElementById('library-startup-view-select');
+    assert.equal(libraryStartupViewSelect.disabled, false);
+    libraryStartupViewSelect.value = 'subfolders';
+    libraryStartupViewSelect.dispatchEvent('change');
+    assert.equal(JSON.parse(localStorage.snapshot().effetune_app_config).libraryStartupView, 'subfolders');
   });
 });
 
@@ -182,6 +198,7 @@ test('showConfigDialog renders settings, saves changes, and closes from the butt
       checkForUpdatesOnStartup: false,
       language: 'ja',
       startupView: 'library',
+      libraryStartupView: 'albums',
       pipelineStartup: 'preset',
       startupPreset: ''
     },
@@ -203,6 +220,8 @@ test('showConfigDialog renders settings, saves changes, and closes from the butt
     assert.equal(harness.document.getElementById('start-min').checked, true);
     assert.equal(harness.document.getElementById('check-updates').checked, false);
     assert.equal(harness.document.getElementById('startup-view-library').checked, true);
+    assert.equal(harness.document.getElementById('library-startup-view-select').value, 'albums');
+    assert.equal(harness.document.getElementById('library-startup-view-select').disabled, false);
     assert.equal(harness.document.getElementById('preset-select').value, 'Alpha');
     assert.equal(harness.document.getElementById('language-select').value, 'ja');
 
@@ -228,6 +247,13 @@ test('showConfigDialog renders settings, saves changes, and closes from the butt
 
     const startupViewEffects = harness.document.getElementById('startup-view-effects');
     startupViewEffects.dispatchEvent('change');
+    assert.equal(harness.document.getElementById('library-startup-view-select').disabled, true);
+
+    const startupViewLibrary = harness.document.getElementById('startup-view-library');
+    startupViewLibrary.dispatchEvent('change');
+    const libraryStartupViewSelect = harness.document.getElementById('library-startup-view-select');
+    libraryStartupViewSelect.value = 'artists';
+    libraryStartupViewSelect.dispatchEvent('change');
 
     const presetSelect = harness.document.getElementById('preset-select');
     presetSelect.value = 'Zeta';
@@ -239,7 +265,8 @@ test('showConfigDialog renders settings, saves changes, and closes from the butt
     await flushMicrotasks();
 
     assert.deepEqual(languageCalls, [['auto', { persist: false }]]);
-    assert.equal(harness.window.appConfig.startupView, 'effects');
+    assert.equal(harness.window.appConfig.startupView, 'library');
+    assert.equal(harness.window.appConfig.libraryStartupView, 'artists');
     assert.equal(harness.window.appConfig.startupPreset, 'Zeta');
     assert.equal(harness.window.electronIntegration.config.language, 'auto');
 
@@ -301,7 +328,20 @@ test('showConfigDialog supports last/default startup states and Escape close', a
     await showConfigDialog(true, null);
     assert.equal(implicitDefaults.document.getElementById('pl-last').checked, true);
     assert.equal(implicitDefaults.document.getElementById('startup-view-effects').checked, true);
+    assert.equal(implicitDefaults.document.getElementById('library-startup-view-select').value, 'tracks');
+    assert.equal(implicitDefaults.document.getElementById('library-startup-view-select').disabled, true);
     assert.equal(implicitDefaults.document.getElementById('language-select').value, 'auto');
+  });
+
+  const invalidLibraryStartupView = createConfigHarness({
+    config: {
+      startupView: 'library',
+      libraryStartupView: 'folders'
+    }
+  });
+  await withGlobals({ window: invalidLibraryStartupView.window, document: invalidLibraryStartupView.document }, async () => {
+    await showConfigDialog(true, {});
+    assert.equal(invalidLibraryStartupView.document.getElementById('library-startup-view-select').value, 'tracks');
   });
 
   const presetWithoutNames = createConfigHarness({
@@ -338,13 +378,14 @@ test('showConfigDialog tolerates missing optional selects and language preferenc
       language: 'fr'
     },
     documentOptions: {
-      omitIds: ['language-select', 'preset-select']
+      omitIds: ['language-select', 'library-startup-view-select', 'preset-select']
     }
   });
 
   await withGlobals({ window: harness.window, document: harness.document }, async () => {
     await showConfigDialog(true, {});
     assert.equal(harness.document.getElementById('language-select'), null);
+    assert.equal(harness.document.getElementById('library-startup-view-select'), null);
     assert.equal(harness.document.getElementById('preset-select'), null);
   });
 

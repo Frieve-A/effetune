@@ -423,6 +423,14 @@ export class LibraryManager {
     return this.index.getGenreTracks(genreKey);
   }
 
+  getSubfolders() {
+    return this.index.getSubfolders();
+  }
+
+  getSubfolderTracks(subfolderKey) {
+    return this.index.getSubfolderTracks(subfolderKey);
+  }
+
   getFolderTracks(folderId) {
     return this.index.getFolderTracks(folderId);
   }
