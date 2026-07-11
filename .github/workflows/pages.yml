@@ -38,7 +38,6 @@ jobs:
         uses: emscripten-core/setup-emsdk@v16
         with:
           version: 6.0.2
-          actions-cache-folder: emsdk-cache
 
       - name: Verify committed DSP artifacts
         run: npm run build:dsp -- --check
