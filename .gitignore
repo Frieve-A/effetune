@@ -1,5 +1,6 @@
 # Dependency directories
 node_modules/
+emsdk-cache/
 
 # Build output
 dist/

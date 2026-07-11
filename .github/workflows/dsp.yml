@@ -18,6 +18,7 @@ on:
       - 'tests/esm/**'
       - 'package.json'
       - 'package-lock.json'
+      - '.gitignore'
       - '.github/workflows/dsp.yml'
   pull_request:
     paths:
@@ -36,6 +37,7 @@ on:
       - 'tests/esm/**'
       - 'package.json'
       - 'package-lock.json'
+      - '.gitignore'
       - '.github/workflows/dsp.yml'
 
 permissions:
