@@ -774,7 +774,7 @@ export async function stopIsolatedStaticServer(child) {
   try {
     await withTimeout(exited, shutdownTimeoutMs, 'Static server shutdown timed out.');
   } catch {
-    child.kill();
+    child.kill('SIGKILL');
     await withTimeout(exited, shutdownTimeoutMs, 'Static server could not be terminated.');
   }
 }
