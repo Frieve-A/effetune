@@ -360,16 +360,15 @@ test('AudioManager delivers compiled modules or cloned bytes with rollout and te
     };
     const moduleNode = createNode('module');
     assert.equal(manager.postDspModuleToWorklet(moduleNode), true);
-    assert.equal(moduleNode.port.messages.length, 4);
+    assert.equal(moduleNode.port.messages.length, 3);
     assert.deepEqual(
       moduleNode.port.messages.map(entry => entry.message.type),
-      ['dspModule', 'dspEnableTypes', 'dspSetTelemetryRate', 'dspSetBench']
+      ['dspModule', 'dspEnableTypes', 'dspSetTelemetryRate']
     );
     assert.equal(messageOf(moduleNode.port, 'dspModule').message.module, module);
     assert.equal(messageOf(moduleNode.port, 'dspModule').message.simd, true);
     assert.deepEqual(messageOf(moduleNode.port, 'dspEnableTypes').message.types, []);
     assert.equal(messageOf(moduleNode.port, 'dspSetTelemetryRate').message.hz, 60);
-    assert.equal(messageOf(moduleNode.port, 'dspSetBench').message.enabled, false);
 
     const bytes = Uint8Array.of(0, 97, 115, 109).buffer;
     manager.dspModuleInfo = { ...manager.dspModuleInfo, module: null, bytes, simd: false };
@@ -1209,6 +1208,8 @@ test('AudioManager waits for parallel B readiness before symmetric routing and f
     const auxiliary = createdWorklets[0];
     assert.equal(manager._parallelPreparing, true);
     assert.equal(manager._parallelActive, false);
+    assert.deepEqual(manager.getActivePowerWorklets(), [main]);
+    const preparingPowerGeneration = manager.getPowerWorkletGraphGeneration();
     assert.equal(messageOf(main.port, 'dspEnableTypes'), undefined);
 
     if (mode === 'success') {
@@ -1220,6 +1221,8 @@ test('AudioManager waits for parallel B readiness before symmetric routing and f
     }
     assert.equal(await enabling, true);
     assert.equal(manager._parallelActive, true);
+    assert.deepEqual(manager.getActivePowerWorklets(), [main, auxiliary]);
+    assert.ok(manager.getPowerWorkletGraphGeneration() > preparingPowerGeneration);
     const mainTypes = main.port.messages.filter(entry => entry.message.type === 'dspEnableTypes');
     const auxiliaryTypes = auxiliary.port.messages.filter(entry => entry.message.type === 'dspEnableTypes');
     assert.deepEqual(mainTypes[0].message.types, []);

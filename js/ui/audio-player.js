@@ -23,7 +23,8 @@ export class AudioPlayer {
       layoutMode: windowRef?.uiManager?.layoutMode,
       stateManager: this.stateManager,
       navigatorRef: windowRef?.navigator,
-      documentRef: windowRef?.document
+      documentRef: windowRef?.document,
+      powerStateProvider: audioManager?.powerPolicyController || null
     });
     
     // Initialize sub-modules with state manager reference
@@ -34,6 +35,7 @@ export class AudioPlayer {
     
     // Set up state manager listeners
     this.setupStateManagerListeners();
+    this.audioManager?.powerPolicyController?.attachPlayer?.(this);
     
     // Load saved player state
     this.stateRestored = this.playbackManager.loadPlayerState().then(() => {
@@ -50,6 +52,14 @@ export class AudioPlayer {
    * @param {number|null} insertAt - Optional insertion index for append operations
    */
   async loadFiles(files, append = false, insertAt = null) {
+    // Start the resume while transient user activation is still available.
+    // File loading and decoding below can outlive WebKit's activation window.
+    const gestureResume = this.resumeAudioContextInGesture();
+    // Stop the old source before publishing the replacement queue. The stop,
+    // decode, and gesture resume then settle in parallel, so pending activation
+    // can never leave old audio playing behind the new track UI.
+    const stopOldPlayback = this.stop();
+    const stopTokenBefore = this.contextManager?.stopRequestToken;
     this.playbackManager.loadFiles(files, append, insertAt);
     if (!this.ui.container) {
       this.ui.createPlayerUI();
@@ -58,13 +68,16 @@ export class AudioPlayer {
     // pause/stop requested DURING this load (must not auto-start) from a player
     // that was merely already paused when reused to open new files (must start
     // playback for the freshly-opened files).
-    const stopTokenBefore = this.contextManager?.stopRequestToken;
-    const loaded = await this.loadTrack(this.stateManager.getCurrentTrackIndex());
+    const loadTrack = this.loadTrack(this.stateManager.getCurrentTrackIndex());
+    const [resumeReady, loaded] = await Promise.all([
+      gestureResume,
+      loadTrack,
+      stopOldPlayback.then(() => true)
+    ]);
     const pausedDuringLoad = typeof stopTokenBefore === 'number' &&
       this.contextManager?.stopRequestToken !== stopTokenBefore;
-    if (loaded !== false && !pausedDuringLoad) {
-      await this.play();
-    }
+    if (loaded === false || pausedDuringLoad || !resumeReady) return false;
+    return await this.play(false) !== false;
   }
   
   /**
@@ -89,19 +102,25 @@ export class AudioPlayer {
    */
   resumeAudioContextInGesture() {
     try {
-      const result = this.audioManager?.contextManager?.resumeAudioContext?.();
-      if (result && typeof result.catch === 'function') {
-        result.catch(() => {});
-      }
-    } catch (_) { /* never block playback on resume failures */ }
+      const controller = this.audioManager?.powerPolicyController;
+      const result = controller?.enabled
+        ? controller.beginUserGestureResume?.(
+            this.contextManager?.getPlaybackResumeKind?.() || 'player-only-play'
+          )
+        : this.audioManager?.contextManager?.resumeAudioContext?.();
+      return Promise.resolve(result ?? true).then(value => value !== false, () => false);
+    } catch (_) {
+      return Promise.resolve(false);
+    }
   }
 
   /**
    * Play the current track
+   * @param {boolean} userInitiated - Whether this command is running in a user gesture
    */
-  async play() {
-    this.resumeAudioContextInGesture();
-    await this.playbackManager.play();
+  async play(userInitiated = true) {
+    if (userInitiated) this.resumeAudioContextInGesture();
+    return await this.playbackManager.play(userInitiated);
   }
   
   /**
@@ -115,22 +134,27 @@ export class AudioPlayer {
    * Toggle between play and pause
    */
   async togglePlayPause() {
-    this.resumeAudioContextInGesture();
-    await this.playbackManager.togglePlayPause();
+    await this.playbackManager.togglePlayPause(() => this.resumeAudioContextInGesture());
   }
   
   /**
    * Stop playback and reset position
+   * @param {Object} options - Stop behavior options
+   * @param {boolean} options.preservePlaylistSelectionIntent - Keep an in-flight selection's play intent
    */
-  async stop() {
+  async stop({ preservePlaylistSelectionIntent = false } = {}) {
+    if (!preservePlaylistSelectionIntent) {
+      this.ui?.cancelPlaylistSelectionIntent?.();
+    }
     await this.playbackManager.stop();
   }
   
   /**
    * Play the previous track
+   * @param {boolean} userInitiated - Whether this command is running in a user gesture
    */
-  async playPrevious() {
-    return this.playbackManager.playPrevious();
+  async playPrevious(userInitiated = true) {
+    return this.playbackManager.playPrevious(userInitiated);
   }
   
   /**
@@ -145,14 +169,14 @@ export class AudioPlayer {
    * Fast forward the current track by 10 seconds
    */
   fastForward() {
-    this.playbackManager.fastForward();
+    this.playbackManager.fastForward(true);
   }
   
   /**
    * Rewind the current track by 10 seconds
    */
   rewind() {
-    this.playbackManager.rewind();
+    this.playbackManager.rewind(true);
   }
   
   /**
@@ -211,6 +235,7 @@ export class AudioPlayer {
 
     // Release screen wake lock, if held
     this.wakeLockManager?.dispose();
+    this.audioManager?.powerPolicyController?.detachPlayer?.(this);
     
     // Clear state manager
     this.stateManager.clearStateHistory();

@@ -31,6 +31,7 @@ Sin mitos audiophiles, solo pura ciencia.
 - Exploración de subcarpetas locales, metadatos y listas de reproducción con la Biblioteca musical
 - Medición y corrección de respuesta en frecuencia para calibración del sistema
 - Procesamiento y salida multicanal
+- Ahorro de energía en las versiones Web/PWA y de escritorio, con gestión configurable del silencio y de la retención de la entrada de audio
 
 ## Guía de Configuración
 

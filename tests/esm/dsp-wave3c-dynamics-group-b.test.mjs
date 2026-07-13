@@ -20,21 +20,21 @@ const ports = [
     folder: 'auto_leveler',
     hash: 0xe0b1f34d,
     floatCount: 7,
-    jsEngineHash: 'ccd1a8da9c67f43352c51551a49a31cce01fa129a10d25ec47e47bfe8230bb04'
+    jsEngineHash: 'edb476f179312c23993dee782b0620b03abebcde81e5727591b123ef47a8020f'
   },
   {
     type: 'BrickwallLimiterPlugin',
     folder: 'brickwall_limiter',
     hash: 0xb531a24a,
     floatCount: 6,
-    jsEngineHash: '3457f4fb73138b7b7a99394ef0f0b5bfeeb5901dc15072754160111543bd4661'
+    jsEngineHash: 'e4f6586e5e32f1f7c94bbc8e615b53212cd047e1dda7073434b1cca80845cf9f'
   },
   {
     type: 'TransientShaperPlugin',
     folder: 'transient_shaper',
     hash: 0xe2344ceb,
     floatCount: 7,
-    jsEngineHash: '6902858a072d2c8c7dc161bc156839fea3b7989addf0db208150086cf96695a3'
+    jsEngineHash: 'd0a7ae2f7b836df4cc42b6b2c27b5376830e6759691629f0e944c816821d652f'
   }
 ];
 

@@ -36,6 +36,7 @@ No audiophile myths, Just pure science.
 - Mobile-friendly web layout for phone and tablet use
 - Web app settings and audio configuration saved in the browser
 - Installable web app with offline app-shell support
+- Power saving for Web/PWA and desktop apps, with configurable silence handling and audio-input retention
 
 ## Setup Guide
 

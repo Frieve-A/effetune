@@ -938,7 +938,7 @@ class MultiChannelPanelPlugin extends PluginBase {
                 return;
             }
             this.updateMeters();
-            this.animationFrameId = requestAnimationFrame(animate);
+            this.animationFrameId = this.requestPowerAnimationFrame(animate);
         };
         animate();
     }

@@ -92,14 +92,14 @@ test('loadFiles delegates playlist loading, creates missing UI, then loads and p
     };
     player.stateManager.getCurrentTrackIndex = () => 3;
     player.loadTrack = async index => calls.push(['loadTrack', index]);
-    player.play = async () => calls.push(['play']);
+    player.play = async userInitiated => calls.push(['play', userInitiated]);
 
     await player.loadFiles(['a.wav'], true);
     assert.deepEqual(calls.filter(call => ['loadFiles', 'createPlayerUI', 'loadTrack', 'play'].includes(call[0])), [
       ['loadFiles', ['a.wav'], true],
       ['createPlayerUI'],
       ['loadTrack', 3],
-      ['play']
+      ['play', false]
     ]);
 
     calls.length = 0;
@@ -109,8 +109,138 @@ test('loadFiles delegates playlist loading, creates missing UI, then loads and p
     assert.deepEqual(calls.filter(call => call[0] === 'loadFiles' || call[0] === 'loadTrack' || call[0] === 'play'), [
       ['loadFiles', ['b.wav'], false],
       ['loadTrack', 3],
-      ['play']
+      ['play', false]
     ]);
+  });
+});
+
+test('loadFiles starts a mixed resume before asynchronous track loading', async () => {
+  await withAudioPlayerGlobals({ window: { audioPreferences: { useInputWithPlayer: true } } }, async ({ calls }) => {
+    const audioManager = createAudioManager();
+    let finishResume;
+    audioManager.powerPolicyController = {
+      enabled: true,
+      attachPlayer() {},
+      beginUserGestureResume(kind) {
+        calls.push(['beginUserGestureResume', kind]);
+        return new Promise(resolve => { finishResume = resolve; });
+      }
+    };
+    const player = new AudioPlayer(audioManager);
+    player.stateManager.updateState({
+      currentTrack: { name: 'A' },
+      currentBuffer: { id: 'buffer-a' },
+      currentTrackPosition: 12,
+      isPlaying: true,
+      isStopped: false
+    }, 'test playing A');
+    player.stop = async () => {
+      calls.push(['stopOldSource']);
+      player.stateManager.updateState({
+        currentBuffer: null,
+        currentTrackPosition: 0,
+        isPlaying: false,
+        isStopped: true
+      }, 'test stop A');
+    };
+    player.playbackManager.loadFiles = () => {
+      calls.push(['loadFiles']);
+      player.stateManager.updateState({ currentTrack: { name: 'B' } }, 'test publish B');
+    };
+    player.ui.container = { id: 'ui' };
+    player.stateManager.getCurrentTrackIndex = () => 0;
+    let finishLoading;
+    player.loadTrack = () => {
+      calls.push(['loadTrack', 'B']);
+      return new Promise(resolve => {
+        finishLoading = value => {
+          player.stateManager.updateState({ currentBuffer: { id: 'buffer-b' } }, 'test decoded B');
+          resolve(value);
+        };
+      });
+    };
+    player.play = async userInitiated => calls.push(['play', userInitiated]);
+
+    const loading = player.loadFiles(['a.wav']);
+
+    assert.deepEqual(calls.filter(call => [
+      'beginUserGestureResume',
+      'stopOldSource',
+      'loadFiles'
+    ].includes(call[0])), [
+      ['beginUserGestureResume', 'mixed-play'],
+      ['stopOldSource'],
+      ['loadFiles']
+    ]);
+    const pendingState = player.stateManager.getStateSnapshot();
+    assert.equal(pendingState.currentTrack.name, 'B');
+    assert.equal(pendingState.currentBuffer, null);
+    assert.equal(pendingState.currentTrackPosition, 0);
+    assert.equal(pendingState.isStopped, true);
+    finishResume(true);
+    await flushMicrotasks();
+    assert.equal(calls.some(call => call[0] === 'play'), false);
+    finishLoading(true);
+    await loading;
+    assert.ok(calls.some(call => call[0] === 'play' && call[1] === false));
+  });
+});
+
+test('loadFiles stops the old source and reports failure when a replacement resume fails', async () => {
+  await withAudioPlayerGlobals({}, async ({ calls }) => {
+    const audioManager = createAudioManager();
+    audioManager.powerPolicyController = {
+      enabled: true,
+      attachPlayer() {},
+      beginUserGestureResume() {
+        calls.push(['beginUserGestureResume']);
+        return Promise.resolve(false);
+      }
+    };
+    const player = new AudioPlayer(audioManager);
+    player.stateManager.updateState({
+      currentTrack: { name: 'A' },
+      currentBuffer: { id: 'buffer-a' },
+      currentTrackPosition: 23,
+      isPlaying: true,
+      isStopped: false
+    }, 'test playing A');
+    player.playbackManager.loadFiles = () => {
+      calls.push(['loadFiles']);
+      player.stateManager.updateState({ currentTrack: { name: 'B' } }, 'test select B');
+    };
+    player.ui.container = { id: 'ui' };
+    player.stateManager.getCurrentTrackIndex = () => 0;
+    player.loadTrack = async () => {
+      calls.push(['loadTrack', 'B']);
+      player.stateManager.updateState({
+        currentBuffer: { id: 'buffer-b' },
+        currentTrackPosition: 0
+      }, 'test decoded B');
+      return true;
+    };
+    player.stop = async () => {
+      calls.push(['stopOldSource']);
+      player.stateManager.updateState({
+        isPlaying: false,
+        isPaused: false,
+        isStopped: true,
+        currentTrackPosition: 0
+      }, 'test stop after resume failure');
+    };
+    player.play = async () => calls.push(['play']);
+
+    const loaded = await player.loadFiles(['b.wav']);
+
+    assert.equal(loaded, false);
+    assert.ok(calls.some(call => call[0] === 'beginUserGestureResume'));
+    assert.ok(calls.some(call => call[0] === 'stopOldSource'));
+    assert.equal(calls.some(call => call[0] === 'play'), false);
+    const state = player.stateManager.getStateSnapshot();
+    assert.equal(state.currentTrack.name, 'B');
+    assert.equal(state.currentBuffer.id, 'buffer-b');
+    assert.equal(state.currentTrackPosition, 0);
+    assert.equal(state.isStopped, true);
   });
 });
 
@@ -183,19 +313,19 @@ test('loadTrack and playback command methods delegate to their managers', async 
       async stop() {
         calls.push(['playbackStop']);
       },
-      async playPrevious() {
-        calls.push(['playPrevious']);
+      async playPrevious(userInitiated) {
+        calls.push(['playPrevious', userInitiated]);
         return 'previous-result';
       },
       async playNext(userInitiated) {
         calls.push(['playNext', userInitiated]);
         return `next-result-${userInitiated}`;
       },
-      fastForward() {
-        calls.push(['fastForward']);
+      fastForward(userInitiated) {
+        calls.push(['fastForward', userInitiated]);
       },
-      rewind() {
-        calls.push(['rewind']);
+      rewind(userInitiated) {
+        calls.push(['rewind', userInitiated]);
       },
       playlist: []
     };
@@ -229,11 +359,60 @@ test('loadTrack and playback command methods delegate to their managers', async 
       ['playbackPauseDone'],
       ['togglePlayPause'],
       ['playbackStop'],
-      ['playPrevious'],
+      ['playPrevious', true],
       ['playNext', true],
       ['playNext', false],
-      ['fastForward'],
-      ['rewind']
+      ['fastForward', true],
+      ['rewind', true]
+    ]);
+  });
+});
+
+test('toggle delegates gesture resume to the manager play intent', async () => {
+  await withAudioPlayerGlobals({}, async ({ calls }) => {
+    const player = createPlayer();
+    let onPlayIntent = null;
+    player.resumeAudioContextInGesture = () => calls.push(['resumeAudioContextInGesture']);
+    player.playbackManager.togglePlayPause = async callback => {
+      calls.push(['togglePlayPause']);
+      onPlayIntent = callback;
+    };
+
+    await player.togglePlayPause();
+    assert.deepEqual(calls.filter(call => [
+      'togglePlayPause',
+      'resumeAudioContextInGesture'
+    ].includes(call[0])), [
+      ['togglePlayPause']
+    ]);
+
+    onPlayIntent();
+    assert.deepEqual(calls.filter(call => [
+      'togglePlayPause',
+      'resumeAudioContextInGesture'
+    ].includes(call[0])), [
+      ['togglePlayPause'],
+      ['resumeAudioContextInGesture']
+    ]);
+  });
+});
+
+test('explicit stop cancels playlist selection intent while an internal handoff preserves it', async () => {
+  await withAudioPlayerGlobals({}, async ({ calls }) => {
+    const player = createPlayer();
+    player.ui.cancelPlaylistSelectionIntent = () => calls.push(['cancelPlaylistSelectionIntent']);
+    player.playbackManager.stop = async () => calls.push(['playbackStop']);
+
+    await player.stop();
+    await player.stop({ preservePlaylistSelectionIntent: true });
+
+    assert.deepEqual(calls.filter(call => [
+      'cancelPlaylistSelectionIntent',
+      'playbackStop'
+    ].includes(call[0])), [
+      ['cancelPlaylistSelectionIntent'],
+      ['playbackStop'],
+      ['playbackStop']
     ]);
   });
 });

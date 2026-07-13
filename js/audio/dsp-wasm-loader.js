@@ -225,7 +225,6 @@ async function importGeneratedParamPackers() {
 
 async function loadAndValidate({
     basePath,
-    debug,
     fetchImpl,
     webAssembly,
     structuredCloneImpl,
@@ -235,10 +234,8 @@ async function loadAndValidate({
     paramPackersModule,
     publishTarget
 }) {
-    const simd = !debug && detectSimdSupport(webAssembly);
-    const artifactName = debug
-        ? 'effetune-dsp.debug.wasm'
-        : (simd ? 'effetune-dsp.simd.wasm' : 'effetune-dsp.wasm');
+    const simd = detectSimdSupport(webAssembly);
+    const artifactName = simd ? 'effetune-dsp.simd.wasm' : 'effetune-dsp.wasm';
     const artifactUrl = joinAssetPath(basePath, `plugins/dsp/${artifactName}`);
     const metaUrl = joinAssetPath(basePath, 'plugins/dsp/effetune-dsp.meta.json');
 
@@ -262,7 +259,7 @@ async function loadAndValidate({
     let binding = null;
     let capabilities;
     try {
-        binding = await instantiateImpl(module, { webAssembly, debug, warning });
+        binding = await instantiateImpl(module, { webAssembly, warning });
         capabilities = binding.getCapabilities();
     } finally {
         binding?.close();
@@ -270,7 +267,7 @@ async function loadAndValidate({
     if (capabilities.abiVersion !== expectedAbiVersion) {
         throw new Error(`Module ABI ${capabilities.abiVersion} does not match host ABI ${expectedAbiVersion}`);
     }
-    if (!debug && capabilities.simd !== simd) {
+    if (capabilities.simd !== simd) {
         throw new Error(`Module SIMD flag does not match selected artifact ${artifactName}`);
     }
 
@@ -296,7 +293,6 @@ async function loadAndValidate({
 
 export async function loadDspModule({
     basePath = '',
-    debug = false,
     fetchImpl = globalThis.fetch,
     webAssembly = globalThis.WebAssembly,
     structuredCloneImpl = globalThis.structuredClone,
@@ -317,16 +313,13 @@ export async function loadDspModule({
         return null;
     }
 
-    const simd = !debug && detectSimdSupport(webAssembly);
-    const artifactName = debug
-        ? 'effetune-dsp.debug.wasm'
-        : (simd ? 'effetune-dsp.simd.wasm' : 'effetune-dsp.wasm');
+    const simd = detectSimdSupport(webAssembly);
+    const artifactName = simd ? 'effetune-dsp.simd.wasm' : 'effetune-dsp.wasm';
     const cacheKey = `${basePath}|${artifactName}|${expectedAbiVersion}`;
     if (cache && moduleCache.has(cacheKey)) return moduleCache.get(cacheKey);
 
     const loadPromise = loadAndValidate({
         basePath,
-        debug,
         fetchImpl,
         webAssembly,
         structuredCloneImpl,

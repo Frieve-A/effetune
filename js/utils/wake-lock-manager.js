@@ -1,3 +1,5 @@
+import { validatePowerSnapshot } from '../audio/power-snapshot.js';
+
 function getDefaultNavigator() {
     return typeof navigator !== 'undefined' ? navigator : {};
 }
@@ -12,14 +14,18 @@ export class WakeLockManager {
     constructor({
         layoutMode,
         stateManager,
+        powerStateProvider = null,
         navigatorRef = getDefaultNavigator(),
         documentRef = getDefaultDocument()
     } = {}) {
         this.layoutMode = layoutMode;
         this.stateManager = stateManager;
+        this.powerStateProvider = powerStateProvider;
         this.navigatorRef = navigatorRef;
         this.documentRef = documentRef;
         this.lock = null;
+        this.lastPowerSnapshot = null;
+        this.powerSnapshotInvalid = false;
         this.visible = !this.documentRef.hidden;
         this.desiredLockState = false;
         this.syncPromise = null;
@@ -30,26 +36,83 @@ export class WakeLockManager {
             this.sync();
         };
         this.onPlayingChange = () => this.sync();
+        this.onPowerStateChange = eventOrSnapshot => {
+            const snapshot = eventOrSnapshot?.detail ?? eventOrSnapshot;
+            if (validatePowerSnapshot(snapshot)) {
+                this.lastPowerSnapshot = snapshot;
+                this.powerSnapshotInvalid = false;
+            } else {
+                this.lastPowerSnapshot = null;
+                this.powerSnapshotInvalid = true;
+            }
+            this.sync();
+        };
 
         this.documentRef.addEventListener?.('visibilitychange', this.onVisibilityChange);
         this.stateManager?.addListener?.('isPlaying', this.onPlayingChange);
         this.layoutUnsubscribe = this.layoutMode?.onChange?.(() => this.sync()) || null;
+        this.powerUnsubscribe = this.subscribePowerStateProvider();
         this.sync();
+    }
+
+    subscribePowerStateProvider() {
+        if (!this.powerStateProvider) return null;
+        if (typeof this.powerStateProvider.subscribe === 'function') {
+            const unsubscribe = this.powerStateProvider.subscribe(this.onPowerStateChange);
+            return typeof unsubscribe === 'function' ? unsubscribe : null;
+        }
+        if (typeof this.powerStateProvider.addEventListener === 'function') {
+            this.powerStateProvider.addEventListener('powerStateChanged', this.onPowerStateChange);
+            return () => this.powerStateProvider?.removeEventListener?.(
+                'powerStateChanged',
+                this.onPowerStateChange
+            );
+        }
+        return null;
+    }
+
+    isPowerControllerEnabled() {
+        if (!this.powerStateProvider) return false;
+        const enabled = this.powerStateProvider.isControllerEnabled?.();
+        return enabled !== false;
+    }
+
+    getEffectivePowerState() {
+        if (this.powerSnapshotInvalid) return null;
+        const candidate = this.lastPowerSnapshot ??
+            this.powerStateProvider?.getPowerSnapshot?.() ??
+            this.powerStateProvider?.getSnapshot?.();
+        const snapshot = validatePowerSnapshot(candidate) ? candidate : null;
+        return snapshot?.effectiveState;
+    }
+
+    isPowerStateAllowed() {
+        if (!this.isPowerControllerEnabled()) return true;
+        return String(this.getEffectivePowerState() || '').toLowerCase() === 'active';
     }
 
     shouldHoldLock() {
         const state = this.stateManager?.getStateSnapshot?.();
-        return !!(this.layoutMode?.isMobile && state?.isPlaying && this.visible);
+        return !!(
+            this.layoutMode?.isMobile &&
+            state?.isPlaying &&
+            this.visible &&
+            this.isPowerStateAllowed()
+        );
     }
 
     async sync() {
-        if (this.disposed) return;
+        if (this.disposed) return this.syncPromise;
         this.desiredLockState = this.shouldHoldLock();
         this.syncVersion++;
+        return this.ensureSync();
+    }
+
+    ensureSync() {
         if (!this.syncPromise) {
             this.syncPromise = this.runSync();
         }
-        await this.syncPromise;
+        return this.syncPromise;
     }
 
     async runSync() {
@@ -57,8 +120,7 @@ export class WakeLockManager {
         try {
             while (seenVersion !== this.syncVersion) {
                 seenVersion = this.syncVersion;
-                if (this.disposed) break;
-                if (this.desiredLockState) {
+                if (this.desiredLockState && !this.disposed) {
                     await this.request();
                 } else {
                     await this.release();
@@ -78,11 +140,15 @@ export class WakeLockManager {
     async request() {
         if (this.lock || !this.navigatorRef.wakeLock?.request) return;
         try {
-            this.lock = await this.navigatorRef.wakeLock.request('screen');
-            this.lock.addEventListener?.('release', () => {
-                this.lock = null;
+            const lock = await this.navigatorRef.wakeLock.request('screen');
+            if (!lock) return;
+            this.lock = lock;
+            lock.addEventListener?.('release', () => {
+                if (this.lock === lock) {
+                    this.lock = null;
+                }
             });
-        } catch (error) {
+        } catch {
             this.lock = null;
         }
     }
@@ -98,12 +164,16 @@ export class WakeLockManager {
     }
 
     dispose() {
+        if (this.disposed) return this.syncPromise || Promise.resolve();
         this.disposed = true;
         this.desiredLockState = false;
         this.syncVersion++;
         this.documentRef.removeEventListener?.('visibilitychange', this.onVisibilityChange);
         this.stateManager?.removeListener?.('isPlaying', this.onPlayingChange);
         this.layoutUnsubscribe?.();
-        this.release();
+        this.powerUnsubscribe?.();
+        this.layoutUnsubscribe = null;
+        this.powerUnsubscribe = null;
+        return this.ensureSync();
     }
 }

@@ -21,6 +21,12 @@ export class PluginManager {
         }
         const plugin = new this.pluginClasses[name]();
         plugin.id = this.nextPluginId++;
+        const currentPowerUiGate = typeof window !== 'undefined'
+            ? window.audioManager?.powerPolicyController?.getDspUiActivityAllowed?.()
+            : undefined;
+        if (typeof currentPowerUiGate === 'boolean') {
+            plugin.setPowerUiEnabled?.(currentPowerUiGate);
+        }
         this.captureDefaultParameters(plugin);
         return plugin;
     }

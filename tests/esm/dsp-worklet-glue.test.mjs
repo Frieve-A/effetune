@@ -406,7 +406,6 @@ test('worklet uses one native pipeline call when every active node is WASM-ready
   });
   await harness.send({ type: 'dspEnableTypes', types: ['VolumePlugin'] });
   await harness.send({ type: 'dspModule', module: { compiled: true } });
-  await harness.send({ type: 'dspSetBench', enabled: true });
 
   const configureCall = binding.calls.find(call => call[0] === 'pipelineConfigure');
   assert.ok(configureCall);
@@ -427,17 +426,6 @@ test('worklet uses one native pipeline call when every active node is WASM-ready
   assert.equal(output[1][0], 3);
   assert.equal(binding.calls.filter(call => call[0] === 'pipelineProcess').length, 1);
   assert.equal(binding.calls.filter(call => call[0] === 'instanceProcess').length, 0);
-  const stats = messagesOf(harness.posts, 'dspStats');
-  assert.equal(stats.length, 1);
-  assert.deepEqual({ ...stats[0].message }, {
-    type: 'dspStats',
-    singleCallBlocks: 1,
-    hybridInstanceCalls: 0,
-    telemetryDroppedFrames: 0,
-    pipelineReady: true,
-    readyInstances: 1,
-    simd: false
-  });
 });
 
 test('worklet invalidates a native descriptor before mutation and falls back when reconciliation throws', async () => {
@@ -645,6 +633,33 @@ test('worklet bypasses a pair block when WASM memory grows during instance proce
   });
   await harness.send({ type: 'dspEnableTypes', types: ['VolumePlugin'] });
   await harness.send({ type: 'dspModule', module: { compiled: true } });
+  await harness.send({
+    type: 'configurePowerPolicy',
+    enabled: true,
+    workletGraphGeneration: 3,
+    topologyRevision: 7,
+    commandId: 1,
+    silenceThresholdDb: -80,
+    silenceDurationSeconds: 0,
+    wakeGainMarginDb: 24,
+    enabledPluginCount: 1,
+    monitoringPreparationCapabilities: [{ pluginId: 7, capability: 'stateless' }],
+    temporalSkipEligible: true,
+    monitoringFastWakeEligible: true,
+    monitoringFastWakeBlockerReason: null
+  });
+  await harness.send({
+    type: 'setPowerProcessingState',
+    state: 'active',
+    processingDirective: 'full-process',
+    workletGraphGeneration: 3,
+    topologyRevision: 7,
+    commandId: 2,
+    skipEpoch: 1
+  });
+  const beforeFrame = harness.processor.currentFrame;
+  const beforeRenderSequence = harness.processor.powerPolicy.renderSequence;
+  const beforeRenderQuanta = harness.processor.powerPolicy.counters.renderQuanta;
 
   const first = processBlock(harness.processor, 0.25);
   assert.equal(arena.scratch.stereo.byteLength, 0);
@@ -652,6 +667,12 @@ test('worklet bypasses a pair block when WASM memory grows during instance proce
   assert.equal(first[1][0], 0.25);
   assert.equal(harness.processor.dspLive, false);
   assert.equal(messagesOf(harness.posts, 'dspCleanupNeeded').length, 1);
+  assert.equal(harness.processor.currentFrame, beforeFrame + 128);
+  assert.equal(harness.processor.powerPolicy.renderSequence, beforeRenderSequence + 1);
+  assert.equal(harness.processor.powerPolicy.counters.renderQuanta, beforeRenderQuanta + 1);
+  assert.equal(harness.processor.powerPolicy.counters.fullProcessQuanta, 1);
+  assert.ok(harness.processor.powerPolicy.outputPowerEwma > 0);
+  assert.equal(messagesOf(harness.posts, 'powerFirstRender').at(-1).message.commandId, 2);
 
   await harness.send({ type: 'dspCleanupFailed' });
   const second = processBlock(harness.processor, 0.5);
@@ -771,4 +792,540 @@ test('worklet reports a repeated instantiation failure once and accepts module o
   assert.equal(failures[0].message.type, 'dspFailed');
   assert.equal(failures[0].message.stage, 'instantiate');
   assert.equal(failures[0].message.error, 'bad artifact');
+});
+
+test('explicit power protocol arms once, monitors, and processes the wake block in the same quantum', async () => {
+  const harness = await createWorkletHarness();
+  await harness.send({
+    type: 'configurePowerPolicy',
+    enabled: true,
+    workletGraphGeneration: 3,
+    topologyRevision: 7,
+    commandId: 1,
+    silenceThresholdDb: -80,
+    silenceDurationSeconds: 0,
+    wakeGainMarginDb: 24,
+    enabledPluginCount: 0,
+    monitoringPreparationCapabilities: [],
+    temporalSkipEligible: true,
+    monitoringFastWakeEligible: true,
+    monitoringFastWakeBlockerReason: null
+  });
+  processBlock(harness.processor, 0);
+  await harness.send({
+    type: 'setPowerProcessingState',
+    state: 'active',
+    processingDirective: 'allow-automatic',
+    workletGraphGeneration: 3,
+    topologyRevision: 7,
+    commandId: 11,
+    skipEpoch: 101,
+    armAfterRenderSequence: harness.processor.powerPolicy.renderSequence
+  });
+
+  processBlock(harness.processor, 0);
+  assert.equal(harness.processor.powerPolicy.state, 'monitoring');
+  assert.equal(harness.processor.powerPolicy.arm.state, 'consumed');
+  assert.equal(harness.processor.powerPolicy.skippedFrameCount, 0);
+
+  const amplitude = 10 ** (-85 / 20);
+  const input = [
+    Float32Array.from({ length: 128 }, (_, index) => index % 2 ? amplitude : -amplitude),
+    new Float32Array(128)
+  ];
+  const output = [new Float32Array(128), new Float32Array(128)];
+  harness.processor.process([input], [output], {});
+  assert.equal(harness.processor.powerPolicy.state, 'active');
+  assert.equal(harness.processor.powerPolicy.arm.state, 'disarmed');
+  assert.notEqual(output[0][0], 0);
+  assert.equal(harness.processor.powerPolicy.counters.fullProcessQuanta, 3);
+
+  await harness.send({
+    type: 'setPowerProcessingState',
+    state: 'active',
+    processingDirective: 'allow-automatic',
+    workletGraphGeneration: 3,
+    topologyRevision: 7,
+    commandId: 12,
+    skipEpoch: 102,
+    armAfterRenderSequence: harness.processor.powerPolicy.renderSequence
+  });
+  assert.equal(harness.processor.powerPolicy.arm.state, 'armed');
+  assert.equal(harness.processor.powerPolicy.arm.commandId, 12);
+  assert.equal(harness.processor.powerPolicy.inputSilentFrames, 0);
+  assert.equal(harness.processor.powerPolicy.outputSilentFrames, 0);
+
+  processBlock(harness.processor, 0);
+  assert.equal(harness.processor.powerPolicy.state, 'monitoring');
+  const secondWakeOutput = processBlock(harness.processor, amplitude);
+  assert.equal(harness.processor.powerPolicy.state, 'active');
+  assert.equal(harness.processor.powerPolicy.arm.state, 'disarmed');
+  assert.notEqual(secondWakeOutput[0][0], 0);
+
+  await harness.send({
+    type: 'setPowerProcessingState',
+    state: 'active',
+    processingDirective: 'allow-automatic',
+    workletGraphGeneration: 3,
+    topologyRevision: 7,
+    commandId: 12,
+    skipEpoch: 102,
+    armAfterRenderSequence: harness.processor.powerPolicy.renderSequence
+  });
+  assert.equal(harness.processor.powerPolicy.arm.state, 'disarmed');
+  assert.equal(messagesOf(harness.posts, 'powerStateAck').at(-1).message.automaticArmAccepted, false);
+});
+
+test('power policy publishes empty-input once per episode and rides the heartbeat afterwards', async () => {
+  const harness = await createWorkletHarness();
+  await harness.send({
+    type: 'configurePowerPolicy',
+    enabled: true,
+    workletGraphGeneration: 3,
+    topologyRevision: 7,
+    commandId: 1,
+    silenceThresholdDb: -80,
+    silenceDurationSeconds: 0,
+    wakeGainMarginDb: 24,
+    enabledPluginCount: 0,
+    monitoringPreparationCapabilities: [],
+    temporalSkipEligible: true,
+    monitoringFastWakeEligible: true,
+    monitoringFastWakeBlockerReason: null
+  });
+  processBlock(harness.processor, 0);
+
+  const processEmptyBlock = () => {
+    const output = [new Float32Array(128), new Float32Array(128)];
+    assert.equal(harness.processor.process([[]], [output], {}), true);
+  };
+  const powerPosts = () => harness.posts.filter(entry =>
+    entry.message.type === 'powerObservation' || entry.message.type === 'powerHeartbeat');
+
+  const baselineCount = powerPosts().length;
+  processEmptyBlock();
+  let posts = powerPosts();
+  assert.equal(posts.length, baselineCount + 1);
+  assert.equal(posts.at(-1).message.type, 'powerObservation');
+  assert.equal(posts.at(-1).message.reason, 'empty-input');
+
+  const afterEmptyEdgeCount = posts.length;
+  for (let index = 0; index < 100; index++) processEmptyBlock();
+  assert.equal(powerPosts().length, afterEmptyEdgeCount);
+
+  for (let index = 0; index < 300; index++) processEmptyBlock();
+  posts = powerPosts();
+  assert.equal(posts.length, afterEmptyEdgeCount + 1);
+  assert.equal(posts.at(-1).message.type, 'powerHeartbeat');
+
+  processBlock(harness.processor, 0.5);
+  processEmptyBlock();
+  assert.equal(powerPosts().filter(entry => entry.message.reason === 'empty-input').length, 2);
+});
+
+test('master bypass keeps the monitoring wake block dry under power policy', async () => {
+  const harness = await createWorkletHarness();
+  await harness.send({
+    type: 'registerProcessor',
+    pluginType: 'VolumePlugin',
+    processor: 'for (let i = 0; i < data.length; i++) data[i] *= 5; return data;'
+  });
+  await harness.send({
+    type: 'updatePlugins',
+    plugins: [pluginConfig()],
+    masterBypass: true
+  });
+  await harness.send({
+    type: 'configurePowerPolicy',
+    enabled: true,
+    workletGraphGeneration: 3,
+    topologyRevision: 7,
+    commandId: 1,
+    silenceThresholdDb: -80,
+    silenceDurationSeconds: 0,
+    wakeGainMarginDb: 24,
+    enabledPluginCount: 1,
+    monitoringPreparationCapabilities: [{ pluginId: 7, capability: 'stateless' }],
+    temporalSkipEligible: true,
+    monitoringFastWakeEligible: true,
+    monitoringFastWakeBlockerReason: null
+  });
+  processBlock(harness.processor, 0);
+  await harness.send({
+    type: 'setPowerProcessingState',
+    state: 'active',
+    processingDirective: 'allow-automatic',
+    workletGraphGeneration: 3,
+    topologyRevision: 7,
+    commandId: 11,
+    skipEpoch: 101,
+    armAfterRenderSequence: harness.processor.powerPolicy.renderSequence
+  });
+
+  processBlock(harness.processor, 0);
+  assert.equal(harness.processor.powerPolicy.state, 'monitoring');
+
+  const wakeOutput = processBlock(harness.processor, 0.25);
+  assert.equal(harness.processor.powerPolicy.state, 'active');
+  assert.equal(harness.processor.powerPolicy.processingDirective, 'full-process');
+  assert.equal(wakeOutput[0][0], 0.25);
+  assert.ok(harness.processor.powerPolicy.counters.fullProcessQuanta > 0);
+});
+
+test('master bypass measures final dry output instead of an internal generator', async () => {
+  const harness = await createWorkletHarness();
+  await harness.send({
+    type: 'registerProcessor',
+    pluginType: 'GeneratorPlugin',
+    processor: 'data.fill(0.5); return data;'
+  });
+  await harness.send({
+    type: 'updatePlugins',
+    plugins: [pluginConfig({ type: 'GeneratorPlugin' })],
+    masterBypass: true
+  });
+  await harness.send({
+    type: 'configurePowerPolicy',
+    enabled: true,
+    workletGraphGeneration: 3,
+    topologyRevision: 7,
+    commandId: 1,
+    silenceThresholdDb: -80,
+    silenceDurationSeconds: 0,
+    wakeGainMarginDb: 24,
+    enabledPluginCount: 1,
+    monitoringPreparationCapabilities: [{ pluginId: 7, capability: 'stateless' }],
+    temporalSkipEligible: true,
+    monitoringFastWakeEligible: true,
+    monitoringFastWakeBlockerReason: null
+  });
+  processBlock(harness.processor, 0);
+  await harness.send({
+    type: 'setPowerProcessingState',
+    state: 'active',
+    processingDirective: 'allow-automatic',
+    workletGraphGeneration: 3,
+    topologyRevision: 7,
+    commandId: 11,
+    skipEpoch: 101,
+    armAfterRenderSequence: harness.processor.powerPolicy.renderSequence
+  });
+
+  const output = processBlock(harness.processor, 0);
+  assert.equal(output[0][0], 0);
+  assert.equal(harness.processor.powerPolicy.outputPowerEwma, 0);
+  assert.equal(harness.processor.powerPolicy.state, 'monitoring');
+});
+
+test('explicit power protocol rejects stale identities and skips DSP for bypass and structural zero', async () => {
+  const harness = await createWorkletHarness();
+  await registerFallback(harness);
+  await harness.send({ type: 'updatePlugins', plugins: [pluginConfig()], masterBypass: false });
+  await harness.send({
+    type: 'configurePowerPolicy',
+    enabled: true,
+    workletGraphGeneration: 2,
+    topologyRevision: 4,
+    commandId: 1,
+    silenceThresholdDb: -80,
+    enabledPluginCount: 1,
+    monitoringPreparationCapabilities: [{ pluginId: 7, capability: 'stateless' }],
+    monitoringFastWakeEligible: true,
+    temporalSkipEligible: true
+  });
+  await harness.send({
+    type: 'setPowerProcessingState',
+    processingDirective: 'zero-output-transport',
+    workletGraphGeneration: 1,
+    topologyRevision: 4,
+    commandId: 2
+  });
+  assert.equal(harness.processor.powerPolicy.processingDirective, 'full-process');
+
+  await harness.send({
+    type: 'setPowerProcessingState',
+    processingDirective: 'zero-output-transport',
+    workletGraphGeneration: 2,
+    topologyRevision: 4,
+    commandId: 3,
+    skipEpoch: 9
+  });
+  const zeroOutput = processBlock(harness.processor, 1);
+  assert.equal(zeroOutput[0][0], 0);
+  assert.equal(harness.processor.powerPolicy.counters.fullProcessQuanta, 0);
+
+  await harness.send({
+    type: 'setPowerProcessingState',
+    processingDirective: 'bypass-transport',
+    workletGraphGeneration: 2,
+    topologyRevision: 4,
+    commandId: 4,
+    skipEpoch: 10
+  });
+  const dryOutput = processBlock(harness.processor, 0.25);
+  assert.equal(dryOutput[0][0], 0.25);
+  assert.equal(harness.processor.powerPolicy.counters.fullProcessQuanta, 0);
+  assert.ok(messagesOf(harness.posts, 'powerFirstRender').length >= 2);
+});
+
+test('deliberate temporal preparation resets every enabled instance before full processing', async () => {
+  const harness = await createWorkletHarness();
+  await harness.send({
+    type: 'updatePlugins',
+    plugins: [
+      { id: 1, type: 'StatelessPlugin', enabled: true, parameters: {} },
+      { id: 2, type: 'StatefulPlugin', enabled: true, parameters: {} }
+    ],
+    masterBypass: false
+  });
+  await harness.send({
+    type: 'configurePowerPolicy',
+    enabled: true,
+    workletGraphGeneration: 9,
+    topologyRevision: 12,
+    commandId: 1,
+    silenceThresholdDb: -80,
+    enabledPluginCount: 2,
+    monitoringPreparationCapabilities: [
+      { pluginId: 1, capability: 'stateless' },
+      { pluginId: 2, capability: 'reset-on-resume' }
+    ],
+    monitoringFastWakeEligible: false,
+    temporalSkipEligible: true
+  });
+  await harness.send({
+    type: 'setPowerProcessingState',
+    state: 'active',
+    processingDirective: 'zero-output-transport',
+    commandId: 7,
+    skipEpoch: 4,
+    workletGraphGeneration: 9,
+    topologyRevision: 12
+  });
+  harness.processor.pluginContexts.set(1, { value: 10 });
+  harness.processor.pluginContexts.set(2, { value: 1 });
+  await harness.send({
+    type: 'prepareTemporalState',
+    origin: 'deliberate',
+    ownerOperationId: 'resume-1',
+    commandId: 7,
+    ackCommandId: 8,
+    skipEpoch: 4,
+    skippedFrameCount: 0,
+    suspendedElapsedMs: 0,
+    elapsedContinuity: 'verified',
+    resumeSampleRate: 48000,
+    workletGraphGeneration: 9,
+    topologyRevision: 12
+  });
+
+  assert.deepEqual(harness.processor.pluginContexts.get(1), { value: 10 });
+  assert.equal(harness.processor.pluginContexts.has(2), false);
+  const prepared = messagesOf(harness.posts, 'temporalStatePrepared').at(-1).message;
+  assert.deepEqual({ ...prepared.appliedPolicyCounts }, {
+    stateless: 1,
+    resetOnResume: 1,
+    agedBySkippedFrames: 0,
+    mustProcess: 0
+  });
+  assert.equal(prepared.state, 'acknowledged');
+  assert.equal(prepared.enabledPluginCount, 2);
+  assert.equal(prepared.coveredPluginCount, 2);
+  assert.equal(prepared.ackCommandId, 8);
+});
+
+test('mixed temporal preparation ages only explicit bounded state and rejects stale owners', async () => {
+  const harness = await createWorkletHarness();
+  await harness.send({
+    type: 'updatePlugins',
+    plugins: [
+      { id: 1, type: 'StatelessPlugin', enabled: true, parameters: {} },
+      { id: 2, type: 'ResetPlugin', enabled: true, parameters: {} },
+      { id: 3, type: 'PhasePlugin', enabled: true, parameters: {} }
+    ],
+    masterBypass: false
+  });
+  const ageDescriptor = {
+    primitive: 'analytic-age',
+    allocationFree: true,
+    fixedOperations: 1,
+    parameterTimeline: 'topology-invalidates-skip',
+    resetFallback: 'canonical-reset',
+    stateFields: [{ key: 'phase', incrementPerFrame: 1 / 48000, modulo: 1 }]
+  };
+  await harness.send({
+    type: 'configurePowerPolicy',
+    enabled: true,
+    workletGraphGeneration: 4,
+    topologyRevision: 5,
+    commandId: 1,
+    silenceThresholdDb: -80,
+    enabledPluginCount: 3,
+    monitoringPreparationCapabilities: [
+      { pluginId: 1, capability: 'stateless', descriptor: null },
+      { pluginId: 2, capability: 'reset-on-resume', descriptor: null },
+      { pluginId: 3, capability: 'age-by-skipped-frames', descriptor: ageDescriptor }
+    ],
+    monitoringFastWakeEligible: false,
+    temporalSkipEligible: true
+  });
+  await harness.send({
+    type: 'setPowerProcessingState',
+    state: 'active',
+    processingDirective: 'zero-output-transport',
+    commandId: 9,
+    skipEpoch: 6,
+    workletGraphGeneration: 4,
+    topologyRevision: 5
+  });
+  processBlock(harness.processor, 0.5);
+  processBlock(harness.processor, 0.5);
+  harness.processor.pluginContexts.set(2, { tail: 1 });
+  harness.processor.pluginContexts.set(3, { phase: 0.25 });
+
+  const beforeStale = messagesOf(harness.posts, 'temporalStatePrepared').length;
+  await harness.send({
+    type: 'prepareTemporalState',
+    origin: 'deliberate',
+    ownerOperationId: 'old-owner',
+    commandId: 8,
+    ackCommandId: 10,
+    skipEpoch: 6,
+    skippedFrameCount: 256,
+    suspendedElapsedMs: 1000,
+    elapsedContinuity: 'verified',
+    resumeSampleRate: 48000,
+    workletGraphGeneration: 4,
+    topologyRevision: 5
+  });
+  assert.equal(messagesOf(harness.posts, 'temporalStatePrepared').length, beforeStale);
+
+  await harness.send({
+    type: 'prepareTemporalState',
+    origin: 'deliberate',
+    ownerOperationId: 'resume-owner',
+    commandId: 9,
+    ackCommandId: 11,
+    skipEpoch: 6,
+    skippedFrameCount: 256,
+    suspendedElapsedMs: 1000,
+    elapsedContinuity: 'verified',
+    resumeSampleRate: 48000,
+    workletGraphGeneration: 4,
+    topologyRevision: 5
+  });
+  const prepared = messagesOf(harness.posts, 'temporalStatePrepared').at(-1).message;
+  assert.equal(prepared.state, 'acknowledged');
+  assert.deepEqual({ ...prepared.appliedPolicyCounts }, {
+    stateless: 1,
+    resetOnResume: 1,
+    agedBySkippedFrames: 1,
+    mustProcess: 0
+  });
+  assert.equal(prepared.skippedFrameCount, 48256);
+  assert.equal(harness.processor.pluginContexts.has(2), false);
+  assert.ok(Math.abs(harness.processor.pluginContexts.get(3).phase -
+    (0.25 + 48256 / 48000) % 1) < 1e-12);
+});
+
+test('power detector uses channel maxima, treats nonfinite input as active, and holds low-level wake', async () => {
+  const harness = await createWorkletHarness();
+  await harness.send({
+    type: 'configurePowerPolicy',
+    enabled: true,
+    workletGraphGeneration: 5,
+    topologyRevision: 8,
+    commandId: 1,
+    silenceThresholdDb: -80,
+    silenceDurationSeconds: 0,
+    wakeGainMarginDb: 0,
+    enabledPluginCount: 0,
+    monitoringPreparationCapabilities: [],
+    temporalSkipEligible: true,
+    monitoringFastWakeEligible: true
+  });
+
+  const detector = harness.processor.powerPolicy.inputDetectorResult;
+  const loud = 10 ** (-79 / 20);
+  harness.processor._measurePowerWithDcBlock(
+    [Float32Array.from([loud, -loud]), new Float32Array(2)],
+    new Float64Array(harness.processor.powerPolicy.inputDcX.length),
+    new Float64Array(harness.processor.powerPolicy.inputDcY.length),
+    2,
+    detector
+  );
+  assert.ok(detector[0] > 10 ** (-80 / 10));
+
+  processBlock(harness.processor, 0);
+
+  await harness.send({
+    type: 'setPowerProcessingState',
+    state: 'active',
+    processingDirective: 'allow-automatic',
+    workletGraphGeneration: 5,
+    topologyRevision: 8,
+    commandId: 2,
+    skipEpoch: 1,
+    armAfterRenderSequence: harness.processor.powerPolicy.renderSequence
+  });
+  processBlock(harness.processor, 0);
+  assert.equal(harness.processor.powerPolicy.state, 'monitoring');
+
+  const nonfiniteInput = [Float32Array.of(NaN, ...new Array(127).fill(0)), new Float32Array(128)];
+  const nonfiniteOutput = [new Float32Array(128), new Float32Array(128)];
+  harness.processor.process([nonfiniteInput], [nonfiniteOutput], {});
+  assert.equal(harness.processor.powerPolicy.state, 'active');
+
+  await harness.send({
+    type: 'setPowerProcessingState',
+    state: 'active',
+    processingDirective: 'allow-automatic',
+    workletGraphGeneration: 5,
+    topologyRevision: 8,
+    commandId: 3,
+    skipEpoch: 2,
+    armAfterRenderSequence: harness.processor.powerPolicy.renderSequence
+  });
+  processBlock(harness.processor, 0);
+  harness.processor.powerPolicy.ewmaAlpha = 1;
+  harness.processor.powerPolicy.lowLevelWakeFramesRequired = 256;
+  const lowLevel = 10 ** (-75 / 20);
+  processBlock(harness.processor, lowLevel);
+  assert.equal(harness.processor.powerPolicy.state, 'monitoring');
+  processBlock(harness.processor, lowLevel);
+  assert.equal(harness.processor.powerPolicy.state, 'active');
+});
+
+test('power protocol refuses zero and bypass skip when temporal processing is unsafe', async () => {
+  const harness = await createWorkletHarness();
+  await registerFallback(harness);
+  await harness.send({ type: 'updatePlugins', plugins: [pluginConfig()], masterBypass: false });
+  await harness.send({
+    type: 'configurePowerPolicy',
+    enabled: true,
+    workletGraphGeneration: 6,
+    topologyRevision: 9,
+    commandId: 1,
+    silenceThresholdDb: -80,
+    enabledPluginCount: 1,
+    monitoringPreparationCapabilities: [{ pluginId: 7, capability: 'must-process' }],
+    monitoringFastWakeEligible: false,
+    temporalSkipEligible: false
+  });
+  for (const directive of ['zero-output-transport', 'bypass-transport']) {
+    await harness.send({
+      type: 'setPowerProcessingState',
+      state: 'active',
+      processingDirective: directive,
+      workletGraphGeneration: 6,
+      topologyRevision: 9,
+      commandId: directive === 'zero-output-transport' ? 2 : 3,
+      skipEpoch: directive === 'zero-output-transport' ? 1 : 2
+    });
+    assert.equal(harness.processor.powerPolicy.processingDirective, 'full-process');
+    processBlock(harness.processor, 0.25);
+  }
+  assert.ok(harness.processor.powerPolicy.counters.fullJsProcessQuanta > 0);
+  assert.equal(harness.processor.powerPolicy.counters.zeroOutputQuanta, 0);
+  assert.equal(harness.processor.powerPolicy.counters.bypassQuanta, 0);
 });

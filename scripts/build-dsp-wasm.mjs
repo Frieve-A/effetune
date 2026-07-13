@@ -229,13 +229,12 @@ function emsdkPaths() {
   return { root, emcc, emcmake, version: pinned };
 }
 
-function configureAndBuildWasm({ emcmake, name, simd, debug }) {
+function configureAndBuildWasm({ emcmake, name, simd }) {
   const buildDirectory = path.join(buildRoot, name);
   resetBuildDirectory(buildDirectory);
-  const buildType = debug ? 'Debug' : 'Release';
   run(emcmake, [
     'cmake', '-S', dspRoot, '-B', buildDirectory, '-G', 'Ninja',
-    `-DCMAKE_BUILD_TYPE=${buildType}`, `-DET_SIMD=${simd ? 'ON' : 'OFF'}`,
+    '-DCMAKE_BUILD_TYPE=Release', `-DET_SIMD=${simd ? 'ON' : 'OFF'}`,
     '-DBUILD_TESTING=OFF'
   ]);
   run('cmake', ['--build', buildDirectory, '--parallel']);
@@ -323,7 +322,8 @@ async function smokeWasm(filePath, expectedSimd) {
 function collectDigestFiles(directory, output = []) {
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })
     .sort((left, right) => left.name.localeCompare(right.name, 'en'))) {
-    if (entry.name === 'build' || entry.name === '.emsdk' || entry.name === 'golden') {
+    if (entry.name === 'build' || entry.name === '.emsdk' || entry.name === 'golden' ||
+        (entry.isDirectory() && entry.name.startsWith('.golden-all-'))) {
       continue;
     }
     const fullPath = path.join(directory, entry.name);
@@ -338,7 +338,7 @@ function collectDigestFiles(directory, output = []) {
   return output;
 }
 
-function sourceDigest() {
+export function sourceDigest() {
   const files = collectDigestFiles(dspRoot);
   files.push(generator, fileURLToPath(import.meta.url));
   files.sort((left, right) => left.localeCompare(right, 'en'));
@@ -355,7 +355,7 @@ function sourceDigest() {
   return `sha256:${hash.digest('hex')}`;
 }
 
-function metadataContents(emsdkVersion, baseline, simd) {
+export function metadataContents(emsdkVersion, baseline, simd) {
   if (JSON.stringify(baseline.kernels) !== JSON.stringify(simd.kernels)) {
     fail('baseline and SIMD artifacts expose different kernel registries');
   }
@@ -372,24 +372,13 @@ function compareFile(source, destination) {
   return fs.existsSync(destination) && fs.readFileSync(source).equals(fs.readFileSync(destination));
 }
 
-async function buildWasm({ check, debug }) {
+async function buildWasm({ check }) {
   const emsdk = emsdkPaths();
-  if (debug) {
-    const artifact = configureAndBuildWasm({
-      emcmake: emsdk.emcmake, name: 'wasm-debug', simd: false, debug: true
-    });
-    await smokeWasm(artifact, false);
-    const destination = path.join(artifactsRoot, 'effetune-dsp.debug.wasm');
-    copyIfChanged(artifact, destination);
-    console.log(`Built ${path.relative(repoRoot, destination)}`);
-    return;
-  }
-
   const baselineArtifact = configureAndBuildWasm({
-    emcmake: emsdk.emcmake, name: 'wasm', simd: false, debug: false
+    emcmake: emsdk.emcmake, name: 'wasm', simd: false
   });
   const simdArtifact = configureAndBuildWasm({
-    emcmake: emsdk.emcmake, name: 'wasm-simd', simd: true, debug: false
+    emcmake: emsdk.emcmake, name: 'wasm-simd', simd: true
   });
   const baseline = await smokeWasm(baselineArtifact, false);
   const simd = await smokeWasm(simdArtifact, true);
@@ -415,10 +404,9 @@ async function buildWasm({ check, debug }) {
 }
 
 function printHelp() {
-  console.log('Usage: node scripts/build-dsp-wasm.mjs [--check|--debug|--native-tests]');
+  console.log('Usage: node scripts/build-dsp-wasm.mjs [--check|--native-tests]');
   console.log('  default         update codegen/inlining and build committed baseline + SIMD WASM');
   console.log('  --check         write-free codegen/inlining/artifact freshness verification');
-  console.log('  --debug         build plugins/dsp/effetune-dsp.debug.wasm');
   console.log('  --native-tests  configure, compile, and run native CTest tests (no emsdk needed)');
 }
 
@@ -428,24 +416,20 @@ async function main() {
     printHelp();
     return;
   }
-  const allowed = new Set(['--check', '--debug', '--native-tests', '--write']);
+  const allowed = new Set(['--check', '--native-tests']);
   const unknown = [...args].filter(arg => !allowed.has(arg));
   if (unknown.length !== 0) {
     fail(`unknown argument(s): ${unknown.join(', ')}`);
   }
   const check = args.has('--check');
-  const debug = args.has('--debug');
   const nativeTests = args.has('--native-tests');
-  if (debug && (check || nativeTests)) {
-    fail('--debug cannot be combined with --check or --native-tests');
-  }
   runCodegen(check);
   refreshWorkletBinding(check);
   if (nativeTests) {
     runNativeTests();
     return;
   }
-  await buildWasm({ check, debug });
+  await buildWasm({ check });
 }
 
 const isMain = process.argv[1] &&

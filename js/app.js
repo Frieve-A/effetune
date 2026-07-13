@@ -330,6 +330,10 @@ class App {
             // audible without any click.
             this.audioManager.fadeInOutput();
 
+            // Power ownership starts only after the initial graph and output
+            // safety fade are fully established.
+            await this.audioManager.startPowerPolicyController?.();
+
             // Set up event listeners and finalize initialization
             this.setupEventListeners();
             
@@ -892,24 +896,73 @@ class App {
             });
         }
 
-        // Auto-resume audio context when page gains focus
-        document.addEventListener('visibilitychange', () => {
-            if (!document.hidden && this.audioManager.audioContext &&
-                this.audioManager.audioContext.state === 'suspended') {
+        const powerController = this.audioManager.powerPolicyController;
+        // Page-lifecycle events are registered on their specified targets in
+        // capture phase because freeze/resume do not reliably bubble.
+        const handleDocumentLifecycle = (event, eventType = event?.type) => {
+            if (eventType === 'visibilitychange' && document.hidden) {
+                this.uiManager.flushPipelineStateToLocalStorage?.();
+            }
+            if (powerController?.enabled) {
+                powerController.handlePageLifecycleEvent?.(eventType, {
+                    hidden: document.hidden,
+                    visibilityState: document.visibilityState
+                });
+                return;
+            }
+            if (eventType === 'visibilitychange' && !document.hidden &&
+                this.audioManager.audioContext?.state === 'suspended') {
                 this.audioManager.audioContext.resume();
             }
+        };
+        document.addEventListener(
+            'visibilitychange',
+            event => handleDocumentLifecycle(event, 'visibilitychange'),
+            true
+        );
+        document.addEventListener('freeze', event => handleDocumentLifecycle(event, 'freeze'), true);
+        document.addEventListener('resume', event => handleDocumentLifecycle(event, 'resume'), true);
+
+        const handleWindowLifecycle = (event, eventType = event?.type) => {
+            if (eventType === 'pagehide') {
+                this.uiManager.flushPipelineStateToLocalStorage?.();
+            }
+            powerController?.handlePageLifecycleEvent?.(eventType, {
+                persisted: event.persisted === true,
+                hidden: document.hidden
+            });
+        };
+        window.addEventListener?.(
+            'pageshow',
+            event => handleWindowLifecycle(event, 'pageshow'),
+            true
+        );
+        window.addEventListener?.(
+            'pagehide',
+            event => handleWindowLifecycle(event, 'pagehide'),
+            true
+        );
+        powerController?.handlePageLifecycleEvent?.('startup', {
+            hidden: document.hidden,
+            visibilityState: document.visibilityState,
+            wasDiscarded: document.wasDiscarded === true
         });
 
-        const resumeOnGesture = () => {
-            if (this.audioManager.audioContext &&
-                this.audioManager.audioContext.state === 'suspended') {
-                this.audioManager.audioContext.resume().catch(error => {
-                    console.warn('AudioContext resume after user gesture failed:', error);
-                });
-            }
-        };
-        document.addEventListener('pointerdown', resumeOnGesture, { passive: true });
-        document.addEventListener('keydown', resumeOnGesture);
+        // Legacy Web Audio unlock remains available only when the power
+        // controller is disabled. Power-managed audio is resumed exclusively
+        // by controls that express an audio intent (Play, input resume, reset).
+        if (!powerController?.enabled) {
+            const resumeOnGesture = () => {
+                if (this.audioManager.audioContext &&
+                    this.audioManager.audioContext.state === 'suspended') {
+                    this.audioManager.audioContext.resume().catch(error => {
+                        console.warn('AudioContext resume after user gesture failed:', error);
+                    });
+                }
+            };
+            document.addEventListener('pointerdown', resumeOnGesture, { passive: true });
+            document.addEventListener('keydown', resumeOnGesture);
+        }
 
         // Handle audio device changes (e.g., USB device reconnected)
         if (navigator.mediaDevices && typeof navigator.mediaDevices.addEventListener === 'function') {

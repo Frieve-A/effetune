@@ -402,7 +402,7 @@ class PowerAmpSagPlugin extends PluginBase {
                 return;
             }
             this.drawGraphs();
-            this.animationFrameId = requestAnimationFrame(animate);
+            this.animationFrameId = this.requestPowerAnimationFrame(animate);
         };
         animate();
     }

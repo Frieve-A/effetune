@@ -582,9 +582,18 @@ export class ElectronIntegration {
   }
 
   async saveConfig(cfg) {
-    this.config = { ...(this.config || {}), ...cfg };
-    await saveConfig(this.isElectron, this.config);
+    if (this.isElectron) {
+      const saved = await saveConfig(true, cfg);
+      if (!saved) return false;
+      this.config = window.appConfig;
+      return true;
+    }
+
+    const saved = await saveConfig(false, cfg);
+    if (!saved) return false;
+    this.config = await loadConfig(false);
     window.appConfig = this.config;
+    return true;
   }
 
   async showConfigDialog() {

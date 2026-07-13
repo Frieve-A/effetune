@@ -23,8 +23,14 @@ This file replaces the former `CLAUDE.md` local agent instructions.
 ## Agent Workflow
 
 - Do not start or stop local servers unless the user explicitly asks you to. Assume the user will handle server startup and shutdown.
+- Use `main` as the default working branch. When a task starts on `main`, remain there unless the user explicitly asks to create or switch branches; do not create a separate agent branch as an implicit safety measure.
 - Before coding, identify the relevant area (`js/`, `plugins/`, `features/measurement/`, `electron/`, docs, or tests) and inspect existing patterns there.
 - For complex or ambiguous work, make a short plan before editing. Keep one thread focused on one coherent task; fork or use a separate worktree only when work truly branches.
+- Follow Occam's razor, KISS (Keep It Simple, Stupid), Clean Code, and DRY (Don't Repeat Yourself) as project-wide defaults. Prefer the smallest straightforward design that fully meets current requirements; keep responsibilities, names, control flow, and interfaces clear; remove unnecessary code; and consolidate duplication that represents the same knowledge or behavior.
+- Avoid speculative abstractions, indirection, configurability, dependencies, and generalization. Introduce complexity only for a current, concrete need, and do not force superficially similar cases into a shared abstraction when that would make the code harder to understand.
+- When planning, modifying, or implementing, ensure the expected benefit clearly outweighs the ongoing maintenance cost. Do not add code or tests solely to handle excessively minor edge cases.
+- When implementing a new feature, before adding a new custom function, consider whether an existing function can be generalized or reused while keeping its purpose clear.
+- Keep the code within the task's scope smart, clean, and consistently organized, as though it had just been thoughtfully refactored; address avoidable duplication and awkward structure encountered in the changed area.
 - Keep changes scoped to the request. Do not refactor unrelated code while adding a feature or fixing a bug.
 - Prefer adding or updating focused tests with the change. If a behavior is hard to test automatically, document the manual verification performed.
 - Before handing work back, review the diff for regressions, risky assumptions, missing docs, and missing tests. Use `code_review.md` as the default review checklist.
@@ -32,16 +38,33 @@ This file replaces the former `CLAUDE.md` local agent instructions.
 ## Verification Expectations
 
 - Default verification for code changes is `npm run verify`.
+- Changes to the power-saving policy, audio-pipeline lifetime, input ownership, or resume behavior must also pass `npm run test:power-browser`. This command manages its own temporary loopback server; do not start a separate server for it.
 - Use `npm test` for changes that only affect tests or when lint was already run separately.
 - Use `npm run lint` for documentation-adjacent JavaScript edits where tests are not relevant.
 - For Electron packaging or build configuration changes, also run the relevant build or pack command when practical.
 - If a recommended verification command cannot be run, state the reason and the residual risk clearly.
 - Work is done when the requested behavior is implemented, relevant docs are updated, appropriate tests or checks pass, and the final diff has been reviewed.
 
+## Commit and Push Requirements
+
+- Commit or push only when the user explicitly requests it. Before staging, inspect `git status` and the relevant diff, and keep unrelated user changes out of the commit.
+- If any DSP digest input changes (`dsp/**`, `scripts/gen-dsp-params.mjs`, or `scripts/build-dsp-wasm.mjs`), run `npm run build:dsp`, review and include every generated change (including `plugins/dsp/` artifacts, generated parameter files, and the injected worklet binding), then rerun the build and confirm it produces no further managed-file changes.
+- If web runtime or precache inputs change, run `npm run assets:web` and include every resulting generated asset change, including `sw-precache.js`.
+- Run `npm run verify` after generated files are current and before committing. Do not commit or push while required verification is failing.
+- Immediately before committing, confirm the staged diff contains the full intended change and passes `git diff --cached --check`. Immediately before pushing, confirm the worktree state and the exact branch and commit being pushed.
+- After pushing, inspect the GitHub Actions run for the pushed commit. Do not report the push workflow as complete until required checks pass or any remaining failure has been reported with its cause.
+
 ## Signal Processing
 
 - For signal processing, apply code-level optimizations as long as they do not make the code hard to read.
 - When implementing signal processing for effect plugins, use ternary operators or `if` statements instead of `Math.fabs`, `Math.max`, and `Math.min`, because those Math helpers are slower.
+
+### Real-time pipeline lifetime
+
+- Input acquisition and release are independent of the `AudioContext`, `AudioWorklet`, and effect-pipeline lifetime. Represent disabled or unavailable live input with a stereo-compatible running silent source, and connect that source before stopping or disconnecting the previous input.
+- DSP demotion and suspension decisions must use the common, fresh worklet observations of input/output activity, temporal-plugin requirements, and the normal idle deadlines. Never branch DSP lifetime on the selected input-device ID; selecting **Input Device: None** changes input ownership to the silent source but must not stop processing immediately.
+- Preserve processing while a source-generating effect such as Oscillator is active or a stateful tail such as reverb or delay is still producing output. After the configured silence conditions and deadlines are satisfied, the normal Monitoring or Suspended transitions remain allowed.
+- Multiple tabs or application instances are unsupported. Do not add cross-instance coordination, ownership, preference arbitration, or recovery for audio input or Web configuration; the last saved preference may win and another instance may fail to acquire the device.
 
 ## Code Comments
 

@@ -41,12 +41,7 @@ export class StateManager {
 
         this.settingsMenuButton?.addEventListener('click', event => {
             event?.stopPropagation?.();
-            if (this.isElectronEnvironment()) {
-                this.closeSettingsMenu();
-                this.openAudioConfig();
-            } else {
-                this.toggleSettingsMenu();
-            }
+            this.toggleSettingsMenu();
         });
 
         if (this.settingsMenu && typeof document.addEventListener === 'function') {
@@ -108,18 +103,10 @@ export class StateManager {
             this.resetButton.hidden = true;
         }
         const isElectron = this.isElectronEnvironment();
-        const settingsLabel = isElectron
-            ? this.translate('ui.configAudioButton', 'Config Audio')
-            : this.translate('menu.settings', 'Settings');
+        const settingsLabel = this.translate('menu.settings', 'Settings');
         if (this.settingsMenuButton) {
             this.settingsMenuButton.title = settingsLabel;
             this.settingsMenuButton.setAttribute?.('aria-label', settingsLabel);
-        }
-        if (this.settingsMenu) {
-            this.settingsMenu.hidden = isElectron;
-            if (isElectron) {
-                this.closeSettingsMenu();
-            }
         }
         if (this.installAppButton) {
             this.installAppButton.textContent = this.translate('menu.settings.install', 'Install App');
@@ -132,9 +119,11 @@ export class StateManager {
         }
         if (this.benchmarkSettingsButton) {
             this.benchmarkSettingsButton.textContent = this.translate('menu.settings.performanceBenchmark', 'Performance Benchmark');
+            this.benchmarkSettingsButton.hidden = isElectron;
         }
         if (this.measurementSettingsButton) {
             this.measurementSettingsButton.textContent = this.translate('menu.settings.frequencyResponseMeasurement', 'Frequency Response Measurement');
+            this.measurementSettingsButton.hidden = isElectron;
         }
         if (this.resetAudioSettingsButton) {
             this.resetAudioSettingsButton.textContent = this.translate('ui.resetButton', 'Reset Audio');
@@ -182,6 +171,7 @@ export class StateManager {
 
     toggleSettingsMenu() {
         if (!this.settingsMenu) return;
+        if (this.settingsMenu.hidden) this.settingsMenu.hidden = false;
         this.settingsMenu.classList.toggle('show');
     }
 

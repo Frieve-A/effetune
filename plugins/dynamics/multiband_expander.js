@@ -1284,10 +1284,10 @@ class MultibandExpanderPlugin extends PluginBase {
         }
       }
 
-      this.animationFrameId = requestAnimationFrame(animate);
+      this.animationFrameId = this.requestPowerAnimationFrame(animate);
     };
 
-    this.animationFrameId = requestAnimationFrame(animate);
+    this.animationFrameId = this.requestPowerAnimationFrame(animate);
   }
 
   needsGraphUpdate(lastState) {

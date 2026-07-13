@@ -426,10 +426,11 @@ class StereoMeterPlugin extends PluginBase {
 
   handleIntersect(entries) {
     entries.forEach(entry => {
-        this.isVisible = entry.isIntersecting;
-        if (this.isVisible) {
-            this.startAnimation();
-        } else {
+      this.isVisible = entry.isIntersecting;
+      if (this.isVisible) {
+        if (this.canRunAnimation()) this.startAnimation();
+        else this.renderPowerUiOnce(() => this.drawMeter());
+      } else {
             this.stopAnimation();
         }
     });
@@ -445,7 +446,7 @@ class StereoMeterPlugin extends PluginBase {
             return;
         }
         this.drawMeter();
-        this.animationFrameId = requestAnimationFrame(animate);
+        this.animationFrameId = this.requestPowerAnimationFrame(animate, 'analyzer');
     };
     animate();
   }

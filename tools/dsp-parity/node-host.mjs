@@ -146,12 +146,16 @@ export async function loadReferencePlugin(typeOrName, {
   if (typeof PluginClass !== 'function') {
     throw new Error(`Plugin file ${sources.pluginPath} did not register window.${definition.type}`);
   }
+  // jsEngineHash covers the plugin source only, so edits to the shared
+  // plugins/plugin-base.js do not churn every golden metadata file. Drift in
+  // the shared base is guarded by dsp/plugins/golden-base-hash.json instead.
   const jsEngineHash = crypto.createHash('sha256')
-    .update(sources.baseSource)
-    .update('\0')
     .update(sources.pluginSource)
     .digest('hex');
-  return { definition, PluginClass, sandbox, jsEngineHash };
+  const baseSourceHash = crypto.createHash('sha256')
+    .update(sources.baseSource)
+    .digest('hex');
+  return { definition, PluginClass, sandbox, jsEngineHash, baseSourceHash };
 }
 
 function assertAudioShape(audio, frames, channels) {
@@ -212,6 +216,7 @@ export async function createReferenceSession(typeOrName, {
     type: loaded.definition.type,
     definition: loaded.definition,
     jsEngineHash: loaded.jsEngineHash,
+    baseSourceHash: loaded.baseSourceHash,
     plugin,
     async process(input, {
       sampleRate,
@@ -277,5 +282,5 @@ export async function executeReferenceCase(type, testCase, input, options = {}) 
     seed: testCase.seed ?? noiseSeedForCase(testCase.caseIndex ?? 0)
   });
   const output = await session.process(input, testCase);
-  return { output, jsEngineHash: session.jsEngineHash };
+  return { output, jsEngineHash: session.jsEngineHash, baseSourceHash: session.baseSourceHash };
 }

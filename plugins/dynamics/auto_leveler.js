@@ -496,7 +496,7 @@ class AutoLevelerPlugin extends PluginBase {
                 return;
             }
             this.drawGraph();
-            this.animationFrameId = requestAnimationFrame(animate);
+            this.animationFrameId = this.requestPowerAnimationFrame(animate);
         };
         animate();
     }

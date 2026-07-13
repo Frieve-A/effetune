@@ -56,8 +56,8 @@ function createIoManager(calls, options = {}) {
       calls.push(['createFallbackSilentSource']);
       return options.fallbackSource ?? createSourceNode(calls);
     },
-    async connectAudioNodes() {
-      calls.push(['connectAudioNodes']);
+    async connectAudioNodes(connectionOptions) {
+      calls.push(['connectAudioNodes', connectionOptions]);
       return options.connectionResult ?? '';
     }
   };
@@ -105,11 +105,13 @@ test('rebuildPipeline creates a fallback source when input is deferred', async (
       workletNode: createWorklet(calls)
     };
     const ioManager = createIoManager(calls, { sourceNode: null });
-    const processor = new PipelineProcessor(contextManager, ioManager);
+    const connectSource = () => true;
+    const processor = new PipelineProcessor(contextManager, ioManager, null, connectSource);
 
     assert.equal(await processor.rebuildPipeline(), '');
     assert.ok(calls.some(call => call[0] === 'createFallbackSilentSource'));
     assert.ok(calls.some(call => call[0] === 'connectAudioNodes'));
+    assert.equal(calls.find(call => call[0] === 'connectAudioNodes')[1].connectSource, connectSource);
     assert.deepEqual(calls.find(call => call[0] === 'postMessage')?.[1], {
       type: 'updatePlugins',
       plugins: [],

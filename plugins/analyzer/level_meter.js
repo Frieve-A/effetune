@@ -414,7 +414,8 @@ class LevelMeterPlugin extends PluginBase {
         entries.forEach(entry => {
             this.isVisible = entry.isIntersecting;
             if (this.isVisible) {
-                this.startAnimation();
+                if (this.canRunAnimation()) this.startAnimation();
+                else this.renderPowerUiOnce(() => this.updateMeter());
             } else {
                 this.stopAnimation();
             }
@@ -431,7 +432,7 @@ class LevelMeterPlugin extends PluginBase {
                 return;
             }
             this.updateMeter();
-            this.animationFrameId = requestAnimationFrame(animate);
+            this.animationFrameId = this.requestPowerAnimationFrame(animate, 'analyzer');
         };
         animate();
     }

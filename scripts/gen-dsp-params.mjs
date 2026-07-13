@@ -6,7 +6,6 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pluginsRoot = path.join(repoRoot, 'dsp', 'plugins');
 const cppOutputRoot = path.join(repoRoot, 'dsp', 'generated', 'cpp');
-const canonicalJsOutput = path.join(repoRoot, 'dsp', 'generated', 'js', 'dsp-params.generated.js');
 const runtimeJsOutput = path.join(repoRoot, 'js', 'audio', 'dsp-params.generated.js');
 const reservedKeys = new Set([
   'nm', 'en', 'uc', 'ib', 'ob', 'ch', 'type', 'id', 'enabled', 'inputBus',
@@ -461,9 +460,7 @@ export function generateOutputs(specs) {
   for (const spec of specs) {
     outputs.set(path.join(cppOutputRoot, `${spec.type}Params.h`), cppForSpec(spec));
   }
-  const js = jsForSpecs(specs);
-  outputs.set(canonicalJsOutput, js);
-  outputs.set(runtimeJsOutput, js);
+  outputs.set(runtimeJsOutput, jsForSpecs(specs));
   return outputs;
 }
 

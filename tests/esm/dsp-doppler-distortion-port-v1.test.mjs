@@ -39,7 +39,7 @@ test('Doppler Distortion freezes schema, state precision, and golden parity', as
   const goldens = await readGoldenSet(path.join(root, 'golden'));
   assert.equal(goldens.length, 9);
   assert.ok(goldens.every(item =>
-    item.metadata.jsEngineHash === '3e2d3415b86537e4b25255aa2f6b99f04aa9e6b9e39dcc74e3cce1d12d59ccee'
+    item.metadata.jsEngineHash === 'fc6a44aa5e0700d5a5e83efa0d7aae93622b660892545225ad66a173ee8c0e72'
   ));
   const stress = goldens.find(item => item.metadata.id === 'maximum-force-minimum-mass');
   assert.equal(stress.metadata.tolerance.abs, 0.001);

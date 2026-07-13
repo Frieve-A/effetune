@@ -461,6 +461,13 @@ export class MobileNav {
     }
 
     resumeAudioContext() {
+        const controller = this.uiManager.audioManager?.powerPolicyController;
+        if (controller?.enabled) {
+            Promise.resolve(controller.requestResumeFromUserGesture?.('dedicated-input'))
+                .catch(error => console.error('MobileNav: resume from user gesture failed:', error))
+                .finally(() => this.updateAudioResumePrompt());
+            return;
+        }
         const audioContext = this.uiManager.audioManager?.audioContext;
         if (audioContext?.state === 'suspended') {
             const resumeResult = audioContext.resume?.();
@@ -477,6 +484,10 @@ export class MobileNav {
         this.observeAudioContextState();
         const isMobilePlayer = this.uiManager.layoutMode?.isMobile &&
             document.body.classList.contains('view-player');
+        if (this.uiManager.audioManager?.powerPolicyController?.enabled) {
+            this.resumePrompt.hidden = true;
+            return;
+        }
         const isSuspended = this.uiManager.audioManager?.audioContext?.state === 'suspended';
         this.resumePrompt.hidden = !(isMobilePlayer && isSuspended);
     }

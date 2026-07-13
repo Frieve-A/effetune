@@ -132,14 +132,16 @@ async function withStateGlobals(options, callback) {
   }, async () => callback({ calls, documentRef, windowRef }));
 }
 
-test('constructor exposes the settings gear as Config Audio in Electron environments detected by preload API', async () => {
+test('constructor labels the settings gear as Settings in Electron environments detected by preload API', async () => {
   await withStateGlobals({ electronAPI: {} }, async ({ calls, documentRef }) => {
     const manager = new StateManager({ audioContext: { sampleRate: 48000 } });
 
     assert.equal(manager.resetButton.hidden, true);
-    assert.equal(manager.settingsMenuButton.title, 'Config Audio');
-    assert.equal(manager.settingsMenuButton.getAttribute('aria-label'), 'Config Audio');
-    assert.equal(manager.settingsMenu.hidden, true);
+    assert.equal(manager.settingsMenuButton.title, 'Settings');
+    assert.equal(manager.settingsMenuButton.getAttribute('aria-label'), 'Settings');
+    assert.equal(manager.settingsMenu.hidden, false);
+    assert.equal(manager.benchmarkSettingsButton.hidden, true);
+    assert.equal(manager.measurementSettingsButton.hidden, true);
     assert.equal(documentRef.elements.get('settingsMenuButton').listeners.has('click'), true);
     assert.ok(calls.some(call => call[0] === 'addEventListener' && call[1] === 'settingsMenuButton'));
   });
@@ -150,30 +152,40 @@ test('constructor recognizes Electron integration and user agent detection paths
     electronIntegration: { isElectronEnvironment: () => true }
   }, async ({ documentRef }) => {
     new StateManager({});
-    assert.equal(documentRef.elements.get('settingsMenuButton').title, 'Config Audio');
-    assert.equal(documentRef.elements.get('settingsMenu').hidden, true);
+    assert.equal(documentRef.elements.get('settingsMenuButton').title, 'Settings');
+    assert.equal(documentRef.elements.get('settingsMenu').hidden, false);
+    assert.equal(documentRef.elements.get('benchmarkSettingsButton').hidden, true);
+    assert.equal(documentRef.elements.get('measurementSettingsButton').hidden, true);
   });
 
   await withStateGlobals({
     userAgent: 'Mozilla/5.0 electron/30.0'
   }, async ({ documentRef }) => {
     new StateManager({});
-    assert.equal(documentRef.elements.get('settingsMenuButton').title, 'Config Audio');
-    assert.equal(documentRef.elements.get('settingsMenu').hidden, true);
+    assert.equal(documentRef.elements.get('settingsMenuButton').title, 'Settings');
+    assert.equal(documentRef.elements.get('settingsMenu').hidden, false);
+    assert.equal(documentRef.elements.get('benchmarkSettingsButton').hidden, true);
+    assert.equal(documentRef.elements.get('measurementSettingsButton').hidden, true);
   });
 });
 
-test('settings gear opens Electron audio config dialog with translated and fallback status text', async () => {
+test('settings gear toggles the Electron menu and audio item opens the dialog with translated and fallback status text', async () => {
   await withStateGlobals({
     electronIntegration: {
       isElectronEnvironment: () => true,
       showAudioConfigDialog() {}
     }
-  }, async ({ calls, windowRef }) => {
+  }, async ({ calls, documentRef, windowRef }) => {
     windowRef.electronIntegration.showAudioConfigDialog = () => calls.push(['showAudioConfigDialog']);
     const manager = new StateManager({});
     manager.settingsMenuButton.click();
 
+    assert.equal(manager.settingsMenu.classList.contains('show'), true);
+    assert.deepEqual(calls.filter(call => call[0] === 'showAudioConfigDialog'), []);
+
+    manager.audioConfigSettingsButton.click();
+    assert.equal(manager.settingsMenu.classList.contains('show'), false);
+    assert.equal(documentRef.elements.get('errorDisplay').textContent, 'Configuring audio devices...');
     assert.deepEqual(calls.filter(call => call[0] === 'showAudioConfigDialog'), [['showAudioConfigDialog']]);
   });
 
@@ -192,6 +204,11 @@ test('settings gear opens Electron audio config dialog with translated and fallb
     const manager = new StateManager({});
     manager.settingsMenuButton.click();
 
+    assert.equal(manager.settingsMenu.classList.contains('show'), true);
+    assert.deepEqual(calls.filter(call => call[0] === 'showAudioConfigDialog'), []);
+
+    manager.audioConfigSettingsButton.click();
+    assert.equal(manager.settingsMenu.classList.contains('show'), false);
     assert.equal(documentRef.elements.get('errorDisplay').textContent, 'Translated configuring');
     assert.deepEqual(calls.filter(call => call[0] === 'showAudioConfigDialog'), [['showAudioConfigDialog']]);
   });
@@ -206,8 +223,41 @@ test('settings gear opens Electron audio config dialog with translated and fallb
     const manager = new StateManager({});
     manager.settingsMenuButton.click();
 
+    assert.equal(manager.settingsMenu.classList.contains('show'), true);
+    assert.deepEqual(calls.filter(call => call[0] === 'showAudioConfigDialog'), []);
+
+    manager.audioConfigSettingsButton.click();
+    assert.equal(manager.settingsMenu.classList.contains('show'), false);
     assert.equal(documentRef.elements.get('errorDisplay').textContent, 'Configuring audio devices...');
     assert.deepEqual(calls.filter(call => call[0] === 'showAudioConfigDialog'), [['showAudioConfigDialog']]);
+  });
+});
+
+test('settings gear always toggles the menu in Electron and hides web-only items', async () => {
+  await withStateGlobals({
+    electronAPI: {},
+    electronIntegration: {
+      showAudioConfigDialog() {}
+    }
+  }, async ({ calls, documentRef, windowRef }) => {
+    windowRef.electronIntegration.showAudioConfigDialog = () => calls.push(['showAudioConfigDialog']);
+    const manager = new StateManager({});
+    windowRef.deferredInstallPrompt = { prompt() {}, userChoice: Promise.resolve({}) };
+    manager.updateInstallAvailability();
+
+    manager.settingsMenuButton.click();
+    assert.equal(manager.settingsMenu.classList.contains('show'), true);
+    assert.deepEqual(calls.filter(call => call[0] === 'showAudioConfigDialog'), []);
+    assert.equal(manager.installAppElement.hidden, true);
+    assert.equal(manager.installAppButton.hidden, true);
+    assert.equal(manager.benchmarkSettingsButton.hidden, true);
+    assert.equal(manager.measurementSettingsButton.hidden, true);
+
+    manager.settingsMenuButton.click();
+    assert.equal(manager.settingsMenu.classList.contains('show'), false);
+
+    manager.updateLabels();
+    assert.equal(documentRef.elements.get('settingsMenu').hidden, false);
   });
 });
 
@@ -312,6 +362,8 @@ test('settings menu dispatches config, audio, feature links, and explicit audio 
     };
     const manager = new StateManager(audioManager);
 
+    assert.equal(manager.benchmarkSettingsButton.hidden, false);
+    assert.equal(manager.measurementSettingsButton.hidden, false);
     manager.settingsMenuButton.click();
     assert.equal(documentRef.elements.get('settingsMenu').classList.contains('show'), true);
 
@@ -365,14 +417,15 @@ test('settings labels update from localization keys with fallbacks', async () =>
     electronAPI: {},
     uiManager: {
       t(key) {
-        return key === 'ui.configAudioButton' ? 'Translated Config Audio' : key;
+        return key === 'menu.settings' ? 'Translated Settings' : key;
       }
     }
   }, async ({ documentRef }) => {
     const manager = new StateManager({});
-    assert.equal(manager.settingsMenuButton.title, 'Translated Config Audio');
-    assert.equal(manager.settingsMenuButton.getAttribute('aria-label'), 'Translated Config Audio');
-    assert.equal(documentRef.elements.get('settingsMenu').hidden, true);
+    assert.equal(manager.settingsMenuButton.title, 'Translated Settings');
+    assert.equal(manager.settingsMenuButton.getAttribute('aria-label'), 'Translated Settings');
+    assert.equal(manager.benchmarkSettingsButton.hidden, true);
+    assert.equal(manager.measurementSettingsButton.hidden, true);
   });
 });
 

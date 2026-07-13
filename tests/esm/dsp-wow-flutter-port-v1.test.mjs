@@ -43,7 +43,7 @@ test('Wow Flutter freezes seeded draw order, state precision, and golden parity'
   const goldens = await readGoldenSet(path.join(root, 'golden'));
   assert.equal(goldens.length, 9);
   assert.ok(goldens.every(item =>
-    item.metadata.jsEngineHash === '3f8f16fb8a9d734c3ca8df17527c996a2fa3387537b9d49940b7938fd3dc9a2a'
+    item.metadata.jsEngineHash === '65b606e082428dca8d4b4b74b4838d2d8a6af1015cef8bf1bce25cae27c27eca'
   ));
   const result = await runParityCli([
     '--root', repoRoot,

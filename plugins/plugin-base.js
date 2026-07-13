@@ -13,12 +13,29 @@ class PluginBase {
         // together with `enabled` to decide whether the plugin's redraw loop
         // (startAnimation/stopAnimation) should run.
         this._sectionEnabled = true;
+        this._powerUiEnabled = true;
+        // Unknown plugin state is conservatively reset across a skipped span.
+        // Same-quantum Monitoring still requires an explicit static descriptor.
+        this.temporalCapability = 'reset-on-resume';
+        this.monitoringPreparationDescriptor = null;
+        this.powerGainUpperBoundDb = null;
         this.id = null; // Will be set by createPlugin
         this.errorState = null; // Holds error state
         this.inputBus = null; // Input bus (null = default Main bus, index 0)
         this.outputBus = null; // Output bus (null = default Main bus, index 0)
         this.channel = null; // Channel processing: null ('All'), 'Left', 'Right'
         this._responsiveGraphDisposers = new Set();
+
+        // Intercept every prototype startAnimation() entry, including direct
+        // IntersectionObserver callbacks, so they cannot bypass the common gate.
+        const unrestrictedStartAnimation = this.startAnimation;
+        if (typeof unrestrictedStartAnimation === 'function') {
+            this._unrestrictedStartAnimation = unrestrictedStartAnimation;
+            this.startAnimation = (...args) => {
+                if (!this.canRunAnimation()) return undefined;
+                return unrestrictedStartAnimation.apply(this, args);
+            };
+        }
 
         // Message control properties
         this.lastUpdateTime = 0;
@@ -1057,11 +1074,53 @@ class PluginBase {
             typeof this.stopAnimation !== 'function') {
             return;
         }
-        if (this.enabled && this._sectionEnabled) {
+        if (this.canRunAnimation()) {
             this.startAnimation();
         } else {
             this.stopAnimation();
         }
+    }
+
+    canRunAnimation() {
+        return this.enabled !== false && this._sectionEnabled !== false && this._powerUiEnabled !== false;
+    }
+
+    requestPowerAnimationFrame(callback, counterKind = 'plugin') {
+        if (!this.canRunAnimation() || typeof requestAnimationFrame !== 'function') return null;
+        return requestAnimationFrame(timestamp => {
+            if (!this.canRunAnimation()) {
+                this.animationFrameId = null;
+                return;
+            }
+            const audioManager = typeof window !== 'undefined' ? window.audioManager : null;
+            audioManager?.incrementPowerDiagnostic?.('pluginVisualRafCallbacks');
+            if (counterKind === 'analyzer') {
+                audioManager?.incrementPowerDiagnostic?.('analyzerRafCallbacks');
+            }
+            callback(timestamp);
+        });
+    }
+
+    renderPowerUiOnce(callback) {
+        if (typeof callback !== 'function' || this.enabled === false ||
+            this._sectionEnabled === false || this.canRunAnimation()) return false;
+        callback();
+        return true;
+    }
+
+    setPowerUiEnabled(enabled) {
+        const next = enabled !== false;
+        if (this._powerUiEnabled === next) return;
+        this._powerUiEnabled = next;
+        this._refreshAnimationState();
+    }
+
+    getTemporalCapability() {
+        return this.temporalCapability;
+    }
+
+    getPowerGainUpperBoundDb() {
+        return this.powerGainUpperBoundDb;
     }
 
     // Create channel select control for plugin UI

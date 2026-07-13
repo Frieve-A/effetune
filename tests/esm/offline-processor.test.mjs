@@ -390,10 +390,9 @@ function createFakeDspRuntime(calls, options = {}) {
     },
     getDspRolloutConfig(rolloutOptions) {
       calls.push(['dspRollout', Boolean(rolloutOptions.meta)]);
-      if (options.forceOff) return { forceOff: true, debug: false, enabledTypes: [] };
+      if (options.forceOff) return { forceOff: true, enabledTypes: [] };
       return {
         forceOff: false,
-        debug: Boolean(options.debug),
         enabledTypes: rolloutOptions.meta ? ['OfflineTestPlugin'] : []
       };
     },

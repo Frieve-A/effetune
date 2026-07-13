@@ -45,6 +45,16 @@ export class MobileMenu {
             this.panel = document.createElement('div');
             this.panel.className = 'mobile-overflow-menu';
             this.panel.setAttribute('role', 'menu');
+            // PowerStateView owns this label because it changes between the
+            // processing and input-only recovery actions.
+            const resumeAudio = this.createAction(
+                'Resume audio processing',
+                () => this.uiManager.powerStateView?.resume?.()
+            );
+            resumeAudio.dataset.powerResumeAction = '';
+            resumeAudio.dataset.powerResumeExternalHandler = 'true';
+            resumeAudio.hidden = true;
+            this.panel.appendChild(resumeAudio);
             this.panel.appendChild(this.createLocalizedAction('menu.file.openMusicFile', 'Open music file...', () => document.getElementById('openMusicButton')?.click()));
             this.panel.appendChild(this.createLocalizedAction('menu.file.processAudioFiles', PROCESS_AUDIO_LABEL, () => this.processAudioFilesWithEffects()));
             this.panel.appendChild(this.createLocalizedAction('dialog.config.title', 'Config', () => this.uiManager.stateManager?.openConfig?.()));
@@ -55,6 +65,7 @@ export class MobileMenu {
             this.panel.appendChild(this.createLocalizedAction('ui.shareButton', 'Share', () => document.getElementById('shareButton')?.click()));
             this.panel.appendChild(this.createLocalizedAction('ui.whatsThisApp', "What's this app?", () => document.getElementById('whatsThisLink')?.click()));
             document.body.appendChild(this.panel);
+            this.uiManager.powerStateView?.refreshActions?.();
         }
         this.updateLabels();
     }

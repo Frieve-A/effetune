@@ -305,9 +305,20 @@ function registerIpcHandlers() {
   ipcMain.handle('save-config', async (event, cfg) => {
     try {
       const current = { ...config.loadConfig(), ...cfg };
-      config.saveConfig(current);
+      const saved = config.saveConfig(current);
+      if (saved !== true) {
+        return { success: false, error: 'Failed to write config file' };
+      }
       constants.setAppConfig(current);
-      require('electron').app.setLoginItemSettings({ openAtLogin: !!current.autoLaunch });
+      try {
+        app.setLoginItemSettings({ openAtLogin: !!current.autoLaunch });
+      } catch (error) {
+        console.error('Config saved, but failed to update the auto-launch setting:', error);
+        return {
+          success: true,
+          warning: `Failed to update the auto-launch setting: ${error.message}`
+        };
+      }
       return { success: true };
     } catch (error) {
       console.error('Error saving config:', error);

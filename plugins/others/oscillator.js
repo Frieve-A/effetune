@@ -10,6 +10,7 @@ class OscillatorPlugin extends PluginBase {
         this.md = 'continuous'; // mode: 'continuous' or 'pulsed'
         this.it = 500;    // interval: Pulsed interval in ms (100-2000, step 10)
         this.wd = 5;      // width: Pulse ramp time in ms (2-100, step 1)
+        this.temporalCapability = 'must-process';
         
         // Register processor function
         this.registerProcessor(`
@@ -277,6 +278,10 @@ class OscillatorPlugin extends PluginBase {
 
             return data; // Return the modified input buffer
         `);
+    }
+
+    getTemporalCapability() {
+        return this.enabled !== false && this.vl > -96 ? 'must-process' : 'reset-on-resume';
     }
 
     // Parameter setters with validation

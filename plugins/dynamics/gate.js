@@ -852,10 +852,10 @@ class GatePlugin extends PluginBase {
                 }
             }
             
-            this.animationFrameId = requestAnimationFrame(animate);
+            this.animationFrameId = this.requestPowerAnimationFrame(animate);
         };
         
-        this.animationFrameId = requestAnimationFrame(animate);
+        this.animationFrameId = this.requestPowerAnimationFrame(animate);
     }
     
     // Helper method to determine if graph update is needed

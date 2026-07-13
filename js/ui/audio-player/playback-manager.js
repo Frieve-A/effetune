@@ -13,6 +13,10 @@ export class PlaybackManager {
     this.seamlessMode = true; // Enable seamless mode by default
     this.keydownHandler = null;
     this.failedTrackSkipState = null;
+    this.playRequestToken = 0;
+    this.activePlayRequest = null;
+    this.playbackEntryIds = new WeakMap();
+    this.nextPlaybackEntryId = 0;
     
     // Initialize keyboard shortcuts
     this.initKeyboardShortcuts();
@@ -48,18 +52,19 @@ export class PlaybackManager {
       ? state.currentTrackIndex
       : (this.audioPlayer.stateManager?.getCurrentTrackIndex?.() ?? 0);
     let nextIndex = append ? currentIndex : 0;
+    const originalEntries = newEntries.map(track => this.createOriginalTrackEntry(track));
 
     if (shouldInsert) {
       const playlistIndex = Math.max(0, Math.min(insertAt, this.playlist.length));
       this.playlist.splice(playlistIndex, 0, ...newEntries);
       const originalIndex = Math.max(0, Math.min(insertAt, this.originalPlaylist.length));
-      this.originalPlaylist.splice(originalIndex, 0, ...newEntries.map(track => ({ ...track })));
+      this.originalPlaylist.splice(originalIndex, 0, ...originalEntries);
       if (playlistIndex <= currentIndex) {
         nextIndex = currentIndex + newEntries.length;
       }
     } else {
       this.playlist.push(...newEntries);
-      this.originalPlaylist.push(...newEntries.map(track => ({ ...track })));
+      this.originalPlaylist.push(...originalEntries);
     }
     
     if (shuffleMode && !append) {
@@ -117,6 +122,59 @@ export class PlaybackManager {
     return null;
   }
 
+  createOriginalTrackEntry(track) {
+    const originalTrack = { ...track };
+    const entryId = this.getOrCreatePlaybackEntryId(track);
+    this.playbackEntryIds.set(originalTrack, entryId);
+    return originalTrack;
+  }
+
+  getOrCreatePlaybackEntryId(track) {
+    const existingId = this.playbackEntryIds.get(track);
+    if (Number.isSafeInteger(existingId) && existingId > 0) return existingId;
+    const entryId = ++this.nextPlaybackEntryId;
+    this.playbackEntryIds.set(track, entryId);
+    return entryId;
+  }
+
+  capturePlaybackQueueSnapshot() {
+    const captureEntries = entries => ({
+      entries: entries.map(track => ({ ...track })),
+      entryIds: entries.map(track => this.getOrCreatePlaybackEntryId(track))
+    });
+    const playlist = captureEntries(this.playlist);
+    const originalPlaylist = captureEntries(this.originalPlaylist);
+    return {
+      playlist: playlist.entries,
+      originalPlaylist: originalPlaylist.entries,
+      playlistEntryIds: playlist.entryIds,
+      originalPlaylistEntryIds: originalPlaylist.entryIds
+    };
+  }
+
+  restorePlaybackQueueSnapshot(snapshot) {
+    if (!Array.isArray(snapshot?.playlist) ||
+        !Array.isArray(snapshot?.originalPlaylist)) {
+      return false;
+    }
+    const restoreEntries = (entries, entryIds) => entries.map((track, index) => {
+      const restoredTrack = { ...track };
+      const snapshotId = entryIds?.[index];
+      const entryId = Number.isSafeInteger(snapshotId) && snapshotId > 0
+        ? snapshotId
+        : ++this.nextPlaybackEntryId;
+      this.nextPlaybackEntryId = Math.max(this.nextPlaybackEntryId, entryId);
+      this.playbackEntryIds.set(restoredTrack, entryId);
+      return restoredTrack;
+    });
+    this.playlist = restoreEntries(snapshot.playlist, snapshot.playlistEntryIds);
+    this.originalPlaylist = restoreEntries(
+      snapshot.originalPlaylist,
+      snapshot.originalPlaylistEntryIds
+    );
+    return true;
+  }
+
   syncPlaylistState(currentIndex = 0) {
     if (this.audioPlayer.stateManager) {
       this.audioPlayer.stateManager.updatePlaylist(this.playlist, currentIndex);
@@ -136,17 +194,52 @@ export class PlaybackManager {
   /**
    * Play the current track
    */
-  async play() {
+  async play(userInitiated = true) {
+    if (this.activePlayRequest?.promise) {
+      return this.activePlayRequest.promise;
+    }
+
+    const request = {
+      token: ++this.playRequestToken,
+      promise: null
+    };
+    this.activePlayRequest = request;
+    const operation = this.performPlay(request, userInitiated);
+    request.promise = operation.finally(() => {
+      if (this.isActivePlayRequest(request)) {
+        this.activePlayRequest = null;
+      }
+    });
+    return request.promise;
+  }
+
+  isActivePlayRequest(request) {
+    return this.activePlayRequest === request && request?.token === this.playRequestToken;
+  }
+
+  invalidateActivePlayRequest() {
+    this.playRequestToken++;
+    this.activePlayRequest = null;
+  }
+
+  async performPlay(request, userInitiated = true) {
     if (this.audioPlayer.contextManager) {
       const currentIndex = this.audioPlayer.stateManager.getCurrentTrackIndex();
       const currentTrack = this.getTrack(currentIndex);
       if (currentTrack && !this.audioPlayer.contextManager.hasCurrentBuffer()) {
-        await this.audioPlayer.contextManager.seamlessTransition(currentTrack, currentIndex);
+        const transitioned = await this.audioPlayer.contextManager.seamlessTransition(
+          currentTrack,
+          currentIndex,
+          userInitiated
+        );
+        return this.isActivePlayRequest(request) ? transitioned : false;
       }
-      
-      await this.audioPlayer.contextManager.play();
+
+      const started = await this.audioPlayer.contextManager.play(false, userInitiated);
+      return this.isActivePlayRequest(request) ? started : false;
     } else {
       console.warn('[PlaybackManager] ContextManager not available for play');
+      return false;
     }
   }
   
@@ -154,6 +247,7 @@ export class PlaybackManager {
    * Pause the current track
    */
   async pause() {
+    this.invalidateActivePlayRequest();
     if (this.audioPlayer.contextManager) {
       const wasTransitioning = this.transitionInProgress;
       await this.audioPlayer.contextManager.pause();
@@ -168,7 +262,7 @@ export class PlaybackManager {
   /**
    * Toggle between play and pause
    */
-  async togglePlayPause() {
+  async togglePlayPause(onPlayIntent = null) {
     if (!this.audioPlayer.stateManager) {
       console.warn('[PlaybackManager] StateManager not available for togglePlayPause');
       return;
@@ -176,9 +270,10 @@ export class PlaybackManager {
     
     const state = this.audioPlayer.stateManager.getStateSnapshot();
     
-    if (state.isPlaying) {
+    if (this.activePlayRequest || this.transitionInProgress || state.isPlaying) {
       await this.pause();
     } else {
+      if (typeof onPlayIntent === 'function') onPlayIntent();
       await this.play();
     }
   }
@@ -187,6 +282,7 @@ export class PlaybackManager {
    * Stop playback and reset position
    */
   async stop() {
+    this.invalidateActivePlayRequest();
     this.transitionInProgress = false;
     this.clearFailedTrackSkipState();
     if (this.audioPlayer.contextManager) {
@@ -199,7 +295,8 @@ export class PlaybackManager {
   /**
    * Enhanced playPrevious with seamless transition
    */
-  async playPrevious() {
+  async playPrevious(userInitiated = true) {
+    if (userInitiated) this.audioPlayer.resumeAudioContextInGesture?.();
     if (this.playlist.length === 0 || this.transitionInProgress) return;
     this.clearFailedTrackSkipState();
     
@@ -213,13 +310,17 @@ export class PlaybackManager {
       if (currentTime > 3) {
         const currentTrack = this.getTrack(currentIndex);
         if (currentTrack) {
-          await this.audioPlayer.contextManager.seamlessTransition(currentTrack, currentIndex);
+          await this.audioPlayer.contextManager.seamlessTransition(
+            currentTrack,
+            currentIndex,
+            userInitiated
+          );
         }
         return;
       }
     } else if (this.audioPlayer.audioElement && this.audioPlayer.audioElement.currentTime > 3) {
       this.audioPlayer.audioElement.currentTime = 0;
-      await this.play();
+      await this.play(userInitiated);
       return;
     }
     
@@ -236,11 +337,15 @@ export class PlaybackManager {
           if (this.audioPlayer.contextManager && this.audioPlayer.contextManager.isUsingBufferPlayback()) {
             const currentTrack = this.getTrack(currentIndex);
             if (currentTrack) {
-              await this.audioPlayer.contextManager.seamlessTransition(currentTrack, currentIndex);
+              await this.audioPlayer.contextManager.seamlessTransition(
+                currentTrack,
+                currentIndex,
+                userInitiated
+              );
             }
           } else {
             this.audioPlayer.audioElement.currentTime = 0;
-            await this.play();
+            await this.play(userInitiated);
           }
           return;
         }
@@ -255,11 +360,15 @@ export class PlaybackManager {
           if (this.audioPlayer.contextManager && this.audioPlayer.contextManager.isUsingBufferPlayback()) {
             const currentTrack = this.getTrack(currentIndex);
             if (currentTrack) {
-              await this.audioPlayer.contextManager.seamlessTransition(currentTrack, currentIndex);
+              await this.audioPlayer.contextManager.seamlessTransition(
+                currentTrack,
+                currentIndex,
+                userInitiated
+              );
             }
           } else {
             this.audioPlayer.audioElement.currentTime = 0;
-            await this.play();
+            await this.play(userInitiated);
           }
           return;
         }
@@ -274,7 +383,7 @@ export class PlaybackManager {
       
       try {
         await this.audioPlayer.contextManager.loadTrack(prevTrack, newIndex);
-        await this.audioPlayer.contextManager.play();
+        await this.audioPlayer.contextManager.play(false, userInitiated);
         
         if (this.audioPlayer.stateManager) {
           this.audioPlayer.stateManager.updateState({
@@ -291,7 +400,7 @@ export class PlaybackManager {
         }
         const loaded = await this.audioPlayer.loadTrack?.(newIndex);
         if (loaded !== false) {
-          await this.play();
+          await this.play(userInitiated);
         }
       } finally {
         this.transitionInProgress = false;
@@ -304,7 +413,7 @@ export class PlaybackManager {
       }
       const loaded = await this.audioPlayer.loadTrack?.(newIndex);
       if (loaded !== false) {
-        await this.play();
+        await this.play(userInitiated);
       }
     }
     
@@ -317,6 +426,7 @@ export class PlaybackManager {
    * Enhanced playNext with seamless transition and proper error handling
    */
   async playNext(userInitiated = true, options = {}) {
+    if (userInitiated) this.audioPlayer.resumeAudioContextInGesture?.();
     if (this.playlist.length === 0) {
       return;
     }
@@ -350,11 +460,15 @@ export class PlaybackManager {
         const currentIndex = this.audioPlayer.stateManager.getCurrentTrackIndex();
         const currentTrack = this.getTrack(currentIndex);
         if (currentTrack) {
-          await this.audioPlayer.contextManager.seamlessTransition(currentTrack, currentIndex);
+          await this.audioPlayer.contextManager.seamlessTransition(
+            currentTrack,
+            currentIndex,
+            userInitiated
+          );
         }
       } else {
         this.audioPlayer.audioElement.currentTime = 0;
-        this.play();
+        this.play(userInitiated);
       }
       return;
     }
@@ -379,7 +493,11 @@ export class PlaybackManager {
     try {
       let transitionResult = true;
       if (this.audioPlayer.contextManager) {
-        transitionResult = await this.audioPlayer.contextManager.transitionToNextTrack(nextTrack, newIndex);
+        transitionResult = await this.audioPlayer.contextManager.transitionToNextTrack(
+          nextTrack,
+          newIndex,
+          userInitiated
+        );
       } else {
         console.warn('[PlaybackManager] ContextManager not available for transition');
       }
@@ -534,7 +652,7 @@ export class PlaybackManager {
     if (repeatMode === 'ONE') {
       const currentTrack = this.getTrack(currentIndex);
       if (currentTrack && this.audioPlayer.contextManager) {
-        this.audioPlayer.contextManager.seamlessTransition(currentTrack, currentIndex).catch(error => {
+        this.audioPlayer.contextManager.seamlessTransition(currentTrack, currentIndex, false).catch(error => {
           console.error('[PlaybackManager] Failed to restart track in repeat ONE mode:', error);
         });
       }
@@ -546,7 +664,7 @@ export class PlaybackManager {
         this.reshufflePlaylist();
         const firstTrack = this.getTrack(0);
         if (firstTrack && this.audioPlayer.contextManager) {
-          this.audioPlayer.contextManager.transitionToNextTrack(firstTrack, 0).catch(error => {
+          this.audioPlayer.contextManager.transitionToNextTrack(firstTrack, 0, false).catch(error => {
             console.error('[PlaybackManager] Failed to transition to first track after reshuffle:', error);
           });
         }
@@ -559,7 +677,7 @@ export class PlaybackManager {
         
         const firstTrack = this.getTrack(0);
         if (firstTrack && this.audioPlayer.contextManager) {
-          this.audioPlayer.contextManager.transitionToNextTrack(firstTrack, 0).catch(error => {
+          this.audioPlayer.contextManager.transitionToNextTrack(firstTrack, 0, false).catch(error => {
             console.error('[PlaybackManager] Failed to transition to first track:', error);
           });
         }
@@ -683,7 +801,10 @@ export class PlaybackManager {
 
     this.playlist = [...this.originalPlaylist];
 
-    const restoredIndex = this.playlist.findIndex(track => samePlaybackEntry(track, currentTrack));
+    const currentEntryId = this.playbackEntryIds.get(currentTrack);
+    const restoredIndex = currentEntryId === undefined
+      ? this.playlist.findIndex(track => samePlaybackEntry(track, currentTrack))
+      : this.playlist.findIndex(track => this.playbackEntryIds.get(track) === currentEntryId);
     let finalIndex = restoredIndex === -1 ? currentIndex : restoredIndex;
     if (!Number.isInteger(finalIndex) || finalIndex < 0 || finalIndex >= this.playlist.length) {
       finalIndex = 0;
@@ -704,8 +825,11 @@ export class PlaybackManager {
   toggleShuffleMode() {
     const state = this.audioPlayer.stateManager?.getStateSnapshot();
     if (state?.repeatMode === 'ONE') return;
-    
+    const isCurrentlyPlaying = state?.isPlaying === true;
     const newShuffleMode = !(state?.shuffleMode || false);
+    if (isCurrentlyPlaying && newShuffleMode) {
+      this.audioPlayer.resumeAudioContextInGesture?.();
+    }
     
     if (this.audioPlayer.stateManager) {
       this.audioPlayer.stateManager.updateState({
@@ -714,8 +838,6 @@ export class PlaybackManager {
     }
     
     if (newShuffleMode) {
-      const isCurrentlyPlaying = state?.isPlaying || false;
-      
       if (this.audioPlayer.contextManager) {
         this.audioPlayer.contextManager.stop();
       }
@@ -723,12 +845,7 @@ export class PlaybackManager {
       this.shufflePlaylistFromBeginning(isCurrentlyPlaying);
       
     } else {
-      if (this.audioPlayer.contextManager) {
-        this.audioPlayer.contextManager.stop();
-      }
-      
-      this.playlist = [...this.originalPlaylist];
-      this.resetToFirstTrack(false);
+      this.disableShuffleModePreservingCurrentTrack(state);
     }
     
     if (this.audioPlayer.ui) {
@@ -803,7 +920,7 @@ export class PlaybackManager {
         case ' ':
           if (!e.target.matches('button, [role="button"], a, .interactive')) {
             e.preventDefault();
-            this.togglePlayPause();
+            this.togglePlayPause(() => this.audioPlayer.resumeAudioContextInGesture?.());
           }
           break;
           
@@ -910,7 +1027,8 @@ export class PlaybackManager {
   /**
    * Fast forward the current track by 10 seconds
    */
-  fastForward() {
+  fastForward(userInitiated = true) {
+    if (userInitiated) this.audioPlayer.resumeAudioContextInGesture?.();
     if (this.audioPlayer.contextManager) {
       const state = this.audioPlayer.contextManager.getCurrentState();
       const currentTime = state?.currentTrackPosition || 0;
@@ -925,7 +1043,8 @@ export class PlaybackManager {
   /**
    * Rewind the current track by 10 seconds
    */
-  rewind() {
+  rewind(userInitiated = true) {
+    if (userInitiated) this.audioPlayer.resumeAudioContextInGesture?.();
     if (this.audioPlayer.contextManager) {
       const state = this.audioPlayer.contextManager.getCurrentState();
       const currentTime = state?.currentTrackPosition || 0;
@@ -1031,6 +1150,7 @@ export class PlaybackManager {
    * Enhanced clear method with proper cleanup
    */
   clear() {
+    this.invalidateActivePlayRequest();
     this.playlist = [];
     this.originalPlaylist = [];
     this.transitionInProgress = false;

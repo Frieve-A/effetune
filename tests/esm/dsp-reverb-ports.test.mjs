@@ -21,7 +21,7 @@ const ports = [
     hash: 0x22bc806f,
     keys: ['pd', 'bw', 'id1', 'id2', 'dc', 'dd1', 'dp', 'md', 'mr', 'wm', 'dm'],
     defaults: [10, 0.9995, 0.75, 0.625, 0.5, 0.7, 0.0005, 1, 1, 30, 100],
-    jsEngineHash: 'bb119de680bebc08f6386a46611e53ae1f151703d18f094c81b903bf2a42fc38',
+    jsEngineHash: '24c3f5334ca9cc1517d25b259a640a8b37e98359e1db7206259184bc39940f23',
     caseIds: [
       'default-impulse',
       'minimum-controls-44100',
@@ -40,7 +40,7 @@ const ports = [
     hash: 0x68a00ea5,
     keys: ['rt', 'dt', 'pd', 'bd', 'ds', 'hd', 'lc', 'md', 'mr', 'df', 'wm', 'dm', 'sw'],
     defaults: [1.2, 8, 10, 20, 5, 6, 100, 3, 0.3, 100, 30, 100, 100],
-    jsEngineHash: '1fb216d4d85041102b275b9621e435bdfa586c448be0fcf8f954a8117826252d',
+    jsEngineHash: 'a50d1a4fc340427f53a41e2f5941692f9d5e003cb480888c21ed123a7444c84d',
     caseIds: [
       'default-impulse',
       'minimum-controls-44100',
@@ -59,7 +59,7 @@ const ports = [
     hash: 0xc3be374c,
     keys: ['pd', 'rs', 'rt', 'ds', 'df', 'dp', 'hd', 'ld', 'mx'],
     defaults: [10, 10, 2.4, 8, 0.7, 80, 2000, 200, 16],
-    jsEngineHash: 'dfa7e203c232a3fbb94ef9ab206070e3ef17d9558c1bebf7b42a6b83c0e931c1',
+    jsEngineHash: '217ad270ced7aa43a0969563883e52da1e80af136d0ae62fd61b21e97b7c1c8b',
     caseIds: [
       'default-impulse',
       'minimum-controls-44100',

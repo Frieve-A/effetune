@@ -29,7 +29,7 @@ const ports = [
     ],
     caseCount: 8,
     goldenBytes: 399872,
-    jsEngineHash: '80d6409c41763ff48546889b1f8bb55c49daf4dd0fcccabb529c533da102b491',
+    jsEngineHash: '3b99892c179667a51493ed55aeeb0a79ffe700a661ad33406d17d420abfacce9',
     activeParams: { h2: 20, h3: -15, h4: 10, h5: -5, sn: 1.5 }
   },
   {
@@ -49,7 +49,7 @@ const ports = [
     ],
     caseCount: 9,
     goldenBytes: 161408,
-    jsEngineHash: '33770a3f4e7ed3608281a1060db6304f2a2bf28bfc61aa1e7b783c4293ec8d58',
+    jsEngineHash: 'ec6b2dedb39cd0ddd15e5c976d24a52ec2ad78a111e94d6992d5c50d52a35a39',
     activeParams: { sd: 7, ss: 4, sp: 3, sm: 0.7, dd: 6, db: -0.2, dm: 73, cm: 81, og: -3 }
   },
   {
@@ -65,7 +65,7 @@ const ports = [
     ],
     caseCount: 9,
     goldenBytes: 146054,
-    jsEngineHash: '23e2394eaae09c2efae387880d7fe441f2f6226f75e6c4201215af6703d7c72e',
+    jsEngineHash: '88ad7576e26eb616e08b1009fa34814e1e5e2decaea3765706a0e7d122f12038',
     activeParams: { hf: 3500, hs: 2, dr: 7, bs: -0.2, mx: 73 }
   },
   {
@@ -84,7 +84,7 @@ const ports = [
     ],
     caseCount: 11,
     goldenBytes: 169159,
-    jsEngineHash: '8436f585dbeb985ffe8bd8da5144bb86fb34001e136d98dc6e21fcab9c9ed3c8',
+    jsEngineHash: '5b3bdbb8fb5a927df7aa35af5474be48f5d121cd1dda6cd2a17359830b6fa542',
     activeParams: { sl: 137, dl: 83, slf: 173, sls: -18, shf: 17, shs: -12, dhf: 43, dhs: -6 }
   }
 ];

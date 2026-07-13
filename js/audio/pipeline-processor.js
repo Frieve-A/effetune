@@ -7,11 +7,18 @@ export class PipelineProcessor {
      * @param {Object} contextManager - Reference to the AudioContextManager
      * @param {Object} ioManager - Reference to the AudioIOManager
      * @param {Function} registerProcessors - Callback to register plugin processors
+     * @param {Function} connectSourceToPipeline - Canonical source connection callback
      */
-    constructor(contextManager, ioManager, registerProcessors = null) {
+    constructor(
+        contextManager,
+        ioManager,
+        registerProcessors = null,
+        connectSourceToPipeline = null
+    ) {
         this.contextManager = contextManager;
         this.ioManager = ioManager;
         this.registerProcessors = registerProcessors;
+        this.connectSourceToPipeline = connectSourceToPipeline;
         this.pipeline = [];
         this.masterBypass = false;
     }
@@ -80,7 +87,9 @@ export class PipelineProcessor {
         }
         
         // Connect audio nodes
-        const connectionResult = await this.ioManager.connectAudioNodes();
+        const connectionResult = await this.ioManager.connectAudioNodes({
+            connectSource: this.connectSourceToPipeline
+        });
         if (connectionResult) {
             return connectionResult;
         }

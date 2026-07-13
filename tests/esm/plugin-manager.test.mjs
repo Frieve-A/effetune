@@ -168,6 +168,34 @@ test('availability, creation, and default parameter capture handle guard and err
   assert.equal(warnCalls.length, 1);
 });
 
+test('new plugins inherit the current power UI gate', async () => {
+  const manager = new PluginManager();
+  class VisualPlugin {
+    constructor() {
+      this.name = 'Visual';
+      this.powerUiValues = [];
+    }
+
+    setPowerUiEnabled(value) {
+      this.powerUiValues.push(value);
+    }
+  }
+  manager.pluginClasses.Visual = VisualPlugin;
+
+  await withGlobals({
+    window: {
+      audioManager: {
+        powerPolicyController: {
+          getDspUiActivityAllowed() { return false; }
+        }
+      }
+    }
+  }, async () => {
+    const plugin = manager.createPlugin('Visual');
+    assert.deepEqual(plugin.powerUiValues, [false]);
+  });
+});
+
 test('parsePluginsDefinition builds category and plugin maps from supported sections', () => {
   const manager = new PluginManager();
   const { categories, pluginDefinitions } = manager.parsePluginsDefinition(PLUGINS_TEXT);

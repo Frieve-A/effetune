@@ -34,20 +34,38 @@ export class PipelineWorkletSync {
             : {};
     }
 
+    commitTopologyMutation(message, reason) {
+        if (!this.isWorkletAvailable() ||
+            typeof this.audioManager.commitPowerTopologyMutation !== 'function') {
+            return false;
+        }
+        this.audioManager.commitPowerTopologyMutation(message, { reason });
+        return true;
+    }
+
+    broadcastWorkletMessage(message) {
+        if (!this.isWorkletAvailable() ||
+            typeof this.audioManager.broadcastToActiveWorklets !== 'function') {
+            return false;
+        }
+        this.audioManager.broadcastToActiveWorklets(message);
+        return true;
+    }
+
     /**
      * Update all plugins in the worklet
      */
     updateWorkletPlugins() {
-        if (window.workletNode) {
+        if (this.isWorkletAvailable()) {
             this.ensureProcessorsRegistered();
             // Prepare plugin data
             const plugins = this.getCurrentPipeline().map(plugin => this.preparePluginData(plugin));
-            
-            window.workletNode.port.postMessage({
+
+            this.commitTopologyMutation({
                 type: 'updatePlugins',
                 plugins: plugins,
                 masterBypass: this.audioManager.masterBypass
-            });
+            }, 'pipeline-full-update');
         }
         this.updateURL();
     }
@@ -57,12 +75,12 @@ export class PipelineWorkletSync {
      * @param {Object} plugin - The plugin to update
      */
     updateWorkletPlugin(plugin) {
-        if (window.workletNode) {
+        if (this.isWorkletAvailable()) {
             this.ensureProcessorsRegistered(plugin);
-            window.workletNode.port.postMessage({
+            this.commitTopologyMutation({
                 type: 'updatePlugin',
                 plugin: this.preparePluginData(plugin)
-            });
+            }, 'pipeline-plugin-update');
         }
         this.updateURL();
     }
@@ -75,16 +93,16 @@ export class PipelineWorkletSync {
         this.audioManager.masterBypass = !!masterBypass;
         this.audioManager.pipelineProcessor?.setMasterBypass?.(this.audioManager.masterBypass);
 
-        if (window.workletNode) {
+        if (this.isWorkletAvailable()) {
             this.ensureProcessorsRegistered();
             // Prepare plugin data
             const plugins = this.getCurrentPipeline().map(plugin => this.preparePluginData(plugin));
-            
-            window.workletNode.port.postMessage({
+
+            this.commitTopologyMutation({
                 type: 'updatePlugins',
                 plugins: plugins,
                 masterBypass: masterBypass
-            });
+            }, 'pipeline-master-bypass');
         }
         this.updateURL();
     }
@@ -94,12 +112,12 @@ export class PipelineWorkletSync {
      * @param {Object} plugin - The plugin whose parameters changed
      */
     sendParameterUpdate(plugin) {
-        if (window.workletNode) {
+        if (this.isWorkletAvailable()) {
             this.ensureProcessorsRegistered(plugin);
-            window.workletNode.port.postMessage({
+            this.commitTopologyMutation({
                 type: 'updatePlugin',
                 plugin: this.preparePluginData(plugin)
-            });
+            }, 'pipeline-parameter-update');
         }
     }
 
@@ -129,14 +147,14 @@ export class PipelineWorkletSync {
      * @param {Array} plugins - Array of plugins to update
      */
     batchUpdatePlugins(plugins) {
-        if (window.workletNode && plugins.length > 0) {
+        if (this.isWorkletAvailable() && plugins.length > 0) {
             this.ensureProcessorsRegistered(plugins);
             const pluginData = plugins.map(plugin => this.preparePluginData(plugin));
-            
-            window.workletNode.port.postMessage({
+
+            this.commitTopologyMutation({
                 type: 'batchUpdatePlugins',
                 plugins: pluginData
-            });
+            }, 'pipeline-batch-update');
         }
         this.updateURL();
     }
@@ -146,11 +164,11 @@ export class PipelineWorkletSync {
      * @param {number} pluginId - The ID of the plugin to remove
      */
     removePlugin(pluginId) {
-        if (window.workletNode) {
-            window.workletNode.port.postMessage({
+        if (this.isWorkletAvailable()) {
+            this.commitTopologyMutation({
                 type: 'removePlugin',
                 pluginId: pluginId
-            });
+            }, 'pipeline-plugin-remove');
         }
         this.updateURL();
     }
@@ -161,15 +179,15 @@ export class PipelineWorkletSync {
      * @param {number} index - The index to insert at
      */
     addPlugin(plugin, index) {
-        if (window.workletNode) {
+        if (this.isWorkletAvailable()) {
             this.ensureProcessorsRegistered(plugin);
             const pluginData = this.preparePluginData(plugin);
-            
-            window.workletNode.port.postMessage({
+
+            this.commitTopologyMutation({
                 type: 'addPlugin',
                 plugin: pluginData,
                 index: index
-            });
+            }, 'pipeline-plugin-add');
         }
         this.updateURL();
     }
@@ -180,12 +198,12 @@ export class PipelineWorkletSync {
      * @param {number} toIndex - The index to move to
      */
     reorderPlugin(fromIndex, toIndex) {
-        if (window.workletNode) {
-            window.workletNode.port.postMessage({
+        if (this.isWorkletAvailable()) {
+            this.commitTopologyMutation({
                 type: 'reorderPlugin',
                 fromIndex: fromIndex,
                 toIndex: toIndex
-            });
+            }, 'pipeline-plugin-reorder');
         }
         this.updateURL();
     }
@@ -204,17 +222,20 @@ export class PipelineWorkletSync {
      * @returns {boolean} Whether the worklet is available
      */
     isWorkletAvailable() {
-        return window.workletNode !== null && window.workletNode !== undefined;
+        const active = this.audioManager.getActivePowerWorklets?.();
+        if (Array.isArray(active)) return active.some(node => node?.port);
+        return !!(this.audioManager.contextManager?.workletNode?.port ||
+            this.audioManager.workletNode?.port);
     }
 
     /**
      * Send reset message to worklet
      */
     resetWorklet() {
-        if (window.workletNode) {
-            window.workletNode.port.postMessage({
+        if (this.isWorkletAvailable()) {
+            this.commitTopologyMutation({
                 type: 'reset'
-            });
+            }, 'pipeline-reset');
         }
     }
 
@@ -222,8 +243,8 @@ export class PipelineWorkletSync {
      * Send performance metrics request to worklet
      */
     requestPerformanceMetrics() {
-        if (window.workletNode) {
-            window.workletNode.port.postMessage({
+        if (this.isWorkletAvailable()) {
+            this.broadcastWorkletMessage({
                 type: 'getPerformanceMetrics'
             });
         }

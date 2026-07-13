@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { PlaybackManager } from '../../js/ui/audio-player/playback-manager.js';
+import { PlaybackBridge } from '../../js/library/playback-bridge.js';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
 
 class FakeFile {
@@ -187,6 +188,9 @@ function createAudioPlayer(options = {}) {
     },
     loadTrack(index) {
       calls.push(['audioPlayerLoadTrack', index]);
+    },
+    resumeAudioContextInGesture() {
+      calls.push(['resumeAudioContextInGesture']);
     }
   };
   return audioPlayer;
@@ -318,6 +322,96 @@ test('loadFiles append and insert invalidate a stale pre-decoded next-track buff
     const manager = makeManager(audioPlayer);
     manager.loadFiles(['fresh.wav']);
     assert.ok(!audioPlayer.calls.some(call => call[0] === 'clearNextTrackBuffer'));
+  });
+});
+
+test('play treats a seamless transition as the complete playback start', async () => {
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({ hasCurrentBuffer: false });
+    const manager = makeManager(audioPlayer);
+    setPlaylist(manager, ['One']);
+
+    await manager.play();
+
+    assert.equal(
+      audioPlayer.calls.filter(call => call[0] === 'seamlessTransition').length,
+      1
+    );
+    assert.equal(
+      audioPlayer.calls.filter(call => call[0] === 'contextPlay').length,
+      0
+    );
+  });
+});
+
+test('automatic play and track advance preserve the non-user activation intent', async () => {
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({ hasCurrentBuffer: true });
+    const manager = makeManager(audioPlayer);
+    setPlaylist(manager, ['One', 'Two']);
+    const activationIntents = [];
+    audioPlayer.contextManager.play = async (_forcePlay, userInitiated) => {
+      activationIntents.push(['play', userInitiated]);
+      return true;
+    };
+    audioPlayer.contextManager.transitionToNextTrack = async (_track, _index, userInitiated) => {
+      activationIntents.push(['next', userInitiated]);
+      return true;
+    };
+
+    await manager.play(false);
+    await manager.playNext(false);
+
+    assert.deepEqual(activationIntents, [
+      ['play', false],
+      ['next', false]
+    ]);
+    assert.equal(
+      audioPlayer.calls.some(call => call[0] === 'resumeAudioContextInGesture'),
+      false
+    );
+  });
+});
+
+test('100 rapid play-pause toggles use the latest intent and cancel every in-flight play', async () => {
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({ hasCurrentBuffer: true });
+    const manager = makeManager(audioPlayer);
+    setPlaylist(manager, ['One']);
+    const playResolvers = [];
+    let playIntentCount = 0;
+
+    audioPlayer.contextManager.play = () => {
+      audioPlayer.calls.push(['contextPlay.pending']);
+      return new Promise(resolve => playResolvers.push(resolve));
+    };
+    audioPlayer.contextManager.pause = async () => {
+      audioPlayer.calls.push(['contextPause']);
+      Object.assign(audioPlayer.state, {
+        isPlaying: false,
+        isPaused: true,
+        isStopped: false
+      });
+    };
+
+    const operations = [];
+    for (let index = 0; index < 100; index++) {
+      operations.push(manager.togglePlayPause(() => { playIntentCount += 1; }));
+      await flushMicrotasks();
+    }
+
+    playResolvers.forEach(resolve => resolve(false));
+    await Promise.all(operations);
+
+    assert.equal(
+      audioPlayer.calls.filter(call => call[0] === 'contextPlay.pending').length,
+      50
+    );
+    assert.equal(
+      audioPlayer.calls.filter(call => call[0] === 'contextPause').length,
+      50
+    );
+    assert.equal(playIntentCount, 50);
   });
 });
 
@@ -752,6 +846,119 @@ test('repeat ALL to ONE disables shuffle without stopping current playback', asy
   });
 });
 
+test('shuffle off preserves the playing duplicate entry while shuffle on resumes before restart', async () => {
+  await withPlaybackGlobals({ randomValues: [0, 0] }, async () => {
+    const audioPlayer = createAudioPlayer({
+      shuffleMode: false,
+      isPlaying: true,
+      isPaused: false,
+      isStopped: false,
+      state: {
+        currentBuffer: { id: 'playing-buffer' },
+        currentTrackPosition: 37
+      }
+    });
+    const manager = makeManager(audioPlayer);
+    manager.loadFiles(['duplicate.wav', 'middle.wav', 'duplicate.wav']);
+    audioPlayer.calls.length = 0;
+
+    manager.toggleShuffleMode();
+
+    const resumeIndex = audioPlayer.calls.findIndex(call =>
+      call[0] === 'resumeAudioContextInGesture'
+    );
+    const stopIndex = audioPlayer.calls.findIndex(call => call[0] === 'contextStop');
+    const transitionIndex = audioPlayer.calls.findIndex(call => call[0] === 'seamlessTransition');
+    assert.ok(resumeIndex >= 0);
+    assert.ok(resumeIndex < stopIndex);
+    assert.ok(resumeIndex < transitionIndex);
+
+    const secondDuplicate = manager.originalPlaylist[2];
+    const shuffledDuplicateIndex = manager.playlist.indexOf(secondDuplicate);
+    assert.ok(shuffledDuplicateIndex >= 0);
+    audioPlayer.state.currentTrackIndex = shuffledDuplicateIndex;
+    audioPlayer.state.currentTrack = secondDuplicate;
+    audioPlayer.state.isPlaying = true;
+    audioPlayer.state.isPaused = false;
+    audioPlayer.state.isStopped = false;
+    audioPlayer.state.currentTrackPosition = 37;
+    audioPlayer.calls.length = 0;
+
+    manager.toggleShuffleMode();
+
+    assert.deepEqual(
+      manager.playlist.map(track => track.name),
+      ['duplicate.wav', 'middle.wav', 'duplicate.wav']
+    );
+    assert.equal(audioPlayer.state.currentTrackIndex, 2);
+    assert.strictEqual(manager.playlist[2], secondDuplicate);
+    assert.strictEqual(audioPlayer.state.currentTrack, secondDuplicate);
+    assert.equal(audioPlayer.state.isPlaying, true);
+    assert.equal(audioPlayer.state.isPaused, false);
+    assert.equal(audioPlayer.state.isStopped, false);
+    assert.equal(audioPlayer.state.currentTrackPosition, 37);
+    assert.equal(audioPlayer.state.currentBuffer.id, 'playing-buffer');
+    assert.equal(audioPlayer.calls.some(call => call[0] === 'resumeAudioContextInGesture'), false);
+    assert.equal(audioPlayer.calls.some(call => call[0] === 'contextStop'), false);
+    assert.equal(audioPlayer.calls.some(call => call[0] === 'contextLoadTrack'), false);
+    assert.equal(audioPlayer.calls.some(call => call[0] === 'seamlessTransition'), false);
+  });
+});
+
+test('playback bridge snapshot preserves duplicate occurrence IDs across serialized clones', async () => {
+  await withPlaybackGlobals({}, async () => {
+    const previousPlayer = createAudioPlayer({ shuffleMode: false, isPlaying: false });
+    const previousManager = makeManager(previousPlayer);
+    previousPlayer.playbackManager = previousManager;
+    const sourceEntries = [
+      { libraryTrackId: 'duplicate', path: '/same.flac', name: 'First occurrence' },
+      { libraryTrackId: 'duplicate', path: '/same.flac', name: 'Second occurrence' },
+      { libraryTrackId: 'other', path: '/other.flac', name: 'Other' }
+    ];
+    previousManager.loadFiles(sourceEntries);
+    const secondOccurrence = previousManager.originalPlaylist[1];
+    previousManager.playlist = [
+      secondOccurrence,
+      previousManager.originalPlaylist[2],
+      previousManager.originalPlaylist[0]
+    ];
+    previousPlayer.state.shuffleMode = true;
+    previousPlayer.state.currentTrackIndex = 0;
+    previousPlayer.state.currentTrack = secondOccurrence;
+
+    const replacementPlayer = createAudioPlayer({ shuffleMode: true, isPlaying: false });
+    const replacementManager = makeManager(replacementPlayer);
+    replacementPlayer.playbackManager = replacementManager;
+    const uiManager = { audioPlayer: previousPlayer };
+    const bridge = new PlaybackBridge({
+      index: {},
+      source: {},
+      uiManager,
+      getFolders: () => []
+    });
+
+    bridge.captureSnapshot();
+    assert.deepEqual(bridge.lastSnapshot.playlistEntryIds, [2, 3, 1]);
+    assert.equal(Object.hasOwn(sourceEntries[0], 'playbackEntryId'), false);
+    assert.equal(Object.hasOwn(bridge.lastSnapshot.playlist[0], 'playbackEntryId'), false);
+    bridge.lastSnapshot = JSON.parse(JSON.stringify(bridge.lastSnapshot));
+    uiManager.audioPlayer = replacementPlayer;
+
+    assert.equal(await bridge.restoreLastSnapshot(), true);
+    assert.equal(replacementPlayer.state.currentTrackIndex, 0);
+    assert.equal(replacementManager.playlist[0].name, 'Second occurrence');
+
+    replacementManager.toggleShuffleMode();
+
+    assert.deepEqual(
+      replacementManager.playlist.map(track => track.name),
+      ['First occurrence', 'Second occurrence', 'Other']
+    );
+    assert.equal(replacementPlayer.state.currentTrackIndex, 1);
+    assert.equal(replacementManager.playlist[1].name, 'Second occurrence');
+  });
+});
+
 test('shuffle, repeat, seek, clear, and dispose update playback state consistently', async () => {
   await withPlaybackGlobals({}, async () => {
     const manager = makeManager(createAudioPlayer());
@@ -806,15 +1013,36 @@ test('shuffle, repeat, seek, clear, and dispose update playback state consistent
     const manager = makeManager(audioPlayer);
     setPlaylist(manager);
     manager.toggleShuffleMode();
+    const shuffleResumeIndex = audioPlayer.calls.findIndex(call =>
+      call[0] === 'resumeAudioContextInGesture'
+    );
+    const shuffleStopIndex = audioPlayer.calls.findIndex(call => call[0] === 'contextStop');
+    const shuffleTransitionIndex = audioPlayer.calls.findIndex(call =>
+      call[0] === 'seamlessTransition'
+    );
+    assert.ok(shuffleResumeIndex >= 0);
+    assert.ok(shuffleResumeIndex < shuffleStopIndex);
+    assert.ok(shuffleResumeIndex < shuffleTransitionIndex);
     assert.deepEqual(
       audioPlayer.calls.filter(call => call[0] === 'updatePlaylist').at(-1).slice(1),
       [manager.playlist.map(track => track.name), 0]
     );
     audioPlayer.state.shuffleMode = true;
+    const trackBeforeDisable = manager.playlist[audioPlayer.state.currentTrackIndex];
+    const restoredTrackIndex = manager.originalPlaylist.findIndex(track =>
+      track.path === trackBeforeDisable.path
+    );
+    const resumeCountBeforeDisable = audioPlayer.calls.filter(call =>
+      call[0] === 'resumeAudioContextInGesture'
+    ).length;
     manager.toggleShuffleMode();
+    assert.equal(
+      audioPlayer.calls.filter(call => call[0] === 'resumeAudioContextInGesture').length,
+      resumeCountBeforeDisable
+    );
     assert.deepEqual(
       audioPlayer.calls.filter(call => call[0] === 'updatePlaylist').at(-1).slice(1),
-      [manager.playlist.map(track => track.name), 0]
+      [manager.playlist.map(track => track.name), restoredTrackIndex]
     );
     audioPlayer.state.repeatMode = 'ONE';
     manager.toggleShuffleMode();
@@ -887,6 +1115,32 @@ test('shuffle, repeat, seek, clear, and dispose update playback state consistent
   });
 });
 
+test('user track commands start resume synchronously while automatic advance does not', async () => {
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({ currentTrackIndex: 0 });
+    const manager = makeManager(audioPlayer);
+    setPlaylist(manager, ['One', 'Two']);
+
+    const next = manager.playNext(true);
+    assert.equal(audioPlayer.calls[0][0], 'resumeAudioContextInGesture');
+    await next;
+
+    audioPlayer.calls.length = 0;
+    audioPlayer.state.currentTrackIndex = 1;
+    const previous = manager.playPrevious(true);
+    assert.equal(audioPlayer.calls[0][0], 'resumeAudioContextInGesture');
+    await previous;
+
+    audioPlayer.calls.length = 0;
+    audioPlayer.state.currentTrackIndex = 0;
+    await manager.playNext(false);
+    assert.equal(
+      audioPlayer.calls.some(call => call[0] === 'resumeAudioContextInGesture'),
+      false
+    );
+  });
+});
+
 test('keyboard shortcuts ignore inactive contexts and control active playback', async () => {
   await withPlaybackGlobals({}, async ({ documentRef }) => {
     const audioPlayer = createAudioPlayer();
@@ -923,6 +1177,10 @@ test('keyboard shortcuts ignore inactive contexts and control active playback', 
 
     documentRef.dispatchKey(createKeyEvent('n', { target: createTarget('input-text') }));
     assert.ok(audioPlayer.calls.length > 0);
+    assert.equal(
+      audioPlayer.calls.filter(call => call[0] === 'resumeAudioContextInGesture').length,
+      11
+    );
   });
 
   await withPlaybackGlobals({}, async ({ documentRef }) => {
@@ -939,6 +1197,27 @@ test('keyboard shortcuts ignore inactive contexts and control active playback', 
       documentRef.dispatchKey(createKeyEvent(key, { ctrlKey: key.startsWith('Arrow') }));
     }
     await flushMicrotasks();
+  });
+});
+
+test('shuffle keyboard activation begins WebKit resume before restarting active playback', async () => {
+  await withPlaybackGlobals({}, async ({ documentRef }) => {
+    const audioPlayer = createAudioPlayer({ isPlaying: true });
+    const manager = makeManager(audioPlayer);
+    setPlaylist(manager);
+    audioPlayer.calls.length = 0;
+
+    documentRef.dispatchKey(createKeyEvent('h', { ctrlKey: true }));
+    await flushMicrotasks();
+
+    const resumeIndex = audioPlayer.calls.findIndex(call =>
+      call[0] === 'resumeAudioContextInGesture'
+    );
+    const stopIndex = audioPlayer.calls.findIndex(call => call[0] === 'contextStop');
+    const transitionIndex = audioPlayer.calls.findIndex(call => call[0] === 'seamlessTransition');
+    assert.ok(resumeIndex >= 0);
+    assert.ok(resumeIndex < stopIndex);
+    assert.ok(resumeIndex < transitionIndex);
   });
 });
 

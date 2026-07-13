@@ -165,7 +165,6 @@ class WasmBenchmarkRuntime {
         enabledTypes,
         sampleRate,
         blockSize,
-        debug,
         warning
     }) {
         this.binding = binding;
@@ -173,12 +172,9 @@ class WasmBenchmarkRuntime {
         this.enabledTypes = enabledTypes;
         this.sampleRate = sampleRate;
         this.blockSize = blockSize;
-        this.debug = debug;
         this.warning = warning;
-        this.label = debug
-            ? 'WebAssembly (debug)'
-            : (moduleInfo.simd ? 'WebAssembly (SIMD)' : 'WebAssembly (baseline)');
-        this.variant = debug ? 'debug' : (moduleInfo.simd ? 'simd' : 'baseline');
+        this.label = moduleInfo.simd ? 'WebAssembly (SIMD)' : 'WebAssembly (baseline)';
+        this.variant = moduleInfo.simd ? 'simd' : 'baseline';
         this.usesWasm = true;
         this.closed = false;
         this.activeSession = null;
@@ -355,7 +351,6 @@ async function createWasmBenchmarkRuntime({
 
     const moduleInfo = await loadModule({
         basePath,
-        debug: Boolean(preflight.debug),
         warning
     });
     if (!moduleInfo) {
@@ -378,7 +373,6 @@ async function createWasmBenchmarkRuntime({
     let binding = null;
     try {
         binding = await instantiate(moduleOrBytes, {
-            debug: Boolean(rollout.debug),
             warning
         });
         if (!binding?.createEngine || !binding.createEngine()) {
@@ -406,7 +400,6 @@ async function createWasmBenchmarkRuntime({
             enabledTypes: new Set(rollout.enabledTypes || []),
             sampleRate,
             blockSize,
-            debug: Boolean(rollout.debug),
             warning
         });
     } catch (error) {

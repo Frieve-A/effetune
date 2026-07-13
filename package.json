@@ -12,6 +12,7 @@
     "test:dsp": "node scripts/build-dsp-wasm.mjs --native-tests",
     "test:dsp:parity": "node tools/dsp-parity/run.mjs --wasm && node tools/dsp-parity/run.mjs --wasm --simd",
     "test:dsp:telemetry-soak": "node tools/dsp-parity/telemetry-soak.mjs",
+    "test:power-browser": "node tools/run-power-browser-smoke.mjs",
     "smoke:dsp-package": "node tools/verify-dsp-package.mjs dist",
     "assets:web": "npm run build:vendor && node scripts/generate-sw-precache.js",
     "preverify": "npm run build:vendor && node scripts/generate-sw-precache.js --check",
@@ -53,6 +54,7 @@
     "fs-extra": "^11.3.5",
     "globals": "^17.6.0",
     "mkdirp": "^3.0.1",
+    "playwright": "^1.61.1",
     "png2icons": "^2.0.1",
     "rimraf": "^6.1.3"
   },

@@ -1,5 +1,8 @@
 import { AudioContextManager } from './audio/audio-context-manager.js';
-import { AudioIOManager, MIC_DENIED_PREFIX } from './audio/audio-io-manager.js';
+import {
+    AudioIOManager,
+    MIC_DENIED_PREFIX
+} from './audio/audio-io-manager.js';
 import { PipelineProcessor } from './audio/pipeline-processor.js';
 import { OfflineProcessor } from './audio/offline-processor.js';
 import { AudioEncoder } from './audio/audio-encoder.js';
@@ -7,6 +10,18 @@ import { EventManager } from './audio/event-manager.js';
 import { loadDspModule } from './audio/dsp-wasm-loader.js';
 import { getDspRolloutConfig } from './audio/dsp-rollout.js';
 import { TelemetryHub } from './audio/telemetry-hub.js';
+import { PowerPolicyController } from './audio/power-policy-controller.js';
+import { PowerDiagnostics } from './audio/power-diagnostics.js';
+import { AudioPowerState, mergePowerSavingSettings } from './audio/power-policy.js';
+import { computeRuntimePipelineGraphBound } from './audio/power-topology.js';
+import { AudioActivationCoordinator } from './audio/audio-activation-coordinator.js';
+import {
+    loadWebAudioPreferences,
+    saveWebAudioPreferences,
+    saveWebPowerSavingSettings,
+    setWebPowerSettingsApplyHandler
+} from './electron/webSettingsStorage.js';
+import { NO_AUDIO_INPUT_DEVICE_ID } from './audio/audio-device-constants.js';
 import { getSerializablePluginStateShort, applySerializedState } from './utils/serialization-utils.js';
 
 const PIPELINE_SWITCH_FADE_SECONDS = 0.04;
@@ -14,8 +29,45 @@ const PIPELINE_SWITCH_SILENCE_SECONDS = 0.05;
 const DSP_MODULE_READY_TIMEOUT_MS = 1000;
 const DSP_BYTES_READY_TIMEOUT_MS = 3000;
 
+// Pipeline-content mutations describe the visible (primary) pipeline only.
+// During a Double Blind Test the parallel worklet B holds its own dedicated
+// pipeline (posted via _postBlindPlugins) and must never receive them.
+const PIPELINE_CONTENT_MUTATION_TYPES = new Set([
+    'updatePlugins',
+    'updatePlugin',
+    'batchUpdatePlugins',
+    'addPlugin',
+    'removePlugin',
+    'reorderPlugin',
+    'reset'
+]);
+
 function waitForPipelineSwitch(seconds) {
     return new Promise(resolve => setTimeout(resolve, seconds * 1000));
+}
+
+function audioPreferencesEqual(left, right) {
+    if (left === right) return true;
+    if (!left || !right) return false;
+    const leftKeys = Object.keys(left);
+    const rightKeys = Object.keys(right);
+    return leftKeys.length === rightKeys.length &&
+        leftKeys.every(key => Object.hasOwn(right, key) && Object.is(left[key], right[key]));
+}
+
+function audioPipelineConfigurationEqual(left, right) {
+    if (!left || !right) return false;
+    const defaults = {
+        outputDeviceId: 'default',
+        sampleRate: 96000,
+        useInputWithPlayer: false,
+        lowLatencyOutput: false,
+        useWasmDsp: true,
+        outputChannels: 2,
+        latencyHint: 'interactive'
+    };
+    return Object.entries(defaults).every(([key, fallback]) =>
+        Object.is(left[key] ?? fallback, right[key] ?? fallback));
 }
 
 /**
@@ -35,7 +87,8 @@ export class AudioManager {
         this.pipelineProcessor = new PipelineProcessor(
             this.contextManager,
             this.ioManager,
-            () => this.registerPipelineProcessors()
+            () => this.registerPipelineProcessors(),
+            node => this.connectSourceToPipeline(node)
         );
         this.offlineProcessor = new OfflineProcessor(this.contextManager, this.audioEncoder);
         this.eventManager = new EventManager(this);
@@ -51,6 +104,8 @@ export class AudioManager {
         this._dspReadyTransitionPromise = null;
         this._dspTransitionGeneration = -1;
         this._audioGraphGeneration = 0;
+        this._topologyRevision = 0;
+        this._workletGraphGeneration = 0;
         this._primaryWorkletEpoch = 0;
         this._outputFadeToken = 0;
         this._parallelDspBarrier = null;
@@ -81,12 +136,32 @@ export class AudioManager {
         this.offlineWorkletNode = null;
         this.isOfflineProcessing = false;
         this._resetInProgress = false;
+        this._activeResetPrefs = null;
         this._hasPendingReset = false;
         this._pendingResetPrefs = null;
         this.isCancelled = false;
         this._skipAudioInitDuringSampleRateChange = false;
         this.isFirstLaunch = false;
         this._pipelineSwitchSeq = 0;
+        this.powerDiagnostics = new PowerDiagnostics();
+        this.powerPolicyController = new PowerPolicyController(this, {
+            settings: window.appConfig?.powerSaving
+        });
+        this.audioActivationCoordinator = new AudioActivationCoordinator({
+            getGraphSnapshot: () => ({
+                audioGraphGeneration: this._audioGraphGeneration,
+                workletGraphGeneration: this._workletGraphGeneration,
+                topologyRevision: this._topologyRevision
+            }),
+            getActiveWorklets: () => this.getActivePowerWorklets(),
+            broadcast: message => this.broadcastToActiveWorklets(message)
+        });
+        this._audioConfigIntentSequence = 0;
+        this._activeAudioConfigRevision = 0;
+        if (!window.electronAPI) {
+            setWebPowerSettingsApplyHandler(settings =>
+                this.applyPersistedPowerSettings(settings));
+        }
         // Set global reference
         window.audioManager = this;
     }
@@ -353,12 +428,16 @@ export class AudioManager {
     /**
      * Initialize audio system (without AudioWorklet)
      * This is the first phase of audio initialization that can happen before GUI is fully rendered
+     * @param {Object|null} audioPreferences - Preferences already selected for this reset
      * @returns {Promise<string>} - Empty string on success, error message on failure
      */
-    async initAudio() {
+    async initAudio(audioPreferences = null) {
         try {
+            const isElectron = !!(window.electronAPI ||
+                window.electronIntegration?.isElectron ||
+                window.electronIntegration?.isElectronEnvironment?.());
             // Initialize audio context (without AudioWorklet)
-            const contextResult = await this.contextManager.initAudioContext();
+            const contextResult = await this.contextManager.initAudioContext(audioPreferences);
             if (contextResult) {
                 return contextResult;
             }
@@ -367,10 +446,9 @@ export class AudioManager {
             // path: mobile and desktop both request the input device here (a
             // denied permission falls back to the silent source inside
             // initAudioInput).
-            const isElectron = !!(window.electronAPI ||
-                window.electronIntegration?.isElectron ||
-                window.electronIntegration?.isElectronEnvironment?.());
-            const inputResult = await this.ioManager.initAudioInput();
+            const inputResult = audioPreferences
+                ? await this.ioManager.initAudioInput(audioPreferences)
+                : await this.ioManager.initAudioInput();
             // No need to log input result
             
             // Initialize audio output
@@ -378,7 +456,6 @@ export class AudioManager {
             if (outputResult) {
                 return outputResult;
             }
-            
             // Note: We don't build the pipeline here anymore
             // That will be done in initializeAudioWorklet after GUI is fully rendered
             
@@ -389,6 +466,9 @@ export class AudioManager {
             // hook and the playback path resume it later.
             if (isElectron) {
                 await this.contextManager.resumeAudioContext();
+            } else if (this.powerPolicyController?.started &&
+                typeof this.contextManager.resumeForPowerPolicy === 'function') {
+                this.contextManager.resumeForPowerPolicy('unexpected-recovery').catch(() => {});
             } else {
                 this.contextManager.resumeAudioContext().catch(() => {});
             }
@@ -471,7 +551,7 @@ export class AudioManager {
         const preference = window.audioPreferences || window.electronIntegration?.audioPreferences || {};
         const rollout = getDspRolloutConfig({ preference, location: window.location });
         if (rollout.forceOff || preference.useWasmDsp === false) return null;
-        return loadDspModule({ basePath, debug: rollout.debug });
+        return loadDspModule({ basePath });
     }
 
     getEnabledDspTypes(preferenceOverride = null) {
@@ -569,8 +649,24 @@ export class AudioManager {
         return nodes;
     }
 
+    // DSP initialization must see a preparing branch, while power and staged
+    // activation proofs may include it only after its downstream route is live.
+    _getActivePowerWorklets() {
+        const nodes = new Set();
+        const primary = this._getPrimaryWorkletNode();
+        if (primary?.port) nodes.add(primary);
+        if (this._parallelActive && this._parallelWorkletB?.port) {
+            nodes.add(this._parallelWorkletB);
+        }
+        return nodes;
+    }
+
     _isActiveDspWorklet(workletNode) {
         return !!workletNode && this._getActiveDspWorklets().has(workletNode);
+    }
+
+    _isActivePowerWorklet(workletNode) {
+        return !!workletNode && this._getActivePowerWorklets().has(workletNode);
     }
 
     _nextDspReadyToken(workletNode) {
@@ -629,7 +725,154 @@ export class AudioManager {
             barrier.resolve('cancelled');
         }
         this._parallelDspBarrier = null;
+        this._advancePowerWorkletGraphGeneration();
         return this._audioGraphGeneration;
+    }
+
+    _advancePowerWorkletGraphGeneration() {
+        this._topologyRevision = (this._topologyRevision || 0) + 1;
+        this._workletGraphGeneration = (this._workletGraphGeneration || 0) + 1;
+        this.powerPolicyController?.handleWorkletGraphReplacement?.({
+            topologyRevision: this._topologyRevision,
+            workletGraphGeneration: this._workletGraphGeneration
+        });
+        return this._workletGraphGeneration;
+    }
+
+    getPowerWorkletGraphGeneration() {
+        return this._workletGraphGeneration;
+    }
+
+    getPowerTopologyRevision() {
+        return this._topologyRevision;
+    }
+
+    getActivePowerWorklets() {
+        return [...this._getActivePowerWorklets()];
+    }
+
+    broadcastToActiveWorklets(message) {
+        for (const node of this._getActivePowerWorklets()) {
+            node?.port?.postMessage?.(message);
+        }
+    }
+
+    /**
+     * Apply one logical same-node topology mutation to every live worklet and
+     * advance the power-policy topology identity exactly once.
+     * @param {Object} message - Worklet mutation message
+     * @param {Object} options - Mutation metadata
+     * @returns {{ mutation: Object|null, postedNodeCount: number }} Commit result
+     */
+    commitPowerTopologyMutation(message, { reason = 'pipeline-topology-update' } = {}) {
+        if (!message || typeof message !== 'object' || typeof message.type !== 'string') {
+            throw new TypeError('A topology mutation worklet message is required');
+        }
+
+        // Any parameter, routing, ordering, enable, or bypass change invalidates
+        // a proof derived from the previous immutable topology immediately.
+        this._structuralZeroOutputProof = null;
+
+        // Pipeline-content mutations target the primary worklet only: during a
+        // Double Blind Test the parallel worklet B keeps its own dedicated
+        // pipeline (posted via _postBlindPlugins) and must not be overwritten
+        // by UI-driven sync. Power/config commands still reach every live worklet.
+        let targetNodes;
+        if (PIPELINE_CONTENT_MUTATION_TYPES.has(message.type)) {
+            const primary = this._getPrimaryWorkletNode();
+            targetNodes = primary?.port ? [primary] : [];
+        } else {
+            targetNodes = this._getActiveDspWorklets();
+        }
+
+        let postedNodeCount = 0;
+        let firstPostError = null;
+        for (const node of targetNodes) {
+            try {
+                node.port.postMessage(message);
+                postedNodeCount++;
+            } catch (error) {
+                firstPostError ??= error;
+            }
+        }
+
+        // Worklets invalidate their local skip state when the mutation message
+        // arrives. Commit the new revision afterwards so the controller's new
+        // power configuration is derived from, and follows, that mutation.
+        const mutation = this.powerPolicyController?.notifyTopologyChanged?.(reason) ?? null;
+        if (firstPostError) throw firstPostError;
+        return { mutation, postedNodeCount };
+    }
+
+    incrementPowerDiagnostic(key, delta = 1) {
+        return this.powerDiagnostics.increment(key, delta);
+    }
+
+    getPowerDiagnostics() {
+        return this.powerDiagnostics.getSnapshot();
+    }
+
+    getPowerSnapshot() {
+        return this.powerPolicyController?.getSnapshot?.() || null;
+    }
+
+    setPlayerPowerUiEnabled(enabled) {
+        window.uiManager?.audioPlayer?.ui?.setPowerUiEnabled?.(enabled);
+    }
+
+    getPowerChannelFanInBound() {
+        const channels = this.audioContext?.destination?.channelCount || 1;
+        return Number.isInteger(channels) && channels > 0 ? channels : 1;
+    }
+
+    getPowerGraphAmplitudeBound(pipeline = this.getCurrentPipeline()) {
+        const physicalOutputCount = this.audioContext?.destination?.channelCount || 1;
+        const outputGainValue = this.ioManager?.outputGainNode?.gain?.value;
+        const outputGainUpperBound = Number.isFinite(outputGainValue) && outputGainValue > 1
+            ? outputGainValue
+            : 1;
+        return computeRuntimePipelineGraphBound({
+            plugins: pipeline,
+            masterBypass: this.masterBypass === true,
+            outputGainUpperBound,
+            physicalOutputCount: Number.isSafeInteger(physicalOutputCount) &&
+                physicalOutputCount > 0 ? physicalOutputCount : 1
+        });
+    }
+
+    getStructuralZeroOutputProof() {
+        return this._structuralZeroOutputProof || null;
+    }
+
+    adoptPowerMutation(mutation) {
+        this._lastPowerMutation = mutation;
+        this._topologyRevision = mutation.receipt.afterTokens.topologyRevision;
+        this._workletGraphGeneration = mutation.receipt.afterTokens.workletGraphGeneration;
+        this.updateExposedProperties();
+    }
+
+    async startPowerPolicyController() {
+        return this.powerPolicyController?.start?.();
+    }
+
+    async updatePowerSettings(partialPowerSaving = {}) {
+        if (!window.electronAPI) {
+            return saveWebPowerSavingSettings(partialPowerSaving, {
+                applyPowerSettings: settings => this.applyPersistedPowerSettings(settings)
+            });
+        }
+
+        const current = window.appConfig?.powerSaving || this.powerPolicyController?.settings || {};
+        const powerSaving = mergePowerSavingSettings(current, partialPowerSaving);
+        window.appConfig = { ...(window.appConfig || {}), powerSaving };
+        await this.applyPersistedPowerSettings(powerSaving);
+        return powerSaving;
+    }
+
+    async applyPersistedPowerSettings(powerSaving) {
+        const normalized = mergePowerSavingSettings({}, powerSaving);
+        await this.powerPolicyController?.updateSettings?.(normalized);
+        return normalized;
     }
 
     _pruneInactiveDspWorklets() {
@@ -877,14 +1120,7 @@ export class AudioManager {
                         this._postBlindPlugins(workletA, this.pipelineA);
                         this._postBlindPlugins(workletB, this.pipelineB || []);
                     }
-                    this._parallelPreparing = false;
-                    this._parallelActive = true;
-                    this._applyParallelRouting();
-                    for (const [node, readyData] of barrier.ready) {
-                        if (barrier.dispatchedReady.has(node)) continue;
-                        barrier.dispatchedReady.add(node);
-                        this.dispatchEvent('dspReady', readyData);
-                    }
+                    if (!this._applyParallelRouting()) return false;
                     return true;
                 },
                 barrier.generation
@@ -896,6 +1132,14 @@ export class AudioManager {
                 }
                 if (!appliedRequest || appliedRequest.version !== barrier.requestVersion) {
                     return startTransition();
+                }
+                this._parallelPreparing = false;
+                this._parallelActive = true;
+                this._advancePowerWorkletGraphGeneration();
+                for (const [node, readyData] of barrier.ready) {
+                    if (barrier.dispatchedReady.has(node)) continue;
+                    barrier.dispatchedReady.add(node);
+                    this.dispatchEvent('dspReady', readyData);
                 }
                 for (const workletNode of barrier.workletNodes) {
                     this.clearDspReadyFallback(workletNode);
@@ -1010,10 +1254,6 @@ export class AudioManager {
         // can hide the state reset behind its bounded output transition.
         workletNode.port.postMessage({ type: 'dspEnableTypes', types: [] });
         workletNode.port.postMessage({ type: 'dspSetTelemetryRate', hz: globalThis.document?.hidden ? 15 : 60 });
-        workletNode.port.postMessage({
-            type: 'dspSetBench',
-            enabled: getDspRolloutConfig({ location: window.location }).bench
-        });
         return true;
     }
 
@@ -1126,7 +1366,13 @@ export class AudioManager {
     handleWorkletMessage(event, workletNode = this.workletNode) {
         const data = event?.data || {};
         if (!this._isActiveDspWorklet(workletNode)) return;
-        if (data.type === 'sleepModeChanged') {
+        if (data.type === 'powerStateAck' || data.type === 'powerObservation' ||
+            data.type === 'powerFirstRender' || data.type === 'powerHeartbeat' ||
+            data.type === 'temporalStatePrepared') {
+            if (!this._isActivePowerWorklet(workletNode)) return;
+            this.audioActivationCoordinator?.recordWorkletEvent?.(data, workletNode);
+            this.powerPolicyController?.handleWorkletPowerEvent?.(data, workletNode);
+        } else if (data.type === 'sleepModeChanged') {
             this.dispatchEvent('sleepModeChanged', {
                 isSleepMode: data.isSleepMode,
                 sampleRate: this.audioContext.sampleRate
@@ -1211,14 +1457,6 @@ export class AudioManager {
             workletNode?.port?.postMessage({ type: 'dspCleanupFailed' });
         } else if (data.type === 'dspTelemetry') {
             this.telemetryHub.handleMessage(data);
-        } else if (data.type === 'dspStats') {
-            window.dspStats = data;
-            if (data.singleCallBlocks === 1 || data.hybridInstanceCalls === 1) {
-                console.info(
-                    `[dsp-wasm] Processing active: single-call blocks=${data.singleCallBlocks}, ` +
-                    `hybrid calls=${data.hybridInstanceCalls}, telemetry drops=${data.telemetryDroppedFrames}.`
-                );
-            }
         }
     }
     
@@ -1227,7 +1465,7 @@ export class AudioManager {
      */
     updateExposedProperties() {
         this.audioContext = this.contextManager.audioContext;
-        this.stream = this.ioManager.stream;
+        this.stream = this.ioManager.inputStream || this.ioManager.stream;
         this.sourceNode = this.ioManager.sourceNode;
         this.workletNode = this.contextManager.workletNode;
         this.offlineContext = this.offlineProcessor.offlineContext;
@@ -1255,8 +1493,12 @@ export class AudioManager {
      * @param {Array|Object|null} pluginsOrPlugin - Optional plugin(s) to register.
      */
     registerPipelineProcessors(pluginsOrPlugin = null) {
-        const workletNode = this.contextManager?.workletNode || this.workletNode || window.workletNode;
-        if (!workletNode?.port) return;
+        const workletNodes = [...this._getActiveDspWorklets()];
+        if (workletNodes.length === 0) {
+            const fallbackNode = this.contextManager?.workletNode || this.workletNode || window.workletNode;
+            if (fallbackNode?.port) workletNodes.push(fallbackNode);
+        }
+        if (workletNodes.length === 0) return;
 
         const pipelines = pluginsOrPlugin
             ? [Array.isArray(pluginsOrPlugin) ? pluginsOrPlugin : [pluginsOrPlugin]]
@@ -1283,12 +1525,14 @@ export class AudioManager {
                     continue;
                 }
 
-                workletNode.port.postMessage({
-                    type: 'registerProcessor',
-                    pluginType,
-                    processor: plugin.processorString,
-                    process: typeof plugin.process === 'function' ? plugin.process.toString() : ''
-                });
+                for (const workletNode of workletNodes) {
+                    workletNode.port.postMessage({
+                        type: 'registerProcessor',
+                        pluginType,
+                        processor: plugin.processorString,
+                        process: typeof plugin.process === 'function' ? plugin.process.toString() : ''
+                    });
+                }
                 registeredTypes.add(pluginType);
             }
         }
@@ -1300,6 +1544,10 @@ export class AudioManager {
      * @returns {Promise<string>} - Empty string on success, error message on failure
      */
     async rebuildPipeline(isInitializing = false) {
+        const releasePowerLease = this.powerPolicyController?.started
+            ? this.powerPolicyController.acquireLease('pipeline-rebuild', { mode: 'force-active' })
+            : null;
+        try {
         // Propagate each Section's ON/OFF state to the inner plugins'
         // _sectionEnabled flag so analyzer redraw loops stay paused inside
         // OFF sections after preset/URL load, paste, undo and A<->B copy.
@@ -1335,16 +1583,25 @@ export class AudioManager {
         
         const result = await this.pipelineProcessor.rebuildPipeline(isInitializing);
         this.updateExposedProperties();
+        this.powerPolicyController?.notifyTopologyChanged?.('pipeline-rebuild');
 
         // If a rebuild happens while the Double Blind Test is running its two
         // pipelines in parallel (e.g. an audio-device change), the standard
         // rebuild reconnects only the main worklet; re-establish the parallel
         // branches so the blind test keeps working.
-        if (this._parallelActive) {
-            this._applyParallelRouting();
+        if (this._parallelActive && !this._applyParallelRouting()) {
+            this.dispatchEvent('parallelInvalidated', {
+                reason: 'pipeline-routing-failed',
+                restorePrimaryDsp: true
+            });
+            await this.disableParallelPipelines();
+            throw new Error('parallel-pipeline-routing-failed');
         }
 
-        return result;
+            return result;
+        } finally {
+            releasePowerLease?.();
+        }
     }
     
     _transitionDspConfiguration(workletNodes, targetTypes) {
@@ -1423,16 +1680,14 @@ export class AudioManager {
         if (nodes.size === 0) return undefined;
 
         const outputChannels = audioPreferences.outputChannels || 2;
-        for (const workletNode of nodes) {
-            workletNode.port.postMessage({
-                type: 'updateAudioConfig',
-                outputChannels,
-                lowLatencyMode: !!audioPreferences.lowLatencyOutput,
-                ...(this.audioContext?.sampleRate !== undefined && {
-                    sampleRate: this.audioContext.sampleRate
-                })
-            });
-        }
+        this.commitPowerTopologyMutation({
+            type: 'updateAudioConfig',
+            outputChannels,
+            lowLatencyMode: !!audioPreferences.lowLatencyOutput,
+            ...(this.audioContext?.sampleRate !== undefined && {
+                sampleRate: this.audioContext.sampleRate
+            })
+        }, { reason: 'audio-config-update' });
         if (this.dspModuleInfo) {
             return this._transitionDspConfiguration(
                 nodes,
@@ -1443,7 +1698,7 @@ export class AudioManager {
 
         return this._requestDspModuleLoad();
     }
-    
+
     /**
      * Reset the audio system
      * @param {Object} audioPreferences - Audio preferences to save
@@ -1451,6 +1706,14 @@ export class AudioManager {
      */
     async reset(audioPreferences = null) {
         if (this._resetInProgress) {
+            const matchesPendingReset = this._hasPendingReset &&
+                audioPreferencesEqual(audioPreferences, this._pendingResetPrefs);
+            const matchesActiveReset = !this._hasPendingReset &&
+                audioPreferencesEqual(audioPreferences, this._activeResetPrefs);
+            if (matchesPendingReset || matchesActiveReset) {
+                console.log('[AudioManager] reset coalesced — matching reset already pending');
+                return '';
+            }
             // Queue the latest prefs so we retry after current reset finishes.
             // Use a separate boolean flag so that audioPreferences === null is a
             // valid queued payload (not confused with "no queued reset").
@@ -1460,25 +1723,102 @@ export class AudioManager {
             return '';
         }
         this._resetInProgress = true;
+        const releasePowerLease = this.powerPolicyController?.started
+            ? this.powerPolicyController.acquireLease('audio-reset', {
+                mode: 'hold-current',
+                scope: 'resource-mutation'
+            })
+            : null;
         this._hasPendingReset = false;
         this._pendingResetPrefs = null;
         try {
-            let resetResult = await this._doReset(audioPreferences);
-            // Run any reset that was queued while we were busy
-            if (this._hasPendingReset) {
-                const pending = this._pendingResetPrefs;
+            let nextPreferences = audioPreferences;
+            let resetResult = '';
+            while (true) {
+                this._activeResetPrefs = nextPreferences;
+                resetResult = await this._executeReset(nextPreferences) || '';
+                if (!this._hasPendingReset) break;
+                nextPreferences = this._pendingResetPrefs;
                 this._hasPendingReset = false;
                 this._pendingResetPrefs = null;
                 console.log('[AudioManager] running queued reset');
-                const pendingResult = await this._doReset(pending);
-                if (pendingResult) {
-                    resetResult = pendingResult;
-                }
             }
-            return resetResult || '';
+            return resetResult;
         } finally {
+            this._activeResetPrefs = null;
             this._resetInProgress = false;
+            releasePowerLease?.();
         }
+    }
+
+    _canApplySilentWebInputInPlace(previousPreferences, nextPreferences) {
+        return !window.electronAPI &&
+            nextPreferences?.inputDeviceId === NO_AUDIO_INPUT_DEVICE_ID &&
+            previousPreferences?.inputDeviceId !== NO_AUDIO_INPUT_DEVICE_ID &&
+            audioPipelineConfigurationEqual(previousPreferences, nextPreferences) &&
+            !!this.contextManager?.audioContext && !!this.contextManager?.workletNode;
+    }
+
+    _setWebAudioPreferencesMirror(preferences) {
+        window.audioPreferences = preferences;
+        if (window.electronIntegration) {
+            window.electronIntegration.audioPreferences = preferences;
+        }
+    }
+
+    _isSilentWebInputApplied() {
+        const silentSource = this.ioManager.silentInputGainNode;
+        return !!silentSource && !this.ioManager.inputSourceNode &&
+            this.isSourceConnectedToPipeline(silentSource) &&
+            this.ioManager.getInputSnapshot?.().state === 'not-configured';
+    }
+
+    async _applySilentWebInputInPlace(preferences, previousPreferences) {
+        if (!saveWebAudioPreferences(preferences)) {
+            return 'Audio Error: Failed to save audio preferences.';
+        }
+        this._setWebAudioPreferencesMirror(preferences);
+        const currentRevision = this.powerPolicyController.getInputConfigRevision();
+        const nextRevision = currentRevision + 1;
+        const releaseApplied = await this.powerPolicyController
+            .requestSilentInputSelection(nextRevision);
+        if (releaseApplied !== true) {
+            if (this._isSilentWebInputApplied()) {
+                console.warn(
+                    '[AudioManager] Silent input was applied physically; preserving the matching preference.'
+                );
+                this.powerPolicyController.requestReconcile?.('silent-input-applied').catch(() => {});
+                return '';
+            }
+            saveWebAudioPreferences(previousPreferences);
+            this._setWebAudioPreferencesMirror(previousPreferences);
+            const reason = this.powerPolicyController.transitionError?.message ||
+                'audio input could not be switched to silence';
+            return `Audio Error: ${reason}`;
+        }
+        if (!this._isSilentWebInputApplied()) {
+            saveWebAudioPreferences(previousPreferences);
+            this._setWebAudioPreferencesMirror(previousPreferences);
+            return 'Audio Error: silent audio input handoff failed.';
+        }
+        return '';
+    }
+
+    async _executeReset(audioPreferences = null) {
+        const previousPreferences = loadWebAudioPreferences() ||
+            window.electronIntegration?.audioPreferences || { inputDeviceId: 'default' };
+        if (audioPreferences &&
+            this._canApplySilentWebInputInPlace(previousPreferences, audioPreferences)) {
+            const result = await this._applySilentWebInputInPlace(
+                audioPreferences,
+                previousPreferences
+            );
+            if (result) {
+                this._setWebAudioPreferencesMirror(previousPreferences);
+            }
+            return result;
+        }
+        return this._doReset(audioPreferences);
     }
 
     /**
@@ -1487,6 +1827,18 @@ export class AudioManager {
      * then rebuilds context → worklet → pipeline.
      */
     async _doReset(audioPreferences = null) {
+        const inputSnapshot = this.ioManager.getInputSnapshot?.();
+        if (this.ioManager.inputSourceNode || inputSnapshot?.state === 'live' ||
+            inputSnapshot?.state === 'acquiring') {
+            const released = await this.powerPolicyController
+                ?.requestAudioReconfigurationInputRelease?.({
+                    handoffToSilent: true,
+                    disconnectInput: true
+                });
+            if (released !== true) {
+                return 'Audio Error: Failed to release the current audio input safely.';
+            }
+        }
         this._primaryWorkletEpoch++;
         this._invalidateDspModuleLoadRequest();
         const invalidatedParallel = this._parallelPreparing || this._parallelActive;
@@ -1509,7 +1861,8 @@ export class AudioManager {
         await this.contextManager.closeAudioContext();
 
         // If audio preferences were provided, save them first
-        if (audioPreferences && typeof window.electronIntegration?.saveAudioPreferences === 'function') {
+        if (audioPreferences &&
+            typeof window.electronIntegration?.saveAudioPreferences === 'function') {
             await window.electronIntegration.saveAudioPreferences(audioPreferences);
         }
 
@@ -1520,7 +1873,7 @@ export class AudioManager {
         }
 
         // Initialize audio (context + input + output)
-        const audioErr = await this.initAudio();
+        const audioErr = await this.initAudio(audioPreferences);
         if (audioErr) {
             // initAudio() can return either a fatal context/output failure or a
             // non-fatal mic-denied warning (file playback still works).  Only the
@@ -1541,8 +1894,29 @@ export class AudioManager {
             return workletErr;
         }
 
-        // Resume in case the new context started suspended (autoplay policy, HDMI race, etc.)
-        await this.contextManager.resumeAudioContext();
+        // Resume in case the new context started suspended (autoplay policy, HDMI race, etc.).
+        // Exception: when the power policy controller intentionally suspended the
+        // context (effective state SUSPENDED with a recorded suspend cause),
+        // forcing a resume here would diverge from the controller's intended
+        // state — leave recovery to the controller's reconcile pass instead.
+        const intentionallySuspended = this.powerPolicyController?.enabled &&
+            this.powerPolicyController.getEffectiveState?.() === AudioPowerState.SUSPENDED &&
+            this.powerPolicyController.suspendCause != null;
+        if (intentionallySuspended) {
+            // The controller's reconcile owns resumption. But if the new
+            // context was created already 'running' (user-activation reset),
+            // no statechange event fires, so notify the controller directly;
+            // its directive-resend path reconciles the divergence. A context
+            // created 'suspended' stays a no-op as before.
+            if (this.contextManager.audioContext?.state === 'running') {
+                this.powerPolicyController.handleContextStateChange({ state: 'running' });
+            }
+        } else if (this.powerPolicyController?.enabled &&
+            typeof this.contextManager.resumeForPowerPolicy === 'function') {
+            await this.contextManager.resumeForPowerPolicy('unexpected-recovery');
+        } else {
+            await this.contextManager.resumeAudioContext();
+        }
 
         // Make sure pipeline is rebuilt with the new audio context
         const pipelineErr = await this.rebuildPipeline(true);
@@ -1597,6 +1971,7 @@ export class AudioManager {
         const gainNode = this.ioManager?.outputGainNode;
         const ctx = this.contextManager?.audioContext;
         if (!gainNode || !ctx) return;
+        this.ioManager.powerOutputStructurallyZero = false;
 
         try {
             const now = ctx.currentTime;
@@ -1620,6 +1995,26 @@ export class AudioManager {
         if (token !== this._outputFadeToken) return false;
         this.fadeInOutput(duration);
         return true;
+    }
+
+    /**
+     * Fade out and capture the graph identity that owns the mute.
+     * @param {number} duration - fade duration in seconds
+     * @returns {Object} graph-bound output owner
+     */
+    fadeOutOutputWithOwner(duration = 0.05) {
+        this.fadeOutOutput(duration);
+        return this._captureOutputOwner();
+    }
+
+    /**
+     * Fade in only when the same graph still owns the mute.
+     * @param {Object} owner - owner returned by fadeOutOutputWithOwner()
+     * @param {number} duration - fade duration in seconds
+     * @returns {boolean} whether the owner restored the output
+     */
+    fadeInOutputForOwner(owner, duration = 0.05) {
+        return this._fadeInOutputIfOwned(owner, duration);
     }
 
     /**
@@ -1668,6 +2063,10 @@ export class AudioManager {
 
     isParallelActive() {
         return !!this._parallelActive;
+    }
+
+    isParallelProcessing() {
+        return !!(this._parallelPreparing || this._parallelActive);
     }
 
     _hasParallelResources() {
@@ -1803,7 +2202,9 @@ export class AudioManager {
                 if (data?.type === 'dspTelemetry' && data.packet instanceof ArrayBuffer) {
                     wB.port.postMessage({ type: 'dspTelemetryReturn', packet: data.packet }, [data.packet]);
                 } else if (data?.type === 'dspReady' || data?.type === 'dspFailed' ||
-                    data?.type === 'dspCleanupNeeded') {
+                    data?.type === 'dspCleanupNeeded' || data?.type === 'powerStateAck' ||
+                    data?.type === 'powerObservation' || data?.type === 'powerFirstRender' ||
+                    data?.type === 'powerHeartbeat' || data?.type === 'temporalStatePrepared') {
                     this.handleWorkletMessage(event, wB);
                 }
             };
@@ -1867,6 +2268,10 @@ export class AudioManager {
             }
 
             const mode = await barrier.promise;
+            if (mode === 'cancelled' && this._parallelDspBarrier === barrier &&
+                this._hasParallelResources()) {
+                await this.disableParallelPipelines();
+            }
             return mode !== 'cancelled' && this._parallelActive;
         } catch (err) {
             console.error('[AudioManager] enableParallelPipelines failed:', err);
@@ -1887,7 +2292,11 @@ export class AudioManager {
         if (!node || !target) return false;
         try { node.disconnect(target); } catch (_) { /* not connected */ }
         try {
-            node.connect(target);
+            if (window.originalConnectMethod && this.contextManager?.isFirstLaunch) {
+                window.originalConnectMethod.call(node, target);
+            } else {
+                node.connect(target);
+            }
             return true;
         } catch (_) {
             return false;
@@ -1896,14 +2305,15 @@ export class AudioManager {
 
     /** (Re)wire the parallel branches and (re)post both pipelines. Idempotent. */
     _applyParallelRouting() {
-        if (!this._parallelActive) return;
+        if (!this._parallelPreparing && !this._parallelActive) return false;
         const wA = this.contextManager?.workletNode;
         const wB = this._parallelWorkletB;
         const out = this.ioManager?.outputGainNode;
         const selA = this._parallelSelA;
         const selB = this._parallelSelB;
         const tap = this._parallelInputTap;
-        if (!wA || !wB || !out || !selA || !selB || !tap) return;
+        if (!wA || !wB || !out || !selA || !selB || !tap) return false;
+        const sources = [...this._getPipelineInputSources()];
 
         // Full disconnect of each node first guarantees exactly one connection
         // per edge even if a prior rebuild already wired wA -> out.
@@ -1913,18 +2323,34 @@ export class AudioManager {
         try { selB.disconnect(); } catch (_) { /* ignore */ }
         try { tap.disconnect(); } catch (_) { /* ignore */ }
 
-        wA.connect(selA); selA.connect(out);
-        wB.connect(selB); selB.connect(out);
-        tap.connect(wB);
-        // Live input is managed by the IO manager, while player sources enter
-        // through connectSourceToPipeline(). Feed every currently known source
-        // into branch B, including sources connected before parallel mode began.
-        for (const source of this._getPipelineInputSources()) {
-            this._connectSourceOnce(source, tap);
-        }
+        try {
+            wA.connect(selA); selA.connect(out);
+            wB.connect(selB); selB.connect(out);
+            tap.connect(wB);
+            // Live input is managed by the IO manager, while player sources enter
+            // through connectSourceToPipeline(). Feed every currently known source
+            // into branch B, including sources connected before parallel mode began.
+            for (const source of sources) {
+                if (!this._connectSourceOnce(source, tap)) {
+                    throw new Error('parallel-input-connect-failed');
+                }
+            }
 
-        this._postBlindPlugins(wA, this.pipelineA);
-        this._postBlindPlugins(wB, this.pipelineB || []);
+            this._postBlindPlugins(wA, this.pipelineA);
+            this._postBlindPlugins(wB, this.pipelineB || []);
+            return true;
+        } catch (error) {
+            for (const source of sources) {
+                try { source.disconnect(tap); } catch (_) { /* not connected */ }
+            }
+            try { tap.disconnect(); } catch (_) { /* ignore */ }
+            try { wB.disconnect(); } catch (_) { /* ignore */ }
+            try { selA.disconnect(); } catch (_) { /* ignore */ }
+            try { selB.disconnect(); } catch (_) { /* ignore */ }
+            try { wA.disconnect(); } catch (_) { /* ignore */ }
+            try { wA.connect(out); } catch (_) { /* primary route unavailable */ }
+            return false;
+        }
     }
 
     /**
@@ -1933,21 +2359,56 @@ export class AudioManager {
      * parallel it also feeds the branch-B input tap. The audio player uses this
      * for every source it creates so new tracks reach both pipelines.
      * @param {AudioNode} node
+     * @returns {boolean} true only when every active pipeline input is connected
      */
     connectSourceToPipeline(node) {
-        if (!node) return;
+        if (!node) return false;
         const wA = this.contextManager?.workletNode || this.workletNode;
-        let connected = this._connectSourceOnce(node, wA);
-        if (this._parallelActive && this._parallelInputTap) {
-            connected = this._connectSourceOnce(node, this._parallelInputTap) || connected;
+        if (!wA) return false;
+        const targets = [wA];
+        if (this._parallelActive && this._parallelInputTap) targets.push(this._parallelInputTap);
+        const connectedTargets = [];
+        for (const target of targets) {
+            if (this._connectSourceOnce(node, target)) {
+                connectedTargets.push(target);
+                continue;
+            }
+            for (const connectedTarget of connectedTargets) {
+                try { node.disconnect(connectedTarget); } catch (_) { /* not connected */ }
+            }
+            this._connectedPipelineSources.delete(node);
+            if (node === this.ioManager?.inputSourceNode) {
+                this.ioManager.inputRouteConnected = false;
+            }
+            return false;
         }
-        if (connected) this._connectedPipelineSources.add(node);
+        this._connectedPipelineSources.add(node);
+        if (node === this.ioManager?.inputSourceNode) {
+            this.ioManager.inputRouteConnected = true;
+        }
+        return true;
+    }
+
+    ensureSourceConnectedToPipeline(node) {
+        if (this.isSourceConnectedToPipeline(node)) return true;
+        return this.connectSourceToPipeline(node) === true &&
+            this.isSourceConnectedToPipeline(node);
+    }
+
+    isSourceConnectedToPipeline(node) {
+        if (!node) return false;
+        if (this._connectedPipelineSources.has(node)) return true;
+        return node === this.ioManager?.inputSourceNode &&
+            this.ioManager.inputRouteConnected === true;
     }
 
     /** Stop routing a source through edges owned by this manager. */
     disconnectSourceFromPipeline(node) {
         if (!node) return;
         this._connectedPipelineSources.delete(node);
+        if (node === this.ioManager?.inputSourceNode) {
+            this.ioManager.inputRouteConnected = false;
+        }
         const wA = this.contextManager?.workletNode || this.workletNode;
         const targets = new Set([wA, this._parallelInputTap].filter(Boolean));
         for (const target of targets) {
@@ -2094,13 +2555,110 @@ export class AudioManager {
                     parameters: plugin.getParameters({ sampleRate, commitSampleRate: true })
                 }));
                 
-                this.workletNode.port.postMessage({
+                this.commitPowerTopologyMutation({
                     type: 'updatePlugins',
                     plugins: pluginData,
                     masterBypass: this.masterBypass
-                });
+                }, { reason: 'pipeline-state-parameter-update' });
             }
             return Promise.resolve();
+        }
+    }
+
+    isStagedAudioActivationEnabled() {
+        return this.powerPolicyController?.enabled === true &&
+            this.powerPolicyController?.started === true &&
+            this.audioActivationCoordinator?.isSupported?.() === true &&
+            this.getActivePowerWorklets().length > 0;
+    }
+
+    stageAudioActivation(intent) {
+        if (!this.isStagedAudioActivationEnabled()) return Promise.resolve(null);
+        return this.audioActivationCoordinator.stageIntent(intent);
+    }
+
+    activateStagedAudioCandidate(stage, callbacks) {
+        if (!stage || !this.isStagedAudioActivationEnabled()) {
+            return Promise.resolve({ activated: false, stage, error: Object.assign(
+                new Error('Staged audio activation is unavailable.'),
+                { code: 'activation-protocol-unavailable' }
+            ) });
+        }
+        return this.audioActivationCoordinator.activate(stage, callbacks);
+    }
+
+    getActiveAudioActivationDescriptor() {
+        return this.audioActivationCoordinator?.getActiveDescriptor?.() || null;
+    }
+
+    async applyStagedAudioConfig(audioPreferences, options = {}) {
+        const expectedRevision = options.expectedConfigRevision ?? this._activeAudioConfigRevision;
+        if (expectedRevision !== this._activeAudioConfigRevision) {
+            return {
+                activated: false,
+                error: Object.assign(new Error('The active audio config revision changed.'), {
+                    code: 'activation-config-revision-stale'
+                })
+            };
+        }
+        if (!this.isStagedAudioActivationEnabled()) {
+            await this.updateAudioConfig(audioPreferences);
+            const value = options.publish?.(audioPreferences, this._activeAudioConfigRevision + 1);
+            if (value && typeof value.then === 'function') {
+                throw new TypeError('The audio config publication callback must be synchronous');
+            }
+            this._activeAudioConfigRevision++;
+            return { activated: true, value };
+        }
+
+        const configIntentSequence = ++this._audioConfigIntentSequence;
+        const stage = await this.stageAudioActivation({
+            intentKind: 'config',
+            intentIdentity: {
+                audioSessionId: this.powerPolicyController?.sessionJournal?.getStatus?.().sessionId ||
+                    'session-local',
+                clientId: this.powerPolicyController?.sessionJournal?.getStatus?.().clientId ||
+                    'client-local',
+                configIntentSequence,
+                expectedAppConfigRevision: expectedRevision
+            },
+            resumeKind: 'none',
+            backend: 'none',
+            requiredResourceKeys: [],
+            activationAffectingConfig: audioPreferences || {}
+        });
+        let outputOwner = null;
+        try {
+            return await this.activateStagedAudioCandidate(stage, {
+                acquire: async () => {
+                    if (expectedRevision !== this._activeAudioConfigRevision) {
+                        throw Object.assign(new Error('The active audio config revision changed.'), {
+                            code: 'activation-config-revision-stale'
+                        });
+                    }
+                    outputOwner = this.fadeOutOutputWithOwner(0);
+                    const updateResult = await this.updateAudioConfig(audioPreferences);
+                    if (updateResult === false) {
+                        throw Object.assign(new Error('The audio config resource update failed.'), {
+                            code: 'activation-config-resource-failed'
+                        });
+                    }
+                    return { audioPreferences, configIntentSequence };
+                },
+                isCandidateCurrent: candidate => candidate?.configIntentSequence === configIntentSequence &&
+                    expectedRevision === this._activeAudioConfigRevision,
+                commit: candidate => {
+                    const nextRevision = this._activeAudioConfigRevision + 1;
+                    const value = options.publish?.(candidate.audioPreferences, nextRevision);
+                    if (value && typeof value.then === 'function') {
+                        throw new TypeError('The audio config publication callback must be synchronous');
+                    }
+                    this._activeAudioConfigRevision = nextRevision;
+                    return { configRevision: nextRevision, audioPreferences: candidate.audioPreferences, value };
+                }
+            });
+        } finally {
+            if (outputOwner) this.fadeInOutputForOwner(outputOwner, 0.03);
         }
     }
     
@@ -2125,10 +2683,17 @@ export class AudioManager {
      * @returns {Promise<Blob>} - Processed audio as a WAV blob
      */
     async processAudioFile(file, progressCallback = null) {
+        const releasePowerLease = this.powerPolicyController?.started
+            ? this.powerPolicyController.acquireLease('offline-processing', {
+                mode: 'hold-current',
+                scope: 'resource-neutral'
+            })
+            : null;
         try {
             return await this.offlineProcessor.processAudioFile(file, this.pipeline, progressCallback);
         } finally {
             this.updateExposedProperties();
+            releasePowerLease?.();
         }
     }
 

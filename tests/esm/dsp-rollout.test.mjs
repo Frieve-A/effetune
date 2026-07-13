@@ -12,23 +12,11 @@ import {
   isWasmDspEnabled
 } from '../../js/audio/dsp-rollout.js';
 
-test('runtime flags parse support, debug, and benchmark query controls', () => {
-  assert.deepEqual(getDspRuntimeFlags('?dsp=off&dspDebug=1&dspBench=true'), {
-    forceOff: true,
-    debug: true,
-    bench: true
-  });
-  assert.deepEqual(getDspRuntimeFlags({ search: '?dspDebug=on&dspBench=0' }), {
-    forceOff: false,
-    debug: true,
-    bench: false
-  });
-  assert.deepEqual(getDspRuntimeFlags('https://example.test/app?dsp=OFF'), {
-    forceOff: true,
-    debug: false,
-    bench: false
-  });
-  assert.deepEqual(getDspRuntimeFlags(null), { forceOff: false, debug: false, bench: false });
+test('runtime flags parse the support query control', () => {
+  assert.deepEqual(getDspRuntimeFlags('?dsp=off'), { forceOff: true });
+  assert.deepEqual(getDspRuntimeFlags({ search: '?dsp=on' }), { forceOff: false });
+  assert.deepEqual(getDspRuntimeFlags('https://example.test/app?dsp=OFF'), { forceOff: true });
+  assert.deepEqual(getDspRuntimeFlags(null), { forceOff: false });
 });
 
 test('user preference and support URL independently disable WASM DSP', () => {
@@ -141,18 +129,16 @@ test('rollout enables only shipped kernels with matching generated layouts', () 
   assert.equal(Object.isFrozen(SHIPPED_ENABLED_TYPES), true);
 });
 
-test('rollout config keeps runtime diagnostics beside its enabled type list', () => {
+test('rollout config keeps runtime flags beside its enabled type list', () => {
   const pack = () => Float32Array.of(1);
   const config = getDspRolloutConfig({
     meta: { kernels: [{ name: 'VolumePlugin', hash: 4 }] },
     paramPackers: new Map([['VolumePlugin', { pack, hash: 4 }]]),
     shippedTypes: ['VolumePlugin'],
-    location: '?dspDebug=1&dspBench=1'
+    location: ''
   });
   assert.deepEqual(config, {
     forceOff: false,
-    debug: true,
-    bench: true,
     enabledTypes: ['VolumePlugin']
   });
 });

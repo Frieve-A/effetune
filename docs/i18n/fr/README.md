@@ -31,6 +31,7 @@ Aucun mythe audiophile, juste de la science pure.
 - Bibliothèque musicale pour parcourir les sous-dossiers locaux, les métadonnées et les listes de lecture
 - Mesure et correction de la réponse en fréquence pour calibrer votre système
 - Traitement et sortie multicanal
+- Économie d’énergie dans les versions Web/PWA et de bureau, avec gestion configurable du silence et de la durée de conservation de l’entrée audio
 
 ## Guide de configuration
 

@@ -626,6 +626,11 @@ test('updates audio, sleep, sample-rate, language, translations, and UI text', a
     assert.match(manager.sampleRate.textContent, /Hz/);
     manager.audioManager.listeners.get('sleepModeChanged')?.({ isSleepMode: true, sampleRate: 48000 });
     assert.match(manager.sampleRate.textContent, /Sleep/);
+    manager.sampleRate.textContent = '48000 Hz';
+    manager.audioManager.powerPolicyController = { isControllerEnabled: () => true };
+    manager.audioManager.listeners.get('sleepModeChanged')?.({ isSleepMode: true, sampleRate: 48000 });
+    assert.equal(manager.sampleRate.textContent, '48000 Hz');
+    manager.audioManager.powerPolicyController = null;
     const sampleRateElement = manager.sampleRate;
     manager.sampleRate = null;
     manager.updateSleepModeDisplay(false, 48000);

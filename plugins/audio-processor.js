@@ -820,13 +820,6 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.dspInitGeneration = 0;
         this.dspPipelineReady = false;
         this.dspPipelineLatencySamples = 0;
-        this.dspBenchEnabled = false;
-        this.dspStats = {
-            singleCallBlocks: 0,
-            hybridInstanceCalls: 0,
-            telemetryDroppedFrames: 0,
-            lastPublishedOperations: 0
-        };
 
         // Audio configuration
         this.outputChannelCount = options?.processorOptions?.initialOutputChannelCount ?? 2;
@@ -844,6 +837,7 @@ class PluginProcessor extends AudioWorkletProcessor {
 
         // Bus management
         this.busBuffers = new Map(); // Map to store buffers for each bus
+        this.usedBuses = new Set();
         this.MAX_BUSES = 4; // Maximum number of buses (Informational, not directly used in process optimization)
 
         // Buffer Pool for performance optimization
@@ -864,19 +858,99 @@ class PluginProcessor extends AudioWorkletProcessor {
             _silenceThresholdAmplitude: Math.pow(10, -84 / 20)
         };
 
+        // Explicit Web/PWA power protocol. It is disabled by default so the
+        // Electron and rollout-off paths retain the legacy Sleep Mode above.
+        // Detector arrays are allocated once; process() never grows them.
+        const detectorChannelCapacity = ET_DSP_MAX_CHANNELS;
+        this.powerPolicy = {
+            enabled: false,
+            state: 'active',
+            processingDirective: 'full-process',
+            workletGraphGeneration: 0,
+            topologyRevision: 0,
+            commandId: null,
+            skipEpoch: null,
+            arm: {
+                state: 'disarmed',
+                commandId: null,
+                skipEpoch: null,
+                armAfterRenderSequence: null
+            },
+            armStartFrame: null,
+            lastAcceptedArmCommandId: -1,
+            lastAcceptedSkipEpoch: -1,
+            lastConsumedSkipEpoch: -1,
+            inputSilentFrames: 0,
+            outputSilentFrames: 0,
+            lowLevelWakeFrames: 0,
+            silentSinceFrame: null,
+            silenceFramesRequired: Math.round(globalThis.sampleRate * 60),
+            silenceThresholdPower: Math.pow(10, -80 / 10),
+            wakeFloorPower: Math.pow(10, -80 / 10),
+            fastWakeThresholdPower: Math.pow(10, -72 / 10),
+            exitThresholdPower: Math.pow(10, -74 / 10),
+            lowLevelWakeFramesRequired: Math.round(globalThis.sampleRate * 0.15),
+            ewmaAlpha: 1 - Math.exp(-128 / (globalThis.sampleRate * 2)),
+            inputPowerEwma: 0,
+            outputPowerEwma: 0,
+            inputDcX: new Float64Array(detectorChannelCapacity),
+            inputDcY: new Float64Array(detectorChannelCapacity),
+            outputDcX: new Float64Array(detectorChannelCapacity),
+            outputDcY: new Float64Array(detectorChannelCapacity),
+            inputDetectorResult: new Float64Array(3),
+            outputDetectorResult: new Float64Array(3),
+            dcBlockerR: Math.exp(-2 * Math.PI * 5 / globalThis.sampleRate),
+            monitoringFastWakeEligible: false,
+            monitoringStaticCoverageValid: false,
+            monitoringFastWakeBlockerReason: 'temporal-preparation-not-worklet-local',
+            temporalSkipEligible: false,
+            temporalCapabilities: [],
+            enabledPluginCount: 0,
+            uiTelemetryEnabled: true,
+            pendingObservationRequestId: null,
+            pendingFirstRenderCommandId: null,
+            renderSequence: 0,
+            lastReportedInputActive: null,
+            lastReportedOutputActive: null,
+            lastHeartbeatFrame: 0,
+            skippedFrameCount: 0,
+            skippedFrameRemainder: 0,
+            skipSampleRate: globalThis.sampleRate,
+            pendingConfigWake: false,
+            pendingPowerEventReason: null,
+            emptyInputActive: false,
+            activeFullProcessSettled: false,
+            counters: {
+                renderQuanta: 0,
+                detectorQuanta: 0,
+                fullProcessQuanta: 0,
+                fullJsProcessQuanta: 0,
+                fullWasmProcessQuanta: 0,
+                monitoringQuanta: 0,
+                bypassQuanta: 0,
+                zeroOutputQuanta: 0,
+                telemetryReads: 0,
+                telemetryPosts: 0,
+                monitoringRuntimeFailures: 0
+            }
+        };
+
         // Message handler
         this.port.onmessage = (event) => {
             const data = event.data;
             switch(data.type) {
                 case 'updatePlugin':
+                    this._invalidatePowerSkipForMutation();
                     this.updatePlugin(data.plugin);
                     break;
                 case 'updatePlugins':
+                    this._invalidatePowerSkipForMutation();
                     // this.isOfflineProcessing = data.isOfflineProcessing ?? false; // Store if needed elsewhere
                     this.masterBypass = data.masterBypass ?? false;
                     this.updatePlugins(data.plugins);
                     break;
                 case 'updateAudioConfig':
+                    this._invalidatePowerSkipForMutation();
                     if (data.outputChannels !== undefined) {
                         this.outputChannelCount = data.outputChannels;
                         // Invalidate combined buffer if channel count changes drastically
@@ -892,9 +966,11 @@ class PluginProcessor extends AudioWorkletProcessor {
                     }
                     break;
                 case 'dspModule':
+                    this._invalidatePowerSkipForMutation();
                     this.initializeDsp(data);
                     break;
                 case 'dspEnableTypes':
+                    this._invalidatePowerSkipForMutation();
                     this.dspEnabledTypes = new Set(
                         (Array.isArray(data.types) ? data.types : [])
                             .filter(type => !this.dspFailedTypes.has(type))
@@ -911,13 +987,6 @@ class PluginProcessor extends AudioWorkletProcessor {
                         if (status !== 0) this.reportDspFailure('telemetry-rate', `status ${status}`);
                     }
                     break;
-                case 'dspSetBench':
-                    this.dspBenchEnabled = data.enabled === true;
-                    this.dspStats.singleCallBlocks = 0;
-                    this.dspStats.hybridInstanceCalls = 0;
-                    this.dspStats.telemetryDroppedFrames = 0;
-                    this.dspStats.lastPublishedOperations = 0;
-                    break;
                 case 'dspTelemetryReturn':
                     if (data.packet instanceof ArrayBuffer && this.dspPacketPool.length < ET_DSP_PACKET_POOL_SIZE) {
                         this.dspPacketPool.push(new Uint8Array(data.packet));
@@ -927,21 +996,27 @@ class PluginProcessor extends AudioWorkletProcessor {
                     this.cleanupDspFailures();
                     break;
                 case 'registerProcessor':
+                    this._invalidatePowerSkipForMutation();
                     this.registerPluginProcessor(data.pluginType, data.processor);
                     break;
                 case 'batchUpdatePlugins':
+                    this._invalidatePowerSkipForMutation();
                     this.batchUpdatePlugins(data.plugins || []);
                     break;
                 case 'addPlugin':
+                    this._invalidatePowerSkipForMutation();
                     this.addPlugin(data.plugin, data.index);
                     break;
                 case 'removePlugin':
+                    this._invalidatePowerSkipForMutation();
                     this.removePlugin(data.pluginId);
                     break;
                 case 'reorderPlugin':
+                    this._invalidatePowerSkipForMutation();
                     this.reorderPlugin(data.fromIndex, data.toIndex);
                     break;
                 case 'reset':
+                    this._invalidatePowerSkipForMutation();
                     this.destroyAllDspInstances();
                     if (this.dspLive) this.dspBinding.reset();
                     this.plugins = [];
@@ -977,8 +1052,482 @@ class PluginProcessor extends AudioWorkletProcessor {
                     this.lowLatencyMode = !!data.enabled;
                     this.MESSAGE_INTERVAL = this.lowLatencyMode ? 8 : 16;
                     break;
+                case 'configurePowerPolicy':
+                    this.configurePowerPolicy(data);
+                    break;
+                case 'setPowerProcessingState':
+                    this.setPowerProcessingState(data);
+                    break;
+                case 'setUiTelemetryEnabled':
+                    if (this._matchesPowerIdentity(data)) {
+                        this.powerPolicy.uiTelemetryEnabled = data.enabled === true;
+                        this.port.postMessage({
+                            type: 'powerStateAck',
+                            commandId: data.commandId ?? null,
+                            workletGraphGeneration: this.powerPolicy.workletGraphGeneration,
+                            topologyRevision: this.powerPolicy.topologyRevision,
+                            renderSequence: this.powerPolicy.renderSequence,
+                            uiTelemetryEnabled: this.powerPolicy.uiTelemetryEnabled
+                        });
+                    }
+                    break;
+                case 'requestPowerObservation':
+                    if (this._matchesPowerIdentity(data)) {
+                        this.powerPolicy.pendingObservationRequestId = data.observationRequestId ?? null;
+                    }
+                    break;
+                case 'prepareTemporalState':
+                    this.prepareTemporalState(data);
+                    break;
             }
         };
+    }
+
+    _matchesPowerIdentity(data) {
+        const power = this.powerPolicy;
+        return data?.workletGraphGeneration === power.workletGraphGeneration &&
+            data?.topologyRevision === power.topologyRevision;
+    }
+
+    _disarmAutomaticMonitoring() {
+        const power = this.powerPolicy;
+        power.arm.state = 'disarmed';
+        power.arm.commandId = null;
+        power.arm.skipEpoch = null;
+        power.arm.armAfterRenderSequence = null;
+        power.armStartFrame = null;
+    }
+
+    _invalidatePowerSkipForMutation() {
+        const power = this.powerPolicy;
+        if (!power?.enabled) return;
+        power.state = 'active';
+        power.processingDirective = 'full-process';
+        power.skipEpoch = null;
+        power.skippedFrameCount = 0;
+        power.skippedFrameRemainder = 0;
+        power.monitoringStaticCoverageValid = false;
+        power.monitoringFastWakeEligible = false;
+        power.monitoringFastWakeBlockerReason = 'temporal-preparation-not-worklet-local';
+        power.pendingConfigWake = true;
+        power.activeFullProcessSettled = false;
+        this._disarmAutomaticMonitoring();
+        this._resetPowerSilenceWindow();
+    }
+
+    _resetPowerSilenceWindow() {
+        const power = this.powerPolicy;
+        power.inputSilentFrames = 0;
+        power.outputSilentFrames = 0;
+        power.lowLevelWakeFrames = 0;
+        power.silentSinceFrame = null;
+        power.inputPowerEwma = 0;
+        power.outputPowerEwma = 0;
+    }
+
+    _getEnabledPowerPluginIds() {
+        const ids = [];
+        let sectionEnabled = true;
+        for (const plugin of this.plugins) {
+            if (plugin?.type === 'SectionPlugin') {
+                sectionEnabled = plugin.enabled !== false;
+                continue;
+            }
+            if (plugin?.enabled !== false && sectionEnabled) ids.push(plugin.id);
+        }
+        return ids;
+    }
+
+    _normalizeTemporalCapability(entry) {
+        if (!entry || (entry.pluginId === null || entry.pluginId === undefined)) return null;
+        const capability = entry.capability;
+        if (capability === 'stateless') {
+            return { pluginId: entry.pluginId, capability, descriptor: null };
+        }
+        if (capability === 'reset-on-resume') {
+            const descriptor = entry.descriptor;
+            if (descriptor !== null && descriptor !== undefined &&
+                (descriptor.primitive !== 'canonical-reset' ||
+                    !Number.isSafeInteger(descriptor.fixedOperations) ||
+                    descriptor.fixedOperations < 1)) return null;
+            return {
+                pluginId: entry.pluginId,
+                capability,
+                descriptor: {
+                    primitive: 'canonical-reset',
+                    fixedOperations: descriptor?.fixedOperations || 1
+                }
+            };
+        }
+        if (capability !== 'age-by-skipped-frames') return null;
+        const descriptor = entry.descriptor;
+        if (!descriptor || descriptor.primitive !== 'analytic-age' ||
+            descriptor.allocationFree !== true ||
+            descriptor.parameterTimeline !== 'topology-invalidates-skip' ||
+            descriptor.resetFallback !== 'canonical-reset' ||
+            !Array.isArray(descriptor.stateFields) || descriptor.stateFields.length === 0 ||
+            !Number.isSafeInteger(descriptor.fixedOperations) ||
+            descriptor.fixedOperations !== descriptor.stateFields.length) return null;
+        const keys = new Set();
+        const stateFields = [];
+        for (const field of descriptor.stateFields) {
+            if (!field || typeof field.key !== 'string' || field.key.length === 0 ||
+                keys.has(field.key) || !Number.isFinite(field.incrementPerFrame)) return null;
+            const modulo = field.modulo === null || field.modulo === undefined
+                ? null
+                : field.modulo;
+            if (modulo !== null && (!Number.isFinite(modulo) || modulo <= 0)) return null;
+            keys.add(field.key);
+            stateFields.push({
+                key: field.key,
+                incrementPerFrame: field.incrementPerFrame,
+                modulo
+            });
+        }
+        return {
+            pluginId: entry.pluginId,
+            capability,
+            descriptor: {
+                primitive: 'analytic-age',
+                fixedOperations: descriptor.fixedOperations,
+                resetFallback: 'canonical-reset',
+                stateFields
+            }
+        };
+    }
+
+    _resetTemporalPlugin(pluginId) {
+        this.pluginContexts.delete(pluginId);
+        const wasmInstance = this.wasmInstances.get(pluginId);
+        if (!wasmInstance) return true;
+        if (!this.dspBinding) return false;
+        return this.dspBinding.resetInstance(wasmInstance.id) === 0;
+    }
+
+    _ageTemporalPlugin(entry, skippedFrameCount) {
+        if (this.wasmInstances.has(entry.pluginId)) return false;
+        const context = this.pluginContexts.get(entry.pluginId);
+        if (!context) return true;
+        const nextValues = [];
+        for (const field of entry.descriptor.stateFields) {
+            const current = context[field.key];
+            if (!Number.isFinite(current)) return false;
+            let next = current + skippedFrameCount * field.incrementPerFrame;
+            if (!Number.isFinite(next)) return false;
+            if (field.modulo !== null) {
+                next -= Math.floor(next / field.modulo) * field.modulo;
+                if (next < 0) next += field.modulo;
+            }
+            nextValues.push(next);
+        }
+        for (let index = 0; index < entry.descriptor.stateFields.length; index++) {
+            context[entry.descriptor.stateFields[index].key] = nextValues[index];
+        }
+        return true;
+    }
+
+    configurePowerPolicy(data) {
+        const power = this.powerPolicy;
+        const enabled = data?.enabled === true;
+        if (!enabled) {
+            power.enabled = false;
+            power.state = 'active';
+            power.processingDirective = 'full-process';
+            power.uiTelemetryEnabled = true;
+            this._disarmAutomaticMonitoring();
+            return;
+        }
+        if (!Number.isInteger(data.workletGraphGeneration) || data.workletGraphGeneration < 0 ||
+            !Number.isInteger(data.topologyRevision) || data.topologyRevision < 0) return;
+
+        power.enabled = true;
+        this.audioLevelMonitoring.isSleepMode = false;
+        power.workletGraphGeneration = data.workletGraphGeneration;
+        power.topologyRevision = data.topologyRevision;
+        const thresholdDb = Number.isFinite(data.silenceThresholdDb) ? data.silenceThresholdDb : -80;
+        const wakeGainMarginDb = Number.isFinite(data.wakeGainMarginDb) ? data.wakeGainMarginDb : 0;
+        const silenceSeconds = Number.isFinite(data.silenceDurationSeconds) && data.silenceDurationSeconds >= 0
+            ? data.silenceDurationSeconds
+            : 60;
+        power.silenceThresholdPower = Math.pow(10, thresholdDb / 10);
+        const wakeFloorDb = thresholdDb - wakeGainMarginDb;
+        power.wakeFloorPower = Math.pow(10, wakeFloorDb / 10);
+        power.fastWakeThresholdPower = Math.pow(10, (wakeFloorDb + 8) / 10);
+        power.exitThresholdPower = Math.pow(10, (thresholdDb + 6) / 10);
+        power.silenceFramesRequired = Math.round(globalThis.sampleRate * silenceSeconds);
+        const capabilities = Array.isArray(data.monitoringPreparationCapabilities)
+            ? data.monitoringPreparationCapabilities
+            : [];
+        const normalizedCapabilities = [];
+        let descriptorsValid = true;
+        for (const capability of capabilities) {
+            const normalized = this._normalizeTemporalCapability(capability);
+            if (!normalized) {
+                descriptorsValid = false;
+                continue;
+            }
+            normalizedCapabilities.push(normalized);
+        }
+        power.temporalCapabilities = normalizedCapabilities;
+        power.enabledPluginCount = Number.isSafeInteger(data.enabledPluginCount) &&
+            data.enabledPluginCount >= 0 ? data.enabledPluginCount : 0;
+        const actualPluginIds = this._getEnabledPowerPluginIds();
+        const actualPluginIdSet = new Set(actualPluginIds);
+        const capabilityIds = new Set();
+        let exactCoverageValid = descriptorsValid &&
+            normalizedCapabilities.length === power.enabledPluginCount &&
+            actualPluginIds.length === power.enabledPluginCount;
+        for (const capability of normalizedCapabilities) {
+            if (capabilityIds.has(capability.pluginId) ||
+                !actualPluginIdSet.has(capability.pluginId)) {
+                exactCoverageValid = false;
+                break;
+            }
+            capabilityIds.add(capability.pluginId);
+        }
+        let staticCoverageValid = exactCoverageValid;
+        for (let index = 0; index < normalizedCapabilities.length; index++) {
+            const capability = normalizedCapabilities[index];
+            if (capability.capability !== 'stateless') {
+                staticCoverageValid = false;
+                break;
+            }
+        }
+        power.monitoringStaticCoverageValid = staticCoverageValid;
+        power.monitoringFastWakeEligible = data.monitoringFastWakeEligible === true &&
+            staticCoverageValid;
+        power.monitoringFastWakeBlockerReason = power.monitoringFastWakeEligible
+            ? null
+            : (staticCoverageValid
+                ? (data.monitoringFastWakeBlockerReason || 'temporal-preparation-not-worklet-local')
+                : 'temporal-preparation-not-worklet-local');
+        const temporalCoverageValid = exactCoverageValid &&
+            normalizedCapabilities.every(capability => capability && (
+                capability.capability === 'stateless' ||
+                capability.capability === 'reset-on-resume' ||
+                capability.capability === 'age-by-skipped-frames'
+            ));
+        power.temporalSkipEligible = data.temporalSkipEligible === true && temporalCoverageValid;
+        power.lowLevelWakeFramesRequired = Math.round(globalThis.sampleRate * 0.15);
+        power.ewmaAlpha = 1 - Math.exp(-128 / (globalThis.sampleRate * 2));
+        power.dcBlockerR = Math.exp(-2 * Math.PI * 5 / globalThis.sampleRate);
+        power.skipSampleRate = globalThis.sampleRate;
+        power.pendingConfigWake = true;
+        power.activeFullProcessSettled = false;
+        this._resetPowerSilenceWindow();
+        this._disarmAutomaticMonitoring();
+        this.port.postMessage({
+            type: 'powerStateAck',
+            commandId: data.commandId ?? null,
+            workletGraphGeneration: power.workletGraphGeneration,
+            topologyRevision: power.topologyRevision,
+            renderSequence: power.renderSequence,
+            configured: true,
+            monitoringFastWakeEligible: power.monitoringFastWakeEligible,
+            monitoringFastWakeBlockerReason: power.monitoringFastWakeBlockerReason
+        });
+    }
+
+    setPowerProcessingState(data) {
+        const power = this.powerPolicy;
+        if (!power.enabled || !this._matchesPowerIdentity(data)) return;
+        const directive = data.processingDirective;
+        if (directive !== 'full-process' && directive !== 'allow-automatic' &&
+            directive !== 'force-monitoring' && directive !== 'bypass-transport' &&
+            directive !== 'zero-output-transport') return;
+
+        const previousDirective = power.processingDirective;
+        const skippingDirective = directive === 'force-monitoring' ||
+            directive === 'bypass-transport' || directive === 'zero-output-transport';
+        const skipIdentityValid = !skippingDirective ||
+            Number.isSafeInteger(data.skipEpoch) && data.skipEpoch >= 0;
+        const enteringNewSkipEpoch = skippingDirective &&
+            (previousDirective !== directive || power.skipEpoch !== data.skipEpoch);
+        let automaticArmAccepted = null;
+        if (!skipIdentityValid ||
+            (directive === 'allow-automatic' && !power.monitoringFastWakeEligible) ||
+            ((directive === 'force-monitoring' || directive === 'zero-output-transport' ||
+                directive === 'bypass-transport') && !power.temporalSkipEligible)) {
+            power.state = 'active';
+            power.processingDirective = 'full-process';
+            this._disarmAutomaticMonitoring();
+        } else {
+            power.processingDirective = directive;
+            if (directive === 'force-monitoring') {
+                power.state = 'monitoring';
+                if (enteringNewSkipEpoch) {
+                    power.skippedFrameCount = 0;
+                    power.skippedFrameRemainder = 0;
+                    power.skipSampleRate = globalThis.sampleRate;
+                }
+                power.lowLevelWakeFrames = 0;
+                this._disarmAutomaticMonitoring();
+            } else if (directive === 'allow-automatic') {
+                power.state = 'active';
+                const isFreshArm = data.state === 'active' && previousDirective === 'full-process' &&
+                    power.activeFullProcessSettled &&
+                    Number.isSafeInteger(data.commandId) &&
+                    data.commandId > power.lastAcceptedArmCommandId &&
+                    Number.isSafeInteger(data.skipEpoch) &&
+                    data.skipEpoch > power.lastAcceptedSkipEpoch &&
+                    data.skipEpoch > power.lastConsumedSkipEpoch &&
+                    Number.isSafeInteger(data.armAfterRenderSequence) &&
+                    power.renderSequence >= data.armAfterRenderSequence &&
+                    power.monitoringStaticCoverageValid;
+                if (isFreshArm) {
+                    automaticArmAccepted = true;
+                    power.arm.state = 'armed';
+                    power.arm.commandId = data.commandId;
+                    power.arm.skipEpoch = data.skipEpoch;
+                    power.arm.armAfterRenderSequence = data.armAfterRenderSequence;
+                    power.armStartFrame = this.currentFrame;
+                    power.lastAcceptedArmCommandId = data.commandId;
+                    power.lastAcceptedSkipEpoch = data.skipEpoch;
+                    power.skipSampleRate = globalThis.sampleRate;
+                    power.skippedFrameCount = 0;
+                    power.skippedFrameRemainder = 0;
+                    this._resetPowerSilenceWindow();
+                } else {
+                    automaticArmAccepted = false;
+                    power.processingDirective = 'full-process';
+                    power.activeFullProcessSettled = false;
+                    this._disarmAutomaticMonitoring();
+                }
+            } else {
+                power.state = 'active';
+                if (directive === 'full-process') power.activeFullProcessSettled = false;
+                if (enteringNewSkipEpoch &&
+                    (directive === 'zero-output-transport' || directive === 'bypass-transport')) {
+                    power.skippedFrameCount = 0;
+                    power.skippedFrameRemainder = 0;
+                    power.skipSampleRate = globalThis.sampleRate;
+                }
+                this._disarmAutomaticMonitoring();
+            }
+        }
+        power.commandId = data.commandId ?? null;
+        power.skipEpoch = data.skipEpoch ?? null;
+        power.pendingFirstRenderCommandId = power.commandId;
+        this.port.postMessage({
+            type: 'powerStateAck',
+            commandId: power.commandId,
+            skipEpoch: power.skipEpoch,
+            workletGraphGeneration: power.workletGraphGeneration,
+            topologyRevision: power.topologyRevision,
+            processingDirective: power.processingDirective,
+            state: power.state,
+            renderSequence: power.renderSequence,
+            armStartFrame: power.armStartFrame,
+            automaticMonitoringArm: { ...power.arm },
+            automaticArmAccepted
+        });
+    }
+
+    prepareTemporalState(data) {
+        const power = this.powerPolicy;
+        if (!power.enabled || !this._matchesPowerIdentity(data)) return;
+        const commandIdentityValid = data.origin === 'deliberate' &&
+            data.ownerOperationId !== null && data.ownerOperationId !== undefined &&
+            data.commandId === power.commandId && data.skipEpoch === power.skipEpoch &&
+            (Number.isSafeInteger(data.ackCommandId) ||
+                typeof data.ackCommandId === 'string' && data.ackCommandId.length > 0);
+        if (!commandIdentityValid) return;
+
+        const capabilities = power.temporalCapabilities;
+        const uniqueIds = new Set();
+        const counts = {
+            stateless: 0,
+            resetOnResume: 0,
+            agedBySkippedFrames: 0,
+            mustProcess: 0
+        };
+        const baseFrameCountValid = Number.isSafeInteger(data.skippedFrameCount) &&
+            data.skippedFrameCount >= 0 && data.skippedFrameCount === power.skippedFrameCount;
+        const elapsedVerified = data.elapsedContinuity === 'verified' &&
+            Number.isFinite(data.suspendedElapsedMs) && data.suspendedElapsedMs >= 0 &&
+            Number.isFinite(data.resumeSampleRate) && data.resumeSampleRate > 0 &&
+            data.resumeSampleRate === power.skipSampleRate &&
+            data.resumeSampleRate === globalThis.sampleRate;
+        const elapsedUnknown = data.elapsedContinuity === 'unknown' &&
+            data.suspendedElapsedMs === 0;
+        let derivedFrames = 0;
+        let nextRemainder = power.skippedFrameRemainder;
+        if (elapsedVerified) {
+            const exactFrames = data.suspendedElapsedMs * data.resumeSampleRate / 1000 +
+                power.skippedFrameRemainder;
+            derivedFrames = Math.floor(exactFrames);
+            nextRemainder = exactFrames - derivedFrames;
+        }
+        const totalSkippedFrameCount = data.skippedFrameCount + derivedFrames;
+        const actualIds = this._getEnabledPowerPluginIds();
+        const actualIdSet = new Set(actualIds);
+        let coverageValid = baseFrameCountValid && (elapsedVerified || elapsedUnknown) &&
+            Number.isSafeInteger(derivedFrames) && derivedFrames >= 0 &&
+            Number.isSafeInteger(totalSkippedFrameCount) && totalSkippedFrameCount >= 0 &&
+            capabilities.length === power.enabledPluginCount &&
+            actualIds.length === power.enabledPluginCount;
+        for (const entry of capabilities) {
+            const identity = entry?.pluginId;
+            if (identity === null || identity === undefined || uniqueIds.has(identity) ||
+                !actualIdSet.has(identity)) coverageValid = false;
+            else uniqueIds.add(identity);
+            if (entry.capability !== 'stateless' &&
+                entry.capability !== 'reset-on-resume' &&
+                entry.capability !== 'age-by-skipped-frames') coverageValid = false;
+        }
+        let state = 'acknowledged';
+        let errorCode = null;
+        if (!coverageValid) {
+            state = 'error';
+            errorCode = 'temporal-prevalidated-coverage-mismatch';
+        } else {
+            try {
+                for (const entry of capabilities) {
+                    if (entry.capability === 'stateless') {
+                        counts.stateless++;
+                    } else if (entry.capability === 'reset-on-resume') {
+                        if (!this._resetTemporalPlugin(entry.pluginId)) {
+                            throw new Error('temporal reset failed');
+                        }
+                        counts.resetOnResume++;
+                    } else if (!elapsedVerified) {
+                        if (!this._resetTemporalPlugin(entry.pluginId)) {
+                            throw new Error('temporal reset fallback failed');
+                        }
+                        counts.resetOnResume++;
+                    } else {
+                        if (!this._ageTemporalPlugin(entry, totalSkippedFrameCount)) {
+                            throw new Error('temporal analytic age failed');
+                        }
+                        counts.agedBySkippedFrames++;
+                    }
+                }
+                power.skippedFrameCount = totalSkippedFrameCount;
+                power.skippedFrameRemainder = elapsedVerified ? nextRemainder : 0;
+            } catch (_) {
+                state = 'error';
+                errorCode = 'temporal-preparation-runtime-failed';
+            }
+        }
+        this.port.postMessage({
+            type: 'temporalStatePrepared',
+            state,
+            origin: 'deliberate',
+            ownerOperationId: data.ownerOperationId ?? null,
+            commandId: data.commandId ?? null,
+            ackCommandId: data.ackCommandId ?? null,
+            skipEpoch: data.skipEpoch ?? null,
+            workletGraphGeneration: power.workletGraphGeneration,
+            topologyRevision: power.topologyRevision,
+            enabledPluginCount: power.enabledPluginCount,
+            coveredPluginCount: uniqueIds.size,
+            appliedPolicyCounts: counts,
+            skippedFrameCount: state === 'acknowledged'
+                ? power.skippedFrameCount
+                : data.skippedFrameCount,
+            renderSequence: power.renderSequence,
+            errorCode
+        });
     }
 
     async initializeDsp(data) {
@@ -1437,7 +1986,6 @@ class PluginProcessor extends AudioWorkletProcessor {
             return ET_DSP_PIPELINE_ARENA_INVALID;
         }
         if (status === 0 && !processError) {
-            this.recordDspProcessing('singleCallBlocks');
             return ET_DSP_PIPELINE_PROCESSED;
         }
 
@@ -1449,23 +1997,6 @@ class PluginProcessor extends AudioWorkletProcessor {
             this.reportDspFailure('pipeline-process', `status ${status}`);
         }
         return ET_DSP_PIPELINE_FALLBACK;
-    }
-
-    recordDspProcessing(counter) {
-        if (!this.dspBenchEnabled) return;
-        this.dspStats[counter]++;
-        const processedOperations = this.dspStats.singleCallBlocks + this.dspStats.hybridInstanceCalls;
-        if (processedOperations !== 1 && processedOperations - this.dspStats.lastPublishedOperations < 4096) return;
-        this.dspStats.lastPublishedOperations = processedOperations;
-        this.port.postMessage({
-            type: 'dspStats',
-            singleCallBlocks: this.dspStats.singleCallBlocks,
-            hybridInstanceCalls: this.dspStats.hybridInstanceCalls,
-            telemetryDroppedFrames: this.dspStats.telemetryDroppedFrames,
-            pipelineReady: this.dspPipelineReady,
-            readyInstances: Array.from(this.wasmInstances.values()).filter(entry => entry.ready).length,
-            simd: this.dspSimd
-        });
     }
 
     finishDspPipelineBlock(output, combinedBuffer, outputChannelCount, blockSize, sampleRate, time) {
@@ -1547,13 +2078,12 @@ class PluginProcessor extends AudioWorkletProcessor {
     }
 
     pumpDspTelemetry() {
-        if (!this.dspLive || this.dspPacketPool.length === 0) return;
+        if (!this.dspLive || this.dspPacketPool.length === 0 ||
+            (this.powerPolicy.enabled && !this.powerPolicy.uiTelemetryEnabled)) return;
         const packetView = this.dspPacketPool.pop();
         try {
             const bytes = this.dspBinding.telemetryRead(packetView);
-            if (this.dspBenchEnabled) {
-                this.dspStats.telemetryDroppedFrames += this.dspBinding.lastTelemetryDroppedFrames >>> 0;
-            }
+            if (this.powerPolicy.enabled) this.powerPolicy.counters.telemetryReads++;
             if (bytes > 0) {
                 const packet = packetView.buffer;
                 this.port.postMessage({
@@ -1562,6 +2092,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                     bytes,
                     droppedFrames: this.dspBinding.lastTelemetryDroppedFrames >>> 0
                 }, [packet]);
+                if (this.powerPolicy.enabled) this.powerPolicy.counters.telemetryPosts++;
             } else {
                 this.dspPacketPool.push(packetView);
             }
@@ -1711,6 +2242,179 @@ class PluginProcessor extends AudioWorkletProcessor {
         }
     }
 
+    _measurePowerWithDcBlock(channels, previousX, previousY, blockSize, result) {
+        const power = this.powerPolicy;
+        const channelCount = channels.length < previousX.length ? channels.length : previousX.length;
+        let maximumChannelPower = 0;
+        let maximumPeakPower = 0;
+        let nonFiniteSeen = false;
+        const r = power.dcBlockerR;
+        for (let channel = 0; channel < channelCount; channel++) {
+            const channelData = channels[channel];
+            if (!channelData) continue;
+            let xPrev = previousX[channel];
+            let yPrev = previousY[channel];
+            let channelSumSquares = 0;
+            const frames = channelData.length < blockSize ? channelData.length : blockSize;
+            for (let frame = 0; frame < frames; frame++) {
+                const x = channelData[frame];
+                if (!Number.isFinite(x)) nonFiniteSeen = true;
+                const finiteX = Number.isFinite(x) ? x : 0;
+                let y = finiteX - xPrev + r * yPrev;
+                if (!Number.isFinite(y)) {
+                    nonFiniteSeen = true;
+                    y = 0;
+                }
+                xPrev = finiteX;
+                yPrev = y;
+                const square = y * y;
+                channelSumSquares += square;
+                if (square > maximumPeakPower) maximumPeakPower = square;
+            }
+            previousX[channel] = xPrev;
+            previousY[channel] = yPrev;
+            const channelPower = frames > 0 ? channelSumSquares / frames : 0;
+            if (channelPower > maximumChannelPower) maximumChannelPower = channelPower;
+        }
+        result[0] = maximumChannelPower;
+        result[1] = maximumPeakPower;
+        result[2] = nonFiniteSeen ? 1 : 0;
+        return maximumChannelPower;
+    }
+
+    _copyPowerInput(input, output) {
+        const channelsToCopy = input.length < output.length ? input.length : output.length;
+        for (let channel = 0; channel < channelsToCopy; channel++) output[channel].set(input[channel]);
+        for (let channel = channelsToCopy; channel < output.length; channel++) output[channel].fill(0);
+    }
+
+    _zeroPowerOutput(output) {
+        for (let channel = 0; channel < output.length; channel++) output[channel].fill(0);
+    }
+
+    _beginPowerRender() {
+        const power = this.powerPolicy;
+        power.renderSequence++;
+        power.counters.renderQuanta++;
+        power.counters.detectorQuanta++;
+    }
+
+    _publishPowerObservation(inputActive, outputActive, eventReason = null) {
+        const power = this.powerPolicy;
+        const edgeChanged = power.lastReportedInputActive !== inputActive ||
+            power.lastReportedOutputActive !== outputActive;
+        const observationRequestId = power.pendingObservationRequestId;
+        const heartbeatDue = this.currentFrame - power.lastHeartbeatFrame >= globalThis.sampleRate;
+        if (!edgeChanged && observationRequestId === null && !heartbeatDue && !eventReason) return;
+
+        const type = heartbeatDue && !edgeChanged && observationRequestId === null && !eventReason
+            ? 'powerHeartbeat'
+            : 'powerObservation';
+        this.port.postMessage({
+            type,
+            observationRequestId,
+            reason: eventReason,
+            state: power.state,
+            processingDirective: power.processingDirective,
+            inputActive,
+            outputActive,
+            inputPower: power.inputPowerEwma,
+            outputPower: power.outputPowerEwma,
+            workletGraphGeneration: power.workletGraphGeneration,
+            topologyRevision: power.topologyRevision,
+            commandId: power.commandId,
+            skipEpoch: power.skipEpoch,
+            renderSequence: power.renderSequence,
+            skippedFrameCount: power.skippedFrameCount,
+            automaticMonitoringArm: { ...power.arm },
+            counters: { ...power.counters }
+        });
+        power.lastReportedInputActive = inputActive;
+        power.lastReportedOutputActive = outputActive;
+        power.pendingObservationRequestId = null;
+        if (heartbeatDue) power.lastHeartbeatFrame = this.currentFrame;
+    }
+
+    _finishPowerRender(inputPower, outputPower, blockSize, eventReason = null) {
+        const power = this.powerPolicy;
+        const alpha = power.ewmaAlpha;
+        const inputFinite = Number.isFinite(inputPower);
+        const outputFinite = Number.isFinite(outputPower);
+        if (inputFinite) power.inputPowerEwma += alpha * (inputPower - power.inputPowerEwma);
+        if (outputFinite) power.outputPowerEwma += alpha * (outputPower - power.outputPowerEwma);
+        const inputActive = !inputFinite || power.inputPowerEwma > power.silenceThresholdPower;
+        const outputActive = !outputFinite || power.outputPowerEwma > power.silenceThresholdPower;
+
+        if (inputActive || outputActive) {
+            power.silentSinceFrame = null;
+        } else if (power.silentSinceFrame === null) {
+            power.silentSinceFrame = this.currentFrame - blockSize;
+        }
+
+        if (power.pendingFirstRenderCommandId !== null) {
+            this.port.postMessage({
+                type: 'powerFirstRender',
+                commandId: power.pendingFirstRenderCommandId,
+                skipEpoch: power.skipEpoch,
+                state: power.state,
+                processingDirective: power.processingDirective,
+                workletGraphGeneration: power.workletGraphGeneration,
+                topologyRevision: power.topologyRevision,
+                renderSequence: power.renderSequence,
+                skippedFrameCount: power.skippedFrameCount
+            });
+            power.pendingFirstRenderCommandId = null;
+        }
+
+        if (power.arm.state === 'armed' && power.processingDirective === 'allow-automatic') {
+            power.inputSilentFrames = inputActive ? 0 : power.inputSilentFrames + blockSize;
+            power.outputSilentFrames = outputActive ? 0 : power.outputSilentFrames + blockSize;
+            if (!inputActive && !outputActive &&
+                power.inputSilentFrames >= power.silenceFramesRequired &&
+                power.outputSilentFrames >= power.silenceFramesRequired) {
+                power.state = 'monitoring';
+                power.processingDirective = 'allow-automatic';
+                power.arm.state = 'consumed';
+                power.lastConsumedSkipEpoch = power.arm.skipEpoch;
+                power.skippedFrameCount = 0;
+                power.skippedFrameRemainder = 0;
+                power.skipSampleRate = globalThis.sampleRate;
+                power.lowLevelWakeFrames = 0;
+                eventReason = 'automatic-silence';
+            }
+        }
+        if (eventReason === null && power.pendingPowerEventReason !== null) {
+            eventReason = power.pendingPowerEventReason;
+            power.pendingPowerEventReason = null;
+        } else if (power.pendingConfigWake && eventReason === null) {
+            power.pendingConfigWake = false;
+            eventReason = 'config-wake';
+        }
+        if (power.state === 'active' && power.processingDirective === 'full-process') {
+            power.activeFullProcessSettled = true;
+        }
+        this._publishPowerObservation(inputActive, outputActive, eventReason);
+    }
+
+    _finishPowerFullProcess(input, output, inputPower, blockSize, forceDryOutput, runtime = 'js') {
+        const power = this.powerPolicy;
+        power.counters.fullProcessQuanta++;
+        if (runtime === 'wasm') power.counters.fullWasmProcessQuanta++;
+        else if (runtime === 'js') power.counters.fullJsProcessQuanta++;
+        if (forceDryOutput) this._copyPowerInput(input, output);
+        const outputPower = this._measurePowerWithDcBlock(
+            output,
+            power.outputDcX,
+            power.outputDcY,
+            blockSize,
+            power.outputDetectorResult
+        );
+        const safeOutputPower = power.outputDetectorResult[2] === 1
+            ? Number.POSITIVE_INFINITY
+            : outputPower;
+        this._finishPowerRender(inputPower, safeOutputPower, blockSize);
+    }
+
     // Optimized process method
     process(inputs, outputs, parameters) {
         const input = inputs[0];
@@ -1726,6 +2430,15 @@ class PluginProcessor extends AudioWorkletProcessor {
                     output[i]?.fill(0);
                 }
             }
+            if (this.powerPolicy.enabled) {
+                const power = this.powerPolicy;
+                const emptyBlockSize = output?.[0]?.length || 128;
+                this._beginPowerRender();
+                this.currentFrame += emptyBlockSize;
+                const emptyInputReason = power.emptyInputActive ? null : 'empty-input';
+                power.emptyInputActive = true;
+                this._finishPowerRender(0, 0, emptyBlockSize, emptyInputReason);
+            }
             // Keep processor alive, even with no input, as input might appear later.
             return true;
         }
@@ -1739,12 +2452,100 @@ class PluginProcessor extends AudioWorkletProcessor {
         const pluginProcessors = this.pluginProcessors; // Map of compiled processor functions
         const pluginContexts = this.pluginContexts; // Map for plugin state/context
         const port = this.port; // For messaging back to the main thread
-        const masterBypass = this.masterBypass;
-        let isSleepMode = audioLevelMonitoring.isSleepMode; // Cache current sleep state
+        const powerEnabled = this.powerPolicy.enabled;
+        const masterBypass = this.masterBypass && !powerEnabled;
+        let isSleepMode = powerEnabled ? false : audioLevelMonitoring.isSleepMode;
         // Get configured output channels, default to 2 if not set
         const outputChannelCount = this.outputChannelCount;
         // Use the cached amplitude threshold
         const silenceThresholdAmplitude = audioLevelMonitoring._silenceThresholdAmplitude;
+
+        let powerInputPower = 0;
+        if (powerEnabled) {
+            const power = this.powerPolicy;
+            power.emptyInputActive = false;
+            this._beginPowerRender();
+            powerInputPower = this._measurePowerWithDcBlock(
+                input,
+                power.inputDcX,
+                power.inputDcY,
+                blockSize,
+                power.inputDetectorResult
+            );
+            const inputDetectorNonFinite = power.inputDetectorResult[2] === 1;
+            if (inputDetectorNonFinite) powerInputPower = Number.POSITIVE_INFINITY;
+            const directive = power.processingDirective;
+            if (power.state === 'monitoring' || directive === 'force-monitoring') {
+                const predictedInputEwma = inputDetectorNonFinite
+                    ? Number.POSITIVE_INFINITY
+                    : power.inputPowerEwma + power.ewmaAlpha *
+                        (powerInputPower - power.inputPowerEwma);
+                if (predictedInputEwma > power.wakeFloorPower) {
+                    power.lowLevelWakeFrames += blockSize;
+                } else {
+                    power.lowLevelWakeFrames = 0;
+                }
+                const fastWake = inputDetectorNonFinite ||
+                    power.inputDetectorResult[1] > power.fastWakeThresholdPower;
+                const lowLevelWake = power.lowLevelWakeFrames >= power.lowLevelWakeFramesRequired;
+                const wake = power.monitoringFastWakeEligible && (fastWake || lowLevelWake);
+                if (!wake) {
+                    this._copyPowerInput(input, output);
+                    power.counters.monitoringQuanta++;
+                    power.skippedFrameCount += blockSize;
+                    this.currentFrame += blockSize;
+                    this._finishPowerRender(powerInputPower, powerInputPower, blockSize);
+                    return true;
+                }
+                const staticWakeIdentityValid = power.monitoringStaticCoverageValid &&
+                    power.arm.state === 'consumed' &&
+                    power.arm.skipEpoch === power.lastConsumedSkipEpoch &&
+                    power.skipEpoch === power.lastConsumedSkipEpoch &&
+                    power.skipSampleRate === globalThis.sampleRate;
+                if (!staticWakeIdentityValid) {
+                    power.state = 'active';
+                    power.processingDirective = 'full-process';
+                    power.monitoringFastWakeEligible = false;
+                    power.monitoringFastWakeBlockerReason = 'temporal-preparation-runtime-failed';
+                    power.counters.monitoringRuntimeFailures++;
+                    this._disarmAutomaticMonitoring();
+                    this._copyPowerInput(input, output);
+                    this.currentFrame += blockSize;
+                    this._finishPowerRender(
+                        powerInputPower,
+                        powerInputPower,
+                        blockSize,
+                        'temporal-preparation-runtime-failed'
+                    );
+                    return true;
+                }
+                power.state = 'active';
+                power.processingDirective = 'full-process';
+                this._disarmAutomaticMonitoring();
+                this._resetPowerSilenceWindow();
+                power.pendingConfigWake = false;
+                power.pendingPowerEventReason = 'signal-wake';
+            } else if (directive === 'zero-output-transport') {
+                this._zeroPowerOutput(output);
+                power.counters.zeroOutputQuanta++;
+                power.skippedFrameCount += blockSize;
+                this.currentFrame += blockSize;
+                this._finishPowerRender(powerInputPower, 0, blockSize);
+                return true;
+            } else if (directive === 'bypass-transport') {
+                this._copyPowerInput(input, output);
+                power.counters.bypassQuanta++;
+                power.skippedFrameCount += blockSize;
+                this.currentFrame += blockSize;
+                this._finishPowerRender(powerInputPower, powerInputPower, blockSize);
+                return true;
+            }
+        }
+
+        // Evaluated after the power state machine so every full processing
+        // path remains dry while master bypass is engaged, including the
+        // automatic-monitoring arm and a monitoring-to-active wake block.
+        const forceDryOutput = powerEnabled && this.masterBypass;
 
         if (this.dspLive) {
             if (this.dspBinding.checkMemoryBuffer()) {
@@ -1763,6 +2564,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         // emit a constant DC component for a silent input, which would
         // otherwise be classified as "signal" and forever prevent sleep mode.
         let hasInputSignal = false;
+        if (!powerEnabled) {
         const inputChannelsToCheck = Math.min(input.length, outputChannelCount);
         const acThreshold = 2 * silenceThresholdAmplitude;
         for (let channel = 0; channel < inputChannelsToCheck; channel++) {
@@ -1812,6 +2614,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                     console.log(`Entering sleep mode at ${time}s due to inactivity.`);
                 }
             }
+        }
         }
 
         // --- 5. Master Bypass or Sleep Mode Handling ---
@@ -1892,10 +2695,30 @@ class PluginProcessor extends AudioWorkletProcessor {
                 sampleRate,
                 time
             );
+            if (powerEnabled) {
+                this._finishPowerFullProcess(
+                    input,
+                    output,
+                    powerInputPower,
+                    blockSize,
+                    forceDryOutput,
+                    'wasm'
+                );
+            }
             return true;
         }
         if (dspPipelineResult === ET_DSP_PIPELINE_ARENA_INVALID) {
             this.bypassCurrentBlock(input, output, outputChannelCount, blockSize);
+            if (powerEnabled) {
+                this._finishPowerFullProcess(
+                    input,
+                    output,
+                    powerInputPower,
+                    blockSize,
+                    forceDryOutput,
+                    'none'
+                );
+            }
             return true;
         }
 
@@ -1905,7 +2728,9 @@ class PluginProcessor extends AudioWorkletProcessor {
         busBuffers.clear(); // Clear previous buffers
 
         // Determine which buses are actively used by enabled plugins
-        const usedBuses = new Set([0]); // Main bus (0) is implicitly used for input/output
+        const usedBuses = this.usedBuses;
+        usedBuses.clear();
+        usedBuses.add(0); // Main bus (0) is implicitly used for input/output
         let activeSectionEnabled = true; // Tracks if the current section is active
         let insideSection = false; // Tracks if currently inside a section definition
 
@@ -2155,6 +2980,16 @@ class PluginProcessor extends AudioWorkletProcessor {
                 if (!this.isDspArenaViewCurrent(processingBuffer, expectedMemory, sampleCount)) {
                     if (this.dspLive) this.failDspEngine('runtime', 'arena invalid before instance processing');
                     this.bypassCurrentBlock(input, output, outputChannelCount, blockSize);
+                    if (powerEnabled) {
+                        this._finishPowerFullProcess(
+                            input,
+                            output,
+                            powerInputPower,
+                            blockSize,
+                            forceDryOutput,
+                            'none'
+                        );
+                    }
                     return true;
                 }
                 const audioPtr = this.dspBinding.pointerForArenaView(processingBuffer);
@@ -2176,11 +3011,20 @@ class PluginProcessor extends AudioWorkletProcessor {
                     if (!this.isDspArenaViewCurrent(processingBuffer, expectedMemory, sampleCount)) {
                         if (this.dspLive) this.failDspEngine('runtime', 'arena invalid during instance processing');
                         this.bypassCurrentBlock(input, output, outputChannelCount, blockSize);
+                        if (powerEnabled) {
+                            this._finishPowerFullProcess(
+                                input,
+                                output,
+                                powerInputPower,
+                                blockSize,
+                                forceDryOutput,
+                                'none'
+                            );
+                        }
                         return true;
                     }
                     if (status === 0 && !processError) {
                         processedInWasm = true;
-                        this.recordDspProcessing('hybridInstanceCalls');
                     } else {
                         this.restoreDspHybridInput(processingBuffer, sampleCount);
                         this.runtimeFallback(
@@ -2298,6 +3142,11 @@ class PluginProcessor extends AudioWorkletProcessor {
             // Legacy JavaScript analyzers attach measurements to their result buffer.
             const measurements = result?.measurements;
             if (measurements) {
+                if (this.powerPolicy.enabled && !this.powerPolicy.uiTelemetryEnabled) {
+                    messageQueue.clear();
+                    result.measurements = null;
+                    continue;
+                }
                 const currentTimeMs = time * 1000;
                 if (currentTimeMs - lastMessageTime >= MESSAGE_INTERVAL) {
                     // Drain queue first
@@ -2385,6 +3234,17 @@ class PluginProcessor extends AudioWorkletProcessor {
         }
 
         this.pumpDspTelemetry();
+
+        if (powerEnabled) {
+            this._finishPowerFullProcess(
+                input,
+                output,
+                powerInputPower,
+                blockSize,
+                forceDryOutput,
+                'js'
+            );
+        }
 
         // --- 12. Return Status ---
         // Return true to keep the processor alive

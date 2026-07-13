@@ -156,9 +156,12 @@ export class PlaybackBridge {
       return;
     }
     const state = player.stateManager?.getStateSnapshot?.() || {};
-    this.lastSnapshot = {
+    const queueSnapshot = player.playbackManager.capturePlaybackQueueSnapshot?.() || {
       playlist: [...player.playbackManager.playlist],
-      originalPlaylist: [...player.playbackManager.originalPlaylist],
+      originalPlaylist: [...player.playbackManager.originalPlaylist]
+    };
+    this.lastSnapshot = {
+      ...queueSnapshot,
       index: player.stateManager?.getCurrentTrackIndex?.() ?? 0,
       position: Number(state.currentTrackPosition) || 0,
       wasPlaying: Boolean(state.isPlaying && !state.isPaused && !state.isStopped)
@@ -179,8 +182,12 @@ export class PlaybackBridge {
     // residual source from the replacement queue and lets play() below resume
     // from the seeked position instead of restarting the buffer from 0:00.
     await player.stop?.();
-    player.playbackManager.playlist = snapshot.playlist.map(track => ({ ...track }));
-    player.playbackManager.originalPlaylist = snapshot.originalPlaylist.map(track => ({ ...track }));
+    const restoredByManager =
+      player.playbackManager.restorePlaybackQueueSnapshot?.(snapshot) === true;
+    if (!restoredByManager) {
+      player.playbackManager.playlist = snapshot.playlist.map(track => ({ ...track }));
+      player.playbackManager.originalPlaylist = snapshot.originalPlaylist.map(track => ({ ...track }));
+    }
     if (!player.ui?.container) {
       player.ui?.createPlayerUI?.();
     }

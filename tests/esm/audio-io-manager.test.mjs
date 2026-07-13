@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { AudioIOManager, MIC_DENIED_PREFIX } from '../../js/audio/audio-io-manager.js';
+import {
+  AudioIOManager,
+  MIC_DENIED_PREFIX
+} from '../../js/audio/audio-io-manager.js';
 import { NO_AUDIO_INPUT_DEVICE_ID } from '../../js/audio/audio-device-constants.js';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
 
@@ -354,6 +357,31 @@ test('constructor and audio input handle success, fallbacks, permission recovery
   });
 });
 
+test('a stream is stopped exactly once when its media source node cannot be created', async () => {
+  const tracks = Array.from({ length: 2 }, () => ({
+    readyState: 'live',
+    stopCount: 0,
+    stop() {
+      this.stopCount++;
+      this.readyState = 'ended';
+    }
+  }));
+  const stream = { id: 'unadoptable', getTracks: () => tracks };
+  await withAudioIO({
+    context: { audioContext: { failCreateMediaStreamSource: true } },
+    navigator: { getUserMediaQueue: [stream] }
+  }, async ({ manager }) => {
+    await assert.rejects(
+      manager.beginReacquireAudioInput({ requireVisible: false, preferences: {} }),
+      /media source failed/
+    );
+    assert.deepEqual(tracks.map(track => track.stopCount), [1, 1]);
+    assert.equal(manager.inputStream, null);
+    manager._stopStreamTracksOnce(stream);
+    assert.deepEqual(tracks.map(track => track.stopCount), [1, 1]);
+  });
+});
+
 test('audio input handles saved-device permission failures and non-permission fallbacks', async () => {
   let requestedMicrophoneAccess = false;
   await withAudioIO({
@@ -371,12 +399,59 @@ test('audio input handles saved-device permission failures and non-permission fa
     assert.equal(calls.some(call => call[0] === 'getUserMedia'), false);
     assert.equal(requestedMicrophoneAccess, false);
     assert.equal(manager.sourceNode.name, 'gain');
+    const runningSilentSource = manager.sourceNode;
+    assert.equal(manager.silentInputGainNode, runningSilentSource);
+    assert.equal(manager.silentInputBufferSource.buffer.channels, 2);
+    assert.equal(manager.silentInputBufferSource.loop, true);
+    assert.equal(manager.silenceNode, null);
+    const startCount = calls.filter(call => call[0] === 'start' &&
+      call[1] === 'bufferSource').length;
+    assert.equal(manager.ensureSilentSourceFallback(), runningSilentSource);
+    assert.equal(calls.filter(call => call[0] === 'start' &&
+      call[1] === 'bufferSource').length, startCount);
+
+    const outputMuteNode = new FakeNode('outputSilence', calls);
+    manager.silenceNode = outputMuteNode;
+    const replacementSilentInput = manager.createSilentSourceFallback();
+    assert.notEqual(replacementSilentInput, runningSilentSource);
+    assert.equal(manager.silenceNode, outputMuteNode);
+    assert.equal(calls.some(call => call[0] === 'disconnect' &&
+      call[1] === 'outputSilence'), false);
 
     manager.contextManager.workletNode = new FakeNode('worklet', calls);
     manager.outputGainNode = new FakeNode('outputGain', calls);
     assert.equal(await manager.connectAudioNodes(), '');
     assert.ok(calls.some(call => call[0] === 'connect' && call[1] === 'gain' && call[2] === 'worklet'));
     assert.ok(calls.some(call => call[0] === 'connect' && call[1] === 'worklet' && call[2] === 'outputGain'));
+  });
+
+  await withAudioIO({
+    context: { isFirstLaunch: true },
+    window: {
+      audioPreferences: { inputDeviceId: NO_AUDIO_INPUT_DEVICE_ID },
+      originalConnectMethod(target) {
+        this.calls.push(['originalConnect', this.name, target.name]);
+        this.connections.push(target);
+      }
+    }
+  }, async ({ manager, calls }) => {
+    assert.equal(await manager.initAudioInput(), '');
+    assert.equal(calls.some(call => call[0] === 'originalConnect' &&
+      call[1] === 'bufferSource' && call[2] === 'gain'), true);
+    assert.equal(calls.some(call => call[0] === 'connect' &&
+      call[1] === 'bufferSource' && call[2] === 'gain'), false);
+  });
+
+  await withAudioIO({
+    window: {
+      audioPreferences: { inputDeviceId: 'web-mic' }
+    }
+  }, async ({ manager, calls }) => {
+    assert.equal(await manager.initAudioInput({
+      inputDeviceId: NO_AUDIO_INPUT_DEVICE_ID
+    }), '');
+    assert.equal(calls.some(call => call[0] === 'getUserMedia'), false);
+    assert.equal(manager.sourceNode.name, 'gain');
   });
 
   await withAudioIO({
@@ -931,6 +1006,21 @@ test('connectAudioNodes handles sink modes, web fallback, and error returns', as
     manager.sourceNode = new FakeNode('source', calls);
     assert.equal(await manager.connectAudioNodes(), '');
     assert.ok(calls.some(call => call[0] === 'connect' && call[1] === 'gain' && call[2] === 'destination'));
+
+    calls.length = 0;
+    const connectSource = source => {
+      calls.push(['connectSource', source.name]);
+      return true;
+    };
+    assert.equal(await manager.connectAudioNodes({ connectSource }), '');
+    assert.deepEqual(calls.find(call => call[0] === 'connectSource'), ['connectSource', 'source']);
+    assert.equal(calls.some(call => call[0] === 'connect' &&
+      call[1] === 'source' && call[2] === 'worklet'), false);
+
+    assert.match(
+      await manager.connectAudioNodes({ connectSource: () => false }),
+      /Pipeline source connection failed/
+    );
   });
 
   await withAudioIO({}, async ({ manager, contextManager }) => {
@@ -1591,5 +1681,251 @@ test('init-registered poll callbacks ignore non-critical recovery errors', async
       windowRef.lastResetPrefs = prefs;
     });
     assert.equal(windowRef.lastResetPrefs.outputDeviceId, 'speaker');
+  });
+});
+
+test('late getUserMedia results are stopped and input-only release preserves non-input resources', async () => {
+  let resolveLateStream;
+  const lateTrack = {
+    readyState: 'live',
+    stopCount: 0,
+    stop() { this.stopCount++; this.readyState = 'ended'; }
+  };
+  const lateStream = { getTracks: () => [lateTrack] };
+  await withAudioIO({
+    navigator: {
+      getUserMediaQueue: [new Promise(resolve => { resolveLateStream = resolve; })]
+    }
+  }, async ({ manager }) => {
+    await assert.rejects(manager._getUserMediaWithTimeout({ audio: true }, 1), /timed out/);
+    resolveLateStream(lateStream);
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(lateTrack.stopCount, 1);
+  });
+
+  await withAudioIO({}, async ({ manager }) => {
+    const track = {
+      readyState: 'live',
+      enabled: true,
+      muted: false,
+      stopCount: 0,
+      stop() { this.stopCount++; this.readyState = 'ended'; },
+      addEventListener() {},
+      removeEventListener() {}
+    };
+    const stream = { getTracks: () => [track], getAudioTracks: () => [track] };
+    const canonicalSource = manager._adoptInputStream(stream);
+    let disconnectCount = 0;
+    canonicalSource.disconnect = () => { disconnectCount++; };
+    const playerSource = new FakeNode('player', []);
+    manager.sourceNode = playerSource;
+    const audioElement = { paused: false };
+    const outputGain = new FakeNode('output', []);
+    manager.audioElement = audioElement;
+    manager.outputGainNode = outputGain;
+
+    const result = manager.releaseAudioInput({ reason: 'player-only-retention-expired', disconnect: false });
+    assert.equal(result.stoppedTrackCount, 1);
+    assert.equal(track.stopCount, 1);
+    assert.equal(manager.inputSourceNode, null);
+    assert.equal(manager.sourceNode, playerSource);
+    assert.equal(manager.audioElement, audioElement);
+    assert.equal(manager.outputGainNode, outputGain);
+    assert.equal(disconnectCount, 0);
+    assert.equal(manager.getInputSnapshot().state, 'released');
+  });
+});
+
+test('input track lifecycle events publish canonical availability revisions', async () => {
+  await withAudioIO({}, async ({ manager, contextManager }) => {
+    const listeners = new Map();
+    const snapshots = [];
+    const track = {
+      readyState: 'live',
+      enabled: true,
+      muted: false,
+      stop() { this.readyState = 'ended'; },
+      addEventListener(type, listener) { listeners.set(type, listener); },
+      removeEventListener(type, listener) {
+        if (listeners.get(type) === listener) listeners.delete(type);
+      }
+    };
+    const stream = { getTracks: () => [track], getAudioTracks: () => [track] };
+    contextManager.powerStateDelegate = {
+      handleInputResourceEvent(snapshot) { snapshots.push(snapshot); }
+    };
+
+    manager._adoptInputStream(stream);
+    const initialRevision = manager.getInputSnapshot().inputAvailabilityRevision;
+
+    track.muted = true;
+    listeners.get('mute')();
+    track.muted = false;
+    listeners.get('unmute')();
+    track.enabled = false;
+    listeners.get('mute')();
+    listeners.get('mute')();
+    track.readyState = 'ended';
+    listeners.get('ended')();
+
+    assert.deepEqual(
+      snapshots.map(snapshot => [snapshot.state, snapshot.inputAvailability]),
+      [
+        ['live', 'muted'],
+        ['live', 'available'],
+        ['live', 'disabled'],
+        ['ended', 'unknown']
+      ]
+    );
+    assert.deepEqual(
+      snapshots.map(snapshot => snapshot.inputAvailabilityRevision),
+      [initialRevision + 1, initialRevision + 2, initialRevision + 3, initialRevision + 4]
+    );
+  });
+});
+
+test('input reacquisition installs a candidate without replacing the running pipeline source', async () => {
+  const stream = createStream('candidate');
+  await withAudioIO({
+    navigator: { getUserMediaQueue: [stream] }
+  }, async ({ manager, calls }) => {
+    const silentSource = manager.ensureSilentSourceFallback();
+    assert.equal(manager.adoptSilentSourceFallback(silentSource), true);
+
+    const snapshot = await manager.beginReacquireAudioInput({
+      requireVisible: false,
+      timeoutMs: 100,
+      preferences: { inputDeviceId: 'saved-mic' }
+    });
+
+    assert.equal(snapshot.state, 'live');
+    assert.equal(manager.inputStream, stream);
+    assert.notEqual(manager.inputSourceNode, silentSource);
+    assert.equal(manager.sourceNode, silentSource);
+    assert.deepEqual(
+      calls.find(call => call[0] === 'getUserMedia')[1].audio.deviceId,
+      { exact: 'saved-mic' }
+    );
+  });
+});
+
+test('plain getUserMedia acquisition remains independent of power delegate startup', async () => {
+  const stream = createStream('fallback');
+  await withAudioIO({
+    navigator: { getUserMediaQueue: [stream] }
+  }, async ({ manager, contextManager, calls }) => {
+    contextManager.powerStateDelegate = {
+      isControllerEnabled: () => true,
+      getInputConfigRevision: () => 1
+    };
+    const acquired = await manager._getUserMediaWithTimeout({ audio: true }, 100);
+    assert.equal(acquired, stream);
+    assert.equal(calls.some(call => call[0] === 'getUserMedia'), true);
+  });
+});
+
+test('input reacquisition is single-flight and a superseded result cannot replace a newer stream', async () => {
+  let resolveFirst;
+  let resolveSecond;
+  const firstStream = createStream('first');
+  const secondStream = createStream('second');
+  await withAudioIO({
+    navigator: {
+      getUserMediaQueue: [
+        new Promise(resolve => { resolveFirst = resolve; }),
+        new Promise(resolve => { resolveSecond = resolve; })
+      ]
+    }
+  }, async ({ manager, calls }) => {
+    const first = manager.beginReacquireAudioInput({
+      requireVisible: false,
+      preferences: { inputDeviceId: 'first-device' }
+    });
+    const duplicate = manager.beginReacquireAudioInput({
+      requireVisible: false,
+      preferences: { inputDeviceId: 'first-device' }
+    });
+    assert.strictEqual(duplicate, first);
+    assert.equal(calls.filter(call => call[0] === 'getUserMedia').length, 1);
+
+    const second = manager.beginReacquireAudioInput({
+      requireVisible: false,
+      preferences: { inputDeviceId: 'second-device' }
+    });
+    assert.equal(calls.filter(call => call[0] === 'getUserMedia').length, 2);
+    resolveSecond(secondStream);
+    await second;
+    resolveFirst(firstStream);
+    await assert.rejects(first, { name: 'AbortError' });
+
+    assert.equal(manager.inputStream, secondStream);
+    assert.equal(firstStream.tracks[0].stopped, true);
+    assert.equal(secondStream.tracks[0].stopped, false);
+  });
+});
+
+test('release, reset, and Input Device None invalidate pending input acquisition', async () => {
+  for (const invalidation of ['release', 'cleanup', 'none']) {
+    let resolveStream;
+    const lateStream = createStream(`late-${invalidation}`);
+    await withAudioIO({
+      navigator: {
+        getUserMediaQueue: [new Promise(resolve => { resolveStream = resolve; })]
+      }
+    }, async ({ manager }) => {
+      const pending = manager.beginReacquireAudioInput({
+        requireVisible: false,
+        preferences: { inputDeviceId: 'saved-device' }
+      });
+      if (invalidation === 'release') {
+        manager.releaseAudioInput({ reason: 'test-release' });
+      } else if (invalidation === 'cleanup') {
+        manager.cleanupAudio();
+      } else {
+        const snapshot = await manager.beginReacquireAudioInput({
+          requireVisible: false,
+          preferences: { inputDeviceId: NO_AUDIO_INPUT_DEVICE_ID }
+        });
+        assert.equal(snapshot.state, 'not-configured');
+      }
+      resolveStream(lateStream);
+      await assert.rejects(pending, { name: 'AbortError' });
+      assert.equal(lateStream.tracks[0].stopped, true);
+      assert.equal(manager.inputStream, null);
+      assert.notEqual(manager.getInputSnapshot().state, 'live');
+    });
+  }
+
+  let resolveInitialStream;
+  const resetStream = createStream('late-initialization');
+  await withAudioIO({
+    navigator: {
+      getUserMediaQueue: [new Promise(resolve => { resolveInitialStream = resolve; })]
+    }
+  }, async ({ manager }) => {
+    const initialization = manager.initAudioInput({ inputDeviceId: 'saved-device' });
+    manager.cleanupAudio();
+    resolveInitialStream(resetStream);
+    assert.equal(await initialization, '');
+    assert.equal(resetStream.tracks[0].stopped, true);
+    assert.equal(manager.inputStream, null);
+    assert.equal(manager.getInputSnapshot().state, 'released');
+  });
+});
+
+test('adopting a replacement input releases the previous live stream', async () => {
+  await withAudioIO({}, async ({ manager, calls }) => {
+    const firstStream = createStream('old-live');
+    const firstSource = manager._adoptInputStream(firstStream);
+    const secondStream = createStream('new-live');
+
+    const secondSource = manager._adoptInputStream(secondStream, { adoptPipelineSource: false });
+
+    assert.notEqual(secondSource, firstSource);
+    assert.equal(firstStream.tracks[0].stopped, true);
+    assert.equal(secondStream.tracks[0].stopped, false);
+    assert.equal(manager.inputStream, secondStream);
+    assert.ok(calls.some(call => call[0] === 'disconnect' && call[1] === 'mediaStreamSource'));
   });
 });

@@ -350,6 +350,8 @@ function createHarness(options = {}) {
         options.connectSourceThrowsOnce = false;
         throw new Error('connect once failed');
       }
+      if (options.connectSourceReturnsFalse) return false;
+      return true;
     },
     disconnectSourceFromPipeline(source) {
       calls.push(['disconnectSourceFromPipeline', source?.name]);
@@ -420,6 +422,98 @@ function setPreparedNextBuffer(manager, track, buffer, targetIndex = null) {
   };
 }
 
+function setConnectedMediaSource(harness, name = 'mediaSource') {
+  const source = createNode(harness.calls, name);
+  harness.manager.mediaSource = source;
+  harness.manager.mediaSourceGeneration++;
+  return source;
+}
+
+test('playback resume kind follows the mixed-input preference', async () => {
+  await withAudioContextGlobals({
+    electronIntegration: { audioPreferences: { useInputWithPlayer: true } }
+  }, async ({ calls }) => {
+    const harness = createHarness({
+      calls,
+      audioManager: {
+        powerPolicyController: {
+          enabled: true,
+          async ensureActive(kind) {
+            calls.push(['ensureActive', kind]);
+          }
+        }
+      }
+    });
+
+    await harness.manager.resumePlaybackAudioContext();
+    assert.deepEqual(calls.filter(call => call[0] === 'ensureActive'), [
+      ['ensureActive', 'mixed-play']
+    ]);
+
+    window.electronIntegration.audioPreferences.useInputWithPlayer = false;
+    await harness.manager.resumePlaybackAudioContext();
+    assert.deepEqual(calls.filter(call => call[0] === 'ensureActive'), [
+      ['ensureActive', 'mixed-play'],
+      ['ensureActive', 'player-only-play']
+    ]);
+  });
+});
+
+test('automatic playback checks active state without entering the gesture resume path', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    const harness = createHarness({
+      calls,
+      audioManager: {
+        powerPolicyController: {
+          enabled: true,
+          async ensureActive() {
+            calls.push(['unexpectedGestureResume']);
+            return true;
+          },
+          async ensureActiveForAutomaticPlayback() {
+            calls.push(['ensureActiveForAutomaticPlayback']);
+            return false;
+          }
+        }
+      }
+    });
+
+    assert.equal(await harness.manager.resumePlaybackAudioContext(false), false);
+    assert.deepEqual(calls.filter(call => call[0].includes('Active') || call[0].includes('Gesture')), [
+      ['ensureActiveForAutomaticPlayback']
+    ]);
+  });
+});
+
+test('power source status reflects the current connected player source', () => {
+  const connectedSources = new Set();
+  const harness = createHarness({
+    isPlaying: true,
+    playbackMode: 'bufferSource',
+    audioManager: {
+      isSourceConnectedToPipeline(source) { return connectedSources.has(source); }
+    }
+  });
+  const source = createNode(harness.calls, 'current-player-source');
+  harness.manager.currentBufferSource = source;
+
+  assert.deepEqual(harness.manager.getPowerSourceStatus(), {
+    state: 'disconnected',
+    sourcePresent: true
+  });
+  connectedSources.add(source);
+  assert.deepEqual(harness.manager.getPowerSourceStatus(), {
+    state: 'connected',
+    sourcePresent: true
+  });
+  harness.state.isPlaying = false;
+  harness.state.isPaused = true;
+  assert.deepEqual(harness.manager.getPowerSourceStatus(), {
+    state: 'not-required',
+    sourcePresent: false
+  });
+});
+
 test('core graph connections and source management preserve playback wiring', async () => {
   await withAudioContextGlobals({}, async ({ calls }) => {
     const harness = createHarness({ calls });
@@ -431,27 +525,97 @@ test('core graph connections and source management preserve playback wiring', as
     assert.equal(audioManager.sourceNode, silentGain);
     assert.equal(audioManager.ioManager.sourceNode, silentGain);
 
-    manager.connectBufferSource(createNode(calls, 'bufferA'));
+    calls.length = 0;
+    const centralSilent = createHarness({ calls });
+    const runningSilentSource = createNode(calls, 'runningSilentSource');
+    centralSilent.audioManager.ioManager.ensureSilentSourceFallback = () => {
+      calls.push(['io.ensureSilentSourceFallback']);
+      centralSilent.audioManager.ioManager.sourceNode = runningSilentSource;
+      return runningSilentSource;
+    };
+    const maintainedSource = centralSilent.manager.createSilentGain();
+    assert.equal(maintainedSource, runningSilentSource);
+    assert.equal(calls.some(call => call[0] === 'io.ensureSilentSourceFallback'), true);
+    assert.equal(calls.some(call => call[0] === 'connectSourceToPipeline' &&
+      call[1] === 'runningSilentSource'), true);
+    assert.equal(calls.some(call => call[0] === 'audioContext.createGain'), false);
+
+    calls.length = 0;
+    assert.equal(
+      centralSilent.manager.connectBufferSource(createNode(calls, 'centralBuffer')),
+      true
+    );
+    const silentConnectIndex = calls.findIndex(call =>
+      call[0] === 'connectSourceToPipeline' && call[1] === 'runningSilentSource');
+    const oldInputDisconnectIndex = calls.findIndex(call =>
+      call[0] === 'disconnectSourceFromPipeline' && call[1] === 'originalSource');
+    const playerConnectIndex = calls.findIndex(call =>
+      call[0] === 'connectSourceToPipeline' && call[1] === 'centralBuffer');
+    assert.ok(silentConnectIndex >= 0 && silentConnectIndex < oldInputDisconnectIndex);
+    assert.ok(oldInputDisconnectIndex < playerConnectIndex);
+
+    const rejectedSilent = createHarness({ calls, connectSourceReturnsFalse: true });
+    const rejectedSilentSource = createNode(calls, 'rejectedSilentSource');
+    rejectedSilent.audioManager.ioManager.ensureSilentSourceFallback = () => rejectedSilentSource;
+    assert.equal(rejectedSilent.manager.createSilentGain(), null);
+    calls.length = 0;
+    assert.equal(
+      rejectedSilent.manager.connectBufferSource(createNode(calls, 'rejectedBuffer')),
+      false
+    );
+    assert.equal(calls.some(call => call[0] === 'disconnectSourceFromPipeline' &&
+      call[1] === 'originalSource'), false);
+    assert.notEqual(rejectedSilent.audioManager.sourceNode?.name, 'rejectedBuffer');
+
+    calls.length = 0;
+    const alreadyConnected = createNode(calls, 'alreadyConnected');
+    window.electronIntegration.audioPreferences = { useInputWithPlayer: true };
+    const canonicalHarness = createHarness({
+      calls,
+      audioManager: {
+        isSourceConnectedToPipeline: source => source === alreadyConnected,
+        connectSourceToPipeline() {
+          calls.push(['unexpectedCanonicalReconnect']);
+          return false;
+        }
+      }
+    });
+    assert.equal(canonicalHarness.manager.replaceCanonicalInputSource(alreadyConnected), true);
+    assert.equal(calls.some(call => call[0] === 'unexpectedCanonicalReconnect'), false);
+    window.electronIntegration.audioPreferences = { useInputWithPlayer: false };
+
+    assert.equal(manager.connectBufferSource(createNode(calls, 'bufferA')), true);
     assert.equal(calls.some(call => call[0] === 'connectSourceToPipeline' && call[1] === 'bufferA'), true);
     assert.equal(calls.some(call => call[0] === 'disconnectSourceFromPipeline' &&
       call[1] === 'originalSource'), true);
 
     window.electronIntegration.audioPreferences = { useInputWithPlayer: true };
-    manager.connectBufferSource(createNode(calls, 'bufferB'));
+    assert.equal(manager.connectBufferSource(createNode(calls, 'bufferB')), true);
     assert.equal(calls.some(call => call[0] === 'connectSourceToPipeline' && call[1] === 'bufferB'), true);
 
     const noWorklet = createHarness({ calls, noWorklet: true });
-    noWorklet.manager.connectBufferSource(createNode(calls, 'bufferC'));
+    assert.equal(noWorklet.manager.connectBufferSource(createNode(calls, 'bufferC')), false);
     assert.equal(calls.some(call => call[0] === 'console.warn'), true);
 
     const mediaSource = createNode(calls, 'mediaA');
     window.electronIntegration.audioPreferences = { useInputWithPlayer: false };
     const retryHarness = createHarness({ calls, connectSourceThrowsOnce: true });
-    retryHarness.manager.connectMediaSource(mediaSource);
-    assert.equal(calls.filter(call => call[0] === 'connectSourceToPipeline' && call[1] === 'mediaA').length, 2);
+    assert.equal(retryHarness.manager.connectMediaSource(mediaSource), false);
+    assert.equal(calls.filter(call => call[0] === 'connectSourceToPipeline' && call[1] === 'mediaA').length, 1);
 
     const innerFail = createHarness({ calls, connectSourceThrows: true });
-    innerFail.manager.connectMediaSource(createNode(calls, 'mediaB', { disconnectThrows: true }));
+    assert.equal(
+      innerFail.manager.connectMediaSource(
+        createNode(calls, 'mediaB', { disconnectThrows: true })
+      ),
+      false
+    );
+
+    const rejectedBuffer = createHarness({ calls, connectSourceReturnsFalse: true });
+    assert.throws(
+      () => rejectedBuffer.manager.createBufferSource({ duration: 1 }, 1),
+      /pipeline-source-connect-failed/
+    );
 
     window.electronIntegration.audioPreferences = { useInputWithPlayer: false };
     const maintained = createHarness({ calls });
@@ -678,6 +842,13 @@ test('audio element setup, metadata, media session, and fallback naming stay syn
 
     manager.setupAudioElement({ name: 'No Source' });
 
+    const rejectedSetup = createHarness({ calls, connectSourceReturnsFalse: true });
+    assert.equal(
+      rejectedSetup.manager.setupAudioElement({ name: 'Rejected', path: '/rejected.wav' }),
+      false
+    );
+    assert.equal(rejectedSetup.state.currentTrack, null);
+
     manager.readID3Tags(new FakeFile('bad.mp3'), 0);
     manager.readID3Tags(new FakeFile('tag.mp3'), 2);
 
@@ -788,6 +959,7 @@ test('playback controls operate on buffer sources and audio elements', async () 
 
     const audioElement = new Audio();
     const elementHarness = createHarness({ calls, playbackMode: 'audioElement', audioElement });
+    setConnectedMediaSource(elementHarness, 'playbackMediaSource');
     await elementHarness.manager.play();
     await elementHarness.manager.pause();
     await elementHarness.manager.seek(6);
@@ -797,9 +969,195 @@ test('playback controls operate on buffer sources and audio elements', async () 
     const rejectElement = new Audio();
     rejectElement.playReject = new Error('play failed');
     const rejectHarness = createHarness({ calls, playbackMode: 'audioElement', audioElement: rejectElement });
+    setConnectedMediaSource(rejectHarness, 'rejectMediaSource');
     await rejectHarness.manager.playAudioElement();
     assert.equal(rejectHarness.state.isPaused, true);
     await createHarness({ calls, playbackMode: 'audioElement', audioElement: null }).manager.playAudioElement();
+  });
+});
+
+test('a stale audio element play completion cannot pause newer playback', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    const audioElement = new Audio();
+    const pendingPlays = [];
+    audioElement.play = () => new Promise((resolve, reject) => {
+      pendingPlays.push({
+        resolve() {
+          audioElement.paused = false;
+          resolve();
+        },
+        reject
+      });
+    });
+    const harness = createHarness({ calls, playbackMode: 'audioElement', audioElement });
+    setConnectedMediaSource(harness, 'staleCompletionMediaSource');
+
+    const stalePlay = harness.manager.playAudioElement();
+    await flushMicrotasks();
+    assert.equal(pendingPlays.length, 1);
+
+    await harness.manager.pause();
+    const pauseCount = calls.filter(call => call[0] === 'audio.pause').length;
+    assert.equal(pauseCount, 1);
+
+    const currentPlay = harness.manager.playAudioElement();
+    await flushMicrotasks();
+    assert.equal(pendingPlays.length, 2);
+    pendingPlays[1].resolve();
+    assert.equal(await currentPlay, true);
+    assert.equal(harness.state.isPlaying, true);
+    assert.equal(audioElement.paused, false);
+
+    pendingPlays[0].resolve();
+    assert.equal(await stalePlay, false);
+    assert.equal(audioElement.paused, false);
+    assert.equal(calls.filter(call => call[0] === 'audio.pause').length, pauseCount);
+  });
+});
+
+test('a stale audio element play rejection cannot clear a newer pending playback', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    const audioElement = new Audio();
+    const pendingPlays = [];
+    audioElement.play = () => new Promise((resolve, reject) => {
+      pendingPlays.push({
+        resolve() {
+          audioElement.paused = false;
+          resolve();
+        },
+        reject
+      });
+    });
+    const harness = createHarness({ calls, playbackMode: 'audioElement', audioElement });
+    setConnectedMediaSource(harness, 'staleRejectionMediaSource');
+
+    const stalePlay = harness.manager.playAudioElement();
+    await flushMicrotasks();
+    await harness.manager.pause();
+
+    const currentPlay = harness.manager.playAudioElement();
+    await flushMicrotasks();
+    assert.equal(pendingPlays.length, 2);
+    const currentActivation = harness.manager.pendingMediaActivation;
+    const pauseCount = calls.filter(call => call[0] === 'audio.pause').length;
+    assert.ok(currentActivation);
+    assert.equal(pauseCount, 1);
+
+    const abortError = new Error('stale play interrupted');
+    abortError.name = 'AbortError';
+    pendingPlays[0].reject(abortError);
+    assert.equal(await stalePlay, false);
+    assert.equal(harness.manager.pendingMediaActivation, currentActivation);
+    assert.equal(calls.filter(call => call[0] === 'audio.pause').length, pauseCount);
+
+    pendingPlays[1].resolve();
+    assert.equal(await currentPlay, true);
+    assert.equal(harness.state.isPlaying, true);
+    assert.equal(audioElement.paused, false);
+  });
+});
+
+test('staged buffer playback stays private until the source-bound fresh-render commit', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    let releaseProof;
+    const proof = new Promise(resolve => { releaseProof = resolve; });
+    let capturedIntent = null;
+    let fadeInToken = null;
+    const harness = createHarness({
+      calls,
+      playbackMode: 'bufferSource',
+      isPaused: true,
+      currentTrackPosition: 3,
+      currentTrack: { name: 'Staged', path: '/staged.wav' },
+      audioManager: {
+        isStagedAudioActivationEnabled: () => true,
+        async stageAudioActivation(intent) {
+          capturedIntent = intent;
+          return { generation: 4 };
+        },
+        fadeOutOutput: () => 17,
+        fadeInOutputForToken(token) { fadeInToken = token; },
+        isSourceConnectedToPipeline: () => true,
+        async activateStagedAudioCandidate(stage, callbacks) {
+          const candidate = await callbacks.acquire(stage);
+          await proof;
+          if (!callbacks.isCandidateCurrent(candidate, stage)) {
+            await callbacks.cleanup(candidate, stage);
+            return { activated: false };
+          }
+          callbacks.commit(candidate, stage);
+          return { activated: true };
+        }
+      }
+    });
+    harness.manager.currentBuffer = { duration: 12 };
+    harness.manager.activeSourceGeneration = 9;
+
+    const playing = harness.manager.playBufferSource();
+    for (let i = 0; i < 5 && !harness.manager.pendingBufferSource; i++) {
+      await flushMicrotasks();
+    }
+    assert.equal(harness.state.isPlaying, false);
+    assert.equal(harness.manager.currentBufferSource, null);
+    assert.ok(harness.manager.pendingBufferSource);
+    assert.equal(capturedIntent.intentIdentity.sourceGeneration, 9);
+    assert.equal(capturedIntent.intentIdentity.intendedPosition, 3);
+
+    releaseProof();
+    assert.equal(await playing, true);
+    assert.equal(harness.state.isPlaying, true);
+    assert.ok(harness.manager.currentBufferSource);
+    assert.equal(harness.manager.pendingBufferSource, null);
+    assert.equal(fadeInToken, 17);
+  });
+});
+
+test('a late staged buffer source cannot publish and restores its owned output fade', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    let releaseProof;
+    const proof = new Promise(resolve => { releaseProof = resolve; });
+    let cleaned = 0;
+    let restoredOutputToken = null;
+    const harness = createHarness({
+      calls,
+      playbackMode: 'bufferSource',
+      currentTrack: { name: 'Old', path: '/old.wav' },
+      audioManager: {
+        isStagedAudioActivationEnabled: () => true,
+        stageAudioActivation: async () => ({ generation: 1 }),
+        fadeOutOutput: () => 3,
+        fadeInOutputForToken(token) { restoredOutputToken = token; },
+        isSourceConnectedToPipeline: () => true,
+        async activateStagedAudioCandidate(stage, callbacks) {
+          const candidate = await callbacks.acquire(stage);
+          await proof;
+          if (!callbacks.isCandidateCurrent(candidate, stage)) {
+            cleaned++;
+            await callbacks.cleanup(candidate, stage);
+            return { activated: false };
+          }
+          callbacks.commit(candidate, stage);
+          return { activated: true };
+        }
+      }
+    });
+    harness.manager.currentBuffer = { duration: 8 };
+    harness.manager.activeSourceGeneration = 2;
+
+    const playing = harness.manager.playBufferSource();
+    for (let i = 0; i < 5 && !harness.manager.pendingBufferSource; i++) {
+      await flushMicrotasks();
+    }
+    harness.manager.currentBuffer = { duration: 30 };
+    harness.manager.activeSourceGeneration = 3;
+    releaseProof();
+
+    assert.equal(await playing, false);
+    assert.equal(cleaned, 1);
+    assert.equal(harness.state.isPlaying, false);
+    assert.equal(harness.manager.currentBufferSource, null);
+    assert.equal(harness.manager.pendingBufferSource, null);
+    assert.equal(restoredOutputToken, 3);
   });
 });
 
@@ -830,10 +1188,14 @@ test('track-ended handling, monitoring, and load helpers advance playback state'
     const harness = createHarness({ calls, playlist, currentTrackIndex: 1, repeatMode: 'ALL' });
     const { manager, state } = harness;
 
-    manager.seamlessTransition = async track => calls.push(['seamlessTransition', track.name]);
+    manager.seamlessTransition = async (track, targetIndex, userInitiated) =>
+      calls.push(['seamlessTransition', track.name, targetIndex, userInitiated]);
     state.repeatMode = 'ONE';
     manager.handleTrackEnded();
-    assert.equal(calls.some(call => call[0] === 'seamlessTransition'), true);
+    assert.deepEqual(
+      calls.find(call => call[0] === 'seamlessTransition'),
+      ['seamlessTransition', 'Two', 1, false]
+    );
 
     state.repeatMode = 'ALL';
     const repeatAllEndedCalls = calls.filter(call => call[0] === 'playback.onTrackEnded').length;
@@ -860,6 +1222,21 @@ test('track-ended handling, monitoring, and load helpers advance playback state'
     assert.equal(calls.filter(call => call[0] === 'playback.onTrackEnded').length, shuffleEndedCalls + 1);
     assert.equal(shuffleRepeatAll.state.currentTrackIndex, 2);
     assert.equal(calls.some(call => call[0] === 'unexpectedShuffleRepeatAllTransition'), false);
+
+    const fallbackRepeatAll = createHarness({
+      calls,
+      playlist,
+      currentTrackIndex: 1,
+      repeatMode: 'ALL'
+    });
+    fallbackRepeatAll.audioPlayer.playbackManager = { playlist };
+    fallbackRepeatAll.manager.transitionToNextTrack = async (track, targetIndex, userInitiated) =>
+      calls.push(['fallbackRepeatAllTransition', track.name, targetIndex, userInitiated]);
+    fallbackRepeatAll.manager.handleTrackEnded();
+    assert.deepEqual(
+      calls.find(call => call[0] === 'fallbackRepeatAllTransition'),
+      ['fallbackRepeatAllTransition', 'One', 0, false]
+    );
 
     state.repeatMode = 'OFF';
     state.currentTrackIndex = 1;
@@ -1338,6 +1715,38 @@ test('disconnect invalidates pending metadata so late ID3 artwork is ignored', a
     assert.equal(state.artworkUrl, '');
     assert.equal(manager.currentArtworkURL, null);
     assert.equal(objectUrls.some(call => call[0] === 'create'), false);
+  });
+});
+
+test('disconnect restores a silent fallback source when no canonical input exists', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    window.electronIntegration.audioPreferences = { useInputWithPlayer: false };
+    const harness = createHarness({ calls, noOriginalSource: true });
+    harness.audioManager.ioManager.inputSourceNode = null;
+    const staleNode = createNode(calls, 'destroyedPlayerSource');
+    harness.audioManager.sourceNode = staleNode;
+
+    harness.manager.disconnect();
+
+    assert.notEqual(harness.audioManager.sourceNode, staleNode);
+    assert.equal(harness.audioManager.sourceNode.name, 'gain');
+    assert.equal(harness.manager.originalSourceNode, harness.audioManager.sourceNode);
+    assert.equal(calls.some(call => call[0] === 'node.connect' &&
+      call[1] === 'gain' && call[2] === 'worklet'), true);
+  });
+});
+
+test('disconnect never publishes a canonical input that failed to reconnect', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    window.electronIntegration.audioPreferences = { useInputWithPlayer: false };
+    const harness = createHarness({ calls, connectSourceReturnsFalse: true });
+    const canonicalInput = harness.manager.originalSourceNode;
+
+    harness.manager.disconnect();
+
+    assert.notEqual(harness.audioManager.sourceNode, canonicalInput);
+    assert.equal(harness.audioManager.sourceNode.name, 'gain');
+    assert.equal(harness.manager.originalSourceNode, harness.audioManager.sourceNode);
   });
 });
 

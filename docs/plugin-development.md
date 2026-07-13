@@ -157,6 +157,21 @@ node tools/dsp-parity/generate.mjs --type MyPlugin
 node tools/dsp-parity/run.mjs --type MyPlugin --self-check
 ```
 
+The `--type` command is for focused iteration and does not update the shared PluginBase
+golden guard. If PluginBase or another shared golden digest input changes, regenerate the
+entire set atomically before handoff:
+
+```bash
+node tools/dsp-parity/generate.mjs --all
+node tools/dsp-parity/run.mjs --self-check
+```
+
+`--all` writes and reads back every golden set in a temporary directory on the same
+filesystem first. Only after every target and the shared guard are ready does it promote
+the complete result. A generation or promotion failure leaves the previously committed
+goldens and guard unchanged when filesystem rollback succeeds. Include every resulting
+golden and guard change together.
+
 Each plugin's committed `golden/` directory must remain within the 2 MiB budget. A golden
 case must contain finite output unless the current plugin contract intentionally specifies
 otherwise and the tolerance policy can evaluate it.

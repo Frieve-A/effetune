@@ -238,10 +238,7 @@ export class OfflineProcessor {
             if (!moduleInfo) {
                 const pathname = location?.pathname || '';
                 const basePath = pathname.substring(0, pathname.lastIndexOf('/'));
-                moduleInfo = await this.dspDependencies.loadDspModule({
-                    basePath,
-                    debug: Boolean(preflightRollout.debug)
-                });
+                moduleInfo = await this.dspDependencies.loadDspModule({ basePath });
             }
             if (!moduleInfo) return null;
 
@@ -269,7 +266,6 @@ export class OfflineProcessor {
             const moduleOrBytes = moduleInfo.module || moduleInfo.bytes;
             if (!moduleOrBytes) throw new Error('loaded module has no executable payload');
             session.binding = await this.dspDependencies.instantiateDsp(moduleOrBytes, {
-                debug: Boolean(rollout.debug),
                 warning: this.dspDependencies.warning
             });
             if (!session.binding?.createEngine()) throw new Error('engine creation failed');

@@ -94,6 +94,7 @@ export class MediaSessionManager {
     });
     this.setActionHandler(session, 'seekto', (details = {}) => {
       if (Number.isFinite(details.seekTime)) {
+        this.audioPlayer?.resumeAudioContextInGesture?.();
         return this.runPlayerCommand(() => this.audioPlayer?.contextManager?.seek?.(details.seekTime));
       }
       return undefined;
@@ -132,6 +133,7 @@ export class MediaSessionManager {
   seekBy(offsetSeconds) {
     const state = this.getState();
     const position = Number(state.currentTrackPosition) || 0;
+    this.audioPlayer?.resumeAudioContextInGesture?.();
     return this.runPlayerCommand(() => this.audioPlayer?.contextManager?.seek?.(position + offsetSeconds));
   }
 

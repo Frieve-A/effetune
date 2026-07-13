@@ -1,6 +1,6 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:9615e1e54171bea825c3a36f99b12ec6198452285e2fab588aedfce1323bce64",
+  "sourceDigest": "sha256:7fb996f3d3b3b97fc76c8c21593ce143d405458d3c1db92f42df37a8a0c904a6",
   "emsdkVersion": "6.0.2",
   "kernels": [
     {

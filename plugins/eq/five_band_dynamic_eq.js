@@ -1220,9 +1220,9 @@ class FiveBandDynamicEQ extends PluginBase {
                 return;
             }
             this._drawGraph();
-            this.animationFrameId = requestAnimationFrame(animate);
+            this.animationFrameId = this.requestPowerAnimationFrame(animate);
         };
-        this.animationFrameId = requestAnimationFrame(animate);
+        this.animationFrameId = this.requestPowerAnimationFrame(animate);
     }
 
     stopAnimation() {

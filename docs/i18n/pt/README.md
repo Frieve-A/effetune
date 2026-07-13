@@ -31,6 +31,7 @@ Sem mitos audiófilos, apenas pura ciência.
 - Biblioteca de música para navegar por subpastas locais, metadados e playlists
 - Medição e correção de resposta em frequência para calibração do sistema
 - Processamento e saída multicanal
+- Economia de energia nas versões Web/PWA e desktop, com tratamento configurável do silêncio e do tempo de retenção da entrada de áudio
 
 ## Guia de Configuração
 

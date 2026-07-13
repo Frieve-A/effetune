@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import {
+  resetWebAppConfigRuntimeForTests,
+  setWebAppConfigRuntimeForTests,
+  WebAppConfigRuntime
+} from '../../js/electron/webSettingsStorage.js';
+import {
+  PowerConfigStore,
+  SerializedMemoryPowerConfigBackend
+} from '../../js/electron/power-config-store.js';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
 
 function createConsole(calls) {
@@ -65,6 +74,11 @@ class FakeElement {
       this.eventListeners.set(type, []);
     }
     this.eventListeners.get(type).push(listener);
+  }
+
+  setAttribute(name, value) {
+    this.attributes[name] = value;
+    this[name] = value;
   }
 
   dispatchEvent(type, event = {}) {
@@ -329,17 +343,37 @@ async function withIntegrationGlobals(options, callback) {
     setTimeout: timers.setTimeout,
     console: createConsole(calls)
   }, async () => {
-    const module = await importFreshIntegration();
-    const instance = new module.ElectronIntegration();
-    await flushMicrotasks();
-    await callback({
-      instance,
-      windowRef,
-      documentRef,
-      navigatorRef,
-      timers,
-      calls
-    });
+    let webRuntime = null;
+    if (!options.electronAPI && !String(navigatorRef.userAgent).toLowerCase().includes(' electron/')) {
+      const store = new PowerConfigStore({
+        indexedDB: null,
+        backend: new SerializedMemoryPowerConfigBackend(),
+        writerInstanceId: 'electron-integration-web-test'
+      });
+      webRuntime = new WebAppConfigRuntime({
+        store,
+        storage: null,
+        windowRef,
+        documentRef
+      });
+      setWebAppConfigRuntimeForTests(webRuntime);
+    }
+    try {
+      const module = await importFreshIntegration();
+      const instance = new module.ElectronIntegration();
+      await flushMicrotasks();
+      await callback({
+        instance,
+        windowRef,
+        documentRef,
+        navigatorRef,
+        timers,
+        calls
+      });
+    } finally {
+      resetWebAppConfigRuntimeForTests();
+      await webRuntime?.close();
+    }
   });
 }
 
@@ -365,9 +399,22 @@ test('web environment delegates safely and detects Electron changes', async () =
     assert.equal(instance.processAudioFiles(), undefined);
     assert.equal(instance.getAudioMimeType('song.FLAC'), 'audio/flac');
     assert.equal(await instance.getAppVersion(), '');
-    assert.deepEqual(await instance.loadConfig(), {});
+    assert.deepEqual(await instance.loadConfig(), {
+      powerSaving: {
+        mode: 'balanced',
+        silenceThresholdDb: -80,
+        fullSuspendDelaySeconds: 300
+      }
+    });
     await instance.saveConfig({ language: 'en' });
-    assert.deepEqual(windowRef.appConfig, { language: 'en' });
+    assert.deepEqual(windowRef.appConfig, {
+      powerSaving: {
+        mode: 'balanced',
+        silenceThresholdDb: -80,
+        fullSuspendDelaySeconds: 300
+      },
+      language: 'en'
+    });
     assert.equal(await instance.showConfigDialog(), undefined);
 
     assert.equal(instance.isElectronEnvironment(), false);
@@ -377,9 +424,32 @@ test('web environment delegates safely and detects Electron changes', async () =
     windowRef.electronAPI = {};
     assert.equal(instance.isElectronEnvironment(), true);
 
+    const publishedConfig = windowRef.appConfig;
     instance.config = null;
-    await instance.saveConfig({ restored: true });
-    assert.deepEqual(windowRef.appConfig, { restored: true });
+    assert.equal(await instance.saveConfig({ restored: true }), false);
+    assert.equal(instance.config, null);
+    assert.equal(windowRef.appConfig, publishedConfig);
+  });
+});
+
+test('Electron save failures do not publish an unpersisted config', async () => {
+  const calls = [];
+  const electronAPI = createElectronAPI(calls, {
+    config: { language: 'en', startupView: 'effects' },
+    saveConfigResult: { success: false, error: 'disk full' }
+  });
+
+  await withIntegrationGlobals({ electronAPI, calls }, async ({ instance, windowRef }) => {
+    windowRef.electronIntegration = instance;
+    const initialConfig = { ...instance.config };
+
+    assert.equal(await instance.saveConfig({ language: 'ja' }), false);
+    assert.deepEqual(instance.config, initialConfig);
+    assert.deepEqual(windowRef.appConfig, initialConfig);
+    assert.deepEqual(calls.filter(call => call[0] === 'saveConfig'), [[
+      'saveConfig',
+      { language: 'ja', startupView: 'effects' }
+    ]]);
   });
 });
 

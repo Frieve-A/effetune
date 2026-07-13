@@ -6,6 +6,7 @@ class NoiseBlenderPlugin extends PluginBase {
         this.nt = 'pink';    // nt: Noise Type - 'white', 'pink', or 'brown'
         this.lv = -36;       // lv: Level (formerly level) - -96 to 0 dB
         this.pc = true;      // pc: Per Channel (formerly perChannel) - true or false
+        this.temporalCapability = 'must-process';
         
         // Initialize noise generation state
         this.registerProcessor(`
@@ -195,6 +196,10 @@ class NoiseBlenderPlugin extends PluginBase {
             // Return the modified data buffer
             return data;
         `);
+    }
+
+    getTemporalCapability() {
+        return this.enabled !== false && this.lv > -96 ? 'must-process' : 'reset-on-resume';
     }
 
     // Get current parameters

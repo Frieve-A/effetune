@@ -11,6 +11,7 @@ lang: en
 - Added playback of audio tracks in MP4 files without displaying video
 - Added Music Library browsing by subfolder within each indexed music folder
 - Added a setting to choose the initial Music Library view
+- Added advanced Web/PWA power saving with Monitoring/Suspended states, configurable silence detection, and optional audio-input release
 - Various minor improvements
 
 ### Version 2.0.0 (Jul 10, 2026)

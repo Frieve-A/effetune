@@ -39,8 +39,15 @@ export class AudioPlayerUI {
     this.libraryContextMenu = null;
     this.libraryContextMenuCleanup = null;
     this.libraryContextMenuReturnFocus = null;
+    this.playlistSelectionGeneration = 0;
+    this.playlistSelectionIntent = null;
     this.updateInterval = null;
+    this.positionRaf = null;
+    this._powerUiEnabled = true;
     this.isDisposed = false;
+    this.documentRef = globalThis.document || null;
+    this.onVisibilityChange = () => this.refreshPowerUiScheduling();
+    this.documentRef?.addEventListener?.('visibilitychange', this.onVisibilityChange);
     
     // State change listeners
     this.stateListeners = [];
@@ -91,11 +98,7 @@ export class AudioPlayerUI {
     });
     
     addStateListener('currentTrackPosition', (position) => {
-      requestAnimationFrame(() => {
-        if (!this.isDisposed) {
-          this.updateTimeDisplay();
-        }
-      });
+      this.schedulePositionUpdate();
     });
     
     addStateListener('currentTrackDuration', (duration) => {
@@ -104,6 +107,7 @@ export class AudioPlayerUI {
     
     addStateListener('isPlaying', (isPlaying) => {
       this.updatePlayPauseButton();
+      this.refreshPowerUiScheduling();
     });
     
     addStateListener('isPaused', (isPaused) => {
@@ -114,6 +118,40 @@ export class AudioPlayerUI {
       this.updateTimeDisplay();
       this.updatePlayPauseButton();
     });
+  }
+
+  canRunPlayerUi() {
+    const state = this.audioPlayer.stateManager?.getStateSnapshot?.();
+    const context = this.audioPlayer.audioManager?.audioContext || this.audioPlayer.audioContext;
+    return !this.isDisposed && this._powerUiEnabled && !this.documentRef?.hidden &&
+      state?.isPlaying === true && context?.state === 'running';
+  }
+
+  schedulePositionUpdate() {
+    if (!this.canRunPlayerUi() || this.positionRaf !== null) return;
+    this.positionRaf = requestAnimationFrame(() => {
+      this.positionRaf = null;
+      if (!this.canRunPlayerUi()) return;
+      this.audioPlayer.audioManager?.incrementPowerDiagnostic?.('playerPositionRafCallbacks');
+      this.updateTimeDisplay();
+    });
+  }
+
+  setPowerUiEnabled(enabled) {
+    this._powerUiEnabled = enabled !== false;
+    this.refreshPowerUiScheduling();
+  }
+
+  refreshPowerUiScheduling() {
+    if (this.canRunPlayerUi()) {
+      if (!this.updateInterval) this.startUpdateInterval();
+      return;
+    }
+    this.stopUpdateInterval();
+    if (this.positionRaf !== null) {
+      cancelAnimationFrame(this.positionRaf);
+      this.positionRaf = null;
+    }
   }
 
   removeStateListeners() {
@@ -246,6 +284,7 @@ export class AudioPlayerUI {
         if (duration > 0) {
           const seekTime = (this.seekBar.value / 100) * duration;
           if (isFinite(seekTime)) {
+            this.audioPlayer.resumeAudioContextInGesture?.();
             this.audioPlayer.contextManager.seek(seekTime);
             this.updateTimeDisplay();
           }
@@ -257,6 +296,7 @@ export class AudioPlayerUI {
             !this.audioPlayer.audioElement.paused) {
           const seekTime = (this.seekBar.value / 100) * this.audioPlayer.audioElement.duration;
           if (isFinite(seekTime)) {
+            this.audioPlayer.resumeAudioContextInGesture?.();
             this.audioPlayer.contextManager.handleSeek(seekTime, 'user');
             this.updateTimeDisplay();
           }
@@ -320,16 +360,18 @@ export class AudioPlayerUI {
     const state = this.audioPlayer.stateManager?.getStateSnapshot();
     const repeatMode = state?.repeatMode || 'OFF';
     const shuffleMode = state?.shuffleMode || false;
+
+    // Keep the visual state in sync and let CSS render the active face.
+    const repeatActive = repeatMode === 'ALL' || repeatMode === 'ONE';
+    this.repeatButton.setAttribute('data-active', repeatActive ? 'true' : 'false');
     
     // Update repeat button state
     switch (repeatMode) {
       case 'ALL':
         this.repeatButton.innerHTML = PLAYER_ICONS.repeat;
-        this.repeatButton.style.backgroundColor = '#4a9eff'; // Highlight button when active
         break;
       case 'ONE':
         this.repeatButton.innerHTML = PLAYER_ICONS.repeat1;
-        this.repeatButton.style.backgroundColor = '#4a9eff';
         
         // Disable shuffle button in ONE mode
         this.shuffleButton.disabled = true;
@@ -338,7 +380,6 @@ export class AudioPlayerUI {
       case 'OFF':
       default:
         this.repeatButton.innerHTML = PLAYER_ICONS.repeat;
-        this.repeatButton.style.backgroundColor = ''; // Reset button color
         
         // Enable shuffle button
         this.shuffleButton.disabled = false;
@@ -347,11 +388,8 @@ export class AudioPlayerUI {
     }
     
     // Update shuffle button state
-    if (shuffleMode && repeatMode !== 'ONE') {
-      this.shuffleButton.style.backgroundColor = '#4a9eff'; // Highlight button when active
-    } else {
-      this.shuffleButton.style.backgroundColor = ''; // Reset button color
-    }
+    const shuffleActive = shuffleMode && repeatMode !== 'ONE';
+    this.shuffleButton.setAttribute('data-active', shuffleActive ? 'true' : 'false');
   }
 
   /**
@@ -441,6 +479,32 @@ export class AudioPlayerUI {
     return track?.name || '';
   }
 
+  beginPlaylistSelection(shouldPlay) {
+    const generation = ++this.playlistSelectionGeneration;
+    const inheritedPlayIntent = this.playlistSelectionIntent?.shouldPlay === true;
+    const intent = {
+      generation,
+      shouldPlay: shouldPlay || inheritedPlayIntent
+    };
+    this.playlistSelectionIntent = intent;
+    return intent;
+  }
+
+  isCurrentPlaylistSelection(intent) {
+    return this.playlistSelectionIntent === intent &&
+      intent?.generation === this.playlistSelectionGeneration;
+  }
+
+  completePlaylistSelection(intent) {
+    if (!this.isCurrentPlaylistSelection(intent)) return;
+    this.playlistSelectionIntent = null;
+  }
+
+  cancelPlaylistSelectionIntent() {
+    this.playlistSelectionGeneration++;
+    this.playlistSelectionIntent = null;
+  }
+
   updatePlaylistDisplay() {
     if (!this.playlistDisplay || !this.audioPlayer.stateManager) return;
 
@@ -462,13 +526,40 @@ export class AudioPlayerUI {
       item.addEventListener('contextmenu', event => this.openLibraryTrackMenu(event, track));
       item.addEventListener('click', async () => {
         const latestState = this.audioPlayer.stateManager?.getStateSnapshot?.();
+        const selection = this.beginPlaylistSelection(
+          latestState?.isPlaying || window.uiManager?.layoutMode?.isMobile
+        );
+        const shouldPlay = selection.shouldPlay;
+        const gestureResume = shouldPlay
+          ? Promise.resolve(this.audioPlayer.resumeAudioContextInGesture?.() ?? true)
+              .then(value => value !== false, () => false)
+          : null;
+        // Stop the old source before the selected track is published. Loading
+        // and gesture activation continue together after this synchronous handoff.
+        const stopOldPlayback = shouldPlay
+          ? Promise.resolve(this.audioPlayer.stop({
+              preservePlaylistSelectionIntent: true
+            })).then(() => true)
+          : Promise.resolve(true);
         this.audioPlayer.stateManager?.updateState?.({
           currentTrackIndex: index,
           currentTrack: track
         }, 'AudioPlayerUI playlist select');
-        await this.audioPlayer.loadTrack(index);
-        if (latestState?.isPlaying || window.uiManager?.layoutMode?.isMobile) {
-          await this.audioPlayer.play();
+        try {
+          const loadTrack = this.audioPlayer.loadTrack(index);
+          const [loaded, resumeReady] = await Promise.all([
+            loadTrack,
+            shouldPlay ? gestureResume : Promise.resolve(true),
+            stopOldPlayback
+          ]);
+          if (!this.isCurrentPlaylistSelection(selection)) return false;
+          if (shouldPlay && loaded !== false && resumeReady) {
+            const played = await this.audioPlayer.play(false) !== false;
+            return this.isCurrentPlaylistSelection(selection) && played;
+          }
+          return loaded !== false && resumeReady;
+        } finally {
+          this.completePlaylistSelection(selection);
         }
       });
       this.playlistDisplay.appendChild(item);
@@ -802,8 +893,14 @@ export class AudioPlayerUI {
     // Clear any existing interval
     this.stopUpdateInterval();
     
+    if (!this.canRunPlayerUi()) return;
     // Update every 250ms
     this.updateInterval = setInterval(() => {
+      if (!this.canRunPlayerUi()) {
+        this.refreshPowerUiScheduling();
+        return;
+      }
+      this.audioPlayer.audioManager?.incrementPowerDiagnostic?.('playerUiTicks');
       this.updateTimeDisplay();
     }, 250);
   }
@@ -824,6 +921,11 @@ export class AudioPlayerUI {
   removeUI() {
     this.isDisposed = true;
     this.stopUpdateInterval();
+    if (this.positionRaf !== null) {
+      cancelAnimationFrame(this.positionRaf);
+      this.positionRaf = null;
+    }
+    this.documentRef?.removeEventListener?.('visibilitychange', this.onVisibilityChange);
     this.closeLibraryContextMenu();
     this.removeStateListeners();
     

@@ -104,7 +104,7 @@ test('Vinyl Artifacts goldens preserve seeded noise across parameter transitions
     assert.equal(golden.metadata.type, 'VinylArtifactsPlugin');
     assert.equal(
       golden.metadata.jsEngineHash,
-      'eab9d086b22155e71cbfa50044eab3794689d202244558388eb7cafd99c61478'
+      '5c2e5b24e7aae67fd7fc36350980199fead02a82bde07f794d2a4d76d3227085'
     );
     assert.ok(golden.expected.every(Number.isFinite));
   }

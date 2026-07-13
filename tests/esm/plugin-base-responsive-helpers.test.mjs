@@ -70,7 +70,7 @@ class FakeElement {
   }
 }
 
-function loadPluginBase() {
+function loadPluginBase(overrides = {}) {
   const source = fs.readFileSync(new URL('../../plugins/plugin-base.js', import.meta.url), 'utf8');
   const documentRef = {
     createElement(tagName) {
@@ -78,7 +78,7 @@ function loadPluginBase() {
     }
   };
   const context = {
-    window: {},
+    window: overrides.window || {},
     document: documentRef,
     console,
     performance: { now: () => 0 },
@@ -87,7 +87,8 @@ function loadPluginBase() {
       disconnect() {}
     },
     setTimeout,
-    clearTimeout
+    clearTimeout,
+    ...overrides.globals
   };
   vm.runInNewContext(`${source}\nthis.PluginBaseRef = PluginBase;`, context);
   return { PluginBase: context.PluginBaseRef, documentRef };
@@ -267,4 +268,52 @@ test('PluginBase bindGraphPointer handles tap, drag, and cleanup', () => {
   assert.equal(element.eventListeners.get('pointermove').length, 0);
   assert.equal(element.eventListeners.get('pointerup').length, 0);
   assert.equal(element.eventListeners.get('pointercancel').length, 0);
+});
+
+test('PluginBase gates every visual RAF callback and records exact diagnostics', () => {
+  const frames = [];
+  const counters = new Map();
+  const windowRef = {
+    audioManager: {
+      incrementPowerDiagnostic(key) {
+        counters.set(key, (counters.get(key) || 0) + 1);
+      }
+    }
+  };
+  const { PluginBase } = loadPluginBase({
+    window: windowRef,
+    globals: {
+      requestAnimationFrame(callback) {
+        frames.push(callback);
+        return frames.length;
+      }
+    }
+  });
+  const plugin = new PluginBase('Visual Test', 'Power RAF gate');
+  const callbacks = [];
+
+  plugin.animationFrameId = plugin.requestPowerAnimationFrame(
+    timestamp => callbacks.push(timestamp),
+    'analyzer'
+  );
+  frames.shift()(123);
+  assert.deepEqual(callbacks, [123]);
+  assert.equal(counters.get('pluginVisualRafCallbacks'), 1);
+  assert.equal(counters.get('analyzerRafCallbacks'), 1);
+
+  plugin.animationFrameId = plugin.requestPowerAnimationFrame(
+    timestamp => callbacks.push(timestamp)
+  );
+  plugin.setPowerUiEnabled(false);
+  frames.shift()(456);
+  assert.deepEqual(callbacks, [123]);
+  assert.equal(counters.get('pluginVisualRafCallbacks'), 1);
+  assert.equal(plugin.animationFrameId, null);
+  assert.equal(plugin.requestPowerAnimationFrame(() => {}), null);
+  let staticRenders = 0;
+  assert.equal(plugin.renderPowerUiOnce(() => { staticRenders++; }), true);
+  assert.equal(staticRenders, 1);
+  plugin.enabled = false;
+  assert.equal(plugin.renderPowerUiOnce(() => { staticRenders++; }), false);
+  assert.equal(staticRenders, 1);
 });

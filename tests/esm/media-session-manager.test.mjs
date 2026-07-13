@@ -103,6 +103,9 @@ function createHarness(options = {}) {
     },
     playNext() {
       calls.push(['player.next']);
+    },
+    resumeAudioContextInGesture() {
+      calls.push(['player.resumeInGesture']);
     }
   };
   class TestMediaMetadata {
@@ -230,6 +233,7 @@ test('MediaSessionManager routes OS media actions to Player commands', () => {
     ['context.seek', 15],
     ['context.seek', 30]
   ]);
+  assert.equal(calls.filter(call => call[0] === 'player.resumeInGesture').length, 3);
   assert.equal(stateManager.listenerCount('*'), 1);
 });
 

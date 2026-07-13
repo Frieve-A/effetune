@@ -360,13 +360,13 @@ test('showAudioConfigDialog closes the Web dialog before pending audio reset com
 
 test('showAudioConfigDialog localizes Web output support and default option labels', async () => {
   const translations = {
-    'dialog.audioConfig.outputDevice.permissionsPolicyBlocked': 'Permissions-Policy により出力デバイスの選択がブロックされています。',
+    'dialog.audioConfig.outputDevice.secureContextRequired': '安全な接続でのみ出力デバイスを選択できます。',
     'dialog.audioConfig.outputChannels.stereoDefault': '2 - ステレオ (デフォルト)',
     'dialog.audioConfig.sampleRate.default': '{rate} kHz (デフォルト)'
   };
   const harness = createAudioHarness({
     window: {
-      isSecureContext: true
+      isSecureContext: false
     },
     uiManager: {
       t: (key, params = {}) => {
@@ -379,9 +379,6 @@ test('showAudioConfigDialog localizes Web output support and default option labe
     }
   });
   const document = createFakeDocument();
-  document.permissionsPolicy = {
-    allowsFeature: feature => feature !== 'speaker-selection'
-  };
 
   await withGlobals({
     window: harness.window,
@@ -395,8 +392,9 @@ test('showAudioConfigDialog localizes Web output support and default option labe
 
   assert.equal(
     document.getElementById('output-device-support-message').textContent,
-    'Permissions-Policy により出力デバイスの選択がブロックされています。'
+    '安全な接続でのみ出力デバイスを選択できます。'
   );
+  assert.equal(document.getElementById('output-device').disabled, true);
   assert.equal(document.getElementById('output-channels').children[0].textContent, '2 - ステレオ (デフォルト)');
   assert.equal(document.getElementById('sample-rate').children[3].textContent, '96 kHz (デフォルト)');
 });

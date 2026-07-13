@@ -263,6 +263,49 @@ test('initAudioContext applies Web audioPreferences without Electron APIs', asyn
   });
 });
 
+test('initAudioContext uses an explicit preference override without loading a persisted mirror', async () => {
+  let preferenceLoadCount = 0;
+  await withAudioGlobals({
+    window: {
+      audioPreferences: {
+        sampleRate: 44100,
+        latencyHint: 'playback',
+        outputDeviceId: 'stale-local-output'
+      },
+      electronIntegration: {
+        async loadAudioPreferences() {
+          preferenceLoadCount++;
+          return {
+            sampleRate: 48000,
+            latencyHint: 'interactive',
+            outputDeviceId: 'stale-disk-output'
+          };
+        }
+      }
+    }
+  }, async ({ calls, AudioNodeClass }) => {
+    globalThis.window.AudioContext = createAudioContextClass(calls, AudioNodeClass, {
+      maxChannelCount: 8
+    });
+    const manager = new AudioContextManager();
+    const stagedPreferences = {
+      sampleRate: 88200,
+      latencyHint: 'balanced',
+      outputDeviceId: 'staged-output',
+      outputChannels: 4
+    };
+
+    assert.equal(await manager.initAudioContext(stagedPreferences), '');
+    assert.equal(preferenceLoadCount, 0);
+    assert.deepEqual(calls.find(call => call[0] === 'newAudioContext')?.[1], {
+      sampleRate: 88200,
+      latencyHint: 'balanced',
+      sinkId: 'staged-output'
+    });
+    assert.equal(manager.audioContext.destination.channelCount, 4);
+  });
+});
+
 test('initAudioContext falls back for Web option rejection but not Electron', async () => {
   await withAudioGlobals({
     window: {
@@ -826,6 +869,36 @@ test('resumeAudioContext resumes suspended contexts and warns when they stay sus
   });
 });
 
+test('interrupted AudioContexts share one gesture resume attempt', async () => {
+  const documentRef = createDocumentTarget();
+  await withAudioGlobals({ document: documentRef }, async ({ calls }) => {
+    let finishResume;
+    const manager = new AudioContextManager();
+    manager.audioContext = {
+      state: 'interrupted',
+      resume() {
+        calls.push(['resumeInterrupted']);
+        return new Promise(resolve => {
+          finishResume = () => {
+            this.state = 'running';
+            resolve();
+          };
+        });
+      }
+    };
+
+    manager.resumeOnUserGesture();
+    assert.equal(documentRef.listenerCount('pointerup'), 1);
+    const first = manager.resumeAudioContext();
+    const second = manager.resumeAudioContext();
+    assert.equal(calls.filter(call => call[0] === 'resumeInterrupted').length, 1);
+    finishResume();
+    await Promise.all([first, second]);
+    assert.equal(manager.audioContext.state, 'running');
+    assert.equal(documentRef.listenerCount('pointerup'), 0);
+  });
+});
+
 test('initAudioContext resumes suspended web contexts from the first user gesture', async () => {
   const documentRef = createDocumentTarget();
   await withAudioGlobals({ document: documentRef }, async ({ calls, AudioNodeClass }) => {
@@ -899,5 +972,32 @@ test('initAudioContext resumes suspended web contexts from the first user gestur
     assert.equal(cleanupDocument.listenerCount('pointerup'), 0);
     assert.equal(cleanupDocument.listenerCount('touchend'), 0);
     assert.equal(cleanupDocument.listenerCount('keydown'), 0);
+  });
+});
+
+test('power-managed contexts remove generic document gesture resume hooks', async () => {
+  const documentRef = createDocumentTarget();
+  await withAudioGlobals({ document: documentRef }, async ({ calls, AudioNodeClass }) => {
+    globalThis.window.AudioContext = createAudioContextClass(calls, AudioNodeClass, {
+      state: 'suspended'
+    });
+    const manager = new AudioContextManager();
+    assert.equal(await manager.initAudioContext(), '');
+    assert.equal(documentRef.listenerCount('pointerup'), 1);
+
+    let delegatedResumes = 0;
+    manager.setPowerStateDelegate({
+      enabled: true,
+      beginUserGestureResume() { delegatedResumes++; }
+    });
+
+    assert.equal(documentRef.listenerCount('pointerup'), 0);
+    assert.equal(documentRef.listenerCount('touchend'), 0);
+    assert.equal(documentRef.listenerCount('keydown'), 0);
+    documentRef.dispatchEvent('pointerup');
+    documentRef.dispatchEvent('keydown');
+    await flushMicrotasks();
+    assert.equal(delegatedResumes, 0);
+    assert.equal(calls.some(call => call[0] === 'audioContextResume'), false);
   });
 });

@@ -27,7 +27,8 @@ node tools/dsp-parity/run.mjs --wasm --simd
 ```
 
 `npm run gen:dsp` validates every `dsp/plugins/**/params.json` and deterministically
-updates the C++ headers plus canonical/runtime JavaScript packers. Add `-- --check` to
+updates the C++ headers plus the runtime JavaScript packers
+(`js/audio/dsp-params.generated.js`). Add `-- --check` to
 verify freshness without writing.
 
 Run the verification commands in the order shown. `npm run test:dsp` configures a native
@@ -35,8 +36,7 @@ build and runs CTest; the following `--native` command runs every golden through
 native runner. Neither step requires emsdk. `npm run build:dsp` then builds baseline and
 SIMD128 modules, copies them to `plugins/dsp/`, smoke-instantiates both artifacts, and
 writes deterministic metadata. The final two commands check baseline WASM and then the
-baseline-plus-SIMD modes. `-- --debug` builds the uncommitted debug artifact. Build
-directories live below `dsp/build/`.
+baseline-plus-SIMD modes. Build directories live below `dsp/build/`.
 
 ## ABI And Memory
 

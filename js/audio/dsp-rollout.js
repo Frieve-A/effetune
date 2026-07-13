@@ -76,16 +76,10 @@ function readSearch(locationOrSearch) {
     return typeof locationOrSearch?.search === 'string' ? locationOrSearch.search : '';
 }
 
-function isEnabledFlag(value) {
-    return value === '1' || value === 'true' || value === 'on';
-}
-
 export function getDspRuntimeFlags(locationOrSearch = globalThis.location) {
     const params = new URLSearchParams(readSearch(locationOrSearch));
     return {
-        forceOff: String(params.get('dsp') || '').toLowerCase() === 'off',
-        debug: isEnabledFlag(String(params.get('dspDebug') || '').toLowerCase()),
-        bench: isEnabledFlag(String(params.get('dspBench') || '').toLowerCase())
+        forceOff: String(params.get('dsp') || '').toLowerCase() === 'off'
     };
 }
 

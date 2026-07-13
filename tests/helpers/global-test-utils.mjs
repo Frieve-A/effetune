@@ -15,6 +15,10 @@ export function replaceGlobal(name, value) {
   };
 }
 
+export function createConsoleHarness(overrides = {}) {
+  return Object.assign(Object.create(globalThis.console), overrides);
+}
+
 export async function withGlobals(globals, callback) {
   const restore = Object.entries(globals).map(([name, value]) => replaceGlobal(name, value));
   try {

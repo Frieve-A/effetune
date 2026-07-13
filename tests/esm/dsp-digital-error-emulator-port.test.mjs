@@ -89,7 +89,7 @@ test('Digital Error Emulator goldens load every mode within the storage budget',
     assert.equal(golden.metadata.type, 'DigitalErrorEmulatorPlugin');
     assert.equal(
       golden.metadata.jsEngineHash,
-      '0d2ff76003f7af6a30569695d8b30aaee461e4e52e3d78077aa3f00854f6de3f'
+      '84152fab2bf583d274eb4d138ab3ee2ae96c8eb5284498bb3983b57608cc2e28'
     );
     assert.ok(golden.expected.every(Number.isFinite));
   }

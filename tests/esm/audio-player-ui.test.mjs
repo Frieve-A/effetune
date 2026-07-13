@@ -325,8 +325,11 @@ function createAudioPlayer(calls, options = {}) {
     async loadTrack(index) {
       calls.push(['loadTrack', index]);
     },
-    async play() {
-      calls.push(['play']);
+    async play(userInitiated) {
+      calls.push(['play', userInitiated]);
+    },
+    resumeAudioContextInGesture() {
+      calls.push(['resumeAudioContextInGesture']);
     }
   };
 }
@@ -390,10 +393,12 @@ test('creates translated controls, inserts before the double blind panel, and wi
       state: {
         repeatMode: 'ONE',
         shuffleMode: true,
+        isPlaying: true,
         currentTrackPosition: 3,
         currentTrackDuration: 30
       }
     });
+    player.audioContext = { state: 'running' };
     const ui = new AudioPlayerUI(player);
     const container = ui.createPlayerUI();
 
@@ -549,34 +554,36 @@ test('updatePlayerUIState handles repeat, shuffle, default, and missing-control 
   ui.shuffleButton = createControlElement(calls, 'shuffle-button');
 
   ui.updatePlayerUIState();
-  assert.equal(ui.repeatButton.style.backgroundColor, '#4a9eff');
-  assert.equal(ui.shuffleButton.style.backgroundColor, '#4a9eff');
+  assert.equal(ui.repeatButton.attributes.get('data-active'), 'true');
+  assert.equal(ui.shuffleButton.attributes.get('data-active'), 'true');
 
   player.stateManager.setState({ repeatMode: 'ONE', shuffleMode: true });
   ui.updatePlayerUIState();
   assert.match(ui.repeatButton.innerHTML, /M11\.3 10\.3/);
+  assert.equal(ui.repeatButton.attributes.get('data-active'), 'true');
   assert.equal(ui.shuffleButton.disabled, true);
   assert.equal(ui.shuffleButton.style.opacity, '0.5');
-  assert.equal(ui.shuffleButton.style.backgroundColor, '');
+  assert.equal(ui.shuffleButton.attributes.get('data-active'), 'false');
 
   player.stateManager.setState({ repeatMode: 'OFF', shuffleMode: false });
   ui.updatePlayerUIState();
-  assert.equal(ui.repeatButton.style.backgroundColor, '');
+  assert.equal(ui.repeatButton.attributes.get('data-active'), 'false');
   assert.equal(ui.shuffleButton.disabled, false);
   assert.equal(ui.shuffleButton.style.opacity, '1');
-  assert.equal(ui.shuffleButton.style.backgroundColor, '');
+  assert.equal(ui.shuffleButton.attributes.get('data-active'), 'false');
 
   player.stateManager.setState({ repeatMode: 'UNEXPECTED', shuffleMode: true });
   ui.updatePlayerUIState();
-  assert.equal(ui.repeatButton.style.backgroundColor, '');
-  assert.equal(ui.shuffleButton.style.backgroundColor, '#4a9eff');
+  assert.equal(ui.repeatButton.attributes.get('data-active'), 'false');
+  assert.equal(ui.shuffleButton.attributes.get('data-active'), 'true');
 
   const fallbackUI = new AudioPlayerUI(createAudioPlayer(calls, { stateManager: false }));
   fallbackUI.repeatButton = createControlElement(calls, 'repeat-button');
   fallbackUI.shuffleButton = createControlElement(calls, 'shuffle-button');
   fallbackUI.updatePlayerUIState();
-  assert.equal(fallbackUI.repeatButton.style.backgroundColor, '');
+  assert.equal(fallbackUI.repeatButton.attributes.get('data-active'), 'false');
   assert.equal(fallbackUI.shuffleButton.disabled, false);
+  assert.equal(fallbackUI.shuffleButton.attributes.get('data-active'), 'false');
 });
 
 test('seek bar input respects disabled state and context manager duration validity', async () => {
@@ -609,6 +616,8 @@ test('seek bar input respects disabled state and context manager duration validi
     player.stateManager.setState({ seekBarEnabled: true });
     ui.seekBar.dispatchEvent('input');
     assert.ok(calls.some(call => call[0] === 'seek' && call[1] === 50));
+    assert.ok(calls.findIndex(call => call[0] === 'resumeAudioContextInGesture') <
+      calls.findIndex(call => call[0] === 'seek'));
 
     contextState.currentTrackDuration = 0;
     ui.seekBar.dispatchEvent('input');
@@ -765,19 +774,272 @@ test('playlist display syncs active track and mobile tap starts playback', async
           { name: 'Two', path: '/two.wav' }
         ],
         currentTrackIndex: 1,
-        isPlaying: false
+        currentTrack: { name: 'Two', path: '/two.wav' },
+        currentBuffer: { id: 'buffer-two' },
+        currentTrackPosition: 8,
+        isPlaying: false,
+        isPaused: true,
+        isStopped: false
       }
     });
     const ui = new AudioPlayerUI(player);
     ui.createPlayerUI();
+    let finishResume;
+    player.resumeAudioContextInGesture = () => {
+      calls.push(['resumeAudioContextInGesture']);
+      return new Promise(resolve => { finishResume = resolve; });
+    };
+    player.stop = async () => {
+      calls.push(['stopOldSource']);
+      player.stateManager.setState({
+        currentBuffer: null,
+        currentTrackPosition: 0,
+        isPlaying: false,
+        isStopped: true
+      });
+    };
+    let finishLoading;
+    player.loadTrack = index => {
+      calls.push(['loadTrack', index]);
+      player.stateManager.setState({
+        currentTrackIndex: index,
+        currentTrack: player.stateManager.state.playlist[index],
+        currentBuffer: null,
+        currentTrackPosition: 0
+      });
+      return new Promise(resolve => {
+        finishLoading = value => {
+          player.stateManager.setState({ currentBuffer: { id: 'buffer-one' } });
+          resolve(value);
+        };
+      });
+    };
 
     assert.equal(ui.playlistDisplay.parentNode.classList().includes('player-controls'), true);
     assert.equal(ui.playlistDisplay.children.length, 2);
     assert.match(ui.playlistDisplay.children[1].className, /active/);
 
-    await Promise.all(ui.playlistDisplay.children[0].dispatchEvent('click'));
+    const tap = Promise.all(ui.playlistDisplay.children[0].dispatchEvent('click'));
+    await Promise.resolve();
     assert.ok(calls.some(call => call[0] === 'loadTrack' && call[1] === 0));
-    assert.ok(calls.some(call => call[0] === 'play'));
+    assert.equal(calls.some(call => call[0] === 'play'), false);
+    const pendingState = player.stateManager.getStateSnapshot();
+    assert.equal(pendingState.currentTrack.name, 'One');
+    assert.equal(pendingState.currentBuffer, null);
+    assert.equal(pendingState.currentTrackPosition, 0);
+    assert.equal(pendingState.isStopped, true);
+    assert.ok(calls.findIndex(call => call[0] === 'resumeAudioContextInGesture') <
+      calls.findIndex(call => call[0] === 'stopOldSource'));
+    assert.ok(calls.findIndex(call => call[0] === 'stopOldSource') <
+      calls.findIndex(call => call[0] === 'loadTrack'));
+    finishResume(true);
+    await Promise.resolve();
+    assert.equal(calls.some(call => call[0] === 'play'), false);
+    finishLoading(true);
+    await tap;
+    assert.deepEqual(calls.find(call => call[0] === 'play'), ['play', false]);
+    assert.ok(calls.findIndex(call => call[0] === 'resumeAudioContextInGesture') <
+      calls.findIndex(call => call[0] === 'loadTrack'));
+  });
+});
+
+test('desktop playlist selections carry play intent to the latest generation only', async () => {
+  await withAudioPlayerGlobals({
+    windowOptions: { uiManager: { layoutMode: { isMobile: false } } }
+  }, async ({ calls }) => {
+    const player = createAudioPlayer(calls, {
+      state: {
+        playlist: [
+          { name: 'A', path: '/a.wav' },
+          { name: 'B', path: '/b.wav' },
+          { name: 'C', path: '/c.wav' }
+        ],
+        currentTrackIndex: 0,
+        currentTrack: { name: 'A', path: '/a.wav' },
+        currentBuffer: { id: 'buffer-a' },
+        isPlaying: true,
+        isStopped: false
+      }
+    });
+    const resumeResolvers = [];
+    const loadResolvers = new Map();
+    player.resumeAudioContextInGesture = () => {
+      calls.push(['resumeAudioContextInGesture']);
+      return new Promise(resolve => resumeResolvers.push(resolve));
+    };
+    player.stop = async () => {
+      calls.push(['stopOldSource']);
+      player.stateManager.setState({
+        currentBuffer: null,
+        currentTrackPosition: 0,
+        isPlaying: false,
+        isStopped: true
+      });
+    };
+    player.loadTrack = index => {
+      calls.push(['loadTrack', index]);
+      player.stateManager.setState({
+        currentTrackIndex: index,
+        currentTrack: player.stateManager.state.playlist[index],
+        currentBuffer: null
+      });
+      return new Promise(resolve => loadResolvers.set(index, resolve));
+    };
+    player.play = async userInitiated => {
+      calls.push(['play', userInitiated]);
+      player.stateManager.setState({ isPlaying: true, isStopped: false });
+      return true;
+    };
+    const ui = new AudioPlayerUI(player);
+    ui.createPlayerUI();
+
+    const [selectB] = ui.playlistDisplay.children[1].dispatchEvent('click');
+    const [selectC] = ui.playlistDisplay.children[2].dispatchEvent('click');
+
+    assert.equal(resumeResolvers.length, 2);
+    assert.equal(calls.filter(call => call[0] === 'stopOldSource').length, 2);
+    assert.equal(player.stateManager.state.currentTrack.name, 'C');
+    assert.equal(player.stateManager.state.isStopped, true);
+
+    resumeResolvers[1](true);
+    loadResolvers.get(2)(true);
+    assert.equal(await selectC, true);
+    assert.deepEqual(calls.filter(call => call[0] === 'play'), [['play', false]]);
+    assert.equal(player.stateManager.state.currentTrack.name, 'C');
+    assert.equal(player.stateManager.state.isPlaying, true);
+
+    resumeResolvers[0](true);
+    loadResolvers.get(1)(true);
+    assert.equal(await selectB, false);
+    assert.deepEqual(calls.filter(call => call[0] === 'play'), [['play', false]]);
+    assert.equal(player.stateManager.state.currentTrack.name, 'C');
+  });
+});
+
+test('latest desktop playlist resume failure wins and an explicit cancel prevents inherited autoplay', async () => {
+  await withAudioPlayerGlobals({
+    windowOptions: { uiManager: { layoutMode: { isMobile: false } } }
+  }, async ({ calls }) => {
+    const player = createAudioPlayer(calls, {
+      state: {
+        playlist: [
+          { name: 'A', path: '/a.wav' },
+          { name: 'B', path: '/b.wav' },
+          { name: 'C', path: '/c.wav' }
+        ],
+        currentTrackIndex: 0,
+        isPlaying: true,
+        isStopped: false
+      }
+    });
+    const resumeResolvers = [];
+    const loadResolvers = new Map();
+    player.resumeAudioContextInGesture = () => {
+      calls.push(['resumeAudioContextInGesture']);
+      return new Promise(resolve => resumeResolvers.push(resolve));
+    };
+    player.stop = async () => {
+      calls.push(['stopOldSource']);
+      player.stateManager.setState({ isPlaying: false, isStopped: true });
+    };
+    player.loadTrack = index => {
+      calls.push(['loadTrack', index]);
+      player.stateManager.setState({
+        currentTrackIndex: index,
+        currentTrack: player.stateManager.state.playlist[index]
+      });
+      return new Promise(resolve => loadResolvers.set(index, resolve));
+    };
+    player.play = async () => {
+      calls.push(['play']);
+      return true;
+    };
+    const ui = new AudioPlayerUI(player);
+    ui.createPlayerUI();
+
+    const [selectB] = ui.playlistDisplay.children[1].dispatchEvent('click');
+    const [selectC] = ui.playlistDisplay.children[2].dispatchEvent('click');
+    resumeResolvers[1](false);
+    loadResolvers.get(2)(true);
+    assert.equal(await selectC, false);
+    resumeResolvers[0](true);
+    loadResolvers.get(1)(true);
+    assert.equal(await selectB, false);
+    assert.equal(calls.some(call => call[0] === 'play'), false);
+    assert.equal(player.stateManager.state.currentTrack.name, 'C');
+    assert.equal(player.stateManager.state.isStopped, true);
+
+    player.stateManager.setState({ isPlaying: true, isStopped: false });
+    const [selectBAgain] = ui.playlistDisplay.children[1].dispatchEvent('click');
+    ui.cancelPlaylistSelectionIntent();
+    player.stateManager.setState({ isPlaying: false, isStopped: true });
+    const resumeCountBeforeC = resumeResolvers.length;
+    const [selectCAfterStop] = ui.playlistDisplay.children[2].dispatchEvent('click');
+    loadResolvers.get(2)(true);
+    assert.equal(await selectCAfterStop, true);
+    assert.equal(resumeResolvers.length, resumeCountBeforeC);
+    resumeResolvers.at(-1)(true);
+    loadResolvers.get(1)(true);
+    assert.equal(await selectBAgain, false);
+    assert.equal(calls.some(call => call[0] === 'play'), false);
+  });
+});
+
+test('mobile playlist selection stops the old source and reports failure when resume fails', async () => {
+  await withAudioPlayerGlobals({
+    windowOptions: { uiManager: { layoutMode: { isMobile: true } } }
+  }, async ({ calls }) => {
+    const player = createAudioPlayer(calls, {
+      state: {
+        playlist: [
+          { name: 'A', path: '/a.wav' },
+          { name: 'B', path: '/b.wav' }
+        ],
+        currentTrackIndex: 0,
+        currentTrack: { name: 'A', path: '/a.wav' },
+        currentBuffer: { id: 'buffer-a' },
+        currentTrackPosition: 19,
+        isPlaying: true,
+        isStopped: false
+      }
+    });
+    player.resumeAudioContextInGesture = () => {
+      calls.push(['resumeAudioContextInGesture']);
+      return Promise.resolve(false);
+    };
+    player.loadTrack = async index => {
+      calls.push(['loadTrack', index]);
+      player.stateManager.setState({
+        currentTrackIndex: index,
+        currentTrack: player.stateManager.state.playlist[index],
+        currentBuffer: { id: 'buffer-b' },
+        currentTrackPosition: 0
+      });
+      return true;
+    };
+    player.stop = async () => {
+      calls.push(['stopOldSource']);
+      player.stateManager.setState({
+        isPlaying: false,
+        isPaused: false,
+        isStopped: true,
+        currentTrackPosition: 0
+      });
+    };
+    const ui = new AudioPlayerUI(player);
+    ui.createPlayerUI();
+
+    const [selected] = await Promise.all(ui.playlistDisplay.children[1].dispatchEvent('click'));
+
+    assert.equal(selected, false);
+    assert.ok(calls.some(call => call[0] === 'loadTrack' && call[1] === 1));
+    assert.ok(calls.some(call => call[0] === 'stopOldSource'));
+    assert.equal(calls.some(call => call[0] === 'play'), false);
+    const state = player.stateManager.getStateSnapshot();
+    assert.equal(state.currentTrack.name, 'B');
+    assert.equal(state.currentBuffer.id, 'buffer-b');
+    assert.equal(state.currentTrackPosition, 0);
+    assert.equal(state.isStopped, true);
   });
 });
 
@@ -898,7 +1160,8 @@ test('library queue helpers notify now playing and save library queues as playli
 
 test('interval management and removeUI clean up timers, DOM nodes, and references', async () => {
   await withAudioPlayerGlobals({}, async ({ calls, documentRef, frames, timers }) => {
-    const player = createAudioPlayer(calls);
+    const player = createAudioPlayer(calls, { state: { isPlaying: true } });
+    player.audioContext = { state: 'running' };
     const ui = new AudioPlayerUI(player);
     const container = ui.createPlayerUI();
     const firstInterval = ui.updateInterval;

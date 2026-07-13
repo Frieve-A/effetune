@@ -517,7 +517,8 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         entries.forEach(entry => {
             this.isVisible = entry.isIntersecting;
             if (this.isVisible) {
-                this.startAnimation();
+                if (this.canRunAnimation()) this.startAnimation();
+                else this.renderPowerUiOnce(() => this.drawGraph());
             } else {
                 this.stopAnimation();
             }
@@ -533,7 +534,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
                 return;
             }
             this.drawGraph();
-            this.animationFrameId = requestAnimationFrame(animate);
+            this.animationFrameId = this.requestPowerAnimationFrame(animate, 'analyzer');
         };
         animate();
     }

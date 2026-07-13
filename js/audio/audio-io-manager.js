@@ -18,18 +18,41 @@ export class AudioIOManager {
      */
     constructor(contextManager) {
         this.contextManager = contextManager;
+        // Canonical microphone ownership is deliberately separate from sourceNode.
+        // The player may replace sourceNode with a file or silent route while the
+        // microphone remains live; power decisions must use these canonical fields.
+        this.inputStream = null;
+        this.inputSourceNode = null;
+        this.inputGeneration = 0;
+        this.inputAvailabilityRevision = 0;
+        this.inputResourceState = 'unknown';
+        this.inputAvailability = 'unknown';
+        this.inputRouteConnected = false;
+        this.inputResourceId = null;
+        this._inputResourceSequence = 0;
+        this._inputTrackListeners = new Map();
+        this._stoppedInputTracks = new WeakSet();
+        this._inputAcquisitionGeneration = 0;
+        this._pendingInputAcquisition = null;
+        this.lastInputInitializationError = null;
         this.stream = null;
         this.sourceNode = null;
         this.destinationNode = null;
         this.audioElement = null;
         this.defaultDestinationConnection = null;
+        // Output-side first-launch mute node. Input silence has separate owners.
         this.silenceNode = null;
+        this.silentInputBufferSource = null;
+        this.silentInputGainNode = null;
         // GainNode inserted between worklet and the final destination (audioContext
         // .destination or MediaStreamDestination). Starts at 0 so nothing reaches
         // the speakers until the host calls fadeInOutput() at the end of the
         // startup sequence — i.e. after every updatePlugins (saved state, startup
         // preset, pending tray/CLI preset, etc.) has settled into the worklet.
         this.outputGainNode = null;
+        // A transient safety fade is not a structural zero-output proof.
+        // Only an explicit topology owner may set this flag to true.
+        this.powerOutputStructurallyZero = false;
         // When true, connect worklet output directly to AudioContext.destination
         // Used for multichannel and low-latency stereo modes
         this.directOutputMode = false;
@@ -42,6 +65,142 @@ export class AudioIOManager {
         this._pollDeviceWasAbsent = false;
         // Guard against overlapping poll tick executions
         this._pollRunning = false;
+    }
+
+    _setInputAvailability(nextAvailability) {
+        if (this.inputAvailability !== nextAvailability) {
+            this.inputAvailability = nextAvailability;
+            this.inputAvailabilityRevision++;
+        }
+    }
+
+    _removeInputTrackListeners() {
+        for (const [track, listeners] of this._inputTrackListeners) {
+            track.removeEventListener?.('mute', listeners.mute);
+            track.removeEventListener?.('unmute', listeners.unmute);
+            track.removeEventListener?.('ended', listeners.ended);
+        }
+        this._inputTrackListeners.clear();
+    }
+
+    _refreshInputTrackState({ notify = false } = {}) {
+        const previousState = this.inputResourceState;
+        const previousAvailabilityRevision = this.inputAvailabilityRevision;
+        const tracks = this.inputStream?.getAudioTracks?.() || this.inputStream?.getTracks?.() || [];
+        const liveTracks = tracks.filter(track => track?.readyState !== 'ended');
+        if (liveTracks.length === 0) {
+            if (this.inputResourceState === 'live') this.inputResourceState = 'ended';
+            this._setInputAvailability('unknown');
+        } else {
+            this.inputResourceState = 'live';
+            if (liveTracks.some(track => track.enabled === false)) {
+                this._setInputAvailability('disabled');
+            } else if (liveTracks.some(track => track.muted === true)) {
+                this._setInputAvailability('muted');
+            } else {
+                this._setInputAvailability('available');
+            }
+        }
+        if (notify && (this.inputResourceState !== previousState ||
+            this.inputAvailabilityRevision !== previousAvailabilityRevision)) {
+            this.contextManager?.powerStateDelegate?.handleInputResourceEvent?.(
+                this.getInputSnapshot()
+            );
+        }
+    }
+
+    _observeInputTracks(stream) {
+        this._removeInputTrackListeners();
+        const tracks = stream?.getAudioTracks?.() || stream?.getTracks?.() || [];
+        for (const track of tracks) {
+            const refresh = () => this._refreshInputTrackState({ notify: true });
+            const ended = () => this._refreshInputTrackState({ notify: true });
+            const listeners = { mute: refresh, unmute: refresh, ended };
+            track.addEventListener?.('mute', listeners.mute);
+            track.addEventListener?.('unmute', listeners.unmute);
+            track.addEventListener?.('ended', listeners.ended);
+            this._inputTrackListeners.set(track, listeners);
+        }
+        this._refreshInputTrackState();
+    }
+
+    _adoptInputStream(stream, { adoptPipelineSource = true } = {}) {
+        if (!stream) return null;
+        const context = this.contextManager?.audioContext;
+        if (!context?.createMediaStreamSource) {
+            this._stopStreamTracksOnce(stream);
+            throw new Error('AudioContext is unavailable while installing audio input');
+        }
+        let inputSourceNode;
+        try {
+            inputSourceNode = context.createMediaStreamSource(stream);
+        } catch (error) {
+            this._stopStreamTracksOnce(stream);
+            throw error;
+        }
+        const previousStream = this.inputStream || this.stream;
+        const previousSource = this.inputSourceNode;
+        this._removeInputTrackListeners();
+        if (previousSource && previousSource !== inputSourceNode) {
+            try { previousSource.disconnect(); } catch { /* already disconnected */ }
+        }
+        if (previousStream && previousStream !== stream) {
+            this._stopStreamTracksOnce(previousStream);
+        }
+        this.inputStream = stream;
+        this.inputSourceNode = inputSourceNode;
+        this.stream = stream;
+        if (adoptPipelineSource) this.sourceNode = inputSourceNode;
+        else if (this.sourceNode === previousSource) this.sourceNode = null;
+        this.inputGeneration++;
+        this.inputResourceId = `input-${++this._inputResourceSequence}`;
+        this.inputResourceState = 'live';
+        this.inputRouteConnected = false;
+        this._observeInputTracks(stream);
+        return inputSourceNode;
+    }
+
+    _stopStreamTracksOnce(stream) {
+        const tracks = stream?.getTracks?.() || [];
+        let stoppedTrackCount = 0;
+        for (const track of tracks) {
+            if (!track || track.readyState === 'ended' || this._stoppedInputTracks.has(track)) continue;
+            this._stoppedInputTracks.add(track);
+            track.stop?.();
+            stoppedTrackCount++;
+        }
+        return stoppedTrackCount;
+    }
+
+    invalidatePendingInputAcquisition() {
+        this._inputAcquisitionGeneration++;
+        this._pendingInputAcquisition = null;
+    }
+
+    _createStaleInputAcquisitionError() {
+        const error = new Error('Audio input acquisition was superseded');
+        error.name = 'AbortError';
+        return error;
+    }
+
+    getInputSnapshot() {
+        this._refreshInputTrackState();
+        return {
+            state: this.inputResourceState,
+            inputAvailability: this.inputAvailability,
+            inputAvailabilityRevision: this.inputAvailabilityRevision,
+            inputGeneration: this.inputGeneration,
+            inputResourceId: this.inputResourceId,
+            inputConfigured: (window.audioPreferences?.inputDeviceId ||
+                window.electronIntegration?.audioPreferences?.inputDeviceId) !== NO_AUDIO_INPUT_DEVICE_ID,
+            inputSourcePresent: !!this.inputSourceNode,
+            inputRouteConnected: this.inputRouteConnected,
+            trackState: this.inputResourceState === 'live'
+                ? 'live'
+                : (this.inputResourceState === 'ended' || this.inputResourceState === 'released'
+                    ? 'ended'
+                    : 'absent')
+        };
     }
 
     async _loadAudioPreferences() {
@@ -129,8 +288,25 @@ export class AudioIOManager {
      * Initialize audio input (microphone)
      * @returns {Promise<string>} - Empty string on success, error message on failure
      */
-    async initAudioInput() {
+    async initAudioInput(preferencesOverride = null) {
+        this.invalidatePendingInputAcquisition();
+        const acquisitionGeneration = this._inputAcquisitionGeneration;
+        const acquireStream = constraints => {
+            if (acquisitionGeneration !== this._inputAcquisitionGeneration) {
+                return Promise.reject(this._createStaleInputAcquisitionError());
+            }
+            return this._getUserMediaWithTimeout(constraints).then(stream => {
+                if (acquisitionGeneration !== this._inputAcquisitionGeneration) {
+                    this._stopStreamTracksOnce(stream);
+                    throw this._createStaleInputAcquisitionError();
+                }
+                return stream;
+            });
+        };
         try {
+            this.lastInputInitializationError = null;
+            this.inputResourceState = 'acquiring';
+            this._setInputAvailability('unknown');
             // Variable to store microphone error message
             let microphoneError = null;
             
@@ -144,9 +320,13 @@ export class AudioIOManager {
                 autoGainControl: false
             };
 
-            const preferences = await this._loadAudioPreferences();
+            const preferences = preferencesOverride || await this._loadAudioPreferences();
+            if (acquisitionGeneration !== this._inputAcquisitionGeneration) return '';
             if (preferences?.inputDeviceId === NO_AUDIO_INPUT_DEVICE_ID) {
-                this.createSilentSourceFallback();
+                this.invalidatePendingInputAcquisition();
+                this.inputResourceState = 'not-configured';
+                this.inputResourceId = null;
+                this.adoptSilentSourceFallback();
                 console.log('Audio input disabled by preference. Music file playback mode will still work.');
                 return '';
             }
@@ -164,26 +344,31 @@ export class AudioIOManager {
             // System Settings shows the permission as allowed.
             if (window.electronAPI && window.electronAPI.requestMicrophoneAccess) {
                 await window.electronAPI.requestMicrophoneAccess();
+                if (acquisitionGeneration !== this._inputAcquisitionGeneration) return '';
             }
 
             // Try to get user media with audio constraints
             let lastMicError = null;
+            let acquiredStream = null;
             try {
-                this.stream = await this._getUserMediaWithTimeout({
+                acquiredStream = await acquireStream({
                     audio: audioConstraints
                 });
             } catch (error) {
+                if (error?.name === 'AbortError') throw error;
                 lastMicError = error;
-                // If failed with saved device, try again with default device
                 if (audioConstraints.deviceId) {
+                    // If failed with saved device, try again with default device.
                     console.warn('Failed to use saved audio input device, falling back to default:', error.name, error.message);
                     delete audioConstraints.deviceId;
                     try {
-                        this.stream = await this._getUserMediaWithTimeout({
+                        acquiredStream = await acquireStream({
                             audio: audioConstraints
                         });
                         lastMicError = null;
                     } catch (innerError) {
+                        if (innerError?.name === 'AbortError') throw innerError;
+                        lastMicError = innerError;
                         // If permission is denied, try to clear permission overrides and ask again.
                         // This recovers cases where Chromium's permission cache rejects despite
                         // the user actually having granted access (commonly seen on Windows/Linux,
@@ -194,11 +379,12 @@ export class AudioIOManager {
                                 try {
                                     await window.electronAPI.clearMicrophonePermission();
                                     // Try one more time after clearing permissions
-                                    this.stream = await this._getUserMediaWithTimeout({
+                                    acquiredStream = await acquireStream({
                                         audio: audioConstraints
                                     });
                                     lastMicError = null;
                                 } catch (finalError) {
+                                    if (finalError?.name === 'AbortError') throw finalError;
                                     lastMicError = finalError;
                                     console.warn('Failed to get microphone access after clearing permissions:', finalError);
                                     usingMicrophoneInput = false;
@@ -219,11 +405,12 @@ export class AudioIOManager {
                         try {
                             await window.electronAPI.clearMicrophonePermission();
                             // Try one more time after clearing permissions
-                            this.stream = await this._getUserMediaWithTimeout({
+                            acquiredStream = await acquireStream({
                                 audio: audioConstraints
                             });
                             lastMicError = null;
                         } catch (finalError) {
+                            if (finalError?.name === 'AbortError') throw finalError;
                             lastMicError = finalError;
                             console.warn('Failed to get microphone access after clearing permissions:', finalError);
                             usingMicrophoneInput = false;
@@ -239,10 +426,16 @@ export class AudioIOManager {
             }
 
             // If we have microphone access, create source from stream
-            if (usingMicrophoneInput && this.stream) {
-                this.sourceNode = this.contextManager.audioContext.createMediaStreamSource(this.stream);
+            if (usingMicrophoneInput && acquiredStream) {
+                this._adoptInputStream(acquiredStream);
             } else {
-                this.createSilentSourceFallback();
+                this.lastInputInitializationError = lastMicError;
+                this.inputResourceState = lastMicError?.name === 'NotAllowedError' ||
+                    lastMicError?.name === 'PermissionDeniedError'
+                    ? 'denied'
+                    : 'error';
+                this._setInputAvailability('unknown');
+                this.adoptSilentSourceFallback();
                 
                 // Log message for Electron users
                 if (window.electronAPI && window.electronIntegration) {
@@ -262,13 +455,37 @@ export class AudioIOManager {
             // Return microphone error if there was one
             return microphoneError || '';
         } catch (error) {
+            if (error?.name === 'AbortError' ||
+                acquisitionGeneration !== this._inputAcquisitionGeneration) {
+                return '';
+            }
+            this.lastInputInitializationError = error;
+            this.inputResourceState = 'error';
+            this._setInputAvailability('unknown');
             console.error('Audio input initialization error:', error);
             return `Audio Error: ${error.message}`;
         }
     }
 
+    _connectInternalNode(sourceNode, targetNode) {
+        if (window.originalConnectMethod && this.contextManager?.isFirstLaunch) {
+            window.originalConnectMethod.call(sourceNode, targetNode);
+        } else {
+            sourceNode.connect(targetNode);
+        }
+    }
+
     createSilentSourceFallback() {
         console.log('Creating stereo-compatible silent source as fallback');
+        if (this.silentInputBufferSource) {
+            try { this.silentInputBufferSource.stop(); } catch { /* already stopped */ }
+            try { this.silentInputBufferSource.disconnect(); } catch { /* already disconnected */ }
+            this.silentInputBufferSource = null;
+        }
+        if (this.silentInputGainNode) {
+            try { this.silentInputGainNode.disconnect(); } catch { /* already disconnected */ }
+            this.silentInputGainNode = null;
+        }
         const bufferSize = this.contextManager.audioContext.sampleRate * 2;
         const silentBuffer = this.contextManager.audioContext.createBuffer(
             2,
@@ -280,12 +497,36 @@ export class AudioIOManager {
         bufferSource.loop = true;
         const gainNode = this.contextManager.audioContext.createGain();
         gainNode.gain.value = 0;
-        bufferSource.connect(gainNode);
+        this._connectInternalNode(bufferSource, gainNode);
         bufferSource.start();
-        this.sourceNode = gainNode;
+        this.silentInputBufferSource = bufferSource;
+        this.silentInputGainNode = gainNode;
         return gainNode;
     }
-    
+
+    ensureSilentSourceFallback() {
+        if (this.silentInputBufferSource && this.silentInputGainNode) {
+            return this.silentInputGainNode;
+        }
+        return this.createSilentSourceFallback();
+    }
+
+    adoptSilentSourceFallback(sourceNode = this.ensureSilentSourceFallback()) {
+        if (!sourceNode || sourceNode !== this.silentInputGainNode) return false;
+        this.sourceNode = sourceNode;
+        return true;
+    }
+
+    markInputNotConfigured() {
+        this.invalidatePendingInputAcquisition();
+        if (this.inputSourceNode || this.inputStream) return false;
+        this.inputResourceState = 'not-configured';
+        this.inputResourceId = null;
+        this.inputRouteConnected = false;
+        this._setInputAvailability('unknown');
+        return true;
+    }
+
     /**
      * Initialize audio output
      * @returns {Promise<string>} - Empty string on success, error message on failure
@@ -660,7 +901,7 @@ export class AudioIOManager {
      * Connect audio nodes
      * @returns {Promise<string>} - Empty string on success, error message on failure
      */
-    async connectAudioNodes() {
+    async connectAudioNodes({ connectSource = null } = {}) {
         try {
             // Connect source to worklet
             try {
@@ -670,12 +911,17 @@ export class AudioIOManager {
                     return `Audio Error: Audio initialization incomplete - missing audio nodes`;
                 }
 
-                // Use the original connect method to avoid any overridden connect methods
-                if (window.originalConnectMethod && this.contextManager.isFirstLaunch) {
+                if (typeof connectSource === 'function') {
+                    if (connectSource(this.sourceNode) !== true) {
+                        throw new Error('Pipeline source connection failed');
+                    }
+                } else if (window.originalConnectMethod && this.contextManager.isFirstLaunch) {
+                    // Use the original method to avoid the first-launch output-mute override.
                     window.originalConnectMethod.call(this.sourceNode, this.contextManager.workletNode);
                 } else {
                     this.sourceNode.connect(this.contextManager.workletNode);
                 }
+                if (this.sourceNode === this.inputSourceNode) this.inputRouteConnected = true;
             } catch (error) {
                 console.error('Error connecting source to worklet:', error);
                 return `Audio Error: Failed to connect audio nodes: ${error.message}`;
@@ -728,21 +974,8 @@ export class AudioIOManager {
      */
     createFallbackSilentSource() {
         console.warn('Source node missing, creating fallback silent source');
-        // Create a silent source node as fallback
-        const bufferSize = this.contextManager.audioContext.sampleRate * 2;
-        const silentBuffer = this.contextManager.audioContext.createBuffer(2, bufferSize, this.contextManager.audioContext.sampleRate);
-        const bufferSource = this.contextManager.audioContext.createBufferSource();
-        bufferSource.buffer = silentBuffer;
-        bufferSource.loop = true;
-        
-        const gainNode = this.contextManager.audioContext.createGain();
-        gainNode.gain.value = 0;
-        
-        bufferSource.connect(gainNode);
-        bufferSource.start();
-
-        this.sourceNode = gainNode;
-        return gainNode;
+        const sourceNode = this.ensureSilentSourceFallback();
+        return this.adoptSilentSourceFallback(sourceNode) ? sourceNode : null;
     }
 
     /**
@@ -858,6 +1091,12 @@ export class AudioIOManager {
 
         const activeDeviceId = foundDevice.deviceId;
         const updatedPrefs = foundByLabel ? { ...prefs, outputDeviceId: activeDeviceId } : prefs;
+        const powerController = window.audioManager?.powerPolicyController;
+        if (powerController?.enabled &&
+            String(powerController.getEffectiveState?.()).toLowerCase() === 'suspended') {
+            // Device polling must not undo an intentional policy suspension.
+            return;
+        }
 
 
         // Stuck non-'running' AudioContext check.
@@ -952,16 +1191,157 @@ export class AudioIOManager {
      * of freezing.
      */
     _getUserMediaWithTimeout(constraints, ms = 5000) {
-        let timerId;
-        return Promise.race([
-            navigator.mediaDevices.getUserMedia(constraints).finally(() => clearTimeout(timerId)),
-            new Promise((_, reject) => {
-                timerId = setTimeout(
-                    () => reject(new Error(`getUserMedia timed out after ${ms}ms`)),
-                    ms
-                );
-            })
-        ]);
+        return new Promise((resolve, reject) => {
+            let settled = false;
+            const timerId = setTimeout(() => {
+                if (settled) return;
+                settled = true;
+                const error = new Error(`getUserMedia timed out after ${ms}ms`);
+                error.name = 'TimeoutError';
+                reject(error);
+            }, ms);
+
+            navigator.mediaDevices.getUserMedia(constraints).then(stream => {
+                if (settled) {
+                    // getUserMedia cannot be cancelled. A result arriving after the
+                    // application deadline must never escape with live tracks.
+                    this._stopStreamTracksOnce(stream);
+                    return;
+                }
+                settled = true;
+                clearTimeout(timerId);
+                resolve(stream);
+            }, error => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timerId);
+                reject(error);
+            });
+        });
+    }
+
+    /**
+     * Release only the canonical microphone resource. Output and player nodes
+     * intentionally remain untouched.
+     */
+    releaseAudioInput({ reason = 'power-policy', disconnect = true } = {}) {
+        const before = this.getInputSnapshot();
+        this.invalidatePendingInputAcquisition();
+        // stream remains a compatibility alias during the migration, so accept
+        // it when older callers/tests installed an input without canonical fields.
+        const stream = this.inputStream || this.stream;
+        const source = this.inputSourceNode;
+        const resourcePresent = !!(stream || source) ||
+            before.state === 'live' || before.state === 'acquiring';
+        if (!resourcePresent) {
+            return {
+                reason,
+                alreadyAbsent: true,
+                stoppedTrackCount: 0,
+                before,
+                after: before
+            };
+        }
+        this._removeInputTrackListeners();
+        if (disconnect && source) {
+            try { source.disconnect(); } catch { /* already disconnected */ }
+        }
+        const stoppedTrackCount = this._stopStreamTracksOnce(stream);
+        if (this.stream === stream) this.stream = null;
+        if (this.sourceNode === source) this.sourceNode = null;
+        this.inputStream = null;
+        this.inputSourceNode = null;
+        this.inputRouteConnected = false;
+        this.inputResourceId = null;
+        this.inputResourceState = before.state === 'not-configured' ? 'not-configured' : 'released';
+        this._setInputAvailability('unknown');
+        this.inputGeneration++;
+        return {
+            reason,
+            stoppedTrackCount,
+            before,
+            after: this.getInputSnapshot()
+        };
+    }
+
+    /**
+     * Reacquire a microphone after an input-only release. The caller is
+     * responsible for invoking this from an allowed user-activation path.
+     */
+    async reacquireAudioInput({ requireVisible = true, timeoutMs = 5000 } = {}) {
+        const preferences = await this._loadAudioPreferences();
+        return this.beginReacquireAudioInput({ requireVisible, timeoutMs, preferences });
+    }
+
+    beginReacquireAudioInput({
+        requireVisible = true,
+        timeoutMs = 5000,
+        preferences = window.audioPreferences || window.electronIntegration?.audioPreferences
+    } = {}) {
+        if (preferences?.inputDeviceId === NO_AUDIO_INPUT_DEVICE_ID) {
+            this.invalidatePendingInputAcquisition();
+            this.inputResourceState = 'not-configured';
+            this._setInputAvailability('unknown');
+            return Promise.resolve(this.getInputSnapshot());
+        }
+        if (requireVisible && typeof document !== 'undefined' && document.hidden) {
+            const error = new Error('Audio input cannot be acquired while the page is hidden');
+            error.name = 'NotAllowedError';
+            return Promise.reject(error);
+        }
+        const audio = {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false
+        };
+        if (preferences?.inputDeviceId) audio.deviceId = { exact: preferences.inputDeviceId };
+        const acquisitionKey = JSON.stringify(audio);
+        if (this._pendingInputAcquisition?.key === acquisitionKey) {
+            return this._pendingInputAcquisition.promise;
+        }
+        if (this._pendingInputAcquisition) this.invalidatePendingInputAcquisition();
+        const acquisitionGeneration = ++this._inputAcquisitionGeneration;
+        this.inputResourceState = 'acquiring';
+        this._setInputAvailability('unknown');
+        // Start getUserMedia before returning so a caller in a trusted event can
+        // keep the native request inside the activation stack.
+        const promise = this._getUserMediaWithTimeout({ audio }, timeoutMs).then(privateStream => {
+            if (acquisitionGeneration !== this._inputAcquisitionGeneration) {
+                this._stopStreamTracksOnce(privateStream);
+                throw this._createStaleInputAcquisitionError();
+            }
+            this._adoptInputStream(privateStream, { adoptPipelineSource: false });
+            return this.getInputSnapshot();
+        }).catch(error => {
+            if (acquisitionGeneration === this._inputAcquisitionGeneration) {
+                this.inputResourceState = error?.name === 'NotAllowedError' ||
+                    error?.name === 'PermissionDeniedError' ? 'denied' : 'error';
+                this._setInputAvailability('unknown');
+            }
+            throw error;
+        }).finally(() => {
+            if (this._pendingInputAcquisition?.generation === acquisitionGeneration) {
+                this._pendingInputAcquisition = null;
+            }
+        });
+        this._pendingInputAcquisition = {
+            generation: acquisitionGeneration,
+            key: acquisitionKey,
+            promise
+        };
+        return promise;
+    }
+
+    pauseOutputBridge() {
+        if (!this.audioElement || this.audioElement.paused) return false;
+        this.audioElement.pause();
+        return true;
+    }
+
+    playOutputBridgeForGesture() {
+        if (!this.audioElement || !this.audioElement.paused) return Promise.resolve(true);
+        const playResult = this.audioElement.play();
+        return Promise.resolve(playResult).then(() => true);
     }
 
     /**
@@ -1015,10 +1395,17 @@ export class AudioIOManager {
             }
         }
 
-        // Stop all media tracks
-        if (this.stream) {
-            this.stream.getTracks().forEach(track => track.stop());
-            this.stream = null;
+        // Stop canonical input without affecting already-cleared output fields.
+        this.releaseAudioInput({ reason: 'full-cleanup', disconnect: true });
+
+        if (this.silentInputBufferSource) {
+            try { this.silentInputBufferSource.stop(); } catch { /* already stopped */ }
+            try { this.silentInputBufferSource.disconnect(); } catch { /* already disconnected */ }
+            this.silentInputBufferSource = null;
+        }
+        if (this.silentInputGainNode) {
+            try { this.silentInputGainNode.disconnect(); } catch { /* already disconnected */ }
+            this.silentInputGainNode = null;
         }
 
         // Clear nodes

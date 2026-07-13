@@ -124,7 +124,7 @@ test('Multiband Saturation goldens preserve crossover fades and band transitions
     assert.equal(golden.metadata.type, 'MultibandSaturationPlugin');
     assert.equal(
       golden.metadata.jsEngineHash,
-      'a57adcce343ecf7c73469f1b3484fdab809bc4caa712a567abdc9d85805141c4'
+      'aff52f56e47b4e6567c03c268276b970ca9b506718ae3d936815341f41788bec'
     );
     assert.ok(golden.expected.every(Number.isFinite));
   }

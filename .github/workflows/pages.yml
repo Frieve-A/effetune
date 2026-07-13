@@ -31,8 +31,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
       - name: Verify source and tests
         run: npm run verify
+
+      - name: Run mandatory power browser smoke
+        run: npm run test:power-browser
 
       - name: Setup Emscripten SDK
         uses: emscripten-core/setup-emsdk@v16

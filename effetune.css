@@ -159,6 +159,12 @@ input[type="checkbox"] {
     text-align: left;
 }
 
+/* The hidden attribute must win over the display rule above so per-platform /
+   per-state items (install, benchmark, power resume, ...) actually disappear. */
+.settings-menu-item[hidden] {
+    display: none;
+}
+
 .settings-menu-item:hover {
     background: #333;
 }
@@ -2134,11 +2140,27 @@ body {
 
 .tab-button.active,
 .view-switch-button.active,
-.dbt-switch-buttons .header-button.active {
+.dbt-switch-buttons .header-button.active,
+.player-button[data-active="true"] {
     background: linear-gradient(180deg, rgba(74, 158, 255, 0.95), #3f8fe8);
     border-color: #72b9ff;
     color: #ffffff;
     box-shadow: 0 5px 16px rgba(74, 158, 255, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.player-button[data-active="true"]:hover:not(:disabled) {
+    background: linear-gradient(180deg, #72bfff, var(--et-accent));
+    border-color: #8ccaff;
+    box-shadow: 0 5px 16px rgba(74, 158, 255, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+
+.player-button[data-active="true"]:active:not(:disabled) {
+    background: linear-gradient(180deg, var(--et-accent), var(--et-accent-pressed));
+}
+
+.player-button[data-active="true"]:focus-visible:not(:disabled) {
+    border-color: #8ccaff;
+    box-shadow: 0 5px 16px rgba(74, 158, 255, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.24), var(--et-focus-ring);
 }
 
 .plugin-list,

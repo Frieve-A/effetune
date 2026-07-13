@@ -767,9 +767,9 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         if (this.animationFrameId) return;
         const animate = () => {
             this.drawMeters();
-            this.animationFrameId = requestAnimationFrame(animate);
+            this.animationFrameId = this.requestPowerAnimationFrame(animate);
         };
-        this.animationFrameId = requestAnimationFrame(animate);
+        this.animationFrameId = this.requestPowerAnimationFrame(animate);
     }
 
     stopAnimation() {

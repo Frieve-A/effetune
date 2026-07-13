@@ -40,6 +40,11 @@ export class EventManager {
      * Handle user activity events
      */
     handleUserActivity() {
+        if (this.audioManager.powerPolicyController?.enabled) {
+            // General pointer/mouse activity is not an audio wake condition for
+            // the explicit Web/PWA controller.
+            return;
+        }
         // Notify audio processor about user activity
         if (this.audioManager.workletNode) {
             this.audioManager.workletNode.port.postMessage({

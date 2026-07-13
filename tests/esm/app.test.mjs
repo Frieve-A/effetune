@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
 import * as appBootstrap from '../../js/app-bootstrap.js';
+import { resetWebAppConfigRuntimeForTests } from '../../js/electron/webSettingsStorage.js';
 
 let appModulePromise = null;
 
@@ -1858,31 +1859,36 @@ test('autoStartApplication starts bootstrap only when auto-start is enabled', as
     assert.equal(window.electronIntegration.config.startupView, 'library');
     assert.equal(document.body.className.split(/\s+/).includes('view-library'), true);
 
-    document.body.className = '';
-    window.appConfig = null;
-    window.electronIntegration = { isElectron: false, isElectronEnvironment: () => false };
-    window.localStorage = {
-      getItem(key) {
-        return key === 'effetune_app_config' ? JSON.stringify({ startupView: 'library' }) : null;
-      },
-      setItem() {}
-    };
+    resetWebAppConfigRuntimeForTests();
+    try {
+      document.body.className = '';
+      window.appConfig = null;
+      window.electronIntegration = { isElectron: false, isElectronEnvironment: () => false };
+      window.localStorage = {
+        getItem(key) {
+          return key === 'effetune_app_config' ? JSON.stringify({ startupView: 'library' }) : null;
+        },
+        setItem() {}
+      };
 
-    const webConfiguredResult = await mod.autoStartApplication({
-      windowRef: window,
-      AppClass: FakeApp,
-      firstLaunchPromise: Promise.resolve(false),
-      startHeartbeat: page => calls.push(['webConfiguredHeartbeat', page]),
-      async startApplicationFn(options) {
-        options.windowRef.isFirstLaunch = false;
-        await options.loadInitialConfigFn({ windowRef: options.windowRef, logger: console });
-        return 'web-configured';
-      }
-    });
+      const webConfiguredResult = await mod.autoStartApplication({
+        windowRef: window,
+        AppClass: FakeApp,
+        firstLaunchPromise: Promise.resolve(false),
+        startHeartbeat: page => calls.push(['webConfiguredHeartbeat', page]),
+        async startApplicationFn(options) {
+          options.windowRef.isFirstLaunch = false;
+          await options.loadInitialConfigFn({ windowRef: options.windowRef, logger: console });
+          return 'web-configured';
+        }
+      });
 
-    assert.equal(webConfiguredResult, 'web-configured');
-    assert.equal(window.appConfig.startupView, 'library');
-    assert.equal(window.electronIntegration.config.startupView, 'library');
-    assert.equal(document.body.className.split(/\s+/).includes('view-library'), true);
+      assert.equal(webConfiguredResult, 'web-configured');
+      assert.equal(window.appConfig.startupView, 'library');
+      assert.equal(window.electronIntegration.config.startupView, 'library');
+      assert.equal(document.body.className.split(/\s+/).includes('view-library'), true);
+    } finally {
+      resetWebAppConfigRuntimeForTests();
+    }
   });
 });

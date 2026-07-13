@@ -9,6 +9,7 @@ class HumGeneratorPlugin extends PluginBase {
         this.tn = 10.0;      // Tone (kHz) - 1.0-20.0 kHz
         this.in = 1.0;       // Instability (%) - 0-10%
         this.lv = -40.0;     // Level (dB) - -80 to 0 dB
+        this.temporalCapability = 'must-process';
 
         this.registerProcessor(`
             if (!parameters.enabled) return data;
@@ -222,6 +223,10 @@ class HumGeneratorPlugin extends PluginBase {
 
             return data;
         `);
+    }
+
+    getTemporalCapability() {
+        return this.enabled !== false ? 'must-process' : 'reset-on-resume';
     }
 
     getParameters() {

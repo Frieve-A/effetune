@@ -15,6 +15,7 @@ class VinylArtifactsPlugin extends PluginBase {
         this.rt = 25;
         this.rm = 'Velocity';
         this.mx = 100;
+        this.temporalCapability = 'must-process';
 
         this.registerProcessor(`
             // --- Noise Compensation Gains ---
@@ -324,6 +325,10 @@ class VinylArtifactsPlugin extends PluginBase {
             }
             return data;
         `);
+    }
+
+    getTemporalCapability() {
+        return this.enabled !== false && this.mx > 0 ? 'must-process' : 'reset-on-resume';
     }
 
     // --- The rest of the class is unchanged ---

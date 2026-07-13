@@ -104,6 +104,24 @@ async function dumpFailure(dumpDir, type, mode, testCase, expected, actual, comp
   return caseDir;
 }
 
+// Golden metadata hashes cover each plugin's own source only; the shared
+// plugins/plugin-base.js is guarded once via dsp/plugins/golden-base-hash.json.
+async function assertPluginBaseUnchanged(repoRoot, baseSourceHash) {
+  const baseHashPath = path.join(repoRoot, 'dsp', 'plugins', 'golden-base-hash.json');
+  let guard = null;
+  try {
+    guard = JSON.parse(await fs.readFile(baseHashPath, 'utf8'));
+  } catch {
+    guard = null;
+  }
+  if (!guard || guard.formatVersion !== 1 || guard.pluginBaseHash !== baseSourceHash) {
+    throw new Error(
+      'plugins/plugin-base.js changed since goldens were generated ' +
+      '(or dsp/plugins/golden-base-hash.json is missing); regenerate all goldens'
+    );
+  }
+}
+
 async function runParityForType({
   type,
   modes,
@@ -134,6 +152,7 @@ async function runParityForType({
     throw new Error(`No golden case matched ${caseId}`);
   }
   const loaded = await loadReferencePlugin(plan.definition.type, { repoRoot });
+  await assertPluginBaseUnchanged(repoRoot, loaded.baseSourceHash);
   for (const golden of goldens) {
     if (golden.metadata.type !== plan.definition.type) {
       throw new Error(

@@ -226,15 +226,9 @@ test('loader retains bytes and records whether the compiled module is a clone ca
   assert.equal(baselineInfo.moduleCloneable, false);
   assert.ok(baseline.requests.some(url => url.endsWith('/effetune-dsp.wasm')));
 
-  const debug = createLoaderHarness({ simd: true, cloneFails: true });
-  const debugInfo = await loadDspModule({ ...debug.options, debug: true });
-  assert.equal(debugInfo.simd, false);
-  assert.equal(debugInfo.bytes, debug.bytes);
-  assert.equal(debugInfo.moduleCloneable, false);
-  assert.ok(debug.requests.some(url => url.endsWith('/effetune-dsp.debug.wasm')));
-  assert.equal(canCloneWasmModule(debug.module, null), false);
-  assert.equal(canCloneWasmModule(debug.module, value => value), true);
-  assert.equal(canCloneWasmModule(debug.module, () => { throw new Error('no clone'); }), false);
+  assert.equal(canCloneWasmModule(baseline.module, null), false);
+  assert.equal(canCloneWasmModule(baseline.module, value => value), true);
+  assert.equal(canCloneWasmModule(baseline.module, () => { throw new Error('no clone'); }), false);
 });
 
 test('loader converts fetch, metadata, compile, and instantiation failures to JS-only sessions', async t => {

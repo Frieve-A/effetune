@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { AudioManager } from '../../js/audio-manager.js';
+import { NO_AUDIO_INPUT_DEVICE_ID } from '../../js/audio/audio-device-constants.js';
 import { MIC_DENIED_PREFIX } from '../../js/audio/audio-io-manager.js';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
 
@@ -64,7 +65,9 @@ class FakeNode {
   disconnect(target) {
     this.calls.push(['disconnect', this.name, target ? nodeName(target) : 'all']);
     if (this.options.throwDisconnect) throw new Error(`${this.name} disconnect failed`);
-    this.connections = [];
+    this.connections = target
+      ? this.connections.filter(connection => connection !== target)
+      : [];
   }
 }
 
@@ -253,8 +256,8 @@ function installFakes(manager, calls, options = {}) {
     workletNode,
     lowLatencyMode: Boolean(options.lowLatencyMode),
     isFirstLaunch: Boolean(options.isFirstLaunch),
-    async initAudioContext() {
-      calls.push(['context.initAudioContext']);
+    async initAudioContext(audioPreferences) {
+      calls.push(['context.initAudioContext', audioPreferences]);
       if (options.throwInitAudioContext) throw new Error('init context failed');
       return options.contextInitResult ?? '';
     },
@@ -282,6 +285,7 @@ function installFakes(manager, calls, options = {}) {
     stream: options.stream ?? { id: 'stream' },
     sourceNode,
     outputGainNode,
+    lastInputInitializationError: options.inputInitializationError ?? null,
     async initAudioInput(optionsArg) {
       calls.push(['io.initAudioInput', optionsArg]);
       if (options.throwInitAudioInput) throw new Error('input failed');
@@ -294,6 +298,10 @@ function installFakes(manager, calls, options = {}) {
     },
     cleanupAudio() {
       calls.push(['io.cleanupAudio']);
+    },
+    markInputNotConfigured() {
+      calls.push(['io.markInputNotConfigured']);
+      return true;
     }
   };
 
@@ -347,12 +355,25 @@ function installFakes(manager, calls, options = {}) {
 async function withAudioManager(options = {}, callback) {
   const calls = [];
   const timers = [];
+  const storageValues = new Map();
+  if (options.storedAudioPreferences) {
+    storageValues.set(
+      'effetune_audio_preferences',
+      JSON.stringify(options.storedAudioPreferences)
+    );
+  }
   const windowObject = {
     pluginManager: options.windowPluginManager,
     workletNode: options.windowWorkletNode,
     electronAPI: options.electronAPI,
     electronIntegration: options.electronIntegration,
-    uiManager: options.uiManager
+    uiManager: options.uiManager,
+    originalConnectMethod: options.originalConnectMethod,
+    localStorage: {
+      getItem(key) { return storageValues.get(key) ?? null; },
+      setItem(key, value) { storageValues.set(key, String(value)); },
+      removeItem(key) { storageValues.delete(key); }
+    }
   };
   const globals = {
     window: windowObject,
@@ -393,8 +414,53 @@ async function withAudioManager(options = {}, callback) {
     manager.pipeline = manager.getCurrentPipeline();
     calls.length = 0;
 
-    return callback({ calls, fakes, manager, originalPipelineProcessor, pipelineManager, timers, windowObject });
+    return callback({
+      calls,
+      fakes,
+      manager,
+      originalPipelineProcessor,
+      pipelineManager,
+      storageValues,
+      timers,
+      windowObject
+    });
   });
+}
+
+function installSilentInputSelection(manager, calls, {
+  requestResult = true,
+  applyBeforeFailure = false,
+  inputConfigRevision = 10,
+  failureMessage = 'silent input selection failed',
+  beforeRequest = null
+} = {}) {
+  const liveSource = manager.ioManager.sourceNode;
+  const silentSource = new FakeNode('silent-input', calls);
+  const requestedRevisions = [];
+  manager.ioManager.inputSourceNode = liveSource;
+  manager.ioManager.getInputSnapshot = () => ({
+    state: manager.ioManager.inputSourceNode ? 'live' : 'not-configured'
+  });
+  manager.powerPolicyController = {
+    started: false,
+    transitionError: requestResult ? null : { message: failureMessage },
+    getInputConfigRevision: () => inputConfigRevision,
+    async requestSilentInputSelection(revision) {
+      requestedRevisions.push(revision);
+      beforeRequest?.();
+      if (requestResult || applyBeforeFailure) {
+        manager.ioManager.inputSourceNode = null;
+        manager.ioManager.silentInputGainNode = silentSource;
+        manager._connectedPipelineSources.add(silentSource);
+      }
+      return requestResult;
+    },
+    requestReconcile(reason) {
+      calls.push(['power.requestReconcile', reason]);
+      return Promise.resolve();
+    }
+  };
+  return { liveSource, silentSource, requestedRevisions };
 }
 
 test('manages pipeline selection, copying, state, and history integration', async () => {
@@ -616,6 +682,13 @@ test('initializes audio and worklet phases with success, warnings, messages, and
     assert.equal(calls.find(call => call[0] === 'io.initAudioInput')[1], undefined);
   });
 
+  await withAudioManager({}, async ({ calls, manager }) => {
+    const preferences = { inputDeviceId: 'saved-microphone', sampleRate: 48000 };
+    assert.equal(await manager.initAudio(preferences), '');
+    assert.equal(calls.find(call => call[0] === 'context.initAudioContext')[1], preferences);
+    assert.equal(calls.find(call => call[0] === 'io.initAudioInput')[1], preferences);
+  });
+
   await withAudioManager({ contextInitResult: 'context error' }, async ({ manager }) => {
     assert.equal(await manager.initAudio(), 'context error');
   });
@@ -652,6 +725,7 @@ test('initializes audio and worklet phases with success, warnings, messages, and
     assert.equal(await manager.initializeAudioWorklet(), 'Audio Error: load worklet failed');
   });
 });
+
 
 test('registers processors, rebuilds pipelines, and posts audio configuration', async () => {
   await withAudioManager({}, async ({ calls, manager }) => {
@@ -712,14 +786,272 @@ test('registers processors, rebuilds pipelines, and posts audio configuration', 
   });
 });
 
+test('staged audio config publishes only after resource acquisition and a current activation commit', async () => {
+  await withAudioManager({}, async ({ calls, fakes, manager }) => {
+    let published = null;
+    let stagedIntent = null;
+    manager.powerPolicyController = {
+      enabled: true,
+      started: true,
+      sessionJournal: {
+        getStatus: () => ({ sessionId: 'session-a', clientId: 'client-a' })
+      }
+    };
+    manager.getActivePowerWorklets = () => [fakes.workletNode];
+    manager.audioActivationCoordinator = {
+      isSupported: () => true,
+      async stageIntent(intent) {
+        stagedIntent = intent;
+        return { generation: 8 };
+      },
+      async activate(stage, callbacks) {
+        assert.equal(published, null);
+        const candidate = await callbacks.acquire(stage);
+        assert.equal(published, null);
+        assert.equal(callbacks.isCandidateCurrent(candidate, stage), true);
+        return { activated: true, value: callbacks.commit(candidate, stage) };
+      },
+      getActiveDescriptor: () => null
+    };
+    manager.updateAudioConfig = async preferences => {
+      calls.push(['staged.updateAudioConfig', { ...preferences }]);
+      return true;
+    };
+
+    const preferences = { outputChannels: 4, lowLatencyOutput: true };
+    const result = await manager.applyStagedAudioConfig(preferences, {
+      expectedConfigRevision: 0,
+      publish(value, revision) {
+        published = { value, revision };
+        return 'published';
+      }
+    });
+
+    assert.equal(result.activated, true);
+    assert.equal(stagedIntent.intentKind, 'config');
+    assert.deepEqual(stagedIntent.intentIdentity, {
+      audioSessionId: 'session-a',
+      clientId: 'client-a',
+      configIntentSequence: 1,
+      expectedAppConfigRevision: 0
+    });
+    assert.deepEqual(stagedIntent.activationAffectingConfig, preferences);
+    assert.deepEqual(published, { value: preferences, revision: 1 });
+    assert.equal(manager._activeAudioConfigRevision, 1);
+    assert.equal(calls.some(call => call[0] === 'staged.updateAudioConfig'), true);
+
+    calls.length = 0;
+    const stale = await manager.applyStagedAudioConfig({ outputChannels: 8 }, {
+      expectedConfigRevision: 0
+    });
+    assert.equal(stale.activated, false);
+    assert.equal(stale.error.code, 'activation-config-revision-stale');
+    assert.equal(calls.some(call => call[0] === 'staged.updateAudioConfig'), false);
+
+    manager.audioActivationCoordinator.activate = async (stage, callbacks) => {
+      await callbacks.acquire(stage);
+      return { activated: false, error: new Error('candidate stale') };
+    };
+    const failed = await manager.applyStagedAudioConfig({ outputChannels: 6 }, {
+      expectedConfigRevision: 1
+    });
+    assert.equal(failed.activated, false);
+    assert.equal(manager.ioManager.outputGainNode.gain.value, 1);
+  });
+});
+
+test('commits topology mutations once and posts pipeline content to the primary worklet only', async () => {
+  await withAudioManager({}, async ({ calls, manager }) => {
+    const primary = manager.contextManager.workletNode;
+    const parallel = createWorkletNode('workletB', calls);
+    manager._parallelWorkletB = parallel;
+    manager._parallelActive = true;
+    manager._structuralZeroOutputProof = Object.freeze({ proven: true });
+    let topologyNotificationCount = 0;
+    const workletEvents = [];
+    manager.powerPolicyController = {
+      notifyTopologyChanged(reason) {
+        topologyNotificationCount++;
+        manager._topologyRevision++;
+        return {
+          receipt: {
+            mutationKind: 'route-topology-commit',
+            reason
+          }
+        };
+      },
+      handleWorkletPowerEvent(data) {
+        workletEvents.push(data);
+      }
+    };
+
+    manager.registerPipelineProcessors(createPlugin('AlphaPlugin', {
+      id: 'parallel-alpha',
+      calls
+    }));
+    assert.deepEqual(
+      calls.filter(call => call[0] === 'postMessage' && call[2].type === 'registerProcessor')
+        .map(call => call[1]),
+      ['workletA', 'workletB']
+    );
+    calls.length = 0;
+
+    const topologyBefore = manager.getPowerTopologyRevision();
+    const graphBefore = manager.getPowerWorkletGraphGeneration();
+    const result = manager.commitPowerTopologyMutation({
+      type: 'updatePlugin',
+      plugin: { id: 'alpha', enabled: true, parameters: { gain: 2 } }
+    }, { reason: 'test-parameter-update' });
+
+    // Pipeline-content mutations must reach the primary worklet only, even
+    // while the parallel (blind test) worklet B is live.
+    assert.equal(result.postedNodeCount, 1);
+    assert.equal(result.mutation.receipt.mutationKind, 'route-topology-commit');
+    assert.equal(topologyNotificationCount, 1);
+    assert.equal(manager.getPowerTopologyRevision(), topologyBefore + 1);
+    assert.equal(manager.getPowerWorkletGraphGeneration(), graphBefore);
+    assert.equal(manager.getStructuralZeroOutputProof(), null);
+    assert.deepEqual(
+      calls.filter(call => call[0] === 'postMessage' && call[2].type === 'updatePlugin')
+        .map(call => call[1]),
+      ['workletA']
+    );
+
+    // Non-pipeline (power/config) mutations still broadcast to every live worklet.
+    const configResult = manager.commitPowerTopologyMutation({
+      type: 'updateAudioConfig',
+      outputChannels: 2
+    }, { reason: 'test-config-update' });
+    assert.equal(configResult.postedNodeCount, 2);
+    assert.deepEqual(
+      calls.filter(call => call[0] === 'postMessage' && call[2].type === 'updateAudioConfig')
+        .map(call => call[1]),
+      ['workletA', 'workletB']
+    );
+
+    const committedRevision = manager.getPowerTopologyRevision();
+    manager.handleWorkletMessage({
+      data: {
+        type: 'powerStateAck',
+        commandId: 11,
+        processingState: 'active',
+        processingDirective: 'full-process',
+        topologyRevision: committedRevision,
+        workletGraphGeneration: graphBefore,
+        renderSequence: 20
+      }
+    }, primary);
+    manager.handleWorkletMessage({
+      data: {
+        type: 'powerFirstRender',
+        commandId: 11,
+        processingState: 'active',
+        processingDirective: 'full-process',
+        topologyRevision: committedRevision,
+        workletGraphGeneration: graphBefore,
+        renderSequence: 21
+      }
+    }, primary);
+    assert.equal(manager.getPowerTopologyRevision(), committedRevision);
+    assert.equal(workletEvents.length, 2);
+  });
+});
+
+test('updatePlugins commits during a blind test never overwrite parallel worklet B', async () => {
+  await withAudioManager({}, async ({ calls, manager }) => {
+    const parallel = createWorkletNode('workletB', calls);
+    manager._parallelWorkletB = parallel;
+    manager._parallelActive = true;
+    manager.powerPolicyController = {
+      notifyTopologyChanged() {
+        manager._topologyRevision++;
+        return { receipt: { mutationKind: 'route-topology-commit' } };
+      }
+    };
+
+    // Simulate the dedicated blind-test pipeline held by worklet B.
+    manager._buildBlindPluginData = pipeline => pipeline;
+    manager._postBlindPlugins(parallel, [{ id: 'blind-only', type: 'AlphaPlugin' }]);
+    calls.length = 0;
+    parallel.port.messages.length = 0;
+
+    // UI-driven pipeline sync while the blind test runs (preparing or active).
+    for (const preparing of [false, true]) {
+      manager._parallelPreparing = preparing;
+      manager.commitPowerTopologyMutation({
+        type: 'updatePlugins',
+        plugins: [{ id: 'visible', type: 'BetaPlugin' }],
+        masterBypass: false
+      }, { reason: 'pipeline-full-update' });
+    }
+
+    const postsToB = calls.filter(call =>
+      call[0] === 'postMessage' && call[1] === 'workletB');
+    assert.deepEqual(postsToB, []);
+    assert.equal(parallel.port.messages.length, 0);
+    assert.deepEqual(
+      calls.filter(call => call[0] === 'postMessage' && call[2].type === 'updatePlugins')
+        .map(call => call[1]),
+      ['workletA', 'workletA']
+    );
+  });
+});
+
+test('parallel preparation excludes worklet B from power proof until activation', async () => {
+  await withAudioManager({}, async ({ calls, manager }) => {
+    const primary = manager.contextManager.workletNode;
+    const parallel = createWorkletNode('workletB', calls);
+    const powerEvents = [];
+    manager._parallelWorkletB = parallel;
+    manager._parallelPreparing = true;
+    manager._parallelActive = false;
+    manager.audioActivationCoordinator = {
+      recordWorkletEvent(data, node) {
+        powerEvents.push(['activation', data.type, node]);
+      }
+    };
+    manager.powerPolicyController = {
+      handleWorkletPowerEvent(data, node) {
+        powerEvents.push(['policy', data.type, node]);
+      }
+    };
+
+    assert.deepEqual(manager.getActivePowerWorklets(), [primary]);
+    calls.length = 0;
+    manager.broadcastToActiveWorklets({ type: 'power-test' });
+    assert.deepEqual(
+      calls.filter(call => call[0] === 'postMessage').map(call => call[1]),
+      ['workletA']
+    );
+    manager.handleWorkletMessage({ data: { type: 'powerObservation' } }, parallel);
+    assert.deepEqual(powerEvents, []);
+
+    manager._parallelPreparing = false;
+    manager._parallelActive = true;
+    assert.deepEqual(manager.getActivePowerWorklets(), [primary, parallel]);
+    manager.handleWorkletMessage({ data: { type: 'powerObservation' } }, parallel);
+    assert.equal(powerEvents.length, 2);
+  });
+});
+
 test('serializes resets, handles reset outcomes, and notifies graph rebuild listeners', async () => {
   await withAudioManager({}, async ({ calls, manager }) => {
     let releaseFirstReset;
+    let releaseSecondReset;
+    let markSecondStarted;
+    const secondStarted = new Promise(resolve => {
+      markSecondStarted = resolve;
+    });
     manager._doReset = async prefs => {
       calls.push(['manager._doReset', prefs]);
       if (prefs?.name === 'first') {
         await new Promise(resolve => {
           releaseFirstReset = resolve;
+        });
+      } else if (prefs?.name === 'second') {
+        markSecondStarted();
+        await new Promise(resolve => {
+          releaseSecondReset = resolve;
         });
       }
       return prefs?.result ?? '';
@@ -729,8 +1061,64 @@ test('serializes resets, handles reset outcomes, and notifies graph rebuild list
     const second = manager.reset({ name: 'second', result: 'queued result' });
     assert.equal(await second, '');
     releaseFirstReset();
-    assert.equal(await first, 'queued result');
+    await secondStarted;
+    const third = manager.reset({ name: 'third', result: 'latest result' });
+    assert.equal(await third, '');
+    releaseSecondReset();
+    assert.equal(await first, 'latest result');
+    assert.deepEqual(
+      calls.filter(call => call[0] === 'manager._doReset').map(call => call[1].name),
+      ['first', 'second', 'third']
+    );
     assert.equal(manager._resetInProgress, false);
+  });
+
+  await withAudioManager({}, async ({ calls, manager }) => {
+    let releaseActiveReset;
+    manager._doReset = async prefs => {
+      calls.push(['manager._doReset', prefs]);
+      if (calls.filter(call => call[0] === 'manager._doReset').length === 1) {
+        await new Promise(resolve => {
+          releaseActiveReset = resolve;
+        });
+      }
+      return '';
+    };
+    const activePreferences = { inputDeviceId: 'device-a' };
+    const pendingPreferences = { inputDeviceId: 'device-b' };
+
+    const active = manager.reset(activePreferences);
+    assert.equal(await manager.reset(pendingPreferences), '');
+    assert.equal(await manager.reset(activePreferences), '');
+    releaseActiveReset();
+    assert.equal(await active, '');
+    assert.deepEqual(
+      calls.filter(call => call[0] === 'manager._doReset').map(call => call[1]),
+      [activePreferences, activePreferences]
+    );
+  });
+
+  await withAudioManager({}, async ({ calls, manager }) => {
+    let releaseActiveReset;
+    manager._doReset = async prefs => {
+      calls.push(['manager._doReset', prefs]);
+      if (calls.filter(call => call[0] === 'manager._doReset').length === 1) {
+        await new Promise(resolve => {
+          releaseActiveReset = resolve;
+        });
+      }
+      return '';
+    };
+    const preferences = { inputDeviceId: 'device-a' };
+
+    const activeReset = manager.reset(preferences);
+    assert.equal(await manager.reset(preferences), '');
+    releaseActiveReset();
+    assert.equal(await activeReset, '');
+    assert.deepEqual(
+      calls.filter(call => call[0] === 'manager._doReset').map(call => call[1]),
+      [preferences]
+    );
   });
 
   await withAudioManager({}, async ({ manager }) => {
@@ -824,6 +1212,208 @@ test('serializes resets, handles reset outcomes, and notifies graph rebuild list
   });
 });
 
+
+test('reset under intentional suspension notifies the controller when the new context starts running', async () => {
+  await withAudioManager({}, async ({ calls, manager }) => {
+    manager.initAudio = async () => '';
+    manager.initializeAudioWorklet = async () => '';
+    manager.rebuildPipeline = async () => '';
+    manager._notifyAudioGraphRebuilt = async () => {};
+    manager.fadeInOutput = () => {};
+    const stateChanges = [];
+    manager.powerPolicyController = {
+      enabled: true,
+      getEffectiveState: () => 'SUSPENDED',
+      suspendCause: 'no-route',
+      handleContextStateChange: payload => stateChanges.push(payload)
+    };
+    manager.contextManager.audioContext.state = 'running';
+    manager.contextManager.resumeForPowerPolicy = async () => {
+      calls.push(['context.resumeForPowerPolicy']);
+    };
+    assert.equal(await manager._doReset(), '');
+    assert.deepEqual(stateChanges, [{ state: 'running' }]);
+    assert.equal(calls.some(call => call[0] === 'context.resumeForPowerPolicy'), false);
+    assert.equal(calls.some(call => call[0] === 'context.resumeAudioContext'), false);
+  });
+
+  await withAudioManager({}, async ({ manager }) => {
+    manager.initAudio = async () => '';
+    manager.initializeAudioWorklet = async () => '';
+    manager.rebuildPipeline = async () => '';
+    manager._notifyAudioGraphRebuilt = async () => {};
+    manager.fadeInOutput = () => {};
+    const stateChanges = [];
+    manager.powerPolicyController = {
+      enabled: true,
+      getEffectiveState: () => 'SUSPENDED',
+      suspendCause: 'no-route',
+      handleContextStateChange: payload => stateChanges.push(payload)
+    };
+    manager.contextManager.audioContext.state = 'suspended';
+    assert.equal(await manager._doReset(), '');
+    assert.deepEqual(stateChanges, []);
+  });
+});
+
+test('Web input None switches locally only while pipeline configuration is unchanged', async () => {
+  const storedMicrophone = {
+    inputDeviceId: 'microphone-a',
+    inputDeviceLabel: 'Original microphone label',
+    outputDeviceId: 'default',
+    outputDeviceLabel: 'Original output label'
+  };
+  const silentWithEquivalentDefaults = {
+    inputDeviceId: NO_AUDIO_INPUT_DEVICE_ID,
+    inputDeviceLabel: '',
+    outputDeviceLabel: 'Updated output label'
+  };
+  const integration = { audioPreferences: storedMicrophone };
+
+  await withAudioManager({
+    electronIntegration: integration,
+    storedAudioPreferences: storedMicrophone
+  }, async ({ calls, manager, storageValues, windowObject }) => {
+    windowObject.audioPreferences = storedMicrophone;
+    const audioContext = manager.contextManager.audioContext;
+    const workletNode = manager.contextManager.workletNode;
+    let preferencesAtRequest = null;
+    const selection = installSilentInputSelection(manager, calls, {
+      inputConfigRevision: 41,
+      beforeRequest() {
+        preferencesAtRequest = {
+          stored: JSON.parse(storageValues.get('effetune_audio_preferences')),
+          window: windowObject.audioPreferences,
+          integration: windowObject.electronIntegration.audioPreferences
+        };
+      }
+    });
+    manager._doReset = async () => {
+      calls.push(['manager._doReset']);
+      return 'unexpected graph reset';
+    };
+
+    assert.equal(await manager.reset(silentWithEquivalentDefaults), '');
+    assert.deepEqual(selection.requestedRevisions, [42]);
+    assert.deepEqual(preferencesAtRequest, {
+      stored: silentWithEquivalentDefaults,
+      window: silentWithEquivalentDefaults,
+      integration: silentWithEquivalentDefaults
+    });
+    assert.equal(calls.some(call => call[0] === 'manager._doReset'), false);
+    assert.equal(manager.contextManager.audioContext, audioContext);
+    assert.equal(manager.contextManager.workletNode, workletNode);
+    assert.equal(manager.ioManager.inputSourceNode, null);
+    assert.equal(manager.ioManager.silentInputGainNode, selection.silentSource);
+    assert.deepEqual(
+      JSON.parse(storageValues.get('effetune_audio_preferences')),
+      silentWithEquivalentDefaults
+    );
+    assert.equal(windowObject.audioPreferences, silentWithEquivalentDefaults);
+    assert.equal(windowObject.electronIntegration.audioPreferences, silentWithEquivalentDefaults);
+  });
+
+  await withAudioManager({}, async ({ calls, manager, storageValues }) => {
+    const silentFromDefault = {
+      inputDeviceId: NO_AUDIO_INPUT_DEVICE_ID,
+      inputDeviceLabel: ''
+    };
+    const selection = installSilentInputSelection(manager, calls);
+    manager._doReset = async () => {
+      calls.push(['manager._doReset']);
+      return 'unexpected graph reset';
+    };
+
+    assert.equal(await manager.reset(silentFromDefault), '');
+    assert.deepEqual(selection.requestedRevisions, [11]);
+    assert.equal(calls.some(call => call[0] === 'manager._doReset'), false);
+    assert.deepEqual(
+      JSON.parse(storageValues.get('effetune_audio_preferences')),
+      silentFromDefault
+    );
+  });
+
+  await withAudioManager({
+    electronIntegration: { audioPreferences: storedMicrophone },
+    storedAudioPreferences: storedMicrophone
+  }, async ({ calls, manager, storageValues, windowObject }) => {
+    windowObject.audioPreferences = storedMicrophone;
+    const storedBefore = storageValues.get('effetune_audio_preferences');
+    let storedAtRequest = null;
+    const selection = installSilentInputSelection(manager, calls, {
+      requestResult: false,
+      failureMessage: 'injected silent selection failure',
+      beforeRequest() {
+        storedAtRequest = storageValues.get('effetune_audio_preferences');
+      }
+    });
+    manager._doReset = async () => {
+      calls.push(['manager._doReset']);
+      return 'unexpected graph reset';
+    };
+
+    assert.match(
+      await manager.reset(silentWithEquivalentDefaults),
+      /injected silent selection failure/
+    );
+    assert.deepEqual(selection.requestedRevisions, [11]);
+    assert.deepEqual(JSON.parse(storedAtRequest), silentWithEquivalentDefaults);
+    assert.equal(calls.some(call => call[0] === 'manager._doReset'), false);
+    assert.equal(storageValues.get('effetune_audio_preferences'), storedBefore);
+    assert.deepEqual(windowObject.audioPreferences, storedMicrophone);
+    assert.deepEqual(windowObject.electronIntegration.audioPreferences, storedMicrophone);
+    assert.equal(manager.ioManager.inputSourceNode, selection.liveSource);
+  });
+
+  await withAudioManager({
+    electronIntegration: { audioPreferences: storedMicrophone },
+    storedAudioPreferences: storedMicrophone
+  }, async ({ calls, manager, storageValues, windowObject }) => {
+    windowObject.audioPreferences = storedMicrophone;
+    const selection = installSilentInputSelection(manager, calls, {
+      requestResult: false,
+      applyBeforeFailure: true,
+      failureMessage: 'bookkeeping failed after physical handoff'
+    });
+    manager._doReset = async () => 'unexpected graph reset';
+
+    assert.equal(await manager.reset(silentWithEquivalentDefaults), '');
+    assert.deepEqual(selection.requestedRevisions, [11]);
+    assert.deepEqual(
+      JSON.parse(storageValues.get('effetune_audio_preferences')),
+      silentWithEquivalentDefaults
+    );
+    assert.equal(windowObject.audioPreferences, silentWithEquivalentDefaults);
+    assert.equal(manager.ioManager.inputSourceNode, null);
+    assert.equal(manager.ioManager.silentInputGainNode, selection.silentSource);
+    assert.equal(calls.some(call => call[0] === 'power.requestReconcile'), true);
+  });
+
+  await withAudioManager({
+    storedAudioPreferences: {
+      ...storedMicrophone,
+      sampleRate: 48000
+    }
+  }, async ({ calls, manager }) => {
+    const selection = installSilentInputSelection(manager, calls);
+    const graphChangingPreferences = {
+      ...silentWithEquivalentDefaults,
+      sampleRate: 96000
+    };
+    manager._doReset = async preferences => {
+      calls.push(['manager._doReset', preferences]);
+      return '';
+    };
+
+    assert.equal(await manager.reset(graphChangingPreferences), '');
+    assert.deepEqual(selection.requestedRevisions, []);
+    assert.deepEqual(
+      calls.filter(call => call[0] === 'manager._doReset'),
+      [['manager._doReset', graphChangingPreferences]]
+    );
+  });
+});
+
 test('fades output with scheduled ramps and immediate fallbacks', async () => {
   await withAudioManager({}, async ({ calls, manager }) => {
     manager.fadeInOutput(0.1);
@@ -838,6 +1428,16 @@ test('fades output with scheduled ramps and immediate fallbacks', async () => {
     assert.equal(fadeInRamps(), fadeInCount + 1);
     assert.equal(calls.some(call => call[0] === 'param.ramp' && call[2] === 1), true);
     assert.equal(calls.some(call => call[0] === 'param.ramp' && call[2] === 0), true);
+
+    const owner = manager.fadeOutOutputWithOwner(0);
+    assert.equal(manager.fadeInOutputForOwner(owner, 0), true);
+    const staleOwner = manager.fadeOutOutputWithOwner(0);
+    manager.ioManager.outputGainNode = new FakeNode('replacement-output', calls, {
+      gain: new FakeAudioParam('replacement-output.gain', calls)
+    });
+    manager._advanceAudioGraphGeneration();
+    assert.equal(manager.fadeInOutputForOwner(staleOwner, 0), false);
+    assert.equal(manager.ioManager.outputGainNode.gain.value, 1);
   });
 
   await withAudioManager({ audioContext: null }, async ({ manager }) => {
@@ -891,12 +1491,23 @@ test('builds, routes, selects, and disables parallel blind-test pipelines', asyn
     assert.equal(manager._parallelSelection, 'A');
 
     const source = new FakeNode('playerSource', calls);
-    manager.connectSourceToPipeline(source);
+    assert.equal(manager.connectSourceToPipeline(source), true);
+    const partialFailure = new FakeNode('partialFailure', calls);
+    const originalConnect = partialFailure.connect.bind(partialFailure);
+    partialFailure.connect = target => {
+      if (target === manager._parallelInputTap) throw new Error('parallel input failed');
+      return originalConnect(target);
+    };
+    assert.equal(manager.connectSourceToPipeline(partialFailure), false);
+    assert.equal(manager.isSourceConnectedToPipeline(partialFailure), false);
+    assert.deepEqual(partialFailure.connections, []);
+    assert.ok(calls.filter(call => call[0] === 'disconnect' &&
+      call[1] === 'partialFailure').length >= 2);
     manager.setBlindSelection('B', 0.04);
     assert.equal(manager._parallelSelection, 'B');
     manager.disableParallelPipelines();
     assert.equal(manager.isParallelActive(), false);
-    manager.connectSourceToPipeline(null);
+    assert.equal(manager.connectSourceToPipeline(null), false);
   });
 
   await withAudioManager({ audioContextOptions: { channelCount: 0, sampleRate: undefined } }, async ({ manager }) => {
@@ -927,18 +1538,20 @@ test('builds, routes, selects, and disables parallel blind-test pipelines', asyn
   });
 });
 
-test('parallel routing tolerates disconnect/connect and ramp assignment failures', async () => {
+test('parallel routing rejects source connection failures and tolerates ramp assignment failures', async () => {
   await withAudioManager({
     sourceNodeOptions: { throwDisconnect: true, throwConnect: true },
     workletNodeOptions: { throwDisconnect: true },
     audioContextOptions: { gainNodeOptions: { throwDisconnect: true } },
     audioWorkletNodeOptions: { nodeOptions: { throwDisconnect: true } }
   }, async ({ manager }) => {
-    assert.equal(await manager.enableParallelPipelines('A'), true);
+    assert.equal(await manager.enableParallelPipelines('A'), false);
+    assert.equal(manager.isParallelActive(), false);
+    assert.equal(manager.isParallelProcessing(), false);
+    assert.equal(manager._hasParallelResources(), false);
     manager.contextManager.workletNode.options.throwConnect = true;
     const badNode = new FakeNode('badSource', [], { throwConnect: true });
-    manager.connectSourceToPipeline(badNode);
-    manager.disableParallelPipelines();
+    assert.equal(manager.connectSourceToPipeline(badNode), false);
   });
 
   await withAudioManager({ audioContextOptions: { gainParamOptions: { throwSchedule: true } } }, async ({ manager }) => {
@@ -959,7 +1572,37 @@ test('parallel routing tolerates disconnect/connect and ramp assignment failures
     manager.contextManager.workletNode = null;
     manager.workletNode = createWorkletNode('fallbackWorklet', []);
     const source = new FakeNode('fallbackSource', []);
-    manager.connectSourceToPipeline(source);
+    assert.equal(manager.connectSourceToPipeline(source), true);
+  });
+
+  await withAudioManager({
+    isFirstLaunch: true,
+    originalConnectMethod(target) {
+      this.calls.push(['originalConnect', this.name, target.name]);
+      this.connections.push(target);
+    }
+  }, async ({ calls, manager }) => {
+    const source = new FakeNode('firstLaunchSource', calls);
+    assert.equal(manager.connectSourceToPipeline(source), true);
+    assert.equal(calls.some(call => call[0] === 'originalConnect' &&
+      call[1] === 'firstLaunchSource' && call[2] === 'workletA'), true);
+  });
+
+  await withAudioManager({}, async ({ manager }) => {
+    const source = manager.ioManager.sourceNode;
+    const primary = manager.contextManager.workletNode;
+    assert.equal(manager.connectSourceToPipeline(source), true);
+    const connect = source.connect.bind(source);
+    source.connect = target => {
+      if (target === manager._parallelInputTap) {
+        throw new Error('parallel tap unavailable');
+      }
+      return connect(target);
+    };
+
+    assert.equal(await manager.enableParallelPipelines('A'), false);
+    assert.equal(source.connections.includes(primary), true);
+    assert.equal(manager.isSourceConnectedToPipeline(source), true);
   });
 });
 

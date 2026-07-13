@@ -105,18 +105,6 @@ export async function getAudioDevices(isElectron) {
   }
 }
 
-function allowsSpeakerSelection() {
-  if (typeof document === 'undefined') return true;
-  const policy = document.permissionsPolicy || document.featurePolicy;
-  if (!policy || typeof policy.allowsFeature !== 'function') return true;
-  try {
-    return policy.allowsFeature('speaker-selection');
-  } catch (error) {
-    console.warn('Failed to check speaker-selection Permissions-Policy:', error);
-    return true;
-  }
-}
-
 function getOutputDeviceSupport(isElectron) {
   if (isElectron) {
     return { supported: true, reason: '' };
@@ -124,10 +112,6 @@ function getOutputDeviceSupport(isElectron) {
 
   if (window.isSecureContext === false) {
     return { supported: false, reasonKey: 'dialog.audioConfig.outputDevice.secureContextRequired' };
-  }
-
-  if (!allowsSpeakerSelection()) {
-    return { supported: false, reasonKey: 'dialog.audioConfig.outputDevice.permissionsPolicyBlocked' };
   }
 
   const audioContextPrototype = window.AudioContext?.prototype || window.webkitAudioContext?.prototype;
@@ -516,9 +500,6 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         latencyHint: selectedLatency
       };
       
-      // Update global audio preferences for AudioWorklet context
-      window.audioPreferences = preferences;
-      
       if (!isElectron && window.audioManager && typeof window.audioManager.reset === 'function') {
         closeDialog();
         let resetResult = '';
@@ -536,6 +517,10 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         }
         return;
       }
+
+      // Electron applies the new preferences after the Web path has completed
+      // its local, atomic source replacement.
+      window.audioPreferences = preferences;
 
       // Save and close
       await saveAudioPreferences(isElectron, preferences);

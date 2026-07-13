@@ -13,10 +13,20 @@ export class AudioContextManager {
         this.isFirstLaunch = false;
         this._skipAudioInitDuringSampleRateChange = false;
         this._resumeGestureHandler = null;
+        this._resumePromise = null;
+        this.powerStateDelegate = null;
+        this._intentionalPowerSuspend = false;
         
         // Initialize global variable if not already set
         if (typeof window.originalConnectMethod === 'undefined') {
             window.originalConnectMethod = null;
+        }
+    }
+
+    setPowerStateDelegate(delegate) {
+        this.powerStateDelegate = delegate || null;
+        if (this.powerStateDelegate?.enabled) {
+            this.stopResumeOnUserGesture();
         }
     }
 
@@ -91,9 +101,10 @@ export class AudioContextManager {
     
     /**
      * Initialize the audio context
+     * @param {Object|null} audioPreferences - Preferences already selected for this reset
      * @returns {Promise<string>} - Empty string on success, error message on failure
      */
-    async initAudioContext() {
+    async initAudioContext(audioPreferences = null) {
         try {
             // Check if this is the first launch
             if (window.electronAPI && window.electronAPI.isFirstLaunch) {
@@ -126,7 +137,7 @@ export class AudioContextManager {
                     throw new Error('Web Audio API is not supported in this browser');
                 }
                 
-                const preferences = await this._loadAudioPreferences();
+                const preferences = audioPreferences || await this._loadAudioPreferences();
 
                 // Default audio context options
                 let audioContextOptions = { };
@@ -158,6 +169,7 @@ export class AudioContextManager {
                     }
                     : this._createAudioContextWithFallback(AudioContext, audioContextOptions);
                 this.audioContext = contextResult.audioContext;
+                this._intentionalPowerSuspend = false;
                 console.log('AudioContext created with options:', contextResult.options);
                 window.audioContext = this.audioContext; // Global reference
                 this.resumeOnUserGesture();
@@ -172,6 +184,15 @@ export class AudioContextManager {
                 // Detect AudioContext interruption caused by audio device changes on macOS
                 this.audioContext.onstatechange = () => {
                     const state = this.audioContext?.state;
+                    if (this.powerStateDelegate?.enabled) {
+                        this.powerStateDelegate.handleContextStateChange?.({
+                            state,
+                            intentional: this._intentionalPowerSuspend
+                        });
+                        if (state === 'suspended' || state === 'interrupted') {
+                            return;
+                        }
+                    }
                     if (state === 'suspended') {
                         this.audioContext.resume().catch(err =>
                             console.warn('[AudioContext] resume after suspended failed:', err)
@@ -467,6 +488,7 @@ export class AudioContextManager {
      */
     async closeAudioContext() {
         this.stopResumeOnUserGesture();
+        this._resumePromise = null;
 
         // Restore original connect method if it was overridden
         if (window.originalConnectMethod) {
@@ -512,6 +534,7 @@ export class AudioContextManager {
                 console.warn('[closeAudioContext] close() failed or timed out:', err.message);
             }
             this.audioContext = null;
+            this._intentionalPowerSuspend = false;
             window.audioContext = null;
         }
         
@@ -526,28 +549,70 @@ export class AudioContextManager {
      * Resume the audio context if suspended
      * @returns {Promise<void>}
      */
-    async resumeAudioContext() {
+    async resumeAudioContext({ bypassPowerPolicy = false, resumeKind = 'unexpected-recovery' } = {}) {
+        if (!bypassPowerPolicy && this.powerStateDelegate?.enabled) {
+            return this.powerStateDelegate.ensureActive?.(resumeKind);
+        }
         if (this.audioContext && this.audioContext.state === 'running') {
+            this._intentionalPowerSuspend = false;
             this.stopResumeOnUserGesture();
             return;
         }
 
-        if (this.audioContext && this.audioContext.state === 'suspended') {
+        if (this.audioContext &&
+            (this.audioContext.state === 'suspended' || this.audioContext.state === 'interrupted')) {
             // resume() can hang when the AudioContext's sinkId points to an HDMI device
             // that CoreAudio hasn't finished initialising yet.  Use a timeout so that
             // a reconnect-triggered reset never freezes the app.  The HDMI retry
             // mechanism will restore audio once the device is ready.
-            let timerId;
-            await Promise.race([
-                this.audioContext.resume().finally(() => clearTimeout(timerId)),
-                new Promise(resolve => { timerId = setTimeout(resolve, 10000); })
-            ]).catch(() => {});
+            if (!this._resumePromise) {
+                const context = this.audioContext;
+                let timerId;
+                const operation = Promise.race([
+                    context.resume().finally(() => clearTimeout(timerId)),
+                    new Promise(resolve => { timerId = setTimeout(resolve, 10000); })
+                ]).catch(() => {});
+                const sharedPromise = operation.finally(() => {
+                    if (this._resumePromise === sharedPromise) this._resumePromise = null;
+                });
+                this._resumePromise = sharedPromise;
+            }
+            await this._resumePromise;
             if (this.audioContext?.state !== 'running') {
                 console.warn('[AudioContext] resumeAudioContext: context not running after resume attempt, state:', this.audioContext?.state);
             } else {
+                this._intentionalPowerSuspend = false;
                 this.stopResumeOnUserGesture();
             }
         }
+    }
+
+    async suspendForPowerPolicy() {
+        const context = this.audioContext;
+        if (!context || context.state === 'closed') return false;
+        if (context.state === 'suspended') {
+            this._intentionalPowerSuspend = true;
+            this.stopResumeOnUserGesture();
+            return true;
+        }
+        this._intentionalPowerSuspend = true;
+        try {
+            await context.suspend();
+            const suspended = context.state === 'suspended';
+            if (!suspended) this._intentionalPowerSuspend = false;
+            if (suspended) this.stopResumeOnUserGesture();
+            return suspended;
+        } catch (error) {
+            this._intentionalPowerSuspend = false;
+            throw error;
+        }
+    }
+
+    async resumeForPowerPolicy(resumeKind = 'unexpected-recovery') {
+        await this.resumeAudioContext({ bypassPowerPolicy: true, resumeKind });
+        const running = this.audioContext?.state === 'running';
+        if (running) this._intentionalPowerSuspend = false;
+        return running;
     }
 
     /**
@@ -559,16 +624,19 @@ export class AudioContextManager {
      */
     resumeOnUserGesture() {
         if (this._isElectronEnvironment() ||
+            this.powerStateDelegate?.enabled ||
             this._resumeGestureHandler ||
             !this.audioContext ||
-            this.audioContext.state !== 'suspended' ||
+            (this.audioContext.state !== 'suspended' &&
+                this.audioContext.state !== 'interrupted') ||
             typeof document === 'undefined' ||
             typeof document.addEventListener !== 'function') {
             return;
         }
 
         const handler = () => {
-            this.resumeAudioContext().catch(error => {
+            const resume = this.resumeAudioContext();
+            Promise.resolve(resume).catch(error => {
                 console.warn('[AudioContext] resume on user gesture failed:', error);
             });
         };

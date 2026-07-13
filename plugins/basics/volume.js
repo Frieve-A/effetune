@@ -1,6 +1,7 @@
 class VolumePlugin extends PluginBase {
     constructor() {
         super('Volume', 'Adjusts the volume of the audio signal');
+        this.temporalCapability = 'stateless';
         this.vl = 0;  // vl: Volume (formerly volume) - Range: -60 to +24 dB
 
         // Register processor function
@@ -19,6 +20,10 @@ class VolumePlugin extends PluginBase {
             }
             return data;
         `);
+    }
+
+    getPowerGainUpperBoundDb() {
+        return this.vl;
     }
 
     // Set parameters

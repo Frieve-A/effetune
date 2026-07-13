@@ -63,6 +63,21 @@ npm run lint
 npm test
 ```
 
+Changes to the power-saving policy, audio-pipeline lifetime, input ownership, or resume
+behavior must also pass the browser smoke test:
+
+```bash
+npx playwright install chromium
+npm run test:power-browser
+```
+
+The Playwright install command is needed only when Chromium is not already available.
+The smoke-test runner starts and stops its own temporary loopback server; do not start a
+separate development server for this command.
+
+For release-candidate device coverage and repeatable battery/power observations, complete
+the [Web/PWA power-saving measurement record](docs/mobile-pwa-power-saving-measurement.md).
+
 ### 4. Build and Test the DSP Core
 
 The committed WebAssembly DSP artifacts let JavaScript-only contributors run the app
@@ -85,20 +100,15 @@ npm run test:dsp:parity
 - `test:dsp:parity` checks both shipped modules against the committed JavaScript goldens.
 
 Set `EMSDK` to the activated SDK root on Windows. Use `npm run build:dsp -- --check` for
-a write-free freshness check and `npm run build:dsp -- --debug` for the local debug
-artifact. The debug module is excluded from the service-worker precache and packaged
-applications. Kernel preparation and instance creation run between audio quanta and may
+a write-free freshness check. Kernel preparation and instance creation run between audio quanta and may
 grow WASM memory; processing itself must never allocate, lock, perform I/O, or grow
 memory. See `dsp/README.md` for the ABI and kernel workflow.
 
-For a browser runtime check, open the served app with `?dspBench=1`, start the audio
-graph with a user gesture, and inspect the console. A successful production path reports
-`Ready: 67 kernels (SIMD)` (or `baseline`) followed by `Processing active` with a
-positive `single-call blocks` count. The same statistics are available as
-`window.dspStats`; `telemetryDroppedFrames` should remain zero during the check. Repeat
-once with `?dsp=off` and confirm that the JavaScript compatibility path starts without
-any `[dsp-wasm]` messages. Browsers that do not acknowledge a cloned compiled module
-are retried automatically with the retained WASM bytes.
+For a browser runtime check, open the served app, start the audio graph with a user
+gesture, and confirm the console stays free of `[dsp-wasm]` warnings. Repeat once with
+`?dsp=off` and confirm that the JavaScript compatibility path starts without any
+`[dsp-wasm]` messages. Browsers that do not acknowledge a cloned compiled module are
+retried automatically with the retained WASM bytes.
 
 ### 5. Run in Development Mode
 

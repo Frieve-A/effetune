@@ -28,7 +28,20 @@ function createRuntime(options = {}) {
     masterBypass: options.masterBypass ?? false,
     contextManager: options.contextManager,
     audioContext: options.audioContext,
-    pipelineProcessor: options.pipelineProcessor
+    pipelineProcessor: options.pipelineProcessor,
+    getActivePowerWorklets() {
+      const node = globalThis.window?.workletNode;
+      return node?.port ? [node] : [];
+    },
+    commitPowerTopologyMutation(message, { reason } = {}) {
+      for (const node of this.getActivePowerWorklets()) node.port.postMessage(message);
+      calls.push(['commitPowerTopologyMutation', reason, message.type]);
+      return { mutation: { reason }, postedNodeCount: this.getActivePowerWorklets().length };
+    },
+    broadcastToActiveWorklets(message) {
+      for (const node of this.getActivePowerWorklets()) node.port.postMessage(message);
+      calls.push(['broadcastToActiveWorklets', message.type]);
+    }
   };
   if (options.register !== false) {
     audioManager.registerPipelineProcessors = plugins => calls.push(['registerPipelineProcessors', plugins]);
@@ -115,6 +128,15 @@ test('worklet update methods send full plugin payloads and update the URL', asyn
   assert.equal(messages[2].type, 'updatePlugin');
   assert.equal(runtime.calls.filter(call => call[0] === 'updateURL').length, 2);
   assert.equal(runtime.calls.filter(call => call[0] === 'registerPipelineProcessors').length, 3);
+  assert.deepEqual(
+    runtime.calls.filter(call => call[0] === 'commitPowerTopologyMutation')
+      .map(call => call.slice(1)),
+    [
+      ['pipeline-full-update', 'updatePlugins'],
+      ['pipeline-plugin-update', 'updatePlugin'],
+      ['pipeline-parameter-update', 'updatePlugin']
+    ]
+  );
 });
 
 test('methods still update URLs when the worklet or UI manager is absent', async () => {
@@ -138,7 +160,7 @@ test('methods still update URLs when the worklet or UI manager is absent', async
     assert.equal(runtime.sync.isWorkletAvailable(), false);
   });
 
-  await withGlobals({ window: { workletNode: {}, uiManager: null } }, async () => {
+  await withGlobals({ window: { workletNode: createWorklet([]), uiManager: null } }, async () => {
     assert.equal(runtime.sync.isWorkletAvailable(), true);
   });
 
@@ -178,6 +200,10 @@ test('master bypass synchronizes processor state and worklet payloads', async ()
     }],
     masterBypass: 1
   });
+  assert.deepEqual(
+    runtime.calls.find(call => call[0] === 'commitPowerTopologyMutation')?.slice(1),
+    ['pipeline-master-bypass', 'updatePlugins']
+  );
 
   const noProcessorRuntime = createRuntime({ pipelineProcessor: {} });
   await withGlobals({ window: createWindow(noProcessorRuntime.calls, { workletNode: null }) }, async () => {
@@ -220,4 +246,19 @@ test('batch, add, remove, reorder, reset, and metrics messages send expected wor
   assert.equal(messages[2].pluginId, 7);
   assert.deepEqual(messages[3], { type: 'reorderPlugin', fromIndex: 2, toIndex: 0 });
   assert.equal(runtime.calls.filter(call => call[0] === 'updateURL').length, 5);
+  assert.deepEqual(
+    runtime.calls.filter(call => call[0] === 'commitPowerTopologyMutation')
+      .map(call => call[1]),
+    [
+      'pipeline-batch-update',
+      'pipeline-plugin-add',
+      'pipeline-plugin-remove',
+      'pipeline-plugin-reorder',
+      'pipeline-reset'
+    ]
+  );
+  assert.deepEqual(
+    runtime.calls.filter(call => call[0] === 'broadcastToActiveWorklets'),
+    [['broadcastToActiveWorklets', 'getPerformanceMetrics']]
+  );
 });

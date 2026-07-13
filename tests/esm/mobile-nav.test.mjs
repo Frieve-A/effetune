@@ -178,6 +178,41 @@ test('MobileNav updates the resume prompt on AudioContext statechange', async ()
   });
 });
 
+test('resumeAudioContext handles power controller resume rejection without unhandled rejection', async () => {
+  const errors = [];
+  let unhandled = null;
+  const onUnhandled = reason => { unhandled = reason; };
+  process.on('unhandledRejection', onUnhandled);
+  try {
+    let updates = 0;
+    const nav = Object.assign(Object.create(MobileNav.prototype), {
+      uiManager: {
+        audioManager: {
+          powerPolicyController: {
+            enabled: true,
+            requestResumeFromUserGesture() {
+              return Promise.reject(new Error('resume failed'));
+            }
+          }
+        }
+      },
+      updateAudioResumePrompt() { updates++; }
+    });
+    await withGlobals({
+      console: { ...console, error: (...args) => { errors.push(args); } }
+    }, async () => {
+      nav.resumeAudioContext();
+      await new Promise(resolve => setImmediate(resolve));
+      await new Promise(resolve => setImmediate(resolve));
+    });
+    assert.equal(updates, 1);
+    assert.equal(errors.length, 1);
+    assert.equal(unhandled, null);
+  } finally {
+    process.removeListener('unhandledRejection', onUnhandled);
+  }
+});
+
 test('MobileNav restores the previous tab when library initialization fails', async () => {
   const documentRef = createDocument();
   documentRef.body.classList.add('view-player');

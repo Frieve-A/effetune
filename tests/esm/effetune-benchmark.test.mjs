@@ -43,7 +43,7 @@ class VolumePlugin {
 
 class UnknownPlugin extends VolumePlugin {}
 
-function createWasmHarness({ simd = false, debug = false } = {}) {
+function createWasmHarness({ simd = false } = {}) {
   const calls = [];
   const packedParameters = [];
   const structuredParameters = [];
@@ -144,8 +144,6 @@ function createWasmHarness({ simd = false, debug = false } = {}) {
       calls.push(['getDspRolloutConfig', options]);
       return {
         forceOff: false,
-        debug,
-        bench: false,
         enabledTypes: options.meta ? ['VolumePlugin'] : []
       };
     },
@@ -247,7 +245,7 @@ test('WebAssembly mode honors the user setting and dsp=off before loading an art
   const dependencies = {
     getDspRolloutConfig() {
       rolloutCalls++;
-      return { forceOff: true, debug: false, enabledTypes: [] };
+      return { forceOff: true, enabledTypes: [] };
     },
     async loadDspModule() {
       loadCalls++;
@@ -431,7 +429,7 @@ test('WebAssembly loader failure reports unavailability without instantiating or
   const dependencies = {
     getDspRolloutConfig() {
       dependencyCalls.push('rollout');
-      return { forceOff: false, debug: false, enabledTypes: [] };
+      return { forceOff: false, enabledTypes: [] };
     },
     async loadDspModule() {
       dependencyCalls.push('load');

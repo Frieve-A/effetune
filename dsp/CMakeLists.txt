@@ -110,516 +110,152 @@ if(EMSCRIPTEN)
       -fwasm-exceptions
       $<$<CONFIG:Release>:-O3>
       $<$<CONFIG:Release>:-flto>
-      $<$<CONFIG:Debug>:-O1>
-      $<$<CONFIG:Debug>:-g>
-      $<$<CONFIG:Debug>:-sASSERTIONS=2>
-      $<$<CONFIG:Debug>:-sSTACK_OVERFLOW_CHECK=0>
-      $<$<CONFIG:Debug>:-Wl,--wrap=malloc>
       $<$<BOOL:${ET_SIMD}>:-msimd128>)
 endif()
 
 if(BUILD_TESTING AND NOT EMSCRIPTEN)
-  add_executable(
+  # Declares a native test executable linked against effetune_dsp_core with the
+  # standard warnings-as-errors options.
+  #   et_add_dsp_test(<target>
+  #     SOURCES <src>...
+  #     [INCLUDE_DIRS <dir>...]        # extra private include directories
+  #     [WRAP_MALLOC]                  # Debug-only -Wl,--wrap=malloc (non-MSVC)
+  #     [TEST_NAME <name>]             # CTest name, defaults to the target name
+  #     [TEST_ARGS <arg>...])          # extra arguments for the test command
+  function(et_add_dsp_test NAME)
+    cmake_parse_arguments(
+      ET_TEST "WRAP_MALLOC" "TEST_NAME" "SOURCES;INCLUDE_DIRS;TEST_ARGS" ${ARGN})
+    if(ET_TEST_UNPARSED_ARGUMENTS)
+      message(FATAL_ERROR
+        "et_add_dsp_test(${NAME}): unknown arguments: ${ET_TEST_UNPARSED_ARGUMENTS}")
+    endif()
+    add_executable(${NAME} ${ET_TEST_SOURCES})
+    if(ET_TEST_INCLUDE_DIRS)
+      target_include_directories(${NAME} PRIVATE ${ET_TEST_INCLUDE_DIRS})
+    endif()
+    target_link_libraries(${NAME} PRIVATE effetune_dsp_core)
+    if(MSVC)
+      target_compile_options(${NAME} PRIVATE /W4 /WX)
+    else()
+      target_compile_options(${NAME} PRIVATE -Wall -Wextra -Wpedantic -Werror)
+      if(ET_TEST_WRAP_MALLOC)
+        target_link_options(${NAME} PRIVATE $<$<CONFIG:Debug>:-Wl,--wrap=malloc>)
+      endif()
+    endif()
+    if(NOT ET_TEST_TEST_NAME)
+      set(ET_TEST_TEST_NAME ${NAME})
+    endif()
+    add_test(NAME ${ET_TEST_TEST_NAME} COMMAND ${NAME} ${ET_TEST_TEST_ARGS})
+  endfunction()
+
+  et_add_dsp_test(
     effetune_dsp_tests
-    test/test_main.cpp
-    test/abi_test.cpp
-    test/telemetry_test.cpp)
-  target_include_directories(effetune_dsp_tests PRIVATE core test)
-  target_link_libraries(effetune_dsp_tests PRIVATE effetune_dsp_core)
-  if(MSVC)
-    target_compile_options(effetune_dsp_tests PRIVATE /W4 /WX)
-  else()
-    target_compile_options(effetune_dsp_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
-    target_link_options(
-      effetune_dsp_tests PRIVATE $<$<CONFIG:Debug>:-Wl,--wrap=malloc>)
-  endif()
-  add_test(NAME effetune_dsp_tests COMMAND effetune_dsp_tests)
-
-  add_executable(effetune-dsp-parity-runner test/parity_runner.cpp)
-  target_include_directories(effetune-dsp-parity-runner PRIVATE core)
-  target_link_libraries(effetune-dsp-parity-runner PRIVATE effetune_dsp_core)
-  if(MSVC)
-    target_compile_options(effetune-dsp-parity-runner PRIVATE /W4 /WX)
-  else()
-    target_compile_options(
-      effetune-dsp-parity-runner PRIVATE -Wall -Wextra -Wpedantic -Werror)
-    target_link_options(
-      effetune-dsp-parity-runner PRIVATE $<$<CONFIG:Debug>:-Wl,--wrap=malloc>)
-  endif()
-  add_test(NAME effetune_dsp_parity_runner_help COMMAND effetune-dsp-parity-runner --help)
-
-  add_executable(effetune_dsp_biquad_tests test/biquad_test.cpp)
-  target_link_libraries(effetune_dsp_biquad_tests PRIVATE effetune_dsp_core)
-  if(MSVC)
-    target_compile_options(effetune_dsp_biquad_tests PRIVATE /W4 /WX)
-  else()
-    target_compile_options(
-      effetune_dsp_biquad_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
-  endif()
-  add_test(NAME effetune_dsp_biquad_tests COMMAND effetune_dsp_biquad_tests)
-
-  add_executable(
+    SOURCES test/test_main.cpp test/abi_test.cpp test/telemetry_test.cpp
+    INCLUDE_DIRS core test
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune-dsp-parity-runner
+    SOURCES test/parity_runner.cpp
+    INCLUDE_DIRS core
+    WRAP_MALLOC
+    TEST_NAME effetune_dsp_parity_runner_help
+    TEST_ARGS --help)
+  et_add_dsp_test(effetune_dsp_biquad_tests SOURCES test/biquad_test.cpp)
+  et_add_dsp_test(
     effetune_dsp_phase3b_group_b_descriptor_tests
-    test/phase3b_group_b_descriptor_test.cpp)
-  target_link_libraries(
-    effetune_dsp_phase3b_group_b_descriptor_tests
-    PRIVATE effetune_dsp_core)
-  if(MSVC)
-    target_compile_options(
-      effetune_dsp_phase3b_group_b_descriptor_tests
-      PRIVATE /W4 /WX)
-  else()
-    target_compile_options(
-      effetune_dsp_phase3b_group_b_descriptor_tests
-      PRIVATE -Wall -Wextra -Wpedantic -Werror)
-  endif()
-  add_test(
-    NAME effetune_dsp_phase3b_group_b_descriptor_tests
-    COMMAND effetune_dsp_phase3b_group_b_descriptor_tests)
-
-  add_executable(effetune_dsp_level_meter_tests test/level_meter_frame_test.cpp)
-  target_link_libraries(effetune_dsp_level_meter_tests PRIVATE effetune_dsp_core)
-  if(MSVC)
-    target_compile_options(effetune_dsp_level_meter_tests PRIVATE /W4 /WX)
-  else()
-    target_compile_options(
-      effetune_dsp_level_meter_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
-  endif()
-  add_test(
-    NAME effetune_dsp_level_meter_tests
-    COMMAND effetune_dsp_level_meter_tests)
-
-  add_executable(effetune_dsp_oscilloscope_tests test/oscilloscope_frame_test.cpp)
-  target_link_libraries(effetune_dsp_oscilloscope_tests PRIVATE effetune_dsp_core)
-  if(MSVC)
-    target_compile_options(effetune_dsp_oscilloscope_tests PRIVATE /W4 /WX)
-  else()
-    target_compile_options(
-      effetune_dsp_oscilloscope_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
-  endif()
-  add_test(
-    NAME effetune_dsp_oscilloscope_tests
-    COMMAND effetune_dsp_oscilloscope_tests)
-
-  add_executable(
+    SOURCES test/phase3b_group_b_descriptor_test.cpp)
+  et_add_dsp_test(
+    effetune_dsp_level_meter_tests SOURCES test/level_meter_frame_test.cpp)
+  et_add_dsp_test(
+    effetune_dsp_oscilloscope_tests SOURCES test/oscilloscope_frame_test.cpp)
+  et_add_dsp_test(
     effetune_dsp_spectrum_analyzer_tests
-    plugins/analyzer/spectrum_analyzer/native_test.cpp)
-  target_link_libraries(effetune_dsp_spectrum_analyzer_tests PRIVATE effetune_dsp_core)
-  if(MSVC)
-    target_compile_options(effetune_dsp_spectrum_analyzer_tests PRIVATE /W4 /WX)
-  else()
-    target_compile_options(
-      effetune_dsp_spectrum_analyzer_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
-  endif()
-  add_test(
-    NAME effetune_dsp_spectrum_analyzer_tests
-    COMMAND effetune_dsp_spectrum_analyzer_tests)
-
-  add_executable(
+    SOURCES plugins/analyzer/spectrum_analyzer/native_test.cpp)
+  et_add_dsp_test(
     effetune_dsp_spectrogram_tests
-    plugins/analyzer/spectrogram/native_test.cpp)
-  target_link_libraries(effetune_dsp_spectrogram_tests PRIVATE effetune_dsp_core)
-  if(MSVC)
-    target_compile_options(effetune_dsp_spectrogram_tests PRIVATE /W4 /WX)
-  else()
-    target_compile_options(
-      effetune_dsp_spectrogram_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
-  endif()
-  add_test(
-    NAME effetune_dsp_spectrogram_tests
-    COMMAND effetune_dsp_spectrogram_tests)
-
-  add_executable(
+    SOURCES plugins/analyzer/spectrogram/native_test.cpp)
+  et_add_dsp_test(
     effetune_dsp_stereo_meter_tests
-    plugins/analyzer/stereo_meter/native_test.cpp)
-  target_link_libraries(effetune_dsp_stereo_meter_tests PRIVATE effetune_dsp_core)
-  if(MSVC)
-    target_compile_options(effetune_dsp_stereo_meter_tests PRIVATE /W4 /WX)
-  else()
-    target_compile_options(
-      effetune_dsp_stereo_meter_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
-  endif()
-  add_test(
-    NAME effetune_dsp_stereo_meter_tests
-    COMMAND effetune_dsp_stereo_meter_tests)
-
-  add_executable(
+    SOURCES plugins/analyzer/stereo_meter/native_test.cpp)
+  et_add_dsp_test(
     effetune_dsp_basics_topology_tests
-    plugins/basics/topology_native_test.cpp)
-  target_link_libraries(effetune_dsp_basics_topology_tests PRIVATE effetune_dsp_core)
-  if(MSVC)
-    target_compile_options(effetune_dsp_basics_topology_tests PRIVATE /W4 /WX)
-  else()
-    target_compile_options(
-      effetune_dsp_basics_topology_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
-  endif()
-  add_test(
-    NAME effetune_dsp_basics_topology_tests
-    COMMAND effetune_dsp_basics_topology_tests)
-
-  add_executable(effetune_dsp_primitives_tests test/primitives_test.cpp)
-  target_link_libraries(effetune_dsp_primitives_tests PRIVATE effetune_dsp_core)
-  if(MSVC)
-    target_compile_options(effetune_dsp_primitives_tests PRIVATE /W4 /WX)
-  else()
-    target_compile_options(
-      effetune_dsp_primitives_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
-  endif()
-  add_test(NAME effetune_dsp_primitives_tests COMMAND effetune_dsp_primitives_tests)
-
-  add_executable(
+    SOURCES plugins/basics/topology_native_test.cpp)
+  et_add_dsp_test(effetune_dsp_primitives_tests SOURCES test/primitives_test.cpp)
+  et_add_dsp_test(
     effetune_dsp_dynamics_group_a_tests
-    test/dynamics_group_a_frame_test.cpp)
-  target_link_libraries(effetune_dsp_dynamics_group_a_tests PRIVATE effetune_dsp_core)
-  if(MSVC)
-    target_compile_options(effetune_dsp_dynamics_group_a_tests PRIVATE /W4 /WX)
-  else()
-    target_compile_options(
-      effetune_dsp_dynamics_group_a_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
-  endif()
-  add_test(
-    NAME effetune_dsp_dynamics_group_a_tests
-    COMMAND effetune_dsp_dynamics_group_a_tests)
-
-  add_executable(
+    SOURCES test/dynamics_group_a_frame_test.cpp)
+  et_add_dsp_test(
     effetune_dsp_dynamics_group_b_tests
-    test/dynamics_group_b_frame_test.cpp)
-  target_link_libraries(effetune_dsp_dynamics_group_b_tests PRIVATE effetune_dsp_core)
-  if(MSVC)
-    target_compile_options(effetune_dsp_dynamics_group_b_tests PRIVATE /W4 /WX)
-  else()
-    target_compile_options(
-      effetune_dsp_dynamics_group_b_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
-  endif()
-  add_test(
-    NAME effetune_dsp_dynamics_group_b_tests
-    COMMAND effetune_dsp_dynamics_group_b_tests)
-
-  add_executable(
+    SOURCES test/dynamics_group_b_frame_test.cpp)
+  et_add_dsp_test(
     effetune_dsp_power_amp_sag_tests
-    plugins/dynamics/power_amp_sag/native_test.cpp)
-  target_link_libraries(effetune_dsp_power_amp_sag_tests PRIVATE effetune_dsp_core)
-  if(MSVC)
-    target_compile_options(effetune_dsp_power_amp_sag_tests PRIVATE /W4 /WX)
-  else()
-    target_compile_options(
-      effetune_dsp_power_amp_sag_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
-  endif()
-  add_test(
-    NAME effetune_dsp_power_amp_sag_tests
-    COMMAND effetune_dsp_power_amp_sag_tests)
-
-  add_executable(
+    SOURCES plugins/dynamics/power_amp_sag/native_test.cpp)
+  et_add_dsp_test(
     effetune_dsp_multiband_tests
-    plugins/dynamics/multiband_native_test.cpp)
-  target_link_libraries(effetune_dsp_multiband_tests PRIVATE effetune_dsp_core)
-  if(MSVC)
-    target_compile_options(effetune_dsp_multiband_tests PRIVATE /W4 /WX)
-  else()
-    target_compile_options(
-      effetune_dsp_multiband_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
-  endif()
-  add_test(
-    NAME effetune_dsp_multiband_tests
-    COMMAND effetune_dsp_multiband_tests)
-
-  add_executable(
+    SOURCES plugins/dynamics/multiband_native_test.cpp)
+  et_add_dsp_test(
     effetune_dsp_wave3c_saturation_descriptor_tests
-    test/wave3c_saturation_descriptor_test.cpp)
-  target_link_libraries(
-    effetune_dsp_wave3c_saturation_descriptor_tests
-    PRIVATE effetune_dsp_core)
-  if(MSVC)
-    target_compile_options(
-      effetune_dsp_wave3c_saturation_descriptor_tests
-      PRIVATE /W4 /WX)
-  else()
-    target_compile_options(
-      effetune_dsp_wave3c_saturation_descriptor_tests
-      PRIVATE -Wall -Wextra -Wpedantic -Werror)
-  endif()
-  add_test(
-    NAME effetune_dsp_wave3c_saturation_descriptor_tests
-    COMMAND effetune_dsp_wave3c_saturation_descriptor_tests)
-
-  add_executable(
+    SOURCES test/wave3c_saturation_descriptor_test.cpp)
+  et_add_dsp_test(
     effetune_dsp_wave3c_sub_synth_state_tests
-    test/wave3c_sub_synth_state_test.cpp)
-  target_link_libraries(
-    effetune_dsp_wave3c_sub_synth_state_tests
-    PRIVATE effetune_dsp_core)
-  target_include_directories(
-    effetune_dsp_wave3c_sub_synth_state_tests
-    PRIVATE generated/cpp)
-  if(MSVC)
-    target_compile_options(
-      effetune_dsp_wave3c_sub_synth_state_tests
-      PRIVATE /W4 /WX)
-  else()
-    target_compile_options(
-      effetune_dsp_wave3c_sub_synth_state_tests
-      PRIVATE -Wall -Wextra -Wpedantic -Werror)
-  endif()
-  add_test(
-    NAME effetune_dsp_wave3c_sub_synth_state_tests
-    COMMAND effetune_dsp_wave3c_sub_synth_state_tests)
-
-  add_executable(
+    SOURCES test/wave3c_sub_synth_state_test.cpp
+    INCLUDE_DIRS generated/cpp)
+  et_add_dsp_test(
     effetune_dsp_digital_error_emulator_tests
-    plugins/lofi/digital_error_emulator/native_test.cpp)
-  target_link_libraries(
-    effetune_dsp_digital_error_emulator_tests
-    PRIVATE effetune_dsp_core)
-  target_include_directories(
-    effetune_dsp_digital_error_emulator_tests
-    PRIVATE core generated/cpp)
-  if(MSVC)
-    target_compile_options(
-      effetune_dsp_digital_error_emulator_tests
-      PRIVATE /W4 /WX)
-  else()
-    target_compile_options(
-      effetune_dsp_digital_error_emulator_tests
-      PRIVATE -Wall -Wextra -Wpedantic -Werror)
-    target_link_options(
-      effetune_dsp_digital_error_emulator_tests
-      PRIVATE $<$<CONFIG:Debug>:-Wl,--wrap=malloc>)
-  endif()
-  add_test(
-    NAME effetune_dsp_digital_error_emulator_tests
-    COMMAND effetune_dsp_digital_error_emulator_tests)
-
-  add_executable(
+    SOURCES plugins/lofi/digital_error_emulator/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
     effetune_dsp_dsd64_imd_simulator_tests
-    plugins/lofi/dsd64_imd_simulator/native_test.cpp)
-  target_link_libraries(
-    effetune_dsp_dsd64_imd_simulator_tests
-    PRIVATE effetune_dsp_core)
-  target_include_directories(
-    effetune_dsp_dsd64_imd_simulator_tests
-    PRIVATE core generated/cpp)
-  if(MSVC)
-    target_compile_options(
-      effetune_dsp_dsd64_imd_simulator_tests
-      PRIVATE /W4 /WX)
-  else()
-    target_compile_options(
-      effetune_dsp_dsd64_imd_simulator_tests
-      PRIVATE -Wall -Wextra -Wpedantic -Werror)
-    target_link_options(
-      effetune_dsp_dsd64_imd_simulator_tests
-      PRIVATE $<$<CONFIG:Debug>:-Wl,--wrap=malloc>)
-  endif()
-  add_test(
-    NAME effetune_dsp_dsd64_imd_simulator_tests
-    COMMAND effetune_dsp_dsd64_imd_simulator_tests)
-
-  add_executable(
+    SOURCES plugins/lofi/dsd64_imd_simulator/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
     effetune_dsp_five_band_dynamic_eq_tests
-    plugins/eq/five_band_dynamic_eq/native_test.cpp)
-  target_link_libraries(
-    effetune_dsp_five_band_dynamic_eq_tests
-    PRIVATE effetune_dsp_core)
-  target_include_directories(
-    effetune_dsp_five_band_dynamic_eq_tests
-    PRIVATE core generated/cpp)
-  if(MSVC)
-    target_compile_options(
-      effetune_dsp_five_band_dynamic_eq_tests
-      PRIVATE /W4 /WX)
-  else()
-    target_compile_options(
-      effetune_dsp_five_band_dynamic_eq_tests
-      PRIVATE -Wall -Wextra -Wpedantic -Werror)
-    target_link_options(
-      effetune_dsp_five_band_dynamic_eq_tests
-      PRIVATE $<$<CONFIG:Debug>:-Wl,--wrap=malloc>)
-  endif()
-  add_test(
-    NAME effetune_dsp_five_band_dynamic_eq_tests
-    COMMAND effetune_dsp_five_band_dynamic_eq_tests)
-
-  add_executable(
+    SOURCES plugins/eq/five_band_dynamic_eq/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
     effetune_dsp_doppler_distortion_tests
-    plugins/modulation/doppler_distortion/native_test.cpp)
-  target_link_libraries(effetune_dsp_doppler_distortion_tests PRIVATE effetune_dsp_core)
-  if(MSVC)
-    target_compile_options(effetune_dsp_doppler_distortion_tests PRIVATE /W4 /WX)
-  else()
-    target_compile_options(
-      effetune_dsp_doppler_distortion_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
-  endif()
-  add_test(
-    NAME effetune_dsp_doppler_distortion_tests
-    COMMAND effetune_dsp_doppler_distortion_tests)
-
-  add_executable(
+    SOURCES plugins/modulation/doppler_distortion/native_test.cpp)
+  et_add_dsp_test(
     effetune_dsp_pitch_shifter_tests
-    plugins/modulation/pitch_shifter/native_test.cpp)
-  target_link_libraries(
-    effetune_dsp_pitch_shifter_tests
-    PRIVATE effetune_dsp_core)
-  target_include_directories(
-    effetune_dsp_pitch_shifter_tests
-    PRIVATE core generated/cpp)
-  if(MSVC)
-    target_compile_options(
-      effetune_dsp_pitch_shifter_tests
-      PRIVATE /W4 /WX)
-  else()
-    target_compile_options(
-      effetune_dsp_pitch_shifter_tests
-      PRIVATE -Wall -Wextra -Wpedantic -Werror)
-    target_link_options(
-      effetune_dsp_pitch_shifter_tests
-      PRIVATE $<$<CONFIG:Debug>:-Wl,--wrap=malloc>)
-  endif()
-  add_test(
-    NAME effetune_dsp_pitch_shifter_tests
-    COMMAND effetune_dsp_pitch_shifter_tests)
-
-  add_executable(
+    SOURCES plugins/modulation/pitch_shifter/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
     effetune_dsp_vinyl_artifacts_tests
-    plugins/lofi/vinyl_artifacts/native_test.cpp)
-  target_link_libraries(
-    effetune_dsp_vinyl_artifacts_tests
-    PRIVATE effetune_dsp_core)
-  target_include_directories(
-    effetune_dsp_vinyl_artifacts_tests
-    PRIVATE core generated/cpp)
-  if(MSVC)
-    target_compile_options(
-      effetune_dsp_vinyl_artifacts_tests
-      PRIVATE /W4 /WX)
-  else()
-    target_compile_options(
-      effetune_dsp_vinyl_artifacts_tests
-      PRIVATE -Wall -Wextra -Wpedantic -Werror)
-    target_link_options(
-      effetune_dsp_vinyl_artifacts_tests
-      PRIVATE $<$<CONFIG:Debug>:-Wl,--wrap=malloc>)
-  endif()
-  add_test(
-    NAME effetune_dsp_vinyl_artifacts_tests
-    COMMAND effetune_dsp_vinyl_artifacts_tests)
-
-  add_executable(
+    SOURCES plugins/lofi/vinyl_artifacts/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
     effetune_dsp_wow_flutter_tests
-    plugins/modulation/wow_flutter/native_test.cpp)
-  target_link_libraries(effetune_dsp_wow_flutter_tests PRIVATE effetune_dsp_core)
-  if(MSVC)
-    target_compile_options(effetune_dsp_wow_flutter_tests PRIVATE /W4 /WX)
-  else()
-    target_compile_options(
-      effetune_dsp_wow_flutter_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
-  endif()
-  add_test(
-    NAME effetune_dsp_wow_flutter_tests
-    COMMAND effetune_dsp_wow_flutter_tests)
-
-  add_executable(
+    SOURCES plugins/modulation/wow_flutter/native_test.cpp)
+  et_add_dsp_test(
     effetune_dsp_horn_resonator_tests
-    plugins/resonator/horn_native_test.cpp)
-  target_include_directories(effetune_dsp_horn_resonator_tests PRIVATE core)
-  target_link_libraries(effetune_dsp_horn_resonator_tests PRIVATE effetune_dsp_core)
-  if(MSVC)
-    target_compile_options(effetune_dsp_horn_resonator_tests PRIVATE /W4 /WX)
-  else()
-    target_compile_options(
-      effetune_dsp_horn_resonator_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
-    target_link_options(
-      effetune_dsp_horn_resonator_tests
-      PRIVATE $<$<CONFIG:Debug>:-Wl,--wrap=malloc>)
-  endif()
-  add_test(
-    NAME effetune_dsp_horn_resonator_tests
-    COMMAND effetune_dsp_horn_resonator_tests)
-
-  add_executable(
+    SOURCES plugins/resonator/horn_native_test.cpp
+    INCLUDE_DIRS core
+    WRAP_MALLOC)
+  et_add_dsp_test(
     effetune_dsp_modal_resonator_tests
-    plugins/resonator/modal_resonator/native_test.cpp)
-  target_include_directories(
-    effetune_dsp_modal_resonator_tests
-    PRIVATE core generated/cpp)
-  target_link_libraries(
-    effetune_dsp_modal_resonator_tests
-    PRIVATE effetune_dsp_core)
-  if(MSVC)
-    target_compile_options(
-      effetune_dsp_modal_resonator_tests
-      PRIVATE /W4 /WX)
-  else()
-    target_compile_options(
-      effetune_dsp_modal_resonator_tests
-      PRIVATE -Wall -Wextra -Wpedantic -Werror)
-    target_link_options(
-      effetune_dsp_modal_resonator_tests
-      PRIVATE $<$<CONFIG:Debug>:-Wl,--wrap=malloc>)
-  endif()
-  add_test(
-    NAME effetune_dsp_modal_resonator_tests
-    COMMAND effetune_dsp_modal_resonator_tests)
-
-  add_executable(
+    SOURCES plugins/resonator/modal_resonator/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
     effetune_dsp_reverb_tests
-    plugins/reverb/reverb_native_test.cpp)
-  target_include_directories(effetune_dsp_reverb_tests PRIVATE core)
-  target_link_libraries(effetune_dsp_reverb_tests PRIVATE effetune_dsp_core)
-  if(MSVC)
-    target_compile_options(effetune_dsp_reverb_tests PRIVATE /W4 /WX)
-  else()
-    target_compile_options(
-      effetune_dsp_reverb_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
-    target_link_options(
-      effetune_dsp_reverb_tests
-      PRIVATE $<$<CONFIG:Debug>:-Wl,--wrap=malloc>)
-  endif()
-  add_test(
-    NAME effetune_dsp_reverb_tests
-    COMMAND effetune_dsp_reverb_tests)
-
-  add_executable(
+    SOURCES plugins/reverb/reverb_native_test.cpp
+    INCLUDE_DIRS core
+    WRAP_MALLOC)
+  et_add_dsp_test(
     effetune_dsp_multiband_saturation_tests
-    plugins/saturation/multiband_saturation/native_test.cpp)
-  target_link_libraries(
-    effetune_dsp_multiband_saturation_tests
-    PRIVATE effetune_dsp_core)
-  target_include_directories(
-    effetune_dsp_multiband_saturation_tests
-    PRIVATE core generated/cpp)
-  if(MSVC)
-    target_compile_options(
-      effetune_dsp_multiband_saturation_tests
-      PRIVATE /W4 /WX)
-  else()
-    target_compile_options(
-      effetune_dsp_multiband_saturation_tests
-      PRIVATE -Wall -Wextra -Wpedantic -Werror)
-    target_link_options(
-      effetune_dsp_multiband_saturation_tests
-      PRIVATE $<$<CONFIG:Debug>:-Wl,--wrap=malloc>)
-  endif()
-  add_test(
-    NAME effetune_dsp_multiband_saturation_tests
-    COMMAND effetune_dsp_multiband_saturation_tests)
-
-  add_executable(
+    SOURCES plugins/saturation/multiband_saturation/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
     effetune_dsp_multiband_balance_tests
-    plugins/spatial/multiband_balance/native_test.cpp)
-  target_include_directories(effetune_dsp_multiband_balance_tests PRIVATE core)
-  target_link_libraries(effetune_dsp_multiband_balance_tests PRIVATE effetune_dsp_core)
-  if(MSVC)
-    target_compile_options(effetune_dsp_multiband_balance_tests PRIVATE /W4 /WX)
-  else()
-    target_compile_options(
-      effetune_dsp_multiband_balance_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
-    target_link_options(
-      effetune_dsp_multiband_balance_tests
-      PRIVATE $<$<CONFIG:Debug>:-Wl,--wrap=malloc>)
-  endif()
-  add_test(
-    NAME effetune_dsp_multiband_balance_tests
-    COMMAND effetune_dsp_multiband_balance_tests)
+    SOURCES plugins/spatial/multiband_balance/native_test.cpp
+    INCLUDE_DIRS core
+    WRAP_MALLOC)
 
   if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_executable(effetune_dsp_allocation_guard_probe test/allocation_guard_probe.cpp)

@@ -22,6 +22,7 @@ import { MobileMenu } from './ui/mobile-menu.js';
 import { MobileNav } from './ui/mobile-nav.js';
 import { LibraryManager } from './library/library-manager.js';
 import { LibraryView } from './ui/library/library-view.js';
+import { PowerStateView } from './ui/power-state-view.js';
 
 function usesIOSFilePicker(windowRef = window) {
     const navigatorRef = windowRef?.navigator || globalThis.navigator;
@@ -83,11 +84,21 @@ export class UIManager {
         this.stateManager = new StateManager(audioManager);
         this.mobileMenu = new MobileMenu(this);
         this.mobileNav = new MobileNav(this);
+        this.powerStateView = new PowerStateView({
+            eventSource: this.audioManager,
+            translate: (key, fallback) => {
+                const translated = this.t?.(key);
+                return translated && translated !== key ? translated : fallback;
+            },
+            onResume: () => this.audioManager.powerPolicyController
+                ?.requestResumeFromUserGesture?.('dedicated-input')
+        });
         this.layoutMode.onChange(() => {
             this.pipelineManager.core.columnManager.updatePipelineColumns(
                 this.pipelineManager.core.columnManager.getCurrentColumns()
             );
             this.pluginListManager.updatePositions();
+            this.powerStateView?.refreshActions?.();
         });
 
         // Initialize UI elements
@@ -118,6 +129,10 @@ export class UIManager {
         this.initLocalization().then(() => {
             // Update UI texts after translations are loaded
             this.updateUITexts();
+            this.powerStateView?.setTranslator?.((key, fallback) => {
+                const translated = this.t?.(key);
+                return translated && translated !== key ? translated : fallback;
+            });
             // Initialize clipboard buttons after translations are loaded
             this.initClipboardButtons();
             // Initialize history buttons after translations are loaded
@@ -399,6 +414,19 @@ export class UIManager {
         }, 250);
     }
 
+    flushPipelineStateToLocalStorage() {
+        if (window.electronIntegration?.isElectronEnvironment?.()) return;
+        if (this._pipelineStorageTimeout) {
+            clearTimeout(this._pipelineStorageTimeout);
+            this._pipelineStorageTimeout = null;
+        }
+        try {
+            localStorage.setItem('effetune_pipeline_state', this.getPipelineState());
+        } catch (error) {
+            console.warn('Failed to flush web pipeline state:', error);
+        }
+    }
+
     loadPipelineStateFromLocalStorage() {
         if (window.electronIntegration?.isElectronEnvironment?.()) return null;
         try {
@@ -454,6 +482,10 @@ export class UIManager {
 
             // Listen for sleep mode changes from AudioManager
             this.audioManager.addEventListener('sleepModeChanged', (data) => {
+                // Legacy sleep-mode indicator: kept as a fallback while the
+                // power policy controller is disabled. When the controller is
+                // enabled, PowerStateView owns the power-state presentation.
+                if (this.audioManager.powerPolicyController?.isControllerEnabled?.()) return;
                 this.updateSleepModeDisplay(data.isSleepMode, data.sampleRate);
             });
 
@@ -773,6 +805,7 @@ export class UIManager {
         }
         this.stateManager?.updateLabels?.();
         this.mobileMenu?.updateLabels?.();
+        this.powerStateView?.redrawLanguage?.();
         if (this.doubleBlindTestButton) {
             this.doubleBlindTestButton.textContent = this.t('menu.doubleBlindTest');
         }

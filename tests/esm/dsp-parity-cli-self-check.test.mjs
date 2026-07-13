@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runBenchCli } from '../../tools/dsp-parity/bench.mjs';
-import { runGenerateCli } from '../../tools/dsp-parity/generate.mjs';
+import { generateAllGoldens, runGenerateCli } from '../../tools/dsp-parity/generate.mjs';
 import { loadReferencePlugin } from '../../tools/dsp-parity/node-host.mjs';
 import { runParityCli } from '../../tools/dsp-parity/run.mjs';
 import { DSP_PARAM_PACKERS } from '../../js/audio/dsp-params.generated.js';
@@ -137,12 +137,20 @@ test('generated golden files pass the legacy self-check runner', async t => {
   assert.equal(checked.results[0].comparison.pass, true);
 });
 
-test('parity CLI discovers every DSP schema with a committed golden set when type is omitted', async t => {
+async function createTwoPluginParityFixture(t) {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-dsp-all-types-'));
-  t.after(() => fs.rm(tempRoot, { recursive: true, force: true }));
+  t.after(() => fs.rm(tempRoot, {
+    recursive: true,
+    force: true,
+    maxRetries: 3,
+    retryDelay: 25
+  }));
   const pluginsDir = path.join(tempRoot, 'plugins');
   const pluginBasicsDir = path.join(pluginsDir, 'basics');
   const dspBasicsDir = path.join(tempRoot, 'dsp', 'plugins', 'basics');
+  const basePath = path.join(pluginsDir, 'plugin-base.js');
+  const muteCasesPath = path.join(dspBasicsDir, 'mute', 'cases.json');
+  const volumeCasesPath = path.join(dspBasicsDir, 'volume', 'cases.json');
   await Promise.all([
     fs.mkdir(pluginBasicsDir, { recursive: true }),
     fs.mkdir(path.join(dspBasicsDir, 'mute'), { recursive: true }),
@@ -150,7 +158,7 @@ test('parity CLI discovers every DSP schema with a committed golden set when typ
     fs.mkdir(path.join(dspBasicsDir, 'volume'), { recursive: true })
   ]);
   await Promise.all([
-    fs.copyFile(path.join(repoRoot, 'plugins', 'plugin-base.js'), path.join(pluginsDir, 'plugin-base.js')),
+    fs.copyFile(path.join(repoRoot, 'plugins', 'plugin-base.js'), basePath),
     fs.copyFile(path.join(repoRoot, 'plugins', 'basics', 'mute.js'), path.join(pluginBasicsDir, 'mute.js')),
     fs.copyFile(path.join(repoRoot, 'plugins', 'basics', 'volume.js'), path.join(pluginBasicsDir, 'volume.js')),
     fs.writeFile(path.join(pluginsDir, 'plugins.txt'), [
@@ -163,7 +171,7 @@ test('parity CLI discovers every DSP schema with a committed golden set when typ
       tolerance: { policy: 'per-sample', abs: 0 },
       fields: []
     })),
-    fs.writeFile(path.join(dspBasicsDir, 'mute', 'cases.json'), JSON.stringify({
+    fs.writeFile(muteCasesPath, JSON.stringify({
       cases: [{ id: 'mute-impulse', stimulus: 'imp', frames: 32, blockSize: 16 }]
     })),
     fs.writeFile(path.join(dspBasicsDir, 'volume', 'params.json'), JSON.stringify({
@@ -171,7 +179,7 @@ test('parity CLI discovers every DSP schema with a committed golden set when typ
       tolerance: { policy: 'per-sample', abs: 1e-6 },
       fields: [{ name: 'volume', key: 'vl', kind: 'float', min: -60, max: 24, default: 0 }]
     })),
-    fs.writeFile(path.join(dspBasicsDir, 'volume', 'cases.json'), JSON.stringify({
+    fs.writeFile(volumeCasesPath, JSON.stringify({
       cases: [{ id: 'volume-impulse', stimulus: 'imp', frames: 32, blockSize: 16 }]
     })),
     fs.writeFile(path.join(dspBasicsDir, 'skipped', 'params.json'), JSON.stringify({
@@ -179,10 +187,50 @@ test('parity CLI discovers every DSP schema with a committed golden set when typ
       fields: []
     }))
   ]);
+  return {
+    tempRoot,
+    basePath,
+    muteCasesPath,
+    volumeCasesPath,
+    guardPath: path.join(tempRoot, 'dsp', 'plugins', 'golden-base-hash.json'),
+    muteGoldenDir: path.join(dspBasicsDir, 'mute', 'golden'),
+    volumeGoldenDir: path.join(dspBasicsDir, 'volume', 'golden')
+  };
+}
+
+async function snapshotTree(root) {
+  const snapshot = {};
+  const pending = [''];
+  while (pending.length > 0) {
+    const relativeDirectory = pending.pop();
+    const directory = path.join(root, relativeDirectory);
+    const entries = await fs.readdir(directory, { withFileTypes: true });
+    entries.sort((left, right) => left.name.localeCompare(right.name, 'en'));
+    for (const entry of entries) {
+      const relativePath = path.join(relativeDirectory, entry.name);
+      if (entry.isDirectory()) pending.push(relativePath);
+      else snapshot[relativePath] = await fs.readFile(path.join(root, relativePath));
+    }
+  }
+  return snapshot;
+}
+
+async function snapshotCommittedGoldens(fixture) {
+  return {
+    mute: await snapshotTree(fixture.muteGoldenDir),
+    volume: await snapshotTree(fixture.volumeGoldenDir),
+    guard: await fs.readFile(fixture.guardPath)
+  };
+}
+
+test('parity CLI discovers every DSP schema with a committed golden set when type is omitted', async t => {
+  const { tempRoot } = await createTwoPluginParityFixture(t);
 
   for (const type of ['MutePlugin', 'VolumePlugin']) {
     await runGenerateCli(['--root', tempRoot, '--type', type], { log() {} });
   }
+  const generated = await runGenerateCli(['--root', tempRoot, '--all'], { log() {} });
+  assert.deepEqual(generated.types, ['MutePlugin', 'VolumePlugin']);
   const messages = [];
   const checked = await runParityCli([
     '--root', tempRoot,
@@ -194,6 +242,116 @@ test('parity CLI discovers every DSP schema with a committed golden set when typ
   assert.equal(checked.results.every(result => result.comparison.pass), true);
   assert.equal(messages.some(message => message.includes('MutePlugin/mute-impulse')), true);
   assert.equal(messages.some(message => message.includes('VolumePlugin/volume-impulse')), true);
+});
+
+test('shared plugin base guard advances only after complete all-golden generation', async t => {
+  const fixture = await createTwoPluginParityFixture(t);
+  const { tempRoot, basePath, volumeCasesPath, guardPath } = fixture;
+  await assert.rejects(
+    () => runGenerateCli(['--root', tempRoot, '--all', '--limit-cases', '1'], { log() {} }),
+    /--all cannot be combined with --limit-cases/
+  );
+
+  for (const type of ['MutePlugin', 'VolumePlugin']) {
+    await runGenerateCli(['--root', tempRoot, '--type', type], { log() {} });
+  }
+  await assert.rejects(() => fs.access(guardPath), error => error.code === 'ENOENT');
+  await runGenerateCli(['--root', tempRoot, '--all'], { log() {} });
+  const originalGuard = await fs.readFile(guardPath, 'utf8');
+
+  const baseSource = await fs.readFile(basePath, 'utf8');
+  await fs.writeFile(basePath, `${baseSource}\n// Updated base revision for the freshness test.\n`);
+  await runGenerateCli([
+    '--root', tempRoot,
+    '--type', 'MutePlugin',
+    '--limit-cases', '1',
+    '--output', path.join(tempRoot, 'partial-golden')
+  ], { log() {} });
+  assert.equal(await fs.readFile(guardPath, 'utf8'), originalGuard);
+  await assert.rejects(
+    () => runParityCli([
+      '--root', tempRoot,
+      '--type', 'VolumePlugin',
+      '--self-check'
+    ], { log() {} }),
+    /plugin-base\.js changed since goldens were generated/
+  );
+
+  const volumeCases = await fs.readFile(volumeCasesPath, 'utf8');
+  const beforeFailedGeneration = await snapshotCommittedGoldens(fixture);
+  await fs.writeFile(volumeCasesPath, '{');
+  await assert.rejects(
+    () => runGenerateCli(['--root', tempRoot, '--all'], { log() {} })
+  );
+  assert.deepEqual(await snapshotCommittedGoldens(fixture), beforeFailedGeneration);
+
+  const muteCases = JSON.parse(await fs.readFile(fixture.muteCasesPath, 'utf8'));
+  muteCases.cases[0].id = 'mute-impulse-updated';
+  const restoredVolumeCases = JSON.parse(volumeCases);
+  restoredVolumeCases.cases[0].id = 'volume-impulse-updated';
+  await Promise.all([
+    fs.writeFile(fixture.muteCasesPath, JSON.stringify(muteCases)),
+    fs.writeFile(volumeCasesPath, JSON.stringify(restoredVolumeCases))
+  ]);
+  await runGenerateCli(['--root', tempRoot, '--all'], { log() {} });
+  const afterSuccessfulGeneration = await snapshotCommittedGoldens(fixture);
+  assert.notDeepEqual(afterSuccessfulGeneration.mute, beforeFailedGeneration.mute);
+  assert.notDeepEqual(afterSuccessfulGeneration.volume, beforeFailedGeneration.volume);
+  assert.notDeepEqual(afterSuccessfulGeneration.guard, beforeFailedGeneration.guard);
+  assert.notEqual(await fs.readFile(guardPath, 'utf8'), originalGuard);
+  const checked = await runParityCli([
+    '--root', tempRoot,
+    '--self-check'
+  ], { log() {} });
+  assert.equal(checked.results.every(result => result.comparison.pass), true);
+});
+
+test('all-golden promotion rolls earlier replacements back when a later rename fails', async t => {
+  const fixture = await createTwoPluginParityFixture(t);
+  for (const type of ['MutePlugin', 'VolumePlugin']) {
+    await runGenerateCli(['--root', fixture.tempRoot, '--type', type], { log() {} });
+  }
+  await runGenerateCli(['--root', fixture.tempRoot, '--all'], { log() {} });
+  const beforePromotion = await snapshotCommittedGoldens(fixture);
+  const baseSource = await fs.readFile(fixture.basePath, 'utf8');
+  await fs.writeFile(fixture.basePath, `${baseSource}\n// Force different staged golden metadata.\n`);
+
+  let injected = false;
+  const rename = async (source, destination) => {
+    if (!injected && destination === fixture.guardPath && source.includes('.golden-all-')) {
+      injected = true;
+      throw new Error('Injected promotion failure');
+    }
+    await fs.rename(source, destination);
+  };
+  await assert.rejects(
+    () => generateAllGoldens({ repoRoot: fixture.tempRoot, log() {}, rename }),
+    /Failed to promote the complete DSP golden set/
+  );
+  assert.equal(injected, true);
+  assert.deepEqual(await snapshotCommittedGoldens(fixture), beforePromotion);
+});
+
+test('all-golden generation leaves committed bytes unchanged when a later set exceeds its budget', async t => {
+  const fixture = await createTwoPluginParityFixture(t);
+  for (const type of ['MutePlugin', 'VolumePlugin']) {
+    await runGenerateCli(['--root', fixture.tempRoot, '--type', type], { log() {} });
+  }
+  await runGenerateCli(['--root', fixture.tempRoot, '--all'], { log() {} });
+  const beforeGeneration = await snapshotCommittedGoldens(fixture);
+  const volumeCases = JSON.parse(await fs.readFile(fixture.volumeCasesPath, 'utf8'));
+  volumeCases.cases[0].frames = 256;
+  await fs.writeFile(fixture.volumeCasesPath, JSON.stringify(volumeCases));
+
+  await assert.rejects(
+    () => runGenerateCli([
+      '--root', fixture.tempRoot,
+      '--all',
+      '--budget', '1000'
+    ], { log() {} }),
+    /exceeding the 1,000-byte budget/
+  );
+  assert.deepEqual(await snapshotCommittedGoldens(fixture), beforeGeneration);
 });
 
 test('native runner hook names the missing executable and required build action', async () => {

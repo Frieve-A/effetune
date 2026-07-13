@@ -24,16 +24,22 @@ export class AudioContextManager {
     };
     
     // Store original source node for restoration
-    if (audioManager.sourceNode) {
-      this.originalSourceNode = audioManager.sourceNode;
+    const canonicalInputSource = audioManager.ioManager?.inputSourceNode || audioManager.sourceNode;
+    if (canonicalInputSource) {
+      this.originalSourceNode = canonicalInputSource;
     }
     
     // Buffer management (only for audio processing, not state)
     this.currentBuffer = null;
     this.nextBuffer = null;
     this.currentBufferSource = null;
+    this.pendingBufferSource = null;
     this.bufferStartTime = 0;
     this.bufferDuration = 0;
+    this.sourceGenerationSequence = 0;
+    this.activeSourceGeneration = 0;
+    this.mediaSourceGeneration = 0;
+    this.pendingMediaActivation = null;
     
     // Instance tracking for cleanup
     this.currentInstanceId = 0;
@@ -54,12 +60,46 @@ export class AudioContextManager {
   }
 
   // ===== CORE AUDIO METHODS =====
+
+  /**
+   * Ensure that a source reaches every active pipeline input.
+   */
+  ensurePipelineSourceConnected(sourceNode) {
+    if (!sourceNode || !this.audioManager.workletNode) return false;
+    if (typeof this.audioManager.ensureSourceConnectedToPipeline === 'function') {
+      return this.audioManager.ensureSourceConnectedToPipeline(sourceNode) === true;
+    }
+    const canVerifyConnection =
+      typeof this.audioManager.isSourceConnectedToPipeline === 'function';
+    if (canVerifyConnection &&
+        this.audioManager.isSourceConnectedToPipeline(sourceNode) === true) {
+      return true;
+    }
+
+    let connected = false;
+    try {
+      connected = this.audioManager.connectSourceToPipeline?.(sourceNode) === true;
+    } catch (error) {
+      return false;
+    }
+    return connected && (!canVerifyConnection ||
+      this.audioManager.isSourceConnectedToPipeline(sourceNode) === true);
+  }
   
   /**
    * Create and connect silent gain node for pipeline maintenance
    */
   createSilentGain() {
     try {
+      const ioManager = this.audioManager.ioManager;
+      const runningSilentSource = ioManager?.ensureSilentSourceFallback?.() || null;
+      if (runningSilentSource) {
+        if (!this.ensurePipelineSourceConnected(runningSilentSource)) return null;
+        return runningSilentSource;
+      }
+
+      // Compatibility fallback for hosts without AudioIOManager. Production
+      // uses its looping stereo buffer source so the worklet receives quanta.
       const silentGain = this.audioPlayer.audioContext.createGain();
       silentGain.gain.value = 0;
       if (this.audioManager.workletNode) {
@@ -77,8 +117,45 @@ export class AudioContextManager {
   setManagedSourceNode(sourceNode) {
     this.audioManager.sourceNode = sourceNode;
     if (this.audioManager.ioManager) {
+      // sourceNode is the active compatibility route. Never overwrite the
+      // canonical inputSourceNode retained by AudioIOManager.
       this.audioManager.ioManager.sourceNode = sourceNode;
     }
+  }
+
+  handoffInputToSilentSource() {
+    const previousSource = this.originalSourceNode;
+    const silentSource = this.createSilentGain();
+    if (!silentSource) return null;
+    if (previousSource && previousSource !== silentSource) {
+      this.releasePipelineSource(previousSource);
+    }
+    this.setManagedSourceNode(silentSource);
+    return silentSource;
+  }
+
+  replaceCanonicalInputSource(sourceNode) {
+    if (this.getUseInputWithPlayer() && sourceNode &&
+        !this.ensurePipelineSourceConnected(sourceNode)) {
+      return false;
+    }
+    this.originalSourceNode = sourceNode || null;
+    return true;
+  }
+
+  getPowerSourceStatus() {
+    const state = this.audioPlayer.stateManager?.getStateSnapshot?.() || null;
+    const required = state?.isPlaying === true || state?.isTransitioning === true;
+    if (!required) return { state: 'not-required', sourcePresent: false };
+    const source = state?.playbackMode === 'bufferSource'
+      ? this.currentBufferSource
+      : this.mediaSource;
+    if (!source) return { state: 'disconnected', sourcePresent: false };
+    const connected = this.audioManager.isSourceConnectedToPipeline?.(source) === true;
+    return {
+      state: connected ? 'connected' : 'disconnected',
+      sourcePresent: true
+    };
   }
 
   releasePipelineSource(sourceNode, stop = false) {
@@ -115,11 +192,107 @@ export class AudioContextManager {
     return preferences?.useInputWithPlayer === true;
   }
 
-  async resumePlaybackAudioContext() {
+  getPlaybackResumeKind() {
+    return this.getUseInputWithPlayer() ? 'mixed-play' : 'player-only-play';
+  }
+
+  getPlaybackIntentIdentity(sourceGeneration, intendedPosition = 0, intent = null) {
+    const state = this.getCurrentState();
+    const track = intent?.track || state?.currentTrack || null;
+    const fileName = typeof track?.file?.name === 'string' ? track.file.name : '';
+    const trackKey = String(
+      track?.libraryTrackId || track?.id || track?.path || fileName || track?.name || ''
+    );
+    return {
+      playerIntentGeneration: sourceGeneration,
+      sourceGeneration,
+      trackKey,
+      trackIndex: Number.isInteger(intent?.targetIndex)
+        ? intent.targetIndex
+        : (Number.isInteger(state?.currentTrackIndex) ? state.currentTrackIndex : -1),
+      intendedPosition: Number.isFinite(intendedPosition) ? intendedPosition : 0
+    };
+  }
+
+  async stagePlaybackActivation(backend, sourceGeneration, intendedPosition = 0, intent = null) {
+    if (!this.audioManager?.isStagedAudioActivationEnabled?.()) return null;
+    const releaseLease = this.audioManager.powerPolicyController?.acquireLease?.(
+      'player-activation',
+      { mode: 'force-active' }
+    ) || null;
+    try {
+      const stage = await this.audioManager.stageAudioActivation({
+        intentKind: 'player',
+        intentIdentity: this.getPlaybackIntentIdentity(sourceGeneration, intendedPosition, intent),
+        resumeKind: this.getPlaybackResumeKind(),
+        backend,
+        requiredResourceKeys: ['audio-context', 'output-bridge', 'player-source', 'worklet'],
+        activationAffectingConfig: {
+          useInputWithPlayer: this.getUseInputWithPlayer(),
+          outputChannels: window.audioPreferences?.outputChannels || 2
+        }
+      });
+      if (stage && releaseLease) {
+        Object.defineProperty(stage, '_releasePlayerActivationLease', {
+          configurable: true,
+          value: releaseLease
+        });
+      } else if (!stage) {
+        releaseLease?.();
+      }
+      return stage;
+    } catch (error) {
+      releaseLease?.();
+      throw error;
+    }
+  }
+
+  releasePlaybackActivationStage(stage) {
+    const releaseLease = stage?._releasePlayerActivationLease;
+    if (typeof releaseLease !== 'function') return;
+    delete stage._releasePlayerActivationLease;
+    releaseLease();
+  }
+
+  fadeOutForStagedActivation(stage) {
+    if (!stage) return null;
+    if (typeof this.audioManager?.fadeOutOutputWithOwner === 'function') {
+      return this.audioManager.fadeOutOutputWithOwner(0);
+    }
+    if (typeof this.audioManager?.fadeOutOutput !== 'function') return null;
+    return this.audioManager.fadeOutOutput(0);
+  }
+
+  fadeInAfterStagedActivation(stage, outputOwner) {
+    if (!stage || outputOwner === null || outputOwner === undefined) return;
+    if (typeof outputOwner === 'object' &&
+        typeof this.audioManager?.fadeInOutputForOwner === 'function') {
+      this.audioManager.fadeInOutputForOwner(outputOwner, 0.03);
+      return;
+    }
+    const outputToken = Number.isSafeInteger(outputOwner)
+      ? outputOwner
+      : outputOwner?.fadeToken;
+    if (Number.isSafeInteger(outputToken)) {
+      this.audioManager?.fadeInOutputForToken?.(outputToken, 0.03);
+    }
+  }
+
+  async resumePlaybackAudioContext(userInitiated = true) {
+    const controller = this.audioManager?.powerPolicyController;
+    if (controller?.enabled) {
+      if (!userInitiated) {
+        if (typeof controller.ensureActiveForAutomaticPlayback !== 'function') return false;
+        return await controller.ensureActiveForAutomaticPlayback() !== false;
+      }
+      if (typeof controller.ensureActive === 'function') {
+        return await controller.ensureActive(this.getPlaybackResumeKind()) !== false;
+      }
+    }
     const contextManager = this.audioManager?.contextManager;
     if (typeof contextManager?.resumeAudioContext === 'function') {
       await contextManager.resumeAudioContext();
-      return;
+      return true;
     }
 
     const audioContext = this.audioPlayer?.audioContext;
@@ -130,6 +303,7 @@ export class AudioContextManager {
         console.warn('[AudioContextManager] AudioContext resume before playback failed:', error);
       }
     }
+    return audioContext?.state !== 'suspended';
   }
   
   /**
@@ -137,29 +311,14 @@ export class AudioContextManager {
    */
   connectBufferSource(bufferSource) {
     const useInputWithPlayer = this.getUseInputWithPlayer();
-    
-    if (useInputWithPlayer) {
-      if (this.audioManager.workletNode) {
-        this.audioManager.connectSourceToPipeline(bufferSource);
-      } else {
-        console.warn('[AudioContextManager] Worklet node unavailable; refusing direct destination playback.');
-      }
-    } else {
-      if (this.originalSourceNode) {
-        this.releasePipelineSource(this.originalSourceNode);
-        const silentGain = this.createSilentGain();
-        if (silentGain) {
-          this.setManagedSourceNode(silentGain);
-        }
-      }
-
-      this.setManagedSourceNode(bufferSource);
-      if (this.audioManager.workletNode) {
-        this.audioManager.connectSourceToPipeline(bufferSource);
-      } else {
-        console.warn('[AudioContextManager] Worklet node unavailable; refusing direct destination playback.');
-      }
+    if (!this.audioManager.workletNode) {
+      console.warn('[AudioContextManager] Worklet node unavailable; refusing direct destination playback.');
+      return false;
     }
+    if (!useInputWithPlayer && !this.handoffInputToSilentSource()) return false;
+    if (!this.ensurePipelineSourceConnected(bufferSource)) return false;
+    if (!useInputWithPlayer) this.setManagedSourceNode(bufferSource);
+    return true;
   }
   
   /**
@@ -167,47 +326,30 @@ export class AudioContextManager {
    */
   connectMediaSource(mediaSource) {
     const useInputWithPlayer = this.getUseInputWithPlayer();
-    
-    if (useInputWithPlayer) {
-      if (this.audioManager.workletNode) {
-        this.audioManager.connectSourceToPipeline(mediaSource);
-      }
-    } else {
-      if (this.originalSourceNode) {
-        this.releasePipelineSource(this.originalSourceNode);
-        const silentGain = this.createSilentGain();
-        if (silentGain) {
-          this.setManagedSourceNode(silentGain);
-        }
-      }
-
-      this.setManagedSourceNode(mediaSource);
-      if (this.audioManager.workletNode) {
-        try {
-          this.audioManager.connectSourceToPipeline(mediaSource);
-        } catch (e) {
-          this.releasePipelineSource(mediaSource);
-          try {
-            this.audioManager.connectSourceToPipeline(mediaSource);
-          } catch (innerError) {
-            // Silent fail
-          }
-        }
-      }
-    }
+    if (!this.audioManager.workletNode) return false;
+    if (!useInputWithPlayer && !this.handoffInputToSilentSource()) return false;
+    if (!this.ensurePipelineSourceConnected(mediaSource)) return false;
+    if (!useInputWithPlayer) this.setManagedSourceNode(mediaSource);
+    return true;
   }
   
   /**
    * Create and configure buffer source with common settings
    */
-  createBufferSource(buffer, instanceId) {
+  createBufferSource(buffer, instanceId, activation = null) {
     const bufferSource = this.audioPlayer.audioContext.createBufferSource();
     bufferSource.buffer = buffer;
-    
-    this.connectBufferSource(bufferSource);
+    if (!this.connectBufferSource(bufferSource)) {
+      this.releasePipelineSource(bufferSource);
+      throw new Error('pipeline-source-connect-failed');
+    }
     
     bufferSource.onended = () => {
       this.releasePipelineSource(bufferSource);
+      if (activation && activation.isCommitted?.() !== true) {
+        activation.onPendingEnded?.();
+        return;
+      }
       const state = this.audioPlayer.stateManager?.getStateSnapshot();
       if (this.currentInstanceId === instanceId && !state?.isTransitioning && !state?.isStopped) {
         this.handleTrackEnded();
@@ -229,14 +371,7 @@ export class AudioContextManager {
   maintainSilentSource() {
     const useInputWithPlayer = this.getUseInputWithPlayer();
     if (!useInputWithPlayer) {
-      if (this.originalSourceNode) {
-        this.releasePipelineSource(this.originalSourceNode);
-      }
-
-      const silentGain = this.createSilentGain();
-      if (silentGain) {
-        this.setManagedSourceNode(silentGain);
-      }
+      this.handoffInputToSilentSource();
     }
   }
 
@@ -350,6 +485,11 @@ export class AudioContextManager {
    * Detach nodes that belong to the previous AudioContext.
    */
   detachCurrentGraphNodesForRebind() {
+    if (this.pendingBufferSource) {
+      this.releasePipelineSource(this.pendingBufferSource, true);
+      this.pendingBufferSource = null;
+    }
+    this.pendingMediaActivation = null;
     if (this.currentBufferSource) {
       this.releasePipelineSource(this.currentBufferSource, true);
       this.currentBufferSource = null;
@@ -451,7 +591,8 @@ export class AudioContextManager {
 
     this.detachCurrentGraphNodesForRebind();
     this.audioPlayer.audioContext = newAudioContext;
-    this.originalSourceNode = this.audioManager.ioManager?.sourceNode || this.audioManager.sourceNode || null;
+    this.originalSourceNode = this.audioManager.ioManager?.inputSourceNode ||
+      this.audioManager.ioManager?.sourceNode || this.audioManager.sourceNode || null;
     this.currentBuffer = null;
     this.clearNextTrackBuffer();
 
@@ -476,6 +617,7 @@ export class AudioContextManager {
       const clampedPosition = wasStopped ? 0 : Math.max(0, Math.min(restorePosition, duration));
 
       this.currentBuffer = buffer;
+      this.activeSourceGeneration = ++this.sourceGenerationSequence;
       this.updateState({
         currentTrack,
         currentTrackName: this.getDisplayTrackName(currentTrack),
@@ -646,7 +788,8 @@ export class AudioContextManager {
     const request = {
       token: ++this.loadRequestToken,
       track,
-      targetIndex: this.normalizePlaylistIndex(targetIndex)
+      targetIndex: this.normalizePlaylistIndex(targetIndex),
+      sourceGeneration: ++this.sourceGenerationSequence
     };
     this.activeLoadRequest = request;
     this.clearNextTrackBuffer();
@@ -656,6 +799,7 @@ export class AudioContextManager {
   isActiveLoadRequest(request) {
     return !!request &&
       this.activeLoadRequest?.token === request.token &&
+      this.activeLoadRequest?.sourceGeneration === request.sourceGeneration &&
       this.playbackEntriesMatch(this.activeLoadRequest.track, request.track, request.targetIndex);
   }
 
@@ -663,7 +807,8 @@ export class AudioContextManager {
     const request = {
       token: ++this.transitionRequestToken,
       track,
-      targetIndex: this.normalizePlaylistIndex(targetIndex)
+      targetIndex: this.normalizePlaylistIndex(targetIndex),
+      sourceGeneration: ++this.sourceGenerationSequence
     };
     this.activeTransitionRequest = request;
     return request;
@@ -672,6 +817,7 @@ export class AudioContextManager {
   isActiveTransitionRequest(request) {
     return !!request &&
       this.activeTransitionRequest?.token === request.token &&
+      this.activeTransitionRequest?.sourceGeneration === request.sourceGeneration &&
       this.playbackEntriesMatch(this.activeTransitionRequest.track, request.track, request.targetIndex);
   }
 
@@ -817,7 +963,7 @@ export class AudioContextManager {
   /**
    * Set up audio element for a track (metadata and fallback only)
    */
-  setupAudioElement(track, targetIndex = null) {
+  setupAudioElement(track, targetIndex = null, sourceGeneration = null) {
     const currentIndex = this.getTrackIndexForPlaybackEntry(track, targetIndex);
     
     if (!this.audioPlayer.audioElement) {
@@ -845,8 +991,11 @@ export class AudioContextManager {
     }
     
     this.audioPlayer.audioElement.load();
-    this.connectToAudioContext();
+    if (!this.connectToAudioContext()) return false;
     this.setupMediaSessionHandlers();
+    this.activeSourceGeneration = Number.isSafeInteger(sourceGeneration)
+      ? sourceGeneration
+      : ++this.sourceGenerationSequence;
     
     this.updateState({
       currentTrack: track,
@@ -875,6 +1024,10 @@ export class AudioContextManager {
 
     this.eventHandlers.ended = (event) => {
       if (!isCurrentAudioElementEvent(event)) return;
+      if (this.pendingMediaActivation?.element === audioElement) {
+        this.pendingMediaActivation.invalid = true;
+        return;
+      }
       const state = this.getCurrentState();
       if (!state?.isStopped) {
         this.handleTrackEnded();
@@ -883,6 +1036,7 @@ export class AudioContextManager {
     
     this.eventHandlers.timeupdate = (event) => {
       if (!isCurrentAudioElementEvent(event)) return;
+      if (this.pendingMediaActivation?.element === audioElement) return;
       const state = this.getCurrentState();
       if (state?.playbackMode === 'audioElement') {
         this.updateState({
@@ -893,6 +1047,10 @@ export class AudioContextManager {
     
     this.eventHandlers.error = (e) => {
       if (!isCurrentAudioElementEvent(e)) return;
+      if (this.pendingMediaActivation?.element === audioElement) {
+        this.pendingMediaActivation.invalid = true;
+        return;
+      }
       if (e.target.error && e.target.error.code !== MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
         if (window.uiManager) {
           window.uiManager.setError(`Audio playback error: ${e.target.error?.message || 'Unknown error'}`);
@@ -902,6 +1060,7 @@ export class AudioContextManager {
     
     this.eventHandlers.loadedmetadata = (event) => {
       if (!isCurrentAudioElementEvent(event)) return;
+      if (this.pendingMediaActivation?.element === audioElement) return;
       this.updateState({
         currentTrackDuration: audioElement.duration || 0
       }, 'Metadata loaded');
@@ -951,10 +1110,17 @@ export class AudioContextManager {
         }
       }
       
-      this.connectMediaSource(this.mediaSource);
+      if (!this.connectMediaSource(this.mediaSource)) {
+        this.releasePipelineSource(this.mediaSource);
+        this.mediaSource = null;
+        throw new Error('pipeline-source-connect-failed');
+      }
+      this.mediaSourceGeneration++;
+      return true;
       
     } catch (error) {
       console.error('Error connecting audio element to context:', error);
+      return false;
     }
   }
   
@@ -1235,6 +1401,7 @@ export class AudioContextManager {
     if (!navigatorRef || !('mediaSession' in navigatorRef)) return;
     
     navigatorRef.mediaSession.setActionHandler('play', () => {
+      this.audioPlayer?.resumeAudioContextInGesture?.();
       const result = this.play();
       navigatorRef.mediaSession.playbackState = 'playing';
       return result;
@@ -1262,6 +1429,7 @@ export class AudioContextManager {
     
     navigatorRef.mediaSession.setActionHandler('seekto', (details) => {
       if (details.seekTime !== undefined) {
+        this.audioPlayer?.resumeAudioContextInGesture?.();
         return this.seek(details.seekTime);
       }
       return undefined;
@@ -1321,14 +1489,14 @@ export class AudioContextManager {
   /**
    * Play current track
    */
-  async play(forcePlay = false) {
+  async play(forcePlay = false, userInitiated = true) {
     const state = this.getCurrentState();
     if (state?.isTransitioning && !forcePlay) {
       return false;
     }
 
     const stopToken = this.stopRequestToken;
-    await this.resumePlaybackAudioContext();
+    if (!await this.resumePlaybackAudioContext(userInitiated)) return false;
     if (this.stopRequestToken !== stopToken) {
       return false;
     }
@@ -1348,40 +1516,97 @@ export class AudioContextManager {
     if (!this.currentBuffer) {
       return false;
     }
-    
+
+    const buffer = this.currentBuffer;
+    const sourceGeneration = this.activeSourceGeneration || ++this.sourceGenerationSequence;
+    if (this.activeSourceGeneration === 0) this.activeSourceGeneration = sourceGeneration;
+    const initialState = this.getCurrentState();
+    const resumePosition = initialState?.isPaused ? initialState.currentTrackPosition : 0;
+    let stage = null;
+    let candidateSource = null;
+    let candidateEnded = false;
+    let committed = false;
+    let outputOwner = null;
+
     try {
+      stage = await this.stagePlaybackActivation('buffer-source', sourceGeneration, resumePosition);
+      if (this.stopRequestToken !== stopToken || this.currentBuffer !== buffer ||
+        this.activeSourceGeneration !== sourceGeneration) {
+        return false;
+      }
       await this.stopCurrentPlayback();
       if (this.stopRequestToken !== stopToken) {
         return false;
       }
-      
+
       const instanceId = this.currentInstanceId;
-      
-      const state = this.getCurrentState();
-      const resumePosition = state?.isPaused ? state.currentTrackPosition : 0;
-      
-      this.currentBufferSource = this.createBufferSource(this.currentBuffer, instanceId);
-      
+      candidateSource = this.createBufferSource(buffer, instanceId, {
+        isCommitted: () => committed,
+        onPendingEnded: () => { candidateEnded = true; }
+      });
+      this.pendingBufferSource = candidateSource;
+      outputOwner = this.fadeOutForStagedActivation(stage);
       const currentTime = this.audioPlayer.audioContext.currentTime;
-      this.currentBufferSource.start(currentTime, resumePosition);
-      
-      this.bufferStartTime = currentTime - resumePosition;
-      this.bufferDuration = this.currentBuffer.duration;
-      
-      this.updateState({
-        isPlaying: true,
-        isPaused: false,
-        isStopped: false,
-        currentInstanceId: instanceId,
-        playbackInstanceId: instanceId,
-        bufferStartTime: currentTime - resumePosition,
-        bufferDuration: this.currentBuffer.duration
-      }, 'Buffer source playback started');
-      
+      candidateSource.start(currentTime, resumePosition);
+
+      if (stage) {
+        const result = await this.audioManager.activateStagedAudioCandidate(stage, {
+          acquire: () => candidateSource,
+          isCandidateCurrent: source => source === candidateSource &&
+            !candidateEnded &&
+            this.pendingBufferSource === candidateSource &&
+            this.currentBuffer === buffer &&
+            this.activeSourceGeneration === sourceGeneration &&
+            this.stopRequestToken === stopToken &&
+            this.audioManager.isSourceConnectedToPipeline?.(candidateSource) === true,
+          commit: () => {
+            committed = true;
+            this.pendingBufferSource = null;
+            this.currentBufferSource = candidateSource;
+            this.bufferStartTime = currentTime - resumePosition;
+            this.bufferDuration = buffer.duration;
+            this.updateState({
+              isPlaying: true,
+              isPaused: false,
+              isStopped: false,
+              currentInstanceId: instanceId,
+              playbackInstanceId: instanceId,
+              bufferStartTime: currentTime - resumePosition,
+              bufferDuration: buffer.duration
+            }, 'Buffer source playback activation committed');
+            return true;
+          },
+          cleanup: source => {
+            if (this.pendingBufferSource === source) this.pendingBufferSource = null;
+            this.releasePipelineSource(source, true);
+          }
+        });
+        if (!result.activated) return false;
+      } else {
+        committed = true;
+        this.pendingBufferSource = null;
+        this.currentBufferSource = candidateSource;
+        this.bufferStartTime = currentTime - resumePosition;
+        this.bufferDuration = buffer.duration;
+        this.updateState({
+          isPlaying: true,
+          isPaused: false,
+          isStopped: false,
+          currentInstanceId: instanceId,
+          playbackInstanceId: instanceId,
+          bufferStartTime: currentTime - resumePosition,
+          bufferDuration: buffer.duration
+        }, 'Buffer source playback started');
+      }
+
       this.setupBufferMonitoring();
       return true;
-      
+
     } catch (error) {
+      if (candidateSource && !committed) {
+        if (this.pendingBufferSource === candidateSource) this.pendingBufferSource = null;
+        this.releasePipelineSource(candidateSource, true);
+      }
       if (this.stopRequestToken !== stopToken) {
         return false;
       }
@@ -1392,6 +1617,9 @@ export class AudioContextManager {
         isStopped: false
       }, 'Buffer source playback failed');
       return false;
+    } finally {
+      this.fadeInAfterStagedActivation(stage, outputOwner);
+      this.releasePlaybackActivationStage(stage);
     }
   }
   
@@ -1403,26 +1631,95 @@ export class AudioContextManager {
     if (!audioElement) {
       return false;
     }
-    
+
+    const sourceGeneration = this.activeSourceGeneration || ++this.sourceGenerationSequence;
+    const mediaSource = this.mediaSource;
+    const mediaSourceGeneration = this.mediaSourceGeneration;
+    if (!this.ensurePipelineSourceConnected(mediaSource)) return false;
+    const intendedPosition = Number.isFinite(audioElement.currentTime) ? audioElement.currentTime : 0;
+    let stage = null;
+    let outputOwner = null;
+    let pendingActivation = null;
+
     try {
+      stage = await this.stagePlaybackActivation('html-media', sourceGeneration, intendedPosition);
+      if (this.stopRequestToken !== stopToken || this.audioPlayer.audioElement !== audioElement ||
+        this.mediaSource !== mediaSource || this.mediaSourceGeneration !== mediaSourceGeneration) {
+        return false;
+      }
+      pendingActivation = {
+        element: audioElement,
+        mediaSource,
+        mediaSourceGeneration,
+        sourceGeneration,
+        invalid: false
+      };
+      this.pendingMediaActivation = pendingActivation;
+      outputOwner = this.fadeOutForStagedActivation(stage);
       await audioElement.play();
       if (this.stopRequestToken !== stopToken || this.audioPlayer.audioElement !== audioElement) {
-        try {
-          audioElement.pause();
-        } catch (e) {
-          // Silent fail
+        if (this.pendingMediaActivation === pendingActivation) {
+          this.pendingMediaActivation = null;
+          try {
+            audioElement.pause();
+          } catch (e) {
+            // Silent fail
+          }
         }
         return false;
       }
-      
-      this.updateState({
-        isPlaying: true,
-        isPaused: false,
-        isStopped: false
-      }, 'Audio element playback started');
+
+      if (stage) {
+        const result = await this.audioManager.activateStagedAudioCandidate(stage, {
+          acquire: () => pendingActivation,
+          isCandidateCurrent: candidate => candidate === pendingActivation &&
+            this.pendingMediaActivation === pendingActivation &&
+            candidate.invalid === false &&
+            this.stopRequestToken === stopToken &&
+            this.audioPlayer.audioElement === audioElement &&
+            this.mediaSource === mediaSource &&
+            this.mediaSourceGeneration === mediaSourceGeneration &&
+            audioElement.paused === false &&
+            audioElement.ended !== true &&
+            this.audioManager.isSourceConnectedToPipeline?.(mediaSource) === true,
+          commit: () => {
+            this.pendingMediaActivation = null;
+            this.updateState({
+              isPlaying: true,
+              isPaused: false,
+              isStopped: false
+            }, 'Audio element playback activation committed');
+            return true;
+          },
+          cleanup: () => {
+            if (this.pendingMediaActivation === pendingActivation) {
+              this.pendingMediaActivation = null;
+              try { audioElement.pause(); } catch (_) { /* ignore */ }
+            }
+          }
+        });
+        if (!result.activated) return false;
+      } else {
+        if (this.pendingMediaActivation !== pendingActivation) return false;
+        if (!this.ensurePipelineSourceConnected(mediaSource)) {
+          this.pendingMediaActivation = null;
+          try { audioElement.pause(); } catch (_) { /* ignore */ }
+          return false;
+        }
+        this.pendingMediaActivation = null;
+        this.updateState({
+          isPlaying: true,
+          isPaused: false,
+          isStopped: false
+        }, 'Audio element playback started');
+      }
       return true;
-      
+
     } catch (error) {
+      if (this.pendingMediaActivation === pendingActivation) {
+        this.pendingMediaActivation = null;
+        try { audioElement.pause(); } catch (_) { /* ignore */ }
+      }
       if (this.stopRequestToken !== stopToken) {
         return false;
       }
@@ -1433,6 +1730,9 @@ export class AudioContextManager {
         isStopped: false
       }, 'Audio element playback failed');
       return false;
+    } finally {
+      this.fadeInAfterStagedActivation(stage, outputOwner);
+      this.releasePlaybackActivationStage(stage);
     }
   }
   
@@ -1696,7 +1996,7 @@ export class AudioContextManager {
     if (repeatMode === 'ONE') {
       const currentTrack = this.audioPlayer.playbackManager?.getTrack(currentIndex);
       if (currentTrack) {
-        this.seamlessTransition(currentTrack, currentIndex).catch(error => {
+        this.seamlessTransition(currentTrack, currentIndex, false).catch(error => {
           console.error('[AudioContextManager] Failed to restart track in repeat ONE mode:', error);
         });
       }
@@ -1710,7 +2010,7 @@ export class AudioContextManager {
         this.audioPlayer.playbackManager.onTrackEnded();
       } else if (playlist.length > 0) {
         const firstTrack = playlist[0];
-        this.transitionToNextTrack(firstTrack, 0).catch(error => {
+        this.transitionToNextTrack(firstTrack, 0, false).catch(error => {
           console.error('[AudioContextManager] Failed to transition to first track in repeat ALL mode:', error);
         });
       }
@@ -1792,6 +2092,10 @@ export class AudioContextManager {
    * Stop current playback (internal method)
    */
   async stopCurrentPlayback() {
+    if (this.pendingBufferSource) {
+      this.releasePipelineSource(this.pendingBufferSource, true);
+      this.pendingBufferSource = null;
+    }
     if (this.currentBufferSource) {
       this.releasePipelineSource(this.currentBufferSource, true);
       this.currentBufferSource = null;
@@ -1863,10 +2167,6 @@ export class AudioContextManager {
 
     try {
       this.updateState({
-        currentTrack: track,
-        currentTrackName: this.getDisplayTrackName(track),
-        artworkUrl: '',
-        currentTrackIndex: trackIndex,
         currentTrackDuration: 0,
         currentTrackPosition: 0,
         currentBuffer: null,
@@ -1874,24 +2174,32 @@ export class AudioContextManager {
         transitionType: 'loading'
       }, 'Track loading started');
       
-      if (this.audioPlayer.stateManager) {
-        this.audioPlayer.stateManager.updateState({
-          currentTrack: track,
-          currentTrackIndex: trackIndex
-        }, 'AudioContextManager loadTrack');
-      }
-      
       const buffer = await this.prepareTrackBuffer(track, isStale);
       if (isStale() || !buffer) return false;
 
       this.currentBuffer = buffer;
+      this.activeSourceGeneration = loadRequest.sourceGeneration;
+      this.bufferDuration = buffer.duration;
       
       this.updateState({
+        currentTrack: track,
+        currentTrackName: this.getDisplayTrackName(track),
+        artworkUrl: '',
+        currentTrackIndex: trackIndex,
         currentTrackDuration: buffer.duration,
+        currentTrackPosition: 0,
+        currentBuffer: buffer,
         playbackMode: 'bufferSource',
         isTransitioning: false,
         transitionType: null
       }, 'Track loaded and buffer prepared');
+
+      if (this.audioPlayer.stateManager) {
+        this.audioPlayer.stateManager.updateState({
+          currentTrack: track,
+          currentTrackIndex: trackIndex
+        }, 'AudioContextManager loadTrack committed');
+      }
       
       if (isStale()) return false;
       this.loadMetadata(track, loadRequest, trackIndex);
@@ -1980,10 +2288,10 @@ export class AudioContextManager {
     };
   }
 
-  async setupResolvedAudioElement(track, isStale = null, targetIndex = null) {
+  async setupResolvedAudioElement(track, isStale = null, targetIndex = null, sourceGeneration = null) {
     const playableTrack = await this.resolveTrackProvider(track);
     if (isStale?.()) return null;
-    if (!this.setupAudioElement(playableTrack, targetIndex)) {
+    if (!this.setupAudioElement(playableTrack, targetIndex, sourceGeneration)) {
       throw new Error('Invalid track: no file or path provided');
     }
     return playableTrack;
@@ -1997,7 +2305,12 @@ export class AudioContextManager {
     }
 
     try {
-      const playableTrack = await this.setupResolvedAudioElement(track, isStale, targetIndex);
+      const playableTrack = await this.setupResolvedAudioElement(
+        track,
+        isStale,
+        targetIndex,
+        loadRequest?.sourceGeneration
+      );
       if (isStale() || !playableTrack) return false;
       return true;
     } catch (fallbackError) {
@@ -2218,7 +2531,7 @@ export class AudioContextManager {
   /**
    * Transition to next track
    */
-  async transitionToNextTrack(nextTrack, targetIndex = null) {
+  async transitionToNextTrack(nextTrack, targetIndex = null, userInitiated = true) {
     const nextTrackIndex = this.getTrackIndexForPlaybackEntry(nextTrack, targetIndex, -1);
     const transitionRequest = this.beginTransitionRequest(nextTrack, nextTrackIndex);
     this.updateState({
@@ -2239,28 +2552,19 @@ export class AudioContextManager {
           }
         }
         
-        if (this.audioPlayer.stateManager && nextTrackIndex >= 0) {
-          this.audioPlayer.stateManager.updateState({
-            currentTrack: nextTrack,
-            currentTrackIndex: nextTrackIndex
-          }, 'AudioContextManager transitionToNextTrack');
-        }
-        
-        this.currentBuffer = bufferedNextTrack;
-        
-        this.updateState({
-          currentTrack: nextTrack,
-          currentTrackName: this.getDisplayTrackName(nextTrack),
-          artworkUrl: '',
-          currentTrackDuration: this.currentBuffer.duration,
-          currentTrackPosition: 0
-        }, 'Switched to next track buffer');
-        this.loadMetadata(nextTrack, null, nextTrackIndex);
-        
-        const started = await this.createAndStartBufferSource(() => !this.isActiveTransitionRequest(transitionRequest));
+        const started = await this.createAndStartBufferSource(
+          () => !this.isActiveTransitionRequest(transitionRequest),
+          {
+            buffer: bufferedNextTrack,
+            track: nextTrack,
+            targetIndex: nextTrackIndex,
+            sourceGeneration: transitionRequest.sourceGeneration
+          }
+        );
         if (started === false || !this.isActiveTransitionRequest(transitionRequest)) {
           return false;
         }
+        this.loadMetadata(nextTrack, null, nextTrackIndex);
         
         if (nextNextIndex >= 0 && this.audioPlayer.playbackManager) {
           const nextNextTrack = this.audioPlayer.playbackManager.getTrack(nextNextIndex);
@@ -2279,7 +2583,7 @@ export class AudioContextManager {
         if (loaded === false || !this.isActiveTransitionRequest(transitionRequest)) {
           return false;
         }
-        const started = await this.play();
+        const started = await this.play(false, userInitiated);
         if (started === false || !this.isActiveTransitionRequest(transitionRequest)) {
           return false;
         }
@@ -2309,48 +2613,118 @@ export class AudioContextManager {
   /**
    * Create and start buffer source directly (for transitions)
    */
-  async createAndStartBufferSource(isStale = null) {
-    if (!this.currentBuffer) {
+  async createAndStartBufferSource(isStale = null, activationIntent = null) {
+    const buffer = activationIntent?.buffer || this.currentBuffer;
+    if (!buffer) {
       throw new Error('No current buffer available for playback');
     }
-    
+
+    const sourceGeneration = Number.isSafeInteger(activationIntent?.sourceGeneration)
+      ? activationIntent.sourceGeneration
+      : (this.activeSourceGeneration || ++this.sourceGenerationSequence);
+    let stage = null;
+    let candidateSource = null;
+    let candidateEnded = false;
+    let committed = false;
+    let outputOwner = null;
+
     try {
+      stage = await this.stagePlaybackActivation(
+        'buffer-source',
+        sourceGeneration,
+        0,
+        activationIntent
+      );
+      if (isStale?.()) return false;
       await this.stopCurrentPlayback();
       if (isStale?.()) return false;
-      
+
       const instanceId = this.currentInstanceId;
-      
-      this.currentBufferSource = this.createBufferSource(this.currentBuffer, instanceId);
-      
+      candidateSource = this.createBufferSource(buffer, instanceId, {
+        isCommitted: () => committed,
+        onPendingEnded: () => { candidateEnded = true; }
+      });
+      this.pendingBufferSource = candidateSource;
+      outputOwner = this.fadeOutForStagedActivation(stage);
       const currentTime = this.audioPlayer.audioContext.currentTime;
-      this.currentBufferSource.start(currentTime);
-      
-      this.bufferStartTime = currentTime;
-      this.bufferDuration = this.currentBuffer.duration;
-      
-      this.updateState({
-        isPlaying: true,
-        isPaused: false,
-        isStopped: false,
-        currentInstanceId: instanceId,
-        playbackInstanceId: instanceId,
-        bufferStartTime: currentTime,
-        bufferDuration: this.currentBuffer.duration
-      }, 'Buffer source playback started');
-      
+      candidateSource.start(currentTime);
+
+      const commitCandidate = () => {
+        committed = true;
+        this.pendingBufferSource = null;
+        this.currentBuffer = buffer;
+        this.activeSourceGeneration = sourceGeneration;
+        this.currentBufferSource = candidateSource;
+        this.bufferStartTime = currentTime;
+        this.bufferDuration = buffer.duration;
+        const trackState = activationIntent?.track ? {
+          currentTrack: activationIntent.track,
+          currentTrackName: this.getDisplayTrackName(activationIntent.track),
+          artworkUrl: '',
+          currentTrackIndex: activationIntent.targetIndex,
+          currentTrackDuration: buffer.duration,
+          currentTrackPosition: 0
+        } : {};
+        this.updateState({
+          ...trackState,
+          isPlaying: true,
+          isPaused: false,
+          isStopped: false,
+          currentInstanceId: instanceId,
+          playbackInstanceId: instanceId,
+          bufferStartTime: currentTime,
+          bufferDuration: buffer.duration
+        }, stage
+          ? 'Buffer source transition activation committed'
+          : 'Buffer source playback started');
+        if (activationIntent?.track && this.audioPlayer.stateManager) {
+          this.audioPlayer.stateManager.updateState({
+            currentTrack: activationIntent.track,
+            currentTrackIndex: activationIntent.targetIndex
+          }, 'AudioContextManager transition source committed');
+        }
+        return true;
+      };
+
+      if (stage) {
+        const result = await this.audioManager.activateStagedAudioCandidate(stage, {
+          acquire: () => candidateSource,
+          isCandidateCurrent: source => source === candidateSource &&
+            !candidateEnded &&
+            this.pendingBufferSource === candidateSource &&
+            !isStale?.() &&
+            this.audioManager.isSourceConnectedToPipeline?.(candidateSource) === true,
+          commit: commitCandidate,
+          cleanup: source => {
+            if (this.pendingBufferSource === source) this.pendingBufferSource = null;
+            this.releasePipelineSource(source, true);
+          }
+        });
+        if (!result.activated) return false;
+      } else {
+        commitCandidate();
+      }
+
       this.setupBufferMonitoring();
       return true;
-      
+
     } catch (error) {
+      if (candidateSource && !committed) {
+        if (this.pendingBufferSource === candidateSource) this.pendingBufferSource = null;
+        this.releasePipelineSource(candidateSource, true);
+      }
       console.error('[AudioContextManager] Buffer source creation failed:', error);
       throw error;
+    } finally {
+      this.fadeInAfterStagedActivation(stage, outputOwner);
+      this.releasePlaybackActivationStage(stage);
     }
   }
   
   /**
    * Seamless transition to a track (for previous/next track functionality)
    */
-  async seamlessTransition(track, targetIndex = null) {
+  async seamlessTransition(track, targetIndex = null, userInitiated = true) {
     const trackIndex = this.getTrackIndexForPlaybackEntry(track, targetIndex);
     const transitionRequest = this.beginTransitionRequest(track, trackIndex);
     this.updateState({
@@ -2363,7 +2737,7 @@ export class AudioContextManager {
       if (loaded === false || !this.isActiveTransitionRequest(transitionRequest)) {
         return false;
       }
-      const started = await this.play();
+      const started = await this.play(false, userInitiated);
       if (started === false || !this.isActiveTransitionRequest(transitionRequest)) {
         return false;
       }
@@ -2467,14 +2841,22 @@ export class AudioContextManager {
       }
       
       const useInputWithPlayer = this.getUseInputWithPlayer();
-      if (!useInputWithPlayer && this.originalSourceNode) {
-        this.setManagedSourceNode(this.originalSourceNode);
-        if (this.audioManager.workletNode) {
-          try {
-            this.audioManager.connectSourceToPipeline(this.audioManager.sourceNode);
-          } catch (e) {
-            // Silent fail
+      if (!useInputWithPlayer) {
+        const canonicalInputSource = (this.audioManager.ioManager
+          ? this.audioManager.ioManager.inputSourceNode
+          : this.originalSourceNode) || this.originalSourceNode;
+        if (canonicalInputSource &&
+            this.ensurePipelineSourceConnected(canonicalInputSource)) {
+          this.originalSourceNode = canonicalInputSource;
+          this.setManagedSourceNode(canonicalInputSource);
+        } else {
+          // A missing or disconnected canonical input is replaced atomically,
+          // so the destroyed player node is never published as the live source.
+          const silentSource = this.handoffInputToSilentSource();
+          if (!silentSource) {
+            throw new Error('pipeline-source-restore-failed');
           }
+          this.originalSourceNode = silentSource;
         }
       }
       

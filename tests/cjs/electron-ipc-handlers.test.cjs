@@ -148,6 +148,9 @@ function createHarness(options = {}) {
       },
       setLoginItemSettings(settings) {
         calls.push(['app.setLoginItemSettings', settings]);
+        if (options.throwSetLoginItemSettings) {
+          throw new Error('login item update failed');
+        }
       },
       relaunch(optionsArg) {
         calls.push(['app.relaunch', optionsArg]);
@@ -253,6 +256,7 @@ function createHarness(options = {}) {
     saveConfig(configArg) {
       calls.push(['config.saveConfig', configArg]);
       if (options.throwSaveConfig) throw new Error('save config failed');
+      return options.saveConfigResult ?? true;
     }
   };
 
@@ -450,6 +454,31 @@ test('registers core handlers and delegates file, config, update, path, and URL 
     assert.deepEqual(await handlers.get('open-external-url')({}, 'https://example.test/page'), { success: true });
     assert.equal(electron.shell.openExternal instanceof Function, true);
     assert.equal(calls.some(call => call[0] === 'app.setLoginItemSettings'), true);
+  });
+});
+
+test('save-config keeps a durable config successful when the auto-launch side effect fails', async () => {
+  await withHarness({ throwSetLoginItemSettings: true }, async ({ calls, ipcMain, moduleUnderTest }) => {
+    moduleUnderTest.registerIpcHandlers();
+
+    const result = await ipcMain.handlers.get('save-config')({}, { autoLaunch: true });
+
+    assert.deepEqual(result, {
+      success: true,
+      warning: 'Failed to update the auto-launch setting: login item update failed'
+    });
+    assert.deepEqual(calls.filter(call => call[0] === 'config.saveConfig'), [[
+      'config.saveConfig',
+      { autoLaunch: true, keep: true }
+    ]]);
+    assert.deepEqual(calls.filter(call => call[0] === 'constants.setAppConfig'), [[
+      'constants.setAppConfig',
+      { autoLaunch: true, keep: true }
+    ]]);
+    assert.equal(calls.some(call =>
+      call[0] === 'console.error' &&
+      call[1] === 'Config saved, but failed to update the auto-launch setting:'
+    ), true);
   });
 });
 
@@ -751,6 +780,14 @@ test('IPC handlers manage macOS microphone access and audio preference edge case
     assert.equal(savePrefs.success, false);
     assert.match(savePrefs.error, /EISDIR|directory|illegal operation/i);
     assert.deepEqual(await handlers.get('save-config')({}, { autoLaunch: false }), { success: false, error: 'save config failed' });
+  });
+
+  await withHarness({ saveConfigResult: false }, async ({ ipcMain, moduleUnderTest }) => {
+    moduleUnderTest.registerIpcHandlers();
+    assert.deepEqual(await ipcMain.handlers.get('save-config')({}, { autoLaunch: false }), {
+      success: false,
+      error: 'Failed to write config file'
+    });
   });
 });
 
