@@ -153,8 +153,11 @@ function createDocument(calls, options = {}) {
       artworkPlaceholder.className = 'player-artwork-placeholder';
       const artworkImage = this.createElement('img');
       artworkImage.className = 'player-artwork-image';
+      const artworkSpinner = this.createElement('div');
+      artworkSpinner.className = 'player-loading-spinner player-loading-spinner-artwork';
       artwork.appendChild(artworkPlaceholder);
       artwork.appendChild(artworkImage);
+      artwork.appendChild(artworkSpinner);
       parent.appendChild(artwork);
 
       const trackContainer = this.createElement('div');
@@ -162,6 +165,9 @@ function createDocument(calls, options = {}) {
       const trackName = this.createElement('div');
       trackName.className = 'track-name';
       trackName.textContent = 'No track loaded';
+      const inlineSpinner = this.createElement('div');
+      inlineSpinner.className = 'player-loading-spinner player-loading-spinner-inline';
+      trackContainer.appendChild(inlineSpinner);
       trackContainer.appendChild(trackName);
       parent.appendChild(trackContainer);
 
@@ -413,7 +419,9 @@ test('creates translated controls, inserts before the double blind panel, and wi
       'isPaused',
       'isPlaying',
       'isStopped',
-      'playlist'
+      'isTransitioning',
+      'playlist',
+      'transitionType'
     ].sort());
     assert.equal(documentRef.body.children[0], container);
     assert.equal(documentRef.body.children[1], documentRef.dbtPanel);
@@ -584,6 +592,30 @@ test('updatePlayerUIState handles repeat, shuffle, default, and missing-control 
   assert.equal(fallbackUI.repeatButton.attributes.get('data-active'), 'false');
   assert.equal(fallbackUI.shuffleButton.disabled, false);
   assert.equal(fallbackUI.shuffleButton.attributes.get('data-active'), 'false');
+});
+
+test('loading state selects the artwork overlay or compact track-name spinner for the active layout', async () => {
+  await withAudioPlayerGlobals({
+    windowOptions: { uiManager: { layoutMode: { isMobile: false } } }
+  }, async ({ calls }) => {
+    const player = createAudioPlayer(calls, {
+      state: { isTransitioning: true, transitionType: 'loading', artworkUrl: '' }
+    });
+    const ui = new AudioPlayerUI(player);
+    const container = ui.createPlayerUI();
+
+    assert.equal(container.attributes.get('data-loading'), 'true');
+    assert.equal(container.attributes.get('data-artwork-layout'), 'false');
+    assert.ok(container.querySelector('.player-loading-spinner-artwork'));
+    assert.ok(container.querySelector('.player-loading-spinner-inline'));
+
+    ui.updateArtwork('blob:artwork');
+    assert.equal(container.attributes.get('data-artwork-layout'), 'true');
+
+    player.stateManager.setState({ isTransitioning: false, transitionType: null });
+    player.stateManager.emit('isTransitioning', false);
+    assert.equal(container.attributes.get('data-loading'), 'false');
+  });
 });
 
 test('seek bar input respects disabled state and context manager duration validity', async () => {
@@ -1193,7 +1225,7 @@ test('interval management and removeUI clean up timers, DOM nodes, and reference
     assert.equal(calls.filter(call =>
       call[0] === 'warn' && call[1].includes('Time display')
     ).length, warningCountAfterRemove);
-    assert.equal(calls.filter(call => call[0] === 'removeListener').length, 11);
+    assert.equal(calls.filter(call => call[0] === 'removeListener').length, 13);
     assert.equal(documentRef.body.children.includes(container), false);
     assert.equal(ui.container, null);
     assert.equal(ui.trackNameDisplay, null);

@@ -24,6 +24,32 @@ function cryptoSequence() {
   return { randomUUID: () => `id-${++sequence}` };
 }
 
+test('session identities use secure random values when randomUUID is unavailable', () => {
+  const cryptoRef = {
+    getRandomValues(values) {
+      values.set([1, 2, 3, 4]);
+      return values;
+    }
+  };
+  const journal = new PowerSessionJournal({ storage: null, cryptoRef });
+
+  assert.equal(
+    journal.getStatus().clientId,
+    'client-00000001-00000002-00000003-00000004'
+  );
+  assert.equal(
+    journal.getStatus().sessionId,
+    'session-00000001-00000002-00000003-00000004'
+  );
+});
+
+test('session identity creation fails without secure randomness', () => {
+  assert.throws(
+    () => new PowerSessionJournal({ storage: null, cryptoRef: {} }),
+    /Secure random number generation is unavailable/
+  );
+});
+
 function eligibility() {
   return {
     releaseCause: 'player-only-retention-expired',

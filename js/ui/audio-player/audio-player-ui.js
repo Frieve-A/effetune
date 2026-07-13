@@ -87,6 +87,14 @@ export class AudioPlayerUI {
       this.updateArtwork(artworkUrl);
     });
 
+    addStateListener('isTransitioning', () => {
+      this.updateLoadingState();
+    });
+
+    addStateListener('transitionType', () => {
+      this.updateLoadingState();
+    });
+
     addStateListener('playlist', () => {
       this.updatePlaylistDisplay();
       this.notifyLibraryNowPlaying();
@@ -192,8 +200,10 @@ export class AudioPlayerUI {
      <div class="player-artwork">
        <div class="player-artwork-placeholder" aria-hidden="true">${PLAYER_ARTWORK_PLACEHOLDER}</div>
        <img class="player-artwork-image" alt="" hidden>
+       <div class="player-loading-spinner player-loading-spinner-artwork" role="status" aria-label="Loading"></div>
      </div>
      <div class="track-name-container">
+       <div class="player-loading-spinner player-loading-spinner-inline" role="status" aria-label="Loading"></div>
        <div class="track-name">No track loaded</div>
      </div>
      <div class="player-controls">
@@ -266,6 +276,7 @@ export class AudioPlayerUI {
     // Update UI based on loaded state
     this.updatePlayerUIState();
     this.updateArtwork();
+    this.updateLoadingState();
     this.updatePlaylistDisplay();
     
     this.seekBar.addEventListener('input', () => {
@@ -467,8 +478,17 @@ export class AudioPlayerUI {
     }
     if (artworkContainer?.style) {
       const keepMobilePlaceholder = window.uiManager?.layoutMode?.isMobile;
-      artworkContainer.style.display = artworkUrl || keepMobilePlaceholder ? '' : 'none';
+      const hasArtworkLayout = !!artworkUrl || !!keepMobilePlaceholder;
+      artworkContainer.style.display = hasArtworkLayout ? '' : 'none';
+      this.container?.setAttribute('data-artwork-layout', hasArtworkLayout ? 'true' : 'false');
     }
+  }
+
+  updateLoadingState() {
+    if (!this.container) return;
+    const state = this.audioPlayer.stateManager?.getStateSnapshot?.();
+    const isLoading = state?.isTransitioning === true && state?.transitionType === 'loading';
+    this.container.setAttribute('data-loading', isLoading ? 'true' : 'false');
   }
 
   getDisplayTrackName(track) {

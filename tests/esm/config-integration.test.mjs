@@ -795,7 +795,10 @@ test('Web power-saving controls use the AudioManager facade and preserve hidden 
     assert.equal(maximum.checked, true);
     assert.equal(warning.hidden, false);
     assert.equal(warning.getAttribute('aria-hidden'), 'false');
-    assert.deepEqual(threshold.children.map(option => option.value), ['-90', '-80', '-70', '-60']);
+    assert.deepEqual(
+      threshold.children.map(option => option.value),
+      ['-90', '-80', '-70', '-60', '-50', '-40', '-30', '-20']
+    );
     assert.equal(threshold.value, '-90');
     assert.equal(threshold.disabled, false);
     assert.equal(thresholdRow.hidden, false);
@@ -984,6 +987,11 @@ test('showConfigDialog renders settings, saves changes, and closes from the butt
 
     assert.equal(harness.document.body.children.length, 1);
     assert.equal(harness.document.head.children.length, 1);
+    assert.match(harness.document.body.children[0].innerHTML, /class="config-dialog-content"/);
+    assert.match(harness.document.body.children[0].innerHTML, /class="config-dialog-column config-dialog-power-column"/);
+    assert.match(harness.document.head.children[0].textContent, /grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\)/);
+    assert.match(harness.document.head.children[0].textContent, /body\.layout-mobile \.config-dialog-content/);
+    assert.match(harness.document.head.children[0].textContent, /@media \(max-width: 700px\)/);
     assert.equal(harness.document.getElementById('config-title').textContent, 'label:dialog.config.title');
     assert.equal(harness.document.getElementById('auto-launch').checked, true);
     assert.equal(harness.document.getElementById('start-min').checked, true);

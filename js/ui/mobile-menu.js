@@ -8,6 +8,7 @@ export class MobileMenu {
         this.panel = null;
         this.backdrop = null;
         this.localizedActions = [];
+        this.installElements = [];
         this.unsubscribe = this.uiManager.layoutMode?.onChange(() => this.sync()) || null;
         this.sync();
     }
@@ -64,10 +65,32 @@ export class MobileMenu {
             this.panel.appendChild(this.createLocalizedAction('ui.resetButton', 'Reset Audio', () => this.uiManager.stateManager?.resetAudio?.()));
             this.panel.appendChild(this.createLocalizedAction('ui.shareButton', 'Share', () => document.getElementById('shareButton')?.click()));
             this.panel.appendChild(this.createLocalizedAction('ui.whatsThisApp', "What's this app?", () => document.getElementById('whatsThisLink')?.click()));
+            this.moveInstallElementsToPanel();
             document.body.appendChild(this.panel);
             this.uiManager.powerStateView?.refreshActions?.();
         }
         this.updateLabels();
+    }
+
+    moveInstallElementsToPanel() {
+        ['installAppElement', 'installAppButton'].forEach(id => {
+            const element = document.getElementById(id);
+            if (!element) return;
+            const closeMenu = () => this.close();
+            this.installElements.push({ element, parent: element.parentNode, closeMenu });
+            element.addEventListener('click', closeMenu);
+            element.classList.add('mobile-overflow-menu-item');
+            this.panel.appendChild(element);
+        });
+    }
+
+    restoreInstallElements() {
+        this.installElements.forEach(({ element, parent, closeMenu }) => {
+            element.removeEventListener('click', closeMenu);
+            element.classList.remove('mobile-overflow-menu-item');
+            parent?.appendChild(element);
+        });
+        this.installElements = [];
     }
 
     createAction(label, action) {
@@ -140,6 +163,7 @@ export class MobileMenu {
 
     removeElements() {
         this.close();
+        this.restoreInstallElements();
         this.button?.remove();
         this.panel?.remove();
         this.backdrop?.remove();

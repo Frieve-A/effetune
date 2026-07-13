@@ -133,15 +133,15 @@ test('power settings normalize to an immutable exact three-field policy object',
   } }), DEFAULT_POWER_SETTINGS);
   assert.deepEqual(normalizePowerSettings({
     mode: PowerPolicy.MAXIMUM,
-    silenceThresholdDb: -90,
+    silenceThresholdDb: -20,
     fullSuspendDelaySeconds: 'never',
     extra: 'discarded'
   }), {
     mode: PowerPolicy.MAXIMUM,
-    silenceThresholdDb: -90,
+    silenceThresholdDb: -20,
     fullSuspendDelaySeconds: 'never'
   });
-  assert.deepEqual(SILENCE_THRESHOLD_DB_VALUES, [-90, -80, -70, -60]);
+  assert.deepEqual(SILENCE_THRESHOLD_DB_VALUES, [-90, -80, -70, -60, -50, -40, -30, -20]);
   assert.deepEqual(FULL_SUSPEND_DELAY_SECONDS_VALUES, [60, 300, 900, 'never']);
 
   const current = {

@@ -112,6 +112,10 @@ class FakeElement {
     this.listeners.get(type).push(listener);
   }
 
+  removeEventListener(type, listener) {
+    this.listeners.set(type, (this.listeners.get(type) || []).filter(candidate => candidate !== listener));
+  }
+
   click() {
     this.clicked = true;
     for (const listener of this.listeners.get('click') || []) {
@@ -151,6 +155,13 @@ function createDocument() {
   pluginList.id = 'pluginList';
   const openMusicButton = new FakeElement('button');
   openMusicButton.id = 'openMusicButton';
+  const settingsMenu = new FakeElement('div');
+  const installAppElement = new FakeElement('install');
+  installAppElement.id = 'installAppElement';
+  const installAppButton = new FakeElement('button');
+  installAppButton.id = 'installAppButton';
+  settingsMenu.appendChild(installAppElement);
+  settingsMenu.appendChild(installAppButton);
   body.appendChild(titleContainer);
   body.appendChild(mainContainer);
 
@@ -160,6 +171,7 @@ function createDocument() {
     titleContainer,
     pluginList,
     openMusicButton,
+    settingsMenu,
     createElement(tagName) {
       return new FakeElement(tagName);
     },
@@ -171,6 +183,8 @@ function createDocument() {
     getElementById(id) {
       if (id === 'pluginList') return pluginList;
       if (id === 'openMusicButton') return openMusicButton;
+      if (id === 'installAppElement') return installAppElement;
+      if (id === 'installAppButton') return installAppButton;
       return null;
     },
     addEventListener(type, listener) {
@@ -347,6 +361,11 @@ test('MobileMenu removes overflow controls when leaving mobile mode', async () =
   const layoutMode = createLayoutMode('mobile');
   const calls = [];
   const uiManager = { layoutMode };
+  const installAppElement = documentRef.getElementById('installAppElement');
+  const installAppButton = documentRef.getElementById('installAppButton');
+  const installCalls = [];
+  installAppElement.addEventListener('click', () => installCalls.push('element'));
+  installAppButton.addEventListener('click', () => installCalls.push('button'));
 
   await withGlobals({
     document: documentRef,
@@ -368,8 +387,18 @@ test('MobileMenu removes overflow controls when leaving mobile mode', async () =
     assert.equal(documentRef.titleContainer.children.includes(button), true);
     assert.equal(documentRef.body.children.includes(panel), true);
     assert.equal(documentRef.body.children.includes(backdrop), true);
+    assert.equal(panel.children.includes(documentRef.getElementById('installAppElement')), true);
+    assert.equal(panel.children.includes(documentRef.getElementById('installAppButton')), true);
     assert.equal(button.innerHTML.includes('<svg'), true);
     assert.equal(panel.children.some(item => item.textContent === 'Process Audio Files with Effects...'), true);
+
+    menu.open();
+    installAppElement.click();
+    assert.equal(panel.classList.contains('mobile-open'), false);
+    menu.open();
+    installAppButton.click();
+    assert.equal(panel.classList.contains('mobile-open'), false);
+    assert.deepEqual(installCalls, ['element', 'button']);
 
     menu.open();
     assert.equal(panel.classList.contains('mobile-open'), true);
@@ -386,6 +415,20 @@ test('MobileMenu removes overflow controls when leaving mobile mode', async () =
     assert.equal(button.parentNode, null);
     assert.equal(panel.parentNode, null);
     assert.equal(backdrop.parentNode, null);
+    assert.equal(documentRef.getElementById('installAppElement').parentNode, documentRef.settingsMenu);
+    assert.equal(documentRef.getElementById('installAppButton').parentNode, documentRef.settingsMenu);
+    assert.equal(documentRef.getElementById('installAppElement').classList.contains('mobile-overflow-menu-item'), false);
+
+    layoutMode.setMode('mobile');
+    const recreatedPanel = menu.panel;
+    assert.equal((installAppElement.listeners.get('click') || []).length, 2);
+    assert.equal((installAppButton.listeners.get('click') || []).length, 2);
+    menu.open();
+    installAppElement.click();
+    assert.equal(recreatedPanel.classList.contains('mobile-open'), false);
+    menu.dispose();
+    assert.equal((installAppElement.listeners.get('click') || []).length, 1);
+    assert.equal((installAppButton.listeners.get('click') || []).length, 1);
   });
 });
 

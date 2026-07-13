@@ -110,7 +110,7 @@ export const NO_ROUTE_IDLE_DELAY_MS = Object.freeze({
 });
 
 export const ROUTED_MONITORING_SILENCE_DELAY_MS = 60_000;
-export const SILENCE_THRESHOLD_DB_VALUES = Object.freeze([-90, -80, -70, -60]);
+export const SILENCE_THRESHOLD_DB_VALUES = Object.freeze([-90, -80, -70, -60, -50, -40, -30, -20]);
 export const FULL_SUSPEND_DELAY_SECONDS_VALUES = Object.freeze([60, 300, 900, 'never']);
 export const WORKLET_PROCESSING_DIRECTIVES = Object.freeze([
   ProcessingDirective.FULL_PROCESS,

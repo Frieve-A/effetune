@@ -81,8 +81,8 @@ body.layout-mobile .plugin-parameter-ui {
 body.layout-mobile h1 {
     font-size: 20px;
     line-height: 32px;
-    /* Reserve room for settings and overflow header buttons. */
-    padding-right: 96px;
+    /* Reserve room for the overflow header button. */
+    padding-right: 48px;
 }
 
 body.layout-mobile .subtitle,
@@ -93,16 +93,10 @@ body.layout-mobile .column-control-button {
     display: none !important;
 }
 
-/* Keep the settings button available in the mobile header. The overflow menu button
-   (40px) owns the top-right corner, so this group sits to its left at the same
-   40px mobile control height. */
+/* Mobile actions live in the overflow menu; the desktop settings gear and other
+   desktop header controls are not shown in this layout. */
 body.layout-mobile .header-buttons {
-    display: flex !important;
-    top: 0;
-    right: 48px;
-    height: var(--et-mobile-control-height);
-    gap: 10px;
-    z-index: 30;
+    display: none !important;
 }
 
 body.layout-mobile .header-buttons .header-button {
@@ -117,8 +111,7 @@ body.layout-mobile .header-buttons .header-button {
     box-sizing: border-box;
 }
 
-/* Mobile has its own Open Music and view navigation controls, so the header only
-   shows the gear. */
+/* Mobile has its own Open Music and view navigation controls. */
 body.layout-mobile .header-buttons .open-music-button,
 body.layout-mobile .header-buttons .effect-pipeline-button,
 body.layout-mobile .header-buttons .open-library-button {

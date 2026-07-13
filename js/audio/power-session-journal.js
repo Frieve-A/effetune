@@ -48,9 +48,11 @@ function clone(value) {
 function makeId(prefix, cryptoRef) {
     const uuid = cryptoRef?.randomUUID?.();
     if (isIdentity(uuid)) return `${prefix}-${uuid}`;
-    const random = cryptoRef?.getRandomValues ? cryptoRef.getRandomValues(new Uint32Array(4)) : null;
-    if (random) return `${prefix}-${[...random].map(value => value.toString(16)).join('-')}`;
-    return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    if (typeof cryptoRef?.getRandomValues !== 'function') {
+        throw new Error('Secure random number generation is unavailable');
+    }
+    const random = cryptoRef.getRandomValues(new Uint32Array(4));
+    return `${prefix}-${[...random].map(value => value.toString(16).padStart(8, '0')).join('-')}`;
 }
 
 function validateIdentity(value) {

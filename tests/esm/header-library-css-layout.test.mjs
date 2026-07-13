@@ -31,11 +31,11 @@ test('desktop view switch buttons match neighboring header icon button size', ()
   assert.match(desktopSubtitleContainerRule, /height:\s*36px;/);
 });
 
-test('mobile header hides desktop view switch buttons and reserves settings space', () => {
+test('mobile header hides desktop controls and reserves overflow-menu space', () => {
   const css = readCss('../../effetune-mobile.css');
 
-  assert.match(getRule(css, 'body.layout-mobile h1'), /padding-right:\s*96px;/);
-  assert.match(getRule(css, 'body.layout-mobile .header-buttons'), /gap:\s*10px;/);
+  assert.match(getRule(css, 'body.layout-mobile h1'), /padding-right:\s*48px;/);
+  assert.match(getRule(css, 'body.layout-mobile .header-buttons'), /display:\s*none !important;/);
   assert.match(getRule(css, 'body.layout-mobile .header-buttons .effect-pipeline-button'), /display:\s*none !important;/);
   assert.match(getRule(css, 'body.layout-mobile .header-buttons .open-library-button'), /display:\s*none !important;/);
 });

@@ -206,38 +206,44 @@ export async function showConfigDialog(isElectron, currentConfig) {
   const dialogHTML = `
     <div class="config-dialog">
       <h2 id="config-title"></h2>
-      ${electronOnlySections}
-      <div class="device-section">
-        <label class="section-label" for="language-select" id="config-language-label"></label>
-        <select id="language-select" class="config-select"></select>
-      </div>
-      ${powerSavingSection}
-      <div class="device-section">
-        <label class="section-label" id="config-startup-view-label"></label>
-        <div class="radio-container">
-          <input type="radio" name="startup-view" id="startup-view-effects" value="effects" ${config.startupView === 'effects' ? 'checked' : ''}>
-          <label for="startup-view-effects" id="config-startup-view-effects-label"></label>
+      <div class="config-dialog-content">
+        <div class="config-dialog-column">
+          ${electronOnlySections}
+          <div class="device-section">
+            <label class="section-label" for="language-select" id="config-language-label"></label>
+            <select id="language-select" class="config-select"></select>
+          </div>
+          <div class="device-section">
+            <label class="section-label" id="config-startup-view-label"></label>
+            <div class="radio-container">
+              <input type="radio" name="startup-view" id="startup-view-effects" value="effects" ${config.startupView === 'effects' ? 'checked' : ''}>
+              <label for="startup-view-effects" id="config-startup-view-effects-label"></label>
+            </div>
+            <div class="radio-container">
+              <input type="radio" name="startup-view" id="startup-view-library" value="library" ${config.startupView === 'library' ? 'checked' : ''}>
+              <label for="startup-view-library" id="config-startup-view-library-label"></label>
+              <select id="library-startup-view-select" class="config-select" aria-labelledby="config-startup-view-library-label" ${config.startupView === 'library' ? '' : 'disabled'}></select>
+            </div>
+          </div>
+          <div class="device-section">
+            <label class="section-label" id="config-pipeline-label"></label>
+            <div class="radio-container">
+              <input type="radio" name="pipeline" id="pl-default" value="default" ${config.pipelineStartup === 'default' ? 'checked' : ''}>
+              <label for="pl-default" id="config-pipeline-default-label"></label>
+            </div>
+            <div class="radio-container">
+              <input type="radio" name="pipeline" id="pl-last" value="last" ${!config.pipelineStartup || config.pipelineStartup === 'last' ? 'checked' : ''}>
+              <label for="pl-last" id="config-pipeline-last-label"></label>
+            </div>
+            <div class="radio-container">
+              <input type="radio" name="pipeline" id="pl-preset" value="preset" ${config.pipelineStartup === 'preset' ? 'checked' : ''}>
+              <label for="pl-preset" id="config-pipeline-preset-label"></label>
+              <select id="preset-select" class="config-select" ${config.pipelineStartup === 'preset' ? '' : 'disabled'}></select>
+            </div>
+          </div>
         </div>
-        <div class="radio-container">
-          <input type="radio" name="startup-view" id="startup-view-library" value="library" ${config.startupView === 'library' ? 'checked' : ''}>
-          <label for="startup-view-library" id="config-startup-view-library-label"></label>
-          <select id="library-startup-view-select" class="config-select" aria-labelledby="config-startup-view-library-label" ${config.startupView === 'library' ? '' : 'disabled'}></select>
-        </div>
-      </div>
-      <div class="device-section">
-        <label class="section-label" id="config-pipeline-label"></label>
-        <div class="radio-container">
-          <input type="radio" name="pipeline" id="pl-default" value="default" ${config.pipelineStartup === 'default' ? 'checked' : ''}>
-          <label for="pl-default" id="config-pipeline-default-label"></label>
-        </div>
-        <div class="radio-container">
-          <input type="radio" name="pipeline" id="pl-last" value="last" ${!config.pipelineStartup || config.pipelineStartup === 'last' ? 'checked' : ''}>
-          <label for="pl-last" id="config-pipeline-last-label"></label>
-        </div>
-        <div class="radio-container">
-          <input type="radio" name="pipeline" id="pl-preset" value="preset" ${config.pipelineStartup === 'preset' ? 'checked' : ''}>
-          <label for="pl-preset" id="config-pipeline-preset-label"></label>
-          <select id="preset-select" class="config-select" ${config.pipelineStartup === 'preset' ? '' : 'disabled'}></select>
+        <div class="config-dialog-column config-dialog-power-column">
+          ${powerSavingSection}
         </div>
       </div>
       <div class="dialog-buttons">
@@ -268,7 +274,8 @@ export async function showConfigDialog(isElectron, currentConfig) {
       background-color: #222;
       border-radius: 8px;
       padding: 20px;
-      width: 400px;
+      width: 760px;
+      max-width: calc(100vw - 32px);
       max-height: calc(100vh - 40px);
       overflow-y: auto;
       box-sizing: border-box;
@@ -278,6 +285,14 @@ export async function showConfigDialog(isElectron, currentConfig) {
       margin-top: 0;
       margin-bottom: 20px;
       color: #fff;
+    }
+    .config-dialog-content {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 24px;
+    }
+    .config-dialog-column {
+      min-width: 0;
     }
     .device-section {
       margin-bottom: 15px;
@@ -289,8 +304,8 @@ export async function showConfigDialog(isElectron, currentConfig) {
       color: #fff;
     }
     .power-saving-section {
-      padding-top: 12px;
-      border-top: 1px solid #444;
+      padding-left: 24px;
+      border-left: 1px solid #444;
     }
     .power-mode-option {
       margin-bottom: 9px;
@@ -402,7 +417,30 @@ export async function showConfigDialog(isElectron, currentConfig) {
     .dialog-buttons button:hover {
       background-color: #0056b3;
     }
-    @media (max-width: 480px) {
+    body.layout-mobile .config-dialog-content {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0;
+    }
+    body.layout-mobile .power-saving-section {
+      padding-top: 12px;
+      padding-left: 0;
+      border-top: 1px solid #444;
+      border-left: 0;
+    }
+    @media (max-width: 700px) {
+      .config-dialog {
+        width: 400px;
+      }
+      .config-dialog-content {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0;
+      }
+      .power-saving-section {
+        padding-top: 12px;
+        padding-left: 0;
+        border-top: 1px solid #444;
+        border-left: 0;
+      }
       .power-mode-help,
       .power-saving-warning,
       .power-advanced-settings {
