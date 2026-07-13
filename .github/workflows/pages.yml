@@ -38,6 +38,7 @@ jobs:
         run: npm run verify
 
       - name: Run mandatory power browser smoke
+        timeout-minutes: 2
         run: npm run test:power-browser
 
       - name: Setup Emscripten SDK

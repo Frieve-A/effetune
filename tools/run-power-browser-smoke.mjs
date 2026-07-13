@@ -13,6 +13,7 @@ const host = '127.0.0.1';
 const startupTimeoutMs = 10_000;
 const shutdownTimeoutMs = 5_000;
 const testTimeoutMs = 60_000;
+const processTimeoutMs = testTimeoutMs + 15_000;
 
 const contentTypes = new Map([
   ['.css', 'text/css; charset=utf-8'],
@@ -853,9 +854,15 @@ if (isDirect) {
   } else if (process.argv.includes('--help')) {
     printHelp();
   } else {
-    runPowerBrowserSmoke().catch(error => {
-      process.stderr.write(`${error.stack || error.message}\n`);
-      process.exitCode = 1;
-    });
+    const processTimeout = setTimeout(() => {
+      process.stderr.write(`Power browser smoke did not exit within ${processTimeoutMs} ms.\n`);
+      process.exit(1);
+    }, processTimeoutMs);
+    runPowerBrowserSmoke()
+      .catch(error => {
+        process.stderr.write(`${error.stack || error.message}\n`);
+        process.exitCode = 1;
+      })
+      .finally(() => clearTimeout(processTimeout));
   }
 }
