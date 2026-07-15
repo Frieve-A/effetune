@@ -1283,7 +1283,7 @@ test('reset under intentional suspension notifies the controller when the new co
   });
 });
 
-test('Web input None switches locally only while pipeline configuration is unchanged', async () => {
+test('Web and Electron input None switch locally only while pipeline configuration is unchanged', async () => {
   const storedMicrophone = {
     inputDeviceId: 'microphone-a',
     inputDeviceLabel: 'Original microphone label',
@@ -1336,6 +1336,40 @@ test('Web input None switches locally only while pipeline configuration is uncha
       JSON.parse(storageValues.get('effetune_audio_preferences')),
       silentWithEquivalentDefaults
     );
+    assert.equal(windowObject.audioPreferences, silentWithEquivalentDefaults);
+    assert.equal(windowObject.electronIntegration.audioPreferences, silentWithEquivalentDefaults);
+  });
+
+  const electronPersistenceCalls = [];
+  const electronIntegration = {
+    audioPreferences: storedMicrophone,
+    async saveAudioPreferences(preferences, options) {
+      electronPersistenceCalls.push([preferences, options]);
+      this.audioPreferences = preferences;
+      window.audioPreferences = preferences;
+      return true;
+    }
+  };
+  await withAudioManager({
+    electronAPI: {},
+    electronIntegration
+  }, async ({ calls, manager, windowObject }) => {
+    windowObject.audioPreferences = storedMicrophone;
+    const selection = installSilentInputSelection(manager, calls, { inputConfigRevision: 73 });
+    manager._doReset = async () => {
+      calls.push(['manager._doReset']);
+      return 'unexpected graph reset';
+    };
+
+    assert.equal(await manager.reset(silentWithEquivalentDefaults), '');
+    assert.deepEqual(selection.requestedRevisions, [74]);
+    assert.deepEqual(electronPersistenceCalls, [[
+      silentWithEquivalentDefaults,
+      { applyInPlace: 'silent-input' }
+    ]]);
+    assert.equal(calls.some(call => call[0] === 'manager._doReset'), false);
+    assert.equal(manager.ioManager.inputSourceNode, null);
+    assert.equal(manager.ioManager.silentInputGainNode, selection.silentSource);
     assert.equal(windowObject.audioPreferences, silentWithEquivalentDefaults);
     assert.equal(windowObject.electronIntegration.audioPreferences, silentWithEquivalentDefaults);
   });

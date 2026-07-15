@@ -32,13 +32,14 @@ export async function loadAudioPreferences(isElectron) {
  * Save audio preferences
  * @param {boolean} isElectron - Whether running in Electron environment
  * @param {Object} preferences - Audio device preferences
+ * @param {Object} options - Persistence behavior for renderer-managed changes
  * @returns {Promise<boolean>} Success status
  */
-export async function saveAudioPreferences(isElectron, preferences) {
+export async function saveAudioPreferences(isElectron, preferences, options = {}) {
   if (!isElectron) return saveWebAudioPreferences(preferences);
   
   try {
-    const result = await window.electronAPI.saveAudioPreferences(preferences);
+    const result = await window.electronAPI.saveAudioPreferences(preferences, options);
     return result.success;
   } catch (error) {
     console.error('Failed to save audio preferences:', error);
@@ -155,6 +156,27 @@ function getSelectedInputDeviceId(devices, selectedValue) {
   }
   return devices.find(device => device.deviceId !== NO_AUDIO_INPUT_DEVICE_ID)?.deviceId ||
     NO_AUDIO_INPUT_DEVICE_ID;
+}
+
+function audioPipelineConfigurationEqual(left, right) {
+  if (!left || !right) return false;
+  const defaults = {
+    outputDeviceId: 'default',
+    sampleRate: 96000,
+    useInputWithPlayer: false,
+    lowLatencyOutput: false,
+    useWasmDsp: true,
+    outputChannels: 2,
+    latencyHint: 'interactive'
+  };
+  return Object.entries(defaults).every(([key, fallback]) =>
+    Object.is(left[key] ?? fallback, right[key] ?? fallback));
+}
+
+function canApplySilentInputWithoutReload(previousPreferences, nextPreferences) {
+  return nextPreferences?.inputDeviceId === NO_AUDIO_INPUT_DEVICE_ID &&
+    previousPreferences?.inputDeviceId !== NO_AUDIO_INPUT_DEVICE_ID &&
+    audioPipelineConfigurationEqual(previousPreferences, nextPreferences);
 }
 
 function replaceValueOptions(select, values, selectedValue, labelForValue) {
@@ -500,7 +522,10 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         latencyHint: selectedLatency
       };
       
-      if (!isElectron && window.audioManager && typeof window.audioManager.reset === 'function') {
+      const applyThroughAudioManager = !isElectron ||
+        canApplySilentInputWithoutReload(audioPreferences, preferences);
+      if (applyThroughAudioManager &&
+          window.audioManager && typeof window.audioManager.reset === 'function') {
         closeDialog();
         let resetResult = '';
         try {

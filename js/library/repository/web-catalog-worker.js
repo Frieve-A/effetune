@@ -5,38 +5,42 @@ import { WebLibraryServiceCoordinator } from '../operations/web-library-service-
 
 export const WEB_CATALOG_WORKER_PROTOCOL_VERSION = 1;
 export const WEB_CATALOG_MAX_MESSAGE_BYTES = 1024 * 1024;
+const BUSY_MAINTENANCE_DELAY_MS = 50;
 
 const ALLOWED_METHODS = Object.freeze(new Set([
   'open',
+  'resetCatalog',
   'close',
   'getCapabilities',
   'getCounts',
   'addFolder',
+  'beginSessionFolder',
+  'appendSessionFolderFiles',
+  'commitSessionFolder',
+  'abortSessionFolder',
   'scanFolders',
   'cancelScan',
   'requestFolderAccess',
   'removeFolder',
   'requestArtwork',
   'startOperation',
-  'lookupOperationResult',
   'getOperationStatus',
   'cancelOperation',
+  'previewPlaylistImport',
+  'commitPlaylistImportPreview',
+  'cancelPlaylistImportPreview',
   'getProvisionalEntry',
-  'commitTransportCommand',
-  'getTransportState',
-  'applyTransportUndo',
   'readSequencePage',
   'resolveSequenceEntrySource',
   'createContext',
   'releaseContext',
-  'cleanupExpiredContexts',
   'queryTracks',
   'queryEntities',
   'getContextCount',
-  'lookupContextTrack',
   'readContextPageAtOrdinal',
   'resolveEntityAnchor',
   'getTrack',
+  'resolvePlaylistExportSource',
   'createPlaylist',
   'createPlaylistWithItems',
   'renamePlaylist',
@@ -49,6 +53,10 @@ const ALLOWED_METHODS = Object.freeze(new Set([
 
 const CONTROL_METHODS = new Set([
   'addFolder',
+  'beginSessionFolder',
+  'appendSessionFolderFiles',
+  'commitSessionFolder',
+  'abortSessionFolder',
   'scanFolders',
   'cancelScan',
   'requestFolderAccess',
@@ -58,13 +66,12 @@ const CONTROL_METHODS = new Set([
 
 const SERVICE_METHODS = new Map([
   ['startOperation', 'start'],
-  ['lookupOperationResult', 'lookupResult'],
   ['getOperationStatus', 'status'],
   ['cancelOperation', 'cancel'],
+  ['previewPlaylistImport', 'previewPlaylistImport'],
+  ['commitPlaylistImportPreview', 'commitPlaylistImportPreview'],
+  ['cancelPlaylistImportPreview', 'cancelPlaylistImportPreview'],
   ['getProvisionalEntry', 'getProvisionalEntry'],
-  ['commitTransportCommand', 'commitTransportCommand'],
-  ['getTransportState', 'getTransportState'],
-  ['applyTransportUndo', 'applyTransportUndo'],
   ['readSequencePage', 'readSequencePage'],
   ['resolveSequenceEntrySource', 'resolveSequenceEntrySource']
 ]);
@@ -78,8 +85,16 @@ function serializeError(error) {
   };
 }
 
-export function installWebCatalogWorker(scope = globalThis, { repository, runtime, serviceCoordinator } = {}) {
+export function installWebCatalogWorker(scope = globalThis, {
+  repository,
+  runtime,
+  serviceCoordinator,
+  referenceFixtureLoader
+} = {}) {
   const adapter = repository ?? new WebSqliteCatalogRepository({ authority: 'worker' });
+  if (referenceFixtureLoader !== undefined && typeof referenceFixtureLoader !== 'function') {
+    throw new TypeError('The reference fixture loader must be a function');
+  }
   let scanRuntime = runtime ?? null;
   let libraryService = serviceCoordinator ?? null;
   const getScanRuntime = () => {
@@ -89,6 +104,11 @@ export function installWebCatalogWorker(scope = globalThis, { repository, runtim
         protocolVersion: WEB_CATALOG_WORKER_PROTOCOL_VERSION,
         type: 'scan-progress',
         progress
+      }),
+      onFolderRemoval: progress => postBoundedMessage(scope, {
+        protocolVersion: WEB_CATALOG_WORKER_PROTOCOL_VERSION,
+        type: 'folder-removal-progress',
+        progress
       })
     });
     return scanRuntime;
@@ -97,6 +117,7 @@ export function installWebCatalogWorker(scope = globalThis, { repository, runtim
     libraryService ??= new WebLibraryServiceCoordinator({
       repository: adapter,
       handleStore: getScanRuntime().handleStore,
+      sourceProvider: getScanRuntime(),
       onEvent: event => postBoundedMessage(scope, {
         protocolVersion: WEB_CATALOG_WORKER_PROTOCOL_VERSION,
         type: 'library-service-event',
@@ -104,6 +125,11 @@ export function installWebCatalogWorker(scope = globalThis, { repository, runtim
       })
     });
     return libraryService;
+  };
+  const getControlRuntime = () => {
+    const runtime = getScanRuntime();
+    runtime.setPlaylistImportService?.(getLibraryService());
+    return runtime;
   };
   let unsubscribe = null;
   let maintenanceTimer = null;
@@ -115,7 +141,6 @@ export function installWebCatalogWorker(scope = globalThis, { repository, runtim
     () => adapter.cleanupPlaylistItems(500),
     () => adapter.gcOperationSnapshots(500),
     () => adapter.gcPlaylistItems(500),
-    () => adapter.gcPlaybackSequences(500),
     () => adapter.gcTerminalOperations({ finishedBefore: Date.now() - 7 * 24 * 60 * 60 * 1000, limit: 100 })
   ];
   const scheduleMaintenance = (delay = 30_000) => {
@@ -125,7 +150,7 @@ export function installWebCatalogWorker(scope = globalThis, { repository, runtim
       try {
         const result = await maintenanceJobs[maintenanceIndex % maintenanceJobs.length]();
         maintenanceIndex += 1;
-        scheduleMaintenance(result?.hasMore === true ? 0 : 30_000);
+        scheduleMaintenance(result?.hasMore === true ? BUSY_MAINTENANCE_DELAY_MS : 30_000);
       } catch {
         scheduleMaintenance(30_000);
       }
@@ -156,7 +181,8 @@ export function installWebCatalogWorker(scope = globalThis, { repository, runtim
     if (!request
         || request.protocolVersion !== WEB_CATALOG_WORKER_PROTOCOL_VERSION
         || typeof request.requestId !== 'string'
-        || !ALLOWED_METHODS.has(request.method)
+        || (!ALLOWED_METHODS.has(request.method)
+          && !(request.method === 'loadReferenceFixture' && referenceFixtureLoader))
         || !Array.isArray(request.args)) {
       postBoundedMessage(scope, {
         protocolVersion: WEB_CATALOG_WORKER_PROTOCOL_VERSION,
@@ -172,10 +198,20 @@ export function installWebCatalogWorker(scope = globalThis, { repository, runtim
       return;
     }
     try {
+      if (request.method === 'loadReferenceFixture') {
+        const result = await referenceFixtureLoader(...request.args);
+        postBoundedMessage(scope, {
+          protocolVersion: WEB_CATALOG_WORKER_PROTOCOL_VERSION,
+          requestId: request.requestId,
+          ok: true,
+          result
+        });
+        return;
+      }
       const serviceMethod = SERVICE_METHODS.get(request.method);
       const target = serviceMethod
         ? getLibraryService()
-        : CONTROL_METHODS.has(request.method) ? getScanRuntime() : adapter;
+        : CONTROL_METHODS.has(request.method) ? getControlRuntime() : adapter;
       const result = await target[serviceMethod ?? request.method](...request.args);
       if (request.method === 'open' && !unsubscribe) {
         unsubscribe = adapter.subscribeInvalidations(invalidation => {

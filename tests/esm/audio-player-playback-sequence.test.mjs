@@ -199,53 +199,43 @@ test('queue provider returns only a bounded window for a query-backed sequence',
   assert.equal(previous.startOrdinal, 499_960);
 });
 
-test('pending transport keeps one generation-tagged slot and fences timeout and stale callbacks', async () => {
-  const timers = [];
+test('pending transport waits without a deadline and aborts only when a newer command supersedes it', async () => {
   const slot = new PendingTransportSlot({
-    runtime: 'electron',
-    setTimeoutFn(callback, delay) {
-      timers.push({ callback, delay, cleared: false });
-      return timers.length - 1;
-    },
-    clearTimeoutFn(index) {
-      if (timers[index]) timers[index].cleared = true;
+    setTimeoutFn() {
+      throw new Error('transport must not schedule a fixed deadline');
     }
   });
   let resolveFirst;
-  const first = slot.run('next', ({ isCurrent }) => new Promise(resolve => {
+  let firstSignal;
+  const first = slot.run('next', ({ isCurrent, signal }) => new Promise(resolve => {
+    firstSignal = signal;
     resolveFirst = () => resolve(isCurrent() ? 'current' : 'late');
   }));
   await Promise.resolve();
+  assert.equal(firstSignal.aborted, false);
+
   const second = slot.run('previous', async ({ isCurrent }) => isCurrent() ? 'previous' : 'late');
+  assert.equal(firstSignal.aborted, true);
   resolveFirst();
   assert.deepEqual(await first, { accepted: false, reason: 'stale', generation: 1 });
   assert.equal((await second).value, 'previous');
-  assert.equal(timers[0].delay, 3_000);
 
-  const timedOut = slot.run('next', () => new Promise(() => {}));
-  timers.at(-1).callback();
-  assert.deepEqual(await timedOut, { accepted: false, reason: 'timeout', generation: 3 });
-});
-
-test('pending transport invokes timer adapters without rebinding their host receiver', async () => {
-  let setReceiver = 'not-called';
-  let clearReceiver = 'not-called';
-  const slot = new PendingTransportSlot({
-    setTimeoutFn: function setTimer() {
-      setReceiver = this;
-      return 1;
-    },
-    clearTimeoutFn: function clearTimer() {
-      clearReceiver = this;
-    }
+  let resolvePermission;
+  let settled = false;
+  const permission = slot.run('next', () => new Promise(resolve => {
+    resolvePermission = resolve;
+  })).then(result => {
+    settled = true;
+    return result;
   });
-
-  assert.equal((await slot.run('next', async () => 'ready')).value, 'ready');
-  assert.equal(setReceiver, undefined);
-  assert.equal(clearReceiver, undefined);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(settled, false);
+  resolvePermission('permission-restored');
+  assert.equal((await permission).value, 'permission-restored');
 });
 
-test('transport slot prioritizes explicit commands, coalesces duplicate ended, and records interruption state', async () => {
+test('transport slot prioritizes explicit commands and coalesces duplicate ended commands', async () => {
   let finishExplicit;
   const slot = new PendingTransportSlot();
   const explicit = slot.run({
@@ -285,15 +275,6 @@ test('transport slot prioritizes explicit commands, coalesces duplicate ended, a
   finishEnded('ended-successor');
   assert.equal((await duplicateEnded).value, 'ended-successor');
   assert.equal(endedExecutions, 1);
-
-  slot.run('next', () => new Promise(() => {}));
-  const serialized = slot.getStateSnapshot();
-  slot.invalidate();
-  assert.equal(slot.lastTerminal.state, 'interrupted');
-  const recovered = new PendingTransportSlot({ recoveredState: serialized });
-  assert.equal(recovered.getStateSnapshot().state, 'interrupted');
-  assert.equal(recovered.getStateSnapshot().sourceEntryInstanceId, serialized.sourceEntryInstanceId);
-  assert.ok(recovered.generation > serialized.generation);
 });
 
 function createCatalogSequence(itemCount, shuffleSeed, sequenceId) {

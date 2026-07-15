@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { UIManager } from '../../js/ui-manager.js';
+import { LibraryManagerV2 } from '../../js/library/library-manager-v2.js';
 import { PlaybackManager } from '../../js/ui/audio-player/playback-manager.js';
 import {
   LibraryView,
@@ -184,6 +185,93 @@ function createDocument(elementsById = {}) {
   return documentRef;
 }
 
+function createMappedHtmlElement(tagName, ownerDocument, selectors) {
+  const element = new FakeElement(tagName);
+  element.ownerDocument = ownerDocument;
+  element.selectorMap = new Map();
+  Object.defineProperty(element, 'innerHTML', {
+    get() {
+      return this.html || '';
+    },
+    set(value) {
+      this.html = String(value || '');
+      this.selectorMap.clear();
+      for (const selector of selectors) {
+        const marker = selector === '[data-folder-status]'
+          ? 'data-folder-status'
+          : selector.slice(1);
+        if (!this.html.includes(marker)) continue;
+        const child = new FakeElement(selector === '[data-folder-status]' ? 'span' : 'button');
+        child.ownerDocument = ownerDocument;
+        this.selectorMap.set(selector, child);
+      }
+    }
+  });
+  element.querySelector = selector => element.selectorMap.get(selector) || null;
+  element.querySelectorAll = selector => selector === '.library-paged-folder-actions button'
+    ? [
+        element.selectorMap.get('.library-paged-folder-reconnect'),
+        element.selectorMap.get('.library-paged-folder-rescan'),
+        element.selectorMap.get('.library-paged-folder-remove')
+      ].filter(Boolean)
+    : [];
+  return element;
+}
+
+function createLibraryNavElement() {
+  const nav = new FakeElement('aside');
+  let html = '';
+  let innerHTMLWrites = 0;
+  Object.defineProperty(nav, 'innerHTML', {
+    get() {
+      return html;
+    },
+    set(value) {
+      html = String(value || '');
+      innerHTMLWrites += 1;
+      nav.children = [...html.matchAll(
+        /<button([^>]*)data-view="([^"]+)"([^>]*)>([\s\S]*?)<\/button>/g
+      )].map(match => {
+        const button = new FakeElement('button');
+        const attributes = `${match[1]}${match[3]}`;
+        const className = attributes.match(/class="([^"]*)"/)?.[1] || '';
+        button.className = className;
+        button.dataset.view = match[2];
+        className.split(/\s+/).filter(Boolean).forEach(token => button.classList.add(token));
+        if (attributes.includes('aria-current="page"')) button.setAttribute('aria-current', 'page');
+
+        const label = new FakeElement('span');
+        label.textContent = match[4].match(
+          /<span class="library-nav-label">([^<]*)<\/span>/
+        )?.[1] || '';
+        const countMatch = match[4].match(
+          /<span class="library-count"([^>]*)>([^<]*)<\/span>/
+        );
+        const count = new FakeElement('span');
+        count.hidden = countMatch?.[1].includes('hidden') ?? true;
+        count.textContent = countMatch?.[2] || '';
+        button.appendChild(label);
+        button.appendChild(count);
+        button.querySelector = selector => selector === '.library-nav-label'
+          ? label
+          : (selector === '.library-count' ? count : null);
+        button.parentNode = nav;
+        return button;
+      });
+    }
+  });
+  Object.defineProperty(nav, 'innerHTMLWrites', {
+    get() {
+      return innerHTMLWrites;
+    }
+  });
+  nav.querySelectorAll = selector => selector === '[data-view]' ? [...nav.children] : [];
+  nav.querySelector = selector => selector === '[aria-current="page"]'
+    ? nav.children.find(button => button.getAttribute('aria-current') === 'page') || null
+    : null;
+  return nav;
+}
+
 class DialogElement extends FakeElement {
   constructor(tagName, ownerDocument) {
     super(tagName);
@@ -293,7 +381,14 @@ function createDialogDocument() {
   return documentRef;
 }
 
+function createLibraryViewFixture(overrides = {}) {
+  return Object.assign(Object.create(LibraryView.prototype), {
+    navigationIntentId: 0
+  }, overrides);
+}
+
 test('updateUITexts localizes the view switch button titles and aria labels', async () => {
+  const calls = [];
   const effectPipelineButton = new FakeElement('button');
   const openLibraryButton = new FakeElement('button');
   const documentRef = createDocument({ effectPipelineButton, openLibraryButton });
@@ -304,6 +399,11 @@ test('updateUITexts localizes the view switch button titles and aria labels', as
     pipelineEmpty: null,
     pluginListManager: null,
     stateManager: null,
+    libraryView: {
+      updateUITexts() {
+        calls.push(['libraryView.updateUITexts']);
+      }
+    },
     t(key) {
       if (key === 'ui.title.effectPipeline') return 'Localized Pipeline';
       return key === 'ui.title.openLibrary' ? 'Localized Library' : key;
@@ -319,6 +419,45 @@ test('updateUITexts localizes the view switch button titles and aria labels', as
   assert.equal(effectPipelineButton.attributes.get('aria-label'), 'Localized Pipeline');
   assert.equal(openLibraryButton.title, 'Localized Library');
   assert.equal(openLibraryButton.attributes.get('aria-label'), 'Localized Library');
+  assert.deepEqual(calls, [['libraryView.updateUITexts']]);
+});
+
+test('LibraryView updateUITexts refreshes mounted static and rendered library text', () => {
+  const root = new FakeElement('section');
+  const nav = new FakeElement('aside');
+  const searchInput = new FakeElement('input');
+  const addFolderLabel = new FakeElement('span');
+  const rescanButton = new FakeElement('button');
+  const calls = [];
+  root.querySelector = selector => ({
+    '.library-add-folder span': addFolderLabel,
+    '.library-rescan': rescanButton
+  })[selector] || null;
+  const translations = {
+    'library.title': 'Music Library',
+    'library.search.placeholder': 'Search music',
+    'library.action.addFolder': 'Add Music Folder',
+    'library.action.rescan': 'Rescan'
+  };
+  const view = createLibraryViewFixture({
+    root,
+    nav,
+    searchInput,
+    uiManager: { t: key => translations[key] || key },
+    render() {
+      calls.push(['render']);
+    }
+  });
+
+  view.updateUITexts();
+
+  assert.equal(root.getAttribute('aria-label'), 'Music Library');
+  assert.equal(nav.getAttribute('aria-label'), 'Music Library');
+  assert.equal(searchInput.placeholder, 'Search music');
+  assert.equal(addFolderLabel.textContent, 'Add Music Folder');
+  assert.equal(rescanButton.title, 'Rescan');
+  assert.equal(rescanButton.getAttribute('aria-label'), 'Rescan');
+  assert.deepEqual(calls, [['render']]);
 });
 
 test('initOpenLibraryButton wires the view switch buttons and Electron IPC callbacks', async () => {
@@ -437,6 +576,51 @@ test('showLibraryTrack opens the library view and focuses the requested track', 
     ['showLibraryView'],
     ['showTrack', 'track-one', { view: 'artist' }]
   ]);
+});
+
+test('library selection actions use the connected catalog playback bridge', async () => {
+  const calls = [];
+  const catalogService = {
+    async start(request) {
+      calls.push(request);
+      return { kind: 'inactive' };
+    },
+    async readSequencePage() {
+      return { items: [] };
+    },
+    async resolveSequenceEntrySource() {
+      return null;
+    }
+  };
+  const libraryManager = new LibraryManagerV2({ bulkOperationService: catalogService });
+  libraryManager.runtime = 'electron';
+  const audioPlayer = { playbackManager: {} };
+  const manager = Object.assign(Object.create(UIManager.prototype), {
+    libraryManager,
+    libraryPlaybackBridge: null,
+    audioPlayer
+  });
+
+  const bridge = manager.connectLibraryPlaybackBridge();
+  assert.equal(libraryManager.bulkOperationService, bridge);
+  assert.equal(audioPlayer.libraryOperationService, bridge);
+  assert.equal(typeof libraryManager.performRowAction, 'undefined');
+  assert.deepEqual(await libraryManager.performSelectionAction('play', {
+    mode: 'explicit',
+    contextToken: 'context-1',
+    trackUids: ['track-1']
+  }), { kind: 'inactive' });
+  assert.deepEqual(calls, [{
+    operationKind: 'play',
+    selectionDescriptor: {
+      mode: 'explicit',
+      contextToken: 'context-1',
+      trackUids: ['track-1']
+    },
+    target: {},
+    options: { playbackDestination: 'replace' }
+  }]);
+  bridge.close();
 });
 
 test('showLibraryView skips showing a stale mobile library request', async () => {
@@ -621,24 +805,42 @@ test('LibraryView show can skip search focus and hide restores the opener', asyn
   });
 });
 
-test('LibraryView debounces search commits and ignores intermediate input', async () => {
-  const view = Object.create(LibraryView.prototype);
-  view.searchInput = { value: 'first' };
-  view.searchQuery = '';
-  view.detail = { type: 'album', key: 'old' };
-  view.searchDebounceTimer = null;
-  let renders = 0;
-  view.render = () => { renders += 1; };
+test('LibraryView commits each search after the normal short input pause', async () => {
+  const timers = new Map();
+  let nextTimerId = 1;
+  await withGlobals({
+    setTimeout(callback, delay) {
+      const timerId = nextTimerId++;
+      timers.set(timerId, { callback, delay });
+      return timerId;
+    },
+    clearTimeout(timerId) {
+      timers.delete(timerId);
+    }
+  }, () => {
+    const view = createLibraryViewFixture();
+    view.searchInput = { value: 'first' };
+    view.searchQuery = '';
+    view.detail = { type: 'album', key: 'old' };
+    view.searchDebounceTimer = null;
+    let renders = 0;
+    view.render = () => { renders += 1; };
 
-  view.scheduleSearchQuery();
-  view.searchInput.value = 'final';
-  view.scheduleSearchQuery();
-  assert.equal(view.searchQuery, '');
-  await new Promise(resolve => setTimeout(resolve, 120));
+    view.scheduleSearchQuery();
+    view.searchInput.value = 'final';
+    view.scheduleSearchQuery();
 
-  assert.equal(view.searchQuery, 'final');
-  assert.equal(view.detail, null);
-  assert.equal(renders, 1);
+    assert.equal(view.searchQuery, '');
+    assert.equal(timers.size, 1);
+    const pending = [...timers.values()][0];
+    assert.equal(pending.delay, 100);
+
+    pending.callback();
+
+    assert.equal(view.searchQuery, 'final');
+    assert.equal(view.detail, null);
+    assert.equal(renders, 1);
+  });
 });
 
 test('desktop library avoids page overflow while preserving a usable minimum height', async () => {
@@ -678,7 +880,7 @@ test('desktop library avoids page overflow while preserving a usable minimum hei
   });
 });
 
-test('LibraryView syncs the status inset to the content scrollbar width', () => {
+test('LibraryView syncs the content inset to the scrollbar width', () => {
   const root = new FakeElement('section');
   const content = new FakeElement('div');
   const view = Object.assign(Object.create(LibraryView.prototype), {
@@ -694,6 +896,29 @@ test('LibraryView syncs the status inset to the content scrollbar width', () => 
   content.clientWidth = 480;
   view.syncContentScrollbarInset();
   assert.equal(root.style['--library-content-scrollbar-width'], '0px');
+});
+
+test('LibraryView resyncs the content inset after publishing paged rows', () => {
+  const root = new FakeElement('section');
+  const content = new FakeElement('div');
+  content.replaceChildren = child => {
+    content.children = [child];
+    content.offsetWidth = 480;
+    content.clientWidth = 463;
+  };
+  const view = Object.assign(Object.create(LibraryView.prototype), {
+    root,
+    content,
+    isCurrentPagedAttempt: () => true
+  });
+
+  const published = view.publishPagedAttemptDom({
+    ariaBusy: false,
+    ariaRowCount: 100
+  }, new FakeElement('section'));
+
+  assert.equal(published, true);
+  assert.equal(root.style['--library-content-scrollbar-width'], '17px');
 });
 
 test('desktop library resizes when player or blind test panels change', async () => {
@@ -800,163 +1025,6 @@ test('LibraryView hide closes context and playlist menus', async () => {
   assert.deepEqual(calls, [['contextMenuCleanup']]);
 });
 
-test('LibraryView keyboard shortcuts focus search and route focused tracks', async () => {
-  const calls = [];
-  const body = new FakeElement('body');
-  body.classList.add('view-library');
-  const documentRef = createDocument();
-  documentRef.body = body;
-  documentRef.activeElement = null;
-  const storage = new Map();
-  const searchInput = new FakeElement('input');
-  searchInput.value = 'query';
-  searchInput.focus = () => calls.push(['search.focus']);
-  searchInput.select = () => calls.push(['search.select']);
-  const content = new FakeElement('div');
-  content.getBoundingClientRect = () => ({ left: 10, top: 20 });
-  content.querySelector = () => null;
-  const status = new FakeElement('footer');
-  const tracks = new Map([
-    ['t_one', { id: 't_one', title: 'Alpha' }],
-    ['t_two', { id: 't_two', title: 'Beta' }],
-    ['t_three', { id: 't_three', title: 'Bravo' }]
-  ]);
-  const view = Object.assign(Object.create(LibraryView.prototype), {
-    manager: {
-      getTrackById(id) {
-        return tracks.get(id) || null;
-      },
-      playTrackIds(ids, options) {
-        calls.push(['play', ids, options]);
-      },
-      addToQueue(ids) {
-        calls.push(['queue', ids]);
-      },
-      playNext(ids) {
-        calls.push(['next', ids]);
-      },
-      getCounts() {
-        return { tracks: 3, albums: 1 };
-      }
-    },
-    uiManager: { t: key => key },
-    content,
-    status,
-    searchInput,
-    searchQuery: '',
-    selectedTrackIds: new Set(),
-    renderedPageTrackIds: ['t_one', 't_two', 't_three'],
-    focusedTrackId: 't_one',
-    contextMenu: null,
-    playlistMenu: null,
-    typeJumpBuffer: '',
-    typeJumpTimer: null,
-    renderStatus() {},
-    render() {
-      calls.push(['render']);
-    },
-    scrollTrackIntoView(trackId) {
-      calls.push(['scroll', trackId]);
-    }
-  });
-
-  await withGlobals({
-    document: documentRef,
-    localStorage: {
-      getItem(key) {
-        return storage.get(key) || null;
-      },
-      setItem(key, value) {
-        storage.set(key, value);
-      }
-    }
-  }, async () => {
-    view.sort = 'artist';
-    view.sortDirection = 'asc';
-    view.saveUIState();
-    view.sort = 'title';
-    view.sortDirection = 'desc';
-    view.loadUIState();
-    assert.equal(view.sort, 'artist');
-    assert.equal(view.sortDirection, 'asc');
-
-    const focusEvent = documentRef.dispatch('keydown', { key: '/', target: body });
-    view.handleGlobalLibraryKeyDown(focusEvent);
-    assert.equal(focusEvent.prevented, 1);
-    assert.ok(calls.some(call => call[0] === 'search.focus'));
-
-    view.handleContentKeyDown({
-      key: 'ArrowDown',
-      prevented: 0,
-      preventDefault() {
-        this.prevented++;
-      },
-      target: content
-    });
-    assert.equal(view.focusedTrackId, 't_two');
-
-    view.handleContentKeyDown({
-      key: 'Enter',
-      prevented: 0,
-      preventDefault() {
-        this.prevented++;
-      },
-      target: content
-    });
-    assert.ok(calls.some(call => call[0] === 'play' && call[2].startIndex === 1));
-
-    view.handleContentKeyDown({
-      key: 'Enter',
-      ctrlKey: true,
-      prevented: 0,
-      preventDefault() {
-        this.prevented++;
-      },
-      target: content
-    });
-    assert.ok(calls.some(call => call[0] === 'queue' && call[1][0] === 't_two'));
-
-    // Enter on an interactive element (button, link, ...) must not hijack activation.
-    const playCallsBefore = calls.filter(call => call[0] === 'play').length;
-    const buttonEvent = {
-      key: 'Enter',
-      prevented: 0,
-      preventDefault() {
-        this.prevented++;
-      },
-      target: { closest: () => ({}) }
-    };
-    view.handleContentKeyDown(buttonEvent);
-    assert.equal(buttonEvent.prevented, 0);
-    assert.equal(calls.filter(call => call[0] === 'play').length, playCallsBefore);
-
-    view.handleContentKeyDown({
-      key: 'B',
-      prevented: 0,
-      preventDefault() {
-        this.prevented++;
-      },
-      target: content
-    });
-    assert.equal(view.focusedTrackId, 't_three');
-    clearTimeout(view.typeJumpTimer);
-    view.typeJumpBuffer = '';
-    view.typeJumpTimer = null;
-
-    view.searchQuery = 'query';
-    view.handleContentKeyDown({
-      key: 'Escape',
-      prevented: 0,
-      preventDefault() {
-        this.prevented++;
-      },
-      target: content
-    });
-    assert.equal(view.searchQuery, '');
-    assert.equal(searchInput.value, '');
-  });
-});
-
 test('paged entity-card keyboard navigation is fenced by the row dispatcher', async () => {
   const calls = [];
   const row = {
@@ -967,7 +1035,6 @@ test('paged entity-card keyboard navigation is fenced by the row dispatcher', as
   };
   const view = Object.assign(Object.create(LibraryView.prototype), {
     content: { clientHeight: 480 },
-    pagedIntegrationRequired: true,
     pagedState: { phase: 'committed' },
     pagedController: {
       dispatchRowAction(identity, callback) {
@@ -1006,77 +1073,443 @@ test('paged entity-card keyboard navigation is fenced by the row dispatcher', as
   ]);
 });
 
-test('LibraryView type-jump consumes printable keys and ignores space', async () => {
+test('paged track rows show and refresh the now-playing indicator', async () => {
+  const documentRef = createDocument();
+  const view = Object.assign(Object.create(LibraryView.prototype), {
+    detail: null,
+    nowPlayingTrackId: 'track-one',
+    pagedFocusedEntityId: null,
+    pagedController: {
+      isSelected() { return false; }
+    },
+    uiManager: { t: key => key },
+    startPagedTrackPlay() {},
+    dispatchPagedRowAction() {}
+  });
+
+  await withGlobals({ document: documentRef }, async () => {
+    const row = view.createPagedRow({
+      trackUid: 'track-one',
+      title: 'Now Playing'
+    }, 0, { queryGeneration: 1, pageAttemptId: 1 }, true);
+
+    assert.equal(row.dataset.trackId, 'track-one');
+    assert.match(row.className, /\bnow-playing\b/);
+    assert.equal(row.getAttribute('aria-current'), 'true');
+    assert.match(row.innerHTML, /class="library-now-playing-indicator"[^>]*>♪<\/span>/);
+
+    const indicator = new FakeElement('span');
+    row.querySelector = selector => selector === '.library-now-playing-indicator' ? indicator : null;
+    view.content = {
+      querySelectorAll(selector) {
+        assert.equal(selector, '.library-paged-row[data-track-id]');
+        return [row];
+      }
+    };
+    view.nowPlayingTrackId = 'track-two';
+    view.refreshRenderedNowPlaying();
+
+    assert.equal(row.classList.contains('now-playing'), false);
+    assert.equal(row.getAttribute('aria-current'), null);
+    assert.equal(indicator.hidden, true);
+
+    view.nowPlayingTrackId = 'track-one';
+    view.refreshRenderedNowPlaying();
+
+    assert.equal(row.classList.contains('now-playing'), true);
+    assert.equal(row.getAttribute('aria-current'), 'true');
+    assert.equal(indicator.hidden, false);
+  });
+});
+
+test('paged track rows expose the properties menu from right click and More', async () => {
+  const documentRef = createDocument();
+  const originalCreateElement = documentRef.createElement;
+  const selectors = ['.library-paged-select', '.library-paged-row-more'];
+  documentRef.createElement = tagName => tagName === 'div'
+    ? createMappedHtmlElement(tagName, documentRef, selectors)
+    : originalCreateElement(tagName);
   const calls = [];
+  const view = Object.assign(Object.create(LibraryView.prototype), {
+    detail: null,
+    nowPlayingTrackId: null,
+    pagedFocusedEntityId: null,
+    pagedController: {
+      isSelected() { return false; }
+    },
+    uiManager: { t: key => key },
+    startPagedTrackPlay() {},
+    dispatchPagedRowAction() {},
+    openPagedTrackContextMenu(event, track, context) {
+      calls.push([event.clientX, event.clientY, track.trackUid, context.returnFocus]);
+    }
+  });
+  const track = { trackUid: 'track-one', title: 'Track One' };
+
+  await withGlobals({ document: documentRef }, async () => {
+    const row = view.createPagedRow(track, 0, { queryGeneration: 1, pageAttemptId: 1 }, true);
+    await row.dispatch('contextmenu', { clientX: 10, clientY: 20 });
+
+    const more = row.querySelector('.library-paged-row-more');
+    more.getBoundingClientRect = () => ({ left: 30, bottom: 40 });
+    await more.click();
+
+    assert.deepEqual(calls, [
+      [10, 20, 'track-one', row],
+      [30, 44, 'track-one', more]
+    ]);
+  });
+});
+
+test('paged track properties menu opens from Shift+F10', () => {
+  const content = new FakeElement('div');
+  const row = new FakeElement('div');
+  row._pagedItem = { trackUid: 'track-one', title: 'Track One' };
+  row.getBoundingClientRect = () => ({ left: 10, top: 20 });
+  content.querySelector = selector => selector.includes('track-one') ? row : null;
+  const calls = [];
+  const view = Object.assign(Object.create(LibraryView.prototype), {
+    content,
+    pagedState: { phase: 'committed' },
+    pagedFocusedEntityId: 'track-one',
+    renderedPageTrackIds: ['track-one'],
+    getPagedQuery() { return { endpoint: 'tracks' }; },
+    openPagedTrackContextMenu(event, track, context) {
+      calls.push([event.clientX, event.clientY, track.trackUid, context.returnFocus]);
+    }
+  });
+  const event = {
+    key: 'F10',
+    shiftKey: true,
+    target: content,
+    prevented: 0,
+    preventDefault() { this.prevented += 1; }
+  };
+
+  view.handleContentKeyDown(event);
+
+  assert.equal(event.prevented, 1);
+  assert.deepEqual(calls, [[34, 44, 'track-one', row]]);
+});
+
+test('paged scrolling refreshes an expired catalog context without showing an error', async () => {
   const documentRef = createDocument();
   const content = new FakeElement('div');
-  content.ownerDocument = documentRef;
-  const tracks = new Map([
-    ['t_alpha', { id: 't_alpha', title: 'Alpha' }],
-    ['t_nirvana', { id: 't_nirvana', title: 'Nirvana' }]
-  ]);
+  const calls = [];
+  const error = Object.assign(new Error('The music library request could not be completed. Try again.'), {
+    code: 'STALE_CURSOR'
+  });
   const view = Object.assign(Object.create(LibraryView.prototype), {
-    manager: {
-      getTrackById(id) {
-        return tracks.get(id) || null;
+    content,
+    pagedQueryKey: 'albums-query',
+    pagedRestartPreservesSelection: false,
+    pagedController: {
+      async requestViewportOrdinal() {
+        throw error;
+      },
+      markSelectionStale() {
+        calls.push('markSelectionStale');
       }
     },
-    content,
-    renderedPageTrackIds: ['t_alpha', 't_nirvana'],
-    focusedTrackId: 't_alpha',
-    typeJumpBuffer: '',
-    typeJumpTimer: null,
-    scrollTrackIntoView(trackId) {
-      calls.push(['scroll', trackId]);
+    capturePagedAnchor() {
+      calls.push('capturePagedAnchor');
+    },
+    scheduleRender() {
+      calls.push('scheduleRender');
     }
   });
 
   await withGlobals({ document: documentRef }, async () => {
-    const event = {
-      key: 'n',
-      target: content,
-      prevented: 0,
-      stopped: 0,
-      preventDefault() {
-        this.prevented++;
-      },
-      stopPropagation() {
-        this.stopped++;
-      }
-    };
-    view.handleContentKeyDown(event);
-
-    assert.equal(event.prevented, 1);
-    assert.equal(event.stopped, 1);
-    assert.equal(view.focusedTrackId, 't_nirvana');
-    assert.deepEqual(calls, [['scroll', 't_nirvana']]);
-
-    clearTimeout(view.typeJumpTimer);
-    view.typeJumpBuffer = '';
-    view.typeJumpTimer = null;
-
-    const spaceEvent = {
-      key: ' ',
-      target: content,
-      prevented: 0,
-      stopped: 0,
-      preventDefault() {
-        this.prevented++;
-      },
-      stopPropagation() {
-        this.stopped++;
-      }
-    };
-    view.handleContentKeyDown(spaceEvent);
-
-    assert.equal(spaceEvent.prevented, 0);
-    assert.equal(spaceEvent.stopped, 0);
-    assert.equal(view.typeJumpBuffer, '');
+    const result = await view.ensurePagedOrdinal(1000);
+    assert.equal(result.reason, 'snapshot-expired');
   });
 
-  clearTimeout(view.typeJumpTimer);
-  view.typeJumpBuffer = '';
-  view.typeJumpTimer = null;
+  assert.deepEqual(calls, ['capturePagedAnchor', 'markSelectionStale', 'scheduleRender']);
+  assert.equal(view.pagedQueryKey, null);
+  assert.equal(view.pagedRestartPreservesSelection, true);
+  assert.equal(content.children.length, 0);
+});
+
+test('paged scrolling ignores work from an inactive replacement page', async () => {
+  const documentRef = createDocument();
+  const content = new FakeElement('div');
+  const view = Object.assign(Object.create(LibraryView.prototype), {
+    content,
+    pagedController: {
+      async ensureOrdinal() {
+        return { accepted: false, reason: 'inactive-page' };
+      }
+    }
+  });
+
+  await withGlobals({ document: documentRef }, async () => {
+    assert.deepEqual(await view.ensurePagedOrdinal(1000), {
+      accepted: false,
+      reason: 'inactive-page'
+    });
+  });
+
+  assert.equal(content.children.length, 0);
+});
+
+test('paged folder status requires a successful scan before reporting OK', () => {
+  const view = Object.assign(Object.create(LibraryView.prototype), {
+    removingFolderIds: new Set()
+  });
+  const unscanned = { id: 'folder-one', status: 'ok', lastScanAt: null };
+
+  assert.deepEqual(view.getPagedFolderStatus(unscanned), {
+    key: 'never-scanned', className: 'never-scanned', busy: false
+  });
+  assert.deepEqual(view.getPagedFolderStatus({ ...unscanned, status: 'active' }), {
+    key: 'never-scanned', className: 'never-scanned', busy: false
+  });
+  assert.deepEqual(view.getPagedFolderStatus({ ...unscanned, status: 'missing' }), {
+    key: 'missing', className: 'missing', busy: false
+  });
+  assert.deepEqual(view.getPagedFolderStatus({ ...unscanned, status: 'needs-permission' }), {
+    key: 'needs-permission', className: 'needs-permission', busy: false
+  });
+  assert.deepEqual(view.getPagedFolderStatus({ ...unscanned, lastScanAt: 123 }), {
+    key: 'ok', className: 'ok', busy: false
+  });
+  assert.deepEqual(view.getPagedFolderStatus(unscanned, {
+    phase: 'scanning', folderIds: ['folder-one']
+  }), {
+    key: 'scanning', className: 'scanning', busy: true
+  });
+  assert.deepEqual(view.getPagedFolderStatus({ ...unscanned, status: 'missing' }, {
+    phase: 'error', folderId: 'folder-one'
+  }), {
+    key: 'scanError', className: 'scan-error', busy: false
+  });
+});
+
+test('paged folder rows restore status, rescan, removal, and live scan updates', async () => {
+  const documentRef = createDocument();
+  const originalCreateElement = documentRef.createElement;
+  const selectors = [
+    '.library-paged-folder-main',
+    '.library-paged-folder-reconnect',
+    '.library-paged-folder-rescan',
+    '.library-paged-folder-remove',
+    '[data-folder-status]'
+  ];
+  documentRef.createElement = tagName => tagName === 'div'
+    ? createMappedHtmlElement(tagName, documentRef, selectors)
+    : originalCreateElement(tagName);
+  const calls = [];
+  let finishRemoval;
+  const removalPending = new Promise(resolve => { finishRemoval = resolve; });
+  const view = Object.assign(Object.create(LibraryView.prototype), {
+    currentView: 'folders',
+    detail: null,
+    searchQuery: '',
+    sortDirection: 'asc',
+    lastScanState: null,
+    deferredCatalogInvalidationScopes: null,
+    pagedFocusedEntityId: null,
+    manager: {
+      async requestFolderAccess(folderId) {
+        calls.push(['reconnect', folderId]);
+        return { canceled: false, folderId };
+      },
+      async scanFolders(request) {
+        calls.push(['scan', request]);
+        return { accepted: true, scanId: 'scan-one' };
+      },
+      async removeFolder(folderId) {
+        calls.push(['remove', folderId]);
+        await removalPending;
+      }
+    },
+    pagedController: {
+      dispatchRowAction(identity, callback) {
+        calls.push(['dispatch', identity]);
+        return { accepted: true, value: callback() };
+      }
+    },
+    content: {
+      querySelectorAll() {
+        return [];
+      }
+    },
+    renderStatus() {
+      calls.push(['status']);
+    },
+    navigateToDetail(detail) {
+      calls.push(['open', detail]);
+    }
+  });
+
+  await withGlobals({ document: documentRef, confirm: () => true }, async () => {
+    const folder = {
+      id: 'folder-one',
+      kind: 'electron',
+      displayName: 'Music',
+      status: 'ok',
+      lastScanAt: 123
+    };
+    const row = view.createPagedRow(folder, 0, { queryGeneration: 3, pageAttemptId: 5 }, false);
+    view.content.querySelectorAll = selector => selector === '.library-paged-folder-row' ? [row] : [];
+
+    assert.equal(row.tagName, 'DIV');
+    assert.match(row.innerHTML, /library-paged-folder-rescan/);
+    assert.match(row.innerHTML, /library-paged-folder-remove/);
+    assert.equal(row.querySelector('[data-folder-status]').textContent, 'OK');
+
+    await row.querySelector('.library-paged-folder-main').click();
+    await row.querySelector('.library-paged-folder-rescan').click();
+    const removalClick = row.querySelector('.library-paged-folder-remove').click();
+    assert.equal(row.querySelector('[data-folder-status]').textContent, 'Removing folder');
+    assert.equal(row.getAttribute('aria-busy'), 'true');
+    assert.equal(row.querySelector('.library-paged-folder-rescan').disabled, true);
+    assert.equal(row.querySelector('.library-paged-folder-remove').disabled, true);
+    view.handleFolderRemovalState({
+      folderId: 'folder-one', phase: 'removing', deleted: 1, total: 2
+    });
+    assert.equal(row.querySelector('[data-folder-status]').textContent, 'Removing folder 1/2');
+    finishRemoval();
+    await removalClick;
+    assert.equal(row.querySelector('[data-folder-status]').textContent, 'OK');
+    assert.equal(row.getAttribute('aria-busy'), 'false');
+
+    view.handleScanState({
+      phase: 'scanning', scanId: 'scan-one', folderIds: ['folder-one'], found: 10, parsed: 4
+    });
+    assert.equal(row.querySelector('[data-folder-status]').textContent, 'Scanning');
+    assert.equal(row.querySelector('.library-paged-folder-rescan').disabled, true);
+    assert.equal(row.querySelector('.library-paged-folder-remove').disabled, true);
+
+    const unaffectedFolder = {
+      id: 'folder-two',
+      kind: 'electron',
+      displayName: 'Archive',
+      status: 'ok',
+      lastScanAt: 123
+    };
+    assert.deepEqual(view.getPagedFolderStatus(unaffectedFolder), {
+      key: 'ok', className: 'ok', busy: false
+    });
+    assert.deepEqual(view.getPagedFolderStatus(unaffectedFolder, {
+      phase: 'scanning', folderId: 'folder-one'
+    }), {
+      key: 'ok', className: 'ok', busy: false
+    });
+    assert.deepEqual(view.getPagedFolderStatus(unaffectedFolder, {
+      phase: 'scanning'
+    }), {
+      key: 'ok', className: 'ok', busy: false
+    });
+
+    view.handleScanState({ phase: 'done', scanId: 'scan-one', folderIds: ['folder-one'] });
+    assert.equal(row.querySelector('[data-folder-status]').textContent, 'OK');
+    assert.equal(row.querySelector('.library-paged-folder-rescan').disabled, false);
+    assert.equal(row.querySelector('.library-paged-folder-remove').disabled, false);
+
+    const reconnectRow = view.createPagedRow({
+      id: 'folder-two',
+      kind: 'web-fsa',
+      displayName: 'Archive',
+      status: 'needs-permission'
+    }, 1, { queryGeneration: 3, pageAttemptId: 5 }, false);
+    const reconnect = reconnectRow.querySelector('.library-paged-folder-reconnect');
+    const keyEvent = await reconnect.dispatch('keydown', { key: 'Enter' });
+    assert.equal(keyEvent.stopped, 1);
+    await reconnect.click();
+    assert.deepEqual(calls.slice(-3), [
+      ['dispatch', { queryGeneration: 3, pageAttemptId: 5 }],
+      ['reconnect', 'folder-two'],
+      ['scan', { folderIds: ['folder-two'], scanReason: 'explicit-rescan' }]
+    ]);
+  });
+
+  assert.deepEqual(calls.slice(0, 7), [
+    ['dispatch', { queryGeneration: 3, pageAttemptId: 5 }],
+    ['open', { type: 'folder', key: 'folder-one', title: 'Music' }],
+    ['dispatch', { queryGeneration: 3, pageAttemptId: 5 }],
+    ['scan', { folderIds: ['folder-one'], scanReason: 'explicit-rescan' }],
+    ['dispatch', { queryGeneration: 3, pageAttemptId: 5 }],
+    ['status'],
+    ['remove', 'folder-one']
+  ]);
+});
+
+test('paged scan status offers cancellation while a scan is running', async () => {
+  const documentRef = createDocument();
+  const status = new FakeElement('footer');
+  status.ownerDocument = documentRef;
+  const calls = [];
+  const view = Object.assign(Object.create(LibraryView.prototype), {
+    status,
+    content: null,
+    pagedStatusVersion: 0,
+    nowPlayingTrackId: null,
+    manager: {
+      async getCounts() {
+        return { tracks: 12, albums: 3 };
+      },
+      cancelScan(scanId) {
+        calls.push(scanId);
+      }
+    },
+    syncContentScrollbarInset() {}
+  });
+
+  await withGlobals({ document: documentRef }, async () => {
+    await view.renderPagedStatus({
+      phase: 'scanning', scanId: 'scan-running', found: 8, parsed: 5
+    });
+    assert.match(status.innerHTML, /Scanning 5\/8/);
+    assert.equal(status.children[0].textContent, 'Cancel');
+    await status.children[0].click();
+  });
+  assert.deepEqual(calls, ['scan-running']);
+});
+
+test('paged status reports an active folder removal', async () => {
+  const documentRef = createDocument();
+  const status = new FakeElement('footer');
+  status.ownerDocument = documentRef;
+  let rejectCounts;
+  const countsPromise = new Promise((_resolve, reject) => {
+    rejectCounts = reject;
+  });
+  const view = Object.assign(Object.create(LibraryView.prototype), {
+    status,
+    content: null,
+    pagedStatusVersion: 0,
+    nowPlayingTrackId: null,
+    pagedState: {
+      totalCount: 10,
+      selectionProjection: { hasAny: false, selectedCount: 0 }
+    },
+    pagedController: {
+      getSelectionProjection() {
+        return { hasAny: true, selectedCount: 2 };
+      }
+    },
+    removingFolderIds: new Set(['folder-one']),
+    folderRemovalProgress: new Map([[
+      'folder-one', { deleted: 3, total: 10 }
+    ]]),
+    manager: {
+      getCounts() {
+        return countsPromise;
+      }
+    },
+    syncContentScrollbarInset() {}
+  });
+
+  await withGlobals({ document: documentRef }, async () => {
+    const rendering = view.renderPagedStatus({ phase: 'done' });
+    assert.match(status.innerHTML, /2 selected/);
+    assert.match(status.innerHTML, /Removing folder 3\/10/);
+    rejectCounts(new Error('counts unavailable'));
+    await rendering;
+  });
+  assert.match(status.innerHTML, /Removing folder 3\/10/);
+  assert.equal(status.children.length, 0);
 });
 
 test('LibraryView marks the active desktop nav item as current', () => {
@@ -1084,243 +1517,209 @@ test('LibraryView marks the active desktop nav item as current', () => {
   const view = Object.assign(Object.create(LibraryView.prototype), {
     nav,
     currentView: 'albums',
-    manager: {
-      getCounts() {
-        return { tracks: 3, albums: 1, artists: 2, genres: 0, subfolders: 4 };
-      },
-      getFolders() {
-        return [];
-      }
-    },
     uiManager: { t: key => key }
   });
 
-  view.renderNav();
+  view.updateNav({ tracks: 3, albums: 1, artists: 2, genres: 0, subfolders: 4 });
 
   assert.match(nav.innerHTML, /class="library-nav-item active" data-view="albums" aria-current="page"/);
   assert.doesNotMatch(nav.innerHTML, /data-view="tracks" aria-current="page"/);
   assert.match(nav.innerHTML, /data-view="subfolders"[^]*?<span class="library-count">4<\/span>/);
 });
 
-test('LibraryView reveals the configured active nav only after startup placement is ready', async () => {
-  const nav = new FakeElement('aside');
-  const activeButton = new FakeElement('button');
-  const scrollCalls = [];
-  let view;
-  activeButton.scrollIntoView = options => scrollCalls.push([view.currentView, options]);
-  nav.querySelector = selector => selector === '[aria-current="page"]' ? activeButton : null;
-  const root = new FakeElement('section');
-  let mounted = false;
-  view = Object.assign(Object.create(LibraryView.prototype), {
-    root,
+test('LibraryView keeps paged nav buttons mounted when a nav item is clicked', async () => {
+  let resolveCounts;
+  const countsPromise = new Promise(resolve => {
+    resolveCounts = resolve;
+  });
+  const nav = createLibraryNavElement();
+  const view = Object.assign(Object.create(LibraryView.prototype), {
     nav,
     currentView: 'tracks',
-    detail: null,
-    detailSortOverride: false,
-    searchQuery: '',
-    searchInput: null,
-    isViewShown: false,
-    lastRevealedMobileNavView: null,
-    mobileHistoryDepth: 0,
-    libraryReturnFocus: null,
-    trackScrollCleanup: null,
     manager: {
       getCounts() {
-        return { tracks: 3, albums: 1, artists: 2, genres: 1, subfolders: 4 };
-      },
-      getFolders() {
-        return [];
+        return countsPromise;
       }
     },
     uiManager: { t: key => key },
-    mount() {
-      if (!mounted) {
-        mounted = true;
-        this.renderNav();
-      }
-      return root;
-    },
-    captureLibraryReturnFocus() {},
-    startDesktopLayoutHeightTracking() {},
-    updateDesktopLayoutHeight() {},
-    stopDesktopLayoutHeightTracking() {},
-    syncNowPlayingTrack() {},
-    closeContextMenu() {},
-    closePlaylistMenu() {},
-    invalidateArtworkRequests() {},
-    render() {
-      this.renderNav();
+    navigateToView(nextView) {
+      this.currentView = nextView;
+      this.renderPagedNav();
     }
   });
+
+  view.renderPagedNav();
+  const originalButtons = [...nav.children];
+  const artistsButton = nav.children.find(button => button.dataset.view === 'artists');
+  await artistsButton.click();
+
+  assert.equal(nav.innerHTMLWrites, 1);
+  assert.equal(nav.children.length, originalButtons.length);
+  nav.children.forEach((button, index) => assert.equal(button, originalButtons[index]));
+  assert.equal(artistsButton.classList.contains('active'), true);
+  assert.equal(artistsButton.getAttribute('aria-current'), 'page');
+  assert.equal(originalButtons[0].classList.contains('active'), false);
+  assert.equal(originalButtons[0].getAttribute('aria-current'), null);
+
+  resolveCounts({ tracks: 12, albums: 3, artists: 4, genres: 5, folders: 2 });
+  await countsPromise;
+  await Promise.resolve();
+
+  assert.equal(nav.innerHTMLWrites, 1);
+  assert.equal(artistsButton.querySelector('.library-count').textContent, '4');
+  assert.equal(artistsButton.querySelector('.library-count').hidden, false);
+});
+
+test('LibraryView reveals a newly active mobile nav item once it is visible', async () => {
+  const nav = createLibraryNavElement();
   const documentRef = createDocument();
   documentRef.body.classList.add('layout-mobile', 'view-library');
+  const scrollCalls = [];
+  const view = Object.assign(Object.create(LibraryView.prototype), {
+    nav,
+    currentView: 'tracks',
+    isViewShown: false,
+    lastRevealedMobileNavView: null,
+    uiManager: { t: key => key }
+  });
 
   await withGlobals({ document: documentRef }, async () => {
-    view.mount();
-    assert.deepEqual(scrollCalls, []);
+    view.updateNav();
+    nav.children.forEach(button => {
+      button.scrollIntoView = options => scrollCalls.push([button.dataset.view, options]);
+    });
 
-    view.show({ focusSearch: false, initialView: 'subfolders' });
+    view.currentView = 'subfolders';
+    view.isViewShown = true;
+    view.updateNav();
+    view.updateNav();
+
     assert.deepEqual(scrollCalls, [[
       'subfolders',
       { block: 'nearest', inline: 'nearest' }
     ]]);
 
-    view.renderNav();
-    assert.equal(scrollCalls.length, 1);
-
     view.currentView = 'genres';
-    view.renderNav();
-    assert.deepEqual(scrollCalls, [
-      ['subfolders', { block: 'nearest', inline: 'nearest' }],
-      ['genres', { block: 'nearest', inline: 'nearest' }]
-    ]);
+    view.updateNav();
+    assert.equal(scrollCalls.at(-1)[0], 'genres');
 
     documentRef.body.classList.remove('layout-mobile');
     view.currentView = 'artists';
-    view.renderNav();
+    view.updateNav();
     assert.equal(scrollCalls.length, 2);
 
-    view.hide({ restoreFocus: false });
-    documentRef.body.classList.add('layout-mobile', 'view-library');
+    documentRef.body.classList.add('layout-mobile');
+    view.isViewShown = false;
     view.currentView = 'tracks';
-    view.renderNav();
+    view.updateNav();
     assert.equal(scrollCalls.length, 2);
   });
 });
 
-test('LibraryView renders subfolder groups and opens the selected detail', async () => {
+test('LibraryView defers catalog redraws until scanning finishes', () => {
   const calls = [];
-  const content = new FakeElement('main');
-  const documentRef = createDocument();
-  const subfolders = [
-    {
-      key: 'f_music\0Artist/Album',
-      folderId: 'f_music',
-      path: 'Artist/Album',
-      name: 'Album',
-      rootName: 'Music',
-      trackIds: ['t_one', 't_two']
-    },
-    {
-      key: 'f_archive\0Disc',
-      folderId: 'f_archive',
-      path: 'Disc',
-      name: 'Disc',
-      rootName: 'Archive',
-      trackIds: ['t_three']
-    },
-    {
-      key: 'f_other\0Artist/Album',
-      folderId: 'f_other',
-      path: 'Artist/Album',
-      name: 'Album',
-      rootName: 'Music',
-      trackIds: ['t_four']
-    }
-  ];
   const view = Object.assign(Object.create(LibraryView.prototype), {
-    content,
-    manager: {
-      getSubfolders() {
-        return subfolders;
+    lastScanState: { phase: 'scanning' },
+    deferredCatalogInvalidationScopes: null,
+    pagedQueryKey: 'tracks-query',
+    pagedRestartPreservesSelection: false,
+    pagedController: {
+      markSelectionStale() {
+        calls.push('markSelectionStale');
       }
     },
-    uiManager: { t: key => key },
-    navigateToDetail(detail, viewName) {
-      calls.push(['navigateToDetail', detail, viewName]);
-    }
-  });
-
-  await withGlobals({ document: documentRef }, async () => {
-    view.renderSubfolders();
-    const list = content.children[0];
-    assert.equal(list.className, 'library-simple-list');
-    assert.equal(list.children.length, 3);
-    assert.match(content.innerHTML, /<h2>Subfolders<\/h2>/);
-    assert.match(content.innerHTML, /<span>3<\/span>/);
-    assert.match(list.children[0].innerHTML, /Music \/ Artist\/Album \(1\)/);
-    assert.match(list.children[0].innerHTML, /<span>2<\/span>/);
-    assert.match(list.children[2].innerHTML, /Music \/ Artist\/Album \(2\)/);
-
-    await list.children[0].click();
-  });
-
-  assert.deepEqual(calls, [[
-    'navigateToDetail',
-    {
-      type: 'subfolder',
-      key: 'f_music\0Artist/Album',
-      title: 'Music / Artist/Album (1)'
-    },
-    'subfolders'
-  ]]);
-});
-
-test('LibraryView dispatches subfolder list and detail rendering', () => {
-  const calls = [];
-  const detailTracks = [{ id: 't_song' }];
-  const view = Object.assign(Object.create(LibraryView.prototype), {
-    root: new FakeElement('section'),
-    renderVersion: 0,
-    currentView: 'subfolders',
-    detail: null,
-    searchQuery: '',
-    renderedPageTrackIds: ['stale'],
-    trackScrollCleanup: null,
-    manager: {
-      getSubfolderTracks(key) {
-        calls.push(['getSubfolderTracks', key]);
-        return detailTracks;
-      }
-    },
-    invalidateArtworkRequests() {},
-    syncNowPlayingTrack() {},
-    closePlaylistMenu() {},
-    closeContextMenu() {},
-    renderNav() {
-      calls.push(['renderNav']);
-    },
-    renderSubfolders() {
-      calls.push(['renderSubfolders']);
-    },
-    renderTrackList(tracks, title) {
-      calls.push(['renderTrackList', tracks, title]);
+    getPagedQuery() {
+      return { endpoint: 'tracks' };
     },
     renderStatus() {
-      calls.push(['renderStatus']);
+      calls.push('renderStatus');
+    },
+    refreshPagedFolderScanState() {},
+    capturePagedAnchor() {
+      calls.push('capturePagedAnchor');
+    },
+    scheduleRender() {
+      calls.push('scheduleRender');
+    },
+    renderPagedNav() {
+      calls.push('renderPagedNav');
+    },
+    renderPagedStatus() {
+      calls.push('renderPagedStatus');
     }
   });
 
-  view.render();
-  assert.deepEqual(calls, [
-    ['renderNav'],
-    ['renderSubfolders'],
-    ['renderStatus']
-  ]);
-  assert.deepEqual(view.renderedPageTrackIds, []);
+  view.handleCatalogInvalidation({ changedScopes: ['folders'] });
+  view.handleCatalogInvalidation({ changedScopes: ['tracks'] });
+  assert.deepEqual(calls, []);
+  assert.deepEqual([...view.deferredCatalogInvalidationScopes], ['folders', 'tracks']);
 
-  calls.length = 0;
-  view.detail = { type: 'subfolder', key: 'subfolder-key', title: 'Music / Album' };
-  view.render();
+  view.handleScanState({ phase: 'scanning', parsed: 1, found: 2 });
+  assert.deepEqual(calls, ['renderStatus']);
+
+  view.handleScanState({ phase: 'done', parsed: 2, found: 2 });
   assert.deepEqual(calls, [
-    ['renderNav'],
-    ['getSubfolderTracks', 'subfolder-key'],
-    ['renderTrackList', detailTracks, 'Music / Album'],
-    ['renderStatus']
+    'renderStatus',
+    'renderStatus',
+    'capturePagedAnchor',
+    'markSelectionStale',
+    'scheduleRender'
   ]);
+  assert.equal(view.deferredCatalogInvalidationScopes, null);
+  assert.equal(view.pagedQueryKey, null);
+  assert.equal(view.pagedRestartPreservesSelection, true);
+});
+
+test('LibraryView defers catalog redraws until folder removal finishes', () => {
+  const calls = [];
+  const view = Object.assign(Object.create(LibraryView.prototype), {
+    lastScanState: { phase: 'done' },
+    removingFolderIds: new Set(['folder-one']),
+    deferredCatalogInvalidationScopes: null,
+    pagedQueryKey: 'folders-query',
+    pagedRestartPreservesSelection: false,
+    pagedController: {
+      markSelectionStale() {
+        calls.push('markSelectionStale');
+      }
+    },
+    getPagedQuery() {
+      return { endpoint: 'entities', entityType: 'folder' };
+    },
+    capturePagedAnchor() {
+      calls.push('capturePagedAnchor');
+    },
+    scheduleRender() {
+      calls.push('scheduleRender');
+    },
+    renderPagedNav() {
+      calls.push('renderPagedNav');
+    },
+    renderPagedStatus() {
+      calls.push('renderPagedStatus');
+    }
+  });
+
+  view.handleCatalogInvalidation({ changedScopes: ['folders', 'tracks'] });
+  assert.deepEqual(calls, []);
+  assert.deepEqual([...view.deferredCatalogInvalidationScopes], ['folders', 'tracks']);
+
+  view.removingFolderIds.clear();
+  view.flushDeferredCatalogInvalidation();
+  assert.deepEqual(calls, [
+    'capturePagedAnchor',
+    'markSelectionStale',
+    'scheduleRender'
+  ]);
+  assert.equal(view.deferredCatalogInvalidationScopes, null);
 });
 
 test('LibraryView handleAddFolder only navigates when a folder is actually added', async () => {
   const makeView = addFolder => {
     const calls = [];
-    const listeners = new Map();
     const view = Object.assign(Object.create(LibraryView.prototype), {
       manager: {
-        addListener(event, callback) {
-          listeners.set(event, callback);
-          return () => listeners.delete(event);
-        },
-        addFolder: () => addFolder(listeners)
+        addFolder
       },
       uiManager: {
         t: key => key,
@@ -1332,22 +1731,22 @@ test('LibraryView handleAddFolder only navigates when a folder is actually added
         calls.push(['navigate', name]);
       }
     });
-    return { view, calls, listeners };
+    return { view, calls };
   };
 
   // Picker canceled: addFolder resolves null, no navigation.
   const canceled = makeView(async () => null);
   await canceled.view.handleAddFolder();
   assert.deepEqual(canceled.calls, []);
-  assert.equal(canceled.listeners.size, 0);
 
-  // Rejected folder (same/descendant root): no navigation even though a folder is returned.
-  const rejected = makeView(async listeners => {
-    listeners.get('folder-add-rejected')?.({ reason: 'same-root', folder: { displayName: 'Music' }, existing: { displayName: 'Music' } });
-    return { id: 'f_existing' };
-  });
+  const rejected = makeView(async () => ({
+    rejected: true,
+    reason: 'descendant-root',
+    candidate: { displayName: 'Album' },
+    existing: { displayName: 'Music' }
+  }));
   await rejected.view.handleAddFolder();
-  assert.deepEqual(rejected.calls, []);
+  assert.deepEqual(rejected.calls, [['error', 'Album is already included in Music.']]);
 
   // Successful add: navigate to the tracks view.
   const added = makeView(async () => ({ id: 'f_new' }));
@@ -1355,236 +1754,8 @@ test('LibraryView handleAddFolder only navigates when a folder is actually added
   assert.deepEqual(added.calls, [['navigate', 'tracks']]);
 });
 
-test('LibraryView surfaces folder-add-rejected reasons through the UI manager', () => {
-  const errors = [];
+test('LibraryView track sort headers expose active direction and aria state', () => {
   const view = Object.assign(Object.create(LibraryView.prototype), {
-    uiManager: {
-      t: key => key,
-      setError(message) {
-        errors.push(message);
-      }
-    }
-  });
-  view.handleFolderAddRejected({
-    reason: 'descendant-root',
-    folder: { displayName: 'Albums' },
-    existing: { displayName: 'Music' }
-  });
-  assert.equal(errors.length, 1);
-  assert.ok(errors[0].includes('Albums'));
-  assert.ok(errors[0].includes('Music'));
-  view.handleFolderAddRejected({
-    reason: 'same-root',
-    folder: { displayName: 'Music' }
-  });
-  assert.equal(errors.length, 2);
-  assert.ok(errors[1].includes('Music'));
-});
-
-test('LibraryView search results follow the current track sort', () => {
-  const calls = [];
-  const appended = [];
-  const sortedTracks = [
-    { id: 't_beta', title: 'Beta' },
-    { id: 't_alpha', title: 'Alpha' }
-  ];
-  const view = Object.assign(Object.create(LibraryView.prototype), {
-    manager: {
-      search(query) {
-        calls.push(['search', query]);
-        return {
-          trackIds: ['t_alpha', 't_beta'],
-          tracks: [...sortedTracks].reverse(),
-          albums: [],
-          artists: []
-        };
-      },
-      getTracks(options) {
-        calls.push(['getTracks', options]);
-        return sortedTracks;
-      }
-    },
-    uiManager: { t: key => key },
-    content: {
-      innerHTML: '',
-      appendChild(node) {
-        appended.push(node);
-      }
-    },
-    searchQuery: 'song',
-    sort: 'title',
-    sortDirection: 'desc',
-    createActionBar(trackIds) {
-      calls.push(['actionBar', trackIds]);
-      return { type: 'actionBar', trackIds };
-    },
-    createTrackTable(tracks) {
-      calls.push(['trackTable', tracks.map(track => track.id)]);
-      return { type: 'trackTable', tracks };
-    }
-  });
-
-  view.renderSearch();
-
-  assert.deepEqual(calls, [
-    ['search', 'song'],
-    ['getTracks', { ids: ['t_alpha', 't_beta'], sort: 'title', direction: 'desc' }],
-    ['actionBar', ['t_beta', 't_alpha']],
-    ['trackTable', ['t_beta', 't_alpha']]
-  ]);
-  assert.equal(appended.length, 2);
-});
-
-test('LibraryView album detail keeps track order while recent lists apply the current sort', () => {
-  const calls = [];
-  const sortedTracks = [
-    { id: 't_beta', title: 'Beta' },
-    { id: 't_alpha', title: 'Alpha' }
-  ];
-  const makeView = extra => Object.assign(Object.create(LibraryView.prototype), {
-    root: new FakeElement('section'),
-    nav: new FakeElement('nav'),
-    content: new FakeElement('div'),
-    status: new FakeElement('footer'),
-    searchQuery: '',
-    sort: 'title',
-    sortDirection: 'desc',
-    detailSortOverride: false,
-    selectedTrackIds: new Set(),
-    renderedPageTrackIds: [],
-    manager: {
-      getCounts() {
-        return { tracks: 2, albums: 1, artists: 1, genres: 1 };
-      },
-      getFolders() {
-        return [];
-      },
-      getAlbums() {
-        return [{ key: 'album-one', name: 'Album One', artist: 'Artist', trackIds: ['t_alpha', 't_beta'] }];
-      },
-      getAlbumTracks(key) {
-        calls.push(['getAlbumTracks', key]);
-        return [...sortedTracks].reverse();
-      },
-      getRecentlyAdded(limit) {
-        calls.push(['getRecentlyAdded', limit]);
-        return [...sortedTracks].reverse();
-      },
-      getTracks(options) {
-        calls.push(['getTracks', options]);
-        return sortedTracks;
-      }
-    },
-    uiManager: { t: key => key },
-    closePlaylistMenu() {},
-    closeContextMenu() {},
-    syncNowPlayingTrack() {},
-    renderNav() {},
-    renderStatus() {},
-    renderArtwork() {},
-    createActionBar(trackIds) {
-      calls.push(['actionBar', trackIds]);
-      return new FakeElement('div');
-    },
-    createTrackTable(tracks) {
-      calls.push(['trackTable', tracks.map(track => track.id)]);
-      return new FakeElement('div');
-    },
-    ...extra
-  });
-
-  makeView({ detail: { type: 'album', key: 'album-one' } }).renderAlbumDetail('album-one');
-  makeView({ currentView: 'recent', detail: null }).render();
-
-  assert.deepEqual(calls, [
-    ['getAlbumTracks', 'album-one'],
-    ['actionBar', ['t_alpha', 't_beta']],
-    ['trackTable', ['t_alpha', 't_beta']],
-    ['getRecentlyAdded', 500],
-    ['getTracks', { ids: ['t_alpha', 't_beta'], sort: 'title', direction: 'desc' }],
-    ['actionBar', ['t_beta', 't_alpha']],
-    ['trackTable', ['t_beta', 't_alpha']]
-  ]);
-});
-
-test('LibraryView album detail applies the current sort only after a header click override', () => {
-  const calls = [];
-  const sortedTracks = [
-    { id: 't_beta', title: 'Beta' },
-    { id: 't_alpha', title: 'Alpha' }
-  ];
-  const makeView = extra => Object.assign(Object.create(LibraryView.prototype), {
-    root: new FakeElement('section'),
-    nav: new FakeElement('nav'),
-    content: new FakeElement('div'),
-    status: new FakeElement('footer'),
-    searchQuery: '',
-    sort: 'title',
-    sortDirection: 'desc',
-    selectedTrackIds: new Set(),
-    renderedPageTrackIds: [],
-    manager: {
-      getCounts() {
-        return { tracks: 2, albums: 1, artists: 1, genres: 1 };
-      },
-      getFolders() {
-        return [];
-      },
-      getAlbums() {
-        return [{ key: 'album-one', name: 'Album One', artist: 'Artist', trackIds: ['t_alpha', 't_beta'] }];
-      },
-      getAlbumTracks(key) {
-        calls.push(['getAlbumTracks', key]);
-        return [...sortedTracks].reverse();
-      },
-      getTracks(options) {
-        calls.push(['getTracks', options]);
-        return sortedTracks;
-      }
-    },
-    uiManager: { t: key => key },
-    closePlaylistMenu() {},
-    closeContextMenu() {},
-    syncNowPlayingTrack() {},
-    renderNav() {},
-    renderStatus() {},
-    renderArtwork() {},
-    createActionBar(trackIds) {
-      calls.push(['actionBar', trackIds]);
-      return new FakeElement('div');
-    },
-    createTrackTable(tracks) {
-      calls.push(['trackTable', tracks.map(track => track.id)]);
-      return new FakeElement('div');
-    },
-    ...extra
-  });
-
-  makeView({ detail: { type: 'album', key: 'album-one' }, detailSortOverride: false }).renderAlbumDetail('album-one');
-  assert.deepEqual(calls, [
-    ['getAlbumTracks', 'album-one'],
-    ['actionBar', ['t_alpha', 't_beta']],
-    ['trackTable', ['t_alpha', 't_beta']]
-  ]);
-
-  calls.length = 0;
-  makeView({ detail: { type: 'album', key: 'album-one' }, detailSortOverride: true }).renderAlbumDetail('album-one');
-  assert.deepEqual(calls, [
-    ['getAlbumTracks', 'album-one'],
-    ['getTracks', { ids: ['t_alpha', 't_beta'], sort: 'title', direction: 'desc' }],
-    ['actionBar', ['t_beta', 't_alpha']],
-    ['trackTable', ['t_beta', 't_alpha']]
-  ]);
-});
-
-test('LibraryView track sort headers expose active direction and aria state', async () => {
-  const documentRef = createDocument();
-  const content = new FakeElement('div');
-  const view = Object.assign(Object.create(LibraryView.prototype), {
-    content,
-    manager: {
-      playTrackIds() {}
-    },
     uiManager: {
       t(key, params = {}) {
         const labels = {
@@ -1597,253 +1768,56 @@ test('LibraryView track sort headers expose active direction and aria state', as
         return labels[key] || key;
       }
     },
-    selectedTrackIds: new Set(),
-    nowPlayingTrackId: null,
-    focusedTrackId: null,
-    renderedPageTrackIds: [],
     sort: 'artist',
-    sortDirection: 'desc',
-    trackScrollCleanup: null
+    sortDirection: 'desc'
   });
 
-  await withGlobals({ document: documentRef }, async () => {
-    const table = view.createTrackTable([{ id: 't_one', title: 'One' }]);
-    const header = table.children[0];
+  const titleHeader = view.renderSortHeader({ key: 'title', labelKey: 'library.column.title' });
+  const artistHeader = view.renderSortHeader({ key: 'artist', labelKey: 'library.column.artist' });
 
-    assert.equal(table.attributes.get('aria-colcount'), '7');
-    assert.equal(table.attributes.get('aria-rowcount'), '2');
-    assert.equal(header.attributes.get('role'), 'row');
-    assert.equal(header.attributes.get('aria-rowindex'), '1');
-    assert.match(
-      header.innerHTML,
-      /class="library-track-control-header" role="columnheader" aria-label="Play"/
-    );
-    assert.match(
-      header.innerHTML,
-      /class="library-sort-cell" role="columnheader" aria-sort="none"[\s\S]*data-sort="title" aria-label="Sort by Title"/
-    );
-    assert.match(
-      header.innerHTML,
-      /class="library-sort-cell active" role="columnheader" aria-sort="descending"[\s\S]*data-sort="artist" aria-label="Artist sorted descending"/
-    );
-    assert.match(header.innerHTML, /class="library-sort-button active"/);
-    assert.match(header.innerHTML, /class="library-sort-indicator" aria-hidden="true"><svg/);
-  });
+  assert.match(
+    titleHeader,
+    /class="library-sort-cell" role="columnheader" aria-sort="none"[\s\S]*data-sort="title" aria-label="Sort by Title"/
+  );
+  assert.match(
+    artistHeader,
+    /class="library-sort-cell active" role="columnheader" aria-sort="descending"[\s\S]*data-sort="artist" aria-label="Artist sorted descending"/
+  );
+  assert.match(artistHeader, /class="library-sort-button active"/);
+  assert.match(artistHeader, /class="library-sort-indicator" aria-hidden="true"><svg/);
 });
 
-test('LibraryView track rows expose gridcells and fallback labels for unknown metadata', async () => {
-  const documentRef = createDocument();
-  const view = Object.assign(Object.create(LibraryView.prototype), {
-    manager: {
-      playTrackIds() {}
-    },
-    uiManager: {
-      t(key) {
-        return {
-          'library.action.play': 'Play',
-          'library.action.more': 'More',
-          'library.unknownArtist': 'Localized Unknown Artist',
-          'library.unknownAlbum': 'Localized Unknown Album'
-        }[key] || key;
-      }
-    },
-    selectedTrackIds: new Set(),
-    nowPlayingTrackId: null,
-    focusedTrackId: null,
-    refreshRenderedFocus() {}
-  });
-
-  await withGlobals({ document: documentRef }, async () => {
-    const row = view.createTrackRow({ id: 't_unknown', title: 'Untitled' }, 0, ['t_unknown'], 40);
-
-    assert.equal(row.attributes.get('role'), 'row');
-    assert.equal(row.attributes.get('aria-rowindex'), '2');
-    assert.match(row.innerHTML, /class="library-gridcell library-track-play-cell" role="gridcell"/);
-    assert.match(row.innerHTML, /class="library-gridcell library-track-title" role="gridcell"/);
-    assert.match(row.innerHTML, /class="library-gridcell library-artist-cell" role="gridcell">Localized Unknown Artist<\/span>/);
-    assert.match(row.innerHTML, /class="library-gridcell library-album-cell" role="gridcell">Localized Unknown Album<\/span>/);
-    assert.doesNotMatch(row.innerHTML, /class="library-link library-artist-link"/);
-    assert.doesNotMatch(row.innerHTML, /class="library-link library-album-link"/);
-  });
-});
-
-test('LibraryView album cards use sibling open and play buttons and play in album order', async () => {
+test('LibraryView preserves paged artwork cache within one query attempt', () => {
   const calls = [];
-  const documentRef = createDocument();
-  const content = new FakeElement('div');
-  const view = Object.assign(Object.create(LibraryView.prototype), {
-    content,
-    manager: {
-      getAlbums() {
-        return [{
-          key: 'album-one',
-          name: 'Album One',
-          artist: 'Artist',
-          year: 2026,
-          trackIds: ['t_two', 't_one']
-        }];
-      },
-      getAlbumTracks(key) {
-        calls.push(['getAlbumTracks', key]);
-        return [{ id: 't_one' }, { id: 't_two' }];
-      },
-      playTrackIds(ids) {
-        calls.push(['playTrackIds', ids]);
-      }
-    },
-    uiManager: { t: key => key },
-    navigateToDetail(detail, viewName) {
-      calls.push(['navigateToDetail', detail, viewName]);
-    },
-    renderArtwork() {}
-  });
-
-  await withGlobals({ document: documentRef }, async () => {
-    view.renderAlbums();
-    const grid = content.children[0];
-    const card = grid.children[0];
-    const buttons = card.children.filter(child => child.tagName === 'BUTTON');
-
-    assert.equal(card.tagName, 'DIV');
-    assert.deepEqual(buttons.map(button => button.className), ['library-album-open', 'library-card-play']);
-    assert.ok(buttons.every(button => button.parentNode === card));
-
-    await buttons[0].click();
-    await buttons[1].click();
-  });
-
-  assert.deepEqual(calls, [
-    ['navigateToDetail', { type: 'album', key: 'album-one' }, 'albums'],
-    ['getAlbumTracks', 'album-one'],
-    ['playTrackIds', ['t_one', 't_two']]
-  ]);
-});
-
-test('LibraryView keeps more than 200 cold-loaded artwork URLs alive until each image settles', async () => {
-  const documentRef = createDocument();
-  const createdUrls = [];
-  const revokedUrls = [];
-  const activeUrls = new Set();
-  const artworkCount = 205;
-  const view = new LibraryView({
-    manager: {
-      async getArtworkThumbBlob(artworkId) {
-        return new Blob([artworkId], { type: 'image/jpeg' });
-      },
-      async getArtworkThumbURL() {
-        throw new Error('The album grid must use caller-owned artwork URLs');
-      }
-    },
-    uiManager: {}
-  });
-  const containers = Array.from({ length: artworkCount }, (_, index) => {
-    const container = new FakeElement('div');
-    container.dataset.artworkId = `art_${index}`;
-    return container;
-  });
-
-  await withGlobals({
-    document: documentRef,
-    URL: {
-      createObjectURL() {
-        const url = `blob:test-${createdUrls.length}`;
-        createdUrls.push(url);
-        activeUrls.add(url);
-        return url;
-      },
-      revokeObjectURL(url) {
-        revokedUrls.push(url);
-        activeUrls.delete(url);
-      }
-    }
-  }, async () => {
-    await Promise.all(containers.map((container, index) => (
-      view.renderArtwork(container, `art_${index}`)
-    )));
-
-    assert.equal(createdUrls.length, artworkCount);
-    assert.equal(revokedUrls.length, 0);
-    assert.equal(activeUrls.size, artworkCount);
-    const images = containers.map(container => container.children[0]);
-    assert.equal(images.every(image => image?.tagName === 'IMG'), true);
-    assert.equal(images.every(image => activeUrls.has(image.src)), true);
-
-    await Promise.all(images.map((image, index) => image.dispatch(index % 2 === 0 ? 'load' : 'error')));
-    assert.equal(revokedUrls.length, artworkCount);
-    assert.equal(new Set(revokedUrls).size, artworkCount);
-    assert.equal(activeUrls.size, 0);
-
-    await Promise.all(images.map((image, index) => image.dispatch(index % 2 === 0 ? 'error' : 'load')));
-    assert.equal(revokedUrls.length, artworkCount);
-  });
-});
-
-test('LibraryView releases unfinished artwork URLs and ignores stale Blob reads', async () => {
-  const documentRef = createDocument();
-  const createdUrls = [];
-  const revokedUrls = [];
-  let resolveDelayedBlob;
-  const view = new LibraryView({
-    manager: {
-      getArtworkThumbBlob(artworkId) {
-        if (artworkId === 'art_delayed') {
-          return new Promise(resolve => {
-            resolveDelayedBlob = resolve;
-          });
-        }
-        return Promise.resolve(new Blob([artworkId], { type: 'image/jpeg' }));
-      }
-    },
-    uiManager: {}
-  });
-  view.closeContextMenu = () => {};
-  view.closePlaylistMenu = () => {};
-  view.stopDesktopLayoutHeightTracking = () => {};
-
-  const createContainer = artworkId => {
-    const container = new FakeElement('div');
-    container.dataset.artworkId = artworkId;
-    return container;
+  const retainedLoader = {
+    resetTargets() { calls.push('reset'); },
+    destroy() { calls.push('destroy'); }
   };
-
-  await withGlobals({
-    document: documentRef,
-    URL: {
-      createObjectURL() {
-        const url = `blob:test-${createdUrls.length}`;
-        createdUrls.push(url);
-        return url;
-      },
-      revokeObjectURL(url) {
-        revokedUrls.push(url);
-      }
+  const replacementLoader = { resetTargets() {}, destroy() {} };
+  const view = Object.assign(Object.create(LibraryView.prototype), {
+    pagedArtworkLoader: retainedLoader,
+    pagedArtworkLoaderAttemptKey: '3:7',
+    createPagedArtworkLoader() {
+      calls.push('create');
+      return replacementLoader;
     }
-  }, async () => {
-    await view.renderArtwork(createContainer('art_first'), 'art_first');
-    assert.deepEqual(createdUrls, ['blob:test-0']);
-    assert.deepEqual(revokedUrls, []);
-
-    view.invalidateArtworkRequests();
-    assert.deepEqual(revokedUrls, ['blob:test-0']);
-
-    const delayedRender = view.renderArtwork(createContainer('art_delayed'), 'art_delayed');
-    view.invalidateArtworkRequests();
-    resolveDelayedBlob(new Blob(['delayed'], { type: 'image/jpeg' }));
-    await delayedRender;
-    assert.deepEqual(createdUrls, ['blob:test-0']);
-
-    await view.renderArtwork(createContainer('art_last'), 'art_last');
-    assert.deepEqual(createdUrls, ['blob:test-0', 'blob:test-1']);
-    view.hide({ restoreFocus: false });
-    assert.deepEqual(revokedUrls, ['blob:test-0', 'blob:test-1']);
   });
+
+  view.preparePagedArtworkLoader({ queryGeneration: 3, pageAttemptId: 7 });
+  assert.equal(view.pagedArtworkLoader, retainedLoader);
+  assert.deepEqual(calls, ['reset']);
+
+  view.preparePagedArtworkLoader({ queryGeneration: 4, pageAttemptId: 1 });
+  assert.equal(view.pagedArtworkLoader, replacementLoader);
+  assert.equal(view.pagedArtworkLoaderAttemptKey, '4:1');
+  assert.deepEqual(calls, ['reset', 'destroy', 'create']);
 });
 
 test('LibraryView artist links navigate to the displayed performer artist key', async () => {
   const calls = [];
   const controls = new Map([
-    ['.library-row-play', new FakeElement('button')],
-    ['.library-row-more', new FakeElement('button')],
+    ['.library-paged-select', new FakeElement('input')],
+    ['.library-paged-row-more', new FakeElement('button')],
     ['.library-artist-link', new FakeElement('button')],
     ['.library-album-link', new FakeElement('button')]
   ]);
@@ -1852,22 +1826,24 @@ test('LibraryView artist links navigate to the displayed performer artist key', 
   const documentRef = createDocument();
   documentRef.createElement = () => row;
   const view = Object.assign(Object.create(LibraryView.prototype), {
-    manager: {
-      playTrackIds() {}
+    pagedController: {
+      isSelected() {
+        return false;
+      }
     },
     uiManager: { t: key => key },
-    selectedTrackIds: new Set(),
     nowPlayingTrackId: null,
-    focusedTrackId: 't_guest',
-    navigateToDetail(detail, viewName) {
-      calls.push(['navigateToDetail', detail, viewName]);
-    },
-    refreshRenderedFocus() {}
+    pagedFocusedEntityId: 't_guest',
+    pagedMobileSelectionActive: false,
+    detail: null,
+    navigateToDetail(detail) {
+      calls.push(['navigateToDetail', detail]);
+    }
   });
 
   await withGlobals({ document: documentRef }, async () => {
-    view.createTrackRow({
-      id: 't_guest',
+    view.createPagedRow({
+      trackUid: 't_guest',
       title: 'Guest Song',
       artist: 'Guest',
       albumArtist: 'Various Artists',
@@ -1875,46 +1851,14 @@ test('LibraryView artist links navigate to the displayed performer artist key', 
       artistDisplayKey: 'display-artist\u0000guest',
       album: 'Sampler',
       albumKey: 'sampler'
-    }, 0, ['t_guest'], 40);
+    }, 0, { queryGeneration: 1, pageAttemptId: 1, totalCount: 1 }, true);
     await controls.get('.library-artist-link').click();
   });
 
   assert.deepEqual(calls, [[
     'navigateToDetail',
-    { type: 'artist', key: 'display-artist\u0000guest', title: 'Guest' },
-    'artists'
+    { type: 'artist', key: 'display-artist\u0000guest', title: 'Guest' }
   ]]);
-});
-
-test('LibraryView track grid advertises multi-select support', async () => {
-  const documentRef = createDocument();
-  const content = new FakeElement('div');
-  content.ownerDocument = documentRef;
-  const view = Object.assign(Object.create(LibraryView.prototype), {
-    content,
-    trackScrollCleanup: null,
-    selectedTrackIds: new Set(['t_song']),
-    nowPlayingTrackId: null,
-    focusedTrackId: null,
-    manager: {
-      playTrackIds() {}
-    },
-    uiManager: { t: key => key },
-    refreshRenderedFocus() {}
-  });
-
-  await withGlobals({ document: documentRef }, async () => {
-    const table = view.createTrackTable([{
-      id: 't_song',
-      title: 'Song',
-      artist: 'Artist',
-      album: 'Album',
-      durationSec: 64
-    }]);
-
-    assert.equal(table.attributes.get('role'), 'grid');
-    assert.equal(table.attributes.get('aria-multiselectable'), 'true');
-  });
 });
 
 test('LibraryView modal dialogs trap focus, restore focus, and label prompt input', async () => {
@@ -1922,7 +1866,7 @@ test('LibraryView modal dialogs trap focus, restore focus, and label prompt inpu
   const opener = new FakeElement('button');
   opener.ownerDocument = documentRef;
   opener.focus();
-  const view = Object.assign(Object.create(LibraryView.prototype), {
+  const view = createLibraryViewFixture({
     manager: {
       getFolders() {
         return [{ id: 'f_music', path: 'D:/Music' }];
@@ -1978,6 +1922,91 @@ test('LibraryView modal dialogs trap focus, restore focus, and label prompt inpu
   });
 });
 
+test('paged track properties load complete metadata and the resolved Electron path', async () => {
+  const documentRef = createDialogDocument();
+  const calls = [];
+  const view = createLibraryViewFixture({
+    manager: {
+      runtime: 'electron',
+      async getTrack(trackUid) {
+        calls.push(['getTrack', trackUid]);
+        return {
+          trackUid,
+          fileName: 'Song.flac',
+          title: 'Detailed Song',
+          artist: 'Artist',
+          album: 'Album',
+          genre: 'Rock',
+          year: 2026,
+          trackNo: 2,
+          trackTotal: 10,
+          durationSec: 125,
+          codec: 'FLAC',
+          sampleRate: 96000,
+          bitsPerSample: 24,
+          bitrate: 1411200
+        };
+      },
+      async resolvePlaybackSource(trackUid) {
+        calls.push(['resolvePlaybackSource', trackUid]);
+        return { kind: 'electron-file', path: 'D:\\Music\\Album\\Song.flac' };
+      }
+    },
+    uiManager: { t: key => key }
+  });
+
+  await withGlobals({ document: documentRef }, async () => {
+    await view.showTrackProperties({ trackUid: 'track-one', title: 'Summary Song' });
+
+    const propertiesBackdrop = documentRef.body.children[0];
+    assert.match(propertiesBackdrop.innerHTML, /Detailed Song/);
+    assert.match(propertiesBackdrop.innerHTML, /D:\\Music\\Album\\Song\.flac/);
+    assert.match(propertiesBackdrop.innerHTML, /96000 Hz/);
+    assert.match(propertiesBackdrop.innerHTML, /24 bit/);
+    assert.match(propertiesBackdrop.innerHTML, /1411 kbps/);
+  });
+  assert.deepEqual(calls, [
+    ['getTrack', 'track-one'],
+    ['resolvePlaybackSource', 'track-one']
+  ]);
+});
+
+test('paged properties context menu opens the track dialog and preserves its return focus', async () => {
+  const documentRef = createDialogDocument();
+  const opener = new FakeElement('button');
+  opener.ownerDocument = documentRef;
+  documentRef.body.appendChild(opener);
+  const calls = [];
+  const view = Object.assign(Object.create(LibraryView.prototype), {
+    contextMenu: null,
+    contextMenuCleanup: null,
+    contextMenuReturnFocus: null,
+    uiManager: { t: key => key },
+    showTrackProperties(track, options) {
+      calls.push([track.trackUid, options.returnFocus]);
+    }
+  });
+
+  await withGlobals({
+    document: documentRef,
+    window: { innerWidth: 800, innerHeight: 600 }
+  }, async () => {
+    view.openPagedTrackContextMenu({
+      preventDefault() {},
+      clientX: 20,
+      clientY: 30,
+      currentTarget: opener,
+      target: opener
+    }, { trackUid: 'track-one' }, { returnFocus: opener });
+
+    const menu = view.contextMenu;
+    assert.equal(documentRef.activeElement, menu.querySelector('button:not(:disabled)'));
+    await menu.querySelector('[data-action="properties"]').click();
+    assert.equal(view.contextMenu, null);
+  });
+  assert.deepEqual(calls, [['track-one', opener]]);
+});
+
 test('LibraryView context menu can skip focus restoration for properties dialogs', async () => {
   const documentRef = createDialogDocument();
   const opener = new FakeElement('button');
@@ -1987,7 +2016,7 @@ test('LibraryView context menu can skip focus restoration for properties dialogs
   const menu = new FakeElement('div');
   menu.ownerDocument = documentRef;
   documentRef.body.appendChild(menu);
-  const view = Object.assign(Object.create(LibraryView.prototype), {
+  const view = createLibraryViewFixture({
     contextMenu: menu,
     contextMenuCleanup: null,
     contextMenuReturnFocus: opener,
@@ -2019,551 +2048,6 @@ test('LibraryView context menu can skip focus restoration for properties dialogs
     view.closeContextMenu({ restoreFocus: false });
     assert.equal(documentRef.body.children.includes(menu), false);
     assert.equal(documentRef.activeElement, propertiesBackdrop.closeButton);
-  });
-});
-
-test('LibraryView context menu properties restores focus to the menu opener after close', async () => {
-  const documentRef = createDialogDocument();
-  const opener = new FakeElement('button');
-  opener.ownerDocument = documentRef;
-  documentRef.body.appendChild(opener);
-  opener.focus();
-  const view = Object.assign(Object.create(LibraryView.prototype), {
-    contextMenu: null,
-    contextMenuCleanup: null,
-    contextMenuReturnFocus: null,
-    selectedTrackIds: new Set(['t_song']),
-    manager: {
-      getFolders() {
-        return [];
-      }
-    },
-    uiManager: { t: key => key }
-  });
-
-  await withGlobals({
-    document: documentRef,
-    window: { innerWidth: 800, innerHeight: 600 }
-  }, async () => {
-    view.openContextMenu({
-      preventDefault() {},
-      clientX: 20,
-      clientY: 30,
-      currentTarget: opener,
-      target: opener
-    }, { id: 't_song', title: 'Song', fileName: 'Song.flac' }, ['t_song'], 0, { returnFocus: opener });
-    const menu = view.contextMenu;
-    assert.equal(documentRef.activeElement, menu.querySelector('button:not(:disabled)'));
-
-    await menu.querySelector('[data-action="properties"]').click();
-    assert.equal(documentRef.body.children.includes(menu), false);
-    const propertiesBackdrop = documentRef.body.children.find(child => child.className === 'library-dialog-backdrop');
-    assert.equal(documentRef.activeElement, propertiesBackdrop.closeButton);
-
-    await propertiesBackdrop.closeButton.click();
-    assert.equal(documentRef.activeElement, opener);
-  });
-});
-
-test('LibraryView context menu Add to Playlist focuses picker and restores opener on close', async () => {
-  const documentRef = createDialogDocument();
-  const opener = new FakeElement('button');
-  opener.ownerDocument = documentRef;
-  const content = new FakeElement('div');
-  content.ownerDocument = documentRef;
-  documentRef.body.appendChild(opener);
-  opener.focus();
-  const calls = [];
-  const view = Object.assign(Object.create(LibraryView.prototype), {
-    content,
-    playlistMenu: null,
-    playlistMenuReturnFocus: null,
-    contextMenu: null,
-    contextMenuCleanup: null,
-    contextMenuReturnFocus: null,
-    selectedTrackIds: new Set(['t_song']),
-    manager: {
-      playlists: {
-        async list() {
-          return [{ id: 'p_daily', name: 'Daily', items: [] }];
-        },
-        async addTracks(playlistId, trackIds) {
-          calls.push(['addTracks', playlistId, trackIds]);
-        }
-      }
-    },
-    uiManager: { t: key => key }
-  });
-
-  await withGlobals({
-    document: documentRef,
-    window: { innerWidth: 800, innerHeight: 600 }
-  }, async () => {
-    view.openContextMenu({
-      preventDefault() {},
-      clientX: 20,
-      clientY: 30,
-      currentTarget: opener,
-      target: opener
-    }, { id: 't_song', title: 'Song', fileName: 'Song.flac' }, ['t_song'], 0, { returnFocus: opener });
-    const menu = view.contextMenu;
-
-    await menu.querySelector('[data-action="playlist"]').click();
-
-    assert.equal(documentRef.body.children.includes(menu), false);
-    assert.ok(view.playlistMenu);
-    assert.equal(documentRef.activeElement, view.playlistMenu.querySelector('button:not(:disabled)'));
-    assert.notEqual(documentRef.activeElement, opener);
-
-    await view.playlistMenu.querySelectorAll('[data-playlist-id]')[0].click();
-
-    assert.deepEqual(calls, [['addTracks', 'p_daily', ['t_song']]]);
-    assert.equal(view.playlistMenu, null);
-    assert.equal(documentRef.activeElement, opener);
-  });
-});
-
-test('LibraryView add-to-playlist restores focus when playlist changes trigger render', async () => {
-  const documentRef = createDialogDocument();
-  const opener = new FakeElement('button');
-  opener.ownerDocument = documentRef;
-  const content = new FakeElement('div');
-  content.ownerDocument = documentRef;
-  documentRef.body.appendChild(opener);
-  opener.focus();
-  const calls = [];
-  const view = Object.assign(Object.create(LibraryView.prototype), {
-    content,
-    root: new FakeElement('section'),
-    renderVersion: 4,
-    currentView: 'tracks',
-    detail: null,
-    searchQuery: '',
-    playlistMenu: null,
-    playlistMenuReturnFocus: null,
-    manager: {
-      playlists: {
-        async list() {
-          return [{ id: 'p_daily', name: 'Daily', items: [] }];
-        },
-        async addTracks(playlistId, trackIds) {
-          calls.push(['addTracks', playlistId, trackIds]);
-          view.render();
-        }
-      }
-    },
-    render() {
-      calls.push(['render']);
-      this.closePlaylistMenu({ restoreFocus: false });
-    },
-    uiManager: { t: key => key }
-  });
-  view.root.ownerDocument = documentRef;
-
-  await withGlobals({
-    document: documentRef,
-    window: { innerWidth: 800, innerHeight: 600 }
-  }, async () => {
-    await view.openAddToPlaylistMenu(opener, ['t_song'], { returnFocus: opener });
-    const playlistButton = view.playlistMenu.querySelectorAll('[data-playlist-id]')[0];
-    assert.equal(documentRef.activeElement, view.playlistMenu.querySelector('button:not(:disabled)'));
-
-    await playlistButton.click();
-
-    assert.deepEqual(calls, [
-      ['addTracks', 'p_daily', ['t_song']],
-      ['render']
-    ]);
-    assert.equal(view.playlistMenu, null);
-    assert.equal(documentRef.activeElement, opener);
-  });
-});
-
-test('LibraryView add-to-playlist picker handles menu keys without reaching track navigation', async () => {
-  const documentRef = createDialogDocument();
-  const opener = new FakeElement('button');
-  opener.ownerDocument = documentRef;
-  const content = new FakeElement('div');
-  content.ownerDocument = documentRef;
-  const view = Object.assign(Object.create(LibraryView.prototype), {
-    content,
-    root: new FakeElement('section'),
-    renderVersion: 3,
-    currentView: 'tracks',
-    detail: null,
-    searchQuery: '',
-    playlistMenu: null,
-    playlistMenuReturnFocus: null,
-    manager: {
-      playlists: {
-        async list() {
-          return [
-            { id: 'p_daily', name: 'Daily', items: [] },
-            { id: 'p_late', name: 'Late', items: [] }
-          ];
-        }
-      }
-    },
-    uiManager: {
-      t(key) {
-        return {
-          'library.action.addToPlaylist': 'Add to Playlist',
-          'library.action.newPlaylist': 'New Playlist'
-        }[key] || key;
-      }
-    }
-  });
-
-  await withGlobals({
-    document: documentRef,
-    window: { innerWidth: 800, innerHeight: 600 }
-  }, async () => {
-    await view.openAddToPlaylistMenu(opener, ['t_song'], { returnFocus: opener });
-    const menu = view.playlistMenu;
-    const items = menu.querySelectorAll('button:not(:disabled)');
-    assert.equal(menu.attributes.get('role'), 'menu');
-    assert.equal(menu.attributes.get('aria-label'), 'Add to Playlist');
-    assert.match(menu.innerHTML, /role="menuitem"/);
-    assert.equal(documentRef.activeElement, items[0]);
-
-    const downEvent = await menu.dispatch('keydown', { key: 'ArrowDown' });
-    assert.equal(downEvent.prevented, 1);
-    assert.equal(downEvent.stopped, 1);
-    assert.equal(documentRef.activeElement, items[1]);
-
-    const endEvent = await menu.dispatch('keydown', { key: 'End' });
-    assert.equal(endEvent.prevented, 1);
-    assert.equal(endEvent.stopped, 1);
-    assert.equal(documentRef.activeElement, items.at(-1));
-
-    const homeEvent = await menu.dispatch('keydown', { key: 'Home' });
-    assert.equal(homeEvent.prevented, 1);
-    assert.equal(homeEvent.stopped, 1);
-    assert.equal(documentRef.activeElement, items[0]);
-
-    const escapeEvent = await menu.dispatch('keydown', { key: 'Escape' });
-    assert.equal(escapeEvent.prevented, 1);
-    assert.equal(escapeEvent.stopped, 1);
-    assert.equal(view.playlistMenu, null);
-    assert.equal(documentRef.activeElement, opener);
-  });
-});
-
-test('LibraryView add-to-playlist picker ignores stale async results after navigation', async () => {
-  const documentRef = createDialogDocument();
-  const opener = new FakeElement('button');
-  opener.ownerDocument = documentRef;
-  const content = new FakeElement('div');
-  content.ownerDocument = documentRef;
-  let resolvePlaylists;
-  const view = Object.assign(Object.create(LibraryView.prototype), {
-    content,
-    root: new FakeElement('section'),
-    renderVersion: 7,
-    currentView: 'tracks',
-    detail: null,
-    searchQuery: '',
-    playlistMenu: null,
-    playlistMenuReturnFocus: null,
-    manager: {
-      playlists: {
-        list() {
-          return new Promise(resolve => {
-            resolvePlaylists = resolve;
-          });
-        }
-      }
-    },
-    uiManager: { t: key => key }
-  });
-
-  await withGlobals({
-    document: documentRef,
-    window: { innerWidth: 800, innerHeight: 600 }
-  }, async () => {
-    const pending = view.openAddToPlaylistMenu(opener, ['t_song'], { returnFocus: opener });
-    view.renderVersion += 1;
-    view.currentView = 'albums';
-    resolvePlaylists([{ id: 'p_daily', name: 'Daily', items: [] }]);
-    await pending;
-
-    assert.equal(view.playlistMenu, null);
-    assert.equal(content.children.length, 0);
-    assert.equal(documentRef.activeElement, null);
-  });
-});
-
-test('LibraryView Shift+F10 properties restores focus to the focused row after close', async () => {
-  const documentRef = createDialogDocument();
-  const row = new FakeElement('div');
-  row.ownerDocument = documentRef;
-  row.dataset.trackId = 't_song';
-  const content = new FakeElement('div');
-  content.ownerDocument = documentRef;
-  content.getBoundingClientRect = () => ({ left: 10, top: 20 });
-  content.querySelector = selector => selector.includes('t_song') ? row : null;
-  const view = Object.assign(Object.create(LibraryView.prototype), {
-    content,
-    contextMenu: null,
-    contextMenuCleanup: null,
-    contextMenuReturnFocus: null,
-    selectedTrackIds: new Set(['t_song']),
-    renderedPageTrackIds: ['t_song'],
-    focusedTrackId: 't_song',
-    manager: {
-      getTrackById(id) {
-        return id === 't_song' ? { id: 't_song', title: 'Song', fileName: 'Song.flac' } : null;
-      },
-      getFolders() {
-        return [];
-      }
-    },
-    uiManager: { t: key => key }
-  });
-
-  await withGlobals({
-    document: documentRef,
-    window: { innerWidth: 800, innerHeight: 600 }
-  }, async () => {
-    const keyEvent = {
-      key: 'F10',
-      shiftKey: true,
-      target: content,
-      prevented: 0,
-      preventDefault() {
-        this.prevented++;
-      }
-    };
-    view.handleContentKeyDown(keyEvent);
-    assert.equal(keyEvent.prevented, 1);
-
-    const menu = view.contextMenu;
-    await menu.querySelector('[data-action="properties"]').click();
-    const propertiesBackdrop = documentRef.body.children.find(child => child.className === 'library-dialog-backdrop');
-    assert.equal(documentRef.activeElement, propertiesBackdrop.closeButton);
-
-    await propertiesBackdrop.closeButton.click();
-    assert.equal(documentRef.activeElement, row);
-  });
-});
-
-test('LibraryView keyboard context menu targets the focused visible row', async () => {
-  const calls = [];
-  const documentRef = createDialogDocument();
-  const rows = new Map(['t_one', 't_two', 't_three'].map(trackId => {
-    const row = new FakeElement('div');
-    row.ownerDocument = documentRef;
-    row.dataset.trackId = trackId;
-    return [trackId, row];
-  }));
-  const content = new FakeElement('div');
-  content.ownerDocument = documentRef;
-  content.getBoundingClientRect = () => ({ left: 10, top: 20 });
-  content.querySelector = selector => {
-    for (const [trackId, row] of rows) {
-      if (selector.includes(trackId)) return row;
-    }
-    return null;
-  };
-  content.querySelectorAll = selector => selector === '.library-track-row' ? [...rows.values()] : [];
-  const tracks = new Map([
-    ['t_one', { id: 't_one', title: 'One' }],
-    ['t_two', { id: 't_two', title: 'Two' }],
-    ['t_three', { id: 't_three', title: 'Three' }]
-  ]);
-  const view = Object.assign(Object.create(LibraryView.prototype), {
-    root: new FakeElement('section'),
-    content,
-    contextMenu: null,
-    contextMenuCleanup: null,
-    contextMenuReturnFocus: null,
-    playlistMenu: null,
-    selectedTrackIds: new Set(['t_one', 't_three']),
-    renderedPageTrackIds: ['t_one', 't_two', 't_three'],
-    focusedTrackId: 't_two',
-    manager: {
-      getTrackById(id) {
-        return tracks.get(id) || null;
-      },
-      addToQueue(ids) {
-        calls.push(['queue', ids]);
-      }
-    },
-    renderStatus() {},
-    uiManager: { t: key => key }
-  });
-
-  await withGlobals({
-    document: documentRef,
-    window: { innerWidth: 800, innerHeight: 600 }
-  }, async () => {
-    view.handleContentKeyDown({
-      key: 'ContextMenu',
-      target: content,
-      prevented: 0,
-      preventDefault() {
-        this.prevented++;
-      }
-    });
-
-    assert.deepEqual([...view.selectedTrackIds], ['t_two']);
-    await view.contextMenu.querySelector('[data-action="queue"]').click();
-
-    view.selectedTrackIds = new Set(['t_one', 't_two']);
-    view.focusedTrackId = 't_two';
-    view.handleContentKeyDown({
-      key: 'F10',
-      shiftKey: true,
-      target: content,
-      prevented: 0,
-      preventDefault() {
-        this.prevented++;
-      }
-    });
-    await view.contextMenu.querySelector('[data-action="queue"]').click();
-  });
-
-  assert.deepEqual(calls, [
-    ['queue', ['t_two']],
-    ['queue', ['t_one', 't_two']]
-  ]);
-});
-
-test('LibraryView mobile navigation history and selection mode update state', async () => {
-  const calls = [];
-  const body = new FakeElement('body');
-  body.classList.add('layout-mobile');
-  body.classList.add('view-library');
-  const documentRef = createDocument();
-  documentRef.body = body;
-  const root = new FakeElement('section');
-  const searchInput = new FakeElement('input');
-  const view = Object.assign(Object.create(LibraryView.prototype), {
-    root,
-    content: new FakeElement('div'),
-    status: new FakeElement('footer'),
-    searchInput,
-    currentView: 'tracks',
-    detail: null,
-    searchQuery: '',
-    focusedTrackId: 't_one',
-    selectedTrackIds: new Set(),
-    mobileSelectionMode: false,
-    mobileHistoryInitialized: false,
-    mobileHistoryDepth: 0,
-    renderStatus() {},
-    refreshRenderedSelection() {
-      calls.push(['refreshSelection', [...this.selectedTrackIds]]);
-    },
-    render() {
-      calls.push(['render', this.currentView, this.detail?.type || null]);
-    }
-  });
-  const historyRef = {
-    state: null,
-    replaceState(state) {
-      calls.push(['replaceState', state.snapshot.currentView]);
-      this.state = state;
-    },
-    pushState(state) {
-      calls.push(['pushState', state.snapshot.currentView, state.snapshot.detail?.type || null]);
-      this.state = state;
-    },
-    back() {
-      calls.push(['history.back']);
-    }
-  };
-
-  await withGlobals({ document: documentRef, history: historyRef }, async () => {
-    view.navigateToDetail({ type: 'album', key: 'album-one' }, 'albums');
-    assert.equal(view.currentView, 'albums');
-    assert.equal(view.detail.type, 'album');
-    assert.equal(view.mobileHistoryDepth, 1);
-    assert.ok(calls.some(call => call[0] === 'pushState'));
-
-    view.handleMobilePopState({
-      state: {
-        effetuneLibrary: true,
-        snapshot: {
-          currentView: 'tracks',
-          detail: null,
-          searchQuery: '',
-          focusedTrackId: 't_one'
-        }
-      }
-    });
-    assert.equal(view.currentView, 'tracks');
-    assert.equal(view.detail, null);
-
-    view.startMobileSelection('t_one');
-    assert.equal(view.mobileSelectionMode, true);
-    assert.deepEqual([...view.selectedTrackIds], ['t_one']);
-    view.toggleMobileTrackSelection('t_one');
-    assert.equal(view.mobileSelectionMode, false);
-    assert.deepEqual([...view.selectedTrackIds], []);
-  });
-});
-
-test('LibraryView mobile long press selection ignores the synthetic follow-up click', async () => {
-  const calls = [];
-  const body = new FakeElement('body');
-  body.classList.add('layout-mobile');
-  const documentRef = createDocument();
-  documentRef.body = body;
-  let row = null;
-  let longPressCallback = null;
-  const view = Object.assign(Object.create(LibraryView.prototype), {
-    manager: {
-      playTrackIds(ids, options) {
-        calls.push(['playTrackIds', ids, options]);
-      }
-    },
-    uiManager: { t: key => key },
-    root: new FakeElement('section'),
-    content: {
-      querySelectorAll(selector) {
-        return selector === '.library-track-row' && row ? [row] : [];
-      }
-    },
-    selectedTrackIds: new Set(),
-    lastSelectedTrackId: null,
-    nowPlayingTrackId: null,
-    focusedTrackId: null,
-    mobileSelectionMode: false,
-    renderStatus() {
-      calls.push(['renderStatus', [...this.selectedTrackIds]]);
-    }
-  });
-
-  await withGlobals({
-    document: documentRef,
-    setTimeout(callback, delay) {
-      calls.push(['setTimeout', delay]);
-      longPressCallback = callback;
-      return 1;
-    },
-    clearTimeout() {}
-  }, async () => {
-    row = view.createTrackRow({ id: 't_one', title: 'One' }, 0, ['t_one'], 56);
-    const touchEvent = await row.dispatch('touchstart', {
-      touches: [{ clientX: 12, clientY: 12 }]
-    });
-    longPressCallback();
-
-    assert.equal(touchEvent.prevented, 1);
-    assert.equal(view.mobileSelectionMode, true);
-    assert.deepEqual([...view.selectedTrackIds], ['t_one']);
-
-    const clickEvent = await row.dispatch('click', {
-      stopPropagation() {
-        calls.push(['click.stopPropagation']);
-      }
-    });
-
-    assert.equal(clickEvent.prevented, 1);
-    assert.deepEqual([...view.selectedTrackIds], ['t_one']);
-    assert.equal(calls.some(call => call[0] === 'playTrackIds'), false);
-    assert.ok(calls.some(call => call[0] === 'click.stopPropagation'));
   });
 });
 
@@ -2603,175 +2087,6 @@ test('paged playlist detail exposes Duplicate through the bounded service', asyn
   ]);
 });
 
-test('LibraryView playlist actions shuffle, duplicate, reorder, and retry unresolved items', async () => {
-  const calls = [];
-  const playlist = {
-    id: 'p_daily',
-    name: 'Daily',
-    items: [
-      { trackId: 't_one' },
-      { trackId: 't_two' },
-      { unresolved: { sourceLine: 'Missing.flac' } }
-    ]
-  };
-  const rows = [
-    { classList: new FakeClassList(), getBoundingClientRect: () => ({ top: 0, height: 20 }) },
-    { classList: new FakeClassList(), getBoundingClientRect: () => ({ top: 0, height: 20 }) },
-    { classList: new FakeClassList(), getBoundingClientRect: () => ({ top: 0, height: 20 }) }
-  ];
-  const view = Object.assign(Object.create(LibraryView.prototype), {
-    manager: {
-      getTrackById(id) {
-        return id === 't_one' || id === 't_two' ? { id } : null;
-      },
-      playTrackIds(ids, options) {
-        calls.push(['playTrackIds', ids, options]);
-      },
-      playlists: {
-        async duplicate(id, name) {
-          calls.push(['duplicate', id, name]);
-          return { id: 'p_copy', name };
-        },
-        async replaceItems(id, items) {
-          calls.push(['replaceItems', id, items.map(item => item.trackId || item.unresolved.sourceLine)]);
-          return { id, items };
-        }
-      },
-      async resolvePlaylistItem(id, index) {
-        calls.push(['resolvePlaylistItem', id, index]);
-        return index === 2 ? { status: 'resolved', trackId: 't_three' } : { status: 'unresolved' };
-      }
-    },
-    uiManager: {
-      t(key, params = {}) {
-        if (key === 'library.playlist.copyName') return `Copy of ${params.name}`;
-        if (key === 'library.state.noMatchingTrack') return 'No match';
-        return key;
-      },
-      setError(message, sticky) {
-        calls.push(['setError', message, sticky]);
-      }
-    },
-    content: {
-      querySelectorAll() {
-        return rows;
-      }
-    },
-    render() {
-      calls.push(['render']);
-    },
-    navigateToDetail(detail, viewName) {
-      calls.push(['navigateToDetail', detail, viewName]);
-    }
-  });
-
-  view.playPlaylistItems(playlist.items, { shuffle: true });
-  await view.handleDuplicatePlaylist(playlist);
-  await view.movePlaylistItemToIndex(playlist, 0, 3);
-  await view.handlePlaylistItemDrop({
-    currentTarget: rows[1],
-    clientY: 18,
-    dataTransfer: {
-      types: ['application/x-effetune-playlist-item-index'],
-      dropEffect: '',
-      getData() {
-        return '0';
-      }
-    },
-    preventDefault() {
-      calls.push(['drop.preventDefault']);
-    },
-    stopPropagation() {
-      calls.push(['drop.stopPropagation']);
-    }
-  }, playlist, 1);
-  await view.handleLocatePlaylistItem(playlist, 2);
-  await view.handleLocatePlaylistItem(playlist, 1);
-
-  assert.deepEqual(calls.filter(call => call[0] === 'playTrackIds'), [
-    ['playTrackIds', ['t_one', 't_two'], { shuffle: true }]
-  ]);
-  assert.ok(calls.some(call => call[0] === 'duplicate' && call[2] === 'Copy of Daily'));
-  assert.ok(calls.some(call => call[0] === 'navigateToDetail' && call[1].key === 'p_copy'));
-  assert.ok(calls.some(call => call[0] === 'replaceItems' && call[2].join(',') === 't_two,Missing.flac,t_one'));
-  assert.ok(calls.some(call => call[0] === 'drop.preventDefault'));
-  assert.ok(calls.some(call => call[0] === 'drop.stopPropagation'));
-  assert.ok(calls.some(call => call[0] === 'resolvePlaylistItem' && call[2] === 2));
-  assert.ok(calls.some(call => call[0] === 'setError' && call[1] === 'No match'));
-});
-
-test('LibraryView playlist file drag and drop import only playlist files', async () => {
-  const calls = [];
-  const playlistFile = {
-    name: 'daily.m3u8',
-    async arrayBuffer() {
-      calls.push(['arrayBuffer']);
-      return new TextEncoder().encode('#EXTM3U\nsong.flac\n').buffer;
-    }
-  };
-  const view = Object.assign(Object.create(LibraryView.prototype), {
-    manager: {
-      previewPlaylistImport(request) {
-        calls.push(['preview', request.fileName, request.playlistPath, request.content.byteLength]);
-        return { playlistName: 'daily', resolvedCount: 1, unresolvedCount: 0, totalCount: 1 };
-      },
-      async commitPlaylistImport(preview) {
-        calls.push(['commit', preview.playlistName]);
-        return { playlist: { id: 'p_daily' } };
-      }
-    },
-    uiManager: {
-      setError(message, sticky) {
-        calls.push(['setError', message, sticky]);
-      }
-    },
-    confirmPlaylistImport(preview) {
-      calls.push(['confirm', preview.playlistName]);
-      return true;
-    },
-    navigateToDetail(detail, viewName) {
-      calls.push(['navigateToDetail', detail, viewName]);
-    }
-  });
-  const playlistDrag = {
-    dataTransfer: { files: [playlistFile], dropEffect: '' },
-    prevented: 0,
-    preventDefault() {
-      this.prevented++;
-    }
-  };
-  const audioDrag = {
-    dataTransfer: { files: [{ name: 'song.wav' }], dropEffect: '' },
-    prevented: 0,
-    preventDefault() {
-      this.prevented++;
-    }
-  };
-
-  view.handlePlaylistFileDragOver(playlistDrag);
-  view.handlePlaylistFileDragOver(audioDrag);
-  await view.handlePlaylistFileDrop({
-    dataTransfer: { files: [playlistFile] },
-    prevented: 0,
-    preventDefault() {
-      this.prevented++;
-      calls.push(['drop.preventDefault']);
-    }
-  });
-
-  assert.equal(playlistDrag.prevented, 1);
-  assert.equal(playlistDrag.dataTransfer.dropEffect, 'copy');
-  assert.equal(audioDrag.prevented, 0);
-  assert.deepEqual(calls, [
-    ['drop.preventDefault'],
-    ['arrayBuffer'],
-    ['preview', 'daily.m3u8', 'daily.m3u8', 18],
-    ['confirm', 'daily'],
-    ['commit', 'daily'],
-    ['navigateToDetail', { type: 'playlist', key: 'p_daily' }, 'playlists']
-  ]);
-});
-
 test('paged Electron playlist drop imports only through a main-owned opaque grant', async () => {
   const calls = [];
   const file = { name: 'daily.m3u8' };
@@ -2780,12 +2095,26 @@ test('paged Electron playlist drop imports only through a main-owned opaque gran
     size: 12, lastModified: 1, type: ''
   };
   const view = Object.assign(Object.create(LibraryView.prototype), {
-    pagedIntegrationRequired: true,
     manager: {
       playlists: {
-        async importFile(received) {
-          calls.push(['import', received]);
-          return { playlistId: 'playlist-1' };
+        async previewImport(received) {
+          calls.push(['preview', received]);
+          return {
+            previewToken: 'preview-1',
+            playlistId: 'playlist-1',
+            playlistName: 'Daily',
+            totalCount: 1,
+            resolvedCount: 1,
+            unresolvedCount: 0,
+            unresolvedItems: []
+          };
+        },
+        async commitImport(preview) {
+          calls.push(['commit', preview.previewToken]);
+          return { playlistId: preview.playlistId, playlistName: preview.playlistName };
+        },
+        async cancelImportPreview(preview) {
+          calls.push(['cancel', preview.previewToken]);
         }
       }
     },
@@ -2816,8 +2145,9 @@ test('paged Electron playlist drop imports only through a main-owned opaque gran
   assert.deepEqual(calls, [
     ['prevent'],
     ['grant', file],
-    ['import', source],
-    ['navigate', { type: 'playlist', key: 'playlist-1' }, 'playlists']
+    ['preview', source],
+    ['commit', 'preview-1'],
+    ['navigate', { type: 'playlist', key: 'playlist-1', title: 'Daily' }, 'playlists']
   ]);
 });
 
@@ -2842,7 +2172,7 @@ test('LibraryView browser playlist picker resolves null and cleans up on cancel'
     document: documentRef,
     window: windowRef
   }, async () => {
-    const picked = view.pickPlaylistFile();
+    const picked = view.pickBrowserPlaylistFile();
     assert.equal(clickCount, 1);
     assert.equal(input.parentNode, documentRef.body);
 
@@ -2885,7 +2215,7 @@ test('LibraryView browser playlist picker resolves null after focus timeout fall
     },
     clearTimeout() {}
   }, async () => {
-    const picked = view.pickPlaylistFile();
+    const picked = view.pickBrowserPlaylistFile();
     assert.equal(input.parentNode, documentRef.body);
     assert.equal(typeof focusListener, 'function');
 
@@ -2900,13 +2230,53 @@ test('LibraryView browser playlist picker resolves null after focus timeout fall
   });
 });
 
-test('LibraryView playlist export passes the relative path checkbox state', async () => {
+test('paged browser playlist picker reuses cancellation fallback and returns the File stream', async () => {
+  let arrayBufferReads = 0;
+  const file = {
+    name: 'Daily.m3u8',
+    async arrayBuffer() {
+      arrayBufferReads += 1;
+      return new ArrayBuffer(0);
+    }
+  };
+  const input = new FakeElement('input');
+  input.files = [file];
+  input.click = () => {};
+  const documentRef = createDocument();
+  documentRef.createElement = tagName => tagName === 'input' ? input : new FakeElement(tagName);
+  let focusListener = null;
+  const windowRef = {
+    addEventListener(type, listener) {
+      if (type === 'focus') focusListener = listener;
+    },
+    removeEventListener(type, listener) {
+      if (type === 'focus' && focusListener === listener) focusListener = null;
+    }
+  };
+  const view = Object.assign(Object.create(LibraryView.prototype), {});
+
+  await withGlobals({ document: documentRef, window: windowRef }, async () => {
+    const picked = view.pickPagedPlaylistFile();
+    await input.dispatch('change');
+
+    assert.equal(await picked, file);
+    assert.equal(arrayBufferReads, 0);
+    assert.equal(input.parentNode, null);
+    assert.equal(focusListener, null);
+    assert.equal(input.listeners.get('change')?.length || 0, 0);
+    assert.equal(input.listeners.get('cancel')?.length || 0, 0);
+  });
+});
+
+test('paged playlist export passes the relative path checkbox state', async () => {
   const calls = [];
+  const sink = { write() {}, commit() {}, abort() {} };
   const view = Object.assign(Object.create(LibraryView.prototype), {
     manager: {
-      async exportPlaylist(id, options) {
-        calls.push(['exportPlaylist', id, options]);
-        return '#EXTM3U\n';
+      playlists: {
+        async exportToSink(id, options) {
+          calls.push(['exportToSink', id, options]);
+        }
       }
     },
     content: {
@@ -2921,34 +2291,26 @@ test('LibraryView playlist export passes the relative path checkbox state', asyn
     },
     t(key) {
       return key;
+    },
+    async createPagedPlaylistExportSink(options) {
+      calls.push(['createSink', options]);
+      return sink;
     }
   });
 
-  await withGlobals({
-    window: {
-      electronAPI: {
-        async showSaveDialog(options) {
-          calls.push(['showSaveDialog', options.defaultPath]);
-          return { filePath: 'D:/Playlists/Daily.m3u8' };
-        },
-        async saveFile(filePath, text) {
-          calls.push(['saveFile', filePath, text]);
-          return { success: true };
-        }
-      }
-    }
-  }, async () => {
-    await view.handleExportPlaylist({ id: 'p_daily', name: 'Daily' }, 'm3u8');
-  });
+  await view.handleExportPlaylist({ id: 'p_daily', name: 'Daily' }, 'm3u8');
 
   assert.deepEqual(calls, [
-    ['showSaveDialog', 'Daily.m3u8'],
-    ['exportPlaylist', 'p_daily', {
-      format: 'm3u8',
-      targetPath: 'D:/Playlists/Daily.m3u8',
-      preferRelative: false
+    ['createSink', {
+      fileName: 'Daily.m3u8',
+      dialogTitle: 'library.action.exportM3U8',
+      filters: [{ name: 'Playlists', extensions: ['m3u8'] }]
     }],
-    ['saveFile', 'D:/Playlists/Daily.m3u8', '#EXTM3U\n']
+    ['exportToSink', 'p_daily', {
+      format: 'm3u8',
+      relative: false,
+      sink
+    }]
   ]);
 });
 
@@ -2972,6 +2334,37 @@ test('paged Electron export sink retains the selected destination path', async (
     assert.equal(sink.destinationPath, 'D:/Playlists/Daily.m3u8');
   });
   assert.deepEqual(calls, [['begin', 'D:/Playlists/Daily.m3u8']]);
+});
+
+test('paged FSA export treats AbortError as a silent save-picker cancellation', async () => {
+  const calls = [];
+  const view = Object.assign(Object.create(LibraryView.prototype), {
+    manager: {
+      playlists: {
+        async exportToSink() {
+          calls.push('export');
+        }
+      }
+    },
+    uiManager: {
+      setError() {
+        calls.push('error');
+      }
+    },
+    t: key => key
+  });
+
+  await withGlobals({
+    window: {
+      async showSaveFilePicker() {
+        throw Object.assign(new Error('Canceled'), { name: 'AbortError' });
+      }
+    }
+  }, async () => {
+    await view.handleExportPlaylist({ playlistId: 'playlist-1', name: 'Daily' }, 'm3u8');
+  });
+
+  assert.deepEqual(calls, []);
 });
 
 test('paged non-FSA export uses a bounded Blob sink and returns a typed overflow', async () => {
@@ -3012,60 +2405,6 @@ test('paged non-FSA export uses a bounded Blob sink and returns a typed overflow
     );
     await overflowing.abort();
   });
-});
-
-test('LibraryView export dialogs use format-specific titles and extension filters', async () => {
-  const dialogs = [];
-  const saves = [];
-  const view = Object.assign(Object.create(LibraryView.prototype), {
-    manager: {
-      async exportPlaylist(_id, options) {
-        return options.format === 'xspf' ? '<?xml version="1.0"?>\n' : '#EXTM3U\n';
-      }
-    },
-    content: {
-      querySelector(selector) {
-        return selector === '.library-playlist-export-relative' ? { checked: true } : null;
-      }
-    },
-    uiManager: {
-      setError(message, sticky) {
-        saves.push(['setError', message, sticky]);
-      }
-    },
-    t(key) {
-      return key;
-    }
-  });
-
-  await withGlobals({
-    window: {
-      electronAPI: {
-        async showSaveDialog(options) {
-          dialogs.push(options);
-          return { filePath: `D:/Playlists/${options.defaultPath}` };
-        },
-        async saveFile(filePath, text) {
-          saves.push([filePath, text]);
-          return { success: true };
-        }
-      }
-    }
-  }, async () => {
-    await view.handleExportPlaylist({ id: 'p1', name: 'Daily' }, 'xspf');
-    await view.handleExportPlaylist({ id: 'p1', name: 'Daily' }, 'm3u8');
-  });
-
-  assert.equal(dialogs[0].title, 'library.action.exportXSPF');
-  assert.equal(dialogs[0].defaultPath, 'Daily.xspf');
-  assert.deepEqual(dialogs[0].filters, [{ name: 'Playlists', extensions: ['xspf'] }]);
-  assert.equal(dialogs[1].title, 'library.action.exportM3U8');
-  assert.equal(dialogs[1].defaultPath, 'Daily.m3u8');
-  assert.deepEqual(dialogs[1].filters, [{ name: 'Playlists', extensions: ['m3u8'] }]);
-  assert.deepEqual(saves, [
-    ['D:/Playlists/Daily.xspf', '<?xml version="1.0"?>\n'],
-    ['D:/Playlists/Daily.m3u8', '#EXTM3U\n']
-  ]);
 });
 
 test('PlaybackManager keeps extended library queue entries in insertAt order', async () => {

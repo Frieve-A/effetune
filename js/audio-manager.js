@@ -1817,70 +1817,79 @@ export class AudioManager {
         }
     }
 
-    _canApplySilentWebInputInPlace(previousPreferences, nextPreferences) {
-        return !window.electronAPI &&
-            nextPreferences?.inputDeviceId === NO_AUDIO_INPUT_DEVICE_ID &&
+    _canApplySilentInputInPlace(previousPreferences, nextPreferences) {
+        return nextPreferences?.inputDeviceId === NO_AUDIO_INPUT_DEVICE_ID &&
             previousPreferences?.inputDeviceId !== NO_AUDIO_INPUT_DEVICE_ID &&
             audioPipelineConfigurationEqual(previousPreferences, nextPreferences) &&
             !!this.contextManager?.audioContext && !!this.contextManager?.workletNode;
     }
 
-    _setWebAudioPreferencesMirror(preferences) {
+    _setAudioPreferencesMirror(preferences) {
         window.audioPreferences = preferences;
         if (window.electronIntegration) {
             window.electronIntegration.audioPreferences = preferences;
         }
     }
 
-    _isSilentWebInputApplied() {
+    _isSilentInputApplied() {
         const silentSource = this.ioManager.silentInputGainNode;
         return !!silentSource && !this.ioManager.inputSourceNode &&
             this.isSourceConnectedToPipeline(silentSource) &&
             this.ioManager.getInputSnapshot?.().state === 'not-configured';
     }
 
-    async _applySilentWebInputInPlace(preferences, previousPreferences) {
-        if (!saveWebAudioPreferences(preferences)) {
+    async _persistInPlaceAudioPreferences(preferences, applyInPlace) {
+        if (window.electronAPI) {
+            if (typeof window.electronIntegration?.saveAudioPreferences !== 'function') return false;
+            return window.electronIntegration.saveAudioPreferences(preferences, { applyInPlace });
+        }
+        return saveWebAudioPreferences(preferences);
+    }
+
+    async _applySilentInputInPlace(preferences, previousPreferences) {
+        if (!await this._persistInPlaceAudioPreferences(preferences, 'silent-input')) {
             return 'Audio Error: Failed to save audio preferences.';
         }
-        this._setWebAudioPreferencesMirror(preferences);
+        this._setAudioPreferencesMirror(preferences);
         const currentRevision = this.powerPolicyController.getInputConfigRevision();
         const nextRevision = currentRevision + 1;
         const releaseApplied = await this.powerPolicyController
             .requestSilentInputSelection(nextRevision);
         if (releaseApplied !== true) {
-            if (this._isSilentWebInputApplied()) {
+            if (this._isSilentInputApplied()) {
                 console.warn(
                     '[AudioManager] Silent input was applied physically; preserving the matching preference.'
                 );
                 this.powerPolicyController.requestReconcile?.('silent-input-applied').catch(() => {});
                 return '';
             }
-            saveWebAudioPreferences(previousPreferences);
-            this._setWebAudioPreferencesMirror(previousPreferences);
+            await this._persistInPlaceAudioPreferences(previousPreferences, 'silent-input-rollback');
+            this._setAudioPreferencesMirror(previousPreferences);
             const reason = this.powerPolicyController.transitionError?.message ||
                 'audio input could not be switched to silence';
             return `Audio Error: ${reason}`;
         }
-        if (!this._isSilentWebInputApplied()) {
-            saveWebAudioPreferences(previousPreferences);
-            this._setWebAudioPreferencesMirror(previousPreferences);
+        if (!this._isSilentInputApplied()) {
+            await this._persistInPlaceAudioPreferences(previousPreferences, 'silent-input-rollback');
+            this._setAudioPreferencesMirror(previousPreferences);
             return 'Audio Error: silent audio input handoff failed.';
         }
         return '';
     }
 
     async _executeReset(audioPreferences = null) {
-        const previousPreferences = loadWebAudioPreferences() ||
-            window.electronIntegration?.audioPreferences || { inputDeviceId: 'default' };
+        const previousPreferences = (window.electronAPI
+            ? window.electronIntegration?.audioPreferences || window.audioPreferences
+            : loadWebAudioPreferences() || window.electronIntegration?.audioPreferences) ||
+            { inputDeviceId: 'default' };
         if (audioPreferences &&
-            this._canApplySilentWebInputInPlace(previousPreferences, audioPreferences)) {
-            const result = await this._applySilentWebInputInPlace(
+            this._canApplySilentInputInPlace(previousPreferences, audioPreferences)) {
+            const result = await this._applySilentInputInPlace(
                 audioPreferences,
                 previousPreferences
             );
             if (result) {
-                this._setWebAudioPreferencesMirror(previousPreferences);
+                this._setAudioPreferencesMirror(previousPreferences);
             }
             return result;
         }

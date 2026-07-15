@@ -37,20 +37,9 @@ self.addEventListener('fetch', event => {
     if (request.mode === 'navigate') {
         if (isAppShellNavigation(url)) {
             event.respondWith(
-                fetch(request)
-                    .then(async response => {
-                        if (response.ok) {
-                            try {
-                                const copy = response.clone();
-                                const cache = await caches.open(CACHE_VERSION);
-                                await cache.put(APP_SHELL_URL, copy);
-                            } catch (_) {
-                                // Cache updates are best-effort; never fail a live navigation.
-                            }
-                        }
-                        return response;
-                    })
-                    .catch(() => caches.match(APP_SHELL_URL))
+                caches.open(CACHE_VERSION)
+                    .then(cache => cache.match(APP_SHELL_URL))
+                    .then(cached => cached || fetch(request))
             );
             return;
         }

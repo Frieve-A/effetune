@@ -50,7 +50,7 @@ This file replaces the former `CLAUDE.md` local agent instructions.
 
 - Commit or push only when the user explicitly requests it. Before staging, inspect `git status` and the relevant diff, and keep unrelated user changes out of the commit.
 - If any DSP digest input changes (`dsp/**`, `scripts/gen-dsp-params.mjs`, or `scripts/build-dsp-wasm.mjs`), run `npm run build:dsp`, review and include every generated change (including `plugins/dsp/` artifacts, generated parameter files, and the injected worklet binding), then rerun the build and confirm it produces no further managed-file changes.
-- If web runtime or precache inputs change, run `npm run assets:web` and include every resulting generated asset change, including `sw-precache.js`.
+- If web runtime or precache inputs change, `sw-precache.js` may be ignored during iterative edits. Before committing, run `npm run assets:web` and include every resulting generated asset change, including `sw-precache.js`.
 - Run `npm run verify` after generated files are current and before committing. Do not commit or push while required verification is failing.
 - Immediately before committing, confirm the staged diff contains the full intended change and passes `git diff --cached --check`. Immediately before pushing, confirm the worktree state and the exact branch and commit being pushed.
 - After pushing, inspect the GitHub Actions run for the pushed commit. Do not report the push workflow as complete until required checks pass or any remaining failure has been reported with its cause.

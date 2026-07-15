@@ -7,10 +7,13 @@ const path = require('node:path');
 const test = require('node:test');
 
 const {
+  LIBRARY_CATALOG_FOLDER_REMOVAL_EVENT_CHANNEL,
   LIBRARY_CATALOG_INVALIDATION_CHANNEL,
+  LIBRARY_CATALOG_CONTROL_CHANNELS,
   LIBRARY_CATALOG_RENDERER_CHANNELS,
   LibraryCatalogHost,
-  LibraryCatalogLifecycle
+  LibraryCatalogLifecycle,
+  registerLibraryCatalogControlIpc
 } = require('../../electron/library-catalog-host.cjs');
 const {
   LIBRARY_SERVICE_CHANNELS,
@@ -45,10 +48,6 @@ class FakeCatalogHost extends EventEmitter {
 
   queryEntities(request) {
     return this.request('queryEntities', request);
-  }
-
-  readContextPage(request) {
-    return this.request('readContextPage', request);
   }
 
   readContextPageAtOrdinal(request) {
@@ -94,6 +93,16 @@ function createMainWindow() {
     destroyed: false,
     isDestroyed() {
       return this.destroyed;
+    }
+  };
+}
+
+function createShell() {
+  const shownPaths = [];
+  return {
+    shownPaths,
+    showItemInFolder(filePath) {
+      shownPaths.push(filePath);
     }
   };
 }
@@ -180,6 +189,92 @@ test('catalog IPC rejects stale senders, forwards worker-validated payloads, and
     }
   ]]);
   await lifecycle.close();
+});
+
+test('catalog control IPC relays bounded folder removal progress', () => {
+  const ipcMain = createIpcMain();
+  const mainWindow = createMainWindow();
+  const runtime = new EventEmitter();
+  runtime.scanFolders = async () => ({ accepted: true });
+  const dispose = registerLibraryCatalogControlIpc({
+    ipcMain,
+    runtime,
+    shell: createShell(),
+    getMainWindow: () => mainWindow
+  });
+  const progress = {
+    folderId: 'folder-one', phase: 'removing', deleted: 4, total: 12,
+    remaining: 8, terminal: false
+  };
+
+  runtime.emit('folder-removal-event', progress);
+  assert.deepEqual(mainWindow.webContents.sends, [[
+    LIBRARY_CATALOG_FOLDER_REMOVAL_EVENT_CHANNEL,
+    progress
+  ]]);
+
+  dispose();
+  assert.equal(runtime.listenerCount('folder-removal-event'), 0);
+});
+
+test('catalog control IPC resolves playback and shows folders only through the grant-aware runtime', async t => {
+  const ipcMain = createIpcMain();
+  const mainWindow = createMainWindow();
+  const runtime = new EventEmitter();
+  runtime.scanFolders = async () => ({ accepted: true });
+  const playbackPath = path.resolve('Music', 'Track # 100%.flac');
+  runtime.resolvePlaybackSource = async trackUid => ({
+    kind: 'electron-file',
+    trackUid,
+    folderId: 'folder-1',
+    lifecycleVersion: 5,
+    path: playbackPath
+  });
+  const shell = createShell();
+  const dispose = registerLibraryCatalogControlIpc({
+    ipcMain,
+    runtime,
+    shell,
+    getMainWindow: () => mainWindow
+  });
+  t.after(dispose);
+  const senderEvent = { sender: mainWindow.webContents };
+  const handler = ipcMain.handlers.get(LIBRARY_CATALOG_CONTROL_CHANNELS.resolvePlaybackSource);
+
+  assert.deepEqual(await handler(senderEvent, { trackUid: 'track-1' }), {
+    kind: 'electron-file',
+    trackUid: 'track-1',
+    folderId: 'folder-1',
+    lifecycleVersion: 5,
+    path: playbackPath
+  });
+  const showHandler = ipcMain.handlers.get(LIBRARY_CATALOG_CONTROL_CHANNELS.showTrackInFolder);
+  assert.deepEqual(await showHandler(senderEvent, { trackUid: 'track-1' }), { success: true });
+  assert.deepEqual(shell.shownPaths, [playbackPath]);
+  await assert.rejects(
+    handler(senderEvent, { trackUid: 'track-1', path: playbackPath }),
+    error => error?.code === 'invalidRequest'
+  );
+  await assert.rejects(
+    showHandler(senderEvent, { trackUid: 'track-1', path: playbackPath }),
+    error => error?.code === 'invalidRequest'
+  );
+
+  runtime.resolvePlaybackSource = async () => {
+    const error = new Error('permission required');
+    error.code = 'folderPermissionRequired';
+    error.details = { folderId: 'folder-1', lifecycleVersion: 5 };
+    throw error;
+  };
+  assert.deepEqual(await handler(senderEvent, { trackUid: 'track-1' }), {
+    code: 'folderPermissionRequired',
+    details: { folderId: 'folder-1', lifecycleVersion: 5 }
+  });
+  assert.deepEqual(await showHandler(senderEvent, { trackUid: 'track-1' }), {
+    code: 'folderPermissionRequired',
+    details: { folderId: 'folder-1', lifecycleVersion: 5 }
+  });
+  assert.deepEqual(shell.shownPaths, [playbackPath]);
 });
 
 test('catalog lifecycle cleans up partial opens and permits an explicit retry', async () => {
@@ -287,13 +382,13 @@ test('preload exposes versioned bounded catalog and playlist wrappers', async ()
   await api.getContextCount({ contextToken: 'ctx' });
   await api.queryTracks({ query: '', limit: 200 });
   await api.queryEntities({ type: 'album', query: '', limit: 200 });
-  await api.readContextPage({ contextToken: 'ctx', cursor: null, limit: 200 });
   await api.readContextPageAtOrdinal({ contextToken: 'ctx', ordinal: 10, limit: 200 });
   await api.resolveEntityAnchor({ contextToken: 'ctx', entityId: 'album-1' });
-  await api.lookupContextTrack({ contextToken: 'ctx', trackUid: 'track' });
   await api.releaseContext('ctx');
   await api.getTrack('track');
+  await api.resolvePlaylistExportSource('track');
   await api.resolvePlaybackSource('track');
+  await api.showTrackInFolder('track');
   await api.createPlaylist({ playlistId: 'playlist' });
   await api.createPlaylistWithItems({ playlistId: 'playlist-with-items', items: [{ trackUid: 'track' }] });
   await api.renamePlaylist({ playlistId: 'playlist', name: 'Renamed' });
@@ -304,7 +399,14 @@ test('preload exposes versioned bounded catalog and playlist wrappers', async ()
   assert.equal(api.publishPlaylist, undefined);
   await api.queryPlaylistItems({ playlistId: 'playlist', limit: 200 });
   await api.tombstonePlaylist({ playlistId: 'playlist' });
-  assert.deepEqual(invocations.map(call => call[0]), Object.values(LIBRARY_CATALOG_RENDERER_CHANNELS));
+  const expectedChannels = Object.values(LIBRARY_CATALOG_RENDERER_CHANNELS);
+  expectedChannels.splice(
+    expectedChannels.indexOf(LIBRARY_CATALOG_RENDERER_CHANNELS.resolvePlaylistExportSource) + 1,
+    0,
+    LIBRARY_CATALOG_CONTROL_CHANNELS.resolvePlaybackSource,
+    LIBRARY_CATALOG_CONTROL_CHANNELS.showTrackInFolder
+  );
+  assert.deepEqual(invocations.map(call => call[0]), expectedChannels);
   await api.requestArtwork({ trackUid: 'track', reason: 'viewport' });
   assert.equal(invocations.at(-1)[0], 'library-catalog-v1:request-artwork');
 
@@ -314,30 +416,39 @@ test('preload exposes versioned bounded catalog and playlist wrappers', async ()
   assert.deepEqual(events, [{ catalogVersion: 4 }]);
   unsubscribe();
   assert.equal(listeners.has(LIBRARY_CATALOG_INVALIDATION_CHANNEL), false);
+  const removalEvents = [];
+  const unsubscribeRemoval = api.onFolderRemovalEvent(event => removalEvents.push(event));
+  listeners.get(LIBRARY_CATALOG_FOLDER_REMOVAL_EVENT_CHANNEL)({}, {
+    folderId: 'folder-one', phase: 'removing', deleted: 4, total: 12
+  });
+  assert.deepEqual(removalEvents, [{
+    folderId: 'folder-one', phase: 'removing', deleted: 4, total: 12
+  }]);
+  unsubscribeRemoval();
+  assert.equal(listeners.has(LIBRARY_CATALOG_FOLDER_REMOVAL_EVENT_CHANNEL), false);
 
   const serviceApi = exposed.electronAPI.libraryServiceV1;
   assert.equal(serviceApi.apiVersion, 1);
   assert.deepEqual(Object.keys(serviceApi).sort(), [
-    'apiVersion', 'cancel', 'lookupResult', 'onEvent', 'start', 'status'
+    'apiVersion', 'cancel', 'cancelPlaylistImportPreview', 'commitPlaylistImportPreview',
+    'onEvent', 'previewPlaylistImport', 'start', 'status'
   ]);
   const serviceInvocationOffset = invocations.length;
   await serviceApi.start({ clientRequestId: 'request' });
-  await serviceApi.lookupResult('request');
   await serviceApi.status('operation');
   await serviceApi.cancel('operation');
+  await serviceApi.previewPlaylistImport({ source: 'grant' });
+  await serviceApi.commitPlaylistImportPreview({ previewToken: 'preview', playlistId: 'playlist' });
+  await serviceApi.cancelPlaylistImportPreview({ previewToken: 'preview', playlistId: 'playlist' });
   assert.deepEqual(
     invocations.slice(serviceInvocationOffset).map(call => call[0]),
     Object.values(LIBRARY_SERVICE_CHANNELS)
   );
   const playbackApi = exposed.electronAPI.libraryPlaybackV1;
   assert.deepEqual(Object.keys(playbackApi).sort(), [
-    'apiVersion', 'applyTransportUndo', 'commitTransportCommand', 'getProvisionalEntry', 'getTransportState',
-    'readSequencePage', 'resolveSequenceEntrySource'
+    'apiVersion', 'getProvisionalEntry', 'readSequencePage', 'resolveSequenceEntrySource'
   ]);
   const playbackInvocationOffset = invocations.length;
-  await playbackApi.commitTransportCommand({ command: 'next', expectedTransportVersion: 1 });
-  await playbackApi.getTransportState();
-  await playbackApi.applyTransportUndo({ undoId: 'transport:operation', expectedTransportVersion: 1 });
   await playbackApi.getProvisionalEntry('operation');
   await playbackApi.readSequencePage({ sequenceId: 'sequence', ordinal: 0, limit: 80 });
   await playbackApi.resolveSequenceEntrySource({ trackUid: 'track' });

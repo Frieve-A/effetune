@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const constants = require('./constants');
 const config = require('./config');
 const { registerClipboardIpcHandlers } = require('./clipboard-ipc');
-const { registerLibraryIpcHandlers } = require('./library-handlers');
+const { readFileBytes } = require('./bounded-file-reader');
 
 // Import file handlers
 const fileHandlers = require('./file-handlers');
@@ -17,7 +17,37 @@ const SETTINGS_DIR_SAVE_FILE_ALLOWLIST = new Set([
 ]);
 const SETTINGS_DIR_SAVE_FILE_DENIAL = 'Writing to the EffeTune settings folder is not allowed: library-folders.json and other settings files are managed by the application';
 const ATOMIC_FILE_WRITE_MAX_CHARS = 64 * 1024;
+const NO_AUDIO_INPUT_DEVICE_ID = '__effetune_no_audio_input__';
+const AUDIO_PIPELINE_DEFAULTS = Object.freeze({
+  outputDeviceId: 'default',
+  sampleRate: 96000,
+  useInputWithPlayer: false,
+  lowLatencyOutput: false,
+  useWasmDsp: true,
+  outputChannels: 2,
+  latencyHint: 'interactive'
+});
 const atomicFileWrites = new Map();
+
+function audioPipelineConfigurationEqual(left, right) {
+  if (!left || !right) return false;
+  return Object.entries(AUDIO_PIPELINE_DEFAULTS).every(([key, fallback]) =>
+    Object.is(left[key] ?? fallback, right[key] ?? fallback));
+}
+
+function canPersistAudioPreferencesWithoutReload(previousPreferences, nextPreferences, options) {
+  const applyInPlace = options?.applyInPlace;
+  if (!audioPipelineConfigurationEqual(previousPreferences, nextPreferences)) return false;
+  if (applyInPlace === 'silent-input') {
+    return nextPreferences?.inputDeviceId === NO_AUDIO_INPUT_DEVICE_ID &&
+      previousPreferences?.inputDeviceId !== NO_AUDIO_INPUT_DEVICE_ID;
+  }
+  if (applyInPlace === 'silent-input-rollback') {
+    return previousPreferences?.inputDeviceId === NO_AUDIO_INPUT_DEVICE_ID &&
+      nextPreferences?.inputDeviceId !== NO_AUDIO_INPUT_DEVICE_ID;
+  }
+  return false;
+}
 
 function normalizePathForComparison(filePath) {
   const resolvedPath = path.resolve(filePath);
@@ -250,17 +280,13 @@ function registerIpcHandlers() {
     return { success: true };
   });
 
-  ipcMain.handle('read-file', async (event, filePath, binary = false) => {
-    return await fileHandlers.readFile(filePath, binary);
+  ipcMain.handle('read-file', async (event, filePath) => {
+    return await fileHandlers.readFile(filePath);
   });
 
   registerClipboardIpcHandlers(ipcMain, clipboard);
-  registerLibraryIpcHandlers(ipcMain, {
-    getUserDataPath: fileHandlers.getUserDataPath
-  });
-
-  ipcMain.handle('read-file-as-buffer', async (event, filePath) => {
-    return await fileHandlers.readFileAsBuffer(filePath);
+  ipcMain.handle('read-file-bytes', async (event, filePath) => {
+    return await readFileBytes(filePath);
   });
 
   // Request macOS microphone TCC permission from the main process.
@@ -316,10 +342,23 @@ function registerIpcHandlers() {
   });
 
   // Save audio device preferences
-  ipcMain.handle('save-audio-preferences', async (event, preferences) => {
+  ipcMain.handle('save-audio-preferences', async (event, preferences, options = {}) => {
     try {
       const userDataPath = fileHandlers.getUserDataPath();
       const prefsPath = path.join(userDataPath, 'audio-preferences.json');
+      let previousPreferences = { inputDeviceId: 'default' };
+      if (fs.existsSync(prefsPath)) {
+        try {
+          previousPreferences = JSON.parse(fs.readFileSync(prefsPath, 'utf8'));
+        } catch (error) {
+          console.warn('Replacing unreadable audio preferences:', error);
+        }
+      }
+      const persistWithoutReload = canPersistAudioPreferencesWithoutReload(
+        previousPreferences,
+        preferences,
+        options
+      );
       
       // Ensure the directory exists
       if (!fs.existsSync(userDataPath)) {
@@ -330,7 +369,7 @@ function registerIpcHandlers() {
       
       // Show message that audio settings are saved and the application will reload shortly
       const mainWin = constants.getMainWindow();
-      if (mainWin) {
+      if (mainWin && !persistWithoutReload) {
         mainWin.webContents.send('show-message', 'Audio settings saved. The application will reload shortly.');
         
         // Wait for a few seconds before reloading

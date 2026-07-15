@@ -3,26 +3,33 @@
 const { EventEmitter } = require('node:events');
 const fs = require('node:fs');
 const path = require('node:path');
+const {
+  createFolderConsolidationDialogOptions,
+  createLibraryDialogTranslator
+} = require('./library-dialog-localization.cjs');
+const { createArtworkThumbnail } = require('./library-catalog-scan-runtime.cjs');
 
 const LIBRARY_CATALOG_UTILITY_PROTOCOL_VERSION = 1;
 const MAX_UTILITY_MESSAGE_BYTES = 4 * 1024 * 1024;
+const MAX_ARTWORK_BRIDGE_MESSAGE_BYTES = 21 * 1024 * 1024;
 const MAX_UTILITY_OUTSTANDING_REQUESTS = 32;
 const UTILITY_CLOSE_TIMEOUT_MS = 2000;
+const UTILITY_OPEN_TIMEOUT_MS = 10000;
 
 const RUNTIME_METHODS = Object.freeze([
   'addFolder', 'requestFolderAccess', 'scanFolders', 'cancelScan', 'removeFolder',
-  'requestArtwork', 'pickPlaylistImport', 'grantDroppedPlaylistImport', 'getScanStatus'
+  'requestArtwork', 'resolvePlaybackSource', 'pickPlaylistImport', 'grantDroppedPlaylistImport'
 ]);
 const COORDINATOR_METHODS = Object.freeze([
-  'start', 'lookupResult', 'status', 'cancel', 'getProvisionalEntry',
-  'commitTransportCommand', 'getTransportState', 'applyTransportUndo', 'readSequencePage',
-  'resolveSequenceEntrySource'
+  'start', 'status', 'cancel', 'getProvisionalEntry', 'readSequencePage',
+  'resolveSequenceEntrySource', 'previewPlaylistImport',
+  'commitPlaylistImportPreview', 'cancelPlaylistImportPreview'
 ]);
 const REPOSITORY_METHODS = Object.freeze([
   'getCapabilities', 'getCounts', 'createContext', 'getContextCount',
   'queryTracks', 'queryEntities', 'readContextPage', 'readContextPageAtOrdinal',
-  'resolveEntityAnchor', 'lookupContextTrack', 'releaseContext', 'getTrack',
-  'resolvePlaybackSource', 'createPlaylist', 'createPlaylistWithItems',
+  'resolveEntityAnchor', 'retainContext', 'releaseRetainedContext', 'releaseContext', 'getTrack',
+  'createPlaylist', 'createPlaylistWithItems',
   'renamePlaylist', 'reorderPlaylistItem', 'removePlaylistItem', 'duplicatePlaylist',
   'queryPlaylistItems', 'tombstonePlaylist'
 ]);
@@ -33,6 +40,8 @@ class LibraryCatalogUtilityHost {
     getMainWindow = () => null,
     processFactory,
     dbPath,
+    imageAdapter = null,
+    translate = createLibraryDialogTranslator(),
     closeTimeoutMs = UTILITY_CLOSE_TIMEOUT_MS
   } = {}) {
     if (!dialog || typeof dialog.showOpenDialog !== 'function') {
@@ -51,6 +60,8 @@ class LibraryCatalogUtilityHost {
     }
     this.dialog = dialog;
     this.getMainWindow = getMainWindow;
+    this.translate = translate;
+    this.imageAdapter = imageAdapter;
     this.dbPath = dbPath;
     this.closeTimeoutMs = Number.isFinite(closeTimeoutMs) && closeTimeoutMs > 0
       ? closeTimeoutMs
@@ -60,12 +71,7 @@ class LibraryCatalogUtilityHost {
     this.closed = false;
     this.closing = false;
     this.failure = null;
-    this.diagnosticMode = false;
     this.readyResolved = false;
-    this.restartCount = 0;
-    this.restartPromise = Promise.resolve();
-    this.resolveRestart = null;
-    this.rejectRestart = null;
     this.failedChildren = new WeakSet();
     this.nextRequestId = 1;
     this.pending = new Map();
@@ -81,13 +87,30 @@ class LibraryCatalogUtilityHost {
 
   static async open(options) {
     const host = new LibraryCatalogUtilityHost(options);
-    await host.ready;
-    return host;
+    const openTimeoutMs = Number.isFinite(options?.openTimeoutMs) && options.openTimeoutMs > 0
+      ? options.openTimeoutMs
+      : UTILITY_OPEN_TIMEOUT_MS;
+    let timeoutId;
+    try {
+      await Promise.race([
+        host.ready,
+        new Promise((_, reject) => {
+          timeoutId = setTimeout(() => reject(createUtilityError(
+            'utilityOpenTimeout', 'Library utility initialization timed out'
+          )), openTimeoutMs);
+        })
+      ]);
+      return host;
+    } catch (error) {
+      await host.close();
+      throw error;
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+    }
   }
 
   async request(target, method, args = []) {
     await this.ready;
-    await this.restartPromise;
     if (this.failure) throw this.failure;
     if (this.closed || this.closing) throw createUtilityError('utilityClosed', 'Library utility is closed');
     if (this.pending.size >= MAX_UTILITY_OUTSTANDING_REQUESTS) {
@@ -114,7 +137,7 @@ class LibraryCatalogUtilityHost {
     this.child.postMessage(message);
   }
 
-  spawnChild({ readOnlyDiagnostic = null } = {}) {
+  spawnChild() {
     const child = this.processFactory(this.modulePath);
     this.child = child;
     child.on('message', message => {
@@ -129,7 +152,6 @@ class LibraryCatalogUtilityHost {
     child.postMessage({
       type: 'initialize',
       dbPath: this.dbPath,
-      ...(readOnlyDiagnostic ? { readOnlyDiagnostic } : {}),
       protocolVersion: LIBRARY_CATALOG_UTILITY_PROTOCOL_VERSION
     });
   }
@@ -137,46 +159,12 @@ class LibraryCatalogUtilityHost {
   async handleChildFailure(child, error) {
     if (this.closed || this.closing || child !== this.child || this.failedChildren.has(child)) return;
     this.failedChildren.add(child);
-    for (const pending of this.pending.values()) pending.reject(createUtilityError(
-      'utilityRestarted', 'The music library restarted before this action finished. Please try again.'
-    ));
-    this.pending.clear();
-    if (this.diagnosticMode) {
-      child.kill?.();
-      await this.failPermanently(createUtilityError(
-        'utilityDiagnosticFailure',
-        'The music library could not recover. Restart EffeTune and try again.',
-        { lastCode: String(error?.code || error?.name || 'utilityError').slice(0, 128) }
-      ));
-      return;
-    }
-    if (this.restartCount < 1) {
-      this.restartCount += 1;
-      this.restartPromise = new Promise((resolve, reject) => {
-        this.resolveRestart = resolve;
-        this.rejectRestart = reject;
-      });
-      child.kill?.();
-      this.spawnChild();
-      return;
-    }
-    const repeatedFailure = createUtilityError(
-      'utilityRepeatedFailure',
-      'Library utility failed again after its one allowed restart',
-      { lastCode: String(error?.code || error?.name || 'utilityError').slice(0, 128) }
-    );
-    this.diagnosticMode = true;
-    this.restartPromise = new Promise((resolve, reject) => {
-      this.resolveRestart = resolve;
-      this.rejectRestart = reject;
-    });
     child.kill?.();
-    this.spawnChild({
-      readOnlyDiagnostic: {
-        code: 'utility-process-failure',
-        safeDetails: { errorCode: repeatedFailure.code }
-      }
-    });
+    await this.failPermanently(createUtilityError(
+      'utilityUnavailable',
+      'The music library utility is unavailable.',
+      { lastCode: String(error?.code || error?.name || 'utilityError').slice(0, 128) }
+    ));
   }
 
   async handleMessage(message) {
@@ -185,7 +173,12 @@ class LibraryCatalogUtilityHost {
       return;
     }
     try {
-      assertBoundedMessage(message);
+      assertBoundedMessage(
+        message,
+        message.type === 'artwork-thumbnail-request'
+          ? MAX_ARTWORK_BRIDGE_MESSAGE_BYTES
+          : MAX_UTILITY_MESSAGE_BYTES
+      );
     } catch (error) {
       await this.handleChildFailure(this.child, error);
       return;
@@ -198,9 +191,6 @@ class LibraryCatalogUtilityHost {
           this.readyResolved = true;
           this.resolveReady(message.payload);
         }
-        this.resolveRestart?.(message.payload);
-        this.resolveRestart = null;
-        this.rejectRestart = null;
       }
       return;
     }
@@ -222,6 +212,10 @@ class LibraryCatalogUtilityHost {
       await this.handleDialogRequest(message);
       return;
     }
+    if (message.type === 'artwork-thumbnail-request') {
+      await this.handleArtworkThumbnailRequest(message);
+      return;
+    }
     if (message.type === 'event') {
       const facade = message.target === 'runtime'
         ? this.runtime
@@ -236,6 +230,19 @@ class LibraryCatalogUtilityHost {
       this.postUtilityResponse('dialog-response', message.requestId, true, result);
     } catch (error) {
       this.postUtilityResponse('dialog-response', message.requestId, false, null, error);
+    }
+  }
+
+  async handleArtworkThumbnailRequest(message) {
+    try {
+      const source = message.bytes;
+      if (!ArrayBuffer.isView(source) && !(source instanceof ArrayBuffer)) {
+        throw createUtilityError('invalidArtworkThumbnailRequest', 'Artwork thumbnail bytes are invalid');
+      }
+      const result = createArtworkThumbnail(source, this.imageAdapter);
+      this.postUtilityResponse('artwork-thumbnail-response', message.requestId, true, result);
+    } catch (error) {
+      this.postUtilityResponse('artwork-thumbnail-response', message.requestId, false, null, error);
     }
   }
 
@@ -265,6 +272,15 @@ class LibraryCatalogUtilityHost {
         filters: [{ name: 'Playlists', extensions: ['m3u', 'm3u8', 'pls', 'xspf'] }]
       });
     }
+    if (kind === 'folder-consolidation') {
+      if (typeof this.dialog.showMessageBox !== 'function') {
+        throw createUtilityError('invalidUtilityDialog', 'A confirmation dialog adapter is required');
+      }
+      return this.dialog.showMessageBox(
+        this.getMainWindow(),
+        createFolderConsolidationDialogOptions(this.translate)
+      );
+    }
     throw createUtilityError('unknownDialogRequest', 'Library utility requested an unknown dialog');
   }
 
@@ -281,10 +297,9 @@ class LibraryCatalogUtilityHost {
   async failPermanently(error) {
     if (this.failure) return;
     this.failure = error;
-    if (!this.readyResolved) this.rejectReady(error);
-    this.rejectRestart?.(error);
-    this.resolveRestart = null;
-    this.rejectRestart = null;
+    if (!this.readyResolved) {
+      this.rejectReady(error);
+    }
     for (const pending of this.pending.values()) pending.reject(error);
     this.pending.clear();
     this.repository.emit('failure', error);
@@ -319,7 +334,6 @@ class LibraryCatalogUtilityHost {
 
   async requestDuringClose(target, method, args) {
     await this.ready;
-    await this.restartPromise;
     if (this.failure) throw this.failure;
     const requestId = this.nextRequestId++;
     const message = {
@@ -366,7 +380,7 @@ function unwrapMessage(message) {
   return message && Object.hasOwn(message, 'data') ? message.data : message;
 }
 
-function assertBoundedMessage(value) {
+function assertBoundedMessage(value, maximumBytes = MAX_UTILITY_MESSAGE_BYTES) {
   let json;
   let binaryBytes = 0;
   try {
@@ -382,7 +396,7 @@ function assertBoundedMessage(value) {
       return item;
     });
   } catch { json = null; }
-  if (!json || Buffer.byteLength(json, 'utf8') + binaryBytes > MAX_UTILITY_MESSAGE_BYTES) {
+  if (!json || Buffer.byteLength(json, 'utf8') + binaryBytes > maximumBytes) {
     throw createUtilityError('utilityMessageTooLarge', 'Library utility message exceeds the byte limit');
   }
 }
@@ -411,7 +425,9 @@ function createUtilityError(code, message, details = {}) {
 module.exports = {
   LIBRARY_CATALOG_UTILITY_PROTOCOL_VERSION,
   LibraryCatalogUtilityHost,
+  MAX_ARTWORK_BRIDGE_MESSAGE_BYTES,
   MAX_UTILITY_MESSAGE_BYTES,
   MAX_UTILITY_OUTSTANDING_REQUESTS,
-  UTILITY_CLOSE_TIMEOUT_MS
+  UTILITY_CLOSE_TIMEOUT_MS,
+  UTILITY_OPEN_TIMEOUT_MS
 };

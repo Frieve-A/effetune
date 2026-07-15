@@ -4,17 +4,26 @@ import { createTrackFromMetadata, shouldRetryDuration } from '../metadata/metada
 import { readRiffInfoTagsFromBlob } from '../metadata/riff-info.js';
 import { assertRepositoryContract, createRepositoryError } from '../repository/contract-errors.js';
 
-export const WEB_METADATA_PARSER_VERSION = 'web-metadata-1';
+export const WEB_METADATA_PARSER_VERSION = 'web-metadata-2';
 export const WEB_METADATA_RESULT_MAX_BYTES = 16 * 1024 * 1024;
 export const WEB_METADATA_HEADER_MAX_BYTES = 16 * 1024 * 1024;
+const MAX_TRACK_TEXT_CHARACTERS = 4096;
+const MAX_CODEC_CHARACTERS = 512;
 
 export class WebMetadataParser {
-  constructor({ filesystem, parse = parseBlob, readRiffInfo = readRiffInfoTagsFromBlob, now = () => Date.now() } = {}) {
+  constructor({
+    filesystem,
+    parse = parseBlob,
+    readRiffInfo = readRiffInfoTagsFromBlob,
+    now = () => Date.now(),
+    languageHints = null
+  } = {}) {
     assertRepositoryContract(typeof filesystem?.getFile === 'function', 'invalidMetadataParser', 'Web metadata parser requires the Worker filesystem adapter');
     this.filesystem = filesystem;
     this.parseBlob = parse;
     this.readRiffInfo = readRiffInfo;
     this.now = now;
+    this.languageHints = languageHints;
   }
 
   async parse({ relativePath, skipCovers, signal } = {}) {
@@ -34,6 +43,7 @@ export class WebMetadataParser {
         metadata = await this.parseBlob(file, parserOptions(true));
       }
       const mapped = createTrackFromMetadata(candidate, metadata, this.now(), {
+        languageHints: this.languageHints,
         riffInfoTags: await riffInfoPromise
       });
       const result = projectMetadata(mapped);
@@ -44,6 +54,7 @@ export class WebMetadataParser {
       );
       return result;
     } catch (error) {
+      if (error?.name === 'AbortError') throw error;
       if (error?.code) throw error;
       throw classifyParserError(error);
     }
@@ -74,18 +85,41 @@ function parserOptions(duration) {
 
 function projectMetadata(track) {
   return {
-    title: track.title,
-    artist: track.artist,
-    albumArtist: track.albumArtist,
-    album: track.album,
-    genre: track.genre,
+    title: boundedText(track.title, MAX_TRACK_TEXT_CHARACTERS),
+    artist: boundedText(track.artist, MAX_TRACK_TEXT_CHARACTERS),
+    albumArtist: boundedText(track.albumArtist, MAX_TRACK_TEXT_CHARACTERS),
+    album: boundedText(track.album, MAX_TRACK_TEXT_CHARACTERS),
+    genre: boundedText(track.genre, MAX_TRACK_TEXT_CHARACTERS),
     year: track.year,
-    discNo: track.discNo,
-    trackNo: track.trackNo,
-    durationSec: track.durationSec,
-    sampleRate: track.sampleRate,
-    codec: track.codec
+    compilation: track.compilation,
+    discNo: nonNegativeIntegerOrNull(track.discNo),
+    discTotal: nonNegativeIntegerOrNull(track.discOf),
+    trackNo: nonNegativeIntegerOrNull(track.trackNo),
+    trackTotal: nonNegativeIntegerOrNull(track.trackOf),
+    durationSec: nonNegativeFiniteOrNull(track.durationSec),
+    sampleRate: nonNegativeIntegerOrNull(track.sampleRate),
+    bitrate: nonNegativeIntegerOrNull(track.bitrate),
+    bitsPerSample: nonNegativeIntegerOrNull(track.bitsPerSample),
+    channels: nonNegativeIntegerOrNull(track.channels),
+    codec: boundedText(track.codec, MAX_CODEC_CHARACTERS) || null
   };
+}
+
+function boundedText(value, maximum) {
+  if (value == null) return '';
+  return String(value).slice(0, maximum);
+}
+
+function nonNegativeIntegerOrNull(value) {
+  if (value == null) return null;
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number >= 0 ? number : null;
+}
+
+function nonNegativeFiniteOrNull(value) {
+  if (value == null) return null;
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : null;
 }
 
 function classifyParserError(error) {
@@ -94,6 +128,5 @@ function classifyParserError(error) {
   let code = 'unknown-internal';
   if (name === 'UnsupportedFileTypeError' || message.includes('not supported')) code = 'unsupported-container';
   else if (name === 'CouldNotDetermineFileTypeError' || message.includes('corrupt')) code = 'corrupt-container';
-  else if (name === 'AbortError') code = 'parse-timeout';
   return createRepositoryError(code, 'Browser metadata parsing failed', { parserErrorName: name || 'Error' });
 }

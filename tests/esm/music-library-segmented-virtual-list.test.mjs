@@ -74,6 +74,23 @@ test('scroll rebasing preserves the exact logical row while changing physical se
   }
 });
 
+test('scrolling to physical zero from the final segment returns to the first row', () => {
+  const geometry = new SegmentedVirtualListGeometry({ rowCount: 5_000_000, rowHeight: 40 });
+  const finalWindow = geometry.createWindow(geometry.rowCount - 1);
+  assert.ok(finalWindow.startOrdinal > 0);
+
+  const rebased = geometry.rebaseWindow({
+    window: finalWindow,
+    scrollTop: 0,
+    viewportHeight: 800
+  });
+
+  assert.equal(rebased.changed, true);
+  assert.equal(rebased.window.startOrdinal, 0);
+  assert.equal(rebased.scrollTop, 0);
+  assert.equal(rebased.anchorOrdinal, 0);
+});
+
 test('empty geometry returns an empty render window', () => {
   const geometry = new SegmentedVirtualListGeometry({ rowCount: 0, rowHeight: 40 });
   const window = geometry.createWindow();

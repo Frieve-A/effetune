@@ -1,5 +1,3 @@
-import fs from 'node:fs/promises';
-
 import {
   DEFAULT_BATCH_SIZE,
   DEFAULT_FIXTURE_SEED,
@@ -8,7 +6,6 @@ import {
 } from './catalog-fixture.mjs';
 import { elapsedMilliseconds, isMain, parseArgs, printResult } from './cli.mjs';
 import { createVirtualizationPlan, locateVirtualRow } from './benchmark-virtualization.mjs';
-import { validatePhase0Artifact } from './validate-phase0-artifacts.mjs';
 
 function usage() {
   return [
@@ -35,18 +32,9 @@ export async function runScale(argv = process.argv.slice(2), io = console) {
   const virtualization = createVirtualizationPlan({ rowCount: count });
   const boundaryProbes = [0, Math.floor(count / 2), count - 1]
     .map(ordinal => ({ ordinal, ...locateVirtualRow(virtualization, ordinal) }));
-  const artifactUrl = new URL('./phase0-decisions.json', import.meta.url);
-  const artifact = JSON.parse(await fs.readFile(artifactUrl, 'utf8'));
-  const phase0 = validatePhase0Artifact(artifact);
-  if (!phase0.valid) throw new Error(`Phase 0 artifact is invalid: ${phase0.errors.join('; ')}`);
   const result = {
     catalog,
     virtualization: { ...virtualization, boundaryProbes },
-    phase0: {
-      artifactId: artifact.artifactId,
-      qualificationStatus: artifact.qualification.status,
-      digest: phase0.digest
-    },
     elapsedMs: elapsedMilliseconds(startedAt)
   };
   printResult(result, { json: true, output: io });

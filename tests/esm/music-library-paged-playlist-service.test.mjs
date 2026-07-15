@@ -24,6 +24,9 @@ function createServiceClient(overrides = {}) {
     async tombstonePlaylist(request) { return { kind: 'tombstoned', ...request }; },
     async start(request) { return { operationId: 'operation', request }; },
     async getTrack(trackUid) { return { trackUid, path: `${trackUid}.flac`, title: trackUid }; },
+    async resolvePlaylistExportSource(trackUid) {
+      return { kind: 'portable-relative', trackUid, folderId: 'folder-1', rootName: 'Music', path: `${trackUid}.flac` };
+    },
     ...overrides
   };
 }
@@ -61,21 +64,9 @@ test('addTracks uses the separately supplied four-verb operation service', async
   }]);
 });
 
-test('playlist list and CRUD calls stay on bounded repository methods', async () => {
-  const calls = [];
-  const client = createServiceClient({
-    async releaseContext(token) { calls.push(['release', token]); },
-    async queryEntities(request) {
-      calls.push(['query', request]);
-      return { rows: [{ playlistId: 'playlist-1', name: 'One' }], nextCursor: null };
-    }
-  });
-  const service = createService(client);
+test('playlist CRUD calls stay on bounded repository methods', async () => {
+  const service = createService(createServiceClient());
 
-  const page = await service.listPage({ limit: 999 });
-  assert.equal(page.rows[0].playlistId, 'playlist-1');
-  assert.equal(calls[0][1].limit, 500);
-  assert.deepEqual(calls[1], ['release', 'playlist-context']);
   assert.equal((await service.create('New')).playlistId, 'id-1');
   assert.equal((await service.create('With items', ['track-1', { trackId: 'track-2' }])).playlistId, 'id-2');
   assert.equal((await service.get('playlist-1')).version, 3);
@@ -129,6 +120,7 @@ test('local playlist mutations supply current versions and bounded create items'
   await service.rename('playlist-1', 'Renamed');
   await service.duplicate('playlist-1', 'Copy');
   await service.reorderItem('playlist-1', 'item-1', { direction: 'down' });
+  await service.reorderItem('playlist-1', 'item-1', { beforeItemKey: 'item-9' });
   await service.removeItem('playlist-1', 'item-1');
 
   assert.deepEqual(calls[0][1].items, [
@@ -141,110 +133,58 @@ test('local playlist mutations supply current versions and bounded create items'
   assert.equal(calls[2][1].targetPlaylistId, 'id-2');
   assert.equal(calls[2][1].createdAt, 1234);
   assert.equal(calls[3][1].updatedAt, 1234);
-  assert.equal(calls[4][1].updatedAt, 1234);
+  assert.deepEqual(calls[4][1].target, { beforeItemKey: 'item-9' });
+  assert.equal(calls[5][1].updatedAt, 1234);
 });
 
-test('streaming import is owned by the four-verb operation service', async () => {
-  let startRequest = null;
-  let streamOpened = 0;
-  let unsubscribed = 0;
-  const file = {
-    name: 'large.m3u8',
-    size: 123,
-    lastModified: 456,
-    type: 'audio/x-mpegurl',
-    stream() {
-      streamOpened += 1;
-      return (async function* chunks() { yield new Uint8Array(); }());
+test('manual paged import previews before publication and commits or cancels by opaque token', async () => {
+  const calls = [];
+  const source = {
+    name: 'Road Trip.m3u8', size: 42, lastModified: 7, type: '', stream() {}
+  };
+  const operationService = {
+    async previewPlaylistImport(request) {
+      calls.push(['preview', request]);
+      return {
+        previewToken: 'preview-token',
+        playlistId: request.playlistId,
+        playlistName: request.name,
+        totalCount: 3,
+        resolvedCount: 2,
+        unresolvedCount: 1,
+        unresolvedItems: [{ label: 'Missing.flac' }],
+        expiresAt: 9999
+      };
+    },
+    async commitPlaylistImportPreview(request) {
+      calls.push(['commit', request]);
+      return { playlistId: request.playlistId, version: 1, itemCount: 3 };
+    },
+    async cancelPlaylistImportPreview(request) {
+      calls.push(['cancel', request]);
+      return { kind: 'cancelled' };
     }
   };
-  const client = createServiceClient();
   const service = new PagedPlaylistService({
-    client,
-    operationService: {
-      async start(request) { startRequest = request; return { kind: 'started', operationId: 'import-1' }; },
-      subscribeOperation(operationId, listener) {
-        queueMicrotask(() => listener({
-          kind: 'terminal',
-          operationId,
-          result: { state: 'succeeded', result: { playlistId: 'import-id-1', version: 1, itemCount: 1 } }
-        }));
-        return () => { unsubscribed += 1; };
-      },
-      async status(operationId) { return { operationId, phase: 'SNAPSHOTTING', terminalKind: null, result: null }; },
-      beginPlaylistImport() { assert.fail('dedicated import verbs must not be exposed'); }
-    },
-    requestIdFactory: (() => { let id = 0; return () => `import-id-${++id}`; })(),
-    now: () => 1234
-  });
-
-  const result = await service.importFile(file, { limits: { maxInputChunkBytes: 64 * 1024 } });
-
-  assert.deepEqual(result, { playlistId: 'import-id-1', version: 1, itemCount: 1 });
-  assert.equal(unsubscribed, 1);
-  assert.equal(streamOpened, 0);
-  assert.deepEqual(startRequest, {
-    clientRequestId: 'import-id-2',
-    operationKind: 'importPlaylist',
-    selectionDescriptor: null,
-    target: { playlistId: 'import-id-1' },
-    expectedTargetVersion: 0,
-    options: {
-      name: 'large',
-      source: file,
-      encoding: null,
-      limits: { maxInputChunkBytes: 64 * 1024 }
-    }
-  });
-});
-
-test('streaming import closes its event subscription for status-race success and typed failure', async () => {
-  const file = { name: 'race.m3u8', stream() {} };
-  let successUnsubscribed = 0;
-  const success = new PagedPlaylistService({
     client: createServiceClient(),
-    operationService: {
-      async start() { return { kind: 'started', operationId: 'race-success' }; },
-      subscribeOperations() { return () => { successUnsubscribed += 1; }; },
-      async status() {
-        return {
-          operationId: 'race-success',
-          terminalKind: 'success',
-          result: { state: 'succeeded', result: { playlistId: 'race-playlist', version: 1, itemCount: 2 } }
-        };
-      }
-    },
-    requestIdFactory: () => 'race-playlist',
+    operationService,
+    requestIdFactory: (() => { let id = 0; return () => `preview-${++id}`; })(),
     now: () => 1234
   });
-  assert.deepEqual(await success.importFile(file), {
-    playlistId: 'race-playlist', version: 1, itemCount: 2
-  });
-  assert.equal(successUnsubscribed, 1);
 
-  let failureListener;
-  let failureUnsubscribed = 0;
-  const failure = new PagedPlaylistService({
-    client: createServiceClient(),
-    operationService: {
-      async start() { return { kind: 'started', operationId: 'race-failure' }; },
-      subscribeOperation(_operationId, listener) {
-        failureListener = listener;
-        return () => { failureUnsubscribed += 1; };
-      },
-      async status() { return { operationId: 'race-failure', terminalKind: null, result: null }; }
-    },
-    requestIdFactory: () => 'failed-playlist',
-    now: () => 1234
+  const preview = await service.previewImport(source);
+  assert.equal(preview.totalCount, 3);
+  assert.equal(preview.unresolvedItems[0].label, 'Missing.flac');
+  assert.deepEqual(await service.commitImport(preview), {
+    playlistId: preview.playlistId, version: 1, itemCount: 3
   });
-  const failed = failure.importFile(file);
-  await Promise.resolve();
-  failureListener({
-    kind: 'terminal', operationId: 'race-failure',
-    result: { state: 'failed', code: 'playlistMalformed' }
+  assert.deepEqual(await service.cancelImportPreview(preview), { kind: 'cancelled' });
+  assert.deepEqual(calls.map(call => call[0]), ['preview', 'commit', 'cancel']);
+  assert.equal(calls[0][1].source, source);
+  assert.equal(calls[0][1].name, 'Road Trip');
+  assert.deepEqual(calls[1][1], {
+    previewToken: 'preview-token', playlistId: preview.playlistId
   });
-  await assert.rejects(failed, error => error.code === 'playlistMalformed');
-  assert.equal(failureUnsubscribed, 1);
 });
 
 test('atomic streaming export pages repository rows and aborts a failed sink', async () => {
@@ -302,6 +242,9 @@ test('relative streaming export resolves entries from the selected destination d
     },
     async getTrack() {
       return { trackUid: 'one', path: 'D:\\Music\\Album\\one.flac', title: 'One' };
+    },
+    async resolvePlaylistExportSource() {
+      return { kind: 'absolute-path', trackUid: 'one', folderId: 'folder-1', lifecycleVersion: 1, path: 'D:\\Music\\Album\\one.flac' };
     }
   });
   const writes = [];
@@ -317,4 +260,34 @@ test('relative streaming export resolves entries from the selected destination d
   });
   assert.match(writes.join(''), /\.\.\/\.\.\/Music\/Album\/one\.flac/);
   assert.doesNotMatch(writes.join(''), /D:\\/);
+});
+
+test('portable Web export preserves root names for tracks from multiple folders', async () => {
+  const sources = new Map([
+    ['one', { kind: 'portable-relative', trackUid: 'one', folderId: 'folder-a', rootName: 'Library A', path: 'Album/Song.flac' }],
+    ['two', { kind: 'portable-relative', trackUid: 'two', folderId: 'folder-b', rootName: 'Library B', path: 'Album/Song.flac' }]
+  ]);
+  const client = createServiceClient({
+    async queryPlaylistItems() {
+      return {
+        playlist: { playlistId: 'playlist-1' },
+        items: [{ trackUid: 'one' }, { trackUid: 'two' }],
+        nextPosition: null
+      };
+    },
+    async resolvePlaylistExportSource(trackUid) { return sources.get(trackUid); }
+  });
+  const writes = [];
+  await createService(client).exportToSink('playlist-1', {
+    format: 'm3u8',
+    relative: false,
+    sink: {
+      async write(chunk) { writes.push(chunk); },
+      async commit() {},
+      async abort() {}
+    }
+  });
+  const output = writes.join('');
+  assert.match(output, /Library A\/Album\/Song\.flac/);
+  assert.match(output, /Library B\/Album\/Song\.flac/);
 });

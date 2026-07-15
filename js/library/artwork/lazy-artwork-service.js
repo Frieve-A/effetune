@@ -16,8 +16,7 @@ export const ARTWORK_REPOSITORY_METHODS = Object.freeze([
   'publishArtwork',
   'recordArtworkFailure',
   'scheduleArtworkStagingGc',
-  'evictArtworkCache',
-  'enterReadOnlyDiagnostic'
+  'evictArtworkCache'
 ]);
 
 export const ARTWORK_EXTRACTOR_METHODS = Object.freeze([
@@ -41,7 +40,8 @@ export class LazyArtworkService {
     assertRepositoryContract(Number.isSafeInteger(concurrency) && concurrency > 0, 'invalidArtworkConfig', 'Artwork concurrency must be positive');
     this.pool = new BoundedTaskPool(concurrency, config.maxQueuedRequests ?? ARTWORK_LIMITS.maxQueuedRequests);
     this.inFlight = new Map();
-    this.readOnly = false;
+    this.memoryCache = new Map();
+    this.memoryCacheBytes = 0;
   }
 
   async request({ trackUid, reason, signal } = {}) {
@@ -51,20 +51,57 @@ export class LazyArtworkService {
 
     const cached = await this.repository.getCachedArtwork({ trackUid, cacheMode: this.cachePolicy.mode });
     if (cached) return cached;
+    if (signal?.aborted) throw abortReason(signal);
     const source = await this.repository.getArtworkSource({ trackUid });
     if (!source) return ARTWORK_PLACEHOLDER;
+    if (signal?.aborted) throw abortReason(signal);
     const sourceKey = artworkSingleFlightKey(createArtworkSourceClaim(source));
+    const memoryCached = this.#getMemoryCachedArtwork(sourceKey);
+    if (memoryCached) return memoryCached;
     const existing = this.inFlight.get(sourceKey);
-    if (existing) return raceAbort(existing, signal);
+    if (existing) return this.#joinInFlight(existing, signal);
 
-    const promise = this.pool.run(() => this.#extract(source, signal), signal)
-      .finally(() => this.inFlight.delete(sourceKey));
-    this.inFlight.set(sourceKey, promise);
-    return raceAbort(promise, signal);
+    const controller = new AbortController();
+    const entry = { controller, consumers: 0, settled: false, sourceKey, promise: null };
+    entry.promise = this.pool.run(() => this.#extract(source, controller.signal), controller.signal)
+      .finally(() => {
+        entry.settled = true;
+        if (this.inFlight.get(sourceKey) === entry) this.inFlight.delete(sourceKey);
+      });
+    this.inFlight.set(sourceKey, entry);
+    return this.#joinInFlight(entry, signal);
+  }
+
+  #joinInFlight(entry, signal) {
+    if (signal?.aborted) return Promise.reject(abortReason(signal));
+    entry.consumers += 1;
+    return new Promise((resolve, reject) => {
+      let released = false;
+      const release = () => {
+        if (released) return;
+        released = true;
+        entry.consumers -= 1;
+        if (entry.consumers === 0 && !entry.settled) {
+          if (this.inFlight.get(entry.sourceKey) === entry) this.inFlight.delete(entry.sourceKey);
+          entry.controller.abort(createSharedAbortError());
+        }
+      };
+      const finish = (callback, value) => {
+        if (released) return;
+        signal?.removeEventListener('abort', abort);
+        release();
+        callback(value);
+      };
+      const abort = () => finish(reject, abortReason(signal));
+      signal?.addEventListener('abort', abort, { once: true });
+      entry.promise.then(
+        value => finish(resolve, value),
+        error => finish(reject, error)
+      );
+    });
   }
 
   async #extract(source, signal) {
-    if (this.readOnly) return ARTWORK_PLACEHOLDER;
     const expectedClaim = createArtworkSourceClaim(source);
     let claim;
 
@@ -80,15 +117,12 @@ export class LazyArtworkService {
         maxRawBytes: ARTWORK_LIMITS.maxRawBytes,
         signal
       }));
-      const preflight = await this.repository.preflightArtworkBatch({
-        claim,
-        estimatedRawBytes: header.rawByteLength,
-        estimatedThumbnailBytes: ARTWORK_LIMITS.maxThumbnailBytes,
-        cachePolicy: this.cachePolicy
-      });
-      if (preflight?.ok !== true) {
-        await this.repository.scheduleArtworkStagingGc({ claim, reason: 'storage-preflight' });
-        return ARTWORK_PLACEHOLDER;
+      if (this.cachePolicy.mode === 'persistent') {
+        const preflight = await this.#preflightWithOneCacheEviction(claim, header);
+        if (preflight?.ok !== true) {
+          await this.repository.scheduleArtworkStagingGc({ claim, reason: 'storage-preflight' });
+          return ARTWORK_PLACEHOLDER;
+        }
       }
 
       const thumbnail = normalizeThumbnail(await this.extractor.createThumbnail({
@@ -99,18 +133,30 @@ export class LazyArtworkService {
         maxBytes: ARTWORK_LIMITS.maxThumbnailBytes,
         signal
       }));
+      if (this.cachePolicy.mode === 'memory-only') {
+        const currentSource = await this.repository.getArtworkSource({ trackUid: claim.trackUid });
+        if (!artworkCompletionMatchesClaim(claim, currentSource)) {
+          await this.repository.scheduleArtworkStagingGc({ claim, reason: 'stale-source' });
+          return ARTWORK_PLACEHOLDER;
+        }
+        await this.repository.scheduleArtworkStagingGc({ claim, reason: 'memory-only-complete' });
+        return this.#cacheMemoryArtwork(
+          artworkSingleFlightKey(claim),
+          Object.freeze({ kind: 'thumbnail', ...thumbnail })
+        );
+      }
       return await this.#publishWithOneEvictionRetry(claim, thumbnail);
     } catch (error) {
       if (signal?.aborted || error?.name === 'AbortError') {
         if (claim) await this.repository.scheduleArtworkStagingGc({ claim, reason: 'canceled' });
         throw error;
       }
-      if (isCatalogStorageFailure(error)) return this.#enterReadOnly(error);
+      if (isCatalogStorageFailure(error)) return ARTWORK_PLACEHOLDER;
       if (!claim) throw error;
       try {
         await this.#recordFailure(claim, sanitizeArtworkError(error));
       } catch (failureError) {
-        if (isCatalogStorageFailure(failureError)) return this.#enterReadOnly(failureError);
+        if (isCatalogStorageFailure(failureError)) return ARTWORK_PLACEHOLDER;
         if (isOptionalCacheQuotaError(failureError)) return ARTWORK_PLACEHOLDER;
         throw failureError;
       }
@@ -118,6 +164,31 @@ export class LazyArtworkService {
     } finally {
       if (claim) await this.extractor.discard?.({ claim });
     }
+  }
+
+  #getMemoryCachedArtwork(sourceKey) {
+    if (this.cachePolicy.mode !== 'memory-only') return null;
+    const artwork = this.memoryCache.get(sourceKey);
+    if (!artwork) return null;
+    this.memoryCache.delete(sourceKey);
+    this.memoryCache.set(sourceKey, artwork);
+    return artwork;
+  }
+
+  #cacheMemoryArtwork(sourceKey, artwork) {
+    const byteLength = artwork.bytes.byteLength;
+    if (byteLength > this.cachePolicy.maxBytes) return artwork;
+    const previous = this.memoryCache.get(sourceKey);
+    if (previous) this.memoryCacheBytes -= previous.bytes.byteLength;
+    this.memoryCache.delete(sourceKey);
+    this.memoryCache.set(sourceKey, artwork);
+    this.memoryCacheBytes += byteLength;
+    while (this.memoryCacheBytes > this.cachePolicy.maxBytes) {
+      const [oldestKey, oldestArtwork] = this.memoryCache.entries().next().value;
+      this.memoryCache.delete(oldestKey);
+      this.memoryCacheBytes -= oldestArtwork.bytes.byteLength;
+    }
+    return artwork;
   }
 
   async #publishWithOneEvictionRetry(claim, thumbnail) {
@@ -152,6 +223,25 @@ export class LazyArtworkService {
     return ARTWORK_PLACEHOLDER;
   }
 
+  async #preflightWithOneCacheEviction(claim, header) {
+    const request = {
+      claim,
+      estimatedRawBytes: header.rawByteLength,
+      estimatedThumbnailBytes: ARTWORK_LIMITS.maxThumbnailBytes,
+      cachePolicy: this.cachePolicy
+    };
+    let preflight = await this.repository.preflightArtworkBatch(request);
+    if (preflight?.code !== 'artwork-cache-full') return preflight;
+    await this.repository.evictArtworkCache({
+      mode: this.cachePolicy.mode,
+      maxBytes: this.cachePolicy.maxBytes,
+      requiredBytes: ARTWORK_LIMITS.maxThumbnailBytes,
+      policy: 'lru-access-time-byte-length'
+    });
+    preflight = await this.repository.preflightArtworkBatch(request);
+    return preflight;
+  }
+
   async #recordFailure(claim, errorCode) {
     const recorded = await this.repository.recordArtworkFailure({
       claim,
@@ -164,14 +254,6 @@ export class LazyArtworkService {
     }
   }
 
-  async #enterReadOnly(error) {
-    this.readOnly = true;
-    await this.repository.enterReadOnlyDiagnostic({
-      code: 'storage-write-failure',
-      safeDetails: { errorCode: safeCode(error?.code ?? error?.name) }
-    });
-    return ARTWORK_PLACEHOLDER;
-  }
 }
 
 class BoundedTaskPool {
@@ -239,23 +321,12 @@ function isCatalogStorageFailure(error) {
   return ['SQLITE_FULL', 'ENOSPC', 'SHORT_WRITE', 'FLUSH_FAILED'].includes(String(error?.code ?? '').toUpperCase());
 }
 
-function safeCode(value) {
-  const code = String(value ?? '').toLowerCase();
-  return /^[a-z0-9][a-z0-9_-]{0,62}$/.test(code) ? code : 'storage-write-failure';
-}
-
 function abortReason(signal) {
   return signal.reason instanceof Error ? signal.reason : new DOMException('Artwork request aborted', 'AbortError');
 }
 
-function raceAbort(promise, signal) {
-  if (!signal) return promise;
-  if (signal.aborted) return Promise.reject(abortReason(signal));
-  return new Promise((resolve, reject) => {
-    const abort = () => reject(abortReason(signal));
-    signal.addEventListener('abort', abort, { once: true });
-    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
-  });
+function createSharedAbortError() {
+  return new DOMException('Artwork extraction has no active requests', 'AbortError');
 }
 
 function artworkSingleFlightKey(claim) {

@@ -36,20 +36,12 @@ export class ElectronCatalogClient {
     return this.api.queryEntities(request);
   }
 
-  readContextPage(request) {
-    return this.api.readContextPage(request);
-  }
-
   readContextPageAtOrdinal(request) {
     return this.api.readContextPageAtOrdinal(request);
   }
 
   resolveEntityAnchor(request) {
     return this.api.resolveEntityAnchor(request);
-  }
-
-  lookupContextTrack(request) {
-    return this.api.lookupContextTrack(request);
   }
 
   releaseContext(contextToken) {
@@ -60,8 +52,29 @@ export class ElectronCatalogClient {
     return this.api.getTrack(trackUid);
   }
 
-  resolvePlaybackSource(trackUid) {
-    return this.api.resolvePlaybackSource(trackUid);
+  resolvePlaylistExportSource(trackUid) {
+    return this.api.resolvePlaylistExportSource(trackUid);
+  }
+
+  async resolvePlaybackSource(trackUid) {
+    const response = await this.api.resolvePlaybackSource(trackUid);
+    throwFolderPermissionRequired(response, 'Playback folder access must be restored');
+    if (
+      response?.kind !== 'electron-file' ||
+      !isAbsoluteElectronPath(response.path)
+    ) {
+      throw new Error('Electron playback source response is invalid');
+    }
+    return response;
+  }
+
+  async showTrackInFolder(trackUid) {
+    const response = await this.api.showTrackInFolder(trackUid);
+    throwFolderPermissionRequired(response, 'Music folder access must be restored');
+    if (response?.success !== true) {
+      throw new Error('Electron show-in-folder response is invalid');
+    }
+    return response;
   }
 
   createPlaylist(request) {
@@ -96,13 +109,15 @@ export class ElectronCatalogClient {
     return this.api.tombstonePlaylist(request);
   }
 
-  async addFolder() {
-    const result = await this.api.addFolder();
-    if (result?.canceled || !result?.folder?.id || result.scan) return result;
-    const scan = await this.scanFolders({
+  async addFolder(options) {
+    const result = await this.api.addFolder(options);
+    if (result?.canceled || result?.rejected || !result?.folder?.id || result.scan) return result;
+    const scanRequest = {
       folderIds: [result.folder.id],
       scanReason: 'automatic'
-    });
+    };
+    if (options?.languageHints) scanRequest.languageHints = options.languageHints;
+    const scan = await this.scanFolders(scanRequest);
     return { ...result, scan };
   }
 
@@ -126,10 +141,6 @@ export class ElectronCatalogClient {
     return this.api.requestArtwork(request);
   }
 
-  getScanStatus(scanId) {
-    return this.api.getScanStatus(scanId);
-  }
-
   subscribeInvalidations(listener) {
     if (typeof listener !== 'function') {
       throw new TypeError('Catalog invalidation listener must be a function');
@@ -143,6 +154,13 @@ export class ElectronCatalogClient {
     }
     return this.api.onScanEvent(listener);
   }
+
+  subscribeFolderRemovalEvents(listener) {
+    if (typeof listener !== 'function') {
+      throw new TypeError('Catalog folder removal listener must be a function');
+    }
+    return this.api.onFolderRemovalEvent(listener);
+  }
 }
 
 export function createElectronCatalogClient(options) {
@@ -153,4 +171,19 @@ function normalizeScanRequest(request) {
   if (request == null) return { folderIds: null };
   if (Array.isArray(request)) return { folderIds: request };
   return request;
+}
+
+function isAbsoluteElectronPath(value) {
+  return typeof value === 'string' && (
+    value.startsWith('/') || value.startsWith('\\\\') || /^[A-Za-z]:[\\/]/.test(value)
+  );
+}
+
+function throwFolderPermissionRequired(response, message) {
+  if (response?.code !== 'folderPermissionRequired') return;
+  const error = new Error(message);
+  error.name = 'LibraryRepositoryError';
+  error.code = response.code;
+  error.details = response.details && typeof response.details === 'object' ? response.details : {};
+  throw error;
 }

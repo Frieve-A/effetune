@@ -97,7 +97,11 @@ Open **Settings > Config...** to choose **Language**, set **Startup view:**, and
 5. Use **Rescan** after changing files, and **Reconnect** if a browser or folder permission is lost.
    - [More about Music Library](docs/music-library.md)
 
-EffeTune 3.0.0 starts with a new Music Library. Earlier Library state is not inherited, so add your music folders and scan them again. This does not modify the audio files in those folders. The new architecture targets catalogs beyond one million tracks, but formal one-million-track support will be announced only after Phase 0 reference-machine budgets and complete runtime qualification pass.
+In both PC and mobile layouts, track searches and album, artist, genre, subfolder, and playlist details select all matching tracks by default when there are 300 tracks or fewer; results with 301 tracks or more are not selected automatically. On mobile, automatic selection changes only the selection state. Only long-pressing a track enters selection mode and shows checkboxes, **Select All**, and **Deselect All**; selecting or deselecting tracks does not enter or leave that mode, and the usual row actions remain available.
+
+PC Chromium browsers can persist File System Access folder handles. Safari, Firefox, mobile browsers, and other browsers without that API keep the selected `File` objects only for the current page session. After every reload, select the folder or files again; EffeTune reconnects them to the existing catalog by normalized relative path.
+
+EffeTune 2.1.0 starts with a new Music Library. Earlier Library state is not inherited, so add your music folders and scan them again. This does not modify the audio files in those folders. The catalog is designed to page large collections from disk. Large-scale performance measurements are optional local development diagnostics, not commit, release, `verify`, or GitHub Actions gates and not a general performance guarantee.
 
 ### Building Your Effect Chain
 

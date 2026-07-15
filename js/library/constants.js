@@ -27,6 +27,7 @@ export const SUPPORTED_PLAYLIST_EXTENSIONS = Object.freeze([
 ]);
 
 export const SUPPORTED_AUDIO_EXTENSION_SET = new Set(SUPPORTED_AUDIO_EXTENSIONS);
+export const SUPPORTED_PLAYLIST_EXTENSION_SET = new Set(SUPPORTED_PLAYLIST_EXTENSIONS);
 export const DEFAULT_SCAN_BATCH_SIZE = 200;
 export const UNKNOWN_ALBUM = 'Unknown Album';
 export const UNKNOWN_ARTIST = 'Unknown Artist';
@@ -55,6 +56,10 @@ export function stripExtension(fileName = '') {
 
 export function isSupportedAudioPath(pathOrName = '') {
   return SUPPORTED_AUDIO_EXTENSION_SET.has(getFileExtension(pathOrName));
+}
+
+export function isSupportedPlaylistPath(pathOrName = '') {
+  return SUPPORTED_PLAYLIST_EXTENSION_SET.has(getFileExtension(pathOrName));
 }
 
 export function normalizeRelativePath(relativePath = '') {

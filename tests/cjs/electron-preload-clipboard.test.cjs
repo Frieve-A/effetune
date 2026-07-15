@@ -114,15 +114,14 @@ test('preload exposes electronAPI invoke and send wrappers', async () => {
     ['showSaveDialog', ['save-options'], ['show-save-dialog', 'save-options']],
     ['showOpenDialog', ['open-options'], ['show-open-dialog', 'open-options']],
     ['saveFile', ['a.txt', 'content'], ['save-file', 'a.txt', 'content']],
-    ['readFile', ['a.txt'], ['read-file', 'a.txt', false]],
-    ['readFile', ['a.txt', true], ['read-file', 'a.txt', true]],
+    ['readFile', ['a.txt'], ['read-file', 'a.txt']],
+    ['readFileBytes', ['a.wav'], ['read-file-bytes', 'a.wav']],
     ['beginAtomicFileWrite', ['a.txt'], ['begin-atomic-file-write', 'a.txt']],
     ['writeAtomicFileChunk', ['token', 'part'], ['write-atomic-file-chunk', 'token', 'part']],
     ['commitAtomicFileWrite', ['token'], ['commit-atomic-file-write', 'token']],
     ['abortAtomicFileWrite', ['token'], ['abort-atomic-file-write', 'token']],
     ['readClipboardText', [], ['read-clipboard-text']],
     ['writeClipboardText', ['pipeline'], ['write-clipboard-text', 'pipeline']],
-    ['readFileAsBuffer', ['a.wav'], ['read-file-as-buffer', 'a.wav']],
     ['openDocumentation', ['/docs'], ['open-documentation', '/docs']],
     ['openExternalUrl', ['https://example.test'], ['open-external-url', 'https://example.test']],
     ['openExternal', ['https://example.test'], ['open-external-url', 'https://example.test']],
@@ -190,6 +189,34 @@ test('preload derives dropped playlist paths in the isolated world before reques
   });
 });
 
+test('preload exposes catalog recovery independently from the catalog API', async () => {
+  const harness = createPreloadHarness();
+  loadPreload(harness);
+  const recovery = harness.exposed.electronAPI.libraryRecoveryV1;
+  const states = [];
+
+  assert.equal(recovery.apiVersion, 1);
+  assert.deepEqual(await recovery.getState(), {
+    channel: 'library-recovery-v1:get-state',
+    args: [{}]
+  });
+  assert.deepEqual(await recovery.resetCatalog({ confirmed: true }), {
+    channel: 'library-recovery-v1:reset-catalog',
+    args: [{ confirmed: true }]
+  });
+  const unsubscribe = recovery.onStateChange(state => states.push(state));
+  harness.listeners.get('library-recovery-v1:state')({}, {
+    apiVersion: 1,
+    status: 'unavailable',
+    available: false,
+    canReset: true,
+    message: 'Unavailable'
+  });
+  assert.equal(states[0].status, 'unavailable');
+  unsubscribe();
+  assert.equal(harness.listeners.has('library-recovery-v1:state'), false);
+});
+
 test('preload exposes listener registration wrappers', () => {
   const harness = createPreloadHarness();
   loadPreload(harness);
@@ -240,6 +267,10 @@ test('preload exposes listener registration wrappers', () => {
   harness.listeners.get('update-available')({}, { version: '2.0.0' });
   api.onLoadPresetFromTray(presetName => calls.push(['onLoadPresetFromTray', presetName]));
   harness.listeners.get('load-preset-from-tray')({}, 'Tray Preset');
+  api.libraryCatalogV1.onFolderRemovalEvent(event => calls.push(['onFolderRemovalEvent', event]));
+  harness.listeners.get('library-catalog-v1:folder-removal-event')({}, {
+    folderId: 'folder-one', phase: 'removing', deleted: 3, total: 10
+  });
   api.onIPC('request-tray-menu-update', (...args) => calls.push(['onIPC', args]));
   harness.listeners.get('request-tray-menu-update')({}, 'a', 'b');
   assert.throws(
@@ -272,6 +303,9 @@ test('preload exposes listener registration wrappers', () => {
     ['onRescanLibrary'],
     ['onUpdateAvailable', { version: '2.0.0' }],
     ['onLoadPresetFromTray', 'Tray Preset'],
+    ['onFolderRemovalEvent', {
+      folderId: 'folder-one', phase: 'removing', deleted: 3, total: 10
+    }],
     ['onIPC', ['a', 'b']]
   ]);
 });

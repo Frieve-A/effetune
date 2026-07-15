@@ -61,7 +61,6 @@ export async function runLibrarySqliteContract() {
     const opened = await client.request('open', { clearOnInit: true });
     equal(opened.backend, 'sqlite-wasm-opfs-sahpool', 'Web catalog backend');
     const capabilities = await client.request('getCapabilities');
-    equal(capabilities.productionQualified, true, 'production-qualified capability');
     equal(capabilities.shortSearchMode, 'word-prefix', 'short search mode');
     equal(capabilities.maxRequestBytes, MAX_MESSAGE_BYTES, 'request limit');
     equal(capabilities.maxResponseBytes, MAX_MESSAGE_BYTES, 'response limit');
@@ -70,13 +69,48 @@ export async function runLibrarySqliteContract() {
     await client.request('upsertFolders', [{
       id: 'folder-web', kind: 'web-fsa', displayName: 'Web Music', status: 'active',
       lifecycleVersion: 1, scanGeneration: 0, addedAt: 1, lastScanAt: null
+    }, {
+      id: 'folder-offline', kind: 'web-fsa', displayName: 'Offline Music', status: 'offline',
+      lifecycleVersion: 2, scanGeneration: 0, addedAt: 2, lastScanAt: null
     }]);
+    deepEqual(
+      (await client.request('listFolderRecords', { limit: 1000 })).map(folder => folder.id),
+      ['folder-offline', 'folder-web'],
+      'folder records accept the unfiltered Web catalog request'
+    );
+    const folderEntities = await client.request('queryEntities', {
+      type: 'folder', query: '', sort: 'name', direction: 'asc', limit: 1
+    });
+    deepEqual(folderEntities.rows[0], {
+      id: 'folder-offline', kind: 'web-fsa', path: null, displayName: 'Offline Music',
+      status: 'needs-permission', scanGeneration: 0, lifecycleVersion: 2,
+      addedAt: 2, lastScanAt: null, trackCount: 0
+    }, 'folder entities map internal offline state and hide synthetic paths');
+    const folderCursorPage = await client.request('readContextPage', {
+      contextToken: folderEntities.contextToken, cursor: folderEntities.nextCursor, limit: 1
+    });
+    equal(folderCursorPage.rows[0].path, null, 'folder cursor page hides synthetic paths');
+    const folderOrdinalPage = await client.request('readContextPageAtOrdinal', {
+      contextToken: folderEntities.contextToken, ordinal: 1, limit: 1
+    });
+    equal(folderOrdinalPage.rows[0].path, null, 'folder ordinal page hides synthetic paths');
+    await client.request('releaseContext', folderEntities.contextToken);
     await client.request('upsertTracks', [
       createTrack(1, { trackUid: 'track-alpha', title: 'Alpha Signal', artist: 'Crimson Voyager' }),
-      createTrack(2, { trackUid: 'track-ab', title: 'AB Intro', artist: 'Quartz' }),
-      createTrack(3, { trackUid: 'track-gamma', title: 'Gamma', genre: 'ロック' })
+      createTrack(2, {
+        trackUid: 'track-ab', title: 'AB Intro', artist: 'Quartz',
+        relativePath: 'Artist/Zulu/AB Intro.flac'
+      }),
+      createTrack(3, {
+        trackUid: 'track-gamma', title: 'Gamma', genre: 'ロック',
+        relativePath: 'Zulu/Alpha/Gamma.flac'
+      })
     ]);
     equal((await client.request('getCounts')).tracks, 3, 'track write count');
+    deepEqual(await client.request('getScanFolderTrackCount', { folderId: 'folder-web' }), {
+      folderId: 'folder-web',
+      trackCount: 3
+    }, 'scan folder track count');
 
     const all = await client.request('queryTracks', { query: '', sort: 'title', direction: 'asc', limit: 2 });
     deepEqual(all.rows.map(row => row.trackUid), ['track-ab', 'track-alpha'], 'canonical first page');
@@ -104,21 +138,71 @@ export async function runLibrarySqliteContract() {
     await client.request('upsertTracks', [createTrack(1, {
       trackUid: 'track-alpha', title: 'Updated Signal', artist: 'Crimson Voyager'
     })]);
-    const stable = await client.request('lookupContextTrack', {
-      contextToken: all.contextToken, trackUid: 'track-alpha'
-    });
+    const stable = (await client.request('readContextPage', {
+      contextToken: all.contextToken, cursor: null, limit: 20
+    })).rows.find(row => row.trackUid === 'track-alpha');
     equal(stable.title, 'Alpha Signal', 'leased context before-image');
     await client.request('releaseContext', all.contextToken);
 
-    await client.request('upsertEntities', 'album', [{
-      albumKey: 'album:test', identityVersion: 1, name: 'Test Album', artist: 'Test Artist',
-      trackCount: 3, totalDurationSec: 363, representativeArtworkId: null
-    }]);
     const albums = await client.request('queryEntities', {
-      type: 'album', query: 'test', sort: 'name', direction: 'asc', limit: 20
+      type: 'album', query: 'album', sort: 'name', direction: 'asc', limit: 20
     });
-    equal(albums.rows[0].albumKey, 'album:test', 'entity query');
+    equal(albums.rows[0].name, 'Album', 'track-derived entity query');
     await client.request('releaseContext', albums.contextToken);
+
+    const subfolders = await client.request('queryEntities', {
+      type: 'subfolder', query: '', direction: 'asc', limit: 20
+    });
+    deepEqual(subfolders.rows.map(row => row.name), ['Album', 'Zulu', 'Alpha'], 'subfolder titles');
+    deepEqual(
+      subfolders.rows.map(row => row.caption),
+      ['Web Music / Album', 'Web Music / Artist/Zulu', 'Web Music / Zulu/Alpha'],
+      'subfolder default path order'
+    );
+    await client.request('releaseContext', subfolders.contextToken);
+
+    const recentTracks = Array.from({ length: 501 }, (_, offset) => {
+      const index = offset + 1;
+      return createTrack(1000 + index, {
+        trackUid: `recent-web-${String(index).padStart(4, '0')}`,
+        relativePath: `Recent/Track-${index}.flac`,
+        fileIdentity: `recent-file-${index}`,
+        fileName: `Recent-${index}.flac`,
+        title: `Recent Track ${index}`,
+        addedAt: 1000 + index,
+        updatedAt: 1000 + index
+      });
+    });
+    await client.request('upsertTracks', recentTracks.slice(0, 500));
+    await client.request('upsertTracks', recentTracks.slice(500));
+    const recent = await client.request('queryTracks', {
+      query: '', sort: 'added', direction: 'desc', scope: { recent: true }, limit: 173
+    });
+    equal((await client.request('getContextCount', {
+      contextToken: recent.contextToken
+    })).totalCount, 500, 'recent count is capped at 500');
+    const recentRows = [...recent.rows];
+    let recentCursor = recent.nextCursor;
+    while (recentCursor) {
+      const page = await client.request('readContextPage', {
+        contextToken: recent.contextToken, cursor: recentCursor, limit: 173
+      });
+      recentRows.push(...page.rows);
+      recentCursor = page.nextCursor;
+    }
+    equal(recentRows.length, 500, 'recent cursors stay inside the newest-500 set');
+    equal(recentRows[0].trackUid, 'recent-web-0501', 'recent newest boundary');
+    equal(recentRows.at(-1).trackUid, 'recent-web-0002', 'recent oldest included boundary');
+    deepEqual((await client.request('readContextPageAtOrdinal', {
+      contextToken: recent.contextToken, ordinal: 499, limit: 1
+    })).rows.map(row => row.trackUid), ['recent-web-0002'], 'recent last ordinal');
+    equal((await client.request('resolveEntityAnchor', {
+      contextToken: recent.contextToken,
+      entityId: 'recent-web-0002',
+      mode: 'exact',
+      limit: 1
+    })).ordinal, 499, 'recent anchor ordinal');
+    await client.request('releaseContext', recent.contextToken);
 
     await client.request('createPlaylistWithItems', {
       playlistId: 'playlist-web', name: 'Web Favorites', createdAt: 20,
@@ -129,31 +213,34 @@ export async function runLibrarySqliteContract() {
 
     await client.request('createPlaybackSequence', {
       sequenceId: 'sequence-web', sourceContext: 'contract', catalogVersion: 0,
-      seed: 7, snapshotId: null, createdAt: 30
+      seed: 7, createdAt: 30
     });
     await client.request('appendPlaybackSequenceItems', {
       sequenceId: 'sequence-web',
       items: [
-        { trackUid: 'track-alpha', entryInstanceId: 'entry-1' },
-        { trackUid: 'track-alpha', entryInstanceId: 'entry-2' }
+        { ordinal: 0, trackUid: 'track-alpha', entryInstanceId: 'entry-1' },
+        { ordinal: 1, trackUid: 'track-alpha', entryInstanceId: 'entry-2' }
       ]
     });
     await client.request('sealPlaybackSequence', {
       sequenceId: 'sequence-web', itemCount: 2, currentOrdinal: 0, sealedAt: 31
     });
-    await client.request('publishPlaybackSequence', { sequenceId: 'sequence-web', finishedAt: 32 });
     const sequence = await client.request('queryPlaybackSequence', {
       sequenceId: 'sequence-web', ordinal: 0, limit: 20
     });
     deepEqual(sequence.items.map(item => item.entryInstanceId), ['entry-1', 'entry-2'], 'playback duplicates');
+    deepEqual(sequence.items.map(item => [item.artist, item.title]), [
+      ['Crimson Voyager', 'Updated Signal'],
+      ['Crimson Voyager', 'Updated Signal']
+    ], 'playback display metadata');
 
     const operationContext = await client.request('createContext', {
       query: '', sort: 'title', direction: 'asc', scope: null
     });
     const operation = await client.request('receiveOperation', {
       clientRequestId: 'contract-operation', requestDigest: 'sha256:contract',
-      canonicalRequestVersion: 1, operationKind: 'queue', target: { transport: 'main' },
-      expectedTargetVersion: null, sourceContextToken: operationContext.contextToken,
+      canonicalRequestVersion: 1, operationKind: 'addToPlaylist', target: { playlistId: 'playlist-web' },
+      expectedTargetVersion: 0, sourceContextToken: operationContext.contextToken,
       sourceSequenceIds: [], sourceSequenceItemCount: 0,
       buildDeadlineAt: Date.now() + 60_000, receivedAt: Date.now()
     });
@@ -169,7 +256,7 @@ export async function runLibrarySqliteContract() {
     await client.request('completeOperation', operation.operationId, {
       state: 'cancelled', code: 'contract-complete', finishedAt: Date.now()
     });
-    equal((await client.request('lookupOperationResult', 'contract-operation')).kind, 'terminal', 'operation terminal result');
+    equal((await client.request('getOperationStatus', operation.operationId)).result.state, 'cancelled', 'operation terminal result');
 
     const scan = await client.request('beginScanFolder', {
       scanId: 'scan-web', folderId: 'folder-web', normalizedRoot: 'fsa:folder-web',
@@ -187,17 +274,56 @@ export async function runLibrarySqliteContract() {
       expectedLifecycleVersion: 1,
       observations: [{ relativePath: 'Scan/New.flac', path: null, fileIdentity: 'scan-file', size: 99, mtimeMs: 42 }],
       maxTracks: 500, maxBytes: 512 * 1024, lastCommittedBatch: 1,
-      cursor: { visitedFiles: 1 }
+      cursor: { lastRelativePath: 'Scan/New.flac', visitedFiles: 1, committedBatches: 1 }
     });
     const candidates = await client.request('listMetadataCandidates', {
       scanId: 'scan-web', folderId: 'folder-web', generation: scan.generation,
       expectedLifecycleVersion: 1, cursor: null, limit: 20, parserVersion: scan.parserVersion
     });
     equal(candidates.items.length, 1, 'scan metadata candidate');
-    await client.request('pauseScanFolder', {
-      scanId: 'scan-web', folderId: 'folder-web', generation: scan.generation,
-      expectedLifecycleVersion: 1, stopReason: 'contract', sweepBlockReason: 'contract'
+    await client.request('createPlaylistWithItems', {
+      playlistId: 'playlist-late-web', name: 'Late Web', createdAt: 21,
+      items: [{ unresolved: {
+        sourceLine: 'Scan/New.flac', relativePathHint: 'Scan/New.flac',
+        basename: 'New.flac', title: 'New', artist: 'Scan Artist', durationSec: 120
+      } }]
     });
+    const metadataClaim = await client.request('claimMetadataParse', {
+      folderId: 'folder-web',
+      trackUid: 'track-late-web',
+      lifecycleVersion: scan.lifecycleVersion,
+      generation: scan.generation,
+      relativePath: candidates.items[0].relativePath,
+      parserVersion: scan.parserVersion,
+      signature: candidates.items[0].observedSignature,
+      explicitRescan: false
+    });
+    await client.request('completeMetadataParseSuccess', {
+      claim: metadataClaim.claim,
+      metadata: {
+        title: 'New', artist: 'Scan Artist', albumArtist: 'Scan Artist',
+        album: 'Scan Album', genre: 'Genre', durationSec: 120
+      },
+      metadataStatus: 'ok',
+      clearErrorAndRetryState: true,
+      updateLastKnownGood: true,
+      updateDerivedData: true
+    });
+    await client.request('completeScanFolderNoSweep', {
+      scanId: 'scan-web', folderId: 'folder-web', generation: scan.generation,
+      expectedLifecycleVersion: 1, status: 'completed-no-sweep',
+      sweepBlockReason: 'contract-no-sweep'
+    });
+    let latePlaylist;
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      latePlaylist = await client.request('queryPlaylistItems', {
+        playlistId: 'playlist-late-web', limit: 20
+      });
+      if (latePlaylist.items[0].trackUid === 'track-late-web') break;
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    equal(latePlaylist.items[0].trackUid, 'track-late-web', 'late Web playlist resolution');
+    equal(latePlaylist.playlist.version, 1, 'late resolution advances the playlist version');
 
     const source = await client.request('getArtworkSource', { trackUid: 'track-alpha' });
     const claimed = await client.request('claimArtworkSource', { claim: source });
@@ -212,7 +338,55 @@ export async function runLibrarySqliteContract() {
       thumbnail: { bytes: new Uint8Array([1, 2, 3, 4]), width: 1, height: 1, mimeType: 'image/png' }
     });
     equal(published.committed, true, 'artwork publish');
+    deepEqual(published.changedScopes, ['artwork'], 'artwork invalidation scope');
     deepEqual(Array.from((await client.request('getCachedArtwork', { trackUid: 'track-alpha' })).bytes), [1, 2, 3, 4], 'artwork cache');
+
+    const duplicateSource = await client.request('getArtworkSource', { trackUid: 'track-ab' });
+    const duplicateClaimed = await client.request('claimArtworkSource', { claim: duplicateSource });
+    equal((await client.request('preflightArtworkBatch', {
+      claim: duplicateClaimed.claim, estimatedRawBytes: 4, estimatedThumbnailBytes: 4,
+      cachePolicy: artworkPolicy
+    })).ok, true, 'duplicate artwork storage admission');
+    const duplicatePublished = await client.request('publishArtwork', {
+      claim: duplicateClaimed.claim, expectedSourceClaim: duplicateClaimed.claim, cachePolicy: artworkPolicy,
+      thumbnail: { bytes: new Uint8Array([1, 2, 3, 4]), width: 1, height: 1, mimeType: 'image/png' }
+    });
+    equal(duplicatePublished.committed, true, 'duplicate artwork publish');
+    equal(duplicatePublished.artwork.artworkId, published.artwork.artworkId, 'binary-identical artwork shares storage');
+    deepEqual(Array.from((await client.request('getCachedArtwork', { trackUid: 'track-ab' })).bytes), [1, 2, 3, 4], 'shared artwork cache');
+
+    const countBeforeFolderDeletion = (await client.request('getCounts')).tracks;
+    await client.request('upsertFolders', [{
+      id: 'folder-delete-web', kind: 'web-fsa', displayName: 'Delete Test', status: 'active',
+      lifecycleVersion: 1, scanGeneration: 0, addedAt: 3, lastScanAt: null
+    }]);
+    await client.request('upsertTracks', [createTrack(9000, {
+      trackUid: 'track-delete-web', folderId: 'folder-delete-web',
+      relativePath: 'Delete/Test.flac', fileIdentity: 'delete-web-file',
+      fileName: 'Test.flac', size: 128, mtimeMs: 200, title: 'Delete Test'
+    })]);
+    const deletionSource = await client.request('getArtworkSource', { trackUid: 'track-delete-web' });
+    const deletionClaimed = await client.request('claimArtworkSource', { claim: deletionSource });
+    equal((await client.request('preflightArtworkBatch', {
+      claim: deletionClaimed.claim, estimatedRawBytes: 4, estimatedThumbnailBytes: 4,
+      cachePolicy: artworkPolicy
+    })).ok, true, 'folder deletion artwork storage admission');
+    equal((await client.request('publishArtwork', {
+      claim: deletionClaimed.claim, expectedSourceClaim: deletionClaimed.claim, cachePolicy: artworkPolicy,
+      thumbnail: { bytes: new Uint8Array([9, 8, 7, 6]), width: 1, height: 1, mimeType: 'image/png' }
+    })).committed, true, 'folder deletion artwork publish');
+    let deletion = await client.request('removeScanFolder', {
+      folderId: 'folder-delete-web', expectedLifecycleVersion: 1
+    });
+    for (let chunk = 0; deletion.hasMore && chunk < 10; chunk += 1) {
+      deletion = await client.request('removeScanFolder', {
+        folderId: 'folder-delete-web', expectedLifecycleVersion: 1
+      });
+    }
+    equal(deletion.hasMore, false, 'folder deletion completion');
+    equal(await client.request('getTrack', 'track-delete-web'), null, 'folder deletion removes artwork-backed track');
+    equal((await client.request('getCounts')).tracks, countBeforeFolderDeletion, 'folder deletion restores track count');
+    equal((await client.request('checkIntegrity')).ok, true, 'folder deletion SQLite integrity');
 
     const integrity = await client.request('checkIntegrity');
     equal(integrity.ok, true, 'SQLite integrity');
@@ -221,13 +395,22 @@ export async function runLibrarySqliteContract() {
     await client.close();
     client = new CatalogClient();
     await openWithRetry(client);
-    equal((await client.request('getCounts')).tracks, 3, 'graceful reopen persistence');
+    equal((await client.request('getCounts')).tracks, 505, 'graceful reopen persistence');
+    let sessionSequenceMissing = false;
+    try {
+      await client.request('queryPlaybackSequence', {
+        sequenceId: 'sequence-web', ordinal: 0, limit: 1
+      });
+    } catch (error) {
+      sessionSequenceMissing = error?.code === 'sequenceNotFound';
+    }
+    truthy(sessionSequenceMissing, 'playback sequence is scoped to one SQLite session');
     messageEvidence.push(readMessageEvidence(client));
 
     client.terminate();
     client = new CatalogClient();
     await openWithRetry(client);
-    equal((await client.request('getCounts')).tracks, 3, 'Worker restart persistence');
+    equal((await client.request('getCounts')).tracks, 505, 'Worker restart persistence');
     equal((await client.request('checkIntegrity')).ok, true, 'integrity after Worker restart');
     messageEvidence.push(readMessageEvidence(client));
 
@@ -235,7 +418,7 @@ export async function runLibrarySqliteContract() {
     const maximumResponseBytes = Math.max(...messageEvidence.map(item => item.maximumResponseBytes));
     truthy(maximumRequestBytes <= MAX_MESSAGE_BYTES, 'request envelope stayed within 1 MiB');
     truthy(maximumResponseBytes <= MAX_MESSAGE_BYTES, 'response envelope stayed within 1 MiB');
-    return { backend: opened.backend, trackCount: 3, maximumRequestBytes, maximumResponseBytes };
+    return { backend: opened.backend, trackCount: 505, maximumRequestBytes, maximumResponseBytes };
   } finally {
     await client?.close().catch(() => client?.terminate());
   }

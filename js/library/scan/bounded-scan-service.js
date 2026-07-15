@@ -34,8 +34,7 @@ export const SCAN_REPOSITORY_METHODS = Object.freeze([
   'runScanSweep',
   'completeScanFolder',
   'completeScanFolderNoSweep',
-  'pauseScanFolder',
-  'enterReadOnlyDiagnostic'
+  'pauseScanFolder'
 ]);
 
 export const SCAN_FILESYSTEM_METHODS = Object.freeze([
@@ -63,12 +62,10 @@ export class BoundedScanService {
     this.onProgress = onProgress;
     this.config = validateConfig({ ...DEFAULT_SCAN_SERVICE_CONFIG, ...config });
     this.now = now;
-    this.readOnly = false;
   }
 
   async runFolder({ scanId, folder, scanReason = 'automatic', resume = false, signal } = {}) {
     validateRunInput(scanId, folder);
-    this.#assertWritable();
     const run = await this.#mutation(() => this.repository.beginScanFolder({
       scanId,
       folderId: folder.id,
@@ -143,7 +140,7 @@ export class BoundedScanService {
           continuityBroken: true,
           sweepEligibility: 'INELIGIBLE'
         }));
-      } else if (!this.readOnly && error?.code !== 'insufficientStorage') {
+      } else if (error?.code !== 'insufficientStorage') {
         await this.#mutation(() => this.repository.pauseScanFolder({
           ...runIdentity(context),
           status: 'paused',
@@ -173,18 +170,19 @@ export class BoundedScanService {
       startedAt: this.now(),
       lastProgressAt: Number.NEGATIVE_INFINITY,
       counts: {
-        found: 0,
+        found: run.visitedFiles ?? 0,
         parsed: 0,
         unchanged: 0,
         metadataRetryable: 0,
         metadataTerminal: 0,
         metadataRetryDeferred: 0,
         enumerationErrors: 0,
-        committedBatches: 0
+        committedBatches: run.committedBatches ?? 0
       },
       queueHighWater: { items: 1, bytes: estimateDirectoryBytes('') },
       retryJobs: 0,
       retryStartedAt: null,
+      durableVisitedFiles: run.visitedFiles ?? 0,
       metadataCursor: run.metadataCursor ?? null
     };
   }
@@ -290,19 +288,23 @@ export class BoundedScanService {
   async #commitBatch(context, batch) {
     this.#throwIfAborted(context.signal);
     await this.#preflight(context, { tracks: batch.items.length, bytes: batch.bytes });
+    const nextCommittedBatch = context.counts.committedBatches + 1;
+    const nextVisitedFiles = context.durableVisitedFiles + batch.items.length;
     await this.#mutation(() => this.repository.commitScanSeenBatch({
       ...runIdentity(context),
       observations: batch.items,
       expectedLifecycleVersion: context.run.lifecycleVersion,
       maxTracks: this.config.maxBatchTracks,
       maxBytes: this.config.maxBatchBytes,
-      lastCommittedBatch: context.counts.committedBatches + 1,
+      lastCommittedBatch: nextCommittedBatch,
       cursor: Object.freeze({
         lastRelativePath: batch.items.at(-1)?.relativePath ?? null,
-        visitedFiles: context.counts.found
+        visitedFiles: nextVisitedFiles,
+        committedBatches: nextCommittedBatch
       })
     }));
-    context.counts.committedBatches += 1;
+    context.durableVisitedFiles = nextVisitedFiles;
+    context.counts.committedBatches = nextCommittedBatch;
     await this.#drainMetadata(context);
     await this.#flushErrors(context);
   }
@@ -317,23 +319,29 @@ export class BoundedScanService {
         parserVersion: context.run.parserVersion
       });
       const items = page?.items ?? [];
-      await mapConcurrent(items, this.config.parserConcurrency, async candidate => {
+      const candidates = [];
+      for (const candidate of items) {
+        this.#throwIfAborted(context.signal);
         if (isUnchangedMetadataRetry(candidate) && !this.#consumeRetryCredit(context)) {
           context.counts.metadataRetryDeferred += 1;
-          return;
+          continue;
         }
-        const result = await this.#mutation(() => this.metadata.process(candidate, {
-          scanReason: context.scanReason,
-          signal: context.signal
-        }));
+        candidates.push(candidate);
+      }
+      const results = await this.#mutation(() => this.metadata.processBatch(candidates, {
+        scanReason: context.scanReason,
+        signal: context.signal,
+        concurrency: this.config.parserConcurrency
+      }));
+      for (const result of results) {
         if (result.status !== 'committed') {
           if (result.reason === 'unchanged-ok') context.counts.unchanged += 1;
-          return;
+          continue;
         }
         context.counts.parsed += 1;
         if (result.metadataStatus === 'retryable-error') context.counts.metadataRetryable += 1;
         if (result.metadataStatus === 'terminal-error') context.counts.metadataTerminal += 1;
-      });
+      }
       const resumeCursor = page?.resumeCursor ?? cursor;
       if (resumeCursor !== cursor) {
         await this.#mutation(() => this.repository.advanceScanMetadataCursor({
@@ -421,22 +429,7 @@ export class BoundedScanService {
   }
 
   async #mutation(operation) {
-    this.#assertWritable();
-    try {
-      return await operation();
-    } catch (error) {
-      if (!isStorageWriteFailure(error)) throw error;
-      this.readOnly = true;
-      await this.repository.enterReadOnlyDiagnostic({
-        code: 'storage-write-failure',
-        safeDetails: { errorCode: sanitizeErrorCode(error?.code ?? error?.name) }
-      });
-      throw new ScanServiceError(
-        'readOnlyDiagnostic',
-        'Library entered read-only diagnostic mode after a storage write failure',
-        { errorCode: sanitizeErrorCode(error?.code ?? error?.name) }
-      );
-    }
+    return operation();
   }
 
   #progress(context, force = false) {
@@ -460,11 +453,6 @@ export class BoundedScanService {
     throw signal.reason instanceof Error ? signal.reason : new DOMException('Scan aborted', 'AbortError');
   }
 
-  #assertWritable() {
-    if (this.readOnly) {
-      throw new ScanServiceError('readOnlyDiagnostic', 'Library is in read-only diagnostic mode');
-    }
-  }
 }
 
 class DirectoryQueue {
@@ -627,6 +615,16 @@ function assertRunContract(run, folder, resume) {
   assertRepositoryContract(run?.folderId === folder.id, 'invalidScanRun', 'Repository returned a different folder');
   assertRepositoryContract(Number.isSafeInteger(run?.generation) && run.generation >= 0, 'invalidScanRun', 'Repository must return a generation');
   assertRepositoryContract(run?.lifecycleVersion === folder.lifecycleVersion, 'invalidScanRun', 'Repository lifecycle version mismatch');
+  assertRepositoryContract(
+    Number.isSafeInteger(run?.visitedFiles) && run.visitedFiles >= 0,
+    'invalidScanRun',
+    'Repository must return the durable visited-file coordinate'
+  );
+  assertRepositoryContract(
+    Number.isSafeInteger(run?.committedBatches) && run.committedBatches >= 0,
+    'invalidScanRun',
+    'Repository must return the durable committed-batch coordinate'
+  );
   if (resume) {
     assertRepositoryContract(run.continuityBroken === true && run.sweepEligibility === 'INELIGIBLE', 'invalidScanRun', 'Resumed runs must remain sweep-ineligible');
   }
@@ -689,11 +687,6 @@ function safeStorageDetails(result) {
 
 function safeIntegerOrZero(value) {
   return Number.isSafeInteger(value) && value >= 0 ? value : 0;
-}
-
-function isStorageWriteFailure(error) {
-  const code = String(error?.code ?? error?.name ?? '').toUpperCase();
-  return ['SQLITE_FULL', 'ENOSPC', 'SHORT_WRITE', 'FLUSH_FAILED', 'QUOTAEXCEEDEDERROR'].includes(code);
 }
 
 function assertMethods(target, methods, label) {

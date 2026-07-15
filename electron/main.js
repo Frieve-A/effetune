@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, dialog, ipcMain, utilityProcess } = require('electron');
+const { app, BrowserWindow, Tray, Menu, dialog, ipcMain, nativeImage, shell, utilityProcess } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
@@ -15,6 +15,11 @@ const {
   registerLibraryCatalogControlIpc
 } = require('./library-catalog-host.cjs');
 const { LibraryCatalogUtilityHost } = require('./library-catalog-utility-host.cjs');
+const { createLibraryDialogTranslator } = require('./library-dialog-localization.cjs');
+const {
+  LibraryCatalogRecovery,
+  registerLibraryCatalogRecoveryIpc
+} = require('./library-catalog-recovery.cjs');
 const {
   registerLibraryServiceIpc
 } = require('./library-service-coordinator.cjs');
@@ -46,18 +51,111 @@ let libraryCatalogScanRuntime = null;
 let disposeLibraryCatalogControlIpc = null;
 let libraryCatalogUtilityHost = null;
 let disposeLibraryCatalogIpc = null;
+let disposeLibraryCatalogFailureListener = null;
+let libraryCatalogRecovery = null;
+let disposeLibraryCatalogRecoveryIpc = null;
+let libraryCatalogClosePromise = null;
 
 async function closeLibraryCatalogServices() {
+  const utilityHost = libraryCatalogUtilityHost;
+  libraryCatalogUtilityHost = null;
+  disposeLibraryCatalogFailureListener?.();
+  disposeLibraryCatalogFailureListener = null;
   disposeLibraryCatalogIpc?.();
   disposeLibraryCatalogIpc = null;
   disposeLibraryCatalogControlIpc?.();
   disposeLibraryCatalogControlIpc = null;
   disposeLibraryServiceIpc?.();
   disposeLibraryServiceIpc = null;
-  await libraryCatalogUtilityHost?.close();
-  libraryCatalogUtilityHost = null;
   libraryCatalogScanRuntime = null;
   libraryServiceCoordinator = null;
+  await utilityHost?.close();
+}
+
+async function openLibraryCatalogServices({ catalogDirectory, catalogPath }) {
+  fs.mkdirSync(catalogDirectory, { recursive: true });
+  const utilityHost = await LibraryCatalogUtilityHost.open({
+    dialog,
+    getMainWindow: () => constants.getMainWindow(),
+    translate: createLibraryDialogTranslator({
+      getLanguagePreference: () => constants.getAppConfig()?.language,
+      getSystemLocale: () => app.getLocale()
+    }),
+    dbPath: catalogPath,
+    imageAdapter: nativeImage,
+    processFactory: modulePath => utilityProcess.fork(modulePath, [], {
+      serviceName: 'Effetune Music Library'
+    })
+  });
+  let published = false;
+  let startupFailure = utilityHost.failure;
+  const handleFailure = error => {
+    if (!published) {
+      startupFailure ??= error;
+      return;
+    }
+    if (libraryCatalogUtilityHost !== utilityHost) return;
+    console.error(
+      'The music library catalog became unavailable:',
+      String(error?.code || error?.name || 'catalogUnavailable').slice(0, 128)
+    );
+    void libraryCatalogRecovery?.markUnavailable(error);
+  };
+  utilityHost.repository.once('failure', handleFailure);
+  let disposeRepositoryIpc = null;
+  let disposeControlIpc = null;
+  let disposeServiceIpc = null;
+  try {
+    if (startupFailure) throw startupFailure;
+    disposeRepositoryIpc = registerLibraryCatalogIpc({
+      ipcMain,
+      host: utilityHost.repository,
+      getMainWindow: () => constants.getMainWindow()
+    });
+    disposeControlIpc = registerLibraryCatalogControlIpc({
+      ipcMain,
+      runtime: utilityHost.runtime,
+      shell,
+      getMainWindow: () => constants.getMainWindow()
+    });
+    disposeServiceIpc = registerLibraryServiceIpc({
+      ipcMain,
+      coordinator: utilityHost.coordinator,
+      getMainWindow: () => constants.getMainWindow()
+    });
+    if (utilityHost.failure) throw utilityHost.failure;
+  } catch (error) {
+    utilityHost.repository.removeListener('failure', handleFailure);
+    disposeServiceIpc?.();
+    disposeControlIpc?.();
+    disposeRepositoryIpc?.();
+    await utilityHost.close();
+    throw error;
+  }
+
+  libraryCatalogUtilityHost = utilityHost;
+  libraryCatalogScanRuntime = utilityHost.runtime;
+  libraryServiceCoordinator = utilityHost.coordinator;
+  disposeLibraryCatalogIpc = disposeRepositoryIpc;
+  disposeLibraryCatalogControlIpc = disposeControlIpc;
+  disposeLibraryServiceIpc = disposeServiceIpc;
+  published = true;
+  disposeLibraryCatalogFailureListener = () => {
+    utilityHost.repository.removeListener('failure', handleFailure);
+  };
+}
+
+async function closeLibraryCatalogRecovery() {
+  if (libraryCatalogClosePromise) return libraryCatalogClosePromise;
+  disposeLibraryCatalogRecoveryIpc?.();
+  disposeLibraryCatalogRecoveryIpc = null;
+  const recovery = libraryCatalogRecovery;
+  libraryCatalogClosePromise = (async () => {
+    if (recovery) await recovery.close();
+    else await closeLibraryCatalogServices();
+    if (libraryCatalogRecovery === recovery) libraryCatalogRecovery = null;
+  })();
+  return libraryCatalogClosePromise;
 }
 
 // When true, mainWindow.show() is deferred from its ready-to-show handler to
@@ -1205,36 +1303,6 @@ async function initializeApp() {
     }
   }
 
-  // The utility process owns the only writable v2 catalog authority.
-  const libraryCatalogDirectory = path.resolve(userDataPath, 'music-library-v2');
-  const libraryCatalogPath = path.join(libraryCatalogDirectory, 'catalog.sqlite');
-  fs.mkdirSync(libraryCatalogDirectory, { recursive: true });
-  libraryCatalogUtilityHost = await LibraryCatalogUtilityHost.open({
-    dialog,
-    getMainWindow: () => constants.getMainWindow(),
-    dbPath: libraryCatalogPath,
-    processFactory: modulePath => utilityProcess.fork(modulePath, [], {
-      serviceName: 'Effetune Music Library'
-    })
-  });
-  disposeLibraryCatalogIpc = registerLibraryCatalogIpc({
-    ipcMain,
-    host: libraryCatalogUtilityHost.repository,
-    getMainWindow: () => constants.getMainWindow()
-  });
-  libraryCatalogScanRuntime = libraryCatalogUtilityHost.runtime;
-  libraryServiceCoordinator = libraryCatalogUtilityHost.coordinator;
-  disposeLibraryCatalogControlIpc = registerLibraryCatalogControlIpc({
-    ipcMain,
-    runtime: libraryCatalogScanRuntime,
-    getMainWindow: () => constants.getMainWindow()
-  });
-  disposeLibraryServiceIpc = registerLibraryServiceIpc({
-    ipcMain,
-    coordinator: libraryServiceCoordinator,
-    getMainWindow: () => constants.getMainWindow()
-  });
-  
   const cfgDefaults = {
     autoLaunch: false,
     startMinimized: false,
@@ -1258,6 +1326,25 @@ async function initializeApp() {
     constants.setShouldLoadPipelineState(false);
     constants.setStartupPreset(cfg.startupPreset);
   }
+
+  // Register recovery before creating the renderer, but initialize the optional
+  // catalog only after the core window and IPC are ready.
+  libraryCatalogRecovery = new LibraryCatalogRecovery({
+    userDataPath,
+    dialog,
+    getMainWindow: () => constants.getMainWindow(),
+    openCatalog: openLibraryCatalogServices,
+    closeCatalog: closeLibraryCatalogServices,
+    onDiagnostic: error => console.error(
+      'Music library catalog recovery diagnostic:',
+      String(error?.code || error?.name || 'catalogUnavailable').slice(0, 128)
+    )
+  });
+  disposeLibraryCatalogRecoveryIpc = registerLibraryCatalogRecoveryIpc({
+    ipcMain,
+    recovery: libraryCatalogRecovery,
+    getMainWindow: () => constants.getMainWindow()
+  });
 
   // Create the main window
   createWindow();
@@ -1283,6 +1370,14 @@ async function initializeApp() {
         constants.clearPendingCommandLineMusicFiles();
       }
     }
+  });
+
+  void libraryCatalogRecovery.initialize().catch(error => {
+    console.error(
+      'Music library catalog initialization diagnostic:',
+      String(error?.code || error?.name || 'catalogUnavailable').slice(0, 128)
+    );
+    void libraryCatalogRecovery?.markUnavailable(error);
   });
   
   // Show splash + 3s reload on every normal launch (Windows workaround for
@@ -1407,15 +1502,14 @@ app.setAsDefaultProtocolClient('effetune');
 // Main entry point
 app.whenReady().then(async () => {
   try {
-    // Initialize the catalog authority before creating the main window.
     await initializeApp();
   } catch (error) {
-    console.error('Failed to initialize the music catalog:', error?.code || error?.name || 'unknown');
+    console.error('Failed to initialize EffeTune:', error?.code || error?.name || 'unknown');
     dialog.showErrorBox(
       'EffeTune could not start',
-      'The music library catalog could not be opened. No library data was changed.'
+      'EffeTune could not finish starting. Restart the application and try again.'
     );
-    await closeLibraryCatalogServices().catch(() => {});
+    await closeLibraryCatalogRecovery().catch(() => {});
     app.quit();
     return;
   }
@@ -1435,9 +1529,9 @@ app.whenReady().then(async () => {
 app.on('before-quit', (event) => {
   isAppQuitting = true;
   stopWatchdog();
-  if (!libraryCatalogShutdownReady && libraryCatalogUtilityHost) {
+  if (!libraryCatalogShutdownReady && libraryCatalogRecovery) {
     event.preventDefault();
-    closeLibraryCatalogServices()
+    closeLibraryCatalogRecovery()
       .catch(error => {
         console.error('Failed to close the music catalog cleanly:', error?.code || error?.name || 'unknown');
       })
@@ -1459,6 +1553,5 @@ app.on('window-all-closed', () => {
 module.exports = {
   sendPendingUpdateInfo,
   getPendingUpdateInfo,
-  checkForUpdates,
-  getLibraryCatalogHost: () => libraryCatalogUtilityHost?.repository ?? null
+  checkForUpdates
 };

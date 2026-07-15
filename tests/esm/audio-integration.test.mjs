@@ -56,8 +56,8 @@ function createAudioHarness(options = {}) {
       if (options.loadError) throw options.loadError;
       return options.loadResult ?? { success: true, preferences: options.preferences ?? { sampleRate: 48000 } };
     },
-    async saveAudioPreferences(preferences) {
-      calls.push(['saveAudioPreferences', { ...preferences }]);
+    async saveAudioPreferences(preferences, persistenceOptions) {
+      calls.push(['saveAudioPreferences', { ...preferences }, persistenceOptions]);
       if (options.saveError) throw options.saveError;
       return options.saveResult ?? { success: true };
     },
@@ -356,6 +356,58 @@ test('showAudioConfigDialog closes the Web dialog before pending audio reset com
     resolveReset('');
     await applyPromise;
   });
+});
+
+test('showAudioConfigDialog applies Electron input None through the live AudioManager without a reload overlay', async () => {
+  const resetCalls = [];
+  const updateCalls = [];
+  const previousPreferences = {
+    inputDeviceId: 'mic1',
+    outputDeviceId: 'out1',
+    sampleRate: 96000,
+    useInputWithPlayer: false,
+    lowLatencyOutput: false,
+    useWasmDsp: true,
+    outputChannels: 2,
+    latencyHint: 'interactive'
+  };
+  const harness = createAudioHarness({
+    window: {
+      audioManager: {
+        async reset(preferences) {
+          resetCalls.push(preferences);
+          return '';
+        },
+        updateAudioConfig(preferences) {
+          updateCalls.push(preferences);
+        }
+      }
+    }
+  });
+  const document = createFakeDocument();
+
+  await withGlobals({
+    window: harness.window,
+    document,
+    navigator: {},
+    setTimeout: () => {
+      throw new Error('input-only Electron handoff must not schedule the reload overlay');
+    }
+  }, async () => {
+    await withMutedConsole('log', async () => {
+      await showAudioConfigDialog(true, previousPreferences);
+      document.getElementById('input-device').value = NO_AUDIO_INPUT_DEVICE_ID;
+      await document.getElementById('apply-button').dispatchEvent('click');
+      await flushMicrotasks();
+    });
+  });
+
+  assert.equal(resetCalls.length, 1);
+  assert.equal(resetCalls[0].inputDeviceId, NO_AUDIO_INPUT_DEVICE_ID);
+  assert.equal(harness.calls.some(call => call[0] === 'saveAudioPreferences'), false);
+  assert.deepEqual(updateCalls, []);
+  assert.equal(document.body.children.length, 0);
+  assert.equal(document.head.children.length, 0);
 });
 
 test('showAudioConfigDialog localizes Web output support and default option labels', async () => {

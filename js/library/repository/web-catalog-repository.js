@@ -88,6 +88,26 @@ export class WebSqliteCatalogRepository {
     }
   }
 
+  async resetCatalog() {
+    assertRepositoryContract(!this.database, 'alreadyOpen', 'Close the Web catalog before resetting it');
+    const previousClearOnInit = this.clearOnInit;
+    this.clearOnInit = true;
+    try {
+      const opened = await this.open({
+        mode: 'readwrite',
+        expectedSchemaVersion: MUSIC_LIBRARY_SCHEMA_VERSION
+      });
+      return Object.freeze({
+        reset: true,
+        databaseName: opened.databaseName,
+        opfsDirectory: opened.opfsDirectory
+      });
+    } finally {
+      this.close();
+      this.clearOnInit = previousClearOnInit;
+    }
+  }
+
   close() {
     if (!this.database) return;
     try {
@@ -102,6 +122,7 @@ export class WebSqliteCatalogRepository {
   getCapabilities() { return this.#call('getCapabilities'); }
   getCounts() { return this.#call('getCounts'); }
   getRuntimeDiagnostics() { return this.#call('getRuntimeDiagnostics'); }
+  getScanFolderTrackCount(options) { return this.#call('getScanFolderTrackCount', options); }
 
   subscribeInvalidations(listener) {
     assertRepositoryContract(typeof listener === 'function', 'invalidListener', 'Invalidation listener must be a function');
@@ -137,9 +158,9 @@ export class WebSqliteCatalogRepository {
   }
 
   async tombstoneFolder({ folderId, expectedLifecycleVersion } = {}) {
-    await this.#call('removeScanFolder', { folderId, expectedLifecycleVersion });
+    const deletion = await this.#call('removeScanFolder', { folderId, expectedLifecycleVersion });
     const folder = (await this.listFolderRecords({ includeRemoved: true })).find(item => item.id === folderId);
-    return { folder: Object.freeze(folder), enqueued: 1 };
+    return { folder: Object.freeze(folder), deletion, enqueued: 1 };
   }
 
   runFolderDeletion({ folderId, lifecycleVersion } = {}) {
@@ -150,15 +171,7 @@ export class WebSqliteCatalogRepository {
   }
 
   async resumeFolderDeletionJobs({ limit = 1 } = {}) {
-    const removed = (await this.listFolderRecords({ includeRemoved: true, limit: 1_000 }))
-      .filter(folder => folder.status === 'removed')
-      .slice(0, limit);
-    let hasMore = false;
-    for (const folder of removed) {
-      const result = await this.runFolderDeletion({ folderId: folder.id, lifecycleVersion: folder.lifecycleVersion });
-      hasMore ||= result.hasMore === true;
-    }
-    return { resumed: removed.length, hasMore };
+    return this.#call('resumeFolderDeletionJobs', { limit });
   }
 
   repairInterruptedDeletionItems({ limit = 500 } = {}) {
@@ -166,7 +179,6 @@ export class WebSqliteCatalogRepository {
   }
 
   receiveOperation(request = {}) { return this.#call('receiveOperation', request); }
-  lookupOperationResult(clientRequestId) { return this.#call('lookupOperationResult', { clientRequestId }); }
   getOperationStatus(operationId) { return this.#call('getOperationStatus', { operationId }); }
   requestOperationCancel(operationId, { requestedAt = this.now() } = {}) { return this.#call('requestOperationCancel', { operationId, requestedAt }); }
   transitionOperation(operationId, phase, { updatedAt = this.now() } = {}) { return this.#call('transitionOperation', { operationId, phase, updatedAt }); }
@@ -182,17 +194,8 @@ export class WebSqliteCatalogRepository {
   createPlaybackSequence(request) { return this.#call('createPlaybackSequence', request); }
   appendPlaybackSequenceItems(request) { return this.#call('appendPlaybackSequenceItems', request); }
   sealPlaybackSequence(request) { return this.#call('sealPlaybackSequence', request); }
-  publishPlaybackSequence(request) { return this.#call('publishPlaybackSequence', request); }
-  publishProvisionalTransport(request) { return this.#call('publishProvisionalTransport', request); }
-  publishTransportSequence(request) { return this.#call('publishTransportSequence', request); }
-  applyTransportUndo(request) { return this.#call('applyTransportUndo', request); }
-  getTransportState() { return this.#call('getTransportState'); }
-  commitTransportState(request) { return this.#call('commitTransportState', request); }
   queryPlaybackSequence(request) { return this.#call('queryPlaybackSequence', request); }
-  queryTransportSegmentPage(request) { return this.#call('queryTransportSegmentPage', request); }
   queryTransportDescriptorPage(request) { return this.#call('queryTransportDescriptorPage', request); }
-  tombstonePlaybackSequence(sequenceId) { return this.#call('tombstonePlaybackSequence', { sequenceId }); }
-  gcPlaybackSequences(limit = 500) { return this.#call('gcPlaybackSequences', { limit }); }
 
   createPlaylist(request) { return this.#call('createPlaylist', request); }
   createPlaylistWithItems(request) { return this.#call('createPlaylistWithItems', request); }
@@ -201,6 +204,8 @@ export class WebSqliteCatalogRepository {
   reorderPlaylistItem(request) { return this.#call('reorderPlaylistItem', request); }
   duplicatePlaylist(request) { return this.#call('duplicatePlaylist', request); }
   prepareSequencePlaylistSave(request) { return this.#call('prepareSequencePlaylistSave', request); }
+  getAutomaticPlaylistImportState(request) { return this.#call('getAutomaticPlaylistImportState', request); }
+  prepareAutomaticPlaylistImport(request) { return this.#call('prepareAutomaticPlaylistImport', request); }
   appendSequencePlaylistPage(request) { return this.#call('appendSequencePlaylistPage', request); }
   appendPlaylistItems(request) { return this.#call('appendPlaylistItems', request); }
   appendPlaylistImportRecords(request) { return this.#call('appendPlaylistImportRecords', request); }
@@ -213,8 +218,6 @@ export class WebSqliteCatalogRepository {
 
   upsertTracks(tracks) { return this.#call('upsertTracks', { tracks }); }
   deleteTracks(trackUids) { return this.#call('deleteTracks', { trackUids }); }
-  upsertEntities(type, entities) { return this.#call('upsertEntities', { type, entities }); }
-
   beginScanFolder(request) { return this.#call('beginScanFolder', request); }
   async preflightScanBatch(request = {}) {
     await updateWebSqliteStorageEstimate(this.storageManager);
@@ -227,13 +230,19 @@ export class WebSqliteCatalogRepository {
   recordScanErrors(request) { return this.#call('recordScanErrors', request); }
   finalizeScanEnumeration(request) { return this.#call('finalizeScanEnumeration', request); }
   enqueueScanSweep(request) { return this.#call('enqueueScanSweep', request); }
-  runScanSweep(request) { return this.#call('runScanSweep', request); }
+  async runScanSweep(request) {
+    const result = await this.#call('runScanSweep', request);
+    if (result?.hasMore === true) await new Promise(resolve => setTimeout(resolve, 0));
+    return result;
+  }
   completeScanFolder(request) { return this.#call('completeScanFolder', request); }
   completeScanFolderNoSweep(request) { return this.#call('completeScanFolderNoSweep', request); }
   pauseScanFolder(request) { return this.#call('pauseScanFolder', request); }
   claimMetadataParse(request) { return this.#call('claimMetadataParse', request); }
+  claimMetadataParseBatch(request) { return this.#call('claimMetadataParseBatch', request); }
   completeMetadataParseSuccess({ metadataStatus: _metadataStatus, clearErrorAndRetryState: _clear, ...request }) { return this.#call('completeMetadataParseSuccess', request); }
   completeMetadataParseFailure({ createMinimalRecordIfNoLastKnownGood: _create, ...request }) { return this.#call('completeMetadataParseFailure', request); }
+  completeMetadataParseBatch(request) { return this.#call('completeMetadataParseBatch', request); }
   requeueLatestMetadata(request) { return this.#call('requeueLatestMetadata', request); }
   recoverInterruptedMetadataClaims(request) { return this.#call('recoverInterruptedMetadataClaims', request); }
 
@@ -257,11 +266,11 @@ export class WebSqliteCatalogRepository {
   recordArtworkFailure(request) { return this.#call('recordArtworkFailure', request); }
   scheduleArtworkStagingGc(request) { return this.#call('scheduleArtworkStagingGc', request); }
   evictArtworkCache(request) { return this.#call('evictArtworkCache', request); }
-  enterReadOnlyDiagnostic(request) { return this.#call('enterReadOnlyDiagnostic', request); }
 
   createContext(request) { return this.#call('createContext', request); }
+  retainContext(contextToken) { return this.#call('retainContext', { contextToken }); }
+  releaseRetainedContext(contextToken) { return this.#call('releaseRetainedContext', { contextToken }); }
   releaseContext(contextToken) { return this.#call('releaseContext', { contextToken }); }
-  cleanupExpiredContexts() { return this.#call('cleanupExpiredContexts'); }
   cleanupExpiredContextItems(limit = 500) { return this.#call('cleanupExpiredContextItems', { limit }); }
   queryTracks(request) { return this.#call('queryTracks', request); }
   queryEntities(request) { return this.#call('queryEntities', request); }
@@ -269,9 +278,9 @@ export class WebSqliteCatalogRepository {
   readContextPage(request) { return this.#call('readContextPage', request); }
   readContextPageAtOrdinal(request) { return this.#call('readContextPageAtOrdinal', request); }
   resolveEntityAnchor(request) { return this.#call('resolveEntityAnchor', request); }
-  lookupContextTrack(request) { return this.#call('lookupContextTrack', request); }
   getTrack(trackUid) { return this.#call('getTrack', { trackUid }); }
   getTrackStorageIdentity(trackUid) { return this.#call('getTrackStorageIdentity', { trackUid }); }
+  resolvePlaylistExportSource(trackUid) { return this.#call('resolvePlaylistExportSource', { trackUid }); }
   checkIntegrity(options = {}) { return this.#call('checkIntegrity', options); }
 
   #call(command, payload = {}) {
@@ -320,12 +329,14 @@ function configureSqliteWasmVfs() {
 }
 
 const READ_COMMANDS = new Set([
-  'getCapabilities', 'getCounts', 'getRuntimeDiagnostics', 'listScanFolders', 'lookupOperationResult',
-  'getOperationStatus', 'queryOperationSnapshot', 'getTransportState',
-  'queryPlaybackSequence', 'queryTransportSegmentPage', 'queryTransportDescriptorPage',
+  'getCapabilities', 'getCounts', 'getRuntimeDiagnostics', 'listScanFolders',
+  'getScanFolderTrackCount',
+  'getOperationStatus', 'queryOperationSnapshot',
+  'queryPlaybackSequence', 'queryTransportDescriptorPage',
   'queryPlaylistItems', 'getCachedArtwork', 'getArtworkSource', 'queryTracks',
   'queryEntities', 'getContextCount', 'readContextPage', 'readContextPageAtOrdinal',
-  'resolveEntityAnchor', 'lookupContextTrack', 'getTrack', 'getTrackStorageIdentity',
+  'resolveEntityAnchor', 'getTrack', 'getTrackStorageIdentity',
+  'resolvePlaylistExportSource',
   'checkIntegrity'
 ]);
 
@@ -337,7 +348,7 @@ function toInternalFolderStatus(status) {
 function fromInternalFolder(folder) {
   return Object.freeze({
     ...folder,
-    normalizedRoot: `fsa:${folder.id}`,
+    normalizedRoot: `${folder.kind === 'web-session' ? 'session' : 'fsa'}:${folder.id}`,
     status: folder.status === 'removed'
       ? 'removed'
       : folder.status === INTERNAL_ACTIVE_STATUS ? 'active' : 'needs-permission'
@@ -353,7 +364,7 @@ function translateWebSqliteError(error, fallbackCode = 'catalogError') {
   else if (numericCode === 5 || /SQLITE_BUSY|locked|SyncAccessHandle|SAH pool/i.test(diagnosticMessage)) code = 'concurrentUseUnsupported';
   else if ([11, 26].includes(numericCode) || /SQLITE_CORRUPT|SQLITE_NOTADB|malformed/i.test(diagnosticMessage)) code = 'catalogCorrupt';
   else if (numericCode === 14 || /Missing required OPFS APIs|cannot open/i.test(diagnosticMessage)) code = 'opfsUnavailable';
-  console.error('Web music catalog SQLite request failed.', error);
+  if (code !== 'STALE_CURSOR') console.error('Web music catalog SQLite request failed.', error);
   return createRepositoryError(code, userFacingSqliteMessage(code), {});
 }
 

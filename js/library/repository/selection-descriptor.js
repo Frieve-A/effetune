@@ -5,14 +5,17 @@ export const MAX_INLINE_SELECTION_BYTES = 256 * 1024;
 
 const MODE_FIELDS = Object.freeze({
   all: Object.freeze(['contextToken', 'exclusions', 'mode']),
-  range: Object.freeze(['contextToken', 'endUid', 'exclusions', 'mode', 'startUid']),
+  range: Object.freeze(['contextToken', 'endUid', 'exclusions', 'inclusions', 'mode', 'startUid']),
   explicit: Object.freeze(['contextToken', 'mode', 'trackUids'])
 });
 
 export function validateSelectionDescriptor(descriptor) {
   assertRepositoryContract(isPlainObject(descriptor), 'invalidSelection', 'Selection descriptor must be an object');
   assertRepositoryContract(Object.hasOwn(MODE_FIELDS, descriptor.mode), 'invalidSelection', 'Selection mode is invalid');
-  assertExactFields(descriptor, MODE_FIELDS[descriptor.mode]);
+  const expectedFields = descriptor.mode === 'range' && !Object.hasOwn(descriptor, 'inclusions')
+    ? MODE_FIELDS.range.filter(field => field !== 'inclusions')
+    : MODE_FIELDS[descriptor.mode];
+  assertExactFields(descriptor, expectedFields);
   assertUid(descriptor.contextToken, 'contextToken');
 
   if (descriptor.mode === 'explicit') {
@@ -22,18 +25,23 @@ export function validateSelectionDescriptor(descriptor) {
   }
 
   const exclusions = normalizeUidCollection(descriptor.exclusions, 'exclusions');
-  enforceSparseBounds([exclusions]);
   if (descriptor.mode === 'all') {
+    enforceSparseBounds([exclusions]);
     return Object.freeze({ mode: 'all', contextToken: descriptor.contextToken, exclusions: Object.freeze(exclusions) });
   }
 
   assertUid(descriptor.startUid, 'startUid');
   assertUid(descriptor.endUid, 'endUid');
+  const excluded = new Set(exclusions);
+  const inclusions = normalizeUidCollection(descriptor.inclusions ?? [], 'inclusions')
+    .filter(uid => !excluded.has(uid));
+  enforceSparseBounds([exclusions, inclusions]);
   return Object.freeze({
     mode: 'range',
     contextToken: descriptor.contextToken,
     startUid: descriptor.startUid,
     endUid: descriptor.endUid,
+    inclusions: Object.freeze(inclusions),
     exclusions: Object.freeze(exclusions)
   });
 }

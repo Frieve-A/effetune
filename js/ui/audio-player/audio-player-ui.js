@@ -4,6 +4,8 @@
  * UNIFIED STATE MANAGEMENT: UI automatically updates based on state changes
  */
 
+import { validateSelectionDescriptor } from '../../library/repository/selection-descriptor.js';
+
 // Inline transport-control icons (colored white via the .player-button CSS rule).
 // Kept as a shared map so play/pause and repeat icon swaps reuse the same markup.
 const PLAYER_ICONS = {
@@ -264,33 +266,39 @@ export class AudioPlayerUI {
     });
 
     const runPlaybackCommand = command => {
+      const sharedExecutor = this.audioPlayer.playbackManager?.runPlaybackCommand;
+      if (typeof sharedExecutor === 'function') {
+        return sharedExecutor.call(this.audioPlayer.playbackManager, command);
+      }
       try {
-        void Promise.resolve(command()).catch(error => {
+        return Promise.resolve(command()).catch(error => {
           console.error('Audio player command failed:', error);
           window.uiManager?.setError?.('error.playbackCommandFailed', true);
+          return false;
         });
       } catch (error) {
         console.error('Audio player command failed:', error);
         window.uiManager?.setError?.('error.playbackCommandFailed', true);
+        return Promise.resolve(false);
       }
     };
 
     // Add event listeners
     this.playPauseButton.addEventListener('click', () => {
-      this.audioPlayer.togglePlayPause();
+      void runPlaybackCommand(() => this.audioPlayer.togglePlayPause());
     });
-    this.stopButton.addEventListener('click', () => this.audioPlayer.stop());
-    this.prevButton.addEventListener('click', () => runPlaybackCommand(() => this.audioPlayer.playPrevious()));
-    this.nextButton.addEventListener('click', () => runPlaybackCommand(() => this.audioPlayer.playNext()));
+    this.stopButton.addEventListener('click', () => void runPlaybackCommand(() => this.audioPlayer.stop()));
+    this.prevButton.addEventListener('click', () => void runPlaybackCommand(() => this.audioPlayer.playPrevious()));
+    this.nextButton.addEventListener('click', () => void runPlaybackCommand(() => this.audioPlayer.playNext()));
     this.closeButton.addEventListener('click', () => this.audioPlayer.close());
     
     // Add repeat button event listener
-    this.repeatButton.addEventListener('click', () => runPlaybackCommand(
+    this.repeatButton.addEventListener('click', () => void runPlaybackCommand(
       () => this.audioPlayer.playbackManager.toggleRepeatMode()
     ));
     
     // Add shuffle button event listener
-    this.shuffleButton.addEventListener('click', () => runPlaybackCommand(
+    this.shuffleButton.addEventListener('click', () => void runPlaybackCommand(
       () => this.audioPlayer.playbackManager.toggleShuffleMode()
     ));
     
@@ -462,10 +470,11 @@ export class AudioPlayerUI {
       currentTrackName = state.currentTrackName || '';
     }
     
+    const displayName = this.getDisplayTrackName(track);
     if (currentTrackName) {
       this.trackNameDisplay.textContent = currentTrackName;
-    } else if (track && track.name) {
-      this.trackNameDisplay.textContent = this.getDisplayTrackName(track);
+    } else if (displayName) {
+      this.trackNameDisplay.textContent = displayName;
     } else {
       this.trackNameDisplay.textContent = 'No track loaded';
     }
@@ -479,7 +488,9 @@ export class AudioPlayerUI {
 
   notifyLibraryNowPlaying(track = null) {
     const current = track || this.getCurrentTrack();
-    window.uiManager?.libraryView?.setNowPlayingTrack?.(current?.libraryTrackId || null);
+    window.uiManager?.libraryView?.setNowPlayingTrack?.(
+      current?.libraryTrackId || current?.trackUid || null
+    );
   }
 
   updateArtwork(artworkUrl = null) {
@@ -513,11 +524,11 @@ export class AudioPlayerUI {
   }
 
   getDisplayTrackName(track) {
-    const title = track?.meta?.title;
-    const artist = track?.meta?.artist;
+    const title = track?.meta?.title || track?.title;
+    const artist = track?.meta?.artist || track?.artist || track?.albumArtist;
     if (title && artist) return `${artist} - ${title}`;
     if (title) return title;
-    return track?.name || '';
+    return track?.name || track?.fileName || '';
   }
 
   beginPlaylistSelection(shouldPlay) {
@@ -664,7 +675,8 @@ export class AudioPlayerUI {
         const shouldPlay = latestState?.isPlaying || window.uiManager?.layoutMode?.isMobile;
         await this.audioPlayer.playbackManager?.selectCatalogOrdinal?.(ordinal, {
           play: shouldPlay,
-          userInitiated: true
+          userInitiated: true,
+          preserveQueueWindow: true
         });
       });
       this.playlistDisplay.appendChild(item);
@@ -676,7 +688,8 @@ export class AudioPlayerUI {
     event.preventDefault?.();
     const manager = await this.getLibraryManager();
     const libraryTrack = manager?.findTrackForPlaybackEntry?.(track);
-    const libraryTrackId = track?.libraryTrackId || libraryTrack?.id;
+    const libraryTrackId = track?.libraryTrackId || track?.trackUid ||
+      libraryTrack?.trackUid || libraryTrack?.id;
     this.closeLibraryContextMenu();
     const menu = document.createElement('div');
     menu.className = 'player-library-context-menu';
@@ -726,7 +739,7 @@ export class AudioPlayerUI {
     try {
       const manager = await this.getLibraryManager();
       if (!manager) return;
-      const playlists = await manager.playlists.list();
+      const playlists = await listAllPlayerPlaylists(manager.playlists);
       this.closeLibraryContextMenu();
       const menu = document.createElement('div');
       menu.className = 'player-library-context-menu';
@@ -743,13 +756,37 @@ export class AudioPlayerUI {
           const name = await this.promptText('library.prompt.playlistName', this.t('library.prompt.queuePlaylistName'));
           if (name) await manager.playlists.create(name, trackIds);
         } catch (error) {
-          window.uiManager?.setError?.(error.message || String(error), true);
+          reportLibraryActionError('Unable to create a playlist from the player.', error);
         }
       });
       menu.querySelectorAll('[data-playlist-id]').forEach(button => {
         button.addEventListener('click', async () => {
-          await manager.playlists.addTracks(button.dataset.playlistId, trackIds);
-          this.closeLibraryContextMenu();
+          const playlist = playlists.find(item => item.id === button.dataset.playlistId);
+          let contextToken = null;
+          try {
+            contextToken = await manager.createContext({
+              endpoint: 'tracks',
+              query: '',
+              sort: 'title',
+              direction: 'asc',
+              scope: { trackUids: normalizeLegacyTrackIds(trackIds) }
+            });
+            const selectionDescriptor = validateSelectionDescriptor({
+              mode: 'explicit',
+              contextToken,
+              trackUids: normalizeLegacyTrackIds(trackIds)
+            });
+            const target = playlist ?? await manager.playlists.get(button.dataset.playlistId);
+            if (!Number.isSafeInteger(target?.version) || target.version < 0) {
+              throw new Error('Playlist version is unavailable');
+            }
+            await manager.playlists.addTracks(button.dataset.playlistId, selectionDescriptor, {
+              expectedTargetVersion: target.version
+            });
+            this.closeLibraryContextMenu();
+          } finally {
+            if (contextToken) await manager.releaseContext?.(contextToken);
+          }
         });
       });
       document.body.appendChild(menu);
@@ -760,7 +797,7 @@ export class AudioPlayerUI {
       clampMenuToViewport(menu);
       menu.querySelector('button:not(:disabled)')?.focus?.();
     } catch (error) {
-      window.uiManager?.setError?.(error.message || String(error), true);
+      reportLibraryActionError('Unable to open the player playlist menu.', error);
     }
   }
 
@@ -791,19 +828,26 @@ export class AudioPlayerUI {
       const name = await this.promptText('library.prompt.playlistName', this.t('library.prompt.queuePlaylistName'));
       if (name) await manager.playlists.create(name, items);
     } catch (error) {
-      window.uiManager?.setError?.(error.message || String(error), true);
+      reportLibraryActionError('Unable to save the playback queue as a playlist.', error);
     }
   }
 
   async handleLibraryTrackDrop(event) {
-    const trackIds = getLibraryTrackDragIds(event.dataTransfer);
-    if (!trackIds.length) return;
+    const payload = getLibraryTrackDragPayload(event.dataTransfer);
+    if (!payload) return;
     event.preventDefault?.();
     try {
       const manager = await this.getLibraryManager();
-      await manager?.addToQueue?.(trackIds);
+      if (payload.kind === 'selection') {
+        if (typeof manager?.performSelectionAction !== 'function') {
+          throw new Error('Durable Library queue actions are unavailable');
+        }
+        await manager.performSelectionAction('queue', payload.selectionDescriptor);
+      } else {
+        await manager?.addToQueue?.(payload.trackIds);
+      }
     } catch (error) {
-      window.uiManager?.setError?.(error.message || String(error), true);
+      reportLibraryActionError('Unable to add the dropped tracks to the queue.', error);
     }
   }
 
@@ -1097,6 +1141,11 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;');
 }
 
+function reportLibraryActionError(context, error) {
+  console.error(context, error);
+  window.uiManager?.setError?.('library.error.actionFailed', true);
+}
+
 function clampMenuToViewport(menu) {
   const rect = menu.getBoundingClientRect?.();
   if (!rect || typeof window === 'undefined') return;
@@ -1113,12 +1162,54 @@ function hasLibraryTrackDrag(dataTransfer) {
   return Array.from(dataTransfer?.types || []).includes('application/x-effetune-library-tracks');
 }
 
-function getLibraryTrackDragIds(dataTransfer) {
+function getLibraryTrackDragPayload(dataTransfer) {
   try {
     const raw = dataTransfer?.getData?.('application/x-effetune-library-tracks');
     const parsed = JSON.parse(raw || '[]');
-    return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+    if (Array.isArray(parsed)) {
+      const trackIds = normalizeLegacyTrackIds(parsed);
+      return trackIds.length ? { kind: 'legacy', trackIds } : null;
+    }
+    if (
+      !parsed || typeof parsed !== 'object' || Array.isArray(parsed) ||
+      Object.keys(parsed).sort().join(',') !== 'contextToken,selectionDescriptor' ||
+      parsed.contextToken !== parsed.selectionDescriptor?.contextToken
+    ) return null;
+    const selectionDescriptor = validateSelectionDescriptor(parsed.selectionDescriptor);
+    return { kind: 'selection', selectionDescriptor };
   } catch (_) {
-    return [];
+    return null;
+  }
+}
+
+function normalizeLegacyTrackIds(value) {
+  if (!Array.isArray(value) || value.length > 4096) return [];
+  const unique = [];
+  const seen = new Set();
+  for (const trackId of value) {
+    if (typeof trackId !== 'string' || !trackId || seen.has(trackId)) continue;
+    seen.add(trackId);
+    unique.push(trackId);
+  }
+  return unique;
+}
+
+async function listAllPlayerPlaylists(service) {
+  const context = await service.openListContext();
+  const rows = [];
+  let cursor = null;
+  const seenCursors = new Set();
+  try {
+    do {
+      const page = await service.readListContext(context.contextToken, { cursor, limit: 500 });
+      rows.push(...(page.rows ?? []));
+      if (rows.length > 10000) throw new Error('Playlist picker exceeds its supported item limit');
+      cursor = page.nextCursor ?? null;
+      if (cursor && seenCursors.has(cursor)) throw new Error('Playlist picker cursor did not advance');
+      if (cursor) seenCursors.add(cursor);
+    } while (cursor);
+    return rows;
+  } finally {
+    await service.releaseListContext(context.contextToken);
   }
 }

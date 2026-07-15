@@ -92,7 +92,11 @@ En el menú **Configuración**, abre **Configuración...** para elegir el idioma
 5. Después de cambiar archivos, usa **Volver a escanear**; si caducan los permisos del navegador o de una carpeta, usa **Reconectar**.
    - [Más detalles sobre la Biblioteca musical](music-library.md)
 
-La versión 3.0.0 comienza con una Biblioteca musical nueva. El estado de la Biblioteca anterior no se hereda, así que vuelve a añadir y analizar tus carpetas de música. Esto no modifica los archivos de audio que contienen. La arquitectura apunta a más de un millón de pistas; el soporte formal se anunciará solo tras superar Phase 0 y toda la calificación de ejecución.
+Tanto en el diseño para PC como en el móvil, si una búsqueda de pistas o los detalles de un álbum, artista, género, subcarpeta o lista de reproducción devuelven 300 pistas o menos, todas se seleccionan de forma predeterminada. Con 301 pistas o más no hay selección automática. En móvil, la selección automática solo cambia el estado de selección. Solo mantener pulsada una pista abre el modo de selección y muestra las casillas, **Seleccionar todo** y **Deseleccionar todo**; seleccionar o deseleccionar pistas no abre ni cierra ese modo, y las acciones habituales de cada fila siguen disponibles.
+
+Los navegadores Chromium de PC pueden conservar los identificadores de carpeta de File System Access. Safari, Firefox, los navegadores móviles y otros entornos sin esa API solo conservan los objetos `File` durante la sesión actual de la página. Después de cada recarga, vuelve a seleccionar la carpeta o los archivos; EffeTune los enlaza con el catálogo existente mediante la ruta relativa normalizada.
+
+La versión 2.1.0 comienza con una Biblioteca musical nueva. El estado de la Biblioteca anterior no se hereda, así que vuelve a añadir y analizar tus carpetas de música. Esto no modifica los archivos de audio que contienen. El catálogo está diseñado para paginar colecciones grandes desde el disco. Las mediciones de rendimiento a gran escala son diagnósticos locales y opcionales para el desarrollo: no son requisitos para commits, versiones, `verify` ni GitHub Actions, y tampoco constituyen una garantía general de rendimiento.
 
 ### Creando tu Cadena de Efectos
 

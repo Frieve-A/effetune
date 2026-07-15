@@ -15,7 +15,6 @@ export class StateManager {
       sequenceKind: 'materialized',
       sequenceId: null,
       queueWindow: { startOrdinal: 0, rows: [], totalCount: 0 },
-      transportVersion: 0,
       playbackGeneration: 0,
       transportCommandGeneration: 0,
       contextCommandGeneration: 0,
@@ -321,7 +320,6 @@ export class StateManager {
     currentOrdinal = 0,
     currentTrack = null,
     queueWindow = { startOrdinal: 0, rows: [], totalCount: itemCount },
-    transportVersion = this.state.transportVersion,
     playbackGeneration = this.state.playbackGeneration
   }) {
     if (typeof sequenceId !== 'string' || sequenceId.length === 0) {
@@ -338,7 +336,6 @@ export class StateManager {
       queueWindow: normalizeQueueWindow(queueWindow, itemCount),
       currentTrackIndex: Math.max(0, Math.min(currentOrdinal, itemCount - 1)),
       currentTrack,
-      transportVersion,
       playbackGeneration
     }, 'catalog_sequence_update');
   }

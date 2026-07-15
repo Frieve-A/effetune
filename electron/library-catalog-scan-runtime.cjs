@@ -6,6 +6,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { ArtworkWorkerPool } = require('./library-artwork-worker-pool.cjs');
+const {
+  createFolderConsolidationDialogOptions,
+  createLibraryDialogTranslator
+} = require('./library-dialog-localization.cjs');
 const { MetadataWorkerPool } = require('./library-metadata-worker-pool.cjs');
 
 const AUDIO_EXTENSIONS = new Set([
@@ -23,6 +27,8 @@ const MAX_ARTWORK_SOURCE_PIXELS = 64 * 1024 * 1024;
 const MAX_ARTWORK_DECODED_BYTES = 256 * 1024 * 1024;
 const MAX_ARTWORK_THUMBNAIL_BYTES = 512 * 1024;
 const ARTWORK_CACHE_BYTES = 512 * 1024 * 1024;
+const FOLDER_REMOVAL_PROGRESS_INTERVAL_MS = 100;
+const FOLDER_REMOVAL_PROGRESS_TRACK_INTERVAL = 100;
 
 class LibraryCatalogScanRuntime extends EventEmitter {
   constructor({
@@ -30,10 +36,12 @@ class LibraryCatalogScanRuntime extends EventEmitter {
     dialog,
     getMainWindow = () => null,
     filesystem = fs.promises,
+    translate = createLibraryDialogTranslator(),
     metadataParser,
     metadataWorkerPool = null,
     artworkWorkerPool = null,
     imageAdapter = defaultImageAdapter(),
+    artworkThumbnailer = null,
     scanConfig = {},
     utilitySessionId = `${process.pid}:${Date.now()}`
   } = {}) {
@@ -47,19 +55,27 @@ class LibraryCatalogScanRuntime extends EventEmitter {
     this.host = host;
     this.dialog = dialog;
     this.getMainWindow = getMainWindow;
+    this.translate = translate;
     this.filesystem = filesystem;
     this.metadataWorkerPool = metadataParser ? null : (metadataWorkerPool ?? new MetadataWorkerPool({ workerCount: 4 }));
     this.metadataParser = metadataParser ?? this.metadataWorkerPool;
     this.artworkWorkerPool = artworkWorkerPool ?? new ArtworkWorkerPool({ workerCount: 4 });
-    this.imageAdapter = imageAdapter;
+    this.artworkThumbnailer = artworkThumbnailer ?? (source => createArtworkThumbnail(source, imageAdapter));
+    if (typeof this.artworkThumbnailer !== 'function') {
+      throw createRuntimeError('invalidArtworkThumbnailer', 'An artwork thumbnail renderer is required');
+    }
     this.utilitySessionId = requireBoundedString(utilitySessionId, 'utilitySessionId', 512);
     this.artworkRequests = new Map();
     this.scanConfig = scanConfig;
     this.grants = new Map();
     this.playlistImportGrants = new Map();
     this.scans = new Map();
+    this.folderScanTails = new Map();
+    this.pendingFolderDeletions = new Map();
     this.closed = false;
     this.BoundedScanService = null;
+    this.automaticPlaylistModule = null;
+    this.playlistImportService = null;
     this.handleHostFailure = () => this.revokeAll('catalog-host-failure');
     this.host.on?.('failure', this.handleHostFailure);
   }
@@ -67,49 +83,65 @@ class LibraryCatalogScanRuntime extends EventEmitter {
   static async open(options) {
     const runtime = new LibraryCatalogScanRuntime(options);
     const modulePath = path.join(__dirname, '../js/library/scan/bounded-scan-service.js');
-    const module = await import(pathToFileURL(modulePath).href);
+    const playlistModulePath = path.join(__dirname, '../js/library/playlists/automatic-playlist-import.js');
+    const [module, automaticPlaylistModule] = await Promise.all([
+      import(pathToFileURL(modulePath).href),
+      import(pathToFileURL(playlistModulePath).href)
+    ]);
     runtime.BoundedScanService = module.BoundedScanService;
-    if (!options?.readOnlyDiagnostic) {
-      await runtime.host.recoverInterruptedMetadataClaims({
-        metadataStatus: 'retryable-error',
-        errorCode: 'service-interrupted',
-        preserveLastKnownGood: true,
-        updateDerivedData: false
-      });
-      await runtime.host.beginArtworkUtilitySession?.({ utilitySessionId: runtime.utilitySessionId });
-    }
+    runtime.automaticPlaylistModule = automaticPlaylistModule;
+    await runtime.host.recoverInterruptedMetadataClaims({
+      metadataStatus: 'retryable-error',
+      errorCode: 'service-interrupted',
+      preserveLastKnownGood: true,
+      updateDerivedData: false
+    });
+    await runtime.host.beginArtworkUtilitySession?.({ utilitySessionId: runtime.utilitySessionId });
     await runtime.rehydrateGrants();
     return runtime;
+  }
+
+  setPlaylistImportService(service) {
+    this.playlistImportService = service;
   }
 
   async rehydrateGrants() {
     const result = await this.host.listScanFolders({ includeRemoved: false });
     for (const folder of result.folders ?? []) {
-      if (folder.kind !== 'electron' || folder.status !== 'ok' || !folder.path) continue;
+      if (folder.kind !== 'electron' || !folder.path) continue;
+      this.grants.delete(folder.id);
+      let canonicalRoot = null;
+      let status = 'ok';
       try {
-        const canonicalRoot = await this.canonicalDirectory(folder.path);
-        if (sameFilesystemPath(folder.path, canonicalRoot)) this.issueGrant(folder, canonicalRoot);
-      } catch {
-        // Missing or inaccessible folders remain in the catalog for explicit access recovery.
+        canonicalRoot = await this.canonicalDirectory(folder.path);
+        if (!sameFilesystemPath(folder.path, canonicalRoot)) status = 'needs-permission';
+      } catch (error) {
+        status = error?.code === 'ENOENT' ? 'missing' : 'needs-permission';
       }
+      const availableFolder = await this.updateFolderStatus(folder, status);
+      if (status === 'ok') this.issueGrant(availableFolder, canonicalRoot);
     }
   }
 
   async addFolder(request = {}) {
-    assertExactFields(request, [], 'invalidFolderRequest');
+    assertAllowedFields(request, ['languageHints'], 'invalidFolderRequest');
     this.assertOpen();
+    const languageHints = normalizeLanguageHints(request.languageHints);
     const selected = await this.pickDirectory();
     if (!selected) return { canceled: true };
     const canonicalRoot = await this.canonicalDirectory(selected);
-    const existing = await this.host.listScanFolders({ includeRemoved: false });
-    const match = existing.folders.find(folder => sameFilesystemPath(folder.path, canonicalRoot));
-    if (match) {
-      this.issueGrant(match, canonicalRoot);
-      const scan = await this.scanFolders({
-        folderIds: [match.id],
-        scanReason: 'automatic'
-      });
-      return { canceled: false, folder: publicFolder(match), existing: true, scan };
+    const pendingDeletion = this.pendingFolderDeletions.get(filesystemPathKey(canonicalRoot));
+    if (pendingDeletion) await pendingDeletion;
+    const containment = await this.resolveRootContainment(canonicalRoot);
+    if (containment.rejected) {
+      return this.rejectedFolderResult(canonicalRoot, containment);
+    }
+    if (containment.children.length > 0) {
+      const confirmed = await this.confirmFolderConsolidation();
+      if (!confirmed) return { canceled: true };
+      for (const child of containment.children) {
+        await this.removeFolder({ folderId: child.id });
+      }
     }
     const folder = {
       id: `folder_${crypto.randomUUID()}`,
@@ -126,7 +158,8 @@ class LibraryCatalogScanRuntime extends EventEmitter {
     this.issueGrant(folder, canonicalRoot);
     const scan = await this.scanFolders({
       folderIds: [folder.id],
-      scanReason: 'automatic'
+      scanReason: 'automatic',
+      languageHints
     });
     return { canceled: false, folder: publicFolder(folder), existing: false, scan };
   }
@@ -139,16 +172,86 @@ class LibraryCatalogScanRuntime extends EventEmitter {
     const selected = await this.pickDirectory();
     if (!selected) return { canceled: true, folderId };
     const canonicalRoot = await this.canonicalDirectory(selected);
-    if (!sameFilesystemPath(folder.path, canonicalRoot)) {
-      throw createRuntimeError('folderAccessMismatch', 'The selected directory does not match the catalog folder');
+    const containment = await this.resolveRootContainment(canonicalRoot, { excludeId: folderId });
+    if (containment.rejected) {
+      return this.rejectedFolderResult(canonicalRoot, containment, { folderId });
     }
-    this.issueGrant(folder, canonicalRoot);
-    return { canceled: false, folder: publicFolder(folder) };
+    if (containment.children.length > 0) {
+      const confirmed = await this.confirmFolderConsolidation();
+      if (!confirmed) return { canceled: true, folderId };
+      for (const child of containment.children) {
+        await this.removeFolder({ folderId: child.id });
+      }
+    }
+    const rootChanged = !sameFilesystemPath(folder.path, canonicalRoot);
+    if (rootChanged) {
+      const affected = [...this.scans.values()]
+        .filter(record => record.active && record.folderIds.includes(folderId));
+      for (const record of affected) record.controller.abort();
+      await Promise.all(affected.map(record => record.task?.catch(() => {})));
+    }
+    const availableFolder = {
+      ...folder,
+      displayName: path.basename(canonicalRoot) || canonicalRoot,
+      path: canonicalRoot,
+      status: 'ok',
+      lifecycleVersion: Number(folder.lifecycleVersion) + (rootChanged ? 1 : 0)
+    };
+    await this.host.upsertFolders([availableFolder]);
+    this.issueGrant(availableFolder, canonicalRoot, { catalogReady: !rootChanged });
+    const scan = rootChanged
+      ? await this.scanFolders({ folderIds: [folderId], scanReason: 'automatic' })
+      : null;
+    return {
+      canceled: false,
+      folder: publicFolder(availableFolder),
+      ...(scan ? { scan } : {})
+    };
+  }
+
+  async resolveRootContainment(canonicalRoot, { excludeId = null } = {}) {
+    const result = await this.host.listScanFolders({ includeRemoved: false });
+    const children = [];
+    const folders = (result.folders ?? [])
+      .filter(folder => folder.kind === 'electron' && folder.path && folder.id !== excludeId)
+      .sort((left, right) => `${left.path}\0${left.id}`.localeCompare(`${right.path}\0${right.id}`));
+    for (const existing of folders) {
+      const relation = compareFilesystemRoots(canonicalRoot, existing.path);
+      if (relation === 'same') return { rejected: true, reason: 'same-root', existing, children: [] };
+      if (relation === 'descendant') {
+        return { rejected: true, reason: 'descendant-root', existing, children: [] };
+      }
+      if (relation === 'ancestor') children.push(existing);
+    }
+    return { rejected: false, reason: null, existing: null, children };
+  }
+
+  rejectedFolderResult(canonicalRoot, containment, extra = {}) {
+    return {
+      canceled: false,
+      rejected: true,
+      reason: containment.reason,
+      candidate: { displayName: path.basename(canonicalRoot) || canonicalRoot },
+      existing: publicFolder(containment.existing),
+      ...extra
+    };
+  }
+
+  async confirmFolderConsolidation() {
+    const result = await this.dialog.showMessageBox(
+      this.getMainWindow(),
+      createFolderConsolidationDialogOptions(this.translate)
+    );
+    return result?.response === 0;
   }
 
   async scanFolders(request = {}) {
     request = normalizeScanRequest(request);
-    assertAllowedFields(request, ['folderIds', 'scanId', 'resume', 'scanReason'], 'invalidScanRequest');
+    assertAllowedFields(
+      request,
+      ['folderIds', 'scanId', 'resume', 'scanReason', 'languageHints'],
+      'invalidScanRequest'
+    );
     this.assertOpen();
     if (!this.BoundedScanService) throw createRuntimeError('scanRuntimeNotReady', 'Scan runtime is not ready');
     const folderIds = request.folderIds == null
@@ -183,6 +286,7 @@ class LibraryCatalogScanRuntime extends EventEmitter {
     record.task = this.runScanRecord(record, folders, {
       resume,
       scanReason: normalizeScanReason(request.scanReason),
+      languageHints: normalizeLanguageHints(request.languageHints),
       signal: controller.signal
     });
     return { accepted: true, scanId, folderIds: [...record.folderIds], resume };
@@ -192,12 +296,27 @@ class LibraryCatalogScanRuntime extends EventEmitter {
     record.status = 'running';
     record.updatedAt = Date.now();
     this.emitScanEvent(record, { status: 'running' });
+    const metadataParser = options.languageHints
+      ? {
+          parse: request => this.metadataParser.parse({
+            ...request,
+            languageHints: options.languageHints
+          })
+        }
+      : this.metadataParser;
+    const collectors = new Map(folders.map(folder => [
+      folder.id,
+      new this.automaticPlaylistModule.AutomaticPlaylistCollector()
+    ]));
     const service = new this.BoundedScanService({
       repository: this.host,
-      filesystem: this.createFilesystemAdapter(),
-      metadataParser: this.metadataParser,
+      filesystem: this.createFilesystemAdapter({
+        onPlaylistFile: candidate => collectors.get(candidate.folderId)?.add(candidate)
+      }),
+      metadataParser,
       config: this.scanConfig,
       onProgress: progress => {
+        if (isTerminalScanStatus(progress.status)) return;
         record.status = progress.status;
         record.updatedAt = Date.now();
         this.emitScanEvent(record, { progress });
@@ -205,15 +324,40 @@ class LibraryCatalogScanRuntime extends EventEmitter {
     });
     try {
       for (const folder of folders) {
-        this.assertGrant(folder.id, folder.path, folder.lifecycleVersion);
-        const result = await service.runFolder({
-          scanId: record.scanId,
-          folder: { ...folder, normalizedRoot: folder.path },
-          scanReason: options.scanReason,
-          resume: options.resume,
-          signal: options.signal
+        const completed = await this.runFolderSerialized(folder.id, options.signal, async () => {
+          this.assertGrant(folder.id, folder.path, folder.lifecycleVersion);
+          const result = await service.runFolder({
+            scanId: record.scanId,
+            folder: { ...folder, normalizedRoot: folder.path },
+            scanReason: options.scanReason,
+            resume: options.resume,
+            signal: options.signal
+          });
+          if (result.status === 'completed') {
+            this.markGrantCatalogReady(folder.id, folder.path, folder.lifecycleVersion);
+          }
+          const playlistImports = await this.automaticPlaylistModule.importAutomaticPlaylists({
+            service: this.playlistImportService,
+            folderId: folder.id,
+            collector: collectors.get(folder.id),
+            attemptId: record.scanId,
+            signal: options.signal,
+            openSource: async (candidate, identity) => {
+              const granted = await this.issuePlaylistImportGrant(candidate.path, {
+                token: identity.grantToken,
+                includeContentDigest: true,
+                signal: options.signal
+              });
+              return {
+                source: granted.source,
+                contentDigest: granted.contentDigest,
+                release: () => this.playlistImportGrants.delete(granted.source.token)
+              };
+            }
+          });
+          return withPlaylistImportSummary(result, playlistImports);
         });
-        record.results.push(result);
+        record.results.push(completed);
       }
       record.status = record.results.some(result => result.status === 'completed-no-sweep')
         ? 'completed-no-sweep'
@@ -238,6 +382,20 @@ class LibraryCatalogScanRuntime extends EventEmitter {
     return { scanId, canceled: true, status: record.status };
   }
 
+  async runFolderSerialized(folderId, signal, operation) {
+    const previous = this.folderScanTails.get(folderId) ?? Promise.resolve();
+    const current = previous.catch(() => {}).then(() => {
+      throwIfAborted(signal);
+      return operation();
+    });
+    this.folderScanTails.set(folderId, current);
+    try {
+      return await current;
+    } finally {
+      if (this.folderScanTails.get(folderId) === current) this.folderScanTails.delete(folderId);
+    }
+  }
+
   getScanStatus(request) {
     assertExactFields(request, ['scanId'], 'invalidScanRequest');
     const scanId = requireBoundedString(request.scanId, 'scanId', 128);
@@ -248,19 +406,63 @@ class LibraryCatalogScanRuntime extends EventEmitter {
   async removeFolder(request) {
     assertExactFields(request, ['folderId'], 'invalidFolderRequest');
     const folderId = requireBoundedString(request.folderId, 'folderId', 512);
-    const folder = await this.requireFolder(folderId);
+    const folder = await this.requireFolder(folderId, { includeRemoved: true });
+    const expectedLifecycleVersion = folder.status === 'removed'
+      ? Number(folder.lifecycleVersion) - 1
+      : Number(folder.lifecycleVersion);
+    if (!Number.isSafeInteger(expectedLifecycleVersion) || expectedLifecycleVersion < 0) {
+      throw createRuntimeError('staleFolderLifecycle', 'Library folder lifecycle has changed');
+    }
+    const count = await this.host.getScanFolderTrackCount({ folderId });
+    const total = Number(count.trackCount);
+    if (!Number.isSafeInteger(total) || total < 0) {
+      throw createRuntimeError('invalidFolderTrackCount', 'Library folder track count is invalid');
+    }
+    this.emitFolderRemovalEvent({ folderId, phase: 'removing', deleted: 0, total });
+    const pathKey = typeof folder.path === 'string' ? filesystemPathKey(folder.path) : null;
+    const deletion = this.finishFolderRemoval(folderId, expectedLifecycleVersion, total).then(result => {
+      this.emitFolderRemovalEvent({ folderId, phase: 'done', deleted: result.deleted, total });
+      return result;
+    }, error => {
+      this.emitFolderRemovalEvent({ folderId, phase: 'error', deleted: 0, total });
+      throw error;
+    });
+    if (!pathKey) return deletion;
+    this.pendingFolderDeletions.set(pathKey, deletion);
+    try {
+      return await deletion;
+    } finally {
+      if (this.pendingFolderDeletions.get(pathKey) === deletion) {
+        this.pendingFolderDeletions.delete(pathKey);
+      }
+    }
+  }
+
+  async finishFolderRemoval(folderId, expectedLifecycleVersion, total) {
     this.grants.delete(folderId);
     const affected = [...this.scans.values()].filter(record => record.active && record.folderIds.includes(folderId));
     for (const record of affected) record.controller.abort();
     await Promise.all(affected.map(record => record.task?.catch(() => {})));
     let deleted = 0;
+    let lastReportedDeleted = 0;
+    let lastReportedAt = Date.now();
     let result;
     do {
       result = await this.host.removeScanFolder({
         folderId,
-        expectedLifecycleVersion: folder.lifecycleVersion
+        expectedLifecycleVersion
       });
       deleted += result.deleted ?? 0;
+      const now = Date.now();
+      if ((result.deleted ?? 0) > 0 && (
+        deleted === total ||
+        deleted - lastReportedDeleted >= FOLDER_REMOVAL_PROGRESS_TRACK_INTERVAL ||
+        now - lastReportedAt >= FOLDER_REMOVAL_PROGRESS_INTERVAL_MS
+      )) {
+        this.emitFolderRemovalEvent({ folderId, phase: 'removing', deleted, total });
+        lastReportedDeleted = deleted;
+        lastReportedAt = now;
+      }
     } while (result.hasMore === true);
     return { ...result, deleted };
   }
@@ -281,6 +483,41 @@ class LibraryCatalogScanRuntime extends EventEmitter {
     return promise;
   }
 
+  async resolvePlaybackSource(trackUid) {
+    this.assertOpen();
+    const normalizedTrackUid = requireBoundedString(trackUid, 'trackUid', 512);
+    const track = await this.host.getTrackStorageIdentity(normalizedTrackUid);
+    if (!track) throw createRuntimeError('trackNotFound', 'Track does not exist');
+    const folder = await this.requireFolder(track.folderId);
+    let grant;
+    try {
+      grant = this.assertGrant(folder.id, folder.path, folder.lifecycleVersion);
+      if (grant.catalogReady === false) {
+        throw createRuntimeError('sourceUnavailable', 'Track source is unavailable while the folder is being rescanned');
+      }
+    } catch (error) {
+      if (!['folderAccessRequired', 'folderAccessRevoked'].includes(error?.code)) throw error;
+      throw folderPermissionRequired(track);
+    }
+    let filePath;
+    try {
+      filePath = await this.resolveGrantedPath(grant, track.relativePath, { allowRoot: false });
+      await this.filesystem.access(filePath, fs.constants.R_OK);
+    } catch (error) {
+      if (['EACCES', 'EPERM', 'folderAccessRequired', 'folderAccessRevoked'].includes(error?.code)) {
+        throw folderPermissionRequired(track);
+      }
+      throw createRuntimeError('sourceUnavailable', 'Track source is unavailable');
+    }
+    return {
+      kind: 'electron-file',
+      trackUid: normalizedTrackUid,
+      folderId: track.folderId,
+      lifecycleVersion: track.lifecycleVersion,
+      path: filePath
+    };
+  }
+
   async extractArtwork(trackUid) {
     const track = await this.host.getTrackStorageIdentity(trackUid);
     if (!track?.relativePath || !track.fileIdentity || !Number.isSafeInteger(track.size) ||
@@ -289,6 +526,7 @@ class LibraryCatalogScanRuntime extends EventEmitter {
     }
     const folder = await this.requireFolder(track.folderId);
     const grant = this.assertGrant(folder.id, folder.path, folder.lifecycleVersion);
+    if (grant.catalogReady === false) return { kind: 'placeholder' };
     const filePath = await this.resolveGrantedPath(grant, track.relativePath, { allowRoot: false });
     const preliminaryClaim = {
       folderId: track.folderId,
@@ -319,16 +557,6 @@ class LibraryCatalogScanRuntime extends EventEmitter {
       return { kind: 'placeholder' };
     }
     const source = Buffer.from(extracted.bytes);
-    try {
-      assertArtworkDecodeAdmission({
-        rawByteLength: source.byteLength,
-        width: extracted.width,
-        height: extracted.height
-      });
-    } catch (error) {
-      await this.host.scheduleArtworkStagingGc({ claim: claimedBeforeDispatch.claim, reason: 'decode-admission' });
-      return { kind: 'placeholder', errorCode: sanitizeArtworkErrorCode(error) };
-    }
     const claimed = await this.host.bindArtworkSourceDetails({
       claim: claimedBeforeDispatch.claim,
       fileStat: extracted.fileStat,
@@ -339,6 +567,19 @@ class LibraryCatalogScanRuntime extends EventEmitter {
     if (!claimed?.claim) {
       await this.host.scheduleArtworkStagingGc({ claim: claimedBeforeDispatch.claim, reason: 'stale-source' });
       return { kind: 'placeholder' };
+    }
+    let thumbnail;
+    try {
+      thumbnail = normalizeArtworkThumbnail(await this.artworkThumbnailer(source));
+    } catch (error) {
+      const errorCode = sanitizeArtworkErrorCode(error);
+      await this.host.recordArtworkFailure({
+        claim: claimed.claim,
+        errorCode,
+        placeholder: true,
+        preserveExistingArtwork: true
+      });
+      return { kind: 'placeholder', errorCode };
     }
     const admissionRequest = {
       claim: claimed.claim,
@@ -359,60 +600,13 @@ class LibraryCatalogScanRuntime extends EventEmitter {
       await this.host.scheduleArtworkStagingGc({ claim: claimed.claim, reason: 'storage-preflight' });
       return { kind: 'placeholder', errorCode: preflight?.code ?? 'insufficientStorage' };
     }
-    if (!this.imageAdapter?.createFromBuffer) {
-      if (source.byteLength <= MAX_ARTWORK_THUMBNAIL_BYTES && extracted.width <= 512 &&
-          extracted.height <= 512 && ['image/jpeg', 'image/webp'].includes(extracted.mimeType)) {
-        const thumbnail = {
-          bytes: new Uint8Array(source), width: extracted.width,
-          height: extracted.height, mimeType: extracted.mimeType
-        };
-        const result = await this.host.publishArtwork({
-          claim: claimed.claim,
-          expectedSourceClaim: claimed.claim,
-          cachePolicy: { mode: 'persistent', maxBytes: ARTWORK_CACHE_BYTES },
-          thumbnail
-        });
-        return result.committed === true ? result.artwork : { kind: 'placeholder' };
-      }
-      await this.host.recordArtworkFailure({
-        claim: claimed.claim, errorCode: 'artwork-thumbnail-unavailable',
-        placeholder: true, preserveExistingArtwork: true
-      });
-      return { kind: 'placeholder' };
-    }
-    let image = this.imageAdapter.createFromBuffer(source);
-    if (!image || image.isEmpty?.()) {
-      await this.host.recordArtworkFailure({
-        claim: claimed.claim, errorCode: 'artwork-decode-failed',
-        placeholder: true, preserveExistingArtwork: true
-      });
-      return { kind: 'placeholder' };
-    }
-    const original = image.getSize();
-    const scale = Math.min(1, 512 / original.width, 512 / original.height);
-    const width = Math.max(1, Math.round(original.width * scale));
-    const height = Math.max(1, Math.round(original.height * scale));
-    if (scale < 1) image = image.resize({ width, height, quality: 'good' });
-    for (const quality of [86, 72, 58, 44]) {
-      const bytes = image.toJPEG(quality);
-      if (bytes.byteLength <= MAX_ARTWORK_THUMBNAIL_BYTES) {
-        const thumbnail = {
-          bytes: new Uint8Array(bytes), width, height, mimeType: 'image/jpeg'
-        };
-        const result = await this.host.publishArtwork({
-          claim: claimed.claim,
-          expectedSourceClaim: claimed.claim,
-          cachePolicy: { mode: 'persistent', maxBytes: ARTWORK_CACHE_BYTES },
-          thumbnail
-        });
-        return result.committed === true ? result.artwork : { kind: 'placeholder' };
-      }
-    }
-    await this.host.recordArtworkFailure({
-      claim: claimed.claim, errorCode: 'artworkThumbnailTooLarge',
-      placeholder: true, preserveExistingArtwork: true
+    const result = await this.host.publishArtwork({
+      claim: claimed.claim,
+      expectedSourceClaim: claimed.claim,
+      cachePolicy: { mode: 'persistent', maxBytes: ARTWORK_CACHE_BYTES },
+      thumbnail
     });
-    return { kind: 'placeholder' };
+    return result.committed === true ? result.artwork : { kind: 'placeholder' };
   }
 
   async pickPlaylistImport(request = {}) {
@@ -435,7 +629,11 @@ class LibraryCatalogScanRuntime extends EventEmitter {
     return this.issuePlaylistImportGrant(request.path);
   }
 
-  async issuePlaylistImportGrant(selected) {
+  async issuePlaylistImportGrant(selected, {
+    token: requestedToken = null,
+    includeContentDigest = false,
+    signal = null
+  } = {}) {
     if (typeof selected !== 'string' || !path.isAbsolute(selected) ||
         !PLAYLIST_EXTENSIONS.has(path.extname(selected).toLowerCase())) {
       throw createRuntimeError('invalidPlaylistImportSource', 'Playlist file is invalid');
@@ -458,7 +656,9 @@ class LibraryCatalogScanRuntime extends EventEmitter {
         .sort((left, right) => left[1].issuedAt - right[1].issuedAt)[0]?.[0];
       if (oldestToken) this.playlistImportGrants.delete(oldestToken);
     }
-    const token = `playlist_import_${crypto.randomUUID()}`;
+    const token = requestedToken === null
+      ? `playlist_import_${crypto.randomUUID()}`
+      : requireBoundedString(requestedToken, 'token', 512);
     const grant = Object.freeze({
       token,
       path: canonicalPath,
@@ -467,17 +667,28 @@ class LibraryCatalogScanRuntime extends EventEmitter {
       fileIdentity: `${String(stats.dev ?? '')}:${String(stats.ino ?? '')}`,
       size: Number(stats.size),
       mtimeMs: Math.round(Number(stats.mtimeMs)),
+      origin: this.playlistOriginForPath(canonicalPath),
       issuedAt: Date.now(),
       expiresAt: Date.now() + PLAYLIST_IMPORT_GRANT_TTL_MS
     });
+    const contentDigest = includeContentDigest
+      ? await this.digestPlaylistImportGrant(grant, { signal })
+      : null;
     this.playlistImportGrants.set(token, grant);
     return {
       canceled: false,
       source: {
         kind: 'electron-import-grant', token, name: grant.name, size: grant.size,
         lastModified: grant.mtimeMs, type: ''
-      }
+      },
+      ...(contentDigest === null ? {} : { contentDigest })
     };
+  }
+
+  async digestPlaylistImportGrant(grant, { signal } = {}) {
+    const hash = crypto.createHash('sha256');
+    for await (const chunk of this.openPlaylistImportGrantStream(grant, { signal })) hash.update(chunk);
+    return `sha256:${hash.digest('hex')}`;
   }
 
   async consumePlaylistImportGrant(source) {
@@ -504,6 +715,7 @@ class LibraryCatalogScanRuntime extends EventEmitter {
       size: grant.size,
       lastModified: grant.mtimeMs,
       type: '',
+      origin: grant.origin,
       stream: () => this.openPlaylistImportGrantStream(grant)
     });
   }
@@ -515,6 +727,28 @@ class LibraryCatalogScanRuntime extends EventEmitter {
     }
   }
 
+  playlistOriginForPath(canonicalPath) {
+    for (const grant of this.grants.values()) {
+      try {
+        this.assertGrant(grant.folderId, grant.root, grant.lifecycleVersion);
+        const relative = path.relative(grant.root, canonicalPath);
+        if (
+          relative === '' || relative === '..' || relative.startsWith(`..${path.sep}`) ||
+          path.isAbsolute(relative)
+        ) continue;
+        return Object.freeze({
+          folderId: grant.folderId,
+          playlistRelativePath: relative.split(path.sep).join('/'),
+          playlistCanonicalPath: canonicalPath,
+          root: grant.root
+        });
+      } catch {
+        // Only a current matching folder grant can establish a trusted playlist origin.
+      }
+    }
+    return null;
+  }
+
   async assertPlaylistImportGrantFile(grant) {
     const canonicalPath = path.resolve(await this.filesystem.realpath(grant.path));
     const stats = await this.filesystem.lstat(canonicalPath);
@@ -523,8 +757,10 @@ class LibraryCatalogScanRuntime extends EventEmitter {
     }
   }
 
-  async *openPlaylistImportGrantStream(grant) {
+  async *openPlaylistImportGrantStream(grant, { signal } = {}) {
+    throwIfAborted(signal);
     await this.assertPlaylistImportGrantFile(grant);
+    throwIfAborted(signal);
     const handle = await this.filesystem.open(grant.path, 'r');
     let offset = 0;
     try {
@@ -533,6 +769,7 @@ class LibraryCatalogScanRuntime extends EventEmitter {
         throw createRuntimeError('playlistImportSourceChanged', 'Playlist import source changed while opening');
       }
       while (offset < grant.size) {
+        throwIfAborted(signal);
         const buffer = Buffer.allocUnsafe(Math.min(256 * 1024, grant.size - offset));
         const result = await handle.read(buffer, 0, buffer.length, offset);
         if (result.bytesRead === 0) break;
@@ -547,14 +784,17 @@ class LibraryCatalogScanRuntime extends EventEmitter {
     }
   }
 
-  createFilesystemAdapter() {
+  createFilesystemAdapter({ onPlaylistFile = () => {} } = {}) {
+    if (typeof onPlaylistFile !== 'function') {
+      throw createRuntimeError('invalidScanAdapter', 'Playlist file observer is invalid');
+    }
     return {
-      enumerateDirectory: input => this.enumerateDirectory(input),
+      enumerateDirectory: input => this.enumerateDirectory({ ...input, onPlaylistFile }),
       statFile: input => this.statFile(input)
     };
   }
 
-  async *enumerateDirectory({ root, relativeDirectory = '', signal } = {}) {
+  async *enumerateDirectory({ root, relativeDirectory = '', signal, onPlaylistFile = () => {} } = {}) {
     throwIfAborted(signal);
     const grant = this.grantForRoot(root);
     const directoryPath = await this.resolveGrantedPath(grant, relativeDirectory, { allowRoot: true, directory: true });
@@ -574,6 +814,8 @@ class LibraryCatalogScanRuntime extends EventEmitter {
             yield { kind: 'directory', name: entry.name, relativePath };
           } else if (stats.isFile() && AUDIO_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
             yield { kind: 'file', name: entry.name, relativePath, path: candidate };
+          } else if (stats.isFile() && PLAYLIST_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+            onPlaylistFile({ folderId: grant.folderId, name: entry.name, relativePath, path: candidate });
           }
         } catch (error) {
           yield { kind: 'error', relativePath, phase: 'containment', error: sanitizeError(error) };
@@ -637,14 +879,24 @@ class LibraryCatalogScanRuntime extends EventEmitter {
     return grant;
   }
 
-  issueGrant(folder, canonicalRoot) {
+  issueGrant(folder, canonicalRoot, { catalogReady = true } = {}) {
     this.grants.set(folder.id, Object.freeze({
       folderId: folder.id,
       root: canonicalRoot,
       lifecycleVersion: Number(folder.lifecycleVersion),
+      catalogReady,
       issuedAt: Date.now(),
       revoked: false
     }));
+  }
+
+  markGrantCatalogReady(folderId, root, lifecycleVersion) {
+    const grant = this.grants.get(folderId);
+    if (
+      !grant || grant.revoked || grant.catalogReady !== false ||
+      !sameFilesystemPath(grant.root, root) || grant.lifecycleVersion !== lifecycleVersion
+    ) return;
+    this.grants.set(folderId, Object.freeze({ ...grant, catalogReady: true }));
   }
 
   async loadGrantedFolders(folderIds) {
@@ -661,11 +913,18 @@ class LibraryCatalogScanRuntime extends EventEmitter {
     });
   }
 
-  async requireFolder(folderId) {
-    const response = await this.host.listScanFolders({ folderIds: [folderId], includeRemoved: false });
+  async requireFolder(folderId, { includeRemoved = false } = {}) {
+    const response = await this.host.listScanFolders({ folderIds: [folderId], includeRemoved });
     const folder = response.folders[0];
     if (!folder) throw createRuntimeError('folderUnavailable', 'Library folder is unavailable');
     return folder;
+  }
+
+  async updateFolderStatus(folder, status) {
+    if (folder.status === status) return folder;
+    const updated = { ...folder, status };
+    await this.host.upsertFolders([updated]);
+    return updated;
   }
 
   async pickDirectory() {
@@ -692,6 +951,14 @@ class LibraryCatalogScanRuntime extends EventEmitter {
 
   emitScanEvent(record, extra = {}) {
     this.emit('scan-event', { ...publicScanRecord(record), ...extra });
+  }
+
+  emitFolderRemovalEvent(event) {
+    this.emit('folder-removal-event', {
+      ...event,
+      remaining: Math.max(0, event.total - event.deleted),
+      terminal: event.phase !== 'removing'
+    });
   }
 
   revokeAll(reason) {
@@ -732,6 +999,57 @@ function defaultImageAdapter() {
   } catch {
     return null;
   }
+}
+
+function createArtworkThumbnail(source, imageAdapter = defaultImageAdapter()) {
+  const bytes = Buffer.from(source);
+  if (!imageAdapter?.createFromBuffer) {
+    throw createRuntimeError('artwork-thumbnail-unavailable', 'Artwork decoder is unavailable');
+  }
+  let image = imageAdapter.createFromBuffer(bytes);
+  if (!image || image.isEmpty?.()) {
+    throw createRuntimeError('artwork-decode-failed', 'Artwork could not be decoded');
+  }
+  const original = image.getSize();
+  assertArtworkDecodeAdmission({
+    rawByteLength: bytes.byteLength,
+    width: original.width,
+    height: original.height
+  });
+  const scale = Math.min(1, 512 / original.width, 512 / original.height);
+  const width = Math.max(1, Math.round(original.width * scale));
+  const height = Math.max(1, Math.round(original.height * scale));
+  if (scale < 1) image = image.resize({ width, height, quality: 'good' });
+  for (const quality of [86, 72, 58, 44]) {
+    const thumbnailBytes = image.toJPEG(quality);
+    if (thumbnailBytes.byteLength <= MAX_ARTWORK_THUMBNAIL_BYTES) {
+      return {
+        bytes: new Uint8Array(thumbnailBytes), width, height, mimeType: 'image/jpeg'
+      };
+    }
+  }
+  throw createRuntimeError('artworkThumbnailTooLarge', 'Artwork thumbnail exceeds the byte limit');
+}
+
+function normalizeArtworkThumbnail(value) {
+  const source = value?.bytes;
+  const bytes = source instanceof ArrayBuffer
+    ? new Uint8Array(source)
+    : ArrayBuffer.isView(source)
+      ? new Uint8Array(source.buffer, source.byteOffset, source.byteLength)
+      : null;
+  if (!bytes || bytes.byteLength === 0 || bytes.byteLength > MAX_ARTWORK_THUMBNAIL_BYTES ||
+      !Number.isSafeInteger(value.width) || value.width < 1 || value.width > 512 ||
+      !Number.isSafeInteger(value.height) || value.height < 1 || value.height > 512 ||
+      value.mimeType !== 'image/jpeg') {
+    throw createRuntimeError('artwork-thumbnail-invalid', 'Artwork thumbnail is invalid');
+  }
+  return {
+    bytes: new Uint8Array(bytes),
+    width: value.width,
+    height: value.height,
+    mimeType: value.mimeType
+  };
 }
 
 function assertArtworkDecodeAdmission({ rawByteLength, width, height }) {
@@ -777,11 +1095,24 @@ function assertContained(root, candidate, allowRoot) {
 
 function sameFilesystemPath(left, right) {
   if (typeof left !== 'string' || typeof right !== 'string') return false;
-  const normalize = value => {
-    const resolved = path.resolve(value);
-    return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
-  };
-  return normalize(left) === normalize(right);
+  return filesystemPathKey(left) === filesystemPathKey(right);
+}
+
+function compareFilesystemRoots(candidate, existing) {
+  if (sameFilesystemPath(candidate, existing)) return 'same';
+  if (isPathDescendant(candidate, existing)) return 'ancestor';
+  if (isPathDescendant(existing, candidate)) return 'descendant';
+  return 'separate';
+}
+
+function isPathDescendant(parent, candidate) {
+  const relative = path.relative(parent, candidate);
+  return relative !== '' && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+}
+
+function filesystemPathKey(value) {
+  const resolved = path.resolve(value);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
 }
 
 function publicFolder(folder) {
@@ -793,6 +1124,27 @@ function publicFolder(folder) {
     lifecycleVersion: Number(folder.lifecycleVersion),
     lastScanAt: folder.lastScanAt ?? null
   };
+}
+
+function isTerminalScanStatus(status) {
+  return status === 'completed' || status === 'completed-no-sweep';
+}
+
+function withPlaylistImportSummary(result, playlistImports) {
+  return Object.freeze({
+    ...result,
+    playlistImportState: playlistImports.state ??
+      (playlistImports.canceled > 0 ? 'playlist-import-canceled' : 'completed'),
+    counts: Object.freeze({
+      ...(result?.counts ?? {}),
+      playlistsFound: playlistImports.found,
+      playlistsImported: playlistImports.imported,
+      playlistsAlreadyImported: playlistImports.alreadyImported,
+      playlistImportFailures: playlistImports.failed,
+      playlistImportsCanceled: playlistImports.canceled ?? 0
+    }),
+    playlistImports
+  });
 }
 
 function publicScanRecord(record) {
@@ -809,6 +1161,7 @@ function publicScanRecord(record) {
       status: result.status,
       continuityBroken: result.continuityBroken,
       sweepEligibility: result.sweepEligibility,
+      playlistImportState: result.playlistImportState,
       counts: result.counts
     })),
     error: record.error
@@ -819,6 +1172,41 @@ function normalizeScanRequest(value) {
   if (value == null) return { folderIds: null };
   if (Array.isArray(value)) return { folderIds: value };
   return value;
+}
+
+function normalizeLanguageHints(value) {
+  if (value == null) return null;
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw createRuntimeError('invalidLanguageHints', 'Metadata language hints are invalid');
+  }
+  assertAllowedFields(
+    value,
+    ['language', 'languagePreference', 'browserLanguage', 'browserLanguages'],
+    'invalidLanguageHints'
+  );
+  const normalized = {};
+  for (const field of ['language', 'languagePreference', 'browserLanguage']) {
+    const text = normalizeLanguageHint(value[field]);
+    if (text) normalized[field] = text;
+  }
+  if (value.browserLanguages !== undefined) {
+    if (!Array.isArray(value.browserLanguages) || value.browserLanguages.length > 8) {
+      throw createRuntimeError('invalidLanguageHints', 'Metadata browser languages are invalid');
+    }
+    const browserLanguages = value.browserLanguages
+      .map(normalizeLanguageHint)
+      .filter(Boolean);
+    if (browserLanguages.length) normalized.browserLanguages = browserLanguages;
+  }
+  return Object.keys(normalized).length ? Object.freeze(normalized) : null;
+}
+
+function normalizeLanguageHint(value) {
+  if (value == null || value === '') return '';
+  if (typeof value !== 'string' || value.length > 128) {
+    throw createRuntimeError('invalidLanguageHints', 'Metadata language hint text is invalid');
+  }
+  return value.trim();
 }
 
 function normalizeScanReason(value) {
@@ -888,7 +1276,16 @@ function createRuntimeError(code, message, details = {}) {
   return error;
 }
 
+function folderPermissionRequired(track) {
+  return createRuntimeError(
+    'folderPermissionRequired',
+    'Playback folder access must be restored',
+    { folderId: track.folderId, lifecycleVersion: track.lifecycleVersion }
+  );
+}
+
 module.exports = {
   AUDIO_EXTENSIONS,
+  createArtworkThumbnail,
   LibraryCatalogScanRuntime
 };

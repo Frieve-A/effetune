@@ -30,16 +30,21 @@ class MetadataWorkerPool {
     this.closed = false;
   }
 
-  parse({ path: filePath, relativePath, skipCovers, signal } = {}) {
+  parse({ path: filePath, relativePath, skipCovers, signal, languageHints = null } = {}) {
     if (this.closed) return Promise.reject(createPoolError('metadataPoolClosed', 'Metadata worker pool is closed'));
     if (skipCovers !== true) return Promise.reject(createPoolError('metadataArtworkForbidden', 'Metadata scan must skip artwork'));
+    try {
+      validateMetadataRequest({ filePath, relativePath });
+    } catch (error) {
+      return Promise.reject(error);
+    }
     if (signal?.aborted) return Promise.reject(abortError(signal));
     if (this.queue.length >= MAX_METADATA_QUEUE) {
       return Promise.reject(createPoolError('metadataQueueLimit', 'Metadata worker queue limit reached'));
     }
     return new Promise((resolve, reject) => {
       const job = {
-        requestId: this.nextRequestId++, filePath, relativePath, skipCovers, signal, resolve, reject,
+        requestId: this.nextRequestId++, filePath, relativePath, skipCovers, signal, languageHints, resolve, reject,
         abort: null, timer: null, worker: null
       };
       job.abort = () => {
@@ -74,7 +79,8 @@ class MetadataWorkerPool {
       job.timer.unref?.();
       worker.postMessage({
         type: 'parse', requestId: job.requestId, filePath: job.filePath,
-        relativePath: job.relativePath, skipCovers: job.skipCovers
+        relativePath: job.relativePath, skipCovers: job.skipCovers,
+        languageHints: job.languageHints
       });
     }
   }
@@ -151,6 +157,15 @@ class MetadataWorkerPool {
       else this.discard(worker);
     }
     await Promise.allSettled(workers.map(worker => worker.terminate()));
+  }
+}
+
+function validateMetadataRequest({ filePath, relativePath }) {
+  if (typeof filePath !== 'string' || !path.isAbsolute(filePath) || filePath.length > 32_768) {
+    throw createPoolError('invalidMetadataRequest', 'Metadata file path is invalid');
+  }
+  if (typeof relativePath !== 'string' || !relativePath || relativePath.length > 32_768) {
+    throw createPoolError('invalidMetadataRequest', 'Metadata relative path is invalid');
   }
 }
 

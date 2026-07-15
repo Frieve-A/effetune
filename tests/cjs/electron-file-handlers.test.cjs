@@ -73,10 +73,6 @@ function createHarness(options = {}) {
       calls.push(['fileUtils.readFile', ...args]);
       return { success: true, op: 'readFile', args };
     },
-    readFileAsBuffer: async (...args) => {
-      calls.push(['fileUtils.readFileAsBuffer', ...args]);
-      return { success: true, op: 'readFileAsBuffer', args };
-    },
     joinPaths: (...args) => {
       calls.push(['fileUtils.joinPaths', ...args]);
       return path.join(...args);
@@ -184,15 +180,10 @@ test('file operation helpers delegate to file-utils', async () => {
     op: 'saveFile',
     args: ['preset.effetune_preset', 'content']
   });
-  assert.deepEqual(await harness.module.readFile('preset.effetune_preset', true), {
+  assert.deepEqual(await harness.module.readFile('preset.effetune_preset'), {
     success: true,
     op: 'readFile',
-    args: ['preset.effetune_preset', true]
-  });
-  assert.deepEqual(await harness.module.readFileAsBuffer('song.mp3'), {
-    success: true,
-    op: 'readFileAsBuffer',
-    args: ['song.mp3']
+    args: ['preset.effetune_preset']
   });
   assert.equal(harness.module.joinPaths('a', 'b', 'c'), path.join('a', 'b', 'c'));
   assert.equal(harness.module.fileExists('something.exists'), true);

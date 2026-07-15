@@ -285,13 +285,9 @@ function createHarness(options = {}) {
       calls.push(['fileHandlers.saveFile', filePath, content]);
       return { success: true };
     },
-    async readFile(filePath, binary) {
-      calls.push(['fileHandlers.readFile', filePath, binary]);
+    async readFile(filePath) {
+      calls.push(['fileHandlers.readFile', filePath]);
       return { success: true, content: 'data' };
-    },
-    async readFileAsBuffer(filePath) {
-      calls.push(['fileHandlers.readFileAsBuffer', filePath]);
-      return { success: true, content: 'base64' };
     },
     async getFilePath(fileInfo) {
       calls.push(['fileHandlers.getFilePath', fileInfo]);
@@ -362,6 +358,12 @@ function createHarness(options = {}) {
       './config': config,
       './file-handlers': fileHandlers,
       './file-handlers.js': fileHandlers,
+      './bounded-file-reader': {
+        async readFileBytes(filePath) {
+          calls.push(['readFileBytes', filePath]);
+          return new Uint8Array([1, 2, 3]).buffer;
+        }
+      },
       './main': main
     },
     tempDir
@@ -398,8 +400,11 @@ async function invokeAllDelegates(handlers) {
   assert.deepEqual(await handlers.get('show-save-dialog')({}, { title: 'save' }), { canceled: false, filePath: 'save.wav' });
   assert.deepEqual(await handlers.get('show-open-dialog')({}, { title: 'open' }), { canceled: false, filePaths: ['open.wav'] });
   assert.deepEqual(await handlers.get('save-file')({}, 'a.txt', 'content'), { success: true });
-  assert.deepEqual(await handlers.get('read-file')({}, 'a.txt', true), { success: true, content: 'data' });
-  assert.deepEqual(await handlers.get('read-file-as-buffer')({}, 'a.bin'), { success: true, content: 'base64' });
+  assert.deepEqual(await handlers.get('read-file')({}, 'a.txt'), { success: true, content: 'data' });
+  assert.deepEqual(
+    [...new Uint8Array(await handlers.get('read-file-bytes')({}, 'a.bin'))],
+    [1, 2, 3]
+  );
   assert.equal(handlers.get('joinPaths')({}, 'a', 'b', 'c'), path.join('a', 'b', 'c'));
   assert.equal(handlers.get('fileExists')({}, 'missing'), false);
   assert.equal(await handlers.get('get-file-path')({}, { name: 'one' }), 'one.wav');
@@ -813,6 +818,65 @@ test('IPC handlers manage macOS microphone access and audio preference edge case
       success: false,
       error: 'Failed to write config file'
     });
+  });
+});
+
+test('audio preference IPC skips reload only for a verified renderer-managed silent-input handoff', async () => {
+  await withHarness({}, async ({ calls, ipcMain, moduleUnderTest, tempDir }) => {
+    moduleUnderTest.registerIpcHandlers();
+    const savePreferences = ipcMain.handlers.get('save-audio-preferences');
+    const microphonePreferences = {
+      inputDeviceId: 'mic-1',
+      outputDeviceId: 'default',
+      sampleRate: 96000,
+      useInputWithPlayer: false,
+      lowLatencyOutput: false,
+      useWasmDsp: true,
+      outputChannels: 2,
+      latencyHint: 'interactive'
+    };
+    const silentPreferences = {
+      ...microphonePreferences,
+      inputDeviceId: '__effetune_no_audio_input__'
+    };
+
+    assert.deepEqual(await savePreferences({}, microphonePreferences), { success: true });
+    calls.length = 0;
+    assert.deepEqual(await savePreferences({}, silentPreferences, {
+      applyInPlace: 'silent-input'
+    }), { success: true });
+    assert.deepEqual(calls.filter(call => [
+      'webContents.send',
+      'setTimeout',
+      'window.reload'
+    ].includes(call[0])), []);
+    assert.deepEqual(
+      JSON.parse(fs.readFileSync(path.join(tempDir, 'audio-preferences.json'), 'utf8')),
+      silentPreferences
+    );
+
+    calls.length = 0;
+    assert.deepEqual(await savePreferences({}, microphonePreferences, {
+      applyInPlace: 'silent-input-rollback'
+    }), { success: true });
+    assert.deepEqual(calls.filter(call => [
+      'webContents.send',
+      'setTimeout',
+      'window.reload'
+    ].includes(call[0])), []);
+
+    calls.length = 0;
+    assert.deepEqual(await savePreferences({}, {
+      ...silentPreferences,
+      sampleRate: 48000
+    }, {
+      applyInPlace: 'silent-input'
+    }), { success: true });
+    assert.equal(calls.some(call =>
+      call[0] === 'webContents.send' && call[1] === 'show-message'
+    ), true);
+    assert.equal(calls.some(call => call[0] === 'setTimeout' && call[1] === 3000), true);
+    assert.equal(calls.some(call => call[0] === 'window.reload'), true);
   });
 });
 

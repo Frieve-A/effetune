@@ -39,29 +39,29 @@ async function handleMessage(message) {
     repository = await LibraryCatalogHost.open({ dbPath: message.dbPath });
     repository.on('invalidation', payload => emitEvent('repository', 'invalidation', payload));
     repository.on('failure', error => post({ type: 'fatal', error: serializeError(error) }));
-    if (message.readOnlyDiagnostic) {
-      await repository.enterReadOnlyDiagnostic(message.readOnlyDiagnostic);
-    }
     runtime = await LibraryCatalogScanRuntime.open({
       host: repository,
       dialog,
       getMainWindow: () => null,
-      utilitySessionId: `${process.pid}:${Date.now()}`,
-      readOnlyDiagnostic: Boolean(message.readOnlyDiagnostic)
+      artworkThumbnailer: source => bridgeRequest('artwork-thumbnail-request', {
+        bytes: new Uint8Array(source)
+      }),
+      utilitySessionId: `${process.pid}:${Date.now()}`
     });
     coordinator = await LibraryServiceCoordinator.open({
       repository,
       importSourceProvider: runtime
     });
+    runtime.setPlaylistImportService(coordinator);
     runtime.on('scan-event', payload => emitEvent('runtime', 'scan-event', payload));
+    runtime.on('folder-removal-event', payload => emitEvent('runtime', 'folder-removal-event', payload));
     coordinator.on('event', payload => emitEvent('coordinator', 'event', payload));
     ready(true, {
-      processId: process.pid,
-      readOnlyDiagnostic: Boolean(message.readOnlyDiagnostic)
+      processId: process.pid
     });
     return;
   }
-  if (message.type === 'dialog-response') {
+  if (message.type === 'dialog-response' || message.type === 'artwork-thumbnail-response') {
     const pending = pendingBridgeRequests.get(message.requestId);
     if (!pending) return;
     pendingBridgeRequests.delete(message.requestId);
@@ -97,6 +97,9 @@ function createDialogProxy() {
     showOpenDialog(_window, options = {}) {
       const kind = options.properties?.includes('openDirectory') ? 'folder' : 'playlist';
       return bridgeRequest('dialog-request', { kind });
+    },
+    showMessageBox() {
+      return bridgeRequest('dialog-request', { kind: 'folder-consolidation' });
     }
   };
 }

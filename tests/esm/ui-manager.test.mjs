@@ -390,6 +390,16 @@ function createFetch(responses) {
   };
 }
 
+function createDeferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 async function withUIHarness(options = {}, callback) {
   const calls = [];
   const document = createDocument();
@@ -542,7 +552,7 @@ test('constructs, delegates manager methods, translates errors, parses and seria
     { nm: 'Gain', en: false, ib: 1, ob: 2, ch: 'R', amount: 5 },
     { nm: 'Missing' }
   ]);
-  await withUIHarness({ search: `?p=${validState}` }, async ({ audioManager, calls, manager }) => {
+  await withUIHarness({ search: `?p=${validState}` }, async ({ audioManager, calls, manager, timers }) => {
     manager.audioManager.pipeline = [createPlugin('Gain')];
     manager.showLoadingSpinner();
     manager.hideLoadingSpinner();
@@ -562,6 +572,28 @@ test('constructs, delegates manager methods, translates errors, parses and seria
     manager.setError('status.loading');
     assert.equal(manager.stateManager.errorDisplay.textContent, 'status.loading');
     manager.clearError();
+    assert.equal(manager.stateManager.errorDisplay.textContent, '');
+
+    manager.setError('Failure', true);
+    const errorTimer = timers.at(-1);
+    assert.equal(errorTimer.delay, 5000);
+    errorTimer.fn();
+    assert.equal(manager.stateManager.errorDisplay.textContent, '');
+
+    manager.setError('Failure', true);
+    const supersededErrorTimer = timers.at(-1);
+    manager.setError('status.loading');
+    supersededErrorTimer.fn();
+    assert.equal(manager.stateManager.errorDisplay.textContent, 'status.loading');
+
+    manager.showTransientMessage('success.urlCopied');
+    const firstMessageTimer = timers.at(-1);
+    assert.equal(firstMessageTimer.delay, 3000);
+    manager.showTransientMessage('status.loading');
+    const secondMessageTimer = timers.at(-1);
+    firstMessageTimer.fn();
+    assert.equal(manager.stateManager.errorDisplay.textContent, 'status.loading');
+    secondMessageTimer.fn();
     assert.equal(manager.stateManager.errorDisplay.textContent, '');
 
     const parsed = manager.parsePipelineState();
@@ -677,7 +709,7 @@ test('updates audio, sleep, sample-rate, language, translations, and UI text', a
     assert.equal(await manager.setLanguagePreference('en'), 'en');
     await manager.loadTranslations();
     assert.equal(calls.some(call => call[0] === 'electron.saveConfig'), true);
-    await manager.loadTranslations('ja');
+    await manager.setLanguagePreference('ja', { persist: false });
     assert.equal(manager.t('hello', { name: 'A' }), 'こんにちは A');
     assert.equal(manager.t('missing.key'), 'missing.key');
     manager.doubleBlindTest = {
@@ -706,14 +738,42 @@ test('updates audio, sleep, sample-rate, language, translations, and UI text', a
     assert.equal(await manager.initLocalization(), false);
   });
   await withUIHarness({ isElectron: true, jaResponse: { ok: false } }, async ({ calls, manager }) => {
-    await manager.loadTranslations('ja');
+    await manager.setLanguagePreference('ja', { persist: false });
     assert.equal(manager.translations, manager.englishTranslations);
     assert.equal(calls.some(call => call[0] === 'electron.updateApplicationMenu'), true);
   });
   await withUIHarness({ isElectron: true, jaResponse: new Error('locale failed') }, async ({ calls, manager }) => {
-    await manager.loadTranslations('ja');
+    await manager.setLanguagePreference('ja', { persist: false });
     assert.equal(manager.translations, manager.englishTranslations);
     assert.equal(calls.some(call => call[0] === 'electron.updateApplicationMenu'), true);
+  });
+});
+
+test('publishes only the latest requested language when translation loads finish out of order', async () => {
+  const jaTranslations = createDeferred();
+  const frTranslations = createDeferred();
+  await withUIHarness({
+    isElectron: true,
+    jaResponse: { text: jaTranslations.promise },
+    defaultFetch: { text: frTranslations.promise }
+  }, async ({ calls, document, manager }) => {
+    calls.length = 0;
+    const japanese = manager.setLanguagePreference('ja', { persist: false });
+    const french = manager.setLanguagePreference('fr', { persist: false });
+
+    frTranslations.resolve(JSON.stringify({ 'ui.whatsThisApp': 'Qu’est-ce que c’est ?' }));
+    await french;
+    assert.equal(manager.userLanguage, 'fr');
+    assert.equal(manager.translations['ui.whatsThisApp'], 'Qu’est-ce que c’est ?');
+    assert.equal(document.querySelector('.whats-this').textContent, 'Qu’est-ce que c’est ?');
+    assert.equal(calls.filter(call => call[0] === 'electron.updateApplicationMenu').length, 1);
+
+    jaTranslations.resolve(JSON.stringify({ 'ui.whatsThisApp': 'これは何ですか' }));
+    await japanese;
+    assert.equal(manager.userLanguage, 'fr');
+    assert.equal(manager.translations['ui.whatsThisApp'], 'Qu’est-ce que c’est ?');
+    assert.equal(document.querySelector('.whats-this').textContent, 'Qu’est-ce que c’est ?');
+    assert.equal(calls.filter(call => call[0] === 'electron.updateApplicationMenu').length, 1);
   });
 });
 

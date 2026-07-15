@@ -6,7 +6,7 @@ lang: es
 
 # Cómo usar la Biblioteca musical
 
-EffeTune 3.0.0 comienza con una Biblioteca musical nueva. El estado de la Biblioteca anterior no se hereda, así que vuelve a añadir y analizar tus carpetas de música. Esto no modifica los archivos de audio que contienen.
+EffeTune 2.1.0 comienza con una Biblioteca musical nueva. El estado de la Biblioteca anterior no se hereda, así que vuelve a añadir y analizar tus carpetas de música. Esto no modifica los archivos de audio que contienen.
 
 La Biblioteca musical indexa las carpetas de música que seleccionas y te permite explorar tu colección local por pistas, álbumes, artistas, géneros, subcarpetas, carpetas, elementos añadidos recientemente y listas de reproducción. El audio reproducido pasa por el pipeline de efectos actual de EffeTune, igual que durante la reproducción normal de archivos de música.
 
@@ -15,8 +15,8 @@ La Biblioteca musical guarda dentro de la aplicación su catálogo, la caché de
 ## Disponibilidad
 
 - **Aplicación de escritorio:** Usa el escáner completo de carpetas y puede mantener disponibles las carpetas seleccionadas entre reinicios de la aplicación. La versión de escritorio también puede mostrar una pista en la carpeta donde está su archivo.
-- **Navegadores Chromium en PC:** Usan File System Access cuando está disponible. El acceso a las carpetas puede conservarse, aunque el navegador también puede volver a pedir permiso.
-- **Navegadores móviles, Safari y Firefox:** Usan el selector de carpetas o archivos que ofrezca el navegador. En el modo alternativo, se pueden indexar los archivos de la carpeta seleccionada, pero después de recargar la página o de perder permisos puede que tengas que seleccionar otra vez la carpeta o los archivos.
+- **Navegadores Chromium en PC con File System Access:** Guardan de forma persistente el identificador de la carpeta seleccionada. Puede reutilizarse tras recargar una vez concedido el acceso, aunque el navegador puede volver a pedir permiso.
+- **Navegadores móviles, Safari, Firefox y otros sin File System Access:** Conservan los objetos `File` seleccionados solo durante la sesión actual de la página. El catálogo permanece guardado, pero los archivos no pueden volver a abrirse tras recargar. Selecciona otra vez la carpeta o los archivos después de cada recarga; EffeTune los enlaza con las entradas existentes mediante la ruta relativa normalizada.
 
 La Biblioteca musical indexa extensiones de archivos multimedia habituales, como MP3, WAV, OGG, FLAC, Opus, M4A, AAC, WebM y MP4. En los archivos MP4, EffeTune reproduce solo la pista de audio y no muestra el vídeo. La reproducción efectiva, incluido el códec de audio del archivo MP4, también depende de las funciones de decodificación del navegador o del sistema operativo.
 
@@ -54,9 +54,13 @@ Usa las pestañas de navegación para cambiar de vista en el catálogo.
 
 Los grupos de **Subcarpetas** se crean con la ruta de la subcarpeta que contiene directamente cada pista, relativa a su carpeta de música importada. Las rutas relativas idénticas de distintas carpetas importadas se mantienen en grupos separados. Los archivos situados directamente en la raíz importada no crean un grupo de subcarpeta, pero siguen apareciendo en **Pistas** y **Carpetas**.
 
-Con **Buscar en la biblioteca** puedes buscar en pistas, álbumes, artistas y listas de reproducción. En el diseño de PC, los encabezados de la lista de pistas permiten ordenar por título, artista, álbum, género o duración.
+Con **Buscar en la biblioteca** puedes buscar en pistas, álbumes, artistas y listas de reproducción. En el diseño de PC, los encabezados de la lista de pistas permiten ordenar por título, artista, álbum, género o duración. Las vistas de álbumes, artistas, géneros, subcarpetas y listas de reproducción incluyen una lista **Ordenar** basada en el catálogo. Según la vista, permite ordenar por nombre, artista, ruta, número de pistas, duración total, fecha de actualización o fecha de creación, en ambos sentidos. Cada vista conserva su propia selección.
 
 Al buscar pistas, los términos de tres o más caracteres coinciden en cualquier parte del título, artista, álbum, género, nombre de archivo o ruta. Los términos de uno o dos caracteres solo coinciden al principio de una palabra. Escribe al menos tres caracteres para buscar dentro de una palabra.
+
+Tanto en el diseño para PC como en el móvil, si una búsqueda de pistas o los detalles de un álbum, artista, género, subcarpeta o lista de reproducción devuelven 300 pistas o menos, todas se seleccionan de forma predeterminada. Con 301 pistas o más no hay selección automática. Usa las casillas de las filas, **Seleccionar todo** o **Deseleccionar todo** para cambiar la selección.
+
+En móvil se muestra primero la lista normal de títulos, sin columnas de artista ni duración. Solo mantener pulsada una pista abre el modo de selección; entonces aparecen las casillas, **Seleccionar todo** y **Deseleccionar todo**, mientras las acciones habituales de las filas siguen disponibles. La selección automática y los cambios posteriores —incluidos **Seleccionar todo**, **Deseleccionar todo** y las casillas individuales— solo cambian el estado de selección; no abren ni cierran el modo de selección.
 
 Si faltan metadatos o no se pueden leer, EffeTune usa el nombre del archivo y la información de la carpeta como alternativa. En **Propiedades de la pista** puedes consultar la ruta del archivo, el formato, la tasa de muestreo, la profundidad de bits, la tasa de bits y los principales campos de metadatos.
 
@@ -70,7 +74,7 @@ Selecciona una pista, álbum, artista, género, subcarpeta, carpeta, resultado d
 - **Añadir a la cola** - Añade las pistas seleccionadas al final de la cola.
 - **Añadir a lista** - Guarda las pistas seleccionadas en una lista de reproducción de la Biblioteca musical.
 
-En PC, puedes hacer doble clic en la fila de una pista para reproducir desde ese punto, o abrir las acciones de la pista con el clic derecho o el menú **Más**. En móvil, toca el botón de reproducción de la fila de una pista para reproducirla, o mantén pulsada una pista para abrir la hoja de acciones.
+En PC, puedes hacer doble clic en la fila de una pista para reproducir desde ese punto, o abrir sus acciones con el clic derecho o el menú **Más**. En móvil, toca una pista de la lista normal para reproducirla; mantenerla pulsada entra en el modo de selección descrito arriba.
 
 Los controles normales del reproductor de música y los ajustes de repetición y aleatorio siguen funcionando. En dispositivos con teclado, también funcionan los atajos habituales del reproductor. Si no se puede abrir una pista de la biblioteca porque la carpeta está sin conexión, reconecta o vuelve a importar esa carpeta.
 
@@ -98,7 +102,9 @@ Puedes hacer lo siguiente.
 - Cambiar el nombre, duplicar, eliminar y reordenar listas de reproducción.
 - Arrastrar pistas dentro de una lista de reproducción para cambiar su orden. En entornos donde arrastrar no sea cómodo, usa **Subir** y **Bajar**.
 - Usar **Importar lista** para importar listas de reproducción en formato M3U, M3U8, PLS y XSPF.
-- Usar **Exportar M3U8** o **Exportar XSPF** para exportar listas de reproducción.
+- Abrir una lista de reproducción concreta y exportarla con **Exportar M3U8** o **Exportar XSPF**.
+
+Al escanear una carpeta, EffeTune importa automáticamente los archivos de listas de reproducción compatibles una vez indexizadas sus pistas y omite los archivos cuyo contenido no ha cambiado. Si cambia el contenido de un archivo ubicado en la misma carpeta y ruta relativa, EffeTune sustituye de forma atómica los elementos de la lista importada automáticamente; esto también sustituye las modificaciones de elementos realizadas en EffeTune. Una importación fallida o cancelada se reintenta en el siguiente escaneo. Eliminar o cambiar el nombre del archivo de origen no elimina la lista existente, y un archivo renombrado se importa como una lista nueva.
 
 Al importar, se muestra una vista previa del número de elementos que coinciden con pistas de la biblioteca actual. Los elementos que no coincidan también se conservan, siempre que sea posible, como elementos sin resolver para que puedan resolverse más adelante al añadir o reconectar la carpeta correspondiente.
 
@@ -110,6 +116,12 @@ Al exportar, si eliges **Rutas relativas**, las rutas se escriben, cuando es pos
 - La caché de carátulas y las listas de reproducción son datos de la aplicación, no cambios incrustados en los archivos de música.
 - La clasificación por **Subcarpetas** se obtiene de las rutas relativas guardadas en el catálogo.
 - El almacenamiento del navegador puede borrarse desde la configuración del navegador o por acciones del usuario. Exporta las listas de reproducción importantes si lo necesitas.
-- En la aplicación web, la gestión de permisos del navegador determina si las carpetas siguen disponibles después de recargar.
+- En navegadores con File System Access, los permisos determinan si se puede reutilizar el identificador persistente de la carpeta tras recargar. En los navegadores alternativos, los archivos seleccionados son solo de sesión y siempre deben elegirse de nuevo después de recargar.
+
+## Bibliotecas grandes
+
+El catálogo conserva los datos en el disco y divide el trabajo en páginas o lotes limitados, por lo que no necesita cargar una colección grande completa en la memoria. Las mediciones de escala y de referencia fija son diagnósticos locales y opcionales para el desarrollo. No condicionan commits, versiones, `verify` ni GitHub Actions y no constituyen una garantía general de rendimiento. El tiempo de análisis y los límites prácticos dependen de la velocidad del almacenamiento, la memoria disponible, los metadatos, las carátulas y las restricciones del navegador o del sistema operativo.
+
+Mientras desplazas la lista de pistas, EffeTune mantiene en caché las páginas cercanas. En la disposición móvil, lee por adelantado hasta dos páginas en la dirección actual, da prioridad a la página necesaria en pantalla frente a lecturas anticipadas adicionales y reutiliza las filas visibles que se solapan. Aunque el desplazamiento continúe, las lecturas completadas para la vista se publican de inmediato en esta caché limitada. Las solicitudes de posición se agrupan en la más reciente y, si esta queda dentro de la página que acaba de cargarse, no se realiza otra lectura de la base de datos. Las lecturas anticipadas pendientes que dejan de ser necesarias se descartan. SQLite admite interrupciones, pero los adaptadores del catálogo ejecutan actualmente cada sentencia de forma síncrona y no ofrecen una vía para interrumpirla desde otro worker. Por eso, un salto excepcionalmente rápido todavía puede mostrar un breve espacio vacío hasta que termine la lectura en curso, sobre todo si el almacenamiento es lento.
 
 [← Volver al README](README.md)

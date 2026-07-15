@@ -300,8 +300,9 @@ setGlobal('requestAnimationFrame', callback => {
 });
 setGlobal('setTimeout', (callback, delay) => {
   calls.push(['setTimeout', delay]);
-  callback();
-  return calls.length;
+  const id = calls.length;
+  setImmediate(callback);
+  return id;
 });
 setGlobal('clearTimeout', id => calls.push(['clearTimeout', id]));
 setGlobal('setInterval', (callback, delay) => {
@@ -324,8 +325,9 @@ setGlobal('console', {
 });
 
 const mod = await import('../../js/app.js');
-for (let i = 0; i < 16; i++) {
-  await Promise.resolve();
+const initializationDeadline = Date.now() + 5_000;
+while (windowRef.app?.initialized !== true && Date.now() < initializationDeadline) {
+  await new Promise(resolve => setImmediate(resolve));
 }
 
 assert.equal(windowRef.app instanceof mod.App, true);

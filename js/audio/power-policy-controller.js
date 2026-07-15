@@ -1446,7 +1446,12 @@ export class PowerPolicyController {
         return true;
     }
 
-    _waitForFirstRender(commandId, expectedState, expectedDirective) {
+    _waitForFirstRender(
+        commandId,
+        expectedState,
+        expectedDirective,
+        { requireActivityObservation = false } = {}
+    ) {
         return new Promise(resolve => {
             const timer = this.setTimeoutFn?.(() => {
                 this.firstRenderWaiters.delete(commandId);
@@ -1462,8 +1467,11 @@ export class PowerPolicyController {
                 timer,
                 expectedState,
                 expectedDirective,
+                requireActivityObservation,
                 expectedNodes,
                 seenNodes: new Set(),
+                observations: new Map(),
+                anonymousObservations: [],
                 anonymousCount: 0,
                 expectedCount: expectedNodes.size || 1
             });
@@ -1482,7 +1490,8 @@ export class PowerPolicyController {
         const firstRenderPromise = this._waitForFirstRender(
             commandId,
             safeDirective === ProcessingDirective.FORCE_MONITORING ? 'monitoring' : 'active',
-            safeDirective
+            safeDirective,
+            { requireActivityObservation: true }
         );
         this._broadcast({
             type: 'setUiTelemetryEnabled',
@@ -1682,31 +1691,44 @@ export class PowerPolicyController {
         }
         if (data.type === 'powerFirstRender') {
             const waiter = this.firstRenderWaiters.get(data.commandId);
+            const freshObservation = {
+                ...data,
+                receivedAtEpochMs: this.now()
+            };
             if (waiter) {
                 const matches = data.state === waiter.expectedState &&
-                    data.processingDirective === waiter.expectedDirective;
+                    data.processingDirective === waiter.expectedDirective &&
+                    (!waiter.requireActivityObservation ||
+                        (typeof data.inputActive === 'boolean' &&
+                            typeof data.outputActive === 'boolean'));
                 if (!matches) {
                     this.firstRenderWaiters.delete(data.commandId);
                     this.clearTimeoutFn?.(waiter.timer);
                     waiter.resolve(false);
                 } else {
-                    if (nodeKey) waiter.seenNodes.add(nodeKey);
-                    else waiter.anonymousCount++;
+                    if (nodeKey) {
+                        waiter.seenNodes.add(nodeKey);
+                        waiter.observations.set(nodeKey, freshObservation);
+                    } else {
+                        waiter.anonymousCount++;
+                        waiter.anonymousObservations.push(freshObservation);
+                    }
                     const seenCount = waiter.seenNodes.size + waiter.anonymousCount;
                     if (seenCount >= waiter.expectedCount) {
                         this.firstRenderWaiters.delete(data.commandId);
                         this.clearTimeoutFn?.(waiter.timer);
+                        this.workletObservation = aggregateFirstRenderObservations([
+                            ...waiter.observations.values(),
+                            ...waiter.anonymousObservations
+                        ]);
                         waiter.resolve(true);
                     }
                 }
+            } else {
+                this.workletObservation = freshObservation;
             }
-            this.workletObservation = { ...this.workletObservation, ...data };
             if (nodeKey) {
-                this.workletObservations.set(nodeKey, {
-                    ...(this.workletObservations.get(nodeKey) || {}),
-                    ...data,
-                    receivedAtEpochMs: this.now()
-                });
+                this.workletObservations.set(nodeKey, freshObservation);
             }
             return true;
         }
@@ -2902,4 +2924,21 @@ export class PowerPolicyController {
             transitionError
         });
     }
+}
+
+function aggregateFirstRenderObservations(observations) {
+    const valid = observations.filter(Boolean);
+    if (valid.length === 0) return null;
+    const latest = valid.at(-1);
+    return {
+        ...latest,
+        inputActive: valid.some(observation => observation.inputActive === true),
+        outputActive: valid.some(observation => observation.outputActive === true),
+        renderSequence: Math.max(...valid.map(observation =>
+            Number.isSafeInteger(observation.renderSequence) ? observation.renderSequence : 0
+        )),
+        receivedAtEpochMs: Math.max(...valid.map(observation =>
+            Number.isFinite(observation.receivedAtEpochMs) ? observation.receivedAtEpochMs : 0
+        ))
+    };
 }

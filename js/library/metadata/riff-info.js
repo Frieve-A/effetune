@@ -19,11 +19,19 @@ const MAX_RIFF_INFO_VALUE_BYTES = 64 * 1024;
 
 export async function readRiffInfoTagsFromBlob(blob) {
   if (!blob || typeof blob.slice !== 'function' || typeof blob.arrayBuffer !== 'function') return [];
-  const fileSize = Number(blob.size);
+  return readRiffInfoTagsFromReader({
+    size: blob.size,
+    read: (offset, length) => readBlobBytes(blob, offset, length)
+  });
+}
+
+export async function readRiffInfoTagsFromReader({ size, read } = {}) {
+  const fileSize = Number(size);
+  if (typeof read !== 'function') return [];
   if (!Number.isFinite(fileSize) || fileSize < 12) return [];
 
-  const header = await readBlobBytes(blob, 0, 12);
-  if (!isRiffWaveHeader(header)) return [];
+  const header = normalizeBytes(await read(0, 12));
+  if (!header || header.length < 12 || !isRiffWaveHeader(header)) return [];
 
   const riffSize = readUint32LE(header, 4);
   const scanEnd = Math.min(fileSize, riffSize === 0xffffffff ? fileSize : riffSize + 8);
@@ -32,7 +40,8 @@ export async function readRiffInfoTagsFromBlob(blob) {
   let chunkCount = 0;
 
   while (offset + 8 <= scanEnd && chunkCount < MAX_RIFF_SCAN_CHUNKS) {
-    const chunkHeader = await readBlobBytes(blob, offset, 8);
+    const chunkHeader = normalizeBytes(await read(offset, 8));
+    if (!chunkHeader || chunkHeader.length < 8) break;
     const chunkId = readAscii(chunkHeader, 0, 4);
     const chunkSize = readUint32LE(chunkHeader, 4);
     const dataOffset = offset + 8;
@@ -40,8 +49,8 @@ export async function readRiffInfoTagsFromBlob(blob) {
     if (chunkSize < 0 || nextOffset <= offset || dataOffset + chunkSize > scanEnd) break;
 
     if (chunkId === 'LIST' && chunkSize >= 4 && chunkSize <= MAX_RIFF_INFO_LIST_BYTES) {
-      const listData = await readBlobBytes(blob, dataOffset, chunkSize);
-      tags.push(...parseRiffInfoListBytes(listData));
+      const listData = normalizeBytes(await read(dataOffset, chunkSize));
+      if (listData) tags.push(...parseRiffInfoListBytes(listData));
     }
 
     offset = nextOffset;

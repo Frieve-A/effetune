@@ -1,5 +1,6 @@
 import {
   detectPlaylistFormat,
+  isFileUri,
   normalizePlaylistPath,
   pathToFileUri
 } from './playlist-formats.js';
@@ -62,7 +63,22 @@ function openSource(source) {
 }
 
 function streamLimits(options) {
-  return { ...DEFAULT_PLAYLIST_STREAM_LIMITS, ...(options.limits ?? {}) };
+  const overrides = options.limits;
+  if (overrides == null) return { ...DEFAULT_PLAYLIST_STREAM_LIMITS };
+  if (typeof overrides !== 'object' || Array.isArray(overrides)) {
+    throw new TypeError('Playlist stream limits must be an object.');
+  }
+  const normalized = { ...DEFAULT_PLAYLIST_STREAM_LIMITS };
+  for (const [field, value] of Object.entries(overrides)) {
+    const maximum = DEFAULT_PLAYLIST_STREAM_LIMITS[field];
+    if (
+      maximum === undefined || !Number.isSafeInteger(value) || value <= 0 || value > maximum
+    ) {
+      throw new TypeError('Playlist stream limits may only tighten known positive limits.');
+    }
+    normalized[field] = value;
+  }
+  return normalized;
 }
 
 function assertChunkLimit(bytes, limits) {
@@ -129,50 +145,53 @@ async function* decodeByteChunks(source, encoding, format, options, limits) {
   const pending = [];
   let pendingLength = 0;
   let firstRemainder = null;
+  try {
+    while (pendingLength < 3) {
+      const next = await iterator.next();
+      if (next.done) break;
+      const bytes = asBytes(next.value);
+      assertChunkLimit(bytes, limits);
+      if (bytes.length === 0) continue;
+      const needed = 3 - pendingLength;
+      const prefixPart = bytes.subarray(0, needed);
+      pending.push(prefixPart);
+      pendingLength += prefixPart.length;
+      if (bytes.length > prefixPart.length) firstRemainder = bytes.subarray(prefixPart.length);
+    }
 
-  while (pendingLength < 3) {
-    const next = await iterator.next();
-    if (next.done) break;
-    const bytes = asBytes(next.value);
-    assertChunkLimit(bytes, limits);
-    if (bytes.length === 0) continue;
-    const needed = 3 - pendingLength;
-    const prefixPart = bytes.subarray(0, needed);
-    pending.push(prefixPart);
-    pendingLength += prefixPart.length;
-    if (bytes.length > prefixPart.length) firstRemainder = bytes.subarray(prefixPart.length);
-  }
+    const prefix = new Uint8Array(pendingLength);
+    let prefixOffset = 0;
+    for (const part of pending) {
+      prefix.set(part, prefixOffset);
+      prefixOffset += part.length;
+    }
+    const bom = bomEncoding(prefix);
+    const selectedEncoding = bom?.encoding ?? encoding ?? (format === 'm3u8' ? 'utf-8' : null);
+    if (!selectedEncoding) throw new PlaylistEncodingReplayRequiredError();
 
-  const prefix = new Uint8Array(pendingLength);
-  let prefixOffset = 0;
-  for (const part of pending) {
-    prefix.set(part, prefixOffset);
-    prefixOffset += part.length;
+    const decoder = new TextDecoder(selectedEncoding, { fatal: selectedEncoding !== 'windows-1252' });
+    const decodedPrefix = prefix.subarray(bom?.length ?? 0);
+    if (decodedPrefix.length) {
+      const text = decoder.decode(decodedPrefix, { stream: true });
+      if (text) yield text;
+    }
+    if (firstRemainder?.length) {
+      const text = decoder.decode(firstRemainder, { stream: true });
+      if (text) yield text;
+    }
+    for (;;) {
+      const next = await iterator.next();
+      if (next.done) break;
+      const bytes = asBytes(next.value);
+      assertChunkLimit(bytes, limits);
+      const text = decoder.decode(bytes, { stream: true });
+      if (text) yield text;
+    }
+    const finalText = decoder.decode();
+    if (finalText) yield finalText;
+  } finally {
+    await iterator.return?.();
   }
-  const bom = bomEncoding(prefix);
-  const selectedEncoding = bom?.encoding ?? encoding ?? (format === 'm3u8' ? 'utf-8' : null);
-  if (!selectedEncoding) throw new PlaylistEncodingReplayRequiredError();
-
-  const decoder = new TextDecoder(selectedEncoding, { fatal: selectedEncoding !== 'windows-1252' });
-  const decodedPrefix = prefix.subarray(bom?.length ?? 0);
-  if (decodedPrefix.length) {
-    const text = decoder.decode(decodedPrefix, { stream: true });
-    if (text) yield text;
-  }
-  if (firstRemainder?.length) {
-    const text = decoder.decode(firstRemainder, { stream: true });
-    if (text) yield text;
-  }
-  for (;;) {
-    const next = await iterator.next();
-    if (next.done) break;
-    const bytes = asBytes(next.value);
-    assertChunkLimit(bytes, limits);
-    const text = decoder.decode(bytes, { stream: true });
-    if (text) yield text;
-  }
-  const finalText = decoder.decode();
-  if (finalText) yield finalText;
 }
 
 async function* decodeTextChunks(source, limits) {
@@ -217,11 +236,15 @@ async function prepareTextChunks(source, format, options, limits) {
     const first = await iterator.next();
     if (first.done) return decodeTextChunks('', limits);
     const remainder = async function* remainderChunks() {
-      yield first.value;
-      for (;;) {
-        const next = await iterator.next();
-        if (next.done) break;
-        yield next.value;
+      try {
+        yield first.value;
+        for (;;) {
+          const next = await iterator.next();
+          if (next.done) break;
+          yield next.value;
+        }
+      } finally {
+        await iterator.return?.();
       }
     };
     return typeof first.value === 'string'
@@ -344,30 +367,54 @@ async function* parseXspfRecords(chunks, limits) {
   let tokenBuffer = '';
   let track = null;
   let activeField = null;
-  let valueBuffer = '';
+  let valueSegments = [];
+  let valueLength = 0;
+  let cdataActive = false;
+  const appendValue = (value, cdata = false) => {
+    if (!activeField || !value) return;
+    const previous = valueSegments.at(-1);
+    if (previous?.cdata === cdata) previous.text += value;
+    else valueSegments.push({ text: value, cdata });
+    valueLength += value.length;
+    if (valueLength > limits.maxXmlValueChars) {
+      throw new PlaylistStreamLimitError('XML value characters', limits.maxXmlValueChars, valueLength);
+    }
+  };
+  const resetValue = () => {
+    valueSegments = [];
+    valueLength = 0;
+  };
 
   for await (const chunk of chunks) {
     tokenBuffer += chunk;
     for (;;) {
+      if (cdataActive) {
+        const end = tokenBuffer.indexOf(']]>');
+        if (end < 0) {
+          const safeLength = Math.max(0, tokenBuffer.length - 2);
+          appendValue(tokenBuffer.slice(0, safeLength), true);
+          tokenBuffer = tokenBuffer.slice(safeLength);
+          break;
+        }
+        appendValue(tokenBuffer.slice(0, end), true);
+        tokenBuffer = tokenBuffer.slice(end + 3);
+        cdataActive = false;
+        continue;
+      }
       const open = tokenBuffer.indexOf('<');
       if (open < 0) {
-        if (activeField) {
-          valueBuffer += tokenBuffer;
-          if (valueBuffer.length > limits.maxXmlValueChars) {
-            throw new PlaylistStreamLimitError('XML value characters', limits.maxXmlValueChars, valueBuffer.length);
-          }
-        }
+        appendValue(tokenBuffer);
         tokenBuffer = '';
         break;
       }
       if (open > 0) {
-        if (activeField) {
-          valueBuffer += tokenBuffer.slice(0, open);
-          if (valueBuffer.length > limits.maxXmlValueChars) {
-            throw new PlaylistStreamLimitError('XML value characters', limits.maxXmlValueChars, valueBuffer.length);
-          }
-        }
+        appendValue(tokenBuffer.slice(0, open));
         tokenBuffer = tokenBuffer.slice(open);
+      }
+      if (tokenBuffer.startsWith('<![CDATA[')) {
+        tokenBuffer = tokenBuffer.slice(9);
+        cdataActive = true;
+        continue;
       }
       const specialEnd = tokenBuffer.startsWith('<!--')
         ? '-->'
@@ -394,24 +441,29 @@ async function* parseXspfRecords(chunks, limits) {
         if (track?.path) yield { type: 'entry', entry: track };
         track = null;
         activeField = null;
-        valueBuffer = '';
+        resetValue();
       } else if (track && fields.has(name) && !closing && !/\/>$/.test(token)) {
         activeField = name;
-        valueBuffer = '';
+        resetValue();
       } else if (track && name === activeField && closing) {
-        const value = decodeXml(valueBuffer.trim());
-        if (activeField === 'location' && value) track.path = normalizePlaylistPath(decodeURIComponentSafe(value));
+        const value = valueSegments
+          .map(segment => segment.cdata ? segment.text : decodeXml(segment.text))
+          .join('')
+          .trim();
+        if (activeField === 'location' && value) {
+          track.path = normalizePlaylistPath(isFileUri(value) ? value : decodeURIComponentSafe(value));
+        }
         else if (activeField === 'creator' && value) track.artist = value;
         else if (activeField === 'duration') {
           const duration = Number.parseFloat(value);
           if (Number.isFinite(duration) && duration >= 0) track.durationSec = duration / 1000;
         } else if (value) track[activeField] = value;
         activeField = null;
-        valueBuffer = '';
+        resetValue();
       }
     }
   }
-  if (tokenBuffer.trim()) {
+  if (cdataActive || tokenBuffer.trim()) {
     throw new Error('Unexpected end of XSPF XML token.');
   }
 }

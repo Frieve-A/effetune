@@ -22,7 +22,5 @@ Add `--output <path>` only when an NDJSON file is needed. The default seed is
 batch size, runtime version, cold/warm state, and resulting SHA-256 digest with
 benchmark evidence.
 
-`tools/library-scale/phase0-decisions.json` remains `pending` until measured
-Electron and formal Web evidence satisfies every decision section. A pending
-artifact is structurally valid but cannot exact-join a Phase 1 or Phase 2
-consumer artifact.
+These generators and the larger scale runners are local development diagnostics.
+They are not commit, release, `verify`, or GitHub Actions gates.

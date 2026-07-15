@@ -152,6 +152,35 @@ test('streaming XSPF tokenizer preserves supported fields and XML escaping acros
   assert.deepEqual(parseXSPF(serializeXSPF(entries)).entries, entries);
 });
 
+test('streaming XSPF keeps encoded file URI delimiters inside the file path', async () => {
+  const source = `<playlist><trackList><track>
+    <location>file:///C:/Music/Question%3FHash%23.flac</location>
+  </track></trackList></playlist>`;
+
+  assert.deepEqual(await collectEntries(parsePlaylistStream(
+    byteChunkFactory(encoder.encode(source), 4),
+    { fileName: 'mix.xspf' }
+  )), [{ path: 'C:\\Music\\Question?Hash#.flac' }]);
+});
+
+test('streaming XSPF preserves chunk-split CDATA without decoding its entity text', async () => {
+  const source = `<playlist><trackList><track>
+    <location><![CDATA[Folder/A&B%20Track.flac]]></location>
+    <title><![CDATA[A &amp; B]]></title>
+    <creator><![CDATA[Me <You>]]></creator>
+  </track></trackList></playlist>`;
+  const streamed = await collectEntries(parsePlaylistStream(
+    byteChunkFactory(encoder.encode(source), 2),
+    { fileName: 'mix.xspf' }
+  ));
+
+  assert.deepEqual(streamed, [{
+    path: 'Folder/A&B Track.flac',
+    title: 'A &amp; B',
+    artist: 'Me <You>'
+  }]);
+});
+
 test('streaming parsers fail with typed errors on oversized bounded buffers', async () => {
   const oversizedLine = encoder.encode(`${'a'.repeat(65)}\n`);
   await assert.rejects(
@@ -170,6 +199,29 @@ test('streaming parsers fail with typed errors on oversized bounded buffers', as
     })),
     error => error instanceof PlaylistStreamLimitError && error.kind === 'XML value characters'
   );
+});
+
+test('bounded playlist parsing closes every replayable source on rejection', async () => {
+  let opened = 0;
+  let closed = 0;
+  const source = async function* replayableSource() {
+    opened += 1;
+    try {
+      yield encoder.encode('oversized-line\n');
+    } finally {
+      closed += 1;
+    }
+  };
+
+  await assert.rejects(
+    async () => collectEntries(parsePlaylistStream(source, {
+      fileName: 'mix.m3u8',
+      limits: { maxLineChars: 4 }
+    })),
+    PlaylistStreamLimitError
+  );
+  assert.ok(opened > 1);
+  assert.equal(closed, opened);
 });
 
 test('streaming serializers preserve synchronous output and bound every chunk', async () => {

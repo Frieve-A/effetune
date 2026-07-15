@@ -1,30 +1,27 @@
-const PENDING_OPERATION_STORAGE_KEY = 'effetune.library.pendingOperations.v1';
-const MAX_PENDING_OPERATIONS = 8;
 const WAITING_AFTER_MS = 5_000;
 
 function initialState() {
   return Object.freeze({ status: 'idle' });
 }
 
-function terminalState(result) {
-  const state = result?.state ?? result?.terminalKind ?? result?.kind ?? 'failed';
+function terminalState(result, canUndo = false) {
+  const payload = result?.result && typeof result.result === 'object' ? result.result : result;
+  const state = result?.state ?? result?.terminalKind ?? result?.kind ??
+    (payload?.operationKind ? 'succeeded' : 'failed');
+  const operationKind = payload?.operationKind ?? result?.operationKind ?? null;
   return {
     terminalKind: state,
-    ...(result?.operationKind ? { operationKind: result.operationKind } : {}),
+    ...(operationKind ? { operationKind } : {}),
     result,
     canCancel: false,
-    canUndo: state === 'cancelled' && typeof result?.undoId === 'string' && result.undoId.length > 0,
-    undoId: result?.undoId ?? null,
-    undoExpiresAt: result?.undoExpiresAt ?? null,
-    transportVersion: result?.transportVersion ?? null,
-    retryAvailable: state !== 'succeeded'
+    canUndo,
+    retryAvailable: false
   };
 }
 
 export class DurableActionController {
   constructor({
     service,
-    sessionStorage = globalThis.sessionStorage,
     now = Date.now,
     setIntervalFn = (...args) => globalThis.setInterval(...args),
     clearIntervalFn = (...args) => globalThis.clearInterval(...args),
@@ -32,30 +29,36 @@ export class DurableActionController {
   } = {}) {
     if (!service) throw new TypeError('service is required');
     this.service = service;
-    this.sessionStorage = sessionStorage;
     this.now = now;
     this.setIntervalFn = (...args) => setIntervalFn(...args);
     this.clearIntervalFn = (...args) => clearIntervalFn(...args);
     this.onStateChange = onStateChange;
     this.state = initialState();
-    this.unsubscribe = null;
-    this.waitingTimer = null;
-    this.startFactory = null;
+    this.operationToken = 0;
+    this.resource = null;
   }
 
-  remember(clientRequestId) {
-    if (typeof clientRequestId !== 'string' || !clientRequestId) return;
-    const ids = this.#readPending().filter(value => value !== clientRequestId);
-    ids.push(clientRequestId);
-    this.#writePending(ids.slice(-MAX_PENDING_OPERATIONS));
-  }
-
-  async track({ clientRequestId, operationKind, targetName = '', startResult, startFactory } = {}) {
-    this.remember(clientRequestId);
-    this.startFactory = startFactory ?? null;
+  async track({
+    clientRequestId,
+    operationKind,
+    targetName = '',
+    start
+  } = {}) {
+    if (this.#isBusy()) return { kind: 'busy' };
+    if (typeof start !== 'function') return { kind: 'notStarted', reason: 'factoryMissing' };
+    this.#discardResource();
+    const resource = {
+      token: ++this.operationToken,
+      operationId: null,
+      unsubscribe: null,
+      waitingTimer: null
+    };
+    this.resource = resource;
+    const durable = !isPlaybackOperation(operationKind);
     this.#publish({
       status: 'starting',
-      clientRequestId,
+      actionToken: resource.token,
+      ...(durable ? { clientRequestId } : {}),
       operationKind,
       targetName,
       canCancel: false,
@@ -63,19 +66,22 @@ export class DurableActionController {
       lastEventAt: this.now()
     });
     try {
-      const receipt = await startResult;
+      const receipt = await start();
+      if (!this.#isCurrent(resource)) return { kind: 'stale' };
       if (receipt?.kind === 'terminal') {
-        this.#complete(receipt.result);
+        resource.operationId = receipt.operationId ?? null;
+        this.#complete(resource, receipt.result);
         return receipt;
       }
       if (!['started', 'active'].includes(receipt?.kind) || typeof receipt.operationId !== 'string') {
-        this.#complete({
+        this.#complete(resource, {
           state: 'failed',
           code: receipt?.kind ?? 'invalidOperationReceipt',
           receipt
         });
         return receipt;
       }
+      resource.operationId = receipt.operationId;
       this.#publish({
         ...this.state,
         status: 'active',
@@ -84,91 +90,61 @@ export class DurableActionController {
         canCancel: true,
         lastEventAt: this.now()
       });
-      await this.#attach(receipt.operationId);
+      await this.#attach(resource);
       return receipt;
     } catch (error) {
-      this.#complete({ state: 'failed', code: error?.code ?? 'operationFailed', error });
+      if (this.#isCurrent(resource)) {
+        this.#complete(resource, { state: 'failed', code: error?.code ?? 'operationFailed', error });
+      }
       return { kind: 'failed', error };
     }
-  }
-
-  async recover({ operationKind = 'operation', targetName = '' } = {}) {
-    const ids = this.#readPending();
-    for (const clientRequestId of ids.slice().reverse()) {
-      let result;
-      try {
-        result = await this.service.lookupLibraryOperation(clientRequestId);
-      } catch (_) {
-        continue;
-      }
-      if (result?.kind === 'active' && result.operationId) {
-        this.#publish({
-          status: 'active', clientRequestId, operationId: result.operationId,
-          operationKind, targetName, phase: 'RECEIVED', canCancel: true,
-          retryAvailable: false, lastEventAt: this.now()
-        });
-        await this.#attach(result.operationId);
-        return result;
-      }
-      if (result?.kind === 'terminal') {
-        this.#publish({ status: 'active', clientRequestId, operationKind, targetName });
-        this.#complete(result.result);
-        return result;
-      }
-      this.#forget(clientRequestId);
-    }
-    return { kind: 'none' };
   }
 
   async cancel() {
     if (this.state.status !== 'active' && this.state.status !== 'waiting') {
       return { kind: 'notActive' };
     }
+    const resource = this.resource;
+    if (!resource?.operationId) return { kind: 'notActive' };
     this.#publish({ ...this.state, status: 'cancelling', canCancel: false });
     try {
-      const result = await this.service.cancelLibraryOperation(this.state.operationId);
+      const result = await this.service.cancelLibraryOperation(resource.operationId);
+      if (!this.#isCurrent(resource)) return { kind: 'stale' };
       if (result?.kind === 'tooLate') {
         this.#publish({ ...this.state, status: 'active', canCancel: false, cancelDisposition: 'tooLate' });
       }
       return result;
     } catch (error) {
-      this.#publish({ ...this.state, status: 'active', canCancel: true, cancelError: error });
+      if (this.#isCurrent(resource)) {
+        this.#publish({ ...this.state, status: 'active', canCancel: true, cancelError: error });
+      }
       throw error;
     }
   }
 
-  retry() {
-    if (!this.state.retryAvailable || typeof this.startFactory !== 'function') {
-      return Promise.resolve({ kind: 'notRetryable' });
-    }
-    return this.startFactory();
-  }
-
   async undo() {
-    if (!this.state.canUndo || this.state.operationKind !== 'play') return { kind: 'notAvailable' };
-    const result = await this.service.undoCancelledPlay({
-      undoId: this.state.undoId,
-      expectedTransportVersion: this.state.transportVersion
-    });
-    if (result?.kind === 'published') {
-      this.#publish({ ...this.state, canUndo: false, undoApplied: true });
-    } else if (['expired', 'notFound', 'conflict'].includes(result?.kind)) {
-      this.#publish({ ...this.state, canUndo: false, undoUnavailable: result.kind });
+    if (!this.state.canUndo || this.state.operationKind !== 'play') {
+      return { kind: 'notAvailable' };
     }
+    const result = await this.service.undoPlaybackSession?.() ?? { kind: 'notAvailable' };
+    this.#publish({
+      ...this.state,
+      canUndo: false,
+      ...(result?.kind === 'published' ? { undoApplied: true } : { undoUnavailable: true })
+    });
     return result;
   }
 
   close() {
-    this.unsubscribe?.();
-    this.unsubscribe = null;
-    if (this.waitingTimer != null) this.clearIntervalFn(this.waitingTimer);
-    this.waitingTimer = null;
+    this.operationToken += 1;
+    this.#discardResource();
   }
 
-  async #attach(operationId) {
-    this.unsubscribe?.();
-    this.unsubscribe = null;
+  async #attach(resource) {
+    const operationId = resource.operationId;
+    if (!this.#isCurrent(resource) || !operationId) return;
     const unsubscribe = this.service.subscribeLibraryOperation(operationId, event => {
+      if (!this.#isCurrent(resource)) return;
       if (event?.kind === 'progress' && event.progress?.operationId === operationId) {
         this.#publish({
           ...this.state,
@@ -180,19 +156,20 @@ export class DurableActionController {
           lastEventAt: this.now()
         });
       } else if (event?.kind === 'terminal' && event.operationId === operationId) {
-        this.#complete(event.result);
+        this.#complete(resource, event.result);
       }
     });
     if (typeof unsubscribe !== 'function') {
       throw new TypeError('Operation subscription must return an unsubscribe function');
     }
-    if (this.state.status === 'terminal') {
+    if (!this.#isCurrent(resource) || this.state.status === 'terminal') {
       unsubscribe();
       return;
     }
-    this.unsubscribe = unsubscribe;
+    resource.unsubscribe = unsubscribe;
     const current = await this.service.getLibraryOperationStatus(operationId);
-    if (this.state.status === 'terminal' || this.state.operationId !== operationId) return;
+    if (!this.#isCurrent(resource) || this.state.status === 'terminal' ||
+        this.state.operationId !== operationId) return;
     if (current?.progress || current?.phase) {
       this.#publish({
         ...this.state,
@@ -203,15 +180,16 @@ export class DurableActionController {
       });
     }
     if (current?.terminalKind || current?.result?.state) {
-      this.#complete(current.result);
+      this.#complete(resource, current.result);
       return;
     }
-    this.#armWaitingTimer();
+    this.#armWaitingTimer(resource);
   }
 
-  #armWaitingTimer() {
-    if (this.waitingTimer != null) return;
-    this.waitingTimer = this.setIntervalFn(() => {
+  #armWaitingTimer(resource) {
+    if (!this.#isCurrent(resource) || resource.waitingTimer != null) return;
+    resource.waitingTimer = this.setIntervalFn(() => {
+      if (!this.#isCurrent(resource)) return;
       if (!['active', 'waiting'].includes(this.state.status)) return;
       const waiting = this.now() - (this.state.lastEventAt ?? 0) >= WAITING_AFTER_MS;
       if (waiting && this.state.status !== 'waiting') {
@@ -220,14 +198,41 @@ export class DurableActionController {
     }, 1_000);
   }
 
-  #complete(result) {
-    this.unsubscribe?.();
-    this.unsubscribe = null;
-    if (this.waitingTimer != null) this.clearIntervalFn(this.waitingTimer);
-    this.waitingTimer = null;
-    const completed = terminalState(result);
-    this.#publish({ ...this.state, status: 'terminal', ...completed });
-    this.#forget(this.state.clientRequestId);
+  #complete(resource, result) {
+    if (!this.#isCurrent(resource)) return;
+    const previousState = this.state;
+    this.#discardResource(resource);
+    const payload = result?.result && typeof result.result === 'object' ? result.result : result;
+    const terminalKind = result?.state ?? result?.terminalKind ?? result?.kind ??
+      (payload?.operationKind ? 'succeeded' : 'failed');
+    const canUndo = terminalKind === 'succeeded' &&
+      (payload?.operationKind ?? previousState.operationKind) === 'play' &&
+      this.service.canUndoPlaybackSession?.() === true;
+    const completed = terminalState(result, canUndo);
+    this.#publish({
+      ...previousState,
+      ...(resource.operationId ? { operationId: resource.operationId } : {}),
+      status: 'terminal',
+      ...completed
+    });
+  }
+
+  #isBusy() {
+    return ['starting', 'active', 'waiting', 'cancelling'].includes(this.state.status);
+  }
+
+  #isCurrent(resource) {
+    return Boolean(resource && this.resource === resource && resource.token === this.operationToken);
+  }
+
+  #discardResource(resource = this.resource) {
+    if (!resource) return;
+    const unsubscribe = resource.unsubscribe;
+    resource.unsubscribe = null;
+    unsubscribe?.();
+    if (resource.waitingTimer != null) this.clearIntervalFn(resource.waitingTimer);
+    resource.waitingTimer = null;
+    if (this.resource === resource) this.resource = null;
   }
 
   #publish(state) {
@@ -235,25 +240,8 @@ export class DurableActionController {
     this.onStateChange(this.state);
   }
 
-  #readPending() {
-    try {
-      const value = JSON.parse(this.sessionStorage?.getItem(PENDING_OPERATION_STORAGE_KEY) || '[]');
-      return Array.isArray(value) ? value.filter(item => typeof item === 'string').slice(-MAX_PENDING_OPERATIONS) : [];
-    } catch (_) {
-      return [];
-    }
-  }
+}
 
-  #writePending(ids) {
-    try {
-      this.sessionStorage?.setItem(PENDING_OPERATION_STORAGE_KEY, JSON.stringify(ids));
-    } catch (_) {
-      // Recovery metadata is best-effort; the durable service remains authoritative.
-    }
-  }
-
-  #forget(clientRequestId) {
-    if (!clientRequestId) return;
-    this.#writePending(this.#readPending().filter(value => value !== clientRequestId));
-  }
+function isPlaybackOperation(operationKind) {
+  return operationKind === 'play' || operationKind === 'playNext' || operationKind === 'queue';
 }

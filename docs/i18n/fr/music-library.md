@@ -6,7 +6,7 @@ lang: fr
 
 # Utiliser la Bibliothèque musicale
 
-EffeTune 3.0.0 démarre avec une nouvelle Bibliothèque musicale. L'état de la Bibliothèque précédente n'est pas repris : ajoutez et analysez de nouveau vos dossiers de musique. Cela ne modifie pas les fichiers audio qu'ils contiennent.
+EffeTune 2.1.0 démarre avec une nouvelle Bibliothèque musicale. L'état de la Bibliothèque précédente n'est pas repris : ajoutez et analysez de nouveau vos dossiers de musique. Cela ne modifie pas les fichiers audio qu'ils contiennent.
 
 La Bibliothèque musicale indexe les dossiers de musique que vous choisissez et vous permet de parcourir votre collection locale par morceaux, albums, artistes, genres, sous-dossiers, dossiers, ajouts récents et listes de lecture. Comme pour la lecture normale des fichiers musicaux, le son passe par le pipeline d'effets EffeTune actuel.
 
@@ -15,8 +15,8 @@ La Bibliothèque musicale enregistre le catalogue interne de l'application, le c
 ## Environnements disponibles
 
 - **Application de bureau :** utilise l'analyseur de dossiers complet et permet de réutiliser les dossiers choisis au prochain démarrage. La version de bureau peut aussi afficher les morceaux dans le dossier qui contient leur fichier.
-- **Navigateurs Chromium sur ordinateur :** utilisent File System Access dans les environnements compatibles. L'accès aux dossiers peut parfois être conservé, mais le navigateur peut aussi redemander une autorisation.
-- **Navigateurs mobiles, Safari et Firefox :** utilisent la sélection de dossier ou de fichier disponible dans le navigateur. Avec la méthode de repli, les fichiers du dossier choisi peuvent être indexés, mais il peut être nécessaire de sélectionner à nouveau le dossier ou les fichiers après un rechargement ou l'expiration des autorisations.
+- **Navigateurs Chromium sur ordinateur avec File System Access :** enregistrent durablement le handle du dossier sélectionné. Il peut être réutilisé après un rechargement une fois l'accès accordé, même si le navigateur peut redemander une autorisation.
+- **Navigateurs mobiles, Safari, Firefox et autres navigateurs sans File System Access :** ne conservent les objets `File` sélectionnés que pendant la session de page en cours. Le catalogue reste enregistré, mais les fichiers ne peuvent plus être rouverts après un rechargement. Sélectionnez de nouveau le dossier ou les fichiers après chaque rechargement ; EffeTune les rattache aux entrées existantes grâce au chemin relatif normalisé.
 
 La Bibliothèque musicale indexe les extensions de fichiers multimédias courantes, notamment MP3, WAV, OGG, FLAC, Opus, M4A, AAC, WebM et MP4. Pour les fichiers MP4, EffeTune lit uniquement la piste audio et n'affiche pas la vidéo. La lecture effective, y compris la prise en charge du codec audio contenu dans le MP4, dépend aussi des capacités de décodage du navigateur et du système d'exploitation.
 
@@ -54,9 +54,13 @@ Les onglets de navigation permettent de changer de catalogue.
 
 Les groupes **Sous-dossiers** utilisent le chemin du sous-dossier qui contient directement chaque morceau, relatif à son dossier de musique importé. Des chemins relatifs identiques appartenant à des dossiers importés différents restent dans des groupes distincts. Les fichiers placés directement à la racine importée ne créent pas de groupe de sous-dossier, mais restent disponibles dans **Morceaux** et **Dossiers**.
 
-**Rechercher dans la bibliothèque** permet de rechercher dans les morceaux, albums, artistes et listes de lecture. En disposition ordinateur, l'en-tête de la liste des morceaux permet de trier par titre, artiste, album, genre ou durée.
+**Rechercher dans la bibliothèque** permet de rechercher dans les morceaux, albums, artistes et listes de lecture. En disposition ordinateur, l'en-tête de la liste des morceaux permet de trier par titre, artiste, album, genre ou durée. Les vues des albums, artistes, genres, sous-dossiers et listes de lecture proposent une liste **Trier** alimentée par le catalogue. Selon la vue, elle permet un tri croissant ou décroissant par nom, artiste, chemin, nombre de pistes, durée totale, date de mise à jour ou date de création. Chaque vue conserve son propre choix.
 
 Pour les morceaux, les termes d’au moins trois caractères peuvent correspondre à n’importe quelle partie du titre, de l’artiste, de l’album, du genre, du nom de fichier ou du chemin. Les termes d’un ou deux caractères ne correspondent qu’au début d’un mot. Saisissez au moins trois caractères pour rechercher au milieu d’un mot.
+
+Dans les dispositions ordinateur et mobile, lorsqu’une recherche de morceaux ou la fiche d’un album, d’un artiste, d’un genre, d’un sous-dossier ou d’une liste de lecture contient 300 morceaux ou moins, tous sont sélectionnés par défaut. À partir de 301 morceaux, aucune sélection automatique n’est effectuée. Utilisez les cases des lignes, **Tout sélectionner** ou **Tout désélectionner** pour modifier la sélection.
+
+Sur mobile, la liste normale des titres s'affiche d'abord, sans colonnes d'artiste ni de durée. Seul un appui long sur un morceau ouvre le mode sélection ; les cases à cocher, **Tout sélectionner** et **Tout désélectionner** apparaissent alors, tandis que les actions habituelles des lignes restent disponibles. La sélection automatique et les modifications ultérieures — y compris **Tout sélectionner**, **Tout désélectionner** et les cases individuelles — ne changent que l’état de sélection ; elles n’ouvrent ni ne ferment le mode sélection.
 
 Quand les métadonnées sont absentes ou illisibles, EffeTune utilise le nom du fichier et les informations de dossier pour l'affichage. Les propriétés d'un morceau permettent de consulter le chemin du fichier, le format, la fréquence d'échantillonnage, la profondeur de bits, le débit binaire et les principaux champs de métadonnées.
 
@@ -70,7 +74,7 @@ Sélectionnez des morceaux, albums, artistes, genres, sous-dossiers, dossiers, r
 - **Ajouter à la file** - ajoute les morceaux sélectionnés à la fin de la file.
 - **Ajouter à une liste** - enregistre les morceaux sélectionnés dans une liste de lecture de la Bibliothèque musicale.
 
-Sur ordinateur, vous pouvez double-cliquer sur la ligne d'un morceau pour lancer la lecture depuis cette position, ou ouvrir les actions du morceau par clic droit ou depuis le menu **Plus**. Sur mobile, touchez le bouton de lecture sur la ligne du morceau pour le lire, ou appuyez longuement sur un morceau pour ouvrir la feuille d'actions.
+Sur ordinateur, vous pouvez double-cliquer sur la ligne d'un morceau pour lancer la lecture depuis cette position, ou ouvrir ses actions par clic droit ou depuis le menu **Plus**. Sur mobile, touchez un morceau dans la liste normale pour le lire ; un appui long active le mode sélection décrit ci-dessus.
 
 Les commandes habituelles du lecteur musical et les réglages de répétition/aléatoire restent disponibles. Sur les appareils avec clavier, les raccourcis clavier habituels du lecteur restent eux aussi disponibles. Si un dossier passe hors ligne et que les morceaux de la bibliothèque ne peuvent plus être ouverts, reconnectez ou réimportez ce dossier.
 
@@ -98,7 +102,9 @@ Vous pouvez effectuer les actions suivantes.
 - Renommer, dupliquer, supprimer et réordonner les listes de lecture.
 - Faire glisser les morceaux d'une liste de lecture pour modifier leur ordre. Dans les environnements où le glisser-déposer est difficile, utilisez **Monter** et **Descendre**.
 - Utiliser **Importer une liste** pour importer des listes de lecture aux formats M3U, M3U8, PLS et XSPF.
-- Utiliser **Exporter M3U8** ou **Exporter XSPF** pour exporter une liste de lecture.
+- Ouvrir une liste de lecture précise et l'exporter avec **Exporter M3U8** ou **Exporter XSPF**.
+
+Lors de l’analyse d’un dossier, EffeTune importe automatiquement les fichiers de listes de lecture pris en charge après l’indexation des pistes et ignore ceux dont le contenu n’a pas changé. Si le contenu d’un fichier situé dans le même dossier et au même chemin relatif change, EffeTune remplace de façon atomique les éléments de la liste importée automatiquement, y compris les modifications apportées à ces éléments dans EffeTune. Une importation échouée ou annulée est retentée lors de l’analyse suivante. La suppression ou le renommage du fichier source ne supprime pas la liste existante, et un fichier renommé est importé comme une nouvelle liste.
 
 Lors de l'importation, un aperçu indique combien d'éléments correspondent à des morceaux de la bibliothèque actuelle. Les éléments sans correspondance sont aussi conservés autant que possible comme éléments non résolus, afin de pouvoir être résolus si le dossier concerné est ajouté ou reconnecté plus tard.
 
@@ -110,6 +116,12 @@ Lors de l'exportation, si vous choisissez **Chemins relatifs**, les chemins sont
 - Le cache des illustrations et les listes de lecture sont des données internes à l'application, pas des modifications intégrées aux fichiers musicaux.
 - Le classement par **Sous-dossiers** est déduit des chemins relatifs enregistrés dans le catalogue.
 - L'espace de stockage du navigateur peut être effacé par les paramètres du navigateur ou par une action de l'utilisateur. Exportez les listes de lecture importantes si nécessaire.
-- Dans l'application web, la disponibilité des dossiers après un rechargement dépend de la gestion des autorisations par le navigateur.
+- Dans les navigateurs avec File System Access, les autorisations déterminent si le handle de dossier conservé peut être réutilisé après un rechargement. Avec la méthode de repli, les fichiers sélectionnés ne durent que le temps de la session et doivent toujours être sélectionnés de nouveau après un rechargement.
+
+## Grandes bibliothèques
+
+Le catalogue conserve les données sur le disque et répartit le travail en pages ou en lots limités ; une grande collection n'a donc pas besoin d'être chargée entièrement en mémoire. Les mesures d'échelle et à référence fixe sont des diagnostics locaux et facultatifs destinés au développement. Elles ne conditionnent ni les commits, ni les versions, ni `verify`, ni GitHub Actions et ne constituent pas une garantie générale de performances. La durée d'analyse et les limites pratiques dépendent de la vitesse du stockage, de la mémoire disponible, des métadonnées, des illustrations et des limites du navigateur ou du système d'exploitation.
+
+Pendant le défilement de la liste des morceaux, EffeTune garde les pages voisines en cache. Sur mobile, il lit jusqu'à deux pages à l'avance dans le sens du défilement, donne la priorité à la page requise à l'écran sur les lectures anticipées supplémentaires et réutilise les lignes visibles qui se chevauchent. Même si le défilement continue, les lectures terminées pour la zone d'affichage sont immédiatement publiées dans ce cache limité. Les demandes de position sont regroupées sur la plus récente et, si celle-ci se trouve dans la page qui vient d'être chargée, aucune lecture supplémentaire de la base de données n'est effectuée. Les lectures anticipées en attente devenues inutiles sont abandonnées. SQLite permet l'interruption, mais les adaptateurs du catalogue exécutent actuellement chaque instruction de manière synchrone et n'exposent aucun moyen de l'interrompre depuis un autre worker. Un déplacement exceptionnellement rapide peut donc encore laisser un bref espace vide jusqu'à la fin de la lecture en cours, surtout sur un stockage lent.
 
 [← Retour au README](README.md)

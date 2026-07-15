@@ -38,6 +38,7 @@ import {
   MUSIC_LIBRARY_V2_DESKTOP_DATABASE_PATH,
   MUSIC_LIBRARY_V2_DESKTOP_DIRECTORY,
   MUSIC_LIBRARY_V2_SCHEMA_SQL,
+  MUSIC_LIBRARY_V2_SESSION_SCHEMA_SQL,
   MUSIC_LIBRARY_V2_WEB_DATABASE,
   MUSIC_LIBRARY_V2_WEB_OPFS_DIRECTORY
 } from '../../js/library/repository/schema-v2.js';
@@ -47,15 +48,6 @@ import {
   MAX_INLINE_SELECTION_UIDS,
   validateSelectionDescriptor
 } from '../../js/library/repository/selection-descriptor.js';
-import {
-  assertStoragePreflight,
-  calculateStorageSafetyFloor,
-  checkStoragePreflight,
-  GIBIBYTE,
-  MAX_STORAGE_SAFETY_FLOOR_BYTES,
-  MEBIBYTE,
-  MIN_STORAGE_SAFETY_FLOOR_BYTES
-} from '../../js/library/repository/storage-preflight.js';
 import {
   createCompactSearchText,
   foldKana,
@@ -134,9 +126,13 @@ test('query contract enforces bounded limits and exact page shape', () => {
   assert.equal(validated.response.rows.length, 1);
   assert.equal(validated.byteLength, measureJsonBytes(createPage()));
   validatePageResponse(createPage({ totalCount: { pending: true }, nextCursor: 'next', previousCursor: 'previous' }));
+  validatePageResponse(createPage({ totalCount: 3, resolvedCount: 2, unresolvedCount: 1 }));
 
   assertErrorCode(() => validatePageResponse(createPage({ rows: [{}, {}] }), { limit: 1 }), 'pageLimitExceeded');
   assertErrorCode(() => validatePageResponse({ ...createPage(), extra: true }), 'invalidPage');
+  assertErrorCode(() => validatePageResponse(createPage({ resolvedCount: 1 })), 'invalidPage');
+  assertErrorCode(() => validatePageResponse(createPage({ resolvedCount: -1, unresolvedCount: 2 })), 'invalidPage');
+  assertErrorCode(() => validatePageResponse(createPage({ resolvedCount: 1, unresolvedCount: 1 })), 'invalidPage');
   assertErrorCode(() => validatePageResponse(createPage({ nextCursor: '' })), 'invalidPage');
   assertErrorCode(() => validatePageResponse(createPage({ previousCursor: 3 })), 'invalidPage');
   assertErrorCode(() => validatePageResponse(createPage({ totalCount: -1 })), 'invalidPage');
@@ -327,9 +323,11 @@ test('selection descriptors preserve compact all and range forms and bound spars
     contextToken: 'ctx_million',
     startUid: 't_first',
     endUid: 't_last',
-    exclusions: []
+    inclusions: ['t_outside', 't_excluded'],
+    exclusions: ['t_excluded']
   });
   assert.equal(range.endUid, 't_last');
+  assert.deepEqual(range.inclusions, ['t_outside']);
 
   const atLimit = Array.from({ length: MAX_INLINE_SELECTION_UIDS }, (_, index) => `t_${index}`);
   assert.equal(validateSelectionDescriptor({ mode: 'explicit', contextToken: 'ctx', trackUids: atLimit }).trackUids.length, MAX_INLINE_SELECTION_UIDS);
@@ -372,8 +370,8 @@ test('scope invalidation coalescing unions scopes and keeps each newest scope st
     },
     {
       catalogVersion: 10,
-      changedScopes: ['playlists'],
-      scopeVersions: { playlists: 4 },
+      changedScopes: ['playlists', 'artwork'],
+      scopeVersions: { playlists: 4, artwork: 1 },
       counts: { playlists: 5 }
     },
     {
@@ -391,8 +389,8 @@ test('scope invalidation coalescing unions scopes and keeps each newest scope st
   ]);
   assert.deepEqual(merged, {
     catalogVersion: 11,
-    changedScopes: ['tracks', 'albums', 'playlists'],
-    scopeVersions: { tracks: 4, albums: 2, playlists: 4 },
+    changedScopes: ['tracks', 'albums', 'playlists', 'artwork'],
+    scopeVersions: { tracks: 4, albums: 2, playlists: 4, artwork: 1 },
     counts: { tracks: 101, albums: 11, playlists: 5 }
   });
 
@@ -406,43 +404,9 @@ test('scope invalidation coalescing unions scopes and keeps each newest scope st
   assertErrorCode(() => coalesceInvalidations({ ...invalid, catalogVersion: 1, changedScopes: ['tracks', 'tracks'] }), 'invalidInvalidation');
   assertErrorCode(() => coalesceInvalidations({ ...invalid, catalogVersion: 1, scopeVersions: {} }), 'invalidInvalidation');
   assertErrorCode(() => coalesceInvalidations({ ...invalid, catalogVersion: 1, counts: {} }), 'invalidInvalidation');
+  assertErrorCode(() => coalesceInvalidations({ ...invalid, catalogVersion: 1, counts: { tracks: -1 } }), 'invalidInvalidation');
+  assertErrorCode(() => coalesceInvalidations({ ...invalid, catalogVersion: 1, counts: { tracks: 1, artwork: 1 } }), 'invalidInvalidation');
   assertErrorCode(() => coalesceInvalidations({ ...invalid, catalogVersion: 1, extra: true }), 'invalidInvalidation');
-});
-
-test('storage preflight applies the bounded safety floor and reports typed shortfalls', () => {
-  assert.equal(calculateStorageSafetyFloor(1 * GIBIBYTE), MIN_STORAGE_SAFETY_FLOOR_BYTES);
-  assert.equal(calculateStorageSafetyFloor(10 * GIBIBYTE), 1 * GIBIBYTE);
-  assert.equal(calculateStorageSafetyFloor(100 * GIBIBYTE), MAX_STORAGE_SAFETY_FLOOR_BYTES);
-
-  const passing = checkStoragePreflight({
-    capacityBytes: 10 * GIBIBYTE,
-    availableBytes: 2 * GIBIBYTE,
-    worstCaseBatchWriteBytes: 64 * MEBIBYTE,
-    estimatedRequiredBytes: 512 * MEBIBYTE
-  });
-  assert.equal(passing.ok, true);
-  assert.equal(passing.requiredAvailableBytes, 1.5 * GIBIBYTE);
-  assert.equal(assertStoragePreflight({
-    capacityBytes: 10 * GIBIBYTE,
-    availableBytes: 2 * GIBIBYTE,
-    worstCaseBatchWriteBytes: 64 * MEBIBYTE
-  }).ok, true);
-
-  const failing = checkStoragePreflight({
-    capacityBytes: 1 * GIBIBYTE,
-    availableBytes: 300 * MEBIBYTE,
-    worstCaseBatchWriteBytes: 100 * MEBIBYTE
-  });
-  assert.equal(failing.ok, false);
-  assert.equal(failing.shortfallBytes, 56 * MEBIBYTE);
-  assertErrorCode(() => assertStoragePreflight({
-    capacityBytes: 1 * GIBIBYTE,
-    availableBytes: 300 * MEBIBYTE,
-    worstCaseBatchWriteBytes: 100 * MEBIBYTE
-  }), 'insufficientStorage');
-  assertErrorCode(() => checkStoragePreflight({ capacityBytes: 0, availableBytes: 0, worstCaseBatchWriteBytes: 0 }), 'invalidStorageEstimate');
-  assertErrorCode(() => checkStoragePreflight({ capacityBytes: 100, availableBytes: 101, worstCaseBatchWriteBytes: 0 }), 'invalidStorageEstimate');
-  assertErrorCode(() => checkStoragePreflight({ capacityBytes: 100, availableBytes: -1, worstCaseBatchWriteBytes: 0 }), 'invalidStorageEstimate');
 });
 
 test('SQLite v2 schema creates required catalog, scan, playlist, and durability structures', () => {
@@ -457,9 +421,15 @@ test('SQLite v2 schema creates required catalog, scan, playlist, and durability 
   assert.deepEqual(MUSIC_LIBRARY_SEARCH_FIELDS, [
     'title', 'artist', 'album_artist', 'album', 'genre', 'file_name', 'relative_path'
   ]);
-  assert.equal(getMusicLibraryV2InitializationSql({ includePragmas: false }), MUSIC_LIBRARY_V2_SCHEMA_SQL);
+  assert.equal(
+    getMusicLibraryV2InitializationSql({ includePragmas: false }),
+    `${MUSIC_LIBRARY_V2_SCHEMA_SQL}\n${MUSIC_LIBRARY_V2_SESSION_SCHEMA_SQL}`
+  );
   assert.match(getMusicLibraryV2InitializationSql(), /PRAGMA foreign_keys = ON/);
-  assert.match(getMusicLibraryV2InitializationSql({ journalMode: 'persist' }), /PRAGMA journal_mode = PERSIST/);
+  const webInitializationSql = getMusicLibraryV2InitializationSql({ journalMode: 'persist' });
+  assert.match(webInitializationSql, /PRAGMA journal_mode = PERSIST/);
+  assert.match(webInitializationSql, /CREATE TABLE IF NOT EXISTS query_contexts/);
+  assert.doesNotMatch(MUSIC_LIBRARY_V2_SCHEMA_SQL, /CREATE TABLE IF NOT EXISTS query_contexts/);
 
   const database = new DatabaseSync(':memory:');
   try {
@@ -483,28 +453,46 @@ test('SQLite v2 schema creates required catalog, scan, playlist, and durability 
       'operation_jobs',
       'snapshot_objects',
       'snapshot_object_owners',
-      'undo_records',
       'playlists',
       'playlist_items',
-      'playback_sequences',
-      'playback_sequence_items',
       'deletion_repair_items',
       'artwork_assets',
       'artwork_variants',
-      'query_contexts',
-      'query_context_track_before_images',
-      'transport_state',
       'operation_progress',
       'snapshot_items',
       'metadata_claims',
       'artwork_claims'
     ]) {
-    assert.ok(tableNames.includes(name), `missing table ${name}`);
+      assert.ok(tableNames.includes(name), `missing table ${name}`);
     }
+    assert.equal(tableNames.includes('catalog_versions'), false);
+    assert.equal(tableNames.includes('undo_records'), false);
+    assert.equal(tableNames.includes('query_contexts'), false);
+    assert.equal(tableNames.includes('query_context_track_before_images'), false);
+    assert.equal(tableNames.includes('playback_sequences'), false);
+    assert.equal(tableNames.includes('playback_sequence_items'), false);
+    assert.equal(tableNames.includes('transport_state'), false);
+    const sessionTableNames = database.prepare(`
+      SELECT name FROM sqlite_temp_master WHERE type = 'table'
+    `).all().map(row => row.name);
+    assert.ok(sessionTableNames.includes('playback_sequences'));
+    assert.ok(sessionTableNames.includes('playback_sequence_items'));
     assert.deepEqual(database.prepare('PRAGMA foreign_key_check').all(), []);
     assert.equal(database.prepare('PRAGMA foreign_keys').get().foreign_keys, 1);
   } finally {
     database.close();
+  }
+
+  const webDatabase = new DatabaseSync(':memory:');
+  try {
+    webDatabase.exec(webInitializationSql);
+    const webTableNames = webDatabase.prepare(`
+      SELECT name FROM sqlite_master WHERE type = 'table'
+    `).all().map(row => row.name);
+    assert.ok(webTableNames.includes('query_contexts'));
+    assert.ok(webTableNames.includes('query_context_track_before_images'));
+  } finally {
+    webDatabase.close();
   }
 });
 

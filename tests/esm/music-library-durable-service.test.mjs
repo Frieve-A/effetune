@@ -6,13 +6,13 @@ import { DurableLibraryService } from '../../js/library/operations/durable-libra
 function createRequest(overrides = {}) {
   return {
     clientRequestId: 'request-1',
-    operationKind: 'queue',
+    operationKind: 'addToPlaylist',
     selectionDescriptor: {
       mode: 'all',
       contextToken: 'context-1',
       exclusions: []
     },
-    target: { transport: 'main' },
+    target: { playlistId: 'playlist-1' },
     expectedTargetVersion: 3,
     options: {},
     ...overrides
@@ -41,15 +41,6 @@ class FakeDurableRepository {
     this.operations.set(operationId, { ...request, operationId, progress: [], phase: 'RECEIVED' });
     this.activeHeavy = operationId;
     return { kind: 'created', operationId };
-  }
-
-  async lookupOperationResult(clientRequestId) {
-    const operationId = this.byRequest.get(clientRequestId);
-    if (!operationId) return { kind: 'unknownRequest' };
-    const operation = this.operations.get(operationId);
-    return operation.terminal
-      ? { kind: 'terminal', result: operation.result }
-      : { kind: 'active', operationId };
   }
 
   async getOperationStatus(operationId) {
@@ -85,14 +76,14 @@ test('service starts one durable heavy operation and rejects a different invocat
   const handlerWait = new Promise(resolve => { finish = resolve; });
   const service = new DurableLibraryService({
     repository,
-    handlers: { queue: async () => handlerWait }
+    handlers: { addToPlaylist: async () => handlerWait }
   });
 
   const started = await service.start(createRequest());
   const busy = await service.start(createRequest({ clientRequestId: 'request-2' }));
   assert.deepEqual(started, { kind: 'started', operationId: 'operation-1' });
   assert.deepEqual(busy, { kind: 'busy', activeOperationId: 'operation-1' });
-  finish({ sequenceId: 'sequence-1' });
+  finish({ playlistId: 'playlist-1' });
   await service.running.get('operation-1').task;
   assert.equal((await service.status('operation-1')).result.state, 'succeeded');
 });
@@ -102,7 +93,7 @@ test('same client request joins only when the service-computed request digest ma
   let finish;
   const service = new DurableLibraryService({
     repository,
-    handlers: { queue: () => new Promise(resolve => { finish = resolve; }) }
+    handlers: { addToPlaylist: () => new Promise(resolve => { finish = resolve; }) }
   });
   const request = createRequest();
   const started = await service.start(request);
@@ -114,7 +105,7 @@ test('same client request joins only when the service-computed request digest ma
   );
   finish({});
   await service.running.get(started.operationId).task;
-  assert.equal((await service.lookupResult('request-1')).kind, 'terminal');
+  assert.equal((await service.status(started.operationId)).result.state, 'succeeded');
 });
 
 test('cancel aborts bounded work and stores one durable cancelled result', async () => {
@@ -122,7 +113,7 @@ test('cancel aborts bounded work and stores one durable cancelled result', async
   const service = new DurableLibraryService({
     repository,
     handlers: {
-      queue: async ({ signal }) => new Promise((resolve, reject) => {
+      addToPlaylist: async ({ signal }) => new Promise((resolve, reject) => {
         signal.addEventListener('abort', () => reject(signal.reason), { once: true });
       })
     }
@@ -133,7 +124,7 @@ test('cancel aborts bounded work and stores one durable cancelled result', async
     operationId: started.operationId
   });
   await service.running.get(started.operationId).task;
-  const result = await service.lookupResult('request-1');
+  const result = await service.status(started.operationId);
   assert.equal(result.result.state, 'cancelled');
   assert.deepEqual(await service.cancel(started.operationId), { kind: 'tooLate' });
 });
@@ -147,7 +138,7 @@ test('service fails unavailable operation kinds durably without launching work',
     kind: 'terminal',
     result: { state: 'failed', code: 'operationUnavailable' }
   });
-  assert.equal((await service.lookupResult('request-1')).result.code, 'operationUnavailable');
+  assert.equal((await service.status('operation-1')).result.code, 'operationUnavailable');
 });
 
 test('a handler that published its final CAS remains successful when cancellation becomes too late', async () => {
@@ -157,20 +148,20 @@ test('a handler that published its final CAS remains successful when cancellatio
   const service = new DurableLibraryService({
     repository,
     handlers: {
-      play: async ({ operationId }) => {
+      addToPlaylist: async ({ operationId }) => {
         repository.operations.get(operationId).terminal = true;
         repository.operations.get(operationId).result = { state: 'committing' };
         await afterPublish;
-        return { committed: true, result: { sequenceId: 'sequence-1' } };
+        return { committed: true, result: { playlistId: 'playlist-1' } };
       }
     }
   });
-  const started = await service.start(createRequest({ operationKind: 'play' }));
+  const started = await service.start(createRequest());
   await Promise.resolve();
   assert.deepEqual(await service.cancel(started.operationId), { kind: 'tooLate' });
   releaseAfterPublish();
   await service.running.get(started.operationId).task;
   assert.deepEqual((await service.status(started.operationId)).result.result, {
-    sequenceId: 'sequence-1'
+    playlistId: 'playlist-1'
   });
 });

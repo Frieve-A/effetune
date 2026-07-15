@@ -21,12 +21,12 @@ function createApi({ protocolVersion = 1 } = {}) {
     'createContext',
     'queryTracks',
     'queryEntities',
-    'readContextPage',
     'readContextPageAtOrdinal',
     'resolveEntityAnchor',
     'releaseContext',
     'getTrack',
     'resolvePlaybackSource',
+    'showTrackInFolder',
     'createPlaylist',
     'createPlaylistWithItems',
     'renamePlaylist',
@@ -40,14 +40,27 @@ function createApi({ protocolVersion = 1 } = {}) {
     'scanFolders',
     'cancelScan',
     'removeFolder',
-    'requestArtwork',
-    'getScanStatus'
+    'requestArtwork'
   ]) {
     api[method] = async value => {
       calls.push([method, value]);
       return { method, value };
     };
   }
+  api.resolvePlaybackSource = async value => {
+    calls.push(['resolvePlaybackSource', value]);
+    return {
+      kind: 'electron-file',
+      trackUid: value,
+      folderId: 'folder',
+      lifecycleVersion: 1,
+      path: '/Music/Track.flac'
+    };
+  };
+  api.showTrackInFolder = async value => {
+    calls.push(['showTrackInFolder', value]);
+    return { success: true };
+  };
   api.onInvalidation = listener => {
     calls.push(['onInvalidation', listener]);
     return () => calls.push(['unsubscribe']);
@@ -55,6 +68,10 @@ function createApi({ protocolVersion = 1 } = {}) {
   api.onScanEvent = listener => {
     calls.push(['onScanEvent', listener]);
     return () => calls.push(['unsubscribe-scan']);
+  };
+  api.onFolderRemovalEvent = listener => {
+    calls.push(['onFolderRemovalEvent', listener]);
+    return () => calls.push(['unsubscribe-folder-removal']);
   };
   return { api, calls };
 }
@@ -71,7 +88,6 @@ test('Electron catalog client mirrors bounded repository read methods', async ()
     'createContext',
     'queryTracks',
     'queryEntities',
-    'readContextPage',
     'readContextPageAtOrdinal',
     'resolveEntityAnchor'
   ];
@@ -83,8 +99,15 @@ test('Electron catalog client mirrors bounded repository read methods', async ()
   assert.deepEqual(await client.getTrack('track'), { method: 'getTrack', value: 'track' });
   assert.deepEqual(
     await client.resolvePlaybackSource('track'),
-    { method: 'resolvePlaybackSource', value: 'track' }
+    {
+      kind: 'electron-file',
+      trackUid: 'track',
+      folderId: 'folder',
+      lifecycleVersion: 1,
+      path: '/Music/Track.flac'
+    }
   );
+  assert.deepEqual(await client.showTrackInFolder('track'), { success: true });
   for (const method of [
     'createPlaylist',
     'createPlaylistWithItems',
@@ -101,6 +124,10 @@ test('Electron catalog client mirrors bounded repository read methods', async ()
   assert.equal(client.appendPlaylistItems, undefined);
   assert.equal(client.publishPlaylist, undefined);
   assert.deepEqual(await client.addFolder(), { method: 'addFolder', value: undefined });
+  const languageHints = { language: 'ja', browserLanguage: 'ja-JP' };
+  assert.deepEqual(await client.addFolder({ languageHints }), {
+    method: 'addFolder', value: { languageHints }
+  });
   assert.deepEqual(await client.requestFolderAccess('folder'), { method: 'requestFolderAccess', value: 'folder' });
   assert.deepEqual(await client.scanFolders({ folderIds: ['folder'] }), {
     method: 'scanFolders', value: { folderIds: ['folder'] }
@@ -116,7 +143,6 @@ test('Electron catalog client mirrors bounded repository read methods', async ()
   assert.deepEqual(await client.requestArtwork({ trackUid: 'track', reason: 'viewport' }), {
     method: 'requestArtwork', value: { trackUid: 'track', reason: 'viewport' }
   });
-  assert.deepEqual(await client.getScanStatus('scan'), { method: 'getScanStatus', value: 'scan' });
   const listener = () => {};
   const unsubscribe = client.subscribeInvalidations(listener);
   unsubscribe();
@@ -127,25 +153,86 @@ test('Electron catalog client mirrors bounded repository read methods', async ()
   unsubscribeScan();
   assert.ok(calls.some(call => call[0] === 'onScanEvent' && call[1] === scanListener));
   assert.equal(calls.at(-1)[0], 'unsubscribe-scan');
+  const folderRemovalListener = () => {};
+  const unsubscribeFolderRemoval = client.subscribeFolderRemovalEvents(folderRemovalListener);
+  unsubscribeFolderRemoval();
+  assert.ok(calls.some(call => (
+    call[0] === 'onFolderRemovalEvent' && call[1] === folderRemovalListener
+  )));
+  assert.equal(calls.at(-1)[0], 'unsubscribe-folder-removal');
+});
+
+test('Electron catalog client restores a typed folder permission error from the control IPC envelope', async () => {
+  const { api } = createApi();
+  api.resolvePlaybackSource = async () => ({
+    code: 'folderPermissionRequired',
+    details: { folderId: 'folder-7', lifecycleVersion: 7 }
+  });
+  const client = createElectronCatalogClient({ api });
+
+  await assert.rejects(
+    client.resolvePlaybackSource('track'),
+    error => error?.name === 'LibraryRepositoryError' &&
+      error?.code === 'folderPermissionRequired' &&
+      error?.details?.folderId === 'folder-7' &&
+      error?.details?.lifecycleVersion === 7
+  );
+
+  api.showTrackInFolder = async () => ({
+    code: 'folderPermissionRequired',
+    details: { folderId: 'folder-7', lifecycleVersion: 7 }
+  });
+  await assert.rejects(
+    client.showTrackInFolder('track'),
+    error => error?.name === 'LibraryRepositoryError' &&
+      error?.code === 'folderPermissionRequired' &&
+      error?.details?.folderId === 'folder-7' &&
+      error?.details?.lifecycleVersion === 7
+  );
+});
+
+test('Electron catalog client rejects a playback source that is not an absolute path', async () => {
+  const { api } = createApi();
+  api.resolvePlaybackSource = async () => ({ kind: 'electron-file', path: 'Music/Track.flac' });
+  const client = createElectronCatalogClient({ api });
+
+  await assert.rejects(
+    client.resolvePlaybackSource('track'),
+    /playback source response is invalid/
+  );
 });
 
 test('Electron catalog client starts the first scan when an older add response has no receipt', async () => {
   const { api, calls } = createApi();
-  api.addFolder = async () => {
-    calls.push(['addFolder', undefined]);
+  api.addFolder = async request => {
+    calls.push(['addFolder', request]);
     return { canceled: false, folder: { id: 'folder-new', displayName: 'Music' } };
+  };
+  const client = createElectronCatalogClient({ api });
+  const languageHints = { language: 'ja', browserLanguage: 'ja-JP' };
+
+  const result = await client.addFolder({ languageHints });
+  assert.deepEqual(calls.slice(-2), [
+    ['addFolder', { languageHints }],
+    ['scanFolders', { folderIds: ['folder-new'], scanReason: 'automatic', languageHints }]
+  ]);
+  assert.deepEqual(result.scan, {
+    method: 'scanFolders',
+    value: { folderIds: ['folder-new'], scanReason: 'automatic', languageHints }
+  });
+});
+
+test('Electron catalog client does not scan after a rejected folder selection', async () => {
+  const { api, calls } = createApi();
+  api.addFolder = async request => {
+    calls.push(['addFolder', request]);
+    return { canceled: false, rejected: true, reason: 'same-root' };
   };
   const client = createElectronCatalogClient({ api });
 
   const result = await client.addFolder();
-  assert.deepEqual(calls.slice(-2), [
-    ['addFolder', undefined],
-    ['scanFolders', { folderIds: ['folder-new'], scanReason: 'automatic' }]
-  ]);
-  assert.deepEqual(result.scan, {
-    method: 'scanFolders',
-    value: { folderIds: ['folder-new'], scanReason: 'automatic' }
-  });
+  assert.equal(result.rejected, true);
+  assert.equal(calls.filter(call => call[0] === 'scanFolders').length, 0);
 });
 
 test('Electron catalog client rejects unavailable or mismatched API versions', async () => {
@@ -156,4 +243,5 @@ test('Electron catalog client rejects unavailable or mismatched API versions', a
   await assert.rejects(client.getCapabilities(), /protocol version mismatch/);
   assert.throws(() => client.subscribeInvalidations(null), /must be a function/);
   assert.throws(() => client.subscribeScanEvents(null), /must be a function/);
+  assert.throws(() => client.subscribeFolderRemovalEvents(null), /must be a function/);
 });

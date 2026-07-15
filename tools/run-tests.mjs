@@ -140,25 +140,13 @@ const cjsCoverageIncludes = collectCoverageIncludeArgs(path.join(repoRoot, 'elec
   exclude: ['electron/main.js']
 });
 const esmCoverageIncludes = collectCoverageIncludeArgs(path.join(repoRoot, 'js'), {
-  // These modules require browser/Worker APIs. Their runtime coverage belongs to
-  // the browser verification commands rather than the aggregate Node threshold.
+  // The Worker entry/runtime and its OPFS SQLite repository/OO1 bridge execute
+  // only in a browser Worker; their contracts belong to browser verification.
   exclude: [
-    'js/library/artwork/web-artwork-extractor.js',
-    'js/library/metadata/metadata-mapper.js',
-    'js/library/metadata/metadata-worker.js',
-    'js/library/operations/web-library-service-coordinator.js',
-    'js/library/repository/catalog-client-factory.js',
-    'js/library/repository/sha256.js',
     'js/library/repository/sqlite-oo1-adapter.js',
-    'js/library/repository/web-catalog-client.js',
     'js/library/repository/web-catalog-repository.js',
     'js/library/repository/web-catalog-worker.js',
-    'js/library/repository/web-sqlite-runtime.js',
-    'js/library/scan/web-file-system-adapter.js',
-    'js/library/scan/web-folder-handle-store.js',
-    'js/library/scan/web-library-services.js',
-    'js/library/scan/web-metadata-parser.js',
-    'js/library/scan/web-scan-runtime.js'
+    'js/library/repository/web-sqlite-runtime.js'
   ]
 });
 const coverageThresholdArgs = [

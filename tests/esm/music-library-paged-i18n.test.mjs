@@ -5,11 +5,15 @@ import test from 'node:test';
 const LOCALES = ['en', 'ja', 'ar', 'es', 'fr', 'hi', 'ko', 'pt', 'ru', 'zh'];
 const PAGED_KEYS = [
   'library.paged.loading', 'library.paged.loadFailed', 'library.paged.retry',
-  'library.paged.selectAllResults', 'library.paged.selectionStale',
+  'library.paged.selectAll', 'library.paged.deselectAll', 'library.paged.selectionStale',
   'library.paged.reselect', 'library.paged.selectionTooLarge',
   'library.paged.reselectFailed', 'library.paged.playlistVersionUnavailable',
   'library.paged.serviceUnavailable', 'library.paged.selectTrack',
-  'library.paged.previous', 'library.paged.next', 'library.paged.page',
+  'library.paged.previous', 'library.paged.next',
+  'library.search.showAll',
+  'library.status.unresolved',
+  'library.title', 'library.action.cancel', 'library.action.replaceFolders',
+  'library.confirm.mergeFolders',
   'library.job.action.operation', 'library.job.action.play',
   'library.job.action.playNext', 'library.job.action.queue',
   'library.job.action.addToPlaylist', 'library.job.action.importPlaylist',
@@ -22,6 +26,12 @@ const PAGED_KEYS = [
   'library.job.progressKnown', 'library.job.progressUnknown',
   'library.queue.previousPage', 'library.queue.nextPage', 'library.queue.trackNumber',
   'library.error.actionFailed', 'error.playbackCommandFailed'
+];
+const REMOVED_LIBRARY_KEYS = [
+  'library.action.reorder',
+  'library.action.remove',
+  'library.status.moreTracks',
+  'library.state.neverScanned'
 ];
 
 function readValues(locale) {
@@ -44,6 +54,9 @@ test('paged Library, durable job, and queue strings have locale and placeholder 
     for (const key of PAGED_KEYS) {
       assert.ok(values.get(key), `${locale} is missing ${key}`);
       assert.deepEqual(placeholders(values.get(key)), placeholders(english.get(key)), `${locale} placeholder mismatch for ${key}`);
+    }
+    for (const key of REMOVED_LIBRARY_KEYS) {
+      assert.equal(values.has(key), false, `${locale} still contains removed key ${key}`);
     }
   }
 });

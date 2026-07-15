@@ -222,6 +222,7 @@ export class StateManager {
 
     clearError() {
         this.errorDisplay.textContent = '';
+        this.errorDisplay.classList.remove('error-message');
     }
 
     // Call this method after audio context is initialized

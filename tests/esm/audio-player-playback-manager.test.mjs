@@ -239,6 +239,9 @@ test('loadFiles, getTrack, and basic commands handle unavailable state and deleg
     assert.equal(manager.getTrack(0).name, 'one.mp3');
     assert.equal(manager.getTrack(-1), null);
     assert.equal(manager.getTrack(10), null);
+    assert.equal(manager.getTrackIndex(manager.playlist[1], true), 1);
+    assert.equal(manager.getTrackIndex({ ...manager.playlist[1] }, true), -1);
+    assert.equal(manager.getTrackIndex({ ...manager.playlist[1] }), 1);
 
     manager.loadFiles(['append.flac'], true);
     assert.deepEqual(manager.playlist.map(track => track.name), ['one.mp3', 'two.wav', 'append.flac']);
@@ -340,6 +343,36 @@ test('play treats a seamless transition as the complete playback start', async (
       audioPlayer.calls.filter(call => call[0] === 'contextPlay').length,
       0
     );
+  });
+});
+
+test('play resumes a paused materialized media element without reloading or losing position', async () => {
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({ hasCurrentBuffer: false, currentTrackPosition: 48 });
+    const manager = makeManager(audioPlayer);
+    setPlaylist(manager, ['One']);
+    Object.assign(audioPlayer.state, {
+      currentTrack: manager.playlist[0],
+      currentTrackIndex: 0,
+      playbackMode: 'audioElement',
+      isPlaying: false,
+      isPaused: true,
+      isStopped: false
+    });
+    Object.assign(audioPlayer.audioElement, {
+      src: 'blob:paused-track',
+      currentSrc: 'blob:paused-track',
+      currentTime: 48,
+      error: null,
+      ended: false
+    });
+
+    await manager.play();
+
+    assert.equal(audioPlayer.audioElement.currentTime, 48);
+    assert.equal(audioPlayer.calls.filter(call => call[0] === 'contextPlay').length, 1);
+    assert.equal(audioPlayer.calls.some(call => call[0] === 'seamlessTransition'), false);
+    assert.equal(audioPlayer.calls.some(call => call[0] === 'hasCurrentBuffer'), false);
   });
 });
 

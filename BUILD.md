@@ -63,11 +63,11 @@ npm run lint
 npm test
 ```
 
-### Music Library scale qualification
+### Music Library Web correctness and scale diagnostics
 
 The Web Music Library catalog uses the vendored official SQLite WASM build in a dedicated
 Worker, with one `opfs-sahpool` connection and rollback journaling. The browser contract and
-million-track checks each start and stop their own temporary loopback origin and use an isolated
+browser checks start and stop their own temporary loopback origin and use an isolated
 Playwright browser context; do not start a separate development server.
 
 Changes that affect Music Library storage, scanning, paging, search, durable operations,
@@ -77,22 +77,27 @@ playlists, playback sequences, or artwork must run the browser contract:
 npm run test:library-sqlite:web
 ```
 
-For an explicit commit or release scale qualification, also run:
+Performance measurements are local, manually invoked development diagnostics. They are not
+required before a commit or release, are not part of `npm test` or `npm run verify`, and must not
+be added to GitHub Actions. The recommended production-path measurement uses one retained
+reference-computer manifest; see `tests/scale/README.md` for the initialization and measurement
+commands. You can also run the Web-only million-track diagnostic explicitly:
 
 ```bash
 npm run test:library-scale:web-sqlite
 ```
 
-The million-track check is intentionally excluded from `npm test`, `npm run verify`, and
-the pull-request quick gate. Do not add it to routine verification.
+Do not treat either result as a release gate or a general performance guarantee.
 
 - `test:library-sqlite:web` covers fresh creation, reopen, Worker restart, the repository
   domains, one-to-two-character word-prefix search, three-or-more-character trigram
   substring search, message limits, foreign keys, and integrity.
+- `test:library-scale:reference` measures the production Electron utility, Web catalog Worker,
+  and AudioWorklet on the same retained reference computer.
 - `test:library-scale:web-sqlite` writes one million tracks through the production Web
   repository in bounded batches with realistic metadata and path lengths, verifies
-  first/middle/end pages and the reopen order digest, and enforces insertion time, OPFS
-  size, browser/Worker memory, and the published p95 page and search limits.
+  first/middle/end pages and the reopen order digest, and records insertion time, OPFS
+  size, browser/Worker memory, and page and search timings.
 - SQLite vendor hashes and the Web precache are verified by `npm run assets:web` and
   `npm run verify` before the browser checks.
 

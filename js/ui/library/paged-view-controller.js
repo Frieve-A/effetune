@@ -1,6 +1,8 @@
 import { LogicalSelection } from './logical-selection.js';
 
 const FIRST_PAGE_DEADLINES_MS = Object.freeze({ electron: 2_000, web: 3_000 });
+const SATISFIED_PREFETCH_RESULT = Object.freeze({ accepted: true, prefetched: false });
+const SATISFIED_PREFETCH_PROMISE = Promise.resolve(SATISFIED_PREFETCH_RESULT);
 export const PAGED_LIBRARY_PAGE_LIMIT = 200;
 export const PAGED_LIBRARY_MAX_CACHED_PAGES = 5;
 export const PAGED_LIBRARY_MAX_CACHED_TRACKS = 2_500;
@@ -69,6 +71,8 @@ export class PagedViewController {
       pageAttemptId,
       rows: [],
       totalCount: { pending: true },
+      resolvedCount: null,
+      unresolvedCount: null,
       error: null,
       ariaBusy: true,
       ariaRowCount: -1
@@ -138,6 +142,8 @@ export class PagedViewController {
       pageAttemptId,
       rows: page.rows,
       totalCount,
+      resolvedCount: Number.isSafeInteger(page.resolvedCount) ? page.resolvedCount : null,
+      unresolvedCount: Number.isSafeInteger(page.unresolvedCount) ? page.unresolvedCount : null,
       error: null,
       ariaBusy: false,
       ariaRowCount,
@@ -229,6 +235,8 @@ function createInitialState() {
     pageAttemptId: 0,
     rows: [],
     totalCount: { pending: true },
+    resolvedCount: null,
+    unresolvedCount: null,
     error: null,
     ariaBusy: false,
     ariaRowCount: -1,
@@ -248,6 +256,7 @@ export class PagedLibraryViewController {
     runtime = 'web',
     pageLimit = PAGED_LIBRARY_PAGE_LIMIT,
     onStateChange = () => {},
+    onCacheChange = () => {},
     onRowsInvalidated = () => {},
     seekOrdinal = null,
     seekAnchor = null,
@@ -264,6 +273,7 @@ export class PagedLibraryViewController {
     this.manager = manager;
     this.pageLimit = pageLimit;
     this.onStateChange = onStateChange;
+    this.onCacheChange = onCacheChange;
     this.seekOrdinalHook = seekOrdinal;
     this.seekAnchorHook = seekAnchor;
     this.contextToken = null;
@@ -271,11 +281,24 @@ export class PagedLibraryViewController {
     this.selectionAnchor = null;
     this.staleSelectionDescriptor = null;
     this.selectionRejection = null;
+    this.defaultSelectAllLimit = null;
+    this.defaultSelectionAttemptKey = null;
     this.query = null;
     this.queryKey = null;
     this.pages = new Map();
     this.currentPageIndex = 0;
+    this.cacheCenterPageIndex = 0;
     this.pageRequestId = 0;
+    this.viewportRequestId = 0;
+    this.viewportRequestedOrdinal = null;
+    this.viewportRequestPromise = null;
+    this.prefetchRequestId = 0;
+    this.prefetchIntentId = 0;
+    this.prefetchRequested = null;
+    this.prefetchRequestPromise = null;
+    this.prefetchActiveRange = null;
+    this.prefetchWaiters = new Set();
+    this.navigationRequestId = 0;
     this.firstPage = new PagedViewController({
       runtime,
       setTimeoutFn,
@@ -283,7 +306,10 @@ export class PagedLibraryViewController {
       loadFirstPage: identity => this.loadFirstPage(identity),
       loadCount: identity => this.loadCount(identity),
       onRowsInvalidated,
-      onStateChange: state => this.onStateChange(this.createViewState(state))
+      onStateChange: state => {
+        this.applyDefaultSelection(state);
+        this.onStateChange(this.createViewState(state));
+      }
     });
   }
 
@@ -293,14 +319,24 @@ export class PagedLibraryViewController {
     return this.manager.getContextCount({ contextToken: this.contextToken });
   }
 
-  async start(query, { preserveStaleSelection = false } = {}) {
+  async start(query, { preserveStaleSelection = false, defaultSelectAllLimit = null } = {}) {
     this.query = normalizePagedQuery(query);
     this.queryKey = JSON.stringify(this.query);
+    this.defaultSelectAllLimit = Number.isSafeInteger(defaultSelectAllLimit) && defaultSelectAllLimit > 0
+      ? defaultSelectAllLimit
+      : null;
+    this.defaultSelectionAttemptKey = null;
     if (!preserveStaleSelection) this.staleSelectionDescriptor = null;
     this.preserveStaleSelectionDuringStart = preserveStaleSelection;
     this.pages.clear();
     this.currentPageIndex = 0;
+    this.cacheCenterPageIndex = 0;
     this.pageRequestId += 1;
+    this.viewportRequestId += 1;
+    this.navigationRequestId += 1;
+    this.viewportRequestedOrdinal = null;
+    this.viewportRequestPromise = null;
+    this.invalidatePrefetch();
     return this.firstPage.start(this.query);
   }
 
@@ -327,7 +363,25 @@ export class PagedLibraryViewController {
     this.selectionAnchor = null;
     this.selectionRejection = null;
     this.preserveStaleSelectionDuringStart = false;
-    const page = normalizePageStart(await this.queryPage(null), 0);
+    let page = normalizePageStart(await this.queryPage(null), 0);
+    if (this.defaultSelectAllLimit !== null && !Number.isSafeInteger(page?.totalCount) &&
+        typeof this.manager.getContextCount === 'function') {
+      const attemptKey = `${identity.queryGeneration}:${identity.pageAttemptId}`;
+      try {
+        const totalCount = await this.loadCount(identity);
+        if (!this.firstPage.isCurrent(identity.queryGeneration, identity.pageAttemptId)) {
+          return { rows: [], totalCount: { pending: true } };
+        }
+        if (Number.isSafeInteger(totalCount) && totalCount >= 0) {
+          page = { ...page, totalCount };
+        } else {
+          this.defaultSelectionAttemptKey = attemptKey;
+        }
+      } catch (_) {
+        // The page remains usable without automatic selection when its count is unavailable.
+        this.defaultSelectionAttemptKey = attemptKey;
+      }
+    }
     this.validateBoundedPage(page);
     this.pages.set(0, page);
     return page;
@@ -349,6 +403,7 @@ export class PagedLibraryViewController {
     const generation = this.firstPage.queryGeneration;
     const attempt = this.firstPage.pageAttemptId;
     const requestId = ++this.pageRequestId;
+    const navigationRequestId = ++this.navigationRequestId;
     let page = this.pages.get(pageIndex);
     if (!page) {
       const current = this.pages.get(this.currentPageIndex);
@@ -357,10 +412,12 @@ export class PagedLibraryViewController {
         : Math.max(0, (current?.pageStartOrdinal ?? 0) - this.pageLimit);
       page = normalizePageStart(await this.queryPage(cursor), fallbackStart);
     }
-    if (!this.firstPage.isCurrent(generation, attempt) || requestId !== this.pageRequestId) {
+    if (!this.firstPage.isCurrent(generation, attempt) || requestId !== this.pageRequestId ||
+        navigationRequestId !== this.navigationRequestId) {
       return { accepted: false, reason: 'stale-page' };
     }
     this.currentPageIndex = pageIndex;
+    this.cacheCenterPageIndex = pageIndex;
     this.trimPageCache();
     this.validateBoundedPage(page);
     this.pages.set(pageIndex, page);
@@ -372,25 +429,178 @@ export class PagedLibraryViewController {
   }
 
   async ensureOrdinal(ordinal) {
+    const rejection = this.getOrdinalRejection(ordinal);
+    if (rejection) return rejection;
+    const cachedPageIndex = this.findCachedPageIndex(ordinal);
+    if (cachedPageIndex !== null) return this.activateCachedPage(cachedPageIndex);
+    const current = this.pages.get(this.currentPageIndex);
+    const currentStart = current?.pageStartOrdinal ?? 0;
+    const currentEnd = currentStart + (current?.rows?.length ?? 0);
+    if (current?.nextCursor && ordinal >= currentEnd && ordinal < currentEnd + this.pageLimit) {
+      return this.nextPage();
+    }
+    if (current?.previousCursor && ordinal < currentStart && ordinal >= Math.max(0, currentStart - this.pageLimit)) {
+      return this.previousPage();
+    }
+    return this.seekToOrdinal(ordinal);
+  }
+
+  requestViewportOrdinal(ordinal) {
+    const rejection = this.getOrdinalRejection(ordinal);
+    if (rejection) return Promise.resolve(rejection);
+    if (this.findCachedPageIndex(ordinal) === null && !this.prefetchCoversOrdinal(ordinal)) {
+      this.invalidatePrefetch();
+    }
+    this.viewportRequestedOrdinal = ordinal;
+    if (this.viewportRequestPromise) {
+      this.resolvePrefetchWaiters({ finished: true });
+      return Promise.resolve({ accepted: false, reason: 'page-pending' });
+    }
+    const requestId = ++this.viewportRequestId;
+    const request = this.loadLatestViewportOrdinal(requestId);
+    this.viewportRequestPromise = request;
+    return request.finally(() => {
+      if (this.viewportRequestPromise === request) {
+        this.viewportRequestPromise = null;
+        this.viewportRequestedOrdinal = null;
+      }
+    });
+  }
+
+  async loadLatestViewportOrdinal(requestId) {
+    while (this.viewportRequestedOrdinal !== null) {
+      const ordinal = this.viewportRequestedOrdinal;
+      this.viewportRequestedOrdinal = null;
+      const loaded = await this.loadViewportOrdinal(ordinal, requestId);
+      if (!loaded.accepted) {
+        if (loaded.reason === 'superseded' && this.viewportRequestedOrdinal !== null) continue;
+        return loaded;
+      }
+      if (requestId !== this.viewportRequestId ||
+          loaded.navigationRequestId !== this.navigationRequestId) {
+        return { accepted: false, reason: 'stale-page' };
+      }
+      const loadedPageIndex = loaded.cachedPageIndex ?? this.cacheViewportPage(loaded.page);
+      const latestOrdinal = this.viewportRequestedOrdinal;
+      if (latestOrdinal !== null) {
+        const latestPageIndex = this.findCachedPageIndex(latestOrdinal);
+        if (latestPageIndex !== null) {
+          this.viewportRequestedOrdinal = null;
+          return {
+            ...this.activateCachedPage(latestPageIndex, {
+              navigationRequestId: loaded.navigationRequestId
+            }),
+            ordinal: latestOrdinal
+          };
+        }
+        if (loaded.cachedPageIndex === null) {
+          this.onCacheChange({
+            pageIndex: loadedPageIndex,
+            page: loaded.page,
+            requestId
+          });
+        }
+        continue;
+      }
+      if (loadedPageIndex !== null) {
+        return {
+          ...this.activateCachedPage(loadedPageIndex, {
+            navigationRequestId: loaded.navigationRequestId
+          }),
+          ordinal
+        };
+      }
+    }
+    return { accepted: false, reason: 'stale-page' };
+  }
+
+  cacheViewportPage(page) {
+    const pageIndex = Math.floor(page.pageStartOrdinal / this.pageLimit);
+    this.pages.set(pageIndex, page);
+    this.cacheCenterPageIndex = pageIndex;
+    this.trimPageCache();
+    return pageIndex;
+  }
+
+  async loadViewportOrdinal(ordinal, requestId) {
+    const rejection = this.getOrdinalRejection(ordinal);
+    if (rejection) return rejection;
+    const navigationRequestId = ++this.navigationRequestId;
+    let cachedPageIndex = this.findCachedPageIndex(ordinal);
+    if (cachedPageIndex !== null) {
+      return { accepted: true, cachedPageIndex, page: null, navigationRequestId };
+    }
+    const prefetchPromise = this.prefetchCoversOrdinal(ordinal)
+      ? this.prefetchRequestPromise
+      : null;
+    if (prefetchPromise) {
+      try {
+        await this.waitForPrefetchedOrdinal(ordinal);
+      } catch (_) {
+        // The visible-row read below remains the authoritative fallback.
+      }
+      if (requestId !== this.viewportRequestId || navigationRequestId !== this.navigationRequestId) {
+        return { accepted: false, reason: 'stale-page' };
+      }
+      if (this.viewportRequestedOrdinal !== null) {
+        return { accepted: false, reason: 'superseded' };
+      }
+      cachedPageIndex = this.findCachedPageIndex(ordinal);
+      if (cachedPageIndex !== null) {
+        return { accepted: true, cachedPageIndex, page: null, navigationRequestId };
+      }
+    }
+    if (typeof this.seekOrdinalHook !== 'function') {
+      return { accepted: false, reason: 'seek-unavailable' };
+    }
+    const contextToken = this.contextToken;
+    const generation = this.firstPage.queryGeneration;
+    const attempt = this.firstPage.pageAttemptId;
+    const page = normalizePageStart(await this.seekOrdinalHook({
+      contextToken,
+      ordinal,
+      limit: this.pageLimit
+    }), ordinal);
+    if (requestId !== this.viewportRequestId ||
+        navigationRequestId !== this.navigationRequestId ||
+        !this.firstPage.isCurrent(generation, attempt) ||
+        this.contextToken !== contextToken) {
+      return { accepted: false, reason: 'stale-page' };
+    }
+    this.validateBoundedPage(page);
+    return {
+      accepted: true,
+      cachedPageIndex: null,
+      page,
+      generation,
+      attempt,
+      navigationRequestId
+    };
+  }
+
+  getOrdinalRejection(ordinal) {
     if (!Number.isSafeInteger(ordinal) || ordinal < 0) {
       return { accepted: false, reason: 'invalid-ordinal' };
+    }
+    if (this.firstPage.state.phase !== 'committed' ||
+        typeof this.contextToken !== 'string' || this.contextToken.length === 0) {
+      return { accepted: false, reason: 'inactive-page' };
     }
     const totalCount = this.firstPage.state.totalCount;
     if (Number.isSafeInteger(totalCount) && ordinal >= totalCount) {
       return { accepted: false, reason: 'end' };
     }
-    const cachedPageIndex = this.findCachedPageIndex(ordinal);
-    if (cachedPageIndex !== null) return this.activateCachedPage(cachedPageIndex);
-    const pageIndex = Math.floor(ordinal / this.pageLimit);
-    if (pageIndex === this.currentPageIndex + 1) return this.nextPage();
-    if (pageIndex === this.currentPageIndex - 1) return this.previousPage();
-    return this.seekToOrdinal(ordinal);
+    return null;
   }
 
-  activateCachedPage(pageIndex) {
+  activateCachedPage(pageIndex, { navigationRequestId = ++this.navigationRequestId } = {}) {
+    if (navigationRequestId !== this.navigationRequestId) {
+      return { accepted: false, reason: 'stale-page' };
+    }
     const page = this.pages.get(pageIndex);
     if (!page) return { accepted: false, reason: 'page-not-cached' };
     this.currentPageIndex = pageIndex;
+    this.cacheCenterPageIndex = pageIndex;
     this.trimPageCache();
     const result = this.firstPage.commitPage(page, {
       queryGeneration: this.firstPage.queryGeneration,
@@ -405,6 +615,182 @@ export class PagedLibraryViewController {
       if (ordinal >= start && ordinal < start + page.rows.length) return pageIndex;
     }
     return null;
+  }
+
+  prefetchAroundOrdinal(ordinal, { direction = 1, pageCount = 1 } = {}) {
+    const rejection = this.getOrdinalRejection(ordinal);
+    if (rejection) return Promise.resolve(rejection);
+    const pageIndex = this.findCachedPageIndex(ordinal);
+    if (pageIndex === null) return Promise.resolve({ accepted: false, reason: 'not-cached' });
+    const normalizedPageCount = Math.max(1, Math.min(2, Number.isSafeInteger(pageCount) ? pageCount : 1));
+    const prefetchTarget = {
+      ordinal,
+      direction: direction < 0 ? -1 : 1,
+      pageCount: normalizedPageCount,
+      intentId: ++this.prefetchIntentId
+    };
+    this.cacheCenterPageIndex = pageIndex;
+    this.trimPageCache();
+    if (this.isPrefetchSatisfied(prefetchTarget)) {
+      this.prefetchRequested = null;
+      return SATISFIED_PREFETCH_PROMISE;
+    }
+    this.prefetchRequested = prefetchTarget;
+    if (this.prefetchRequestPromise) {
+      return Promise.resolve({ accepted: false, reason: 'page-pending' });
+    }
+    const requestId = ++this.prefetchRequestId;
+    const request = this.loadLatestPrefetch(requestId);
+    this.prefetchRequestPromise = request;
+    return request.finally(() => {
+      if (this.prefetchRequestPromise === request) {
+        this.prefetchRequestPromise = null;
+        this.prefetchRequested = null;
+        this.prefetchActiveRange = null;
+      }
+    });
+  }
+
+  isPrefetchSatisfied({ ordinal, direction, pageCount }) {
+    let pageIndex = this.findCachedPageIndex(ordinal);
+    if (pageIndex === null) return false;
+    let page = this.pages.get(pageIndex);
+    for (let distance = 0; distance < pageCount; distance += 1) {
+      const start = page.pageStartOrdinal ?? pageIndex * this.pageLimit;
+      const adjacentOrdinal = direction > 0 ? start + page.rows.length : start - 1;
+      const cursor = direction > 0 ? page.nextCursor : page.previousCursor;
+      if (!cursor || adjacentOrdinal < 0) return true;
+      const cachedPageIndex = this.findCachedPageIndex(adjacentOrdinal);
+      if (cachedPageIndex === null) return false;
+      pageIndex = cachedPageIndex;
+      page = this.pages.get(pageIndex);
+    }
+    return true;
+  }
+
+  async loadLatestPrefetch(requestId) {
+    let lastResult = { accepted: false, reason: 'stale-page' };
+    let prefetched = false;
+    while (this.prefetchRequested) {
+      const request = this.prefetchRequested;
+      this.prefetchRequested = null;
+      const result = await this.loadPrefetchPages(request, requestId);
+      if (requestId !== this.prefetchRequestId) {
+        return { accepted: false, reason: 'stale-page' };
+      }
+      prefetched ||= result.prefetched === true;
+      lastResult = result;
+      if (result.visibleReady) {
+        this.prefetchRequested = null;
+        break;
+      }
+    }
+    this.resolvePrefetchWaiters({ requestId, finished: true });
+    return { ...lastResult, prefetched };
+  }
+
+  async loadPrefetchPages({ ordinal, direction, pageCount, intentId }, requestId) {
+    let pageIndex = this.findCachedPageIndex(ordinal);
+    if (pageIndex === null) return { accepted: false, reason: 'not-cached' };
+    let page = this.pages.get(pageIndex);
+    const contextToken = this.contextToken;
+    const generation = this.firstPage.queryGeneration;
+    const attempt = this.firstPage.pageAttemptId;
+    const pageStart = page.pageStartOrdinal ?? pageIndex * this.pageLimit;
+    const rangeStart = direction > 0
+      ? pageStart + page.rows.length
+      : Math.max(0, pageStart - pageCount * this.pageLimit);
+    const rangeEnd = direction > 0
+      ? pageStart + page.rows.length + pageCount * this.pageLimit
+      : pageStart;
+    this.prefetchActiveRange = { requestId, startOrdinal: rangeStart, endOrdinal: rangeEnd };
+    let prefetched = false;
+
+    for (let distance = 0; distance < pageCount; distance += 1) {
+      const start = page.pageStartOrdinal ?? pageIndex * this.pageLimit;
+      const adjacentOrdinal = direction > 0 ? start + page.rows.length : start - 1;
+      const cursor = direction > 0 ? page.nextCursor : page.previousCursor;
+      if (!cursor || adjacentOrdinal < 0) break;
+      const cachedPageIndex = this.findCachedPageIndex(adjacentOrdinal);
+      if (cachedPageIndex !== null) {
+        pageIndex = cachedPageIndex;
+        page = this.pages.get(pageIndex);
+        continue;
+      }
+
+      const fallbackStart = direction > 0
+        ? adjacentOrdinal
+        : Math.max(0, start - this.pageLimit);
+      const loadedPage = normalizePageStart(await this.queryPage(cursor), fallbackStart);
+      if (requestId !== this.prefetchRequestId ||
+          !this.firstPage.isCurrent(generation, attempt) ||
+          this.contextToken !== contextToken) {
+        return { accepted: false, reason: 'stale-page', prefetched };
+      }
+      this.validateBoundedPage(loadedPage);
+      pageIndex += direction;
+      this.pages.set(pageIndex, loadedPage);
+      page = loadedPage;
+      prefetched = true;
+      this.trimPageCache();
+      this.onCacheChange({
+        pageIndex,
+        page: loadedPage,
+        requestId
+      });
+      if (this.resolvePrefetchWaiters({ requestId })) {
+        return { accepted: true, prefetched, visibleReady: true };
+      }
+      if (intentId !== this.prefetchIntentId) {
+        return { accepted: true, prefetched };
+      }
+    }
+    return { accepted: true, prefetched };
+  }
+
+  waitForPrefetchedOrdinal(ordinal) {
+    const cachedPageIndex = this.findCachedPageIndex(ordinal);
+    if (cachedPageIndex !== null) return Promise.resolve({ cached: true });
+    const requestId = this.prefetchRequestId;
+    return new Promise(resolve => {
+      const waiter = { ordinal, requestId, resolve };
+      this.prefetchWaiters.add(waiter);
+      if (!this.prefetchCoversOrdinal(ordinal)) {
+        this.prefetchWaiters.delete(waiter);
+        resolve({ cached: false });
+      }
+    });
+  }
+
+  resolvePrefetchWaiters({ requestId = null, finished = false } = {}) {
+    let visibleReady = false;
+    for (const waiter of this.prefetchWaiters) {
+      if (requestId !== null && waiter.requestId !== requestId) continue;
+      const cached = this.findCachedPageIndex(waiter.ordinal) !== null;
+      if (!cached && !finished) continue;
+      this.prefetchWaiters.delete(waiter);
+      waiter.resolve({ cached });
+      visibleReady ||= cached;
+    }
+    return visibleReady;
+  }
+
+  prefetchCoversOrdinal(ordinal) {
+    const range = this.prefetchActiveRange;
+    return Boolean(
+      this.prefetchRequestPromise &&
+      range?.requestId === this.prefetchRequestId &&
+      ordinal >= range.startOrdinal &&
+      ordinal < range.endOrdinal
+    );
+  }
+
+  invalidatePrefetch() {
+    this.prefetchRequestId += 1;
+    this.prefetchIntentId += 1;
+    this.resolvePrefetchWaiters({ finished: true });
+    this.prefetchRequested = null;
+    this.prefetchActiveRange = null;
   }
 
   getCachedRows(startOrdinal, endOrdinal) {
@@ -454,11 +840,15 @@ export class PagedLibraryViewController {
   }
 
   trimPageCache() {
+    const centerPageIndex = this.cacheCenterPageIndex;
     for (const pageIndex of this.pages.keys()) {
-      if (Math.abs(pageIndex - this.currentPageIndex) > 2) this.pages.delete(pageIndex);
+      if (pageIndex !== this.currentPageIndex && Math.abs(pageIndex - centerPageIndex) > 2) {
+        this.pages.delete(pageIndex);
+      }
     }
     while (this.pages.size > PAGED_LIBRARY_MAX_CACHED_PAGES) {
-      const [oldest] = this.pages.keys();
+      const oldest = [...this.pages.keys()].find(pageIndex => pageIndex !== this.currentPageIndex) ??
+        this.pages.keys().next().value;
       this.pages.delete(oldest);
     }
   }
@@ -471,8 +861,31 @@ export class PagedLibraryViewController {
     return this.selection?.toDescriptor() ?? null;
   }
 
+  getSelectionProjection(totalCount = this.firstPage.state.totalCount) {
+    return this.selection?.getProjection({
+      totalCount: Number.isSafeInteger(totalCount) ? totalCount : null
+    }) ?? Object.freeze({ hasAny: false, selectedCount: 0 });
+  }
+
+  applyDefaultSelection(state) {
+    if (!this.selection || state?.phase !== 'committed' || !Number.isSafeInteger(state.totalCount)) return;
+    const attemptKey = `${state.queryGeneration}:${state.pageAttemptId}`;
+    if (this.defaultSelectionAttemptKey === attemptKey) return;
+    this.defaultSelectionAttemptKey = attemptKey;
+    if (this.defaultSelectAllLimit === null || this.staleSelectionDescriptor ||
+        state.totalCount < 1 || state.totalCount > this.defaultSelectAllLimit) return;
+    this.selection.selectAll();
+  }
+
   selectAll() {
     this.selection?.selectAll();
+    this.selectionRejection = null;
+    return this.getSelectionDescriptor();
+  }
+
+  clearSelection() {
+    this.selection?.clear();
+    this.selectionAnchor = null;
     this.selectionRejection = null;
     return this.getSelectionDescriptor();
   }
@@ -491,7 +904,7 @@ export class PagedLibraryViewController {
           endOrdinal: ordinal
         });
       } else {
-        this.selection.setSelected(uid, selected);
+        this.selection.setSelected(uid, selected, { ordinal });
         if (Number.isSafeInteger(ordinal)) this.selectionAnchor = { uid, ordinal };
       }
       this.selectionRejection = null;
@@ -512,16 +925,18 @@ export class PagedLibraryViewController {
     return this.selection?.isSelected(uid, { ordinal }) ?? false;
   }
 
-  dispatchSelectionAction(identity, operationKind, request = {}) {
+  getSelectedOrdinal(uid, ordinal) {
+    return this.selection?.getSelectedOrdinal(uid, ordinal) ?? null;
+  }
+
+  prepareSelectionAction(identity, operationKind, request = {}) {
     return this.dispatchRowAction(identity, () => {
       const descriptor = this.getSelectionDescriptor();
-      if (!descriptor || this.staleSelectionDescriptor) {
+      const projection = this.getSelectionProjection();
+      if (!descriptor || !projection.hasAny || this.staleSelectionDescriptor) {
         return { accepted: false, reason: this.staleSelectionDescriptor ? 'stale-selection' : 'empty-selection' };
       }
-      if (descriptor.mode === 'explicit' && descriptor.trackUids.length === 0) {
-        return { accepted: false, reason: 'empty-selection' };
-      }
-      return this.manager.performSelectionAction(operationKind, descriptor, request);
+      return { operationKind, descriptor, request };
     });
   }
 
@@ -531,35 +946,63 @@ export class PagedLibraryViewController {
 
   markSelectionStale() {
     const descriptor = this.getSelectionDescriptor();
-    if (descriptor && (descriptor.mode !== 'explicit' || descriptor.trackUids.length > 0)) {
+    if (descriptor && this.getSelectionProjection().hasAny) {
       this.staleSelectionDescriptor = descriptor;
     }
     return this.staleSelectionDescriptor;
   }
 
-  clearStaleSelection() {
-    this.staleSelectionDescriptor = null;
-  }
-
-  reselectStaleSelection() {
+  async reselectStaleSelection() {
     const stale = this.staleSelectionDescriptor;
     if (!stale || !this.selection) return { accepted: false, reason: 'no-stale-selection' };
+    const selection = this.selection;
+    const contextToken = this.contextToken;
     try {
-      this.selection.clear();
+      let rangeOrdinals = null;
+      if (stale.mode === 'range') {
+        if (typeof this.seekAnchorHook !== 'function' || !contextToken) {
+          return { accepted: false, reason: 'range-endpoint-resolution-unavailable' };
+        }
+        const entityKind = this.query?.endpoint === 'tracks' ? 'track' : this.query?.entityType;
+        const resolveEndpoint = entityId => this.seekAnchorHook({
+          contextToken,
+          mode: 'entity',
+          entityKind,
+          entityId,
+          queryFingerprint: this.queryKey,
+          limit: this.pageLimit
+        });
+        const [start, end] = await Promise.all([
+          resolveEndpoint(stale.startUid),
+          resolveEndpoint(stale.endUid)
+        ]);
+        if (selection !== this.selection || contextToken !== this.contextToken ||
+            stale !== this.staleSelectionDescriptor) {
+          return { accepted: false, reason: 'stale-page' };
+        }
+        if (!start?.accepted || !Number.isSafeInteger(start.ordinal) ||
+            !end?.accepted || !Number.isSafeInteger(end.ordinal)) {
+          return { accepted: false, reason: 'range-endpoint-missing' };
+        }
+        rangeOrdinals = { startOrdinal: start.ordinal, endOrdinal: end.ordinal };
+      }
+      selection.clear();
       if (stale.mode === 'all') {
-        this.selection.selectAll();
-        for (const uid of stale.exclusions ?? []) this.selection.setSelected(uid, false);
+        selection.selectAll();
+        for (const uid of stale.exclusions ?? []) selection.setSelected(uid, false);
       } else if (stale.mode === 'range') {
-        this.selection.selectRange(stale.startUid, stale.endUid);
-        for (const uid of stale.exclusions ?? []) this.selection.setSelected(uid, false);
+        selection.selectRange(stale.startUid, stale.endUid, rangeOrdinals);
+        for (const uid of stale.exclusions ?? []) selection.setSelected(uid, false, { inRange: true });
+        for (const uid of stale.inclusions ?? []) selection.setSelected(uid, true);
+        this.selectionAnchor = { uid: stale.endUid, ordinal: rangeOrdinals.endOrdinal };
       } else {
-        for (const uid of stale.trackUids ?? []) this.selection.setSelected(uid, true);
+        for (const uid of stale.trackUids ?? []) selection.setSelected(uid, true);
       }
       this.staleSelectionDescriptor = null;
       this.selectionRejection = null;
       return { accepted: true, descriptor: this.getSelectionDescriptor() };
     } catch (error) {
-      this.selection.clear();
+      if (selection === this.selection) selection.clear();
       this.selectionRejection = Object.freeze({
         accepted: false,
         reason: error?.code === 'selectionTooLarge' ? 'selection-too-large' : 'invalid-stale-selection',
@@ -592,15 +1035,27 @@ export class PagedLibraryViewController {
     if (typeof this.seekAnchorHook !== 'function') {
       return { accepted: false, reason: 'seek-unavailable' };
     }
+    const contextToken = this.contextToken;
+    if (this.firstPage.state.phase !== 'committed' ||
+        typeof contextToken !== 'string' || contextToken.length === 0) {
+      return { accepted: false, reason: 'inactive-page' };
+    }
+    const generation = this.firstPage.queryGeneration;
+    const attempt = this.firstPage.pageAttemptId;
+    const navigationRequestId = ++this.navigationRequestId;
     for (const fallback of ['exact', 'successor', 'predecessor']) {
       const result = await this.seekAnchorHook({
-        contextToken: this.contextToken,
+        contextToken,
         anchor,
         fallback,
         limit: this.pageLimit
       });
+      if (!this.firstPage.isCurrent(generation, attempt) || this.contextToken !== contextToken ||
+          navigationRequestId !== this.navigationRequestId) {
+        return { accepted: false, reason: 'stale-page' };
+      }
       if (isMissingAnchorResult(result)) continue;
-      return this.commitAnchorResult(result, anchor);
+      return this.commitAnchorResult(result, anchor, { navigationRequestId });
     }
     return { accepted: false, reason: 'anchor-missing' };
   }
@@ -610,36 +1065,63 @@ export class PagedLibraryViewController {
     if (!normalizedPrefix || typeof this.seekAnchorHook !== 'function') {
       return { accepted: false, reason: 'seek-unavailable' };
     }
+    const contextToken = this.contextToken;
+    const generation = this.firstPage.queryGeneration;
+    const attempt = this.firstPage.pageAttemptId;
+    if (this.firstPage.state.phase !== 'committed' || !contextToken) {
+      return { accepted: false, reason: 'inactive-page' };
+    }
+    const navigationRequestId = ++this.navigationRequestId;
     const result = await this.seekAnchorHook({
-      contextToken: this.contextToken,
+      contextToken,
       mode: 'prefix',
       prefix: normalizedPrefix,
       queryFingerprint: this.queryKey
     });
+    if (!this.firstPage.isCurrent(generation, attempt) || this.contextToken !== contextToken ||
+        navigationRequestId !== this.navigationRequestId) {
+      return { accepted: false, reason: 'stale-page' };
+    }
     if (isMissingAnchorResult(result)) return { accepted: false, reason: 'prefix-missing' };
     return this.commitAnchorResult(result, {
       focusKey: result.entityId ?? null,
       viewportOffsetPx: 0
-    });
+    }, { navigationRequestId });
   }
 
   async jumpToEntity(entityKind, entityId) {
     if (!entityId || typeof this.seekAnchorHook !== 'function') {
       return { accepted: false, reason: 'seek-unavailable' };
     }
+    const contextToken = this.contextToken;
+    const generation = this.firstPage.queryGeneration;
+    const attempt = this.firstPage.pageAttemptId;
+    if (this.firstPage.state.phase !== 'committed' || !contextToken) {
+      return { accepted: false, reason: 'inactive-page' };
+    }
+    const navigationRequestId = ++this.navigationRequestId;
     const result = await this.seekAnchorHook({
-      contextToken: this.contextToken,
+      contextToken,
       mode: 'entity',
       entityKind,
       entityId,
       queryFingerprint: this.queryKey,
       limit: this.pageLimit
     });
+    if (!this.firstPage.isCurrent(generation, attempt) || this.contextToken !== contextToken ||
+        navigationRequestId !== this.navigationRequestId) {
+      return { accepted: false, reason: 'stale-page' };
+    }
     if (isMissingAnchorResult(result)) return { accepted: false, reason: 'entity-missing' };
-    return this.commitAnchorResult(result, { focusKey: entityId, viewportOffsetPx: 0 });
+    return this.commitAnchorResult(result, { focusKey: entityId, viewportOffsetPx: 0 }, {
+      navigationRequestId
+    });
   }
 
-  commitAnchorResult(result, anchor) {
+  commitAnchorResult(result, anchor, { navigationRequestId = this.navigationRequestId } = {}) {
+    if (navigationRequestId !== this.navigationRequestId) {
+      return { accepted: false, reason: 'stale-page' };
+    }
     const page = result?.page ?? (Array.isArray(result?.rows) ? result : null);
     if (!page) return result ?? { accepted: false, reason: 'invalid-anchor-result' };
     const pageStartOrdinal = Number.isSafeInteger(result?.pageStartOrdinal)
@@ -654,6 +1136,7 @@ export class PagedLibraryViewController {
     this.validateBoundedPage(normalizedPage);
     this.pages.clear();
     this.currentPageIndex = Math.floor(pageStartOrdinal / this.pageLimit);
+    this.cacheCenterPageIndex = this.currentPageIndex;
     this.pages.set(this.currentPageIndex, normalizedPage);
     const committed = this.firstPage.commitPage(normalizedPage, {
       queryGeneration: this.firstPage.queryGeneration,
@@ -683,19 +1166,27 @@ export class PagedLibraryViewController {
     if (typeof this.seekOrdinalHook !== 'function') {
       return { accepted: false, reason: 'seek-unavailable' };
     }
+    const contextToken = this.contextToken;
+    if (this.firstPage.state.phase !== 'committed' ||
+        typeof contextToken !== 'string' || contextToken.length === 0) {
+      return { accepted: false, reason: 'inactive-page' };
+    }
     const generation = this.firstPage.queryGeneration;
     const attempt = this.firstPage.pageAttemptId;
+    const navigationRequestId = ++this.navigationRequestId;
     const page = normalizePageStart(await this.seekOrdinalHook({
-      contextToken: this.contextToken,
+      contextToken,
       ordinal,
       limit: this.pageLimit
     }), ordinal);
-    if (!this.firstPage.isCurrent(generation, attempt)) {
+    if (!this.firstPage.isCurrent(generation, attempt) || this.contextToken !== contextToken ||
+        navigationRequestId !== this.navigationRequestId) {
       return { accepted: false, reason: 'stale-page' };
     }
     this.validateBoundedPage(page);
     this.pages.clear();
     this.currentPageIndex = Math.floor(page.pageStartOrdinal / this.pageLimit);
+    this.cacheCenterPageIndex = this.currentPageIndex;
     this.pages.set(this.currentPageIndex, page);
     const result = this.firstPage.commitPage(page, {
       queryGeneration: generation,
@@ -713,6 +1204,11 @@ export class PagedLibraryViewController {
   }
 
   async destroy() {
+    this.viewportRequestId += 1;
+    this.navigationRequestId += 1;
+    this.viewportRequestedOrdinal = null;
+    this.viewportRequestPromise = null;
+    this.invalidatePrefetch();
     this.firstPage.abort();
     this.pages.clear();
     await this.releaseContext();
@@ -731,7 +1227,8 @@ export class PagedLibraryViewController {
       pageStartOrdinal: currentPage?.pageStartOrdinal ?? 0,
       staleSelectionDescriptor: this.staleSelectionDescriptor ?? null,
       selectionRejection: this.selectionRejection ?? null,
-      selectionDescriptor: this.getSelectionDescriptor()
+      selectionDescriptor: this.getSelectionDescriptor(),
+      selectionProjection: this.getSelectionProjection(state.totalCount)
     };
   }
 }

@@ -34,7 +34,7 @@ function usage() {
     '  --database <path>      new database path (default: in-memory)',
     '  --json                 print JSON',
     '',
-    'Run this entry point with the Electron-bundled Node runtime for release evidence.'
+    'Run this entry point with the Electron-bundled Node runtime for local development diagnostics.'
   ].join('\n');
 }
 

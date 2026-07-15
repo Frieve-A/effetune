@@ -1,5 +1,6 @@
 import { createRepositoryError } from '../repository/contract-errors.js';
 import { validateSelectionDescriptor } from '../repository/selection-descriptor.js';
+import { normalizeRelativePath } from '../constants.js';
 
 export const CANONICAL_REQUEST_VERSION = 1;
 export const BULK_OPERATION_KINDS = Object.freeze([
@@ -10,7 +11,7 @@ export const BULK_OPERATION_KINDS = Object.freeze([
   'importPlaylist'
 ]);
 
-const START_FIELDS = Object.freeze([
+const DURABLE_START_FIELDS = Object.freeze([
   'clientRequestId',
   'expectedTargetVersion',
   'operationKind',
@@ -18,7 +19,16 @@ const START_FIELDS = Object.freeze([
   'selectionDescriptor',
   'target'
 ]);
-const PROGRESS_FIELDS = Object.freeze(['operationId', 'phase', 'processed', 'sequence', 'state', 'total']);
+const PLAYBACK_START_FIELDS = Object.freeze([
+  'operationKind',
+  'options',
+  'selectionDescriptor',
+  'target'
+]);
+const PLAYBACK_OPERATION_KINDS = new Set(['play', 'playNext', 'queue']);
+const PROGRESS_FIELDS = Object.freeze([
+  'operationId', 'phase', 'processed', 'sequence', 'state', 'total', 'updatedAt'
+]);
 const PROGRESS_PHASES = new Set(['received', 'snapshotting', 'materializing', 'ready', 'committing', 'terminal']);
 const PROGRESS_STATES = new Set([
   'received',
@@ -33,17 +43,24 @@ const TERMINAL_STATES = new Set(['succeeded', 'failed', 'cancelled', 'interrupte
 
 export function validateBulkOperationStart(request) {
   assertPlainObject(request, 'invalidOperationRequest');
-  assertExactFields(request, START_FIELDS, 'invalidOperationRequest');
-  if (typeof request.clientRequestId !== 'string' || request.clientRequestId.length === 0 || request.clientRequestId.length > 128) {
-    throw createRepositoryError('invalidOperationRequest', 'clientRequestId must contain 1 to 128 characters');
-  }
   if (!BULK_OPERATION_KINDS.includes(request.operationKind)) {
     throw createRepositoryError('invalidOperationKind', 'operationKind is not supported');
   }
-  if (request.expectedTargetVersion !== null && (
-    !Number.isSafeInteger(request.expectedTargetVersion) || request.expectedTargetVersion < 0
-  )) {
-    throw createRepositoryError('invalidOperationRequest', 'expectedTargetVersion must be null or a non-negative integer');
+  const playback = PLAYBACK_OPERATION_KINDS.has(request.operationKind);
+  assertExactFields(
+    request,
+    playback ? PLAYBACK_START_FIELDS : DURABLE_START_FIELDS,
+    'invalidOperationRequest'
+  );
+  if (!playback) {
+    if (typeof request.clientRequestId !== 'string' || request.clientRequestId.length === 0 || request.clientRequestId.length > 128) {
+      throw createRepositoryError('invalidOperationRequest', 'clientRequestId must contain 1 to 128 characters');
+    }
+    if (request.expectedTargetVersion !== null && (
+      !Number.isSafeInteger(request.expectedTargetVersion) || request.expectedTargetVersion < 0
+    )) {
+      throw createRepositoryError('invalidOperationRequest', 'expectedTargetVersion must be null or a non-negative integer');
+    }
   }
   assertPlainObject(request.target, 'invalidOperationRequest');
   assertPlainObject(request.options, 'invalidOperationRequest');
@@ -60,13 +77,15 @@ export function validateBulkOperationStart(request) {
     : validateSelectionDescriptor(request.selectionDescriptor);
   const canonical = {
     canonicalRequestVersion: CANONICAL_REQUEST_VERSION,
-    clientRequestId: request.clientRequestId,
     operationKind: request.operationKind,
     selectionDescriptor,
     target: canonicalizeJson(request.target),
-    expectedTargetVersion: request.expectedTargetVersion,
     options: playlistImport ? canonicalizeImportOptions(request.options) : canonicalizeJson(request.options)
   };
+  if (!playback) {
+    canonical.clientRequestId = request.clientRequestId;
+    canonical.expectedTargetVersion = request.expectedTargetVersion;
+  }
   return Object.freeze(canonical);
 }
 
@@ -132,7 +151,8 @@ function canonicalizeImportOptions(options) {
   assertPlainObject(options, 'invalidOperationRequest');
   const actual = Object.keys(options).sort();
   const expected = ['encoding', 'limits', 'name', 'source'];
-  if (actual.length !== expected.length || actual.some((field, index) => field !== expected[index])) {
+  const expectedAutomatic = [...expected, 'automaticSource'].sort();
+  if (!sameFields(actual, expected) && !sameFields(actual, expectedAutomatic)) {
     throw createRepositoryError('invalidOperationRequest', 'Playlist import options have unknown or missing fields');
   }
   if (typeof options.name !== 'string' || options.name.length < 1 || options.name.length > 4096) {
@@ -167,11 +187,37 @@ function canonicalizeImportOptions(options) {
     throw createRepositoryError('invalidOperationRequest', 'Playlist import source is invalid');
   }
   return Object.freeze({
+    automaticSource: canonicalizeAutomaticPlaylistSource(options.automaticSource ?? null),
     encoding: options.encoding === null ? null : canonicalizeJson(options.encoding),
     limits: options.limits === null ? null : canonicalizeJson(options.limits),
     name: options.name,
     source: Object.freeze(canonicalSource)
   });
+}
+
+function canonicalizeAutomaticPlaylistSource(value) {
+  if (value === null) return null;
+  assertPlainObject(value, 'invalidOperationRequest');
+  assertExactFields(value, ['contentDigest', 'folderId', 'relativePath'], 'invalidOperationRequest');
+  if (typeof value.folderId !== 'string' || value.folderId.length < 1 || value.folderId.length > 512 ||
+      typeof value.relativePath !== 'string' || value.relativePath.length < 1 || value.relativePath.length > 32768 ||
+      typeof value.contentDigest !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(value.contentDigest)) {
+    throw createRepositoryError('invalidOperationRequest', 'Automatic playlist source is invalid');
+  }
+  const relativePath = normalizeRelativePath(value.relativePath).normalize('NFC');
+  if (!relativePath || relativePath.split('/').some(part => part === '..')) {
+    throw createRepositoryError('invalidOperationRequest', 'Automatic playlist source path is invalid');
+  }
+  return Object.freeze({
+    folderId: value.folderId,
+    relativePath,
+    contentDigest: value.contentDigest
+  });
+}
+
+function sameFields(actual, expected) {
+  const sorted = [...expected].sort();
+  return actual.length === sorted.length && actual.every((field, index) => field === sorted[index]);
 }
 
 export class OperationProgressFence {
@@ -194,6 +240,7 @@ export class OperationProgressFence {
     if (TERMINAL_STATES.has(event.state) !== (event.phase === 'terminal')) return false;
     if (!Number.isSafeInteger(event.processed) || event.processed < 0) return false;
     if (event.total !== null && (!Number.isSafeInteger(event.total) || event.total < event.processed)) return false;
+    if (!Number.isSafeInteger(event.updatedAt) || event.updatedAt < 0) return false;
     this.sequence = event.sequence;
     this.state = event.state;
     return true;

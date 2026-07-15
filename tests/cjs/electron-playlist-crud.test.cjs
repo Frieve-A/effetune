@@ -227,3 +227,133 @@ test('Electron playlist local CRUD preserves CAS, leases, and bounded duplicate 
   assert.equal(afterLease.kind, 'renamed');
   assert.equal(afterLease.version, 5);
 });
+
+test('Electron playlist reorder moves exact duplicate occurrences across pages in one CAS mutation', async t => {
+  const { directory, host } = await openCatalog(t);
+  await seedSourcePlaylist(host, directory, 1);
+  await host.createPlaylistWithItems({
+    playlistId: 'duplicates',
+    name: 'Duplicates',
+    operationId: null,
+    items: Array.from({ length: 24 }, () => ({ trackUid: 'track-0001' })),
+    createdAt: 300
+  });
+  const original = await collectPlaylistItems(host, 'duplicates');
+  const keys = original.items.map(item => item.itemKey);
+  let version = 0;
+
+  let result = await host.reorderPlaylistItem({
+    playlistId: 'duplicates',
+    itemKey: keys.at(-1),
+    target: { beforeItemKey: keys[0] },
+    expectedVersion: version,
+    updatedAt: 301
+  });
+  assert.equal(result.kind, 'reordered');
+  version = result.version;
+  assert.deepEqual(
+    (await collectPlaylistItems(host, 'duplicates')).items.slice(0, 2).map(item => item.itemKey),
+    [keys.at(-1), keys[0]]
+  );
+
+  assert.deepEqual(await host.reorderPlaylistItem({
+    playlistId: 'duplicates',
+    itemKey: keys.at(-1),
+    target: { beforeItemKey: keys[0] },
+    expectedVersion: version,
+    updatedAt: 302
+  }), {
+    kind: 'unchanged', playlistId: 'duplicates', itemKey: keys.at(-1), version
+  });
+
+  result = await host.reorderPlaylistItem({
+    playlistId: 'duplicates',
+    itemKey: keys[0],
+    target: { afterItemKey: keys[12] },
+    expectedVersion: version,
+    updatedAt: 303
+  });
+  version = result.version;
+  let reordered = await collectPlaylistItems(host, 'duplicates');
+  assert.equal(
+    reordered.items.findIndex(item => item.itemKey === keys[0]),
+    reordered.items.findIndex(item => item.itemKey === keys[12]) + 1
+  );
+
+  result = await host.reorderPlaylistItem({
+    playlistId: 'duplicates',
+    itemKey: keys.at(-1),
+    target: { afterItemKey: keys.at(-2) },
+    expectedVersion: version,
+    updatedAt: 304
+  });
+  version = result.version;
+  reordered = await collectPlaylistItems(host, 'duplicates');
+  assert.equal(reordered.items.at(-1).itemKey, keys.at(-1));
+
+  assert.deepEqual(await host.reorderPlaylistItem({
+    playlistId: 'duplicates',
+    itemKey: keys[1],
+    target: { beforeItemKey: keys[2] },
+    expectedVersion: version - 1,
+    updatedAt: 305
+  }), { kind: 'conflict', currentVersion: version });
+
+  // Repeated insertions into the same gap exhaust midpoint positions and exercise SQL rebalancing.
+  for (const itemKey of keys.slice(13, 23).reverse()) {
+    result = await host.reorderPlaylistItem({
+      playlistId: 'duplicates',
+      itemKey,
+      target: { beforeItemKey: keys[1] },
+      expectedVersion: version,
+      updatedAt: 306 + version
+    });
+    assert.equal(result.kind, 'reordered');
+    version = result.version;
+  }
+  reordered = await collectPlaylistItems(host, 'duplicates');
+  assert.equal(reordered.items.length, keys.length);
+  assert.equal(new Set(reordered.items.map(item => item.itemKey)).size, keys.length);
+  assert.equal(
+    reordered.items.findIndex(item => item.itemKey === keys[13]),
+    reordered.items.findIndex(item => item.itemKey === keys[1]) - 1
+  );
+});
+
+test('Electron playlist detail immediately projects a tombstoned folder as unresolved', async t => {
+  const { directory, host } = await openCatalog(t);
+  await seedSourcePlaylist(host, directory, 101);
+  await host.createPlaylist({
+    playlistId: 'unaffected',
+    name: 'Unaffected',
+    createdAt: 105
+  });
+
+  const removal = await host.removeScanFolder({
+    folderId: 'folder-music',
+    expectedLifecycleVersion: 1
+  });
+  assert.equal(removal.deleted > 0, true);
+
+  const detail = await host.queryTracks({
+    query: '',
+    sort: 'title',
+    direction: 'asc',
+    scope: { playlistId: 'source' },
+    limit: 200
+  });
+  assert.equal(detail.totalCount, 101);
+  assert.equal(detail.resolvedCount, 0);
+  assert.equal(detail.unresolvedCount, 101);
+  assert.ok(detail.rows.every(row => row.trackUid === null && row.metadataStatus === 'unresolved'));
+
+  const source = await host.queryPlaylistItems({ playlistId: 'source', limit: 200 });
+  assert.equal(source.items.length, 101);
+  assert.ok(source.items.every(item => item.trackUid === null && item.unresolved?.reason === 'source-removed'));
+  assert.equal(Number(source.playlist.version) > 1, true);
+  assert.equal(Number(source.playlist.updatedAt) > 104, true);
+
+  const unaffected = await host.queryPlaylistItems({ playlistId: 'unaffected', limit: 10 });
+  assert.equal(unaffected.playlist.version, 0);
+  assert.equal(unaffected.playlist.updatedAt, 105);
+});

@@ -7,6 +7,7 @@ export class SegmentedVirtualGridGeometry {
     itemCount = 0,
     containerWidth,
     minimumCardWidth = 176,
+    columnGap = 16,
     rowHeight = 224,
     maximumColumns = 12
   } = {}) {
@@ -19,8 +20,15 @@ export class SegmentedVirtualGridGeometry {
     if (!Number.isFinite(minimumCardWidth) || minimumCardWidth <= 0) {
       throw new RangeError('minimumCardWidth must be positive');
     }
+    if (!Number.isFinite(columnGap) || columnGap < 0) {
+      throw new RangeError('columnGap must be non-negative');
+    }
     this.itemCount = itemCount;
-    this.columns = Math.max(1, Math.min(maximumColumns, Math.floor(containerWidth / minimumCardWidth)));
+    this.columnGap = columnGap;
+    this.columns = Math.max(1, Math.min(
+      maximumColumns,
+      Math.floor((containerWidth + columnGap) / (minimumCardWidth + columnGap))
+    ));
     this.rowCount = Math.ceil(itemCount / this.columns);
     this.rowHeight = rowHeight;
     this.list = new SegmentedVirtualListGeometry({ rowCount: this.rowCount, rowHeight });
@@ -55,20 +63,16 @@ export class SegmentedVirtualGridGeometry {
     }
     const row = Math.floor(itemOrdinal / this.columns);
     const column = itemOrdinal % this.columns;
+    const gapSharePx = this.columnGap / this.columns;
     return {
       row,
       column,
       topPx: (row - window.startOrdinal) * this.rowHeight,
       leftPercent: (column / this.columns) * 100,
-      widthPercent: 100 / this.columns
+      leftOffsetPx: column * gapSharePx,
+      widthPercent: 100 / this.columns,
+      widthReductionPx: (this.columns - 1) * gapSharePx
     };
   }
 
-  getScrollTopForItem(window, itemOrdinal, viewportOffsetPx = 0) {
-    return this.list.getScrollTopForOrdinal(
-      window,
-      Math.floor(itemOrdinal / this.columns),
-      viewportOffsetPx
-    );
-  }
 }

@@ -25,9 +25,9 @@ function operationRequest(overrides = {}) {
     clientRequestId: 'request-1',
     requestDigest: 'sha256:digest-1',
     canonicalRequestVersion: 1,
-    operationKind: 'queue',
-    target: { transport: 'main' },
-    expectedTargetVersion: null,
+    operationKind: 'addToPlaylist',
+    target: { playlistId: 'ledger-target' },
+    expectedTargetVersion: 0,
     sourceContextToken: null,
     sourceSequenceIds: [],
     sourceSequenceItemCount: 0,
@@ -78,7 +78,7 @@ async function seedTracks(host, directory) {
   await host.upsertTracks([createTrack(1), createTrack(2)]);
 }
 
-test('catalog host is a complete DurableLibraryService repository adapter', async t => {
+test('catalog host is a complete durable Add/import repository adapter', async t => {
   const { host } = await openCatalog(t);
   const source = await host.createContext({ query: '', sort: 'title', direction: 'asc', scope: null });
   const { DurableLibraryService } = await import('../../js/library/operations/durable-library-service.js');
@@ -90,34 +90,34 @@ test('catalog host is a complete DurableLibraryService repository adapter', asyn
       return () => now++;
     })(),
     handlers: {
-      queue: async ({ reportProgress }) => {
+      addToPlaylist: async ({ reportProgress }) => {
         await reportProgress({
           phase: 'materializing',
           processed: 2,
           total: 2,
           state: 'running'
         });
-        return { sequenceId: 'sequence-service' };
+        return { playlistId: 'playlist-service' };
       }
     }
   });
   const started = await service.start({
     clientRequestId: 'service-request',
-    operationKind: 'queue',
+    operationKind: 'addToPlaylist',
     selectionDescriptor: { mode: 'all', contextToken: source.contextToken, exclusions: [] },
-    target: { transport: 'main' },
+    target: { playlistId: 'playlist-service' },
     expectedTargetVersion: 0,
     options: {}
   });
   assert.equal(started.kind, 'started');
   await service.running.get(started.operationId).task;
-  const lookup = await service.lookupResult('service-request');
-  assert.equal(lookup.kind, 'terminal');
-  assert.equal(lookup.result.state, 'succeeded');
-  assert.deepEqual(lookup.result.result, { sequenceId: 'sequence-service' });
+  const status = await service.status(started.operationId);
+  assert.equal(status.terminalKind, 'success');
+  assert.equal(status.result.state, 'succeeded');
+  assert.deepEqual(status.result.result, { playlistId: 'playlist-service' });
 });
 
-test('operation ledger joins response loss, rejects request ID reuse, enforces busy and stores cancellation', async t => {
+test('operation ledger deduplicates starts, rejects request ID reuse, enforces busy and stores cancellation', async t => {
   const { host } = await openCatalog(t);
   const source = await host.createContext({ query: '', sort: 'title', direction: 'asc', scope: null });
   const request = operationRequest({ sourceContextToken: source.contextToken });
@@ -164,9 +164,50 @@ test('operation ledger joins response loss, rejects request ID reuse, enforces b
     code: 'cancelled',
     finishedAt: 104
   });
-  assert.equal((await host.lookupOperationResult('request-1')).result.state, 'cancelled');
+  assert.equal((await host.getOperationStatus(created.operationId)).result.state, 'cancelled');
   assert.deepEqual(await host.requestOperationCancel(created.operationId, { requestedAt: 105 }), {
     kind: 'tooLate'
+  });
+});
+
+test('sealing a materialized operation snapshot releases its requested source context', async t => {
+  const { host } = await openCatalog(t);
+  const source = await host.createContext({ query: '', sort: 'title', direction: 'asc', scope: null });
+  const created = await host.receiveOperation(operationRequest({ sourceContextToken: source.contextToken }));
+  assert.equal(created.kind, 'created');
+  assert.deepEqual(await host.releaseContext(source.contextToken), {
+    released: true,
+    retained: true
+  });
+
+  await host.createOperationSnapshot({
+    snapshotId: 'snapshot-releases-context',
+    operationId: created.operationId,
+    snapshotKind: 'selection',
+    createdAt: 100,
+    expiresAt: 1000
+  });
+  await host.appendOperationSnapshotItems({
+    snapshotId: 'snapshot-releases-context',
+    trackUids: ['track-a']
+  });
+  await host.sealOperationSnapshot({
+    snapshotId: 'snapshot-releases-context',
+    itemCount: 1,
+    membershipDigest: 'membership',
+    orderDigest: 'order',
+    ownerKind: 'operation',
+    ownerId: created.operationId
+  });
+
+  await assert.rejects(
+    host.readContextPage({ contextToken: source.contextToken, cursor: null, limit: 1 }),
+    error => error?.code === 'STALE_CURSOR'
+  );
+  await host.completeOperation(created.operationId, {
+    state: 'cancelled',
+    code: 'test-complete',
+    finishedAt: 101
   });
 });
 
@@ -202,8 +243,8 @@ test('startup durably interrupts abandoned operations and releases snapshot owne
   await host.close();
 
   host = await LibraryCatalogHost.open({ dbPath });
-  const result = await host.lookupOperationResult('request-1');
-  assert.equal(result.kind, 'terminal');
+  const result = await host.getOperationStatus(created.operationId);
+  assert.equal(result.terminalKind, 'interrupted');
   assert.equal(result.result.state, 'interrupted');
   assert.equal(result.result.code, 'service-interrupted');
   const snapshot = await host.queryOperationSnapshot({ snapshotId: 'snapshot-1', ordinal: 1, limit: 2 });
@@ -223,62 +264,45 @@ test('startup durably interrupts abandoned operations and releases snapshot owne
   );
 });
 
-test('playback sequences preserve duplicate occurrences with stable entry instance IDs and bounded GC', async t => {
-  const { host } = await openCatalog(t);
+test('playback sequences preserve duplicate occurrences for one catalog session only', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-session-sequence-'));
+  const dbPath = path.join(directory, 'catalog.sqlite');
+  let host = await LibraryCatalogHost.open({ dbPath });
+  t.after(async () => {
+    await host.close().catch(() => {});
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
   await host.createPlaybackSequence({
     sequenceId: 'sequence-1',
     sourceContext: 'all-tracks',
     catalogVersion: 0,
     seed: 42,
-    snapshotId: null,
     createdAt: 100
   });
   await host.appendPlaybackSequenceItems({
     sequenceId: 'sequence-1',
     items: [
-      { trackUid: 'track-1', entryInstanceId: 'entry-1' },
-      { trackUid: 'track-1', entryInstanceId: 'entry-2' },
-      { trackUid: 'track-2', entryInstanceId: 'entry-3' }
+      { ordinal: 0, trackUid: 'track-1', entryInstanceId: 'entry-1' },
+      { ordinal: 1, trackUid: 'track-1', entryInstanceId: 'entry-2' },
+      { ordinal: 2, trackUid: 'track-2', entryInstanceId: 'entry-3' }
     ]
   });
-  await host.sealPlaybackSequence({
+  const sealed = await host.sealPlaybackSequence({
     sequenceId: 'sequence-1',
     itemCount: 3,
     currentOrdinal: 0,
     sealedAt: 101
   });
-  await host.publishPlaybackSequence({ sequenceId: 'sequence-1', finishedAt: 102 });
+  assert.equal(sealed.state, 'active');
   const page = await host.queryPlaybackSequence({ sequenceId: 'sequence-1', ordinal: 0, limit: 2 });
-  assert.deepEqual(page.items.map(item => [item.trackUid, item.entryInstanceId]), [
-    ['track-1', 'entry-1'],
-    ['track-1', 'entry-2']
+  assert.deepEqual(page.items.map(item => [item.ordinal, item.trackUid, item.entryInstanceId]), [
+    [0, 'track-1', 'entry-1'],
+    [1, 'track-1', 'entry-2']
   ]);
   assert.equal(page.nextOrdinal, 2);
 
-  const save = await host.receiveOperation(playlistOperationRequest('playlist-owner', {
-    clientRequestId: 'request-playlist-owner',
-    requestDigest: 'sha256:playlist-owner',
-    sourceContextToken: null,
-    sourceSequenceIds: ['sequence-1'],
-    sourceSequenceItemCount: 3,
-    buildDeadlineAt: 1_000
-  }));
-  assert.equal(save.kind, 'created');
-  await host.tombstonePlaybackSequence('sequence-1');
-  assert.deepEqual(await host.gcPlaybackSequences(10), {
-    deletedItemCount: 0,
-    deletedSequenceCount: 0,
-    hasMore: false
-  });
-  const ownedPage = await host.queryTransportSegmentPage({
-    operationId: save.operationId,
-    segment: { sequenceId: 'sequence-1', startOrdinal: 0, endOrdinal: 3 },
-    transportOrdinal: 0,
-    limit: 3
-  });
-  assert.deepEqual(ownedPage.items.map(item => item.entryInstanceId), ['entry-1', 'entry-2', 'entry-3']);
   const { canonicalOrdinalForTransport } = await import('../../js/library/repository/transport-shuffle.js');
-  const shuffledDescriptor = {
+  const descriptor = {
     segments: [{ sequenceId: 'sequence-1', startOrdinal: 0, endOrdinal: 3 }],
     currentOrdinal: 0,
     shuffleSeed: 29,
@@ -286,8 +310,7 @@ test('playback sequences preserve duplicate occurrences with stable entry instan
     shuffleTransportOffset: 1
   };
   const shuffledPage = await host.queryTransportDescriptorPage({
-    operationId: save.operationId,
-    descriptor: shuffledDescriptor,
+    descriptor,
     transportOrdinal: 0,
     limit: 3
   });
@@ -295,110 +318,16 @@ test('playback sequences preserve duplicate occurrences with stable entry instan
   assert.deepEqual(
     shuffledPage.items.map(item => item.entryInstanceId),
     [0, 1, 2].map(ordinal => sourceEntries[
-      canonicalOrdinalForTransport(shuffledDescriptor, ordinal, 3)
+      canonicalOrdinalForTransport(descriptor, ordinal, 3)
     ])
   );
-  await assert.rejects(host.queryTransportSegmentPage({
-    segment: { sequenceId: 'sequence-1', startOrdinal: 0, endOrdinal: 3 },
-    transportOrdinal: 0,
-    limit: 3
-  }), error => error.code === 'sequenceNotFound');
-  await host.completeOperation(save.operationId, {
-    state: 'cancelled', code: 'cancelled', finishedAt: 103
-  });
-  assert.deepEqual(await host.gcPlaybackSequences(1), {
-    deletedItemCount: 1,
-    deletedSequenceCount: 0,
-    hasMore: true
-  });
-  await host.gcPlaybackSequences(10);
+
+  await host.close();
+  host = await LibraryCatalogHost.open({ dbPath });
   await assert.rejects(
     host.queryPlaybackSequence({ sequenceId: 'sequence-1', ordinal: 0, limit: 1 }),
     error => error.code === 'sequenceNotFound'
   );
-});
-
-test('desktop provisional Play keeps one durable authority and restores the prior queue after restart', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-provisional-undo-'));
-  const dbPath = path.join(directory, 'catalog.sqlite');
-  let host = await LibraryCatalogHost.open({ dbPath });
-  t.after(async () => {
-    await host.close().catch(() => {});
-    fs.rmSync(directory, { recursive: true, force: true });
-  });
-  await seedTracks(host, directory);
-  const source = await host.createContext({ query: '', sort: 'title', direction: 'asc', scope: null });
-  await host.createPlaybackSequence({
-    sequenceId: 'desktop-before-provisional', sourceContext: source.contextToken,
-    catalogVersion: source.catalogVersion, seed: null, snapshotId: null, createdAt: 100
-  });
-  await host.appendPlaybackSequenceItems({
-    sequenceId: 'desktop-before-provisional',
-    items: [{ trackUid: 'track-1', entryInstanceId: 'desktop-before-entry' }]
-  });
-  await host.sealPlaybackSequence({
-    sequenceId: 'desktop-before-provisional', itemCount: 1, currentOrdinal: 0, sealedAt: 101
-  });
-  await host.publishPlaybackSequence({ sequenceId: 'desktop-before-provisional', finishedAt: 102 });
-  await host.commitTransportState({
-    expectedTransportVersion: 0,
-    descriptor: {
-      segments: [{ sequenceId: 'desktop-before-provisional', startOrdinal: 0, endOrdinal: 1 }],
-      currentOrdinal: 0
-    },
-    updatedAt: 103
-  });
-  const replacing = await host.receiveOperation(operationRequest({
-    clientRequestId: 'desktop-provisional', requestDigest: 'sha256:desktop-provisional',
-    operationKind: 'play', target: { transport: 'main' }, expectedTargetVersion: 1,
-    sourceContextToken: source.contextToken, receivedAt: 200
-  }));
-  await host.transitionOperation(replacing.operationId, 'SNAPSHOTTING', { updatedAt: 201 });
-  const provisional = await host.publishProvisionalTransport({
-    operationId: replacing.operationId,
-    sourceContext: source.contextToken,
-    catalogVersion: source.catalogVersion,
-    expectedTransportVersion: 1,
-    firstEntry: { ordinal: 0, entryInstanceId: 'desktop-provisional-entry', trackUid: 'track-2' },
-    publishedAt: 202
-  });
-  assert.equal(provisional.transportVersion, 2);
-  assert.equal((await host.getTransportState()).descriptor.segments[0].sequenceId, `provisional:${replacing.operationId}`);
-  await host.createPlaybackSequence({
-    sequenceId: 'desktop-abandoned-build', operationId: replacing.operationId,
-    sourceContext: source.contextToken, catalogVersion: source.catalogVersion,
-    seed: null, snapshotId: null, createdAt: 202
-  });
-  await host.appendPlaybackSequenceItems({
-    sequenceId: 'desktop-abandoned-build',
-    items: [{ trackUid: 'track-2', entryInstanceId: 'desktop-abandoned-entry' }]
-  });
-  await host.sealPlaybackSequence({
-    sequenceId: 'desktop-abandoned-build', itemCount: 1, currentOrdinal: 0, sealedAt: 202
-  });
-  const cancelled = await host.completeOperation(replacing.operationId, {
-    state: 'cancelled', code: 'cancelled', finishedAt: 203
-  });
-  assert.equal(cancelled.result.undoId, provisional.undoId);
-  await host.close();
-
-  host = await LibraryCatalogHost.open({ dbPath });
-  assert.equal((await host.getTransportState()).transportVersion, 2);
-  await assert.rejects(host.queryPlaybackSequence({
-    sequenceId: 'desktop-abandoned-build', ordinal: 0, limit: 1
-  }), error => error.code === 'sequenceNotFound');
-  assert.deepEqual(await host.applyTransportUndo({
-    undoId: provisional.undoId, expectedTransportVersion: 1, appliedAt: 204
-  }), { kind: 'conflict', currentTransportVersion: 2 });
-  const restored = await host.applyTransportUndo({
-    undoId: provisional.undoId, expectedTransportVersion: 2, appliedAt: 205
-  });
-  assert.equal(restored.kind, 'published');
-  assert.equal(restored.transportVersion, 3);
-  assert.equal(restored.descriptor.segments[0].sequenceId, 'desktop-before-provisional');
-  assert.equal((await host.queryPlaybackSequence({
-    sequenceId: 'desktop-before-provisional', ordinal: 0, limit: 1
-  })).items[0].trackUid, 'track-1');
 });
 
 test('playlist staging is invisible until CAS publish and cleanup releases operation retention', async t => {
@@ -443,7 +372,7 @@ test('playlist staging is invisible until CAS publish and cleanup releases opera
   const visible = await host.queryPlaylistItems({ playlistId: 'playlist-1', limit: 10 });
   assert.deepEqual(visible.items.slice(0, 2).map(item => item.trackUid), ['track-1', 'track-1']);
   assert.equal(visible.items[2].unresolved.title, 'Missing');
-  assert.equal((await host.lookupOperationResult('request-playlist-1')).result.state, 'succeeded');
+  assert.equal((await host.getOperationStatus(created.operationId)).result.state, 'succeeded');
 
   assert.equal((await host.gcTerminalOperations({ finishedBefore: 200, limit: 10 })).deletedCount, 0);
   assert.deepEqual(await host.cleanupPlaylistItems(2), { cleanedCount: 2, cleanedPageCount: 0, hasMore: true });

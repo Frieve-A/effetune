@@ -1,10 +1,16 @@
-import { isSupportedAudioPath, normalizeRelativePath } from '../constants.js';
+import {
+  isSupportedAudioPath,
+  isSupportedPlaylistPath,
+  normalizeRelativePath
+} from '../constants.js';
 import { assertRepositoryContract, createRepositoryError } from '../repository/contract-errors.js';
 import { assertDirectoryHandle } from './web-folder-handle-store.js';
 
 export class WebFileSystemScanAdapter {
-  constructor({ rootHandle }) {
+  constructor({ rootHandle, onPlaylistFile = () => {} }) {
     this.rootHandle = assertDirectoryHandle(rootHandle);
+    if (typeof onPlaylistFile !== 'function') throw new TypeError('onPlaylistFile must be a function');
+    this.onPlaylistFile = onPlaylistFile;
   }
 
   async *enumerateDirectory({ relativeDirectory = '', signal } = {}) {
@@ -31,6 +37,8 @@ export class WebFileSystemScanAdapter {
         yield { kind: 'directory', name: handle.name, relativePath, path: relativePath };
       } else if (handle?.kind === 'file' && isSupportedAudioPath(relativePath)) {
         yield { kind: 'file', name: handle.name, relativePath, path: relativePath };
+      } else if (handle?.kind === 'file' && isSupportedPlaylistPath(relativePath)) {
+        this.onPlaylistFile({ name: handle.name, relativePath, path: relativePath });
       }
     }
   }
@@ -76,25 +84,44 @@ export async function queryFolderPermission(handle) {
   }
 }
 
+export async function isSameFolderRoot(candidateHandle, existingHandle) {
+  try {
+    return await compareFolderRoots(candidateHandle, existingHandle) === 'same';
+  } catch {
+    return false;
+  }
+}
+
 export async function compareFolderRoots(candidateHandle, existingHandle) {
   assertDirectoryHandle(candidateHandle);
   assertDirectoryHandle(existingHandle);
+  if (candidateHandle === existingHandle) return 'same';
   try {
-    if (await candidateHandle.isSameEntry?.(existingHandle)) return 'same';
-  } catch {
-    // Resolve checks below still provide a bounded containment comparison.
+    if (typeof candidateHandle.isSameEntry === 'function' &&
+        await candidateHandle.isSameEntry(existingHandle) === true) {
+      return 'same';
+    }
+    assertRepositoryContract(
+      typeof candidateHandle.resolve === 'function' && typeof existingHandle.resolve === 'function',
+      'folderContainmentUnavailable',
+      'Folder containment could not be checked'
+    );
+    const candidateToExisting = await candidateHandle.resolve(existingHandle);
+    const existingToCandidate = await existingHandle.resolve(candidateHandle);
+    if (Array.isArray(candidateToExisting)) {
+      return candidateToExisting.length === 0 ? 'same' : 'ancestor';
+    }
+    if (Array.isArray(existingToCandidate)) {
+      return existingToCandidate.length === 0 ? 'same' : 'descendant';
+    }
+    return 'unrelated';
+  } catch (error) {
+    if (error?.code === 'folderContainmentUnavailable') throw error;
+    throw createRepositoryError(
+      'folderContainmentUnavailable',
+      'Folder containment could not be checked'
+    );
   }
-  try {
-    if (Array.isArray(await candidateHandle.resolve?.(existingHandle))) return 'ancestor';
-  } catch {
-    // Try the opposite containment direction.
-  }
-  try {
-    if (Array.isArray(await existingHandle.resolve?.(candidateHandle))) return 'descendant';
-  } catch {
-    // Unresolvable roots are separate for this profile.
-  }
-  return 'separate';
 }
 
 async function getDirectoryAtPath(root, relativeDirectory) {

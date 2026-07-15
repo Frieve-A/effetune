@@ -436,24 +436,13 @@ export function processAudioFiles(isElectron) {
       // Convert file paths to File objects
       Promise.all(result.filePaths.map(async (filePath) => {
         try {
-          // Read file content as binary
-          const fileResult = await window.electronAPI.readFile(filePath, true); // true for binary
-          if (!fileResult.success) {
-            throw new Error(`Failed to read file: ${fileResult.error}`);
-          }
+          const bytes = await window.electronAPI.readFileBytes(filePath);
           
           // Get file name from path
           const fileName = filePath.split(/[\\/]/).pop();
           
-          // Convert base64 to ArrayBuffer
-          const binaryString = atob(fileResult.content);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-          }
-          
           // Create a File object
-          const blob = new Blob([bytes.buffer], { type: getAudioMimeType(fileName) });
+          const blob = new Blob([bytes], { type: getAudioMimeType(fileName) });
           return new File([blob], fileName, { type: blob.type });
         } catch (error) {
           console.error(`Error processing file ${filePath}:`, error);

@@ -5,6 +5,7 @@
 import {
   CatalogSequence,
   CompositeCatalogSequence,
+  createPlaybackSourceResolutionScope,
   MaterializedSequence,
   MAX_MATERIALIZED_SEQUENCE_ITEMS,
   PendingTransportSlot,
@@ -31,14 +32,12 @@ export class PlaybackManager {
     this.catalogSequence = null;
     this.queueProvider = new SequenceQueueProvider(this.sequence);
     this.resolvedCatalogEntries = new Map();
-    this.transportVersion = 0;
-    this.durableTransportDescriptor = null;
     this.playbackGeneration = 0;
-    this.pendingTransport = new PendingTransportSlot({
-      runtime: globalThis.window?.electronAPI?.libraryCatalogV1 ? 'electron' : 'web'
-    });
+    this.catalogTrackGeneration = 0;
+    this.pendingTransport = new PendingTransportSlot();
     this.transportMediaChain = Promise.resolve();
     this.activeBulkPlay = null;
+    this.sessionTransportUndo = null;
     
     // Initialize keyboard shortcuts
     this.initKeyboardShortcuts();
@@ -47,12 +46,16 @@ export class PlaybackManager {
   /**
    * Load files into the playlist
    */
-  loadFiles(files, append = false, insertAt = null) {
+  loadFiles(files, append = false, insertAt = null, {
+    deferInitialLoad = false,
+    preserveSessionTransportUndo = false
+  } = {}) {
     if (!files || files.length === 0) {
       return;
     }
     
     if (!append) {
+      if (!preserveSessionTransportUndo) this.sessionTransportUndo = null;
       this.deactivateCatalogSequence();
       this.playlist = [];
       this.originalPlaylist = [];
@@ -95,7 +98,7 @@ export class PlaybackManager {
       this.originalPlaylist.push(...originalEntries);
     }
     
-    if (shuffleMode && !append) {
+    if (shuffleMode && !append && !deferInitialLoad) {
       const isCurrentlyPlaying = state?.isPlaying || false;
       this.shufflePlaylistFromBeginning(isCurrentlyPlaying);
     }
@@ -190,8 +193,7 @@ export class PlaybackManager {
         kind: 'catalog',
         sequenceId: this.catalogSequence.sequenceId,
         itemCount: this.catalogSequence.itemCount,
-        currentOrdinal: state?.currentTrackIndex ?? 0,
-        transportVersion: this.transportVersion
+        currentOrdinal: state?.currentTrackIndex ?? 0
       };
     }
     const captureEntries = entries => ({
@@ -254,6 +256,18 @@ export class PlaybackManager {
     return null;
   }
 
+  getTrackIndex(track, identityOnly = false) {
+    const matches = candidate => candidate === track ||
+      (!identityOnly && samePlaybackEntry(candidate, track));
+    if (this.catalogSequence) {
+      for (const [index, candidate] of this.resolvedCatalogEntries) {
+        if (matches(candidate)) return index;
+      }
+      return -1;
+    }
+    return this.playlist.findIndex(matches);
+  }
+
   getQueueProvider() {
     return this.queueProvider;
   }
@@ -263,9 +277,11 @@ export class PlaybackManager {
     autoPlay = false,
     userInitiated = true,
     preservePlayback = false,
-    preservePlaybackGeneration = false
+    preservePlaybackGeneration = false,
+    resolutionScope = null
   } = {}) {
     this.pendingTransport.invalidate();
+    this.catalogTrackGeneration += 1;
     this.catalogSequence?.clear();
     const sequence = descriptor instanceof CatalogSequence || descriptor instanceof CompositeCatalogSequence
       ? descriptor
@@ -277,12 +293,6 @@ export class PlaybackManager {
     this.playlist = createCatalogPlaylistFacade(sequence, this.resolvedCatalogEntries);
     this.originalPlaylist = [];
     if (!preservePlaybackGeneration) this.playbackGeneration += 1;
-    if (Number.isSafeInteger(descriptor?.transportVersion)) {
-      this.transportVersion = descriptor.transportVersion;
-    }
-    if (descriptor?.transportDescriptor?.segments) {
-      this.durableTransportDescriptor = descriptor.transportDescriptor;
-    }
     const currentTrack = preservePlayback
       ? this.audioPlayer.stateManager?.getStateSnapshot?.().currentTrack ?? null
       : null;
@@ -291,12 +301,11 @@ export class PlaybackManager {
       itemCount: sequence.itemCount,
       currentOrdinal,
       currentTrack,
-      transportVersion: this.transportVersion,
       playbackGeneration: this.playbackGeneration
     });
     void this.refreshCatalogQueueWindow(currentOrdinal);
     if (preservePlayback) return { accepted: true, preserved: true };
-    return this.selectCatalogOrdinal(currentOrdinal, { play: autoPlay, userInitiated });
+    return this.selectCatalogOrdinal(currentOrdinal, { play: autoPlay, userInitiated, resolutionScope });
   }
 
   async refreshCatalogQueueWindow(centerOrdinal = this.audioPlayer.stateManager?.getCurrentTrackIndex?.() ?? 0) {
@@ -322,7 +331,6 @@ export class PlaybackManager {
     return Object.freeze({
       ...descriptor,
       currentOrdinal: this.audioPlayer.stateManager?.getCurrentTrackIndex?.() ?? 0,
-      transportVersion: this.transportVersion,
       playbackGeneration: this.playbackGeneration
     });
   }
@@ -332,14 +340,71 @@ export class PlaybackManager {
     userInitiated = true,
     commandKind = 'select',
     reason = userInitiated ? 'explicit' : 'ended',
-    transportRollback = null
+    transportRollback = null,
+    preserveQueueWindow = false,
+    resolutionScope = createPlaybackSourceResolutionScope()
   } = {}) {
     if (!this.catalogSequence) return { accepted: false, reason: 'not-catalog' };
+    const activeResolutionScope = resolutionScope ?? createPlaybackSourceResolutionScope();
+    this.catalogTrackGeneration += 1;
     const sequence = this.catalogSequence;
     if (reason === 'explicit') {
       this.audioPlayer.contextManager?.invalidatePendingTransitionRequests?.();
     }
     this.audioPlayer.stateManager?.applyTransportCommand?.({ type: 'transportSelect', ordinal });
+    const repeatMode = this.audioPlayer.stateManager?.getStateSnapshot?.().repeatMode ?? 'OFF';
+    const direction = commandKind === 'previous' ? -1 : 1;
+    const attemptedOrdinals = new Set();
+    const failures = [];
+    let candidateOrdinal = ordinal;
+
+    while (
+      Number.isSafeInteger(candidateOrdinal) &&
+      candidateOrdinal >= 0 &&
+      candidateOrdinal < sequence.itemCount &&
+      attemptedOrdinals.size < sequence.itemCount &&
+      !attemptedOrdinals.has(candidateOrdinal)
+    ) {
+      attemptedOrdinals.add(candidateOrdinal);
+      const result = await this.#selectCatalogOrdinalOnce(candidateOrdinal, {
+        play,
+        userInitiated,
+        commandKind,
+        reason,
+        transportRollback,
+        preserveQueueWindow,
+        resolutionScope: activeResolutionScope
+      });
+      if (result.accepted) {
+        if (failures.length > 0) this.#reportCatalogSkippedTracks(failures);
+        return failures.length > 0 ? { ...result, skippedCount: failures.length } : result;
+      }
+      if (!['source-unavailable', 'media-load-failed'].includes(result.reason)) return result;
+      failures.push({ ordinal: candidateOrdinal, reason: result.reason, error: result.error });
+      candidateOrdinal = nextCatalogCandidateOrdinal({
+        currentOrdinal: candidateOrdinal,
+        direction,
+        itemCount: sequence.itemCount,
+        wrap: repeatMode === 'ALL'
+      });
+    }
+
+    if (failures.length > 0) this.#reportCatalogSkippedTracks(failures);
+    await this.stopAfterFailedTrackSkipExhausted();
+    return { accepted: false, reason: 'no-playable-track', skippedCount: failures.length };
+  }
+
+  async #selectCatalogOrdinalOnce(ordinal, {
+    play,
+    userInitiated,
+    commandKind,
+    reason,
+    transportRollback,
+    preserveQueueWindow,
+    resolutionScope
+  }) {
+    const sequence = this.catalogSequence;
+    if (!sequence) return { accepted: false, reason: 'not-catalog' };
     const stateBeforeResolution = this.audioPlayer.stateManager?.getStateSnapshot?.();
     const sourceEntryInstanceId = stateBeforeResolution?.currentTrack?.entryInstanceId ?? null;
     const result = await this.pendingTransport.run({
@@ -347,21 +412,26 @@ export class PlaybackManager {
       playbackGeneration: this.playbackGeneration,
       sourceEntryInstanceId,
       reason
-    }, async ({ isCurrent }) => {
+    }, async ({ isCurrent, signal }) => {
       const entry = await sequence.getEntry(ordinal);
       if (!isCurrent() || sequence !== this.catalogSequence) return { committed: false };
-      if (!play) {
-        return { committed: true, entry, source: null, play: false };
+      try {
+        const source = await sequence.resolveEntrySource(entry, resolutionScope, signal);
+        if (!isCurrent() || sequence !== this.catalogSequence) return { committed: false };
+        return { committed: true, entry, source, play };
+      } catch (error) {
+        if (!isCurrent() || sequence !== this.catalogSequence) return { committed: false };
+        return { committed: false, unavailable: true, error };
       }
-      const source = await sequence.resolveEntrySource(entry);
-      if (!isCurrent() || sequence !== this.catalogSequence) return { committed: false };
-      return { committed: true, entry, source, play: true };
     });
     if (!result.accepted) {
       this.audioPlayer.contextManager?.invalidatePendingTransitionRequests?.();
       return result;
     }
     const resolution = result.value;
+    if (resolution?.unavailable) {
+      return { accepted: false, reason: 'source-unavailable', error: resolution.error };
+    }
     if (!resolution?.committed) return { accepted: false, reason: 'stale' };
     const mediaOperation = async () => {
       if (
@@ -370,22 +440,10 @@ export class PlaybackManager {
       ) {
         return { accepted: false, reason: 'stale' };
       }
-      if (!resolution.play) {
-        try {
-          await this.#commitCatalogTrack(ordinal, resolution.entry);
-        } catch (error) {
-          restorePlannedShuffle(sequence, transportRollback);
-          throw error;
-        }
-        void this.refreshCatalogQueueWindow(ordinal);
-        return { accepted: true, value: { committed: true, entry: resolution.entry } };
-      }
       const track = createResolvedCatalogTrack(resolution.entry, resolution.source);
       const state = this.audioPlayer.stateManager?.getStateSnapshot?.();
       const previousOrdinal = state?.currentTrackIndex ?? 0;
       const previousTrack = state?.currentTrack ?? this.resolvedCatalogEntries.get(previousOrdinal) ?? null;
-      const previousDescriptor = transportRollback?.previousDescriptor ??
-        createDurableTransportDescriptor(sequence, this.durableTransportDescriptor, previousOrdinal);
       const changedTransport = previousOrdinal !== ordinal || Boolean(transportRollback?.shuffleChanged);
       try {
         await this.#commitCatalogTrack(ordinal, track);
@@ -400,7 +458,6 @@ export class PlaybackManager {
         if (changedTransport) {
           await this.#compensateCatalogTransport({
             sequence,
-            descriptor: previousDescriptor,
             ordinal: previousOrdinal,
             track: previousTrack,
             state,
@@ -411,11 +468,11 @@ export class PlaybackManager {
       }
       let played = true;
       try {
-        if (state?.isPlaying && this.audioPlayer.contextManager?.transitionToNextTrack) {
+        if (resolution.play && state?.isPlaying && this.audioPlayer.contextManager?.transitionToNextTrack) {
           played = await this.audioPlayer.contextManager.transitionToNextTrack(track, ordinal, userInitiated);
         } else if (this.audioPlayer.contextManager?.loadTrack) {
           const loaded = await this.audioPlayer.contextManager.loadTrack(track, ordinal);
-          if (loaded !== false && this.audioPlayer.contextManager?.play) {
+          if (resolution.play && loaded !== false && this.audioPlayer.contextManager?.play) {
             played = await this.audioPlayer.contextManager.play(false, userInitiated);
           } else {
             played = loaded;
@@ -427,14 +484,16 @@ export class PlaybackManager {
         if (changedTransport) {
           await this.#compensateCatalogTransport({
             sequence,
-            descriptor: previousDescriptor,
             ordinal: previousOrdinal,
             track: previousTrack,
             state,
-            transportRollback
+            transportRollback,
+            restoreShuffleState: false
           });
+        } else {
+          this.#restoreCatalogTrackState(previousOrdinal, previousTrack, state);
         }
-        throw error;
+        return { accepted: false, reason: 'media-load-failed', error };
       }
       if (
         played === false ||
@@ -444,16 +503,18 @@ export class PlaybackManager {
         if (changedTransport) {
           await this.#compensateCatalogTransport({
             sequence,
-            descriptor: previousDescriptor,
             ordinal: previousOrdinal,
             track: previousTrack,
             state,
-            transportRollback
+            transportRollback,
+            restoreShuffleState: false
           });
+        } else if (played === false) {
+          this.#restoreCatalogTrackState(previousOrdinal, previousTrack, state);
         }
         return { accepted: false, reason: played === false ? 'media-load-failed' : 'stale' };
       }
-      void this.refreshCatalogQueueWindow(ordinal);
+      if (!preserveQueueWindow) void this.refreshCatalogQueueWindow(ordinal);
       return { accepted: true, value: { committed: true, entry: track } };
     };
     const committed = this.transportMediaChain.then(mediaOperation, mediaOperation);
@@ -472,14 +533,29 @@ export class PlaybackManager {
     const repeatMode = options.ignoreRepeatOne ? 'OFF' : (state?.repeatMode ?? 'OFF');
     const sequence = this.catalogSequence;
     const previousShuffleState = captureShuffleState(sequence);
-    const previousDescriptor = createDurableTransportDescriptor(
-      sequence,
-      this.durableTransportDescriptor,
-      currentOrdinal
-    );
     const nextOrdinal = sequence.moveTransportOrdinal(currentOrdinal, 1, repeatMode);
-    if (nextOrdinal === null) return { accepted: false, reason: 'end' };
-    const transportRollback = createTransportRollback(sequence, previousShuffleState, previousDescriptor);
+    const transportRollback = createTransportRollback(sequence, previousShuffleState);
+    if (nextOrdinal === null) {
+      if (options.reason !== 'ended') return { accepted: false, reason: 'end' };
+      try {
+        const result = await this.selectCatalogOrdinal(0, {
+          play: false,
+          userInitiated: false,
+          commandKind: 'ended-reset',
+          reason: 'ended',
+          transportRollback
+        });
+        if (!result.accepted) {
+          restorePlannedShuffle(sequence, transportRollback);
+          return result;
+        }
+        await this.audioPlayer.contextManager?.stop?.();
+        return { ...result, stoppedAtEnd: true };
+      } catch (error) {
+        restorePlannedShuffle(sequence, transportRollback);
+        throw error;
+      }
+    }
     try {
       const result = await this.selectCatalogOrdinal(nextOrdinal, {
         play: true,
@@ -506,17 +582,12 @@ export class PlaybackManager {
     const currentOrdinal = state?.currentTrackIndex ?? 0;
     const sequence = this.catalogSequence;
     const previousShuffleState = captureShuffleState(sequence);
-    const previousDescriptor = createDurableTransportDescriptor(
-      sequence,
-      this.durableTransportDescriptor,
-      currentOrdinal
-    );
     const previousOrdinal = sequence.moveTransportOrdinal(
       currentOrdinal,
       -1,
       state?.repeatMode ?? 'OFF'
     );
-    const transportRollback = createTransportRollback(sequence, previousShuffleState, previousDescriptor);
+    const transportRollback = createTransportRollback(sequence, previousShuffleState);
     if (previousOrdinal === null) {
       return this.selectCatalogOrdinal(currentOrdinal, {
         play: true,
@@ -544,8 +615,6 @@ export class PlaybackManager {
 
   contextPlayNext(selectionDescriptor, {
     service = this.audioPlayer.libraryOperationService,
-    clientRequestId,
-    expectedTransportVersion = this.transportVersion,
     target = null,
     options = {}
   } = {}) {
@@ -556,16 +625,10 @@ export class PlaybackManager {
     if (typeof service?.start !== 'function') {
       return Promise.reject(operationError('operationUnavailable', 'Library Play Next service is unavailable'));
     }
-    const requestId = clientRequestId ?? globalThis.crypto?.randomUUID?.();
-    if (!requestId) {
-      return Promise.reject(operationError('cryptoUnavailable', 'Secure operation request IDs are unavailable'));
-    }
     return service.start({
-      clientRequestId: requestId,
       operationKind: 'playNext',
       selectionDescriptor,
       target,
-      expectedTargetVersion: expectedTransportVersion,
       options
     });
   }
@@ -574,8 +637,6 @@ export class PlaybackManager {
     selectionDescriptor,
     provisionalEntry,
     service = this.audioPlayer.libraryOperationService,
-    clientRequestId,
-    expectedTransportVersion = this.transportVersion,
     options = {}
   } = {}) {
     if (this.activeBulkPlay && this.activeBulkPlay.phase !== 'terminal') {
@@ -584,14 +645,10 @@ export class PlaybackManager {
     if (typeof service?.start !== 'function') {
       throw operationError('operationUnavailable', 'Bulk Play service is unavailable');
     }
-    const requestId = clientRequestId ?? globalThis.crypto?.randomUUID?.();
-    if (!requestId) throw operationError('cryptoUnavailable', 'Secure operation request IDs are unavailable');
     const receipt = await service.start({
-      clientRequestId: requestId,
       operationKind: 'play',
       selectionDescriptor,
       target: null,
-      expectedTargetVersion: expectedTransportVersion,
       options
     });
     const entry = receipt?.provisionalEntry ?? provisionalEntry;
@@ -599,7 +656,6 @@ export class PlaybackManager {
     return this.installBulkPlayProvisional({
       receipt: { ...receipt, provisionalEntry: entry },
       service,
-      expectedTransportVersion,
       resolveSource: async provisional => ({
         path: provisional.path,
         file: provisional.file,
@@ -611,42 +667,55 @@ export class PlaybackManager {
   async installBulkPlayProvisional({
     receipt,
     service,
-    expectedTransportVersion = this.transportVersion,
-    resolveSource
+    resolveSource,
+    resolutionScope = createPlaybackSourceResolutionScope()
   } = {}) {
     const entry = receipt?.provisionalEntry;
     const trackUid = entry?.trackUid ?? entry?.libraryTrackId;
     if (!entry?.entryInstanceId || !trackUid) {
       throw operationError('invalidOperationResult', 'Bulk Play provisional entry is invalid');
     }
-    if (this.transportVersion !== expectedTransportVersion) {
-      throw operationError('staleTransportVersion', 'Playback transport changed before provisional install');
-    }
     if (typeof resolveSource !== 'function') {
       throw operationError('sourceUnavailable', 'Bulk Play source resolver is unavailable');
     }
-    const provisionalTransportVersion = entry.transportVersion ?? receipt.transportVersion;
-    const provisionalTransportDescriptor = entry.transportDescriptor ?? receipt.transportDescriptor;
-    if (provisionalTransportVersion !== expectedTransportVersion + 1 ||
-        !isProvisionalTransportDescriptor(provisionalTransportDescriptor)) {
-      throw operationError(
-        'invalidOperationResult',
-        'Bulk Play provisional entry omitted its durable transport authority'
-      );
-    }
-    this.transportVersion = provisionalTransportVersion;
-    this.durableTransportDescriptor = provisionalTransportDescriptor;
+    const previousSessionState = this.#captureSessionPlaybackState();
     const playbackGeneration = ++this.playbackGeneration;
-    const resolution = await this.pendingTransport.run({
-      kind: 'play-replace',
+    const operation = {
+      operationId: receipt.operationId,
+      phase: 'building',
+      service,
       playbackGeneration,
-      sourceEntryInstanceId: entry.entryInstanceId,
-      reason: 'explicit',
-      priority: 3
-    }, async ({ isCurrent }) => {
-      const source = await resolveSource(entry);
-      return isCurrent() ? source : null;
-    });
+      provisionalEntryInstanceId: entry.entryInstanceId,
+      provisionalInstalled: false,
+      provisionalLoaded: false,
+      resolutionScope,
+      previousSessionState
+    };
+    this.activeBulkPlay = operation;
+    let resolution;
+    try {
+      resolution = await this.pendingTransport.run({
+        kind: 'play-replace',
+        playbackGeneration,
+        sourceEntryInstanceId: entry.entryInstanceId,
+        reason: 'explicit',
+        priority: 3
+      }, async ({ isCurrent, signal }) => {
+        const source = await resolveSource(entry, resolutionScope, signal);
+        return isCurrent() ? source : null;
+      });
+    } catch (error) {
+      if (operation !== this.activeBulkPlay || playbackGeneration !== this.playbackGeneration) {
+        return { accepted: false, reason: 'stale' };
+      }
+      operation.provisionalSourceError = error;
+      return {
+        accepted: true,
+        deferred: true,
+        operationId: receipt.operationId,
+        playbackGeneration
+      };
+    }
     if (!resolution.accepted || !resolution.value || playbackGeneration !== this.playbackGeneration) {
       return { accepted: false, reason: resolution.reason ?? 'stale' };
     }
@@ -658,7 +727,11 @@ export class PlaybackManager {
       transportOrdinal: 0
     };
     const provisionalTrack = createResolvedCatalogTrack(provisionalEntry, resolution.value);
-    this.loadFiles([provisionalTrack], false);
+    this.loadFiles([provisionalTrack], false, null, {
+      deferInitialLoad: true,
+      preserveSessionTransportUndo: true
+    });
+    operation.provisionalInstalled = true;
     const loadedTrack = this.playlist[0];
     const mediaOperation = async () => {
       if (
@@ -674,83 +747,84 @@ export class PlaybackManager {
       return { accepted: false, reason: 'stale' };
     }
     this.audioPlayer.stateManager?.updateState?.({
-      playbackGeneration,
-      transportVersion: this.transportVersion
+      playbackGeneration
     }, 'PlaybackManager bulk Play provisional');
-    this.activeBulkPlay = {
-      operationId: receipt.operationId,
-      phase: 'building',
-      service,
-      playbackGeneration,
-      expectedTransportVersion,
-      provisionalTransportVersion: this.transportVersion,
-      provisionalEntryInstanceId: loadedTrack.entryInstanceId,
-      undoId: entry.undoId ?? receipt.undoId ?? null,
-      undoExpiresAt: entry.undoExpiresAt ?? receipt.undoExpiresAt ?? null
-    };
+    operation.provisionalLoaded = true;
+    operation.provisionalEntryInstanceId = loadedTrack.entryInstanceId;
     return {
       accepted: true,
       operationId: receipt.operationId,
-      playbackGeneration,
-      transportVersion: this.transportVersion,
-      undoId: this.activeBulkPlay.undoId,
-      undoExpiresAt: this.activeBulkPlay.undoExpiresAt
+      playbackGeneration
     };
   }
 
-  async publishBulkPlaySequence({ operationId, transportVersion, transportDescriptor, ...descriptor } = {}) {
+  async publishBulkPlaySequence({
+    operationId,
+    sequence,
+    currentOrdinal = 0,
+    firstEntry = null
+  } = {}) {
     const operation = this.activeBulkPlay;
-    if (!operation || operation.operationId !== operationId || operation.phase !== 'building') {
+    if (!operation || operation.operationId !== operationId ||
+        !['building', 'cancel-requested'].includes(operation.phase)) {
       return { accepted: false, reason: 'stale' };
-    }
-    if (descriptor.expectedTransportVersion !== undefined &&
-        descriptor.expectedTransportVersion !== operation.expectedTransportVersion) {
-      throw operationError('staleTransportVersion', 'Bulk Play transport version changed');
-    }
-    if (this.transportVersion !== operation.provisionalTransportVersion) {
-      throw operationError('staleTransportVersion', 'Bulk Play transport changed after provisional install');
     }
     const state = this.audioPlayer.stateManager?.getStateSnapshot?.();
     const position = state?.currentTrackPosition ?? 0;
     const currentTrack = state?.currentTrack ?? this.playlist[0] ?? null;
-    if (transportVersion !== operation.provisionalTransportVersion) {
-      throw operationError('staleTransportVersion', 'Bulk Play durable transport version is invalid');
-    }
-    const publishedSequence = descriptor instanceof CatalogSequence || descriptor instanceof CompositeCatalogSequence
-      ? descriptor
-      : new CatalogSequence(descriptor);
-    const publishedCurrentOrdinal = descriptor.currentOrdinal ?? 0;
-    const publishedCurrentEntry = await publishedSequence.getEntry(publishedCurrentOrdinal);
+    const publishedSequence = sequence instanceof CatalogSequence || sequence instanceof CompositeCatalogSequence
+      ? sequence
+      : new CatalogSequence(sequence);
+    const publishedCurrentEntry = firstEntry ?? await publishedSequence.getEntry(currentOrdinal);
     if (publishedCurrentEntry.entryInstanceId !== operation.provisionalEntryInstanceId) {
       throw operationError('stalePlaybackEntry', 'Published sequence no longer matches the provisional track');
     }
+    if (!operation.provisionalLoaded) {
+      const playbackResult = await this.loadCatalogSequence(publishedSequence, {
+        currentOrdinal,
+        autoPlay: true,
+        userInitiated: true,
+        preservePlaybackGeneration: true,
+        resolutionScope: operation.resolutionScope
+      });
+      if (operation !== this.activeBulkPlay || operation.playbackGeneration !== this.playbackGeneration) {
+        return { accepted: false, reason: 'stale' };
+      }
+      operation.phase = 'published';
+      this.sessionTransportUndo = operation.previousSessionState;
+      operation.previousSessionState = null;
+      return {
+        accepted: true,
+        phase: 'published',
+        playbackAccepted: playbackResult?.accepted !== false,
+        skippedCount: playbackResult?.skippedCount ?? 0
+      };
+    }
     await this.loadCatalogSequence(publishedSequence, {
-      currentOrdinal: publishedCurrentOrdinal,
+      currentOrdinal,
       preservePlayback: true,
       preservePlaybackGeneration: true
     });
-    this.transportVersion = transportVersion;
-    this.durableTransportDescriptor = transportDescriptor;
     if (operation !== this.activeBulkPlay || operation.playbackGeneration !== this.playbackGeneration) {
       return { accepted: false, reason: 'stale' };
     }
     this.audioPlayer.stateManager?.updateState?.({
       currentTrack,
       currentTrackPosition: position,
-      transportVersion: this.transportVersion,
       playbackGeneration: this.playbackGeneration
     }, 'PlaybackManager bulk Play publish');
     operation.phase = 'published';
-    return { accepted: true, phase: 'published', transportVersion: this.transportVersion };
+    this.sessionTransportUndo = operation.previousSessionState;
+    operation.previousSessionState = null;
+    return { accepted: true, phase: 'published' };
   }
 
   async commitCatalogDestination({
     operationId,
     operationKind,
     sequence,
-    expectedTransportVersion,
-    transportVersion,
-    transportDescriptor
+    currentOrdinal: requestedOrdinal = 0,
+    firstEntry = null
   } = {}) {
     if (!(sequence instanceof CatalogSequence) && !(sequence instanceof CompositeCatalogSequence)) {
       throw operationError('invalidOperationResult', 'Catalog operation sequence is invalid');
@@ -758,29 +832,18 @@ export class PlaybackManager {
     if (operationKind === 'play') {
       return this.publishBulkPlaySequence({
         operationId,
-        ...sequenceToRuntimeDescriptor(sequence),
-        expectedTransportVersion,
-        transportVersion,
-        transportDescriptor,
-        currentOrdinal: 0
+        sequence,
+        currentOrdinal: requestedOrdinal,
+        firstEntry
       });
     }
     if (operationKind !== 'playNext' && operationKind !== 'queue') {
       throw operationError('invalidOperationResult', 'Playback destination is invalid');
     }
-    if (this.transportVersion !== expectedTransportVersion) {
-      throw operationError('staleTransportVersion', 'Playback transport changed before destination commit');
-    }
-    if (transportVersion !== expectedTransportVersion + 1 ||
-        !transportDescriptor || !Array.isArray(transportDescriptor.segments)) {
-      throw operationError('invalidOperationResult', 'Playback destination omitted authoritative transport state');
-    }
     const currentSequence = this.catalogSequence ?? this.sequence;
     if (!currentSequence?.itemCount) {
       await this.loadCatalogSequence(sequence, { currentOrdinal: 0, autoPlay: false });
-      this.transportVersion = transportVersion;
-      this.durableTransportDescriptor = transportDescriptor;
-      return { accepted: true, transportVersion: this.transportVersion };
+      return { accepted: true };
     }
     const state = this.audioPlayer.stateManager?.getStateSnapshot?.();
     const currentOrdinal = Math.max(0, Math.min(
@@ -800,12 +863,10 @@ export class PlaybackManager {
       segments.push({ sequence, startOrdinal: 0, itemCount: sequence.itemCount });
     }
     const composite = new CompositeCatalogSequence({
-      sequenceId: createCompositeSequenceId(operationId, this.transportVersion + 1),
+      sequenceId: createCompositeSequenceId(operationId),
       segments
     });
     const currentTrack = state?.currentTrack ?? null;
-    this.transportVersion = transportVersion;
-    this.durableTransportDescriptor = transportDescriptor;
     await this.loadCatalogSequence(composite, {
       currentOrdinal,
       preservePlayback: true,
@@ -813,10 +874,46 @@ export class PlaybackManager {
     });
     if (currentTrack?.entryInstanceId) this.resolvedCatalogEntries.set(currentOrdinal, currentTrack);
     this.audioPlayer.stateManager?.updateState?.({
-      currentTrack,
-      transportVersion: this.transportVersion
+      currentTrack
     }, `PlaybackManager ${operationKind} destination commit`);
-    return { accepted: true, transportVersion: this.transportVersion };
+    return { accepted: true };
+  }
+
+  async prepareCatalogTrackForGraphRebuild(track, { play = false } = {}) {
+    const sequence = this.catalogSequence;
+    if (!sequence || track?.sourceKind !== 'electron-file') {
+      return { handled: false, track };
+    }
+    const state = this.audioPlayer.stateManager?.getStateSnapshot?.();
+    const ordinal = state?.currentTrackIndex ?? 0;
+    const generation = this.catalogTrackGeneration;
+    const isCurrent = () => {
+      const currentState = this.audioPlayer.stateManager?.getStateSnapshot?.();
+      return generation === this.catalogTrackGeneration &&
+        sequence === this.catalogSequence &&
+        currentState?.currentTrackIndex === ordinal &&
+        samePlaybackEntry(currentState?.currentTrack, track);
+    };
+    const resolutionScope = createPlaybackSourceResolutionScope();
+    const entry = await sequence.getEntry(ordinal);
+    if (!isCurrent()) return { handled: true, reason: 'stale' };
+    try {
+      const source = await sequence.resolveEntrySource(entry, resolutionScope);
+      if (!isCurrent()) return { handled: true, reason: 'stale' };
+      const resolvedTrack = createResolvedCatalogTrack(entry, source);
+      this.resolvedCatalogEntries.set(ordinal, resolvedTrack);
+      return { handled: false, track: resolvedTrack, isCurrent };
+    } catch (error) {
+      if (!isCurrent()) return { handled: true, reason: 'stale' };
+      const result = await this.selectCatalogOrdinal(ordinal, {
+        play,
+        userInitiated: false,
+        commandKind: 'audio-reset',
+        reason: 'audio-reset',
+        resolutionScope
+      });
+      return { handled: true, result, error };
+    }
   }
 
   async cancelBulkPlay(operationId) {
@@ -824,27 +921,112 @@ export class PlaybackManager {
     if (!operation || operation.operationId !== operationId) {
       return { accepted: false, reason: 'stale' };
     }
-    if (operation.phase === 'published') {
+    if (operation.phase === 'published' || operation.phase === 'terminal') {
       return { accepted: false, reason: 'tooLate' };
     }
     const result = typeof operation.service?.cancel === 'function'
       ? await operation.service.cancel(operationId)
       : { accepted: true };
-    if (result?.reason === 'tooLate') {
-      operation.phase = 'published';
+    if (result?.kind === 'tooLate' || result?.reason === 'tooLate') {
       return { accepted: false, reason: 'tooLate' };
     }
+    if (result?.kind === 'cancelRequested') {
+      operation.phase = 'cancel-requested';
+      return { accepted: true, phase: 'cancel-requested' };
+    }
     operation.phase = 'terminal';
-    return {
-      accepted: true,
-      phase: 'cancelled',
-      undoId: operation.undoId,
-      undoExpiresAt: operation.undoExpiresAt
+    await this.#restoreBulkPlaySession(operation);
+    return { accepted: true, phase: 'cancelled' };
+  }
+
+  async finishBulkPlayTerminal(operationId, { succeeded = false } = {}) {
+    const operation = this.activeBulkPlay;
+    if (!operation || operation.operationId !== operationId || operation.phase === 'terminal') {
+      return false;
+    }
+    if (!succeeded && operation.phase !== 'published') {
+      await this.#restoreBulkPlaySession(operation);
+    }
+    operation.phase = 'terminal';
+    return true;
+  }
+
+  canUndoSessionTransport() {
+    return this.sessionTransportUndo !== null;
+  }
+
+  async undoSessionTransport() {
+    const snapshot = this.sessionTransportUndo;
+    this.sessionTransportUndo = null;
+    if (!snapshot) return { kind: 'notAvailable' };
+    const restored = await this.#restoreSessionPlaybackState(snapshot);
+    if (!restored) return { kind: 'notAvailable' };
+    this.activeBulkPlay = null;
+    return { kind: 'published' };
+  }
+
+  #captureSessionPlaybackState() {
+    const state = this.audioPlayer.stateManager?.getStateSnapshot?.() ?? {};
+    const common = {
+      currentOrdinal: state.currentTrackIndex ?? 0,
+      currentTrack: state.currentTrack ?? null,
+      currentTrackPosition: state.currentTrackPosition ?? 0,
+      wasPlaying: state.isPlaying === true
     };
+    if (this.catalogSequence) {
+      return { ...common, kind: 'catalog', sequence: this.catalogSequence };
+    }
+    return { ...common, kind: 'materialized', snapshot: this.capturePlaybackQueueSnapshot() };
+  }
+
+  async #restoreBulkPlaySession(operation) {
+    const snapshot = operation?.previousSessionState;
+    operation.previousSessionState = null;
+    if (!snapshot || !operation.provisionalInstalled ||
+        operation.playbackGeneration !== this.playbackGeneration) {
+      return false;
+    }
+    return this.#restoreSessionPlaybackState(snapshot);
+  }
+
+  async #restoreSessionPlaybackState(snapshot) {
+    if (snapshot.kind === 'catalog' && snapshot.sequence) {
+      await this.loadCatalogSequence(snapshot.sequence, {
+        currentOrdinal: snapshot.currentOrdinal,
+        preservePlayback: true
+      });
+      this.resolvedCatalogEntries.clear();
+      if (snapshot.currentTrack) {
+        this.resolvedCatalogEntries.set(snapshot.currentOrdinal, snapshot.currentTrack);
+      }
+    } else if (snapshot.kind === 'materialized' && this.restorePlaybackQueueSnapshot(snapshot.snapshot)) {
+      this.playbackGeneration += 1;
+      this.syncPlaylistState(snapshot.currentOrdinal);
+    } else {
+      return false;
+    }
+    this.audioPlayer.stateManager?.updateState?.({
+      currentTrackIndex: snapshot.currentOrdinal,
+      currentTrack: snapshot.currentTrack,
+      currentTrackPosition: snapshot.currentTrackPosition,
+      playbackGeneration: this.playbackGeneration
+    }, 'PlaybackManager bulk Play rollback');
+    if (!snapshot.currentTrack) return true;
+    if (snapshot.wasPlaying && this.audioPlayer.contextManager?.seamlessTransition) {
+      await this.audioPlayer.contextManager.seamlessTransition(
+        snapshot.currentTrack,
+        snapshot.currentOrdinal,
+        true
+      );
+    } else {
+      await this.audioPlayer.contextManager?.loadTrack?.(snapshot.currentTrack, snapshot.currentOrdinal);
+    }
+    return true;
   }
 
   deactivateCatalogSequence() {
     this.pendingTransport.invalidate();
+    this.catalogTrackGeneration += 1;
     this.catalogSequence?.clear();
     this.catalogSequence = null;
     this.resolvedCatalogEntries.clear();
@@ -852,27 +1034,12 @@ export class PlaybackManager {
 
   async setCatalogShuffleMode(enabled, state = this.audioPlayer.stateManager?.getStateSnapshot?.()) {
     if (!this.catalogSequence) return null;
-    const previousShuffle = this.catalogSequence.getDescriptor();
+    this.catalogTrackGeneration += 1;
     const oldOrdinal = state?.currentTrackIndex ?? 0;
     const canonicalOrdinal = this.catalogSequence.toCanonicalOrdinal(oldOrdinal);
     const currentTrack = state?.currentTrack ?? this.resolvedCatalogEntries.get(oldOrdinal) ?? null;
     this.catalogSequence.setShuffle(enabled);
     const newOrdinal = this.catalogSequence.toTransportOrdinal(canonicalOrdinal);
-    try {
-      await this.#commitDurableTransport(createDurableTransportDescriptor(
-        this.catalogSequence,
-        this.durableTransportDescriptor,
-        newOrdinal
-      ));
-    } catch (error) {
-      this.catalogSequence.restoreShuffleState({
-        enabled: previousShuffle.shuffleEnabled,
-        seed: previousShuffle.shuffleSeed,
-        epoch: previousShuffle.shuffleEpoch,
-        transportOffset: previousShuffle.shuffleTransportOffset
-      });
-      throw error;
-    }
     this.resolvedCatalogEntries.clear();
     if (currentTrack?.path || currentTrack?.file || currentTrack?.provider) {
       this.resolvedCatalogEntries.set(newOrdinal, currentTrack);
@@ -887,14 +1054,6 @@ export class PlaybackManager {
   }
 
   async #commitCatalogTrack(ordinal, track) {
-    const previousOrdinal = this.audioPlayer.stateManager?.getCurrentTrackIndex?.();
-    if (previousOrdinal !== ordinal) {
-      await this.#commitDurableTransport(createDurableTransportDescriptor(
-        this.catalogSequence,
-        this.durableTransportDescriptor,
-        ordinal
-      ));
-    }
     this.resolvedCatalogEntries.clear();
     if (track?.path || track?.file || track?.provider) this.resolvedCatalogEntries.set(ordinal, track);
     this.audioPlayer.stateManager?.updateState?.({
@@ -903,53 +1062,58 @@ export class PlaybackManager {
       playlistLength: this.catalogSequence.itemCount,
       sequenceKind: 'catalog',
       sequenceId: this.catalogSequence.sequenceId,
-      transportVersion: this.transportVersion,
       playbackGeneration: this.playbackGeneration
     }, 'PlaybackManager catalog track');
   }
 
   async #compensateCatalogTransport({
     sequence,
-    descriptor,
     ordinal,
     track,
     state,
-    transportRollback
+    transportRollback,
+    restoreShuffleState = true
   }) {
     if (sequence !== this.catalogSequence) return false;
-    await this.#commitDurableTransport(descriptor);
-    restorePlannedShuffle(sequence, transportRollback, { requirePlannedState: false });
+    if (restoreShuffleState) {
+      restorePlannedShuffle(sequence, transportRollback, { requirePlannedState: false });
+    }
     this.resolvedCatalogEntries.clear();
     if (track?.path || track?.file || track?.provider) this.resolvedCatalogEntries.set(ordinal, track);
     this.audioPlayer.stateManager?.updateState?.({
       currentTrackIndex: ordinal,
       currentTrack: track,
       currentTrackPosition: state?.currentTrackPosition ?? 0,
-      transportVersion: this.transportVersion,
       playbackGeneration: this.playbackGeneration
     }, 'PlaybackManager catalog transport compensation');
     return true;
   }
 
-  async #commitDurableTransport(descriptor) {
-    const expectedTransportVersion = this.transportVersion;
-    const service = this.audioPlayer.libraryOperationService;
-    if (typeof service?.commitTransportCommand !== 'function') {
-      this.transportVersion = expectedTransportVersion + 1;
-      this.durableTransportDescriptor = descriptor;
-      return;
-    }
-    const result = await service.commitTransportCommand({ expectedTransportVersion, descriptor });
-    if (result?.kind === 'conflict') {
-      throw operationError('staleTransportVersion', 'Playback transport changed before command commit');
-    }
-    if (result?.kind !== 'published' || result.transportVersion !== expectedTransportVersion + 1) {
-      throw operationError('invalidOperationResult', 'Playback transport authority returned an invalid commit');
-    }
-    this.transportVersion = result.transportVersion;
-    this.durableTransportDescriptor = result.descriptor;
+  #restoreCatalogTrackState(ordinal, track, state) {
+    this.resolvedCatalogEntries.clear();
+    if (track?.path || track?.file || track?.provider) this.resolvedCatalogEntries.set(ordinal, track);
+    this.audioPlayer.stateManager?.updateState?.({
+      currentTrackIndex: ordinal,
+      currentTrack: track,
+      currentTrackPosition: state?.currentTrackPosition ?? 0,
+      playbackGeneration: this.playbackGeneration
+    }, 'PlaybackManager catalog media rollback');
   }
-  
+
+  #reportCatalogSkippedTracks(failures) {
+    for (const failure of failures) {
+      console.warn(
+        `[PlaybackManager] Skipping unavailable catalog occurrence at ordinal ${failure.ordinal}.`,
+        failure.error
+      );
+    }
+    globalThis.window?.uiManager?.showTransientMessage?.(
+      'status.libraryTracksSkippedOffline',
+      false,
+      { count: failures.length }
+    );
+  }
+
   /**
    * Play the current track
    */
@@ -981,15 +1145,73 @@ export class PlaybackManager {
     this.activePlayRequest = null;
   }
 
+  canResumeCurrentCatalogTrack(state, currentOrdinal) {
+    const sequence = this.catalogSequence;
+    const contextManager = this.audioPlayer.contextManager;
+    const currentTrack = state?.currentTrack;
+    if (!sequence || !contextManager ||
+        state?.sequenceKind !== 'catalog' ||
+        state.sequenceId !== sequence.sequenceId ||
+        state.playbackGeneration !== this.playbackGeneration ||
+        state.isPaused !== true || state.isStopped === true ||
+        !Number.isSafeInteger(currentOrdinal) ||
+        currentOrdinal !== state.currentTrackIndex ||
+        currentOrdinal < 0 || currentOrdinal >= sequence.itemCount ||
+        !currentTrack) {
+      return false;
+    }
+
+    const resolvedTrack = this.resolvedCatalogEntries.get(currentOrdinal);
+    if (resolvedTrack && !samePlaybackEntry(resolvedTrack, currentTrack)) return false;
+
+    if (state.playbackMode === 'bufferSource') {
+      return contextManager.hasCurrentBuffer?.() === true;
+    }
+    if (state.playbackMode !== 'audioElement') return false;
+
+    const audioElement = this.audioPlayer.audioElement;
+    if (!audioElement || audioElement.error || audioElement.ended === true) return false;
+    const mediaUrl = audioElement.currentSrc || audioElement.src;
+    if (typeof mediaUrl !== 'string' || mediaUrl.length === 0) return false;
+    if (currentTrack.sourceKind !== 'electron-file') return true;
+    const expectedSource = contextManager.getDirectElectronMediaSource?.(currentTrack);
+    return typeof expectedSource === 'string' && mediaUrl === expectedSource;
+  }
+
+  canResumeCurrentMaterializedTrack(state, currentIndex, currentTrack) {
+    if (this.catalogSequence ||
+        state?.isPaused !== true || state.isStopped === true ||
+        state.playbackMode !== 'audioElement' ||
+        state.currentTrackIndex !== currentIndex ||
+        !samePlaybackEntry(state.currentTrack, currentTrack)) {
+      return false;
+    }
+    const audioElement = this.audioPlayer.audioElement;
+    if (!audioElement || audioElement.error || audioElement.ended === true) return false;
+    const mediaUrl = audioElement.currentSrc || audioElement.src;
+    return typeof mediaUrl === 'string' && mediaUrl.length > 0;
+  }
+
   async performPlay(request, userInitiated = true) {
     if (this.catalogSequence) {
-      const currentOrdinal = this.audioPlayer.stateManager?.getCurrentTrackIndex?.() ?? 0;
+      const state = this.audioPlayer.stateManager?.getStateSnapshot?.();
+      const currentOrdinal = state?.currentTrackIndex ??
+        this.audioPlayer.stateManager?.getCurrentTrackIndex?.() ?? 0;
+      if (this.canResumeCurrentCatalogTrack(state, currentOrdinal)) {
+        const started = await this.audioPlayer.contextManager.play(false, userInitiated);
+        return this.isActivePlayRequest(request) ? started : false;
+      }
       const result = await this.selectCatalogOrdinal(currentOrdinal, { play: true, userInitiated });
       return this.isActivePlayRequest(request) && result?.accepted !== false;
     }
     if (this.audioPlayer.contextManager) {
       const currentIndex = this.audioPlayer.stateManager.getCurrentTrackIndex();
       const currentTrack = this.getTrack(currentIndex);
+      const state = this.audioPlayer.stateManager?.getStateSnapshot?.();
+      if (this.canResumeCurrentMaterializedTrack(state, currentIndex, currentTrack)) {
+        const started = await this.audioPlayer.contextManager.play(false, userInitiated);
+        return this.isActivePlayRequest(request) ? started : false;
+      }
       if (currentTrack && !this.audioPlayer.contextManager.hasCurrentBuffer()) {
         const transitioned = await this.audioPlayer.contextManager.seamlessTransition(
           currentTrack,
@@ -1047,6 +1269,8 @@ export class PlaybackManager {
    */
   async stop() {
     this.invalidateActivePlayRequest();
+    this.pendingTransport.invalidate('stopped');
+    this.catalogTrackGeneration += 1;
     this.transitionInProgress = false;
     this.clearFailedTrackSkipState();
     if (this.audioPlayer.contextManager) {
@@ -1414,7 +1638,7 @@ export class PlaybackManager {
       return;
     }
     if (this.catalogSequence) {
-      void this.transportNext(false).catch(error => {
+      void this.transportNext(false, { reason: 'ended' }).catch(error => {
         console.error('[PlaybackManager] Catalog transport Next failed:', error);
       });
       return;
@@ -1689,6 +1913,20 @@ export class PlaybackManager {
   /**
    * Initialize keyboard shortcuts
    */
+  runPlaybackCommand(command) {
+    try {
+      return Promise.resolve(command()).catch(error => {
+        console.error('[PlaybackManager] Playback command failed:', error);
+        globalThis.window?.uiManager?.setError?.('error.playbackCommandFailed', true);
+        return false;
+      });
+    } catch (error) {
+      console.error('[PlaybackManager] Playback command failed:', error);
+      globalThis.window?.uiManager?.setError?.('error.playbackCommandFailed', true);
+      return Promise.resolve(false);
+    }
+  }
+
   initKeyboardShortcuts() {
     if (this.keydownHandler) return;
 
@@ -1704,7 +1942,9 @@ export class PlaybackManager {
         case ' ':
           if (!e.target.matches('button, [role="button"], a, .interactive')) {
             e.preventDefault();
-            this.togglePlayPause(() => this.audioPlayer.resumeAudioContextInGesture?.());
+            void this.runPlaybackCommand(
+              () => this.togglePlayPause(() => this.audioPlayer.resumeAudioContextInGesture?.())
+            );
           }
           break;
           
@@ -1713,7 +1953,7 @@ export class PlaybackManager {
           if (!e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && !e.target.matches('input, textarea')) {
             e.preventDefault();
             if (this.audioPlayer.contextManager) {
-              this.playNext();
+              void this.runPlaybackCommand(() => this.playNext());
             }
           }
           break;
@@ -1723,7 +1963,7 @@ export class PlaybackManager {
           if (!e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && !e.target.matches('input, textarea')) {
             e.preventDefault();
             if (this.audioPlayer.contextManager) {
-              this.playPrevious();
+              void this.runPlaybackCommand(() => this.playPrevious());
             }
           }
           break;
@@ -1732,11 +1972,11 @@ export class PlaybackManager {
           if (e.ctrlKey) {
             e.preventDefault();
             if (this.audioPlayer.contextManager) {
-              this.playNext();
+              void this.runPlaybackCommand(() => this.playNext());
             }
           } else if (e.shiftKey) {
             e.preventDefault();
-            this.fastForward();
+            void this.runPlaybackCommand(() => this.fastForward());
           }
           break;
           
@@ -1744,11 +1984,11 @@ export class PlaybackManager {
           if (e.ctrlKey) {
             e.preventDefault();
             if (this.audioPlayer.contextManager) {
-              this.playPrevious();
+              void this.runPlaybackCommand(() => this.playPrevious());
             }
           } else if (e.shiftKey) {
             e.preventDefault();
-            this.rewind();
+            void this.runPlaybackCommand(() => this.rewind());
           }
           break;
           
@@ -1757,7 +1997,7 @@ export class PlaybackManager {
         case '.':
           if (!e.ctrlKey && !e.altKey && !e.metaKey && !e.target.matches('input, textarea')) {
             e.preventDefault();
-            this.fastForward();
+            void this.runPlaybackCommand(() => this.fastForward());
           }
           break;
           
@@ -1765,14 +2005,14 @@ export class PlaybackManager {
         case 'R':
           if (!e.ctrlKey && !e.altKey && !e.metaKey && !e.target.matches('input, textarea')) {
             e.preventDefault();
-            this.rewind();
+            void this.runPlaybackCommand(() => this.rewind());
           }
           break;
           
         case ',':
           if (!e.ctrlKey && !e.altKey && !e.metaKey && !e.target.matches('input, textarea')) {
             e.preventDefault();
-            this.rewind();
+            void this.runPlaybackCommand(() => this.rewind());
           }
           break;
           
@@ -1782,7 +2022,7 @@ export class PlaybackManager {
         case 'H':
           if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && !e.target.matches('input, textarea')) {
             e.preventDefault();
-            this.toggleShuffleMode();
+            void this.runPlaybackCommand(() => this.toggleShuffleMode());
           }
           break;
           
@@ -1790,7 +2030,7 @@ export class PlaybackManager {
         case 'M':
           if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && !e.target.matches('input, textarea')) {
             e.preventDefault();
-            this.toggleRepeatMode();
+            void this.runPlaybackCommand(() => this.toggleRepeatMode());
           }
           break;
           
@@ -1935,6 +2175,7 @@ export class PlaybackManager {
    */
   clear() {
     this.invalidateActivePlayRequest();
+    this.sessionTransportUndo = null;
     this.deactivateCatalogSequence();
     this.playlist = [];
     this.originalPlaylist = [];
@@ -2006,6 +2247,13 @@ function normalizeShuffleModeForRepeat(repeatMode, shuffleMode) {
   return repeatMode === 'ONE' ? false : !!shuffleMode;
 }
 
+function nextCatalogCandidateOrdinal({ currentOrdinal, direction, itemCount, wrap }) {
+  const nextOrdinal = currentOrdinal + direction;
+  if (nextOrdinal >= 0 && nextOrdinal < itemCount) return nextOrdinal;
+  if (!wrap) return null;
+  return direction < 0 ? itemCount - 1 : 0;
+}
+
 function createCatalogPlaylistFacade(sequence, resolvedEntries) {
   return new Proxy(Object.create(null), {
     get(_target, property) {
@@ -2028,17 +2276,24 @@ function createResolvedCatalogTrack(entry, source) {
     libraryTrackId: entry.trackUid ?? entry.libraryTrackId ?? null,
     meta: {
       title: entry.title || entry.name || '',
-      artist: entry.artist || '',
+      artist: entry.artist || entry.albumArtist || '',
       album: entry.album || ''
     },
     sequenceId: entry.sequenceId,
     canonicalOrdinal: entry.canonicalOrdinal,
     transportOrdinal: entry.transportOrdinal
   };
-  if (typeof source === 'function') track.provider = source;
-  if (source?.provider) track.provider = source.provider;
   if (source?.path) track.path = source.path;
-  if (source?.file) track.file = source.file;
+  if (source?.kind === 'electron-file') {
+    track.sourceKind = source.kind;
+    track.folderId = source.folderId ?? null;
+    track.sourceLifecycleVersion = source.lifecycleVersion ?? null;
+    track.sourceFileName = source.fileName ?? null;
+  } else {
+    if (typeof source === 'function') track.provider = source;
+    if (source?.provider) track.provider = source.provider;
+    if (source?.file) track.file = source.file;
+  }
   Object.defineProperty(track, 'entryInstanceId', {
     value: entry.entryInstanceId,
     enumerable: true,
@@ -2046,47 +2301,6 @@ function createResolvedCatalogTrack(entry, source) {
     writable: false
   });
   return track;
-}
-
-function sequenceToRuntimeDescriptor(sequence) {
-  return {
-    sequenceId: sequence.sequenceId,
-    itemCount: sequence.itemCount,
-    readPage: request => sequence.getWindow({
-      startOrdinal: request.startOrdinal,
-      limit: request.limit
-    }),
-    resolveSource: request => sequence.resolveEntrySource({
-      ...request,
-      sequenceId: request.sequenceId,
-      canonicalOrdinal: request.ordinal,
-      transportOrdinal: request.ordinal
-    })
-  };
-}
-
-function createDurableTransportDescriptor(sequence, currentDescriptor, currentOrdinal) {
-  const runtime = sequence.getDescriptor?.();
-  const segments = Array.isArray(currentDescriptor?.segments) && currentDescriptor.segments.length > 0
-    ? currentDescriptor.segments.map(segment => ({ ...segment }))
-    : flattenRuntimeDescriptor(runtime, 0, runtime?.itemCount ?? sequence.itemCount);
-  const descriptor = { segments, currentOrdinal };
-  if (runtime?.shuffleEnabled) {
-    descriptor.shuffleSeed = runtime.shuffleSeed;
-    descriptor.shuffleEpoch = runtime.shuffleEpoch;
-    descriptor.shuffleTransportOffset = runtime.shuffleTransportOffset;
-  }
-  return descriptor;
-}
-
-function isProvisionalTransportDescriptor(descriptor) {
-  if (!descriptor || descriptor.currentOrdinal !== 0 || !Array.isArray(descriptor.segments) ||
-      descriptor.segments.length !== 1) {
-    return false;
-  }
-  const [segment] = descriptor.segments;
-  return typeof segment?.sequenceId === 'string' && segment.sequenceId.length > 0 &&
-    segment.startOrdinal === 0 && segment.endOrdinal === 1;
 }
 
 function captureShuffleState(sequence) {
@@ -2099,12 +2313,11 @@ function captureShuffleState(sequence) {
   });
 }
 
-function createTransportRollback(sequence, previousShuffleState, previousDescriptor) {
+function createTransportRollback(sequence, previousShuffleState) {
   const plannedShuffleState = captureShuffleState(sequence);
   return Object.freeze({
     previousShuffleState,
     plannedShuffleState,
-    previousDescriptor,
     shuffleChanged: !sameShuffleState(previousShuffleState, plannedShuffleState)
   });
 }
@@ -2126,52 +2339,8 @@ function sameShuffleState(left, right) {
     left.transportOffset === right.transportOffset;
 }
 
-function flattenRuntimeDescriptor(descriptor, startOrdinal, itemCount) {
-  if (descriptor?.kind === 'catalog') {
-    const segment = {
-      sequenceId: descriptor.sequenceId,
-      startOrdinal,
-      endOrdinal: startOrdinal + itemCount
-    };
-    if (descriptor.shuffleEnabled) {
-      segment.shuffleSeed = descriptor.shuffleSeed;
-      segment.shuffleEpoch = descriptor.shuffleEpoch;
-      segment.shuffleTransportOffset = descriptor.shuffleTransportOffset;
-    }
-    return [segment];
-  }
-  if (descriptor?.kind !== 'composite' || !Array.isArray(descriptor.segments)) {
-    throw operationError('invalidTransportDescriptor', 'Playback sequence cannot be persisted');
-  }
-  const output = [];
-  let compositeOffset = 0;
-  let remainingStart = startOrdinal;
-  let remainingCount = itemCount;
-  for (const segment of descriptor.segments) {
-    if (remainingStart >= compositeOffset + segment.itemCount) {
-      compositeOffset += segment.itemCount;
-      continue;
-    }
-    const localStart = Math.max(0, remainingStart - compositeOffset);
-    const takeCount = Math.min(segment.itemCount - localStart, remainingCount);
-    output.push(...flattenRuntimeDescriptor(
-      segment.source,
-      (segment.startOrdinal ?? 0) + localStart,
-      takeCount
-    ));
-    remainingStart += takeCount;
-    remainingCount -= takeCount;
-    if (remainingCount === 0) break;
-    compositeOffset += segment.itemCount;
-  }
-  if (remainingCount !== 0 || output.length > 256) {
-    throw operationError('transportDescriptorLimit', 'Playback transport has too many persisted segments');
-  }
-  return output;
-}
-
-function createCompositeSequenceId(operationId, transportVersion) {
-  const suffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${transportVersion}`;
+function createCompositeSequenceId(operationId) {
+  const suffix = globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36);
   return `composite:${operationId ?? 'queue'}:${suffix}`;
 }
 

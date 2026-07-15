@@ -26,7 +26,10 @@ function createRepository(options = {}) {
         lifecycleVersion: input.expectedLifecycleVersion,
         parserVersion: 'parser-1',
         continuityBroken: input.resume,
-        sweepEligibility: input.resume ? 'INELIGIBLE' : 'PENDING'
+        sweepEligibility: input.resume ? 'INELIGIBLE' : 'PENDING',
+        visitedFiles: input.resume ? (options.visitedFiles ?? 0) : 0,
+        committedBatches: input.resume ? (options.committedBatches ?? 0) : 0,
+        metadataCursor: input.resume ? (options.metadataCursor ?? null) : null
       };
     },
     async preflightScanBatch(input) {
@@ -79,9 +82,6 @@ function createRepository(options = {}) {
     },
     async pauseScanFolder(input) {
       calls.push(['pause', input]);
-    },
-    async enterReadOnlyDiagnostic(input) {
-      calls.push(['read-only', input]);
     },
     async claimMetadataParse(input) {
       calls.push(['metadata-claim', input]);
@@ -164,7 +164,12 @@ test('bounded scan commits first-of capped batches without knownFiles or all-pat
 });
 
 test('resume re-enumerates from root and remains upsert-only even after a clean pass', async () => {
-  const repository = createRepository({ generation: 9 });
+  const repository = createRepository({
+    generation: 9,
+    visitedFiles: 501,
+    committedBatches: 2,
+    metadataCursor: 500
+  });
   const filesystem = createFilesystem(3);
   const service = createService({ repository, filesystem });
 
@@ -173,6 +178,14 @@ test('resume re-enumerates from root and remains upsert-only even after a clean 
   assert.deepEqual(filesystem.enumerated, ['']);
   assert.equal(result.status, 'completed-no-sweep');
   assert.equal(result.generation, 9);
+  assert.equal(result.counts.found, 504);
+  const commit = repository.calls.find(([name]) => name === 'commit')?.[1];
+  assert.equal(commit.lastCommittedBatch, 3);
+  assert.deepEqual(commit.cursor, {
+    lastRelativePath: 'Track-2.flac',
+    visitedFiles: 504,
+    committedBatches: 3
+  });
   assert.equal(repository.calls.some(([name]) => name === 'enqueue-sweep'), false);
   assert.equal(repository.calls.filter(([name]) => name === 'complete-no-sweep').length, 1);
 });
@@ -237,22 +250,19 @@ test('preflight shortfall pauses without entering read-only diagnostic mode', as
   assert.equal(repository.calls.some(([name]) => name === 'read-only'), false);
 });
 
-test('actual storage write failure transitions to typed read-only diagnostic mode', async () => {
+test('actual storage write failure stays scoped to the current scan attempt', async () => {
   const failure = Object.assign(new Error('disk full at private path'), { code: 'SQLITE_FULL' });
   const repository = createRepository({ commitError: failure });
   const service = createService({ repository, filesystem: createFilesystem(1) });
 
   await assert.rejects(
     () => service.runFolder({ scanId: 'scan-full', folder }),
-    error => error instanceof ScanServiceError && error.code === 'readOnlyDiagnostic' && !error.message.includes('private path')
+    error => error === failure
   );
-  assert.deepEqual(repository.calls.find(([name]) => name === 'read-only')?.[1], {
-    code: 'storage-write-failure',
-    safeDetails: { errorCode: 'sqlite_full' }
-  });
+  assert.equal(repository.calls.some(([name]) => name === 'read-only'), false);
   await assert.rejects(
     () => service.runFolder({ scanId: 'scan-after-full', folder }),
-    error => error.code === 'readOnlyDiagnostic'
+    error => error === failure
   );
 });
 
@@ -320,8 +330,152 @@ test('metadata claim precedes dispatch, failure preserves LKG, and stale complet
   service.parser = { async parse() { return { title: 'New' }; } };
   const stale = await service.process({ ...candidate, metadataStatus: 'retryable-error' });
   assert.equal(stale.status, 'discarded-stale');
+  assert.equal(
+    repository.calls.find(([name]) => name === 'metadata-success-stale')?.[1].deferAggregateRecompute,
+    true
+  );
   assert.equal(repository.calls.filter(([name]) => name === 'metadata-requeue').length, 1);
 
   await service.recoverInterruptedClaims();
   assert.equal(repository.calls.find(([name]) => name === 'metadata-recover')?.[1].errorCode, 'service-interrupted');
+});
+
+test('metadata pages batch claims and completions around bounded concurrent parsing', async () => {
+  const repository = createRepository();
+  repository.claimMetadataParseBatch = async input => {
+    repository.calls.push(['metadata-claim-batch', input]);
+    return { results: input.requests.map(request => ({ claim: { ...request } })) };
+  };
+  repository.completeMetadataParseBatch = async input => {
+    repository.calls.push(['metadata-completion-batch', input]);
+    return { results: input.completions.map(() => ({ committed: true })) };
+  };
+  let activeParsers = 0;
+  let highWaterParsers = 0;
+  const service = new MetadataParseService({
+    repository,
+    parser: {
+      async parse({ relativePath }) {
+        activeParsers += 1;
+        highWaterParsers = Math.max(highWaterParsers, activeParsers);
+        await new Promise(resolve => setTimeout(resolve, 0));
+        activeParsers -= 1;
+        return { title: relativePath };
+      }
+    }
+  });
+  const candidates = Array.from({ length: 6 }, (_, index) => ({
+    folderId: 'folder-1', trackUid: `track-${index}`, lifecycleVersion: 3, generation: 8,
+    relativePath: `Track-${index}.flac`, path: `D:/Music/Track-${index}.flac`,
+    parserVersion: 'parser-1', storedParserVersion: null, storedSignature: null,
+    observedSignature: { fileIdentity: `file-${index}`, size: 11 + index, mtimeMs: 22 + index },
+    metadataStatus: 'retryable-error', attemptsForSignature: 0, attemptedGeneration: null
+  }));
+
+  const results = await service.processBatch(candidates, { concurrency: 2 });
+
+  assert.deepEqual(results.map(result => result.status), Array(6).fill('committed'));
+  assert.equal(highWaterParsers, 2);
+  assert.equal(repository.calls.filter(([name]) => name === 'metadata-claim-batch').length, 1);
+  assert.equal(repository.calls.filter(([name]) => name === 'metadata-completion-batch').length, 1);
+  assert.equal(repository.calls.some(([name]) => name === 'metadata-claim'), false);
+  const completions = repository.calls.find(([name]) => name === 'metadata-completion-batch')[1].completions;
+  assert.ok(completions.every(completion =>
+    completion.outcome === 'success' && completion.request.deferAggregateRecompute === true));
+});
+
+test('metadata batch cancellation completes every claim as retryable before aborting', async () => {
+  const repository = createRepository();
+  repository.claimMetadataParseBatch = async input => ({
+    results: input.requests.map(request => ({ claim: { ...request } }))
+  });
+  let completionBatch;
+  repository.completeMetadataParseBatch = async input => {
+    completionBatch = input;
+    return { results: input.completions.map(() => ({ committed: true })) };
+  };
+  const controller = new AbortController();
+  const abort = Object.assign(new Error('cancel metadata page'), { name: 'AbortError' });
+  const service = new MetadataParseService({
+    repository,
+    parser: {
+      async parse() {
+        controller.abort(abort);
+        return {};
+      }
+    }
+  });
+  const candidates = Array.from({ length: 2 }, (_, index) => ({
+    folderId: 'folder-1', trackUid: `cancel-track-${index}`, lifecycleVersion: 3, generation: 8,
+    relativePath: `Cancel-${index}.flac`, path: `D:/Music/Cancel-${index}.flac`,
+    parserVersion: 'parser-1', storedParserVersion: null, storedSignature: null,
+    observedSignature: { fileIdentity: `cancel-file-${index}`, size: 11, mtimeMs: 22 },
+    metadataStatus: 'retryable-error', attemptsForSignature: 0, attemptedGeneration: null
+  }));
+
+  await assert.rejects(
+    service.processBatch(candidates, { signal: controller.signal, concurrency: 2 }),
+    error => error === abort
+  );
+  assert.equal(completionBatch.completions.length, 2);
+  assert.ok(completionBatch.completions.every(completion =>
+    completion.outcome === 'failure' &&
+    completion.request.metadataStatus === 'retryable-error' &&
+    completion.request.errorCode === 'service-interrupted'));
+});
+
+test('metadata cancellation avoids new claims and restores a claimed item as retryable', async () => {
+  const candidate = {
+    folderId: 'folder-1', trackUid: 'track-1', lifecycleVersion: 3, generation: 8,
+    relativePath: 'Cancel.flac', path: 'D:/Music/Cancel.flac',
+    parserVersion: 'parser-1', storedParserVersion: null,
+    storedSignature: null, observedSignature: { fileIdentity: 'file-1', size: 11, mtimeMs: 22 },
+    metadataStatus: 'retryable-error', attemptsForSignature: 0, attemptedGeneration: null
+  };
+
+  const preClaimRepository = createRepository();
+  const preClaimController = new AbortController();
+  const preClaimAbort = Object.assign(new Error('cancel before claim'), { name: 'AbortError' });
+  preClaimController.abort(preClaimAbort);
+  const preClaimService = new MetadataParseService({
+    repository: preClaimRepository,
+    parser: { async parse() { throw new Error('parser must not run'); } }
+  });
+  await assert.rejects(
+    preClaimService.process(candidate, { signal: preClaimController.signal }),
+    error => error === preClaimAbort
+  );
+  assert.equal(preClaimRepository.calls.some(([name]) => name === 'metadata-claim'), false);
+
+  const claimedRepository = createRepository();
+  const claimedController = new AbortController();
+  const claimedAbort = Object.assign(new Error('cancel after claim'), { name: 'AbortError' });
+  const claimedService = new MetadataParseService({
+    repository: claimedRepository,
+    parser: {
+      async parse() {
+        claimedController.abort(claimedAbort);
+        return { title: 'must not commit' };
+      }
+    }
+  });
+  await assert.rejects(
+    claimedService.process(candidate, { signal: claimedController.signal }),
+    error => error === claimedAbort
+  );
+  const failure = claimedRepository.calls.find(([name]) => name === 'metadata-failure')?.[1];
+  assert.deepEqual({
+    metadataStatus: failure.metadataStatus,
+    errorCode: failure.errorCode,
+    retryable: failure.retryable,
+    preserveLastKnownGood: failure.preserveLastKnownGood,
+    updateDerivedData: failure.updateDerivedData
+  }, {
+    metadataStatus: 'retryable-error',
+    errorCode: 'service-interrupted',
+    retryable: true,
+    preserveLastKnownGood: true,
+    updateDerivedData: false
+  });
+  assert.equal(claimedRepository.calls.some(([name]) => name === 'metadata-success'), false);
 });

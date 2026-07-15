@@ -1300,41 +1300,28 @@ class App {
                 const convertPathsToFileObjects = async (filePaths) => {
                     try {
                         return await Promise.all(filePaths.map(async (filePath) => {
-                            // Read file content as binary
-                            const fileResult = await window.electronAPI.readFile(filePath, true); // true for binary
-                            if (!fileResult.success) {
-                                console.error(`Failed to read file: ${fileResult.error}`);
+                            try {
+                                const bytes = await window.electronAPI.readFileBytes(filePath);
+                                const fileName = filePath.split(/[\\/]/).pop();
+                                const extension = fileName.split('.').pop().toLowerCase();
+                                const mimeTypes = {
+                                    'mp3': 'audio/mpeg',
+                                    'wav': 'audio/wav',
+                                    'ogg': 'audio/ogg',
+                                    'flac': 'audio/flac',
+                                    'opus': 'audio/opus',
+                                    'm4a': 'audio/mp4',
+                                    'aac': 'audio/aac',
+                                    'webm': 'audio/webm',
+                                    'mp4': 'video/mp4'
+                                };
+                                const mimeType = mimeTypes[extension] || 'audio/mpeg';
+                                const blob = new Blob([bytes], { type: mimeType });
+                                return new File([blob], fileName, { type: mimeType });
+                            } catch (error) {
+                                console.error(`Failed to read file: ${error?.message || error}`);
                                 return null;
                             }
-                            
-                            // Get file name from path
-                            const fileName = filePath.split(/[\\/]/).pop();
-                            
-                            // Convert base64 to ArrayBuffer
-                            const binaryString = atob(fileResult.content);
-                            const bytes = new Uint8Array(binaryString.length);
-                            for (let i = 0; i < binaryString.length; i++) {
-                                bytes[i] = binaryString.charCodeAt(i);
-                            }
-                            
-                            // Create a File object with the appropriate MIME type
-                            const extension = fileName.split('.').pop().toLowerCase();
-                            const mimeTypes = {
-                                'mp3': 'audio/mpeg',
-                                'wav': 'audio/wav',
-                                'ogg': 'audio/ogg',
-                                'flac': 'audio/flac',
-                                'opus': 'audio/opus',
-                                'm4a': 'audio/mp4',
-                                'aac': 'audio/aac',
-                                'webm': 'audio/webm',
-                                'mp4': 'video/mp4'
-                            };
-                            const mimeType = mimeTypes[extension] || 'audio/mpeg';
-                            
-                            // Create a File object
-                            const blob = new Blob([bytes.buffer], { type: mimeType });
-                            return new File([blob], fileName, { type: mimeType });
                         }));
                     } catch (error) {
                         console.error('Error converting paths to File objects:', error);

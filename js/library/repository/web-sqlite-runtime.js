@@ -94,7 +94,9 @@ const fs = Object.freeze({
   mkdirSync() {},
   statSync() { return { size: 0 }; },
   statfsSync() {
-    return { bsize: 1, bavail: Math.max(0, Math.floor(storageEstimate.quota - storageEstimate.usage)) };
+    const blocks = Math.max(0, Math.floor(Number(storageEstimate.quota) || 0));
+    const usedBlocks = Math.max(0, Math.floor(Number(storageEstimate.usage) || 0));
+    return { bsize: 1, blocks, bavail: Math.max(0, blocks - usedBlocks) };
   },
   realpathSync: Object.assign(value => value, { native: value => value })
 });
@@ -109,13 +111,22 @@ const MAX_TRACKS_PER_UPSERT_STATEMENT = 500;
 const MAX_QUERY_CHARACTERS = 512;
 const MAX_QUERY_TOKENS = 16;
 const MAX_QUERY_TOKEN_CHARACTERS = 128;
+const FOLDER_DELETION_TRACKS_PER_CHUNK = 100;
+const DELETION_MAINTENANCE_DELAY_MS = 50;
 const MAX_TRACK_TEXT_CHARACTERS = 4096;
 const MAX_ARTWORK_RAW_BYTES = 20 * 1024 * 1024;
 const MAX_ARTWORK_THUMBNAIL_BYTES = 512 * 1024;
 const ARTWORK_STORAGE_SAFETY_MIN_BYTES = 256 * 1024 * 1024;
 const ARTWORK_STORAGE_SAFETY_MAX_BYTES = 8 * 1024 * 1024 * 1024;
 const PLAYLIST_RESOLUTION_CANDIDATE_LIMIT = 256;
-const TRANSPORT_UNDO_RETENTION_MS = 60_000;
+const PLAYLIST_RECONCILIATION_BATCH_SIZE = 100;
+const ENTITY_AGGREGATE_PHASES = Object.freeze([
+  { scope: 'albums', entityTable: 'albums', membershipTable: 'track_albums', keyColumn: 'album_key' },
+  { scope: 'artists', entityTable: 'artists', membershipTable: 'track_artists', keyColumn: 'artist_key' },
+  { scope: 'genres', entityTable: 'genres', membershipTable: 'track_genres', keyColumn: 'genre_key' },
+  { scope: 'subfolders', entityTable: 'subfolders', membershipTable: 'track_subfolders', keyColumn: 'subfolder_key' }
+]);
+const RECENT_TRACK_LIMIT = 500;
 const DEFAULT_CONTEXT_TTL_MS = 5 * 60 * 1000;
 const MIN_CONTEXT_TTL_MS = 1000;
 const MAX_CONTEXT_TTL_MS = 60 * 60 * 1000;
@@ -141,6 +152,7 @@ const TRACK_SCOPE_FIELDS = Object.freeze([
   'genreKey',
   'subfolderKey',
   'playlistId',
+  'trackUids',
   'recent'
 ]);
 const TERMINAL_OPERATION_PHASES = Object.freeze([
@@ -149,11 +161,26 @@ const TERMINAL_OPERATION_PHASES = Object.freeze([
   'CANCELLED',
   'INTERRUPTED'
 ]);
+const DURABLE_OPERATION_KINDS = new Set([
+  'addToPlaylist', 'importPlaylist', 'previewPlaylistImport'
+]);
+const ACTIVE_TRACK_FOLDER_CLAUSE = `EXISTS(
+  SELECT 1 FROM folders active_folder
+  WHERE active_folder.id = t.folder_id AND active_folder.status <> 'removed'
+)`;
+const ACTIVE_PLAYLIST_TRACK_CLAUSE = `(i.track_uid IS NOT NULL AND ${ACTIVE_TRACK_FOLDER_CLAUSE})`;
+const SUBFOLDER_CAPTION_SQL = `COALESCE(
+  (SELECT root.display_name || ' / ' FROM folders root WHERE root.id = e.folder_id),
+  ''
+) || e.relative_path`;
 
 const ENTITY_DEFINITIONS = Object.freeze({
   album: Object.freeze({
     table: 'albums',
     scope: 'albums',
+    fixedClauses: Object.freeze([
+      createActiveEntityMembershipClause('track_albums', 'album_key')
+    ]),
     stableIdColumn: 'album_key',
     stableIdField: 'albumKey',
     defaultSort: 'name',
@@ -163,9 +190,12 @@ const ENTITY_DEFINITIONS = Object.freeze({
       'e.identity_version AS identityVersion',
       'e.name',
       'e.artist',
-      'e.track_count AS trackCount',
-      'e.total_duration_sec AS totalDurationSec',
-      '(SELECT m.track_uid FROM track_albums m WHERE m.album_key = e.album_key ORDER BY m.track_uid LIMIT 1) AS representativeTrackUid',
+      createActiveAggregateSelection('track_albums', 'album_key', 'count(*)', 'track_count', 'trackCount'),
+      createActiveAggregateSelection(
+        'track_albums', 'album_key', 'COALESCE(SUM(active_track.duration_sec), 0)',
+        'total_duration_sec', 'totalDurationSec'
+      ),
+      createActiveRepresentativeTrackSelection('track_albums', 'album_key'),
       'e.representative_artwork_id AS representativeArtworkId'
     ]),
     sorts: Object.freeze({
@@ -178,11 +208,25 @@ const ENTITY_DEFINITIONS = Object.freeze({
         Object.freeze({ field: 'sortName', column: 'sort_name', type: 'text', nulls: 'last' })
       ]),
       trackCount: Object.freeze([
-        Object.freeze({ field: 'trackCount', column: 'track_count', type: 'number', nulls: 'last' }),
+        Object.freeze({
+          field: 'trackCount',
+          column: 'track_count',
+          expression: createActiveAggregateExpression('track_albums', 'album_key', 'count(*)', 'track_count'),
+          type: 'number',
+          nulls: 'last'
+        }),
         Object.freeze({ field: 'sortName', column: 'sort_name', type: 'text', nulls: 'last' })
       ]),
       duration: Object.freeze([
-        Object.freeze({ field: 'totalDurationSec', column: 'total_duration_sec', type: 'number', nulls: 'last' }),
+        Object.freeze({
+          field: 'totalDurationSec',
+          column: 'total_duration_sec',
+          expression: createActiveAggregateExpression(
+            'track_albums', 'album_key', 'COALESCE(SUM(active_track.duration_sec), 0)', 'total_duration_sec'
+          ),
+          type: 'number',
+          nulls: 'last'
+        }),
         Object.freeze({ field: 'sortName', column: 'sort_name', type: 'text', nulls: 'last' })
       ])
     })
@@ -190,6 +234,9 @@ const ENTITY_DEFINITIONS = Object.freeze({
   artist: Object.freeze({
     table: 'artists',
     scope: 'artists',
+    fixedClauses: Object.freeze([
+      createActiveEntityMembershipClause('track_artists', 'artist_key')
+    ]),
     stableIdColumn: 'artist_key',
     stableIdField: 'artistKey',
     defaultSort: 'name',
@@ -198,16 +245,22 @@ const ENTITY_DEFINITIONS = Object.freeze({
       'e.artist_key AS artistKey',
       'e.identity_version AS identityVersion',
       'e.name',
-      'e.track_count AS trackCount',
-      'e.total_duration_sec AS totalDurationSec',
-      '(SELECT m.track_uid FROM track_artists m WHERE m.artist_key = e.artist_key ORDER BY m.track_uid LIMIT 1) AS representativeTrackUid',
+      createActiveAggregateSelection('track_artists', 'artist_key', 'count(*)', 'track_count', 'trackCount'),
+      createActiveAggregateSelection(
+        'track_artists', 'artist_key', 'COALESCE(SUM(active_track.duration_sec), 0)',
+        'total_duration_sec', 'totalDurationSec'
+      ),
+      createActiveRepresentativeTrackSelection('track_artists', 'artist_key'),
       'e.representative_artwork_id AS representativeArtworkId'
     ]),
-    sorts: createNamedEntitySorts()
+    sorts: createNamedEntitySorts('track_artists', 'artist_key')
   }),
   genre: Object.freeze({
     table: 'genres',
     scope: 'genres',
+    fixedClauses: Object.freeze([
+      createActiveEntityMembershipClause('track_genres', 'genre_key')
+    ]),
     stableIdColumn: 'genre_key',
     stableIdField: 'genreKey',
     defaultSort: 'name',
@@ -216,16 +269,20 @@ const ENTITY_DEFINITIONS = Object.freeze({
       'e.genre_key AS genreKey',
       'e.identity_version AS identityVersion',
       'e.name',
-      'e.track_count AS trackCount',
-      'e.total_duration_sec AS totalDurationSec',
-      '(SELECT m.track_uid FROM track_genres m WHERE m.genre_key = e.genre_key ORDER BY m.track_uid LIMIT 1) AS representativeTrackUid',
+      createActiveAggregateSelection('track_genres', 'genre_key', 'count(*)', 'track_count', 'trackCount'),
+      createActiveAggregateSelection(
+        'track_genres', 'genre_key', 'COALESCE(SUM(active_track.duration_sec), 0)',
+        'total_duration_sec', 'totalDurationSec'
+      ),
+      createActiveRepresentativeTrackSelection('track_genres', 'genre_key'),
       'e.representative_artwork_id AS representativeArtworkId'
     ]),
-    sorts: createNamedEntitySorts()
+    sorts: createNamedEntitySorts('track_genres', 'genre_key')
   }),
   folder: Object.freeze({
     table: 'folders',
     scope: 'folders',
+    fixedClauses: Object.freeze(["e.status <> 'removed'"]),
     stableIdColumn: 'id',
     stableIdField: 'id',
     defaultSort: 'name',
@@ -233,12 +290,14 @@ const ENTITY_DEFINITIONS = Object.freeze({
     publicSelection: Object.freeze([
       'e.id',
       'e.kind',
+      'NULL AS path',
       'e.display_name AS displayName',
-      'e.status',
+      "CASE WHEN e.status = 'offline' THEN 'needs-permission' ELSE e.status END AS status",
       'e.scan_generation AS scanGeneration',
       'e.lifecycle_version AS lifecycleVersion',
       'e.added_at AS addedAt',
-      'e.last_scan_at AS lastScanAt'
+      'e.last_scan_at AS lastScanAt',
+      '(SELECT count(*) FROM tracks active_track WHERE active_track.folder_id = e.id) AS trackCount'
     ]),
     sorts: Object.freeze({
       name: Object.freeze([
@@ -252,9 +311,13 @@ const ENTITY_DEFINITIONS = Object.freeze({
   subfolder: Object.freeze({
     table: 'subfolders',
     scope: 'subfolders',
+    fixedClauses: Object.freeze([
+      createActiveEntityMembershipClause('track_subfolders', 'subfolder_key'),
+      "EXISTS(SELECT 1 FROM folders active_folder WHERE active_folder.id = e.folder_id AND active_folder.status <> 'removed')"
+    ]),
     stableIdColumn: 'subfolder_key',
     stableIdField: 'subfolderKey',
-    defaultSort: 'name',
+    defaultSort: 'path',
     searchColumns: Object.freeze(['sort_name']),
     publicSelection: Object.freeze([
       'e.subfolder_key AS subfolderKey',
@@ -262,12 +325,22 @@ const ENTITY_DEFINITIONS = Object.freeze({
       'e.identity_version AS identityVersion',
       'e.display_name AS name',
       'e.display_name AS displayName',
-      'e.track_count AS trackCount',
-      'e.total_duration_sec AS totalDurationSec',
-      '(SELECT m.track_uid FROM track_subfolders m WHERE m.subfolder_key = e.subfolder_key ORDER BY m.track_uid LIMIT 1) AS representativeTrackUid',
+      `${SUBFOLDER_CAPTION_SQL} AS caption`,
+      createActiveAggregateSelection('track_subfolders', 'subfolder_key', 'count(*)', 'track_count', 'trackCount'),
+      createActiveAggregateSelection(
+        'track_subfolders', 'subfolder_key', 'COALESCE(SUM(active_track.duration_sec), 0)',
+        'total_duration_sec', 'totalDurationSec'
+      ),
+      createActiveRepresentativeTrackSelection('track_subfolders', 'subfolder_key'),
       'e.representative_artwork_id AS representativeArtworkId'
     ]),
-    sorts: createNamedEntitySorts()
+    sorts: Object.freeze({
+      ...createNamedEntitySorts('track_subfolders', 'subfolder_key'),
+      path: Object.freeze([
+        Object.freeze({ field: 'folderSortKey', column: 'folder_id', type: 'text', nulls: 'last' }),
+        Object.freeze({ field: 'subfolderSortPath', column: 'relative_path', type: 'text', nulls: 'last' })
+      ])
+    })
   }),
   playlist: Object.freeze({
     table: 'playlists',
@@ -282,7 +355,15 @@ const ENTITY_DEFINITIONS = Object.freeze({
       'e.state',
       'e.version',
       'e.created_at AS createdAt',
-      'e.updated_at AS updatedAt'
+      'e.updated_at AS updatedAt',
+      `(SELECT count(*)
+        FROM playlist_items visible_item
+        LEFT JOIN operation_jobs visible_operation
+          ON visible_operation.operation_id = visible_item.pending_operation_id
+        WHERE visible_item.playlist_id = e.id
+          AND (visible_item.pending_operation_id IS NULL OR (
+            visible_operation.committed = 1 AND visible_operation.terminal_kind = 'success'
+          ))) AS itemCount`
     ]),
     fixedClauses: Object.freeze(["e.state = 'active'"]),
     sorts: Object.freeze({
@@ -299,19 +380,85 @@ const ENTITY_DEFINITIONS = Object.freeze({
   })
 });
 
-function createNamedEntitySorts() {
+function createNamedEntitySorts(membershipTable, keyColumn) {
   const nameField = { field: 'sortName', column: 'sort_name', type: 'text', nulls: 'last' };
   return Object.freeze({
     name: Object.freeze([Object.freeze(nameField)]),
     trackCount: Object.freeze([
-      Object.freeze({ field: 'trackCount', column: 'track_count', type: 'number', nulls: 'last' }),
+      Object.freeze({
+        field: 'trackCount',
+        column: 'track_count',
+        expression: createActiveAggregateExpression(membershipTable, keyColumn, 'count(*)', 'track_count'),
+        type: 'number',
+        nulls: 'last'
+      }),
       Object.freeze(nameField)
     ]),
     duration: Object.freeze([
-      Object.freeze({ field: 'totalDurationSec', column: 'total_duration_sec', type: 'number', nulls: 'last' }),
+      Object.freeze({
+        field: 'totalDurationSec',
+        column: 'total_duration_sec',
+        expression: createActiveAggregateExpression(
+          membershipTable, keyColumn, 'COALESCE(SUM(active_track.duration_sec), 0)', 'total_duration_sec'
+        ),
+        type: 'number',
+        nulls: 'last'
+      }),
       Object.freeze(nameField)
     ])
   });
+}
+
+function createActiveEntityMembershipClause(membershipTable, keyColumn) {
+  return `(
+    NOT EXISTS(
+      SELECT 1 FROM ${membershipTable} any_membership
+      WHERE any_membership.${keyColumn} = e.${keyColumn}
+    )
+    OR EXISTS(
+      SELECT 1 FROM ${membershipTable} active_membership
+      JOIN tracks active_track ON active_track.track_uid = active_membership.track_uid
+      JOIN folders active_folder ON active_folder.id = active_track.folder_id
+        AND active_folder.status <> 'removed'
+      WHERE active_membership.${keyColumn} = e.${keyColumn}
+    )
+  )`;
+}
+
+function createActiveAggregateSelection(membershipTable, keyColumn, aggregateExpression, fallbackColumn, alias) {
+  return `${createActiveAggregateExpression(
+    membershipTable, keyColumn, aggregateExpression, fallbackColumn
+  )} AS ${alias}`;
+}
+
+function createActiveAggregateExpression(membershipTable, keyColumn, aggregateExpression, fallbackColumn) {
+  return `(CASE
+    WHEN EXISTS(
+      SELECT 1 FROM ${membershipTable} any_membership
+      WHERE any_membership.${keyColumn} = e.${keyColumn}
+    ) THEN (
+      SELECT ${aggregateExpression}
+      FROM ${membershipTable} active_membership
+      JOIN tracks active_track ON active_track.track_uid = active_membership.track_uid
+      JOIN folders active_folder ON active_folder.id = active_track.folder_id
+        AND active_folder.status <> 'removed'
+      WHERE active_membership.${keyColumn} = e.${keyColumn}
+    )
+    ELSE e.${fallbackColumn}
+  END)`;
+}
+
+function createActiveRepresentativeTrackSelection(membershipTable, keyColumn) {
+  return `(
+    SELECT active_membership.track_uid
+    FROM ${membershipTable} active_membership
+    JOIN tracks active_track ON active_track.track_uid = active_membership.track_uid
+    JOIN folders active_folder ON active_folder.id = active_track.folder_id
+      AND active_folder.status <> 'removed'
+    WHERE active_membership.${keyColumn} = e.${keyColumn}
+    ORDER BY (active_track.artwork_id IS NOT NULL) DESC, active_membership.track_uid
+    LIMIT 1
+  ) AS representativeTrackUid`;
 }
 
 let database;
@@ -323,6 +470,10 @@ let activeArtworkUtilitySession = null;
 let contextCounter = 0;
 let closed = false;
 const contexts = new Map();
+const contextWalByteCache = new Map();
+const pendingEntityAggregationScans = new Set();
+const pendingScanInvalidations = new Map();
+let activeMutationBatch = null;
 let contextTtlMs = DEFAULT_CONTEXT_TTL_MS;
 let maxContexts = DEFAULT_MAX_CONTEXTS;
 let contextWalCapBytes = DEFAULT_CONTEXT_WAL_CAP_BYTES;
@@ -353,13 +504,18 @@ export async function initializeWebSqliteRuntime(databaseAdapter, {
   contextCounter = 0;
   scopeVersions = Object.create(null);
   contexts.clear();
+  contextWalByteCache.clear();
+  pendingEntityAggregationScans.clear();
+  pendingScanInvalidations.clear();
   assertSchemaSearchFields(schema.MUSIC_LIBRARY_SEARCH_FIELDS);
   database.exec(schema.getMusicLibraryV2InitializationSql({ journalMode: 'persist' }));
   database.prepare('DELETE FROM artwork_claims').run();
   verifyPragmas();
   initializeMetadata(schema.MUSIC_LIBRARY_SCHEMA_VERSION);
   recoverInterruptedOperations();
+  removeLegacyPlaybackOperations();
   recoverInterruptedScans();
+  scheduleDeletionMaintenance();
 
   return getCapabilities();
 }
@@ -367,6 +523,13 @@ export async function initializeWebSqliteRuntime(databaseAdapter, {
 function recoverInterruptedScans() {
   const now = Date.now();
   runDurableTransaction(() => {
+    const interrupted = database.prepare(`
+      SELECT scan_id AS scanId, folder_id AS folderId, generation,
+        expected_lifecycle_version AS lifecycleVersion
+      FROM scan_run_folders
+      WHERE status IN ('enumerating', 'committing', 'reconciling', 'sweeping')
+    `).all();
+    for (const identity of interrupted) activateEntityAggregationJob(identity);
     const changed = database.prepare(`
       UPDATE scan_run_folders
       SET status = 'interrupted', stop_reason = 'service-interrupted',
@@ -382,6 +545,10 @@ function recoverInterruptedScans() {
       UPDATE deletion_jobs SET state = 'blocked-interrupted', updated_at = ?
       WHERE kind = 'scan-sweep' AND state = 'active'
     `).run(now);
+    database.prepare(`
+      DELETE FROM deletion_jobs
+      WHERE kind = 'playlist-resolve' AND folder_id IS NULL
+    `).run();
     return { changed: Number(changed.changes) };
   });
 }
@@ -428,10 +595,6 @@ function initializeMetadata(expectedSchemaVersion) {
   if (!Number.isSafeInteger(catalogVersion) || catalogVersion < 0) {
     throw createCatalogError('catalogCorrupt', 'Catalog version metadata is invalid');
   }
-  database.prepare(`
-    INSERT OR IGNORE INTO catalog_versions(version, committed_at, reason)
-    VALUES (0, ?, 'initialize')
-  `).run(Date.now());
   for (const scope of ['artwork', 'tracks', 'folders', 'subfolders', 'albums', 'artists', 'genres', 'playlists']) {
     const key = `scope_version:${scope}`;
     insertMeta.run(key, '0');
@@ -467,10 +630,7 @@ function recoverInterruptedOperations() {
       WHERE terminal_kind IS NULL
         AND phase NOT IN (${TERMINAL_OPERATION_PHASES.map(() => '?').join(', ')})
     `).run(result, now, now, ...TERMINAL_OPERATION_PHASES);
-    for (const operation of interrupted) {
-      releaseOperationSequenceOwners(operation.operationId);
-      releaseOperationSnapshots(operation.operationId);
-    }
+    for (const operation of interrupted) releaseOperationSnapshots(operation.operationId);
     database.prepare(`
       UPDATE playlists
       SET state = CASE WHEN state = 'building' THEN 'deleted' ELSE state END,
@@ -481,15 +641,6 @@ function recoverInterruptedOperations() {
         WHERE terminal_kind = 'interrupted' AND finished_at = ?
       )
     `).run(now, now);
-    database.prepare(`
-      UPDATE playback_sequences
-      SET state = CASE WHEN state = 'building' THEN 'deleted' ELSE state END,
-        building_operation_id = NULL
-      WHERE building_operation_id IN (
-        SELECT operation_id FROM operation_jobs
-        WHERE terminal_kind = 'interrupted' AND finished_at = ?
-      )
-    `).run(now);
     return interrupted
       .filter(operation => !operation.contextReleased && operation.sourceContextToken)
       .map(operation => operation.sourceContextToken);
@@ -509,6 +660,24 @@ function recoverInterruptedOperations() {
   }
 }
 
+function removeLegacyPlaybackOperations() {
+  runDurableTransaction(() => {
+    const operationIds = database.prepare(`
+      SELECT operation_id AS operationId FROM operation_jobs
+      WHERE operation_kind IN ('play', 'playNext', 'queue')
+    `).all().map(row => row.operationId);
+    const deleteProgress = database.prepare('DELETE FROM operation_progress WHERE operation_id = ?');
+    const deleteSavePages = database.prepare('DELETE FROM sequence_save_pages WHERE operation_id = ?');
+    const deleteOperation = database.prepare('DELETE FROM operation_jobs WHERE operation_id = ?');
+    for (const operationId of operationIds) {
+      releaseOperationSnapshots(operationId);
+      deleteProgress.run(operationId);
+      deleteSavePages.run(operationId);
+      deleteOperation.run(operationId);
+    }
+  });
+}
+
 export function dispatchWebSqliteCommand(command, payload) {
   switch (command) {
     case 'getCapabilities': return getCapabilities();
@@ -517,7 +686,6 @@ export function dispatchWebSqliteCommand(command, payload) {
     case 'upsertFolders': return upsertFolders(payload);
     case 'upsertTracks': return upsertTracks(payload);
     case 'deleteTracks': return deleteTracks(payload);
-    case 'upsertEntities': return upsertEntities(payload);
     case 'createContext': return createContext(payload);
     case 'getContextCount': return getContextCount(payload);
     case 'queryTracks': return queryTracks(payload);
@@ -525,12 +693,13 @@ export function dispatchWebSqliteCommand(command, payload) {
     case 'readContextPage': return readContextPage(payload);
     case 'readContextPageAtOrdinal': return readContextPageAtOrdinal(payload);
     case 'resolveEntityAnchor': return resolveEntityAnchor(payload);
-    case 'lookupContextTrack': return lookupContextTrack(payload);
+    case 'retainContext': return retainContext(payload);
+    case 'releaseRetainedContext': return releaseRetainedContext(payload);
     case 'releaseContext': return releaseContext(payload);
-    case 'cleanupExpiredContexts': return cleanupExpiredContexts(payload);
     case 'cleanupExpiredContextItems': return cleanupExpiredContextItems(payload);
     case 'getTrack': return getTrack(payload);
     case 'getTrackStorageIdentity': return getTrackStorageIdentity(payload);
+    case 'resolvePlaylistExportSource': return resolvePlaylistExportSource(payload);
     case 'getCachedArtwork': return getCachedArtwork(payload);
     case 'beginArtworkUtilitySession': return beginArtworkUtilitySession(payload);
     case 'getArtworkSource': return getArtworkSource(payload);
@@ -543,6 +712,7 @@ export function dispatchWebSqliteCommand(command, payload) {
     case 'evictArtworkCache': return evictArtworkCache(payload);
     case 'resolvePlaybackSource': return resolvePlaybackSource(payload);
     case 'listScanFolders': return listScanFolders(payload);
+    case 'getScanFolderTrackCount': return getScanFolderTrackCount(payload);
     case 'beginScanFolder': return beginScanFolder(payload);
     case 'preflightScanBatch': return preflightScanBatch(payload);
     case 'commitScanSeenBatch': return commitScanSeenBatch(payload);
@@ -556,15 +726,15 @@ export function dispatchWebSqliteCommand(command, payload) {
     case 'completeScanFolder': return completeScanFolder(payload);
     case 'completeScanFolderNoSweep': return completeScanFolderNoSweep(payload);
     case 'pauseScanFolder': return pauseScanFolder(payload);
-    case 'enterReadOnlyDiagnostic': return enterReadOnlyDiagnostic(payload);
     case 'claimMetadataParse': return claimMetadataParse(payload);
+    case 'claimMetadataParseBatch': return claimMetadataParseBatch(payload);
     case 'completeMetadataParseSuccess': return completeMetadataParseSuccess(payload);
     case 'completeMetadataParseFailure': return completeMetadataParseFailure(payload);
+    case 'completeMetadataParseBatch': return completeMetadataParseBatch(payload);
     case 'requeueLatestMetadata': return requeueLatestMetadata(payload);
     case 'recoverInterruptedMetadataClaims': return recoverInterruptedMetadataClaims(payload);
     case 'removeScanFolder': return removeScanFolder(payload);
     case 'receiveOperation': return receiveOperation(payload);
-    case 'lookupOperationResult': return lookupOperationResult(payload);
     case 'getOperationStatus': return getOperationStatus(payload);
     case 'requestOperationCancel': return requestOperationCancel(payload);
     case 'transitionOperation': return transitionOperation(payload);
@@ -579,17 +749,8 @@ export function dispatchWebSqliteCommand(command, payload) {
     case 'createPlaybackSequence': return createPlaybackSequence(payload);
     case 'appendPlaybackSequenceItems': return appendPlaybackSequenceItems(payload);
     case 'sealPlaybackSequence': return sealPlaybackSequence(payload);
-    case 'publishPlaybackSequence': return publishPlaybackSequence(payload);
-    case 'publishProvisionalTransport': return publishProvisionalTransport(payload);
-    case 'publishTransportSequence': return publishTransportSequence(payload);
-    case 'getTransportState': return getTransportState(payload);
-    case 'commitTransportState': return commitTransportState(payload);
-    case 'applyTransportUndo': return applyTransportUndo(payload);
     case 'queryPlaybackSequence': return queryPlaybackSequence(payload);
-    case 'queryTransportSegmentPage': return queryTransportSegmentPage(payload);
     case 'queryTransportDescriptorPage': return queryTransportDescriptorPage(payload);
-    case 'tombstonePlaybackSequence': return tombstonePlaybackSequence(payload);
-    case 'gcPlaybackSequences': return gcPlaybackSequences(payload);
     case 'createPlaylist': return createPlaylist(payload);
     case 'createPlaylistWithItems': return createPlaylistWithItems(payload);
     case 'renamePlaylist': return renamePlaylist(payload);
@@ -597,6 +758,8 @@ export function dispatchWebSqliteCommand(command, payload) {
     case 'removePlaylistItem': return removePlaylistItem(payload);
     case 'duplicatePlaylist': return duplicatePlaylist(payload);
     case 'prepareSequencePlaylistSave': return prepareSequencePlaylistSave(payload);
+    case 'getAutomaticPlaylistImportState': return getAutomaticPlaylistImportState(payload);
+    case 'prepareAutomaticPlaylistImport': return prepareAutomaticPlaylistImport(payload);
     case 'appendSequencePlaylistPage': return appendSequencePlaylistPage(payload);
     case 'appendPlaylistItems': return appendPlaylistItems(payload);
     case 'appendPlaylistImportRecords': return appendPlaylistImportRecords(payload);
@@ -606,6 +769,7 @@ export function dispatchWebSqliteCommand(command, payload) {
     case 'tombstonePlaylist': return tombstonePlaylist(payload);
     case 'cleanupPlaylistItems': return cleanupPlaylistItems(payload);
     case 'gcPlaylistItems': return gcPlaylistItems(payload);
+    case 'resumeFolderDeletionJobs': return resumeFolderDeletionJobs(payload);
     case 'repairInterruptedDeletionItems': return repairInterruptedDeletionItems(payload);
     case 'checkIntegrity': return checkIntegrity(payload);
     case 'close': return closeCatalog(payload);
@@ -623,7 +787,6 @@ function getCapabilities() {
     trigram: true,
     shortTokenSearch: true,
     shortSearchMode: 'word-prefix',
-    productionQualified: true,
     entityTypes: Object.keys(ENTITY_DEFINITIONS),
     maxPageRows: MAX_QUERY_LIMIT,
     maxPageBytes: MAX_RESPONSE_BYTES,
@@ -655,12 +818,18 @@ function getRuntimeDiagnostics(payload = {}) {
 function readCounts() {
   const row = database.prepare(`
     SELECT
-      (SELECT count(*) FROM tracks) AS tracks,
-      (SELECT count(*) FROM folders) AS folders,
-      (SELECT count(*) FROM subfolders) AS subfolders,
-      (SELECT count(*) FROM albums) AS albums,
-      (SELECT count(*) FROM artists) AS artists,
-      (SELECT count(*) FROM genres) AS genres,
+      (SELECT count(*) FROM tracks t WHERE ${ACTIVE_TRACK_FOLDER_CLAUSE}) AS tracks,
+      (SELECT count(*) FROM folders WHERE status <> 'removed') AS folders,
+      (SELECT count(*) FROM subfolders e WHERE
+        ${createActiveEntityMembershipClause('track_subfolders', 'subfolder_key')}
+        AND EXISTS(SELECT 1 FROM folders active_folder
+          WHERE active_folder.id = e.folder_id AND active_folder.status <> 'removed')) AS subfolders,
+      (SELECT count(*) FROM albums e WHERE
+        ${createActiveEntityMembershipClause('track_albums', 'album_key')}) AS albums,
+      (SELECT count(*) FROM artists e WHERE
+        ${createActiveEntityMembershipClause('track_artists', 'artist_key')}) AS artists,
+      (SELECT count(*) FROM genres e WHERE
+        ${createActiveEntityMembershipClause('track_genres', 'genre_key')}) AS genres,
       (SELECT count(*) FROM playlists WHERE state = 'active') AS playlists
   `).get();
   return Object.fromEntries(Object.entries(row).map(([key, value]) => [key, Number(value)]));
@@ -703,218 +872,6 @@ function upsertFolders(payload) {
     }
     return { writtenCount: rows.length };
   });
-}
-
-function upsertEntities(payload) {
-  assertExactFields(payload, ['type', 'entities'], 'invalidEntityBatch');
-  const type = normalizeEntityType(payload.type);
-  const entities = validateBatch(payload.entities, 'entities');
-  if (entities.length === 0) return createNoChangeResult();
-  if (type === 'folder') {
-    return upsertFolders({
-      folders: entities.map((entity, index) => normalizeFolderEntityInput(entity, index))
-    });
-  }
-  const normalized = entities.map((entity, index) => normalizeEntity(type, entity, index));
-  const definition = ENTITY_DEFINITIONS[type];
-  const statement = prepareEntityUpsert(type);
-  return commitMutation([definition.scope], `upsert-${definition.scope}`, () => {
-    for (const entity of normalized) statement.run(...createEntityBindings(type, entity));
-    return { writtenCount: normalized.length, entityType: type };
-  });
-}
-
-function normalizeFolderEntityInput(entity, index) {
-  if (!isPlainObject(entity)) throw createCatalogError('invalidEntity', `Entity ${index} must be an object`);
-  assertAllowedFields(entity, [
-    'folderUid', 'id', 'kind', 'displayName', 'path', 'status', 'scanGeneration',
-    'lifecycleVersion', 'addedAt', 'lastScanAt'
-  ], 'invalidEntity');
-  if (entity.folderUid !== undefined && entity.id !== undefined && entity.folderUid !== entity.id) {
-    throw createCatalogError('invalidEntity', 'Folder stable IDs do not match');
-  }
-  const { folderUid, ...folder } = entity;
-  return { ...folder, id: folderUid ?? folder.id };
-}
-
-function normalizeEntity(type, entity, index) {
-  if (!isPlainObject(entity)) throw createCatalogError('invalidEntity', `Entity ${index} must be an object`);
-  const commonAggregateFields = [
-    'identityVersion', 'name', 'trackCount', 'totalDurationSec', 'representativeArtworkId'
-  ];
-  if (type === 'album') {
-    assertAllowedFields(entity, ['albumKey', 'artist', ...commonAggregateFields], 'invalidEntity');
-    return {
-      stableId: requireString(entity.albumKey, `entities[${index}].albumKey`, 512),
-      identityVersion: normalizeIdentityVersion(entity.identityVersion),
-      name: requireString(entity.name, `entities[${index}].name`, MAX_TRACK_TEXT_CHARACTERS),
-      artist: optionalString(entity.artist, '', MAX_TRACK_TEXT_CHARACTERS),
-      trackCount: optionalNonNegativeInteger(entity.trackCount, 0, 'trackCount'),
-      totalDurationSec: optionalNonNegativeFiniteNumber(entity.totalDurationSec, 0, 'totalDurationSec'),
-      representativeArtworkId: optionalNullableString(entity.representativeArtworkId, 512)
-    };
-  }
-  if (type === 'artist' || type === 'genre') {
-    const stableIdField = type === 'artist' ? 'artistKey' : 'genreKey';
-    assertAllowedFields(entity, [stableIdField, ...commonAggregateFields], 'invalidEntity');
-    return {
-      stableId: requireString(entity[stableIdField], `entities[${index}].${stableIdField}`, 512),
-      identityVersion: normalizeIdentityVersion(entity.identityVersion),
-      name: requireString(entity.name, `entities[${index}].name`, MAX_TRACK_TEXT_CHARACTERS),
-      trackCount: optionalNonNegativeInteger(entity.trackCount, 0, 'trackCount'),
-      totalDurationSec: optionalNonNegativeFiniteNumber(entity.totalDurationSec, 0, 'totalDurationSec'),
-      representativeArtworkId: optionalNullableString(entity.representativeArtworkId, 512)
-    };
-  }
-  if (type === 'subfolder') {
-    assertAllowedFields(entity, [
-      'subfolderKey', 'folderId', 'relativePath', 'identityVersion', 'displayName',
-      'trackCount', 'totalDurationSec', 'representativeArtworkId'
-    ], 'invalidEntity');
-    return {
-      stableId: requireString(entity.subfolderKey, `entities[${index}].subfolderKey`, 1024),
-      folderId: requireString(entity.folderId, `entities[${index}].folderId`, 512),
-      relativePath: normalizeRelativePath(requireString(
-        entity.relativePath,
-        `entities[${index}].relativePath`,
-        32768
-      )),
-      identityVersion: normalizeIdentityVersion(entity.identityVersion),
-      displayName: requireString(entity.displayName, `entities[${index}].displayName`, MAX_TRACK_TEXT_CHARACTERS),
-      trackCount: optionalNonNegativeInteger(entity.trackCount, 0, 'trackCount'),
-      totalDurationSec: optionalNonNegativeFiniteNumber(entity.totalDurationSec, 0, 'totalDurationSec'),
-      representativeArtworkId: optionalNullableString(entity.representativeArtworkId, 512)
-    };
-  }
-  if (type === 'playlist') {
-    assertAllowedFields(entity, [
-      'id', 'playlistUid', 'name', 'state', 'version', 'createdAt', 'updatedAt'
-    ], 'invalidEntity');
-    if (entity.id !== undefined && entity.playlistUid !== undefined && entity.id !== entity.playlistUid) {
-      throw createCatalogError('invalidEntity', 'Playlist stable IDs do not match');
-    }
-    const now = Date.now();
-    const state = optionalString(entity.state, 'active', 32);
-    if (state !== 'active' && state !== 'deleted') {
-      throw createCatalogError('invalidEntity', 'Persisted playlist state must be active or deleted');
-    }
-    return {
-      stableId: requireString(entity.id ?? entity.playlistUid, `entities[${index}].id`, 512),
-      name: requireString(entity.name, `entities[${index}].name`, MAX_TRACK_TEXT_CHARACTERS),
-      state,
-      version: optionalNonNegativeInteger(entity.version, 0, 'version'),
-      createdAt: optionalNonNegativeInteger(entity.createdAt, now, 'createdAt'),
-      updatedAt: optionalNonNegativeInteger(entity.updatedAt, now, 'updatedAt')
-    };
-  }
-  throw createCatalogError('unsupportedEntityType', 'Catalog entity type is not supported');
-}
-
-function prepareEntityUpsert(type) {
-  if (type === 'album') {
-    return database.prepare(`
-      INSERT INTO albums(
-        album_key, identity_version, name, artist, sort_name, sort_artist,
-        track_count, total_duration_sec, representative_artwork_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(album_key) DO UPDATE SET
-        identity_version = excluded.identity_version,
-        name = excluded.name,
-        artist = excluded.artist,
-        sort_name = excluded.sort_name,
-        sort_artist = excluded.sort_artist,
-        track_count = excluded.track_count,
-        total_duration_sec = excluded.total_duration_sec,
-        representative_artwork_id = excluded.representative_artwork_id
-    `);
-  }
-  if (type === 'artist' || type === 'genre') {
-    const definition = ENTITY_DEFINITIONS[type];
-    return database.prepare(`
-      INSERT INTO ${definition.table}(
-        ${definition.stableIdColumn}, identity_version, name, sort_name,
-        track_count, total_duration_sec, representative_artwork_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(${definition.stableIdColumn}) DO UPDATE SET
-        identity_version = excluded.identity_version,
-        name = excluded.name,
-        sort_name = excluded.sort_name,
-        track_count = excluded.track_count,
-        total_duration_sec = excluded.total_duration_sec,
-        representative_artwork_id = excluded.representative_artwork_id
-    `);
-  }
-  if (type === 'subfolder') {
-    return database.prepare(`
-      INSERT INTO subfolders(
-        subfolder_key, folder_id, relative_path, identity_version, display_name,
-        sort_name, track_count, total_duration_sec, representative_artwork_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(subfolder_key) DO UPDATE SET
-        folder_id = excluded.folder_id,
-        relative_path = excluded.relative_path,
-        identity_version = excluded.identity_version,
-        display_name = excluded.display_name,
-        sort_name = excluded.sort_name,
-        track_count = excluded.track_count,
-        total_duration_sec = excluded.total_duration_sec,
-        representative_artwork_id = excluded.representative_artwork_id
-    `);
-  }
-  if (type === 'playlist') {
-    return database.prepare(`
-      INSERT INTO playlists(
-        id, name, sort_name, state, building_operation_id, version, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, NULL, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        name = excluded.name,
-        sort_name = excluded.sort_name,
-        state = excluded.state,
-        building_operation_id = NULL,
-        version = excluded.version,
-        updated_at = excluded.updated_at
-    `);
-  }
-  throw createCatalogError('unsupportedEntityType', 'Catalog entity type is not supported');
-}
-
-function createEntityBindings(type, entity) {
-  if (type === 'album') {
-    return [
-      entity.stableId, entity.identityVersion, entity.name, entity.artist,
-      createSortKey(entity.name), createSortKey(entity.artist), entity.trackCount,
-      entity.totalDurationSec, entity.representativeArtworkId
-    ];
-  }
-  if (type === 'artist' || type === 'genre') {
-    return [
-      entity.stableId, entity.identityVersion, entity.name, createSortKey(entity.name),
-      entity.trackCount, entity.totalDurationSec, entity.representativeArtworkId
-    ];
-  }
-  if (type === 'subfolder') {
-    return [
-      entity.stableId, entity.folderId, entity.relativePath, entity.identityVersion,
-      entity.displayName, createSortKey(entity.displayName), entity.trackCount,
-      entity.totalDurationSec, entity.representativeArtworkId
-    ];
-  }
-  if (type === 'playlist') {
-    return [
-      entity.stableId, entity.name, createSortKey(entity.name),
-      entity.state, entity.version,
-      entity.createdAt, entity.updatedAt
-    ];
-  }
-  throw createCatalogError('unsupportedEntityType', 'Catalog entity type is not supported');
-}
-
-function normalizeIdentityVersion(value) {
-  const normalized = value === undefined ? 1 : value;
-  if (!Number.isSafeInteger(normalized) || normalized <= 0) {
-    throw createCatalogError('invalidEntity', 'Entity identityVersion must be a positive integer');
-  }
-  return normalized;
 }
 
 function normalizeFolder(folder, index) {
@@ -1062,8 +1019,6 @@ function deleteTracks(payload) {
     SELECT track_uid AS trackUid, track_key AS trackKey, search_text AS searchText
     FROM tracks WHERE track_uid = ?
   `);
-  const deleteArtworkSource = database.prepare('DELETE FROM track_artwork_sources WHERE track_uid = ?');
-  const deleteArtworkClaim = database.prepare('DELETE FROM artwork_claims WHERE track_uid = ?');
   const deleteTrack = database.prepare('DELETE FROM tracks WHERE track_uid = ?');
   return commitMutation(['tracks', 'albums', 'artists', 'genres', 'subfolders'], 'delete-tracks', () => {
     let deletedCount = 0;
@@ -1071,8 +1026,7 @@ function deleteTracks(payload) {
       const row = readTrack.get(trackUid);
       if (!row) continue;
       removeTrackEntityMemberships(trackUid);
-      deleteArtworkClaim.run(trackUid);
-      deleteArtworkSource.run(trackUid);
+      removeTrackArtworkReferences(trackUid);
       deleteTrack.run(trackUid);
       deletedCount += 1;
     }
@@ -1221,12 +1175,15 @@ function createContext(payload) {
     createdAt: now,
     lastAccessAt: now,
     expiresAt: now + contextTtlMs,
-    walStartBytes: readWalBytes(),
+    walStartBytes: 0,
     database,
     ownerCount: 0,
     releaseRequested: false,
     snapshotOverflow: false,
-    totalCount: null
+    shadowCount: 0,
+    totalCount: null,
+    resolvedCount: null,
+    unresolvedCount: null
   };
   database.prepare(`
     INSERT INTO query_contexts(
@@ -1241,6 +1198,7 @@ function createContext(payload) {
     JSON.stringify(context.visibleScopeVersions), now, now, context.expiresAt
   );
   contexts.set(token, context);
+  contextWalByteCache.set(token, { shadowCount: 0, bytes: 0 });
   return {
     contextToken: token,
     catalogVersion: context.snapshotVersion,
@@ -1252,13 +1210,16 @@ function createContext(payload) {
 function getContextCount(payload) {
   assertExactFields(payload, ['contextToken'], 'invalidContext');
   const context = getContext(payload.contextToken);
-  if (!Number.isSafeInteger(context.totalCount)) {
-    context.totalCount = withContextDatabase(context, () => countContextRows(context));
-  }
+  const playlistCounts = context.scope?.playlistId ? ensurePlaylistContextCounts(context) : null;
+  if (!playlistCounts) ensureContextCount(context);
   return {
     contextToken: context.token,
     totalCount: Number.isSafeInteger(context.totalCount) ? context.totalCount : { pending: true },
-    catalogVersion: context.snapshotVersion
+    catalogVersion: context.snapshotVersion,
+    ...(playlistCounts ? {
+      resolvedCount: playlistCounts.resolvedCount,
+      unresolvedCount: playlistCounts.unresolvedCount
+    } : {})
   };
 }
 
@@ -1344,6 +1305,9 @@ function normalizeScope(scope) {
   if (field === 'recent') {
     if (scope.recent !== true) throw createCatalogError('invalidScope', 'Recent scope must be true');
     return { recent: true };
+  }
+  if (field === 'trackUids') {
+    return { trackUids: validateBoundedStringList(scope.trackUids, 'scope.trackUids', 4096, 512) };
   }
   const value = requireString(scope[field], `scope.${field}`, 512);
   return field === 'folderKey' ? { folderId: value } : { [field]: value };
@@ -1504,21 +1468,32 @@ function readContextPageAtOrdinal(payload) {
   }
   if (context.scope?.playlistId) {
     const startOrdinal = Math.max(0, Math.min(payload.ordinal, Math.max(0, totalCount - limit)));
+    const pagePlan = createOrdinalPagePlan(totalCount, startOrdinal, limit);
     return withContextDatabase(context, () => executePlaylistContextPage(context, {
-      continuation: 'after',
+      continuation: pagePlan.continuation,
       cursorTuple: null,
       limit,
-      offset: startOrdinal
+      offset: pagePlan.offset,
+      pageStartOrdinal: startOrdinal
     }));
   }
   const order = createOrder(context.sort, context.direction);
   const startOrdinal = Math.max(0, Math.min(payload.ordinal, Math.max(0, totalCount - limit)));
+  const pagePlan = createOrdinalPagePlan(totalCount, startOrdinal, limit);
   return withContextDatabase(context, () => executeContextPage(context, order, {
-    continuation: 'after',
+    continuation: pagePlan.continuation,
     cursorTuple: null,
     limit,
-    offset: startOrdinal
+    offset: pagePlan.offset,
+    pageStartOrdinal: startOrdinal
   }));
+}
+
+function createOrdinalPagePlan(totalCount, startOrdinal, limit) {
+  const trailingCount = Math.max(0, totalCount - startOrdinal - limit);
+  return trailingCount < startOrdinal
+    ? { continuation: 'before', offset: trailingCount }
+    : { continuation: 'after', offset: startOrdinal };
 }
 
 function resolveEntityAnchor(payload) {
@@ -1570,42 +1545,6 @@ function resolveEntityAnchor(payload) {
   };
 }
 
-function lookupContextTrack(payload) {
-  assertExactFields(payload, ['contextToken', 'trackUid'], 'invalidContextLookup');
-  const context = getContext(payload.contextToken);
-  if (context.entityType !== 'track') {
-    throw createCatalogError('contextEndpointMismatch', 'Context does not contain tracks');
-  }
-  const trackUid = requireString(payload.trackUid, 'trackUid', 512);
-  return withContextDatabase(context, () => {
-    if (context.scope?.playlistId) {
-      const source = createContextTrackSource(context);
-      const base = createPlaylistContextFilter(context);
-      const row = database.prepare(`
-        SELECT ${createPlaylistTrackPageSelection()}
-        FROM playlist_items i
-        JOIN playlists p ON p.id = i.playlist_id AND p.state = 'active'
-        LEFT JOIN ${source.sql} t ON t.track_uid = i.track_uid
-        LEFT JOIN operation_jobs o ON o.operation_id = i.pending_operation_id
-        WHERE ${[...base.clauses, 't.track_uid = ?'].join(' AND ')}
-        ORDER BY i.position, CAST(i.item_key AS TEXT)
-        LIMIT 1
-      `).get(...source.bindings, ...base.bindings, trackUid);
-      return row ? { ...stripOrderFields(normalizePageRow(row)), catalogVersion: context.snapshotVersion } : null;
-    }
-    const order = createOrder(context.sort, context.direction);
-    const source = createContextTrackSource(context);
-    const base = createContextFilter(context);
-    const row = database.prepare(`
-      SELECT ${createTrackPageSelection(order)}
-      FROM ${source.sql} t
-      WHERE ${[...base.clauses, 't.track_uid = ?'].join(' AND ')}
-      LIMIT 1
-    `).get(...source.bindings, ...base.bindings, trackUid);
-    return row ? { ...stripOrderFields(normalizePageRow(row, order)), catalogVersion: context.snapshotVersion } : null;
-  });
-}
-
 function resolveTrackContextOrdinal(context, { entityId, prefix, mode }) {
   if (context.scope?.playlistId) return resolvePlaylistContextOrdinal(context, entityId);
   const order = createOrder(context.sort, context.direction);
@@ -1650,7 +1589,7 @@ function resolvePlaylistContextOrdinal(context, entityId) {
     JOIN playlists p ON p.id = i.playlist_id AND p.state = 'active'
     LEFT JOIN ${source.sql} t ON t.track_uid = i.track_uid
     LEFT JOIN operation_jobs o ON o.operation_id = i.pending_operation_id
-    WHERE ${[...base.clauses, 't.track_uid = ?'].join(' AND ')}
+    WHERE ${[...base.clauses, 'CAST(i.item_key AS TEXT) = ?'].join(' AND ')}
     ORDER BY i.position, CAST(i.item_key AS TEXT)
     LIMIT 1
   `).get(...source.bindings, ...base.bindings, entityId);
@@ -1665,7 +1604,7 @@ function resolvePlaylistContextOrdinal(context, entityId) {
     LEFT JOIN operation_jobs o ON o.operation_id = i.pending_operation_id
     WHERE ${[...base.clauses, keyset.sql].join(' AND ')}
   `).get(...source.bindings, ...base.bindings, ...keyset.bindings);
-  return { ordinal: Number(count.count), entityId: normalized.trackUid };
+  return { ordinal: Number(count.count), entityId: normalized.playlistItemKey };
 }
 
 function resolveNamedEntityContextOrdinal(context, { entityId, prefix, mode }) {
@@ -1701,7 +1640,11 @@ function resolveNamedEntityContextOrdinal(context, { entityId, prefix, mode }) {
   return { ordinal: Number(count.count), entityId: normalized[definition.stableIdField] };
 }
 
-function executeContextPage(context, order, { continuation, cursorTuple, limit, offset = null }) {
+function executeContextPage(
+  context,
+  order,
+  { continuation, cursorTuple, limit, offset = null, pageStartOrdinal = null }
+) {
   const source = createContextTrackSource(context);
   const base = createContextFilter(context);
   const keyset = cursorTuple ? createKeysetSql(order, cursorTuple, continuation) : { sql: '', bindings: [] };
@@ -1727,10 +1670,10 @@ function executeContextPage(context, order, { continuation, cursorTuple, limit, 
   let hasAfter = false;
   if (rows.length > 0) {
     hasBefore = offset !== null
-      ? offset > 0
+      ? pageStartOrdinal > 0
       : contextHasRows(context, order, order.descriptor.buildTuple(rows[0]), 'before');
     hasAfter = offset !== null
-      ? offset + rows.length < context.totalCount
+      ? pageStartOrdinal + rows.length < context.totalCount
       : contextHasRows(context, order, order.descriptor.buildTuple(rows.at(-1)), 'after');
   }
   if (continuation === 'after' && hasExtra) hasAfter = true;
@@ -1766,7 +1709,11 @@ function readPlaylistContextPage(context, payload, limit) {
   return executePlaylistContextPage(context, { continuation, cursorTuple, limit });
 }
 
-function executePlaylistContextPage(context, { continuation, cursorTuple, limit, offset = null }) {
+function executePlaylistContextPage(
+  context,
+  { continuation, cursorTuple, limit, offset = null, pageStartOrdinal = null }
+) {
+  const counts = ensurePlaylistContextCounts(context);
   const order = createPlaylistOrder();
   const source = createContextTrackSource(context);
   const base = createPlaylistContextFilter(context);
@@ -1798,10 +1745,10 @@ function executePlaylistContextPage(context, { continuation, cursorTuple, limit,
   let hasAfter = false;
   if (rows.length > 0) {
     hasBefore = offset !== null
-      ? offset > 0
+      ? pageStartOrdinal > 0
       : playlistContextHasRows(context, order.descriptor.buildTuple(rows[0]), 'before');
     hasAfter = offset !== null
-      ? offset + rows.length < context.totalCount
+      ? pageStartOrdinal + rows.length < context.totalCount
       : playlistContextHasRows(context, order.descriptor.buildTuple(rows.at(-1)), 'after');
   }
   if (continuation === 'after' && hasExtra) hasAfter = true;
@@ -1810,7 +1757,9 @@ function executePlaylistContextPage(context, { continuation, cursorTuple, limit,
     rows: rows.map(stripOrderFields),
     nextCursor: hasAfter ? encodeBoundaryCursor(context, order, rows.at(-1), 'after') : null,
     previousCursor: hasBefore ? encodeBoundaryCursor(context, order, rows[0], 'before') : null,
-    totalCount: Number.isSafeInteger(context.totalCount) ? context.totalCount : { pending: true },
+    totalCount: counts.totalCount,
+    resolvedCount: counts.resolvedCount,
+    unresolvedCount: counts.unresolvedCount,
     catalogVersion: context.snapshotVersion,
     contextToken: context.token
   };
@@ -1870,10 +1819,16 @@ function playlistContextHasRows(context, tuple, continuation) {
 
 function createPlaylistTrackPageSelection() {
   return [
-    'i.track_uid AS trackUid',
+    `CASE WHEN ${ACTIVE_PLAYLIST_TRACK_CLAUSE} THEN i.track_uid ELSE NULL END AS trackUid`,
+    `CASE WHEN ${ACTIVE_PLAYLIST_TRACK_CLAUSE} THEN t.folder_id ELSE NULL END AS folderId`,
+    `CASE WHEN ${ACTIVE_PLAYLIST_TRACK_CLAUSE} THEN t.album_key ELSE NULL END AS albumKey`,
+    `CASE WHEN ${ACTIVE_PLAYLIST_TRACK_CLAUSE} THEN t.artist_key ELSE NULL END AS artistKey`,
+    `CASE WHEN ${ACTIVE_PLAYLIST_TRACK_CLAUSE} THEN t.genre_key ELSE NULL END AS genreKey`,
+    `CASE WHEN ${ACTIVE_PLAYLIST_TRACK_CLAUSE} THEN t.subfolder_key ELSE NULL END AS subfolderKey`,
     `COALESCE(t.title, NULLIF(json_extract(i.unresolved_json, '$.title'), ''),
       NULLIF(json_extract(i.unresolved_json, '$.basename'), ''), NULLIF(i.unresolved_title, ''),
-      NULLIF(json_extract(i.unresolved_json, '$.relativePathHint'), ''), NULLIF(i.unresolved_basename, ''), '') AS title`,
+      NULLIF(json_extract(i.unresolved_json, '$.relativePathHint'), ''),
+      NULLIF(json_extract(i.unresolved_json, '$.relativePath'), ''), NULLIF(i.unresolved_basename, ''), '') AS title`,
     "COALESCE(t.artist, NULLIF(i.unresolved_artist, ''), NULLIF(json_extract(i.unresolved_json, '$.artist'), ''), '') AS artist",
     "COALESCE(t.album_artist, NULLIF(i.unresolved_artist, ''), '') AS albumArtist",
     "COALESCE(t.album, json_extract(i.unresolved_json, '$.album'), '') AS album",
@@ -1883,8 +1838,8 @@ function createPlaylistTrackPageSelection() {
     't.track_no AS trackNo',
     "COALESCE(t.duration_sec, json_extract(i.unresolved_json, '$.durationSec')) AS durationSec",
     't.added_at AS addedAt',
-    "COALESCE(t.metadata_status, 'unresolved') AS metadataStatus",
-    't.artwork_id AS artworkId',
+    `CASE WHEN ${ACTIVE_PLAYLIST_TRACK_CLAUSE} THEN COALESCE(t.metadata_status, 'unresolved') ELSE 'unresolved' END AS metadataStatus`,
+    `CASE WHEN ${ACTIVE_PLAYLIST_TRACK_CLAUSE} THEN t.artwork_id ELSE NULL END AS artworkId`,
     'i.item_key AS itemKey',
     'CAST(i.item_key AS TEXT) AS playlistItemKey',
     'i.position AS playlistPosition',
@@ -1919,11 +1874,13 @@ function readEntityContextPageAtOrdinal(context, ordinal, limit) {
   const definition = ENTITY_DEFINITIONS[context.entityType];
   const order = createEntityOrder(context, definition);
   const startOrdinal = Math.max(0, Math.min(ordinal, Math.max(0, context.totalCount - limit)));
+  const pagePlan = createOrdinalPagePlan(context.totalCount, startOrdinal, limit);
   return executeEntityContextPage(context, definition, order, {
-    continuation: 'after',
+    continuation: pagePlan.continuation,
     cursorTuple: null,
     limit,
-    offset: startOrdinal
+    offset: pagePlan.offset,
+    pageStartOrdinal: startOrdinal
   });
 }
 
@@ -1931,7 +1888,7 @@ function executeEntityContextPage(
   context,
   definition,
   order,
-  { continuation, cursorTuple, limit, offset = null }
+  { continuation, cursorTuple, limit, offset = null, pageStartOrdinal = null }
 ) {
   const base = createEntityContextFilter(context, definition);
   const keyset = cursorTuple
@@ -1958,7 +1915,7 @@ function executeEntityContextPage(
   let hasAfter = false;
   if (rows.length > 0) {
     hasBefore = offset !== null
-      ? offset > 0
+      ? pageStartOrdinal > 0
       : entityContextHasRows(
         context,
         definition,
@@ -1967,7 +1924,7 @@ function executeEntityContextPage(
         'before'
       );
     hasAfter = offset !== null
-      ? offset + rows.length < context.totalCount
+      ? pageStartOrdinal + rows.length < context.totalCount
       : entityContextHasRows(
         context,
         definition,
@@ -2135,6 +2092,7 @@ function createEntityNullRankExpression(field) {
 }
 
 function entityFieldExpression(field) {
+  if (field.expression) return field.expression;
   return field.type === 'text' && field.field.startsWith('sort')
     ? `CAST(e.${field.column} AS TEXT)`
     : `e.${field.column}`;
@@ -2155,6 +2113,8 @@ function stripEntityOrderFields(row) {
   delete clean.entityKind;
   delete clean.sortName;
   delete clean.sortArtist;
+  delete clean.folderSortKey;
+  delete clean.subfolderSortPath;
   return clean;
 }
 
@@ -2182,19 +2142,7 @@ function contextHasRows(context, order, tuple, continuation) {
 
 function countContextRows(context) {
   if (context.entityType !== 'track') return countEntityContextRows(context);
-  if (context.scope?.playlistId) {
-    const source = createContextTrackSource(context);
-    const filter = createPlaylistContextFilter(context);
-    const row = database.prepare(`
-      SELECT count(*) AS count
-      FROM playlist_items i
-      JOIN playlists p ON p.id = i.playlist_id AND p.state = 'active'
-      LEFT JOIN ${source.sql} t ON t.track_uid = i.track_uid
-      LEFT JOIN operation_jobs o ON o.operation_id = i.pending_operation_id
-      WHERE ${filter.clauses.join(' AND ')}
-    `).get(...source.bindings, ...filter.bindings);
-    return Number(row.count);
-  }
+  if (context.scope?.playlistId) return countPlaylistContextRows(context);
   const source = createContextTrackSource(context);
   const base = createContextFilter(context);
   const row = database.prepare(`
@@ -2204,11 +2152,32 @@ function countContextRows(context) {
   return Number(row.count);
 }
 
+function countPlaylistContextRows(context) {
+  const source = createContextTrackSource(context);
+  const filter = createPlaylistContextFilter(context);
+  const row = database.prepare(`
+    SELECT count(*) AS totalCount,
+      COALESCE(sum(CASE WHEN ${ACTIVE_PLAYLIST_TRACK_CLAUSE} THEN 1 ELSE 0 END), 0) AS resolvedCount
+    FROM playlist_items i
+    JOIN playlists p ON p.id = i.playlist_id AND p.state = 'active'
+    LEFT JOIN ${source.sql} t ON t.track_uid = i.track_uid
+    LEFT JOIN operation_jobs o ON o.operation_id = i.pending_operation_id
+    WHERE ${filter.clauses.join(' AND ')}
+  `).get(...source.bindings, ...filter.bindings);
+  context.totalCount = Number(row.totalCount);
+  context.resolvedCount = Number(row.resolvedCount);
+  context.unresolvedCount = context.totalCount - context.resolvedCount;
+  return context.totalCount;
+}
+
 function createContextTrackSource(context) {
-  context.hasBeforeImages = Boolean(database.prepare(`
-    SELECT 1 AS found FROM query_context_track_before_images
-    WHERE context_token = ? LIMIT 1
-  `).get(context.token));
+  if (!Number.isSafeInteger(context.shadowCount)) {
+    const row = database.prepare(`
+      SELECT shadow_count AS shadowCount FROM query_contexts WHERE context_token = ?
+    `).get(context.token);
+    context.shadowCount = Number(row?.shadowCount ?? 0);
+  }
+  context.hasBeforeImages = context.shadowCount > 0;
   if (!context.hasBeforeImages) return { sql: 'tracks', bindings: [] };
   return {
     sql: `(
@@ -2236,12 +2205,20 @@ function createContextTrackSource(context) {
 }
 
 function createContextFilter(context) {
-  const clauses = [];
+  const clauses = [context.scope?.playlistId
+    ? '1 = 1'
+    : ACTIVE_TRACK_FOLDER_CLAUSE];
   const bindings = [];
   if (context.scope) {
     if (context.scope.folderId) {
       clauses.push('t.folder_id = ?');
       bindings.push(context.scope.folderId);
+    } else if (context.scope.trackUids) {
+      if (context.scope.trackUids.length === 0) clauses.push('0 = 1');
+      else {
+        clauses.push(`t.track_uid IN (${context.scope.trackUids.map(() => '?').join(', ')})`);
+        bindings.push(...context.scope.trackUids);
+      }
     } else if (context.scope.albumKey) {
       clauses.push('t.album_key = ?');
       bindings.push(context.scope.albumKey);
@@ -2254,6 +2231,13 @@ function createContextFilter(context) {
     } else if (context.scope.subfolderKey) {
       clauses.push('t.subfolder_key = ?');
       bindings.push(context.scope.subfolderKey);
+    } else if (context.scope.recent) {
+      const recentTrackUids = ensureRecentTrackUids(context);
+      if (recentTrackUids.length === 0) clauses.push('0 = 1');
+      else {
+        clauses.push(`t.track_uid IN (${recentTrackUids.map(() => '?').join(', ')})`);
+        bindings.push(...recentTrackUids);
+      }
     }
   }
   const longTokens = context.tokens.filter(token => Array.from(token).length >= 3);
@@ -2279,6 +2263,20 @@ function createContextFilter(context) {
     bindings.push(token);
   }
   return { clauses, bindings };
+}
+
+function ensureRecentTrackUids(context) {
+  if (!Array.isArray(context.recentTrackUids)) {
+    const source = createContextTrackSource(context);
+    context.recentTrackUids = database.prepare(`
+      SELECT t.track_uid AS trackUid
+      FROM ${source.sql} t
+      WHERE ${ACTIVE_TRACK_FOLDER_CLAUSE}
+      ORDER BY t.added_at DESC, t.track_uid DESC
+      LIMIT ?
+    `).all(...source.bindings, RECENT_TRACK_LIMIT).map(row => row.trackUid);
+  }
+  return context.recentTrackUids;
 }
 
 function createTrigramFtsQuery(tokens) {
@@ -2384,6 +2382,11 @@ function createTrackPageSelection(order) {
   });
   return [
     't.track_uid AS trackUid',
+    't.folder_id AS folderId',
+    't.album_key AS albumKey',
+    't.artist_key AS artistKey',
+    't.genre_key AS genreKey',
+    't.subfolder_key AS subfolderKey',
     't.title',
     't.artist',
     't.album_artist AS albumArtist',
@@ -2438,10 +2441,42 @@ function releaseContext(payload) {
     `).run(token);
     return { released: true, retained: true };
   }
+  closeContext(context);
   contexts.delete(token);
   database.prepare(`
     UPDATE query_contexts SET release_requested = 1, expires_at = 0 WHERE context_token = ?
   `).run(token);
+  return { released: true };
+}
+
+function retainContext(payload) {
+  assertExactFields(payload, ['contextToken'], 'invalidContext');
+  const context = getContext(payload.contextToken);
+  context.ownerCount = (context.ownerCount ?? 0) + 1;
+  database.prepare(`
+    UPDATE query_contexts SET owner_count = owner_count + 1 WHERE context_token = ?
+  `).run(context.token);
+  return { retained: true };
+}
+
+function releaseRetainedContext(payload) {
+  assertExactFields(payload, ['contextToken'], 'invalidContext');
+  const token = requireString(payload.contextToken, 'contextToken', 512);
+  const context = contexts.get(token);
+  if (!context || (context.ownerCount ?? 0) === 0) return { released: false };
+  context.ownerCount -= 1;
+  database.prepare(`
+    UPDATE query_contexts
+    SET owner_count = CASE WHEN owner_count > 0 THEN owner_count - 1 ELSE 0 END,
+      expires_at = CASE WHEN release_requested = 1 AND owner_count <= 1 THEN 0 ELSE expires_at END
+    WHERE context_token = ?
+  `).run(token);
+  if (context.ownerCount === 0 && (
+    context.releaseRequested || context.expiresAt <= Date.now() || context.snapshotOverflow
+  )) {
+    closeContext(context);
+    contexts.delete(token);
+  }
   return { released: true };
 }
 
@@ -2471,6 +2506,7 @@ function getContext(contextToken) {
         ownerCount: Number(row.ownerCount),
         releaseRequested: Boolean(row.releaseRequested),
         snapshotOverflow: Boolean(row.snapshotOverflow),
+        shadowCount: Number(row.shadowCount),
         totalCount: row.totalCount === null ? null : Number(row.totalCount),
         walStartBytes: 0
       };
@@ -2478,15 +2514,30 @@ function getContext(contextToken) {
     }
   }
   if (!context) throw createCatalogError('STALE_CURSOR', 'Catalog context has expired');
+  const storedState = database.prepare(`
+    SELECT snapshot_overflow AS snapshotOverflow, shadow_count AS shadowCount
+    FROM query_contexts WHERE context_token = ?
+  `).get(token);
+  if (!storedState) {
+    closeContext(context);
+    contexts.delete(token);
+    throw createCatalogError('STALE_CURSOR', 'Catalog context has expired');
+  }
+  context.snapshotOverflow = Boolean(storedState.snapshotOverflow);
+  context.shadowCount = Number(storedState.shadowCount);
   const now = Date.now();
   const stableScopeRequired = context.entityType !== 'track' || Boolean(context.scope?.playlistId);
   const relevantScopeChanged = stableScopeRequired && Object.entries(context.visibleScopeVersions).some(
     ([scope, version]) => (scopeVersions[scope] ?? 0) !== version
   );
   if (context.expiresAt <= now || context.snapshotOverflow || relevantScopeChanged ||
-      readWalBytes(context.token) > contextWalCapBytes) {
-    contexts.delete(token);
+      readWalBytes(context.token, context.shadowCount) > contextWalCapBytes) {
+    context.expiresAt = 0;
     database.prepare('UPDATE query_contexts SET expires_at = 0 WHERE context_token = ?').run(token);
+    if ((context.ownerCount ?? 0) === 0) {
+      closeContext(context);
+      contexts.delete(token);
+    }
     throw createCatalogError('STALE_CURSOR', 'Catalog context snapshot has expired');
   }
   context.lastAccessAt = now;
@@ -2500,20 +2551,10 @@ function pruneExpiredContexts() {
     if ((context.expiresAt <= now || context.snapshotOverflow ||
          readWalBytes(context.token) > contextWalCapBytes) &&
         (context.ownerCount ?? 0) === 0) {
+      closeContext(context);
       contexts.delete(token);
     }
   }
-}
-
-function cleanupExpiredContexts(payload = {}) {
-  assertAllowedFields(payload, ['maximum'], 'invalidContext');
-  const maximum = normalizeWriteLimit(payload.maximum ?? 100);
-  const result = cleanupExpiredContextItems({ limit: maximum });
-  return {
-    deletedItemCount: result.deletedItemCount,
-    deletedContextCount: result.deletedContextCount,
-    hasMore: result.hasMore
-  };
 }
 
 function cleanupExpiredContextItems(payload = {}) {
@@ -2539,6 +2580,7 @@ function cleanupExpiredContextItems(payload = {}) {
   if (remaining === 0) {
     database.prepare('DELETE FROM query_contexts WHERE context_token = ?').run(context.contextToken);
     contexts.delete(context.contextToken);
+    contextWalByteCache.delete(context.contextToken);
     deletedContextCount = 1;
   }
   return {
@@ -2555,16 +2597,42 @@ function ensureContextCount(context) {
   return context.totalCount;
 }
 
+function ensurePlaylistContextCounts(context) {
+  if (![context.totalCount, context.resolvedCount, context.unresolvedCount].every(Number.isSafeInteger)) {
+    withContextDatabase(context, () => countPlaylistContextRows(context));
+  }
+  return {
+    totalCount: context.totalCount,
+    resolvedCount: context.resolvedCount,
+    unresolvedCount: context.unresolvedCount
+  };
+}
+
 function withContextDatabase(context, callback) {
   return callback(context.database ?? database);
 }
 
 function closeContext(context) {
-  if (context) context.database = null;
+  if (!context) return;
+  contextWalByteCache.delete(context.token);
+  context.database = null;
 }
 
-function readWalBytes(contextToken = null) {
+function readWalBytes(contextToken = null, knownShadowCount = null) {
   if (!database) return 0;
+  let shadowCount = knownShadowCount;
+  if (contextToken !== null && !Number.isSafeInteger(shadowCount)) {
+    const state = database.prepare(`
+      SELECT shadow_count AS shadowCount FROM query_contexts WHERE context_token = ?
+    `).get(contextToken);
+    if (!state) {
+      contextWalByteCache.delete(contextToken);
+      return 0;
+    }
+    shadowCount = Number(state.shadowCount);
+  }
+  const cached = contextToken === null ? null : contextWalByteCache.get(contextToken);
+  if (cached?.shadowCount === shadowCount) return cached.bytes;
   const row = database.prepare(`
     SELECT COALESCE(sum(
       length(COALESCE(track_uid, '')) + length(COALESCE(title, '')) +
@@ -2577,7 +2645,9 @@ function readWalBytes(contextToken = null) {
     FROM query_context_track_before_images
     WHERE ? IS NULL OR context_token = ?
   `).get(contextToken, contextToken);
-  return Number(row?.bytes ?? 0);
+  const bytes = Number(row?.bytes ?? 0);
+  if (contextToken !== null) contextWalByteCache.set(contextToken, { shadowCount, bytes });
+  return bytes;
 }
 
 function receiveOperation(payload) {
@@ -2601,6 +2671,9 @@ function receiveOperation(payload) {
     'canonicalRequestVersion'
   );
   const operationKind = requireString(payload.operationKind, 'operationKind', 128);
+  if (!DURABLE_OPERATION_KINDS.has(operationKind)) {
+    throw createCatalogError('invalidOperationKind', 'Operation kind is not durable');
+  }
   const targetIdentity = createOperationTargetIdentity(payload.target);
   const expectedTargetVersion = optionalNullableNonNegativeInteger(
     payload.expectedTargetVersion,
@@ -2615,9 +2688,9 @@ function receiveOperation(payload) {
     throw createCatalogError('invalidOperationRequest', 'Source sequence ownership contains duplicates');
   }
   const sourceSequenceItemCount = requireNonNegativeInteger(payload.sourceSequenceItemCount ?? 0, 'sourceSequenceItemCount');
-  const sourceFreeOperation = operationKind === 'importPlaylist';
+  const sourceFreeOperation = operationKind === 'importPlaylist' || operationKind === 'previewPlaylistImport';
   if (!sourceFreeOperation && sourceContextToken === null && (sourceSequenceIds.length === 0 || sourceSequenceItemCount === 0)) {
-    throw createCatalogError('invalidOperationRequest', 'Operation requires a catalog context or source sequence ownership');
+    throw createCatalogError('invalidOperationRequest', 'Operation requires a catalog context or source sequence');
   }
   const buildDeadlineAt = requireNonNegativeInteger(payload.buildDeadlineAt, 'buildDeadlineAt');
   if (buildDeadlineAt <= receivedAt) throw createCatalogError('invalidOperationRequest', 'Operation build deadline must be in the future');
@@ -2664,7 +2737,8 @@ function receiveOperation(payload) {
       return { kind: 'active', operationId: existing.operation_id };
     }
 
-    const active = database.prepare(`
+    const heavy = operationKind === 'previewPlaylistImport' ? 0 : 1;
+    const active = heavy === 0 ? null : database.prepare(`
       SELECT operation_id FROM operation_jobs
       WHERE heavy = 1 AND terminal_kind IS NULL
       LIMIT 1
@@ -2678,7 +2752,7 @@ function receiveOperation(payload) {
         operation_kind, target_identity, expected_target_version, phase, heavy,
         committed, source_context_token, build_deadline_at, reserved_terminal_bytes,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'RECEIVED', 1, 0, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'RECEIVED', ?, 0, ?, ?, ?, ?, ?)
     `).run(
       operationId,
       clientRequestId,
@@ -2687,6 +2761,7 @@ function receiveOperation(payload) {
       operationKind,
       targetIdentity,
       expectedTargetVersion,
+      heavy,
       sourceContextToken,
       buildDeadlineAt,
       64 * 1024,
@@ -2696,15 +2771,11 @@ function receiveOperation(payload) {
     const sourceSequence = database.prepare(`
       SELECT state FROM playback_sequences WHERE id = ?
     `);
-    const addOwner = database.prepare(`
-      INSERT INTO playback_sequence_operation_owners(sequence_id, operation_id) VALUES (?, ?)
-    `);
     for (const sequenceId of sourceSequenceIds) {
       const sequence = sourceSequence.get(sequenceId);
       if (!sequence || sequence.state !== 'active') {
         throw createCatalogError('sequenceNotFound', 'Source playback sequence does not exist');
       }
-      addOwner.run(sequenceId, operationId);
     }
     if (sourceContext) {
       database.prepare(`
@@ -2721,18 +2792,6 @@ function receiveOperation(payload) {
     sourceContext.expiresAt = Math.max(sourceContext.expiresAt, buildDeadlineAt);
   }
   return result;
-}
-
-function lookupOperationResult(payload) {
-  assertExactFields(payload, ['clientRequestId'], 'invalidOperationRequest');
-  const clientRequestId = requireString(payload.clientRequestId, 'clientRequestId', 512);
-  const row = database.prepare(`
-    SELECT operation_id, terminal_kind, terminal_result_json
-    FROM operation_jobs WHERE client_request_id = ?
-  `).get(clientRequestId);
-  if (!row) return { kind: 'unknownRequest' };
-  if (row.terminal_kind === null) return { kind: 'active', operationId: row.operation_id };
-  return { kind: 'terminal', result: parseStoredJson(row.terminal_result_json) };
 }
 
 function getOperationStatus(payload) {
@@ -2884,12 +2943,11 @@ function completeOperation(payload) {
 function completeOperationInTransaction(operationId, result, { committed = false } = {}) {
   const row = database.prepare(`
     SELECT terminal_kind, terminal_result_json, source_context_token AS sourceContextToken,
-      context_released AS contextReleased, operation_kind AS operationKind
+      context_released AS contextReleased
     FROM operation_jobs WHERE operation_id = ?
   `).get(operationId);
   if (!row) throw createCatalogError('operationNotFound', 'Operation does not exist');
   if (row.terminal_kind !== null) {
-    releaseOperationSequenceOwners(operationId);
     releaseOperationSnapshots(operationId);
     releaseOperationContext(operationId, row);
     return { kind: 'terminal', result: parseStoredJson(row.terminal_result_json) };
@@ -2900,25 +2958,6 @@ function completeOperationInTransaction(operationId, result, { committed = false
     cancelled: { phase: 'CANCELLED', kind: 'cancelled', code: result.code },
     interrupted: { phase: 'INTERRUPTED', kind: 'interrupted', code: result.code }
   }[result.state];
-  let terminalResult = result;
-  if (result.state === 'cancelled' && row.operationKind === 'play') {
-    const undo = database.prepare(`
-      SELECT undo_id AS undoId, expires_at AS expiresAt
-      FROM transport_undo_records WHERE owner_operation_id = ?
-    `).get(operationId);
-    if (undo) {
-      const transport = database.prepare(`
-        SELECT transport_version AS transportVersion FROM transport_state WHERE id = 'active'
-      `).get();
-      terminalResult = {
-        ...result,
-        operationKind: 'play',
-        undoId: undo.undoId,
-        undoExpiresAt: Number(undo.expiresAt),
-        transportVersion: transport ? Number(transport.transportVersion) : null
-      };
-    }
-  }
   database.prepare(`
     UPDATE operation_jobs
     SET phase = ?, committed = ?, terminal_kind = ?, terminal_code = ?,
@@ -2929,7 +2968,7 @@ function completeOperationInTransaction(operationId, result, { committed = false
     committed ? 1 : 0,
     terminal.kind,
     terminal.code,
-    JSON.stringify(terminalResult),
+    JSON.stringify(result),
     result.finishedAt,
     result.finishedAt,
     operationId
@@ -2941,23 +2980,10 @@ function completeOperationInTransaction(operationId, result, { committed = false
         building_operation_id = NULL
       WHERE building_operation_id = ?
     `).run(operationId);
-    database.prepare(`
-      UPDATE playback_sequences
-      SET state = CASE WHEN state = 'building' THEN 'deleted' ELSE state END,
-        building_operation_id = NULL
-      WHERE building_operation_id = ?
-    `).run(operationId);
   }
-  releaseOperationSequenceOwners(operationId);
   releaseOperationSnapshots(operationId);
   releaseOperationContext(operationId, row);
-  return { kind: 'terminal', result: terminalResult };
-}
-
-function releaseOperationSequenceOwners(operationId) {
-  database.prepare(`
-    DELETE FROM playback_sequence_operation_owners WHERE operation_id = ?
-  `).run(operationId);
+  return { kind: 'terminal', result };
 }
 
 function releaseOperationSnapshots(operationId) {
@@ -3053,9 +3079,6 @@ function gcTerminalOperations(payload) {
           SELECT 1 FROM snapshot_object_owners so
           WHERE so.owner_kind = 'operation' AND so.owner_id = o.operation_id
         )
-        AND NOT EXISTS (SELECT 1 FROM undo_records u WHERE u.owner_operation_id = o.operation_id)
-        AND NOT EXISTS (SELECT 1 FROM transport_undo_records u WHERE u.owner_operation_id = o.operation_id)
-        AND NOT EXISTS (SELECT 1 FROM composed_segments c WHERE c.operation_id = o.operation_id)
       ORDER BY o.finished_at, o.operation_id
       LIMIT ?
     `).all(finishedBefore, limit);
@@ -3131,7 +3154,8 @@ function sealOperationSnapshot(payload) {
   }
   return runDurableTransaction(() => {
     const snapshot = database.prepare(`
-      SELECT state FROM snapshot_objects WHERE snapshot_id = ?
+      SELECT state, staging_operation_id AS operationId
+      FROM snapshot_objects WHERE snapshot_id = ?
     `).get(snapshotId);
     if (!snapshot) throw createCatalogError('snapshotNotFound', 'Snapshot does not exist');
     if (snapshot.state !== 'staging') throw createCatalogError('snapshotSealed', 'Snapshot is already sealed');
@@ -3151,6 +3175,11 @@ function sealOperationSnapshot(payload) {
           item_count = ?, membership_digest = ?, order_digest = ?
       WHERE snapshot_id = ?
     `).run(ownerKind === null ? 0 : 1, itemCount, membershipDigest, orderDigest, snapshotId);
+    const operation = database.prepare(`
+      SELECT source_context_token AS sourceContextToken, context_released AS contextReleased
+      FROM operation_jobs WHERE operation_id = ?
+    `).get(snapshot.operationId);
+    if (operation) releaseOperationContext(snapshot.operationId, operation);
     return { snapshotId, state: 'sealed', itemCount };
   });
 }
@@ -3227,35 +3256,21 @@ function gcOperationSnapshots(payload) {
 }
 
 function createPlaybackSequence(payload) {
-  assertAllowedFields(payload, [
-    'sequenceId', 'operationId', 'sourceContext', 'catalogVersion', 'seed', 'snapshotId', 'createdAt'
+  assertExactFields(payload, [
+    'sequenceId', 'sourceContext', 'catalogVersion', 'seed', 'createdAt'
   ], 'invalidPlaybackSequenceRequest');
   const sequenceId = requireString(payload.sequenceId, 'sequenceId', 512);
-  const operationId = payload.operationId == null
-    ? null
-    : requireString(payload.operationId, 'operationId', 512);
   const sourceContext = requireString(payload.sourceContext, 'sourceContext', 2048);
   const sequenceCatalogVersion = requireNonNegativeInteger(payload.catalogVersion, 'catalogVersion');
   const seed = optionalNullableInteger(payload.seed, 'seed');
-  const snapshotId = payload.snapshotId === undefined || payload.snapshotId === null
-    ? null
-    : requireString(payload.snapshotId, 'snapshotId', 512);
   const createdAt = requireNonNegativeInteger(payload.createdAt, 'createdAt');
   return runDurableTransaction(() => {
-    if (snapshotId !== null) {
-      const snapshot = database.prepare(`
-        SELECT state FROM snapshot_objects WHERE snapshot_id = ?
-      `).get(snapshotId);
-      if (!snapshot || snapshot.state !== 'sealed') {
-        throw createCatalogError('snapshotNotSealed', 'Playback snapshot is not sealed');
-      }
-    }
     database.prepare(`
       INSERT INTO playback_sequences(
         id, source_context, catalog_version, state, item_count, seed,
-        current_ordinal, snapshot_id, created_at, sealed_at, building_operation_id
-      ) VALUES (?, ?, ?, 'building', NULL, ?, NULL, ?, ?, NULL, ?)
-    `).run(sequenceId, sourceContext, sequenceCatalogVersion, seed, snapshotId, createdAt, operationId);
+        current_ordinal, created_at, sealed_at
+      ) VALUES (?, ?, ?, 'building', NULL, ?, NULL, ?, NULL)
+    `).run(sequenceId, sourceContext, sequenceCatalogVersion, seed, createdAt);
     return { sequenceId, state: 'building' };
   });
 }
@@ -3264,12 +3279,11 @@ function appendPlaybackSequenceItems(payload) {
   assertExactFields(payload, ['sequenceId', 'items'], 'invalidPlaybackSequenceRequest');
   const sequenceId = requireString(payload.sequenceId, 'sequenceId', 512);
   const items = validateBatch(payload.items, 'items').map(item => {
-    assertAllowedFields(item, ['trackUid', 'entryInstanceId'], 'invalidPlaybackSequenceRequest');
+    assertExactFields(item, ['ordinal', 'entryInstanceId', 'trackUid'], 'invalidPlaybackSequenceRequest');
     return {
-      trackUid: requireString(item.trackUid, 'trackUid', 512),
-      entryInstanceId: item.entryInstanceId === undefined
-        ? randomUUID()
-        : requireString(item.entryInstanceId, 'entryInstanceId', 512)
+      ordinal: requireNonNegativeInteger(item.ordinal, 'ordinal'),
+      entryInstanceId: requireString(item.entryInstanceId, 'entryInstanceId', 512),
+      trackUid: requireString(item.trackUid, 'trackUid', 512)
     };
   });
   return runDurableTransaction(() => {
@@ -3284,13 +3298,19 @@ function appendPlaybackSequenceItems(payload) {
       SELECT COALESCE(MAX(ordinal), -1) AS ordinal
       FROM playback_sequence_items WHERE sequence_id = ?
     `).get(sequenceId);
+    let nextOrdinal = Number(tail.ordinal) + 1;
     const insert = database.prepare(`
       INSERT INTO playback_sequence_items(sequence_id, ordinal, entry_instance_id, track_uid)
       VALUES (?, ?, ?, ?)
     `);
-    let ordinal = Number(tail.ordinal) + 1;
-    for (const item of items) insert.run(sequenceId, ordinal++, item.entryInstanceId, item.trackUid);
-    return { sequenceId, appendedCount: items.length, nextOrdinal: ordinal };
+    for (const item of items) {
+      if (item.ordinal !== nextOrdinal) {
+        throw createCatalogError('invalidPlaybackSequenceRequest', 'Playback sequence item ordinals must be contiguous');
+      }
+      insert.run(sequenceId, item.ordinal, item.entryInstanceId, item.trackUid);
+      nextOrdinal += 1;
+    }
+    return { sequenceId, appendedCount: items.length, nextOrdinal };
   });
 }
 
@@ -3311,372 +3331,24 @@ function sealPlaybackSequence(payload) {
     if (sequence.state !== 'building' || sequence.sealedAt !== null) {
       throw createCatalogError('sequenceSealed', 'Playback sequence is already sealed');
     }
-    const count = Number(database.prepare(`
-      SELECT count(*) AS count FROM playback_sequence_items WHERE sequence_id = ?
-    `).get(sequenceId).count);
-    if (count !== itemCount) {
+    const aggregate = database.prepare(`
+      SELECT count(*) AS count, MIN(ordinal) AS minOrdinal, MAX(ordinal) AS maxOrdinal
+      FROM playback_sequence_items WHERE sequence_id = ?
+    `).get(sequenceId);
+    const count = Number(aggregate.count);
+    const contiguous = itemCount === 0
+      ? aggregate.minOrdinal === null && aggregate.maxOrdinal === null
+      : Number(aggregate.minOrdinal) === 0 && Number(aggregate.maxOrdinal) === itemCount - 1;
+    if (count !== itemCount || !contiguous) {
       throw createCatalogError('sequenceCountMismatch', 'Playback sequence item count does not match');
     }
     database.prepare(`
       UPDATE playback_sequences
-      SET item_count = ?, current_ordinal = ?, sealed_at = ?
+      SET state = 'active', item_count = ?, current_ordinal = ?, sealed_at = ?
       WHERE id = ?
     `).run(itemCount, currentOrdinal, sealedAt, sequenceId);
-    return { sequenceId, state: 'sealed', itemCount, currentOrdinal };
+    return { sequenceId, state: 'active', itemCount, currentOrdinal };
   });
-}
-
-function publishPlaybackSequence(payload) {
-  assertAllowedFields(payload, [
-    'sequenceId', 'operationId', 'finishedAt', 'result'
-  ], 'invalidPlaybackSequenceRequest');
-  const sequenceId = requireString(payload.sequenceId, 'sequenceId', 512);
-  const operationId = payload.operationId === undefined || payload.operationId === null
-    ? null
-    : requireString(payload.operationId, 'operationId', 512);
-  const finishedAt = payload.finishedAt === undefined
-    ? Date.now()
-    : requireNonNegativeInteger(payload.finishedAt, 'finishedAt');
-  const operationResult = payload.result === undefined
-    ? { sequenceId }
-    : validateBoundedResultObject(payload.result, 'invalidPlaybackSequenceRequest');
-  return runDurableTransaction(() => {
-    const sequence = database.prepare(`
-      SELECT state, sealed_at AS sealedAt, item_count AS itemCount
-      FROM playback_sequences WHERE id = ?
-    `).get(sequenceId);
-    if (!sequence) throw createCatalogError('sequenceNotFound', 'Playback sequence does not exist');
-    if (sequence.state === 'active') {
-      return { sequenceId, state: 'active', itemCount: Number(sequence.itemCount) };
-    }
-    if (sequence.state !== 'building' || sequence.sealedAt === null) {
-      throw createCatalogError('sequenceNotSealed', 'Playback sequence is not sealed');
-    }
-    if (operationId !== null) assertOperationCanCommit(operationId);
-    database.prepare(`
-      UPDATE playback_sequences SET state = 'active', building_operation_id = NULL WHERE id = ?
-    `).run(sequenceId);
-    if (operationId !== null) {
-      completeOperationInTransaction(operationId, {
-        state: 'succeeded',
-        result: operationResult,
-        finishedAt
-      }, { committed: true });
-    }
-    return { sequenceId, state: 'active', itemCount: Number(sequence.itemCount) };
-  });
-}
-
-function publishProvisionalTransport(payload) {
-  assertExactFields(payload, [
-    'operationId', 'sourceContext', 'catalogVersion', 'expectedTransportVersion',
-    'firstEntry', 'publishedAt'
-  ], 'invalidTransportRequest');
-  const operationId = requireString(payload.operationId, 'operationId', 512);
-  const sourceContext = requireString(payload.sourceContext, 'sourceContext', 2048);
-  const sequenceCatalogVersion = requireNonNegativeInteger(payload.catalogVersion, 'catalogVersion');
-  const expectedTransportVersion = requireNonNegativeInteger(payload.expectedTransportVersion, 'expectedTransportVersion');
-  const publishedAt = requireNonNegativeInteger(payload.publishedAt, 'publishedAt');
-  assertExactFields(payload.firstEntry, ['ordinal', 'entryInstanceId', 'trackUid'], 'invalidTransportRequest');
-  if (payload.firstEntry.ordinal !== 0) {
-    throw createCatalogError('invalidTransportRequest', 'Provisional playback entry ordinal must be zero');
-  }
-  const entryInstanceId = requireString(payload.firstEntry.entryInstanceId, 'firstEntry.entryInstanceId', 512);
-  const trackUid = requireString(payload.firstEntry.trackUid, 'firstEntry.trackUid', 512);
-  const sequenceId = `provisional:${operationId}`;
-  const undoId = `transport:${operationId}`;
-  return runDurableTransaction(() => {
-    const operation = database.prepare(`
-      SELECT operation_kind AS operationKind, terminal_kind AS terminalKind
-      FROM operation_jobs WHERE operation_id = ?
-    `).get(operationId);
-    if (!operation || operation.terminalKind !== null || operation.operationKind !== 'play') {
-      throw createCatalogError('operationCannotCommit', 'Operation cannot publish provisional transport state');
-    }
-    const stored = database.prepare(`
-      SELECT transport_version AS transportVersion, descriptor_json AS descriptorJson
-      FROM transport_state WHERE id = 'active'
-    `).get() ?? { transportVersion: 0, descriptorJson: '{"segments":[],"currentOrdinal":0}' };
-    const current = parseStoredJson(stored.descriptorJson);
-    const existing = database.prepare(`
-      SELECT id FROM playback_sequences WHERE id = ?
-    `).get(sequenceId);
-    if (existing) {
-      const isCurrent = Number(stored.transportVersion) === expectedTransportVersion + 1 &&
-        current?.segments?.length === 1 && current.segments[0]?.sequenceId === sequenceId;
-      if (!isCurrent) {
-        return { kind: 'conflict', currentTransportVersion: Number(stored.transportVersion) };
-      }
-      const undo = database.prepare(`
-        SELECT undo_id AS undoId, expires_at AS expiresAt
-        FROM transport_undo_records WHERE undo_id = ?
-      `).get(undoId);
-      return {
-        kind: 'published', sequenceId, transportVersion: Number(stored.transportVersion),
-        descriptor: current, undoId: undo?.undoId ?? null,
-        undoExpiresAt: undo ? Number(undo.expiresAt) : null
-      };
-    }
-    if (Number(stored.transportVersion) !== expectedTransportVersion) {
-      return { kind: 'conflict', currentTransportVersion: Number(stored.transportVersion) };
-    }
-    database.prepare(`
-      INSERT INTO playback_sequences(
-        id, source_context, catalog_version, state, item_count, seed,
-        current_ordinal, snapshot_id, created_at, sealed_at
-      ) VALUES (?, ?, ?, 'active', 1, NULL, 0, NULL, ?, ?)
-    `).run(sequenceId, sourceContext, sequenceCatalogVersion, publishedAt, publishedAt);
-    database.prepare(`
-      INSERT INTO playback_sequence_items(sequence_id, ordinal, entry_instance_id, track_uid)
-      VALUES (?, 0, ?, ?)
-    `).run(sequenceId, entryInstanceId, trackUid);
-    const descriptor = { segments: [{ sequenceId, startOrdinal: 0, endOrdinal: 1 }], currentOrdinal: 0 };
-    const transportVersion = expectedTransportVersion + 1;
-    database.prepare(`
-      INSERT INTO transport_state(id, transport_version, descriptor_json, updated_at)
-      VALUES ('active', ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET transport_version = excluded.transport_version,
-        descriptor_json = excluded.descriptor_json, updated_at = excluded.updated_at
-    `).run(transportVersion, JSON.stringify(descriptor), publishedAt);
-    const hasUndo = transportSequenceIds(current).length > 0;
-    transferTransportSequenceOwners(current, descriptor, transportVersion, hasUndo ? {
-      undoId,
-      operationId,
-      createdAt: publishedAt,
-      expiresAt: publishedAt + TRANSPORT_UNDO_RETENTION_MS
-    } : null);
-    return {
-      kind: 'published', sequenceId, transportVersion, descriptor,
-      undoId: hasUndo ? undoId : null,
-      undoExpiresAt: hasUndo ? publishedAt + TRANSPORT_UNDO_RETENTION_MS : null
-    };
-  });
-}
-
-function publishTransportSequence(payload) {
-  assertExactFields(payload, [
-    'sequenceId', 'operationId', 'operationKind', 'expectedTransportVersion',
-    'currentOrdinal', 'finishedAt', 'result'
-  ], 'invalidTransportRequest');
-  const sequenceId = requireString(payload.sequenceId, 'sequenceId', 512);
-  const operationId = requireString(payload.operationId, 'operationId', 512);
-  const operationKind = requireString(payload.operationKind, 'operationKind', 32);
-  if (!['play', 'playNext', 'queue'].includes(operationKind)) {
-    throw createCatalogError('invalidOperationKind', 'Transport operation kind is invalid');
-  }
-  const expectedTransportVersion = requireNonNegativeInteger(payload.expectedTransportVersion, 'expectedTransportVersion');
-  const currentOrdinal = requireNonNegativeInteger(payload.currentOrdinal, 'currentOrdinal');
-  const finishedAt = requireNonNegativeInteger(payload.finishedAt, 'finishedAt');
-  const operationResult = validateBoundedResultObject(payload.result, 'invalidTransportResult');
-  return runDurableTransaction(() => {
-    const operation = database.prepare(`
-      SELECT phase, operation_kind AS operationKind, terminal_kind AS terminalKind,
-        terminal_result_json AS terminalResultJson
-      FROM operation_jobs WHERE operation_id = ?
-    `).get(operationId);
-    if (!operation) throw createCatalogError('operationNotFound', 'Operation does not exist');
-    if (operation.terminalKind !== null) {
-      return { kind: 'terminal', result: parseStoredJson(operation.terminalResultJson) };
-    }
-    if (operation.phase !== 'COMMITTING') throw createCatalogError('operationCannotCommit', 'Operation cannot publish transport state');
-    if (operation.operationKind !== operationKind) {
-      throw createCatalogError('invalidOperationKind', 'Transport operation kind does not match its operation');
-    }
-    const sequence = database.prepare(`
-      SELECT state, sealed_at AS sealedAt, item_count AS itemCount,
-        building_operation_id AS buildingOperationId
-      FROM playback_sequences WHERE id = ?
-    `).get(sequenceId);
-    if (!sequence || sequence.state !== 'building' || sequence.sealedAt === null) {
-      throw createCatalogError('sequenceNotSealed', 'Playback sequence is not sealed');
-    }
-    if (sequence.buildingOperationId !== null && sequence.buildingOperationId !== operationId) {
-      throw createCatalogError('sequenceOperationMismatch', 'Playback sequence operation does not match');
-    }
-    const stored = database.prepare(`
-      SELECT transport_version AS transportVersion, descriptor_json AS descriptorJson
-      FROM transport_state WHERE id = 'active'
-    `).get() ?? { transportVersion: 0, descriptorJson: '{"segments":[],"currentOrdinal":0}' };
-    const current = parseStoredJson(stored.descriptorJson);
-    const provisionalSequenceId = `provisional:${operationId}`;
-    const replacesProvisional = operationKind === 'play' &&
-      Number(stored.transportVersion) === expectedTransportVersion + 1 &&
-      current?.segments?.length === 1 && current.segments[0]?.sequenceId === provisionalSequenceId;
-    if (!replacesProvisional && Number(stored.transportVersion) !== expectedTransportVersion) {
-      return { kind: 'conflict', currentTransportVersion: Number(stored.transportVersion) };
-    }
-    const incoming = { sequenceId, startOrdinal: 0, endOrdinal: Number(sequence.itemCount) };
-    const descriptor = replacesProvisional
-      ? { segments: [incoming], currentOrdinal: 0 }
-      : composeTransportDescriptor(operationKind, current, incoming, currentOrdinal);
-    const transportVersion = replacesProvisional
-      ? Number(stored.transportVersion)
-      : expectedTransportVersion + 1;
-    if (replacesProvisional) {
-      const provisionalItem = database.prepare(`
-        SELECT entry_instance_id AS entryInstanceId, track_uid AS trackUid
-        FROM playback_sequence_items WHERE sequence_id = ? AND ordinal = 0
-      `).get(provisionalSequenceId);
-      const firstItem = database.prepare(`
-        SELECT track_uid AS trackUid
-        FROM playback_sequence_items WHERE sequence_id = ? AND ordinal = 0
-      `).get(sequenceId);
-      if (!provisionalItem || !firstItem || provisionalItem.trackUid !== firstItem.trackUid) {
-        throw createCatalogError('staleSequenceEntry', 'Published sequence no longer matches its provisional entry');
-      }
-      database.prepare(`
-        DELETE FROM playback_sequence_items WHERE sequence_id = ? AND ordinal = 0
-      `).run(provisionalSequenceId);
-      database.prepare(`
-        UPDATE playback_sequence_items SET entry_instance_id = ?
-        WHERE sequence_id = ? AND ordinal = 0
-      `).run(provisionalItem.entryInstanceId, sequenceId);
-    }
-    database.prepare(`
-      INSERT INTO transport_state(id, transport_version, descriptor_json, updated_at)
-      VALUES ('active', ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET transport_version = excluded.transport_version,
-        descriptor_json = excluded.descriptor_json, updated_at = excluded.updated_at
-    `).run(transportVersion, JSON.stringify(descriptor), finishedAt);
-    const existingUndo = replacesProvisional
-      ? database.prepare(`
-          SELECT undo_id AS undoId, expires_at AS expiresAt
-          FROM transport_undo_records WHERE undo_id = ?
-        `).get(`transport:${operationId}`)
-      : null;
-    transferTransportSequenceOwners(
-      current,
-      descriptor,
-      transportVersion,
-      operationKind === 'play' && !replacesProvisional && transportSequenceIds(current).length > 0
-        ? {
-            undoId: `transport:${operationId}`,
-            operationId,
-            createdAt: finishedAt,
-            expiresAt: finishedAt + TRANSPORT_UNDO_RETENTION_MS
-          }
-        : null
-    );
-    database.prepare(`
-      UPDATE playback_sequences SET state = 'active', building_operation_id = NULL WHERE id = ?
-    `).run(sequenceId);
-    const result = {
-      ...structuredClone(operationResult),
-      transportVersion,
-      transportDescriptor: descriptor,
-      undoId: existingUndo?.undoId ?? null,
-      undoExpiresAt: existingUndo ? Number(existingUndo.expiresAt) : null
-    };
-    completeOperationInTransaction(operationId, {
-      state: 'succeeded', result, finishedAt
-    }, { committed: true });
-    return { kind: 'published', sequenceId, transportVersion, descriptor, result };
-  });
-}
-
-function applyTransportUndo(payload) {
-  assertExactFields(payload, ['undoId', 'expectedTransportVersion', 'appliedAt'], 'invalidTransportRequest');
-  const undoId = requireString(payload.undoId, 'undoId', 512);
-  const expectedTransportVersion = requireNonNegativeInteger(payload.expectedTransportVersion, 'expectedTransportVersion');
-  const appliedAt = requireNonNegativeInteger(payload.appliedAt, 'appliedAt');
-  return runDurableTransaction(() => {
-    const stored = database.prepare(`
-      SELECT transport_version AS transportVersion, descriptor_json AS descriptorJson
-      FROM transport_state WHERE id = 'active'
-    `).get() ?? { transportVersion: 0, descriptorJson: '{"segments":[],"currentOrdinal":0}' };
-    if (Number(stored.transportVersion) !== expectedTransportVersion) {
-      return { kind: 'conflict', currentTransportVersion: Number(stored.transportVersion) };
-    }
-    const undo = database.prepare(`
-      SELECT u.undo_id AS undoId, u.owner_operation_id AS operationId,
-        u.descriptor_json AS descriptorJson, u.expires_at AS expiresAt,
-        o.expected_target_version AS expectedTargetVersion
-      FROM transport_undo_records u
-      JOIN operation_jobs o ON o.operation_id = u.owner_operation_id
-      WHERE u.undo_id = ?
-    `).get(undoId);
-    if (!undo) return { kind: 'notFound' };
-    const undoSequenceIds = database.prepare(`
-      SELECT sequence_id AS sequenceId FROM playback_sequence_undo_owners WHERE undo_id = ?
-    `).all(undoId).map(row => row.sequenceId);
-    if (Number(undo.expiresAt) <= appliedAt) {
-      database.prepare('DELETE FROM transport_undo_records WHERE undo_id = ?').run(undoId);
-      tombstoneUnownedPlaybackSequences(undoSequenceIds);
-      return { kind: 'expired', expiresAt: Number(undo.expiresAt) };
-    }
-    if (Number(undo.expectedTargetVersion) + 1 !== expectedTransportVersion) {
-      return { kind: 'conflict', currentTransportVersion: Number(stored.transportVersion), reason: 'superseded' };
-    }
-    const descriptor = normalizeDurableTransportDescriptor(parseStoredJson(undo.descriptorJson));
-    const transportVersion = expectedTransportVersion + 1;
-    database.prepare(`
-      INSERT INTO transport_state(id, transport_version, descriptor_json, updated_at)
-      VALUES ('active', ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET transport_version = excluded.transport_version,
-        descriptor_json = excluded.descriptor_json, updated_at = excluded.updated_at
-    `).run(transportVersion, JSON.stringify(descriptor), appliedAt);
-    database.prepare('DELETE FROM transport_undo_records WHERE undo_id = ?').run(undoId);
-    transferTransportSequenceOwners(parseStoredJson(stored.descriptorJson), descriptor, transportVersion);
-    return { kind: 'published', transportVersion, descriptor };
-  });
-}
-
-function getTransportState(payload) {
-  assertExactFields(payload, [], 'invalidTransportRequest');
-  const stored = database.prepare(`
-    SELECT transport_version AS transportVersion, descriptor_json AS descriptorJson
-    FROM transport_state WHERE id = 'active'
-  `).get();
-  return stored
-    ? { transportVersion: Number(stored.transportVersion), descriptor: parseStoredJson(stored.descriptorJson) }
-    : { transportVersion: 0, descriptor: { segments: [], currentOrdinal: 0 } };
-}
-
-function commitTransportState(payload) {
-  assertExactFields(payload, ['expectedTransportVersion', 'descriptor', 'updatedAt'], 'invalidTransportRequest');
-  const expectedTransportVersion = requireNonNegativeInteger(payload.expectedTransportVersion, 'expectedTransportVersion');
-  const descriptor = normalizeDurableTransportDescriptor(payload.descriptor);
-  const updatedAt = requireNonNegativeInteger(payload.updatedAt, 'updatedAt');
-  return runDurableTransaction(() => {
-    const stored = database.prepare(`
-      SELECT transport_version AS transportVersion, descriptor_json AS descriptorJson
-      FROM transport_state WHERE id = 'active'
-    `).get() ?? { transportVersion: 0, descriptorJson: '{"segments":[],"currentOrdinal":0}' };
-    if (Number(stored.transportVersion) !== expectedTransportVersion) {
-      return { kind: 'conflict', currentTransportVersion: Number(stored.transportVersion) };
-    }
-    const transportVersion = expectedTransportVersion + 1;
-    database.prepare(`
-      INSERT INTO transport_state(id, transport_version, descriptor_json, updated_at)
-      VALUES ('active', ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET transport_version = excluded.transport_version,
-        descriptor_json = excluded.descriptor_json, updated_at = excluded.updated_at
-    `).run(transportVersion, JSON.stringify(descriptor), updatedAt);
-    transferTransportSequenceOwners(parseStoredJson(stored.descriptorJson), descriptor, transportVersion);
-    return { kind: 'published', transportVersion, descriptor };
-  });
-}
-
-function composeTransportDescriptor(operationKind, current, incoming, currentOrdinal) {
-  if (operationKind === 'play') return { segments: [incoming], currentOrdinal: 0 };
-  const segments = Array.isArray(current?.segments) ? current.segments.map(normalizeTransportSegment) : [];
-  if (operationKind === 'queue') return boundedTransportDescriptor([...segments, incoming], currentOrdinal);
-  let offset = 0;
-  for (let index = 0; index < segments.length; index += 1) {
-    const segment = segments[index];
-    const length = segment.endOrdinal - segment.startOrdinal;
-    if (currentOrdinal < offset + length) {
-      const split = segment.startOrdinal + currentOrdinal - offset + 1;
-      const replacement = [];
-      if (split > segment.startOrdinal) replacement.push({ ...segment, endOrdinal: split });
-      replacement.push(incoming);
-      if (split < segment.endOrdinal) replacement.push({ ...segment, startOrdinal: split });
-      segments.splice(index, 1, ...replacement);
-      return boundedTransportDescriptor(segments, currentOrdinal);
-    }
-    offset += length;
-  }
-  return boundedTransportDescriptor([...segments, incoming], currentOrdinal);
 }
 
 function normalizeTransportSegment(segment) {
@@ -3752,69 +3424,6 @@ function locateTransportSegment(segments, ordinal) {
   throw createCatalogError('invalidTransportDescriptor', 'Transport descriptor does not cover its ordinal');
 }
 
-function transportSequenceIds(descriptor) {
-  return [...new Set((descriptor?.segments ?? []).map(segment => segment.sequenceId))];
-}
-
-function transferTransportSequenceOwners(currentDescriptor, nextDescriptor, transportVersion, undo = null) {
-  const previousIds = transportSequenceIds(currentDescriptor);
-  const nextIds = transportSequenceIds(nextDescriptor);
-  const nextSet = new Set(nextIds);
-  const removedIds = previousIds.filter(sequenceId => !nextSet.has(sequenceId));
-  if (undo && removedIds.length > 0) {
-    database.prepare(`
-      INSERT INTO transport_undo_records(
-        undo_id, owner_operation_id, descriptor_json, created_at, expires_at
-      ) VALUES (?, ?, ?, ?, ?)
-    `).run(
-      undo.undoId,
-      undo.operationId,
-      JSON.stringify(currentDescriptor),
-      undo.createdAt,
-      undo.expiresAt
-    );
-    const addUndoOwner = database.prepare(`
-      INSERT INTO playback_sequence_undo_owners(sequence_id, undo_id) VALUES (?, ?)
-    `);
-    for (const sequenceId of removedIds) addUndoOwner.run(sequenceId, undo.undoId);
-  }
-  const addTransportOwner = database.prepare(`
-    INSERT INTO playback_sequence_transport_owners(sequence_id, transport_version)
-    VALUES (?, ?)
-    ON CONFLICT(sequence_id) DO UPDATE SET transport_version = excluded.transport_version
-  `);
-  const activate = database.prepare("UPDATE playback_sequences SET state = 'active' WHERE id = ?");
-  for (const sequenceId of nextIds) {
-    addTransportOwner.run(sequenceId, transportVersion);
-    activate.run(sequenceId);
-  }
-  const releaseTransportOwner = database.prepare(`
-    DELETE FROM playback_sequence_transport_owners WHERE sequence_id = ?
-  `);
-  const tombstone = database.prepare("UPDATE playback_sequences SET state = 'deleted' WHERE id = ?");
-  for (const sequenceId of removedIds) {
-    releaseTransportOwner.run(sequenceId);
-    tombstone.run(sequenceId);
-  }
-}
-
-function tombstoneUnownedPlaybackSequences(sequenceIds) {
-  const tombstone = database.prepare(`
-    UPDATE playback_sequences SET state = 'deleted'
-    WHERE id = ?
-      AND NOT EXISTS (
-        SELECT 1 FROM playback_sequence_transport_owners o WHERE o.sequence_id = playback_sequences.id
-      )
-      AND NOT EXISTS (
-        SELECT 1 FROM playback_sequence_operation_owners o WHERE o.sequence_id = playback_sequences.id
-      )
-      AND NOT EXISTS (
-        SELECT 1 FROM playback_sequence_undo_owners o WHERE o.sequence_id = playback_sequences.id
-      )
-  `);
-  for (const sequenceId of sequenceIds) tombstone.run(sequenceId);
-}
-
 function queryPlaybackSequence(payload) {
   assertAllowedFields(payload, ['sequenceId', 'ordinal', 'limit'], 'invalidPlaybackSequenceRequest');
   const sequenceId = requireString(payload.sequenceId, 'sequenceId', 512);
@@ -3823,16 +3432,18 @@ function queryPlaybackSequence(payload) {
   const sequence = database.prepare(`
     SELECT id AS sequenceId, source_context AS sourceContext,
            catalog_version AS catalogVersion, state, item_count AS itemCount,
-           seed, current_ordinal AS currentOrdinal, snapshot_id AS snapshotId,
+           seed, current_ordinal AS currentOrdinal,
            created_at AS createdAt, sealed_at AS sealedAt
     FROM playback_sequences WHERE id = ? AND state = 'active'
   `).get(sequenceId);
   if (!sequence) throw createCatalogError('sequenceNotFound', 'Active playback sequence does not exist');
   const items = database.prepare(`
-    SELECT ordinal, entry_instance_id AS entryInstanceId, track_uid AS trackUid
-    FROM playback_sequence_items
-    WHERE sequence_id = ? AND ordinal >= ?
-    ORDER BY ordinal
+    SELECT i.ordinal, i.entry_instance_id AS entryInstanceId, i.track_uid AS trackUid,
+      t.file_name AS fileName, t.title, t.artist, t.album_artist AS albumArtist, t.album
+    FROM playback_sequence_items i
+    LEFT JOIN tracks t ON t.track_uid = i.track_uid
+    WHERE i.sequence_id = ? AND i.ordinal >= ?
+    ORDER BY i.ordinal
     LIMIT ?
   `).all(sequenceId, ordinal, limit);
   return {
@@ -3842,63 +3453,17 @@ function queryPlaybackSequence(payload) {
   };
 }
 
-function queryTransportSegmentPage(payload) {
-  assertAllowedFields(payload, ['segment', 'operationId', 'transportOrdinal', 'limit'], 'invalidTransportRequest');
-  const segment = normalizeTransportSegment(payload.segment);
-  const operationId = payload.operationId == null
-    ? null
-    : requireString(payload.operationId, 'operationId', 512);
-  const start = payload.transportOrdinal == null
-    ? segment.startOrdinal
-    : requireNonNegativeInteger(payload.transportOrdinal, 'transportOrdinal');
-  if (start < segment.startOrdinal || start > segment.endOrdinal) {
-    throw createCatalogError('invalidTransportDescriptor', 'Transport ordinal is outside its segment');
-  }
-  const limit = normalizeQueryLimit(payload.limit);
-  const sequence = database.prepare(`
-    SELECT s.item_count AS itemCount, s.state,
-      EXISTS(
-        SELECT 1 FROM playback_sequence_operation_owners o
-        WHERE o.sequence_id = s.id AND o.operation_id = ?
-      ) AS operationOwnsSequence
-    FROM playback_sequences s WHERE s.id = ?
-  `).get(operationId, segment.sequenceId);
-  if (!sequence || (sequence.state !== 'active' && !sequence.operationOwnsSequence)) {
-    throw createCatalogError('sequenceNotFound', 'Playback sequence is not readable by this operation');
-  }
-  const end = Math.min(segment.endOrdinal, start + limit);
-  const read = database.prepare(`
-    SELECT ordinal, entry_instance_id AS entryInstanceId, track_uid AS trackUid
-    FROM playback_sequence_items WHERE sequence_id = ? AND ordinal = ?
-  `);
-  const items = [];
-  const mapOrdinal = modules.transportShuffle.createTransportOrdinalMapper(
-    segment,
-    Number(sequence.itemCount)
-  );
-  for (let ordinal = start; ordinal < end; ordinal += 1) {
-    const canonicalOrdinal = mapOrdinal(ordinal);
-    const item = read.get(segment.sequenceId, canonicalOrdinal);
-    if (!item) throw createCatalogError('sequenceEntryNotFound', 'Playback sequence entry does not exist');
-    items.push({ ...item, transportOrdinal: ordinal, canonicalOrdinal });
-  }
-  return { items, nextTransportOrdinal: end < segment.endOrdinal ? end : null };
-}
-
 function queryTransportDescriptorPage(payload) {
-  assertAllowedFields(payload, ['descriptor', 'operationId', 'transportOrdinal', 'limit'], 'invalidTransportRequest');
+  assertAllowedFields(payload, ['descriptor', 'transportOrdinal', 'limit'], 'invalidTransportRequest');
   const descriptor = normalizeDurableTransportDescriptor(payload.descriptor);
-  const operationId = payload.operationId == null ? null : requireString(payload.operationId, 'operationId', 512);
   const start = optionalNonNegativeInteger(payload.transportOrdinal, 0, 'transportOrdinal');
   const limit = normalizeQueryLimit(payload.limit);
   const itemCount = transportDescriptorItemCount(descriptor);
   if (start >= itemCount) throw createCatalogError('invalidTransportDescriptor', 'Transport ordinal is outside its descriptor');
   const end = Math.min(itemCount, start + limit);
   const sequenceQuery = database.prepare(`
-    SELECT id, state, item_count AS itemCount FROM playback_sequences WHERE id = ?
-  `);
-  const ownershipQuery = database.prepare(`
-    SELECT 1 FROM playback_sequence_operation_owners WHERE sequence_id = ? AND operation_id = ?
+    SELECT id, state, item_count AS itemCount
+    FROM playback_sequences WHERE id = ? AND state = 'active'
   `);
   const itemQuery = database.prepare(`
     SELECT ordinal, entry_instance_id AS entryInstanceId, track_uid AS trackUid
@@ -3914,13 +3479,12 @@ function queryTransportDescriptorPage(payload) {
     let sequence = sequenceCache.get(located.segment.sequenceId);
     if (!sequence) {
       sequence = sequenceQuery.get(located.segment.sequenceId);
-      const operationOwnsSequence = operationId !== null && ownershipQuery.get(located.segment.sequenceId, operationId);
-      if (!sequence || (sequence.state !== 'active' && !operationOwnsSequence)) {
-        throw createCatalogError('sequenceNotFound', 'Playback sequence is not readable by this operation');
+      if (!sequence) {
+        throw createCatalogError('sequenceNotFound', 'Active playback sequence does not exist');
       }
       sequenceCache.set(located.segment.sequenceId, sequence);
     }
-    const mapperKey = `${located.segment.sequenceId}\u0000${located.segment.shuffleSeed ?? ''}\u0000${located.segment.shuffleEpoch ?? ''}\u0000${located.segment.shuffleTransportOffset ?? ''}`;
+    const mapperKey = `${located.segment.sequenceId}\u0000${located.segment.shuffleSeed ?? ""}\u0000${located.segment.shuffleEpoch ?? ""}\u0000${located.segment.shuffleTransportOffset ?? ""}`;
     let mapSourceOrdinal = mapperCache.get(mapperKey);
     if (!mapSourceOrdinal) {
       mapSourceOrdinal = modules.transportShuffle.createTransportOrdinalMapper(
@@ -3936,100 +3500,6 @@ function queryTransportDescriptorPage(payload) {
     items.push({ ...item, transportOrdinal: ordinal, canonicalOrdinal });
   }
   return { items, nextTransportOrdinal: end < itemCount ? end : null };
-}
-
-function tombstonePlaybackSequence(payload) {
-  assertExactFields(payload, ['sequenceId'], 'invalidPlaybackSequenceRequest');
-  const sequenceId = requireString(payload.sequenceId, 'sequenceId', 512);
-  return runDurableTransaction(() => {
-    if (database.prepare(`
-      SELECT 1 FROM playback_sequence_transport_owners WHERE sequence_id = ?
-    `).get(sequenceId)) {
-      return { sequenceId, tombstoned: false, retained: true };
-    }
-    const result = database.prepare(`
-      UPDATE playback_sequences SET state = 'deleted'
-      WHERE id = ? AND state != 'deleted'
-    `).run(sequenceId);
-    return { sequenceId, tombstoned: Number(result.changes) === 1 };
-  });
-}
-
-function gcPlaybackSequences(payload) {
-  assertExactFields(payload, ['limit'], 'invalidPlaybackSequenceRequest');
-  const limit = normalizeWriteLimit(payload.limit);
-  return runDurableTransaction(() => {
-    const expiredUndo = database.prepare(`
-      SELECT undo_id AS undoId
-      FROM transport_undo_records
-      WHERE expires_at <= ?
-      ORDER BY expires_at, undo_id
-      LIMIT 1
-    `).get(Date.now());
-    let releasedUndo = false;
-    if (expiredUndo) {
-      const sequenceIds = database.prepare(`
-        SELECT sequence_id AS sequenceId
-        FROM playback_sequence_undo_owners WHERE undo_id = ?
-      `).all(expiredUndo.undoId).map(row => row.sequenceId);
-      database.prepare('DELETE FROM transport_undo_records WHERE undo_id = ?').run(expiredUndo.undoId);
-      tombstoneUnownedPlaybackSequences(sequenceIds);
-      releasedUndo = true;
-    }
-    const items = database.prepare(`
-      SELECT i.sequence_id AS sequenceId, i.ordinal
-      FROM playback_sequence_items i
-      JOIN playback_sequences s ON s.id = i.sequence_id
-      WHERE s.state = 'deleted'
-        AND NOT EXISTS (
-          SELECT 1 FROM playback_sequence_operation_owners o WHERE o.sequence_id = s.id
-        )
-        AND NOT EXISTS (
-          SELECT 1 FROM playback_sequence_transport_owners o WHERE o.sequence_id = s.id
-        )
-        AND NOT EXISTS (
-          SELECT 1 FROM playback_sequence_undo_owners o WHERE o.sequence_id = s.id
-        )
-      ORDER BY s.created_at, i.sequence_id, i.ordinal
-      LIMIT ?
-    `).all(limit);
-    const deleteItem = database.prepare(`
-      DELETE FROM playback_sequence_items WHERE sequence_id = ? AND ordinal = ?
-    `);
-    for (const item of items) deleteItem.run(item.sequenceId, item.ordinal);
-    const remaining = limit - items.length;
-    let deletedSequenceCount = 0;
-    if (remaining > 0) {
-      const sequences = database.prepare(`
-        SELECT s.id
-        FROM playback_sequences s
-        WHERE s.state = 'deleted'
-          AND NOT EXISTS (
-            SELECT 1 FROM playback_sequence_operation_owners o WHERE o.sequence_id = s.id
-          )
-          AND NOT EXISTS (
-            SELECT 1 FROM playback_sequence_transport_owners o WHERE o.sequence_id = s.id
-          )
-          AND NOT EXISTS (
-            SELECT 1 FROM playback_sequence_undo_owners o WHERE o.sequence_id = s.id
-          )
-          AND NOT EXISTS (
-            SELECT 1 FROM playback_sequence_items i WHERE i.sequence_id = s.id
-          )
-        ORDER BY s.created_at, s.id
-        LIMIT ?
-      `).all(remaining);
-      const deleteSequence = database.prepare('DELETE FROM playback_sequences WHERE id = ?');
-      for (const sequence of sequences) {
-        deletedSequenceCount += Number(deleteSequence.run(sequence.id).changes);
-      }
-    }
-    return {
-      deletedItemCount: items.length,
-      deletedSequenceCount,
-      hasMore: releasedUndo || items.length === limit
-    };
-  });
 }
 
 function createPlaylist(payload) {
@@ -4230,8 +3700,14 @@ function reorderPlaylistItem(payload) {
   if (!isPlainObject(payload.target)) {
     throw createCatalogError('invalidPlaylistRequest', 'Playlist reorder target must be an object');
   }
-  assertExactFields(payload.target, ['direction'], 'invalidPlaylistRequest');
-  if (payload.target.direction !== 'up' && payload.target.direction !== 'down') {
+  const targetFields = Object.keys(payload.target).sort();
+  const directionTarget = targetFields.length === 1 && targetFields[0] === 'direction';
+  const beforeTarget = targetFields.length === 1 && targetFields[0] === 'beforeItemKey';
+  const afterTarget = targetFields.length === 1 && targetFields[0] === 'afterItemKey';
+  if (!directionTarget && !beforeTarget && !afterTarget) {
+    throw createCatalogError('invalidPlaylistRequest', 'Playlist reorder target is invalid');
+  }
+  if (directionTarget && payload.target.direction !== 'up' && payload.target.direction !== 'down') {
     throw createCatalogError('invalidPlaylistRequest', 'Playlist reorder direction is invalid');
   }
   const expectedVersion = requireNonNegativeInteger(payload.expectedVersion, 'expectedVersion');
@@ -4250,7 +3726,51 @@ function reorderPlaylistItem(payload) {
       AND (i.pending_operation_id IS NULL OR (o.committed = 1 AND o.terminal_kind = 'success'))
   `).get(itemKey, playlistId);
   if (!item) throw createCatalogError('playlistItemNotFound', 'Playlist item does not exist');
-  const adjacent = payload.target.direction === 'up'
+  const visibleItem = itemKeyToFind => database.prepare(`
+    SELECT i.item_key AS itemKey, i.position
+    FROM playlist_items i
+    LEFT JOIN operation_jobs o ON o.operation_id = i.pending_operation_id
+    WHERE i.item_key = ? AND i.playlist_id = ?
+      AND (i.pending_operation_id IS NULL OR (o.committed = 1 AND o.terminal_kind = 'success'))
+  `).get(itemKeyToFind, playlistId);
+  let placement;
+  if (directionTarget) {
+    const adjacent = payload.target.direction === 'up'
+      ? database.prepare(`
+          SELECT i.item_key AS itemKey
+          FROM playlist_items i
+          LEFT JOIN operation_jobs o ON o.operation_id = i.pending_operation_id
+          WHERE i.playlist_id = ? AND i.position < ?
+            AND (i.pending_operation_id IS NULL OR (o.committed = 1 AND o.terminal_kind = 'success'))
+          ORDER BY i.position DESC LIMIT 1
+        `).get(playlistId, item.position)
+      : database.prepare(`
+          SELECT i.item_key AS itemKey
+          FROM playlist_items i
+          LEFT JOIN operation_jobs o ON o.operation_id = i.pending_operation_id
+          WHERE i.playlist_id = ? AND i.position > ?
+            AND (i.pending_operation_id IS NULL OR (o.committed = 1 AND o.terminal_kind = 'success'))
+          ORDER BY i.position LIMIT 1
+        `).get(playlistId, item.position);
+    if (!adjacent) {
+      return { kind: 'unchanged', playlistId, itemKey, version: expectedVersion };
+    }
+    placement = payload.target.direction === 'up'
+      ? { kind: 'before', target: visibleItem(adjacent.itemKey) }
+      : { kind: 'after', target: visibleItem(adjacent.itemKey) };
+  } else {
+    const targetItemKey = requirePositiveInteger(
+      beforeTarget ? payload.target.beforeItemKey : payload.target.afterItemKey,
+      beforeTarget ? 'beforeItemKey' : 'afterItemKey'
+    );
+    if (targetItemKey === itemKey) {
+      return { kind: 'unchanged', playlistId, itemKey, version: expectedVersion };
+    }
+    const target = visibleItem(targetItemKey);
+    if (!target) throw createCatalogError('playlistItemNotFound', 'Playlist reorder target does not exist');
+    placement = { kind: beforeTarget ? 'before' : 'after', target };
+  }
+  const immediate = placement.kind === 'before'
     ? database.prepare(`
         SELECT i.item_key AS itemKey, i.position
         FROM playlist_items i
@@ -4258,7 +3778,7 @@ function reorderPlaylistItem(payload) {
         WHERE i.playlist_id = ? AND i.position < ?
           AND (i.pending_operation_id IS NULL OR (o.committed = 1 AND o.terminal_kind = 'success'))
         ORDER BY i.position DESC LIMIT 1
-      `).get(playlistId, item.position)
+      `).get(playlistId, placement.target.position)
     : database.prepare(`
         SELECT i.item_key AS itemKey, i.position
         FROM playlist_items i
@@ -4266,17 +3786,75 @@ function reorderPlaylistItem(payload) {
         WHERE i.playlist_id = ? AND i.position > ?
           AND (i.pending_operation_id IS NULL OR (o.committed = 1 AND o.terminal_kind = 'success'))
         ORDER BY i.position LIMIT 1
-      `).get(playlistId, item.position);
-  if (!adjacent) {
+      `).get(playlistId, placement.target.position);
+  if (Number(immediate?.itemKey) === itemKey) {
     return { kind: 'unchanged', playlistId, itemKey, version: expectedVersion };
   }
+  const boundary = placement.kind === 'before'
+    ? database.prepare(`
+        SELECT i.position
+        FROM playlist_items i
+        LEFT JOIN operation_jobs o ON o.operation_id = i.pending_operation_id
+        WHERE i.playlist_id = ? AND i.item_key != ? AND i.position < ?
+          AND (i.pending_operation_id IS NULL OR (o.committed = 1 AND o.terminal_kind = 'success'))
+        ORDER BY i.position DESC LIMIT 1
+      `).get(playlistId, itemKey, placement.target.position)
+    : database.prepare(`
+        SELECT i.position
+        FROM playlist_items i
+        LEFT JOIN operation_jobs o ON o.operation_id = i.pending_operation_id
+        WHERE i.playlist_id = ? AND i.item_key != ? AND i.position > ?
+          AND (i.pending_operation_id IS NULL OR (o.committed = 1 AND o.terminal_kind = 'success'))
+        ORDER BY i.position LIMIT 1
+      `).get(playlistId, itemKey, placement.target.position);
+  const lower = placement.kind === 'before'
+    ? Number(boundary?.position ?? 0)
+    : Number(placement.target.position);
+  const upper = placement.kind === 'before'
+    ? Number(placement.target.position)
+    : Number(boundary?.position ?? lower + 1024);
   return commitMutation(['playlists'], 'reorder-playlist-item', () => {
-    const updatePosition = database.prepare(`
-      UPDATE playlist_items SET position = ? WHERE item_key = ? AND playlist_id = ?
-    `);
-    updatePosition.run(-itemKey, itemKey, playlistId);
-    updatePosition.run(item.position, adjacent.itemKey, playlistId);
-    updatePosition.run(adjacent.position, itemKey, playlistId);
+    const desiredPosition = lower + Math.floor((upper - lower) / 2);
+    if (upper - lower > 1 && Number.isSafeInteger(desiredPosition)) {
+      const updatePosition = database.prepare(`
+        UPDATE playlist_items SET position = ? WHERE item_key = ? AND playlist_id = ?
+      `);
+      updatePosition.run(-itemKey, itemKey, playlistId);
+      updatePosition.run(desiredPosition, itemKey, playlistId);
+    } else {
+      database.exec('DROP TABLE IF EXISTS temp.playlist_reorder_map');
+      database.exec(`
+        CREATE TEMP TABLE playlist_reorder_map(
+          item_key INTEGER PRIMARY KEY,
+          new_position INTEGER NOT NULL UNIQUE
+        )
+      `);
+      try {
+        const placementOffset = placement.kind === 'before' ? -0.5 : 0.5;
+        database.prepare(`
+          INSERT INTO temp.playlist_reorder_map(item_key, new_position)
+          SELECT item_key,
+            ROW_NUMBER() OVER (
+              ORDER BY CASE WHEN item_key = ? THEN ? ELSE position END, item_key
+            ) * 1024
+          FROM playlist_items
+          WHERE playlist_id = ?
+        `).run(itemKey, Number(placement.target.position) + placementOffset, playlistId);
+        database.prepare(`
+          UPDATE playlist_items SET position = -item_key WHERE playlist_id = ?
+        `).run(playlistId);
+        database.prepare(`
+          UPDATE playlist_items
+          SET position = (
+            SELECT new_position FROM temp.playlist_reorder_map m
+            WHERE m.item_key = playlist_items.item_key
+          )
+          WHERE playlist_id = ?
+        `).run(playlistId);
+      } finally {
+        database.exec('DROP TABLE IF EXISTS temp.playlist_reorder_map');
+      }
+    }
     updatePlaylistVersionForLocalMutation(playlistId, expectedVersion, updatedAt);
     return { kind: 'reordered', playlistId, itemKey, version: expectedVersion + 1 };
   });
@@ -4674,8 +4252,125 @@ function appendPlaylistItems(payload) {
   });
 }
 
+function getAutomaticPlaylistImportState(payload) {
+  assertExactFields(payload, ['folderId', 'relativePath', 'playlistId'], 'invalidPlaylistRequest');
+  const folderId = requireString(payload.folderId, 'folderId', 512);
+  const relativePath = normalizeRelativePath(
+    requireString(payload.relativePath, 'relativePath', 32768)
+  ).normalize('NFC');
+  const playlistId = requireString(payload.playlistId, 'playlistId', 512);
+  const source = database.prepare(`
+    SELECT s.playlist_id AS playlistId, s.content_digest AS contentDigest,
+      p.state, p.version
+    FROM automatic_playlist_sources s
+    JOIN playlists p ON p.id = s.playlist_id
+    WHERE s.folder_id = ? AND s.relative_path = ?
+  `).get(folderId, relativePath);
+  if (source && source.playlistId !== playlistId) {
+    throw createCatalogError('automaticPlaylistIdentityMismatch', 'Automatic playlist source identity changed');
+  }
+  const playlist = source ?? database.prepare(`
+    SELECT id AS playlistId, NULL AS contentDigest, state, version
+    FROM playlists WHERE id = ?
+  `).get(playlistId);
+  return playlist
+    ? {
+        state: playlist.state,
+        version: Number(playlist.version),
+        contentDigest: playlist.contentDigest ?? null
+      }
+    : { state: 'missing', version: null, contentDigest: null };
+}
+
+function prepareAutomaticPlaylistImport(payload) {
+  assertExactFields(payload, [
+    'contentDigest', 'createdAt', 'expectedVersion', 'folderId', 'name',
+    'operationId', 'playlistId', 'relativePath'
+  ], 'invalidPlaylistRequest');
+  const folderId = requireString(payload.folderId, 'folderId', 512);
+  const relativePath = normalizeRelativePath(
+    requireString(payload.relativePath, 'relativePath', 32768)
+  ).normalize('NFC');
+  const playlistId = requireString(payload.playlistId, 'playlistId', 512);
+  const operationId = requireString(payload.operationId, 'operationId', 512);
+  const contentDigest = requireString(payload.contentDigest, 'contentDigest', 128);
+  const expectedVersion = requireNonNegativeInteger(payload.expectedVersion, 'expectedVersion');
+  const name = requireString(payload.name, 'name', 4096);
+  const createdAt = requireNonNegativeInteger(payload.createdAt, 'createdAt');
+  if (!/^sha256:[0-9a-f]{64}$/.test(contentDigest)) {
+    throw createCatalogError('invalidPlaylistRequest', 'Automatic playlist content digest is invalid');
+  }
+  return runDurableTransaction(() => {
+    const folder = database.prepare('SELECT status FROM folders WHERE id = ?').get(folderId);
+    if (!folder || folder.status === 'removed') {
+      throw createCatalogError('stalePlaylistOrigin', 'Automatic playlist folder is no longer current');
+    }
+    const operation = database.prepare(`
+      SELECT operation_kind AS operationKind, target_identity AS targetIdentity,
+        expected_target_version AS expectedVersion, terminal_kind AS terminalKind
+      FROM operation_jobs WHERE operation_id = ?
+    `).get(operationId);
+    if (!operation || operation.terminalKind !== null || operation.operationKind !== 'importPlaylist' ||
+        operation.targetIdentity !== `playlist:${playlistId}` ||
+        Number(operation.expectedVersion) !== expectedVersion) {
+      throw createCatalogError('playlistLeaseMismatch', 'Automatic playlist operation does not match');
+    }
+    const source = database.prepare(`
+      SELECT s.playlist_id AS playlistId, s.content_digest AS contentDigest, p.state
+      FROM automatic_playlist_sources s
+      JOIN playlists p ON p.id = s.playlist_id
+      WHERE s.folder_id = ? AND s.relative_path = ?
+    `).get(folderId, relativePath);
+    if (source && source.playlistId !== playlistId) {
+      throw createCatalogError('automaticPlaylistIdentityMismatch', 'Automatic playlist source identity changed');
+    }
+    if (source?.state === 'active' && source.contentDigest === contentDigest) {
+      return { kind: 'unchanged' };
+    }
+    let playlist = database.prepare(`
+      SELECT state, version, building_operation_id AS buildingOperationId
+      FROM playlists WHERE id = ?
+    `).get(playlistId);
+    if (expectedVersion === 0 && (!playlist || playlist.state === 'deleted')) {
+      if (playlist) {
+        database.prepare('DELETE FROM playlist_items WHERE playlist_id = ?').run(playlistId);
+        database.prepare(`
+          DELETE FROM automatic_playlist_import_jobs WHERE playlist_id = ?
+        `).run(playlistId);
+        database.prepare("DELETE FROM playlists WHERE id = ? AND state = 'deleted'").run(playlistId);
+      }
+      database.prepare(`
+        INSERT INTO playlists(
+          id, name, sort_name, state, building_operation_id, version, created_at, updated_at
+        ) VALUES (?, ?, ?, 'building', ?, 0, ?, ?)
+      `).run(playlistId, name, createSortKey(name), operationId, createdAt, createdAt);
+      playlist = { state: 'building', version: 0, buildingOperationId: operationId };
+    }
+    const validNew = expectedVersion === 0 && playlist?.state === 'building' &&
+      playlist.buildingOperationId === operationId && Number(playlist.version) === 0;
+    const validReplacement = expectedVersion > 0 && playlist?.state === 'active' &&
+      Number(playlist.version) === expectedVersion;
+    if (!validNew && !validReplacement) {
+      throw createCatalogError('playlistVersionConflict', 'Automatic playlist changed before staging');
+    }
+    const basePosition = Number(database.prepare(`
+      SELECT COALESCE(MAX(position), 0) AS position FROM playlist_items WHERE playlist_id = ?
+    `).get(playlistId).position);
+    database.prepare(`
+      INSERT INTO automatic_playlist_import_jobs(
+        operation_id, folder_id, relative_path, playlist_id, content_digest,
+        base_position, expected_version
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      operationId, folderId, relativePath, playlistId, contentDigest,
+      basePosition, expectedVersion
+    );
+    return { kind: 'prepared', basePosition };
+  });
+}
+
 function appendPlaylistImportRecords(payload) {
-  assertExactFields(payload, ['playlistId', 'operationId', 'records'], 'invalidPlaylistRequest');
+  assertExactFields(payload, ['origin', 'playlistId', 'operationId', 'records'], 'invalidPlaylistRequest');
   const playlistId = requireString(payload.playlistId, 'playlistId', 512);
   const operationId = requireString(payload.operationId, 'operationId', 512);
   const records = validateBatch(payload.records, 'records');
@@ -4683,23 +4378,32 @@ function appendPlaylistImportRecords(payload) {
     throw createCatalogError('invalidPlaylistRequest', 'Playlist import records must not be empty');
   }
   return runDurableTransaction(() => {
+    const origin = normalizePlaylistImportOrigin(payload.origin);
     const playlist = database.prepare(`
       SELECT state, building_operation_id AS buildingOperationId
       FROM playlists WHERE id = ?
     `).get(playlistId);
-    if (!playlist || playlist.state !== 'building' || playlist.buildingOperationId !== operationId) {
+    const automaticJob = database.prepare(`
+      SELECT base_position AS basePosition FROM automatic_playlist_import_jobs
+      WHERE operation_id = ? AND playlist_id = ?
+    `).get(operationId, playlistId);
+    const buildingLease = playlist?.state === 'building' && playlist.buildingOperationId === operationId;
+    const replacementLease = playlist?.state === 'active' && automaticJob;
+    if (!buildingLease && !replacementLease) {
       throw createCatalogError('playlistLeaseMismatch', 'Playlist import lease does not match');
     }
     const operation = assertPlaylistOperation(operationId, playlistId);
     const operationKind = database.prepare(`
       SELECT operation_kind AS operationKind FROM operation_jobs WHERE operation_id = ?
     `).get(operationId)?.operationKind;
-    if (!operation || operationKind !== 'importPlaylist') {
+    if (!operation || !['importPlaylist', 'previewPlaylistImport'].includes(operationKind)) {
       throw createCatalogError('operationNotActive', 'Playlist import operation is not active');
     }
+    const basePosition = Number(automaticJob?.basePosition ?? 0);
     let position = Number(database.prepare(`
-      SELECT COALESCE(MAX(position), 0) AS position FROM playlist_items WHERE playlist_id = ?
-    `).get(playlistId).position);
+      SELECT COALESCE(MAX(position), ?) AS position FROM playlist_items
+      WHERE playlist_id = ? AND pending_operation_id = ?
+    `).get(basePosition, playlistId, operationId).position);
     let stagedCount = 0;
     const findAtPosition = database.prepare(`
       SELECT item_key AS itemKey, import_fields_json AS importFieldsJson,
@@ -4735,7 +4439,7 @@ function appendPlaylistImportRecords(payload) {
         if (index > Math.floor(Number.MAX_SAFE_INTEGER / 1024)) {
           throw createCatalogError('invalidPlaylistRequest', 'Playlist import record index is too large');
         }
-        recordPosition = index * 1024;
+        recordPosition = basePosition + index * 1024;
         existing = findAtPosition.get(playlistId, recordPosition) || null;
         if (existing && existing.pendingOperationId !== operationId) {
           throw createCatalogError('playlistLeaseMismatch', 'Playlist import row belongs to another operation');
@@ -4748,7 +4452,7 @@ function appendPlaylistImportRecords(payload) {
       } else {
         throw createCatalogError('invalidPlaylistRequest', 'Playlist import record type is invalid');
       }
-      const normalized = normalizePlaylistItem({ unresolved: playlistImportUnresolved(fields) });
+      const normalized = normalizePlaylistItem({ unresolved: playlistImportUnresolved(fields, origin) });
       const importFieldsJson = JSON.stringify(fields);
       const hasPath = fields.path ? 1 : 0;
       if (existing) {
@@ -4780,7 +4484,13 @@ function finalizePlaylistImportPage(payload) {
     const playlist = database.prepare(`
       SELECT state, building_operation_id AS buildingOperationId FROM playlists WHERE id = ?
     `).get(playlistId);
-    if (!playlist || playlist.state !== 'building' || playlist.buildingOperationId !== operationId) {
+    const automaticJob = database.prepare(`
+      SELECT operation_id AS operationId FROM automatic_playlist_import_jobs
+      WHERE operation_id = ? AND playlist_id = ?
+    `).get(operationId, playlistId);
+    const buildingLease = playlist?.state === 'building' && playlist.buildingOperationId === operationId;
+    const replacementLease = playlist?.state === 'active' && automaticJob;
+    if (!buildingLease && !replacementLease) {
       throw createCatalogError('playlistLeaseMismatch', 'Playlist import lease does not match');
     }
     assertPlaylistOperation(operationId, playlistId);
@@ -4806,8 +4516,10 @@ function finalizePlaylistImportPage(payload) {
     `);
     let keptCount = 0;
     let resolvedCount = 0;
+    const unresolvedItems = [];
     for (const row of rows) {
-      const trackUid = resolveImportedPlaylistTrack(parseStoredJson(row.unresolvedJson));
+      const unresolved = parseStoredJson(row.unresolvedJson);
+      const trackUid = resolveImportedPlaylistTrack(unresolved);
       if (trackUid) {
         resolve.run(trackUid, row.itemKey, operationId);
         keptCount += 1;
@@ -4816,31 +4528,79 @@ function finalizePlaylistImportPage(payload) {
       else {
         finish.run(row.itemKey, operationId);
         keptCount += 1;
+        if (unresolvedItems.length < 5) {
+          unresolvedItems.push({ label: playlistImportPreviewLabel(unresolved) });
+        }
       }
     }
     return {
       processedCount: rows.length,
       keptCount,
       resolvedCount,
+      unresolvedItems,
       nextPosition: rows.length === limit ? Number(rows.at(-1).position) : null
     };
   });
 }
 
+function playlistImportPreviewLabel(unresolved) {
+  const basename = String(unresolved?.basename ?? '').trim();
+  const title = String(unresolved?.title ?? '').trim();
+  return (basename || title).slice(0, 512);
+}
+
 function resolveImportedPlaylistTrack(unresolved) {
   if (!unresolved) return null;
+  const trustedOriginMatch = resolveImportedTrackFromOrigin(unresolved);
+  if (trustedOriginMatch) return trustedOriginMatch;
   const normalize = modules.searchNormalizer.normalizeSearchText;
-  const requestedPath = unresolved.relativePathHint || unresolved.sourceLine || '';
+  const requestedPath = unresolved.relativePathHint || unresolved.relativePath || unresolved.sourceLine || '';
   const basename = normalize(unresolved.basename || String(requestedPath).split(/[\\/]/).at(-1) || '');
   let pathCandidates = [];
   if (basename) {
+    const exactRequestedPath = normalizePlaylistPortablePath(requestedPath);
+    if (exactRequestedPath) {
+      const exactRootCandidates = database.prepare(`
+        WITH requested(path) AS (VALUES (?))
+        SELECT t.track_uid AS trackUid
+        FROM tracks t
+        JOIN folders f ON f.id = t.folder_id AND f.status <> 'removed'
+        CROSS JOIN requested
+        WHERE t.normalized_basename = ? AND (
+          requested.path COLLATE NOCASE = (f.display_name || '/' || t.relative_path) OR
+          substr(requested.path, -(length(f.display_name) + length(t.relative_path) + 2))
+            COLLATE NOCASE = ('/' || f.display_name || '/' || t.relative_path)
+        )
+        ORDER BY t.track_uid LIMIT 2
+      `).all(exactRequestedPath, basename);
+      if (exactRootCandidates.length === 1) return exactRootCandidates[0].trackUid;
+      const exactRelativeCandidates = database.prepare(`
+        WITH requested(path) AS (VALUES (?))
+        SELECT t.track_uid AS trackUid
+        FROM tracks t
+        JOIN folders f ON f.id = t.folder_id AND f.status <> 'removed'
+        CROSS JOIN requested
+        WHERE t.normalized_basename = ? AND (
+          requested.path COLLATE NOCASE = t.relative_path OR
+          substr(requested.path, -(length(t.relative_path) + 1))
+            COLLATE NOCASE = ('/' || t.relative_path)
+        )
+        ORDER BY t.track_uid LIMIT 2
+      `).all(exactRequestedPath, basename);
+      if (exactRelativeCandidates.length === 1) return exactRelativeCandidates[0].trackUid;
+      if (exactRootCandidates.length > 1 || exactRelativeCandidates.length > 1) return null;
+    }
     pathCandidates = database.prepare(`
-      SELECT track_uid AS trackUid, relative_path AS relativePath,
-        normalized_title AS normalizedTitle, normalized_artist AS normalizedArtist,
-        duration_bucket AS durationBucket
-      FROM tracks WHERE normalized_basename = ? ORDER BY track_uid LIMIT ?
+      SELECT t.track_uid AS trackUid, t.relative_path AS relativePath, f.display_name AS rootName,
+        t.normalized_title AS normalizedTitle, t.normalized_artist AS normalizedArtist,
+        t.duration_bucket AS durationBucket
+      FROM tracks t
+      JOIN folders f ON f.id = t.folder_id AND f.status <> 'removed'
+      WHERE t.normalized_basename = ? ORDER BY t.track_uid LIMIT ?
     `).all(basename, PLAYLIST_RESOLUTION_CANDIDATE_LIMIT + 1);
     if (pathCandidates.length <= PLAYLIST_RESOLUTION_CANDIDATE_LIMIT) {
+      const exact = pathCandidates.filter(track => playlistPortablePathMatches(track, requestedPath));
+      if (exact.length === 1) return exact[0].trackUid;
       const scored = pathCandidates.map(track => ({
         track,
         score: playlistPathSuffixScore(track.relativePath, requestedPath)
@@ -4859,10 +4619,11 @@ function resolveImportedPlaylistTrack(unresolved) {
   if (!normalizedTitle || !normalizedArtist) return null;
   const durationBucket = Number.isFinite(unresolved.durationSec) ? Math.round(unresolved.durationSec) : null;
   const metadataCandidates = database.prepare(`
-    SELECT track_uid AS trackUid, duration_bucket AS durationBucket
-    FROM tracks
-    WHERE normalized_title = ? AND normalized_artist = ?
-    ORDER BY track_uid LIMIT ?
+    SELECT t.track_uid AS trackUid, t.duration_bucket AS durationBucket
+    FROM tracks t
+    JOIN folders f ON f.id = t.folder_id AND f.status <> 'removed'
+    WHERE t.normalized_title = ? AND t.normalized_artist = ?
+    ORDER BY t.track_uid LIMIT ?
   `).all(normalizedTitle, normalizedArtist, PLAYLIST_RESOLUTION_CANDIDATE_LIMIT + 1);
   if (metadataCandidates.length > PLAYLIST_RESOLUTION_CANDIDATE_LIMIT) return null;
   const matching = metadataCandidates.filter(track =>
@@ -4875,6 +4636,89 @@ function resolveImportedPlaylistTrack(unresolved) {
     if (intersection.length === 1) return intersection[0].trackUid;
   }
   return null;
+}
+
+function normalizePlaylistPortablePath(value) {
+  return String(value ?? '').trim().replaceAll('\\', '/').replace(/^\.\//, '')
+    .split('/').filter(Boolean).join('/');
+}
+
+function normalizePlaylistImportOrigin(value) {
+  if (value == null) return null;
+  assertExactFields(value, ['folderId', 'playlistRelativePath'], 'invalidPlaylistRequest');
+  const origin = {
+    folderId: requireString(value.folderId, 'origin.folderId', 512),
+    playlistRelativePath: normalizeRelativePath(requireString(
+      value.playlistRelativePath,
+      'origin.playlistRelativePath',
+      32768
+    ))
+  };
+  const folder = database.prepare('SELECT status FROM folders WHERE id = ?').get(origin.folderId);
+  if (!folder || folder.status === 'removed') {
+    throw createCatalogError('stalePlaylistOrigin', 'Playlist import folder origin is no longer current');
+  }
+  return origin;
+}
+
+function resolveImportedTrackFromOrigin(unresolved) {
+  const origin = unresolved?.origin;
+  if (!origin) return null;
+  let normalizedOrigin;
+  try {
+    normalizedOrigin = normalizePlaylistImportOrigin(origin);
+  } catch {
+    return null;
+  }
+  const requested = String(
+    unresolved.relativePathHint || unresolved.relativePath || unresolved.sourceLine || ''
+  ).trim();
+  const relativePath = resolvePlaylistEntryRelativePath(
+    normalizedOrigin.playlistRelativePath,
+    requested
+  );
+  if (!relativePath) return null;
+  const matches = database.prepare(`
+    SELECT track_uid AS trackUid FROM tracks t
+    JOIN folders f ON f.id = t.folder_id AND f.status <> 'removed'
+    WHERE t.folder_id = ? AND t.relative_path = ? COLLATE NOCASE
+    ORDER BY t.track_uid LIMIT 2
+  `).all(normalizedOrigin.folderId, relativePath);
+  return matches.length === 1 ? matches[0].trackUid : null;
+}
+
+function resolvePlaylistEntryRelativePath(playlistRelativePath, requestedPath) {
+  const requested = String(requestedPath ?? '').replaceAll('\\', '/');
+  if (!requested || requested.startsWith('/') || /^[A-Za-z]:/.test(requested) || /^[a-z][a-z0-9+.-]*:/iu.test(requested)) {
+    return null;
+  }
+  const parts = path.posix.dirname(playlistRelativePath).split('/').filter(part => part && part !== '.');
+  for (const part of requested.split('/')) {
+    if (!part || part === '.') continue;
+    if (part === '..') {
+      if (parts.length === 0) return null;
+      parts.pop();
+    } else {
+      parts.push(part);
+    }
+  }
+  if (parts.length === 0) return null;
+  try {
+    return normalizeRelativePath(parts.join('/'));
+  } catch {
+    return null;
+  }
+}
+
+function playlistPortablePathMatches(track, requestedPath) {
+  const normalizePath = value => modules.searchNormalizer.normalizeSearchText(
+    String(value ?? '').replace(/\\/g, '/').replace(/^\.\//, '')
+  ).split('/').filter(Boolean).join('/');
+  const requested = normalizePath(requestedPath);
+  if (!requested) return false;
+  const relativePath = normalizePath(track.relativePath);
+  const rootedPath = normalizePath(`${track.rootName || ''}/${track.relativePath || ''}`);
+  return requested === relativePath || requested === rootedPath;
 }
 
 function playlistPathSuffixScore(candidatePath, requestedPath) {
@@ -4903,7 +4747,7 @@ function normalizePlaylistImportFields(value) {
   return fields;
 }
 
-function playlistImportUnresolved(fields) {
+function playlistImportUnresolved(fields, origin = null) {
   const sourceLine = String(fields.path ?? '').slice(0, 16_384);
   return {
     sourceLine,
@@ -4912,7 +4756,8 @@ function playlistImportUnresolved(fields) {
     title: fields.title ?? '',
     artist: fields.artist ?? '',
     album: fields.album ?? '',
-    durationSec: Number.isFinite(fields.durationSec) ? fields.durationSec : null
+    durationSec: Number.isFinite(fields.durationSec) ? fields.durationSec : null,
+    origin
   };
 }
 
@@ -4931,17 +4776,56 @@ function publishPlaylist(payload) {
     SELECT state, version, building_operation_id AS buildingOperationId
     FROM playlists WHERE id = ?
   `).get(playlistId);
+  const automaticJob = database.prepare(`
+    SELECT folder_id AS folderId, relative_path AS relativePath,
+      content_digest AS contentDigest, expected_version AS expectedVersion
+    FROM automatic_playlist_import_jobs
+    WHERE operation_id = ? AND playlist_id = ?
+  `).get(operationId, playlistId);
   if (!playlist || playlist.state === 'deleted') {
     throw createCatalogError('playlistNotFound', 'Playlist does not exist');
   }
   if (Number(playlist.version) !== expectedVersion) {
     return { kind: 'conflict', currentVersion: Number(playlist.version) };
   }
+  if (automaticJob && Number(automaticJob.expectedVersion) !== expectedVersion) {
+    throw createCatalogError('playlistLeaseMismatch', 'Automatic playlist version does not match');
+  }
   assertPlaylistOperation(operationId, playlistId, { committing: true });
   if (playlist.state === 'building' && playlist.buildingOperationId !== operationId) {
     throw createCatalogError('playlistLeaseMismatch', 'Playlist build operation does not match');
   }
   return commitMutation(['playlists'], 'publish-playlist', () => {
+    if (automaticJob && expectedVersion > 0) {
+      database.prepare(`
+        WITH ranked AS (
+          SELECT item_key AS itemKey,
+            ROW_NUMBER() OVER (ORDER BY position, item_key) * 1024 AS newPosition
+          FROM playlist_items
+          WHERE playlist_id = ? AND pending_operation_id = ?
+        )
+        UPDATE playlist_items
+        SET position = -(
+          SELECT newPosition FROM ranked WHERE ranked.itemKey = playlist_items.item_key
+        )
+        WHERE playlist_id = ? AND pending_operation_id = ?
+      `).run(playlistId, operationId, playlistId, operationId);
+      database.prepare(`
+        DELETE FROM playlist_items
+        WHERE playlist_id = ?
+          AND (pending_operation_id IS NULL OR pending_operation_id != ?)
+      `).run(playlistId, operationId);
+      database.prepare(`
+        UPDATE playlist_items
+        SET position = -position, pending_operation_id = NULL
+        WHERE playlist_id = ? AND pending_operation_id = ?
+      `).run(playlistId, operationId);
+    } else if (automaticJob) {
+      database.prepare(`
+        UPDATE playlist_items SET pending_operation_id = NULL
+        WHERE playlist_id = ? AND pending_operation_id = ?
+      `).run(playlistId, operationId);
+    }
     const updated = database.prepare(`
       UPDATE playlists
       SET state = 'active', building_operation_id = NULL, version = version + 1, updated_at = ?
@@ -4949,6 +4833,23 @@ function publishPlaylist(payload) {
     `).run(finishedAt, playlistId, expectedVersion);
     if (Number(updated.changes) !== 1) {
       throw createCatalogError('playlistVersionConflict', 'Playlist version changed during publish');
+    }
+    if (automaticJob) {
+      database.prepare(`
+        INSERT INTO automatic_playlist_sources(
+          folder_id, relative_path, playlist_id, content_digest, imported_at
+        ) VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(folder_id, relative_path) DO UPDATE SET
+          playlist_id = excluded.playlist_id,
+          content_digest = excluded.content_digest,
+          imported_at = excluded.imported_at
+      `).run(
+        automaticJob.folderId, automaticJob.relativePath, playlistId,
+        automaticJob.contentDigest, finishedAt
+      );
+      database.prepare(`
+        DELETE FROM automatic_playlist_import_jobs WHERE operation_id = ?
+      `).run(operationId);
     }
     const result = { ...requestedResult, playlistId, version: expectedVersion + 1 };
     completeOperationInTransaction(operationId, {
@@ -4972,21 +4873,30 @@ function queryPlaylistItems(payload) {
   if (!playlist) throw createCatalogError('playlistNotFound', 'Active playlist does not exist');
   const rows = database.prepare(`
     SELECT i.item_key AS itemKey, i.position, i.track_uid AS trackUid,
-           i.unresolved_json AS unresolvedJson
+      i.unresolved_json AS unresolvedJson, f.status AS folderStatus,
+      t.relative_path AS relativePath, t.file_name AS fileName,
+      t.title, t.artist, t.duration_sec AS durationSec
     FROM playlist_items i
     LEFT JOIN operation_jobs o ON o.operation_id = i.pending_operation_id
+    LEFT JOIN tracks t ON t.track_uid = i.track_uid
+    LEFT JOIN folders f ON f.id = t.folder_id
     WHERE i.playlist_id = ?
       AND i.position > ?
       AND (i.pending_operation_id IS NULL OR (o.committed = 1 AND o.terminal_kind = 'success'))
     ORDER BY i.position
     LIMIT ?
   `).all(playlistId, afterPosition, limit);
-  const items = rows.map(row => ({
-    itemKey: Number(row.itemKey),
-    position: Number(row.position),
-    trackUid: row.trackUid,
-    unresolved: row.unresolvedJson === null ? null : parseStoredJson(row.unresolvedJson)
-  }));
+  const items = rows.map(row => {
+    const sourceRemoved = row.trackUid !== null && row.folderStatus === 'removed';
+    return {
+      itemKey: Number(row.itemKey),
+      position: Number(row.position),
+      trackUid: sourceRemoved ? null : row.trackUid,
+      unresolved: sourceRemoved
+        ? createSourceRemovedPlaylistItem(row)
+        : row.unresolvedJson === null ? null : parseStoredJson(row.unresolvedJson)
+    };
+  });
   return {
     playlist,
     items,
@@ -5009,6 +4919,7 @@ function tombstonePlaylist(payload) {
     return { kind: 'conflict', currentVersion: Number(playlist.version) };
   }
   return commitMutation(['playlists'], 'tombstone-playlist', () => {
+    database.prepare('DELETE FROM automatic_playlist_sources WHERE playlist_id = ?').run(playlistId);
     database.prepare(`
       UPDATE playlists
       SET state = 'deleted', building_operation_id = NULL,
@@ -5253,32 +5164,39 @@ function getTrack(payload) {
   const trackUid = requireString(payload.trackUid, 'trackUid', 512);
   const row = database.prepare(`
     SELECT
-      track_uid AS trackUid,
-      folder_id AS folderId,
-      file_name AS fileName,
-      title,
-      artist,
-      album_artist AS albumArtist,
-      album,
-      genre,
-      year,
-      compilation,
-      disc_no AS discNo,
-      disc_total AS discTotal,
-      track_no AS trackNo,
-      track_total AS trackTotal,
-      duration_sec AS durationSec,
-      sample_rate AS sampleRate,
-      bitrate,
-      bits_per_sample AS bitsPerSample,
-      channels,
-      codec,
-      metadata_status AS metadataStatus,
-      metadata_error_code AS metadataErrorCode,
-      artwork_id AS artworkId,
-      added_at AS addedAt,
-      updated_at AS updatedAt
-    FROM tracks WHERE track_uid = ?
+      t.track_uid AS trackUid,
+      t.folder_id AS folderId,
+      t.relative_path AS relativePath,
+      t.file_name AS fileName,
+      t.title,
+      t.artist,
+      t.album_artist AS albumArtist,
+      t.album,
+      t.genre,
+      t.album_key AS albumKey,
+      t.artist_key AS artistKey,
+      t.genre_key AS genreKey,
+      t.subfolder_key AS subfolderKey,
+      t.year,
+      t.compilation,
+      t.disc_no AS discNo,
+      t.disc_total AS discTotal,
+      t.track_no AS trackNo,
+      t.track_total AS trackTotal,
+      t.duration_sec AS durationSec,
+      t.sample_rate AS sampleRate,
+      t.bitrate,
+      t.bits_per_sample AS bitsPerSample,
+      t.channels,
+      t.codec,
+      t.metadata_status AS metadataStatus,
+      t.metadata_error_code AS metadataErrorCode,
+      t.artwork_id AS artworkId,
+      t.added_at AS addedAt,
+      t.updated_at AS updatedAt
+    FROM tracks t
+    JOIN folders f ON f.id = t.folder_id AND f.status <> 'removed'
+    WHERE t.track_uid = ?
   `).get(trackUid);
   return row || null;
 }
@@ -5294,6 +5212,20 @@ function getTrackStorageIdentity(payload) {
     JOIN folders f ON f.id = t.folder_id AND f.status <> 'removed'
     WHERE t.track_uid = ?
   `).get(trackUid) || null;
+}
+
+function resolvePlaylistExportSource(payload) {
+  assertExactFields(payload, ['trackUid'], 'invalidTrackRequest');
+  const trackUid = requireString(payload.trackUid, 'trackUid', 512);
+  const row = database.prepare(`
+    SELECT t.track_uid AS trackUid, t.folder_id AS folderId, t.relative_path AS path,
+      f.display_name AS rootName
+    FROM tracks t
+    JOIN folders f ON f.id = t.folder_id AND f.status <> 'removed'
+    WHERE t.track_uid = ?
+  `).get(trackUid);
+  if (!row) throw createCatalogError('trackNotFound', 'Track does not exist');
+  return { kind: 'portable-relative', ...row };
 }
 
 function getCachedArtwork(payload) {
@@ -5314,6 +5246,13 @@ function getCachedArtwork(payload) {
     WHERE t.track_uid = ?
   `).get(trackUid);
   if (!row?.bytes) return null;
+  const accessedAt = Date.now();
+  database.prepare(`
+    UPDATE artwork_variants SET last_accessed_at = ?
+    WHERE artwork_id = ? AND variant = 'thumbnail'
+  `).run(accessedAt, row.artworkId);
+  database.prepare('UPDATE artwork_assets SET last_accessed_at = ? WHERE id = ?')
+    .run(accessedAt, row.artworkId);
   return {
     kind: 'thumbnail',
     artworkId: row.artworkId,
@@ -5461,8 +5400,9 @@ function publishArtwork(payload) {
 
   const digest = createHash('sha256').update(thumbnail.bytes).digest('hex');
   const deterministicArtworkId = `art_${digest}`;
+  // Lazy artwork is returned directly to its requester and does not change page membership or order.
   return commitMutation(
-    ['artwork', 'tracks', 'albums', 'artists', 'genres', 'subfolders'],
+    ['artwork'],
     'artwork-publish',
     () => {
       if (!artworkClaimIsCurrent(claim, { requireAdmission: true })) return { committed: false };
@@ -5490,9 +5430,7 @@ function publishArtwork(payload) {
           storage_locator, bytes, last_accessed_at
         ) VALUES (?, 'thumbnail', ?, ?, ?, ?, NULL, ?, ?)
         ON CONFLICT(artwork_id, variant) DO UPDATE SET
-          byte_length = excluded.byte_length, content_type = excluded.content_type,
-          width = excluded.width, height = excluded.height, storage_locator = NULL,
-          bytes = excluded.bytes, last_accessed_at = excluded.last_accessed_at
+          last_accessed_at = excluded.last_accessed_at
       `).run(
         artworkId, thumbnail.bytes.byteLength, thumbnail.mimeType,
         thumbnail.width, thumbnail.height, thumbnail.bytes, now
@@ -5579,15 +5517,14 @@ function evictArtworkCache(payload) {
   let cacheBytes = Number(database.prepare(`SELECT COALESCE(SUM(byte_length), 0) AS bytes FROM artwork_variants`).get().bytes);
   let evictedBytes = 0;
   const candidates = database.prepare(`
-    SELECT a.id, COALESCE(SUM(v.byte_length), 0) AS bytes
-    FROM artwork_assets a JOIN artwork_variants v ON v.artwork_id = a.id
-    WHERE a.ref_count = 0
-    GROUP BY a.id ORDER BY a.last_accessed_at, a.id LIMIT 1024
+    SELECT artwork_id AS artworkId, variant, byte_length AS bytes
+    FROM artwork_variants
+    ORDER BY last_accessed_at, artwork_id, variant LIMIT 1024
   `).all();
   for (const candidate of candidates) {
     if (cacheBytes + requiredBytes <= maxBytes) break;
-    database.prepare('DELETE FROM artwork_variants WHERE artwork_id = ?').run(candidate.id);
-    database.prepare('DELETE FROM artwork_assets WHERE id = ? AND ref_count = 0').run(candidate.id);
+    database.prepare('DELETE FROM artwork_variants WHERE artwork_id = ? AND variant = ?')
+      .run(candidate.artworkId, candidate.variant);
     cacheBytes -= Number(candidate.bytes);
     evictedBytes += Number(candidate.bytes);
   }
@@ -5787,7 +5724,9 @@ function artworkStorageAdmission(estimatedWriteBytes) {
 
 function listScanFolders(payload) {
   assertAllowedFields(payload, ['folderIds', 'includeRemoved'], 'invalidScanFolderRequest');
-  const folderIds = payload.folderIds === undefined ? null : validateBoundedStringList(payload.folderIds, 512, 512);
+  const folderIds = payload.folderIds == null
+    ? null
+    : validateBoundedStringList(payload.folderIds, 'folderIds', 512, 512);
   const clauses = [payload.includeRemoved === true ? '1 = 1' : "status <> 'removed'"];
   const bindings = [];
   if (folderIds) {
@@ -5802,6 +5741,19 @@ function listScanFolders(payload) {
     FROM folders WHERE ${clauses.join(' AND ')} ORDER BY id
   `).all(...bindings).map(row => ({ ...row, lifecycleVersion: Number(row.lifecycleVersion) }));
   return { folders };
+}
+
+function getScanFolderTrackCount(payload) {
+  assertAllowedFields(payload, ['folderId'], 'invalidScanFolderRequest');
+  const folderId = requireString(payload.folderId, 'folderId', 512);
+  const row = database.prepare(`
+    SELECT count(t.track_uid) AS trackCount
+    FROM folders f LEFT JOIN tracks t ON t.folder_id = f.id
+    WHERE f.id = ?
+    GROUP BY f.id
+  `).get(folderId);
+  if (!row) throw createCatalogError('folderUnavailable', 'Library folder is unavailable');
+  return { folderId, trackCount: Number(row.trackCount) };
 }
 
 function beginScanFolder(payload) {
@@ -5828,6 +5780,9 @@ function beginScanFolder(payload) {
         throw createCatalogError('invalidScanTransition', 'Scan folder cannot resume from its current state');
       }
       generation = Number(existing.generation);
+      if (Number(folder.scanGeneration) !== generation) {
+        throw createCatalogError('staleScanGeneration', 'A newer folder scan generation already exists');
+      }
     } else {
       if (existing) throw createCatalogError('scanAlreadyExists', 'Scan folder already exists');
       generation = Number(folder.scanGeneration) + 1;
@@ -5852,7 +5807,7 @@ function beginScanFolder(payload) {
         stop_reason = NULL, updated_at = excluded.updated_at
     `).run(
       scanId, folderId, generation, lifecycleVersion, resume ? 1 : 0,
-      existing?.parserVersion ?? 'electron-parser-v1', resume ? 'resumed-generation' : null,
+      existing?.parserVersion ?? 'catalog-metadata-v2', resume ? 'resumed-generation' : null,
       Number(existing?.enumerationErrorCount ?? 0), Number(existing?.visitedFiles ?? 0),
       Number(existing?.committedBatches ?? 0), now
     );
@@ -5861,9 +5816,11 @@ function beginScanFolder(payload) {
       folderId,
       generation,
       lifecycleVersion,
-      parserVersion: existing?.parserVersion ?? 'electron-parser-v1',
+      parserVersion: existing?.parserVersion ?? 'catalog-metadata-v2',
       continuityBroken: resume,
       sweepEligibility: 'INELIGIBLE',
+      visitedFiles: resume ? Number(existing?.visitedFiles ?? 0) : 0,
+      committedBatches: resume ? Number(existing?.committedBatches ?? 0) : 0,
       metadataCursor: resume && existing?.metadataCursor != null
         ? Number(existing.metadataCursor)
         : null
@@ -5908,6 +5865,21 @@ function commitScanSeenBatch(payload) {
   return runDurableTransaction(() => {
     requireActiveScanFolder(identity.folderId, identity.lifecycleVersion);
     const state = requireScanState(identity);
+    const batchNumber = requirePositiveInteger(payload.lastCommittedBatch, 'lastCommittedBatch');
+    if (batchNumber !== Number(state.committedBatches) + 1) {
+      throw createCatalogError('staleScanCursor', 'Scan batch coordinate is not monotonic');
+    }
+    if (!isPlainObject(payload.cursor)) {
+      throw createCatalogError('invalidScanRequest', 'Scan batch cursor is invalid');
+    }
+    assertExactFields(payload.cursor, ['lastRelativePath', 'visitedFiles', 'committedBatches'], 'invalidScanRequest');
+    const visitedFiles = requireNonNegativeInteger(payload.cursor.visitedFiles, 'cursor.visitedFiles');
+    if (
+      visitedFiles !== Number(state.visitedFiles) + observations.length ||
+      requirePositiveInteger(payload.cursor.committedBatches, 'cursor.committedBatches') !== batchNumber
+    ) {
+      throw createCatalogError('staleScanCursor', 'Scan visited-file coordinate is not monotonic');
+    }
     const upsert = database.prepare(`
       INSERT INTO scan_seen(
         scan_id, folder_id, relative_path, canonical_path, file_identity, size, mtime_ms,
@@ -5920,11 +5892,13 @@ function commitScanSeenBatch(payload) {
         mtime_ms = excluded.mtime_ms,
         observation_sequence = excluded.observation_sequence
     `);
-    const batchNumber = requireNonNegativeInteger(payload.lastCommittedBatch, 'lastCommittedBatch');
-    const batchBase = (batchNumber - 1) * requirePositiveInteger(payload.maxTracks, 'maxTracks');
+    requirePositiveInteger(payload.maxTracks, 'maxTracks');
+    const batchBase = Number(state.visitedFiles);
+    let lastRelativePath = null;
     for (let index = 0; index < observations.length; index += 1) {
       const observation = observations[index];
       const relativePath = normalizeRelativePath(requireString(observation.relativePath, 'relativePath', 32768));
+      lastRelativePath = relativePath;
       upsert.run(
         identity.scanId, identity.folderId, relativePath,
         optionalNullableString(observation.path, 32768),
@@ -5934,13 +5908,16 @@ function commitScanSeenBatch(payload) {
         batchBase + index
       );
     }
+    if (payload.cursor.lastRelativePath !== lastRelativePath) {
+      throw createCatalogError('staleScanCursor', 'Scan cursor does not match the committed batch');
+    }
     database.prepare(`
       UPDATE scan_run_folders SET status = 'committing', durable_cursor = ?,
         visited_files = ?, committed_batches = ?, updated_at = ?
       WHERE scan_id = ? AND folder_id = ? AND generation = ?
     `).run(
-      JSON.stringify(payload.cursor ?? null), Number(payload.cursor?.visitedFiles ?? state.visitedFiles),
-      requireNonNegativeInteger(payload.lastCommittedBatch, 'lastCommittedBatch'), Date.now(),
+      JSON.stringify(payload.cursor), visitedFiles,
+      batchNumber, Date.now(),
       identity.scanId, identity.folderId, identity.generation
     );
     return { committed: observations.length };
@@ -5979,7 +5956,7 @@ function listMetadataCandidates(payload) {
       trackUid: row.trackUid ?? null,
       relativePath: row.relativePath,
       path: row.path,
-      parserVersion: payload.parserVersion ?? 'electron-parser-v1',
+      parserVersion: payload.parserVersion ?? 'catalog-metadata-v2',
       storedParserVersion: row.metadataParserVersion ?? null,
       storedSignature: row.trackUid ? {
         fileIdentity: row.storedFileIdentity ?? '',
@@ -6024,11 +6001,11 @@ function markScanEnumerationIneligible(payload) {
     database.prepare(`
       UPDATE scan_run_folders SET sweep_eligibility = 'INELIGIBLE', sweep_block_reason = ?,
         enumeration_error_count = enumeration_error_count + ?, updated_at = ?
-      WHERE scan_id = ? AND folder_id = ?
+      WHERE scan_id = ? AND folder_id = ? AND generation = ?
     `).run(
       optionalString(payload.sweepBlockReason, 'enumeration-error', 128),
       requireNonNegativeInteger(payload.incrementErrorCount ?? 1, 'incrementErrorCount'), Date.now(),
-      identity.scanId, identity.folderId
+      identity.scanId, identity.folderId, identity.generation
     );
     if (payload.sample) insertScanError(identity, payload.sample);
     return { marked: true };
@@ -6036,15 +6013,18 @@ function markScanEnumerationIneligible(payload) {
 }
 
 function recordScanErrors(payload) {
-  const scanId = requireString(payload.scanId, 'scanId', 128);
-  const folderId = requireString(payload.folderId, 'folderId', 512);
+  const identity = requireScanIdentity(payload);
   const samples = Array.isArray(payload.samples) ? payload.samples.slice(0, 100) : [];
   return runDurableTransaction(() => {
+    requireScanState(identity);
     database.prepare(`
       UPDATE scan_run_folders SET enumeration_error_count = enumeration_error_count + ?, updated_at = ?
-      WHERE scan_id = ? AND folder_id = ?
-    `).run(requireNonNegativeInteger(payload.occurrenceCount ?? 0, 'occurrenceCount'), Date.now(), scanId, folderId);
-    for (const sample of samples) insertScanError({ scanId, folderId }, sample);
+      WHERE scan_id = ? AND folder_id = ? AND generation = ?
+    `).run(
+      requireNonNegativeInteger(payload.occurrenceCount ?? 0, 'occurrenceCount'),
+      Date.now(), identity.scanId, identity.folderId, identity.generation
+    );
+    for (const sample of samples) insertScanError(identity, sample);
     return { recorded: Number(payload.occurrenceCount ?? 0), samples: samples.length };
   });
 }
@@ -6057,10 +6037,10 @@ function finalizeScanEnumeration(payload) {
       Number(payload.enumerationErrorCount ?? 0) === 0 && Number(state.enumerationErrorCount) === 0;
     database.prepare(`
       UPDATE scan_run_folders SET status = 'reconciling', sweep_eligibility = ?,
-        sweep_block_reason = ?, updated_at = ? WHERE scan_id = ? AND folder_id = ?
+        sweep_block_reason = ?, updated_at = ? WHERE scan_id = ? AND folder_id = ? AND generation = ?
     `).run(
       eligible ? 'ELIGIBLE' : 'INELIGIBLE', eligible ? null : state.sweepBlockReason ?? 'incomplete-enumeration',
-      Date.now(), identity.scanId, identity.folderId
+      Date.now(), identity.scanId, identity.folderId, identity.generation
     );
     return {
       sweepEligibility: eligible ? 'ELIGIBLE' : 'INELIGIBLE',
@@ -6077,8 +6057,8 @@ function enqueueScanSweep(payload) {
   if (state.sweepEligibility !== 'ELIGIBLE' || Number(state.continuityBroken) !== 0) {
     throw createCatalogError('scanSweepIneligible', 'Scan generation is not eligible for sweep');
   }
-  database.prepare(`UPDATE scan_run_folders SET status = 'sweeping', updated_at = ? WHERE scan_id = ? AND folder_id = ?`)
-    .run(Date.now(), identity.scanId, identity.folderId);
+  database.prepare(`UPDATE scan_run_folders SET status = 'sweeping', updated_at = ? WHERE scan_id = ? AND folder_id = ? AND generation = ?`)
+    .run(Date.now(), identity.scanId, identity.folderId, identity.generation);
   const row = database.prepare(`
     SELECT count(*) AS count FROM tracks t WHERE t.folder_id = ? AND NOT EXISTS(
       SELECT 1 FROM scan_seen s WHERE s.scan_id = ? AND s.folder_id = ? AND s.relative_path = t.relative_path
@@ -6093,57 +6073,58 @@ function runScanSweep(payload) {
   if (state.status !== 'sweeping' || state.sweepEligibility !== 'ELIGIBLE' || state.continuityBroken) {
     throw createCatalogError('scanSweepIneligible', 'Scan sweep is no longer eligible');
   }
-  const row = database.prepare(`
+  const rows = database.prepare(`
       SELECT t.track_uid AS trackUid, t.track_key AS trackKey, t.search_text AS searchText,
         t.relative_path AS relativePath, t.file_name AS fileName, t.title, t.artist, t.duration_sec AS durationSec
       FROM tracks t WHERE t.folder_id = ? AND NOT EXISTS(
         SELECT 1 FROM scan_seen s WHERE s.scan_id = ? AND s.folder_id = ? AND s.relative_path = t.relative_path
-      ) ORDER BY t.track_key LIMIT 1
-    `).get(identity.folderId, identity.scanId, identity.folderId);
-  if (!row) return { deleted: 0, hasMore: false };
-  const deletionJobId = `scan-sweep:${identity.scanId}:${identity.folderId}:${row.trackUid}`;
+      ) ORDER BY t.track_key LIMIT ?
+    `).all(identity.folderId, identity.scanId, identity.folderId, FOLDER_DELETION_TRACKS_PER_CHUNK);
+  if (rows.length === 0) return { deleted: 0, hasMore: false };
   const result = commitMutation(
     ['tracks', 'playlists', 'albums', 'artists', 'genres', 'subfolders'],
     'scan-sweep',
     () => {
-      database.prepare(`
+      const insertDeletionJob = database.prepare(`
         INSERT OR IGNORE INTO deletion_jobs(
           job_id, kind, state, cursor_key, folder_id, lifecycle_version, track_uid, scan_id,
           created_at, updated_at
         ) VALUES (?, 'scan-sweep', 'active', NULL, ?, ?, ?, ?, ?, ?)
-      `).run(
-        deletionJobId, identity.folderId, identity.lifecycleVersion, row.trackUid,
-        identity.scanId, Date.now(), Date.now()
-      );
-      const repair = repairPlaylistItemsForTrack(row, 100, deletionJobId);
-      if (repair.hasMore) return { deleted: 0, hasMore: true };
-      removeTrackEntityMemberships(row.trackUid);
-      database.prepare('DELETE FROM tracks WHERE track_uid = ?').run(row.trackUid);
-      completeTrackDeletionRepair(deletionJobId, row.trackUid, 'completed');
-      return { deleted: 1, hasMore: true };
-    }
+      `);
+      let deleted = 0;
+      for (const row of rows) {
+        const deletionJobId = `scan-sweep:${identity.scanId}:${identity.folderId}:${row.trackUid}`;
+        const now = Date.now();
+        insertDeletionJob.run(
+          deletionJobId, identity.folderId, identity.lifecycleVersion, row.trackUid,
+          identity.scanId, now, now
+        );
+        const repair = repairPlaylistItemsForTrack(row, 100, deletionJobId);
+        if (repair.hasMore) return { deleted, hasMore: true };
+        removeTrackEntityMemberships(row.trackUid);
+        removeTrackArtworkReferences(row.trackUid);
+        database.prepare('DELETE FROM tracks WHERE track_uid = ?').run(row.trackUid);
+        completeTrackDeletionRepair(deletionJobId, row.trackUid, 'completed');
+        deleted += 1;
+      }
+      return { deleted, hasMore: true };
+    },
+    { deferInvalidationKey: entityAggregationScanKey(identity) }
   );
   return result;
 }
 
 function repairPlaylistItemsForTrack(track, limit, deletionJobId) {
   const items = database.prepare(`
-    SELECT item_key AS itemKey FROM playlist_items
+    SELECT item_key AS itemKey, playlist_id AS playlistId FROM playlist_items
     WHERE track_uid = ? ORDER BY item_key LIMIT ?
   `).all(track.trackUid, limit + 1);
   const page = items.slice(0, limit);
-  const unresolved = JSON.stringify({
-    version: 1,
-    reason: 'source-removed',
-    relativePath: track.relativePath,
-    fileName: track.fileName,
-    title: track.title,
-    artist: track.artist,
-    durationSec: track.durationSec
-  });
+  const unresolved = JSON.stringify(createSourceRemovedPlaylistItem(track));
   const repair = database.prepare(`
     UPDATE playlist_items SET track_uid = NULL, unresolved_json = ?, unresolved_basename = ?,
-      unresolved_title = ?, unresolved_artist = ?, unresolved_duration_bucket = ? WHERE item_key = ?
+      unresolved_title = ?, unresolved_artist = ?, unresolved_duration_bucket = ?
+    WHERE item_key = ? AND track_uid = ?
   `);
   const bind = database.prepare(`
     INSERT INTO deletion_repair_items(job_id, item_key, original_track_uid, state)
@@ -6154,18 +6135,35 @@ function repairPlaylistItemsForTrack(track, limit, deletionJobId) {
     UPDATE deletion_repair_items SET state = 'downgraded'
     WHERE job_id = ? AND item_key = ? AND original_track_uid = ?
   `);
+  const affectedPlaylists = new Set();
   for (const item of page) {
     bind.run(deletionJobId, item.itemKey, track.trackUid);
-    repair.run(
+    const changed = repair.run(
       unresolved,
       modules.searchNormalizer.normalizeSearchText(track.fileName),
       modules.searchNormalizer.normalizeSearchText(track.title),
       modules.searchNormalizer.normalizeSearchText(track.artist),
-      track.durationSec == null ? null : Math.round(track.durationSec), item.itemKey
+      track.durationSec == null ? null : Math.round(track.durationSec), item.itemKey, track.trackUid
     );
+    if (Number(changed.changes) !== 1) continue;
     markDowngraded.run(deletionJobId, item.itemKey, track.trackUid);
+    affectedPlaylists.add(item.playlistId);
   }
+  bumpActivePlaylistVersions(affectedPlaylists);
   return { repaired: page.length, hasMore: items.length > limit };
+}
+
+function createSourceRemovedPlaylistItem(track) {
+  return {
+    version: 1,
+    reason: 'source-removed',
+    relativePath: track.relativePath,
+    relativePathHint: track.relativePath,
+    fileName: track.fileName,
+    title: track.title,
+    artist: track.artist,
+    durationSec: track.durationSec
+  };
 }
 
 function completeTrackDeletionRepair(jobId, trackUid, state) {
@@ -6191,19 +6189,28 @@ function pauseScanFolder(payload) {
 
 function setScanTerminal(payload, status) {
   const identity = requireScanIdentity(payload);
+  let playlistResolutionQueued = false;
+  let entityAggregationQueued = false;
   const result = runDurableTransaction(() => {
     requireScanState(identity);
     const now = Date.now();
     database.prepare(`
       UPDATE scan_run_folders SET status = ?, stop_reason = ?, sweep_block_reason = ?,
         sweep_eligibility = ?, continuity_broken = ?, updated_at = ?
-      WHERE scan_id = ? AND folder_id = ?
+      WHERE scan_id = ? AND folder_id = ? AND generation = ?
     `).run(
       status, payload.stopReason ?? null, payload.sweepBlockReason ?? null,
       status === 'completed' ? 'ELIGIBLE' : 'INELIGIBLE', status === 'completed' ? 0 : 1,
-      now, identity.scanId, identity.folderId
+      now, identity.scanId, identity.folderId, identity.generation
     );
     database.prepare(`UPDATE folders SET last_scan_at = ? WHERE id = ?`).run(now, identity.folderId);
+    if (status === 'paused') {
+      database.prepare(`
+        UPDATE tracks SET metadata_last_attempt_generation = NULL
+        WHERE folder_id = ? AND metadata_status = 'retryable-error'
+          AND metadata_last_attempt_generation = ?
+      `).run(identity.folderId, identity.generation);
+    }
     database.prepare(`UPDATE scan_runs SET status = ?, finished_at = ?, stop_reason = ? WHERE id = ?`)
       .run(status, now, payload.stopReason ?? null, identity.scanId);
     if (status !== 'completed') {
@@ -6212,21 +6219,29 @@ function setScanTerminal(payload, status) {
         WHERE kind = 'scan-sweep' AND state = 'active' AND scan_id = ? AND folder_id = ?
       `).run(now, identity.scanId, identity.folderId);
     }
+    if (status === 'completed' || status === 'completed-no-sweep') {
+      playlistResolutionQueued = ensurePlaylistResolutionJob(identity);
+    }
+    entityAggregationQueued = activateEntityAggregationJob(identity);
     return { status };
   });
-  if (status !== 'completed') scheduleDeletionMaintenance();
+  const scanKey = entityAggregationScanKey(identity);
+  pendingEntityAggregationScans.delete(scanKey);
+  flushPendingScanInvalidation(scanKey);
+  if (status !== 'completed' || playlistResolutionQueued || entityAggregationQueued) {
+    scheduleDeletionMaintenance();
+  }
   return result;
 }
 
-function enterReadOnlyDiagnostic(payload) {
-  assertAllowedFields(payload, ['code', 'safeDetails'], 'invalidDiagnosticRequest');
-  database.prepare(`INSERT INTO meta(key, value) VALUES ('read_only_diagnostic', ?)
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run(JSON.stringify({
-    code: payload.code,
-    safeDetails: payload.safeDetails ?? {},
-    at: Date.now()
+function claimMetadataParseBatch(payload) {
+  assertExactFields(payload, ['requests'], 'invalidMetadataClaimBatch');
+  const requests = validateBatch(payload.requests, 'requests');
+  if (requests.length === 0) return { results: [], ...createNoChangeResult() };
+  const scanKey = requireMetadataBatchScanKey(requests);
+  return runMetadataMutationBatch(scanKey, 'metadata-claim-batch', () => ({
+    results: requests.map(request => claimMetadataParse(request))
   }));
-  return { entered: true };
 }
 
 function claimMetadataParse(payload) {
@@ -6329,7 +6344,7 @@ function claimMetadataParse(payload) {
       parserVersion, JSON.stringify(signature), now
     );
     return { claim };
-  });
+  }, { deferInvalidationKey: entityAggregationScanKey(claim) });
 }
 
 function aggregateIdentity(kind, ...parts) {
@@ -6360,7 +6375,7 @@ function derivedTrackEntities(track, metadata) {
   };
 }
 
-function replaceTrackEntityMemberships(track, metadata) {
+function replaceTrackEntityMemberships(track, metadata, { recomputeAggregates = true } = {}) {
   const prior = {
     album: database.prepare('SELECT album_key AS key FROM track_albums WHERE track_uid = ?').get(track.trackUid)?.key ?? null,
     artists: database.prepare('SELECT artist_key AS key FROM track_artists WHERE track_uid = ?').all(track.trackUid).map(row => row.key),
@@ -6413,6 +6428,7 @@ function replaceTrackEntityMemberships(track, metadata) {
     WHERE track_uid = ?
   `).run(next.album.key, next.artist.key, next.genre.key, next.subfolder?.key ?? null, track.trackUid);
 
+  if (!recomputeAggregates) return;
   recomputeAggregateRows('albums', 'track_albums', 'album_key', new Set([prior.album, next.album.key]));
   recomputeAggregateRows('artists', 'track_artists', 'artist_key', new Set([...prior.artists, next.artist.key]));
   recomputeAggregateRows('genres', 'track_genres', 'genre_key', new Set([...prior.genres, next.genre.key]));
@@ -6467,10 +6483,23 @@ function removeTrackEntityMemberships(trackUid) {
   recomputeAggregateRows('subfolders', 'track_subfolders', 'subfolder_key', new Set([prior.subfolder]));
 }
 
+function removeTrackArtworkReferences(trackUid) {
+  const artworkId = database.prepare('SELECT artwork_id AS artworkId FROM tracks WHERE track_uid = ?')
+    .get(trackUid)?.artworkId ?? null;
+  database.prepare('DELETE FROM artwork_claims WHERE track_uid = ?').run(trackUid);
+  database.prepare('DELETE FROM track_artwork_sources WHERE track_uid = ?').run(trackUid);
+  if (artworkId != null) {
+    database.prepare(`
+      UPDATE artwork_assets SET ref_count = CASE WHEN ref_count > 0 THEN ref_count - 1 ELSE 0 END
+      WHERE id = ?
+    `).run(artworkId);
+  }
+}
+
 function completeMetadataParseSuccess(payload) {
   assertAllowedFields(payload, [
     'claim', 'metadata', 'metadataStatus', 'clearErrorAndRetryState',
-    'updateLastKnownGood', 'updateDerivedData'
+    'updateLastKnownGood', 'updateDerivedData', 'deferAggregateRecompute'
   ], 'invalidMetadataCompletion');
   if (payload.updateLastKnownGood !== true || payload.updateDerivedData !== true) {
     throw createCatalogError('invalidMetadataCompletion', 'Metadata success must update last-known-good data');
@@ -6479,7 +6508,8 @@ function completeMetadataParseSuccess(payload) {
   const current = currentMetadataClaim(claim);
   if (!current) return { committed: false };
   const metadata = normalizeParsedMetadata(payload.metadata);
-  return commitMutation(['tracks', 'albums', 'artists', 'genres', 'subfolders'], 'metadata-success', () => {
+  let pendingAggregateScanKey = null;
+  const result = commitMutation(['tracks', 'albums', 'artists', 'genres', 'subfolders'], 'metadata-success', () => {
     const track = database.prepare(`
       SELECT track_key AS trackKey, search_text AS searchText, file_name AS fileName,
         relative_path AS relativePath, track_uid AS trackUid, folder_id AS folderId FROM tracks
@@ -6515,11 +6545,21 @@ function completeMetadataParseSuccess(payload) {
       searchText, searchFields.file_name, searchFields.title, searchFields.artist,
       metadata.durationSec == null ? null : Math.round(metadata.durationSec), claim.trackUid
     );
-    replaceTrackEntityMemberships(track, metadata);
+    replaceTrackEntityMemberships(track, metadata, {
+      recomputeAggregates: payload.deferAggregateRecompute !== true
+    });
+    if (payload.deferAggregateRecompute === true) {
+      pendingAggregateScanKey = ensurePendingEntityAggregationJob(claim);
+    }
     database.prepare('DELETE FROM metadata_claims WHERE folder_id = ? AND relative_path = ?')
       .run(claim.folderId, claim.relativePath);
     return { committed: true };
-  });
+  }, { deferInvalidationKey: entityAggregationScanKey(claim) });
+  if (result.committed && pendingAggregateScanKey) {
+    if (activeMutationBatch) activeMutationBatch.pendingAggregationScans.add(pendingAggregateScanKey);
+    else pendingEntityAggregationScans.add(pendingAggregateScanKey);
+  }
+  return result;
 }
 
 function completeMetadataParseFailure(payload) {
@@ -6542,7 +6582,62 @@ function completeMetadataParseFailure(payload) {
     database.prepare('DELETE FROM metadata_claims WHERE folder_id = ? AND relative_path = ?')
       .run(claim.folderId, claim.relativePath);
     return { committed: true };
-  });
+  }, { deferInvalidationKey: entityAggregationScanKey(claim) });
+}
+
+function completeMetadataParseBatch(payload) {
+  assertExactFields(payload, ['completions'], 'invalidMetadataCompletionBatch');
+  const completions = validateBatch(payload.completions, 'completions');
+  if (completions.length === 0) return { results: [], ...createNoChangeResult() };
+  for (const completion of completions) {
+    assertExactFields(completion, ['outcome', 'request'], 'invalidMetadataCompletionBatch');
+    if (completion.outcome !== 'success' && completion.outcome !== 'failure') {
+      throw createCatalogError('invalidMetadataCompletionBatch', 'Metadata batch outcome is invalid');
+    }
+  }
+  const scanKey = requireMetadataBatchScanKey(completions.map(completion => completion.request?.claim));
+  return runMetadataMutationBatch(scanKey, 'metadata-completion-batch', () => ({
+    results: completions.map(completion => completion.outcome === 'success'
+      ? completeMetadataParseSuccess(completion.request)
+      : completeMetadataParseFailure(completion.request))
+  }));
+}
+
+function requireMetadataBatchScanKey(identities) {
+  let scanKey = null;
+  for (const [index, identity] of identities.entries()) {
+    if (!identity || typeof identity !== 'object' || Array.isArray(identity)) {
+      throw createCatalogError('invalidMetadataBatch', `Metadata batch identity ${index} is invalid`);
+    }
+    const currentKey = entityAggregationScanKey({
+      folderId: requireString(identity.folderId, `identities[${index}].folderId`, 512),
+      lifecycleVersion: requireNonNegativeInteger(identity.lifecycleVersion, `identities[${index}].lifecycleVersion`),
+      generation: requireNonNegativeInteger(identity.generation, `identities[${index}].generation`)
+    });
+    if (scanKey != null && currentKey !== scanKey) {
+      throw createCatalogError('invalidMetadataBatch', 'Metadata batch must belong to one folder scan');
+    }
+    scanKey = currentKey;
+  }
+  return scanKey;
+}
+
+function runMetadataMutationBatch(scanKey, reason, callback) {
+  const changedScopes = new Set();
+  const pendingAggregationScans = new Set();
+  const result = commitMutation(changedScopes, reason, () => {
+    if (activeMutationBatch) throw createCatalogError('invalidMetadataBatch', 'Metadata mutation batches cannot be nested');
+    activeMutationBatch = { changedScopes, pendingAggregationScans };
+    try {
+      return callback();
+    } finally {
+      activeMutationBatch = null;
+    }
+  }, { deferInvalidationKey: scanKey });
+  for (const pendingScanKey of pendingAggregationScans) {
+    pendingEntityAggregationScans.add(pendingScanKey);
+  }
+  return result;
 }
 
 function requeueLatestMetadata(payload) {
@@ -6579,21 +6674,40 @@ function removeScanFolder(payload) {
   const lifecycleVersion = requireNonNegativeInteger(payload.expectedLifecycleVersion, 'expectedLifecycleVersion');
   const folder = database.prepare('SELECT status, lifecycle_version AS lifecycleVersion FROM folders WHERE id = ?').get(folderId);
   if (!folder) throw createCatalogError('folderUnavailable', 'Library folder is unavailable');
-  if (folder.status === 'ok') {
-    requireActiveScanFolder(folderId, lifecycleVersion);
-    commitMutation(['folders'], 'remove-folder-tombstone', () => {
+  if (folder.status !== 'removed') {
+    if (Number(folder.lifecycleVersion) !== lifecycleVersion) {
+      throw createCatalogError('staleFolderLifecycle', 'Library folder lifecycle has changed');
+    }
+    commitMutation(
+      ['folders', 'tracks', 'albums', 'artists', 'genres', 'subfolders', 'playlists'],
+      'remove-folder-tombstone',
+      () => {
       const changed = database.prepare(`
         UPDATE folders SET status = 'removed', path = NULL, lifecycle_version = lifecycle_version + 1
-        WHERE id = ? AND lifecycle_version = ?
+        WHERE id = ? AND lifecycle_version = ? AND status <> 'removed'
       `).run(folderId, lifecycleVersion);
       if (Number(changed.changes) !== 1) throw createCatalogError('staleFolderLifecycle', 'Library folder lifecycle has changed');
+      hardStaleNormalTrackContexts();
       ensureFolderDeletionJob(folderId, lifecycleVersion + 1);
       return { tombstoned: true };
-    });
+      }
+    );
   } else if (folder.status !== 'removed' || Number(folder.lifecycleVersion) !== lifecycleVersion + 1) {
     throw createCatalogError('staleFolderLifecycle', 'Library folder lifecycle has changed');
   }
   return runFolderDeletionChunk(folderId, lifecycleVersion + 1);
+}
+
+function hardStaleNormalTrackContexts() {
+  database.prepare(`
+    UPDATE query_contexts SET snapshot_overflow = 1, expires_at = 0
+    WHERE entity_type = 'track' AND json_extract(scope_json, '$.playlistId') IS NULL
+  `).run();
+  for (const context of contexts.values()) {
+    if (context.entityType !== 'track' || context.scope?.playlistId) continue;
+    context.snapshotOverflow = true;
+    context.expiresAt = 0;
+  }
 }
 
 function runFolderDeletionChunk(folderId, lifecycleVersion) {
@@ -6608,9 +6722,7 @@ function runFolderDeletionChunk(folderId, lifecycleVersion) {
   if (job.state === 'completed') {
     return { folderId, lifecycleVersion, deleted: 0, hasMore: false };
   }
-  return commitMutation(
-    ['tracks', 'playlists', 'albums', 'artists', 'genres', 'subfolders'],
-    'remove-folder-tracks',
+  return runDurableTransaction(
     () => runFolderDeletionChunkInTransaction(folderId, lifecycleVersion, deletionJobId)
   );
 }
@@ -6622,25 +6734,35 @@ function runFolderDeletionChunkInTransaction(folderId, lifecycleVersion, deletio
   if (folder?.status !== 'removed' || Number(folder.lifecycleVersion) !== lifecycleVersion) {
     throw createCatalogError('staleFolderLifecycle', 'Library folder lifecycle has changed');
   }
-  const row = database.prepare(`
+  const nextTrack = database.prepare(`
       SELECT track_uid AS trackUid, track_key AS trackKey, search_text AS searchText,
         relative_path AS relativePath, file_name AS fileName, title, artist, duration_sec AS durationSec
       FROM tracks WHERE folder_id = ? ORDER BY track_key LIMIT 1
-    `).get(folderId);
-  if (!row) {
-    database.prepare(`UPDATE deletion_jobs SET state = 'completed', updated_at = ? WHERE job_id = ?`)
-      .run(Date.now(), deletionJobId);
-    return { folderId, lifecycleVersion, deleted: 0, hasMore: false };
+    `);
+  const deleteRepairItems = database.prepare(`
+    DELETE FROM deletion_repair_items WHERE job_id = ? AND original_track_uid = ?
+  `);
+  const updateJob = database.prepare(`
+    UPDATE deletion_jobs SET track_uid = ?, updated_at = ? WHERE job_id = ?
+  `);
+  let deleted = 0;
+  while (deleted < FOLDER_DELETION_TRACKS_PER_CHUNK) {
+    const row = nextTrack.get(folderId);
+    if (!row) {
+      database.prepare(`UPDATE deletion_jobs SET state = 'completed', updated_at = ? WHERE job_id = ?`)
+        .run(Date.now(), deletionJobId);
+      return { folderId, lifecycleVersion, deleted, hasMore: false };
+    }
+    const repair = repairPlaylistItemsForTrack(row, 100, deletionJobId);
+    if (repair.hasMore) return { folderId, lifecycleVersion, deleted, hasMore: true };
+    removeTrackEntityMemberships(row.trackUid);
+    removeTrackArtworkReferences(row.trackUid);
+    database.prepare('DELETE FROM tracks WHERE track_uid = ?').run(row.trackUid);
+    deleteRepairItems.run(deletionJobId, row.trackUid);
+    updateJob.run(row.trackUid, Date.now(), deletionJobId);
+    deleted += 1;
   }
-  const repair = repairPlaylistItemsForTrack(row, 100, deletionJobId);
-  if (repair.hasMore) return { folderId, lifecycleVersion, deleted: 0, hasMore: true };
-  removeTrackEntityMemberships(row.trackUid);
-  database.prepare('DELETE FROM tracks WHERE track_uid = ?').run(row.trackUid);
-  database.prepare(`DELETE FROM deletion_repair_items WHERE job_id = ? AND original_track_uid = ?`)
-    .run(deletionJobId, row.trackUid);
-  database.prepare(`UPDATE deletion_jobs SET track_uid = ?, updated_at = ? WHERE job_id = ?`)
-    .run(row.trackUid, Date.now(), deletionJobId);
-  return { folderId, lifecycleVersion, deleted: 1, hasMore: true };
+  return { folderId, lifecycleVersion, deleted, hasMore: true };
 }
 
 function ensureFolderDeletionJob(folderId, lifecycleVersion) {
@@ -6657,6 +6779,188 @@ function folderDeletionJobId(folderId, lifecycleVersion) {
   return `folder-delete:${lifecycleVersion}:${folderId}`;
 }
 
+function ensurePendingEntityAggregationJob(claim) {
+  const scanKey = entityAggregationScanKey(claim);
+  if (pendingEntityAggregationScans.has(scanKey)) return null;
+  const identity = database.prepare(`
+    SELECT scan_id AS scanId, folder_id AS folderId, generation,
+      expected_lifecycle_version AS lifecycleVersion
+    FROM scan_run_folders
+    WHERE folder_id = ? AND generation = ? AND expected_lifecycle_version = ?
+    ORDER BY updated_at DESC, scan_id DESC LIMIT 1
+  `).get(claim.folderId, claim.generation, claim.lifecycleVersion);
+  if (!identity) throw createCatalogError('scanNotFound', 'Scan folder state does not exist');
+  const jobId = entityAggregationJobId(identity.scanId, identity.folderId);
+  const now = Date.now();
+  database.prepare(`
+    INSERT INTO deletion_jobs(
+      job_id, kind, state, cursor_key, folder_id, lifecycle_version, track_uid, scan_id,
+      created_at, updated_at
+    ) VALUES (?, 'entity-aggregate', 'pending-scan', 0, ?, ?, NULL, ?, ?, ?)
+    ON CONFLICT(job_id) DO NOTHING
+  `).run(
+    jobId,
+    identity.folderId, identity.lifecycleVersion, identity.scanId, now, now
+  );
+  return scanKey;
+}
+
+function entityAggregationScanKey(identity) {
+  return `${identity.folderId}\n${identity.lifecycleVersion}\n${identity.generation}`;
+}
+
+function activateEntityAggregationJob(identity) {
+  const result = database.prepare(`
+    UPDATE deletion_jobs SET state = 'active', cursor_key = 0, updated_at = ?
+    WHERE job_id = ? AND kind = 'entity-aggregate' AND state = 'pending-scan'
+  `).run(Date.now(), entityAggregationJobId(identity.scanId, identity.folderId));
+  return Number(result.changes) === 1;
+}
+
+function entityAggregationJobId(scanId, folderId) {
+  return `entity-aggregate:${scanId}:${folderId}`;
+}
+
+function recomputeAllAggregateRows(entityTable, membershipTable, keyColumn) {
+  database.prepare(`
+    UPDATE ${entityTable}
+    SET (track_count, total_duration_sec, representative_artwork_id) = (
+      SELECT COUNT(*), COALESCE(SUM(t.duration_sec), 0), MAX(t.artwork_id)
+      FROM ${membershipTable} m JOIN tracks t ON t.track_uid = m.track_uid
+      WHERE m.${keyColumn} = ${entityTable}.${keyColumn}
+    )
+  `).run();
+  database.prepare(`
+    DELETE FROM ${entityTable}
+    WHERE NOT EXISTS(
+      SELECT 1 FROM ${membershipTable} m WHERE m.${keyColumn} = ${entityTable}.${keyColumn}
+    )
+  `).run();
+}
+
+function runEntityAggregationPhase(jobId, cursorKey) {
+  const phaseIndex = Math.max(0, Number(cursorKey));
+  const phase = ENTITY_AGGREGATE_PHASES[phaseIndex];
+  if (!phase) {
+    return runDurableTransaction(() => {
+      database.prepare(`
+        UPDATE deletion_jobs SET state = 'completed', updated_at = ?
+        WHERE job_id = ? AND kind = 'entity-aggregate'
+      `).run(Date.now(), jobId);
+      return { aggregated: 0, hasMore: false };
+    });
+  }
+  return commitMutation([phase.scope], 'recompute-entity-aggregates', () => {
+    recomputeAllAggregateRows(phase.entityTable, phase.membershipTable, phase.keyColumn);
+    const nextPhase = phaseIndex + 1;
+    const hasMore = nextPhase < ENTITY_AGGREGATE_PHASES.length;
+    database.prepare(`
+      UPDATE deletion_jobs SET state = ?, cursor_key = ?, updated_at = ?
+      WHERE job_id = ? AND kind = 'entity-aggregate'
+    `).run(hasMore ? 'active' : 'completed', nextPhase, Date.now(), jobId);
+    return { aggregated: 1, hasMore };
+  });
+}
+
+function ensurePlaylistResolutionJob(identity) {
+  if (listPlaylistResolutionCandidates(identity.folderId, identity.lifecycleVersion, 0, 1).length === 0) {
+    return false;
+  }
+  const now = Date.now();
+  database.prepare(`
+    INSERT INTO deletion_jobs(
+      job_id, kind, state, cursor_key, folder_id, lifecycle_version, track_uid, scan_id,
+      created_at, updated_at
+    ) VALUES (?, 'playlist-resolve', 'active', NULL, ?, ?, NULL, ?, ?, ?)
+    ON CONFLICT(job_id) DO UPDATE SET
+      state = 'active', cursor_key = NULL, scan_id = excluded.scan_id,
+      updated_at = excluded.updated_at
+  `).run(
+    playlistResolutionJobId(identity.folderId, identity.lifecycleVersion),
+    identity.folderId, identity.lifecycleVersion, identity.scanId, now, now
+  );
+  return true;
+}
+
+function playlistResolutionJobId(folderId, lifecycleVersion) {
+  return `playlist-resolve:${lifecycleVersion}:${folderId}`;
+}
+
+function listPlaylistResolutionCandidates(folderId, lifecycleVersion, cursorKey, limit) {
+  return database.prepare(`
+    SELECT i.item_key AS itemKey, i.playlist_id AS playlistId,
+      i.unresolved_json AS unresolvedJson
+    FROM playlist_items i
+    JOIN playlists p ON p.id = i.playlist_id AND p.state = 'active'
+    LEFT JOIN operation_jobs o ON o.operation_id = i.pending_operation_id
+    WHERE i.track_uid IS NULL AND i.item_key > ?
+      AND (i.pending_operation_id IS NULL OR (o.committed = 1 AND o.terminal_kind = 'success'))
+      AND EXISTS(
+        SELECT 1 FROM tracks t
+        JOIN folders f ON f.id = t.folder_id AND f.status <> 'removed'
+          AND f.lifecycle_version = ?
+        WHERE t.folder_id = ? AND (
+          (i.unresolved_basename <> '' AND t.normalized_basename = i.unresolved_basename)
+          OR (
+            i.unresolved_title <> '' AND i.unresolved_artist <> ''
+            AND t.normalized_title = i.unresolved_title
+            AND t.normalized_artist = i.unresolved_artist
+          )
+        )
+      )
+    ORDER BY i.item_key
+    LIMIT ?
+  `).all(cursorKey, lifecycleVersion, folderId, limit);
+}
+
+function runPlaylistResolutionChunk(jobId, folderId, lifecycleVersion, cursorKey) {
+  const rows = listPlaylistResolutionCandidates(
+    folderId,
+    lifecycleVersion,
+    cursorKey,
+    PLAYLIST_RECONCILIATION_BATCH_SIZE + 1
+  );
+  const page = rows.slice(0, PLAYLIST_RECONCILIATION_BATCH_SIZE);
+  const matches = page.map(row => ({
+    row,
+    trackUid: resolveImportedPlaylistTrack(parseStoredJson(row.unresolvedJson))
+  })).filter(match => match.trackUid !== null);
+  const hasMore = rows.length > PLAYLIST_RECONCILIATION_BATCH_SIZE;
+  const nextCursor = page.length > 0 ? Number(page.at(-1).itemKey) : cursorKey;
+  const apply = () => {
+    const resolve = database.prepare(`
+      UPDATE playlist_items
+      SET track_uid = ?, unresolved_json = NULL, unresolved_basename = NULL,
+        unresolved_title = NULL, unresolved_artist = NULL, unresolved_duration_bucket = NULL,
+        import_fields_json = NULL, import_has_path = NULL
+      WHERE item_key = ? AND track_uid IS NULL
+    `);
+    const affectedPlaylists = new Set();
+    let resolved = 0;
+    for (const match of matches) {
+      const update = resolve.run(match.trackUid, match.row.itemKey);
+      if (Number(update.changes) === 1) {
+        affectedPlaylists.add(match.row.playlistId);
+        resolved += 1;
+      }
+    }
+    const now = Date.now();
+    const updatePlaylist = database.prepare(`
+      UPDATE playlists SET version = version + 1, updated_at = ?
+      WHERE id = ? AND state = 'active'
+    `);
+    for (const playlistId of affectedPlaylists) updatePlaylist.run(now, playlistId);
+    database.prepare(`
+      UPDATE deletion_jobs SET state = ?, cursor_key = ?, updated_at = ?
+      WHERE job_id = ? AND kind = 'playlist-resolve'
+    `).run(hasMore ? 'active' : 'completed', nextCursor, now, jobId);
+    return { resolved, hasMore };
+  };
+  return matches.length > 0
+    ? commitMutation(['playlists'], 'resolve-playlist-items', apply)
+    : runDurableTransaction(apply);
+}
+
 let deletionMaintenanceScheduled = false;
 
 function scheduleDeletionMaintenance() {
@@ -6671,21 +6975,34 @@ function scheduleDeletionMaintenance() {
     } catch {
       // The durable job remains active for the next startup or explicit folder removal request.
     }
-  }, 0);
+  }, DELETION_MAINTENANCE_DELAY_MS);
 }
 
 function runDeletionMaintenanceTurn() {
   const repair = repairBlockedDeletionItems(100);
   if (repair.repaired > 0) return { hasMore: true };
   const active = database.prepare(`
-    SELECT folder_id AS folderId, lifecycle_version AS lifecycleVersion
+    SELECT job_id AS jobId, kind, folder_id AS folderId,
+      lifecycle_version AS lifecycleVersion, COALESCE(cursor_key, 0) AS cursorKey
     FROM deletion_jobs
-    WHERE kind = 'folder-delete' AND state = 'active'
+    WHERE kind IN ('folder-delete', 'playlist-resolve', 'entity-aggregate') AND state = 'active'
     ORDER BY updated_at, job_id LIMIT 1
   `).get();
   if (active) {
-    const result = runFolderDeletionChunk(active.folderId, Number(active.lifecycleVersion));
-    return { hasMore: result.hasMore || result.deleted > 0 };
+    const result = active.kind === 'playlist-resolve'
+      ? runPlaylistResolutionChunk(
+          active.jobId,
+          active.folderId,
+          Number(active.lifecycleVersion),
+          Number(active.cursorKey)
+        )
+      : active.kind === 'entity-aggregate'
+        ? runEntityAggregationPhase(active.jobId, active.cursorKey)
+        : runFolderDeletionChunk(active.folderId, Number(active.lifecycleVersion));
+    return {
+      hasMore: result.hasMore || Number(result.deleted ?? result.resolved ?? result.aggregated ?? 0) > 0 ||
+        hasDeletionMaintenanceWork()
+    };
   }
   const orphan = database.prepare(`
     SELECT f.id AS folderId, f.lifecycle_version AS lifecycleVersion
@@ -6703,11 +7020,31 @@ function runDeletionMaintenanceTurn() {
   return { hasMore: true };
 }
 
+function hasDeletionMaintenanceWork() {
+  return Boolean(database.prepare(`
+    SELECT 1 AS pending
+    WHERE EXISTS(
+      SELECT 1 FROM deletion_repair_items r
+      JOIN deletion_jobs j ON j.job_id = r.job_id
+      WHERE j.state = 'blocked-interrupted'
+    ) OR EXISTS(
+      SELECT 1 FROM deletion_jobs
+      WHERE kind IN ('folder-delete', 'playlist-resolve', 'entity-aggregate') AND state = 'active'
+    ) OR EXISTS(
+      SELECT 1 FROM folders f
+      JOIN tracks t ON t.folder_id = f.id
+      WHERE f.status = 'removed'
+    )
+  `).get());
+}
+
 function repairBlockedDeletionItems(limit) {
   const rows = database.prepare(`
-    SELECT r.job_id AS jobId, r.item_key AS itemKey, r.original_track_uid AS trackUid
+    SELECT r.job_id AS jobId, r.item_key AS itemKey, r.original_track_uid AS trackUid,
+      i.playlist_id AS playlistId
     FROM deletion_repair_items r
     JOIN deletion_jobs j ON j.job_id = r.job_id
+    JOIN playlist_items i ON i.item_key = r.item_key
     WHERE j.state = 'blocked-interrupted'
     ORDER BY r.job_id, r.item_key LIMIT ?
   `).all(limit);
@@ -6721,12 +7058,27 @@ function repairBlockedDeletionItems(limit) {
       WHERE item_key = ? AND track_uid IS NULL
     `);
     const remove = database.prepare('DELETE FROM deletion_repair_items WHERE job_id = ? AND item_key = ?');
+    const affectedPlaylists = new Set();
     for (const row of rows) {
-      if (trackExists.get(row.trackUid)) rebind.run(row.trackUid, row.itemKey);
+      if (trackExists.get(row.trackUid)) {
+        const changed = rebind.run(row.trackUid, row.itemKey);
+        if (Number(changed.changes) === 1) affectedPlaylists.add(row.playlistId);
+      }
       remove.run(row.jobId, row.itemKey);
     }
+    bumpActivePlaylistVersions(affectedPlaylists);
     return { repaired: rows.length };
   });
+}
+
+function bumpActivePlaylistVersions(playlistIds) {
+  if (playlistIds.size === 0) return;
+  const update = database.prepare(`
+    UPDATE playlists SET version = version + 1, updated_at = ?
+    WHERE id = ? AND state = 'active'
+  `);
+  const now = Date.now();
+  for (const playlistId of playlistIds) update.run(now, playlistId);
 }
 
 function repairInterruptedDeletionItems(payload) {
@@ -6734,6 +7086,17 @@ function repairInterruptedDeletionItems(payload) {
   const limit = normalizeWriteLimit(payload.limit ?? 500);
   const result = repairBlockedDeletionItems(limit);
   return { ...result, hasMore: result.repaired === limit };
+}
+
+function resumeFolderDeletionJobs(payload) {
+  assertAllowedFields(payload, ['limit'], 'invalidDeletionRepair');
+  const limit = normalizeWriteLimit(payload.limit ?? 1);
+  let resumed = 0;
+  while (resumed < limit && hasDeletionMaintenanceWork()) {
+    runDeletionMaintenanceTurn();
+    resumed += 1;
+  }
+  return { resumed, hasMore: hasDeletionMaintenanceWork() };
 }
 
 function checkIntegrity(payload = {}) {
@@ -6796,6 +7159,10 @@ function requireScanIdentity(payload) {
 }
 
 function requireScanState(identity) {
+  const folder = requireActiveScanFolder(identity.folderId, identity.lifecycleVersion);
+  if (Number(folder.scanGeneration) !== identity.generation) {
+    throw createCatalogError('staleScanGeneration', 'A newer folder scan generation already exists');
+  }
   const state = database.prepare(`
     SELECT generation, expected_lifecycle_version AS lifecycleVersion, status,
       continuity_broken AS continuityBroken, sweep_eligibility AS sweepEligibility,
@@ -6969,6 +7336,9 @@ function closeCatalog(payload) {
     closed = true;
     for (const context of contexts.values()) closeContext(context);
     contexts.clear();
+    contextWalByteCache.clear();
+    pendingEntityAggregationScans.clear();
+    pendingScanInvalidations.clear();
     closeDatabase();
   }
   return { closed: true };
@@ -6983,10 +7353,19 @@ function closeDatabase() {
   }
 }
 
-function commitMutation(changedScopes, reason, callback) {
+function commitMutation(changedScopes, reason, callback, { deferInvalidationKey = null } = {}) {
+  if (activeMutationBatch) {
+    for (const scope of changedScopes) activeMutationBatch.changedScopes.add(scope);
+    return callback();
+  }
   database.exec('BEGIN IMMEDIATE');
   try {
     const result = callback();
+    const mutationScopes = [...changedScopes];
+    if (mutationScopes.length === 0) {
+      database.exec('COMMIT');
+      return { ...result, ...createNoChangeResult() };
+    }
     const nextVersion = catalogVersion + 1;
     const nextScopeVersions = { ...scopeVersions };
     const updateMeta = database.prepare(`
@@ -6994,21 +7373,27 @@ function commitMutation(changedScopes, reason, callback) {
       ON CONFLICT(key) DO UPDATE SET value = excluded.value
     `);
     updateMeta.run('catalog_version', String(nextVersion));
-    for (const scope of changedScopes) {
+    for (const scope of mutationScopes) {
       nextScopeVersions[scope] = (nextScopeVersions[scope] || 0) + 1;
       updateMeta.run(`scope_version:${scope}`, String(nextScopeVersions[scope]));
     }
-    database.prepare(`
-      INSERT INTO catalog_versions(version, committed_at, reason) VALUES (?, ?, ?)
-    `).run(nextVersion, Date.now(), reason);
     database.exec('COMMIT');
     catalogVersion = nextVersion;
     scopeVersions = nextScopeVersions;
-    const invalidation = {
+    const invalidationState = {
       catalogVersion,
-      changedScopes: [...changedScopes],
-      scopeVersions: Object.fromEntries(changedScopes.map(scope => [scope, scopeVersions[scope]])),
-      counts: pickCounts(readCounts(), changedScopes)
+      changedScopes: mutationScopes,
+      scopeVersions: Object.fromEntries(mutationScopes.map(scope => [scope, scopeVersions[scope]]))
+    };
+    if (deferInvalidationKey != null) {
+      const pendingScopes = pendingScanInvalidations.get(deferInvalidationKey) ?? new Set();
+      for (const scope of mutationScopes) pendingScopes.add(scope);
+      pendingScanInvalidations.set(deferInvalidationKey, pendingScopes);
+      return { ...result, ...invalidationState, counts: {} };
+    }
+    const invalidation = {
+      ...invalidationState,
+      counts: pickCounts(readCounts(), mutationScopes)
     };
     postMessage({
       protocolVersion: PROTOCOL_VERSION,
@@ -7024,6 +7409,24 @@ function commitMutation(changedScopes, reason, callback) {
     }
     throw error;
   }
+}
+
+function flushPendingScanInvalidation(scanKey) {
+  const pendingScopes = pendingScanInvalidations.get(scanKey);
+  if (!pendingScopes) return;
+  pendingScanInvalidations.delete(scanKey);
+  const changedScopes = [...pendingScopes];
+  const invalidation = {
+    catalogVersion,
+    changedScopes,
+    scopeVersions: Object.fromEntries(changedScopes.map(scope => [scope, scopeVersions[scope]])),
+    counts: pickCounts(readCounts(), changedScopes)
+  };
+  postMessage({
+    protocolVersion: PROTOCOL_VERSION,
+    type: 'invalidation',
+    payload: invalidation
+  });
 }
 
 function pickCounts(counts, scopes) {

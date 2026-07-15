@@ -26,8 +26,8 @@ function assertCode(code) {
 }
 
 async function seedFolder(host, directory) {
-  await host.upsertEntities('folder', [{
-    folderUid: 'folder',
+  await host.upsertFolders([{
+    id: 'folder',
     kind: 'electron',
     displayName: 'Music Root',
     path: directory,
@@ -35,6 +35,199 @@ async function seedFolder(host, directory) {
     lifecycleVersion: 1
   }]);
 }
+
+async function seedDerivedTrack(host, {
+  folderId = 'folder',
+  scan,
+  trackUid,
+  relativePath,
+  title = trackUid,
+  artist = 'Shared Artist',
+  album = 'Shared Album',
+  genre = 'Shared Genre',
+  durationSec = 60
+}) {
+  const signatureValue = [...trackUid].reduce((value, character) => value + character.charCodeAt(0), 0);
+  const claimed = await host.claimMetadataParse({
+    folderId,
+    trackUid,
+    lifecycleVersion: scan.lifecycleVersion,
+    generation: scan.generation,
+    relativePath,
+    parserVersion: scan.parserVersion,
+    signature: {
+      fileIdentity: `file-${trackUid}`,
+      size: 100 + signatureValue,
+      mtimeMs: 200 + signatureValue
+    },
+    explicitRescan: false
+  });
+  await host.completeMetadataParseSuccess({
+    claim: claimed.claim,
+    metadata: { title, artist, albumArtist: artist, album, genre, durationSec },
+    metadataStatus: 'ok',
+    clearErrorAndRetryState: true,
+    updateLastKnownGood: true,
+    updateDerivedData: true
+  });
+}
+
+test('public folder pages hide tombstones while deletion lookup retains them', async t => {
+  const { directory, host } = await openCatalog(t);
+  await seedFolder(host, directory);
+
+  const removed = await host.removeScanFolder({
+    folderId: 'folder', expectedLifecycleVersion: 1
+  });
+  assert.equal(removed.hasMore, false);
+
+  const maintenanceFolders = await host.listScanFolders({
+    folderIds: ['folder'], includeRemoved: true
+  });
+  assert.equal(maintenanceFolders.folders[0].status, 'removed');
+  assert.equal(maintenanceFolders.folders[0].lifecycleVersion, 2);
+
+  const page = await host.queryEntities({
+    type: 'folder', query: '', sort: 'name', direction: 'asc', limit: 20
+  });
+  assert.deepEqual(page.rows, []);
+  assert.equal((await host.getContextCount({ contextToken: page.contextToken })).totalCount, 0);
+  await host.releaseContext(page.contextToken);
+  assert.equal((await host.getCounts()).folders, 0);
+});
+
+test('scan-folder lookup bounds each requested folder ID', async t => {
+  const { host } = await openCatalog(t);
+  await assert.rejects(
+    host.listScanFolders({ folderIds: ['x'.repeat(513)] }),
+    assertCode('invalidRequestField')
+  );
+});
+
+test('removed folders stay excluded after batched deletion and active tracks provide artwork representatives', async t => {
+  const { directory, host } = await openCatalog(t);
+  const activeDirectory = path.join(directory, 'Active');
+  fs.mkdirSync(activeDirectory);
+  await seedFolder(host, directory);
+  await host.upsertFolders([{
+    id: 'active-folder',
+    kind: 'electron',
+    displayName: 'Active Root',
+    path: activeDirectory,
+    status: 'ok',
+    lifecycleVersion: 1
+  }]);
+
+  const removedScan = await host.beginScanFolder({
+    scanId: 'scan-removed',
+    folderId: 'folder',
+    normalizedRoot: directory,
+    expectedLifecycleVersion: 1,
+    resume: false,
+    rootEnumerationRequired: true,
+    continuityBroken: false,
+    sweepEligibility: 'INELIGIBLE'
+  });
+  const activeScan = await host.beginScanFolder({
+    scanId: 'scan-active',
+    folderId: 'active-folder',
+    normalizedRoot: activeDirectory,
+    expectedLifecycleVersion: 1,
+    resume: false,
+    rootEnumerationRequired: true,
+    continuityBroken: false,
+    sweepEligibility: 'INELIGIBLE'
+  });
+  const tracks = [
+    { folderId: 'folder', scan: removedScan, trackUid: 'aa-removed', relativePath: 'Shared/one.flac' },
+    { folderId: 'folder', scan: removedScan, trackUid: 'ab-removed', relativePath: 'Shared/two.flac' },
+    { folderId: 'folder', scan: removedScan, trackUid: 'ac-removed', relativePath: 'Shared/three.flac' },
+    { folderId: 'folder', scan: removedScan, trackUid: 'ad-removed-only', relativePath: 'Removed/only.flac', album: 'Removed Only' },
+    { folderId: 'active-folder', scan: activeScan, trackUid: 'zx-other-one', relativePath: 'Other/one.flac', album: 'Other Album', artist: 'Other Artist', genre: 'Other Genre' },
+    { folderId: 'active-folder', scan: activeScan, trackUid: 'zy-other-two', relativePath: 'Other/two.flac', album: 'Other Album', artist: 'Other Artist', genre: 'Other Genre' },
+    { folderId: 'active-folder', scan: activeScan, trackUid: 'zz-active', relativePath: 'Shared/active.flac' }
+  ];
+  for (const [index, track] of tracks.entries()) {
+    const claim = await host.claimMetadataParse({
+      folderId: track.folderId,
+      trackUid: track.trackUid,
+      lifecycleVersion: track.scan.lifecycleVersion,
+      generation: track.scan.generation,
+      relativePath: track.relativePath,
+      parserVersion: track.scan.parserVersion,
+      signature: { fileIdentity: `file-${index}`, size: 100 + index, mtimeMs: 200 + index },
+      explicitRescan: false
+    });
+    await host.completeMetadataParseSuccess({
+      claim: claim.claim,
+      metadata: {
+        title: track.trackUid,
+        artist: track.artist ?? 'Shared Artist',
+        albumArtist: track.artist ?? 'Shared Artist',
+        album: track.album ?? 'Shared Album',
+        genre: track.genre ?? 'Shared Genre',
+        durationSec: 60
+      },
+      metadataStatus: 'ok',
+      clearErrorAndRetryState: true,
+      updateLastKnownGood: true,
+      updateDerivedData: true
+    });
+  }
+
+  const removal = await host.removeScanFolder({
+    folderId: 'folder', expectedLifecycleVersion: 1
+  });
+  assert.equal(removal.hasMore, false);
+
+  const trackPage = await host.queryTracks({ query: '', sort: 'title', direction: 'asc', limit: 20 });
+  assert.deepEqual(trackPage.rows.map(track => track.trackUid), ['zx-other-one', 'zy-other-two', 'zz-active']);
+  assert.equal((await host.getContextCount({ contextToken: trackPage.contextToken })).totalCount, 3);
+  await host.releaseContext(trackPage.contextToken);
+
+  const folderPage = await host.queryEntities({
+    type: 'folder', query: '', sort: 'name', direction: 'asc', limit: 20
+  });
+  assert.deepEqual(folderPage.rows.map(folder => ({
+    id: folder.id,
+    path: folder.path,
+    trackCount: folder.trackCount
+  })), [{ id: 'active-folder', path: activeDirectory, trackCount: 3 }]);
+  await host.releaseContext(folderPage.contextToken);
+
+  for (const [type, expectedName] of [
+    ['album', 'Shared Album'],
+    ['artist', 'Shared Artist'],
+    ['genre', 'Shared Genre'],
+    ['subfolder', 'Shared']
+  ]) {
+    const page = await host.queryEntities({
+      type, query: '', sort: 'name', direction: 'asc', limit: 20
+    });
+    const entity = page.rows.find(row => row.name === expectedName);
+    assert.ok(entity);
+    assert.equal(entity.trackCount, 1);
+    assert.equal(entity.totalDurationSec, 60);
+    assert.equal(entity.representativeTrackUid, 'zz-active');
+    assert.equal((await host.getContextCount({ contextToken: page.contextToken })).totalCount, 2);
+    await host.releaseContext(page.contextToken);
+  }
+
+  const firstAlbumPage = await host.queryEntities({
+    type: 'album', query: '', sort: 'trackCount', direction: 'desc', limit: 1
+  });
+  assert.equal(firstAlbumPage.rows[0].name, 'Other Album');
+  assert.equal(firstAlbumPage.rows[0].trackCount, 2);
+  assert.ok(firstAlbumPage.nextCursor);
+  const secondAlbumPage = await host.readContextPage({
+    contextToken: firstAlbumPage.contextToken,
+    cursor: firstAlbumPage.nextCursor,
+    limit: 1
+  });
+  assert.equal(secondAlbumPage.rows[0].name, 'Shared Album');
+  assert.equal(secondAlbumPage.rows[0].trackCount, 1);
+  await host.releaseContext(firstAlbumPage.contextToken);
+});
 
 test('track detail scopes, playlist position, and generic anchors use real Electron relations', async t => {
   const { directory, host } = await openCatalog(t);
@@ -110,24 +303,41 @@ test('track detail scopes, playlist position, and generic anchors use real Elect
   await host.createPlaylistWithItems({
     playlistId: 'playlist-scoped',
     name: 'Scoped Playlist',
-    items: [{ trackUid: 'track-beta' }, { trackUid: 'track-alpha' }],
+    items: [
+      { trackUid: 'track-beta' },
+      { trackUid: 'track-alpha' },
+      { trackUid: 'track-alpha' },
+      { unresolved: { basename: 'missing.flac', title: 'Missing song' } }
+    ],
     createdAt: 30
   });
+  const playlistEntities = await host.queryEntities({
+    type: 'playlist', query: '', sort: 'name', direction: 'asc', limit: 20
+  });
+  assert.equal(playlistEntities.rows.find(row => row.id === 'playlist-scoped')?.itemCount, 4);
+  await host.releaseContext(playlistEntities.contextToken);
   const playlistPage = await host.queryTracks({
     query: '', sort: 'title', direction: 'asc', scope: { playlistId: 'playlist-scoped' }, limit: 20
   });
-  assert.deepEqual(playlistPage.rows.map(row => row.trackUid), ['track-beta', 'track-alpha']);
+  assert.deepEqual(playlistPage.rows.map(row => row.trackUid), ['track-beta', 'track-alpha', 'track-alpha', null]);
+  assert.equal(playlistPage.totalCount, 4);
+  assert.equal(playlistPage.resolvedCount, 3);
+  assert.equal(playlistPage.unresolvedCount, 1);
   assert.ok(playlistPage.rows.every(row => Number.isSafeInteger(row.itemKey) && row.playlistVersion === 0));
+  assert.notEqual(playlistPage.rows[1].playlistItemKey, playlistPage.rows[2].playlistItemKey);
+  for (const field of ['folderId', 'albumKey', 'artistKey', 'genreKey', 'subfolderKey']) {
+    assert.equal(Object.hasOwn(playlistPage.rows[1], field), true);
+  }
 
   const trackAnchor = await host.resolveEntityAnchor({
     contextToken: playlistPage.contextToken,
-    anchor: { entityId: 'track-alpha', ordinal: 0 },
+    anchor: { entityId: playlistPage.rows[2].playlistItemKey, ordinal: 0 },
     fallback: 'exact',
     limit: 20
   });
   assert.equal(trackAnchor.accepted, true);
-  assert.equal(trackAnchor.ordinal, 1);
-  assert.deepEqual(trackAnchor.page.rows.map(row => row.trackUid), ['track-beta', 'track-alpha']);
+  assert.equal(trackAnchor.ordinal, 2);
+  assert.deepEqual(trackAnchor.page.rows.map(row => row.trackUid), ['track-beta', 'track-alpha', 'track-alpha', null]);
 
   const albums = await host.queryEntities({ type: 'album', query: '', sort: 'name', direction: 'asc', limit: 20 });
   const entityAnchor = await host.resolveEntityAnchor({
@@ -148,101 +358,90 @@ test('track detail scopes, playlist position, and generic anchors use real Elect
     cursor: null,
     limit: 20
   });
-  assert.deepEqual(retainedPlaylistSnapshot.rows.map(row => row.trackUid), ['track-beta', 'track-alpha']);
+  assert.deepEqual(retainedPlaylistSnapshot.rows.map(row => row.trackUid), ['track-beta', 'track-alpha', 'track-alpha', null]);
+  assert.deepEqual(
+    await host.getContextCount({ contextToken: playlistPage.contextToken }),
+    {
+      contextToken: playlistPage.contextToken,
+      totalCount: 4,
+      catalogVersion: playlistPage.catalogVersion,
+      resolvedCount: 3,
+      unresolvedCount: 1
+    }
+  );
 });
 
-test('all persistent entity kinds upsert and query through bounded path-safe pages', async t => {
+test('subfolder pages default to full relative path order instead of leaf title order', async t => {
   const { directory, host } = await openCatalog(t);
-  const invalidations = [];
-  host.on('invalidation', event => invalidations.push(event));
   await seedFolder(host, directory);
-  await host.upsertEntities('album', [{
-    albumKey: 'album',
-    identityVersion: 1,
-    name: 'Blue Album',
-    artist: 'Blue Artist',
-    trackCount: 12,
-    totalDurationSec: 3600,
-    representativeArtworkId: null
-  }]);
-  await host.upsertEntities('artist', [{
-    artistKey: 'artist',
-    identityVersion: 1,
-    name: 'Blue Artist',
-    trackCount: 12,
-    totalDurationSec: 3600,
-    representativeArtworkId: null
-  }]);
-  await host.upsertEntities('genre', [{
-    genreKey: 'genre',
-    identityVersion: 1,
-    name: 'Ambient',
-    trackCount: 12,
-    totalDurationSec: 3600,
-    representativeArtworkId: null
-  }]);
-  await host.upsertEntities('subfolder', [{
-    subfolderKey: 'folder:albums',
+  const scan = await host.beginScanFolder({
+    scanId: 'scan-subfolder-order',
     folderId: 'folder',
-    relativePath: 'Albums',
-    identityVersion: 1,
-    displayName: 'Albums',
-    trackCount: 12,
-    totalDurationSec: 3600,
-    representativeArtworkId: null
-  }]);
-  await host.upsertEntities('playlist', [{
-    id: 'playlist',
-    name: 'Favorites',
-    state: 'active',
-    version: 2,
-    createdAt: 10,
-    updatedAt: 20
-  }]);
+    normalizedRoot: directory,
+    expectedLifecycleVersion: 1,
+    resume: false,
+    rootEnumerationRequired: true,
+    continuityBroken: false,
+    sweepEligibility: 'INELIGIBLE'
+  });
+  await seedDerivedTrack(host, {
+    scan,
+    trackUid: 'track-zeta-alpha',
+    relativePath: 'Zeta/Alpha/one.flac'
+  });
+  await seedDerivedTrack(host, {
+    scan,
+    trackUid: 'track-alpha-zulu',
+    relativePath: 'Alpha/Zulu/two.flac'
+  });
 
-  const expectations = {
-    album: ['albumKey', 'album'],
-    artist: ['artistKey', 'artist'],
-    genre: ['genreKey', 'genre'],
-    folder: ['id', 'folder'],
-    subfolder: ['subfolderKey', 'folder:albums'],
-    playlist: ['id', 'playlist']
-  };
-  for (const [type, [field, value]] of Object.entries(expectations)) {
-    const page = await host.queryEntities({ type, query: '', sort: 'name', direction: 'asc', limit: 10 });
-    assert.equal(page.rows.length, 1);
-    assert.equal(page.rows[0][field], value);
-    assert.equal(Object.hasOwn(page.rows[0], 'path'), false);
-    assert.equal(Object.hasOwn(page.rows[0], 'relativePath'), false);
-    await host.releaseContext(page.contextToken);
-  }
+  const page = await host.queryEntities({
+    type: 'subfolder',
+    query: '',
+    direction: 'asc',
+    limit: 10
+  });
 
-  const counts = await host.getCounts();
-  assert.deepEqual(
-    Object.fromEntries(['albums', 'artists', 'genres', 'folders', 'subfolders', 'playlists']
-      .map(key => [key, counts[key]])),
-    { albums: 1, artists: 1, genres: 1, folders: 1, subfolders: 1, playlists: 1 }
-  );
-  assert.deepEqual(
-    invalidations.map(event => event.changedScopes[0]),
-    ['folders', 'albums', 'artists', 'genres', 'subfolders', 'playlists']
-  );
-  assert.ok(invalidations.every(event => !Object.hasOwn(event, 'rows')));
+  assert.deepEqual(page.rows.map(row => row.caption), [
+    'Music Root / Alpha/Zulu',
+    'Music Root / Zeta/Alpha'
+  ]);
+  assert.ok(page.rows.every(row => !Object.hasOwn(row, 'folderSortKey')));
+  assert.ok(page.rows.every(row => !Object.hasOwn(row, 'subfolderSortPath')));
+  await host.releaseContext(page.contextToken);
 });
 
 test('entity canonical cursors traverse duplicate sort values forward and backward exactly once', async t => {
-  const { host } = await openCatalog(t);
-  const entities = Array.from({ length: 53 }, (_, index) => ({
-    albumKey: `album_${String(index).padStart(3, '0')}`,
-    identityVersion: 1,
-    name: 'Duplicate Name',
-    artist: 'Duplicate Artist',
-    trackCount: 1,
-    totalDurationSec: 60,
-    representativeArtworkId: null
-  }));
-  await host.upsertEntities('album', entities);
-  const expected = entities.map(entity => entity.albumKey).sort();
+  const { directory, host } = await openCatalog(t);
+  await seedFolder(host, directory);
+  const scan = await host.beginScanFolder({
+    scanId: 'scan-duplicate-entities',
+    folderId: 'folder',
+    normalizedRoot: directory,
+    expectedLifecycleVersion: 1,
+    resume: false,
+    rootEnumerationRequired: true,
+    continuityBroken: false,
+    sweepEligibility: 'INELIGIBLE'
+  });
+  for (let index = 0; index < 53; index += 1) {
+    await seedDerivedTrack(host, {
+      scan,
+      trackUid: `track-${String(index).padStart(3, '0')}`,
+      relativePath: `Album ${index}/song.flac`,
+      artist: `Artist ${index}`,
+      album: 'Duplicate Name'
+    });
+  }
+  const expectedPage = await host.queryEntities({
+    type: 'album',
+    query: '',
+    sort: 'name',
+    direction: 'asc',
+    limit: 100
+  });
+  const expected = expectedPage.rows.map(entity => entity.albumKey);
+  await host.releaseContext(expectedPage.contextToken);
   const first = await host.queryEntities({
     type: 'album',
     query: '',
@@ -275,29 +474,35 @@ test('entity canonical cursors traverse duplicate sort values forward and backwa
   assert.deepEqual(backwardPages.reverse().flat(), expected);
 });
 
-test('entity contexts enforce type, batch, limit, and preserve their bounded read snapshot', async t => {
-  const { host } = await openCatalog(t);
-  await assert.rejects(
-    host.upsertEntities('unknown', [{ name: 'Unknown' }]),
-    assertCode('unsupportedEntityType')
-  );
+test('entity contexts enforce type and limit and preserve their bounded read snapshot', async t => {
+  const { directory, host } = await openCatalog(t);
+  await seedFolder(host, directory);
   await assert.rejects(
     host.queryEntities({ type: 'unknown', query: '', limit: 10 }),
     assertCode('unsupportedEntityType')
-  );
-  await assert.rejects(
-    host.upsertEntities('artist', Array.from({ length: 1001 }, (_, index) => ({
-      artistKey: `artist_${index}`,
-      name: `Artist ${index}`
-    }))),
-    assertCode('batchTooLarge')
   );
   await assert.rejects(
     host.queryEntities({ type: 'artist', query: '', limit: 501 }),
     assertCode('invalidLimit')
   );
 
-  await host.upsertEntities('artist', [{ artistKey: 'artist_a', name: 'Same' }]);
+  const scan = await host.beginScanFolder({
+    scanId: 'scan-entity-snapshot',
+    folderId: 'folder',
+    normalizedRoot: directory,
+    expectedLifecycleVersion: 1,
+    resume: false,
+    rootEnumerationRequired: true,
+    continuityBroken: false,
+    sweepEligibility: 'INELIGIBLE'
+  });
+  await seedDerivedTrack(host, {
+    scan,
+    trackUid: 'track-artist-a',
+    relativePath: 'A/song.flac',
+    artist: 'Artist A',
+    album: 'Album A'
+  });
   await assert.rejects(
     host.queryEntities({ type: 'artist', query: '', catalogVersion: 0, limit: 1 }),
     assertCode('STALE_CURSOR')
@@ -312,14 +517,20 @@ test('entity contexts enforce type, batch, limit, and preserve their bounded rea
     }),
     assertCode('cursorEndpointMismatch')
   );
-  await host.upsertEntities('artist', [{ artistKey: 'artist_b', name: 'Same' }]);
+  await seedDerivedTrack(host, {
+    scan,
+    trackUid: 'track-artist-b',
+    relativePath: 'B/song.flac',
+    artist: 'Artist B',
+    album: 'Album B'
+  });
   const sameSnapshot = await host.readContextPage({ contextToken: page.contextToken, cursor: null, limit: 10 });
-  assert.deepEqual(sameSnapshot.rows.map(row => row.artistKey), ['artist_a']);
+  assert.deepEqual(sameSnapshot.rows.map(row => row.name), ['Artist A']);
   assert.deepEqual(sameSnapshot.totalCount, { pending: true });
   assert.equal((await host.getContextCount({ contextToken: page.contextToken })).totalCount, 1);
 
   const context = await host.createContext({
-    endpoint: 'entities:genre',
+    endpoint: 'entities:playlist',
     query: '',
     sort: 'name',
     direction: 'asc',
@@ -328,7 +539,7 @@ test('entity contexts enforce type, batch, limit, and preserve their bounded rea
   const empty = await host.readContextPage({ contextToken: context.contextToken, cursor: null, limit: 10 });
   assert.deepEqual(empty.rows, []);
   const managerStylePage = await host.queryEntities({
-    type: 'genre',
+    type: 'playlist',
     query: '',
     sort: 'name',
     direction: 'asc',
@@ -466,6 +677,8 @@ test('derived Electron entity rows expose an indexed representative track before
     }
   });
   assert.equal(published.committed, true);
+  assert.deepEqual(published.changedScopes, ['artwork']);
+  assert.equal(Object.hasOwn(published.counts, 'artwork'), false);
   assert.deepEqual((await host.getCachedArtwork('track-representative')).bytes, new Uint8Array([1, 2, 3, 4]));
   for (const type of ['album', 'artist', 'genre', 'subfolder']) {
     const page = await host.queryEntities({ type, query: '', sort: 'name', direction: 'asc', limit: 10 });
@@ -483,6 +696,7 @@ test('derived Electron entity rows expose an indexed representative track before
     explicitRescan: false
   });
   assert.ok(changed.claim);
+  assert.equal(Object.hasOwn(changed.counts, 'artwork'), false);
   assert.equal(await host.getCachedArtwork('track-representative'), null);
   assert.equal((await host.getTrack('track-representative')).artworkId, null);
   for (const type of ['album', 'artist', 'genre', 'subfolder']) {

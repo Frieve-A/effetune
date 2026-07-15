@@ -6,7 +6,7 @@ lang: pt
 
 # Como Usar a Biblioteca de música
 
-O EffeTune 3.0.0 começa com uma Biblioteca de música nova. O estado da Biblioteca anterior não é herdado; adicione novamente as pastas de música e faça a varredura. Isso não altera os arquivos de áudio contidos nelas.
+O EffeTune 2.1.0 começa com uma Biblioteca de música nova. O estado da Biblioteca anterior não é herdado; adicione novamente as pastas de música e faça a varredura. Isso não altera os arquivos de áudio contidos nelas.
 
 A Biblioteca de música indexa as pastas de música selecionadas para que você possa explorar sua coleção local por faixa, álbum, artista, gênero, subpasta, pasta, faixas adicionadas recentemente ou playlist. A reprodução passa pelo Effect Pipeline atual do EffeTune, assim como na reprodução normal de arquivos de música.
 
@@ -15,8 +15,8 @@ A Biblioteca de música armazena o catálogo, o cache de capas e as playlists de
 ## Ambientes disponíveis
 
 - **Aplicativo desktop:** usa o scanner de pastas completo e consegue manter as pastas selecionadas disponíveis entre inicializações. Na versão desktop, também é possível mostrar uma faixa na pasta onde o arquivo está.
-- **Navegadores Chromium em PC:** usam File System Access quando disponível. O acesso à pasta pode ser mantido em alguns casos, mas o navegador também pode pedir permissão novamente.
-- **Navegadores móveis, Safari e Firefox:** usam a seleção de pasta ou de arquivo disponível no navegador. No modo de fallback, é possível indexar os arquivos da pasta selecionada, mas, após recarregar a página ou perder a permissão, talvez seja necessário selecionar a pasta ou os arquivos novamente.
+- **Navegadores Chromium em PC com File System Access:** salvam de forma persistente o identificador da pasta selecionada. Ele pode ser reutilizado após recarregar quando o acesso for concedido, embora o navegador possa pedir permissão novamente.
+- **Navegadores móveis, Safari, Firefox e outros sem File System Access:** mantêm os objetos `File` selecionados apenas durante a sessão atual da página. O catálogo permanece salvo, mas os arquivos não podem ser reabertos após recarregar. Selecione novamente a pasta ou os arquivos depois de cada recarregamento; o EffeTune os reconecta às entradas existentes pelo caminho relativo normalizado.
 
 A Biblioteca de música indexa extensões comuns de arquivos de mídia, como MP3, WAV, OGG, FLAC, Opus, M4A, AAC, WebM e MP4. Nos arquivos MP4, o EffeTune reproduz apenas a faixa de áudio e não exibe o vídeo. A possibilidade real de reprodução, inclusive do codec de áudio contido no MP4, também depende dos recursos de decodificação do navegador ou do sistema operacional.
 
@@ -54,9 +54,13 @@ Use as abas de navegação para alternar o catálogo.
 
 Por exemplo, `Artist/Album/01 Song.flac` aparece no grupo de subpasta `Artist/Album`. Caminhos relativos idênticos em raízes indexadas diferentes permanecem separados. Arquivos armazenados diretamente na raiz não criam um grupo de subpasta; eles continuam disponíveis em **Faixas** e nessa raiz em **Pastas**.
 
-Com **Pesquisar na biblioteca**, você pode pesquisar faixas, álbuns, artistas e playlists ao mesmo tempo. No layout para PC, é possível ordenar a lista de faixas pelo cabeçalho usando **Título**, **Artista**, **Álbum**, **Gênero** e **Tempo**.
+Com **Pesquisar na biblioteca**, você pode pesquisar faixas, álbuns, artistas e playlists ao mesmo tempo. No layout para PC, é possível ordenar a lista de faixas pelo cabeçalho usando **Título**, **Artista**, **Álbum**, **Gênero** e **Tempo**. As visualizações de álbuns, artistas, gêneros, subpastas e playlists oferecem uma lista **Ordenar** baseada no catálogo. Dependendo da visualização, é possível ordenar por nome, artista, caminho, número de faixas, duração total, data de atualização ou data de criação, em ambos os sentidos. Cada visualização mantém sua própria seleção.
 
 Na pesquisa de faixas, termos com três ou mais caracteres correspondem a qualquer parte do título, artista, álbum, gênero, nome do arquivo ou caminho. Termos com um ou dois caracteres correspondem apenas ao início de uma palavra. Digite pelo menos três caracteres para pesquisar no meio de uma palavra.
+
+Nos layouts para PC e dispositivos móveis, quando uma pesquisa de faixas ou os detalhes de um álbum, artista, gênero, subpasta ou playlist retornam 300 faixas ou menos, todas são selecionadas por padrão. Com 301 faixas ou mais, não há seleção automática. Use as caixas das linhas, **Selecionar tudo** ou **Desmarcar tudo** para alterar a seleção.
+
+No celular, a lista normal de títulos aparece primeiro, sem colunas de artista ou duração. Somente manter uma faixa pressionada abre o modo de seleção; as caixas, **Selecionar tudo** e **Desmarcar tudo** aparecem, enquanto as ações normais das linhas continuam disponíveis. A seleção automática e as alterações posteriores — incluindo **Selecionar tudo**, **Desmarcar tudo** e as caixas individuais — mudam apenas o estado da seleção; elas não abrem nem encerram o modo de seleção.
 
 Quando os metadados estão ausentes ou não podem ser lidos, o EffeTune usa o nome do arquivo e as informações da pasta para a exibição. Nas propriedades da faixa, você pode conferir o caminho do arquivo, formato, taxa de amostragem, profundidade de bits, taxa de bits e os principais itens de metadados.
 
@@ -70,7 +74,7 @@ Selecione faixas, álbuns, artistas, gêneros, subpastas, pastas, resultados de 
 - **Adicionar à fila** - Adiciona as faixas selecionadas ao fim da fila.
 - **Adicionar à playlist** - Salva as faixas selecionadas em uma playlist da Biblioteca de música.
 
-No PC, você pode clicar duas vezes em uma linha de faixa para reproduzir a partir dessa posição, ou abrir as ações da faixa com o botão direito do mouse ou pelo menu **Mais**. No móvel, toque no botão de reprodução da linha da faixa para reproduzir; mantenha a faixa pressionada para abrir o menu de ações.
+No PC, você pode clicar duas vezes em uma linha de faixa para reproduzir a partir dessa posição, ou abrir as ações pelo botão direito do mouse ou pelo menu **Mais**. No celular, toque em uma faixa da lista normal para reproduzi-la; manter pressionado entra no modo de seleção descrito acima.
 
 Os controles normais do player e as configurações de repetição/aleatório continuam disponíveis. Em dispositivos com teclado, os atalhos de teclado normais do player também podem ser usados. Se uma pasta ficar offline e uma faixa da biblioteca não puder ser aberta, reconecte ou importe novamente essa pasta.
 
@@ -98,7 +102,9 @@ Você pode:
 - renomear, duplicar, excluir e reordenar playlists;
 - arrastar faixas dentro de uma playlist para mudar a ordem; em ambientes onde arrastar é difícil, usar **Mover para cima** e **Mover para baixo**;
 - importar playlists nos formatos M3U, M3U8, PLS e XSPF com **Importar playlist**;
-- exportar playlists em formato M3U8 ou XSPF com **Exportar M3U8** ou **Exportar XSPF**.
+- abrir uma playlist específica e exportá-la em formato M3U8 ou XSPF com **Exportar M3U8** ou **Exportar XSPF**.
+
+Ao escanear uma pasta, o EffeTune importa automaticamente os arquivos de playlist compatíveis depois de indexar as faixas e ignora os arquivos cujo conteúdo não mudou. Se o conteúdo de um arquivo na mesma pasta e no mesmo caminho relativo mudar, o EffeTune substitui atomicamente os itens da playlist importada automaticamente; isso também substitui as edições feitas nesses itens dentro do EffeTune. Uma importação que falhou ou foi cancelada é tentada novamente na próxima varredura. Excluir ou renomear o arquivo de origem não remove a playlist existente, e um arquivo renomeado é importado como uma nova playlist.
 
 Durante a importação, é exibida uma prévia de quantos itens coincidem com faixas da biblioteca atual. Os itens sem correspondência também são mantidos, sempre que possível, como itens não resolvidos, para que possam ser resolvidos depois se a pasta correspondente for adicionada ou reconectada.
 
@@ -110,6 +116,12 @@ Ao exportar, escolher **Caminhos relativos** grava, quando possível, caminhos r
 - O cache de capas e as playlists são dados internos do aplicativo, não alterações incorporadas aos arquivos de música.
 - Os grupos de subpastas são derivados dos caminhos relativos salvos no catálogo.
 - A área de armazenamento do navegador pode ser apagada pelas configurações do navegador ou por ações do usuário. Exporte playlists importantes conforme necessário.
-- No aplicativo web, a possibilidade de continuar usando uma pasta após recarregar a página depende do gerenciamento de permissões do navegador.
+- Nos navegadores com File System Access, as permissões determinam se o identificador persistente da pasta pode ser reutilizado após recarregar. No modo de fallback, os arquivos selecionados duram apenas durante a sessão e sempre precisam ser escolhidos novamente após recarregar.
+
+## Bibliotecas grandes
+
+O catálogo mantém os dados no disco e divide o trabalho em páginas ou lotes limitados, portanto uma coleção grande não precisa ser carregada inteira na memória. As medições de escala e de referência fixa são diagnósticos locais e opcionais de desenvolvimento. Elas não são requisitos para commits, releases, `verify` ou GitHub Actions e não constituem uma garantia geral de desempenho. O tempo de varredura e os limites práticos dependem da velocidade do armazenamento, da memória disponível, dos metadados, das capas e das limitações do navegador ou do sistema operacional.
+
+Enquanto você rola a lista de faixas, o EffeTune mantém as páginas próximas em cache. No layout móvel, ele lê antecipadamente até duas páginas na direção atual, dá prioridade à página necessária na tela sobre leituras antecipadas adicionais e reutiliza as linhas visíveis que se sobrepõem. Mesmo que a rolagem continue, as leituras concluídas para a área visível são publicadas imediatamente nesse cache limitado. As solicitações de posição são agrupadas na mais recente e, se ela estiver na página que acabou de ser carregada, nenhuma leitura adicional do banco de dados é feita. Leituras antecipadas pendentes que deixaram de ser necessárias são descartadas. O SQLite permite interrupções, mas os adaptadores do catálogo executam atualmente cada instrução de forma síncrona e não oferecem um caminho para interrompê-la a partir de outro worker. Por isso, um salto excepcionalmente rápido ainda pode deixar um breve espaço vazio até a leitura em andamento terminar, principalmente em armazenamento lento.
 
 [← Voltar para o README](README.md)

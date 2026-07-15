@@ -1,4 +1,9 @@
-import { CatalogSequence, CompositeCatalogSequence } from './playback-sequence.js';
+import {
+  CatalogSequence,
+  claimFolderPermissionAttempt,
+  createPlaybackSourceResolutionScope,
+  isPlaybackSourceResolutionScope
+} from './playback-sequence.js';
 
 const PLAYBACK_DESTINATIONS = Object.freeze({
   play: 'replace',
@@ -36,46 +41,36 @@ export class CatalogPlaybackBridge {
     const destination = PLAYBACK_DESTINATIONS[request?.operationKind];
     if (!destination) return this.service.start(request);
     const player = this.#getPlayer();
-    const expectedTransportVersion = Number.isSafeInteger(request.expectedTargetVersion)
-      ? request.expectedTargetVersion
-      : player.playbackManager.transportVersion;
+    if (request.operationKind === 'play' && player.stateRestored) {
+      await player.stateRestored;
+    }
+    const options = { ...(request.options ?? {}), playbackDestination: destination };
+    const requestedShuffleSeed = Number.isSafeInteger(options.seed) ? options.seed : null;
+    const shuffleEnabled = request.operationKind === 'play' && (
+      requestedShuffleSeed !== null ||
+      player.stateManager?.getStateSnapshot?.().shuffleMode === true
+    );
+    if (shuffleEnabled && options.seed == null) options.seed = createPlaybackShuffleSeed();
     const operationRequest = {
-      ...request,
-      expectedTargetVersion: expectedTransportVersion,
-      options: { ...(request.options ?? {}), playbackDestination: destination }
+      operationKind: request.operationKind,
+      selectionDescriptor: request.selectionDescriptor,
+      target: request.target ?? {},
+      options
     };
     const receipt = await this.service.start(operationRequest);
-    if (receipt?.kind === 'terminal') {
-      const recoveredOperationId = receipt.operationId ?? `recovered:${request.clientRequestId}`;
-      if (request.operationKind === 'play' && receipt.result?.state === 'succeeded') {
-        const restored = await this.restoreTransport();
-        if (!restored.restored) {
-          throw playbackBridgeError('invalidOperationResult', 'Recovered Play transport is unavailable');
-        }
-        return receipt;
-      }
-      await this.#applyTerminal({
-        operationId: recoveredOperationId,
-        operationKind: request.operationKind,
-        expectedTransportVersion,
-        terminal: receipt.result
-      });
-      return receipt;
-    }
-    if (!receipt?.operationId || !['started', 'active'].includes(receipt.kind)) return receipt;
+    if (!receipt?.operationId || receipt.kind !== 'started') return receipt;
 
     const operation = {
       operationId: receipt.operationId,
       operationKind: request.operationKind,
-      expectedTransportVersion,
+      shuffleEnabled,
       provisionalPromise: Promise.resolve({ accepted: true }),
       unsubscribe: null
     };
     if (request.operationKind === 'play') {
       operation.provisionalPromise = this.#installPlayProvisional({
         player,
-        receipt,
-        expectedTransportVersion
+        receipt
       });
     }
     this.#trackOperation(operation);
@@ -84,20 +79,31 @@ export class CatalogPlaybackBridge {
     return receipt;
   }
 
-  async #installPlayProvisional({ player, receipt, expectedTransportVersion }) {
+  async #installPlayProvisional({ player, receipt }) {
     try {
       const provisionalEntry = receipt.provisionalEntry ??
         await this.service.getProvisionalEntry?.(receipt.operationId);
       if (!provisionalEntry) {
+        const status = await this.service.status?.(receipt.operationId);
+        if (isTerminalOperationStatus(status)) {
+          return {
+            accepted: false,
+            reason: status.result?.code ?? status.terminalKind ?? 'operationCompleted'
+          };
+        }
         throw playbackBridgeError('invalidOperationResult', 'Play operation did not resolve a provisional entry');
       }
+      if (!player.ui?.container) player.ui?.createPlayerUI?.();
+      const resolutionScope = createPlaybackSourceResolutionScope();
       const provisionalResult = await player.playbackManager.installBulkPlayProvisional({
         receipt: { ...receipt, provisionalEntry },
         service: this.service,
-        expectedTransportVersion,
-        resolveSource: entry => this.#resolveSequenceEntrySource({
+        resolutionScope,
+        resolveSource: (entry, activeResolutionScope, signal) => this.#resolveSequenceEntrySource({
           entryInstanceId: entry.entryInstanceId,
-          trackUid: entry.trackUid
+          trackUid: entry.trackUid,
+          resolutionScope: activeResolutionScope,
+          signal
         })
       });
       if (!provisionalResult.accepted) {
@@ -106,96 +112,68 @@ export class CatalogPlaybackBridge {
           'Play provisional could not be installed'
         );
       }
-      if (!player.ui?.container) player.ui?.createPlayerUI?.();
       return provisionalResult;
     } catch (error) {
-      await Promise.resolve(this.service.cancel?.(receipt.operationId)).catch(() => {});
+      let cancelResult = null;
+      let cancelError = null;
+      try {
+        cancelResult = await this.service.cancel?.(receipt.operationId) ?? null;
+      } catch (caughtCancelError) {
+        cancelError = caughtCancelError;
+        console.warn('[CatalogPlaybackBridge] Failed to cancel Play after provisional activation failed:', caughtCancelError);
+      }
       this.#reportError(error);
-      return { accepted: false, reason: error?.code ?? 'sourceUnavailable' };
+      return {
+        accepted: false,
+        reason: error?.code ?? 'sourceUnavailable',
+        cancelResult,
+        cancelError
+      };
     }
   }
 
-  lookupResult(clientRequestId) {
-    return this.service.lookupResult(clientRequestId);
-  }
-
-  status(operationId) {
-    return this.service.status(operationId);
+  async status(operationId) {
+    const status = await this.service.status(operationId);
+    const operation = this.operations.get(operationId);
+    if (operation && isTerminalOperationStatus(status)) {
+      await this.#finishOperation(operation, {
+        state: status.terminalKind,
+        result: status.result
+      });
+    }
+    return status;
   }
 
   cancel(operationId) {
     return this.service.cancel(operationId);
   }
 
-  commitTransportCommand(request) {
-    if (typeof this.service.commitTransportCommand !== 'function') {
-      throw playbackBridgeError('transportAuthorityUnavailable', 'Durable playback transport is unavailable');
-    }
-    return this.service.commitTransportCommand(request);
+  canUndoPlaybackSession() {
+    return this.#getPlayer().playbackManager.canUndoSessionTransport?.() === true;
   }
 
-  applyTransportUndo(request) {
-    if (typeof this.service.applyTransportUndo !== 'function') {
-      throw playbackBridgeError('transportUndoUnavailable', 'Playback queue Undo is unavailable');
-    }
-    return this.service.applyTransportUndo(request);
-  }
-
-  async undoCancelledPlay({ undoId, expectedTransportVersion } = {}) {
-    this.#assertOpen();
-    const player = this.#getPlayer();
-    const expected = Number.isSafeInteger(expectedTransportVersion)
-      ? expectedTransportVersion
-      : player.playbackManager.transportVersion;
-    const result = await this.applyTransportUndo({ undoId, expectedTransportVersion: expected });
-    if (result?.kind !== 'published') return result;
-    const sequence = await createSequenceFromTransportDescriptor(
-      result.descriptor,
-      result.transportVersion,
-      this.sequenceClient,
-      request => this.#resolveSequenceEntrySource(request)
-    );
-    player.playbackManager.transportVersion = result.transportVersion;
-    player.playbackManager.durableTransportDescriptor = result.descriptor;
-    player.playbackManager.activeBulkPlay = null;
-    await player.playbackManager.loadCatalogSequence(sequence, {
-      currentOrdinal: result.descriptor.currentOrdinal ?? 0,
-      autoPlay: true,
-      userInitiated: true
-    });
-    return result;
-  }
-
-  async restoreTransport() {
-    if (typeof this.service.getTransportState !== 'function') return { restored: false, reason: 'unavailable' };
-    const state = await this.service.getTransportState();
-    if (!Number.isSafeInteger(state?.transportVersion) || state.transportVersion < 0 ||
-        !Array.isArray(state?.descriptor?.segments) || state.descriptor.segments.length === 0) {
-      return { restored: false, reason: 'empty' };
-    }
-    const sequence = await createSequenceFromTransportDescriptor(
-      state.descriptor,
-      state.transportVersion,
-      this.sequenceClient,
-      request => this.#resolveSequenceEntrySource(request)
-    );
-    const player = this.#getPlayer();
-    player.playbackManager.transportVersion = state.transportVersion;
-    player.playbackManager.durableTransportDescriptor = state.descriptor;
-    await player.playbackManager.loadCatalogSequence(sequence, {
-      currentOrdinal: state.descriptor.currentOrdinal ?? 0,
-      preservePlayback: true
-    });
-    return { restored: true, transportVersion: state.transportVersion };
+  undoPlaybackSession() {
+    return this.#getPlayer().playbackManager.undoSessionTransport?.() ??
+      Promise.resolve({ kind: 'notAvailable' });
   }
 
   subscribeOperation(operationId, listener) {
+    const forward = event => {
+      const operation = this.operations.get(operationId);
+      if (operation && event?.kind === 'terminal' && event.operationId === operationId) {
+        void this.#finishOperation(operation, event.result)
+          .then(() => listener(event))
+          .catch(error => this.#reportError(error));
+        return;
+      }
+      listener(event);
+    };
     if (typeof this.service.subscribeOperation === 'function') {
-      return this.service.subscribeOperation(operationId, listener);
+      return this.service.subscribeOperation(operationId, forward);
     }
     if (typeof this.service.subscribeOperations === 'function') {
       return this.service.subscribeOperations(event => {
-        if (event?.operationId === operationId || event?.progress?.operationId === operationId) listener(event);
+        if (event?.operationId === operationId || event?.progress?.operationId === operationId) forward(event);
       });
     }
     throw playbackBridgeError('operationEventsUnavailable', 'Library operation events are unavailable');
@@ -291,7 +269,10 @@ export class CatalogPlaybackBridge {
       const status = await this.service.status?.(operation.operationId);
       if (!status) return;
       if (status.result && (status.finishedAt != null || status.terminalKind)) {
-        await this.#finishOperation(operation, status.result);
+        await this.#finishOperation(operation, {
+          state: status.terminalKind,
+          result: status.result
+        });
       }
     } catch (error) {
       this.#reportError(error);
@@ -300,42 +281,52 @@ export class CatalogPlaybackBridge {
 
   async #finishOperation(operation, terminal) {
     if (this.operations.get(operation.operationId) !== operation) return;
+    if (operation.finishPromise) return operation.finishPromise;
+    operation.finishPromise = this.#finishOperationOnce(operation, terminal);
+    return operation.finishPromise;
+  }
+
+  async #finishOperationOnce(operation, terminal) {
     operation.unsubscribe?.();
     operation.unsubscribe = null;
+    let succeeded = false;
     try {
       const provisional = await operation.provisionalPromise;
       if (provisional?.accepted === false) return;
-      await this.#applyTerminal({ ...operation, terminal });
+      if (!isSuccessfulTerminal(terminal)) return;
+      const applied = await this.#applyTerminal({ ...operation, terminal });
+      succeeded = applied?.accepted !== false;
     } catch (error) {
       this.#reportError(error);
     } finally {
+      await this.#getPlayer().playbackManager.finishBulkPlayTerminal?.(
+        operation.operationId,
+        { succeeded }
+      );
       if (this.operations.get(operation.operationId) === operation) {
         this.operations.delete(operation.operationId);
       }
     }
   }
 
-  async #applyTerminal({ operationId, operationKind, expectedTransportVersion, terminal }) {
-    if (terminal?.state !== 'succeeded') return { accepted: false, reason: terminal?.state ?? 'invalid-terminal' };
-    const result = terminal.result;
+  async #applyTerminal({ operationId, operationKind, shuffleEnabled = false, terminal }) {
+    const result = terminalResult(terminal);
     if (
       !result || result.operationKind !== operationKind ||
       result.destination !== PLAYBACK_DESTINATIONS[operationKind] ||
-      !Number.isSafeInteger(result.itemCount) || result.itemCount < 1
+      typeof result.sequenceId !== 'string' || result.sequenceId.length === 0 ||
+      !Number.isSafeInteger(result.itemCount) || result.itemCount < 1 ||
+      !Number.isSafeInteger(result.firstOrdinal) || result.firstOrdinal < 0 ||
+      result.firstOrdinal >= result.itemCount ||
+      !result.firstEntry?.entryInstanceId || !result.firstEntry?.trackUid
     ) {
       throw playbackBridgeError('invalidOperationResult', 'Playback terminal result is invalid');
-    }
-    if (result.expectedTransportVersion !== expectedTransportVersion) {
-      throw playbackBridgeError('staleTransportVersion', 'Playback terminal CAS token does not match the request');
-    }
-    if (result.transportVersion !== expectedTransportVersion + 1 ||
-        !result.transportDescriptor || !Array.isArray(result.transportDescriptor.segments)) {
-      throw playbackBridgeError('invalidOperationResult', 'Playback terminal omitted authoritative transport state');
     }
     const sequence = new CatalogSequence({
       sequenceId: result.sequenceId,
       itemCount: result.itemCount,
       shuffleSeed: result.shuffleSeed ?? 0,
+      shuffleEnabled,
       readPage: async request => {
         const page = await this.sequenceClient.readSequencePage({
           sequenceId: request.sequenceId,
@@ -346,49 +337,72 @@ export class CatalogPlaybackBridge {
       },
       resolveSource: request => this.#resolveSequenceEntrySource(request)
     });
+    const currentOrdinal = sequence.toTransportOrdinal(result.firstOrdinal);
     return this.#getPlayer().playbackManager.commitCatalogDestination({
       operationId,
       operationKind,
       sequence,
-      expectedTransportVersion,
-      transportVersion: result.transportVersion,
-      transportDescriptor: result.transportDescriptor
+      currentOrdinal,
+      firstEntry: result.firstEntry
     });
   }
 
   async #resolveSequenceEntrySource(request) {
+    const resolutionScope = isPlaybackSourceResolutionScope(request?.resolutionScope)
+      ? request.resolutionScope
+      : createPlaybackSourceResolutionScope();
+    const {
+      resolutionScope: _resolutionScope,
+      signal,
+      ...sourceRequest
+    } = request ?? {};
+    throwIfPlaybackSourceResolutionAborted(signal);
     try {
-      return await this.sequenceClient.resolveSequenceEntrySource(request);
+      const source = await this.sequenceClient.resolveSequenceEntrySource(sourceRequest);
+      throwIfPlaybackSourceResolutionAborted(signal);
+      return source;
     } catch (error) {
+      throwIfPlaybackSourceResolutionAborted(signal);
       const folderId = error?.details?.folderId;
+      const lifecycleVersion = error?.details?.lifecycleVersion;
       if (
-        this.runtime !== 'web' ||
         error?.code !== 'folderPermissionRequired' ||
         typeof folderId !== 'string' ||
+        !Number.isSafeInteger(lifecycleVersion) ||
+        lifecycleVersion < 0 ||
         typeof this.requestFolderAccess !== 'function'
       ) {
         throw error;
       }
+      if (!claimFolderPermissionAttempt(resolutionScope, folderId, lifecycleVersion)) throw error;
       let restored;
       try {
         restored = await this.requestFolderAccess(folderId);
       } catch (reconnectError) {
+        throwIfPlaybackSourceResolutionAborted(signal);
         console.warn('Unable to reconnect the library folder for playback.', reconnectError);
         throw error;
       }
-      if (!restored) throw error;
-      return this.sequenceClient.resolveSequenceEntrySource(request);
+      throwIfPlaybackSourceResolutionAborted(signal);
+      if (!folderAccessWasRestored(restored, folderId, lifecycleVersion)) throw error;
+      const source = await this.sequenceClient.resolveSequenceEntrySource(sourceRequest);
+      throwIfPlaybackSourceResolutionAborted(signal);
+      return source;
     }
   }
 
   #reportError(error) {
     if (error?.code === 'folderPermissionRequired') {
       console.warn('Library playback skipped a track because folder access was not restored.', error);
-      this.uiManager.setError?.('status.libraryTracksSkippedOffline', false, { count: 1 });
+      this.uiManager.showTransientMessage?.('status.libraryTracksSkippedOffline', false, { count: 1 });
       return;
     }
     console.error('Music Library playback failed:', error);
-    this.uiManager.setError?.('library.error.actionFailed', true);
+    if (typeof this.uiManager.showTransientMessage === 'function') {
+      this.uiManager.showTransientMessage('library.error.actionFailed', true);
+    } else {
+      this.uiManager.setError?.('library.error.actionFailed', true);
+    }
   }
 
   #assertOpen() {
@@ -401,6 +415,47 @@ function playbackBridgeError(code, message) {
   error.name = 'CatalogPlaybackBridgeError';
   error.code = code;
   return error;
+}
+
+function createPlaybackShuffleSeed() {
+  if (typeof globalThis.crypto?.getRandomValues === 'function') {
+    const values = new Uint32Array(1);
+    globalThis.crypto.getRandomValues(values);
+    return values[0];
+  }
+  return Math.floor(Math.random() * 0x100000000);
+}
+
+function throwIfPlaybackSourceResolutionAborted(signal) {
+  if (!signal?.aborted) return;
+  throw signal.reason ?? playbackBridgeError(
+    'playbackResolutionAborted',
+    'Playback source resolution was canceled'
+  );
+}
+
+function isTerminalOperationStatus(status) {
+  return status?.result && (status.finishedAt != null || status.terminalKind != null);
+}
+
+function terminalResult(terminal) {
+  return terminal?.result && typeof terminal.result === 'object'
+    ? terminal.result
+    : terminal;
+}
+
+function isSuccessfulTerminal(terminal) {
+  const state = terminal?.state ?? terminal?.terminalKind;
+  return state === 'succeeded' || (state == null && terminalResult(terminal)?.operationKind);
+}
+
+function folderAccessWasRestored(result, folderId, lifecycleVersion) {
+  if (!result || typeof result !== 'object' || result.canceled === true) return false;
+  const folder = result.folder;
+  return folder?.id === folderId &&
+    Number.isSafeInteger(folder.lifecycleVersion) &&
+    folder.lifecycleVersion >= lifecycleVersion &&
+    ['active', 'ok'].includes(folder.status);
 }
 
 function playbackSequenceSaveSource(descriptor) {
@@ -424,56 +479,6 @@ function playbackSequenceSaveSource(descriptor) {
   const source = { segments: Object.freeze(segments.map(segment => Object.freeze(segment))) };
   appendDescriptorShuffleState(source, descriptor);
   return Object.freeze(source);
-}
-
-async function createSequenceFromTransportDescriptor(descriptor, transportVersion, sequenceClient, resolveSource) {
-  if (descriptor.segments.length > MAX_SAVE_QUEUE_SEGMENTS) {
-    throw playbackBridgeError('transportDescriptorLimit', 'Persisted playback transport has too many segments');
-  }
-  const itemCounts = new Map();
-  await Promise.all([...new Set(descriptor.segments.map(segment => boundedSequenceId(segment.sequenceId)))]
-    .map(async sequenceId => {
-      const page = await sequenceClient.readSequencePage({ sequenceId, ordinal: 0, limit: 1 });
-      const itemCount = page?.sequence?.itemCount;
-      if (!Number.isSafeInteger(itemCount) || itemCount < 1) {
-        throw playbackBridgeError('invalidTransportDescriptor', 'Persisted playback sequence metadata is invalid');
-      }
-      itemCounts.set(sequenceId, itemCount);
-    }));
-  const segments = descriptor.segments.map(segment => {
-    const sequenceId = boundedSequenceId(segment.sequenceId);
-    const itemCount = itemCounts.get(sequenceId);
-    const source = new CatalogSequence({
-      sequenceId,
-      itemCount,
-      shuffleSeed: segment.shuffleSeed ?? 0,
-      shuffleEpoch: segment.shuffleEpoch ?? 0,
-      shuffleEnabled: segment.shuffleSeed != null,
-      shuffleTransportOffset: segment.shuffleTransportOffset ?? 0,
-      readPage: async request => {
-        const page = await sequenceClient.readSequencePage({
-          sequenceId: request.sequenceId,
-          ordinal: request.startOrdinal,
-          limit: request.limit
-        });
-        return { rows: page?.items ?? page?.rows ?? [] };
-      },
-      resolveSource
-    });
-    return {
-      sequence: source,
-      startOrdinal: segment.startOrdinal,
-      itemCount: segment.endOrdinal - segment.startOrdinal
-    };
-  });
-  return new CompositeCatalogSequence({
-    sequenceId: `transport:${transportVersion}`,
-    segments,
-    shuffleSeed: descriptor.shuffleSeed ?? 0,
-    shuffleEpoch: descriptor.shuffleEpoch ?? 0,
-    shuffleEnabled: descriptor.shuffleSeed != null,
-    shuffleTransportOffset: descriptor.shuffleTransportOffset ?? 0
-  });
 }
 
 function appendSaveSegments(output, descriptor, startOrdinal, itemCount) {

@@ -49,75 +49,6 @@ function relativePlaylistPath(sourcePath, destinationPath) {
   return relative || sourceParts.at(-1) || source;
 }
 
-function terminalOperationResult(terminal, operationId) {
-  if (terminal?.state === 'succeeded') return terminal.result;
-  const state = terminal?.state ?? 'failed';
-  const code = terminal?.code ?? (state === 'cancelled' ? 'cancelled' : 'operationFailed');
-  throw createRepositoryError(code, `Playlist import ${state}`, { operationId, state });
-}
-
-function waitForOperationTerminal(service, operationId, { onProgress } = {}) {
-  const status = requireMethod(service, 'status');
-  const subscribe = typeof service?.subscribeOperation === 'function'
-    ? listener => service.subscribeOperation(operationId, listener)
-    : typeof service?.subscribeOperations === 'function'
-      ? listener => service.subscribeOperations(listener)
-      : null;
-  if (!subscribe) {
-    throw createRepositoryError('operationUnavailable', 'Playlist import operation events are unavailable');
-  }
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    let unsubscribe = () => {};
-    const finish = callback => {
-      if (settled) return;
-      settled = true;
-      unsubscribe();
-      try {
-        resolve(callback());
-      } catch (error) {
-        reject(error);
-      }
-    };
-    const fail = error => {
-      if (settled) return;
-      settled = true;
-      unsubscribe();
-      reject(error);
-    };
-    const listener = event => {
-      if (!event) return;
-      if (event.kind === 'progress' && event.progress?.operationId === operationId) {
-        onProgress?.(event.progress);
-      } else if (event.kind === 'terminal' && event.operationId === operationId) {
-        finish(() => terminalOperationResult(event.result, operationId));
-      }
-    };
-    try {
-      const removeListener = subscribe(listener);
-      if (typeof removeListener !== 'function') {
-        throw createRepositoryError('operationUnavailable', 'Playlist import event subscription is invalid');
-      }
-      unsubscribe = removeListener;
-      if (settled) unsubscribe();
-    } catch (error) {
-      fail(error);
-      return;
-    }
-    Promise.resolve(status(operationId)).then(current => {
-      if (settled) return;
-      if (!current) {
-        fail(createRepositoryError('operationNotFound', 'Playlist import operation was not found', { operationId }));
-        return;
-      }
-      if (current.progress) onProgress?.(current.progress);
-      if (current.terminalKind || current.result?.state) {
-        finish(() => terminalOperationResult(current.result, operationId));
-      }
-    }, fail);
-  });
-}
-
 export class PagedPlaylistService {
   constructor({ client, operationService = client, requestIdFactory, now = Date.now } = {}) {
     if (!client) throw new TypeError('client is required');
@@ -126,15 +57,6 @@ export class PagedPlaylistService {
     this.operationService = operationService;
     this.requestIdFactory = requestIdFactory;
     this.now = now;
-  }
-
-  async listPage({ cursor = null, limit = 200 } = {}) {
-    const context = await this.openListContext();
-    try {
-      return await this.readListContext(context.contextToken, { cursor, limit });
-    } finally {
-      await this.releaseListContext(context.contextToken);
-    }
   }
 
   async openListContext({ query = '' } = {}) {
@@ -163,11 +85,6 @@ export class PagedPlaylistService {
 
   releaseListContext(contextToken) {
     return this.client.releaseContext(contextToken);
-  }
-
-  async list(options = {}) {
-    const page = await this.listPage(options);
-    return page.rows;
   }
 
   queryItems(playlistId, { afterPosition = 0, limit = PLAYLIST_APPLICATION_PAGE_SIZE } = {}) {
@@ -246,13 +163,6 @@ export class PagedPlaylistService {
     });
   }
 
-  replaceItems() {
-    return Promise.reject(createRepositoryError(
-      'operationUnavailable',
-      'Full-array playlist replacement is disabled in the paged Library'
-    ));
-  }
-
   async delete(playlistId, options = {}) {
     const playlist = options.playlist ?? await this.get(playlistId);
     return requireMethod(this.client, 'tombstonePlaylist')({
@@ -273,37 +183,30 @@ export class PagedPlaylistService {
     });
   }
 
-  async importFile(file, options = {}) {
+  previewImport(file, options = {}) {
     const electronGrant = file?.kind === 'electron-import-grant' &&
       typeof file.token === 'string' && typeof file.name === 'string' && Number.isSafeInteger(file.size);
     if (!file || typeof file.stream !== 'function' && !electronGrant) {
       throw new TypeError('Playlist import requires a streaming File');
     }
-    const playlistId = options.playlistId ?? this.requestIdFactory();
-    const receipt = await requireMethod(this.operationService, 'start')({
+    return requireMethod(this.operationService, 'previewPlaylistImport')({
       clientRequestId: options.clientRequestId ?? this.requestIdFactory(),
-      operationKind: 'importPlaylist',
-      selectionDescriptor: null,
-      target: { playlistId },
-      expectedTargetVersion: 0,
-      options: {
-        name: options.name ?? playlistNameFromFile(file.name),
-        source: file,
-        encoding: options.encoding ?? null,
-        limits: options.limits ?? null
-      }
+      playlistId: options.playlistId ?? this.requestIdFactory(),
+      name: options.name ?? playlistNameFromFile(file.name),
+      source: file,
+      encoding: options.encoding ?? null,
+      limits: options.limits ?? null
     });
-    if (receipt?.kind === 'terminal') {
-      return terminalOperationResult(receipt.result, receipt.operationId ?? null);
-    }
-    if (!['started', 'active'].includes(receipt?.kind) || typeof receipt.operationId !== 'string') {
-      const code = receipt?.kind === 'requestIdReuse' ? 'requestIdReuse' :
-        receipt?.kind === 'insufficientStorage' ? 'insufficientStorage' :
-          receipt?.kind === 'busy' ? 'busy' : 'invalidOperationReceipt';
-      throw createRepositoryError(code, 'Playlist import could not start', { receipt });
-    }
-    const result = await waitForOperationTerminal(this.operationService, receipt.operationId, options);
-    return { ...result, playlistId: result?.playlistId ?? playlistId };
+  }
+
+  commitImport(preview) {
+    const request = playlistImportPreviewIdentity(preview);
+    return requireMethod(this.operationService, 'commitPlaylistImportPreview')(request);
+  }
+
+  cancelImportPreview(preview) {
+    const request = playlistImportPreviewIdentity(preview);
+    return requireMethod(this.operationService, 'cancelPlaylistImportPreview')(request);
   }
 
   async exportToSink(playlistId, { format = 'm3u8', sink, relative = true, destinationPath = sink?.destinationPath, limits } = {}) {
@@ -333,12 +236,20 @@ export class PagedPlaylistService {
       });
       for (const item of page.items ?? []) {
         if (item.trackUid) {
-          const track = await this.client.getTrack(item.trackUid);
-          if (track) {
-            const sourcePath = track.path ?? track.filePath ?? track.relativePath;
-            const path = relative ? relativePlaylistPath(sourcePath, destinationPath) : sourcePath;
-            yield { ...track, path, relative: relative && !isAbsolutePlaylistPath(path) };
-          }
+          const [track, source] = await Promise.all([
+            this.client.getTrack(item.trackUid),
+            requireMethod(this.client, 'resolvePlaylistExportSource')(item.trackUid)
+          ]);
+          if (!track || !source) continue;
+          const sourcePath = playlistExportSourcePath(source);
+          const path = source.kind === 'absolute-path' && relative
+            ? relativePlaylistPath(sourcePath, destinationPath)
+            : sourcePath;
+          yield {
+            ...track,
+            path,
+            relative: source.kind === 'portable-relative' || relative && !isAbsolutePlaylistPath(path)
+          };
         } else if (item.unresolved) {
           const sourcePath = item.unresolved.sourceLine ?? item.unresolved.relativePathHint ?? '';
           const path = relative ? relativePlaylistPath(sourcePath, destinationPath) : sourcePath;
@@ -352,6 +263,31 @@ export class PagedPlaylistService {
       afterPosition = page.nextPosition;
     }
   }
+}
+
+function playlistImportPreviewIdentity(preview) {
+  if (!preview || typeof preview.previewToken !== 'string' || !preview.previewToken ||
+      typeof preview.playlistId !== 'string' || !preview.playlistId) {
+    throw new TypeError('Playlist import preview is invalid');
+  }
+  return { previewToken: preview.previewToken, playlistId: preview.playlistId };
+}
+
+function playlistExportSourcePath(source) {
+  if (source?.kind === 'absolute-path' && isAbsolutePlaylistPath(source.path)) return source.path;
+  if (source?.kind === 'portable-relative' && !isAbsolutePlaylistPath(source.path)) {
+    const rootName = portableRootName(source.rootName);
+    const relativePath = String(source.path || '').replaceAll('\\', '/').replace(/^\/+/, '');
+    if (relativePath && !relativePath.split('/').some(segment => !segment || segment === '.' || segment === '..')) {
+      return rootName ? `${rootName}/${relativePath}` : relativePath;
+    }
+  }
+  throw createRepositoryError('sourceUnavailable', 'Playlist track source is unavailable');
+}
+
+function portableRootName(value) {
+  const name = String(value || '').trim().replace(/[\\/]+/g, '_');
+  return name === '.' || name === '..' ? '' : name;
 }
 
 export function createPagedPlaylistService(options) {

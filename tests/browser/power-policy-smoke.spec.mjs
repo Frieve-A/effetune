@@ -61,6 +61,9 @@ function assertMonitoringWorkletEvidence(result, label, { suspended = false } = 
   assert.equal(evidence.configured, true, `${label}: worklet configured`);
   assert.equal(evidence.appliedDirective, 'force-monitoring', `${label}: applied directive`);
   assert.equal(evidence.appliedState, 'monitoring', `${label}: applied worklet state`);
+  assert.equal(typeof evidence.firstRender.inputActive, 'boolean', `${label}: fresh input activity`);
+  assert.equal(typeof evidence.firstRender.outputActive, 'boolean', `${label}: fresh output activity`);
+  assert.ok(evidence.firstRender.renderSequence > 0, `${label}: fresh render sequence`);
   assert.equal(evidence.after.processingDirective, 'force-monitoring', `${label}: observed directive`);
   assert.equal(evidence.after.state, 'monitoring', `${label}: observed worklet state`);
   assert.ok(evidence.runningDelta.renderQuanta > 0, `${label}: real render delta`);
@@ -110,6 +113,9 @@ function assertFullProcessWorkletEvidence(result, label, { unsafeProbe = false }
   }
   assert.equal(evidence.appliedDirective, 'full-process', `${label}: full processing applied`);
   assert.equal(evidence.appliedState, 'active', `${label}: active worklet state`);
+  assert.equal(typeof evidence.firstRender.inputActive, 'boolean', `${label}: fresh input activity`);
+  assert.equal(typeof evidence.firstRender.outputActive, 'boolean', `${label}: fresh output activity`);
+  assert.ok(evidence.firstRender.renderSequence > 0, `${label}: fresh render sequence`);
   assert.ok(evidence.runningDelta.renderQuanta > 0, `${label}: real render delta`);
   assert.equal(
     evidence.runningDelta.detectorQuanta,

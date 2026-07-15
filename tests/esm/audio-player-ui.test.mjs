@@ -37,6 +37,18 @@ class FakeElement {
       this.children = [];
       this.ownerDocument.populateAudioPlayerMarkup(value, this);
     }
+    if (this.classList().includes('player-library-context-menu')) {
+      this.children = [];
+      const buttonPattern = /<button([^>]*)>/g;
+      for (const match of value.matchAll(buttonPattern)) {
+        const button = this.ownerDocument.createElement('button');
+        button.className = /class="([^"]*)"/.exec(match[1])?.[1] ?? '';
+        button.dataset.action = /data-action="([^"]*)"/.exec(match[1])?.[1];
+        button.dataset.playlistId = /data-playlist-id="([^"]*)"/.exec(match[1])?.[1];
+        button.disabled = /\sdisabled(?:\s|>|$)/.test(match[1]);
+        this.appendChild(button);
+      }
+    }
   }
 
   get innerHTML() {
@@ -106,8 +118,20 @@ class FakeElement {
   }
 
   querySelector(selector) {
-    if (!selector.startsWith('.')) return null;
-    return this.findByClass(selector.slice(1));
+    if (selector.startsWith('.')) return this.findByClass(selector.slice(1));
+    if (selector === 'button:not(:disabled)') {
+      return this.children.find(child => child.tagName === 'BUTTON' && !child.disabled) ?? null;
+    }
+    const action = /^\[data-action="([^"]+)"\]$/.exec(selector)?.[1];
+    if (action) return this.children.find(child => child.dataset.action === action) ?? null;
+    return null;
+  }
+
+  querySelectorAll(selector) {
+    if (selector === '[data-playlist-id]') {
+      return this.children.filter(child => child.dataset.playlistId);
+    }
+    return [];
   }
 
   findByClass(className) {
@@ -878,8 +902,11 @@ test('playlist display syncs active track and mobile tap starts playback', async
 });
 
 test('catalog queue renders a bounded page with reachable previous and next navigation', async () => {
-  await withAudioPlayerGlobals({}, async ({ calls, documentRef }) => {
+  await withAudioPlayerGlobals({
+    windowOptions: { uiManager: { layoutMode: { isMobile: false } } }
+  }, async ({ calls, documentRef }) => {
     const pageRequests = [];
+    const selections = [];
     const player = createAudioPlayer(calls, {
       state: {
         sequenceKind: 'catalog',
@@ -891,12 +918,16 @@ test('catalog queue renders a bounded page with reachable previous and next navi
           rows: Array.from({ length: 80 }, (_, index) => ({
             entryInstanceId: `entry-${160 + index}`,
             trackUid: `track-${160 + index}`,
-            title: `Track ${160 + index}`
+            title: `Track ${160 + index}`,
+            artist: 'Catalog Artist'
           }))
         }
       }
     });
     player.playbackManager.refreshCatalogQueuePage = ordinal => pageRequests.push(ordinal);
+    player.playbackManager.selectCatalogOrdinal = (ordinal, options) => {
+      selections.push({ ordinal, options });
+    };
     const ui = new AudioPlayerUI(player);
     ui.playlistDisplay = documentRef.createElement('div');
     ui.renderCatalogQueueWindow(player.stateManager.getStateSnapshot());
@@ -905,9 +936,19 @@ test('catalog queue renders a bounded page with reachable previous and next navi
     const navigation = ui.playlistDisplay.children[0];
     assert.equal(navigation.className, 'player-queue-pagination');
     assert.equal(navigation.children[1].textContent, '161–240 / 1000000');
+    assert.equal(ui.playlistDisplay.children[1].textContent, 'Catalog Artist - Track 160');
     navigation.children[0].dispatchEvent('click');
     navigation.children[2].dispatchEvent('click');
+    await Promise.all(ui.playlistDisplay.children[80].dispatchEvent('click'));
     assert.deepEqual(pageRequests, [80, 240]);
+    assert.deepEqual(selections, [{
+      ordinal: 239,
+      options: {
+        play: false,
+        userInitiated: true,
+        preserveQueueWindow: true
+      }
+    }]);
   });
 });
 
@@ -1115,6 +1156,7 @@ test('library queue helpers notify now playing and save library queues as playli
   const playlistCreates = [];
   const nowPlaying = [];
   const queueAdds = [];
+  const selectionActions = [];
   await withAudioPlayerGlobals({
     windowOptions: {
       uiManager: {
@@ -1129,12 +1171,15 @@ test('library queue helpers notify now playing and save library queues as playli
               async create(name, trackIds) {
                 playlistCreates.push([name, trackIds]);
               },
-              async list() {
-                return [];
-              }
+              async openListContext() { return { contextToken: 'empty-playlists' }; },
+              async readListContext() { return { rows: [], nextCursor: null }; },
+              async releaseListContext() {}
             },
             async addToQueue(trackIds) {
               queueAdds.push(trackIds);
+            },
+            async performSelectionAction(action, descriptor) {
+              selectionActions.push([action, descriptor]);
             },
             findTrackForPlaybackEntry(track) {
               return track?.path === 'D:/Music/one.flac' ? { id: 'track-one' } : null;
@@ -1177,6 +1222,16 @@ test('library queue helpers notify now playing and save library queues as playli
     }, player.stateManager.state.playlist[0]);
     assert.ok(documentRef.body.children.some(child => child.className === 'player-library-context-menu'));
     assert.ok(calls.some(call => call[0] === 'preventDefault'));
+
+    ui.closeLibraryContextMenu();
+    await ui.openLibraryTrackMenu({ preventDefault() {}, clientX: 20, clientY: 30 }, {
+      trackUid: 'catalog-track',
+      title: 'Catalog Track'
+    });
+    const catalogMenu = documentRef.body.children.find(child => child.className === 'player-library-context-menu');
+    assert.match(catalogMenu.innerHTML, /data-action="show"/);
+    ui.notifyLibraryNowPlaying({ trackUid: 'catalog-track' });
+    assert.deepEqual(nowPlaying, ['track-two', 'catalog-track']);
 
     const savePromise = ui.saveQueueAsPlaylist();
     await new Promise(resolve => setImmediate(resolve));
@@ -1223,7 +1278,83 @@ test('library queue helpers notify now playing and save library queues as playli
     await Promise.all(ui.container.dispatchEvent('drop', drop));
     assert.equal(dropPrevented, 1);
     assert.deepEqual(queueAdds, [['track-one', 'track-two']]);
+
+    const descriptor = {
+      mode: 'explicit',
+      contextToken: 'drag-context',
+      trackUids: ['track-three', 'track-four']
+    };
+    await Promise.all(ui.container.dispatchEvent('drop', {
+      dataTransfer: {
+        types: ['application/x-effetune-library-tracks'],
+        getData() {
+          return JSON.stringify({ contextToken: 'drag-context', selectionDescriptor: descriptor });
+        }
+      },
+      preventDefault() {}
+    }));
+    assert.deepEqual(selectionActions, [['queue', descriptor]]);
+    assert.deepEqual(queueAdds, [['track-one', 'track-two']], 'durable drag payload must not fall back to legacy UID arrays');
   });
+});
+
+test('player playlist picker pages past 500 rows and starts versioned descriptor adds', async () => {
+  const playlists = Array.from({ length: 501 }, (_, index) => ({
+    id: `playlist-${index}`,
+    name: `Playlist ${index}`,
+    version: index + 1
+  }));
+  const listReads = [];
+  const contexts = [];
+  const released = [];
+  const adds = [];
+  const manager = {
+    playlists: {
+      async openListContext() { return { contextToken: 'playlist-list' }; },
+      async readListContext(contextToken, { cursor, limit }) {
+        listReads.push([contextToken, cursor, limit]);
+        return cursor === null
+          ? { rows: playlists.slice(0, 500), nextCursor: 'second-page' }
+          : { rows: playlists.slice(500), nextCursor: null };
+      },
+      async releaseListContext(contextToken) { released.push(contextToken); },
+      async create() {},
+      async addTracks(playlistId, descriptor, options) {
+        adds.push([playlistId, descriptor, options]);
+        return { operationId: 'add-operation' };
+      }
+    },
+    async createContext(request) {
+      contexts.push(request);
+      return 'track-context';
+    },
+    async releaseContext(contextToken) { released.push(contextToken); }
+  };
+  await withAudioPlayerGlobals({
+    windowOptions: { uiManager: { async ensureLibraryManager() { return manager; } } }
+  }, async ({ calls, documentRef }) => {
+    const ui = new AudioPlayerUI(createAudioPlayer(calls, { state: { playlist: [] } }));
+    ui.createPlayerUI();
+    await ui.openPlayerPlaylistMenu({ preventDefault() {}, clientX: 0, clientY: 0 }, ['track-one']);
+    const menu = documentRef.body.children.find(child => child.className === 'player-library-context-menu');
+    const buttons = menu.querySelectorAll('[data-playlist-id]');
+    assert.equal(buttons.length, 501);
+    await Promise.all(buttons[500].dispatchEvent('click'));
+  });
+
+  assert.deepEqual(listReads, [
+    ['playlist-list', null, 500],
+    ['playlist-list', 'second-page', 500]
+  ]);
+  assert.deepEqual(contexts, [{
+    endpoint: 'tracks', query: '', sort: 'title', direction: 'asc', scope: { trackUids: ['track-one'] }
+  }]);
+  assert.deepEqual(adds, [[
+    'playlist-500',
+    { mode: 'explicit', contextToken: 'track-context', trackUids: ['track-one'] },
+    { expectedTargetVersion: 501 }
+  ]]);
+  assert.deepEqual(released, ['playlist-list', 'track-context']);
 });
 
 test('Save Queue passes the active disk-backed sequence descriptor without materializing rows', async () => {

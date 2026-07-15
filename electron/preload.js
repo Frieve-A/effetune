@@ -8,13 +8,16 @@ const libraryCatalogV1 = Object.freeze({
   getContextCount: (request) => ipcRenderer.invoke('library-catalog-v1:get-context-count', request),
   queryTracks: (request) => ipcRenderer.invoke('library-catalog-v1:query-tracks', request),
   queryEntities: (request) => ipcRenderer.invoke('library-catalog-v1:query-entities', request),
-  readContextPage: (request) => ipcRenderer.invoke('library-catalog-v1:read-context-page', request),
   readContextPageAtOrdinal: (request) => ipcRenderer.invoke('library-catalog-v1:read-context-page-at-ordinal', request),
   resolveEntityAnchor: (request) => ipcRenderer.invoke('library-catalog-v1:resolve-entity-anchor', request),
-  lookupContextTrack: (request) => ipcRenderer.invoke('library-catalog-v1:lookup-context-track', request),
   releaseContext: (contextToken) => ipcRenderer.invoke('library-catalog-v1:release-context', { contextToken }),
   getTrack: (trackUid) => ipcRenderer.invoke('library-catalog-v1:get-track', { trackUid }),
+  resolvePlaylistExportSource: (trackUid) => ipcRenderer.invoke(
+    'library-catalog-v1:resolve-playlist-export-source',
+    { trackUid }
+  ),
   resolvePlaybackSource: (trackUid) => ipcRenderer.invoke('library-catalog-v1:resolve-playback-source', { trackUid }),
+  showTrackInFolder: (trackUid) => ipcRenderer.invoke('library-catalog-v1:show-track-in-folder', { trackUid }),
   createPlaylist: (request) => ipcRenderer.invoke('library-catalog-v1:create-playlist', request),
   createPlaylistWithItems: (request) => ipcRenderer.invoke('library-catalog-v1:create-playlist-with-items', request),
   renamePlaylist: (request) => ipcRenderer.invoke('library-catalog-v1:rename-playlist', request),
@@ -23,7 +26,7 @@ const libraryCatalogV1 = Object.freeze({
   duplicatePlaylist: (request) => ipcRenderer.invoke('library-catalog-v1:duplicate-playlist', request),
   queryPlaylistItems: (request) => ipcRenderer.invoke('library-catalog-v1:query-playlist-items', request),
   tombstonePlaylist: (request) => ipcRenderer.invoke('library-catalog-v1:tombstone-playlist', request),
-  addFolder: () => ipcRenderer.invoke('library-catalog-v1:add-folder', {}),
+  addFolder: (request = {}) => ipcRenderer.invoke('library-catalog-v1:add-folder', request),
   requestFolderAccess: (folderId) => ipcRenderer.invoke('library-catalog-v1:request-folder-access', { folderId }),
   scanFolders: (request) => ipcRenderer.invoke('library-catalog-v1:scan-folders', request),
   cancelScan: (scanId) => ipcRenderer.invoke('library-catalog-v1:cancel-scan', { scanId }),
@@ -34,28 +37,44 @@ const libraryCatalogV1 = Object.freeze({
     'library-catalog-v1:grant-dropped-playlist-import',
     { path: webUtils.getPathForFile(file) }
   ),
-  getScanStatus: (scanId) => ipcRenderer.invoke('library-catalog-v1:get-scan-status', { scanId }),
   onInvalidation: (callback) => addSingleArgIpcListener('library-catalog-v1:invalidation', callback),
-  onScanEvent: (callback) => addSingleArgIpcListener('library-catalog-v1:scan-event', callback)
+  onScanEvent: (callback) => addSingleArgIpcListener('library-catalog-v1:scan-event', callback),
+  onFolderRemovalEvent: (callback) => addSingleArgIpcListener(
+    'library-catalog-v1:folder-removal-event',
+    callback
+  )
 });
 
 const libraryServiceV1 = Object.freeze({
   apiVersion: 1,
   start: (request) => ipcRenderer.invoke('library-service-v1:start', request),
-  lookupResult: (clientRequestId) => ipcRenderer.invoke('library-service-v1:lookup-result', { clientRequestId }),
   status: (operationId) => ipcRenderer.invoke('library-service-v1:status', { operationId }),
   cancel: (operationId) => ipcRenderer.invoke('library-service-v1:cancel', { operationId }),
+  previewPlaylistImport: (request) => ipcRenderer.invoke('library-service-v1:preview-playlist-import', request),
+  commitPlaylistImportPreview: (request) => ipcRenderer.invoke(
+    'library-service-v1:commit-playlist-import-preview', request
+  ),
+  cancelPlaylistImportPreview: (request) => ipcRenderer.invoke(
+    'library-service-v1:cancel-playlist-import-preview', request
+  ),
   onEvent: (callback) => addSingleArgIpcListener('library-service-v1:event', callback)
 });
 
 const libraryPlaybackV1 = Object.freeze({
   apiVersion: 1,
-  commitTransportCommand: (request) => ipcRenderer.invoke('library-playback-v1:commit-transport-command', request),
-  getTransportState: () => ipcRenderer.invoke('library-playback-v1:get-transport-state', {}),
-  applyTransportUndo: (request) => ipcRenderer.invoke('library-playback-v1:apply-transport-undo', request),
   getProvisionalEntry: (operationId) => ipcRenderer.invoke('library-playback-v1:get-provisional-entry', { operationId }),
   readSequencePage: (request) => ipcRenderer.invoke('library-playback-v1:read-sequence-page', request),
   resolveSequenceEntrySource: (request) => ipcRenderer.invoke('library-playback-v1:resolve-sequence-entry-source', request)
+});
+
+const libraryRecoveryV1 = Object.freeze({
+  apiVersion: 1,
+  getState: () => ipcRenderer.invoke('library-recovery-v1:get-state', {}),
+  resetCatalog: ({ confirmed = false } = {}) => ipcRenderer.invoke(
+    'library-recovery-v1:reset-catalog',
+    { confirmed: confirmed === true }
+  ),
+  onStateChange: callback => addSingleArgIpcListener('library-recovery-v1:state', callback)
 });
 
 const ALLOWED_IPC_LISTENER_CHANNELS = new Set([
@@ -107,31 +126,20 @@ contextBridge.exposeInMainWorld(
     showSaveDialog: (options) => ipcRenderer.invoke('show-save-dialog', options),
     showOpenDialog: (options) => ipcRenderer.invoke('show-open-dialog', options),
     saveFile: (filePath, content) => ipcRenderer.invoke('save-file', filePath, content),
-    readFile: (filePath, binary = false) => ipcRenderer.invoke('read-file', filePath, binary),
+    readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
+    readFileBytes: (filePath) => ipcRenderer.invoke('read-file-bytes', filePath),
     beginAtomicFileWrite: (filePath) => ipcRenderer.invoke('begin-atomic-file-write', filePath),
     writeAtomicFileChunk: (token, chunk) => ipcRenderer.invoke('write-atomic-file-chunk', token, chunk),
     commitAtomicFileWrite: (token) => ipcRenderer.invoke('commit-atomic-file-write', token),
     abortAtomicFileWrite: (token) => ipcRenderer.invoke('abort-atomic-file-write', token),
     readClipboardText: () => ipcRenderer.invoke('read-clipboard-text'),
     writeClipboardText: (text) => ipcRenderer.invoke('write-clipboard-text', text),
-    readFileAsBuffer: (filePath) => ipcRenderer.invoke('read-file-as-buffer', filePath),
-    library: {
-      selectFolder: () => ipcRenderer.invoke('library-select-folder'),
-      validateRoots: (paths) => ipcRenderer.invoke('library-validate-roots', paths),
-      scanStart: (request) => ipcRenderer.invoke('library-scan-start', request),
-      scanCancel: (scanId) => ipcRenderer.invoke('library-scan-cancel', scanId),
-      readArtwork: (request) => ipcRenderer.invoke('library-read-artwork', request),
-      readFileBytes: (request) => ipcRenderer.invoke('library-read-file-bytes', request),
-      showInFolder: (filePath) => ipcRenderer.invoke('library-show-in-folder', filePath),
-      saveFolders: (folders) => ipcRenderer.invoke('library-save-folders', folders),
-      loadFolders: () => ipcRenderer.invoke('library-load-folders'),
-      onScanEvent: (callback) => {
-        return addSingleArgIpcListener('library-scan-event', callback);
-      }
-    },
 
     // Versioned, bounded music catalog API. Filesystem grants remain brokered by the main process.
     libraryCatalogV1,
+
+    // Catalog startup and recovery remain available even when the catalog utility cannot open.
+    libraryRecoveryV1,
 
     // Durable bulk operations expose only the four service verbs and bounded events.
     libraryServiceV1,
@@ -146,7 +154,9 @@ contextBridge.exposeInMainWorld(
     
     // Audio device operations
     getAudioDevices: () => ipcRenderer.invoke('get-audio-devices'),
-    saveAudioPreferences: (preferences) => ipcRenderer.invoke('save-audio-preferences', preferences),
+    saveAudioPreferences: (preferences, options) => options === undefined
+      ? ipcRenderer.invoke('save-audio-preferences', preferences)
+      : ipcRenderer.invoke('save-audio-preferences', preferences, options),
     loadAudioPreferences: () => ipcRenderer.invoke('load-audio-preferences'),
     // First launch flag for audio workaround - use IPC instead of window property
     isFirstLaunch: () => {

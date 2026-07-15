@@ -2358,6 +2358,8 @@ class PluginProcessor extends AudioWorkletProcessor {
                 skipEpoch: power.skipEpoch,
                 state: power.state,
                 processingDirective: power.processingDirective,
+                inputActive,
+                outputActive,
                 workletGraphGeneration: power.workletGraphGeneration,
                 topologyRevision: power.topologyRevision,
                 renderSequence: power.renderSequence,

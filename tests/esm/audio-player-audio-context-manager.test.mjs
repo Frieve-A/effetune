@@ -726,6 +726,53 @@ test('buffer source lifecycle and graph rebuilds keep playback recoverable', asy
   });
 });
 
+test('a late buffer graph rebuild cannot overwrite a newer track load', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    const playlist = [
+      { name: 'Old', path: '/old.wav' },
+      { name: 'New', path: '/new.wav' }
+    ];
+    const harness = createHarness({
+      calls,
+      playlist,
+      currentTrackIndex: 0,
+      state: {
+        currentTrack: playlist[0],
+        playbackMode: 'bufferSource',
+        isPlaying: true,
+        isStopped: false
+      }
+    });
+    let releaseBuffer;
+    let markPreparationStarted;
+    const preparationStarted = new Promise(resolve => {
+      markPreparationStarted = resolve;
+    });
+    harness.manager.prepareTrackBuffer = () => new Promise(resolve => {
+      releaseBuffer = resolve;
+      markPreparationStarted();
+    });
+    harness.manager.playBufferSource = async () => calls.push(['staleGraphPlay']);
+
+    const rebuilding = harness.manager.handleAudioGraphRebuilt();
+    await preparationStarted;
+    Object.assign(harness.state, {
+      currentTrack: playlist[1],
+      currentTrackIndex: 1,
+      isTransitioning: true,
+      transitionType: 'loading'
+    });
+    harness.manager.beginLoadRequest(playlist[1], 1);
+    releaseBuffer({ duration: 10 });
+    await rebuilding;
+
+    assert.equal(harness.state.currentTrack, playlist[1]);
+    assert.equal(harness.state.currentTrackIndex, 1);
+    assert.equal(harness.manager.currentBuffer, null);
+    assert.equal(calls.some(call => call[0] === 'staleGraphPlay'), false);
+  });
+});
+
 test('buffer source onended remains active after pause and resume', async () => {
   await withAudioContextGlobals({}, async ({ calls }) => {
     const { audioContext, manager, state } = createHarness({
@@ -1211,22 +1258,34 @@ test('staged media playback publishes only its source gate and leaves the master
   });
 });
 
+test('catalog Repeat ONE forwards track end to the catalog transport', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    const harness = createHarness({
+      calls,
+      currentTrackIndex: 0,
+      repeatMode: 'ONE',
+      state: { isStopped: false }
+    });
+    harness.audioPlayer.playbackManager.catalogSequence = {};
+
+    harness.manager.handleTrackEnded();
+
+    assert.deepEqual(calls.filter(call => call[0] === 'playback.onTrackEnded'), [
+      ['playback.onTrackEnded']
+    ]);
+    assert.deepEqual(calls.filter(call => call[0] === 'playback.getTrack'), []);
+  });
+});
+
 test('track-ended handling, monitoring, and load helpers advance playback state', async () => {
   await withAudioContextGlobals({
     electronIntegration: { isElectron: true },
     electronAPI: {
-      library: {
-        async readFileBytes(request) {
-          if (request.path !== 'C:\\song.wav') {
-            throw new Error('missing');
-          }
-          return new Uint8Array([1, 2, 3]).buffer;
+      async readFileBytes(path) {
+        if (path !== 'C:\\song.wav') {
+          throw new Error('missing');
         }
-      },
-      async readFile(path, asBuffer) {
-        if (path.includes('missing')) return { success: false, error: 'missing' };
-        assert.equal(asBuffer, true);
-        return { success: true, content: Buffer.from('abc').toString('base64') };
+        return new Uint8Array([1, 2, 3]).buffer;
       }
     },
     fetchResponse: { ok: true, statusText: 'OK', buffer: new Uint8Array([9]).buffer }
@@ -1331,8 +1390,6 @@ test('track-ended handling, monitoring, and load helpers advance playback state'
     assert.equal(manager.shouldUseElectronFileRead('/song.wav'), true);
     assert.equal(manager.shouldUseElectronFileRead('folder\\song.wav'), true);
     assert.equal(manager.shouldUseElectronFileRead(42), false);
-    assert.equal(new Uint8Array(manager.base64ToArrayBuffer(Buffer.from('x').toString('base64')))[0], 120);
-
     const fileBuffer = await manager.loadTrackData({ name: 'File', file: new FakeFile('file.wav') });
     assert.equal(fileBuffer.byteLength, 3);
     assert.equal((await manager.loadTrackData({ name: 'Local', path: 'C:\\song.wav' })).byteLength, 3);
@@ -1430,6 +1487,44 @@ test('track-ended handling, monitoring, and load helpers advance playback state'
     assert.deepEqual(
       calls.find(call => call[0] === 'repeatOneSkipPlayNext'),
       ['repeatOneSkipPlayNext', false, { allowDuringTransition: true, ignoreRepeatOne: true, failedIndex: 0 }]
+    );
+  });
+});
+
+test('catalog track reload does not require an array-backed playlist', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    const ordinal = 42;
+    const track = {
+      name: 'Catalog Track',
+      path: '/catalog.wav',
+      entryInstanceId: 'catalog-sequence:42'
+    };
+    const playlist = new Proxy(Object.create(null), {
+      get(_target, property) {
+        if (property === 'length') return 1_000_000;
+        if (property === String(ordinal)) return track;
+        return undefined;
+      }
+    });
+    const harness = createHarness({
+      calls,
+      playlist,
+      currentTrack: track,
+      currentTrackIndex: ordinal
+    });
+    harness.audioPlayer.playbackManager.getTrackIndex = (candidate, identityOnly = false) => {
+      calls.push(['playback.getTrackIndex', candidate, identityOnly]);
+      return candidate === track ? ordinal : -1;
+    };
+    harness.manager.prepareTrackBuffer = async () => ({ duration: 8 });
+    harness.manager.loadMetadata = () => {};
+    harness.manager.prepareNextTrackBufferWithRepeatMode = () => {};
+
+    assert.equal(await harness.manager.loadTrack(track, ordinal), true);
+    assert.equal(harness.state.currentTrackIndex, ordinal);
+    assert.equal(
+      calls.some(call => call[0] === 'playback.getTrackIndex' && call[2] === true),
+      true
     );
   });
 });
@@ -1953,6 +2048,19 @@ test('handled transition load failures do not publish success after scheduling a
   });
 });
 
+test('catalog load failure returns to the catalog candidate loop without scheduling a second skip', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    const playlist = [{ name: 'Bad', path: '/bad.wav' }, { name: 'Good', path: '/good.wav' }];
+    const { audioPlayer, manager } = createHarness({ calls, playlist });
+    audioPlayer.playbackManager.catalogSequence = {};
+    manager.prepareTrackBuffer = async () => { throw new Error('decode failed'); };
+    manager.setupResolvedAudioElement = async () => { throw new Error('fallback failed'); };
+
+    assert.equal(await manager.loadTrack(playlist[0], 0), false);
+    assert.equal(calls.some(call => call[0] === 'playback.playNext'), false);
+  });
+});
+
 test('stop invalidates pending transition loads before they can restart playback', async () => {
   await withAudioContextGlobals({}, async ({ calls }) => {
     const playlist = [
@@ -2119,156 +2227,230 @@ test('seeking while stopped pauses at the target position for the next play', as
   });
 });
 
-test('Electron file loading falls back to the legacy base64 IPC when byte reads are unavailable', async () => {
-  await withAudioContextGlobals({
-    electronIntegration: { isElectron: true },
-    electronAPI: {
-      async readFile(path, asBuffer) {
-        assert.equal(path, 'C:\\legacy.wav');
-        assert.equal(asBuffer, true);
-        return { success: true, content: Buffer.from('abc').toString('base64') };
-      }
-    }
-  }, async () => {
+test('catalog track providers can supply authorized playback bytes without a filesystem path', async () => {
+  await withAudioContextGlobals({}, async () => {
     const { manager } = createHarness();
-    const data = await manager.loadTrackData({ name: 'Legacy', path: 'C:\\legacy.wav' });
-    assert.deepEqual(Array.from(new Uint8Array(data)), [97, 98, 99]);
-  });
-});
-
-test('Electron direct file loading falls back to the legacy base64 IPC when library byte reads reject', async () => {
-  const apiCalls = [];
-  await withAudioContextGlobals({
-    electronIntegration: { isElectron: true },
-    electronAPI: {
-      library: {
-        async readFileBytes(request) {
-          apiCalls.push(['readFileBytes', request.path]);
-          throw new Error('Path is outside the selected music library folders');
-        }
-      },
-      async readFile(path, asBuffer) {
-        apiCalls.push(['readFile', path, asBuffer]);
-        return { success: true, content: Buffer.from('fallback').toString('base64') };
-      }
-    }
-  }, async () => {
-    const { manager } = createHarness();
-    const data = await manager.loadTrackData({ name: 'Legacy Fallback', path: 'C:\\outside.wav' });
-    assert.deepEqual(Array.from(new Uint8Array(data)), Array.from(Buffer.from('fallback')));
-  });
-
-  assert.deepEqual(apiCalls, [
-    ['readFileBytes', 'C:\\outside.wav'],
-    ['readFile', 'C:\\outside.wav', true]
-  ]);
-});
-
-test('Electron library playback does not bypass outside-root rejection with legacy IPC or file streaming', async () => {
-  const apiCalls = [];
-  await withAudioContextGlobals({
-    electronIntegration: { isElectron: true },
-    electronAPI: {
-      library: {
-        async readFileBytes(request) {
-          apiCalls.push(['readFileBytes', request.path]);
-          throw new Error('Path is outside the selected music library folders');
-        }
-      },
-      async readFile(path) {
-        apiCalls.push(['readFile', path]);
-        return { success: true, content: Buffer.from('bypass').toString('base64') };
-      }
-    }
-  }, async ({ calls }) => {
-    const track = {
-      name: 'Outside Library',
-      path: 'C:\\outside-library.wav',
-      libraryTrackId: 't_outside',
-      meta: { title: 'Outside Library' }
-    };
-    const { audioPlayer, manager, state } = createHarness({
-      calls,
-      playlist: [track],
-      currentTrackIndex: 0
+    const data = await manager.loadTrackData({
+      name: 'Catalog Track',
+      libraryTrackId: 'track-1',
+      provider: async () => ({ data: new Uint8Array([4, 5, 6]) })
     });
-
-    await manager.loadTrack(track);
-
-    assert.equal(audioPlayer.audioElement, null);
-    assert.equal(state.playbackMode, 'bufferSource');
-    assert.equal(state.isPlaying, false);
+    assert.deepEqual([...new Uint8Array(data)], [4, 5, 6]);
   });
-
-  assert.deepEqual(apiCalls, [
-    ['readFileBytes', 'C:\\outside-library.wav']
-  ]);
 });
 
-test('Electron library playback does not bypass ERR_LIBRARY_READ_LIMIT with legacy IPC or file streaming', async () => {
-  const apiCalls = [];
+test('Electron catalog paths larger than 256 MiB stream without renderer byte IPC or object URLs', async () => {
+  const byteReads = [];
+  const catalogFileSize = (256 * 1024 * 1024) + 1;
   await withAudioContextGlobals({
     electronIntegration: { isElectron: true },
     electronAPI: {
       library: {
         async readFileBytes(request) {
-          apiCalls.push(['readFileBytes', request.path]);
-          const error = new Error('ERR_LIBRARY_READ_LIMIT: Requested byte range exceeds maximum read size of 268435456 bytes');
+          byteReads.push(['library.readFileBytes', request]);
+          const error = new Error('ERR_LIBRARY_READ_LIMIT: renderer byte IPC must not receive catalog files');
           error.code = 'ERR_LIBRARY_READ_LIMIT';
           throw error;
         }
       },
       async readFile(path) {
-        apiCalls.push(['readFile', path]);
-        return { success: true, content: Buffer.from('too-large').toString('base64') };
+        byteReads.push(['readFile', path]);
+        throw new Error('must not use legacy base64 reads');
       }
     }
-  }, async ({ calls }) => {
+  }, async ({ calls, objectUrls }) => {
+    const { audioPlayer, manager, state } = createHarness({ calls });
     const track = {
-      name: 'Large Library',
-      path: 'C:\\large-library.wav',
-      libraryTrackId: 't_large',
-      meta: { title: 'Large Library' }
+      name: 'Large catalog track',
+      path: 'D:\\Music\\large.flac',
+      libraryTrackId: 'track-large',
+      sourceKind: 'electron-file',
+      fileSize: catalogFileSize
     };
-    const { audioPlayer, manager, state } = createHarness({
-      calls,
-      playlist: [track],
-      currentTrackIndex: 0
-    });
 
-    await manager.loadTrack(track);
+    assert.equal(await manager.loadTrack(track, 0), true);
+    assert.equal(audioPlayer.audioElement.src, 'file:///D:/Music/large.flac');
+    assert.equal(state.playbackMode, 'audioElement');
+    assert.ok(track.fileSize > 256 * 1024 * 1024);
+    assert.deepEqual(byteReads, []);
+    assert.deepEqual(objectUrls, []);
 
-    assert.equal(audioPlayer.audioElement, null);
-    assert.equal(state.playbackMode, 'bufferSource');
-    assert.equal(state.isPlaying, false);
+    assert.equal(await manager.seamlessTransition(track, 0), true);
+    assert.equal(state.isPlaying, true);
+    assert.equal(calls.some(call => call[0] === 'audio.play'), true);
+
+    await manager.prepareNextTrackBufferForTrack(track, 0);
+    assert.equal(manager.nextBuffer, null);
+    await assert.rejects(
+      manager.prepareTrackBuffer(track),
+      error => error?.code === 'directElectronCatalogSource'
+    );
+    await assert.rejects(
+      manager.prepareTrackBuffer({
+        name: 'Malformed catalog source',
+        sourceKind: 'electron-file',
+        data: new Uint8Array([1, 2, 3])
+      }),
+      error => error?.code === 'directElectronCatalogSource'
+    );
+    assert.deepEqual(byteReads, []);
   });
-
-  assert.deepEqual(apiCalls, [
-    ['readFileBytes', 'C:\\large-library.wav']
-  ]);
 });
 
-test('Electron file loading does not bypass library byte read size limits with legacy IPC', async () => {
-  const apiCalls = [];
+test('audio graph rebuild refreshes an Electron catalog occurrence without renderer byte reads', async () => {
+  const byteReads = [];
   await withAudioContextGlobals({
     electronIntegration: { isElectron: true },
     electronAPI: {
       library: {
         async readFileBytes(request) {
-          apiCalls.push(['readFileBytes', request.path]);
-          throw new Error('Requested byte range exceeds maximum read size of 268435456 bytes');
+          byteReads.push(['library.readFileBytes', request]);
+          throw new Error('catalog graph rebuild must not read file bytes');
         }
       },
-      async readFile(path) {
-        apiCalls.push(['readFile', path]);
-        return { success: true, content: Buffer.from('too-large').toString('base64') };
+      async readFile(filePath) {
+        byteReads.push(['readFile', filePath]);
+        throw new Error('catalog graph rebuild must not use legacy file reads');
+      }
+    }
+  }, async ({ calls, objectUrls }) => {
+    const oldTrack = {
+      name: 'Old grant',
+      path: 'D:\\Music\\Old.flac',
+      libraryTrackId: 'track-rebind',
+      sourceKind: 'electron-file'
+    };
+    const refreshedTrack = {
+      ...oldTrack,
+      name: 'Refreshed grant',
+      path: 'D:\\Music\\A # 100% 日本語.flac'
+    };
+    const harness = createHarness({
+      calls,
+      playlist: [oldTrack],
+      currentTrackIndex: 0,
+      state: {
+        currentTrack: oldTrack,
+        playbackMode: 'audioElement',
+        currentTrackPosition: 7,
+        isPlaying: false,
+        isPaused: true,
+        isStopped: false
+      }
+    });
+    const revalidations = [];
+    harness.audioPlayer.playbackManager.prepareCatalogTrackForGraphRebuild = async (track, options) => {
+      revalidations.push([track, options]);
+      return { handled: false, track: refreshedTrack };
+    };
+    harness.manager.prepareTrackBuffer = async () => {
+      throw new Error('direct Electron catalog sources must not be decoded after a graph rebuild');
+    };
+
+    await harness.manager.handleAudioGraphRebuilt();
+
+    assert.deepEqual(revalidations, [[oldTrack, { play: false }]]);
+    assert.equal(
+      harness.audioPlayer.audioElement.src,
+      'file:///D:/Music/A%20%23%20100%25%20%E6%97%A5%E6%9C%AC%E8%AA%9E.flac'
+    );
+    assert.equal(harness.state.currentTrack, refreshedTrack);
+    assert.equal(harness.state.currentTrackPosition, 7);
+    assert.equal(harness.state.isPaused, true);
+    assert.deepEqual(byteReads, []);
+    assert.deepEqual(objectUrls, []);
+  });
+});
+
+test('repeat OFF resets to a direct Electron first track without decoding or byte IPC', async () => {
+  const byteReads = [];
+  await withAudioContextGlobals({
+    electronIntegration: { isElectron: true },
+    electronAPI: {
+      library: {
+        async readFileBytes(request) {
+          byteReads.push(request);
+          throw new Error('repeat reset must not read direct catalog bytes');
+        }
+      }
+    }
+  }, async ({ calls }) => {
+    const firstTrack = {
+      name: 'First',
+      path: 'D:\\Music\\First.flac',
+      libraryTrackId: 'track-first',
+      sourceKind: 'electron-file'
+    };
+    const lastTrack = {
+      name: 'Last',
+      path: 'D:\\Music\\Last.flac',
+      libraryTrackId: 'track-last',
+      sourceKind: 'electron-file'
+    };
+    const harness = createHarness({
+      calls,
+      playlist: [firstTrack, lastTrack],
+      currentTrackIndex: 1,
+      repeatMode: 'OFF',
+      state: { currentTrack: lastTrack, isStopped: false }
+    });
+    let prepareCalls = 0;
+    harness.manager.prepareTrackBuffer = async () => {
+      prepareCalls += 1;
+      throw new Error('direct Electron catalog reset must not decode');
+    };
+    harness.manager.loadMetadata = () => {};
+
+    harness.manager.handleTrackEnded();
+    await flushMicrotasks();
+
+    assert.equal(harness.state.currentTrack, firstTrack);
+    assert.equal(harness.state.currentTrackIndex, 0);
+    assert.equal(harness.state.isStopped, true);
+    assert.equal(prepareCalls, 0);
+    assert.deepEqual(byteReads, []);
+  });
+});
+
+test('Electron direct file loading uses the generic bounded byte reader', async () => {
+  const apiCalls = [];
+  await withAudioContextGlobals({
+    electronIntegration: { isElectron: true },
+    electronAPI: {
+      async readFileBytes(path) {
+        apiCalls.push(['readFileBytes', path]);
+        return Buffer.from('bytes');
+      }
+    }
+  }, async () => {
+    const { manager } = createHarness();
+    const data = await manager.loadTrackData({ name: 'Local', path: 'C:\\outside.wav' });
+    assert.deepEqual(Array.from(new Uint8Array(data)), Array.from(Buffer.from('bytes')));
+  });
+
+  assert.deepEqual(apiCalls, [['readFileBytes', 'C:\\outside.wav']]);
+});
+
+test('non-catalog Electron file loading preserves byte-read limits', async () => {
+  const apiCalls = [];
+  await withAudioContextGlobals({
+    electronIntegration: { isElectron: true },
+    electronAPI: {
+      async readFileBytes(path) {
+        apiCalls.push(['readFileBytes', path]);
+        throw new Error(
+          'Error invoking remote method read-file-bytes: ERR_LIBRARY_READ_LIMIT: ' +
+          'File exceeds maximum read size of 268435456 bytes'
+        );
       }
     }
   }, async () => {
     const { manager } = createHarness();
     await assert.rejects(
       () => manager.loadTrackData({ name: 'Large', path: 'C:\\large.wav' }),
-      /maximum read size/
+      error => error?.suppressAudioElementFallback === true &&
+        /ERR_LIBRARY_READ_LIMIT/.test(error.message) &&
+        /maximum read size/.test(error.message)
     );
   });
 

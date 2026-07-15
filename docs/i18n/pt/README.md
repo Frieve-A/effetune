@@ -92,7 +92,11 @@ Abra **Configuração...** no menu **Configurações** para escolher o idioma, a
 5. Use **Reescanear** depois de modificar arquivos e **Reconectar** se uma permissão do navegador ou da pasta expirar.
    - [Mais sobre a Biblioteca de música](music-library.md)
 
-A versão 3.0.0 começa com uma Biblioteca de música nova. O estado da Biblioteca anterior não é herdado; adicione novamente as pastas de música e faça a varredura. Isso não altera os arquivos de áudio contidos nelas. A arquitetura tem como alvo mais de um milhão de faixas; o suporte formal só será anunciado após a aprovação da Phase 0 e de toda a qualificação de execução.
+Nos layouts para PC e dispositivos móveis, quando uma pesquisa de faixas ou os detalhes de um álbum, artista, gênero, subpasta ou playlist retornam 300 faixas ou menos, todas são selecionadas por padrão. Com 301 faixas ou mais, não há seleção automática. No celular, a seleção automática altera apenas o estado da seleção. Somente manter uma faixa pressionada abre o modo de seleção e mostra as caixas, **Selecionar tudo** e **Desmarcar tudo**; selecionar ou desmarcar faixas não abre nem encerra esse modo, e as ações normais de cada linha continuam disponíveis.
+
+Os navegadores Chromium no PC podem manter os identificadores de pasta do File System Access. Safari, Firefox, navegadores móveis e outros ambientes sem essa API mantêm os objetos `File` selecionados apenas durante a sessão atual da página. Após cada recarregamento, selecione novamente a pasta ou os arquivos; o EffeTune os reconecta ao catálogo existente pelo caminho relativo normalizado.
+
+A versão 2.1.0 começa com uma Biblioteca de música nova. O estado da Biblioteca anterior não é herdado; adicione novamente as pastas de música e faça a varredura. Isso não altera os arquivos de áudio contidos nelas. O catálogo foi projetado para paginar coleções grandes a partir do disco. As medições de desempenho em grande escala são diagnósticos locais e opcionais de desenvolvimento; não são requisitos de commit, release, `verify` ou GitHub Actions, nem uma garantia geral de desempenho.
 
 ### Construindo Sua Cadeia de Efeitos
 

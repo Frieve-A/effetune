@@ -22,39 +22,11 @@ async function saveFile(filePath, content) {
 }
 
 // Read file
-async function readFile(filePath, binary = false) {
+async function readFile(filePath) {
   try {
-    if (binary) {
-      // Read as binary data (Buffer)
-      const content = fs.readFileSync(filePath);
-      // Convert Buffer to base64 for IPC transfer
-      return {
-        success: true,
-        content: content.toString('base64'),
-        isBinary: true
-      };
-    } else {
-      // Read as UTF-8 text
-      const content = fs.readFileSync(filePath, 'utf8');
-      return { success: true, content };
-    }
+    const content = fs.readFileSync(filePath, 'utf8');
+    return { success: true, content };
   } catch (error) {
-    return { success: false, error: error.message };
-  }
-}
-
-// Read file as buffer (for ID3 tag reading)
-async function readFileAsBuffer(filePath) {
-  try {
-    // Read file as buffer
-    const buffer = fs.readFileSync(filePath);
-    // Return the buffer as base64 string
-    return {
-      success: true,
-      buffer: buffer.toString('base64')
-    };
-  } catch (error) {
-    console.error('Error reading file as buffer:', error);
     return { success: false, error: error.message };
   }
 }
@@ -115,7 +87,6 @@ async function savePipelineStateToFile(pipelineState, userDataPath) {
 module.exports = {
   saveFile,
   readFile,
-  readFileAsBuffer,
   fileExists,
   joinPaths,
   savePipelineStateToFile

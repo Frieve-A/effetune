@@ -57,6 +57,27 @@ test('bulk operation validation preserves compact all selection without material
   assert.equal(Object.hasOwn(request.selectionDescriptor, 'trackUids'), false);
 });
 
+test('playback start accepts only the four session request fields', () => {
+  const request = {
+    operationKind: 'playNext',
+    selectionDescriptor: {
+      mode: 'all',
+      contextToken: 'context-1',
+      exclusions: []
+    },
+    target: {},
+    options: { playbackDestination: 'after-current' }
+  };
+  const canonical = validateBulkOperationStart(request);
+  assert.equal(canonical.operationKind, 'playNext');
+  assert.equal(Object.hasOwn(canonical, 'clientRequestId'), false);
+  assert.equal(Object.hasOwn(canonical, 'expectedTargetVersion'), false);
+  assert.throws(
+    () => validateBulkOperationStart({ ...request, clientRequestId: 'obsolete' }),
+    error => error?.code === 'invalidOperationRequest'
+  );
+});
+
 test('sequence-backed playlist save accepts no catalog context and rejects segment overflow before admission', () => {
   const segment = { sequenceId: 'sequence-1', startOrdinal: 0, endOrdinal: 1_000_000 };
   const request = validateBulkOperationStart(createRequest({
@@ -151,19 +172,19 @@ test('playlist import accepts only the exact opaque Electron grant descriptor', 
 test('progress fence rejects duplicate, late, foreign, and post-terminal events', () => {
   const fence = new OperationProgressFence('operation-1');
   assert.equal(fence.accept({
-    operationId: 'other', sequence: 0, phase: 'received', state: 'received', processed: 0, total: null
+    operationId: 'other', sequence: 0, phase: 'received', state: 'received', processed: 0, total: null, updatedAt: 1
   }), false);
   assert.equal(fence.accept({
-    operationId: 'operation-1', sequence: 0, phase: 'materializing', state: 'running', processed: 10, total: 100
+    operationId: 'operation-1', sequence: 0, phase: 'materializing', state: 'running', processed: 10, total: 100, updatedAt: 2
   }), true);
   assert.equal(fence.accept({
-    operationId: 'operation-1', sequence: 0, phase: 'materializing', state: 'running', processed: 20, total: 100
+    operationId: 'operation-1', sequence: 0, phase: 'materializing', state: 'running', processed: 20, total: 100, updatedAt: 3
   }), false);
   assert.equal(fence.accept({
-    operationId: 'operation-1', sequence: 1, phase: 'terminal', state: 'succeeded', processed: 100, total: 100
+    operationId: 'operation-1', sequence: 1, phase: 'terminal', state: 'succeeded', processed: 100, total: 100, updatedAt: 4
   }), true);
   assert.equal(fence.terminal, true);
   assert.equal(fence.accept({
-    operationId: 'operation-1', sequence: 2, phase: 'materializing', state: 'running', processed: 100, total: 100
+    operationId: 'operation-1', sequence: 2, phase: 'materializing', state: 'running', processed: 100, total: 100, updatedAt: 5
   }), false);
 });

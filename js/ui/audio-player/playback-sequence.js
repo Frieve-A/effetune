@@ -10,9 +10,36 @@ export const MAX_MATERIALIZED_SEQUENCE_ITEMS = 4_096;
 export const CATALOG_SEQUENCE_PAGE_SIZE = 200;
 export const CATALOG_SEQUENCE_MAX_CACHED_PAGES = 5;
 export const CATALOG_QUEUE_WINDOW_SIZE = 80;
-export const TRANSPORT_DEADLINE_MS = Object.freeze({ electron: 3_000, web: 5_000 });
 
 let materializedEntrySequence = 0;
+const playbackSourceResolutionScopes = new WeakMap();
+
+export function createPlaybackSourceResolutionScope() {
+  const scope = Object.freeze({ kind: 'playback-source-resolution-scope' });
+  playbackSourceResolutionScopes.set(scope, new Set());
+  return scope;
+}
+
+export function claimFolderPermissionAttempt(scope, folderId, lifecycleVersion) {
+  const attempts = playbackSourceResolutionScopes.get(scope);
+  if (
+    !attempts ||
+    typeof folderId !== 'string' ||
+    folderId.length === 0 ||
+    !Number.isSafeInteger(lifecycleVersion) ||
+    lifecycleVersion < 0
+  ) {
+    return false;
+  }
+  const claimKey = `${folderId}\u0000${lifecycleVersion}`;
+  if (attempts.has(claimKey)) return false;
+  attempts.add(claimKey);
+  return true;
+}
+
+export function isPlaybackSourceResolutionScope(scope) {
+  return playbackSourceResolutionScopes.has(scope);
+}
 
 export class MaterializedSequence {
   constructor(entries = []) {
@@ -50,7 +77,7 @@ export class MaterializedSequence {
     return this.getEntry(ordinal);
   }
 
-  resolveEntrySource(entry) {
+  resolveEntrySource(entry, _resolutionScope = null) {
     if (!entry || entry.sequenceId !== this.sequenceId) {
       return Promise.reject(new TypeError('Materialized entry does not belong to this sequence'));
     }
@@ -208,7 +235,7 @@ export class CatalogSequence {
     return { startOrdinal: start, rows, totalCount: this.itemCount };
   }
 
-  resolveEntrySource(entry) {
+  resolveEntrySource(entry, resolutionScope = null, signal = null) {
     if (!entry || entry.sequenceId && entry.sequenceId !== this.sequenceId) {
       return Promise.reject(new TypeError('Catalog entry does not belong to this sequence'));
     }
@@ -216,7 +243,9 @@ export class CatalogSequence {
       sequenceId: this.sequenceId,
       entryInstanceId: entry.entryInstanceId,
       trackUid: entry.trackUid ?? entry.libraryTrackId ?? null,
-      ordinal: entry.sourceCanonicalOrdinal ?? entry.canonicalOrdinal
+      ordinal: entry.sourceCanonicalOrdinal ?? entry.canonicalOrdinal,
+      resolutionScope,
+      ...(signal ? { signal } : {})
     });
   }
 
@@ -416,14 +445,14 @@ export class CompositeCatalogSequence {
     return { startOrdinal: start, rows, totalCount: this.itemCount };
   }
 
-  resolveEntrySource(entry) {
+  resolveEntrySource(entry, resolutionScope = null, signal = null) {
     const segment = this.segments.find(candidate => candidate.sequence.sequenceId === entry?.sourceSequenceId);
     if (!segment) return Promise.reject(new TypeError('Composite entry does not belong to this sequence'));
     return segment.sequence.resolveEntrySource({
       ...entry,
       transportOrdinal: entry.sourceTransportOrdinal,
       canonicalOrdinal: entry.sourceCanonicalOrdinal
-    });
+    }, resolutionScope, signal);
   }
 
   getDescriptor() {
@@ -516,21 +545,9 @@ export class SequenceQueueProvider {
 }
 
 export class PendingTransportSlot {
-  constructor({
-    runtime = 'web',
-    setTimeoutFn = (...args) => globalThis.setTimeout(...args),
-    clearTimeoutFn = (...args) => globalThis.clearTimeout(...args),
-    now = () => Date.now(),
-    recoveredState = null
-  } = {}) {
-    this.deadlineMs = TRANSPORT_DEADLINE_MS[runtime] ?? TRANSPORT_DEADLINE_MS.web;
-    this.setTimeoutFn = (...args) => setTimeoutFn(...args);
-    this.clearTimeoutFn = (...args) => clearTimeoutFn(...args);
-    this.now = now;
+  constructor() {
     this.generation = 0;
     this.current = null;
-    this.lastTerminal = null;
-    if (recoveredState) this.recoverInterrupted(recoveredState);
   }
 
   run(command, executor) {
@@ -549,15 +566,11 @@ export class PendingTransportSlot {
         return active.promise;
       }
     }
-    this.invalidate('superseded');
-    const createdAt = this.now();
+    this.invalidate();
     const request = {
       ...metadata,
       generation: this.generation,
-      createdAt,
-      deadlineAt: createdAt + this.deadlineMs,
-      timer: null,
-      state: 'resolving',
+      controller: new AbortController(),
       promise: null
     };
     this.current = request;
@@ -568,30 +581,21 @@ export class PendingTransportSlot {
       sourceEntryInstanceId: request.sourceEntryInstanceId,
       reason: request.reason,
       priority: request.priority,
-      deadlineAt: request.deadlineAt,
+      signal: request.controller.signal,
       isCurrent: () => this.isCurrent(request)
     }));
-    const deadline = new Promise(resolve => {
-      request.timer = this.setTimeoutFn(() => resolve({ type: 'timeout' }), this.deadlineMs);
-    });
-    request.promise = Promise.race([
-      operation.then(value => ({ type: 'value', value }), error => ({ type: 'error', error })),
-      deadline
-    ]).then(result => {
-      if (!this.isCurrent(request)) return { accepted: false, reason: 'stale', generation: request.generation };
-      if (result.type === 'timeout') {
-        request.state = 'timed-out';
-        this.#clearRequest(request);
-        return { accepted: false, reason: 'timeout', generation: request.generation };
+    request.promise = operation.then(value => {
+      if (!this.isCurrent(request)) {
+        return { accepted: false, reason: 'stale', generation: request.generation };
       }
-      if (result.type === 'error') {
-        request.state = 'failed';
-        this.#clearRequest(request);
-        throw result.error;
-      }
-      request.state = 'resolved';
       this.#clearRequest(request);
-      return { accepted: true, value: result.value, generation: request.generation };
+      return { accepted: true, value, generation: request.generation };
+    }, error => {
+      if (!this.isCurrent(request)) {
+        return { accepted: false, reason: 'stale', generation: request.generation };
+      }
+      this.#clearRequest(request);
+      throw error;
     });
     return request.promise;
   }
@@ -604,67 +608,16 @@ export class PendingTransportSlot {
     return generation === this.generation;
   }
 
-  getStateSnapshot() {
-    const state = this.current ?? this.lastTerminal;
-    if (!state) return null;
-    return Object.freeze({
-      kind: state.kind,
-      generation: state.generation,
-      playbackGeneration: state.playbackGeneration,
-      sourceEntryInstanceId: state.sourceEntryInstanceId,
-      reason: state.reason,
-      priority: state.priority,
-      createdAt: state.createdAt,
-      deadlineAt: state.deadlineAt,
-      state: state.state
-    });
-  }
-
-  recoverInterrupted(snapshot) {
-    if (!snapshot || typeof snapshot.kind !== 'string') {
-      throw new TypeError('Recovered transport state is invalid');
-    }
-    const recoveredGeneration = Number.isSafeInteger(snapshot.generation) && snapshot.generation >= 0
-      ? snapshot.generation
-      : 0;
-    this.generation = Math.max(this.generation, recoveredGeneration + 1);
-    this.lastTerminal = Object.freeze({
-      kind: snapshot.kind,
-      generation: recoveredGeneration,
-      playbackGeneration: snapshot.playbackGeneration ?? null,
-      sourceEntryInstanceId: snapshot.sourceEntryInstanceId ?? null,
-      reason: snapshot.reason ?? 'recovery',
-      priority: snapshot.priority ?? 0,
-      createdAt: snapshot.createdAt ?? this.now(),
-      deadlineAt: snapshot.deadlineAt ?? this.now(),
-      state: 'interrupted'
-    });
-    return this.lastTerminal;
-  }
-
-  invalidate(reason = 'interrupted') {
+  invalidate() {
     if (this.current) {
-      this.current.state = reason;
+      this.current.controller.abort();
       this.#clearRequest(this.current);
     }
     this.generation += 1;
   }
 
   #clearRequest(request) {
-    if (request?.timer != null) this.clearTimeoutFn(request.timer);
-    request.timer = null;
     if (this.current === request) {
-      this.lastTerminal = Object.freeze({
-        kind: request.kind,
-        generation: request.generation,
-        playbackGeneration: request.playbackGeneration,
-        sourceEntryInstanceId: request.sourceEntryInstanceId,
-        reason: request.reason,
-        priority: request.priority,
-        createdAt: request.createdAt,
-        deadlineAt: request.deadlineAt,
-        state: request.state
-      });
       this.current = null;
     }
   }

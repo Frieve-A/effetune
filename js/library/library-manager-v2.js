@@ -8,9 +8,7 @@ const MAX_LISTENERS_PER_EVENT = 32;
 const MAX_ARTWORK_URL_CACHE_ENTRIES = 32;
 const MAX_ARTWORK_THUMBNAIL_BYTES = 512 * 1024;
 const PLAYLIST_METHODS = Object.freeze([
-  'list',
   'get',
-  'listPage',
   'openListContext',
   'readListContext',
   'releaseListContext',
@@ -21,9 +19,10 @@ const PLAYLIST_METHODS = Object.freeze([
   'delete',
   'reorderItem',
   'removeItem',
-  'replaceItems',
   'addTracks',
-  'importFile',
+  'previewImport',
+  'commitImport',
+  'cancelImportPreview',
   'exportToSink'
 ]);
 
@@ -103,7 +102,6 @@ export class LibraryManagerV2 {
     scanService = null,
     playlistService = null,
     bulkOperationService = null,
-    rowActionService = null,
     clientRequestIdFactory = createClientRequestId,
     queueMicrotaskFn = (...args) => globalThis.queueMicrotask(...args),
     logger = console
@@ -115,7 +113,6 @@ export class LibraryManagerV2 {
     this.scanService = scanService;
     this.playlistService = playlistService;
     this.bulkOperationService = bulkOperationService;
-    this.rowActionService = rowActionService;
     this.clientRequestIdFactory = clientRequestIdFactory;
     this.queueMicrotaskFn = typeof queueMicrotaskFn === 'function'
       ? (...args) => queueMicrotaskFn(...args)
@@ -124,13 +121,13 @@ export class LibraryManagerV2 {
     this.client = null;
     this.runtime = null;
     this.capabilities = null;
-    this.productionQualified = false;
     this.contexts = new Map();
     this.listeners = new Map();
     this.initPromise = null;
     this.closePromise = null;
     this.unsubscribeInvalidations = null;
     this.unsubscribeScanEvents = null;
+    this.unsubscribeFolderRemovalEvents = null;
     this.pendingInvalidation = null;
     this.invalidationFlushQueued = false;
     this.artworkUrlCache = new Map();
@@ -163,18 +160,14 @@ export class LibraryManagerV2 {
     const client = descriptor?.client;
     let unsubscribeInvalidations = null;
     let unsubscribeScanEvents = null;
+    let unsubscribeFolderRemovalEvents = null;
     try {
       assertClientMethod(client, 'getCounts');
       assertClientMethod(client, 'createContext');
       assertClientMethod(client, 'queryTracks');
+      assertClientMethod(client, 'queryEntities');
       assertClientMethod(client, 'releaseContext');
       assertClientMethod(client, 'getTrack');
-      if (typeof client.queryEntities !== 'function' && typeof client.readContextPage !== 'function') {
-        throw createRepositoryError(
-          'catalogContractMismatch',
-          'Catalog client must support queryEntities or readContextPage'
-        );
-      }
       if (this.closed) {
         throw createRepositoryError('managerClosed', 'Library manager closed during initialization');
       }
@@ -184,7 +177,6 @@ export class LibraryManagerV2 {
       this.client = client;
       this.runtime = descriptor.runtime ?? 'unknown';
       this.capabilities = descriptor.capabilities ?? null;
-      this.productionQualified = descriptor.productionQualified === true;
       this.bulkOperationService ??= descriptor.bulkOperationService ?? null;
       this.playlistService ??= createPagedPlaylistService({
         client,
@@ -192,7 +184,11 @@ export class LibraryManagerV2 {
         requestIdFactory: this.clientRequestIdFactory
       });
       if (this.runtime === 'web' && supportsWebFolderControls(client) && (!this.folderService || !this.scanService)) {
-        const services = createWebLibraryServices({ client, windowRef: this.windowRef });
+        const services = createWebLibraryServices({
+          client,
+          windowRef: this.windowRef,
+          translate: (key, params) => this.uiManager?.t?.(key, params) ?? key
+        });
         this.folderService ??= services.folderService;
         this.scanService ??= services.scanService;
       }
@@ -200,7 +196,7 @@ export class LibraryManagerV2 {
         this.folderService ??= client;
         this.scanService ??= client;
       }
-      if (this.runtime === 'web' && supportsWebDurableOperations(client)) {
+      if (this.runtime === 'web' && supportsWebSessionOperations(client)) {
         this.bulkOperationService ??= client;
       }
       if (this.runtime === 'electron' && typeof client.subscribeScanEvents === 'function') {
@@ -208,14 +204,27 @@ export class LibraryManagerV2 {
       } else if (this.runtime === 'web' && typeof client.subscribeScanProgress === 'function') {
         unsubscribeScanEvents = client.subscribeScanProgress(event => this.#publishScanState(event));
       }
+      if (typeof client.subscribeFolderRemovalEvents === 'function') {
+        unsubscribeFolderRemovalEvents = client.subscribeFolderRemovalEvents(
+          event => this.#publishFolderRemovalState(event)
+        );
+      }
       this.unsubscribeInvalidations = unsubscribeInvalidations;
       this.unsubscribeScanEvents = unsubscribeScanEvents;
+      this.unsubscribeFolderRemovalEvents = unsubscribeFolderRemovalEvents;
+      if (this.runtime === 'electron' && typeof client.showTrackInFolder === 'function') {
+        this.showTrackInFolder = async trackUid => {
+          await this.#ensureReady();
+          return this.client.showTrackInFolder(trackUid);
+        };
+      }
       this.ready = true;
       this.#emit('ready', this.getRuntimeStatus());
       return this;
     } catch (error) {
       unsubscribeInvalidations?.();
       unsubscribeScanEvents?.();
+      unsubscribeFolderRemovalEvents?.();
       await Promise.resolve(client?.close?.()).catch(() => {});
       throw error;
     }
@@ -225,8 +234,7 @@ export class LibraryManagerV2 {
     return Object.freeze({
       ready: this.isReady,
       runtime: this.runtime,
-      capabilities: this.capabilities,
-      productionQualified: this.productionQualified
+      capabilities: this.capabilities
     });
   }
 
@@ -287,48 +295,10 @@ export class LibraryManagerV2 {
 
   async queryEntities(request = {}) {
     await this.#ensureReady();
-    if (typeof this.client.queryEntities === 'function') {
-      return this.#normalizePageResponse(
-        request,
-        await this.client.queryEntities(request)
-      );
-    }
-    const pageRequest = {
-      contextToken: request.contextToken,
-      cursor: request.cursor ?? null,
-      limit: request.limit
-    };
     return this.#normalizePageResponse(
-      pageRequest,
-      await this.client.readContextPage(pageRequest)
+      request,
+      await this.client.queryEntities(request)
     );
-  }
-
-  async readContextPage(request = {}) {
-    await this.#ensureReady();
-    if (typeof this.client.readContextPage === 'function') {
-      return this.#normalizePageResponse(
-        request,
-        await this.client.readContextPage(request)
-      );
-    }
-    const context = this.#getContext(request.contextToken).query;
-    const options = {
-      ...context,
-      contextToken: request.contextToken,
-      cursor: request.cursor ?? null,
-      limit: request.limit
-    };
-    if (context.endpoint === 'tracks') {
-      return this.#normalizePageResponse(request, await this.client.queryTracks(options));
-    }
-    return this.#normalizePageResponse(request, await this.client.queryEntities({
-      type: context.entityType,
-      direction: context.direction,
-      contextToken: request.contextToken,
-      cursor: request.cursor ?? null,
-      limit: request.limit
-    }));
   }
 
   async readContextPageAtOrdinal(request = {}) {
@@ -350,14 +320,6 @@ export class LibraryManagerV2 {
     if (typeof this.client.getContextCount !== 'function') return null;
     const result = await this.client.getContextCount(request);
     return Number.isSafeInteger(result) ? result : result?.totalCount;
-  }
-
-  async lookupContextTrack(request = {}) {
-    await this.#ensureReady();
-    if (typeof this.client.lookupContextTrack !== 'function') {
-      throw unavailable('lookupContextTrack', `${this.runtime} catalog client`);
-    }
-    return this.client.lookupContextTrack(request);
   }
 
   async resolveEntityAnchor(request = {}) {
@@ -483,8 +445,12 @@ export class LibraryManagerV2 {
     return this.client.resolvePlaybackSource(trackUid);
   }
 
-  addFolder(...args) {
-    return this.#invokeService(this.folderService, 'addFolder', 'folderService', args);
+  addFolder(options = {}) {
+    const request = options?.kind === 'directory'
+      ? { handle: options }
+      : { ...(options && typeof options === 'object' ? options : {}) };
+    request.languageHints = this.#getMetadataRepairHints();
+    return this.#invokeService(this.folderService, 'addFolder', 'folderService', [request]);
   }
 
   removeFolder(...args) {
@@ -495,38 +461,47 @@ export class LibraryManagerV2 {
     return this.#invokeService(this.folderService, 'requestFolderAccess', 'folderService', args);
   }
 
-  scanFolders(...args) {
-    return this.#invokeService(this.scanService, 'scanFolders', 'scanService', args);
+  scanFolders(options = {}) {
+    const request = Array.isArray(options)
+      ? { folderIds: options }
+      : { ...(options && typeof options === 'object' ? options : {}) };
+    request.languageHints = this.#getMetadataRepairHints();
+    return this.#invokeService(this.scanService, 'scanFolders', 'scanService', [request]);
   }
 
   cancelScan(...args) {
     return this.#invokeService(this.scanService, 'cancelScan', 'scanService', args);
   }
 
-  getScanStatus(...args) {
-    return this.#invokeService(this.scanService, 'getScanStatus', 'scanService', args);
+  #getMetadataRepairHints() {
+    const navigatorRef = this.windowRef?.navigator ?? globalThis.navigator ?? {};
+    return {
+      language: this.uiManager?.userLanguage || '',
+      languagePreference: this.uiManager?.languagePreference || '',
+      browserLanguage: navigatorRef.language || '',
+      browserLanguages: Array.isArray(navigatorRef.languages) ? navigatorRef.languages.slice(0, 8) : []
+    };
   }
 
   performSelectionAction(operationKind, selectionDescriptor, request = {}) {
     if (typeof this.bulkOperationService?.start !== 'function') {
       return Promise.reject(unavailable(operationKind, 'bulkOperationService'));
     }
-    return this.bulkOperationService.start({
-      clientRequestId: request.clientRequestId ?? this.clientRequestIdFactory(),
+    const operationRequest = {
       operationKind,
       selectionDescriptor,
-      target: request.target ?? null,
-      expectedTargetVersion: request.expectedTargetVersion ?? null,
+      target: request.target ?? {},
       options: request.options ?? {}
-    });
+    };
+    if (!['play', 'playNext', 'queue'].includes(operationKind)) {
+      operationRequest.clientRequestId = request.clientRequestId ?? this.clientRequestIdFactory();
+      operationRequest.expectedTargetVersion = request.expectedTargetVersion ?? null;
+    }
+    return this.bulkOperationService.start(operationRequest);
   }
 
   createOperationRequestId() {
     return this.clientRequestIdFactory();
-  }
-
-  lookupLibraryOperation(clientRequestId) {
-    return this.#invokeService(this.bulkOperationService, 'lookupResult', 'bulkOperationService', [clientRequestId]);
   }
 
   getLibraryOperationStatus(operationId) {
@@ -537,8 +512,17 @@ export class LibraryManagerV2 {
     return this.#invokeService(this.bulkOperationService, 'cancel', 'bulkOperationService', [operationId]);
   }
 
-  undoCancelledPlay(request) {
-    return this.#invokeService(this.bulkOperationService, 'undoCancelledPlay', 'bulkOperationService', [request]);
+  canUndoPlaybackSession() {
+    return this.bulkOperationService?.canUndoPlaybackSession?.() === true;
+  }
+
+  undoPlaybackSession() {
+    return this.#invokeService(
+      this.bulkOperationService,
+      'undoPlaybackSession',
+      'bulkOperationService',
+      []
+    );
   }
 
   subscribeLibraryOperation(operationId, listener) {
@@ -554,13 +538,6 @@ export class LibraryManagerV2 {
     throw unavailable('subscribeOperation', 'bulkOperationService');
   }
 
-  performRowAction(operationKind, payload) {
-    return this.#invokeService(this.rowActionService, 'performRowAction', 'rowActionService', [
-      operationKind,
-      payload
-    ]);
-  }
-
   close() {
     if (this.closePromise) return this.closePromise;
     this.closed = true;
@@ -574,6 +551,8 @@ export class LibraryManagerV2 {
     this.unsubscribeInvalidations = null;
     this.unsubscribeScanEvents?.();
     this.unsubscribeScanEvents = null;
+    this.unsubscribeFolderRemovalEvents?.();
+    this.unsubscribeFolderRemovalEvents = null;
     const client = this.client;
     const contextTokens = [...this.contexts.keys()];
     this.contexts.clear();
@@ -600,14 +579,6 @@ export class LibraryManagerV2 {
     if (!this.isReady || !this.client) {
       throw createRepositoryError('managerClosed', 'Library manager is unavailable');
     }
-  }
-
-  #getContext(contextToken) {
-    const context = this.contexts.get(contextToken);
-    if (!context) {
-      throw createRepositoryError('invalidContext', 'Library context is not owned by this manager');
-    }
-    return context;
   }
 
   #normalizePageResponse(request, page, explicitStartOrdinal = null) {
@@ -672,6 +643,14 @@ export class LibraryManagerV2 {
     }
   }
 
+  #publishFolderRemovalState(event) {
+    try {
+      this.#emit('folder-removal-state', normalizeFolderRemovalState(event));
+    } catch (error) {
+      this.logger?.warn?.('Ignored invalid Library folder removal event:', error);
+    }
+  }
+
   #clearArtworkUrlCache() {
     const urlApi = this.windowRef?.URL ?? globalThis.URL;
     for (const url of this.artworkUrlCache.values()) urlApi?.revokeObjectURL?.(url);
@@ -716,6 +695,13 @@ function normalizeScanState(event = {}) {
   const counts = source.counts ?? aggregateScanResultCounts(event.results);
   const status = String(source.status ?? event.status ?? 'running');
   const error = event.error ?? source.error ?? null;
+  const folderIds = typeof source.folderId === 'string'
+    ? [source.folderId]
+    : Array.isArray(source.folderIds)
+      ? source.folderIds
+      : typeof event.folderId === 'string'
+        ? [event.folderId]
+        : Array.isArray(event.folderIds) ? event.folderIds : [];
   const terminal = event.terminal === true || event.active === false || [
     'completed', 'completed-no-sweep', 'cancelled', 'paused', 'interrupted', 'failed'
   ].includes(status);
@@ -728,9 +714,32 @@ function normalizeScanState(event = {}) {
     phase,
     status,
     counts,
+    folderIds: Object.freeze([...folderIds]),
     found: Number(counts?.found ?? 0),
     parsed: Number(counts?.parsed ?? 0),
     error: error?.message ?? error ?? null
+  });
+}
+
+function normalizeFolderRemovalState(event = {}) {
+  const folderId = typeof event.folderId === 'string' ? event.folderId : '';
+  if (!folderId || folderId.length > 512) {
+    throw createRepositoryError('invalidFolderRemovalEvent', 'Folder removal event is invalid');
+  }
+  const phase = ['removing', 'done', 'error'].includes(event.phase) ? event.phase : 'error';
+  const deleted = Number(event.deleted);
+  const total = Number(event.total);
+  if (!Number.isSafeInteger(deleted) || deleted < 0 ||
+      !Number.isSafeInteger(total) || total < 0 || deleted > total) {
+    throw createRepositoryError('invalidFolderRemovalEvent', 'Folder removal progress is invalid');
+  }
+  return Object.freeze({
+    folderId,
+    phase,
+    deleted,
+    total,
+    remaining: total - deleted,
+    terminal: phase !== 'removing'
   });
 }
 
@@ -756,11 +765,11 @@ function supportsWebFolderControls(client) {
 function supportsElectronFolderControls(client) {
   return [
     'addFolder', 'requestFolderAccess', 'removeFolder', 'scanFolders',
-    'cancelScan', 'getScanStatus'
+    'cancelScan'
   ].every(method => typeof client?.[method] === 'function');
 }
 
-function supportsWebDurableOperations(client) {
-  return ['start', 'lookupResult', 'status', 'cancel']
+function supportsWebSessionOperations(client) {
+  return ['start', 'status', 'cancel']
     .every(method => typeof client?.[method] === 'function');
 }

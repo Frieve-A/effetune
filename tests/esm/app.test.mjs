@@ -910,9 +910,9 @@ test('event listeners, output-device changes, relaunch, and command-line music c
     pendingMusicFiles: ['C:\\Music\\one.MP4', 'C:\\Music\\bad.wav'],
     electronAPI: {
       platform: 'win32',
-      async readFile(path) {
-        if (path.includes('bad')) return { success: false, error: 'bad file' };
-        return { success: true, content: Buffer.from('abc').toString('base64') };
+      async readFileBytes(path) {
+        if (path.includes('bad')) throw new Error('bad file');
+        return Buffer.from('abc');
       },
       async savePipelineStateToFile(state) {
         calls.push(['saveRiskState', state]);
@@ -934,9 +934,9 @@ test('event listeners, output-device changes, relaunch, and command-line music c
         this.listener = listener;
       },
       platform: 'win32',
-      async readFile(path) {
-        if (path.includes('bad')) return { success: false, error: 'bad file' };
-        return { success: true, content: Buffer.from('abc').toString('base64') };
+      async readFileBytes(path) {
+        if (path.includes('bad')) throw new Error('bad file');
+        return Buffer.from('abc');
       },
       async savePipelineStateToFile(state) {
         calls.push(['saveRiskState', state]);
@@ -1427,8 +1427,9 @@ test('event listeners and update notifications stay recoverable', async () => {
     const deps = createDependencies(calls);
     const app = new mod.App(deps);
     app.setupEventListeners();
-    window.electronAPI.listeners.get('update-available')({ version: '3.0.0', url: 'https://example.test/update' });
+    window.electronAPI.listeners.get('update-available')({ version: 'Version 2.1.0', url: 'https://example.test/update' });
     const notice = document.body.children.find(child => child.className === 'update-notification');
+    assert.equal(notice.children[0].textContent, 'New Version 2.1.0 available.');
     window.electronAPI.openExternal = url => calls.push(['openExternal', url]);
     notice.children[0].click();
     assert.equal(calls.some(call => call[0] === 'openExternal'), true);
@@ -1739,8 +1740,8 @@ test('command-line music and version fallbacks stay recoverable', async () => {
   await withAppModule({
     pendingMusicFiles: ['bad.wav'],
     electronAPI: {
-      async readFile() {
-        return { success: false, error: 'bad file' };
+      async readFileBytes() {
+        throw new Error('bad file');
       }
     }
   }, async ({ calls, mod, window }) => {
@@ -1755,8 +1756,8 @@ test('command-line music and version fallbacks stay recoverable', async () => {
   await withAppModule({
     pendingMusicFiles: ['song.xyz'],
     electronAPI: {
-      async readFile() {
-        return { success: true, content: Buffer.from('xyz').toString('base64') };
+      async readFileBytes() {
+        return Buffer.from('xyz');
       }
     }
   }, async ({ calls, mod, window }) => {
@@ -1775,7 +1776,7 @@ test('command-line music and version fallbacks stay recoverable', async () => {
   await withAppModule({
     pendingMusicFiles: ['throw.mp3'],
     electronAPI: {
-      async readFile() {
+      async readFileBytes() {
         throw new Error('read threw');
       }
     }
@@ -1785,7 +1786,8 @@ test('command-line music and version fallbacks stay recoverable', async () => {
     app.processCommandLineArguments();
     await flushMicrotasks();
     await flushMicrotasks();
-    assert.equal(calls.some(call => call[0] === 'console.error' && call[1] === 'Error converting paths to File objects:'), true);
+    assert.equal(calls.some(call => call[0] === 'console.error' && call[1] === 'Failed to read file: read threw'), true);
+    assert.equal(calls.some(call => call[0] === 'console.error' && call[1] === 'No valid files after conversion'), true);
   });
 
   await withAppModule({}, async ({ document, mod, window }) => {

@@ -115,3 +115,121 @@ test('observer lifecycle loads URL artwork and replaces a failed image with its 
   loader.destroy();
   assert.equal(disconnected, true);
 });
+
+test('cached artwork is restored immediately after virtualized targets are reset', async () => {
+  let intersectionCallback;
+  let loadCount = 0;
+  class Observer {
+    constructor(callback) { intersectionCallback = callback; }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+
+  const loader = new PagedArtworkLoader({
+    observerClass: Observer,
+    loadArtwork: async () => {
+      loadCount += 1;
+      return 'data:image/png;base64,AA==';
+    }
+  });
+  const firstElement = createElement();
+  loader.observe(firstElement, 'shared-art');
+  intersectionCallback([{ isIntersecting: true, target: firstElement }]);
+  await Promise.resolve();
+  await Promise.resolve();
+
+  loader.resetTargets();
+  const replacementElement = createElement();
+  loader.observe(replacementElement, 'shared-art');
+
+  assert.equal(loadCount, 1);
+  assert.equal(replacementElement.children[0].src, 'data:image/png;base64,AA==');
+  assert.equal(replacementElement.classList.contains('library-artwork-pending'), false);
+  loader.destroy();
+});
+
+test('visible targets sharing an artwork id coalesce one in-flight load', async () => {
+  const pending = deferred();
+  let loadCount = 0;
+  const loader = new PagedArtworkLoader({
+    observerClass: null,
+    loadArtwork: () => {
+      loadCount += 1;
+      return pending.promise;
+    }
+  });
+  const first = createElement();
+  const second = createElement();
+
+  loader.observe(first, 'shared-in-flight');
+  loader.observe(second, 'shared-in-flight');
+  assert.equal(loadCount, 1);
+
+  pending.resolve('data:image/png;base64,AA==');
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(first.children[0].src, 'data:image/png;base64,AA==');
+  assert.equal(second.children[0].src, 'data:image/png;base64,AA==');
+  loader.destroy();
+});
+
+test('destroy revokes an owned URL created by a late artwork result', async () => {
+  const pending = deferred();
+  const revoked = [];
+  const loader = new PagedArtworkLoader({
+    observerClass: null,
+    urlApi: {
+      createObjectURL: () => 'blob:late',
+      revokeObjectURL: url => revoked.push(url)
+    },
+    loadArtwork: () => pending.promise
+  });
+  const element = createElement();
+
+  loader.observe(element, 'late-art');
+  loader.destroy();
+  pending.resolve(new Blob(['late']));
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.deepEqual(revoked, ['blob:late']);
+  assert.equal(loader.cache.size, 0);
+  assert.deepEqual(element.children, []);
+});
+
+test('a reset fences the old load generation while allowing a replacement load', async () => {
+  const firstPending = deferred();
+  const secondPending = deferred();
+  const pending = [firstPending, secondPending];
+  const revoked = [];
+  let loadCount = 0;
+  const loader = new PagedArtworkLoader({
+    observerClass: null,
+    urlApi: {
+      createObjectURL: blob => `blob:${blob.size}:${loadCount}`,
+      revokeObjectURL: url => revoked.push(url)
+    },
+    loadArtwork: () => pending[loadCount++].promise
+  });
+  const oldElement = createElement();
+  loader.observe(oldElement, 'generation-art');
+
+  loader.resetTargets();
+  const replacement = createElement();
+  loader.observe(replacement, 'generation-art');
+  assert.equal(loadCount, 2);
+
+  firstPending.resolve(new Blob(['old']));
+  secondPending.resolve(new Blob(['newer']));
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(oldElement.children.length, 0);
+  assert.equal(replacement.children[0].src, 'blob:5:2');
+  assert.deepEqual(revoked, ['blob:3:2']);
+  loader.destroy();
+});

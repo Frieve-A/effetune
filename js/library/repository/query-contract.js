@@ -12,6 +12,11 @@ const PAGE_FIELDS = Object.freeze([
   'catalogVersion',
   'contextToken'
 ]);
+const PLAYLIST_PAGE_FIELDS = Object.freeze([
+  ...PAGE_FIELDS,
+  'resolvedCount',
+  'unresolvedCount'
+]);
 
 export function normalizeQueryLimit(limit = DEFAULT_QUERY_LIMIT) {
   assertRepositoryContract(
@@ -47,7 +52,9 @@ export function validatePageResponse(response, { limit = DEFAULT_QUERY_LIMIT } =
     'invalidPage',
     'Query page must be an object'
   );
-  assertExactFields(response, PAGE_FIELDS, 'invalidPage');
+  const hasPlaylistCounts = Object.hasOwn(response, 'resolvedCount') ||
+    Object.hasOwn(response, 'unresolvedCount');
+  assertExactFields(response, hasPlaylistCounts ? PLAYLIST_PAGE_FIELDS : PAGE_FIELDS, 'invalidPage');
   assertRepositoryContract(Array.isArray(response.rows), 'invalidPage', 'Query page rows must be an array');
   assertRepositoryContract(
     response.rows.length <= normalizedLimit,
@@ -72,6 +79,21 @@ export function validatePageResponse(response, { limit = DEFAULT_QUERY_LIMIT } =
     'invalidPage',
     'Query page contextToken must be a non-empty string'
   );
+  if (hasPlaylistCounts) {
+    assertRepositoryContract(
+      Number.isSafeInteger(response.resolvedCount) && response.resolvedCount >= 0 &&
+      Number.isSafeInteger(response.unresolvedCount) && response.unresolvedCount >= 0,
+      'invalidPage',
+      'Playlist page counts must be non-negative integers'
+    );
+    if (Number.isSafeInteger(response.totalCount)) {
+      assertRepositoryContract(
+        response.resolvedCount + response.unresolvedCount === response.totalCount,
+        'invalidPage',
+        'Playlist page counts must match totalCount'
+      );
+    }
+  }
 
   const byteLength = measureJsonBytes(response);
   assertRepositoryContract(

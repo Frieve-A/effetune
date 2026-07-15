@@ -29,24 +29,27 @@ function sourceFor(trackUid, overrides = {}) {
   };
 }
 
-test('Web artwork reads bounded PNG headers before decode and caps raw staging', async () => {
-  const png = new Uint8Array(24);
-  png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-  new DataView(png.buffer).setUint32(16, 2);
-  new DataView(png.buffer).setUint32(20, 3);
+test('Web artwork uses the decoder for arbitrary image formats and caps raw staging', async () => {
+  const artwork = new Uint8Array([1, 2, 3]);
   let bitmapCalls = 0;
+  const decodedTypes = [];
   const extractor = new WebArtworkExtractor({
     filesystem: { async getFile() { return new Blob([new Uint8Array([1])]); } },
-    parse: async () => ({ common: { picture: [{ data: png, format: 'image/png' }] } }),
-    createBitmap: async () => { bitmapCalls += 1; return { width: 2, height: 3 }; }
+    parse: async () => ({ common: { picture: [{ data: artwork, format: 'avif' }] } }),
+    createBitmap: async blob => {
+      bitmapCalls += 1;
+      decodedTypes.push(blob.type);
+      return { width: 2, height: 3, close() {} };
+    }
   });
   const claims = Array.from({ length: 9 }, (_, index) => sourceFor(`header-${index}`));
   assert.deepEqual(await extractor.readHeader({ claim: claims[0], maxRawBytes: ARTWORK_LIMITS.maxRawBytes }), {
-    rawByteLength: 24,
+    rawByteLength: 3,
     width: 2,
     height: 3
   });
-  assert.equal(bitmapCalls, 0);
+  assert.equal(bitmapCalls, 1);
+  assert.deepEqual(decodedTypes, ['image/avif']);
   for (const claim of claims.slice(1, 8)) {
     await extractor.readHeader({ claim, maxRawBytes: ARTWORK_LIMITS.maxRawBytes });
   }
@@ -56,10 +59,80 @@ test('Web artwork reads bounded PNG headers before decode and caps raw staging',
   );
   extractor.discard({ claim: claims[0] });
   assert.deepEqual(await extractor.readHeader({ claim: claims[8], maxRawBytes: ARTWORK_LIMITS.maxRawBytes }), {
-    rawByteLength: 24,
+    rawByteLength: 3,
     width: 2,
     height: 3
   });
+  assert.equal(bitmapCalls, 9);
+});
+
+test('Web artwork rejects oversized binary input before createImageBitmap', async () => {
+  let bitmapCalls = 0;
+  const extractor = new WebArtworkExtractor({
+    filesystem: { async getFile() { return new Blob([new Uint8Array([1])]); } },
+    parse: async () => ({
+      common: { picture: [{ data: new DataView(new Uint8Array([1, 2, 3]).buffer), format: 'png' }] }
+    }),
+    createBitmap: async () => {
+      bitmapCalls += 1;
+      return { width: 1, height: 1, close() {} };
+    }
+  });
+
+  await assert.rejects(
+    extractor.readHeader({ claim: sourceFor('oversized'), maxRawBytes: 2 }),
+    error => error?.code === 'artworkRawTooLarge'
+  );
+  assert.equal(bitmapCalls, 0);
+});
+
+test('Web artwork invokes createImageBitmap with the Worker global receiver', async () => {
+  const png = new Uint8Array(24);
+  png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  new DataView(png.buffer).setUint32(16, 2);
+  new DataView(png.buffer).setUint32(20, 3);
+  const originalOffscreenCanvas = globalThis.OffscreenCanvas;
+  let bitmapReceiver = null;
+  globalThis.OffscreenCanvas = class {
+    constructor(width, height) {
+      this.width = width;
+      this.height = height;
+    }
+
+    getContext() {
+      return { drawImage() {} };
+    }
+
+    async convertToBlob() {
+      return new Blob([new Uint8Array([1, 2, 3])], { type: 'image/jpeg' });
+    }
+  };
+  try {
+    const extractor = new WebArtworkExtractor({
+      filesystem: { async getFile() { return new Blob([new Uint8Array([1])]); } },
+      parse: async () => ({ common: { picture: [{ data: png, format: 'image/png' }] } }),
+      createBitmap: async function () {
+        bitmapReceiver = this;
+        return { width: 2, height: 3, close() {} };
+      }
+    });
+    const claim = sourceFor('receiver');
+    const header = await extractor.readHeader({ claim, maxRawBytes: ARTWORK_LIMITS.maxRawBytes });
+    const thumbnail = await extractor.createThumbnail({
+      claim,
+      header,
+      maxWidth: 512,
+      maxHeight: 512,
+      maxBytes: ARTWORK_LIMITS.maxThumbnailBytes
+    });
+
+    assert.equal(bitmapReceiver, globalThis);
+    assert.equal(thumbnail.mimeType, 'image/jpeg');
+    assert.deepEqual(Array.from(thumbnail.bytes), [1, 2, 3]);
+  } finally {
+    if (originalOffscreenCanvas === undefined) delete globalThis.OffscreenCanvas;
+    else globalThis.OffscreenCanvas = originalOffscreenCanvas;
+  }
 });
 
 function createRepository(options = {}) {
@@ -102,9 +175,6 @@ function createRepository(options = {}) {
     },
     async evictArtworkCache(input) {
       calls.push(['evict', input]);
-    },
-    async enterReadOnlyDiagnostic(input) {
-      calls.push(['read-only', input]);
     }
   };
 }
@@ -135,6 +205,32 @@ function createExtractor(options = {}) {
         height: 512,
         mimeType: 'image/webp'
       };
+    }
+  };
+}
+
+function createAbortAwareExtractor() {
+  let markStarted;
+  let completeThumbnail;
+  const started = new Promise(resolve => { markStarted = resolve; });
+  return {
+    started,
+    async readHeader() {
+      return { rawByteLength: 1024, width: 1000, height: 1000 };
+    },
+    createThumbnail({ signal }) {
+      markStarted();
+      return new Promise((resolve, reject) => {
+        const abort = () => reject(signal.reason ?? new DOMException('aborted', 'AbortError'));
+        signal.addEventListener('abort', abort, { once: true });
+        completeThumbnail = () => {
+          signal.removeEventListener('abort', abort);
+          resolve({ bytes: new Uint8Array(1024), width: 512, height: 512, mimeType: 'image/webp' });
+        };
+      });
+    },
+    complete() {
+      completeThumbnail?.();
     }
   };
 }
@@ -182,6 +278,55 @@ test('lazy requests single-flight by source and never expose extraction as a sca
     () => service.request({ trackUid: 'track-3', reason: 'scan' }),
     error => error.code === 'invalidArtworkRequest'
   );
+});
+
+test('one canceled artwork consumer does not abort a shared extraction still in use', async () => {
+  const repository = createRepository({
+    source: trackUid => sourceFor(trackUid, {
+      canonicalSourceIdentity: 'shared-cancel-album',
+      fileIdentity: 'shared-cancel-file'
+    })
+  });
+  const extractor = createAbortAwareExtractor();
+  const service = new LazyArtworkService({ repository, extractor });
+  const firstController = new AbortController();
+  const secondController = new AbortController();
+  const first = service.request({ trackUid: 'cancel-first', reason: 'viewport', signal: firstController.signal });
+  const second = service.request({ trackUid: 'keep-second', reason: 'now-playing', signal: secondController.signal });
+  await extractor.started;
+  await new Promise(resolve => setImmediate(resolve));
+  firstController.abort(new DOMException('first consumer left', 'AbortError'));
+  extractor.complete();
+
+  await assert.rejects(first, error => error?.name === 'AbortError');
+  assert.equal((await second).kind, 'thumbnail');
+  assert.equal(repository.calls.filter(([name]) => name === 'claim').length, 1);
+  assert.equal(repository.calls.some(([name, input]) => name === 'gc' && input.reason === 'canceled'), false);
+});
+
+test('shared artwork extraction aborts and cleans staging after its last consumer leaves', async () => {
+  const repository = createRepository({
+    source: trackUid => sourceFor(trackUid, {
+      canonicalSourceIdentity: 'shared-all-canceled',
+      fileIdentity: 'shared-all-canceled-file'
+    })
+  });
+  const extractor = createAbortAwareExtractor();
+  const service = new LazyArtworkService({ repository, extractor });
+  const firstController = new AbortController();
+  const secondController = new AbortController();
+  const pending = [
+    service.request({ trackUid: 'all-canceled-first', reason: 'viewport', signal: firstController.signal }),
+    service.request({ trackUid: 'all-canceled-second', reason: 'detail', signal: secondController.signal })
+  ];
+  await extractor.started;
+  await new Promise(resolve => setImmediate(resolve));
+  firstController.abort(new DOMException('first consumer left', 'AbortError'));
+  secondController.abort(new DOMException('second consumer left', 'AbortError'));
+  const settled = await Promise.allSettled(pending);
+  assert.ok(settled.every(result => result.status === 'rejected' && result.reason?.name === 'AbortError'));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(repository.calls.filter(([name, input]) => name === 'gc' && input.reason === 'canceled').length, 1);
 });
 
 test('desktop and mobile decode concurrency remain bounded', async () => {
@@ -236,7 +381,50 @@ test('optional cache quota evicts once and retries without entering catalog read
   assert.equal(repository.calls.some(([name]) => name === 'read-only'), false);
 });
 
-test('catalog storage failure enters diagnostic mode with a safe placeholder fallback', async () => {
+test('persistent preflight evicts once only for artwork-cache-full and retries admission', async () => {
+  const repository = createRepository();
+  let attempts = 0;
+  repository.preflightArtworkBatch = async input => {
+    repository.calls.push(['preflight', input]);
+    attempts += 1;
+    return attempts === 1 ? { ok: false, code: 'artwork-cache-full' } : { ok: true };
+  };
+  const service = new LazyArtworkService({
+    repository,
+    extractor: createExtractor(),
+    runtime: 'web',
+    quotaBytes: 8 * 1024 * 1024 * 1024
+  });
+
+  const artwork = await service.request({ trackUid: 'preflight-full', reason: 'viewport' });
+
+  assert.equal(artwork.kind, 'thumbnail');
+  assert.equal(repository.calls.filter(([name]) => name === 'preflight').length, 2);
+  assert.equal(repository.calls.filter(([name]) => name === 'evict').length, 1);
+});
+
+test('low-quota Web artwork uses a bounded memory cache without persistent admission', async () => {
+  const repository = createRepository();
+  const extractor = createExtractor();
+  const service = new LazyArtworkService({
+    repository,
+    extractor,
+    runtime: 'web',
+    quotaBytes: 512 * 1024 * 1024
+  });
+
+  const first = await service.request({ trackUid: 'memory', reason: 'now-playing' });
+  const second = await service.request({ trackUid: 'memory', reason: 'viewport' });
+
+  assert.equal(first.kind, 'thumbnail');
+  assert.equal(second, first);
+  assert.equal(repository.calls.some(([name]) => name === 'preflight'), false);
+  assert.equal(repository.calls.some(([name]) => name === 'publish'), false);
+  assert.equal(repository.calls.find(([name]) => name === 'gc')?.[1].reason, 'memory-only-complete');
+  assert.equal(extractor.calls.filter(([name]) => name === 'thumbnail').length, 1);
+});
+
+test('catalog storage failure returns the artwork placeholder without changing catalog mode', async () => {
   const repository = createRepository();
   repository.publishArtwork = async () => {
     throw Object.assign(new Error('private path'), { code: 'SQLITE_FULL' });
@@ -246,7 +434,5 @@ test('catalog storage failure enters diagnostic mode with a safe placeholder fal
   const artwork = await service.request({ trackUid: 'full', reason: 'viewport' });
 
   assert.equal(artwork, ARTWORK_PLACEHOLDER);
-  assert.deepEqual(repository.calls.find(([name]) => name === 'read-only')?.[1], {
-    code: 'storage-write-failure', safeDetails: { errorCode: 'sqlite_full' }
-  });
+  assert.equal(repository.calls.some(([name]) => name === 'read-only'), false);
 });

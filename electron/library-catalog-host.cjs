@@ -12,6 +12,7 @@ const MAX_LIBRARY_CATALOG_RESPONSE_BYTES = 1024 * 1024;
 const MAX_LIBRARY_CATALOG_OUTSTANDING_REQUESTS = 16;
 const LIBRARY_CATALOG_INVALIDATION_CHANNEL = 'library-catalog-v1:invalidation';
 const LIBRARY_CATALOG_SCAN_EVENT_CHANNEL = 'library-catalog-v1:scan-event';
+const LIBRARY_CATALOG_FOLDER_REMOVAL_EVENT_CHANNEL = 'library-catalog-v1:folder-removal-event';
 const LIBRARY_CATALOG_RENDERER_CHANNELS = Object.freeze({
   getCapabilities: 'library-catalog-v1:get-capabilities',
   getCounts: 'library-catalog-v1:get-counts',
@@ -19,13 +20,11 @@ const LIBRARY_CATALOG_RENDERER_CHANNELS = Object.freeze({
   getContextCount: 'library-catalog-v1:get-context-count',
   queryTracks: 'library-catalog-v1:query-tracks',
   queryEntities: 'library-catalog-v1:query-entities',
-  readContextPage: 'library-catalog-v1:read-context-page',
   readContextPageAtOrdinal: 'library-catalog-v1:read-context-page-at-ordinal',
   resolveEntityAnchor: 'library-catalog-v1:resolve-entity-anchor',
-  lookupContextTrack: 'library-catalog-v1:lookup-context-track',
   releaseContext: 'library-catalog-v1:release-context',
   getTrack: 'library-catalog-v1:get-track',
-  resolvePlaybackSource: 'library-catalog-v1:resolve-playback-source',
+  resolvePlaylistExportSource: 'library-catalog-v1:resolve-playlist-export-source',
   createPlaylist: 'library-catalog-v1:create-playlist',
   createPlaylistWithItems: 'library-catalog-v1:create-playlist-with-items',
   renamePlaylist: 'library-catalog-v1:rename-playlist',
@@ -38,26 +37,15 @@ const LIBRARY_CATALOG_RENDERER_CHANNELS = Object.freeze({
 const LIBRARY_CATALOG_CONTROL_CHANNELS = Object.freeze({
   addFolder: 'library-catalog-v1:add-folder',
   requestFolderAccess: 'library-catalog-v1:request-folder-access',
+  resolvePlaybackSource: 'library-catalog-v1:resolve-playback-source',
+  showTrackInFolder: 'library-catalog-v1:show-track-in-folder',
   scanFolders: 'library-catalog-v1:scan-folders',
   cancelScan: 'library-catalog-v1:cancel-scan',
   removeFolder: 'library-catalog-v1:remove-folder',
   requestArtwork: 'library-catalog-v1:request-artwork',
   pickPlaylistImport: 'library-catalog-v1:pick-playlist-import',
   grantDroppedPlaylistImport: 'library-catalog-v1:grant-dropped-playlist-import',
-  getScanStatus: 'library-catalog-v1:get-scan-status'
 });
-const READ_ONLY_DIAGNOSTIC_COMMANDS = new Set([
-  'getCapabilities', 'getCounts', 'createContext', 'getContextCount',
-  'queryTracks', 'queryEntities', 'readContextPage', 'readContextPageAtOrdinal',
-  'resolveEntityAnchor', 'lookupContextTrack', 'releaseContext', 'getTrack',
-  'getTrackStorageIdentity', 'getCachedArtwork', 'getArtworkSource',
-  'resolvePlaybackSource', 'listScanFolders', 'listMetadataCandidates',
-  'lookupOperationResult', 'getOperationStatus', 'queryOperationSnapshot',
-  'getTransportState', 'queryPlaybackSequence', 'queryTransportSegmentPage',
-  'queryTransportDescriptorPage', 'queryPlaylistItems', 'enterReadOnlyDiagnostic',
-  'close'
-]);
-
 class LibraryCatalogHost extends EventEmitter {
   constructor({
     dbPath,
@@ -77,7 +65,6 @@ class LibraryCatalogHost extends EventEmitter {
     }
     this.dbPath = dbPath;
     this.closed = false;
-    this.readOnlyDiagnostic = false;
     this.closePromise = null;
     this.nextRequestId = 1;
     this.pending = new Map();
@@ -117,12 +104,6 @@ class LibraryCatalogHost extends EventEmitter {
   async request(command, payload = {}) {
     await this.ready;
     if (this.closed) throw createHostError('catalogClosed', 'Catalog host is closed');
-    if (this.readOnlyDiagnostic && !READ_ONLY_DIAGNOSTIC_COMMANDS.has(command)) {
-      throw createHostError(
-        'readOnlyDiagnostic',
-        'Changes to the music library are temporarily unavailable. Restart EffeTune and try again.'
-      );
-    }
     if (this.pending.size >= MAX_LIBRARY_CATALOG_OUTSTANDING_REQUESTS) {
       throw createHostError('tooManyRequests', 'Catalog outstanding request limit reached');
     }
@@ -166,10 +147,6 @@ class LibraryCatalogHost extends EventEmitter {
     return this.request('upsertTracks', { tracks });
   }
 
-  upsertEntities(type, entities) {
-    return this.request('upsertEntities', { type, entities });
-  }
-
   createContext(query) {
     return this.request('createContext', query);
   }
@@ -198,8 +175,12 @@ class LibraryCatalogHost extends EventEmitter {
     return this.request('resolveEntityAnchor', query);
   }
 
-  lookupContextTrack(request) {
-    return this.request('lookupContextTrack', request);
+  retainContext(contextToken) {
+    return this.request('retainContext', { contextToken });
+  }
+
+  releaseRetainedContext(contextToken) {
+    return this.request('releaseRetainedContext', { contextToken });
   }
 
   releaseContext(contextToken) {
@@ -212,6 +193,10 @@ class LibraryCatalogHost extends EventEmitter {
 
   getTrackStorageIdentity(trackUid) {
     return this.request('getTrackStorageIdentity', { trackUid });
+  }
+
+  resolvePlaylistExportSource(trackUid) {
+    return this.request('resolvePlaylistExportSource', { trackUid });
   }
 
   getCachedArtwork(trackUid) {
@@ -254,11 +239,8 @@ class LibraryCatalogHost extends EventEmitter {
     return this.request('evictArtworkCache', options);
   }
 
-  resolvePlaybackSource(trackUid) {
-    return this.request('resolvePlaybackSource', { trackUid });
-  }
-
   listScanFolders(options = {}) { return this.request('listScanFolders', options); }
+  getScanFolderTrackCount(options) { return this.request('getScanFolderTrackCount', options); }
   beginScanFolder(options) { return this.request('beginScanFolder', options); }
   preflightScanBatch(options) { return this.request('preflightScanBatch', options); }
   commitScanSeenBatch(options) { return this.request('commitScanSeenBatch', options); }
@@ -272,26 +254,17 @@ class LibraryCatalogHost extends EventEmitter {
   completeScanFolder(options) { return this.request('completeScanFolder', options); }
   completeScanFolderNoSweep(options) { return this.request('completeScanFolderNoSweep', options); }
   pauseScanFolder(options) { return this.request('pauseScanFolder', options); }
-  async enterReadOnlyDiagnostic(options) {
-    const result = await this.request('enterReadOnlyDiagnostic', options);
-    this.readOnlyDiagnostic = true;
-    if (this.maintenanceTimer) clearTimeout(this.maintenanceTimer);
-    this.maintenanceTimer = null;
-    return result;
-  }
   claimMetadataParse(options) { return this.request('claimMetadataParse', options); }
+  claimMetadataParseBatch(options) { return this.request('claimMetadataParseBatch', options); }
   completeMetadataParseSuccess(options) { return this.request('completeMetadataParseSuccess', options); }
   completeMetadataParseFailure(options) { return this.request('completeMetadataParseFailure', options); }
+  completeMetadataParseBatch(options) { return this.request('completeMetadataParseBatch', options); }
   requeueLatestMetadata(options) { return this.request('requeueLatestMetadata', options); }
   recoverInterruptedMetadataClaims(options) { return this.request('recoverInterruptedMetadataClaims', options); }
   removeScanFolder(options) { return this.request('removeScanFolder', options); }
 
   receiveOperation(request) {
     return this.request('receiveOperation', request);
-  }
-
-  lookupOperationResult(clientRequestId) {
-    return this.request('lookupOperationResult', { clientRequestId });
   }
 
   getOperationStatus(operationId) {
@@ -346,48 +319,12 @@ class LibraryCatalogHost extends EventEmitter {
     return this.request('sealPlaybackSequence', options);
   }
 
-  publishPlaybackSequence(options) {
-    return this.request('publishPlaybackSequence', options);
-  }
-
-  publishProvisionalTransport(options) {
-    return this.request('publishProvisionalTransport', options);
-  }
-
-  publishTransportSequence(options) {
-    return this.request('publishTransportSequence', options);
-  }
-
-  getTransportState() {
-    return this.request('getTransportState', {});
-  }
-
-  commitTransportState(options) {
-    return this.request('commitTransportState', options);
-  }
-
-  applyTransportUndo(options) {
-    return this.request('applyTransportUndo', options);
-  }
-
   queryPlaybackSequence(options) {
     return this.request('queryPlaybackSequence', options);
   }
 
-  queryTransportSegmentPage(options) {
-    return this.request('queryTransportSegmentPage', options);
-  }
-
   queryTransportDescriptorPage(options) {
     return this.request('queryTransportDescriptorPage', options);
-  }
-
-  tombstonePlaybackSequence(sequenceId) {
-    return this.request('tombstonePlaybackSequence', { sequenceId });
-  }
-
-  gcPlaybackSequences(limit) {
-    return this.request('gcPlaybackSequences', { limit });
   }
 
   gcOperationSnapshots(limit) {
@@ -420,6 +357,14 @@ class LibraryCatalogHost extends EventEmitter {
 
   prepareSequencePlaylistSave(options) {
     return this.request('prepareSequencePlaylistSave', options);
+  }
+
+  getAutomaticPlaylistImportState(options) {
+    return this.request('getAutomaticPlaylistImportState', options);
+  }
+
+  prepareAutomaticPlaylistImport(options) {
+    return this.request('prepareAutomaticPlaylistImport', options);
   }
 
   appendSequencePlaylistPage(options) {
@@ -459,13 +404,12 @@ class LibraryCatalogHost extends EventEmitter {
   }
 
   scheduleMaintenance(delay = 30_000) {
-    if (this.closed || this.readOnlyDiagnostic || this.maintenanceTimer) return;
+    if (this.closed || this.maintenanceTimer) return;
     this.maintenanceTimer = setTimeout(async () => {
       this.maintenanceTimer = null;
       const jobs = [
         () => this.cleanupPlaylistItems(500),
         () => this.gcPlaylistItems(500),
-        () => this.gcPlaybackSequences(500),
         () => this.gcOperationSnapshots(500),
         () => this.gcTerminalOperations({ finishedBefore: Date.now() - 7 * 24 * 60 * 60 * 1000, limit: 100 })
       ];
@@ -637,13 +581,11 @@ function registerLibraryCatalogIpc({ ipcMain, host, getMainWindow }) {
     getContextCount: (_event, request) => host.getContextCount(request),
     queryTracks: (_event, request) => host.queryTracks(request),
     queryEntities: (_event, request) => host.queryEntities(request),
-    readContextPage: (_event, request) => host.readContextPage(request),
     readContextPageAtOrdinal: (_event, request) => host.readContextPageAtOrdinal(request),
     resolveEntityAnchor: (_event, request) => host.resolveEntityAnchor(request),
-    lookupContextTrack: (_event, request) => host.lookupContextTrack(request),
     releaseContext: (_event, request) => host.request('releaseContext', request),
     getTrack: (_event, request) => host.request('getTrack', request),
-    resolvePlaybackSource: (_event, request) => host.request('resolvePlaybackSource', request),
+    resolvePlaylistExportSource: (_event, request) => host.request('resolvePlaylistExportSource', request),
     createPlaylist: (_event, request) => host.createPlaylist(request),
     createPlaylistWithItems: (_event, request) => host.createPlaylistWithItems(request),
     renamePlaylist: (_event, request) => host.renamePlaylist(request),
@@ -688,23 +630,43 @@ function registerLibraryCatalogIpc({ ipcMain, host, getMainWindow }) {
   };
 }
 
-function registerLibraryCatalogControlIpc({ ipcMain, runtime, getMainWindow }) {
+function registerLibraryCatalogControlIpc({ ipcMain, runtime, shell, getMainWindow }) {
   if (!ipcMain || typeof ipcMain.handle !== 'function' || typeof ipcMain.removeHandler !== 'function') {
     throw createHostError('invalidIpcAdapter', 'Catalog control IPC adapter is invalid');
   }
-  if (!runtime || typeof runtime.scanFolders !== 'function' || typeof getMainWindow !== 'function') {
+  if (!runtime || typeof runtime.scanFolders !== 'function' ||
+      typeof shell?.showItemInFolder !== 'function' || typeof getMainWindow !== 'function') {
     throw createHostError('invalidIpcAdapter', 'Catalog control dependencies are invalid');
   }
+  const resolvePlaybackSource = async request => {
+    assertTrackUidRendererRequest(request);
+    try {
+      return publicCatalogPlaybackSource(await runtime.resolvePlaybackSource(request.trackUid));
+    } catch (error) {
+      if (error?.code === 'folderPermissionRequired') return publicCatalogFolderPermissionError(error);
+      throw error;
+    }
+  };
   const handlers = {
     addFolder: request => runtime.addFolder(request),
     requestFolderAccess: request => runtime.requestFolderAccess(request),
+    resolvePlaybackSource,
+    showTrackInFolder: async request => {
+      const source = await resolvePlaybackSource(request);
+      if (source?.code === 'folderPermissionRequired') return source;
+      try {
+        shell.showItemInFolder(source.path);
+      } catch {
+        throw createHostError('showInFolderFailed', 'Unable to show the track in its folder');
+      }
+      return { success: true };
+    },
     scanFolders: request => runtime.scanFolders(request),
     cancelScan: request => runtime.cancelScan(request),
     removeFolder: request => runtime.removeFolder(request),
     requestArtwork: request => runtime.requestArtwork(request),
     pickPlaylistImport: request => runtime.pickPlaylistImport(request),
-    grantDroppedPlaylistImport: request => runtime.grantDroppedPlaylistImport(request),
-    getScanStatus: request => runtime.getScanStatus(request)
+    grantDroppedPlaylistImport: request => runtime.grantDroppedPlaylistImport(request)
   };
   const registeredChannels = [];
   try {
@@ -726,12 +688,19 @@ function registerLibraryCatalogControlIpc({ ipcMain, runtime, getMainWindow }) {
     mainWindow.webContents.send(LIBRARY_CATALOG_SCAN_EVENT_CHANNEL, event);
   };
   runtime.on('scan-event', relayScanEvent);
+  const relayFolderRemovalEvent = event => {
+    const mainWindow = getMainWindow();
+    if (!isUsableMainWindow(mainWindow)) return;
+    mainWindow.webContents.send(LIBRARY_CATALOG_FOLDER_REMOVAL_EVENT_CHANNEL, event);
+  };
+  runtime.on('folder-removal-event', relayFolderRemovalEvent);
 
   let disposed = false;
   return () => {
     if (disposed) return;
     disposed = true;
     runtime.removeListener('scan-event', relayScanEvent);
+    runtime.removeListener('folder-removal-event', relayFolderRemovalEvent);
     for (const channel of registeredChannels) ipcMain.removeHandler(channel);
   };
 }
@@ -757,6 +726,41 @@ function assertEmptyRendererRequest(request) {
   if (!request || typeof request !== 'object' || Array.isArray(request) || Object.keys(request).length !== 0) {
     throw createHostError('invalidRequest', 'Catalog capabilities request must be empty');
   }
+}
+
+function assertTrackUidRendererRequest(request) {
+  if (
+    !request ||
+    typeof request !== 'object' ||
+    Array.isArray(request) ||
+    Object.keys(request).length !== 1 ||
+    typeof request.trackUid !== 'string' ||
+    request.trackUid.length === 0 ||
+    request.trackUid.length > 512
+  ) {
+    throw createHostError('invalidRequest', 'Catalog playback source request is invalid');
+  }
+}
+
+function publicCatalogPlaybackSource(source) {
+  const sourcePath = source?.path;
+  if (source?.kind !== 'electron-file' || typeof sourcePath !== 'string' || !path.isAbsolute(sourcePath)) {
+    throw createHostError('sourceUnavailable', 'Track source is unavailable');
+  }
+  const publicSource = { ...source };
+  delete publicSource.mediaUrl;
+  return publicSource;
+}
+
+function publicCatalogFolderPermissionError(error) {
+  const folderId = typeof error?.details?.folderId === 'string'
+    ? error.details.folderId.slice(0, 512)
+    : '';
+  const lifecycleVersion = Number(error?.details?.lifecycleVersion);
+  if (!folderId || !Number.isSafeInteger(lifecycleVersion) || lifecycleVersion < 0) {
+    throw createHostError('sourceUnavailable', 'Track source is unavailable');
+  }
+  return { code: 'folderPermissionRequired', details: { folderId, lifecycleVersion } };
 }
 
 function measureMessageBytes(value) {
@@ -800,6 +804,7 @@ module.exports = {
   LIBRARY_CATALOG_RENDERER_API_VERSION,
   LIBRARY_CATALOG_INVALIDATION_CHANNEL,
   LIBRARY_CATALOG_SCAN_EVENT_CHANNEL,
+  LIBRARY_CATALOG_FOLDER_REMOVAL_EVENT_CHANNEL,
   LIBRARY_CATALOG_RENDERER_CHANNELS,
   LIBRARY_CATALOG_CONTROL_CHANNELS,
   LibraryCatalogHost,

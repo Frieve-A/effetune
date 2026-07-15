@@ -305,6 +305,9 @@ const fixtureHtml = String.raw`<!doctype html>
         ? ProcessingDirective.FORCE_MONITORING
         : decision.processingDirective;
       const commandId = nextCommandId++;
+      const firstRenderPromise = resource.observer.waitFor(message =>
+        message?.type === 'powerFirstRender' && message.commandId === commandId
+      );
       resource.node.port.postMessage({
         type: 'setPowerProcessingState',
         commandId,
@@ -314,6 +317,7 @@ const fixtureHtml = String.raw`<!doctype html>
         ...identity
       });
       const applyAck = await waitForCommandAck(resource, commandId);
+      const firstRender = await firstRenderPromise;
       const before = await requestPowerObservation(resource, identity);
       await wait(80);
       const after = await requestPowerObservation(resource, identity);
@@ -359,6 +363,11 @@ const fixtureHtml = String.raw`<!doctype html>
         },
         appliedDirective: applyAck.processingDirective,
         appliedState: applyAck.state,
+        firstRender: {
+          inputActive: firstRender.inputActive,
+          outputActive: firstRender.outputActive,
+          renderSequence: firstRender.renderSequence
+        },
         runningDelta,
         before: {
           state: before.state,

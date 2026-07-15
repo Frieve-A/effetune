@@ -43,6 +43,10 @@ function loadServiceWorker(options = {}) {
     async addAll(requests) {
       addAllCalls.push(requests);
     },
+    async match(request) {
+      matchCalls.push(request);
+      return options.matchResponse ?? null;
+    },
     async put(request, response) {
       putCalls.push([request, response]);
     }
@@ -298,14 +302,29 @@ test('service worker precaches with HTTP-cache-bypassing reload requests', async
   assert.deepEqual(worker.lifecycleCalls, []);
 });
 
-test('service worker stores only effetune.html navigations as the app shell', async () => {
-  const worker = loadServiceWorker();
+test('service worker keeps app-shell HTML and subresources on one cache generation', async () => {
+  const cachedResponse = createResponse('current-app-shell');
+  const worker = loadServiceWorker({ matchResponse: cachedResponse });
   const request = createNavigateRequest('https://example.test/effetune.html?p=shared');
 
-  await dispatchFetch(worker.listeners.get('fetch'), request);
+  const response = await dispatchFetch(worker.listeners.get('fetch'), request);
 
-  assert.equal(worker.putCalls.length, 1);
-  assert.equal(worker.putCalls[0][0], './effetune.html');
+  assert.equal(response, cachedResponse);
+  assert.deepEqual(worker.matchCalls, ['./effetune.html']);
+  assert.equal(worker.fetchCalls.length, 0);
+  assert.equal(worker.putCalls.length, 0);
+});
+
+test('service worker fetches the app shell only if its current cache is unavailable', async () => {
+  const networkResponse = createResponse('network-app-shell');
+  const worker = loadServiceWorker({ fetchResponse: networkResponse });
+  const request = createNavigateRequest('https://example.test/effetune.html');
+
+  const response = await dispatchFetch(worker.listeners.get('fetch'), request);
+
+  assert.equal(response, networkResponse);
+  assert.equal(worker.fetchCalls.length, 1);
+  assert.equal(worker.putCalls.length, 0);
 });
 
 test('service worker does not overwrite app shell cache for docs navigations', async () => {

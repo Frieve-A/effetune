@@ -61,6 +61,7 @@ function createUiManager(calls, options = {}) {
 
 function createElectronApi(calls, options = {}) {
   const readQueue = [...(options.readResults ?? [])];
+  const byteReadQueue = [...(options.byteReadResults ?? [])];
   return {
     async readFile(filePath, binary = false) {
       calls.push(['readFile', filePath, binary]);
@@ -69,6 +70,12 @@ function createElectronApi(calls, options = {}) {
       return readQueue.length > 0
         ? readQueue.shift()
         : { success: true, content: options.readContent ?? JSON.stringify({ pipeline: [] }) };
+    },
+    async readFileBytes(filePath) {
+      calls.push(['readFileBytes', filePath]);
+      if (options.readFileBytesImpl) return options.readFileBytesImpl(filePath);
+      if (byteReadQueue.length > 0) return byteReadQueue.shift();
+      return Buffer.from('abc');
     },
     async showSaveDialog(optionsArg) {
       calls.push(['showSaveDialog', optionsArg]);
@@ -591,9 +598,9 @@ test('processAudioFiles converts valid files, handles invalid files, and reports
     uiOptions: { pipelineManager },
     electronOptions: {
       openDialogResult: { canceled: false, filePaths: ['C:\\Audio\\a.wav', 'bad.mp3'] },
-      readFileImpl(filePath) {
-        if (filePath === 'bad.mp3') return { success: false, error: 'bad file' };
-        return { success: true, content: Buffer.from('abc').toString('base64') };
+      readFileBytesImpl(filePath) {
+        if (filePath === 'bad.mp3') throw new Error('bad file');
+        return Buffer.from('abc');
       }
     }
   }, async ({ calls, timeouts, windowRef }) => {
@@ -615,7 +622,7 @@ test('processAudioFiles converts valid files, handles invalid files, and reports
     uiOptions: { pipelineManager },
     electronOptions: {
       openDialogResult: { canceled: false, filePaths: ['bad.flac'] },
-      readResults: [{ success: false, error: 'unreadable' }]
+      readFileBytesImpl() { throw new Error('unreadable'); }
     }
   }, async ({ calls }) => {
     processAudioFiles(true);

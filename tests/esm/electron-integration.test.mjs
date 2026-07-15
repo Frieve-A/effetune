@@ -290,7 +290,10 @@ function createElectronAPI(calls, options = {}) {
     async getUpdateInfo() {
       calls.push(['getUpdateInfo']);
       if (options.getUpdateReject) throw new Error('update failed');
-      return options.updateInfo ?? { version: '2.0.0' };
+      return options.updateInfo ?? {
+        version: '2.0.0',
+        url: 'https://github.com/Frieve-A/effetune/releases/'
+      };
     },
     openExternal(url) {
       calls.push(['openExternal', url]);
@@ -612,8 +615,12 @@ test('About dialog opens update links, falls back safely, and shows the app vers
     const closeButton = documentRef.getElementById('close-button');
     assert.ok(updateLink);
     assert.ok(closeButton);
+    assert.equal(updateLink.eventListeners.has('click'), false);
     updateLink.children[0].children[0].dispatchEvent('click');
-    assert.ok(calls.some(call => call[0] === 'openExternal'));
+    assert.deepEqual(calls.filter(call => call[0] === 'openExternal'), [[
+      'openExternal',
+      'https://github.com/Frieve-A/effetune/releases/'
+    ]]);
     closeButton.dispatchEvent('click');
     assert.equal(documentRef.body.children.length, 0);
     assert.equal(documentRef.head.children.length, 0);
@@ -621,7 +628,12 @@ test('About dialog opens update links, falls back safely, and shows the app vers
   });
 
   const fallbackCalls = [];
-  const fallbackApi = createElectronAPI(fallbackCalls, { updateInfo: { version: '4.0.0' } });
+  const fallbackApi = createElectronAPI(fallbackCalls, {
+    updateInfo: {
+      version: '4.0.0',
+      url: 'https://github.com/Frieve-A/effetune/releases/tag/v4.0.0'
+    }
+  });
   await withIntegrationGlobals({
     electronAPI: fallbackApi,
     calls: fallbackCalls
@@ -629,7 +641,12 @@ test('About dialog opens update links, falls back safely, and shows the app vers
     delete fallbackApi.openExternal;
     await instance.showAboutDialog({ version: '2.0.0' });
     documentRef.getElementById('about-update-link').children[0].children[0].dispatchEvent('click');
-    assert.ok(fallbackCalls.some(call => call[0] === 'window.open'));
+    assert.deepEqual(fallbackCalls.filter(call => call[0] === 'window.open'), [[
+      'window.open',
+      'https://github.com/Frieve-A/effetune/releases/tag/v4.0.0',
+      '_blank',
+      'noopener'
+    ]]);
     documentRef.getElementById('close-button').dispatchEvent('click');
   });
 

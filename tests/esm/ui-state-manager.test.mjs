@@ -525,6 +525,7 @@ test('setError, clearError, and initAudio update visible UI state', async () => 
 
     manager.clearError();
     assert.equal(documentRef.elements.get('errorDisplay').textContent, '');
+    assert.equal(documentRef.elements.get('errorDisplay').classList.contains('error-message'), false);
 
     manager.initAudio();
     assert.equal(documentRef.elements.get('sampleRate').textContent, '96000 Hz');

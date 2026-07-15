@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>EffeTune fixed-reference performance harness</title>
+</head>
+<body>
+  <p>Fixed-reference performance harness</p>
+  <script type="module">
+    import { runReferenceBrowserMeasurement } from './reference-browser-harness.mjs';
+    globalThis.__runEffeTuneReferenceMeasurement = runReferenceBrowserMeasurement;
+  </script>
+</body>
+</html>

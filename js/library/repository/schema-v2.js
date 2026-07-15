@@ -30,15 +30,18 @@ PRAGMA temp_store = MEMORY;
 `;
 
 export const MUSIC_LIBRARY_V2_SCHEMA_SQL = `
+DROP TABLE IF EXISTS playback_sequence_undo_owners;
+DROP TABLE IF EXISTS transport_undo_records;
+DROP TABLE IF EXISTS playback_sequence_transport_owners;
+DROP TABLE IF EXISTS playback_sequence_operation_owners;
+DROP TABLE IF EXISTS playback_sequence_items;
+DROP TABLE IF EXISTS playback_sequences;
+DROP TABLE IF EXISTS composed_segments;
+DROP TABLE IF EXISTS transport_state;
+
 CREATE TABLE IF NOT EXISTS meta(
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS catalog_versions(
-  version INTEGER PRIMARY KEY CHECK(version >= 0),
-  committed_at INTEGER NOT NULL,
-  reason TEXT
 );
 
 CREATE TABLE IF NOT EXISTS folders(
@@ -174,14 +177,6 @@ CREATE TABLE IF NOT EXISTS snapshot_object_owners(
   owner_id TEXT NOT NULL,
   ref_count INTEGER NOT NULL CHECK(ref_count > 0),
   PRIMARY KEY(snapshot_id, owner_kind, owner_id)
-);
-
-CREATE TABLE IF NOT EXISTS undo_records(
-  undo_id TEXT PRIMARY KEY,
-  snapshot_id TEXT NOT NULL REFERENCES snapshot_objects(snapshot_id) ON DELETE RESTRICT,
-  owner_operation_id TEXT REFERENCES operation_jobs(operation_id) ON DELETE RESTRICT,
-  expires_at INTEGER NOT NULL,
-  created_at INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS artwork_assets(
@@ -476,36 +471,28 @@ CREATE INDEX IF NOT EXISTS playlist_items_by_pending_op
 CREATE INDEX IF NOT EXISTS playlists_by_building_op
   ON playlists(building_operation_id) WHERE building_operation_id IS NOT NULL;
 
-CREATE TABLE IF NOT EXISTS playback_sequences(
-  id TEXT PRIMARY KEY,
-  source_context TEXT NOT NULL,
-  catalog_version INTEGER NOT NULL CHECK(catalog_version >= 0),
-  state TEXT NOT NULL CHECK(state IN ('building', 'active', 'deleted')),
-  item_count INTEGER CHECK(item_count IS NULL OR item_count >= 0),
-  seed INTEGER,
-  current_ordinal INTEGER,
-  snapshot_id TEXT REFERENCES snapshot_objects(snapshot_id) ON DELETE RESTRICT,
-  created_at INTEGER NOT NULL,
-  sealed_at INTEGER,
-  building_operation_id TEXT REFERENCES operation_jobs(operation_id) ON DELETE RESTRICT
+CREATE TABLE IF NOT EXISTS automatic_playlist_sources(
+  folder_id TEXT NOT NULL REFERENCES folders(id) ON DELETE CASCADE,
+  relative_path TEXT NOT NULL,
+  playlist_id TEXT NOT NULL UNIQUE REFERENCES playlists(id) ON DELETE CASCADE,
+  content_digest TEXT NOT NULL,
+  imported_at INTEGER NOT NULL,
+  PRIMARY KEY(folder_id, relative_path)
 );
 
-CREATE TABLE IF NOT EXISTS playback_sequence_items(
-  sequence_id TEXT NOT NULL REFERENCES playback_sequences(id) ON DELETE RESTRICT,
-  ordinal INTEGER NOT NULL CHECK(ordinal >= 0),
-  entry_instance_id TEXT NOT NULL UNIQUE,
-  track_uid TEXT NOT NULL,
-  PRIMARY KEY(sequence_id, ordinal)
+CREATE TABLE IF NOT EXISTS automatic_playlist_import_jobs(
+  operation_id TEXT PRIMARY KEY REFERENCES operation_jobs(operation_id) ON DELETE CASCADE,
+  folder_id TEXT NOT NULL REFERENCES folders(id) ON DELETE RESTRICT,
+  relative_path TEXT NOT NULL,
+  playlist_id TEXT NOT NULL REFERENCES playlists(id) ON DELETE RESTRICT,
+  content_digest TEXT NOT NULL,
+  base_position INTEGER NOT NULL CHECK(base_position >= 0),
+  expected_version INTEGER NOT NULL CHECK(expected_version >= 0),
+  UNIQUE(folder_id, relative_path, operation_id)
 );
 
-CREATE TABLE IF NOT EXISTS composed_segments(
-  segment_id TEXT PRIMARY KEY,
-  snapshot_id TEXT NOT NULL REFERENCES snapshot_objects(snapshot_id) ON DELETE RESTRICT,
-  operation_id TEXT REFERENCES operation_jobs(operation_id) ON DELETE RESTRICT,
-  transport_version INTEGER NOT NULL CHECK(transport_version >= 0),
-  state TEXT NOT NULL CHECK(state IN ('staging', 'active', 'deleted')),
-  created_at INTEGER NOT NULL
-);
+CREATE INDEX IF NOT EXISTS automatic_playlist_import_jobs_by_playlist
+  ON automatic_playlist_import_jobs(playlist_id, operation_id);
 
 CREATE TABLE IF NOT EXISTS deletion_jobs(
   job_id TEXT PRIMARY KEY,
@@ -530,53 +517,12 @@ CREATE TABLE IF NOT EXISTS deletion_repair_items(
 
 CREATE INDEX IF NOT EXISTS folders_by_sort_name ON folders(sort_name, id);
 CREATE INDEX IF NOT EXISTS playlists_by_sort_name ON playlists(sort_name, id);
-CREATE INDEX IF NOT EXISTS playback_sequences_by_building_operation
-  ON playback_sequences(building_operation_id, id);
-
-CREATE TABLE IF NOT EXISTS transport_state(
-  id TEXT PRIMARY KEY,
-  transport_version INTEGER NOT NULL CHECK(transport_version >= 0),
-  descriptor_json TEXT NOT NULL,
-  updated_at INTEGER NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS sequence_save_pages(
   operation_id TEXT NOT NULL REFERENCES operation_jobs(operation_id) ON DELETE RESTRICT,
   segment_index INTEGER NOT NULL CHECK(segment_index >= 0),
   transport_ordinal INTEGER NOT NULL CHECK(transport_ordinal >= 0),
   appended_count INTEGER NOT NULL CHECK(appended_count >= 0),
   PRIMARY KEY(operation_id, segment_index, transport_ordinal)
-);
-
-CREATE TABLE IF NOT EXISTS playback_sequence_operation_owners(
-  sequence_id TEXT NOT NULL REFERENCES playback_sequences(id) ON DELETE RESTRICT,
-  operation_id TEXT NOT NULL REFERENCES operation_jobs(operation_id) ON DELETE RESTRICT,
-  PRIMARY KEY(sequence_id, operation_id)
-);
-
-CREATE INDEX IF NOT EXISTS playback_sequence_operation_owners_by_operation
-  ON playback_sequence_operation_owners(operation_id, sequence_id);
-
-CREATE TABLE IF NOT EXISTS playback_sequence_transport_owners(
-  sequence_id TEXT PRIMARY KEY REFERENCES playback_sequences(id) ON DELETE RESTRICT,
-  transport_version INTEGER NOT NULL CHECK(transport_version > 0)
-);
-
-CREATE TABLE IF NOT EXISTS transport_undo_records(
-  undo_id TEXT PRIMARY KEY,
-  owner_operation_id TEXT NOT NULL REFERENCES operation_jobs(operation_id) ON DELETE RESTRICT,
-  descriptor_json TEXT NOT NULL,
-  created_at INTEGER NOT NULL,
-  expires_at INTEGER NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS transport_undo_records_by_expiry
-  ON transport_undo_records(expires_at, undo_id);
-
-CREATE TABLE IF NOT EXISTS playback_sequence_undo_owners(
-  sequence_id TEXT NOT NULL REFERENCES playback_sequences(id) ON DELETE RESTRICT,
-  undo_id TEXT NOT NULL REFERENCES transport_undo_records(undo_id) ON DELETE CASCADE,
-  PRIMARY KEY(sequence_id, undo_id)
 );
 
 CREATE TABLE IF NOT EXISTS operation_progress(
@@ -631,6 +577,31 @@ CREATE INDEX IF NOT EXISTS deletion_jobs_by_state_kind
 CREATE INDEX IF NOT EXISTS deletion_repair_items_by_track
   ON deletion_repair_items(original_track_uid, job_id, item_key);
 
+`;
+
+export const MUSIC_LIBRARY_V2_SESSION_SCHEMA_SQL = `
+CREATE TEMP TABLE IF NOT EXISTS playback_sequences(
+  id TEXT PRIMARY KEY,
+  source_context TEXT NOT NULL,
+  catalog_version INTEGER NOT NULL CHECK(catalog_version >= 0),
+  state TEXT NOT NULL CHECK(state IN ('building', 'active')),
+  item_count INTEGER CHECK(item_count IS NULL OR item_count >= 0),
+  seed INTEGER,
+  current_ordinal INTEGER,
+  created_at INTEGER NOT NULL,
+  sealed_at INTEGER
+);
+
+CREATE TEMP TABLE IF NOT EXISTS playback_sequence_items(
+  sequence_id TEXT NOT NULL REFERENCES playback_sequences(id) ON DELETE CASCADE,
+  ordinal INTEGER NOT NULL CHECK(ordinal >= 0),
+  entry_instance_id TEXT NOT NULL UNIQUE,
+  track_uid TEXT NOT NULL,
+  PRIMARY KEY(sequence_id, ordinal)
+);
+`;
+
+export const MUSIC_LIBRARY_V2_WEB_CONTEXT_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS query_contexts(
   context_token TEXT PRIMARY KEY,
   endpoint TEXT NOT NULL,
@@ -776,7 +747,10 @@ export function getMusicLibraryV2InitializationSql({ includePragmas = true, jour
   const pragmas = journalMode === 'persist'
     ? MUSIC_LIBRARY_V2_WEB_PRAGMAS_SQL
     : MUSIC_LIBRARY_V2_PRAGMAS_SQL;
+  const schema = journalMode === 'persist'
+    ? `${MUSIC_LIBRARY_V2_SCHEMA_SQL}\n${MUSIC_LIBRARY_V2_SESSION_SCHEMA_SQL}\n${MUSIC_LIBRARY_V2_WEB_CONTEXT_SCHEMA_SQL}`
+    : `${MUSIC_LIBRARY_V2_SCHEMA_SQL}\n${MUSIC_LIBRARY_V2_SESSION_SCHEMA_SQL}`;
   return includePragmas
-    ? `${pragmas}\n${MUSIC_LIBRARY_V2_SCHEMA_SQL}`
-    : MUSIC_LIBRARY_V2_SCHEMA_SQL;
+    ? `${pragmas}\n${schema}`
+    : schema;
 }

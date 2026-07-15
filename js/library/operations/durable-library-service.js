@@ -3,7 +3,6 @@ import { digestBulkOperationRequest } from './bulk-operation-protocol.js';
 
 export const LIBRARY_SERVICE_ADAPTER_METHODS = Object.freeze([
   'receiveOperation',
-  'lookupOperationResult',
   'getOperationStatus',
   'requestOperationCancel',
   'transitionOperation',
@@ -72,12 +71,13 @@ export class DurableLibraryService {
     return { kind: 'started', operationId: receipt.operationId };
   }
 
-  lookupResult(clientRequestId) {
-    return this.repository.lookupOperationResult(clientRequestId);
-  }
-
   status(operationId) {
     return this.repository.getOperationStatus(operationId);
+  }
+
+  async waitForTerminal(operationId) {
+    await this.running.get(operationId)?.task;
+    return this.status(operationId);
   }
 
   async cancel(operationId) {

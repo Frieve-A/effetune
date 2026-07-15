@@ -63,8 +63,7 @@ function createManager(client, options = {}) {
     catalogClientFactory: async () => ({
       client,
       runtime: options.runtime ?? 'web',
-      capabilities: options.capabilities ?? { productionQualified: false },
-      productionQualified: options.productionQualified === true
+      capabilities: options.capabilities ?? {}
     }),
     ...options
   });
@@ -83,7 +82,7 @@ test('production catalog factory prefers the existing Electron host without open
       return {
         async getCapabilities() {
           calls.push(['capabilities']);
-          return { protocolVersion: 1, productionQualified: true };
+          return { protocolVersion: 1 };
         }
       };
     },
@@ -98,7 +97,7 @@ test('production catalog factory prefers the existing Electron host without open
   });
 
   assert.equal(result.runtime, 'electron');
-  assert.equal(result.productionQualified, true);
+  assert.equal(Object.hasOwn(result, 'productionQualified'), false);
   assert.equal(result.bulkOperationService, serviceClient);
   assert.deepEqual(calls, [
     ['electron', { api }],
@@ -125,7 +124,7 @@ test('production catalog factory never falls back to IndexedDB in Electron', asy
   assert.equal(webFactoryCalls, 0);
 });
 
-test('production catalog factory opens dedicated Web v2 readwrite and preserves qualification false', async () => {
+test('production catalog factory opens the dedicated Web v2 repository readwrite', async () => {
   const calls = [];
   const client = {
     async open(options) {
@@ -134,7 +133,7 @@ test('production catalog factory opens dedicated Web v2 readwrite and preserves 
     },
     async getCapabilities() {
       calls.push(['capabilities']);
-      return { schemaVersion: 2, productionQualified: false };
+      return { schemaVersion: 2 };
     },
     async close() {
       calls.push(['close']);
@@ -146,7 +145,7 @@ test('production catalog factory opens dedicated Web v2 readwrite and preserves 
   });
 
   assert.equal(result.runtime, 'web');
-  assert.equal(result.productionQualified, false);
+  assert.equal(Object.hasOwn(result, 'productionQualified'), false);
   assert.equal(result.bulkOperationService, client);
   assert.deepEqual(calls, [
     ['open', { mode: 'readwrite', expectedSchemaVersion: 2 }],
@@ -160,7 +159,7 @@ test('LibraryManagerV2 initializes without a full count and serves the first bou
 
   assert.equal(await manager.init(), manager);
   assert.equal(harness.calls.some(call => call[0] === 'getCounts'), false);
-  assert.equal(manager.getRuntimeStatus().productionQualified, false);
+  assert.equal(Object.hasOwn(manager.getRuntimeStatus(), 'productionQualified'), false);
   const contextToken = await manager.createContext({
     endpoint: 'tracks',
     query: '',
@@ -262,31 +261,23 @@ test('LibraryManagerV2 normalizes entity contexts and delegates queryEntities', 
   });
 });
 
-test('LibraryManagerV2 exposes generic page reads without materializing a context', async () => {
-  const harness = createClient();
+test('LibraryManagerV2 requires queryEntities instead of a generic page compatibility fallback', async () => {
+  const harness = createClient({
+    queryEntities: undefined,
+    async readContextPage() {
+      assert.fail('legacy generic page reads must not satisfy the manager contract');
+    }
+  });
   const manager = createManager(harness.client);
-  await manager.init();
-  const contextToken = await manager.createContext({
-    endpoint: 'tracks',
-    query: 'needle',
-    sort: 'artist',
-    direction: 'desc'
-  });
-  await manager.readContextPage({ contextToken, cursor: 'cursor-1', limit: 75 });
 
-  assert.deepEqual(harness.calls.filter(call => call[0] === 'queryTracks').at(-1)[1], {
-    endpoint: 'tracks',
-    query: 'needle',
-    sort: 'artist',
-    direction: 'desc',
-    scope: null,
-    contextToken,
-    cursor: 'cursor-1',
-    limit: 75
-  });
+  await assert.rejects(
+    manager.init(),
+    error => error.code === 'catalogContractMismatch' && error.details?.method === 'queryEntities'
+  );
+  assert.equal(harness.calls.filter(call => call[0] === 'close').length, 1);
 });
 
-test('LibraryManagerV2 delegates ordinal reads and playback-source resolution when supported', async () => {
+test('LibraryManagerV2 delegates ordinal reads and Electron track actions when supported', async () => {
   const harness = createClient({
     async readContextPageAtOrdinal(request) {
       harness.calls.push(['readContextPageAtOrdinal', request]);
@@ -295,6 +286,10 @@ test('LibraryManagerV2 delegates ordinal reads and playback-source resolution wh
     async resolvePlaybackSource(trackUid) {
       harness.calls.push(['resolvePlaybackSource', trackUid]);
       return { kind: 'file', token: 'source-token' };
+    },
+    async showTrackInFolder(trackUid) {
+      harness.calls.push(['showTrackInFolder', trackUid]);
+      return { success: true };
     }
   });
   const manager = createManager(harness.client, { runtime: 'electron' });
@@ -309,6 +304,8 @@ test('LibraryManagerV2 delegates ordinal reads and playback-source resolution wh
     kind: 'file',
     token: 'source-token'
   });
+  assert.deepEqual(await manager.showTrackInFolder('track-9'), { success: true });
+  assert.deepEqual(harness.calls.at(-1), ['showTrackInFolder', 'track-9']);
 });
 
 test('LibraryManagerV2 publishes page starts for cursor and clamped ordinal pages', async () => {
@@ -364,14 +361,20 @@ test('LibraryManagerV2 coalesces invalidations and emits bounded view events', a
 
   harness.emitInvalidation(invalidation(2, 'tracks', 20));
   harness.emitInvalidation(invalidation(3, 'folders', 4));
+  harness.emitInvalidation({
+    catalogVersion: 4,
+    changedScopes: ['artwork'],
+    scopeVersions: { artwork: 1 },
+    counts: {}
+  });
   assert.equal(queued.length, 1);
   queued.shift()();
 
   assert.equal(events.length, 2);
   assert.deepEqual(events[0][1], {
-    catalogVersion: 3,
-    changedScopes: ['tracks', 'folders'],
-    scopeVersions: { tracks: 2, folders: 3 },
+    catalogVersion: 4,
+    changedScopes: ['tracks', 'folders', 'artwork'],
+    scopeVersions: { tracks: 2, folders: 3, artwork: 1 },
     counts: { tracks: 20, folders: 4 }
   });
 });
@@ -401,20 +404,28 @@ test('LibraryManagerV2 schedules invalidations through the native global receive
 
 test('LibraryManagerV2 publishes and releases Electron and Web scan progress subscriptions', async () => {
   let electronListener;
+  let folderRemovalListener;
   let electronUnsubscribed = false;
+  let folderRemovalUnsubscribed = false;
   const electronHarness = createClient({
     subscribeScanEvents(listener) {
       electronListener = listener;
       return () => { electronUnsubscribed = true; };
+    },
+    subscribeFolderRemovalEvents(listener) {
+      folderRemovalListener = listener;
+      return () => { folderRemovalUnsubscribed = true; };
     }
   });
   const electronManager = createManager(electronHarness.client, { runtime: 'electron' });
   const electronStates = [];
+  const folderRemovalStates = [];
   electronManager.addListener('scan-state', state => electronStates.push(state));
+  electronManager.addListener('folder-removal-state', state => folderRemovalStates.push(state));
   await electronManager.init();
   electronListener({
-    scanId: 'scan-electron', active: true, status: 'running',
-    progress: { status: 'metadata', counts: { found: 20, parsed: 7 } }
+    scanId: 'scan-electron', folderIds: ['folder-electron'], active: true, status: 'running',
+    progress: { folderId: 'folder-electron', status: 'metadata', counts: { found: 20, parsed: 7 } }
   });
   electronListener({
     scanId: 'scan-electron', active: false, terminal: true, status: 'completed',
@@ -423,27 +434,60 @@ test('LibraryManagerV2 publishes and releases Electron and Web scan progress sub
   assert.equal(electronStates[0].phase, 'scanning');
   assert.equal(electronStates[0].found, 20);
   assert.equal(electronStates[0].parsed, 7);
+  assert.deepEqual(electronStates[0].folderIds, ['folder-electron']);
   assert.equal(electronStates[1].phase, 'done');
+  folderRemovalListener({
+    folderId: 'folder-one', phase: 'removing', deleted: 7, total: 20
+  });
+  assert.deepEqual(folderRemovalStates, [{
+    folderId: 'folder-one', phase: 'removing', deleted: 7, total: 20,
+    remaining: 13, terminal: false
+  }]);
   await electronManager.close();
   assert.equal(electronUnsubscribed, true);
+  assert.equal(folderRemovalUnsubscribed, true);
 
   let webListener;
+  let webFolderRemovalListener;
+  let webFolderRemovalUnsubscribed = false;
   const webHarness = createClient({
     subscribeScanProgress(listener) {
       webListener = listener;
       return () => {};
+    },
+    subscribeFolderRemovalEvents(listener) {
+      webFolderRemovalListener = listener;
+      return () => { webFolderRemovalUnsubscribed = true; };
     }
   });
   const webManager = createManager(webHarness.client, { runtime: 'web' });
   const webStates = [];
+  const webFolderRemovalStates = [];
   webManager.addListener('scan-state', state => webStates.push(state));
+  webManager.addListener('folder-removal-state', state => webFolderRemovalStates.push(state));
   await webManager.init();
-  webListener({ scanId: 'scan-web', status: 'enumerating', counts: { found: 3, parsed: 1 } });
+  webListener({
+    scanId: 'scan-web', folderId: 'folder-web', status: 'enumerating',
+    counts: { found: 3, parsed: 1 }
+  });
   assert.deepEqual(
-    { phase: webStates[0].phase, found: webStates[0].found, parsed: webStates[0].parsed },
-    { phase: 'scanning', found: 3, parsed: 1 }
+    {
+      phase: webStates[0].phase,
+      folderIds: webStates[0].folderIds,
+      found: webStates[0].found,
+      parsed: webStates[0].parsed
+    },
+    { phase: 'scanning', folderIds: ['folder-web'], found: 3, parsed: 1 }
   );
+  webFolderRemovalListener({
+    folderId: 'folder-removed', phase: 'removing', deleted: 2, total: 5
+  });
+  assert.deepEqual(webFolderRemovalStates, [{
+    folderId: 'folder-removed', phase: 'removing', deleted: 2, total: 5,
+    remaining: 3, terminal: false
+  }]);
   await webManager.close();
+  assert.equal(webFolderRemovalUnsubscribed, true);
 });
 
 test('LibraryManagerV2 exposes typed unavailable results instead of legacy fallbacks', async () => {
@@ -460,6 +504,45 @@ test('LibraryManagerV2 exposes typed unavailable results instead of legacy fallb
     manager.resolvePlaybackSource('track-1'),
     error => error.code === 'operationUnavailable'
   );
+  assert.equal(manager.showTrackInFolder, undefined);
+});
+
+test('LibraryManagerV2 forwards current UI and browser language hints to catalog scans', async () => {
+  const harness = createClient();
+  const calls = [];
+  const manager = createManager(harness.client, {
+    uiManager: { userLanguage: 'ja', languagePreference: 'auto' },
+    windowRef: {
+      navigator: { language: 'ja-JP', languages: ['ja-JP', 'en-US'] }
+    },
+    folderService: {
+      async addFolder(options) {
+        calls.push(['addFolder', options]);
+        return { id: 'folder-1' };
+      }
+    },
+    scanService: {
+      async scanFolders(options) {
+        calls.push(['scanFolders', options]);
+        return { accepted: true };
+      }
+    }
+  });
+  await manager.init();
+
+  await manager.addFolder();
+  await manager.scanFolders(['folder-1']);
+
+  const languageHints = {
+    language: 'ja',
+    languagePreference: 'auto',
+    browserLanguage: 'ja-JP',
+    browserLanguages: ['ja-JP', 'en-US']
+  };
+  assert.deepEqual(calls, [
+    ['addFolder', { languageHints }],
+    ['scanFolders', { folderIds: ['folder-1'], languageHints }]
+  ]);
 });
 
 test('LibraryManagerV2 delegates service operations and releases contexts on close', async () => {
@@ -477,7 +560,6 @@ test('LibraryManagerV2 delegates service operations and releases contexts on clo
         serviceCalls.push(['start', request]);
         return { operationId: 'operation-1' };
       },
-      async lookupResult(clientRequestId) { return { kind: 'active', clientRequestId }; },
       async status(operationId) { return { operationId, phase: 'READY' }; },
       async cancel(operationId) { return { kind: 'cancelRequested', operationId }; },
       subscribeOperation(operationId, listener) {
@@ -497,9 +579,6 @@ test('LibraryManagerV2 delegates service operations and releases contexts on clo
     exclusions: []
   }), { operationId: 'operation-1' });
   assert.equal(manager.createOperationRequestId(), 'request-1');
-  assert.deepEqual(await manager.lookupLibraryOperation('request-1'), {
-    kind: 'active', clientRequestId: 'request-1'
-  });
   assert.deepEqual(await manager.getLibraryOperationStatus('operation-1'), {
     operationId: 'operation-1', phase: 'READY'
   });
@@ -513,11 +592,9 @@ test('LibraryManagerV2 delegates service operations and releases contexts on clo
   assert.equal(harness.calls.some(call => call[0] === 'releaseContext' && call[1] === contextToken), true);
   assert.equal(harness.calls.some(call => call[0] === 'close'), true);
   assert.deepEqual(serviceCalls[1][1], {
-    clientRequestId: 'request-1',
     operationKind: 'play',
     selectionDescriptor: { mode: 'all', contextToken, exclusions: [] },
-    target: null,
-    expectedTargetVersion: null,
+    target: {},
     options: {}
   });
 });

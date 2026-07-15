@@ -21,10 +21,6 @@ export class ElectronLibraryServiceClient {
     return this.api.start(request);
   }
 
-  lookupResult(clientRequestId) {
-    return this.api.lookupResult(clientRequestId);
-  }
-
   status(operationId) {
     return this.api.status(operationId);
   }
@@ -33,28 +29,29 @@ export class ElectronLibraryServiceClient {
     return this.api.cancel(operationId);
   }
 
+  previewPlaylistImport(request) {
+    return this.api.previewPlaylistImport(request);
+  }
+
+  commitPlaylistImportPreview(request) {
+    return this.api.commitPlaylistImportPreview(request);
+  }
+
+  cancelPlaylistImportPreview(request) {
+    return this.api.cancelPlaylistImportPreview(request);
+  }
+
   getProvisionalEntry(operationId) {
     return this.playbackApi.getProvisionalEntry(operationId);
-  }
-
-  commitTransportCommand(request) {
-    return this.playbackApi.commitTransportCommand(request);
-  }
-
-  getTransportState() {
-    return this.playbackApi.getTransportState();
-  }
-
-  applyTransportUndo(request) {
-    return this.playbackApi.applyTransportUndo(request);
   }
 
   readSequencePage(request) {
     return this.playbackApi.readSequencePage(request);
   }
 
-  resolveSequenceEntrySource(request) {
-    return this.playbackApi.resolveSequenceEntrySource(request);
+  async resolveSequenceEntrySource(request) {
+    const source = unwrapPlaybackResponse(await this.playbackApi.resolveSequenceEntrySource(request));
+    return source;
   }
 
   subscribeEvents(listener) {
@@ -82,6 +79,15 @@ export class ElectronLibraryServiceClient {
       }
     });
   }
+}
+
+function unwrapPlaybackResponse(response) {
+  if (response?.code !== 'folderPermissionRequired') return response;
+  const error = new Error('Playback folder access must be restored');
+  error.name = 'LibraryRepositoryError';
+  error.code = response.code;
+  error.details = response.details && typeof response.details === 'object' ? response.details : {};
+  throw error;
 }
 
 export function createElectronLibraryServiceClient(options) {

@@ -41,20 +41,13 @@ test('saveFile reports filesystem write errors', async () => {
   });
 });
 
-test('readFile reads text and binary payloads', async () => {
+test('readFile reads text payloads', async () => {
   const fileUtils = loadFreshModule('../../electron/file-utils.js');
   const dir = createTempDir('effetune-file-utils');
   const textPath = path.join(dir, 'text.txt');
-  const binaryPath = path.join(dir, 'audio.bin');
   fs.writeFileSync(textPath, 'hello');
-  fs.writeFileSync(binaryPath, Buffer.from([0, 1, 2, 255]));
 
   assert.deepEqual(await fileUtils.readFile(textPath), { success: true, content: 'hello' });
-  assert.deepEqual(await fileUtils.readFile(binaryPath, true), {
-    success: true,
-    content: 'AAEC/w==',
-    isBinary: true
-  });
 });
 
 test('readFile reports missing files', async () => {
@@ -63,23 +56,6 @@ test('readFile reports missing files', async () => {
 
   assert.equal(result.success, false);
   assert.match(result.error, /ENOENT|no such file/i);
-});
-
-test('readFileAsBuffer returns base64 and reports read errors', async () => {
-  const fileUtils = loadFreshModule('../../electron/file-utils.js');
-  const filePath = path.join(createTempDir('effetune-file-utils'), 'buffer.bin');
-  fs.writeFileSync(filePath, Buffer.from('buffered'));
-
-  assert.deepEqual(await fileUtils.readFileAsBuffer(filePath), {
-    success: true,
-    buffer: Buffer.from('buffered').toString('base64')
-  });
-
-  await withMutedConsoleAsync('error', async () => {
-    const result = await fileUtils.readFileAsBuffer(path.join(createTempDir('effetune-file-utils'), 'missing.bin'));
-    assert.equal(result.success, false);
-    assert.match(result.error, /ENOENT|no such file/i);
-  });
 });
 
 test('fileExists and joinPaths mirror filesystem helpers', () => {

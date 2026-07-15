@@ -303,14 +303,14 @@ export class ElectronIntegration {
    * Save audio preferences
    * @param {Object} preferences - Audio device preferences
    */
-  async saveAudioPreferences(preferences) {
+  async saveAudioPreferences(preferences, options = {}) {
     // Update global audio preferences reference
     if (preferences) {
       this.audioPreferences = preferences;
       // Make sure to update the global reference for AudioWorklet context
       window.audioPreferences = preferences;
     }
-    return saveAudioPreferences(this.isElectron, preferences);
+    return saveAudioPreferences(this.isElectron, preferences, options);
   }
 
   /**
@@ -526,17 +526,6 @@ export class ElectronIntegration {
         document.head.removeChild(styleElement);
       });
       
-      // Add event listener for update link if it exists
-      const updateLink = document.getElementById('about-update-link');
-      if (updateLink) {
-        updateLink.addEventListener('click', () => {
-          if (window.electronAPI && window.electronAPI.openExternal) {
-            window.electronAPI.openExternal('https://github.com/Frieve-A/effetune/releases/');
-          } else {
-            window.open('https://github.com/Frieve-A/effetune/releases/', '_blank');
-          }
-        });
-      }
     } catch (error) {
       console.error('Failed to show about dialog:', error);
     }

@@ -17,7 +17,7 @@ export function createUpdateNotification(updateInfo, {
     releaseButton.textContent = translate(
         windowRef,
         'ui.newVersionAvailable',
-        `New Version ${updateInfo.version} available.`,
+        `New ${updateInfo.version} available.`,
         { version: updateInfo.version }
     );
     releaseButton.addEventListener('click', () => {

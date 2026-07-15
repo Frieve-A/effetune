@@ -80,13 +80,8 @@ async function saveFile(filePath, content) {
   return await fileUtils.saveFile(filePath, content);
 }
 
-async function readFile(filePath, binary = false) {
-  return await fileUtils.readFile(filePath, binary);
-}
-
-// Handle read file as buffer request (for ID3 tag reading)
-async function readFileAsBuffer(filePath) {
-  return await fileUtils.readFileAsBuffer(filePath);
+async function readFile(filePath) {
+  return await fileUtils.readFile(filePath);
 }
 
 // File path utilities - using fileUtils
@@ -322,7 +317,6 @@ module.exports = {
   showOpenDialog,
   saveFile,
   readFile,
-  readFileAsBuffer,
   joinPaths,
   fileExists,
   getFilePath,

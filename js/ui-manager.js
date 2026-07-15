@@ -21,6 +21,7 @@ import { LayoutModeManager } from './ui/layout-mode-manager.js';
 import { MobileMenu } from './ui/mobile-menu.js';
 import { MobileNav } from './ui/mobile-nav.js';
 import { LibraryManagerV2 } from './library/library-manager-v2.js';
+import { createWebCatalogRecoveryController } from './library/repository/catalog-client-factory.js';
 import { LibraryView } from './ui/library/library-view.js';
 import { PowerStateView } from './ui/power-state-view.js';
 import { CatalogPlaybackBridge } from './ui/audio-player/catalog-playback-bridge.js';
@@ -32,6 +33,8 @@ function usesIOSFilePicker(windowRef = window) {
     return /iPad|iPhone|iPod/.test(userAgent)
         || (platform === 'MacIntel' && Number(navigatorRef?.maxTouchPoints || 0) > 1);
 }
+
+const ERROR_MESSAGE_DURATION_MS = 5000;
 
 export class UIManager {
     constructor(pluginManager, audioManager) {
@@ -45,11 +48,26 @@ export class UIManager {
         this.audioPlayer = null;
         this.audioPlayerLayoutPlaceholder = null;
         this.audioPlayerLayoutPlaceholderTimer = null;
+        this.transientMessageTimer = null;
         this.libraryManager = null;
         this.libraryView = null;
         this.libraryInitPromise = null;
         this.libraryPlaybackBridge = null;
         this.libraryLifecycleCloseHandler = null;
+        this.libraryRecoveryApi = window.electronAPI?.libraryRecoveryV1 ||
+            createWebCatalogRecoveryController();
+        this.libraryRecoveryState = window.electronAPI?.libraryRecoveryV1
+            ? { apiVersion: 1, status: 'initializing', available: false, canReset: false }
+            : this.libraryRecoveryApi.getState();
+        this.libraryRecoveryReadyPromise = null;
+        this.libraryRecoveryStateQueue = Promise.resolve();
+        this.libraryRecoveryStateRevision = 0;
+        this.libraryRecoveryUnsubscribe = null;
+        this.libraryRecoveryRoot = null;
+        this.libraryRecoveryResetButton = null;
+        this.libraryRecoveryTitle = null;
+        this.libraryRecoveryMessage = null;
+        this.libraryDeferredStartupOptions = null;
         // Double Blind Test controller (created lazily) and URL-reflection gate
         this.doubleBlindTest = null;
         this.urlReflectionEnabled = true;
@@ -79,6 +97,7 @@ export class UIManager {
         // Initialize localization
         this.translations = {}; // Current language translations
         this.englishTranslations = {}; // English translations for fallback
+        this.translationRequestGeneration = 0;
 
         // Initialize managers
         this.pluginListManager = new PluginListManager(pluginManager);
@@ -110,6 +129,7 @@ export class UIManager {
         this.initPresetManagement();
         this.initOpenMusicButton();
         this.initOpenLibraryButton();
+        this.initLibraryRecovery();
 
         // Initialize clipboard buttons
         this.undoButton = document.getElementById('undoButton');
@@ -246,8 +266,12 @@ export class UIManager {
         });
     }
 
-    // Delegate to StateManager with translation
-    setError(message, isError = false, params = {}) {
+    _setMessage(message, isError = false, params = {}) {
+        if (this.transientMessageTimer !== null) {
+            clearTimeout(this.transientMessageTimer);
+            this.transientMessageTimer = null;
+        }
+
         // Check if the message is a translation key
         if (message && (message.startsWith('error.') || message.startsWith('success.') ||
             message.startsWith('status.') || message.startsWith('library.'))) {
@@ -258,7 +282,34 @@ export class UIManager {
         this.stateManager.setError(message, isError);
     }
 
+    _scheduleMessageClear(duration) {
+        const timeoutId = setTimeout(() => {
+            if (this.transientMessageTimer !== timeoutId) return;
+            this.transientMessageTimer = null;
+            this.stateManager.clearError();
+        }, duration);
+        this.transientMessageTimer = timeoutId;
+    }
+
+    // Delegate to StateManager with translation. Errors are notifications, not
+    // persistent state indicators, so they must never remain in the header forever.
+    setError(message, isError = false, params = {}) {
+        this._setMessage(message, isError, params);
+        if (isError) {
+            this._scheduleMessageClear(ERROR_MESSAGE_DURATION_MS);
+        }
+    }
+
+    showTransientMessage(message, isError = false, params = {}, duration = 3000) {
+        this._setMessage(message, isError, params);
+        this._scheduleMessageClear(duration);
+    }
+
     clearError() {
+        if (this.transientMessageTimer !== null) {
+            clearTimeout(this.transientMessageTimer);
+            this.transientMessageTimer = null;
+        }
         this.stateManager.clearError();
     }
 
@@ -335,8 +386,7 @@ export class UIManager {
             console.error('Failed to parse pipeline state:', error);
             // Show error to user
             if (this.stateManager) {
-                this.stateManager.setError(this.t('error.invalidUrl', { message: error.message }));
-                setTimeout(() => this.stateManager.clearError(), 5000);
+                this.setError(this.t('error.invalidUrl', { message: error.message }), true);
             }
             return null;
         }
@@ -603,9 +653,11 @@ export class UIManager {
 
     async setLanguagePreference(languagePreference, { persist = true } = {}) {
         const normalizedPreference = normalizeLanguagePreference(languagePreference);
+        const targetLocale = this.determineUserLanguage(normalizedPreference);
+        const requestGeneration = ++this.translationRequestGeneration;
 
         this.languagePreference = normalizedPreference;
-        this.userLanguage = this.determineUserLanguage(normalizedPreference);
+        this.userLanguage = targetLocale;
 
         if (persist && window.electronIntegration && window.electronIntegration.isElectronEnvironment()) {
             await window.electronIntegration.saveConfig({ language: normalizedPreference });
@@ -616,7 +668,7 @@ export class UIManager {
             language: normalizedPreference
         };
 
-        await this.loadTranslations(this.userLanguage);
+        await this.loadTranslations(targetLocale, requestGeneration);
         return this.userLanguage;
     }
 
@@ -689,17 +741,22 @@ export class UIManager {
      * Load translations for the specified language
      * @param {string} locale - The language code to load
      */
-    async loadTranslations(locale) {
+    async loadTranslations(locale, requestGeneration = ++this.translationRequestGeneration) {
         // Default to English if locale is not specified
         const targetLocale = locale || 'en';
-
-        // If loading English, use the already loaded English translations
-        if (targetLocale === 'en') {
-            this.translations = this.englishTranslations;
+        const publishTranslations = translations => {
+            if (requestGeneration !== this.translationRequestGeneration ||
+                targetLocale !== this.userLanguage) return;
+            this.translations = translations;
             this.updateUITexts();
             if (window.electronIntegration && window.electronIntegration.isElectronEnvironment()) {
                 window.electronIntegration.updateApplicationMenu();
             }
+        };
+
+        // If loading English, use the already loaded English translations
+        if (targetLocale === 'en') {
+            publishTranslations(this.englishTranslations);
             return;
         }
 
@@ -710,11 +767,7 @@ export class UIManager {
             // If the locale file doesn't exist, fall back to English
             if (!response.ok) {
                 console.warn(`Translation file for ${targetLocale} not found, falling back to English`);
-                this.translations = this.englishTranslations;
-                this.updateUITexts();
-                if (window.electronIntegration && window.electronIntegration.isElectronEnvironment()) {
-                    window.electronIntegration.updateApplicationMenu();
-                }
+                publishTranslations(this.englishTranslations);
                 return;
             }
 
@@ -727,23 +780,11 @@ export class UIManager {
                 .replace(/\/\*[\s\S]*?\*\//g, ''); // Remove multi-line comments
 
             // Parse the JSON content
-            this.translations = JSON.parse(jsonContent);
-
-            // Update UI texts with new translations
-            this.updateUITexts();
-
-            // Update Electron menu if in Electron environment
-            if (window.electronIntegration && window.electronIntegration.isElectronEnvironment()) {
-                window.electronIntegration.updateApplicationMenu();
-            }
+            publishTranslations(JSON.parse(jsonContent));
         } catch (error) {
             console.error(`Error loading translations for ${targetLocale}:`, error);
             // Fall back to English translations
-            this.translations = this.englishTranslations;
-            this.updateUITexts();
-            if (window.electronIntegration && window.electronIntegration.isElectronEnvironment()) {
-                window.electronIntegration.updateApplicationMenu();
-            }
+            publishTranslations(this.englishTranslations);
         }
     }
 
@@ -804,6 +845,8 @@ export class UIManager {
             pipelineHeaderTitle.textContent = "Effect Pipeline";
          }
         this.updatePipelineEmptyContent();
+        this.renderLibraryRecoveryShell();
+        this.libraryView?.updateUITexts?.();
         const shareButton = document.getElementById('shareButton');
         if (shareButton) {
             shareButton.textContent = this.t('ui.shareButton');
@@ -1183,32 +1226,211 @@ export class UIManager {
         this.updateViewSwitchButtons();
     }
 
-    async ensureLibraryManager() {
+    initLibraryRecovery() {
+        const api = this.libraryRecoveryApi;
+        if (!api || typeof api.getState !== 'function') return;
+
+        if (typeof api.onStateChange === 'function') {
+            this.libraryRecoveryUnsubscribe = api.onStateChange(state => {
+                this.libraryRecoveryStateRevision += 1;
+                this.queueLibraryRecoveryState(state);
+            });
+        }
+
+        const queryRevision = this.libraryRecoveryStateRevision;
+        this.libraryRecoveryReadyPromise = Promise.resolve()
+            .then(() => api.getState())
+            .then(state => {
+                if (queryRevision !== this.libraryRecoveryStateRevision) return this.libraryRecoveryState;
+                return this.queueLibraryRecoveryState(state);
+            })
+            .catch(error => {
+                console.error('Failed to read Music Library availability:', error);
+                return this.libraryRecoveryState;
+            });
+    }
+
+    queueLibraryRecoveryState(state) {
+        this.libraryRecoveryStateQueue = this.libraryRecoveryStateQueue
+            .then(() => this.applyLibraryRecoveryState(state))
+            .catch(error => {
+                console.error('Failed to apply Music Library availability:', error);
+            });
+        return this.libraryRecoveryStateQueue.then(() => this.libraryRecoveryState);
+    }
+
+    async applyLibraryRecoveryState(state) {
+        const normalized = this.normalizeLibraryRecoveryState(state);
+        if (!normalized) return this.libraryRecoveryState;
+        const previous = this.libraryRecoveryState;
+        this.libraryRecoveryState = normalized;
+        this.renderLibraryRecoveryShell();
+
+        if (!normalized.available) {
+            const wasLibraryVisible = document.body?.classList?.contains('view-library') &&
+                !this.libraryDeferredStartupOptions;
+            if (previous?.available || this.libraryManager || this.libraryView) {
+                await this.disposeLibraryManager({ destroyView: true });
+            }
+            if (wasLibraryVisible) this.showLibraryRecoveryShell();
+            return normalized;
+        }
+
+        this.hideLibraryRecoveryShell();
+        if (this.libraryDeferredStartupOptions) {
+            const options = this.libraryDeferredStartupOptions;
+            this.libraryDeferredStartupOptions = null;
+            await this.showLibraryView({ ...options, skipRecoveryWait: true });
+        } else if (document.body?.classList?.contains('view-library') && !this.libraryView) {
+            await this.ensureLibraryManager({ skipRecoveryWait: true });
+            if (this.libraryView) this.libraryView.show({ focusSearch: false });
+        }
+        return normalized;
+    }
+
+    normalizeLibraryRecoveryState(state) {
+        const status = state?.status;
+        if (state?.apiVersion !== 1 || !['initializing', 'available', 'unavailable', 'resetting'].includes(status)) {
+            console.error('Ignored an invalid Music Library availability response.');
+            return null;
+        }
+        return {
+            apiVersion: 1,
+            status,
+            available: status === 'available' && state.available === true,
+            canReset: status === 'unavailable' && state.canReset === true
+        };
+    }
+
+    ensureLibraryRecoveryShell() {
+        if (this.libraryRecoveryRoot || typeof document?.createElement !== 'function') {
+            return this.libraryRecoveryRoot;
+        }
+        const root = document.createElement('section');
+        root.className = 'library-recovery-shell';
+        root.hidden = true;
+        root.setAttribute('role', 'status');
+        root.setAttribute('aria-live', 'polite');
+
+        const panel = document.createElement('div');
+        panel.className = 'library-recovery-panel';
+        const title = document.createElement('h2');
+        title.className = 'library-recovery-title';
+        const message = document.createElement('p');
+        message.className = 'library-recovery-message';
+        const resetButton = document.createElement('button');
+        resetButton.type = 'button';
+        resetButton.className = 'library-button library-recovery-reset';
+        resetButton.addEventListener('click', () => void this.resetLibraryCatalog());
+        panel.append(title, message, resetButton);
+        root.append(panel);
+
+        const mainContainer = document.querySelector?.('.main-container');
+        mainContainer?.parentNode?.insertBefore?.(root, mainContainer.nextSibling);
+        this.libraryRecoveryRoot = root;
+        this.libraryRecoveryTitle = title;
+        this.libraryRecoveryMessage = message;
+        this.libraryRecoveryResetButton = resetButton;
+        this.renderLibraryRecoveryShell();
+        return root;
+    }
+
+    renderLibraryRecoveryShell() {
+        if (!this.libraryRecoveryRoot) return;
+        const status = this.libraryRecoveryState?.status || 'initializing';
+        const titleKey = `library.recovery.${status}.title`;
+        const messageKey = `library.recovery.${status}.message`;
+        this.libraryRecoveryTitle.textContent = this.t?.(titleKey) || titleKey;
+        this.libraryRecoveryMessage.textContent = this.t?.(messageKey) || messageKey;
+        this.libraryRecoveryResetButton.textContent = this.t?.('library.recovery.action.reset') || 'Reset Library';
+        this.libraryRecoveryResetButton.hidden = !this.libraryRecoveryState?.canReset;
+        this.libraryRecoveryResetButton.disabled = !this.libraryRecoveryState?.canReset;
+    }
+
+    showLibraryRecoveryShell() {
+        const root = this.ensureLibraryRecoveryShell();
+        if (!root) return false;
+        this.renderLibraryRecoveryShell();
+        root.hidden = false;
+        if (this.libraryView?.root) this.libraryView.root.hidden = true;
+        document.body?.classList?.add('view-library');
+        this.updateViewSwitchButtons(true);
+        this.mobileNav?.setView?.('library', { fromLibraryView: true });
+        return true;
+    }
+
+    hideLibraryRecoveryShell() {
+        if (this.libraryRecoveryRoot) this.libraryRecoveryRoot.hidden = true;
+        if (this.libraryView?.root) this.libraryView.root.hidden = false;
+    }
+
+    async resetLibraryCatalog() {
+        if (!this.libraryRecoveryState?.canReset || typeof this.libraryRecoveryApi?.resetCatalog !== 'function') {
+            return false;
+        }
+        const confirmation = this.t?.('library.recovery.confirm.reset') ||
+            'Reset the saved Music Library catalog? Your audio files and other settings will not be changed.';
+        if (typeof window.confirm !== 'function' || !window.confirm(confirmation)) return false;
+        this.libraryRecoveryResetButton.disabled = true;
+        try {
+            const result = await this.libraryRecoveryApi.resetCatalog({ confirmed: true });
+            if (result?.state) await this.queueLibraryRecoveryState(result.state);
+            return result?.recovered === true;
+        } catch (error) {
+            console.error('Failed to reset the Music Library catalog:', error);
+            this.renderLibraryRecoveryShell();
+            return false;
+        } finally {
+            if (this.libraryRecoveryResetButton) {
+                this.libraryRecoveryResetButton.disabled = !this.libraryRecoveryState?.canReset;
+            }
+        }
+    }
+
+    async ensureLibraryManager(options = {}) {
         if (this.libraryManager && this.libraryView) {
             return this.libraryManager;
         }
+        if (!options.skipRecoveryWait) await this.libraryRecoveryReadyPromise;
+        if (!this.libraryRecoveryState?.available) return null;
         if (!this.libraryInitPromise) {
             this.libraryInitPromise = (async () => {
-                this.libraryManager = new LibraryManagerV2({ uiManager: this });
-                window.libraryManager = this.libraryManager;
-                await this.libraryManager.init();
+                const manager = this.createLibraryManager();
+                this.libraryManager = manager;
+                window.libraryManager = manager;
+                await manager.init();
+                if (!this.libraryRecoveryState?.available || this.libraryManager !== manager) {
+                    await manager.close?.();
+                    return null;
+                }
                 this.connectLibraryPlaybackBridge();
-                this.libraryView = new LibraryView({
-                    manager: this.libraryManager,
-                    uiManager: this
-                });
+                this.libraryView = this.createLibraryView(manager);
                 this.libraryView.mount();
                 this.mobileNav?.attachLibraryView?.();
                 this.registerLibraryLifecycleCleanup();
                 return this.libraryManager;
-            })().catch(error => {
+            })().catch(async error => {
                 this.libraryInitPromise = null;
                 console.error('Failed to initialize the Music Library:', error);
-                this.setError('library.error.actionFailed', true);
-                throw error;
+                if (typeof this.libraryRecoveryApi?.reportOpenFailure === 'function') {
+                    this.libraryRecoveryApi.reportOpenFailure(error);
+                    await this.libraryRecoveryStateQueue;
+                } else {
+                    this.setError('library.error.actionFailed', true);
+                    await this.disposeLibraryManager({ destroyView: true });
+                }
+                return null;
             });
         }
         return this.libraryInitPromise;
+    }
+
+    createLibraryManager() {
+        return new LibraryManagerV2({ uiManager: this });
+    }
+
+    createLibraryView(manager) {
+        return new LibraryView({ manager, uiManager: this });
     }
 
     connectLibraryPlaybackBridge() {
@@ -1226,15 +1448,6 @@ export class UIManager {
         });
         this.libraryManager.bulkOperationService = this.libraryPlaybackBridge;
         if (this.audioPlayer) this.audioPlayer.libraryOperationService = this.libraryPlaybackBridge;
-        void this.libraryPlaybackBridge.restoreTransport().catch(error => {
-            if (error?.code === 'folderPermissionRequired') {
-                console.warn('Library playback could not restore folder access during startup.', error);
-                this.setError?.('status.libraryTracksSkippedOffline', false, { count: 1 });
-                return;
-            }
-            console.error('Failed to restore Music Library playback:', error);
-            this.setError?.('library.error.actionFailed', true);
-        });
         return this.libraryPlaybackBridge;
     }
 
@@ -1246,21 +1459,46 @@ export class UIManager {
         window.addEventListener?.('pagehide', this.libraryLifecycleCloseHandler, { once: true });
     }
 
-    async disposeLibraryManager() {
+    async disposeLibraryManager(options = {}) {
         const manager = this.libraryManager;
+        const view = this.libraryView;
         this.libraryPlaybackBridge?.close?.();
         this.libraryPlaybackBridge = null;
         this.libraryManager = null;
+        this.libraryView = null;
         this.libraryInitPromise = null;
         if (window.libraryManager === manager) window.libraryManager = null;
+        if (options.destroyView && view) {
+            view.hide?.({ restoreFocus: false });
+            for (const unsubscribe of view.unsubscribe || []) unsubscribe?.();
+            view.unsubscribe = [];
+            view.handleGlobalLibraryKeyDown = () => {};
+            view.handleMobilePopState = () => {};
+            view.root?.remove?.();
+        }
         await manager?.close?.();
     }
 
     async showLibraryView(options = {}) {
-        await this.ensureLibraryManager();
+        await this.ensureLibraryManager({
+            skipRecoveryWait: options.skipRecoveryWait === true
+        });
         if (options.isCurrentRequest?.() === false) {
             return false;
         }
+        if (!this.libraryView) {
+            if (this.libraryRecoveryState?.available) {
+                this.showEffectPipelineView({ restoreFocus: false });
+                return false;
+            }
+            if (options.initialView !== undefined) {
+                this.libraryDeferredStartupOptions = { ...options, isCurrentRequest: undefined };
+                this.showEffectPipelineView({ restoreFocus: false });
+                return false;
+            }
+            return this.showLibraryRecoveryShell();
+        }
+        this.hideLibraryRecoveryShell();
         const focusSearch = options.focusSearch ?? !this.layoutMode?.isMobile;
         const showOptions = {
             focusSearch,
@@ -1294,6 +1532,8 @@ export class UIManager {
             returnFocus: options.returnFocus,
             fallbackFocus
         });
+        this.hideLibraryRecoveryShell();
+        document.body?.classList?.remove('view-library');
         this.updateViewSwitchButtons(false);
     }
 

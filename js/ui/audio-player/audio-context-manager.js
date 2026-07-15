@@ -58,6 +58,7 @@ export class AudioContextManager {
     this.transitionRequestToken = 0;
     this.activeTransitionRequest = null;
     this.stopRequestToken = 0;
+    this.graphRebuildGeneration = 0;
   }
 
   // ===== CORE AUDIO METHODS =====
@@ -639,6 +640,16 @@ export class AudioContextManager {
     const wasPaused = !!state?.isPaused;
     const wasStopped = !!state?.isStopped;
     const restorePosition = this.getPlaybackPositionForGraphRebind(state);
+    const currentTrackIndex = state?.currentTrackIndex;
+    const graphRebuildGeneration = ++this.graphRebuildGeneration;
+    const isGraphRebuildCurrent = () => {
+      if (graphRebuildGeneration !== this.graphRebuildGeneration) return false;
+      const currentState = this.getCurrentState();
+      if (Number.isInteger(currentTrackIndex) && currentState?.currentTrackIndex !== currentTrackIndex) {
+        return false;
+      }
+      return !currentState?.currentTrack || samePlaybackEntry(currentState.currentTrack, currentTrack);
+    };
 
     this.detachCurrentGraphNodesForRebind();
     this.audioPlayer.audioContext = newAudioContext;
@@ -662,8 +673,42 @@ export class AudioContextManager {
       transitionType: 'audio-reset'
     }, 'Audio graph rebuild rebinding playback');
 
+    if (currentTrack.sourceKind === 'electron-file') {
+      try {
+        this.detachAudioElementForGraphRebuild();
+        const revalidation = await this.audioPlayer.playbackManager?.prepareCatalogTrackForGraphRebuild?.(
+          currentTrack,
+          { play: wasPlaying }
+        );
+        if (!isGraphRebuildCurrent() || revalidation?.handled) return;
+        const isStale = typeof revalidation?.isCurrent === 'function'
+          ? () => !isGraphRebuildCurrent() || !revalidation.isCurrent()
+          : () => !isGraphRebuildCurrent();
+        if (isStale?.()) return;
+        await this.rebindAudioElementAfterGraphRebuild(
+          revalidation?.track ?? currentTrack,
+          restorePosition,
+          wasPlaying,
+          wasPaused,
+          wasStopped,
+          isStale
+        );
+      } catch (error) {
+        if (!isGraphRebuildCurrent()) return;
+        console.error('[AudioContextManager] Direct Electron media rebind after audio graph rebuild failed:', error);
+        this.updateState({
+          isTransitioning: false,
+          transitionType: null,
+          isPlaying: false,
+          isPaused: false
+        }, 'Audio graph rebind failed');
+      }
+      return;
+    }
+
     try {
-      const buffer = await this.prepareTrackBuffer(currentTrack);
+      const buffer = await this.prepareTrackBuffer(currentTrack, () => !isGraphRebuildCurrent());
+      if (!isGraphRebuildCurrent() || !buffer) return;
       const duration = Number.isFinite(buffer.duration) ? buffer.duration : 0;
       const clampedPosition = wasStopped ? 0 : Math.max(0, Math.min(restorePosition, duration));
 
@@ -686,6 +731,7 @@ export class AudioContextManager {
 
       if (wasPlaying) {
         await this.playBufferSource();
+        if (!isGraphRebuildCurrent()) return;
       } else {
         this.maintainSilentSource();
       }
@@ -694,6 +740,7 @@ export class AudioContextManager {
         this.prepareNextTrackBufferWithRepeatMode();
       }
     } catch (error) {
+      if (!isGraphRebuildCurrent()) return;
       console.warn('[AudioContextManager] Buffer rebind after audio graph rebuild failed, falling back to audio element:', error);
       if (this.shouldSuppressAudioElementFallback(error)) {
         this.updateState({
@@ -705,8 +752,16 @@ export class AudioContextManager {
         return;
       }
       try {
-        await this.rebindAudioElementAfterGraphRebuild(currentTrack, restorePosition, wasPlaying, wasPaused, wasStopped);
+        await this.rebindAudioElementAfterGraphRebuild(
+          currentTrack,
+          restorePosition,
+          wasPlaying,
+          wasPaused,
+          wasStopped,
+          () => !isGraphRebuildCurrent()
+        );
       } catch (fallbackError) {
+        if (!isGraphRebuildCurrent()) return;
         console.error('[AudioContextManager] Audio element rebind after graph rebuild failed:', fallbackError);
         this.updateState({
           isTransitioning: false,
@@ -721,13 +776,23 @@ export class AudioContextManager {
   /**
    * Fallback path for tracks that cannot be decoded into an AudioBuffer.
    */
-  async rebindAudioElementAfterGraphRebuild(track, position, wasPlaying, wasPaused, wasStopped) {
+  async rebindAudioElementAfterGraphRebuild(
+    track,
+    position,
+    wasPlaying,
+    wasPaused,
+    wasStopped,
+    isStale = null
+  ) {
+    if (isStale?.()) return false;
     this.detachAudioElementForGraphRebuild();
-    const playableTrack = await this.setupResolvedAudioElement(track);
+    const playableTrack = await this.setupResolvedAudioElement(track, isStale);
+    if (isStale?.() || !playableTrack) return false;
 
     const audioElement = this.audioPlayer.audioElement;
     if (audioElement) {
       const applyPosition = () => {
+        if (isStale?.()) return;
         try {
           const duration = Number.isFinite(audioElement.duration) ? audioElement.duration : 0;
           audioElement.currentTime = duration > 0 ? Math.max(0, Math.min(position, duration)) : Math.max(0, position);
@@ -742,6 +807,8 @@ export class AudioContextManager {
         audioElement.addEventListener('loadedmetadata', applyPosition, { once: true });
       }
     }
+
+    if (isStale?.()) return false;
 
     this.updateState({
       currentTrack: playableTrack,
@@ -759,8 +826,10 @@ export class AudioContextManager {
     }, 'Audio graph rebuilt and audio element rebound');
 
     if (wasPlaying) {
+      if (isStale?.()) return false;
       await this.playAudioElement();
     }
+    return !isStale?.();
   }
   
   // ===== STATE MANAGEMENT =====
@@ -801,12 +870,22 @@ export class AudioContextManager {
   }
 
   getPlaylistIdentityIndex(track) {
-    return this.getPlaylist().findIndex(playlistTrack => playlistTrack === track);
+    const playbackManager = this.audioPlayer.playbackManager;
+    if (typeof playbackManager?.getTrackIndex === 'function') {
+      return playbackManager.getTrackIndex(track, true);
+    }
+    const playlist = this.getPlaylist();
+    return typeof playlist.findIndex === 'function'
+      ? playlist.findIndex(playlistTrack => playlistTrack === track)
+      : -1;
   }
 
   getPlaylistTrackAt(index) {
     const normalizedIndex = this.normalizePlaylistIndex(index);
-    return normalizedIndex >= 0 ? this.getPlaylist()[normalizedIndex] : null;
+    if (normalizedIndex < 0) return null;
+    return this.audioPlayer.playbackManager?.getTrack?.(normalizedIndex) ??
+      this.getPlaylist()[normalizedIndex] ??
+      null;
   }
 
   playbackEntriesMatch(left, right, targetIndex = null) {
@@ -836,6 +915,7 @@ export class AudioContextManager {
   }
 
   beginLoadRequest(track, targetIndex = null) {
+    this.graphRebuildGeneration += 1;
     const request = {
       token: ++this.loadRequestToken,
       track,
@@ -855,6 +935,7 @@ export class AudioContextManager {
   }
 
   beginTransitionRequest(track, targetIndex = null) {
+    this.graphRebuildGeneration += 1;
     const request = {
       token: ++this.transitionRequestToken,
       track,
@@ -878,6 +959,7 @@ export class AudioContextManager {
   }
 
   invalidatePendingPlaybackOperations() {
+    this.graphRebuildGeneration += 1;
     this.stopRequestToken++;
     this.loadRequestToken++;
     this.activeLoadRequest = null;
@@ -1003,7 +1085,13 @@ export class AudioContextManager {
       }
     }
 
-    const playlistIndex = this.getPlaylist().findIndex(playlistTrack => samePlaybackEntry(playlistTrack, track));
+    const playbackManager = this.audioPlayer.playbackManager;
+    const playlist = this.getPlaylist();
+    const playlistIndex = typeof playbackManager?.getTrackIndex === 'function'
+      ? playbackManager.getTrackIndex(track)
+      : typeof playlist.findIndex === 'function'
+        ? playlist.findIndex(playlistTrack => samePlaybackEntry(playlistTrack, track))
+        : -1;
     if (playlistIndex >= 0) return playlistIndex;
 
     return fallbackIndex;
@@ -1028,6 +1116,10 @@ export class AudioContextManager {
       }
       this.currentObjectURL = URL.createObjectURL(track.file);
       this.audioPlayer.audioElement.src = this.currentObjectURL;
+    } else if (track.sourceKind === 'electron-file') {
+      const mediaSource = this.getDirectElectronMediaSource(track);
+      if (!mediaSource) return false;
+      this.audioPlayer.audioElement.src = mediaSource;
     } else if (track.path) {
       let formattedPath = track.path;
       if (window.electronAPI && window.electronIntegration) {
@@ -1058,6 +1150,12 @@ export class AudioContextManager {
     
     this.loadMetadata(track, null, currentIndex);
     return true;
+  }
+
+  getDirectElectronMediaSource(track) {
+    return track?.sourceKind === 'electron-file'
+      ? electronFilePathToMediaUrl(track.path)
+      : null;
   }
   
   /**
@@ -2054,13 +2152,19 @@ export class AudioContextManager {
     if (state?.isTransitioning) {
       return;
     }
+
+    const playbackManager = this.audioPlayer.playbackManager;
+    if (playbackManager?.catalogSequence) {
+      playbackManager.onTrackEnded();
+      return;
+    }
     
     const repeatMode = state?.repeatMode || 'OFF';
     const currentIndex = this.audioPlayer.stateManager.getCurrentTrackIndex();
-    const playlist = this.audioPlayer.playbackManager?.playlist || [];
+    const playlist = playbackManager?.playlist || [];
     
     if (repeatMode === 'ONE') {
-      const currentTrack = this.audioPlayer.playbackManager?.getTrack(currentIndex);
+      const currentTrack = playbackManager?.getTrack(currentIndex);
       if (currentTrack) {
         this.seamlessTransition(currentTrack, currentIndex, false).catch(error => {
           console.error('[AudioContextManager] Failed to restart track in repeat ONE mode:', error);
@@ -2072,8 +2176,8 @@ export class AudioContextManager {
     const isLastTrack = currentIndex >= playlist.length - 1;
     
     if (isLastTrack && repeatMode === 'ALL') {
-      if (this.audioPlayer.playbackManager?.onTrackEnded) {
-        this.audioPlayer.playbackManager.onTrackEnded();
+      if (playbackManager?.onTrackEnded) {
+        playbackManager.onTrackEnded();
       } else if (playlist.length > 0) {
         const firstTrack = playlist[0];
         this.transitionToNextTrack(firstTrack, 0, false).catch(error => {
@@ -2085,8 +2189,8 @@ export class AudioContextManager {
       this.stopCurrentPlayback();
       this.maintainSilentSource();
       
-      if (this.audioPlayer.playbackManager && this.audioPlayer.playbackManager.playlist.length > 0) {
-        const firstTrack = this.audioPlayer.playbackManager.playlist[0];
+      if (playbackManager && playbackManager.playlist.length > 0) {
+        const firstTrack = playbackManager.playlist[0];
         const loadRequest = this.beginLoadRequest(firstTrack, 0);
         const isStale = () => !this.isActiveLoadRequest(loadRequest) ||
           !samePlaybackEntry(this.getCurrentState()?.currentTrack, firstTrack) ||
@@ -2115,21 +2219,23 @@ export class AudioContextManager {
         }
 
         this.loadMetadata(firstTrack, loadRequest, 0);
-        
-        this.prepareTrackBuffer(firstTrack, isStale).then(buffer => {
-          if (isStale() || !buffer) return;
 
-          this.currentBuffer = buffer;
-          
-          this.updateState({
-            currentBuffer: buffer,
-            currentTrackDuration: buffer.duration
-          }, 'First track buffer prepared for next playback');
-          
-          this.prepareNextTrackBufferWithRepeatMode();
-        }).catch(error => {
-          console.error('[AudioContextManager] Failed to prepare first track buffer:', error);
-        });
+        if (!this.isDirectElectronCatalogSource(firstTrack)) {
+          this.prepareTrackBuffer(firstTrack, isStale).then(buffer => {
+            if (isStale() || !buffer) return;
+
+            this.currentBuffer = buffer;
+
+            this.updateState({
+              currentBuffer: buffer,
+              currentTrackDuration: buffer.duration
+            }, 'First track buffer prepared for next playback');
+
+            this.prepareNextTrackBufferWithRepeatMode();
+          }).catch(error => {
+            console.error('[AudioContextManager] Failed to prepare first track buffer:', error);
+          });
+        }
       } else {
         this.updateState({
           playlist: [],
@@ -2150,7 +2256,7 @@ export class AudioContextManager {
       
       return;
     } else {
-      this.audioPlayer.playbackManager?.onTrackEnded();
+      playbackManager?.onTrackEnded();
     }
   }
   
@@ -2239,6 +2345,22 @@ export class AudioContextManager {
         isTransitioning: true,
         transitionType: 'loading'
       }, 'Track loading started');
+
+      if (this.isDirectElectronCatalogSource(track)) {
+        try {
+          const playableTrack = await this.setupResolvedAudioElement(
+            track,
+            isStale,
+            trackIndex,
+            loadRequest.sourceGeneration
+          );
+          if (isStale() || !playableTrack) return false;
+          return true;
+        } catch (error) {
+          console.error('[AudioContextManager] Direct Electron media setup failed:', error);
+          return this.completeTrackLoadFailure(error, error, isStale, trackIndex);
+        }
+      }
       
       const buffer = await this.prepareTrackBuffer(track, isStale);
       if (isStale() || !buffer) return false;
@@ -2292,6 +2414,11 @@ export class AudioContextManager {
    * Prepare track buffer
    */
   async prepareTrackBuffer(track, isStale = null) {
+    if (this.isDirectElectronCatalogSource(track)) {
+      const error = new Error('Direct Electron catalog sources must use media element streaming');
+      error.code = 'directElectronCatalogSource';
+      throw error;
+    }
     try {
       const arrayBuffer = await this.loadTrackData(track, isStale);
       if (isStale?.() || !arrayBuffer) return null;
@@ -2316,13 +2443,20 @@ export class AudioContextManager {
       const playableTrack = await this.resolveTrackProvider(track);
       if (isStale?.()) return null;
 
-      if (isFileObject(playableTrack.file)) {
+      if (playableTrack.data instanceof ArrayBuffer) {
+        return playableTrack.data;
+      } else if (ArrayBuffer.isView(playableTrack.data)) {
+        return playableTrack.data.buffer.slice(
+          playableTrack.data.byteOffset,
+          playableTrack.data.byteOffset + playableTrack.data.byteLength
+        );
+      } else if (isFileObject(playableTrack.file)) {
         const arrayBuffer = await playableTrack.file.arrayBuffer();
         if (isStale?.()) return null;
         return arrayBuffer;
       } else if (playableTrack.path) {
         if (this.shouldUseElectronFileRead(playableTrack.path)) {
-          const arrayBuffer = await this.loadElectronFileTrackData(playableTrack.path, playableTrack);
+          const arrayBuffer = await this.loadElectronFileTrackData(playableTrack.path);
           if (isStale?.()) return null;
           return arrayBuffer;
         }
@@ -2349,6 +2483,11 @@ export class AudioContextManager {
     const resolved = await track.provider();
     return {
       ...track,
+      ...(
+        resolved?.data instanceof ArrayBuffer || ArrayBuffer.isView(resolved?.data)
+          ? { data: resolved.data }
+          : {}
+      ),
       ...(resolved?.file ? { file: resolved.file } : {}),
       ...(resolved?.path ? { path: resolved.path } : {})
     };
@@ -2396,11 +2535,12 @@ export class AudioContextManager {
       isPaused: false
     }, 'Track loading failed');
 
-    if (window.uiManager?.setError) {
-      window.uiManager.setError(`Failed to load track: ${error?.message || originalError?.message || 'Unknown error'}`);
+    const playbackManager = this.audioPlayer.playbackManager;
+    if (playbackManager?.catalogSequence) {
+      return false;
     }
 
-    const playbackManager = this.audioPlayer.playbackManager;
+    window.uiManager?.setError?.('error.playbackCommandFailed', true);
     if (playbackManager?.playlist?.length > 1) {
       await playbackManager.playNext(false, {
         allowDuringTransition: true,
@@ -2414,6 +2554,10 @@ export class AudioContextManager {
   /**
    * Check whether a track path should be loaded through Electron's file API.
    */
+  isDirectElectronCatalogSource(track) {
+    return track?.sourceKind === 'electron-file';
+  }
+
   shouldUseElectronFileRead(path) {
     if (!window.electronAPI || !window.electronIntegration?.isElectron || typeof path !== 'string') {
       return false;
@@ -2427,59 +2571,24 @@ export class AudioContextManager {
   /**
    * Load an Electron local file path as ArrayBuffer for decodeAudioData.
    */
-  async loadElectronFileTrackData(path, track = null) {
-    if (typeof window.electronAPI?.library?.readFileBytes === 'function') {
-      try {
-        const bytes = await window.electronAPI.library.readFileBytes({ path });
-        if (bytes instanceof ArrayBuffer) return bytes;
-        if (ArrayBuffer.isView(bytes)) {
-          return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-        }
-      } catch (error) {
-        if (this.isLibraryPlaybackEntry(track) && this.isLibraryReadAuthorizationOrLimitError(error)) {
-          throw this.markSuppressAudioElementFallback(error);
-        }
-        if (!this.shouldFallbackToLegacyElectronRead(error)) {
-          throw error;
-        }
-        console.warn('[AudioContextManager] Library byte read failed, falling back to legacy file read:', error);
+  async loadElectronFileTrackData(path) {
+    if (typeof window.electronAPI?.readFileBytes !== 'function') {
+      throw new Error('Failed to load local track: Electron file byte reader is unavailable');
+    }
+    try {
+      const bytes = await window.electronAPI.readFileBytes(path);
+      if (bytes instanceof ArrayBuffer) return bytes;
+      if (ArrayBuffer.isView(bytes)) {
+        return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
       }
+      throw new Error('Electron file byte reader returned invalid data');
+    } catch (error) {
+      if (this.isElectronReadLimitError(error)) throw this.markSuppressAudioElementFallback(error);
+      throw error;
     }
-
-    if (typeof window.electronAPI?.readFile !== 'function') {
-      throw new Error('Failed to load local track: Electron file read API is unavailable');
-    }
-
-    const result = await window.electronAPI.readFile(path, true);
-    if (!result?.success) {
-      throw new Error(`Failed to load local track: ${result?.error || 'Unknown error'}`);
-    }
-
-    return this.base64ToArrayBuffer(result.content);
   }
 
-  shouldFallbackToLegacyElectronRead(error) {
-    const message = error?.message || String(error || '');
-    if (this.isLibraryReadLimitError(error)) return false;
-    return message.includes('No library folder has been selected') ||
-      message.includes('outside the selected music library folders');
-  }
-
-  isLibraryPlaybackEntry(track) {
-    return Boolean(track?.libraryTrackId || track?.provider || track?.meta);
-  }
-
-  isLibraryReadAuthorizationOrLimitError(error) {
-    return this.isLibraryReadAuthorizationError(error) || this.isLibraryReadLimitError(error);
-  }
-
-  isLibraryReadAuthorizationError(error) {
-    const message = error?.message || String(error || '');
-    return message.includes('No library folder has been selected') ||
-      message.includes('outside the selected music library folders');
-  }
-
-  isLibraryReadLimitError(error) {
+  isElectronReadLimitError(error) {
     const message = error?.message || String(error || '');
     return error?.code === 'ERR_LIBRARY_READ_LIMIT' ||
       message.includes('ERR_LIBRARY_READ_LIMIT') ||
@@ -2498,18 +2607,6 @@ export class AudioContextManager {
     return Boolean(error?.suppressAudioElementFallback);
   }
 
-  /**
-   * Convert a base64 string returned by Electron IPC to an ArrayBuffer.
-   */
-  base64ToArrayBuffer(base64Data) {
-    const binaryString = atob(base64Data);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    return bytes.buffer;
-  }
-  
   /**
    * Prepare next track buffer considering repeat mode
    */
@@ -2541,6 +2638,10 @@ export class AudioContextManager {
    */
   async prepareNextTrackBufferForTrack(track, targetIndex = null) {
     if (!track) return;
+    if (this.isDirectElectronCatalogSource(track)) {
+      this.clearNextTrackBuffer();
+      return;
+    }
     const request = this.beginNextBufferRequest(track, targetIndex);
     
     try {
@@ -2649,7 +2750,7 @@ export class AudioContextManager {
         if (loaded === false || !this.isActiveTransitionRequest(transitionRequest)) {
           return false;
         }
-        const started = await this.play(false, userInitiated);
+        const started = await this.play(true, userInitiated);
         if (started === false || !this.isActiveTransitionRequest(transitionRequest)) {
           return false;
         }
@@ -2804,7 +2905,7 @@ export class AudioContextManager {
       if (loaded === false || !this.isActiveTransitionRequest(transitionRequest)) {
         return false;
       }
-      const started = await this.play(false, userInitiated);
+      const started = await this.play(true, userInitiated);
       if (started === false || !this.isActiveTransitionRequest(transitionRequest)) {
         return false;
       }
@@ -2977,6 +3078,22 @@ export class AudioContextManager {
     this.activeNextBufferRequest = null;
     this.nextBuffer = null;
   }
+}
+
+function electronFilePathToMediaUrl(filePath) {
+  if (typeof filePath !== 'string' || filePath.length === 0) return null;
+  const normalized = filePath.replace(/\\/g, '/');
+  if (normalized.startsWith('//')) {
+    const [host, ...segments] = normalized.slice(2).split('/');
+    if (!host || segments.length === 0) return null;
+    return `file://${host}/${segments.map(segment => encodeURIComponent(segment)).join('/')}`;
+  }
+  const rooted = /^[A-Za-z]:\//.test(normalized) ? `/${normalized}` : normalized;
+  if (!rooted.startsWith('/')) return null;
+  const encoded = rooted.split('/').map((segment, index) => (
+    index === 1 && /^[A-Za-z]:$/.test(segment) ? segment : encodeURIComponent(segment)
+  )).join('/');
+  return `file://${encoded}`;
 }
 
 function isFileObject(value) {

@@ -78,6 +78,57 @@ async function seedFolder(host, directory) {
   }]);
 }
 
+async function publishTrackArtwork(host, trackUid, utilitySessionId, bytes = new Uint8Array([1, 2, 3, 4])) {
+  const source = await host.getArtworkSource({ trackUid });
+  let claimed = await host.claimArtworkSource({
+    claim: { ...source, utilitySessionId }
+  });
+  claimed = await host.bindArtworkSourceDetails({
+    claim: claimed.claim,
+    fileStat: { size: source.size, mtimeMs: source.mtimeMs },
+    embeddedOffset: null,
+    embeddedLength: bytes.byteLength,
+    mimeType: 'image/jpeg'
+  });
+  const cachePolicy = { mode: 'persistent', maxBytes: 1024 * 1024 };
+  const admission = await host.preflightArtworkBatch({
+    claim: claimed.claim,
+    estimatedRawBytes: bytes.byteLength,
+    estimatedThumbnailBytes: bytes.byteLength,
+    cachePolicy
+  });
+  assert.equal(admission.ok, true, JSON.stringify(admission));
+  const published = await host.publishArtwork({
+    claim: claimed.claim,
+    expectedSourceClaim: claimed.claim,
+    cachePolicy,
+    thumbnail: { bytes, width: 1, height: 1, mimeType: 'image/jpeg' }
+  });
+  assert.equal(published.committed, true);
+  return published.artwork.artworkId;
+}
+
+function assertTrackArtworkRemoved(dbPath, trackUid, artworkId) {
+  const database = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    assert.deepEqual({ ...database.prepare(`
+      SELECT
+        (SELECT count(*) FROM tracks WHERE track_uid = ?) AS trackCount,
+        (SELECT count(*) FROM track_artwork_sources WHERE track_uid = ?) AS sourceCount,
+        (SELECT count(*) FROM artwork_claims WHERE track_uid = ?) AS claimCount,
+        (SELECT ref_count FROM artwork_assets WHERE id = ?) AS refCount
+    `).get(trackUid, trackUid, trackUid, artworkId) }, {
+      trackCount: 0,
+      sourceCount: 0,
+      claimCount: 0,
+      refCount: 0
+    });
+    assert.deepEqual(database.prepare('PRAGMA foreign_key_check').all(), []);
+  } finally {
+    database.close();
+  }
+}
+
 async function collectForward(host, firstPage, limit) {
   const rows = [...firstPage.rows];
   let cursor = firstPage.nextCursor;
@@ -134,6 +185,72 @@ test('DatabaseSync is isolated in a worker with shared schema, FTS5, WAL, and bo
   assert.doesNotMatch(hostSource, /DatabaseSync|node:sqlite/);
 });
 
+test('binary-identical artwork thumbnails share one persisted blob across tracks', async t => {
+  const directory = fs.mkdtempSync(path.join(process.cwd(), '.effetune-artwork-test-'));
+  const dbPath = path.join(directory, 'catalog.sqlite');
+  const host = await LibraryCatalogHost.open({ dbPath });
+  t.after(async () => {
+    await host.close();
+    fs.rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  });
+  await seedFolder(host, directory);
+  await host.upsertTracks([1, 2].map(index => createTrack(index, {
+    fileIdentity: `artwork-file-${index}`,
+    size: 100 + index,
+    mtimeMs: 200 + index
+  })));
+  await host.beginArtworkUtilitySession({ utilitySessionId: 'artwork-deduplication-test' });
+
+  const artworkIds = [];
+  for (const index of [1, 2]) {
+    const trackUid = `track_${String(index).padStart(6, '0')}`;
+    artworkIds.push(await publishTrackArtwork(host, trackUid, 'artwork-deduplication-test'));
+  }
+
+  assert.equal(artworkIds[0], artworkIds[1]);
+  const database = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    const assets = database.prepare(`
+      SELECT count(*) AS assetCount, COALESCE(sum(ref_count), 0) AS refCount
+      FROM artwork_assets
+    `).get();
+    const variants = database.prepare(`
+      SELECT count(*) AS variantCount, COALESCE(sum(byte_length), 0) AS storedBytes
+      FROM artwork_variants WHERE variant = 'thumbnail'
+    `).get();
+    assert.deepEqual(
+      { assetCount: Number(assets.assetCount), refCount: Number(assets.refCount) },
+      { assetCount: 1, refCount: 2 }
+    );
+    assert.deepEqual(
+      { variantCount: Number(variants.variantCount), storedBytes: Number(variants.storedBytes) },
+      { variantCount: 1, storedBytes: 4 }
+    );
+  } finally {
+    database.close();
+  }
+
+  const eviction = await host.evictArtworkCache({
+    mode: 'persistent',
+    maxBytes: 0,
+    requiredBytes: 1,
+    policy: 'lru-access-time-byte-length'
+  });
+  assert.deepEqual(eviction, { evictedBytes: 4, cacheBytes: 0 });
+  assert.equal(await host.getCachedArtwork('track_000001'), null);
+  const evictedDatabase = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    assert.deepEqual({ ...evictedDatabase.prepare(`
+      SELECT
+        (SELECT count(*) FROM artwork_assets) AS assetCount,
+        (SELECT count(*) FROM artwork_variants) AS variantCount,
+        (SELECT count(*) FROM track_artwork_sources) AS sourceCount
+    `).get() }, { assetCount: 1, variantCount: 0, sourceCount: 2 });
+  } finally {
+    evictedDatabase.close();
+  }
+});
+
 test('scoped title pages use the global title order without a temporary sort', async t => {
   const { dbPath } = await openCatalog(t);
   const database = new DatabaseSync(dbPath, { readOnly: true });
@@ -152,6 +269,58 @@ test('scoped title pages use the global title order without a temporary sort', a
   } finally {
     database.close();
   }
+});
+
+test('recent scope is a stable newest-500 set across count, cursors, ordinals, and lookup', async t => {
+  const { directory, host } = await openCatalog(t);
+  await seedFolder(host, directory);
+  const tracks = Array.from({ length: 501 }, (_, index) => createTrack(index + 1));
+  await host.upsertTracks(tracks.slice(0, 500));
+  await host.upsertTracks(tracks.slice(500));
+
+  const first = await host.queryTracks({
+    query: '', sort: 'added', direction: 'desc', scope: { recent: true }, limit: 137
+  });
+  assert.equal((await host.getContextCount({ contextToken: first.contextToken })).totalCount, 500);
+  const rows = await collectForward(host, first, 137);
+  assert.equal(rows.length, 500);
+  assert.equal(rows[0].trackUid, 'track_000501');
+  assert.equal(rows.at(-1).trackUid, 'track_000002');
+  assert.equal(new Set(rows.map(row => row.trackUid)).size, 500);
+
+  const last = await host.readContextPageAtOrdinal({
+    contextToken: first.contextToken, ordinal: 499, limit: 1
+  });
+  assert.deepEqual(last.rows.map(row => row.trackUid), ['track_000002']);
+  const excluded = await host.resolveEntityAnchor({
+    contextToken: first.contextToken,
+    entityId: 'track_000001',
+    mode: 'exact',
+    limit: 1
+  });
+  assert.equal(excluded.accepted, false);
+  const included = await host.resolveEntityAnchor({
+    contextToken: first.contextToken,
+    entityId: 'track_000002',
+    mode: 'exact',
+    limit: 1
+  });
+  assert.equal(included.ordinal, 499);
+
+  await host.upsertTracks([createTrack(502)]);
+  const retained = await host.readContextPage({
+    contextToken: first.contextToken, cursor: null, limit: 1
+  });
+  assert.equal(retained.rows[0].trackUid, 'track_000501');
+  await host.releaseContext(first.contextToken);
+
+  const refreshed = await host.queryTracks({
+    query: '', sort: 'added', direction: 'desc', scope: { recent: true }, limit: 500
+  });
+  assert.equal(refreshed.rows.length, 500);
+  assert.equal(refreshed.rows[0].trackUid, 'track_000502');
+  assert.equal(refreshed.rows.at(-1).trackUid, 'track_000003');
+  await host.releaseContext(refreshed.contextToken);
 });
 
 test('bounded writes advance catalog/scope versions and page rows never expose filesystem paths', async t => {
@@ -184,41 +353,53 @@ test('bounded writes advance catalog/scope versions and page rows never expose f
   assert.equal(page.rows[0].trackUid, 'track_source');
   assert.equal(page.rows[0].durationSec, 121);
   assert.equal(page.rows[0].trackNo, 1);
+  for (const field of ['folderId', 'albumKey', 'artistKey', 'genreKey', 'subfolderKey']) {
+    assert.equal(Object.hasOwn(page.rows[0], field), true);
+  }
   assert.equal(Object.hasOwn(page.rows[0], 'path'), false);
   assert.equal(Object.hasOwn(page.rows[0], 'relativePath'), false);
   assert.equal(Object.hasOwn(page.rows[0], 'rootPath'), false);
-  const contextTrack = await host.lookupContextTrack({
-    contextToken: page.contextToken,
-    trackUid: 'track_source'
-  });
-  assert.equal(contextTrack.title, 'Source Track');
-  assert.equal(contextTrack.catalogVersion, page.catalogVersion);
-  assert.equal(await host.lookupContextTrack({
-    contextToken: page.contextToken,
-    trackUid: 'missing'
-  }), null);
   await host.upsertTracks([createTrack(1, {
     trackUid: 'track_source',
     relativePath: 'Album/Track.flac',
     fileName: 'Track.flac',
     title: 'Updated Track'
   })]);
-  assert.equal((await host.lookupContextTrack({
+  const retainedPage = await host.readContextPage({
     contextToken: page.contextToken,
-    trackUid: 'track_source'
-  })).title, 'Source Track');
+    cursor: null,
+    limit: 1
+  });
+  assert.equal(retainedPage.rows[0].title, 'Source Track');
+  assert.equal(retainedPage.catalogVersion, page.catalogVersion);
 
   const track = await host.getTrack('track_source');
   assert.equal(track.fileName, 'Track.flac');
-  assert.equal(Object.hasOwn(track, 'relativePath'), false);
-  const source = await host.resolvePlaybackSource('track_source');
-  assert.deepEqual(source, {
-    kind: 'electron-file',
+  assert.equal(track.relativePath, 'Album/Track.flac');
+  for (const field of ['folderId', 'albumKey', 'artistKey', 'genreKey', 'subfolderKey']) {
+    assert.equal(Object.hasOwn(track, field), true);
+  }
+  assert.equal(Object.hasOwn(track, 'path'), false);
+  assert.equal(Object.hasOwn(track, 'rootPath'), false);
+  const expectedExportSource = {
+    kind: 'absolute-path',
     trackUid: 'track_source',
     folderId: 'folder_music',
     lifecycleVersion: 3,
-    path: fs.realpathSync.native(sourcePath)
-  });
+    path: sourcePath
+  };
+  assert.deepEqual(await host.resolvePlaylistExportSource('track_source'), expectedExportSource);
+
+  fs.unlinkSync(sourcePath);
+  await host.upsertFolders([{
+    id: 'folder_music',
+    kind: 'electron',
+    displayName: 'Music',
+    path: directory,
+    status: 'needs-permission',
+    lifecycleVersion: 3
+  }]);
+  assert.deepEqual(await host.resolvePlaylistExportSource('track_source'), expectedExportSource);
 });
 
 test('canonical keyset cursors traverse duplicate sort keys forward and backward without duplicates or omissions', async t => {
@@ -333,6 +514,61 @@ test('query, response, batch, context, and outstanding request boundaries fail c
   assert.equal((await host.getContextCount({ contextToken: second.contextToken })).totalCount, 0);
 });
 
+test('durable scan writes prune an idle context after its WAL budget is exceeded', async t => {
+  const contextWalCapBytes = 1024 * 1024;
+  const { host, directory, dbPath } = await openCatalog(t, { contextWalCapBytes });
+  await seedFolder(host, directory);
+  const context = await host.createContext({
+    query: '', sort: 'title', direction: 'asc', scope: null
+  });
+  const walPath = `${dbPath}-wal`;
+  const initialWalBytes = fs.statSync(walPath).size;
+  const scan = await host.beginScanFolder({
+    scanId: 'scan-context-wal-budget',
+    folderId: 'folder_music',
+    normalizedRoot: directory,
+    expectedLifecycleVersion: 3,
+    resume: false,
+    rootEnumerationRequired: true,
+    continuityBroken: false,
+    sweepEligibility: 'INELIGIBLE'
+  });
+
+  let written = 0;
+  for (let batchNumber = 1; batchNumber <= 6; batchNumber += 1) {
+    const observations = Array.from({ length: 500 }, (_, index) => {
+      const id = `${batchNumber}-${String(index).padStart(3, '0')}`;
+      return {
+        relativePath: `Scan/${id}-${'x'.repeat(1536)}.flac`,
+        path: null,
+        fileIdentity: `identity-${id}-${'y'.repeat(512)}`,
+        size: 1024,
+        mtimeMs: batchNumber * 1000 + index
+      };
+    });
+    written += observations.length;
+    await host.commitScanSeenBatch({
+      scanId: scan.scanId,
+      folderId: scan.folderId,
+      generation: scan.generation,
+      expectedLifecycleVersion: scan.lifecycleVersion,
+      observations,
+      maxTracks: 10_000,
+      maxBytes: 64 * 1024 * 1024,
+      lastCommittedBatch: batchNumber,
+      cursor: {
+        lastRelativePath: observations.at(-1).relativePath,
+        visitedFiles: written,
+        committedBatches: batchNumber
+      }
+    });
+    if (fs.statSync(walPath).size - initialWalBytes > contextWalCapBytes) break;
+  }
+
+  assert.ok(fs.statSync(walPath).size - initialWalBytes > contextWalCapBytes);
+  assert.deepEqual(await host.releaseContext(context.contextToken), { released: false });
+});
+
 test('responses over 1 MiB are rejected at the host boundary', async () => {
   class OversizedResponseWorker extends EventEmitter {
     constructor() {
@@ -420,11 +656,523 @@ test('startup recovery marks nonterminal operations interrupted without deleting
   });
   assert.equal(state.snapshotCount, 1);
   assert.deepEqual(state.snapshot, { state: 'gc-pending', staging_operation_id: null });
-  assert.equal(state.sequenceOwnerCount, 0);
   assert.deepEqual(state.playlist, { state: 'deleted', building_operation_id: null });
   assert.equal(state.foreignKeys, 1);
   assert.equal(state.journalMode, 'wal');
   assert.equal(fs.existsSync(directory), true);
+});
+
+test('metadata page batches use two catalog commits and one exact terminal invalidation', async t => {
+  const { directory, host } = await openCatalog(t);
+  await seedFolder(host, directory);
+  const invalidations = [];
+  host.on('invalidation', invalidation => invalidations.push(invalidation));
+  const scan = await host.beginScanFolder({
+    scanId: 'scan-metadata-batch',
+    folderId: 'folder_music',
+    normalizedRoot: directory,
+    expectedLifecycleVersion: 3,
+    resume: false,
+    rootEnumerationRequired: true,
+    continuityBroken: false,
+    sweepEligibility: 'INELIGIBLE'
+  });
+  const requests = Array.from({ length: 3 }, (_, index) => ({
+    folderId: 'folder_music',
+    trackUid: `batch-track-${index}`,
+    lifecycleVersion: scan.lifecycleVersion,
+    generation: scan.generation,
+    relativePath: `Batch/Track-${index}.flac`,
+    parserVersion: scan.parserVersion,
+    signature: { fileIdentity: `batch-file-${index}`, size: 100 + index, mtimeMs: 200 + index },
+    explicitRescan: false
+  }));
+
+  const claimed = await host.claimMetadataParseBatch({ requests });
+  const completed = await host.completeMetadataParseBatch({
+    completions: claimed.results.map((result, index) => ({
+      outcome: 'success',
+      request: {
+        claim: result.claim,
+        metadata: {
+          title: `Track ${index}`, artist: 'Batch Artist', albumArtist: 'Batch Artist',
+          album: 'Batch Album', genre: 'Batch Genre', durationSec: 120
+        },
+        metadataStatus: 'ok',
+        clearErrorAndRetryState: true,
+        updateLastKnownGood: true,
+        updateDerivedData: true,
+        deferAggregateRecompute: false
+      }
+    }))
+  });
+
+  assert.equal(completed.catalogVersion, claimed.catalogVersion + 1);
+  assert.deepEqual(completed.results.map(result => result.committed), [true, true, true]);
+  assert.deepEqual(invalidations, []);
+  await host.completeScanFolderNoSweep({
+    scanId: 'scan-metadata-batch',
+    folderId: 'folder_music',
+    generation: scan.generation,
+    expectedLifecycleVersion: 3,
+    status: 'completed-no-sweep',
+    sweepBlockReason: 'test-no-sweep'
+  });
+
+  assert.equal(invalidations.length, 1);
+  assert.deepEqual(new Set(invalidations[0].changedScopes), new Set([
+    'tracks', 'albums', 'artists', 'genres', 'subfolders'
+  ]));
+  assert.deepEqual(invalidations[0].counts, {
+    tracks: 3, albums: 1, artists: 1, genres: 1, subfolders: 1
+  });
+});
+
+test('completed folder scans durably re-resolve unique unresolved playlist items with one job', async t => {
+  const { directory, dbPath, host } = await openCatalog(t);
+  await seedFolder(host, directory);
+  const otherRoot = path.join(directory, 'other-root');
+  await host.upsertFolders([{
+    id: 'folder_other',
+    kind: 'electron',
+    displayName: 'Other',
+    path: otherRoot,
+    status: 'ok',
+    lifecycleVersion: 1
+  }]);
+  await host.upsertTracks([
+    createTrack(8000, {
+      trackUid: 'ambiguous-existing',
+      relativePath: 'Existing/Same.flac',
+      fileName: 'Same.flac',
+      title: 'Ambiguous',
+      artist: 'Artist',
+      albumArtist: 'Artist',
+      durationSec: 120
+    }),
+    createTrack(8001, {
+      trackUid: 'same-relative-path-other-root',
+      folderId: 'folder_other',
+      relativePath: 'Late/Same.flac',
+      fileName: 'Same.flac',
+      title: 'Ambiguous',
+      artist: 'Artist',
+      albumArtist: 'Artist',
+      durationSec: 120
+    })
+  ]);
+  await host.createPlaylistWithItems({
+    playlistId: 'late-resolution',
+    name: 'Late Resolution',
+    createdAt: 1,
+    items: [
+      { unresolved: {
+        sourceLine: 'Late/Unique.flac', relativePathHint: 'Late/Unique.flac',
+        basename: 'Unique.flac', title: 'Unique', artist: 'Artist', durationSec: 120
+      } },
+      { unresolved: {
+        sourceLine: 'Same.flac', relativePathHint: 'Same.flac',
+        basename: 'Same.flac', title: 'Ambiguous', artist: 'Artist', durationSec: 120
+      } },
+      { unresolved: {
+        sourceLine: path.join(directory, 'Late', 'Same.flac'),
+        relativePathHint: path.join(directory, 'Late', 'Same.flac'),
+        basename: 'Same.flac', title: 'Ambiguous', artist: 'Artist', durationSec: 120
+      } }
+    ]
+  });
+  const scan = await host.beginScanFolder({
+    scanId: 'scan-late-resolution',
+    folderId: 'folder_music',
+    normalizedRoot: directory,
+    expectedLifecycleVersion: 3,
+    resume: false,
+    rootEnumerationRequired: true,
+    continuityBroken: false,
+    sweepEligibility: 'INELIGIBLE'
+  });
+  for (const [index, entry] of [
+    ['unique-late', 'Late/Unique.flac', 'Unique'],
+    ['ambiguous-late', 'Late/Same.flac', 'Ambiguous']
+  ].entries()) {
+    const [trackUid, relativePath, title] = entry;
+    const claim = await host.claimMetadataParse({
+      folderId: 'folder_music',
+      trackUid,
+      lifecycleVersion: scan.lifecycleVersion,
+      generation: scan.generation,
+      relativePath,
+      parserVersion: scan.parserVersion,
+      signature: { fileIdentity: `late-file-${index}`, size: 100, mtimeMs: 200 + index },
+      explicitRescan: false
+    });
+    await host.completeMetadataParseSuccess({
+      claim: claim.claim,
+      metadata: {
+        title, artist: 'Artist', albumArtist: 'Artist', album: 'Album', genre: 'Genre',
+        durationSec: 120
+      },
+      metadataStatus: 'ok',
+      clearErrorAndRetryState: true,
+      updateLastKnownGood: true,
+      updateDerivedData: true
+    });
+  }
+  await host.completeScanFolderNoSweep({
+    scanId: 'scan-late-resolution',
+    folderId: 'folder_music',
+    generation: scan.generation,
+    expectedLifecycleVersion: 3,
+    status: 'completed-no-sweep',
+    sweepBlockReason: 'test-no-sweep'
+  });
+
+  let playlist;
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    playlist = await host.queryPlaylistItems({ playlistId: 'late-resolution', limit: 20 });
+    if (playlist.items[0].trackUid === 'unique-late' && playlist.items[2].trackUid === 'ambiguous-late') break;
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  assert.equal(playlist.items[0].trackUid, 'unique-late');
+  assert.equal(playlist.items[0].unresolved, null);
+  assert.equal(playlist.items[1].trackUid, null);
+  assert.equal(playlist.items[1].unresolved.basename, 'Same.flac');
+  assert.equal(playlist.items[2].trackUid, 'ambiguous-late');
+  assert.equal(playlist.items[2].unresolved, null);
+  assert.equal(playlist.playlist.version, 1);
+  const database = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    assert.deepEqual({ ...database.prepare(`
+      SELECT job_id AS jobId, state, folder_id AS folderId,
+        lifecycle_version AS lifecycleVersion, track_uid AS trackUid
+      FROM deletion_jobs WHERE kind = 'playlist-resolve'
+    `).get() }, {
+      jobId: 'playlist-resolve:3:folder_music',
+      state: 'completed',
+      folderId: 'folder_music',
+      lifecycleVersion: 3,
+      trackUid: null
+    });
+  } finally {
+    database.close();
+  }
+});
+
+test('metadata commits without unresolved playlists create no playlist resolution jobs', async t => {
+  const { directory, dbPath, host } = await openCatalog(t);
+  await seedFolder(host, directory);
+  const scan = await host.beginScanFolder({
+    scanId: 'scan-without-playlists',
+    folderId: 'folder_music',
+    normalizedRoot: directory,
+    expectedLifecycleVersion: 3,
+    resume: false,
+    rootEnumerationRequired: true,
+    continuityBroken: false,
+    sweepEligibility: 'INELIGIBLE'
+  });
+  for (let index = 0; index < 4; index += 1) {
+    const relativePath = `No Playlist/Track-${index}.flac`;
+    const claim = await host.claimMetadataParse({
+      folderId: 'folder_music',
+      trackUid: `no-playlist-${index}`,
+      lifecycleVersion: scan.lifecycleVersion,
+      generation: scan.generation,
+      relativePath,
+      parserVersion: scan.parserVersion,
+      signature: { fileIdentity: `no-playlist-file-${index}`, size: 100, mtimeMs: 200 + index },
+      explicitRescan: false
+    });
+    await host.completeMetadataParseSuccess({
+      claim: claim.claim,
+      metadata: {
+        title: `Track ${index}`, artist: 'Artist', albumArtist: 'Artist',
+        album: 'Album', genre: 'Genre', durationSec: 120
+      },
+      metadataStatus: 'ok',
+      clearErrorAndRetryState: true,
+      updateLastKnownGood: true,
+      updateDerivedData: true
+    });
+  }
+  await host.completeScanFolderNoSweep({
+    scanId: 'scan-without-playlists',
+    folderId: 'folder_music',
+    generation: scan.generation,
+    expectedLifecycleVersion: 3,
+    status: 'completed-no-sweep',
+    sweepBlockReason: 'test-no-sweep'
+  });
+
+  const database = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    assert.equal(database.prepare(`
+      SELECT COUNT(*) AS count FROM deletion_jobs WHERE kind = 'playlist-resolve'
+    `).get().count, 0);
+  } finally {
+    database.close();
+  }
+});
+
+test('scan metadata defers entity aggregates until one durable post-scan job', async t => {
+  const { directory, dbPath, host } = await openCatalog(t);
+  await seedFolder(host, directory);
+  const scan = await host.beginScanFolder({
+    scanId: 'scan-deferred-aggregates',
+    folderId: 'folder_music',
+    normalizedRoot: directory,
+    expectedLifecycleVersion: 3,
+    resume: false,
+    rootEnumerationRequired: true,
+    continuityBroken: false,
+    sweepEligibility: 'INELIGIBLE'
+  });
+  for (let index = 0; index < 2; index += 1) {
+    const relativePath = `Shared/Track-${index}.flac`;
+    const claim = await host.claimMetadataParse({
+      folderId: 'folder_music',
+      trackUid: `deferred-${index}`,
+      lifecycleVersion: scan.lifecycleVersion,
+      generation: scan.generation,
+      relativePath,
+      parserVersion: scan.parserVersion,
+      signature: { fileIdentity: `deferred-file-${index}`, size: 100, mtimeMs: 200 + index },
+      explicitRescan: false
+    });
+    await host.completeMetadataParseSuccess({
+      claim: claim.claim,
+      metadata: {
+        title: `Track ${index}`, artist: 'Shared Artist', albumArtist: 'Shared Artist',
+        album: 'Shared Album', genre: 'Shared Genre', durationSec: 90
+      },
+      metadataStatus: 'ok',
+      clearErrorAndRetryState: true,
+      updateLastKnownGood: true,
+      updateDerivedData: true,
+      deferAggregateRecompute: true
+    });
+  }
+
+  const pendingDatabase = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    assert.equal(pendingDatabase.prepare(`
+      SELECT track_count AS trackCount FROM albums WHERE name = 'Shared Album'
+    `).get().trackCount, 0);
+    assert.equal(pendingDatabase.prepare(`
+      SELECT state FROM deletion_jobs
+      WHERE job_id = 'entity-aggregate:scan-deferred-aggregates:folder_music'
+    `).get().state, 'pending-scan');
+  } finally {
+    pendingDatabase.close();
+  }
+
+  await host.completeScanFolderNoSweep({
+    scanId: 'scan-deferred-aggregates',
+    folderId: 'folder_music',
+    generation: scan.generation,
+    expectedLifecycleVersion: 3,
+    status: 'completed-no-sweep',
+    sweepBlockReason: 'test-no-sweep'
+  });
+
+  const database = new DatabaseSync(dbPath, { readOnly: true });
+  let job;
+  const deadline = Date.now() + 5000;
+  try {
+    do {
+      job = database.prepare(`
+        SELECT state, cursor_key AS cursorKey FROM deletion_jobs
+        WHERE job_id = 'entity-aggregate:scan-deferred-aggregates:folder_music'
+      `).get();
+      if (job?.state !== 'completed') await new Promise(resolve => setTimeout(resolve, 10));
+    } while (job?.state !== 'completed' && Date.now() < deadline);
+    assert.equal(job.state, 'completed');
+    assert.equal(job.cursorKey, 4);
+  } finally {
+    database.close();
+  }
+  const page = await host.queryEntities({
+    type: 'album', query: '', sort: 'name', direction: 'asc', limit: 10
+  });
+  assert.equal(page.rows[0].trackCount, 2);
+  assert.equal(page.rows[0].totalDurationSec, 180);
+  await host.releaseContext(page.contextToken);
+});
+
+test('folder deletion tombstones unavailable Electron folders', async t => {
+  const { directory, host } = await openCatalog(t);
+  const folders = ['missing', 'needs-permission'].map((status, index) => ({
+    id: `folder_${status}`,
+    kind: 'electron',
+    displayName: status,
+    path: path.join(directory, status),
+    status: 'ok',
+    lifecycleVersion: 3,
+    addedAt: index + 1
+  }));
+  await host.upsertFolders(folders);
+  await host.upsertTracks(folders.map((folder, index) => createTrack(index + 1, {
+    trackUid: `track_${folder.id}`,
+    folderId: folder.id,
+    relativePath: `Track-${index + 1}.flac`,
+    fileName: `Track-${index + 1}.flac`
+  })));
+  await host.upsertFolders(folders.map(folder => ({
+    ...folder,
+    status: folder.id.slice('folder_'.length)
+  })));
+
+  for (const folder of folders) {
+    const deleted = await host.removeScanFolder({
+      folderId: folder.id,
+      expectedLifecycleVersion: 3
+    });
+    assert.equal(deleted.deleted, 1);
+    assert.equal(deleted.hasMore, false);
+  }
+  const removed = await host.listScanFolders({
+    folderIds: folders.map(folder => folder.id),
+    includeRemoved: true
+  });
+  assert.deepEqual(removed.folders.map(folder => ({
+    id: folder.id,
+    status: folder.status,
+    lifecycleVersion: folder.lifecycleVersion,
+    path: folder.path
+  })), folders.map(folder => ({
+    id: folder.id,
+    status: 'removed',
+    lifecycleVersion: 4,
+    path: null
+  })));
+
+  assert.deepEqual(await host.removeScanFolder({
+    folderId: folders[0].id,
+    expectedLifecycleVersion: 3
+  }), {
+    folderId: folders[0].id,
+    lifecycleVersion: 4,
+    deleted: 0,
+    hasMore: false
+  });
+  await assert.rejects(
+    host.removeScanFolder({
+      folderId: folders[0].id,
+      expectedLifecycleVersion: 4
+    }),
+    error => error?.code === 'staleFolderLifecycle'
+  );
+});
+
+test('folder deletion removes published artwork references before deleting the track', async t => {
+  const { directory, dbPath, host } = await openCatalog(t);
+  await seedFolder(host, directory);
+  const trackUid = 'track_000001';
+  await host.upsertTracks([createTrack(1, {
+    fileIdentity: 'folder-delete-artwork-file',
+    size: 128,
+    mtimeMs: 200
+  })]);
+  await host.beginArtworkUtilitySession({ utilitySessionId: 'folder-delete-artwork-publish' });
+  const artworkId = await publishTrackArtwork(host, trackUid, 'folder-delete-artwork-publish');
+  await host.beginArtworkUtilitySession({ utilitySessionId: 'folder-delete-artwork-pending' });
+  const source = await host.getArtworkSource({ trackUid });
+  const pending = await host.claimArtworkSource({
+    claim: { ...source, utilitySessionId: 'folder-delete-artwork-pending' }
+  });
+  assert.ok(pending.claim);
+
+  const deleted = await host.removeScanFolder({
+    folderId: 'folder_music',
+    expectedLifecycleVersion: 3
+  });
+  assert.equal(deleted.deleted, 1);
+  assert.equal(deleted.hasMore, false);
+  assert.equal((await host.getCounts()).tracks, 0);
+  assertTrackArtworkRemoved(dbPath, trackUid, artworkId);
+});
+
+test('scan sweep removes published artwork references for a missing track', async t => {
+  const { directory, dbPath, host } = await openCatalog(t);
+  await seedFolder(host, directory);
+  const trackUid = 'track_000001';
+  await host.upsertTracks([createTrack(1, {
+    fileIdentity: 'scan-sweep-artwork-file',
+    size: 128,
+    mtimeMs: 200
+  })]);
+  await host.beginArtworkUtilitySession({ utilitySessionId: 'scan-sweep-artwork-publish' });
+  const artworkId = await publishTrackArtwork(host, trackUid, 'scan-sweep-artwork-publish');
+  await host.beginArtworkUtilitySession({ utilitySessionId: 'scan-sweep-artwork-pending' });
+  const source = await host.getArtworkSource({ trackUid });
+  const pending = await host.claimArtworkSource({
+    claim: { ...source, utilitySessionId: 'scan-sweep-artwork-pending' }
+  });
+  assert.ok(pending.claim);
+
+  const scan = await host.beginScanFolder({
+    scanId: 'scan-sweep-artwork',
+    folderId: 'folder_music',
+    normalizedRoot: directory,
+    expectedLifecycleVersion: 3,
+    resume: false,
+    rootEnumerationRequired: true,
+    continuityBroken: false,
+    sweepEligibility: 'INELIGIBLE'
+  });
+  const identity = {
+    scanId: 'scan-sweep-artwork',
+    folderId: 'folder_music',
+    generation: scan.generation,
+    expectedLifecycleVersion: 3
+  };
+  await host.finalizeScanEnumeration({
+    ...identity,
+    rootToEnd: true,
+    continuityBroken: false,
+    enumerationErrorCount: 0
+  });
+  assert.deepEqual(await host.enqueueScanSweep(identity), { enqueued: 1 });
+  const swept = await host.runScanSweep(identity);
+  assert.equal(swept.deleted, 1);
+  assert.equal((await host.getCounts()).tracks, 0);
+  assertTrackArtworkRemoved(dbPath, trackUid, artworkId);
+});
+
+test('scan sweep deletes one bounded track page per catalog transaction', async t => {
+  const { directory, host } = await openCatalog(t);
+  await seedFolder(host, directory);
+  await host.upsertTracks(Array.from({ length: 205 }, (_, index) => createTrack(index + 1)));
+  const scan = await host.beginScanFolder({
+    scanId: 'scan-sweep-batch',
+    folderId: 'folder_music',
+    normalizedRoot: directory,
+    expectedLifecycleVersion: 3,
+    resume: false,
+    rootEnumerationRequired: true,
+    continuityBroken: false,
+    sweepEligibility: 'INELIGIBLE'
+  });
+  const identity = {
+    scanId: 'scan-sweep-batch',
+    folderId: 'folder_music',
+    generation: scan.generation,
+    expectedLifecycleVersion: 3
+  };
+  await host.finalizeScanEnumeration({
+    ...identity,
+    rootToEnd: true,
+    continuityBroken: false,
+    enumerationErrorCount: 0
+  });
+  assert.deepEqual(await host.enqueueScanSweep(identity), { enqueued: 205 });
+
+  assert.equal((await host.runScanSweep(identity)).deleted, 100);
+  assert.equal((await host.runScanSweep(identity)).deleted, 100);
+  assert.equal((await host.runScanSweep(identity)).deleted, 5);
+  assert.deepEqual(await host.runScanSweep(identity), { deleted: 0, hasMore: false });
+  await host.completeScanFolder({ ...identity, status: 'completed' });
+  assert.equal((await host.getCounts()).tracks, 0);
 });
 
 test('folder deletion receipt resumes bounded playlist repair after worker restart', async t => {
@@ -451,14 +1199,53 @@ test('folder deletion receipt resumes bounded playlist repair after worker resta
   await host.close();
 
   host = await LibraryCatalogHost.open({ dbPath });
-  const deadline = Date.now() + 5_000;
-  while ((await host.getCounts()).tracks !== 0 && Date.now() < deadline) {
-    await new Promise(resolve => setTimeout(resolve, 10));
-  }
-  assert.equal((await host.getCounts()).tracks, 0);
   const page = await host.queryPlaylistItems({ playlistId: 'delete-playlist', limit: 200 });
+  assert.equal((await host.getCounts()).tracks, 0);
   assert.equal(page.items.length, 101);
   assert.ok(page.items.every(item => item.trackUid === null && item.unresolved?.reason === 'source-removed'));
+  await host.close();
+});
+
+test('startup deletion maintenance leaves normal catalog reads responsive', async t => {
+  const { directory, dbPath } = createTempCatalog(t);
+  let host = await LibraryCatalogHost.open({ dbPath });
+  t.after(() => host?.close());
+  await host.upsertFolders([{
+    id: 'folder_music', kind: 'electron', displayName: 'Removed', path: directory,
+    status: 'ok', lifecycleVersion: 3
+  }, {
+    id: 'folder_keep', kind: 'electron', displayName: 'Kept', path: path.join(directory, 'kept'),
+    status: 'ok', lifecycleVersion: 1
+  }]);
+  await host.upsertTracks(Array.from({ length: 1000 }, (_, index) => createTrack(index + 1)));
+  await host.upsertTracks([createTrack(1001, {
+    trackUid: 'track_keep', folderId: 'folder_keep', relativePath: 'Keep.flac',
+    fileName: 'Keep.flac', title: 'Keep'
+  })]);
+  const firstChunk = await host.removeScanFolder({
+    folderId: 'folder_music', expectedLifecycleVersion: 3
+  });
+  assert.equal(firstChunk.deleted, 100);
+  assert.equal(firstChunk.hasMore, true);
+  await host.close();
+
+  host = await LibraryCatalogHost.open({ dbPath });
+  const invalidations = [];
+  host.on('invalidation', event => invalidations.push(event));
+  const counts = await host.getCounts();
+  const page = await host.queryTracks({ query: '', sort: 'title', direction: 'asc', limit: 10 });
+  const remaining = await host.getScanFolderTrackCount({ folderId: 'folder_music' });
+  assert.equal(counts.tracks, 1);
+  assert.deepEqual(page.rows.map(row => row.trackUid), ['track_keep']);
+  assert.ok(remaining.trackCount > 0, 'catalog reads must complete before background deletion finishes');
+  const deadline = Date.now() + 5_000;
+  let cleanup = remaining;
+  do {
+    await new Promise(resolve => setTimeout(resolve, 10));
+    cleanup = await host.getScanFolderTrackCount({ folderId: 'folder_music' });
+  } while (cleanup.trackCount > 0 && Date.now() < deadline);
+  assert.equal(cleanup.trackCount, 0);
+  assert.deepEqual(invalidations, [], 'logically invisible cleanup must not refresh Library pages');
   await host.close();
 });
 
@@ -511,14 +1298,6 @@ function runSqliteWorker(dbPath, mode) {
         ) VALUES ('snapshot', 'selection', 'staging', 'op', 0, 1)
       \`).run();
       database.prepare(\`
-        INSERT INTO playback_sequences(id, source_context, catalog_version, state, created_at)
-        VALUES ('sequence', 'context', 0, 'active', 1)
-      \`).run();
-      database.prepare(\`
-        INSERT INTO playback_sequence_operation_owners(sequence_id, operation_id)
-        VALUES ('sequence', 'op')
-      \`).run();
-      database.prepare(\`
         INSERT INTO playlists(id, name, sort_name, state, building_operation_id, version, created_at, updated_at)
         VALUES ('playlist', 'Playlist', 'playlist', 'building', 'op', 0, 1, 1)
       \`).run();
@@ -557,9 +1336,6 @@ function runSqliteWorker(dbPath, mode) {
         snapshot: database.prepare(\`
           SELECT state, staging_operation_id FROM snapshot_objects WHERE snapshot_id = 'snapshot'
         \`).get(),
-        sequenceOwnerCount: Number(database.prepare(\`
-          SELECT count(*) AS count FROM playback_sequence_operation_owners WHERE operation_id = 'op'
-        \`).get().count),
         playlist: database.prepare(\`
           SELECT state, building_operation_id FROM playlists WHERE id = 'playlist'
         \`).get(),

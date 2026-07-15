@@ -84,8 +84,8 @@ export class SegmentedVirtualListGeometry {
     if (!window || window.endOrdinal <= window.startOrdinal) {
       return { startOrdinal: 0, endOrdinal: 0, translateY: 0 };
     }
-    const safeScrollTop = Math.max(0, Number(scrollTop) || 0);
     const safeViewportHeight = Math.max(0, Number(viewportHeight) || 0);
+    const safeScrollTop = this.clampScrollTop(window, scrollTop, safeViewportHeight);
     const firstVisible = window.startOrdinal + Math.floor(safeScrollTop / this.rowHeight);
     const visibleRows = Math.ceil(safeViewportHeight / this.rowHeight);
     const startOrdinal = Math.max(window.startOrdinal, firstVisible - bufferRows);
@@ -98,6 +98,14 @@ export class SegmentedVirtualListGeometry {
     };
   }
 
+  clampScrollTop(window, scrollTop, viewportHeight = 0) {
+    if (!window || window.endOrdinal <= window.startOrdinal) return 0;
+    const requested = Math.max(0, Number(scrollTop) || 0);
+    const safeViewportHeight = Math.max(0, Number(viewportHeight) || 0);
+    const windowHeight = (window.endOrdinal - window.startOrdinal) * this.rowHeight;
+    return Math.min(requested, Math.max(0, windowHeight - safeViewportHeight));
+  }
+
   getScrollTopForOrdinal(window, ordinal, viewportOffsetPx = 0) {
     if (!window || window.endOrdinal <= window.startOrdinal) return 0;
     const safeOrdinal = Math.max(window.startOrdinal, Math.min(window.endOrdinal - 1, ordinal));
@@ -108,16 +116,26 @@ export class SegmentedVirtualListGeometry {
     if (!window || this.rowCount === 0) {
       return { changed: false, window: this.createWindow(0), scrollTop: 0, anchorOrdinal: 0 };
     }
-    const range = this.getRenderRange({ window, scrollTop, viewportHeight, bufferRows: 0 });
+    const requestedScrollTop = Math.max(0, Number(scrollTop) || 0);
+    if (requestedScrollTop === 0 && window.startOrdinal > 0) {
+      return { changed: true, window: this.createWindow(0), scrollTop: 0, anchorOrdinal: 0 };
+    }
+    const safeScrollTop = this.clampScrollTop(window, requestedScrollTop, viewportHeight);
+    const range = this.getRenderRange({ window, scrollTop: safeScrollTop, viewportHeight, bufferRows: 0 });
     const anchorOrdinal = range.firstVisibleOrdinal;
     const anchorSegment = this.locateOrdinal(anchorOrdinal).segmentIndex;
     const currentSegment = window.anchorSegmentIndex ?? Math.floor(
       (window.firstSegmentIndex + window.lastSegmentIndex) / 2
     );
     if (anchorSegment === currentSegment || this.segmentCount <= 3) {
-      return { changed: false, window, scrollTop, anchorOrdinal };
+      return {
+        changed: safeScrollTop !== requestedScrollTop,
+        window,
+        scrollTop: safeScrollTop,
+        anchorOrdinal
+      };
     }
-    const viewportOffsetPx = ((anchorOrdinal - window.startOrdinal) * this.rowHeight) - Math.max(0, Number(scrollTop) || 0);
+    const viewportOffsetPx = ((anchorOrdinal - window.startOrdinal) * this.rowHeight) - safeScrollTop;
     const nextWindow = this.createWindow(anchorOrdinal);
     return {
       changed: true,

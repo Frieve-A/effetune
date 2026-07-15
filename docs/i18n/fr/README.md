@@ -92,7 +92,11 @@ Ouvrez **Paramètres > Configuration...** pour choisir la langue, la vue au dém
 5. Après avoir modifié des fichiers, utilisez **Analyser à nouveau** ; si les autorisations du navigateur ou du dossier expirent, utilisez **Reconnecter**.
    - [Détails de la Bibliothèque musicale](music-library.md)
 
-La version 3.0.0 démarre avec une nouvelle Bibliothèque musicale. L'état de la Bibliothèque précédente n'est pas repris : ajoutez et analysez de nouveau vos dossiers de musique. Cela ne modifie pas les fichiers audio qu'ils contiennent. L'architecture vise plus d'un million de morceaux ; la prise en charge officielle ne sera annoncée qu'après réussite de Phase 0 et de toute la qualification d'exécution.
+Dans les dispositions ordinateur et mobile, lorsqu’une recherche de morceaux ou la fiche d’un album, d’un artiste, d’un genre, d’un sous-dossier ou d’une liste de lecture contient 300 morceaux ou moins, tous sont sélectionnés par défaut. À partir de 301 morceaux, aucune sélection automatique n’est effectuée. Sur mobile, la sélection automatique ne modifie que l’état de sélection. Seul un appui long sur un morceau ouvre le mode sélection et affiche les cases à cocher, **Tout sélectionner** et **Tout désélectionner** ; sélectionner ou désélectionner des morceaux n’ouvre ni ne ferme ce mode, et les actions habituelles des lignes restent disponibles.
+
+Les navigateurs Chromium sur ordinateur peuvent conserver les handles de dossier File System Access. Safari, Firefox, les navigateurs mobiles et les autres environnements dépourvus de cette API ne conservent les objets `File` que pendant la session de page en cours. Après chaque rechargement, sélectionnez de nouveau le dossier ou les fichiers ; EffeTune les rattache au catalogue existant grâce au chemin relatif normalisé.
+
+La version 2.1.0 démarre avec une nouvelle Bibliothèque musicale. L'état de la Bibliothèque précédente n'est pas repris : ajoutez et analysez de nouveau vos dossiers de musique. Cela ne modifie pas les fichiers audio qu'ils contiennent. Le catalogue est conçu pour parcourir les grandes collections par pages depuis le disque. Les mesures de performances à grande échelle sont des diagnostics locaux et facultatifs destinés au développement : elles ne conditionnent ni les commits, ni les versions, ni `verify`, ni GitHub Actions, et ne constituent pas une garantie générale de performances.
 
 ### Construction de votre chaîne d'effets
 

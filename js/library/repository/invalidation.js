@@ -1,5 +1,15 @@
 import { assertRepositoryContract } from './contract-errors.js';
 
+const COUNTED_SCOPES = new Set([
+  'tracks',
+  'folders',
+  'subfolders',
+  'albums',
+  'artists',
+  'genres',
+  'playlists'
+]);
+
 export function coalesceInvalidations(...inputEvents) {
   const events = inputEvents.length === 1 && Array.isArray(inputEvents[0]) ? inputEvents[0] : inputEvents;
   if (events.length === 0) {
@@ -24,6 +34,7 @@ export function coalesceInvalidations(...inputEvents) {
       if (!current || scopeVersion > current.scopeVersion || (scopeVersion === current.scopeVersion && eventIndex > current.eventIndex)) {
         latestByScope.set(scope, {
           scopeVersion,
+          hasCount: Object.hasOwn(event.counts, scope),
           count: event.counts[scope],
           eventIndex
         });
@@ -36,7 +47,7 @@ export function coalesceInvalidations(...inputEvents) {
   for (const scope of changedScopes) {
     const latest = latestByScope.get(scope);
     scopeVersions[scope] = latest.scopeVersion;
-    counts[scope] = latest.count;
+    if (latest.hasCount) counts[scope] = latest.count;
   }
   return { catalogVersion, changedScopes, scopeVersions, counts };
 }
@@ -49,10 +60,17 @@ function validateInvalidation(event) {
   assertRepositoryContract(Number.isSafeInteger(event.catalogVersion) && event.catalogVersion >= 0, 'invalidInvalidation', 'Invalidation catalogVersion must be a non-negative integer');
   assertRepositoryContract(Array.isArray(event.changedScopes) && new Set(event.changedScopes).size === event.changedScopes.length, 'invalidInvalidation', 'Invalidation changedScopes must be a unique array');
   assertRepositoryContract(isPlainObject(event.scopeVersions) && isPlainObject(event.counts), 'invalidInvalidation', 'Invalidation scopeVersions and counts must be objects');
+  const changedScopeSet = new Set(event.changedScopes);
   for (const scope of event.changedScopes) {
     assertRepositoryContract(typeof scope === 'string' && scope.length > 0, 'invalidInvalidation', 'Invalidation scope must be a non-empty string');
     assertRepositoryContract(Number.isSafeInteger(event.scopeVersions[scope]) && event.scopeVersions[scope] >= 0, 'invalidInvalidation', `Invalidation scope ${scope} requires a non-negative version`);
-    assertRepositoryContract(Object.hasOwn(event.counts, scope), 'invalidInvalidation', `Invalidation scope ${scope} requires a count`);
+    if (COUNTED_SCOPES.has(scope)) {
+      assertRepositoryContract(Object.hasOwn(event.counts, scope), 'invalidInvalidation', `Invalidation scope ${scope} requires a count`);
+    }
+  }
+  for (const [scope, count] of Object.entries(event.counts)) {
+    assertRepositoryContract(changedScopeSet.has(scope), 'invalidInvalidation', `Invalidation count ${scope} has no changed scope`);
+    assertRepositoryContract(Number.isSafeInteger(count) && count >= 0, 'invalidInvalidation', `Invalidation count ${scope} must be a non-negative integer`);
   }
 }
 

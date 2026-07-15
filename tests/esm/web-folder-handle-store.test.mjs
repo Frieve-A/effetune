@@ -70,6 +70,27 @@ test('folder handle persistence opens only its fixed v2 database identity', asyn
   store.close();
 });
 
+test('persisted folder handles can be enumerated with a bound and removed', async () => {
+  const indexedDB = createFakeIndexedDb();
+  const store = new WebFolderHandleStore({ indexedDB });
+  const firstHandle = directoryHandle('First Music');
+  const secondHandle = directoryHandle('Second Music');
+  await store.put({ folderId: 'folder-first', handle: firstHandle });
+  await store.put({ folderId: 'folder-second', handle: secondHandle });
+
+  assert.deepEqual(await store.list({ limit: 1 }), [{
+    folderId: 'folder-first',
+    handle: firstHandle
+  }]);
+  await store.delete('folder-first');
+  assert.equal(await store.get('folder-first'), null);
+  assert.deepEqual(await store.list(), [{
+    folderId: 'folder-second',
+    handle: secondHandle
+  }]);
+  store.close();
+});
+
 test('an incomplete current folder-handle store fails with a typed open error', async () => {
   const indexedDB = createFakeIndexedDb();
   const initial = new WebFolderHandleStore({ indexedDB });
@@ -82,5 +103,21 @@ test('an incomplete current folder-handle store fails with a typed open error', 
   await assert.rejects(
     incomplete.open(),
     error => error?.code === 'incompleteHandleStoreUpgrade'
+  );
+});
+
+test('a blocked folder-handle database open fails with the concurrent-use contract', async () => {
+  const indexedDB = {
+    open() {
+      const request = {};
+      queueMicrotask(() => request.onblocked());
+      return request;
+    }
+  };
+  const store = new WebFolderHandleStore({ indexedDB });
+
+  await assert.rejects(
+    store.open(),
+    error => error?.code === 'concurrentUseUnsupported'
   );
 });

@@ -14,7 +14,8 @@ function createHarness({
   structuralProof = null,
   contextState = 'running',
   workletSilentWhileSuspended = false,
-  silentInputConnected = false
+  silentInputConnected = false,
+  firstRenderActivity = null
 } = {}) {
   let now = 0;
   let renderSequence = 0;
@@ -151,6 +152,8 @@ function createHarness({
             skipEpoch: message.skipEpoch,
             state: message.state,
             processingDirective: message.processingDirective,
+            inputActive: firstRenderActivity?.inputActive ?? false,
+            outputActive: firstRenderActivity?.outputActive ?? false,
             workletGraphGeneration: message.workletGraphGeneration,
             topologyRevision: message.topologyRevision,
             renderSequence: ++renderSequence,
@@ -528,6 +531,34 @@ test('balanced silent no-route stays active through its idle deadline before sus
   assert.equal(harness.controller.getEffectiveState(), 'SUSPENDED');
   assert.equal(harness.context.state, 'suspended');
   assert.ok(harness.posted.some(message => message.type === 'setUiTelemetryEnabled' && !message.enabled));
+});
+
+test('suspend commitment uses post-command first-render activity and never suspends on stale silence', async () => {
+  const harness = createHarness({
+    firstRenderActivity: {
+      inputActive: true,
+      outputActive: true
+    }
+  });
+  let suspendCalls = 0;
+  harness.audioManager.contextManager.suspendForPowerPolicy = async () => {
+    suspendCalls += 1;
+    harness.context.state = 'suspended';
+    return true;
+  };
+
+  await harness.controller.start();
+  assert.equal(harness.controller.workletObservation.inputActive, false);
+  assert.equal(harness.controller.workletObservation.outputActive, false);
+
+  harness.setNow(15_000);
+  await harness.controller.requestReconcile('deadline-with-fresh-activity');
+
+  assert.equal(suspendCalls, 0);
+  assert.equal(harness.context.state, 'running');
+  assert.equal(harness.controller.getEffectiveState(), 'ACTIVE');
+  assert.equal(harness.controller.workletObservation.inputActive, true);
+  assert.equal(harness.controller.workletObservation.outputActive, true);
 });
 
 test('zero-output suspension requires a current generated proof and restarts its clock after proof loss', async () => {
