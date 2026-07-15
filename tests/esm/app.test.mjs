@@ -344,6 +344,9 @@ function createDependencies(calls, options = {}) {
       }
       if (options.rebuildReject) throw new Error('rebuild failed');
     },
+    async waitForDspActivationBeforeOutput() {
+      calls.push(['audio.waitForDspActivationBeforeOutput']);
+    },
     fadeInOutput() { calls.push(['audio.fadeInOutput']); },
     setCurrentPipeline(pipeline) {
       calls.push(['audio.setCurrentPipeline', pipeline]);
@@ -702,6 +705,8 @@ test('App initialize handles success, audio warnings, and initialization failure
     assert.equal(app.initialized, true);
     assert.equal(app.hasAudioError, true);
     assert.equal(calls.some(call => call[0] === 'audio.fadeInOutput'), true);
+    assert.ok(calls.findIndex(call => call[0] === 'audio.waitForDspActivationBeforeOutput') <
+      calls.findIndex(call => call[0] === 'audio.fadeInOutput'));
     assert.equal(calls.some(call => call[0] === 'ui.setError' && call[1] === 'error.microphoneAccessDenied'), true);
     assert.ok(calls.findIndex(call => call[0] === 'pluginManager.loadPlugins') <
       calls.findIndex(call => call[0] === 'presetManager.loadPresetList'));
@@ -1425,7 +1430,7 @@ test('event listeners and update notifications stay recoverable', async () => {
     window.electronAPI.listeners.get('update-available')({ version: '3.0.0', url: 'https://example.test/update' });
     const notice = document.body.children.find(child => child.className === 'update-notification');
     window.electronAPI.openExternal = url => calls.push(['openExternal', url]);
-    notice.click();
+    notice.children[0].click();
     assert.equal(calls.some(call => call[0] === 'openExternal'), true);
     document.updateNotification = null;
     window.uiManager = {
@@ -1435,12 +1440,12 @@ test('event listeners and update notifications stay recoverable', async () => {
       }
     };
     app.showUpdateNotification({ version: '3.0.2', url: 'https://example.test/translated' });
-    const translatedNotice = document.body.children.find(child => child.textContent === 'Translated 3.0.2');
-    assert.equal(translatedNotice.textContent, 'Translated 3.0.2');
+    const translatedNotice = document.body.children.filter(child => child.className === 'update-notification').at(-1);
+    assert.equal(translatedNotice.children[0].textContent, 'Translated 3.0.2');
     window.electronAPI = null;
     document.updateNotification = null;
     app.showUpdateNotification({ version: '3.0.1', url: 'https://example.test/web' });
-    document.body.children.filter(child => child.className === 'update-notification').at(-1).click();
+    document.body.children.filter(child => child.className === 'update-notification').at(-1).children[0].click();
     assert.equal(calls.some(call => call[0] === 'window.open' && call[1] === 'https://example.test/web'), true);
 
     window.electronIntegration = {

@@ -457,6 +457,31 @@ test('registers core handlers and delegates file, config, update, path, and URL 
   });
 });
 
+test('playlist file adapter publishes atomic writes', async () => {
+  await withHarness({}, async ({ ipcMain, moduleUnderTest, tempDir }) => {
+    moduleUnderTest.registerIpcHandlers();
+    const targetPath = path.join(tempDir, 'effetune_presets.json');
+
+    const event = { sender: { id: 7 } };
+    assert.deepEqual(
+      await ipcMain.handlers.get('begin-atomic-file-write')(event, null),
+      { success: false, error: 'Invalid atomic file write target.' }
+    );
+    const begun = await ipcMain.handlers.get('begin-atomic-file-write')(event, targetPath);
+    assert.equal(begun.success, true);
+    assert.deepEqual(
+      await ipcMain.handlers.get('write-atomic-file-chunk')(event, begun.token, '#EXTM3U\n'),
+      { success: true }
+    );
+    assert.equal(fs.existsSync(targetPath), false);
+    assert.deepEqual(
+      await ipcMain.handlers.get('commit-atomic-file-write')(event, begun.token),
+      { success: true }
+    );
+    assert.equal(fs.readFileSync(targetPath, 'utf8'), '#EXTM3U\n');
+  });
+});
+
 test('save-config keeps a durable config successful when the auto-launch side effect fails', async () => {
   await withHarness({ throwSetLoginItemSettings: true }, async ({ calls, ipcMain, moduleUnderTest }) => {
     moduleUnderTest.registerIpcHandlers();

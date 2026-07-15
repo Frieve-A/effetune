@@ -14,6 +14,9 @@
 *.yml text eol=lf
 *.yaml text eol=lf
 
+# Preserve the verified upstream SQLite Emscripten output byte-for-byte.
+js/vendor/sqlite/sqlite3.mjs whitespace=-trailing-space
+
 # Binary files should not be modified
 *.png binary
 *.jpg binary

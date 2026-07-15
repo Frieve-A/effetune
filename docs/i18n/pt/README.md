@@ -87,10 +87,12 @@ Abra **Configuração...** no menu **Configurações** para escolher o idioma, a
 
 1. No PC, abra pelo botão **Biblioteca de música** no cabeçalho; no móvel, pela aba **Biblioteca**; no aplicativo desktop, por **Visualizar > Biblioteca de música**.
 2. Selecione **Adicionar pasta de música** para indexar uma pasta com arquivos de música.
-3. Navegue por **Faixas**, **Álbuns**, **Artistas**, **Gêneros**, **Subpastas**, **Pastas**, **Adicionadas recentemente** ou **Playlists**, e use **Pesquisar na biblioteca** para pesquisar todo o catálogo. A seção **Subpastas** agrupa pelo caminho que contém as faixas dentro de cada raiz importada, enquanto **Pastas** gerencia essas raízes. Bibliotecas existentes recebem esse agrupamento sem nova varredura nem migração do armazenamento.
+3. Navegue por **Faixas**, **Álbuns**, **Artistas**, **Gêneros**, **Subpastas**, **Pastas**, **Adicionadas recentemente** ou **Playlists**, e use **Pesquisar na biblioteca** para pesquisar todo o catálogo. A seção **Subpastas** agrupa pelo caminho que contém as faixas dentro de cada raiz importada, enquanto **Pastas** gerencia essas raízes.
 4. Reproduza os resultados pelo Effect Pipeline atual, ou use **Reproduzir a seguir**, **Adicionar à fila** e **Adicionar à playlist** para gerenciar a reprodução.
 5. Use **Reescanear** depois de modificar arquivos e **Reconectar** se uma permissão do navegador ou da pasta expirar.
    - [Mais sobre a Biblioteca de música](music-library.md)
+
+A versão 3.0.0 começa com uma Biblioteca de música nova. O estado da Biblioteca anterior não é herdado; adicione novamente as pastas de música e faça a varredura. Isso não altera os arquivos de áudio contidos nelas. A arquitetura tem como alvo mais de um milhão de faixas; o suporte formal só será anunciado após a aprovação da Phase 0 e de toda a qualificação de execução.
 
 ### Construindo Sua Cadeia de Efeitos
 

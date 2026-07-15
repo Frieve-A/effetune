@@ -1,6 +1,7 @@
 const { app, ipcMain, shell, systemPreferences, Menu, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const constants = require('./constants');
 const config = require('./config');
 const { registerClipboardIpcHandlers } = require('./clipboard-ipc');
@@ -15,6 +16,8 @@ const SETTINGS_DIR_SAVE_FILE_ALLOWLIST = new Set([
   'effetune_dbt_tests.json'
 ]);
 const SETTINGS_DIR_SAVE_FILE_DENIAL = 'Writing to the EffeTune settings folder is not allowed: library-folders.json and other settings files are managed by the application';
+const ATOMIC_FILE_WRITE_MAX_CHARS = 64 * 1024;
+const atomicFileWrites = new Map();
 
 function normalizePathForComparison(filePath) {
   const resolvedPath = path.resolve(filePath);
@@ -182,6 +185,69 @@ function registerIpcHandlers() {
       };
     }
     return await fileHandlers.saveFile(filePath, content);
+  });
+
+  ipcMain.handle('begin-atomic-file-write', async (event, filePath) => {
+    if (typeof filePath !== 'string' || filePath.trim() === '') {
+      return { success: false, error: 'Invalid atomic file write target.' };
+    }
+    const denialReason = getSaveFileDenialReason(filePath);
+    if (denialReason) return { success: false, error: denialReason };
+    const token = crypto.randomUUID();
+    const tempPath = path.join(path.dirname(filePath), `.${path.basename(filePath)}.${token}.tmp`);
+    try {
+      const handle = await fs.promises.open(tempPath, 'wx');
+      atomicFileWrites.set(token, {
+        senderId: event?.sender?.id ?? 0,
+        filePath,
+        tempPath,
+        handle
+      });
+      return { success: true, token };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('write-atomic-file-chunk', async (event, token, chunk) => {
+    const session = atomicFileWrites.get(token);
+    if (!session || session.senderId !== (event?.sender?.id ?? 0) || typeof chunk !== 'string' ||
+        chunk.length > ATOMIC_FILE_WRITE_MAX_CHARS) {
+      return { success: false, error: 'Invalid atomic file write chunk.' };
+    }
+    try {
+      await session.handle.writeFile(chunk, 'utf8');
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('commit-atomic-file-write', async (event, token) => {
+    const session = atomicFileWrites.get(token);
+    if (!session || session.senderId !== (event?.sender?.id ?? 0)) {
+      return { success: false, error: 'Invalid atomic file write session.' };
+    }
+    atomicFileWrites.delete(token);
+    try {
+      await session.handle.sync();
+      await session.handle.close();
+      await fs.promises.rename(session.tempPath, session.filePath);
+      return { success: true };
+    } catch (error) {
+      await session.handle.close().catch(() => {});
+      await fs.promises.unlink(session.tempPath).catch(() => {});
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('abort-atomic-file-write', async (event, token) => {
+    const session = atomicFileWrites.get(token);
+    if (!session || session.senderId !== (event?.sender?.id ?? 0)) return { success: true };
+    atomicFileWrites.delete(token);
+    await session.handle.close().catch(() => {});
+    await fs.promises.unlink(session.tempPath).catch(() => {});
+    return { success: true };
   });
 
   ipcMain.handle('read-file', async (event, filePath, binary = false) => {

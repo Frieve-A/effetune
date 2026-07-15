@@ -6,6 +6,8 @@ lang: es
 
 # Cómo usar la Biblioteca musical
 
+EffeTune 3.0.0 comienza con una Biblioteca musical nueva. El estado de la Biblioteca anterior no se hereda, así que vuelve a añadir y analizar tus carpetas de música. Esto no modifica los archivos de audio que contienen.
+
 La Biblioteca musical indexa las carpetas de música que seleccionas y te permite explorar tu colección local por pistas, álbumes, artistas, géneros, subcarpetas, carpetas, elementos añadidos recientemente y listas de reproducción. El audio reproducido pasa por el pipeline de efectos actual de EffeTune, igual que durante la reproducción normal de archivos de música.
 
 La Biblioteca musical guarda dentro de la aplicación su catálogo, la caché de carátulas y las listas de reproducción. No edita, cambia de nombre, mueve ni elimina los archivos de audio.
@@ -53,6 +55,8 @@ Usa las pestañas de navegación para cambiar de vista en el catálogo.
 Los grupos de **Subcarpetas** se crean con la ruta de la subcarpeta que contiene directamente cada pista, relativa a su carpeta de música importada. Las rutas relativas idénticas de distintas carpetas importadas se mantienen en grupos separados. Los archivos situados directamente en la raíz importada no crean un grupo de subcarpeta, pero siguen apareciendo en **Pistas** y **Carpetas**.
 
 Con **Buscar en la biblioteca** puedes buscar en pistas, álbumes, artistas y listas de reproducción. En el diseño de PC, los encabezados de la lista de pistas permiten ordenar por título, artista, álbum, género o duración.
+
+Al buscar pistas, los términos de tres o más caracteres coinciden en cualquier parte del título, artista, álbum, género, nombre de archivo o ruta. Los términos de uno o dos caracteres solo coinciden al principio de una palabra. Escribe al menos tres caracteres para buscar dentro de una palabra.
 
 Si faltan metadatos o no se pueden leer, EffeTune usa el nombre del archivo y la información de la carpeta como alternativa. En **Propiedades de la pista** puedes consultar la ruta del archivo, el formato, la tasa de muestreo, la profundidad de bits, la tasa de bits y los principales campos de metadatos.
 
@@ -104,7 +108,7 @@ Al exportar, si eliges **Rutas relativas**, las rutas se escriben, cuando es pos
 
 - La Biblioteca musical lee archivos de audio y metadatos, pero no escribe cambios en los archivos de audio.
 - La caché de carátulas y las listas de reproducción son datos de la aplicación, no cambios incrustados en los archivos de música.
-- La clasificación por **Subcarpetas** se obtiene de las rutas relativas ya guardadas, por lo que también aparece en las bibliotecas existentes sin volver a escanear ni migrar datos. El esquema de IndexedDB y el formato de almacenamiento no cambian.
+- La clasificación por **Subcarpetas** se obtiene de las rutas relativas guardadas en el catálogo.
 - El almacenamiento del navegador puede borrarse desde la configuración del navegador o por acciones del usuario. Exporta las listas de reproducción importantes si lo necesitas.
 - En la aplicación web, la gestión de permisos del navegador determina si las carpetas siguen disponibles después de recargar.
 

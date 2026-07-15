@@ -6,6 +6,8 @@ lang: fr
 
 # Utiliser la Bibliothèque musicale
 
+EffeTune 3.0.0 démarre avec une nouvelle Bibliothèque musicale. L'état de la Bibliothèque précédente n'est pas repris : ajoutez et analysez de nouveau vos dossiers de musique. Cela ne modifie pas les fichiers audio qu'ils contiennent.
+
 La Bibliothèque musicale indexe les dossiers de musique que vous choisissez et vous permet de parcourir votre collection locale par morceaux, albums, artistes, genres, sous-dossiers, dossiers, ajouts récents et listes de lecture. Comme pour la lecture normale des fichiers musicaux, le son passe par le pipeline d'effets EffeTune actuel.
 
 La Bibliothèque musicale enregistre le catalogue interne de l'application, le cache des illustrations et les listes de lecture. Elle ne modifie, ne renomme, ne déplace et ne supprime jamais les fichiers musicaux eux-mêmes.
@@ -53,6 +55,8 @@ Les onglets de navigation permettent de changer de catalogue.
 Les groupes **Sous-dossiers** utilisent le chemin du sous-dossier qui contient directement chaque morceau, relatif à son dossier de musique importé. Des chemins relatifs identiques appartenant à des dossiers importés différents restent dans des groupes distincts. Les fichiers placés directement à la racine importée ne créent pas de groupe de sous-dossier, mais restent disponibles dans **Morceaux** et **Dossiers**.
 
 **Rechercher dans la bibliothèque** permet de rechercher dans les morceaux, albums, artistes et listes de lecture. En disposition ordinateur, l'en-tête de la liste des morceaux permet de trier par titre, artiste, album, genre ou durée.
+
+Pour les morceaux, les termes d’au moins trois caractères peuvent correspondre à n’importe quelle partie du titre, de l’artiste, de l’album, du genre, du nom de fichier ou du chemin. Les termes d’un ou deux caractères ne correspondent qu’au début d’un mot. Saisissez au moins trois caractères pour rechercher au milieu d’un mot.
 
 Quand les métadonnées sont absentes ou illisibles, EffeTune utilise le nom du fichier et les informations de dossier pour l'affichage. Les propriétés d'un morceau permettent de consulter le chemin du fichier, le format, la fréquence d'échantillonnage, la profondeur de bits, le débit binaire et les principaux champs de métadonnées.
 
@@ -104,7 +108,7 @@ Lors de l'exportation, si vous choisissez **Chemins relatifs**, les chemins sont
 
 - La Bibliothèque musicale lit les fichiers musicaux et les métadonnées, mais n'écrit aucune modification dans les fichiers musicaux.
 - Le cache des illustrations et les listes de lecture sont des données internes à l'application, pas des modifications intégrées aux fichiers musicaux.
-- Le classement par **Sous-dossiers** est déduit des chemins relatifs déjà enregistrés : il apparaît donc dans les bibliothèques existantes sans nouvelle analyse ni migration. Le schéma IndexedDB et le format de stockage restent inchangés.
+- Le classement par **Sous-dossiers** est déduit des chemins relatifs enregistrés dans le catalogue.
 - L'espace de stockage du navigateur peut être effacé par les paramètres du navigateur ou par une action de l'utilisateur. Exportez les listes de lecture importantes si nécessaire.
 - Dans l'application web, la disponibilité des dossiers après un rechargement dépend de la gestion des autorisations par le navigateur.
 

@@ -130,7 +130,7 @@ export function startApplication({
         logger
     });
 
-    return firstLaunchPromise.then(isFirstLaunch => {
+    const start = isFirstLaunch => {
         windowRef.isFirstLaunchConfirmed = isFirstLaunch;
         windowRef.isFirstLaunch = isFirstLaunch;
         registerServiceWorker(windowRef, logger);
@@ -141,18 +141,12 @@ export function startApplication({
                 })
                 .then(() => createAndInitializeAppFn(AppClass, { windowRef, logger }));
         }
-        return createAndInitializeAppFn(AppClass, { windowRef, logger });
-    }).catch(error => {
+        return Promise.resolve(createAndInitializeAppFn(AppClass, { windowRef, logger }));
+    };
+
+    return firstLaunchPromise.then(start).catch(error => {
         logger.error('Failed to check first launch status:', error);
-        registerServiceWorker(windowRef, logger);
-        if (typeof loadInitialConfigFn === 'function') {
-            return Promise.resolve(loadInitialConfigFn({ windowRef, logger }))
-                .catch(configError => {
-                    logger.warn('Failed to load initial app config:', configError);
-                })
-                .then(() => createAndInitializeAppFn(AppClass, { windowRef, logger }));
-        }
-        return createAndInitializeAppFn(AppClass, { windowRef, logger });
+        return start(false);
     });
 }
 
@@ -165,7 +159,7 @@ export function registerServiceWorker(windowRef = getDefaultWindow(), logger = c
         return;
     }
     const register = () => {
-        windowRef.navigator.serviceWorker.register('./sw.js').catch(error => {
+        windowRef.navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).catch(error => {
             logger.warn('Service worker registration failed:', error);
         });
     };

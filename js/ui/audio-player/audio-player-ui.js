@@ -41,6 +41,7 @@ export class AudioPlayerUI {
     this.libraryContextMenuReturnFocus = null;
     this.playlistSelectionGeneration = 0;
     this.playlistSelectionIntent = null;
+    this.queueRenderGeneration = 0;
     this.updateInterval = null;
     this.positionRaf = null;
     this._powerUiEnabled = true;
@@ -98,6 +99,10 @@ export class AudioPlayerUI {
     addStateListener('playlist', () => {
       this.updatePlaylistDisplay();
       this.notifyLibraryNowPlaying();
+    });
+
+    addStateListener('queueWindow', () => {
+      this.updatePlaylistDisplay();
     });
 
     addStateListener('currentTrackIndex', () => {
@@ -258,20 +263,36 @@ export class AudioPlayerUI {
       }
     });
 
+    const runPlaybackCommand = command => {
+      try {
+        void Promise.resolve(command()).catch(error => {
+          console.error('Audio player command failed:', error);
+          window.uiManager?.setError?.('error.playbackCommandFailed', true);
+        });
+      } catch (error) {
+        console.error('Audio player command failed:', error);
+        window.uiManager?.setError?.('error.playbackCommandFailed', true);
+      }
+    };
+
     // Add event listeners
     this.playPauseButton.addEventListener('click', () => {
       this.audioPlayer.togglePlayPause();
     });
     this.stopButton.addEventListener('click', () => this.audioPlayer.stop());
-    this.prevButton.addEventListener('click', () => this.audioPlayer.playPrevious());
-    this.nextButton.addEventListener('click', () => this.audioPlayer.playNext());
+    this.prevButton.addEventListener('click', () => runPlaybackCommand(() => this.audioPlayer.playPrevious()));
+    this.nextButton.addEventListener('click', () => runPlaybackCommand(() => this.audioPlayer.playNext()));
     this.closeButton.addEventListener('click', () => this.audioPlayer.close());
     
     // Add repeat button event listener
-    this.repeatButton.addEventListener('click', () => this.audioPlayer.playbackManager.toggleRepeatMode());
+    this.repeatButton.addEventListener('click', () => runPlaybackCommand(
+      () => this.audioPlayer.playbackManager.toggleRepeatMode()
+    ));
     
     // Add shuffle button event listener
-    this.shuffleButton.addEventListener('click', () => this.audioPlayer.playbackManager.toggleShuffleMode());
+    this.shuffleButton.addEventListener('click', () => runPlaybackCommand(
+      () => this.audioPlayer.playbackManager.toggleShuffleMode()
+    ));
     
     // Update UI based on loaded state
     this.updatePlayerUIState();
@@ -529,6 +550,10 @@ export class AudioPlayerUI {
     if (!this.playlistDisplay || !this.audioPlayer.stateManager) return;
 
     const state = this.audioPlayer.stateManager.getStateSnapshot();
+    if (state.sequenceKind === 'catalog') {
+      this.renderCatalogQueueWindow(state);
+      return;
+    }
     const playlist = Array.isArray(state.playlist) ? state.playlist : [];
     this.playlistDisplay.innerHTML = '';
     this.playlistDisplay.style.display = playlist.length > 1 ? '' : 'none';
@@ -581,6 +606,66 @@ export class AudioPlayerUI {
         } finally {
           this.completePlaylistSelection(selection);
         }
+      });
+      this.playlistDisplay.appendChild(item);
+    });
+  }
+
+  renderCatalogQueueWindow(state) {
+    const generation = ++this.queueRenderGeneration;
+    const queueWindow = state.queueWindow;
+    const rows = Array.isArray(queueWindow?.rows) ? queueWindow.rows.slice(0, 80) : [];
+    const startOrdinal = queueWindow?.startOrdinal ?? 0;
+    const totalCount = queueWindow?.totalCount ?? state.playlistLength;
+    this.playlistDisplay.innerHTML = '';
+    this.playlistDisplay.style.display = state.playlistLength > 1 ? '' : 'none';
+    const navigation = document.createElement('div');
+    navigation.className = 'player-queue-pagination';
+    const previous = document.createElement('button');
+    previous.type = 'button';
+    previous.className = 'player-queue-page-previous';
+    previous.setAttribute('aria-label', this.t('library.queue.previousPage'));
+    previous.textContent = '‹';
+    previous.disabled = startOrdinal <= 0;
+    previous.addEventListener('click', () => {
+      void this.audioPlayer.playbackManager?.refreshCatalogQueuePage?.(Math.max(0, startOrdinal - 80));
+    });
+    const position = document.createElement('span');
+    position.className = 'player-queue-page-position';
+    const visibleEnd = Math.min(totalCount, startOrdinal + rows.length);
+    position.textContent = `${startOrdinal + 1}–${visibleEnd} / ${totalCount}`;
+    const next = document.createElement('button');
+    next.type = 'button';
+    next.className = 'player-queue-page-next';
+    next.setAttribute('aria-label', this.t('library.queue.nextPage'));
+    next.textContent = '›';
+    next.disabled = visibleEnd >= totalCount;
+    next.addEventListener('click', () => {
+      void this.audioPlayer.playbackManager?.refreshCatalogQueuePage?.(startOrdinal + 80);
+    });
+    navigation.appendChild(previous);
+    navigation.appendChild(position);
+    navigation.appendChild(next);
+    this.playlistDisplay.appendChild(navigation);
+    rows.forEach((track, index) => {
+      if (generation !== this.queueRenderGeneration) return;
+      const ordinal = startOrdinal + index;
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'player-playlist-item';
+      item.dataset.ordinal = String(ordinal);
+      item.classList?.toggle?.('active', ordinal === state.currentTrackIndex);
+      item.textContent = this.getDisplayTrackName(track) || this.t('library.queue.trackNumber', {
+        number: ordinal + 1
+      });
+      item.addEventListener('contextmenu', event => this.openLibraryTrackMenu(event, track));
+      item.addEventListener('click', async () => {
+        const latestState = this.audioPlayer.stateManager?.getStateSnapshot?.();
+        const shouldPlay = latestState?.isPlaying || window.uiManager?.layoutMode?.isMobile;
+        await this.audioPlayer.playbackManager?.selectCatalogOrdinal?.(ordinal, {
+          play: shouldPlay,
+          userInitiated: true
+        });
       });
       this.playlistDisplay.appendChild(item);
     });
@@ -683,6 +768,18 @@ export class AudioPlayerUI {
     try {
       const manager = await this.getLibraryManager();
       if (!manager) return;
+      const sequenceDescriptor = this.audioPlayer.playbackManager?.getActiveSequenceDescriptor?.();
+      if (sequenceDescriptor?.kind === 'catalog' || sequenceDescriptor?.kind === 'composite') {
+        const name = await this.promptText('library.prompt.playlistName', this.t('library.prompt.queuePlaylistName'));
+        if (name) {
+          await window.uiManager?.libraryPlaybackBridge?.saveQueueAsPlaylist({
+            name,
+            sequenceDescriptor,
+            libraryManager: manager
+          });
+        }
+        return;
+      }
       const state = this.audioPlayer.stateManager?.getStateSnapshot?.();
       const items = manager.createPlaylistItemsFromQueueEntries
         ? manager.createPlaylistItemsFromQueueEntries(Array.isArray(state?.playlist) ? state.playlist : [])
@@ -982,6 +1079,9 @@ export class AudioPlayerUI {
       'library.prompt.playlistName': 'Playlist name',
       'library.prompt.queuePlaylistName': 'Queue',
       'library.action.cancel': 'Cancel',
+      'library.queue.previousPage': 'Previous queue page',
+      'library.queue.nextPage': 'Next queue page',
+      'library.queue.trackNumber': `Track ${params.number ?? ''}`,
       'library.state.ok': 'OK',
       'library.state.noResolvedTracks': 'There are no available library tracks.'
     };

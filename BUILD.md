@@ -63,6 +63,41 @@ npm run lint
 npm test
 ```
 
+### Music Library scale qualification
+
+The Web Music Library catalog uses the vendored official SQLite WASM build in a dedicated
+Worker, with one `opfs-sahpool` connection and rollback journaling. The browser contract and
+million-track checks each start and stop their own temporary loopback origin and use an isolated
+Playwright browser context; do not start a separate development server.
+
+Changes that affect Music Library storage, scanning, paging, search, durable operations,
+playlists, playback sequences, or artwork must run the browser contract:
+
+```bash
+npm run test:library-sqlite:web
+```
+
+For an explicit commit or release scale qualification, also run:
+
+```bash
+npm run test:library-scale:web-sqlite
+```
+
+The million-track check is intentionally excluded from `npm test`, `npm run verify`, and
+the pull-request quick gate. Do not add it to routine verification.
+
+- `test:library-sqlite:web` covers fresh creation, reopen, Worker restart, the repository
+  domains, one-to-two-character word-prefix search, three-or-more-character trigram
+  substring search, message limits, foreign keys, and integrity.
+- `test:library-scale:web-sqlite` writes one million tracks through the production Web
+  repository in bounded batches with realistic metadata and path lengths, verifies
+  first/middle/end pages and the reopen order digest, and enforces insertion time, OPFS
+  size, browser/Worker memory, and the published p95 page and search limits.
+- SQLite vendor hashes and the Web precache are verified by `npm run assets:web` and
+  `npm run verify` before the browser checks.
+
+Release notes should state that EffeTune starts with a new Music Library, earlier Library state is not inherited, and folders must be added and scanned again. This is ordinary release information, not a migration detector or prerequisite workflow.
+
 Changes to the power-saving policy, audio-pipeline lifetime, input ownership, or resume
 behavior must also pass the browser smoke test:
 

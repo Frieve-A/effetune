@@ -1,0 +1,11 @@
+{
+  "name": "SQLite WebAssembly/JavaScript",
+  "version": "3.53.3",
+  "sourceUrl": "https://www.sqlite.org/2026/sqlite-wasm-3530300.zip",
+  "archiveSha3_256": "cae64fe0107faf041a1af2dbf544699ae49af71976a15819ad7639bfedce7dcf",
+  "files": {
+    "sqlite3.mjs": "5e6b487fa3d5817acd69cfa524437f94e9322ea37300cdf5991b192c6d2e315f",
+    "sqlite3.wasm": "3bcee9d57451c9ee9fe7abd3f6f2a26d97780ea743eff35616227496ad50754b"
+  },
+  "license": "SQLite public-domain dedication and Emscripten MIT/UIUC licenses; see LICENSE.md"
+}

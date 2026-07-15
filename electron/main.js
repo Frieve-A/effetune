@@ -1,7 +1,8 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain } = require('electron');
+const { app, BrowserWindow, Tray, Menu, dialog, ipcMain, utilityProcess } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
+const { pathToFileURL } = require('url');
 
 // Import modules
 const constants = require('./constants');
@@ -9,6 +10,17 @@ const configModule = require('./config');
 const windowState = require('./window-state');
 const ipcHandlers = require('./ipc-handlers');
 const fileHandlers = require('./file-handlers');
+const {
+  registerLibraryCatalogIpc,
+  registerLibraryCatalogControlIpc
+} = require('./library-catalog-host.cjs');
+const { LibraryCatalogUtilityHost } = require('./library-catalog-utility-host.cjs');
+const {
+  registerLibraryServiceIpc
+} = require('./library-service-coordinator.cjs');
+const releaseVersionModulePromise = import(pathToFileURL(
+  path.join(__dirname, '../js/release-version.mjs')
+).href);
 
 // Get app version from package.json
 const packageJson = require('../package.json');
@@ -27,6 +39,26 @@ function isSupportedPlaybackAudioPath(filePath) {
 
 let tray = null;
 let isAppQuitting = false;
+let libraryCatalogShutdownReady = false;
+let libraryServiceCoordinator = null;
+let disposeLibraryServiceIpc = null;
+let libraryCatalogScanRuntime = null;
+let disposeLibraryCatalogControlIpc = null;
+let libraryCatalogUtilityHost = null;
+let disposeLibraryCatalogIpc = null;
+
+async function closeLibraryCatalogServices() {
+  disposeLibraryCatalogIpc?.();
+  disposeLibraryCatalogIpc = null;
+  disposeLibraryCatalogControlIpc?.();
+  disposeLibraryCatalogControlIpc = null;
+  disposeLibraryServiceIpc?.();
+  disposeLibraryServiceIpc = null;
+  await libraryCatalogUtilityHost?.close();
+  libraryCatalogUtilityHost = null;
+  libraryCatalogScanRuntime = null;
+  libraryServiceCoordinator = null;
+}
 
 // When true, mainWindow.show() is deferred from its ready-to-show handler to
 // the splash flow's post-reload did-finish-load — so the main UI is never
@@ -812,15 +844,24 @@ async function checkForUpdates() {
       req.end();
     });
     
-    // Extract version from the "name" field (e.g., "Version 1.60.0")
+    const {
+      isNewerVersion,
+      normalizeReleaseVersion,
+      normalizeSemVer
+    } = await releaseVersionModulePromise;
+
+    // A non-empty release name is required by the published-release contract.
     const latestVersionName = response.name;
-    const currentVersion = constants.getAppVersion();
+    const targetVersion = normalizeReleaseVersion(response);
+    const currentVersion = normalizeSemVer(constants.getAppVersion());
     
     // Compare versions
-    if (latestVersionName && latestVersionName !== `Version ${currentVersion}`) {
+    if (latestVersionName && targetVersion && currentVersion && isNewerVersion(targetVersion, currentVersion)) {
       // Store update info for later sending
       pendingUpdateInfo = {
         version: latestVersionName,
+        targetVersion,
+        currentVersion,
         url: 'https://github.com/Frieve-A/effetune/releases/'
       };
       
@@ -1133,7 +1174,7 @@ function createTray() {
 }
 
 // Initialize the app
-function initializeApp() {
+async function initializeApp() {
   // Set up file logging first to capture all logs
   setupFileLogging();
   
@@ -1163,6 +1204,36 @@ function initializeApp() {
       constants.setShouldLoadPipelineState(true);
     }
   }
+
+  // The utility process owns the only writable v2 catalog authority.
+  const libraryCatalogDirectory = path.resolve(userDataPath, 'music-library-v2');
+  const libraryCatalogPath = path.join(libraryCatalogDirectory, 'catalog.sqlite');
+  fs.mkdirSync(libraryCatalogDirectory, { recursive: true });
+  libraryCatalogUtilityHost = await LibraryCatalogUtilityHost.open({
+    dialog,
+    getMainWindow: () => constants.getMainWindow(),
+    dbPath: libraryCatalogPath,
+    processFactory: modulePath => utilityProcess.fork(modulePath, [], {
+      serviceName: 'Effetune Music Library'
+    })
+  });
+  disposeLibraryCatalogIpc = registerLibraryCatalogIpc({
+    ipcMain,
+    host: libraryCatalogUtilityHost.repository,
+    getMainWindow: () => constants.getMainWindow()
+  });
+  libraryCatalogScanRuntime = libraryCatalogUtilityHost.runtime;
+  libraryServiceCoordinator = libraryCatalogUtilityHost.coordinator;
+  disposeLibraryCatalogControlIpc = registerLibraryCatalogControlIpc({
+    ipcMain,
+    runtime: libraryCatalogScanRuntime,
+    getMainWindow: () => constants.getMainWindow()
+  });
+  disposeLibraryServiceIpc = registerLibraryServiceIpc({
+    ipcMain,
+    coordinator: libraryServiceCoordinator,
+    getMainWindow: () => constants.getMainWindow()
+  });
   
   const cfgDefaults = {
     autoLaunch: false,
@@ -1195,7 +1266,6 @@ function initializeApp() {
   ipcHandlers.registerIpcHandlers();
   
   // Register IPC handler for renderer-ready-for-music-files event
-  const { ipcMain } = require('electron');
   ipcMain.on('renderer-ready-for-music-files', (event) => {
     // Debug logs removed for release
     
@@ -1335,9 +1405,20 @@ app.on('open-file', (event, path) => {
 app.setAsDefaultProtocolClient('effetune');
   
 // Main entry point
-app.whenReady().then(() => {
-  // Initialize the app
-  initializeApp();
+app.whenReady().then(async () => {
+  try {
+    // Initialize the catalog authority before creating the main window.
+    await initializeApp();
+  } catch (error) {
+    console.error('Failed to initialize the music catalog:', error?.code || error?.name || 'unknown');
+    dialog.showErrorBox(
+      'EffeTune could not start',
+      'The music library catalog could not be opened. No library data was changed.'
+    );
+    await closeLibraryCatalogServices().catch(() => {});
+    app.quit();
+    return;
+  }
   
   // Start the renderer watchdog — it self-arms once the first ping arrives.
   startWatchdog();
@@ -1351,9 +1432,20 @@ app.whenReady().then(() => {
   });
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
   isAppQuitting = true;
   stopWatchdog();
+  if (!libraryCatalogShutdownReady && libraryCatalogUtilityHost) {
+    event.preventDefault();
+    closeLibraryCatalogServices()
+      .catch(error => {
+        console.error('Failed to close the music catalog cleanly:', error?.code || error?.name || 'unknown');
+      })
+      .finally(() => {
+        libraryCatalogShutdownReady = true;
+        app.quit();
+      });
+  }
 });
 
 // Quit the app when all windows are closed (except on macOS unless explicitly quitting)
@@ -1367,5 +1459,6 @@ app.on('window-all-closed', () => {
 module.exports = {
   sendPendingUpdateInfo,
   getPendingUpdateInfo,
-  checkForUpdates
+  checkForUpdates,
+  getLibraryCatalogHost: () => libraryCatalogUtilityHost?.repository ?? null
 };

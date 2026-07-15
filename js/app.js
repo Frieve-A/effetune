@@ -11,6 +11,7 @@ import {
     startApplication
 } from './app-bootstrap.js';
 import { normalizeMusicLibraryStartupView } from './library/constants.js';
+import { createUpdateNotification } from './update-notification.js';
 
 // Make electronIntegration globally accessible first
 window.electronIntegration = electronIntegration;
@@ -326,8 +327,9 @@ class App {
             // All updatePlugins messages from the startup sequence (saved state,
             // startup/CLI/tray preset) have been posted to the worklet by now.
             // The output gain has been held at 0 since initAudioOutput so nothing
-            // could leak through; fade it in to make the configured pipeline
-            // audible without any click.
+            // could leak through. Finish the optional JS/WASM choice while the
+            // graph is still private, then publish it with one safety fade.
+            await this.audioManager.waitForDspActivationBeforeOutput?.();
             this.audioManager.fadeInOutput();
 
             // Power ownership starts only after the initial graph and output
@@ -985,20 +987,9 @@ class App {
                 return; // Already showing update notification
             }
             
-            // Create update notification element
-            const updateElement = document.createElement('span');
-            updateElement.className = 'update-notification';
-            updateElement.textContent = window.uiManager && window.uiManager.t ? 
-                window.uiManager.t('ui.newVersionAvailable', { version: updateInfo.version }) : 
-                `New ${updateInfo.version} available.`;
-            
-            // Add click handler to open releases page
-            updateElement.addEventListener('click', () => {
-                if (window.electronAPI && window.electronAPI.openExternal) {
-                    window.electronAPI.openExternal(updateInfo.url);
-                } else {
-                    window.open(updateInfo.url, '_blank');
-                }
+            const updateElement = createUpdateNotification(updateInfo, {
+                documentRef: document,
+                windowRef: window
             });
             
             // Insert after the whats-this link

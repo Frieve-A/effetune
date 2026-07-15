@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "currentPhase": 4,
+  "gates": [
+    {
+      "id": "repository-integrity",
+      "phase": 1,
+      "paths": ["electron/**", "js/library/repository/**", "tests/cjs/electron-library-**"],
+      "quickShard": "electron",
+      "releaseRequired": true,
+      "status": "active"
+    },
+    {
+      "id": "scan-storage-artwork",
+      "phase": 2,
+      "paths": ["electron/**", "js/library/**", "features/measurement/**"],
+      "quickShard": "electron",
+      "releaseRequired": true,
+      "status": "active"
+    },
+    {
+      "id": "web-catalog-integrity",
+      "phase": 2,
+      "paths": ["js/library/repository/web-**", "js/library/workers/**", "sw.js", "sw-precache.js"],
+      "quickShard": "web",
+      "releaseRequired": true,
+      "status": "active"
+    },
+    {
+      "id": "paged-query-ui",
+      "phase": 3,
+      "paths": ["js/ui/library/**", "js/library/**", "effetune-library.css"],
+      "quickShard": "web",
+      "releaseRequired": true,
+      "status": "active"
+    },
+    {
+      "id": "playback-sequence-bulk",
+      "phase": 3,
+      "paths": ["js/ui/audio-player/**", "js/library/operations/**", "electron/library-service-**"],
+      "quickShard": "electron",
+      "releaseRequired": true,
+      "status": "active"
+    },
+    {
+      "id": "web-lifecycle-integrity",
+      "phase": 4,
+      "paths": ["js/release-version.mjs", "sw.js", "sw-precache.js", ".github/workflows/**"],
+      "quickShard": "web",
+      "releaseRequired": true,
+      "status": "active"
+    },
+    {
+      "id": "release-qualification",
+      "phase": 4,
+      "paths": ["tools/library-scale/**", ".github/workflows/**", "BUILD.md"],
+      "quickShard": "electron",
+      "releaseRequired": true,
+      "status": "active"
+    }
+  ],
+  "deferred": []
+}

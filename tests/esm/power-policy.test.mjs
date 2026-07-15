@@ -349,14 +349,26 @@ test('zero-output proof has route precedence while must-process remains the safe
   assert.equal(staleProof.processingDirective, ProcessingDirective.FULL_PROCESS);
 });
 
-test('master bypass skips DSP only for a temporally eligible chain', () => {
-  const eligible = decidePowerTarget(makeFacts({
+test('master bypass uses one source-independent directive for a temporally eligible chain', () => {
+  const player = decidePowerTarget(makeFacts({
     playerState: 'playing',
     transportDemand: true,
     masterBypass: true
   }), DEFAULT_POWER_SETTINGS, NOW);
-  assert.equal(eligible.processingDirective, ProcessingDirective.BYPASS_TRANSPORT);
-  assert.equal(eligible.dspProcessingDemand, false);
+  const externalInput = decidePowerTarget(makeFacts({
+    inputConfigured: true,
+    inputRouteIntent: InputRouteIntent.EXTERNAL,
+    inputResourceState: InputResourceState.LIVE,
+    inputAvailability: InputAvailability.AVAILABLE,
+    masterBypass: true
+  }), DEFAULT_POWER_SETTINGS, NOW);
+
+  for (const decision of [player, externalInput]) {
+    assert.equal(decision.targetState, AudioPowerState.ACTIVE);
+    assert.equal(decision.processingDirective, ProcessingDirective.BYPASS_TRANSPORT);
+    assert.equal(decision.dspProcessingDemand, false);
+    assert.equal(decision.reason, 'bypass-transport');
+  }
 
   const blocked = decidePowerTarget(makeFacts({
     playerState: 'playing',

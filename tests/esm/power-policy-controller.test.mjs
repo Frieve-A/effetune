@@ -2247,6 +2247,65 @@ test('a topology notification invalidates evidence before publishing the mutatio
   await harness.flush();
 });
 
+test('worklet mutations give file and input playback the same master bypass cycle', async () => {
+  const player = createPausedPlayer();
+  player.snapshot.isPlaying = true;
+  player.snapshot.isPaused = false;
+  const pipeline = [{ id: 1, enabled: true, temporalCapability: 'stateless' }];
+  const cases = [
+    ['file', createHarness({ player, pipeline })],
+    ['input', createHarness({
+      pipeline,
+      input: {
+        state: 'live',
+        inputAvailability: 'available',
+        inputAvailabilityRevision: 1,
+        inputGeneration: 1,
+        inputResourceId: 'master-toggle-input',
+        inputConfigured: true,
+        inputSourcePresent: true,
+        trackState: 'live'
+      }
+    })]
+  ];
+
+  for (const [sourceKind, harness] of cases) {
+    await harness.controller.start();
+    await harness.flush();
+
+    harness.audioManager.masterBypass = true;
+    harness.controller.notifyTopologyChanged('pipeline-master-bypass', {
+      resetWorkletTemporalState: true
+    });
+    await harness.flush();
+    assert.equal(
+      harness.controller.processingDirective,
+      'bypass-transport',
+      `${sourceKind} bypass`
+    );
+    assert.notEqual(harness.controller.lastSkipCommandId, null, `${sourceKind} skip command`);
+
+    const bypassSkipEpoch = harness.controller.skipEpoch;
+    harness.audioManager.masterBypass = false;
+    harness.controller.notifyTopologyChanged('pipeline-master-bypass', {
+      resetWorkletTemporalState: true
+    });
+
+    assert.equal(harness.controller.lastSkipCommandId, null, `${sourceKind} reset command`);
+    assert.equal(
+      harness.controller.skipEpoch,
+      bypassSkipEpoch + 1,
+      `${sourceKind} reset epoch`
+    );
+    await harness.flush();
+    assert.equal(harness.controller.processingDirective, 'full-process', `${sourceKind} resume`);
+    assert.equal(harness.controller.getDspUiActivityAllowed(), true, `${sourceKind} UI gate`);
+    assert.ok(harness.posted.some(message =>
+      message.type === 'setUiTelemetryEnabled' && message.enabled === true
+    ), `${sourceKind} telemetry resume`);
+  }
+});
+
 test('a worklet graph replacement also resets temporal skip lineage', async () => {
   const harness = createHarness();
   await harness.controller.start();

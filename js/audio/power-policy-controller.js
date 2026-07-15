@@ -494,7 +494,10 @@ export class PowerPolicyController {
         return mutation;
     }
 
-    notifyTopologyChanged(reason = 'topology-changed') {
+    notifyTopologyChanged(
+        reason = 'topology-changed',
+        { resetWorkletTemporalState = false } = {}
+    ) {
         if (!this.enabled || this.disposed) return null;
         const before = this._getTokensAndGuards();
         const mutation = this.mutations.commitOwnedMutation({
@@ -505,7 +508,7 @@ export class PowerPolicyController {
             resourceSnapshot: before.resourceSnapshot,
             topologyChanged: true
         });
-        this._invalidateTopologyBoundPowerEvidence();
+        this._invalidateTopologyBoundPowerEvidence({ resetWorkletTemporalState });
         this.audioManager.adoptPowerMutation?.(mutation);
         if (this.started) {
             this._configureWorklets();

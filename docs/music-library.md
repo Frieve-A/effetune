@@ -10,6 +10,8 @@ Music Library indexes selected music folders so you can browse your local collec
 
 Music Library stores its catalog, artwork cache, and playlists inside the app. It does not edit, rename, move, or delete your audio files.
 
+EffeTune 3.0.0 starts with a new Music Library. Earlier Library state is not inherited, so add your music folders and scan them again. This does not modify the audio files in those folders.
+
 ## Availability
 
 - **Desktop app:** Uses the full folder scanner and can keep selected folders available between launches. Desktop builds can also show a track in its folder.
@@ -53,6 +55,8 @@ Use the navigation tabs to browse the catalog:
 For example, `Artist/Album/01 Song.flac` appears in the `Artist/Album` subfolder group. Identical relative paths in different indexed roots remain separate. Files stored directly in a root do not create a subfolder group; they remain available in **Tracks** and from that root in **Folders**.
 
 Use **Search library** to search across tracks, albums, artists, and playlists. In the PC layout, track table headers sort by **Title**, **Artist**, **Album**, **Genre**, or **Time**.
+
+For tracks, search terms of three or more characters match anywhere in the title, artist, album, genre, file name, or path. One- or two-character terms match only the beginning of a word. Enter at least three characters when you need a match in the middle of a word.
 
 If metadata is missing or unreadable, EffeTune falls back to the file name and folder information. Track properties show the file path, format, sample rate, bit depth, bitrate, and main metadata fields.
 
@@ -104,8 +108,13 @@ When exporting, choosing **Relative paths** writes paths relative to the export 
 
 - Music Library reads audio files and metadata but does not write changes to audio files.
 - Artwork caching and playlists are app data, not embedded file changes.
-- Subfolder groups are derived from relative paths already stored in the catalog. Existing libraries gain them without a rescan, IndexedDB migration, or storage-format change.
 - Browser storage can be cleared by the browser or user settings. Export important playlists if you need a portable copy.
 - If you use the web app, browser permissions control whether folder handles remain usable after reload.
+
+## Large Libraries
+
+The new catalog architecture is designed for more than one million tracks by keeping catalog data on disk and paging or streaming work in bounded batches. Formal one-million-track support is still subject to Phase 0 reference-machine budgets and complete runtime release qualification; it is not yet a performance guarantee. Scan time and practical limits depend on storage speed, available memory, metadata, artwork, and browser or OS limits.
+
+Multiple tabs or application instances are unsupported. A second writable open is rejected to protect the catalog. Using different EffeTune versions with the same Library is also unsupported.
 
 [← Back to README](../README.md)

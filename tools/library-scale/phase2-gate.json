@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "artifactType": "phase2-gate",
+  "phase0ArtifactId": "phase0-artifact:v1",
+  "phase0DecisionDigest": "sha256:259fffbfc1155767df01e525ff9bb7b7bc54294ce0281fa114ce9c89aad771c2",
+  "phase0References": {
+    "storageIdentity": "phase0:storageIdentity:v1",
+    "pathGrant": "phase0:pathGrant:v1"
+  }
+}

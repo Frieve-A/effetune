@@ -20,9 +20,10 @@ import { copyTextToClipboard, readTextFromClipboard } from './utils/clipboard-ut
 import { LayoutModeManager } from './ui/layout-mode-manager.js';
 import { MobileMenu } from './ui/mobile-menu.js';
 import { MobileNav } from './ui/mobile-nav.js';
-import { LibraryManager } from './library/library-manager.js';
+import { LibraryManagerV2 } from './library/library-manager-v2.js';
 import { LibraryView } from './ui/library/library-view.js';
 import { PowerStateView } from './ui/power-state-view.js';
+import { CatalogPlaybackBridge } from './ui/audio-player/catalog-playback-bridge.js';
 
 function usesIOSFilePicker(windowRef = window) {
     const navigatorRef = windowRef?.navigator || globalThis.navigator;
@@ -47,7 +48,8 @@ export class UIManager {
         this.libraryManager = null;
         this.libraryView = null;
         this.libraryInitPromise = null;
-
+        this.libraryPlaybackBridge = null;
+        this.libraryLifecycleCloseHandler = null;
         // Double Blind Test controller (created lazily) and URL-reflection gate
         this.doubleBlindTest = null;
         this.urlReflectionEnabled = true;
@@ -126,7 +128,7 @@ export class UIManager {
 
         // Initialize localization after everything else is set up
         // This is an async operation, but we can't make the constructor async
-        this.initLocalization().then(() => {
+        this.localizationReady = this.initLocalization().then(() => {
             // Update UI texts after translations are loaded
             this.updateUITexts();
             this.powerStateView?.setTranslator?.((key, fallback) => {
@@ -152,8 +154,10 @@ export class UIManager {
                     this.doubleBlindTest._updateStartAvailability();
                 }
             });
+            return true;
         }).catch(error => {
             console.error('Failed to initialize localization:', error);
+            return false;
         });
     }
 
@@ -245,7 +249,8 @@ export class UIManager {
     // Delegate to StateManager with translation
     setError(message, isError = false, params = {}) {
         // Check if the message is a translation key
-        if (message && (message.startsWith('error.') || message.startsWith('success.') || message.startsWith('status.'))) {
+        if (message && (message.startsWith('error.') || message.startsWith('success.') ||
+            message.startsWith('status.') || message.startsWith('library.'))) {
             // Translate the message with provided parameters
             message = this.t(message, params);
         }
@@ -1156,13 +1161,23 @@ export class UIManager {
             window.electronAPI.onIPC('open-library-view', () => this.showLibraryView());
             window.electronAPI.onIPC('open-effect-pipeline-view', () => this.showEffectPipelineView());
             window.electronAPI.onIPC('add-music-folder', async () => {
-                await this.showLibraryView({ focusSearch: false });
-                await this.libraryManager?.addFolder();
-                this.libraryView?.render();
+                try {
+                    await this.showLibraryView({ focusSearch: false });
+                    await this.libraryManager?.addFolder();
+                    this.libraryView?.render();
+                } catch (error) {
+                    console.error('Failed to add a Music Library folder:', error);
+                    this.setError('library.error.actionFailed', true);
+                }
             });
             window.electronAPI.onIPC('rescan-library', async () => {
-                await this.ensureLibraryManager();
-                await this.libraryManager?.scanFolders();
+                try {
+                    await this.ensureLibraryManager();
+                    await this.libraryManager?.scanFolders();
+                } catch (error) {
+                    console.error('Failed to scan Music Library folders:', error);
+                    this.setError('library.error.actionFailed', true);
+                }
             });
         }
         this.updateViewSwitchButtons();
@@ -1174,23 +1189,71 @@ export class UIManager {
         }
         if (!this.libraryInitPromise) {
             this.libraryInitPromise = (async () => {
-                this.libraryManager = new LibraryManager({ uiManager: this });
+                this.libraryManager = new LibraryManagerV2({ uiManager: this });
                 window.libraryManager = this.libraryManager;
                 await this.libraryManager.init();
+                this.connectLibraryPlaybackBridge();
                 this.libraryView = new LibraryView({
                     manager: this.libraryManager,
                     uiManager: this
                 });
                 this.libraryView.mount();
                 this.mobileNav?.attachLibraryView?.();
+                this.registerLibraryLifecycleCleanup();
                 return this.libraryManager;
             })().catch(error => {
                 this.libraryInitPromise = null;
-                this.setError(error.message || String(error), true);
+                console.error('Failed to initialize the Music Library:', error);
+                this.setError('library.error.actionFailed', true);
                 throw error;
             });
         }
         return this.libraryInitPromise;
+    }
+
+    connectLibraryPlaybackBridge() {
+        const service = this.libraryManager?.bulkOperationService;
+        if (!service || this.libraryPlaybackBridge) return this.libraryPlaybackBridge;
+        const sequenceClient = typeof service.readSequencePage === 'function'
+            ? service
+            : this.libraryManager.client;
+        this.libraryPlaybackBridge = new CatalogPlaybackBridge({
+            uiManager: this,
+            service,
+            sequenceClient,
+            runtime: this.libraryManager.runtime,
+            requestFolderAccess: folderId => this.libraryManager?.requestFolderAccess(folderId)
+        });
+        this.libraryManager.bulkOperationService = this.libraryPlaybackBridge;
+        if (this.audioPlayer) this.audioPlayer.libraryOperationService = this.libraryPlaybackBridge;
+        void this.libraryPlaybackBridge.restoreTransport().catch(error => {
+            if (error?.code === 'folderPermissionRequired') {
+                console.warn('Library playback could not restore folder access during startup.', error);
+                this.setError?.('status.libraryTracksSkippedOffline', false, { count: 1 });
+                return;
+            }
+            console.error('Failed to restore Music Library playback:', error);
+            this.setError?.('library.error.actionFailed', true);
+        });
+        return this.libraryPlaybackBridge;
+    }
+
+    registerLibraryLifecycleCleanup() {
+        if (this.libraryLifecycleCloseHandler) return;
+        this.libraryLifecycleCloseHandler = () => {
+            void this.disposeLibraryManager();
+        };
+        window.addEventListener?.('pagehide', this.libraryLifecycleCloseHandler, { once: true });
+    }
+
+    async disposeLibraryManager() {
+        const manager = this.libraryManager;
+        this.libraryPlaybackBridge?.close?.();
+        this.libraryPlaybackBridge = null;
+        this.libraryManager = null;
+        this.libraryInitPromise = null;
+        if (window.libraryManager === manager) window.libraryManager = null;
+        await manager?.close?.();
     }
 
     async showLibraryView(options = {}) {
@@ -1360,6 +1423,9 @@ export class UIManager {
 
         // Create new player
         this.audioPlayer = new AudioPlayer(this.audioManager);
+        if (this.libraryPlaybackBridge) {
+            this.audioPlayer.libraryOperationService = this.libraryPlaybackBridge;
+        }
         this.mobileNav?.attachPlayerState();
 
         // Load files

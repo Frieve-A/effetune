@@ -207,10 +207,7 @@ export class PipelineCore {
             this.enabled = !this.enabled;
             this.masterToggle.classList.toggle('off', !this.enabled);
             
-            // Update master bypass state directly without rebuilding pipeline
-            this.audioManager.masterBypass = !this.enabled;
-            
-            // Update worklet with the new master bypass state
+            // Update the shared pipeline and worklet state without rebuilding.
             this.workletSync.updateMasterBypass(!this.enabled);
             
             // Immediately update display state for all plugins

@@ -1,0 +1,123 @@
+name: Library Scale Quick Gate
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/library-scale-*.yml'
+      - '.github/workflows/library-release-qualification.yml'
+      - '.github/workflows/pages.yml'
+      - 'electron/library-*.cjs'
+      - 'electron/main.js'
+      - 'electron/preload.js'
+      - 'effetune-library.css'
+      - 'js/app-bootstrap.js'
+      - 'js/app.js'
+      - 'js/electron-integration.js'
+      - 'js/library/**'
+      - 'js/ui/audio-player/**'
+      - 'js/ui/library/**'
+      - 'js/ui-manager.js'
+      - 'sw.js'
+      - 'sw-precache.js'
+      - 'tests/cjs/electron-library-*.test.cjs'
+      - 'tests/esm/*library*.test.mjs'
+      - 'tests/esm/audio-player-catalog-playback.test.mjs'
+      - 'tests/esm/audio-player-playback-sequence.test.mjs'
+      - 'tests/scale/**'
+      - 'tools/library-scale/**'
+      - 'package.json'
+      - 'package-lock.json'
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Scale suite to run manually
+        required: true
+        default: quick
+        type: choice
+        options:
+          - quick
+          - endurance
+      candidate_sha:
+        description: Exact 40-character commit SHA; defaults to the selected workflow ref
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: library-scale-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quick:
+    if: github.event_name == 'pull_request' || inputs.suite == 'quick'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout the requested source
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.candidate_sha || github.sha }}
+
+      - name: Verify an explicitly requested SHA
+        if: github.event_name == 'workflow_dispatch' && inputs.candidate_sha != ''
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: >-
+          node -e "const cp=require('node:child_process');
+          const expected=process.env.CANDIDATE_SHA;
+          const actual=cp.execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
+          if(!/^[0-9a-f]{40}$/.test(expected)||actual!==expected)
+          throw new Error('Checkout does not match the exact candidate SHA');"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate the phase-aware gate manifest
+        run: node tools/library-scale/validate-phase-manifest.mjs --mode pr
+
+      - name: Run the path-aware quick shard
+        run: npm run test:library-scale:pr
+
+  endurance:
+    if: github.event_name == 'workflow_dispatch' && inputs.suite == 'endurance'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout the requested source
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.candidate_sha || github.sha }}
+
+      - name: Verify an explicitly requested SHA
+        if: inputs.candidate_sha != ''
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: >-
+          node -e "const cp=require('node:child_process');
+          const expected=process.env.CANDIDATE_SHA;
+          const actual=cp.execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
+          if(!/^[0-9a-f]{40}$/.test(expected)||actual!==expected)
+          throw new Error('Checkout does not match the exact candidate SHA');"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate the phase-aware gate manifest
+        run: node tools/library-scale/validate-phase-manifest.mjs --mode pr
+
+      - name: Run the manually requested numeric-boundary suite
+        run: npm run test:library-scale:endurance

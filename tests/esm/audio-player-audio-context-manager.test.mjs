@@ -1062,7 +1062,6 @@ test('staged buffer playback stays private until the source-bound fresh-render c
     let releaseProof;
     const proof = new Promise(resolve => { releaseProof = resolve; });
     let capturedIntent = null;
-    let fadeInToken = null;
     const harness = createHarness({
       calls,
       playbackMode: 'bufferSource',
@@ -1075,8 +1074,8 @@ test('staged buffer playback stays private until the source-bound fresh-render c
           capturedIntent = intent;
           return { generation: 4 };
         },
-        fadeOutOutput: () => 17,
-        fadeInOutputForToken(token) { fadeInToken = token; },
+        fadeOutOutput() { throw new Error('master output must stay unchanged'); },
+        fadeInOutputForToken() { throw new Error('master output must stay unchanged'); },
         isSourceConnectedToPipeline: () => true,
         async activateStagedAudioCandidate(stage, callbacks) {
           const candidate = await callbacks.acquire(stage);
@@ -1100,6 +1099,11 @@ test('staged buffer playback stays private until the source-bound fresh-render c
     assert.equal(harness.state.isPlaying, false);
     assert.equal(harness.manager.currentBufferSource, null);
     assert.ok(harness.manager.pendingBufferSource);
+    const privateGate = harness.manager.privatePipelineSourceGates.get(
+      harness.manager.pendingBufferSource
+    );
+    assert.ok(privateGate);
+    assert.equal(privateGate.gain.value, 0);
     assert.equal(capturedIntent.intentIdentity.sourceGeneration, 9);
     assert.equal(capturedIntent.intentIdentity.intendedPosition, 3);
 
@@ -1108,16 +1112,15 @@ test('staged buffer playback stays private until the source-bound fresh-render c
     assert.equal(harness.state.isPlaying, true);
     assert.ok(harness.manager.currentBufferSource);
     assert.equal(harness.manager.pendingBufferSource, null);
-    assert.equal(fadeInToken, 17);
+    assert.equal(privateGate.gain.value, 1);
   });
 });
 
-test('a late staged buffer source cannot publish and restores its owned output fade', async () => {
+test('a late staged buffer source stays private without mutating the master output', async () => {
   await withAudioContextGlobals({}, async ({ calls }) => {
     let releaseProof;
     const proof = new Promise(resolve => { releaseProof = resolve; });
     let cleaned = 0;
-    let restoredOutputToken = null;
     const harness = createHarness({
       calls,
       playbackMode: 'bufferSource',
@@ -1125,8 +1128,8 @@ test('a late staged buffer source cannot publish and restores its owned output f
       audioManager: {
         isStagedAudioActivationEnabled: () => true,
         stageAudioActivation: async () => ({ generation: 1 }),
-        fadeOutOutput: () => 3,
-        fadeInOutputForToken(token) { restoredOutputToken = token; },
+        fadeOutOutput() { throw new Error('master output must stay unchanged'); },
+        fadeInOutputForToken() { throw new Error('master output must stay unchanged'); },
         isSourceConnectedToPipeline: () => true,
         async activateStagedAudioCandidate(stage, callbacks) {
           const candidate = await callbacks.acquire(stage);
@@ -1148,6 +1151,10 @@ test('a late staged buffer source cannot publish and restores its owned output f
     for (let i = 0; i < 5 && !harness.manager.pendingBufferSource; i++) {
       await flushMicrotasks();
     }
+    const staleSource = harness.manager.pendingBufferSource;
+    const privateGate = harness.manager.privatePipelineSourceGates.get(staleSource);
+    assert.ok(privateGate);
+    assert.equal(privateGate.gain.value, 0);
     harness.manager.currentBuffer = { duration: 30 };
     harness.manager.activeSourceGeneration = 3;
     releaseProof();
@@ -1157,7 +1164,50 @@ test('a late staged buffer source cannot publish and restores its owned output f
     assert.equal(harness.state.isPlaying, false);
     assert.equal(harness.manager.currentBufferSource, null);
     assert.equal(harness.manager.pendingBufferSource, null);
-    assert.equal(restoredOutputToken, 3);
+    assert.equal(privateGate.gain.value, 0);
+    assert.equal(harness.manager.privatePipelineSourceGates.has(staleSource), false);
+  });
+});
+
+test('staged media playback publishes only its source gate and leaves the master output unchanged', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    let releaseProof;
+    const proof = new Promise(resolve => { releaseProof = resolve; });
+    const audioElement = new Audio();
+    const harness = createHarness({
+      calls,
+      playbackMode: 'audioElement',
+      audioElement,
+      audioManager: {
+        isStagedAudioActivationEnabled: () => true,
+        stageAudioActivation: async () => ({ generation: 5 }),
+        fadeOutOutput() { throw new Error('master output must stay unchanged'); },
+        fadeInOutputForToken() { throw new Error('master output must stay unchanged'); },
+        isSourceConnectedToPipeline: () => true,
+        async activateStagedAudioCandidate(stage, callbacks) {
+          const candidate = await callbacks.acquire(stage);
+          await proof;
+          assert.equal(callbacks.isCandidateCurrent(candidate, stage), true);
+          callbacks.commit(candidate, stage);
+          return { activated: true };
+        }
+      }
+    });
+    const mediaSource = setConnectedMediaSource(harness, 'stagedMediaSource');
+
+    const playing = harness.manager.playAudioElement();
+    for (let i = 0; i < 5 && !harness.manager.pendingMediaActivation; i++) {
+      await flushMicrotasks();
+    }
+    const privateGate = harness.manager.privatePipelineSourceGates.get(mediaSource);
+    assert.ok(privateGate);
+    assert.equal(privateGate.gain.value, 0);
+    assert.equal(harness.state.isPlaying, false);
+
+    releaseProof();
+    assert.equal(await playing, true);
+    assert.equal(privateGate.gain.value, 1);
+    assert.equal(harness.state.isPlaying, true);
   });
 });
 
@@ -1559,6 +1609,37 @@ test('stale catalog artwork callbacks do not update the current track state', as
     assert.equal(state.currentTrackName, 'New Title');
     assert.equal(state.artworkUrl, '');
     assert.equal(audioPlayer.ui.trackNameDisplay.textContent, 'New Title');
+  });
+});
+
+test('v2 catalog metadata requests Now Playing artwork by track identity', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    const track = {
+      name: 'Catalog Track',
+      libraryTrackId: 'track-uid-1',
+      meta: { title: 'Catalog Title', artworkId: null }
+    };
+    const { manager } = createHarness({
+      calls,
+      playlist: [track],
+      state: { currentTrack: track }
+    });
+    window.libraryManager = {
+      runtime: 'web',
+      async getArtworkThumbURL(trackUid, options) {
+        calls.push(['getArtworkThumbURL', trackUid, options]);
+        return '';
+      }
+    };
+
+    manager.loadMetadata(track);
+    await flushMicrotasks();
+
+    assert.equal(calls.some(call =>
+      call[0] === 'getArtworkThumbURL' &&
+      call[1] === 'track-uid-1' &&
+      call[2]?.reason === 'now-playing'
+    ), true);
   });
 });
 

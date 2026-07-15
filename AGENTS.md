@@ -29,10 +29,11 @@ This file replaces the former `CLAUDE.md` local agent instructions.
 - Follow Occam's razor, KISS (Keep It Simple, Stupid), Clean Code, and DRY (Don't Repeat Yourself) as project-wide defaults. Prefer the smallest straightforward design that fully meets current requirements; keep responsibilities, names, control flow, and interfaces clear; remove unnecessary code; and consolidate duplication that represents the same knowledge or behavior.
 - Avoid speculative abstractions, indirection, configurability, dependencies, and generalization. Introduce complexity only for a current, concrete need, and do not force superficially similar cases into a shared abstraction when that would make the code harder to understand.
 - When planning, modifying, or implementing, ensure the expected benefit clearly outweighs the ongoing maintenance cost. Do not add code or tests solely to handle excessively minor edge cases.
+- Optimize for convergence over exhaustiveness in planning and review. Once the simplest workable approach satisfies the user's stated goal and constraints, stop; leave unspecified details to implementation, and do not add requirements, steps, safeguards, tests, or further review for hypothetical concerns. Reopen the plan only if implementation encounters an actual blocker or the user changes the requirements.
 - When implementing a new feature, before adding a new custom function, consider whether an existing function can be generalized or reused while keeping its purpose clear.
 - Keep the code within the task's scope smart, clean, and consistently organized, as though it had just been thoughtfully refactored; address avoidable duplication and awkward structure encountered in the changed area.
 - Keep changes scoped to the request. Do not refactor unrelated code while adding a feature or fixing a bug.
-- Prefer adding or updating focused tests with the change. If a behavior is hard to test automatically, document the manual verification performed.
+- Add or update tests only when they are necessary to verify changed behavior that is not already adequately covered. If a behavior is hard to test automatically, document the manual verification performed.
 - Before handing work back, review the diff for regressions, risky assumptions, missing docs, and missing tests. Use `code_review.md` as the default review checklist.
 
 ## Verification Expectations
@@ -69,6 +70,12 @@ This file replaces the former `CLAUDE.md` local agent instructions.
 ## Code Comments
 
 - All in-code comments must be written in English.
+
+## User-Facing Messages
+
+- Do not expose developer-oriented debug messages, stack traces, internal identifiers, implementation details, or raw errors in the user interface.
+- Every message shown in the user interface must be understandable and useful to a general user. Error messages must explain in plain language what went wrong and, when the user can take action, what they can do to resolve or work around the problem.
+- Send developer-oriented debug messages and detailed diagnostic information to the browser's developer Console instead of displaying them to users. Developer diagnostics must not replace a clear user-facing explanation.
 
 ## Documentation Policy
 

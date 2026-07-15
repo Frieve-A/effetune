@@ -1,0 +1,312 @@
+name: Library Release Qualification
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Exact 40-character commit SHA selected as this workflow's ref
+        required: true
+        type: string
+      candidate_tag:
+        description: Existing release-candidate tag pointing to candidate_sha
+        required: true
+        type: string
+      electron_performance_run_id:
+        description: Successful fixed-reference Electron evidence workflow run ID
+        required: true
+        type: string
+      web_performance_run_id:
+        description: Successful fixed-reference Web evidence workflow run ID
+        required: true
+        type: string
+      build_run_id:
+        description: Successful exact-SHA Build Electron App workflow run ID
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  deployments: read
+
+concurrency:
+  group: library-release-qualification-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  candidate:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.identity.outputs.sha }}
+      tag: ${{ steps.identity.outputs.tag }}
+      version: ${{ steps.identity.outputs.version }}
+    steps:
+      - name: Checkout the exact candidate
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.candidate_sha || github.sha }}
+
+      - name: Validate candidate SHA, tag, and package version
+        id: identity
+        env:
+          CANDIDATE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.candidate_sha || github.sha }}
+          CANDIDATE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.candidate_tag || github.ref_name }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          node --input-type=module -e "
+          import fs from 'node:fs';
+          import cp from 'node:child_process';
+          import { normalizeSemVer } from './js/release-version.mjs';
+          const sha=process.env.CANDIDATE_SHA;
+          const tag=process.env.CANDIDATE_TAG;
+          const head=cp.execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
+          const tagHead=cp.execFileSync('git',['rev-list','-n','1','refs/tags/'+tag],{encoding:'utf8'}).trim();
+          const packageVersion=normalizeSemVer(JSON.parse(fs.readFileSync('package.json','utf8')).version);
+          const tagVersion=normalizeSemVer(tag);
+          if(!/^[0-9a-f]{40}$/.test(sha)||process.env.WORKFLOW_SHA!==sha||head!==sha||tagHead!==sha)
+            throw new Error('Workflow ref, checkout, and candidate tag must all resolve to candidate_sha');
+          if(!packageVersion||tagVersion!==packageVersion)
+            throw new Error('Candidate tag must normalize to package.json version');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT,'sha='+sha+'\n'+'tag='+tag+'\n'+'version='+packageVersion+'\n');
+          "
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate completed Phase 4 scope
+        run: node tools/library-scale/validate-phase-manifest.mjs --mode release
+
+      - name: Validate the release-to-Phase-0 exact join
+        run: node tools/library-scale/validate-phase-joins.mjs --stage release
+
+  hosted-integrity:
+    needs: candidate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: electron-windows
+            os: windows-latest
+            power_browser: false
+          - target: electron-macos
+            os: macos-latest
+            power_browser: false
+          - target: electron-linux
+            os: ubuntu-latest
+            power_browser: false
+          - target: web-chromium
+            os: ubuntu-latest
+            power_browser: true
+    name: integrity / ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - name: Checkout the qualified candidate source
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.candidate.outputs.sha }}
+
+      - name: Verify checkout identity
+        env:
+          CANDIDATE_SHA: ${{ needs.candidate.outputs.sha }}
+        run: >-
+          node -e "const cp=require('node:child_process');
+          const actual=cp.execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
+          if(actual!==process.env.CANDIDATE_SHA)throw new Error('Hosted shard checkout SHA mismatch');"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run correctness and integrity tests
+        run: npm run verify
+
+      - name: Run the bounded million-row correctness fixture
+        run: npm run test:library-scale:million
+
+      - name: Install Playwright Chromium
+        if: matrix.power_browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser integrity tests
+        if: matrix.power_browser
+        timeout-minutes: 5
+        run: npm run test:power-browser
+
+  qualification-judge:
+    if: always() && github.event_name == 'workflow_dispatch'
+    needs:
+      - candidate
+      - hosted-integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Reject incomplete hosted qualification
+        env:
+          CANDIDATE_RESULT: ${{ needs.candidate.result }}
+          HOSTED_RESULT: ${{ needs.hosted-integrity.result }}
+        run: >-
+          node -e "if(process.env.CANDIDATE_RESULT!=='success'||process.env.HOSTED_RESULT!=='success')
+          throw new Error('Every hosted correctness/integrity shard must pass');"
+
+      - name: Validate fixed-reference run IDs
+        env:
+          ELECTRON_RUN_ID: ${{ inputs.electron_performance_run_id }}
+          WEB_RUN_ID: ${{ inputs.web_performance_run_id }}
+        run: >-
+          node -e "const ids=[process.env.ELECTRON_RUN_ID,process.env.WEB_RUN_ID];
+          if(ids.some(id=>!/^[1-9][0-9]*$/.test(id))||ids[0]===ids[1])
+          throw new Error('Distinct numeric Electron and Web performance run IDs are required');"
+
+      - name: Download exact-SHA fixed-reference artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ needs.candidate.outputs.sha }}
+          ELECTRON_RUN_ID: ${{ inputs.electron_performance_run_id }}
+          WEB_RUN_ID: ${{ inputs.web_performance_run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p reference/electron reference/web
+          for backend in electron web; do
+            if [ "$backend" = electron ]; then run_id="$ELECTRON_RUN_ID"; else run_id="$WEB_RUN_ID"; fi
+            run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
+            test "$(jq -r '.conclusion' <<<"$run_json")" = success
+            test "$(jq -r '.event' <<<"$run_json")" = workflow_dispatch
+            test "$(jq -r '.head_sha' <<<"$run_json")" = "$CANDIDATE_SHA"
+            test "$(jq -r '.path' <<<"$run_json")" = .github/workflows/library-scale-reference.yml
+            artifact_name="library-scale-performance-$backend-$CANDIDATE_SHA"
+            artifacts="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts")"
+            test "$(jq --arg name "$artifact_name" '[.artifacts[]|select(.name==$name and .expired==false)]|length' <<<"$artifacts")" = 1
+            gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name "$artifact_name" --dir "reference/$backend"
+          done
+
+      - name: Validate fixed-reference manifests
+        env:
+          CANDIDATE_SHA: ${{ needs.candidate.outputs.sha }}
+          ELECTRON_RUN_ID: ${{ inputs.electron_performance_run_id }}
+          WEB_RUN_ID: ${{ inputs.web_performance_run_id }}
+        run: |
+          node --input-type=module -e "
+          import fs from 'node:fs';
+          import {evaluateReleasePerformanceEvidence} from './tools/library-scale/release-performance-contract.mjs';
+          for(const backend of ['electron','web']){
+            const manifest=JSON.parse(fs.readFileSync('reference/'+backend+'/manifest.json','utf8'));
+            const evidence=JSON.parse(fs.readFileSync('reference/'+backend+'/production-performance.json','utf8'));
+            const runId=backend==='electron'?process.env.ELECTRON_RUN_ID:process.env.WEB_RUN_ID;
+            if(manifest.schemaVersion!==1||manifest.kind!=='library-scale-performance'||
+              manifest.backend!==backend||manifest.commitSha!==process.env.CANDIDATE_SHA||
+              manifest.workflowRunId!==runId||manifest.result!=='passed'||
+              manifest.performanceArtifactDigest!==evidence.artifactDigest||
+              !manifest.runner||!manifest.runner.name||!manifest.runner.os||!manifest.runner.arch)
+              throw new Error('Invalid '+backend+' fixed-reference manifest');
+            const decision=evaluateReleasePerformanceEvidence(evidence,{expectedBackend:backend,
+              expectedCommitSha:process.env.CANDIDATE_SHA,expectedWorkflowRunId:runId});
+            if(!decision.valid||!decision.passed)
+              throw new Error('Invalid '+backend+' production performance evidence: '+decision.errors.join('; '));
+            const log=fs.statSync('reference/'+backend+'/release.log');
+            if(!log.isFile()||log.size===0)throw new Error('Missing '+backend+' raw result log');
+          }
+          "
+
+      - name: Download exact-SHA package-smoked build artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ needs.candidate.outputs.sha }}
+          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$BUILD_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID")"
+          test "$(jq -r '.conclusion' <<<"$run_json")" = success
+          test "$(jq -r '.head_sha' <<<"$run_json")" = "$CANDIDATE_SHA"
+          test "$(jq -r '.path' <<<"$run_json")" = .github/workflows/build.yml
+          mkdir -p package-smoke
+          for name in windows-artifacts macos-artifacts linux-artifacts; do
+            artifacts="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID/artifacts")"
+            test "$(jq --arg name "$name" '[.artifacts[]|select(.name==$name and .expired==false)]|length' <<<"$artifacts")" = 1
+            gh run download "$BUILD_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "$name" --dir "package-smoke/$name"
+          done
+
+      - name: Record package-smoked asset hashes
+        env:
+          CANDIDATE_SHA: ${{ needs.candidate.outputs.sha }}
+          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';import path from 'node:path';import crypto from 'node:crypto';
+          import { computeArtifactDigest } from './tools/library-scale/release-qualification-contract.mjs';
+          function files(root){return fs.readdirSync(root,{withFileTypes:true}).flatMap(entry=>
+            entry.isDirectory()?files(path.join(root,entry.name)):[path.join(root,entry.name)]);}
+          const assets=files('package-smoke').map(file=>{
+            const relative=path.relative('package-smoke',file).replaceAll('\\','/');
+            const [artifactName,...nameParts]=relative.split('/');
+            return {artifactName,fileName:nameParts.join('/'),
+              sha256:'sha256:'+crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')};
+          }).sort((a,b)=>(a.artifactName+'/'+a.fileName).localeCompare(b.artifactName+'/'+b.fileName));
+          if(assets.length===0)throw new Error('Exact build run contained no package-smoked assets');
+          const value={schemaVersion:1,kind:'package-smoked-build-evidence',commitSha:process.env.CANDIDATE_SHA,
+            workflowRunId:process.env.BUILD_RUN_ID,workflowPath:'.github/workflows/build.yml',
+            packageSmokePassed:true,packageSmokeCommand:'npm run smoke:dsp-package',assets};
+          value.artifactDigest=computeArtifactDigest(value);
+          fs.writeFileSync('package-smoke/build-evidence.json',JSON.stringify(value,null,2)+'\n');
+          NODE
+
+      - name: Write the sole aggregate qualification decision
+        env:
+          QUALIFIED_SHA: ${{ needs.candidate.outputs.sha }}
+          QUALIFIED_TAG: ${{ needs.candidate.outputs.tag }}
+          QUALIFIED_VERSION: ${{ needs.candidate.outputs.version }}
+          QUALIFICATION_RUN_ID: ${{ github.run_id }}
+          ELECTRON_RUN_ID: ${{ inputs.electron_performance_run_id }}
+          WEB_RUN_ID: ${{ inputs.web_performance_run_id }}
+          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          mkdir -p qualification
+          run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$QUALIFICATION_RUN_ID")"
+          RUN_STARTED_AT="$(jq -r '.run_started_at' <<<"$run_json")" node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import {
+            RELEASE_QUALIFICATION_AUTOMATION_VERSION,
+            sealArtifact
+          } from './tools/library-scale/release-qualification-contract.mjs';
+          const env=process.env;
+          const buildEvidence=JSON.parse(fs.readFileSync('package-smoke/build-evidence.json','utf8'));
+          const value=sealArtifact({schemaVersion:1,kind:'release-qualification',qualified:true,
+          stage:'candidate-qualification',
+          commitSha:env.QUALIFIED_SHA,targetTag:env.QUALIFIED_TAG,targetVersion:env.QUALIFIED_VERSION,
+          workflowRunId:env.QUALIFICATION_RUN_ID,qualifiedAt:new Date().toISOString(),
+          observedEndpoint:'https://github.com/'+env.REPOSITORY+'/actions/runs/'+env.QUALIFICATION_RUN_ID,
+          authoritativeTimestamp:{source:'github-actions-api:run_started_at',value:new Date(env.RUN_STARTED_AT).toISOString()},
+          decisionAuthority:'github-actions',automationVersion:RELEASE_QUALIFICATION_AUTOMATION_VERSION,
+          hostedIntegrity:['electron-windows','electron-macos','electron-linux','web-chromium'],
+          buildEvidence,
+          performanceRunIds:{electron:env.ELECTRON_RUN_ID,web:env.WEB_RUN_ID}});
+          fs.writeFileSync('qualification/release-qualification.json',JSON.stringify(value,null,2)+'\n');
+          NODE
+
+      - name: Upload aggregate qualification decision
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-qualification-${{ needs.candidate.outputs.sha }}
+          path: qualification/release-qualification.json
+          if-no-files-found: error
+          retention-days: 90

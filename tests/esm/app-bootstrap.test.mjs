@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { registerServiceWorker } from '../../js/app-bootstrap.js';
+import {
+  registerServiceWorker,
+  startApplication
+} from '../../js/app-bootstrap.js';
 import { flushMicrotasks } from '../helpers/global-test-utils.mjs';
 
 test('registerServiceWorker registers the web service worker on load', async () => {
@@ -11,8 +14,8 @@ test('registerServiceWorker registers the web service worker on load', async () 
   const windowRef = {
     navigator: {
       serviceWorker: {
-        register(url) {
-          registrations.push(url);
+        register(url, options) {
+          registrations.push([url, options]);
           return Promise.resolve();
         }
       }
@@ -29,7 +32,7 @@ test('registerServiceWorker registers the web service worker on load', async () 
   assert.equal(loadHandlers.length, 1);
   loadHandlers[0]();
   await Promise.resolve();
-  assert.deepEqual(registrations, ['./sw.js']);
+  assert.deepEqual(registrations, [['./sw.js', { updateViaCache: 'none' }]]);
   assert.deepEqual(warnings, []);
 });
 
@@ -39,8 +42,8 @@ test('registerServiceWorker registers immediately after load already completed',
     document: { readyState: 'complete' },
     navigator: {
       serviceWorker: {
-        register(url) {
-          registrations.push(url);
+        register(url, options) {
+          registrations.push([url, options]);
           return Promise.resolve();
         }
       }
@@ -53,7 +56,7 @@ test('registerServiceWorker registers immediately after load already completed',
   registerServiceWorker(windowRef);
   await Promise.resolve();
 
-  assert.deepEqual(registrations, ['./sw.js']);
+  assert.deepEqual(registrations, [['./sw.js', { updateViaCache: 'none' }]]);
 });
 
 test('registerServiceWorker reports registration failures', async () => {
@@ -136,4 +139,30 @@ test('registerServiceWorker cleans up registrations on the development server', 
   await flushMicrotasks();
 
   assert.deepEqual(calls, ['getRegistrations', 'unregister']);
+});
+
+test('application startup never enumerates, opens, or deletes a legacy Web database', async () => {
+  const legacyAccesses = [];
+  const indexedDB = new Proxy({}, {
+    get(_target, property) {
+      legacyAccesses.push(String(property));
+      throw new Error(`Unexpected legacy storage access: ${String(property)}`);
+    }
+  });
+  const windowRef = {
+    indexedDB,
+    navigator: {}
+  };
+  class FakeApp {
+    async initialize() {}
+  }
+
+  await startApplication({
+    AppClass: FakeApp,
+    firstLaunchPromise: Promise.resolve(false),
+    startHeartbeat() {},
+    windowRef
+  });
+
+  assert.deepEqual(legacyAccesses, []);
 });

@@ -6,6 +6,8 @@ lang: pt
 
 # Como Usar a Biblioteca de música
 
+O EffeTune 3.0.0 começa com uma Biblioteca de música nova. O estado da Biblioteca anterior não é herdado; adicione novamente as pastas de música e faça a varredura. Isso não altera os arquivos de áudio contidos nelas.
+
 A Biblioteca de música indexa as pastas de música selecionadas para que você possa explorar sua coleção local por faixa, álbum, artista, gênero, subpasta, pasta, faixas adicionadas recentemente ou playlist. A reprodução passa pelo Effect Pipeline atual do EffeTune, assim como na reprodução normal de arquivos de música.
 
 A Biblioteca de música armazena o catálogo, o cache de capas e as playlists dentro do aplicativo. Ela não edita, renomeia, move nem exclui os arquivos de música.
@@ -53,6 +55,8 @@ Use as abas de navegação para alternar o catálogo.
 Por exemplo, `Artist/Album/01 Song.flac` aparece no grupo de subpasta `Artist/Album`. Caminhos relativos idênticos em raízes indexadas diferentes permanecem separados. Arquivos armazenados diretamente na raiz não criam um grupo de subpasta; eles continuam disponíveis em **Faixas** e nessa raiz em **Pastas**.
 
 Com **Pesquisar na biblioteca**, você pode pesquisar faixas, álbuns, artistas e playlists ao mesmo tempo. No layout para PC, é possível ordenar a lista de faixas pelo cabeçalho usando **Título**, **Artista**, **Álbum**, **Gênero** e **Tempo**.
+
+Na pesquisa de faixas, termos com três ou mais caracteres correspondem a qualquer parte do título, artista, álbum, gênero, nome do arquivo ou caminho. Termos com um ou dois caracteres correspondem apenas ao início de uma palavra. Digite pelo menos três caracteres para pesquisar no meio de uma palavra.
 
 Quando os metadados estão ausentes ou não podem ser lidos, o EffeTune usa o nome do arquivo e as informações da pasta para a exibição. Nas propriedades da faixa, você pode conferir o caminho do arquivo, formato, taxa de amostragem, profundidade de bits, taxa de bits e os principais itens de metadados.
 
@@ -104,7 +108,7 @@ Ao exportar, escolher **Caminhos relativos** grava, quando possível, caminhos r
 
 - A Biblioteca de música lê os arquivos de música e seus metadados, mas não grava alterações nos arquivos de música.
 - O cache de capas e as playlists são dados internos do aplicativo, não alterações incorporadas aos arquivos de música.
-- Os grupos de subpastas são derivados dos caminhos relativos já salvos no catálogo. Bibliotecas existentes os recebem sem nova varredura, migração do IndexedDB ou mudança no formato de armazenamento.
+- Os grupos de subpastas são derivados dos caminhos relativos salvos no catálogo.
 - A área de armazenamento do navegador pode ser apagada pelas configurações do navegador ou por ações do usuário. Exporte playlists importantes conforme necessário.
 - No aplicativo web, a possibilidade de continuar usando uma pasta após recarregar a página depende do gerenciamento de permissões do navegador.
 

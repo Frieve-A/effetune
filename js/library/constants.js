@@ -1,5 +1,3 @@
-export const MUSIC_LIBRARY_DB_NAME = 'effetune_music_library';
-export const MUSIC_LIBRARY_DB_VERSION = 1;
 export const MUSIC_LIBRARY_UI_STORAGE_KEY = 'effetune_library_ui';
 export const MUSIC_LIBRARY_STARTUP_VIEWS = Object.freeze([
   'tracks',

@@ -1,6 +1,52 @@
 const EXTINF_PATTERN = /^#EXTINF\s*:\s*([^,]*),(.*)$/i;
 const XML_ENTITY_PATTERN = /&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi;
 
+export const PLAYLIST_COMPATIBILITY_LIMITS = Object.freeze({
+  maxBytes: 16 * 1024 * 1024,
+  maxTextChars: 16 * 1024 * 1024,
+  maxItems: 100000
+});
+
+export class PlaylistCompatibilityLimitError extends Error {
+  constructor(kind, limit, actual) {
+    super(`Synchronous playlist ${kind} exceeds the ${limit} compatibility limit (${actual}).`);
+    this.name = 'PlaylistCompatibilityLimitError';
+    this.code = 'PLAYLIST_COMPATIBILITY_LIMIT';
+    this.kind = kind;
+    this.limit = limit;
+    this.actual = actual;
+  }
+}
+
+function assertTextLimit(value) {
+  const text = String(value ?? '');
+  if (text.length > PLAYLIST_COMPATIBILITY_LIMITS.maxTextChars) {
+    throw new PlaylistCompatibilityLimitError(
+      'text characters',
+      PLAYLIST_COMPATIBILITY_LIMITS.maxTextChars,
+      text.length
+    );
+  }
+  return text;
+}
+
+function* limitedEntries(entries) {
+  let count = 0;
+  for (const entry of entries ?? []) {
+    count += 1;
+    if (count > PLAYLIST_COMPATIBILITY_LIMITS.maxItems) {
+      throw new PlaylistCompatibilityLimitError('items', PLAYLIST_COMPATIBILITY_LIMITS.maxItems, count);
+    }
+    yield entry;
+  }
+}
+
+function assertItemCount(count) {
+  if (count > PLAYLIST_COMPATIBILITY_LIMITS.maxItems) {
+    throw new PlaylistCompatibilityLimitError('items', PLAYLIST_COMPATIBILITY_LIMITS.maxItems, count);
+  }
+}
+
 function toUint8Array(input) {
   if (input instanceof Uint8Array) return input;
   if (input instanceof ArrayBuffer) return new Uint8Array(input);
@@ -42,6 +88,13 @@ function decodeBom(bytes) {
 
 export function decodePlaylistBytes(input, options = {}) {
   const bytes = toUint8Array(input);
+  if (bytes.byteLength > PLAYLIST_COMPATIBILITY_LIMITS.maxBytes) {
+    throw new PlaylistCompatibilityLimitError(
+      'bytes',
+      PLAYLIST_COMPATIBILITY_LIMITS.maxBytes,
+      bytes.byteLength
+    );
+  }
   const extension = normalizeExtension(options.extension ?? options.fileName ?? options.name);
   const bomResult = decodeBom(bytes);
 
@@ -189,7 +242,7 @@ export function parseM3U(text) {
   const entries = [];
   let pendingInfo = null;
 
-  for (const rawLine of splitLines(stripTextBom(String(text ?? '')))) {
+  for (const rawLine of splitLines(stripTextBom(assertTextLimit(text)))) {
     const line = rawLine.trim();
     if (!line) continue;
 
@@ -203,6 +256,7 @@ export function parseM3U(text) {
     const entry = { path: normalizePlaylistPath(line) };
     if (pendingInfo) Object.assign(entry, pendingInfo);
     entries.push(entry);
+    assertItemCount(entries.length);
     pendingInfo = null;
   }
 
@@ -214,7 +268,7 @@ export const parseM3U8 = parseM3U;
 export function serializeM3U8(entries) {
   const lines = ['#EXTM3U'];
 
-  for (const entry of entries ?? []) {
+  for (const entry of limitedEntries(entries)) {
     const path = getEntryPath(entry);
     if (!path) continue;
     lines.push(`#EXTINF:${formatDurationSec(entry?.durationSec ?? entry?.unresolved?.durationSec)},${getEntryTitle(entry)}`);
@@ -229,7 +283,7 @@ export const serializeM3U = serializeM3U8;
 export function parsePLS(text) {
   const byIndex = new Map();
 
-  for (const rawLine of splitLines(stripTextBom(String(text ?? '')))) {
+  for (const rawLine of splitLines(stripTextBom(assertTextLimit(text)))) {
     const line = rawLine.trim();
     if (!line || line.startsWith(';') || line.startsWith('#') || /^\[.*\]$/.test(line)) continue;
 
@@ -243,6 +297,7 @@ export function parsePLS(text) {
 
     const property = match[1].toLowerCase();
     const index = Number.parseInt(match[2], 10);
+    if (!byIndex.has(index)) assertItemCount(byIndex.size + 1);
     const record = byIndex.get(index) ?? {};
     if (property === 'file') {
       record.path = normalizePlaylistPath(value);
@@ -263,7 +318,7 @@ export function parsePLS(text) {
 }
 
 export function serializePLS(entries) {
-  const usableEntries = [...(entries ?? [])].filter(entry => getEntryPath(entry));
+  const usableEntries = [...limitedEntries(entries)].filter(entry => getEntryPath(entry));
   const lines = ['[playlist]'];
 
   usableEntries.forEach((entry, index) => {
@@ -303,7 +358,7 @@ function extractXmlChild(block, name) {
 
 export function parseXSPF(text) {
   const entries = [];
-  const source = stripTextBom(String(text ?? ''));
+  const source = stripTextBom(assertTextLimit(text));
   const trackPattern = /<(?:[\w.-]+:)?track\b[^>]*>([\s\S]*?)<\/(?:[\w.-]+:)?track>/gi;
 
   for (const match of source.matchAll(trackPattern)) {
@@ -317,6 +372,7 @@ export function parseXSPF(text) {
     assignIfPresent(entry, 'album', extractXmlChild(block, 'album'));
     assignIfPresent(entry, 'durationSec', parseDurationMs(extractXmlChild(block, 'duration')));
     entries.push(entry);
+    assertItemCount(entries.length);
   }
 
   return { entries };
@@ -380,7 +436,7 @@ export function serializeXSPF(entries, options = {}) {
     '  <trackList>'
   ];
 
-  for (const entry of entries ?? []) {
+  for (const entry of limitedEntries(entries)) {
     const path = getEntryPath(entry);
     if (!path) continue;
     const title = entry?.title ?? entry?.unresolved?.title;

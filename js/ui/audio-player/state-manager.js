@@ -12,6 +12,15 @@ export class StateManager {
       playlist: [],
       currentTrackIndex: 0,
       playlistLength: 0,
+      sequenceKind: 'materialized',
+      sequenceId: null,
+      queueWindow: { startOrdinal: 0, rows: [], totalCount: 0 },
+      transportVersion: 0,
+      playbackGeneration: 0,
+      transportCommandGeneration: 0,
+      contextCommandGeneration: 0,
+      lastTransportCommand: null,
+      lastContextCommand: null,
       
       // Playback state
       isPlaying: false,
@@ -230,6 +239,7 @@ export class StateManager {
    * Get current track
    */
   getCurrentTrack() {
+    if (this.state.sequenceKind === 'catalog') return this.state.currentTrack;
     if (this.state.currentTrackIndex >= 0 && this.state.currentTrackIndex < this.state.playlist.length) {
       return this.state.playlist[this.state.currentTrackIndex];
     }
@@ -240,6 +250,7 @@ export class StateManager {
    * Get next track
    */
   getNextTrack() {
+    if (this.state.sequenceKind === 'catalog') return null;
     const nextIndex = this.getNextTrackIndex();
     if (nextIndex >= 0 && nextIndex < this.state.playlist.length) {
       return this.state.playlist[nextIndex];
@@ -292,9 +303,70 @@ export class StateManager {
     this.updateState({
       playlist: [...playlist],
       playlistLength: playlist.length,
+      sequenceKind: 'materialized',
+      sequenceId: null,
+      queueWindow: {
+        startOrdinal: 0,
+        rows: [...playlist],
+        totalCount: playlist.length
+      },
       currentTrackIndex: Math.max(0, Math.min(currentIndex, playlist.length - 1)),
       currentTrack: playlist.length > 0 ? playlist[Math.max(0, Math.min(currentIndex, playlist.length - 1))] : null
     }, 'playlist_update');
+  }
+
+  updateCatalogSequence({
+    sequenceId,
+    itemCount,
+    currentOrdinal = 0,
+    currentTrack = null,
+    queueWindow = { startOrdinal: 0, rows: [], totalCount: itemCount },
+    transportVersion = this.state.transportVersion,
+    playbackGeneration = this.state.playbackGeneration
+  }) {
+    if (typeof sequenceId !== 'string' || sequenceId.length === 0) {
+      throw new TypeError('Catalog sequenceId must be a non-empty string');
+    }
+    if (!Number.isSafeInteger(itemCount) || itemCount < 1) {
+      throw new RangeError('Catalog sequence itemCount must be a positive integer');
+    }
+    this.updateState({
+      playlist: [],
+      playlistLength: itemCount,
+      sequenceKind: 'catalog',
+      sequenceId,
+      queueWindow: normalizeQueueWindow(queueWindow, itemCount),
+      currentTrackIndex: Math.max(0, Math.min(currentOrdinal, itemCount - 1)),
+      currentTrack,
+      transportVersion,
+      playbackGeneration
+    }, 'catalog_sequence_update');
+  }
+
+  updateQueueWindow(queueWindow) {
+    this.updateState({
+      queueWindow: normalizeQueueWindow(queueWindow, this.state.playlistLength)
+    }, 'queue_window_update');
+  }
+
+  applyTransportCommand(command) {
+    if (!command || !['transportNext', 'transportPrevious', 'transportSelect'].includes(command.type)) {
+      throw new TypeError('Invalid transport command');
+    }
+    this.updateState({
+      transportCommandGeneration: this.state.transportCommandGeneration + 1,
+      lastTransportCommand: { ...command }
+    }, 'transport_command');
+  }
+
+  applyContextCommand(command) {
+    if (!command || command.type !== 'contextPlayNext' || !command.selectionDescriptor) {
+      throw new TypeError('Invalid context command');
+    }
+    this.updateState({
+      contextCommandGeneration: this.state.contextCommandGeneration + 1,
+      lastContextCommand: { ...command }
+    }, 'context_command');
   }
   
   /**
@@ -386,4 +458,14 @@ export class StateManager {
       )
     };
   }
+}
+
+function normalizeQueueWindow(queueWindow, totalCount) {
+  const rows = Array.isArray(queueWindow?.rows) ? queueWindow.rows : [];
+  if (rows.length > 80) throw new RangeError('Queue window cannot exceed 80 rows');
+  return Object.freeze({
+    startOrdinal: Number.isSafeInteger(queueWindow?.startOrdinal) ? queueWindow.startOrdinal : 0,
+    rows: Object.freeze([...rows]),
+    totalCount: Number.isSafeInteger(queueWindow?.totalCount) ? queueWindow.totalCount : totalCount
+  });
 }

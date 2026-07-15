@@ -92,10 +92,12 @@ Open **Settings > Config...** to choose **Language**, set **Startup view:**, and
 
 1. Open **Music Library** from the PC header, the mobile **Library** tab, or **View > Music Library** in the desktop app.
 2. Select **Add Music Folder** to index a folder of music files.
-3. Browse **Tracks**, **Albums**, **Artists**, **Genres**, **Subfolders**, **Folders**, **Recently Added**, or **Playlists**, and use **Search library** to search the catalog. **Subfolders** groups tracks by their containing path inside each indexed root, while **Folders** manages those roots. Existing libraries gain the new grouping without a rescan or storage migration.
+3. Browse **Tracks**, **Albums**, **Artists**, **Genres**, **Subfolders**, **Folders**, **Recently Added**, or **Playlists**, and use **Search library** to search the catalog. **Subfolders** groups tracks by their containing path inside each indexed root, while **Folders** manages those roots.
 4. Use **Play** to listen through the current effect pipeline, or use **Play Next**, **Add to Queue**, and **Add to Playlist** to manage playback.
 5. Use **Rescan** after changing files, and **Reconnect** if a browser or folder permission is lost.
    - [More about Music Library](docs/music-library.md)
+
+EffeTune 3.0.0 starts with a new Music Library. Earlier Library state is not inherited, so add your music folders and scan them again. This does not modify the audio files in those folders. The new architecture targets catalogs beyond one million tracks, but formal one-million-track support will be announced only after Phase 0 reference-machine budgets and complete runtime qualification pass.
 
 ### Building Your Effect Chain
 

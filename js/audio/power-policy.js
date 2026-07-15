@@ -804,14 +804,22 @@ export function decidePowerTarget(facts = {}, settings = {}, now = 0) {
     audioBranchResolved = true;
   }
 
+  // Master bypass is a pipeline state, not an input-source state. Once a
+  // source is routed (or transport is keeping one alive), use the same dry
+  // processing directive for player and external-input paths.
+  if (!audioBranchResolved && masterBypass && temporal.eligible &&
+      (transportDemand || pipelineSignalSourcePresent)) {
+    targetState = AudioPowerState.ACTIVE;
+    processingDirective = ProcessingDirective.BYPASS_TRANSPORT;
+    dspProcessingDemand = false;
+    reason = 'bypass-transport';
+    audioBranchResolved = true;
+  }
+
   if (!audioBranchResolved && transportDemand) {
     targetState = AudioPowerState.ACTIVE;
     reason = 'transport-demand';
-    if (masterBypass && temporal.eligible) {
-      processingDirective = ProcessingDirective.BYPASS_TRANSPORT;
-      dspProcessingDemand = false;
-      reason = 'bypass-transport';
-    } else if (pipelineSignalSourcePresent && !temporal.monitoringFastWakeEligible) {
+    if (pipelineSignalSourcePresent && !temporal.monitoringFastWakeEligible) {
       reason = temporal.monitoringFastWakeBlockerReason ===
         MonitoringFastWakeBlockerReason.RUNTIME_FAILED
         ? MonitoringFastWakeBlockerReason.RUNTIME_FAILED
@@ -872,10 +880,8 @@ export function decidePowerTarget(facts = {}, settings = {}, now = 0) {
       audioBranchResolved = true;
     } else if (normalizedSettings.mode === PowerPolicy.CONTINUOUS) {
       targetState = AudioPowerState.ACTIVE;
-      processingDirective = masterBypass && temporal.eligible
-        ? ProcessingDirective.BYPASS_TRANSPORT
-        : ProcessingDirective.FULL_PROCESS;
-      dspProcessingDemand = processingDirective === ProcessingDirective.FULL_PROCESS;
+      processingDirective = ProcessingDirective.FULL_PROCESS;
+      dspProcessingDemand = true;
       reason = 'continuous-route';
       audioBranchResolved = true;
     } else if (!temporal.monitoringFastWakeEligible) {

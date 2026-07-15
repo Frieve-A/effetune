@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://effetune.local/schemas/library-scale/phase0-decisions.schema.json",
+  "title": "EffeTune music library Phase 0 decisions",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "artifactId",
+    "qualification",
+    "sections"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "artifactId": {
+      "type": "string",
+      "pattern": "^phase0-artifact:v[1-9][0-9]*$"
+    },
+    "qualification": {
+      "$ref": "#/$defs/qualification"
+    },
+    "sections": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "backendArchitecture",
+        "storageIdentity",
+        "entitySemantics",
+        "substringSearch",
+        "pathGrant"
+      ],
+      "properties": {
+        "backendArchitecture": {
+          "allOf": [
+            { "$ref": "#/$defs/decision" },
+            {
+              "properties": {
+                "decisionId": { "pattern": "^phase0:backendArchitecture:v[1-9][0-9]*$" },
+                "decision": { "const": "go" }
+              }
+            }
+          ]
+        },
+        "storageIdentity": {
+          "allOf": [
+            { "$ref": "#/$defs/decision" },
+            { "properties": { "decisionId": { "pattern": "^phase0:storageIdentity:v[1-9][0-9]*$" } } }
+          ]
+        },
+        "entitySemantics": {
+          "allOf": [
+            { "$ref": "#/$defs/decision" },
+            { "properties": { "decisionId": { "pattern": "^phase0:entitySemantics:v[1-9][0-9]*$" } } }
+          ]
+        },
+        "substringSearch": {
+          "allOf": [
+            { "$ref": "#/$defs/decision" },
+            { "properties": { "decisionId": { "pattern": "^phase0:substringSearch:v[1-9][0-9]*$" } } }
+          ]
+        },
+        "pathGrant": {
+          "allOf": [
+            { "$ref": "#/$defs/decision" },
+            { "properties": { "decisionId": { "pattern": "^phase0:pathGrant:v[1-9][0-9]*$" } } }
+          ]
+        }
+      }
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nonEmptyStringArray": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/nonEmptyString" }
+    },
+    "qualification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "qualifiedAt",
+        "fixtureSeed",
+        "audioWorkletUnderrun"
+      ],
+      "properties": {
+        "status": { "enum": ["pending", "qualified"] },
+        "qualifiedAt": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "format": "date-time" }
+          ]
+        },
+        "fixtureSeed": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+        "audioWorkletUnderrun": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["warmUpSeconds", "measurementSeconds", "sampleRate", "bufferSize", "counterDefinition"],
+          "properties": {
+            "warmUpSeconds": { "type": "integer", "minimum": 1 },
+            "measurementSeconds": { "type": "integer", "minimum": 1 },
+            "sampleRate": { "type": "integer", "minimum": 1 },
+            "bufferSize": { "type": "integer", "minimum": 1 },
+            "counterDefinition": { "$ref": "#/$defs/nonEmptyString" }
+          }
+        }
+      }
+    },
+    "evidenceEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "status",
+        "artifactPath",
+        "artifactSha256",
+        "runtime",
+        "fixtureSeed",
+        "measuredAt"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "kind": { "$ref": "#/$defs/nonEmptyString" },
+        "status": { "enum": ["specified", "measured", "verified"] },
+        "artifactPath": { "$ref": "#/$defs/nonEmptyString" },
+        "artifactSha256": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+          ]
+        },
+        "runtime": { "$ref": "#/$defs/nonEmptyString" },
+        "fixtureSeed": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+        "measuredAt": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "format": "date-time" }
+          ]
+        }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decisionId",
+        "decision",
+        "chosenApproach",
+        "alternatives",
+        "oracle",
+        "evidence",
+        "budget"
+      ],
+      "properties": {
+        "decisionId": { "type": "string" },
+        "decision": { "enum": ["pending", "go", "no-go"] },
+        "chosenApproach": { "$ref": "#/$defs/nonEmptyString" },
+        "alternatives": { "$ref": "#/$defs/nonEmptyStringArray" },
+        "oracle": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "fixtures"],
+          "properties": {
+            "id": { "$ref": "#/$defs/nonEmptyString" },
+            "fixtures": { "$ref": "#/$defs/nonEmptyStringArray" }
+          }
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["electron", "web"],
+          "properties": {
+            "electron": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/evidenceEntry" } },
+            "web": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/evidenceEntry" } }
+          }
+        },
+        "budget": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "$ref": "#/$defs/nonEmptyString" }
+        }
+      }
+    }
+  }
+}

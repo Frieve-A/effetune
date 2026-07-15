@@ -612,7 +612,7 @@ test('About dialog opens update links, falls back safely, and shows the app vers
     const closeButton = documentRef.getElementById('close-button');
     assert.ok(updateLink);
     assert.ok(closeButton);
-    updateLink.dispatchEvent('click');
+    updateLink.children[0].children[0].dispatchEvent('click');
     assert.ok(calls.some(call => call[0] === 'openExternal'));
     closeButton.dispatchEvent('click');
     assert.equal(documentRef.body.children.length, 0);
@@ -628,7 +628,7 @@ test('About dialog opens update links, falls back safely, and shows the app vers
   }, async ({ instance, windowRef, documentRef }) => {
     delete fallbackApi.openExternal;
     await instance.showAboutDialog({ version: '2.0.0' });
-    documentRef.getElementById('about-update-link').dispatchEvent('click');
+    documentRef.getElementById('about-update-link').children[0].children[0].dispatchEvent('click');
     assert.ok(fallbackCalls.some(call => call[0] === 'window.open'));
     documentRef.getElementById('close-button').dispatchEvent('click');
   });

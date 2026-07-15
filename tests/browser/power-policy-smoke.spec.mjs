@@ -148,6 +148,7 @@ export async function runPowerPolicyBrowserSmoke({ browser, baseURL }) {
   await context.grantPermissions(['microphone'], { origin: baseURL });
   const browserErrors = [];
   const page = await openFixturePage(context, baseURL, browserErrors);
+  let activatedPage = null;
 
   try {
     for (const [mode, deadlineMs] of Object.entries(POLICY_DEADLINES_MS)) {
@@ -299,18 +300,33 @@ export async function runPowerPolicyBrowserSmoke({ browser, baseURL }) {
       'query opt-in overrides config opt-out'
     );
 
-    const serviceWorkerEvidence = await page.evaluate(() =>
+    const waitingWorkerEvidence = await page.evaluate(() =>
       window.__powerPolicySmoke.verifyServiceWorkerPrecache());
-    assert.equal(serviceWorkerEvidence.supported, true);
+    assert.equal(waitingWorkerEvidence.supported, true);
     assert.match(
-      serviceWorkerEvidence.oldWorkerScript,
+      waitingWorkerEvidence.oldWorkerScript,
       /\/__power-policy-smoke__\/old-sw\.js$/
     );
-    assert.match(serviceWorkerEvidence.activeWorkerScript, /\/sw\.js$/);
     assert.match(
-      serviceWorkerEvidence.cacheVersion,
+      waitingWorkerEvidence.activeWorkerScriptBeforeClose,
+      /\/__power-policy-smoke__\/old-sw\.js$/
+    );
+    assert.match(waitingWorkerEvidence.waitingWorkerScript, /\/sw\.js$/);
+    assert.equal(waitingWorkerEvidence.newWorkerWaiting, true);
+    assert.equal(waitingWorkerEvidence.oldCachePresentBeforeClose, true);
+    assert.match(
+      waitingWorkerEvidence.cacheVersion,
       new RegExp(`^effetune-v${escapedAppVersion}-`)
     );
+    assert.equal(waitingWorkerEvidence.workletPrecached, true);
+    assert.equal(waitingWorkerEvidence.snapshotPrecached, true);
+
+    await page.close();
+    activatedPage = await openFixturePage(context, baseURL, browserErrors);
+    const serviceWorkerEvidence = await activatedPage.evaluate(cacheVersion =>
+      window.__powerPolicySmoke.verifyActivatedServiceWorkerPrecache(cacheVersion),
+    waitingWorkerEvidence.cacheVersion);
+    assert.match(serviceWorkerEvidence.activeWorkerScript, /\/sw\.js$/);
     assert.equal(serviceWorkerEvidence.oldCacheRemoved, true);
     assert.equal(serviceWorkerEvidence.workletPrecached, true);
     assert.equal(serviceWorkerEvidence.snapshotPrecached, true);
@@ -322,6 +338,7 @@ export async function runPowerPolicyBrowserSmoke({ browser, baseURL }) {
     assert.deepEqual(browserErrors, []);
   } finally {
     await page.evaluate(() => window.__powerPolicySmoke?.dispose()).catch(() => {});
+    await activatedPage?.evaluate(() => window.__powerPolicySmoke?.dispose()).catch(() => {});
     await context.close();
   }
 }

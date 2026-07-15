@@ -87,10 +87,12 @@ Ouvrez **Paramètres > Configuration...** pour choisir la langue, la vue au dém
 
 1. Sur ordinateur, ouvrez-la avec le bouton **Bibliothèque musicale** dans l'en-tête ; sur mobile, avec l'onglet **Bibliothèque** ; dans l'application de bureau, avec **Affichage > Bibliothèque musicale**.
 2. Sélectionnez **Ajouter un dossier de musique** pour indexer le dossier qui contient vos fichiers musicaux.
-3. Parcourez les **Morceaux**, **Albums**, **Artistes**, **Genres**, **Sous-dossiers**, **Dossiers**, **Ajouts récents** et **Listes de lecture**, et utilisez **Rechercher dans la bibliothèque** pour rechercher dans tout le catalogue. La vue **Sous-dossiers** classe les morceaux selon leur chemin au sein de chaque dossier de musique indexé, tandis que la vue **Dossiers** sert à gérer ces dossiers racine. Les bibliothèques existantes bénéficient de ce classement sans nouvelle analyse ni migration du format de stockage.
+3. Parcourez les **Morceaux**, **Albums**, **Artistes**, **Genres**, **Sous-dossiers**, **Dossiers**, **Ajouts récents** et **Listes de lecture**, et utilisez **Rechercher dans la bibliothèque** pour rechercher dans tout le catalogue. La vue **Sous-dossiers** classe les morceaux selon leur chemin au sein de chaque dossier de musique indexé, tandis que la vue **Dossiers** sert à gérer ces dossiers racine.
 4. Les morceaux trouvés peuvent être lus via le pipeline d'effets actuel. Utilisez **Lire ensuite**, **Ajouter à la file** et **Ajouter à une liste** pour gérer l'ordre de lecture et les listes de lecture.
 5. Après avoir modifié des fichiers, utilisez **Analyser à nouveau** ; si les autorisations du navigateur ou du dossier expirent, utilisez **Reconnecter**.
    - [Détails de la Bibliothèque musicale](music-library.md)
+
+La version 3.0.0 démarre avec une nouvelle Bibliothèque musicale. L'état de la Bibliothèque précédente n'est pas repris : ajoutez et analysez de nouveau vos dossiers de musique. Cela ne modifie pas les fichiers audio qu'ils contiennent. L'architecture vise plus d'un million de morceaux ; la prise en charge officielle ne sera annoncée qu'après réussite de Phase 0 et de toute la qualification d'exécution.
 
 ### Construction de votre chaîne d'effets
 

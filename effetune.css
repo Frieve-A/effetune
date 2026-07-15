@@ -214,11 +214,19 @@ input[type="checkbox"] {
 
 .update-notification {
     color: #4a9eff;
-    text-decoration: none;
     font-size: 14px;
     margin-left: 10px;
-    cursor: pointer;
     transition: color 0.2s ease;
+}
+
+.update-release-link {
+    color: inherit;
+    background: none;
+    border: 1px solid currentColor;
+    border-radius: 4px;
+    cursor: pointer;
+    font: inherit;
+    padding: 3px 7px;
 }
 
 .message-display {
@@ -1547,6 +1555,38 @@ body.layout-mobile .plugin-parameter-ui .parameter-row:has(> input[type="number"
 .player-playlist-item.active {
     background: #3d3d3d;
     color: #fff;
+}
+
+.player-queue-pagination {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: 36px 1fr 36px;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 0 8px;
+    background: #222;
+}
+
+.player-queue-pagination button {
+    min-height: 30px;
+    color: #ddd;
+    background: #333;
+    border: 1px solid #4a4a4a;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.player-queue-pagination button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.player-queue-page-position {
+    color: #aaa;
+    font-size: 12px;
+    text-align: center;
 }
 
 .player-library-context-menu {

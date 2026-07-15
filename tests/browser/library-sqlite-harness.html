@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EffeTune Web SQLite verification</title>
+</head>
+<body>
+  <p id="status">Loading Web SQLite verification…</p>
+  <script type="module">
+    import {
+      runLibrarySqliteContract,
+      runLibrarySqliteScale
+    } from './library-sqlite-smoke.spec.mjs';
+
+    globalThis.__librarySqlite = Object.freeze({
+      runContract: runLibrarySqliteContract,
+      runScale: runLibrarySqliteScale
+    });
+    document.getElementById('status').textContent = 'Web SQLite verification ready';
+  </script>
+</body>
+</html>

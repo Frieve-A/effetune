@@ -16,6 +16,11 @@ function createPreloadHarness() {
   const throwInvokeChannels = new Set();
   const rejectInvokeChannels = new Set();
   const electron = {
+    webUtils: {
+      getPathForFile(file) {
+        return file?.trustedPath || '';
+      }
+    },
     contextBridge: {
       exposeInMainWorld(name, api) {
         exposed[name] = api;
@@ -111,6 +116,10 @@ test('preload exposes electronAPI invoke and send wrappers', async () => {
     ['saveFile', ['a.txt', 'content'], ['save-file', 'a.txt', 'content']],
     ['readFile', ['a.txt'], ['read-file', 'a.txt', false]],
     ['readFile', ['a.txt', true], ['read-file', 'a.txt', true]],
+    ['beginAtomicFileWrite', ['a.txt'], ['begin-atomic-file-write', 'a.txt']],
+    ['writeAtomicFileChunk', ['token', 'part'], ['write-atomic-file-chunk', 'token', 'part']],
+    ['commitAtomicFileWrite', ['token'], ['commit-atomic-file-write', 'token']],
+    ['abortAtomicFileWrite', ['token'], ['abort-atomic-file-write', 'token']],
     ['readClipboardText', [], ['read-clipboard-text']],
     ['writeClipboardText', ['pipeline'], ['write-clipboard-text', 'pipeline']],
     ['readFileAsBuffer', ['a.wav'], ['read-file-as-buffer', 'a.wav']],
@@ -164,6 +173,21 @@ test('preload exposes electronAPI invoke and send wrappers', async () => {
     ['pipeline-state-for-close', { plugins: [] }],
     ['renderer-ready-for-music-files']
   ]);
+});
+
+test('preload derives dropped playlist paths in the isolated world before requesting a grant', async () => {
+  const harness = createPreloadHarness();
+  loadPreload(harness);
+
+  const result = await harness.exposed.electronAPI.libraryCatalogV1.grantDroppedPlaylistImport({
+    name: 'Daily.m3u8',
+    trustedPath: 'D:\\Playlists\\Daily.m3u8'
+  });
+
+  assert.deepEqual(result, {
+    channel: 'library-catalog-v1:grant-dropped-playlist-import',
+    args: [{ path: 'D:\\Playlists\\Daily.m3u8' }]
+  });
 });
 
 test('preload exposes listener registration wrappers', () => {

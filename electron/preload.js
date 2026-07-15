@@ -1,4 +1,62 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
+
+const libraryCatalogV1 = Object.freeze({
+  apiVersion: 1,
+  getCapabilities: () => ipcRenderer.invoke('library-catalog-v1:get-capabilities', {}),
+  getCounts: (request = {}) => ipcRenderer.invoke('library-catalog-v1:get-counts', request),
+  createContext: (request) => ipcRenderer.invoke('library-catalog-v1:create-context', request),
+  getContextCount: (request) => ipcRenderer.invoke('library-catalog-v1:get-context-count', request),
+  queryTracks: (request) => ipcRenderer.invoke('library-catalog-v1:query-tracks', request),
+  queryEntities: (request) => ipcRenderer.invoke('library-catalog-v1:query-entities', request),
+  readContextPage: (request) => ipcRenderer.invoke('library-catalog-v1:read-context-page', request),
+  readContextPageAtOrdinal: (request) => ipcRenderer.invoke('library-catalog-v1:read-context-page-at-ordinal', request),
+  resolveEntityAnchor: (request) => ipcRenderer.invoke('library-catalog-v1:resolve-entity-anchor', request),
+  lookupContextTrack: (request) => ipcRenderer.invoke('library-catalog-v1:lookup-context-track', request),
+  releaseContext: (contextToken) => ipcRenderer.invoke('library-catalog-v1:release-context', { contextToken }),
+  getTrack: (trackUid) => ipcRenderer.invoke('library-catalog-v1:get-track', { trackUid }),
+  resolvePlaybackSource: (trackUid) => ipcRenderer.invoke('library-catalog-v1:resolve-playback-source', { trackUid }),
+  createPlaylist: (request) => ipcRenderer.invoke('library-catalog-v1:create-playlist', request),
+  createPlaylistWithItems: (request) => ipcRenderer.invoke('library-catalog-v1:create-playlist-with-items', request),
+  renamePlaylist: (request) => ipcRenderer.invoke('library-catalog-v1:rename-playlist', request),
+  reorderPlaylistItem: (request) => ipcRenderer.invoke('library-catalog-v1:reorder-playlist-item', request),
+  removePlaylistItem: (request) => ipcRenderer.invoke('library-catalog-v1:remove-playlist-item', request),
+  duplicatePlaylist: (request) => ipcRenderer.invoke('library-catalog-v1:duplicate-playlist', request),
+  queryPlaylistItems: (request) => ipcRenderer.invoke('library-catalog-v1:query-playlist-items', request),
+  tombstonePlaylist: (request) => ipcRenderer.invoke('library-catalog-v1:tombstone-playlist', request),
+  addFolder: () => ipcRenderer.invoke('library-catalog-v1:add-folder', {}),
+  requestFolderAccess: (folderId) => ipcRenderer.invoke('library-catalog-v1:request-folder-access', { folderId }),
+  scanFolders: (request) => ipcRenderer.invoke('library-catalog-v1:scan-folders', request),
+  cancelScan: (scanId) => ipcRenderer.invoke('library-catalog-v1:cancel-scan', { scanId }),
+  removeFolder: (folderId) => ipcRenderer.invoke('library-catalog-v1:remove-folder', { folderId }),
+  requestArtwork: (request) => ipcRenderer.invoke('library-catalog-v1:request-artwork', request),
+  pickPlaylistImport: () => ipcRenderer.invoke('library-catalog-v1:pick-playlist-import', {}),
+  grantDroppedPlaylistImport: (file) => ipcRenderer.invoke(
+    'library-catalog-v1:grant-dropped-playlist-import',
+    { path: webUtils.getPathForFile(file) }
+  ),
+  getScanStatus: (scanId) => ipcRenderer.invoke('library-catalog-v1:get-scan-status', { scanId }),
+  onInvalidation: (callback) => addSingleArgIpcListener('library-catalog-v1:invalidation', callback),
+  onScanEvent: (callback) => addSingleArgIpcListener('library-catalog-v1:scan-event', callback)
+});
+
+const libraryServiceV1 = Object.freeze({
+  apiVersion: 1,
+  start: (request) => ipcRenderer.invoke('library-service-v1:start', request),
+  lookupResult: (clientRequestId) => ipcRenderer.invoke('library-service-v1:lookup-result', { clientRequestId }),
+  status: (operationId) => ipcRenderer.invoke('library-service-v1:status', { operationId }),
+  cancel: (operationId) => ipcRenderer.invoke('library-service-v1:cancel', { operationId }),
+  onEvent: (callback) => addSingleArgIpcListener('library-service-v1:event', callback)
+});
+
+const libraryPlaybackV1 = Object.freeze({
+  apiVersion: 1,
+  commitTransportCommand: (request) => ipcRenderer.invoke('library-playback-v1:commit-transport-command', request),
+  getTransportState: () => ipcRenderer.invoke('library-playback-v1:get-transport-state', {}),
+  applyTransportUndo: (request) => ipcRenderer.invoke('library-playback-v1:apply-transport-undo', request),
+  getProvisionalEntry: (operationId) => ipcRenderer.invoke('library-playback-v1:get-provisional-entry', { operationId }),
+  readSequencePage: (request) => ipcRenderer.invoke('library-playback-v1:read-sequence-page', request),
+  resolveSequenceEntrySource: (request) => ipcRenderer.invoke('library-playback-v1:resolve-sequence-entry-source', request)
+});
 
 const ALLOWED_IPC_LISTENER_CHANNELS = new Set([
   'add-music-folder',
@@ -50,6 +108,10 @@ contextBridge.exposeInMainWorld(
     showOpenDialog: (options) => ipcRenderer.invoke('show-open-dialog', options),
     saveFile: (filePath, content) => ipcRenderer.invoke('save-file', filePath, content),
     readFile: (filePath, binary = false) => ipcRenderer.invoke('read-file', filePath, binary),
+    beginAtomicFileWrite: (filePath) => ipcRenderer.invoke('begin-atomic-file-write', filePath),
+    writeAtomicFileChunk: (token, chunk) => ipcRenderer.invoke('write-atomic-file-chunk', token, chunk),
+    commitAtomicFileWrite: (token) => ipcRenderer.invoke('commit-atomic-file-write', token),
+    abortAtomicFileWrite: (token) => ipcRenderer.invoke('abort-atomic-file-write', token),
     readClipboardText: () => ipcRenderer.invoke('read-clipboard-text'),
     writeClipboardText: (text) => ipcRenderer.invoke('write-clipboard-text', text),
     readFileAsBuffer: (filePath) => ipcRenderer.invoke('read-file-as-buffer', filePath),
@@ -67,6 +129,15 @@ contextBridge.exposeInMainWorld(
         return addSingleArgIpcListener('library-scan-event', callback);
       }
     },
+
+    // Versioned, bounded music catalog API. Filesystem grants remain brokered by the main process.
+    libraryCatalogV1,
+
+    // Durable bulk operations expose only the four service verbs and bounded events.
+    libraryServiceV1,
+
+    // Bounded disk-backed playback sequence access is separate from the four durable service verbs.
+    libraryPlaybackV1,
     
     // Documentation operations
     openDocumentation: (path) => ipcRenderer.invoke('open-documentation', path),
@@ -129,7 +200,7 @@ contextBridge.exposeInMainWorld(
     
     // Get app version
     getAppVersion: () => ipcRenderer.invoke('get-app-version'),
-    
+
     // Get command line preset file
     getCommandLinePresetFile: () => ipcRenderer.invoke('get-command-line-preset-file'),
     

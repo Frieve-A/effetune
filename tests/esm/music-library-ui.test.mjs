@@ -3,7 +3,10 @@ import test from 'node:test';
 
 import { UIManager } from '../../js/ui-manager.js';
 import { PlaybackManager } from '../../js/ui/audio-player/playback-manager.js';
-import { LibraryView } from '../../js/ui/library/library-view.js';
+import {
+  LibraryView,
+  WEB_PLAYLIST_BLOB_EXPORT_MAX_BYTES
+} from '../../js/ui/library/library-view.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
 class FakeClassList {
@@ -215,6 +218,17 @@ class DialogElement extends FakeElement {
       this.closeButton = this.createDialogChild('button');
       this.elements.set('.library-dialog-close', this.closeButton);
       this.focusables.push(this.closeButton);
+      return;
+    }
+    if (this.html.includes('library-playlist-duplicate')) {
+      for (const className of [
+        'library-playlist-rename', 'library-playlist-duplicate',
+        'library-playlist-export-m3u8', 'library-playlist-export-xspf',
+        'library-playlist-delete'
+      ]) {
+        const button = this.createDialogChild('button');
+        this.elements.set(`.${className}`, button);
+      }
       return;
     }
     if (this.html.includes('library-playlist-menu-item')) {
@@ -607,6 +621,26 @@ test('LibraryView show can skip search focus and hide restores the opener', asyn
   });
 });
 
+test('LibraryView debounces search commits and ignores intermediate input', async () => {
+  const view = Object.create(LibraryView.prototype);
+  view.searchInput = { value: 'first' };
+  view.searchQuery = '';
+  view.detail = { type: 'album', key: 'old' };
+  view.searchDebounceTimer = null;
+  let renders = 0;
+  view.render = () => { renders += 1; };
+
+  view.scheduleSearchQuery();
+  view.searchInput.value = 'final';
+  view.scheduleSearchQuery();
+  assert.equal(view.searchQuery, '');
+  await new Promise(resolve => setTimeout(resolve, 120));
+
+  assert.equal(view.searchQuery, 'final');
+  assert.equal(view.detail, null);
+  assert.equal(renders, 1);
+});
+
 test('desktop library avoids page overflow while preserving a usable minimum height', async () => {
   const version = new FakeElement('span');
   const documentRef = createDocument({ 'app-version': version });
@@ -811,7 +845,7 @@ test('LibraryView keyboard shortcuts focus search and route focused tracks', asy
     searchInput,
     searchQuery: '',
     selectedTrackIds: new Set(),
-    currentVisibleTrackIds: ['t_one', 't_two', 't_three'],
+    renderedPageTrackIds: ['t_one', 't_two', 't_three'],
     focusedTrackId: 't_one',
     contextMenu: null,
     playlistMenu: null,
@@ -923,6 +957,55 @@ test('LibraryView keyboard shortcuts focus search and route focused tracks', asy
   });
 });
 
+test('paged entity-card keyboard navigation is fenced by the row dispatcher', async () => {
+  const calls = [];
+  const row = {
+    dataset: { queryGeneration: '4', pageAttemptId: '2' },
+    closest(selector) {
+      return selector === '.library-paged-row' ? this : null;
+    }
+  };
+  const view = Object.assign(Object.create(LibraryView.prototype), {
+    content: { clientHeight: 480 },
+    pagedIntegrationRequired: true,
+    pagedState: { phase: 'committed' },
+    pagedController: {
+      dispatchRowAction(identity, callback) {
+        calls.push(['dispatch', identity]);
+        return { accepted: true, value: callback() };
+      },
+      createViewState() {
+        return { queryGeneration: 4, pageAttemptId: 2 };
+      }
+    },
+    getPagedQuery() {
+      return { endpoint: 'entities', entityType: 'album' };
+    },
+    getTrackRowHeight() {
+      return 40;
+    },
+    async movePagedFocus(delta) {
+      calls.push(['move', delta]);
+    }
+  });
+  const event = {
+    key: 'ArrowDown',
+    target: row,
+    preventDefault() {
+      calls.push(['prevent']);
+    }
+  };
+
+  view.handleContentKeyDown(event);
+  await Promise.resolve();
+
+  assert.deepEqual(calls, [
+    ['prevent'],
+    ['dispatch', { queryGeneration: 4, pageAttemptId: 2 }],
+    ['move', 1]
+  ]);
+});
+
 test('LibraryView type-jump consumes printable keys and ignores space', async () => {
   const calls = [];
   const documentRef = createDocument();
@@ -939,7 +1022,7 @@ test('LibraryView type-jump consumes printable keys and ignores space', async ()
       }
     },
     content,
-    currentVisibleTrackIds: ['t_alpha', 't_nirvana'],
+    renderedPageTrackIds: ['t_alpha', 't_nirvana'],
     focusedTrackId: 't_alpha',
     typeJumpBuffer: '',
     typeJumpTimer: null,
@@ -1182,7 +1265,7 @@ test('LibraryView dispatches subfolder list and detail rendering', () => {
     currentView: 'subfolders',
     detail: null,
     searchQuery: '',
-    currentVisibleTrackIds: ['stale'],
+    renderedPageTrackIds: ['stale'],
     trackScrollCleanup: null,
     manager: {
       getSubfolderTracks(key) {
@@ -1214,7 +1297,7 @@ test('LibraryView dispatches subfolder list and detail rendering', () => {
     ['renderSubfolders'],
     ['renderStatus']
   ]);
-  assert.deepEqual(view.currentVisibleTrackIds, []);
+  assert.deepEqual(view.renderedPageTrackIds, []);
 
   calls.length = 0;
   view.detail = { type: 'subfolder', key: 'subfolder-key', title: 'Music / Album' };
@@ -1368,7 +1451,7 @@ test('LibraryView album detail keeps track order while recent lists apply the cu
     sortDirection: 'desc',
     detailSortOverride: false,
     selectedTrackIds: new Set(),
-    currentVisibleTrackIds: [],
+    renderedPageTrackIds: [],
     manager: {
       getCounts() {
         return { tracks: 2, albums: 1, artists: 1, genres: 1 };
@@ -1439,7 +1522,7 @@ test('LibraryView album detail applies the current sort only after a header clic
     sort: 'title',
     sortDirection: 'desc',
     selectedTrackIds: new Set(),
-    currentVisibleTrackIds: [],
+    renderedPageTrackIds: [],
     manager: {
       getCounts() {
         return { tracks: 2, albums: 1, artists: 1, genres: 1 };
@@ -1517,7 +1600,7 @@ test('LibraryView track sort headers expose active direction and aria state', as
     selectedTrackIds: new Set(),
     nowPlayingTrackId: null,
     focusedTrackId: null,
-    currentVisibleTrackIds: [],
+    renderedPageTrackIds: [],
     sort: 'artist',
     sortDirection: 'desc',
     trackScrollCleanup: null
@@ -2225,7 +2308,7 @@ test('LibraryView Shift+F10 properties restores focus to the focused row after c
     contextMenuCleanup: null,
     contextMenuReturnFocus: null,
     selectedTrackIds: new Set(['t_song']),
-    currentVisibleTrackIds: ['t_song'],
+    renderedPageTrackIds: ['t_song'],
     focusedTrackId: 't_song',
     manager: {
       getTrackById(id) {
@@ -2296,7 +2379,7 @@ test('LibraryView keyboard context menu targets the focused visible row', async 
     contextMenuReturnFocus: null,
     playlistMenu: null,
     selectedTrackIds: new Set(['t_one', 't_three']),
-    currentVisibleTrackIds: ['t_one', 't_two', 't_three'],
+    renderedPageTrackIds: ['t_one', 't_two', 't_three'],
     focusedTrackId: 't_two',
     manager: {
       getTrackById(id) {
@@ -2484,6 +2567,42 @@ test('LibraryView mobile long press selection ignores the synthetic follow-up cl
   });
 });
 
+test('paged playlist detail exposes Duplicate through the bounded service', async () => {
+  const documentRef = createDialogDocument();
+  const calls = [];
+  const manager = {
+    async createContext() { return 'context'; },
+    async queryTracks() { return { rows: [] }; },
+    async queryEntities() { return { rows: [] }; },
+    async releaseContext() {},
+    async getCounts() { return {}; },
+    async getTrack() { return null; },
+    playlists: {
+      async get(playlistId) {
+        calls.push(['get', playlistId]);
+        return { playlistId, version: 4 };
+      },
+      async duplicate(playlistId, name, options) {
+        calls.push(['duplicate', playlistId, name, options.playlist.version]);
+        return { playlistId: 'playlist-copy' };
+      }
+    }
+  };
+  await withGlobals({ document: documentRef }, async () => {
+    const view = new LibraryView({ manager, uiManager: { t: key => key } });
+    view.detail = { type: 'playlist', key: 'playlist-source', title: 'Source' };
+    view.promptText = async () => 'Source copy';
+    view.navigateToDetail = (...args) => calls.push(['navigate', ...args]);
+    const controls = view.createPagedPlaylistControls();
+    await controls.querySelector('.library-playlist-duplicate').click();
+  });
+  assert.deepEqual(calls, [
+    ['get', 'playlist-source'],
+    ['duplicate', 'playlist-source', 'Source copy', 4],
+    ['navigate', { type: 'playlist', key: 'playlist-copy', title: 'Source copy' }, 'playlists']
+  ]);
+});
+
 test('LibraryView playlist actions shuffle, duplicate, reorder, and retry unresolved items', async () => {
   const calls = [];
   const playlist = {
@@ -2653,6 +2772,55 @@ test('LibraryView playlist file drag and drop import only playlist files', async
   ]);
 });
 
+test('paged Electron playlist drop imports only through a main-owned opaque grant', async () => {
+  const calls = [];
+  const file = { name: 'daily.m3u8' };
+  const source = {
+    kind: 'electron-import-grant', token: 'grant-1', name: 'daily.m3u8',
+    size: 12, lastModified: 1, type: ''
+  };
+  const view = Object.assign(Object.create(LibraryView.prototype), {
+    pagedIntegrationRequired: true,
+    manager: {
+      playlists: {
+        async importFile(received) {
+          calls.push(['import', received]);
+          return { playlistId: 'playlist-1' };
+        }
+      }
+    },
+    navigateToDetail(detail, viewName) {
+      calls.push(['navigate', detail, viewName]);
+    },
+    uiManager: { setError(message) { calls.push(['error', message]); } }
+  });
+
+  await withGlobals({
+    window: {
+      electronAPI: {
+        libraryCatalogV1: {
+          async grantDroppedPlaylistImport(received) {
+            calls.push(['grant', received]);
+            return { canceled: false, source };
+          }
+        }
+      }
+    }
+  }, async () => {
+    await view.handlePlaylistFileDrop({
+      dataTransfer: { files: [file] },
+      preventDefault() { calls.push(['prevent']); }
+    });
+  });
+
+  assert.deepEqual(calls, [
+    ['prevent'],
+    ['grant', file],
+    ['import', source],
+    ['navigate', { type: 'playlist', key: 'playlist-1' }, 'playlists']
+  ]);
+});
+
 test('LibraryView browser playlist picker resolves null and cleans up on cancel', async () => {
   const input = new FakeElement('input');
   input.files = [];
@@ -2782,6 +2950,68 @@ test('LibraryView playlist export passes the relative path checkbox state', asyn
     }],
     ['saveFile', 'D:/Playlists/Daily.m3u8', '#EXTM3U\n']
   ]);
+});
+
+test('paged Electron export sink retains the selected destination path', async () => {
+  const calls = [];
+  const view = Object.assign(Object.create(LibraryView.prototype), {});
+  await withGlobals({
+    window: {
+      electronAPI: {
+        async showSaveDialog() { return { filePath: 'D:/Playlists/Daily.m3u8' }; },
+        async beginAtomicFileWrite(path) { calls.push(['begin', path]); return { success: true, token: 'write-1' }; },
+        async writeAtomicFileChunk() { return { success: true }; },
+        async commitAtomicFileWrite() { return { success: true }; },
+        async abortAtomicFileWrite() { return { success: true }; }
+      }
+    }
+  }, async () => {
+    const sink = await view.createPagedPlaylistExportSink({
+      fileName: 'Daily.m3u8', dialogTitle: 'Export', filters: [{ name: 'Playlists', extensions: ['m3u8'] }]
+    });
+    assert.equal(sink.destinationPath, 'D:/Playlists/Daily.m3u8');
+  });
+  assert.deepEqual(calls, [['begin', 'D:/Playlists/Daily.m3u8']]);
+});
+
+test('paged non-FSA export uses a bounded Blob sink and returns a typed overflow', async () => {
+  const documentRef = createDocument();
+  const urls = [];
+  const view = Object.assign(Object.create(LibraryView.prototype), {});
+  await withGlobals({
+    document: documentRef,
+    window: {},
+    URL: {
+      createObjectURL(blob) {
+        urls.push(['create', blob.size, blob.type]);
+        return 'blob:playlist';
+      },
+      revokeObjectURL(url) {
+        urls.push(['revoke', url]);
+      }
+    }
+  }, async () => {
+    const sink = await view.createPagedPlaylistExportSink({
+      fileName: 'Daily.m3u8', dialogTitle: 'Export', filters: [{ name: 'Playlists', extensions: ['m3u8'] }]
+    });
+    await sink.write('#EXTM3U\n');
+    await sink.commit();
+    assert.deepEqual(urls, [
+      ['create', 8, 'audio/x-mpegurl;charset=utf-8'],
+      ['revoke', 'blob:playlist']
+    ]);
+
+    const overflowing = await view.createPagedPlaylistExportSink({
+      fileName: 'Large.xspf', dialogTitle: 'Export', filters: [{ name: 'Playlists', extensions: ['xspf'] }]
+    });
+    await overflowing.write(new Uint8Array(WEB_PLAYLIST_BLOB_EXPORT_MAX_BYTES));
+    await assert.rejects(
+      overflowing.write(new Uint8Array(1)),
+      error => error.code === 'playlistExportTooLarge' &&
+        error.limitBytes === WEB_PLAYLIST_BLOB_EXPORT_MAX_BYTES
+    );
+    await overflowing.abort();
+  });
 });
 
 test('LibraryView export dialogs use format-specific titles and extension filters', async () => {

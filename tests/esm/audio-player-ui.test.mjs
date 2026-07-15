@@ -22,6 +22,7 @@ class FakeElement {
     this.offsetHeight = 20;
     this.id = '';
     this.attributes = new Map();
+    this.dataset = {};
   }
 
   set innerHTML(value) {
@@ -421,6 +422,7 @@ test('creates translated controls, inserts before the double blind panel, and wi
       'isStopped',
       'isTransitioning',
       'playlist',
+      'queueWindow',
       'transitionType'
     ].sort());
     assert.equal(documentRef.body.children[0], container);
@@ -875,6 +877,40 @@ test('playlist display syncs active track and mobile tap starts playback', async
   });
 });
 
+test('catalog queue renders a bounded page with reachable previous and next navigation', async () => {
+  await withAudioPlayerGlobals({}, async ({ calls, documentRef }) => {
+    const pageRequests = [];
+    const player = createAudioPlayer(calls, {
+      state: {
+        sequenceKind: 'catalog',
+        playlistLength: 1_000_000,
+        currentTrackIndex: 200,
+        queueWindow: {
+          startOrdinal: 160,
+          totalCount: 1_000_000,
+          rows: Array.from({ length: 80 }, (_, index) => ({
+            entryInstanceId: `entry-${160 + index}`,
+            trackUid: `track-${160 + index}`,
+            title: `Track ${160 + index}`
+          }))
+        }
+      }
+    });
+    player.playbackManager.refreshCatalogQueuePage = ordinal => pageRequests.push(ordinal);
+    const ui = new AudioPlayerUI(player);
+    ui.playlistDisplay = documentRef.createElement('div');
+    ui.renderCatalogQueueWindow(player.stateManager.getStateSnapshot());
+
+    assert.equal(ui.playlistDisplay.children.length, 81);
+    const navigation = ui.playlistDisplay.children[0];
+    assert.equal(navigation.className, 'player-queue-pagination');
+    assert.equal(navigation.children[1].textContent, '161–240 / 1000000');
+    navigation.children[0].dispatchEvent('click');
+    navigation.children[2].dispatchEvent('click');
+    assert.deepEqual(pageRequests, [80, 240]);
+  });
+});
+
 test('desktop playlist selections carry play intent to the latest generation only', async () => {
   await withAudioPlayerGlobals({
     windowOptions: { uiManager: { layoutMode: { isMobile: false } } }
@@ -1190,6 +1226,43 @@ test('library queue helpers notify now playing and save library queues as playli
   });
 });
 
+test('Save Queue passes the active disk-backed sequence descriptor without materializing rows', async () => {
+  const saves = [];
+  const manager = { playlists: {} };
+  await withAudioPlayerGlobals({
+    windowOptions: {
+      uiManager: {
+        async ensureLibraryManager() { return manager; },
+        libraryPlaybackBridge: {
+          async saveQueueAsPlaylist(request) { saves.push(request); }
+        }
+      }
+    }
+  }, async ({ calls, documentRef }) => {
+    const player = createAudioPlayer(calls, { state: { playlist: [] } });
+    const descriptor = {
+      kind: 'composite',
+      sequenceId: 'active-composite',
+      itemCount: 1_000_000,
+      currentOrdinal: 400_000,
+      transportVersion: 12,
+      segments: [{ source: { kind: 'catalog', sequenceId: 'segment-1', itemCount: 1_000_000 } }]
+    };
+    player.playbackManager.getActiveSequenceDescriptor = () => descriptor;
+    const ui = new AudioPlayerUI(player);
+    const savePromise = ui.saveQueueAsPlaylist();
+    await new Promise(resolve => setImmediate(resolve));
+    const promptBackdrop = documentRef.body.children.find(child => child.classList().includes('player-prompt-backdrop'));
+    promptBackdrop.querySelector('.player-prompt-input').value = 'Million Queue';
+    promptBackdrop.querySelector('.player-prompt-dialog').dispatchEvent('submit');
+    await savePromise;
+    assert.equal(saves.length, 1);
+    assert.equal(saves[0].name, 'Million Queue');
+    assert.equal(saves[0].sequenceDescriptor, descriptor);
+    assert.equal(saves[0].libraryManager, manager);
+  });
+});
+
 test('interval management and removeUI clean up timers, DOM nodes, and references', async () => {
   await withAudioPlayerGlobals({}, async ({ calls, documentRef, frames, timers }) => {
     const player = createAudioPlayer(calls, { state: { isPlaying: true } });
@@ -1225,7 +1298,7 @@ test('interval management and removeUI clean up timers, DOM nodes, and reference
     assert.equal(calls.filter(call =>
       call[0] === 'warn' && call[1].includes('Time display')
     ).length, warningCountAfterRemove);
-    assert.equal(calls.filter(call => call[0] === 'removeListener').length, 13);
+    assert.equal(calls.filter(call => call[0] === 'removeListener').length, 14);
     assert.equal(documentRef.body.children.includes(container), false);
     assert.equal(ui.container, null);
     assert.equal(ui.trackNameDisplay, null);

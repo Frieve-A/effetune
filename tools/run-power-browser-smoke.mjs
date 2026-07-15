@@ -564,7 +564,7 @@ const fixtureHtml = String.raw`<!doctype html>
         updateViaCache: 'none'
       });
       const installingWorker = await waitForRegistrationWorker(registration, '/sw.js');
-      await waitForServiceWorkerState(installingWorker, 'activated');
+      await waitForServiceWorkerState(installingWorker, 'installed');
 
       const cacheKeys = await caches.keys();
       const cache = await caches.open(cacheVersion);
@@ -579,9 +579,40 @@ const fixtureHtml = String.raw`<!doctype html>
       return {
         supported: true,
         oldWorkerScript: oldWorker.scriptURL,
+        waitingWorkerScript: registration.waiting?.scriptURL || null,
+        activeWorkerScriptBeforeClose: registration.active?.scriptURL || null,
+        newWorkerWaiting: registration.waiting === installingWorker,
+        cacheVersion,
+        oldCachePresentBeforeClose: cacheKeys.includes(oldCacheVersion),
+        workletPrecached: Boolean(workletResponse),
+        snapshotPrecached: Boolean(snapshotResponse),
+        snapshotSchemaVersion: schemaVersionMatch ? Number(schemaVersionMatch[1]) : null
+      };
+    }
+
+    async function verifyActivatedServiceWorkerPrecache(cacheVersion) {
+      const registration = await navigator.serviceWorker.ready;
+      const deadline = Date.now() + 15_000;
+      while (
+        new URL(registration.active?.scriptURL || location.href).pathname !== '/sw.js' &&
+        Date.now() < deadline
+      ) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      const cacheKeys = await caches.keys();
+      const cache = await caches.open(cacheVersion);
+      const [workletResponse, snapshotResponse] = await Promise.all([
+        cache.match(new URL('/plugins/audio-processor.js', location.href)),
+        cache.match(new URL('/js/audio/power-snapshot.js', location.href))
+      ]);
+      const snapshotSource = snapshotResponse ? await snapshotResponse.clone().text() : '';
+      const schemaVersionMatch = snapshotSource.match(
+        /POWER_SNAPSHOT_SCHEMA_VERSION\s*=\s*(\d+)/
+      );
+      return {
         activeWorkerScript: registration.active?.scriptURL || null,
         cacheVersion,
-        oldCacheRemoved: !cacheKeys.includes(oldCacheVersion),
+        oldCacheRemoved: !cacheKeys.includes('effetune-v-browser-smoke-old'),
         workletPrecached: Boolean(workletResponse),
         snapshotPrecached: Boolean(snapshotResponse),
         snapshotSchemaVersion: schemaVersionMatch ? Number(schemaVersionMatch[1]) : null
@@ -606,6 +637,7 @@ const fixtureHtml = String.raw`<!doctype html>
       runPlayerOnlyScenario,
       probeControllerEnablement,
       verifyServiceWorkerPrecache,
+      verifyActivatedServiceWorkerPrecache,
       dispose
     });
     document.getElementById('status').textContent = 'Power policy smoke fixture ready';

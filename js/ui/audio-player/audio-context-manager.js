@@ -40,6 +40,7 @@ export class AudioContextManager {
     this.activeSourceGeneration = 0;
     this.mediaSourceGeneration = 0;
     this.pendingMediaActivation = null;
+    this.privatePipelineSourceGates = new WeakMap();
     
     // Instance tracking for cleanup
     this.currentInstanceId = 0;
@@ -65,25 +66,86 @@ export class AudioContextManager {
    * Ensure that a source reaches every active pipeline input.
    */
   ensurePipelineSourceConnected(sourceNode) {
-    if (!sourceNode || !this.audioManager.workletNode) return false;
+    const pipelineSourceNode = this.getPipelineSourceNode(sourceNode);
+    if (!pipelineSourceNode || !this.audioManager.workletNode) return false;
     if (typeof this.audioManager.ensureSourceConnectedToPipeline === 'function') {
-      return this.audioManager.ensureSourceConnectedToPipeline(sourceNode) === true;
+      return this.audioManager.ensureSourceConnectedToPipeline(pipelineSourceNode) === true;
     }
     const canVerifyConnection =
       typeof this.audioManager.isSourceConnectedToPipeline === 'function';
     if (canVerifyConnection &&
-        this.audioManager.isSourceConnectedToPipeline(sourceNode) === true) {
+        this.audioManager.isSourceConnectedToPipeline(pipelineSourceNode) === true) {
       return true;
     }
 
     let connected = false;
     try {
-      connected = this.audioManager.connectSourceToPipeline?.(sourceNode) === true;
+      connected = this.audioManager.connectSourceToPipeline?.(pipelineSourceNode) === true;
     } catch (error) {
       return false;
     }
     return connected && (!canVerifyConnection ||
-      this.audioManager.isSourceConnectedToPipeline(sourceNode) === true);
+      this.audioManager.isSourceConnectedToPipeline(pipelineSourceNode) === true);
+  }
+
+  getPipelineSourceNode(sourceNode) {
+    return this.privatePipelineSourceGates.get(sourceNode) || sourceNode;
+  }
+
+  isPipelineSourceConnected(sourceNode) {
+    const pipelineSourceNode = this.getPipelineSourceNode(sourceNode);
+    return !!pipelineSourceNode &&
+      this.audioManager.isSourceConnectedToPipeline?.(pipelineSourceNode) === true;
+  }
+
+  setPrivatePipelineSourceMuted(sourceNode, muted) {
+    const gate = this.privatePipelineSourceGates.get(sourceNode);
+    if (!gate) return muted === false;
+
+    try {
+      gate.gain.value = muted ? 0 : 1;
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  connectPrivatePipelineSource(sourceNode, { replaceDirectRoute = false } = {}) {
+    const existingGate = this.privatePipelineSourceGates.get(sourceNode);
+    if (existingGate) {
+      return this.setPrivatePipelineSourceMuted(sourceNode, true) &&
+        this.ensurePipelineSourceConnected(sourceNode);
+    }
+
+    let gate;
+    let directRouteRemoved = false;
+    let sourceConnectedToGate = false;
+    try {
+      // Keep an unverified candidate private without muting unrelated sources
+      // or changing the master output gain.
+      gate = this.audioPlayer.audioContext.createGain();
+      gate.gain.value = 0;
+      if (replaceDirectRoute) {
+        this.audioManager.disconnectSourceFromPipeline?.(sourceNode);
+        directRouteRemoved = true;
+      }
+      sourceNode.connect(gate);
+      sourceConnectedToGate = true;
+      if (this.audioManager.connectSourceToPipeline?.(gate) !== true) {
+        throw new Error('private-pipeline-source-connect-failed');
+      }
+      this.privatePipelineSourceGates.set(sourceNode, gate);
+      return true;
+    } catch (error) {
+      if (sourceConnectedToGate) {
+        try { sourceNode.disconnect(gate); } catch (_) { /* not connected */ }
+      }
+      try { gate?.disconnect(); } catch (_) { /* not connected */ }
+      if (directRouteRemoved) {
+        try { this.audioManager.connectSourceToPipeline?.(sourceNode); } catch (_) { /* unavailable */ }
+      }
+      return false;
+    }
   }
   
   /**
@@ -151,7 +213,7 @@ export class AudioContextManager {
       ? this.currentBufferSource
       : this.mediaSource;
     if (!source) return { state: 'disconnected', sourcePresent: false };
-    const connected = this.audioManager.isSourceConnectedToPipeline?.(source) === true;
+    const connected = this.isPipelineSourceConnected(source);
     return {
       state: connected ? 'connected' : 'disconnected',
       sourcePresent: true
@@ -160,6 +222,9 @@ export class AudioContextManager {
 
   releasePipelineSource(sourceNode, stop = false) {
     if (!sourceNode) return;
+
+    const gate = this.privatePipelineSourceGates.get(sourceNode) || null;
+    const pipelineSourceNode = gate || sourceNode;
 
     if (stop) {
       sourceNode.onended = null;
@@ -171,7 +236,7 @@ export class AudioContextManager {
     }
 
     try {
-      this.audioManager.disconnectSourceFromPipeline?.(sourceNode);
+      this.audioManager.disconnectSourceFromPipeline?.(pipelineSourceNode);
     } catch (error) {
       // Source teardown must continue even if manager-owned edge cleanup fails.
     }
@@ -180,6 +245,11 @@ export class AudioContextManager {
       sourceNode.disconnect();
     } catch (error) {
       // Source teardown is complete even when the underlying node was already disconnected.
+    }
+
+    if (gate) {
+      try { gate.disconnect(); } catch (_) { /* already disconnected */ }
+      this.privatePipelineSourceGates.delete(sourceNode);
     }
   }
 
@@ -254,30 +324,6 @@ export class AudioContextManager {
     releaseLease();
   }
 
-  fadeOutForStagedActivation(stage) {
-    if (!stage) return null;
-    if (typeof this.audioManager?.fadeOutOutputWithOwner === 'function') {
-      return this.audioManager.fadeOutOutputWithOwner(0);
-    }
-    if (typeof this.audioManager?.fadeOutOutput !== 'function') return null;
-    return this.audioManager.fadeOutOutput(0);
-  }
-
-  fadeInAfterStagedActivation(stage, outputOwner) {
-    if (!stage || outputOwner === null || outputOwner === undefined) return;
-    if (typeof outputOwner === 'object' &&
-        typeof this.audioManager?.fadeInOutputForOwner === 'function') {
-      this.audioManager.fadeInOutputForOwner(outputOwner, 0.03);
-      return;
-    }
-    const outputToken = Number.isSafeInteger(outputOwner)
-      ? outputOwner
-      : outputOwner?.fadeToken;
-    if (Number.isSafeInteger(outputToken)) {
-      this.audioManager?.fadeInOutputForToken?.(outputToken, 0.03);
-    }
-  }
-
   async resumePlaybackAudioContext(userInitiated = true) {
     const controller = this.audioManager?.powerPolicyController;
     if (controller?.enabled) {
@@ -309,15 +355,18 @@ export class AudioContextManager {
   /**
    * Connect buffer source to audio manager
    */
-  connectBufferSource(bufferSource) {
+  connectBufferSource(bufferSource, { privateUntilCommit = false } = {}) {
     const useInputWithPlayer = this.getUseInputWithPlayer();
     if (!this.audioManager.workletNode) {
       console.warn('[AudioContextManager] Worklet node unavailable; refusing direct destination playback.');
       return false;
     }
     if (!useInputWithPlayer && !this.handoffInputToSilentSource()) return false;
-    if (!this.ensurePipelineSourceConnected(bufferSource)) return false;
-    if (!useInputWithPlayer) this.setManagedSourceNode(bufferSource);
+    const connected = privateUntilCommit
+      ? this.connectPrivatePipelineSource(bufferSource)
+      : this.ensurePipelineSourceConnected(bufferSource);
+    if (!connected) return false;
+    if (!useInputWithPlayer) this.setManagedSourceNode(this.getPipelineSourceNode(bufferSource));
     return true;
   }
   
@@ -339,7 +388,9 @@ export class AudioContextManager {
   createBufferSource(buffer, instanceId, activation = null) {
     const bufferSource = this.audioPlayer.audioContext.createBufferSource();
     bufferSource.buffer = buffer;
-    if (!this.connectBufferSource(bufferSource)) {
+    if (!this.connectBufferSource(bufferSource, {
+      privateUntilCommit: activation?.privateUntilCommit === true
+    })) {
       this.releasePipelineSource(bufferSource);
       throw new Error('pipeline-source-connect-failed');
     }
@@ -1145,9 +1196,15 @@ export class AudioContextManager {
       if (this.audioPlayer.ui?.trackNameDisplay) {
         this.audioPlayer.ui.trackNameDisplay.textContent = displayText;
       }
-      const artworkId = track.meta.artworkId;
-      if (artworkId && window.libraryManager?.getArtworkThumbURL) {
-        window.libraryManager.getArtworkThumbURL(artworkId).then(async artworkUrl => {
+      const libraryManager = window.libraryManager;
+      const artworkId = libraryManager?.runtime
+        ? track.libraryTrackId
+        : track.meta.artworkId;
+      if (artworkId && libraryManager?.getArtworkThumbURL) {
+        libraryManager.getArtworkThumbURL(
+          artworkId,
+          libraryManager.runtime ? { reason: 'now-playing' } : undefined
+        ).then(async artworkUrl => {
           if (!this.isActiveMetadataRequest(metadataRequest) ||
             currentIndex !== this.audioPlayer.stateManager.getCurrentTrackIndex()) {
             return;
@@ -1526,7 +1583,6 @@ export class AudioContextManager {
     let candidateSource = null;
     let candidateEnded = false;
     let committed = false;
-    let outputOwner = null;
 
     try {
       stage = await this.stagePlaybackActivation('buffer-source', sourceGeneration, resumePosition);
@@ -1541,11 +1597,11 @@ export class AudioContextManager {
 
       const instanceId = this.currentInstanceId;
       candidateSource = this.createBufferSource(buffer, instanceId, {
+        privateUntilCommit: !!stage,
         isCommitted: () => committed,
         onPendingEnded: () => { candidateEnded = true; }
       });
       this.pendingBufferSource = candidateSource;
-      outputOwner = this.fadeOutForStagedActivation(stage);
       const currentTime = this.audioPlayer.audioContext.currentTime;
       candidateSource.start(currentTime, resumePosition);
 
@@ -1558,8 +1614,11 @@ export class AudioContextManager {
             this.currentBuffer === buffer &&
             this.activeSourceGeneration === sourceGeneration &&
             this.stopRequestToken === stopToken &&
-            this.audioManager.isSourceConnectedToPipeline?.(candidateSource) === true,
+            this.isPipelineSourceConnected(candidateSource),
           commit: () => {
+            if (!this.setPrivatePipelineSourceMuted(candidateSource, false)) {
+              throw new Error('private-pipeline-source-publish-failed');
+            }
             committed = true;
             this.pendingBufferSource = null;
             this.currentBufferSource = candidateSource;
@@ -1618,7 +1677,6 @@ export class AudioContextManager {
       }, 'Buffer source playback failed');
       return false;
     } finally {
-      this.fadeInAfterStagedActivation(stage, outputOwner);
       this.releasePlaybackActivationStage(stage);
     }
   }
@@ -1638,13 +1696,20 @@ export class AudioContextManager {
     if (!this.ensurePipelineSourceConnected(mediaSource)) return false;
     const intendedPosition = Number.isFinite(audioElement.currentTime) ? audioElement.currentTime : 0;
     let stage = null;
-    let outputOwner = null;
     let pendingActivation = null;
 
     try {
       stage = await this.stagePlaybackActivation('html-media', sourceGeneration, intendedPosition);
       if (this.stopRequestToken !== stopToken || this.audioPlayer.audioElement !== audioElement ||
         this.mediaSource !== mediaSource || this.mediaSourceGeneration !== mediaSourceGeneration) {
+        return false;
+      }
+      if (stage && !this.connectPrivatePipelineSource(mediaSource, { replaceDirectRoute: true })) {
+        return false;
+      }
+      if (stage && !this.getUseInputWithPlayer()) {
+        this.setManagedSourceNode(this.getPipelineSourceNode(mediaSource));
+      } else if (!stage && !this.setPrivatePipelineSourceMuted(mediaSource, false)) {
         return false;
       }
       pendingActivation = {
@@ -1655,7 +1720,6 @@ export class AudioContextManager {
         invalid: false
       };
       this.pendingMediaActivation = pendingActivation;
-      outputOwner = this.fadeOutForStagedActivation(stage);
       await audioElement.play();
       if (this.stopRequestToken !== stopToken || this.audioPlayer.audioElement !== audioElement) {
         if (this.pendingMediaActivation === pendingActivation) {
@@ -1681,8 +1745,11 @@ export class AudioContextManager {
             this.mediaSourceGeneration === mediaSourceGeneration &&
             audioElement.paused === false &&
             audioElement.ended !== true &&
-            this.audioManager.isSourceConnectedToPipeline?.(mediaSource) === true,
+            this.isPipelineSourceConnected(mediaSource),
           commit: () => {
+            if (!this.setPrivatePipelineSourceMuted(mediaSource, false)) {
+              throw new Error('private-pipeline-source-publish-failed');
+            }
             this.pendingMediaActivation = null;
             this.updateState({
               isPlaying: true,
@@ -1731,7 +1798,6 @@ export class AudioContextManager {
       }, 'Audio element playback failed');
       return false;
     } finally {
-      this.fadeInAfterStagedActivation(stage, outputOwner);
       this.releasePlaybackActivationStage(stage);
     }
   }
@@ -2626,7 +2692,6 @@ export class AudioContextManager {
     let candidateSource = null;
     let candidateEnded = false;
     let committed = false;
-    let outputOwner = null;
 
     try {
       stage = await this.stagePlaybackActivation(
@@ -2641,15 +2706,18 @@ export class AudioContextManager {
 
       const instanceId = this.currentInstanceId;
       candidateSource = this.createBufferSource(buffer, instanceId, {
+        privateUntilCommit: !!stage,
         isCommitted: () => committed,
         onPendingEnded: () => { candidateEnded = true; }
       });
       this.pendingBufferSource = candidateSource;
-      outputOwner = this.fadeOutForStagedActivation(stage);
       const currentTime = this.audioPlayer.audioContext.currentTime;
       candidateSource.start(currentTime);
 
       const commitCandidate = () => {
+        if (!this.setPrivatePipelineSourceMuted(candidateSource, false)) {
+          throw new Error('private-pipeline-source-publish-failed');
+        }
         committed = true;
         this.pendingBufferSource = null;
         this.currentBuffer = buffer;
@@ -2693,7 +2761,7 @@ export class AudioContextManager {
             !candidateEnded &&
             this.pendingBufferSource === candidateSource &&
             !isStale?.() &&
-            this.audioManager.isSourceConnectedToPipeline?.(candidateSource) === true,
+            this.isPipelineSourceConnected(candidateSource),
           commit: commitCandidate,
           cleanup: source => {
             if (this.pendingBufferSource === source) this.pendingBufferSource = null;
@@ -2716,7 +2784,6 @@ export class AudioContextManager {
       console.error('[AudioContextManager] Buffer source creation failed:', error);
       throw error;
     } finally {
-      this.fadeInAfterStagedActivation(stage, outputOwner);
       this.releasePlaybackActivationStage(stage);
     }
   }

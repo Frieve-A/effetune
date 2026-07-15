@@ -1,13 +1,19 @@
 name: Deploy Site to GitHub Pages
 
 on:
-  push:
-    branches:
-      - main
-      - master
   workflow_dispatch:
+    inputs:
+      qualified_sha:
+        description: Exact commit SHA accepted by a prior release qualification run
+        required: true
+        type: string
+      qualification_run_id:
+        description: Successful Library Release Qualification workflow run ID
+        required: true
+        type: string
 
 permissions:
+  actions: read
   contents: read
   pages: write
   id-token: write
@@ -17,11 +23,80 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  authorize:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.qualification.outputs.sha }}
+      version: ${{ steps.qualification.outputs.version }}
+    steps:
+      - name: Validate qualification inputs
+        env:
+          QUALIFIED_SHA: ${{ inputs.qualified_sha }}
+          QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
+        run: >-
+          node -e "if(!/^[0-9a-f]{40}$/.test(process.env.QUALIFIED_SHA)||
+          !/^[1-9][0-9]*$/.test(process.env.QUALIFICATION_RUN_ID))
+          throw new Error('An exact lowercase SHA and numeric qualification run ID are required');"
+
+      - name: Download the prior aggregate decision
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QUALIFIED_SHA: ${{ inputs.qualified_sha }}
+          QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
+        run: |
+          set -euo pipefail
+          run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$QUALIFICATION_RUN_ID")"
+          test "$(jq -r '.conclusion' <<<"$run_json")" = success
+          test "$(jq -r '.event' <<<"$run_json")" = workflow_dispatch
+          test "$(jq -r '.head_sha' <<<"$run_json")" = "$QUALIFIED_SHA"
+          test "$(jq -r '.path' <<<"$run_json")" = .github/workflows/library-release-qualification.yml
+          artifact_name="release-qualification-$QUALIFIED_SHA"
+          artifacts="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$QUALIFICATION_RUN_ID/artifacts")"
+          test "$(jq --arg name "$artifact_name" '[.artifacts[]|select(.name==$name and .expired==false)]|length' <<<"$artifacts")" = 1
+          gh run download "$QUALIFICATION_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "$artifact_name" --dir qualification
+
+      - name: Checkout the exact qualified source
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.qualified_sha }}
+
+      - name: Validate the aggregate qualification decision
+        id: qualification
+        env:
+          QUALIFIED_SHA: ${{ inputs.qualified_sha }}
+          QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { assertArtifactDigest } from './tools/library-scale/release-qualification-contract.mjs';
+          const value=JSON.parse(fs.readFileSync('qualification/release-qualification.json','utf8'));
+          const common=value.schemaVersion===1&&value.kind==='release-qualification'&&value.qualified===true&&
+            value.commitSha===process.env.QUALIFIED_SHA&&String(value.workflowRunId)===process.env.QUALIFICATION_RUN_ID&&
+            value.targetTag&&value.targetVersion&&Array.isArray(value.hostedIntegrity)&&value.hostedIntegrity.length===4&&
+            value.performanceRunIds?.electron&&value.performanceRunIds?.web&&value.stage==='candidate-qualification';
+          if(!common)throw new Error('Qualification artifact does not authorize this exact SHA');
+          assertArtifactDigest(value,'Release qualification');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT,
+            'sha='+value.commitSha+'\nversion='+value.targetVersion+'\n');
+          NODE
+
   build:
+    needs: authorize
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.authorize.outputs.sha }}
+
+      - name: Verify exact deploy checkout
+        env:
+          QUALIFIED_SHA: ${{ needs.authorize.outputs.sha }}
+        run: >-
+          node -e "const cp=require('node:child_process');
+          const actual=cp.execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
+          if(actual!==process.env.QUALIFIED_SHA)throw new Error('Deploy checkout differs from qualified SHA');"
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
@@ -56,6 +131,7 @@ jobs:
         run: npm run assets:web
 
       - name: Setup Pages
+        id: pages
         uses: actions/configure-pages@v6
 
       - name: Build with Jekyll
@@ -63,6 +139,32 @@ jobs:
         with:
           source: ./
           destination: ./_site
+
+      - name: Write observable deployment manifest
+        env:
+          DEPLOYED_SHA: ${{ needs.authorize.outputs.sha }}
+          TARGET_VERSION: ${{ needs.authorize.outputs.version }}
+          QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
+          DEPLOYMENT_URL: ${{ steps.pages.outputs.base_url }}
+          WORKFLOW_RUN_ID: ${{ github.run_id }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import {
+            RELEASE_QUALIFICATION_AUTOMATION_VERSION,
+            sealArtifact
+          } from './tools/library-scale/release-qualification-contract.mjs';
+          const observedEndpoint=String(process.env.DEPLOYMENT_URL||'').replace(/\/$/,'');
+          if(!observedEndpoint.startsWith('https://'))throw new Error('Pages base URL is unavailable');
+          const value=sealArtifact({schemaVersion:1,kind:'effetune-deployment-manifest',
+            stage:'production',commitSha:process.env.DEPLOYED_SHA,
+            targetVersion:process.env.TARGET_VERSION,
+            qualificationRunId:process.env.QUALIFICATION_RUN_ID,observedEndpoint,
+            workflowRunId:process.env.WORKFLOW_RUN_ID,
+            automationVersion:RELEASE_QUALIFICATION_AUTOMATION_VERSION});
+          fs.mkdirSync('_site/.well-known',{recursive:true});
+          fs.writeFileSync('_site/.well-known/effetune-deployment.json',JSON.stringify(value,null,2)+'\n');
+          NODE
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5

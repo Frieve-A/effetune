@@ -817,6 +817,12 @@ test('staged audio config publishes only after resource acquisition and a curren
       calls.push(['staged.updateAudioConfig', { ...preferences }]);
       return true;
     };
+    manager.fadeOutOutputWithOwner = () => {
+      throw new Error('staged config must not mute the master output');
+    };
+    manager.fadeInOutputForOwner = () => {
+      throw new Error('staged config must not change the master output');
+    };
 
     const preferences = { outputChannels: 4, lowLatencyOutput: true };
     const result = await manager.applyStagedAudioConfig(preferences, {
@@ -868,10 +874,12 @@ test('commits topology mutations once and posts pipeline content to the primary 
     manager._parallelActive = true;
     manager._structuralZeroOutputProof = Object.freeze({ proven: true });
     let topologyNotificationCount = 0;
+    const topologyNotifications = [];
     const workletEvents = [];
     manager.powerPolicyController = {
-      notifyTopologyChanged(reason) {
+      notifyTopologyChanged(reason, options) {
         topologyNotificationCount++;
+        topologyNotifications.push({ reason, options });
         manager._topologyRevision++;
         return {
           receipt: {
@@ -908,6 +916,10 @@ test('commits topology mutations once and posts pipeline content to the primary 
     assert.equal(result.postedNodeCount, 1);
     assert.equal(result.mutation.receipt.mutationKind, 'route-topology-commit');
     assert.equal(topologyNotificationCount, 1);
+    assert.deepEqual(topologyNotifications[0], {
+      reason: 'test-parameter-update',
+      options: { resetWorkletTemporalState: true }
+    });
     assert.equal(manager.getPowerTopologyRevision(), topologyBefore + 1);
     assert.equal(manager.getPowerWorkletGraphGeneration(), graphBefore);
     assert.equal(manager.getStructuralZeroOutputProof(), null);
@@ -923,6 +935,10 @@ test('commits topology mutations once and posts pipeline content to the primary 
       outputChannels: 2
     }, { reason: 'test-config-update' });
     assert.equal(configResult.postedNodeCount, 2);
+    assert.deepEqual(topologyNotifications[1], {
+      reason: 'test-config-update',
+      options: { resetWorkletTemporalState: true }
+    });
     assert.deepEqual(
       calls.filter(call => call[0] === 'postMessage' && call[2].type === 'updateAudioConfig')
         .map(call => call[1]),
@@ -1180,11 +1196,13 @@ test('serializes resets, handles reset outcomes, and notifies graph rebuild list
     assert.equal(await manager._doReset(), 'pipeline failed');
   });
 
+  const resetPublicationOrder = [];
   await withAudioManager({
     uiManager: {
       audioPlayer: {
         contextManager: {
           async handleAudioGraphRebuilt(payload) {
+            resetPublicationOrder.push('player-source-rebound');
             payload.rebound = true;
           }
         }
@@ -1192,9 +1210,18 @@ test('serializes resets, handles reset outcomes, and notifies graph rebuild list
     }
   }, async ({ manager }) => {
     const events = [];
+    manager.waitForDspActivationBeforeOutput = async () => {
+      resetPublicationOrder.push('dsp-ready');
+    };
+    manager.fadeInOutput = () => resetPublicationOrder.push('output-unmuted');
     manager.addEventListener('audioGraphRebuilt', data => events.push(data));
     assert.equal(await manager._doReset(), '');
     assert.equal(events.length, 1);
+    assert.deepEqual(resetPublicationOrder, [
+      'dsp-ready',
+      'player-source-rebound',
+      'output-unmuted'
+    ]);
   });
 
   await withAudioManager({

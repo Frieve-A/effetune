@@ -37,6 +37,7 @@ function loadServiceWorker(options = {}) {
   const putCalls = [];
   const matchCalls = [];
   const fetchCalls = [];
+  const lifecycleCalls = [];
 
   const cache = {
     async addAll(requests) {
@@ -71,9 +72,9 @@ function loadServiceWorker(options = {}) {
     addEventListener(type, listener) {
       listeners.set(type, listener);
     },
-    skipWaiting() {},
+    skipWaiting() { lifecycleCalls.push('skipWaiting'); },
     clients: {
-      claim() {}
+      claim() { lifecycleCalls.push('claim'); }
     }
   };
   const context = {
@@ -89,7 +90,7 @@ function loadServiceWorker(options = {}) {
     }
   };
   vm.runInNewContext(source, context);
-  return { addAllCalls, fetchCalls, listeners, matchCalls, putCalls };
+  return { addAllCalls, fetchCalls, lifecycleCalls, listeners, matchCalls, putCalls };
 }
 
 function loadPrecacheUrls() {
@@ -123,7 +124,6 @@ function createPrecacheFixture(t) {
   ]) {
     writeFixtureFile(root, relativePath);
   }
-
   writeFixtureFile(root, 'package.json', JSON.stringify({ version: '9.9.9' }));
   writeFixtureFile(root, 'features/effetune-benchmark.js', 'export const benchmark = true;\n');
   writeFixtureFile(root, 'js/app.js', 'console.log("first");\n');
@@ -295,6 +295,7 @@ test('service worker precaches with HTTP-cache-bypassing reload requests', async
   for (const request of requests) {
     assert.equal(request.cache, 'reload');
   }
+  assert.deepEqual(worker.lifecycleCalls, []);
 });
 
 test('service worker stores only effetune.html navigations as the app shell', async () => {
@@ -329,4 +330,26 @@ test('service worker falls back to same-request cache for non-app navigations', 
 
   assert.equal(response, cachedResponse);
   assert.equal(worker.matchCalls[0], request);
+});
+
+test('service worker naturally activates without claiming existing clients', async () => {
+  const worker = loadServiceWorker();
+  let waited = null;
+
+  worker.listeners.get('activate')({
+    waitUntil(promise) {
+      waited = promise;
+    }
+  });
+  await waited;
+
+  assert.deepEqual(worker.lifecycleCalls, []);
+});
+
+test('the app shell starts directly without a service-worker coherence handoff', () => {
+  const html = fs.readFileSync(new URL('../../effetune.html', import.meta.url), 'utf8');
+  assert.doesNotMatch(html, /build-coherence|effetune-build-id|update ready/i);
+  assert.match(html, /<script src="js\/vendor\/jszip-3\.10\.1\.min\.js"><\/script>/);
+  assert.match(html, /<script src="js\/vendor\/jsmediatags-3\.9\.5\.min\.js"><\/script>/);
+  assert.match(html, /<script type="module" src="js\/app\.js"><\/script>/);
 });

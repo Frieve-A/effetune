@@ -24,6 +24,7 @@ import {
   saveConfig,
   showConfigDialog
 } from './electron/configIntegration.js';
+import { createUpdateNotification } from './update-notification.js';
 
 export class ElectronIntegration {
   constructor() {
@@ -380,6 +381,7 @@ export class ElectronIntegration {
     try {
       // Check for available updates (always check in About dialog regardless of config)
       let updateLinkHTML = '';
+      let availableUpdate = null;
       if (window.electronAPI) {
         try {
           // Force check for updates in About dialog
@@ -388,14 +390,8 @@ export class ElectronIntegration {
           // Get update info from main process
           const updateInfo = await window.electronAPI.getUpdateInfo();
           if (updateInfo && updateInfo.version) {
-            const updateText = window.uiManager && window.uiManager.t ? 
-                window.uiManager.t('ui.newVersionAvailable', { version: updateInfo.version }) : 
-                `New ${updateInfo.version} available.`;
-            updateLinkHTML = `
-              <div class="about-update-link" id="about-update-link">
-                ${updateText}
-              </div>
-            `;
+            availableUpdate = updateInfo;
+            updateLinkHTML = '<div class="about-update-link" id="about-update-link"></div>';
           }
         } catch (error) {
           console.error('Failed to get update info:', error);
@@ -426,6 +422,15 @@ export class ElectronIntegration {
       dialogElement.className = 'modal-overlay';
       dialogElement.innerHTML = dialogHTML;
       document.body.appendChild(dialogElement);
+
+      if (availableUpdate) {
+        const updateSlot = document.getElementById('about-update-link');
+        const updateSurface = createUpdateNotification(availableUpdate, {
+          documentRef: document,
+          windowRef: window
+        });
+        updateSlot?.appendChild(updateSurface);
+      }
       
       // Add dialog styles
       const styleElement = document.createElement('style');

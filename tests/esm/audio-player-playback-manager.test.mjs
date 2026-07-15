@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { PlaybackManager } from '../../js/ui/audio-player/playback-manager.js';
-import { PlaybackBridge } from '../../js/library/playback-bridge.js';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
 
 class FakeFile {
@@ -902,60 +901,6 @@ test('shuffle off preserves the playing duplicate entry while shuffle on resumes
     assert.equal(audioPlayer.calls.some(call => call[0] === 'contextStop'), false);
     assert.equal(audioPlayer.calls.some(call => call[0] === 'contextLoadTrack'), false);
     assert.equal(audioPlayer.calls.some(call => call[0] === 'seamlessTransition'), false);
-  });
-});
-
-test('playback bridge snapshot preserves duplicate occurrence IDs across serialized clones', async () => {
-  await withPlaybackGlobals({}, async () => {
-    const previousPlayer = createAudioPlayer({ shuffleMode: false, isPlaying: false });
-    const previousManager = makeManager(previousPlayer);
-    previousPlayer.playbackManager = previousManager;
-    const sourceEntries = [
-      { libraryTrackId: 'duplicate', path: '/same.flac', name: 'First occurrence' },
-      { libraryTrackId: 'duplicate', path: '/same.flac', name: 'Second occurrence' },
-      { libraryTrackId: 'other', path: '/other.flac', name: 'Other' }
-    ];
-    previousManager.loadFiles(sourceEntries);
-    const secondOccurrence = previousManager.originalPlaylist[1];
-    previousManager.playlist = [
-      secondOccurrence,
-      previousManager.originalPlaylist[2],
-      previousManager.originalPlaylist[0]
-    ];
-    previousPlayer.state.shuffleMode = true;
-    previousPlayer.state.currentTrackIndex = 0;
-    previousPlayer.state.currentTrack = secondOccurrence;
-
-    const replacementPlayer = createAudioPlayer({ shuffleMode: true, isPlaying: false });
-    const replacementManager = makeManager(replacementPlayer);
-    replacementPlayer.playbackManager = replacementManager;
-    const uiManager = { audioPlayer: previousPlayer };
-    const bridge = new PlaybackBridge({
-      index: {},
-      source: {},
-      uiManager,
-      getFolders: () => []
-    });
-
-    bridge.captureSnapshot();
-    assert.deepEqual(bridge.lastSnapshot.playlistEntryIds, [2, 3, 1]);
-    assert.equal(Object.hasOwn(sourceEntries[0], 'playbackEntryId'), false);
-    assert.equal(Object.hasOwn(bridge.lastSnapshot.playlist[0], 'playbackEntryId'), false);
-    bridge.lastSnapshot = JSON.parse(JSON.stringify(bridge.lastSnapshot));
-    uiManager.audioPlayer = replacementPlayer;
-
-    assert.equal(await bridge.restoreLastSnapshot(), true);
-    assert.equal(replacementPlayer.state.currentTrackIndex, 0);
-    assert.equal(replacementManager.playlist[0].name, 'Second occurrence');
-
-    replacementManager.toggleShuffleMode();
-
-    assert.deepEqual(
-      replacementManager.playlist.map(track => track.name),
-      ['First occurrence', 'Second occurrence', 'Other']
-    );
-    assert.equal(replacementPlayer.state.currentTrackIndex, 1);
-    assert.equal(replacementManager.playlist[1].name, 'Second occurrence');
   });
 });
 

@@ -13,7 +13,6 @@ self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_VERSION)
             .then(cache => cache.addAll(PRECACHE_URLS.map(url => new Request(url, { cache: 'reload' }))))
-            .then(() => self.skipWaiting())
     );
 });
 
@@ -25,7 +24,6 @@ self.addEventListener('activate', event => {
                     .filter(key => key !== CACHE_VERSION && key.startsWith('effetune-v'))
                     .map(key => caches.delete(key))
             ))
-            .then(() => self.clients.claim())
     );
 });
 
