@@ -15,6 +15,8 @@ const { createLibraryDialogTranslator } = require('../../electron/library-dialog
 const { MetadataWorkerPool } = require('../../electron/library-metadata-worker-pool.cjs');
 const { ArtworkWorkerPool } = require('../../electron/library-artwork-worker-pool.cjs');
 
+const TEST_DB_PATH = path.resolve(os.tmpdir(), 'effetune-catalog-utility-test.sqlite');
+
 class FakeUtilityProcess extends EventEmitter {
   constructor({ autoRespond = true } = {}) {
     super();
@@ -51,7 +53,7 @@ test('utility host becomes unavailable after its child exits', async () => {
       children.push(child);
       return child;
     },
-    dbPath: 'C:\\catalog.sqlite'
+    dbPath: TEST_DB_PATH
   });
 
   const interrupted = host.runtime.scanFolders({ folderIds: ['folder'] });
@@ -70,7 +72,7 @@ test('main-process utility host exposes one repository facade and relays invalid
   const host = await LibraryCatalogUtilityHost.open({
     dialog: { async showOpenDialog() { return { canceled: true, filePaths: [] }; } },
     processFactory: () => child,
-    dbPath: 'C:\\catalog.sqlite'
+    dbPath: TEST_DB_PATH
   });
 
   assert.deepEqual(await host.runtime.scanFolders({ folderIds: ['folder'] }), {
@@ -126,7 +128,7 @@ test('main-process utility host renders artwork thumbnails requested by the util
       }
     },
     processFactory: () => child,
-    dbPath: 'C:\\catalog.sqlite'
+    dbPath: TEST_DB_PATH
   });
   t.after(() => host.close());
 
@@ -185,7 +187,7 @@ test('parent-folder consolidation uses the localized native confirmation dialog'
       getSystemLocale: () => 'en-US'
     }),
     processFactory: () => child,
-    dbPath: 'C:\\catalog.sqlite'
+    dbPath: TEST_DB_PATH
   });
   t.after(() => host.close());
 
@@ -271,7 +273,7 @@ test('utility close terminates an unresponsive child at its deadline', async () 
   const host = await LibraryCatalogUtilityHost.open({
     dialog: { async showOpenDialog() { return { canceled: true, filePaths: [] }; } },
     processFactory: () => child,
-    dbPath: 'C:\\catalog.sqlite',
+    dbPath: TEST_DB_PATH,
     closeTimeoutMs: 20
   });
 
@@ -290,7 +292,7 @@ test('utility open times out and terminates a child that never becomes ready', a
     LibraryCatalogUtilityHost.open({
       dialog: { async showOpenDialog() { return { canceled: true, filePaths: [] }; } },
       processFactory: () => child,
-      dbPath: 'C:\\catalog.sqlite',
+      dbPath: TEST_DB_PATH,
       openTimeoutMs: 20,
       closeTimeoutMs: 20
     }),

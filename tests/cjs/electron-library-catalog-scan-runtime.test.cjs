@@ -1091,7 +1091,7 @@ test('Electron playback sources require the current folder grant and return cano
     lifecycleVersion: folder.lifecycleVersion,
     path: filePath,
     byteLength: 5,
-    physicalSourceKey: `${folder.id}\0Track # 100% 日本語.flac`,
+    physicalSourceKey: `${folder.id}\0${fileName}`,
     sourceKind: 'file',
     entryKey: null,
     cueRelativePath: null,
