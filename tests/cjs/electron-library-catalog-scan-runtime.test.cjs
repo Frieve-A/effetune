@@ -211,7 +211,9 @@ test('Electron scan runtime rejects duplicate and nested roots and confirms pare
 });
 
 test('Electron reconnect advances lifecycle and blocks old tracks until the moved folder is rescanned', async t => {
-  const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-catalog-reconnect-move-'));
+  const temporary = await fs.realpath(
+    await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-catalog-reconnect-move-'))
+  );
   const oldRoot = path.join(temporary, 'Old Music');
   const newRoot = path.join(temporary, 'New Music');
   await fs.mkdir(oldRoot);
@@ -496,7 +498,9 @@ test('Electron scan runtime resumes deletion for an already tombstoned folder', 
 });
 
 test('Electron scan runtime waits for deletion before re-adding the same path', async t => {
-  const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-catalog-readd-'));
+  const temporary = await fs.realpath(
+    await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-catalog-readd-'))
+  );
   const libraryRoot = path.join(temporary, 'Music');
   await fs.mkdir(libraryRoot);
   await fs.writeFile(path.join(libraryRoot, 'one.mp3'), Buffer.from('not-a-real-mp3'));

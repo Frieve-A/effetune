@@ -19,7 +19,7 @@ const {
 function createTempCatalog(t, { registerCleanup = true } = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-catalog-'));
   if (registerCleanup) {
-    t.after(() => fs.rmSync(directory, {
+    t.after(() => fs.promises.rm(directory, {
       recursive: true,
       force: true,
       maxRetries: 5,
@@ -37,7 +37,7 @@ async function openCatalog(t, options = {}) {
   const host = await LibraryCatalogHost.open({ dbPath: fixture.dbPath, ...options });
   t.after(async () => {
     await host.close();
-    fs.rmSync(fixture.directory, {
+    await fs.promises.rm(fixture.directory, {
       recursive: true,
       force: true,
       maxRetries: 5,

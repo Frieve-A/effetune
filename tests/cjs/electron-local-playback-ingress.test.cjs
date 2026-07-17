@@ -14,7 +14,7 @@ const {
 } = require('../../electron/local-playback-ingress.cjs');
 
 function createTempDirectory() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-direct-cue-'));
+  return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-direct-cue-')));
 }
 
 function writeFixture(root, name, contents = '') {
