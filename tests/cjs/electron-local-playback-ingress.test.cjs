@@ -14,7 +14,7 @@ const {
 } = require('../../electron/local-playback-ingress.cjs');
 
 function createTempDirectory() {
-  return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-direct-cue-')));
+  return fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-direct-cue-')));
 }
 
 function writeFixture(root, name, contents = '') {
@@ -65,8 +65,8 @@ test('normal local playback admission returns canonical scalar descriptors witho
     byteLength: item.byteLength,
     name: item.name
   })), [
-    { path: fs.realpathSync(first), byteLength: 5, name: 'first.wav' },
-    { path: fs.realpathSync(second), byteLength: 6, name: 'second.flac' }
+    { path: fs.realpathSync.native(first), byteLength: 5, name: 'first.wav' },
+    { path: fs.realpathSync.native(second), byteLength: 6, name: 'second.flac' }
   ]);
 });
 
@@ -82,7 +82,7 @@ test('Electron direct CUE resolves logical tracks atomically and parses each phy
   });
 
   assert.equal(metadataCalls.length, 1);
-  assert.equal(metadataCalls[0].path, fs.realpathSync(audioPath));
+  assert.equal(metadataCalls[0].path, fs.realpathSync.native(audioPath));
   assert.deepEqual(tracks.map(track => ({
     path: track.path,
     byteLength: track.byteLength,
@@ -93,22 +93,22 @@ test('Electron direct CUE resolves logical tracks atomically and parses each phy
     physicalSourceKey: track.physicalSourceKey
   })), [
     {
-      path: fs.realpathSync(audioPath),
+      path: fs.realpathSync.native(audioPath),
       byteLength: 23,
       title: 'First',
       startFrame: 0,
       endFrame: 750,
       durationSec: 10,
-      physicalSourceKey: fs.realpathSync(audioPath)
+      physicalSourceKey: fs.realpathSync.native(audioPath)
     },
     {
-      path: fs.realpathSync(audioPath),
+      path: fs.realpathSync.native(audioPath),
       byteLength: 23,
       title: 'Second',
       startFrame: 750,
       endFrame: null,
       durationSec: 10,
-      physicalSourceKey: fs.realpathSync(audioPath)
+      physicalSourceKey: fs.realpathSync.native(audioPath)
     }
   ]);
 });

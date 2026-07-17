@@ -183,7 +183,7 @@ test('all local playback admissions share one latest-request coordinator without
   );
   const latestDescriptors = await harness.module.admitLocalPlaybackPaths([latestPath]);
   await staleAdmission;
-  assert.equal(latestDescriptors[0].path, fs.realpathSync(latestPath));
+  assert.equal(latestDescriptors[0].path, fs.realpathSync.native(latestPath));
 
   const staleDialog = harness.module.openPlaybackSelection();
   await harness.module.admitLocalPlaybackPaths([latestPath]);
