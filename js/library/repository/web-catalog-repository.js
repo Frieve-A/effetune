@@ -35,7 +35,8 @@ export class WebSqliteCatalogRepository {
     this.maxContexts = maxContexts;
     this.contextWalCapBytes = contextWalCapBytes;
     this.clearOnInit = clearOnInit;
-    this.artworkUtilitySessionId = `web-artwork-${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)}`;
+    assertRepositoryContract(typeof globalThis.crypto?.randomUUID === 'function', 'cryptoUnavailable', 'Secure artwork session IDs are unavailable');
+    this.artworkUtilitySessionId = `web-artwork-${globalThis.crypto.randomUUID()}`;
     this.sqlite3 = null;
     this.pool = null;
     this.database = null;

@@ -219,6 +219,86 @@ test('Web scan remains completed while reporting playlist-import-canceled explic
   runtime.close();
 });
 
+test('canceling a Web scan resolves as paused and does not start the next folder', async () => {
+  const folders = ['one', 'two'].map(name => ({
+    id: `folder-${name}`,
+    kind: 'web',
+    displayName: name,
+    status: 'active',
+    lifecycleVersion: 1,
+    normalizedRoot: name
+  }));
+  const handles = new Map(folders.map(folder => [folder.id, {
+    kind: 'directory',
+    name: folder.displayName,
+    queryPermission: async () => 'granted',
+    async *values() {}
+  }]));
+  const progress = [];
+  const scannedFolders = [];
+  const scanIds = ['one', 'two'];
+  let scanStarted;
+  const scanStartedPromise = new Promise(resolve => { scanStarted = resolve; });
+  const runtime = new WebCatalogScanRuntime({
+    repository: {
+      listFolderRecords: async () => folders,
+      upsertFolders: async () => {},
+      setFolderAvailability: async ({ folderId }) => folders.find(folder => folder.id === folderId),
+      tombstoneFolder: async () => { throw new Error('not expected'); },
+      runFolderDeletion: async () => { throw new Error('not expected'); },
+      getScanFolderTrackCount: async () => ({ trackCount: 0 })
+    },
+    handleStore: {
+      list: async () => [...handles].map(([folderId, handle]) => ({ folderId, handle })),
+      put: async ({ folderId, handle }) => handles.set(folderId, handle),
+      get: async folderId => handles.get(folderId) ?? null,
+      delete: async folderId => handles.delete(folderId),
+      close() {}
+    },
+    idFactory: () => scanIds.shift(),
+    onProgress: event => progress.push(event),
+    scanServiceFactory: ({ onProgress }) => ({
+      async runFolder({ scanId, folder, signal }) {
+        scannedFolders.push(folder.id);
+        onProgress({
+          scanId,
+          folderId: folder.id,
+          generation: 4,
+          status: 'metadata',
+          continuityBroken: false,
+          sweepEligibility: 'PENDING',
+          counts: { found: 9, parsed: 3 }
+        });
+        scanStarted();
+        await new Promise((resolve, reject) => {
+          const abort = () => reject(signal.reason);
+          if (signal.aborted) abort();
+          else signal.addEventListener('abort', abort, { once: true });
+        });
+      }
+    })
+  });
+
+  const pending = runtime.scanFolders({ folderIds: folders.map(folder => folder.id) });
+  await withTimeout(scanStartedPromise, 'Web scan did not start');
+  assert.deepEqual(runtime.cancelScan({ scanId: 'web-scan-one' }), { accepted: true });
+  const result = await withTimeout(pending, 'Web scan cancellation did not settle');
+
+  assert.deepEqual(scannedFolders, ['folder-one']);
+  assert.deepEqual(result.results, [{
+    scanId: 'web-scan-one',
+    folderId: 'folder-one',
+    generation: 4,
+    status: 'paused',
+    continuityBroken: true,
+    sweepEligibility: 'INELIGIBLE',
+    counts: { found: 9, parsed: 3 }
+  }]);
+  assert.deepEqual(progress.at(-1), result.results[0]);
+  assert.equal(runtime.activeScans.size, 0);
+  runtime.close();
+});
+
 test('Web folder registration compensates handle persistence when catalog registration fails', async () => {
   const handles = new Map();
   const handle = {

@@ -45,7 +45,12 @@ const createHash = algorithm => {
     }
   };
 };
-const randomUUID = () => globalThis.crypto?.randomUUID?.() ?? `web-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+const randomUUID = () => {
+  if (typeof globalThis.crypto?.randomUUID !== 'function') {
+    throw createCatalogError('cryptoUnavailable', 'Secure catalog IDs are unavailable');
+  }
+  return globalThis.crypto.randomUUID();
+};
 
 const normalizePosixPath = value => {
   const absolute = String(value).startsWith('/');

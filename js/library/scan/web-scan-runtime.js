@@ -245,14 +245,16 @@ export class WebCatalogScanRuntime {
         if (folder.status !== 'active') {
           await this.repository.setFolderAvailability({ folderId: folder.id, status: 'active' });
         }
-        results.push(await this.#runFolder({
+        const result = await this.#runFolder({
           scanId: scanId ?? `web-scan-${this.idFactory()}`,
           folder: { ...folder, status: 'active' },
           source,
           scanReason,
           resume,
           languageHints
-        }));
+        });
+        results.push(result);
+        if (result.status === 'paused') break;
         continue;
       }
       const handle = await this.handleStore.get(folder.id);
@@ -265,14 +267,16 @@ export class WebCatalogScanRuntime {
         continue;
       }
       if (folder.status !== 'active') await this.repository.setFolderAvailability({ folderId: folder.id, status: 'active' });
-      results.push(await this.#runFolder({
+      const result = await this.#runFolder({
         scanId: scanId ?? `web-scan-${this.idFactory()}`,
         folder: { ...folder, status: 'active' },
         source: handle,
         scanReason,
         resume,
         languageHints
-      }));
+      });
+      results.push(result);
+      if (result.status === 'paused') break;
     }
     return { results };
   }
@@ -476,17 +480,21 @@ export class WebCatalogScanRuntime {
     const filesystem = source instanceof WebSessionFileSource
       ? source.createAdapter({ onPlaylistFile: candidate => playlistCollector.add(candidate) })
       : this.filesystemFactory(source, { onPlaylistFile: candidate => playlistCollector.add(candidate) });
+    let latestProgress = null;
     let terminalProgress = null;
     const service = this.scanServiceFactory({
       repository: this.repository,
       filesystem,
       metadataParser: this.metadataParserFactory(filesystem, { languageHints }),
       onProgress: progress => {
+        latestProgress = progress;
         if (isTerminalScanStatus(progress?.status)) terminalProgress = progress;
         else this.onProgress(progress);
       }
     });
-    const result = await service.runFolder({
+    let result;
+    try {
+      result = await service.runFolder({
         scanId,
         folder: {
           id: folder.id,
@@ -498,6 +506,20 @@ export class WebCatalogScanRuntime {
         resume,
         signal: controller.signal
       });
+    } catch (error) {
+      if (!controller.signal.aborted) throw error;
+      const paused = Object.freeze({
+        ...(latestProgress ?? {}),
+        scanId,
+        folderId: folder.id,
+        status: 'paused',
+        continuityBroken: true,
+        sweepEligibility: 'INELIGIBLE',
+        counts: Object.freeze({ ...(latestProgress?.counts ?? {}) })
+      });
+      this.onProgress(paused);
+      return paused;
+    }
     const playlistImports = await importAutomaticPlaylists({
         service: this.playlistImportService,
         folderId: folder.id,

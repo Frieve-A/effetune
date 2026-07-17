@@ -44,7 +44,7 @@ const REMOVED_LIBRARY_KEYS = [
 function readValues(locale) {
   const source = readFileSync(new URL(`../../js/locales/${locale}.json5`, import.meta.url), 'utf8');
   const values = new Map();
-  for (const match of source.matchAll(/^\s*"([^"]+)"\s*:\s*"((?:\\.|[^"])*)"\s*,?\s*$/gm)) {
+  for (const match of source.matchAll(/^\s*"([^"]+)"\s*:\s*"((?:\\.|[^"\\])*)"\s*,?\s*$/gm)) {
     values.set(match[1], match[2]);
   }
   return values;
