@@ -4,10 +4,11 @@ const fs = require('node:fs');
 
 const MAX_FILE_BYTES = 256 * 1024 * 1024;
 
-async function readFileBytes(filePath) {
+async function readFileBytes(filePath, expectedByteLength) {
   if (typeof filePath !== 'string' || filePath.trim() === '') {
     throw createReadError('ERR_INVALID_FILE_PATH', 'A file path is required');
   }
+  const expectedSize = validateExpectedByteLength(expectedByteLength);
 
   const handle = await fs.promises.open(filePath, 'r');
   try {
@@ -20,6 +21,12 @@ async function readFileBytes(filePath) {
       throw createReadError(
         'ERR_LIBRARY_READ_LIMIT',
         `ERR_LIBRARY_READ_LIMIT: File exceeds maximum read size of ${MAX_FILE_BYTES} bytes`
+      );
+    }
+    if (expectedSize !== undefined && size !== expectedSize) {
+      throw createReadError(
+        'ERR_FILE_SIZE_MISMATCH',
+        'ERR_FILE_SIZE_MISMATCH: File size changed before it could be read'
       );
     }
 
@@ -37,6 +44,17 @@ async function readFileBytes(filePath) {
   }
 }
 
+function validateExpectedByteLength(value) {
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw createReadError(
+      'ERR_INVALID_EXPECTED_BYTE_LENGTH',
+      'Expected file size must be a nonnegative safe integer'
+    );
+  }
+  return value;
+}
+
 function createReadError(code, message) {
   const error = new Error(message);
   error.code = code;
@@ -45,5 +63,6 @@ function createReadError(code, message) {
 
 module.exports = {
   MAX_FILE_BYTES,
-  readFileBytes
+  readFileBytes,
+  validateExpectedByteLength
 };

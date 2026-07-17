@@ -9,6 +9,7 @@ lang: en
 ### Version 2.1.0 (TBD, 2026)
 - Supports native processing via WebAssembly, significantly reducing effect processing overhead
 - Added playback of audio tracks in MP4 files without displaying video
+- Added CUE album browsing with Music Library catalog schema v3. Earlier Music Library state is not migrated: add and rescan music folders, then recreate or re-import Music Library playlists. The earlier catalog and audio files are not modified
 - Added Music Library browsing by subfolder within each indexed music folder
 - Added a setting to choose the initial Music Library view
 - Added advanced Web/PWA power saving with Monitoring/Suspended states, configurable silence detection, and optional audio-input release

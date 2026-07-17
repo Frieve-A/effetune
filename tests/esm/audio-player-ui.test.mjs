@@ -397,7 +397,8 @@ async function withAudioPlayerGlobals(options, callback) {
       warn(message) {
         calls.push(['warn', message]);
       }
-    }
+    },
+    ...(options.Image ? { Image: options.Image } : {})
   }, async () => callback({ calls, documentRef, windowRef, frames, timers }));
 }
 
@@ -441,6 +442,7 @@ test('creates translated controls, inserts before the double blind panel, and wi
       'currentTrackIndex',
       'currentTrackName',
       'currentTrackPosition',
+      'isTrackPresentationPending',
       'isPaused',
       'isPlaying',
       'isStopped',
@@ -641,6 +643,169 @@ test('loading state selects the artwork overlay or compact track-name spinner fo
     player.stateManager.setState({ isTransitioning: false, transitionType: null });
     player.stateManager.emit('isTransitioning', false);
     assert.equal(container.attributes.get('data-loading'), 'false');
+  });
+});
+
+test('mobile track changes keep the previous presentation until artwork is ready', async () => {
+  const preloaders = [];
+  class FakeImage {
+    constructor() {
+      this.complete = false;
+      this.naturalWidth = 0;
+      preloaders.push(this);
+    }
+
+    set src(value) {
+      this._src = value;
+    }
+
+    get src() {
+      return this._src;
+    }
+  }
+
+  await withAudioPlayerGlobals({
+    Image: FakeImage,
+    documentOptions: { mobilePlayerView: true },
+    windowOptions: {
+      uiManager: {
+        layoutMode: { isMobile: true },
+        mobileNav: { updatePlayerPlaceholder() {} }
+      }
+    }
+  }, async ({ calls }) => {
+    const oldTrack = { name: 'Old track' };
+    const newTrack = { name: 'New track' };
+    const noArtworkTrack = { name: 'No artwork track' };
+    const player = createAudioPlayer(calls, {
+      state: {
+        currentTrack: oldTrack,
+        currentTrackName: 'Old Artist - Old Title',
+        artworkUrl: 'blob:old-artwork',
+        isTrackPresentationPending: false
+      }
+    });
+    const ui = new AudioPlayerUI(player);
+    ui.createPlayerUI();
+
+    assert.equal(ui.trackNameDisplay.textContent, 'Old Artist - Old Title');
+    assert.equal(ui.artworkImage.src, 'blob:old-artwork');
+
+    player.stateManager.setState({
+      currentTrack: newTrack,
+      currentTrackName: 'New track',
+      artworkUrl: '',
+      isTrackPresentationPending: true
+    });
+    player.stateManager.emit('currentTrack', newTrack);
+    player.stateManager.emit('currentTrackName', 'New track');
+    player.stateManager.emit('artworkUrl', '');
+    player.stateManager.emit('isTrackPresentationPending', true);
+
+    assert.equal(ui.trackNameDisplay.textContent, 'Old Artist - Old Title');
+    assert.equal(ui.artworkImage.src, 'blob:old-artwork');
+
+    player.stateManager.setState({
+      currentTrackName: 'New Artist - New Title',
+      artworkUrl: 'blob:new-artwork',
+      isTrackPresentationPending: false
+    });
+    player.stateManager.emit('currentTrackName', 'New Artist - New Title');
+    player.stateManager.emit('artworkUrl', 'blob:new-artwork');
+    player.stateManager.emit('isTrackPresentationPending', false);
+
+    assert.equal(preloaders.length, 1);
+    assert.equal(preloaders[0].src, 'blob:new-artwork');
+    assert.equal(ui.trackNameDisplay.textContent, 'Old Artist - Old Title');
+    assert.equal(ui.artworkImage.src, 'blob:old-artwork');
+
+    preloaders[0].onload();
+    assert.equal(ui.trackNameDisplay.textContent, 'New Artist - New Title');
+    assert.equal(ui.artworkImage.src, 'blob:new-artwork');
+
+    player.stateManager.setState({
+      currentTrack: noArtworkTrack,
+      currentTrackName: 'No Artwork Artist - No Artwork Title',
+      artworkUrl: '',
+      isTrackPresentationPending: true
+    });
+    player.stateManager.emit('currentTrack', noArtworkTrack);
+    player.stateManager.emit('artworkUrl', '');
+    player.stateManager.emit('isTrackPresentationPending', true);
+    assert.equal(ui.artworkImage.src, 'blob:new-artwork');
+
+    player.stateManager.setState({ isTrackPresentationPending: false });
+    player.stateManager.emit('isTrackPresentationPending', false);
+    assert.equal(ui.trackNameDisplay.textContent, 'No Artwork Artist - No Artwork Title');
+    assert.equal(ui.artworkImage.src, '');
+    assert.equal(ui.artworkImage.hidden, true);
+  });
+});
+
+test('desktop remount cancels pending mobile presentation and shows current track', async () => {
+  const preloaders = [];
+  class FakeImage {
+    constructor() {
+      this.complete = false;
+      this.naturalWidth = 0;
+      preloaders.push(this);
+    }
+
+    set src(value) {
+      this._src = value;
+    }
+
+    get src() {
+      return this._src;
+    }
+  }
+
+  const uiManager = {
+    layoutMode: { isMobile: true },
+    mobileNav: { updatePlayerPlaceholder() {} },
+    releaseAudioPlayerLayoutPlaceholder() {}
+  };
+
+  await withAudioPlayerGlobals({
+    Image: FakeImage,
+    documentOptions: { mobilePlayerView: true },
+    windowOptions: { uiManager }
+  }, async () => {
+    const oldTrack = { name: 'Old track' };
+    const newTrack = { name: 'New track' };
+    const player = createAudioPlayer([], {
+      state: {
+        currentTrack: oldTrack,
+        currentTrackName: 'Old Artist - Old Title',
+        artworkUrl: 'blob:old-artwork',
+        isTrackPresentationPending: false
+      }
+    });
+    const ui = new AudioPlayerUI(player);
+    ui.createPlayerUI();
+
+    player.stateManager.setState({
+      currentTrack: newTrack,
+      currentTrackName: 'New Artist - New Title',
+      artworkUrl: 'blob:new-artwork',
+      isTrackPresentationPending: false
+    });
+    player.stateManager.emit('currentTrack', newTrack);
+    player.stateManager.emit('currentTrackName', 'New Artist - New Title');
+    player.stateManager.emit('artworkUrl', 'blob:new-artwork');
+    player.stateManager.emit('isTrackPresentationPending', false);
+
+    assert.equal(preloaders.length, 1);
+    assert.equal(ui.trackNameDisplay.textContent, 'Old Artist - Old Title');
+
+    uiManager.layoutMode.isMobile = false;
+    ui.mountContainerForLayout('desktop');
+
+    assert.equal(ui.trackNameDisplay.textContent, 'New Artist - New Title');
+    assert.equal(ui.artworkImage.src, 'blob:new-artwork');
+    preloaders[0].onload?.();
+    assert.equal(ui.trackNameDisplay.textContent, 'New Artist - New Title');
+    assert.equal(ui.artworkImage.src, 'blob:new-artwork');
   });
 });
 
@@ -1429,7 +1594,7 @@ test('interval management and removeUI clean up timers, DOM nodes, and reference
     assert.equal(calls.filter(call =>
       call[0] === 'warn' && call[1].includes('Time display')
     ).length, warningCountAfterRemove);
-    assert.equal(calls.filter(call => call[0] === 'removeListener').length, 14);
+    assert.equal(calls.filter(call => call[0] === 'removeListener').length, 15);
     assert.equal(documentRef.body.children.includes(container), false);
     assert.equal(ui.container, null);
     assert.equal(ui.trackNameDisplay, null);

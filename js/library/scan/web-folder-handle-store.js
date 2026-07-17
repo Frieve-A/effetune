@@ -1,9 +1,9 @@
 import { assertRepositoryContract, createRepositoryError } from '../repository/contract-errors.js';
 
-export const WEB_FOLDER_HANDLE_DATABASE_NAME = 'effetune_music_library_v2_handles';
-export const WEB_FOLDER_HANDLE_DATABASE_VERSION = 3;
+export const WEB_FOLDER_HANDLE_DATABASE_NAME = 'effetune_music_library_v3_handles';
+export const WEB_FOLDER_HANDLE_DATABASE_VERSION = 1;
 
-const HANDLE_STORE = 'folderHandles';
+const HANDLE_STORE = 'folderHandlesV3';
 
 function requestResult(request) {
   return new Promise((resolve, reject) => {

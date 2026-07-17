@@ -1,7 +1,7 @@
 import { ElectronCatalogClient } from './electron-catalog-client.js';
 import { ElectronLibraryServiceClient } from '../operations/electron-library-service-client.js';
 import { createRepositoryError } from './contract-errors.js';
-import { MUSIC_LIBRARY_SCHEMA_VERSION } from './schema-v2.js';
+import { MUSIC_LIBRARY_SCHEMA_VERSION } from './schema-v3.js';
 import { WebCatalogRepositoryClient } from './web-catalog-client.js';
 
 const WEB_RECOVERY_API_VERSION = 1;

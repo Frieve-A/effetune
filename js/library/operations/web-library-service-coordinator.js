@@ -408,6 +408,13 @@ export class WebLibraryServiceCoordinator {
       ordinal,
       entryInstanceId: entry?.entryInstanceId ?? entryInstanceId,
       trackUid,
+      sourceKind: track.sourceKind,
+      entryKey: track.entryKey,
+      cueRelativePath: track.cueRelativePath,
+      startFrame: track.startFrame,
+      endFrame: track.endFrame,
+      durationSec: track.durationSec,
+      physicalSourceKey: track.physicalSourceKey,
       file
     };
   }

@@ -6,7 +6,7 @@ lang: es
 
 # Cómo usar la Biblioteca musical
 
-EffeTune 2.1.0 comienza con una Biblioteca musical nueva. El estado de la Biblioteca anterior no se hereda, así que vuelve a añadir y analizar tus carpetas de música. Esto no modifica los archivos de audio que contienen.
+La versión 2.1.0 incorpora la Biblioteca musical compatible con CUE y el esquema de catálogo v3. Las carpetas y listas de reproducción de la Biblioteca musical anterior no se transfieren a este catálogo: vuelve a añadir tus carpetas de música y crea o importa de nuevo tus listas. El catálogo anterior y los archivos de audio no se modifican.
 
 La Biblioteca musical indexa las carpetas de música que seleccionas y te permite explorar tu colección local por pistas, álbumes, artistas, géneros, subcarpetas, carpetas, elementos añadidos recientemente y listas de reproducción. El audio reproducido pasa por el pipeline de efectos actual de EffeTune, igual que durante la reproducción normal de archivos de música.
 
@@ -18,7 +18,7 @@ La Biblioteca musical guarda dentro de la aplicación su catálogo, la caché de
 - **Navegadores Chromium en PC con File System Access:** Guardan de forma persistente el identificador de la carpeta seleccionada. Puede reutilizarse tras recargar una vez concedido el acceso, aunque el navegador puede volver a pedir permiso.
 - **Navegadores móviles, Safari, Firefox y otros sin File System Access:** Conservan los objetos `File` seleccionados solo durante la sesión actual de la página. El catálogo permanece guardado, pero los archivos no pueden volver a abrirse tras recargar. Selecciona otra vez la carpeta o los archivos después de cada recarga; EffeTune los enlaza con las entradas existentes mediante la ruta relativa normalizada.
 
-La Biblioteca musical indexa extensiones de archivos multimedia habituales, como MP3, WAV, OGG, FLAC, Opus, M4A, AAC, WebM y MP4. En los archivos MP4, EffeTune reproduce solo la pista de audio y no muestra el vídeo. La reproducción efectiva, incluido el códec de audio del archivo MP4, también depende de las funciones de decodificación del navegador o del sistema operativo.
+La Biblioteca musical indexa extensiones de archivos multimedia habituales, como MP3, WAV, OGG, FLAC, Opus, M4A, AAC, WebM y MP4. También puede usar una hoja CUE externa para dividir en pistas un archivo de álbum WAV o FLAC situado en la misma carpeta. En los archivos MP4, EffeTune reproduce solo la pista de audio y no muestra el vídeo. La reproducción efectiva, incluido el códec de audio del archivo MP4, también depende de las funciones de decodificación del navegador o del sistema operativo.
 
 ## Abrir la Biblioteca musical
 
@@ -62,7 +62,15 @@ Tanto en el diseño para PC como en el móvil, si una búsqueda de pistas o los 
 
 En móvil se muestra primero la lista normal de títulos, sin columnas de artista ni duración. Solo mantener pulsada una pista abre el modo de selección; entonces aparecen las casillas, **Seleccionar todo** y **Deseleccionar todo**, mientras las acciones habituales de las filas siguen disponibles. La selección automática y los cambios posteriores —incluidos **Seleccionar todo**, **Deseleccionar todo** y las casillas individuales— solo cambian el estado de selección; no abren ni cierran el modo de selección.
 
-Si faltan metadatos o no se pueden leer, EffeTune usa el nombre del archivo y la información de la carpeta como alternativa. En **Propiedades de la pista** puedes consultar la ruta del archivo, el formato, la tasa de muestreo, la profundidad de bits, la tasa de bits y los principales campos de metadatos.
+Si faltan metadatos o no se pueden leer, EffeTune usa el nombre del archivo y la información de la carpeta como alternativa. En **Propiedades de la pista** puedes consultar la ruta del archivo, el formato, la tasa de muestreo, la profundidad de bits, la tasa de bits y los principales campos de metadatos. En una pista CUE también se muestran su tipo, la ruta del archivo CUE, la ruta del audio de origen y el intervalo que ocupa dentro de ese archivo.
+
+## Archivos de álbum con CUE
+
+Coloca el archivo `.cue` externo junto a los archivos WAV o FLAC que menciona y añade o vuelve a analizar esa carpeta. Cada entrada `TRACK ... AUDIO` válida aparecerá como una pista independiente en la Biblioteca musical. Cuando están disponibles, se usan el título, el intérprete, la fecha, el género y la numeración del CUE; los datos técnicos proceden del WAV o FLAC de origen.
+
+También puedes reproducir un álbum CUE sin añadirlo a la Biblioteca musical. Usa **Open music files** o, en dispositivos móviles, **Open Music**. En la aplicación de escritorio también puedes usar **File > Open music file...**. En la aplicación de escritorio, selecciona solo el archivo `.cue`; en el navegador, selecciona un archivo `.cue` junto con todos y únicamente los WAV o FLAC que menciona. Una selección válida sustituye la cola de reproducción actual, pero no se añade al catálogo. Si la validación falla, la cola actual no cambia.
+
+Si la hoja CUE no es válida o no permite identificar con seguridad sus archivos de origen, EffeTune explica el problema e importa los WAV o FLAC como pistas normales de archivo completo. Corrige la hoja CUE o los nombres de archivo y vuelve a analizar la carpeta para intentarlo de nuevo.
 
 ## Reproducir desde la biblioteca
 
@@ -108,7 +116,7 @@ Al escanear una carpeta, EffeTune importa automáticamente los archivos de lista
 
 Al importar, se muestra una vista previa del número de elementos que coinciden con pistas de la biblioteca actual. Los elementos que no coincidan también se conservan, siempre que sea posible, como elementos sin resolver para que puedan resolverse más adelante al añadir o reconectar la carpeta correspondiente.
 
-Al exportar, si eliges **Rutas relativas**, las rutas se escriben, cuando es posible, en relación con la ubicación de exportación. Esto resulta útil si quieres mover la lista de reproducción junto con la carpeta de música.
+Al exportar, si eliges **Rutas relativas**, las rutas se escriben, cuando es posible, en relación con la ubicación de exportación. Esto resulta útil si quieres mover la lista de reproducción junto con la carpeta de música. M3U8 y XSPF no pueden conservar el intervalo de una pista CUE dentro del archivo del álbum, por lo que EffeTune omite esas pistas e indica cuántas se excluyeron. Nunca escribe en su lugar la ruta física del archivo del álbum.
 
 ## Seguridad y almacenamiento
 

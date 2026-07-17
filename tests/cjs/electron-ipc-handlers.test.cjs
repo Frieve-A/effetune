@@ -281,6 +281,10 @@ function createHarness(options = {}) {
       calls.push(['fileHandlers.showOpenDialog', dialogOptions]);
       return { canceled: false, filePaths: ['open.wav'] };
     },
+    async openPlaybackSelection() {
+      calls.push(['fileHandlers.openPlaybackSelection']);
+      return { accepted: true, kind: 'normal', descriptors: [] };
+    },
     async saveFile(filePath, content) {
       calls.push(['fileHandlers.saveFile', filePath, content]);
       return { success: true };
@@ -359,8 +363,8 @@ function createHarness(options = {}) {
       './file-handlers': fileHandlers,
       './file-handlers.js': fileHandlers,
       './bounded-file-reader': {
-        async readFileBytes(filePath) {
-          calls.push(['readFileBytes', filePath]);
+        async readFileBytes(filePath, expectedByteLength) {
+          calls.push(['readFileBytes', filePath, expectedByteLength]);
           return new Uint8Array([1, 2, 3]).buffer;
         }
       },
@@ -399,11 +403,20 @@ async function withHarness(options, callback) {
 async function invokeAllDelegates(handlers) {
   assert.deepEqual(await handlers.get('show-save-dialog')({}, { title: 'save' }), { canceled: false, filePath: 'save.wav' });
   assert.deepEqual(await handlers.get('show-open-dialog')({}, { title: 'open' }), { canceled: false, filePaths: ['open.wav'] });
+  assert.deepEqual(await handlers.get('open-playback-selection')({}), {
+    accepted: true,
+    kind: 'normal',
+    descriptors: []
+  });
   assert.deepEqual(await handlers.get('save-file')({}, 'a.txt', 'content'), { success: true });
   assert.deepEqual(await handlers.get('read-file')({}, 'a.txt'), { success: true, content: 'data' });
   assert.deepEqual(
-    [...new Uint8Array(await handlers.get('read-file-bytes')({}, 'a.bin'))],
+    [...new Uint8Array(await handlers.get('read-file-bytes')({}, 'a.bin', 3))],
     [1, 2, 3]
+  );
+  await assert.rejects(
+    handlers.get('read-file-bytes')({}, 'a.bin', null),
+    error => error?.code === 'ERR_INVALID_EXPECTED_BYTE_LENGTH'
   );
   assert.equal(handlers.get('joinPaths')({}, 'a', 'b', 'c'), path.join('a', 'b', 'c'));
   assert.equal(handlers.get('fileExists')({}, 'missing'), false);

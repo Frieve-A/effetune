@@ -86,7 +86,7 @@ Abra **Configuração...** no menu **Configurações** para escolher o idioma, a
 ### Procurando música na Biblioteca de música
 
 1. No PC, abra pelo botão **Biblioteca de música** no cabeçalho; no móvel, pela aba **Biblioteca**; no aplicativo desktop, por **Visualizar > Biblioteca de música**.
-2. Selecione **Adicionar pasta de música** para indexar uma pasta com arquivos de música.
+2. Selecione **Adicionar pasta de música** para indexar uma pasta com arquivos de música. Se uma folha CUE externa e os arquivos WAV ou FLAC que ela referencia estiverem na mesma pasta, adicionar essa pasta à Biblioteca de música disponibiliza o álbum como faixas individuais.
 3. Navegue por **Faixas**, **Álbuns**, **Artistas**, **Gêneros**, **Subpastas**, **Pastas**, **Adicionadas recentemente** ou **Playlists**, e use **Pesquisar na biblioteca** para pesquisar todo o catálogo. A seção **Subpastas** agrupa pelo caminho que contém as faixas dentro de cada raiz importada, enquanto **Pastas** gerencia essas raízes.
 4. Reproduza os resultados pelo Effect Pipeline atual, ou use **Reproduzir a seguir**, **Adicionar à fila** e **Adicionar à playlist** para gerenciar a reprodução.
 5. Use **Reescanear** depois de modificar arquivos e **Reconectar** se uma permissão do navegador ou da pasta expirar.
@@ -96,7 +96,7 @@ Nos layouts para PC e dispositivos móveis, quando uma pesquisa de faixas ou os 
 
 Os navegadores Chromium no PC podem manter os identificadores de pasta do File System Access. Safari, Firefox, navegadores móveis e outros ambientes sem essa API mantêm os objetos `File` selecionados apenas durante a sessão atual da página. Após cada recarregamento, selecione novamente a pasta ou os arquivos; o EffeTune os reconecta ao catálogo existente pelo caminho relativo normalizado.
 
-A versão 2.1.0 começa com uma Biblioteca de música nova. O estado da Biblioteca anterior não é herdado; adicione novamente as pastas de música e faça a varredura. Isso não altera os arquivos de áudio contidos nelas. O catálogo foi projetado para paginar coleções grandes a partir do disco. As medições de desempenho em grande escala são diagnósticos locais e opcionais de desenvolvimento; não são requisitos de commit, release, `verify` ou GitHub Actions, nem uma garantia geral de desempenho.
+A versão 2.1.0 do EffeTune apresenta uma Biblioteca de música baseada no esquema de catálogo v3, que permite navegar por álbuns CUE faixa a faixa. O estado da Biblioteca de música anterior não é transferido; adicione novamente as pastas de música e faça a varredura, depois recrie ou importe novamente as playlists da Biblioteca de música. O catálogo anterior e os arquivos de áudio não são alterados. O catálogo foi projetado para paginar coleções grandes a partir do disco. As medições de desempenho em grande escala são diagnósticos locais e opcionais de desenvolvimento; não são requisitos de commit, release, `verify` ou GitHub Actions, nem uma garantia geral de desempenho.
 
 ### Construindo Sua Cadeia de Efeitos
 

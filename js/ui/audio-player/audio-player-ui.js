@@ -37,6 +37,9 @@ export class AudioPlayerUI {
     this.shuffleButton = null;
     this.closeButton = null;
     this.artworkImage = null;
+    this.mobileTrackPresentationPending = false;
+    this.trackPresentationGeneration = 0;
+    this.pendingArtworkPreload = null;
     this.playlistDisplay = null;
     this.libraryContextMenu = null;
     this.libraryContextMenuCleanup = null;
@@ -78,7 +81,7 @@ export class AudioPlayerUI {
     
     // Listen to specific state changes
     addStateListener('currentTrack', (track) => {
-      this.updateTrackDisplay(track);
+      this.handleCurrentTrackChange(track);
       this.notifyLibraryNowPlaying(track);
     });
 
@@ -88,6 +91,10 @@ export class AudioPlayerUI {
 
     addStateListener('artworkUrl', (artworkUrl) => {
       this.updateArtwork(artworkUrl);
+    });
+
+    addStateListener('isTrackPresentationPending', (isPending) => {
+      this.handleTrackPresentationPending(isPending);
     });
 
     addStateListener('isTransitioning', () => {
@@ -241,6 +248,12 @@ export class AudioPlayerUI {
     this.closeButton = container.querySelector('.close-button');
     this.artworkImage = container.querySelector('.player-artwork-image');
     this.playlistDisplay = container.querySelector('.player-playlist');
+    const initialState = this.audioPlayer.stateManager?.getStateSnapshot?.();
+    if (this.isMobileLayout() && initialState?.isTrackPresentationPending === true) {
+      this.mobileTrackPresentationPending = true;
+    } else {
+      this.updateTrackDisplay();
+    }
     container.addEventListener('dragover', event => {
       if (!hasLibraryTrackDrag(event.dataTransfer)) return;
       event.preventDefault();
@@ -386,6 +399,10 @@ export class AudioPlayerUI {
       }
     }
     window.uiManager?.releaseAudioPlayerLayoutPlaceholder?.();
+    this.cancelArtworkPreload();
+    this.mobileTrackPresentationPending = false;
+    this.trackPresentationGeneration += 1;
+    this.updateTrackDisplay();
     this.updateArtwork();
     window.uiManager?.mobileNav?.updatePlayerPlaceholder?.();
   }
@@ -460,7 +477,7 @@ export class AudioPlayerUI {
    * Update track display with track name
    */
   updateTrackDisplay(track = null) {
-    if (!this.trackNameDisplay) return;
+    if (!this.trackNameDisplay || this.shouldDeferMobileTrackPresentation()) return;
     
     // Get track from state if not provided
     let currentTrackName = '';
@@ -480,6 +497,114 @@ export class AudioPlayerUI {
     }
   }
 
+  setTrackNameDisplayText(text) {
+    if (!this.trackNameDisplay || this.shouldDeferMobileTrackPresentation()) return false;
+    this.trackNameDisplay.textContent = text;
+    return true;
+  }
+
+  isMobileLayout() {
+    return globalThis.window?.uiManager?.layoutMode?.isMobile === true;
+  }
+
+  shouldDeferMobileTrackPresentation() {
+    return this.isMobileLayout() && this.mobileTrackPresentationPending;
+  }
+
+  handleCurrentTrackChange(track) {
+    if (this.isMobileLayout() && track) {
+      const generation = this.beginMobileTrackPresentation();
+      queueMicrotask(() => {
+        if (generation !== this.trackPresentationGeneration ||
+            !this.mobileTrackPresentationPending) return;
+        const state = this.audioPlayer.stateManager?.getStateSnapshot?.();
+        if (state?.isTrackPresentationPending !== true) {
+          this.commitMobileTrackPresentation();
+        }
+      });
+      return;
+    }
+
+    this.cancelArtworkPreload();
+    this.mobileTrackPresentationPending = false;
+    this.trackPresentationGeneration += 1;
+    this.updateTrackDisplay(track);
+  }
+
+  handleTrackPresentationPending(isPending) {
+    if (!this.isMobileLayout()) return;
+    if (isPending === true) {
+      if (!this.mobileTrackPresentationPending) this.beginMobileTrackPresentation();
+      return;
+    }
+    if (this.mobileTrackPresentationPending) this.commitMobileTrackPresentation();
+  }
+
+  beginMobileTrackPresentation() {
+    this.cancelArtworkPreload();
+    this.mobileTrackPresentationPending = true;
+    this.trackPresentationGeneration += 1;
+    return this.trackPresentationGeneration;
+  }
+
+  commitMobileTrackPresentation() {
+    const state = this.audioPlayer.stateManager?.getStateSnapshot?.();
+    const expectedTrack = state?.currentTrack ?? null;
+    const artworkUrl = state?.artworkUrl || '';
+    const generation = ++this.trackPresentationGeneration;
+    const applyPresentation = visibleArtworkUrl => {
+      if (generation !== this.trackPresentationGeneration || this.isDisposed) return;
+      const currentState = this.audioPlayer.stateManager?.getStateSnapshot?.();
+      if ((currentState?.currentTrack ?? null) !== expectedTrack) return;
+      this.pendingArtworkPreload = null;
+      this.mobileTrackPresentationPending = false;
+      this.applyArtwork(visibleArtworkUrl);
+      this.updateTrackDisplay();
+    };
+
+    if (!artworkUrl) {
+      applyPresentation('');
+      return;
+    }
+
+    const ImageConstructor = this.documentRef?.defaultView?.Image ?? globalThis.Image;
+    if (typeof ImageConstructor !== 'function') {
+      applyPresentation(artworkUrl);
+      return;
+    }
+
+    const preloader = new ImageConstructor();
+    let settled = false;
+    const finish = visibleArtworkUrl => {
+      if (settled) return;
+      settled = true;
+      applyPresentation(visibleArtworkUrl);
+    };
+    preloader.onload = () => {
+      if (typeof preloader.decode !== 'function') {
+        finish(artworkUrl);
+        return;
+      }
+      Promise.resolve()
+        .then(() => preloader.decode())
+        .then(() => finish(artworkUrl), () => finish(artworkUrl));
+    };
+    preloader.onerror = () => finish('');
+    this.pendingArtworkPreload = preloader;
+    preloader.src = artworkUrl;
+    if (preloader.complete && preloader.naturalWidth > 0) {
+      queueMicrotask(() => preloader.onload?.());
+    }
+  }
+
+  cancelArtworkPreload() {
+    if (this.pendingArtworkPreload) {
+      this.pendingArtworkPreload.onload = null;
+      this.pendingArtworkPreload.onerror = null;
+      this.pendingArtworkPreload = null;
+    }
+  }
+
   getCurrentTrack() {
     const state = this.audioPlayer.stateManager?.getStateSnapshot?.();
     const playlist = Array.isArray(state?.playlist) ? state.playlist : [];
@@ -494,12 +619,18 @@ export class AudioPlayerUI {
   }
 
   updateArtwork(artworkUrl = null) {
-    if (!this.artworkImage) return;
+    if (!this.artworkImage || this.shouldDeferMobileTrackPresentation()) return;
 
     if (artworkUrl === null && this.audioPlayer.stateManager) {
       const state = this.audioPlayer.stateManager.getStateSnapshot();
       artworkUrl = state.artworkUrl || '';
     }
+
+    this.applyArtwork(artworkUrl);
+  }
+
+  applyArtwork(artworkUrl) {
+    if (!this.artworkImage) return;
 
     this.artworkImage.src = artworkUrl || '';
     this.artworkImage.hidden = !artworkUrl;
@@ -1081,6 +1212,8 @@ export class AudioPlayerUI {
    */
   removeUI() {
     this.isDisposed = true;
+    this.cancelArtworkPreload();
+    this.trackPresentationGeneration += 1;
     this.stopUpdateInterval();
     if (this.positionRaf !== null) {
       cancelAnimationFrame(this.positionRaf);

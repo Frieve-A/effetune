@@ -3,12 +3,19 @@ const fs = require('fs');
 const path = require('path');
 const constants = require('./constants');
 const fileUtils = require('./file-utils');
+const {
+  LocalPlaybackIngress,
+  admitLocalPlaybackPaths: admitLocalPlaybackPathsImpl
+} = require('./local-playback-ingress.cjs');
 
 const PLAYBACK_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', 'mp4'];
 const PLAYBACK_AUDIO_FILTER_NAME = 'Audio Files (MP3, WAV, OGG, FLAC, OPUS, M4A, AAC, WEBM, MP4)';
+const PLAYBACK_SELECTION_FILTER_NAME = 'Music and CUE Files';
+const PLAYBACK_SELECTION_EXTENSIONS = [...PLAYBACK_AUDIO_EXTENSIONS, 'cue'];
 const PLAYBACK_AUDIO_EXTENSION_PATTERN = new RegExp(`\\.(${PLAYBACK_AUDIO_EXTENSIONS.join('|')})$`, 'i');
 const OFFLINE_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac'];
 const OFFLINE_AUDIO_FILTER_NAME = 'Audio Files for Processing (MP3, WAV, OGG, FLAC, M4A, AAC)';
+let localPlaybackIngress = new LocalPlaybackIngress();
 
 function isSupportedPlaybackAudioPath(filePath) {
   return PLAYBACK_AUDIO_EXTENSION_PATTERN.test(filePath || '');
@@ -33,7 +40,14 @@ function normalizeAudioOpenDialogOptions(options = {}) {
 
 // Set the main window reference
 function setMainWindow(window) {
+  if (window && localPlaybackIngress.isDisposed()) {
+    localPlaybackIngress = new LocalPlaybackIngress();
+  }
   constants.setMainWindow(window);
+  if (!window || typeof window.on !== 'function' || typeof window.once !== 'function') return;
+  const ingress = localPlaybackIngress;
+  window.on('close', () => ingress.cancel());
+  window.once('closed', () => ingress.dispose());
 }
 
 // Get the actual executable path for packaged apps
@@ -73,6 +87,49 @@ async function showSaveDialog(options) {
 async function showOpenDialog(options) {
   const mainWindow = constants.getMainWindow();
   return await dialog.showOpenDialog(mainWindow, normalizeAudioOpenDialogOptions(options));
+}
+
+async function openPlaybackSelection() {
+  let request;
+  try {
+    request = localPlaybackIngress.beginRequest();
+    const result = await dialog.showOpenDialog(constants.getMainWindow(), {
+      title: 'Open Music',
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        { name: PLAYBACK_SELECTION_FILTER_NAME, extensions: PLAYBACK_SELECTION_EXTENSIONS },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+    if (!localPlaybackIngress.isCurrent(request)) return { stale: true };
+    if (result.canceled || !Array.isArray(result.filePaths) || result.filePaths.length === 0) {
+      return { canceled: true };
+    }
+    const selection = await localPlaybackIngress.resolveSelection(result.filePaths, request);
+    return { accepted: true, ...selection };
+  } catch (error) {
+    if (error?.code === 'selection-stale' || error?.name === 'AbortError') return { stale: true };
+    console.error('Open Music selection diagnostic:', error?.code || error?.name || 'unknown');
+    return {
+      accepted: false,
+      error: error?.code === 'cue-too-large'
+        ? 'cueTooLarge'
+        : error?.code === 'cue-selection-mixed'
+          ? 'cueMixedSelection'
+          : error?.code?.startsWith?.('cue-')
+            ? 'cueInvalidSelection'
+            : 'musicSelectionUnavailable'
+    };
+  }
+}
+
+async function admitLocalPlaybackPaths(filePaths) {
+  const request = localPlaybackIngress.beginRequest();
+  const descriptors = await admitLocalPlaybackPathsImpl(filePaths, {
+    signal: request.controller.signal
+  });
+  localPlaybackIngress.assertCurrent(request);
+  return descriptors;
 }
 
 // File operations - using fileUtils
@@ -315,6 +372,8 @@ module.exports = {
   getUserDataPath,
   showSaveDialog,
   showOpenDialog,
+  openPlaybackSelection,
+  admitLocalPlaybackPaths,
   saveFile,
   readFile,
   joinPaths,

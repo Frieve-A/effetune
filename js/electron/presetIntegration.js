@@ -344,32 +344,26 @@ export async function openMusicFile(isElectron) {
   if (!isElectron) return;
   
   try {
-    // Use Electron's dialog to select music files
-    const result = await window.electronAPI.showOpenDialog({
-      title: 'Select Music Files',
-      properties: ['openFile', 'multiSelections'],
-      filters: [
-        { name: 'Audio Files', extensions: ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'mp4'] },
-        { name: 'All Files', extensions: ['*'] }
-      ]
-    });
-    
-    if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
-      console.log('File selection canceled or no files selected');
+    const result = await window.electronAPI.openPlaybackSelection();
+    if (result?.canceled || result?.stale) {
       return;
     }
-    
-    // Send selected files to the audio player
-    if (window.uiManager) {
-      // Use existing player or create a new one
-      // The createAudioPlayer method now handles both cases
-      window.uiManager.createAudioPlayer(result.filePaths, false); // false = don't replace existing player
+    if (result?.accepted !== true) {
+      const errorKey = {
+        cueTooLarge: 'error.cueSelectionTooLarge',
+        cueMixedSelection: 'error.cueSelectionMixedElectron',
+        cueInvalidSelection: 'error.cueSelectionInvalid',
+        musicSelectionUnavailable: 'error.musicSelectionUnavailable'
+      }[result?.error] || 'error.musicSelectionUnavailable';
+      window.uiManager?.setError?.(errorKey, true);
+      return;
     }
+    const tracks = result.kind === 'cue' ? result.tracks : result.descriptors;
+    if (!Array.isArray(tracks) || tracks.length === 0) return;
+    window.uiManager?.createAudioPlayer?.(tracks, false);
   } catch (error) {
-    console.error('Error opening music files:', error);
-    if (window.uiManager) {
-      window.uiManager.setError(`Error opening music files: ${error.message}`);
-    }
+    console.error('Open Music diagnostic:', error);
+    window.uiManager?.setError?.('error.musicSelectionUnavailable', true);
   }
 }
 

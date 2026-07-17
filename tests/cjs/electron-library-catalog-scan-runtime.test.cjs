@@ -85,6 +85,78 @@ test('Electron scan runtime adds a picked folder and makes an unchanged million-
   assert.equal(parseCount, 1);
 });
 
+test('Electron scan publishes CUE logical tracks with stable source descriptors and one physical metadata parse', async t => {
+  const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-cue-scan-'));
+  const libraryRoot = path.join(temporary, 'Music');
+  await fs.mkdir(libraryRoot);
+  await fs.writeFile(path.join(libraryRoot, 'album.wav'), Buffer.from('audio'));
+  await fs.writeFile(path.join(libraryRoot, 'album.cue'), Buffer.from(`
+    PERFORMER "Disc Artist"
+    TITLE "Disc Title"
+    FILE "album.wav" WAVE
+    TRACK 01 AUDIO
+    TITLE "First"
+    INDEX 01 00:00:00
+    TRACK 02 AUDIO
+    INDEX 01 00:05:00
+  `));
+  const host = await LibraryCatalogHost.open({ dbPath: path.join(temporary, 'catalog.sqlite') });
+  let parseCount = 0;
+  const runtime = await LibraryCatalogScanRuntime.open({
+    host,
+    dialog: { async showOpenDialog() { return { canceled: false, filePaths: [libraryRoot] }; } },
+    metadataParser: {
+      async parse() {
+        parseCount += 1;
+        return {
+          title: 'Embedded title', artist: 'Embedded artist', album: 'Embedded album',
+          albumArtist: 'Embedded album artist', genre: 'Rock', durationSec: 12,
+          sampleRate: 48000, channels: 2, codec: 'PCM'
+        };
+      }
+    }
+  });
+  t.after(async () => {
+    await runtime.close();
+    await host.close();
+    await fs.rm(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  });
+
+  const added = await runtime.addFolder();
+  assert.equal((await waitForTerminal(runtime, added.scan.scanId)).status, 'completed');
+  assert.equal(parseCount, 1);
+  assert.equal((await host.getCounts()).tracks, 2);
+  const page = await host.queryTracks({ query: '', sort: 'album', direction: 'asc', limit: 10 });
+  assert.deepEqual(page.rows.map(row => ({
+    sourceKind: row.sourceKind, entryKey: row.entryKey, startFrame: row.startFrame,
+    endFrame: row.endFrame, durationSec: row.durationSec, title: row.title,
+    artist: row.artist, album: row.album, trackNo: row.trackNo
+  })), [
+    {
+      sourceKind: 'cue-track', entryKey: 'cue:album.cue#1', startFrame: 0,
+      endFrame: 375, durationSec: 5, title: 'First', artist: 'Disc Artist',
+      album: 'Disc Title', trackNo: 1
+    },
+    {
+      sourceKind: 'cue-track', entryKey: 'cue:album.cue#2', startFrame: 375,
+      endFrame: null, durationSec: 7, title: 'Track 02', artist: 'Disc Artist',
+      album: 'Disc Title', trackNo: 2
+    }
+  ]);
+  assert.equal(page.rows[0].physicalSourceKey, page.rows[1].physicalSourceKey);
+  const firstStorage = await host.getTrackStorageIdentity(page.rows[0].trackUid);
+  const secondStorage = await host.getTrackStorageIdentity(page.rows[1].trackUid);
+  assert.equal(firstStorage.relativePath, 'album.wav');
+  assert.equal(firstStorage.physicalSourceKey, secondStorage.physicalSourceKey);
+  assert.deepEqual(
+    [firstStorage.startFrame, firstStorage.endFrame, secondStorage.startFrame, secondStorage.endFrame],
+    [0, 375, 375, null]
+  );
+  assert.deepEqual([firstStorage.durationSec, secondStorage.durationSec], [5, 7]);
+  assert.equal((await runtime.resolvePlaybackSource(page.rows[0].trackUid)).durationSec, 5);
+  await host.releaseContext(page.contextToken);
+});
+
 test('Electron scan runtime rejects duplicate and nested roots and confirms parent consolidation once', async t => {
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-catalog-root-overlap-'));
   const libraryRoot = path.join(temporary, 'Music');
@@ -723,6 +795,105 @@ test('Electron scan runtime rejects renderer path injection and paths escaping a
   await runtime.close();
 });
 
+test('Electron CUE reads use one file handle and never read beyond the configured limit plus one byte', async t => {
+  const root = path.resolve(os.tmpdir(), 'bounded-cue-root');
+  const candidate = path.join(root, 'disc.cue');
+  const source = Buffer.from('123456');
+  let advertisedSize = 2;
+  let readCalls = 0;
+  let closeCalls = 0;
+  let largestReadLength = 0;
+  const stats = size => ({
+    size,
+    isFile: () => true,
+    isDirectory: () => false,
+    isSymbolicLink: () => false
+  });
+  const runtime = new LibraryCatalogScanRuntime({
+    host: { on() {}, removeListener() {}, async listScanFolders() {}, beginScanFolder() {} },
+    dialog: { async showOpenDialog() { return { canceled: true, filePaths: [] }; } },
+    filesystem: {
+      async lstat() { return stats(1); },
+      async realpath() { return candidate; },
+      async open(openedPath, flags) {
+        assert.equal(openedPath, candidate);
+        assert.equal(flags, 'r');
+        return {
+          async stat() { return stats(advertisedSize); },
+          async read(buffer, offset, length, position) {
+            readCalls += 1;
+            largestReadLength = Math.max(largestReadLength, length);
+            const bytesRead = Math.min(length, source.length - position);
+            if (bytesRead > 0) source.copy(buffer, offset, position, position + bytesRead);
+            return { bytesRead };
+          },
+          async close() { closeCalls += 1; }
+        };
+      }
+    },
+    metadataParser: { async parse() { return {}; } },
+    artworkWorkerPool: { async close() {} }
+  });
+  runtime.issueGrant({ id: 'folder', lifecycleVersion: 1 }, root);
+  t.after(() => runtime.close());
+
+  assert.deepEqual(await runtime.readSmallFile({ root, relativePath: 'disc.cue', maximumBytes: 5 }), {
+    tooLarge: true,
+    size: 6,
+    bytes: null
+  });
+  assert.equal(largestReadLength, 6);
+  assert.equal(closeCalls, 1);
+
+  advertisedSize = 7;
+  const previousReadCalls = readCalls;
+  assert.deepEqual(await runtime.readSmallFile({ root, relativePath: 'disc.cue', maximumBytes: 5 }), {
+    tooLarge: true,
+    size: 7,
+    bytes: null
+  });
+  assert.equal(readCalls, previousReadCalls);
+  assert.equal(closeCalls, 2);
+});
+
+test('Electron scan status projects bounded CUE warning DTOs without internal fields', async t => {
+  const runtime = new LibraryCatalogScanRuntime({
+    host: { on() {}, removeListener() {}, async listScanFolders() {}, beginScanFolder() {} },
+    dialog: { async showOpenDialog() { return { canceled: true, filePaths: [] }; } },
+    metadataParser: { async parse() { return {}; } },
+    artworkWorkerPool: { async close() {} }
+  });
+  t.after(() => runtime.close());
+  const samples = Array.from({ length: 101 }, (_, index) => ({
+    code: `cue-${index}`,
+    path: `Disc/${index}.cue`,
+    internal: 'not-public'
+  }));
+  runtime.scans.set('warning-projection', {
+    scanId: 'warning-projection',
+    folderIds: ['folder'],
+    active: false,
+    status: 'completed',
+    startedAt: 1,
+    updatedAt: 2,
+    error: null,
+    task: null,
+    results: [{
+      folderId: 'folder', generation: 1, status: 'completed',
+      continuityBroken: false, sweepEligibility: 'ELIGIBLE',
+      playlistImportState: 'completed', counts: { cueWarnings: 101 },
+      warnings: [{ category: 'cue-invalid', count: 101, samples, internal: 'not-public' }]
+    }]
+  });
+
+  const [warning] = runtime.getScanStatus({ scanId: 'warning-projection' }).results[0].warnings;
+  assert.equal(warning.category, 'cue-invalid');
+  assert.equal(warning.count, 101);
+  assert.equal(warning.samples.length, 100);
+  assert.deepEqual(warning.samples[0], { code: 'cue-0', path: 'Disc/0.cue' });
+  assert.equal(Object.hasOwn(warning, 'internal'), false);
+});
+
 test('Electron scan runtime rehydrates folder availability and restores status after reconnect', async t => {
   const missingRoot = path.resolve(os.tmpdir(), 'effetune-rehydrate-missing');
   const deniedRoot = path.resolve(os.tmpdir(), 'effetune-rehydrate-denied');
@@ -889,7 +1060,7 @@ test('Electron playback sources require the current folder grant and return cano
     async getTrackStorageIdentity() {
       return {
         trackUid: 'track-media-url', folderId: folder.id, relativePath: fileName,
-        lifecycleVersion: folder.lifecycleVersion
+        lifecycleVersion: folder.lifecycleVersion, durationSec: 6.25, size: 5
       };
     }
   };
@@ -918,7 +1089,15 @@ test('Electron playback sources require the current folder grant and return cano
     trackUid: 'track-media-url',
     folderId: folder.id,
     lifecycleVersion: folder.lifecycleVersion,
-    path: filePath
+    path: filePath,
+    byteLength: 5,
+    physicalSourceKey: `${folder.id}\0Track # 100% 日本語.flac`,
+    sourceKind: 'file',
+    entryKey: null,
+    cueRelativePath: null,
+    startFrame: null,
+    endFrame: null,
+    durationSec: 6.25
   });
   assert.equal(path.isAbsolute(source.path), true);
   assert.equal(Object.hasOwn(source, 'mediaUrl'), false);

@@ -6,7 +6,7 @@ lang: pt
 
 # Como Usar a Biblioteca de música
 
-O EffeTune 2.1.0 começa com uma Biblioteca de música nova. O estado da Biblioteca anterior não é herdado; adicione novamente as pastas de música e faça a varredura. Isso não altera os arquivos de áudio contidos nelas.
+A versão 2.1.0 apresenta a Biblioteca de música compatível com CUE, que usa o esquema de catálogo v3. As pastas e playlists da Biblioteca anterior não são transferidas para esse catálogo; adicione novamente as pastas de música e recrie ou importe de novo as playlists. O catálogo anterior e os arquivos de áudio não são alterados.
 
 A Biblioteca de música indexa as pastas de música selecionadas para que você possa explorar sua coleção local por faixa, álbum, artista, gênero, subpasta, pasta, faixas adicionadas recentemente ou playlist. A reprodução passa pelo Effect Pipeline atual do EffeTune, assim como na reprodução normal de arquivos de música.
 
@@ -18,7 +18,7 @@ A Biblioteca de música armazena o catálogo, o cache de capas e as playlists de
 - **Navegadores Chromium em PC com File System Access:** salvam de forma persistente o identificador da pasta selecionada. Ele pode ser reutilizado após recarregar quando o acesso for concedido, embora o navegador possa pedir permissão novamente.
 - **Navegadores móveis, Safari, Firefox e outros sem File System Access:** mantêm os objetos `File` selecionados apenas durante a sessão atual da página. O catálogo permanece salvo, mas os arquivos não podem ser reabertos após recarregar. Selecione novamente a pasta ou os arquivos depois de cada recarregamento; o EffeTune os reconecta às entradas existentes pelo caminho relativo normalizado.
 
-A Biblioteca de música indexa extensões comuns de arquivos de mídia, como MP3, WAV, OGG, FLAC, Opus, M4A, AAC, WebM e MP4. Nos arquivos MP4, o EffeTune reproduz apenas a faixa de áudio e não exibe o vídeo. A possibilidade real de reprodução, inclusive do codec de áudio contido no MP4, também depende dos recursos de decodificação do navegador ou do sistema operacional.
+A Biblioteca de música indexa extensões comuns de arquivos de mídia, como MP3, WAV, OGG, FLAC, Opus, M4A, AAC, WebM e MP4. Ela também pode usar uma folha CUE externa para dividir em faixas um arquivo de álbum WAV ou FLAC que esteja na mesma pasta. Nos arquivos MP4, o EffeTune reproduz apenas a faixa de áudio e não exibe o vídeo. A possibilidade real de reprodução, inclusive do codec de áudio contido no MP4, também depende dos recursos de decodificação do navegador ou do sistema operacional.
 
 ## Abrir a Biblioteca de música
 
@@ -62,7 +62,15 @@ Nos layouts para PC e dispositivos móveis, quando uma pesquisa de faixas ou os 
 
 No celular, a lista normal de títulos aparece primeiro, sem colunas de artista ou duração. Somente manter uma faixa pressionada abre o modo de seleção; as caixas, **Selecionar tudo** e **Desmarcar tudo** aparecem, enquanto as ações normais das linhas continuam disponíveis. A seleção automática e as alterações posteriores — incluindo **Selecionar tudo**, **Desmarcar tudo** e as caixas individuais — mudam apenas o estado da seleção; elas não abrem nem encerram o modo de seleção.
 
-Quando os metadados estão ausentes ou não podem ser lidos, o EffeTune usa o nome do arquivo e as informações da pasta para a exibição. Nas propriedades da faixa, você pode conferir o caminho do arquivo, formato, taxa de amostragem, profundidade de bits, taxa de bits e os principais itens de metadados.
+Quando os metadados estão ausentes ou não podem ser lidos, o EffeTune usa o nome do arquivo e as informações da pasta para a exibição. Nas propriedades da faixa, você pode conferir o caminho do arquivo, formato, taxa de amostragem, profundidade de bits, taxa de bits e os principais itens de metadados. Para uma faixa CUE, elas também mostram o tipo, o caminho do arquivo CUE, o caminho do áudio de origem e o trecho ocupado nesse arquivo.
+
+## Arquivos de álbum com CUE
+
+Coloque o arquivo `.cue` externo junto aos arquivos WAV ou FLAC citados nele e adicione ou examine novamente essa pasta. Cada entrada `TRACK ... AUDIO` válida aparece como uma faixa separada na Biblioteca de música. Quando disponíveis, são usados o título, intérprete, data, gênero e número de faixa do CUE; as informações técnicas vêm do WAV ou FLAC de origem.
+
+Você também pode reproduzir um álbum CUE sem adicioná-lo à Biblioteca de música. Use **Open music files** ou, no celular, **Open Music**. No aplicativo para desktop, **File > Open music file...** também está disponível. No aplicativo para desktop, selecione apenas o arquivo `.cue`; no navegador, selecione um arquivo `.cue` junto com todos e somente os arquivos WAV ou FLAC citados nele. Uma seleção válida substitui a fila de reprodução atual, mas não é adicionada ao catálogo. Se a validação falhar, a fila atual permanece inalterada.
+
+Se a folha CUE for inválida ou não puder identificar com segurança os arquivos de origem, o EffeTune explica o problema e importa os arquivos WAV ou FLAC como faixas comuns que abrangem o arquivo inteiro. Corrija a folha CUE ou os nomes dos arquivos e examine a pasta novamente.
 
 ## Reproduzir a partir da biblioteca
 
@@ -108,7 +116,7 @@ Ao escanear uma pasta, o EffeTune importa automaticamente os arquivos de playlis
 
 Durante a importação, é exibida uma prévia de quantos itens coincidem com faixas da biblioteca atual. Os itens sem correspondência também são mantidos, sempre que possível, como itens não resolvidos, para que possam ser resolvidos depois se a pasta correspondente for adicionada ou reconectada.
 
-Ao exportar, escolher **Caminhos relativos** grava, quando possível, caminhos relativos ao destino da exportação. Isso é útil quando você quer mover a playlist junto com a pasta de música.
+Ao exportar, escolher **Caminhos relativos** grava, quando possível, caminhos relativos ao destino da exportação. Isso é útil quando você quer mover a playlist junto com a pasta de música. M3U8 e XSPF não conseguem preservar o trecho de uma faixa CUE dentro do arquivo do álbum; por isso, o EffeTune omite essas faixas e informa quantas foram excluídas. Ele nunca grava o caminho físico do arquivo do álbum no lugar de uma faixa CUE omitida.
 
 ## Segurança e local de armazenamento
 

@@ -40,6 +40,7 @@ export class StateManager {
       currentTrack: null,
       currentTrackName: '',
       artworkUrl: '',
+      isTrackPresentationPending: false,
       currentTrackDuration: 0,
       currentTrackPosition: 0,
       

@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { EventEmitter } = require('node:events');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
@@ -150,6 +151,75 @@ test('showOpenDialog normalizes playback audio filters and leaves unrelated filt
   const noFilters = createHarness();
   await noFilters.module.showOpenDialog(null);
   assert.equal(noFilters.calls[0][2], null);
+});
+
+test('openPlaybackSelection owns its CUE-aware dialog without changing generic dialog normalization', async () => {
+  const harness = createHarness({ openDialogResult: { canceled: true, filePaths: [] } });
+
+  assert.deepEqual(await harness.module.openPlaybackSelection(), { canceled: true });
+  const dialogOptions = harness.calls[0][2];
+  assert.equal(dialogOptions.title, 'Open Music');
+  assert.deepEqual(dialogOptions.properties, ['openFile', 'multiSelections']);
+  assert.deepEqual(dialogOptions.filters[0], {
+    name: 'Music and CUE Files',
+    extensions: ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', 'mp4', 'cue']
+  });
+});
+
+test('all local playback admissions share one latest-request coordinator without extending CUE handling', async t => {
+  const root = createTempDir('effetune-local-admission');
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const firstPath = path.join(root, 'first.wav');
+  const latestPath = path.join(root, 'latest.wav');
+  const cuePath = path.join(root, 'album.cue');
+  fs.writeFileSync(firstPath, 'first');
+  fs.writeFileSync(latestPath, 'latest');
+  fs.writeFileSync(cuePath, 'FILE "first.wav" WAVE');
+  const harness = createHarness({ openDialogResult: { canceled: true, filePaths: [] } });
+
+  const staleAdmission = assert.rejects(
+    harness.module.admitLocalPlaybackPaths([firstPath]),
+    error => error?.code === 'selection-stale'
+  );
+  const latestDescriptors = await harness.module.admitLocalPlaybackPaths([latestPath]);
+  await staleAdmission;
+  assert.equal(latestDescriptors[0].path, fs.realpathSync(latestPath));
+
+  const staleDialog = harness.module.openPlaybackSelection();
+  await harness.module.admitLocalPlaybackPaths([latestPath]);
+  assert.deepEqual(await staleDialog, { stale: true });
+  await assert.rejects(
+    harness.module.admitLocalPlaybackPaths([cuePath]),
+    error => error?.code === 'unsupported-playback-file'
+  );
+});
+
+test('main window lifecycle cancels and disposes playback ingress without blocking a replacement window', async () => {
+  let resolveFirstDialog;
+  let dialogCount = 0;
+  const harness = createHarness({
+    openDialogResult() {
+      dialogCount += 1;
+      if (dialogCount === 1) {
+        return new Promise(resolve => {
+          resolveFirstDialog = resolve;
+        });
+      }
+      return { canceled: true, filePaths: [] };
+    }
+  });
+  const firstWindow = new EventEmitter();
+  harness.module.setMainWindow(firstWindow);
+
+  const pendingSelection = harness.module.openPlaybackSelection();
+  firstWindow.emit('close');
+  resolveFirstDialog({ canceled: true, filePaths: [] });
+  assert.deepEqual(await pendingSelection, { stale: true });
+  firstWindow.emit('closed');
+
+  const replacementWindow = new EventEmitter();
+  harness.module.setMainWindow(replacementWindow);
+  assert.deepEqual(await harness.module.openPlaybackSelection(), { canceled: true });
 });
 
 test('getUserDataPath selects portable settings beside the executable or app userData', () => {

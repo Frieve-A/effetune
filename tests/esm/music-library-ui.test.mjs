@@ -1971,6 +1971,55 @@ test('paged track properties load complete metadata and the resolved Electron pa
   ]);
 });
 
+test('paged CUE track properties show provenance, physical source, and logical region', async () => {
+  const documentRef = createDialogDocument();
+  const view = createLibraryViewFixture({
+    manager: {
+      runtime: 'electron',
+      async getTrack(trackUid) {
+        return {
+          trackUid,
+          sourceKind: 'cue-track',
+          entryKey: 'cue:Album/Disc.cue#03',
+          cueRelativePath: 'Album/Disc.cue',
+          relativePath: 'Album/Disc.flac',
+          fileName: 'Disc.flac',
+          title: 'Third Song',
+          durationSec: 120,
+          startFrame: 5625,
+          endFrame: 14625
+        };
+      },
+      async resolvePlaybackSource() {
+        return {
+          kind: 'electron-file',
+          path: 'D:\\Music\\Album\\Disc.flac',
+          startFrame: 5625,
+          endFrame: 14625
+        };
+      },
+      getFolders() {
+        return [{ id: 'folder-1', path: 'D:\\Music' }];
+      }
+    },
+    uiManager: { t: key => key }
+  });
+
+  await withGlobals({ document: documentRef }, async () => {
+    await view.showTrackProperties({
+      trackUid: 'cue-three',
+      folderId: 'folder-1',
+      title: 'Third Song'
+    });
+    const html = documentRef.body.children[0].innerHTML;
+    assert.match(html, /CUE track/);
+    assert.match(html, /D:\\Music\\Album\\Disc\.cue/);
+    assert.match(html, /D:\\Music\\Album\\Disc\.flac/);
+    assert.match(html, /1:15\.000/);
+    assert.match(html, /3:15\.000/);
+  });
+});
+
 test('paged properties context menu opens the track dialog and preserves its return focus', async () => {
   const documentRef = createDialogDocument();
   const opener = new FakeElement('button');
@@ -2312,6 +2361,43 @@ test('paged playlist export passes the relative path checkbox state', async () =
       sink
     }]
   ]);
+});
+
+test('paged playlist export reports skipped CUE tracks as a localized non-error notification', async () => {
+  const calls = [];
+  const live = { textContent: '' };
+  const view = Object.assign(Object.create(LibraryView.prototype), {
+    manager: {
+      playlists: {
+        async exportToSink() {
+          return { exportedCount: 2, skippedCueCount: 3 };
+        }
+      }
+    },
+    content: {
+      querySelector(selector) {
+        return selector === '.library-paged-live' ? live : { checked: true };
+      }
+    },
+    uiManager: {
+      t(key, params) {
+        return key === 'library.paged.exportSkippedCueTracks'
+          ? `Skipped ${params.count} CUE tracks`
+          : key;
+      },
+      setError(message, sticky) {
+        calls.push([message, sticky]);
+      }
+    },
+    async createPagedPlaylistExportSink() {
+      return { write() {}, commit() {}, abort() {} };
+    }
+  });
+
+  await view.handleExportPlaylist({ id: 'playlist-1', name: 'CUE mix' }, 'xspf');
+
+  assert.deepEqual(calls, [['Skipped 3 CUE tracks', false]]);
+  assert.equal(live.textContent, 'Skipped 3 CUE tracks');
 });
 
 test('paged Electron export sink retains the selected destination path', async () => {

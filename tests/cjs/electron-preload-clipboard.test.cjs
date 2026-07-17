@@ -113,6 +113,7 @@ test('preload exposes electronAPI invoke and send wrappers', async () => {
   const invokeCases = [
     ['showSaveDialog', ['save-options'], ['show-save-dialog', 'save-options']],
     ['showOpenDialog', ['open-options'], ['show-open-dialog', 'open-options']],
+    ['openPlaybackSelection', [], ['open-playback-selection']],
     ['saveFile', ['a.txt', 'content'], ['save-file', 'a.txt', 'content']],
     ['readFile', ['a.txt'], ['read-file', 'a.txt']],
     ['readFileBytes', ['a.wav'], ['read-file-bytes', 'a.wav']],
@@ -161,6 +162,17 @@ test('preload exposes electronAPI invoke and send wrappers', async () => {
       channel: expectedInvocation[0],
       args: expectedInvocation.slice(1)
     });
+  }
+
+  assert.deepEqual(await api.readFileBytes('sized.wav', 123), {
+    channel: 'read-file-bytes',
+    args: ['sized.wav', 123]
+  });
+  for (const invalid of [null, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.throws(
+      () => api.readFileBytes('invalid.wav', invalid),
+      error => error?.code === 'ERR_INVALID_EXPECTED_BYTE_LENGTH'
+    );
   }
 
   api.rendererPing();

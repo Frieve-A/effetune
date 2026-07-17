@@ -125,9 +125,20 @@ contextBridge.exposeInMainWorld(
     // File system operations
     showSaveDialog: (options) => ipcRenderer.invoke('show-save-dialog', options),
     showOpenDialog: (options) => ipcRenderer.invoke('show-open-dialog', options),
+    openPlaybackSelection: () => ipcRenderer.invoke('open-playback-selection'),
     saveFile: (filePath, content) => ipcRenderer.invoke('save-file', filePath, content),
     readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
-    readFileBytes: (filePath) => ipcRenderer.invoke('read-file-bytes', filePath),
+    readFileBytes: (filePath, expectedByteLength) => {
+      if (expectedByteLength === undefined) {
+        return ipcRenderer.invoke('read-file-bytes', filePath);
+      }
+      if (!Number.isSafeInteger(expectedByteLength) || expectedByteLength < 0) {
+        const error = new TypeError('Expected file size must be a nonnegative safe integer');
+        error.code = 'ERR_INVALID_EXPECTED_BYTE_LENGTH';
+        throw error;
+      }
+      return ipcRenderer.invoke('read-file-bytes', filePath, expectedByteLength);
+    },
     beginAtomicFileWrite: (filePath) => ipcRenderer.invoke('begin-atomic-file-write', filePath),
     writeAtomicFileChunk: (token, chunk) => ipcRenderer.invoke('write-atomic-file-chunk', token, chunk),
     commitAtomicFileWrite: (token) => ipcRenderer.invoke('commit-atomic-file-write', token),

@@ -86,7 +86,7 @@ Ouvrez **Paramètres > Configuration...** pour choisir la langue, la vue au dém
 ### Rechercher de la musique dans la Bibliothèque musicale
 
 1. Sur ordinateur, ouvrez-la avec le bouton **Bibliothèque musicale** dans l'en-tête ; sur mobile, avec l'onglet **Bibliothèque** ; dans l'application de bureau, avec **Affichage > Bibliothèque musicale**.
-2. Sélectionnez **Ajouter un dossier de musique** pour indexer le dossier qui contient vos fichiers musicaux.
+2. Sélectionnez **Ajouter un dossier de musique** pour indexer le dossier qui contient vos fichiers musicaux. Si une feuille CUE externe et les fichiers WAV ou FLAC qu'elle référence se trouvent dans le même dossier, l'ajout de ce dossier à la Bibliothèque musicale permet de traiter l'album morceau par morceau.
 3. Parcourez les **Morceaux**, **Albums**, **Artistes**, **Genres**, **Sous-dossiers**, **Dossiers**, **Ajouts récents** et **Listes de lecture**, et utilisez **Rechercher dans la bibliothèque** pour rechercher dans tout le catalogue. La vue **Sous-dossiers** classe les morceaux selon leur chemin au sein de chaque dossier de musique indexé, tandis que la vue **Dossiers** sert à gérer ces dossiers racine.
 4. Les morceaux trouvés peuvent être lus via le pipeline d'effets actuel. Utilisez **Lire ensuite**, **Ajouter à la file** et **Ajouter à une liste** pour gérer l'ordre de lecture et les listes de lecture.
 5. Après avoir modifié des fichiers, utilisez **Analyser à nouveau** ; si les autorisations du navigateur ou du dossier expirent, utilisez **Reconnecter**.
@@ -96,7 +96,7 @@ Dans les dispositions ordinateur et mobile, lorsqu’une recherche de morceaux o
 
 Les navigateurs Chromium sur ordinateur peuvent conserver les handles de dossier File System Access. Safari, Firefox, les navigateurs mobiles et les autres environnements dépourvus de cette API ne conservent les objets `File` que pendant la session de page en cours. Après chaque rechargement, sélectionnez de nouveau le dossier ou les fichiers ; EffeTune les rattache au catalogue existant grâce au chemin relatif normalisé.
 
-La version 2.1.0 démarre avec une nouvelle Bibliothèque musicale. L'état de la Bibliothèque précédente n'est pas repris : ajoutez et analysez de nouveau vos dossiers de musique. Cela ne modifie pas les fichiers audio qu'ils contiennent. Le catalogue est conçu pour parcourir les grandes collections par pages depuis le disque. Les mesures de performances à grande échelle sont des diagnostics locaux et facultatifs destinés au développement : elles ne conditionnent ni les commits, ni les versions, ni `verify`, ni GitHub Actions, et ne constituent pas une garantie générale de performances.
+La version 2.1.0 d'EffeTune introduit une Bibliothèque musicale fondée sur le schéma de catalogue v3, qui permet de parcourir les albums CUE morceau par morceau. L'état de l'ancienne Bibliothèque musicale n'est pas repris : ajoutez et analysez de nouveau vos dossiers de musique, puis recréez ou réimportez les listes de lecture de la Bibliothèque musicale. L'ancien catalogue et les fichiers audio ne sont pas modifiés. Le catalogue est conçu pour parcourir les grandes collections par pages depuis le disque. Les mesures de performances à grande échelle sont des diagnostics locaux et facultatifs destinés au développement : elles ne conditionnent ni les commits, ni les versions, ni `verify`, ni GitHub Actions, et ne constituent pas une garantie générale de performances.
 
 ### Construction de votre chaîne d'effets
 

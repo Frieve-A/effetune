@@ -32,7 +32,7 @@ test('catalog initialization failure degrades only the Library with a sanitized 
   const recovery = new LibraryCatalogRecovery({
     userDataPath,
     openCatalog: async () => {
-      const error = new Error(`corrupt catalog at ${path.join(userDataPath, 'music-library-v2')}`);
+      const error = new Error(`corrupt catalog at ${path.join(userDataPath, 'music-library-v3')}`);
       error.code = 'SQLITE_CORRUPT';
       throw error;
     },
@@ -51,7 +51,7 @@ test('catalog initialization failure degrades only the Library with a sanitized 
   });
   assert.equal(closes, 1);
   assert.equal(diagnostics[0].code, 'SQLITE_CORRUPT');
-  assert.doesNotMatch(JSON.stringify(state), /SQLITE|music-library-v2|corrupt/i);
+  assert.doesNotMatch(JSON.stringify(state), /SQLITE|music-library-v3|corrupt/i);
 });
 
 test('an initial utility failure leaves the Library unavailable to recovery', async t => {

@@ -25,9 +25,11 @@ export const SUPPORTED_PLAYLIST_EXTENSIONS = Object.freeze([
   'pls',
   'xspf'
 ]);
+export const SUPPORTED_CUE_EXTENSIONS = Object.freeze(['cue']);
 
 export const SUPPORTED_AUDIO_EXTENSION_SET = new Set(SUPPORTED_AUDIO_EXTENSIONS);
 export const SUPPORTED_PLAYLIST_EXTENSION_SET = new Set(SUPPORTED_PLAYLIST_EXTENSIONS);
+export const SUPPORTED_CUE_EXTENSION_SET = new Set(SUPPORTED_CUE_EXTENSIONS);
 export const DEFAULT_SCAN_BATCH_SIZE = 200;
 export const UNKNOWN_ALBUM = 'Unknown Album';
 export const UNKNOWN_ARTIST = 'Unknown Artist';
@@ -60,6 +62,10 @@ export function isSupportedAudioPath(pathOrName = '') {
 
 export function isSupportedPlaylistPath(pathOrName = '') {
   return SUPPORTED_PLAYLIST_EXTENSION_SET.has(getFileExtension(pathOrName));
+}
+
+export function isSupportedCuePath(pathOrName = '') {
+  return SUPPORTED_CUE_EXTENSION_SET.has(getFileExtension(pathOrName));
 }
 
 export function normalizeRelativePath(relativePath = '') {

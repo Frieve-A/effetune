@@ -6,7 +6,7 @@ lang: fr
 
 # Utiliser la Bibliothèque musicale
 
-EffeTune 2.1.0 démarre avec une nouvelle Bibliothèque musicale. L'état de la Bibliothèque précédente n'est pas repris : ajoutez et analysez de nouveau vos dossiers de musique. Cela ne modifie pas les fichiers audio qu'ils contiennent.
+La version 2.1.0 introduit la Bibliothèque musicale compatible avec les fichiers CUE et fondée sur le schéma de catalogue v3. Les dossiers et les playlists de l'ancienne Bibliothèque musicale ne sont pas repris : ajoutez de nouveau vos dossiers, puis recréez ou réimportez vos playlists. L'ancien catalogue et vos fichiers audio ne sont pas modifiés.
 
 La Bibliothèque musicale indexe les dossiers de musique que vous choisissez et vous permet de parcourir votre collection locale par morceaux, albums, artistes, genres, sous-dossiers, dossiers, ajouts récents et listes de lecture. Comme pour la lecture normale des fichiers musicaux, le son passe par le pipeline d'effets EffeTune actuel.
 
@@ -18,7 +18,7 @@ La Bibliothèque musicale enregistre le catalogue interne de l'application, le c
 - **Navigateurs Chromium sur ordinateur avec File System Access :** enregistrent durablement le handle du dossier sélectionné. Il peut être réutilisé après un rechargement une fois l'accès accordé, même si le navigateur peut redemander une autorisation.
 - **Navigateurs mobiles, Safari, Firefox et autres navigateurs sans File System Access :** ne conservent les objets `File` sélectionnés que pendant la session de page en cours. Le catalogue reste enregistré, mais les fichiers ne peuvent plus être rouverts après un rechargement. Sélectionnez de nouveau le dossier ou les fichiers après chaque rechargement ; EffeTune les rattache aux entrées existantes grâce au chemin relatif normalisé.
 
-La Bibliothèque musicale indexe les extensions de fichiers multimédias courantes, notamment MP3, WAV, OGG, FLAC, Opus, M4A, AAC, WebM et MP4. Pour les fichiers MP4, EffeTune lit uniquement la piste audio et n'affiche pas la vidéo. La lecture effective, y compris la prise en charge du codec audio contenu dans le MP4, dépend aussi des capacités de décodage du navigateur et du système d'exploitation.
+La Bibliothèque musicale indexe les extensions de fichiers multimédias courantes, notamment MP3, WAV, OGG, FLAC, Opus, M4A, AAC, WebM et MP4. Elle peut aussi utiliser une feuille CUE externe pour diviser en morceaux un fichier d'album WAV ou FLAC placé dans le même dossier. Pour les fichiers MP4, EffeTune lit uniquement la piste audio et n'affiche pas la vidéo. La lecture effective, y compris la prise en charge du codec audio contenu dans le MP4, dépend aussi des capacités de décodage du navigateur et du système d'exploitation.
 
 ## Ouvrir la Bibliothèque musicale
 
@@ -62,7 +62,15 @@ Dans les dispositions ordinateur et mobile, lorsqu’une recherche de morceaux o
 
 Sur mobile, la liste normale des titres s'affiche d'abord, sans colonnes d'artiste ni de durée. Seul un appui long sur un morceau ouvre le mode sélection ; les cases à cocher, **Tout sélectionner** et **Tout désélectionner** apparaissent alors, tandis que les actions habituelles des lignes restent disponibles. La sélection automatique et les modifications ultérieures — y compris **Tout sélectionner**, **Tout désélectionner** et les cases individuelles — ne changent que l’état de sélection ; elles n’ouvrent ni ne ferment le mode sélection.
 
-Quand les métadonnées sont absentes ou illisibles, EffeTune utilise le nom du fichier et les informations de dossier pour l'affichage. Les propriétés d'un morceau permettent de consulter le chemin du fichier, le format, la fréquence d'échantillonnage, la profondeur de bits, le débit binaire et les principaux champs de métadonnées.
+Quand les métadonnées sont absentes ou illisibles, EffeTune utilise le nom du fichier et les informations de dossier pour l'affichage. Les propriétés d'un morceau permettent de consulter le chemin du fichier, le format, la fréquence d'échantillonnage, la profondeur de bits, le débit binaire et les principaux champs de métadonnées. Pour un morceau CUE, elles indiquent aussi son type, le chemin du fichier CUE, le chemin du fichier audio source et sa plage dans ce fichier.
+
+## Fichiers d'album avec CUE
+
+Placez le fichier `.cue` externe à côté des fichiers WAV ou FLAC qu'il désigne, puis ajoutez ou analysez de nouveau ce dossier. Chaque entrée `TRACK ... AUDIO` valide apparaît comme un morceau distinct dans la Bibliothèque musicale. Le titre, l'interprète, la date, le genre et le numéro de piste du fichier CUE sont utilisés lorsqu'ils sont disponibles ; les informations audio techniques proviennent du fichier WAV ou FLAC source.
+
+Vous pouvez aussi lire un album CUE sans l’ajouter à la Bibliothèque musicale. Utilisez **Open music files**, ou **Open Music** sur mobile. Dans l’application de bureau, vous pouvez également utiliser **File > Open music file...**. Dans l’application de bureau, sélectionnez uniquement le fichier `.cue` ; dans un navigateur, sélectionnez un fichier `.cue` avec tous les fichiers WAV ou FLAC qu’il désigne, et aucun autre. Une sélection valide remplace la file de lecture actuelle sans être ajoutée au catalogue. Si la validation échoue, la file actuelle reste inchangée.
+
+Si la feuille CUE n'est pas valide ou ne permet pas d'identifier ses fichiers sources de manière fiable, EffeTune explique le problème et importe les fichiers WAV ou FLAC comme des morceaux ordinaires couvrant tout le fichier. Corrigez la feuille CUE ou les noms de fichiers, puis analysez de nouveau le dossier.
 
 ## Lire depuis la bibliothèque
 
@@ -108,7 +116,7 @@ Lors de l’analyse d’un dossier, EffeTune importe automatiquement les fichier
 
 Lors de l'importation, un aperçu indique combien d'éléments correspondent à des morceaux de la bibliothèque actuelle. Les éléments sans correspondance sont aussi conservés autant que possible comme éléments non résolus, afin de pouvoir être résolus si le dossier concerné est ajouté ou reconnecté plus tard.
 
-Lors de l'exportation, si vous choisissez **Chemins relatifs**, les chemins sont écrits, quand c'est possible, sous forme de chemins relatifs à partir de l'emplacement d'exportation. C'est utile si vous voulez déplacer une liste de lecture avec le dossier de musique.
+Lors de l'exportation, si vous choisissez **Chemins relatifs**, les chemins sont écrits, quand c'est possible, sous forme de chemins relatifs à partir de l'emplacement d'exportation. C'est utile si vous voulez déplacer une liste de lecture avec le dossier de musique. Les formats M3U8 et XSPF ne peuvent pas conserver la plage d'un morceau CUE dans le fichier de l'album. EffeTune exclut donc ces morceaux et indique leur nombre. Il ne les remplace jamais par le chemin physique du fichier d'album.
 
 ## Sécurité et emplacement d'enregistrement
 

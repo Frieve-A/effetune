@@ -1,4 +1,4 @@
-import * as schema from './schema-v2.js';
+import * as schema from './schema-v3.js';
 import * as canonicalOrder from './canonical-order.js';
 import * as orderContract from './catalog-order-contract.js';
 import * as cursorCodec from './cursor-codec.js';
@@ -462,7 +462,7 @@ function createActiveRepresentativeTrackSelection(membershipTable, keyColumn) {
 }
 
 let database;
-let databasePath = schema.MUSIC_LIBRARY_V2_WEB_DATABASE;
+let databasePath = schema.MUSIC_LIBRARY_V3_WEB_DATABASE;
 let modules = { schema, canonicalOrder, orderContract, cursorCodec, queryContract, searchNormalizer, transportShuffle };
 let catalogVersion = 0;
 let scopeVersions = Object.create(null);
@@ -472,6 +472,7 @@ let closed = false;
 const contexts = new Map();
 const contextWalByteCache = new Map();
 const pendingEntityAggregationScans = new Set();
+const pendingScanSweepRecoveries = new Map();
 const pendingScanInvalidations = new Map();
 let activeMutationBatch = null;
 let contextTtlMs = DEFAULT_CONTEXT_TTL_MS;
@@ -487,7 +488,7 @@ export async function initializeWebSqliteRuntime(databaseAdapter, {
 } = {}) {
   if (database) throw createCatalogError('alreadyOpen', 'Web SQLite catalog is already open');
   workerData = {
-    dbPath: schema.MUSIC_LIBRARY_V2_WEB_DATABASE,
+    dbPath: schema.MUSIC_LIBRARY_V3_WEB_DATABASE,
     contextTtlMs: requestedContextTtlMs,
     maxContexts: requestedMaxContexts,
     contextWalCapBytes: requestedContextWalCapBytes
@@ -498,7 +499,7 @@ export async function initializeWebSqliteRuntime(databaseAdapter, {
   runtimeEventSink = onEvent;
   if (storageManager?.estimate) storageEstimate = await storageManager.estimate();
   database = databaseAdapter;
-  databasePath = schema.MUSIC_LIBRARY_V2_WEB_DATABASE;
+  databasePath = schema.MUSIC_LIBRARY_V3_WEB_DATABASE;
   closed = false;
   activeArtworkUtilitySession = null;
   contextCounter = 0;
@@ -506,15 +507,22 @@ export async function initializeWebSqliteRuntime(databaseAdapter, {
   contexts.clear();
   contextWalByteCache.clear();
   pendingEntityAggregationScans.clear();
+  pendingScanSweepRecoveries.clear();
   pendingScanInvalidations.clear();
   assertSchemaSearchFields(schema.MUSIC_LIBRARY_SEARCH_FIELDS);
-  database.exec(schema.getMusicLibraryV2InitializationSql({ journalMode: 'persist' }));
+  database.exec(schema.getMusicLibraryV3InitializationSql({ journalMode: 'persist' }));
   database.prepare('DELETE FROM artwork_claims').run();
   verifyPragmas();
   initializeMetadata(schema.MUSIC_LIBRARY_SCHEMA_VERSION);
   recoverInterruptedOperations();
   removeLegacyPlaybackOperations();
   recoverInterruptedScans();
+  recoverInterruptedMetadataClaims({
+    metadataStatus: 'retryable-error',
+    errorCode: 'service-interrupted',
+    preserveLastKnownGood: true,
+    updateDerivedData: false
+  });
   scheduleDeletionMaintenance();
 
   return getCapabilities();
@@ -525,25 +533,49 @@ function recoverInterruptedScans() {
   runDurableTransaction(() => {
     const interrupted = database.prepare(`
       SELECT scan_id AS scanId, folder_id AS folderId, generation,
-        expected_lifecycle_version AS lifecycleVersion
+        expected_lifecycle_version AS lifecycleVersion, status,
+        sweep_eligibility AS sweepEligibility, continuity_broken AS continuityBroken
       FROM scan_run_folders
       WHERE status IN ('enumerating', 'committing', 'reconciling', 'sweeping')
     `).all();
-    for (const identity of interrupted) activateEntityAggregationJob(identity);
+    for (const identity of interrupted) {
+      clearCueScanStageRows(identity);
+      if (isRecoverableScanSweep(identity)) {
+        pendingScanSweepRecoveries.set(entityAggregationScanKey(identity), {
+          scanId: identity.scanId,
+          folderId: identity.folderId,
+          generation: Number(identity.generation),
+          expectedLifecycleVersion: Number(identity.lifecycleVersion)
+        });
+      } else {
+        activateEntityAggregationJob(identity);
+      }
+    }
     const changed = database.prepare(`
       UPDATE scan_run_folders
       SET status = 'interrupted', stop_reason = 'service-interrupted',
         continuity_broken = 1, sweep_eligibility = 'INELIGIBLE',
         sweep_block_reason = 'service-interrupted', updated_at = ?
-      WHERE status IN ('enumerating', 'committing', 'reconciling', 'sweeping')
+      WHERE status IN ('enumerating', 'committing', 'reconciling')
+        OR (status = 'sweeping' AND (sweep_eligibility <> 'ELIGIBLE' OR continuity_broken <> 0))
     `).run(now);
     database.prepare(`
       UPDATE scan_runs SET status = 'interrupted', finished_at = ?, stop_reason = 'service-interrupted'
-      WHERE status = 'running'
+      WHERE status = 'running' AND NOT EXISTS(
+        SELECT 1 FROM scan_run_folders f
+        WHERE f.scan_id = scan_runs.id AND f.status = 'sweeping'
+          AND f.sweep_eligibility = 'ELIGIBLE' AND f.continuity_broken = 0
+      )
     `).run(now);
     database.prepare(`
       UPDATE deletion_jobs SET state = 'blocked-interrupted', updated_at = ?
       WHERE kind = 'scan-sweep' AND state = 'active'
+        AND NOT EXISTS(
+          SELECT 1 FROM scan_run_folders f
+          WHERE f.scan_id = deletion_jobs.scan_id AND f.folder_id = deletion_jobs.folder_id
+            AND f.status = 'sweeping' AND f.sweep_eligibility = 'ELIGIBLE'
+            AND f.continuity_broken = 0
+        )
     `).run(now);
     database.prepare(`
       DELETE FROM deletion_jobs
@@ -551,6 +583,11 @@ function recoverInterruptedScans() {
     `).run();
     return { changed: Number(changed.changes) };
   });
+}
+
+function isRecoverableScanSweep(state) {
+  return state.status === 'sweeping' && state.sweepEligibility === 'ELIGIBLE' &&
+    Number(state.continuityBroken) === 0;
 }
 
 
@@ -716,6 +753,7 @@ export function dispatchWebSqliteCommand(command, payload) {
     case 'beginScanFolder': return beginScanFolder(payload);
     case 'preflightScanBatch': return preflightScanBatch(payload);
     case 'commitScanSeenBatch': return commitScanSeenBatch(payload);
+    case 'cueDirectoryStage': return cueDirectoryStage(payload);
     case 'listMetadataCandidates': return listMetadataCandidates(payload);
     case 'advanceScanMetadataCursor': return advanceScanMetadataCursor(payload);
     case 'markScanEnumerationIneligible': return markScanEnumerationIneligible(payload);
@@ -2181,7 +2219,8 @@ function createContextTrackSource(context) {
   if (!context.hasBeforeImages) return { sql: 'tracks', bindings: [] };
   return {
     sql: `(
-      SELECT t.track_key, t.track_uid, t.folder_id, t.title, t.artist, t.album_artist,
+      SELECT t.track_key, t.track_uid, t.folder_id, t.relative_path, t.source_kind, t.entry_key,
+        t.cue_relative_path, t.start_frame, t.end_frame, t.title, t.artist, t.album_artist,
         t.album, t.genre, t.year, t.disc_no, t.track_no, t.duration_sec, t.added_at,
         t.metadata_status, t.artwork_id, t.sort_title, t.sort_album_artist,
         t.sort_album, t.sort_genre, t.search_text, t.normalized_title, t.album_key, t.artist_key,
@@ -2192,7 +2231,8 @@ function createContextTrackSource(context) {
         WHERE b.context_token = ? AND b.track_uid = t.track_uid
       )
       UNION ALL
-      SELECT b.track_key, b.track_uid, b.folder_id, b.title, b.artist, b.album_artist,
+      SELECT b.track_key, b.track_uid, b.folder_id, b.relative_path, b.source_kind, b.entry_key,
+        b.cue_relative_path, b.start_frame, b.end_frame, b.title, b.artist, b.album_artist,
         b.album, b.genre, b.year, b.disc_no, b.track_no, b.duration_sec, b.added_at,
         b.metadata_status, b.artwork_id, b.sort_title, b.sort_album_artist,
         b.sort_album, b.sort_genre, b.search_text, b.normalized_title, b.album_key, b.artist_key,
@@ -2383,6 +2423,12 @@ function createTrackPageSelection(order) {
   return [
     't.track_uid AS trackUid',
     't.folder_id AS folderId',
+    `t.folder_id || char(0) || t.relative_path AS physicalSourceKey`,
+    't.source_kind AS sourceKind',
+    't.entry_key AS entryKey',
+    't.cue_relative_path AS cueRelativePath',
+    't.start_frame AS startFrame',
+    't.end_frame AS endFrame',
     't.album_key AS albumKey',
     't.artist_key AS artistKey',
     't.genre_key AS genreKey',
@@ -2404,7 +2450,12 @@ function createTrackPageSelection(order) {
 }
 
 function normalizePageRow(row) {
-  return { ...row, entityKind: 'track' };
+  return {
+    ...row,
+    startFrame: row.startFrame == null ? null : Number(row.startFrame),
+    endFrame: row.endFrame == null ? null : Number(row.endFrame),
+    entityKind: 'track'
+  };
 }
 
 function stripOrderFields(row) {
@@ -4551,6 +4602,9 @@ function playlistImportPreviewLabel(unresolved) {
 
 function resolveImportedPlaylistTrack(unresolved) {
   if (!unresolved) return null;
+  if (unresolved.sourceKind === 'cue-track' || unresolved.cueProvenance != null) {
+    return resolveCuePlaylistTrack(unresolved);
+  }
   const trustedOriginMatch = resolveImportedTrackFromOrigin(unresolved);
   if (trustedOriginMatch) return trustedOriginMatch;
   const normalize = modules.searchNormalizer.normalizeSearchText;
@@ -4566,7 +4620,7 @@ function resolveImportedPlaylistTrack(unresolved) {
         FROM tracks t
         JOIN folders f ON f.id = t.folder_id AND f.status <> 'removed'
         CROSS JOIN requested
-        WHERE t.normalized_basename = ? AND (
+        WHERE t.source_kind = 'file' AND t.normalized_basename = ? AND (
           requested.path COLLATE NOCASE = (f.display_name || '/' || t.relative_path) OR
           substr(requested.path, -(length(f.display_name) + length(t.relative_path) + 2))
             COLLATE NOCASE = ('/' || f.display_name || '/' || t.relative_path)
@@ -4580,7 +4634,7 @@ function resolveImportedPlaylistTrack(unresolved) {
         FROM tracks t
         JOIN folders f ON f.id = t.folder_id AND f.status <> 'removed'
         CROSS JOIN requested
-        WHERE t.normalized_basename = ? AND (
+        WHERE t.source_kind = 'file' AND t.normalized_basename = ? AND (
           requested.path COLLATE NOCASE = t.relative_path OR
           substr(requested.path, -(length(t.relative_path) + 1))
             COLLATE NOCASE = ('/' || t.relative_path)
@@ -4596,7 +4650,7 @@ function resolveImportedPlaylistTrack(unresolved) {
         t.duration_bucket AS durationBucket
       FROM tracks t
       JOIN folders f ON f.id = t.folder_id AND f.status <> 'removed'
-      WHERE t.normalized_basename = ? ORDER BY t.track_uid LIMIT ?
+      WHERE t.source_kind = 'file' AND t.normalized_basename = ? ORDER BY t.track_uid LIMIT ?
     `).all(basename, PLAYLIST_RESOLUTION_CANDIDATE_LIMIT + 1);
     if (pathCandidates.length <= PLAYLIST_RESOLUTION_CANDIDATE_LIMIT) {
       const exact = pathCandidates.filter(track => playlistPortablePathMatches(track, requestedPath));
@@ -4622,7 +4676,7 @@ function resolveImportedPlaylistTrack(unresolved) {
     SELECT t.track_uid AS trackUid, t.duration_bucket AS durationBucket
     FROM tracks t
     JOIN folders f ON f.id = t.folder_id AND f.status <> 'removed'
-    WHERE t.normalized_title = ? AND t.normalized_artist = ?
+    WHERE t.source_kind = 'file' AND t.normalized_title = ? AND t.normalized_artist = ?
     ORDER BY t.track_uid LIMIT ?
   `).all(normalizedTitle, normalizedArtist, PLAYLIST_RESOLUTION_CANDIDATE_LIMIT + 1);
   if (metadataCandidates.length > PLAYLIST_RESOLUTION_CANDIDATE_LIMIT) return null;
@@ -4636,6 +4690,45 @@ function resolveImportedPlaylistTrack(unresolved) {
     if (intersection.length === 1) return intersection[0].trackUid;
   }
   return null;
+}
+
+function resolveCuePlaylistTrack(unresolved) {
+  const provenanceFolderId = unresolved.cueProvenance?.folderId;
+  const provenanceEntryKey = unresolved.cueProvenance?.entryKey;
+  const folderId = typeof provenanceFolderId === 'string' && provenanceFolderId.length > 0
+    ? provenanceFolderId
+    : null;
+  const entryKey = typeof provenanceEntryKey === 'string' && provenanceEntryKey.length > 0
+    ? provenanceEntryKey
+    : null;
+  if (folderId && entryKey) {
+    const exact = database.prepare(`
+      SELECT t.track_uid AS trackUid
+      FROM tracks t
+      JOIN folders f ON f.id = t.folder_id AND f.status <> 'removed'
+      WHERE t.folder_id = ? AND t.source_kind = 'cue-track' AND t.entry_key = ?
+      ORDER BY t.track_uid LIMIT 2
+    `).all(folderId, entryKey);
+    if (exact.length === 1) return exact[0].trackUid;
+  }
+
+  const normalize = modules.searchNormalizer.normalizeSearchText;
+  const normalizedTitle = normalize(unresolved.title ?? '');
+  const normalizedArtist = normalize(unresolved.artist ?? '');
+  if (!normalizedTitle || !normalizedArtist) return null;
+  const durationBucket = Number.isFinite(unresolved.durationSec) ? Math.round(unresolved.durationSec) : null;
+  const candidates = database.prepare(`
+    SELECT t.track_uid AS trackUid, t.duration_bucket AS durationBucket
+    FROM tracks t
+    JOIN folders f ON f.id = t.folder_id AND f.status <> 'removed'
+    WHERE t.source_kind = 'cue-track' AND t.normalized_title = ? AND t.normalized_artist = ?
+    ORDER BY t.track_uid LIMIT ?
+  `).all(normalizedTitle, normalizedArtist, PLAYLIST_RESOLUTION_CANDIDATE_LIMIT + 1);
+  if (candidates.length > PLAYLIST_RESOLUTION_CANDIDATE_LIMIT) return null;
+  const matching = candidates.filter(track =>
+    durationBucket === null || Number(track.durationBucket) === durationBucket
+  );
+  return matching.length === 1 ? matching[0].trackUid : null;
 }
 
 function normalizePlaylistPortablePath(value) {
@@ -4681,7 +4774,7 @@ function resolveImportedTrackFromOrigin(unresolved) {
   const matches = database.prepare(`
     SELECT track_uid AS trackUid FROM tracks t
     JOIN folders f ON f.id = t.folder_id AND f.status <> 'removed'
-    WHERE t.folder_id = ? AND t.relative_path = ? COLLATE NOCASE
+    WHERE t.folder_id = ? AND t.source_kind = 'file' AND t.relative_path = ? COLLATE NOCASE
     ORDER BY t.track_uid LIMIT 2
   `).all(normalizedOrigin.folderId, relativePath);
   return matches.length === 1 ? matches[0].trackUid : null;
@@ -4874,7 +4967,9 @@ function queryPlaylistItems(payload) {
   const rows = database.prepare(`
     SELECT i.item_key AS itemKey, i.position, i.track_uid AS trackUid,
       i.unresolved_json AS unresolvedJson, f.status AS folderStatus,
-      t.relative_path AS relativePath, t.file_name AS fileName,
+      t.folder_id AS folderId, t.relative_path AS relativePath, t.file_name AS fileName,
+      t.source_kind AS sourceKind, t.entry_key AS entryKey, t.cue_relative_path AS cueRelativePath,
+      t.start_frame AS startFrame, t.end_frame AS endFrame,
       t.title, t.artist, t.duration_sec AS durationSec
     FROM playlist_items i
     LEFT JOIN operation_jobs o ON o.operation_id = i.pending_operation_id
@@ -5167,6 +5262,11 @@ function getTrack(payload) {
       t.track_uid AS trackUid,
       t.folder_id AS folderId,
       t.relative_path AS relativePath,
+      t.source_kind AS sourceKind,
+      t.entry_key AS entryKey,
+      t.cue_relative_path AS cueRelativePath,
+      t.start_frame AS startFrame,
+      t.end_frame AS endFrame,
       t.file_name AS fileName,
       t.title,
       t.artist,
@@ -5198,20 +5298,24 @@ function getTrack(payload) {
     JOIN folders f ON f.id = t.folder_id AND f.status <> 'removed'
     WHERE t.track_uid = ?
   `).get(trackUid);
-  return row || null;
+  return row ? withPhysicalSourceKey(row) : null;
 }
 
 function getTrackStorageIdentity(payload) {
   assertExactFields(payload, ['trackUid'], 'invalidTrackRequest');
   const trackUid = requireString(payload.trackUid, 'trackUid', 512);
-  return database.prepare(`
+  const row = database.prepare(`
     SELECT t.track_uid AS trackUid, t.folder_id AS folderId, t.relative_path AS relativePath,
+      t.source_kind AS sourceKind, t.entry_key AS entryKey,
+      t.cue_relative_path AS cueRelativePath, t.start_frame AS startFrame, t.end_frame AS endFrame,
+      t.duration_sec AS durationSec,
       t.file_identity AS fileIdentity, t.size, t.mtime_ms AS mtimeMs,
       f.lifecycle_version AS lifecycleVersion
     FROM tracks t
     JOIN folders f ON f.id = t.folder_id AND f.status <> 'removed'
     WHERE t.track_uid = ?
-  `).get(trackUid) || null;
+  `).get(trackUid);
+  return row ? withPhysicalSourceKey(row) : null;
 }
 
 function resolvePlaylistExportSource(payload) {
@@ -5219,13 +5323,15 @@ function resolvePlaylistExportSource(payload) {
   const trackUid = requireString(payload.trackUid, 'trackUid', 512);
   const row = database.prepare(`
     SELECT t.track_uid AS trackUid, t.folder_id AS folderId, t.relative_path AS path,
+      t.source_kind AS sourceKind, t.entry_key AS entryKey,
+      t.cue_relative_path AS cueRelativePath, t.start_frame AS startFrame, t.end_frame AS endFrame,
       f.display_name AS rootName
     FROM tracks t
     JOIN folders f ON f.id = t.folder_id AND f.status <> 'removed'
     WHERE t.track_uid = ?
   `).get(trackUid);
   if (!row) throw createCatalogError('trackNotFound', 'Track does not exist');
-  return { kind: 'portable-relative', ...row };
+  return { kind: 'portable-relative', ...row, physicalSourceKey: createPhysicalSourceKey(row.folderId, row.path) };
 }
 
 function getCachedArtwork(payload) {
@@ -5765,6 +5871,7 @@ function beginScanFolder(payload) {
   const folderId = requireString(payload.folderId, 'folderId', 512);
   const lifecycleVersion = requireNonNegativeInteger(payload.expectedLifecycleVersion, 'expectedLifecycleVersion');
   const resume = payload.resume === true;
+  completePendingScanSweepRecovery(folderId);
   return runDurableTransaction(() => {
     const folder = requireActiveScanFolder(folderId, lifecycleVersion);
     const existing = database.prepare(`
@@ -5788,6 +5895,7 @@ function beginScanFolder(payload) {
       generation = Number(folder.scanGeneration) + 1;
       database.prepare('UPDATE folders SET scan_generation = ? WHERE id = ?').run(generation, folderId);
       database.prepare('DELETE FROM scan_seen WHERE scan_id = ? AND folder_id = ?').run(scanId, folderId);
+      database.prepare('DELETE FROM scan_logical_seen WHERE scan_id = ? AND folder_id = ?').run(scanId, folderId);
     }
     const now = Date.now();
     database.prepare(`
@@ -5807,16 +5915,17 @@ function beginScanFolder(payload) {
         stop_reason = NULL, updated_at = excluded.updated_at
     `).run(
       scanId, folderId, generation, lifecycleVersion, resume ? 1 : 0,
-      existing?.parserVersion ?? 'catalog-metadata-v2', resume ? 'resumed-generation' : null,
+      existing?.parserVersion ?? 'catalog-metadata-v3', resume ? 'resumed-generation' : null,
       Number(existing?.enumerationErrorCount ?? 0), Number(existing?.visitedFiles ?? 0),
       Number(existing?.committedBatches ?? 0), now
     );
+    clearCueScanStageRows({ scanId, folderId });
     return {
       scanId,
       folderId,
       generation,
       lifecycleVersion,
-      parserVersion: existing?.parserVersion ?? 'catalog-metadata-v2',
+      parserVersion: existing?.parserVersion ?? 'catalog-metadata-v3',
       continuityBroken: resume,
       sweepEligibility: 'INELIGIBLE',
       visitedFiles: resume ? Number(existing?.visitedFiles ?? 0) : 0,
@@ -5826,6 +5935,22 @@ function beginScanFolder(payload) {
         : null
     };
   });
+}
+
+function completePendingScanSweepRecovery(folderId) {
+  const pending = [...pendingScanSweepRecoveries.values()]
+    .find(identity => identity.folderId === folderId);
+  if (!pending) return;
+  try {
+    let sweep;
+    do {
+      sweep = runScanSweep(pending);
+    } while (sweep.hasMore === true);
+    completeScanFolder({ ...pending, status: 'completed' });
+  } catch (error) {
+    scheduleDeletionMaintenance();
+    throw error;
+  }
 }
 
 function preflightScanBatch(payload) {
@@ -5858,7 +5983,9 @@ function commitScanSeenBatch(payload) {
     'maxTracks', 'maxBytes', 'lastCommittedBatch', 'cursor'
   ], 'invalidScanRequest');
   const observations = validateBatch(payload.observations, 'observations');
-  if (observations.length < 1 || observations.length > 500 || measureBytes(observations, 'batchTooLarge') > 4 * 1024 * 1024) {
+  const logicalRows = observations.reduce((count, observation) =>
+    count + Math.max(1, Array.isArray(observation.logicalCandidates) ? observation.logicalCandidates.length : 1), 0);
+  if (observations.length < 1 || logicalRows > 500 || measureBytes(observations, 'batchTooLarge') > 4 * 1024 * 1024) {
     throw createCatalogError('batchLimitExceeded', 'Scan batch exceeds 500 rows or 4 MiB');
   }
   const identity = requireScanIdentity(payload);
@@ -5892,9 +6019,29 @@ function commitScanSeenBatch(payload) {
         mtime_ms = excluded.mtime_ms,
         observation_sequence = excluded.observation_sequence
     `);
-    requirePositiveInteger(payload.maxTracks, 'maxTracks');
+    const upsertLogical = database.prepare(`
+      INSERT INTO scan_logical_seen(
+        scan_id, folder_id, logical_storage_id, relative_path, canonical_path,
+        file_identity, size, mtime_ms, observation_sequence, source_kind, entry_key,
+        cue_relative_path, start_frame, end_frame, cue_signature, metadata_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(scan_id, folder_id, logical_storage_id) DO UPDATE SET
+        relative_path = excluded.relative_path, canonical_path = excluded.canonical_path,
+        file_identity = excluded.file_identity, size = excluded.size, mtime_ms = excluded.mtime_ms,
+        observation_sequence = excluded.observation_sequence, source_kind = excluded.source_kind,
+        entry_key = excluded.entry_key, cue_relative_path = excluded.cue_relative_path,
+        start_frame = excluded.start_frame, end_frame = excluded.end_frame,
+        cue_signature = excluded.cue_signature, metadata_json = excluded.metadata_json
+    `);
+    if (logicalRows > requirePositiveInteger(payload.maxTracks, 'maxTracks')) {
+      throw createCatalogError('batchLimitExceeded', 'Scan batch exceeds its configured row limit');
+    }
     const batchBase = Number(state.visitedFiles);
     let lastRelativePath = null;
+    let logicalSequence = Number(database.prepare(`
+      SELECT COALESCE(MAX(observation_sequence), -1) AS value
+      FROM scan_logical_seen WHERE scan_id = ? AND folder_id = ?
+    `).get(identity.scanId, identity.folderId).value) + 1;
     for (let index = 0; index < observations.length; index += 1) {
       const observation = observations[index];
       const relativePath = normalizeRelativePath(requireString(observation.relativePath, 'relativePath', 32768));
@@ -5907,6 +6054,18 @@ function commitScanSeenBatch(payload) {
         requireNonNegativeInteger(Math.round(observation.mtimeMs), 'mtimeMs'),
         batchBase + index
       );
+      const logicalCandidates = Array.isArray(observation.logicalCandidates)
+        ? observation.logicalCandidates
+        : [createPlainScanLogicalCandidate(observation, relativePath)];
+      for (const candidate of logicalCandidates) {
+        const logical = normalizeScanLogicalCandidate(candidate, observation, relativePath);
+        upsertLogical.run(
+          identity.scanId, identity.folderId, logical.logicalStorageId, logical.relativePath,
+          logical.path, logical.fileIdentity, logical.size, logical.mtimeMs, logicalSequence++,
+          logical.sourceKind, logical.entryKey, logical.cueRelativePath, logical.startFrame,
+          logical.endFrame, logical.cueSignature, logical.metadataJson
+        );
+      }
     }
     if (payload.cursor.lastRelativePath !== lastRelativePath) {
       throw createCatalogError('staleScanCursor', 'Scan cursor does not match the committed batch');
@@ -5924,6 +6083,474 @@ function commitScanSeenBatch(payload) {
   });
 }
 
+function cueDirectoryStage(payload) {
+  const identity = requireScanIdentity(payload);
+  const action = requireString(payload.action, 'action', 64);
+  const directoryPath = normalizeCueStageDirectory(payload.directoryPath);
+  requireScanState(identity);
+  const context = { identity, directoryPath, payload };
+  switch (action) {
+    case 'reset':
+    case 'clear': return resetCueDirectoryStage(context);
+    case 'append-entries': return appendCueDirectoryStageEntries(context);
+    case 'list-files': return listCueDirectoryStageFiles(context);
+    case 'get-file': return getCueDirectoryStageFile(context);
+    case 'update-observations': return updateCueDirectoryStageObservations(context);
+    case 'resolve-references': return resolveCueDirectoryStageReferences(context);
+    case 'stage-sheet': return stageCueDirectorySheet(context);
+    case 'list-sources': return listCueDirectoryStageSources(context);
+    case 'update-source': return updateCueDirectoryStageSource(context);
+    case 'list-sheets': return listCueDirectoryStageSheets(context);
+    case 'get-source-metadata': return getCueDirectoryStageSourceMetadata(context);
+    case 'validate-sheet': return validateCueDirectoryStageSheet(context);
+    case 'accept-sheet': return acceptCueDirectoryStageSheet(context);
+    case 'list-logical': return listCueDirectoryStageLogical(context);
+    default: throw createCatalogError('invalidScanRequest', 'Unknown CUE staging action');
+  }
+}
+
+function resetCueDirectoryStage({ identity, directoryPath }) {
+  return runDurableTransaction(() => {
+    clearCueDirectoryStageRows(identity, directoryPath);
+    return { cleared: true };
+  });
+}
+
+function clearCueDirectoryStageRows(identity, directoryPath) {
+  for (const table of [
+    'scan_cue_stage_owners', 'scan_cue_stage_tracks',
+    'scan_cue_stage_sheets', 'scan_cue_stage_files'
+  ]) {
+    database.prepare(`DELETE FROM ${table} WHERE scan_id = ? AND folder_id = ? AND directory_path = ?`)
+      .run(identity.scanId, identity.folderId, directoryPath);
+  }
+}
+
+function clearCueScanStageRows(identity) {
+  for (const table of [
+    'scan_cue_stage_owners', 'scan_cue_stage_tracks',
+    'scan_cue_stage_sheets', 'scan_cue_stage_files'
+  ]) {
+    database.prepare(`DELETE FROM ${table} WHERE scan_id = ? AND folder_id = ?`)
+      .run(identity.scanId, identity.folderId);
+  }
+}
+
+function normalizeCueStageDirectory(value) {
+  const path = String(value ?? '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  if (path.split('/').includes('..') || path.includes('\0')) {
+    throw createCatalogError('invalidScanPath', 'CUE staging directory is invalid');
+  }
+  return path;
+}
+
+function cueStageParentPath(value) {
+  const index = value.lastIndexOf('/');
+  return index < 0 ? '' : value.slice(0, index);
+}
+
+function cueStageFileName(value) {
+  const index = value.lastIndexOf('/');
+  return index < 0 ? value : value.slice(index + 1);
+}
+
+function appendCueDirectoryStageEntries({ identity, directoryPath, payload }) {
+  const entries = validateBatch(payload.entries, 'entries');
+  if (entries.length < 1 || entries.length > 500 || measureBytes(entries, 'batchTooLarge') > 4 * 1024 * 1024) {
+    throw createCatalogError('batchLimitExceeded', 'CUE staging batch exceeds 500 rows or 4 MiB');
+  }
+  return runDurableTransaction(() => {
+    const insert = database.prepare(`
+      INSERT INTO scan_cue_stage_files(
+        scan_id, folder_id, directory_path, relative_path, entry_sequence, entry_kind,
+        canonical_path, file_name_nfc, file_name_folded
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(scan_id, folder_id, directory_path, relative_path) DO UPDATE SET
+        entry_sequence = excluded.entry_sequence, entry_kind = excluded.entry_kind,
+        canonical_path = excluded.canonical_path, file_name_nfc = excluded.file_name_nfc,
+        file_name_folded = excluded.file_name_folded,
+        file_identity = NULL, size = NULL, mtime_ms = NULL,
+        metadata_status = NULL, metadata_json = NULL
+    `);
+    for (const entry of entries) {
+      const relativePath = normalizeRelativePath(requireString(entry.relativePath, 'relativePath', 32768));
+      if (cueStageParentPath(relativePath) !== directoryPath) {
+        throw createCatalogError('invalidScanPath', 'CUE staging entry is outside its directory');
+      }
+      const kind = entry.kind === 'cue' ? 'cue' : entry.kind === 'audio' ? 'audio' : null;
+      if (!kind) throw createCatalogError('invalidScanRequest', 'CUE staging entry kind is invalid');
+      const fileName = cueStageFileName(relativePath).normalize('NFC');
+      insert.run(
+        identity.scanId, identity.folderId, directoryPath, relativePath,
+        requireNonNegativeInteger(entry.sequence, 'sequence'), kind,
+        optionalNullableString(entry.path, 32768), fileName, fileName.toLowerCase()
+      );
+    }
+    return { staged: entries.length };
+  });
+}
+
+function listCueDirectoryStageFiles({ identity, directoryPath, payload }) {
+  const cursor = payload.cursor == null ? -1 : requireNonNegativeInteger(payload.cursor, 'cursor');
+  const limit = requirePositiveInteger(payload.limit, 'limit');
+  if (limit > 500) throw createCatalogError('batchLimitExceeded', 'CUE staging page exceeds 500 rows');
+  const kind = payload.kind == null ? null : requireString(payload.kind, 'kind', 16);
+  if (kind !== null && kind !== 'cue' && kind !== 'audio') {
+    throw createCatalogError('invalidScanRequest', 'CUE staging file filter is invalid');
+  }
+  const rows = database.prepare(`
+    SELECT relative_path AS relativePath, canonical_path AS path, entry_sequence AS sequence,
+      entry_kind AS kind, file_identity AS fileIdentity, size, mtime_ms AS mtimeMs,
+      metadata_status AS metadataStatus
+    FROM scan_cue_stage_files
+    WHERE scan_id = ? AND folder_id = ? AND directory_path = ? AND entry_sequence > ?
+      AND (? IS NULL OR entry_kind = ?)
+    ORDER BY entry_sequence
+    LIMIT ?
+  `).all(identity.scanId, identity.folderId, directoryPath, cursor, kind, kind, limit + 1);
+  const items = rows.slice(0, limit);
+  return {
+    items,
+    nextCursor: rows.length > limit ? Number(items.at(-1).sequence) : null
+  };
+}
+
+function getCueDirectoryStageFile({ identity, directoryPath, payload }) {
+  const relativePath = normalizeRelativePath(requireString(payload.relativePath, 'relativePath', 32768));
+  const file = database.prepare(`
+    SELECT relative_path AS relativePath, canonical_path AS path, entry_sequence AS sequence,
+      entry_kind AS kind, file_identity AS fileIdentity, size, mtime_ms AS mtimeMs,
+      metadata_status AS metadataStatus
+    FROM scan_cue_stage_files
+    WHERE scan_id = ? AND folder_id = ? AND directory_path = ? AND relative_path = ?
+  `).get(identity.scanId, identity.folderId, directoryPath, relativePath);
+  if (!file) throw createCatalogError('staleScanGeneration', 'CUE staging entry disappeared');
+  return { file };
+}
+
+function updateCueDirectoryStageObservations({ identity, directoryPath, payload }) {
+  const observations = validateBatch(payload.observations, 'observations');
+  if (observations.length < 1 || observations.length > 500 || measureBytes(observations, 'batchTooLarge') > 4 * 1024 * 1024) {
+    throw createCatalogError('batchLimitExceeded', 'CUE observation staging batch exceeds 500 rows or 4 MiB');
+  }
+  return runDurableTransaction(() => {
+    const update = database.prepare(`
+      UPDATE scan_cue_stage_files SET canonical_path = ?, file_identity = ?, size = ?, mtime_ms = ?
+      WHERE scan_id = ? AND folder_id = ? AND directory_path = ? AND relative_path = ?
+    `);
+    for (const observation of observations) {
+      const relativePath = normalizeRelativePath(requireString(observation.relativePath, 'relativePath', 32768));
+      const result = update.run(
+        optionalNullableString(observation.path, 32768),
+        optionalString(observation.fileIdentity, '', 2048),
+        requireNonNegativeInteger(observation.size, 'size'),
+        requireNonNegativeInteger(Math.round(observation.mtimeMs), 'mtimeMs'),
+        identity.scanId, identity.folderId, directoryPath, relativePath
+      );
+      if (Number(result.changes) !== 1) throw createCatalogError('staleScanGeneration', 'CUE staging entry disappeared');
+    }
+    return { updated: observations.length };
+  });
+}
+
+function resolveCueDirectoryStageReferences({ identity, directoryPath, payload }) {
+  const references = validateBatch(payload.references, 'references');
+  if (references.length > 99) throw createCatalogError('batchLimitExceeded', 'CUE reference page exceeds 99 rows');
+  const selectExact = database.prepare(`
+    SELECT relative_path AS relativePath FROM scan_cue_stage_files
+    WHERE scan_id = ? AND folder_id = ? AND directory_path = ?
+      AND entry_kind = 'audio' AND file_name_nfc = ?
+    ORDER BY entry_sequence
+  `);
+  const selectFolded = database.prepare(`
+    SELECT relative_path AS relativePath FROM scan_cue_stage_files
+    WHERE scan_id = ? AND folder_id = ? AND directory_path = ?
+      AND entry_kind = 'audio' AND file_name_folded = ?
+    ORDER BY entry_sequence
+  `);
+  const paths = new Set();
+  for (const reference of references) {
+    const name = requireString(reference, 'reference', 32768).normalize('NFC');
+    const exact = selectExact.all(identity.scanId, identity.folderId, directoryPath, name);
+    const matches = exact.length
+      ? exact
+      : selectFolded.all(identity.scanId, identity.folderId, directoryPath, name.toLowerCase());
+    for (const row of matches) paths.add(row.relativePath);
+  }
+  return { availableRelativePaths: [...paths] };
+}
+
+function stageCueDirectorySheet({ identity, directoryPath, payload }) {
+  const cue = payload.cue;
+  if (!isPlainObject(cue) || cue.ok !== true || !Array.isArray(cue.tracks) || cue.tracks.length > 99) {
+    throw createCatalogError('invalidScanRequest', 'Resolved CUE staging payload is invalid');
+  }
+  const cueRelativePath = normalizeRelativePath(requireString(cue.cueRelativePath, 'cueRelativePath', 32768));
+  if (measureBytes(cue, 'batchTooLarge') > 4 * 1024 * 1024) {
+    throw createCatalogError('batchLimitExceeded', 'Resolved CUE staging payload exceeds 4 MiB');
+  }
+  return runDurableTransaction(() => {
+    database.prepare(`
+      INSERT INTO scan_cue_stage_sheets(
+        scan_id, folder_id, directory_path, cue_relative_path, cue_order_key,
+        cue_signature, status, accepted, disc_json, track_total
+      ) VALUES (?, ?, ?, ?, ?, ?, 'parsed', 0, ?, ?)
+      ON CONFLICT(scan_id, folder_id, directory_path, cue_relative_path) DO UPDATE SET
+        cue_order_key = excluded.cue_order_key, cue_signature = excluded.cue_signature,
+        status = 'parsed', accepted = 0, disc_json = excluded.disc_json,
+        track_total = excluded.track_total
+    `).run(
+      identity.scanId, identity.folderId, directoryPath, cueRelativePath,
+      requireString(payload.cueOrderKey, 'cueOrderKey', 131072),
+      requireString(payload.cueSignature, 'cueSignature', 256),
+      JSON.stringify(cue.disc ?? {}), cue.tracks.length
+    );
+    database.prepare(`
+      DELETE FROM scan_cue_stage_tracks
+      WHERE scan_id = ? AND folder_id = ? AND directory_path = ? AND cue_relative_path = ?
+    `).run(identity.scanId, identity.folderId, directoryPath, cueRelativePath);
+    const insertTrack = database.prepare(`
+      INSERT INTO scan_cue_stage_tracks(
+        scan_id, folder_id, directory_path, cue_relative_path, track_no,
+        source_relative_path, track_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const track of cue.tracks) {
+      insertTrack.run(
+        identity.scanId, identity.folderId, directoryPath, cueRelativePath,
+        requirePositiveInteger(track.trackNo, 'trackNo'),
+        normalizeRelativePath(requireString(track.relativePath, 'sourceRelativePath', 32768)),
+        JSON.stringify(track)
+      );
+    }
+    return { staged: true };
+  });
+}
+
+function listCueDirectoryStageSources({ identity, directoryPath, payload }) {
+  const cursor = payload.cursor == null ? -1 : requireNonNegativeInteger(payload.cursor, 'cursor');
+  const limit = requirePositiveInteger(payload.limit, 'limit');
+  if (limit > 500) throw createCatalogError('batchLimitExceeded', 'CUE source staging page exceeds 500 rows');
+  const rows = database.prepare(`
+    SELECT f.relative_path AS relativePath, f.canonical_path AS path,
+      f.file_identity AS fileIdentity, f.size, f.mtime_ms AS mtimeMs,
+      f.entry_sequence AS sequence
+    FROM scan_cue_stage_files f
+    WHERE f.scan_id = ? AND f.folder_id = ? AND f.directory_path = ?
+      AND f.entry_kind = 'audio' AND f.entry_sequence > ?
+      AND EXISTS(
+        SELECT 1 FROM scan_cue_stage_tracks t
+        JOIN scan_cue_stage_sheets s
+          ON s.scan_id = t.scan_id AND s.folder_id = t.folder_id
+          AND s.directory_path = t.directory_path AND s.cue_relative_path = t.cue_relative_path
+        WHERE t.scan_id = f.scan_id AND t.folder_id = f.folder_id
+          AND t.directory_path = f.directory_path AND t.source_relative_path = f.relative_path
+          AND s.status = 'parsed'
+      )
+    ORDER BY f.entry_sequence
+    LIMIT ?
+  `).all(identity.scanId, identity.folderId, directoryPath, cursor, limit + 1);
+  const items = rows.slice(0, limit);
+  return {
+    items,
+    nextCursor: rows.length > limit ? Number(items.at(-1).sequence) : null
+  };
+}
+
+function updateCueDirectoryStageSource({ identity, directoryPath, payload }) {
+  const relativePath = normalizeRelativePath(requireString(payload.relativePath, 'relativePath', 32768));
+  const status = payload.metadataStatus === 'ok' ? 'ok' : payload.metadataStatus === 'terminal' ? 'terminal' : null;
+  if (!status) throw createCatalogError('invalidScanRequest', 'CUE source metadata status is invalid');
+  return runDurableTransaction(() => {
+    const result = database.prepare(`
+      UPDATE scan_cue_stage_files SET metadata_status = ?, metadata_json = ?
+      WHERE scan_id = ? AND folder_id = ? AND directory_path = ? AND relative_path = ?
+    `).run(
+      status, status === 'ok' ? JSON.stringify(payload.metadata ?? {}) : null,
+      identity.scanId, identity.folderId, directoryPath, relativePath
+    );
+    if (Number(result.changes) !== 1) throw createCatalogError('staleScanGeneration', 'CUE source staging entry disappeared');
+    return { updated: true };
+  });
+}
+
+function listCueDirectoryStageSheets({ identity, directoryPath, payload }) {
+  const status = requireString(payload.status, 'status', 16);
+  if (status !== 'parsed' && status !== 'valid') {
+    throw createCatalogError('invalidScanRequest', 'CUE sheet staging status is invalid');
+  }
+  const cursorKey = payload.cursor?.cueOrderKey ?? '';
+  const cursorPath = payload.cursor?.cueRelativePath ?? '';
+  const limit = requirePositiveInteger(payload.limit, 'limit');
+  if (limit > 10) throw createCatalogError('batchLimitExceeded', 'CUE sheet staging page exceeds 10 rows');
+  const rows = database.prepare(`
+    SELECT cue_relative_path AS cueRelativePath, cue_order_key AS cueOrderKey,
+      cue_signature AS cueSignature
+    FROM scan_cue_stage_sheets
+    WHERE scan_id = ? AND folder_id = ? AND directory_path = ? AND status = ?
+      AND (cue_order_key > ? OR (cue_order_key = ? AND cue_relative_path > ?))
+    ORDER BY cue_order_key, cue_relative_path
+    LIMIT ?
+  `).all(
+    identity.scanId, identity.folderId, directoryPath, status,
+    String(cursorKey), String(cursorKey), String(cursorPath), limit
+  );
+  const items = rows.slice(0, limit).map(row => ({
+    cueRelativePath: row.cueRelativePath,
+    cueOrderKey: row.cueOrderKey,
+    cueSignature: row.cueSignature
+  }));
+  return {
+    items,
+    nextCursor: items.length === limit
+      ? { cueOrderKey: items.at(-1).cueOrderKey, cueRelativePath: items.at(-1).cueRelativePath }
+      : null
+  };
+}
+
+function getCueDirectoryStageSourceMetadata({ identity, directoryPath, payload }) {
+  const paths = validateBatch(payload.relativePaths, 'relativePaths');
+  if (paths.length > 99) throw createCatalogError('batchLimitExceeded', 'CUE source metadata request exceeds 99 rows');
+  const select = database.prepare(`
+    SELECT relative_path AS relativePath, metadata_status AS metadataStatus, metadata_json AS metadataJson
+    FROM scan_cue_stage_files
+    WHERE scan_id = ? AND folder_id = ? AND directory_path = ? AND relative_path = ?
+  `);
+  return {
+    items: paths.map(path => {
+      const relativePath = normalizeRelativePath(requireString(path, 'relativePath', 32768));
+      const row = select.get(identity.scanId, identity.folderId, directoryPath, relativePath);
+      if (!row) throw createCatalogError('staleScanGeneration', 'CUE source staging entry disappeared');
+      return {
+        relativePath,
+        metadataStatus: row.metadataStatus,
+        metadata: row.metadataJson ? JSON.parse(row.metadataJson) : null
+      };
+    })
+  };
+}
+
+function validateCueDirectoryStageSheet({ identity, directoryPath, payload }) {
+  const cueRelativePath = normalizeRelativePath(requireString(payload.cueRelativePath, 'cueRelativePath', 32768));
+  const status = payload.valid === true ? 'valid' : 'invalid';
+  return runDurableTransaction(() => {
+    const result = database.prepare(`
+      UPDATE scan_cue_stage_sheets SET status = ?, accepted = 0
+      WHERE scan_id = ? AND folder_id = ? AND directory_path = ? AND cue_relative_path = ?
+    `).run(
+      status, identity.scanId, identity.folderId, directoryPath, cueRelativePath
+    );
+    if (Number(result.changes) !== 1) throw createCatalogError('staleScanGeneration', 'CUE sheet staging entry disappeared');
+    if (payload.valid === true) {
+      const durations = validateBatch(payload.durations, 'durations');
+      if (durations.length > 99) throw createCatalogError('batchLimitExceeded', 'CUE duration staging exceeds 99 rows');
+      const update = database.prepare(`
+        UPDATE scan_cue_stage_tracks SET duration_sec = ?
+        WHERE scan_id = ? AND folder_id = ? AND directory_path = ?
+          AND cue_relative_path = ? AND track_no = ?
+      `);
+      for (const item of durations) {
+        const durationSec = Number(item.durationSec);
+        if (!Number.isFinite(durationSec) || durationSec <= 0) {
+          throw createCatalogError('invalidScanRequest', 'CUE logical duration is invalid');
+        }
+        if (Number(update.run(
+          durationSec, identity.scanId, identity.folderId, directoryPath,
+          cueRelativePath, requirePositiveInteger(item.trackNo, 'trackNo')
+        ).changes) !== 1) throw createCatalogError('staleScanGeneration', 'CUE staged track disappeared');
+      }
+      const missing = database.prepare(`
+        SELECT count(*) AS count FROM scan_cue_stage_tracks
+        WHERE scan_id = ? AND folder_id = ? AND directory_path = ?
+          AND cue_relative_path = ? AND duration_sec IS NULL
+      `).get(identity.scanId, identity.folderId, directoryPath, cueRelativePath);
+      if (Number(missing.count) !== 0) throw createCatalogError('invalidScanRequest', 'CUE logical durations are incomplete');
+    }
+    return { updated: true };
+  });
+}
+
+function acceptCueDirectoryStageSheet({ identity, directoryPath, payload }) {
+  const cueRelativePath = normalizeRelativePath(requireString(payload.cueRelativePath, 'cueRelativePath', 32768));
+  return runDurableTransaction(() => {
+    const sources = database.prepare(`
+      SELECT DISTINCT source_relative_path AS relativePath
+      FROM scan_cue_stage_tracks
+      WHERE scan_id = ? AND folder_id = ? AND directory_path = ? AND cue_relative_path = ?
+    `).all(identity.scanId, identity.folderId, directoryPath, cueRelativePath);
+    const collision = database.prepare(`
+      SELECT 1 FROM scan_cue_stage_owners
+      WHERE scan_id = ? AND folder_id = ? AND directory_path = ? AND source_relative_path = ?
+    `);
+    if (sources.some(source => collision.get(
+      identity.scanId, identity.folderId, directoryPath, source.relativePath
+    ))) {
+      database.prepare(`
+        UPDATE scan_cue_stage_sheets SET status = 'invalid', accepted = 0
+        WHERE scan_id = ? AND folder_id = ? AND directory_path = ? AND cue_relative_path = ?
+      `).run(identity.scanId, identity.folderId, directoryPath, cueRelativePath);
+      return { accepted: false };
+    }
+    const insert = database.prepare(`
+      INSERT INTO scan_cue_stage_owners(
+        scan_id, folder_id, directory_path, source_relative_path, cue_relative_path
+      ) VALUES (?, ?, ?, ?, ?)
+    `);
+    for (const source of sources) {
+      insert.run(identity.scanId, identity.folderId, directoryPath, source.relativePath, cueRelativePath);
+    }
+    const result = database.prepare(`
+      UPDATE scan_cue_stage_sheets SET accepted = 1
+      WHERE scan_id = ? AND folder_id = ? AND directory_path = ?
+        AND cue_relative_path = ? AND status = 'valid'
+    `).run(identity.scanId, identity.folderId, directoryPath, cueRelativePath);
+    return { accepted: Number(result.changes) === 1 };
+  });
+}
+
+function listCueDirectoryStageLogical({ identity, directoryPath, payload }) {
+  const relativePath = normalizeRelativePath(requireString(payload.relativePath, 'relativePath', 32768));
+  const cursor = payload.cursor == null ? 0 : requireNonNegativeInteger(payload.cursor, 'cursor');
+  const limit = requirePositiveInteger(payload.limit, 'limit');
+  if (limit > 8) throw createCatalogError('batchLimitExceeded', 'CUE logical staging page is too large');
+  const sheet = database.prepare(`
+    SELECT s.cue_relative_path AS cueRelativePath, s.cue_signature AS cueSignature,
+      s.disc_json AS discJson, s.track_total AS trackTotal, f.metadata_json AS metadataJson
+    FROM scan_cue_stage_owners o
+    JOIN scan_cue_stage_sheets s
+      ON s.scan_id = o.scan_id AND s.folder_id = o.folder_id
+      AND s.directory_path = o.directory_path AND s.cue_relative_path = o.cue_relative_path
+    JOIN scan_cue_stage_files f
+      ON f.scan_id = o.scan_id AND f.folder_id = o.folder_id
+      AND f.directory_path = o.directory_path AND f.relative_path = o.source_relative_path
+    WHERE o.scan_id = ? AND o.folder_id = ? AND o.directory_path = ?
+      AND o.source_relative_path = ? AND s.accepted = 1
+  `).get(identity.scanId, identity.folderId, directoryPath, relativePath);
+  if (!sheet) return { sheet: null, items: [], nextCursor: null };
+  const tracks = database.prepare(`
+    SELECT track_no AS trackNo, track_json AS trackJson, duration_sec AS durationSec
+    FROM scan_cue_stage_tracks
+    WHERE scan_id = ? AND folder_id = ? AND directory_path = ?
+      AND cue_relative_path = ? AND source_relative_path = ? AND track_no > ?
+    ORDER BY track_no
+    LIMIT ?
+  `).all(
+    identity.scanId, identity.folderId, directoryPath,
+    sheet.cueRelativePath, relativePath, cursor, limit
+  );
+  return {
+    sheet: {
+      cueRelativePath: sheet.cueRelativePath,
+      cueSignature: sheet.cueSignature,
+      disc: JSON.parse(sheet.discJson),
+      trackTotal: Number(sheet.trackTotal),
+      metadata: sheet.metadataJson ? JSON.parse(sheet.metadataJson) : {}
+    },
+    items: tracks.map(row => ({ ...JSON.parse(row.trackJson), durationSec: Number(row.durationSec) })),
+    nextCursor: tracks.length === limit ? Number(tracks.at(-1).trackNo) : null
+  };
+}
+
 function listMetadataCandidates(payload) {
   assertAllowedFields(payload, [
     'scanId', 'folderId', 'generation', 'expectedLifecycleVersion', 'cursor', 'limit', 'parserVersion'
@@ -5932,17 +6559,25 @@ function listMetadataCandidates(payload) {
   const limit = normalizeQueryLimit(payload.limit);
   const cursor = payload.cursor == null ? -1 : requireNonNegativeInteger(payload.cursor, 'cursor');
   const rows = database.prepare(`
-    SELECT s.relative_path AS relativePath, s.canonical_path AS path,
+    SELECT s.logical_storage_id AS logicalStorageId, s.relative_path AS relativePath, s.canonical_path AS path,
       s.file_identity AS observedFileIdentity, s.size AS observedSize, s.mtime_ms AS observedMtimeMs,
       s.observation_sequence AS observationSequence,
-      t.track_uid AS trackUid, t.file_identity AS storedFileIdentity,
+      s.source_kind AS sourceKind, s.entry_key AS entryKey, s.cue_relative_path AS cueRelativePath,
+      s.start_frame AS startFrame, s.end_frame AS endFrame, s.cue_signature AS cueSignature,
+      s.metadata_json AS metadataJson,
+      t.track_uid AS trackUid, t.relative_path AS storedRelativePath,
+      t.file_identity AS storedFileIdentity,
       t.size AS storedSize, t.mtime_ms AS storedMtimeMs,
+      t.cue_signature AS storedCueSignature,
       t.metadata_status AS metadataStatus,
       t.metadata_attempt_count AS metadataAttemptCount,
       t.metadata_last_attempt_generation AS metadataLastAttemptGeneration,
       t.metadata_parser_version AS metadataParserVersion
-    FROM scan_seen s
-    LEFT JOIN tracks t ON t.folder_id = s.folder_id AND t.relative_path = s.relative_path
+    FROM scan_logical_seen s
+    LEFT JOIN tracks t ON t.folder_id = s.folder_id AND (
+      (s.source_kind = 'file' AND t.source_kind = 'file' AND t.relative_path = s.relative_path)
+      OR (s.source_kind = 'cue-track' AND t.source_kind = 'cue-track' AND t.entry_key = s.entry_key)
+    )
     WHERE s.scan_id = ? AND s.folder_id = ? AND s.observation_sequence > ?
     ORDER BY s.observation_sequence LIMIT ?
   `).all(identity.scanId, identity.folderId, cursor, limit + 1);
@@ -5954,11 +6589,14 @@ function listMetadataCandidates(payload) {
       lifecycleVersion: identity.lifecycleVersion,
       generation: identity.generation,
       trackUid: row.trackUid ?? null,
+      logicalStorageId: row.logicalStorageId,
       relativePath: row.relativePath,
       path: row.path,
-      parserVersion: payload.parserVersion ?? 'catalog-metadata-v2',
-      storedParserVersion: row.metadataParserVersion ?? null,
-      storedSignature: row.trackUid ? {
+      parserVersion: payload.parserVersion ?? 'catalog-metadata-v3',
+      storedParserVersion: row.sourceKind === 'cue-track' && row.storedCueSignature !== row.cueSignature
+        ? null
+        : row.metadataParserVersion ?? null,
+      storedSignature: row.trackUid && row.storedRelativePath === row.relativePath ? {
         fileIdentity: row.storedFileIdentity ?? '',
         size: Number(row.storedSize ?? 0),
         mtimeMs: Number(row.storedMtimeMs ?? 0)
@@ -5968,6 +6606,14 @@ function listMetadataCandidates(payload) {
         size: Number(row.observedSize),
         mtimeMs: Number(row.observedMtimeMs)
       },
+      sourceKind: row.sourceKind,
+      entryKey: row.entryKey ?? null,
+      cueRelativePath: row.cueRelativePath ?? null,
+      startFrame: row.startFrame == null ? null : Number(row.startFrame),
+      endFrame: row.endFrame == null ? null : Number(row.endFrame),
+      cueSignature: row.cueSignature ?? null,
+      storedCueSignature: row.storedCueSignature ?? null,
+      metadata: row.metadataJson == null ? null : JSON.parse(row.metadataJson),
       metadataStatus: row.metadataStatus ?? 'retryable-error',
       attemptsForSignature: Number(row.metadataAttemptCount ?? 0),
       attemptedGeneration: row.metadataLastAttemptGeneration == null ? null : Number(row.metadataLastAttemptGeneration)
@@ -6061,7 +6707,8 @@ function enqueueScanSweep(payload) {
     .run(Date.now(), identity.scanId, identity.folderId, identity.generation);
   const row = database.prepare(`
     SELECT count(*) AS count FROM tracks t WHERE t.folder_id = ? AND NOT EXISTS(
-      SELECT 1 FROM scan_seen s WHERE s.scan_id = ? AND s.folder_id = ? AND s.relative_path = t.relative_path
+      SELECT 1 FROM scan_logical_seen s WHERE s.scan_id = ? AND s.folder_id = ?
+        AND s.logical_storage_id = CASE WHEN t.source_kind = 'cue-track' THEN t.entry_key ELSE 'file:' || t.relative_path END
     )
   `).get(identity.folderId, identity.scanId, identity.folderId);
   return { enqueued: Number(row.count) };
@@ -6075,13 +6722,21 @@ function runScanSweep(payload) {
   }
   const rows = database.prepare(`
       SELECT t.track_uid AS trackUid, t.track_key AS trackKey, t.search_text AS searchText,
-        t.relative_path AS relativePath, t.file_name AS fileName, t.title, t.artist, t.duration_sec AS durationSec
+        t.folder_id AS folderId, t.relative_path AS relativePath, t.file_name AS fileName,
+        t.title, t.artist, t.duration_sec AS durationSec,
+        t.source_kind AS sourceKind, t.entry_key AS entryKey, t.cue_relative_path AS cueRelativePath,
+        t.start_frame AS startFrame, t.end_frame AS endFrame
       FROM tracks t WHERE t.folder_id = ? AND NOT EXISTS(
-        SELECT 1 FROM scan_seen s WHERE s.scan_id = ? AND s.folder_id = ? AND s.relative_path = t.relative_path
+        SELECT 1 FROM scan_logical_seen s WHERE s.scan_id = ? AND s.folder_id = ?
+          AND s.logical_storage_id = CASE WHEN t.source_kind = 'cue-track' THEN t.entry_key ELSE 'file:' || t.relative_path END
       ) ORDER BY t.track_key LIMIT ?
-    `).all(identity.folderId, identity.scanId, identity.folderId, FOLDER_DELETION_TRACKS_PER_CHUNK);
+  `).all(identity.folderId, identity.scanId, identity.folderId, FOLDER_DELETION_TRACKS_PER_CHUNK);
   if (rows.length === 0) return { deleted: 0, hasMore: false };
-  const result = commitMutation(
+  return deleteScanSweepRows(identity, rows);
+}
+
+function deleteScanSweepRows(identity, rows) {
+  return commitMutation(
     ['tracks', 'playlists', 'albums', 'artists', 'genres', 'subfolders'],
     'scan-sweep',
     () => {
@@ -6111,7 +6766,6 @@ function runScanSweep(payload) {
     },
     { deferInvalidationKey: entityAggregationScanKey(identity) }
   );
-  return result;
 }
 
 function repairPlaylistItemsForTrack(track, limit, deletionJobId) {
@@ -6154,7 +6808,7 @@ function repairPlaylistItemsForTrack(track, limit, deletionJobId) {
 }
 
 function createSourceRemovedPlaylistItem(track) {
-  return {
+  const unresolved = {
     version: 1,
     reason: 'source-removed',
     relativePath: track.relativePath,
@@ -6162,8 +6816,24 @@ function createSourceRemovedPlaylistItem(track) {
     fileName: track.fileName,
     title: track.title,
     artist: track.artist,
-    durationSec: track.durationSec
+    durationSec: track.durationSec,
+    sourceKind: track.sourceKind ?? 'file',
+    entryKey: track.entryKey ?? null,
+    cueRelativePath: track.cueRelativePath ?? null,
+    startFrame: track.startFrame == null ? null : Number(track.startFrame),
+    endFrame: track.endFrame == null ? null : Number(track.endFrame)
   };
+  if (unresolved.sourceKind === 'cue-track') {
+    unresolved.cueProvenance = {
+      folderId: track.folderId,
+      entryKey: unresolved.entryKey,
+      cueRelativePath: unresolved.cueRelativePath,
+      relativePath: unresolved.relativePath,
+      startFrame: unresolved.startFrame,
+      endFrame: unresolved.endFrame
+    };
+  }
+  return unresolved;
 }
 
 function completeTrackDeletionRepair(jobId, trackUid, state) {
@@ -6184,6 +6854,10 @@ function completeScanFolderNoSweep(payload) {
 }
 
 function pauseScanFolder(payload) {
+  const identity = requireScanIdentity(payload);
+  if (requireScanState(identity).status === 'sweeping') {
+    return { status: 'sweeping', destructiveCommitRetained: true };
+  }
   return setScanTerminal(payload, 'paused');
 }
 
@@ -6219,6 +6893,7 @@ function setScanTerminal(payload, status) {
         WHERE kind = 'scan-sweep' AND state = 'active' AND scan_id = ? AND folder_id = ?
       `).run(now, identity.scanId, identity.folderId);
     }
+    clearCueScanStageRows(identity);
     if (status === 'completed' || status === 'completed-no-sweep') {
       playlistResolutionQueued = ensurePlaylistResolutionJob(identity);
     }
@@ -6226,6 +6901,7 @@ function setScanTerminal(payload, status) {
     return { status };
   });
   const scanKey = entityAggregationScanKey(identity);
+  pendingScanSweepRecoveries.delete(scanKey);
   pendingEntityAggregationScans.delete(scanKey);
   flushPendingScanInvalidation(scanKey);
   if (status !== 'completed' || playlistResolutionQueued || entityAggregationQueued) {
@@ -6246,29 +6922,39 @@ function claimMetadataParseBatch(payload) {
 
 function claimMetadataParse(payload) {
   assertAllowedFields(payload, [
-    'folderId', 'trackUid', 'lifecycleVersion', 'generation', 'relativePath',
-    'parserVersion', 'signature', 'explicitRescan'
+    'folderId', 'trackUid', 'logicalStorageId', 'lifecycleVersion', 'generation', 'relativePath',
+    'parserVersion', 'signature', 'cueSignature', 'sourceKind', 'entryKey', 'cueRelativePath',
+    'startFrame', 'endFrame', 'explicitRescan'
   ], 'invalidMetadataClaim');
   const folderId = requireString(payload.folderId, 'folderId', 512);
   const lifecycleVersion = requireNonNegativeInteger(payload.lifecycleVersion, 'lifecycleVersion');
   const generation = requireNonNegativeInteger(payload.generation, 'generation');
   const relativePath = normalizeRelativePath(requireString(payload.relativePath, 'relativePath', 32768));
+  const logicalStorageId = payload.logicalStorageId == null
+    ? `file:${relativePath}`
+    : requireString(payload.logicalStorageId, 'logicalStorageId', 32768);
+  const source = normalizeMetadataSourceDescriptor(payload, logicalStorageId, relativePath);
   const parserVersion = requireString(payload.parserVersion, 'parserVersion', 256);
   const signature = normalizeScanSignature(payload.signature);
   requireActiveScanFolder(folderId, lifecycleVersion);
   const existing = database.prepare(`
     SELECT track_uid AS trackUid, file_identity AS fileIdentity, size, mtime_ms AS mtimeMs,
+      relative_path AS relativePath,
       metadata_status AS metadataStatus, metadata_parser_version AS metadataParserVersion,
       metadata_attempt_count AS metadataAttemptCount,
       metadata_last_attempt_generation AS metadataLastAttemptGeneration,
-      artwork_id AS artworkId
-    FROM tracks WHERE folder_id = ? AND relative_path = ?
-  `).get(folderId, relativePath);
+      artwork_id AS artworkId, cue_signature AS cueSignature
+    FROM tracks WHERE folder_id = ? AND (
+      (? = 'file' AND source_kind = 'file' AND relative_path = ?)
+      OR (? = 'cue-track' AND source_kind = 'cue-track' AND entry_key = ?)
+    )
+  `).get(folderId, source.sourceKind, relativePath, source.sourceKind, source.entryKey);
   const sameInput = existing && signaturesEqual(signature, {
     fileIdentity: existing.fileIdentity ?? '',
     size: Number(existing.size ?? 0),
     mtimeMs: Number(existing.mtimeMs ?? 0)
-  }) && existing.metadataParserVersion === parserVersion;
+  }) && existing.relativePath === relativePath && existing.metadataParserVersion === parserVersion &&
+    (source.sourceKind === 'file' || existing.cueSignature === source.cueSignature);
   if (sameInput && (
     existing.metadataStatus === 'ok' || existing.metadataStatus === 'terminal-error' ||
     existing.metadataStatus === 'parsing' || Number(existing.metadataLastAttemptGeneration) === generation ||
@@ -6278,7 +6964,10 @@ function claimMetadataParse(payload) {
   const trackUid = existing?.trackUid ?? (
     payload.trackUid == null ? randomUUID() : requireString(payload.trackUid, 'trackUid', 512)
   );
-  const claim = { folderId, trackUid, lifecycleVersion, generation, relativePath, parserVersion, signature };
+  const claim = {
+    folderId, trackUid, logicalStorageId, lifecycleVersion, generation, relativePath,
+    parserVersion, signature, ...source
+  };
   const attempts = sameInput ? Number(existing.metadataAttemptCount ?? 0) + 1 : 1;
   const artworkSourceChanged = Boolean(existing?.artworkId) && !signaturesEqual(signature, {
     fileIdentity: existing.fileIdentity ?? '',
@@ -6288,16 +6977,21 @@ function claimMetadataParse(payload) {
   const changedScopes = artworkSourceChanged
     ? ['artwork', 'tracks', 'albums', 'artists', 'genres', 'subfolders']
     : ['tracks'];
+  const fileName = path.posix.basename(relativePath);
   return commitMutation(changedScopes, 'metadata-claim', () => {
     const now = Date.now();
     if (existing) {
       database.prepare(`
-        UPDATE tracks SET file_identity = ?, size = ?, mtime_ms = ?, metadata_status = 'parsing',
+        UPDATE tracks SET relative_path = ?, file_name = ?, file_identity = ?, size = ?, mtime_ms = ?,
+          source_kind = ?, entry_key = ?,
+          cue_relative_path = ?, start_frame = ?, end_frame = ?, cue_signature = ?, metadata_status = 'parsing',
           metadata_error_code = NULL, metadata_attempt_count = ?,
           metadata_last_attempt_generation = ?, metadata_parser_version = ?, updated_at = ?
         WHERE track_uid = ?
       `).run(
-        signature.fileIdentity, signature.size, signature.mtimeMs, attempts,
+        relativePath, fileName, signature.fileIdentity, signature.size, signature.mtimeMs,
+        source.sourceKind, source.entryKey,
+        source.cueRelativePath, source.startFrame, source.endFrame, source.cueSignature, attempts,
         generation, parserVersion, now, trackUid
       );
       if (artworkSourceChanged) {
@@ -6310,7 +7004,6 @@ function claimMetadataParse(payload) {
         recomputeArtworkAggregateRowsForTrack(trackUid);
       }
     } else {
-      const fileName = path.posix.basename(relativePath);
       const title = path.posix.basename(relativePath, path.posix.extname(relativePath));
       const normalize = modules.searchNormalizer.normalizeSearchText;
       const searchText = modules.searchNormalizer.createCompactSearchText([
@@ -6318,30 +7011,33 @@ function claimMetadataParse(payload) {
       ]);
       database.prepare(`
         INSERT INTO tracks(
-          track_uid, folder_id, relative_path, file_identity, file_name, size, mtime_ms,
+          track_uid, folder_id, relative_path, source_kind, entry_key, cue_relative_path,
+          start_frame, end_frame, cue_signature, file_identity, file_name, size, mtime_ms,
           title, metadata_status, metadata_attempt_count, metadata_last_attempt_generation,
           metadata_parser_version, added_at, updated_at, search_text,
           normalized_basename, normalized_title, normalized_artist
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'parsing', ?, ?, ?, ?, ?, ?, ?, ?, '')
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'parsing', ?, ?, ?, ?, ?, ?, ?, ?, '')
       `).run(
-        trackUid, folderId, relativePath, signature.fileIdentity, fileName,
+        trackUid, folderId, relativePath, source.sourceKind, source.entryKey, source.cueRelativePath,
+        source.startFrame, source.endFrame, source.cueSignature, signature.fileIdentity, fileName,
         signature.size, signature.mtimeMs, title, attempts, generation, parserVersion,
         now, now, searchText, normalize(fileName), normalize(title)
       );
     }
     database.prepare(`
       INSERT INTO metadata_claims(
-        folder_id, relative_path, track_uid, lifecycle_version, generation,
-        parser_version, signature_json, status, claimed_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'parsing', ?)
-      ON CONFLICT(folder_id, relative_path) DO UPDATE SET
+        folder_id, logical_storage_id, relative_path, track_uid, lifecycle_version, generation,
+        parser_version, signature_json, cue_signature, status, claimed_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'parsing', ?)
+      ON CONFLICT(folder_id, logical_storage_id) DO UPDATE SET
+        relative_path = excluded.relative_path,
         track_uid = excluded.track_uid, lifecycle_version = excluded.lifecycle_version,
         generation = excluded.generation, parser_version = excluded.parser_version,
-        signature_json = excluded.signature_json, status = excluded.status,
+        signature_json = excluded.signature_json, cue_signature = excluded.cue_signature, status = excluded.status,
         claimed_at = excluded.claimed_at
     `).run(
-      folderId, relativePath, trackUid, lifecycleVersion, generation,
-      parserVersion, JSON.stringify(signature), now
+      folderId, logicalStorageId, relativePath, trackUid, lifecycleVersion, generation,
+      parserVersion, JSON.stringify(signature), source.cueSignature, now
     );
     return { claim };
   }, { deferInvalidationKey: entityAggregationScanKey(claim) });
@@ -6551,8 +7247,8 @@ function completeMetadataParseSuccess(payload) {
     if (payload.deferAggregateRecompute === true) {
       pendingAggregateScanKey = ensurePendingEntityAggregationJob(claim);
     }
-    database.prepare('DELETE FROM metadata_claims WHERE folder_id = ? AND relative_path = ?')
-      .run(claim.folderId, claim.relativePath);
+    database.prepare('DELETE FROM metadata_claims WHERE folder_id = ? AND logical_storage_id = ?')
+      .run(claim.folderId, claim.logicalStorageId);
     return { committed: true };
   }, { deferInvalidationKey: entityAggregationScanKey(claim) });
   if (result.committed && pendingAggregateScanKey) {
@@ -6579,8 +7275,8 @@ function completeMetadataParseFailure(payload) {
       UPDATE tracks SET metadata_status = ?, metadata_error_code = ?, updated_at = ?
       WHERE track_uid = ? AND metadata_status = 'parsing'
     `).run(status, optionalString(payload.errorCode, 'unknown-internal', 128), Date.now(), claim.trackUid);
-    database.prepare('DELETE FROM metadata_claims WHERE folder_id = ? AND relative_path = ?')
-      .run(claim.folderId, claim.relativePath);
+    database.prepare('DELETE FROM metadata_claims WHERE folder_id = ? AND logical_storage_id = ?')
+      .run(claim.folderId, claim.logicalStorageId);
     return { committed: true };
   }, { deferInvalidationKey: entityAggregationScanKey(claim) });
 }
@@ -6641,16 +7337,47 @@ function runMetadataMutationBatch(scanKey, reason, callback) {
 }
 
 function requeueLatestMetadata(payload) {
-  assertAllowedFields(payload, ['folderId', 'relativePath', 'staleClaim', 'maxItems'], 'invalidMetadataRequeue');
+  assertAllowedFields(payload, ['folderId', 'logicalStorageId', 'relativePath', 'staleClaim', 'maxItems'], 'invalidMetadataRequeue');
   if (payload.maxItems !== 1) throw createCatalogError('invalidLimit', 'Metadata requeue is limited to one item');
   const folderId = requireString(payload.folderId, 'folderId', 512);
-  const relativePath = normalizeRelativePath(requireString(payload.relativePath, 'relativePath', 32768));
-  const track = database.prepare(`SELECT track_uid AS trackUid FROM tracks WHERE folder_id = ? AND relative_path = ?`)
-    .get(folderId, relativePath);
-  if (!track) return { requeued: 0 };
-  database.prepare(`UPDATE tracks SET metadata_status = 'retryable-error', metadata_error_code = 'stale-completion' WHERE track_uid = ?`)
-    .run(track.trackUid);
-  return { requeued: 1 };
+  normalizeRelativePath(requireString(payload.relativePath, 'relativePath', 32768));
+  const logicalStorageId = payload.logicalStorageId == null
+    ? `file:${normalizeRelativePath(payload.relativePath)}`
+    : requireString(payload.logicalStorageId, 'logicalStorageId', 32768);
+  const staleClaim = validateMetadataClaim(payload.staleClaim);
+  if (staleClaim.folderId !== folderId || staleClaim.logicalStorageId !== logicalStorageId) {
+    throw createCatalogError('invalidMetadataRequeue', 'Stale metadata claim identity does not match the requeue request');
+  }
+  const currentClaim = database.prepare(`
+    SELECT track_uid AS trackUid, lifecycle_version AS lifecycleVersion, generation
+    FROM metadata_claims WHERE folder_id = ? AND logical_storage_id = ?
+  `).get(folderId, logicalStorageId);
+  if (currentClaim && (
+    currentClaim.trackUid !== staleClaim.trackUid ||
+    Number(currentClaim.lifecycleVersion) !== staleClaim.lifecycleVersion ||
+    Number(currentClaim.generation) !== staleClaim.generation
+  )) return { requeued: 0 };
+  if (currentClaim) return { requeued: 0 };
+  const track = database.prepare(`
+    SELECT track_uid AS trackUid, file_identity AS fileIdentity, size, mtime_ms AS mtimeMs,
+      cue_signature AS cueSignature, metadata_parser_version AS parserVersion,
+      metadata_last_attempt_generation AS attemptedGeneration, metadata_status AS metadataStatus
+    FROM tracks WHERE folder_id = ? AND
+      CASE WHEN source_kind = 'cue-track' THEN entry_key ELSE 'file:' || relative_path END = ?
+  `).get(folderId, logicalStorageId);
+  if (!track || track.trackUid !== staleClaim.trackUid || track.metadataStatus !== 'parsing' ||
+      track.parserVersion !== staleClaim.parserVersion ||
+      Number(track.attemptedGeneration) !== staleClaim.generation ||
+      track.cueSignature !== staleClaim.cueSignature || !signaturesEqual(staleClaim.signature, {
+        fileIdentity: track.fileIdentity ?? '',
+        size: Number(track.size ?? 0),
+        mtimeMs: Number(track.mtimeMs ?? 0)
+      })) return { requeued: 0 };
+  const changed = database.prepare(`
+    UPDATE tracks SET metadata_status = 'retryable-error', metadata_error_code = 'stale-completion'
+    WHERE track_uid = ? AND metadata_status = 'parsing'
+  `).run(track.trackUid);
+  return { requeued: Number(changed.changes) };
 }
 
 function recoverInterruptedMetadataClaims(payload) {
@@ -6736,7 +7463,10 @@ function runFolderDeletionChunkInTransaction(folderId, lifecycleVersion, deletio
   }
   const nextTrack = database.prepare(`
       SELECT track_uid AS trackUid, track_key AS trackKey, search_text AS searchText,
-        relative_path AS relativePath, file_name AS fileName, title, artist, duration_sec AS durationSec
+        folder_id AS folderId, relative_path AS relativePath, file_name AS fileName,
+        title, artist, duration_sec AS durationSec,
+        source_kind AS sourceKind, entry_key AS entryKey, cue_relative_path AS cueRelativePath,
+        start_frame AS startFrame, end_frame AS endFrame
       FROM tracks WHERE folder_id = ? ORDER BY track_key LIMIT 1
     `);
   const deleteRepairItems = database.prepare(`
@@ -6899,14 +7629,23 @@ function listPlaylistResolutionCandidates(folderId, lifecycleVersion, cursorKey,
         SELECT 1 FROM tracks t
         JOIN folders f ON f.id = t.folder_id AND f.status <> 'removed'
           AND f.lifecycle_version = ?
-        WHERE t.folder_id = ? AND (
-          (i.unresolved_basename <> '' AND t.normalized_basename = i.unresolved_basename)
-          OR (
-            i.unresolved_title <> '' AND i.unresolved_artist <> ''
-            AND t.normalized_title = i.unresolved_title
-            AND t.normalized_artist = i.unresolved_artist
+        WHERE t.folder_id = ?
+          AND t.source_kind = CASE
+            WHEN json_extract(i.unresolved_json, '$.sourceKind') = 'cue-track'
+              OR json_type(i.unresolved_json, '$.cueProvenance') IS NOT NULL
+            THEN 'cue-track' ELSE 'file'
+          END
+          AND (
+            (t.source_kind = 'cue-track'
+              AND t.folder_id = json_extract(i.unresolved_json, '$.cueProvenance.folderId')
+              AND t.entry_key = json_extract(i.unresolved_json, '$.cueProvenance.entryKey'))
+            OR (i.unresolved_basename <> '' AND t.normalized_basename = i.unresolved_basename)
+            OR (
+              i.unresolved_title <> '' AND i.unresolved_artist <> ''
+              AND t.normalized_title = i.unresolved_title
+              AND t.normalized_artist = i.unresolved_artist
+            )
           )
-        )
       )
     ORDER BY i.item_key
     LIMIT ?
@@ -6973,12 +7712,18 @@ function scheduleDeletionMaintenance() {
       const result = runDeletionMaintenanceTurn();
       if (result.hasMore) scheduleDeletionMaintenance();
     } catch {
-      // The durable job remains active for the next startup or explicit folder removal request.
+      if (pendingScanSweepRecoveries.size > 0) scheduleDeletionMaintenance();
     }
   }, DELETION_MAINTENANCE_DELAY_MS);
 }
 
 function runDeletionMaintenanceTurn() {
+  const scanSweep = pendingScanSweepRecoveries.values().next().value;
+  if (scanSweep) {
+    const result = runScanSweep(scanSweep);
+    if (result.hasMore !== true) completeScanFolder({ ...scanSweep, status: 'completed' });
+    return { hasMore: result.hasMore === true || hasDeletionMaintenanceWork() };
+  }
   const repair = repairBlockedDeletionItems(100);
   if (repair.repaired > 0) return { hasMore: true };
   const active = database.prepare(`
@@ -7021,6 +7766,7 @@ function runDeletionMaintenanceTurn() {
 }
 
 function hasDeletionMaintenanceWork() {
+  if (pendingScanSweepRecoveries.size > 0) return true;
   return Boolean(database.prepare(`
     SELECT 1 AS pending
     WHERE EXISTS(
@@ -7215,22 +7961,107 @@ function signaturesEqual(left, right) {
     left.mtimeMs === right.mtimeMs;
 }
 
+function createPlainScanLogicalCandidate(observation, relativePath) {
+  return {
+    logicalStorageId: `file:${relativePath}`,
+    relativePath,
+    sourceKind: 'file',
+    path: observation.path ?? null
+  };
+}
+
+function normalizeScanLogicalCandidate(value, observation, observedRelativePath) {
+  if (!isPlainObject(value)) throw createCatalogError('invalidScanRequest', 'Logical scan candidate is invalid');
+  const relativePath = normalizeRelativePath(requireString(value.relativePath, 'relativePath', 32768));
+  if (relativePath !== observedRelativePath) {
+    throw createCatalogError('invalidScanRequest', 'Logical scan candidate source does not match its observation');
+  }
+  const sourceKind = value.sourceKind === 'cue-track' ? 'cue-track' : 'file';
+  const logicalStorageId = requireString(value.logicalStorageId, 'logicalStorageId', 32768);
+  const entryKey = sourceKind === 'cue-track' ? requireString(value.entryKey, 'entryKey', 32768) : null;
+  const cueRelativePath = sourceKind === 'cue-track'
+    ? normalizeRelativePath(requireString(value.cueRelativePath, 'cueRelativePath', 32768))
+    : null;
+  const startFrame = sourceKind === 'cue-track' ? requireNonNegativeInteger(value.startFrame, 'startFrame') : null;
+  const endFrame = sourceKind === 'cue-track'
+    ? optionalNullableNonNegativeInteger(value.endFrame, 'endFrame')
+    : null;
+  const cueSignature = sourceKind === 'cue-track'
+    ? requireString(value.cueSignature, 'cueSignature', 512)
+    : null;
+  if (sourceKind === 'file' && logicalStorageId !== `file:${relativePath}` ||
+      sourceKind === 'cue-track' && (logicalStorageId !== entryKey || !entryKey.startsWith(`cue:${cueRelativePath}#`)) ||
+      endFrame !== null && endFrame <= startFrame) {
+    throw createCatalogError('invalidScanRequest', 'Logical scan identity or frame range is invalid');
+  }
+  let metadataJson = null;
+  if (sourceKind === 'cue-track') {
+    metadataJson = JSON.stringify(normalizeParsedMetadata(value.metadata));
+    if (new TextEncoder().encode(metadataJson).byteLength > 64 * 1024) {
+      throw createCatalogError('batchLimitExceeded', 'Logical CUE metadata is too large');
+    }
+  }
+  return {
+    logicalStorageId,
+    relativePath,
+    path: optionalNullableString(value.path ?? observation.path, 32768),
+    fileIdentity: optionalString(observation.fileIdentity, '', 2048),
+    size: requireNonNegativeInteger(observation.size, 'size'),
+    mtimeMs: requireNonNegativeInteger(Math.round(observation.mtimeMs), 'mtimeMs'),
+    sourceKind,
+    entryKey,
+    cueRelativePath,
+    startFrame,
+    endFrame,
+    cueSignature,
+    metadataJson
+  };
+}
+
+function normalizeMetadataSourceDescriptor(value, logicalStorageId, relativePath) {
+  const sourceKind = value.sourceKind === 'cue-track' ? 'cue-track' : 'file';
+  const entryKey = sourceKind === 'cue-track' ? requireString(value.entryKey, 'entryKey', 32768) : null;
+  const cueRelativePath = sourceKind === 'cue-track'
+    ? normalizeRelativePath(requireString(value.cueRelativePath, 'cueRelativePath', 32768))
+    : null;
+  const startFrame = sourceKind === 'cue-track' ? requireNonNegativeInteger(value.startFrame, 'startFrame') : null;
+  const endFrame = sourceKind === 'cue-track'
+    ? optionalNullableNonNegativeInteger(value.endFrame, 'endFrame')
+    : null;
+  const cueSignature = sourceKind === 'cue-track'
+    ? requireString(value.cueSignature, 'cueSignature', 512)
+    : null;
+  if (sourceKind === 'file' && logicalStorageId !== `file:${relativePath}` ||
+      sourceKind === 'cue-track' && (logicalStorageId !== entryKey || !entryKey.startsWith(`cue:${cueRelativePath}#`)) ||
+      endFrame !== null && endFrame <= startFrame) {
+    throw createCatalogError('invalidMetadataClaim', 'Metadata logical identity or frame range is invalid');
+  }
+  return { sourceKind, entryKey, cueRelativePath, startFrame, endFrame, cueSignature };
+}
+
 function validateMetadataClaim(value) {
   if (!isPlainObject(value)) {
     throw createCatalogError('invalidMetadataClaim', 'Metadata claim must be an object');
   }
-  assertExactFields(value, [
-    'folderId', 'trackUid', 'lifecycleVersion', 'generation', 'relativePath',
-    'parserVersion', 'signature'
+  assertAllowedFields(value, [
+    'folderId', 'trackUid', 'logicalStorageId', 'lifecycleVersion', 'generation', 'relativePath',
+    'parserVersion', 'signature', 'cueSignature', 'sourceKind', 'entryKey', 'cueRelativePath',
+    'startFrame', 'endFrame'
   ], 'invalidMetadataClaim');
+  const relativePath = normalizeRelativePath(requireString(value.relativePath, 'relativePath', 32768));
+  const logicalStorageId = value.logicalStorageId == null
+    ? `file:${relativePath}`
+    : requireString(value.logicalStorageId, 'logicalStorageId', 32768);
   return {
     folderId: requireString(value.folderId, 'folderId', 512),
     trackUid: requireString(value.trackUid, 'trackUid', 512),
     lifecycleVersion: requireNonNegativeInteger(value.lifecycleVersion, 'lifecycleVersion'),
     generation: requireNonNegativeInteger(value.generation, 'generation'),
-    relativePath: normalizeRelativePath(requireString(value.relativePath, 'relativePath', 32768)),
+    logicalStorageId,
+    relativePath,
     parserVersion: requireString(value.parserVersion, 'parserVersion', 128),
-    signature: normalizeScanSignature(value.signature)
+    signature: normalizeScanSignature(value.signature),
+    ...normalizeMetadataSourceDescriptor(value, logicalStorageId, relativePath)
   };
 }
 
@@ -7247,9 +8078,9 @@ function currentMetadataClaim(claim) {
   const row = database.prepare(`
     SELECT track_uid AS trackUid, lifecycle_version AS lifecycleVersion,
       generation, parser_version AS parserVersion, signature_json AS signatureJson,
-      status
-    FROM metadata_claims WHERE folder_id = ? AND relative_path = ?
-  `).get(claim.folderId, claim.relativePath);
+      cue_signature AS cueSignature, status
+    FROM metadata_claims WHERE folder_id = ? AND logical_storage_id = ?
+  `).get(claim.folderId, claim.logicalStorageId);
   if (!row || row.status !== 'parsing') return null;
   let signature;
   try {
@@ -7261,6 +8092,7 @@ function currentMetadataClaim(claim) {
     Number(row.lifecycleVersion) === claim.lifecycleVersion &&
     Number(row.generation) === claim.generation &&
     row.parserVersion === claim.parserVersion &&
+    row.cueSignature === claim.cueSignature &&
     signaturesEqual(signature, claim.signature) ? row : null;
 }
 
@@ -7298,6 +8130,12 @@ function resolvePlaybackSource(payload) {
     SELECT
       t.track_uid AS trackUid,
       t.relative_path AS relativePath,
+      t.source_kind AS sourceKind,
+      t.entry_key AS entryKey,
+      t.cue_relative_path AS cueRelativePath,
+      t.start_frame AS startFrame,
+      t.end_frame AS endFrame,
+      t.duration_sec AS durationSec,
       f.id AS folderId,
       f.path AS rootPath,
       f.lifecycle_version AS lifecycleVersion,
@@ -7322,7 +8160,14 @@ function resolvePlaybackSource(payload) {
       trackUid: row.trackUid,
       folderId: row.folderId,
       lifecycleVersion: Number(row.lifecycleVersion),
-      path: candidate
+      path: candidate,
+      physicalSourceKey: createPhysicalSourceKey(row.folderId, row.relativePath),
+      sourceKind: row.sourceKind,
+      entryKey: row.entryKey ?? null,
+      cueRelativePath: row.cueRelativePath ?? null,
+      startFrame: row.startFrame == null ? null : Number(row.startFrame),
+      endFrame: row.endFrame == null ? null : Number(row.endFrame),
+      durationSec: row.durationSec == null ? null : Number(row.durationSec)
     };
   } catch (error) {
     if (error && error.code === 'sourceOutsideLibrary') throw error;
@@ -7338,6 +8183,7 @@ function closeCatalog(payload) {
     contexts.clear();
     contextWalByteCache.clear();
     pendingEntityAggregationScans.clear();
+    pendingScanSweepRecoveries.clear();
     pendingScanInvalidations.clear();
     closeDatabase();
   }
@@ -7485,6 +8331,19 @@ function normalizeRelativePath(value) {
     throw createCatalogError('invalidRelativePath', 'Track relative path is invalid');
   }
   return segments.join('/');
+}
+
+function createPhysicalSourceKey(folderId, relativePath) {
+  return `${folderId}\0${relativePath}`;
+}
+
+function withPhysicalSourceKey(row) {
+  return {
+    ...row,
+    physicalSourceKey: createPhysicalSourceKey(row.folderId, row.relativePath),
+    startFrame: row.startFrame == null ? null : Number(row.startFrame),
+    endFrame: row.endFrame == null ? null : Number(row.endFrame)
+  };
 }
 
 function createSortKey(value) {

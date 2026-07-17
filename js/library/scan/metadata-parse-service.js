@@ -84,11 +84,18 @@ export class MetadataParseService {
     const expectedClaim = {
       folderId: candidate.folderId,
       trackUid: candidate.trackUid,
+      logicalStorageId: candidate.logicalStorageId,
       lifecycleVersion: candidate.lifecycleVersion,
       generation: candidate.generation,
       relativePath: candidate.relativePath,
       parserVersion: candidate.parserVersion,
-      signature: candidate.observedSignature
+      signature: candidate.observedSignature,
+      cueSignature: candidate.cueSignature ?? null,
+      sourceKind: candidate.sourceKind ?? 'file',
+      entryKey: candidate.entryKey ?? null,
+      cueRelativePath: candidate.cueRelativePath ?? null,
+      startFrame: candidate.startFrame ?? null,
+      endFrame: candidate.endFrame ?? null
     };
     const claimed = await this.repository.claimMetadataParse({
       ...expectedClaim,
@@ -105,12 +112,12 @@ export class MetadataParseService {
     let metadata;
     try {
       throwIfAborted(signal);
-      metadata = await this.parser.parse({
-        path: candidate.path,
-        relativePath: candidate.relativePath,
-        skipCovers: true,
-        signal
-      });
+      metadata = candidate.metadata ?? await this.parser.parse({
+          path: candidate.path,
+          relativePath: candidate.relativePath,
+          skipCovers: true,
+          signal
+        });
       throwIfAborted(signal);
     } catch (error) {
       if (signal?.aborted || error?.name === 'AbortError') {
@@ -165,11 +172,18 @@ export class MetadataParseService {
         expectedClaim: {
           folderId: candidate.folderId,
           trackUid: candidate.trackUid,
+          logicalStorageId: candidate.logicalStorageId,
           lifecycleVersion: candidate.lifecycleVersion,
           generation: candidate.generation,
           relativePath: candidate.relativePath,
           parserVersion: candidate.parserVersion,
-          signature: candidate.observedSignature
+          signature: candidate.observedSignature,
+          cueSignature: candidate.cueSignature ?? null,
+          sourceKind: candidate.sourceKind ?? 'file',
+          entryKey: candidate.entryKey ?? null,
+          cueRelativePath: candidate.cueRelativePath ?? null,
+          startFrame: candidate.startFrame ?? null,
+          endFrame: candidate.endFrame ?? null
         }
       });
     }
@@ -211,12 +225,12 @@ export class MetadataParseService {
       let metadata;
       try {
         throwIfAborted(signal);
-        metadata = await this.parser.parse({
-          path: item.candidate.path,
-          relativePath: item.candidate.relativePath,
-          skipCovers: true,
-          signal
-        });
+        metadata = item.candidate.metadata ?? await this.parser.parse({
+            path: item.candidate.path,
+            relativePath: item.candidate.relativePath,
+            skipCovers: true,
+            signal
+          });
         throwIfAborted(signal);
       } catch (error) {
         const interrupted = signal?.aborted || error?.name === 'AbortError';
@@ -323,6 +337,7 @@ export class MetadataParseService {
   async #requeueLatest(claim) {
     await this.repository.requeueLatestMetadata({
       folderId: claim.folderId,
+      logicalStorageId: claim.logicalStorageId,
       relativePath: claim.relativePath,
       staleClaim: claim,
       maxItems: 1

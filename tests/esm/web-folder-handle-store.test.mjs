@@ -16,31 +16,21 @@ function directoryHandle(name) {
   };
 }
 
-test('folder handles survive earlier physical revisions of the v2 handle database', async () => {
+test('folder handles persist within the independent v3 handle database', async () => {
   const indexedDB = createFakeIndexedDb();
   const originalHandle = directoryHandle('Original Music');
   const initial = new WebFolderHandleStore({ indexedDB, now: () => 10 });
   await initial.put({ folderId: 'folder-original', handle: originalHandle });
   initial.close();
 
-  const definition = indexedDB.databases.get(WEB_FOLDER_HANDLE_DATABASE_NAME);
-  definition.version = 1;
-  const fromV1 = new WebFolderHandleStore({ indexedDB, now: () => 20 });
-  assert.equal(await fromV1.get('folder-original'), originalHandle);
-  fromV1.close();
-
-  definition.version = 2;
-  definition.stores.delete('folderHandles');
-  const fromIncompleteV2 = new WebFolderHandleStore({ indexedDB, now: () => 30 });
-  const replacementHandle = directoryHandle('Replacement Music');
-  await fromIncompleteV2.put({ folderId: 'folder-replacement', handle: replacementHandle });
-  assert.equal(await fromIncompleteV2.get('folder-replacement'), replacementHandle);
-  assert.equal(definition.version, WEB_FOLDER_HANDLE_DATABASE_VERSION);
-  assert.equal(WEB_FOLDER_HANDLE_DATABASE_VERSION, 3);
-  fromIncompleteV2.close();
+  const reopened = new WebFolderHandleStore({ indexedDB, now: () => 20 });
+  assert.equal(await reopened.get('folder-original'), originalHandle);
+  assert.equal(indexedDB.databases.get(WEB_FOLDER_HANDLE_DATABASE_NAME).version, 1);
+  assert.equal(WEB_FOLDER_HANDLE_DATABASE_VERSION, 1);
+  reopened.close();
 });
 
-test('folder handle persistence opens only its fixed v2 database identity', async () => {
+test('folder handle persistence opens only its fixed v3 database identity', async () => {
   const fake = createFakeIndexedDb();
   const opens = [];
   const trappedIndexedDb = {
@@ -59,10 +49,10 @@ test('folder handle persistence opens only its fixed v2 database identity', asyn
     }
   };
   const store = new WebFolderHandleStore({ indexedDB: trappedIndexedDb });
-  const handle = directoryHandle('Fresh v2 Music');
+  const handle = directoryHandle('Fresh v3 Music');
 
-  await store.put({ folderId: 'folder-v2', handle });
-  assert.equal(await store.get('folder-v2'), handle);
+  await store.put({ folderId: 'folder-v3', handle });
+  assert.equal(await store.get('folder-v3'), handle);
   assert.deepEqual(opens, [{
     name: WEB_FOLDER_HANDLE_DATABASE_NAME,
     version: WEB_FOLDER_HANDLE_DATABASE_VERSION
@@ -97,7 +87,7 @@ test('an incomplete current folder-handle store fails with a typed open error', 
   await initial.open();
   initial.close();
   const definition = indexedDB.databases.get(WEB_FOLDER_HANDLE_DATABASE_NAME);
-  definition.stores.delete('folderHandles');
+  definition.stores.delete('folderHandlesV3');
 
   const incomplete = new WebFolderHandleStore({ indexedDB });
   await assert.rejects(

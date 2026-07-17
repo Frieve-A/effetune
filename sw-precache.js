@@ -1,4 +1,4 @@
-self.EFFECTUNE_CACHE_VERSION = "effetune-v2.1.0-6478364391fcb139";
+self.EFFECTUNE_CACHE_VERSION = "effetune-v2.1.0-b2715d90d5a279e0";
 self.EFFECTUNE_PRECACHE_URLS = [
   "./effetune-library.css",
   "./effetune-mobile.css",
@@ -51,6 +51,7 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/library/artwork/web-artwork-extractor.js",
   "./js/library/constants.js",
   "./js/library/library-manager-v2.js",
+  "./js/library/metadata/cue-sheet.js",
   "./js/library/metadata/metadata-mapper.js",
   "./js/library/metadata/riff-info.js",
   "./js/library/metadata/text-encoding.js",
@@ -71,6 +72,7 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/library/repository/invalidation.js",
   "./js/library/repository/query-contract.js",
   "./js/library/repository/schema-v2.js",
+  "./js/library/repository/schema-v3.js",
   "./js/library/repository/selection-descriptor.js",
   "./js/library/repository/sha256.js",
   "./js/library/repository/sqlite-oo1-adapter.js",
@@ -111,7 +113,9 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/ui/audio-player/catalog-playback-bridge.js",
   "./js/ui/audio-player/media-session-manager.js",
   "./js/ui/audio-player/playback-manager.js",
+  "./js/ui/audio-player/playback-region.js",
   "./js/ui/audio-player/playback-sequence.js",
+  "./js/ui/audio-player/playback-source-policy.js",
   "./js/ui/audio-player/state-manager.js",
   "./js/ui/double-blind-test/double-blind-test.js",
   "./js/ui/layout-mode-manager.js",
@@ -139,6 +143,7 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/ui/pipeline/pipeline-worklet-sync.js",
   "./js/ui/pipeline/preset-manager.js",
   "./js/ui/pipeline/ui-event-handler.js",
+  "./js/ui/playback-selection-router.js",
   "./js/ui/plugin-list-manager.js",
   "./js/ui/plugin-list/collapse-manager.js",
   "./js/ui/plugin-list/drag-drop-manager.js",

@@ -7,6 +7,12 @@ import { createPagedPlaylistService } from './playlists/paged-playlist-service.j
 const MAX_LISTENERS_PER_EVENT = 32;
 const MAX_ARTWORK_URL_CACHE_ENTRIES = 32;
 const MAX_ARTWORK_THUMBNAIL_BYTES = 512 * 1024;
+const MAX_SCAN_WARNING_SAMPLES = 100;
+const CUE_WARNING_CATEGORIES = Object.freeze([
+  'cue-invalid',
+  'cue-unsupported',
+  'cue-too-large'
+]);
 const PLAYLIST_METHODS = Object.freeze([
   'get',
   'openListContext',
@@ -636,6 +642,11 @@ export class LibraryManagerV2 {
       const state = normalizeScanState(event);
       if (state.phase === 'error') {
         this.logger?.error?.('Music Library scan failed:', event?.error ?? state.error);
+      } else if (state.phase === 'done' && state.warnings.length > 0) {
+        this.logger?.warn?.(
+          'Music Library scan completed with CUE warnings:',
+          normalizeCueWarnings(event, { includeSamples: true })
+        );
       }
       this.#emit('scan-state', state);
     } catch (error) {
@@ -693,6 +704,7 @@ function getPageEntityId(row) {
 function normalizeScanState(event = {}) {
   const source = event?.progress && typeof event.progress === 'object' ? event.progress : event;
   const counts = source.counts ?? aggregateScanResultCounts(event.results);
+  const warnings = normalizeCueWarnings(event);
   const status = String(source.status ?? event.status ?? 'running');
   const error = event.error ?? source.error ?? null;
   const folderIds = typeof source.folderId === 'string'
@@ -714,11 +726,55 @@ function normalizeScanState(event = {}) {
     phase,
     status,
     counts,
+    warnings,
+    ...(event?.progress && typeof event.progress === 'object' ? {
+      progress: Object.freeze({ ...source, warnings })
+    } : {}),
+    ...(Array.isArray(event.results) ? {
+      results: Object.freeze(event.results.map(result => Object.freeze({
+        ...result,
+        warnings: normalizeCueWarnings(result)
+      })))
+    } : {}),
     folderIds: Object.freeze([...folderIds]),
     found: Number(counts?.found ?? 0),
     parsed: Number(counts?.parsed ?? 0),
     error: error?.message ?? error ?? null
   });
+}
+
+function normalizeCueWarnings(event = {}, { includeSamples = false } = {}) {
+  const source = event?.progress && typeof event.progress === 'object' ? event.progress : event;
+  const groups = Array.isArray(source.warnings)
+    ? source.warnings
+    : Array.isArray(event.results)
+      ? event.results.flatMap(result => Array.isArray(result?.warnings) ? result.warnings : [])
+      : [];
+  const counts = Object.fromEntries(CUE_WARNING_CATEGORIES.map(category => [category, 0]));
+  const samples = Object.fromEntries(CUE_WARNING_CATEGORIES.map(category => [category, []]));
+  let remainingSamples = MAX_SCAN_WARNING_SAMPLES;
+  for (const group of groups) {
+    if (!CUE_WARNING_CATEGORIES.includes(group?.category) ||
+        !Number.isSafeInteger(group?.count) || group.count <= 0) continue;
+    const category = group.category;
+    counts[category] = Math.min(Number.MAX_SAFE_INTEGER, counts[category] + group.count);
+    if (!includeSamples || remainingSamples === 0 || !Array.isArray(group.samples)) continue;
+    for (const sample of group.samples) {
+      if (remainingSamples === 0) break;
+      samples[category].push(Object.freeze({
+        code: String(sample?.code ?? '').slice(0, 63),
+        path: String(sample?.path ?? '').replace(/[\r\n\0]/g, '').slice(0, 1024)
+      }));
+      remainingSamples -= 1;
+    }
+  }
+  return Object.freeze(CUE_WARNING_CATEGORIES.flatMap(category => counts[category] > 0
+    ? [Object.freeze({
+        category,
+        count: counts[category],
+        ...(includeSamples ? { samples: Object.freeze(samples[category]) } : {})
+      })]
+    : []));
 }
 
 function normalizeFolderRemovalState(event = {}) {

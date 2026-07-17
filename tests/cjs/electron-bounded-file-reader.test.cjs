@@ -20,6 +20,38 @@ test('bounded file reader returns an ArrayBuffer for a regular file', async t =>
   const result = await readFileBytes(filePath);
   assert.ok(result instanceof ArrayBuffer);
   assert.deepEqual([...new Uint8Array(result)], [1, 2, 3, 4]);
+
+  const expectedResult = await readFileBytes(filePath, 4);
+  assert.deepEqual([...new Uint8Array(expectedResult)], [1, 2, 3, 4]);
+});
+
+test('bounded file reader validates expected size before allocating', async t => {
+  const temporary = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'effetune-byte-identity-'));
+  t.after(() => fs.promises.rm(temporary, { recursive: true, force: true }));
+  const filePath = path.join(temporary, 'audio.bin');
+  await fs.promises.writeFile(filePath, Buffer.from([1, 2, 3, 4]));
+
+  const NativeArrayBuffer = global.ArrayBuffer;
+  global.ArrayBuffer = class ForbiddenArrayBuffer {
+    constructor() {
+      throw new Error('ArrayBuffer allocation must not be attempted');
+    }
+  };
+  try {
+    await assert.rejects(
+      readFileBytes(filePath, 3),
+      error => error?.code === 'ERR_FILE_SIZE_MISMATCH'
+    );
+  } finally {
+    global.ArrayBuffer = NativeArrayBuffer;
+  }
+
+  for (const invalid of [null, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    await assert.rejects(
+      readFileBytes(filePath, invalid),
+      error => error?.code === 'ERR_INVALID_EXPECTED_BYTE_LENGTH'
+    );
+  }
 });
 
 test('bounded file reader rejects oversized and non-regular files', async t => {
@@ -29,6 +61,16 @@ test('bounded file reader rejects oversized and non-regular files', async t => {
   await fs.promises.writeFile(oversized, '');
   await fs.promises.truncate(oversized, MAX_FILE_BYTES + 1);
 
-  await assert.rejects(readFileBytes(oversized), error => error?.code === 'ERR_LIBRARY_READ_LIMIT');
+  const NativeArrayBuffer = global.ArrayBuffer;
+  global.ArrayBuffer = class ForbiddenArrayBuffer {
+    constructor() {
+      throw new Error('ArrayBuffer allocation must not be attempted');
+    }
+  };
+  try {
+    await assert.rejects(readFileBytes(oversized), error => error?.code === 'ERR_LIBRARY_READ_LIMIT');
+  } finally {
+    global.ArrayBuffer = NativeArrayBuffer;
+  }
   await assert.rejects(readFileBytes(temporary), error => error?.code === 'ERR_FILE_NOT_REGULAR');
 });

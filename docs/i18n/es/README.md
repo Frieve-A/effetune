@@ -86,7 +86,7 @@ En el menú **Configuración**, abre **Configuración...** para elegir el idioma
 ### Buscar música en la Biblioteca musical
 
 1. En PC, ábrela con el botón **Biblioteca musical** del encabezado; en móvil, con la pestaña **Biblioteca**; en la aplicación de escritorio, desde **Ver > Biblioteca musical**.
-2. Selecciona **Añadir carpeta de música** e indexa la carpeta que contiene tus archivos de música.
+2. Selecciona **Añadir carpeta de música** e indexa la carpeta que contiene tus archivos de música. Si una hoja CUE externa y los archivos WAV o FLAC a los que hace referencia están en la misma carpeta, al añadir esa carpeta a la Biblioteca musical, el álbum queda dividido en pistas individuales.
 3. Explora por **Pistas**, **Álbumes**, **Artistas**, **Géneros**, **Subcarpetas**, **Carpetas**, **Añadidas recientemente** y **Listas de reproducción**, y usa **Buscar en la biblioteca** para buscar en todo el catálogo. La sección **Subcarpetas** agrupa las pistas por la ruta que las contiene dentro de cada carpeta de música indexada, mientras que la sección **Carpetas** gestiona esas carpetas raíz.
 4. Las pistas que encuentres pueden reproducirse a través del pipeline de efectos actual, y puedes gestionar el orden de reproducción y las listas de reproducción con **Reproducir a continuación**, **Añadir a la cola** y **Añadir a lista**.
 5. Después de cambiar archivos, usa **Volver a escanear**; si caducan los permisos del navegador o de una carpeta, usa **Reconectar**.
@@ -96,7 +96,7 @@ Tanto en el diseño para PC como en el móvil, si una búsqueda de pistas o los 
 
 Los navegadores Chromium de PC pueden conservar los identificadores de carpeta de File System Access. Safari, Firefox, los navegadores móviles y otros entornos sin esa API solo conservan los objetos `File` durante la sesión actual de la página. Después de cada recarga, vuelve a seleccionar la carpeta o los archivos; EffeTune los enlaza con el catálogo existente mediante la ruta relativa normalizada.
 
-La versión 2.1.0 comienza con una Biblioteca musical nueva. El estado de la Biblioteca anterior no se hereda, así que vuelve a añadir y analizar tus carpetas de música. Esto no modifica los archivos de audio que contienen. El catálogo está diseñado para paginar colecciones grandes desde el disco. Las mediciones de rendimiento a gran escala son diagnósticos locales y opcionales para el desarrollo: no son requisitos para commits, versiones, `verify` ni GitHub Actions, y tampoco constituyen una garantía general de rendimiento.
+La versión 2.1.0 de EffeTune incorpora una Biblioteca musical basada en el esquema de catálogo v3 que permite explorar álbumes CUE pista por pista. El estado de la Biblioteca musical anterior no se transfiere: vuelve a añadir y analizar tus carpetas de música, y vuelve a crear o importar las listas de reproducción de la Biblioteca musical. El catálogo anterior y los archivos de audio no se modifican. El catálogo está diseñado para paginar colecciones grandes desde el disco. Las mediciones de rendimiento a gran escala son diagnósticos locales y opcionales para el desarrollo: no son requisitos para commits, versiones, `verify` ni GitHub Actions, y tampoco constituyen una garantía general de rendimiento.
 
 ### Creando tu Cadena de Efectos
 

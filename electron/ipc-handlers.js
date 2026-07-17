@@ -205,6 +205,10 @@ function registerIpcHandlers() {
     return await fileHandlers.showOpenDialog(options);
   });
 
+  ipcMain.handle('open-playback-selection', async () => {
+    return await fileHandlers.openPlaybackSelection();
+  });
+
   // File operations
   ipcMain.handle('save-file', async (event, filePath, content) => {
     const denialReason = getSaveFileDenialReason(filePath);
@@ -285,8 +289,14 @@ function registerIpcHandlers() {
   });
 
   registerClipboardIpcHandlers(ipcMain, clipboard);
-  ipcMain.handle('read-file-bytes', async (event, filePath) => {
-    return await readFileBytes(filePath);
+  ipcMain.handle('read-file-bytes', async (event, filePath, expectedByteLength) => {
+    if (expectedByteLength !== undefined &&
+        (!Number.isSafeInteger(expectedByteLength) || expectedByteLength < 0)) {
+      const error = new TypeError('Expected file size must be a nonnegative safe integer');
+      error.code = 'ERR_INVALID_EXPECTED_BYTE_LENGTH';
+      throw error;
+    }
+    return await readFileBytes(filePath, expectedByteLength);
   });
 
   // Request macOS microphone TCC permission from the main process.

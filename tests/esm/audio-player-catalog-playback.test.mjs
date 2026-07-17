@@ -74,7 +74,9 @@ function catalogDescriptor(overrides = {}) {
       sourceCalls.push(request);
       return { path: `/music/${request.trackUid}.flac` };
     },
-    sourceCalls
+    sourceCalls,
+    ...(overrides.shuffleSeed !== undefined ? { shuffleSeed: overrides.shuffleSeed } : {}),
+    ...(overrides.shuffleEnabled !== undefined ? { shuffleEnabled: overrides.shuffleEnabled } : {})
   };
 }
 
@@ -240,6 +242,40 @@ test('catalog track-ended handling re-resolves Repeat ONE and resets Repeat OFF 
       ['loadTrack', 'catalog-sequence:0', 0],
       ['stop']
     ]);
+  });
+});
+
+test('premature catalog load recovery ignores Repeat ONE and reuses candidate skip-or-stop', async () => {
+  await withPlaybackHarness(async ({ audioPlayer, calls, manager }) => {
+    globalThis.window.uiManager = {
+      showTransientMessage(...args) {
+        calls.push(['transientMessage', ...args]);
+      }
+    };
+    await manager.loadCatalogSequence(catalogDescriptor({ itemCount: 3 }), {
+      currentOrdinal: 0,
+      autoPlay: false
+    });
+    audioPlayer.stateManager.updateState({ repeatMode: 'ONE' }, 'repeat one');
+    audioPlayer.contextManager.loadTrack = async (track, ordinal) => {
+      calls.push(['recoveryLoadTrack', track.entryInstanceId, ordinal]);
+      return ordinal !== 1;
+    };
+
+    const error = Object.assign(new Error('source ended early'), { code: 'mediaLoadFailed' });
+    const result = await manager.recoverCatalogTrackLoadFailure(error, 0);
+
+    assert.equal(result.accepted, true);
+    assert.equal(result.skippedCount, 1);
+    assert.equal(audioPlayer.stateManager.state.currentTrackIndex, 2);
+    assert.deepEqual(calls.filter(call => call[0] === 'recoveryLoadTrack'), [
+      ['recoveryLoadTrack', 'catalog-sequence:1', 1],
+      ['recoveryLoadTrack', 'catalog-sequence:2', 2]
+    ]);
+    assert.deepEqual(
+      calls.filter(call => call[0] === 'transientMessage').map(call => call[4]?.count ?? call[3]?.count),
+      [1, 1]
+    );
   });
 });
 
@@ -577,6 +613,84 @@ test('late audio graph revalidation cannot replace a newer catalog track', async
   });
 });
 
+test('catalog graph revalidation follows the same entry after shuffle retargets its ordinal', async () => {
+  await withPlaybackHarness(async ({ audioPlayer, manager }) => {
+    let gateGraphResolution = false;
+    let releaseGraphResolution;
+    let markGraphResolutionStarted;
+    const graphResolutionStarted = new Promise(resolve => { markGraphResolutionStarted = resolve; });
+    const descriptor = catalogDescriptor({
+      itemCount: 5,
+      shuffleSeed: 41
+    });
+    descriptor.resolveSource = async request => {
+      if (gateGraphResolution && request.trackUid === 'track-1') {
+        markGraphResolutionStarted();
+        await new Promise(resolve => { releaseGraphResolution = resolve; });
+      }
+      return { kind: 'electron-file', path: `/music/${request.trackUid}.flac` };
+    };
+    await manager.loadCatalogSequence(descriptor, { currentOrdinal: 1, autoPlay: false });
+    const currentTrack = audioPlayer.stateManager.state.currentTrack;
+    gateGraphResolution = true;
+
+    const revalidation = manager.prepareCatalogTrackForGraphRebuild(currentTrack);
+    await graphResolutionStarted;
+    await manager.setCatalogShuffleMode(true, audioPlayer.stateManager.getStateSnapshot());
+    assert.equal(audioPlayer.stateManager.state.currentTrackIndex, 2);
+    gateGraphResolution = false;
+    releaseGraphResolution();
+    const result = await revalidation;
+
+    assert.equal(result.handled, false);
+    assert.equal(result.ordinal, 2);
+    assert.equal(result.track.entryInstanceId, currentTrack.entryInstanceId);
+    assert.equal(manager.getTrack(2), result.track);
+  });
+});
+
+test('audio-reset selection preserves graph command ownership while explicit Select supersedes it immediately', async () => {
+  await withPlaybackHarness(async ({ audioPlayer, manager }) => {
+    let releaseExplicitSource;
+    await manager.loadCatalogSequence({
+      ...catalogDescriptor({ itemCount: 2 }),
+      async resolveSource(request) {
+        if (request.trackUid === 'track-1') {
+          return new Promise(resolve => { releaseExplicitSource = resolve; });
+        }
+        return { path: `/music/${request.trackUid}.flac` };
+      }
+    }, { currentOrdinal: 0, autoPlay: false });
+    const graphCommandGeneration = audioPlayer.stateManager.state.transportCommandGeneration;
+
+    const recovered = await manager.selectCatalogOrdinal(0, {
+      play: false,
+      userInitiated: false,
+      commandKind: 'audio-reset',
+      reason: 'audio-reset'
+    });
+    assert.equal(recovered.accepted, true);
+    assert.equal(
+      audioPlayer.stateManager.state.transportCommandGeneration,
+      graphCommandGeneration
+    );
+
+    const selected = manager.selectCatalogOrdinal(1, { play: false });
+    await Promise.resolve();
+    assert.equal(
+      audioPlayer.stateManager.state.transportCommandGeneration,
+      graphCommandGeneration + 1
+    );
+    for (let turn = 0; turn < 10; turn += 1) {
+      if (releaseExplicitSource) break;
+      await Promise.resolve();
+    }
+    assert.equal(typeof releaseExplicitSource, 'function');
+    releaseExplicitSource({ path: '/music/track-1.flac' });
+    assert.equal((await selected).accepted, true);
+  });
+});
+
 test('repeat-all shuffle advances its epoch within the active session', async () => {
   await withPlaybackHarness(async ({ audioPlayer, manager }) => {
     await manager.loadCatalogSequence({
@@ -768,6 +882,11 @@ test('bulk Play keeps its provisional singleton on cancel and publishes without 
       selectionDescriptor,
       service
     });
+    let regionPlanRefreshes = 0;
+    audioPlayer.contextManager.refreshActiveRegionTransportPlan = () => {
+      regionPlanRefreshes += 1;
+      return true;
+    };
     audioPlayer.stateManager.updateState({ currentTrackPosition: 37 }, 'position');
     const currentOrdinal = 123;
     const publishedSequence = new CatalogSequence(catalogDescriptor({
@@ -784,6 +903,7 @@ test('bulk Play keeps its provisional singleton on cancel and publishes without 
     assert.equal(audioPlayer.stateManager.state.currentTrackPosition, 37);
     assert.equal(audioPlayer.stateManager.state.currentTrackIndex, currentOrdinal);
     assert.equal(audioPlayer.stateManager.state.currentTrack.entryInstanceId, 'clicked-instance');
+    assert.equal(regionPlanRefreshes, 1);
     assert.deepEqual(await manager.cancelBulkPlay('bulk-2'), {
       accepted: false,
       reason: 'tooLate'

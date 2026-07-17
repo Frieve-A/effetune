@@ -136,6 +136,11 @@ const PAGED_ACTION_PHASE_KEYS = Object.freeze({
   CANCEL_REQUESTED: 'library.job.phase.cancel_requested',
   COMMITTING: 'library.job.phase.committing'
 });
+const CUE_SCAN_WARNING_KEYS = Object.freeze({
+  'cue-invalid': 'library.paged.cueScanWarningInvalid',
+  'cue-unsupported': 'library.paged.cueScanWarningUnsupported',
+  'cue-too-large': 'library.paged.cueScanWarningTooLarge'
+});
 export const PAGED_RENDERED_ROW_LIMIT = 80;
 export const WEB_PLAYLIST_BLOB_EXPORT_MAX_BYTES = 32 * 1024 * 1024;
 
@@ -214,6 +219,7 @@ export class LibraryView {
     this.loadUIState();
     this.unsubscribe = [];
     this.lastScanState = null;
+    this.lastCueWarningNotificationScanId = null;
     this.removingFolderIds = new Set();
     this.folderRemovalProgress = new Map();
     this.deferredCatalogInvalidationScopes = null;
@@ -431,9 +437,30 @@ export class LibraryView {
 
   handleScanState(state) {
     this.lastScanState = state;
+    this.reportCueScanWarnings(state);
     this.refreshPagedFolderScanState();
     this.renderStatus();
     this.flushDeferredCatalogInvalidation();
+  }
+
+  reportCueScanWarnings(state) {
+    if (state?.phase !== 'done' || !Array.isArray(state.warnings)) return;
+    const warnings = state.warnings.filter(warning =>
+      CUE_SCAN_WARNING_KEYS[warning?.category] &&
+      Number.isSafeInteger(warning?.count) && warning.count > 0);
+    if (warnings.length === 0) return;
+    if (state.scanId && state.scanId === this.lastCueWarningNotificationScanId) return;
+    if (state.scanId) this.lastCueWarningNotificationScanId = state.scanId;
+    const count = warnings.reduce((total, warning) => total + warning.count, 0);
+    const message = [
+      this.t('library.paged.cueScanWarningSummary', { count }),
+      ...warnings.map(warning => this.t(CUE_SCAN_WARNING_KEYS[warning.category], {
+        count: warning.count
+      })),
+      this.t('library.paged.cueScanWarningAction')
+    ].join(' ');
+    this.uiManager?.setError?.(message, false);
+    this.announcePagedStatus(message);
   }
 
   handleFolderRemovalState(state) {
@@ -3751,16 +3778,23 @@ export class LibraryView {
   async showTrackProperties(track, options = {}) {
     const intentId = this.beginNavigationIntent();
     let details = track;
+    let playbackSource = null;
     const trackUid = track?.trackUid ?? track?.id;
     if (trackUid && typeof this.manager.getTrack === 'function') {
       try {
         details = { ...track, ...(await this.manager.getTrack(trackUid) || {}) };
         if (!this.isNavigationIntentCurrent(intentId)) return false;
         const runtime = this.manager.getRuntimeStatus?.().runtime ?? this.manager.runtime;
-        if (!details.path && runtime === 'electron' && typeof this.manager.resolvePlaybackSource === 'function') {
-          const source = await this.manager.resolvePlaybackSource(trackUid);
+        if ((!details.path || isCueTrackDetails(details)) && runtime === 'electron' &&
+            typeof this.manager.resolvePlaybackSource === 'function') {
+          playbackSource = await this.manager.resolvePlaybackSource(trackUid);
           if (!this.isNavigationIntentCurrent(intentId)) return false;
-          if (source?.path) details.path = source.path;
+          details = {
+            ...details,
+            ...(playbackSource?.path ? { path: playbackSource.path } : {}),
+            startFrame: details.startFrame ?? playbackSource?.startFrame,
+            endFrame: details.endFrame ?? playbackSource?.endFrame
+          };
         }
       } catch (error) {
         if (!this.isNavigationIntentCurrent(intentId)) return false;
@@ -3772,8 +3806,14 @@ export class LibraryView {
       ? this.manager.getFolders().find(item => item.id === details.folderId)
       : null;
     const path = details.path || (folder?.path
-      ? `${folder.path.replace(/[\\/]+$/, '')}/${details.relativePath}`
+      ? joinDisplayPath(folder.path, details.relativePath)
       : (details.relativePath || details.fileName || ''));
+    const cueTrack = isCueTrackDetails(details);
+    const cuePath = cueTrack && details.cueRelativePath
+      ? (folder?.path
+          ? joinDisplayPath(folder.path, details.cueRelativePath)
+          : details.cueRelativePath)
+      : '';
     const rows = [
       ['library.properties.title', details.title],
       ['library.properties.artist', details.artist || details.albumArtist],
@@ -3782,8 +3822,18 @@ export class LibraryView {
       ['library.properties.year', details.year],
       ['library.properties.track', formatTrackNumber(details)],
       ['library.properties.duration', formatDuration(details.durationSec)],
+      ...(cueTrack ? [
+        ['library.properties.sourceType', this.t('library.properties.cueTrack')],
+        ['library.properties.cuePath', cuePath],
+        ['library.properties.sourcePath', path],
+        ['library.properties.region', formatCueTrackRegion(
+          details.startFrame,
+          details.endFrame,
+          this.t('library.properties.sourceEnd')
+        )]
+      ] : []),
       ['library.properties.file', details.fileName],
-      ['library.properties.path', path],
+      ...(!cueTrack ? [['library.properties.path', path]] : []),
       ['library.properties.format', details.codec || details.format || details.container],
       ['library.properties.sampleRate', formatNumber(details.sampleRate, ' Hz')],
       ['library.properties.bitDepth', formatNumber(details.bitsPerSample || details.bitDepth, ' bit')],
@@ -4384,11 +4434,18 @@ export class LibraryView {
       const fileName = `${sanitizeFileName(playlist.name)}.${isXspf ? 'xspf' : 'm3u8'}`;
       const sink = await this.createPagedPlaylistExportSink({ fileName, dialogTitle, filters });
       if (!sink) return;
-      await this.manager.playlists.exportToSink(playlist.id ?? playlist.playlistId, {
+      const result = await this.manager.playlists.exportToSink(playlist.id ?? playlist.playlistId, {
         format,
         relative: this.shouldExportRelativePaths(),
         sink
       });
+      if (Number.isSafeInteger(result?.skippedCueCount) && result.skippedCueCount > 0) {
+        const message = this.t('library.paged.exportSkippedCueTracks', {
+          count: result.skippedCueCount
+        });
+        this.uiManager?.setError?.(message, false);
+        this.announcePagedStatus(message);
+      }
     } catch (error) {
       const message = error?.code === 'playlistExportTooLarge'
         ? this.t('library.paged.exportTooLarge', {
@@ -4904,6 +4961,12 @@ function fallbackText(key, params = {}) {
     'library.properties.year': 'Year',
     'library.properties.track': 'Track',
     'library.properties.duration': 'Duration',
+    'library.properties.sourceType': 'Source type',
+    'library.properties.cueTrack': 'CUE track',
+    'library.properties.cuePath': 'CUE path',
+    'library.properties.sourcePath': 'Source path',
+    'library.properties.region': 'Track region',
+    'library.properties.sourceEnd': 'end of source',
     'library.properties.file': 'File',
     'library.properties.path': 'Path',
     'library.properties.format': 'Format',
@@ -4933,6 +4996,12 @@ function fallbackText(key, params = {}) {
     'library.paged.reselect': 'Reselect in Current Results',
     'library.paged.selectionTooLarge': 'This sparse selection is too large. Use Select All or select a contiguous range.',
     'library.paged.exportTooLarge': `This browser limits playlist downloads to ${params.limit || 32} MB. Use the desktop app or a browser with file system access.`,
+    'library.paged.exportSkippedCueTracks': `Exported without ${params.count || 0} CUE tracks because M3U8 and XSPF cannot preserve their positions within an album file.`,
+    'library.paged.cueScanWarningSummary': `The scan finished, but ${params.count || 0} CUE sheets could not be used.`,
+    'library.paged.cueScanWarningInvalid': `${params.count || 0} were invalid or referred to missing or conflicting audio files.`,
+    'library.paged.cueScanWarningUnsupported': `${params.count || 0} had no supported audio tracks or used audio files that could not be analyzed.`,
+    'library.paged.cueScanWarningTooLarge': `${params.count || 0} were larger than 1 MB.`,
+    'library.paged.cueScanWarningAction': 'Correct or replace those CUE sheets, check that their WAV or FLAC files are in the same folder, then rescan.',
     'library.paged.reselectFailed': 'The selection could not be recreated in the current results.',
     'library.paged.playlistVersionUnavailable': 'The playlist changed. Reopen the menu and try again.',
     'library.paged.serviceUnavailable': 'The paged Library service is unavailable.',
@@ -5188,6 +5257,41 @@ function formatTrackNumber(track) {
 
 function formatNumber(value, suffix = '') {
   return Number.isFinite(value) ? `${value}${suffix}` : '';
+}
+
+function joinDisplayPath(root, relativePath) {
+  const base = String(root || '').replace(/[\\/]+$/, '');
+  const separator = base.includes('\\') ? '\\' : '/';
+  const relative = String(relativePath || '').replace(/[\\/]+/g, separator).replace(/^[\\/]+/, '');
+  return relative ? `${base}${separator}${relative}` : base;
+}
+
+function isCueTrackDetails(value) {
+  const sourceKind = value?.sourceKind ?? value?.source_kind;
+  const entryKey = value?.entryKey ?? value?.entry_key;
+  return sourceKind === 'cue-track' ||
+    typeof entryKey === 'string' && entryKey.startsWith('cue:') ||
+    Boolean(value?.cueRelativePath && Number.isSafeInteger(value?.startFrame));
+}
+
+function formatCueTrackRegion(startFrame, endFrame, sourceEndLabel) {
+  if (!Number.isSafeInteger(startFrame) || startFrame < 0) return '';
+  const start = formatCueFrameTime(startFrame);
+  if (endFrame === null) return `${start} – ${sourceEndLabel}`;
+  if (!Number.isSafeInteger(endFrame) || endFrame <= startFrame) return '';
+  return `${start} – ${formatCueFrameTime(endFrame)}`;
+}
+
+function formatCueFrameTime(frame) {
+  const wholeSeconds = Math.floor(frame / 75);
+  const milliseconds = Math.round((frame % 75) * 1000 / 75);
+  const seconds = wholeSeconds % 60;
+  const minutes = Math.floor(wholeSeconds / 60) % 60;
+  const hours = Math.floor(wholeSeconds / 3600);
+  const clock = hours > 0
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+    : `${minutes}:${String(seconds).padStart(2, '0')}`;
+  return `${clock}.${String(milliseconds).padStart(3, '0')}`;
 }
 
 function encodePlaylistExportChunk(chunk) {

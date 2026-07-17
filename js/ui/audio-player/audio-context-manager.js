@@ -5,6 +5,23 @@
  */
 import { readRiffInfoTagsFromBlob } from '../../library/metadata/riff-info.js';
 import { decodeLegacyMetadataBytes, repairLegacyMetadataMojibake } from '../../library/metadata/text-encoding.js';
+import {
+  clampLogicalTime,
+  getPlaybackPhysicalSourceKey,
+  getPlaybackRegion,
+  getRegionEndTime,
+  getRegionStartTime,
+  hasPlaybackRegionDescriptor,
+  isRegionPlayableInMedia,
+  logicalTimeToMediaTime,
+  mediaTimeToLogicalTime
+} from './playback-region.js';
+import {
+  choosePlaybackMode,
+  normalizePlaybackSourceDescriptor
+} from './playback-source-policy.js';
+
+const MEDIA_CANDIDATE_READY_TIMEOUT_MS = 15000;
 
 export class AudioContextManager {
   constructor(audioPlayer, audioManager) {
@@ -20,7 +37,8 @@ export class AudioContextManager {
       ended: null,
       timeupdate: null,
       error: null,
-      loadedmetadata: null
+      loadedmetadata: null,
+      ratechange: null
     };
     
     // Store original source node for restoration
@@ -34,12 +52,14 @@ export class AudioContextManager {
     this.nextBuffer = null;
     this.currentBufferSource = null;
     this.pendingBufferSource = null;
+    this.scheduledBufferTransition = null;
     this.bufferStartTime = 0;
     this.bufferDuration = 0;
     this.sourceGenerationSequence = 0;
     this.activeSourceGeneration = 0;
     this.mediaSourceGeneration = 0;
     this.pendingMediaActivation = null;
+    this.pendingMediaCandidateReadiness = new Set();
     this.privatePipelineSourceGates = new WeakMap();
     
     // Instance tracking for cleanup
@@ -53,12 +73,19 @@ export class AudioContextManager {
     this.activeLoadRequest = null;
     this.metadataRequestToken = 0;
     this.activeMetadataRequest = null;
+    this.resolvedProviderTracks = new WeakSet();
     this.nextBufferRequestToken = 0;
     this.activeNextBufferRequest = null;
     this.transitionRequestToken = 0;
     this.activeTransitionRequest = null;
     this.stopRequestToken = 0;
     this.graphRebuildGeneration = 0;
+    this.activeGraphRebuildRequest = null;
+    this.activeRegion = null;
+    this.pendingRegionMetadata = null;
+    this.regionBoundaryTimer = null;
+    this.regionBoundaryArmToken = 0;
+    this.currentPlaybackDecision = null;
   }
 
   // ===== CORE AUDIO METHODS =====
@@ -148,7 +175,7 @@ export class AudioContextManager {
       return false;
     }
   }
-  
+
   /**
    * Create and connect silent gain node for pipeline maintenance
    */
@@ -195,6 +222,44 @@ export class AudioContextManager {
     }
     this.setManagedSourceNode(silentSource);
     return silentSource;
+  }
+
+  preparePlayerSourceOwnership() {
+    if (this.getUseInputWithPlayer()) {
+      return { useInputWithPlayer: true, silentSource: null };
+    }
+    const previousManagerSource = this.audioManager.sourceNode;
+    const previousIoSource = this.audioManager.ioManager?.sourceNode;
+    const silentSource = this.createSilentGain();
+    return silentSource ? {
+      useInputWithPlayer: false,
+      silentSource,
+      previousManagerSource,
+      previousIoSource,
+      centrallyManagedSilent: this.audioManager.ioManager?.sourceNode === silentSource
+    } : null;
+  }
+
+  rollbackPlayerSourceOwnership(ownership) {
+    if (ownership?.useInputWithPlayer !== false) return;
+    this.audioManager.sourceNode = ownership.previousManagerSource;
+    if (this.audioManager.ioManager) {
+      this.audioManager.ioManager.sourceNode = ownership.previousIoSource;
+    }
+    if (!ownership.centrallyManagedSilent &&
+        ownership.silentSource !== ownership.previousManagerSource &&
+        ownership.silentSource !== ownership.previousIoSource) {
+      this.releasePipelineSource(ownership.silentSource);
+    }
+  }
+
+  commitPlayerSourceOwnership(sourceNode, ownership) {
+    if (ownership?.useInputWithPlayer !== false) return;
+    const previousSource = this.originalSourceNode;
+    if (previousSource && previousSource !== ownership.silentSource && previousSource !== sourceNode) {
+      this.releasePipelineSource(previousSource);
+    }
+    this.setManagedSourceNode(sourceNode || ownership.silentSource);
   }
 
   replaceCanonicalInputSource(sourceNode) {
@@ -370,6 +435,11 @@ export class AudioContextManager {
     if (!useInputWithPlayer) this.setManagedSourceNode(this.getPipelineSourceNode(bufferSource));
     return true;
   }
+
+  connectScheduledBufferSource(bufferSource) {
+    if (!bufferSource || !this.audioManager.workletNode) return false;
+    return this.ensurePipelineSourceConnected(bufferSource);
+  }
   
   /**
    * Connect media source to audio manager
@@ -402,6 +472,7 @@ export class AudioContextManager {
         activation.onPendingEnded?.();
         return;
       }
+      if (this.commitScheduledBufferTransitionForSource(bufferSource)) return;
       const state = this.audioPlayer.stateManager?.getStateSnapshot();
       if (this.currentInstanceId === instanceId && !state?.isTransitioning && !state?.isStopped) {
         this.handleTrackEnded();
@@ -427,6 +498,367 @@ export class AudioContextManager {
     }
   }
 
+  getActivePlaybackRegion() {
+    return this.activeRegion?.sourceGeneration === this.activeSourceGeneration
+      ? this.activeRegion.region
+      : null;
+  }
+
+  getCurrentPlaybackTime() {
+    const state = this.getCurrentState();
+    if (state?.playbackMode === 'bufferSource') return this.getCurrentBufferTime();
+    const mediaTime = this.audioPlayer.audioElement?.currentTime;
+    return mediaTimeToLogicalTime(
+      this.getActivePlaybackRegion(),
+      Number.isFinite(mediaTime) ? mediaTime : state?.currentTrackPosition
+    );
+  }
+
+  async restartAudioElementPlayback() {
+    this.invalidateAutomaticMoveForManualCommand();
+    const audioElement = this.audioPlayer.audioElement;
+    if (!audioElement) return false;
+
+    const previousRegion = this.activeRegion;
+    if (previousRegion?.sourceGeneration === this.activeSourceGeneration) {
+      this.clearRegionBoundaryTimer();
+      this.settlePendingRegionMetadata(false);
+      const sourceGeneration = Math.max(
+        this.sourceGenerationSequence,
+        this.activeSourceGeneration
+      ) + 1;
+      this.sourceGenerationSequence = sourceGeneration;
+      this.activeSourceGeneration = sourceGeneration;
+      this.activeRegion = {
+        region: previousRegion.region,
+        track: previousRegion.track,
+        sourceGeneration,
+        physicalSourceKey: previousRegion.physicalSourceKey,
+        boundaryCommitted: false,
+        endedRecoveryPromise: null,
+        transportPlan: null,
+        transportPlanPending: false,
+        transportPlanPromise: null,
+        metadataValidated: true,
+        metadataPromise: Promise.resolve(true)
+      };
+      this.updateState({
+        currentTrackDuration: previousRegion.region.durationSec,
+        currentTrackPosition: 0
+      }, 'Playback region restarted');
+      this.prepareRegionTransportPlan(this.activeRegion);
+    }
+
+    await this.seekAudioElement(0);
+    return true;
+  }
+
+  clearRegionBoundaryTimer() {
+    this.regionBoundaryArmToken += 1;
+    if (this.regionBoundaryTimer !== null) {
+      clearTimeout(this.regionBoundaryTimer);
+      this.regionBoundaryTimer = null;
+    }
+  }
+
+  settlePendingRegionMetadata(value) {
+    const pending = this.pendingRegionMetadata;
+    if (!pending) return;
+    this.pendingRegionMetadata = null;
+    pending.resolve(value === true);
+  }
+
+  clearActiveRegion() {
+    this.clearRegionBoundaryTimer();
+    this.settlePendingRegionMetadata(false);
+    this.activeRegion = null;
+  }
+
+  beginActiveRegion(track, sourceGeneration) {
+    const region = getPlaybackRegion(track);
+    this.clearActiveRegion();
+    if (!region) return null;
+
+    let resolveMetadata;
+    const metadataPromise = new Promise(resolve => { resolveMetadata = resolve; });
+    const activeRegion = {
+      region,
+      track,
+      sourceGeneration,
+      physicalSourceKey: getPlaybackPhysicalSourceKey(track),
+      boundaryCommitted: false,
+      endedRecoveryPromise: null,
+      transportPlan: null,
+      transportPlanPending: false,
+      transportPlanPromise: null,
+      metadataValidated: false,
+      metadataPromise
+    };
+    this.activeRegion = activeRegion;
+    this.pendingRegionMetadata = {
+      activeRegion,
+      resolve: resolveMetadata
+    };
+    return activeRegion;
+  }
+
+  setValidatedActiveRegion(track, sourceGeneration) {
+    const region = getPlaybackRegion(track);
+    this.clearActiveRegion();
+    if (!region) return null;
+    this.activeRegion = {
+      region,
+      track,
+      sourceGeneration,
+      physicalSourceKey: getPlaybackPhysicalSourceKey(track),
+      boundaryCommitted: false,
+      endedRecoveryPromise: null,
+      transportPlan: null,
+      transportPlanPending: false,
+      transportPlanPromise: null,
+      metadataValidated: true,
+      metadataPromise: Promise.resolve(true)
+    };
+    return this.activeRegion;
+  }
+
+  waitForActiveRegionMetadata(sourceGeneration) {
+    const activeRegion = this.activeRegion;
+    if (!activeRegion || activeRegion.sourceGeneration !== sourceGeneration) return Promise.resolve(true);
+    return activeRegion.metadataPromise;
+  }
+
+  handleRegionLoadedMetadata(audioElement) {
+    const activeRegion = this.activeRegion;
+    if (!activeRegion || activeRegion.sourceGeneration !== this.activeSourceGeneration) return false;
+    if (!isRegionPlayableInMedia(activeRegion.region, audioElement.duration)) {
+      this.settlePendingRegionMetadata(false);
+      return true;
+    }
+
+    try {
+      audioElement.currentTime = getRegionStartTime(activeRegion.region);
+    } catch (error) {
+      this.settlePendingRegionMetadata(false);
+      return true;
+    }
+
+    activeRegion.metadataValidated = true;
+    this.updateState({
+      currentTrackDuration: activeRegion.region.durationSec,
+      currentTrackPosition: 0
+    }, 'Playback region metadata validated');
+    this.settlePendingRegionMetadata(true);
+    this.prepareRegionTransportPlan(activeRegion);
+    return true;
+  }
+
+  prepareRegionTransportPlan(activeRegion = this.activeRegion) {
+    if (!activeRegion || activeRegion !== this.activeRegion ||
+        activeRegion.sourceGeneration !== this.activeSourceGeneration) return Promise.resolve(null);
+    if (activeRegion.transportPlanPending) return activeRegion.transportPlanPromise;
+    activeRegion.transportPlan = null;
+    const playbackManager = this.audioPlayer.playbackManager;
+    if (typeof playbackManager?.preparePlannedRegionMove !== 'function') return Promise.resolve(null);
+    activeRegion.transportPlanPending = true;
+    const planPromise = playbackManager.preparePlannedRegionMove(activeRegion.track).then(plan => {
+      if (activeRegion === this.activeRegion &&
+          activeRegion.sourceGeneration === this.activeSourceGeneration &&
+          activeRegion.transportPlanPromise === planPromise &&
+          !activeRegion.boundaryCommitted) {
+        activeRegion.transportPlan = plan;
+      }
+      return plan;
+    }).catch(error => {
+      if (activeRegion === this.activeRegion) {
+        console.warn('[AudioContextManager] Next playback region preparation failed:', error);
+      }
+      return null;
+    }).finally(() => {
+      if (activeRegion.transportPlanPromise === planPromise) {
+        activeRegion.transportPlanPending = false;
+      }
+    });
+    activeRegion.transportPlanPromise = planPromise;
+    return planPromise;
+  }
+
+  refreshActiveRegionTransportPlan() {
+    const activeRegion = this.activeRegion;
+    if (!activeRegion) {
+      const state = this.getCurrentState();
+      this.clearNextTrackBuffer();
+      if (state?.playbackMode === 'bufferSource' && state.isPlaying === true &&
+          state.isStopped !== true) {
+        this.prepareNextTrackBufferWithRepeatMode();
+        return true;
+      }
+      return false;
+    }
+    if (!activeRegion || activeRegion.sourceGeneration !== this.activeSourceGeneration ||
+        activeRegion.boundaryCommitted || activeRegion.metadataValidated !== true) {
+      return false;
+    }
+    const currentTrack = this.getCurrentState()?.currentTrack;
+    if (!samePlaybackEntry(activeRegion.track, currentTrack)) return false;
+
+    activeRegion.transportPlan = null;
+    activeRegion.transportPlanPending = false;
+    activeRegion.transportPlanPromise = null;
+    this.prepareRegionTransportPlan(activeRegion);
+    return true;
+  }
+
+  isActiveRegionPlayback(activeRegion, sourceGeneration, armToken) {
+    const state = this.getCurrentState();
+    return activeRegion === this.activeRegion &&
+      activeRegion?.sourceGeneration === sourceGeneration &&
+      activeRegion.boundaryCommitted !== true &&
+      armToken === this.regionBoundaryArmToken &&
+      state?.playbackMode === 'audioElement' &&
+      state.isTransitioning !== true &&
+      state.isPlaying === true &&
+      state.isPaused !== true &&
+      state.isStopped !== true;
+  }
+
+  armRegionBoundaryTimer() {
+    this.clearRegionBoundaryTimer();
+    const activeRegion = this.activeRegion;
+    const audioElement = this.audioPlayer.audioElement;
+    const endTime = getRegionEndTime(activeRegion?.region);
+    if (!activeRegion || activeRegion.boundaryCommitted || endTime === null ||
+        !audioElement || !this.isActiveRegionPlayback(
+          activeRegion,
+          activeRegion.sourceGeneration,
+          this.regionBoundaryArmToken
+        ) || audioElement.paused === true) return;
+
+    const playbackRate = Number(audioElement.playbackRate);
+    if (!Number.isFinite(playbackRate) || playbackRate <= 0) return;
+    const remaining = endTime - audioElement.currentTime;
+    const sourceGeneration = activeRegion.sourceGeneration;
+    const armToken = this.regionBoundaryArmToken;
+    if (remaining <= 0) {
+      queueMicrotask(() => this.commitRegionBoundary(sourceGeneration, armToken));
+      return;
+    }
+    this.regionBoundaryTimer = setTimeout(() => {
+      this.regionBoundaryTimer = null;
+      this.commitRegionBoundary(sourceGeneration, armToken);
+    }, (remaining / playbackRate) * 1000);
+  }
+
+  commitRegionBoundary(sourceGeneration, armToken = this.regionBoundaryArmToken) {
+    const activeRegion = this.activeRegion;
+    const audioElement = this.audioPlayer.audioElement;
+    if (!audioElement || !this.isActiveRegionPlayback(activeRegion, sourceGeneration, armToken)) return false;
+    const endTime = getRegionEndTime(activeRegion.region);
+    if (endTime === null) return false;
+    if (audioElement.currentTime < endTime) {
+      this.armRegionBoundaryTimer();
+      return false;
+    }
+
+    activeRegion.boundaryCommitted = true;
+    this.clearRegionBoundaryTimer();
+    const playbackManager = this.audioPlayer.playbackManager;
+    const plan = activeRegion.transportPlanPending !== true &&
+      playbackManager?.isPlannedRegionMoveCurrent?.(activeRegion.transportPlan) === true
+      ? activeRegion.transportPlan
+      : null;
+    const nextTrack = plan?.nextTrack ?? null;
+    let nextRegion = null;
+    try {
+      nextRegion = getPlaybackRegion(nextTrack);
+    } catch (_) {
+      nextRegion = null;
+    }
+    const samePhysicalSource = activeRegion.physicalSourceKey !== null &&
+      activeRegion.physicalSourceKey === getPlaybackPhysicalSourceKey(nextTrack);
+    const isContiguous = nextRegion && activeRegion.region.endFrame === nextRegion.startFrame;
+    const nextRegionIsPlayable = nextRegion && isRegionPlayableInMedia(nextRegion, audioElement.duration);
+    if (samePhysicalSource && isContiguous && nextRegionIsPlayable &&
+        playbackManager?.commitPlannedRegionMove?.(plan, {
+          position: mediaTimeToLogicalTime(nextRegion, audioElement.currentTime),
+          duration: nextRegion.durationSec
+        }) === true) {
+      const nextSourceGeneration = ++this.sourceGenerationSequence;
+      this.activeSourceGeneration = nextSourceGeneration;
+      this.activeRegion = {
+        region: nextRegion,
+        track: nextTrack,
+        sourceGeneration: nextSourceGeneration,
+        physicalSourceKey: activeRegion.physicalSourceKey,
+        boundaryCommitted: false,
+        endedRecoveryPromise: null,
+        transportPlan: null,
+        transportPlanPending: false,
+        transportPlanPromise: null,
+        metadataValidated: true,
+        metadataPromise: Promise.resolve(true)
+      };
+      this.loadMetadata(nextTrack, null, plan.nextOrdinal);
+      this.prepareRegionTransportPlan(this.activeRegion);
+      this.armRegionBoundaryTimer();
+      this.audioPlayer.ui?.updatePlayerUIState?.();
+      return true;
+    }
+
+    try {
+      audioElement.pause();
+      audioElement.currentTime = endTime;
+    } catch (_) {
+      // Normal transport still owns recovery when the media element cannot be clamped.
+    }
+    this.updateState({
+      isPlaying: false,
+      isPaused: true,
+      isStopped: false,
+      currentTrackPosition: activeRegion.region.durationSec
+    }, 'Playback region boundary reached');
+    this.transitionRegionBoundaryFallback(plan);
+    return true;
+  }
+
+  transitionRegionBoundaryFallback(plan = null) {
+    const playbackManager = this.audioPlayer.playbackManager;
+    if (plan && playbackManager?.isPlannedAutomaticMoveCurrent?.(plan) === true) {
+      return this.transitionPreparedAutomaticMove(this.createPreparedAutomaticMove(plan));
+    }
+    playbackManager?.onTrackEnded?.();
+    return false;
+  }
+
+  handlePrematureRegionEnded() {
+    const activeRegion = this.activeRegion;
+    if (!activeRegion || getRegionEndTime(activeRegion.region) === null) {
+      return false;
+    }
+    if (activeRegion.endedRecoveryPromise) return true;
+    if (activeRegion.boundaryCommitted) return false;
+    activeRegion.boundaryCommitted = true;
+    this.clearRegionBoundaryTimer();
+    const error = new Error('Playback source ended before the logical track boundary');
+    error.code = 'mediaLoadFailed';
+    const failedIndex = this.audioPlayer.stateManager?.getCurrentTrackIndex?.();
+    const playbackManager = this.audioPlayer.playbackManager;
+    const recovery = playbackManager?.catalogSequence &&
+        typeof playbackManager.recoverCatalogTrackLoadFailure === 'function'
+      ? playbackManager.recoverCatalogTrackLoadFailure(error, failedIndex)
+      : this.completeTrackLoadFailure(
+          error,
+          error,
+          () => activeRegion !== this.activeRegion,
+          failedIndex
+        );
+    activeRegion.endedRecoveryPromise = Promise.resolve(recovery).catch(recoveryError => {
+      console.error('[AudioContextManager] Playback region end recovery failed:', recoveryError);
+      return false;
+    });
+    return true;
+  }
+
   /**
    * Capture the most accurate playback position before replacing graph nodes.
    */
@@ -446,7 +878,7 @@ export class AudioContextManager {
     } else if (state?.playbackMode === 'audioElement' && this.audioPlayer.audioElement) {
       const elementTime = this.audioPlayer.audioElement.currentTime;
       if (Number.isFinite(elementTime)) {
-        position = elementTime;
+        position = mediaTimeToLogicalTime(this.getActivePlaybackRegion(), elementTime);
       }
     }
 
@@ -537,6 +969,7 @@ export class AudioContextManager {
    * Detach nodes that belong to the previous AudioContext.
    */
   detachCurrentGraphNodesForRebind() {
+    this.clearRegionBoundaryTimer();
     if (this.pendingBufferSource) {
       this.releasePipelineSource(this.pendingBufferSource, true);
       this.pendingBufferSource = null;
@@ -574,7 +1007,8 @@ export class AudioContextManager {
       ['ended', this.eventHandlers.ended],
       ['timeupdate', this.eventHandlers.timeupdate],
       ['error', this.eventHandlers.error],
-      ['loadedmetadata', this.eventHandlers.loadedmetadata]
+      ['loadedmetadata', this.eventHandlers.loadedmetadata],
+      ['ratechange', this.eventHandlers.ratechange]
     ];
 
     handlers.forEach(([eventName, handler]) => {
@@ -591,7 +1025,8 @@ export class AudioContextManager {
       ended: null,
       timeupdate: null,
       error: null,
-      loadedmetadata: null
+      loadedmetadata: null,
+      ratechange: null
     };
   }
 
@@ -642,23 +1077,75 @@ export class AudioContextManager {
     const restorePosition = this.getPlaybackPositionForGraphRebind(state);
     const currentTrackIndex = state?.currentTrackIndex;
     const graphRebuildGeneration = ++this.graphRebuildGeneration;
+    const graphRebuildRequest = currentTrack ? {
+      generation: graphRebuildGeneration,
+      transportCommandGeneration: state?.transportCommandGeneration ?? 0,
+      track: currentTrack,
+      trackIndex: currentTrackIndex,
+      position: restorePosition,
+      transportIntent: {
+        isPlaying: wasPlaying,
+        isPaused: wasPaused,
+        isStopped: wasStopped,
+        command: null,
+        position: restorePosition
+      }
+    } : null;
+    this.activeGraphRebuildRequest = graphRebuildRequest;
+    this.cancelPendingMediaCandidateReadiness();
+    this.clearNextTrackBuffer();
+    this.clearRegionBoundaryTimer();
+    this.clearBufferMonitoring();
+    const isGraphRebuildOwnerCurrent = () => {
+      if (graphRebuildRequest) return this.isGraphRebuildRequestOwnerCurrent(graphRebuildRequest);
+      return graphRebuildGeneration === this.graphRebuildGeneration;
+    };
     const isGraphRebuildCurrent = () => {
-      if (graphRebuildGeneration !== this.graphRebuildGeneration) return false;
+      if (!isGraphRebuildOwnerCurrent()) {
+        return false;
+      }
       const currentState = this.getCurrentState();
-      if (Number.isInteger(currentTrackIndex) && currentState?.currentTrackIndex !== currentTrackIndex) {
+      const expectedTrackIndex = graphRebuildRequest?.trackIndex ?? currentTrackIndex;
+      if (Number.isInteger(expectedTrackIndex) && currentState?.currentTrackIndex !== expectedTrackIndex) {
         return false;
       }
       return !currentState?.currentTrack || samePlaybackEntry(currentState.currentTrack, currentTrack);
     };
+    const settleGraphRebindFailure = () => {
+      const transportIntent = graphRebuildRequest?.transportIntent ?? {
+        isPlaying: false,
+        isPaused: !wasStopped,
+        isStopped: wasStopped,
+        command: null
+      };
+      this.detachCurrentGraphNodesForRebind();
+      this.detachAudioElementForGraphRebuild();
+      this.revokeCurrentObjectURL();
+      this.clearActiveRegion();
+      this.currentBuffer = null;
+      this.currentPlaybackDecision = null;
+      this.updateState({
+        currentBuffer: null,
+        nextBuffer: null,
+        ...(transportIntent.command
+          ? { currentTrackPosition: transportIntent.isStopped ? 0 : graphRebuildRequest.position }
+          : {}),
+        isTransitioning: false,
+        transitionType: null,
+        isPlaying: false,
+        isPaused: !transportIntent.isStopped,
+        isStopped: transportIntent.isStopped
+      }, 'Audio graph rebind failed');
+    };
 
-    this.detachCurrentGraphNodesForRebind();
     this.audioPlayer.audioContext = newAudioContext;
     this.originalSourceNode = this.audioManager.ioManager?.inputSourceNode ||
       this.audioManager.ioManager?.sourceNode || this.audioManager.sourceNode || null;
-    this.currentBuffer = null;
-    this.clearNextTrackBuffer();
 
     if (!currentTrack) {
+      this.detachCurrentGraphNodesForRebind();
+      this.currentBuffer = null;
+      this.clearNextTrackBuffer();
       this.updateState({
         currentBuffer: null,
         nextBuffer: null,
@@ -673,50 +1160,101 @@ export class AudioContextManager {
       transitionType: 'audio-reset'
     }, 'Audio graph rebuild rebinding playback');
 
-    if (currentTrack.sourceKind === 'electron-file') {
-      try {
-        this.detachAudioElementForGraphRebuild();
-        const revalidation = await this.audioPlayer.playbackManager?.prepareCatalogTrackForGraphRebuild?.(
-          currentTrack,
-          { play: wasPlaying }
-        );
-        if (!isGraphRebuildCurrent() || revalidation?.handled) return;
-        const isStale = typeof revalidation?.isCurrent === 'function'
-          ? () => !isGraphRebuildCurrent() || !revalidation.isCurrent()
-          : () => !isGraphRebuildCurrent();
-        if (isStale?.()) return;
-        await this.rebindAudioElementAfterGraphRebuild(
-          revalidation?.track ?? currentTrack,
-          restorePosition,
+    let rebuildTrack = currentTrack;
+    let rebuildDescriptor = null;
+    let rebuildDecisionRecord = null;
+    try {
+      const revalidation = currentTrack.sourceKind === 'electron-file'
+        ? await this.audioPlayer.playbackManager?.prepareCatalogTrackForGraphRebuild?.(currentTrack)
+        : null;
+      if (Number.isSafeInteger(revalidation?.ordinal) &&
+          samePlaybackEntry(revalidation.track ?? currentTrack, graphRebuildRequest.track)) {
+        graphRebuildRequest.trackIndex = revalidation.ordinal;
+      }
+      if (revalidation?.handled) {
+        if (revalidation.committed) {
+          if (!isGraphRebuildOwnerCurrent()) return;
+          const recoveredOriginalTrack = revalidation.track &&
+            samePlaybackEntry(revalidation.track, graphRebuildRequest.track);
+          if (!graphRebuildRequest.transportIntent.isStopped) {
+            await this.seek(recoveredOriginalTrack ? graphRebuildRequest.position : 0);
+          }
+          if (!isGraphRebuildOwnerCurrent()) return;
+          this.activeGraphRebuildRequest = null;
+          this.graphRebuildGeneration += 1;
+          const latestIntent = graphRebuildRequest.transportIntent;
+          if (latestIntent.isPlaying) await this.play(false, false);
+          else if (latestIntent.isStopped) await this.stop();
+          else await this.pause();
+          return;
+        }
+        if (isGraphRebuildCurrent()) settleGraphRebindFailure();
+        return;
+      }
+      if (!isGraphRebuildCurrent()) return;
+      const isStale = typeof revalidation?.isCurrent === 'function'
+        ? () => !isGraphRebuildCurrent() || !revalidation.isCurrent()
+        : () => !isGraphRebuildCurrent();
+      const playableTrack = revalidation?.track ?? (this.needsTrackProviderResolution(currentTrack)
+        ? await this.resolveTrackProvider(currentTrack)
+        : currentTrack);
+      rebuildTrack = playableTrack;
+      if (isStale()) return;
+      const descriptor = this.createPlaybackSourceDescriptor(playableTrack);
+      const policyDecision = choosePlaybackMode(descriptor);
+      const previousDecision = this.currentPlaybackDecision;
+      const decisionRecord = previousDecision?.mediaFallbackLocked === true &&
+          samePlaybackEntry(previousDecision.playableTrack, currentTrack)
+        ? {
+            ...previousDecision,
+            playableTrack,
+            descriptor,
+            committedMode: 'media',
+            mediaFallbackLocked: true
+          }
+        : this.createPlaybackDecisionRecord(playableTrack, descriptor, policyDecision);
+      rebuildDescriptor = descriptor;
+      rebuildDecisionRecord = decisionRecord;
+
+      if (decisionRecord.committedMode === 'unavailable') {
+        throw new Error('Playback source is unavailable after audio graph rebuild');
+      }
+      if (decisionRecord.committedMode === 'media') {
+        const rebound = await this.rebindAudioElementAfterGraphRebuild(
+          playableTrack,
+          graphRebuildRequest.position,
           wasPlaying,
           wasPaused,
           wasStopped,
-          isStale
+          isStale,
+          descriptor,
+          true,
+          () => graphRebuildRequest.transportIntent
         );
-      } catch (error) {
-        if (!isGraphRebuildCurrent()) return;
-        console.error('[AudioContextManager] Direct Electron media rebind after audio graph rebuild failed:', error);
-        this.updateState({
-          isTransitioning: false,
-          transitionType: null,
-          isPlaying: false,
-          isPaused: false
-        }, 'Audio graph rebind failed');
+        if (!rebound) {
+          if (isStale()) return;
+          throw new Error('Media candidate could not be committed after audio graph rebuild');
+        }
+        if (!isStale()) this.currentPlaybackDecision = decisionRecord;
+        return;
       }
-      return;
-    }
 
-    try {
-      const buffer = await this.prepareTrackBuffer(currentTrack, () => !isGraphRebuildCurrent());
+      const buffer = await this.prepareTrackBuffer(playableTrack, isStale, true, descriptor);
       if (!isGraphRebuildCurrent() || !buffer) return;
       const duration = Number.isFinite(buffer.duration) ? buffer.duration : 0;
-      const clampedPosition = wasStopped ? 0 : Math.max(0, Math.min(restorePosition, duration));
+      const transportIntent = graphRebuildRequest.transportIntent;
+      const clampedPosition = transportIntent.isStopped
+        ? 0
+        : Math.max(0, Math.min(graphRebuildRequest.position, duration));
 
+      this.detachCurrentGraphNodesForRebind();
+      this.clearNextTrackBuffer();
+      this.currentPlaybackDecision = decisionRecord;
       this.currentBuffer = buffer;
       this.activeSourceGeneration = ++this.sourceGenerationSequence;
       this.updateState({
-        currentTrack,
-        currentTrackName: this.getDisplayTrackName(currentTrack),
+        currentTrack: playableTrack,
+        currentTrackName: this.getDisplayTrackName(playableTrack),
         currentBuffer: buffer,
         nextBuffer: null,
         currentTrackDuration: duration,
@@ -725,50 +1263,85 @@ export class AudioContextManager {
         isTransitioning: false,
         transitionType: null,
         isPlaying: false,
-        isPaused: !wasStopped && (wasPaused || wasPlaying),
-        isStopped: wasStopped
+        isPaused: transportIntent.isPaused || transportIntent.isPlaying,
+        isStopped: transportIntent.isStopped
       }, 'Audio graph rebuilt and buffer rebound');
 
-      if (wasPlaying) {
-        await this.playBufferSource();
+      let latestIntent = graphRebuildRequest.transportIntent;
+      while (latestIntent.isPlaying) {
+        const intentSnapshot = latestIntent;
+        const activationSucceeded = await this.playBufferSource();
         if (!isGraphRebuildCurrent()) return;
-      } else {
-        this.maintainSilentSource();
+        latestIntent = graphRebuildRequest.transportIntent;
+        if (activationSucceeded && latestIntent.isPlaying) break;
+        if (latestIntent === intentSnapshot) {
+          throw new Error('Buffer playback activation failed after audio graph rebuild');
+        }
       }
 
-      if (!wasStopped) {
+      if (!latestIntent.isPlaying) {
+        if (this.currentBufferSource) {
+          if (latestIntent.isStopped) await this.stopBufferSource();
+          else await this.pauseBufferSource();
+        } else {
+          this.maintainSilentSource();
+        }
+        this.updateState({
+          currentBufferSource: null,
+          currentTrackPosition: graphRebuildRequest.position,
+          isPlaying: false,
+          isPaused: latestIntent.isPaused,
+          isStopped: latestIntent.isStopped,
+          isTransitioning: false,
+          transitionType: null
+        }, 'Audio graph rebuild settled latest buffer transport');
+      }
+
+      latestIntent = graphRebuildRequest.transportIntent;
+      if (!latestIntent.isStopped) {
         this.prepareNextTrackBufferWithRepeatMode();
       }
     } catch (error) {
       if (!isGraphRebuildCurrent()) return;
-      console.warn('[AudioContextManager] Buffer rebind after audio graph rebuild failed, falling back to audio element:', error);
-      if (this.shouldSuppressAudioElementFallback(error)) {
-        this.updateState({
-          isTransitioning: false,
-          transitionType: null,
-          isPlaying: false,
-          isPaused: false
-        }, 'Audio graph rebind failed');
+      const playableTrack = rebuildTrack;
+      const descriptor = rebuildDescriptor ?? this.createPlaybackSourceDescriptor(playableTrack);
+      const decisionRecord = rebuildDecisionRecord ??
+        this.createPlaybackDecisionRecord(playableTrack, descriptor, choosePlaybackMode(descriptor));
+      if (decisionRecord.committedMode === 'media' ||
+          !decisionRecord.decision.allowMediaFallback || decisionRecord.mediaFallbackLocked === true) {
+        console.error('[AudioContextManager] Audio graph rebind failed:', error);
+        settleGraphRebindFailure();
         return;
       }
+      console.warn('[AudioContextManager] Buffer rebind after audio graph rebuild failed, falling back to audio element:', error);
       try {
-        await this.rebindAudioElementAfterGraphRebuild(
-          currentTrack,
-          restorePosition,
+        const fallbackRecord = decisionRecord;
+        fallbackRecord.committedMode = 'media';
+        fallbackRecord.mediaFallbackLocked = true;
+        const rebound = await this.rebindAudioElementAfterGraphRebuild(
+          playableTrack,
+          graphRebuildRequest.position,
           wasPlaying,
           wasPaused,
           wasStopped,
-          () => !isGraphRebuildCurrent()
+          () => !isGraphRebuildCurrent(),
+          descriptor,
+          true,
+          () => graphRebuildRequest.transportIntent
         );
+        if (!rebound) {
+          if (!isGraphRebuildCurrent()) return;
+          throw new Error('Fallback media candidate could not be committed after audio graph rebuild');
+        }
+        if (isGraphRebuildCurrent()) this.currentPlaybackDecision = fallbackRecord;
       } catch (fallbackError) {
         if (!isGraphRebuildCurrent()) return;
         console.error('[AudioContextManager] Audio element rebind after graph rebuild failed:', fallbackError);
-        this.updateState({
-          isTransitioning: false,
-          transitionType: null,
-          isPlaying: false,
-          isPaused: false
-        }, 'Audio graph rebind failed');
+        settleGraphRebindFailure();
+      }
+    } finally {
+      if (this.activeGraphRebuildRequest === graphRebuildRequest) {
+        this.activeGraphRebuildRequest = null;
       }
     }
   }
@@ -782,54 +1355,106 @@ export class AudioContextManager {
     wasPlaying,
     wasPaused,
     wasStopped,
-    isStale = null
+    isStale = null,
+    descriptor = null,
+    alreadyResolved = false,
+    getTransportIntent = null
   ) {
     if (isStale?.()) return false;
-    this.detachAudioElementForGraphRebuild();
-    const playableTrack = await this.setupResolvedAudioElement(track, isStale);
+    const playableTrack = alreadyResolved ? track : await this.resolveTrackProvider(track);
     if (isStale?.() || !playableTrack) return false;
+    const playbackDescriptor = descriptor ?? this.createPlaybackSourceDescriptor(playableTrack);
+    const sourceGeneration = ++this.sourceGenerationSequence;
+    const prepared = { playableTrack, descriptor: playbackDescriptor };
+    let candidate = null;
+    let preflight = null;
+    try {
+      candidate = await this.prepareMediaTransitionCandidate(
+        prepared,
+        sourceGeneration,
+        () => isStale?.() === true
+      );
+      if (!candidate || isStale?.()) return false;
 
-    const audioElement = this.audioPlayer.audioElement;
-    if (audioElement) {
-      const applyPosition = () => {
-        if (isStale?.()) return;
-        try {
-          const duration = Number.isFinite(audioElement.duration) ? audioElement.duration : 0;
-          audioElement.currentTime = duration > 0 ? Math.max(0, Math.min(position, duration)) : Math.max(0, position);
-        } catch (e) {
-          // Silent fail
+      const duration = Number.isFinite(candidate.element.duration) ? candidate.element.duration : 0;
+      const applyTransportIntent = () => {
+        const transportIntent = getTransportIntent?.() ?? {
+          isPlaying: wasPlaying,
+          isPaused: wasPaused,
+          isStopped: wasStopped,
+          position
+        };
+        const logicalPosition = transportIntent.isStopped
+          ? 0
+          : clampLogicalTime(candidate.region, transportIntent.position);
+        const mediaPosition = logicalTimeToMediaTime(candidate.region, logicalPosition);
+        candidate.element.currentTime = duration > 0
+          ? Math.max(0, Math.min(mediaPosition, duration))
+          : Math.max(0, mediaPosition);
+        if (!transportIntent.isPlaying && candidate.element.paused === false) {
+          candidate.element.pause();
         }
+        return { logicalPosition, transportIntent };
       };
 
-      if (audioElement.readyState >= 1) {
-        applyPosition();
-      } else {
-        audioElement.addEventListener('loadedmetadata', applyPosition, { once: true });
+      let commitIntent = applyTransportIntent();
+      if (commitIntent.transportIntent.isPlaying) await candidate.element.play();
+      if (isStale?.() || candidate.element.error) return false;
+      commitIntent = applyTransportIntent();
+
+      preflight = this.prepareMutedCandidateCommit(candidate, true);
+      if (!preflight) return false;
+      if (isStale?.()) {
+        this.rollbackPlayerSourceOwnership(preflight.ownership);
+        preflight = null;
+        return false;
       }
+      commitIntent = applyTransportIntent();
+
+      const statePatch = {
+        currentTrack: playableTrack,
+        currentTrackName: this.getDisplayTrackName(playableTrack),
+        artworkUrl: '',
+        currentBuffer: null,
+        nextBuffer: null,
+        currentTrackDuration: candidate.region?.durationSec ?? duration,
+        currentTrackPosition: commitIntent.logicalPosition,
+        playbackMode: 'audioElement',
+        isTransitioning: false,
+        transitionType: null,
+        isPlaying: commitIntent.transportIntent.isPlaying,
+        isPaused: commitIntent.transportIntent.isPaused,
+        isStopped: commitIntent.transportIntent.isStopped
+      };
+
+      this.teardownCommittedBackendForTransition(candidate);
+      this.setPrivatePipelineSourceMuted(candidate.source, false);
+      this.commitPlayerSourceOwnership(preflight.managedSource, preflight.ownership);
+      this.currentBuffer = null;
+      this.clearNextTrackBuffer();
+      this.activeSourceGeneration = sourceGeneration;
+      this.audioPlayer.audioElement = candidate.element;
+      this.mediaSource = candidate.source;
+      this.mediaSourceGeneration++;
+      this.currentObjectURL = candidate.objectURL;
+      this.setupEventHandlers();
+      this.setValidatedActiveRegion(playableTrack, sourceGeneration);
+      this.setupMediaSessionHandlers();
+      this.updateState(statePatch, 'Audio graph rebuilt and audio element rebound');
+
+      candidate.committed = true;
+      this.loadMetadata(playableTrack, null, this.getCurrentState()?.currentTrackIndex);
+      if (this.activeRegion) {
+        this.prepareRegionTransportPlan(this.activeRegion);
+        this.armRegionBoundaryTimer();
+      }
+      return true;
+    } finally {
+      if (preflight && !candidate?.committed) {
+        this.rollbackPlayerSourceOwnership(preflight.ownership);
+      }
+      if (candidate && !candidate.committed) this.cleanupPreparedTransitionCandidate(candidate);
     }
-
-    if (isStale?.()) return false;
-
-    this.updateState({
-      currentTrack: playableTrack,
-      currentTrackName: this.getDisplayTrackName(playableTrack),
-      artworkUrl: '',
-      currentBuffer: null,
-      nextBuffer: null,
-      currentTrackPosition: wasStopped ? 0 : Math.max(0, position),
-      playbackMode: 'audioElement',
-      isTransitioning: false,
-      transitionType: null,
-      isPlaying: false,
-      isPaused: !wasStopped && (wasPaused || wasPlaying),
-      isStopped: wasStopped
-    }, 'Audio graph rebuilt and audio element rebound');
-
-    if (wasPlaying) {
-      if (isStale?.()) return false;
-      await this.playAudioElement();
-    }
-    return !isStale?.();
   }
   
   // ===== STATE MANAGEMENT =====
@@ -915,27 +1540,38 @@ export class AudioContextManager {
   }
 
   beginLoadRequest(track, targetIndex = null) {
-    this.graphRebuildGeneration += 1;
+    const graphRebuildOwner = this.getCurrentGraphRebuildRequest();
+    if (!graphRebuildOwner) this.graphRebuildGeneration += 1;
+    this.cancelPendingMediaCandidateReadiness();
     const request = {
       token: ++this.loadRequestToken,
       track,
       targetIndex: this.normalizePlaylistIndex(targetIndex),
-      sourceGeneration: ++this.sourceGenerationSequence
+      sourceGeneration: ++this.sourceGenerationSequence,
+      graphRebuildOwner
     };
     this.activeLoadRequest = request;
     this.clearNextTrackBuffer();
     return request;
   }
 
+  cancelPendingMediaCandidateReadiness() {
+    for (const cancel of [...this.pendingMediaCandidateReadiness]) cancel();
+  }
+
   isActiveLoadRequest(request) {
     return !!request &&
       this.activeLoadRequest?.token === request.token &&
       this.activeLoadRequest?.sourceGeneration === request.sourceGeneration &&
+      (!request.graphRebuildOwner || this.isGraphRebuildRequestOwnerCurrent(request.graphRebuildOwner)) &&
       this.playbackEntriesMatch(this.activeLoadRequest.track, request.track, request.targetIndex);
   }
 
   beginTransitionRequest(track, targetIndex = null) {
     this.graphRebuildGeneration += 1;
+    this.cancelPendingMediaCandidateReadiness();
+    this.clearRegionBoundaryTimer();
+    this.cancelScheduledBufferTransition();
     const request = {
       token: ++this.transitionRequestToken,
       track,
@@ -944,6 +1580,11 @@ export class AudioContextManager {
     };
     this.activeTransitionRequest = request;
     return request;
+  }
+
+  invalidateAutomaticMoveForManualCommand() {
+    this.clearNextTrackBuffer();
+    this.invalidatePendingTransitionRequests();
   }
 
   isActiveTransitionRequest(request) {
@@ -958,23 +1599,87 @@ export class AudioContextManager {
     this.activeTransitionRequest = null;
   }
 
-  invalidatePendingPlaybackOperations() {
+  isGraphRebuildRequestOwnerCurrent(request) {
+    if (!request || this.activeGraphRebuildRequest !== request ||
+        request.generation !== this.graphRebuildGeneration) {
+      return false;
+    }
+    const state = this.getCurrentState();
+    return (state?.transportCommandGeneration ?? 0) === request.transportCommandGeneration;
+  }
+
+  getCurrentGraphRebuildRequest() {
+    const request = this.activeGraphRebuildRequest;
+    if (!this.isGraphRebuildRequestOwnerCurrent(request)) return null;
+    const state = this.getCurrentState();
+    if (Number.isInteger(request.trackIndex) && state?.currentTrackIndex !== request.trackIndex) {
+      return null;
+    }
+    return !state?.currentTrack || samePlaybackEntry(state.currentTrack, request.track)
+      ? request
+      : null;
+  }
+
+  hasActiveGraphRebuildRequest() {
+    return this.getCurrentGraphRebuildRequest() !== null;
+  }
+
+  setGraphRebuildTransportIntent(command) {
+    const request = this.getCurrentGraphRebuildRequest();
+    if (!request) return null;
+    if (command === 'stop') request.position = 0;
+    request.transportIntent = {
+      isPlaying: command === 'play',
+      isPaused: command === 'pause',
+      isStopped: command === 'stop',
+      command,
+      position: request.position
+    };
+    return request;
+  }
+
+  invalidateGraphRebuild(transportIntent = null) {
+    if (transportIntent && this.setGraphRebuildTransportIntent(transportIntent)) return true;
     this.graphRebuildGeneration += 1;
+    return false;
+  }
+
+  invalidatePendingPlaybackOperations(transportIntent = null) {
+    const preserveGraphRebuild = this.invalidateGraphRebuild(transportIntent);
+    const preserveGraphLoad = preserveGraphRebuild &&
+      this.activeLoadRequest?.graphRebuildOwner === this.activeGraphRebuildRequest;
+    this.clearRegionBoundaryTimer();
     this.stopRequestToken++;
-    this.loadRequestToken++;
-    this.activeLoadRequest = null;
+    if (!preserveGraphLoad) {
+      this.loadRequestToken++;
+      this.activeLoadRequest = null;
+    }
     this.metadataRequestToken++;
     this.activeMetadataRequest = null;
+    if (!preserveGraphRebuild) this.cancelPendingMediaCandidateReadiness();
     this.invalidatePendingTransitionRequests();
     this.clearNextTrackBuffer();
   }
 
   invalidatePendingPlaybackOperationsForStop() {
-    this.invalidatePendingPlaybackOperations();
+    this.invalidatePendingPlaybackOperations('stop');
   }
 
   invalidatePendingPlaybackOperationsForPause() {
-    this.invalidatePendingPlaybackOperations();
+    const preserveGraphRebuild = this.invalidateGraphRebuild('pause');
+    const preserveGraphLoad = preserveGraphRebuild &&
+      this.activeLoadRequest?.graphRebuildOwner === this.activeGraphRebuildRequest;
+    this.clearRegionBoundaryTimer();
+    this.stopRequestToken++;
+    if (!preserveGraphLoad) {
+      this.loadRequestToken++;
+      this.activeLoadRequest = null;
+    }
+    this.metadataRequestToken++;
+    this.activeMetadataRequest = null;
+    if (!preserveGraphRebuild) this.cancelPendingMediaCandidateReadiness();
+    this.invalidatePendingTransitionRequests();
+    this.cancelScheduledBufferTransition();
   }
 
   invalidatePendingPlaybackOperationsForDisconnect() {
@@ -1036,6 +1741,7 @@ export class AudioContextManager {
   }
 
   beginNextBufferRequest(track, targetIndex = null) {
+    this.cancelScheduledBufferTransition();
     const request = {
       token: ++this.nextBufferRequestToken,
       track,
@@ -1058,15 +1764,20 @@ export class AudioContextManager {
   }
 
   consumeNextBufferForTrack(track, targetIndex = null) {
+    return this.consumePreparedNextForTrack(track, targetIndex)?.buffer ?? null;
+  }
+
+  consumePreparedNextForTrack(track, targetIndex = null) {
     const entry = this.nextBuffer;
-    if (!entry?.buffer ||
+    if (!entry ||
       entry.requestToken !== this.nextBufferRequestToken ||
       !this.playbackEntriesMatch(entry.track, track, targetIndex)) {
       return null;
     }
 
+    this.cancelScheduledBufferTransition();
     this.nextBuffer = null;
-    return entry.buffer;
+    return entry;
   }
 
   getTrackIndexForPlaybackEntry(track, targetIndex = null, fallbackIndex = 0) {
@@ -1102,60 +1813,76 @@ export class AudioContextManager {
   /**
    * Set up audio element for a track (metadata and fallback only)
    */
-  setupAudioElement(track, targetIndex = null, sourceGeneration = null) {
+  setupAudioElement(track, targetIndex = null, sourceGeneration = null, descriptor = null) {
     const currentIndex = this.getTrackIndexForPlaybackEntry(track, targetIndex);
+    const nextSourceGeneration = Number.isSafeInteger(sourceGeneration)
+      ? sourceGeneration
+      : ++this.sourceGenerationSequence;
+    const hasRegion = hasPlaybackRegionDescriptor(track);
+    if (hasRegion) getPlaybackRegion(track);
     
     if (!this.audioPlayer.audioElement) {
       this.audioPlayer.audioElement = new Audio();
       this.setupEventHandlers();
     }
     
-    if (isFileObject(track.file)) {
-      if (this.currentObjectURL) {
-        URL.revokeObjectURL(this.currentObjectURL);
-      }
-      this.currentObjectURL = URL.createObjectURL(track.file);
+    const mediaSource = descriptor?.mediaSource ?? track.mediaSource ?? track.file ?? track.path ?? null;
+    if (isBlobObject(mediaSource)) {
+      this.revokeCurrentObjectURL();
+      this.currentObjectURL = URL.createObjectURL(mediaSource);
       this.audioPlayer.audioElement.src = this.currentObjectURL;
-    } else if (track.sourceKind === 'electron-file') {
-      const mediaSource = this.getDirectElectronMediaSource(track);
-      if (!mediaSource) return false;
-      this.audioPlayer.audioElement.src = mediaSource;
-    } else if (track.path) {
-      let formattedPath = track.path;
-      if (window.electronAPI && window.electronIntegration) {
-        formattedPath = formattedPath.replace(/\\/g, '/');
-        if (!formattedPath.startsWith('file://')) {
-          formattedPath = `file://${formattedPath}`;
-        }
-      }
-      this.audioPlayer.audioElement.src = formattedPath;
+    } else if (typeof mediaSource === 'string' && mediaSource.length > 0) {
+      this.revokeCurrentObjectURL();
+      const formattedSource = this.getMediaElementSourceUrl(mediaSource);
+      if (!formattedSource) return false;
+      this.audioPlayer.audioElement.src = formattedSource;
     } else {
       return false;
     }
-    
+
+    this.activeSourceGeneration = nextSourceGeneration;
+    if (hasRegion) {
+      this.beginActiveRegion(track, nextSourceGeneration);
+    } else {
+      this.clearActiveRegion();
+    }
     this.audioPlayer.audioElement.load();
     if (!this.connectToAudioContext()) return false;
     this.setupMediaSessionHandlers();
-    this.activeSourceGeneration = Number.isSafeInteger(sourceGeneration)
-      ? sourceGeneration
-      : ++this.sourceGenerationSequence;
     
     this.updateState({
       currentTrack: track,
       currentTrackName: this.getDisplayTrackName(track),
       artworkUrl: '',
       currentTrackIndex: currentIndex,
+      currentTrackDuration: this.getActivePlaybackRegion()?.durationSec ?? 0,
+      currentTrackPosition: 0,
       playbackMode: 'audioElement'
     }, 'Track loaded and audio element setup completed');
+
+    if (hasRegion && this.audioPlayer.audioElement.readyState >= 1) {
+      this.handleRegionLoadedMetadata(this.audioPlayer.audioElement);
+    }
     
     this.loadMetadata(track, null, currentIndex);
     return true;
   }
 
+  getMediaElementSourceUrl(source) {
+    if (this.shouldUseElectronFileRead(source)) return electronFilePathToMediaUrl(source);
+    return source;
+  }
+
   getDirectElectronMediaSource(track) {
-    return track?.sourceKind === 'electron-file'
-      ? electronFilePathToMediaUrl(track.path)
-      : null;
+    const source = track?.mediaSource ?? track?.path ?? null;
+    return typeof source === 'string' ? this.getMediaElementSourceUrl(source) : null;
+  }
+
+  revokeCurrentObjectURL() {
+    if (!this.currentObjectURL) return;
+    const url = this.currentObjectURL;
+    this.currentObjectURL = null;
+    URL.revokeObjectURL(url);
   }
   
   /**
@@ -1179,6 +1906,15 @@ export class AudioContextManager {
       }
       const state = this.getCurrentState();
       if (!state?.isStopped) {
+        const regionEndTime = getRegionEndTime(this.getActivePlaybackRegion());
+        if (regionEndTime !== null && audioElement.currentTime >= regionEndTime) {
+          void this.commitRegionBoundary(
+            this.activeRegion.sourceGeneration,
+            this.regionBoundaryArmToken
+          );
+          return;
+        }
+        if (this.handlePrematureRegionEnded()) return;
         this.handleTrackEnded();
       }
     };
@@ -1188,8 +1924,17 @@ export class AudioContextManager {
       if (this.pendingMediaActivation?.element === audioElement) return;
       const state = this.getCurrentState();
       if (state?.playbackMode === 'audioElement') {
+        if (this.activeRegion && !this.activeRegion.boundaryCommitted) {
+          void this.commitRegionBoundary(
+            this.activeRegion.sourceGeneration,
+            this.regionBoundaryArmToken
+          );
+        }
         this.updateState({
-          currentTrackPosition: audioElement.currentTime
+          currentTrackPosition: mediaTimeToLogicalTime(
+            this.getActivePlaybackRegion(),
+            audioElement.currentTime
+          )
         });
       }
     };
@@ -1199,6 +1944,9 @@ export class AudioContextManager {
       if (this.pendingMediaActivation?.element === audioElement) {
         this.pendingMediaActivation.invalid = true;
         return;
+      }
+      if (this.pendingRegionMetadata?.activeRegion === this.activeRegion) {
+        this.settlePendingRegionMetadata(false);
       }
       if (e.target.error && e.target.error.code !== MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
         if (window.uiManager) {
@@ -1210,16 +1958,26 @@ export class AudioContextManager {
     this.eventHandlers.loadedmetadata = (event) => {
       if (!isCurrentAudioElementEvent(event)) return;
       if (this.pendingMediaActivation?.element === audioElement) return;
+      if (this.handleRegionLoadedMetadata(audioElement)) {
+        this.updateTrackNameFromMetadata();
+        return;
+      }
       this.updateState({
         currentTrackDuration: audioElement.duration || 0
       }, 'Metadata loaded');
       this.updateTrackNameFromMetadata();
+    };
+
+    this.eventHandlers.ratechange = (event) => {
+      if (!isCurrentAudioElementEvent(event)) return;
+      this.armRegionBoundaryTimer();
     };
     
     audioElement.addEventListener('ended', this.eventHandlers.ended);
     audioElement.addEventListener('timeupdate', this.eventHandlers.timeupdate);
     audioElement.addEventListener('error', this.eventHandlers.error);
     audioElement.addEventListener('loadedmetadata', this.eventHandlers.loadedmetadata);
+    audioElement.addEventListener('ratechange', this.eventHandlers.ratechange);
   }
   
   /**
@@ -1283,22 +2041,25 @@ export class AudioContextManager {
     const currentIndex = metadataRequest.targetIndex >= 0
       ? metadataRequest.targetIndex
       : this.audioPlayer.stateManager.getCurrentTrackIndex();
+    this.updateState({
+      isTrackPresentationPending: true
+    }, 'Track presentation metadata loading');
 
     if (track?.meta?.title) {
       if (!this.isActiveMetadataRequest(metadataRequest)) return;
       const displayText = this.getDisplayTrackName(track);
-      this.updateState({
-        currentTrackName: displayText,
-        artworkUrl: ''
-      }, 'Catalog metadata loaded');
-      if (this.audioPlayer.ui?.trackNameDisplay) {
-        this.audioPlayer.ui.trackNameDisplay.textContent = displayText;
-      }
       const libraryManager = window.libraryManager;
       const artworkId = libraryManager?.runtime
         ? track.libraryTrackId
         : track.meta.artworkId;
-      if (artworkId && libraryManager?.getArtworkThumbURL) {
+      const shouldLoadArtwork = !!artworkId && !!libraryManager?.getArtworkThumbURL;
+      this.updateState({
+        currentTrackName: displayText,
+        artworkUrl: '',
+        isTrackPresentationPending: shouldLoadArtwork
+      }, 'Catalog metadata loaded');
+      this.updateTrackNameDisplayText(displayText);
+      if (shouldLoadArtwork) {
         libraryManager.getArtworkThumbURL(
           artworkId,
           libraryManager.runtime ? { reason: 'now-playing' } : undefined
@@ -1329,8 +2090,18 @@ export class AudioContextManager {
             this.clearArtworkURL();
             this.currentArtworkURL = ownedUrl;
           }
-          this.updateState({ artworkUrl: ownedUrl || '' }, 'Catalog artwork loaded');
-        }).catch(() => {});
+          this.updateState({
+            artworkUrl: ownedUrl || '',
+            isTrackPresentationPending: false
+          }, 'Catalog artwork loaded');
+        }).catch(() => {
+          if (!this.isActiveMetadataRequest(metadataRequest) ||
+              currentIndex !== this.audioPlayer.stateManager.getCurrentTrackIndex()) return;
+          this.updateState({
+            artworkUrl: '',
+            isTrackPresentationPending: false
+          }, 'Catalog artwork unavailable');
+        });
       }
       this.updateMediaSessionWithTags(track.meta.title, track.meta.artist || '', track.meta.album || '', '');
       return;
@@ -1363,11 +2134,10 @@ export class AudioContextManager {
 
       this.updateState({
         currentTrackName: displayText,
-        artworkUrl
+        artworkUrl,
+        isTrackPresentationPending: false
       }, 'ID3 metadata loaded');
-      if (this.audioPlayer.ui?.trackNameDisplay) {
-        this.audioPlayer.ui.trackNameDisplay.textContent = displayText;
-      }
+      this.updateTrackNameDisplayText(displayText);
 
       this.updateMediaSessionWithTags(title || file.name, artist, album, artworkUrl);
       return true;
@@ -1434,11 +2204,10 @@ export class AudioContextManager {
               
               this.updateState({
                 currentTrackName: displayText,
-                artworkUrl
+                artworkUrl,
+                isTrackPresentationPending: false
               }, 'Source metadata loaded');
-              if (this.audioPlayer.ui?.trackNameDisplay) {
-                this.audioPlayer.ui.trackNameDisplay.textContent = displayText;
-              }
+              this.updateTrackNameDisplayText(displayText);
               
               this.updateMediaSessionWithTags(title || track.name, artist, album, artworkUrl);
             },
@@ -1485,6 +2254,15 @@ export class AudioContextManager {
       const state = this.getCurrentState();
       navigatorRef.mediaSession.playbackState = state?.isPlaying ? 'playing' : 'paused';
       this.setupMediaSessionHandlers();
+    }
+  }
+
+  updateTrackNameDisplayText(displayText) {
+    const playerUi = this.audioPlayer.ui;
+    if (typeof playerUi?.setTrackNameDisplayText === 'function') {
+      playerUi.setTrackNameDisplayText(displayText);
+    } else if (playerUi?.trackNameDisplay) {
+      playerUi.trackNameDisplay.textContent = displayText;
     }
   }
 
@@ -1606,27 +2384,31 @@ export class AudioContextManager {
         this.clearArtworkURL();
         this.updateState({
           currentTrackName: this.audioPlayer.audioElement.title,
-          artworkUrl: ''
+          artworkUrl: '',
+          isTrackPresentationPending: false
         }, 'Audio element metadata fallback');
-        if (this.audioPlayer.ui?.trackNameDisplay) {
-          this.audioPlayer.ui.trackNameDisplay.textContent = this.audioPlayer.audioElement.title;
-        }
+        this.updateTrackNameDisplayText(this.audioPlayer.audioElement.title);
         this.updateMediaSessionWithTags(this.audioPlayer.audioElement.title, '', '', '');
         return;
       }
     }
     
     if (track && track.name) {
+      const displayText = this.getDisplayTrackName(track);
       this.clearArtworkURL();
       this.updateState({
-        currentTrackName: this.getDisplayTrackName(track),
-        artworkUrl: ''
+        currentTrackName: displayText,
+        artworkUrl: '',
+        isTrackPresentationPending: false
       }, 'Track name metadata fallback');
-      if (this.audioPlayer.ui?.trackNameDisplay) {
-        this.audioPlayer.ui.trackNameDisplay.textContent = this.getDisplayTrackName(track);
-      }
-      this.updateMediaSessionWithTags(this.getDisplayTrackName(track), '', '', '');
+      this.updateTrackNameDisplayText(displayText);
+      this.updateMediaSessionWithTags(displayText, '', '', '');
+      return;
     }
+
+    this.updateState({
+      isTrackPresentationPending: false
+    }, 'Track presentation metadata fallback completed');
   }
   
   /**
@@ -1645,6 +2427,19 @@ export class AudioContextManager {
    * Play current track
    */
   async play(forcePlay = false, userInitiated = true) {
+    const graphRebuildRequest = this.setGraphRebuildTransportIntent('play');
+    if (graphRebuildRequest) {
+      this.updateState({
+        currentTrackPosition: graphRebuildRequest.position,
+        isPlaying: false,
+        isPaused: true,
+        isStopped: false,
+        isTransitioning: false,
+        transitionType: null
+      }, 'Playback queued during audio graph rebuild');
+      return true;
+    }
+
     const state = this.getCurrentState();
     if (state?.isTransitioning && !forcePlay) {
       return false;
@@ -1757,6 +2552,7 @@ export class AudioContextManager {
       }
 
       this.setupBufferMonitoring();
+      this.rearmPreparedAutomaticMove();
       return true;
 
     } catch (error) {
@@ -1878,6 +2674,12 @@ export class AudioContextManager {
           isStopped: false
         }, 'Audio element playback started');
       }
+      if (this.activeRegion && !this.activeRegion.transportPlan) {
+        this.prepareRegionTransportPlan(this.activeRegion);
+      } else if (!this.activeRegion) {
+        this.prepareNextTrackBufferWithRepeatMode();
+      }
+      this.armRegionBoundaryTimer();
       return true;
 
     } catch (error) {
@@ -1904,6 +2706,21 @@ export class AudioContextManager {
    * Pause current track
    */
   async pause() {
+    this.cancelScheduledBufferTransition();
+    const graphRebuildRequest = this.getCurrentGraphRebuildRequest();
+    if (graphRebuildRequest) {
+      this.invalidatePendingPlaybackOperationsForPause();
+      this.updateState({
+        currentTrackPosition: graphRebuildRequest.position,
+        isPlaying: false,
+        isPaused: true,
+        isStopped: false,
+        isTransitioning: false,
+        transitionType: null
+      }, 'Playback paused during audio graph rebuild');
+      return;
+    }
+
     const state = this.getCurrentState();
     if (state?.isTransitioning) {
       this.invalidatePendingPlaybackOperationsForPause();
@@ -1964,6 +2781,7 @@ export class AudioContextManager {
    * Pause audio element
    */
   async pauseAudioElement() {
+    this.clearRegionBoundaryTimer();
     if (this.audioPlayer.audioElement) {
       this.audioPlayer.audioElement.pause();
     }
@@ -1971,7 +2789,8 @@ export class AudioContextManager {
     this.updateState({
       isPlaying: false,
       isPaused: true,
-      isStopped: false
+      isStopped: false,
+      currentTrackPosition: this.getCurrentPlaybackTime()
     }, 'Audio element paused');
   }
   
@@ -1979,7 +2798,20 @@ export class AudioContextManager {
    * Stop current track
    */
   async stop() {
+    const graphRebuildRequest = this.getCurrentGraphRebuildRequest();
     this.invalidatePendingPlaybackOperationsForStop();
+    if (graphRebuildRequest) {
+      this.updateState({
+        currentTrackPosition: 0,
+        isPlaying: false,
+        isPaused: false,
+        isStopped: true,
+        isTransitioning: false,
+        transitionType: null
+      }, 'Playback stopped during audio graph rebuild');
+      return;
+    }
+
     const state = this.getCurrentState();
     if (state?.playbackMode === 'bufferSource') {
       await this.stopBufferSource();
@@ -2015,9 +2847,10 @@ export class AudioContextManager {
    * Stop audio element
    */
   async stopAudioElement() {
+    this.clearRegionBoundaryTimer();
     if (this.audioPlayer.audioElement) {
       this.audioPlayer.audioElement.pause();
-      this.audioPlayer.audioElement.currentTime = 0;
+      this.audioPlayer.audioElement.currentTime = getRegionStartTime(this.getActivePlaybackRegion());
     }
     
     this.maintainSilentSource();
@@ -2036,6 +2869,27 @@ export class AudioContextManager {
    * Seek to position
    */
   async seek(time) {
+    const graphRebuildRequest = this.getCurrentGraphRebuildRequest();
+    if (graphRebuildRequest) {
+      const region = getPlaybackRegion(graphRebuildRequest.track);
+      const duration = Number.isFinite(region?.durationSec)
+        ? region.durationSec
+        : this.getCurrentState()?.currentTrackDuration;
+      const clampedTime = Number.isFinite(duration)
+        ? Math.max(0, Math.min(time, duration))
+        : Math.max(0, time);
+      const logicalTime = region ? clampLogicalTime(region, clampedTime) : clampedTime;
+      graphRebuildRequest.position = logicalTime;
+      graphRebuildRequest.transportIntent = {
+        ...graphRebuildRequest.transportIntent,
+        position: logicalTime
+      };
+      this.updateState({
+        currentTrackPosition: logicalTime
+      }, 'Playback seek queued during audio graph rebuild');
+      return;
+    }
+
     const state = this.getCurrentState();
     if (state?.isTransitioning) {
       return;
@@ -2106,6 +2960,7 @@ export class AudioContextManager {
       }, 'Buffer source seek completed');
       
       this.setupBufferMonitoring();
+      this.rearmPreparedAutomaticMove();
       
     } catch (error) {
       console.error('[AudioContextManager] Buffer source seek failed:', error);
@@ -2122,12 +2977,17 @@ export class AudioContextManager {
    */
   async seekAudioElement(time) {
     if (this.audioPlayer.audioElement && this.audioPlayer.audioElement.duration) {
-      const clampedTime = Math.max(0, Math.min(time, this.audioPlayer.audioElement.duration));
+      this.clearRegionBoundaryTimer();
+      const region = this.getActivePlaybackRegion();
+      const logicalTime = region
+        ? clampLogicalTime(region, time)
+        : Math.max(0, Math.min(time, this.audioPlayer.audioElement.duration));
+      const mediaTime = logicalTimeToMediaTime(region, logicalTime);
       const state = this.getCurrentState();
-      this.audioPlayer.audioElement.currentTime = clampedTime;
+      this.audioPlayer.audioElement.currentTime = mediaTime;
       
       const updates = {
-        currentTrackPosition: clampedTime
+        currentTrackPosition: logicalTime
       };
       if (!state?.isPlaying) {
         updates.isPlaying = false;
@@ -2135,6 +2995,7 @@ export class AudioContextManager {
         updates.isStopped = false;
       }
       this.updateState(updates, 'Audio element seek completed');
+      if (state?.isPlaying) this.armRegionBoundaryTimer();
     }
   }
   
@@ -2145,125 +3006,79 @@ export class AudioContextManager {
    */
   handleTrackEnded() {
     const state = this.getCurrentState();
-    if (state?.isStopped) {
+    if (state?.isStopped || state?.isTransitioning) return;
+    const region = this.activeRegion;
+    const regionPlan = region?.transportPlanPending !== true &&
+      this.audioPlayer.playbackManager?.isPlannedAutomaticMoveCurrent?.(region?.transportPlan) === true
+      ? region.transportPlan
+      : null;
+    const prepared = this.nextBuffer ?? this.createPreparedAutomaticMove(regionPlan);
+    if (prepared?.buffer && prepared.automaticMovePlan &&
+        this.schedulePreparedBufferTransition(prepared, true)) {
       return;
     }
-    
-    if (state?.isTransitioning) {
+    if (prepared?.automaticMovePlan) {
+      if (this.audioPlayer.playbackManager?.isPlannedAutomaticMoveCurrent?.(
+        prepared.automaticMovePlan
+      ) === true) {
+        void this.transitionPreparedAutomaticMove(prepared);
+      }
       return;
     }
+    this.audioPlayer.playbackManager?.onTrackEnded?.();
+  }
 
+  createPreparedAutomaticMove(plan) {
+    if (!plan?.preparedRequest) return null;
+    if (this.nextBuffer?.automaticMovePlan === plan) return this.nextBuffer;
+    return {
+      ...plan.preparedRequest,
+      buffer: null,
+      track: plan.nextTrack,
+      automaticMovePlan: plan,
+      targetIndex: plan.nextOrdinal
+    };
+  }
+
+  transitionPreparedAutomaticMove(prepared) {
+    const plan = prepared?.automaticMovePlan;
+    if (!plan || this.audioPlayer.playbackManager?.isPlannedAutomaticMoveCurrent?.(plan) !== true) {
+      return Promise.resolve(false);
+    }
+    return this.transitionToNextTrack(
+      plan.nextTrack,
+      plan.nextOrdinal,
+      false,
+      prepared,
+      plan
+    );
+  }
+
+  rearmPreparedAutomaticMove() {
+    const prepared = this.nextBuffer;
     const playbackManager = this.audioPlayer.playbackManager;
-    if (playbackManager?.catalogSequence) {
-      playbackManager.onTrackEnded();
-      return;
-    }
-    
-    const repeatMode = state?.repeatMode || 'OFF';
-    const currentIndex = this.audioPlayer.stateManager.getCurrentTrackIndex();
-    const playlist = playbackManager?.playlist || [];
-    
-    if (repeatMode === 'ONE') {
-      const currentTrack = playbackManager?.getTrack(currentIndex);
-      if (currentTrack) {
-        this.seamlessTransition(currentTrack, currentIndex, false).catch(error => {
-          console.error('[AudioContextManager] Failed to restart track in repeat ONE mode:', error);
-        });
+    const state = this.getCurrentState();
+    if (prepared?.automaticMovePlan &&
+        playbackManager?.isPlannedAutomaticMoveCurrent?.(prepared.automaticMovePlan) === true) {
+      if (prepared.buffer && state?.playbackMode === 'bufferSource' && state.isPlaying === true &&
+          state.isPaused !== true && state.isStopped !== true) {
+        return this.schedulePreparedBufferTransition(prepared);
       }
-      return;
+      return false;
     }
-    
-    const isLastTrack = currentIndex >= playlist.length - 1;
-    
-    if (isLastTrack && repeatMode === 'ALL') {
-      if (playbackManager?.onTrackEnded) {
-        playbackManager.onTrackEnded();
-      } else if (playlist.length > 0) {
-        const firstTrack = playlist[0];
-        this.transitionToNextTrack(firstTrack, 0, false).catch(error => {
-          console.error('[AudioContextManager] Failed to transition to first track in repeat ALL mode:', error);
-        });
-      }
-      return;
-    } else if (isLastTrack && repeatMode === 'OFF') {
-      this.stopCurrentPlayback();
-      this.maintainSilentSource();
-      
-      if (playbackManager && playbackManager.playlist.length > 0) {
-        const firstTrack = playbackManager.playlist[0];
-        const loadRequest = this.beginLoadRequest(firstTrack, 0);
-        const isStale = () => !this.isActiveLoadRequest(loadRequest) ||
-          !samePlaybackEntry(this.getCurrentState()?.currentTrack, firstTrack) ||
-          this.audioPlayer.stateManager?.getCurrentTrackIndex?.() !== 0;
-        this.currentBuffer = null;
-        this.bufferDuration = 0;
-        
-        this.updateState({
-          currentTrack: firstTrack,
-          currentTrackName: this.getDisplayTrackName(firstTrack),
-          artworkUrl: '',
-          currentTrackPosition: 0,
-          currentTrackDuration: 0,
-          currentBuffer: null,
-          isPlaying: false,
-          isPaused: false,
-          isStopped: true
-        }, 'Playback ended - first track ready for next playback');
-        
-        this.clearBufferMonitoring();
-        
-        if (this.audioPlayer.stateManager) {
-          this.audioPlayer.stateManager.updateState({
-            currentTrackIndex: 0
-          }, 'AudioContextManager handleTrackEnded repeat OFF');
-        }
 
-        this.loadMetadata(firstTrack, loadRequest, 0);
-
-        if (!this.isDirectElectronCatalogSource(firstTrack)) {
-          this.prepareTrackBuffer(firstTrack, isStale).then(buffer => {
-            if (isStale() || !buffer) return;
-
-            this.currentBuffer = buffer;
-
-            this.updateState({
-              currentBuffer: buffer,
-              currentTrackDuration: buffer.duration
-            }, 'First track buffer prepared for next playback');
-
-            this.prepareNextTrackBufferWithRepeatMode();
-          }).catch(error => {
-            console.error('[AudioContextManager] Failed to prepare first track buffer:', error);
-          });
-        }
-      } else {
-        this.updateState({
-          playlist: [],
-          playlistLength: 0,
-          currentTrack: null,
-          currentTrackIndex: -1,
-          currentTrackName: '',
-          artworkUrl: '',
-          currentTrackDuration: 0,
-          currentTrackPosition: 0,
-          currentBuffer: null,
-          nextBuffer: null,
-          isPlaying: false,
-          isPaused: false,
-          isStopped: true
-        }, 'Playback ended - no playlist available');
-      }
-      
-      return;
-    } else {
-      playbackManager?.onTrackEnded();
+    if (prepared) this.clearNextTrackBuffer();
+    if (state?.isPlaying === true && state.isPaused !== true && state.isStopped !== true) {
+      void this.prepareNextTrackBufferWithRepeatMode();
     }
+    return false;
   }
   
   /**
    * Stop current playback (internal method)
    */
   async stopCurrentPlayback() {
+    this.cancelScheduledBufferTransition();
     if (this.pendingBufferSource) {
       this.releasePipelineSource(this.pendingBufferSource, true);
       this.pendingBufferSource = null;
@@ -2292,9 +3107,8 @@ export class AudioContextManager {
           const elapsedTime = currentTime - this.bufferStartTime;
           const position = Math.max(0, Math.min(elapsedTime, this.bufferDuration));
           
-          const timeUntilEnd = this.bufferDuration - elapsedTime;
-          if (timeUntilEnd <= 0.1 && timeUntilEnd > 0 && !state?.isTransitioning && !state?.isStopped) {
-            this.handleTrackEnded();
+          if (this.scheduledBufferTransition && currentTime >= this.scheduledBufferTransition.boundaryTime) {
+            if (this.commitScheduledBufferTransition(this.scheduledBufferTransition)) return;
           }
           
           if (this.audioPlayer.stateManager) {
@@ -2330,97 +3144,63 @@ export class AudioContextManager {
   /**
    * Load track and prepare buffer
    */
-  async loadTrack(track, targetIndex = null) {
+  async loadTrack(track, targetIndex = null, preparedRequest = null) {
     const trackIndex = this.getTrackIndexForPlaybackEntry(track, targetIndex);
+    this.invalidateAutomaticMoveForManualCommand();
     const loadRequest = this.beginLoadRequest(track, trackIndex);
     const isStale = () => !this.isActiveLoadRequest(loadRequest);
-    this.currentBuffer = null;
-    this.bufferDuration = 0;
 
     try {
       this.updateState({
-        currentTrackDuration: 0,
-        currentTrackPosition: 0,
-        currentBuffer: null,
         isTransitioning: true,
         transitionType: 'loading'
       }, 'Track loading started');
 
-      if (this.isDirectElectronCatalogSource(track)) {
-        try {
-          const playableTrack = await this.setupResolvedAudioElement(
-            track,
-            isStale,
-            trackIndex,
-            loadRequest.sourceGeneration
-          );
-          if (isStale() || !playableTrack) return false;
-          return true;
-        } catch (error) {
-          console.error('[AudioContextManager] Direct Electron media setup failed:', error);
-          return this.completeTrackLoadFailure(error, error, isStale, trackIndex);
-        }
-      }
-      
-      const buffer = await this.prepareTrackBuffer(track, isStale);
-      if (isStale() || !buffer) return false;
-
-      this.currentBuffer = buffer;
-      this.activeSourceGeneration = loadRequest.sourceGeneration;
-      this.bufferDuration = buffer.duration;
-      
-      this.updateState({
-        currentTrack: track,
-        currentTrackName: this.getDisplayTrackName(track),
-        artworkUrl: '',
-        currentTrackIndex: trackIndex,
-        currentTrackDuration: buffer.duration,
-        currentTrackPosition: 0,
-        currentBuffer: buffer,
-        playbackMode: 'bufferSource',
-        isTransitioning: false,
-        transitionType: null
-      }, 'Track loaded and buffer prepared');
-
-      if (this.audioPlayer.stateManager) {
-        this.audioPlayer.stateManager.updateState({
-          currentTrack: track,
-          currentTrackIndex: trackIndex
-        }, 'AudioContextManager loadTrack committed');
-      }
-      
-      if (isStale()) return false;
-      this.loadMetadata(track, loadRequest, trackIndex);
-      this.prepareNextTrackBufferWithRepeatMode();
-      return true;
+      const suppliedRequest = preparedRequest &&
+        this.playbackEntriesMatch(preparedRequest.track, track, trackIndex)
+        ? preparedRequest
+        : null;
+      const prepared = await this.prepareTrackTransitionRequest(
+        track,
+        trackIndex,
+        isStale,
+        suppliedRequest,
+        null
+      );
+      if (!prepared || isStale()) return false;
+      return await this.activatePreparedTrackLoad(prepared, loadRequest, isStale);
       
     } catch (error) {
       if (isStale()) return false;
       console.error('[AudioContextManager] Track loading failed:', error);
-
-      if (!this.shouldSuppressAudioElementFallback(error)) {
-        this.updateState({
-          playbackMode: 'audioElement',
-          isTransitioning: false,
-          transitionType: null
-        }, 'Falling back to audio element mode');
+      this.updateState({
+        isTransitioning: false,
+        transitionType: null
+      }, 'Track loading failed without replacing current playback');
+      if (!this.audioPlayer.playbackManager?.catalogSequence) {
+        window.uiManager?.setError?.('error.playbackCommandFailed', true);
       }
-      
-      return this.handleTrackLoadFailure(track, error, loadRequest, trackIndex);
+      return false;
     }
   }
   
   /**
    * Prepare track buffer
    */
-  async prepareTrackBuffer(track, isStale = null) {
-    if (this.isDirectElectronCatalogSource(track)) {
-      const error = new Error('Direct Electron catalog sources must use media element streaming');
-      error.code = 'directElectronCatalogSource';
+  async prepareTrackBuffer(track, isStale = null, alreadyResolved = false, preparedDescriptor = null) {
+    const playableTrack = alreadyResolved ? track : await this.resolveTrackProvider(track);
+    if (isStale?.() || !playableTrack) return null;
+    const descriptor = preparedDescriptor ?? this.createPlaybackSourceDescriptor(playableTrack);
+    const decision = choosePlaybackMode(descriptor);
+    if (decision.mode !== 'buffer') {
+      const error = new Error('This playback source must use media element streaming');
+      error.code = decision.mode === 'unavailable'
+        ? 'playbackSourceUnavailable'
+        : 'playbackSourceMustStream';
       throw error;
     }
     try {
-      const arrayBuffer = await this.loadTrackData(track, isStale);
+      const arrayBuffer = await this.loadTrackData(descriptor, isStale, true);
       if (isStale?.() || !arrayBuffer) return null;
 
       const audioBuffer = await new Promise((resolve, reject) => {
@@ -2430,7 +3210,7 @@ export class AudioContextManager {
       
       return audioBuffer;
     } catch (error) {
-      console.error('[AudioContextManager] Buffer preparation failed for:', track?.name, error);
+      console.error('[AudioContextManager] Buffer preparation failed for:', playableTrack?.name, error);
       throw error;
     }
   }
@@ -2438,25 +3218,33 @@ export class AudioContextManager {
   /**
    * Load track data as ArrayBuffer
    */
-  async loadTrackData(track, isStale = null) {
+  async loadTrackData(track, isStale = null, alreadyResolved = false) {
     try {
-      const playableTrack = await this.resolveTrackProvider(track);
+      const playableTrack = alreadyResolved ? track : await this.resolveTrackProvider(track);
       if (isStale?.()) return null;
 
-      if (playableTrack.data instanceof ArrayBuffer) {
-        return playableTrack.data;
-      } else if (ArrayBuffer.isView(playableTrack.data)) {
-        return playableTrack.data.buffer.slice(
-          playableTrack.data.byteOffset,
-          playableTrack.data.byteOffset + playableTrack.data.byteLength
+      const materializedBytes = playableTrack.bytes ?? playableTrack.data;
+      if (materializedBytes instanceof ArrayBuffer) {
+        return materializedBytes;
+      } else if (ArrayBuffer.isView(materializedBytes)) {
+        return materializedBytes.buffer.slice(
+          materializedBytes.byteOffset,
+          materializedBytes.byteOffset + materializedBytes.byteLength
         );
+      } else if (typeof playableTrack.readBytes === 'function') {
+        const bytes = await playableTrack.readBytes();
+        if (isStale?.()) return null;
+        return toOwnedArrayBuffer(bytes);
       } else if (isFileObject(playableTrack.file)) {
         const arrayBuffer = await playableTrack.file.arrayBuffer();
         if (isStale?.()) return null;
         return arrayBuffer;
       } else if (playableTrack.path) {
         if (this.shouldUseElectronFileRead(playableTrack.path)) {
-          const arrayBuffer = await this.loadElectronFileTrackData(playableTrack.path);
+          const arrayBuffer = await this.loadElectronFileTrackData(
+            playableTrack.path,
+            playableTrack.byteLength ?? playableTrack.fileSize ?? null
+          );
           if (isStale?.()) return null;
           return arrayBuffer;
         }
@@ -2479,9 +3267,9 @@ export class AudioContextManager {
   }
 
   async resolveTrackProvider(track) {
-    if (!track?.provider || track.file || track.path) return track;
+    if (!this.needsTrackProviderResolution(track)) return track;
     const resolved = await track.provider();
-    return {
+    const playableTrack = {
       ...track,
       ...(
         resolved?.data instanceof ArrayBuffer || ArrayBuffer.isView(resolved?.data)
@@ -2489,40 +3277,113 @@ export class AudioContextManager {
           : {}
       ),
       ...(resolved?.file ? { file: resolved.file } : {}),
-      ...(resolved?.path ? { path: resolved.path } : {})
+      ...(resolved?.path ? { path: resolved.path } : {}),
+      ...(resolved?.mediaSource !== undefined ? { mediaSource: resolved.mediaSource } : {}),
+      ...(typeof resolved?.readBytes === 'function' ? { readBytes: resolved.readBytes } : {}),
+      ...(resolved?.bytes instanceof ArrayBuffer || ArrayBuffer.isView(resolved?.bytes)
+        ? { bytes: resolved.bytes }
+        : {}),
+      ...(resolved?.kind ? { sourceKind: resolved.kind } : {}),
+      ...(resolved?.physicalSourceKey ? { physicalSourceKey: resolved.physicalSourceKey } : {}),
+      ...(resolved?.canonicalSourceKey ? { canonicalSourceKey: resolved.canonicalSourceKey } : {}),
+      ...(resolved?.sourceKey ? { sourceKey: resolved.sourceKey } : {})
+    };
+    for (const key of ['byteLength', 'fileSize', 'startFrame', 'endFrame', 'durationSec']) {
+      if (Object.prototype.hasOwnProperty.call(resolved ?? {}, key)) playableTrack[key] = resolved[key];
+    }
+    this.resolvedProviderTracks.add(playableTrack);
+    return playableTrack;
+  }
+
+  createPlaybackSourceDescriptor(track) {
+    let descriptor = normalizePlaybackSourceDescriptor(track);
+    if (!descriptor.readBytes && typeof track?.path === 'string' &&
+        this.shouldUseElectronFileRead(track.path)) {
+      const expectedByteLength = descriptor.byteLength;
+      descriptor = Object.freeze({
+        ...descriptor,
+        readBytes: () => this.loadElectronFileTrackData(track.path, expectedByteLength)
+      });
+    }
+    return descriptor;
+  }
+
+  createPlaybackDecisionRecord(playableTrack, descriptor, decision = choosePlaybackMode(descriptor)) {
+    return {
+      playableTrack,
+      descriptor,
+      decision,
+      committedMode: decision.mode,
+      mediaFallbackLocked: false
     };
   }
 
-  async setupResolvedAudioElement(track, isStale = null, targetIndex = null, sourceGeneration = null) {
-    const playableTrack = await this.resolveTrackProvider(track);
+  createPlaybackRequestSnapshot(playableTrack, targetIndex = null) {
+    const descriptor = this.createPlaybackSourceDescriptor(playableTrack);
+    return Object.freeze({
+      track: playableTrack,
+      playableTrack,
+      descriptor,
+      decisionRecord: this.createPlaybackDecisionRecord(
+        playableTrack,
+        descriptor,
+        choosePlaybackMode(descriptor)
+      ),
+      targetIndex: this.normalizePlaylistIndex(targetIndex)
+    });
+  }
+
+  needsTrackProviderResolution(track) {
+    return Boolean(track?.provider) && !this.resolvedProviderTracks.has(track) &&
+      !track.file && !track.path &&
+      !(track.data instanceof ArrayBuffer) && !ArrayBuffer.isView(track.data);
+  }
+
+  async setupResolvedAudioElement(
+    track,
+    isStale = null,
+    targetIndex = null,
+    sourceGeneration = null,
+    descriptor = null,
+    alreadyResolved = false
+  ) {
+    const playableTrack = alreadyResolved ? track : await this.resolveTrackProvider(track);
     if (isStale?.()) return null;
-    if (!this.setupAudioElement(playableTrack, targetIndex, sourceGeneration)) {
+    const playbackDescriptor = descriptor ?? this.createPlaybackSourceDescriptor(playableTrack);
+    const previousObjectURL = this.currentObjectURL;
+    if (!this.setupAudioElement(playableTrack, targetIndex, sourceGeneration, playbackDescriptor)) {
+      this.clearActiveRegion();
+      if (this.currentObjectURL && this.currentObjectURL !== previousObjectURL) {
+        this.revokeCurrentObjectURL();
+      }
       throw new Error('Invalid track: no file or path provided');
+    }
+    const setupObjectURL = this.currentObjectURL !== previousObjectURL
+      ? this.currentObjectURL
+      : null;
+    if (hasPlaybackRegionDescriptor(playableTrack)) {
+      const metadataReady = await this.waitForActiveRegionMetadata(this.activeSourceGeneration);
+      if (isStale?.()) {
+        if (setupObjectURL && this.currentObjectURL === setupObjectURL) {
+          this.revokeCurrentObjectURL();
+        }
+        return null;
+      }
+      if (!metadataReady) {
+        if (setupObjectURL && this.currentObjectURL === setupObjectURL) {
+          this.revokeCurrentObjectURL();
+        }
+        const error = new Error('Playback region is outside the available media');
+        error.code = 'mediaLoadFailed';
+        throw error;
+      }
     }
     return playableTrack;
   }
 
   async handleTrackLoadFailure(track, error, loadRequest = null, targetIndex = null) {
     const isStale = () => loadRequest && !this.isActiveLoadRequest(loadRequest);
-
-    if (this.shouldSuppressAudioElementFallback(error)) {
-      return this.completeTrackLoadFailure(error, error, isStale, targetIndex);
-    }
-
-    try {
-      const playableTrack = await this.setupResolvedAudioElement(
-        track,
-        isStale,
-        targetIndex,
-        loadRequest?.sourceGeneration
-      );
-      if (isStale() || !playableTrack) return false;
-      return true;
-    } catch (fallbackError) {
-      if (isStale()) return false;
-      console.error('[AudioContextManager] Audio element fallback failed:', fallbackError);
-      return this.completeTrackLoadFailure(fallbackError, error, isStale, targetIndex);
-    }
+    return this.completeTrackLoadFailure(error, error, isStale, targetIndex);
   }
 
   async completeTrackLoadFailure(error, originalError, isStale = () => false, failedIndex = null) {
@@ -2551,15 +3412,10 @@ export class AudioContextManager {
     return false;
   }
 
-  /**
-   * Check whether a track path should be loaded through Electron's file API.
-   */
-  isDirectElectronCatalogSource(track) {
-    return track?.sourceKind === 'electron-file';
-  }
-
   shouldUseElectronFileRead(path) {
-    if (!window.electronAPI || !window.electronIntegration?.isElectron || typeof path !== 'string') {
+    const integration = window.electronIntegration;
+    const isElectron = integration?.isElectronEnvironment?.() || integration?.isElectron === true;
+    if (!window.electronAPI || !isElectron || typeof path !== 'string') {
       return false;
     }
 
@@ -2571,40 +3427,20 @@ export class AudioContextManager {
   /**
    * Load an Electron local file path as ArrayBuffer for decodeAudioData.
    */
-  async loadElectronFileTrackData(path) {
+  async loadElectronFileTrackData(path, expectedByteLength = null) {
     if (typeof window.electronAPI?.readFileBytes !== 'function') {
       throw new Error('Failed to load local track: Electron file byte reader is unavailable');
     }
     try {
-      const bytes = await window.electronAPI.readFileBytes(path);
+      const bytes = await window.electronAPI.readFileBytes(path, expectedByteLength);
       if (bytes instanceof ArrayBuffer) return bytes;
       if (ArrayBuffer.isView(bytes)) {
         return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
       }
       throw new Error('Electron file byte reader returned invalid data');
     } catch (error) {
-      if (this.isElectronReadLimitError(error)) throw this.markSuppressAudioElementFallback(error);
       throw error;
     }
-  }
-
-  isElectronReadLimitError(error) {
-    const message = error?.message || String(error || '');
-    return error?.code === 'ERR_LIBRARY_READ_LIMIT' ||
-      message.includes('ERR_LIBRARY_READ_LIMIT') ||
-      message.includes('maximum read size') ||
-      message.includes('maximum library read size');
-  }
-
-  markSuppressAudioElementFallback(error) {
-    if (error && typeof error === 'object') {
-      error.suppressAudioElementFallback = true;
-    }
-    return error;
-  }
-
-  shouldSuppressAudioElementFallback(error) {
-    return Boolean(error?.suppressAudioElementFallback);
   }
 
   /**
@@ -2612,9 +3448,20 @@ export class AudioContextManager {
    */
   async prepareNextTrackBufferWithRepeatMode() {
     if (!this.audioPlayer.playbackManager) return;
-    
+    const playbackManager = this.audioPlayer.playbackManager;
+    if (typeof playbackManager.preparePlannedAutomaticMove === 'function') {
+      const state = this.getCurrentState();
+      const plan = await playbackManager.preparePlannedAutomaticMove(state?.currentTrack ?? null);
+      if (!plan) {
+        this.clearNextTrackBuffer();
+        return;
+      }
+      await this.prepareNextTrackBufferForTrack(plan.nextTrack, plan.nextOrdinal, plan);
+      return;
+    }
+
     const currentIndex = this.audioPlayer.stateManager.getCurrentTrackIndex();
-    const playlist = this.audioPlayer.playbackManager.playlist;
+    const playlist = playbackManager.playlist;
     const state = this.getCurrentState();
     const repeatMode = state?.repeatMode || 'OFF';
     
@@ -2636,28 +3483,215 @@ export class AudioContextManager {
   /**
    * Prepare buffer for a specific track
    */
-  async prepareNextTrackBufferForTrack(track, targetIndex = null) {
+  async prepareNextTrackBufferForTrack(track, targetIndex = null, automaticMovePlan = null) {
     if (!track) return;
-    if (this.isDirectElectronCatalogSource(track)) {
-      this.clearNextTrackBuffer();
-      return;
-    }
     const request = this.beginNextBufferRequest(track, targetIndex);
     
     try {
-      const buffer = await this.prepareTrackBuffer(track, () => !this.isActiveNextBufferRequest(request));
-      if (!buffer || !this.isExpectedNextBufferRequest(request)) return;
+      const isStale = () => !this.isActiveNextBufferRequest(request);
+      const planSnapshot = automaticMovePlan?.preparedRequest ?? null;
+      const playableTrack = planSnapshot?.playableTrack ?? (this.needsTrackProviderResolution(track)
+        ? await this.resolveTrackProvider(track)
+        : track);
+      if (isStale()) return;
+      const descriptor = planSnapshot?.descriptor ?? this.createPlaybackSourceDescriptor(playableTrack);
+      const decisionRecord = planSnapshot?.decisionRecord ?? this.createPlaybackDecisionRecord(
+          playableTrack,
+          descriptor,
+          choosePlaybackMode(descriptor)
+        );
+      if (decisionRecord.committedMode !== 'buffer') {
+        if (automaticMovePlan &&
+            this.audioPlayer.playbackManager?.isPlannedAutomaticMoveCurrent?.(automaticMovePlan) === true) {
+          this.nextBuffer = {
+            buffer: null,
+            track,
+            playableTrack,
+            descriptor,
+            decisionRecord,
+            automaticMovePlan,
+            targetIndex: request.targetIndex,
+            requestToken: request.token
+          };
+        }
+        return;
+      }
+      let buffer;
+      try {
+        buffer = await this.prepareTrackBuffer(playableTrack, isStale, true, descriptor);
+      } catch (error) {
+        if (decisionRecord.decision.allowMediaFallback && this.isActiveNextBufferRequest(request)) {
+          decisionRecord.committedMode = 'media';
+          decisionRecord.mediaFallbackLocked = true;
+          this.nextBuffer = {
+            buffer: null,
+            track,
+            playableTrack,
+            descriptor,
+            decisionRecord,
+            automaticMovePlan,
+            targetIndex: request.targetIndex,
+            requestToken: request.token
+          };
+          return;
+        }
+        throw error;
+      }
+      const planIsCurrent = automaticMovePlan
+        ? this.audioPlayer.playbackManager?.isPlannedAutomaticMoveCurrent?.(automaticMovePlan) === true
+        : this.isExpectedNextBufferRequest(request);
+      if (!buffer || !this.isActiveNextBufferRequest(request) || !planIsCurrent) return;
       this.nextBuffer = {
         buffer,
         track,
+        playableTrack,
+        descriptor,
+        decisionRecord,
+        automaticMovePlan,
         targetIndex: request.targetIndex,
         requestToken: request.token
       };
+      this.schedulePreparedBufferTransition(this.nextBuffer);
     } catch (error) {
       if (this.isActiveNextBufferRequest(request)) {
         console.warn('[AudioContextManager] Next track buffer preparation failed:', error);
       }
     }
+  }
+
+  schedulePreparedBufferTransition(prepared, startAtEnded = false) {
+    const plan = prepared?.automaticMovePlan;
+    const playbackManager = this.audioPlayer.playbackManager;
+    const state = this.getCurrentState();
+    const audioContext = this.audioPlayer.audioContext;
+    if (!prepared?.buffer || !plan || !audioContext || !this.currentBufferSource ||
+        state?.playbackMode !== 'bufferSource' || state.isPlaying !== true ||
+        state.isPaused === true || state.isStopped === true ||
+        playbackManager?.isPlannedAutomaticMoveCurrent?.(plan) !== true) {
+      return false;
+    }
+
+    const boundaryTime = startAtEnded
+      ? audioContext.currentTime
+      : this.bufferStartTime + this.bufferDuration;
+    if (!Number.isFinite(boundaryTime) || (!startAtEnded && boundaryTime <= audioContext.currentTime)) {
+      return false;
+    }
+
+    this.cancelScheduledBufferTransition();
+    const source = audioContext.createBufferSource();
+    const scheduled = {
+      source,
+      oldSource: this.currentBufferSource,
+      buffer: prepared.buffer,
+      track: prepared.playableTrack ?? prepared.track,
+      descriptor: prepared.descriptor,
+      decisionRecord: prepared.decisionRecord,
+      plan,
+      boundaryTime,
+      committed: false,
+      cancelled: false,
+      instanceId: null,
+      sourceGeneration: ++this.sourceGenerationSequence
+    };
+    source.buffer = prepared.buffer;
+    source.onended = () => {
+      this.releasePipelineSource(source);
+      if (scheduled.cancelled) return;
+      if (!scheduled.committed) {
+        if (!this.commitScheduledBufferTransition(scheduled)) return;
+      }
+      const currentState = this.getCurrentState();
+      if (this.currentBufferSource === source &&
+          this.currentInstanceId === scheduled.instanceId &&
+          !currentState?.isTransitioning && !currentState?.isStopped) {
+        this.handleTrackEnded();
+      }
+    };
+
+    try {
+      if (!this.connectScheduledBufferSource(source) ||
+          playbackManager?.isPlannedAutomaticMoveCurrent?.(plan) !== true ||
+          (!startAtEnded && boundaryTime <= audioContext.currentTime)) {
+        throw new Error('scheduled-buffer-transition-stale');
+      }
+      source.start(startAtEnded ? 0 : boundaryTime);
+      this.scheduledBufferTransition = scheduled;
+      return startAtEnded ? this.commitScheduledBufferTransition(scheduled) : true;
+    } catch (error) {
+      scheduled.cancelled = true;
+      source.onended = null;
+      this.releasePipelineSource(source, true);
+      return false;
+    }
+  }
+
+  commitScheduledBufferTransitionForSource(source) {
+    const scheduled = this.scheduledBufferTransition;
+    if (!scheduled || scheduled.oldSource !== source) return false;
+    return this.commitScheduledBufferTransition(scheduled);
+  }
+
+  commitScheduledBufferTransition(scheduled = this.scheduledBufferTransition) {
+    const playbackManager = this.audioPlayer.playbackManager;
+    if (!scheduled || scheduled !== this.scheduledBufferTransition ||
+        scheduled.cancelled || scheduled.committed ||
+        playbackManager?.isPlannedAutomaticMoveCurrent?.(scheduled.plan) !== true) {
+      return false;
+    }
+
+    const previousSource = scheduled.oldSource;
+    scheduled.instanceId = this.advancePlaybackInstanceToken();
+    this.currentBuffer = scheduled.buffer;
+    this.currentBufferSource = scheduled.source;
+    this.currentPlaybackDecision = scheduled.decisionRecord ?? null;
+    this.activeSourceGeneration = scheduled.sourceGeneration;
+    this.bufferStartTime = scheduled.boundaryTime;
+    this.bufferDuration = scheduled.buffer.duration;
+
+    const committed = playbackManager.commitPlannedAutomaticMove(scheduled.plan, {
+      currentBuffer: scheduled.buffer,
+      nextBuffer: null,
+      currentTrackDuration: scheduled.buffer.duration,
+      currentTrackPosition: 0,
+      playbackMode: 'bufferSource',
+      currentInstanceId: scheduled.instanceId,
+      playbackInstanceId: scheduled.instanceId,
+      bufferStartTime: scheduled.boundaryTime,
+      bufferDuration: scheduled.buffer.duration
+    });
+    if (!committed) {
+      scheduled.cancelled = true;
+      scheduled.source.onended = null;
+      this.releasePipelineSource(scheduled.source, true);
+      this.scheduledBufferTransition = null;
+      return false;
+    }
+
+    scheduled.committed = true;
+    this.scheduledBufferTransition = null;
+    this.nextBuffer = null;
+    this.activeNextBufferRequest = null;
+    if (!this.getUseInputWithPlayer()) {
+      this.setManagedSourceNode(this.getPipelineSourceNode(scheduled.source));
+    }
+    if (previousSource && previousSource !== scheduled.source) {
+      previousSource.onended = null;
+      this.releasePipelineSource(previousSource);
+    }
+    this.loadMetadata(scheduled.track, null, scheduled.plan.nextOrdinal);
+    this.prepareNextTrackBufferWithRepeatMode();
+    return true;
+  }
+
+  cancelScheduledBufferTransition() {
+    const scheduled = this.scheduledBufferTransition;
+    if (!scheduled) return false;
+    this.scheduledBufferTransition = null;
+    scheduled.cancelled = true;
+    scheduled.source.onended = null;
+    this.releasePipelineSource(scheduled.source, true);
+    return true;
   }
   
   /**
@@ -2698,8 +3732,16 @@ export class AudioContextManager {
   /**
    * Transition to next track
    */
-  async transitionToNextTrack(nextTrack, targetIndex = null, userInitiated = true) {
+  async transitionToNextTrack(
+    nextTrack,
+    targetIndex = null,
+    userInitiated = true,
+    preparedRequest = null,
+    automaticMovePlan = null
+  ) {
     const nextTrackIndex = this.getTrackIndexForPlaybackEntry(nextTrack, targetIndex, -1);
+    const plan = automaticMovePlan ?? preparedRequest?.automaticMovePlan ?? null;
+    if (!plan) this.invalidateAutomaticMoveForManualCommand();
     const transitionRequest = this.beginTransitionRequest(nextTrack, nextTrackIndex);
     this.updateState({
       isTransitioning: true,
@@ -2707,63 +3749,41 @@ export class AudioContextManager {
     }, 'Transition started');
     
     try {
-      const bufferedNextTrack = this.consumeNextBufferForTrack(nextTrack, nextTrackIndex);
-      if (bufferedNextTrack) {
-        let nextNextIndex = nextTrackIndex + 1;
-        if (this.audioPlayer.playbackManager && nextNextIndex >= this.audioPlayer.playbackManager.playlist.length) {
-          const state = this.getCurrentState();
-          if (state?.repeatMode === 'ALL') {
-            nextNextIndex = 0;
-          } else {
-            nextNextIndex = -1;
-          }
-        }
-        
-        const started = await this.createAndStartBufferSource(
-          () => !this.isActiveTransitionRequest(transitionRequest),
-          {
-            buffer: bufferedNextTrack,
-            track: nextTrack,
-            targetIndex: nextTrackIndex,
-            sourceGeneration: transitionRequest.sourceGeneration
-          }
-        );
-        if (started === false || !this.isActiveTransitionRequest(transitionRequest)) {
-          return false;
-        }
-        this.loadMetadata(nextTrack, null, nextTrackIndex);
-        
-        if (nextNextIndex >= 0 && this.audioPlayer.playbackManager) {
-          const nextNextTrack = this.audioPlayer.playbackManager.getTrack(nextNextIndex);
-          if (nextNextTrack) {
-            this.prepareNextTrackBufferForTrack(nextNextTrack, nextNextIndex);
-          }
+      let preparedNextTrack = plan ? preparedRequest : null;
+      if (plan && !preparedNextTrack) {
+        preparedNextTrack = this.consumePreparedNextForTrack(nextTrack, nextTrackIndex);
+      } else if (plan && this.nextBuffer === preparedNextTrack) {
+        this.nextBuffer = null;
+        this.activeNextBufferRequest = null;
+      }
+      const isStale = () => !this.isActiveTransitionRequest(transitionRequest) ||
+        (plan && this.audioPlayer.playbackManager?.isPlannedAutomaticMoveCurrent?.(plan) !== true);
+      const prepared = await this.prepareTrackTransitionRequest(
+        nextTrack,
+        nextTrackIndex,
+        isStale,
+        preparedNextTrack,
+        plan
+      );
+      if (!prepared || isStale()) return false;
+      const activated = await this.activatePreparedTrackTransition(
+        prepared,
+        transitionRequest,
+        userInitiated,
+        plan
+      );
+      if (activated === false && !isStale()) {
+        if (plan) {
+          const error = new Error('Prepared automatic transition could not be activated');
+          await this.completeTrackLoadFailure(error, error, isStale, nextTrackIndex);
         } else {
-          this.prepareNextTrackBufferWithRepeatMode();
-        }
-        
-      } else {
-        if (this.nextBuffer) {
-          this.clearNextTrackBuffer();
-        }
-        const loaded = await this.loadTrack(nextTrack, nextTrackIndex);
-        if (loaded === false || !this.isActiveTransitionRequest(transitionRequest)) {
-          return false;
-        }
-        const started = await this.play(true, userInitiated);
-        if (started === false || !this.isActiveTransitionRequest(transitionRequest)) {
-          return false;
+          this.updateState({
+            isTransitioning: false,
+            transitionType: null
+          }, 'Prepared track transition was not activated');
         }
       }
-      
-      this.updateState({
-        isTransitioning: false,
-        transitionType: null,
-        isPlaying: true,
-        isPaused: false,
-        isStopped: false
-      }, 'Transition completed');
-      return true;
+      return activated;
       
     } catch (error) {
       console.error('[AudioContextManager] Transition failed:', error);
@@ -2775,6 +3795,406 @@ export class AudioContextManager {
       }
       throw error;
     }
+  }
+
+  async prepareTrackTransitionRequest(track, targetIndex, isStale, preparedRequest, plan) {
+    const planSnapshot = plan?.preparedRequest ?? null;
+    const playableTrack = preparedRequest?.playableTrack ?? planSnapshot?.playableTrack ??
+      (this.needsTrackProviderResolution(track) ? await this.resolveTrackProvider(track) : track);
+    if (isStale() || !playableTrack) return null;
+    const descriptor = preparedRequest?.descriptor ?? planSnapshot?.descriptor ??
+      this.createPlaybackSourceDescriptor(playableTrack);
+    const decisionRecord = preparedRequest?.decisionRecord ?? planSnapshot?.decisionRecord ??
+      this.createPlaybackDecisionRecord(playableTrack, descriptor, choosePlaybackMode(descriptor));
+    let buffer = preparedRequest?.buffer ?? null;
+
+    if (decisionRecord.committedMode === 'unavailable') {
+      throw new Error('Playback source is unavailable');
+    }
+    if (decisionRecord.committedMode === 'buffer' && !buffer) {
+      try {
+        buffer = await this.prepareTrackBuffer(playableTrack, isStale, true, descriptor);
+      } catch (error) {
+        if (!decisionRecord.decision.allowMediaFallback || decisionRecord.mediaFallbackLocked === true) {
+          throw error;
+        }
+        decisionRecord.committedMode = 'media';
+        decisionRecord.mediaFallbackLocked = true;
+      }
+    }
+    if (isStale()) return null;
+    return {
+      track,
+      playableTrack,
+      descriptor,
+      decisionRecord,
+      buffer,
+      automaticMovePlan: plan,
+      targetIndex
+    };
+  }
+
+  async activatePreparedTrackLoad(prepared, loadRequest, isStale) {
+    let candidate = null;
+    try {
+      candidate = prepared.decisionRecord.committedMode === 'buffer'
+        ? this.prepareBufferTransitionCandidate(prepared, loadRequest.sourceGeneration)
+        : await this.prepareMediaTransitionCandidate(prepared, loadRequest.sourceGeneration, isStale);
+      if (!candidate || isStale()) return false;
+      return this.commitPreparedTrackCandidate(candidate, prepared, null, isStale, false);
+    } finally {
+      if (candidate && !candidate.committed) this.cleanupPreparedTransitionCandidate(candidate);
+    }
+  }
+
+  async activatePreparedTrackTransition(prepared, transitionRequest, userInitiated, plan) {
+    const isStale = () => !this.isActiveTransitionRequest(transitionRequest) ||
+      (plan && this.audioPlayer.playbackManager?.isPlannedAutomaticMoveCurrent?.(plan) !== true);
+    if (!await this.resumePlaybackAudioContext(userInitiated) || isStale()) return false;
+
+    let candidate = null;
+    let stage = null;
+    try {
+      candidate = prepared.decisionRecord.committedMode === 'buffer'
+        ? this.prepareBufferTransitionCandidate(prepared, transitionRequest.sourceGeneration)
+        : await this.prepareMediaTransitionCandidate(
+            prepared,
+            transitionRequest.sourceGeneration,
+            isStale
+          );
+      if (!candidate || isStale()) return false;
+      stage = await this.stagePlaybackActivation(
+        candidate.backend,
+        transitionRequest.sourceGeneration,
+        0,
+        prepared
+      );
+      if (isStale()) return false;
+
+      if (candidate.mode === 'bufferSource') {
+        candidate.startTime = this.audioPlayer.audioContext.currentTime;
+        candidate.source.start(candidate.startTime);
+      } else {
+        await candidate.element.play();
+      }
+      if (isStale() || candidate.ended === true || candidate.element?.error) return false;
+
+      const commit = () => this.commitPreparedTrackCandidate(candidate, prepared, plan, isStale, true);
+      if (stage) {
+        const result = await this.audioManager.activateStagedAudioCandidate(stage, {
+          acquire: () => candidate,
+          isCandidateCurrent: value => value === candidate && !isStale() &&
+            candidate.ended !== true && candidate.element?.ended !== true &&
+            !candidate.element?.error &&
+            this.isPipelineSourceConnected(candidate.source),
+          commit,
+          cleanup: () => this.cleanupPreparedTransitionCandidate(candidate)
+        });
+        return result.activated === true;
+      }
+      return commit();
+    } catch (error) {
+      if (!isStale()) {
+        console.error('[AudioContextManager] Prepared track transition failed:', error);
+      }
+      return false;
+    } finally {
+      if (candidate && !candidate.committed) this.cleanupPreparedTransitionCandidate(candidate);
+      this.releasePlaybackActivationStage(stage);
+    }
+  }
+
+  prepareBufferTransitionCandidate(prepared, sourceGeneration) {
+    if (!prepared.buffer) throw new Error('Prepared buffer is unavailable');
+    const source = this.audioPlayer.audioContext.createBufferSource();
+    const candidate = {
+      mode: 'bufferSource',
+      backend: 'buffer-source',
+      source,
+      buffer: prepared.buffer,
+      sourceGeneration,
+      instanceId: this.currentInstanceId + 1,
+      startTime: 0,
+      ended: false,
+      committed: false,
+      cleaned: false
+    };
+    source.buffer = prepared.buffer;
+    source.onended = () => {
+      if (!candidate.committed) {
+        candidate.ended = true;
+        return;
+      }
+      this.releasePipelineSource(source);
+      const state = this.getCurrentState();
+      if (this.currentBufferSource === source && this.currentInstanceId === candidate.instanceId &&
+          !state?.isTransitioning && !state?.isStopped) {
+        this.handleTrackEnded();
+      }
+    };
+    if (!this.connectPrivatePipelineSource(source)) {
+      source.onended = null;
+      this.releasePipelineSource(source, true);
+      throw new Error('private-buffer-candidate-connect-failed');
+    }
+    return candidate;
+  }
+
+  async prepareMediaTransitionCandidate(prepared, sourceGeneration, isStale) {
+    const sourceValue = prepared.descriptor?.mediaSource ?? prepared.playableTrack?.mediaSource ??
+      prepared.playableTrack?.file ?? prepared.playableTrack?.path ?? null;
+    const element = new Audio();
+    let objectURL = null;
+    if (isBlobObject(sourceValue)) {
+      objectURL = URL.createObjectURL(sourceValue);
+      element.src = objectURL;
+    } else if (typeof sourceValue === 'string' && sourceValue.length > 0) {
+      const formattedSource = this.getMediaElementSourceUrl(sourceValue);
+      if (!formattedSource) throw new Error('Invalid media source');
+      element.src = formattedSource;
+    } else {
+      throw new Error('Invalid track: no media source provided');
+    }
+    const region = getPlaybackRegion(prepared.playableTrack);
+    try {
+      if (!await this.waitForMediaCandidateReadiness(
+        element,
+        region,
+        isStale,
+        () => element.load()
+      )) {
+        throw new Error(region
+          ? 'Playback region is outside the available media'
+          : 'Media source did not become ready');
+      }
+      if (isStale()) throw new Error('stale-media-transition-candidate');
+      const source = this.audioPlayer.audioContext.createMediaElementSource(element);
+      const candidate = {
+        mode: 'audioElement',
+        backend: 'html-media',
+        source,
+        element,
+        objectURL,
+        region,
+        sourceGeneration,
+        ended: false,
+        committed: false,
+        cleaned: false
+      };
+      if (!this.connectPrivatePipelineSource(source)) {
+        this.releasePipelineSource(source);
+        throw new Error('private-media-candidate-connect-failed');
+      }
+      return candidate;
+    } catch (error) {
+      try { element.pause(); } catch (_) { /* already stopped */ }
+      try { element.src = ''; } catch (_) { /* already cleared */ }
+      if (objectURL) URL.revokeObjectURL(objectURL);
+      throw error;
+    }
+  }
+
+  async waitForMediaCandidateReadiness(element, region, isStale, startLoad) {
+    const validate = () => {
+      try {
+        if (isStale() || element.error || element.readyState < 1) return false;
+        if (region && !isRegionPlayableInMedia(region, element.duration)) return false;
+        if (region) element.currentTime = getRegionStartTime(region);
+        return true;
+      } catch (error) {
+        return false;
+      }
+    };
+
+    return new Promise(resolve => {
+      let settled = false;
+      let timeoutId = null;
+      const settle = value => {
+        if (settled) return;
+        settled = true;
+        element.removeEventListener('loadedmetadata', onLoaded);
+        element.removeEventListener('error', onError);
+        this.pendingMediaCandidateReadiness.delete(onStale);
+        if (timeoutId !== null) clearTimeout(timeoutId);
+        resolve(value);
+      };
+      const onLoaded = () => settle(validate());
+      const onError = () => settle(false);
+      const onStale = () => settle(false);
+      element.addEventListener('loadedmetadata', onLoaded);
+      element.addEventListener('error', onError);
+      this.pendingMediaCandidateReadiness.add(onStale);
+      timeoutId = setTimeout(() => settle(false), MEDIA_CANDIDATE_READY_TIMEOUT_MS);
+
+      try {
+        startLoad();
+      } catch (error) {
+        settle(false);
+        return;
+      }
+
+      if (isStale() || element.error) {
+        settle(false);
+      } else if (element.readyState >= 1) {
+        settle(validate());
+      }
+    });
+  }
+
+  prepareMutedCandidateCommit(candidate, startPlayback) {
+    const ownership = this.preparePlayerSourceOwnership();
+    if (!ownership) return null;
+    if (!this.setPrivatePipelineSourceMuted(candidate.source, true) ||
+        !this.ensurePipelineSourceConnected(candidate.source)) {
+      this.rollbackPlayerSourceOwnership(ownership);
+      return null;
+    }
+    return {
+      ownership,
+      managedSource: startPlayback || candidate.mode === 'audioElement'
+        ? this.getPipelineSourceNode(candidate.source)
+        : ownership.silentSource
+    };
+  }
+
+  teardownCommittedBackendForTransition(candidate) {
+    this.cancelScheduledBufferTransition();
+    this.clearBufferMonitoring();
+    this.clearRegionBoundaryTimer();
+    if (this.pendingBufferSource && this.pendingBufferSource !== candidate.source) {
+      this.releasePipelineSource(this.pendingBufferSource, true);
+    }
+    this.pendingBufferSource = null;
+    if (this.currentBufferSource && this.currentBufferSource !== candidate.source) {
+      this.releasePipelineSource(this.currentBufferSource, true);
+    }
+    this.currentBufferSource = null;
+
+    if (this.pendingMediaActivation) {
+      this.pendingMediaActivation.invalid = true;
+      try { this.pendingMediaActivation.element?.pause(); } catch (_) { /* already paused */ }
+      this.pendingMediaActivation = null;
+    }
+    const previousElement = this.audioPlayer.audioElement;
+    const previousMediaSource = this.mediaSource;
+    if (previousMediaSource && previousMediaSource !== candidate.source) {
+      this.releasePipelineSource(previousMediaSource);
+    }
+    this.mediaSource = null;
+    if (previousElement && previousElement !== candidate.element) {
+      this.detachAudioElement(previousElement, { clearSource: true, clearPlayerReference: true });
+    }
+    this.revokeCurrentObjectURL();
+    this.clearActiveRegion();
+  }
+
+  commitPreparedTrackCandidate(candidate, prepared, plan, isStale, startPlayback) {
+    const playbackManager = this.audioPlayer.playbackManager;
+    if (isStale() || candidate.element?.error ||
+        (plan && playbackManager?.isPlannedAutomaticMoveCurrent?.(plan) !== true)) {
+      return false;
+    }
+
+    const track = prepared.playableTrack;
+    const mediaDuration = Number.isFinite(candidate.element?.duration) ? candidate.element.duration : 0;
+    const statePatch = {
+      currentTrackDuration: candidate.mode === 'bufferSource'
+        ? candidate.buffer.duration
+        : (candidate.region?.durationSec ?? mediaDuration),
+      currentTrackPosition: 0,
+      playbackMode: candidate.mode,
+      currentBuffer: candidate.mode === 'bufferSource' ? candidate.buffer : null,
+      isPlaying: startPlayback,
+      isPaused: false,
+      isStopped: !startPlayback,
+      isTransitioning: false,
+      transitionType: null
+    };
+    const preflight = this.prepareMutedCandidateCommit(candidate, startPlayback);
+    if (!preflight) return false;
+    if (isStale() || (plan && playbackManager?.isPlannedAutomaticMoveCurrent?.(plan) !== true)) {
+      this.rollbackPlayerSourceOwnership(preflight.ownership);
+      return false;
+    }
+
+    this.teardownCommittedBackendForTransition(candidate);
+    this.setPrivatePipelineSourceMuted(candidate.source, false);
+    this.commitPlayerSourceOwnership(preflight.managedSource, preflight.ownership);
+    this.currentPlaybackDecision = prepared.decisionRecord;
+    this.activeSourceGeneration = candidate.sourceGeneration;
+    if (candidate.mode === 'bufferSource') {
+      this.currentBuffer = candidate.buffer;
+      this.currentBufferSource = startPlayback ? candidate.source : null;
+      this.bufferStartTime = startPlayback ? candidate.startTime : 0;
+      this.bufferDuration = candidate.buffer.duration;
+      this.currentInstanceId = candidate.instanceId;
+      this.playbackInstanceId = candidate.instanceId;
+      Object.assign(statePatch, {
+        currentInstanceId: candidate.instanceId,
+        playbackInstanceId: candidate.instanceId,
+        bufferStartTime: startPlayback ? candidate.startTime : 0,
+        bufferDuration: candidate.buffer.duration
+      });
+    } else {
+      this.currentBuffer = null;
+      this.bufferDuration = 0;
+      this.audioPlayer.audioElement = candidate.element;
+      this.mediaSource = candidate.source;
+      this.mediaSourceGeneration++;
+      this.currentObjectURL = candidate.objectURL;
+      this.setupEventHandlers();
+      this.setValidatedActiveRegion(track, candidate.sourceGeneration);
+      this.setupMediaSessionHandlers();
+    }
+
+    if (plan && startPlayback) {
+      playbackManager.commitPlannedAutomaticMove(plan, statePatch);
+    } else {
+      this.updateState({
+        currentTrack: track,
+        currentTrackName: this.getDisplayTrackName(track),
+        artworkUrl: '',
+        currentTrackIndex: prepared.targetIndex,
+        ...statePatch
+      }, startPlayback
+        ? 'Prepared track transition committed'
+        : 'Prepared track load committed');
+    }
+
+    candidate.committed = true;
+    this.nextBuffer = null;
+    this.activeNextBufferRequest = null;
+    this.loadMetadata(track, null, prepared.targetIndex);
+    if (candidate.mode === 'bufferSource') {
+      if (startPlayback) {
+        this.setupBufferMonitoring();
+      } else {
+        candidate.source.onended = null;
+        this.releasePipelineSource(candidate.source, true);
+      }
+      this.prepareNextTrackBufferWithRepeatMode();
+    } else if (this.activeRegion) {
+      this.prepareRegionTransportPlan(this.activeRegion);
+      this.armRegionBoundaryTimer();
+    } else {
+      this.prepareNextTrackBufferWithRepeatMode();
+    }
+    this.audioPlayer.ui?.updatePlayerUIState?.();
+    return true;
+  }
+
+  cleanupPreparedTransitionCandidate(candidate) {
+    if (!candidate || candidate.cleaned || candidate.committed) return;
+    candidate.cleaned = true;
+    if (candidate.mode === 'bufferSource') {
+      candidate.source.onended = null;
+      this.releasePipelineSource(candidate.source, true);
+      return;
+    }
+    try { candidate.element.pause(); } catch (_) { /* already paused */ }
+    this.releasePipelineSource(candidate.source);
+    try { candidate.element.src = ''; } catch (_) { /* already cleared */ }
+    if (candidate.objectURL) URL.revokeObjectURL(candidate.objectURL);
   }
   
   /**
@@ -2822,6 +4242,9 @@ export class AudioContextManager {
         committed = true;
         this.pendingBufferSource = null;
         this.currentBuffer = buffer;
+        if (activationIntent?.decisionRecord) {
+          this.currentPlaybackDecision = activationIntent.decisionRecord;
+        }
         this.activeSourceGeneration = sourceGeneration;
         this.currentBufferSource = candidateSource;
         this.bufferStartTime = currentTime;
@@ -2893,39 +4316,7 @@ export class AudioContextManager {
    * Seamless transition to a track (for previous/next track functionality)
    */
   async seamlessTransition(track, targetIndex = null, userInitiated = true) {
-    const trackIndex = this.getTrackIndexForPlaybackEntry(track, targetIndex);
-    const transitionRequest = this.beginTransitionRequest(track, trackIndex);
-    this.updateState({
-      isTransitioning: true,
-      transitionType: 'seamless'
-    }, 'Seamless transition started');
-    
-    try {
-      const loaded = await this.loadTrack(track, trackIndex);
-      if (loaded === false || !this.isActiveTransitionRequest(transitionRequest)) {
-        return false;
-      }
-      const started = await this.play(true, userInitiated);
-      if (started === false || !this.isActiveTransitionRequest(transitionRequest)) {
-        return false;
-      }
-      
-      this.updateState({
-        isTransitioning: false,
-        transitionType: null
-      }, 'Seamless transition completed');
-      return true;
-      
-    } catch (error) {
-      console.error('[AudioContextManager] Seamless transition failed:', error);
-      if (this.isActiveTransitionRequest(transitionRequest)) {
-        this.updateState({
-          isTransitioning: false,
-          transitionType: null
-        }, 'Seamless transition failed');
-      }
-      throw error;
-    }
+    return this.transitionToNextTrack(track, targetIndex, userInitiated);
   }
   
   // ===== CLEANUP =====
@@ -2935,6 +4326,7 @@ export class AudioContextManager {
    */
   disconnect() {
     this.invalidatePendingPlaybackOperationsForDisconnect();
+    this.clearActiveRegion();
     try {
       if (this.audioPlayer?.mediaSessionManager?.clearActionHandlers) {
         this.audioPlayer.mediaSessionManager.clearActionHandlers();
@@ -2957,12 +4349,10 @@ export class AudioContextManager {
         this.mediaSource = null;
       }
       
-      if (this.currentObjectURL) {
-        URL.revokeObjectURL(this.currentObjectURL);
-        this.currentObjectURL = null;
-      }
+      this.revokeCurrentObjectURL();
       
       this.currentBuffer = null;
+      this.currentPlaybackDecision = null;
       this.clearNextTrackBuffer();
       this.clearArtworkURL();
       this.clearBufferMonitoring();
@@ -2974,6 +4364,7 @@ export class AudioContextManager {
         currentTrackIndex: -1,
         currentTrackName: '',
         artworkUrl: '',
+        isTrackPresentationPending: false,
         currentTrackDuration: 0,
         currentTrackPosition: 0,
         isPlaying: false,
@@ -3002,6 +4393,10 @@ export class AudioContextManager {
         if (this.eventHandlers.loadedmetadata) {
           this.audioPlayer.audioElement.removeEventListener('loadedmetadata', this.eventHandlers.loadedmetadata);
           this.eventHandlers.loadedmetadata = null;
+        }
+        if (this.eventHandlers.ratechange) {
+          this.audioPlayer.audioElement.removeEventListener('ratechange', this.eventHandlers.ratechange);
+          this.eventHandlers.ratechange = null;
         }
         
         const silentDataUrl = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
@@ -3074,6 +4469,7 @@ export class AudioContextManager {
    * Clear next track buffer
    */
   clearNextTrackBuffer() {
+    this.cancelScheduledBufferTransition();
     this.nextBufferRequestToken++;
     this.activeNextBufferRequest = null;
     this.nextBuffer = null;
@@ -3098,6 +4494,21 @@ function electronFilePathToMediaUrl(filePath) {
 
 function isFileObject(value) {
   return typeof File !== 'undefined' && value instanceof File;
+}
+
+function isBlobObject(value) {
+  if (!value || typeof value !== 'object') return false;
+  if (typeof Blob !== 'undefined' && value instanceof Blob) return true;
+  if (typeof File !== 'undefined' && value instanceof File) return true;
+  return Number.isFinite(value.size) && typeof value.arrayBuffer === 'function';
+}
+
+function toOwnedArrayBuffer(value) {
+  if (value instanceof ArrayBuffer) return value;
+  if (ArrayBuffer.isView(value)) {
+    return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength);
+  }
+  throw new Error('Playback byte reader returned invalid data');
 }
 
 function samePlaybackEntry(left, right) {

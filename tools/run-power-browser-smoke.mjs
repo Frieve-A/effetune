@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const POWER_SMOKE_FIXTURE_PATH = '/__power-policy-smoke__/index.html';
+export const CUE_REGION_SMOKE_FIXTURE_PATH = '/__cue-region-smoke__/index.html';
 const POWER_SMOKE_OLD_SW_PATH = '/__power-policy-smoke__/old-sw.js';
 
 const modulePath = fileURLToPath(import.meta.url);
@@ -33,6 +34,17 @@ self.addEventListener('activate', event => {
   event.waitUntil(self.clients.claim());
 });
 `;
+
+const cueRegionFixtureHtml = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>EffeTune CUE region browser smoke</title>
+</head>
+<body>
+  <main id="status">CUE region smoke fixture ready</main>
+</body>
+</html>`;
 
 const fixtureHtml = String.raw`<!doctype html>
 <html lang="en">
@@ -701,6 +713,10 @@ function createStaticServer() {
       sendText(response, 200, fixtureHtml, 'text/html; charset=utf-8');
       return;
     }
+    if (requestPath === CUE_REGION_SMOKE_FIXTURE_PATH) {
+      sendText(response, 200, cueRegionFixtureHtml, 'text/html; charset=utf-8');
+      return;
+    }
     if (requestPath === POWER_SMOKE_OLD_SW_PATH) {
       response.statusCode = 200;
       setResponseHeaders(response, 'text/javascript; charset=utf-8');
@@ -834,16 +850,22 @@ async function loadPlaywright() {
   }
 }
 
-async function loadSmokeSpec() {
-  const spec = await import('../tests/browser/power-policy-smoke.spec.mjs');
-  if (typeof spec.runPowerPolicyBrowserSmoke !== 'function') {
+async function loadSmokeSpecs() {
+  const [powerSpec, cueRegionSpec] = await Promise.all([
+    import('../tests/browser/power-policy-smoke.spec.mjs'),
+    import('../tests/browser/cue-region-smoke.spec.mjs')
+  ]);
+  if (typeof powerSpec.runPowerPolicyBrowserSmoke !== 'function') {
     throw new TypeError('power-policy-smoke.spec.mjs must export runPowerPolicyBrowserSmoke().');
   }
-  return spec.runPowerPolicyBrowserSmoke;
+  if (typeof cueRegionSpec.runCueRegionBrowserSmoke !== 'function') {
+    throw new TypeError('cue-region-smoke.spec.mjs must export runCueRegionBrowserSmoke().');
+  }
+  return [powerSpec.runPowerPolicyBrowserSmoke, cueRegionSpec.runCueRegionBrowserSmoke];
 }
 
 export async function runPowerBrowserSmoke() {
-  const [{ chromium }, runSmoke] = await Promise.all([loadPlaywright(), loadSmokeSpec()]);
+  const [{ chromium }, smokeSpecs] = await Promise.all([loadPlaywright(), loadSmokeSpecs()]);
   const server = await startIsolatedStaticServer();
   let browser = null;
   try {
@@ -864,7 +886,11 @@ export async function runPowerBrowserSmoke() {
       );
     }
     await withTimeout(
-      runSmoke({ browser, baseURL: server.baseURL }),
+      (async () => {
+        for (const runSmoke of smokeSpecs) {
+          await runSmoke({ browser, baseURL: server.baseURL });
+        }
+      })(),
       testTimeoutMs,
       `Power browser smoke exceeded ${testTimeoutMs} ms.`
     );
@@ -879,7 +905,7 @@ function printHelp() {
   process.stdout.write([
     'Usage: node tools/run-power-browser-smoke.mjs',
     '',
-    'Runs the mandatory EffeTune power-policy smoke in Playwright Chromium.',
+    'Runs the mandatory EffeTune power-policy and CUE-region smokes in Playwright Chromium.',
     'Set POWER_BROWSER_HEADED=1 to show the browser.',
     ''
   ].join('\n'));

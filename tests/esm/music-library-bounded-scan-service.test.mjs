@@ -11,6 +11,7 @@ import {
   classifyMetadataParseError,
   metadataParseEligibility
 } from '../../js/library/scan/metadata-parse-service.js';
+import { createCueDirectoryStageHandler } from '../helpers/cue-directory-stage-repository.mjs';
 
 function createRepository(options = {}) {
   const calls = [];
@@ -103,6 +104,7 @@ function createRepository(options = {}) {
       return { changed: 1 };
     }
   };
+  repository.cueDirectoryStage = createCueDirectoryStageHandler(repository);
   return repository;
 }
 
@@ -122,7 +124,7 @@ function createFilesystem(count, options = {}) {
       }
     },
     async statFile({ entry }) {
-      const index = Number.parseInt(entry.name.match(/\d+/)?.[0] ?? '0', 10);
+      const index = Number.parseInt((entry.name ?? entry.relativePath).match(/\d+/)?.[0] ?? '0', 10);
       return { fileIdentity: `file-${index}`, size: 1000 + index, mtimeMs: 2000 + index };
     }
   };
@@ -161,6 +163,8 @@ test('bounded scan commits first-of capped batches without knownFiles or all-pat
   assert.ok(progress.length <= Math.ceil(result.durationMs / 250) + 2);
   assert.equal(DEFAULT_SCAN_SERVICE_CONFIG.maxQueuedDirectories, 10000);
   assert.equal(DEFAULT_SCAN_SERVICE_CONFIG.maxQueuedDirectoryBytes, 32 * 1024 * 1024);
+  assert.equal(repository.cueStageMaxPageRows, 8);
+  assert.equal(repository.cueStageClearCount, 1);
 });
 
 test('resume re-enumerates from root and remains upsert-only even after a clean pass', async () => {

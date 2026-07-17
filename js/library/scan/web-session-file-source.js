@@ -1,5 +1,6 @@
 import {
   isSupportedAudioPath,
+  isSupportedCuePath,
   isSupportedPlaylistPath,
   normalizeRelativePath,
   normalizeRelativePathForMatching
@@ -50,6 +51,8 @@ export class WebSessionFileSource {
           const relativePath = joinRelative(directory, name);
           if (isSupportedAudioPath(relativePath)) {
             yield { kind: 'file', name, relativePath, path: relativePath };
+          } else if (isSupportedCuePath(relativePath)) {
+            yield { kind: 'cue', name, relativePath, path: relativePath };
           } else if (isSupportedPlaylistPath(relativePath)) {
             onPlaylistFile({ name, relativePath, path: relativePath });
           }
@@ -66,6 +69,13 @@ export class WebSessionFileSource {
       },
       getFile(relativePath, signal) {
         return source.getFile(relativePath, signal);
+      },
+      async readSmallFile({ relativePath, maximumBytes, signal } = {}) {
+        const file = await source.getFile(relativePath, signal);
+        if (file.size > maximumBytes) return { tooLarge: true, size: file.size, bytes: null };
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        throwIfAborted(signal);
+        return { tooLarge: false, size: file.size, bytes };
       }
     });
   }

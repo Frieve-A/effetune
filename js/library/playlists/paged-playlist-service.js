@@ -214,20 +214,22 @@ export class PagedPlaylistService {
         typeof sink.abort !== 'function') {
       throw new TypeError('Atomic playlist export sink is required');
     }
-    const entries = this.#exportEntries(playlistId, { relative, destinationPath });
+    const summary = { exportedCount: 0, skippedCueCount: 0 };
+    const entries = this.#exportEntries(playlistId, { relative, destinationPath }, summary);
     const chunks = format === 'xspf'
       ? serializeXSPFStream(entries, { fileUris: !relative, limits })
       : serializeM3U8Stream(entries, { limits });
     try {
       for await (const chunk of chunks) await sink.write(chunk);
       await sink.commit();
+      return summary;
     } catch (error) {
       await Promise.resolve(sink.abort(error)).catch(() => {});
       throw error;
     }
   }
 
-  async *#exportEntries(playlistId, { relative, destinationPath }) {
+  async *#exportEntries(playlistId, { relative, destinationPath }, summary) {
     let afterPosition = 0;
     for (;;) {
       const page = await this.queryItems(playlistId, {
@@ -236,11 +238,18 @@ export class PagedPlaylistService {
       });
       for (const item of page.items ?? []) {
         if (item.trackUid) {
-          const [track, source] = await Promise.all([
-            this.client.getTrack(item.trackUid),
-            requireMethod(this.client, 'resolvePlaylistExportSource')(item.trackUid)
-          ]);
-          if (!track || !source) continue;
+          const track = await this.client.getTrack(item.trackUid);
+          if (!track) continue;
+          if (hasCueTrackProvenance(track)) {
+            summary.skippedCueCount += 1;
+            continue;
+          }
+          const source = await requireMethod(this.client, 'resolvePlaylistExportSource')(item.trackUid);
+          if (!source) continue;
+          if (hasCueTrackProvenance(source)) {
+            summary.skippedCueCount += 1;
+            continue;
+          }
           const sourcePath = playlistExportSourcePath(source);
           const path = source.kind === 'absolute-path' && relative
             ? relativePlaylistPath(sourcePath, destinationPath)
@@ -250,19 +259,37 @@ export class PagedPlaylistService {
             path,
             relative: source.kind === 'portable-relative' || relative && !isAbsolutePlaylistPath(path)
           };
+          summary.exportedCount += 1;
         } else if (item.unresolved) {
+          if (hasCueTrackProvenance(item.unresolved)) {
+            summary.skippedCueCount += 1;
+            continue;
+          }
           const sourcePath = item.unresolved.sourceLine ?? item.unresolved.relativePathHint ?? '';
+          if (!sourcePath) continue;
           const path = relative ? relativePlaylistPath(sourcePath, destinationPath) : sourcePath;
           yield {
             unresolved: { ...item.unresolved, sourceLine: path },
             relative: relative && !isAbsolutePlaylistPath(path)
           };
+          summary.exportedCount += 1;
         }
       }
       if (!Number.isSafeInteger(page.nextPosition)) break;
       afterPosition = page.nextPosition;
     }
   }
+}
+
+export function hasCueTrackProvenance(value) {
+  return [value, value?.cueProvenance, value?.cue_provenance].filter(Boolean).some(provenance => {
+    const sourceKind = provenance.sourceKind ?? provenance.source_kind;
+    const entryKey = provenance.entryKey ?? provenance.entry_key;
+    const startFrame = provenance.startFrame ?? provenance.start_frame;
+    return sourceKind === 'cue-track' ||
+      typeof entryKey === 'string' && entryKey.startsWith('cue:') ||
+      Number.isSafeInteger(startFrame) && startFrame >= 0;
+  });
 }
 
 function playlistImportPreviewIdentity(preview) {

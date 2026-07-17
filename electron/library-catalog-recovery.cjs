@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const LIBRARY_CATALOG_RECOVERY_API_VERSION = 1;
-const LIBRARY_CATALOG_DIRECTORY_NAME = 'music-library-v2';
+const LIBRARY_CATALOG_DIRECTORY_NAME = 'music-library-v3';
 const LIBRARY_CATALOG_RECOVERY_CHANNELS = Object.freeze({
   getState: 'library-recovery-v1:get-state',
   resetCatalog: 'library-recovery-v1:reset-catalog',

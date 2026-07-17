@@ -35,27 +35,30 @@ export function reduceScanFolderState(state, event) {
     if (state.continuityBroken || state.sweepEligibility !== 'ELIGIBLE') {
       throw createRepositoryError('sweepIneligible', 'Interrupted scan generations cannot start destructive reconciliation');
     }
-    return freezeState(state, { destructiveCommitStarted: true, deletionState: 'running' });
+    return freezeState(state, {
+      status: 'sweeping',
+      destructiveCommitStarted: true,
+      deletionState: 'running'
+    });
   }
   if (event.type === 'pause') {
     requireStatus(state, ['running']);
     return breakContinuity(state, {
       status: 'paused',
-      deletionState: state.destructiveCommitStarted ? 'blocked-interrupted' : state.deletionState
+      deletionState: state.deletionState
     });
   }
   if (event.type === 'cancel') {
-    requireStatus(state, ['running', 'paused']);
-    if (state.destructiveCommitStarted) {
-      return breakContinuity(state, { status: 'paused', deletionState: 'blocked-interrupted' });
-    }
+    requireStatus(state, ['running', 'paused', 'sweeping']);
+    if (state.destructiveCommitStarted) return state;
     return breakContinuity(state, { status: 'cancelled' });
   }
   if (event.type === 'crash') {
-    requireStatus(state, ['running', 'paused']);
+    requireStatus(state, ['running', 'paused', 'sweeping']);
+    if (state.destructiveCommitStarted) return state;
     return breakContinuity(state, {
       status: 'interrupted',
-      deletionState: state.destructiveCommitStarted ? 'blocked-interrupted' : state.deletionState
+      deletionState: state.deletionState
     });
   }
   if (event.type === 'resume') {
@@ -69,7 +72,7 @@ export function reduceScanFolderState(state, event) {
     });
   }
   if (event.type === 'complete') {
-    requireStatus(state, ['running']);
+    requireStatus(state, ['running', 'sweeping']);
     return freezeState(state, {
       status: state.continuityBroken || state.sweepEligibility !== 'ELIGIBLE'
         ? 'completed-no-sweep'
@@ -109,9 +112,11 @@ export function shouldDispatchMetadataParse({
 export function metadataCompletionMatchesClaim(claim, completion) {
   if (!claim || !completion) return false;
   return claim.folderId === completion.folderId &&
+    claim.logicalStorageId === completion.logicalStorageId &&
     claim.lifecycleVersion === completion.lifecycleVersion &&
     claim.generation === completion.generation &&
     claim.relativePath === completion.relativePath &&
+    claim.cueSignature === completion.cueSignature &&
     claim.parserVersion === completion.parserVersion &&
     sameSignature(claim.signature, completion.signature);
 }

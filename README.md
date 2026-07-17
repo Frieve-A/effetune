@@ -91,7 +91,7 @@ Open **Settings > Config...** to choose **Language**, set **Startup view:**, and
 ### Browsing Your Music Library
 
 1. Open **Music Library** from the PC header, the mobile **Library** tab, or **View > Music Library** in the desktop app.
-2. Select **Add Music Folder** to index a folder of music files.
+2. Select **Add Music Folder** to index a folder of music files. External CUE sheets can divide WAV or FLAC album files in the same folder into individual tracks.
 3. Browse **Tracks**, **Albums**, **Artists**, **Genres**, **Subfolders**, **Folders**, **Recently Added**, or **Playlists**, and use **Search library** to search the catalog. **Subfolders** groups tracks by their containing path inside each indexed root, while **Folders** manages those roots.
 4. Use **Play** to listen through the current effect pipeline, or use **Play Next**, **Add to Queue**, and **Add to Playlist** to manage playback.
 5. Use **Rescan** after changing files, and **Reconnect** if a browser or folder permission is lost.
@@ -101,7 +101,7 @@ In both PC and mobile layouts, track searches and album, artist, genre, subfolde
 
 PC Chromium browsers can persist File System Access folder handles. Safari, Firefox, mobile browsers, and other browsers without that API keep the selected `File` objects only for the current page session. After every reload, select the folder or files again; EffeTune reconnects them to the existing catalog by normalized relative path.
 
-EffeTune 2.1.0 starts with a new Music Library. Earlier Library state is not inherited, so add your music folders and scan them again. This does not modify the audio files in those folders. The catalog is designed to page large collections from disk. Large-scale performance measurements are optional local development diagnostics, not commit, release, `verify`, or GitHub Actions gates and not a general performance guarantee.
+Version 2.1.0 introduces the CUE-enabled Music Library with catalog schema v3. Earlier Music Library folders and playlists are not carried into this catalog, so add the folders again and recreate or re-import your Music Library playlists. The earlier catalog and your audio files are not modified. The catalog is designed to page large collections from disk. Large-scale performance measurements are optional local development diagnostics, not commit, release, `verify`, or GitHub Actions gates and not a general performance guarantee.
 
 ### Building Your Effect Chain
 

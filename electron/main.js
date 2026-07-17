@@ -1353,7 +1353,7 @@ async function initializeApp() {
   ipcHandlers.registerIpcHandlers();
   
   // Register IPC handler for renderer-ready-for-music-files event
-  ipcMain.on('renderer-ready-for-music-files', (event) => {
+  ipcMain.on('renderer-ready-for-music-files', async (event) => {
     // Debug logs removed for release
     
     // Check if we have pending music files to send
@@ -1364,10 +1364,14 @@ async function initializeApp() {
       // Send music files to the renderer process
       const mainWindow = constants.getMainWindow();
       if (mainWindow && mainWindow.webContents) {
-        mainWindow.webContents.send('open-music-files', pendingFiles);
-        
-        // Clear pending music files after sending
+        const admittedFiles = [...pendingFiles];
         constants.clearPendingCommandLineMusicFiles();
+        try {
+          const descriptors = await fileHandlers.admitLocalPlaybackPaths(admittedFiles);
+          mainWindow.webContents.send('open-music-files', descriptors);
+        } catch (error) {
+          console.error('Initial music file admission diagnostic:', error?.code || error?.name || 'unknown');
+        }
       }
     }
   });
@@ -1416,7 +1420,7 @@ if (!gotTheLock) {
 } else {
   // This is the first instance
   // Listen for second-instance event (when user opens a file with the app)
-  app.on('second-instance', (event, commandLine, workingDirectory) => {
+  app.on('second-instance', async (event, commandLine, workingDirectory) => {
     // Process the command line arguments from the second instance
     // This will set shouldLoadPipelineState to false if a preset file is specified
     // and will detect music files
@@ -1438,15 +1442,21 @@ if (!gotTheLock) {
       // If there are music files, send them to the renderer
       const commandLineMusicFiles = constants.getCommandLineMusicFiles();
       if (commandLineMusicFiles.length > 0) {
-        mainWindow.webContents.send('open-music-files', commandLineMusicFiles);
+        const admittedFiles = [...commandLineMusicFiles];
         constants.clearCommandLineMusicFiles();
+        try {
+          const descriptors = await fileHandlers.admitLocalPlaybackPaths(admittedFiles);
+          mainWindow.webContents.send('open-music-files', descriptors);
+        } catch (error) {
+          console.error('Second-instance music file admission diagnostic:', error?.code || error?.name || 'unknown');
+        }
       }
     }
   });
 }
 
 // Handle macOS file open events
-app.on('open-file', (event, path) => {
+app.on('open-file', async (event, path) => {
   event.preventDefault();
   
   if (path.endsWith('.effetune_preset')) {
@@ -1477,7 +1487,8 @@ app.on('open-file', (event, path) => {
         const mainWin = constants.getMainWindow();
         if (mainWin && mainWin.webContents) {
           // If app is already running, send the file path to the renderer
-          mainWin.webContents.send('open-music-files', [path]);
+          const descriptors = await fileHandlers.admitLocalPlaybackPaths([path]);
+          mainWin.webContents.send('open-music-files', descriptors);
         } else {
           // If app is not yet running, store the path to be opened when the app is ready
           constants.addCommandLineMusicFile(path);

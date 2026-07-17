@@ -93,6 +93,15 @@ function createElectronApi(calls, options = {}) {
       return options.showOpenDialogPromise ?? Promise.resolve(
         options.openDialogResult ?? { canceled: false, filePaths: ['import.effetune_preset'] }
       );
+    },
+    openPlaybackSelection() {
+      calls.push(['openPlaybackSelection']);
+      if (options.showOpenDialogThrows) throw options.showOpenDialogThrows;
+      if (options.playbackSelectionPromise) return options.playbackSelectionPromise;
+      const result = options.openDialogResult ?? { canceled: false, filePaths: ['import.effetune_preset'] };
+      return Promise.resolve(result.canceled
+        ? { canceled: true }
+        : { accepted: true, kind: 'normal', descriptors: result.filePaths });
     }
   };
 }
@@ -513,7 +522,7 @@ test('openMusicFile opens selected files and reports cancellation or errors', as
     electronOptions: { openDialogResult: { canceled: true, filePaths: ['x.mp3'] } }
   }, async ({ calls }) => {
     await openMusicFile(true);
-    assert.ok(calls.some(call => call[0] === 'consoleLog'));
+    assert.equal(calls.some(call => call[0] === 'createAudioPlayer'), false);
   });
 
   await withPresetGlobals({
@@ -521,7 +530,7 @@ test('openMusicFile opens selected files and reports cancellation or errors', as
   }, async ({ calls }) => {
     await openMusicFile(true);
     assert.deepEqual(calls.find(call => call[0] === 'createAudioPlayer'), ['createAudioPlayer', ['a.mp3', 'b.wav'], false]);
-    assert.equal(calls.find(call => call[0] === 'showOpenDialog')[1].filters[0].extensions.includes('mp4'), true);
+    assert.equal(calls.some(call => call[0] === 'openPlaybackSelection'), true);
   });
 
   await withPresetGlobals({
@@ -532,11 +541,43 @@ test('openMusicFile opens selected files and reports cancellation or errors', as
     assert.equal(calls.some(call => call[0] === 'createAudioPlayer'), false);
   });
 
+  const cueTracks = [{
+    path: 'C:\\Music\\album.wav',
+    startFrame: 0,
+    endFrame: null,
+    durationSec: 20,
+    physicalSourceKey: 'C:\\Music\\album.wav'
+  }];
+  await withPresetGlobals({
+    electronOptions: {
+      playbackSelectionPromise: Promise.resolve({ accepted: true, kind: 'cue', tracks: cueTracks })
+    }
+  }, async ({ calls }) => {
+    await openMusicFile(true);
+    assert.deepEqual(calls.filter(call => call[0] === 'createAudioPlayer'), [
+      ['createAudioPlayer', cueTracks, false]
+    ]);
+  });
+
+  await withPresetGlobals({
+    electronOptions: {
+      playbackSelectionPromise: Promise.resolve({ accepted: false, error: 'cueInvalidSelection' })
+    }
+  }, async ({ calls }) => {
+    await openMusicFile(true);
+    assert.deepEqual(calls.find(call => call[0] === 'setError'), [
+      'setError',
+      'error.cueSelectionInvalid',
+      true
+    ]);
+    assert.equal(calls.some(call => call[0] === 'createAudioPlayer'), false);
+  });
+
   await withPresetGlobals({
     electronOptions: { showOpenDialogThrows: new Error('dialog exploded') }
   }, async ({ calls }) => {
     await openMusicFile(true);
-    assert.ok(calls.some(call => call[0] === 'setError' && String(call[1]).includes('dialog exploded')));
+    assert.ok(calls.some(call => call[0] === 'setError' && call[1] === 'error.musicSelectionUnavailable'));
   });
 });
 

@@ -25,6 +25,7 @@ import { createWebCatalogRecoveryController } from './library/repository/catalog
 import { LibraryView } from './ui/library/library-view.js';
 import { PowerStateView } from './ui/power-state-view.js';
 import { CatalogPlaybackBridge } from './ui/audio-player/catalog-playback-bridge.js';
+import { resolveWebPlaybackSelection } from './ui/playback-selection-router.js';
 
 function usesIOSFilePicker(windowRef = window) {
     const navigatorRef = windowRef?.navigator || globalThis.navigator;
@@ -46,6 +47,8 @@ export class UIManager {
 
         // Audio player reference
         this.audioPlayer = null;
+        this.playbackSelectionGeneration = 0;
+        this.playbackSelectionAbortController = null;
         this.audioPlayerLayoutPlaceholder = null;
         this.audioPlayerLayoutPlaceholderTimer = null;
         this.transientMessageTimer = null;
@@ -1155,7 +1158,7 @@ export class UIManager {
                     if (fileInput) { // Added check
                         fileInput.type = 'file';
                         if (!usesIOSFilePicker(window)) {
-                            fileInput.accept = 'audio/*,video/mp4,.mp4';
+                            fileInput.accept = 'audio/*,video/mp4,.mp4,.cue';
                         }
                         fileInput.multiple = true;
                         fileInput.style.display = 'none';
@@ -1163,9 +1166,10 @@ export class UIManager {
 
                     // Add event listener for file selection
                     fileInput.addEventListener('change', (e) => {
-                        if (e.target.files && e.target.files.length > 0) {
-                            this.createAudioPlayer(Array.from(e.target.files), false);
-                            this.mobileNav?.setView('player');
+                        const files = Array.from(e.target.files ?? []);
+                        if (files.length > 0) {
+                            const gestureResume = this.beginPlaybackSelectionGestureResume();
+                            void this.openWebPlaybackSelection(files, gestureResume);
                         }
 
                         // Remove the file input element
@@ -1179,6 +1183,61 @@ export class UIManager {
                     fileInput.click();
                 }
             });
+        }
+    }
+
+    beginPlaybackSelectionGestureResume() {
+        if (this.audioPlayer?.resumeAudioContextInGesture) {
+            return this.audioPlayer.resumeAudioContextInGesture();
+        }
+        try {
+            const controller = this.audioManager?.powerPolicyController;
+            const result = controller?.enabled
+                ? controller.beginUserGestureResume?.('player-only-play')
+                : this.audioManager?.contextManager?.resumeAudioContext?.();
+            return Promise.resolve(result ?? true).then(value => value !== false, () => false);
+        } catch (_) {
+            return Promise.resolve(false);
+        }
+    }
+
+    async openWebPlaybackSelection(files, gestureResume) {
+        this.playbackSelectionAbortController?.abort();
+        const controller = new AbortController();
+        const generation = ++this.playbackSelectionGeneration;
+        this.playbackSelectionAbortController = controller;
+        try {
+            const resolveSelection = this.playbackSelectionResolver ?? resolveWebPlaybackSelection;
+            const [selection, resumeReady] = await Promise.all([
+                resolveSelection(files, {
+                    signal: controller.signal,
+                    requestKey: `direct-web:${generation}`
+                }),
+                Promise.resolve(gestureResume).then(value => value !== false, () => false)
+            ]);
+            if (generation !== this.playbackSelectionGeneration || controller.signal.aborted) return false;
+
+            const player = this.createAudioPlayer([], false);
+            if (resumeReady) {
+                await player.loadFiles(selection.tracks, false);
+            } else {
+                await player.stop();
+                player.playbackManager.loadFiles(selection.tracks, false);
+                if (!player.ui.container) player.ui.createPlayerUI();
+                await player.loadTrack(player.stateManager.getCurrentTrackIndex());
+            }
+            this.mobileNav?.setView('player');
+            return true;
+        } catch (error) {
+            if (generation !== this.playbackSelectionGeneration || error?.name === 'AbortError') return false;
+            console.error('Open Music selection diagnostic:', error?.code || error?.name || 'unknown');
+            const errorKey = {
+                cueSelectionTooLarge: 'error.cueSelectionTooLarge',
+                cueSelectionMixed: 'error.cueSelectionMixed',
+                cueSelectionInvalid: 'error.cueSelectionInvalid'
+            }[error?.code] || 'error.musicSelectionUnavailable';
+            this.setError(errorKey, true);
+            return false;
         }
     }
 

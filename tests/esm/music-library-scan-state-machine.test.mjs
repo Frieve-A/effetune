@@ -29,15 +29,17 @@ test('resumed scan remains sweep-ineligible after a complete root re-enumeration
   assert.equal(completed.sweepEligibility, 'INELIGIBLE');
 });
 
-test('cancel and crash after destructive commit leave deletion work blocked-interrupted', () => {
+test('cancel and crash after destructive commit preserve the durable sweep for recovery', () => {
   const destructive = reduceScanFolderState(createState(), { type: 'destructive-commit-started' });
   const cancelled = reduceScanFolderState(destructive, { type: 'cancel' });
   const crashed = reduceScanFolderState(destructive, { type: 'crash' });
+  const recovered = reduceScanFolderState(crashed, { type: 'complete' });
 
-  assert.equal(cancelled.status, 'paused');
-  assert.equal(cancelled.deletionState, 'blocked-interrupted');
-  assert.equal(crashed.status, 'interrupted');
-  assert.equal(crashed.deletionState, 'blocked-interrupted');
+  assert.equal(destructive.status, 'sweeping');
+  assert.equal(cancelled, destructive);
+  assert.equal(crashed, destructive);
+  assert.equal(recovered.status, 'completed');
+  assert.equal(recovered.deletionState, 'completed');
 });
 
 test('interrupted generation cannot enter destructive reconciliation', () => {

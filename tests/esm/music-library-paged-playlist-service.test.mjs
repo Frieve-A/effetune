@@ -291,3 +291,67 @@ test('portable Web export preserves root names for tracks from multiple folders'
   assert.match(output, /Library A\/Album\/Song\.flac/);
   assert.match(output, /Library B\/Album\/Song\.flac/);
 });
+
+test('M3U8 and XSPF exports skip resolved and unresolved CUE tracks without resolving physical paths', async () => {
+  for (const format of ['m3u8', 'xspf']) {
+    const resolvedSources = [];
+    const client = createServiceClient({
+      async queryPlaylistItems() {
+        return {
+          playlist: { playlistId: 'playlist-1' },
+          items: [
+            { trackUid: 'plain' },
+            { trackUid: 'cue-resolved' },
+            {
+              unresolved: {
+                sourceKind: 'cue-track',
+                entryKey: 'cue:Album/Disc.cue#02',
+                sourceLine: 'D:\\Private\\Album.flac',
+                title: 'Cue Two'
+              }
+            },
+            { unresolved: { sourceLine: 'missing.flac', title: 'Missing' } }
+          ],
+          nextPosition: null
+        };
+      },
+      async getTrack(trackUid) {
+        return trackUid === 'cue-resolved'
+          ? {
+              trackUid,
+              sourceKind: 'cue-track',
+              entryKey: 'cue:Album/Disc.cue#01',
+              relativePath: 'Album.flac',
+              title: 'Cue One'
+            }
+          : { trackUid, sourceKind: 'file', relativePath: 'plain.flac', title: 'Plain' };
+      },
+      async resolvePlaylistExportSource(trackUid) {
+        resolvedSources.push(trackUid);
+        return {
+          kind: 'absolute-path',
+          path: trackUid === 'cue-resolved'
+            ? 'D:\\Private\\Album.flac'
+            : 'D:\\Music\\plain.flac'
+        };
+      }
+    });
+    const writes = [];
+    const summary = await createService(client).exportToSink('playlist-1', {
+      format,
+      relative: false,
+      sink: {
+        async write(chunk) { writes.push(chunk); },
+        async commit() {},
+        async abort() {}
+      }
+    });
+
+    const output = writes.join('');
+    assert.deepEqual(summary, { exportedCount: 2, skippedCueCount: 2 });
+    assert.deepEqual(resolvedSources, ['plain']);
+    assert.match(output, /plain\.flac/);
+    assert.match(output, /missing\.flac/);
+    assert.doesNotMatch(output, /Album\.flac|Cue One|Cue Two|Private/);
+  }
+});

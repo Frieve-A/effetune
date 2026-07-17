@@ -123,6 +123,13 @@ function createAudioPlayer(options = {}) {
       calls.push(['hasCurrentBuffer']);
       return options.hasCurrentBuffer ?? false;
     },
+    hasActiveGraphRebuildRequest() {
+      calls.push(['hasActiveGraphRebuildRequest']);
+      return options.activeGraphRebuild ?? false;
+    },
+    getCurrentGraphRebuildRequest() {
+      return options.graphRebuildRequest ?? null;
+    },
     async seamlessTransition(track, targetIndex) {
       calls.push(['seamlessTransition', track?.name, targetIndex]);
       if (options.seamlessReject) throw new Error('seamless failed');
@@ -290,6 +297,59 @@ test('loadFiles, getTrack, and basic commands handle unavailable state and deleg
   });
 });
 
+test('active graph rebuild keeps catalog Play and Stop under the current request ownership', async () => {
+  await withPlaybackGlobals({}, async () => {
+    const options = {
+      activeGraphRebuild: true,
+      state: {
+        currentTrack: { name: 'Catalog track', sourceKind: 'electron-file' },
+        sequenceKind: 'catalog',
+        sequenceId: 'catalog-sequence',
+        playbackGeneration: 0
+      }
+    };
+    const audioPlayer = createAudioPlayer(options);
+    const manager = makeManager(audioPlayer);
+    manager.catalogSequence = { sequenceId: 'catalog-sequence', itemCount: 1 };
+    const generation = manager.catalogTrackGeneration;
+    const pendingGeneration = manager.pendingTransport.generation;
+
+    await manager.stop();
+    assert.equal(manager.catalogTrackGeneration, generation);
+    assert.equal(manager.pendingTransport.generation, pendingGeneration);
+    assert.equal(audioPlayer.calls.some(call => call[0] === 'contextStop'), true);
+
+    audioPlayer.calls.length = 0;
+    await manager.play();
+    assert.equal(audioPlayer.calls.some(call => call[0] === 'contextPlay'), true);
+    assert.equal(audioPlayer.calls.some(call => call[0] === 'seamlessTransition'), false);
+
+    options.activeGraphRebuild = false;
+    await manager.stop();
+    assert.equal(manager.catalogTrackGeneration, generation + 1);
+    assert.equal(manager.pendingTransport.generation, pendingGeneration + 1);
+
+    const recoveryOptions = [];
+    options.graphRebuildRequest = { transportIntent: { isPlaying: false } };
+    manager.catalogSequence = {
+      sequenceId: 'catalog-sequence',
+      itemCount: 1,
+      async getEntry() { return {}; },
+      async resolveEntrySource() { throw new Error('source unavailable'); }
+    };
+    manager.selectCatalogOrdinal = async (_ordinal, selectOptions) => {
+      recoveryOptions.push(selectOptions);
+      return { accepted: true, value: { committed: true } };
+    };
+    const recovery = await manager.prepareCatalogTrackForGraphRebuild(
+      options.state.currentTrack,
+      { play: true }
+    );
+    assert.equal(recoveryOptions[0].play, false);
+    assert.equal(recovery.committed, true);
+  });
+});
+
 test('loadFiles append and insert invalidate a stale pre-decoded next-track buffer', async () => {
   await withPlaybackGlobals({}, async () => {
     const audioPlayer = createAudioPlayer({ nextBuffer: { duration: 10 }, currentTrackIndex: 0 });
@@ -316,14 +376,14 @@ test('loadFiles append and insert invalidate a stale pre-decoded next-track buff
     const manager = makeManager(audioPlayer);
     manager.loadFiles(['a.wav']);
     manager.loadFiles(['b.wav'], true);
-    assert.ok(!audioPlayer.calls.some(call => call[0] === 'clearNextTrackBuffer'));
+    assert.ok(audioPlayer.calls.some(call => call[0] === 'clearNextTrackBuffer'));
   });
 
   await withPlaybackGlobals({}, async () => {
     const audioPlayer = createAudioPlayer({ nextBuffer: { duration: 10 } });
     const manager = makeManager(audioPlayer);
     manager.loadFiles(['fresh.wav']);
-    assert.ok(!audioPlayer.calls.some(call => call[0] === 'clearNextTrackBuffer'));
+    assert.ok(audioPlayer.calls.some(call => call[0] === 'clearNextTrackBuffer'));
   });
 });
 
@@ -507,7 +567,7 @@ test('playPrevious restarts, wraps, falls back, and uses seamless transitions', 
   });
 });
 
-test('playPrevious waits for fallback load and play work before resolving', async () => {
+test('playPrevious waits for the atomic previous-track transition before resolving', async () => {
   await withPlaybackGlobals({}, async () => {
     const audioPlayer = createAudioPlayer({
       currentTrackIndex: 1,
@@ -516,21 +576,13 @@ test('playPrevious waits for fallback load and play work before resolving', asyn
     });
     const manager = makeManager(audioPlayer);
     setPlaylist(manager);
-    let resolveLoad;
-    let resolvePlay;
+    let resolveTransition;
     let resolved = false;
 
-    audioPlayer.loadTrack = index => new Promise(resolve => {
-      audioPlayer.calls.push(['audioPlayerLoadTrack.start', index]);
-      resolveLoad = () => {
-        audioPlayer.calls.push(['audioPlayerLoadTrack.done']);
-        resolve();
-      };
-    });
-    audioPlayer.contextManager.play = () => new Promise(resolve => {
-      audioPlayer.calls.push(['contextPlay.start']);
-      resolvePlay = () => {
-        audioPlayer.calls.push(['contextPlay.done']);
+    audioPlayer.contextManager.transitionToNextTrack = (track, index) => new Promise(resolve => {
+      audioPlayer.calls.push(['previousTransition.start', track.name, index]);
+      resolveTransition = () => {
+        audioPlayer.calls.push(['previousTransition.done']);
         resolve();
       };
     });
@@ -541,18 +593,10 @@ test('playPrevious waits for fallback load and play work before resolving', asyn
     await flushMicrotasks();
     assert.equal(resolved, false);
     assert.deepEqual(audioPlayer.calls.filter(call => call[0].endsWith('.start')), [
-      ['audioPlayerLoadTrack.start', 0]
+      ['previousTransition.start', 'One', 0]
     ]);
 
-    resolveLoad();
-    await flushMicrotasks();
-    assert.equal(resolved, false);
-    assert.deepEqual(audioPlayer.calls.filter(call => call[0].endsWith('.start')), [
-      ['audioPlayerLoadTrack.start', 0],
-      ['contextPlay.start']
-    ]);
-
-    resolvePlay();
+    resolveTransition();
     await promise;
     assert.equal(resolved, true);
   });

@@ -1,5 +1,6 @@
 import {
   isSupportedAudioPath,
+  isSupportedCuePath,
   isSupportedPlaylistPath,
   normalizeRelativePath
 } from '../constants.js';
@@ -37,6 +38,8 @@ export class WebFileSystemScanAdapter {
         yield { kind: 'directory', name: handle.name, relativePath, path: relativePath };
       } else if (handle?.kind === 'file' && isSupportedAudioPath(relativePath)) {
         yield { kind: 'file', name: handle.name, relativePath, path: relativePath };
+      } else if (handle?.kind === 'file' && isSupportedCuePath(relativePath)) {
+        yield { kind: 'cue', name: handle.name, relativePath, path: relativePath };
       } else if (handle?.kind === 'file' && isSupportedPlaylistPath(relativePath)) {
         this.onPlaylistFile({ name: handle.name, relativePath, path: relativePath });
       }
@@ -70,6 +73,14 @@ export class WebFileSystemScanAdapter {
       if (error?.code) throw error;
       throw fileSystemError(error, 'transient-io');
     }
+  }
+
+  async readSmallFile({ relativePath, maximumBytes, signal } = {}) {
+    const file = await this.getFile(relativePath, signal);
+    if (file.size > maximumBytes) return { tooLarge: true, size: file.size, bytes: null };
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    throwIfAborted(signal);
+    return { tooLarge: false, size: file.size, bytes };
   }
 }
 

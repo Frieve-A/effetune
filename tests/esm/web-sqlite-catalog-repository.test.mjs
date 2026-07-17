@@ -7,7 +7,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 
 import { WebSqliteCatalogRepository } from '../../js/library/repository/web-catalog-repository.js';
-import { MUSIC_LIBRARY_V2_WEB_OPFS_DIRECTORY } from '../../js/library/repository/schema-v2.js';
+import { MUSIC_LIBRARY_V3_WEB_OPFS_DIRECTORY } from '../../js/library/repository/schema-v3.js';
 import {
   dispatchWebSqliteCommand,
   initializeWebSqliteRuntime
@@ -68,19 +68,19 @@ test('Web catalog reset clears only the fixed Music Library OPFS pool', async ()
   await assert.rejects(repository.open());
   assert.deepEqual(installs, [
     {
-      directory: `/${MUSIC_LIBRARY_V2_WEB_OPFS_DIRECTORY}`,
+      directory: `/${MUSIC_LIBRARY_V3_WEB_OPFS_DIRECTORY}`,
       initialCapacity: 4,
       clearOnInit: true
     },
     {
-      directory: `/${MUSIC_LIBRARY_V2_WEB_OPFS_DIRECTORY}`,
+      directory: `/${MUSIC_LIBRARY_V3_WEB_OPFS_DIRECTORY}`,
       initialCapacity: 4,
       clearOnInit: false
     }
   ]);
 });
 
-test('shared schema-v2 is the only catalog DDL source for Electron and Web runtimes', () => {
+test('shared schema-v3 is the only active catalog DDL source for Electron and Web runtimes', () => {
   for (const url of [
     new URL('../../electron/library-catalog-worker.cjs', import.meta.url),
     new URL('../../js/library/repository/web-sqlite-runtime.js', import.meta.url)
@@ -483,7 +483,7 @@ test('Web automatic playlist import resolves its trusted same-folder path before
     'utf8'
   );
   assert.match(runtime, /const trustedOriginMatch = resolveImportedTrackFromOrigin\(unresolved\);[\s\S]*if \(trustedOriginMatch\) return trustedOriginMatch/);
-  assert.match(runtime, /WHERE t\.folder_id = \? AND t\.relative_path = \? COLLATE NOCASE[\s\S]*LIMIT 2/);
+  assert.match(runtime, /WHERE t\.folder_id = \? AND t\.source_kind = 'file' AND t\.relative_path = \? COLLATE NOCASE[\s\S]*LIMIT 2/);
   assert.match(runtime, /path\.posix\.dirname\(playlistRelativePath\)/);
 });
 
@@ -576,6 +576,55 @@ test('Web playlist import resolves an absolute root path beyond the ambiguous ca
   assert.equal(database.prepare(`
     SELECT track_uid AS trackUid FROM playlist_items WHERE playlist_id = ?
   `).get(playlistId).trackUid, 'zz-track-exact');
+});
+
+test('Web playlist duplication reads and copies each visible source page', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-web-playlist-copy-'));
+  const database = new DatabaseSync(path.join(directory, 'catalog.sqlite'));
+  let runtimeOpen = false;
+  t.after(() => {
+    if (runtimeOpen) dispatchWebSqliteCommand('close', {});
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+  await initializeWebSqliteRuntime(database, {
+    storageManager: { async estimate() { return { quota: 1024 * 1024 * 1024, usage: 0 }; } }
+  });
+  runtimeOpen = true;
+
+  dispatchWebSqliteCommand('upsertFolders', { folders: [{
+    id: 'copy-folder', kind: 'web-fsa', displayName: 'Copy', path: '/fsa/copy',
+    status: 'ok', scanGeneration: 0, lifecycleVersion: 0, addedAt: 1, lastScanAt: null
+  }] });
+  dispatchWebSqliteCommand('upsertTracks', { tracks: [{
+    trackUid: 'copy-track', folderId: 'copy-folder', relativePath: 'Track.flac',
+    title: 'Track', artist: 'Artist', addedAt: 1, updatedAt: 1
+  }] });
+  dispatchWebSqliteCommand('createPlaylistWithItems', {
+    playlistId: 'copy-source', name: 'Source', createdAt: 10,
+    items: [
+      { trackUid: 'copy-track' },
+      { unresolved: { basename: 'Missing.flac', title: 'Missing', artist: 'Artist' } }
+    ]
+  });
+
+  const duplicated = dispatchWebSqliteCommand('duplicatePlaylist', {
+    playlistId: 'copy-source', targetPlaylistId: 'copy-target', name: 'Target',
+    expectedVersion: 0, createdAt: 11
+  });
+  assert.deepEqual({
+    kind: duplicated.kind,
+    playlistId: duplicated.playlistId,
+    id: duplicated.id,
+    version: duplicated.version
+  }, {
+    kind: 'duplicated', playlistId: 'copy-target', id: 'copy-target', version: 0
+  });
+  const copied = dispatchWebSqliteCommand('queryPlaylistItems', {
+    playlistId: 'copy-target', afterPosition: null, limit: 10
+  });
+  assert.equal(copied.items.length, 2);
+  assert.equal(copied.items[0].trackUid, 'copy-track');
+  assert.equal(copied.items[1].unresolved.title, 'Missing');
 });
 
 test('folder deletion batches tracks while foreground and maintenance work yield between chunks', () => {
@@ -684,3 +733,483 @@ test('scan entity aggregates are deferred to one durable phased post-scan job', 
   );
   assert.match(metadataService, /deferAggregateRecompute: true/);
 });
+
+test('Web CUE metadata claims keep the track UID while replacing the physical source path', async t => {
+  const { database, close } = await openWebTestCatalog(t, 'effetune-web-cue-path-');
+  seedWebTestFolder();
+  const scan = beginWebTestScan('scan-cue-path');
+  const entryKey = 'cue:Album/disc.cue#1';
+  const first = claimWebCueTrack(scan, {
+    trackUid: 'cue-stable-track', entryKey, relativePath: 'Album/Old.flac',
+    signature: { fileIdentity: 'old', size: 100, mtimeMs: 1 }, cueSignature: 'cue-old'
+  });
+  completeWebMetadata(first.claim, 'First title');
+
+  const observation = {
+    relativePath: 'Album/New.flac', path: '/fsa/music/Album/New.flac',
+    fileIdentity: 'old', size: 100, mtimeMs: 1,
+    logicalCandidates: [{
+      logicalStorageId: entryKey, relativePath: 'Album/New.flac',
+      path: '/fsa/music/Album/New.flac', sourceKind: 'cue-track', entryKey,
+      cueRelativePath: 'Album/disc.cue', startFrame: 0, endFrame: 750,
+      cueSignature: 'cue-old',
+      metadata: {
+        title: 'Moved title', artist: 'Artist', albumArtist: 'Artist', album: 'Album',
+        genre: 'Genre', durationSec: 10
+      }
+    }]
+  };
+  dispatchWebSqliteCommand('commitScanSeenBatch', {
+    scanId: scan.scanId, folderId: scan.folderId, generation: scan.generation,
+    expectedLifecycleVersion: scan.lifecycleVersion,
+    observations: [observation], maxTracks: 500, maxBytes: 4 * 1024 * 1024,
+    lastCommittedBatch: 1,
+    cursor: { lastRelativePath: observation.relativePath, visitedFiles: 1, committedBatches: 1 }
+  });
+  const candidate = dispatchWebSqliteCommand('listMetadataCandidates', {
+    scanId: scan.scanId, folderId: scan.folderId, generation: scan.generation,
+    expectedLifecycleVersion: scan.lifecycleVersion, cursor: null, limit: 10,
+    parserVersion: scan.parserVersion
+  }).items[0];
+  assert.equal(candidate.relativePath, 'Album/New.flac');
+  assert.equal(candidate.storedSignature, null);
+
+  const moved = claimWebCueTrack(scan, {
+    trackUid: 'should-not-replace-stable-uid', entryKey, relativePath: 'Album/New.flac',
+    signature: { fileIdentity: 'old', size: 100, mtimeMs: 1 }, cueSignature: 'cue-old'
+  });
+  assert.equal(moved.claim.trackUid, 'cue-stable-track');
+  assert.deepEqual({ ...database.prepare(`
+    SELECT relative_path AS relativePath, file_name AS fileName, entry_key AS entryKey,
+      cue_relative_path AS cueRelativePath, start_frame AS startFrame, end_frame AS endFrame
+    FROM tracks WHERE track_uid = 'cue-stable-track'
+  `).get() }, {
+    relativePath: 'Album/New.flac', fileName: 'New.flac', entryKey,
+    cueRelativePath: 'Album/disc.cue', startFrame: 0, endFrame: 750
+  });
+
+  completeWebMetadata(moved.claim, 'Moved title');
+  const completed = database.prepare(`
+    SELECT relative_path AS relativePath, file_name AS fileName,
+      normalized_basename AS normalizedBasename, search_text AS searchText
+    FROM tracks WHERE track_uid = 'cue-stable-track'
+  `).get();
+  assert.equal(completed.relativePath, 'Album/New.flac');
+  assert.equal(completed.fileName, 'New.flac');
+  assert.equal(completed.normalizedBasename, 'new.flac');
+  assert.match(completed.searchText, /new\.flac/);
+  assert.doesNotMatch(completed.searchText, /old\.flac/);
+  close();
+});
+
+test('Web initialization recovers an interrupted CUE metadata claim for the next scan', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-web-cue-recovery-'));
+  const databasePath = path.join(directory, 'catalog.sqlite');
+  let database = new DatabaseSync(databasePath);
+  let runtimeOpen = false;
+  const initialize = async () => {
+    await initializeWebSqliteRuntime(database, {
+      storageManager: { async estimate() { return { quota: 1024 * 1024 * 1024, usage: 0 }; } }
+    });
+    runtimeOpen = true;
+  };
+  const close = () => {
+    if (!runtimeOpen) return;
+    dispatchWebSqliteCommand('close', {});
+    runtimeOpen = false;
+  };
+  t.after(() => {
+    close();
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+
+  await initialize();
+  seedWebTestFolder();
+  const interruptedScan = beginWebTestScan('scan-cue-interrupted');
+  const entryKey = 'cue:Album/disc.cue#1';
+  const relativePath = 'Album/Image.flac';
+  const signature = { fileIdentity: 'cue-image', size: 100, mtimeMs: 1 };
+  const interrupted = claimWebCueTrack(interruptedScan, {
+    trackUid: 'cue-recovered-track', entryKey, relativePath,
+    signature, cueSignature: 'cue-signature'
+  });
+  assert.equal(interrupted.claim.trackUid, 'cue-recovered-track');
+  assert.equal(database.prepare('SELECT count(*) AS count FROM metadata_claims').get().count, 1);
+
+  close();
+  database = new DatabaseSync(databasePath);
+  await initialize();
+
+  assert.deepEqual({ ...database.prepare(`
+    SELECT metadata_status AS metadataStatus, metadata_error_code AS metadataErrorCode
+    FROM tracks WHERE track_uid = 'cue-recovered-track'
+  `).get() }, {
+    metadataStatus: 'retryable-error',
+    metadataErrorCode: 'service-interrupted'
+  });
+  assert.equal(database.prepare('SELECT count(*) AS count FROM metadata_claims').get().count, 0);
+
+  const retryScan = beginWebTestScan('scan-cue-retry');
+  const observation = {
+    relativePath,
+    path: `/fsa/music/${relativePath}`,
+    ...signature,
+    logicalCandidates: [{
+      logicalStorageId: entryKey,
+      relativePath,
+      path: `/fsa/music/${relativePath}`,
+      sourceKind: 'cue-track',
+      entryKey,
+      cueRelativePath: 'Album/disc.cue',
+      startFrame: 0,
+      endFrame: 750,
+      cueSignature: 'cue-signature',
+      metadata: {
+        title: 'Recovered title', artist: 'Artist', albumArtist: 'Artist', album: 'Album',
+        genre: 'Genre', durationSec: 10
+      }
+    }]
+  };
+  dispatchWebSqliteCommand('commitScanSeenBatch', {
+    scanId: retryScan.scanId, folderId: retryScan.folderId, generation: retryScan.generation,
+    expectedLifecycleVersion: retryScan.lifecycleVersion,
+    observations: [observation], maxTracks: 500, maxBytes: 4 * 1024 * 1024,
+    lastCommittedBatch: 1,
+    cursor: { lastRelativePath: relativePath, visitedFiles: 1, committedBatches: 1 }
+  });
+  const candidate = dispatchWebSqliteCommand('listMetadataCandidates', {
+    scanId: retryScan.scanId, folderId: retryScan.folderId, generation: retryScan.generation,
+    expectedLifecycleVersion: retryScan.lifecycleVersion, cursor: null, limit: 10,
+    parserVersion: retryScan.parserVersion
+  }).items[0];
+  assert.equal(candidate.metadataStatus, 'retryable-error');
+  assert.equal(candidate.trackUid, 'cue-recovered-track');
+
+  const retry = claimWebCueTrack(retryScan, {
+    trackUid: candidate.trackUid,
+    entryKey,
+    relativePath,
+    signature: candidate.observedSignature,
+    cueSignature: candidate.cueSignature
+  });
+  assert.equal(retry.claim.trackUid, 'cue-recovered-track');
+  assert.deepEqual(completeWebMetadata(retry.claim, 'Recovered title').committed, true);
+  assert.deepEqual({ ...database.prepare(`
+    SELECT metadata_status AS metadataStatus, metadata_error_code AS metadataErrorCode
+    FROM tracks WHERE track_uid = 'cue-recovered-track'
+  `).get() }, {
+    metadataStatus: 'ok',
+    metadataErrorCode: null
+  });
+  assert.equal(database.prepare('SELECT count(*) AS count FROM metadata_claims').get().count, 0);
+  close();
+});
+
+test('Web retains CUE rows and playlists after pause, then cleans them in an eligible final sweep', async t => {
+  const { database, close } = await openWebTestCatalog(t, 'effetune-web-cue-reconcile-');
+  seedWebTestFolder();
+  const firstScan = beginWebTestScan('scan-cue-old');
+  const directoryPath = '📀 Album';
+  const cueRelativePath = `${directoryPath}/disc.cue`;
+  const relativePath = `${directoryPath}/Image.flac`;
+  const entryKey = `cue:${cueRelativePath}#1`;
+  const cue = claimWebCueTrack(firstScan, {
+    trackUid: 'old-cue-track', entryKey, relativePath,
+    signature: { fileIdentity: 'cue-source', size: 100, mtimeMs: 1 },
+    cueSignature: 'cue-old', cueRelativePath
+  });
+  completeWebMetadata(cue.claim, 'CUE title');
+  dispatchWebSqliteCommand('completeScanFolderNoSweep', {
+    scanId: firstScan.scanId, folderId: firstScan.folderId, generation: firstScan.generation,
+    expectedLifecycleVersion: firstScan.lifecycleVersion, status: 'completed-no-sweep',
+    sweepBlockReason: 'test'
+  });
+  dispatchWebSqliteCommand('createPlaylistWithItems', {
+    playlistId: 'cue-reconcile-playlist', name: 'CUE reconcile', createdAt: 1,
+    items: [{ trackUid: 'old-cue-track' }]
+  });
+
+  const scan = beginWebTestScan('scan-cue-plain');
+  const observation = {
+    relativePath, path: `/fsa/music/${relativePath}`,
+    fileIdentity: 'plain-source', size: 120, mtimeMs: 2,
+    logicalCandidates: [{
+      logicalStorageId: `file:${relativePath}`, relativePath,
+      path: `/fsa/music/${relativePath}`, sourceKind: 'file'
+    }]
+  };
+  dispatchWebSqliteCommand('commitScanSeenBatch', {
+    scanId: scan.scanId, folderId: scan.folderId, generation: scan.generation,
+    expectedLifecycleVersion: scan.lifecycleVersion,
+    observations: [observation], maxTracks: 500, maxBytes: 4 * 1024 * 1024,
+    lastCommittedBatch: 1,
+    cursor: { lastRelativePath: observation.relativePath, visitedFiles: 1, committedBatches: 1 }
+  });
+  const plain = dispatchWebSqliteCommand('claimMetadataParse', {
+    folderId: scan.folderId, trackUid: 'plain-track', logicalStorageId: `file:${relativePath}`,
+    lifecycleVersion: scan.lifecycleVersion, generation: scan.generation,
+    relativePath: observation.relativePath, parserVersion: scan.parserVersion,
+    signature: { fileIdentity: 'plain-source', size: 120, mtimeMs: 2 },
+    sourceKind: 'file', explicitRescan: false
+  });
+  completeWebMetadata(plain.claim, 'Plain title');
+
+  dispatchWebSqliteCommand('pauseScanFolder', {
+    scanId: scan.scanId, folderId: scan.folderId, generation: scan.generation,
+    expectedLifecycleVersion: scan.lifecycleVersion, status: 'paused', stopReason: 'user',
+    continuityBroken: true, sweepEligibility: 'INELIGIBLE'
+  });
+
+  assert.deepEqual(database.prepare(`
+    SELECT track_uid AS trackUid, source_kind AS sourceKind FROM tracks ORDER BY track_uid
+  `).all().map(row => ({ ...row })), [
+    { trackUid: 'old-cue-track', sourceKind: 'cue-track' },
+    { trackUid: 'plain-track', sourceKind: 'file' }
+  ]);
+  const retainedPlaylistItem = dispatchWebSqliteCommand('queryPlaylistItems', {
+    playlistId: 'cue-reconcile-playlist', afterPosition: null, limit: 10
+  }).items[0];
+  assert.equal(retainedPlaylistItem.trackUid, 'old-cue-track');
+
+  const eligible = beginWebTestScan('scan-cue-eligible');
+  dispatchWebSqliteCommand('commitScanSeenBatch', {
+    scanId: eligible.scanId, folderId: eligible.folderId, generation: eligible.generation,
+    expectedLifecycleVersion: eligible.lifecycleVersion,
+    observations: [observation], maxTracks: 500, maxBytes: 4 * 1024 * 1024,
+    lastCommittedBatch: 1,
+    cursor: { lastRelativePath: observation.relativePath, visitedFiles: 1, committedBatches: 1 }
+  });
+  const finalized = dispatchWebSqliteCommand('finalizeScanEnumeration', {
+    scanId: eligible.scanId, folderId: eligible.folderId, generation: eligible.generation,
+    expectedLifecycleVersion: eligible.lifecycleVersion, rootToEnd: true,
+    enumerationErrorCount: 0, continuityBroken: false, requestedSweepEligibility: 'ELIGIBLE'
+  });
+  assert.equal(finalized.sweepEligibility, 'ELIGIBLE');
+  const sweepRequest = {
+    scanId: eligible.scanId, folderId: eligible.folderId, generation: eligible.generation,
+    expectedLifecycleVersion: eligible.lifecycleVersion,
+    expectedSweepEligibility: 'ELIGIBLE', expectedContinuityBroken: false
+  };
+  dispatchWebSqliteCommand('enqueueScanSweep', sweepRequest);
+  let sweep;
+  do {
+    sweep = dispatchWebSqliteCommand('runScanSweep', sweepRequest);
+  } while (sweep.hasMore);
+  dispatchWebSqliteCommand('completeScanFolder', {
+    scanId: eligible.scanId, folderId: eligible.folderId, generation: eligible.generation,
+    expectedLifecycleVersion: eligible.lifecycleVersion, status: 'completed'
+  });
+
+  assert.deepEqual(database.prepare(`
+    SELECT track_uid AS trackUid, source_kind AS sourceKind FROM tracks ORDER BY track_uid
+  `).all().map(row => ({ ...row })), [{ trackUid: 'plain-track', sourceKind: 'file' }]);
+  const repaired = dispatchWebSqliteCommand('queryPlaylistItems', {
+    playlistId: 'cue-reconcile-playlist', afterPosition: null, limit: 10
+  }).items[0];
+  assert.equal(repaired.trackUid, null);
+  assert.equal(repaired.unresolved.reason, 'source-removed');
+  assert.deepEqual(repaired.unresolved.cueProvenance, {
+    folderId: 'web-folder', entryKey, cueRelativePath,
+    relativePath, startFrame: 0, endFrame: 750
+  });
+  close();
+});
+
+test('Web startup recovery finishes an eligible sweep before an immediate newer generation', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-web-sweep-recovery-'));
+  const dbPath = path.join(directory, 'catalog.sqlite');
+  let database = null;
+  let runtimeOpen = false;
+  const open = async () => {
+    database = new DatabaseSync(dbPath);
+    await initializeWebSqliteRuntime(database, {
+      storageManager: { async estimate() { return { quota: 1024 * 1024 * 1024, usage: 0 }; } }
+    });
+    runtimeOpen = true;
+  };
+  const close = () => {
+    if (!runtimeOpen) return;
+    dispatchWebSqliteCommand('close', {});
+    runtimeOpen = false;
+  };
+  t.after(() => {
+    close();
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+
+  await open();
+  seedWebTestFolder();
+  const tracks = Array.from({ length: 206 }, (_, index) => {
+    const ordinal = index + 1;
+    const id = String(ordinal).padStart(6, '0');
+    return {
+      trackUid: `web-sweep-${id}`,
+      folderId: 'web-folder',
+      relativePath: `Album/Track-${id}.flac`,
+      fileName: `Track-${id}.flac`,
+      title: `Track ${id}`,
+      artist: 'Artist',
+      albumArtist: 'Album Artist',
+      album: 'Album',
+      genre: 'Genre',
+      trackNo: ordinal,
+      durationSec: 120 + ordinal,
+      addedAt: ordinal,
+      updatedAt: ordinal
+    };
+  });
+  dispatchWebSqliteCommand('upsertTracks', { tracks });
+  dispatchWebSqliteCommand('createPlaylistWithItems', {
+    playlistId: 'web-sweep-recovery-playlist',
+    name: 'Web sweep recovery',
+    items: [{ trackUid: tracks[0].trackUid }],
+    createdAt: 1
+  });
+
+  const scan = beginWebTestScan('web-sweep-recovery');
+  const identity = {
+    scanId: scan.scanId,
+    folderId: scan.folderId,
+    generation: scan.generation,
+    expectedLifecycleVersion: scan.lifecycleVersion
+  };
+  const keep = tracks.at(-1);
+  const observation = {
+    relativePath: keep.relativePath,
+    path: `/fsa/music/${keep.relativePath}`,
+    fileIdentity: 'web-keep-file',
+    size: 123,
+    mtimeMs: 456,
+    logicalCandidates: [{
+      logicalStorageId: `file:${keep.relativePath}`,
+      relativePath: keep.relativePath,
+      path: `/fsa/music/${keep.relativePath}`,
+      sourceKind: 'file'
+    }]
+  };
+  dispatchWebSqliteCommand('commitScanSeenBatch', {
+    ...identity,
+    observations: [observation],
+    maxTracks: 500,
+    maxBytes: 4 * 1024 * 1024,
+    lastCommittedBatch: 1,
+    cursor: { lastRelativePath: keep.relativePath, visitedFiles: 1, committedBatches: 1 }
+  });
+  dispatchWebSqliteCommand('finalizeScanEnumeration', {
+    ...identity,
+    rootToEnd: true,
+    continuityBroken: false,
+    enumerationErrorCount: 0,
+    requestedSweepEligibility: 'ELIGIBLE'
+  });
+  assert.deepEqual(dispatchWebSqliteCommand('enqueueScanSweep', identity), { enqueued: 205 });
+  const firstChunk = dispatchWebSqliteCommand('runScanSweep', identity);
+  assert.equal(firstChunk.deleted, 100);
+  assert.equal(firstChunk.hasMore, true);
+  assert.deepEqual(dispatchWebSqliteCommand('pauseScanFolder', {
+    ...identity,
+    status: 'paused',
+    stopReason: 'user',
+    continuityBroken: true,
+    sweepEligibility: 'INELIGIBLE'
+  }), { status: 'sweeping', destructiveCommitRetained: true });
+  assert.equal(dispatchWebSqliteCommand('getCounts', {}).tracks, 106);
+  close();
+
+  await open();
+  const nextScan = beginWebTestScan('web-scan-after-sweep-recovery');
+  assert.equal(nextScan.generation, scan.generation + 1);
+
+  assert.equal(dispatchWebSqliteCommand('getCounts', {}).tracks, 1);
+  assert.equal(dispatchWebSqliteCommand('getTrack', { trackUid: keep.trackUid }).trackUid, keep.trackUid);
+  const playlist = dispatchWebSqliteCommand('queryPlaylistItems', {
+    playlistId: 'web-sweep-recovery-playlist',
+    afterPosition: null,
+    limit: 10
+  });
+  assert.equal(playlist.items[0].trackUid, null);
+  assert.equal(playlist.items[0].unresolved.reason, 'source-removed');
+  assert.equal(playlist.playlist.version, 1);
+  assert.deepEqual({ ...database.prepare(`
+    SELECT status, sweep_eligibility AS sweepEligibility,
+      continuity_broken AS continuityBroken
+    FROM scan_run_folders WHERE scan_id = ? AND folder_id = ?
+  `).get(identity.scanId, identity.folderId) }, {
+    status: 'completed',
+    sweepEligibility: 'ELIGIBLE',
+    continuityBroken: 0
+  });
+  assert.deepEqual({ ...database.prepare(`
+    SELECT status, generation FROM scan_run_folders
+    WHERE scan_id = ? AND folder_id = ?
+  `).get(nextScan.scanId, nextScan.folderId) }, {
+    status: 'enumerating',
+    generation: nextScan.generation
+  });
+  assert.equal(database.prepare(`
+    SELECT count(*) AS count FROM deletion_jobs
+    WHERE kind = 'scan-sweep' AND state <> 'completed'
+  `).get().count, 0);
+  assert.equal(database.prepare('SELECT count(*) AS count FROM deletion_repair_items').get().count, 0);
+  close();
+});
+
+async function openWebTestCatalog(t, prefix) {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  const database = new DatabaseSync(path.join(directory, 'catalog.sqlite'));
+  let open = false;
+  const close = () => {
+    if (!open) return;
+    dispatchWebSqliteCommand('close', {});
+    open = false;
+  };
+  t.after(() => {
+    close();
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+  await initializeWebSqliteRuntime(database, {
+    storageManager: { async estimate() { return { quota: 1024 * 1024 * 1024, usage: 0 }; } }
+  });
+  open = true;
+  return { database, close };
+}
+
+function seedWebTestFolder() {
+  dispatchWebSqliteCommand('upsertFolders', { folders: [{
+    id: 'web-folder', kind: 'web-fsa', displayName: 'Music', path: '/fsa/music',
+    status: 'ok', scanGeneration: 0, lifecycleVersion: 0, addedAt: 1, lastScanAt: null
+  }] });
+}
+
+function beginWebTestScan(scanId) {
+  return dispatchWebSqliteCommand('beginScanFolder', {
+    scanId, folderId: 'web-folder', normalizedRoot: '/fsa/music', expectedLifecycleVersion: 0,
+    resume: false, rootEnumerationRequired: true, continuityBroken: false,
+    sweepEligibility: 'PENDING'
+  });
+}
+
+function claimWebCueTrack(scan, {
+  trackUid, entryKey, relativePath, signature, cueSignature, cueRelativePath = 'Album/disc.cue'
+}) {
+  return dispatchWebSqliteCommand('claimMetadataParse', {
+    folderId: scan.folderId, trackUid, logicalStorageId: entryKey,
+    lifecycleVersion: scan.lifecycleVersion, generation: scan.generation,
+    relativePath, parserVersion: scan.parserVersion, signature,
+    cueSignature, sourceKind: 'cue-track', entryKey,
+    cueRelativePath, startFrame: 0, endFrame: 750,
+    explicitRescan: false
+  });
+}
+
+function completeWebMetadata(claim, title) {
+  return dispatchWebSqliteCommand('completeMetadataParseSuccess', {
+    claim,
+    metadata: {
+      title, artist: 'Artist', albumArtist: 'Artist', album: 'Album',
+      genre: 'Genre', durationSec: 10
+    },
+    metadataStatus: 'ok', clearErrorAndRetryState: true,
+    updateLastKnownGood: true, updateDerivedData: true
+  });
+}

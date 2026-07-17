@@ -124,16 +124,16 @@ test('production catalog factory never falls back to IndexedDB in Electron', asy
   assert.equal(webFactoryCalls, 0);
 });
 
-test('production catalog factory opens the dedicated Web v2 repository readwrite', async () => {
+test('production catalog factory opens the dedicated Web v3 repository readwrite', async () => {
   const calls = [];
   const client = {
     async open(options) {
       calls.push(['open', options]);
-      return { schemaVersion: 2 };
+      return { schemaVersion: 3 };
     },
     async getCapabilities() {
       calls.push(['capabilities']);
-      return { schemaVersion: 2 };
+      return { schemaVersion: 3 };
     },
     async close() {
       calls.push(['close']);
@@ -148,7 +148,7 @@ test('production catalog factory opens the dedicated Web v2 repository readwrite
   assert.equal(Object.hasOwn(result, 'productionQualified'), false);
   assert.equal(result.bulkOperationService, client);
   assert.deepEqual(calls, [
-    ['open', { mode: 'readwrite', expectedSchemaVersion: 2 }],
+    ['open', { mode: 'readwrite', expectedSchemaVersion: 3 }],
     ['capabilities']
   ]);
 });
@@ -417,7 +417,14 @@ test('LibraryManagerV2 publishes and releases Electron and Web scan progress sub
       return () => { folderRemovalUnsubscribed = true; };
     }
   });
-  const electronManager = createManager(electronHarness.client, { runtime: 'electron' });
+  const warningLogs = [];
+  const electronManager = createManager(electronHarness.client, {
+    runtime: 'electron',
+    logger: {
+      warn(...args) { warningLogs.push(args); },
+      error() {}
+    }
+  });
   const electronStates = [];
   const folderRemovalStates = [];
   electronManager.addListener('scan-state', state => electronStates.push(state));
@@ -429,13 +436,49 @@ test('LibraryManagerV2 publishes and releases Electron and Web scan progress sub
   });
   electronListener({
     scanId: 'scan-electron', active: false, terminal: true, status: 'completed',
-    results: [{ counts: { found: 20, parsed: 20 } }]
+    results: [
+      {
+        counts: { found: 10, parsed: 10 },
+        warnings: [{
+          category: 'cue-invalid', count: 2,
+          samples: [{ code: 'cue-missing-reference', path: 'Disc One.cue' }]
+        }]
+      },
+      {
+        counts: { found: 10, parsed: 10 },
+        warnings: [
+          { category: 'cue-invalid', count: 1, samples: [] },
+          {
+            category: 'cue-too-large', count: 1,
+            samples: [{ code: 'cue-too-large', path: 'Disc Two.cue' }]
+          }
+        ]
+      }
+    ]
   });
   assert.equal(electronStates[0].phase, 'scanning');
   assert.equal(electronStates[0].found, 20);
   assert.equal(electronStates[0].parsed, 7);
   assert.deepEqual(electronStates[0].folderIds, ['folder-electron']);
   assert.equal(electronStates[1].phase, 'done');
+  assert.deepEqual(electronStates[1].warnings, [
+    { category: 'cue-invalid', count: 3 },
+    { category: 'cue-too-large', count: 1 }
+  ]);
+  assert.deepEqual(electronStates[1].results[0].warnings, [
+    { category: 'cue-invalid', count: 2 }
+  ]);
+  assert.equal(warningLogs.length, 1);
+  assert.deepEqual(warningLogs[0][1], [
+    {
+      category: 'cue-invalid', count: 3,
+      samples: [{ code: 'cue-missing-reference', path: 'Disc One.cue' }]
+    },
+    {
+      category: 'cue-too-large', count: 1,
+      samples: [{ code: 'cue-too-large', path: 'Disc Two.cue' }]
+    }
+  ]);
   folderRemovalListener({
     folderId: 'folder-one', phase: 'removing', deleted: 7, total: 20
   });

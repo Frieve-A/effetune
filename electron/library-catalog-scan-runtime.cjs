@@ -16,10 +16,12 @@ const AUDIO_EXTENSIONS = new Set([
   '.aac', '.flac', '.m4a', '.mp3', '.mp4', '.ogg', '.opus', '.wav', '.webm'
 ]);
 const PLAYLIST_EXTENSIONS = new Set(['.m3u', '.m3u8', '.pls', '.xspf']);
+const CUE_EXTENSION = '.cue';
 const PLAYLIST_IMPORT_GRANT_TTL_MS = 10 * 60 * 1000;
 const MAX_PLAYLIST_IMPORT_GRANTS = 8;
 const MAX_PLAYLIST_IMPORT_BYTES = 1024 * 1024 * 1024;
 const MAX_FOLDER_IDS = 1024;
+const MAX_PUBLIC_SCAN_WARNING_SAMPLES = 100;
 const ARTWORK_EXTRACTOR_VERSION = 'electron-artwork-v2';
 const MAX_ARTWORK_RAW_BYTES = 20 * 1024 * 1024;
 const MAX_ARTWORK_SOURCE_DIMENSION = 16384;
@@ -514,7 +516,15 @@ class LibraryCatalogScanRuntime extends EventEmitter {
       trackUid: normalizedTrackUid,
       folderId: track.folderId,
       lifecycleVersion: track.lifecycleVersion,
-      path: filePath
+      path: filePath,
+      byteLength: Number.isSafeInteger(track.size) && track.size >= 0 ? track.size : null,
+      physicalSourceKey: track.physicalSourceKey ?? `${track.folderId}\0${track.relativePath}`,
+      sourceKind: track.sourceKind ?? 'file',
+      entryKey: track.entryKey ?? null,
+      cueRelativePath: track.cueRelativePath ?? null,
+      startFrame: track.startFrame ?? null,
+      endFrame: track.endFrame ?? null,
+      durationSec: track.durationSec ?? null
     };
   }
 
@@ -790,7 +800,8 @@ class LibraryCatalogScanRuntime extends EventEmitter {
     }
     return {
       enumerateDirectory: input => this.enumerateDirectory({ ...input, onPlaylistFile }),
-      statFile: input => this.statFile(input)
+      statFile: input => this.statFile(input),
+      readSmallFile: input => this.readSmallFile(input)
     };
   }
 
@@ -814,6 +825,8 @@ class LibraryCatalogScanRuntime extends EventEmitter {
             yield { kind: 'directory', name: entry.name, relativePath };
           } else if (stats.isFile() && AUDIO_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
             yield { kind: 'file', name: entry.name, relativePath, path: candidate };
+          } else if (stats.isFile() && path.extname(entry.name).toLowerCase() === CUE_EXTENSION) {
+            yield { kind: 'cue', name: entry.name, relativePath, path: candidate };
           } else if (stats.isFile() && PLAYLIST_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
             onPlaylistFile({ folderId: grant.folderId, name: entry.name, relativePath, path: candidate });
           }
@@ -841,6 +854,35 @@ class LibraryCatalogScanRuntime extends EventEmitter {
       size: Number(stats.size),
       mtimeMs: Math.round(Number(stats.mtimeMs))
     };
+  }
+
+  async readSmallFile({ root, relativePath, maximumBytes, signal } = {}) {
+    throwIfAborted(signal);
+    const grant = this.grantForRoot(root);
+    const candidate = await this.resolveGrantedPath(grant, relativePath, { allowRoot: false });
+    const handle = await this.filesystem.open(candidate, 'r');
+    try {
+      const stats = await handle.stat();
+      if (!stats.isFile()) {
+        throw createRuntimeError('invalidLibraryEntry', 'Library entry is not a regular file');
+      }
+      if (Number(stats.size) > maximumBytes) {
+        return { tooLarge: true, size: Number(stats.size), bytes: null };
+      }
+      const bytes = Buffer.allocUnsafe(maximumBytes + 1);
+      let byteLength = 0;
+      while (byteLength < bytes.byteLength) {
+        throwIfAborted(signal);
+        const read = await handle.read(bytes, byteLength, bytes.byteLength - byteLength, byteLength);
+        if (read.bytesRead === 0) break;
+        byteLength += read.bytesRead;
+      }
+      throwIfAborted(signal);
+      if (byteLength > maximumBytes) return { tooLarge: true, size: byteLength, bytes: null };
+      return { tooLarge: false, size: byteLength, bytes: new Uint8Array(bytes.subarray(0, byteLength)) };
+    } finally {
+      await handle.close().catch(() => {});
+    }
   }
 
   async resolveGrantedPath(grant, relativePath, { allowRoot, directory = false } = {}) {
@@ -1162,7 +1204,17 @@ function publicScanRecord(record) {
       continuityBroken: result.continuityBroken,
       sweepEligibility: result.sweepEligibility,
       playlistImportState: result.playlistImportState,
-      counts: result.counts
+      counts: result.counts,
+      warnings: Array.isArray(result.warnings) ? result.warnings.map(warning => ({
+        category: warning.category,
+        count: warning.count,
+        samples: Array.isArray(warning.samples)
+          ? warning.samples.slice(0, MAX_PUBLIC_SCAN_WARNING_SAMPLES).map(sample => ({
+              code: sample.code,
+              path: sample.path
+            }))
+          : []
+      })) : []
     })),
     error: record.error
   };

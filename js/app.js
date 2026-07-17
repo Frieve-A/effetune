@@ -1295,72 +1295,23 @@ class App {
             if (this.uiManager) {
                 // Debug logs removed for release
                 
-                // Convert file paths to File objects to match drag and drop behavior
-                // This is the key fix for the music file command line argument issue
-                const convertPathsToFileObjects = async (filePaths) => {
+                const playbackDescriptors = window.pendingMusicFiles.filter(item =>
+                    item && typeof item === 'object' && typeof item.path === 'string' &&
+                    Number.isSafeInteger(item.byteLength) && item.byteLength >= 0
+                );
+                if (playbackDescriptors.length > 0) {
                     try {
-                        return await Promise.all(filePaths.map(async (filePath) => {
-                            try {
-                                const bytes = await window.electronAPI.readFileBytes(filePath);
-                                const fileName = filePath.split(/[\\/]/).pop();
-                                const extension = fileName.split('.').pop().toLowerCase();
-                                const mimeTypes = {
-                                    'mp3': 'audio/mpeg',
-                                    'wav': 'audio/wav',
-                                    'ogg': 'audio/ogg',
-                                    'flac': 'audio/flac',
-                                    'opus': 'audio/opus',
-                                    'm4a': 'audio/mp4',
-                                    'aac': 'audio/aac',
-                                    'webm': 'audio/webm',
-                                    'mp4': 'video/mp4'
-                                };
-                                const mimeType = mimeTypes[extension] || 'audio/mpeg';
-                                const blob = new Blob([bytes], { type: mimeType });
-                                return new File([blob], fileName, { type: mimeType });
-                            } catch (error) {
-                                console.error(`Failed to read file: ${error?.message || error}`);
-                                return null;
-                            }
-                        }));
+                        window._commandLineMusicFilesNoInput = true;
+                        this.uiManager.createAudioPlayer(playbackDescriptors, false);
+                        setTimeout(() => {
+                            if (this.uiManager.audioPlayer) this.uiManager.audioPlayer.play();
+                        }, 1000);
                     } catch (error) {
-                        console.error('Error converting paths to File objects:', error);
-                        return [];
+                        console.error('Initial music playback setup diagnostic:', error);
                     }
-                };
-                
-                // Convert paths to File objects and create audio player
-                convertPathsToFileObjects(window.pendingMusicFiles)
-                    .then(fileObjects => {
-                        // Filter out any null values (failed conversions)
-                        const validFiles = fileObjects.filter(file => file);
-                        
-                        if (validFiles.length > 0) {
-                            // Debug logs removed for release
-                            
-                            // Make sure the _commandLineMusicFilesNoInput flag is set
-                            // This ensures the audio player doesn't use input with the music files
-                            if (window._commandLineMusicFilesNoInput !== true) {
-                                // Debug logs removed for release
-                                window._commandLineMusicFilesNoInput = true;
-                            }
-                            
-                            this.uiManager.createAudioPlayer(validFiles, false);
-                            
-                            // Start playback automatically after a short delay to ensure audio is loaded
-                            setTimeout(() => {
-                                // Debug logs removed for release
-                                if (this.uiManager.audioPlayer) {
-                                    this.uiManager.audioPlayer.play();
-                                }
-                            }, 1000);
-                        } else {
-                            console.error('No valid files after conversion');
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error in file conversion process:', error);
-                    });
+                } else {
+                    console.error('Initial music file admission returned no playable files');
+                }
                 
                 // Clear the pending music files after processing
                 window.pendingMusicFiles = [];

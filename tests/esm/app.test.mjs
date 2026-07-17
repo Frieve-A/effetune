@@ -907,13 +907,12 @@ test('initializeAndBuildPipeline loads pending, URL, and saved pipeline state', 
 
 test('event listeners, output-device changes, relaunch, and command-line music coordinate app state', async () => {
   await withAppModule({
-    pendingMusicFiles: ['C:\\Music\\one.MP4', 'C:\\Music\\bad.wav'],
+    pendingMusicFiles: [
+      { path: 'C:\\Music\\one.MP4', byteLength: 3, name: 'one.MP4' },
+      { path: 'C:\\Music\\two.wav', byteLength: 4, name: 'two.wav' }
+    ],
     electronAPI: {
       platform: 'win32',
-      async readFileBytes(path) {
-        if (path.includes('bad')) throw new Error('bad file');
-        return Buffer.from('abc');
-      },
       async savePipelineStateToFile(state) {
         calls.push(['saveRiskState', state]);
       }
@@ -934,10 +933,6 @@ test('event listeners, output-device changes, relaunch, and command-line music c
         this.listener = listener;
       },
       platform: 'win32',
-      async readFileBytes(path) {
-        if (path.includes('bad')) throw new Error('bad file');
-        return Buffer.from('abc');
-      },
       async savePipelineStateToFile(state) {
         calls.push(['saveRiskState', state]);
       },
@@ -988,7 +983,7 @@ test('event listeners, output-device changes, relaunch, and command-line music c
     await runTimers(timers);
     assert.equal(calls.some(call => call[0] === 'ui.createAudioPlayer'), true);
     assert.equal(openedFiles[0].name, 'one.MP4');
-    assert.equal(openedFiles[0].type, 'video/mp4');
+    assert.equal(openedFiles[0].byteLength, 3);
     assert.deepEqual(window.pendingMusicFiles, []);
   });
 });
@@ -1739,27 +1734,17 @@ test('command-line music and version fallbacks stay recoverable', async () => {
 
   await withAppModule({
     pendingMusicFiles: ['bad.wav'],
-    electronAPI: {
-      async readFileBytes() {
-        throw new Error('bad file');
-      }
-    }
   }, async ({ calls, mod, window }) => {
     window.electronIntegration = { isElectron: true, audioPreferences: {} };
     const app = new mod.App(createDependencies(calls));
     app.processCommandLineArguments();
     await flushMicrotasks();
     await flushMicrotasks();
-    assert.equal(calls.some(call => call[0] === 'console.error' && call[1] === 'No valid files after conversion'), true);
+    assert.equal(calls.some(call => call[0] === 'console.error' && call[1] === 'Initial music file admission returned no playable files'), true);
   });
 
   await withAppModule({
-    pendingMusicFiles: ['song.xyz'],
-    electronAPI: {
-      async readFileBytes() {
-        return Buffer.from('xyz');
-      }
-    }
+    pendingMusicFiles: [{ path: 'song.wav', byteLength: 3, name: 'song.wav' }]
   }, async ({ calls, mod, window }) => {
     window.electronIntegration = { isElectron: true, audioPreferences: {} };
     const deps = createDependencies(calls);
@@ -1770,24 +1755,18 @@ test('command-line music and version fallbacks stay recoverable', async () => {
     app.processCommandLineArguments();
     await flushMicrotasks();
     await flushMicrotasks();
-    assert.equal(calls.some(call => call[0] === 'console.error' && call[1] === 'Error in file conversion process:'), true);
+    assert.equal(calls.some(call => call[0] === 'console.error' && call[1] === 'Initial music playback setup diagnostic:'), true);
   });
 
   await withAppModule({
     pendingMusicFiles: ['throw.mp3'],
-    electronAPI: {
-      async readFileBytes() {
-        throw new Error('read threw');
-      }
-    }
   }, async ({ calls, mod, window }) => {
     window.electronIntegration = { isElectron: true, audioPreferences: {} };
     const app = new mod.App(createDependencies(calls));
     app.processCommandLineArguments();
     await flushMicrotasks();
     await flushMicrotasks();
-    assert.equal(calls.some(call => call[0] === 'console.error' && call[1] === 'Failed to read file: read threw'), true);
-    assert.equal(calls.some(call => call[0] === 'console.error' && call[1] === 'No valid files after conversion'), true);
+    assert.equal(calls.some(call => call[0] === 'console.error' && call[1] === 'Initial music file admission returned no playable files'), true);
   });
 
   await withAppModule({}, async ({ document, mod, window }) => {

@@ -244,6 +244,7 @@ class LibraryCatalogHost extends EventEmitter {
   beginScanFolder(options) { return this.request('beginScanFolder', options); }
   preflightScanBatch(options) { return this.request('preflightScanBatch', options); }
   commitScanSeenBatch(options) { return this.request('commitScanSeenBatch', options); }
+  cueDirectoryStage(options) { return this.request('cueDirectoryStage', options); }
   listMetadataCandidates(options) { return this.request('listMetadataCandidates', options); }
   advanceScanMetadataCursor(options) { return this.request('advanceScanMetadataCursor', options); }
   markScanEnumerationIneligible(options) { return this.request('markScanEnumerationIneligible', options); }
@@ -528,7 +529,7 @@ class LibraryCatalogLifecycle {
   }
 
   async openCatalog({ userDataPath, ipcMain, getMainWindow }) {
-    const directory = path.resolve(userDataPath, 'music-library-v2');
+    const directory = path.resolve(userDataPath, 'music-library-v3');
     const dbPath = path.join(directory, 'catalog.sqlite');
     this.makeDirectory(directory);
     let host;

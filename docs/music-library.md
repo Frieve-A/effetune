@@ -10,7 +10,7 @@ Music Library indexes selected music folders so you can browse your local collec
 
 Music Library stores its catalog, artwork cache, and playlists inside the app. It does not edit, rename, move, or delete your audio files.
 
-EffeTune 2.1.0 starts with a new Music Library. Earlier Library state is not inherited, so add your music folders and scan them again. This does not modify the audio files in those folders.
+Version 2.1.0 introduces the CUE-enabled Music Library with catalog schema v3. Earlier Music Library folders and playlists are not carried into this catalog, so add your music folders again and recreate or re-import your Music Library playlists. The earlier catalog and your audio files are not modified.
 
 ## Availability
 
@@ -18,7 +18,7 @@ EffeTune 2.1.0 starts with a new Music Library. Earlier Library state is not inh
 - **PC Chromium browsers with File System Access:** Store the selected folder handle persistently. The browser may ask for permission again, but the handle can be reused after a reload once access is granted.
 - **Mobile browsers, Safari, Firefox, and other browsers without File System Access:** Keep selected `File` objects only for the current page session. The catalog remains stored, but the files themselves cannot be reopened after a reload. Select the folder or files again after every reload; EffeTune reconnects them to the existing catalog entries by normalized relative path.
 
-Music Library indexes common media file extensions such as MP3, WAV, OGG, FLAC, Opus, M4A, AAC, WebM, and MP4. For MP4 files, EffeTune plays only the audio track and does not display video. Actual playback support, including the audio codec inside an MP4 file, still depends on the browser or OS decoder.
+Music Library indexes common media file extensions such as MP3, WAV, OGG, FLAC, Opus, M4A, AAC, WebM, and MP4. It can also use an external CUE sheet to divide a WAV or FLAC album file in the same folder into individual tracks. For MP4 files, EffeTune plays only the audio track and does not display video. Actual playback support, including the audio codec inside an MP4 file, still depends on the browser or OS decoder.
 
 ## Opening Music Library
 
@@ -62,7 +62,15 @@ In both the PC and mobile layouts, track search results and tracks in an album, 
 
 Mobile starts with the normal title list and does not show artist or duration columns. Only long-pressing a track enters selection mode; checkboxes, **Select All**, and **Deselect All** then appear while the usual row actions remain available. Automatic selection and later selection changes—including **Select All**, **Deselect All**, and individual checkboxes—change only the selection state; they do not enter or leave selection mode.
 
-If metadata is missing or unreadable, EffeTune falls back to the file name and folder information. Track properties show the file path, format, sample rate, bit depth, bitrate, and main metadata fields.
+If metadata is missing or unreadable, EffeTune falls back to the file name and folder information. Track properties show the file path, format, sample rate, bit depth, bitrate, and main metadata fields. For a CUE track, they also show that it is a CUE track, the CUE path, the source audio path, and the track's region within that source.
+
+## CUE Album Files
+
+Place an external `.cue` file beside the WAV or FLAC files it names, then add or rescan that folder. Each valid `TRACK ... AUDIO` entry appears as an individual Music Library track. CUE title, performer, date, genre, and track numbering are used where available, while technical audio details come from the source WAV or FLAC file.
+
+You can also play a CUE album without adding it to Music Library. Use **Open music files**, or **Open Music** on mobile. In the desktop app, **File > Open music file...** is also available. In the desktop app, select the `.cue` file by itself; in a browser, select one `.cue` file together with all and only the WAV or FLAC files it names. A valid selection replaces the current playback queue but is not added to the catalog. If validation fails, the current queue is left unchanged.
+
+If a CUE sheet is invalid or cannot safely identify its source files, EffeTune explains the problem and imports the WAV or FLAC files as ordinary whole-file tracks instead. Correct the CUE sheet or its file names, then rescan the folder to try again.
 
 ## Playing from the Library
 
@@ -108,7 +116,7 @@ Folder scans automatically import supported playlist files after their tracks ar
 
 When importing, EffeTune previews how many playlist entries match tracks in the current library. Unmatched entries are kept as unresolved items when possible, so they can be resolved later after adding or reconnecting the matching folder.
 
-When exporting, choosing **Relative paths** writes paths relative to the export location when possible. Use this when you want the playlist to move together with the music folder.
+When exporting, choosing **Relative paths** writes paths relative to the export location when possible. Use this when you want the playlist to move together with the music folder. M3U8 and XSPF cannot preserve a CUE track's region within an album file, so EffeTune leaves CUE tracks out of these exports and reports how many were omitted. It never substitutes the physical album-file path for an omitted CUE track.
 
 ## Safety and Storage
 

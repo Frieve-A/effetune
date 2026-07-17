@@ -129,8 +129,8 @@ test('catalog lifecycle opens one canonical profile host and registers only boun
   assert.equal(second, host);
   assert.equal(lifecycle.getHost(), host);
   assert.deepEqual(calls, [
-    ['mkdir', path.join(userDataPath, 'music-library-v2')],
-    ['open', { dbPath: path.join(userDataPath, 'music-library-v2', 'catalog.sqlite') }]
+    ['mkdir', path.join(userDataPath, 'music-library-v3')],
+    ['open', { dbPath: path.join(userDataPath, 'music-library-v3', 'catalog.sqlite') }]
   ]);
   assert.deepEqual([...ipcMain.handlers.keys()].sort(), Object.values(LIBRARY_CATALOG_RENDERER_CHANNELS).sort());
   assert.ok([...ipcMain.handlers.keys()].every(channel => !/upsert|insert|mutation|scan/i.test(channel)));

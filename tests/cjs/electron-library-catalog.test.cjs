@@ -169,7 +169,7 @@ test('DatabaseSync is isolated in a worker with shared schema, FTS5, WAL, and bo
   assert.equal(threadId, 0);
   assert.notEqual(capabilities.databaseSyncThreadId, threadId);
   assert.equal(capabilities.databaseSyncInWorker, true);
-  assert.equal(capabilities.schemaVersion, 2);
+  assert.equal(capabilities.schemaVersion, 3);
   assert.equal(capabilities.fts5, true);
   assert.equal(capabilities.trigram, true);
   assert.equal(capabilities.shortSearchMode, 'word-prefix');
@@ -386,7 +386,13 @@ test('bounded writes advance catalog/scope versions and page rows never expose f
     trackUid: 'track_source',
     folderId: 'folder_music',
     lifecycleVersion: 3,
-    path: sourcePath
+    path: sourcePath,
+    physicalSourceKey: 'folder_music\0Album/Track.flac',
+    sourceKind: 'file',
+    entryKey: null,
+    cueRelativePath: null,
+    startFrame: null,
+    endFrame: null
   };
   assert.deepEqual(await host.resolvePlaylistExportSource('track_source'), expectedExportSource);
 
@@ -567,6 +573,428 @@ test('durable scan writes prune an idle context after its WAL budget is exceeded
 
   assert.ok(fs.statSync(walPath).size - initialWalBytes > contextWalCapBytes);
   assert.deepEqual(await host.releaseContext(context.contextToken), { released: false });
+});
+
+test('CUE directory staging is paged, resolves claims, and is removed at scan terminal state', async t => {
+  const { host, directory } = await openCatalog(t);
+  await seedFolder(host, directory);
+  const scan = await host.beginScanFolder({
+    scanId: 'scan-cue-stage',
+    folderId: 'folder_music',
+    normalizedRoot: directory,
+    expectedLifecycleVersion: 3,
+    resume: false,
+    rootEnumerationRequired: true,
+    continuityBroken: false,
+    sweepEligibility: 'INELIGIBLE'
+  });
+  const base = {
+    scanId: scan.scanId,
+    folderId: scan.folderId,
+    generation: scan.generation,
+    expectedLifecycleVersion: scan.lifecycleVersion,
+    directoryPath: 'Album'
+  };
+
+  await host.cueDirectoryStage({ ...base, action: 'reset' });
+  await host.cueDirectoryStage({
+    ...base,
+    action: 'append-entries',
+    entries: [
+      { relativePath: 'Album/disc.cue', path: null, kind: 'cue', sequence: 0 },
+      { relativePath: 'Album/audio.wav', path: null, kind: 'audio', sequence: 1 }
+    ]
+  });
+  await host.cueDirectoryStage({
+    ...base,
+    action: 'update-observations',
+    observations: [
+      { relativePath: 'Album/disc.cue', path: null, fileIdentity: 'cue-id', size: 100, mtimeMs: 1 },
+      { relativePath: 'Album/audio.wav', path: null, fileIdentity: 'audio-id', size: 200, mtimeMs: 2 }
+    ]
+  });
+  assert.deepEqual(await host.cueDirectoryStage({
+    ...base,
+    action: 'resolve-references',
+    references: ['AUDIO.WAV']
+  }), { availableRelativePaths: ['Album/audio.wav'] });
+
+  const track = {
+    trackNo: 1,
+    title: 'One',
+    performer: 'Artist',
+    fileReference: 'audio.wav',
+    index00: null,
+    startFrame: 0,
+    endFrame: null,
+    relativePath: 'Album/audio.wav',
+    entryKey: 'cue:Album/disc.cue#1',
+    logicalStorageId: 'cue:Album/disc.cue#1'
+  };
+  const cue = {
+    ok: true,
+    cueRelativePath: 'Album/disc.cue',
+    title: 'Disc',
+    performer: 'Artist',
+    date: '',
+    genre: '',
+    files: [],
+    resolvedFiles: ['Album/audio.wav'],
+    tracks: [track]
+  };
+  await host.cueDirectoryStage({
+    ...base,
+    action: 'stage-sheet',
+    cue,
+    cueOrderKey: '0041',
+    cueSignature: 'signature'
+  });
+  const sources = await host.cueDirectoryStage({
+    ...base, action: 'list-sources', cursor: null, limit: 8
+  });
+  assert.deepEqual(sources.items.map(item => item.relativePath), ['Album/audio.wav']);
+  await host.cueDirectoryStage({
+    ...base,
+    action: 'update-source',
+    relativePath: 'Album/audio.wav',
+    metadataStatus: 'ok',
+    metadata: { durationSec: 20, sampleRate: 48000 }
+  });
+  await host.cueDirectoryStage({
+    ...base,
+    action: 'validate-sheet',
+    cueRelativePath: cue.cueRelativePath,
+    valid: true,
+    durations: [{ trackNo: 1, durationSec: 20 }]
+  });
+  assert.deepEqual(await host.cueDirectoryStage({
+    ...base,
+    action: 'accept-sheet',
+    cueRelativePath: cue.cueRelativePath
+  }), { accepted: true });
+  const logical = await host.cueDirectoryStage({
+    ...base,
+    action: 'list-logical',
+    relativePath: 'Album/audio.wav',
+    cursor: null,
+    limit: 8
+  });
+  assert.equal(logical.sheet.cueSignature, 'signature');
+  assert.equal(logical.sheet.metadata.durationSec, 20);
+  assert.deepEqual(logical.items.map(item => item.trackNo), [1]);
+  assert.equal(logical.items[0].durationSec, 20);
+
+  await host.completeScanFolderNoSweep({
+    scanId: scan.scanId,
+    folderId: scan.folderId,
+    generation: scan.generation,
+    expectedLifecycleVersion: scan.lifecycleVersion,
+    status: 'completed-no-sweep',
+    sweepBlockReason: 'test'
+  });
+  const afterTerminal = await host.cueDirectoryStage({
+    ...base, action: 'list-files', cursor: null, limit: 8
+  });
+  assert.deepEqual(afterTerminal.items, []);
+
+  await host.cueDirectoryStage({ ...base, action: 'reset' });
+  await host.cueDirectoryStage({
+    ...base,
+    action: 'append-entries',
+    entries: [{ relativePath: 'Album/stale.cue', path: null, kind: 'cue', sequence: 0 }]
+  });
+  const resumed = await host.beginScanFolder({
+    scanId: scan.scanId,
+    folderId: scan.folderId,
+    normalizedRoot: directory,
+    expectedLifecycleVersion: scan.lifecycleVersion,
+    resume: true,
+    rootEnumerationRequired: true,
+    continuityBroken: true,
+    sweepEligibility: 'INELIGIBLE'
+  });
+  const resumedBase = {
+    ...base,
+    generation: resumed.generation,
+    expectedLifecycleVersion: resumed.lifecycleVersion
+  };
+  assert.deepEqual((await host.cueDirectoryStage({
+    ...resumedBase, action: 'list-files', cursor: null, limit: 8
+  })).items, []);
+  await host.cueDirectoryStage({ ...resumedBase, action: 'reset' });
+  await host.cueDirectoryStage({
+    ...resumedBase,
+    action: 'append-entries',
+    entries: [{ relativePath: 'Album/cancel.cue', path: null, kind: 'cue', sequence: 0 }]
+  });
+  await host.pauseScanFolder({
+    scanId: resumed.scanId,
+    folderId: resumed.folderId,
+    generation: resumed.generation,
+    expectedLifecycleVersion: resumed.lifecycleVersion,
+    status: 'paused',
+    stopReason: 'user',
+    continuityBroken: true,
+    sweepEligibility: 'INELIGIBLE'
+  });
+  assert.deepEqual((await host.cueDirectoryStage({
+    ...resumedBase, action: 'list-files', cursor: null, limit: 8
+  })).items, []);
+});
+
+test('startup scan recovery removes unfinished CUE directory staging', async t => {
+  const fixture = createTempCatalog(t);
+  let host = await LibraryCatalogHost.open({ dbPath: fixture.dbPath });
+  try {
+    await seedFolder(host, fixture.directory);
+    const scan = await host.beginScanFolder({
+      scanId: 'scan-cue-recovery',
+      folderId: 'folder_music',
+      normalizedRoot: fixture.directory,
+      expectedLifecycleVersion: 3,
+      resume: false,
+      rootEnumerationRequired: true,
+      continuityBroken: false,
+      sweepEligibility: 'INELIGIBLE'
+    });
+    const base = {
+      scanId: scan.scanId,
+      folderId: scan.folderId,
+      generation: scan.generation,
+      expectedLifecycleVersion: scan.lifecycleVersion,
+      directoryPath: 'Album'
+    };
+    await host.cueDirectoryStage({ ...base, action: 'reset' });
+    await host.cueDirectoryStage({
+      ...base,
+      action: 'append-entries',
+      entries: [{ relativePath: 'Album/interrupted.cue', path: null, kind: 'cue', sequence: 0 }]
+    });
+    await host.close();
+    host = await LibraryCatalogHost.open({ dbPath: fixture.dbPath });
+
+    const recovered = await host.cueDirectoryStage({
+      ...base, action: 'list-files', cursor: null, limit: 8
+    });
+    assert.deepEqual(recovered.items, []);
+  } finally {
+    await host.close();
+  }
+});
+
+test('Electron CUE metadata claims keep the track UID while replacing the physical source path', async t => {
+  const { host, directory, dbPath } = await openCatalog(t);
+  await seedFolder(host, directory);
+  const scan = await host.beginScanFolder({
+    scanId: 'scan-cue-path-update', folderId: 'folder_music', normalizedRoot: directory,
+    expectedLifecycleVersion: 3, resume: false, rootEnumerationRequired: true,
+    continuityBroken: false, sweepEligibility: 'PENDING'
+  });
+  const entryKey = 'cue:Album/disc.cue#1';
+  const claim = relativePath => host.claimMetadataParse({
+    folderId: scan.folderId, trackUid: 'cue-stable-track', logicalStorageId: entryKey,
+    lifecycleVersion: scan.lifecycleVersion, generation: scan.generation,
+    relativePath, parserVersion: scan.parserVersion,
+    signature: { fileIdentity: 'source', size: 100, mtimeMs: 1 },
+    cueSignature: 'cue-signature',
+    sourceKind: 'cue-track', entryKey, cueRelativePath: 'Album/disc.cue',
+    startFrame: 0, endFrame: 750, explicitRescan: false
+  });
+  const complete = request => host.completeMetadataParseSuccess({
+    claim: request.claim,
+    metadata: {
+      title: 'Title', artist: 'Artist', albumArtist: 'Artist', album: 'Album',
+      genre: 'Genre', durationSec: 10
+    },
+    metadataStatus: 'ok', clearErrorAndRetryState: true,
+    updateLastKnownGood: true, updateDerivedData: true
+  });
+
+  const first = await claim('Album/Old.flac');
+  await complete(first);
+  const observation = {
+    relativePath: 'Album/New.flac', path: path.join(directory, 'Album', 'New.flac'),
+    fileIdentity: 'source', size: 100, mtimeMs: 1,
+    logicalCandidates: [{
+      logicalStorageId: entryKey, relativePath: 'Album/New.flac',
+      path: path.join(directory, 'Album', 'New.flac'), sourceKind: 'cue-track', entryKey,
+      cueRelativePath: 'Album/disc.cue', startFrame: 0, endFrame: 750,
+      cueSignature: 'cue-signature',
+      metadata: {
+        title: 'Title', artist: 'Artist', albumArtist: 'Artist', album: 'Album',
+        genre: 'Genre', durationSec: 10
+      }
+    }]
+  };
+  await host.commitScanSeenBatch({
+    scanId: scan.scanId, folderId: scan.folderId, generation: scan.generation,
+    expectedLifecycleVersion: scan.lifecycleVersion,
+    observations: [observation], maxTracks: 500, maxBytes: 4 * 1024 * 1024,
+    lastCommittedBatch: 1,
+    cursor: { lastRelativePath: observation.relativePath, visitedFiles: 1, committedBatches: 1 }
+  });
+  const candidate = (await host.listMetadataCandidates({
+    scanId: scan.scanId, folderId: scan.folderId, generation: scan.generation,
+    expectedLifecycleVersion: scan.lifecycleVersion, cursor: null, limit: 10,
+    parserVersion: scan.parserVersion
+  })).items[0];
+  assert.equal(candidate.relativePath, 'Album/New.flac');
+  assert.equal(candidate.storedSignature, null);
+  const moved = await claim('Album/New.flac');
+  assert.equal(moved.claim.trackUid, 'cue-stable-track');
+  await complete(moved);
+
+  const database = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    const track = database.prepare(`
+      SELECT relative_path AS relativePath, file_name AS fileName,
+        normalized_basename AS normalizedBasename, search_text AS searchText,
+        entry_key AS entryKey, cue_relative_path AS cueRelativePath
+      FROM tracks WHERE track_uid = 'cue-stable-track'
+    `).get();
+    assert.deepEqual({
+      relativePath: track.relativePath,
+      fileName: track.fileName,
+      normalizedBasename: track.normalizedBasename,
+      entryKey: track.entryKey,
+      cueRelativePath: track.cueRelativePath
+    }, {
+      relativePath: 'Album/New.flac', fileName: 'New.flac', normalizedBasename: 'new.flac',
+      entryKey, cueRelativePath: 'Album/disc.cue'
+    });
+    assert.match(track.searchText, /new\.flac/);
+    assert.doesNotMatch(track.searchText, /old\.flac/);
+  } finally {
+    database.close();
+  }
+});
+
+test('Electron retains CUE rows and playlists after pause, then cleans them in an eligible final sweep', async t => {
+  const { host, directory } = await openCatalog(t);
+  await seedFolder(host, directory);
+  const begin = scanId => host.beginScanFolder({
+    scanId, folderId: 'folder_music', normalizedRoot: directory,
+    expectedLifecycleVersion: 3, resume: false, rootEnumerationRequired: true,
+    continuityBroken: false, sweepEligibility: 'PENDING'
+  });
+  const complete = request => host.completeMetadataParseSuccess({
+    claim: request.claim,
+    metadata: {
+      title: request.claim.sourceKind === 'cue-track' ? 'CUE title' : 'Plain title',
+      artist: 'Artist', albumArtist: 'Artist', album: 'Album', genre: 'Genre', durationSec: 10
+    },
+    metadataStatus: 'ok', clearErrorAndRetryState: true,
+    updateLastKnownGood: true, updateDerivedData: true
+  });
+
+  const oldScan = await begin('scan-cue-reconcile-old');
+  const entryKey = 'cue:Album/disc.cue#1';
+  const cue = await host.claimMetadataParse({
+    folderId: oldScan.folderId, trackUid: 'old-cue-track', logicalStorageId: entryKey,
+    lifecycleVersion: oldScan.lifecycleVersion, generation: oldScan.generation,
+    relativePath: 'Album/Image.flac', parserVersion: oldScan.parserVersion,
+    signature: { fileIdentity: 'cue-source', size: 100, mtimeMs: 1 },
+    cueSignature: 'cue-old', sourceKind: 'cue-track', entryKey,
+    cueRelativePath: 'Album/disc.cue', startFrame: 0, endFrame: 750,
+    explicitRescan: false
+  });
+  await complete(cue);
+  await host.completeScanFolderNoSweep({
+    scanId: oldScan.scanId, folderId: oldScan.folderId, generation: oldScan.generation,
+    expectedLifecycleVersion: oldScan.lifecycleVersion, status: 'completed-no-sweep',
+    sweepBlockReason: 'test'
+  });
+  await host.createPlaylistWithItems({
+    playlistId: 'cue-reconcile-playlist', name: 'CUE reconcile', createdAt: 1,
+    items: [{ trackUid: 'old-cue-track' }]
+  });
+
+  const scan = await begin('scan-cue-reconcile-plain');
+  const observation = {
+    relativePath: 'Album/Image.flac', path: path.join(directory, 'Album', 'Image.flac'),
+    fileIdentity: 'plain-source', size: 120, mtimeMs: 2,
+    logicalCandidates: [{
+      logicalStorageId: 'file:Album/Image.flac', relativePath: 'Album/Image.flac',
+      path: path.join(directory, 'Album', 'Image.flac'), sourceKind: 'file'
+    }]
+  };
+  await host.commitScanSeenBatch({
+    scanId: scan.scanId, folderId: scan.folderId, generation: scan.generation,
+    expectedLifecycleVersion: scan.lifecycleVersion,
+    observations: [observation], maxTracks: 500, maxBytes: 4 * 1024 * 1024,
+    lastCommittedBatch: 1,
+    cursor: { lastRelativePath: observation.relativePath, visitedFiles: 1, committedBatches: 1 }
+  });
+  const plain = await host.claimMetadataParse({
+    folderId: scan.folderId, trackUid: 'plain-track', logicalStorageId: 'file:Album/Image.flac',
+    lifecycleVersion: scan.lifecycleVersion, generation: scan.generation,
+    relativePath: observation.relativePath, parserVersion: scan.parserVersion,
+    signature: { fileIdentity: 'plain-source', size: 120, mtimeMs: 2 },
+    sourceKind: 'file', explicitRescan: false
+  });
+  await complete(plain);
+
+  await host.pauseScanFolder({
+    scanId: scan.scanId, folderId: scan.folderId, generation: scan.generation,
+    expectedLifecycleVersion: scan.lifecycleVersion, status: 'paused', stopReason: 'user',
+    continuityBroken: true, sweepEligibility: 'INELIGIBLE'
+  });
+
+  assert.equal((await host.getCounts()).tracks, 2);
+  const retainedTracks = await host.queryTracks({ query: '', sort: 'title', direction: 'asc', limit: 10 });
+  assert.deepEqual(retainedTracks.rows.map(row => ({ trackUid: row.trackUid, sourceKind: row.sourceKind })), [
+    { trackUid: 'old-cue-track', sourceKind: 'cue-track' },
+    { trackUid: 'plain-track', sourceKind: 'file' }
+  ]);
+  await host.releaseContext(retainedTracks.contextToken);
+  const retainedPlaylistItem = (await host.queryPlaylistItems({
+    playlistId: 'cue-reconcile-playlist', limit: 10
+  })).items[0];
+  assert.equal(retainedPlaylistItem.trackUid, 'old-cue-track');
+
+  const eligible = await begin('scan-cue-reconcile-eligible');
+  await host.commitScanSeenBatch({
+    scanId: eligible.scanId, folderId: eligible.folderId, generation: eligible.generation,
+    expectedLifecycleVersion: eligible.lifecycleVersion,
+    observations: [observation], maxTracks: 500, maxBytes: 4 * 1024 * 1024,
+    lastCommittedBatch: 1,
+    cursor: { lastRelativePath: observation.relativePath, visitedFiles: 1, committedBatches: 1 }
+  });
+  const finalized = await host.finalizeScanEnumeration({
+    scanId: eligible.scanId, folderId: eligible.folderId, generation: eligible.generation,
+    expectedLifecycleVersion: eligible.lifecycleVersion, rootToEnd: true,
+    enumerationErrorCount: 0, continuityBroken: false, requestedSweepEligibility: 'ELIGIBLE'
+  });
+  assert.equal(finalized.sweepEligibility, 'ELIGIBLE');
+  const sweepRequest = {
+    scanId: eligible.scanId, folderId: eligible.folderId, generation: eligible.generation,
+    expectedLifecycleVersion: eligible.lifecycleVersion,
+    expectedSweepEligibility: 'ELIGIBLE', expectedContinuityBroken: false
+  };
+  await host.enqueueScanSweep(sweepRequest);
+  let sweep;
+  do {
+    sweep = await host.runScanSweep(sweepRequest);
+  } while (sweep.hasMore);
+  await host.completeScanFolder({
+    scanId: eligible.scanId, folderId: eligible.folderId, generation: eligible.generation,
+    expectedLifecycleVersion: eligible.lifecycleVersion, status: 'completed'
+  });
+
+  assert.equal((await host.getCounts()).tracks, 1);
+  const tracks = await host.queryTracks({ query: '', sort: 'title', direction: 'asc', limit: 10 });
+  assert.deepEqual(tracks.rows.map(row => ({ trackUid: row.trackUid, sourceKind: row.sourceKind })), [
+    { trackUid: 'plain-track', sourceKind: 'file' }
+  ]);
+  await host.releaseContext(tracks.contextToken);
+  const repaired = (await host.queryPlaylistItems({
+    playlistId: 'cue-reconcile-playlist', limit: 10
+  })).items[0];
+  assert.equal(repaired.trackUid, null);
+  assert.deepEqual(repaired.unresolved.cueProvenance, {
+    folderId: 'folder_music', entryKey, cueRelativePath: 'Album/disc.cue',
+    relativePath: 'Album/Image.flac', startFrame: 0, endFrame: 750
+  });
 });
 
 test('responses over 1 MiB are rejected at the host boundary', async () => {
@@ -856,6 +1284,166 @@ test('completed folder scans durably re-resolve unique unresolved playlist items
   } finally {
     database.close();
   }
+});
+
+test('Electron playlist resolution keeps plain imports separate and restores CUE items by provenance', async t => {
+  const { directory, host } = await openCatalog(t);
+  await seedFolder(host, directory);
+  await host.upsertFolders([{
+    id: 'folder_other', kind: 'electron', displayName: 'Other', path: path.join(directory, 'other'),
+    status: 'ok', lifecycleVersion: 1
+  }]);
+  const scan = await host.beginScanFolder({
+    scanId: 'scan-cue-playlist-resolution', folderId: 'folder_music', normalizedRoot: directory,
+    expectedLifecycleVersion: 3, resume: false, rootEnumerationRequired: true,
+    continuityBroken: false, sweepEligibility: 'INELIGIBLE'
+  });
+  const otherScan = await host.beginScanFolder({
+    scanId: 'scan-cue-playlist-resolution-other', folderId: 'folder_other',
+    normalizedRoot: path.join(directory, 'other'), expectedLifecycleVersion: 1,
+    resume: false, rootEnumerationRequired: true,
+    continuityBroken: false, sweepEligibility: 'INELIGIBLE'
+  });
+
+  const cueTracks = [];
+  for (const [trackUid, trackNo, title, startFrame] of [
+    ['cue-first', 1, 'First Cue', 0],
+    ['cue-second', 2, 'Second Cue', 750]
+  ]) {
+    const entryKey = `cue:Album/disc.cue#${trackNo}`;
+    const claimed = await host.claimMetadataParse({
+      folderId: 'folder_music', trackUid, logicalStorageId: entryKey,
+      lifecycleVersion: scan.lifecycleVersion, generation: scan.generation,
+      relativePath: 'Album/Image.flac', parserVersion: scan.parserVersion,
+      signature: { fileIdentity: 'cue-image', size: 1000, mtimeMs: 2000 },
+      cueSignature: 'cue-signature', sourceKind: 'cue-track', entryKey,
+      cueRelativePath: 'Album/disc.cue', startFrame, endFrame: startFrame + 750,
+      explicitRescan: false
+    });
+    assert.ok(claimed.claim);
+    await host.completeMetadataParseSuccess({
+      claim: claimed.claim,
+      metadata: {
+        title, artist: 'Cue Artist', albumArtist: 'Cue Artist', album: 'Cue Album',
+        genre: 'Genre', durationSec: 10
+      },
+      metadataStatus: 'ok', clearErrorAndRetryState: true, updateLastKnownGood: true,
+      updateDerivedData: true
+    });
+    cueTracks.push({ trackUid, entryKey, title });
+  }
+
+  const otherClaimed = await host.claimMetadataParse({
+    folderId: 'folder_other', trackUid: 'cue-second-other',
+    logicalStorageId: cueTracks[1].entryKey,
+    lifecycleVersion: otherScan.lifecycleVersion, generation: otherScan.generation,
+    relativePath: 'Album/Image.flac', parserVersion: otherScan.parserVersion,
+    signature: { fileIdentity: 'cue-image-other', size: 1000, mtimeMs: 2000 },
+    cueSignature: 'cue-signature', sourceKind: 'cue-track', entryKey: cueTracks[1].entryKey,
+    cueRelativePath: 'Album/disc.cue', startFrame: 750, endFrame: 1500,
+    explicitRescan: false
+  });
+  assert.ok(otherClaimed.claim);
+  await host.completeMetadataParseSuccess({
+    claim: otherClaimed.claim,
+    metadata: {
+      title: 'Second Cue', artist: 'Cue Artist', albumArtist: 'Cue Artist', album: 'Cue Album',
+      genre: 'Genre', durationSec: 10
+    },
+    metadataStatus: 'ok', clearErrorAndRetryState: true, updateLastKnownGood: true,
+    updateDerivedData: true
+  });
+  await host.completeScanFolderNoSweep({
+    scanId: otherScan.scanId, folderId: otherScan.folderId, generation: otherScan.generation,
+    expectedLifecycleVersion: otherScan.lifecycleVersion,
+    status: 'completed-no-sweep', sweepBlockReason: 'test-no-sweep'
+  });
+  await host.createPlaylistWithItems({
+    playlistId: 'cue-source-removal', name: 'CUE source removal', createdAt: Date.now(),
+    items: [{ trackUid: 'cue-second-other' }]
+  });
+
+  const directPlaylistId = 'direct-plain-cue-separation';
+  const received = await host.receiveOperation({
+    clientRequestId: 'direct-plain-cue-separation', requestDigest: 'direct-plain-cue-separation',
+    canonicalRequestVersion: 1, operationKind: 'previewPlaylistImport',
+    target: { playlistId: directPlaylistId }, expectedTargetVersion: 0,
+    sourceContextToken: null, sourceSequenceIds: [], sourceSequenceItemCount: 0,
+    buildDeadlineAt: Date.now() + 60_000, receivedAt: Date.now()
+  });
+  await host.createPlaylist({
+    playlistId: directPlaylistId, name: 'Direct plain', operationId: received.operationId,
+    createdAt: Date.now()
+  });
+  await host.appendPlaylistImportRecords({
+    origin: null, playlistId: directPlaylistId, operationId: received.operationId,
+    records: [{ type: 'entry', entry: { path: 'Album/Image.flac' } }]
+  });
+  const direct = await host.finalizePlaylistImportPage({
+    playlistId: directPlaylistId, operationId: received.operationId, afterPosition: 0, limit: 10
+  });
+  assert.equal(direct.resolvedCount, 0);
+  assert.equal(direct.keptCount, 1);
+
+  await host.createPlaylistWithItems({
+    playlistId: 'cue-provenance-resolution', name: 'CUE provenance', createdAt: Date.now(),
+    items: [
+      { unresolved: {
+        sourceKind: 'cue-track', entryKey: cueTracks[1].entryKey,
+        cueProvenance: { folderId: 'folder_music', entryKey: cueTracks[1].entryKey },
+        basename: 'Image.flac', title: cueTracks[1].title, artist: 'Cue Artist', durationSec: 10
+      } },
+      { unresolved: {
+        sourceKind: 'cue-track', entryKey: 'cue:Old/disc.cue#9',
+        cueProvenance: { entryKey: 'cue:Old/disc.cue#9' },
+        basename: 'Image.flac', title: cueTracks[0].title, artist: 'Cue Artist', durationSec: 10
+      } },
+      { unresolved: {
+        sourceKind: 'cue-track', entryKey: cueTracks[0].entryKey,
+        cueProvenance: {
+          folderId: 'folder_before_reregistration', entryKey: cueTracks[0].entryKey
+        },
+        basename: 'Image.flac', title: cueTracks[0].title, artist: 'Cue Artist', durationSec: 10
+      } },
+      { unresolved: {
+        sourceLine: 'Album/Image.flac', relativePathHint: 'Album/Image.flac',
+        basename: 'Image.flac', title: cueTracks[0].title, artist: 'Cue Artist', durationSec: 10
+      } }
+    ]
+  });
+  await host.completeScanFolderNoSweep({
+    scanId: 'scan-cue-playlist-resolution', folderId: 'folder_music', generation: scan.generation,
+    expectedLifecycleVersion: 3, status: 'completed-no-sweep', sweepBlockReason: 'test-no-sweep'
+  });
+
+  let playlist;
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    playlist = await host.queryPlaylistItems({ playlistId: 'cue-provenance-resolution', limit: 10 });
+    if (playlist.items[0].trackUid && playlist.items[1].trackUid && playlist.items[2].trackUid) break;
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  assert.equal(playlist.items[0].trackUid, 'cue-second');
+  assert.equal(playlist.items[1].trackUid, 'cue-first');
+  assert.equal(playlist.items[2].trackUid, 'cue-first');
+  assert.equal(playlist.items[3].trackUid, null);
+  assert.equal(playlist.items[3].unresolved.basename, 'Image.flac');
+
+  assert.deepEqual(await host.removeScanFolder({
+    folderId: 'folder_other', expectedLifecycleVersion: 1
+  }), {
+    folderId: 'folder_other', lifecycleVersion: 2, deleted: 1, hasMore: false
+  });
+  const removed = await host.queryPlaylistItems({ playlistId: 'cue-source-removal', limit: 10 });
+  assert.equal(removed.items[0].trackUid, null);
+  assert.equal(removed.items[0].unresolved.reason, 'source-removed');
+  assert.deepEqual(removed.items[0].unresolved.cueProvenance, {
+    folderId: 'folder_other',
+    entryKey: cueTracks[1].entryKey,
+    cueRelativePath: 'Album/disc.cue',
+    relativePath: 'Album/Image.flac',
+    startFrame: 750,
+    endFrame: 1500
+  });
 });
 
 test('metadata commits without unresolved playlists create no playlist resolution jobs', async t => {
@@ -1173,6 +1761,131 @@ test('scan sweep deletes one bounded track page per catalog transaction', async 
   assert.deepEqual(await host.runScanSweep(identity), { deleted: 0, hasMore: false });
   await host.completeScanFolder({ ...identity, status: 'completed' });
   assert.equal((await host.getCounts()).tracks, 0);
+});
+
+test('startup recovery finishes an eligible sweep before an immediate newer generation', async t => {
+  const { directory, dbPath } = createTempCatalog(t);
+  let host = await LibraryCatalogHost.open({ dbPath });
+  t.after(() => host?.close());
+  await seedFolder(host, directory);
+  const tracks = Array.from({ length: 206 }, (_, index) => createTrack(index + 1));
+  await host.upsertTracks(tracks);
+  await host.createPlaylistWithItems({
+    playlistId: 'scan-sweep-recovery-playlist',
+    name: 'Scan sweep recovery',
+    items: [{ trackUid: tracks[0].trackUid }],
+    createdAt: 1
+  });
+
+  const scan = await host.beginScanFolder({
+    scanId: 'scan-sweep-recovery',
+    folderId: 'folder_music',
+    normalizedRoot: directory,
+    expectedLifecycleVersion: 3,
+    resume: false,
+    rootEnumerationRequired: true,
+    continuityBroken: false,
+    sweepEligibility: 'PENDING'
+  });
+  const identity = {
+    scanId: scan.scanId,
+    folderId: scan.folderId,
+    generation: scan.generation,
+    expectedLifecycleVersion: scan.lifecycleVersion
+  };
+  const keep = tracks.at(-1);
+  const observation = {
+    relativePath: keep.relativePath,
+    path: path.join(directory, keep.relativePath),
+    fileIdentity: 'keep-file',
+    size: 123,
+    mtimeMs: 456,
+    logicalCandidates: [{
+      logicalStorageId: `file:${keep.relativePath}`,
+      relativePath: keep.relativePath,
+      path: path.join(directory, keep.relativePath),
+      sourceKind: 'file'
+    }]
+  };
+  await host.commitScanSeenBatch({
+    ...identity,
+    observations: [observation],
+    maxTracks: 500,
+    maxBytes: 4 * 1024 * 1024,
+    lastCommittedBatch: 1,
+    cursor: { lastRelativePath: keep.relativePath, visitedFiles: 1, committedBatches: 1 }
+  });
+  await host.finalizeScanEnumeration({
+    ...identity,
+    rootToEnd: true,
+    continuityBroken: false,
+    enumerationErrorCount: 0,
+    requestedSweepEligibility: 'ELIGIBLE'
+  });
+  assert.deepEqual(await host.enqueueScanSweep(identity), { enqueued: 205 });
+  const firstChunk = await host.runScanSweep(identity);
+  assert.equal(firstChunk.deleted, 100);
+  assert.equal(firstChunk.hasMore, true);
+  assert.deepEqual(await host.pauseScanFolder({
+    ...identity,
+    status: 'paused',
+    stopReason: 'user',
+    continuityBroken: true,
+    sweepEligibility: 'INELIGIBLE'
+  }), { status: 'sweeping', destructiveCommitRetained: true });
+  assert.equal((await host.getCounts()).tracks, 106);
+  await host.close();
+
+  host = await LibraryCatalogHost.open({ dbPath });
+  const nextScan = await host.beginScanFolder({
+    scanId: 'scan-after-sweep-recovery',
+    folderId: 'folder_music',
+    normalizedRoot: directory,
+    expectedLifecycleVersion: 3,
+    resume: false,
+    rootEnumerationRequired: true,
+    continuityBroken: false,
+    sweepEligibility: 'PENDING'
+  });
+
+  assert.equal(nextScan.generation, scan.generation + 1);
+  assert.equal((await host.getCounts()).tracks, 1);
+  assert.ok(await host.getTrack(keep.trackUid));
+  const playlist = await host.queryPlaylistItems({
+    playlistId: 'scan-sweep-recovery-playlist',
+    limit: 10
+  });
+  assert.equal(playlist.items[0].trackUid, null);
+  assert.equal(playlist.items[0].unresolved.reason, 'source-removed');
+  assert.equal(playlist.playlist.version, 1);
+
+  const database = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    assert.deepEqual({ ...database.prepare(`
+      SELECT status, sweep_eligibility AS sweepEligibility,
+        continuity_broken AS continuityBroken
+      FROM scan_run_folders WHERE scan_id = ? AND folder_id = ?
+    `).get(identity.scanId, identity.folderId) }, {
+      status: 'completed',
+      sweepEligibility: 'ELIGIBLE',
+      continuityBroken: 0
+    });
+    assert.deepEqual({ ...database.prepare(`
+      SELECT status, generation FROM scan_run_folders
+      WHERE scan_id = ? AND folder_id = ?
+    `).get(nextScan.scanId, nextScan.folderId) }, {
+      status: 'enumerating',
+      generation: nextScan.generation
+    });
+    assert.equal(database.prepare(`
+      SELECT count(*) AS count FROM deletion_jobs
+      WHERE kind = 'scan-sweep' AND state <> 'completed'
+    `).get().count, 0);
+    assert.equal(database.prepare('SELECT count(*) AS count FROM deletion_repair_items').get().count, 0);
+  } finally {
+    database.close();
+  }
+  await host.close();
 });
 
 test('folder deletion receipt resumes bounded playlist repair after worker restart', async t => {

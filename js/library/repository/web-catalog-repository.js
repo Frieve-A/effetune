@@ -2,9 +2,9 @@ import sqlite3InitModule from '../../vendor/sqlite/sqlite3.mjs';
 import { assertRepositoryContract, createRepositoryError, LibraryRepositoryError } from './contract-errors.js';
 import {
   MUSIC_LIBRARY_SCHEMA_VERSION,
-  MUSIC_LIBRARY_V2_WEB_DATABASE,
-  MUSIC_LIBRARY_V2_WEB_OPFS_DIRECTORY
-} from './schema-v2.js';
+  MUSIC_LIBRARY_V3_WEB_DATABASE,
+  MUSIC_LIBRARY_V3_WEB_OPFS_DIRECTORY
+} from './schema-v3.js';
 import { Oo1DatabaseSyncAdapter } from './sqlite-oo1-adapter.js';
 import {
   dispatchWebSqliteCommand,
@@ -54,12 +54,12 @@ export class WebSqliteCatalogRepository {
         printErr: (...args) => console.error('[SQLite WASM]', ...args)
       });
       this.pool = await this.sqlite3.installOpfsSAHPoolVfs({
-        directory: `/${MUSIC_LIBRARY_V2_WEB_OPFS_DIRECTORY}`,
+        directory: `/${MUSIC_LIBRARY_V3_WEB_OPFS_DIRECTORY}`,
         initialCapacity: 4,
         clearOnInit: this.clearOnInit
       });
       const rawDatabase = new this.pool.OpfsSAHPoolDb({
-        filename: MUSIC_LIBRARY_V2_WEB_DATABASE,
+        filename: MUSIC_LIBRARY_V3_WEB_DATABASE,
         flags: 'c'
       });
       this.database = new Oo1DatabaseSyncAdapter(rawDatabase, this.sqlite3);
@@ -76,8 +76,8 @@ export class WebSqliteCatalogRepository {
       if (mode === 'readonly') this.database.exec('PRAGMA query_only = ON');
       this.mode = mode;
       return {
-        databaseName: MUSIC_LIBRARY_V2_WEB_DATABASE,
-        opfsDirectory: MUSIC_LIBRARY_V2_WEB_OPFS_DIRECTORY,
+        databaseName: MUSIC_LIBRARY_V3_WEB_DATABASE,
+        opfsDirectory: MUSIC_LIBRARY_V3_WEB_OPFS_DIRECTORY,
         schemaVersion: MUSIC_LIBRARY_SCHEMA_VERSION,
         mode,
         backend: capabilities.backend
@@ -224,6 +224,7 @@ export class WebSqliteCatalogRepository {
     return this.#call('preflightScanBatch', request);
   }
   commitScanSeenBatch(request) { return this.#call('commitScanSeenBatch', request); }
+  cueDirectoryStage(request) { return this.#call('cueDirectoryStage', request); }
   listMetadataCandidates(request) { return this.#call('listMetadataCandidates', request); }
   advanceScanMetadataCursor(request) { return this.#call('advanceScanMetadataCursor', request); }
   markScanEnumerationIneligible(request) { return this.#call('markScanEnumerationIneligible', request); }
@@ -376,4 +377,4 @@ function userFacingSqliteMessage(code) {
   return 'The music library request could not be completed. Try again.';
 }
 
-export { MUSIC_LIBRARY_V2_WEB_DATABASE as WEB_CATALOG_DATABASE_NAME };
+export { MUSIC_LIBRARY_V3_WEB_DATABASE as WEB_CATALOG_DATABASE_NAME };
