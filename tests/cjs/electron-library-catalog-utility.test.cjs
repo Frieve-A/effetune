@@ -219,10 +219,18 @@ test('metadata pool uses four-worker production default and terminates a hung pe
       return worker;
     }
   });
-  await assert.rejects(
+  let guardTimer;
+  const parse = Promise.race([
     pool.parse({ path: path.resolve('hung.flac'), relativePath: 'hung.flac', skipCovers: true }),
-    error => error?.code === 'parse-timeout'
-  );
+    new Promise((_, reject) => {
+      guardTimer = setTimeout(() => reject(new Error('Metadata worker timeout test stalled')), 1000);
+    })
+  ]);
+  try {
+    await assert.rejects(parse, error => error?.code === 'parse-timeout');
+  } finally {
+    clearTimeout(guardTimer);
+  }
   assert.equal(pool.workerCount, 4);
   assert.equal(workers[0].terminated, 1);
   await pool.close();
