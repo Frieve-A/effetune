@@ -1307,7 +1307,9 @@ test('Electron lazy artwork binds its source then decodes before storage admissi
 });
 
 test('Electron CUE library artwork falls back to a sibling source-named image', async t => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-cue-cover-'));
+  const root = await fs.realpath(
+    await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-cue-cover-'))
+  );
   const albumDirectory = path.join(root, 'Album');
   await fs.mkdir(albumDirectory);
   await fs.writeFile(path.join(albumDirectory, 'disc.flac'), 'audio');
