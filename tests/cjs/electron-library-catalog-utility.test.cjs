@@ -97,6 +97,37 @@ test('main-process utility host exposes one repository facade and relays invalid
   assert.deepEqual(await host.repository.getCounts({ scope: 'tracks' }), {
     target: 'repository', method: 'getCounts'
   });
+  const recentlyPlayedRequest = { trackUid: 'track-1' };
+  const favoriteRequest = { trackUid: 'track-2', favorite: true };
+  const favoritePageRequest = { cursor: { position: 1024, itemKey: 7 }, limit: 25 };
+  assert.deepEqual(await host.repository.recordRecentlyPlayed(recentlyPlayedRequest), {
+    target: 'repository', method: 'recordRecentlyPlayed'
+  });
+  assert.deepEqual(await host.repository.setTrackFavorite(favoriteRequest), {
+    target: 'repository', method: 'setTrackFavorite'
+  });
+  assert.deepEqual(await host.repository.getFavoriteTrackUids(favoritePageRequest), {
+    target: 'repository', method: 'getFavoriteTrackUids'
+  });
+  assert.deepEqual(await host.repository.getSystemPlaylists(), {
+    target: 'repository', method: 'getSystemPlaylists'
+  });
+  const systemPlaylistRequests = child.sent.filter(message => (
+    message.type === 'request' &&
+    message.target === 'repository' &&
+    [
+      'recordRecentlyPlayed',
+      'setTrackFavorite',
+      'getFavoriteTrackUids',
+      'getSystemPlaylists'
+    ].includes(message.method)
+  ));
+  assert.deepEqual(systemPlaylistRequests.map(({ target, method, args }) => ({ target, method, args })), [
+    { target: 'repository', method: 'recordRecentlyPlayed', args: [recentlyPlayedRequest] },
+    { target: 'repository', method: 'setTrackFavorite', args: [favoriteRequest] },
+    { target: 'repository', method: 'getFavoriteTrackUids', args: [favoritePageRequest] },
+    { target: 'repository', method: 'getSystemPlaylists', args: [] }
+  ]);
 
   const invalidations = [];
   host.repository.on('invalidation', event => invalidations.push(event));

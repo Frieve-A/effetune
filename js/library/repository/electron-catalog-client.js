@@ -85,6 +85,22 @@ export class ElectronCatalogClient {
     return this.api.createPlaylistWithItems(request);
   }
 
+  recordRecentlyPlayed(request) {
+    return this.api.recordRecentlyPlayed(request);
+  }
+
+  setTrackFavorite(request) {
+    return this.api.setTrackFavorite(request);
+  }
+
+  getFavoriteTrackUids(request = {}) {
+    return this.api.getFavoriteTrackUids(request);
+  }
+
+  getSystemPlaylists() {
+    return this.api.getSystemPlaylists();
+  }
+
   renamePlaylist(request) {
     return this.api.renamePlaylist(request);
   }

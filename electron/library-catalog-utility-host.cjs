@@ -30,6 +30,7 @@ const REPOSITORY_METHODS = Object.freeze([
   'queryTracks', 'queryEntities', 'readContextPage', 'readContextPageAtOrdinal',
   'resolveEntityAnchor', 'retainContext', 'releaseRetainedContext', 'releaseContext', 'getTrack',
   'createPlaylist', 'createPlaylistWithItems',
+  'recordRecentlyPlayed', 'setTrackFavorite', 'getFavoriteTrackUids', 'getSystemPlaylists',
   'renamePlaylist', 'reorderPlaylistItem', 'removePlaylistItem', 'duplicatePlaylist',
   'queryPlaylistItems', 'tombstonePlaylist'
 ]);

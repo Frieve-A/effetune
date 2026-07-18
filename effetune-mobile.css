@@ -1095,6 +1095,12 @@ body.layout-mobile .close-button {
     grid-area: close;
 }
 
+/* The mobile player is always fully expanded, so the desktop expand toggle
+   stays hidden and out of the control grid. */
+body.layout-mobile .expand-button {
+    display: none;
+}
+
 body.layout-mobile .double-blind-test .dbt-close-button,
 body.layout-mobile .double-blind-test .dbt-testname-row .save-button,
 body.layout-mobile .double-blind-test .dbt-testname-row .delete-preset-button {

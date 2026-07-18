@@ -19,6 +19,10 @@ const PLAYLIST_METHODS = Object.freeze([
   'readListContext',
   'releaseListContext',
   'queryItems',
+  'recordRecentlyPlayed',
+  'setTrackFavorite',
+  'getFavoriteTrackUids',
+  'getSystemPlaylists',
   'create',
   'rename',
   'duplicate',
@@ -77,13 +81,16 @@ function normalizeContextRequest(request = {}) {
     };
   }
   if (request.endpoint === 'entities' && typeof request.entityType === 'string') {
+    const includeSystemPlaylists = request.entityType === 'playlist' &&
+      request.includeSystemPlaylists === true;
     const publicRequest = {
       endpoint: 'entities',
       entityType: request.entityType,
       query: String(request.query ?? ''),
       sort: request.sort ?? 'name',
       direction: request.direction === 'desc' ? 'desc' : 'asc',
-      scope: null
+      scope: null,
+      ...(request.entityType === 'playlist' ? { includeSystemPlaylists } : {})
     };
     return {
       publicRequest,
@@ -92,7 +99,8 @@ function normalizeContextRequest(request = {}) {
         query: publicRequest.query,
         sort: publicRequest.sort,
         direction: publicRequest.direction,
-        scope: null
+        scope: null,
+        ...(request.entityType === 'playlist' ? { includeSystemPlaylists } : {})
       }
     };
   }
@@ -313,11 +321,8 @@ export class LibraryManagerV2 {
       throw unavailable('readContextPageAtOrdinal', `${this.runtime} catalog client`);
     }
     const page = await this.client.readContextPageAtOrdinal(request);
-    const totalCount = Number.isSafeInteger(page?.totalCount) ? page.totalCount : null;
     const limit = Number.isSafeInteger(request.limit) && request.limit > 0 ? request.limit : 200;
-    const pageStartOrdinal = totalCount === null
-      ? request.ordinal
-      : Math.max(0, Math.min(request.ordinal, Math.max(0, totalCount - limit)));
+    const pageStartOrdinal = Math.floor(request.ordinal / limit) * limit;
     return this.#normalizePageResponse(request, page, pageStartOrdinal);
   }
 

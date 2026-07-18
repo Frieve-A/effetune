@@ -460,6 +460,119 @@ test('LibraryView updateUITexts refreshes mounted static and rendered library te
   assert.deepEqual(calls, [['render']]);
 });
 
+test('LibraryView updates Favorites sequentially and refreshes its authoritative cache', async () => {
+  const calls = [];
+  let refreshCount = 0;
+  let catalogRefreshCount = 0;
+  const storedFavorites = new Set(['track-old', 'track-busy']);
+  const view = createLibraryViewFixture({
+    content: null,
+    favoriteTrackUids: new Set(storedFavorites),
+    favoriteStateRequestId: 0,
+    deferredCatalogInvalidationScopes: null,
+    handleCatalogInvalidation(event) {
+      if ((this.favoriteMutationDepth ?? 0) > 0) {
+        return LibraryView.prototype.handleCatalogInvalidation.call(this, event);
+      }
+      catalogRefreshCount += 1;
+    },
+    manager: {
+      playlists: {
+        async setTrackFavorite(trackUid, favorite) {
+          calls.push([trackUid, favorite]);
+          if (trackUid === 'track-busy') return { kind: 'busy' };
+          if (favorite) storedFavorites.add(trackUid);
+          else storedFavorites.delete(trackUid);
+          view.handlePlaylistsChanged({
+            changedScopes: ['playlists', 'playlist:system_favorites']
+          });
+          view.handleCatalogInvalidation({ changedScopes: ['playlists'] });
+          return { kind: favorite ? 'favorited' : 'unfavorited' };
+        },
+        async getFavoriteTrackUids() {
+          refreshCount += 1;
+          return { trackUids: [...storedFavorites], truncated: false };
+        }
+      }
+    }
+  });
+
+  assert.deepEqual(await view.setFavoriteTrackUids(['track-new', 'track-new'], true), {
+    kind: 'favorited', count: 1
+  });
+  assert.equal(view.favoriteTrackUids.has('track-new'), true);
+  await assert.rejects(
+    view.setFavoriteTrackUids(['track-old', 'track-busy'], false),
+    error => error?.code === 'playlistBusy'
+  );
+  assert.deepEqual(calls, [
+    ['track-new', true],
+    ['track-old', false],
+    ['track-busy', false]
+  ]);
+  assert.deepEqual([...view.favoriteTrackUids].sort(), ['track-busy', 'track-new']);
+  assert.equal(refreshCount, 2);
+  assert.equal(catalogRefreshCount, 2);
+});
+
+test('LibraryView refreshes Favorites once after overlapping mutations finish', async () => {
+  const storedFavorites = new Set();
+  const resolvers = new Map();
+  let refreshCount = 0;
+  const view = createLibraryViewFixture({
+    content: null,
+    favoriteTrackUids: new Set(),
+    favoriteStateRequestId: 0,
+    favoriteMutationDepth: 0,
+    manager: {
+      playlists: {
+        setTrackFavorite(trackUid, favorite) {
+          if (favorite) storedFavorites.add(trackUid);
+          else storedFavorites.delete(trackUid);
+          view.handlePlaylistsChanged({ changedScopes: ['playlist:system_favorites'] });
+          return new Promise(resolve => resolvers.set(trackUid, resolve));
+        },
+        async getFavoriteTrackUids() {
+          refreshCount += 1;
+          return { trackUids: [...storedFavorites], truncated: false };
+        }
+      }
+    }
+  });
+
+  const first = view.setFavoriteTrackUids(['track-a'], true);
+  const second = view.setFavoriteTrackUids(['track-b'], true);
+  assert.equal(view.favoriteMutationDepth, 2);
+  assert.equal(refreshCount, 0);
+
+  resolvers.get('track-b')({ kind: 'favorited' });
+  await second;
+  assert.equal(view.favoriteMutationDepth, 1);
+  assert.equal(refreshCount, 0);
+
+  resolvers.get('track-a')({ kind: 'favorited' });
+  await first;
+  assert.equal(view.favoriteMutationDepth, 0);
+  assert.equal(refreshCount, 1);
+  assert.deepEqual([...view.favoriteTrackUids].sort(), ['track-a', 'track-b']);
+});
+
+test('LibraryView localizes fixed system-playlist names in detail titles', () => {
+  const view = createLibraryViewFixture({
+    currentView: 'playlists',
+    detail: { type: 'playlist', key: 'system_recently_played', title: 'Recently Played' },
+    searchQuery: '',
+    searchEntityType: null,
+    uiManager: {
+      t(key) {
+        return key === 'library.playlist.system.recentlyPlayed' ? '最近再生した曲' : key;
+      }
+    }
+  });
+
+  assert.equal(view.getPagedTitle(), '最近再生した曲');
+});
+
 test('initOpenLibraryButton wires the view switch buttons and Electron IPC callbacks', async () => {
   const calls = [];
   const effectPipelineButton = new FakeElement('button');
@@ -1282,6 +1395,96 @@ test('paged folder status requires a successful scan before reporting OK', () =>
     phase: 'error', folderId: 'folder-one'
   }), {
     key: 'scanError', className: 'scan-error', busy: false
+  });
+});
+
+test('paged folder rows keep concurrent scan status and controls independent', async () => {
+  const documentRef = createDocument();
+  const originalCreateElement = documentRef.createElement;
+  const selectors = [
+    '.library-paged-folder-main',
+    '.library-paged-folder-reconnect',
+    '.library-paged-folder-rescan',
+    '.library-paged-folder-remove',
+    '[data-folder-status]'
+  ];
+  documentRef.createElement = tagName => tagName === 'div'
+    ? createMappedHtmlElement(tagName, documentRef, selectors)
+    : originalCreateElement(tagName);
+  const flushed = [];
+  const view = Object.assign(Object.create(LibraryView.prototype), {
+    currentView: 'folders',
+    detail: null,
+    searchQuery: '',
+    sortDirection: 'asc',
+    lastScanState: null,
+    activeScanStates: new Map(),
+    folderScanStates: new Map(),
+    removingFolderIds: new Set(),
+    deferredCatalogInvalidationScopes: null,
+    pagedFocusedEntityId: null,
+    manager: {},
+    pagedController: null,
+    content: null,
+    renderStatus() {},
+    handleCatalogInvalidation(event) {
+      flushed.push(event);
+    }
+  });
+
+  await withGlobals({ document: documentRef }, async () => {
+    const first = view.createPagedRow({
+      id: 'folder-one', kind: 'electron', displayName: 'One', status: 'active', lastScanAt: null
+    }, 0, { queryGeneration: 1, pageAttemptId: 1 }, false);
+    const second = view.createPagedRow({
+      id: 'folder-two', kind: 'electron', displayName: 'Two', status: 'active', lastScanAt: null
+    }, 1, { queryGeneration: 1, pageAttemptId: 1 }, false);
+    view.content = {
+      querySelectorAll(selector) {
+        return selector === '.library-paged-folder-row' ? [first, second] : [];
+      }
+    };
+
+    view.handleScanState({
+      phase: 'scanning', scanId: 'scan-one', folderIds: ['folder-one'], found: 2, parsed: 0
+    });
+    view.handleScanState({
+      phase: 'scanning', scanId: 'scan-two', folderIds: ['folder-two'], found: 3, parsed: 1
+    });
+    view.handleScanState({
+      phase: 'scanning', scanId: 'scan-one', folderId: 'folder-one', found: 4, parsed: 2
+    });
+
+    for (const row of [first, second]) {
+      assert.equal(row.querySelector('[data-folder-status]').textContent, 'Scanning');
+      assert.equal(row.querySelector('.library-paged-folder-rescan').disabled, true);
+      assert.equal(row.querySelector('.library-paged-folder-remove').disabled, true);
+    }
+    assert.deepEqual(new Set(view.lastScanState.folderIds), new Set(['folder-one', 'folder-two']));
+    assert.equal(view.lastScanState.found, 7);
+    assert.equal(view.lastScanState.parsed, 3);
+
+    view.deferredCatalogInvalidationScopes = new Set(['folders']);
+    view.handleScanState({
+      phase: 'done', status: 'completed', scanId: 'scan-one', folderIds: ['folder-one']
+    });
+    assert.equal(first.querySelector('[data-folder-status]').textContent, 'OK');
+    assert.equal(first.querySelector('.library-paged-folder-rescan').disabled, false);
+    assert.equal(first.querySelector('.library-paged-folder-remove').disabled, false);
+    assert.equal(second.querySelector('[data-folder-status]').textContent, 'Scanning');
+    assert.equal(second.querySelector('.library-paged-folder-rescan').disabled, true);
+    assert.equal(second.querySelector('.library-paged-folder-remove').disabled, true);
+    assert.equal(view.isCatalogRefreshDeferred(), true);
+    assert.equal(flushed.length, 0);
+
+    view.handleScanState({
+      phase: 'done', status: 'completed', scanId: 'scan-two', folderIds: ['folder-two']
+    });
+    assert.equal(second.querySelector('[data-folder-status]').textContent, 'OK');
+    assert.equal(second.querySelector('.library-paged-folder-rescan').disabled, false);
+    assert.equal(second.querySelector('.library-paged-folder-remove').disabled, false);
+    assert.equal(view.isCatalogRefreshDeferred(), false);
+    assert.deepEqual(flushed, [{ changedScopes: ['folders'] }]);
   });
 });
 

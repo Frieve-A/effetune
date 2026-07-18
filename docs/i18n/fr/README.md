@@ -335,6 +335,7 @@ Si le souci persiste, signalez-le sur [GitHub Issues](https://github.com/Frieve-
 | Lo-Fi     | Noise Blender | Ajoute une texture de bruit de fond réglable pour une ambiance lo-fi | [Détails](plugins/lofi.md#noise-blender) |
 | Lo-Fi     | Simple Jitter | Simulation de gigue numérique | [Détails](plugins/lofi.md#simple-jitter) |
 | Lo-Fi     | Vinyl Artifacts | Ajoute des pops, crépitements, souffle, rumble et fuite de bruit stéréo façon vinyle | [Détails](plugins/lofi.md#vinyl-artifacts) |
+| Lo-Fi     | Vinyl Simulator | Grave le signal dans un sillon modélisé puis le lit avec un modèle physique de pointe | [Détails](plugins/lofi.md#vinyl-simulator) |
 | Modulation | Doppler Distortion | Simule les changements naturels et dynamiques du son causés par de subtiles oscillations du cône de haut-parleur | [Détails](plugins/modulation.md#doppler-distortion) |
 | Modulation | Pitch Shifter | Monte ou baisse la hauteur de la musique sans changer le tempo | [Détails](plugins/modulation.md#pitch-shifter) |
 | Modulation | Tremolo | Effet de modulation basé sur le volume | [Détails](plugins/modulation.md#tremolo) |

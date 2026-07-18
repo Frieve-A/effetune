@@ -17,6 +17,7 @@ lang: zh
 - [Noise Blender](#noise-blender) - 添加氛围背景纹理
 - [Simple Jitter](#simple-jitter) - 创造细微的复古数字瑕疵
 - [Vinyl Artifacts](#vinyl-artifacts) - 加入黑胶风格的爆点、噼啪声、嘶声、隆隆声和立体声噪声串扰
+- [Vinyl Simulator](#vinyl-simulator) - 将输入刻入模拟唱槽，再用物理唱针模型播放
 
 ## Bit Crusher
 
@@ -445,5 +446,97 @@ lang: zh
    - Hiss: -39dB, Rumble: -45dB, Crosstalk: 60%, Noise Profile: 5.0
    - Wear: 80%, React: 75%, React Mode: Velocity, Mix: 100%
    - 完美适合: 对音乐产生戏剧性响应的噪音
+
+## Vinyl Simulator
+
+Vinyl Simulator 通过物理刻片与唱针播放模型直接改变音乐信号。它先应用刻片滤波器和 RIAA 录音曲线，把信号写入带有表面粗糙度和异物的模拟唱槽，再用唱针与唱臂的机械模型读取，最后应用 RIAA 播放均衡。当你希望唱槽几何、循迹状态和唱片表面真正与音乐相互作用，而不只是叠加唱片噪声时，可使用此效果。
+
+### 与 Vinyl Artifacts 的区别
+
+- **Vinyl Simulator** 让输入经过模拟唱槽和唱针，因此会改变信号本身。Roughness、Dust、Static、Tracking Force、唱针形状、Speed 和 Radius 都参与模拟。
+- **Vinyl Artifacts** 不改变音乐本身，只叠加可控的爆点、噼啪声、嘶声、隆隆声和立体声噪声串扰。需要更轻量、可预测的噪声层，或无法使用 WASM 时，可选择它。
+- 两者可以组合，但若都采用较强的表面设置，点击声和噪声会很快累积。
+
+### 声音增强指南
+
+- **柔和的唱片播放：** Cut Level 保持在 0 dB 附近，Shape 选 Elliptical，Roughness 适中，Dust 和 Static 较低；降低 Mix 可保留更多原声。
+- **内圈唱槽特征：** 将 Radius 调向 60 mm。线速度降低后，高频细节和循迹会更具挑战。
+- **干净稳定的播放：** 降低 Roughness、Dust、Static 和 Scratch，将 Tracking Force 保持在约 2 g，并使用 Standard 或 High。
+- **老旧表面：** 先提高 Roughness，再加入 Dust、Static 和少量 Scratch；它们分别代表不同的物理现象。
+- **更明显的唱槽染色：** 谨慎提高 Cut Level、降低 HF Cutoff 或减小 Radius。观察 Tracking S/E 是否下降，以及 mistrack/skip 是否增加。
+- 本效果不产生 wow/flutter、偏心、翘曲或转盘隆隆声。需要时请在效果链中加入 **Wow Flutter**。
+
+### 参数
+
+#### Cutting
+
+- **Cut Level** (-20～+20 dB) — 输入驱动刻刀的强度。提高会增强唱槽位移和非线性；降低可增加机械余量。
+- **HF Cutoff** (6000～24000 Hz) — 刻片前的高频上限。降低可得到较暗、较易循迹的唱槽；提高会保留更多细节，也更考验唱针。
+- **Bass Mono Below** (50～1000 Hz) — 降低 Side 分量的频段。数值越高，越多低频会集中到中央。
+- **Side Mix** (0～100%) — Bass Mono Below 以下保留的 Side 量。0% 使该频段成为单声道；100% 保留原始 Side。
+
+#### Record
+
+- **Speed** (33⅓、45 或 78 rpm) — 唱片转速。在相同 Radius 下，较高转速会提高线速度，更容易追踪细节。
+- **Radius** (60～146 mm) — 唱针所在位置。较小值代表线速度更低、高频更难循迹的内圈。
+- **Roughness** (0.1～100 nm) — 微观表面粗糙度；提高会增强连续的表面质感。
+- **Dust** (0～10000/s) — 灰尘颗粒出现的频率，以及由此产生的短促扰动。
+- **Static** (0～10000/s) — 静电放电脉冲频率；它在唱头输出中形成尖锐爆点，而不改变唱槽形状。
+- **Scratch** (0～1000/s) — 较大唱槽缺陷的出现频率。
+
+#### Stylus
+
+- **Shape** (Spherical 或 Elliptical) — 接触几何形状。在 Spherical 下，Scan Radius 跟随 Side Radius。更改后会重建模拟状态。
+- **Side Radius** (5～25 µm) — 横跨槽壁方向的唱针半径；影响接触面积和压力分布。
+- **Scan Radius** (2～25 µm) — 沿唱槽前进方向的半径。较小值追踪更细的形状；较大值在更宽接触范围内平均。
+- **Tracking Force** (0.5～5.0 g) — 针压。适当提高有助于稳定接触，但会增加接触力和压力；过低可能增加 mistrack 和 skip。
+- **Tip Mass** (0.1～1.5 mg) — 针尖运动质量。提高会增加惯性，使快速唱槽运动更难跟随。
+- **Compliance** (5～35 cu) — 悬挂柔顺度。提高会让同样的力产生更多位移，并改变机械响应。
+- **Damping** (0.05～1.0 ζ) — 机械共振阻尼。提高会更强地抑制振铃。
+
+#### Output
+
+- **Quality** (Eco、Standard、High 或 Ultra) — 选择物理积分的基础子步数和接触扫描点数。为保证接触共振计算稳定，引擎可能根据采样率、Tracking Force、Tip Mass、Compliance、Shape、Side Radius 和 Scan Radius 自动提高实际子步数。实时播放默认 Standard；更改后会重建模拟状态。
+- **Output Gain** (-24～+24 dB) — 调整 RIAA 播放均衡和归一化后的电平。
+- **Mix** (0～100%) — 混合模拟播放与已对齐延迟的干声。0% 为干声，100% 为完全模拟。
+
+### HUD 读法
+
+- **Force L/R (mN)：** 两侧槽壁的接触力；较大或明显不平衡表示唱槽运动较难追踪。
+- **Pressure (GPa)：** 当前较高一侧的接触压力；调整针压和针尖半径时与 Force 一起查看。
+- **Tip (cm/s、dB)：** 针尖速度及对应的播放电平。
+- **Tracking S/E L/R (dB)：** 已循迹信号与循迹误差之比。越高越干净；持续下降表示唱针难以跟随。
+- **Jitter (ns)：** 唱槽读取点的时间抖动，在 Stylus 视图中显示。
+- **Mistrack、Skip、Static Pop、Dust Hit (/s)：** 近期事件率，新事件发生时会闪烁。若反复出现，可降低 Cut Level、适度提高 Tracking Force、增大 Radius 或提高 Quality。
+
+HUD 在收到原生 DSP 遥测后启用。停止播放或为省电暂停遥测时，可能显示空闲状态。
+
+### 推荐设置
+
+1. **柔和播放：** Cut Level 0 dB、HF Cutoff 16 kHz、33⅓ rpm、Radius 120 mm、Roughness 5 nm、Dust 0.5/s、Static 0.02/s、Scratch 0/s、Elliptical、Tracking Force 2.0 g、Standard、Mix 75%。
+2. **经典外圈：** Cut Level 0 dB、33⅓ rpm、Radius 135 mm、Roughness 13.17 nm、Dust 2/s、Static 0.08/s、Elliptical、Tracking Force 2.0 g、Standard、Mix 100%。
+3. **内圈演示：** Cut Level +3 dB、HF Cutoff 14 kHz、Radius 60 mm、Elliptical、Scan Radius 8 µm、Tracking Force 2.0 g、High、Mix 100%；与较大的 Radius 比较 Tracking S/E。
+4. **磨损表面：** Radius 100 mm、Roughness 35 nm、Dust 25/s、Static 1/s、Scratch 0.5/s、Tracking Force 2.2 g、Standard、Output Gain -3 dB、Mix 100%。
+
+### Quality 与 CPU 负载参考
+
+每个 Quality preset 都会设定基础子步数和接触点数。为保持稳定，引擎还会计算 `Nmin = ceil(8 × f_c / sampleRate)`，其中接触共振频率 `f_c` 由 Tracking Force、Tip Mass、Compliance、Shape、Side Radius 和 Scan Radius 决定，并采用 `effectiveSubsteps = max(base, Nmin)`。在默认设置下，96 kHz 的 Standard 仍使用基础值 4，因此原有性能目标不变。
+
+主要负载与采样率 × 实际子步数 × 接触点数成正比。下表的接触计算和相对负载是稳定性下限未提高子步数时的基础估算，并非实测 CPU 百分比；实际结果还取决于处理器、浏览器和 WASM SIMD。
+
+| Quality | 基础物理细节 | 96 kHz 基础接触计算 | 基础相对负载 | 用途 |
+|---|---:|---:|---:|---|
+| Eco | 2 × 7 | 270万次/秒 | 0.39× | 移动设备、低功耗、多实例 |
+| Standard | 4 × 9 | 690万次/秒 | 1.00× | 常规实时聆听 |
+| High | 8 × 13 | 2000万次/秒 | 2.89× | 较快系统、细致比较 |
+| Ultra | 20 × 25 | 9600万次/秒 | 13.89× | 离线渲染和验证 |
+
+稳定性下限未生效时，可将以下采样率倍率乘以基础相对负载：44.1 kHz = 0.46×，48 = 0.50×，88.2 = 0.92×，96 = 1.00×，176.4 = 1.84×，192 = 2.00×。采样率以及 Tracking Force、Tip Mass、Compliance、Shape、Side Radius 和 Scan Radius 设置可能触发下限，使实际负载高于基础估算。若播放断续，请先降低 Quality。
+
+### WASM 要求与模型限制
+
+Vinyl Simulator 的实时处理必须使用原生 WebAssembly DSP 内核。如果用 `?dsp=off` 禁用 WASM、环境不支持或初始化失败，输入将原样通过，界面会提示需要 WASM。它不会退回到慢得多的 JavaScript 参考模拟。
+
+模型只处理第一对立体声声道。灰尘变形仅在相应颗粒存活期间保留，唱针始终前进到新生成的唱槽，因此磨损不会跨转累积，也不会随预设保存。长期磨损、3D 可视化、实时 SNR/THD 表、wow/flutter、偏心、翘曲、转盘隆隆声和唱头电气负载均不在模型范围内。
 
 记住:这些效果旨在为您的音乐添加特色和怀旧感。从细微设置开始,根据喜好调整!

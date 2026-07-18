@@ -36,6 +36,23 @@ function usesIOSFilePicker(windowRef = window) {
 }
 
 const ERROR_MESSAGE_DURATION_MS = 5000;
+const MINI_PLAYER_ALWAYS_ON_TOP_STORAGE_KEY = 'miniPlayerAlwaysOnTop';
+
+function readStoredBoolean(key) {
+    try {
+        return globalThis.localStorage?.getItem?.(key) === 'true';
+    } catch (_) {
+        return false;
+    }
+}
+
+function storeBoolean(key, value) {
+    try {
+        globalThis.localStorage?.setItem?.(key, value ? 'true' : 'false');
+    } catch (_) {
+        // Storage can be unavailable; the current session still keeps the state.
+    }
+}
 
 export class UIManager {
     constructor(pluginManager, audioManager) {
@@ -47,6 +64,10 @@ export class UIManager {
 
         // Audio player reference
         this.audioPlayer = null;
+        this.miniPlayerMode = false;
+        this.miniPlayerTargetMode = false;
+        this.miniPlayerAlwaysOnTop = readStoredBoolean(MINI_PLAYER_ALWAYS_ON_TOP_STORAGE_KEY);
+        this.miniPlayerTransition = Promise.resolve(false);
         this.playbackSelectionGeneration = 0;
         this.playbackSelectionAbortController = null;
         this.audioPlayerLayoutPlaceholder = null;
@@ -306,6 +327,84 @@ export class UIManager {
     showTransientMessage(message, isError = false, params = {}, duration = 3000) {
         this._setMessage(message, isError, params);
         this._scheduleMessageClear(duration);
+    }
+
+    toggleMiniPlayer() {
+        return this.setMiniPlayerMode(!this.miniPlayerTargetMode);
+    }
+
+    setMiniPlayerMode(enabled) {
+        const target = enabled === true;
+        this.miniPlayerTargetMode = target;
+        const transition = this.miniPlayerTransition
+            .catch(() => false)
+            .then(async () => {
+                const changed = await this._setMiniPlayerMode(target);
+                if (!changed && this.miniPlayerTargetMode === target) {
+                    this.miniPlayerTargetMode = this.miniPlayerMode;
+                }
+                return changed;
+            });
+        this.miniPlayerTransition = transition;
+        return transition;
+    }
+
+    async _setMiniPlayerMode(enabled) {
+        const api = window.electronAPI;
+        if (typeof api?.setMiniPlayerMode !== 'function') return false;
+        if (enabled === this.miniPlayerMode) return true;
+
+        if (enabled) {
+            if (!this.audioPlayer?.ui?.container) {
+                this.showTransientMessage('ui.mobileNav.noTrack');
+                return false;
+            }
+            const recoveryVisible = this.libraryRecoveryRoot && this.libraryRecoveryRoot.hidden !== true;
+            if (this.isDoubleBlindActive() || recoveryVisible) {
+                this.showTransientMessage('ui.miniPlayerUnavailable');
+                return false;
+            }
+        }
+
+        const previous = this.miniPlayerMode;
+        this.miniPlayerMode = enabled;
+        document.body?.classList?.toggle('layout-mini-player', enabled);
+        this.audioPlayer?.ui?.setMiniMode?.(enabled);
+        this.audioManager?.powerPolicyController?.setDspUiSuppressed?.('mini-player', enabled);
+
+        try {
+            await api.setMiniPlayerMode({
+                enabled,
+                alwaysOnTop: this.miniPlayerAlwaysOnTop
+            });
+            return true;
+        } catch (error) {
+            console.error('Mini player mode change failed:', error);
+            this.miniPlayerMode = previous;
+            document.body?.classList?.toggle('layout-mini-player', previous);
+            this.audioPlayer?.ui?.setMiniMode?.(previous);
+            this.audioManager?.powerPolicyController?.setDspUiSuppressed?.('mini-player', previous);
+            this.showTransientMessage('ui.miniPlayerUnavailable', true);
+            return false;
+        }
+    }
+
+    async setMiniPlayerAlwaysOnTop(enabled) {
+        if (!this.miniPlayerMode || typeof window.electronAPI?.setAlwaysOnTop !== 'function') return false;
+        const previous = this.miniPlayerAlwaysOnTop;
+        this.miniPlayerAlwaysOnTop = enabled === true;
+        this.audioPlayer?.ui?.setMiniPlayerAlwaysOnTop?.(this.miniPlayerAlwaysOnTop);
+        try {
+            await window.electronAPI.setAlwaysOnTop(this.miniPlayerAlwaysOnTop);
+            storeBoolean(MINI_PLAYER_ALWAYS_ON_TOP_STORAGE_KEY, this.miniPlayerAlwaysOnTop);
+            return true;
+        } catch (error) {
+            console.error('Mini player always-on-top change failed:', error);
+            this.miniPlayerAlwaysOnTop = previous;
+            this.audioPlayer?.ui?.setMiniPlayerAlwaysOnTop?.(previous);
+            this.showTransientMessage('ui.miniPlayerUnavailable', true);
+            return false;
+        }
     }
 
     clearError() {
@@ -1158,7 +1257,7 @@ export class UIManager {
                     if (fileInput) { // Added check
                         fileInput.type = 'file';
                         if (!usesIOSFilePicker(window)) {
-                            fileInput.accept = 'audio/*,video/mp4,.mp4,.cue';
+                            fileInput.accept = 'audio/*,video/mp4,image/jpeg,image/png,.mp4,.cue,.jpg,.png';
                         }
                         fileInput.multiple = true;
                         fileInput.style.display = 'none';
@@ -1282,6 +1381,8 @@ export class UIManager {
                 }
             });
         }
+        window.electronAPI?.onExitMiniPlayer?.(() => this.setMiniPlayerMode(false));
+        window.electronAPI?.onToggleMiniPlayer?.(() => this.toggleMiniPlayer());
         this.updateViewSwitchButtons();
     }
 
@@ -1539,6 +1640,7 @@ export class UIManager {
     }
 
     async showLibraryView(options = {}) {
+        if ((this.miniPlayerMode || this.miniPlayerTargetMode) && !await this.setMiniPlayerMode(false)) return false;
         await this.ensureLibraryManager({
             skipRecoveryWait: options.skipRecoveryWait === true
         });
@@ -1597,6 +1699,10 @@ export class UIManager {
     }
 
     showEffectPipelineView(options = {}) {
+        if (this.miniPlayerMode || this.miniPlayerTargetMode) {
+            return this.setMiniPlayerMode(false).then(restored =>
+                restored ? this.showEffectPipelineView(options) : false);
+        }
         if (document.body.classList.contains('view-library') && this.libraryView?.hasActiveDialog?.()) {
             return false;
         }

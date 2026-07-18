@@ -98,6 +98,21 @@ test('Web direct CUE returns logical tracks with request-scoped physical ownersh
   ]);
 });
 
+test('Web direct CUE accepts selected sibling artwork without reading audio bytes', async () => {
+  const cue = cueFile();
+  const album = new SelectionFile('album.wav', '', { size: 100, forbidRead: true });
+  const cover = new SelectionFile('COVER.PNG', 'selected-cover');
+  const selection = await resolveWebPlaybackSelection([cue, album, cover], {
+    metadataParserFactory: () => ({ async parse() { return { durationSec: 20 }; } })
+  });
+
+  assert.equal(album.readCount, 0);
+  assert.equal(cover.readCount, 1);
+  assert.equal(selection.tracks[0].meta.picture.format, 'image/png');
+  assert.equal(new TextDecoder().decode(selection.tracks[0].meta.picture.data), 'selected-cover');
+  assert.equal(selection.tracks[0].meta.picture, selection.tracks[1].meta.picture);
+});
+
 test('Web direct CUE atomically rejects missing, extra, multiple, and oversized selections', async () => {
   const cue = cueFile();
   const album = new SelectionFile('album.wav', '', { forbidRead: true });
@@ -105,6 +120,7 @@ test('Web direct CUE atomically rejects missing, extra, multiple, and oversized 
   const duplicateCue = new SelectionFile('other.cue', 'FILE "album.wav" WAVE');
   const oversizedCue = cueFile();
   oversizedCue.size = 1024 * 1024 + 1;
+  const unrelatedImage = new SelectionFile('poster.jpg', 'image');
   const metadataParserFactory = () => ({ async parse() { return { durationSec: 20 }; } });
 
   await assert.rejects(
@@ -122,5 +138,9 @@ test('Web direct CUE atomically rejects missing, extra, multiple, and oversized 
   await assert.rejects(
     resolveWebPlaybackSelection([oversizedCue, album], { metadataParserFactory }),
     error => error?.code === 'cueSelectionTooLarge'
+  );
+  await assert.rejects(
+    resolveWebPlaybackSelection([cue, album, unrelatedImage], { metadataParserFactory }),
+    error => error?.code === 'cueSelectionMixed'
   );
 });

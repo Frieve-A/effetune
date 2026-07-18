@@ -635,6 +635,32 @@ test('startup safety fade zero never closes an active Analyzer UI gate', async (
   assert.equal(harness.controller.getDspUiActivityAllowed(), true);
 });
 
+test('named DSP UI suppression pauses analyzers until every suppression reason is cleared', async () => {
+  const gates = [];
+  const analyzer = {
+    id: 'mini-player-analyzer',
+    enabled: true,
+    temporalCapability: 'stateless',
+    powerGainUpperBoundDb: 0,
+    constructor: { name: 'AnalyzerPlugin' },
+    setPowerUiEnabled(value) { gates.push(value); }
+  };
+  const harness = createHarness({ pipeline: [analyzer] });
+
+  await harness.controller.start();
+  harness.controller.setDspUiSuppressed('mini-player', true);
+  assert.equal(harness.controller.getDspUiActivityAllowed(), false);
+  assert.equal(gates.at(-1), false);
+
+  harness.controller.setDspUiSuppressed('hidden-panel', true);
+  harness.controller.setDspUiSuppressed('mini-player', false);
+  assert.equal(harness.controller.getDspUiActivityAllowed(), false);
+
+  harness.controller.setDspUiSuppressed('hidden-panel', false);
+  assert.equal(harness.controller.getDspUiActivityAllowed(), true);
+  assert.equal(gates.at(-1), true);
+});
+
 test('must-process blocks no-route demotion and reports degraded health', async () => {
   const harness = createHarness({
     pipeline: [{ id: 1, enabled: true, temporalCapability: 'must-process' }]

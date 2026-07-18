@@ -1,6 +1,6 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:7fb996f3d3b3b97fc76c8c21593ce143d405458d3c1db92f42df37a8a0c904a6",
+  "sourceDigest": "sha256:061dce4dbe85672c529762f51774874fc43de5e404897234f938cd8803d64e79",
   "emsdkVersion": "6.0.2",
   "kernels": [
     {
@@ -229,6 +229,11 @@
       "byteCapacity": 0
     },
     {
+      "name": "VinylSimulatorPlugin",
+      "hash": 336931452,
+      "byteCapacity": 0
+    },
+    {
       "name": "DopplerDistortionPlugin",
       "hash": 10372816,
       "byteCapacity": 0
@@ -340,7 +345,7 @@
     }
   ],
   "sizes": {
-    "baseline": 325000,
-    "simd": 366027
+    "baseline": 351100,
+    "simd": 392924
   }
 }

@@ -6,6 +6,7 @@ const { createHash, randomUUID } = require('node:crypto');
 const { fileURLToPath, pathToFileURL } = require('node:url');
 const { parentPort, threadId, workerData } = require('node:worker_threads');
 const { DatabaseSync } = require('node:sqlite');
+const { isCueCoverRelativePath } = require('./cue-cover.cjs');
 
 const PROTOCOL_VERSION = 1;
 const MAX_REQUEST_BYTES = 4 * 1024 * 1024;
@@ -26,6 +27,16 @@ const ARTWORK_STORAGE_SAFETY_MIN_BYTES = 256 * 1024 * 1024;
 const ARTWORK_STORAGE_SAFETY_MAX_BYTES = 8 * 1024 * 1024 * 1024;
 const PLAYLIST_RESOLUTION_CANDIDATE_LIMIT = 256;
 const PLAYLIST_RECONCILIATION_BATCH_SIZE = 100;
+const SYSTEM_PLAYLIST_IDS = Object.freeze({
+  recentlyPlayed: 'system_recently_played',
+  favorites: 'system_favorites'
+});
+const SYSTEM_PLAYLIST_DEFINITIONS = Object.freeze({
+  recentlyPlayed: Object.freeze({ id: SYSTEM_PLAYLIST_IDS.recentlyPlayed, name: 'Recently Played' }),
+  favorites: Object.freeze({ id: SYSTEM_PLAYLIST_IDS.favorites, name: 'Favorites' })
+});
+const RECENTLY_PLAYED_LIMIT = 100;
+const FAVORITE_TRACK_UID_LIMIT = 1_500;
 const ENTITY_AGGREGATE_PHASES = Object.freeze([
   { scope: 'albums', entityTable: 'albums', membershipTable: 'track_albums', keyColumn: 'album_key' },
   { scope: 'artists', entityTable: 'artists', membershipTable: 'track_artists', keyColumn: 'artist_key' },
@@ -274,7 +285,9 @@ const ENTITY_DEFINITIONS = Object.freeze({
             visible_operation.committed = 1 AND visible_operation.terminal_kind = 'success'
           ))) AS itemCount`
     ]),
-    fixedClauses: Object.freeze(["e.state = 'active'"]),
+    fixedClauses: Object.freeze([
+      "e.state = 'active'"
+    ]),
     sorts: Object.freeze({
       name: Object.freeze([
         Object.freeze({ field: 'sortName', column: 'sort_name', type: 'text', nulls: 'last' })
@@ -770,6 +783,10 @@ function dispatchCommand(command, payload) {
     case 'queryTransportDescriptorPage': return queryTransportDescriptorPage(payload);
     case 'createPlaylist': return createPlaylist(payload);
     case 'createPlaylistWithItems': return createPlaylistWithItems(payload);
+    case 'recordRecentlyPlayed': return recordRecentlyPlayed(payload);
+    case 'setTrackFavorite': return setTrackFavorite(payload);
+    case 'getFavoriteTrackUids': return getFavoriteTrackUids(payload);
+    case 'getSystemPlaylists': return getSystemPlaylists(payload);
     case 'renamePlaylist': return renamePlaylist(payload);
     case 'reorderPlaylistItem': return reorderPlaylistItem(payload);
     case 'removePlaylistItem': return removePlaylistItem(payload);
@@ -838,7 +855,8 @@ function readCounts() {
         ${createActiveEntityMembershipClause('track_artists', 'artist_key')}) AS artists,
       (SELECT count(*) FROM genres e WHERE
         ${createActiveEntityMembershipClause('track_genres', 'genre_key')}) AS genres,
-      (SELECT count(*) FROM playlists WHERE state = 'active') AS playlists
+      (SELECT count(*) FROM playlists
+        WHERE state = 'active') AS playlists
   `).get();
   return Object.fromEntries(Object.entries(row).map(([key, value]) => [key, Number(value)]));
 }
@@ -1141,7 +1159,8 @@ function createContext(payload) {
       query: query.queryText,
       sort: query.sort,
       direction: query.direction,
-      scope: query.scope
+      scope: query.scope,
+      includeSystemPlaylists: query.includeSystemPlaylists
     }
   });
   const token = `ctx_${threadId}_${Date.now().toString(36)}_${(++contextCounter).toString(36)}`;
@@ -1193,7 +1212,8 @@ function getContextCount(payload) {
 
 function normalizeContextQuery(payload) {
   assertAllowedFields(payload, [
-    'endpoint', 'entityType', 'type', 'query', 'sort', 'direction', 'scope'
+    'endpoint', 'entityType', 'type', 'query', 'sort', 'direction', 'scope',
+    'includeSystemPlaylists'
   ], 'invalidContext');
   const endpointType = normalizeContextEndpoint(payload.endpoint, payload.entityType);
   const requestedType = payload.type === undefined
@@ -1226,18 +1246,25 @@ function normalizeContextQuery(payload) {
   if (scope && entityType !== 'track' && !(entityType === 'subfolder' && scope.folderId)) {
     throw createCatalogError('invalidScope', 'Catalog entity type does not support folder scope');
   }
+  if (payload.includeSystemPlaylists !== undefined && typeof payload.includeSystemPlaylists !== 'boolean') {
+    throw createCatalogError('invalidContext', 'System playlist visibility must be a boolean');
+  }
+  const includeSystemPlaylists = entityType === 'playlist' && payload.includeSystemPlaylists === true;
   return {
     tokens,
     queryText: rawQuery,
     sort,
     direction,
     scope,
+    includeSystemPlaylists,
     entityType,
     endpoint: entityType === 'track' ? 'tracks' : `entities:${entityType}`,
     scopeName: entityType === 'track' ? 'tracks' : definition.scope,
     relevantScopeNames: entityType === 'track' && scope?.playlistId
       ? ['tracks', 'playlists']
-      : [entityType === 'track' ? 'tracks' : definition.scope]
+      : entityType === 'track' && scope?.artistKey
+        ? ['tracks', 'artists']
+        : [entityType === 'track' ? 'tracks' : definition.scope]
   };
 }
 
@@ -1332,7 +1359,7 @@ function queryTracks(payload) {
 function queryEntities(payload) {
   assertAllowedFields(payload, [
     'type', 'query', 'sort', 'direction', 'scope', 'cursor', 'limit',
-    'catalogVersion', 'contextToken'
+    'catalogVersion', 'contextToken', 'includeSystemPlaylists'
   ], 'invalidEntityQuery');
   const type = normalizeEntityType(payload.type);
   if (payload.contextToken !== undefined && payload.contextToken !== null) {
@@ -1357,7 +1384,8 @@ function queryEntities(payload) {
     query: payload.query,
     sort: payload.sort,
     direction: payload.direction,
-    scope: payload.scope
+    scope: payload.scope,
+    includeSystemPlaylists: payload.includeSystemPlaylists
   });
   try {
     return readContextPage({
@@ -1376,11 +1404,15 @@ function assertContextQueryMatches(context, payload) {
   const sort = payload.sort === undefined ? context.sort : payload.sort;
   const direction = payload.direction === undefined ? context.direction : payload.direction;
   const scope = payload.scope === undefined ? context.scope : normalizeScope(payload.scope);
+  const includeSystemPlaylists = payload.includeSystemPlaylists === undefined
+    ? context.includeSystemPlaylists
+    : payload.includeSystemPlaylists === true;
   if (
     query !== context.queryText ||
     sort !== context.sort ||
     direction !== context.direction ||
-    JSON.stringify(scope) !== JSON.stringify(context.scope)
+    JSON.stringify(scope) !== JSON.stringify(context.scope) ||
+    includeSystemPlaylists !== context.includeSystemPlaylists
   ) {
     throw createCatalogError('contextQueryMismatch', 'Catalog query does not match its context');
   }
@@ -1434,34 +1466,35 @@ function readContextPageAtOrdinal(payload) {
   if (context.entityType !== 'track') {
     return withContextDatabase(context, () => readEntityContextPageAtOrdinal(context, payload.ordinal, limit));
   }
+  const pagePlan = createOrdinalPagePlan(totalCount, payload.ordinal, limit);
   if (context.scope?.playlistId) {
-    const startOrdinal = Math.max(0, Math.min(payload.ordinal, Math.max(0, totalCount - limit)));
-    const pagePlan = createOrdinalPagePlan(totalCount, startOrdinal, limit);
-    return withContextDatabase(context, () => executePlaylistContextPage(context, {
+    const page = withContextDatabase(context, () => executePlaylistContextPage(context, {
       continuation: pagePlan.continuation,
       cursorTuple: null,
-      limit,
+      limit: pagePlan.limit,
       offset: pagePlan.offset,
-      pageStartOrdinal: startOrdinal
+      pageStartOrdinal: pagePlan.startOrdinal
     }));
+    return { ...page, pageStartOrdinal: pagePlan.startOrdinal };
   }
   const order = createOrder(context.sort, context.direction);
-  const startOrdinal = Math.max(0, Math.min(payload.ordinal, Math.max(0, totalCount - limit)));
-  const pagePlan = createOrdinalPagePlan(totalCount, startOrdinal, limit);
-  return withContextDatabase(context, () => executeContextPage(context, order, {
+  const page = withContextDatabase(context, () => executeContextPage(context, order, {
     continuation: pagePlan.continuation,
     cursorTuple: null,
-    limit,
+    limit: pagePlan.limit,
     offset: pagePlan.offset,
-    pageStartOrdinal: startOrdinal
+    pageStartOrdinal: pagePlan.startOrdinal
   }));
+  return { ...page, pageStartOrdinal: pagePlan.startOrdinal };
 }
 
-function createOrdinalPagePlan(totalCount, startOrdinal, limit) {
-  const trailingCount = Math.max(0, totalCount - startOrdinal - limit);
+function createOrdinalPagePlan(totalCount, ordinal, limit) {
+  const startOrdinal = Math.floor(ordinal / limit) * limit;
+  const pageLimit = Math.min(limit, totalCount - startOrdinal);
+  const trailingCount = Math.max(0, totalCount - startOrdinal - pageLimit);
   return trailingCount < startOrdinal
-    ? { continuation: 'before', offset: trailingCount }
-    : { continuation: 'after', offset: startOrdinal };
+    ? { startOrdinal, limit: pageLimit, continuation: 'before', offset: trailingCount }
+    : { startOrdinal, limit: pageLimit, continuation: 'after', offset: startOrdinal };
 }
 
 function resolveEntityAnchor(payload) {
@@ -1499,7 +1532,6 @@ function resolveEntityAnchor(payload) {
   }
   if (requestedMode === 'successor' && resolved) ordinal = Math.min(context.totalCount - 1, ordinal + 1);
   if (requestedMode === 'predecessor' && resolved) ordinal = Math.max(0, ordinal - 1);
-  const pageStartOrdinal = Math.max(0, Math.min(ordinal, Math.max(0, context.totalCount - limit)));
   const page = readContextPageAtOrdinal({ contextToken: context.token, ordinal, limit });
   return {
     accepted: true,
@@ -1508,7 +1540,7 @@ function resolveEntityAnchor(payload) {
     entityKind: context.entityType,
     entityId: resolved?.entityId ?? entityId,
     ordinal,
-    pageStartOrdinal,
+    pageStartOrdinal: page.pageStartOrdinal,
     page
   };
 }
@@ -1836,15 +1868,15 @@ function readEntityContextPage(context, payload, limit) {
 function readEntityContextPageAtOrdinal(context, ordinal, limit) {
   const definition = ENTITY_DEFINITIONS[context.entityType];
   const order = createEntityOrder(context, definition);
-  const startOrdinal = Math.max(0, Math.min(ordinal, Math.max(0, context.totalCount - limit)));
-  const pagePlan = createOrdinalPagePlan(context.totalCount, startOrdinal, limit);
-  return executeEntityContextPage(context, definition, order, {
+  const pagePlan = createOrdinalPagePlan(context.totalCount, ordinal, limit);
+  const page = executeEntityContextPage(context, definition, order, {
     continuation: pagePlan.continuation,
     cursorTuple: null,
-    limit,
+    limit: pagePlan.limit,
     offset: pagePlan.offset,
-    pageStartOrdinal: startOrdinal
+    pageStartOrdinal: pagePlan.startOrdinal
   });
+  return { ...page, pageStartOrdinal: pagePlan.startOrdinal };
 }
 
 function executeEntityContextPage(
@@ -1949,6 +1981,9 @@ function entityOrderColumn(field) {
 function createEntityContextFilter(context, definition) {
   const clauses = [...(definition.fixedClauses || [])];
   const bindings = [];
+  if (context.entityType === 'playlist' && !context.includeSystemPlaylists) {
+    clauses.push("substr(e.id, 1, 7) <> 'system_'");
+  }
   if (context.scope) {
     clauses.push('e.folder_id = ?');
     bindings.push(context.scope.folderId);
@@ -2149,7 +2184,10 @@ function createContextFilter(context) {
       clauses.push('t.album_key = ?');
       bindings.push(context.scope.albumKey);
     } else if (context.scope.artistKey) {
-      clauses.push('t.artist_key = ?');
+      clauses.push(`EXISTS (
+        SELECT 1 FROM track_artists scoped_artist
+        WHERE scoped_artist.track_uid = t.track_uid AND scoped_artist.artist_key = ?
+      )`);
       bindings.push(context.scope.artistKey);
     } else if (context.scope.genreKey) {
       clauses.push('t.genre_key = ?');
@@ -3312,6 +3350,269 @@ function queryTransportDescriptorPage(payload) {
   return { items, nextTransportOrdinal: end < itemCount ? end : null };
 }
 
+function isSystemPlaylistId(playlistId) {
+  return typeof playlistId === 'string' && playlistId.startsWith('system_');
+}
+
+function ensureSystemPlaylist(kind, updatedAt) {
+  const definition = SYSTEM_PLAYLIST_DEFINITIONS[kind];
+  if (!definition) throw createCatalogError('invalidPlaylistRequest', 'System playlist kind is invalid');
+  const existing = database.prepare(`
+    SELECT state, version, building_operation_id AS buildingOperationId
+    FROM playlists WHERE id = ?
+  `).get(definition.id);
+  if (!existing) {
+    database.prepare(`
+      INSERT INTO playlists(
+        id, name, sort_name, state, building_operation_id, version, created_at, updated_at
+      ) VALUES (?, ?, ?, 'active', NULL, 0, ?, ?)
+    `).run(definition.id, definition.name, createSortKey(definition.name), updatedAt, updatedAt);
+    return { playlistId: definition.id, created: true, resurrected: false };
+  }
+  if (existing.state === 'active') {
+    return { playlistId: definition.id, created: false, resurrected: false };
+  }
+  if (existing.state === 'building') {
+    return {
+      playlistId: definition.id,
+      busy: true,
+      activeOperationId: existing.buildingOperationId ?? null
+    };
+  }
+  database.prepare('DELETE FROM playlist_items WHERE playlist_id = ?').run(definition.id);
+  database.prepare(`
+    UPDATE playlists
+    SET name = ?, sort_name = ?, state = 'active', building_operation_id = NULL,
+      version = version + 1, updated_at = ?
+    WHERE id = ? AND state = 'deleted'
+  `).run(definition.name, createSortKey(definition.name), updatedAt, definition.id);
+  return { playlistId: definition.id, created: false, resurrected: true };
+}
+
+function recordRecentlyPlayed(payload) {
+  assertExactFields(payload, ['trackUid'], 'invalidPlaylistRequest');
+  const trackUid = requireString(payload.trackUid, 'trackUid', 512);
+  if (!database.prepare('SELECT 1 FROM tracks WHERE track_uid = ?').get(trackUid)) {
+    return { kind: 'noop' };
+  }
+  const playlistId = SYSTEM_PLAYLIST_IDS.recentlyPlayed;
+  const existing = database.prepare(`
+    SELECT state, building_operation_id AS buildingOperationId FROM playlists WHERE id = ?
+  `).get(playlistId);
+  if (existing?.state === 'building') {
+    return { kind: 'busy', activeOperationId: existing.buildingOperationId ?? null };
+  }
+  if (existing?.state === 'active') {
+    const lease = findPlaylistLease(playlistId);
+    if (lease) return { kind: 'busy', activeOperationId: lease };
+    const first = database.prepare(`
+      SELECT i.track_uid AS trackUid
+      FROM playlist_items i
+      LEFT JOIN operation_jobs o ON o.operation_id = i.pending_operation_id
+      WHERE i.playlist_id = ?
+        AND (i.pending_operation_id IS NULL OR (o.committed = 1 AND o.terminal_kind = 'success'))
+      ORDER BY i.position, i.item_key
+      LIMIT 1
+    `).get(playlistId);
+    if (first?.trackUid === trackUid) return { kind: 'noop' };
+  }
+  const updatedAt = Date.now();
+  return commitMutation(['playlists', `playlist:${playlistId}`], 'record-recently-played', () => {
+    const ensured = ensureSystemPlaylist('recentlyPlayed', updatedAt);
+    if (ensured.busy) return { kind: 'busy', activeOperationId: ensured.activeOperationId };
+    database.prepare(`
+      DELETE FROM playlist_items WHERE playlist_id = ? AND track_uid = ?
+    `).run(playlistId, trackUid);
+    const head = database.prepare(`
+      SELECT MIN(position) AS position FROM playlist_items WHERE playlist_id = ?
+    `).get(playlistId);
+    const positionWindow = (RECENTLY_PLAYED_LIMIT + 1) * 1024;
+    let position = head.position == null ? positionWindow : Number(head.position) - 1024;
+    if (position <= 0) {
+      const items = database.prepare(`
+        SELECT item_key AS itemKey FROM playlist_items
+        WHERE playlist_id = ? ORDER BY position, item_key
+      `).all(playlistId);
+      const updatePosition = database.prepare(`
+        UPDATE playlist_items SET position = ? WHERE item_key = ?
+      `);
+      const temporaryHead = Number(head.position) - ((items.length + 1) * 1024);
+      for (const [index, item] of items.entries()) {
+        updatePosition.run(temporaryHead - (index * 1024), item.itemKey);
+      }
+      for (const [index, item] of items.entries()) {
+        updatePosition.run(positionWindow + ((index + 1) * 1024), item.itemKey);
+      }
+      position = positionWindow;
+    }
+    database.prepare(`
+      INSERT INTO playlist_items(
+        playlist_id, position, track_uid, unresolved_json, unresolved_basename,
+        unresolved_title, unresolved_artist, unresolved_duration_bucket, pending_operation_id
+      ) VALUES (?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL)
+    `).run(playlistId, position, trackUid);
+    database.prepare(`
+      DELETE FROM playlist_items
+      WHERE item_key IN (
+        SELECT item_key FROM playlist_items
+        WHERE playlist_id = ?
+        ORDER BY position, item_key
+        LIMIT -1 OFFSET ?
+      )
+    `).run(playlistId, RECENTLY_PLAYED_LIMIT);
+    database.prepare(`
+      UPDATE playlists SET version = version + 1, updated_at = ?
+      WHERE id = ? AND state = 'active'
+    `).run(updatedAt, playlistId);
+    const playlist = database.prepare('SELECT version FROM playlists WHERE id = ?').get(playlistId);
+    return { kind: 'recorded', playlistId, version: Number(playlist.version) };
+  });
+}
+
+function setTrackFavorite(payload) {
+  assertExactFields(payload, ['trackUid', 'favorite'], 'invalidPlaylistRequest');
+  const trackUid = requireString(payload.trackUid, 'trackUid', 512);
+  if (typeof payload.favorite !== 'boolean') {
+    throw createCatalogError('invalidPlaylistRequest', 'favorite must be a boolean');
+  }
+  const favorite = payload.favorite;
+  const playlistId = SYSTEM_PLAYLIST_IDS.favorites;
+  const existing = database.prepare(`
+    SELECT state, building_operation_id AS buildingOperationId FROM playlists WHERE id = ?
+  `).get(playlistId);
+  if (!favorite && existing?.state !== 'active') return { kind: 'noop' };
+  if (favorite && !database.prepare('SELECT 1 FROM tracks WHERE track_uid = ?').get(trackUid)) {
+    return { kind: 'noop' };
+  }
+  if (existing?.state === 'building') {
+    return { kind: 'busy', activeOperationId: existing.buildingOperationId ?? null };
+  }
+  if (existing?.state === 'active') {
+    const lease = findPlaylistLease(playlistId);
+    if (lease) return { kind: 'busy', activeOperationId: lease };
+    const item = database.prepare(`
+      SELECT item_key AS itemKey FROM playlist_items
+      WHERE playlist_id = ? AND track_uid = ? LIMIT 1
+    `).get(playlistId, trackUid);
+    if (favorite === Boolean(item)) return { kind: 'noop' };
+  }
+  const updatedAt = Date.now();
+  return commitMutation(['playlists', `playlist:${playlistId}`], 'set-track-favorite', () => {
+    if (favorite) {
+      const ensured = ensureSystemPlaylist('favorites', updatedAt);
+      if (ensured.busy) return { kind: 'busy', activeOperationId: ensured.activeOperationId };
+      const tail = database.prepare(`
+        SELECT MAX(position) AS position FROM playlist_items WHERE playlist_id = ?
+      `).get(playlistId);
+      const position = tail.position == null ? 1024 : Number(tail.position) + 1024;
+      database.prepare(`
+        INSERT INTO playlist_items(
+          playlist_id, position, track_uid, unresolved_json, unresolved_basename,
+          unresolved_title, unresolved_artist, unresolved_duration_bucket, pending_operation_id
+        ) VALUES (?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL)
+      `).run(playlistId, position, trackUid);
+    } else {
+      database.prepare(`
+        DELETE FROM playlist_items WHERE playlist_id = ? AND track_uid = ?
+      `).run(playlistId, trackUid);
+    }
+    database.prepare(`
+      UPDATE playlists SET version = version + 1, updated_at = ?
+      WHERE id = ? AND state = 'active'
+    `).run(updatedAt, playlistId);
+    const playlist = database.prepare('SELECT version FROM playlists WHERE id = ?').get(playlistId);
+    return {
+      kind: favorite ? 'favorited' : 'unfavorited',
+      playlistId,
+      trackUid,
+      favorite,
+      version: Number(playlist.version)
+    };
+  });
+}
+
+function getFavoriteTrackUids(payload = {}) {
+  assertAllowedFields(payload, ['cursor', 'limit'], 'invalidPlaylistRequest');
+  const limit = payload.limit === undefined
+    ? FAVORITE_TRACK_UID_LIMIT
+    : requirePositiveInteger(payload.limit, 'limit');
+  if (limit > FAVORITE_TRACK_UID_LIMIT) {
+    throw createCatalogError(
+      'invalidRequestField',
+      `limit must not exceed ${FAVORITE_TRACK_UID_LIMIT}`
+    );
+  }
+  const cursor = normalizeFavoriteTrackUidCursor(payload.cursor);
+  const keysetSql = cursor
+    ? 'AND (i.position > ? OR (i.position = ? AND i.item_key > ?))'
+    : '';
+  const bindings = [SYSTEM_PLAYLIST_IDS.favorites];
+  if (cursor) bindings.push(cursor.position, cursor.position, cursor.itemKey);
+  bindings.push(limit + 1);
+  const rows = database.prepare(`
+    SELECT i.track_uid AS trackUid, i.position, i.item_key AS itemKey
+    FROM playlists p
+    JOIN playlist_items i ON i.playlist_id = p.id
+    LEFT JOIN operation_jobs o ON o.operation_id = i.pending_operation_id
+    WHERE p.id = ? AND p.state = 'active' AND i.track_uid IS NOT NULL
+      AND (i.pending_operation_id IS NULL OR (o.committed = 1 AND o.terminal_kind = 'success'))
+      ${keysetSql}
+    ORDER BY i.position, i.item_key
+    LIMIT ?
+  `).all(...bindings);
+  const truncated = rows.length > limit;
+  const page = rows.slice(0, limit);
+  return {
+    trackUids: page.map(row => row.trackUid),
+    truncated,
+    ...(truncated ? {
+      nextCursor: {
+        position: Number(page.at(-1).position),
+        itemKey: Number(page.at(-1).itemKey)
+      }
+    } : {})
+  };
+}
+
+function normalizeFavoriteTrackUidCursor(value) {
+  if (value === undefined || value === null) return null;
+  assertExactFields(value, ['position', 'itemKey'], 'invalidPlaylistRequest');
+  if (typeof value.position !== 'number' || !Number.isFinite(value.position)) {
+    throw createCatalogError('invalidRequestField', 'cursor.position must be a finite number');
+  }
+  return {
+    position: value.position,
+    itemKey: requirePositiveInteger(value.itemKey, 'cursor.itemKey')
+  };
+}
+
+function getSystemPlaylists(payload = {}) {
+  assertExactFields(payload, [], 'invalidPlaylistRequest');
+  return database.prepare(`
+    SELECT p.id AS playlistId, p.name, p.version, p.updated_at AS updatedAt,
+      (SELECT count(*)
+        FROM playlist_items visible_item
+        LEFT JOIN operation_jobs visible_operation
+          ON visible_operation.operation_id = visible_item.pending_operation_id
+        WHERE visible_item.playlist_id = p.id
+          AND (visible_item.pending_operation_id IS NULL OR (
+            visible_operation.committed = 1 AND visible_operation.terminal_kind = 'success'
+          ))) AS itemCount
+    FROM playlists p
+    WHERE p.state = 'active' AND p.id IN (?, ?)
+    ORDER BY CASE p.id WHEN ? THEN 0 ELSE 1 END
+  `).all(
+    SYSTEM_PLAYLIST_IDS.recentlyPlayed,
+    SYSTEM_PLAYLIST_IDS.favorites,
+    SYSTEM_PLAYLIST_IDS.recentlyPlayed
+  ).map(row => ({
+    ...row,
+    version: Number(row.version),
+    itemCount: Number(row.itemCount),
+    updatedAt: Number(row.updatedAt)
+  }));
+}
+
 function createPlaylist(payload) {
   assertAllowedFields(payload, [
     'playlistId', 'name', 'operationId', 'createdAt'
@@ -3322,6 +3623,7 @@ function createPlaylist(payload) {
     ? null
     : requireString(payload.operationId, 'operationId', 512);
   const createdAt = requireNonNegativeInteger(payload.createdAt, 'createdAt');
+  if (isSystemPlaylistId(playlistId)) return { kind: 'systemPlaylist', playlistId };
   if (operationId !== null) assertPlaylistOperation(operationId, playlistId);
   const create = () => {
     database.prepare(`
@@ -3356,6 +3658,7 @@ function createPlaylistWithItems(payload) {
   const playlistId = requireString(payload.playlistId, 'playlistId', 512);
   const name = requireString(payload.name, 'name', 4096);
   const createdAt = requireNonNegativeInteger(payload.createdAt, 'createdAt');
+  if (isSystemPlaylistId(playlistId)) return { kind: 'systemPlaylist', playlistId };
   if (payload.operationId !== undefined && payload.operationId !== null) {
     throw createCatalogError('invalidPlaylistRequest', 'Local playlist creation cannot use an operation ID');
   }
@@ -3443,6 +3746,7 @@ function renamePlaylist(payload) {
     'playlistId', 'name', 'expectedVersion', 'updatedAt'
   ], 'invalidPlaylistRequest');
   const playlistId = requireString(payload.playlistId, 'playlistId', 512);
+  if (isSystemPlaylistId(playlistId)) return { kind: 'systemPlaylist', playlistId };
   const name = requireString(payload.name, 'name', 4096);
   const expectedVersion = requireNonNegativeInteger(payload.expectedVersion, 'expectedVersion');
   const updatedAt = requireNonNegativeInteger(payload.updatedAt, 'updatedAt');
@@ -5432,6 +5736,7 @@ function getArtworkTrack(trackUid) {
     SELECT t.track_uid AS trackUid, t.folder_id AS folderId,
       t.relative_path AS relativePath, t.file_identity AS fileIdentity,
       t.size, t.mtime_ms AS mtimeMs, t.artwork_id AS artworkId,
+      t.source_kind AS sourceKind, t.cue_relative_path AS cueRelativePath,
       f.lifecycle_version AS lifecycleVersion
     FROM tracks t
     JOIN folders f ON f.id = t.folder_id AND f.status <> 'removed'
@@ -5451,20 +5756,30 @@ function artworkClaimMatchesCurrentTrack(claim) {
         claim.embeddedLength == null ||
         claim.embeddedLength === 0 || claim.embeddedLength > MAX_ARTWORK_RAW_BYTES ||
         claim.embeddedLength > claim.size || claim.externalArtworkStat !== null) return false;
-  } else if (!claim.externalArtworkStat || claim.embeddedOffset !== null || claim.embeddedLength !== null) {
-    return false;
+  } else {
+    if (!claim.externalArtworkStat || claim.embeddedOffset !== null || claim.embeddedLength !== null ||
+        track.sourceKind !== 'cue-track' ||
+        !isCueCoverRelativePath(track.cueRelativePath, track.relativePath, claim.canonicalSourceIdentity)) {
+      return false;
+    }
   }
   return true;
 }
 
 function artworkPreclaimMatchesCurrentTrack(claim) {
-  if (claim.utilitySessionId !== activeArtworkUtilitySession || claim.sourceKind !== 'embedded-file' ||
-      claim.embeddedOffset !== null || claim.embeddedLength !== null || claim.externalArtworkStat !== null) return false;
   const track = getArtworkTrack(claim.trackUid);
-  return Boolean(track) && track.folderId === claim.folderId &&
+  const matchesTrack = Boolean(track) && claim.utilitySessionId === activeArtworkUtilitySession &&
+    track.folderId === claim.folderId &&
     Number(track.lifecycleVersion) === claim.lifecycleVersion &&
     String(track.fileIdentity ?? '') === claim.fileIdentity && Number(track.size) === claim.size &&
-    Number(track.mtimeMs) === claim.mtimeMs && claim.canonicalSourceIdentity === track.relativePath;
+    Number(track.mtimeMs) === claim.mtimeMs;
+  if (!matchesTrack || claim.embeddedOffset !== null || claim.embeddedLength !== null) return false;
+  if (claim.sourceKind === 'embedded-file') {
+    return claim.externalArtworkStat === null && claim.canonicalSourceIdentity === track.relativePath;
+  }
+  return claim.sourceKind === 'external-file' && claim.externalArtworkStat !== null &&
+    track.sourceKind === 'cue-track' &&
+    isCueCoverRelativePath(track.cueRelativePath, track.relativePath, claim.canonicalSourceIdentity);
 }
 
 function normalizeArtworkFileStat(value) {
@@ -5649,7 +5964,7 @@ function beginScanFolder(payload) {
         stop_reason = NULL, updated_at = excluded.updated_at
     `).run(
       scanId, folderId, generation, lifecycleVersion, resume ? 1 : 0,
-      existing?.parserVersion ?? 'catalog-metadata-v3', resume ? 'resumed-generation' : null,
+      existing?.parserVersion ?? 'catalog-metadata-v5', resume ? 'resumed-generation' : null,
       Number(existing?.enumerationErrorCount ?? 0), Number(existing?.visitedFiles ?? 0),
       Number(existing?.committedBatches ?? 0), now
     );
@@ -5659,7 +5974,7 @@ function beginScanFolder(payload) {
       folderId,
       generation,
       lifecycleVersion,
-      parserVersion: existing?.parserVersion ?? 'catalog-metadata-v3',
+      parserVersion: existing?.parserVersion ?? 'catalog-metadata-v5',
       continuityBroken: resume,
       sweepEligibility: 'INELIGIBLE',
       visitedFiles: resume ? Number(existing?.visitedFiles ?? 0) : 0,
@@ -6326,7 +6641,7 @@ function listMetadataCandidates(payload) {
       logicalStorageId: row.logicalStorageId,
       relativePath: row.relativePath,
       path: row.path,
-      parserVersion: payload.parserVersion ?? 'catalog-metadata-v3',
+      parserVersion: payload.parserVersion ?? 'catalog-metadata-v5',
       storedParserVersion: row.sourceKind === 'cue-track' && row.storedCueSignature !== row.cueSignature
         ? null
         : row.metadataParserVersion ?? null,
@@ -6783,16 +7098,26 @@ function aggregateIdentity(kind, ...parts) {
 }
 
 function derivedTrackEntities(track, metadata) {
-  const artist = metadata.compilation
+  const artistNames = metadata.compilation
+    ? ['Various Artists']
+    : metadata.albumArtists.length > 0
+      ? metadata.albumArtists
+      : [metadata.albumArtist || metadata.artist || 'Unknown Artist'];
+  const artists = [...new Map(artistNames.map(name => {
+    const key = aggregateIdentity('artist', name);
+    return [key, { key, name }];
+  })).values()];
+  const albumArtist = metadata.compilation
     ? 'Various Artists'
-    : metadata.albumArtist || metadata.artist || 'Unknown Artist';
+    : metadata.albumArtist || artists.map(artist => artist.name).join('; ');
+  const albumIdentityArtist = artists.map(artist => artist.name).join('; ');
   const album = metadata.album || 'Unknown Album';
   const genre = metadata.genre || 'Unknown Genre';
   const directory = path.posix.dirname(track.relativePath);
   const subfolderPath = directory === '.' ? null : directory;
   return {
-    album: { key: aggregateIdentity('album', artist, album), name: album, artist },
-    artist: { key: aggregateIdentity('artist', artist), name: artist },
+    album: { key: aggregateIdentity('album', albumIdentityArtist, album), name: album, artist: albumArtist },
+    artists,
     genre: { key: aggregateIdentity('genre', genre), name: genre },
     subfolder: subfolderPath
       ? {
@@ -6824,11 +7149,14 @@ function replaceTrackEntityMemberships(track, metadata, { recomputeAggregates = 
     ON CONFLICT(album_key) DO UPDATE SET name = excluded.name, artist = excluded.artist,
       sort_name = excluded.sort_name, sort_artist = excluded.sort_artist
   `).run(next.album.key, next.album.name, next.album.artist, createSortKey(next.album.name), createSortKey(next.album.artist));
-  database.prepare(`
+  const upsertArtist = database.prepare(`
     INSERT INTO artists(artist_key, identity_version, name, sort_name, track_count, total_duration_sec)
     VALUES (?, 1, ?, ?, 0, 0)
     ON CONFLICT(artist_key) DO UPDATE SET name = excluded.name, sort_name = excluded.sort_name
-  `).run(next.artist.key, next.artist.name, createSortKey(next.artist.name));
+  `);
+  for (const artist of next.artists) {
+    upsertArtist.run(artist.key, artist.name, createSortKey(artist.name));
+  }
   database.prepare(`
     INSERT INTO genres(genre_key, identity_version, name, sort_name, track_count, total_duration_sec)
     VALUES (?, 1, ?, ?, 0, 0)
@@ -6848,7 +7176,8 @@ function replaceTrackEntityMemberships(track, metadata, { recomputeAggregates = 
     );
   }
   database.prepare('INSERT INTO track_albums(track_uid, album_key) VALUES (?, ?)').run(track.trackUid, next.album.key);
-  database.prepare('INSERT INTO track_artists(track_uid, artist_key, role) VALUES (?, ?, ?)').run(track.trackUid, next.artist.key, 'album-artist');
+  const insertTrackArtist = database.prepare('INSERT INTO track_artists(track_uid, artist_key, role) VALUES (?, ?, ?)');
+  for (const artist of next.artists) insertTrackArtist.run(track.trackUid, artist.key, 'album-artist');
   database.prepare('INSERT INTO track_genres(track_uid, genre_key) VALUES (?, ?)').run(track.trackUid, next.genre.key);
   if (next.subfolder) {
     database.prepare('INSERT INTO track_subfolders(track_uid, subfolder_key) VALUES (?, ?)').run(track.trackUid, next.subfolder.key);
@@ -6856,11 +7185,11 @@ function replaceTrackEntityMemberships(track, metadata, { recomputeAggregates = 
   database.prepare(`
     UPDATE tracks SET album_key = ?, artist_key = ?, genre_key = ?, subfolder_key = ?
     WHERE track_uid = ?
-  `).run(next.album.key, next.artist.key, next.genre.key, next.subfolder?.key ?? null, track.trackUid);
+  `).run(next.album.key, next.artists[0].key, next.genre.key, next.subfolder?.key ?? null, track.trackUid);
 
   if (!recomputeAggregates) return;
   recomputeAggregateRows('albums', 'track_albums', 'album_key', new Set([prior.album, next.album.key]));
-  recomputeAggregateRows('artists', 'track_artists', 'artist_key', new Set([...prior.artists, next.artist.key]));
+  recomputeAggregateRows('artists', 'track_artists', 'artist_key', new Set([...prior.artists, ...next.artists.map(artist => artist.key)]));
   recomputeAggregateRows('genres', 'track_genres', 'genre_key', new Set([...prior.genres, next.genre.key]));
   recomputeAggregateRows('subfolders', 'track_subfolders', 'subfolder_key', new Set([prior.subfolder, next.subfolder?.key]));
 }
@@ -7778,10 +8107,12 @@ function normalizeParsedMetadata(value) {
   if (!isPlainObject(value)) {
     throw createCatalogError('invalidMetadataResult', 'Metadata result must be an object');
   }
+  const albumArtist = optionalString(value.albumArtist, '', 4096);
   return {
     title: optionalString(value.title, '', 4096),
     artist: optionalString(value.artist, '', 4096),
-    albumArtist: optionalString(value.albumArtist, '', 4096),
+    albumArtist,
+    albumArtists: normalizeAlbumArtists(value.albumArtists, albumArtist),
     album: optionalString(value.album, '', 4096),
     genre: Array.isArray(value.genre)
       ? value.genre.slice(0, 32).map(item => requireStringAllowEmpty(item, 'genre', 512)).join('; ')
@@ -7799,6 +8130,19 @@ function normalizeParsedMetadata(value) {
     channels: optionalNullableNonNegativeInteger(value.channels, 'channels'),
     codec: optionalNullableString(value.codec, 512)
   };
+}
+
+function normalizeAlbumArtists(value, fallback) {
+  if (value !== undefined && !Array.isArray(value)) {
+    throw createCatalogError('invalidMetadataResult', 'Metadata album artists must be an array');
+  }
+  const source = Array.isArray(value) && value.length > 0
+    ? value.slice(0, 64).map(item => requireStringAllowEmpty(item, 'albumArtist', 4096))
+    : [fallback];
+  return [...new Set(source
+    .flatMap(item => item.split(';'))
+    .map(item => item.trim())
+    .filter(Boolean))].slice(0, 64);
 }
 
 function resolvePlaylistExportSource(payload) {

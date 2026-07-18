@@ -615,6 +615,109 @@ test('constructs, delegates manager methods, translates errors, parses and seria
   });
 });
 
+test('mini player mode coordinates renderer state, Electron bounds, pinning, and DSP UI suppression', async () => {
+  const ipcCalls = [];
+  let exitFromMain = null;
+  let toggleFromMenu = null;
+  const electronAPI = {
+    onExitMiniPlayer(callback) {
+      exitFromMain = callback;
+    },
+    onToggleMiniPlayer(callback) {
+      toggleFromMenu = callback;
+    },
+    async setMiniPlayerMode(options) {
+      ipcCalls.push(['setMiniPlayerMode', options]);
+      return { success: true };
+    },
+    async setAlwaysOnTop(enabled) {
+      ipcCalls.push(['setAlwaysOnTop', enabled]);
+      return { success: true };
+    }
+  };
+
+  await withUIHarness({ electronAPI }, async ({ audioManager, document, manager }) => {
+    const uiCalls = [];
+    audioManager.powerPolicyController = {
+      setDspUiSuppressed: (reason, enabled) => uiCalls.push(['setDspUiSuppressed', reason, enabled])
+    };
+    manager.audioPlayer = {
+      ui: {
+        container: {},
+        setMiniMode: enabled => uiCalls.push(['setMiniMode', enabled]),
+        setMiniPlayerAlwaysOnTop: enabled => uiCalls.push(['setMiniPlayerAlwaysOnTop', enabled])
+      }
+    };
+
+    assert.equal(typeof exitFromMain, 'function');
+    assert.equal(typeof toggleFromMenu, 'function');
+    await toggleFromMenu();
+    assert.equal(manager.miniPlayerMode, true);
+    assert.equal(document.body.classList.contains('layout-mini-player'), true);
+    assert.deepEqual(ipcCalls[0], ['setMiniPlayerMode', { enabled: true, alwaysOnTop: false }]);
+    assert.deepEqual(uiCalls.slice(0, 2), [
+      ['setMiniMode', true],
+      ['setDspUiSuppressed', 'mini-player', true]
+    ]);
+
+    await manager.setMiniPlayerAlwaysOnTop(true);
+    assert.equal(manager.miniPlayerAlwaysOnTop, true);
+    assert.deepEqual(ipcCalls[1], ['setAlwaysOnTop', true]);
+
+    await exitFromMain();
+    assert.equal(manager.miniPlayerMode, false);
+    assert.equal(document.body.classList.contains('layout-mini-player'), false);
+    assert.deepEqual(ipcCalls[2], ['setMiniPlayerMode', { enabled: false, alwaysOnTop: true }]);
+  });
+});
+
+test('mini player mode stays normal when no player UI exists', async () => {
+  const ipcCalls = [];
+  await withUIHarness({
+    electronAPI: {
+      onToggleMiniPlayer() {},
+      async setMiniPlayerMode(options) { ipcCalls.push(options); }
+    }
+  }, async ({ document, manager }) => {
+    assert.equal(await manager.setMiniPlayerMode(true), false);
+    assert.equal(manager.miniPlayerMode, false);
+    assert.equal(document.body.classList.contains('layout-mini-player'), false);
+    assert.deepEqual(ipcCalls, []);
+    assert.equal(manager.stateManager.errorDisplay.textContent, 'ui.mobileNav.noTrack');
+  });
+});
+
+test('rapid mini player toggles preserve the latest requested mode', async () => {
+  const ipcCalls = [];
+  await withUIHarness({
+    electronAPI: {
+      onToggleMiniPlayer() {},
+      async setMiniPlayerMode(options) {
+        ipcCalls.push(options.enabled);
+        return { success: true };
+      }
+    }
+  }, async ({ audioManager, document, manager }) => {
+    audioManager.powerPolicyController = { setDspUiSuppressed() {} };
+    manager.audioPlayer = {
+      ui: {
+        container: {},
+        setMiniMode() {},
+        setMiniPlayerAlwaysOnTop() {}
+      }
+    };
+
+    const enter = manager.toggleMiniPlayer();
+    const exit = manager.toggleMiniPlayer();
+    await Promise.all([enter, exit]);
+
+    assert.deepEqual(ipcCalls, [true, false]);
+    assert.equal(manager.miniPlayerMode, false);
+    assert.equal(manager.miniPlayerTargetMode, false);
+    assert.equal(document.body.classList.contains('layout-mini-player'), false);
+  });
+});
+
 test('handles invalid URL state and URL updates', async () => {
   await withUIHarness({ search: '?p=bad!' }, async ({ calls, manager, timers, window }) => {
     manager.audioManager.pipeline = [createPlugin('Gain')];
@@ -851,7 +954,7 @@ test('shares URLs, opens music, manages presets, and creates audio players', asy
       activeCalls = calls;
       await manager.openMusicButton.click();
       const fileInput = [...document.allElements].find(element => element.type === 'file');
-      assert.equal(fileInput.accept, 'audio/*,video/mp4,.mp4,.cue');
+      assert.equal(fileInput.accept, 'audio/*,video/mp4,image/jpeg,image/png,.mp4,.cue,.jpg,.png');
       fileInput.files = [{ name: 'song.wav', async arrayBuffer() { return new ArrayBuffer(0); } }];
       await fileInput.dispatch('change', { target: fileInput });
       await flushMicrotasks();

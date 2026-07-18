@@ -17,6 +17,7 @@ Uma coleção de plugins que adicionam caráter vintage e qualidades nostálgica
 - [Noise Blender](#noise-blender) - Adiciona textura atmosférica de fundo
 - [Simple Jitter](#simple-jitter) - Cria imperfeições digitais vintage sutis
 - [Vinyl Artifacts](#vinyl-artifacts) - Adiciona estalos, crackle, hiss, rumble e vazamento de ruído estéreo no estilo vinil
+- [Vinyl Simulator](#vinyl-simulator) - Grava a entrada em um sulco modelado e a reproduz com uma agulha física simulada
 
 ## Bit Crusher
 
@@ -446,5 +447,97 @@ Um efeito que adiciona artefatos de reprodução no estilo vinil, como pops, cra
    - Hiss: -39dB, Rumble: -45dB, Crosstalk: 60%, Noise Profile: 5.0
    - Wear: 80%, React: 75%, React Mode: Velocity, Mix: 100%
    - Perfeito para: Ruído que responde dramaticamente à música
+
+## Vinyl Simulator
+
+O Vinyl Simulator transforma a própria música por meio de um modelo físico de corte e reprodução. Ele aplica filtros de corte e a curva RIAA de gravação, escreve o sinal em um sulco com rugosidade e detritos, segue esse sulco com uma simulação mecânica de agulha e braço e aplica a equalização RIAA de reprodução. Use-o quando quiser que geometria do sulco, rastreamento e superfície interajam com a música.
+
+### Diferença para o Vinyl Artifacts
+
+- **Vinyl Simulator** altera o sinal ao passá-lo pelo sulco e pela agulha modelados. Roughness, Dust, Static, Tracking Force, formato da agulha, Speed e Radius participam do resultado.
+- **Vinyl Artifacts** mantém a música intacta e adiciona pops, crackle, hiss, rumble e vazamento de ruído. É a opção mais leve e previsível, ou a alternativa sem WASM.
+- Os dois podem ser combinados, mas ajustes fortes de superfície em ambos acumulam cliques e ruído rapidamente.
+
+### Guia de aprimoramento sonoro
+
+- **Reprodução suave:** Cut Level perto de 0 dB, Shape em Elliptical, Roughness moderado, pouco Dust e Static e Mix menor para preservar mais do original.
+- **Caráter de sulco interno:** aproxime Radius de 60 mm. A menor velocidade linear exige mais do rastreamento e dos agudos.
+- **Reprodução limpa e estável:** reduza Roughness, Dust, Static e Scratch, mantenha Tracking Force perto de 2 g e use Standard ou High.
+- **Superfície envelhecida:** aumente primeiro Roughness e depois Dust, Static e um pouco de Scratch; cada controle representa um fenômeno físico diferente.
+- **Coloração mais evidente:** aumente Cut Level com cuidado, reduza HF Cutoff ou Radius. Observe a queda de Tracking S/E e o aumento de mistrack/skip.
+- O efeito não inclui wow/flutter, excentricidade, empenamento nem rumble do toca-discos. Adicione **Wow Flutter** à cadeia se necessário.
+
+### Parâmetros
+
+#### Cutting
+
+- **Cut Level** (-20 a +20 dB) — Intensidade com que a entrada aciona o cortador. Mais nível acentua deslocamento e não linearidade; menos deixa maior margem mecânica.
+- **HF Cutoff** (6000 a 24000 Hz) — Limite de agudos antes do corte. Mais baixo escurece e facilita o rastreamento; mais alto preserva detalhes e exige mais da agulha.
+- **Bass Mono Below** (50 a 1000 Hz) — Faixa em que o componente Side é reduzido. Valores maiores centralizam mais os graves.
+- **Side Mix** (0 a 100%) — Side mantido abaixo de Bass Mono Below. 0% torna essa faixa mono; 100% preserva o Side original.
+
+#### Record
+
+- **Speed** (33⅓, 45 ou 78 rpm) — Velocidade de rotação. No mesmo Radius, maior velocidade aumenta a velocidade linear e facilita detalhes finos.
+- **Radius** (60 a 146 mm) — Posição da agulha. Valores pequenos representam o sulco interno, mais lento e difícil nos agudos.
+- **Roughness** (0,1 a 100 nm) — Rugosidade microscópica; aumentá-la reforça a textura contínua de superfície.
+- **Dust** (0 a 10000/s) — Frequência de partículas de poeira e perturbações breves.
+- **Static** (0 a 10000/s) — Frequência de descargas elétricas, adicionadas como pops na saída da cápsula.
+- **Scratch** (0 a 1000/s) — Frequência de defeitos maiores no sulco.
+
+#### Stylus
+
+- **Shape** (Spherical ou Elliptical) — Geometria de contato. Em Spherical, Scan Radius acompanha Side Radius. A mudança reconstrói a simulação.
+- **Side Radius** (5 a 25 µm) — Raio transversal à parede; altera a área e a pressão de contato.
+- **Scan Radius** (2 a 25 µm) — Raio no sentido do sulco. Pequeno segue detalhes finos; grande faz média em um contato mais amplo.
+- **Tracking Force** (0,5 a 5,0 g) — Força de apoio. Mais pode estabilizar o contato, mas aumenta força e pressão; pouca favorece mistrack e skip.
+- **Tip Mass** (0,1 a 1,5 mg) — Massa móvel da ponta. Mais massa adiciona inércia e dificulta movimentos rápidos.
+- **Compliance** (5 a 35 cu) — Flexibilidade da suspensão. Valores altos permitem mais movimento e mudam a resposta mecânica.
+- **Damping** (0,05 a 1,0 ζ) — Amortecimento de ressonâncias. Valores altos reduzem mais o ringing.
+
+#### Output
+
+- **Quality** (Eco, Standard, High ou Ultra) — Define o número base de subpassos físicos e pontos de contato. Para estabilizar a ressonância de contato, o mecanismo pode aumentar automaticamente os subpassos efetivos conforme a taxa de amostragem, Tracking Force, Tip Mass, Compliance, Shape, Side Radius e Scan Radius. Standard é o padrão em tempo real; a mudança reconstrói a simulação.
+- **Output Gain** (-24 a +24 dB) — Nível após equalização RIAA e normalização.
+- **Mix** (0 a 100%) — Mistura a reprodução simulada com o sinal seco alinhado em latência. 0% = seco; 100% = simulado.
+
+### Como ler o HUD
+
+- **Force L/R (mN):** força em cada parede; valores altos ou desiguais indicam um trecho exigente.
+- **Pressure (GPa):** maior pressão de contato atual; leia junto com Force ao ajustar a agulha.
+- **Tip (cm/s, dB):** velocidade da ponta e nível de reprodução resultante.
+- **Tracking S/E L/R (dB):** relação entre sinal rastreado e erro. Mais alto é mais limpo; queda persistente indica dificuldade.
+- **Jitter (ns):** variação de tempo no ponto de leitura, visível em Stylus.
+- **Mistrack, Skip, Static Pop e Dust Hit (/s):** taxas recentes, com flash em cada evento. Se repetirem, reduza Cut Level, aumente Tracking Force moderadamente, Radius ou Quality.
+
+O HUD é ativado pela telemetria DSP nativa. Com a reprodução parada ou a telemetria suspensa para economizar energia, ele pode mostrar estado ocioso.
+
+### Configurações recomendadas
+
+1. **Reprodução suave:** Cut Level 0 dB, HF Cutoff 16 kHz, 33⅓ rpm, Radius 120 mm, Roughness 5 nm, Dust 0,5/s, Static 0,02/s, Scratch 0/s, Elliptical, Tracking Force 2,0 g, Standard, Mix 75%.
+2. **Sulco externo clássico:** Cut Level 0 dB, 33⅓ rpm, Radius 135 mm, Roughness 13,17 nm, Dust 2/s, Static 0,08/s, Elliptical, Tracking Force 2,0 g, Standard, Mix 100%.
+3. **Demonstração interna:** Cut Level +3 dB, HF Cutoff 14 kHz, Radius 60 mm, Elliptical, Scan Radius 8 µm, Tracking Force 2,0 g, High, Mix 100%; compare Tracking S/E com Radius maior.
+4. **Superfície gasta:** Radius 100 mm, Roughness 35 nm, Dust 25/s, Static 1/s, Scratch 0,5/s, Tracking Force 2,2 g, Standard, Output Gain -3 dB, Mix 100%.
+
+### Quality e carga de CPU
+
+Cada preset Quality define subpassos base e pontos de contato. Para manter a estabilidade, o mecanismo também calcula `Nmin = ceil(8 × f_c / sampleRate)`, em que a frequência de ressonância de contato `f_c` depende de Tracking Force, Tip Mass, Compliance, Shape, Side Radius e Scan Radius, e usa `effectiveSubsteps = max(base, Nmin)`. Com os ajustes padrão, Standard a 96 kHz permanece na base de 4 subpassos; portanto, a meta de desempenho existente não muda.
+
+A carga principal é proporcional a taxa de amostragem × subpassos efetivos × pontos de contato. As avaliações e cargas relativas da tabela são estimativas base para quando o piso de estabilidade não aumenta os subpassos, e não percentuais de CPU medidos; processador, navegador e WASM SIMD também afetam o resultado.
+
+| Quality | Detalhe base | Avaliações base a 96 kHz | Carga relativa base | Uso |
+|---|---:|---:|---:|---|
+| Eco | 2 × 7 | 2,7 milhões/s | 0,39× | Celular, baixo consumo, várias instâncias |
+| Standard | 4 × 9 | 6,9 milhões/s | 1,00× | Audição normal em tempo real |
+| High | 8 × 13 | 20 milhões/s | 2,89× | Sistemas rápidos, comparação detalhada |
+| Ultra | 20 × 25 | 96 milhões/s | 13,89× | Renderização offline e verificação |
+
+Quando o piso de estabilidade está inativo, aplique à carga relativa base estes multiplicadores: 44,1 kHz = 0,46×; 48 = 0,50×; 88,2 = 0,92×; 96 = 1,00×; 176,4 = 1,84×; 192 = 2,00×. A taxa de amostragem e os ajustes Tracking Force, Tip Mass, Compliance, Shape, Side Radius e Scan Radius podem ativar o piso e elevar a carga real acima desta estimativa base. Se houver falhas, reduza primeiro Quality.
+
+### Requisito de WASM e limites
+
+O Vinyl Simulator exige o núcleo DSP WebAssembly nativo em tempo real. Se WASM estiver desativado com `?dsp=off`, não for compatível ou falhar ao iniciar, a entrada passa sem alteração e a interface informa que WASM é necessário. A simulação JavaScript de referência, muito mais lenta, não é usada como fallback.
+
+O modelo processa o primeiro par estéreo. A deformação da poeira dura apenas enquanto cada partícula está ativa, e a agulha sempre avança por sulco recém-gerado; o desgaste não se acumula entre voltas nem é salvo em presets. Desgaste de longo prazo, visualização 3D, medidores SNR/THD em tempo real, wow/flutter, excentricidade, empenamento, rumble do toca-discos e carga elétrica da cápsula ficam fora do modelo.
 
 Lembre-se: Esses efeitos são feitos para adicionar caráter e nostalgia à sua música. Comece com configurações sutis e ajuste ao gosto!

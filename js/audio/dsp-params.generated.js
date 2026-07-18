@@ -1056,6 +1056,32 @@ export function packVinylArtifactsPluginParams(params = {}) {
   return packed;
 }
 
+export const VinylSimulatorPlugin_PARAMS_HASH = 0x14152a7c;
+export function packVinylSimulatorPluginParams(params = {}) {
+  const packed = new Float32Array(20);
+  packed[0] = (() => { const value = params["lv"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < -20) return -20; if (value > 20) return 20; return value; })();
+  packed[1] = (() => { const value = params["hf"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 16000; if (value < 6000) return 6000; if (value > 24000) return 24000; return value; })();
+  packed[2] = (() => { const value = params["mb"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 250; if (value < 50) return 50; if (value > 1000) return 1000; return value; })();
+  packed[3] = (() => { const value = params["sm"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 70; if (value < 0) return 0; if (value > 100) return 100; return value; })();
+  packed[4] = (() => { const index = ["33⅓","45","78"].indexOf(params["rp"]); return index < 0 ? 0 : index; })();
+  packed[5] = (() => { const value = params["rd"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 120; if (value < 60) return 60; if (value > 146) return 146; return value; })();
+  packed[6] = (() => { const value = params["rg"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 13.17; if (value < 0.1) return 0.1; if (value > 100) return 100; return value; })();
+  packed[7] = (() => { const value = params["dr"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 2; if (value < 0) return 0; if (value > 10000) return 10000; return value; })();
+  packed[8] = (() => { const value = params["st"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0.08; if (value < 0) return 0; if (value > 10000) return 10000; return value; })();
+  packed[9] = (() => { const value = params["sc"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < 0) return 0; if (value > 1000) return 1000; return value; })();
+  packed[10] = (() => { const index = ["Spherical","Elliptical"].indexOf(params["sh"]); return index < 0 ? 1 : index; })();
+  packed[11] = (() => { const value = params["rs"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 18; if (value < 5) return 5; if (value > 25) return 25; return value; })();
+  packed[12] = (() => { const value = params["rc"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 8; if (value < 2) return 2; if (value > 25) return 25; return value; })();
+  packed[13] = (() => { const value = params["tf"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 2; if (value < 0.5) return 0.5; if (value > 5) return 5; return value; })();
+  packed[14] = (() => { const value = params["tm"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0.4; if (value < 0.1) return 0.1; if (value > 1.5) return 1.5; return value; })();
+  packed[15] = (() => { const value = params["cm"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 15; if (value < 5) return 5; if (value > 35) return 35; return value; })();
+  packed[16] = (() => { const value = params["dz"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0.25; if (value < 0.05) return 0.05; if (value > 1) return 1; return value; })();
+  packed[17] = (() => { const index = ["Eco","Standard","High","Ultra"].indexOf(params["ql"]); return index < 0 ? 1 : index; })();
+  packed[18] = (() => { const value = params["og"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < -24) return -24; if (value > 24) return 24; return value; })();
+  packed[19] = (() => { const value = params["mx"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 100; if (value < 0) return 0; if (value > 100) return 100; return value; })();
+  return packed;
+}
+
 export const VolumePlugin_PARAMS_HASH = 0x66796aa7;
 export function packVolumePluginParams(params = {}) {
   const packed = new Float32Array(1);
@@ -1142,6 +1168,7 @@ export const DSP_PARAM_LAYOUTS = Object.freeze({
   TransientShaperPlugin: Object.freeze({ hash: TransientShaperPlugin_PARAMS_HASH, floatCount: 7 }),
   TremoloPlugin: Object.freeze({ hash: TremoloPlugin_PARAMS_HASH, floatCount: 7 }),
   VinylArtifactsPlugin: Object.freeze({ hash: VinylArtifactsPlugin_PARAMS_HASH, floatCount: 12 }),
+  VinylSimulatorPlugin: Object.freeze({ hash: VinylSimulatorPlugin_PARAMS_HASH, floatCount: 20 }),
   VolumePlugin: Object.freeze({ hash: VolumePlugin_PARAMS_HASH, floatCount: 1 }),
   WowFlutterPlugin: Object.freeze({ hash: WowFlutterPlugin_PARAMS_HASH, floatCount: 7 }),
 });
@@ -1212,6 +1239,7 @@ export const DSP_PARAM_PACKERS = new Map([
   ["TransientShaperPlugin", Object.freeze({ pack: packTransientShaperPluginParams, hash: TransientShaperPlugin_PARAMS_HASH, floatCount: 7 })],
   ["TremoloPlugin", Object.freeze({ pack: packTremoloPluginParams, hash: TremoloPlugin_PARAMS_HASH, floatCount: 7 })],
   ["VinylArtifactsPlugin", Object.freeze({ pack: packVinylArtifactsPluginParams, hash: VinylArtifactsPlugin_PARAMS_HASH, floatCount: 12 })],
+  ["VinylSimulatorPlugin", Object.freeze({ pack: packVinylSimulatorPluginParams, hash: VinylSimulatorPlugin_PARAMS_HASH, floatCount: 20 })],
   ["VolumePlugin", Object.freeze({ pack: packVolumePluginParams, hash: VolumePlugin_PARAMS_HASH, floatCount: 1 })],
   ["WowFlutterPlugin", Object.freeze({ pack: packWowFlutterPluginParams, hash: WowFlutterPlugin_PARAMS_HASH, floatCount: 7 })],
 ]);

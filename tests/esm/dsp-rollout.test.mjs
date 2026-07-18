@@ -103,6 +103,7 @@ test('rollout enables only shipped kernels with matching generated layouts', () 
     'NoiseBlenderPlugin',
     'SimpleJitterPlugin',
     'VinylArtifactsPlugin',
+    'VinylSimulatorPlugin',
     'DopplerDistortionPlugin',
     'PitchShifterPlugin',
     'TremoloPlugin',

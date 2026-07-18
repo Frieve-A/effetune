@@ -1,0 +1,106 @@
+.vinyl-simulator-container {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.vinyl-simulator-panel {
+    padding: 10px;
+    border-radius: 4px;
+    background: #2d2d2d;
+}
+
+.vinyl-simulator-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    margin-bottom: 12px;
+}
+
+.vinyl-simulator-tab {
+    flex: 1 1 100px;
+    min-height: 36px;
+    padding: 8px 14px;
+    border: 1px solid #484848;
+    border-radius: 4px 4px 0 0;
+    color: #ddd;
+    background: #333;
+    cursor: pointer;
+}
+
+.vinyl-simulator-tab:hover {
+    background: #3c3c3c;
+}
+
+.vinyl-simulator-tab.active {
+    border-color: #666;
+    color: #fff;
+    background: #484848;
+}
+
+.vinyl-simulator-tab:focus-visible {
+    outline: 2px solid #7ec8ff;
+    outline-offset: 2px;
+}
+
+.vinyl-simulator-tab-content {
+    display: none;
+    min-height: 196px;
+}
+
+.vinyl-simulator-tab-content.active {
+    display: block;
+}
+
+.vinyl-simulator-hud {
+    width: 100%;
+    min-height: 140px;
+    max-width: none !important;
+    margin-top: 8px;
+    overflow: hidden;
+    border: 1px solid #454545;
+    border-radius: 4px;
+    background: #171717;
+}
+
+.vinyl-simulator-hud canvas {
+    display: block;
+}
+
+.vinyl-simulator-status-note {
+    margin-top: 6px;
+    color: #aaa;
+    font-size: 11px;
+    line-height: 1.35;
+}
+
+body.layout-mobile .vinyl-simulator-container,
+body.layout-mobile .vinyl-simulator-panel,
+body.layout-mobile .vinyl-simulator-tab-content,
+body.layout-mobile .vinyl-simulator-hud {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+body.layout-mobile .vinyl-simulator-panel {
+    padding: 8px;
+    overflow-x: hidden;
+    overflow-x: clip;
+}
+
+body.layout-mobile .vinyl-simulator-tabs {
+    gap: 4px;
+}
+
+body.layout-mobile .vinyl-simulator-tab {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+    min-height: 42px;
+    padding: 8px 6px;
+}
+
+body.layout-mobile .vinyl-simulator-tab-content {
+    min-height: 0;
+}

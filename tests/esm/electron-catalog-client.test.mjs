@@ -29,6 +29,10 @@ function createApi({ protocolVersion = 1 } = {}) {
     'showTrackInFolder',
     'createPlaylist',
     'createPlaylistWithItems',
+    'recordRecentlyPlayed',
+    'setTrackFavorite',
+    'getFavoriteTrackUids',
+    'getSystemPlaylists',
     'renamePlaylist',
     'reorderPlaylistItem',
     'removePlaylistItem',
@@ -111,6 +115,8 @@ test('Electron catalog client mirrors bounded repository read methods', async ()
   for (const method of [
     'createPlaylist',
     'createPlaylistWithItems',
+    'recordRecentlyPlayed',
+    'setTrackFavorite',
     'renamePlaylist',
     'reorderPlaylistItem',
     'removePlaylistItem',
@@ -121,6 +127,13 @@ test('Electron catalog client mirrors bounded repository read methods', async ()
     const request = { method };
     assert.deepEqual(await client[method](request), { method, value: request });
   }
+  const favoriteRequest = { limit: 25, cursor: { position: 1024, itemKey: 7 } };
+  assert.deepEqual(await client.getFavoriteTrackUids(favoriteRequest), {
+    method: 'getFavoriteTrackUids', value: favoriteRequest
+  });
+  assert.deepEqual(await client.getSystemPlaylists(), {
+    method: 'getSystemPlaylists', value: undefined
+  });
   assert.equal(client.appendPlaylistItems, undefined);
   assert.equal(client.publishPlaylist, undefined);
   assert.deepEqual(await client.addFolder(), { method: 'addFolder', value: undefined });

@@ -17,8 +17,33 @@ const PLAYER_ICONS = {
   shuffle: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.8-1.1 2-1.7 3.3-1.7H22"/><path d="m18 2 4 4-4 4"/><path d="M2 6h1.9c1.5 0 2.9.9 3.6 2.2"/><path d="M22 18h-5.9c-1.3 0-2.6-.7-3.3-1.8l-.5-.8"/><path d="m18 14 4 4-4 4"/></svg>',
   repeat: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>',
   repeat1: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/><path d="M11.3 10.3 13 9.5V15" stroke-width="1.8"/></svg>',
-  close: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M6 6l12 12M18 6L6 18"/></svg>'
+  close: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  expand: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="m6 9 6 6 6-6"/></svg>',
+  collapse: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="m6 15 6-6 6 6"/></svg>',
+  miniPlayer: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M4 9h6V3M20 15h-6v6"/><path d="m10 9-7-7M14 15l7 7"/></svg>',
+  restore: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M10 3H4v6M14 21h6v-6"/><path d="m4 3 7 7M20 21l-7-7"/></svg>',
+  pin: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="m14 4 6 6-3 1-4 4-1 4-7-7 4-1 4-4z"/><path d="m9 16-5 5"/></svg>'
 };
+
+// Desktop-only preference: whether the player is expanded to show the
+// artwork and queue below the transport row.
+const PLAYER_QUEUE_EXPANDED_STORAGE_KEY = 'playerQueueExpanded';
+
+function readStoredQueueExpanded() {
+  try {
+    return globalThis.localStorage?.getItem?.(PLAYER_QUEUE_EXPANDED_STORAGE_KEY) === 'true';
+  } catch (_) {
+    return false;
+  }
+}
+
+function storeQueueExpanded(expanded) {
+  try {
+    globalThis.localStorage?.setItem?.(PLAYER_QUEUE_EXPANDED_STORAGE_KEY, expanded ? 'true' : 'false');
+  } catch (_) {
+    // Storage may be unavailable (private mode); the toggle still works for the session.
+  }
+}
 
 const PLAYER_ARTWORK_PLACEHOLDER = '<svg width="72" height="72" viewBox="0 0 72 72" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" draggable="false"><path d="M28 50V20l24-5v30"/><circle cx="22" cy="50" r="7"/><circle cx="46" cy="45" r="7"/></svg>';
 
@@ -36,10 +61,18 @@ export class AudioPlayerUI {
     this.repeatButton = null;
     this.shuffleButton = null;
     this.closeButton = null;
+    this.expandButton = null;
+    this.miniPlayerButton = null;
+    this.restoreButton = null;
+    this.pinButton = null;
+    this.desktopQueueExpanded = readStoredQueueExpanded();
     this.artworkImage = null;
     this.mobileTrackPresentationPending = false;
     this.trackPresentationGeneration = 0;
     this.pendingArtworkPreload = null;
+    this.pendingArtworkPreloadUrl = null;
+    this.lastAppliedArtworkUrl = null;
+    this.loadingStateTimer = null;
     this.playlistDisplay = null;
     this.libraryContextMenu = null;
     this.libraryContextMenuCleanup = null;
@@ -90,7 +123,7 @@ export class AudioPlayerUI {
     });
 
     addStateListener('artworkUrl', (artworkUrl) => {
-      this.updateArtwork(artworkUrl);
+      this.handleArtworkUrlChange(artworkUrl);
     });
 
     addStateListener('isTrackPresentationPending', (isPending) => {
@@ -115,7 +148,9 @@ export class AudioPlayerUI {
     });
 
     addStateListener('currentTrackIndex', () => {
-      this.updatePlaylistDisplay();
+      // Move the active highlight and reveal it without rebuilding the queue,
+      // which would flicker and reset the current scroll position.
+      this.updatePlaylistActiveState();
       this.notifyLibraryNowPlaying();
     });
     
@@ -208,6 +243,11 @@ export class AudioPlayerUI {
     const ICON = PLAYER_ICONS;
     const state = this.audioPlayer.stateManager?.getStateSnapshot();
     const repeatIcon = state?.repeatMode === 'ONE' ? ICON.repeat1 : ICON.repeat;
+    const miniPlayerControls = window.electronAPI ? `
+        <button class="player-button mini-player-button" title="${window.uiManager ? window.uiManager.t('ui.title.miniPlayer') : 'Mini player'}">${ICON.miniPlayer}</button>
+        <button class="player-button restore-button" title="${window.uiManager ? window.uiManager.t('ui.title.exitMiniPlayer') : 'Exit mini player'}">${ICON.restore}</button>
+        <button class="player-button pin-button" title="${window.uiManager ? window.uiManager.t('ui.title.alwaysOnTop') : 'Always on top'}" aria-pressed="false">${ICON.pin}</button>
+    ` : '';
 
     container.innerHTML = `
      <h2>Player</h2>
@@ -229,6 +269,8 @@ export class AudioPlayerUI {
         <button class="player-button next-button" title="${window.uiManager ? window.uiManager.t('ui.title.nextTrack') : 'Next track'}">${ICON.next}</button>
         <button class="player-button repeat-button" title="${window.uiManager ? window.uiManager.t('ui.title.repeat') : 'Toggle repeat mode'}">${repeatIcon}</button>
         <button class="player-button shuffle-button" title="${window.uiManager ? window.uiManager.t('ui.title.shuffle') : 'Toggle shuffle'}">${ICON.shuffle}</button>
+        ${miniPlayerControls}
+        <button class="player-button expand-button" title="${window.uiManager ? window.uiManager.t('ui.title.expandPlayer') : 'Expand player'}">${this.desktopQueueExpanded ? ICON.collapse : ICON.expand}</button>
         <button class="player-button close-button" title="${window.uiManager ? window.uiManager.t('ui.title.closePlayer') : 'Close player'}">${ICON.close}</button>
         <div class="player-playlist" aria-label="Playlist"></div>
       </div>
@@ -246,7 +288,12 @@ export class AudioPlayerUI {
     this.repeatButton = container.querySelector('.repeat-button');
     this.shuffleButton = container.querySelector('.shuffle-button');
     this.closeButton = container.querySelector('.close-button');
+    this.expandButton = container.querySelector('.expand-button');
+    this.miniPlayerButton = container.querySelector('.mini-player-button');
+    this.restoreButton = container.querySelector('.restore-button');
+    this.pinButton = container.querySelector('.pin-button');
     this.artworkImage = container.querySelector('.player-artwork-image');
+    this.lastAppliedArtworkUrl = null;
     this.playlistDisplay = container.querySelector('.player-playlist');
     const initialState = this.audioPlayer.stateManager?.getStateSnapshot?.();
     if (this.isMobileLayout() && initialState?.isTrackPresentationPending === true) {
@@ -304,7 +351,16 @@ export class AudioPlayerUI {
     this.prevButton.addEventListener('click', () => void runPlaybackCommand(() => this.audioPlayer.playPrevious()));
     this.nextButton.addEventListener('click', () => void runPlaybackCommand(() => this.audioPlayer.playNext()));
     this.closeButton.addEventListener('click', () => this.audioPlayer.close());
-    
+
+    this.expandButton?.addEventListener('click', () => {
+      this.setDesktopQueueExpanded(!this.desktopQueueExpanded);
+    });
+    this.miniPlayerButton?.addEventListener('click', () => window.uiManager?.toggleMiniPlayer?.());
+    this.restoreButton?.addEventListener('click', () => window.uiManager?.toggleMiniPlayer?.());
+    this.pinButton?.addEventListener('click', () => {
+      window.uiManager?.setMiniPlayerAlwaysOnTop?.(!window.uiManager?.miniPlayerAlwaysOnTop);
+    });
+
     // Add repeat button event listener
     this.repeatButton.addEventListener('click', () => void runPlaybackCommand(
       () => this.audioPlayer.playbackManager.toggleRepeatMode()
@@ -316,9 +372,10 @@ export class AudioPlayerUI {
     ));
     
     // Update UI based on loaded state
+    this.setMiniMode(window.uiManager?.miniPlayerMode === true);
     this.updatePlayerUIState();
     this.updateArtwork();
-    this.updateLoadingState();
+    this.updateLoadingState(true);
     this.updatePlaylistDisplay();
     
     this.seekBar.addEventListener('input', () => {
@@ -382,6 +439,7 @@ export class AudioPlayerUI {
         mobilePlayerView.appendChild(this.container);
       }
       window.uiManager?.releaseAudioPlayerLayoutPlaceholder?.();
+      this.applyDesktopQueueExpansion();
       this.updateArtwork();
       window.uiManager?.mobileNav?.updatePlayerPlaceholder?.();
       return;
@@ -402,9 +460,75 @@ export class AudioPlayerUI {
     this.cancelArtworkPreload();
     this.mobileTrackPresentationPending = false;
     this.trackPresentationGeneration += 1;
+    this.applyDesktopQueueExpansion();
     this.updateTrackDisplay();
     this.updateArtwork();
     window.uiManager?.mobileNav?.updatePlayerPlaceholder?.();
+  }
+
+  /**
+   * Whether the desktop player is expanded to show the artwork and queue.
+   * The stored preference only takes effect outside the mobile layout.
+   */
+  isDesktopQueueExpanded() {
+    return !this.isMobileLayout() && this.container?.getAttribute('data-mini-player') !== 'true' &&
+      this.desktopQueueExpanded === true;
+  }
+
+  setMiniMode(enabled) {
+    if (!this.container) return;
+    const miniMode = enabled === true;
+    this.container.setAttribute('data-mini-player', miniMode ? 'true' : 'false');
+    this.setMiniPlayerAlwaysOnTop(window.uiManager?.miniPlayerAlwaysOnTop === true);
+    this.applyDesktopQueueExpansion();
+    this.updateArtwork();
+  }
+
+  setMiniPlayerAlwaysOnTop(enabled) {
+    this.pinButton?.setAttribute('aria-pressed', enabled === true ? 'true' : 'false');
+  }
+
+  setDesktopQueueExpanded(expanded) {
+    this.desktopQueueExpanded = expanded === true;
+    storeQueueExpanded(this.desktopQueueExpanded);
+    this.applyDesktopQueueExpansion();
+    this.updateArtwork();
+    if (this.isDesktopQueueExpanded()) this.updatePlaylistActiveState();
+  }
+
+  /**
+   * Sync the container attribute, toggle button face, and queue placement
+   * with the current expansion state and layout mode.
+   */
+  applyDesktopQueueExpansion() {
+    if (!this.container) return;
+    const expanded = this.isDesktopQueueExpanded();
+    this.container.setAttribute('data-expanded', expanded ? 'true' : 'false');
+    if (this.expandButton) {
+      this.expandButton.innerHTML = expanded ? PLAYER_ICONS.collapse : PLAYER_ICONS.expand;
+      this.expandButton.title = expanded
+        ? this.t('ui.title.collapsePlayer')
+        : this.t('ui.title.expandPlayer');
+    }
+    this.syncQueuePlacement();
+  }
+
+  /**
+   * The queue lives inside .player-controls (mobile grid area), but the
+   * expanded desktop layout places it as a direct grid child of the player.
+   */
+  syncQueuePlacement() {
+    if (!this.container || !this.playlistDisplay) return;
+    if (this.isDesktopQueueExpanded()) {
+      if (this.playlistDisplay.parentNode !== this.container) {
+        this.container.appendChild(this.playlistDisplay);
+      }
+      return;
+    }
+    const controls = this.container.querySelector('.player-controls');
+    if (controls && this.playlistDisplay.parentNode !== controls) {
+      controls.appendChild(this.playlistDisplay);
+    }
   }
 
   /**
@@ -525,19 +649,102 @@ export class AudioPlayerUI {
       return;
     }
 
-    this.cancelArtworkPreload();
+    // Desktop: leave any in-flight artwork preload alone. Playback commits
+    // re-publish currentTrack (with an unchanged value) while the artwork is
+    // still decoding, and cancelling here would drop the swap for good; the
+    // preload verifies itself against the latest artworkUrl when it finishes.
+    if (this.isMobileLayout()) this.cancelArtworkPreload();
     this.mobileTrackPresentationPending = false;
     this.trackPresentationGeneration += 1;
     this.updateTrackDisplay(track);
   }
 
   handleTrackPresentationPending(isPending) {
-    if (!this.isMobileLayout()) return;
+    if (!this.isMobileLayout()) {
+      // Desktop holds the previous artwork while metadata resolves; once the
+      // pending flag clears, swap to whatever the final state carries.
+      if (isPending === false) {
+        const state = this.audioPlayer.stateManager?.getStateSnapshot?.();
+        this.scheduleDesktopArtworkSwap(state?.artworkUrl || '');
+      }
+      return;
+    }
     if (isPending === true) {
       if (!this.mobileTrackPresentationPending) this.beginMobileTrackPresentation();
       return;
     }
     if (this.mobileTrackPresentationPending) this.commitMobileTrackPresentation();
+  }
+
+  handleArtworkUrlChange(artworkUrl) {
+    if (this.isMobileLayout()) {
+      this.updateArtwork(artworkUrl);
+      return;
+    }
+    this.scheduleDesktopArtworkSwap(artworkUrl || '');
+  }
+
+  /**
+   * Flicker-free desktop artwork update: keep the current image on screen
+   * until the replacement is decoded, and ignore the transient empty URL that
+   * precedes an asynchronous artwork load.
+   */
+  scheduleDesktopArtworkSwap(artworkUrl) {
+    if (artworkUrl === this.lastAppliedArtworkUrl) {
+      this.cancelArtworkPreload();
+      return;
+    }
+    if (this.pendingArtworkPreload && this.pendingArtworkPreloadUrl === artworkUrl) {
+      return;
+    }
+    this.cancelArtworkPreload();
+
+    if (!artworkUrl) {
+      const state = this.audioPlayer.stateManager?.getStateSnapshot?.();
+      // A cleared URL while presentation is pending is just the load gap;
+      // the final artwork (or a definitive empty) arrives with pending=false.
+      if (state?.isTrackPresentationPending === true) return;
+      this.applyArtwork('');
+      return;
+    }
+
+    const ImageConstructor = this.documentRef?.defaultView?.Image ?? globalThis.Image;
+    if (typeof ImageConstructor !== 'function') {
+      this.applyArtwork(artworkUrl);
+      return;
+    }
+
+    const preloader = new ImageConstructor();
+    let settled = false;
+    const finish = visibleArtworkUrl => {
+      if (settled) return;
+      settled = true;
+      // Superseded preloads (a newer swap replaced this one) simply drop out.
+      if (this.isDisposed || this.pendingArtworkPreload !== preloader) return;
+      this.pendingArtworkPreload = null;
+      this.pendingArtworkPreloadUrl = null;
+      // State may have moved on while the image decoded; only apply if this
+      // is still the artwork the current state asks for.
+      const latestUrl = this.audioPlayer.stateManager?.getStateSnapshot?.()?.artworkUrl || '';
+      if (latestUrl !== artworkUrl) return;
+      this.applyArtwork(visibleArtworkUrl);
+    };
+    preloader.onload = () => {
+      if (typeof preloader.decode !== 'function') {
+        finish(artworkUrl);
+        return;
+      }
+      Promise.resolve()
+        .then(() => preloader.decode())
+        .then(() => finish(artworkUrl), () => finish(artworkUrl));
+    };
+    preloader.onerror = () => finish('');
+    this.pendingArtworkPreload = preloader;
+    this.pendingArtworkPreloadUrl = artworkUrl;
+    preloader.src = artworkUrl;
+    if (preloader.complete && preloader.naturalWidth > 0) {
+      queueMicrotask(() => preloader.onload?.());
+    }
   }
 
   beginMobileTrackPresentation() {
@@ -603,6 +810,7 @@ export class AudioPlayerUI {
       this.pendingArtworkPreload.onerror = null;
       this.pendingArtworkPreload = null;
     }
+    this.pendingArtworkPreloadUrl = null;
   }
 
   getCurrentTrack() {
@@ -632,7 +840,13 @@ export class AudioPlayerUI {
   applyArtwork(artworkUrl) {
     if (!this.artworkImage) return;
 
-    this.artworkImage.src = artworkUrl || '';
+    const nextUrl = artworkUrl || '';
+    // Re-assigning an identical src forces a repaint that can blink, so only
+    // touch the image when the URL actually changes.
+    if (this.lastAppliedArtworkUrl !== nextUrl) {
+      this.artworkImage.src = nextUrl;
+      this.lastAppliedArtworkUrl = nextUrl;
+    }
     this.artworkImage.hidden = !artworkUrl;
     const artworkContainer = this.artworkImage.parentNode;
     const placeholder = artworkContainer?.querySelector?.('.player-artwork-placeholder');
@@ -640,18 +854,36 @@ export class AudioPlayerUI {
       placeholder.hidden = !!artworkUrl;
     }
     if (artworkContainer?.style) {
-      const keepMobilePlaceholder = window.uiManager?.layoutMode?.isMobile;
-      const hasArtworkLayout = !!artworkUrl || !!keepMobilePlaceholder;
+      const miniPlayer = this.container?.getAttribute('data-mini-player') === 'true';
+      const keepPlaceholder = miniPlayer || window.uiManager?.layoutMode?.isMobile ||
+        this.isDesktopQueueExpanded();
+      const hasArtworkLayout = !!artworkUrl || !!keepPlaceholder;
       artworkContainer.style.display = hasArtworkLayout ? '' : 'none';
       this.container?.setAttribute('data-artwork-layout', hasArtworkLayout ? 'true' : 'false');
     }
   }
 
-  updateLoadingState() {
+  updateLoadingState(immediate = false) {
     if (!this.container) return;
     const state = this.audioPlayer.stateManager?.getStateSnapshot?.();
     const isLoading = state?.isTransitioning === true && state?.transitionType === 'loading';
-    this.container.setAttribute('data-loading', isLoading ? 'true' : 'false');
+    if (this.loadingStateTimer !== null) {
+      clearTimeout(this.loadingStateTimer);
+      this.loadingStateTimer = null;
+    }
+    if (!isLoading || immediate) {
+      this.container.setAttribute('data-loading', isLoading ? 'true' : 'false');
+      return;
+    }
+    // Delay the loading dim/spinner so fast track changes do not flash it;
+    // it still appears for loads that genuinely take a moment.
+    this.loadingStateTimer = setTimeout(() => {
+      this.loadingStateTimer = null;
+      if (this.isDisposed || !this.container) return;
+      const latest = this.audioPlayer.stateManager?.getStateSnapshot?.();
+      const stillLoading = latest?.isTransitioning === true && latest?.transitionType === 'loading';
+      this.container.setAttribute('data-loading', stillLoading ? 'true' : 'false');
+    }, 250);
   }
 
   getDisplayTrackName(track) {
@@ -688,6 +920,30 @@ export class AudioPlayerUI {
     this.playlistSelectionIntent = null;
   }
 
+  /**
+   * Move the active queue highlight without rebuilding the list so track
+   * changes neither flicker nor reset the queue scroll position.
+   */
+  updatePlaylistActiveState() {
+    if (!this.playlistDisplay || !this.audioPlayer.stateManager) return;
+    const state = this.audioPlayer.stateManager.getStateSnapshot();
+    const items = Array.from(this.playlistDisplay.querySelectorAll?.('.player-playlist-item') || []);
+    if (!items.length) {
+      this.updatePlaylistDisplay();
+      return;
+    }
+    let activeItem = null;
+    items.forEach((item, index) => {
+      const ordinal = item.dataset?.ordinal !== undefined
+        ? Number(item.dataset.ordinal)
+        : index;
+      const isActive = ordinal === state.currentTrackIndex;
+      setElementClass(item, 'active', isActive);
+      if (isActive) activeItem = item;
+    });
+    revealPlaylistItem(this.playlistDisplay, activeItem);
+  }
+
   updatePlaylistDisplay() {
     if (!this.playlistDisplay || !this.audioPlayer.stateManager) return;
 
@@ -704,11 +960,7 @@ export class AudioPlayerUI {
       const item = document.createElement('button');
       item.type = 'button';
       item.className = 'player-playlist-item';
-      if (item.classList && typeof item.classList.toggle === 'function') {
-        item.classList.toggle('active', index === state.currentTrackIndex);
-      } else if (index === state.currentTrackIndex) {
-        item.className += ' active';
-      }
+      setElementClass(item, 'active', index === state.currentTrackIndex);
       item.textContent = this.getDisplayTrackName(track) || `Track ${index + 1}`;
       item.addEventListener('contextmenu', event => this.openLibraryTrackMenu(event, track));
       item.addEventListener('click', async () => {
@@ -789,6 +1041,7 @@ export class AudioPlayerUI {
     navigation.appendChild(position);
     navigation.appendChild(next);
     this.playlistDisplay.appendChild(navigation);
+    let activeItem = null;
     rows.forEach((track, index) => {
       if (generation !== this.queueRenderGeneration) return;
       const ordinal = startOrdinal + index;
@@ -796,7 +1049,9 @@ export class AudioPlayerUI {
       item.type = 'button';
       item.className = 'player-playlist-item';
       item.dataset.ordinal = String(ordinal);
-      item.classList?.toggle?.('active', ordinal === state.currentTrackIndex);
+      const isActive = ordinal === state.currentTrackIndex;
+      setElementClass(item, 'active', isActive);
+      if (isActive) activeItem = item;
       item.textContent = this.getDisplayTrackName(track) || this.t('library.queue.trackNumber', {
         number: ordinal + 1
       });
@@ -812,6 +1067,7 @@ export class AudioPlayerUI {
       });
       this.playlistDisplay.appendChild(item);
     });
+    revealPlaylistItem(this.playlistDisplay, activeItem);
   }
 
   async openLibraryTrackMenu(event, track) {
@@ -1214,6 +1470,11 @@ export class AudioPlayerUI {
     this.isDisposed = true;
     this.cancelArtworkPreload();
     this.trackPresentationGeneration += 1;
+    this.lastAppliedArtworkUrl = null;
+    if (this.loadingStateTimer !== null) {
+      clearTimeout(this.loadingStateTimer);
+      this.loadingStateTimer = null;
+    }
     this.stopUpdateInterval();
     if (this.positionRaf !== null) {
       cancelAnimationFrame(this.positionRaf);
@@ -1238,6 +1499,10 @@ export class AudioPlayerUI {
     this.repeatButton = null;
     this.shuffleButton = null;
     this.closeButton = null;
+    this.expandButton = null;
+    this.miniPlayerButton = null;
+    this.restoreButton = null;
+    this.pinButton = null;
     this.artworkImage = null;
     this.playlistDisplay = null;
     window.uiManager?.mobileNav?.updatePlayerPlaceholder?.();
@@ -1260,7 +1525,9 @@ export class AudioPlayerUI {
       'library.queue.nextPage': 'Next queue page',
       'library.queue.trackNumber': `Track ${params.number ?? ''}`,
       'library.state.ok': 'OK',
-      'library.state.noResolvedTracks': 'There are no available library tracks.'
+      'library.state.noResolvedTracks': 'There are no available library tracks.',
+      'ui.title.expandPlayer': 'Expand player',
+      'ui.title.collapsePlayer': 'Collapse player'
     };
     return fallback[key] || String(key).replace(/\{(\w+)\}/g, (_, name) => params[name] ?? '');
   }
@@ -1272,6 +1539,32 @@ function escapeHtml(value) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function setElementClass(element, className, enabled) {
+  if (typeof element?.classList?.toggle === 'function') {
+    element.classList.toggle(className, enabled);
+    return;
+  }
+  const classes = new Set(String(element?.className || '').split(/\s+/).filter(Boolean));
+  if (enabled) classes.add(className);
+  else classes.delete(className);
+  element.className = [...classes].join(' ');
+}
+
+function revealPlaylistItem(playlist, item) {
+  if (!playlist || !item) return;
+  const playlistRect = playlist.getBoundingClientRect?.();
+  const itemRect = item.getBoundingClientRect?.();
+  if (!playlistRect || !itemRect) return;
+  const paginationRect = playlist.querySelector?.('.player-queue-pagination')?.getBoundingClientRect?.();
+  const visibleTop = paginationRect
+    ? Math.min(playlistRect.bottom, Math.max(playlistRect.top, paginationRect.bottom))
+    : playlistRect.top;
+  let scrollDelta = 0;
+  if (itemRect.top < visibleTop) scrollDelta = itemRect.top - visibleTop;
+  else if (itemRect.bottom > playlistRect.bottom) scrollDelta = itemRect.bottom - playlistRect.bottom;
+  if (scrollDelta !== 0) playlist.scrollTop += scrollDelta;
 }
 
 function reportLibraryActionError(context, error) {

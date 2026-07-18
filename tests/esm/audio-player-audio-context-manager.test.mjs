@@ -2723,6 +2723,33 @@ test('v2 catalog metadata requests Now Playing artwork by track identity', async
   });
 });
 
+test('direct CUE metadata presents its sibling artwork in the player', async () => {
+  await withAudioContextGlobals({}, async ({ calls, mediaSession, objectUrls }) => {
+    const track = {
+      name: 'Artist - First',
+      meta: {
+        title: 'First',
+        artist: 'Artist',
+        album: 'Album',
+        picture: { data: new Uint8Array([1, 2, 3]), format: 'image/png' }
+      }
+    };
+    const { manager, state } = createHarness({
+      calls,
+      playlist: [track],
+      state: { currentTrack: track }
+    });
+
+    manager.loadMetadata(track);
+
+    assert.ok(state.artworkUrl);
+    assert.equal(state.isTrackPresentationPending, false);
+    assert.equal(manager.currentArtworkURL, state.artworkUrl);
+    assert.equal(objectUrls.some(call => call[0] === 'create' && call[1] === state.artworkUrl), true);
+    assert.equal(mediaSession.metadata.metadata.artwork[0].src, state.artworkUrl);
+  });
+});
+
 test('stale ID3 metadata callbacks do not update the current track state', async () => {
   const tagHandlers = new Map();
   await withAudioContextGlobals({

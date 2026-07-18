@@ -130,6 +130,10 @@ export class WebCatalogRepositoryClient {
   async resolvePlaylistExportSource(trackUid) { return this.request('resolvePlaylistExportSource', trackUid); }
   async createPlaylist(options) { return this.request('createPlaylist', options); }
   async createPlaylistWithItems(options) { return this.request('createPlaylistWithItems', options); }
+  async recordRecentlyPlayed(options) { return this.request('recordRecentlyPlayed', options); }
+  async setTrackFavorite(options) { return this.request('setTrackFavorite', options); }
+  async getFavoriteTrackUids(options = {}) { return this.request('getFavoriteTrackUids', options); }
+  async getSystemPlaylists() { return this.request('getSystemPlaylists'); }
   async renamePlaylist(options) { return this.request('renamePlaylist', options); }
   async duplicatePlaylist(options) { return this.request('duplicatePlaylist', options); }
   async reorderPlaylistItem(options) { return this.request('reorderPlaylistItem', options); }

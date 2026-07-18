@@ -10,13 +10,17 @@ const { screen } = require('electron');
 const constants = require('./constants');
 const fileHandlers = require('./file-handlers');
 
-const DEFAULT_SIZE = { width: 1440, height: 900 };
-const MIN_SIZE = { width: 1024, height: 768 };
+const DEFAULT_SIZE = Object.freeze({ width: 1440, height: 900 });
+const MIN_SIZE = Object.freeze({ width: 1024, height: 768 });
+const MINI_DEFAULT_SIZE = Object.freeze({ width: 420, height: 120 });
+const MINI_MIN_SIZE = Object.freeze({ width: 320, height: 96 });
 
 // Saving is suppressed until the window has reached its final restored state.
 // Otherwise the move/resize events fired while the (still un-maximized) window
 // is being positioned behind the splash would overwrite isMaximized with false.
 let restoreComplete = false;
+let windowMode = 'normal';
+let saveSuspended = false;
 
 function finite(value) {
   return Number.isFinite(value);
@@ -33,10 +37,10 @@ function overlapArea(a, b) {
   return Math.max(0, width) * Math.max(0, height);
 }
 
-function clampSize(size) {
+function clampSize(size, defaultSize = DEFAULT_SIZE, minSize = MIN_SIZE) {
   return {
-    width: Math.max(Math.round(size.width) || DEFAULT_SIZE.width, MIN_SIZE.width),
-    height: Math.max(Math.round(size.height) || DEFAULT_SIZE.height, MIN_SIZE.height)
+    width: Math.max(Math.round(size.width) || defaultSize.width, minSize.width),
+    height: Math.max(Math.round(size.height) || defaultSize.height, minSize.height)
   };
 }
 
@@ -62,9 +66,8 @@ function clampInto(bounds, workArea) {
 // The normal (un-maximized) bounds the main window should be created with.
 // Always returns an on-screen rectangle, falling back to a centered default
 // when no usable position was saved or the saved monitor is gone.
-function resolveWindowBoundsForRestore() {
-  const saved = constants.getWindowState().bounds || {};
-  const size = clampSize(saved);
+function resolveBounds(saved, defaultSize, minSize) {
+  const size = clampSize(saved, defaultSize, minSize);
 
   // No saved position → center on the primary display.
   if (!finite(saved.x) || !finite(saved.y)) {
@@ -81,6 +84,14 @@ function resolveWindowBoundsForRestore() {
   }
   // Otherwise keep the saved spot, nudged fully on-screen.
   return clampInto(bounds, display.workArea);
+}
+
+function resolveWindowBoundsForRestore() {
+  return resolveBounds(constants.getWindowState().bounds || {}, DEFAULT_SIZE, MIN_SIZE);
+}
+
+function resolveMiniPlayerBounds(bounds) {
+  return resolveBounds(bounds || {}, MINI_DEFAULT_SIZE, MINI_MIN_SIZE);
 }
 
 // The rectangle the main window will finally occupy, used to center the splash.
@@ -110,7 +121,18 @@ function loadWindowState() {
         : null);
 
     if (bounds && bounds.width && bounds.height) {
-      constants.setWindowState({ bounds, isMaximized: !!saved.isMaximized });
+      const state = { bounds, isMaximized: !!saved.isMaximized };
+      const savedMiniPlayer = saved.miniPlayer;
+      if (savedMiniPlayer && typeof savedMiniPlayer === 'object') {
+        const miniBounds = savedMiniPlayer.bounds;
+        state.miniPlayer = {
+          bounds: miniBounds?.width && miniBounds?.height
+            ? resolveMiniPlayerBounds(miniBounds)
+            : null,
+          alwaysOnTop: savedMiniPlayer.alwaysOnTop === true
+        };
+      }
+      constants.setWindowState(state);
     }
   } catch (error) {
     console.error('Failed to load window state:', error);
@@ -119,12 +141,45 @@ function loadWindowState() {
 
 // Persist the current window state.  No-op until the restore sequence finished
 // (see restoreComplete) so the startup positioning cannot clobber the state.
+function writeWindowState(state) {
+  constants.setWindowState(state);
+  const userDataPath = fileHandlers.getUserDataPath();
+  if (!fs.existsSync(userDataPath)) fs.mkdirSync(userDataPath, { recursive: true });
+  fs.writeFileSync(stateFilePath(), JSON.stringify(state, null, 2));
+}
+
+function roundedBounds(raw) {
+  return {
+    x: Math.round(raw.x),
+    y: Math.round(raw.y),
+    width: Math.round(raw.width),
+    height: Math.round(raw.height)
+  };
+}
+
 function saveWindowState() {
   const mainWindow = constants.getMainWindow();
-  if (!restoreComplete || !mainWindow || mainWindow.isDestroyed()) return;
+  if (saveSuspended || !restoreComplete || !mainWindow || mainWindow.isDestroyed()) return;
 
   try {
     const previous = constants.getWindowState();
+    if (windowMode === 'mini') {
+      if (mainWindow.isMaximized()) return;
+      const raw = mainWindow.isMinimized()
+        ? previous.miniPlayer?.bounds
+        : mainWindow.getBounds();
+      if (!raw) return;
+      writeWindowState({
+        ...previous,
+        miniPlayer: {
+          ...previous.miniPlayer,
+          bounds: roundedBounds(raw),
+          alwaysOnTop: previous.miniPlayer?.alwaysOnTop === true
+        }
+      });
+      return;
+    }
+
     // While minimized the maximized flag isn't observable, so keep the
     // previously persisted one. getNormalBounds() is the un-maximized restore
     // rectangle in every state, so the saved position is always the one the
@@ -132,19 +187,11 @@ function saveWindowState() {
     const maximized = mainWindow.isMinimized() ? !!previous.isMaximized : mainWindow.isMaximized();
     const raw = mainWindow.getNormalBounds();
     const state = {
-      bounds: {
-        x: Math.round(raw.x),
-        y: Math.round(raw.y),
-        width: Math.round(raw.width),
-        height: Math.round(raw.height)
-      },
+      ...previous,
+      bounds: roundedBounds(raw),
       isMaximized: maximized
     };
-    constants.setWindowState(state);
-
-    const userDataPath = fileHandlers.getUserDataPath();
-    if (!fs.existsSync(userDataPath)) fs.mkdirSync(userDataPath, { recursive: true });
-    fs.writeFileSync(stateFilePath(), JSON.stringify(state, null, 2));
+    writeWindowState(state);
   } catch (error) {
     console.error('Failed to save window state:', error);
   }
@@ -155,10 +202,82 @@ function markRestoreComplete() {
   restoreComplete = true;
 }
 
+// A BrowserWindow can be recreated in the same process on macOS. Keep the
+// persisted bounds, but restart its in-memory lifetime in normal mode so a
+// window that was closed while mini does not inherit stale transition state.
+function prepareForNewWindow() {
+  restoreComplete = false;
+  windowMode = 'normal';
+  saveSuspended = false;
+}
+
+function enterMiniMode() {
+  if (windowMode === 'mini') return;
+  saveWindowState();
+  windowMode = 'mini';
+}
+
+function exitMiniMode() {
+  if (windowMode === 'normal') return;
+  saveWindowState();
+  windowMode = 'normal';
+}
+
+function suspendSave() {
+  saveSuspended = true;
+}
+
+function resumeSave() {
+  saveSuspended = false;
+}
+
+function getMiniPlayerState() {
+  const miniPlayer = constants.getWindowState().miniPlayer;
+  if (!miniPlayer?.bounds) return null;
+  return {
+    bounds: { ...miniPlayer.bounds },
+    alwaysOnTop: miniPlayer.alwaysOnTop === true
+  };
+}
+
+function setMiniPlayerAlwaysOnTop(alwaysOnTop) {
+  const previous = constants.getWindowState();
+  const state = {
+    ...previous,
+    miniPlayer: {
+      ...previous.miniPlayer,
+      bounds: previous.miniPlayer?.bounds || null,
+      alwaysOnTop: alwaysOnTop === true
+    }
+  };
+  try {
+    writeWindowState(state);
+  } catch (error) {
+    console.error('Failed to save mini player state:', error);
+  }
+}
+
+function isMiniMode() {
+  return windowMode === 'mini';
+}
+
 module.exports = {
+  DEFAULT_SIZE,
+  MIN_SIZE,
+  MINI_DEFAULT_SIZE,
+  MINI_MIN_SIZE,
   loadWindowState,
   saveWindowState,
   resolveWindowBoundsForRestore,
+  resolveMiniPlayerBounds,
   getSplashTargetBounds,
-  markRestoreComplete
+  markRestoreComplete,
+  prepareForNewWindow,
+  enterMiniMode,
+  exitMiniMode,
+  suspendSave,
+  resumeSave,
+  getMiniPlayerState,
+  setMiniPlayerAlwaysOnTop,
+  isMiniMode
 };

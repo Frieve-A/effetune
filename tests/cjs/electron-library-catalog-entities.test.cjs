@@ -43,6 +43,8 @@ async function seedDerivedTrack(host, {
   relativePath,
   title = trackUid,
   artist = 'Shared Artist',
+  albumArtist = artist,
+  albumArtists,
   album = 'Shared Album',
   genre = 'Shared Genre',
   durationSec = 60
@@ -64,13 +66,68 @@ async function seedDerivedTrack(host, {
   });
   await host.completeMetadataParseSuccess({
     claim: claimed.claim,
-    metadata: { title, artist, albumArtist: artist, album, genre, durationSec },
+    metadata: {
+      title, artist, albumArtist, album, genre, durationSec,
+      ...(albumArtists === undefined ? {} : { albumArtists })
+    },
     metadataStatus: 'ok',
     clearErrorAndRetryState: true,
     updateLastKnownGood: true,
     updateDerivedData: true
   });
 }
+
+test('semicolon-delimited album artists create separate artist memberships', async t => {
+  const { directory, host } = await openCatalog(t);
+  await seedFolder(host, directory);
+  const scan = await host.beginScanFolder({
+    scanId: 'scan-multiple-album-artists',
+    folderId: 'folder',
+    normalizedRoot: directory,
+    expectedLifecycleVersion: 1,
+    resume: false,
+    rootEnumerationRequired: true,
+    continuityBroken: false,
+    sweepEligibility: 'INELIGIBLE'
+  });
+  await seedDerivedTrack(host, {
+    scan,
+    trackUid: 'track-collaboration',
+    relativePath: 'Collaborative Album/song.flac',
+    title: 'Collaboration',
+    artist: 'Track Performer',
+    albumArtist: 'Artist A; Artist B; Artist C',
+    album: 'Collaborative Album'
+  });
+
+  const artistPage = await host.queryEntities({
+    type: 'artist', query: '', sort: 'name', direction: 'asc', limit: 20
+  });
+  assert.deepEqual(artistPage.rows.map(row => ({ name: row.name, trackCount: row.trackCount })), [
+    { name: 'Artist A', trackCount: 1 },
+    { name: 'Artist B', trackCount: 1 },
+    { name: 'Artist C', trackCount: 1 }
+  ]);
+  for (const artist of artistPage.rows) {
+    const trackPage = await host.queryTracks({
+      query: '', sort: 'title', direction: 'asc',
+      scope: { artistKey: artist.artistKey }, limit: 20
+    });
+    assert.deepEqual(trackPage.rows.map(row => row.trackUid), ['track-collaboration']);
+    await host.releaseContext(trackPage.contextToken);
+  }
+  const finalArtistChunk = await host.readContextPageAtOrdinal({
+    contextToken: artistPage.contextToken,
+    ordinal: 2,
+    limit: 2
+  });
+  assert.equal(finalArtistChunk.pageStartOrdinal, 2);
+  assert.deepEqual(finalArtistChunk.rows.map(row => row.name), ['Artist C']);
+  await host.releaseContext(artistPage.contextToken);
+
+  const track = await host.getTrack('track-collaboration');
+  assert.equal(track.albumArtist, 'Artist A; Artist B; Artist C');
+});
 
 test('public folder pages hide tombstones while deletion lookup retains them', async t => {
   const { directory, host } = await openCatalog(t);
@@ -325,6 +382,13 @@ test('track detail scopes, playlist position, and generic anchors use real Elect
   assert.equal(playlistPage.unresolvedCount, 1);
   assert.ok(playlistPage.rows.every(row => Number.isSafeInteger(row.itemKey) && row.playlistVersion === 0));
   assert.notEqual(playlistPage.rows[1].playlistItemKey, playlistPage.rows[2].playlistItemKey);
+  const finalPlaylistChunk = await host.readContextPageAtOrdinal({
+    contextToken: playlistPage.contextToken,
+    ordinal: 3,
+    limit: 3
+  });
+  assert.equal(finalPlaylistChunk.pageStartOrdinal, 3);
+  assert.deepEqual(finalPlaylistChunk.rows.map(row => row.trackUid), [null]);
   for (const field of ['folderId', 'albumKey', 'artistKey', 'genreKey', 'subfolderKey']) {
     assert.equal(Object.hasOwn(playlistPage.rows[1], field), true);
   }

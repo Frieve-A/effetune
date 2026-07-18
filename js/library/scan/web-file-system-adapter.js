@@ -75,6 +75,22 @@ export class WebFileSystemScanAdapter {
     }
   }
 
+  async listFileNames(relativeDirectory = '', signal) {
+    throwIfAborted(signal);
+    const directory = await getDirectoryAtPath(this.rootHandle, relativeDirectory);
+    const names = [];
+    try {
+      for await (const handle of directory.values()) {
+        throwIfAborted(signal);
+        if (handle?.kind === 'file' && typeof handle.name === 'string') names.push(handle.name);
+      }
+      return names;
+    } catch (error) {
+      if (error?.name === 'AbortError') throw error;
+      throw fileSystemError(error, 'transient-io');
+    }
+  }
+
   async readSmallFile({ relativePath, maximumBytes, signal } = {}) {
     const file = await this.getFile(relativePath, signal);
     if (file.size > maximumBytes) return { tooLarge: true, size: file.size, bytes: null };

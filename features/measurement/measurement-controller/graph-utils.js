@@ -2,7 +2,7 @@
  * Graph utilities for the measurement controller
  */
 
-import audioUtils from '../audioUtils.js';
+import audioUtils from '../audio-utils/index.js';
 import i18n from '../i18n.js';
 
 const GraphUtils = {
@@ -365,4 +365,4 @@ const GraphUtils = {
     }
 };
 
-export default GraphUtils; 
+export default GraphUtils;

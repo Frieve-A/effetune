@@ -3,8 +3,8 @@
  */
 
 import dataStorage from '../dataStorage.js';
-import measurementController from '../measurementController.js';
-import audioUtils from '../audioUtils.js';
+import measurementController from '../measurement-controller/index.js';
+import audioUtils from '../audio-utils/index.js';
 import MeasurementDisplay from './measurement-display.js';
 import GraphRenderer from './graph-renderer.js';
 import CorrectionHandler from './correction-handler.js';
@@ -64,6 +64,14 @@ class UIManager {
         document.querySelector('.original-line').style.backgroundColor = this.graphColors.original;
         document.querySelector('.correction-line').style.backgroundColor = this.graphColors.correction;
         document.querySelector('.corrected-line').style.backgroundColor = this.graphColors.corrected;
+    }
+
+    logSliderToValue(sliderValue, minValue, maxValue) {
+        return this.correctionHandler.logSliderToValue(sliderValue, minValue, maxValue);
+    }
+
+    valueToLogSlider(value, minValue, maxValue) {
+        return this.correctionHandler.valueToLogSlider(value, minValue, maxValue);
     }
 
     /**
@@ -229,6 +237,12 @@ class UIManager {
         });
         
         this.currentScreen = screenId;
+
+        // On the stacked mobile layout the active screen sits below the history
+        // pane; bring it into view so screen changes are visible.
+        if (document.body.classList.contains('layout-mobile')) {
+            document.querySelector('.main-content')?.scrollIntoView({ behavior: 'smooth' });
+        }
     }
     
     /**
@@ -302,12 +316,14 @@ class UIManager {
         try {
             // Initialize audio context on first user gesture.
             await window.app.initializeAudio();
+            await window.app.populateAudioDevices();
 
             // Clean up any existing audio resources before starting
             this.cleanupAudioBeforeNavigation();
             
             // Proceed with measurement setup by preparing the config screen
             this.prepareConfigScreen();
+            window.app.selectSavedAudioDevices();
         } catch (error) {
             console.error('Could not start new measurement due to audio initialization failure:', error);
             this.showNotification(i18n.t('error:audioInitFailed', { message: error.message }), 'error');

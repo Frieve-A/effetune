@@ -202,6 +202,7 @@ export class PowerPolicyController {
         this.dspUiActivityAllowed = true;
         this.playerUiActivityAllowed = true;
         this.uiPowerGateInitialized = false;
+        this.dspUiSuppressionReasons = new Set();
     }
 
     isControllerEnabled() {
@@ -214,6 +215,18 @@ export class PowerPolicyController {
 
     getDspUiActivityAllowed() {
         return this.dspUiActivityAllowed;
+    }
+
+    setDspUiSuppressed(reason, suppressed) {
+        if (typeof reason !== 'string' || reason.trim() === '') return false;
+        const normalizedReason = reason.trim();
+        if (suppressed === true) {
+            this.dspUiSuppressionReasons.add(normalizedReason);
+        } else {
+            this.dspUiSuppressionReasons.delete(normalizedReason);
+        }
+        this._setUiPowerGate(this.effectiveState, this.processingDirective);
+        return true;
     }
 
     getInputConfigRevision() {
@@ -1603,7 +1616,7 @@ export class PowerPolicyController {
         const dspUiEnabled = state === AudioPowerState.ACTIVE &&
             directive !== ProcessingDirective.BYPASS_TRANSPORT &&
             directive !== ProcessingDirective.ZERO_OUTPUT_TRANSPORT &&
-            !physicalOutputSuppressed && !hidden;
+            !physicalOutputSuppressed && !hidden && this.dspUiSuppressionReasons.size === 0;
         const coordinator = this._getTokensAndGuards();
         const playerUiEnabled = state !== AudioPowerState.SUSPENDED && !hidden;
         const dspGateChanged = !this.uiPowerGateInitialized ||

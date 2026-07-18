@@ -391,6 +391,10 @@ test('preload exposes versioned bounded catalog and playlist wrappers', async ()
   await api.showTrackInFolder('track');
   await api.createPlaylist({ playlistId: 'playlist' });
   await api.createPlaylistWithItems({ playlistId: 'playlist-with-items', items: [{ trackUid: 'track' }] });
+  await api.recordRecentlyPlayed({ trackUid: 'track' });
+  await api.setTrackFavorite({ trackUid: 'track', favorite: true });
+  await api.getFavoriteTrackUids();
+  await api.getSystemPlaylists();
   await api.renamePlaylist({ playlistId: 'playlist', name: 'Renamed' });
   await api.reorderPlaylistItem({ playlistId: 'playlist', itemKey: 1, target: { direction: 'up' } });
   await api.removePlaylistItem({ playlistId: 'playlist', itemKey: 1 });

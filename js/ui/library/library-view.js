@@ -12,6 +12,11 @@ import { SegmentedVirtualListGeometry } from './segmented-virtual-list.js';
 import { SegmentedVirtualGridGeometry } from './segmented-virtual-grid.js';
 import { PagedArtworkLoader } from './artwork-loader.js';
 import { DurableActionController } from './durable-action-controller.js';
+import {
+  SYSTEM_PLAYLIST_IDS,
+  isSystemPlaylistId,
+  systemPlaylistLabelKey
+} from '../../library/playlists/system-playlists.js';
 
 const VIEW_LABELS = {
   tracks: 'library.nav.tracks',
@@ -51,6 +56,9 @@ const ICONS = {
   down: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/></svg>',
   export: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>',
   import: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 21V9"/><path d="M7 14l5-5 5 5"/><path d="M5 3h14"/></svg>',
+  recent: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  star: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-2.9-5.6 2.9 1.1-6.2L3 9.6l6.2-.9z"/></svg>',
+  starFilled: '<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 2.7 2.9 5.9 6.5.9-4.7 4.6 1.1 6.4-5.8-3-5.8 3 1.1-6.4-4.7-4.6 6.5-.9z"/></svg>',
   more: '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>',
   close: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>'
 };
@@ -219,6 +227,8 @@ export class LibraryView {
     this.loadUIState();
     this.unsubscribe = [];
     this.lastScanState = null;
+    this.activeScanStates = new Map();
+    this.folderScanStates = new Map();
     this.lastCueWarningNotificationScanId = null;
     this.removingFolderIds = new Set();
     this.folderRemovalProgress = new Map();
@@ -244,11 +254,17 @@ export class LibraryView {
     this.contextMenuReturnFocus = null;
     this.renderedPageTrackIds = [];
     this.nowPlayingTrackId = null;
+    this.favoriteTrackUids = new Set();
+    this.favoriteStateRequestId = 0;
+    this.favoriteMutationDepth = 0;
     this.searchComposing = false;
     this.searchDebounceTimer = null;
     this.mobileHistoryInitialized = false;
     this.mobileHistoryDepth = 0;
     this.mobileHistoryIndex = 0;
+    this.navigationReturnSnapshot = null;
+    this.pendingPagedNavigationPosition = null;
+    this.pagedNavigationRestorePosition = null;
     this.suppressPopStateCount = 0;
     this.isViewShown = false;
     this.lastRevealedMobileNavView = null;
@@ -318,12 +334,17 @@ export class LibraryView {
     });
     if (typeof this.manager.addListener === 'function') {
       this.unsubscribe.push(
-        this.manager.addListener('ready', () => this.render()),
+        this.manager.addListener('ready', () => {
+          void this.refreshSystemPlaylistState();
+          this.render();
+        }),
         this.manager.addListener('catalog-changed', event => this.handleCatalogInvalidation(event)),
+        this.manager.addListener('playlists-changed', event => this.handlePlaylistsChanged(event)),
         this.manager.addListener('scan-state', state => this.handleScanState(state)),
         this.manager.addListener('folder-removal-state', state => this.handleFolderRemovalState(state))
       );
     }
+    void this.refreshSystemPlaylistState();
     this.render();
     return this.root;
   }
@@ -435,12 +456,84 @@ export class LibraryView {
     this.scheduleRender();
   }
 
+  handlePlaylistsChanged(event) {
+    const scopes = Array.isArray(event?.changedScopes) ? event.changedScopes : [];
+    if (scopes.some(scope => scope === 'playlists' || scope === `playlist:${SYSTEM_PLAYLIST_IDS.favorites}`)) {
+      if ((this.favoriteMutationDepth ?? 0) > 0) {
+        return;
+      }
+      void this.refreshFavoriteTrackUids();
+    }
+  }
+
+  async refreshSystemPlaylistState() {
+    await this.refreshFavoriteTrackUids();
+  }
+
+  async refreshFavoriteTrackUids() {
+    if (typeof this.manager?.playlists?.getFavoriteTrackUids !== 'function') return;
+    const requestId = ++this.favoriteStateRequestId;
+    try {
+      const result = await this.manager.playlists.getFavoriteTrackUids();
+      if (requestId !== this.favoriteStateRequestId) return;
+      this.favoriteTrackUids = new Set(Array.isArray(result) ? result : result?.trackUids ?? []);
+      this.refreshRenderedFavoriteStates();
+    } catch (error) {
+      if (requestId === this.favoriteStateRequestId) {
+        console.warn('Unable to refresh favorite tracks:', error);
+      }
+    }
+  }
+
   handleScanState(state) {
-    this.lastScanState = state;
+    this.updateTrackedScanStates(state);
+    this.lastScanState = this.getCombinedActiveScanState() ?? state;
     this.reportCueScanWarnings(state);
     this.refreshPagedFolderScanState();
     this.renderStatus();
     this.flushDeferredCatalogInvalidation();
+  }
+
+  updateTrackedScanStates(state) {
+    if (!state || typeof state !== 'object') return;
+    this.activeScanStates ??= new Map();
+    this.folderScanStates ??= new Map();
+    const scanId = typeof state.scanId === 'string' && state.scanId
+      ? state.scanId
+      : '__unidentified-scan__';
+    const previous = this.activeScanStates.get(scanId);
+    const folderIds = [...new Set([
+      ...getScanStateFolderIds(previous),
+      ...getScanStateFolderIds(state)
+    ])];
+    const trackedState = { ...previous, ...state, folderIds };
+
+    if (state.phase === 'scanning') {
+      this.activeScanStates.delete(scanId);
+      this.activeScanStates.set(scanId, trackedState);
+    } else {
+      this.activeScanStates.delete(scanId);
+    }
+    for (const folderId of folderIds) this.folderScanStates.set(folderId, trackedState);
+  }
+
+  getCombinedActiveScanState() {
+    const states = [...(this.activeScanStates?.values?.() ?? [])];
+    if (states.length === 0) return null;
+    const latest = states.at(-1);
+    return {
+      ...latest,
+      phase: 'scanning',
+      folderIds: [...new Set(states.flatMap(getScanStateFolderIds))],
+      found: states.reduce((total, state) => total + Number(state.found ?? 0), 0),
+      parsed: states.reduce((total, state) => total + Number(state.parsed ?? 0), 0)
+    };
+  }
+
+  getTrackedFolderScanState(folderId) {
+    const active = [...(this.activeScanStates?.values?.() ?? [])]
+      .findLast(state => getScanStateFolderIds(state).includes(folderId));
+    return active ?? this.folderScanStates?.get?.(folderId) ?? null;
   }
 
   reportCueScanWarnings(state) {
@@ -483,7 +576,12 @@ export class LibraryView {
   }
 
   isCatalogRefreshDeferred() {
-    return this.lastScanState?.phase === 'scanning' || (this.removingFolderIds?.size ?? 0) > 0;
+    const scanInProgress = this.activeScanStates instanceof Map
+      ? this.activeScanStates.size > 0
+      : this.lastScanState?.phase === 'scanning';
+    return scanInProgress ||
+      (this.removingFolderIds?.size ?? 0) > 0 ||
+      (this.favoriteMutationDepth ?? 0) > 0;
   }
 
   flushDeferredCatalogInvalidation() {
@@ -913,7 +1011,26 @@ export class LibraryView {
 
   render() {
     if (!this.root) return;
-    if (this.pagedState?.phase === 'committed') {
+    const pendingPagedNavigationPosition = this.pendingPagedNavigationPosition;
+    this.pendingPagedNavigationPosition = null;
+    const queryFingerprint = JSON.stringify(this.getPagedQuery());
+    const restoresPagedNavigationPosition =
+      pendingPagedNavigationPosition?.queryFingerprint === queryFingerprint;
+    if (restoresPagedNavigationPosition) {
+      this.pagedNavigationRestorePosition = {
+        ...pendingPagedNavigationPosition,
+        anchor: pendingPagedNavigationPosition.anchor
+          ? { ...pendingPagedNavigationPosition.anchor }
+          : null
+      };
+    } else if (this.pagedNavigationRestorePosition?.queryFingerprint !== queryFingerprint) {
+      this.pagedNavigationRestorePosition = null;
+    }
+    if (
+      !restoresPagedNavigationPosition &&
+      this.pagedState?.phase === 'committed' &&
+      this.pagedQueryKey === queryFingerprint
+    ) {
       this.pagedContentScrollTop = Number(this.content?.scrollTop) || 0;
       this.capturePagedAnchor();
     }
@@ -925,6 +1042,18 @@ export class LibraryView {
     this.pausePagedWindowRendering?.();
     // Clear the visible row identities before the paged view commits its next snapshot.
     this.renderedPageTrackIds = [];
+    if (restoresPagedNavigationPosition) {
+      this.pagedAnchor = pendingPagedNavigationPosition.anchor
+        ? { ...pendingPagedNavigationPosition.anchor }
+        : null;
+      this.pagedViewportOrdinal = Number.isSafeInteger(pendingPagedNavigationPosition.viewportOrdinal)
+        ? pendingPagedNavigationPosition.viewportOrdinal
+        : 0;
+      this.pagedViewportOffsetPx = Number(pendingPagedNavigationPosition.viewportOffsetPx) || 0;
+      this.pagedContentScrollTop = Number(pendingPagedNavigationPosition.contentScrollTop) || 0;
+      this.pagedResetScrollOnCommit = false;
+      this.pagedScrollToAnchorOnCommit = false;
+    }
     this.renderPagedLibrary(renderVersion);
     this.renderStatus();
   }
@@ -1040,7 +1169,8 @@ export class LibraryView {
         query: '',
         sort: preference.sort,
         direction: preference.direction,
-        scope: null
+        scope: null,
+        ...(entityType === 'playlist' ? { includeSystemPlaylists: true } : {})
       };
     }
     return {
@@ -1708,8 +1838,9 @@ export class LibraryView {
         showEmptyWhenNoResults: logicalCount === 0
       }));
     }
-    if (this.currentView === 'playlists' && !this.detail && !this.searchEntityType &&
-        !this.searchQuery.trim()) {
+    const isPlaylistCollection = this.currentView === 'playlists' && !this.detail &&
+      !this.searchEntityType && !this.searchQuery.trim();
+    if (isPlaylistCollection) {
       shell.appendChild(this.createPagedPlaylistCollectionControls());
     }
     if (this.detail?.type === 'playlist') {
@@ -1876,7 +2007,14 @@ export class LibraryView {
         }
       }
       const cachedRows = this.pagedController.getCachedRows(range.startOrdinal, range.endOrdinal);
-      const firstVisibleRowCached = cachedRows.some(({ ordinal }) => ordinal === range.firstVisibleOrdinal);
+      const cachedOrdinals = new Set(cachedRows.map(({ ordinal }) => ordinal));
+      let missingOrdinal = null;
+      for (let ordinal = range.startOrdinal; ordinal < range.endOrdinal; ordinal += 1) {
+        if (!cachedOrdinals.has(ordinal)) {
+          missingOrdinal = ordinal;
+          break;
+        }
+      }
       const focusedEntityIsRendered = cachedRows.some(({ row }) => (
         (isTrackQuery ? this.getPagedTrackIdentity(row) : this.getPagedEntityId(row)) === this.pagedFocusedEntityId
       ));
@@ -1962,22 +2100,8 @@ export class LibraryView {
       }
       rendering = false;
       if (preparing) return;
-      if (!firstVisibleRowCached) {
-        const trailingRows = Math.max(
-          1,
-          Math.min(
-            this.pagedController.pageLimit,
-            range.endOrdinal - range.firstVisibleOrdinal
-          )
-        );
-        const backwardLeadRows = Math.max(
-          0,
-          this.pagedController.pageLimit - trailingRows
-        );
-        const loadOrdinal = scrollDirection < 0
-          ? Math.max(0, range.firstVisibleOrdinal - backwardLeadRows)
-          : range.firstVisibleOrdinal;
-        void this.ensurePagedOrdinal(loadOrdinal);
+      if (missingOrdinal !== null) {
+        void this.ensurePagedOrdinal(missingOrdinal);
       } else if (isTrackQuery && isMobileLayout() &&
           typeof this.pagedController.prefetchAroundOrdinal === 'function') {
         void this.pagedController.prefetchAroundOrdinal(range.firstVisibleOrdinal, {
@@ -2022,22 +2146,6 @@ export class LibraryView {
         this.renderPagedCommitted(this.pagedState);
       }, 100);
     };
-    this.pausePagedWindowRendering = pauseWindowRendering;
-    this.refreshPagedWindow = refreshWindow;
-    this.content.addEventListener?.('scroll', scheduleWindowRender, { passive: true });
-    globalThis.window?.addEventListener?.('resize', onResize);
-    this.trackScrollCleanup = () => {
-      active = false;
-      this.content?.removeEventListener?.('scroll', scheduleWindowRender);
-      globalThis.window?.removeEventListener?.('resize', onResize);
-      pauseWindowRendering();
-      clearTimeout(this.pagedResizeTimer);
-      this.pagedResizeTimer = null;
-      if (this.pausePagedWindowRendering === pauseWindowRendering) {
-        this.pausePagedWindowRendering = null;
-      }
-      if (this.refreshPagedWindow === refreshWindow) this.refreshPagedWindow = null;
-    };
     const initialRowOrdinal = isTrackQuery
       ? this.pagedViewportOrdinal
       : Math.floor(this.pagedViewportOrdinal / (gridGeometry?.columns ?? 1));
@@ -2060,15 +2168,49 @@ export class LibraryView {
     this.pagedPublishedResultSignature = this.createPagedCommittedSearchSignature(state);
     this.pagedPublishedSearchQuery = this.searchQuery.trim();
     const initialScrollTop = Math.max(0, (grid.offsetTop || 0) + initialPhysicalScrollTop);
-    this.content.scrollTop = this.pagedResetScrollOnCommit
-      ? 0
-      : this.pagedScrollToAnchorOnCommit
-        ? initialScrollTop
-        : this.pagedContentScrollTop;
+    const navigationRestorePosition =
+      this.pagedNavigationRestorePosition?.queryFingerprint === this.pagedQueryKey
+        ? this.pagedNavigationRestorePosition
+        : null;
+    const navigationScrollTop = Number(navigationRestorePosition?.contentScrollTop);
+    const hasNavigationScrollTop = Number.isFinite(navigationScrollTop);
+    let targetScrollTop = this.pagedContentScrollTop;
+    if (this.pagedResetScrollOnCommit) targetScrollTop = 0;
+    else if (hasNavigationScrollTop) targetScrollTop = Math.max(0, navigationScrollTop);
+    else if (this.pagedScrollToAnchorOnCommit) targetScrollTop = initialScrollTop;
+    this.content.scrollTop = targetScrollTop;
     this.pagedContentScrollTop = Number(this.content.scrollTop) || 0;
     this.pagedResetScrollOnCommit = false;
     this.pagedScrollToAnchorOnCommit = false;
     renderWindow();
+    if (navigationRestorePosition) {
+      const maximumScrollTop = Math.max(
+        0,
+        (Number(this.content.scrollHeight) || 0) - (Number(this.content.clientHeight) || 0)
+      );
+      if (Math.abs(this.content.scrollTop - Math.min(targetScrollTop, maximumScrollTop)) < 1) {
+        this.pagedNavigationRestorePosition = null;
+      }
+    }
+    // Attach observers only after the replacement DOM has its final scroll position.
+    // Otherwise the transient scroll event caused by replacing a shorter detail view
+    // can overwrite the retained collection position before it is restored.
+    this.pausePagedWindowRendering = pauseWindowRendering;
+    this.refreshPagedWindow = refreshWindow;
+    this.content.addEventListener?.('scroll', scheduleWindowRender, { passive: true });
+    globalThis.window?.addEventListener?.('resize', onResize);
+    this.trackScrollCleanup = () => {
+      active = false;
+      this.content?.removeEventListener?.('scroll', scheduleWindowRender);
+      globalThis.window?.removeEventListener?.('resize', onResize);
+      pauseWindowRendering();
+      clearTimeout(this.pagedResizeTimer);
+      this.pagedResizeTimer = null;
+      if (this.pausePagedWindowRendering === pauseWindowRendering) {
+        this.pausePagedWindowRendering = null;
+      }
+      if (this.refreshPagedWindow === refreshWindow) this.refreshPagedWindow = null;
+    };
   }
 
   createPagedSectionHeader(state, totalCount, isTrackQuery) {
@@ -2367,6 +2509,7 @@ export class LibraryView {
     header.setAttribute('aria-rowindex', '1');
     header.innerHTML = `
       <span class="library-track-control-header" role="columnheader" aria-label="${escapeHtml(this.t('library.paged.selectAll'))}"></span>
+      <span class="library-track-control-header" role="columnheader" aria-label="${escapeHtml(this.t('library.playlist.system.favorites'))}"></span>
       ${TRACK_SORT_COLUMNS.map(column => this.renderSortHeader(column)).join('')}
       <span class="library-track-control-header" role="columnheader" aria-label="${escapeHtml(this.t('library.action.more'))}"></span>
     `;
@@ -2403,7 +2546,10 @@ export class LibraryView {
       descriptor,
       request: operationRequest,
       targetName: useWholeContext && this.detail?.type === 'playlist'
-        ? (this.detail.title || this.t('library.nav.playlists'))
+        ? this.getSystemPlaylistName(
+            this.detail.key,
+            this.detail.title || this.t('library.nav.playlists')
+          )
         : (request.target?.name ?? request.target?.playlistId ?? '')
     });
     return { accepted: true, value: promise };
@@ -2561,16 +2707,20 @@ export class LibraryView {
   }
 
   createPagedPlaylistControls() {
+    const systemPlaylist = isSystemPlaylistId(this.detail.key);
     const playlist = {
       id: this.detail.key,
-      name: this.detail.title || this.t('library.nav.playlists')
+      name: this.getSystemPlaylistName(
+        this.detail.key,
+        this.detail.title || this.t('library.nav.playlists')
+      )
     };
     const controls = document.createElement('div');
     controls.className = 'library-playlist-actions library-paged-playlist-actions';
     controls.dataset.libraryPlaylistExport = 'true';
     controls.tabIndex = -1;
     controls.innerHTML = `
-      <button type="button" class="library-button library-playlist-rename">${ICONS.edit}<span>${escapeHtml(this.t('library.action.rename'))}</span></button>
+      ${systemPlaylist ? '' : `<button type="button" class="library-button library-playlist-rename">${ICONS.edit}<span>${escapeHtml(this.t('library.action.rename'))}</span></button>`}
       <button type="button" class="library-button library-playlist-duplicate">${ICONS.duplicate}<span>${escapeHtml(this.t('library.action.duplicate'))}</span></button>
       <label class="library-checkbox library-playlist-export-relative-wrap"><input type="checkbox" class="library-playlist-export-relative" checked><span>${escapeHtml(this.t('library.option.relativePaths'))}</span></label>
       <button type="button" class="library-button library-playlist-export-m3u8" data-library-playlist-export>${ICONS.export}<span>${escapeHtml(this.t('library.action.exportM3U8'))}</span></button>
@@ -2621,6 +2771,7 @@ export class LibraryView {
     const row = document.createElement('div');
     const trackUid = isTrackQuery ? this.getPagedTrackUid(item) : null;
     const entityId = isTrackQuery ? this.getPagedTrackIdentity(item) : this.getPagedEntityId(item);
+    const systemPlaylist = entityType === 'playlist' && isSystemPlaylistId(entityId);
     const playlistItemKey = isTrackQuery ? this.getPagedPlaylistMutationKey(item) : null;
     const unresolvedPlaylistItem = isTrackQuery && this.isPagedPlaylistItemUnresolved(item);
     const unresolvedStatusId = unresolvedPlaylistItem
@@ -2630,10 +2781,12 @@ export class LibraryView {
       unresolvedPlaylistItem ? this.t('library.state.missing') : ''
     );
     const nowPlaying = isTrackQuery && this.nowPlayingTrackId === trackUid;
+    const canFavorite = Boolean(trackUid && !unresolvedPlaylistItem);
+    const favorite = canFavorite && this.favoriteTrackUids?.has(trackUid) === true;
     const isFirstPlaylistItem = this.detail?.type === 'playlist' && ordinal === 0;
     const isLastPlaylistItem = this.detail?.type === 'playlist' &&
       Number.isSafeInteger(state.totalCount) && ordinal === state.totalCount - 1;
-    row.className = `library-paged-row${isTrackQuery ? '' : ' library-paged-entity-card'}${isMediaCard ? ' library-paged-media-card' : ''}${isFolder ? ' library-paged-folder-row' : ''}${unresolvedPlaylistItem ? ' library-paged-unresolved' : ''}${nowPlaying ? ' now-playing' : ''}`;
+    row.className = `library-paged-row${isTrackQuery ? '' : ' library-paged-entity-card'}${isMediaCard ? ' library-paged-media-card' : ''}${isFolder ? ' library-paged-folder-row' : ''}${systemPlaylist ? ' library-system-playlist-card' : ''}${unresolvedPlaylistItem ? ' library-paged-unresolved' : ''}${nowPlaying ? ' now-playing' : ''}`;
     row._pagedItem = item;
     row.dataset.entityId = entityId ?? '';
     if (isTrackQuery) row.dataset.trackId = trackUid ?? '';
@@ -2667,6 +2820,7 @@ export class LibraryView {
       );
       row.innerHTML = `
         <span class="library-paged-select-cell" role="gridcell"><input class="library-paged-select" type="checkbox" aria-label="${escapeHtml(this.t('library.paged.selectTrack', { title: trackTitle }))}"${selected ? ' checked' : ''}></span>
+        <span class="library-paged-favorite-cell" role="gridcell">${canFavorite ? `<button type="button" class="library-icon-button library-paged-favorite${favorite ? ' is-favorite' : ''}" data-favorite-track-id="${escapeHtml(trackUid)}" aria-pressed="${favorite ? 'true' : 'false'}" aria-label="${escapeHtml(this.t(favorite ? 'library.action.removeFavorite' : 'library.action.addFavorite'))}" title="${escapeHtml(this.t(favorite ? 'library.action.removeFavorite' : 'library.action.addFavorite'))}">${favorite ? ICONS.starFilled : ICONS.star}</button>` : ''}</span>
         <span class="library-track-title" role="gridcell"><span class="library-now-playing-indicator" aria-hidden="true" ${nowPlaying ? '' : 'hidden'}>♪</span><span class="library-track-title-text">${escapeHtml(trackTitle)}</span>${unresolvedPlaylistItem ? `<span id="${unresolvedStatusId}" class="library-badge missing library-paged-unresolved-status">${escapeHtml(this.t('library.state.missing'))}</span>` : ''}</span>
         <span class="library-artist-cell" role="gridcell">${artistDetail ? `<button type="button" class="library-link library-artist-link">${escapeHtml(this.getTrackArtistLabel(item))}</button>` : escapeHtml(item.artist || item.albumArtist || '')}</span>
         <span class="library-album-cell" role="gridcell">${item.albumKey ? `<button type="button" class="library-link library-album-link">${escapeHtml(this.getTrackAlbumLabel(item))}</button>` : escapeHtml(item.album || '')}</span>
@@ -2680,6 +2834,14 @@ export class LibraryView {
         </span>` : ''}
       `;
       const checkbox = row.querySelector('.library-paged-select');
+      row.querySelector('.library-paged-favorite')?.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        const desired = !this.favoriteTrackUids?.has(trackUid);
+        this.runLibraryCommand(() => this.setFavoriteTrackUids([trackUid], desired), {
+          logMessage: 'Music Library favorite update failed:'
+        });
+      });
       checkbox?.addEventListener('click', event => {
         checkbox._pagedShiftKey = event.shiftKey === true;
       });
@@ -2868,13 +3030,18 @@ export class LibraryView {
       const artworkId = typeof (item.representativeTrackUid ?? item.representativeArtworkId ?? item.artworkId) === 'string'
         ? item.representativeTrackUid ?? item.representativeArtworkId ?? item.artworkId
         : '';
-      const title = item.name || item.displayName || entityId;
+      const title = systemPlaylist
+        ? this.getSystemPlaylistName(entityId, item.name || item.displayName)
+        : item.name || item.displayName || entityId;
       const caption = this.getPagedEntityCaption(item, entityType);
       if (isMediaCard) {
         const playDisabled = this.isPagedActionBusy() ||
           typeof this.manager.performSelectionAction !== 'function';
+        const artwork = systemPlaylist
+          ? `<span class="library-paged-artwork library-system-playlist-artwork" aria-hidden="true"><span class="library-system-playlist-icon">${entityId === SYSTEM_PLAYLIST_IDS.recentlyPlayed ? ICONS.recent : ICONS.starFilled}</span></span>`
+          : '<span class="library-paged-artwork" aria-hidden="true"><span></span></span>';
         row.innerHTML = `
-          <span class="library-paged-artwork" aria-hidden="true"><span></span></span>
+          ${artwork}
           <span class="library-paged-entity-title library-card-title">${escapeHtml(title)}</span>
           <span class="library-card-subtitle">${escapeHtml(caption)}</span>
           <button type="button" class="library-paged-entity-open library-album-open" aria-label="${escapeHtml(title)}"></button>
@@ -2919,7 +3086,7 @@ export class LibraryView {
     return row;
   }
 
-  getPagedFolderStatus(folder, scanState = this.lastScanState) {
+  getPagedFolderStatus(folder, scanState = undefined) {
     if (this.removingFolderIds?.has(folder.id)) {
       return {
         key: 'removingFolder',
@@ -2928,18 +3095,23 @@ export class LibraryView {
         text: this.getFolderRemovalStatusText(folder.id)
       };
     }
-    const affectedFolderIds = Array.isArray(scanState?.folderIds)
-      ? scanState.folderIds
-      : typeof scanState?.folderId === 'string' ? [scanState.folderId] : [];
+    const effectiveScanState = scanState === undefined
+      ? this.getTrackedFolderScanState(folder.id) ?? this.lastScanState
+      : scanState;
+    const affectedFolderIds = getScanStateFolderIds(effectiveScanState);
     const scanAffectsFolder = affectedFolderIds.includes(folder.id);
-    if (scanAffectsFolder && scanState?.phase === 'scanning') {
+    if (scanAffectsFolder && effectiveScanState?.phase === 'scanning') {
       return { key: 'scanning', className: 'scanning', busy: true };
     }
-    if (scanAffectsFolder && scanState?.phase === 'error') {
+    if (scanAffectsFolder && effectiveScanState?.phase === 'error') {
       return { key: 'scanError', className: 'scan-error', busy: false };
     }
     if (folder.status === 'missing' || folder.status === 'needs-permission') {
       return { key: folder.status, className: folder.status, busy: false };
+    }
+    if (scanAffectsFolder && effectiveScanState?.phase === 'done' &&
+        ['completed', 'completed-no-sweep'].includes(effectiveScanState.status)) {
+      return { key: 'ok', className: 'ok', busy: false };
     }
     const status = folder.lastScanAt === null || folder.lastScanAt === undefined
       ? 'never-scanned'
@@ -2947,7 +3119,7 @@ export class LibraryView {
     return { key: status, className: status, busy: false };
   }
 
-  updatePagedFolderRowState(row, folder, scanState = this.lastScanState) {
+  updatePagedFolderRowState(row, folder, scanState = undefined) {
     const status = this.getPagedFolderStatus(folder, scanState);
     const badge = row?.querySelector?.('[data-folder-status]');
     if (badge) {
@@ -2978,9 +3150,12 @@ export class LibraryView {
     const scopeKey = PAGED_CARD_SCOPE_KEYS[entityType];
     const entityId = this.getPagedEntityId(entity);
     if (!scopeKey || !entityId) return Promise.resolve({ kind: 'unavailable' });
+    const targetName = entityType === 'playlist' && isSystemPlaylistId(entityId)
+      ? this.getSystemPlaylistName(entityId, entity.name || entity.displayName)
+      : entity.name || entity.displayName || '';
     return this.pagedActionController.track({
       operationKind: 'play',
-      targetName: entity.name || entity.displayName || '',
+      targetName,
       start: async () => {
         let contextToken = null;
         const releaseContext = async () => {
@@ -3327,22 +3502,48 @@ export class LibraryView {
     return item?.caption || trackCount;
   }
 
+  getSystemPlaylistName(playlistId, fallback = '') {
+    const labelKey = systemPlaylistLabelKey(playlistId);
+    return labelKey ? this.t(labelKey) : fallback;
+  }
+
   getPagedTitle() {
     if (this.searchEntityType) {
       return this.t(VIEW_LABELS[DETAIL_VIEW_BY_TYPE[this.searchEntityType]] || 'library.search.results');
     }
     if (this.searchQuery.trim()) return this.t('library.search.results');
+    if (this.detail?.type === 'playlist' && isSystemPlaylistId(this.detail.key)) {
+      return this.getSystemPlaylistName(this.detail.key, this.detail.title);
+    }
     if (this.detail?.title) return this.detail.title;
     return this.t(VIEW_LABELS[this.currentView] || 'library.nav.tracks');
   }
 
   getNavigationSnapshot() {
+    const queryFingerprint = JSON.stringify(this.getPagedQuery());
+    if (this.pagedState?.phase === 'committed' && this.pagedQueryKey === queryFingerprint) {
+      this.pagedContentScrollTop = Number(this.content?.scrollTop) || 0;
+      this.capturePagedAnchor();
+    }
+    const anchor = this.pagedAnchor?.queryFingerprint === queryFingerprint
+      ? { ...this.pagedAnchor }
+      : null;
+    const liveContentScrollTop = Number(this.content?.scrollTop);
     return {
       currentView: this.currentView,
       detail: this.detail ? { ...this.detail } : null,
       searchQuery: this.searchQuery,
       searchEntityType: this.searchEntityType,
-      searchEntityReturnView: this.searchEntityReturnView
+      searchEntityReturnView: this.searchEntityReturnView,
+      pagedPosition: {
+        queryFingerprint,
+        anchor,
+        viewportOrdinal: this.pagedViewportOrdinal,
+        viewportOffsetPx: this.pagedViewportOffsetPx,
+        contentScrollTop: Number.isFinite(liveContentScrollTop)
+          ? liveContentScrollTop
+          : (this.pagedContentScrollTop || 0)
+      }
     };
   }
 
@@ -3356,6 +3557,7 @@ export class LibraryView {
       ? snapshot.searchEntityType
       : null;
     this.searchEntityReturnView = snapshot.searchEntityReturnView || null;
+    this.pendingPagedNavigationPosition = snapshot.pagedPosition || null;
     if (this.searchInput) this.searchInput.value = this.searchQuery;
     this.clearSelection({ keepMobileSelectionMode: false });
     this.render();
@@ -3370,22 +3572,21 @@ export class LibraryView {
         this.mobileHistoryDepth = Number.isSafeInteger(currentState.depth)
           ? Math.max(0, currentState.depth)
           : Math.max(0, currentState.index);
-        globalThis.history.replaceState?.({
-          ...currentState,
-          snapshot: previousSnapshot || this.getNavigationSnapshot()
-        }, '');
-      } else if (typeof globalThis.history.replaceState === 'function') {
+      } else {
         this.mobileHistoryIndex = 0;
         this.mobileHistoryDepth = 0;
-        globalThis.history.replaceState({
-          ...(currentState || {}),
-          effetuneLibrary: true,
-          index: this.mobileHistoryIndex,
-          depth: this.mobileHistoryDepth,
-          snapshot: previousSnapshot || this.getNavigationSnapshot()
-        }, '');
       }
       this.mobileHistoryInitialized = true;
+    }
+    if (typeof globalThis.history.replaceState === 'function') {
+      const currentState = globalThis.history.state;
+      globalThis.history.replaceState({
+        ...(currentState || {}),
+        effetuneLibrary: true,
+        index: this.mobileHistoryIndex,
+        depth: this.mobileHistoryDepth,
+        snapshot: previousSnapshot || currentState?.snapshot || this.getNavigationSnapshot()
+      }, '');
     }
     const currentIndex = Number.isSafeInteger(this.mobileHistoryIndex) ? this.mobileHistoryIndex : 0;
     const currentDepth = Number.isSafeInteger(this.mobileHistoryDepth) ? this.mobileHistoryDepth : 0;
@@ -3408,6 +3609,7 @@ export class LibraryView {
     this.searchQuery = '';
     this.searchEntityType = null;
     this.searchEntityReturnView = null;
+    this.navigationReturnSnapshot = null;
     this.clearSelection({ keepMobileSelectionMode: false });
     if (this.searchInput) this.searchInput.value = '';
     if (pushHistory) this.pushMobileHistory(previousSnapshot);
@@ -3421,6 +3623,7 @@ export class LibraryView {
     }
     this.invalidateNavigationIntent();
     const previousSnapshot = this.getNavigationSnapshot();
+    this.navigationReturnSnapshot = previousSnapshot;
     this.currentView = view || DETAIL_VIEW_BY_TYPE[detail.type] || this.currentView;
     this.detail = { ...detail };
     this.detailSortOverride = false;
@@ -3437,6 +3640,7 @@ export class LibraryView {
     if (!PAGED_SEARCH_ENTITY_TYPES.includes(entityType) || !this.searchQuery.trim()) return false;
     this.invalidateNavigationIntent();
     const previousSnapshot = this.getNavigationSnapshot();
+    this.navigationReturnSnapshot = previousSnapshot;
     this.searchEntityReturnView = this.currentView;
     this.currentView = DETAIL_VIEW_BY_TYPE[entityType];
     this.detail = null;
@@ -3456,9 +3660,12 @@ export class LibraryView {
     }
     if (this.searchEntityType) {
       this.invalidateNavigationIntent();
+      const returnSnapshot = this.navigationReturnSnapshot;
       this.currentView = this.searchEntityReturnView || 'tracks';
       this.searchEntityType = null;
       this.searchEntityReturnView = null;
+      this.navigationReturnSnapshot = null;
+      this.pendingPagedNavigationPosition = returnSnapshot?.pagedPosition || null;
       this.detail = null;
       this.clearSelection({ keepMobileSelectionMode: false });
       if (this.searchInput) this.searchInput.value = this.searchQuery;
@@ -3467,10 +3674,13 @@ export class LibraryView {
     }
     if (!this.detail && !this.searchQuery) return false;
     this.invalidateNavigationIntent();
+    const returnSnapshot = this.navigationReturnSnapshot;
     this.detail = null;
     this.searchQuery = '';
     this.searchEntityType = null;
     this.searchEntityReturnView = null;
+    this.navigationReturnSnapshot = null;
+    this.pendingPagedNavigationPosition = returnSnapshot?.pagedPosition || null;
     this.clearSelection({ keepMobileSelectionMode: false });
     if (this.searchInput) this.searchInput.value = '';
     this.render();
@@ -3666,6 +3876,120 @@ export class LibraryView {
     if (flushPendingBreakpointRebuild) this.flushPendingBreakpointRebuild();
   }
 
+  refreshRenderedFavoriteStates() {
+    this.content?.querySelectorAll?.('[data-favorite-track-id]').forEach(button => {
+      const trackUid = button.dataset.favoriteTrackId;
+      const favorite = this.favoriteTrackUids.has(trackUid);
+      button.setAttribute('aria-pressed', favorite ? 'true' : 'false');
+      const label = this.t(favorite ? 'library.action.removeFavorite' : 'library.action.addFavorite');
+      button.setAttribute('aria-label', label);
+      button.title = label;
+      button.innerHTML = favorite ? ICONS.starFilled : ICONS.star;
+      setClass(button, 'is-favorite', favorite);
+    });
+  }
+
+  async setFavoriteTrackUids(trackUids, favorite) {
+    this.favoriteTrackUids ??= new Set();
+    const uniqueTrackUids = [...new Set(trackUids.filter(trackUid => (
+      typeof trackUid === 'string' && trackUid
+    )))];
+    if (uniqueTrackUids.length === 0) return { kind: 'noop' };
+    this.favoriteMutationDepth = (this.favoriteMutationDepth ?? 0) + 1;
+    try {
+      const previous = new Map(uniqueTrackUids.map(trackUid => [
+        trackUid,
+        this.favoriteTrackUids.has(trackUid)
+      ]));
+      for (const trackUid of uniqueTrackUids) {
+        if (favorite) this.favoriteTrackUids.add(trackUid);
+        else this.favoriteTrackUids.delete(trackUid);
+      }
+      this.refreshRenderedFavoriteStates();
+      const failures = [];
+      for (const trackUid of uniqueTrackUids) {
+        try {
+          const result = await this.manager.playlists.setTrackFavorite(trackUid, favorite);
+          if (result?.kind === 'busy') {
+            const error = new Error('Favorites is busy');
+            error.code = 'playlistBusy';
+            failures.push(error);
+            if (previous.get(trackUid)) this.favoriteTrackUids.add(trackUid);
+            else this.favoriteTrackUids.delete(trackUid);
+          }
+        } catch (error) {
+          failures.push(error);
+          if (previous.get(trackUid)) this.favoriteTrackUids.add(trackUid);
+          else this.favoriteTrackUids.delete(trackUid);
+        }
+      }
+      this.refreshRenderedFavoriteStates();
+      if (failures.length > 0) throw failures[0];
+      return { kind: favorite ? 'favorited' : 'unfavorited', count: uniqueTrackUids.length };
+    } finally {
+      this.favoriteMutationDepth = Math.max(0, (this.favoriteMutationDepth ?? 1) - 1);
+      if (this.favoriteMutationDepth === 0) {
+        await this.refreshFavoriteTrackUids();
+        this.flushDeferredCatalogInvalidation();
+      }
+    }
+  }
+
+  async resolveFavoriteActionTrackUids(intent, track) {
+    const fallbackTrackUid = this.getPagedTrackUid(track);
+    const descriptor = intent?.descriptor;
+    const currentIdentity = this.getPagedTrackIdentity(track);
+    if (!descriptor || descriptor.contextToken !== this.pagedController?.contextToken) {
+      return fallbackTrackUid ? [fallbackTrackUid] : [];
+    }
+    if (descriptor.mode === 'explicit' && descriptor.trackUids?.length === 1 &&
+        descriptor.trackUids[0] === currentIdentity) {
+      return fallbackTrackUid ? [fallbackTrackUid] : [];
+    }
+    const rows = [];
+    const limit = 500;
+    const totalCount = Number.isSafeInteger(this.pagedState?.totalCount)
+      ? this.pagedState.totalCount
+      : null;
+    for (let ordinal = 0; ; ordinal += limit) {
+      if (totalCount !== null && ordinal >= totalCount) break;
+      const page = await this.manager.readContextPageAtOrdinal({
+        contextToken: descriptor.contextToken,
+        ordinal,
+        limit
+      });
+      const pageRows = Array.isArray(page?.rows) ? page.rows : [];
+      rows.push(...pageRows.map(item => ({
+        identity: this.getPagedTrackIdentity(item),
+        trackUid: this.getPagedTrackUid(item)
+      })));
+      if (pageRows.length < limit) break;
+    }
+    const exclusions = new Set(descriptor.exclusions ?? []);
+    const inclusions = new Set(descriptor.inclusions ?? []);
+    const explicit = new Set(descriptor.trackUids ?? []);
+    let rangeStart = -1;
+    let rangeEnd = -1;
+    if (descriptor.mode === 'range') {
+      const first = rows.findIndex(row => row.identity === descriptor.startUid);
+      const last = rows.findIndex(row => row.identity === descriptor.endUid);
+      if (first >= 0 && last >= 0) {
+        rangeStart = Math.min(first, last);
+        rangeEnd = Math.max(first, last);
+      }
+    }
+    return [...new Set(rows.flatMap((row, index) => {
+      if (!row.trackUid) return [];
+      const selected = descriptor.mode === 'all'
+        ? !exclusions.has(row.identity)
+        : descriptor.mode === 'range'
+          ? (inclusions.has(row.identity) || index >= rangeStart && index <= rangeEnd) &&
+            !exclusions.has(row.identity)
+          : explicit.has(row.identity);
+      return selected ? [row.trackUid] : [];
+    }))];
+  }
+
   openPagedTrackContextMenu(event, track, context = {}) {
     event.preventDefault();
     this.closeContextMenu();
@@ -3686,6 +4010,8 @@ export class LibraryView {
       : ' disabled';
     const artistDetail = this.getTrackArtistDetail(track);
     const canShowInFolder = Boolean(trackUid && typeof this.manager?.showTrackInFolder === 'function');
+    const canFavorite = Boolean(trackUid && !this.isPagedPlaylistItemUnresolved(track));
+    const favorite = canFavorite && this.favoriteTrackUids?.has(trackUid) === true;
     const menu = document.createElement('div');
     menu.className = 'library-context-menu';
     menu.setAttribute('role', 'menu');
@@ -3696,6 +4022,7 @@ export class LibraryView {
       <button type="button" role="menuitem" data-action="next"${disabled}>${ICONS.next}<span>${escapeHtml(this.t('library.action.playNext'))}</span></button>
       <button type="button" role="menuitem" data-action="queue"${disabled}>${ICONS.queue}<span>${escapeHtml(this.t('library.action.addToQueue'))}</span></button>
       <button type="button" role="menuitem" data-action="playlist"${disabled}>${ICONS.add}<span>${escapeHtml(this.t('library.action.addToPlaylist'))}</span></button>
+      <button type="button" role="menuitem" data-action="favorite"${canFavorite ? '' : ' disabled'}>${favorite ? ICONS.starFilled : ICONS.star}<span>${escapeHtml(this.t(favorite ? 'library.action.removeFavorite' : 'library.action.addFavorite'))}</span></button>
       <hr>
       <button type="button" role="menuitem" data-action="album"${track?.albumKey ? '' : ' disabled'}><span>${escapeHtml(this.t('library.action.goToAlbum'))}</span></button>
       <button type="button" role="menuitem" data-action="artist"${artistDetail ? '' : ' disabled'}><span>${escapeHtml(this.t('library.action.goToArtist'))}</span></button>
@@ -3718,6 +4045,15 @@ export class LibraryView {
           { logMessage: 'Music Library playlist menu failed:' }
         );
       }
+    });
+    menu.querySelector('[data-action="favorite"]')?.addEventListener('click', () => {
+      const desired = !favorite;
+      this.closeContextMenu();
+      if (!canFavorite) return;
+      this.runLibraryCommand(async () => {
+        const trackUids = await this.resolveFavoriteActionTrackUids(actionIntent, track);
+        return this.setFavoriteTrackUids(trackUids, desired);
+      }, { logMessage: 'Music Library favorite update failed:' });
     });
     menu.querySelector('[data-action="album"]')?.addEventListener('click', () => {
       this.closeContextMenu();
@@ -4909,6 +5245,16 @@ function aggregateFolderRemovalProgress(folderIds, progressByFolder) {
   return Number.isSafeInteger(deleted) && Number.isSafeInteger(total) ? { deleted, total } : null;
 }
 
+function getScanStateFolderIds(state) {
+  if (!state || typeof state !== 'object') return [];
+  const folderIds = [
+    ...(Array.isArray(state.folderIds) ? state.folderIds : []),
+    ...(typeof state.folderId === 'string' ? [state.folderId] : []),
+    ...(Array.isArray(state.results) ? state.results.map(result => result?.folderId) : [])
+  ];
+  return [...new Set(folderIds.filter(folderId => typeof folderId === 'string' && folderId))];
+}
+
 function fallbackText(key, params = {}) {
   const map = {
     'library.title': 'Music Library',
@@ -4931,6 +5277,8 @@ function fallbackText(key, params = {}) {
     'library.action.playNext': 'Play Next',
     'library.action.addToQueue': 'Add to Queue',
     'library.action.addToPlaylist': 'Add to Playlist',
+    'library.action.addFavorite': 'Add to Favorites',
+    'library.action.removeFavorite': 'Remove from Favorites',
     'library.action.newPlaylist': 'New Playlist',
     'library.action.importPlaylist': 'Import Playlist',
     'library.action.exportM3U8': 'Export M3U8',
@@ -4977,6 +5325,8 @@ function fallbackText(key, params = {}) {
     'library.importPreview.unresolved': 'Unresolved tracks:',
     'library.importPreview.moreUnresolved': `${params.count || 0} more unresolved tracks`,
     'library.playlist.copyName': `Copy of ${params.name || 'Playlist'}`,
+    'library.playlist.system.recentlyPlayed': 'Recently Played',
+    'library.playlist.system.favorites': 'Favorites',
     'library.option.relativePaths': 'Relative paths',
     'library.prompt.queuePlaylistName': 'Queue',
     'library.prompt.playlistName': 'Playlist name',

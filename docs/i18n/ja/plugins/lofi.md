@@ -17,6 +17,7 @@ lang: ja
 - [Noise Blender](#noise-blender) - 雰囲気のある背景テクスチャを追加
 - [Simple Jitter](#simple-jitter) - 控えめな古いデジタル機器の揺らぎを作成
 - [Vinyl Artifacts](#vinyl-artifacts) - レコード風のポップ、クラックル、ヒス、ランブル、ステレオノイズのにじみを追加
+- [Vinyl Simulator](#vinyl-simulator) - 入力をモデル化した溝にカッティングし、物理的な針モデルで再生
 
 ## Bit Crusher
 
@@ -445,5 +446,97 @@ DSD64再生でしばしば議論される控えめな副作用を再現するエ
    - Hiss: -39dB, Rumble: -45dB, Crosstalk: 60%, Noise Profile: 5.0
    - Wear: 80%, React: 75%, React Mode: Velocity, Mix: 100%
    - 最適な用途: 音楽に大きく反応するノイズ
+
+## Vinyl Simulator
+
+Vinyl Simulatorは、音楽信号そのものを物理的なレコードのカッティングと針による再生モデルで変換します。カッティング用フィルターとRIAA録音カーブを通した信号を、表面粗さや異物を持つ溝へ書き込み、針とトーンアームの機械モデルで読み取り、RIAA再生イコライゼーションをかけます。単にレコードノイズを重ねるのではなく、溝の形状、トラッキング、盤面と音楽を相互作用させたい場合に使います。
+
+### Vinyl Artifactsとの違い
+
+- **Vinyl Simulator**は入力信号をモデル化した溝と針に通して変化させます。Roughness、Dust、Static、Tracking Force、針形状、回転数、Radiusがシミュレーションに関わります。
+- **Vinyl Artifacts**は音楽信号自体を変えず、調整可能なポップ、クラックル、ヒス、ランブル、ステレオノイズのにじみを加えます。軽量で予測しやすいノイズ層が欲しい場合や、WASMを利用できない場合はこちらを選びます。
+- 両方を組み合わせることもできますが、まずは片方から始めてください。両方で盤面ノイズを強くすると、クリックやノイズが急激に増えます。
+
+### サウンドエンハンスメントガイド
+
+- **穏やかなレコード再生:** Cut Levelを0 dB付近、ShapeをEllipticalにし、Roughnessを中程度、DustとStaticを少なめにします。原音を多く残すならMixを下げます。
+- **内周らしい変化:** Radiusを60 mmへ近づけます。溝の線速度が下がるため、高域の細部やトラッキングが厳しくなります。Scan Radiusが小さい場合やCut Levelが高い場合は特に顕著です。
+- **きれいで安定した再生:** Roughness、Dust、Static、Scratchを下げ、Tracking Forceを2 g前後に保ち、QualityをStandardまたはHighにします。Cut Levelを下げることでも機械的な負担を減らせます。
+- **古びた、傷んだ盤面:** まずRoughnessを上げ、次にDustとStatic、少量のScratchを足します。それぞれ別の物理現象なので、同時に大きく上げると過剰になりやすくなります。
+- **溝による変化を強調:** Cut Levelを慎重に上げる、HF Cutoffを下げる、またはRadiusを小さくします。HUDでTracking S/Eの低下とmistrack/skipの増加を確認してください。
+- **ワウ・フラッター:** 本エフェクトは速度揺れ、偏芯、反り、ターンテーブルランブルを生成しません。必要な場合はエフェクトチェーンに**Wow Flutter**を追加します。
+
+### パラメータ
+
+#### Cutting
+
+- **Cut Level** (-20～+20 dB) - 入力がカッターを駆動する強さです。上げると溝変位とトラッキングの非線形性が強まり、下げると機械的なヘッドルームが増えます。
+- **HF Cutoff** (6000～24000 Hz) - カッティング前の高域上限です。下げると暗く追従しやすい溝になり、上げると高域の細部を保つ代わりに針への要求が高まります。
+- **Bass Mono Below** (50～1000 Hz) - ステレオのSide成分を減らす周波数範囲を設定します。上げるほど低域が中央に寄り、左右の溝壁が逆方向へ動く低域成分を抑えます。
+- **Side Mix** (0～100%) - Bass Mono Belowより下に残すSide成分です。0%でその帯域がモノラル、100%で元のSideレベルを維持します。
+
+#### Record
+
+- **Speed** (33⅓、45、78 rpm) - 盤の回転数です。同じRadiusなら回転数が高いほど溝の線速度が上がり、細部を追いやすくなります。
+- **Radius** (60～146 mm) - 盤上の針位置です。小さい値は線速度が低く、高域のトラッキングが難しい内周を表します。
+- **Roughness** (0.1～100 nm) - 接触モデルで使う微細な表面粗さです。上げると連続的な盤面テクスチャが増えます。
+- **Dust** (0～10000/s) - 溝に現れる埃粒子の頻度です。上げると物理的な接触と短い乱れが増えます。
+- **Static** (0～10000/s) - 静電気放電パルスの頻度です。溝の形ではなく、カートリッジ出力へ鋭いポップを加えます。
+- **Scratch** (0～1000/s) - 大きな溝欠陥の頻度です。低い値で時折の傷、高い値で意図的に傷んだ効果になります。
+
+#### Stylus
+
+- **Shape** (Spherical / Elliptical) - 接触形状を選びます。Ellipticalは溝方向の追従を方向別に扱い、SphericalはScan RadiusがSide Radiusに連動します。変更するとシミュレーション状態が再構築されます。
+- **Side Radius** (5～25 µm) - 溝壁を横切る方向の針先半径です。接触面積と圧力分布が変わります。
+- **Scan Radius** (2～25 µm) - 溝の進行方向に使う半径です。小さいほど細かな形状を追い、大きいほど広い接触範囲で平均化します。SphericalではSide Radiusに連動します。
+- **Tracking Force** (0.5～5.0 g) - 針圧です。上げると接触が安定しやすい一方、接触力と圧力も増えます。低すぎるとmistrackやskipが増えることがあります。
+- **Tip Mass** (0.1～1.5 mg) - 針先の可動質量です。上げると慣性が増え、速い溝変化への追従が難しくなります。
+- **Compliance** (5～35 cu) - サスペンションの柔らかさです。上げると同じ力で動きやすくなり、機械的な応答が変わります。
+- **Damping** (0.05～1.0 ζ) - 機械共振の減衰です。上げるほどリンギングを強く抑え、低い値では共振的な応答が残ります。
+
+#### Output
+
+- **Quality** (Eco / Standard / High / Ultra) - 物理積分の基準サブステップ数と接触スキャン点数を選びます。接触共振を安定して計算するため、サンプルレート、Tracking Force、Tip Mass、Compliance、Shape、Side Radius、Scan Radiusに応じて、実際のサブステップ数が基準値より自動的に増えることがあります。リアルタイム再生の既定はStandardです。変更するとシミュレーション状態が再構築されます。
+- **Output Gain** (-24～+24 dB) - 再生イコライゼーションと正規化後のレベルを調整します。強いカッティングや盤面設定でピークが大きい場合は下げます。
+- **Mix** (0～100%) - シミュレーション出力とレイテンシーを合わせたドライ信号を混ぜます。0%でドライ、100%で完全なシミュレーション出力です。
+
+### HUDの読み方
+
+- **Force L/R (mN)**は左右の溝壁にかかる接触力です。大きい値や左右差は、厳しい溝変化または不均一な接触を示します。
+- **Pressure (GPa)**は現在の左右で大きい方の接触圧です。Tracking Forceや針先半径を調整するときにForceと併せて見ます。
+- **Tip (cm/s、dB)**は針先速度と、その結果の再生レベルです。
+- **Tracking S/E L/R (dB)**は追従した信号と追従誤差の比です。高いほどきれいに追従し、継続的な低下は針が溝を追いにくい状態を表します。
+- **Jitter (ns)**はStylus表示で確認でき、溝の読取点における時間揺らぎを示します。
+- **Mistrack、Skip、Static Pop、Dust Hit (/s)**は最近のイベント頻度です。新しいイベント時に点滅します。mistrackやskipが続く場合は、Cut Levelを下げる、Tracking Forceを適度に上げる、Radiusを大きくする、またはQualityを上げます。
+
+HUDはネイティブDSPのテレメトリを受信すると動作します。再生停止中や省電力のためテレメトリが休止している間は、ライブ値ではなくアイドル状態を表示することがあります。
+
+### 推奨設定
+
+1. **穏やかな物理再生:** Cut Level 0 dB、HF Cutoff 16 kHz、33⅓ rpm、Radius 120 mm、Roughness 5 nm、Dust 0.5/s、Static 0.02/s、Scratch 0/s、Elliptical、Tracking Force 2.0 g、Quality Standard、Mix 75%
+2. **クラシックな外周再生:** Cut Level 0 dB、HF Cutoff 16 kHz、33⅓ rpm、Radius 135 mm、Roughness 13.17 nm、Dust 2/s、Static 0.08/s、Elliptical、Tracking Force 2.0 g、Quality Standard、Mix 100%
+3. **内周の比較:** Cut Level +3 dB、HF Cutoff 14 kHz、33⅓ rpm、Radius 60 mm、Elliptical、Scan Radius 8 µm、Tracking Force 2.0 g、Quality High、Mix 100%。大きいRadiusと切り替え、Tracking S/Eとイベント数を比較します。
+4. **摩耗した盤面:** Cut Level 0 dB、33⅓ rpm、Radius 100 mm、Roughness 35 nm、Dust 25/s、Static 1/s、Scratch 0.5/s、Tracking Force 2.2 g、Quality Standard、Output Gain -3 dB、Mix 100%
+
+### QualityとCPU負荷の目安
+
+各Qualityプリセットは、基準サブステップ数と接触スキャン点数を設定します。さらに安定性を保つため、接触共振周波数`f_c`から`Nmin = ceil(8 × f_c / sampleRate)`を計算し、`effectiveSubsteps = max(base, Nmin)`を実際のサブステップ数として使います。`f_c`はTracking Force、Tip Mass、Compliance、Shape、Side Radius、Scan Radiusで決まります。既定設定のStandardは96 kHzで基準値の4サブステップのまま動作するため、従来の性能目標は変わりません。
+
+主な負荷は、サンプルレート×実際のサブステップ数×接触スキャン点数に比例します。次の接触評価回数と相対負荷は、安定性の下限によってサブステップ数が増えていない場合の基準値であり、実測CPU使用率ではありません。実際の負荷はCPU、ブラウザー、WASM SIMDの利用可否でも変わります。
+
+| Quality | 基準の物理演算 | 96 kHzでの基準接触評価 | 基準相対負荷 | 用途 |
+|---|---:|---:|---:|---|
+| Eco | 2サブステップ × 7点 | 270万回/秒 | 0.39× | モバイル、低消費電力、複数使用 |
+| Standard | 4 × 9 | 690万回/秒 | 1.00× | 通常のリアルタイム再生 |
+| High | 8 × 13 | 2000万回/秒 | 2.89× | 高速な環境、集中比較 |
+| Ultra | 20 × 25 | 9600万回/秒 | 13.89× | オフライン書き出し、検証 |
+
+安定性の下限が作動していない場合は、基準相対負荷にサンプルレート倍率を掛けます。44.1 kHzは0.46×、48 kHzは0.50×、88.2 kHzは0.92×、96 kHzは1.00×、176.4 kHzは1.84×、192 kHzは2.00×です。サンプルレートとTracking Force、Tip Mass、Compliance、Shape、Side Radius、Scan Radiusの設定によって下限が作動し、実際の負荷がこの基準値より高くなることがあります。音切れする場合は、まずQualityを下げてください。
+
+### WASM要件とモデルの範囲
+
+Vinyl Simulatorのリアルタイム処理には、ネイティブWebAssembly DSPカーネルが必要です。`?dsp=off`でWASMを無効にした場合、非対応環境、または初期化に失敗した場合は、入力を変えずに素通しし、UIにWASMが必要であることを表示します。低速なJavaScript参照シミュレーションへはフォールバックしません。
+
+本モデルは最初のステレオペアを処理します。埃の変形は各粒子が有効な間だけ保持され、針は常に新しく生成される溝へ進みます。そのため周回をまたぐ摩耗は蓄積せず、プリセットにも保存されません。長期摩耗、3D表示、リアルタイムSNR/THDメーター、ワウ・フラッター、偏芯、反り、ターンテーブルランブル、カートリッジの電気的負荷は本エフェクトのモデル外です。
 
 これらのエフェクトは、音楽に個性と懐かしさを加えるためのものです。控えめな設定から始め、好みに合わせて調整してください。

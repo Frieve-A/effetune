@@ -1,0 +1,124 @@
+{
+  "defaults": {
+    "sampleRate": 96000,
+    "blockSize": 128,
+    "channels": 2,
+    "channelMode": "stereo"
+  },
+  "cases": [
+    { "id": "silence-must-process", "stimulus": "silence", "frames": 1537, "params": { "fr": true } },
+    { "id": "standard-default-noise", "stimulus": "noise", "frames": 2049, "params": { "fr": true } },
+    {
+      "id": "eco-spherical-44100-mono",
+      "stimulus": "sweep",
+      "sampleRate": 44100,
+      "blockSize": 83,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 1201,
+      "params": { "fr": true, "rp": "45", "sh": "Spherical", "ql": "Eco", "rs": 15, "rc": 15 }
+    },
+    {
+      "id": "eco-44100-minimum-mass-stability",
+      "stimulus": "silence",
+      "sampleRate": 44100,
+      "blockSize": 83,
+      "frames": 1537,
+      "params": { "fr": true, "ql": "Eco", "tm": 0.1, "tf": 5, "cm": 5, "rs": 25, "rc": 25, "rg": 0.1, "dr": 0, "st": 0, "sc": 0 }
+    },
+    {
+      "id": "eco-48000-minimum-mass-stability",
+      "stimulus": "silence",
+      "sampleRate": 48000,
+      "blockSize": 127,
+      "frames": 1537,
+      "params": { "fr": true, "ql": "Eco", "tm": 0.1, "tf": 5, "cm": 5, "rs": 25, "rc": 25, "rg": 0.1, "dr": 0, "st": 0, "sc": 0 }
+    },
+    {
+      "id": "standard-96000-minimum-mass-stability",
+      "stimulus": "silence",
+      "frames": 1537,
+      "params": { "fr": true, "ql": "Standard", "tm": 0.1, "tf": 5, "cm": 5, "rs": 25, "rc": 25, "rg": 0.1, "dr": 0, "st": 0, "sc": 0 }
+    },
+    {
+      "id": "standard-48k-impulse",
+      "stimulus": "imp",
+      "sampleRate": 48000,
+      "blockSize": 127,
+      "frames": 1537,
+      "params": { "fr": true, "rp": "78", "rd": 146, "rg": 0.1, "dr": 0, "st": 0, "sc": 0 }
+    },
+    {
+      "id": "standard-static-discharge-silence",
+      "stimulus": "silence",
+      "frames": 9601,
+      "params": { "fr": true, "ql": "Standard", "rg": 0.1, "dr": 0, "st": 1000, "sc": 0 }
+    },
+    {
+      "id": "high-defects-inner-groove",
+      "stimulus": "sq50",
+      "frames": 2305,
+      "params": { "fr": true, "ql": "High", "rd": 60, "rg": 100, "dr": 10000, "st": 10000, "sc": 1000, "tf": 0.5 }
+    },
+    {
+      "id": "ultra-192k-short",
+      "stimulus": "noise",
+      "sampleRate": 192000,
+      "blockSize": 64,
+      "frames": 257,
+      "params": { "fr": true, "ql": "Ultra", "rp": "33⅓", "rd": 60, "sh": "Elliptical", "rs": 25, "rc": 25 }
+    },
+    {
+      "id": "one-frame-blocks",
+      "stimulus": "noise",
+      "blockSize": 1,
+      "frames": 513,
+      "params": { "fr": true, "ql": "Eco" }
+    },
+    {
+      "id": "pair-mode-extra-channels",
+      "stimulus": "noise",
+      "channels": 4,
+      "channelMode": "all4",
+      "channel": "A",
+      "frames": 1025,
+      "params": { "fr": true, "ql": "Eco", "mx": 65 }
+    },
+    {
+      "id": "smooth-parameter-events",
+      "stimulus": "sweep",
+      "frames": 2049,
+      "params": { "fr": true },
+      "events": [
+        { "frame": 31, "params": { "lv": 20, "hf": 6000, "mb": 1000, "sm": 0 } },
+        { "frame": 401, "params": { "rp": "78", "rd": 60, "rg": 100 } },
+        { "frame": 997, "params": { "dr": 300, "st": 100, "sc": 25, "tf": 5, "tm": 1.5, "cm": 35, "dz": 1 } },
+        { "frame": 1501, "params": { "og": -12, "mx": 25 } }
+      ]
+    },
+    {
+      "id": "quality-shape-reset-events",
+      "stimulus": "noise",
+      "frames": 2305,
+      "params": { "fr": true, "ql": "Eco", "sh": "Spherical" },
+      "events": [
+        { "frame": 257, "params": { "ql": "Standard" } },
+        { "frame": 769, "params": { "sh": "Elliptical", "rc": 8 } },
+        { "frame": 1281, "params": { "ql": "High" } },
+        { "frame": 1793, "params": { "ql": "Eco", "sh": "Spherical" } }
+      ]
+    },
+    {
+      "id": "full-scale-overcut",
+      "stimulus": "sq50",
+      "frames": 1537,
+      "params": { "fr": true, "lv": 20, "hf": 24000, "sm": 100, "tf": 0.5, "mx": 100 }
+    },
+    {
+      "id": "dry-latency-alignment",
+      "stimulus": "imp",
+      "frames": 1025,
+      "params": { "fr": true, "mx": 0 }
+    }
+  ]
+}

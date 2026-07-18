@@ -20,6 +20,10 @@ const libraryCatalogV1 = Object.freeze({
   showTrackInFolder: (trackUid) => ipcRenderer.invoke('library-catalog-v1:show-track-in-folder', { trackUid }),
   createPlaylist: (request) => ipcRenderer.invoke('library-catalog-v1:create-playlist', request),
   createPlaylistWithItems: (request) => ipcRenderer.invoke('library-catalog-v1:create-playlist-with-items', request),
+  recordRecentlyPlayed: (request) => ipcRenderer.invoke('library-catalog-v1:record-recently-played', request),
+  setTrackFavorite: (request) => ipcRenderer.invoke('library-catalog-v1:set-track-favorite', request),
+  getFavoriteTrackUids: (request = {}) => ipcRenderer.invoke('library-catalog-v1:get-favorite-track-uids', request),
+  getSystemPlaylists: () => ipcRenderer.invoke('library-catalog-v1:get-system-playlists', {}),
   renamePlaylist: (request) => ipcRenderer.invoke('library-catalog-v1:rename-playlist', request),
   reorderPlaylistItem: (request) => ipcRenderer.invoke('library-catalog-v1:reorder-playlist-item', request),
   removePlaylistItem: (request) => ipcRenderer.invoke('library-catalog-v1:remove-playlist-item', request),
@@ -79,12 +83,14 @@ const libraryRecoveryV1 = Object.freeze({
 
 const ALLOWED_IPC_LISTENER_CHANNELS = new Set([
   'add-music-folder',
+  'exit-mini-player',
   'load-preset-from-tray',
   'open-effect-pipeline-view',
   'open-library-view',
   'request-tray-menu-update',
   'rescan-library',
   'start-double-blind-test',
+  'toggle-mini-player',
   'update-available'
 ]);
 
@@ -259,6 +265,8 @@ contextBridge.exposeInMainWorld(
   onStartDoubleBlindTest: (callback) => addNoArgIpcListener('start-double-blind-test', callback),
   onOpenEffectPipelineView: (callback) => addNoArgIpcListener('open-effect-pipeline-view', callback),
   onOpenLibraryView: (callback) => addNoArgIpcListener('open-library-view', callback),
+  onExitMiniPlayer: (callback) => addNoArgIpcListener('exit-mini-player', callback),
+  onToggleMiniPlayer: (callback) => addNoArgIpcListener('toggle-mini-player', callback),
   onAddMusicFolder: (callback) => addNoArgIpcListener('add-music-folder', callback),
   onRescanLibrary: (callback) => addNoArgIpcListener('rescan-library', callback),
   onUpdateAvailable: (callback) => addSingleArgIpcListener('update-available', callback),
@@ -308,6 +316,8 @@ contextBridge.exposeInMainWorld(
     // Load and save config
     loadConfig: () => ipcRenderer.invoke('load-config'),
     saveConfig: (cfg) => ipcRenderer.invoke('save-config', cfg),
+    setMiniPlayerMode: (options) => ipcRenderer.invoke('set-mini-player-mode', options),
+    setAlwaysOnTop: (flag) => ipcRenderer.invoke('set-always-on-top', flag),
     
     // Listen for audio files dropped event
     onAudioFilesDropped: (callback) => {

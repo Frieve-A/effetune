@@ -335,6 +335,7 @@ Si el problema persiste, repórtalo a través de [GitHub Issues](https://github.
 | Lo-Fi     | Noise Blender | Añade una textura de ruido de fondo ajustable para ambiente lo-fi | [Detalles](plugins/lofi.md#noise-blender) |
 | Lo-Fi     | Simple Jitter | Simulación de jitter digital | [Detalles](plugins/lofi.md#simple-jitter) |
 | Lo-Fi     | Vinyl Artifacts | Añade pops, crackle, hiss, rumble y fuga de ruido estéreo al estilo vinilo | [Detalles](plugins/lofi.md#vinyl-artifacts) |
+| Lo-Fi     | Vinyl Simulator | Graba la entrada en un surco modelado y la reproduce con una aguja física simulada | [Detalles](plugins/lofi.md#vinyl-simulator) |
 | Modulation | Doppler Distortion | Simula cambios dinámicos y naturales en el sonido causados por movimientos sutiles del cono del altavoz | [Detalles](plugins/modulation.md#doppler-distortion) |
 | Modulation | Pitch Shifter | Sube o baja el tono de la música sin cambiar el tempo | [Detalles](plugins/modulation.md#pitch-shifter) |
 | Modulation | Tremolo | Efecto de modulación basado en volumen | [Detalles](plugins/modulation.md#tremolo) |

@@ -175,6 +175,30 @@ test('count updates require the committed current attempt', async () => {
   );
 });
 
+test('a committed count is not replaced by a cached page with a pending count', async () => {
+  let countRequests = 0;
+  const controller = new PagedViewController({
+    loadFirstPage: async () => ({ rows: [{ id: 'first' }], totalCount: { pending: true } }),
+    loadCount: async () => {
+      countRequests += 1;
+      return 361;
+    }
+  });
+  await controller.start({});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(controller.state.totalCount, 361);
+
+  controller.commitPage(
+    { rows: [{ id: 'cached' }], totalCount: { pending: true } },
+    { queryGeneration: controller.queryGeneration, pageAttemptId: controller.pageAttemptId }
+  );
+  await new Promise(resolve => setImmediate(resolve));
+
+  assert.equal(controller.state.totalCount, 361);
+  assert.equal(controller.state.ariaRowCount, 361);
+  assert.equal(countRequests, 1);
+});
+
 test('playlist page aggregates are retained in committed view state', async () => {
   const controller = new PagedViewController({
     loadFirstPage: async () => ({
@@ -254,6 +278,64 @@ function createPagedManager({ pageSize = 500 } = {}) {
     async getTrack(trackUid) { return { trackUid }; }
   };
 }
+
+test('playlist collection paging preserves system playlist visibility', async () => {
+  const manager = createPagedManager({ pageSize: 3 });
+  const entityRequests = [];
+  const queryEntities = manager.queryEntities.bind(manager);
+  manager.queryEntities = request => {
+    entityRequests.push(request);
+    return queryEntities(request);
+  };
+  const controller = new PagedLibraryViewController({ manager, pageLimit: 3 });
+
+  await controller.start({
+    endpoint: 'entities',
+    entityType: 'playlist',
+    query: '',
+    sort: 'name',
+    direction: 'asc',
+    includeSystemPlaylists: true
+  });
+
+  assert.equal(manager.contexts[0].query.includeSystemPlaylists, true);
+  assert.equal(entityRequests[0].includeSystemPlaylists, true);
+  await controller.destroy();
+});
+
+test('entity collections resolve their count before publishing the first page', async () => {
+  const manager = createPagedManager({ pageSize: 200 });
+  let countRequests = 0;
+  manager.queryEntities = async ({ contextToken }) => ({
+    rows: Array.from({ length: 200 }, (_, index) => ({ id: `artist-${index}` })),
+    nextCursor: 'page-1',
+    previousCursor: null,
+    totalCount: { pending: true },
+    contextToken
+  });
+  manager.getContextCount = async () => {
+    countRequests += 1;
+    return 361;
+  };
+  const committed = [];
+  const controller = new PagedLibraryViewController({
+    manager,
+    pageLimit: 200,
+    onStateChange: state => {
+      if (state.phase === 'committed') committed.push(state);
+    }
+  });
+
+  await controller.start({
+    endpoint: 'entities', entityType: 'artist', query: '', sort: 'name', direction: 'asc'
+  });
+
+  assert.equal(countRequests, 1);
+  assert.equal(committed.length, 1);
+  assert.equal(committed[0].totalCount, 361);
+  assert.equal(controller.pages.get(0).totalCount, 361);
+  await controller.destroy();
+});
 
 test('paged library controller keeps only current-near pages under the 2500 row cap', async () => {
   const manager = createPagedManager();

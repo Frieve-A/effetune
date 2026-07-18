@@ -185,6 +185,45 @@ test('DatabaseSync is isolated in a worker with shared schema, FTS5, WAL, and bo
   assert.doesNotMatch(hostSource, /DatabaseSync|node:sqlite/);
 });
 
+test('Electron scans reparse unchanged tracks written by the previous metadata parser', async t => {
+  const { host, directory } = await openCatalog(t);
+  const { metadataParseEligibility } = await import('../../js/library/scan/metadata-parse-service.js');
+  await seedFolder(host, directory);
+  const signature = { fileIdentity: 'unchanged-file', size: 100, mtimeMs: 200 };
+  await host.upsertTracks([createTrack(1, {
+    ...signature,
+    metadataStatus: 'ok',
+    metadataParserVersion: 'catalog-metadata-v4'
+  })]);
+  const scan = await host.beginScanFolder({
+    scanId: 'scan-parser-version-v5', folderId: 'folder_music', normalizedRoot: directory,
+    expectedLifecycleVersion: 3, resume: false, rootEnumerationRequired: true,
+    continuityBroken: false, sweepEligibility: 'PENDING'
+  });
+  const observation = {
+    relativePath: 'Album/Track-000001.flac',
+    path: path.join(directory, 'Album', 'Track-000001.flac'),
+    ...signature
+  };
+  await host.commitScanSeenBatch({
+    scanId: scan.scanId, folderId: scan.folderId, generation: scan.generation,
+    expectedLifecycleVersion: scan.lifecycleVersion,
+    observations: [observation], maxTracks: 500, maxBytes: 4 * 1024 * 1024,
+    lastCommittedBatch: 1,
+    cursor: { lastRelativePath: observation.relativePath, visitedFiles: 1, committedBatches: 1 }
+  });
+  const candidate = (await host.listMetadataCandidates({
+    scanId: scan.scanId, folderId: scan.folderId, generation: scan.generation,
+    expectedLifecycleVersion: scan.lifecycleVersion, cursor: null, limit: 10,
+    parserVersion: scan.parserVersion
+  })).items[0];
+
+  assert.equal(scan.parserVersion, 'catalog-metadata-v5');
+  assert.equal(candidate.storedParserVersion, 'catalog-metadata-v4');
+  assert.deepEqual(candidate.storedSignature, candidate.observedSignature);
+  assert.equal(metadataParseEligibility(candidate), true);
+});
+
 test('binary-identical artwork thumbnails share one persisted blob across tracks', async t => {
   const directory = fs.mkdtempSync(path.join(process.cwd(), '.effetune-artwork-test-'));
   const dbPath = path.join(directory, 'catalog.sqlite');
@@ -251,6 +290,91 @@ test('binary-identical artwork thumbnails share one persisted blob across tracks
   }
 });
 
+test('CUE tracks accept only supported sibling image paths as external artwork claims', async t => {
+  const { dbPath, host, directory } = await openCatalog(t);
+  await seedFolder(host, directory);
+  const scan = await host.beginScanFolder({
+    scanId: 'scan-cue-external-artwork', folderId: 'folder_music', normalizedRoot: directory,
+    expectedLifecycleVersion: 3, resume: false, rootEnumerationRequired: true,
+    continuityBroken: false, sweepEligibility: 'PENDING'
+  });
+  const trackUid = 'cue-external-artwork-track';
+  const entryKey = 'cue:Album/disc.cue#1';
+  const metadataClaim = await host.claimMetadataParse({
+    folderId: scan.folderId, trackUid, logicalStorageId: entryKey,
+    lifecycleVersion: scan.lifecycleVersion, generation: scan.generation,
+    relativePath: 'Album/Track-000003.flac', parserVersion: scan.parserVersion,
+    signature: { fileIdentity: 'cue-audio-file', size: 100, mtimeMs: 200 },
+    cueSignature: 'cue-signature', sourceKind: 'cue-track', entryKey,
+    cueRelativePath: 'Album/disc.cue', startFrame: 0, endFrame: 750,
+    explicitRescan: false
+  });
+  await host.completeMetadataParseSuccess({
+    claim: metadataClaim.claim,
+    metadata: {
+      title: 'Track 3', artist: 'Artist', albumArtist: 'Album Artist', album: 'Album',
+      genre: 'Genre', durationSec: 10
+    },
+    metadataStatus: 'ok', clearErrorAndRetryState: true,
+    updateLastKnownGood: true, updateDerivedData: true
+  });
+  const utilitySessionId = 'cue-external-artwork-test';
+  await host.beginArtworkUtilitySession({ utilitySessionId });
+  const embedded = await host.getArtworkSource({ trackUid });
+  const externalStat = { fileIdentity: 'cover-device:inode', size: 123, mtimeMs: 456 };
+  const invalid = await host.claimArtworkSource({
+    claim: {
+      ...embedded,
+      sourceKind: 'external-file',
+      canonicalSourceIdentity: 'Album/poster.jpg',
+      externalArtworkStat: externalStat,
+      utilitySessionId
+    }
+  });
+  assert.equal(invalid.claim, null);
+
+  const claimed = await host.claimArtworkSource({
+    claim: {
+      ...embedded,
+      sourceKind: 'external-file',
+      canonicalSourceIdentity: 'Album/FRONT.PNG',
+      externalArtworkStat: externalStat,
+      utilitySessionId
+    }
+  });
+  assert.equal(claimed.claim.sourceKind, 'external-file');
+  const cachePolicy = { mode: 'persistent', maxBytes: 1024 * 1024 };
+  const preflight = await host.preflightArtworkBatch({
+    claim: claimed.claim,
+    estimatedRawBytes: externalStat.size,
+    estimatedThumbnailBytes: 3,
+    cachePolicy
+  });
+  assert.equal(preflight.ok, true, JSON.stringify(preflight));
+  const published = await host.publishArtwork({
+    claim: claimed.claim,
+    expectedSourceClaim: claimed.claim,
+    cachePolicy,
+    thumbnail: { bytes: new Uint8Array([1, 2, 3]), width: 1, height: 1, mimeType: 'image/jpeg' }
+  });
+  assert.equal(published.committed, true);
+
+  const database = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    assert.deepEqual({ ...database.prepare(`
+      SELECT source_kind AS sourceKind, canonical_source_identity AS canonicalSourceIdentity,
+        external_artwork_stat_json AS externalArtworkStatJson
+      FROM track_artwork_sources WHERE track_uid = ?
+    `).get(trackUid) }, {
+      sourceKind: 'external-file',
+      canonicalSourceIdentity: 'Album/FRONT.PNG',
+      externalArtworkStatJson: JSON.stringify(externalStat)
+    });
+  } finally {
+    database.close();
+  }
+});
+
 test('scoped title pages use the global title order without a temporary sort', async t => {
   const { dbPath } = await openCatalog(t);
   const database = new DatabaseSync(dbPath, { readOnly: true });
@@ -292,6 +416,12 @@ test('recent scope is a stable newest-500 set across count, cursors, ordinals, a
     contextToken: first.contextToken, ordinal: 499, limit: 1
   });
   assert.deepEqual(last.rows.map(row => row.trackUid), ['track_000002']);
+  const finalChunk = await host.readContextPageAtOrdinal({
+    contextToken: first.contextToken, ordinal: 499, limit: 137
+  });
+  assert.equal(finalChunk.pageStartOrdinal, 411);
+  assert.equal(finalChunk.rows.length, 89);
+  assert.equal(finalChunk.rows.at(-1).trackUid, 'track_000002');
   const excluded = await host.resolveEntityAnchor({
     contextToken: first.contextToken,
     entityId: 'track_000001',

@@ -64,6 +64,7 @@ lofi/hum_generator: Hum Generator | Lo-Fi | HumGeneratorPlugin
 lofi/noise_blender: Noise Blender | Lo-Fi | NoiseBlenderPlugin
 lofi/simple_jitter: Simple Jitter | Lo-Fi | SimpleJitterPlugin
 lofi/vinyl_artifacts: Vinyl Artifacts | Lo-Fi | VinylArtifactsPlugin
+lofi/vinyl_simulator: Vinyl Simulator | Lo-Fi | VinylSimulatorPlugin | css
 modulation/doppler_distortion: Doppler Distortion | Modulation | DopplerDistortionPlugin
 modulation/pitch_shifter: Pitch Shifter | Modulation | PitchShifterPlugin
 modulation/tremolo: Tremolo | Modulation | TremoloPlugin

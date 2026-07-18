@@ -59,6 +59,33 @@ test('Web catalog metadata parsing decodes raw CP932 RIFF INFO before text bytes
 
   assert.equal(result.artist, '平賀マリカ');
   assert.equal(result.albumArtist, '平賀マリカ');
+  assert.deepEqual(result.albumArtists, ['平賀マリカ']);
+});
+
+test('Web catalog metadata parsing separates semicolon-delimited album artists', async () => {
+  const literal = createParser({
+    metadata: {
+      common: { artist: 'Track Artist', albumartist: 'Artist A; Artist B' },
+      format: {}
+    }
+  });
+  const literalResult = await literal.parser.parse({ relativePath: literal.relativePath, skipCovers: true });
+  assert.equal(literalResult.albumArtist, 'Artist A; Artist B');
+  assert.deepEqual(literalResult.albumArtists, ['Artist A', 'Artist B']);
+
+  const plural = createParser({
+    metadata: {
+      common: {
+        artist: 'Track Artist',
+        albumartist: 'Artist A & Artist B',
+        albumartists: ['Artist A', 'Artist B']
+      },
+      format: {}
+    }
+  });
+  const pluralResult = await plural.parser.parse({ relativePath: plural.relativePath, skipCovers: true });
+  assert.equal(pluralResult.albumArtist, 'Artist A & Artist B');
+  assert.deepEqual(pluralResult.albumArtists, ['Artist A', 'Artist B']);
 });
 
 test('Web catalog metadata parsing preserves common text over ID3v1 and numeric genre codes', async () => {

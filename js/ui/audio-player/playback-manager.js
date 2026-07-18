@@ -34,6 +34,7 @@ export class PlaybackManager {
     this.resolvedCatalogEntries = new Map();
     this.playbackGeneration = 0;
     this.catalogTrackGeneration = 0;
+    this.queueWindowRequestGeneration = 0;
     this.pendingTransport = new PendingTransportSlot();
     this.transportMediaChain = Promise.resolve();
     this.committedAutomaticMovePlans = new WeakSet();
@@ -474,8 +475,12 @@ export class PlaybackManager {
   async refreshCatalogQueueWindow(centerOrdinal = this.audioPlayer.stateManager?.getCurrentTrackIndex?.() ?? 0) {
     if (!this.catalogSequence) return null;
     const sequence = this.catalogSequence;
+    const requestGeneration = ++this.queueWindowRequestGeneration;
     const window = await this.queueProvider.getWindow(centerOrdinal);
-    if (sequence !== this.catalogSequence) return null;
+    const currentOrdinal = this.audioPlayer.stateManager?.getCurrentTrackIndex?.() ?? 0;
+    if (sequence !== this.catalogSequence ||
+        requestGeneration !== this.queueWindowRequestGeneration ||
+        currentOrdinal !== centerOrdinal) return null;
     this.audioPlayer.stateManager?.updateQueueWindow?.(window);
     return window;
   }
@@ -483,8 +488,9 @@ export class PlaybackManager {
   async refreshCatalogQueuePage(startOrdinal) {
     if (!this.catalogSequence) return null;
     const sequence = this.catalogSequence;
+    const requestGeneration = ++this.queueWindowRequestGeneration;
     const window = await this.queueProvider.getPage(startOrdinal);
-    if (sequence !== this.catalogSequence) return null;
+    if (sequence !== this.catalogSequence || requestGeneration !== this.queueWindowRequestGeneration) return null;
     this.audioPlayer.stateManager?.updateQueueWindow?.(window);
     return window;
   }

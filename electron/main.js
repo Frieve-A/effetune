@@ -1,4 +1,15 @@
-const { app, BrowserWindow, Tray, Menu, dialog, ipcMain, nativeImage, shell, utilityProcess } = require('electron');
+const {
+  app,
+  BrowserWindow,
+  Tray,
+  Menu,
+  dialog,
+  ipcMain,
+  nativeImage,
+  powerMonitor,
+  shell,
+  utilityProcess
+} = require('electron');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
@@ -32,8 +43,6 @@ const packageJson = require('../package.json');
 const appVersion = packageJson.version;
 constants.setAppVersion(appVersion);
 
-const MIN_WINDOW_WIDTH = 1024;
-const MIN_WINDOW_HEIGHT = 768;
 const PLAYBACK_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', 'mp4'];
 const PLAYBACK_AUDIO_EXTENSION_PATTERN_SOURCE = `\\.(${PLAYBACK_AUDIO_EXTENSIONS.join('|')})$`;
 const PLAYBACK_AUDIO_EXTENSION_PATTERN = new RegExp(PLAYBACK_AUDIO_EXTENSION_PATTERN_SOURCE, 'i');
@@ -177,6 +186,8 @@ const WATCHDOG_MAX_EXIT_ATTEMPTS = 5;
 let lastRendererPing = 0;
 let watchdogIntervalId = null;
 let watchdogArmed = false;
+let watchdogArmedBeforeSystemSuspend = false;
+let watchdogSystemSuspended = false;
 // Set true once app.relaunch() has been registered, so a subsequent watchdog
 // tick (e.g., after app.exit() throws) does not queue a second relaunch.
 let watchdogRelaunchQueued = false;
@@ -184,6 +195,7 @@ let watchdogRelaunchQueued = false;
 let watchdogExitAttempts = 0;
 
 function armRendererWatchdog(reason = 'renderer') {
+  if (watchdogSystemSuspended) return;
   lastRendererPing = Date.now();
   watchdogRelaunchQueued = false;
   watchdogExitAttempts = 0;
@@ -264,6 +276,29 @@ function stopWatchdog() {
     watchdogIntervalId = null;
   }
   watchdogArmed = false;
+  watchdogArmedBeforeSystemSuspend = false;
+  watchdogSystemSuspended = false;
+}
+
+function handleSystemSuspendForWatchdog() {
+  watchdogArmedBeforeSystemSuspend = watchdogArmedBeforeSystemSuspend || watchdogArmed;
+  watchdogSystemSuspended = true;
+  disarmRendererWatchdog('system-suspend');
+}
+
+function handleSystemResumeForWatchdog() {
+  const shouldRearm = watchdogArmedBeforeSystemSuspend || watchdogArmed;
+  watchdogArmedBeforeSystemSuspend = false;
+  watchdogSystemSuspended = false;
+  if (shouldRearm) armRendererWatchdog('system-resume');
+}
+
+function registerWatchdogPowerEvents() {
+  // Date.now() advances while the computer sleeps. Without suspending the
+  // watchdog too, its first timer after wake can mistake normal sleep for a
+  // frozen renderer and force a relaunch before current pipeline state is saved.
+  powerMonitor.on('suspend', handleSystemSuspendForWatchdog);
+  powerMonitor.on('resume', handleSystemResumeForWatchdog);
 }
 
 // Renderer-ping IPC: registered here (not in ipc-handlers.js) so it can update
@@ -315,6 +350,7 @@ function showMainWindowInRestoredState(mainWindow) {
 
 // Create the main application window
 function createWindow() {
+  windowState.prepareForNewWindow();
   // Load saved window state and resolve the (validated, on-screen) bounds the
   // window should be created with.
   windowState.loadWindowState();
@@ -326,8 +362,8 @@ function createWindow() {
     height: restoredBounds.height,
     x: restoredBounds.x,
     y: restoredBounds.y,
-    minWidth: MIN_WINDOW_WIDTH,
-    minHeight: MIN_WINDOW_HEIGHT,
+    minWidth: windowState.MIN_SIZE.width,
+    minHeight: windowState.MIN_SIZE.height,
     icon: path.join(__dirname, '../images/favicon.ico'),
     acceptFirstMouse: true, // Accept mouse events on window activation
     show: false, // Don't show the window until it's ready
@@ -377,6 +413,7 @@ function createWindow() {
   // pings. Disarm here; each loaded page must explicitly arm its own heartbeat.
   mainWindow.webContents.on('did-start-navigation', (_event, url, isInPlace, isMainFrame) => {
     if (isMainFrame && !isInPlace) {
+      ipcHandlers.restoreNormalWindowShape?.();
       disarmRendererWatchdog(`navigation:${url}`);
     }
   });
@@ -791,9 +828,26 @@ function createWindow() {
   // }
 
   // Save window state when window is moved or resized
-  mainWindow.on('resize', () => windowState.saveWindowState());
+  mainWindow.on('resize', () => {
+    if (!windowState.isMiniMode()) windowState.saveWindowState();
+  });
   mainWindow.on('move', () => windowState.saveWindowState());
-  mainWindow.on('maximize', () => windowState.saveWindowState());
+  mainWindow.on('maximize', () => {
+    if (!windowState.isMiniMode()) {
+      windowState.saveWindowState();
+      return;
+    }
+
+    // Bounds cannot be restored while the native window is still maximized.
+    // Wait for the requested unmaximize to finish, restore the normal window,
+    // then honor the user's maximize action from the normal layout.
+    mainWindow.once('unmaximize', () => {
+      if (!ipcHandlers.restoreNormalWindowShape()) return;
+      mainWindow.webContents.send('exit-mini-player');
+      if (!mainWindow.isDestroyed()) mainWindow.maximize();
+    });
+    mainWindow.unmaximize();
+  });
   mainWindow.on('unmaximize', () => windowState.saveWindowState());
   
   mainWindow.on('minimize', (e) => {
@@ -1525,6 +1579,8 @@ app.whenReady().then(async () => {
     return;
   }
   
+  registerWatchdogPowerEvents();
+
   // Start the renderer watchdog — it self-arms once the first ping arrives.
   startWatchdog();
 

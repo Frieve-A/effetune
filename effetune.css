@@ -1533,6 +1533,7 @@ body.layout-mobile .plugin-parameter-ui .parameter-row:has(> input[type="number"
 }
 
 .player-playlist {
+    --player-queue-pagination-height: 42px;
     display: none;
     min-height: 180px;
 }
@@ -1565,16 +1566,24 @@ body.layout-mobile .plugin-parameter-ui .parameter-row:has(> input[type="number"
     grid-template-columns: 36px 1fr 36px;
     align-items: center;
     gap: 6px;
+    min-height: var(--player-queue-pagination-height);
     padding: 4px 0 8px;
+    box-sizing: border-box;
     background: #222;
+}
+
+.player-queue-pagination ~ .player-playlist-item {
+    scroll-margin-block-start: var(--player-queue-pagination-height);
 }
 
 .player-queue-pagination button {
     min-height: 30px;
+    padding: 0;
     color: #ddd;
-    background: #333;
-    border: 1px solid #4a4a4a;
-    border-radius: 4px;
+    font-size: 22px;
+    line-height: 1;
+    background: transparent;
+    border: 0;
     cursor: pointer;
 }
 
@@ -1587,6 +1596,243 @@ body.layout-mobile .plugin-parameter-ui .parameter-row:has(> input[type="number"
     color: #aaa;
     font-size: 12px;
     text-align: center;
+}
+
+/* Expanded desktop player: the transport row stays unchanged on top while
+   the artwork and the queue open below it (about eight playlist rows tall).
+   The artwork shares the leading columns with the title and the start of the
+   track name, so the top row keeps its collapsed positions. */
+body.layout-desktop .audio-player[data-expanded="true"] {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    grid-template-rows: auto 280px;
+    grid-template-areas:
+        "title track track controls"
+        "artwork artwork queue queue";
+    row-gap: 14px;
+    align-items: center;
+}
+
+body.layout-desktop .audio-player[data-expanded="true"] h2 {
+    grid-area: title;
+}
+
+body.layout-desktop .audio-player[data-expanded="true"] .track-name-container {
+    grid-area: track;
+}
+
+body.layout-desktop .audio-player[data-expanded="true"] .player-controls {
+    grid-area: controls;
+    justify-content: flex-end;
+}
+
+body.layout-desktop .audio-player[data-expanded="true"] .player-artwork {
+    grid-area: artwork;
+    display: grid;
+    place-items: center;
+    align-self: center;
+    justify-self: start;
+    width: 280px;
+    height: 280px;
+    flex: none;
+    margin-right: 20px;
+    border-radius: 10px;
+    background: #1d1d1d;
+    color: #5d5d5d;
+    overflow: hidden;
+}
+
+body.layout-desktop .audio-player[data-expanded="true"] .player-artwork-placeholder {
+    display: grid;
+    place-items: center;
+}
+
+body.layout-desktop .audio-player[data-expanded="true"] .player-artwork-placeholder[hidden] {
+    display: none;
+}
+
+body.layout-desktop .audio-player[data-expanded="true"] .player-playlist {
+    /* 8px shorter than the base 42px, matching the artwork going 288 → 280 so
+       the visible queue-item area keeps its height. */
+    --player-queue-pagination-height: 34px;
+    grid-area: queue;
+    display: block;
+    align-self: stretch;
+    height: 100%;
+    min-height: 0;
+    overflow-y: auto;
+    box-sizing: border-box;
+    contain: inline-size;
+}
+
+body.layout-desktop .audio-player[data-expanded="true"] .player-queue-pagination {
+    padding: 0 0 4px;
+}
+
+/* ===== Mini player window mode (Electron) ===== */
+.audio-player .restore-button,
+.audio-player .pin-button {
+    display: none;
+}
+
+body.layout-mini-player {
+    overflow: hidden;
+    zoom: 1 !important;
+}
+
+body.layout-mini-player .title-container > :not(#errorDisplay),
+body.layout-mini-player .subtitle-container,
+body.layout-mini-player .header,
+body.layout-mini-player .main-container,
+body.layout-mini-player #libraryView,
+body.layout-mini-player .library-recovery-shell {
+    display: none !important;
+}
+
+body.layout-mini-player .title-container {
+    position: fixed;
+    inset: 0 0 auto;
+    z-index: 10;
+    display: block;
+    pointer-events: none;
+    background: transparent;
+}
+
+body.layout-mini-player #errorDisplay:not(:empty) {
+    margin: 4px 8px;
+    padding: 5px 8px;
+    border-radius: 4px;
+    background: rgba(20, 20, 20, 0.92);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+body.layout-mini-player .audio-player[data-mini-player="true"] {
+    --mini-player-artwork-size: 96px;
+    position: fixed;
+    inset: 0;
+    display: grid;
+    grid-template-columns: var(--mini-player-artwork-size) minmax(0, 1fr);
+    grid-template-rows: 24px 48px 24px;
+    grid-template-areas:
+        "artwork track"
+        "artwork controls"
+        "artwork controls";
+    column-gap: 12px;
+    row-gap: 0;
+    align-content: start;
+    align-items: stretch;
+    width: auto;
+    margin: 0;
+    padding: 12px;
+    border-radius: 0;
+    box-sizing: border-box;
+    overflow: hidden;
+    -webkit-app-region: drag;
+}
+
+body.layout-mini-player .audio-player[data-mini-player="true"] h2,
+body.layout-mini-player .audio-player[data-mini-player="true"] .player-playlist,
+body.layout-mini-player .audio-player[data-mini-player="true"] .expand-button,
+body.layout-mini-player .audio-player[data-mini-player="true"] .close-button,
+body.layout-mini-player .audio-player[data-mini-player="true"] .stop-button,
+body.layout-mini-player .audio-player[data-mini-player="true"] .mini-player-button {
+    display: none;
+}
+
+body.layout-mini-player .audio-player[data-mini-player="true"] .player-artwork {
+    grid-area: artwork;
+    display: grid;
+    place-items: center;
+    width: var(--mini-player-artwork-size);
+    height: var(--mini-player-artwork-size);
+    margin: 0;
+    color: #5d5d5d;
+    background: #1d1d1d;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+body.layout-mini-player .audio-player[data-mini-player="true"] .player-artwork-placeholder {
+    display: grid;
+    place-items: center;
+}
+
+body.layout-mini-player .audio-player[data-mini-player="true"] .player-artwork-placeholder[hidden] {
+    display: none;
+}
+
+body.layout-mini-player .audio-player[data-mini-player="true"] .track-name-container {
+    grid-area: track;
+    align-self: start;
+    align-items: flex-start;
+    height: 24px;
+    min-width: 0;
+    margin: 0;
+}
+
+body.layout-mini-player .audio-player[data-mini-player="true"] .track-name {
+    min-width: 0;
+    overflow: hidden;
+    line-height: 20px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+body.layout-mini-player .audio-player[data-mini-player="true"] .player-controls {
+    grid-area: controls;
+    align-self: stretch;
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    column-gap: 4px;
+    row-gap: 16px;
+    width: 100%;
+    min-width: 0;
+    padding-top: 16px;
+    box-sizing: border-box;
+}
+
+body.layout-mini-player .audio-player[data-mini-player="true"] .seek-bar {
+    order: 0;
+    flex: 1 1 calc(100% - 104px);
+    width: auto;
+    min-width: 40px;
+    margin: 0;
+    -webkit-app-region: no-drag;
+}
+
+body.layout-mini-player .audio-player[data-mini-player="true"] .time-display {
+    order: 0;
+    flex: 0 0 96px;
+    min-width: 96px;
+    font-size: 12px;
+    text-align: right;
+    white-space: nowrap;
+}
+
+body.layout-mini-player .audio-player[data-mini-player="true"] .player-button {
+    order: 1;
+    flex: 0 0 24px;
+    width: 24px;
+    height: 24px;
+    padding: 3px;
+    -webkit-app-region: no-drag;
+}
+
+body.layout-mini-player .audio-player[data-mini-player="true"] .restore-button,
+body.layout-mini-player .audio-player[data-mini-player="true"] .pin-button {
+    display: inline-flex;
+}
+
+body.layout-mini-player .audio-player[data-mini-player="true"] .track-name,
+body.layout-mini-player .audio-player[data-mini-player="true"] .player-artwork-image {
+    -webkit-app-region: no-drag;
+}
+
+body.layout-mini-player .audio-player[data-mini-player="true"] .pin-button[aria-pressed="true"] {
+    color: #fff;
+    background-color: #2f7bc4;
+    border-color: #4a9eff;
 }
 
 .player-library-context-menu {

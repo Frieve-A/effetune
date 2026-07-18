@@ -52,6 +52,8 @@ Use the navigation tabs to browse the catalog:
 - **Recently Added** - Recently indexed tracks.
 - **Playlists** - Playlists created or imported inside Music Library.
 
+An Album Artist value separated with semicolons, such as `Artist A; Artist B`, is indexed under each artist while the full credit remains displayed. `&`, `/`, and `feat.` are not treated as separators.
+
 For example, `Artist/Album/01 Song.flac` appears in the `Artist/Album` subfolder group. Identical relative paths in different indexed roots remain separate. Files stored directly in a root do not create a subfolder group; they remain available in **Tracks** and from that root in **Folders**.
 
 Use **Search library** to search across tracks, albums, artists, and playlists. In the PC layout, track table headers sort by **Title**, **Artist**, **Album**, **Genre**, or **Time**. Album, artist, genre, subfolder, and playlist views provide a **Sort** list backed by the catalog. Depending on the view, it can order by name, artist, path, track count, total duration, updated time, or created time, in either direction. Each view keeps its own selection.
@@ -68,7 +70,9 @@ If metadata is missing or unreadable, EffeTune falls back to the file name and f
 
 Place an external `.cue` file beside the WAV or FLAC files it names, then add or rescan that folder. Each valid `TRACK ... AUDIO` entry appears as an individual Music Library track. CUE title, performer, date, genre, and track numbering are used where available, while technical audio details come from the source WAV or FLAC file.
 
-You can also play a CUE album without adding it to Music Library. Use **Open music files**, or **Open Music** on mobile. In the desktop app, **File > Open music file...** is also available. In the desktop app, select the `.cue` file by itself; in a browser, select one `.cue` file together with all and only the WAV or FLAC files it names. A valid selection replaces the current playback queue but is not added to the catalog. If validation fails, the current queue is left unchanged.
+For tracks added to Music Library, EffeTune uses artwork embedded in the source audio first. If none is available, it looks beside the CUE file for `cover.jpg`, `cover.png`, `front.jpg`, `front.png`, then a JPEG or PNG named after the source audio file, with or without its audio extension. Direct desktop playback automatically uses the same neighboring image candidates; this playback path does not extract embedded artwork from the source audio. Direct browser playback uses a matching image included in the file selection.
+
+You can also play a CUE album without adding it to Music Library. Use **Open music files**, or **Open Music** on mobile. In the desktop app, **File > Open music file...** is also available. In the desktop app, select the `.cue` file by itself; in a browser, select one `.cue` file together with all and only the WAV or FLAC files it names, plus any matching cover image you want to use. A valid selection replaces the current playback queue but is not added to the catalog. If validation fails, the current queue is left unchanged.
 
 If a CUE sheet is invalid or cannot safely identify its source files, EffeTune explains the problem and imports the WAV or FLAC files as ordinary whole-file tracks instead. Correct the CUE sheet or its file names, then rescan the folder to try again.
 
@@ -111,6 +115,15 @@ You can:
 - Drag tracks inside a playlist to change order, or use **Move Up** and **Move Down** where drag is not convenient.
 - Use **Import Playlist** for M3U, M3U8, PLS, and XSPF playlist files.
 - Open an individual playlist and export it with **Export M3U8** or **Export XSPF**.
+
+### Recently Played and Favorites
+
+EffeTune shows two special playlists alongside your regular playlists in the same card grid. They are created only when needed: **Recently Played** when an indexed library track starts playing, and **Favorites** when you first mark a track with the star button.
+
+- **Recently Played** keeps the latest 100 distinct tracks, with the newest at the top. Playing a track again moves it back to the top.
+- **Favorites** contains the tracks you mark with ☆. On PC, use the star beside a track; on mobile, open the track's **More** menu. The same menu is also available by right-clicking a track on PC.
+
+These playlist names are fixed and appear in the current UI language, so they cannot be renamed. You can duplicate, export, or delete them like other playlists. If you delete one, it is recreated empty the next time playback or a favorite action needs it. Their cards show a clock or star in the artwork area; the Play button at the lower right of Favorites starts it immediately. Special playlists are not included in regular playlist search results.
 
 Folder scans automatically import supported playlist files after their tracks are indexed. An unchanged file is skipped. When the content at the same folder and relative path changes, EffeTune atomically replaces the items in its automatically imported playlist; this also replaces item edits made to that playlist in EffeTune. A failed or canceled import is retried on the next rescan. Deleting or renaming the source file leaves the existing playlist in place, and a renamed source is imported as a new playlist.
 

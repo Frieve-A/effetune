@@ -79,6 +79,7 @@ test('Electron catalog metadata worker restores v2 CP932 RIFF INFO decoding', as
   assert.equal(result.title, 'MONA LISA');
   assert.equal(result.artist, '平賀マリカ');
   assert.equal(result.albumArtist, '平賀マリカ');
+  assert.deepEqual(result.albumArtists, ['平賀マリカ']);
 });
 
 test('Electron catalog metadata worker maps alternate RIFF INFO identifiers', async t => {
@@ -105,6 +106,7 @@ test('Electron catalog metadata worker maps alternate RIFF INFO identifiers', as
   assert.equal(result.title, 'Alternate Title');
   assert.equal(result.artist, 'Alternate Artist');
   assert.equal(result.albumArtist, 'Alternate Artist');
+  assert.deepEqual(result.albumArtists, ['Alternate Artist']);
   assert.equal(result.album, 'Alternate Album');
   assert.equal(result.year, 2021);
 });

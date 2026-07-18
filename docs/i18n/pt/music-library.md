@@ -52,6 +52,8 @@ Use as abas de navegação para alternar o catálogo.
 - **Adicionadas recentemente** - Mostra as faixas indexadas recentemente.
 - **Playlists** - Mostra as playlists criadas ou importadas dentro da Biblioteca de música.
 
+Um valor de artista do álbum separado por ponto e vírgula, como `Artist A; Artist B`, é indexado para cada artista, mantendo o crédito completo na exibição. `&`, `/` e `feat.` não são tratados como separadores.
+
 Por exemplo, `Artist/Album/01 Song.flac` aparece no grupo de subpasta `Artist/Album`. Caminhos relativos idênticos em raízes indexadas diferentes permanecem separados. Arquivos armazenados diretamente na raiz não criam um grupo de subpasta; eles continuam disponíveis em **Faixas** e nessa raiz em **Pastas**.
 
 Com **Pesquisar na biblioteca**, você pode pesquisar faixas, álbuns, artistas e playlists ao mesmo tempo. No layout para PC, é possível ordenar a lista de faixas pelo cabeçalho usando **Título**, **Artista**, **Álbum**, **Gênero** e **Tempo**. As visualizações de álbuns, artistas, gêneros, subpastas e playlists oferecem uma lista **Ordenar** baseada no catálogo. Dependendo da visualização, é possível ordenar por nome, artista, caminho, número de faixas, duração total, data de atualização ou data de criação, em ambos os sentidos. Cada visualização mantém sua própria seleção.
@@ -68,7 +70,9 @@ Quando os metadados estão ausentes ou não podem ser lidos, o EffeTune usa o no
 
 Coloque o arquivo `.cue` externo junto aos arquivos WAV ou FLAC citados nele e adicione ou examine novamente essa pasta. Cada entrada `TRACK ... AUDIO` válida aparece como uma faixa separada na Biblioteca de música. Quando disponíveis, são usados o título, intérprete, data, gênero e número de faixa do CUE; as informações técnicas vêm do WAV ou FLAC de origem.
 
-Você também pode reproduzir um álbum CUE sem adicioná-lo à Biblioteca de música. Use **Open music files** ou, no celular, **Open Music**. No aplicativo para desktop, **File > Open music file...** também está disponível. No aplicativo para desktop, selecione apenas o arquivo `.cue`; no navegador, selecione um arquivo `.cue` junto com todos e somente os arquivos WAV ou FLAC citados nele. Uma seleção válida substitui a fila de reprodução atual, mas não é adicionada ao catálogo. Se a validação falhar, a fila atual permanece inalterada.
+Para as faixas adicionadas à Biblioteca de música, o EffeTune usa primeiro a capa incorporada ao áudio de origem. Se não houver nenhuma, ele procura, ao lado do arquivo CUE e nesta ordem, `cover.jpg`, `cover.png`, `front.jpg`, `front.png` e depois um JPEG ou PNG com o nome do arquivo de áudio, com ou sem a extensão de áudio. A reprodução direta no aplicativo para desktop usa automaticamente essas mesmas imagens vizinhas; esse modo de reprodução não extrai a capa incorporada ao áudio de origem. A reprodução direta no navegador usa a imagem correspondente incluída na seleção de arquivos.
+
+Você também pode reproduzir um álbum CUE sem adicioná-lo à Biblioteca de música. Use **Open music files** ou, no celular, **Open Music**. No aplicativo para desktop, **File > Open music file...** também está disponível. No aplicativo para desktop, selecione apenas o arquivo `.cue`; no navegador, selecione um arquivo `.cue` junto com todos e somente os arquivos WAV ou FLAC citados nele, além da capa correspondente se quiser usá-la. Uma seleção válida substitui a fila de reprodução atual, mas não é adicionada ao catálogo. Se a validação falhar, a fila atual permanece inalterada.
 
 Se a folha CUE for inválida ou não puder identificar com segurança os arquivos de origem, o EffeTune explica o problema e importa os arquivos WAV ou FLAC como faixas comuns que abrangem o arquivo inteiro. Corrija a folha CUE ou os nomes dos arquivos e examine a pasta novamente.
 
@@ -111,6 +115,15 @@ Você pode:
 - arrastar faixas dentro de uma playlist para mudar a ordem; em ambientes onde arrastar é difícil, usar **Mover para cima** e **Mover para baixo**;
 - importar playlists nos formatos M3U, M3U8, PLS e XSPF com **Importar playlist**;
 - abrir uma playlist específica e exportá-la em formato M3U8 ou XSPF com **Exportar M3U8** ou **Exportar XSPF**.
+
+### Reproduzidas recentemente e Favoritos
+
+O EffeTune mostra duas playlists especiais ao lado das playlists comuns, na mesma grade de cartões. Elas são criadas apenas quando necessárias: **Reproduzidas recentemente** quando uma faixa indexada começa a tocar e **Favoritos** quando você marca uma faixa com a estrela pela primeira vez.
+
+- **Reproduzidas recentemente** mantém as 100 faixas distintas mais recentes, com a mais nova no topo. Ao reproduzir uma faixa novamente, ela volta para o topo.
+- **Favoritos** contém as faixas marcadas com ☆. No PC, use a estrela ao lado da faixa; no celular, abra o menu **Mais** da faixa. O mesmo menu também pode ser aberto clicando com o botão direito em uma faixa no PC.
+
+Os nomes dessas playlists são fixos e aparecem no idioma atual da interface, portanto não podem ser alterados. Ainda é possível duplicar, exportar ou excluir essas playlists como as demais. Se uma delas for excluída, será recriada vazia na próxima vez que a reprodução ou uma ação de favoritos precisar dela. Os cartões exibem um relógio ou uma estrela na área da capa; o botão de reprodução no canto inferior direito de **Favoritos** inicia a playlist imediatamente. As playlists especiais não aparecem nos resultados da pesquisa de playlists comuns.
 
 Ao escanear uma pasta, o EffeTune importa automaticamente os arquivos de playlist compatíveis depois de indexar as faixas e ignora os arquivos cujo conteúdo não mudou. Se o conteúdo de um arquivo na mesma pasta e no mesmo caminho relativo mudar, o EffeTune substitui atomicamente os itens da playlist importada automaticamente; isso também substitui as edições feitas nesses itens dentro do EffeTune. Uma importação que falhou ou foi cancelada é tentada novamente na próxima varredura. Excluir ou renomear o arquivo de origem não remove a playlist existente, e um arquivo renomeado é importado como uma nova playlist.
 

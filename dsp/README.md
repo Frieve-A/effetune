@@ -134,7 +134,11 @@ bytes. Its exact payload size is `4 + 8 * channelCount`. Frame type 2
 Gate, Expander, and BrickwallLimiter. Consumers require format version 1 and the exact
 payload size; all payloads are little-endian and four-byte aligned. Type 14
 (`TAP_FIVE_BAND_DYNAMIC_EQ`) is exactly 24 bytes: a five-band count, three zero reserved
-bytes, and five signed float32 gain values in band order.
+bytes, and five signed float32 gain values in band order. Type 15
+(`TAP_VINYL_SIMULATOR`) is exactly 48 bytes: eight float32 values for left/right contact
+force in N, left/right mean pressure in Pa, tip-velocity RMS in m/s, left/right tracking
+signal-to-error ratio in dB, and contact-centroid jitter in ns, followed by four cumulative
+little-endian `u32` counters for mistracks, skips, static pops, and dust hits.
 
 `et_instance_latency` reflects staged parameters immediately. BrickwallLimiter reports
 `max(1, ceil(lookaheadMs * sampleRate / 1000))` samples at 1x oversampling and

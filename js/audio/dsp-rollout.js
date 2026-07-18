@@ -44,6 +44,7 @@ export const SHIPPED_ENABLED_TYPES = Object.freeze([
     'NoiseBlenderPlugin',
     'SimpleJitterPlugin',
     'VinylArtifactsPlugin',
+    'VinylSimulatorPlugin',
     'DopplerDistortionPlugin',
     'PitchShifterPlugin',
     'TremoloPlugin',

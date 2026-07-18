@@ -44,3 +44,48 @@ test('active player buttons replace the neutral face gradient with the accent su
   const focusRule = getRule(css, focusSelector);
   assert.match(focusRule, /var\(--et-focus-ring\)/);
 });
+
+test('paged queue scrolling reserves the sticky pagination height', () => {
+  const css = readCss('../../effetune.css');
+  const playlistRule = getRule(css, '.player-playlist');
+  const paginationRule = getRule(css, '.player-queue-pagination');
+  const pagedItemRule = getRule(css, '.player-queue-pagination ~ .player-playlist-item');
+
+  assert.match(playlistRule, /--player-queue-pagination-height:\s*42px;/);
+  assert.match(
+    paginationRule,
+    /min-height:\s*var\(--player-queue-pagination-height\);/
+  );
+  assert.match(
+    pagedItemRule,
+    /scroll-margin-block-start:\s*var\(--player-queue-pagination-height\);/
+  );
+});
+
+test('desktop mini player keeps controls interactive and preserves notification visibility', () => {
+  const css = readCss('../../effetune.css');
+  const bodyRule = getRule(css, 'body.layout-mini-player');
+  const playerRule = getRule(css, 'body.layout-mini-player .audio-player[data-mini-player="true"]');
+  const seekRule = getRule(css, 'body.layout-mini-player .audio-player[data-mini-player="true"] .seek-bar');
+  const timeRule = getRule(css, 'body.layout-mini-player .audio-player[data-mini-player="true"] .time-display');
+  const miniActionRule = getRule(
+    css,
+    'body.layout-mini-player .audio-player[data-mini-player="true"] .restore-button,'
+  );
+
+  assert.match(bodyRule, /zoom:\s*1\s*!important/);
+  assert.match(playerRule, /position:\s*fixed/);
+  assert.match(playerRule, /--mini-player-artwork-size:\s*96px/);
+  assert.match(playerRule, /grid-template-rows:\s*24px 48px 24px/);
+  assert.match(playerRule, /padding:\s*12px/);
+  assert.match(playerRule, /row-gap:\s*0/);
+  assert.match(playerRule, /-webkit-app-region:\s*drag/);
+  assert.match(seekRule, /-webkit-app-region:\s*no-drag/);
+  assert.match(timeRule, /flex:\s*0 0 96px/);
+  assert.match(timeRule, /white-space:\s*nowrap/);
+  assert.match(miniActionRule, /display:\s*inline-flex/);
+  assert.match(
+    css,
+    /body\.layout-mini-player \.title-container\s*\{[^}]*position:\s*fixed/s
+  );
+});

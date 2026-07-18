@@ -153,7 +153,9 @@ test('preload exposes electronAPI invoke and send wrappers', async () => {
     ['getUpdateInfo', [], ['get-update-info']],
     ['forceCheckForUpdates', [], ['force-check-for-updates']],
     ['loadConfig', [], ['load-config']],
-    ['saveConfig', [{ language: 'ja' }], ['save-config', { language: 'ja' }]]
+    ['saveConfig', [{ language: 'ja' }], ['save-config', { language: 'ja' }]],
+    ['setMiniPlayerMode', [{ enabled: true }], ['set-mini-player-mode', { enabled: true }]],
+    ['setAlwaysOnTop', [true], ['set-always-on-top', true]]
   ];
 
   for (const [method, args, expectedInvocation] of invokeCases) {
@@ -163,6 +165,12 @@ test('preload exposes electronAPI invoke and send wrappers', async () => {
       args: expectedInvocation.slice(1)
     });
   }
+
+  const favoriteRequest = { limit: 25, cursor: { position: 1024, itemKey: 7 } };
+  assert.deepEqual(await api.libraryCatalogV1.getFavoriteTrackUids(favoriteRequest), {
+    channel: 'library-catalog-v1:get-favorite-track-uids',
+    args: [favoriteRequest]
+  });
 
   assert.deepEqual(await api.readFileBytes('sized.wav', 123), {
     channel: 'read-file-bytes',
@@ -271,6 +279,10 @@ test('preload exposes listener registration wrappers', () => {
   harness.listeners.get('open-effect-pipeline-view')({});
   api.onOpenLibraryView(() => calls.push(['onOpenLibraryView']));
   harness.listeners.get('open-library-view')({});
+  api.onExitMiniPlayer(() => calls.push(['onExitMiniPlayer']));
+  harness.listeners.get('exit-mini-player')({});
+  api.onToggleMiniPlayer(() => calls.push(['onToggleMiniPlayer']));
+  harness.listeners.get('toggle-mini-player')({});
   api.onAddMusicFolder(() => calls.push(['onAddMusicFolder']));
   harness.listeners.get('add-music-folder')({});
   api.onRescanLibrary(() => calls.push(['onRescanLibrary']));
@@ -311,6 +323,8 @@ test('preload exposes listener registration wrappers', () => {
     ['onStartDoubleBlindTest'],
     ['onOpenEffectPipelineView'],
     ['onOpenLibraryView'],
+    ['onExitMiniPlayer'],
+    ['onToggleMiniPlayer'],
     ['onAddMusicFolder'],
     ['onRescanLibrary'],
     ['onUpdateAvailable', { version: '2.0.0' }],

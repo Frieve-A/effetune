@@ -84,7 +84,7 @@ export function parseCueSheet(text, { cueRelativePath = '' } = {}) {
         continue;
       }
       if (command === 'TITLE' || command === 'PERFORMER') {
-        const value = parseText(argument);
+        const value = parseText(argument, { ellipsize: command === 'TITLE' });
         if (currentTrack) currentTrack[command === 'TITLE' ? 'title' : 'performer'] = value;
         else disc[command === 'TITLE' ? 'title' : 'performer'] = value;
         continue;
@@ -189,10 +189,19 @@ export function validateCueDurations(resolvedCue, physicalMetadataByPath) {
 export function createCueTrackMetadata(cue, track, physicalMetadata = {}) {
   const artist = track.performer || cue.disc.performer || bounded(physicalMetadata.artist);
   const album = cue.disc.title || bounded(physicalMetadata.album) || stripExtension(baseName(cue.cueRelativePath));
+  const albumArtist = cue.disc.performer || bounded(physicalMetadata.albumArtist) || artist;
+  const albumArtists = cue.disc.performer
+    ? splitArtistValues([cue.disc.performer])
+    : splitArtistValues(
+        Array.isArray(physicalMetadata.albumArtists) && physicalMetadata.albumArtists.length > 0
+          ? physicalMetadata.albumArtists
+          : [albumArtist]
+      );
   return Object.freeze({
     title: track.title || `Track ${String(track.trackNo).padStart(2, '0')}`,
     artist,
-    albumArtist: cue.disc.performer || bounded(physicalMetadata.albumArtist) || artist,
+    albumArtist,
+    albumArtists,
     album,
     genre: cue.disc.genre || bounded(physicalMetadata.genre),
     year: cueYear(cue.disc.date, physicalMetadata.year),
@@ -259,14 +268,20 @@ function cueTimeToFrame(minutesValue, secondsValue, framesValue) {
   return total;
 }
 
-function parseText(value) {
+function parseText(value, { ellipsize = false } = {}) {
   const trimmed = String(value).trim();
   let result = trimmed;
   if (trimmed.startsWith('"')) {
     if (!trimmed.endsWith('"') || trimmed.length < 2) throw cueError('cue-invalid-text');
     result = trimmed.slice(1, -1).replace(/\\(["\\])/g, '$1');
   }
-  if (result.length > CUE_MAX_TEXT_CHARACTERS || /[\0\r\n]/.test(result)) throw cueError('cue-text-too-long');
+  if (/[\0\r\n]/.test(result)) throw cueError('cue-text-too-long');
+  if (result.length > CUE_MAX_TEXT_CHARACTERS) {
+    if (!ellipsize) throw cueError('cue-text-too-long');
+    const prefixLength = CUE_MAX_TEXT_CHARACTERS - 3;
+    const endsWithHighSurrogate = /[\uD800-\uDBFF]/.test(result[prefixLength - 1]);
+    return `${result.slice(0, prefixLength - (endsWithHighSurrogate ? 1 : 0))}...`;
+  }
   return result;
 }
 
@@ -335,6 +350,13 @@ function stripExtension(value) {
 
 function bounded(value, maximum = CUE_MAX_TEXT_CHARACTERS) {
   return value == null ? '' : String(value).slice(0, maximum);
+}
+
+function splitArtistValues(values) {
+  return [...new Set(values
+    .flatMap(value => bounded(value).split(';'))
+    .map(value => value.trim())
+    .filter(Boolean))];
 }
 
 function cueYear(date, embeddedYear) {

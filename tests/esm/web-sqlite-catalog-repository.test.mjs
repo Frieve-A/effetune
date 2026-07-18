@@ -12,6 +12,7 @@ import {
   dispatchWebSqliteCommand,
   initializeWebSqliteRuntime
 } from '../../js/library/repository/web-sqlite-runtime.js';
+import { metadataParseEligibility } from '../../js/library/scan/metadata-parse-service.js';
 import { createConsoleHarness, withGlobals } from '../helpers/global-test-utils.mjs';
 
 test('Web SQLite repository maps OPFS, full, busy, and corruption failures to stable codes', async () => {
@@ -108,6 +109,56 @@ test('Electron and Web catalogs expose the scan-folder track-count command', () 
     assert.match(source, /case 'getScanFolderTrackCount': return getScanFolderTrackCount\(payload\)/);
     assert.match(source, /function getScanFolderTrackCount\(payload\)/);
   }
+});
+
+test('Web scans reparse unchanged tracks from the previous parser and preserve a resumed parser version', async t => {
+  const { database, close } = await openWebTestCatalog(t, 'effetune-web-parser-version-');
+  seedWebTestFolder();
+  const signature = { fileIdentity: 'unchanged-file', size: 100, mtimeMs: 200 };
+  dispatchWebSqliteCommand('upsertTracks', { tracks: [{
+    trackUid: 'unchanged-track', folderId: 'web-folder', relativePath: 'Album/Track.flac',
+    title: 'Track', artist: 'Artist', albumArtist: 'Artist', album: 'Album', genre: 'Genre',
+    ...signature, metadataStatus: 'ok', metadataParserVersion: 'catalog-metadata-v4',
+    addedAt: 1, updatedAt: 1
+  }] });
+  const scan = beginWebTestScan('scan-parser-version-v5');
+  const observation = {
+    relativePath: 'Album/Track.flac', path: '/fsa/music/Album/Track.flac', ...signature
+  };
+  dispatchWebSqliteCommand('commitScanSeenBatch', {
+    scanId: scan.scanId, folderId: scan.folderId, generation: scan.generation,
+    expectedLifecycleVersion: scan.lifecycleVersion,
+    observations: [observation], maxTracks: 500, maxBytes: 4 * 1024 * 1024,
+    lastCommittedBatch: 1,
+    cursor: { lastRelativePath: observation.relativePath, visitedFiles: 1, committedBatches: 1 }
+  });
+  const candidate = dispatchWebSqliteCommand('listMetadataCandidates', {
+    scanId: scan.scanId, folderId: scan.folderId, generation: scan.generation,
+    expectedLifecycleVersion: scan.lifecycleVersion, cursor: null, limit: 10,
+    parserVersion: scan.parserVersion
+  }).items[0];
+
+  assert.equal(scan.parserVersion, 'catalog-metadata-v5');
+  assert.equal(candidate.storedParserVersion, 'catalog-metadata-v4');
+  assert.deepEqual(candidate.storedSignature, candidate.observedSignature);
+  assert.equal(metadataParseEligibility(candidate), true);
+
+  database.prepare(`
+    UPDATE scan_run_folders SET parser_version = 'catalog-metadata-v4'
+    WHERE scan_id = ? AND folder_id = ?
+  `).run(scan.scanId, scan.folderId);
+  dispatchWebSqliteCommand('pauseScanFolder', {
+    scanId: scan.scanId, folderId: scan.folderId, generation: scan.generation,
+    expectedLifecycleVersion: scan.lifecycleVersion, status: 'paused', stopReason: 'test',
+    continuityBroken: true, sweepEligibility: 'INELIGIBLE'
+  });
+  const resumed = dispatchWebSqliteCommand('beginScanFolder', {
+    scanId: scan.scanId, folderId: scan.folderId, normalizedRoot: '/fsa/music',
+    expectedLifecycleVersion: scan.lifecycleVersion, resume: true,
+    rootEnumerationRequired: true, continuityBroken: true, sweepEligibility: 'INELIGIBLE'
+  });
+  assert.equal(resumed.parserVersion, 'catalog-metadata-v4');
+  close();
 });
 
 test('Web SQLite tombstones hide removed-folder tracks and related entities before deletion completes', () => {
@@ -381,6 +432,7 @@ test('Web context snapshot size is not rescanned while its shadow row count is u
     limit: 2
   });
   assert.deepEqual(lastPage.rows.map(row => row.title), ['Track 04', 'Track 05']);
+  assert.equal(lastPage.pageStartOrdinal, 4);
   assert.equal(snapshotAggregateReads, 1);
 
   const firstPage = dispatchWebSqliteCommand('readContextPage', {
@@ -734,6 +786,53 @@ test('scan entity aggregates are deferred to one durable phased post-scan job', 
   assert.match(metadataService, /deferAggregateRecompute: true/);
 });
 
+test('Web catalog indexes semicolon-delimited album artists separately', async t => {
+  const { close } = await openWebTestCatalog(t, 'effetune-web-album-artists-');
+  seedWebTestFolder();
+  const scan = beginWebTestScan('scan-multiple-album-artists');
+  const claimed = claimWebCueTrack(scan, {
+    trackUid: 'web-collaboration',
+    entryKey: 'cue:Album/disc.cue#1',
+    relativePath: 'Album/disc.flac',
+    signature: { fileIdentity: 'collaboration', size: 100, mtimeMs: 1 },
+    cueSignature: 'cue-collaboration'
+  });
+  dispatchWebSqliteCommand('completeMetadataParseSuccess', {
+    claim: claimed.claim,
+    metadata: {
+      title: 'Collaboration', artist: 'Track Performer',
+      albumArtist: 'Artist A; Artist B', album: 'Album', genre: 'Genre', durationSec: 10
+    },
+    metadataStatus: 'ok', clearErrorAndRetryState: true,
+    updateLastKnownGood: true, updateDerivedData: true
+  });
+
+  const artistContext = dispatchWebSqliteCommand('createContext', {
+    endpoint: 'entities:artist', query: '', sort: 'name', direction: 'asc', scope: null
+  });
+  const artistPage = dispatchWebSqliteCommand('readContextPage', {
+    contextToken: artistContext.contextToken, cursor: null, limit: 20
+  });
+  assert.deepEqual(artistPage.rows.map(row => ({ name: row.name, trackCount: row.trackCount })), [
+    { name: 'Artist A', trackCount: 1 },
+    { name: 'Artist B', trackCount: 1 }
+  ]);
+  for (const artist of artistPage.rows) {
+    const trackContext = dispatchWebSqliteCommand('createContext', {
+      endpoint: 'tracks', query: '', sort: 'title', direction: 'asc',
+      scope: { artistKey: artist.artistKey }
+    });
+    const trackPage = dispatchWebSqliteCommand('readContextPage', {
+      contextToken: trackContext.contextToken, cursor: null, limit: 20
+    });
+    assert.deepEqual(trackPage.rows.map(row => row.trackUid), ['web-collaboration']);
+    assert.equal(trackPage.rows[0].albumArtist, 'Artist A; Artist B');
+    dispatchWebSqliteCommand('releaseContext', { contextToken: trackContext.contextToken });
+  }
+  dispatchWebSqliteCommand('releaseContext', { contextToken: artistContext.contextToken });
+  close();
+});
+
 test('Web CUE metadata claims keep the track UID while replacing the physical source path', async t => {
   const { database, close } = await openWebTestCatalog(t, 'effetune-web-cue-path-');
   seedWebTestFolder();
@@ -799,6 +898,38 @@ test('Web CUE metadata claims keep the track UID while replacing the physical so
   assert.equal(completed.normalizedBasename, 'new.flac');
   assert.match(completed.searchText, /new\.flac/);
   assert.doesNotMatch(completed.searchText, /old\.flac/);
+  close();
+});
+
+test('Web CUE artwork claims accept supported sibling image files', async t => {
+  const { close } = await openWebTestCatalog(t, 'effetune-web-cue-cover-');
+  seedWebTestFolder();
+  const scan = beginWebTestScan('scan-cue-cover');
+  const entryKey = 'cue:Album/disc.cue#1';
+  const claimedTrack = claimWebCueTrack(scan, {
+    trackUid: 'web-cue-cover-track', entryKey, relativePath: 'Album/disc.flac',
+    signature: { fileIdentity: 'cue-audio', size: 100, mtimeMs: 1 },
+    cueSignature: 'cue-cover-signature'
+  });
+  completeWebMetadata(claimedTrack.claim, 'CUE cover track');
+  dispatchWebSqliteCommand('beginArtworkUtilitySession', { utilitySessionId: 'web-cue-cover-session' });
+  const source = dispatchWebSqliteCommand('getArtworkSource', { trackUid: 'web-cue-cover-track' });
+  assert.equal(source.trackSourceKind, 'cue-track');
+  assert.equal(source.cueRelativePath, 'Album/disc.cue');
+  const claimSource = { ...source };
+  delete claimSource.trackSourceKind;
+  delete claimSource.cueRelativePath;
+  const externalArtworkStat = { fileIdentity: 'fsa:Album/cover.jpg', size: 50, mtimeMs: 2 };
+  const claimed = dispatchWebSqliteCommand('claimArtworkSource', {
+    claim: {
+      ...claimSource,
+      sourceKind: 'external-file',
+      canonicalSourceIdentity: 'Album/cover.jpg',
+      externalArtworkStat
+    }
+  });
+  assert.equal(claimed.claim.sourceKind, 'external-file');
+  assert.equal(claimed.claim.canonicalSourceIdentity, 'Album/cover.jpg');
   close();
 });
 

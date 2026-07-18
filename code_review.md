@@ -1,4 +1,4 @@
-# Codex Code Review Checklist
+# Code Review Checklist
 
 Use this checklist when reviewing changes in this repository. Lead with concrete findings and file/line references, then summarize only after risks are covered.
 

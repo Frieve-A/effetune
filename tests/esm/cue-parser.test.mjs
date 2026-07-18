@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CUE_MAX_BYTES,
+  CUE_MAX_TEXT_CHARACTERS,
   createCueEntryKey,
   createCueSignature,
   createCueTrackMetadata,
@@ -78,11 +79,13 @@ test('CUE parser creates frame regions and stable logical identities for multi-F
   });
   assert.deepEqual({
     title: metadata.title, artist: metadata.artist, album: metadata.album,
-    albumArtist: metadata.albumArtist, trackNo: metadata.trackNo, trackTotal: metadata.trackTotal,
+    albumArtist: metadata.albumArtist, albumArtists: metadata.albumArtists,
+    trackNo: metadata.trackNo, trackTotal: metadata.trackTotal,
     discNo: metadata.discNo, discTotal: metadata.discTotal, year: metadata.year,
     genre: metadata.genre, sampleRate: metadata.sampleRate
   }, {
     title: 'Track 03', artist: 'Guest', album: 'Disc Title', albumArtist: 'Disc Artist',
+    albumArtists: ['Disc Artist'],
     trackNo: 3, trackTotal: 3, discNo: null, discTotal: null, year: 1999,
     genre: 'Rock', sampleRate: 96000
   });
@@ -104,6 +107,24 @@ test('track-scoped REM DATE and REM GENRE do not replace disc metadata', () => {
   assert.equal(parsed.ok, true);
   assert.equal(parsed.disc.date, '1999');
   assert.equal(parsed.disc.genre, 'Disc Genre');
+});
+
+test('CUE parser ellipsizes oversized titles instead of rejecting the sheet', () => {
+  const longTitle = `Long ${'title '.repeat(700)}\u{1F3B5}`;
+  const parsed = parse(`
+    TITLE "${longTitle}"
+    FILE "album.wav" WAVE
+      TRACK 01 AUDIO
+        TITLE "${longTitle}"
+        INDEX 01 00:00:00
+  `);
+
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.disc.title.length, CUE_MAX_TEXT_CHARACTERS);
+  assert.equal(parsed.disc.title.endsWith('...'), true);
+  assert.equal(parsed.tracks[0].title.length, CUE_MAX_TEXT_CHARACTERS);
+  assert.equal(parsed.tracks[0].title.endsWith('...'), true);
+  assert.equal(parsed.tracks[0].title.startsWith(longTitle.slice(0, 100)), true);
 });
 
 test('CUE parser deterministically rejects unsafe, duplicate, reversed, and invalid index input', () => {

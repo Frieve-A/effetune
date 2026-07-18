@@ -52,6 +52,8 @@ Les onglets de navigation permettent de changer de catalogue.
 - **Ajouts récents** - affiche les morceaux récemment indexés.
 - **Listes de lecture** - affiche les listes de lecture créées ou importées dans la Bibliothèque musicale.
 
+Une valeur d'artiste de l'album séparée par des points-virgules, comme `Artist A; Artist B`, est indexée sous chaque artiste tout en conservant la mention complète à l'affichage. `&`, `/` et `feat.` ne sont pas considérés comme des séparateurs.
+
 Les groupes **Sous-dossiers** utilisent le chemin du sous-dossier qui contient directement chaque morceau, relatif à son dossier de musique importé. Des chemins relatifs identiques appartenant à des dossiers importés différents restent dans des groupes distincts. Les fichiers placés directement à la racine importée ne créent pas de groupe de sous-dossier, mais restent disponibles dans **Morceaux** et **Dossiers**.
 
 **Rechercher dans la bibliothèque** permet de rechercher dans les morceaux, albums, artistes et listes de lecture. En disposition ordinateur, l'en-tête de la liste des morceaux permet de trier par titre, artiste, album, genre ou durée. Les vues des albums, artistes, genres, sous-dossiers et listes de lecture proposent une liste **Trier** alimentée par le catalogue. Selon la vue, elle permet un tri croissant ou décroissant par nom, artiste, chemin, nombre de pistes, durée totale, date de mise à jour ou date de création. Chaque vue conserve son propre choix.
@@ -68,7 +70,9 @@ Quand les métadonnées sont absentes ou illisibles, EffeTune utilise le nom du 
 
 Placez le fichier `.cue` externe à côté des fichiers WAV ou FLAC qu'il désigne, puis ajoutez ou analysez de nouveau ce dossier. Chaque entrée `TRACK ... AUDIO` valide apparaît comme un morceau distinct dans la Bibliothèque musicale. Le titre, l'interprète, la date, le genre et le numéro de piste du fichier CUE sont utilisés lorsqu'ils sont disponibles ; les informations audio techniques proviennent du fichier WAV ou FLAC source.
 
-Vous pouvez aussi lire un album CUE sans l’ajouter à la Bibliothèque musicale. Utilisez **Open music files**, ou **Open Music** sur mobile. Dans l’application de bureau, vous pouvez également utiliser **File > Open music file...**. Dans l’application de bureau, sélectionnez uniquement le fichier `.cue` ; dans un navigateur, sélectionnez un fichier `.cue` avec tous les fichiers WAV ou FLAC qu’il désigne, et aucun autre. Une sélection valide remplace la file de lecture actuelle sans être ajoutée au catalogue. Si la validation échoue, la file actuelle reste inchangée.
+Pour les pistes ajoutées à la Bibliothèque musicale, EffeTune utilise d’abord la pochette intégrée au fichier audio source. S’il n’y en a pas, il recherche, à côté du fichier CUE et dans cet ordre, `cover.jpg`, `cover.png`, `front.jpg`, `front.png`, puis un fichier JPEG ou PNG portant le nom du fichier audio source, avec ou sans son extension audio. La lecture directe dans l’application de bureau utilise automatiquement ces mêmes images voisines ; ce mode de lecture n’extrait pas la pochette intégrée au fichier audio source. La lecture directe dans le navigateur utilise l’image correspondante incluse dans la sélection de fichiers.
+
+Vous pouvez aussi lire un album CUE sans l’ajouter à la Bibliothèque musicale. Utilisez **Open music files**, ou **Open Music** sur mobile. Dans l’application de bureau, vous pouvez également utiliser **File > Open music file...**. Dans l’application de bureau, sélectionnez uniquement le fichier `.cue` ; dans un navigateur, sélectionnez un fichier `.cue` avec tous les fichiers WAV ou FLAC qu’il désigne, et ajoutez la pochette correspondante si vous souhaitez l’utiliser. Une sélection valide remplace la file de lecture actuelle sans être ajoutée au catalogue. Si la validation échoue, la file actuelle reste inchangée.
 
 Si la feuille CUE n'est pas valide ou ne permet pas d'identifier ses fichiers sources de manière fiable, EffeTune explique le problème et importe les fichiers WAV ou FLAC comme des morceaux ordinaires couvrant tout le fichier. Corrigez la feuille CUE ou les noms de fichiers, puis analysez de nouveau le dossier.
 
@@ -111,6 +115,15 @@ Vous pouvez effectuer les actions suivantes.
 - Faire glisser les morceaux d'une liste de lecture pour modifier leur ordre. Dans les environnements où le glisser-déposer est difficile, utilisez **Monter** et **Descendre**.
 - Utiliser **Importer une liste** pour importer des listes de lecture aux formats M3U, M3U8, PLS et XSPF.
 - Ouvrir une liste de lecture précise et l'exporter avec **Exporter M3U8** ou **Exporter XSPF**.
+
+### Titres récemment écoutés et Favoris
+
+EffeTune affiche deux listes spéciales aux côtés des listes ordinaires, dans la même grille de cartes. Elles ne sont créées qu'en cas de besoin : **Titres récemment écoutés** au démarrage d'un titre indexé, et **Favoris** lorsque vous marquez un titre d'une étoile pour la première fois.
+
+- **Titres récemment écoutés** conserve les 100 derniers titres distincts, le plus récent en tête. Réécouter un titre le replace en tête.
+- **Favoris** contient les titres marqués avec ☆. Sur PC, utilisez l'étoile à côté du titre ; sur mobile, ouvrez le menu **Plus** du titre. Ce même menu s'ouvre aussi d'un clic droit sur PC.
+
+Leur nom est fixe et s'affiche dans la langue actuelle de l'interface ; il ne peut donc pas être modifié. Vous pouvez toutefois dupliquer, exporter ou supprimer ces listes comme les autres. Une liste supprimée est recréée vide la prochaine fois qu'une lecture ou une action sur les favoris en a besoin. Leurs cartes affichent une horloge ou une étoile dans la zone d'illustration ; le bouton de lecture en bas à droite de **Favoris** lance immédiatement la liste. Les listes spéciales sont exclues des résultats de recherche des listes ordinaires.
 
 Lors de l’analyse d’un dossier, EffeTune importe automatiquement les fichiers de listes de lecture pris en charge après l’indexation des pistes et ignore ceux dont le contenu n’a pas changé. Si le contenu d’un fichier situé dans le même dossier et au même chemin relatif change, EffeTune remplace de façon atomique les éléments de la liste importée automatiquement, y compris les modifications apportées à ces éléments dans EffeTune. Une importation échouée ou annulée est retentée lors de l’analyse suivante. La suppression ou le renommage du fichier source ne supprime pas la liste existante, et un fichier renommé est importé comme une nouvelle liste.
 

@@ -1,4 +1,4 @@
-self.EFFECTUNE_CACHE_VERSION = "effetune-v2.1.0-a387831397626dca";
+self.EFFECTUNE_CACHE_VERSION = "effetune-v2.1.0-17139d44cf2c7541";
 self.EFFECTUNE_PRECACHE_URLS = [
   "./effetune-library.css",
   "./effetune-mobile.css",
@@ -51,6 +51,7 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/library/artwork/web-artwork-extractor.js",
   "./js/library/constants.js",
   "./js/library/library-manager-v2.js",
+  "./js/library/metadata/cue-cover.js",
   "./js/library/metadata/cue-sheet.js",
   "./js/library/metadata/metadata-mapper.js",
   "./js/library/metadata/riff-info.js",
@@ -63,6 +64,8 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/library/playlists/paged-playlist-service.js",
   "./js/library/playlists/playlist-formats.js",
   "./js/library/playlists/playlist-stream.js",
+  "./js/library/playlists/recently-played-tracker.js",
+  "./js/library/playlists/system-playlists.js",
   "./js/library/repository/canonical-order.js",
   "./js/library/repository/catalog-client-factory.js",
   "./js/library/repository/catalog-order-contract.js",
@@ -247,6 +250,8 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./plugins/lofi/noise_blender.js",
   "./plugins/lofi/simple_jitter.js",
   "./plugins/lofi/vinyl_artifacts.js",
+  "./plugins/lofi/vinyl_simulator.css",
+  "./plugins/lofi/vinyl_simulator.js",
   "./plugins/modulation/doppler_distortion.js",
   "./plugins/modulation/pitch_shifter.js",
   "./plugins/modulation/tremolo.js",

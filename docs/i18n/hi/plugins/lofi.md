@@ -17,6 +17,7 @@ lang: hi
 - [Noise Blender](#noise-blender) - वातावरणीय पृष्ठभूमि बनावट जोड़ता है
 - [Simple Jitter](#simple-jitter) - सूक्ष्म विंटेज डिजिटल अपूर्णताएं बनाता है
 - [Vinyl Artifacts](#vinyl-artifacts) - विनाइल-शैली के पॉप, क्रैकल, हिस, रंबल और स्टेरियो शोर रिसाव जोड़ता है
+- [Vinyl Simulator](#vinyl-simulator) - इनपुट को मॉडल किए गए groove में काटकर भौतिक stylus मॉडल से चलाता है
 
 ## Bit Crusher
 
@@ -446,5 +447,97 @@ lang: hi
    - Hiss: -39dB, Rumble: -45dB, Crosstalk: 60%, Noise Profile: 5.0
    - Wear: 80%, React: 75%, React Mode: Velocity, Mix: 100%
    - इसके लिए बिल्कुल सही: music पर नाटकीय रूप से react करने वाला noise
+
+## Vinyl Simulator
+
+Vinyl Simulator भौतिक record-cutting और stylus-playback मॉडल से संगीत signal को ही बदलता है। यह cutting filters और RIAA recording curve लगाकर signal को surface roughness और debris वाले groove में लिखता है, फिर stylus और tonearm के mechanical model से पढ़कर RIAA playback equalization लगाता है। जब केवल record noise जोड़ने के बजाय groove geometry, tracking और surface को संगीत के साथ वास्तविक रूप से interact कराना हो, तब इसका उपयोग करें।
+
+### Vinyl Artifacts से अंतर
+
+- **Vinyl Simulator** signal को model किए गए groove और stylus से गुजारता है। Roughness, Dust, Static, Tracking Force, stylus shape, Speed और Radius सभी परिणाम में भाग लेते हैं।
+- **Vinyl Artifacts** संगीत signal को नहीं बदलता; वह pops, crackle, hiss, rumble और stereo noise bleed जोड़ता है। हल्की, predictable noise layer या WASM न मिलने पर इसे चुनें।
+- दोनों साथ चल सकते हैं, लेकिन दोनों में surface settings तेज रखने से clicks और noise जल्दी बढ़ते हैं।
+
+### ध्वनि सुधार मार्गदर्शिका
+
+- **कोमल record playback:** Cut Level को 0 dB के पास, Shape को Elliptical, Roughness को मध्यम तथा Dust और Static को कम रखें। मूल signal अधिक रखना हो तो Mix घटाएँ।
+- **Inner-groove character:** Radius को 60 mm की ओर घटाएँ। कम linear speed पर high-frequency detail और tracking अधिक कठिन होते हैं।
+- **साफ और स्थिर playback:** Roughness, Dust, Static और Scratch घटाएँ, Tracking Force लगभग 2 g रखें और Standard या High चुनें।
+- **पुरानी surface:** पहले Roughness बढ़ाएँ, फिर Dust, Static और थोड़ा Scratch जोड़ें; हर control अलग physical event दर्शाता है।
+- **अधिक स्पष्ट groove coloration:** Cut Level सावधानी से बढ़ाएँ, HF Cutoff या Radius घटाएँ। Tracking S/E की गिरावट और mistrack/skip की वृद्धि देखें।
+- इसमें wow/flutter, eccentricity, warping या turntable rumble नहीं हैं। जरूरत हो तो chain में **Wow Flutter** जोड़ें।
+
+### Parameters
+
+#### Cutting
+
+- **Cut Level** (-20 से +20 dB) — input से cutter चलने की ताकत। अधिक level groove displacement और nonlinearity बढ़ाता है; कम level mechanical headroom बढ़ाता है।
+- **HF Cutoff** (6000 से 24000 Hz) — cutting से पहले high-frequency सीमा। कम value गहरा और आसानी से track होने वाला groove देती है; अधिक value detail बचाती है पर stylus पर अधिक मांग रखती है।
+- **Bass Mono Below** (50 से 1000 Hz) — वह range जिसमें Side component घटता है। अधिक value ज्यादा bass को center करती है।
+- **Side Mix** (0 से 100%) — Bass Mono Below के नीचे बचने वाला Side। 0% उस range को mono बनाता है; 100% मूल Side रखता है।
+
+#### Record
+
+- **Speed** (33⅓, 45 या 78 rpm) — rotation speed। समान Radius पर अधिक speed linear velocity बढ़ाती है और fine detail track करना आसान बनाती है।
+- **Radius** (60 से 146 mm) — record पर stylus की जगह। कम value धीमे और high frequencies में कठिन inner groove को दर्शाती है।
+- **Roughness** (0.1 से 100 nm) — microscopic surface roughness; बढ़ाने पर continuous surface texture बढ़ता है।
+- **Dust** (0 से 10000/s) — dust particles और छोटी physical disturbances की दर।
+- **Static** (0 से 10000/s) — electrical discharge pulses की दर, जो cartridge output में sharp pops जोड़ते हैं।
+- **Scratch** (0 से 1000/s) — बड़े groove defects की दर।
+
+#### Stylus
+
+- **Shape** (Spherical या Elliptical) — contact geometry। Spherical में Scan Radius, Side Radius के साथ चलता है। बदलने पर simulation state फिर बनती है।
+- **Side Radius** (5 से 25 µm) — groove wall के आर-पार stylus radius; contact area और pressure distribution बदलता है।
+- **Scan Radius** (2 से 25 µm) — groove travel की दिशा का radius। छोटा value fine geometry follow करता है; बड़ा व्यापक contact पर average करता है।
+- **Tracking Force** (0.5 से 5.0 g) — downward stylus force। थोड़ा अधिक contact स्थिर कर सकता है, पर force और pressure बढ़ाता है; बहुत कम होने पर mistrack और skip बढ़ सकते हैं।
+- **Tip Mass** (0.1 से 1.5 mg) — stylus tip की moving mass। अधिक mass inertia बढ़ाकर तेज groove motion follow करना कठिन बनाती है।
+- **Compliance** (5 से 35 cu) — suspension flexibility। अधिक value उसी force पर ज्यादा movement और अलग mechanical response देती है।
+- **Damping** (0.05 से 1.0 ζ) — mechanical resonance damping। अधिक value ringing को ज्यादा दबाती है।
+
+#### Output
+
+- **Quality** (Eco, Standard, High या Ultra) — physical integration के base substeps और contact scan points चुनता है। Contact resonance को stable रखने के लिए engine, sample rate, Tracking Force, Tip Mass, Compliance, Shape, Side Radius और Scan Radius के अनुसार effective substeps को base से ऊपर अपने-आप बढ़ा सकता है। Real-time default Standard है; बदलने पर simulation state फिर बनती है।
+- **Output Gain** (-24 से +24 dB) — RIAA playback EQ और normalization के बाद का level।
+- **Mix** (0 से 100%) — simulated playback और latency-aligned dry signal का blend। 0% dry, 100% पूरा simulated है।
+
+### HUD कैसे पढ़ें
+
+- **Force L/R (mN):** दोनों groove walls पर contact force। बड़ी या असमान values कठिन groove motion दिखाती हैं।
+- **Pressure (GPa):** वर्तमान में अधिक contact pressure; stylus settings बदलते समय Force के साथ देखें।
+- **Tip (cm/s, dB):** stylus-tip velocity और संबंधित playback level।
+- **Tracking S/E L/R (dB):** tracked signal और tracking error का ratio। अधिक value साफ tracking है; लगातार गिरना कठिनाई बताता है।
+- **Jitter (ns):** groove read point का timing variation, Stylus view में दिखता है।
+- **Mistrack, Skip, Static Pop और Dust Hit (/s):** हाल की event rates; नई event पर flash होता है। बार-बार event आए तो Cut Level घटाएँ, Tracking Force थोड़ा बढ़ाएँ, Radius या Quality बढ़ाएँ।
+
+Native DSP telemetry मिलने पर HUD सक्रिय होता है। Playback रुका हो या power saving के लिए telemetry बंद हो तो idle state दिख सकती है।
+
+### अनुशंसित सेटिंग्स
+
+1. **कोमल playback:** Cut Level 0 dB, HF Cutoff 16 kHz, 33⅓ rpm, Radius 120 mm, Roughness 5 nm, Dust 0.5/s, Static 0.02/s, Scratch 0/s, Elliptical, Tracking Force 2.0 g, Standard, Mix 75%।
+2. **Classic outer groove:** Cut Level 0 dB, 33⅓ rpm, Radius 135 mm, Roughness 13.17 nm, Dust 2/s, Static 0.08/s, Elliptical, Tracking Force 2.0 g, Standard, Mix 100%।
+3. **Inner-groove demo:** Cut Level +3 dB, HF Cutoff 14 kHz, Radius 60 mm, Elliptical, Scan Radius 8 µm, Tracking Force 2.0 g, High, Mix 100%; बड़े Radius से Tracking S/E की तुलना करें।
+4. **घिसी surface:** Radius 100 mm, Roughness 35 nm, Dust 25/s, Static 1/s, Scratch 0.5/s, Tracking Force 2.2 g, Standard, Output Gain -3 dB, Mix 100%।
+
+### Quality और CPU load
+
+हर Quality preset base substeps और contact points तय करता है। Stability के लिए engine `Nmin = ceil(8 × f_c / sampleRate)` भी निकालता है, जहाँ contact-resonance frequency `f_c`, Tracking Force, Tip Mass, Compliance, Shape, Side Radius और Scan Radius से तय होती है; फिर `effectiveSubsteps = max(base, Nmin)` इस्तेमाल होता है। Default settings पर 96 kHz Standard अपने base 4 substeps पर ही रहता है, इसलिए मौजूदा performance target नहीं बदलता।
+
+मुख्य load sample rate × effective substeps × contact points के समानुपाती है। नीचे contact evaluations और relative load तब के base estimates हैं जब stability floor substeps नहीं बढ़ाता; ये measured CPU percentages नहीं हैं। Processor, browser और WASM SIMD भी वास्तविक load बदलते हैं।
+
+| Quality | Base physical detail | 96 kHz पर base evaluations | Base relative load | उपयोग |
+|---|---:|---:|---:|---|
+| Eco | 2 × 7 | 2.7 million/s | 0.39× | Mobile, low-power, कई instances |
+| Standard | 4 × 9 | 6.9 million/s | 1.00× | सामान्य real-time listening |
+| High | 8 × 13 | 20 million/s | 2.89× | तेज systems, focused comparison |
+| Ultra | 20 × 25 | 96 million/s | 13.89× | Offline rendering और verification |
+
+Stability floor inactive हो तो base relative load पर ये sample-rate multipliers लगाएँ: 44.1 kHz = 0.46×, 48 = 0.50×, 88.2 = 0.92×, 96 = 1.00×, 176.4 = 1.84× और 192 = 2.00×। Sample rate और Tracking Force, Tip Mass, Compliance, Shape, Side Radius तथा Scan Radius settings floor को सक्रिय करके वास्तविक load को base estimate से ऊपर ले जा सकती हैं। Playback टूटे तो पहले Quality घटाएँ।
+
+### WASM आवश्यकता और मॉडल की सीमाएँ
+
+Vinyl Simulator के real-time processing के लिए native WebAssembly DSP kernel जरूरी है। `?dsp=off` से WASM बंद हो, environment असमर्थ हो या initialization fail हो तो input बिना बदलाव pass होता है और UI बताता है कि WASM जरूरी है। बहुत धीमी JavaScript reference simulation को fallback के रूप में नहीं चलाया जाता।
+
+Model पहले stereo pair को process करता है। Dust deformation केवल particle के active रहने तक बचती है और stylus हमेशा नए generated groove पर आगे बढ़ता है; wear अगले revolutions तक जमा नहीं होता और presets में save नहीं होता। Long-term wear, 3D visualization, real-time SNR/THD meters, wow/flutter, eccentricity, warping, turntable rumble और cartridge electrical loading model के बाहर हैं।
 
 याद रखें: ये प्रभाव आपके संगीत में चरित्र और नॉस्टैल्जिया जोड़ने के लिए हैं। सूक्ष्म सेटिंग्स से शुरू करें और स्वाद के अनुसार समायोजित करें!

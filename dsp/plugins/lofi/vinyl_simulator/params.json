@@ -1,0 +1,26 @@
+{
+  "type": "VinylSimulatorPlugin",
+  "tolerance": { "abs": 0.0001, "policy": "per-sample" },
+  "fields": [
+    { "name": "cutLevel", "key": "lv", "kind": "float", "min": -20, "max": 20, "default": 0, "unit": "dB" },
+    { "name": "hfCutoff", "key": "hf", "kind": "float", "min": 6000, "max": 24000, "default": 16000, "unit": "Hz" },
+    { "name": "bassMonoBelow", "key": "mb", "kind": "float", "min": 50, "max": 1000, "default": 250, "unit": "Hz" },
+    { "name": "sideMix", "key": "sm", "kind": "float", "min": 0, "max": 100, "default": 70, "unit": "%" },
+    { "name": "speed", "key": "rp", "kind": "enum", "default": "33⅓", "values": ["33⅓", "45", "78"] },
+    { "name": "radius", "key": "rd", "kind": "float", "min": 60, "max": 146, "default": 120, "unit": "mm" },
+    { "name": "roughness", "key": "rg", "kind": "float", "min": 0.1, "max": 100, "default": 13.17, "unit": "nm" },
+    { "name": "dustRate", "key": "dr", "kind": "float", "min": 0, "max": 10000, "default": 2, "unit": "/s" },
+    { "name": "staticRate", "key": "st", "kind": "float", "min": 0, "max": 10000, "default": 0.08, "unit": "/s" },
+    { "name": "scratchRate", "key": "sc", "kind": "float", "min": 0, "max": 1000, "default": 0, "unit": "/s" },
+    { "name": "stylusShape", "key": "sh", "kind": "enum", "default": "Elliptical", "values": ["Spherical", "Elliptical"] },
+    { "name": "sideRadius", "key": "rs", "kind": "float", "min": 5, "max": 25, "default": 18, "unit": "um" },
+    { "name": "scanRadius", "key": "rc", "kind": "float", "min": 2, "max": 25, "default": 8, "unit": "um" },
+    { "name": "trackingForce", "key": "tf", "kind": "float", "min": 0.5, "max": 5, "default": 2, "unit": "g" },
+    { "name": "tipMass", "key": "tm", "kind": "float", "min": 0.1, "max": 1.5, "default": 0.4, "unit": "mg" },
+    { "name": "compliance", "key": "cm", "kind": "float", "min": 5, "max": 35, "default": 15, "unit": "cu" },
+    { "name": "damping", "key": "dz", "kind": "float", "min": 0.05, "max": 1, "default": 0.25, "unit": "zeta" },
+    { "name": "quality", "key": "ql", "kind": "enum", "default": "Standard", "values": ["Eco", "Standard", "High", "Ultra"] },
+    { "name": "outputGain", "key": "og", "kind": "float", "min": -24, "max": 24, "default": 0, "unit": "dB" },
+    { "name": "mix", "key": "mx", "kind": "float", "min": 0, "max": 100, "default": 100, "unit": "%" }
+  ]
+}

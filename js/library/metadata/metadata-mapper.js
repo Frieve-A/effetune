@@ -31,6 +31,7 @@ export function createFallbackTrack(candidate = {}, now = Date.now()) {
     title,
     artist: '',
     albumArtist: '',
+    albumArtists: [],
     album: '',
     genre: '',
     year: null,
@@ -69,8 +70,19 @@ export function createTrackFromMetadata(candidate, metadata, now = Date.now(), {
   const textHints = addRepairReferenceTexts(baseTextHints, [title]);
   const commonArtist = joinedArtists(common, textHints);
   const artist = getMetadataText(mappedMetadata, ARTIST_NATIVE_IDS, commonArtist, textHints, { join: true });
-  const commonAlbumArtist = stringOrEmpty(common.albumartist, textHints);
-  const albumArtist = getMetadataText(mappedMetadata, ALBUM_ARTIST_NATIVE_IDS, commonAlbumArtist, textHints, { join: true }) || artist || '';
+  const commonAlbumArtists = textValues(common.albumartists, textHints);
+  const commonAlbumArtist = stringOrEmpty(common.albumartist, textHints) || joinTextValues(commonAlbumArtists);
+  const albumArtistSelection = selectMetadataText(
+    mappedMetadata,
+    ALBUM_ARTIST_NATIVE_IDS,
+    commonAlbumArtist,
+    textHints,
+    { join: true, commonValues: commonAlbumArtists }
+  );
+  const albumArtist = albumArtistSelection.value || artist || '';
+  const albumArtists = splitArtistValues(
+    albumArtistSelection.values.length > 0 ? albumArtistSelection.values : [albumArtist]
+  );
   const commonGenre = firstArrayString(common.genre, textHints) || stringOrEmpty(common.genre, textHints);
   const genre = getMetadataText(mappedMetadata, GENRE_NATIVE_IDS, commonGenre, textHints, { rejectNative: looksLikeId3GenreCode });
   const lowerAlbumArtist = albumArtist.toLowerCase();
@@ -86,6 +98,7 @@ export function createTrackFromMetadata(candidate, metadata, now = Date.now(), {
     title,
     artist,
     albumArtist,
+    albumArtists,
     album: getMetadataText(mappedMetadata, ALBUM_NATIVE_IDS, stringOrEmpty(common.album, textHints), textHints),
     genre,
     year: getMetadataYear(mappedMetadata, common.year, textHints),
@@ -260,14 +273,31 @@ function normalizeNumericText(value) {
 }
 
 function getMetadataText(metadata, nativeIds, commonText, languageHints = null, { join = false, rejectNative = null } = {}) {
+  return selectMetadataText(metadata, nativeIds, commonText, languageHints, { join, rejectNative }).value;
+}
+
+function selectMetadataText(
+  metadata,
+  nativeIds,
+  commonText,
+  languageHints = null,
+  { join = false, rejectNative = null, commonValues = [] } = {}
+) {
   const commonValue = stringOrEmpty(commonText, languageHints);
   const nativeText = getNativeText(metadata, nativeIds, languageHints, { join });
   if (nativeText.value &&
     (commonValue === '' || !LOW_PRIORITY_TEXT_NATIVE_TAG_TYPES.has(nativeText.tagType)) &&
     !(commonValue && rejectNative?.(nativeText.value))) {
-    return nativeText.value;
+    return nativeText;
   }
-  return commonValue || nativeText.value || '';
+  if (commonValue) {
+    return {
+      value: commonValue,
+      values: uniqueTextValues(commonValues.length > 0 ? commonValues : [commonValue]),
+      tagType: ''
+    };
+  }
+  return nativeText;
 }
 
 function looksLikeId3GenreCode(value) {
@@ -283,13 +313,15 @@ function getNativeText(metadata, nativeIds, languageHints = null, { join = false
       values.push(...textValues(tag.value, languageHints));
     }
     if (values.length > 0) {
+      const uniqueValues = uniqueTextValues(values);
       return {
-        value: join ? joinTextValues(values) : values[0],
+        value: join ? uniqueValues.join('; ') : uniqueValues[0],
+        values: uniqueValues,
         tagType
       };
     }
   }
-  return { value: '', tagType: '' };
+  return { value: '', values: [], tagType: '' };
 }
 
 function textValues(value, languageHints = null) {
@@ -302,7 +334,15 @@ function textValues(value, languageHints = null) {
 }
 
 function joinTextValues(values) {
-  return [...new Set(values.map(value => value.trim()).filter(Boolean))].join('; ');
+  return uniqueTextValues(values).join('; ');
+}
+
+function uniqueTextValues(values) {
+  return [...new Set(values.map(value => value.trim()).filter(Boolean))];
+}
+
+function splitArtistValues(values) {
+  return uniqueTextValues(values.flatMap(value => String(value).split(';')));
 }
 
 function getMetadataYear(metadata, commonYear, languageHints = null) {

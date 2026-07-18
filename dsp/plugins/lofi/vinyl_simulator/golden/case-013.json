@@ -1,0 +1,83 @@
+{
+  "formatVersion": 1,
+  "type": "VinylSimulatorPlugin",
+  "id": "smooth-parameter-events",
+  "stimulus": "sweep",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 2049,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 12,
+  "seed": "0xeffe7a52",
+  "params": {
+    "lv": 0,
+    "hf": 16000,
+    "mb": 250,
+    "sm": 70,
+    "rp": "33⅓",
+    "rd": 120,
+    "rg": 13.17,
+    "dr": 2,
+    "st": 0.08,
+    "sc": 0,
+    "sh": "Elliptical",
+    "rs": 18,
+    "rc": 8,
+    "tf": 2,
+    "tm": 0.4,
+    "cm": 15,
+    "dz": 0.25,
+    "ql": "Standard",
+    "og": 0,
+    "mx": 100,
+    "fr": true
+  },
+  "events": [
+    {
+      "frame": 31,
+      "params": {
+        "lv": 20,
+        "hf": 6000,
+        "mb": 1000,
+        "sm": 0
+      }
+    },
+    {
+      "frame": 401,
+      "params": {
+        "rp": "78",
+        "rd": 60,
+        "rg": 100
+      }
+    },
+    {
+      "frame": 997,
+      "params": {
+        "dr": 300,
+        "st": 100,
+        "sc": 25,
+        "tf": 5,
+        "tm": 1.5,
+        "cm": 35,
+        "dz": 1
+      }
+    },
+    {
+      "frame": 1501,
+      "params": {
+        "og": -12,
+        "mx": 25
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "6ee6ada5dbf9f030f9f572492724c2f3b83ccda9befc34ff7488f0c6df5b7622",
+  "outputFloats": 4098,
+  "byteLength": 16392,
+  "binary": "case-013.f32"
+}

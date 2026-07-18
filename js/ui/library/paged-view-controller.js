@@ -133,7 +133,11 @@ export class PagedViewController {
       return { accepted: true, terminal: 'failed' };
     }
 
-    const totalCount = page.totalCount ?? { pending: true };
+    const totalCount = Number.isSafeInteger(page.totalCount)
+      ? page.totalCount
+      : Number.isSafeInteger(this.state.totalCount)
+        ? this.state.totalCount
+        : page.totalCount ?? { pending: true };
     const ariaRowCount = Number.isSafeInteger(totalCount) && totalCount >= 0 ? totalCount : -1;
     const announceCount = identity.announceCount === true && ariaRowCount >= 0;
     this.commitState({
@@ -364,7 +368,8 @@ export class PagedLibraryViewController {
     this.selectionRejection = null;
     this.preserveStaleSelectionDuringStart = false;
     let page = normalizePageStart(await this.queryPage(null), 0);
-    if (this.defaultSelectAllLimit !== null && !Number.isSafeInteger(page?.totalCount) &&
+    const needsInitialCount = this.query.endpoint === 'entities' || this.defaultSelectAllLimit !== null;
+    if (needsInitialCount && !Number.isSafeInteger(page?.totalCount) &&
         typeof this.manager.getContextCount === 'function') {
       const attemptKey = `${identity.queryGeneration}:${identity.pageAttemptId}`;
       try {
@@ -374,12 +379,12 @@ export class PagedLibraryViewController {
         }
         if (Number.isSafeInteger(totalCount) && totalCount >= 0) {
           page = { ...page, totalCount };
-        } else {
+        } else if (this.defaultSelectAllLimit !== null) {
           this.defaultSelectionAttemptKey = attemptKey;
         }
       } catch (_) {
-        // The page remains usable without automatic selection when its count is unavailable.
-        this.defaultSelectionAttemptKey = attemptKey;
+        // The page remains usable when its count is temporarily unavailable.
+        if (this.defaultSelectAllLimit !== null) this.defaultSelectionAttemptKey = attemptKey;
       }
     }
     this.validateBoundedPage(page);
@@ -1260,7 +1265,10 @@ function normalizePagedQuery(query = {}) {
       query: String(query.query ?? ''),
       sort: query.sort ?? 'name',
       direction: query.direction === 'desc' ? 'desc' : 'asc',
-      scope: null
+      scope: null,
+      ...(query.entityType === 'playlist'
+        ? { includeSystemPlaylists: query.includeSystemPlaylists === true }
+        : {})
     };
   }
   throw new TypeError('Paged query endpoint is invalid');

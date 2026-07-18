@@ -2,9 +2,51 @@
  * Core audio utilities for frequency response measurements
  */
 
+function resolveAudioWorkletModuleUrl(importerUrl = import.meta.url) {
+    const workletUrl = new URL('../audioWorkletProcessors.js', importerUrl);
+    const developmentToken = new URL(importerUrl).searchParams.get('dev');
+    if (developmentToken) {
+        workletUrl.searchParams.set('dev', developmentToken);
+    }
+    return workletUrl.href;
+}
+
+async function loadAudioWorkletModule(audioWorklet, moduleUrl, dependencies = {}) {
+    const fetchModule = dependencies.fetchModule ?? globalThis.fetch;
+    const BlobConstructor = dependencies.BlobConstructor ?? globalThis.Blob;
+    const urlApi = dependencies.urlApi ?? globalThis.URL;
+
+    try {
+        await audioWorklet.addModule(moduleUrl);
+        return;
+    } catch (moduleError) {
+        if (
+            typeof fetchModule !== 'function' ||
+            typeof BlobConstructor === 'undefined' ||
+            typeof urlApi?.createObjectURL !== 'function'
+        ) {
+            throw moduleError;
+        }
+
+        const response = await fetchModule(moduleUrl, { cache: 'no-store' });
+        if (!response.ok) {
+            throw moduleError;
+        }
+
+        const source = await response.text();
+        const blobUrl = urlApi.createObjectURL(new BlobConstructor([source], { type: 'text/javascript' }));
+        try {
+            await audioWorklet.addModule(blobUrl);
+        } finally {
+            urlApi.revokeObjectURL(blobUrl);
+        }
+    }
+}
+
 class AudioUtils {
     constructor() {
         this.audioContext = null;
+        this.initializationPromise = null;
         this.analyzer = null;
         this.whiteMicrophone = null;
         this.whiteNoiseNode = null;
@@ -31,6 +73,18 @@ class AudioUtils {
         if (this.initialized) {
             return;
         }
+
+        if (!this.initializationPromise) {
+            this.initializationPromise = this.initializeResources(preferredSampleRate)
+                .finally(() => {
+                    this.initializationPromise = null;
+                });
+        }
+
+        return this.initializationPromise;
+    }
+
+    async initializeResources(preferredSampleRate = null) {
 
         try {
             // Close any existing audio context
@@ -74,10 +128,8 @@ class AudioUtils {
             // Load AudioWorklet processors - this is required for the application
             if (this.audioContext.audioWorklet) {
                 try {
-                    // Get the base URL for our worklet processors
-                    const modulePath = `audioWorkletProcessors.js`;
-                    
-                    await this.audioContext.audioWorklet.addModule(modulePath);
+                    const moduleUrl = resolveAudioWorkletModuleUrl();
+                    await loadAudioWorkletModule(this.audioContext.audioWorklet, moduleUrl);
                     this.audioWorkletSupported = true;
                 } catch (error) {
                     console.error('Failed to load AudioWorklet processors:', error);
@@ -106,6 +158,14 @@ class AudioUtils {
      * @param {number} preferredSampleRate - Optional preferred sample rate in Hz
      */
     async reinitialize(preferredSampleRate = null) {
+        if (this.initializationPromise) {
+            try {
+                await this.initializationPromise;
+            } catch (_) {
+                // Continue with a clean retry after a failed initialization.
+            }
+        }
+
         // Stop and clean up any existing resources
         this.stopWhiteNoise();
         this.stopMicrophoneInput();
@@ -228,4 +288,5 @@ class AudioUtils {
     }
 }
 
-export default AudioUtils; 
+export default AudioUtils;
+export { loadAudioWorkletModule, resolveAudioWorkletModuleUrl };

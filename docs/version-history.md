@@ -6,6 +6,12 @@ lang: en
 
 # Version History
 
+### Version 2.2.0 (TBD, 2026)
+- Added a physics simulation-based Vinyl Simulator effect
+- Added a compact desktop mini player with artwork, transport and seek controls, repeat and shuffle controls, and an optional always-on-top mode
+- Added pinned Recently Played and Favorites playlists to Music Library
+- Various minor improvements
+
 ### Version 2.1.0 (Jul 17, 2026)
 - A new music library with high speed and support for large catalogs
   - The state of your previous music library will not be migrated. Add music folders, rescan, and recreate or re-import your music library playlists.

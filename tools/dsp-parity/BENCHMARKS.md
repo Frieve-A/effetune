@@ -746,6 +746,49 @@ mechanical configuration. The other eight cases retain `abs=1e-5`.
 | 192000 | 2 | 2.24x | 79.29x | 104.05x |
 | 192000 | 8 | 0.41x | 36.15x | 33.85x |
 
+#### VinylSimulatorPlugin
+
+Measured on an Intel Core i9-13900KF (32 logical processors), Windows 11 Pro
+10.0.26200, and Node v24.13.0 x64. The finalized artifacts are tied to source digest
+`sha256:061dce4dbe85672c529762f51774874fc43de5e404897234f938cd8803d64e79`:
+
+| Artifact | SHA256 |
+| --- | --- |
+| C++ kernel | `5E2ADBC8C8E1E140F454E18F3649730B287C75C010E879F20292F973269749C0` |
+| JavaScript reference | `6EE6ADA5DBF9F030F9F572492724C2F3B83CCDA9BEFC34FF7488F0C6DF5B7622` |
+| Baseline WASM | `46B240CBDD92B467430680079C31F5A01A5424245590685B891445796A5649D4` |
+| SIMD WASM | `E64CCE846955FC91036114926A9EBB3F6F5F3080D984096143393E13507ECB2B` |
+
+Command: `node tools/dsp-parity/bench.mjs --type VinylSimulatorPlugin --modes native,wasm,simd --sample-rates 96000 --channels 2 --duration 2 --warmup 2 --repetitions 5`
+
+The Standard preset used the harness defaults with deterministic noise, 192,000 frames
+in 128-frame blocks, and the median of five measured repetitions after two warmups.
+
+| Native | WASM | WASM SIMD |
+| ---: | ---: | ---: |
+| 1.84x (1.0841 s) | 5.34x (0.3746 s) | 5.79x (0.3454 s) |
+
+The rollout plan's 30% CPU ceiling requires at least 3.33x realtime. Both WASM variants
+pass this gate.
+
+The Ultra/192 source comparison used
+`D:\program\proto\sound_toolbox\vinyl_explained` at 192 kHz/stereo in 128-frame
+blocks with the Ultra preset and seed 20260705. Dust, Static, and Scratch were zero;
+silence ran for 0.2 seconds and each 100 Hz, 1 kHz, 15 kHz, and 20 kHz tone ran for
+0.1 seconds, discarding the first 50 ms. Analysis used `analysis.js` with
+`welchPsd(8192)`, `bandRms(20-20000)`, and `goertzelRms`; THD used harmonics 2-9 and
+effective bits used `(SNR - 1.76) / 6.02`. Baseline and SIMD results were identical.
+
+| Metric | Source | Final | Difference | Tolerance | Result |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 100 Hz | -0.0398428111 dB | -0.0424707762 dB | -0.0026279651 dB | 0.25 dB | PASS |
+| 1 kHz | -0.0233796416 dB | -0.0231003482 dB | +0.0002792934 dB | 0.10 dB | PASS |
+| 15 kHz | -2.6794116400 dB | -2.6798652368 dB | -0.0004535967 dB | 0.50 dB | PASS |
+| 20 kHz | -8.7962130707 dB | -8.7964786733 dB | -0.0002656026 dB | 0.50 dB | PASS |
+| THD | 0.5317894813% | 0.5440053926% | +0.0122159113 pp | 0.10 pp | PASS |
+| SNR | 59.6485132167 dB | 60.1076526647 dB | +0.4591394480 dB | 1.0 dB | PASS |
+| Effective bits | 9.6160320958 | 9.6923011071 | +0.0762690113 | 0.17 | PASS |
+
 ### Phase 3 Final: Remaining EQ, Modulation, Resonators, Reverbs, Saturation, And Spatial
 
 Five Band Dynamic EQ and Pitch Shifter used the default 10-second, 5-warmup,

@@ -335,6 +335,7 @@
 | Lo-Fi | Noise Blender | يضيف نسيج ضوضاء خلفية قابلًا للضبط لأجواء lo-fi | [تفاصيل](plugins/lofi.md#noise-blender) |
 | Lo-Fi | Simple Jitter | يحاكي jitter رقميًا | [تفاصيل](plugins/lofi.md#simple-jitter) |
 | Lo-Fi | Vinyl Artifacts | يضيف طقطقات وفرقعة وهسيسًا ورمبلًا وتسرب ضوضاء ستيريو بطابع الفينيل | [تفاصيل](plugins/lofi.md#vinyl-artifacts) |
+| Lo-Fi | Vinyl Simulator | يقطع الإدخال في أخدود مُنمذج ثم يشغله بنموذج فيزيائي للإبرة | [تفاصيل](plugins/lofi.md#vinyl-simulator) |
 | Modulation | Doppler Distortion | يحاكي تغيرات طبيعية ديناميكية في الصوت ناتجة عن حركات طفيفة في مخروط السماعة | [تفاصيل](plugins/modulation.md#doppler-distortion) |
 | Modulation | Pitch Shifter | يرفع أو يخفض درجة الموسيقى من دون تغيير السرعة | [تفاصيل](plugins/modulation.md#pitch-shifter) |
 | Modulation | Tremolo | تأثير تضمين يعتمد على مستوى الصوت | [تفاصيل](plugins/modulation.md#tremolo) |

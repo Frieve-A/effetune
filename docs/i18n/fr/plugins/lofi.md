@@ -17,6 +17,7 @@ Une collection de plugins qui ajoutent du caractère vintage et des qualités no
 - [Noise Blender](#noise-blender) - Ajoute une texture atmosphérique en arrière-plan
 - [Simple Jitter](#simple-jitter) - Crée des imperfections numériques vintage subtiles
 - [Vinyl Artifacts](#vinyl-artifacts) - Ajoute des pops, crépitements, souffle, rumble et fuite de bruit stéréo façon vinyle
+- [Vinyl Simulator](#vinyl-simulator) - Grave le signal dans un sillon modélisé puis le lit avec un modèle physique de pointe
 
 ## Bit Crusher
 
@@ -445,5 +446,97 @@ Un effet qui ajoute des artefacts de lecture façon vinyle, comme pops, crépite
    - Hiss : -39dB, Rumble : -45dB, Crosstalk : 60%, Noise Profile : 5.0
    - Wear : 80%, React : 75%, React Mode : Velocity, Mix : 100%
    - Parfait pour : Bruit qui répond de manière dramatique à la musique
+
+## Vinyl Simulator
+
+Vinyl Simulator transforme la musique elle-même à l'aide d'un modèle physique de gravure et de lecture. Le signal passe par les filtres de gravure et la courbe RIAA, est inscrit dans un sillon avec rugosité et débris, puis lu par une simulation mécanique de la pointe et du bras avant la correction RIAA de lecture. Utilisez-le lorsque vous voulez que la géométrie du sillon, le suivi et la surface interagissent réellement avec la musique.
+
+### Différence avec Vinyl Artifacts
+
+- **Vinyl Simulator** modifie le signal en le faisant passer par le sillon et la pointe modélisés. Rugosité, poussière, statique, force d'appui, forme de pointe, vitesse et rayon participent au résultat.
+- **Vinyl Artifacts** conserve la musique intacte et lui ajoute pops, crépitements, souffle, rumble et fuite de bruit. Choisissez-le pour une couche de bruit plus légère et prévisible, ou sans WASM.
+- Les deux peuvent être combinés, mais des réglages de surface forts dans chacun accumulent rapidement clics et bruit.
+
+### Guide d'amélioration sonore
+
+- **Lecture douce :** Cut Level près de 0 dB, pointe Elliptical, Roughness modérée, peu de Dust et de Static, et Mix réduit pour préserver davantage l'original.
+- **Caractère de fin de face :** rapprochez Radius de 60 mm. La vitesse linéaire plus faible rend les aigus et le suivi plus exigeants.
+- **Lecture propre et stable :** baissez Roughness, Dust, Static et Scratch, gardez Tracking Force autour de 2 g et utilisez Standard ou High.
+- **Surface usée :** augmentez d'abord Roughness, puis Dust, Static et un peu de Scratch. Chaque réglage représente un phénomène physique différent.
+- **Coloration plus marquée :** augmentez Cut Level avec prudence, baissez HF Cutoff ou réduisez Radius. Surveillez la baisse de Tracking S/E et les événements mistrack/skip.
+- Vinyl Simulator ne produit ni wow/flutter, ni excentration, ni voile, ni rumble de platine. Ajoutez **Wow Flutter** dans la chaîne si nécessaire.
+
+### Paramètres
+
+#### Cutting
+
+- **Cut Level** (-20 à +20 dB) — Niveau d'entraînement du burin. Une valeur élevée accentue déplacement et non-linéarité ; une valeur basse laisse plus de marge mécanique.
+- **HF Cutoff** (6000 à 24000 Hz) — Limite des aigus avant gravure. Plus bas donne un sillon plus sombre et facile à suivre ; plus haut préserve davantage de détails.
+- **Bass Mono Below** (50 à 1000 Hz) — Plage sous laquelle la composante Side est réduite. Une valeur élevée recentre davantage les graves.
+- **Side Mix** (0 à 100 %) — Quantité de Side conservée sous Bass Mono Below. 0 % rend cette plage mono ; 100 % conserve le Side d'origine.
+
+#### Record
+
+- **Speed** (33⅓, 45 ou 78 rpm) — Vitesse de rotation. À Radius égal, une vitesse supérieure augmente la vitesse linéaire et facilite le suivi des détails fins.
+- **Radius** (60 à 146 mm) — Position de la pointe. Une petite valeur représente le sillon intérieur, plus lent et plus difficile dans l'aigu.
+- **Roughness** (0,1 à 100 nm) — Rugosité microscopique de surface ; l'augmenter renforce la texture continue.
+- **Dust** (0 à 10000/s) — Fréquence des particules de poussière et de leurs perturbations brèves.
+- **Static** (0 à 10000/s) — Fréquence des décharges électriques, ajoutées comme pops à la sortie de la cellule.
+- **Scratch** (0 à 1000/s) — Fréquence des défauts de sillon plus importants.
+
+#### Stylus
+
+- **Shape** (Spherical ou Elliptical) — Géométrie de contact. En Spherical, Scan Radius suit Side Radius. Un changement reconstruit l'état de simulation.
+- **Side Radius** (5 à 25 µm) — Rayon transversal à la paroi ; il modifie l'empreinte et la pression de contact.
+- **Scan Radius** (2 à 25 µm) — Rayon dans le sens du sillon. Petit, il suit les détails fins ; grand, il les moyenne sur un contact plus large.
+- **Tracking Force** (0,5 à 5,0 g) — Force d'appui. Davantage stabilise parfois le contact mais augmente force et pression ; trop peu favorise mistrack et skip.
+- **Tip Mass** (0,1 à 1,5 mg) — Masse mobile de la pointe. Une valeur élevée accroît l'inertie et gêne les mouvements rapides.
+- **Compliance** (5 à 35 cu) — Souplesse de suspension. Une valeur élevée autorise plus de mouvement et change la réponse mécanique.
+- **Damping** (0,05 à 1,0 ζ) — Amortissement des résonances. Une valeur élevée réduit davantage le ringing.
+
+#### Output
+
+- **Quality** (Eco, Standard, High ou Ultra) — Définit le nombre de base de sous-pas physiques et de points de contact. Pour stabiliser la résonance de contact, le moteur peut augmenter automatiquement le nombre effectif de sous-pas selon la fréquence d'échantillonnage, Tracking Force, Tip Mass, Compliance, Shape, Side Radius et Scan Radius. Standard est le défaut en temps réel ; un changement reconstruit la simulation.
+- **Output Gain** (-24 à +24 dB) — Niveau après correction RIAA et normalisation.
+- **Mix** (0 à 100 %) — Mélange de la lecture simulée avec le signal sec aligné en latence. 0 % = sec, 100 % = simulé.
+
+### Lecture du HUD
+
+- **Force L/R (mN)** : force sur chaque paroi ; des valeurs fortes ou déséquilibrées signalent un passage exigeant.
+- **Pressure (GPa)** : pression de contact la plus élevée ; à lire avec Force lors du réglage de la pointe.
+- **Tip (cm/s, dB)** : vitesse de pointe et niveau de lecture correspondant.
+- **Tracking S/E L/R (dB)** : rapport signal suivi/erreur. Plus haut est plus propre ; une baisse durable indique un suivi difficile.
+- **Jitter (ns)** : variation temporelle du point de lecture, visible dans Stylus.
+- **Mistrack, Skip, Static Pop et Dust Hit (/s)** : taux d'événements récents, avec flash à chaque nouvel événement. En cas de répétition, baissez Cut Level, augmentez modérément Tracking Force, augmentez Radius ou Quality.
+
+Le HUD s'active avec la télémétrie DSP native. À l'arrêt ou lorsque la télémétrie est suspendue pour économiser l'énergie, il peut afficher un état inactif.
+
+### Réglages conseillés
+
+1. **Lecture douce :** Cut Level 0 dB, HF Cutoff 16 kHz, 33⅓ rpm, Radius 120 mm, Roughness 5 nm, Dust 0,5/s, Static 0,02/s, Scratch 0/s, Elliptical, Tracking Force 2,0 g, Standard, Mix 75 %.
+2. **Sillon extérieur classique :** Cut Level 0 dB, 33⅓ rpm, Radius 135 mm, Roughness 13,17 nm, Dust 2/s, Static 0,08/s, Elliptical, Tracking Force 2,0 g, Standard, Mix 100 %.
+3. **Démonstration intérieure :** Cut Level +3 dB, HF Cutoff 14 kHz, 33⅓ rpm, Radius 60 mm, Elliptical, Scan Radius 8 µm, Tracking Force 2,0 g, High, Mix 100 % ; comparez Tracking S/E à un grand Radius.
+4. **Surface usée :** Radius 100 mm, Roughness 35 nm, Dust 25/s, Static 1/s, Scratch 0,5/s, Tracking Force 2,2 g, Standard, Output Gain -3 dB, Mix 100 %.
+
+### Quality et charge CPU
+
+Chaque preset Quality fixe un nombre de base de sous-pas et de points de contact. Pour garantir la stabilité, le moteur calcule aussi `Nmin = ceil(8 × f_c / sampleRate)`, où la fréquence de résonance de contact `f_c` dépend de Tracking Force, Tip Mass, Compliance, Shape, Side Radius et Scan Radius, puis utilise `effectiveSubsteps = max(base, Nmin)`. Avec les réglages par défaut, Standard à 96 kHz reste à sa base de 4 sous-pas : l'objectif de performances existant ne change pas.
+
+La charge principale est proportionnelle à fréquence d'échantillonnage × sous-pas effectifs × points de contact. Les évaluations et charges relatives ci-dessous sont des valeurs de base lorsque le seuil de stabilité n'augmente pas les sous-pas, et non des pourcentages CPU mesurés ; le processeur, le navigateur et WASM SIMD influencent aussi le résultat.
+
+| Quality | Détail de base | Évaluations de base à 96 kHz | Charge relative de base | Usage |
+|---|---:|---:|---:|---|
+| Eco | 2 × 7 | 2,7 millions/s | 0,39× | Mobile, basse consommation, plusieurs instances |
+| Standard | 4 × 9 | 6,9 millions/s | 1,00× | Écoute normale en temps réel |
+| High | 8 × 13 | 20 millions/s | 2,89× | Systèmes rapides, comparaison ciblée |
+| Ultra | 20 × 25 | 96 millions/s | 13,89× | Rendu hors ligne et vérification |
+
+Lorsque le seuil de stabilité est inactif, appliquez à la charge relative de base les multiplicateurs suivants : 44,1 kHz = 0,46× ; 48 = 0,50× ; 88,2 = 0,92× ; 96 = 1,00× ; 176,4 = 1,84× ; 192 = 2,00×. La fréquence d'échantillonnage et les réglages Tracking Force, Tip Mass, Compliance, Shape, Side Radius et Scan Radius peuvent activer ce seuil et porter la charge réelle au-dessus de l'estimation de base. En cas de coupures, baissez d'abord Quality.
+
+### WASM requis et limites
+
+Vinyl Simulator exige le noyau DSP WebAssembly natif en temps réel. Si WASM est désactivé avec `?dsp=off`, non pris en charge ou mal initialisé, le signal traverse sans modification et l'interface indique que WASM est requis. Il n'utilise pas la simulation JavaScript de référence, beaucoup plus lente.
+
+Le modèle traite la première paire stéréo. La déformation de la poussière ne dure que pendant la vie de chaque particule ; la pointe avance toujours dans un sillon nouvellement généré. L'usure ne s'accumule donc pas d'un tour à l'autre et n'est pas enregistrée dans les presets. Usure à long terme, vue 3D, compteurs SNR/THD temps réel, wow/flutter, excentration, voile, rumble de platine et charge électrique de cellule sont hors modèle.
 
 N'oubliez pas : Ces effets sont destinés à ajouter du caractère et de la nostalgie à votre musique. Commencez avec des réglages subtils et ajustez selon vos goûts !

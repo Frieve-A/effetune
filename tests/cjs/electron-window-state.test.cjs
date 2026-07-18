@@ -160,12 +160,20 @@ test('loadWindowState accepts current, normalBounds, and flat legacy shapes', ()
   const current = createHarness();
   fs.writeFileSync(path.join(current.userDataPath, 'window-state.json'), JSON.stringify({
     bounds: { x: 1, y: 2, width: 1200, height: 800 },
-    isMaximized: true
+    isMaximized: true,
+    miniPlayer: {
+      bounds: { x: 1500, y: 50, width: 200, height: 50 },
+      alwaysOnTop: true
+    }
   }));
   current.module.loadWindowState();
   assert.deepEqual(current.windowState, {
     bounds: { x: 1, y: 2, width: 1200, height: 800 },
-    isMaximized: true
+    isMaximized: true,
+    miniPlayer: {
+      bounds: { x: 1500, y: 50, width: 320, height: 96 },
+      alwaysOnTop: true
+    }
   });
 
   const normalBounds = createHarness();
@@ -310,5 +318,141 @@ test('saveWindowState logs and recovers from filesystem failures', () => {
     }, () => {
       assert.doesNotThrow(() => harness.module.saveWindowState());
     });
+  });
+});
+
+test('mini mode saves mini bounds without changing normal window state', () => {
+  let currentBounds = { x: 10, y: 20, width: 1400, height: 850 };
+  const harness = createHarness({
+    windowState: {
+      bounds: { x: 10, y: 20, width: 1400, height: 850 },
+      isMaximized: false
+    },
+    mainWindow: {
+      isDestroyed: () => false,
+      isMinimized: () => false,
+      isMaximized: () => false,
+      getNormalBounds: () => currentBounds,
+      getBounds: () => currentBounds
+    }
+  });
+
+  harness.module.markRestoreComplete();
+  harness.module.enterMiniMode();
+  currentBounds = { x: 1499.6, y: 49.5, width: 419.7, height: 120.4 };
+  harness.module.saveWindowState();
+
+  assert.deepEqual(harness.windowState, {
+    bounds: { x: 10, y: 20, width: 1400, height: 850 },
+    isMaximized: false,
+    miniPlayer: {
+      bounds: { x: 1500, y: 50, width: 420, height: 120 },
+      alwaysOnTop: false
+    }
+  });
+  assert.deepEqual(harness.module.getMiniPlayerState(), {
+    bounds: { x: 1500, y: 50, width: 420, height: 120 },
+    alwaysOnTop: false
+  });
+});
+
+test('suspendSave suppresses transition event writes until resumed', () => {
+  const harness = createHarness({
+    mainWindow: {
+      isDestroyed: () => false,
+      isMinimized: () => false,
+      isMaximized: () => false,
+      getNormalBounds: () => ({ x: 1, y: 2, width: 1200, height: 800 })
+    }
+  });
+  const statePath = path.join(harness.userDataPath, 'window-state.json');
+
+  harness.module.markRestoreComplete();
+  harness.module.suspendSave();
+  harness.module.saveWindowState();
+  assert.equal(fs.existsSync(statePath), false);
+
+  harness.module.resumeSave();
+  harness.module.saveWindowState();
+  assert.equal(fs.existsSync(statePath), true);
+});
+
+test('resolveMiniPlayerBounds enforces mini minimum size and keeps bounds on screen', () => {
+  const { module } = createHarness({
+    matchingWorkArea: { x: 100, y: 50, width: 800, height: 600 }
+  });
+
+  assert.deepEqual(module.resolveMiniPlayerBounds({
+    x: 850,
+    y: 620,
+    width: 200,
+    height: 50
+  }), {
+    x: 580,
+    y: 554,
+    width: 320,
+    height: 96
+  });
+});
+
+test('setMiniPlayerAlwaysOnTop preserves bounds and persists the preference', () => {
+  const harness = createHarness({
+    windowState: {
+      bounds: { x: 1, y: 2, width: 1200, height: 800 },
+      isMaximized: false,
+      miniPlayer: {
+        bounds: { x: 700, y: 40, width: 420, height: 120 },
+        alwaysOnTop: false
+      }
+    }
+  });
+
+  harness.module.setMiniPlayerAlwaysOnTop(true);
+
+  assert.deepEqual(readSavedWindowState(harness.userDataPath).miniPlayer, {
+    bounds: { x: 700, y: 40, width: 420, height: 120 },
+    alwaysOnTop: true
+  });
+});
+
+test('prepareForNewWindow clears in-memory mini mode and restore readiness', () => {
+  let currentBounds = { x: 20, y: 30, width: 1300, height: 820 };
+  const harness = createHarness({
+    windowState: {
+      bounds: { x: 20, y: 30, width: 1300, height: 820 },
+      isMaximized: false
+    },
+    mainWindow: {
+      isDestroyed: () => false,
+      isMinimized: () => false,
+      isMaximized: () => false,
+      getNormalBounds: () => currentBounds,
+      getBounds: () => currentBounds
+    }
+  });
+
+  harness.module.markRestoreComplete();
+  harness.module.enterMiniMode();
+  currentBounds = { x: 800, y: 40, width: 420, height: 120 };
+  harness.module.saveWindowState();
+  assert.equal(harness.module.isMiniMode(), true);
+
+  harness.module.suspendSave();
+  harness.module.prepareForNewWindow();
+  assert.equal(harness.module.isMiniMode(), false);
+
+  currentBounds = { x: 100, y: 110, width: 1400, height: 880 };
+  harness.module.saveWindowState();
+  assert.deepEqual(harness.windowState.bounds, { x: 20, y: 30, width: 1300, height: 820 });
+
+  harness.module.markRestoreComplete();
+  harness.module.saveWindowState();
+  assert.deepEqual(harness.windowState, {
+    bounds: { x: 100, y: 110, width: 1400, height: 880 },
+    isMaximized: false,
+    miniPlayer: {
+      bounds: { x: 800, y: 40, width: 420, height: 120 },
+      alwaysOnTop: false
+    }
   });
 });

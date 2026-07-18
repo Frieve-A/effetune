@@ -113,6 +113,41 @@ test('Electron direct CUE resolves logical tracks atomically and parses each phy
   ]);
 });
 
+test('Electron direct CUE loads sibling artwork with common-name priority', async t => {
+  const root = createTempDirectory();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const cuePath = writeFixture(root, 'album.cue', cueText());
+  writeFixture(root, 'album.wav', 'metadata-reader-fixture');
+  writeFixture(root, 'album.png', 'audio-name-cover');
+  writeFixture(root, 'FRONT.JPG', 'front-cover');
+  writeFixture(root, 'cover.png', 'preferred-cover');
+
+  const tracks = await resolveElectronCueSelection(cuePath, {
+    metadataParserFactory: metadataFactory([])
+  });
+
+  for (const track of tracks) {
+    assert.equal(track.meta.picture.format, 'image/png');
+    assert.equal(Buffer.from(track.meta.picture.data).toString(), 'preferred-cover');
+  }
+  assert.equal(tracks[0].meta.picture, tracks[1].meta.picture);
+});
+
+test('Electron direct CUE uses the source-audio file stem for sibling artwork', async t => {
+  const root = createTempDirectory();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const cuePath = writeFixture(root, 'disc.cue', cueText('Album Image.flac'));
+  writeFixture(root, 'Album Image.flac', 'metadata-reader-fixture');
+  writeFixture(root, 'album image.JPG', 'source-cover');
+
+  const tracks = await resolveElectronCueSelection(cuePath, {
+    metadataParserFactory: metadataFactory([])
+  });
+
+  assert.equal(tracks[0].meta.picture.format, 'image/jpeg');
+  assert.equal(Buffer.from(tracks[0].meta.picture.data).toString(), 'source-cover');
+});
+
 test('Electron direct CUE rejects mixed selections and files above the bounded CUE limit', async t => {
   const root = createTempDirectory();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));

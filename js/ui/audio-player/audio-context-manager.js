@@ -2052,10 +2052,11 @@ export class AudioContextManager {
       const artworkId = libraryManager?.runtime
         ? track.libraryTrackId
         : track.meta.artworkId;
-      const shouldLoadArtwork = !!artworkId && !!libraryManager?.getArtworkThumbURL;
+      const cueArtworkUrl = this.createArtworkURL(track.meta.picture);
+      const shouldLoadArtwork = !cueArtworkUrl && !!artworkId && !!libraryManager?.getArtworkThumbURL;
       this.updateState({
         currentTrackName: displayText,
-        artworkUrl: '',
+        artworkUrl: cueArtworkUrl,
         isTrackPresentationPending: shouldLoadArtwork
       }, 'Catalog metadata loaded');
       this.updateTrackNameDisplayText(displayText);
@@ -2103,7 +2104,12 @@ export class AudioContextManager {
           }, 'Catalog artwork unavailable');
         });
       }
-      this.updateMediaSessionWithTags(track.meta.title, track.meta.artist || '', track.meta.album || '', '');
+      this.updateMediaSessionWithTags(
+        track.meta.title,
+        track.meta.artist || '',
+        track.meta.album || '',
+        cueArtworkUrl
+      );
       return;
     }
     

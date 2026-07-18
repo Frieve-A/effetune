@@ -626,7 +626,7 @@ test('help button opens browser links, Electron fallback links, and uncategorize
   });
 });
 
-test('parameter update wrapping updates worklet, history, section names, timers, and suppression state', async () => {
+test('parameter update wrapping preserves the original worklet payload without a stale duplicate', async () => {
   await withBuilderGlobals({
     workletNode: {
       port: {
@@ -637,6 +637,19 @@ test('parameter update wrapping updates worklet, history, section names, timers,
     }
   }, async ({ documentRef, timers, setNow, runTimers }) => {
     const section = new SectionPlugin({ id: 40, cm: 'Old', withUpdateParameters: true });
+    section.updateParameters = (...args) => {
+      section.updateCalls = [...(section.updateCalls || []), args];
+      window.workletNode.port.postMessage({
+        type: 'updatePlugin',
+        plugin: {
+          id: section.id,
+          parameters: { gain: section.parameters.gain },
+          wasmParams: Float32Array.of(section.parameters.gain),
+          wasmParamsHash: 0x12345678
+        }
+      });
+      window.uiManager.updateURL();
+    };
     const core = createCore({ pipeline: [section] });
     const builder = new PipelineItemBuilder(core);
     const originalUpdateParameters = section.updateParameters;
@@ -650,7 +663,10 @@ test('parameter update wrapping updates worklet, history, section names, timers,
     assert.equal(section._pipelineOriginalUpdateParameters, originalUpdateParameters);
     section.updateParameters('first');
     assert.equal(find(item, '.plugin-name').textContent, 'New Section');
+    assert.equal(window.workletMessages.length, 1);
     assert.equal(window.workletMessages[0].plugin.parameters.gain, 2);
+    assert.deepEqual(window.workletMessages[0].plugin.wasmParams, Float32Array.of(2));
+    assert.equal(window.workletMessages[0].plugin.wasmParamsHash, 0x12345678);
     assert.ok(core.calls.some(call => call[0] === 'saveState'));
     assert.ok(timers.some(timer => timer.delay === 500));
 

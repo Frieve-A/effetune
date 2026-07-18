@@ -1,0 +1,73 @@
+{
+  "formatVersion": 1,
+  "type": "VinylSimulatorPlugin",
+  "id": "quality-shape-reset-events",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 2305,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 13,
+  "seed": "0xeffe7a53",
+  "params": {
+    "lv": 0,
+    "hf": 16000,
+    "mb": 250,
+    "sm": 70,
+    "rp": "33⅓",
+    "rd": 120,
+    "rg": 13.17,
+    "dr": 2,
+    "st": 0.08,
+    "sc": 0,
+    "sh": "Spherical",
+    "rs": 18,
+    "rc": 8,
+    "tf": 2,
+    "tm": 0.4,
+    "cm": 15,
+    "dz": 0.25,
+    "ql": "Eco",
+    "og": 0,
+    "mx": 100,
+    "fr": true
+  },
+  "events": [
+    {
+      "frame": 257,
+      "params": {
+        "ql": "Standard"
+      }
+    },
+    {
+      "frame": 769,
+      "params": {
+        "sh": "Elliptical",
+        "rc": 8
+      }
+    },
+    {
+      "frame": 1281,
+      "params": {
+        "ql": "High"
+      }
+    },
+    {
+      "frame": 1793,
+      "params": {
+        "ql": "Eco",
+        "sh": "Spherical"
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "6ee6ada5dbf9f030f9f572492724c2f3b83ccda9befc34ff7488f0c6df5b7622",
+  "outputFloats": 4610,
+  "byteLength": 18440,
+  "binary": "case-014.f32"
+}

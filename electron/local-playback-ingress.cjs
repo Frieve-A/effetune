@@ -3,9 +3,11 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
+const { cueCoverMimeType, selectCueCoverFileName } = require('./cue-cover.cjs');
 const { MetadataWorkerPool } = require('./library-metadata-worker-pool.cjs');
 
 const CUE_MAX_BYTES = 1024 * 1024;
+const CUE_COVER_MAX_BYTES = 20 * 1024 * 1024;
 const CUE_EXTENSION = '.cue';
 const CUE_AUDIO_EXTENSIONS = new Set(['.flac', '.wav']);
 const PLAYBACK_AUDIO_EXTENSIONS = new Set([
@@ -148,6 +150,12 @@ async function resolveElectronCueSelection(cuePath, {
       { filesystem, signal }
     ));
   }
+  const coverByRelativePath = await readCueCovers(
+    cueSource.canonicalParent,
+    resolved.resolvedFiles,
+    directoryEntries,
+    { filesystem, signal }
+  );
 
   const parser = metadataParserFactory();
   const metadataByCanonicalPath = new Map();
@@ -186,7 +194,9 @@ async function resolveElectronCueSelection(cuePath, {
   return Object.freeze(validated.tracks.map(track => {
     const admitted = admittedByRelativePath.get(track.relativePath);
     const physicalMetadata = physicalMetadataByPath.get(track.relativePath);
-    const meta = cueModule.createCueTrackMetadata(validated, track, physicalMetadata);
+    const cueMetadata = cueModule.createCueTrackMetadata(validated, track, physicalMetadata);
+    const picture = coverByRelativePath.get(track.relativePath) ?? null;
+    const meta = picture ? Object.freeze({ ...cueMetadata, picture }) : cueMetadata;
     const displayName = meta.artist && meta.title ? `${meta.artist} - ${meta.title}` : meta.title;
     return Object.freeze({
       path: admitted.canonicalPath,
@@ -199,6 +209,56 @@ async function resolveElectronCueSelection(cuePath, {
       physicalSourceKey: admitted.canonicalPath
     });
   }));
+}
+
+async function readCueCovers(canonicalParent, relativePaths, directoryEntries, {
+  filesystem = fs,
+  signal
+} = {}) {
+  const coverPromises = new Map();
+  const covers = new Map();
+  for (const relativePath of relativePaths) {
+    const fileName = selectCueCoverFileName(directoryEntries, relativePath);
+    if (!fileName) continue;
+    const key = filesystemPathKey(fileName);
+    let coverPromise = coverPromises.get(key);
+    if (!coverPromise) {
+      coverPromise = tryReadCueCover(canonicalParent, fileName, { filesystem, signal });
+      coverPromises.set(key, coverPromise);
+    }
+    const picture = await coverPromise;
+    if (picture) covers.set(relativePath, picture);
+  }
+  return covers;
+}
+
+async function tryReadCueCover(canonicalParent, fileName, { filesystem = fs, signal } = {}) {
+  try {
+    throwIfAborted(signal);
+    const lexicalPath = path.join(canonicalParent, fileName);
+    const canonicalPath = path.resolve(await filesystem.realpath(lexicalPath));
+    if (!sameFilesystemPath(path.dirname(canonicalPath), canonicalParent)) return null;
+    const handle = await filesystem.open(canonicalPath, 'r');
+    try {
+      const before = await handle.stat();
+      if (!before.isFile()) return null;
+      const identity = captureFileIdentity(before);
+      if (identity.size === 0 || identity.size > CUE_COVER_MAX_BYTES) return null;
+      const bytes = await readExactFileBytes(handle, identity.size, signal);
+      const after = await handle.stat();
+      if (bytes.byteLength !== identity.size ||
+          !sameFileIdentity(identity, captureFileIdentity(after))) return null;
+      return Object.freeze({
+        data: bytes,
+        format: cueCoverMimeType(fileName)
+      });
+    } finally {
+      await handle.close().catch(() => {});
+    }
+  } catch (error) {
+    if (error?.name === 'AbortError' || error?.code === 'selection-stale') throw error;
+    return null;
+  }
 }
 
 async function readBoundedCueFile(filePath, { filesystem = fs, signal } = {}) {
@@ -371,6 +431,7 @@ function createIngressError(code, cause = null) {
 }
 
 module.exports = {
+  CUE_COVER_MAX_BYTES,
   CUE_MAX_BYTES,
   LocalPlaybackIngress,
   admitLocalPlaybackPaths,

@@ -102,10 +102,18 @@ export class LazyArtworkService {
   }
 
   async #extract(source, signal) {
-    const expectedClaim = createArtworkSourceClaim(source);
+    let expectedClaim = null;
     let claim;
 
     try {
+      const resolvedSource = typeof this.extractor.resolveSource === 'function'
+        ? await this.extractor.resolveSource({
+            source,
+            maxRawBytes: ARTWORK_LIMITS.maxRawBytes,
+            signal
+          })
+        : source;
+      expectedClaim = createArtworkSourceClaim(resolvedSource);
       const claimed = await this.repository.claimArtworkSource({ claim: expectedClaim });
       if (!claimed?.claim || !artworkCompletionMatchesClaim(expectedClaim, claimed.claim)) {
         return ARTWORK_PLACEHOLDER;
@@ -133,9 +141,17 @@ export class LazyArtworkService {
         maxBytes: ARTWORK_LIMITS.maxThumbnailBytes,
         signal
       }));
+      if (typeof this.extractor.isSourceCurrent === 'function' &&
+          !await this.extractor.isSourceCurrent({ claim, signal })) {
+        await this.repository.scheduleArtworkStagingGc({ claim, reason: 'stale-source' });
+        return ARTWORK_PLACEHOLDER;
+      }
       if (this.cachePolicy.mode === 'memory-only') {
         const currentSource = await this.repository.getArtworkSource({ trackUid: claim.trackUid });
-        if (!artworkCompletionMatchesClaim(claim, currentSource)) {
+        const currentMatches = claim.sourceKind === 'external-file'
+          ? artworkTrackIdentityMatches(claim, currentSource)
+          : artworkCompletionMatchesClaim(claim, currentSource);
+        if (!currentMatches) {
           await this.repository.scheduleArtworkStagingGc({ claim, reason: 'stale-source' });
           return ARTWORK_PLACEHOLDER;
         }
@@ -152,7 +168,10 @@ export class LazyArtworkService {
         throw error;
       }
       if (isCatalogStorageFailure(error)) return ARTWORK_PLACEHOLDER;
-      if (!claim) throw error;
+      if (!claim) {
+        if (isArtworkExtractionFailure(error)) return ARTWORK_PLACEHOLDER;
+        throw error;
+      }
       try {
         await this.#recordFailure(claim, sanitizeArtworkError(error));
       } catch (failureError) {
@@ -162,7 +181,7 @@ export class LazyArtworkService {
       }
       return ARTWORK_PLACEHOLDER;
     } finally {
-      if (claim) await this.extractor.discard?.({ claim });
+      if (claim || expectedClaim) await this.extractor.discard?.({ claim: claim ?? expectedClaim });
     }
   }
 
@@ -321,6 +340,14 @@ function isCatalogStorageFailure(error) {
   return ['SQLITE_FULL', 'ENOSPC', 'SHORT_WRITE', 'FLUSH_FAILED'].includes(String(error?.code ?? '').toUpperCase());
 }
 
+function isArtworkExtractionFailure(error) {
+  return [
+    'artworkRawTooLarge', 'artworkDimensionsTooLarge', 'artworkDecodeTooLarge',
+    'artworkThumbnailTooLarge', 'artwork-timeout', 'artwork-decode-failed',
+    'artworkQueueLimit'
+  ].includes(String(error?.code ?? ''));
+}
+
 function abortReason(signal) {
   return signal.reason instanceof Error ? signal.reason : new DOMException('Artwork request aborted', 'AbortError');
 }
@@ -346,6 +373,13 @@ function artworkSingleFlightKey(claim) {
     stat?.mtimeMs ?? '',
     claim.extractorVersion
   ].join('\u0000');
+}
+
+function artworkTrackIdentityMatches(claim, source) {
+  return Boolean(source) && claim.folderId === source.folderId &&
+    claim.lifecycleVersion === source.lifecycleVersion && claim.trackUid === source.trackUid &&
+    claim.fileIdentity === source.fileIdentity && claim.size === source.size &&
+    claim.mtimeMs === source.mtimeMs && claim.extractorVersion === source.extractorVersion;
 }
 
 function assertMethods(target, methods, label) {

@@ -31,6 +31,7 @@ No audiophile myths, Just pure science.
 - Audio pipeline that can be modified in real-time
 - Offline audio file processing with current effect chain
 - Music Library for browsing local subfolders, metadata, and playlists
+- Compact, always-on-top mini player for the desktop app
 - Frequency response measurement and correction for system calibration
 - Multi-channel processing and output
 - Mobile-friendly web layout for phone and tablet use
@@ -50,6 +51,7 @@ Before using EffeTune, you'll need to set up your audio routing. Here's how to c
    - Or select Open music file... from the File menu (desktop app only)
    - Or drag the music file into the window
 - For player-only use, set Input Device to None (music file player only) in Audio Configuration to avoid using a live audio input
+- In the desktop app, choose **View > Mini Player** (Ctrl/Cmd+Shift+M) or use the player’s mini-player button to keep playback controls in a compact window. The pin button keeps it above other windows.
 
 ### Streaming Service Setup
 
@@ -341,6 +343,7 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Lo-Fi     | Noise Blender | Adds adjustable background noise texture for lo-fi ambience | [Details](docs/plugins/lofi.md#noise-blender) |
 | Lo-Fi     | Simple Jitter | Digital jitter simulation | [Details](docs/plugins/lofi.md#simple-jitter) |
 | Lo-Fi     | Vinyl Artifacts | Adds vinyl-style pops, crackle, hiss, rumble, and stereo noise bleed | [Details](docs/plugins/lofi.md#vinyl-artifacts) |
+| Lo-Fi     | Vinyl Simulator | Cuts the input into a modeled groove and plays it back with a physical stylus model | [Details](docs/plugins/lofi.md#vinyl-simulator) |
 | Modulation | Doppler Distortion | Simulates natural, dynamic changes in sound caused by subtle speaker cone movements | [Details](docs/plugins/modulation.md#doppler-distortion) |
 | Modulation | Pitch Shifter | Raises or lowers music pitch without changing tempo | [Details](docs/plugins/modulation.md#pitch-shifter) |
 | Modulation | Tremolo | Volume-based modulation effect | [Details](docs/plugins/modulation.md#tremolo) |

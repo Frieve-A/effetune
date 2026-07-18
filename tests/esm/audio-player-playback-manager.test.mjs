@@ -234,6 +234,60 @@ function setPlaylist(manager, names = ['One', 'Two', 'Three']) {
   manager.originalPlaylist = manager.playlist.map(track => ({ ...track }));
 }
 
+function createDeferred() {
+  let resolve;
+  const promise = new Promise(resolvePromise => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
+test('catalog queue publishes only the latest request for the current ordinal', async () => {
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({ currentTrackIndex: 10 });
+    const manager = makeManager(audioPlayer);
+    const sequence = {};
+    const firstCenter = createDeferred();
+    const manualPage = createDeferred();
+    const latestCenter = createDeferred();
+    const driftedCenter = createDeferred();
+    const published = [];
+    manager.catalogSequence = sequence;
+    manager.queueProvider = {
+      getWindow(centerOrdinal) {
+        if (centerOrdinal === 10) return firstCenter.promise;
+        if (centerOrdinal === 20) return latestCenter.promise;
+        return driftedCenter.promise;
+      },
+      getPage() {
+        return manualPage.promise;
+      }
+    };
+    audioPlayer.stateManager.updateQueueWindow = window => published.push(window);
+
+    const firstRequest = manager.refreshCatalogQueueWindow(10);
+    audioPlayer.state.currentTrackIndex = 20;
+    const pageRequest = manager.refreshCatalogQueuePage(80);
+    const latestRequest = manager.refreshCatalogQueueWindow(20);
+    const latestWindow = { startOrdinal: 0, rows: ['latest'] };
+    latestCenter.resolve(latestWindow);
+    assert.equal(await latestRequest, latestWindow);
+
+    manualPage.resolve({ startOrdinal: 80, rows: ['stale-page'] });
+    firstCenter.resolve({ startOrdinal: 0, rows: ['stale-center'] });
+    assert.equal(await pageRequest, null);
+    assert.equal(await firstRequest, null);
+    assert.deepEqual(published, [latestWindow]);
+
+    audioPlayer.state.currentTrackIndex = 30;
+    const driftedRequest = manager.refreshCatalogQueueWindow(30);
+    audioPlayer.state.currentTrackIndex = 31;
+    driftedCenter.resolve({ startOrdinal: 0, rows: ['drifted'] });
+    assert.equal(await driftedRequest, null);
+    assert.deepEqual(published, [latestWindow]);
+  });
+});
+
 test('loadFiles, getTrack, and basic commands handle unavailable state and delegate work', async () => {
   await withPlaybackGlobals({}, async ({ calls }) => {
     const audioPlayer = createAudioPlayer();

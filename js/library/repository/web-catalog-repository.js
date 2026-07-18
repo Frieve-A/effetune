@@ -200,6 +200,10 @@ export class WebSqliteCatalogRepository {
 
   createPlaylist(request) { return this.#call('createPlaylist', request); }
   createPlaylistWithItems(request) { return this.#call('createPlaylistWithItems', request); }
+  recordRecentlyPlayed(request) { return this.#call('recordRecentlyPlayed', request); }
+  setTrackFavorite(request) { return this.#call('setTrackFavorite', request); }
+  getFavoriteTrackUids(request = {}) { return this.#call('getFavoriteTrackUids', request); }
+  getSystemPlaylists() { return this.#call('getSystemPlaylists', {}); }
   renamePlaylist(request) { return this.#call('renamePlaylist', request); }
   removePlaylistItem(request) { return this.#call('removePlaylistItem', request); }
   reorderPlaylistItem(request) { return this.#call('reorderPlaylistItem', request); }
@@ -335,7 +339,8 @@ const READ_COMMANDS = new Set([
   'getScanFolderTrackCount',
   'getOperationStatus', 'queryOperationSnapshot',
   'queryPlaybackSequence', 'queryTransportDescriptorPage',
-  'queryPlaylistItems', 'getCachedArtwork', 'getArtworkSource', 'queryTracks',
+  'queryPlaylistItems', 'getFavoriteTrackUids', 'getSystemPlaylists',
+  'getCachedArtwork', 'getArtworkSource', 'queryTracks',
   'queryEntities', 'getContextCount', 'readContextPage', 'readContextPageAtOrdinal',
   'resolveEntityAnchor', 'getTrack', 'getTrackStorageIdentity',
   'resolvePlaylistExportSource',

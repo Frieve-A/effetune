@@ -658,28 +658,6 @@ export class PipelineItemBuilder {
             plugin.updateParameters = function(...args) {
                 originalUpdateParameters.apply(this, args);
                 
-                // Send an immediate update to the audio worklet with the new parameters
-                if (window.workletNode) {
-                    const parameters = this.getParameters();
-                    window.workletNode.port.postMessage({
-                        type: 'updatePlugin',
-                        plugin: {
-                            id: this.id,
-                            type: this.constructor.name,
-                            enabled: this.enabled,
-                            parameters: parameters,
-                            inputBus: this.inputBus,
-                            outputBus: this.outputBus,
-                            channel: this.channel
-                        }
-                    });
-                }
-                
-                // Only update URL without rebuilding pipeline
-                if (window.uiManager) {
-                    window.uiManager.updateURL();
-                }
-                
                 // Update Section name display if this is a Section plugin and cm parameter changed
                 if (this.name === 'Section') {
                     const pipelineItem = document.querySelector(`[data-plugin-id="${this.id}"]`);

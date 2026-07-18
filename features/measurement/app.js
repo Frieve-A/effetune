@@ -3,16 +3,17 @@
  * Initializes and connects all components
  */
 
-import audioUtils from './audioUtils.js';
+import audioUtils from './audio-utils/index.js';
 import dataStorage from './dataStorage.js';
-import uiManager from './uiManager.js';
-import measurementController from './measurementController.js';
+import uiManager from './ui/ui-manager.js';
+import measurementController from './measurement-controller/index.js';
 import i18n from './i18n.js'; // Import the i18n module
-import './peqCalculator.js'; // Import the new PEQ calculator
+import './peq-calculator/peq-calculator.js';
 import { startRendererWatchdogHeartbeat } from '../../js/electron-watchdog.js';
 import { copyTextToClipboard } from '../../js/utils/clipboard-utils.js';
 
 let isAudioInitialized = false;
+let audioInitializationPromise = null;
 
 startRendererWatchdogHeartbeat('measurement-page');
 
@@ -51,14 +52,23 @@ async function initializeAudio() {
     if (isAudioInitialized) {
         return;
     }
-    try {
-        await measurementController.initialize();
-        isAudioInitialized = true;
-    } catch (error) {
-        console.error('Error initializing audio:', error);
-        alert(`Audio Initialization Error: ${error.message}`);
-        throw error;
+
+    if (!audioInitializationPromise) {
+        audioInitializationPromise = (async () => {
+            try {
+                await measurementController.initialize();
+                isAudioInitialized = true;
+            } catch (error) {
+                console.error('Error initializing audio:', error);
+                alert(`Audio Initialization Error: ${error.message}`);
+                throw error;
+            } finally {
+                audioInitializationPromise = null;
+            }
+        })();
     }
+
+    return audioInitializationPromise;
 }
 
 /**
@@ -649,14 +659,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Load PEQ settings when app starts
     loadPEQSettings();
 
-    // Handle new measurement button click
-    document.getElementById('newMeasurementBtn').addEventListener('click', async () => {
-        // Populate audio devices when starting a new measurement
-        await populateAudioDevices();
-        // Select saved devices if available
-        setTimeout(() => selectSavedAudioDevices(), 100);
-    });
-
     // Save measurement settings when values change
     document.getElementById('sampleRate').addEventListener('change', () => {
         updateSweepFreqLimits();
@@ -705,12 +707,3 @@ document.addEventListener('DOMContentLoaded', () => {
 window.addEventListener('error', (e) => {
     console.error('Global error:', e.error);
 });
-
-// Add compatibility wrapper functions for legacy code
-window.app.uiManager.logSliderToValue = function(sliderValue, minValue, maxValue) {
-    return this.correctionHandler.logSliderToValue(sliderValue, minValue, maxValue);
-};
-
-window.app.uiManager.valueToLogSlider = function(value, minValue, maxValue) {
-    return this.correctionHandler.valueToLogSlider(value, minValue, maxValue);
-};

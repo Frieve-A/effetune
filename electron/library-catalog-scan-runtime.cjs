@@ -5,6 +5,7 @@ const { EventEmitter } = require('node:events');
 const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
+const { selectCueCoverFileName } = require('./cue-cover.cjs');
 const { ArtworkWorkerPool } = require('./library-artwork-worker-pool.cjs');
 const {
   createFolderConsolidationDialogOptions,
@@ -562,20 +563,38 @@ class LibraryCatalogScanRuntime extends EventEmitter {
       await this.host.scheduleArtworkStagingGc({ claim: claimedBeforeDispatch.claim, reason: 'extract-failed' });
       return { kind: 'placeholder', errorCode: sanitizeArtworkErrorCode(error) };
     }
-    if (!extracted) {
+    let source;
+    let claimed;
+    let externalCover = null;
+    if (extracted) {
+      source = Buffer.from(extracted.bytes);
+      claimed = await this.host.bindArtworkSourceDetails({
+        claim: claimedBeforeDispatch.claim,
+        fileStat: extracted.fileStat,
+        embeddedOffset: extracted.embeddedOffset,
+        embeddedLength: extracted.embeddedLength,
+        mimeType: extracted.mimeType
+      });
+    } else {
       await this.host.scheduleArtworkStagingGc({ claim: claimedBeforeDispatch.claim, reason: 'missing' });
-      return { kind: 'placeholder' };
+      externalCover = track.sourceKind === 'cue-track'
+        ? await this.readCueCover(track, grant)
+        : null;
+      if (!externalCover) return { kind: 'placeholder' };
+      source = externalCover.bytes;
+      claimed = await this.host.claimArtworkSource({
+        claim: {
+          ...preliminaryClaim,
+          sourceKind: 'external-file',
+          canonicalSourceIdentity: externalCover.relativePath,
+          externalArtworkStat: externalCover.stat
+        }
+      });
     }
-    const source = Buffer.from(extracted.bytes);
-    const claimed = await this.host.bindArtworkSourceDetails({
-      claim: claimedBeforeDispatch.claim,
-      fileStat: extracted.fileStat,
-      embeddedOffset: extracted.embeddedOffset,
-      embeddedLength: extracted.embeddedLength,
-      mimeType: extracted.mimeType
-    });
     if (!claimed?.claim) {
-      await this.host.scheduleArtworkStagingGc({ claim: claimedBeforeDispatch.claim, reason: 'stale-source' });
+      if (extracted) {
+        await this.host.scheduleArtworkStagingGc({ claim: claimedBeforeDispatch.claim, reason: 'stale-source' });
+      }
       return { kind: 'placeholder' };
     }
     let thumbnail;
@@ -590,6 +609,10 @@ class LibraryCatalogScanRuntime extends EventEmitter {
         preserveExistingArtwork: true
       });
       return { kind: 'placeholder', errorCode };
+    }
+    if (externalCover && !await this.isCueCoverCurrent(externalCover)) {
+      await this.host.scheduleArtworkStagingGc({ claim: claimed.claim, reason: 'stale-source' });
+      return { kind: 'placeholder' };
     }
     const admissionRequest = {
       claim: claimed.claim,
@@ -617,6 +640,55 @@ class LibraryCatalogScanRuntime extends EventEmitter {
       thumbnail
     });
     return result.committed === true ? result.artwork : { kind: 'placeholder' };
+  }
+
+  async readCueCover(track, grant) {
+    try {
+      const cueDirectory = path.posix.dirname(track.cueRelativePath || '');
+      const directoryRelativePath = cueDirectory === '.' ? '' : cueDirectory;
+      const directoryPath = await this.resolveGrantedPath(grant, directoryRelativePath, {
+        allowRoot: true,
+        directory: true
+      });
+      const entries = await this.filesystem.readdir(directoryPath, { withFileTypes: true });
+      const fileName = selectCueCoverFileName(entries, track.relativePath);
+      if (!fileName) return null;
+      const relativePath = path.posix.join(directoryRelativePath, fileName);
+      const filePath = await this.resolveGrantedPath(grant, relativePath, { allowRoot: false });
+      const handle = await this.filesystem.open(filePath, 'r');
+      try {
+        const before = artworkFileStat(await handle.stat());
+        if (before.size === 0 || before.size > MAX_ARTWORK_RAW_BYTES) return null;
+        const bytes = Buffer.allocUnsafe(before.size);
+        let offset = 0;
+        while (offset < bytes.byteLength) {
+          const read = await handle.read(bytes, offset, bytes.byteLength - offset, offset);
+          if (read.bytesRead === 0) break;
+          offset += read.bytesRead;
+        }
+        const after = artworkFileStat(await handle.stat());
+        if (offset !== bytes.byteLength || !sameArtworkFileStat(before, after)) return null;
+        return {
+          relativePath,
+          filePath,
+          bytes,
+          stat: after
+        };
+      } finally {
+        await handle.close().catch(() => {});
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  async isCueCoverCurrent(cover) {
+    try {
+      const stats = await this.filesystem.lstat(cover.filePath);
+      return !stats.isSymbolicLink() && sameArtworkFileStat(cover.stat, artworkFileStat(stats));
+    } catch {
+      return false;
+    }
   }
 
   async pickPlaylistImport(request = {}) {
@@ -1111,6 +1183,25 @@ function assertArtworkDecodeAdmission({ rawByteLength, width, height }) {
 function sanitizeArtworkErrorCode(error) {
   const code = String(error?.code || 'artwork-decode-failed');
   return /^[a-z0-9][a-z0-9_-]{0,127}$/i.test(code) ? code : 'artwork-decode-failed';
+}
+
+function artworkFileStat(stats) {
+  const size = Number(stats?.size);
+  const mtimeMs = Math.round(Number(stats?.mtimeMs));
+  if (!stats?.isFile?.() || !Number.isSafeInteger(size) || size < 0 ||
+      !Number.isSafeInteger(mtimeMs) || mtimeMs < 0) {
+    throw createRuntimeError('artwork-decode-failed', 'Artwork source is not a regular file');
+  }
+  return {
+    fileIdentity: `${String(stats.dev ?? '')}:${String(stats.ino ?? '')}`,
+    size,
+    mtimeMs
+  };
+}
+
+function sameArtworkFileStat(left, right) {
+  return left.fileIdentity === right.fileIdentity && left.size === right.size &&
+    left.mtimeMs === right.mtimeMs;
 }
 
 function normalizeRelativePath(value) {

@@ -9,7 +9,7 @@
  * - Performance monitoring for processing bottlenecks
  */
 
-import audioUtils from '../audioUtils.js';
+import audioUtils from '../audio-utils/index.js';
 import { FFT } from '../audio-utils/index.js';
 
 const AudioProcessing = {

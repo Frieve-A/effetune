@@ -2,9 +2,9 @@
  * Measurement Controller handles the measurement process workflow
  */
 
-import audioUtils from '../audioUtils.js';
+import audioUtils from '../audio-utils/index.js';
 import dataStorage from '../dataStorage.js';
-import uiManager from '../uiManager.js';
+import uiManager from '../ui/ui-manager.js';
 import i18n from '../i18n.js';
 
 // Import controller components
@@ -251,4 +251,4 @@ class MeasurementController {
 
 // Create singleton instance
 const measurementController = new MeasurementController();
-export default measurementController; 
+export default measurementController;

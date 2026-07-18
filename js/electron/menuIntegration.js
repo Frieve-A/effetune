@@ -115,7 +115,8 @@ export async function updateApplicationMenu(isElectron) {
           { label: t('menu.view.effectPipeline') },
           { label: t('menu.view.musicLibrary') },
           { type: 'separator' },
-          { label: t('menu.view.toggleFullscreen') }
+          { label: t('menu.view.toggleFullscreen') },
+          { label: t('menu.view.miniPlayer') }
         ]
       },
       settings: {

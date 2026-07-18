@@ -27,6 +27,10 @@ const LIBRARY_CATALOG_RENDERER_CHANNELS = Object.freeze({
   resolvePlaylistExportSource: 'library-catalog-v1:resolve-playlist-export-source',
   createPlaylist: 'library-catalog-v1:create-playlist',
   createPlaylistWithItems: 'library-catalog-v1:create-playlist-with-items',
+  recordRecentlyPlayed: 'library-catalog-v1:record-recently-played',
+  setTrackFavorite: 'library-catalog-v1:set-track-favorite',
+  getFavoriteTrackUids: 'library-catalog-v1:get-favorite-track-uids',
+  getSystemPlaylists: 'library-catalog-v1:get-system-playlists',
   renamePlaylist: 'library-catalog-v1:rename-playlist',
   reorderPlaylistItem: 'library-catalog-v1:reorder-playlist-item',
   removePlaylistItem: 'library-catalog-v1:remove-playlist-item',
@@ -340,6 +344,22 @@ class LibraryCatalogHost extends EventEmitter {
     return this.request('createPlaylistWithItems', options);
   }
 
+  recordRecentlyPlayed(options) {
+    return this.request('recordRecentlyPlayed', options);
+  }
+
+  setTrackFavorite(options) {
+    return this.request('setTrackFavorite', options);
+  }
+
+  getFavoriteTrackUids(options = {}) {
+    return this.request('getFavoriteTrackUids', options);
+  }
+
+  getSystemPlaylists(options = {}) {
+    return this.request('getSystemPlaylists', options);
+  }
+
   renamePlaylist(options) {
     return this.request('renamePlaylist', options);
   }
@@ -589,6 +609,10 @@ function registerLibraryCatalogIpc({ ipcMain, host, getMainWindow }) {
     resolvePlaylistExportSource: (_event, request) => host.request('resolvePlaylistExportSource', request),
     createPlaylist: (_event, request) => host.createPlaylist(request),
     createPlaylistWithItems: (_event, request) => host.createPlaylistWithItems(request),
+    recordRecentlyPlayed: (_event, request) => host.recordRecentlyPlayed(request),
+    setTrackFavorite: (_event, request) => host.setTrackFavorite(request),
+    getFavoriteTrackUids: (_event, request = {}) => host.getFavoriteTrackUids(request),
+    getSystemPlaylists: (_event, request = {}) => host.getSystemPlaylists(request),
     renamePlaylist: (_event, request) => host.renamePlaylist(request),
     reorderPlaylistItem: (_event, request) => host.reorderPlaylistItem(request),
     removePlaylistItem: (_event, request) => host.removePlaylistItem(request),

@@ -4,6 +4,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const constants = require('./constants');
 const config = require('./config');
+const windowState = require('./window-state');
 const { registerClipboardIpcHandlers } = require('./clipboard-ipc');
 const { readFileBytes } = require('./bounded-file-reader');
 
@@ -27,7 +28,156 @@ const AUDIO_PIPELINE_DEFAULTS = Object.freeze({
   outputChannels: 2,
   latencyHint: 'interactive'
 });
+const FULL_SCREEN_EXIT_TIMEOUT_MS = 3000;
 const atomicFileWrites = new Map();
+let isMiniMode = false;
+let wasMaximizedBeforeMiniMode = false;
+
+function setFullscreenMenuEnabled(enabled) {
+  const menuItem = Menu.getApplicationMenu?.()?.getMenuItemById?.('toggle-fullscreen');
+  if (menuItem) menuItem.enabled = enabled === true;
+}
+
+function setMainMenuBarVisible(mainWin, visible) {
+  if (process.platform !== 'darwin') mainWin.setMenuBarVisibility(visible);
+}
+
+function miniPlayerPlacementForWindow(mainWin) {
+  const saved = windowState.getMiniPlayerState();
+  if (saved?.bounds) {
+    return windowState.resolveMiniPlayerBounds({
+      x: saved.bounds.x,
+      y: saved.bounds.y,
+      ...windowState.MINI_DEFAULT_SIZE
+    });
+  }
+  const normalBounds = mainWin.getNormalBounds();
+  return windowState.resolveMiniPlayerBounds({
+    x: normalBounds.x + normalBounds.width - windowState.MINI_DEFAULT_SIZE.width,
+    y: normalBounds.y,
+    ...windowState.MINI_DEFAULT_SIZE
+  });
+}
+
+function applyMiniPlayerPlacement(mainWin, placement) {
+  // The saved position is an outer-window coordinate, while the requested
+  // size is the web content area. Native title and menu bars must not consume
+  // the 420x120 layout space reserved for the player controls.
+  mainWin.setContentSize(placement.width, placement.height);
+  mainWin.setPosition(placement.x, placement.y);
+
+  const outerBounds = mainWin.getBounds();
+  const visibleBounds = windowState.resolveMiniPlayerBounds(outerBounds);
+  if (visibleBounds.x !== outerBounds.x || visibleBounds.y !== outerBounds.y) {
+    mainWin.setPosition(visibleBounds.x, visibleBounds.y);
+  }
+}
+
+function leaveFullScreen(mainWin) {
+  if (!mainWin.isFullScreen()) return Promise.resolve();
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = error => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      mainWin.removeListener?.('leave-full-screen', onLeaveFullScreen);
+      if (error) reject(error);
+      else resolve();
+    };
+    const onLeaveFullScreen = () => finish();
+    const timeoutId = setTimeout(() => {
+      finish(new Error('Timed out while leaving full screen'));
+    }, FULL_SCREEN_EXIT_TIMEOUT_MS);
+
+    mainWin.once('leave-full-screen', onLeaveFullScreen);
+    try {
+      mainWin.setFullScreen(false);
+    } catch (error) {
+      finish(error);
+    }
+  });
+}
+
+function restoreNormalWindowShape() {
+  const mainWin = constants.getMainWindow();
+  if (!mainWin || mainWin.isDestroyed() || (!isMiniMode && !windowState.isMiniMode())) return false;
+
+  windowState.exitMiniMode();
+  windowState.suspendSave();
+  try {
+    if (mainWin.isMaximized()) mainWin.unmaximize();
+    mainWin.setAlwaysOnTop(false);
+    setMainMenuBarVisible(mainWin, true);
+    mainWin.setResizable(true);
+    mainWin.setMaximizable(true);
+    mainWin.setFullScreenable(true);
+    mainWin.setMinimumSize(windowState.MIN_SIZE.width, windowState.MIN_SIZE.height);
+    const normalBounds = windowState.resolveWindowBoundsForRestore();
+    mainWin.setBounds(normalBounds);
+    if (process.platform === 'win32') mainWin.setBounds(normalBounds);
+    const restoreMaximized = wasMaximizedBeforeMiniMode;
+    isMiniMode = false;
+    wasMaximizedBeforeMiniMode = false;
+    setFullscreenMenuEnabled(true);
+    if (restoreMaximized) mainWin.maximize();
+  } finally {
+    windowState.resumeSave();
+  }
+  windowState.saveWindowState();
+  return true;
+}
+
+async function enterMiniPlayerMode(alwaysOnTop) {
+  const mainWin = constants.getMainWindow();
+  if (!mainWin || mainWin.isDestroyed()) throw new Error('Main window is not available');
+  await leaveFullScreen(mainWin);
+  if (mainWin.isDestroyed()) throw new Error('Main window is not available');
+  if (isMiniMode) {
+    const pinned = alwaysOnTop === true;
+    mainWin.setAlwaysOnTop(pinned);
+    windowState.setMiniPlayerAlwaysOnTop(pinned);
+    setMainMenuBarVisible(mainWin, false);
+    setFullscreenMenuEnabled(false);
+    return;
+  }
+
+  const miniPlacement = miniPlayerPlacementForWindow(mainWin);
+  wasMaximizedBeforeMiniMode = mainWin.isMaximized();
+  windowState.enterMiniMode();
+  windowState.suspendSave();
+  try {
+    if (wasMaximizedBeforeMiniMode) mainWin.unmaximize();
+    setMainMenuBarVisible(mainWin, false);
+    mainWin.setMinimumSize(windowState.MINI_MIN_SIZE.width, windowState.MINI_MIN_SIZE.height);
+    applyMiniPlayerPlacement(mainWin, miniPlacement);
+    if (process.platform === 'win32') applyMiniPlayerPlacement(mainWin, miniPlacement);
+    mainWin.setResizable(false);
+    mainWin.setMaximizable(true);
+    mainWin.setFullScreenable(false);
+    const pinned = alwaysOnTop === true;
+    mainWin.setAlwaysOnTop(pinned);
+    windowState.setMiniPlayerAlwaysOnTop(pinned);
+    isMiniMode = true;
+    setFullscreenMenuEnabled(false);
+  } catch (error) {
+    windowState.exitMiniMode();
+    mainWin.setAlwaysOnTop(false);
+    setMainMenuBarVisible(mainWin, true);
+    mainWin.setResizable(true);
+    mainWin.setMaximizable(true);
+    mainWin.setFullScreenable(true);
+    mainWin.setMinimumSize(windowState.MIN_SIZE.width, windowState.MIN_SIZE.height);
+    mainWin.setBounds(windowState.resolveWindowBoundsForRestore());
+    if (wasMaximizedBeforeMiniMode) mainWin.maximize();
+    wasMaximizedBeforeMiniMode = false;
+    throw error;
+  } finally {
+    windowState.resumeSave();
+  }
+  windowState.saveWindowState();
+}
 
 function audioPipelineConfigurationEqual(left, right) {
   if (!left || !right) return false;
@@ -118,6 +268,9 @@ function getSaveFileDenialReason(filePath) {
 
 // Set the main window reference
 function setMainWindow(window) {
+  isMiniMode = false;
+  wasMaximizedBeforeMiniMode = false;
+  setFullscreenMenuEnabled(true);
   constants.setMainWindow(window);
 }
 
@@ -143,6 +296,26 @@ function simulateKeyboardShortcut(keyCode, modifiers = []) {
 
 // Register all IPC handlers
 function registerIpcHandlers() {
+  ipcMain.handle('set-mini-player-mode', async (event, options = {}) => {
+    if (options?.enabled === true) {
+      await enterMiniPlayerMode(options.alwaysOnTop === true);
+    } else {
+      restoreNormalWindowShape();
+    }
+    return { success: true, enabled: isMiniMode };
+  });
+
+  ipcMain.handle('set-always-on-top', (event, flag) => {
+    const mainWin = constants.getMainWindow();
+    if (!isMiniMode || !mainWin || mainWin.isDestroyed()) {
+      throw new Error('Always on top is only available in mini player mode');
+    }
+    const enabled = flag === true;
+    mainWin.setAlwaysOnTop(enabled);
+    windowState.setMiniPlayerAlwaysOnTop(enabled);
+    return { success: true, enabled };
+  });
+
   // Get first launch flag
   ipcMain.handle('get-first-launch-flag', () => {
     return constants.getIsFirstLaunch();
@@ -869,8 +1042,18 @@ function registerIpcHandlers() {
             },
             { type: 'separator' },
             {
+              id: 'toggle-fullscreen',
               role: 'togglefullscreen',
-              label: menuTemplate.view.submenu[9].label // Toggle Fullscreen
+              label: menuTemplate.view.submenu[9].label, // Toggle Fullscreen
+              enabled: !isMiniMode
+            },
+            {
+              label: menuTemplate.view.submenu[10]?.label || 'Mini Player',
+              accelerator: 'CommandOrControl+Shift+M',
+              click: () => {
+                const mainWin = constants.getMainWindow();
+                if (mainWin) mainWin.webContents.send('toggle-mini-player');
+              }
             }
           ]
         },
@@ -900,6 +1083,7 @@ function registerIpcHandlers() {
               click: () => {
                 const mainWin = constants.getMainWindow();
                 if (mainWin) {
+                  restoreNormalWindowShape();
                   mainWin.loadFile('features/effetune_bench.html');
                 }
               }
@@ -909,6 +1093,7 @@ function registerIpcHandlers() {
               click: () => {
                 const mainWin = constants.getMainWindow();
                 if (mainWin) {
+                  restoreNormalWindowShape();
                   mainWin.loadFile('features/measurement/measurement.html');
                 }
               }
@@ -1418,7 +1603,15 @@ function createMenu() {
           }
         },
         { type: 'separator' },
-        { role: 'togglefullscreen' }
+        { id: 'toggle-fullscreen', role: 'togglefullscreen', enabled: !isMiniMode },
+        {
+          label: 'Mini Player',
+          accelerator: 'CommandOrControl+Shift+M',
+          click: () => {
+            const mainWin = constants.getMainWindow();
+            if (mainWin) mainWin.webContents.send('toggle-mini-player');
+          }
+        }
       ]
     },
     {
@@ -1447,6 +1640,7 @@ function createMenu() {
           click: () => {
             const mainWin = constants.getMainWindow();
             if (mainWin) {
+              restoreNormalWindowShape();
               mainWin.loadFile('features/effetune_bench.html');
             }
           }
@@ -1456,6 +1650,7 @@ function createMenu() {
           click: () => {
             const mainWin = constants.getMainWindow();
             if (mainWin) {
+              restoreNormalWindowShape();
               mainWin.loadFile('features/measurement/measurement.html');
             }
           }
@@ -1522,5 +1717,6 @@ module.exports = {
   setMainWindow,
   registerIpcHandlers,
   createMenu,
-  simulateKeyboardShortcut
+  simulateKeyboardShortcut,
+  restoreNormalWindowShape
 };

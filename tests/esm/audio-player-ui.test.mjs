@@ -20,6 +20,8 @@ class FakeElement {
     this.style = {};
     this._innerHTML = '';
     this.offsetHeight = 20;
+    this.scrollTop = 0;
+    this.rect = null;
     this.id = '';
     this.attributes = new Map();
     this.dataset = {};
@@ -105,6 +107,10 @@ class FakeElement {
     this[name] = String(value);
   }
 
+  getAttribute(name) {
+    return this.attributes.get(name) ?? null;
+  }
+
   addEventListener(type, listener) {
     if (!this.eventListeners.has(type)) {
       this.eventListeners.set(type, []);
@@ -128,10 +134,22 @@ class FakeElement {
   }
 
   querySelectorAll(selector) {
+    if (selector.startsWith('.')) {
+      const className = selector.slice(1);
+      return this.children.filter(child => child.classList().includes(className));
+    }
     if (selector === '[data-playlist-id]') {
       return this.children.filter(child => child.dataset.playlistId);
     }
     return [];
+  }
+
+  scrollIntoView(options) {
+    this.calls.push(['scrollIntoView', this.textContent, options]);
+  }
+
+  getBoundingClientRect() {
+    return this.rect;
   }
 
   findByClass(className) {
@@ -209,15 +227,20 @@ function createDocument(calls, options = {}) {
       timeDisplay.textContent = '00:00';
       controls.appendChild(timeDisplay);
 
-      for (const className of [
+      const buttonClasses = [
         'play-pause-button',
         'stop-button',
         'prev-button',
         'next-button',
         'repeat-button',
         'shuffle-button',
+        'expand-button',
         'close-button'
-      ]) {
+      ];
+      if (html.includes('mini-player-button')) {
+        buttonClasses.splice(-2, 0, 'mini-player-button', 'restore-button', 'pin-button');
+      }
+      for (const className of buttonClasses) {
         const button = this.createElement('button');
         const content = extractButtonContent(html, className);
         button.className = `player-button ${className}`;
@@ -270,7 +293,8 @@ function createWindow(calls, options = {}) {
     ...(options.uiManager || {})
   };
   return {
-    uiManager
+    uiManager,
+    electronAPI: options.electronAPI ?? null
   };
 }
 
@@ -546,6 +570,41 @@ test('createPlayerUI uses fallback text and handles alternate insertion targets'
   });
 });
 
+test('Electron player controls follow mini mode and always-on-top state', async () => {
+  await withAudioPlayerGlobals({
+    windowOptions: {
+      electronAPI: {},
+      uiManager: {
+        miniPlayerMode: true,
+        miniPlayerAlwaysOnTop: true,
+        toggleMiniPlayer() { this.calls.push(['toggleMiniPlayer']); },
+        setMiniPlayerAlwaysOnTop(enabled) { this.calls.push(['setMiniPlayerAlwaysOnTop', enabled]); },
+        calls: []
+      }
+    }
+  }, async ({ calls, windowRef }) => {
+    windowRef.uiManager.calls = calls;
+    const ui = new AudioPlayerUI(createAudioPlayer(calls));
+    const container = ui.createPlayerUI();
+
+    assert.equal(container.getAttribute('data-mini-player'), 'true');
+    assert.equal(container.getAttribute('data-expanded'), 'false');
+    assert.ok(ui.miniPlayerButton);
+    assert.ok(ui.restoreButton);
+    assert.ok(ui.pinButton);
+    assert.equal(ui.pinButton.getAttribute('aria-pressed'), 'true');
+    assert.equal(ui.artworkImage.parentNode.style.display, '');
+    assert.equal(container.getAttribute('data-artwork-layout'), 'true');
+
+    ui.restoreButton.dispatchEvent('click');
+    ui.pinButton.dispatchEvent('click');
+    assert.deepEqual(calls.filter(call => call[0] === 'toggleMiniPlayer' || call[0] === 'setMiniPlayerAlwaysOnTop'), [
+      ['toggleMiniPlayer'],
+      ['setMiniPlayerAlwaysOnTop', false]
+    ]);
+  });
+});
+
 test('mountContainerForLayout moves an existing player between mobile and desktop roots', async () => {
   await withAudioPlayerGlobals({
     documentOptions: { mobilePlayerView: true },
@@ -739,6 +798,115 @@ test('mobile track changes keep the previous presentation until artwork is ready
     assert.equal(ui.trackNameDisplay.textContent, 'No Artwork Artist - No Artwork Title');
     assert.equal(ui.artworkImage.src, '');
     assert.equal(ui.artworkImage.hidden, true);
+  });
+});
+
+test('desktop track changes keep the previous artwork until the replacement is decoded', async () => {
+  const preloaders = [];
+  class FakeImage {
+    constructor() {
+      this.complete = false;
+      this.naturalWidth = 0;
+      preloaders.push(this);
+    }
+
+    set src(value) {
+      this._src = value;
+    }
+
+    get src() {
+      return this._src;
+    }
+  }
+
+  await withAudioPlayerGlobals({
+    Image: FakeImage,
+    windowOptions: { uiManager: { layoutMode: { isMobile: false } } }
+  }, async ({ calls }) => {
+    const player = createAudioPlayer(calls, {
+      state: {
+        currentTrack: { name: 'Old track' },
+        currentTrackName: 'Old Artist - Old Title',
+        artworkUrl: 'blob:old-artwork',
+        isTrackPresentationPending: false
+      }
+    });
+    const ui = new AudioPlayerUI(player);
+    ui.createPlayerUI();
+
+    assert.equal(ui.artworkImage.src, 'blob:old-artwork');
+    assert.equal(preloaders.length, 0, 'initial state render applies directly');
+
+    // Track change: pending starts and the transient empty URL must not
+    // clear the visible artwork.
+    player.stateManager.setState({ isTrackPresentationPending: true, artworkUrl: '' });
+    player.stateManager.emit('isTrackPresentationPending', true);
+    player.stateManager.emit('artworkUrl', '');
+    assert.equal(ui.artworkImage.src, 'blob:old-artwork');
+    assert.equal(ui.artworkImage.hidden, false);
+
+    // New artwork resolves: swap only after the preloaded image is ready.
+    player.stateManager.setState({ artworkUrl: 'blob:new-artwork', isTrackPresentationPending: false });
+    player.stateManager.emit('artworkUrl', 'blob:new-artwork');
+    player.stateManager.emit('isTrackPresentationPending', false);
+    assert.equal(preloaders.length, 1, 'pending=false must not restart the same preload');
+    assert.equal(preloaders[0].src, 'blob:new-artwork');
+    assert.equal(ui.artworkImage.src, 'blob:old-artwork');
+
+    // Playback commits re-publish currentTrack (same value) while the image
+    // is still decoding; that churn must not drop the pending swap.
+    player.stateManager.emit('currentTrack', player.stateManager.state.currentTrack);
+    assert.equal(ui.pendingArtworkPreload, preloaders[0], 'currentTrack churn must not cancel the preload');
+
+    preloaders[0].onload();
+    assert.equal(ui.artworkImage.src, 'blob:new-artwork');
+    assert.equal(ui.artworkImage.hidden, false);
+
+    // A track without artwork settles on the placeholder in one step.
+    player.stateManager.setState({ isTrackPresentationPending: true, artworkUrl: '' });
+    player.stateManager.emit('isTrackPresentationPending', true);
+    player.stateManager.emit('artworkUrl', '');
+    assert.equal(ui.artworkImage.src, 'blob:new-artwork');
+
+    player.stateManager.setState({ isTrackPresentationPending: false, artworkUrl: '' });
+    player.stateManager.emit('artworkUrl', '');
+    player.stateManager.emit('isTrackPresentationPending', false);
+    assert.equal(ui.artworkImage.src, '');
+    assert.equal(ui.artworkImage.hidden, true);
+    assert.equal(preloaders.length, 1, 'empty artwork never preloads');
+  });
+});
+
+test('desktop loading indicator is debounced so fast track changes do not flash it', async () => {
+  await withAudioPlayerGlobals({
+    windowOptions: { uiManager: { layoutMode: { isMobile: false } } }
+  }, async ({ calls }) => {
+    const player = createAudioPlayer(calls, {
+      state: { isTransitioning: false, transitionType: null }
+    });
+    const ui = new AudioPlayerUI(player);
+    const container = ui.createPlayerUI();
+    assert.equal(container.attributes.get('data-loading'), 'false');
+
+    player.stateManager.setState({ isTransitioning: true, transitionType: 'loading' });
+    player.stateManager.emit('isTransitioning', true);
+    assert.equal(container.attributes.get('data-loading'), 'false', 'loading face waits for the debounce');
+    assert.notEqual(ui.loadingStateTimer, null);
+
+    player.stateManager.setState({ isTransitioning: false, transitionType: null });
+    player.stateManager.emit('isTransitioning', false);
+    assert.equal(container.attributes.get('data-loading'), 'false');
+    assert.equal(ui.loadingStateTimer, null, 'finishing the transition cancels the pending timer');
+
+    // A slow load still surfaces the indicator once the debounce elapses.
+    player.stateManager.setState({ isTransitioning: true, transitionType: 'loading' });
+    player.stateManager.emit('isTransitioning', true);
+    await new Promise(resolve => setTimeout(resolve, 300));
+    assert.equal(container.attributes.get('data-loading'), 'true');
+
+    player.stateManager.setState({ isTransitioning: false, transitionType: null });
+    player.stateManager.emit('isTransitioning', false);
+    assert.equal(container.attributes.get('data-loading'), 'false');
   });
 });
 
@@ -1066,6 +1234,76 @@ test('playlist display syncs active track and mobile tap starts playback', async
   });
 });
 
+test('moving the active playlist track scrolls only the queue without rebuilding it', async () => {
+  await withAudioPlayerGlobals({
+    windowOptions: { uiManager: { layoutMode: { isMobile: true } } }
+  }, async ({ calls }) => {
+    const player = createAudioPlayer(calls, {
+      state: {
+        playlist: [
+          { name: 'One', path: '/one.wav' },
+          { name: 'Two', path: '/two.wav' },
+          { name: 'Three', path: '/three.wav' }
+        ],
+        currentTrackIndex: 0,
+        currentTrack: { name: 'One', path: '/one.wav' }
+      }
+    });
+    const ui = new AudioPlayerUI(player);
+    const container = ui.createPlayerUI();
+    const renderedItems = [...ui.playlistDisplay.children];
+    ui.playlistDisplay.rect = { top: 100, bottom: 200 };
+    ui.playlistDisplay.scrollTop = 40;
+    renderedItems[2].rect = { top: 210, bottom: 230 };
+    container.scrollTop = 17;
+    calls.length = 0;
+
+    player.stateManager.setState({
+      currentTrackIndex: 2,
+      currentTrack: player.stateManager.state.playlist[2]
+    });
+    player.stateManager.emit('currentTrackIndex', 2);
+
+    assert.deepEqual(ui.playlistDisplay.children, renderedItems);
+    assert.equal(renderedItems[0].classList().includes('active'), false);
+    assert.equal(renderedItems[2].classList().includes('active'), true);
+    assert.equal(ui.playlistDisplay.scrollTop, 70);
+    assert.equal(container.scrollTop, 17);
+    assert.equal(calls.some(call => call[0] === 'scrollIntoView'), false);
+  });
+});
+
+test('expanding the desktop queue reveals the active track inside the queue', async () => {
+  await withAudioPlayerGlobals({
+    windowOptions: { uiManager: { layoutMode: { isMobile: false } } }
+  }, async ({ calls }) => {
+    const player = createAudioPlayer(calls, {
+      state: {
+        playlist: [
+          { name: 'One', path: '/one.wav' },
+          { name: 'Two', path: '/two.wav' }
+        ],
+        currentTrackIndex: 1,
+        currentTrack: { name: 'Two', path: '/two.wav' }
+      }
+    });
+    const ui = new AudioPlayerUI(player);
+    const container = ui.createPlayerUI();
+    ui.playlistDisplay.rect = { top: 100, bottom: 200 };
+    ui.playlistDisplay.scrollTop = 10;
+    ui.playlistDisplay.children[1].rect = { top: 215, bottom: 235 };
+    container.scrollTop = 23;
+    calls.length = 0;
+
+    ui.setDesktopQueueExpanded(true);
+
+    assert.equal(container.getAttribute('data-expanded'), 'true');
+    assert.equal(ui.playlistDisplay.scrollTop, 45);
+    assert.equal(container.scrollTop, 23);
+    assert.equal(calls.some(call => call[0] === 'scrollIntoView'), false);
+  });
+});
+
 test('catalog queue renders a bounded page with reachable previous and next navigation', async () => {
   await withAudioPlayerGlobals({
     windowOptions: { uiManager: { layoutMode: { isMobile: false } } }
@@ -1102,6 +1340,7 @@ test('catalog queue renders a bounded page with reachable previous and next navi
     assert.equal(navigation.className, 'player-queue-pagination');
     assert.equal(navigation.children[1].textContent, '161–240 / 1000000');
     assert.equal(ui.playlistDisplay.children[1].textContent, 'Catalog Artist - Track 160');
+    assert.equal(calls.some(call => call[0] === 'scrollIntoView'), false);
     navigation.children[0].dispatchEvent('click');
     navigation.children[2].dispatchEvent('click');
     await Promise.all(ui.playlistDisplay.children[80].dispatchEvent('click'));
@@ -1114,6 +1353,37 @@ test('catalog queue renders a bounded page with reachable previous and next navi
         preserveQueueWindow: true
       }
     }]);
+
+    player.stateManager.setState({ currentTrackIndex: 239 });
+    ui.playlistDisplay.rect = { top: 100, bottom: 300 };
+    navigation.rect = { top: 100, bottom: 142 };
+    ui.playlistDisplay.children[80].rect = { top: 290, bottom: 320 };
+    player.stateManager.emit('currentTrackIndex', 239);
+    assert.equal(ui.playlistDisplay.scrollTop, 20);
+
+    player.stateManager.setState({
+      currentTrackIndex: 240,
+      queueWindow: {
+        startOrdinal: 240,
+        totalCount: 1_000_000,
+        rows: Array.from({ length: 80 }, (_, index) => ({
+          entryInstanceId: `entry-${240 + index}`,
+          trackUid: `track-${240 + index}`,
+          title: `Track ${240 + index}`,
+          artist: 'Catalog Artist'
+        }))
+      }
+    });
+    player.stateManager.emit('queueWindow', player.stateManager.state.queueWindow);
+    assert.equal(ui.playlistDisplay.children[0].children[1].textContent, '241–320 / 1000000');
+    const currentNavigation = ui.playlistDisplay.children[0];
+    const currentItem = ui.playlistDisplay.children[1];
+    currentNavigation.rect = { top: 100, bottom: 142 };
+    currentItem.rect = { top: 120, bottom: 140 };
+    ui.playlistDisplay.scrollTop = 80;
+    ui.updatePlaylistActiveState();
+    assert.equal(ui.playlistDisplay.scrollTop, 58);
+    assert.equal(calls.some(call => call[0] === 'scrollIntoView'), false);
   });
 });
 

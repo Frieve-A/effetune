@@ -86,6 +86,62 @@ test('Web artwork rejects oversized binary input before createImageBitmap', asyn
   assert.equal(bitmapCalls, 0);
 });
 
+test('Web CUE artwork resolves a sibling image when the source has no embedded image', async () => {
+  const audio = new Blob([new Uint8Array([1])]);
+  const cover = new Blob([new Uint8Array([2, 3, 4])], { type: 'image/png' });
+  Object.defineProperties(cover, {
+    size: { value: 3 },
+    lastModified: { value: 1234 }
+  });
+  const calls = [];
+  const extractor = new WebArtworkExtractor({
+    filesystem: {
+      async getFile(relativePath) {
+        calls.push(['file', relativePath]);
+        return relativePath === 'Album/COVER.PNG' ? cover : audio;
+      },
+      async listFileNames(relativeDirectory) {
+        calls.push(['list', relativeDirectory]);
+        return ['disc.cue', 'disc.flac', 'COVER.PNG'];
+      }
+    },
+    parse: async () => ({ common: { picture: [] } }),
+    createBitmap: async blob => {
+      calls.push(['bitmap', blob.type]);
+      return { width: 10, height: 20, close() {} };
+    }
+  });
+  const source = sourceFor('cue-cover', {
+    sourceKind: 'embedded-file',
+    canonicalSourceIdentity: 'Album/disc.flac',
+    embeddedOffset: null,
+    embeddedLength: null,
+    trackSourceKind: 'cue-track',
+    cueRelativePath: 'Album/disc.cue'
+  });
+
+  const resolved = await extractor.resolveSource({
+    source,
+    maxRawBytes: ARTWORK_LIMITS.maxRawBytes
+  });
+  assert.equal(resolved.sourceKind, 'external-file');
+  assert.equal(resolved.canonicalSourceIdentity, 'Album/COVER.PNG');
+  assert.deepEqual(resolved.externalArtworkStat, {
+    fileIdentity: 'fsa:Album/COVER.PNG', size: 3, mtimeMs: 1234
+  });
+  assert.deepEqual(await extractor.readHeader({
+    claim: resolved,
+    maxRawBytes: ARTWORK_LIMITS.maxRawBytes
+  }), { rawByteLength: 3, width: 10, height: 20 });
+  assert.deepEqual(calls, [
+    ['file', 'Album/disc.flac'],
+    ['list', 'Album'],
+    ['file', 'Album/COVER.PNG'],
+    ['bitmap', 'image/png']
+  ]);
+  extractor.discard({ claim: resolved });
+});
+
 test('Web artwork invokes createImageBitmap with the Worker global receiver', async () => {
   const png = new Uint8Array(24);
   png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -422,6 +478,41 @@ test('low-quota Web artwork uses a bounded memory cache without persistent admis
   assert.equal(repository.calls.some(([name]) => name === 'publish'), false);
   assert.equal(repository.calls.find(([name]) => name === 'gc')?.[1].reason, 'memory-only-complete');
   assert.equal(extractor.calls.filter(([name]) => name === 'thumbnail').length, 1);
+});
+
+test('low-quota Web CUE artwork keeps a current external image in memory', async () => {
+  const repository = createRepository({
+    source: trackUid => sourceFor(trackUid, {
+      sourceKind: 'embedded-file',
+      canonicalSourceIdentity: 'Album/disc.flac',
+      embeddedOffset: null,
+      embeddedLength: null,
+      trackSourceKind: 'cue-track',
+      cueRelativePath: 'Album/disc.cue'
+    })
+  });
+  const extractor = createExtractor();
+  extractor.resolveSource = async ({ source }) => ({
+    ...source,
+    sourceKind: 'external-file',
+    canonicalSourceIdentity: 'Album/cover.jpg',
+    externalArtworkStat: {
+      fileIdentity: 'fsa:Album/cover.jpg', size: 10, mtimeMs: 20
+    }
+  });
+  extractor.isSourceCurrent = async () => true;
+  const service = new LazyArtworkService({
+    repository,
+    extractor,
+    runtime: 'web',
+    quotaBytes: 512 * 1024 * 1024
+  });
+
+  const artwork = await service.request({ trackUid: 'memory-cue-cover', reason: 'viewport' });
+
+  assert.equal(artwork.kind, 'thumbnail');
+  assert.equal(repository.calls.find(([name]) => name === 'claim')[1].sourceKind, 'external-file');
+  assert.equal(repository.calls.find(([name]) => name === 'gc')[1].reason, 'memory-only-complete');
 });
 
 test('catalog storage failure returns the artwork placeholder without changing catalog mode', async () => {

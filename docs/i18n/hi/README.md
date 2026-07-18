@@ -335,6 +335,7 @@ EffeTune 2.1.0 में कैटलॉग स्कीमा v3 पर आध�
 | Lo-Fi     | Noise Blender | lo-fi ambience के लिए adjustable background noise texture जोड़ता है | [विवरण](plugins/lofi.md#noise-blender) |
 | Lo-Fi     | Simple Jitter | digital jitter simulation | [विवरण](plugins/lofi.md#simple-jitter) |
 | Lo-Fi     | Vinyl Artifacts | vinyl-style pops, crackle, hiss, rumble और stereo noise bleed जोड़ता है | [विवरण](plugins/lofi.md#vinyl-artifacts) |
+| Lo-Fi     | Vinyl Simulator | input को modeled groove में काटकर physical stylus model से चलाता है | [विवरण](plugins/lofi.md#vinyl-simulator) |
 | Modulation | Doppler Distortion | subtle speaker cone movements से होने वाले natural, dynamic sound changes simulate करता है | [विवरण](plugins/modulation.md#doppler-distortion) |
 | Modulation | Pitch Shifter | tempo बदले बिना music pitch ऊपर या नीचे करता है | [विवरण](plugins/modulation.md#pitch-shifter) |
 | Modulation | Tremolo | volume-based modulation effect | [विवरण](plugins/modulation.md#tremolo) |

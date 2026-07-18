@@ -9,6 +9,7 @@ import { AudioContextManager } from './audio-player/audio-context-manager.js';
 import { StateManager } from './audio-player/state-manager.js';
 import { MediaSessionManager } from './audio-player/media-session-manager.js';
 import { WakeLockManager } from '../utils/wake-lock-manager.js';
+import { createRecentlyPlayedTracker } from '../library/playlists/recently-played-tracker.js';
 
 export class AudioPlayer {
   constructor(audioManager) {
@@ -19,6 +20,15 @@ export class AudioPlayer {
     // Initialize centralized state manager first
     this.stateManager = new StateManager(this);
     const windowRef = typeof window !== 'undefined' ? window : null;
+    this.recentlyPlayedTracker = createRecentlyPlayedTracker({
+      stateManager: this.stateManager,
+      recordTrack: async trackUid => {
+        const manager = windowRef?.uiManager?.ensureLibraryManager
+          ? await windowRef.uiManager.ensureLibraryManager()
+          : windowRef?.uiManager?.libraryManager;
+        return manager?.playlists?.recordRecentlyPlayed?.(trackUid) ?? { kind: 'noop' };
+      }
+    });
     this.wakeLockManager = new WakeLockManager({
       layoutMode: windowRef?.uiManager?.layoutMode,
       stateManager: this.stateManager,
@@ -235,6 +245,7 @@ export class AudioPlayer {
 
     // Release screen wake lock, if held
     this.wakeLockManager?.dispose();
+    this.recentlyPlayedTracker?.destroy();
     this.audioManager?.powerPolicyController?.detachPlayer?.(this);
     
     // Clear state manager

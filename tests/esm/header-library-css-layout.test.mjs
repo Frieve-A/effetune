@@ -183,6 +183,21 @@ test('desktop library content keeps the scrollbar inside the right inset', () =>
   assert.match(desktopContentRule, /padding:\s*20px max\(0px,\s*calc\(20px - var\(--library-content-scrollbar-width,\s*0px\)\)\) 20px 20px;/);
 });
 
+test('desktop library track headers align with track row columns', () => {
+  const css = readCss('../../effetune-library.css');
+  const headerRule = getRule(css, '.library-track-header {');
+  const rowRule = getRule(css, '\n.library-paged-row {\n');
+  const desktopRowRule = getRule(css, 'body:not(.layout-mobile) .library-paged-tracks .library-paged-row');
+  const columnPattern = /grid-template-columns:\s*([^;]+);/;
+
+  assert.equal(headerRule.match(columnPattern)?.[1], rowRule.match(columnPattern)?.[1]);
+  assert.match(headerRule, /gap:\s*10px;/);
+  assert.match(rowRule, /gap:\s*10px;/);
+  assert.match(headerRule, /padding:\s*0;/);
+  assert.match(desktopRowRule, /padding-right:\s*0;/);
+  assert.match(desktopRowRule, /padding-left:\s*0;/);
+});
+
 test('library metadata stays within the content width for long values', () => {
   const css = readCss('../../effetune-library.css');
   const desktopLibraryRule = getRule(css, 'body.view-library:not(.layout-mobile) .library-view');

@@ -331,6 +331,7 @@ EffeTune создан для аудиоэнтузиастов, которые х
 | Lo-Fi     | Noise Blender | Добавляет регулируемую текстуру фонового шума для lo-fi атмосферы | [Подробнее](plugins/lofi.md#noise-blender) |
 | Lo-Fi     | Simple Jitter | Имитация цифрового джиттера | [Подробнее](plugins/lofi.md#simple-jitter) |
 | Lo-Fi     | Vinyl Artifacts | Добавляет виниловые pops, crackle, hiss, rumble и утечку стереошума | [Подробнее](plugins/lofi.md#vinyl-artifacts) |
+| Lo-Fi     | Vinyl Simulator | Записывает вход в моделируемую канавку и воспроизводит ее физической моделью иглы | [Подробнее](plugins/lofi.md#vinyl-simulator) |
 | Modulation | Doppler Distortion | Имитирует естественные динамические изменения звука от небольших движений диффузора динамика | [Подробнее](plugins/modulation.md#doppler-distortion) |
 | Modulation | Pitch Shifter | Повышает или понижает высоту музыки без изменения темпа | [Подробнее](plugins/modulation.md#pitch-shifter) |
 | Modulation | Tremolo | Эффект модуляции громкости | [Подробнее](plugins/modulation.md#tremolo) |

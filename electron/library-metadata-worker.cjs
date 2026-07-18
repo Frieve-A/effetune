@@ -117,6 +117,7 @@ function normalizeMetadata(track) {
     title: boundedText(track.title, 4096),
     artist: boundedText(track.artist, 4096),
     albumArtist: boundedText(track.albumArtist, 4096),
+    albumArtists: boundedTextList(track.albumArtists, 64, 4096),
     album: boundedText(track.album, 4096),
     genre: boundedText(track.genre, 4096),
     year: integerOrNull(track.year),
@@ -137,6 +138,11 @@ function normalizeMetadata(track) {
 function boundedText(value, maximum) {
   if (value == null) return '';
   return String(value).slice(0, maximum);
+}
+
+function boundedTextList(value, maximumItems, maximumCharacters) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, maximumItems).map(item => boundedText(item, maximumCharacters));
 }
 
 function integerOrNull(value) {

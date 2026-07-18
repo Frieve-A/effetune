@@ -52,6 +52,8 @@ Usa las pestañas de navegación para cambiar de vista en el catálogo.
 - **Añadidas recientemente** - Muestra las pistas indexadas recientemente.
 - **Listas de reproducción** - Muestra las listas de reproducción creadas o importadas dentro de la Biblioteca musical.
 
+Un valor de artista del álbum separado por punto y coma, como `Artist A; Artist B`, se indexa bajo cada artista y conserva el crédito completo en pantalla. `&`, `/` y `feat.` no se tratan como separadores.
+
 Los grupos de **Subcarpetas** se crean con la ruta de la subcarpeta que contiene directamente cada pista, relativa a su carpeta de música importada. Las rutas relativas idénticas de distintas carpetas importadas se mantienen en grupos separados. Los archivos situados directamente en la raíz importada no crean un grupo de subcarpeta, pero siguen apareciendo en **Pistas** y **Carpetas**.
 
 Con **Buscar en la biblioteca** puedes buscar en pistas, álbumes, artistas y listas de reproducción. En el diseño de PC, los encabezados de la lista de pistas permiten ordenar por título, artista, álbum, género o duración. Las vistas de álbumes, artistas, géneros, subcarpetas y listas de reproducción incluyen una lista **Ordenar** basada en el catálogo. Según la vista, permite ordenar por nombre, artista, ruta, número de pistas, duración total, fecha de actualización o fecha de creación, en ambos sentidos. Cada vista conserva su propia selección.
@@ -68,7 +70,9 @@ Si faltan metadatos o no se pueden leer, EffeTune usa el nombre del archivo y la
 
 Coloca el archivo `.cue` externo junto a los archivos WAV o FLAC que menciona y añade o vuelve a analizar esa carpeta. Cada entrada `TRACK ... AUDIO` válida aparecerá como una pista independiente en la Biblioteca musical. Cuando están disponibles, se usan el título, el intérprete, la fecha, el género y la numeración del CUE; los datos técnicos proceden del WAV o FLAC de origen.
 
-También puedes reproducir un álbum CUE sin añadirlo a la Biblioteca musical. Usa **Open music files** o, en dispositivos móviles, **Open Music**. En la aplicación de escritorio también puedes usar **File > Open music file...**. En la aplicación de escritorio, selecciona solo el archivo `.cue`; en el navegador, selecciona un archivo `.cue` junto con todos y únicamente los WAV o FLAC que menciona. Una selección válida sustituye la cola de reproducción actual, pero no se añade al catálogo. Si la validación falla, la cola actual no cambia.
+Para las pistas añadidas a la Biblioteca musical, EffeTune usa primero la carátula incrustada en el audio de origen. Si no hay ninguna, busca junto al archivo CUE, por este orden, `cover.jpg`, `cover.png`, `front.jpg`, `front.png` y después un JPEG o PNG con el nombre del archivo de audio, con o sin su extensión de audio. La reproducción directa en la aplicación de escritorio usa automáticamente esos mismos archivos de imagen contiguos; esta vía de reproducción no extrae la carátula incrustada del audio de origen. La reproducción directa en el navegador usa la imagen correspondiente incluida en la selección de archivos.
+
+También puedes reproducir un álbum CUE sin añadirlo a la Biblioteca musical. Usa **Open music files** o, en dispositivos móviles, **Open Music**. En la aplicación de escritorio también puedes usar **File > Open music file...**. En la aplicación de escritorio, selecciona solo el archivo `.cue`; en el navegador, selecciona un archivo `.cue` junto con todos y únicamente los WAV o FLAC que menciona, además de la carátula correspondiente si quieres usarla. Una selección válida sustituye la cola de reproducción actual, pero no se añade al catálogo. Si la validación falla, la cola actual no cambia.
 
 Si la hoja CUE no es válida o no permite identificar con seguridad sus archivos de origen, EffeTune explica el problema e importa los WAV o FLAC como pistas normales de archivo completo. Corrige la hoja CUE o los nombres de archivo y vuelve a analizar la carpeta para intentarlo de nuevo.
 
@@ -111,6 +115,15 @@ Puedes hacer lo siguiente.
 - Arrastrar pistas dentro de una lista de reproducción para cambiar su orden. En entornos donde arrastrar no sea cómodo, usa **Subir** y **Bajar**.
 - Usar **Importar lista** para importar listas de reproducción en formato M3U, M3U8, PLS y XSPF.
 - Abrir una lista de reproducción concreta y exportarla con **Exportar M3U8** o **Exportar XSPF**.
+
+### Reproducidas recientemente y Favoritos
+
+EffeTune muestra dos listas especiales junto a las listas normales, en la misma cuadrícula de tarjetas. Solo se crean cuando hacen falta: **Reproducidas recientemente** al iniciar la reproducción de una pista indexada y **Favoritos** al marcar una pista con la estrella por primera vez.
+
+- **Reproducidas recientemente** conserva las 100 últimas pistas distintas, con la más reciente al principio. Si vuelves a reproducir una pista, esta regresa al primer puesto.
+- **Favoritos** contiene las pistas que marcas con ☆. En PC, usa la estrella situada junto a la pista; en el móvil, abre el menú **Más** de la pista. También puedes abrir ese menú haciendo clic derecho en una pista en PC.
+
+Sus nombres son fijos y se muestran en el idioma actual de la interfaz, por lo que no se pueden cambiar. Sí puedes duplicar, exportar o eliminar estas listas como cualquier otra. Si eliminas una, se vuelve a crear vacía la próxima vez que la reproducción o una acción de favoritos la necesite. Sus tarjetas muestran un reloj o una estrella en el área de la carátula; el botón de reproducción de la esquina inferior derecha de **Favoritos** inicia la lista al instante. Las listas especiales no se incluyen en los resultados de búsqueda de listas normales.
 
 Al escanear una carpeta, EffeTune importa automáticamente los archivos de listas de reproducción compatibles una vez indexizadas sus pistas y omite los archivos cuyo contenido no ha cambiado. Si cambia el contenido de un archivo ubicado en la misma carpeta y ruta relativa, EffeTune sustituye de forma atómica los elementos de la lista importada automáticamente; esto también sustituye las modificaciones de elementos realizadas en EffeTune. Una importación fallida o cancelada se reintenta en el siguiente escaneo. Eliminar o cambiar el nombre del archivo de origen no elimina la lista existente, y un archivo renombrado se importa como una lista nueva.
 

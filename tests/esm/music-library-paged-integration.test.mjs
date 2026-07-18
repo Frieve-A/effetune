@@ -91,7 +91,8 @@ test('LibraryView maps every top-level collection and Search to a paged endpoint
       query: '',
       sort,
       direction,
-      scope: null
+      scope: null,
+      ...(entityType === 'playlist' ? { includeSystemPlaylists: true } : {})
     });
   }
   view.currentView = 'tracks';
@@ -207,6 +208,99 @@ test('detail navigation normalizes every entity type back to its plural collecti
     assert.equal(view.currentView, collection);
     assert.equal(view.detail, null);
   }
+});
+
+test('detail navigation retains each artwork collection scroll position for Back', () => {
+  for (const [type, collection] of [
+    ['album', 'albums'],
+    ['artist', 'artists'],
+    ['genre', 'genres'],
+    ['subfolder', 'subfolders'],
+    ['playlist', 'playlists']
+  ]) {
+    const view = new LibraryView({ manager: createPagedManager(), uiManager: {} });
+    view.render = () => {};
+    view.currentView = collection;
+    view.content = { scrollTop: 4_321 };
+    view.pagedState = { phase: 'committed' };
+    view.pagedQueryKey = JSON.stringify(view.getPagedQuery());
+    view.pagedViewportOrdinal = 120;
+    view.pagedViewportOffsetPx = -18;
+    view.pagedAnchor = {
+      queryFingerprint: view.pagedQueryKey,
+      entityId: `${type}-120`,
+      canonicalTuple: [`${type}-120`],
+      viewportOffsetPx: -18,
+      focusKey: null
+    };
+    view.capturePagedAnchor = () => view.pagedAnchor;
+
+    view.navigateToDetail({ type, key: `${type}-120` }, null, { pushHistory: false });
+    view.content.scrollTop = 0;
+    view.pagedAnchor = { queryFingerprint: 'detail-query', entityId: 'track-1' };
+
+    assert.equal(view.navigateBack(), true);
+    assert.deepEqual(view.pendingPagedNavigationPosition, {
+      queryFingerprint: view.pagedQueryKey,
+      anchor: {
+        queryFingerprint: view.pagedQueryKey,
+        entityId: `${type}-120`,
+        canonicalTuple: [`${type}-120`],
+        viewportOffsetPx: -18,
+        focusKey: null
+      },
+      viewportOrdinal: 120,
+      viewportOffsetPx: -18,
+      contentScrollTop: 4_321
+    });
+  }
+});
+
+test('Back applies the retained collection position before starting its paged render', () => {
+  const view = new LibraryView({ manager: createPagedManager(), uiManager: {} });
+  view.root = {};
+  view.content = new PagedDomElement('main');
+  view.currentView = 'albums';
+  const queryFingerprint = JSON.stringify(view.getPagedQuery());
+  const retainedAnchor = {
+    queryFingerprint,
+    entityId: 'album-800',
+    canonicalTuple: ['album-800'],
+    viewportOffsetPx: 24,
+    focusKey: null
+  };
+  view.pendingPagedNavigationPosition = {
+    queryFingerprint,
+    anchor: retainedAnchor,
+    viewportOrdinal: 800,
+    viewportOffsetPx: 24,
+    contentScrollTop: 12_345
+  };
+  view.pagedState = { phase: 'committed' };
+  view.pagedQueryKey = 'detail-query';
+  view.pagedAnchor = { queryFingerprint: 'detail-query', entityId: 'track-1' };
+  let captures = 0;
+  view.capturePagedAnchor = () => { captures += 1; };
+  view.renderStatus = () => {};
+  view.renderPagedLibrary = () => {
+    assert.deepEqual(view.pagedAnchor, retainedAnchor);
+    assert.notEqual(view.pagedAnchor, retainedAnchor);
+    assert.equal(view.pagedViewportOrdinal, 800);
+    assert.equal(view.pagedViewportOffsetPx, 24);
+    assert.equal(view.pagedContentScrollTop, 12_345);
+  };
+
+  view.render();
+
+  assert.equal(captures, 0);
+  assert.equal(view.pendingPagedNavigationPosition, null);
+  assert.deepEqual(view.pagedNavigationRestorePosition, {
+    queryFingerprint,
+    anchor: retainedAnchor,
+    viewportOrdinal: 800,
+    viewportOffsetPx: 24,
+    contentScrollTop: 12_345
+  });
 });
 
 test('a newer navigation intent fences a late asynchronous track lookup', async () => {
@@ -584,6 +678,65 @@ test('mobile history restores the search summary after opening all entity result
     assert.equal(view.currentView, 'playlists');
     assert.equal(view.searchQuery, 'needle');
     assert.equal(view.searchEntityType, 'playlist');
+    assert.equal(view.mobileHistoryDepth, 1);
+    assert.equal(view.mobileHistoryIndex, 1);
+  });
+});
+
+test('mobile history refreshes the current collection position before opening detail', async () => {
+  const historyCalls = [];
+  const history = {
+    state: null,
+    replaceState(state) {
+      this.state = state;
+      historyCalls.push(['replace', state]);
+    },
+    pushState(state) {
+      this.state = state;
+      historyCalls.push(['push', state]);
+    }
+  };
+  const body = {
+    classList: {
+      contains: name => name === 'layout-mobile' || name === 'view-library'
+    }
+  };
+  await withGlobals({ document: { body }, history }, async () => {
+    const view = new LibraryView({ manager: createPagedManager(), uiManager: {} });
+    view.render = () => {};
+    view.navigateToView('albums');
+
+    view.content = { scrollTop: 6_400 };
+    view.pagedState = { phase: 'committed' };
+    view.pagedQueryKey = JSON.stringify(view.getPagedQuery());
+    view.pagedViewportOrdinal = 120;
+    view.pagedViewportOffsetPx = -24;
+    view.pagedAnchor = {
+      queryFingerprint: view.pagedQueryKey,
+      entityId: 'album-120',
+      canonicalTuple: ['album-120'],
+      viewportOffsetPx: -24,
+      focusKey: null
+    };
+    view.capturePagedAnchor = () => view.pagedAnchor;
+
+    view.navigateToDetail({ type: 'album', key: 'album-120' });
+
+    assert.deepEqual(historyCalls.map(([operation]) => operation), [
+      'replace', 'push', 'replace', 'push'
+    ]);
+    const refreshedCollectionState = historyCalls[2][1];
+    assert.equal(refreshedCollectionState.index, 1);
+    assert.equal(refreshedCollectionState.depth, 1);
+    assert.equal(refreshedCollectionState.snapshot.currentView, 'albums');
+    assert.equal(refreshedCollectionState.snapshot.detail, null);
+    assert.equal(refreshedCollectionState.snapshot.pagedPosition.contentScrollTop, 6_400);
+    assert.equal(refreshedCollectionState.snapshot.pagedPosition.viewportOrdinal, 120);
+
+    view.handleMobilePopState({ state: refreshedCollectionState });
+    assert.equal(view.currentView, 'albums');
+    assert.equal(view.detail, null);
+    assert.equal(view.pendingPagedNavigationPosition.contentScrollTop, 6_400);
     assert.equal(view.mobileHistoryDepth, 1);
     assert.equal(view.mobileHistoryIndex, 1);
   });
@@ -2401,6 +2554,13 @@ test('paged collection pages start at the page top and preserve scroll across re
       view.content = new PagedDomElement('main');
       view.root = new PagedDomElement('section');
       view.currentView = currentView;
+      const publishPagedAttemptDom = view.publishPagedAttemptDom.bind(view);
+      view.publishPagedAttemptDom = (state, shell) => {
+        const published = publishPagedAttemptDom(state, shell);
+        view.content.scrollTop = 0;
+        view.content.listeners.get('scroll')?.();
+        return published;
+      };
       view.preparePagedArtworkLoader = () => {};
       view.pagedController = {
         pageLimit: 200,
@@ -2443,6 +2603,18 @@ test('paged collection pages start at the page top and preserve scroll across re
 
       view.renderPagedCommitted(state);
       assert.equal(view.content.scrollTop, 0, `${currentView} initial scroll`);
+
+      const queryFingerprint = JSON.stringify(view.getPagedQuery());
+      view.pagedQueryKey = queryFingerprint;
+      view.content.scrollHeight = 100_000;
+      view.pagedContentScrollTop = 0;
+      view.pagedNavigationRestorePosition = {
+        queryFingerprint,
+        contentScrollTop: 430
+      };
+      view.renderPagedCommitted(state);
+      assert.equal(view.content.scrollTop, 430, `${currentView} retained navigation scroll`);
+      assert.equal(view.pagedNavigationRestorePosition, null);
 
       for (const scrollTop of [80, 430]) {
         view.content.scrollTop = scrollTop;
@@ -2523,6 +2695,69 @@ test('paged track scrolling returns from the final virtual segment to the first 
     assert.equal(view.pagedViewportOrdinal, 0);
     assert.equal(view.content.scrollTop, 0);
     assert.deepEqual(requestedOrdinals, [0]);
+  });
+});
+
+test('paged entity grids request the first missing row anywhere in the rendered range', async () => {
+  const document = {
+    activeElement: null,
+    createElement: tagName => new PagedDomElement(tagName)
+  };
+  const window = {
+    addEventListener() {},
+    removeEventListener() {},
+    innerWidth: 1200
+  };
+  const requestedOrdinals = [];
+  await withGlobals({ document, window, requestAnimationFrame: callback => callback() }, async () => {
+    const view = new LibraryView({ manager: createPagedManager(), uiManager: {} });
+    view.content = new PagedDomElement('main');
+    view.root = new PagedDomElement('section');
+    view.currentView = 'albums';
+    view.preparePagedArtworkLoader = () => {};
+    view.pagedController = {
+      pageLimit: 200,
+      firstPage: { isCurrent: (generation, attempt) => generation === 1 && attempt === 1 },
+      getCachedRows(start, end) {
+        return Array.from({ length: end - start }, (_, index) => start + index)
+          .filter(ordinal => ordinal !== 1)
+          .map(ordinal => ({
+            ordinal,
+            row: { albumKey: `album-${ordinal}`, name: `Album ${ordinal}` }
+          }));
+      },
+      async ensureOrdinal(ordinal) {
+        requestedOrdinals.push(ordinal);
+        return { accepted: true, ordinal };
+      },
+      createAnchor: value => value,
+      getSelectionDescriptor: () => null,
+      isSelected: () => false
+    };
+    view.createPagedActionBar = () => new PagedDomElement('div');
+    view.createPagedRow = () => new PagedDomElement('div');
+    const state = {
+      phase: 'committed',
+      queryGeneration: 1,
+      pageAttemptId: 1,
+      rows: Array.from({ length: 200 }, (_, ordinal) => ({
+        albumKey: `album-${ordinal}`,
+        name: `Album ${ordinal}`
+      })),
+      totalCount: 1_000,
+      ariaBusy: false,
+      ariaRowCount: 1_000,
+      currentPageIndex: 0,
+      pageStartOrdinal: 0,
+      nextCursor: 'next',
+      previousCursor: null,
+      selectionDescriptor: null
+    };
+    view.pagedState = state;
+
+    view.renderPagedCommitted(state);
+
+    assert.deepEqual(requestedOrdinals, [1]);
   });
 });
 
@@ -3193,7 +3428,13 @@ test('replacement loading cancels stale scroll work before it can seek without a
       firstPage: {
         isCurrent: (generation, attempt) => generation === activeGeneration && attempt === 1
       },
-      getCachedRows: () => [{ ordinal: 0, row: { trackUid: 'track-0', title: 'Track 0' } }],
+      getCachedRows(start, end) {
+        if (start >= 200) return [];
+        return Array.from({ length: Math.min(200, end) - start }, (_, index) => {
+          const ordinal = start + index;
+          return { ordinal, row: { trackUid: `track-${ordinal}`, title: `Track ${ordinal}` } };
+        });
+      },
       async ensureOrdinal() {
         seekCount += 1;
         return { accepted: true };
@@ -3493,6 +3734,26 @@ test('paged media card Play opens the entity filter before starting playback', a
     }, 5, { queryGeneration: 3, pageAttemptId: 2 }, false);
     assert.match(subfolderCard.innerHTML, /class="library-paged-entity-title library-card-title">Album<\/span>/);
     assert.match(subfolderCard.innerHTML, /class="library-card-subtitle">Music \/ Artist\/Album · 10 tracks<\/span>/);
+
+    view.currentView = 'playlists';
+    view.uiManager = {
+      t(key) {
+        if (key === 'library.playlist.system.favorites') return 'お気に入り';
+        if (key === 'library.status.tracks') return 'tracks';
+        if (key === 'library.action.play') return 'Play';
+        return key;
+      }
+    };
+    const favoritesCard = view.createPagedRow({
+      id: 'system_favorites',
+      name: 'Favorites',
+      itemCount: 7
+    }, 0, { queryGeneration: 3, pageAttemptId: 2, totalCount: 3 }, false);
+    assert.match(favoritesCard.className, /\blibrary-system-playlist-card\b/);
+    assert.match(favoritesCard.innerHTML, /library-system-playlist-artwork/);
+    assert.match(favoritesCard.innerHTML, /library-system-playlist-icon/);
+    assert.match(favoritesCard.innerHTML, />お気に入り<\/span>/);
+    assert.match(favoritesCard.innerHTML, /class="library-card-play"/);
   });
 });
 

@@ -100,6 +100,52 @@ export class PagedPlaylistService {
     return page.playlist;
   }
 
+  recordRecentlyPlayed(trackUid) {
+    return requireMethod(this.client, 'recordRecentlyPlayed')({ trackUid });
+  }
+
+  setTrackFavorite(trackUid, favorite) {
+    return requireMethod(this.client, 'setTrackFavorite')({
+      trackUid,
+      favorite: favorite === true
+    });
+  }
+
+  async getFavoriteTrackUids() {
+    const getPage = requireMethod(this.client, 'getFavoriteTrackUids');
+    const trackUids = [];
+    const seenCursors = new Set();
+    let cursor = null;
+    while (true) {
+      const page = await getPage({
+        limit: 1_500,
+        ...(cursor ? { cursor } : {})
+      });
+      if (!Array.isArray(page?.trackUids)) {
+        throw new TypeError('Favorite track UID page is invalid');
+      }
+      trackUids.push(...page.trackUids);
+      if (page.truncated !== true) return { trackUids, truncated: false };
+      const nextCursor = page.nextCursor;
+      const cursorKey = favoriteTrackUidCursorKey(nextCursor);
+      if (
+        seenCursors.has(cursorKey) ||
+        (cursor && (
+          nextCursor.position < cursor.position ||
+          (nextCursor.position === cursor.position && nextCursor.itemKey <= cursor.itemKey)
+        ))
+      ) {
+        throw new Error('Favorite track UID cursor did not advance');
+      }
+      seenCursors.add(cursorKey);
+      cursor = nextCursor;
+    }
+  }
+
+  getSystemPlaylists() {
+    return requireMethod(this.client, 'getSystemPlaylists')();
+  }
+
   async create(name, items = []) {
     const playlistId = this.requestIdFactory();
     const normalizedItems = items.map(item => {
@@ -279,6 +325,19 @@ export class PagedPlaylistService {
       afterPosition = page.nextPosition;
     }
   }
+}
+
+function favoriteTrackUidCursorKey(cursor) {
+  if (
+    !cursor ||
+    typeof cursor.position !== 'number' ||
+    !Number.isFinite(cursor.position) ||
+    !Number.isSafeInteger(cursor.itemKey) ||
+    cursor.itemKey <= 0
+  ) {
+    throw new TypeError('Favorite track UID cursor is invalid');
+  }
+  return `${cursor.position}\n${cursor.itemKey}`;
 }
 
 export function hasCueTrackProvenance(value) {

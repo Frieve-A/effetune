@@ -246,6 +246,13 @@ test('LibraryManagerV2 normalizes entity contexts and delegates queryEntities', 
     direction: 'desc'
   });
   await manager.queryEntities({ type: 'album', contextToken, limit: 50 });
+  await manager.createContext({
+    endpoint: 'entities',
+    entityType: 'playlist',
+    sort: 'name',
+    direction: 'asc',
+    includeSystemPlaylists: true
+  });
 
   assert.deepEqual(harness.calls.find(call => call[0] === 'createContext')[1], {
     endpoint: 'entities:album',
@@ -258,6 +265,14 @@ test('LibraryManagerV2 normalizes entity contexts and delegates queryEntities', 
     type: 'album',
     contextToken,
     limit: 50
+  });
+  assert.deepEqual(harness.calls.filter(call => call[0] === 'createContext')[1][1], {
+    endpoint: 'entities:playlist',
+    query: '',
+    sort: 'name',
+    direction: 'asc',
+    scope: null,
+    includeSystemPlaylists: true
   });
 });
 
@@ -308,7 +323,7 @@ test('LibraryManagerV2 delegates ordinal reads and Electron track actions when s
   assert.deepEqual(harness.calls.at(-1), ['showTrackInFolder', 'track-9']);
 });
 
-test('LibraryManagerV2 publishes page starts for cursor and clamped ordinal pages', async () => {
+test('LibraryManagerV2 publishes page starts for cursor and canonical ordinal chunks', async () => {
   const harness = createClient({
     async createContext(request) {
       harness.calls.push(['createContext', request]);
@@ -327,7 +342,7 @@ test('LibraryManagerV2 publishes page starts for cursor and clamped ordinal page
     },
     async readContextPageAtOrdinal() {
       return {
-        rows: Array.from({ length: 200 }, (_, index) => ({ trackUid: `track-${index + 802}` })),
+        rows: [{ trackUid: 'track-1000' }],
         nextCursor: null,
         previousCursor: 'before-end',
         totalCount: 1001,
@@ -345,7 +360,7 @@ test('LibraryManagerV2 publishes page starts for cursor and clamped ordinal page
 
   assert.equal(first.pageStartOrdinal, 0);
   assert.equal(second.pageStartOrdinal, 200);
-  assert.equal(end.pageStartOrdinal, 801);
+  assert.equal(end.pageStartOrdinal, 1000);
 });
 
 test('LibraryManagerV2 coalesces invalidations and emits bounded view events', async () => {

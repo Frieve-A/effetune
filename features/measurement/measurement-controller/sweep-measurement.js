@@ -2,8 +2,8 @@
  * Sweep measurement functionality for the measurement controller
  */
 
-import audioUtils from '../audioUtils.js';
-import uiManager from '../uiManager.js';
+import audioUtils from '../audio-utils/index.js';
+import uiManager from '../ui/ui-manager.js';
 import dataStorage from '../dataStorage.js';
 
 const SweepMeasurement = {

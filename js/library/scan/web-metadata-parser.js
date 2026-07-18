@@ -4,7 +4,7 @@ import { createTrackFromMetadata, shouldRetryDuration } from '../metadata/metada
 import { readRiffInfoTagsFromBlob } from '../metadata/riff-info.js';
 import { assertRepositoryContract, createRepositoryError } from '../repository/contract-errors.js';
 
-export const WEB_METADATA_PARSER_VERSION = 'web-metadata-2';
+export const WEB_METADATA_PARSER_VERSION = 'web-metadata-3';
 export const WEB_METADATA_RESULT_MAX_BYTES = 16 * 1024 * 1024;
 export const WEB_METADATA_HEADER_MAX_BYTES = 16 * 1024 * 1024;
 const MAX_TRACK_TEXT_CHARACTERS = 4096;
@@ -88,6 +88,7 @@ function projectMetadata(track) {
     title: boundedText(track.title, MAX_TRACK_TEXT_CHARACTERS),
     artist: boundedText(track.artist, MAX_TRACK_TEXT_CHARACTERS),
     albumArtist: boundedText(track.albumArtist, MAX_TRACK_TEXT_CHARACTERS),
+    albumArtists: boundedTextList(track.albumArtists, 64, MAX_TRACK_TEXT_CHARACTERS),
     album: boundedText(track.album, MAX_TRACK_TEXT_CHARACTERS),
     genre: boundedText(track.genre, MAX_TRACK_TEXT_CHARACTERS),
     year: track.year,
@@ -108,6 +109,11 @@ function projectMetadata(track) {
 function boundedText(value, maximum) {
   if (value == null) return '';
   return String(value).slice(0, maximum);
+}
+
+function boundedTextList(value, maximumItems, maximumCharacters) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, maximumItems).map(item => boundedText(item, maximumCharacters));
 }
 
 function nonNegativeIntegerOrNull(value) {

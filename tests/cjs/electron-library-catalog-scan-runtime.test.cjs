@@ -1306,6 +1306,72 @@ test('Electron lazy artwork binds its source then decodes before storage admissi
   assert.deepEqual(calls[4][1].claim, calls[4][1].expectedSourceClaim);
 });
 
+test('Electron CUE library artwork falls back to a sibling source-named image', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-cue-cover-'));
+  const albumDirectory = path.join(root, 'Album');
+  await fs.mkdir(albumDirectory);
+  await fs.writeFile(path.join(albumDirectory, 'disc.flac'), 'audio');
+  await fs.writeFile(path.join(albumDirectory, 'DISC.PNG'), 'cue-cover');
+  const calls = [];
+  const host = {
+    on() {},
+    removeListener() {},
+    listScanFolders: async () => ({
+      folders: [{ id: 'folder', path: root, lifecycleVersion: 3, status: 'ok', kind: 'electron' }]
+    }),
+    beginScanFolder() {},
+    getCachedArtwork: async () => null,
+    getTrackStorageIdentity: async () => ({
+      trackUid: 'cue-track', folderId: 'folder', relativePath: 'Album/disc.flac',
+      sourceKind: 'cue-track', cueRelativePath: 'Album/disc.cue',
+      fileIdentity: 'audio-device:inode', size: 5, mtimeMs: 200, lifecycleVersion: 3
+    }),
+    async claimArtworkSource({ claim }) {
+      calls.push(['claim', claim]);
+      return { claim: { ...claim, claimId: `claim-${calls.length}` } };
+    },
+    async scheduleArtworkStagingGc(request) {
+      calls.push(['gc', request]);
+      return { scheduled: true };
+    },
+    async preflightArtworkBatch(request) {
+      calls.push(['preflight', request]);
+      return { ok: true };
+    },
+    async publishArtwork(request) {
+      calls.push(['publish', request]);
+      return { committed: true, artwork: { kind: 'thumbnail', artworkId: 'cue-artwork' } };
+    },
+    async recordArtworkFailure() { throw new Error('not expected'); }
+  };
+  const runtime = new LibraryCatalogScanRuntime({
+    host,
+    dialog: { async showOpenDialog() { return { canceled: true, filePaths: [] }; } },
+    metadataParser: { async parse() { return {}; } },
+    artworkWorkerPool: { async extract() { return null; }, async close() {} },
+    artworkThumbnailer: async source => {
+      calls.push(['thumbnail', Buffer.from(source).toString()]);
+      return { bytes: new Uint8Array([1, 2]), width: 1, height: 1, mimeType: 'image/jpeg' };
+    },
+    utilitySessionId: 'cue-cover-session'
+  });
+  runtime.issueGrant({ id: 'folder', lifecycleVersion: 3 }, root);
+  t.after(async () => {
+    await runtime.close();
+    await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  });
+
+  assert.deepEqual(await runtime.requestArtwork({ trackUid: 'cue-track', reason: 'viewport' }), {
+    kind: 'thumbnail', artworkId: 'cue-artwork'
+  });
+  assert.equal(calls[0][1].sourceKind, 'embedded-file');
+  assert.equal(calls[2][1].sourceKind, 'external-file');
+  assert.equal(calls[2][1].canonicalSourceIdentity, 'Album/DISC.PNG');
+  assert.deepEqual(calls[3], ['thumbnail', 'cue-cover']);
+  assert.equal(calls[2][1].externalArtworkStat.size, 9);
+  assert.deepEqual(calls.at(-1)[1].claim, calls.at(-1)[1].expectedSourceClaim);
+});
+
 test('Electron artwork rejects decoder-reported image-bomb dimensions before storage admission', async t => {
   let claimCount = 0;
   let bound = false;

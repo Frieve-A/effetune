@@ -229,6 +229,11 @@ if(BUILD_TESTING AND NOT EMSCRIPTEN)
     INCLUDE_DIRS core generated/cpp
     WRAP_MALLOC)
   et_add_dsp_test(
+    effetune_dsp_vinyl_simulator_tests
+    SOURCES plugins/lofi/vinyl_simulator/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
     effetune_dsp_wow_flutter_tests
     SOURCES plugins/modulation/wow_flutter/native_test.cpp)
   et_add_dsp_test(

@@ -143,7 +143,7 @@ async function startWhiteNoise(level = -12, outputDeviceId = null, channel = 'al
         
         // Create gain node for level control
         this.whiteNoiseGain = this.audioContext.createGain();
-        this.setNoiseLevel(level);
+        this.whiteNoiseGain.gain.value = Math.pow(10, level / 20);
 
         // Create channel merger for multichannel output
         this.channelMerger = this.audioContext.createChannelMerger(maxChannels);
@@ -582,4 +582,4 @@ export {
     setNoiseLevel,
     generateTSP,
     applyWindow
-}; 
+};
