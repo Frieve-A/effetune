@@ -95,7 +95,7 @@ test('Vinyl Simulator kernel preserves fixed-capacity physical topology', async 
   assert.match(kernel, /substeps_ = 20u;\s*scan_points_ = kMaximumScanPoints/);
   assert.match(kernel, /quality != last_quality_ \|\| shape != last_shape_/);
   assert.match(kernel, /std::ceil\(kMaximumScanRadius \* sample_rate_ \/ kMinimumGrooveSpeed\) \+ 4\.0/);
-  assert.match(kernel, /const double read_sample = static_cast<double>\(sample_counter_\) -\s*static_cast<double>\(latency_samples_\)/);
+  assert.match(kernel, /const double read_sample =\s*static_cast<double>\(sample_counter_\) -\s*static_cast<double>\(latency_samples_\)/);
 
   assert.match(kernel, /recording_riaa_left_\.process/);
   assert.match(kernel, /playback_riaa_left_\.process/);

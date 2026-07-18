@@ -10,8 +10,7 @@
 #include <cstring>
 #include <vector>
 
-extern "C" const effetune::KernelDescriptor *
-et_kernel_descriptor_VinylSimulatorPlugin() noexcept;
+extern "C" const effetune::KernelDescriptor *et_kernel_descriptor_VinylSimulatorPlugin() noexcept;
 
 namespace {
 
@@ -35,8 +34,7 @@ std::uint16_t readU16(const std::uint8_t *input) noexcept {
 }
 
 std::uint32_t readU32(const std::uint8_t *input) noexcept {
-  return static_cast<std::uint32_t>(input[0]) |
-         (static_cast<std::uint32_t>(input[1]) << 8u) |
+  return static_cast<std::uint32_t>(input[0]) | (static_cast<std::uint32_t>(input[1]) << 8u) |
          (static_cast<std::uint32_t>(input[2]) << 16u) |
          (static_cast<std::uint32_t>(input[3]) << 24u);
 }
@@ -50,9 +48,8 @@ float readF32(const std::uint8_t *input) noexcept {
 }
 
 Params defaultParams() noexcept {
-  return {0.0F,   16000.0F, 250.0F, 70.0F, 0.0F, 120.0F, 13.17F,
-          2.0F,   0.08F,    0.0F,   1.0F,  18.0F, 8.0F,    2.0F,
-          0.4F,   15.0F,    0.25F,  1.0F,  0.0F,  100.0F};
+  return {0.0F, 16000.0F, 250.0F, 70.0F, 0.0F, 120.0F, 13.17F, 2.0F, 0.08F, 0.0F,
+          1.0F, 18.0F,    8.0F,   2.0F,  0.4F, 15.0F,  0.25F,  1.0F, 0.0F,  100.0F};
 }
 
 class KernelHarness final {
@@ -83,9 +80,7 @@ public:
   KernelHarness(const KernelHarness &) = delete;
   KernelHarness &operator=(const KernelHarness &) = delete;
 
-  void seed(std::uint32_t low, std::uint32_t high) noexcept {
-    kernel_->setRandomSeed(low, high);
-  }
+  void seed(std::uint32_t low, std::uint32_t high) noexcept { kernel_->setRandomSeed(low, high); }
 
   void reset() noexcept { kernel_->reset(); }
 
@@ -95,8 +90,7 @@ public:
     check(status == ET_OK, "parameters stage");
   }
 
-  void process(std::vector<float> &audio, std::uint32_t channels,
-               std::uint32_t frames) noexcept {
+  void process(std::vector<float> &audio, std::uint32_t channels, std::uint32_t frames) noexcept {
     check(audio.size() == static_cast<std::size_t>(channels) * frames,
           "audio shape matches process arguments");
     effetune::allocation_guard::Scope allocation_scope;
@@ -127,8 +121,7 @@ private:
   effetune::PluginKernel *kernel_ = nullptr;
 };
 
-std::vector<float> signal(std::uint32_t channels, std::uint32_t frames,
-                          std::uint32_t phase) {
+std::vector<float> signal(std::uint32_t channels, std::uint32_t frames, std::uint32_t phase) {
   std::vector<float> result(static_cast<std::size_t>(channels) * frames);
   for (std::uint32_t channel = 0u; channel < channels; ++channel) {
     for (std::uint32_t frame = 0u; frame < frames; ++frame) {
@@ -153,8 +146,8 @@ std::vector<float> renderSequence(KernelHarness &harness, const Params &params) 
   constexpr std::array<std::uint32_t, 4u> block_sizes = {31u, 128u, 17u, 97u};
   std::vector<float> output;
   for (std::size_t block = 0u; block < block_sizes.size(); ++block) {
-    std::vector<float> audio = signal(
-        2u, block_sizes[block], static_cast<std::uint32_t>(block) * 131u + 5u);
+    std::vector<float> audio =
+        signal(2u, block_sizes[block], static_cast<std::uint32_t>(block) * 131u + 5u);
     harness.stage(params);
     harness.process(audio, 2u, block_sizes[block]);
     output.insert(output.end(), audio.begin(), audio.end());
@@ -307,12 +300,9 @@ void testMinimumMassStability() {
     }
     check(bounded, "minimum-mass silent playback remains finite and bounded");
     std::array<std::uint8_t, kTelemetryBytes> frame{};
-    check(harness.telemetry(frame, 1717u) == 64u,
-          "stability run emits the fixed telemetry frame");
-    check(readU32(frame.data() + 48u) == 0u,
-          "stable silent playback does not report mistracking");
-    check(readU32(frame.data() + 52u) == 0u,
-          "stable silent playback does not report skips");
+    check(harness.telemetry(frame, 1717u) == 64u, "stability run emits the fixed telemetry frame");
+    check(readU32(frame.data() + 48u) == 0u, "stable silent playback does not report mistracking");
+    check(readU32(frame.data() + 52u) == 0u, "stable silent playback does not report skips");
   }
 }
 

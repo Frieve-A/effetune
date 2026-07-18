@@ -126,8 +126,7 @@ struct RiaaFilter final {
       return std::sqrt((1.0 + omega * omega * zero_time * zero_time) /
                        (1.0 + omega * omega * pole_time * pole_time));
     };
-    const double recording_gain =
-        magnitude(kRiaaT1, kRiaaT2) * magnitude(kRiaaT3, kRiaaT4);
+    const double recording_gain = magnitude(kRiaaT1, kRiaaT2) * magnitude(kRiaaT3, kRiaaT4);
     gain = playback ? recording_gain : 1.0 / recording_gain;
   }
 
@@ -260,8 +259,7 @@ double rpmFromIndex(float index) noexcept {
   return 100.0 / 3.0;
 }
 
-void configureLowPass(Biquad &filter, double frequency, double q,
-                      double sample_rate) noexcept {
+void configureLowPass(Biquad &filter, double frequency, double q, double sample_rate) noexcept {
   double bounded = frequency;
   const double maximum = sample_rate * 0.45;
   if (bounded > maximum) {
@@ -280,8 +278,7 @@ void configureLowPass(Biquad &filter, double frequency, double q,
   filter.a2 = (1.0 - alpha) * inverse_a0;
 }
 
-void configureHighPass(Biquad &filter, double frequency, double q,
-                       double sample_rate) noexcept {
+void configureHighPass(Biquad &filter, double frequency, double q, double sample_rate) noexcept {
   const double omega = kTwoPi * frequency / sample_rate;
   const double cosine = std::cos(omega);
   const double sine = std::sin(omega);
@@ -313,8 +310,7 @@ double softClipDisplacement(double input) noexcept {
     return input;
   }
   const double sign = normalized < 0.0 ? -1.0 : 1.0;
-  return sign * kCutDisplacementLimit *
-         (0.7 + 0.3 * fastTanh((absolute - 0.7) / 0.3));
+  return sign * kCutDisplacementLimit * (0.7 + 0.3 * fastTanh((absolute - 0.7) / 0.3));
 }
 
 } // namespace
@@ -327,8 +323,7 @@ public:
     sample_rate_ = static_cast<double>(info.sampleRate);
     max_channels_ = info.maxChannels;
     max_frames_ = info.maxFrames;
-    const double latency =
-        std::ceil(kMaximumScanRadius * sample_rate_ / kMinimumGrooveSpeed) + 4.0;
+    const double latency = std::ceil(kMaximumScanRadius * sample_rate_ / kMinimumGrooveSpeed) + 4.0;
     latency_samples_ = latency > 1.0 ? static_cast<std::uint32_t>(latency) : 1u;
 
     signal_.resize(kSignalLength);
@@ -355,9 +350,7 @@ public:
     seedRandomStreams();
   }
 
-  [[nodiscard]] std::uint32_t latencySamples() const noexcept override {
-    return latency_samples_;
-  }
+  [[nodiscard]] std::uint32_t latencySamples() const noexcept override { return latency_samples_; }
 
   void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
                const ProcessInfo &) noexcept override {
@@ -412,20 +405,19 @@ public:
       }
 
       cutInput(input_left, input_right);
-      const double read_sample = static_cast<double>(sample_counter_) -
-                                 static_cast<double>(latency_samples_);
+      const double read_sample =
+          static_cast<double>(sample_counter_) - static_cast<double>(latency_samples_);
       const double next_s = groove_position_ + controls_.groove_speed * inverse_sample_rate;
       ensureRoughness(next_s + scan_half_ + kRoughStep * 4.0);
 
       double accumulated_left = 0.0;
       double accumulated_right = 0.0;
-      const double effective_radius = last_shape_ == 0
-                                          ? controls_.side_radius
-                                          : std::sqrt(controls_.side_radius *
-                                                      controls_.scan_radius);
+      const double effective_radius =
+          last_shape_ == 0 ? controls_.side_radius
+                           : std::sqrt(controls_.side_radius * controls_.scan_radius);
       PhysicsCoefficients physics;
-      physics.foundation = (kPvcEffectiveYoung * kSqrtHalf) *
-                           std::sqrt(effective_radius / controls_.scan_radius);
+      physics.foundation =
+          (kPvcEffectiveYoung * kSqrtHalf) * std::sqrt(effective_radius / controls_.scan_radius);
       physics.spring = 1.0 / controls_.compliance;
       physics.cantilever_damping =
           2.0 * controls_.damping * std::sqrt(physics.spring * controls_.tip_mass);
@@ -442,9 +434,8 @@ public:
       for (std::uint32_t substep = 0u; substep < substeps_; ++substep) {
         const double fraction = static_cast<double>(substep + 1u) * inverse_substeps;
         const double center_sample = read_sample - 1.0 + fraction;
-        stepPhysics(center_sample, controls_.groove_speed * dt, dt,
-                    substep + 1u == substeps_, physics, scan,
-                    accumulated_left, accumulated_right);
+        stepPhysics(center_sample, controls_.groove_speed * dt, dt, substep + 1u == substeps_,
+                    physics, scan, accumulated_left, accumulated_right);
       }
       groove_position_ = next_s;
 
@@ -464,8 +455,7 @@ public:
       const double dry_gain = 1.0 - controls_.mix;
       audio[left_index] = static_cast<float>(dry_gain * dry_left + controls_.mix * wet_left);
       if (pair_channels == 2u) {
-        audio[right_index] =
-            static_cast<float>(dry_gain * dry_right + controls_.mix * wet_right);
+        audio[right_index] = static_cast<float>(dry_gain * dry_right + controls_.mix * wet_right);
       }
 
       const StereoValue ideal = centerSignalPair(read_sample);
@@ -490,12 +480,11 @@ public:
     writeF32(payload.data() + 8u, static_cast<float>(meter_pressure_left_));
     writeF32(payload.data() + 12u, static_cast<float>(meter_pressure_right_));
     writeF32(payload.data() + 16u, static_cast<float>(std::sqrt(meter_tip_velocity_squared_)));
-    writeF32(payload.data() + 20u, static_cast<float>(trackingRatioDb(signal_power_left_,
-                                                                    error_power_left_)));
-    writeF32(payload.data() + 24u, static_cast<float>(trackingRatioDb(signal_power_right_,
-                                                                    error_power_right_)));
-    writeF32(payload.data() + 28u,
-             static_cast<float>(std::sqrt(meter_jitter_variance_ns2_)));
+    writeF32(payload.data() + 20u,
+             static_cast<float>(trackingRatioDb(signal_power_left_, error_power_left_)));
+    writeF32(payload.data() + 24u,
+             static_cast<float>(trackingRatioDb(signal_power_right_, error_power_right_)));
+    writeF32(payload.data() + 28u, static_cast<float>(std::sqrt(meter_jitter_variance_ns2_)));
     writeU32(payload.data() + 32u, mistrack_count_);
     writeU32(payload.data() + 36u, skip_count_);
     writeU32(payload.data() + 40u, pop_count_);
@@ -537,22 +526,21 @@ private:
         kReferenceVelocity * std::pow(10.0, static_cast<double>(params_.cutLevel) / 20.0);
     targets_.side_mix = static_cast<double>(params_.sideMix) * 0.01;
     targets_.groove_speed = kTwoPi * (static_cast<double>(params_.radius) * 1.0e-3) *
-                              (rpmFromIndex(params_.speed) / 60.0);
+                            (rpmFromIndex(params_.speed) / 60.0);
     targets_.rough_sigma = static_cast<double>(params_.roughness) * 1.0e-9;
     targets_.dust_rate = static_cast<double>(params_.dustRate);
     targets_.static_rate = static_cast<double>(params_.staticRate);
     targets_.scratch_rate = static_cast<double>(params_.scratchRate);
     targets_.side_radius = static_cast<double>(params_.sideRadius) * 1.0e-6;
-    targets_.scan_radius = shape == 0 ? targets_.side_radius
-                                     : static_cast<double>(params_.scanRadius) * 1.0e-6;
+    targets_.scan_radius =
+        shape == 0 ? targets_.side_radius : static_cast<double>(params_.scanRadius) * 1.0e-6;
     targets_.tracking_force = static_cast<double>(params_.trackingForce) * 1.0e-3 * 9.80665;
     targets_.tip_mass = static_cast<double>(params_.tipMass) * 1.0e-6;
     targets_.compliance = static_cast<double>(params_.compliance) * 1.0e-3;
     targets_.damping = static_cast<double>(params_.damping);
     targets_.hf_cutoff = static_cast<double>(params_.hfCutoff);
     targets_.bass_mono_below = static_cast<double>(params_.bassMonoBelow);
-    targets_.output_gain =
-        std::pow(10.0, static_cast<double>(params_.outputGain) / 20.0);
+    targets_.output_gain = std::pow(10.0, static_cast<double>(params_.outputGain) / 20.0);
     targets_.mix = static_cast<double>(params_.mix) * 0.01;
     if (!controls_initialized_) {
       controls_ = targets_;
@@ -583,40 +571,32 @@ private:
     smooth(controls_.output_gain, targets_.output_gain);
     smooth(controls_.mix, targets_.mix);
     scan_half_ = 0.8 * controls_.scan_radius;
-    scan_step_ = scan_points_ > 1u
-                     ? (2.0 * scan_half_) / static_cast<double>(scan_points_ - 1u)
-                     : 0.0;
+    scan_step_ =
+        scan_points_ > 1u ? (2.0 * scan_half_) / static_cast<double>(scan_points_ - 1u) : 0.0;
   }
 
   std::uint32_t minimumPhysicsSubsteps() const noexcept {
-    const double tip_mass = controls_.tip_mass < targets_.tip_mass
-                                ? controls_.tip_mass
-                                : targets_.tip_mass;
+    const double tip_mass =
+        controls_.tip_mass < targets_.tip_mass ? controls_.tip_mass : targets_.tip_mass;
     const double tracking_force = controls_.tracking_force > targets_.tracking_force
                                       ? controls_.tracking_force
                                       : targets_.tracking_force;
-    const double compliance = controls_.compliance < targets_.compliance
-                                  ? controls_.compliance
-                                  : targets_.compliance;
+    const double compliance =
+        controls_.compliance < targets_.compliance ? controls_.compliance : targets_.compliance;
     const double control_radius = last_shape_ == 0
                                       ? controls_.side_radius
-                                      : std::sqrt(controls_.side_radius *
-                                                  controls_.scan_radius);
+                                      : std::sqrt(controls_.side_radius * controls_.scan_radius);
     const double target_radius = last_shape_ == 0
                                      ? targets_.side_radius
-                                     : std::sqrt(targets_.side_radius *
-                                                 targets_.scan_radius);
-    const double effective_radius =
-        control_radius > target_radius ? control_radius : target_radius;
-    const double hertz =
-        (4.0 / 3.0) * kPvcEffectiveYoung * std::sqrt(effective_radius);
-    const double indentation =
-        std::pow(tracking_force * kSqrtHalf / hertz, 2.0 / 3.0);
+                                     : std::sqrt(targets_.side_radius * targets_.scan_radius);
+    const double effective_radius = control_radius > target_radius ? control_radius : target_radius;
+    const double hertz = (4.0 / 3.0) * kPvcEffectiveYoung * std::sqrt(effective_radius);
+    const double indentation = std::pow(tracking_force * kSqrtHalf / hertz, 2.0 / 3.0);
     const double contact_stiffness = 1.5 * hertz * std::sqrt(indentation);
     const double resonance_hz =
         std::sqrt((contact_stiffness + 1.0 / compliance) / tip_mass) / kTwoPi;
-    return static_cast<std::uint32_t>(std::ceil(
-        static_cast<double>(kContactStepsPerCycle) * resonance_hz / sample_rate_));
+    return static_cast<std::uint32_t>(
+        std::ceil(static_cast<double>(kContactStepsPerCycle) * resonance_hz / sample_rate_));
   }
 
   void configureQuality(int quality) noexcept {
@@ -648,14 +628,12 @@ private:
     double cut_right = (mid - side) * kSqrtHalf;
     cut_left = hf_left_second_.process(hf_left_first_.process(cut_left));
     cut_right = hf_right_second_.process(hf_right_first_.process(cut_right));
-    const double velocity_left =
-        recording_riaa_left_.process(cut_left * controls_.cut_scale);
-    const double velocity_right =
-        recording_riaa_right_.process(cut_right * controls_.cut_scale);
-    integrator_left_ = leaky_integrator_coefficient_ * integrator_left_ +
-                       velocity_left / sample_rate_;
-    integrator_right_ = leaky_integrator_coefficient_ * integrator_right_ +
-                        velocity_right / sample_rate_;
+    const double velocity_left = recording_riaa_left_.process(cut_left * controls_.cut_scale);
+    const double velocity_right = recording_riaa_right_.process(cut_right * controls_.cut_scale);
+    integrator_left_ =
+        leaky_integrator_coefficient_ * integrator_left_ + velocity_left / sample_rate_;
+    integrator_right_ =
+        leaky_integrator_coefficient_ * integrator_right_ + velocity_right / sample_rate_;
     const std::uint32_t position = static_cast<std::uint32_t>(sample_counter_) & kSignalMask;
     signal_[position].left = static_cast<float>(softClipDisplacement(integrator_left_));
     signal_[position].right = static_cast<float>(-softClipDisplacement(integrator_right_));
@@ -692,15 +670,13 @@ private:
     const std::int64_t base = static_cast<std::int64_t>(std::floor(sample_position));
     const double fraction = sample_position - static_cast<double>(base);
     const auto read = [this](std::int64_t index) noexcept {
-      return index < 0 ? StereoSample{}
-                       : signal_[static_cast<std::uint32_t>(index) & kSignalMask];
+      return index < 0 ? StereoSample{} : signal_[static_cast<std::uint32_t>(index) & kSignalMask];
     };
     const StereoSample p0 = read(base - 1);
     const StereoSample p1 = read(base);
     const StereoSample p2 = read(base + 1);
     const StereoSample p3 = read(base + 2);
-    const auto interpolate = [fraction](double v0, double v1, double v2,
-                                        double v3) noexcept {
+    const auto interpolate = [fraction](double v0, double v1, double v2, double v3) noexcept {
       return v1 + 0.5 * fraction *
                       (v2 - v0 +
                        fraction * (2.0 * v0 - 5.0 * v1 + 4.0 * v2 - v3 +
@@ -726,21 +702,21 @@ private:
                          gain_fine * kSqrtThree * rough_random_.nextFloatSigned();
       rough_fine_right_ = rough_a_fine_ * rough_fine_right_ +
                           gain_fine * kSqrtThree * rough_random_.nextFloatSigned();
-      rough_mid_left_ = rough_a_mid_ * rough_mid_left_ +
-                        gain_mid * kSqrtThree * rough_random_.nextFloatSigned();
-      rough_mid_right_ = rough_a_mid_ * rough_mid_right_ +
-                         gain_mid * kSqrtThree * rough_random_.nextFloatSigned();
+      rough_mid_left_ =
+          rough_a_mid_ * rough_mid_left_ + gain_mid * kSqrtThree * rough_random_.nextFloatSigned();
+      rough_mid_right_ =
+          rough_a_mid_ * rough_mid_right_ + gain_mid * kSqrtThree * rough_random_.nextFloatSigned();
       rough_wave_left_ = rough_a_wave_ * rough_wave_left_ +
                          gain_wave * kSqrtThree * rough_random_.nextFloatSigned();
       rough_wave_right_ = rough_a_wave_ * rough_wave_right_ +
                           gain_wave * kSqrtThree * rough_random_.nextFloatSigned();
       const std::uint32_t position = static_cast<std::uint32_t>(rough_index_) & kRoughMask;
-      rough_[position].left = static_cast<float>(rough_k_fine_ * rough_fine_left_ +
-                                                 rough_k_mid_ * rough_mid_left_ +
-                                                 rough_k_wave_ * rough_wave_left_);
-      rough_[position].right = static_cast<float>(rough_k_fine_ * rough_fine_right_ +
-                                                  rough_k_mid_ * rough_mid_right_ +
-                                                  rough_k_wave_ * rough_wave_right_);
+      rough_[position].left =
+          static_cast<float>(rough_k_fine_ * rough_fine_left_ + rough_k_mid_ * rough_mid_left_ +
+                             rough_k_wave_ * rough_wave_left_);
+      rough_[position].right =
+          static_cast<float>(rough_k_fine_ * rough_fine_right_ + rough_k_mid_ * rough_mid_right_ +
+                             rough_k_wave_ * rough_wave_right_);
     }
   }
 
@@ -751,12 +727,9 @@ private:
     const double grid = position / kRoughStep;
     const std::int64_t base = static_cast<std::int64_t>(std::floor(grid));
     const double fraction = grid - static_cast<double>(base);
-    const StereoSample &first_sample =
-        rough_[static_cast<std::uint32_t>(base) & kRoughMask];
-    const StereoSample &second_sample =
-        rough_[static_cast<std::uint32_t>(base + 1) & kRoughMask];
-    const double first =
-        static_cast<double>(wall == 0u ? first_sample.left : first_sample.right);
+    const StereoSample &first_sample = rough_[static_cast<std::uint32_t>(base) & kRoughMask];
+    const StereoSample &second_sample = rough_[static_cast<std::uint32_t>(base + 1) & kRoughMask];
+    const double first = static_cast<double>(wall == 0u ? first_sample.left : first_sample.right);
     const double second =
         static_cast<double>(wall == 0u ? second_sample.left : second_sample.right);
     return first + fraction * (second - first);
@@ -770,8 +743,7 @@ private:
     const std::int64_t base = static_cast<std::int64_t>(std::floor(grid));
     const double fraction = grid - static_cast<double>(base);
     const std::uint32_t first_index = static_cast<std::uint32_t>(base) & kRoughMask;
-    const std::uint32_t second_index =
-        static_cast<std::uint32_t>(base + 1) & kRoughMask;
+    const std::uint32_t second_index = static_cast<std::uint32_t>(base + 1) & kRoughMask;
     const StereoSample &first = rough_[first_index];
     const StereoSample &second = rough_[second_index];
     const double left_first = static_cast<double>(first.left);
@@ -801,9 +773,8 @@ private:
           const double wall_gain = wall == 0u ? particle.wall_left : particle.wall_right;
           return wall_gain * particle.amplitude *
                  (-particle.gouge * gaussian +
-                  particle.burr *
-                      (particle.lip_lead * std::exp(-lead_u * lead_u) +
-                       particle.lip_trail * std::exp(-trail_u * trail_u)));
+                  particle.burr * (particle.lip_lead * std::exp(-lead_u * lead_u) +
+                                   particle.lip_trail * std::exp(-trail_u * trail_u)));
         };
         result.left += scratch_height(0u);
         result.right += scratch_height(1u);
@@ -815,15 +786,13 @@ private:
       }
       double height = particle.felt_height * particle.amplitude * std::exp(-u * u);
       if (particle.top_initialized) {
-        const double top_position =
-            (u + 4.0) * static_cast<double>(kDustTopPoints - 1u) / 8.0;
+        const double top_position = (u + 4.0) * static_cast<double>(kDustTopPoints - 1u) / 8.0;
         std::uint32_t top_index = static_cast<std::uint32_t>(std::floor(top_position));
         if (top_index > kDustTopPoints - 2u) {
           top_index = kDustTopPoints - 2u;
         }
         const double top_fraction = top_position - static_cast<double>(top_index);
-        const double cap = static_cast<double>(particle.top[top_index]) *
-                               (1.0 - top_fraction) +
+        const double cap = static_cast<double>(particle.top[top_index]) * (1.0 - top_fraction) +
                            static_cast<double>(particle.top[top_index + 1u]) * top_fraction;
         if (cap < height) {
           height = cap;
@@ -839,9 +808,8 @@ private:
     return result;
   }
 
-  ContactPair wallContactPair(double distance_left, double distance_right,
-                              double center_sample, bool calculate_centroid,
-                              const ScanGeometry &scan) const noexcept {
+  ContactPair wallContactPair(double distance_left, double distance_right, double center_sample,
+                              bool calculate_centroid, const ScanGeometry &scan) const noexcept {
     ContactPair result;
     const double base_left = controls_.side_radius - distance_left;
     const double base_right = controls_.side_radius - distance_right;
@@ -859,8 +827,7 @@ private:
       const double signal_position = center_sample + scan.signal_offsets[point];
       StereoValue signal;
       if (signal_position >= 0.0) {
-        const std::int64_t signal_base =
-            static_cast<std::int64_t>(std::floor(signal_position));
+        const std::int64_t signal_base = static_cast<std::int64_t>(std::floor(signal_position));
         if (signal_base != cached_signal_base) {
           cached_signal_base = signal_base;
           const auto load = [this, signal_base](std::int64_t relative) noexcept {
@@ -880,21 +847,18 @@ private:
             coefficients[3] = 0.5 * (3.0 * (v1 - v2) + v3 - v0);
           };
           set_coefficients(p0.left, p1.left, p2.left, p3.left, left_coefficients);
-          set_coefficients(p0.right, p1.right, p2.right, p3.right,
-                           right_coefficients);
+          set_coefficients(p0.right, p1.right, p2.right, p3.right, right_coefficients);
         }
         const double fraction = signal_position - static_cast<double>(signal_base);
         const auto evaluate = [fraction](const std::array<double, 4u> &coefficients) noexcept {
-          return ((coefficients[3] * fraction + coefficients[2]) * fraction +
-                  coefficients[1]) *
+          return ((coefficients[3] * fraction + coefficients[2]) * fraction + coefficients[1]) *
                      fraction +
                  coefficients[0];
         };
         signal.left = evaluate(left_coefficients);
         signal.right = evaluate(right_coefficients);
       }
-      const StereoValue rough =
-          roughShiftPair(groove_grid + scan.rough_grid_offsets[point]);
+      const StereoValue rough = roughShiftPair(groove_grid + scan.rough_grid_offsets[point]);
       StereoValue defect;
       if (has_active_defects) {
         defect = defectShiftPair(groove_position_ + offset);
@@ -944,8 +908,7 @@ private:
         continue;
       }
       const double first_position = particle.center - 4.0 * particle.width;
-      const double point_step =
-          8.0 * particle.width / static_cast<double>(kDustTopPoints - 1u);
+      const double point_step = 8.0 * particle.width / static_cast<double>(kDustTopPoints - 1u);
       std::int32_t first_point = static_cast<std::int32_t>(
           std::ceil((groove_position_ - scan_half_ - first_position) / point_step));
       std::int32_t last_point = static_cast<std::int32_t>(
@@ -971,8 +934,7 @@ private:
         const double offset = position - groove_position_;
         const double ball_height =
             offset * offset / (2.0 * controls_.scan_radius) - base -
-            centerSignal(wall, center_sample +
-                                   offset * sample_rate_ / controls_.groove_speed) -
+            centerSignal(wall, center_sample + offset * sample_rate_ / controls_.groove_speed) -
             roughShift(wall, position);
         if (existing > ball_height) {
           particle.touched = true;
@@ -993,9 +955,8 @@ private:
     }
   }
 
-  void stepPhysics(double center_sample, double spatial_step, double dt,
-                   bool collect_metrics, const PhysicsCoefficients &physics,
-                   const ScanGeometry &scan,
+  void stepPhysics(double center_sample, double spatial_step, double dt, bool collect_metrics,
+                   const PhysicsCoefficients &physics, const ScanGeometry &scan,
                    double &output_left, double &output_right) noexcept {
     groove_position_ += spatial_step;
     simulation_time_ += dt;
@@ -1015,11 +976,10 @@ private:
       contact_initialized_ = true;
     }
     double force_left = physics.foundation *
-                        (left.integral + 2.0e-6 *
-                                             (left.integral - previous_integral_left_) / dt);
-    double force_right = physics.foundation *
-                         (right.integral + 2.0e-6 *
-                                               (right.integral - previous_integral_right_) / dt);
+                        (left.integral + 2.0e-6 * (left.integral - previous_integral_left_) / dt);
+    double force_right =
+        physics.foundation *
+        (right.integral + 2.0e-6 * (right.integral - previous_integral_right_) / dt);
     previous_integral_left_ = left.integral;
     previous_integral_right_ = right.integral;
     if (force_left < 0.0 || left.integral <= 0.0) {
@@ -1036,11 +996,9 @@ private:
     }
 
     const double spring_x =
-        physics.spring * (arm_x_ - tip_x_) +
-        physics.cantilever_damping * (arm_vx_ - tip_vx_);
+        physics.spring * (arm_x_ - tip_x_) + physics.cantilever_damping * (arm_vx_ - tip_vx_);
     const double spring_y =
-        physics.spring * (arm_y_ - tip_y_) +
-        physics.cantilever_damping * (arm_vy_ - tip_vy_);
+        physics.spring * (arm_y_ - tip_y_) + physics.cantilever_damping * (arm_vy_ - tip_vy_);
     const double force_x = (force_left - force_right) * kSqrtHalf + spring_x;
     const double force_y = (force_left + force_right) * kSqrtHalf + spring_y;
     tip_vx_ += force_x * dt / controls_.tip_mass;
@@ -1051,8 +1009,7 @@ private:
     constexpr double arm_mass = 0.012;
     constexpr double arm_damping = 0.5;
     arm_vx_ += (-spring_x - arm_damping * arm_vx_) * dt / arm_mass;
-    arm_vy_ += (-spring_y - controls_.tracking_force - arm_damping * arm_vy_) * dt /
-               arm_mass;
+    arm_vy_ += (-spring_y - controls_.tracking_force - arm_damping * arm_vy_) * dt / arm_mass;
     arm_x_ += arm_vx_ * dt;
     arm_y_ += arm_vy_ * dt;
 
@@ -1072,8 +1029,7 @@ private:
     }
     const double absolute_x = tip_x_ < 0.0 ? -tip_x_ : tip_x_;
     if (tip_y_ - controls_.side_radius > kGrooveDepth + 6.0e-6 ||
-        absolute_x > kGrooveHalfWidth * 2.0 || !std::isfinite(tip_x_) ||
-        !std::isfinite(tip_y_)) {
+        absolute_x > kGrooveHalfWidth * 2.0 || !std::isfinite(tip_x_) || !std::isfinite(tip_y_)) {
       if (skip_holdoff_ <= 0.0) {
         ++skip_count_;
         skip_holdoff_ = 1.5e-3;
@@ -1081,8 +1037,7 @@ private:
       reseatStylus();
     }
 
-    if (controls_.static_rate > 0.0 &&
-        static_random_.nextFloat01() < controls_.static_rate * dt) {
+    if (controls_.static_rate > 0.0 && static_random_.nextFloat01() < controls_.static_rate * dt) {
       spawnStaticPop();
     }
     double pickup_left = (tip_vx_ + tip_vy_) * kSqrtHalf;
@@ -1109,14 +1064,11 @@ private:
     if (collect_metrics) {
       latest_force_left_ = force_left;
       latest_force_right_ = force_right;
-      latest_pressure_left_ = left.delta > 0.0
-                                  ? force_left / (kPi * controls_.side_radius * left.delta)
-                                  : 0.0;
-      latest_pressure_right_ = right.delta > 0.0
-                                   ? force_right / (kPi * controls_.side_radius * right.delta)
-                                   : 0.0;
-      latest_jitter_ns_ =
-          0.5 * (left.centroid + right.centroid) / controls_.groove_speed * 1.0e9;
+      latest_pressure_left_ =
+          left.delta > 0.0 ? force_left / (kPi * controls_.side_radius * left.delta) : 0.0;
+      latest_pressure_right_ =
+          right.delta > 0.0 ? force_right / (kPi * controls_.side_radius * right.delta) : 0.0;
+      latest_jitter_ns_ = 0.5 * (left.centroid + right.centroid) / controls_.groove_speed * 1.0e9;
     }
   }
 
@@ -1156,8 +1108,7 @@ private:
     error_power_left_ += alpha * (error_left * error_left - error_power_left_);
     error_power_right_ += alpha * (error_right * error_right - error_power_right_);
     const double pickup_power = 0.5 * (pickup_left * pickup_left + pickup_right * pickup_right);
-    meter_tip_velocity_squared_ +=
-        alpha * (pickup_power - meter_tip_velocity_squared_);
+    meter_tip_velocity_squared_ += alpha * (pickup_power - meter_tip_velocity_squared_);
     meter_force_left_ += alpha * (latest_force_left_ - meter_force_left_);
     meter_force_right_ += alpha * (latest_force_right_ - meter_force_right_);
     meter_pressure_left_ += alpha * (latest_pressure_left_ - meter_pressure_left_);
@@ -1172,8 +1123,7 @@ private:
     if (signal_power <= 1.0e-30 && error_power <= 1.0e-30) {
       return 0.0;
     }
-    const double ratio = 10.0 * std::log10((signal_power + 1.0e-30) /
-                                           (error_power + 1.0e-30));
+    const double ratio = 10.0 * std::log10((signal_power + 1.0e-30) / (error_power + 1.0e-30));
     if (ratio > 120.0) {
       return 120.0;
     }
@@ -1233,15 +1183,12 @@ private:
     } else if (kind < 0.85) {
       particle->kind = kDustKindFiber;
       particle->height = (1.0 + 2.0 * dust_random_.nextFloat01()) * 1.0e-6;
-      const double length =
-          (10.0 + 30.0 * dust_random_.nextFloat01()) * 1.0e-6;
+      const double length = (10.0 + 30.0 * dust_random_.nextFloat01()) * 1.0e-6;
       const double angle = dust_random_.nextFloat01() * kPi / 2.0;
       const double longitudinal = 0.5 * length * std::cos(angle);
-      particle->width =
-          particle->height > longitudinal ? particle->height : longitudinal;
+      particle->width = particle->height > longitudinal ? particle->height : longitudinal;
       const double lateral = length * std::sin(angle);
-      particle->lateral_half =
-          (particle->height > lateral ? particle->height : lateral) / 2.0;
+      particle->lateral_half = (particle->height > lateral ? particle->height : lateral) / 2.0;
       particle->yield_depth = 0.2e-6;
       particle->residual = 0.10;
     } else {
@@ -1259,18 +1206,16 @@ private:
     const double landing = dust_random_.nextFloat01();
     if (landing < 0.4) {
       particle->wall = dust_random_.nextFloat01() < 0.5 ? 0u : 1u;
-      particle->land_x =
-          (2.0 + 30.0 * dust_random_.nextFloat01()) * 1.0e-6;
+      particle->land_x = (2.0 + 30.0 * dust_random_.nextFloat01()) * 1.0e-6;
       particle->felt_height = 0.0;
     } else if (particle->kind == kDustKindFiber ||
                dust_random_.nextFloat01() < std::exp(-particle->height / 4.0e-6)) {
       particle->wall = dust_random_.nextFloat01() < 0.5 ? 0u : 1u;
       const double wall_position = (3.0 + 39.0 * dust_random_.nextFloat01()) * 1.0e-6;
-      const double particle_lateral = particle->kind == kDustKindFiber
-                                          ? particle->lateral_half
-                                          : 0.5 * particle->height;
-      const double lateral = (wall_position - controls_.side_radius) /
-                             (particle_lateral + kPatchHalfWidth);
+      const double particle_lateral =
+          particle->kind == kDustKindFiber ? particle->lateral_half : 0.5 * particle->height;
+      const double lateral =
+          (wall_position - controls_.side_radius) / (particle_lateral + kPatchHalfWidth);
       particle->felt_height = particle->height * std::exp(-lateral * lateral);
     } else {
       particle->wall = 3u;
@@ -1352,8 +1297,7 @@ private:
     particle->lip_trail = lip_trail;
     particle->wall_left = wall_left;
     particle->wall_right = wall_right;
-    particle->skew =
-        (dust_random_.nextFloat01() - 0.5) * particle->width * 1.4;
+    particle->skew = (dust_random_.nextFloat01() - 0.5) * particle->width * 1.4;
     const double absolute_skew = particle->skew < 0.0 ? -particle->skew : particle->skew;
     particle->scratch_support = 4.0 * particle->width + absolute_skew;
     particle->height = particle->gouge > particle->burr ? particle->gouge : particle->burr;
@@ -1397,12 +1341,10 @@ private:
   }
 
   void advanceDefects(double dt) noexcept {
-    if (controls_.dust_rate > 0.0 &&
-        dust_random_.nextFloat01() < controls_.dust_rate * dt) {
+    if (controls_.dust_rate > 0.0 && dust_random_.nextFloat01() < controls_.dust_rate * dt) {
       spawnDust();
     }
-    if (controls_.scratch_rate > 0.0 &&
-        dust_random_.nextFloat01() < controls_.scratch_rate * dt) {
+    if (controls_.scratch_rate > 0.0 && dust_random_.nextFloat01() < controls_.scratch_rate * dt) {
       spawnScratch();
     }
     active_dust_count_ = 0u;
@@ -1445,8 +1387,7 @@ private:
       }
       const double distance = particle.center - groove_position_;
       const double absolute_distance = distance < 0.0 ? -distance : distance;
-      const double support =
-          particle.scratch ? particle.scratch_support : 4.0 * particle.width;
+      const double support = particle.scratch ? particle.scratch_support : 4.0 * particle.width;
       if ((particle.scratch || particle.felt_height > 1.0e-12) &&
           absolute_distance <= support + scan_half_) {
         active_dust_[active_dust_count_] = static_cast<std::uint16_t>(index);
@@ -1475,9 +1416,8 @@ private:
     selected->active = true;
     selected->time = simulation_time_;
     const double sign = static_random_.nextFloat01() < 0.5 ? -1.0 : 1.0;
-    selected->amplitude =
-        sign * (0.5 + 2.5 * static_random_.nextFloat01()) * kReferenceVelocity *
-        kStaticReferenceGain;
+    selected->amplitude = sign * (0.5 + 2.5 * static_random_.nextFloat01()) * kReferenceVelocity *
+                          kStaticReferenceGain;
     ++pop_count_;
   }
 
@@ -1494,8 +1434,7 @@ private:
       v = 2.0 * dust_random_.nextFloat01() - 1.0;
       radius_squared = u * u + v * v;
     } while (radius_squared >= 1.0 || radius_squared == 0.0);
-    const double multiplier =
-        std::sqrt(-2.0 * std::log(radius_squared) / radius_squared);
+    const double multiplier = std::sqrt(-2.0 * std::log(radius_squared) / radius_squared);
     dust_gaussian_spare_ = v * multiplier;
     dust_gaussian_has_spare_ = true;
     return u * multiplier;
@@ -1683,8 +1622,7 @@ private:
   std::uint32_t skip_count_ = 0u;
   std::uint32_t pop_count_ = 0u;
   std::uint32_t dust_hit_count_ = 0u;
-  std::uint32_t selected_seed_low_ =
-      static_cast<std::uint32_t>(dsp::XorShiftRng::kFallbackSeed);
+  std::uint32_t selected_seed_low_ = static_cast<std::uint32_t>(dsp::XorShiftRng::kFallbackSeed);
   std::uint32_t selected_seed_high_ = 0u;
   int last_quality_ = -1;
   int last_shape_ = -1;
@@ -1700,5 +1638,4 @@ static_assert(sizeof(VinylSimulatorKernel) <= 8192u);
 
 } // namespace effetune::plugins::lofi
 
-EFFETUNE_REGISTER_KERNEL(VinylSimulatorPlugin,
-                         effetune::plugins::lofi::VinylSimulatorKernel)
+EFFETUNE_REGISTER_KERNEL(VinylSimulatorPlugin, effetune::plugins::lofi::VinylSimulatorKernel)
