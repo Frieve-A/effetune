@@ -850,9 +850,14 @@ function createWindow() {
   });
   mainWindow.on('unmaximize', () => windowState.saveWindowState());
   
-  mainWindow.on('minimize', (e) => {
+  mainWindow.on('minimize', () => {
     if (constants.getAppConfig().minimizeToTray) {
-      e.preventDefault();
+      // 'minimize' is not a preventable event — the window is already
+      // minimized when it fires, so hide() leaves the window in a combined
+      // minimized+hidden state.  restore() from that state re-shows the
+      // native window but leaves Chromium's internal visibility state hidden,
+      // making the window input-dead (the 'restore' handler below resyncs it
+      // with show()).
       mainWindow.hide();
       createTray();
       // Request tray menu update from renderer process
@@ -863,6 +868,11 @@ function createWindow() {
   });
 
   mainWindow.on('restore', () => {
+    // If the window was restored out of the minimized+hidden tray state,
+    // the native window is visible again but Chromium's internal visibility
+    // state is still hidden, leaving the window unable to receive input.
+    // show() resyncs it, and is harmless when the window is already visible.
+    mainWindow.show();
     if (tray) {
       tray.destroy();
       tray = null;
@@ -1483,8 +1493,20 @@ if (!gotTheLock) {
     // Focus the main window if it exists
     const mainWindow = constants.getMainWindow();
     if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
+      // Skip presenting the window while the startup splash still owns the
+      // screen — the deferred show in the splash flow will present it.
+      if (!pendingMainWindowShow) {
+        // restore() first, so a minimized window returns to its pre-minimize
+        // state (a bare show() would lose the maximized state — isMaximized()
+        // is false while minimized).  Then show(): restore() alone on a
+        // window hidden by the minimize-to-tray flow re-shows the native
+        // window but leaves Chromium's internal visibility state hidden,
+        // making the window input-dead.  show() also covers the hidden-but-
+        // not-minimized tray state, where focus() alone did nothing visible.
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
+      }
       
       // If there's a preset file, send it to the renderer
       const commandLinePresetFile = constants.getCommandLinePresetFile();
