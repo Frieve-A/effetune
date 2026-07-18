@@ -35,6 +35,7 @@ constexpr double kPatchHalfWidth = 2.5e-6;
 constexpr double kPvcEffectiveYoung = 3.0e9 / (1.0 - 0.4 * 0.4);
 constexpr double kGrooveHalfWidth = 30.0e-6;
 constexpr double kGrooveDepth = 30.0e-6;
+constexpr double kMaximumPenetration = 5.0e-6;
 constexpr double kRiaaT1 = 3180.0e-6;
 constexpr double kRiaaT2 = 318.0e-6;
 constexpr double kRiaaT3 = 75.0e-6;
@@ -210,6 +211,54 @@ struct ContactPair final {
   ContactResult left;
   ContactResult right;
 };
+
+struct ContactSegmentIntegral final {
+  double area = 0.0;
+  double first_moment = 0.0;
+};
+
+ContactSegmentIntegral integratePositiveLinearSegment(double left, double right, double step,
+                                                      bool calculate_first_moment) noexcept {
+  ContactSegmentIntegral result;
+  if (left <= 0.0 && right <= 0.0) {
+    return result;
+  }
+  if (left > 0.0 && right > 0.0) {
+    result.area = 0.5 * (left + right) * step;
+    if (calculate_first_moment) {
+      result.first_moment = step * step * (left + 2.0 * right) / 6.0;
+    }
+    return result;
+  }
+  if (left > 0.0) {
+    const double positive_length = step * left / (left - right);
+    result.area = 0.5 * left * positive_length;
+    if (calculate_first_moment) {
+      result.first_moment = result.area * positive_length / 3.0;
+    }
+    return result;
+  }
+  const double positive_length = step * right / (right - left);
+  result.area = 0.5 * right * positive_length;
+  if (calculate_first_moment) {
+    result.first_moment = result.area * (step - positive_length / 3.0);
+  }
+  return result;
+}
+
+ContactSegmentIntegral integrateClippedLinearSegment(double left, double right, double step,
+                                                     bool calculate_first_moment) noexcept {
+  // clamp(p, 0, limit) = max(p, 0) - max(p - limit, 0) for a linear segment.
+  ContactSegmentIntegral result =
+      integratePositiveLinearSegment(left, right, step, calculate_first_moment);
+  if (left > kMaximumPenetration || right > kMaximumPenetration) {
+    const ContactSegmentIntegral excess = integratePositiveLinearSegment(
+        left - kMaximumPenetration, right - kMaximumPenetration, step, calculate_first_moment);
+    result.area -= excess.area;
+    result.first_moment -= excess.first_moment;
+  }
+  return result;
+}
 
 struct StereoValue final {
   double left = 0.0;
@@ -623,7 +672,9 @@ private:
     double mid = (left + right) * kSqrtHalf;
     double side = (left - right) * kSqrtHalf;
     mid = rumble_mid_.process(mid);
-    side = side_high_pass_.process(rumble_side_.process(side)) * controls_.side_mix;
+    side = rumble_side_.process(side);
+    const double high_side = side_high_pass_.process(side);
+    side = controls_.side_mix * side + (1.0 - controls_.side_mix) * high_side;
     double cut_left = (mid + side) * kSqrtHalf;
     double cut_right = (mid - side) * kSqrtHalf;
     cut_left = hf_left_second_.process(hf_left_first_.process(cut_left));
@@ -813,10 +864,13 @@ private:
     ContactPair result;
     const double base_left = controls_.side_radius - distance_left;
     const double base_right = controls_.side_radius - distance_right;
-    double raw_left = 0.0;
-    double raw_right = 0.0;
-    double weighted_left = 0.0;
-    double weighted_right = 0.0;
+    double area_left = 0.0;
+    double area_right = 0.0;
+    double first_moment_left = 0.0;
+    double first_moment_right = 0.0;
+    double previous_penetration_left = 0.0;
+    double previous_penetration_right = 0.0;
+    double previous_offset = 0.0;
     std::int64_t cached_signal_base = std::numeric_limits<std::int64_t>::min();
     std::array<double, 4u> left_coefficients;
     std::array<double, 4u> right_coefficients;
@@ -863,9 +917,9 @@ private:
       if (has_active_defects) {
         defect = defectShiftPair(groove_position_ + offset);
       }
-      double penetration_left =
+      const double penetration_left =
           base_left + signal.left + rough.left + defect.left - scan.curves[point];
-      double penetration_right =
+      const double penetration_right =
           base_right + signal.right + rough.right + defect.right - scan.curves[point];
       if (penetration_left > result.left.delta) {
         result.left.delta = penetration_left;
@@ -873,30 +927,27 @@ private:
       if (penetration_right > result.right.delta) {
         result.right.delta = penetration_right;
       }
-      if (penetration_left > 0.0) {
-        if (penetration_left > 5.0e-6) {
-          penetration_left = 5.0e-6;
-        }
-        raw_left += penetration_left;
+      if (point != 0u) {
+        const ContactSegmentIntegral left_segment = integrateClippedLinearSegment(
+            previous_penetration_left, penetration_left, scan_step_, calculate_centroid);
+        const ContactSegmentIntegral right_segment = integrateClippedLinearSegment(
+            previous_penetration_right, penetration_right, scan_step_, calculate_centroid);
+        area_left += left_segment.area;
+        area_right += right_segment.area;
         if (calculate_centroid) {
-          weighted_left += penetration_left * offset;
+          first_moment_left += previous_offset * left_segment.area + left_segment.first_moment;
+          first_moment_right += previous_offset * right_segment.area + right_segment.first_moment;
         }
       }
-      if (penetration_right > 0.0) {
-        if (penetration_right > 5.0e-6) {
-          penetration_right = 5.0e-6;
-        }
-        raw_right += penetration_right;
-        if (calculate_centroid) {
-          weighted_right += penetration_right * offset;
-        }
-      }
+      previous_penetration_left = penetration_left;
+      previous_penetration_right = penetration_right;
+      previous_offset = offset;
     }
-    result.left.integral = raw_left * scan_step_;
-    result.right.integral = raw_right * scan_step_;
+    result.left.integral = area_left;
+    result.right.integral = area_right;
     if (calculate_centroid) {
-      result.left.centroid = raw_left > 0.0 ? weighted_left / raw_left : 0.0;
-      result.right.centroid = raw_right > 0.0 ? weighted_right / raw_right : 0.0;
+      result.left.centroid = area_left > 0.0 ? first_moment_left / area_left : 0.0;
+      result.right.centroid = area_right > 0.0 ? first_moment_right / area_right : 0.0;
     }
     return result;
   }

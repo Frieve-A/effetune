@@ -17,6 +17,7 @@ namespace {
 constexpr std::uint32_t kMaximumFrames = 128u;
 constexpr std::size_t kKernelStorageBytes = 8192u;
 constexpr std::size_t kTelemetryBytes = 256u;
+constexpr double kTwoPi = 6.283185307179586476925286766559;
 using Params = effetune::generated::VinylSimulatorPluginParams;
 
 int failures = 0;
@@ -244,6 +245,115 @@ void testSampleRateLatency() {
   check(harness.latency() == 27u, "192 kHz latency remains fixed and quality independent");
 }
 
+void testDefaultBassMonoPreserves1kHzSeparation() {
+  constexpr float sample_rate = 48000.0F;
+  constexpr std::uint32_t total_frames = 24000u;
+  constexpr std::uint32_t analysis_start = total_frames / 2u;
+  constexpr double frequency = 1000.0;
+  KernelHarness harness(sample_rate, 2u);
+  harness.seed(0x12345678u, 0x9abcdef0u);
+  Params params = defaultParams();
+  params.roughness = 0.1F;
+  params.dustRate = 0.0F;
+  params.staticRate = 0.0F;
+  params.scratchRate = 0.0F;
+  harness.stage(params);
+
+  double left_real = 0.0;
+  double left_imaginary = 0.0;
+  double right_real = 0.0;
+  double right_imaginary = 0.0;
+  for (std::uint32_t offset = 0u; offset < total_frames;) {
+    const std::uint32_t remaining = total_frames - offset;
+    const std::uint32_t frames = remaining < kMaximumFrames ? remaining : kMaximumFrames;
+    std::vector<float> audio(2u * frames, 0.0F);
+    for (std::uint32_t frame = 0u; frame < frames; ++frame) {
+      const std::uint32_t absolute_frame = offset + frame;
+      const double phase = kTwoPi * frequency * static_cast<double>(absolute_frame) /
+                           static_cast<double>(sample_rate);
+      audio[frame] = static_cast<float>(0.05 * std::sin(phase));
+    }
+    harness.process(audio, 2u, frames);
+    for (std::uint32_t frame = 0u; frame < frames; ++frame) {
+      const std::uint32_t absolute_frame = offset + frame;
+      if (absolute_frame < analysis_start) {
+        continue;
+      }
+      const double phase = kTwoPi * frequency * static_cast<double>(absolute_frame) /
+                           static_cast<double>(sample_rate);
+      const double cosine = std::cos(phase);
+      const double sine = std::sin(phase);
+      left_real += static_cast<double>(audio[frame]) * cosine;
+      left_imaginary -= static_cast<double>(audio[frame]) * sine;
+      right_real += static_cast<double>(audio[frames + frame]) * cosine;
+      right_imaginary -= static_cast<double>(audio[frames + frame]) * sine;
+    }
+    offset += frames;
+  }
+
+  const double left_magnitude = std::sqrt(left_real * left_real + left_imaginary * left_imaginary);
+  const double right_magnitude =
+      std::sqrt(right_real * right_real + right_imaginary * right_imaginary);
+  check(left_magnitude > 1.0,
+        "default bass-mono separation probe produces a measurable left-channel tone");
+  check(right_magnitude < left_magnitude * 0.1,
+        "default bass-mono blend keeps 1 kHz crosstalk below -20 dB");
+}
+
+void testStandardQualityRetainsSecondHarmonic() {
+  constexpr float sample_rate = 48000.0F;
+  constexpr std::uint32_t total_frames = 48000u;
+  constexpr std::uint32_t analysis_start = total_frames / 2u;
+  constexpr double frequency = 1000.0;
+  constexpr double amplitude = 0.251188643150958;
+  KernelHarness harness(sample_rate, 2u);
+  harness.seed(0x12345678u, 0x9abcdef0u);
+  Params params = defaultParams();
+  params.roughness = 0.1F;
+  params.dustRate = 0.0F;
+  params.staticRate = 0.0F;
+  params.scratchRate = 0.0F;
+  harness.stage(params);
+
+  double fundamental_real = 0.0;
+  double fundamental_imaginary = 0.0;
+  double second_real = 0.0;
+  double second_imaginary = 0.0;
+  for (std::uint32_t offset = 0u; offset < total_frames;) {
+    const std::uint32_t remaining = total_frames - offset;
+    const std::uint32_t frames = remaining < kMaximumFrames ? remaining : kMaximumFrames;
+    std::vector<float> audio(2u * frames, 0.0F);
+    for (std::uint32_t frame = 0u; frame < frames; ++frame) {
+      const std::uint32_t absolute_frame = offset + frame;
+      const double phase = kTwoPi * frequency * static_cast<double>(absolute_frame) /
+                           static_cast<double>(sample_rate);
+      audio[frame] = static_cast<float>(amplitude * std::sin(phase));
+    }
+    harness.process(audio, 2u, frames);
+    for (std::uint32_t frame = 0u; frame < frames; ++frame) {
+      const std::uint32_t absolute_frame = offset + frame;
+      if (absolute_frame < analysis_start) {
+        continue;
+      }
+      const double phase = kTwoPi * frequency * static_cast<double>(absolute_frame) /
+                           static_cast<double>(sample_rate);
+      const double sample = static_cast<double>(audio[frame]);
+      fundamental_real += sample * std::cos(phase);
+      fundamental_imaginary -= sample * std::sin(phase);
+      second_real += sample * std::cos(2.0 * phase);
+      second_imaginary -= sample * std::sin(2.0 * phase);
+    }
+    offset += frames;
+  }
+
+  const double fundamental = std::sqrt(fundamental_real * fundamental_real +
+                                       fundamental_imaginary * fundamental_imaginary);
+  const double second = std::sqrt(second_real * second_real + second_imaginary * second_imaginary);
+  check(fundamental > 1.0, "standard-quality harmonic probe produces a measurable fundamental");
+  check(second > fundamental * 5.0e-4,
+        "standard-quality contact interpolation retains the second harmonic above -66 dBc");
+}
+
 void testSeededDefectFidelity() {
   constexpr std::uint32_t seed_low = 0x0badc0deu;
   constexpr std::uint32_t seed_high = 0x1234abcdu;
@@ -334,6 +444,8 @@ int main() {
   testLatencyPairModeAndTelemetry();
   testSeedResetAndReconfiguration();
   testSampleRateLatency();
+  testDefaultBassMonoPreserves1kHzSeparation();
+  testStandardQualityRetainsSecondHarmonic();
   testSeededDefectFidelity();
   testMinimumMassStability();
   testSilentInputKeepsPhysicalSurfaceRunning();

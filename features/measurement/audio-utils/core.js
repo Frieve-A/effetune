@@ -11,6 +11,15 @@ function resolveAudioWorkletModuleUrl(importerUrl = import.meta.url) {
     return workletUrl.href;
 }
 
+function isSecureAudioWorkletFallbackUrl(moduleUrl) {
+    try {
+        const protocol = new URL(moduleUrl).protocol;
+        return protocol === 'https:' || protocol === 'file:';
+    } catch (_) {
+        return false;
+    }
+}
+
 async function loadAudioWorkletModule(audioWorklet, moduleUrl, dependencies = {}) {
     const fetchModule = dependencies.fetchModule ?? globalThis.fetch;
     const BlobConstructor = dependencies.BlobConstructor ?? globalThis.Blob;
@@ -21,6 +30,7 @@ async function loadAudioWorkletModule(audioWorklet, moduleUrl, dependencies = {}
         return;
     } catch (moduleError) {
         if (
+            !isSecureAudioWorkletFallbackUrl(moduleUrl) ||
             typeof fetchModule !== 'function' ||
             typeof BlobConstructor === 'undefined' ||
             typeof urlApi?.createObjectURL !== 'function'
@@ -28,7 +38,7 @@ async function loadAudioWorkletModule(audioWorklet, moduleUrl, dependencies = {}
             throw moduleError;
         }
 
-        const response = await fetchModule(moduleUrl, { cache: 'no-store' });
+        const response = await fetchModule(moduleUrl, { cache: 'no-store', redirect: 'error' });
         if (!response.ok) {
             throw moduleError;
         }
@@ -289,4 +299,8 @@ class AudioUtils {
 }
 
 export default AudioUtils;
-export { loadAudioWorkletModule, resolveAudioWorkletModuleUrl };
+export {
+    isSecureAudioWorkletFallbackUrl,
+    loadAudioWorkletModule,
+    resolveAudioWorkletModuleUrl
+};

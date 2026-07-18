@@ -2,16 +2,24 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import AudioUtils, {
+  isSecureAudioWorkletFallbackUrl,
   loadAudioWorkletModule,
   resolveAudioWorkletModuleUrl
 } from '../../features/measurement/audio-utils/core.js';
 
 test('measurement AudioWorklet URL follows the module location and development token', () => {
-  const importerUrl = 'http://127.0.0.1:8000/features/measurement/audio-utils/core.js?dev=12345';
+  const importerUrl = 'https://example.test/features/measurement/audio-utils/core.js?dev=12345';
   assert.equal(
     resolveAudioWorkletModuleUrl(importerUrl),
-    'http://127.0.0.1:8000/features/measurement/audioWorkletProcessors.js?dev=12345'
+    'https://example.test/features/measurement/audioWorkletProcessors.js?dev=12345'
   );
+});
+
+test('measurement AudioWorklet Blob fallback accepts only secure or local module URLs', () => {
+  assert.equal(isSecureAudioWorkletFallbackUrl('https://example.test/worklet.js'), true);
+  assert.equal(isSecureAudioWorkletFallbackUrl('file:///opt/effetune/worklet.js'), true);
+  assert.equal(isSecureAudioWorkletFallbackUrl('http://example.test/worklet.js'), false);
+  assert.equal(isSecureAudioWorkletFallbackUrl('not a URL'), false);
 });
 
 test('measurement AudioWorklet loader uses the direct module URL when available', async () => {
@@ -22,8 +30,8 @@ test('measurement AudioWorklet loader uses the direct module URL when available'
     }
   };
 
-  await loadAudioWorkletModule(audioWorklet, 'http://example.test/worklet.js');
-  assert.deepEqual(calls, ['http://example.test/worklet.js']);
+  await loadAudioWorkletModule(audioWorklet, 'https://example.test/worklet.js');
+  assert.deepEqual(calls, ['https://example.test/worklet.js']);
 });
 
 test('measurement AudioWorklet loader retries rejected modules through a Blob URL', async () => {
@@ -67,13 +75,17 @@ test('measurement AudioWorklet loader retries rejected modules through a Blob UR
 
   await loadAudioWorkletModule(
     audioWorklet,
-    'http://example.test/worklet.js?dev=12345',
+    'https://example.test/worklet.js?dev=12345',
     dependencies
   );
 
   assert.deepEqual(calls, [
-    ['addModule', 'http://example.test/worklet.js?dev=12345'],
-    ['fetch', 'http://example.test/worklet.js?dev=12345', { cache: 'no-store' }],
+    ['addModule', 'https://example.test/worklet.js?dev=12345'],
+    [
+      'fetch',
+      'https://example.test/worklet.js?dev=12345',
+      { cache: 'no-store', redirect: 'error' }
+    ],
     [
       'createObjectURL',
       ['registerProcessor("test", class {});'],

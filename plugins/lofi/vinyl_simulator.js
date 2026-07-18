@@ -437,7 +437,8 @@ const VINYL_SIMULATOR_REFERENCE_PROCESSOR = `
     function cutInput(state, left, right) {
         let mid = processBiquad(state.rumbleMid, (left + right) * SQRT_HALF);
         let side = processBiquad(state.rumbleSide, (left - right) * SQRT_HALF);
-        side = processBiquad(state.sideHighPass, side) * state.controls.side_mix;
+        const highSide = processBiquad(state.sideHighPass, side);
+        side = state.controls.side_mix * side + (1 - state.controls.side_mix) * highSide;
         let cutLeft = (mid + side) * SQRT_HALF;
         let cutRight = (mid - side) * SQRT_HALF;
         cutLeft = processBiquad(state.hfLeftSecond, processBiquad(state.hfLeftFirst, cutLeft));
@@ -536,24 +537,54 @@ const VINYL_SIMULATOR_REFERENCE_PROCESSOR = `
             roughShift(state, wall, spatialPosition) + defectShift(state, wall, spatialPosition);
     }
 
+    function accumulatePositiveLinearSegment(result, left, right, leftOffset, step, scale) {
+        if (left <= 0 && right <= 0) return;
+        let area;
+        let firstMoment;
+        if (left > 0 && right > 0) {
+            area = 0.5 * (left + right) * step;
+            firstMoment = step * step * (left + 2 * right) / 6;
+        } else if (left > 0) {
+            const positiveLength = step * left / (left - right);
+            area = 0.5 * left * positiveLength;
+            firstMoment = area * positiveLength / 3;
+        } else {
+            const positiveLength = step * right / (right - left);
+            area = 0.5 * right * positiveLength;
+            firstMoment = area * (step - positiveLength / 3);
+        }
+        result.integral += scale * area;
+        result.firstMoment += scale * (leftOffset * area + firstMoment);
+    }
+
+    function accumulateClippedLinearSegment(result, left, right, leftOffset, step) {
+        // clamp(p, 0, limit) = max(p, 0) - max(p - limit, 0) for a linear segment.
+        accumulatePositiveLinearSegment(result, left, right, leftOffset, step, 1);
+        if (left > 5e-6 || right > 5e-6) {
+            accumulatePositiveLinearSegment(result, left - 5e-6, right - 5e-6,
+                leftOffset, step, -1);
+        }
+    }
+
     function wallContact(state, wall, distance, centerSample) {
-        const result = { integral: 0, delta: -1, centroid: 0 };
+        const result = { integral: 0, delta: -1, centroid: 0, firstMoment: 0 };
         const base = state.controls.side_radius - distance;
         const inverseCurve = 1 / (2 * state.controls.scan_radius);
-        let raw = 0, weighted = 0;
+        let previousPenetration = 0;
+        let previousOffset = 0;
         for (let point = 0; point < state.scanPoints; point++) {
             const offset = -state.scanHalf + point * state.scanStep;
-            let penetration = base + wallShift(state, wall, centerSample,
+            const penetration = base + wallShift(state, wall, centerSample,
                 state.groovePosition + offset, offset) - offset * offset * inverseCurve;
             if (penetration > result.delta) result.delta = penetration;
-            if (penetration > 0) {
-                if (penetration > 5e-6) penetration = 5e-6;
-                raw += penetration;
-                weighted += penetration * offset;
+            if (point !== 0) {
+                accumulateClippedLinearSegment(result, previousPenetration, penetration,
+                    previousOffset, state.scanStep);
             }
+            previousPenetration = penetration;
+            previousOffset = offset;
         }
-        result.integral = raw * state.scanStep;
-        result.centroid = raw > 0 ? weighted / raw : 0;
+        result.centroid = result.integral > 0 ? result.firstMoment / result.integral : 0;
         return result;
     }
 
