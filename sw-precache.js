@@ -1,4 +1,4 @@
-self.EFFECTUNE_CACHE_VERSION = "effetune-v2.1.0-0517397f9e9d15f5";
+self.EFFECTUNE_CACHE_VERSION = "effetune-v2.1.0-db3a8d7ab0837a2a";
 self.EFFECTUNE_PRECACHE_URLS = [
   "./effetune-library.css",
   "./effetune-mobile.css",
@@ -154,6 +154,7 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/ui/plugin-list/search-manager.js",
   "./js/ui/power-state-view.js",
   "./js/ui/state-manager.js",
+  "./js/ui/web-cue-source-resolver.js",
   "./js/update-notification.js",
   "./js/utils/clipboard-utils.js",
   "./js/utils/pipeline-state-codec.js",

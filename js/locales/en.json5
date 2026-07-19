@@ -19,6 +19,7 @@
   "error.cueSelectionMixedElectron": "Select one CUE sheet by itself, or select only ordinary audio files. Your current playlist was not changed.",
   "error.cueSelectionMixed": "Select one CUE sheet together with all and only the WAV or FLAC files it references. Your current playlist was not changed.",
   "error.cueSelectionInvalid": "The CUE sheet could not be opened. Check its contents and referenced WAV or FLAC files, then try again. Your current playlist was not changed.",
+  "error.cueSelectionSourceAccessRequired": "The browser could not access the WAV or FLAC files referenced by this CUE sheet. In a PC Chromium browser, add its folder to Music Library and allow access, then try again. Your current playlist was not changed.",
   "error.lowSampleRate": "Sample rate is too low ({sampleRate}Hz). Audio quality may be insufficient. 88.2kHz or higher is recommended.",
   "error.sampleRateWarning": "Sample rate is below recommended 88.2kHz. Audio quality may be affected.",
   "error.cannotPlayBrowserFiles": "Cannot play browser files in Electron environment",

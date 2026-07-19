@@ -19,6 +19,7 @@
   "error.cueSelectionMixedElectron": "حدّد ملف CUE واحدًا بمفرده، أو حدّد ملفات صوت عادية فقط. لم تتغير قائمة التشغيل الحالية.",
   "error.cueSelectionMixed": "حدّد ملف CUE واحدًا مع جميع ملفات WAV أو FLAC التي يشير إليها فقط. لم تتغير قائمة التشغيل الحالية.",
   "error.cueSelectionInvalid": "تعذّر فتح ملف CUE. تحقّق من محتواه ومن ملفات WAV أو FLAC المشار إليها ثم حاول مرة أخرى. لم تتغير قائمة التشغيل الحالية.",
+  "error.cueSelectionSourceAccessRequired": "تعذّر على المتصفح الوصول إلى ملفات WAV أو FLAC التي يشير إليها ملف CUE هذا. في متصفح Chromium على الكمبيوتر، أضف مجلده أولًا إلى Music Library واسمح بالوصول إليه، ثم حاول مرة أخرى. لم تتغير قائمة التشغيل الحالية.",
   "error.lowSampleRate": "معدل العينة منخفض جدًا ({sampleRate}Hz). قد تكون جودة الصوت غير كافية. يُوصى بـ 88.2kHz أو أعلى.",
   "error.sampleRateWarning": "معدل العينة أقل من 88.2kHz الموصى به. قد تتأثر جودة الصوت.",
   "error.cannotPlayBrowserFiles": "لا يمكن تشغيل ملفات المتصفح في بيئة Electron",

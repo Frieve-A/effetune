@@ -19,6 +19,7 @@
   "error.cueSelectionMixedElectron": "CUE 시트 한 개만 선택하거나 일반 오디오 파일만 선택하세요. 현재 재생 목록은 변경되지 않았습니다.",
   "error.cueSelectionMixed": "CUE 시트 한 개와 그 시트가 참조하는 WAV 또는 FLAC 파일만 모두 함께 선택하세요. 현재 재생 목록은 변경되지 않았습니다.",
   "error.cueSelectionInvalid": "CUE 시트를 열 수 없습니다. 내용과 참조된 WAV 또는 FLAC 파일을 확인한 후 다시 시도하세요. 현재 재생 목록은 변경되지 않았습니다.",
+  "error.cueSelectionSourceAccessRequired": "브라우저에서 이 CUE 시트가 참조하는 WAV 또는 FLAC 파일에 접근할 수 없습니다. PC용 Chromium 브라우저에서는 먼저 해당 폴더를 Music Library에 추가하고 접근을 허용한 다음 다시 시도하세요. 현재 재생 목록은 변경되지 않았습니다.",
   "error.lowSampleRate": "샘플링 속도가 너무 낮습니다 ({sampleRate}Hz). 오디오 품질이 낮을 수 있습니다. 88.2kHz 이상 권장합니다.",
   "error.sampleRateWarning": "샘플링 속도가 88.2kHz 미만입니다. 오디오 품질에 영향을 줄 수 있습니다.",
   "error.cannotPlayBrowserFiles": "Electron 환경에서 브라우저 파일을 재생할 수 없습니다",

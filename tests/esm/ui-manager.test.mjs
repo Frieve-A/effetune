@@ -425,6 +425,7 @@ async function withUIHarness(options = {}, callback) {
       appConfig: options.appConfig ?? {},
       electronIntegration,
       electronAPI,
+      showOpenFilePicker: options.showOpenFilePicker,
       open: (...args) => opened.push(args),
       addEventListener: (...args) => calls.push(['window.addEventListener', ...args]),
       removeEventListener: (...args) => calls.push(['window.removeEventListener', ...args]),
@@ -953,7 +954,7 @@ test('shares URLs, opens music, manages presets, and creates audio players', asy
     await withUIHarness({ isElectron: false }, async ({ calls, document, objectUrls, manager }) => {
       activeCalls = calls;
       await manager.openMusicButton.click();
-      const fileInput = [...document.allElements].find(element => element.type === 'file');
+      const fileInput = [...document.allElements].find(element => element.type === 'file' && element.parentNode);
       assert.equal(fileInput.accept, 'audio/*,video/mp4,image/jpeg,image/png,.mp4,.cue,.jpg,.png');
       fileInput.files = [{ name: 'song.wav', async arrayBuffer() { return new ArrayBuffer(0); } }];
       await fileInput.dispatch('change', { target: fileInput });
@@ -963,6 +964,36 @@ test('shares URLs, opens music, manages presets, and creates audio players', asy
       assert.equal(objectUrls.length, 0);
       assert.equal(calls.some(call => call[0] === 'window.addEventListener' && call[1] === 'unload'), false);
       assert.ok(manager.audioPlayer);
+    });
+
+    const cue = { name: 'album.cue', size: 100, async arrayBuffer() { return new ArrayBuffer(0); } };
+    const cueHandle = { kind: 'file', async getFile() { return cue; } };
+    await withUIHarness({
+      isElectron: false,
+      async showOpenFilePicker(options) {
+        assert.equal(options.multiple, true);
+        return [cueHandle];
+      }
+    }, async ({ calls, document, manager }) => {
+      activeCalls = calls;
+      const source = { name: 'album.wav', size: 1000, async arrayBuffer() { return new ArrayBuffer(0); } };
+      manager.webCueSourceResolver = async request => {
+        assert.equal(request.cueFileHandle, cueHandle);
+        return [source];
+      };
+      manager.playbackSelectionResolver = async (files, options) => {
+        assert.deepEqual(files, [cue]);
+        assert.equal(typeof options.cueSourceProvider, 'function');
+        return { kind: 'cue', tracks: await options.cueSourceProvider({ parsedCue: { ok: true } }) };
+      };
+
+      await manager.openMusicButton.click();
+      await flushMicrotasks();
+      await flushMicrotasks();
+
+      assert.equal([...document.allElements].some(element => element.type === 'file' && element.parentNode), false);
+      const loadFilesCall = calls.find(call => call[0] === 'AudioPlayer.loadFiles');
+      assert.deepEqual(loadFilesCall[1], [source]);
     });
 
     await withUIHarness({

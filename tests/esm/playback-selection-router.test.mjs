@@ -98,6 +98,30 @@ test('Web direct CUE returns logical tracks with request-scoped physical ownersh
   ]);
 });
 
+test('Web direct CUE resolves referenced audio when only the CUE file was selected', async () => {
+  const cue = cueFile();
+  const album = new SelectionFile('album.wav', '', { size: 100, forbidRead: true });
+  const providerCalls = [];
+  const selection = await resolveWebPlaybackSelection([cue], {
+    cueSourceProvider: async request => {
+      providerCalls.push(request);
+      return [album];
+    },
+    metadataParserFactory: filesystem => ({
+      async parse({ relativePath }) {
+        assert.equal(await filesystem.getFile(relativePath), album);
+        return { durationSec: 20 };
+      }
+    })
+  });
+
+  assert.equal(selection.kind, 'cue');
+  assert.equal(providerCalls.length, 1);
+  assert.equal(providerCalls[0].cueFile, cue);
+  assert.equal(providerCalls[0].parsedCue.ok, true);
+  assert.deepEqual(selection.tracks.map(track => track.file), [album, album]);
+});
+
 test('Web direct CUE accepts selected sibling artwork without reading audio bytes', async () => {
   const cue = cueFile();
   const album = new SelectionFile('album.wav', '', { size: 100, forbidRead: true });
@@ -125,7 +149,8 @@ test('Web direct CUE atomically rejects missing, extra, multiple, and oversized 
 
   await assert.rejects(
     resolveWebPlaybackSelection([cue], { metadataParserFactory }),
-    error => error?.code === 'cueSelectionInvalid'
+    error => error?.code === 'cueSelectionSourceAccessRequired' &&
+      error?.diagnosticCode === 'cue-no-accessible-audio-files'
   );
   await assert.rejects(
     resolveWebPlaybackSelection([cue, album, extra], { metadataParserFactory }),
@@ -137,10 +162,33 @@ test('Web direct CUE atomically rejects missing, extra, multiple, and oversized 
   );
   await assert.rejects(
     resolveWebPlaybackSelection([oversizedCue, album], { metadataParserFactory }),
-    error => error?.code === 'cueSelectionTooLarge'
+    error => error?.code === 'cueSelectionTooLarge' && error?.diagnosticCode === 'cue-too-large'
   );
   await assert.rejects(
     resolveWebPlaybackSelection([cue, album, unrelatedImage], { metadataParserFactory }),
     error => error?.code === 'cueSelectionMixed'
+  );
+});
+
+test('Web direct CUE preserves parser, reference, and duration failure reasons', async () => {
+  const album = new SelectionFile('album.wav', '', { forbidRead: true });
+  const invalidCue = new SelectionFile('album.cue', 'not a cue sheet');
+
+  await assert.rejects(
+    resolveWebPlaybackSelection([invalidCue, album]),
+    error => error?.code === 'cueSelectionInvalid' &&
+      error?.diagnosticCode === 'cue-unsupported-command'
+  );
+  await assert.rejects(
+    resolveWebPlaybackSelection([cueFile('missing.wav'), album]),
+    error => error?.code === 'cueSelectionInvalid' &&
+      error?.diagnosticCode === 'cue-missing-reference'
+  );
+  await assert.rejects(
+    resolveWebPlaybackSelection([cueFile(), album], {
+      metadataParserFactory: () => ({ async parse() { return { durationSec: null }; } })
+    }),
+    error => error?.code === 'cueSelectionInvalid' &&
+      error?.diagnosticCode === 'cue-source-duration-unavailable'
   );
 });

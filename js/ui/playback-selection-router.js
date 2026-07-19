@@ -16,54 +16,83 @@ let requestSequence = 0;
 
 export async function resolveWebPlaybackSelection(files, {
   metadataParserFactory = filesystem => new WebMetadataParser({ filesystem }),
+  cueSourceProvider = null,
   signal,
   requestKey = `direct-web:${++requestSequence}`
 } = {}) {
   const selectedFiles = requireFiles(files);
   const cueFiles = selectedFiles.filter(file => extensionOf(file.name) === 'cue');
   if (cueFiles.length === 0) return Object.freeze({ kind: 'normal', tracks: selectedFiles });
-  if (cueFiles.length !== 1) throw selectionError('cueSelectionMixed');
-
-  const remainingFiles = selectedFiles.filter(file => file !== cueFiles[0]);
-  const sourceFiles = remainingFiles.filter(file => CUE_AUDIO_EXTENSIONS.has(extensionOf(file.name)));
-  const coverFiles = remainingFiles.filter(file => CUE_COVER_EXTENSIONS.has(extensionOf(file.name)));
-  if (sourceFiles.length === 0) throw selectionError('cueSelectionInvalid');
-  if (sourceFiles.length + coverFiles.length !== remainingFiles.length) {
-    throw selectionError('cueSelectionMixed');
+  if (cueFiles.length !== 1) {
+    throw selectionError('cueSelectionMixed', 'cue-multiple-sheets-selected');
   }
+
+  let remainingFiles = selectedFiles.filter(file => file !== cueFiles[0]);
   const cueFile = cueFiles[0];
   if (!Number.isSafeInteger(cueFile.size) || cueFile.size < 0 || cueFile.size > CUE_MAX_BYTES) {
-    throw selectionError(cueFile.size > CUE_MAX_BYTES ? 'cueSelectionTooLarge' : 'cueSelectionInvalid');
+    throw selectionError(
+      cueFile.size > CUE_MAX_BYTES ? 'cueSelectionTooLarge' : 'cueSelectionInvalid',
+      cueFile.size > CUE_MAX_BYTES ? 'cue-too-large' : 'cue-invalid-file-size'
+    );
   }
 
   throwIfAborted(signal);
   let parsed;
   try {
     const decoded = decodeCueBytes(await cueFile.arrayBuffer());
-    if (!decoded?.ok) throw selectionError('cueSelectionInvalid');
+    if (!decoded?.ok) {
+      throw selectionError('cueSelectionInvalid', decoded?.code ?? 'cue-decode-failed');
+    }
     parsed = parseCueSheet(decoded.text, {
       cueRelativePath: cueFile.name
     });
   } catch (error) {
-    throw selectionError('cueSelectionInvalid', error);
+    if (error?.name === 'PlaybackSelectionError') throw error;
+    throw selectionError('cueSelectionInvalid', 'cue-read-failed', error);
   }
   throwIfAborted(signal);
-  if (!parsed?.ok) throw selectionError('cueSelectionInvalid');
+  if (!parsed?.ok) {
+    throw selectionError('cueSelectionInvalid', parsed?.code ?? 'cue-parse-failed');
+  }
+
+  let sourceFiles = remainingFiles.filter(file => CUE_AUDIO_EXTENSIONS.has(extensionOf(file.name)));
+  let coverFiles = remainingFiles.filter(file => CUE_COVER_EXTENSIONS.has(extensionOf(file.name)));
+  if (sourceFiles.length === 0 && typeof cueSourceProvider === 'function') {
+    let providedFiles;
+    try {
+      providedFiles = requireFiles(await cueSourceProvider({ cueFile, parsedCue: parsed, signal }));
+    } catch (error) {
+      if (error?.name === 'AbortError') throw error;
+      if (error?.code === 'cueSelectionSourceAccessRequired') throw error;
+      throw selectionError('cueSelectionSourceAccessRequired', 'cue-source-provider-failed', error);
+    }
+    remainingFiles = [...remainingFiles, ...providedFiles];
+    sourceFiles = remainingFiles.filter(file => CUE_AUDIO_EXTENSIONS.has(extensionOf(file.name)));
+    coverFiles = remainingFiles.filter(file => CUE_COVER_EXTENSIONS.has(extensionOf(file.name)));
+  }
+  if (sourceFiles.length === 0) {
+    throw selectionError('cueSelectionSourceAccessRequired', 'cue-no-accessible-audio-files');
+  }
+  if (sourceFiles.length + coverFiles.length !== remainingFiles.length) {
+    throw selectionError('cueSelectionMixed', 'cue-unexpected-selected-files');
+  }
 
   const fileByName = createSelectedFileMap(sourceFiles);
   const resolved = resolveCueSheet(parsed, sourceFiles.map(file => file.name));
-  if (!resolved?.ok) throw selectionError('cueSelectionInvalid');
+  if (!resolved?.ok) {
+    throw selectionError('cueSelectionInvalid', resolved?.code ?? 'cue-reference-resolution-failed');
+  }
   const referencedNames = new Set(resolved.resolvedFiles);
   if (referencedNames.size !== sourceFiles.length ||
       sourceFiles.some(file => !referencedNames.has(file.name))) {
-    throw selectionError('cueSelectionMixed');
+    throw selectionError('cueSelectionMixed', 'cue-unreferenced-audio-selected');
   }
   const coverByName = createSelectedFileMap(coverFiles);
   const allowedCoverNames = new Set(resolved.resolvedFiles.flatMap(relativePath =>
     coverFiles.flatMap(file => selectCueCoverFileName([file.name], relativePath) ? [file.name] : [])
   ));
   if (coverFiles.some(file => !allowedCoverNames.has(file.name))) {
-    throw selectionError('cueSelectionMixed');
+    throw selectionError('cueSelectionMixed', 'cue-unrelated-cover-selected');
   }
   const coverByRelativePath = new Map();
   const coverPromises = new Map();
@@ -83,7 +112,9 @@ export async function resolveWebPlaybackSelection(files, {
     async getFile(relativePath, requestSignal) {
       throwIfAborted(requestSignal ?? signal);
       const file = fileByName.get(relativePath);
-      if (!file) throw selectionError('cueSelectionInvalid');
+      if (!file) {
+        throw selectionError('cueSelectionInvalid', 'cue-selected-source-unavailable');
+      }
       return file;
     }
   };
@@ -91,14 +122,21 @@ export async function resolveWebPlaybackSelection(files, {
   const metadataByPath = new Map();
   for (const relativePath of resolved.resolvedFiles) {
     throwIfAborted(signal);
-    metadataByPath.set(relativePath, await metadataParser.parse({
-      relativePath,
-      skipCovers: true,
-      signal
-    }));
+    try {
+      metadataByPath.set(relativePath, await metadataParser.parse({
+        relativePath,
+        skipCovers: true,
+        signal
+      }));
+    } catch (error) {
+      if (error?.name === 'AbortError') throw error;
+      throw selectionError('cueSelectionInvalid', 'cue-source-metadata-unavailable', error);
+    }
   }
   const validated = validateCueDurations(resolved, metadataByPath);
-  if (!validated?.ok) throw selectionError('cueSelectionInvalid');
+  if (!validated?.ok) {
+    throw selectionError('cueSelectionInvalid', validated?.code ?? 'cue-duration-validation-failed');
+  }
 
   const physicalKeyByFile = new Map();
   return Object.freeze({
@@ -144,7 +182,9 @@ async function readSelectedCueCover(file, signal) {
 function createSelectedFileMap(files) {
   const map = new Map();
   for (const file of files) {
-    if (map.has(file.name)) throw selectionError('cueSelectionInvalid');
+    if (map.has(file.name)) {
+      throw selectionError('cueSelectionInvalid', 'cue-duplicate-selected-file-name');
+    }
     map.set(file.name, file);
   }
   return map;
@@ -172,10 +212,11 @@ function throwIfAborted(signal) {
   throw error;
 }
 
-function selectionError(code, cause = null) {
+function selectionError(code, diagnosticCode = code, cause = null) {
   const error = new Error('The selected music could not be opened');
   error.name = 'PlaybackSelectionError';
   error.code = code;
+  error.diagnosticCode = diagnosticCode;
   if (cause) error.cause = cause;
   return error;
 }

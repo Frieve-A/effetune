@@ -19,6 +19,7 @@
   "error.cueSelectionMixedElectron": "Selecciona una sola hoja CUE, o selecciona únicamente archivos de audio normales. La lista de reproducción actual no se modificó.",
   "error.cueSelectionMixed": "Selecciona una hoja CUE junto con todos y únicamente los archivos WAV o FLAC a los que hace referencia. La lista de reproducción actual no se modificó.",
   "error.cueSelectionInvalid": "No se pudo abrir la hoja CUE. Comprueba su contenido y los archivos WAV o FLAC a los que hace referencia e inténtalo de nuevo. La lista de reproducción actual no se modificó.",
+  "error.cueSelectionSourceAccessRequired": "El navegador no pudo acceder a los archivos WAV o FLAC a los que hace referencia esta hoja CUE. En un navegador Chromium para PC, añade primero su carpeta a Music Library y permite el acceso; después, inténtalo de nuevo. La lista de reproducción actual no se modificó.",
   "error.lowSampleRate": "La tasa de muestreo es muy baja ({sampleRate}Hz). La calidad de audio puede ser insuficiente. Se recomienda 88.2kHz o superior.",
   "error.sampleRateWarning": "La tasa de muestreo está por debajo de lo recomendado (88.2kHz). La calidad de audio podría verse afectada.",
   "error.cannotPlayBrowserFiles": "No se pueden reproducir archivos del navegador en el entorno Electron",

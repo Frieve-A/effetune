@@ -19,6 +19,7 @@
   "error.cueSelectionMixedElectron": "CUEシートを1件だけ選択するか、通常の音声ファイルだけを選択してください。現在のプレイリストは変更されていません。",
   "error.cueSelectionMixed": "CUEシートを1件と、そのシートが参照するWAVまたはFLACファイルだけをすべて一緒に選択してください。現在のプレイリストは変更されていません。",
   "error.cueSelectionInvalid": "CUEシートを開けませんでした。内容と参照先のWAVまたはFLACファイルを確認して、もう一度お試しください。現在のプレイリストは変更されていません。",
+  "error.cueSelectionSourceAccessRequired": "このCUEシートが参照するWAVまたはFLACファイルにブラウザーからアクセスできませんでした。PC版Chromiumブラウザーでは、先にそのフォルダーをMusic Libraryへ追加してアクセスを許可してから、もう一度お試しください。現在のプレイリストは変更されていません。",
   "error.lowSampleRate": "サンプルレートが低すぎます ({sampleRate}Hz)。オーディオ品質が不十分な可能性があります。88.2kHz以上が推奨されます。",
   "error.sampleRateWarning": "サンプルレートが推奨の88.2kHzを下回っています。オーディオ品質に影響がある可能性があります。",
   "error.cannotPlayBrowserFiles": "Electron環境ではブラウザファイルを再生できません",

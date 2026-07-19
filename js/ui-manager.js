@@ -26,6 +26,7 @@ import { LibraryView } from './ui/library/library-view.js';
 import { PowerStateView } from './ui/power-state-view.js';
 import { CatalogPlaybackBridge } from './ui/audio-player/catalog-playback-bridge.js';
 import { resolveWebPlaybackSelection } from './ui/playback-selection-router.js';
+import { resolveWebCueSiblingFiles } from './ui/web-cue-source-resolver.js';
 
 function usesIOSFilePicker(windowRef = window) {
     const navigatorRef = windowRef?.navigator || globalThis.navigator;
@@ -37,6 +38,21 @@ function usesIOSFilePicker(windowRef = window) {
 
 const ERROR_MESSAGE_DURATION_MS = 5000;
 const MINI_PLAYER_ALWAYS_ON_TOP_STORAGE_KEY = 'miniPlayerAlwaysOnTop';
+const WEB_MUSIC_FILE_ACCEPT = 'audio/*,video/mp4,image/jpeg,image/png,.mp4,.cue,.jpg,.png';
+const WEB_MUSIC_PICKER_TYPES = [{
+    accept: {
+        'audio/*': ['.aac', '.flac', '.m4a', '.mp3', '.mp4', '.ogg', '.opus', '.wav', '.webm'],
+        'text/plain': ['.cue'],
+        'image/jpeg': ['.jpg', '.jpeg'],
+        'image/png': ['.png']
+    }
+}];
+
+function fileExtension(name) {
+    const value = String(name ?? '');
+    const index = value.lastIndexOf('.');
+    return index < 0 ? '' : value.slice(index + 1).toLowerCase();
+}
 
 function readStoredBoolean(key) {
     try {
@@ -1252,37 +1268,72 @@ export class UIManager {
                     // Use Electron's openMusicFile function
                     window.electronIntegration.openMusicFile();
                 } else {
-                    // Browser environment - create a file input element
-                    const fileInput = document.createElement('input');
-                    if (fileInput) { // Added check
-                        fileInput.type = 'file';
-                        if (!usesIOSFilePicker(window)) {
-                            fileInput.accept = 'audio/*,video/mp4,image/jpeg,image/png,.mp4,.cue,.jpg,.png';
-                        }
-                        fileInput.multiple = true;
-                        fileInput.style.display = 'none';
-                    }
-
-                    // Add event listener for file selection
-                    fileInput.addEventListener('change', (e) => {
-                        const files = Array.from(e.target.files ?? []);
-                        if (files.length > 0) {
-                            const gestureResume = this.beginPlaybackSelectionGestureResume();
-                            void this.openWebPlaybackSelection(files, gestureResume);
-                        }
-
-                        // Remove the file input element
-                        if (fileInput.parentNode) {
-                            document.body.removeChild(fileInput);
-                        }
+                    this.openWebMusicFilePicker({
+                        accept: WEB_MUSIC_FILE_ACCEPT,
+                        onFiles: (files, fileHandles) => this.handleWebPlaybackFiles(files, fileHandles)
                     });
-
-                    // Add the file input to the document and trigger click
-                    document.body.appendChild(fileInput);
-                    fileInput.click();
                 }
             });
         }
+    }
+
+    async openWebMusicFilePicker({ accept, onFiles, onCancel = null }) {
+        if (!usesIOSFilePicker(window) && typeof window.showOpenFilePicker === 'function') {
+            try {
+                const handles = await window.showOpenFilePicker({
+                    multiple: true,
+                    types: WEB_MUSIC_PICKER_TYPES
+                });
+                const files = await Promise.all(handles.map(handle => handle.getFile()));
+                if (files.length > 0) {
+                    onFiles(files, new Map(files.map((file, index) => [file, handles[index]])));
+                } else {
+                    onCancel?.();
+                }
+                return null;
+            } catch (error) {
+                if (error?.name === 'AbortError') {
+                    onCancel?.();
+                    return null;
+                }
+                console.warn('File System Access picker failed, using the file input fallback:', error);
+            }
+        }
+
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        if (accept && !usesIOSFilePicker(window)) fileInput.accept = accept;
+        fileInput.multiple = true;
+        fileInput.style.display = 'none';
+
+        let settled = false;
+        const cleanup = () => {
+            if (fileInput.parentNode) fileInput.parentNode.removeChild(fileInput);
+        };
+        const cancel = () => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            onCancel?.();
+        };
+        fileInput.addEventListener('change', event => {
+            if (settled) return;
+            settled = true;
+            const files = Array.from(event.target.files ?? []);
+            cleanup();
+            if (files.length > 0) onFiles(files, null);
+            else onCancel?.();
+        });
+        fileInput.addEventListener('cancel', cancel);
+        document.body.appendChild(fileInput);
+        fileInput.click();
+        return fileInput;
+    }
+
+    handleWebPlaybackFiles(files, fileHandles = null) {
+        const gestureResume = this.beginPlaybackSelectionGestureResume();
+        void this.openWebPlaybackSelection(files, gestureResume, { fileHandles });
+        return true;
     }
 
     beginPlaybackSelectionGestureResume() {
@@ -1300,15 +1351,24 @@ export class UIManager {
         }
     }
 
-    async openWebPlaybackSelection(files, gestureResume) {
+    async openWebPlaybackSelection(files, gestureResume, { fileHandles = null } = {}) {
         this.playbackSelectionAbortController?.abort();
         const controller = new AbortController();
         const generation = ++this.playbackSelectionGeneration;
         this.playbackSelectionAbortController = controller;
         try {
             const resolveSelection = this.playbackSelectionResolver ?? resolveWebPlaybackSelection;
+            const cueFile = Array.from(files ?? []).find(file => fileExtension(file?.name) === 'cue');
+            const cueFileHandle = cueFile ? fileHandles?.get?.(cueFile) : null;
+            const cueSourceProvider = cueFileHandle
+                ? request => (this.webCueSourceResolver ?? resolveWebCueSiblingFiles)({
+                    cueFileHandle,
+                    ...request
+                })
+                : null;
             const [selection, resumeReady] = await Promise.all([
                 resolveSelection(files, {
+                    cueSourceProvider,
                     signal: controller.signal,
                     requestKey: `direct-web:${generation}`
                 }),
@@ -1329,11 +1389,20 @@ export class UIManager {
             return true;
         } catch (error) {
             if (generation !== this.playbackSelectionGeneration || error?.name === 'AbortError') return false;
-            console.error('Open Music selection diagnostic:', error?.code || error?.name || 'unknown');
+            console.error('Open Music selection diagnostic:', JSON.stringify({
+                code: error?.code || error?.name || 'unknown',
+                reason: error?.diagnosticCode || error?.cause?.code || null,
+                files: Array.from(files ?? [], file => ({
+                    name: String(file?.name ?? ''),
+                    size: Number.isSafeInteger(file?.size) ? file.size : null,
+                    type: String(file?.type ?? '')
+                }))
+            }));
             const errorKey = {
                 cueSelectionTooLarge: 'error.cueSelectionTooLarge',
                 cueSelectionMixed: 'error.cueSelectionMixed',
-                cueSelectionInvalid: 'error.cueSelectionInvalid'
+                cueSelectionInvalid: 'error.cueSelectionInvalid',
+                cueSelectionSourceAccessRequired: 'error.cueSelectionSourceAccessRequired'
             }[error?.code] || 'error.musicSelectionUnavailable';
             this.setError(errorKey, true);
             return false;

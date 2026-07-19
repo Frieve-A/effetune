@@ -19,6 +19,7 @@
   "error.cueSelectionMixedElectron": "Sélectionnez une seule feuille CUE, ou uniquement des fichiers audio ordinaires. La liste de lecture actuelle n’a pas été modifiée.",
   "error.cueSelectionMixed": "Sélectionnez une feuille CUE avec tous les fichiers WAV ou FLAC qu’elle référence, et aucun autre fichier. La liste de lecture actuelle n’a pas été modifiée.",
   "error.cueSelectionInvalid": "Impossible d’ouvrir la feuille CUE. Vérifiez son contenu et les fichiers WAV ou FLAC référencés, puis réessayez. La liste de lecture actuelle n’a pas été modifiée.",
+  "error.cueSelectionSourceAccessRequired": "Le navigateur n’a pas pu accéder aux fichiers WAV ou FLAC référencés par cette feuille CUE. Dans un navigateur Chromium sur PC, ajoutez d’abord son dossier à Music Library et autorisez l’accès, puis réessayez. La liste de lecture actuelle n’a pas été modifiée.",
   "error.lowSampleRate": "La fréquence d'échantillonnage est trop faible ({sampleRate}Hz). La qualité audio peut être insuffisante. Il est recommandé d'utiliser 88,2kHz ou plus.",
   "error.sampleRateWarning": "La fréquence d'échantillonnage est inférieure aux 88,2kHz recommandés. La qualité audio pourrait être affectée.",
   "error.cannotPlayBrowserFiles": "Impossible de lire les fichiers du navigateur dans l'environnement Electron",

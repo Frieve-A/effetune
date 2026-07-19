@@ -88,3 +88,16 @@ test('Web Open Music rejects atomically without creating or replacing a player',
   assert.equal(calls.some(call => call[0] === 'createAudioPlayer'), false);
   assert.deepEqual(calls.at(-1), ['setError', 'error.cueSelectionInvalid', true]);
 });
+
+test('Web Open Music explains when CUE sibling access is unavailable', async () => {
+  const { calls, manager } = createManager();
+  manager.playbackSelectionResolver = async () => {
+    const error = new Error('source access required');
+    error.code = 'cueSelectionSourceAccessRequired';
+    error.diagnosticCode = 'cue-not-in-registered-folder';
+    throw error;
+  };
+
+  assert.equal(await manager.openWebPlaybackSelection([{ name: 'album.cue' }], Promise.resolve(true)), false);
+  assert.deepEqual(calls.at(-1), ['setError', 'error.cueSelectionSourceAccessRequired', true]);
+});

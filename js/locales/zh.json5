@@ -19,6 +19,7 @@
   "error.cueSelectionMixedElectron": "请单独选择一个 CUE 文件，或只选择普通音频文件。当前播放列表未更改。",
   "error.cueSelectionMixed": "请选择一个 CUE 文件，并同时选择且仅选择其中引用的全部 WAV 或 FLAC 文件。当前播放列表未更改。",
   "error.cueSelectionInvalid": "无法打开 CUE 文件。请检查其内容以及引用的 WAV 或 FLAC 文件后重试。当前播放列表未更改。",
+  "error.cueSelectionSourceAccessRequired": "浏览器无法访问此 CUE 文件引用的 WAV 或 FLAC 文件。在电脑端 Chromium 浏览器中，请先将其文件夹添加到 Music Library 并允许访问，然后重试。当前播放列表未更改。",
   "error.lowSampleRate": "采样率过低（{sampleRate}Hz），可能影响音质，建议88.2kHz以上。",
   "error.sampleRateWarning": "采样率低于建议的88.2kHz，音质可能受影响。",
   "error.cannotPlayBrowserFiles": "Electron环境下无法播放浏览器文件",
