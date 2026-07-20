@@ -68,7 +68,7 @@ int main() {
       continue;
     double reference = 0.0;
     for (std::size_t tap = 0u; tap < filter.coefficients().size() && tap <= frame; ++tap)
-      reference += highRate[frame - tap] * filter.coefficients()[tap];
+      reference += static_cast<double>(highRate[frame - tap]) * filter.coefficients()[tap];
     HB_CHECK(std::abs(static_cast<double>(output) - reference) < 1.0e-6);
   }
 
@@ -87,7 +87,7 @@ int main() {
       const std::size_t highFrame = 2u * frame + phase;
       double reference = 0.0;
       for (std::size_t tap = 0u; tap < filter.coefficients().size() && tap <= highFrame; ++tap)
-        reference += zeroStuffed[highFrame - tap] * filter.coefficients()[tap];
+        reference += static_cast<double>(zeroStuffed[highFrame - tap]) * filter.coefficients()[tap];
       const float measured = phase == 0u ? first : second;
       HB_CHECK(std::abs(static_cast<double>(measured) - reference) < 1.0e-6);
     }

@@ -107,7 +107,7 @@ std::size_t hostConvolverUpperBound(std::uint32_t frames, std::uint32_t assetCha
                                               stage.block + 4096u);
     const std::size_t fft = 2u * stage.block;
     const std::size_t partitions = (stage.frames + stage.block - 1u) / stage.block;
-    const std::size_t floats = 3u * inputs * stage.block + 2u * fft +
+    const std::size_t floats = 3u * static_cast<std::size_t>(inputs) * stage.block + 2u * fft +
                                (inputs + assetChannels) * partitions * fft +
                                2u * engineChannels * fft;
     bytes += kConvolverStageUpperBound + floats * sizeof(float) +

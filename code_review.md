@@ -30,6 +30,13 @@ Use this checklist when reviewing changes in this repository. Lead with concrete
 
 ## Commit Readiness
 
+- Before staging, review changed code against these recurring CodeQL alert patterns:
+  - Keep shell-interpreted `cmd.exe`, `sh`, and `{ shell: true }` invocations isolated from generic process helpers. Use a literal shell command, and pass dynamic paths or environment-derived values only as separate arguments to a known non-shell executable. Do not let a helper used for ordinary tools also accept shell commands.
+  - In C++, promote an operand before multiplication when the result is stored in `std::size_t`, `std::uint64_t`, or `double`; casting the product afterward is too late. Check both production estimators and mirrored test or reference calculations.
+  - When generating JavaScript or HTML, apply context-appropriate serialization and escaping to every interpolated value. For JavaScript string literals, serialize first and escape `<`, `>`, U+2028, and U+2029; do not rely on ad hoc replacement chains.
+  - Use `crypto.randomUUID()` or `crypto.getRandomValues()` for operation, session, claim, journal, and other uniqueness- or security-relevant IDs. Do not fall back to `Math.random()`.
+  - For URL, DOM, or download changes, parse and allowlist URL schemes, require HTTPS for remote code or data, and write untrusted text with `textContent`; do not validate with substring checks or incomplete one-pass sanitizers.
+  - Keep GitHub Actions `permissions` explicit and least-privilege whenever workflows or jobs are added or changed.
 - For every added or modified filesystem/path test, check whether the tested production path is canonicalized with `realpath`. Canonicalize a temporary root immediately after `mkdtemp`, derive expected paths from the same canonical root, and do not compare a raw `os.tmpdir()` path with a canonicalized production path. Prefer `await fs.realpath(await fs.mkdtemp(...))` when the temporary root enters production path checks. Avoid mocks that match filesystem calls using only `path.resolve()` or case-folded strings when production uses `realpath`; prefer a real file, including a sparse file for size-limit tests, or canonicalize both operands identically. This prevents macOS `/var` versus `/private/var` failures and Windows short-path mismatches that may not reproduce on the development machine.
 - If a C++ source or header under `dsp/` changed, format the changed files before rebuilding DSP artifacts. Then run the same non-vendor check as the DSP Core workflow with a clang-format version that accepts `.clang-format`:
 

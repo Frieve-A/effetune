@@ -40,11 +40,20 @@ function nativeEnvironment() {
   ], { capture: true }).trim();
   if (!installation) fail('Visual C++ tools were not found');
   const tools = path.join(installation, 'Common7', 'Tools');
-  const command = 'call VsDevCmd.bat -arch=x64 -host_arch=x64 >nul && set';
-  const environmentText = run('cmd.exe', ['/d', '/s', '/c', command], {
+  const result = spawnSync('cmd.exe', [
+    '/d', '/s', '/c', 'call VsDevCmd.bat -arch=x64 -host_arch=x64 >nul && set'
+  ], {
     cwd: tools,
-    capture: true
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true
   });
+  if (result.error) fail(`Unable to start cmd.exe: ${result.error.message}`);
+  if (result.status !== 0) {
+    const output = `\n${result.stdout ?? ''}${result.stderr ?? ''}`.trimEnd();
+    fail(`cmd.exe exited with ${result.status}${output}`);
+  }
+  const environmentText = result.stdout ?? '';
   const environment = { ...process.env };
   for (const line of environmentText.split(/\r?\n/)) {
     const separator = line.indexOf('=');

@@ -57,9 +57,9 @@ void addConvolverStageEstimate(const dsp::ConvolverConfig &config, std::uint32_t
   const std::uint64_t segmentFrames = clippedEnd - offset;
   const std::uint64_t fft = 2u * static_cast<std::uint64_t>(block);
   const std::uint64_t partitions = (segmentFrames + block - 1u) / block;
-  const std::uint64_t floatCount = 3u * config.inputs * block + 2u * fft +
-                                   (config.inputs + config.irChannels) * partitions * fft +
-                                   2u * config.outputs * fft;
+  const std::uint64_t floatCount =
+      3u * static_cast<std::uint64_t>(config.inputs) * block + 2u * fft +
+      (config.inputs + config.irChannels) * partitions * fft + 2u * config.outputs * fft;
   bytes += kConvolverStageBytesUpperBound + floatCount * sizeof(float) +
            nextPowerOfTwo(config.pathCount) * kPathRecordBytes + kPffftSetupFixedBytesUpperBound +
            fft * sizeof(float);
