@@ -306,24 +306,14 @@ test('IR IPC reports an oversized library index without reading or exposing its 
   await fs.promises.mkdir(root, { recursive: true });
   const indexPath = path.join(root, 'index.json');
   await fs.promises.writeFile(indexPath, new Uint8Array([1]));
-  const matchesIndex = target => {
-    const resolved = path.resolve(target);
-    return process.platform === 'win32'
-      ? resolved.toLowerCase() === indexPath.toLowerCase()
-      : resolved === indexPath;
-  };
-  const stat = fs.promises.stat;
+  await fs.promises.truncate(indexPath, IR_LIBRARY_SIZE_LIMITS.index + 1);
   const readFile = fs.promises.readFile;
   let payloadReads = 0;
-  fs.promises.stat = async target => matchesIndex(target)
-    ? { size: IR_LIBRARY_SIZE_LIMITS.index + 1 }
-    : stat(target);
   fs.promises.readFile = async (...args) => {
-    if (matchesIndex(args[0])) payloadReads += 1;
+    payloadReads += 1;
     return readFile(...args);
   };
   t.after(() => {
-    fs.promises.stat = stat;
     fs.promises.readFile = readFile;
   });
 
