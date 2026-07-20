@@ -96,7 +96,7 @@ public:
   }
 
   [[nodiscard]] std::uint32_t assetState(std::uint32_t slot) const noexcept override {
-    return slot == 0u ? asset_state_ : ET_ASSET_STATE_NONE;
+    return slot == 0u ? asset_state_ : static_cast<std::uint32_t>(ET_ASSET_STATE_NONE);
   }
 
 private:

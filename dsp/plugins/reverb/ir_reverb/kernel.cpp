@@ -341,7 +341,8 @@ public:
   }
 
   [[nodiscard]] std::uint32_t assetState(std::uint32_t slot) const noexcept override {
-    return slot == kAssetSlot ? asset_state_ | (asset_reason_ << 8u) : ET_ASSET_STATE_NONE;
+    return slot == kAssetSlot ? asset_state_ | (asset_reason_ << 8u)
+                              : static_cast<std::uint32_t>(ET_ASSET_STATE_NONE);
   }
 
 private:
