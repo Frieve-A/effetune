@@ -55,7 +55,7 @@ Shows the shape of the sound wave in real time, so you can see beats, sharp hits
 - **Vertical Offset** - Shifts waveform up/down (-1 to 1)
 
 ### Note on Waveform Display
-The displayed waveform uses linear interpolation between sample points for smooth visualization. Use it as a visual guide rather than an exact measurement tool.
+The waveform connects captured points in time order. For longer display times, each interval retains its first and last samples plus the minimum and maximum samples at their original positions, preserving continuity and short peaks at display resolution. Use it as a visual guide rather than an exact measurement tool.
 
 ## Spectrogram
 

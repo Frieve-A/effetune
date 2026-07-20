@@ -760,6 +760,19 @@ test('processDroppedAudioFiles filters input, reports errors, cleans classes, an
     assert.ok(calls.some(call => call[0] === 'setError' && call[1] === 'error.failedToProcessAudioFiles'));
   });
 
+  await withFileProcessorGlobals({}, async ({ calls }) => {
+    const safeError = new Error('internal DSP asset status -2');
+    safeError.userMessageKey = 'irReverb.error.prepare';
+    const failing = createProcessorHarness({
+      processed: new Map([['required-ir.wav', safeError]])
+    });
+    await failing.processor.processDroppedAudioFiles([createFile('required-ir.wav')]);
+    const report = calls.find(call =>
+      call[0] === 'setError' && call[1] === 'error.failedToProcessAudioFiles');
+    assert.equal(report[3].errorMessage, 'irReverb.error.prepare');
+    assert.equal(JSON.stringify(report).includes('internal DSP asset status'), false);
+  });
+
   await withFileProcessorGlobals({ uiManager: false }, async () => {
     const { processor } = createProcessorHarness({ processed: new Map([['cancel.wav', null]]) });
     await processor.processDroppedAudioFiles([createFile('cancel.wav')]);

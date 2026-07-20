@@ -5,6 +5,8 @@ import process from 'node:process';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { loadParamSpecs } from './gen-dsp-params.mjs';
+
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dspRoot = path.join(repoRoot, 'dsp');
 const buildRoot = path.join(dspRoot, 'build');
@@ -279,7 +281,9 @@ async function smokeWasm(filePath, expectedSimd) {
   const required = [
     'memory', 'malloc', 'free', 'et_abi_version', 'et_build_flags', 'et_kernel_count',
     'et_kernel_name', 'et_kernel_params_hash', 'et_kernel_param_bytes_capacity',
-    'et_engine_create', 'et_engine_prepare', 'et_instance_set_param_bytes',
+    'et_kernel_asset_capacity', 'et_engine_create', 'et_engine_prepare',
+    'et_instance_set_param_bytes', 'et_instance_asset_begin', 'et_instance_asset_commit',
+    'et_instance_asset_abort', 'et_instance_asset_state',
     'et_instance_process', 'et_pipeline_configure', 'et_pipeline_process'
   ];
   for (const name of required) {
@@ -297,6 +301,7 @@ async function smokeWasm(filePath, expectedSimd) {
   }
   const count = api.et_kernel_count();
   const kernels = [];
+  const paramSpecs = new Map(loadParamSpecs().map(spec => [spec.type, spec]));
   const namePointer = api.malloc(256);
   if (namePointer === 0) {
     fail('WASM malloc failed during capability smoke test');
@@ -307,10 +312,19 @@ async function smokeWasm(filePath, expectedSimd) {
       if (length < 0 || length >= 256) {
         fail(`invalid kernel name length at index ${index}: ${length}`);
       }
+      const name = readCString(api.memory, namePointer, length + 1);
+      const assets = (paramSpecs.get(name)?.assets ?? []).map(asset => {
+        const byteCapacity = api.et_kernel_asset_capacity(index, asset.slot) >>> 0;
+        if (byteCapacity === 0) {
+          fail(`${name} declares asset slot ${asset.slot} but exports zero capacity`);
+        }
+        return { ...asset, byteCapacity };
+      });
       kernels.push({
-        name: readCString(api.memory, namePointer, length + 1),
+        name,
         hash: api.et_kernel_params_hash(index) >>> 0,
-        byteCapacity: api.et_kernel_param_bytes_capacity(index) >>> 0
+        byteCapacity: api.et_kernel_param_bytes_capacity(index) >>> 0,
+        assets
       });
     }
   } finally {
@@ -350,8 +364,8 @@ export function sourceDigest() {
     hash.update(normalized(fs.readFileSync(filePath, 'utf8')));
     hash.update('\0');
   }
-  hash.update('baseline:-O3,-flto,standalone,growth,8MiB,64MiB\0');
-  hash.update('simd:-O3,-flto,-msimd128,standalone,growth,8MiB,64MiB\0');
+  hash.update('baseline:-O3,-flto,standalone,growth,8MiB,256MiB\0');
+  hash.update('simd:-O3,-flto,-msimd128,standalone,growth,8MiB,256MiB\0');
   return `sha256:${hash.digest('hex')}`;
 }
 

@@ -134,6 +134,12 @@ Les pilotes de système d'exploitation actuels prennent en charge jusqu'à 8 can
 
 ---
 
+### Partager et reproduire un résultat IR Reverb
+
+Les URL et presets ne contiennent que l'identifiant de l'IR, pas le fichier audio. Si l'IR est signalée absente ou si aucun signal wet ne sort, importez le même original pour le relier automatiquement, ou choisissez un substitut dans **Impulse Response Library**, puis vérifiez **Dry**.
+
+Pour reproduire le résultat ailleurs, fournissez l'IR inchangée avec l'URL ou le preset et les informations de source/licence ; alignez aussi sample rate, sélection de canaux et réglages IR Reverb. Pour un send/return multicanal, copiez les canaux vers un bus libre avec **Matrix**, réglez **Dry** sur -96 dB et **Wet** sur 0 dB, puis renvoyez le bus wet uniquement vers les sorties voulues.
+
 ## 5. Réponse en fréquence et correction acoustique
 
 ### 5.1. Importation des paramètres AutoEQ dans 15Band PEQ

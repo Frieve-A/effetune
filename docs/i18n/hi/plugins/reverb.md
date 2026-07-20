@@ -1,6 +1,6 @@
 ---
 title: "रिवर्ब प्लगइन - EffeTune"
-description: "RS Reverb, Dattorro Plate Reverb और FDN Reverb सहित reverb effect प्लगइन।"
+description: "Dattorro Plate Reverb, FDN Reverb, IR Reverb और RS Reverb सहित reverb effect प्लगइन।"
 lang: hi
 ---
 
@@ -12,6 +12,7 @@ lang: hi
 
 - [Dattorro Plate Reverb](#dattorro-plate-reverb) - Dattorro एल्गोरिदम पर आधारित क्लासिक प्लेट रिवर्ब
 - [FDN Reverb](#fdn-reverb) - हैडामार्ड डिफ्यूजन के साथ फीडबैक डिले नेटवर्क आर्किटेक्चर का उपयोग करने वाला परिष्कृत रिवर्ब
+- [IR Reverb](#ir-reverb) - इम्पोर्ट की गई impulse response पर आधारित convolution reverb
 - [RS Reverb](#rs-reverb) - प्राकृतिक कमरा परिवेश और स्थान बनाता है
 
 ## Dattorro Plate Reverb
@@ -263,6 +264,41 @@ Dattorro Plate Reverb आपके श्रवण अनुभव में cla
    - प्रीसेट से शुरू करें और अपनी आवश्यकताओं के अनुसार अनुकूलित करें
 
 FDN Reverb किसी भी रिकॉर्डिंग में यथार्थवादी ध्वनिक स्थान जोड़कर आपके श्रवण अनुभव को बदल देता है। उन संगीत प्रेमियों के लिए बिल्कुल सही जो अपने पसंदीदा ट्रैक को सुंदर, प्राकृतिक ध्वनि वाले रिवर्ब से बेहतर बनाना चाहते हैं!
+
+## IR Reverb
+
+IR Reverb इम्पोर्ट की गई impulse response (IR) के साथ सिग्नल का convolution करके किसी कमरे, हॉल, प्लेट या अन्य acoustic system की मापी गई decay और spatial character को दोहराता है। किसी खास capture की स्थिर, दोहराई जा सकने वाली ध्वनि चाहिए तो इसका उपयोग करें।
+
+### ध्वनि सुधार मार्गदर्शिका
+
+- हल्का room ambience पाने के लिए छोटी IR लें, **Dry** को 0 dB, **Wet** को -18 से -12 dB पर और **Pre Delay** को छोटा रखें।
+- बड़े hall के लिए stereo या True Stereo IR लें और लंबी tail को **Decay** तथा **Trim** से कम करें।
+- send/return में **Matrix** से source को दूसरे bus पर भेजें, **Dry** -96 dB और **Wet** 0 dB रखें, फिर send level से reverb की मात्रा तय करें।
+- ठीक वही परिणाम दोहराने के लिए मूल IR file और उसकी source/license जानकारी रखें; समान bytes से समान ID बनता है।
+
+### पैरामीटर
+
+- **Channel Mode**: Auto, Mono, Independent, True Stereo (LL/LR/RL/RR paths) या बिना crossfeed वाला Diagonal Matrix चुनता है।
+- **Latency**: Zero या 128/256/512/1024 samples। बड़ी value processing pressure घटाती है लेकिन wet path देर से आता है; Zero के लिए Full चाहिए।
+- **Convolution Rate**: Auto, Full, Half या Quarter। कम rate CPU load और wet bandwidth दोनों घटाता है; Quarter के लिए कम से कम 176.4 kHz चाहिए।
+- **Dry**: मूल signal का level तय करता है। -96 dB पर यह पूरी तरह mute हो जाता है, जो पूरी तरह wet effect या return bus के लिए उपयुक्त है।
+- **Wet**: convolved signal का level -96 से +12 dB।
+- **Pre Delay**: केवल wet signal को 0 से 500 ms देर करता है।
+- **Direct Cut** पहचाने गए direct impulse को हटाता है; **Cut Offset** cut point को -20 से +50 ms खिसकाता है। Normalization के लिए बिना काटे IR को ही reference माना जाता है, इसलिए Direct Cut चालू करने पर बची हुई reverb tail तेज़ नहीं होती।
+- **Decay** decay को 10% से 400% तक बदलता है; 100% मूल capture रखता है।
+- **Trim** cut के बाद IR का 1% से 100% रखता है; छोटी tail CPU और memory बचाती है।
+
+### Decay graph पढ़ना
+
+समय बाएँ से दाएँ और level 0 से -90 dB है। Solid EDC energy decay दिखाती है; तेज ढलान का अर्थ छोटी tail है। Markers onset, cut, pre-delay और trim दिखाते हैं। RT60 60 dB decay का अनुमान है। **Decay** बदलने पर नई curve solid और मूल curve dotted दिखती है।
+
+### Routing, library और sharing
+
+Mono एक IR लगाता है, Independent channels अलग रखता है, True Stereo LL/LR/RL/RR paths चलाता है और Diagonal Matrix केवल matching input/output channels जोड़ता है। True Stereo pair के लिए मिलते-जुलते `L`/`R` या `Left`/`Right` नाम वाले files साथ चुनें।
+
+मूल files **Impulse Response Library** में रखी जाती हैं। Web app site-private OPFS और desktop app managed storage उपयोग करता है। Library मूल filenames दिखाती है और filename से खोजने, entry load करने या delete करने देती है। Sample rate बदलने पर मूल file से data फिर तैयार होता है। Site data मिटने या storage pressure से browser data हट सकता है, इसलिए अपनी अलग copy रखें।
+
+Shared URL और preset में केवल ID होता है, IR audio या filename नहीं। पाने वाले को वही file इम्पोर्ट करनी या substitute चुनना होगा। IR न मिले तो wet signal नहीं बनता; WASM न मिले तो केवल configured dry signal pass होता है। [OpenAIR](https://www.openair.hosted.york.ac.uk/), [EchoThief](https://www.echothief.com/downloads/) और [Freesound](https://freesound.org/) पर सामग्री मिल सकती है, लेकिन हर file की license (जैसे CC0, CC BY या CC BY-NC), author, attribution और commercial-use शर्त EffeTune से अलग जाँचकर सुरक्षित रखें; EffeTune license जानकारी को store या verify नहीं करता।
 
 ## RS Reverb
 

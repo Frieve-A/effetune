@@ -1,351 +1,432 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:b24368a58f0061046e298c07f866cc6f8429a2394aa9791958aeb6be24b1f692",
+  "sourceDigest": "sha256:b30fb498e5e4ff2e186a42f690f0bea5c9d587dd7738002d5ab75e7ddbfc6ec3",
   "emsdkVersion": "6.0.2",
   "kernels": [
     {
       "name": "LevelMeterPlugin",
       "hash": 2166136261,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "OscilloscopePlugin",
       "hash": 2229411282,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "SpectrogramPlugin",
       "hash": 3382561824,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "SpectrumAnalyzerPlugin",
       "hash": 3382561824,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "StereoMeterPlugin",
       "hash": 2967351826,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "ChannelDividerPlugin",
       "hash": 3926343008,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "DCOffsetPlugin",
       "hash": 1104945464,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "MatrixPlugin",
       "hash": 117968709,
-      "byteCapacity": 3076
+      "byteCapacity": 3076,
+      "assets": []
     },
     {
       "name": "MultiChannelPanelPlugin",
       "hash": 4191368224,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "MutePlugin",
       "hash": 2166136261,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "PolarityInversionPlugin",
       "hash": 2166136261,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "StereoBalancePlugin",
       "hash": 289332571,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "VolumePlugin",
       "hash": 1719233191,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "DelayPlugin",
       "hash": 1607012936,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "TimeAlignmentPlugin",
       "hash": 669252438,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "AutoLevelerPlugin",
       "hash": 3769758541,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "BrickwallLimiterPlugin",
       "hash": 3039928906,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "CompressorPlugin",
       "hash": 763850658,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "ExpanderPlugin",
       "hash": 763850658,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "GatePlugin",
       "hash": 763850658,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "MultibandCompressorPlugin",
       "hash": 3844787426,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "MultibandExpanderPlugin",
       "hash": 3844787426,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "MultibandTransientPlugin",
       "hash": 1428242716,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "PowerAmpSagPlugin",
       "hash": 745762387,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "TransientShaperPlugin",
       "hash": 3795078379,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "BandPassFilterPlugin",
       "hash": 2360494665,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "CombFilterPlugin",
       "hash": 2689435779,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "EarphoneCableSimPlugin",
       "hash": 1106244643,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "FifteenBandGEQPlugin",
       "hash": 1817151884,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "FifteenBandPEQPlugin",
       "hash": 1637338438,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "FiveBandDynamicEQ",
       "hash": 2955184071,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "FiveBandPEQPlugin",
       "hash": 2285236921,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "HiPassFilterPlugin",
       "hash": 299011831,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "LoPassFilterPlugin",
       "hash": 299011831,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "LoudnessEqualizerPlugin",
       "hash": 2288594783,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "NarrowRangePlugin",
       "hash": 925285799,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "TiltEQPlugin",
       "hash": 3110132925,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "ToneControlPlugin",
       "hash": 4085396528,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "BitCrusherPlugin",
       "hash": 3414646542,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "DigitalErrorEmulatorPlugin",
       "hash": 929157540,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "DSD64IMDSimulatorPlugin",
       "hash": 1223862878,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "HumGeneratorPlugin",
       "hash": 2503317040,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "NoiseBlenderPlugin",
       "hash": 394198189,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "SimpleJitterPlugin",
       "hash": 3196737583,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "VinylArtifactsPlugin",
       "hash": 1145282217,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "VinylSimulatorPlugin",
       "hash": 336931452,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "DopplerDistortionPlugin",
       "hash": 10372816,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "PitchShifterPlugin",
       "hash": 1998192054,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "TremoloPlugin",
       "hash": 1836520376,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "WowFlutterPlugin",
       "hash": 1836520376,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "OscillatorPlugin",
       "hash": 3281483379,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "HornResonatorPlugin",
       "hash": 3233763204,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "HornResonatorPlusPlugin",
       "hash": 3233763204,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "ModalResonatorPlugin",
       "hash": 1547233380,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "DattorroPlateReverbPlugin",
       "hash": 582778991,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "FDNReverbPlugin",
       "hash": 1755319973,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
+      "name": "IRReverbPlugin",
+      "hash": 2199744560,
+      "byteCapacity": 0,
+      "assets": [
+        {
+          "slot": 0,
+          "format": "ET_ASSET_F32_MULTICH",
+          "capacity": "32 MiB convolution cap",
+          "byteCapacity": 33554432
+        }
+      ]
     },
     {
       "name": "RSReverbPlugin",
       "hash": 3284023116,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "DynamicSaturationPlugin",
       "hash": 3365051379,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "ExciterPlugin",
       "hash": 4235094650,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "HardClippingPlugin",
       "hash": 837158957,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "HarmonicDistortionPlugin",
       "hash": 83146208,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "MultibandSaturationPlugin",
       "hash": 698810406,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "SaturationPlugin",
       "hash": 1115003603,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "SubSynthPlugin",
       "hash": 116561234,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "CrossfeedFilterPlugin",
       "hash": 715048833,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "MSMatrixPlugin",
       "hash": 607668476,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "MultibandBalancePlugin",
       "hash": 3715792583,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     },
     {
       "name": "StereoBlendPlugin",
       "hash": 648556109,
-      "byteCapacity": 0
+      "byteCapacity": 0,
+      "assets": []
     }
   ],
   "sizes": {
-    "baseline": 352285,
-    "simd": 394073
+    "baseline": 383059,
+    "simd": 431204
   }
 }

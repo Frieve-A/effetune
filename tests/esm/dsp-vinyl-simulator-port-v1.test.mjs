@@ -170,6 +170,52 @@ test('Vinyl Simulator integration registers WASM-only rollout and telemetry v1',
   assert.match(css, /\.vinyl-simulator-hud\s*\{[\s\S]*min-height:\s*140px/);
 });
 
+test('Vinyl Simulator refreshes the Scan Radius track after Spherical sync', async () => {
+  const source = await fs.readFile(
+    path.join(repoRoot, 'plugins', 'lofi', 'vinyl_simulator.js'), 'utf8');
+  let refreshedSlider = null;
+  let refreshedValue = null;
+  const context = {
+    PluginBase: class {},
+    window: {
+      uiManager: {
+        refreshRangeFillStyling(slider) {
+          refreshedSlider = slider;
+          refreshedValue = slider.value;
+        }
+      }
+    }
+  };
+  vm.runInNewContext(source, context);
+
+  const slider = { disabled: false, value: 2 };
+  const number = { disabled: false, value: 2 };
+  let disabledClass = null;
+  const plugin = Object.create(context.window.VinylSimulatorPlugin.prototype);
+  plugin.sh = 'Spherical';
+  plugin.rc = 17.5;
+  plugin.scanRadiusRow = {
+    querySelector(selector) {
+      return selector === 'input[type="range"]' ? slider : number;
+    },
+    classList: {
+      toggle(name, enabled) {
+        if (name === 'parameter-disabled') disabledClass = enabled;
+      }
+    }
+  };
+
+  plugin._syncScanRadiusControl();
+
+  assert.equal(slider.value, 17.5);
+  assert.equal(number.value, 17.5);
+  assert.equal(slider.disabled, true);
+  assert.equal(number.disabled, true);
+  assert.equal(disabledClass, true);
+  assert.equal(refreshedSlider, slider);
+  assert.equal(refreshedValue, 17.5);
+});
+
 test('Vinyl Simulator keeps reference mode inside the seeded parity harness', async () => {
   const source = await fs.readFile(
     path.join(repoRoot, 'plugins', 'lofi', 'vinyl_simulator.js'), 'utf8');

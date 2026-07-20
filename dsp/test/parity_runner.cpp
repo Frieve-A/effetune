@@ -1,4 +1,6 @@
 #include "effetune/abi.h"
+#include "effetune/dsp/halfband.h"
+#include "engine.h"
 #include "registry.h"
 
 #include <algorithm>
@@ -20,6 +22,8 @@ constexpr std::uint32_t kControlHeaderBytes = 36;
 constexpr std::uint32_t kControlVersion = 1;
 constexpr std::uint32_t kStructuredControlHeaderBytes = 40;
 constexpr std::uint32_t kStructuredControlVersion = 2;
+constexpr std::uint32_t kAssetControlHeaderBytes = 84;
+constexpr std::uint32_t kAssetControlVersion = 3;
 constexpr std::uint32_t kTelemetryBytes = 64u * 1024u;
 
 struct Options {
@@ -30,12 +34,20 @@ struct Options {
   std::uint32_t seedLow = 0xeffe7a5eU;
   std::uint32_t seedHigh = 0U;
   bool allocations = false;
+  bool referenceDirect = false;
 };
 
 struct Event {
   std::uint32_t frame = 0;
   std::vector<float> params;
   std::vector<std::uint8_t> paramBytes;
+};
+
+struct Asset {
+  std::uint32_t slot = 0u;
+  std::uint32_t format = 0u;
+  effetune::AssetBeginInfo begin{};
+  std::vector<std::uint8_t> bytes;
 };
 
 struct Control {
@@ -47,6 +59,8 @@ struct Control {
   std::vector<float> initialParams;
   std::vector<std::uint8_t> initialParamBytes;
   std::vector<Event> events;
+  Asset asset;
+  bool hasAsset = false;
 };
 
 class EngineOwner {
@@ -80,11 +94,15 @@ bool parseOptions(int argc, char **argv, Options &options) {
     if (argument == "--help") {
       std::puts("Usage: effetune-dsp-parity-runner --type TYPE --control FILE "
                 "--input FILE --output FILE [--seed-low U32] [--seed-high U32] "
-                "[--allocations]");
+                "[--allocations] [--reference-direct]");
       return false;
     }
     if (argument == "--allocations") {
       options.allocations = true;
+      continue;
+    }
+    if (argument == "--reference-direct") {
+      options.referenceDirect = true;
       continue;
     }
     if (argument == "--seed-low" || argument == "--seed-high") {
@@ -173,9 +191,11 @@ bool parseControl(const std::vector<std::uint8_t> &bytes, Control &control) {
     return false;
   }
   const std::uint32_t version = readU32(bytes.data() + 4u);
-  const bool structured = version == kStructuredControlVersion;
-  const std::uint32_t header_bytes =
-      structured ? kStructuredControlHeaderBytes : kControlHeaderBytes;
+  const bool asset_control = version == kAssetControlVersion;
+  const bool structured = version == kStructuredControlVersion || asset_control;
+  const std::uint32_t header_bytes = asset_control ? kAssetControlHeaderBytes
+                                     : structured  ? kStructuredControlHeaderBytes
+                                                   : kControlHeaderBytes;
   if ((version != kControlVersion && !structured) || bytes.size() < header_bytes) {
     std::fputs("Invalid ETPC header or version\n", stderr);
     return false;
@@ -188,9 +208,11 @@ bool parseControl(const std::vector<std::uint8_t> &bytes, Control &control) {
   const std::uint32_t param_count = readU32(bytes.data() + 28u);
   const std::uint32_t initial_byte_count = structured ? readU32(bytes.data() + 32u) : 0u;
   const std::uint32_t event_count = readU32(bytes.data() + (structured ? 36u : 32u));
+  const std::uint32_t asset_byte_count = asset_control ? readU32(bytes.data() + 76u) : 0u;
   if (!std::isfinite(control.sampleRate) || control.sampleRate <= 0.0F || control.frames == 0u ||
       control.channels == 0u || control.channels > 8u || control.blockSize == 0u ||
-      param_count > 65536u || initial_byte_count > 4096u || event_count > control.frames) {
+      param_count > 65536u || initial_byte_count > 4096u || event_count > control.frames ||
+      (asset_control && (asset_byte_count == 0u || readU32(bytes.data() + 80u) != 0u))) {
     std::fputs("Invalid ETPC dimensions or length\n", stderr);
     return false;
   }
@@ -220,6 +242,24 @@ bool parseControl(const std::vector<std::uint8_t> &bytes, Control &control) {
                                    bytes.begin() +
                                        static_cast<std::ptrdiff_t>(offset + initial_byte_count));
   offset += initial_byte_count;
+  if (asset_control) {
+    if (!available(asset_byte_count)) {
+      std::fputs("Invalid ETPC asset length\n", stderr);
+      return false;
+    }
+    control.asset.slot = readU32(bytes.data() + 40u);
+    control.asset.format = readU32(bytes.data() + 44u);
+    control.asset.begin = {readU32(bytes.data() + 48u), readU32(bytes.data() + 52u),
+                           readU32(bytes.data() + 56u), readU32(bytes.data() + 60u),
+                           readU32(bytes.data() + 64u), readU32(bytes.data() + 68u),
+                           readU32(bytes.data() + 72u), control.channels,
+                           32u * 1024u * 1024u,         asset_byte_count};
+    control.asset.bytes.assign(bytes.begin() + static_cast<std::ptrdiff_t>(offset),
+                               bytes.begin() +
+                                   static_cast<std::ptrdiff_t>(offset + asset_byte_count));
+    control.hasAsset = true;
+    offset += asset_byte_count;
+  }
   control.events.reserve(event_count);
   std::uint32_t previous_frame = 0u;
   for (std::uint32_t event_index = 0; event_index < event_count; ++event_index) {
@@ -328,6 +368,322 @@ bool stageParams(et_engine engine, et_instance instance, const Control &control,
                                                  control.paramsHash, 0u));
 }
 
+bool stageParams(effetune::Engine &engine, et_instance instance, const Control &control,
+                 const std::vector<float> &params, const std::vector<std::uint8_t> &param_bytes) {
+  const float *data = params.empty() ? nullptr : params.data();
+  if (!checkStatus("setInstanceParams",
+                   engine.setInstanceParams(instance, data,
+                                            static_cast<std::uint32_t>(params.size()),
+                                            control.paramsHash, 0u))) {
+    return false;
+  }
+  if (param_bytes.empty())
+    return true;
+  return checkStatus("setInstanceParamBytes",
+                     engine.setInstanceParamBytes(instance, param_bytes.data(),
+                                                  static_cast<std::uint32_t>(param_bytes.size()),
+                                                  control.paramsHash, 0u));
+}
+
+std::vector<float> decimateReference(const std::vector<float> &input, std::uint32_t divider) {
+  if (divider == 1u)
+    return input;
+  effetune::dsp::Halfband2x first;
+  effetune::dsp::Halfband2x second;
+  std::vector<float> output;
+  output.reserve(input.size() / divider + 1u);
+  for (float sample : input) {
+    float intermediate = 0.0F;
+    if (!first.decimate(sample, intermediate))
+      continue;
+    if (divider == 2u) {
+      output.push_back(intermediate);
+      continue;
+    }
+    float low = 0.0F;
+    if (second.decimate(intermediate, low))
+      output.push_back(low);
+  }
+  return output;
+}
+
+std::vector<float> interpolateReference(const std::vector<float> &input, std::uint32_t divider) {
+  if (divider == 1u)
+    return input;
+  effetune::dsp::Halfband2x first;
+  effetune::dsp::Halfband2x second;
+  std::vector<float> output;
+  output.reserve(input.size() * divider);
+  for (float sample : input) {
+    if (divider == 2u) {
+      float first_output = 0.0F;
+      float second_output = 0.0F;
+      first.interpolate(sample, first_output, second_output);
+      output.push_back(first_output);
+      output.push_back(second_output);
+      continue;
+    }
+    float middle_a = 0.0F;
+    float middle_b = 0.0F;
+    second.interpolate(sample, middle_a, middle_b);
+    float first_output = 0.0F;
+    float second_output = 0.0F;
+    first.interpolate(middle_a, first_output, second_output);
+    output.push_back(first_output);
+    output.push_back(second_output);
+    first.interpolate(middle_b, first_output, second_output);
+    output.push_back(first_output);
+    output.push_back(second_output);
+  }
+  return output;
+}
+
+bool runDirectReference(const Control &control, const std::vector<float> &input,
+                        std::vector<float> &output) {
+  struct RoutePath {
+    std::uint32_t input;
+    std::uint32_t output;
+    std::uint32_t irChannel;
+  };
+  constexpr std::uint32_t kEtaHeaderBytes = 32u;
+  constexpr std::uint32_t kPathRecordBytes = 12u;
+  constexpr std::uint32_t kEtaMagic = 0x31415445u;
+  constexpr std::uint32_t kTopologyMono = 1u;
+  constexpr std::uint32_t kTopologyIndependent = 2u;
+  constexpr std::uint32_t kTopologyTrueStereo = 3u;
+  constexpr std::uint32_t kTopologyMatrix = 4u;
+  const Asset &asset = control.asset;
+  const std::uint32_t divider = asset.begin.rateDivider;
+  const std::uint32_t ir_channels = asset.begin.channels;
+  const std::uint32_t ir_frames = asset.begin.frames;
+  const std::uint32_t path_count =
+      asset.begin.topology == kTopologyMatrix ? asset.begin.pathCount : 0u;
+  const std::uint64_t path_table_bytes = static_cast<std::uint64_t>(path_count) * kPathRecordBytes;
+  const std::uint64_t expected_bytes =
+      kEtaHeaderBytes + path_table_bytes +
+      static_cast<std::uint64_t>(ir_channels) * ir_frames * sizeof(float);
+  const bool fixed_topology = asset.begin.topology == kTopologyMono ||
+                              asset.begin.topology == kTopologyIndependent ||
+                              asset.begin.topology == kTopologyTrueStereo;
+  const bool matrix_topology = asset.begin.topology == kTopologyMatrix && path_count >= 1u &&
+                               path_count <= 8u && asset.begin.inputCount >= 1u &&
+                               asset.begin.inputCount <= path_count;
+  if (!control.hasAsset || !control.events.empty() || control.initialParams.size() != 7u ||
+      asset.format != ET_ASSET_F32_MULTICH || expected_bytes != asset.bytes.size() ||
+      readU32(asset.bytes.data()) != kEtaMagic || readU32(asset.bytes.data() + 4u) != ir_channels ||
+      readU32(asset.bytes.data() + 8u) != ir_frames ||
+      readU32(asset.bytes.data() + 16u) != asset.begin.topology ||
+      (!fixed_topology && !matrix_topology) ||
+      (fixed_topology && (asset.begin.pathCount != 0u || asset.begin.inputCount != 0u)) ||
+      (asset.begin.topology == kTopologyTrueStereo && ir_channels != 4u) ||
+      (divider != 1u && divider != 2u && divider != 4u)) {
+    std::fputs("Direct reference requires one valid ETA1 asset and no events\n", stderr);
+    return false;
+  }
+  const std::uint32_t expected_rate =
+      static_cast<std::uint32_t>(std::lround(control.sampleRate / divider));
+  if (readU32(asset.bytes.data() + 12u) != expected_rate ||
+      readU32(asset.bytes.data() + 20u) != path_count || readU32(asset.bytes.data() + 24u) != 0u ||
+      readU32(asset.bytes.data() + 28u) != 0u) {
+    std::fputs("Direct reference ETA1 metadata does not match the control packet\n", stderr);
+    return false;
+  }
+
+  std::vector<RoutePath> paths;
+  if (asset.begin.topology == kTopologyMono) {
+    for (std::uint32_t channel = 0u; channel < control.channels; ++channel)
+      paths.push_back({channel, channel, 0u});
+  } else if (asset.begin.topology == kTopologyIndependent) {
+    for (std::uint32_t channel = 0u; channel < control.channels; ++channel)
+      paths.push_back({channel, channel, channel});
+  } else if (asset.begin.topology == kTopologyTrueStereo) {
+    paths = {{0u, 0u, 0u}, {0u, 1u, 1u}, {1u, 0u, 2u}, {1u, 1u, 3u}};
+  } else {
+    std::vector<bool> inputs(asset.begin.inputCount, false);
+    std::uint32_t distinct_inputs = 0u;
+    for (std::uint32_t index = 0u; index < path_count; ++index) {
+      const std::uint8_t *record =
+          asset.bytes.data() + kEtaHeaderBytes + static_cast<std::size_t>(index) * kPathRecordBytes;
+      const RoutePath path{readU32(record), readU32(record + 4u), readU32(record + 8u)};
+      if (path.input >= asset.begin.inputCount || path.output >= control.channels ||
+          path.irChannel >= ir_channels) {
+        std::fputs("Direct reference matrix path is out of range\n", stderr);
+        return false;
+      }
+      paths.push_back(path);
+      if (!inputs[path.input]) {
+        inputs[path.input] = true;
+        ++distinct_inputs;
+      }
+    }
+    if (distinct_inputs != asset.begin.inputCount) {
+      std::fputs("Direct reference matrix inputs are not dense\n", stderr);
+      return false;
+    }
+  }
+
+  std::vector<float> ir(static_cast<std::size_t>(ir_channels) * ir_frames);
+  for (std::size_t index = 0u; index < ir.size(); ++index)
+    ir[index] =
+        readF32(asset.bytes.data() + kEtaHeaderBytes + path_table_bytes + index * sizeof(float));
+  std::vector<float> wet(static_cast<std::size_t>(control.channels) * control.frames, 0.0F);
+  std::vector<std::vector<float>> low_inputs;
+  for (std::uint32_t channel = 0u; channel < control.channels; ++channel) {
+    std::vector<float> source(input.begin() + static_cast<std::size_t>(channel) * control.frames,
+                              input.begin() +
+                                  static_cast<std::size_t>(channel + 1u) * control.frames);
+    low_inputs.push_back(decimateReference(source, divider));
+  }
+  std::vector<std::vector<double>> low_outputs(control.channels,
+                                               std::vector<double>(low_inputs.front().size(), 0.0));
+  for (const RoutePath &path : paths) {
+    if (path.input >= control.channels || path.output >= control.channels ||
+        path.irChannel >= ir_channels) {
+      std::fputs("Direct reference topology path is out of range\n", stderr);
+      return false;
+    }
+    for (std::size_t input_frame = 0u; input_frame < low_inputs[path.input].size(); ++input_frame) {
+      for (std::uint32_t tap = 0u; tap < ir_frames; ++tap) {
+        const std::size_t output_frame = input_frame + tap + asset.begin.headBlock;
+        if (output_frame >= low_outputs[path.output].size())
+          break;
+        low_outputs[path.output][output_frame] +=
+            static_cast<double>(low_inputs[path.input][input_frame]) *
+            static_cast<double>(ir[static_cast<std::size_t>(path.irChannel) * ir_frames + tap]);
+      }
+    }
+  }
+  for (std::uint32_t channel = 0u; channel < control.channels; ++channel) {
+    const std::vector<double> &low_output = low_outputs[channel];
+    std::vector<float> low_float(low_output.size());
+    for (std::size_t index = 0u; index < low_output.size(); ++index)
+      low_float[index] = static_cast<float>(low_output[index]);
+    const std::vector<float> full = interpolateReference(low_float, divider);
+    const std::size_t start = divider - 1u;
+    for (std::size_t index = 0u; index < full.size() && start + index < control.frames; ++index) {
+      wet[static_cast<std::size_t>(channel) * control.frames + start + index] = full[index];
+    }
+  }
+
+  const bool direct = control.initialParams[3u] >= 0.5F;
+  const float wet_gain = std::pow(10.0F, control.initialParams[4u] * 0.05F);
+  const float dry_gain = std::pow(10.0F, control.initialParams[5u] * 0.05F);
+  const double requested_delay =
+      static_cast<double>(control.initialParams[6u]) * control.sampleRate * 0.001;
+  const std::uint32_t delay =
+      requested_delay > 0.0 ? static_cast<std::uint32_t>(requested_delay) : 0u;
+  output.assign(input.size(), 0.0F);
+  for (std::uint32_t channel = 0u; channel < control.channels; ++channel) {
+    const std::size_t channel_offset = static_cast<std::size_t>(channel) * control.frames;
+    for (std::uint32_t frame = 0u; frame < control.frames; ++frame) {
+      const float delayed_wet = frame >= delay ? wet[channel_offset + frame - delay] : 0.0F;
+      output[channel_offset + frame] =
+          (direct ? input[channel_offset + frame] * dry_gain : 0.0F) + delayed_wet * wet_gain;
+    }
+  }
+  return true;
+}
+
+bool runAssetCase(const Options &options, const Control &control, const std::vector<float> &input,
+                  std::vector<float> &output) {
+  effetune::Engine engine;
+  const std::uint32_t prepared_frames = control.blockSize < 32u ? 32u : control.blockSize;
+  if (!checkStatus("Engine::prepare", engine.prepare(control.sampleRate, control.channels,
+                                                     prepared_frames, kTelemetryBytes))) {
+    return false;
+  }
+  const et_instance instance = engine.createInstance(options.type.c_str());
+  if (instance == 0u) {
+    std::fputs("Engine::createInstance failed\n", stderr);
+    return false;
+  }
+  if (!checkStatus("Engine::setInstanceSeed",
+                   engine.setInstanceSeed(instance, options.seedLow, options.seedHigh)) ||
+      !stageParams(engine, instance, control, control.initialParams, control.initialParamBytes)) {
+    return false;
+  }
+
+  std::uint8_t *staging =
+      engine.beginInstanceAsset(instance, control.asset.slot, control.asset.begin);
+  if (staging == nullptr) {
+    std::fputs("Engine::beginInstanceAsset failed\n", stderr);
+    return false;
+  }
+  std::memcpy(staging, control.asset.bytes.data(), control.asset.bytes.size());
+  if (!checkStatus(
+          "Engine::commitInstanceAsset",
+          engine.commitInstanceAsset(instance, control.asset.slot,
+                                     static_cast<std::uint32_t>(control.asset.bytes.size()),
+                                     control.asset.format))) {
+    return false;
+  }
+
+  std::vector<float> silence(static_cast<std::size_t>(control.channels) * prepared_frames, 0.0F);
+  constexpr std::uint32_t kMaximumPreparationCalls = 100000u;
+  std::uint32_t preparation_calls = 0u;
+  std::uint32_t asset_state = engine.instanceAssetState(instance, control.asset.slot) & 0xffu;
+  while (asset_state == ET_ASSET_STATE_PREPARING && preparation_calls < kMaximumPreparationCalls) {
+    std::fill(silence.begin(), silence.end(), 0.0F);
+    if (!checkStatus("Engine::processInstance preparation",
+                     engine.processInstance(instance, silence.data(), control.channels,
+                                            prepared_frames, 0.0))) {
+      return false;
+    }
+    ++preparation_calls;
+    asset_state = engine.instanceAssetState(instance, control.asset.slot) & 0xffu;
+  }
+  if (asset_state != ET_ASSET_STATE_ACTIVE) {
+    std::fprintf(stderr, "Asset did not become active (state %u after %u calls)\n", asset_state,
+                 preparation_calls);
+    return false;
+  }
+  if (!checkStatus("Engine::resetInstance", engine.resetInstance(instance)))
+    return false;
+
+  output.assign(input.size(), 0.0F);
+  std::vector<float> block(static_cast<std::size_t>(control.channels) * control.blockSize);
+  std::uint32_t start_frame = 0u;
+  std::size_t event_index = 0u;
+  while (start_frame < control.frames) {
+    while (event_index < control.events.size() &&
+           control.events[event_index].frame == start_frame) {
+      if (!stageParams(engine, instance, control, control.events[event_index].params,
+                       control.events[event_index].paramBytes)) {
+        return false;
+      }
+      ++event_index;
+    }
+    const std::uint32_t next_event =
+        event_index < control.events.size() ? control.events[event_index].frame : control.frames;
+    std::uint32_t block_frames = control.frames - start_frame;
+    if (block_frames > control.blockSize)
+      block_frames = control.blockSize;
+    if (next_event > start_frame && next_event - start_frame < block_frames)
+      block_frames = next_event - start_frame;
+    for (std::uint32_t channel = 0u; channel < control.channels; ++channel) {
+      const float *source =
+          input.data() + static_cast<std::size_t>(channel) * control.frames + start_frame;
+      std::memcpy(block.data() + static_cast<std::size_t>(channel) * block_frames, source,
+                  static_cast<std::size_t>(block_frames) * sizeof(float));
+    }
+    if (!checkStatus(
+            "Engine::processInstance",
+            engine.processInstance(instance, block.data(), control.channels, block_frames,
+                                   static_cast<double>(start_frame) / control.sampleRate))) {
+      return false;
+    }
+    for (std::uint32_t channel = 0u; channel < control.channels; ++channel) {
+      float *target =
+          output.data() + static_cast<std::size_t>(channel) * control.frames + start_frame;
+      std::memcpy(target, block.data() + static_cast<std::size_t>(channel) * block_frames,
+                  static_cast<std::size_t>(block_frames) * sizeof(float));
+    }
+    start_frame += block_frames;
+  }
+  engine.destroyInstance(instance);
+  return true;
+}
+
 bool runCase(const Options &options, const Control &control, const std::vector<float> &input,
              std::vector<float> &output) {
   const effetune::KernelDescriptor *descriptor = effetune::registry::find(options.type.c_str());
@@ -342,6 +698,10 @@ bool runCase(const Options &options, const Control &control, const std::vector<f
     std::fputs("--allocations requires a Debug native runner build\n", stderr);
     return false;
   }
+  if (options.referenceDirect)
+    return runDirectReference(control, input, output);
+  if (control.hasAsset)
+    return runAssetCase(options, control, input, output);
 
   EngineOwner engine;
   if (engine.get() == 0u) {

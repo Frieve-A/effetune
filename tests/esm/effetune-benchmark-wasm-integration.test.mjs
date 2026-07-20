@@ -4,6 +4,8 @@ import test from 'node:test';
 
 import {
   BENCHMARK_DSP_MODES,
+  BENCHMARK_IR_REVERB_FRAMES,
+  createIrReverbBenchmarkAssets,
   createDspBenchmarkRuntime
 } from '../../features/effetune-benchmark.js';
 import {
@@ -39,6 +41,33 @@ class MatrixPlugin {
   executeProcessor() {
     this.javascriptCalls++;
     throw new Error('JavaScript processor must not run in a WebAssembly benchmark');
+  }
+}
+
+class IRReverbPlugin {
+  constructor() {
+    this.id = 88;
+    this.enabled = false;
+    this.cm = 'true';
+    this.lt = '128';
+    this.cr = 'auto';
+  }
+
+  setEnabled(enabled) {
+    this.enabled = enabled;
+  }
+
+  getParameters() {
+    return {
+      type: this.constructor.name,
+      cm: this.cm,
+      lt: this.lt,
+      cr: this.cr,
+      dw: 0,
+      dl: -96,
+      pd: 0,
+      enabled: this.enabled
+    };
   }
 }
 
@@ -78,6 +107,9 @@ function observeBinding(binding, calls) {
     'instanceSetTap',
     'instanceSetParams',
     'instanceSetParamBytes',
+    'instanceSetAsset',
+    'instanceAssetState',
+    'resetInstance',
     'pipelineConfigure',
     'pipelineProcess',
     'destroyInstance',
@@ -195,6 +227,78 @@ for (const variant of variants) {
         'telemetryRead',
         'close'
       ]);
+      assert.deepEqual(warnings, []);
+    } finally {
+      session?.close();
+      runtime.close();
+    }
+  });
+
+  test(`WebAssembly benchmark ${variant.variant} artifact activates the 256K true-stereo IR`, async () => {
+    const calls = [];
+    const warnings = [];
+    const dependencies = {
+      warning(message) {
+        warnings.push(message);
+      },
+      loadDspModule(options) {
+        return loadDspModule({
+          ...options,
+          basePath: '',
+          fetchImpl: fetchRepositoryAsset,
+          webAssembly: variant.webAssembly,
+          publishTarget: null,
+          cache: false
+        });
+      },
+      async instantiateDsp(moduleOrBytes, options) {
+        const binding = await instantiateDsp(moduleOrBytes, options);
+        return observeBinding(binding, calls);
+      }
+    };
+    const runtime = await createDspBenchmarkRuntime({
+      mode: BENCHMARK_DSP_MODES.WEBASSEMBLY,
+      sampleRate: SAMPLE_RATE,
+      blockSize: BLOCK_SIZE,
+      preference: { useWasmDsp: true },
+      location: '',
+      basePath: '',
+      dependencies
+    });
+    const plugin = new IRReverbPlugin();
+    const assets = createIrReverbBenchmarkAssets({
+      sampleRate: SAMPLE_RATE,
+      channelCount: CHANNEL_COUNT,
+      latency: plugin.lt,
+      convolutionRate: plugin.cr
+    });
+    let session = null;
+
+    try {
+      assert.equal(runtime.supportsPlugin(plugin), true);
+      session = runtime.createPluginSession(plugin, {
+        channelCount: CHANNEL_COUNT,
+        assets
+      });
+      const preparationBlocks = session.prepareAssets();
+      assert.ok(preparationBlocks > 0);
+
+      const assetCall = findCall(calls, 'instanceSetAsset');
+      assert.ok(assetCall);
+      const payloadView = new DataView(assetCall.args[2]);
+      assert.equal(payloadView.getUint32(4, true), 4);
+      assert.equal(payloadView.getUint32(8, true), BENCHMARK_IR_REVERB_FRAMES);
+      assert.equal(payloadView.getUint32(16, true), 3);
+      assert.equal(findCall(calls, 'resetInstance').args[0], assetCall.args[0]);
+
+      const input = new Float32Array(CHANNEL_COUNT * BLOCK_SIZE);
+      input[0] = 1;
+      const output = session.process(input, 0);
+      assert.equal(output.every(Number.isFinite), true);
+      assert.equal(
+        calls.filter(call => call.name === 'pipelineProcess').length,
+        preparationBlocks + 1
+      );
       assert.deepEqual(warnings, []);
     } finally {
       session?.close();

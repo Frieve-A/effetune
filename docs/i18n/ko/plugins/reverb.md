@@ -1,6 +1,6 @@
 ---
 title: "리버브 플러그인 - EffeTune"
-description: "RS Reverb, Dattorro Plate Reverb, FDN Reverb를 포함한 리버브 이펙트 플러그인입니다."
+description: "Dattorro Plate Reverb, FDN Reverb, IR Reverb, RS Reverb를 포함한 리버브 플러그인입니다."
 lang: ko
 ---
 
@@ -12,6 +12,7 @@ lang: ko
 
 - [Dattorro Plate Reverb](#dattorro-plate-reverb) - Dattorro 알고리즘 기반의 클래식 플레이트 리버브
 - [FDN Reverb](#fdn-reverb) - 고급 확산 매트릭스를 사용한 피드백 딜레이 네트워크 리버브
+- [IR Reverb](#ir-reverb) - 가져온 임펄스 응답을 사용하는 컨볼루션 리버브
 - [RS Reverb](#rs-reverb) - 자연스러운 공간 분위기와 공간감 생성
 
 ## Dattorro Plate Reverb
@@ -263,6 +264,41 @@ Hadamard 확산 매트릭스를 사용한 피드백 딜레이 네트워크(FDN) 
    - 음악과 취향에 따라 미세 조정
 
 FDN Reverb는 어떤 녹음에도 아름답고 자연스럽게 들리는 잔향과 현실적인 음향 공간을 추가하여 청취 경험을 변화시킵니다. 아름답고 자연스러운 잔향으로 좋아하는 곡을 향상시키고 싶은 음악 애호가들에게 완벽합니다!
+
+## IR Reverb
+
+IR Reverb는 가져온 임펄스 응답(IR)과 신호을 컨볼루션하여 방, 홀, 플레이트 등에서 측정한 감쇠와 공간 특성을 재현합니다. 합성 모델보다 특정 공간의 포착된 소리를 일관되게 사용하고 싶을 때 적합합니다.
+
+### 음질 향상 가이드
+
+- 은은한 룸감을 더하려면 짧은 IR을 사용하고 **Dry**를 0 dB, **Wet**을 -18~-12 dB, **Pre Delay**를 짧게 설정합니다.
+- 콘서트홀의 넓이를 더하려면 stereo 또는 True Stereo IR을 사용하고, 너무 긴 tail은 **Decay**와 **Trim**으로 줄입니다.
+- send/return 구성에서는 **Matrix**로 다른 bus에 보내고 **Dry**를 -96 dB, **Wet**을 0 dB로 둔 뒤 send level로 양을 조절합니다.
+- 같은 결과를 재현하려면 원본 IR 파일과 출처·라이선스를 보관하십시오. 바이트가 같으면 라이브러리 ID도 같습니다.
+
+### 파라미터
+
+- **Channel Mode**: Auto, Mono, Independent, True Stereo(LL/LR/RL/RR), crossfeed가 없는 Diagonal Matrix 중에서 라우팅을 선택합니다.
+- **Latency**: Zero 또는 128/256/512/1024 samples입니다. 값이 크면 처리 부담은 줄지만 wet path 지연이 늘며, Zero는 Full이 필요합니다.
+- **Convolution Rate**: Auto, Full, Half, Quarter입니다. 낮은 rate는 부하와 wet 대역폭을 줄이며 Quarter는 176.4 kHz 이상이 필요합니다.
+- **Dry**: 원음 레벨을 정합니다. -96 dB에서는 원음이 완전히 음소거되어 완전 wet 효과나 return bus에 적합합니다.
+- **Wet**: 컨볼루션 신호 레벨(-96~+12 dB)입니다.
+- **Pre Delay**: wet 신호만 0~500 ms 지연합니다.
+- **Direct Cut**은 감지한 직접음을 제거하고, **Cut Offset**은 절단점을 -20~+50 ms 이동합니다. 정규화 기준은 자르기 전 IR로 유지되므로 Direct Cut을 켜도 남은 잔향 꼬리의 레벨이 커지지 않습니다.
+- **Decay**는 감쇠를 10~400%로 바꿉니다. 100%는 원본 상태입니다.
+- **Trim**은 cut 이후 IR의 1~100%를 남깁니다. 짧을수록 tail, CPU, 메모리가 줄어듭니다.
+
+### 감쇠 그래프 읽기
+
+가로축은 시간, 세로축은 0~-90 dB입니다. 실선 EDC는 에너지 감쇠를 나타내며 경사가 가파를수록 tail이 짧습니다. 마커는 onset, cut, pre-delay, trim을 표시하고 RT60은 60 dB 감쇠 시간을 추정합니다. **Decay**를 바꾸면 새 곡선은 실선, 원본은 점선으로 표시됩니다.
+
+### 라우팅, 라이브러리, 공유
+
+Mono는 하나의 IR을 적용하고 Independent는 채널을 분리하며 True Stereo는 LL/LR/RL/RR 경로를 사용합니다. Diagonal Matrix는 같은 번호의 입출력만 연결합니다. True Stereo pair는 이름 끝이 `L`/`R` 또는 `Left`/`Right`로 대응하는 파일을 함께 선택합니다.
+
+원본은 **Impulse Response Library**에 저장됩니다. 웹 앱은 사이트 전용 OPFS, 데스크톱 앱은 관리형 앱 저장소를 사용합니다. 라이브러리는 원본 파일명을 표시하며 파일명 검색, 항목 불러오기, 삭제를 지원합니다. sample rate가 바뀌면 원본에서 다시 준비합니다. 사이트 데이터 삭제나 저장 공간 부족으로 브라우저 데이터가 지워질 수 있으므로 별도 사본을 보관하십시오.
+
+공유 URL과 preset에는 ID만 들어가며 IR 오디오나 파일명은 포함되지 않습니다. 받는 사람은 같은 파일을 가져오거나 대체 IR을 선택해야 합니다. IR이 없으면 wet 신호가 없고 WASM을 사용할 수 없으면 설정된 dry 신호만 통과합니다. [OpenAIR](https://www.openair.hosted.york.ac.uk/), [EchoThief](https://www.echothief.com/downloads/), [Freesound](https://freesound.org/)에서 자료를 찾을 수 있지만 파일별 라이선스(CC0, CC BY, CC BY-NC 등), 제작자, 표시 의무, 상업 이용 가능 여부는 EffeTune 외부에 기록하십시오. EffeTune은 라이선스 정보를 저장하거나 검증하지 않습니다.
 
 ## RS Reverb
 

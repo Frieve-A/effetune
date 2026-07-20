@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { parseArgs, positiveInteger, isMain, formatBytes } from './cli.mjs';
 import {
   DEFAULT_REPO_ROOT,
@@ -14,6 +15,7 @@ import {
   writeGoldenSet
 } from './golden-io.mjs';
 import { createReferenceSession, executeReferenceCase } from './node-host.mjs';
+import { runNativeReferenceCase } from './runners.mjs';
 import { discoverGoldenTargets } from './run.mjs';
 import { generateStimulus, noiseSeedForCase, STIMULUS_IDS } from './stimuli.mjs';
 import { comparePerSample, formatComparison } from './tolerance.mjs';
@@ -31,6 +33,11 @@ function usage() {
     '  --limit-cases <count>  process only the first cases',
     '  --budget <bytes>       golden budget (default 2 MiB)'
   ].join('\n');
+}
+
+async function nativeDirectReferenceHash(repoRoot) {
+  const source = await fs.readFile(path.join(repoRoot, 'dsp', 'test', 'parity_runner.cpp'), 'utf8');
+  return crypto.createHash('sha256').update(source.replace(/\r\n?/g, '\n')).digest('hex');
 }
 
 function filterCases(cases, args) {
@@ -98,6 +105,8 @@ export async function generateGoldens({
     throw new Error(`No params.json was found for ${definition.type}. Use --self-check for an unported plugin.`);
   }
   cases = filterCases(cases, args);
+  const nativeReference = plan.schema?.parityReference === 'native-ir-direct-double-v1';
+  const referenceHash = nativeReference ? await nativeDirectReferenceHash(repoRoot) : null;
   const generated = [];
   let baseSourceHash = null;
   for (const testCase of cases) {
@@ -111,18 +120,48 @@ export async function generateGoldens({
       caseIndex: testCase.caseIndex,
       seed
     });
-    const first = await executeReferenceCase(definition.type, normalizedCase, input, { repoRoot });
+    const first = nativeReference
+      ? {
+          output: await runNativeReferenceCase({
+            type: definition.type,
+            testCase: normalizedCase,
+            input,
+            schema: plan.schema,
+            repoRoot,
+            runnerPath: args['native-runner'] ?? undefined
+          }),
+          jsEngineHash: undefined,
+          baseSourceHash: null
+        }
+      : await executeReferenceCase(definition.type, normalizedCase, input, { repoRoot });
     if (selfCheck) {
-      const second = await executeReferenceCase(definition.type, normalizedCase, input, { repoRoot });
+      const second = nativeReference
+        ? {
+            output: await runNativeReferenceCase({
+              type: definition.type,
+              testCase: normalizedCase,
+              input,
+              schema: plan.schema,
+              repoRoot,
+              runnerPath: args['native-runner'] ?? undefined
+            })
+          }
+        : await executeReferenceCase(definition.type, normalizedCase, input, { repoRoot });
       const comparison = comparePerSample(first.output, second.output, { abs: 0, rel: 0 });
       log(`${comparison.pass ? 'PASS' : 'FAIL'} ${testCase.id}: ${formatComparison(comparison)}`);
       if (!comparison.pass) throw new Error(`JS reference self-check failed for ${testCase.id}`);
     }
-    if (baseSourceHash !== null && first.baseSourceHash !== baseSourceHash) {
+    if (!nativeReference && baseSourceHash !== null && first.baseSourceHash !== baseSourceHash) {
       throw new Error('plugins/plugin-base.js changed during golden generation; run it again');
     }
-    generated.push({ testCase: normalizedCase, output: first.output, jsEngineHash: first.jsEngineHash });
-    baseSourceHash = first.baseSourceHash;
+    generated.push({
+      testCase: normalizedCase,
+      output: first.output,
+      jsEngineHash: first.jsEngineHash,
+      referenceEngine: nativeReference ? plan.schema.parityReference : undefined,
+      referenceHash: nativeReference ? referenceHash : undefined
+    });
+    if (!nativeReference) baseSourceHash = first.baseSourceHash;
   }
 
   if (selfCheck) {
@@ -265,14 +304,15 @@ export async function generateAllGoldens({
         args,
         log
       });
-      if (pluginBaseHash !== null && result.pluginBaseHash !== pluginBaseHash) {
+      if (result.pluginBaseHash !== null && pluginBaseHash !== null &&
+          result.pluginBaseHash !== pluginBaseHash) {
         throw new Error('plugins/plugin-base.js changed during --all generation; run it again');
       }
       const validatedCases = await readGoldenSet(stagedOutput);
       if (validatedCases.length !== result.caseCount) {
         throw new Error(`Staged golden validation found an incomplete set for ${target.type}`);
       }
-      pluginBaseHash = result.pluginBaseHash;
+      if (result.pluginBaseHash !== null) pluginBaseHash = result.pluginBaseHash;
       stagedTargets.push({ target, stagedOutput, number });
       results.push({ ...result, outputDir: target.goldenDir });
     }

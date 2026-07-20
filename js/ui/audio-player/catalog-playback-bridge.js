@@ -41,42 +41,51 @@ export class CatalogPlaybackBridge {
     const destination = PLAYBACK_DESTINATIONS[request?.operationKind];
     if (!destination) return this.service.start(request);
     const player = this.#getPlayer();
-    if (request.operationKind === 'play' && player.stateRestored) {
-      await player.stateRestored;
-    }
-    const options = { ...(request.options ?? {}), playbackDestination: destination };
-    const requestedShuffleSeed = Number.isSafeInteger(options.seed) ? options.seed : null;
-    const shuffleEnabled = request.operationKind === 'play' && (
-      requestedShuffleSeed !== null ||
-      player.stateManager?.getStateSnapshot?.().shuffleMode === true
-    );
-    if (shuffleEnabled && options.seed == null) options.seed = createPlaybackShuffleSeed();
-    const operationRequest = {
-      operationKind: request.operationKind,
-      selectionDescriptor: request.selectionDescriptor,
-      target: request.target ?? {},
-      options
-    };
-    const receipt = await this.service.start(operationRequest);
-    if (!receipt?.operationId || receipt.kind !== 'started') return receipt;
+    const finishPlaybackPending = request.operationKind === 'play'
+      ? player.stateManager?.beginPlaybackPending?.(3) ?? null
+      : null;
+    let pendingHandedOff = false;
+    try {
+      if (request.operationKind === 'play' && player.stateRestored) {
+        await player.stateRestored;
+      }
+      const options = { ...(request.options ?? {}), playbackDestination: destination };
+      const requestedShuffleSeed = Number.isSafeInteger(options.seed) ? options.seed : null;
+      const shuffleEnabled = request.operationKind === 'play' && (
+        requestedShuffleSeed !== null ||
+        player.stateManager?.getStateSnapshot?.().shuffleMode === true
+      );
+      if (shuffleEnabled && options.seed == null) options.seed = createPlaybackShuffleSeed();
+      const operationRequest = {
+        operationKind: request.operationKind,
+        selectionDescriptor: request.selectionDescriptor,
+        target: request.target ?? {},
+        options
+      };
+      const receipt = await this.service.start(operationRequest);
+      if (!receipt?.operationId || receipt.kind !== 'started') return receipt;
 
-    const operation = {
-      operationId: receipt.operationId,
-      operationKind: request.operationKind,
-      shuffleEnabled,
-      provisionalPromise: Promise.resolve({ accepted: true }),
-      unsubscribe: null
-    };
-    if (request.operationKind === 'play') {
-      operation.provisionalPromise = this.#installPlayProvisional({
-        player,
-        receipt
-      });
+      const operation = {
+        operationId: receipt.operationId,
+        operationKind: request.operationKind,
+        shuffleEnabled,
+        provisionalPromise: Promise.resolve({ accepted: true }),
+        unsubscribe: null
+      };
+      if (request.operationKind === 'play') {
+        operation.provisionalPromise = this.#installPlayProvisional({
+          player,
+          receipt
+        }).finally(() => finishPlaybackPending?.());
+        pendingHandedOff = true;
+      }
+      this.#trackOperation(operation);
+      this.#subscribe(operation);
+      void this.#recoverTerminal(operation);
+      return receipt;
+    } finally {
+      if (!pendingHandedOff) finishPlaybackPending?.();
     }
-    this.#trackOperation(operation);
-    this.#subscribe(operation);
-    void this.#recoverTerminal(operation);
-    return receipt;
   }
 
   async #installPlayProvisional({ player, receipt }) {

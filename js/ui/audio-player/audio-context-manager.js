@@ -352,11 +352,19 @@ export class AudioContextManager {
 
   async stagePlaybackActivation(backend, sourceGeneration, intendedPosition = 0, intent = null) {
     if (!this.audioManager?.isStagedAudioActivationEnabled?.()) return null;
-    const releaseLease = this.audioManager.powerPolicyController?.acquireLease?.(
+    const powerPolicyController = this.audioManager.powerPolicyController;
+    const releaseLease = powerPolicyController?.acquireLease?.(
       'player-activation',
       { mode: 'force-active' }
     ) || null;
     try {
+      // The lease changes policy facts immediately, but an automatic-monitoring
+      // command chosen before the lease was acquired may still be in flight.
+      // Do not request the activation proof until reconciliation has consumed
+      // the force-active lease and restored full processing.
+      if (releaseLease && typeof powerPolicyController.requestReconcile === 'function') {
+        await powerPolicyController.requestReconcile('player-activation-lease-barrier');
+      }
       const stage = await this.audioManager.stageAudioActivation({
         intentKind: 'player',
         intentIdentity: this.getPlaybackIntentIdentity(sourceGeneration, intendedPosition, intent),
@@ -1064,7 +1072,8 @@ export class AudioContextManager {
    * Rebind an existing player to a freshly recreated AudioContext/Worklet graph.
    */
   async handleAudioGraphRebuilt() {
-    const newAudioContext = this.audioManager.audioContext;
+    const newAudioContext = this.audioManager.contextManager?.audioContext ??
+      this.audioManager.audioContext;
     if (!newAudioContext) {
       return;
     }
@@ -1172,22 +1181,6 @@ export class AudioContextManager {
         graphRebuildRequest.trackIndex = revalidation.ordinal;
       }
       if (revalidation?.handled) {
-        if (revalidation.committed) {
-          if (!isGraphRebuildOwnerCurrent()) return;
-          const recoveredOriginalTrack = revalidation.track &&
-            samePlaybackEntry(revalidation.track, graphRebuildRequest.track);
-          if (!graphRebuildRequest.transportIntent.isStopped) {
-            await this.seek(recoveredOriginalTrack ? graphRebuildRequest.position : 0);
-          }
-          if (!isGraphRebuildOwnerCurrent()) return;
-          this.activeGraphRebuildRequest = null;
-          this.graphRebuildGeneration += 1;
-          const latestIntent = graphRebuildRequest.transportIntent;
-          if (latestIntent.isPlaying) await this.play(false, false);
-          else if (latestIntent.isStopped) await this.stop();
-          else await this.pause();
-          return;
-        }
         if (isGraphRebuildCurrent()) settleGraphRebindFailure();
         return;
       }
@@ -1540,15 +1533,13 @@ export class AudioContextManager {
   }
 
   beginLoadRequest(track, targetIndex = null) {
-    const graphRebuildOwner = this.getCurrentGraphRebuildRequest();
-    if (!graphRebuildOwner) this.graphRebuildGeneration += 1;
+    this.graphRebuildGeneration += 1;
     this.cancelPendingMediaCandidateReadiness();
     const request = {
       token: ++this.loadRequestToken,
       track,
       targetIndex: this.normalizePlaylistIndex(targetIndex),
-      sourceGeneration: ++this.sourceGenerationSequence,
-      graphRebuildOwner
+      sourceGeneration: ++this.sourceGenerationSequence
     };
     this.activeLoadRequest = request;
     this.clearNextTrackBuffer();
@@ -1563,7 +1554,6 @@ export class AudioContextManager {
     return !!request &&
       this.activeLoadRequest?.token === request.token &&
       this.activeLoadRequest?.sourceGeneration === request.sourceGeneration &&
-      (!request.graphRebuildOwner || this.isGraphRebuildRequestOwnerCurrent(request.graphRebuildOwner)) &&
       this.playbackEntriesMatch(this.activeLoadRequest.track, request.track, request.targetIndex);
   }
 
@@ -1646,14 +1636,10 @@ export class AudioContextManager {
 
   invalidatePendingPlaybackOperations(transportIntent = null) {
     const preserveGraphRebuild = this.invalidateGraphRebuild(transportIntent);
-    const preserveGraphLoad = preserveGraphRebuild &&
-      this.activeLoadRequest?.graphRebuildOwner === this.activeGraphRebuildRequest;
     this.clearRegionBoundaryTimer();
     this.stopRequestToken++;
-    if (!preserveGraphLoad) {
-      this.loadRequestToken++;
-      this.activeLoadRequest = null;
-    }
+    this.loadRequestToken++;
+    this.activeLoadRequest = null;
     this.metadataRequestToken++;
     this.activeMetadataRequest = null;
     if (!preserveGraphRebuild) this.cancelPendingMediaCandidateReadiness();
@@ -1667,14 +1653,10 @@ export class AudioContextManager {
 
   invalidatePendingPlaybackOperationsForPause() {
     const preserveGraphRebuild = this.invalidateGraphRebuild('pause');
-    const preserveGraphLoad = preserveGraphRebuild &&
-      this.activeLoadRequest?.graphRebuildOwner === this.activeGraphRebuildRequest;
     this.clearRegionBoundaryTimer();
     this.stopRequestToken++;
-    if (!preserveGraphLoad) {
-      this.loadRequestToken++;
-      this.activeLoadRequest = null;
-    }
+    this.loadRequestToken++;
+    this.activeLoadRequest = null;
     this.metadataRequestToken++;
     this.activeMetadataRequest = null;
     if (!preserveGraphRebuild) this.cancelPendingMediaCandidateReadiness();
@@ -1700,7 +1682,7 @@ export class AudioContextManager {
   isActiveMetadataRequest(request) {
     if (!request ||
       this.activeMetadataRequest?.token !== request.token ||
-      !this.playbackEntriesMatch(this.activeMetadataRequest.track, request.track, request.targetIndex)) {
+      !samePlaybackEntry(this.activeMetadataRequest.track, request.track)) {
       return false;
     }
     if (request.loadRequest && !this.isActiveLoadRequest(request.loadRequest)) {
@@ -1709,26 +1691,27 @@ export class AudioContextManager {
     return this.isCurrentTrackRequestTrack(request.track, request.targetIndex);
   }
 
-  isCurrentTrackRequestTrack(track, targetIndex = null) {
-    const normalizedTargetIndex = this.normalizePlaylistIndex(targetIndex);
-    const currentIndex = this.audioPlayer.stateManager?.getCurrentTrackIndex?.();
-    if (normalizedTargetIndex >= 0 && currentIndex !== normalizedTargetIndex) {
-      return false;
-    }
+  isMetadataRequestCurrent(request, fallbackIndex = null) {
+    if (request) return this.isActiveMetadataRequest(request);
+    return fallbackIndex === this.audioPlayer.stateManager?.getCurrentTrackIndex?.();
+  }
 
+  isCurrentTrackRequestTrack(track, targetIndex = null) {
     const stateTrack = this.getCurrentState()?.currentTrack;
     if (stateTrack) {
-      if (stateTrack === track) return true;
+      if (stateTrack === track || samePlaybackEntry(stateTrack, track)) return true;
 
       const stateIndex = this.getPlaylistIdentityIndex(stateTrack);
       const trackIndex = this.getPlaylistIdentityIndex(track);
       if (stateIndex >= 0 && trackIndex >= 0) {
         return stateIndex === trackIndex;
       }
-
-      return samePlaybackEntry(stateTrack, track);
+      return false;
     }
 
+    const normalizedTargetIndex = this.normalizePlaylistIndex(targetIndex);
+    const currentIndex = this.audioPlayer.stateManager?.getCurrentTrackIndex?.();
+    if (normalizedTargetIndex >= 0 && currentIndex !== normalizedTargetIndex) return false;
     if (Number.isInteger(currentIndex) && currentIndex >= 0) {
       const playlistTrack = this.audioPlayer.playbackManager?.getTrack?.(currentIndex) ||
         this.audioPlayer.playbackManager?.playlist?.[currentIndex];
@@ -2065,14 +2048,10 @@ export class AudioContextManager {
           artworkId,
           libraryManager.runtime ? { reason: 'now-playing' } : undefined
         ).then(async artworkUrl => {
-          if (!this.isActiveMetadataRequest(metadataRequest) ||
-            currentIndex !== this.audioPlayer.stateManager.getCurrentTrackIndex()) {
-            return;
-          }
+          if (!this.isMetadataRequestCurrent(metadataRequest, currentIndex)) return;
           const ownedUrl = await this.adoptLibraryArtworkURL(artworkUrl);
           const isOwnedArtworkUrl = !!ownedUrl && ownedUrl !== artworkUrl;
-          if (!this.isActiveMetadataRequest(metadataRequest) ||
-            currentIndex !== this.audioPlayer.stateManager.getCurrentTrackIndex()) {
+          if (!this.isMetadataRequestCurrent(metadataRequest, currentIndex)) {
             // The request went stale while duplicating the artwork. Revoke only
             // our freshly-created owned URL so a late sibling never revokes the
             // current track's live artwork (and the duplicate does not leak).
@@ -2096,8 +2075,7 @@ export class AudioContextManager {
             isTrackPresentationPending: false
           }, 'Catalog artwork loaded');
         }).catch(() => {
-          if (!this.isActiveMetadataRequest(metadataRequest) ||
-              currentIndex !== this.audioPlayer.stateManager.getCurrentTrackIndex()) return;
+          if (!this.isMetadataRequestCurrent(metadataRequest, currentIndex)) return;
           this.updateState({
             artworkUrl: '',
             isTrackPresentationPending: false
@@ -2126,10 +2104,7 @@ export class AudioContextManager {
   readID3Tags(file, currentIndex, metadataRequest = null) {
     const riffInfoPromise = this.createRiffInfoMetadataPromise(file);
     const applyMetadata = (tags = {}, riffInfo = null) => {
-      if ((metadataRequest && !this.isActiveMetadataRequest(metadataRequest)) ||
-        currentIndex !== this.audioPlayer.stateManager.getCurrentTrackIndex()) {
-        return false;
-      }
+      if (!this.isMetadataRequestCurrent(metadataRequest, currentIndex)) return false;
 
       const title = riffInfo?.title || this.normalizeMetadataTagText(tags.title || '', [file.name]);
       const tagReferenceTexts = [title, file.name];
@@ -2186,19 +2161,13 @@ export class AudioContextManager {
    */
   tryReadFromAudioElementSrc(track, currentIndex, metadataRequest = null) {
     setTimeout(() => {
-      if ((metadataRequest && !this.isActiveMetadataRequest(metadataRequest)) ||
-        currentIndex !== this.audioPlayer.stateManager.getCurrentTrackIndex()) {
-        return;
-      }
+      if (!this.isMetadataRequestCurrent(metadataRequest, currentIndex)) return;
       
       try {
         if (window.jsmediatags && this.audioPlayer.audioElement.src) {
           window.jsmediatags.read(this.audioPlayer.audioElement.src, {
             onSuccess: (tag) => {
-              if ((metadataRequest && !this.isActiveMetadataRequest(metadataRequest)) ||
-                currentIndex !== this.audioPlayer.stateManager.getCurrentTrackIndex()) {
-                return;
-              }
+              if (!this.isMetadataRequestCurrent(metadataRequest, currentIndex)) return;
 
               const tags = tag.tags;
               const title = this.normalizeMetadataTagText(tags.title || '', [track.name]);
@@ -2379,10 +2348,9 @@ export class AudioContextManager {
    * Fallback to MediaSession API with basic track info
    */
   fallbackToMediaSession(currentIndex, metadataRequest = null) {
-    if (metadataRequest && !this.isActiveMetadataRequest(metadataRequest)) return;
-    if (currentIndex !== this.audioPlayer.stateManager.getCurrentTrackIndex()) return;
+    if (!this.isMetadataRequestCurrent(metadataRequest, currentIndex)) return;
 
-    const track = this.audioPlayer.playbackManager?.getTrack(currentIndex);
+    const track = metadataRequest?.track ?? this.audioPlayer.playbackManager?.getTrack(currentIndex);
     if (track?.meta?.title) return;
 
     if (this.audioPlayer.audioElement?.duration > 0) {
@@ -3183,9 +3151,7 @@ export class AudioContextManager {
         isTransitioning: false,
         transitionType: null
       }, 'Track loading failed without replacing current playback');
-      if (!this.audioPlayer.playbackManager?.catalogSequence) {
-        window.uiManager?.setError?.('error.playbackCommandFailed', true);
-      }
+      window.uiManager?.setError?.('error.playbackCommandFailed', true);
       return false;
     }
   }
@@ -3856,7 +3822,8 @@ export class AudioContextManager {
   async activatePreparedTrackTransition(prepared, transitionRequest, userInitiated, plan) {
     const isStale = () => !this.isActiveTransitionRequest(transitionRequest) ||
       (plan && this.audioPlayer.playbackManager?.isPlannedAutomaticMoveCurrent?.(plan) !== true);
-    if (!await this.resumePlaybackAudioContext(userInitiated) || isStale()) return false;
+    const resumed = await this.resumePlaybackAudioContext(userInitiated);
+    if (!resumed || isStale()) return false;
 
     let candidate = null;
     let stage = null;
@@ -4520,6 +4487,9 @@ function toOwnedArrayBuffer(value) {
 function samePlaybackEntry(left, right) {
   if (!left || !right) return false;
   if (left === right) return true;
+  if (left.entryInstanceId && right.entryInstanceId) {
+    return left.entryInstanceId === right.entryInstanceId;
+  }
   if (left.libraryTrackId && right.libraryTrackId) {
     return left.libraryTrackId === right.libraryTrackId;
   }

@@ -72,13 +72,10 @@ export class AudioPlayerUI {
     this.pendingArtworkPreload = null;
     this.pendingArtworkPreloadUrl = null;
     this.lastAppliedArtworkUrl = null;
-    this.loadingStateTimer = null;
     this.playlistDisplay = null;
     this.libraryContextMenu = null;
     this.libraryContextMenuCleanup = null;
     this.libraryContextMenuReturnFocus = null;
-    this.playlistSelectionGeneration = 0;
-    this.playlistSelectionIntent = null;
     this.queueRenderGeneration = 0;
     this.updateInterval = null;
     this.positionRaf = null;
@@ -130,11 +127,7 @@ export class AudioPlayerUI {
       this.handleTrackPresentationPending(isPending);
     });
 
-    addStateListener('isTransitioning', () => {
-      this.updateLoadingState();
-    });
-
-    addStateListener('transitionType', () => {
+    addStateListener('isPlaybackPending', () => {
       this.updateLoadingState();
     });
 
@@ -179,7 +172,7 @@ export class AudioPlayerUI {
 
   canRunPlayerUi() {
     const state = this.audioPlayer.stateManager?.getStateSnapshot?.();
-    const context = this.audioPlayer.audioManager?.audioContext || this.audioPlayer.audioContext;
+    const context = this.audioPlayer.audioContext;
     return !this.isDisposed && this._powerUiEnabled && !this.documentRef?.hidden &&
       state?.isPlaying === true && context?.state === 'running';
   }
@@ -375,7 +368,7 @@ export class AudioPlayerUI {
     this.setMiniMode(window.uiManager?.miniPlayerMode === true);
     this.updatePlayerUIState();
     this.updateArtwork();
-    this.updateLoadingState(true);
+    this.updateLoadingState();
     this.updatePlaylistDisplay();
     
     this.seekBar.addEventListener('input', () => {
@@ -863,27 +856,10 @@ export class AudioPlayerUI {
     }
   }
 
-  updateLoadingState(immediate = false) {
+  updateLoadingState() {
     if (!this.container) return;
     const state = this.audioPlayer.stateManager?.getStateSnapshot?.();
-    const isLoading = state?.isTransitioning === true && state?.transitionType === 'loading';
-    if (this.loadingStateTimer !== null) {
-      clearTimeout(this.loadingStateTimer);
-      this.loadingStateTimer = null;
-    }
-    if (!isLoading || immediate) {
-      this.container.setAttribute('data-loading', isLoading ? 'true' : 'false');
-      return;
-    }
-    // Delay the loading dim/spinner so fast track changes do not flash it;
-    // it still appears for loads that genuinely take a moment.
-    this.loadingStateTimer = setTimeout(() => {
-      this.loadingStateTimer = null;
-      if (this.isDisposed || !this.container) return;
-      const latest = this.audioPlayer.stateManager?.getStateSnapshot?.();
-      const stillLoading = latest?.isTransitioning === true && latest?.transitionType === 'loading';
-      this.container.setAttribute('data-loading', stillLoading ? 'true' : 'false');
-    }, 250);
+    this.container.setAttribute('data-loading', state?.isPlaybackPending === true ? 'true' : 'false');
   }
 
   getDisplayTrackName(track) {
@@ -894,30 +870,12 @@ export class AudioPlayerUI {
     return track?.name || track?.fileName || '';
   }
 
-  beginPlaylistSelection(shouldPlay) {
-    const generation = ++this.playlistSelectionGeneration;
-    const inheritedPlayIntent = this.playlistSelectionIntent?.shouldPlay === true;
-    const intent = {
-      generation,
-      shouldPlay: shouldPlay || inheritedPlayIntent
-    };
-    this.playlistSelectionIntent = intent;
-    return intent;
-  }
-
-  isCurrentPlaylistSelection(intent) {
-    return this.playlistSelectionIntent === intent &&
-      intent?.generation === this.playlistSelectionGeneration;
-  }
-
-  completePlaylistSelection(intent) {
-    if (!this.isCurrentPlaylistSelection(intent)) return;
-    this.playlistSelectionIntent = null;
-  }
-
-  cancelPlaylistSelectionIntent() {
-    this.playlistSelectionGeneration++;
-    this.playlistSelectionIntent = null;
+  selectQueueOrdinal(ordinal, preserveQueueWindow = false) {
+    return this.audioPlayer.playbackManager?.selectQueueOrdinal?.(ordinal, {
+      play: true,
+      userInitiated: true,
+      preserveQueueWindow
+    });
   }
 
   /**
@@ -963,44 +921,7 @@ export class AudioPlayerUI {
       setElementClass(item, 'active', index === state.currentTrackIndex);
       item.textContent = this.getDisplayTrackName(track) || `Track ${index + 1}`;
       item.addEventListener('contextmenu', event => this.openLibraryTrackMenu(event, track));
-      item.addEventListener('click', async () => {
-        const latestState = this.audioPlayer.stateManager?.getStateSnapshot?.();
-        const selection = this.beginPlaylistSelection(
-          latestState?.isPlaying || window.uiManager?.layoutMode?.isMobile
-        );
-        const shouldPlay = selection.shouldPlay;
-        const gestureResume = shouldPlay
-          ? Promise.resolve(this.audioPlayer.resumeAudioContextInGesture?.() ?? true)
-              .then(value => value !== false, () => false)
-          : null;
-        // Stop the old source before the selected track is published. Loading
-        // and gesture activation continue together after this synchronous handoff.
-        const stopOldPlayback = shouldPlay
-          ? Promise.resolve(this.audioPlayer.stop({
-              preservePlaylistSelectionIntent: true
-            })).then(() => true)
-          : Promise.resolve(true);
-        this.audioPlayer.stateManager?.updateState?.({
-          currentTrackIndex: index,
-          currentTrack: track
-        }, 'AudioPlayerUI playlist select');
-        try {
-          const loadTrack = this.audioPlayer.loadTrack(index);
-          const [loaded, resumeReady] = await Promise.all([
-            loadTrack,
-            shouldPlay ? gestureResume : Promise.resolve(true),
-            stopOldPlayback
-          ]);
-          if (!this.isCurrentPlaylistSelection(selection)) return false;
-          if (shouldPlay && loaded !== false && resumeReady) {
-            const played = await this.audioPlayer.play(false) !== false;
-            return this.isCurrentPlaylistSelection(selection) && played;
-          }
-          return loaded !== false && resumeReady;
-        } finally {
-          this.completePlaylistSelection(selection);
-        }
-      });
+      item.addEventListener('click', () => this.selectQueueOrdinal(index));
       this.playlistDisplay.appendChild(item);
     });
   }
@@ -1056,15 +977,7 @@ export class AudioPlayerUI {
         number: ordinal + 1
       });
       item.addEventListener('contextmenu', event => this.openLibraryTrackMenu(event, track));
-      item.addEventListener('click', async () => {
-        const latestState = this.audioPlayer.stateManager?.getStateSnapshot?.();
-        const shouldPlay = latestState?.isPlaying || window.uiManager?.layoutMode?.isMobile;
-        await this.audioPlayer.playbackManager?.selectCatalogOrdinal?.(ordinal, {
-          play: shouldPlay,
-          userInitiated: true,
-          preserveQueueWindow: true
-        });
-      });
+      item.addEventListener('click', () => this.selectQueueOrdinal(ordinal, true));
       this.playlistDisplay.appendChild(item);
     });
     revealPlaylistItem(this.playlistDisplay, activeItem);
@@ -1471,10 +1384,6 @@ export class AudioPlayerUI {
     this.cancelArtworkPreload();
     this.trackPresentationGeneration += 1;
     this.lastAppliedArtworkUrl = null;
-    if (this.loadingStateTimer !== null) {
-      clearTimeout(this.loadingStateTimer);
-      this.loadingStateTimer = null;
-    }
     this.stopUpdateInterval();
     if (this.positionRaf !== null) {
       cancelAnimationFrame(this.positionRaf);

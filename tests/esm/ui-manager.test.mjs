@@ -244,6 +244,13 @@ function createDocument() {
       if (!document.eventListeners.has(type)) document.eventListeners.set(type, []);
       document.eventListeners.get(type).push(listener);
     },
+    removeEventListener(type, listener) {
+      if (!document.eventListeners.has(type)) return;
+      document.eventListeners.set(
+        type,
+        document.eventListeners.get(type).filter(candidate => candidate !== listener)
+      );
+    },
     dispatch(type, event = {}) {
       const eventObject = {
         key: event.key,
@@ -448,6 +455,7 @@ async function withUIHarness(options = {}, callback) {
         async writeText(text) {
           if (options.clipboardWriteError) throw options.clipboardWriteError;
           calls.push(['clipboard.writeText', text]);
+          if (options.clipboardWrite) return options.clipboardWrite(text);
         },
         async readText() {
           if (options.clipboardReadError) throw options.clipboardReadError;
@@ -923,9 +931,41 @@ test('shares URLs, opens music, manages presets, and creates audio players', asy
   try {
     await withUIHarness({ isElectron: true, electronAPI: { openExternalUrl: async () => true } }, async ({ calls, document, manager, timers }) => {
       activeCalls = calls;
-      manager.audioManager.pipeline = [createPlugin('Gain')];
+      const sharedPlugin = createPlugin('Gain');
+      sharedPlugin.externalAssetInfo = {
+        missing: false,
+        kind: 'IR',
+        ids: ['aaaaaaaaaaaaaaaaaaaaaaaa'],
+        names: ['Measured Hall']
+      };
+      const missingBPlugin = createPlugin('IR Reverb');
+      missingBPlugin.externalAssetInfo = {
+        missing: true,
+        kind: 'IR',
+        ids: ['bbbbbbbbbbbbbbbbbbbbbbbb'],
+        names: ['Missing B Hall']
+      };
+      manager.audioManager.pipelineA = [sharedPlugin];
+      manager.audioManager.pipelineB = [missingBPlugin];
+      manager.audioManager.pipeline = [sharedPlugin];
       await manager.shareButton.click();
+      const shareMessageTimer = [...timers].reverse().find(timer => timer.delay === 3000);
+      assert.ok(shareMessageTimer);
       assert.match(manager.stateManager.errorDisplay.textContent, /Copied URL/);
+      assert.match(manager.stateManager.errorDisplay.textContent, /external IR data \(Measured Hall\)/);
+
+      manager.queueMissingExternalAssetSummary();
+      manager.queueMissingExternalAssetSummary();
+      const summaryTimers = timers.filter(timer => timer.delay === 50);
+      assert.equal(summaryTimers.length, 2);
+      assert.equal(calls.some(call => call[0] === 'clearTimeout'), true);
+      summaryTimers.at(-1).fn();
+      assert.match(manager.stateManager.errorDisplay.textContent, /One external file could not be found/);
+      shareMessageTimer.fn();
+      assert.match(manager.stateManager.errorDisplay.textContent, /One external file could not be found/);
+      for (let index = timers.length - 1; index >= 0; index -= 1) {
+        if (timers[index].delay === 50) timers.splice(index, 1);
+      }
       timers.splice(0).forEach(timer => timer.fn());
       assert.equal(manager.stateManager.errorDisplay.textContent, '');
 
@@ -1009,6 +1049,91 @@ test('shares URLs, opens music, manages presets, and creates audio players', asy
     activeCalls = null;
     AudioPlayer.prototype.loadFiles = originalLoadFiles;
     AudioPlayer.prototype.close = originalClose;
+  }
+});
+
+test('share success warning stays bound to the pipeline copied before clipboard completion', async () => {
+  let releaseClipboard;
+  let clipboardStarted;
+  const clipboardReady = new Promise(resolve => {
+    clipboardStarted = resolve;
+  });
+  const clipboardPending = new Promise(resolve => {
+    releaseClipboard = resolve;
+  });
+
+  await withUIHarness({
+    clipboardWrite() {
+      clipboardStarted();
+      return clipboardPending;
+    }
+  }, async ({ manager }) => {
+    const plugin = createPlugin('IR Reverb');
+    plugin.externalAssetInfo = {
+      missing: false,
+      kind: 'IR',
+      ids: ['aaaaaaaaaaaaaaaaaaaaaaaa'],
+      names: ['Copied Hall']
+    };
+    manager.audioManager.pipeline = [plugin];
+
+    const share = manager.shareButton.click();
+    await clipboardReady;
+    plugin.externalAssetInfo.names = ['Later Hall'];
+    manager.audioManager.pipeline = [];
+    releaseClipboard();
+    await share;
+
+    assert.match(manager.stateManager.errorDisplay.textContent, /external IR data \(Copied Hall\)/);
+    assert.doesNotMatch(manager.stateManager.errorDisplay.textContent, /Later Hall/);
+  });
+});
+
+test('only the latest pipeline share attempt can publish completion feedback', async () => {
+  const scenarios = [
+    {
+      latestSucceeds: true,
+      completeLatest: deferred => deferred.resolve(),
+      completeStale: deferred => deferred.reject(new Error('stale copy failure')),
+      expectedMessage: /Copied URL/,
+      unexpectedMessage: /Copy failed/,
+      expectedTimerDuration: 3000
+    },
+    {
+      latestSucceeds: false,
+      completeLatest: deferred => deferred.reject(new Error('latest copy failure')),
+      completeStale: deferred => deferred.resolve(),
+      expectedMessage: /Copy failed/,
+      unexpectedMessage: /Copied URL/,
+      expectedTimerDuration: 5000
+    }
+  ];
+
+  for (const scenario of scenarios) {
+    const clipboardAttempts = [createDeferred(), createDeferred()];
+    let clipboardIndex = 0;
+    await withUIHarness({
+      clipboardWrite() {
+        return clipboardAttempts[clipboardIndex++].promise;
+      }
+    }, async ({ manager, timers }) => {
+      manager.audioManager.pipeline = [createPlugin('Gain')];
+
+      const staleShare = manager.shareButton.click();
+      const latestShare = manager.shareButton.click();
+      assert.equal(clipboardIndex, 2);
+
+      scenario.completeLatest(clipboardAttempts[1]);
+      await latestShare;
+      scenario.completeStale(clipboardAttempts[0]);
+      await staleShare;
+
+      assert.match(manager.stateManager.errorDisplay.textContent, scenario.expectedMessage);
+      assert.doesNotMatch(manager.stateManager.errorDisplay.textContent, scenario.unexpectedMessage);
+      assert.equal(timers.filter(timer => timer.delay === scenario.expectedTimerDuration).length, 1);
+      const staleDuration = scenario.latestSucceeds ? 5000 : 3000;
+      assert.equal(timers.some(timer => timer.delay === staleDuration), false);
+    });
   }
 });
 

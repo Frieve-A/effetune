@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { CatalogPlaybackBridge } from '../../js/ui/audio-player/catalog-playback-bridge.js';
+import { StateManager } from '../../js/ui/audio-player/state-manager.js';
 
 const selectionDescriptor = Object.freeze({
   mode: 'all',
@@ -45,6 +46,49 @@ function sequenceClient(overrides = {}) {
     }
   };
 }
+
+test('Library Play stays pending from service queueing through provisional activation', async () => {
+  let finishStart;
+  let finishActivation;
+  const service = {
+    start() {
+      return new Promise(resolve => { finishStart = resolve; });
+    },
+    async status() { return null; },
+    subscribeOperation() { return () => {}; }
+  };
+  const stateManager = new StateManager({});
+  const player = {
+    stateManager,
+    ui: { container: {} },
+    playbackManager: {
+      installBulkPlayProvisional() {
+        return new Promise(resolve => { finishActivation = resolve; });
+      }
+    }
+  };
+  const bridge = new CatalogPlaybackBridge({
+    uiManager: { audioPlayer: player },
+    service,
+    sequenceClient: sequenceClient()
+  });
+
+  const starting = bridge.start(playbackRequest());
+  assert.equal(stateManager.state.isPlaybackPending, true);
+
+  finishStart({
+    kind: 'started',
+    operationId: 'operation-pending',
+    provisionalEntry: { entryInstanceId: 'entry-pending', trackUid: 'track-pending' }
+  });
+  const receipt = await starting;
+  assert.equal(receipt.operationId, 'operation-pending');
+  assert.equal(stateManager.state.isPlaybackPending, true);
+
+  finishActivation({ accepted: true });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(stateManager.state.isPlaybackPending, false);
+});
 
 test('playback start is session-only and publishes the terminal catalog sequence', async () => {
   const calls = [];

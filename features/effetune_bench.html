@@ -290,6 +290,8 @@
         import { copyTextToClipboard } from '../js/utils/clipboard-utils.js';
         import {
             BENCHMARK_DSP_MODES,
+            BENCHMARK_IR_REVERB_NOTE,
+            createIrReverbBenchmarkAssets,
             createDspBenchmarkRuntime
         } from './effetune-benchmark.js';
 
@@ -405,15 +407,24 @@
             return buffer;
         }
 
-        async function benchmarkPlugin(runtime, plugin, audioBuffer, sampleRate, blockSize, channelCount) {
+        async function benchmarkPlugin(
+            runtime,
+            plugin,
+            audioBuffer,
+            sampleRate,
+            blockSize,
+            channelCount,
+            assets = new Map()
+        ) {
             const totalBlocks = Math.floor(audioBuffer.length / (blockSize * channelCount));
             let processCount = 0;
             let blockIndex = 0;
             const duration = 1000;
-            const session = runtime.createPluginSession(plugin, { channelCount });
+            const session = runtime.createPluginSession(plugin, { channelCount, assets });
             let elapsedTime;
 
             try {
+                session.prepareAssets();
                 const warmupInput = audioBuffer.slice(0, blockSize * channelCount);
                 session.process(warmupInput, 0);
                 blockIndex++;
@@ -498,6 +509,7 @@
 
                     let note = '';
                     let channelCount = CHANNEL_COUNT;
+                    let assets = new Map();
                     if (name === 'Channel Divider') {
                         plugin.setParameters({ bc: 4 });
                         channelCount = 8;
@@ -540,17 +552,35 @@
                     } else if (name === 'Tilt EQ') {
                         plugin.setParameters({ sl: 1 });
                         note = 'Slope + 1db/oct';
+                    } else if (name === 'IR Reverb') {
+                        plugin.setParameters({ cm: 'true' });
+                        note = BENCHMARK_IR_REVERB_NOTE;
+                        if (runtime.usesWasm) {
+                            const parameters = plugin.getParameters({
+                                sampleRate: SAMPLE_RATE,
+                                outputChannelCount: channelCount
+                            });
+                            assets = createIrReverbBenchmarkAssets({
+                                sampleRate: SAMPLE_RATE,
+                                channelCount,
+                                latency: parameters.lt,
+                                convolutionRate: parameters.cr
+                            });
+                        }
                     }
 
                     let result;
-                    if (runtime.supportsPlugin(plugin)) {
+                    const requiresWasmAssets = name === 'IR Reverb';
+                    if (runtime.supportsPlugin(plugin) &&
+                        (!requiresWasmAssets || runtime.usesWasm)) {
                         result = await benchmarkPlugin(
                             runtime,
                             plugin,
                             audioBuffer,
                             SAMPLE_RATE,
                             BUFFER_SIZE,
-                            channelCount
+                            channelCount,
+                            assets
                         );
                     } else {
                         result = {
@@ -561,9 +591,10 @@
                             speedupFactor: null,
                             skipped: true
                         };
-                        note = note
-                            ? `${note}; WebAssembly DSP is not enabled for this plugin`
+                        const reason = requiresWasmAssets && !runtime.usesWasm
+                            ? 'requires WebAssembly DSP'
                             : 'WebAssembly DSP is not enabled for this plugin';
+                        note = note ? `${note}; ${reason}` : reason;
                     }
 
                     // Retrieve category from pluginDefinitions

@@ -62,6 +62,11 @@ std::uint32_t et_kernel_param_bytes_capacity(std::uint32_t index) {
   return descriptor == nullptr ? 0u : descriptor->paramsByteCapacity;
 }
 
+std::uint32_t et_kernel_asset_capacity(std::uint32_t index, std::uint32_t slot) {
+  const effetune::KernelDescriptor *descriptor = effetune::registry::at(index);
+  return descriptor == nullptr ? 0u : descriptor->assetCapacity(slot);
+}
+
 std::uint32_t et_engine_memory_required(float sample_rate, std::uint32_t max_channels,
                                         std::uint32_t max_frames,
                                         std::uint32_t telemetry_ring_bytes) {
@@ -154,6 +159,42 @@ et_status et_instance_set_param_bytes(et_engine engine, et_instance instance,
   return target == nullptr ? ET_ERR_ARGS
                            : target->setInstanceParamBytes(instance, packed, byte_count,
                                                            params_hash, offset_frames);
+}
+
+std::uint32_t et_instance_asset_begin(et_engine engine, et_instance instance, std::uint32_t slot,
+                                      std::uint32_t channels, std::uint32_t frames,
+                                      std::uint32_t topology, std::uint32_t head_block,
+                                      std::uint32_t rate_divider, std::uint32_t path_count,
+                                      std::uint32_t input_count, std::uint32_t processing_channels,
+                                      std::uint32_t footprint_bytes, std::uint32_t byte_size) {
+  effetune::Engine *target = findEngine(engine);
+  if (target == nullptr) {
+    return 0u;
+  }
+  const effetune::AssetBeginInfo info{channels,        frames,     topology,    head_block,
+                                      rate_divider,    path_count, input_count, processing_channels,
+                                      footprint_bytes, byte_size};
+  std::uint8_t *staging = target->beginInstanceAsset(instance, slot, info);
+  return static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(staging));
+}
+
+et_status et_instance_asset_commit(et_engine engine, et_instance instance, std::uint32_t slot,
+                                   std::uint32_t byte_size, std::uint32_t format_tag) {
+  effetune::Engine *target = findEngine(engine);
+  return target == nullptr ? ET_ERR_ARGS
+                           : target->commitInstanceAsset(instance, slot, byte_size, format_tag);
+}
+
+void et_instance_asset_abort(et_engine engine, et_instance instance, std::uint32_t slot) {
+  effetune::Engine *target = findEngine(engine);
+  if (target != nullptr) {
+    target->abortInstanceAsset(instance, slot);
+  }
+}
+
+std::uint32_t et_instance_asset_state(et_engine engine, et_instance instance, std::uint32_t slot) {
+  const effetune::Engine *target = findEngine(engine);
+  return target == nullptr ? ET_ASSET_STATE_NONE : target->instanceAssetState(instance, slot);
 }
 
 et_status et_instance_process(et_engine engine, et_instance instance, float *audio,

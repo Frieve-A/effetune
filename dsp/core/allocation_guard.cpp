@@ -18,6 +18,7 @@ namespace {
 std::uint32_t process_depth = 0;
 std::uint32_t violation_count = 0;
 bool abort_on_violation = true;
+std::int32_t nothrow_allocations_before_failure = -1;
 #endif
 
 } // namespace
@@ -64,6 +65,27 @@ void setAbortOnViolationForTesting(bool enabled) noexcept {
 #endif
 }
 
+void failNothrowAllocationAfterForTesting(std::int32_t successful_allocations) noexcept {
+#if defined(ET_ALLOCATION_GUARD)
+  nothrow_allocations_before_failure = successful_allocations;
+#else
+  static_cast<void>(successful_allocations);
+#endif
+}
+
+bool consumeNothrowAllocationFailureForTesting() noexcept {
+#if defined(ET_ALLOCATION_GUARD)
+  if (nothrow_allocations_before_failure < 0)
+    return false;
+  if (nothrow_allocations_before_failure == 0) {
+    nothrow_allocations_before_failure = -1;
+    return true;
+  }
+  --nothrow_allocations_before_failure;
+#endif
+  return false;
+}
+
 std::uint32_t violationCount() noexcept {
 #if defined(ET_ALLOCATION_GUARD)
   return violation_count;
@@ -106,6 +128,9 @@ void *operator new[](std::size_t bytes) { return ::operator new(bytes); }
 
 void *operator new(std::size_t bytes, const std::nothrow_t &) noexcept {
   effetune::allocation_guard::abortIfActive();
+  if (effetune::allocation_guard::consumeNothrowAllocationFailureForTesting()) {
+    return nullptr;
+  }
   return allocateUnaligned(bytes);
 }
 
@@ -156,6 +181,9 @@ void *operator new[](std::size_t bytes, std::align_val_t alignment) {
 
 void *operator new(std::size_t bytes, std::align_val_t alignment, const std::nothrow_t &) noexcept {
   effetune::allocation_guard::abortIfActive();
+  if (effetune::allocation_guard::consumeNothrowAllocationFailureForTesting()) {
+    return nullptr;
+  }
   return allocateAligned(bytes, static_cast<std::size_t>(alignment));
 }
 

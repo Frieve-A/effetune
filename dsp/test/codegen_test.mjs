@@ -13,11 +13,15 @@ const valid = validateParamSpec({
     { name: 'gain', key: 'gn', kind: 'float', min: 0, max: 2, default: 1 },
     { name: 'mode', key: 'md', kind: 'enum', values: ['a', 'b'], default: 'a' },
     { name: 'bands', key: 'b', kind: 'int', count: 2, min: 1, max: 8, default: [2, 4] }
-  ]
+  ],
+  assets: [{ slot: 0, format: 'f32-multich', capacity: '32 MiB convolution peak' }]
 }, 'valid fixture');
 
 assert.equal(valid.floatCount, 4);
 assert.equal(valid.fields[2].keys.join(','), 'b0,b1');
+assert.deepEqual(valid.assets, [
+  { slot: 0, format: 'f32-multich', capacity: '32 MiB convolution peak' }
+]);
 assert.equal(valid.hash, computeLayoutHash(valid.fields));
 
 const structured = validateParamSpec({

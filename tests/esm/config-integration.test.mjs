@@ -1221,3 +1221,25 @@ test('all locales include the Web power-saving settings copy', () => {
     '最大省電力では、バックグラウンドの無音またはPlayerモードで音声入力が未使用の状態が設定時間続くと、EffeTuneは音声入力を停止します。Playerの再生は継続する場合があります。外部入力の信号が戻っても入力は自動再開されません。アプリを開いて「音声処理を再開」を選んでください。'
   ), true);
 });
+
+test('all locales include matching IR Reverb, IR library, and external asset keys', () => {
+  const locales = ['en', 'ja', 'ar', 'es', 'fr', 'hi', 'ko', 'pt', 'ru', 'zh'];
+  const readIrEntries = locale => {
+    const source = readFileSync(new URL(`../../js/locales/${locale}.json5`, import.meta.url), 'utf8');
+    return new Map([...source.matchAll(
+      /^\s*"((?:irReverb|irLibrary|externalAsset)\.[^"]+)":\s*"([^"]*)"/gm
+    )].map(([, key, value]) => [key, value]));
+  };
+  const placeholderNames = value => [...value.matchAll(/\{([^}]+)\}/g)]
+    .map(match => match[1])
+    .sort();
+  const english = readIrEntries('en');
+  assert.equal(english.size, 102);
+  for (const locale of locales) {
+    const entries = readIrEntries(locale);
+    assert.deepEqual([...entries.keys()].sort(), [...english.keys()].sort(), `${locale} IR key parity`);
+    for (const [key, value] of entries) {
+      assert.deepEqual(placeholderNames(value), placeholderNames(english.get(key)), `${locale} ${key} placeholders`);
+    }
+  }
+});

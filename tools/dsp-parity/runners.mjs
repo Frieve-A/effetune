@@ -25,6 +25,8 @@ export const NATIVE_CONTROL_VERSION = 1;
 export const NATIVE_CONTROL_HEADER_BYTES = 36;
 export const NATIVE_CONTROL_STRUCTURED_VERSION = 2;
 export const NATIVE_CONTROL_STRUCTURED_HEADER_BYTES = 40;
+export const NATIVE_CONTROL_ASSET_VERSION = 3;
+export const NATIVE_CONTROL_ASSET_HEADER_BYTES = 84;
 export const WASM_PIPELINE_TELEMETRY_BYTES = 256 * 1024;
 
 export function seedWords(seed = DEFAULT_NOISE_SEED) {
@@ -65,7 +67,8 @@ export async function runNativeCase({
   schema,
   runnerPath = defaultNativeRunnerPath(),
   repoRoot = DEFAULT_REPO_ROOT,
-  allocations = false
+  allocations = false,
+  referenceDirect = false
 }) {
   const resolvedRunner = path.resolve(repoRoot, runnerPath);
   await requireFile(resolvedRunner, 'Native DSP parity runner');
@@ -85,6 +88,7 @@ export async function runNativeCase({
     const seed = seedWords(testCase.seed);
     args.push('--seed-low', String(seed.low), '--seed-high', String(seed.high));
     if (allocations) args.push('--allocations');
+    if (referenceDirect) args.push('--reference-direct');
     await spawnAndCollect(resolvedRunner, args, { cwd: repoRoot, env: process.env });
     return await readFloat32File(outputPath, input.length);
   } finally {
@@ -95,6 +99,10 @@ export async function runNativeCase({
       retryDelay: 50
     });
   }
+}
+
+export function runNativeReferenceCase(options) {
+  return runNativeCase({ ...options, referenceDirect: true });
 }
 
 function fnv1a32(source) {
@@ -195,6 +203,108 @@ export function packStructuredParams(schema, params = {}) {
   return packed;
 }
 
+function syntheticIrBytes(asset, sampleRate) {
+  const spec = asset.ir;
+  if (!spec || spec.kind !== 'sparse-decay-v1') return null;
+  if (!Number.isInteger(sampleRate) || sampleRate <= 0 ||
+      !Number.isInteger(asset.channels) || asset.channels <= 0 ||
+      !Number.isInteger(asset.frames) || asset.frames <= 0 ||
+      !Number.isInteger(asset.rateDivider) || asset.rateDivider <= 0) {
+    throw new Error('Synthetic IR asset dimensions are invalid');
+  }
+  const tapCount = spec.tapCount ?? 17;
+  if (!Number.isInteger(tapCount) || tapCount < 1 || tapCount > asset.frames) {
+    throw new Error(`Synthetic IR tapCount is invalid: ${tapCount}`);
+  }
+  let state = Number(spec.seed ?? 0x49525631) >>> 0;
+  if (state === 0) state = 0x49525631;
+  const next = () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return state;
+  };
+  const samples = new Float32Array(asset.channels * asset.frames);
+  for (let channel = 0; channel < asset.channels; channel++) {
+    const channelGain = 1 - channel * 0.12;
+    samples[channel * asset.frames] = (spec.directGain ?? 0.7) * channelGain;
+    for (let tap = 1; tap < tapCount; tap++) {
+      const frame = 1 + next() % Math.max(1, asset.frames - 1);
+      const sign = (next() & 1) === 0 ? 1 : -1;
+      const decay = Math.exp(-4 * frame / asset.frames);
+      samples[channel * asset.frames + frame] +=
+        sign * (spec.tailGain ?? 0.45) * channelGain * decay / Math.sqrt(tap + 1);
+    }
+    if (asset.frames > 1) {
+      samples[(channel + 1) * asset.frames - 1] +=
+        (spec.tailGain ?? 0.45) * channelGain * 0.01;
+    }
+  }
+  const paths = asset.topology === 4 ? asset.paths : [];
+  if (asset.topology === 4 &&
+      (!Array.isArray(paths) || paths.length !== asset.pathCount || paths.length < 1 ||
+       paths.length > 8)) {
+    throw new Error('Synthetic matrix IR asset paths must match pathCount in the range 1..8');
+  }
+  const pathTableBytes = paths.length * 12;
+  const bytes = Buffer.alloc(32 + pathTableBytes + samples.byteLength);
+  bytes.writeUInt32LE(0x31415445, 0);
+  bytes.writeUInt32LE(asset.channels, 4);
+  bytes.writeUInt32LE(asset.frames, 8);
+  bytes.writeUInt32LE(Math.round(sampleRate / asset.rateDivider), 12);
+  bytes.writeUInt32LE(asset.topology, 16);
+  bytes.writeUInt32LE(paths.length, 20);
+  for (let index = 0; index < paths.length; index++) {
+    const path = paths[index];
+    for (const key of ['input', 'output', 'irChannel']) {
+      if (!Number.isInteger(path?.[key]) || path[key] < 0 || path[key] > 0xffffffff) {
+        throw new Error(`Synthetic matrix IR path ${index} has invalid ${key}`);
+      }
+    }
+    const offset = 32 + index * 12;
+    bytes.writeUInt32LE(path.input, offset);
+    bytes.writeUInt32LE(path.output, offset + 4);
+    bytes.writeUInt32LE(path.irChannel, offset + 8);
+  }
+  for (let index = 0; index < samples.length; index++) {
+    bytes.writeFloatLE(samples[index], 32 + pathTableBytes + index * 4);
+  }
+  return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+}
+
+function normalizeAsset(asset, sampleRate, processingChannels) {
+  if (!asset) return null;
+  const bytes = asset.bytes instanceof Uint8Array
+    ? asset.bytes
+    : Buffer.isBuffer(asset.bytes)
+      ? new Uint8Array(asset.bytes.buffer, asset.bytes.byteOffset, asset.bytes.byteLength)
+      : syntheticIrBytes(asset, sampleRate);
+  if (!bytes || bytes.byteLength === 0) {
+    throw new Error('Native DSP parity asset bytes must be a non-empty Uint8Array');
+  }
+  const normalized = {
+    slot: asset.slot ?? 0,
+    format: asset.format ?? 1,
+    channels: asset.channels,
+    frames: asset.frames,
+    topology: asset.topology,
+    headBlock: asset.headBlock,
+    rateDivider: asset.rateDivider,
+    pathCount: asset.pathCount ?? 0,
+    inputCount: asset.inputCount ?? 0,
+    processingChannels,
+    footprintBytes: 32 * 1024 * 1024,
+    bytes
+  };
+  for (const key of [
+    'slot', 'format', 'channels', 'frames', 'topology', 'headBlock', 'rateDivider',
+    'pathCount', 'inputCount', 'processingChannels', 'footprintBytes'
+  ]) {
+    if (!Number.isInteger(normalized[key]) || normalized[key] < 0 || normalized[key] > 0xffffffff) {
+      throw new Error(`Native DSP parity asset has invalid ${key}: ${normalized[key]}`);
+    }
+  }
+  return normalized;
+}
+
 export function activePipelinePlugins(pipeline) {
   const active = [];
   buildDspPipelineNodes(pipeline, {
@@ -218,6 +328,7 @@ export function encodeNativeControl(schema, testCase) {
     }
   }
   const structured = Boolean(schema.structured);
+  const asset = normalizeAsset(testCase.asset, testCase.sampleRate, testCase.channels);
   const initial = packParams(schema, testCase.params ?? {});
   const initialBytes = packStructuredParams(schema, testCase.params ?? {});
   const events = [...(testCase.events ?? [])].sort((left, right) => left.frame - right.frame);
@@ -233,6 +344,59 @@ export function encodeNativeControl(schema, testCase) {
       packedBytes: packStructuredParams(schema, currentParams)
     };
   });
+  if (asset) {
+    const eventBytes = packedEvents.reduce(
+      (total, event) => total + 8 + event.packed.byteLength + event.packedBytes.byteLength,
+      0
+    );
+    const buffer = Buffer.alloc(
+      NATIVE_CONTROL_ASSET_HEADER_BYTES + initial.byteLength + initialBytes.byteLength +
+      asset.bytes.byteLength + eventBytes
+    );
+    buffer.write(NATIVE_CONTROL_MAGIC, 0, 4, 'ascii');
+    buffer.writeUInt32LE(NATIVE_CONTROL_ASSET_VERSION, 4);
+    buffer.writeFloatLE(testCase.sampleRate, 8);
+    buffer.writeUInt32LE(testCase.frames, 12);
+    buffer.writeUInt32LE(testCase.channels, 16);
+    buffer.writeUInt32LE(testCase.blockSize, 20);
+    buffer.writeUInt32LE(paramsLayoutHash(schema), 24);
+    buffer.writeUInt32LE(initial.length, 28);
+    buffer.writeUInt32LE(initialBytes.byteLength, 32);
+    buffer.writeUInt32LE(packedEvents.length, 36);
+    buffer.writeUInt32LE(asset.slot, 40);
+    buffer.writeUInt32LE(asset.format, 44);
+    buffer.writeUInt32LE(asset.channels, 48);
+    buffer.writeUInt32LE(asset.frames, 52);
+    buffer.writeUInt32LE(asset.topology, 56);
+    buffer.writeUInt32LE(asset.headBlock, 60);
+    buffer.writeUInt32LE(asset.rateDivider, 64);
+    buffer.writeUInt32LE(asset.pathCount, 68);
+    buffer.writeUInt32LE(asset.inputCount, 72);
+    buffer.writeUInt32LE(asset.bytes.byteLength, 76);
+    buffer.writeUInt32LE(0, 80);
+    let offset = NATIVE_CONTROL_ASSET_HEADER_BYTES;
+    for (const value of initial) {
+      buffer.writeFloatLE(value, offset);
+      offset += 4;
+    }
+    buffer.set(initialBytes, offset);
+    offset += initialBytes.byteLength;
+    buffer.set(asset.bytes, offset);
+    offset += asset.bytes.byteLength;
+    for (const event of packedEvents) {
+      buffer.writeUInt32LE(event.frame, offset);
+      offset += 4;
+      for (const value of event.packed) {
+        buffer.writeFloatLE(value, offset);
+        offset += 4;
+      }
+      buffer.writeUInt32LE(event.packedBytes.byteLength, offset);
+      offset += 4;
+      buffer.set(event.packedBytes, offset);
+      offset += event.packedBytes.byteLength;
+    }
+    return buffer;
+  }
   if (structured) {
     const eventBytes = packedEvents.reduce(
       (total, event) => total + 8 + event.packed.byteLength + event.packedBytes.byteLength,
@@ -370,8 +534,12 @@ export async function runWasmCase({
   const enginePrepare = getExport(exports, 'et_engine_prepare');
   const instanceCreate = getExport(exports, 'et_instance_create');
   const instanceDestroy = getExport(exports, 'et_instance_destroy');
+  const instanceReset = getExport(exports, 'et_instance_reset', false);
   const instanceSetSeed = getExport(exports, 'et_instance_set_seed');
   const instanceProcess = getExport(exports, 'et_instance_process');
+  const instanceAssetBegin = getExport(exports, 'et_instance_asset_begin', false);
+  const instanceAssetCommit = getExport(exports, 'et_instance_asset_commit', false);
+  const instanceAssetState = getExport(exports, 'et_instance_asset_state', false);
   const setParams = getExport(exports, 'et_instance_set_params', false);
   const setParamBytes = getExport(exports, 'et_instance_set_param_bytes', false);
   const arenaPtr = getExport(exports, 'et_arena_combined_ptr');
@@ -449,6 +617,65 @@ export async function runWasmCase({
     };
     let currentParams = { ...(testCase.params ?? {}) };
     applyParams(currentParams);
+    const asset = normalizeAsset(testCase.asset, testCase.sampleRate, testCase.channels);
+    if (asset) {
+      if (!instanceReset || !instanceAssetBegin || !instanceAssetCommit || !instanceAssetState) {
+        throw new Error('WASM DSP artifact is missing asset staging exports');
+      }
+      const assetPtr = instanceAssetBegin(
+        engine,
+        dspInstance,
+        asset.slot,
+        asset.channels,
+        asset.frames,
+        asset.topology,
+        asset.headBlock,
+        asset.rateDivider,
+        asset.pathCount,
+        asset.inputCount,
+        asset.processingChannels,
+        asset.footprintBytes,
+        asset.bytes.byteLength
+      );
+      if (!assetPtr) throw new Error('et_instance_asset_begin returned an invalid pointer');
+      new Uint8Array(memory.buffer, assetPtr, asset.bytes.byteLength).set(asset.bytes);
+      checkStatus('et_instance_asset_commit', instanceAssetCommit(
+        engine,
+        dspInstance,
+        asset.slot,
+        asset.bytes.byteLength,
+        asset.format
+      ));
+
+      const maximumPreparationCalls = 100000;
+      let preparationCalls = 0;
+      let assetState = instanceAssetState(engine, dspInstance, asset.slot) & 0xff;
+      while (assetState === 2 && preparationCalls < maximumPreparationCalls) {
+        const audioPtr = arenaPtr(engine);
+        const silence = new Float32Array(
+          memory.buffer,
+          audioPtr,
+          testCase.channels * preparedFrames
+        );
+        silence.fill(0);
+        checkStatus('et_instance_process preparation', instanceProcess(
+          engine,
+          dspInstance,
+          audioPtr,
+          testCase.channels,
+          preparedFrames,
+          0
+        ));
+        preparationCalls++;
+        assetState = instanceAssetState(engine, dspInstance, asset.slot) & 0xff;
+      }
+      if (assetState !== 3) {
+        throw new Error(
+          `WASM DSP asset did not become active (state ${assetState} after ${preparationCalls} calls)`
+        );
+      }
+      checkStatus('et_instance_reset', instanceReset(engine, dspInstance));
+    }
     const events = [...(testCase.events ?? [])].sort((left, right) => left.frame - right.frame);
     let eventIndex = 0;
     const output = new Float32Array(input.length);

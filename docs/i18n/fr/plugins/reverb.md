@@ -1,6 +1,6 @@
 ---
 title: "Plugins Reverb - EffeTune"
-description: "Plugins d'effet de reverb incluant RS Reverb, Dattorro Plate Reverb et FDN Reverb."
+description: "Plugins de réverbération Dattorro Plate Reverb, FDN Reverb, IR Reverb et RS Reverb."
 lang: fr
 ---
 
@@ -12,6 +12,7 @@ Une collection de plugins qui ajoutent de l'espace et de l'atmosphère à votre 
 
 - [Dattorro Plate Reverb](#dattorro-plate-reverb) - Reverb à plaque classique basé sur l'algorithme Dattorro
 - [FDN Reverb](#fdn-reverb) - Reverb à réseau de délais à rétroaction avec matrice de diffusion avancée
+- [IR Reverb](#ir-reverb) - Réverbération à convolution avec une réponse impulsionnelle importée
 - [RS Reverb](#rs-reverb) - Crée une ambiance et un espace naturels
 
 ## Dattorro Plate Reverb
@@ -260,6 +261,41 @@ Note de routage : FDN Reverb est un modèle de reverb stéréo avec un feedback 
    - Ajustez finement selon votre musique et vos préférences
 
 Le FDN Reverb transforme votre expérience d'écoute en ajoutant des espaces acoustiques réalistes avec une réverbération belle et naturelle à tout enregistrement. Parfait pour les mélomanes qui veulent améliorer leurs morceaux favoris avec une belle réverbération au son naturel !
+
+## IR Reverb
+
+IR Reverb convolue le signal avec une réponse impulsionnelle (IR) importée afin de reproduire la décroissance et le caractère spatial mesurés d'une pièce, d'une salle, d'une plaque ou d'un autre système acoustique. Il convient lorsqu'on recherche le rendu reproductible d'une prise précise.
+
+### Guide d'amélioration sonore
+
+- Pour une ambiance discrète, chargez une IR courte, réglez **Dry** sur 0 dB, **Wet** entre -18 et -12 dB et ajoutez un **Pre Delay** bref.
+- Pour ouvrir un enregistrement vers une grande salle, utilisez une IR stéréo ou True Stereo, puis raccourcissez une traîne trop longue avec **Decay** et **Trim**.
+- En départ/retour, copiez les sources vers un autre bus avec **Matrix**, réglez **Dry** sur -96 dB, laissez **Wet** à 0 dB et dosez l'effet au niveau du départ.
+- Pour reproduire le résultat, conservez le fichier IR original, sa source et sa licence : les mêmes octets donnent le même identifiant.
+
+### Paramètres
+
+- **Channel Mode** : Auto, Mono, Independent, True Stereo (trajets LL/LR/RL/RR) ou Diagonal Matrix sans diaphonie.
+- **Latency** : Zero ou 128/256/512/1024 échantillons. Une valeur élevée allège le traitement mais retarde le signal wet ; Zero impose Full.
+- **Convolution Rate** : Auto, Full, Half ou Quarter. Un taux réduit diminue la charge et la bande passante wet ; Quarter exige au moins 176,4 kHz.
+- **Dry** : règle le niveau du signal d'origine. À -96 dB, il le coupe complètement pour un effet entièrement wet ou un retour.
+- **Wet** : niveau du signal convolué, de -96 à +12 dB.
+- **Pre Delay** : retarde uniquement le signal wet de 0 à 500 ms.
+- **Direct Cut** supprime l'impulsion directe détectée ; **Cut Offset** décale la coupe de -20 à +50 ms. La normalisation conserve l’IR non coupée comme référence : activer Direct Cut n’augmente donc pas le niveau de la queue de réverbération restante.
+- **Decay** remodèle la décroissance de 10% à 400% ; 100% conserve la prise.
+- **Trim** conserve 1% à 100% de l'IR après la coupe ; une traîne plus courte consomme moins de processeur et de mémoire.
+
+### Lecture du graphique de décroissance
+
+Le temps va de gauche à droite et le niveau de 0 à -90 dB. La courbe EDC continue montre la perte d'énergie ; une pente plus forte indique une traîne plus courte. Les repères indiquent onset, cut, pre-delay et trim. RT60 estime le temps d'une chute de 60 dB. Lorsque **Decay** change, la nouvelle courbe est continue et l'originale pointillée.
+
+### Routage, bibliothèque et partage
+
+Mono applique une IR, Independent sépare les canaux, True Stereo utilise LL/LR/RL/RR et Diagonal Matrix relie uniquement les entrées et sorties correspondantes. Pour une paire True Stereo, sélectionnez ensemble des fichiers assortis terminés par `L`/`R` ou `Left`/`Right`.
+
+Les originaux sont conservés dans **Impulse Response Library**. La version web utilise l'OPFS privé du site et l'application de bureau son stockage géré. La bibliothèque affiche les noms de fichiers d'origine et permet de les rechercher, de charger une entrée ou de la supprimer. Un changement de fréquence d'échantillonnage recrée les données depuis l'original. Gardez aussi votre propre copie, car l'effacement des données du site ou la pression de stockage peut supprimer les données du navigateur.
+
+Les URL et presets ne contiennent que l'identifiant, jamais l'audio IR ni le nom du fichier. Le destinataire doit importer le même fichier ou choisir un substitut. Sans IR, aucun signal wet ; sans WASM, seul le signal dry configuré passe. Des IR sont disponibles sur [OpenAIR](https://www.openair.hosted.york.ac.uk/), [EchoThief](https://www.echothief.com/downloads/) et [Freesound](https://freesound.org/), mais vérifiez la licence de chaque fichier (CC0, CC BY ou CC BY-NC, par exemple) et conservez auteur, source, attribution et autorisation commerciale en dehors d'EffeTune, qui ne stocke ni ne vérifie les informations de licence.
 
 ## RS Reverb
 

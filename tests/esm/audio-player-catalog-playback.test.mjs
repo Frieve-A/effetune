@@ -140,7 +140,7 @@ test('catalog CUE selection preserves the currently displayed queue page', async
       refreshes.push(ordinal);
     };
 
-    const result = await manager.selectCatalogOrdinal(239, {
+    const result = await manager.selectSequenceOrdinal(239, {
       play: true,
       preserveQueueWindow: true
     });
@@ -203,6 +203,79 @@ test('catalog selection skips an unavailable source once and loads the next play
     assert.equal(audioPlayer.stateManager.state.currentTrackIndex, 1);
     assert.deepEqual(calls.filter(call => call[0] === 'loadTrack').map(call => call[2]), [1]);
     assert.equal(calls.filter(call => call[0] === 'play').length, 1);
+  });
+});
+
+test('explicit catalog queue selection never treats another occurrence as the clicked track', async () => {
+  await withPlaybackHarness(async ({ audioPlayer, calls, manager }) => {
+    const sourceCalls = [];
+    globalThis.window.uiManager = {
+      setError(...args) {
+        calls.push(['setError', ...args]);
+      },
+      showTransientMessage(...args) {
+        calls.push(['transientMessage', ...args]);
+      }
+    };
+    await manager.loadCatalogSequence({
+      ...catalogDescriptor({ itemCount: 3 }),
+      async resolveSource(request) {
+        sourceCalls.push(request.trackUid);
+        if (request.trackUid === 'track-1') throw new Error('offline');
+        return { path: `/music/${request.trackUid}.flac` };
+      }
+    }, { currentOrdinal: 0, autoPlay: false });
+    sourceCalls.length = 0;
+
+    const result = await manager.selectQueueOrdinal(1);
+
+    assert.equal(result.accepted, false);
+    assert.equal(result.reason, 'source-unavailable');
+    assert.deepEqual(sourceCalls, ['track-1']);
+    assert.equal(audioPlayer.stateManager.state.currentTrackIndex, 0);
+    assert.equal(calls.some(call => call[0] === 'play'), false);
+    assert.equal(calls.some(call => call[0] === 'transientMessage'), false);
+    assert.deepEqual(calls.find(call => call[0] === 'setError'), [
+      'setError',
+      'error.playbackCommandFailed',
+      true
+    ]);
+  });
+});
+
+test('stopped catalog queue selection waits for playback readiness and starts only the clicked CUE entry', async () => {
+  await withPlaybackHarness(async ({ audioPlayer, calls, manager }) => {
+    const sourceCalls = [];
+    await manager.loadCatalogSequence({
+      ...catalogDescriptor({ itemCount: 3 }),
+      async resolveSource(request) {
+        sourceCalls.push(request.trackUid);
+        return { path: '/music/album.flac', startFrame: Number(request.trackUid.slice(6)) * 1000 };
+      }
+    }, { currentOrdinal: 0, autoPlay: false });
+    sourceCalls.length = 0;
+    calls.length = 0;
+    let releasePlayback;
+    audioPlayer.resumeAudioContextInGesture = () => new Promise(resolve => {
+      releasePlayback = resolve;
+    });
+
+    const selected = manager.selectQueueOrdinal(2);
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.deepEqual(sourceCalls, []);
+    assert.equal(calls.some(call => call[0] === 'loadTrack'), false);
+
+    releasePlayback(true);
+    const result = await selected;
+
+    assert.equal(result.accepted, true);
+    assert.deepEqual(sourceCalls, ['track-2']);
+    assert.deepEqual(calls.filter(call => call[0] === 'loadTrack'), [
+      ['loadTrack', 'catalog-sequence:2', 2]
+    ]);
+    assert.equal(calls.filter(call => call[0] === 'play').length, 1);
+    assert.equal(audioPlayer.stateManager.state.currentTrackIndex, 2);
   });
 });
 
@@ -597,7 +670,7 @@ test('late audio graph revalidation cannot replace a newer catalog track', async
       await Promise.resolve();
     }
 
-    assert.equal((await manager.selectCatalogOrdinal(1, { play: false })).accepted, true);
+    assert.equal((await manager.selectSequenceOrdinal(1, { play: false })).accepted, true);
     resolveRevalidation({
       kind: 'electron-file',
       path: 'D:\\Music\\Late.flac',
@@ -649,45 +722,36 @@ test('catalog graph revalidation follows the same entry after shuffle retargets 
   });
 });
 
-test('audio-reset selection preserves graph command ownership while explicit Select supersedes it immediately', async () => {
+test('graph source refresh never issues transport while explicit Select remains the only command', async () => {
   await withPlaybackHarness(async ({ audioPlayer, manager }) => {
-    let releaseExplicitSource;
+    let failCurrentSource = false;
     await manager.loadCatalogSequence({
       ...catalogDescriptor({ itemCount: 2 }),
       async resolveSource(request) {
-        if (request.trackUid === 'track-1') {
-          return new Promise(resolve => { releaseExplicitSource = resolve; });
-        }
-        return { path: `/music/${request.trackUid}.flac` };
+        if (failCurrentSource && request.trackUid === 'track-0') throw new Error('offline');
+        return { path: `/music/${request.trackUid}.flac`, kind: 'electron-file' };
       }
     }, { currentOrdinal: 0, autoPlay: false });
-    const graphCommandGeneration = audioPlayer.stateManager.state.transportCommandGeneration;
+    const currentTrack = audioPlayer.stateManager.state.currentTrack;
+    const commandGeneration = audioPlayer.stateManager.state.transportCommandGeneration;
+    failCurrentSource = true;
 
-    const recovered = await manager.selectCatalogOrdinal(0, {
-      play: false,
-      userInitiated: false,
-      commandKind: 'audio-reset',
-      reason: 'audio-reset'
-    });
-    assert.equal(recovered.accepted, true);
+    const refresh = await manager.prepareCatalogTrackForGraphRebuild(currentTrack);
+    assert.equal(refresh.handled, true);
+    assert.equal(refresh.committed, false);
+    assert.equal(refresh.reason, 'source-unavailable');
     assert.equal(
       audioPlayer.stateManager.state.transportCommandGeneration,
-      graphCommandGeneration
+      commandGeneration
     );
+    assert.equal(audioPlayer.stateManager.state.currentTrackIndex, 0);
 
-    const selected = manager.selectCatalogOrdinal(1, { play: false });
-    await Promise.resolve();
+    const selected = await manager.selectSequenceOrdinal(1, { play: false });
+    assert.equal(selected.accepted, true);
     assert.equal(
       audioPlayer.stateManager.state.transportCommandGeneration,
-      graphCommandGeneration + 1
+      commandGeneration + 1
     );
-    for (let turn = 0; turn < 10; turn += 1) {
-      if (releaseExplicitSource) break;
-      await Promise.resolve();
-    }
-    assert.equal(typeof releaseExplicitSource, 'function');
-    releaseExplicitSource({ path: '/music/track-1.flac' });
-    assert.equal((await selected).accepted, true);
   });
 });
 
@@ -764,7 +828,7 @@ test('Play Next inserts after current while Queue appends in the active session'
       itemCount: 6,
       prefix: 'original'
     }), { currentOrdinal: 0, autoPlay: false });
-    await manager.selectCatalogOrdinal(2, { play: false });
+    await manager.selectSequenceOrdinal(2, { play: false });
 
     const insertedDescriptor = catalogDescriptor({ sequenceId: 'inserted', itemCount: 2, prefix: 'inserted' });
     const inserted = new CatalogSequence(insertedDescriptor);

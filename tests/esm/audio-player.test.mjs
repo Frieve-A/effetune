@@ -37,7 +37,8 @@ async function withAudioPlayerGlobals(options, callback) {
       calls.push(['requestAnimationFrame']);
       callbackFn();
       return calls.length;
-    }
+    },
+    ...options.globals
   }, async () => callback({ calls, documentRef }));
 }
 
@@ -81,7 +82,69 @@ test('constructor wires sub-managers and refreshes UI only when a container exis
   });
 });
 
-test('loadFiles delegates playlist loading, creates missing UI, then loads and plays', async () => {
+test('startup-created player uses the canonical AudioContext for buffer and media preparation', async () => {
+  class TestAudio {
+    constructor() {
+      this.src = '';
+      this.duration = 10;
+      this.readyState = 1;
+    }
+
+    load() {}
+    pause() {}
+  }
+
+  await withAudioPlayerGlobals({ globals: { Audio: TestAudio } }, async () => {
+    const audioManager = createAudioManager();
+    const startupContext = audioManager.audioContext;
+    const decodedBuffer = { duration: 10 };
+    const mediaSource = { disconnect() {} };
+    startupContext.decodeAudioData = (_bytes, resolve) => resolve(decodedBuffer);
+    startupContext.createMediaElementSource = () => mediaSource;
+    audioManager.audioContext = null;
+    audioManager.contextManager = { audioContext: null };
+    const player = new AudioPlayer(audioManager);
+
+    assert.equal(player.audioContext, null);
+
+    audioManager.contextManager.audioContext = startupContext;
+    audioManager.audioContext = startupContext;
+    assert.equal(player.audioContext, startupContext);
+    assert.equal(await player.contextManager.prepareTrackBuffer({
+      name: 'Track 1',
+      data: new Uint8Array([1, 2, 3])
+    }), decodedBuffer);
+
+    player.contextManager.waitForMediaCandidateReadiness = async (
+      _element,
+      _region,
+      isStale,
+      startLoad
+    ) => {
+      startLoad();
+      return !isStale();
+    };
+    player.contextManager.connectPrivatePipelineSource = () => true;
+    const mediaCandidate = await player.contextManager.prepareMediaTransitionCandidate({
+      descriptor: { mediaSource: '/music/track-1.flac' },
+      playableTrack: { name: 'Track 1', path: '/music/track-1.flac' }
+    }, 1, () => false);
+    assert.equal(mediaCandidate.source, mediaSource);
+
+    const rebuiltContext = { sampleRate: 96000 };
+    audioManager.contextManager.audioContext = rebuiltContext;
+    assert.equal(player.audioContext, startupContext);
+    player.audioContext = rebuiltContext;
+    assert.equal(player.audioContext, rebuiltContext);
+
+    audioManager.contextManager.audioContext = null;
+    audioManager.audioContext = null;
+    player.audioContext = null;
+    assert.equal(player.audioContext, null);
+  });
+});
+
+test('loadFiles delegates queue creation and activation through the shared selector', async () => {
   await withAudioPlayerGlobals({}, async ({ calls }) => {
     const player = createPlayer();
     player.playbackManager.loadFiles = (files, append) => calls.push(['loadFiles', files, append]);
@@ -91,30 +154,40 @@ test('loadFiles delegates playlist loading, creates missing UI, then loads and p
       player.ui.container = { id: 'created' };
     };
     player.stateManager.getCurrentTrackIndex = () => 3;
-    player.loadTrack = async index => calls.push(['loadTrack', index]);
-    player.play = async userInitiated => calls.push(['play', userInitiated]);
+    player.playbackManager.selectQueueOrdinal = async (ordinal, options) => {
+      calls.push(['selectQueueOrdinal', ordinal, options]);
+      return { accepted: true };
+    };
 
     await player.loadFiles(['a.wav'], true);
-    assert.deepEqual(calls.filter(call => ['loadFiles', 'createPlayerUI', 'loadTrack', 'play'].includes(call[0])), [
+    assert.deepEqual(calls.filter(call => ['loadFiles', 'createPlayerUI', 'selectQueueOrdinal'].includes(call[0])), [
       ['loadFiles', ['a.wav'], true],
       ['createPlayerUI'],
-      ['loadTrack', 3],
-      ['play', false]
+      ['selectQueueOrdinal', 3, {
+        play: true,
+        userInitiated: true,
+        skipUnavailable: true,
+        playbackReady: true
+      }]
     ]);
 
     calls.length = 0;
     player.ui.container = { id: 'existing' };
     await player.loadFiles(['b.wav'], false);
     assert.equal(calls.some(call => call[0] === 'createPlayerUI'), false);
-    assert.deepEqual(calls.filter(call => call[0] === 'loadFiles' || call[0] === 'loadTrack' || call[0] === 'play'), [
+    assert.deepEqual(calls.filter(call => call[0] === 'loadFiles' || call[0] === 'selectQueueOrdinal'), [
       ['loadFiles', ['b.wav'], false],
-      ['loadTrack', 3],
-      ['play', false]
+      ['selectQueueOrdinal', 3, {
+        play: true,
+        userInitiated: true,
+        skipUnavailable: true,
+        playbackReady: true
+      }]
     ]);
   });
 });
 
-test('loadFiles starts a mixed resume before asynchronous track loading', async () => {
+test('loadFiles starts a mixed resume synchronously and waits before queue activation', async () => {
   await withAudioPlayerGlobals({ window: { audioPreferences: { useInputWithPlayer: true } } }, async ({ calls }) => {
     const audioManager = createAudioManager();
     let finishResume;
@@ -149,19 +222,15 @@ test('loadFiles starts a mixed resume before asynchronous track loading', async 
     };
     player.ui.container = { id: 'ui' };
     player.stateManager.getCurrentTrackIndex = () => 0;
-    let finishLoading;
-    player.loadTrack = () => {
-      calls.push(['loadTrack', 'B']);
-      return new Promise(resolve => {
-        finishLoading = value => {
-          player.stateManager.updateState({ currentBuffer: { id: 'buffer-b' } }, 'test decoded B');
-          resolve(value);
-        };
-      });
+    player.playbackManager.selectQueueOrdinal = async (ordinal, options) => {
+      calls.push(['selectQueueOrdinal', ordinal, options]);
+      player.stateManager.updateState({ currentBuffer: { id: 'buffer-b' } }, 'test activated B');
+      return { accepted: true };
     };
-    player.play = async userInitiated => calls.push(['play', userInitiated]);
 
     const loading = player.loadFiles(['a.wav']);
+
+    assert.equal(player.stateManager.getStateSnapshot().isPlaybackPending, true);
 
     assert.deepEqual(calls.filter(call => [
       'beginUserGestureResume',
@@ -178,11 +247,14 @@ test('loadFiles starts a mixed resume before asynchronous track loading', async 
     assert.equal(pendingState.currentTrackPosition, 0);
     assert.equal(pendingState.isStopped, true);
     finishResume(true);
-    await flushMicrotasks();
-    assert.equal(calls.some(call => call[0] === 'play'), false);
-    finishLoading(true);
     await loading;
-    assert.ok(calls.some(call => call[0] === 'play' && call[1] === false));
+    assert.deepEqual(calls.find(call => call[0] === 'selectQueueOrdinal'), [
+      'selectQueueOrdinal',
+      0,
+      { play: true, userInitiated: true, skipUnavailable: true, playbackReady: true }
+    ]);
+    assert.equal(player.stateManager.getStateSnapshot().currentBuffer.id, 'buffer-b');
+    assert.equal(player.stateManager.getStateSnapshot().isPlaybackPending, false);
   });
 });
 
@@ -211,13 +283,9 @@ test('loadFiles stops the old source and reports failure when a replacement resu
     };
     player.ui.container = { id: 'ui' };
     player.stateManager.getCurrentTrackIndex = () => 0;
-    player.loadTrack = async () => {
-      calls.push(['loadTrack', 'B']);
-      player.stateManager.updateState({
-        currentBuffer: { id: 'buffer-b' },
-        currentTrackPosition: 0
-      }, 'test decoded B');
-      return true;
+    player.playbackManager.selectQueueOrdinal = async () => {
+      calls.push(['selectQueueOrdinal']);
+      return { accepted: true };
     };
     player.stop = async () => {
       calls.push(['stopOldSource']);
@@ -228,47 +296,40 @@ test('loadFiles stops the old source and reports failure when a replacement resu
         currentTrackPosition: 0
       }, 'test stop after resume failure');
     };
-    player.play = async () => calls.push(['play']);
 
     const loaded = await player.loadFiles(['b.wav']);
 
     assert.equal(loaded, false);
     assert.ok(calls.some(call => call[0] === 'beginUserGestureResume'));
     assert.ok(calls.some(call => call[0] === 'stopOldSource'));
-    assert.equal(calls.some(call => call[0] === 'play'), false);
+    assert.equal(calls.some(call => call[0] === 'selectQueueOrdinal'), false);
     const state = player.stateManager.getStateSnapshot();
     assert.equal(state.currentTrack.name, 'B');
-    assert.equal(state.currentBuffer.id, 'buffer-b');
+    assert.equal(state.currentBuffer.id, 'buffer-a');
     assert.equal(state.currentTrackPosition, 0);
     assert.equal(state.isStopped, true);
   });
 });
 
-test('loadFiles skips play when the track load is aborted or pause/stop is requested during load', async () => {
+test('loadFiles returns the shared selection result and preserves a later Stop barrier', async () => {
   await withAudioPlayerGlobals({}, async ({ calls }) => {
     const player = createPlayer();
     player.playbackManager.loadFiles = () => calls.push(['loadFiles']);
     player.ui.container = { id: 'ui' };
     player.stateManager.getCurrentTrackIndex = () => 0;
-    player.play = async () => calls.push(['play']);
-
-    player.loadTrack = async () => false;
-    await player.loadFiles(['a.wav']);
-    assert.equal(calls.some(call => call[0] === 'play'), false);
+    player.playbackManager.selectQueueOrdinal = async () => ({ accepted: false });
+    assert.equal(await player.loadFiles(['a.wav']), false);
 
     calls.length = 0;
-    player.loadTrack = async () => true;
-    player.stateManager.getStateSnapshot = () => ({ isPaused: true });
-    await player.loadFiles(['b.wav']);
-    assert.ok(calls.some(call => call[0] === 'play'));
+    player.playbackManager.selectQueueOrdinal = async () => ({ accepted: true });
+    assert.equal(await player.loadFiles(['b.wav']), true);
 
     calls.length = 0;
-    player.loadTrack = async () => {
+    player.playbackManager.selectQueueOrdinal = async () => {
       player.contextManager.stopRequestToken++;
-      return true;
+      return { accepted: true };
     };
-    await player.loadFiles(['c.wav']);
-    assert.equal(calls.some(call => call[0] === 'play'), false);
+    assert.equal(await player.loadFiles(['c.wav']), false);
 
     player.loadTrack = AudioPlayer.prototype.loadTrack.bind(player);
     player.playbackManager.getTrack = () => ({ name: 'Song' });
@@ -368,14 +429,12 @@ test('loadTrack and playback command methods delegate to their managers', async 
   });
 });
 
-test('toggle delegates gesture resume to the manager play intent', async () => {
+test('toggle delegates the complete intent to the playback manager', async () => {
   await withAudioPlayerGlobals({}, async ({ calls }) => {
     const player = createPlayer();
-    let onPlayIntent = null;
     player.resumeAudioContextInGesture = () => calls.push(['resumeAudioContextInGesture']);
-    player.playbackManager.togglePlayPause = async callback => {
+    player.playbackManager.togglePlayPause = async () => {
       calls.push(['togglePlayPause']);
-      onPlayIntent = callback;
     };
 
     await player.togglePlayPause();
@@ -386,34 +445,18 @@ test('toggle delegates gesture resume to the manager play intent', async () => {
       ['togglePlayPause']
     ]);
 
-    onPlayIntent();
-    assert.deepEqual(calls.filter(call => [
-      'togglePlayPause',
-      'resumeAudioContextInGesture'
-    ].includes(call[0])), [
-      ['togglePlayPause'],
-      ['resumeAudioContextInGesture']
-    ]);
+    assert.equal(calls.some(call => call[0] === 'resumeAudioContextInGesture'), false);
   });
 });
 
-test('explicit stop cancels playlist selection intent while an internal handoff preserves it', async () => {
+test('stop delegates to the playback manager', async () => {
   await withAudioPlayerGlobals({}, async ({ calls }) => {
     const player = createPlayer();
-    player.ui.cancelPlaylistSelectionIntent = () => calls.push(['cancelPlaylistSelectionIntent']);
     player.playbackManager.stop = async () => calls.push(['playbackStop']);
 
     await player.stop();
-    await player.stop({ preservePlaylistSelectionIntent: true });
 
-    assert.deepEqual(calls.filter(call => [
-      'cancelPlaylistSelectionIntent',
-      'playbackStop'
-    ].includes(call[0])), [
-      ['cancelPlaylistSelectionIntent'],
-      ['playbackStop'],
-      ['playbackStop']
-    ]);
+    assert.deepEqual(calls.filter(call => call[0] === 'playbackStop'), [['playbackStop']]);
   });
 });
 

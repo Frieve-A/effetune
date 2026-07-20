@@ -4,12 +4,13 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { DatabaseSync } = require('node:sqlite');
 const test = require('node:test');
 
 const { LibraryCatalogHost } = require('../../electron/library-catalog-host.cjs');
 
 async function openCatalog(t) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-entities-'));
+  const directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-entities-')));
   const host = await LibraryCatalogHost.open({ dbPath: path.join(directory, 'catalog.sqlite') });
   t.after(async () => {
     await host.close();
@@ -47,6 +48,7 @@ async function seedDerivedTrack(host, {
   albumArtists,
   album = 'Shared Album',
   genre = 'Shared Genre',
+  year,
   durationSec = 60
 }) {
   const signatureValue = [...trackUid].reduce((value, character) => value + character.charCodeAt(0), 0);
@@ -68,6 +70,7 @@ async function seedDerivedTrack(host, {
     claim: claimed.claim,
     metadata: {
       title, artist, albumArtist, album, genre, durationSec,
+      ...(year === undefined ? {} : { year }),
       ...(albumArtists === undefined ? {} : { albumArtists })
     },
     metadataStatus: 'ok',
@@ -127,6 +130,162 @@ test('semicolon-delimited album artists create separate artist memberships', asy
 
   const track = await host.getTrack('track-collaboration');
   assert.equal(track.albumArtist, 'Artist A; Artist B; Artist C');
+});
+
+test('name sorts use natural numeric order for tracks and catalog entities', async t => {
+  const { directory, host } = await openCatalog(t);
+  await seedFolder(host, directory);
+  const scan = await host.beginScanFolder({
+    scanId: 'scan-natural-name-order',
+    folderId: 'folder',
+    normalizedRoot: directory,
+    expectedLifecycleVersion: 1,
+    resume: false,
+    rootEnumerationRequired: true,
+    continuityBroken: false,
+    sweepEligibility: 'INELIGIBLE'
+  });
+  for (const number of [10, 2, 1]) {
+    await seedDerivedTrack(host, {
+      scan,
+      trackUid: `track-${number}`,
+      relativePath: `Album ${number}/Track ${number}.flac`,
+      title: `Track ${number}`,
+      artist: `Artist ${number}`,
+      album: `Album ${number}`,
+      genre: `Genre ${number}`
+    });
+  }
+
+  const tracks = await host.queryTracks({
+    query: '', sort: 'title', direction: 'asc', limit: 20
+  });
+  assert.deepEqual(tracks.rows.map(row => row.title), ['Track 1', 'Track 2', 'Track 10']);
+  await host.releaseContext(tracks.contextToken);
+
+  const albums = await host.queryEntities({
+    type: 'album', query: '', sort: 'name', direction: 'asc', limit: 20
+  });
+  assert.deepEqual(albums.rows.map(row => row.name), ['Album 1', 'Album 2', 'Album 10']);
+  const anchor = await host.resolveEntityAnchor({
+    contextToken: albums.contextToken,
+    prefix: 'Album 1',
+    mode: 'prefix',
+    limit: 20
+  });
+  assert.equal(anchor.accepted, true);
+  assert.equal(anchor.page.rows[anchor.ordinal - anchor.pageStartOrdinal].name, 'Album 1');
+  await host.releaseContext(albums.contextToken);
+
+  const search = await host.queryEntities({
+    type: 'album', query: 'album 10', sort: 'name', direction: 'asc', limit: 20
+  });
+  assert.deepEqual(search.rows.map(row => row.name), ['Album 10']);
+  await host.releaseContext(search.contextToken);
+});
+
+test('album year sort uses the earliest known track year and keeps unknown years last', async t => {
+  const { directory, host } = await openCatalog(t);
+  await seedFolder(host, directory);
+  const scan = await host.beginScanFolder({
+    scanId: 'scan-album-year-order',
+    folderId: 'folder',
+    normalizedRoot: directory,
+    expectedLifecycleVersion: 1,
+    resume: false,
+    rootEnumerationRequired: true,
+    continuityBroken: false,
+    sweepEligibility: 'INELIGIBLE'
+  });
+  for (const [trackUid, album, year] of [
+    ['old-late', 'Old Album', 2001],
+    ['old-early', 'Old Album', 1998],
+    ['new', 'New Album', 2020],
+    ['unknown', 'Unknown Album', undefined]
+  ]) {
+    await seedDerivedTrack(host, {
+      scan,
+      trackUid,
+      relativePath: `${album}/${trackUid}.flac`,
+      album,
+      year
+    });
+  }
+
+  const ascending = await host.queryEntities({
+    type: 'album', query: '', sort: 'year', direction: 'asc', limit: 20
+  });
+  assert.deepEqual(ascending.rows.map(row => [row.name, row.year]), [
+    ['Old Album', 1998],
+    ['New Album', 2020],
+    ['Unknown Album', null]
+  ]);
+  await host.releaseContext(ascending.contextToken);
+
+  const descending = await host.queryEntities({
+    type: 'album', query: '', sort: 'year', direction: 'desc', limit: 20
+  });
+  assert.deepEqual(descending.rows.map(row => row.name), [
+    'New Album', 'Old Album', 'Unknown Album'
+  ]);
+  await host.releaseContext(descending.contextToken);
+});
+
+test('catalog startup rebuilds persisted legacy name sort keys', async t => {
+  const directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-name-order-migration-')));
+  const dbPath = path.join(directory, 'catalog.sqlite');
+  let host = await LibraryCatalogHost.open({ dbPath });
+  t.after(async () => {
+    await host.close();
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+  await seedFolder(host, directory);
+  await host.upsertTracks([10, 2, 1].map(number => ({
+    trackUid: `track-${number}`,
+    folderId: 'folder',
+    relativePath: `Track ${number}.flac`,
+    fileName: `Track ${number}.flac`,
+    title: `Track ${number}`,
+    artist: 'Artist',
+    albumArtist: 'Artist',
+    album: 'Album',
+    genre: 'Genre',
+    fileIdentity: `file-${number}`,
+    size: 100 + number,
+    mtimeMs: 200 + number,
+    addedAt: number,
+    updatedAt: number
+  })));
+  await host.close();
+
+  const database = new DatabaseSync(dbPath);
+  try {
+    database.prepare(`
+      INSERT INTO meta(key, value) VALUES ('collation_version', 'canonical-sort-key-v1')
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `).run();
+    const update = database.prepare('UPDATE tracks SET sort_title = ? WHERE track_uid = ?');
+    for (const number of [10, 2, 1]) {
+      update.run(Buffer.from(`track ${number}`, 'utf8'), `track-${number}`);
+    }
+  } finally {
+    database.close();
+  }
+
+  host = await LibraryCatalogHost.open({ dbPath });
+  const page = await host.queryTracks({ query: '', sort: 'title', direction: 'asc', limit: 20 });
+  assert.deepEqual(page.rows.map(row => row.title), ['Track 1', 'Track 2', 'Track 10']);
+  await host.releaseContext(page.contextToken);
+
+  const migrated = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    assert.equal(
+      migrated.prepare("SELECT value FROM meta WHERE key = 'collation_version'").get().value,
+      'canonical-natural-sort-key-v2'
+    );
+  } finally {
+    migrated.close();
+  }
 });
 
 test('public folder pages hide tombstones while deletion lookup retains them', async t => {

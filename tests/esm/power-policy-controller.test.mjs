@@ -15,7 +15,10 @@ function createHarness({
   contextState = 'running',
   workletSilentWhileSuspended = false,
   silentInputConnected = false,
-  firstRenderActivity = null
+  firstRenderActivity = null,
+  hostVisibility = null,
+  hostVisibilityRead = null,
+  pageHidden = false
 } = {}) {
   let now = 0;
   let renderSequence = 0;
@@ -23,6 +26,8 @@ function createHarness({
   let configuredTemporalCapabilities = [];
   let skippedFrameCount = 0;
   let bridgePauseCount = 0;
+  let hostVisibilityListener = null;
+  let hostVisibilitySnapshot = hostVisibility;
   const timers = new Map();
   const sessionValues = new Map();
   const events = [];
@@ -58,7 +63,7 @@ function createHarness({
       if (message.type === 'configurePowerPolicy') {
         configuredTemporalCapabilities = message.monitoringPreparationCapabilities || [];
       }
-      if (message.type === 'prepareTemporalState') {
+      if (message.type === 'prepareTemporalStateAndResume') {
         const counts = {
           stateless: 0,
           resetOnResume: 0,
@@ -75,23 +80,39 @@ function createHarness({
         const derivedFrames = message.elapsedContinuity === 'verified'
           ? Math.floor(message.suspendedElapsedMs * message.resumeSampleRate / 1000)
           : 0;
-        queueMicrotask(() => controller.handleWorkletPowerEvent({
-          type: 'temporalStatePrepared',
-          state: 'acknowledged',
-          origin: 'deliberate',
-          ownerOperationId: message.ownerOperationId,
-          commandId: message.commandId,
-          ackCommandId: message.ackCommandId,
-          skipEpoch: message.skipEpoch,
-          workletGraphGeneration: message.workletGraphGeneration,
-          topologyRevision: message.topologyRevision,
-          enabledPluginCount: configuredTemporalCapabilities.length,
-          coveredPluginCount: configuredTemporalCapabilities.length,
-          appliedPolicyCounts: counts,
-          skippedFrameCount: message.skippedFrameCount + derivedFrames,
-          renderSequence,
-          errorCode: null
-        }));
+        queueMicrotask(() => {
+          controller.handleWorkletPowerEvent({
+            type: 'temporalStateResumed',
+            state: 'acknowledged',
+            origin: 'deliberate',
+            ownerOperationId: message.ownerOperationId,
+            commandId: message.commandId,
+            resumeCommandId: message.resumeCommandId,
+            ackCommandId: message.ackCommandId,
+            skipEpoch: message.skipEpoch,
+            workletGraphGeneration: message.workletGraphGeneration,
+            topologyRevision: message.topologyRevision,
+            enabledPluginCount: configuredTemporalCapabilities.length,
+            coveredPluginCount: configuredTemporalCapabilities.length,
+            appliedPolicyCounts: counts,
+            skippedFrameCount: skippedFrameCount + derivedFrames,
+            renderSequence,
+            errorCode: null
+          });
+          controller.handleWorkletPowerEvent({
+            type: 'powerFirstRender',
+            commandId: message.resumeCommandId,
+            skipEpoch: null,
+            state: 'active',
+            processingDirective: 'full-process',
+            inputActive: firstRenderActivity?.inputActive ?? false,
+            outputActive: firstRenderActivity?.outputActive ?? false,
+            workletGraphGeneration: message.workletGraphGeneration,
+            topologyRevision: message.topologyRevision,
+            renderSequence: ++renderSequence,
+            skippedFrameCount: 0
+          });
+        });
       }
       if (message.type === 'requestPowerObservation') {
         queueMicrotask(() => controller.handleWorkletPowerEvent({
@@ -143,9 +164,9 @@ function createHarness({
             processingDirective: message.processingDirective,
             workletGraphGeneration: message.workletGraphGeneration,
             topologyRevision: message.topologyRevision,
-            renderSequence,
-            automaticMonitoringArm: { ...arm }
-          });
+          renderSequence,
+          automaticMonitoringArm: { ...arm }
+        });
           controller.handleWorkletPowerEvent({
             type: 'powerFirstRender',
             commandId: message.commandId,
@@ -269,25 +290,39 @@ function createHarness({
       return connectedSources.has(node);
     }
   };
+  const windowRef = {
+    appConfig: { powerSaving: settings },
+    audioPreferences: {
+      inputDeviceId: inputDeviceId ??
+        (inputState.inputConfigured ? 'mic' : NO_AUDIO_INPUT_DEVICE_ID),
+      useInputWithPlayer: player?.useInputWithPlayer === true
+    },
+    location: { search: '' },
+    localStorage: { getItem() { return null; } },
+    sessionStorage: {
+      getItem(key) { return sessionValues.has(key) ? sessionValues.get(key) : null; },
+      setItem(key, value) { sessionValues.set(key, String(value)); }
+    },
+    crypto: { randomUUID: () => `test-${sessionValues.size}` }
+  };
+  if (hostVisibility !== null) {
+    windowRef.electronAPI = {
+      async getWindowVisibility() {
+        return hostVisibilityRead ? hostVisibilityRead() : hostVisibilitySnapshot;
+      },
+      onWindowVisibilityChanged(listener) {
+        hostVisibilityListener = listener;
+        return () => {
+          if (hostVisibilityListener === listener) hostVisibilityListener = null;
+        };
+      }
+    };
+  }
   controller = new PowerPolicyController(audioManager, {
     settings,
     enabled: true,
-    windowRef: {
-      appConfig: { powerSaving: settings },
-      audioPreferences: {
-        inputDeviceId: inputDeviceId ??
-          (inputState.inputConfigured ? 'mic' : NO_AUDIO_INPUT_DEVICE_ID),
-        useInputWithPlayer: player?.useInputWithPlayer === true
-      },
-      location: { search: '' },
-      localStorage: { getItem() { return null; } },
-      sessionStorage: {
-        getItem(key) { return sessionValues.has(key) ? sessionValues.get(key) : null; },
-        setItem(key, value) { sessionValues.set(key, String(value)); }
-      },
-      crypto: { randomUUID: () => `test-${sessionValues.size}` }
-    },
-    documentRef: { hidden: false },
+    windowRef,
+    documentRef: { hidden: pageHidden },
     now: () => now,
     monotonicNow: () => now,
     setTimeoutFn(callback, delay) {
@@ -307,6 +342,10 @@ function createHarness({
     inputState,
     posted,
     get bridgePauseCount() { return bridgePauseCount; },
+    emitHostVisibility(hidden) {
+      hostVisibilitySnapshot = { hidden };
+      hostVisibilityListener?.(hostVisibilitySnapshot);
+    },
     setNow(value) { now = value; },
     async fireDueTimers() {
       for (const [id, timer] of [...timers]) {
@@ -692,27 +731,162 @@ test('reset-on-resume chains suspend and acknowledge canonical preparation befor
     pipeline: [{ id: 1, enabled: true, temporalCapability: 'reset-on-resume' }]
   });
   await harness.controller.start();
+  const powerConfiguration = harness.posted.find(message =>
+    message.type === 'configurePowerPolicy');
+  assert.equal(powerConfiguration.monitoringFastWakeEligible, true);
+  assert.equal(powerConfiguration.wakeOnAnyInput, true);
   harness.setNow(15_000);
   await harness.controller.requestReconcile('deadline');
   assert.equal(harness.context.state, 'suspended');
+  const suspensionCommand = harness.posted.find(message =>
+    message.type === 'setPowerProcessingState' &&
+    message.processingDirective === 'force-monitoring');
+  assert.ok(suspensionCommand);
 
+  harness.setNow(16_000);
   const releaseLease = harness.controller.acquireLease('resume-test');
   const resumed = await harness.controller.requestResumeFromUserGesture('player-only-play');
   await harness.flush();
   assert.equal(resumed, true);
   assert.equal(harness.context.state, 'running');
   const preparationIndex = harness.posted.findIndex(message =>
-    message.type === 'prepareTemporalState');
+    message.type === 'prepareTemporalStateAndResume');
   const fullProcessIndex = harness.posted.findIndex((message, index) =>
     index > preparationIndex && message.type === 'setPowerProcessingState' &&
     message.processingDirective === 'full-process');
   assert.ok(preparationIndex >= 0);
-  assert.ok(fullProcessIndex > preparationIndex);
+  assert.equal(fullProcessIndex, -1);
+  assert.equal(harness.posted[preparationIndex].suspendedElapsedMs, 1000);
   const preparation = harness.controller.getSnapshot().resourceStatus.worklets.nodes[0]
     .statePreparation;
   assert.equal(preparation.state, 'acknowledged');
   assert.equal(preparation.appliedPolicyCounts.resetOnResume, 1);
   releaseLease();
+});
+
+test('suspended zero-output configuration installs a fresh zero guard', () => {
+  const harness = createHarness();
+  harness.controller.effectiveState = 'suspended';
+  harness.controller.processingDirective = 'suspended';
+  harness.controller.suspendCause = 'zero-output-no-transport';
+  harness.controller.skipEpoch = 3;
+  harness.controller.lastSkipCommandId = 4;
+  harness.controller.suspendedTemporalTiming = {
+    completedElapsedMs: 500,
+    startedAtMonotonicMs: 1000,
+    endedAtMonotonicMs: null,
+    sampleRate: 48000,
+    skipEpoch: 3,
+    topologyRevision: 0,
+    workletGraphGeneration: 0
+  };
+
+  const configuration = harness.controller._configureWorklets();
+  assert.equal(configuration.hostGuardDirective, 'zero-output-transport');
+  assert.equal(configuration.hostGuardSkipEpoch, 4);
+  assert.equal(harness.controller.lastSkipCommandId, configuration.commandId);
+  assert.equal(harness.controller.suspendedTemporalTiming.skipEpoch, 4);
+});
+
+test('same-identity settings updates preserve deliberate zero and bypass guards', async () => {
+  for (const directive of ['zero-output-transport', 'bypass-transport']) {
+    const harness = createHarness();
+    harness.controller.effectiveState = 'ACTIVE';
+    harness.controller.processingDirective = directive;
+    harness.controller.skipEpoch = 3;
+    harness.controller.lastSkipCommandId = 4;
+    harness.controller.commandSequence = 4;
+    harness.controller.requestReconcile = () => Promise.resolve();
+
+    await harness.controller.updateSettings({
+      mode: 'balanced',
+      silenceThresholdDb: -80,
+      fullSuspendDelaySeconds: 300
+    });
+
+    const configuration = harness.posted.findLast(message =>
+      message.type === 'configurePowerPolicy');
+    assert.equal(configuration.hostGuardDirective, directive);
+    assert.equal(configuration.hostGuardSkipEpoch, 4);
+    assert.equal(configuration.preserveHostSkipState, true);
+  }
+});
+
+test('failed resume accumulates only repeated AudioContext suspend intervals', async () => {
+  const harness = createHarness({
+    pipeline: [{ id: 1, enabled: true, temporalCapability: 'reset-on-resume' }]
+  });
+  await harness.controller.start();
+  harness.setNow(15_000);
+  await harness.controller.requestReconcile('deadline');
+  assert.equal(harness.context.state, 'suspended');
+
+  const originalBroadcast = harness.audioManager.broadcastToActiveWorklets.bind(
+    harness.audioManager
+  );
+  const atomicMessages = [];
+  harness.audioManager.broadcastToActiveWorklets = message => {
+    if (message.type !== 'prepareTemporalStateAndResume') {
+      originalBroadcast(message);
+      return;
+    }
+    harness.posted.push(message);
+    atomicMessages.push(message);
+    queueMicrotask(() => harness.controller.handleWorkletPowerEvent({
+      type: 'temporalStateResumed',
+      state: 'error',
+      origin: 'deliberate',
+      ownerOperationId: message.ownerOperationId,
+      commandId: message.commandId,
+      resumeCommandId: atomicMessages[0].resumeCommandId,
+      ackCommandId: message.ackCommandId,
+      skipEpoch: message.skipEpoch,
+      workletGraphGeneration: message.workletGraphGeneration,
+      topologyRevision: message.topologyRevision,
+      enabledPluginCount: 1,
+      coveredPluginCount: 1,
+      appliedPolicyCounts: {
+        stateless: 0,
+        resetOnResume: 0,
+        agedBySkippedFrames: 0,
+        mustProcess: 0
+      },
+      skippedFrameCount: 128,
+      renderSequence: 2,
+      errorCode: 'temporal-preparation-runtime-failed',
+      monitoringFastWakeEligible: false,
+      monitoringFastWakeBlockerReason: 'temporal-preparation-runtime-failed'
+    }));
+  };
+  let resuspendAt = 17_000;
+  harness.audioManager.contextManager.suspendForPowerPolicy = async () => {
+    harness.setNow(resuspendAt);
+    harness.context.state = 'suspended';
+    return true;
+  };
+
+  const skipCommandsBeforeFailure = harness.posted.filter(message =>
+    message.type === 'setPowerProcessingState').length;
+  harness.setNow(16_000);
+  assert.equal(await harness.controller.beginUserGestureResume('player-only-play'), false);
+  assert.equal(harness.posted.filter(message =>
+    message.type === 'setPowerProcessingState').length, skipCommandsBeforeFailure);
+  assert.equal(harness.controller.getEffectiveState(), 'SUSPENDED');
+  assert.equal(harness.controller.processingDirective, 'suspended');
+  assert.equal(harness.controller.suspendedTemporalTiming.completedElapsedMs, 1000);
+  assert.equal(harness.controller.suspendedTemporalTiming.startedAtMonotonicMs, 17_000);
+  assert.equal(harness.controller.suspendedTemporalTiming.endedAtMonotonicMs, null);
+
+  resuspendAt = 21_000;
+  harness.setNow(20_000);
+  assert.equal(await harness.controller.beginUserGestureResume('player-only-play'), false);
+  assert.equal(atomicMessages.length, 2);
+  assert.equal(atomicMessages[1].commandId, atomicMessages[0].commandId);
+  assert.equal(atomicMessages[1].skipEpoch, atomicMessages[0].skipEpoch);
+  assert.equal(atomicMessages[1].suspendedElapsedMs, 4000);
+  assert.equal(harness.controller.suspendedTemporalTiming.completedElapsedMs, 4000);
+  assert.equal(harness.controller.suspendedTemporalTiming.startedAtMonotonicMs, 21_000);
+  assert.equal(harness.controller.getEffectiveState(), 'SUSPENDED');
 });
 
 test('maximum player-only keeps signal monitoring alive while microphone release uses its own deadline', async () => {
@@ -761,6 +935,230 @@ test('paused player remains a silent routed source instead of becoming no-route'
   assert.notEqual(harness.controller.getEffectiveState(), 'SUSPENDED');
   assert.equal(harness.controller.lastDecision.inputSignalForProcessing, 'silent');
   assert.notEqual(harness.controller.lastDecision.reason, 'idle-no-route');
+});
+
+test('native Electron visibility remains hidden when the DOM visibility API stays visible', async () => {
+  const harness = createHarness({ hostVisibility: { hidden: true } });
+  await harness.controller.start();
+
+  let facts = harness.controller._collectFacts(0);
+  assert.equal(facts.visibility, 'hidden');
+  assert.equal(facts.hiddenSinceEpochMs, 0);
+
+  harness.controller.handlePageLifecycleEvent('visibilitychange', { hidden: false });
+  await harness.flush();
+  facts = harness.controller._collectFacts(0);
+  assert.equal(facts.visibility, 'hidden');
+  assert.equal(facts.hiddenSinceEpochMs, 0);
+
+  harness.emitHostVisibility(false);
+  await harness.flush();
+  facts = harness.controller._collectFacts(0);
+  assert.equal(facts.visibility, 'visible');
+  assert.equal(facts.hiddenSinceEpochMs, null);
+});
+
+test('host and page visibility share one UI and telemetry power gate', async () => {
+  const pluginUiStates = [];
+  const playerUiStates = [];
+  const plugin = {
+    id: 1,
+    enabled: true,
+    temporalCapability: 'stateless',
+    setPowerUiEnabled(enabled) { pluginUiStates.push(enabled); }
+  };
+  const harness = createHarness({
+    pipeline: [plugin],
+    hostVisibility: { hidden: false }
+  });
+  harness.audioManager.setPlayerPowerUiEnabled = enabled => playerUiStates.push(enabled);
+  await harness.controller.start();
+  pluginUiStates.length = 0;
+  playerUiStates.length = 0;
+  harness.posted.length = 0;
+
+  harness.emitHostVisibility(true);
+  await harness.flush();
+  assert.equal(harness.controller.getDspUiActivityAllowed(), false);
+  assert.equal(harness.controller.playerUiActivityAllowed, false);
+  assert.deepEqual(pluginUiStates, [false]);
+  assert.deepEqual(playerUiStates, [false]);
+  assert.ok(harness.posted.some(message =>
+    message.type === 'setUiTelemetryEnabled' && message.enabled === false
+  ));
+
+  harness.controller.handlePageLifecycleEvent('visibilitychange', { hidden: true });
+  const pluginCallCount = pluginUiStates.length;
+  const playerCallCount = playerUiStates.length;
+  harness.emitHostVisibility(false);
+  await harness.flush();
+  assert.equal(harness.controller.getDspUiActivityAllowed(), false);
+  assert.equal(harness.controller.playerUiActivityAllowed, false);
+  assert.equal(pluginUiStates.length, pluginCallCount);
+  assert.equal(playerUiStates.length, playerCallCount);
+
+  harness.controller.handlePageLifecycleEvent('visibilitychange', { hidden: false });
+  await harness.flush();
+  assert.equal(harness.controller.getDspUiActivityAllowed(), true);
+  assert.equal(harness.controller.playerUiActivityAllowed, true);
+  assert.equal(pluginUiStates.at(-1), true);
+  assert.equal(playerUiStates.at(-1), true);
+  assert.ok(harness.posted.some(message =>
+    message.type === 'setUiTelemetryEnabled' && message.enabled === true
+  ));
+});
+
+test('configuration carries the current UI gate across worklet graph identities', async () => {
+  const harness = createHarness({ hostVisibility: { hidden: true } });
+  await harness.controller.start();
+  let configuration = harness.posted.findLast(message =>
+    message.type === 'configurePowerPolicy');
+  assert.equal(configuration.uiTelemetryEnabled, false);
+
+  harness.posted.length = 0;
+  harness.controller.handleWorkletGraphReplacement();
+  configuration = harness.posted.findLast(message =>
+    message.type === 'configurePowerPolicy');
+  assert.equal(configuration.uiTelemetryEnabled, false);
+
+  harness.emitHostVisibility(false);
+  await harness.flush();
+  harness.posted.length = 0;
+  harness.controller.handleWorkletGraphReplacement();
+  configuration = harness.posted.findLast(message =>
+    message.type === 'configurePowerPolicy');
+  assert.equal(configuration.uiTelemetryEnabled, true);
+});
+
+test('hidden web startup configures telemetry off without an Electron visibility API', async () => {
+  for (const pageHidden of [true, false]) {
+    const harness = createHarness({ pageHidden });
+    assert.equal(harness.controller.windowRef.electronAPI, undefined);
+
+    await harness.controller.start();
+
+    const configuration = harness.posted.find(message =>
+      message.type === 'configurePowerPolicy');
+    assert.equal(configuration.uiTelemetryEnabled, !pageHidden);
+  }
+});
+
+test('a startup visibility event wins over an older asynchronous snapshot', async () => {
+  let resolveVisibilityRead;
+  const visibilityRead = new Promise(resolve => {
+    resolveVisibilityRead = resolve;
+  });
+  const harness = createHarness({
+    hostVisibility: { hidden: false },
+    hostVisibilityRead: () => visibilityRead
+  });
+
+  const startPromise = harness.controller.start();
+  await Promise.resolve();
+  harness.emitHostVisibility(true);
+  assert.equal(harness.posted.filter(
+    message => message.type === 'requestPowerObservation' ||
+      message.type === 'configurePowerPolicy'
+  ).length, 0);
+
+  resolveVisibilityRead({ hidden: false });
+  await startPromise;
+  const facts = harness.controller._collectFacts(0);
+  assert.equal(facts.visibility, 'hidden');
+  assert.equal(facts.hiddenSinceEpochMs, 0);
+});
+
+test('runtime monitoring failure stays latched for the current topology identity', async () => {
+  const harness = createHarness({
+    pipeline: [{ id: 1, enabled: true, temporalCapability: 'stateless' }]
+  });
+  await harness.controller.start();
+  const oldTokens = harness.controller._getTokensAndGuards().tokens;
+  const failure = {
+    type: 'temporalStateResumed',
+    state: 'error',
+    origin: 'deliberate',
+    ownerOperationId: 'failed-resume',
+    commandId: 3,
+    resumeCommandId: 4,
+    ackCommandId: 5,
+    skipEpoch: 1,
+    workletGraphGeneration: oldTokens.workletGraphGeneration,
+    topologyRevision: oldTokens.topologyRevision,
+    enabledPluginCount: 1,
+    coveredPluginCount: 0,
+    appliedPolicyCounts: {
+      stateless: 0,
+      resetOnResume: 0,
+      agedBySkippedFrames: 0,
+      mustProcess: 0
+    },
+    skippedFrameCount: 128,
+    renderSequence: 3,
+    errorCode: 'temporal-preparation-runtime-failed',
+    monitoringFastWakeEligible: false,
+    monitoringFastWakeBlockerReason: 'temporal-preparation-runtime-failed'
+  };
+
+  assert.equal(harness.controller.handleWorkletPowerEvent(failure, {}), true);
+  await harness.flush();
+  let facts = harness.controller._collectFacts(0);
+  assert.equal(facts.monitoringFastWakeEligible, false);
+  assert.equal(facts.monitoringFastWakeBlockerReason, 'temporal-preparation-runtime-failed');
+  let snapshot = harness.controller.getSnapshot();
+  assert.equal(snapshot.resourceHealth, 'degraded');
+  assert.equal(snapshot.resourceStatus.worklets.monitoringFastWakeEligible, false);
+  assert.equal(
+    snapshot.resourceStatus.worklets.monitoringFastWakeBlockerReason,
+    'temporal-preparation-runtime-failed'
+  );
+
+  harness.controller.handleWorkletPowerEvent({
+    type: 'powerHeartbeat',
+    state: 'active',
+    processingDirective: 'full-process',
+    inputActive: false,
+    outputActive: false,
+    workletGraphGeneration: oldTokens.workletGraphGeneration,
+    topologyRevision: oldTokens.topologyRevision,
+    monitoringFastWakeEligible: true,
+    monitoringFastWakeBlockerReason: null
+  });
+  await harness.controller.updateSettings({
+    mode: 'balanced',
+    silenceThresholdDb: -75,
+    fullSuspendDelaySeconds: 300
+  });
+  facts = harness.controller._collectFacts(0);
+  assert.equal(facts.monitoringFastWakeEligible, false);
+
+  harness.controller.notifyTopologyChanged('test-topology-change');
+  await harness.flush();
+  facts = harness.controller._collectFacts(0);
+  assert.equal(facts.monitoringFastWakeEligible, true);
+  assert.equal(harness.controller.handleWorkletPowerEvent(failure), false);
+  snapshot = harness.controller.getSnapshot();
+  assert.equal(snapshot.resourceStatus.worklets.monitoringFastWakeEligible, true);
+});
+
+test('a monitoring observation preserves an explicit force-monitoring directive', async () => {
+  const harness = createHarness();
+  await harness.controller.start();
+  const tokens = harness.controller._getTokensAndGuards().tokens;
+  harness.controller.handleWorkletPowerEvent({
+    type: 'powerObservation',
+    reason: 'config-wake',
+    state: 'monitoring',
+    processingDirective: 'force-monitoring',
+    inputActive: false,
+    outputActive: false,
+    workletGraphGeneration: tokens.workletGraphGeneration,
+    topologyRevision: tokens.topologyRevision,
+    monitoringFastWakeEligible: true,
+    monitoringFastWakeBlockerReason: null
+  });
+  assert.equal(harness.controller.getEffectiveState(), 'MONITORING');
+  assert.equal(harness.controller.processingDirective, 'force-monitoring');
 });
 
 test('maximum hidden routed silence can suspend a paused player without releasing a microphone', async () => {
@@ -1326,8 +1724,12 @@ test('a topology-changing input install invalidates evidence before publishing t
   assertTopologyBoundPowerEvidenceInvalidated(evidenceAtAdoption, seeded);
   const preparation = harness.controller.getSnapshot().resourceStatus.worklets.nodes[0]
     .statePreparation;
-  assert.equal(preparation.state, 'not-required');
-  assert.equal(preparation.commandId, seeded.lastSkipCommandId);
+  assert.equal(preparation.state, 'acknowledged');
+  assert.notEqual(preparation.commandId, seeded.lastSkipCommandId);
+  const guardedConfiguration = harness.posted.findLast(message =>
+    message.type === 'configurePowerPolicy' && message.hostGuardDirective);
+  assert.ok(guardedConfiguration);
+  assert.equal(preparation.commandId > guardedConfiguration.commandId, true);
 });
 
 test('a failed input route install is released and never published as resumed', async () => {
@@ -1532,7 +1934,7 @@ test('stronger resumes arriving during commit acquire input in follow-up gesture
         trackState: 'ended'
       }
     });
-    harness.controller.effectiveState = 'suspended';
+    harness.controller.effectiveState = 'SUSPENDED';
     let finishFirstWorklet;
     let inputAcquireCount = 0;
     let applyCount = 0;
@@ -1796,10 +2198,261 @@ test('a partial worklet resume failure restores the prior worklet command and te
     ['monitoring', 'force-monitoring']
   ]);
   assert.deepEqual(telemetryCommands.map(message => message.enabled), [true, false]);
-  assert.equal(harness.controller.effectiveState, 'monitoring');
+  assert.equal(powerCommands[1].skipEpoch, 4);
+  assert.ok(powerCommands[1].skipEpoch > powerCommands[0].skipEpoch);
+  assert.equal(harness.controller.effectiveState, 'MONITORING');
   assert.equal(harness.controller.processingDirective, 'force-monitoring');
+  assert.equal(harness.controller.skipEpoch, 4);
+  assert.equal(harness.controller.lastSkipCommandId, powerCommands[1].commandId);
   assert.equal(harness.controller.dspUiActivityAllowed, false);
   assert.equal(harness.controller.workletDirectiveResendRequired, false);
+});
+
+test('restoring full processing does not advance the skip epoch', async () => {
+  const harness = createHarness();
+  harness.controller.skipEpoch = 5;
+  harness.controller.lastSkipCommandId = null;
+  const coordinator = harness.controller._getTokensAndGuards();
+  const restored = await harness.controller._restoreWorkletCommandState({
+    state: 'active',
+    processingDirective: 'full-process',
+    skipEpoch: 3,
+    uiTelemetryEnabled: true
+  }, coordinator);
+
+  assert.equal(restored, true);
+  const command = harness.posted.findLast(message =>
+    message.type === 'setPowerProcessingState');
+  assert.equal(command.processingDirective, 'full-process');
+  assert.equal(command.skipEpoch, 5);
+  assert.equal(harness.controller.skipEpoch, 5);
+  assert.equal(harness.controller.lastSkipCommandId, null);
+});
+
+test('failed skip rollback reservations are never reused', async () => {
+  const harness = createHarness();
+  const sentEpochs = [];
+  harness.controller.skipEpoch = 1;
+  harness.controller._waitForFirstRender = () => Promise.resolve(false);
+  harness.controller._broadcast = message => {
+    if (message.type === 'setPowerProcessingState') sentEpochs.push(message.skipEpoch);
+  };
+  const priorState = {
+    state: 'monitoring',
+    processingDirective: 'force-monitoring',
+    skipEpoch: 3,
+    uiTelemetryEnabled: false
+  };
+  const coordinator = harness.controller._getTokensAndGuards();
+
+  assert.equal(await harness.controller._restoreWorkletCommandState(
+    priorState,
+    coordinator
+  ), false);
+  assert.equal(await harness.controller._restoreWorkletCommandState(
+    priorState,
+    coordinator
+  ), false);
+  assert.deepEqual(sentEpochs, [4, 5]);
+  assert.equal(harness.controller.skipEpoch, 5);
+  assert.equal(harness.controller.lastSkipCommandId, null);
+});
+
+test('skip rollback preserves only an unprepared temporal interval', async () => {
+  for (const preserveHostSkipState of [true, false]) {
+    const harness = createHarness();
+    harness.controller.skipEpoch = 1;
+    harness.controller.lastSkipCommandId = 7;
+    harness.controller.suspendedTemporalTiming = {
+      startedAtMonotonicMs: 0,
+      endedAtMonotonicMs: 1000,
+      sampleRate: 48000,
+      skipEpoch: 1,
+      topologyRevision: 0,
+      workletGraphGeneration: 0
+    };
+    harness.controller.suspendedTemporalContinuity = true;
+    harness.setNow(1300);
+    const restored = await harness.controller._restoreWorkletCommandState({
+      state: 'monitoring',
+      processingDirective: 'force-monitoring',
+      skipEpoch: 1,
+      uiTelemetryEnabled: false
+    }, harness.controller._getTokensAndGuards(), { preserveHostSkipState });
+
+    assert.equal(restored, true);
+    const rollback = harness.posted.findLast(message =>
+      message.type === 'setPowerProcessingState');
+    assert.equal(rollback.preserveHostSkipState, preserveHostSkipState);
+    assert.equal(harness.controller.suspendedTemporalTiming.skipEpoch, 2);
+    if (preserveHostSkipState) {
+      assert.equal(harness.controller.suspendedTemporalTiming.startedAtMonotonicMs, 0);
+      assert.equal(harness.controller.suspendedTemporalTiming.endedAtMonotonicMs, 1000);
+    } else {
+      assert.equal(harness.controller.suspendedTemporalTiming.startedAtMonotonicMs, 1300);
+      assert.equal(harness.controller.suspendedTemporalTiming.endedAtMonotonicMs, 1300);
+    }
+  }
+});
+
+test('atomic resume selects the rollback baseline from preparation completion', async () => {
+  for (const [resumeResult, expectedPreserve] of [
+    ['temporal-resume-failed', true],
+    ['temporal-resume-render-failed', false]
+  ]) {
+    const harness = createHarness();
+    harness.controller.lastSkipCommandId = 7;
+    harness.controller.skipEpoch = 1;
+    harness.controller._captureWorkletCommandState = () => ({
+      state: 'monitoring',
+      processingDirective: 'force-monitoring',
+      skipEpoch: 1,
+      uiTelemetryEnabled: false
+    });
+    harness.controller._prepareTemporalStateAndResume = async () => resumeResult;
+    let rollbackOptions = null;
+    harness.controller._restoreWorkletCommandState = async (_prior, _coordinator, options) => {
+      rollbackOptions = options;
+      return true;
+    };
+
+    assert.equal(await harness.controller._applyWorkletState(
+      'ACTIVE',
+      'full-process',
+      { restoreOnFailure: true }
+    ), false);
+    assert.deepEqual(rollbackOptions, { preserveHostSkipState: expectedPreserve });
+  }
+});
+
+test('atomic resume replays one unconfirmed preparation without preserving a double-timeout interval', async () => {
+  const pipeline = [{ id: 1, enabled: true, temporalCapability: 'reset-on-resume' }];
+  {
+    const harness = createHarness({ pipeline });
+    const messages = [];
+    harness.controller.lastSkipCommandId = 7;
+    harness.controller.skipEpoch = 1;
+    harness.audioManager.broadcastToActiveWorklets = message => messages.push(message);
+    const resume = harness.controller._prepareTemporalStateAndResume(
+      'power-replay',
+      harness.controller._getTokensAndGuards(),
+      8
+    );
+    await harness.flush();
+
+    harness.setNow(1500);
+    await harness.fireDueTimers();
+    const attempts = messages.filter(message =>
+      message.type === 'prepareTemporalStateAndResume');
+    assert.equal(attempts.length, 2);
+    const [{ ackCommandId: firstAckCommandId, ...firstIdentity },
+      { ackCommandId: retryAckCommandId, ...retryIdentity }] = attempts;
+    assert.notEqual(retryAckCommandId, firstAckCommandId);
+    assert.deepEqual(retryIdentity, firstIdentity);
+
+    const retry = attempts[1];
+    harness.controller.handleWorkletPowerEvent({
+      type: 'temporalStateResumed',
+      state: 'acknowledged',
+      origin: 'deliberate',
+      ownerOperationId: retry.ownerOperationId,
+      commandId: retry.commandId,
+      resumeCommandId: retry.resumeCommandId,
+      ackCommandId: retry.ackCommandId,
+      skipEpoch: retry.skipEpoch,
+      workletGraphGeneration: retry.workletGraphGeneration,
+      topologyRevision: retry.topologyRevision,
+      enabledPluginCount: 1,
+      coveredPluginCount: 1,
+      appliedPolicyCounts: {
+        stateless: 0,
+        resetOnResume: 1,
+        agedBySkippedFrames: 0,
+        mustProcess: 0
+      },
+      skippedFrameCount: 128,
+      renderSequence: 1,
+      errorCode: null
+    }, harness.audioManager.workletNode);
+    harness.controller.handleWorkletPowerEvent({
+      type: 'powerFirstRender',
+      commandId: retry.resumeCommandId,
+      state: 'active',
+      processingDirective: 'full-process',
+      inputActive: false,
+      outputActive: false,
+      inputPower: 0,
+      outputPower: 0,
+      workletGraphGeneration: retry.workletGraphGeneration,
+      topologyRevision: retry.topologyRevision,
+      renderSequence: 2,
+      skippedFrameCount: 0
+    }, harness.audioManager.workletNode);
+    assert.equal(await resume, true);
+    assert.equal(harness.controller.statePreparation.state, 'acknowledged');
+  }
+
+  {
+    const harness = createHarness({ pipeline });
+    const messages = [];
+    harness.controller.lastSkipCommandId = 7;
+    harness.controller.skipEpoch = 1;
+    harness.controller.effectiveState = 'monitoring';
+    harness.controller.processingDirective = 'force-monitoring';
+    harness.controller.suspendedTemporalTiming = {
+      startedAtMonotonicMs: 0,
+      endedAtMonotonicMs: 1000,
+      sampleRate: 48000,
+      skipEpoch: 1,
+      topologyRevision: 0,
+      workletGraphGeneration: 0
+    };
+    harness.controller._captureWorkletCommandState = () => ({
+      state: 'monitoring',
+      processingDirective: 'force-monitoring',
+      skipEpoch: 1,
+      uiTelemetryEnabled: false
+    });
+    harness.audioManager.broadcastToActiveWorklets = message => {
+      messages.push(message);
+      if (message.type !== 'setPowerProcessingState') return;
+      queueMicrotask(() => harness.controller.handleWorkletPowerEvent({
+        type: 'powerFirstRender',
+        commandId: message.commandId,
+        skipEpoch: message.skipEpoch,
+        state: message.state,
+        processingDirective: message.processingDirective,
+        inputActive: false,
+        outputActive: false,
+        inputPower: 0,
+        outputPower: 0,
+        workletGraphGeneration: message.workletGraphGeneration,
+        topologyRevision: message.topologyRevision,
+        renderSequence: 1,
+        skippedFrameCount: 0
+      }, harness.audioManager.workletNode));
+    };
+
+    const resume = harness.controller._applyWorkletState(
+      'ACTIVE',
+      'full-process',
+      { restoreOnFailure: true }
+    );
+    await harness.flush();
+    harness.setNow(1500);
+    await harness.fireDueTimers();
+    harness.setNow(3000);
+    await harness.fireDueTimers();
+
+    assert.equal(await resume, false);
+    assert.equal(messages.filter(message =>
+      message.type === 'prepareTemporalStateAndResume').length, 2);
+    const rollback = messages.findLast(message =>
+      message.type === 'setPowerProcessingState');
+    assert.equal(rollback.preserveHostSkipState, false);
+    assert.equal(harness.controller.suspendedTemporalTiming.startedAtMonotonicMs, 3000);
+    assert.equal(harness.controller.suspendedTemporalTiming.endedAtMonotonicMs, 3000);
+  }
 });
 
 test('an unresolvable partial worklet resume schedules directive reconciliation', async () => {
@@ -1853,7 +2506,7 @@ test('automatic playback activation never starts a gesture resume', async () => 
 });
 
 test('a partial gesture resume rolls acquired input back without clearing the release journal', async () => {
-  for (const failedResource of ['context', 'bridge']) {
+  for (const failedResource of ['context', 'bridge', 'host-guard', 'atomic-resume']) {
     const harness = createHarness({
       input: {
         state: 'live',
@@ -1883,9 +2536,16 @@ test('a partial gesture resume rolls acquired input back without clearing the re
     };
     if (failedResource === 'context') {
       harness.audioManager.contextManager.resumeForPowerPolicy = async () => false;
-    } else {
+    } else if (failedResource === 'bridge') {
       harness.audioManager.ioManager.playOutputBridgeForGesture = () =>
         Promise.reject(new Error('bridge failed'));
+    } else {
+      harness.controller.lastSkipCommandId = 10;
+      harness.controller.skipEpoch = 2;
+      harness.controller._ensureHostGuardRendered = async () =>
+        failedResource !== 'host-guard';
+      harness.controller._applyWorkletState = async () =>
+        failedResource !== 'atomic-resume';
     }
 
     assert.equal(await harness.controller.beginUserGestureResume('dedicated-input'), false);
@@ -2146,15 +2806,17 @@ test('unexpected context recovery resends the worklet directive through reconcil
   player.snapshot.isPlaying = true;
   player.snapshot.isPaused = false;
   harness.controller.attachPlayer(player.instance);
+  harness.setNow(16_000);
   harness.context.state = 'running';
   const postedBefore = harness.posted.length;
   harness.controller.handleContextStateChange({ state: 'running' });
   await harness.controller.requestReconcile('after-recovery');
   await harness.flush();
   assert.equal(harness.controller.getEffectiveState(), 'ACTIVE');
-  assert.ok(harness.posted.slice(postedBefore).some(message =>
-    message.type === 'setPowerProcessingState' &&
-    message.processingDirective === 'full-process'));
+  const atomicResume = harness.posted.slice(postedBefore).find(message =>
+    message.type === 'prepareTemporalStateAndResume');
+  assert.ok(atomicResume);
+  assert.equal(atomicResume.suspendedElapsedMs, 1000);
 });
 
 test('unexpected recovery while suspension is still desired re-suspends the context', async () => {
@@ -2170,6 +2832,88 @@ test('unexpected recovery while suspension is still desired re-suspends the cont
   await harness.flush();
   assert.equal(harness.context.state, 'suspended');
   assert.equal(harness.controller.getEffectiveState(), 'SUSPENDED');
+});
+
+test('failed unexpected-recovery suspension defers input release until a later retry succeeds', async () => {
+  for (const failureMode of ['false', 'throw']) {
+    const harness = createHarness({
+      settings: { mode: 'maximum', silenceThresholdDb: -80, fullSuspendDelaySeconds: 60 },
+      input: {
+        state: 'live',
+        inputAvailability: 'available',
+        inputAvailabilityRevision: 1,
+        inputGeneration: 5,
+        inputResourceId: 'mic-1',
+        inputConfigured: true,
+        inputSourcePresent: true,
+        trackState: 'live'
+      }
+    });
+    await harness.controller.start();
+    harness.controller.documentRef.hidden = true;
+    harness.controller.handlePageLifecycleEvent('visibilitychange', { hidden: true });
+    await harness.flush();
+    harness.setNow(60_000);
+    harness.controller.effectiveState = 'SUSPENDED';
+    harness.controller.processingDirective = 'suspended';
+    harness.controller.workletDirectiveResendRequired = true;
+    harness.context.state = 'running';
+
+    const beforeFailure = harness.controller.getSnapshot();
+    const inputGeneration = harness.inputState.inputGeneration;
+    let releaseCount = 0;
+    const releaseAudioInput = harness.audioManager.ioManager.releaseAudioInput.bind(
+      harness.audioManager.ioManager
+    );
+    harness.audioManager.ioManager.releaseAudioInput = (...args) => {
+      releaseCount++;
+      return releaseAudioInput(...args);
+    };
+
+    let suspendAttempts = 0;
+    let allowSuspend = false;
+    harness.audioManager.contextManager.suspendForPowerPolicy = async () => {
+      suspendAttempts++;
+      if (!allowSuspend) {
+        if (failureMode === 'throw') throw new Error('suspend failed');
+        return false;
+      }
+      await harness.context.suspend();
+      return true;
+    };
+    await harness.controller.requestReconcile(`failed-${failureMode}`);
+
+    const failedSnapshot = harness.controller.getSnapshot();
+    assert.ok(suspendAttempts >= 1, failureMode);
+    assert.equal(harness.context.state, 'running', failureMode);
+    assert.equal(harness.controller.workletDirectiveResendRequired, true, failureMode);
+    assert.equal(failedSnapshot.transitionError.code, 'audio-context-suspend-failed', failureMode);
+    assert.equal(failedSnapshot.transitionError.recoverable, true, failureMode);
+    assert.equal(failedSnapshot.resourceHealth, 'degraded', failureMode);
+    assert.equal(releaseCount, 0, failureMode);
+    assert.equal(harness.inputState.state, 'live', failureMode);
+    assert.equal(harness.inputState.inputGeneration, inputGeneration, failureMode);
+    assert.equal(
+      failedSnapshot.resourceStatus.persistence.journalPhase,
+      beforeFailure.resourceStatus.persistence.journalPhase,
+      failureMode
+    );
+    assert.equal(failedSnapshot.manualResumeRequired, beforeFailure.manualResumeRequired, failureMode);
+
+    const attemptsBeforeRetry = suspendAttempts;
+    allowSuspend = true;
+    await harness.controller.requestReconcile(`retry-${failureMode}`);
+    const recoveredSnapshot = harness.controller.getSnapshot();
+    assert.ok(suspendAttempts > attemptsBeforeRetry, failureMode);
+    assert.equal(harness.context.state, 'suspended', failureMode);
+    assert.equal(harness.controller.workletDirectiveResendRequired, false, failureMode);
+    assert.equal(recoveredSnapshot.transitionError.code, null, failureMode);
+    assert.equal(releaseCount, 1, failureMode);
+    assert.equal(harness.inputState.state, 'released', failureMode);
+    assert.equal(harness.inputState.inputGeneration, inputGeneration + 1, failureMode);
+    assert.equal(recoveredSnapshot.resourceStatus.persistence.journalPhase, 'committed', failureMode);
+    assert.equal(recoveredSnapshot.manualResumeRequired, true, failureMode);
+  }
 });
 
 test('directive resend during an in-progress gesture resume defers instead of re-suspending', async () => {
@@ -2630,6 +3374,21 @@ test('the maximum-policy input release latch clears after the dedicated-input re
   assert.equal(harness.inputState.state, 'released', JSON.stringify(harness.controller.lastDecision));
   assert.equal(harness.controller.getSnapshot().manualResumeRequired, true);
 
+  let fullRenderCommitted = false;
+  const originalApplyWorkletState = harness.controller._applyWorkletState.bind(harness.controller);
+  harness.controller._applyWorkletState = async (...args) => {
+    const result = await originalApplyWorkletState(...args);
+    if (result === true) fullRenderCommitted = true;
+    return result;
+  };
+  const originalJournalClear = harness.controller.sessionJournal.clear.bind(
+    harness.controller.sessionJournal
+  );
+  harness.controller.sessionJournal.clear = (...args) => {
+    assert.equal(fullRenderCommitted, true);
+    return originalJournalClear(...args);
+  };
+
   const resumed = await harness.controller.requestResumeFromUserGesture('dedicated-input');
   await harness.flush();
   const snapshot = harness.controller.getSnapshot();
@@ -2748,7 +3507,7 @@ test('the maximum-policy release latch survives reconciles and lifecycle events 
   assert.equal(snapshot.resourceStatus.persistence.journalPhase, 'committed');
 });
 
-test('temporal preparation refreshes the worklet observation for its skipped-frame base', async () => {
+test('temporal preparation leaves the live skipped-frame base to the worklet', async () => {
   const harness = createHarness({
     pipeline: [{ id: 1, enabled: true, temporalCapability: 'reset-on-resume' }]
   });
@@ -2756,16 +3515,20 @@ test('temporal preparation refreshes the worklet observation for its skipped-fra
   harness.setNow(15_000);
   await harness.controller.requestReconcile('deadline');
   assert.equal(harness.context.state, 'suspended');
+  const observationsBeforeResume = harness.posted.filter(message =>
+    message.type === 'requestPowerObservation').length;
 
   const resumed = await harness.controller.requestResumeFromUserGesture('player-only-play');
   await harness.flush();
   assert.equal(resumed, true);
-  const prepareIndex = harness.posted.findIndex(m => m.type === 'prepareTemporalState');
+  const prepareIndex = harness.posted.findIndex(m =>
+    m.type === 'prepareTemporalStateAndResume');
   assert.ok(prepareIndex >= 0);
-  const observationIndex = harness.posted.slice(0, prepareIndex)
-    .map(m => m.type).lastIndexOf('requestPowerObservation');
-  assert.ok(observationIndex >= 0);
-  assert.equal(harness.posted[prepareIndex].skippedFrameCount, 0);
-  assert.equal(harness.controller.getSnapshot().resourceStatus.worklets.nodes[0]
-    .statePreparation.state, 'acknowledged');
+  assert.equal(Object.hasOwn(harness.posted[prepareIndex], 'skippedFrameCount'), false);
+  assert.equal(harness.posted.slice(0, prepareIndex).filter(message =>
+    message.type === 'requestPowerObservation').length, observationsBeforeResume);
+  const preparation = harness.controller.getSnapshot().resourceStatus.worklets.nodes[0]
+    .statePreparation;
+  assert.equal(preparation.state, 'acknowledged');
+  assert.equal(Number.isSafeInteger(preparation.skippedFrameCount), true);
 });

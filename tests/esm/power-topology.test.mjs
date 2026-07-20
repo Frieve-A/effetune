@@ -53,6 +53,23 @@ test('unknown gain and graph cycles fail closed', () => {
   assert.equal(cyclic.finite, false);
 });
 
+test('reduced-rate IR bounds keep power wake decisions on the conservative path', () => {
+  const reducedRateIr = {
+    enabled: true,
+    inputBus: 0,
+    outputBus: 0,
+    constructor: { name: 'IRReverbPlugin' },
+    powerGainUpperBoundDb: null
+  };
+  const linear = computeLinearPipelineWakeBound([reducedRateIr]);
+  assert.equal(linear.finite, false);
+  assert.equal(linear.reason, 'unbounded-plugin');
+
+  const runtime = computeRuntimePipelineGraphBound({ plugins: [reducedRateIr] });
+  assert.equal(runtime.finite, false);
+  assert.equal(runtime.reason, 'unbounded-plugin');
+});
+
 test('temporal capability aggregation separates skip from same-quantum monitoring safety', () => {
   const stateless = { id: 1, enabled: true, temporalCapability: 'stateless' };
   assert.deepEqual(analyzeTemporalCapabilities([stateless]), {
@@ -65,8 +82,13 @@ test('temporal capability aggregation separates skip from same-quantum monitorin
   const resetWithoutDescriptor = { id: 2, enabled: true, temporalCapability: 'reset-on-resume' };
   const resetResult = analyzeTemporalCapabilities([resetWithoutDescriptor]);
   assert.equal(resetResult.temporalSkipEligible, true);
-  assert.equal(resetResult.monitoringFastWakeEligible, false);
-  assert.equal(resetResult.blockerReason, 'temporal-preparation-not-worklet-local');
+  assert.equal(resetResult.monitoringFastWakeEligible, true);
+  assert.equal(resetResult.blockerReason, null);
+  assert.deepEqual(resetResult.capabilities[0].descriptor, {
+    primitive: 'canonical-reset',
+    allocationFree: false,
+    fixedOperations: 1
+  });
 
   const mustProcess = { id: 3, enabled: true, temporalCapability: 'must-process' };
   const blocked = analyzeTemporalCapabilities([mustProcess]);

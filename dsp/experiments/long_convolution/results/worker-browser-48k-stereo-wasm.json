@@ -1,0 +1,46 @@
+{
+  "kind": "browser-worklet-worker-wasm-roundtrip",
+  "implementation": "C++/PFFFT deferred tail through MessageChannel and transferable buffers",
+  "workerCount": 3,
+  "deadlineMs": 42.666666666666664,
+  "perWorkerModuleMemoryBytes": 23330816,
+  "perWorkerAlgorithmMemoryBytes": 15532328,
+  "totalWorkerModuleMemoryBytes": 69992448,
+  "runs": [
+    {
+      "type": "stats",
+      "count": 60,
+      "misses": 0,
+      "missRate": 0,
+      "medianMs": 5.333333333333485,
+      "p95Ms": 10.666666666666742,
+      "worstMs": 10.66666666666697,
+      "medianWorkerProcessMs": 1.2999999970197678,
+      "worstWorkerProcessMs": 2.0999999940395355
+    },
+    {
+      "type": "stats",
+      "count": 60,
+      "misses": 0,
+      "missRate": 0,
+      "medianMs": 5.333333333333485,
+      "p95Ms": 10.666666666666742,
+      "worstMs": 10.66666666666697,
+      "medianWorkerProcessMs": 1.2000000029802322,
+      "worstWorkerProcessMs": 2.699999988079071
+    },
+    {
+      "type": "stats",
+      "count": 60,
+      "misses": 0,
+      "missRate": 0,
+      "medianMs": 5.333333333333485,
+      "p95Ms": 10.666666666666742,
+      "worstMs": 10.66666666666697,
+      "medianWorkerProcessMs": 1.2000000029802322,
+      "worstWorkerProcessMs": 2.699999988079071
+    }
+  ],
+  "aggregateMisses": 0,
+  "recoveryMs": 50
+}

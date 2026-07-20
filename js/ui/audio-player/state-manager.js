@@ -35,6 +35,7 @@ export class StateManager {
       // Transition state
       isTransitioning: false,
       transitionType: null, // 'seamless', 'fallback', 'manual'
+      isPlaybackPending: false,
       
       // Current track info
       currentTrack: null,
@@ -60,6 +61,10 @@ export class StateManager {
     
     // State change listeners
     this.listeners = new Map();
+
+    // Playback waiting is presentation-only. Requests are owned independently
+    // from audio transition state so transport changes cannot strand the UI.
+    this.playbackPendingRequests = new Set();
     
     // State history for debugging
     this.stateHistory = [];
@@ -395,6 +400,42 @@ export class StateManager {
       isTransitioning,
       transitionType: type
     }, 'transition_state_change');
+  }
+
+  beginPlaybackPending(priority = 2) {
+    if (!Number.isSafeInteger(priority) || priority < 0) {
+      throw new RangeError('Playback pending priority must be a non-negative integer');
+    }
+
+    let highestPriority = -1;
+    for (const request of this.playbackPendingRequests) {
+      if (request.priority > highestPriority) highestPriority = request.priority;
+    }
+    if (priority >= highestPriority) this.playbackPendingRequests.clear();
+
+    const request = { priority };
+    this.playbackPendingRequests.add(request);
+    this.updatePlaybackPendingState();
+
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      if (!this.playbackPendingRequests.delete(request)) return;
+      this.updatePlaybackPendingState();
+    };
+  }
+
+  cancelPlaybackPending() {
+    if (this.playbackPendingRequests.size === 0 && this.state.isPlaybackPending !== true) return;
+    this.playbackPendingRequests.clear();
+    this.updatePlaybackPendingState();
+  }
+
+  updatePlaybackPendingState() {
+    const isPlaybackPending = this.playbackPendingRequests.size > 0;
+    if (this.state.isPlaybackPending === isPlaybackPending) return;
+    this.updateState({ isPlaybackPending }, 'playback_pending_change');
   }
   
   /**

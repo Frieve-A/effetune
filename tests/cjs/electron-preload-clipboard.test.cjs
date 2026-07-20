@@ -129,6 +129,7 @@ test('preload exposes electronAPI invoke and send wrappers', async () => {
     ['getAudioDevices', [], ['get-audio-devices']],
     ['saveAudioPreferences', [{ sampleRate: 48000 }], ['save-audio-preferences', { sampleRate: 48000 }]],
     ['loadAudioPreferences', [], ['load-audio-preferences']],
+    ['getWindowVisibility', [], ['get-window-visibility']],
     ['getAppVersion', [], ['get-app-version']],
     ['getCommandLinePresetFile', [], ['get-command-line-preset-file']],
     ['reloadWindow', [], ['reload-window']],
@@ -209,6 +210,42 @@ test('preload derives dropped playlist paths in the isolated world before reques
   });
 });
 
+test('preload rejects oversized IR library writes before invoking the main process', async () => {
+  const harness = createPreloadHarness();
+  loadPreload(harness);
+  const library = harness.exposed.electronAPI.irLibraryV1;
+  const analysisName = 'aaaaaaaaaaaaaaaaaaaaaaaa.analysis';
+
+  await library.writeAtomic({ name: analysisName, bytes: new Uint8Array([1]) });
+  const invocationsBeforeOversizedWrites = harness.invocations.length;
+  assert.throws(
+    () => library.writeAtomic({ name: analysisName, bytes: new Uint8Array(4 * 1024 * 1024 + 1) }),
+    error => error?.code === 'ERR_IR_LIBRARY_DATA_TOO_LARGE'
+  );
+  assert.throws(
+    () => library.writeCacheAtomic({ name: 'index.json', bytes: new Uint8Array(4 * 1024 * 1024 + 1) }),
+    error => error?.code === 'ERR_IR_LIBRARY_DATA_TOO_LARGE'
+  );
+  assert.equal(harness.invocations.length, invocationsBeforeOversizedWrites);
+});
+
+test('preload forwards only the safe oversized-index read code', async () => {
+  const harness = createPreloadHarness();
+  const invoke = harness.electron.ipcRenderer.invoke.bind(harness.electron.ipcRenderer);
+  let response = { ok: false, code: 'ir-library-index-too-large' };
+  harness.electron.ipcRenderer.invoke = (channel, ...args) => invoke(channel, ...args).then(() => response);
+  loadPreload(harness);
+  const library = harness.exposed.electronAPI.irLibraryV1;
+
+  assert.deepEqual(await library.read({ name: 'index.json' }), {
+    ok: false,
+    code: 'ir-library-index-too-large'
+  });
+
+  response = { ok: false, code: 'C:\\private\\raw-error' };
+  assert.deepEqual(await library.read({ name: 'index.json' }), { ok: false, code: 'storage-failed' });
+});
+
 test('preload exposes catalog recovery independently from the catalog API', async () => {
   const harness = createPreloadHarness();
   loadPreload(harness);
@@ -269,6 +306,8 @@ test('preload exposes listener registration wrappers', () => {
   harness.listeners.get('load-user-preset')({}, 'Preset');
   api.onShowAboutDialog(data => calls.push(['onShowAboutDialog', data]));
   harness.listeners.get('show-about-dialog')({}, { version: '1.0.0' });
+  api.onWindowVisibilityChanged(data => calls.push(['onWindowVisibilityChanged', data]));
+  harness.listeners.get('window-visibility-changed')({}, { hidden: true });
   api.onAudioFilesDropped(filePaths => calls.push(['onAudioFilesDropped', filePaths]));
   harness.listeners.get('audio-files-dropped')({}, ['drop.wav']);
   api.onRequestTrayMenuUpdate(() => calls.push(['onRequestTrayMenuUpdate']));
@@ -318,6 +357,7 @@ test('preload exposes listener registration wrappers', () => {
     ['onOpenMusicFiles', ['song.wav']],
     ['onLoadUserPreset', 'Preset'],
     ['onShowAboutDialog', { version: '1.0.0' }],
+    ['onWindowVisibilityChanged', { hidden: true }],
     ['onAudioFilesDropped', ['drop.wav']],
     ['onRequestTrayMenuUpdate'],
     ['onStartDoubleBlindTest'],

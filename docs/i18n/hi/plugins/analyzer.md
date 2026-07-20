@@ -55,7 +55,7 @@ lang: hi
 - **Vertical Offset** - waveform को ऊपर/नीचे shift करता है (-1 से 1)
 
 ### वेवफॉर्म डिस्प्ले पर नोट
-displayed waveform smooth visualization के लिए sample points के बीच linear interpolation का उपयोग करता है। इसे exact measurement tool के बजाय visual guide की तरह इस्तेमाल करें।
+displayed waveform captured points को time order में जोड़ता है। लंबे Display Time पर हर interval अपने पहले और आखिरी sample के साथ minimum और maximum samples तथा उनकी original positions भी सुरक्षित रखता है। इससे display resolution की सीमा में continuity और छोटे peaks बने रहते हैं। इसे exact measurement tool के बजाय visual guide की तरह इस्तेमाल करें।
 
 ## Spectrogram
 

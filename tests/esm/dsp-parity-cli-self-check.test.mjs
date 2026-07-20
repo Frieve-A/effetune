@@ -12,6 +12,8 @@ import { DSP_PARAM_PACKERS } from '../../js/audio/dsp-params.generated.js';
 import { computeLayoutHash, validateParamSpec } from '../../scripts/gen-dsp-params.mjs';
 import {
   encodeNativeControl,
+  NATIVE_CONTROL_ASSET_HEADER_BYTES,
+  NATIVE_CONTROL_ASSET_VERSION,
   NATIVE_CONTROL_HEADER_BYTES,
   NATIVE_CONTROL_STRUCTURED_HEADER_BYTES,
   NATIVE_CONTROL_STRUCTURED_VERSION,
@@ -533,6 +535,47 @@ test('native control version 2 carries bounded structured parameter events', () 
   assert.equal(view.getUint32(offset, true), 7);
   offset += 4;
   assert.deepEqual([...control.subarray(offset)], [1, 0, 1, 0, 0, 0, 1]);
+});
+
+test('native control version 3 carries one asset begin record and payload', () => {
+  const schema = {
+    type: 'AssetFixturePlugin',
+    fields: [{ name: 'gain', key: 'gn', kind: 'float', default: 1 }]
+  };
+  const assetBytes = Uint8Array.from({ length: 40 }, (_, index) => index);
+  const control = encodeNativeControl(schema, {
+    sampleRate: 96000,
+    frames: 512,
+    channels: 2,
+    blockSize: 63,
+    params: { gn: 0.5 },
+    asset: {
+      slot: 0,
+      format: 1,
+      channels: 2,
+      frames: 1,
+      topology: 2,
+      headBlock: 128,
+      rateDivider: 2,
+      pathCount: 0,
+      inputCount: 0,
+      bytes: assetBytes
+    }
+  });
+  const view = new DataView(control.buffer, control.byteOffset, control.byteLength);
+  assert.equal(view.getUint32(4, true), NATIVE_CONTROL_ASSET_VERSION);
+  assert.equal(view.getUint32(32, true), 0);
+  assert.equal(view.getUint32(36, true), 0);
+  assert.deepEqual(
+    Array.from({ length: 10 }, (_, index) => view.getUint32(40 + index * 4, true)),
+    [0, 1, 2, 1, 2, 128, 2, 0, 0, assetBytes.byteLength]
+  );
+  assert.equal(view.getUint32(80, true), 0);
+  assert.equal(view.getFloat32(NATIVE_CONTROL_ASSET_HEADER_BYTES, true), 0.5);
+  assert.deepEqual(
+    [...control.subarray(NATIVE_CONTROL_ASSET_HEADER_BYTES + 4)],
+    [...assetBytes]
+  );
 });
 
 test('parity seeds cross the ABI as two unsigned 32-bit words', () => {

@@ -3,6 +3,10 @@
 // Plugin implementations should be created in their own files under the plugins directory.
 // See docs/plugin-development.md for plugin development guidelines.
 
+// Keep only the latest fallback pair when no live delivery owns a descriptor.
+// Active delivery retention is bounded separately per worklet and slot.
+const MAX_PENDING_WASM_ASSET_REVISIONS = 2;
+
 class PluginBase {
     constructor(name, description) {
         this.name = name;
@@ -24,7 +28,26 @@ class PluginBase {
         this.inputBus = null; // Input bus (null = default Main bus, index 0)
         this.outputBus = null; // Output bus (null = default Main bus, index 0)
         this.channel = null; // Channel processing: null ('All'), 'Left', 'Right'
+        this._lastUpdatedChannel = this.channel;
         this._responsiveGraphDisposers = new Set();
+        this._wasmAssets = new Map();
+        this._wasmAssetStates = new Map();
+        this._wasmAssetStateRevisions = new Map();
+        this._wasmAssetRevision = 0;
+        this._wasmAssetOperationRevisions = new Map();
+        this._wasmAssetOperationCounters = new Map();
+        this._wasmAssetDeliveries = new Map();
+        this._wasmAssetAcknowledgedDescriptors = new Map();
+        this._wasmAssetAcknowledgedReplayEpochs = new Map();
+        this._wasmAssetLogicalReplayEpochs = new Map();
+        this._wasmAssetReplayEpochCounters = new WeakMap();
+        this._wasmAssetPendingPredecessors = new Map();
+        this._wasmAssetRevisionDescriptors = new Map();
+        this._wasmAssetResidentDescriptors = new Map();
+        this._wasmAssetChangeListeners = new Set();
+        this._wasmAssetSnapshotChangeListeners = new Set();
+        this._wasmAssetTargetResolver = null;
+        this._wasmAssetOperationObserver = null;
 
         // Intercept every prototype startAnimation() entry, including direct
         // IntersectionObserver callbacks, so they cannot bypass the common gate.
@@ -91,6 +114,11 @@ class PluginBase {
             } catch (error) {
                 // Ignore stale port cleanup failures.
             }
+            this.dropWasmAssetTarget(this._messageHandlerWorkletNode);
+            this._wasmAssetAcknowledgedDescriptors.clear();
+            this._wasmAssetAcknowledgedReplayEpochs.clear();
+            this._wasmAssetLogicalReplayEpochs.clear();
+            this._wasmAssetPendingPredecessors.clear();
         }
 
         currentWorkletNode.port.addEventListener('message', this._boundHandleMessage);
@@ -111,33 +139,170 @@ class PluginBase {
         }
     }
 
-    // Clean up resources when plugin is removed
-    cleanup() {
-        this._disposeResponsiveGraphs();
-
-        if (this._messageHandlerObserver) {
-            this._messageHandlerObserver.disconnect();
-            this._messageHandlerObserver = null;
-        }
-
-        // Remove message event listener to prevent memory leaks
-        if (this._hasMessageHandler && window.workletNode) {
-            window.workletNode.port.removeEventListener('message', this._boundHandleMessage);
-            this._hasMessageHandler = false;
-        }
-        
-        // Clear any pending timeouts
-        if (this._pendingTimeoutId !== null) {
-            clearTimeout(this._pendingTimeoutId);
-            this._pendingTimeoutId = null;
-        }
-        
-        // Clear any other resources
-        this.pendingUpdate = null;
-    }
-
     _handleMessage(event) {
+        const sourcePort = event?.currentTarget || event?.target;
+        if (this._messageHandlerWorkletNode !== window.workletNode ||
+            (sourcePort && sourcePort !== this._messageHandlerWorkletNode?.port)) {
+            return;
+        }
         if (event.data.pluginId === this.id) {
+            if (event.data.type === 'assetState') {
+                const slot = event.data.slot >>> 0;
+                const operationRevision = event.data.operationRevision;
+                const replayEpoch = this._normalizeWasmAssetReplayEpoch(event.data.replayEpoch);
+                const inflight = this._wasmAssetDeliveries.get(this._messageHandlerWorkletNode)
+                    ?.get(slot)?.inflight;
+                const acknowledged = this._wasmAssetAcknowledgedDescriptors.get(slot);
+                const transportRelevant =
+                    this._isInflightWasmAssetOperation(
+                        this._messageHandlerWorkletNode,
+                        slot,
+                        operationRevision,
+                        replayEpoch
+                    ) || acknowledged?.operationRevision === operationRevision &&
+                        (this._wasmAssetAcknowledgedReplayEpochs.get(slot) ?? null) === replayEpoch;
+                const logicalCurrent = this._isCurrentWasmAssetOperation(slot, operationRevision) &&
+                    (this._wasmAssetLogicalReplayEpochs.get(slot) ?? null) === replayEpoch;
+                if (!transportRelevant && !logicalCurrent) return;
+                this.acknowledgeWasmAssetOperation(
+                    this._messageHandlerWorkletNode,
+                    slot,
+                    operationRevision,
+                    replayEpoch
+                );
+                if (inflight?.trackState === false && !logicalCurrent) return;
+                this._recordWasmAssetResidency(
+                    slot,
+                    event.data.state,
+                    operationRevision
+                );
+                if (!logicalCurrent) return;
+                this._wasmAssetStates.set(slot, event.data.state >>> 0);
+                this._wasmAssetStateRevisions.set(slot, operationRevision);
+                if ((event.data.state & 0xff) === 3) {
+                    this._wasmAssetPendingPredecessors.delete(slot);
+                    this._pruneWasmAssetRevisionDescriptors(slot, operationRevision);
+                }
+                this.onWasmAssetState(slot, event.data.state >>> 0, operationRevision);
+            } else if (event.data.type === 'assetLoadRejected') {
+                const slot = event.data.slot >>> 0;
+                const operationRevision = event.data.operationRevision;
+                const replayEpoch = this._normalizeWasmAssetReplayEpoch(event.data.replayEpoch);
+                const inflight = this._wasmAssetDeliveries.get(this._messageHandlerWorkletNode)
+                    ?.get(slot)?.inflight;
+                const acknowledged = this._wasmAssetAcknowledgedDescriptors.get(slot);
+                const transportRelevant =
+                    this._isInflightWasmAssetOperation(
+                        this._messageHandlerWorkletNode,
+                        slot,
+                        operationRevision,
+                        replayEpoch
+                    ) || acknowledged?.operationRevision === operationRevision &&
+                        (this._wasmAssetAcknowledgedReplayEpochs.get(slot) ?? null) === replayEpoch;
+                const logicalCurrent = this._isCurrentWasmAssetOperation(slot, operationRevision) &&
+                    (this._wasmAssetLogicalReplayEpochs.get(slot) ?? null) === replayEpoch;
+                const recordedState = this._wasmAssetStateRevisions.get(slot) === operationRevision
+                    ? this._wasmAssetStates.get(slot)
+                    : null;
+                const logicalPreparation = logicalCurrent && Number.isInteger(recordedState) &&
+                    (recordedState & 0xff) >= 1 && (recordedState & 0xff) < 3;
+                const replayFailure = event.data.replayFailure === true;
+                if (!transportRelevant && !logicalPreparation && !(logicalCurrent && replayFailure)) {
+                    return;
+                }
+                this.acknowledgeWasmAssetOperation(
+                    this._messageHandlerWorkletNode,
+                    slot,
+                    operationRevision,
+                    replayEpoch
+                );
+                if (inflight?.trackState === false && !logicalCurrent) return;
+                const reportedRetainedState = Number.isInteger(event.data.retainedAssetState)
+                    ? event.data.retainedAssetState >>> 0
+                    : 0;
+                const reportedRetainedStatus = reportedRetainedState & 0xff;
+                const reportedRetainedRevision = event.data.retainedOperationRevision;
+                if (event.data.replayFailure !== true && event.data.residentRetained === true &&
+                    reportedRetainedStatus >= 1 && reportedRetainedStatus <= 3) {
+                    this._recordWasmAssetResidency(
+                        slot,
+                        reportedRetainedState,
+                        reportedRetainedRevision
+                    );
+                } else {
+                    this._clearWasmAssetResidentDescriptor(slot);
+                }
+                if (!logicalCurrent) {
+                    if (this._wasmAssetAcknowledgedDescriptors.get(slot)?.operationRevision ===
+                        operationRevision) {
+                        this._wasmAssetAcknowledgedDescriptors.delete(slot);
+                        this._wasmAssetAcknowledgedReplayEpochs.delete(slot);
+                    }
+                    return;
+                }
+                const retainedOperationRevision = event.data.retainedOperationRevision;
+                const retainedReplayEpoch = this._normalizeWasmAssetReplayEpoch(
+                    event.data.retainedReplayEpoch
+                );
+                const retainedAssetState = Number.isInteger(event.data.retainedAssetState)
+                    ? event.data.retainedAssetState >>> 0
+                    : 0;
+                const retainedStatus = retainedAssetState & 0xff;
+                const retainedDescriptor = this._getWasmAssetRevisionDescriptor(
+                    slot,
+                    retainedOperationRevision
+                );
+                const residentRetained = event.data.residentRetained === true &&
+                    replayFailure === false && retainedStatus >= 1 && retainedStatus <= 3 &&
+                    Number.isSafeInteger(retainedOperationRevision) && retainedOperationRevision > 0 &&
+                    retainedDescriptor?.operationRevision === retainedOperationRevision;
+                this._wasmAssetPendingPredecessors.delete(slot);
+                if (residentRetained) {
+                    this._wasmAssets.set(slot, retainedDescriptor);
+                    this._wasmAssetStates.set(slot, retainedAssetState);
+                    this._wasmAssetStateRevisions.set(slot, retainedOperationRevision);
+                } else {
+                    this._wasmAssets.delete(slot);
+                    this._wasmAssetStates.delete(slot);
+                    this._wasmAssetStateRevisions.delete(slot);
+                    this._wasmAssetLogicalReplayEpochs.delete(slot);
+                }
+                this.onWasmAssetRejected(slot, event.data.reason, operationRevision, {
+                    residentRetained,
+                    replayFailure,
+                    ...(residentRetained && {
+                        retainedOperationRevision,
+                        retainedAssetState
+                    }),
+                    ...(residentRetained && retainedReplayEpoch !== null && {
+                        retainedReplayEpoch
+                    })
+                });
+                const retainedAfterCallback = residentRetained &&
+                    this._wasmAssets.get(slot) === retainedDescriptor;
+                if (retainedAfterCallback) {
+                    this._wasmAssetOperationRevisions.set(slot, retainedOperationRevision);
+                    if (retainedReplayEpoch === null) {
+                        this._wasmAssetLogicalReplayEpochs.delete(slot);
+                    } else {
+                        this._wasmAssetLogicalReplayEpochs.set(slot, retainedReplayEpoch);
+                    }
+                    if (retainedStatus < 3) {
+                        this._wasmAssetPendingPredecessors.set(slot, {
+                            candidateRevision: retainedOperationRevision
+                        });
+                    }
+                    this._pruneWasmAssetRevisionDescriptors(slot, retainedOperationRevision);
+                } else if (!residentRetained) {
+                    this._clearWasmAssetRevisionDescriptors(slot);
+                }
+                if (this._wasmAssetAcknowledgedDescriptors.get(slot)?.operationRevision ===
+                    operationRevision) {
+                    this._wasmAssetAcknowledgedDescriptors.delete(slot);
+                    this._wasmAssetAcknowledgedReplayEpochs.delete(slot);
+                }
+                if (!residentRetained || retainedAfterCallback) this._notifyWasmAssetChange();
+            }
             const currentTime = performance.now();
             if (currentTime - this.lastUpdateTime >= this.UPDATE_INTERVAL) {
                 // Process immediately if enough time has passed
@@ -170,6 +335,500 @@ class PluginBase {
     // Default message handler (can be overridden by subclasses)
     onMessage(message) {
         // Default implementation does nothing
+    }
+
+    onWasmAssetState(slot, state, operationRevision) {
+        // Asset-aware plugins may override this to update their status display.
+    }
+
+    onWasmAssetRejected(slot, reason, operationRevision, retention = {}) {
+        // Asset-aware plugins may override this to show a load rejection notice.
+    }
+
+    onWasmAssetResidency(slot, state, operationRevision, descriptor) {
+        // Asset-aware plugins may override this to pin revision-specific state.
+    }
+
+    _nextWasmAssetOperationRevision(slot) {
+        const current = this._wasmAssetOperationCounters.get(slot) || 0;
+        const next = current >= Number.MAX_SAFE_INTEGER ? 1 : current + 1;
+        this._wasmAssetOperationCounters.set(slot, next);
+        this._wasmAssetOperationRevisions.set(slot, next);
+        return next;
+    }
+
+    _isCurrentWasmAssetOperation(slot, operationRevision) {
+        return Number.isSafeInteger(operationRevision) && operationRevision > 0 &&
+            this._wasmAssetOperationRevisions.get(slot) === operationRevision;
+    }
+
+    _normalizeWasmAssetReplayEpoch(value) {
+        return Number.isSafeInteger(value) && value > 0 ? value : null;
+    }
+
+    _nextWasmAssetReplayEpoch(workletNode) {
+        const current = this._wasmAssetReplayEpochCounters.get(workletNode) || 0;
+        const next = current >= Number.MAX_SAFE_INTEGER ? 1 : current + 1;
+        this._wasmAssetReplayEpochCounters.set(workletNode, next);
+        return next;
+    }
+
+    _isInflightWasmAssetOperation(workletNode, slot, operationRevision, replayEpoch = null) {
+        return Number.isSafeInteger(operationRevision) && operationRevision > 0 &&
+            this._wasmAssetDeliveries.get(workletNode)?.get(slot)?.inflight?.operationRevision ===
+                operationRevision &&
+            (this._wasmAssetDeliveries.get(workletNode)?.get(slot)?.inflight?.replayEpoch ?? null) ===
+                this._normalizeWasmAssetReplayEpoch(replayEpoch);
+    }
+
+    getWasmAssetOperationRevision(slot) {
+        return this._wasmAssetOperationRevisions.get(slot) ?? null;
+    }
+
+    getWasmAssetDeliveryRevisions(slot) {
+        const revisions = new Set(this._wasmAssetRevisionDescriptors.get(slot)?.keys() || []);
+        const residentRevision = this._wasmAssetResidentDescriptors.get(slot)
+            ?.descriptor?.operationRevision;
+        if (Number.isSafeInteger(residentRevision)) revisions.add(residentRevision);
+        const acknowledgedRevision = this._wasmAssetAcknowledgedDescriptors.get(slot)
+            ?.operationRevision;
+        if (Number.isSafeInteger(acknowledgedRevision)) revisions.add(acknowledgedRevision);
+        return revisions;
+    }
+
+    _rememberWasmAssetRevisionDescriptor(slot, descriptor) {
+        let descriptors = this._wasmAssetRevisionDescriptors.get(slot);
+        if (!descriptors) {
+            descriptors = new Map();
+            this._wasmAssetRevisionDescriptors.set(slot, descriptors);
+        }
+        descriptors.set(descriptor.operationRevision, descriptor);
+        while (descriptors.size > MAX_PENDING_WASM_ASSET_REVISIONS) {
+            descriptors.delete(descriptors.keys().next().value);
+        }
+    }
+
+    _getWasmAssetRevisionDescriptor(slot, operationRevision) {
+        if (!Number.isSafeInteger(operationRevision) || operationRevision <= 0) return null;
+        const resident = this._wasmAssetResidentDescriptors.get(slot);
+        if (resident && resident.descriptor?.operationRevision === operationRevision) {
+            return resident.descriptor;
+        }
+        const acknowledged = this._wasmAssetAcknowledgedDescriptors.get(slot);
+        if (acknowledged?.operationRevision === operationRevision) return acknowledged;
+        return this._wasmAssetRevisionDescriptors.get(slot)?.get(operationRevision) || null;
+    }
+
+    _recordWasmAssetResidency(slot, state, operationRevision) {
+        const normalizedState = Number.isInteger(state) ? state >>> 0 : 0;
+        const status = normalizedState & 0xff;
+        if (status < 1 || status > 3 ||
+            !Number.isSafeInteger(operationRevision) || operationRevision <= 0) {
+            if (status === 0 || status === 4) this._clearWasmAssetResidentDescriptor(slot);
+            return false;
+        }
+        const descriptor = this._getWasmAssetRevisionDescriptor(slot, operationRevision) ||
+            (this._wasmAssets.get(slot)?.operationRevision === operationRevision
+                ? this._wasmAssets.get(slot)
+                : null);
+        if (!descriptor) return false;
+        this._wasmAssetResidentDescriptors.set(slot, { descriptor, state: normalizedState });
+        if (this._wasmAssetAcknowledgedDescriptors.get(slot) === descriptor) {
+            this._wasmAssetAcknowledgedDescriptors.delete(slot);
+            this._wasmAssetAcknowledgedReplayEpochs.delete(slot);
+        }
+        this.onWasmAssetResidency(slot, normalizedState, operationRevision, descriptor);
+        return true;
+    }
+
+    _pinPotentialWasmAssetResident(slot, descriptor) {
+        if (!descriptor || this._wasmAssetResidentDescriptors.has(slot)) return;
+        this._wasmAssetResidentDescriptors.set(slot, { descriptor, state: 1 });
+        this.onWasmAssetResidency(slot, 1, descriptor.operationRevision, descriptor);
+    }
+
+    _clearWasmAssetResidentDescriptor(slot) {
+        if (!this._wasmAssetResidentDescriptors.delete(slot)) return false;
+        this.onWasmAssetResidency(slot, 0, null, null);
+        return true;
+    }
+
+    _pruneWasmAssetRevisionDescriptors(slot, retainedOperationRevision) {
+        const descriptors = this._wasmAssetRevisionDescriptors.get(slot);
+        const retained = descriptors?.get(retainedOperationRevision) ||
+            this._getWasmAssetRevisionDescriptor(slot, retainedOperationRevision);
+        if (!retained) {
+            this._wasmAssetRevisionDescriptors.delete(slot);
+            return;
+        }
+        this._wasmAssetRevisionDescriptors.set(
+            slot,
+            new Map([[retainedOperationRevision, retained]])
+        );
+    }
+
+    _clearWasmAssetRevisionDescriptors(slot) {
+        this._wasmAssetRevisionDescriptors.delete(slot);
+    }
+
+    _refreshWasmAssetRevisionDescriptors(slot) {
+        const descriptors = [];
+        for (const deliveries of this._wasmAssetDeliveries.values()) {
+            const delivery = deliveries.get(slot);
+            if (delivery?.inflight?.type === 'set' &&
+                !descriptors.includes(delivery.inflight.descriptor)) {
+                descriptors.push(delivery.inflight.descriptor);
+            }
+            if (delivery?.queued?.type === 'set' &&
+                !descriptors.includes(delivery.queued.descriptor)) {
+                descriptors.push(delivery.queued.descriptor);
+            }
+            if (delivery?.deferredReplay?.type === 'set' &&
+                !descriptors.includes(delivery.deferredReplay.descriptor)) {
+                descriptors.push(delivery.deferredReplay.descriptor);
+            }
+        }
+        const current = this._wasmAssets.get(slot);
+        if (current && !descriptors.includes(current)) descriptors.push(current);
+        if (!descriptors.length) {
+            this._wasmAssetRevisionDescriptors.delete(slot);
+            return;
+        }
+        this._wasmAssetRevisionDescriptors.set(
+            slot,
+            new Map(descriptors.map(descriptor =>
+                [descriptor.operationRevision, descriptor]))
+        );
+    }
+
+    _postWasmAssetClear(workletNode, slot, operationRevision, replayEpoch = null) {
+        if (!workletNode?.port || !Number.isInteger(this.id)) return false;
+        replayEpoch = this._normalizeWasmAssetReplayEpoch(replayEpoch);
+        this._observeWasmAssetOperation(workletNode, slot, operationRevision, 0, replayEpoch);
+        workletNode.port.postMessage({
+            type: 'clearPluginAsset',
+            pluginId: this.id,
+            slot,
+            operationRevision,
+            ...(replayEpoch !== null && { replayEpoch })
+        });
+        return true;
+    }
+
+    _startWasmAssetDelivery(workletNode, slot, request) {
+        if (!workletNode?.port) return false;
+        let deliveries = this._wasmAssetDeliveries.get(workletNode);
+        if (!deliveries) {
+            deliveries = new Map();
+            this._wasmAssetDeliveries.set(workletNode, deliveries);
+        }
+        deliveries.set(slot, {
+            inflight: request,
+            queued: null,
+            deferredReplay: null
+        });
+        const logicalTarget = workletNode === this._messageHandlerWorkletNode ||
+            workletNode === window.workletNode;
+        const trackLogicalState = request.trackState !== false;
+        if (logicalTarget && trackLogicalState && request.type === 'set') {
+            this._wasmAssetPendingPredecessors.set(slot, {
+                candidateRevision: request.operationRevision
+            });
+        } else if (logicalTarget && trackLogicalState) {
+            this._wasmAssetPendingPredecessors.delete(slot);
+        }
+        this._refreshWasmAssetRevisionDescriptors(slot);
+        if (request.type === 'set') {
+            this._postWasmAsset(workletNode, slot, request.descriptor, request.replayEpoch);
+        } else {
+            this._postWasmAssetClear(
+                workletNode,
+                slot,
+                request.operationRevision,
+                request.replayEpoch
+            );
+        }
+        return true;
+    }
+
+    _queueWasmAssetDelivery(workletNode, slot, request) {
+        const delivery = this._wasmAssetDeliveries.get(workletNode)?.get(slot);
+        if (!delivery?.inflight) return this._startWasmAssetDelivery(workletNode, slot, request);
+        if (request.trackState === false && delivery.queued?.trackState !== false) {
+            delivery.deferredReplay = request;
+        } else {
+            if (request.trackState !== false && delivery.queued?.trackState === false) {
+                delivery.deferredReplay = delivery.queued;
+            }
+            delivery.queued = request;
+        }
+        this._refreshWasmAssetRevisionDescriptors(slot);
+        return true;
+    }
+
+    acknowledgeWasmAssetOperation(workletNode, slot, operationRevision, replayEpoch = null) {
+        const deliveries = this._wasmAssetDeliveries.get(workletNode);
+        const delivery = deliveries?.get(slot);
+        replayEpoch = this._normalizeWasmAssetReplayEpoch(replayEpoch);
+        if (delivery?.inflight?.operationRevision !== operationRevision ||
+            (delivery.inflight.replayEpoch ?? null) !== replayEpoch) return false;
+        const logicalTarget = workletNode === this._messageHandlerWorkletNode ||
+            workletNode === window.workletNode;
+        const trackLogicalState = delivery.inflight.trackState !== false;
+        if (logicalTarget && trackLogicalState && delivery.inflight.type === 'set') {
+            this._wasmAssetAcknowledgedDescriptors.set(slot, delivery.inflight.descriptor);
+            if (replayEpoch === null) this._wasmAssetAcknowledgedReplayEpochs.delete(slot);
+            else this._wasmAssetAcknowledgedReplayEpochs.set(slot, replayEpoch);
+        }
+        if (logicalTarget && trackLogicalState) {
+            const pending = this._wasmAssetPendingPredecessors.get(slot);
+            if (pending?.candidateRevision === operationRevision) {
+                this._wasmAssetPendingPredecessors.delete(slot);
+            }
+        }
+        const queued = delivery.queued;
+        const deferredReplay = delivery.deferredReplay;
+        deliveries.delete(slot);
+        if (!deliveries.size) this._wasmAssetDeliveries.delete(workletNode);
+        this._refreshWasmAssetRevisionDescriptors(slot);
+        if (queued) {
+            this._startWasmAssetDelivery(workletNode, slot, queued);
+            if (deferredReplay) {
+                this._wasmAssetDeliveries.get(workletNode).get(slot).queued = deferredReplay;
+                this._refreshWasmAssetRevisionDescriptors(slot);
+            }
+        } else if (deferredReplay) {
+            this._startWasmAssetDelivery(workletNode, slot, deferredReplay);
+        }
+        return true;
+    }
+
+    setWasmAsset(slot, descriptor) {
+        if (!Number.isInteger(slot) || slot < 0 || !(descriptor?.payload instanceof ArrayBuffer)) {
+            throw new TypeError('A WASM asset requires a non-negative slot and an ArrayBuffer payload');
+        }
+        const normalized = {
+            formatTag: descriptor.formatTag ?? 1,
+            headBlock: descriptor.headBlock ?? 128,
+            rateDivider: descriptor.rateDivider ?? 1,
+            pathCount: descriptor.pathCount ?? 0,
+            inputCount: descriptor.inputCount ?? 0,
+            processingChannels: descriptor.processingChannels ?? 1,
+            footprintBytes: descriptor.footprintBytes,
+            ...(typeof descriptor.externalAssetSignature === 'string' && {
+                externalAssetSignature: descriptor.externalAssetSignature
+            }),
+            payload: descriptor.payload.slice(0)
+        };
+        if (!Number.isSafeInteger(normalized.footprintBytes) ||
+            normalized.footprintBytes < descriptor.payload.byteLength) {
+            throw new TypeError('A WASM asset footprint must cover the payload with a safe integer byte count');
+        }
+        this._pinPotentialWasmAssetResident(slot, this._wasmAssets.get(slot));
+        this._wasmAssetLogicalReplayEpochs.delete(slot);
+        normalized.operationRevision = this._nextWasmAssetOperationRevision(slot);
+        this._wasmAssets.set(slot, normalized);
+        this._wasmAssetStates.set(slot, 1);
+        this._wasmAssetStateRevisions.set(slot, normalized.operationRevision);
+        this._notifyWasmAssetChange();
+        const request = {
+            type: 'set',
+            operationRevision: normalized.operationRevision,
+            descriptor: normalized
+        };
+        for (const workletNode of this._resolveWasmAssetTargetWorklets()) {
+            this._queueWasmAssetDelivery(workletNode, slot, request);
+        }
+        this._refreshWasmAssetRevisionDescriptors(slot);
+        return normalized.operationRevision;
+    }
+
+    _postWasmAsset(workletNode, slot, descriptor, replayEpoch = null) {
+        if (!workletNode?.port || !Number.isInteger(this.id)) return false;
+        const payload = descriptor.payload.slice(0);
+        replayEpoch = this._normalizeWasmAssetReplayEpoch(replayEpoch);
+        this._observeWasmAssetOperation(
+            workletNode,
+            slot,
+            descriptor.operationRevision,
+            1,
+            replayEpoch
+        );
+        workletNode.port.postMessage({
+            type: 'setPluginAsset',
+            pluginId: this.id,
+            slot,
+            formatTag: descriptor.formatTag,
+            headBlock: descriptor.headBlock,
+            rateDivider: descriptor.rateDivider,
+            pathCount: descriptor.pathCount,
+            inputCount: descriptor.inputCount,
+            processingChannels: descriptor.processingChannels,
+            footprintBytes: descriptor.footprintBytes,
+            operationRevision: descriptor.operationRevision,
+            ...(replayEpoch !== null && { replayEpoch }),
+            payload
+        }, [payload]);
+        return true;
+    }
+
+    replayWasmAssetsTo(workletNode, { trackState = false, assets = null } = {}) {
+        if (!workletNode?.port || !Number.isInteger(this.id)) return [];
+        if (trackState && workletNode === window.workletNode) {
+            this._setupMessageHandler();
+        }
+        const replayedSlots = [];
+        const descriptors = assets instanceof Map ? assets : this._wasmAssets;
+        for (const [slot, descriptor] of descriptors) {
+            const replayEpoch = this._nextWasmAssetReplayEpoch(workletNode);
+            if (trackState) {
+                const deliveries = this._wasmAssetDeliveries.get(workletNode);
+                deliveries?.delete(slot);
+                if (deliveries && !deliveries.size) this._wasmAssetDeliveries.delete(workletNode);
+                this._wasmAssetAcknowledgedDescriptors.delete(slot);
+                this._wasmAssetAcknowledgedReplayEpochs.delete(slot);
+                this._wasmAssetLogicalReplayEpochs.set(slot, replayEpoch);
+                this._wasmAssetPendingPredecessors.set(slot, {
+                    candidateRevision: descriptor.operationRevision
+                });
+                this._rememberWasmAssetRevisionDescriptor(slot, descriptor);
+                this._wasmAssetStates.set(slot, 1);
+                this._wasmAssetStateRevisions.set(slot, descriptor.operationRevision);
+                this.onWasmAssetState(slot, 1, descriptor.operationRevision);
+            }
+            const request = {
+                type: 'set',
+                operationRevision: descriptor.operationRevision,
+                replayEpoch,
+                descriptor,
+                trackState
+            };
+            const posted = trackState
+                ? this._startWasmAssetDelivery(workletNode, slot, request)
+                : this._queueWasmAssetDelivery(workletNode, slot, request);
+            if (posted) {
+                replayedSlots.push(slot);
+            }
+        }
+        return replayedSlots;
+    }
+
+    clearWasmAsset(slot) {
+        if (!Number.isInteger(slot) || slot < 0) {
+            throw new TypeError('A WASM asset requires a non-negative slot');
+        }
+        this._clearWasmAssetResidentDescriptor(slot);
+        this._wasmAssetLogicalReplayEpochs.delete(slot);
+        const operationRevision = this._nextWasmAssetOperationRevision(slot);
+        const removed = this._wasmAssets.delete(slot);
+        this._wasmAssetStates.delete(slot);
+        this._wasmAssetStateRevisions.delete(slot);
+        if (removed) this._notifyWasmAssetChange();
+        const request = {
+            type: 'clear',
+            operationRevision
+        };
+        let targetCount = 0;
+        for (const workletNode of this._resolveWasmAssetTargetWorklets()) {
+            if (this._queueWasmAssetDelivery(workletNode, slot, request)) targetCount++;
+        }
+        this._refreshWasmAssetRevisionDescriptors(slot);
+        return targetCount;
+    }
+
+    getWasmAssets() {
+        return new Map(this._wasmAssets);
+    }
+
+    getWasmAssetRevision() {
+        return this._wasmAssetRevision;
+    }
+
+    addWasmAssetChangeListener(listener) {
+        if (typeof listener !== 'function') return () => {};
+        this._wasmAssetChangeListeners.add(listener);
+        return () => this._wasmAssetChangeListeners.delete(listener);
+    }
+
+    addWasmAssetSnapshotChangeListener(listener) {
+        if (typeof listener !== 'function') return () => {};
+        this._wasmAssetSnapshotChangeListeners.add(listener);
+        return () => this._wasmAssetSnapshotChangeListeners.delete(listener);
+    }
+
+    setWasmAssetTargetResolver(resolver) {
+        if (typeof resolver !== 'function') {
+            const slots = new Set();
+            for (const deliveries of this._wasmAssetDeliveries.values()) {
+                for (const slot of deliveries.keys()) slots.add(slot);
+            }
+            this._wasmAssetDeliveries.clear();
+            this._wasmAssetPendingPredecessors.clear();
+            for (const slot of slots) this._refreshWasmAssetRevisionDescriptors(slot);
+        }
+        this._wasmAssetTargetResolver = typeof resolver === 'function' ? resolver : null;
+    }
+
+    dropWasmAssetTarget(workletNode) {
+        const deliveries = this._wasmAssetDeliveries.get(workletNode);
+        if (!deliveries) return false;
+        this._wasmAssetDeliveries.delete(workletNode);
+        if (workletNode === this._messageHandlerWorkletNode || workletNode === window.workletNode) {
+            this._wasmAssetPendingPredecessors.clear();
+            this._wasmAssetAcknowledgedDescriptors.clear();
+            this._wasmAssetAcknowledgedReplayEpochs.clear();
+            this._wasmAssetLogicalReplayEpochs.clear();
+        }
+        for (const slot of deliveries.keys()) this._refreshWasmAssetRevisionDescriptors(slot);
+        return true;
+    }
+
+    setWasmAssetOperationObserver(observer) {
+        this._wasmAssetOperationObserver = typeof observer === 'function' ? observer : null;
+    }
+
+    _observeWasmAssetOperation(workletNode, slot, operationRevision, state, replayEpoch = null) {
+        try {
+            this._wasmAssetOperationObserver?.(
+                workletNode,
+                slot,
+                operationRevision,
+                state,
+                this._normalizeWasmAssetReplayEpoch(replayEpoch)
+            );
+        } catch (error) {
+            console.warn(`[${this.name}] WASM asset operation observer failed:`, error);
+        }
+    }
+
+    _resolveWasmAssetTargetWorklets() {
+        if (this._wasmAssetTargetResolver) {
+            const resolved = this._wasmAssetTargetResolver(this);
+            return Array.isArray(resolved) ? [...new Set(resolved.filter(node => node?.port))] : [];
+        }
+        return window.workletNode?.port ? [window.workletNode] : [];
+    }
+
+    _notifyWasmAssetChange() {
+        this._wasmAssetRevision++;
+        for (const listener of [...this._wasmAssetChangeListeners]) {
+            try {
+                listener(this._wasmAssetRevision);
+            } catch (error) {
+                console.warn(`[${this.name}] WASM asset change listener failed:`, error);
+            }
+        }
+        this._notifyWasmAssetSnapshotChange();
+    }
+
+    _notifyWasmAssetSnapshotChange() {
+        for (const listener of [...this._wasmAssetSnapshotChangeListeners]) {
+            try {
+                listener();
+            } catch (error) {
+                console.warn(`[${this.name}] WASM asset snapshot listener failed:`, error);
+            }
+        }
     }
 
     // Default process function (can be overridden by subclasses)
@@ -233,6 +892,12 @@ class PluginBase {
 
     // Update plugin parameters via the worklet.
     updateParameters() {
+        const previousChannel = this._lastUpdatedChannel;
+        this._lastUpdatedChannel = this.channel;
+        if (previousChannel !== this.channel && typeof this.onChannelSelectionChanged === 'function') {
+            this.onChannelSelectionChanged(previousChannel, this.channel);
+        }
+        this._notifyWasmAssetSnapshotChange();
         if (window.workletNode) {
             const parameters = this.getParameters();
             
@@ -319,6 +984,10 @@ class PluginBase {
         }
         
         return cleanParams;
+    }
+
+    get externalAssetInfo() {
+        return null;
     }
 
     // Set parameters from a serialized state.
@@ -1015,6 +1684,18 @@ class PluginBase {
     // Cleanup resources (should be overridden by subclasses).
     cleanup() {
         this._disposeResponsiveGraphs();
+        const clearSlots = new Set(this._wasmAssets.keys());
+        for (const deliveries of this._wasmAssetDeliveries.values()) {
+            for (const slot of deliveries.keys()) clearSlots.add(slot);
+        }
+        this._wasmAssetDeliveries.clear();
+        this._wasmAssetPendingPredecessors.clear();
+        this._wasmAssetAcknowledgedDescriptors.clear();
+        this._wasmAssetAcknowledgedReplayEpochs.clear();
+        this._wasmAssetLogicalReplayEpochs.clear();
+        for (const slot of clearSlots) this.clearWasmAsset(slot);
+        this._wasmAssetStates.clear();
+        this._wasmAssetStateRevisions.clear();
 
         if (this._messageHandlerObserver) {
             this._messageHandlerObserver.disconnect();
@@ -1030,6 +1711,19 @@ class PluginBase {
         }
         this._messageHandlerWorkletNode = null;
         this._hasMessageHandler = false;
+        this._wasmAssetChangeListeners.clear();
+        this._wasmAssetSnapshotChangeListeners.clear();
+        this._wasmAssetDeliveries.clear();
+        this._wasmAssetAcknowledgedDescriptors.clear();
+        this._wasmAssetAcknowledgedReplayEpochs.clear();
+        this._wasmAssetLogicalReplayEpochs.clear();
+        this._wasmAssetPendingPredecessors.clear();
+        this._wasmAssetRevisionDescriptors.clear();
+        this._wasmAssetResidentDescriptors.clear();
+        this._wasmAssetOperationCounters.clear();
+        this._wasmAssetOperationRevisions.clear();
+        this._wasmAssetTargetResolver = null;
+        this._wasmAssetOperationObserver = null;
 
         if (this._pendingTimeoutId !== null) {
             clearTimeout(this._pendingTimeoutId);

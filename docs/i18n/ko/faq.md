@@ -134,6 +134,12 @@ Out 1‑2와 Out 3‑4가 별도 장치로 나타나 4채널 출력을 방해합
 
 ---
 
+### IR Reverb 결과 공유 및 재현
+
+URL과 preset에는 IR 오디오가 아니라 ID만 들어갑니다. IR이 없다고 표시되거나 wet 신호가 나오지 않으면 같은 원본 파일을 가져와 자동으로 다시 연결하거나 **Impulse Response Library**에서 대체 IR을 선택하고 **Dry** 설정도 확인하십시오.
+
+다른 환경에서 결과를 재현하려면 변경하지 않은 IR 파일을 URL/preset 및 출처·라이선스 정보와 함께 전달하고 sample rate, channel selection, IR Reverb 설정도 맞추십시오. Multichannel send/return은 **Matrix**로 필요한 채널을 빈 bus에 복사하고 **Dry**를 -96 dB, **Wet**을 0 dB로 설정하며, wet bus를 필요한 출력으로만 되돌립니다.
+
 ## 5. 주파수 응답 및 룸 보정
 
 ### 5.1. 15Band PEQ로 AutoEQ 설정 가져오기

@@ -1,5 +1,5 @@
 export const MUSIC_LIBRARY_SCHEMA_VERSION = 3;
-export const MUSIC_LIBRARY_COLLATION_VERSION = 'canonical-sort-key-v1';
+export const MUSIC_LIBRARY_COLLATION_VERSION = 'canonical-natural-sort-key-v2';
 export const MUSIC_LIBRARY_V3_DESKTOP_DIRECTORY = 'music-library-v3';
 export const MUSIC_LIBRARY_V3_DESKTOP_DATABASE_PATH = 'music-library-v3/catalog.sqlite';
 export const MUSIC_LIBRARY_V3_ARTWORK_DIRECTORY = 'music-library-v3/artwork';

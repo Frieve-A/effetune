@@ -168,29 +168,58 @@ function loadOscilloscope({ hub = null } = {}) {
   return { OscilloscopePlugin: windowRef.OscilloscopePlugin, calls, windowRef };
 }
 
+function makeM4Buckets() {
+  return Array.from({ length: 512 }, () => ({
+    first: 0,
+    minimum: 0,
+    maximum: 0,
+    last: 0,
+    minimumOffset: 0,
+    maximumOffset: 0
+  }));
+}
+
 function makeScopeFrame({
-  version = 1,
+  version = 2,
   frameType = 3,
   sampleRate = 48000,
   triggerOffset = 0,
-  mode = 0,
+  encoding = 0,
   triggered = 1,
-  reserved = 0,
+  flags = triggered,
   values = [0.25, -0.5, 0.75],
-  sampleCount = mode === 0 ? values.length : 1024,
+  captureSampleCount = encoding === 0 ? values.length : 4096,
+  bucketCount = encoding === 1 ? 512 : 0,
+  buckets = null,
   trailingBytes = 0
 } = {}) {
-  const valueCount = mode === 0 ? sampleCount : sampleCount * 2;
-  const buffer = new ArrayBuffer(16 + valueCount * 4 + trailingBytes);
+  const payloadBytes = encoding === 0
+    ? 16 + captureSampleCount * 4
+    : 16 + bucketCount * 18;
+  const buffer = new ArrayBuffer(payloadBytes + trailingBytes);
   const payload = new DataView(buffer);
   payload.setFloat32(0, sampleRate, true);
-  payload.setUint32(4, triggerOffset, true);
-  payload.setUint32(8, sampleCount, true);
-  payload.setUint8(12, mode);
-  payload.setUint8(13, triggered);
-  payload.setUint16(14, reserved, true);
-  for (let index = 0; index < valueCount; index++) {
-    payload.setFloat32(16 + index * 4, values[index] ?? 0, true);
+  payload.setUint32(4, captureSampleCount, true);
+  payload.setUint32(8, triggerOffset, true);
+  payload.setUint16(12, bucketCount, true);
+  payload.setUint8(14, encoding);
+  payload.setUint8(15, flags);
+  if (encoding === 0) {
+    for (let index = 0; index < captureSampleCount; index++) {
+      payload.setFloat32(16 + index * 4, values[index] ?? 0, true);
+    }
+  } else {
+    const records = buckets || makeM4Buckets();
+    for (let bucket = 0; bucket < bucketCount; bucket++) {
+      const record = records[bucket] || {};
+      const offset = 16 + bucket * 18;
+      payload.setFloat32(offset, record.first ?? 0, true);
+      payload.setFloat32(offset + 4, record.minimum ?? 0, true);
+      payload.setFloat32(offset + 8, record.maximum ?? 0, true);
+      payload.setFloat32(offset + 12, record.last ?? 0, true);
+      payload.setUint8(offset + 16, record.minimumOffset ?? 0);
+      payload.setUint8(offset + 17, record.maximumOffset ?? 0);
+    }
   }
   return { frame: { frameType, formatVersion: version, payload }, payload };
 }
@@ -202,7 +231,7 @@ function createSubscribedPlugin(runtime, id = 23) {
   return plugin;
 }
 
-test('Oscilloscope copies exact raw v1 snapshots during hub dispatch', () => {
+test('Oscilloscope copies exact raw v2 snapshots during hub dispatch', () => {
   const hub = createHub();
   const runtime = loadOscilloscope({ hub });
   const plugin = createSubscribedPlugin(runtime, 42);
@@ -226,48 +255,71 @@ test('Oscilloscope copies exact raw v1 snapshots during hub dispatch', () => {
   assert.deepEqual(Array.from(plugin.frozenDisplayBuffer), [-0.25, 0.5, 1.25]);
 });
 
-test('Oscilloscope accepts fixed bucket envelopes and keeps axes rendering active', () => {
+test('Oscilloscope orders M4 extrema by sample position and draws one continuous path', () => {
   const hub = createHub();
   const runtime = loadOscilloscope({ hub });
   const plugin = createSubscribedPlugin(runtime);
-  const values = new Array(2048);
-  for (let bucket = 0; bucket < 1024; bucket++) {
-    values[bucket * 2] = -bucket / 1024;
-    values[bucket * 2 + 1] = bucket / 1024;
-  }
+  const buckets = makeM4Buckets();
+  buckets[0] = {
+    first: 0,
+    minimum: -1,
+    maximum: 1,
+    last: 0.5,
+    minimumOffset: 5,
+    maximumOffset: 2
+  };
 
-  hub.emit(makeScopeFrame({ mode: 1, triggered: 0, values }).frame);
+  hub.emit(makeScopeFrame({ encoding: 1, triggered: 0, buckets }).frame);
   const canvas = createElement('canvas');
   plugin.canvas = canvas;
   plugin.ctx = canvas.getContext('2d');
   plugin.drawWaveform();
 
-  assert.equal(plugin.scopeSnapshot.mode, 1);
-  assert.equal(plugin.scopeSnapshot.sampleCount, 1024);
+  assert.equal(plugin.scopeSnapshot.encoding, 1);
+  assert.equal(plugin.scopeSnapshot.captureSampleCount, 4096);
+  assert.equal(plugin.scopeSnapshot.bucketCount, 512);
   assert.equal(plugin.scopeSnapshot.triggered, false);
   assert.equal(plugin.frozenDisplayBuffer, null);
+  assert.deepEqual(
+    Array.from(plugin.scopeSnapshot.sampleIndices.slice(0, 6)),
+    [0, 2, 5, 7, 8, 15]
+  );
+  assert.deepEqual(
+    Array.from(plugin.scopeSnapshot.values.slice(0, 6)),
+    [0, 1, -1, 0.5, 0, 0]
+  );
   assert.ok(plugin.ctx.calls.some(call => call[0] === 'fillText' && call[1] === 'Time (ms)'));
   assert.ok(plugin.ctx.calls.some(call => call[0] === 'fillText' && call[1] === 'Amplitude'));
-  assert.ok(plugin.ctx.calls.filter(call => call[0] === 'moveTo').length >= 1024);
+  const waveformStart = plugin.ctx.calls.map(call => call[0]).lastIndexOf('beginPath');
+  const waveformCalls = plugin.ctx.calls.slice(waveformStart);
+  assert.equal(waveformCalls.filter(call => call[0] === 'moveTo').length, 1);
+  assert.equal(
+    waveformCalls.filter(call => call[0] === 'lineTo').length,
+    plugin.scopeSnapshot.values.length - 1
+  );
 });
 
 test('Oscilloscope rejects malformed, non-finite, and version-mismatched frames', () => {
   const runtime = loadOscilloscope();
   const plugin = new runtime.OscilloscopePlugin();
+  const reversedExtrema = makeM4Buckets();
+  reversedExtrema[0] = { minimum: 1, maximum: -1 };
+  const invalidOffset = makeM4Buckets();
+  invalidOffset[0] = { maximumOffset: 8 };
   const invalid = [
-    makeScopeFrame({ version: 2 }).frame,
+    makeScopeFrame({ version: 1 }).frame,
     makeScopeFrame({ frameType: 4 }).frame,
     makeScopeFrame({ sampleRate: Number.NaN }).frame,
     makeScopeFrame({ triggerOffset: 3 }).frame,
-    makeScopeFrame({ triggered: 2 }).frame,
-    makeScopeFrame({ reserved: 1 }).frame,
-    makeScopeFrame({ mode: 2 }).frame,
-    makeScopeFrame({ sampleCount: 2049, values: [] }).frame,
+    makeScopeFrame({ flags: 2 }).frame,
+    makeScopeFrame({ encoding: 2 }).frame,
+    makeScopeFrame({ captureSampleCount: 2049, values: [] }).frame,
     makeScopeFrame({ trailingBytes: 4 }).frame,
-    makeScopeFrame({ mode: 1, sampleCount: 1000, values: [] }).frame,
+    makeScopeFrame({ encoding: 1, bucketCount: 511 }).frame,
     makeScopeFrame({ values: [Number.NaN] }).frame,
-    makeScopeFrame({ mode: 1, values: [1, -1] }).frame,
-    { frameType: 3, formatVersion: 1, payload: new Uint8Array(20) }
+    makeScopeFrame({ encoding: 1, buckets: reversedExtrema }).frame,
+    makeScopeFrame({ encoding: 1, buckets: invalidOffset }).frame,
+    { frameType: 3, formatVersion: 2, payload: new Uint8Array(20) }
   ];
 
   for (const frame of invalid) {

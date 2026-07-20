@@ -4,6 +4,8 @@ import { buildDspPipelineDescriptor } from './dsp-pipeline-descriptor.js';
 
 const OFFLINE_BLOCK_SIZE = 128;
 const OFFLINE_MAX_WASM_CHANNELS = 8;
+// Match the live host's half-module asset budget for the 256 MiB WASM ceiling.
+const OFFLINE_DSP_ASSET_BUDGET_BYTES = 128 * 1024 * 1024;
 
 /**
  * OfflineProcessor - Handles offline audio processing
@@ -41,9 +43,11 @@ export class OfflineProcessor {
     async processAudioFile(file, pipeline, progressCallback = null) {
         this.isOfflineProcessing = true;
         this.isCancelled = false;
+        let requiredOfflineDspAssetPlugins = null;
         let processingError = null;
         let dspSession = null;
         try {
+            requiredOfflineDspAssetPlugins = this.captureRequiredOfflineDspAssetPlugins(pipeline);
             // Read file as ArrayBuffer and decode audio data
             const arrayBuffer = await file.arrayBuffer();
             const audioBuffer = await this.contextManager.audioContext.decodeAudioData(arrayBuffer);
@@ -54,6 +58,7 @@ export class OfflineProcessor {
             );
             
             if (!hasEnabledPlugins) {
+                this.ensureRequiredOfflineDspAssetsReady(requiredOfflineDspAssetPlugins, null);
                 return this.audioEncoder.encodeWAV(audioBuffer);
             }
 
@@ -77,8 +82,10 @@ export class OfflineProcessor {
             dspSession = await this.createOfflineDspSession(
                 pipeline,
                 sampleRate,
-                outputChannelCount
+                outputChannelCount,
+                requiredOfflineDspAssetPlugins
             );
+            this.ensureRequiredOfflineDspAssetsReady(requiredOfflineDspAssetPlugins, dspSession);
 
             // Map to hold plugin-specific processing contexts
             const pluginContexts = new Map();
@@ -98,6 +105,7 @@ export class OfflineProcessor {
 
             // Process audio in blocks
             for (let offset = 0; offset < totalSamples; offset += OFFLINE_BLOCK_SIZE) {
+                this.ensureRequiredOfflineDspAssetsReady(requiredOfflineDspAssetPlugins, dspSession);
                 const remainingSamples = totalSamples - offset;
                 const blockSize = remainingSamples < OFFLINE_BLOCK_SIZE ? remainingSamples : OFFLINE_BLOCK_SIZE;
                 const totalSize = blockSize * outputChannelCount;
@@ -203,10 +211,65 @@ export class OfflineProcessor {
             this.isOfflineProcessing = false;
         }
 
+        if (processingError?.userMessageKey) throw processingError;
         throw new Error(`File processing error: ${processingError.message}`);
     }
 
-    async createOfflineDspSession(pipeline, sampleRate, outputChannelCount) {
+    captureRequiredOfflineDspAssetPlugins(pipeline) {
+        return new Set(this.getSectionAwareActivePlugins(pipeline).filter(
+            plugin => plugin.constructor.name !== 'SectionPlugin' &&
+                plugin.offlineDspAssetRequired === true
+        ));
+    }
+
+    ensureRequiredOfflineDspAssetsReady(requiredPlugins, session) {
+        for (const plugin of requiredPlugins) {
+            const entry = session && !session.closed ? session.entries.get(plugin) : null;
+            if (entry && !entry.disabled && entry.offlineAssetsReady) continue;
+            const typeName = plugin?.constructor?.name || 'plugin';
+            this.dspDependencies.warning(
+                `[dsp-wasm] offline required asset preparation failed for ${typeName}`
+            );
+            const error = new Error(`Required offline DSP asset was not prepared for ${typeName}`);
+            error.userMessageKey = 'irReverb.error.prepare';
+            throw error;
+        }
+    }
+
+    isRequiredOfflineDspAssetPlugin(session, plugin) {
+        return session?.requiredAssetPlugins?.has(plugin) === true;
+    }
+
+    requiredOfflineDspExecutionError(session, plugin) {
+        const typeName = plugin?.constructor?.name || 'plugin';
+        this.warnOfflineDspOnce(
+            session,
+            `required-execution:${plugin?.id ?? typeName}`,
+            `required asset execution failed for ${typeName}`
+        );
+        const error = new Error(`Required offline DSP asset stopped executing for ${typeName}`);
+        error.userMessageKey = 'irReverb.error.prepare';
+        return error;
+    }
+
+    ensureRequiredOfflineDspHybridExecution(session, pipeline) {
+        if (!session?.requiredAssetPlugins?.size) return;
+        const activePlugins = new Set(this.getSectionAwareActivePlugins(pipeline));
+        for (const plugin of session.requiredAssetPlugins) {
+            const entry = !session.closed ? session.entries.get(plugin) : null;
+            if (activePlugins.has(plugin) && entry && !entry.disabled && entry.offlineAssetsReady) {
+                continue;
+            }
+            throw this.requiredOfflineDspExecutionError(session, plugin);
+        }
+    }
+
+    async createOfflineDspSession(
+        pipeline,
+        sampleRate,
+        outputChannelCount,
+        requiredAssetPlugins = new Set()
+    ) {
         if (outputChannelCount < 1 || outputChannelCount > OFFLINE_MAX_WASM_CHANNELS) return null;
 
         const activePlugins = this.getSectionAwareActivePlugins(pipeline).filter(
@@ -219,9 +282,12 @@ export class OfflineProcessor {
             arena: null,
             entries: new Map(),
             activePlugins,
+            requiredAssetPlugins: new Set(requiredAssetPlugins),
+            sampleRate,
             descriptorEligible: false,
             descriptorConfigured: false,
             descriptorBytes: null,
+            residentAssetBytes: 0,
             closed: false,
             warnings: new Set()
         };
@@ -285,16 +351,42 @@ export class OfflineProcessor {
                 const packer = eligiblePackers.get(typeName);
                 if (!packer) continue;
 
+                let offlineState = null;
+                if (typeof plugin.createOfflineDspState === 'function') {
+                    try {
+                        offlineState = await plugin.createOfflineDspState({
+                            sampleRate,
+                            outputChannelCount
+                        });
+                    } catch (error) {
+                        this.warnOfflineDspOnce(
+                            session,
+                            `offline-state:${plugin.id}`,
+                            `${typeName} offline state preparation failed: ${error?.message || String(error)}`
+                        );
+                        continue;
+                    }
+                }
                 const instanceId = session.binding.createInstance(typeName);
                 session.arena = session.binding.getArenaViews();
                 if (!instanceId) {
                     this.warnOfflineDspOnce(session, `create:${plugin.id}`, `instance creation failed for ${typeName}`);
                     continue;
                 }
-                const entry = { plugin, typeName, packer, instanceId, disabled: false };
+                const entry = {
+                    plugin,
+                    typeName,
+                    packer,
+                    instanceId,
+                    disabled: false,
+                    offlineState,
+                    offlineAssetsReady: false,
+                    residentAssetBytes: 0
+                };
                 session.entries.set(plugin, entry);
-                const parameters = this.getPluginParameters(plugin, sampleRate);
+                const parameters = this.getOfflinePluginParameters(session, plugin, sampleRate);
                 if (!this.updateOfflineDspParameters(session, entry, parameters)) continue;
+                if (!this.stageOfflineDspAssets(session, entry, outputChannelCount)) continue;
             }
 
             const liveEntryCount = [...session.entries.values()].filter(entry => !entry.disabled).length;
@@ -311,6 +403,100 @@ export class OfflineProcessor {
         }
     }
 
+    stageOfflineDspAssets(session, entry, outputChannelCount) {
+        const assets = entry.offlineState?.assets ?? entry.plugin.getWasmAssets?.();
+        if (!(assets instanceof Map) || assets.size === 0) return true;
+        let entryFootprintBytes = 0;
+        for (const asset of assets.values()) {
+            const payloadBytes = asset?.payload?.byteLength;
+            const footprintBytes = asset?.footprintBytes;
+            if (!Number.isSafeInteger(payloadBytes) || payloadBytes < 0 ||
+                !Number.isSafeInteger(footprintBytes) || footprintBytes < payloadBytes ||
+                entryFootprintBytes > OFFLINE_DSP_ASSET_BUDGET_BYTES - footprintBytes) {
+                this.warnOfflineDspOnce(
+                    session,
+                    `asset-admission:${entry.plugin.id}`,
+                    `asset admission failed for ${entry.typeName}`
+                );
+                this.disableOfflineDspEntry(session, entry);
+                return false;
+            }
+            entryFootprintBytes += footprintBytes;
+        }
+        if (session.residentAssetBytes > OFFLINE_DSP_ASSET_BUDGET_BYTES - entryFootprintBytes) {
+            this.warnOfflineDspOnce(
+                session,
+                `asset-budget:${entry.plugin.id}`,
+                `asset budget exceeded for ${entry.typeName}`
+            );
+            this.disableOfflineDspEntry(session, entry);
+            return false;
+        }
+        for (const [slot, asset] of assets) {
+            let status = -1;
+            let stagingError = null;
+            try {
+                status = session.binding.instanceSetAsset(
+                    entry.instanceId,
+                    slot,
+                    asset.payload,
+                    asset,
+                    asset.formatTag
+                );
+            } catch (error) {
+                stagingError = error;
+            }
+            try {
+                session.arena = session.binding.getArenaViews();
+            } catch (error) {
+                stagingError ||= error;
+            }
+            if (stagingError || status !== 0) {
+                this.warnOfflineDspOnce(
+                    session,
+                    `asset:${entry.plugin.id}:${slot}`,
+                    `asset staging failed for ${entry.typeName}${
+                        stagingError ? `: ${stagingError.message || String(stagingError)}` : ''
+                    }`
+                );
+                this.disableOfflineDspEntry(session, entry);
+                return false;
+            }
+            const silence = session.arena.scratch.allChannels.subarray(
+                0,
+                outputChannelCount * OFFLINE_BLOCK_SIZE
+            );
+            const pointer = session.binding.pointerForArenaView(silence);
+            let state = session.binding.instanceAssetState(entry.instanceId, slot);
+            const maximumWarmupBlocks = Math.ceil(2 * session.sampleRate / OFFLINE_BLOCK_SIZE);
+            for (let block = 0; (state & 0xff) === 2 && block < maximumWarmupBlocks; block++) {
+                silence.fill(0);
+                const processStatus = session.binding.instanceProcess(
+                    entry.instanceId,
+                    pointer,
+                    outputChannelCount,
+                    OFFLINE_BLOCK_SIZE,
+                    block * OFFLINE_BLOCK_SIZE / session.sampleRate
+                );
+                if (processStatus !== 0) break;
+                state = session.binding.instanceAssetState(entry.instanceId, slot);
+            }
+            if ((state & 0xff) !== 3 || session.binding.resetInstance(entry.instanceId) !== 0) {
+                this.warnOfflineDspOnce(
+                    session,
+                    `asset-prepare:${entry.plugin.id}:${slot}`,
+                    `asset preparation did not complete for ${entry.typeName}`
+                );
+                this.disableOfflineDspEntry(session, entry);
+                return false;
+            }
+        }
+        entry.residentAssetBytes = entryFootprintBytes;
+        session.residentAssetBytes += entryFootprintBytes;
+        entry.offlineAssetsReady = true;
+        return true;
+    }
+
     tryProcessOfflineDspPipeline({
         session,
         pipeline,
@@ -325,6 +511,11 @@ export class OfflineProcessor {
         const activePlugins = this.getSectionAwareActivePlugins(pipeline).filter(
             plugin => plugin.constructor.name !== 'SectionPlugin'
         );
+        for (const plugin of session.requiredAssetPlugins) {
+            if (!activePlugins.includes(plugin)) {
+                throw this.requiredOfflineDspExecutionError(session, plugin);
+            }
+        }
         if (activePlugins.length !== session.activePlugins.length ||
             activePlugins.some((plugin, index) => plugin !== session.activePlugins[index])) {
             session.descriptorEligible = false;
@@ -337,12 +528,20 @@ export class OfflineProcessor {
             for (const plugin of activePlugins) {
                 const entry = session.entries.get(plugin);
                 if (!entry || entry.disabled) {
+                    if (this.isRequiredOfflineDspAssetPlugin(session, plugin)) {
+                        throw this.requiredOfflineDspExecutionError(session, plugin);
+                    }
                     session.descriptorEligible = false;
                     return null;
                 }
-                const parameters = this.getPluginParameters(plugin, sampleRate);
+                const parameters = this.getOfflineDspParameters(entry, sampleRate);
                 parametersByPlugin.set(plugin, parameters);
-                if (!this.updateOfflineDspParameters(session, entry, parameters)) return null;
+                if (!this.updateOfflineDspParameters(session, entry, parameters)) {
+                    if (this.isRequiredOfflineDspAssetPlugin(session, plugin)) {
+                        throw this.requiredOfflineDspExecutionError(session, plugin);
+                    }
+                    return null;
+                }
             }
 
             const descriptor = buildDspPipelineDescriptor(pipeline, {
@@ -381,10 +580,15 @@ export class OfflineProcessor {
                     `pipeline processing failed with status ${processStatus}`
                 );
                 this.destroyOfflineDspSession(session);
+                const requiredPlugin = session.requiredAssetPlugins.values().next().value;
+                if (requiredPlugin) {
+                    throw this.requiredOfflineDspExecutionError(session, requiredPlugin);
+                }
                 return null;
             }
             return combined;
         } catch (error) {
+            if (error?.userMessageKey) throw error;
             this.warnOfflineDspOnce(
                 session,
                 'pipeline-runtime',
@@ -392,6 +596,10 @@ export class OfflineProcessor {
             );
             if (processingStarted) {
                 this.destroyOfflineDspSession(session);
+                const requiredPlugin = session.requiredAssetPlugins.values().next().value;
+                if (requiredPlugin) {
+                    throw this.requiredOfflineDspExecutionError(session, requiredPlugin);
+                }
             } else {
                 session.descriptorEligible = false;
             }
@@ -410,6 +618,7 @@ export class OfflineProcessor {
         pluginContexts,
         createContext
     }) {
+        this.ensureRequiredOfflineDspHybridExecution(session, pipeline);
         const totalSize = inputBlock.length;
         const busBuffers = new Map();
         let activeSectionEnabled = true;
@@ -420,11 +629,17 @@ export class OfflineProcessor {
             if (plugin.constructor.name === 'SectionPlugin') {
                 insideSection = true;
                 activeSectionEnabled = plugin.enabled;
+                this.ensureRequiredOfflineDspHybridExecution(session, pipeline);
                 continue;
             }
-            if (!plugin.enabled || (insideSection && !activeSectionEnabled)) continue;
+            if (!plugin.enabled || (insideSection && !activeSectionEnabled)) {
+                if (this.isRequiredOfflineDspAssetPlugin(session, plugin)) {
+                    throw this.requiredOfflineDspExecutionError(session, plugin);
+                }
+                continue;
+            }
 
-            const pluginParameters = this.getPluginParameters(plugin, sampleRate);
+            const pluginParameters = this.getOfflinePluginParameters(session, plugin, sampleRate);
             usedBuses.add(this.getOfflineBusIndex(pluginParameters, plugin, 'inputBus'));
             usedBuses.add(this.getOfflineBusIndex(pluginParameters, plugin, 'outputBus'));
         }
@@ -436,15 +651,22 @@ export class OfflineProcessor {
 
         activeSectionEnabled = true;
         insideSection = false;
+        const executedRequiredPlugins = new Set();
         for (const plugin of pipeline) {
             if (plugin.constructor.name === 'SectionPlugin') {
                 insideSection = true;
                 activeSectionEnabled = plugin.enabled;
+                this.ensureRequiredOfflineDspHybridExecution(session, pipeline);
                 continue;
             }
-            if (!plugin.enabled || (insideSection && !activeSectionEnabled)) continue;
+            if (!plugin.enabled || (insideSection && !activeSectionEnabled)) {
+                if (this.isRequiredOfflineDspAssetPlugin(session, plugin)) {
+                    throw this.requiredOfflineDspExecutionError(session, plugin);
+                }
+                continue;
+            }
 
-            const pluginParameters = this.getPluginParameters(plugin, sampleRate);
+            const pluginParameters = this.getOfflinePluginParameters(session, plugin, sampleRate);
             const inputBus = this.getOfflineBusIndex(pluginParameters, plugin, 'inputBus');
             const outputBus = this.getOfflineBusIndex(pluginParameters, plugin, 'outputBus');
             const channel = pluginParameters.channel ?? plugin.channel ?? null;
@@ -552,9 +774,20 @@ export class OfflineProcessor {
                     blockSize,
                     totalSize
                 );
+                if (wasmResult.processed && this.isRequiredOfflineDspAssetPlugin(session, plugin)) {
+                    executedRequiredPlugins.add(plugin);
+                }
             } catch (error) {
+                if (error?.userMessageKey) throw error;
                 console.error('Plugin processing error:', error);
                 if (outputBus === 0) busBuffers.set(0, new Float32Array(inputBlock));
+            }
+        }
+
+        this.ensureRequiredOfflineDspHybridExecution(session, pipeline);
+        for (const plugin of session?.requiredAssetPlugins || []) {
+            if (!executedRequiredPlugins.has(plugin)) {
+                throw this.requiredOfflineDspExecutionError(session, plugin);
             }
         }
 
@@ -571,10 +804,18 @@ export class OfflineProcessor {
         currentTime
     }) {
         const entry = session && !session.closed ? session.entries.get(plugin) : null;
-        if (!entry || entry.disabled) return { processed: false, result: null };
+        if (!entry || entry.disabled) {
+            if (this.isRequiredOfflineDspAssetPlugin(session, plugin)) {
+                throw this.requiredOfflineDspExecutionError(session, plugin);
+            }
+            return { processed: false, result: null };
+        }
 
         try {
             if (!this.updateOfflineDspParameters(session, entry, pluginParameters)) {
+                if (this.isRequiredOfflineDspAssetPlugin(session, plugin)) {
+                    throw this.requiredOfflineDspExecutionError(session, plugin);
+                }
                 return { processed: false, result: null };
             }
             const scratchName = routing.processMode === 'all'
@@ -597,12 +838,16 @@ export class OfflineProcessor {
             if (status !== 0) throw new Error(`instance processing failed with status ${status}`);
             return { processed: true, result: scratch };
         } catch (error) {
+            if (error?.userMessageKey) throw error;
             this.warnOfflineDspOnce(
                 session,
                 `instance-process:${plugin.id}`,
                 `${entry.typeName} fell back to JavaScript: ${error?.message || String(error)}`
             );
             this.disableOfflineDspEntry(session, entry);
+            if (this.isRequiredOfflineDspAssetPlugin(session, plugin)) {
+                throw this.requiredOfflineDspExecutionError(session, plugin);
+            }
             return { processed: false, result: null };
         }
     }
@@ -649,6 +894,8 @@ export class OfflineProcessor {
         if (!entry || entry.disabled) return;
         entry.disabled = true;
         session.descriptorEligible = false;
+        session.residentAssetBytes -= entry.residentAssetBytes;
+        entry.residentAssetBytes = 0;
         try {
             session.binding?.destroyInstance(entry.instanceId);
         } catch (error) {
@@ -738,6 +985,14 @@ export class OfflineProcessor {
 
     getPluginParameters(plugin, sampleRate = null) {
         return typeof plugin.getParameters === 'function' ? plugin.getParameters({ sampleRate }) : {};
+    }
+
+    getOfflineDspParameters(entry, sampleRate = null) {
+        return entry?.offlineState?.parameters ?? this.getPluginParameters(entry?.plugin, sampleRate);
+    }
+
+    getOfflinePluginParameters(session, plugin, sampleRate = null) {
+        return this.getOfflineDspParameters(session?.entries.get(plugin) || { plugin }, sampleRate);
     }
 
     getOfflineBusIndex(parameters, plugin, property) {

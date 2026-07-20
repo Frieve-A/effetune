@@ -70,8 +70,8 @@ At 192 kHz and eight channels, the three per-channel allocations contain 3,840,0
 floats, or 15,360,000 bytes (15.36 MB, about 14.65 binary MiB), before the small final
 block and index arrays. This is budgeted as roughly 15.4 MiB of kernel heap per maximal
 instance. Kernel heap is additional to the engine arena and shares the WebAssembly
-module's 64 MiB maximum memory, so several maximal Pitch Shifter instances cannot be
-assumed to fit simultaneously. The capacity is intentionally not reduced: a smaller
+module's 256 MiB maximum memory, so the combined allocation of all effect instances
+must remain within that limit. The capacity is intentionally not reduced: a smaller
 fixed allocation would either reject the documented 500 ms/192 kHz/eight-channel shape
 or require an incompatible processing-time allocation.
 
@@ -87,7 +87,7 @@ after a live frequency change. Disabled resonators freeze both position and stor
 
 At 192 kHz and eight channels, the ring length is 9,560 samples. Five resonators require
 1,529,600 delay bytes (about 1.46 binary MiB), instead of 61,440,000 bytes for literal
-two-second rings. This keeps one maximal instance comfortably inside the module's 64 MiB
+two-second rings. This keeps one maximal instance comfortably inside the module's 256 MiB
 limit. The ring is allocated only during `prepare`; processing does not allocate. A
 defensive clamp maps an out-of-schema delay request to the largest allocated delay, so
 malformed raw parameter blocks cannot index outside the ring.

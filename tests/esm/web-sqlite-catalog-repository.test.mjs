@@ -833,6 +833,98 @@ test('Web catalog indexes semicolon-delimited album artists separately', async t
   close();
 });
 
+test('Web catalog title sort uses natural numeric order', async t => {
+  const { close } = await openWebTestCatalog(t, 'effetune-web-natural-name-order-');
+  seedWebTestFolder();
+  dispatchWebSqliteCommand('upsertTracks', {
+    tracks: [10, 2, 1].map(number => ({
+      trackUid: `web-track-${number}`,
+      folderId: 'web-folder',
+      relativePath: `Track ${number}.flac`,
+      title: `Track ${number}`,
+      artist: 'Artist',
+      albumArtist: 'Artist',
+      album: 'Album',
+      genre: 'Genre',
+      fileIdentity: `web-file-${number}`,
+      size: 100 + number,
+      mtimeMs: 200 + number,
+      metadataStatus: 'ok',
+      metadataParserVersion: 'catalog-metadata-v5',
+      addedAt: number,
+      updatedAt: number
+    }))
+  });
+  const context = dispatchWebSqliteCommand('createContext', {
+    endpoint: 'tracks', query: '', sort: 'title', direction: 'asc', scope: null
+  });
+  const page = dispatchWebSqliteCommand('readContextPage', {
+    contextToken: context.contextToken, cursor: null, limit: 20
+  });
+  assert.deepEqual(page.rows.map(row => row.title), ['Track 1', 'Track 2', 'Track 10']);
+  dispatchWebSqliteCommand('releaseContext', { contextToken: context.contextToken });
+  close();
+});
+
+test('Web album year sort uses the earliest known track year and keeps unknown years last', async t => {
+  const { close } = await openWebTestCatalog(t, 'effetune-web-album-year-order-');
+  seedWebTestFolder();
+  const scan = beginWebTestScan('scan-album-year-order');
+  for (const [trackUid, album, year, number] of [
+    ['web-old-late', 'Old Album', 2001, 1],
+    ['web-old-early', 'Old Album', 1998, 2],
+    ['web-new', 'New Album', 2020, 3],
+    ['web-unknown', 'Unknown Album', undefined, 4]
+  ]) {
+    const relativePath = `${album}/disc.flac`;
+    const claimed = claimWebCueTrack(scan, {
+      trackUid,
+      entryKey: `cue:${album}/disc.cue#${number}`,
+      relativePath,
+      signature: { fileIdentity: `file-${number}`, size: 100 + number, mtimeMs: number },
+      cueSignature: `cue-${number}`,
+      cueRelativePath: `${album}/disc.cue`
+    });
+    dispatchWebSqliteCommand('completeMetadataParseSuccess', {
+      claim: claimed.claim,
+      metadata: {
+        title: trackUid,
+        artist: 'Artist',
+        albumArtist: 'Artist',
+        album,
+        genre: 'Genre',
+        durationSec: 10,
+        ...(year === undefined ? {} : { year })
+      },
+      metadataStatus: 'ok',
+      clearErrorAndRetryState: true,
+      updateLastKnownGood: true,
+      updateDerivedData: true
+    });
+  }
+
+  const readAlbums = direction => {
+    const context = dispatchWebSqliteCommand('createContext', {
+      endpoint: 'entities:album', query: '', sort: 'year', direction, scope: null
+    });
+    const page = dispatchWebSqliteCommand('readContextPage', {
+      contextToken: context.contextToken, cursor: null, limit: 20
+    });
+    dispatchWebSqliteCommand('releaseContext', { contextToken: context.contextToken });
+    return page.rows;
+  };
+
+  assert.deepEqual(readAlbums('asc').map(row => [row.name, row.year]), [
+    ['Old Album', 1998],
+    ['New Album', 2020],
+    ['Unknown Album', null]
+  ]);
+  assert.deepEqual(readAlbums('desc').map(row => row.name), [
+    'New Album', 'Old Album', 'Unknown Album'
+  ]);
+  close();
+});
+
 test('Web CUE metadata claims keep the track UID while replacing the physical source path', async t => {
   const { database, close } = await openWebTestCatalog(t, 'effetune-web-cue-path-');
   seedWebTestFolder();

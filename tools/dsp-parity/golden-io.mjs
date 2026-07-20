@@ -92,9 +92,12 @@ export function createGoldenArtifacts({ type, schemaTolerance = null, cases }) {
       seed: testCase.seed,
       params: testCase.params,
       events: testCase.events ?? [],
+      asset: testCase.asset,
       tolerance: testCase.tolerance ?? schemaTolerance,
       toleranceNote: testCase.toleranceNote,
       jsEngineHash: entry.jsEngineHash,
+      referenceEngine: entry.referenceEngine,
+      referenceHash: entry.referenceHash,
       outputFloats: entry.output.length,
       byteLength: binary.byteLength,
       binary: binaryName

@@ -10,6 +10,8 @@ void end() noexcept;
 [[nodiscard]] bool active() noexcept;
 void abortIfActive() noexcept;
 void setAbortOnViolationForTesting(bool enabled) noexcept;
+void failNothrowAllocationAfterForTesting(std::int32_t successful_allocations) noexcept;
+[[nodiscard]] bool consumeNothrowAllocationFailureForTesting() noexcept;
 [[nodiscard]] std::uint32_t violationCount() noexcept;
 
 class Scope {

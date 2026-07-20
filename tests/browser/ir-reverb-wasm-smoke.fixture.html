@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>EffeTune IR Reverb WASM browser smoke</title>
+</head>
+<body>
+  <main id="status">IR Reverb WASM smoke fixture ready</main>
+  <script type="module">
+    import { DSP_PARAM_PACKERS } from '/js/audio/dsp-params.generated.js';
+    import {
+      IR_ASSET_FORMAT_TAG,
+      IR_ASSET_TOPOLOGY,
+      buildIrAssetPayload
+    } from '/js/ir-library/ir-asset-payload.js';
+    import { estimateIrKernelCommitFootprint } from '/js/ir-library/ir-plugin-contract.js';
+
+    const PLUGIN_ID = 7301;
+    const REQUESTED_SAMPLE_RATE = 96000;
+    const CHANNEL_COUNT = 2;
+    const BLOCK_SIZE = 128;
+
+    function wait(delayMs) {
+      return new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+
+    function createMessageObserver(port) {
+      const messages = [];
+      const waiters = new Set();
+      port.onmessage = event => {
+        messages.push(event.data);
+        for (const waiter of [...waiters]) {
+          if (!waiter.predicate(event.data)) continue;
+          waiters.delete(waiter);
+          clearTimeout(waiter.timeoutId);
+          waiter.resolve(event.data);
+        }
+      };
+      port.start?.();
+      return {
+        messages,
+        waitFor(predicate, timeoutMs = 8000) {
+          const existing = messages.find(predicate);
+          if (existing) return Promise.resolve(existing);
+          return new Promise((resolve, reject) => {
+            const waiter = {
+              predicate,
+              resolve,
+              timeoutId: setTimeout(() => {
+                waiters.delete(waiter);
+                reject(new Error(
+                  `Timed out waiting for IR Reverb worklet evidence; received: ${messages
+                    .map(message => `${message?.type}:${message?.stage || message?.state || ''}` +
+                      `/${message?.processingDirective || ''}/${message?.inputActive ?? ''}` +
+                      `/${message?.outputActive ?? ''}/${message?.automaticMonitoringArm?.state || ''}`)
+                    .join(', ')}`
+                ));
+              }, timeoutMs)
+            };
+            waiters.add(waiter);
+          });
+        },
+        dispose() {
+          for (const waiter of waiters) clearTimeout(waiter.timeoutId);
+          waiters.clear();
+          port.onmessage = null;
+        }
+      };
+    }
+
+    function createSyntheticIr() {
+      const samples = new Float32Array(16384);
+      const taps = [0, 3, 31, 127, 128, 257, 599, 1201, 2401, 3601, 4801, 6001,
+        7201, 8401, 9601, 10801, 12001, 13201, 14401, 15601];
+      taps.forEach((frame, index) => {
+        samples[frame] = (index & 1 ? -1 : 1) * 0.7 / (index + 1);
+      });
+      return samples;
+    }
+
+    function scaledIr(source, gain) {
+      return Float32Array.from(source, sample => sample * gain);
+    }
+
+    function topologyAsset(topologyCase) {
+      const base = createSyntheticIr();
+      if (topologyCase === 'true') {
+        return {
+          channelMode: 'true',
+          topology: IR_ASSET_TOPOLOGY.trueStereo,
+          channels: [1, 2, 3, 4].map(gain => scaledIr(base, gain)),
+          paths: [],
+          pathCount: 0,
+          inputCount: 0,
+          expectedOutputRatio: 2
+        };
+      }
+      if (topologyCase === 'matrix') {
+        const paths = [
+          { inputSlot: 0, outputSlot: 0, irChannel: 0 },
+          { inputSlot: 0, outputSlot: 1, irChannel: 1 }
+        ];
+        return {
+          channelMode: 'multi',
+          topology: IR_ASSET_TOPOLOGY.matrix,
+          channels: [scaledIr(base, 1), scaledIr(base, 0.5)],
+          paths,
+          pathCount: paths.length,
+          inputCount: 1,
+          expectedOutputRatio: 0.5
+        };
+      }
+      return {
+        channelMode: 'mono',
+        topology: IR_ASSET_TOPOLOGY.mono,
+        channels: [base],
+        paths: [],
+        pathCount: 0,
+        inputCount: 0,
+        expectedOutputRatio: 1
+      };
+    }
+
+    async function requestObservation(node, observer, identity, requestId) {
+      node.port.postMessage({
+        type: 'requestPowerObservation',
+        observationRequestId: requestId,
+        ...identity
+      });
+      return observer.waitFor(message =>
+        (message?.type === 'powerObservation' || message?.type === 'powerHeartbeat') &&
+        message.observationRequestId === requestId);
+    }
+
+    async function runWetCapture({
+      artifact = 'effetune-dsp.wasm',
+      powerTailGate = false,
+      topologyCase = 'mono',
+      assetPresent = true,
+      dryEnabled = false
+    } = {}) {
+      const resources = [];
+      let observer;
+      try {
+        const context = new AudioContext({ sampleRate: REQUESTED_SAMPLE_RATE });
+        resources.push(() => context.close());
+        if (context.sampleRate !== REQUESTED_SAMPLE_RATE) {
+          throw new Error(
+            `Requested ${REQUESTED_SAMPLE_RATE} Hz AudioContext, received ${context.sampleRate} Hz.`
+          );
+        }
+        await context.audioWorklet.addModule('/plugins/audio-processor.js');
+        const node = new AudioWorkletNode(context, 'plugin-processor', {
+          numberOfInputs: 1,
+          numberOfOutputs: 1,
+          outputChannelCount: [CHANNEL_COUNT],
+          processorOptions: { initialOutputChannelCount: CHANNEL_COUNT }
+        });
+        observer = createMessageObserver(node.port);
+        resources.push(() => observer.dispose());
+        resources.push(() => node.disconnect());
+
+        const captured = Array.from({ length: CHANNEL_COUNT }, () => []);
+        let captureEnabled = false;
+        const capture = context.createScriptProcessor(256, CHANNEL_COUNT, CHANNEL_COUNT);
+        capture.onaudioprocess = event => {
+          if (!captureEnabled) return;
+          for (let channel = 0; channel < CHANNEL_COUNT; channel++) {
+            captured[channel].push(...event.inputBuffer.getChannelData(channel));
+          }
+        };
+        node.connect(capture);
+        capture.connect(context.destination);
+        resources.push(() => {
+          capture.onaudioprocess = null;
+          capture.disconnect();
+        });
+
+        const silence = new ConstantSourceNode(context, { offset: 0 });
+        silence.connect(node);
+        silence.start();
+        resources.push(() => {
+          try { silence.stop(); } catch (_) { /* already stopped */ }
+          silence.disconnect();
+        });
+        await context.resume();
+
+        const response = await fetch(`/plugins/dsp/${artifact}`);
+        if (!response.ok) throw new Error(`Unable to load ${artifact}: HTTP ${response.status}`);
+        const bytes = await response.arrayBuffer();
+        node.port.postMessage({
+          type: 'updateAudioConfig',
+          sampleRate: context.sampleRate,
+          outputChannels: CHANNEL_COUNT
+        });
+        node.port.postMessage({ type: 'dspModule', bytes, simd: artifact.includes('.simd.') }, [bytes]);
+        const dspReady = await observer.waitFor(message => message?.type === 'dspReady');
+        if (!dspReady.kernels.some(kernel => kernel.name === 'IRReverbPlugin')) {
+          throw new Error(`${artifact} does not expose IRReverbPlugin.`);
+        }
+
+        const packer = DSP_PARAM_PACKERS.get('IRReverbPlugin');
+        const asset = topologyAsset(topologyCase);
+        const parameters = {
+          enabled: true,
+          cm: asset.channelMode,
+          lt: '128',
+          cr: 'auto',
+          dw: 0,
+          dl: assetPresent || !dryEnabled ? -96 : -6,
+          pd: 0,
+          inputBus: 0,
+          outputBus: 0,
+          channel: 'A'
+        };
+        const plugin = {
+          id: PLUGIN_ID,
+          type: 'IRReverbPlugin',
+          enabled: true,
+          inputBus: 0,
+          outputBus: 0,
+          channel: 'A',
+          parameters,
+          wasmParams: packer.pack(parameters),
+          wasmParamsHash: packer.hash
+        };
+        node.port.postMessage({ type: 'dspEnableTypes', types: ['IRReverbPlugin'] });
+        node.port.postMessage({ type: 'updatePlugins', plugins: [plugin], masterBypass: false });
+
+        let assetActive = null;
+        let latency = { samples: 0 };
+        if (assetPresent) {
+          const payload = buildIrAssetPayload({
+            channels: asset.channels,
+            sampleRate: REQUESTED_SAMPLE_RATE / 2,
+            topology: asset.topology,
+            paths: asset.paths
+          });
+          const footprintBytes = estimateIrKernelCommitFootprint({
+            frames: asset.channels[0].length,
+            assetChannels: asset.channels.length,
+            topology: asset.topology,
+            processingChannels: CHANNEL_COUNT,
+            headBlock: BLOCK_SIZE,
+            pathCount: asset.pathCount,
+            inputCount: asset.inputCount
+          });
+          node.port.postMessage({
+            type: 'setPluginAsset',
+            pluginId: PLUGIN_ID,
+            slot: 0,
+            payload,
+            formatTag: IR_ASSET_FORMAT_TAG,
+            footprintBytes,
+            headBlock: BLOCK_SIZE,
+            rateDivider: 2,
+            processingChannels: CHANNEL_COUNT,
+            pathCount: asset.pathCount,
+            inputCount: asset.inputCount
+          }, [payload]);
+          assetActive = await observer.waitFor(message =>
+            message?.type === 'assetState' && message.pluginId === PLUGIN_ID &&
+            message.slot === 0 && (message.state & 0xff) === 3);
+          latency = await observer.waitFor(message =>
+            message?.type === 'dspLatency' && message.samples > 0);
+        }
+        await wait(80);
+
+        const identity = { workletGraphGeneration: 1, topologyRevision: 1 };
+        node.port.postMessage({
+          type: 'configurePowerPolicy',
+          commandId: 1,
+          enabled: true,
+          silenceThresholdDb: -80,
+          silenceDurationSeconds: 0.05,
+          wakeGainMarginDb: 0,
+          monitoringFastWakeEligible: true,
+          temporalSkipEligible: true,
+          enabledPluginCount: 1,
+          monitoringPreparationCapabilities: [{
+            pluginId: PLUGIN_ID,
+            capability: 'reset-on-resume',
+            descriptor: { primitive: 'canonical-reset', fixedOperations: 1 }
+          }],
+          ...identity
+        });
+        const configureAck = await observer.waitFor(message =>
+          message?.type === 'powerStateAck' && message.commandId === 1);
+        const before = await requestObservation(node, observer, identity, 1);
+
+        const sourceBuffer = context.createBuffer(CHANNEL_COUNT, REQUESTED_SAMPLE_RATE / 2, context.sampleRate);
+        sourceBuffer.getChannelData(0)[0] = 0.2;
+        sourceBuffer.getChannelData(1)[0] = topologyCase === 'mono' ? 0.2 : 0;
+        const source = new AudioBufferSourceNode(context, { buffer: sourceBuffer });
+        source.connect(node);
+        captureEnabled = true;
+        source.start();
+        await wait(140);
+        const tail = await requestObservation(node, observer, identity, 2);
+        await wait(powerTailGate ? 560 : 110);
+        captureEnabled = false;
+        source.disconnect();
+        const after = await requestObservation(node, observer, identity, 3);
+
+        let postTailTransition = null;
+        if (powerTailGate) {
+          const tailSilent = await observer.waitFor(message =>
+            message?.type === 'powerObservation' &&
+            message.renderSequence > tail.renderSequence &&
+            message.inputActive === false && message.outputActive === false, 15000);
+          node.port.postMessage({
+            type: 'setPowerProcessingState',
+            commandId: 2,
+            skipEpoch: 1,
+            state: 'monitoring',
+            processingDirective: 'force-monitoring',
+            ...identity
+          });
+          const monitoringAck = await observer.waitFor(message =>
+            message?.type === 'powerStateAck' && message.commandId === 2);
+          const monitoring = await requestObservation(node, observer, identity, 4);
+          await context.suspend();
+          postTailTransition = {
+            tailSilent: tailSilent.inputActive === false && tailSilent.outputActive === false,
+            acceptedDirective: monitoringAck.processingDirective,
+            state: monitoring.state,
+            processingDirective: monitoring.processingDirective,
+            contextState: context.state,
+            monitoringQuanta: monitoring.counters.monitoringQuanta - tail.counters.monitoringQuanta
+          };
+        }
+
+        const peaks = new Array(CHANNEL_COUNT).fill(0);
+        let nonZeroSamples = 0;
+        let finite = true;
+        for (let channel = 0; channel < CHANNEL_COUNT; channel++) {
+          for (const sample of captured[channel]) {
+            if (!Number.isFinite(sample)) finite = false;
+            const magnitude = Math.abs(sample);
+            if (magnitude > peaks[channel]) peaks[channel] = magnitude;
+            if (magnitude > 1e-7) nonZeroSamples++;
+          }
+        }
+        return {
+          artifact,
+          topologyCase,
+          assetPresent,
+          dryEnabled,
+          requestedSampleRate: REQUESTED_SAMPLE_RATE,
+          actualSampleRate: context.sampleRate,
+          resolvedRateDivider: 2,
+          convolutionRateParameter: parameters.cr,
+          dspReady: { simd: dspReady.simd, hasIrKernel: true },
+          instanceEvidence: {
+            latencySamples: latency.samples,
+            wasmProcessQuanta: after.counters.fullWasmProcessQuanta - before.counters.fullWasmProcessQuanta,
+            jsProcessQuanta: after.counters.fullJsProcessQuanta - before.counters.fullJsProcessQuanta
+          },
+          assetState: assetActive ? assetActive.state & 0xff : null,
+          wet: {
+            sampleCount: captured.reduce((total, channel) => total + channel.length, 0),
+            peak: Math.max(...peaks),
+            peaks,
+            outputRatio: peaks[0] > 0 ? peaks[1] / peaks[0] : null,
+            expectedOutputRatio: asset.expectedOutputRatio,
+            nonZeroSamples,
+            finite
+          },
+          power: {
+            profile: 'mobile-balanced-equivalent',
+            silenceThresholdDb: -80,
+            monitoringFastWakeEligible: configureAck.monitoringFastWakeEligible,
+            monitoringFastWakeBlockerReason: configureAck.monitoringFastWakeBlockerReason,
+            tail: {
+              state: tail.state,
+              processingDirective: tail.processingDirective,
+              inputActive: tail.inputActive,
+              outputActive: tail.outputActive,
+              wasmProcessQuanta: tail.counters.fullWasmProcessQuanta - before.counters.fullWasmProcessQuanta,
+              monitoringQuanta: tail.counters.monitoringQuanta - before.counters.monitoringQuanta
+            },
+            postTailTransition
+          }
+        };
+      } finally {
+        for (const dispose of resources.reverse()) {
+          try { await dispose(); } catch (_) { /* best-effort fixture cleanup */ }
+        }
+      }
+    }
+
+    window.__irReverbWasmSmoke = { runWetCapture };
+  </script>
+</body>
+</html>

@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { parseArgs, isMain } from './cli.mjs';
 import {
   DEFAULT_REPO_ROOT,
@@ -9,7 +10,7 @@ import {
 } from './cases.mjs';
 import { readGoldenSet, writeFloat32File } from './golden-io.mjs';
 import { executeReferenceCase, loadReferencePlugin } from './node-host.mjs';
-import { runNativeCase, runWasmCase } from './runners.mjs';
+import { runNativeCase, runNativeReferenceCase, runWasmCase } from './runners.mjs';
 import { generateStimulus, noiseSeedForCase } from './stimuli.mjs';
 import { compareAudio, formatComparison } from './tolerance.mjs';
 
@@ -78,9 +79,15 @@ function testCaseFromMetadata(metadata) {
     seed: metadata.seed ? BigInt(metadata.seed) : noiseSeedForCase(metadata.caseIndex ?? 0),
     params: metadata.params ?? {},
     events: metadata.events ?? [],
+    asset: metadata.asset,
     tolerance: metadata.tolerance,
     toleranceNote: metadata.toleranceNote
   };
+}
+
+async function nativeDirectReferenceHash(repoRoot) {
+  const source = await fs.readFile(path.join(repoRoot, 'dsp', 'test', 'parity_runner.cpp'), 'utf8');
+  return crypto.createHash('sha256').update(source.replace(/\r\n?/g, '\n')).digest('hex');
 }
 
 function assertToleranceJustified(metadata, schemaTolerance) {
@@ -151,15 +158,32 @@ async function runParityForType({
     if (allowEmptyCase) return { type: plan.definition.type, results: [], skipped: true };
     throw new Error(`No golden case matched ${caseId}`);
   }
-  const loaded = await loadReferencePlugin(plan.definition.type, { repoRoot });
-  await assertPluginBaseUnchanged(repoRoot, loaded.baseSourceHash);
+  const nativeReference = goldens.every(
+    golden => golden.metadata.referenceEngine === 'native-ir-direct-double-v1'
+  );
+  if (!nativeReference && goldens.some(golden => golden.metadata.referenceEngine !== undefined)) {
+    throw new Error('Golden set mixes incompatible reference engines');
+  }
+  let loaded = null;
+  let referenceHash = null;
+  if (nativeReference) {
+    referenceHash = await nativeDirectReferenceHash(repoRoot);
+  } else {
+    loaded = await loadReferencePlugin(plan.definition.type, { repoRoot });
+    await assertPluginBaseUnchanged(repoRoot, loaded.baseSourceHash);
+  }
   for (const golden of goldens) {
     if (golden.metadata.type !== plan.definition.type) {
       throw new Error(
         `Golden ${golden.metadata.id} declares ${golden.metadata.type}; expected ${plan.definition.type}`
       );
     }
-    if (golden.metadata.jsEngineHash !== loaded.jsEngineHash) {
+    if (nativeReference && golden.metadata.referenceHash !== referenceHash) {
+      throw new Error(
+        `Golden ${golden.metadata.id} was generated from a different native direct reference revision; regenerate it before parity testing`
+      );
+    }
+    if (!nativeReference && golden.metadata.jsEngineHash !== loaded.jsEngineHash) {
       throw new Error(`Golden ${golden.metadata.id} was generated from a different JS engine revision; regenerate it before parity testing`);
     }
     assertToleranceJustified(golden.metadata, plan.schema.tolerance);
@@ -179,7 +203,16 @@ async function runParityForType({
       });
       let actual;
       if (mode === 'self-check') {
-        actual = (await executeReferenceCase(plan.definition.type, testCase, input, { repoRoot })).output;
+        actual = nativeReference
+          ? await runNativeReferenceCase({
+              type: plan.definition.type,
+              testCase,
+              input,
+              schema: plan.schema,
+              repoRoot,
+              runnerPath: nativeRunner ?? undefined
+            })
+          : (await executeReferenceCase(plan.definition.type, testCase, input, { repoRoot })).output;
       } else if (mode === 'native') {
         actual = await runNativeCase({
           type: plan.definition.type,

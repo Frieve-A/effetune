@@ -14,8 +14,8 @@ function createFakeInstance(options = {}) {
   const memory = options.memory || new WebAssembly.Memory({ initial: 2, maximum: 8 });
   const calls = [];
   const kernels = options.kernels || [
-    { name: 'VolumePlugin', hash: 0x12345678, byteCapacity: 0 },
-    { name: 'LevelMeterPlugin', hash: 0x9abcdef0, byteCapacity: 0 }
+    { name: 'VolumePlugin', hash: 0x12345678, byteCapacity: 0, assetCapacity: 4096 },
+    { name: 'LevelMeterPlugin', hash: 0x9abcdef0, byteCapacity: 0, assetCapacity: 0 }
   ];
   let nextAllocation = 60000;
   const scratchPtr = 45056;
@@ -24,6 +24,7 @@ function createFakeInstance(options = {}) {
     malloc(size) {
       calls.push(['malloc', size]);
       if (options.mallocFails) return 0;
+      if (options.growDuringMalloc) memory.grow(1);
       const ptr = nextAllocation;
       nextAllocation += size;
       return ptr;
@@ -43,6 +44,7 @@ function createFakeInstance(options = {}) {
     },
     et_kernel_params_hash: index => kernels[index].hash,
     et_kernel_param_bytes_capacity: index => kernels[index].byteCapacity ?? 0,
+    et_kernel_asset_capacity: (index, slot) => slot === 0 ? kernels[index].assetCapacity ?? 0 : 0,
     et_engine_memory_required(...args) {
       calls.push(['memoryRequired', ...args]);
       return 123456;
@@ -102,6 +104,25 @@ function createFakeInstance(options = {}) {
       calls.push(['instanceSetParamBytes', engine, instance, values, hash >>> 0, offset]);
       return options.paramBytesStatus ?? 0;
     },
+    et_instance_asset_begin(engine, instance, slot, channels, frames, topology, headBlock,
+      rateDivider, pathCount, inputCount, processingChannels, footprintBytes, byteSize) {
+      calls.push(['assetBegin', engine, instance, slot, channels, frames, topology, headBlock,
+        rateDivider, pathCount, inputCount, processingChannels, footprintBytes, byteSize]);
+      if (options.growDuringAssetBegin) memory.grow(1);
+      return options.assetBeginFails ? 0 : 70000;
+    },
+    et_instance_asset_commit(...args) {
+      calls.push(['assetCommit', ...args]);
+      if (options.growDuringAssetCommit) memory.grow(1);
+      return options.assetCommitStatus ?? 0;
+    },
+    et_instance_asset_abort(...args) {
+      calls.push(['assetAbort', ...args]);
+    },
+    et_instance_asset_state(...args) {
+      calls.push(['assetState', ...args]);
+      return options.assetState ?? 3;
+    },
     et_instance_process(...args) {
       calls.push(['instanceProcess', ...args]);
       return options.processStatus ?? 0;
@@ -141,6 +162,7 @@ test('binding rejects missing ABI exports and invalid instances', () => {
   assert.throws(() => new DspEngineBinding(fake.instance), /et_engine_reset/);
   assert.ok(REQUIRED_FUNCTION_EXPORTS.includes('et_pipeline_process'));
   assert.ok(REQUIRED_FUNCTION_EXPORTS.includes('et_instance_set_param_bytes'));
+  assert.ok(REQUIRED_FUNCTION_EXPORTS.includes('et_instance_asset_begin'));
 });
 
 test('binding discovers capabilities and drives engine and instance lifecycle', () => {
@@ -156,8 +178,10 @@ test('binding discovers capabilities and drives engine and instance lifecycle', 
     buildFlags: 0,
     simd: false,
     kernels: [
-      { name: 'VolumePlugin', hash: 0x12345678, byteCapacity: 0, kernelIndex: 0 },
-      { name: 'LevelMeterPlugin', hash: 0x9abcdef0, byteCapacity: 0, kernelIndex: 1 }
+      { name: 'VolumePlugin', hash: 0x12345678, byteCapacity: 0, assetCapacity: 4096,
+        kernelIndex: 0 },
+      { name: 'LevelMeterPlugin', hash: 0x9abcdef0, byteCapacity: 0, assetCapacity: 0,
+        kernelIndex: 1 }
     ]
   });
   assert.equal(binding.engine, 0);
@@ -166,9 +190,11 @@ test('binding discovers capabilities and drives engine and instance lifecycle', 
   assert.equal(binding.getKernelName(0), 'VolumePlugin');
   assert.equal(binding.getKernelParamsHash(1), 0x9abcdef0);
   assert.equal(binding.getKernelParamBytesCapacity(1), 0);
+  assert.equal(binding.getKernelAssetCapacity(0), 4096);
   assert.throws(() => binding.getKernelName(2), RangeError);
   assert.throws(() => binding.getKernelParamsHash(-1), RangeError);
   assert.throws(() => binding.getKernelParamBytesCapacity(2), RangeError);
+  assert.throws(() => binding.getKernelAssetCapacity(2), RangeError);
 
   assert.equal(binding.prepare(48000, 2, 4, 64), 0);
   assert.equal(binding.live, true);
@@ -180,6 +206,19 @@ test('binding discovers capabilities and drives engine and instance lifecycle', 
   assert.equal(binding.setTelemetryRate(30), 0);
   assert.equal(binding.instanceSetParams(11, [0.25, 0.5], 0xfeedbeef, 3), 0);
   assert.equal(binding.instanceSetParamBytes(11, Uint8Array.of(1, 0, 0, 0), 0xfeedbeef), 0);
+  const assetPayload = new Uint8Array(64);
+  const assetHeader = new DataView(assetPayload.buffer);
+  assetHeader.setUint32(0, 0x31415445, true);
+  assetHeader.setUint32(4, 2, true);
+  assetHeader.setUint32(8, 4, true);
+  assetHeader.setUint32(12, 48000, true);
+  assetHeader.setUint32(16, 2, true);
+  assert.equal(binding.instanceSetAsset(11, 0, assetPayload, {
+    channels: 2, frames: 4, topology: 2, headBlock: 128, rateDivider: 1,
+    processingChannels: 2, footprintBytes: 1024
+  }), 0);
+  assert.equal(binding.instanceAssetState(11, 0), 3);
+  binding.instanceAssetAbort(11, 0);
   assert.equal(binding.instanceProcess(11, 4096, 2, 128, 1.5), 0);
   binding.destroyInstance(11);
   assert.equal(binding.reset(), 0);
@@ -194,6 +233,8 @@ test('binding discovers capabilities and drives engine and instance lifecycle', 
   assert.ok(fake.calls.some(call => call[0] === 'instanceSetSeed' &&
     call[3] === 0x89abcdef && call[4] === 0x01234567));
   assert.ok(fake.calls.some(call => call[0] === 'telemetryRate' && call[2] === 30));
+  assert.ok(fake.calls.some(call => call[0] === 'assetBegin' &&
+    call[11] === 2 && call[12] === 1024));
 
   binding.markFailed();
   assert.equal(binding.live, false);
@@ -231,7 +272,7 @@ test('binding adopts every arena slab and resolves only arena-backed views', () 
   assert.equal(binding.scratchPtr(), 45056);
 });
 
-test('binding reads telemetry and stages pipeline descriptors without leaking allocations', () => {
+test('binding reads telemetry and stages pipeline descriptors without temporary allocations', () => {
   const fake = createFakeInstance();
   const binding = new DspEngineBinding(fake.instance);
   binding.createEngine();
@@ -261,18 +302,22 @@ test('binding reads telemetry and stages pipeline descriptors without leaking al
   assert.equal(binding.pipelineProcess(2, 128, 4.25, true), 0);
   assert.ok(fake.calls.some(call => call[0] === 'pipelineConfigure' && String(call[2]) === '1,2,3'));
   assert.ok(fake.calls.some(call => call[0] === 'pipelineProcess' && call.at(-1) === 1));
-  assert.ok(fake.calls.filter(call => call[0] === 'free').length >= 1);
+  assert.equal(fake.calls.some(call => call[0] === 'malloc'), false);
+  assert.equal(fake.calls.some(call => call[0] === 'free'), false);
 });
 
 test('binding rejects unsafe staging sizes and invalid native return values', () => {
   const failedEngine = createFakeInstance({ engineHandle: 0 });
   assert.throws(() => new DspEngineBinding(failedEngine.instance).createEngine(), /creation failed/);
 
-  const failedMalloc = createFakeInstance({ mallocFails: true });
-  const mallocBinding = new DspEngineBinding(failedMalloc.instance);
-  mallocBinding.createEngine();
-  mallocBinding.prepare(48000, 2, 128, 64);
-  assert.throws(() => mallocBinding.pipelineConfigure(Uint8Array.of(1)), /descriptor staging/);
+  const oversizedDescriptor = createFakeInstance();
+  const descriptorBinding = new DspEngineBinding(oversizedDescriptor.instance);
+  descriptorBinding.createEngine();
+  descriptorBinding.prepare(48000, 2, 128, 64);
+  assert.throws(
+    () => descriptorBinding.pipelineConfigure(new Uint8Array(4097)),
+    /scratch-buffer capacity/
+  );
 
   const badTelemetry = createFakeInstance({ badTelemetryCount: 100 });
   const telemetryBinding = new DspEngineBinding(badTelemetry.instance);
@@ -322,6 +367,62 @@ test('binding distinguishes preparation growth from unexpected audio-time growth
   assert.equal(binding.memoryGrowthViolation, true);
   assert.equal(growthCallbacks, 1);
   assert.equal(warnings.length, 1);
+});
+
+test('binding permits asset memory growth only during begin', () => {
+  const beginGrowth = createFakeInstance({ growDuringAssetBegin: true });
+  const beginBinding = new DspEngineBinding(beginGrowth.instance);
+  beginBinding.createEngine();
+  beginBinding.prepare(48000, 2, 128, 64);
+  const payload = new Uint8Array(64);
+  const header = new DataView(payload.buffer);
+  header.setUint32(0, 0x31415445, true);
+  header.setUint32(4, 2, true);
+  header.setUint32(8, 4, true);
+  header.setUint32(12, 48000, true);
+  header.setUint32(16, 2, true);
+  assert.equal(beginBinding.instanceSetAsset(11, 0, payload, {
+    headBlock: 128, rateDivider: 1
+  }), 0);
+  assert.equal(beginBinding.memoryGrowthViolation, false);
+
+  const commitGrowth = createFakeInstance({ growDuringAssetCommit: true });
+  const commitBinding = new DspEngineBinding(commitGrowth.instance);
+  commitBinding.createEngine();
+  commitBinding.prepare(48000, 2, 128, 64);
+  assert.equal(commitBinding.instanceSetAsset(11, 0, payload, {
+    headBlock: 128, rateDivider: 1
+  }), 0);
+  assert.equal(commitBinding.checkMemoryBuffer(), true);
+  assert.equal(commitBinding.memoryGrowthViolation, true);
+});
+
+test('pipeline configuration after asset growth reuses scratch memory without growing the heap', () => {
+  const fake = createFakeInstance({ growDuringAssetBegin: true, growDuringMalloc: true });
+  const warnings = [];
+  const binding = new DspEngineBinding(fake.instance, {
+    warning: message => warnings.push(message)
+  });
+  binding.createEngine();
+  binding.prepare(48000, 2, 128, 64);
+
+  const payload = new Uint8Array(64);
+  const header = new DataView(payload.buffer);
+  header.setUint32(0, 0x31415445, true);
+  header.setUint32(4, 2, true);
+  header.setUint32(8, 4, true);
+  header.setUint32(12, 48000, true);
+  header.setUint32(16, 2, true);
+  assert.equal(binding.instanceSetAsset(11, 0, payload, {
+    headBlock: 128, rateDivider: 1
+  }), 0);
+  const memoryAfterAsset = fake.memory.buffer;
+
+  assert.equal(binding.pipelineConfigure(Uint8Array.of(1, 2, 3)), 0);
+  assert.equal(fake.memory.buffer, memoryAfterAsset);
+  assert.equal(binding.memoryGrowthViolation, false);
+  assert.deepEqual(warnings, []);
+  assert.equal(fake.calls.some(call => call[0] === 'malloc'), false);
 });
 
 test('WASI imports report debug writes and surface proc_exit without host dependencies', () => {

@@ -7,6 +7,7 @@ const REQUIRED_FUNCTION_EXPORTS = [
     'et_kernel_name',
     'et_kernel_params_hash',
     'et_kernel_param_bytes_capacity',
+    'et_kernel_asset_capacity',
     'et_engine_memory_required',
     'et_engine_create',
     'et_engine_destroy',
@@ -21,6 +22,10 @@ const REQUIRED_FUNCTION_EXPORTS = [
     'et_instance_set_seed',
     'et_instance_set_params',
     'et_instance_set_param_bytes',
+    'et_instance_asset_begin',
+    'et_instance_asset_commit',
+    'et_instance_asset_abort',
+    'et_instance_asset_state',
     'et_instance_process',
     'et_arena_combined_ptr',
     'et_arena_bus_ptr',
@@ -326,6 +331,16 @@ export class DspEngineBinding {
         return this.exports.et_kernel_param_bytes_capacity(index) >>> 0;
     }
 
+    getKernelAssetCapacity(index, slot = 0) {
+        if (!Number.isInteger(index) || index < 0 || index >= this.getKernelCount()) {
+            throw new RangeError('Kernel index is out of range');
+        }
+        if (!Number.isInteger(slot) || slot < 0) {
+            throw new RangeError('Asset slot is out of range');
+        }
+        return this.exports.et_kernel_asset_capacity(index, slot) >>> 0;
+    }
+
     getCapabilities() {
         const kernels = [];
         const count = this.getKernelCount();
@@ -334,6 +349,7 @@ export class DspEngineBinding {
                 name: this.getKernelName(index),
                 hash: this.getKernelParamsHash(index),
                 byteCapacity: this.getKernelParamBytesCapacity(index),
+                assetCapacity: this.getKernelAssetCapacity(index),
                 kernelIndex: index
             });
         }
@@ -516,6 +532,86 @@ export class DspEngineBinding {
         );
     }
 
+    instanceAssetBegin(instanceId, slot, {
+        channels,
+        frames,
+        topology,
+        headBlock,
+        rateDivider,
+        pathCount = 0,
+        inputCount = 0,
+        processingChannels = 1,
+        byteSize,
+        footprintBytes = byteSize
+    }) {
+        if (!this.engine || !this.prepared) return 0;
+        this._preparing = true;
+        try {
+            const ptr = this.exports.et_instance_asset_begin(
+                this.engine,
+                instanceId,
+                slot >>> 0,
+                channels >>> 0,
+                frames >>> 0,
+                topology >>> 0,
+                headBlock >>> 0,
+                rateDivider >>> 0,
+                pathCount >>> 0,
+                inputCount >>> 0,
+                processingChannels >>> 0,
+                footprintBytes >>> 0,
+                byteSize >>> 0
+            ) >>> 0;
+            this._refreshViews();
+            if (ptr) this._assertRange(ptr, byteSize, 'Asset staging buffer');
+            return ptr;
+        } finally {
+            this._preparing = false;
+        }
+    }
+
+    instanceAssetCommit(instanceId, slot, byteSize, formatTag) {
+        if (!this.engine || !this.prepared) return ET_ERR_STATE;
+        return this.exports.et_instance_asset_commit(
+            this.engine,
+            instanceId,
+            slot >>> 0,
+            byteSize >>> 0,
+            formatTag >>> 0
+        );
+    }
+
+    instanceAssetAbort(instanceId, slot) {
+        if (!this.engine || !this.prepared) return;
+        this.exports.et_instance_asset_abort(this.engine, instanceId, slot >>> 0);
+    }
+
+    instanceAssetState(instanceId, slot) {
+        if (!this.engine || !this.prepared) return 0;
+        return this.exports.et_instance_asset_state(this.engine, instanceId, slot >>> 0) >>> 0;
+    }
+
+    instanceSetAsset(instanceId, slot, payload, beginInfo, formatTag = 1) {
+        const bytes = toUint8View(payload, 'Asset payload');
+        if (bytes.byteLength < 32) {
+            throw new DspBindingError('Asset payload is smaller than its header');
+        }
+        const header = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        const resolvedInfo = {
+            ...beginInfo,
+            channels: beginInfo?.channels ?? header.getUint32(4, true),
+            frames: beginInfo?.frames ?? header.getUint32(8, true),
+            topology: beginInfo?.topology ?? header.getUint32(16, true)
+        };
+        const ptr = this.instanceAssetBegin(instanceId, slot, {
+            ...resolvedInfo,
+            byteSize: bytes.byteLength
+        });
+        if (!ptr) return ET_ERR_STATE;
+        this.u8.set(bytes, ptr);
+        return this.instanceAssetCommit(instanceId, slot, bytes.byteLength, formatTag);
+    }
+
     instanceProcess(instanceId, audioPtr, channelCount, frameCount, timeSeconds) {
         if (!this.engine) return ET_ERR_STATE;
         this._refreshViews();
@@ -648,17 +744,14 @@ export class DspEngineBinding {
     pipelineConfigure(descriptor) {
         if (!this.engine) return ET_ERR_STATE;
         const bytes = toUint8View(descriptor, 'Pipeline descriptor');
-        const allocationSize = bytes.byteLength || 1;
-        const ptr = this.exports.malloc(allocationSize) >>> 0;
-        this._refreshViews();
-        if (!ptr) throw new DspBindingError('Unable to allocate pipeline descriptor staging memory');
-        try {
-            this._assertRange(ptr, allocationSize, 'Pipeline descriptor');
-            this.u8.set(bytes, ptr);
-            return this.exports.et_pipeline_configure(this.engine, ptr, bytes.byteLength);
-        } finally {
-            this.exports.free(ptr);
+        if (bytes.byteLength > SCRATCH_BYTES) {
+            throw new DspBindingError('Pipeline descriptor exceeds the scratch-buffer capacity');
         }
+        const ptr = this.exports.et_scratch_ptr(this.engine) >>> 0;
+        this._refreshViews();
+        this._assertRange(ptr, bytes.byteLength, 'Pipeline descriptor');
+        this.u8.set(bytes, ptr);
+        return this.exports.et_pipeline_configure(this.engine, ptr, bytes.byteLength);
     }
 
     pipelineProcess(channelCount, frameCount, timeSeconds, masterBypass = false) {

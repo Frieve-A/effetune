@@ -2,6 +2,7 @@
 
 #include "allocation_guard.h"
 #include "effetune/abi.h"
+#include "engine.h"
 
 #include <array>
 #include <cmath>
@@ -291,6 +292,65 @@ void testTelemetryCadence() {
   et_engine_destroy(engine);
 }
 
+void testAssetLifecycle() {
+  const std::uint32_t kernel_index = findKernelIndex("TestGainPlugin");
+  ET_CHECK(kernel_index != UINT32_MAX);
+  ET_CHECK(et_kernel_asset_capacity(kernel_index, 0u) == 4096u);
+  ET_CHECK(et_kernel_asset_capacity(kernel_index, 1u) == 0u);
+  ET_CHECK(et_kernel_asset_capacity(et_kernel_count(), 0u) == 0u);
+
+  Engine engine;
+  ET_CHECK(engine.prepare(48000.0F, 2u, 128u, 0u) == ET_OK);
+  const et_instance instance = engine.createInstance("TestGainPlugin");
+  ET_CHECK(instance != 0u);
+  const float unity_gain = 1.0F;
+  ET_CHECK(engine.setInstanceParams(instance, &unity_gain, 1u, kTestHash, 0u) == ET_OK);
+  constexpr AssetBeginInfo valid_info{2u, 4u, 2u, 128u, 1u, 0u, 0u, 2u, 64u, 64u};
+  AssetBeginInfo invalid_info = valid_info;
+  invalid_info.byteSize = 4097u;
+  ET_CHECK(engine.beginInstanceAsset(instance, 0u, invalid_info) == nullptr);
+  ET_CHECK(engine.instanceAssetState(instance, 0u) == ET_ASSET_STATE_NONE);
+
+  std::uint8_t *staging = engine.beginInstanceAsset(instance, 0u, valid_info);
+  ET_CHECK(staging != nullptr);
+  ET_CHECK(engine.instanceAssetState(instance, 0u) == ET_ASSET_STATE_STAGED);
+  ET_CHECK(engine.commitInstanceAsset(instance, 0u, 64u, 99u) == ET_ERR_ARGS);
+  ET_CHECK(engine.instanceAssetState(instance, 0u) == ET_ASSET_STATE_ERROR);
+  std::array<float, 8> audio{};
+  audio.fill(1.0F);
+  ET_CHECK(engine.processInstance(instance, audio.data(), 2u, 4u, 0.0) == ET_OK);
+  ET_CHECK(audio[0] == 1.0F && audio[7] == 1.0F);
+
+  staging = engine.beginInstanceAsset(instance, 0u, valid_info);
+  ET_CHECK(staging != nullptr);
+  std::memset(staging, 0, valid_info.byteSize);
+  writeU32(staging, 0x31415445u);
+  writeU32(staging + 4u, valid_info.channels);
+  writeU32(staging + 8u, valid_info.frames);
+  writeU32(staging + 12u, 48000u);
+  writeU32(staging + 16u, valid_info.topology);
+  ET_CHECK(engine.commitInstanceAsset(instance, 0u, valid_info.byteSize, ET_ASSET_F32_MULTICH) ==
+           ET_OK);
+  ET_CHECK(engine.instanceAssetState(instance, 0u) == ET_ASSET_STATE_PREPARING);
+
+  audio.fill(1.0F);
+  ET_CHECK(engine.processInstance(instance, audio.data(), 2u, 4u, 0.0) == ET_OK);
+  ET_CHECK(engine.instanceAssetState(instance, 0u) == ET_ASSET_STATE_ACTIVE);
+  ET_CHECK(audio[0] == 2.0F && audio[7] == 2.0F);
+
+  invalid_info = valid_info;
+  invalid_info.topology = 5u;
+  ET_CHECK(engine.beginInstanceAsset(instance, 0u, invalid_info) == nullptr);
+  ET_CHECK(engine.instanceAssetState(instance, 0u) == ET_ASSET_STATE_ACTIVE);
+  ET_CHECK(engine.resetInstance(instance) == ET_OK);
+  ET_CHECK(engine.instanceAssetState(instance, 0u) == ET_ASSET_STATE_ACTIVE);
+  engine.abortInstanceAsset(instance, 0u);
+  ET_CHECK(engine.instanceAssetState(instance, 0u) == ET_ASSET_STATE_NONE);
+  audio.fill(1.0F);
+  ET_CHECK(engine.processInstance(instance, audio.data(), 2u, 4u, 0.1) == ET_OK);
+  ET_CHECK(audio[0] == 1.0F && audio[7] == 1.0F);
+}
+
 } // namespace
 
 void runAbiTests() {
@@ -299,6 +359,7 @@ void runAbiTests() {
   testPipelineValidationAndRouting();
   testPipelineDescriptorFuzz();
   testTelemetryCadence();
+  testAssetLifecycle();
 }
 
 } // namespace effetune::test

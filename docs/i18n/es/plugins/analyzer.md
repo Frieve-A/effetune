@@ -55,7 +55,7 @@ Muestra la forma de la onda sonora en tiempo real para que puedas ver golpes, at
 - **Vertical Offset** - Desplaza la forma de onda arriba/abajo (-1 a 1)
 
 ### Nota sobre la Visualización de Forma de Onda
-La forma de onda mostrada utiliza interpolación lineal entre puntos de muestra para una visualización suave. Úsala como guía visual, no como una herramienta de medición exacta.
+La forma de onda conecta los puntos capturados en orden temporal. Con tiempos de visualización largos, cada intervalo conserva sus muestras inicial y final, además de las muestras mínima y máxima en sus posiciones originales. Así se mantienen la continuidad y los picos breves dentro de la resolución de la pantalla. Úsala como guía visual, no como una herramienta de medición exacta.
 
 ## Spectrogram
 

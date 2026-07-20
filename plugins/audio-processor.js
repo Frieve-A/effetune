@@ -13,6 +13,7 @@ const REQUIRED_FUNCTION_EXPORTS = [
     'et_kernel_name',
     'et_kernel_params_hash',
     'et_kernel_param_bytes_capacity',
+    'et_kernel_asset_capacity',
     'et_engine_memory_required',
     'et_engine_create',
     'et_engine_destroy',
@@ -27,6 +28,10 @@ const REQUIRED_FUNCTION_EXPORTS = [
     'et_instance_set_seed',
     'et_instance_set_params',
     'et_instance_set_param_bytes',
+    'et_instance_asset_begin',
+    'et_instance_asset_commit',
+    'et_instance_asset_abort',
+    'et_instance_asset_state',
     'et_instance_process',
     'et_arena_combined_ptr',
     'et_arena_bus_ptr',
@@ -332,6 +337,16 @@ class DspEngineBinding {
         return this.exports.et_kernel_param_bytes_capacity(index) >>> 0;
     }
 
+    getKernelAssetCapacity(index, slot = 0) {
+        if (!Number.isInteger(index) || index < 0 || index >= this.getKernelCount()) {
+            throw new RangeError('Kernel index is out of range');
+        }
+        if (!Number.isInteger(slot) || slot < 0) {
+            throw new RangeError('Asset slot is out of range');
+        }
+        return this.exports.et_kernel_asset_capacity(index, slot) >>> 0;
+    }
+
     getCapabilities() {
         const kernels = [];
         const count = this.getKernelCount();
@@ -340,6 +355,7 @@ class DspEngineBinding {
                 name: this.getKernelName(index),
                 hash: this.getKernelParamsHash(index),
                 byteCapacity: this.getKernelParamBytesCapacity(index),
+                assetCapacity: this.getKernelAssetCapacity(index),
                 kernelIndex: index
             });
         }
@@ -522,6 +538,86 @@ class DspEngineBinding {
         );
     }
 
+    instanceAssetBegin(instanceId, slot, {
+        channels,
+        frames,
+        topology,
+        headBlock,
+        rateDivider,
+        pathCount = 0,
+        inputCount = 0,
+        processingChannels = 1,
+        byteSize,
+        footprintBytes = byteSize
+    }) {
+        if (!this.engine || !this.prepared) return 0;
+        this._preparing = true;
+        try {
+            const ptr = this.exports.et_instance_asset_begin(
+                this.engine,
+                instanceId,
+                slot >>> 0,
+                channels >>> 0,
+                frames >>> 0,
+                topology >>> 0,
+                headBlock >>> 0,
+                rateDivider >>> 0,
+                pathCount >>> 0,
+                inputCount >>> 0,
+                processingChannels >>> 0,
+                footprintBytes >>> 0,
+                byteSize >>> 0
+            ) >>> 0;
+            this._refreshViews();
+            if (ptr) this._assertRange(ptr, byteSize, 'Asset staging buffer');
+            return ptr;
+        } finally {
+            this._preparing = false;
+        }
+    }
+
+    instanceAssetCommit(instanceId, slot, byteSize, formatTag) {
+        if (!this.engine || !this.prepared) return ET_ERR_STATE;
+        return this.exports.et_instance_asset_commit(
+            this.engine,
+            instanceId,
+            slot >>> 0,
+            byteSize >>> 0,
+            formatTag >>> 0
+        );
+    }
+
+    instanceAssetAbort(instanceId, slot) {
+        if (!this.engine || !this.prepared) return;
+        this.exports.et_instance_asset_abort(this.engine, instanceId, slot >>> 0);
+    }
+
+    instanceAssetState(instanceId, slot) {
+        if (!this.engine || !this.prepared) return 0;
+        return this.exports.et_instance_asset_state(this.engine, instanceId, slot >>> 0) >>> 0;
+    }
+
+    instanceSetAsset(instanceId, slot, payload, beginInfo, formatTag = 1) {
+        const bytes = toUint8View(payload, 'Asset payload');
+        if (bytes.byteLength < 32) {
+            throw new DspBindingError('Asset payload is smaller than its header');
+        }
+        const header = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        const resolvedInfo = {
+            ...beginInfo,
+            channels: beginInfo?.channels ?? header.getUint32(4, true),
+            frames: beginInfo?.frames ?? header.getUint32(8, true),
+            topology: beginInfo?.topology ?? header.getUint32(16, true)
+        };
+        const ptr = this.instanceAssetBegin(instanceId, slot, {
+            ...resolvedInfo,
+            byteSize: bytes.byteLength
+        });
+        if (!ptr) return ET_ERR_STATE;
+        this.u8.set(bytes, ptr);
+        return this.instanceAssetCommit(instanceId, slot, bytes.byteLength, formatTag);
+    }
+
     instanceProcess(instanceId, audioPtr, channelCount, frameCount, timeSeconds) {
         if (!this.engine) return ET_ERR_STATE;
         this._refreshViews();
@@ -654,17 +750,14 @@ class DspEngineBinding {
     pipelineConfigure(descriptor) {
         if (!this.engine) return ET_ERR_STATE;
         const bytes = toUint8View(descriptor, 'Pipeline descriptor');
-        const allocationSize = bytes.byteLength || 1;
-        const ptr = this.exports.malloc(allocationSize) >>> 0;
-        this._refreshViews();
-        if (!ptr) throw new DspBindingError('Unable to allocate pipeline descriptor staging memory');
-        try {
-            this._assertRange(ptr, allocationSize, 'Pipeline descriptor');
-            this.u8.set(bytes, ptr);
-            return this.exports.et_pipeline_configure(this.engine, ptr, bytes.byteLength);
-        } finally {
-            this.exports.free(ptr);
+        if (bytes.byteLength > SCRATCH_BYTES) {
+            throw new DspBindingError('Pipeline descriptor exceeds the scratch-buffer capacity');
         }
+        const ptr = this.exports.et_scratch_ptr(this.engine) >>> 0;
+        this._refreshViews();
+        this._assertRange(ptr, bytes.byteLength, 'Pipeline descriptor');
+        this.u8.set(bytes, ptr);
+        return this.exports.et_pipeline_configure(this.engine, ptr, bytes.byteLength);
     }
 
     pipelineProcess(channelCount, frameCount, timeSeconds, masterBypass = false) {
@@ -734,6 +827,8 @@ const ET_DSP_MAX_CHANNELS = 8;
 const ET_DSP_MAX_FRAMES = 128;
 const ET_DSP_ERR_ARGS = -1;
 const ET_DSP_TELEMETRY_BYTES = 256 * 1024;
+// Keep half of the 256 MiB module ceiling available for arenas, other kernels, and replacement probes.
+const ET_DSP_ASSET_AGGREGATE_BUDGET_BYTES = 128 * 1024 * 1024;
 const ET_DSP_PACKET_POOL_SIZE = 3;
 const ET_DSP_PIPELINE_FALLBACK = 0;
 const ET_DSP_PIPELINE_PROCESSED = 1;
@@ -808,6 +903,10 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.dspEnabledTypes = new Set();
         this.wasmKernels = new Map();
         this.wasmInstances = new Map();
+        this.dspAssetCache = new Map();
+        this.dspAssetStates = new Map();
+        this.dspAssetStateRevisions = new Map();
+        this.dspAssetStateReplayEpochs = new Map();
         this.dspRuntimeFailures = new Map();
         this.dspFailedTypes = new Set();
         this.dspReportedFailures = new Set();
@@ -870,6 +969,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             topologyRevision: 0,
             commandId: null,
             skipEpoch: null,
+            hostResumeTerminal: null,
             arm: {
                 state: 'disarmed',
                 commandId: null,
@@ -877,19 +977,17 @@ class PluginProcessor extends AudioWorkletProcessor {
                 armAfterRenderSequence: null
             },
             armStartFrame: null,
-            lastAcceptedArmCommandId: -1,
+            lastPowerCommandId: -1,
             lastAcceptedSkipEpoch: -1,
             lastConsumedSkipEpoch: -1,
             inputSilentFrames: 0,
             outputSilentFrames: 0,
-            lowLevelWakeFrames: 0,
             silentSinceFrame: null,
             silenceFramesRequired: Math.round(globalThis.sampleRate * 60),
             silenceThresholdPower: Math.pow(10, -80 / 10),
             wakeFloorPower: Math.pow(10, -80 / 10),
-            fastWakeThresholdPower: Math.pow(10, -72 / 10),
+            wakeOnAnyInput: false,
             exitThresholdPower: Math.pow(10, -74 / 10),
-            lowLevelWakeFramesRequired: Math.round(globalThis.sampleRate * 0.15),
             ewmaAlpha: 1 - Math.exp(-128 / (globalThis.sampleRate * 2)),
             inputPowerEwma: 0,
             outputPowerEwma: 0,
@@ -903,6 +1001,8 @@ class PluginProcessor extends AudioWorkletProcessor {
             monitoringFastWakeEligible: false,
             monitoringStaticCoverageValid: false,
             monitoringFastWakeBlockerReason: 'temporal-preparation-not-worklet-local',
+            monitoringPreparationRequired: false,
+            monitoringPreparationPending: false,
             temporalSkipEligible: false,
             temporalCapabilities: [],
             enabledPluginCount: 0,
@@ -987,6 +1087,14 @@ class PluginProcessor extends AudioWorkletProcessor {
                         if (status !== 0) this.reportDspFailure('telemetry-rate', `status ${status}`);
                     }
                     break;
+                case 'setPluginAsset':
+                    this._invalidatePowerSkipForMutation();
+                    this.setPluginAsset(data);
+                    break;
+                case 'clearPluginAsset':
+                    this._invalidatePowerSkipForMutation();
+                    this.clearPluginAsset(data);
+                    break;
                 case 'dspTelemetryReturn':
                     if (data.packet instanceof ArrayBuffer && this.dspPacketPool.length < ET_DSP_PACKET_POOL_SIZE) {
                         this.dspPacketPool.push(new Uint8Array(data.packet));
@@ -1021,6 +1129,10 @@ class PluginProcessor extends AudioWorkletProcessor {
                     if (this.dspLive) this.dspBinding.reset();
                     this.plugins = [];
                     this.pluginContexts.clear();
+                    this.dspAssetCache.clear();
+                    this.dspAssetStates.clear();
+                    this.dspAssetStateRevisions.clear();
+                    this.dspAssetStateReplayEpochs.clear();
                     this.masterBypass = false;
                     break;
                 case 'userActivity':
@@ -1076,8 +1188,8 @@ class PluginProcessor extends AudioWorkletProcessor {
                         this.powerPolicy.pendingObservationRequestId = data.observationRequestId ?? null;
                     }
                     break;
-                case 'prepareTemporalState':
-                    this.prepareTemporalState(data);
+                case 'prepareTemporalStateAndResume':
+                    this.prepareTemporalStateAndResume(data);
                     break;
             }
         };
@@ -1096,6 +1208,19 @@ class PluginProcessor extends AudioWorkletProcessor {
         power.arm.skipEpoch = null;
         power.arm.armAfterRenderSequence = null;
         power.armStartFrame = null;
+        power.monitoringPreparationPending = false;
+    }
+
+    _clearPowerSkipOwnership() {
+        const power = this.powerPolicy;
+        power.commandId = null;
+        power.skipEpoch = null;
+        power.hostResumeTerminal = null;
+        power.skippedFrameCount = 0;
+        power.skippedFrameRemainder = 0;
+        power.lastConsumedSkipEpoch = -1;
+        power.skipSampleRate = globalThis.sampleRate;
+        this._disarmAutomaticMonitoring();
     }
 
     _invalidatePowerSkipForMutation() {
@@ -1103,15 +1228,15 @@ class PluginProcessor extends AudioWorkletProcessor {
         if (!power?.enabled) return;
         power.state = 'active';
         power.processingDirective = 'full-process';
-        power.skipEpoch = null;
-        power.skippedFrameCount = 0;
-        power.skippedFrameRemainder = 0;
+        power.temporalSkipEligible = false;
+        power.temporalCapabilities = [];
+        power.monitoringPreparationRequired = false;
         power.monitoringStaticCoverageValid = false;
         power.monitoringFastWakeEligible = false;
         power.monitoringFastWakeBlockerReason = 'temporal-preparation-not-worklet-local';
         power.pendingConfigWake = true;
         power.activeFullProcessSettled = false;
-        this._disarmAutomaticMonitoring();
+        this._clearPowerSkipOwnership();
         this._resetPowerSilenceWindow();
     }
 
@@ -1119,7 +1244,6 @@ class PluginProcessor extends AudioWorkletProcessor {
         const power = this.powerPolicy;
         power.inputSilentFrames = 0;
         power.outputSilentFrames = 0;
-        power.lowLevelWakeFrames = 0;
         power.silentSinceFrame = null;
         power.inputPowerEwma = 0;
         power.outputPowerEwma = 0;
@@ -1204,6 +1328,16 @@ class PluginProcessor extends AudioWorkletProcessor {
         return this.dspBinding.resetInstance(wasmInstance.id) === 0;
     }
 
+    _prepareAutomaticMonitoringState() {
+        for (const entry of this.powerPolicy.temporalCapabilities) {
+            if (entry.capability === 'stateless') continue;
+            if (entry.capability !== 'reset-on-resume' ||
+                entry.descriptor?.primitive !== 'canonical-reset' ||
+                !this._resetTemporalPlugin(entry.pluginId)) return false;
+        }
+        return true;
+    }
+
     _ageTemporalPlugin(entry, skippedFrameCount) {
         if (this.wasmInstances.has(entry.pluginId)) return false;
         const context = this.pluginContexts.get(entry.pluginId);
@@ -1226,6 +1360,70 @@ class PluginProcessor extends AudioWorkletProcessor {
         return true;
     }
 
+    _prepareTemporalCapabilities(skippedFrameCount, { ageBySkippedFrames }) {
+        const power = this.powerPolicy;
+        const capabilities = power.temporalCapabilities;
+        const counts = {
+            stateless: 0,
+            resetOnResume: 0,
+            agedBySkippedFrames: 0,
+            mustProcess: 0
+        };
+        const actualIds = this._getEnabledPowerPluginIds();
+        const actualIdSet = new Set(actualIds);
+        const uniqueIds = new Set();
+        let coverageValid = Number.isSafeInteger(skippedFrameCount) && skippedFrameCount >= 0 &&
+            capabilities.length === power.enabledPluginCount &&
+            actualIds.length === power.enabledPluginCount;
+        for (const entry of capabilities) {
+            const identity = entry?.pluginId;
+            if (identity === null || identity === undefined || uniqueIds.has(identity) ||
+                !actualIdSet.has(identity)) coverageValid = false;
+            else uniqueIds.add(identity);
+            if (entry.capability !== 'stateless' &&
+                entry.capability !== 'reset-on-resume' &&
+                entry.capability !== 'age-by-skipped-frames') coverageValid = false;
+        }
+        if (!coverageValid) {
+            return {
+                success: false,
+                errorCode: 'temporal-prevalidated-coverage-mismatch',
+                counts,
+                coveredPluginCount: uniqueIds.size
+            };
+        }
+        try {
+            for (const entry of capabilities) {
+                if (entry.capability === 'stateless') {
+                    counts.stateless++;
+                } else if (entry.capability === 'reset-on-resume' || !ageBySkippedFrames) {
+                    if (!this._resetTemporalPlugin(entry.pluginId)) {
+                        throw new Error('temporal reset failed');
+                    }
+                    counts.resetOnResume++;
+                } else {
+                    if (!this._ageTemporalPlugin(entry, skippedFrameCount)) {
+                        throw new Error('temporal analytic age failed');
+                    }
+                    counts.agedBySkippedFrames++;
+                }
+            }
+            return {
+                success: true,
+                errorCode: null,
+                counts,
+                coveredPluginCount: uniqueIds.size
+            };
+        } catch (_) {
+            return {
+                success: false,
+                errorCode: 'temporal-preparation-runtime-failed',
+                counts,
+                coveredPluginCount: uniqueIds.size
+            };
+        }
+    }
+
     configurePowerPolicy(data) {
         const power = this.powerPolicy;
         const enabled = data?.enabled === true;
@@ -1234,16 +1432,48 @@ class PluginProcessor extends AudioWorkletProcessor {
             power.state = 'active';
             power.processingDirective = 'full-process';
             power.uiTelemetryEnabled = true;
-            this._disarmAutomaticMonitoring();
+            this._clearPowerSkipOwnership();
             return;
         }
         if (!Number.isInteger(data.workletGraphGeneration) || data.workletGraphGeneration < 0 ||
             !Number.isInteger(data.topologyRevision) || data.topologyRevision < 0) return;
 
+        const powerIdentityCurrent =
+            data.workletGraphGeneration === power.workletGraphGeneration &&
+            data.topologyRevision === power.topologyRevision;
+        const previousDirective = power.processingDirective;
+        const previousHostSkipActive = power.commandId !== null && (
+            previousDirective === 'force-monitoring' ||
+            previousDirective === 'zero-output-transport' ||
+            previousDirective === 'bypass-transport'
+        );
+        const hostGuardDirective = data.hostGuardDirective;
+        const hostGuardRequested = hostGuardDirective === 'force-monitoring' ||
+            hostGuardDirective === 'zero-output-transport' ||
+            hostGuardDirective === 'bypass-transport';
+        const hostGuardValid = hostGuardRequested &&
+            Number.isSafeInteger(data.commandId) && data.commandId >= 0 &&
+            Number.isSafeInteger(data.hostGuardSkipEpoch) && data.hostGuardSkipEpoch >= 0 &&
+            (!powerIdentityCurrent ||
+                data.commandId > power.lastPowerCommandId &&
+                data.hostGuardSkipEpoch > power.lastAcceptedSkipEpoch);
+        if (hostGuardRequested && !hostGuardValid) return;
+        const preserveHostSkipFrames = hostGuardValid && data.preserveHostSkipState === true &&
+            previousHostSkipActive && previousDirective === hostGuardDirective;
+        const preservedSkippedFrameCount = power.skippedFrameCount;
+        const preservedSkippedFrameRemainder = power.skippedFrameRemainder;
+        const preservedSkipSampleRate = power.skipSampleRate;
+        const preservedCommandId = power.commandId;
+        const preservedSkipEpoch = power.skipEpoch;
+        const preservedHostResumeTerminal = power.hostResumeTerminal;
+
         power.enabled = true;
         this.audioLevelMonitoring.isSleepMode = false;
         power.workletGraphGeneration = data.workletGraphGeneration;
         power.topologyRevision = data.topologyRevision;
+        if (typeof data.uiTelemetryEnabled === 'boolean') {
+            power.uiTelemetryEnabled = data.uiTelemetryEnabled;
+        }
         const thresholdDb = Number.isFinite(data.silenceThresholdDb) ? data.silenceThresholdDb : -80;
         const wakeGainMarginDb = Number.isFinite(data.wakeGainMarginDb) ? data.wakeGainMarginDb : 0;
         const silenceSeconds = Number.isFinite(data.silenceDurationSeconds) && data.silenceDurationSeconds >= 0
@@ -1252,7 +1482,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         power.silenceThresholdPower = Math.pow(10, thresholdDb / 10);
         const wakeFloorDb = thresholdDb - wakeGainMarginDb;
         power.wakeFloorPower = Math.pow(10, wakeFloorDb / 10);
-        power.fastWakeThresholdPower = Math.pow(10, (wakeFloorDb + 8) / 10);
+        power.wakeOnAnyInput = data.wakeOnAnyInput === true;
         power.exitThresholdPower = Math.pow(10, (thresholdDb + 6) / 10);
         power.silenceFramesRequired = Math.round(globalThis.sampleRate * silenceSeconds);
         const capabilities = Array.isArray(data.monitoringPreparationCapabilities)
@@ -1288,12 +1518,17 @@ class PluginProcessor extends AudioWorkletProcessor {
         let staticCoverageValid = exactCoverageValid;
         for (let index = 0; index < normalizedCapabilities.length; index++) {
             const capability = normalizedCapabilities[index];
-            if (capability.capability !== 'stateless') {
+            if (capability.capability !== 'stateless' &&
+                (capability.capability !== 'reset-on-resume' ||
+                    capability.descriptor?.primitive !== 'canonical-reset')) {
                 staticCoverageValid = false;
                 break;
             }
         }
         power.monitoringStaticCoverageValid = staticCoverageValid;
+        power.monitoringPreparationRequired = normalizedCapabilities.some(
+            capability => capability.capability === 'reset-on-resume'
+        );
         power.monitoringFastWakeEligible = data.monitoringFastWakeEligible === true &&
             staticCoverageValid;
         power.monitoringFastWakeBlockerReason = power.monitoringFastWakeEligible
@@ -1308,14 +1543,50 @@ class PluginProcessor extends AudioWorkletProcessor {
                 capability.capability === 'age-by-skipped-frames'
             ));
         power.temporalSkipEligible = data.temporalSkipEligible === true && temporalCoverageValid;
-        power.lowLevelWakeFramesRequired = Math.round(globalThis.sampleRate * 0.15);
         power.ewmaAlpha = 1 - Math.exp(-128 / (globalThis.sampleRate * 2));
         power.dcBlockerR = Math.exp(-2 * Math.PI * 5 / globalThis.sampleRate);
         power.skipSampleRate = globalThis.sampleRate;
         power.pendingConfigWake = true;
         power.activeFullProcessSettled = false;
         this._resetPowerSilenceWindow();
-        this._disarmAutomaticMonitoring();
+        if (!powerIdentityCurrent) {
+            power.lastPowerCommandId = -1;
+            power.lastAcceptedSkipEpoch = -1;
+        }
+        if (hostGuardValid) {
+            power.state = hostGuardDirective === 'force-monitoring' ? 'monitoring' : 'active';
+            power.processingDirective = hostGuardDirective;
+            power.commandId = data.commandId;
+            power.skipEpoch = data.hostGuardSkipEpoch;
+            power.lastPowerCommandId = data.commandId;
+            power.lastAcceptedSkipEpoch = data.hostGuardSkipEpoch;
+            power.hostResumeTerminal = null;
+            power.skippedFrameCount = preserveHostSkipFrames
+                ? preservedSkippedFrameCount
+                : 0;
+            power.skippedFrameRemainder = preserveHostSkipFrames
+                ? preservedSkippedFrameRemainder
+                : 0;
+            power.skipSampleRate = preserveHostSkipFrames
+                ? preservedSkipSampleRate
+                : globalThis.sampleRate;
+            this._disarmAutomaticMonitoring();
+            power.pendingFirstRenderCommandId = data.commandId;
+        } else if (powerIdentityCurrent && previousHostSkipActive) {
+            power.state = previousDirective === 'force-monitoring' ? 'monitoring' : 'active';
+            power.processingDirective = previousDirective;
+            power.commandId = preservedCommandId;
+            power.skipEpoch = preservedSkipEpoch;
+            power.hostResumeTerminal = preservedHostResumeTerminal;
+            power.skippedFrameCount = preservedSkippedFrameCount;
+            power.skippedFrameRemainder = preservedSkippedFrameRemainder;
+            power.skipSampleRate = preservedSkipSampleRate;
+            this._disarmAutomaticMonitoring();
+        } else {
+            power.state = 'active';
+            power.processingDirective = 'full-process';
+            this._clearPowerSkipOwnership();
+        }
         this.port.postMessage({
             type: 'powerStateAck',
             commandId: data.commandId ?? null,
@@ -1323,6 +1594,9 @@ class PluginProcessor extends AudioWorkletProcessor {
             topologyRevision: power.topologyRevision,
             renderSequence: power.renderSequence,
             configured: true,
+            skipEpoch: power.skipEpoch,
+            state: power.state,
+            processingDirective: power.processingDirective,
             monitoringFastWakeEligible: power.monitoringFastWakeEligible,
             monitoringFastWakeBlockerReason: power.monitoringFastWakeBlockerReason
         });
@@ -1336,81 +1610,125 @@ class PluginProcessor extends AudioWorkletProcessor {
             directive !== 'force-monitoring' && directive !== 'bypass-transport' &&
             directive !== 'zero-output-transport') return;
 
-        const previousDirective = power.processingDirective;
-        const skippingDirective = directive === 'force-monitoring' ||
+        const deliberateSkipDirective = directive === 'force-monitoring' ||
             directive === 'bypass-transport' || directive === 'zero-output-transport';
-        const skipIdentityValid = !skippingDirective ||
-            Number.isSafeInteger(data.skipEpoch) && data.skipEpoch >= 0;
-        const enteringNewSkipEpoch = skippingDirective &&
+        const skipOwnershipDirective = deliberateSkipDirective || directive === 'allow-automatic';
+        const commandIdValid = Number.isSafeInteger(data.commandId) && data.commandId >= 0 &&
+            data.commandId > power.lastPowerCommandId;
+        const skipEpochValid = !skipOwnershipDirective ||
+            Number.isSafeInteger(data.skipEpoch) && data.skipEpoch >= 0 &&
+            data.skipEpoch > power.lastAcceptedSkipEpoch;
+        if (!commandIdValid || !skipEpochValid) {
+            this.port.postMessage({
+                type: 'powerStateAck',
+                commandId: data.commandId ?? null,
+                skipEpoch: power.skipEpoch,
+                workletGraphGeneration: power.workletGraphGeneration,
+                topologyRevision: power.topologyRevision,
+                processingDirective: power.processingDirective,
+                state: power.state,
+                renderSequence: power.renderSequence,
+                armStartFrame: power.armStartFrame,
+                automaticMonitoringArm: { ...power.arm },
+                automaticArmAccepted: directive === 'allow-automatic' ? false : null,
+                commandAccepted: false,
+                commandRejectedReason: 'stale-power-command'
+            });
+            return;
+        }
+        power.lastPowerCommandId = data.commandId;
+        const previousDirective = power.processingDirective;
+        const enteringNewSkipEpoch = deliberateSkipDirective &&
             (previousDirective !== directive || power.skipEpoch !== data.skipEpoch);
+        const hostSkipActive = power.commandId !== null && (
+            previousDirective === 'force-monitoring' ||
+            previousDirective === 'zero-output-transport' ||
+            previousDirective === 'bypass-transport'
+        );
+        const preserveHostSkipState = data.preserveHostSkipState === true &&
+            deliberateSkipDirective && hostSkipActive && previousDirective === directive;
         let automaticArmAccepted = null;
-        if (!skipIdentityValid ||
-            (directive === 'allow-automatic' && !power.monitoringFastWakeEligible) ||
+        let commandAccepted = false;
+        let commandRejectedReason = 'unsafe-power-command';
+        if (directive === 'full-process' && hostSkipActive) {
+            commandRejectedReason = 'atomic-temporal-resume-required';
+        } else if ((directive === 'allow-automatic' && !power.monitoringFastWakeEligible) ||
             ((directive === 'force-monitoring' || directive === 'zero-output-transport' ||
-                directive === 'bypass-transport') && !power.temporalSkipEligible)) {
+                directive === 'bypass-transport') && !power.temporalSkipEligible &&
+                !preserveHostSkipState)) {
             power.state = 'active';
             power.processingDirective = 'full-process';
-            this._disarmAutomaticMonitoring();
+            this._clearPowerSkipOwnership();
         } else {
             power.processingDirective = directive;
             if (directive === 'force-monitoring') {
                 power.state = 'monitoring';
+                commandAccepted = true;
                 if (enteringNewSkipEpoch) {
-                    power.skippedFrameCount = 0;
-                    power.skippedFrameRemainder = 0;
-                    power.skipSampleRate = globalThis.sampleRate;
+                    if (!preserveHostSkipState) {
+                        power.skippedFrameCount = 0;
+                        power.skippedFrameRemainder = 0;
+                        power.skipSampleRate = globalThis.sampleRate;
+                    }
+                    power.hostResumeTerminal = null;
                 }
-                power.lowLevelWakeFrames = 0;
                 this._disarmAutomaticMonitoring();
             } else if (directive === 'allow-automatic') {
                 power.state = 'active';
                 const isFreshArm = data.state === 'active' && previousDirective === 'full-process' &&
                     power.activeFullProcessSettled &&
-                    Number.isSafeInteger(data.commandId) &&
-                    data.commandId > power.lastAcceptedArmCommandId &&
-                    Number.isSafeInteger(data.skipEpoch) &&
-                    data.skipEpoch > power.lastAcceptedSkipEpoch &&
-                    data.skipEpoch > power.lastConsumedSkipEpoch &&
                     Number.isSafeInteger(data.armAfterRenderSequence) &&
                     power.renderSequence >= data.armAfterRenderSequence &&
                     power.monitoringStaticCoverageValid;
                 if (isFreshArm) {
                     automaticArmAccepted = true;
+                    commandAccepted = true;
                     power.arm.state = 'armed';
                     power.arm.commandId = data.commandId;
                     power.arm.skipEpoch = data.skipEpoch;
                     power.arm.armAfterRenderSequence = data.armAfterRenderSequence;
                     power.armStartFrame = this.currentFrame;
-                    power.lastAcceptedArmCommandId = data.commandId;
-                    power.lastAcceptedSkipEpoch = data.skipEpoch;
                     power.skipSampleRate = globalThis.sampleRate;
                     power.skippedFrameCount = 0;
                     power.skippedFrameRemainder = 0;
+                    power.hostResumeTerminal = null;
                     this._resetPowerSilenceWindow();
                 } else {
                     automaticArmAccepted = false;
                     power.processingDirective = 'full-process';
                     power.activeFullProcessSettled = false;
-                    this._disarmAutomaticMonitoring();
+                    this._clearPowerSkipOwnership();
                 }
             } else {
                 power.state = 'active';
-                if (directive === 'full-process') power.activeFullProcessSettled = false;
+                commandAccepted = true;
+                if (directive === 'full-process') {
+                    power.activeFullProcessSettled = false;
+                    this._clearPowerSkipOwnership();
+                }
                 if (enteringNewSkipEpoch &&
                     (directive === 'zero-output-transport' || directive === 'bypass-transport')) {
-                    power.skippedFrameCount = 0;
-                    power.skippedFrameRemainder = 0;
-                    power.skipSampleRate = globalThis.sampleRate;
+                    if (!preserveHostSkipState) {
+                        power.skippedFrameCount = 0;
+                        power.skippedFrameRemainder = 0;
+                        power.skipSampleRate = globalThis.sampleRate;
+                    }
+                    power.hostResumeTerminal = null;
                 }
-                this._disarmAutomaticMonitoring();
+                if (directive !== 'full-process') {
+                    this._disarmAutomaticMonitoring();
+                }
             }
         }
-        power.commandId = data.commandId ?? null;
-        power.skipEpoch = data.skipEpoch ?? null;
-        power.pendingFirstRenderCommandId = power.commandId;
+        if (commandAccepted) {
+            if (skipOwnershipDirective) power.lastAcceptedSkipEpoch = data.skipEpoch;
+            power.commandId = data.commandId;
+            power.skipEpoch = skipOwnershipDirective ? data.skipEpoch : null;
+        }
+        power.pendingFirstRenderCommandId = data.commandId;
         this.port.postMessage({
             type: 'powerStateAck',
-            commandId: power.commandId,
+            commandId: data.commandId,
             skipEpoch: power.skipEpoch,
             workletGraphGeneration: power.workletGraphGeneration,
             topologyRevision: power.topologyRevision,
@@ -1419,30 +1737,50 @@ class PluginProcessor extends AudioWorkletProcessor {
             renderSequence: power.renderSequence,
             armStartFrame: power.armStartFrame,
             automaticMonitoringArm: { ...power.arm },
-            automaticArmAccepted
+            automaticArmAccepted,
+            commandAccepted,
+            commandRejectedReason: commandAccepted ? null : commandRejectedReason
         });
     }
 
-    prepareTemporalState(data) {
+    prepareTemporalStateAndResume(data) {
         const power = this.powerPolicy;
         if (!power.enabled || !this._matchesPowerIdentity(data)) return;
-        const commandIdentityValid = data.origin === 'deliberate' &&
+        const requestIdentityValid = data.origin === 'deliberate' &&
             data.ownerOperationId !== null && data.ownerOperationId !== undefined &&
-            data.commandId === power.commandId && data.skipEpoch === power.skipEpoch &&
+            Number.isSafeInteger(data.commandId) && data.commandId >= 0 &&
+            Number.isSafeInteger(data.skipEpoch) && data.skipEpoch >= 0 &&
+            Number.isSafeInteger(data.resumeCommandId) && data.resumeCommandId >= 0 &&
             (Number.isSafeInteger(data.ackCommandId) ||
                 typeof data.ackCommandId === 'string' && data.ackCommandId.length > 0);
-        if (!commandIdentityValid) return;
+        if (!requestIdentityValid) return;
 
-        const capabilities = power.temporalCapabilities;
-        const uniqueIds = new Set();
-        const counts = {
-            stateless: 0,
-            resetOnResume: 0,
-            agedBySkippedFrames: 0,
-            mustProcess: 0
-        };
-        const baseFrameCountValid = Number.isSafeInteger(data.skippedFrameCount) &&
-            data.skippedFrameCount >= 0 && data.skippedFrameCount === power.skippedFrameCount;
+        const terminal = power.hostResumeTerminal;
+        if (terminal?.commandId === data.commandId && terminal.skipEpoch === data.skipEpoch) {
+            if (terminal.state === 'acknowledged') {
+                power.pendingFirstRenderCommandId = terminal.resumeCommandId;
+            }
+            this.port.postMessage({
+                type: 'temporalStateResumed',
+                ...terminal,
+                ownerOperationId: data.ownerOperationId,
+                ackCommandId: data.ackCommandId
+            });
+            return;
+        }
+
+        const hostSkipActive = power.processingDirective === 'force-monitoring' ||
+            power.processingDirective === 'zero-output-transport' ||
+            power.processingDirective === 'bypass-transport';
+        const commandIdentityValid = hostSkipActive &&
+            data.commandId === power.commandId && data.skipEpoch === power.skipEpoch &&
+            data.resumeCommandId > power.lastPowerCommandId;
+        if (!commandIdentityValid) return;
+        power.lastPowerCommandId = data.resumeCommandId;
+
+        const liveSkippedFrameCount = power.skippedFrameCount;
+        const baseFrameCountValid = Number.isSafeInteger(liveSkippedFrameCount) &&
+            liveSkippedFrameCount >= 0;
         const elapsedVerified = data.elapsedContinuity === 'verified' &&
             Number.isFinite(data.suspendedElapsedMs) && data.suspendedElapsedMs >= 0 &&
             Number.isFinite(data.resumeSampleRate) && data.resumeSampleRate > 0 &&
@@ -1451,83 +1789,76 @@ class PluginProcessor extends AudioWorkletProcessor {
         const elapsedUnknown = data.elapsedContinuity === 'unknown' &&
             data.suspendedElapsedMs === 0;
         let derivedFrames = 0;
-        let nextRemainder = power.skippedFrameRemainder;
         if (elapsedVerified) {
             const exactFrames = data.suspendedElapsedMs * data.resumeSampleRate / 1000 +
                 power.skippedFrameRemainder;
             derivedFrames = Math.floor(exactFrames);
-            nextRemainder = exactFrames - derivedFrames;
         }
-        const totalSkippedFrameCount = data.skippedFrameCount + derivedFrames;
-        const actualIds = this._getEnabledPowerPluginIds();
-        const actualIdSet = new Set(actualIds);
-        let coverageValid = baseFrameCountValid && (elapsedVerified || elapsedUnknown) &&
+        const totalSkippedFrameCount = liveSkippedFrameCount + derivedFrames;
+        const elapsedValid = baseFrameCountValid && (elapsedVerified || elapsedUnknown) &&
             Number.isSafeInteger(derivedFrames) && derivedFrames >= 0 &&
-            Number.isSafeInteger(totalSkippedFrameCount) && totalSkippedFrameCount >= 0 &&
-            capabilities.length === power.enabledPluginCount &&
-            actualIds.length === power.enabledPluginCount;
-        for (const entry of capabilities) {
-            const identity = entry?.pluginId;
-            if (identity === null || identity === undefined || uniqueIds.has(identity) ||
-                !actualIdSet.has(identity)) coverageValid = false;
-            else uniqueIds.add(identity);
-            if (entry.capability !== 'stateless' &&
-                entry.capability !== 'reset-on-resume' &&
-                entry.capability !== 'age-by-skipped-frames') coverageValid = false;
-        }
-        let state = 'acknowledged';
-        let errorCode = null;
-        if (!coverageValid) {
-            state = 'error';
-            errorCode = 'temporal-prevalidated-coverage-mismatch';
-        } else {
-            try {
-                for (const entry of capabilities) {
-                    if (entry.capability === 'stateless') {
-                        counts.stateless++;
-                    } else if (entry.capability === 'reset-on-resume') {
-                        if (!this._resetTemporalPlugin(entry.pluginId)) {
-                            throw new Error('temporal reset failed');
-                        }
-                        counts.resetOnResume++;
-                    } else if (!elapsedVerified) {
-                        if (!this._resetTemporalPlugin(entry.pluginId)) {
-                            throw new Error('temporal reset fallback failed');
-                        }
-                        counts.resetOnResume++;
-                    } else {
-                        if (!this._ageTemporalPlugin(entry, totalSkippedFrameCount)) {
-                            throw new Error('temporal analytic age failed');
-                        }
-                        counts.agedBySkippedFrames++;
-                    }
-                }
-                power.skippedFrameCount = totalSkippedFrameCount;
-                power.skippedFrameRemainder = elapsedVerified ? nextRemainder : 0;
-            } catch (_) {
-                state = 'error';
-                errorCode = 'temporal-preparation-runtime-failed';
-            }
-        }
-        this.port.postMessage({
-            type: 'temporalStatePrepared',
+            Number.isSafeInteger(totalSkippedFrameCount) && totalSkippedFrameCount >= 0;
+        const preparation = elapsedValid
+            ? this._prepareTemporalCapabilities(totalSkippedFrameCount, {
+                ageBySkippedFrames: elapsedVerified
+            })
+            : {
+                success: false,
+                errorCode: 'temporal-prevalidated-coverage-mismatch',
+                counts: {
+                    stateless: 0,
+                    resetOnResume: 0,
+                    agedBySkippedFrames: 0,
+                    mustProcess: 0
+                },
+                coveredPluginCount: 0
+            };
+        const state = preparation.success ? 'acknowledged' : 'error';
+        const result = {
             state,
             origin: 'deliberate',
             ownerOperationId: data.ownerOperationId ?? null,
             commandId: data.commandId ?? null,
+            resumeCommandId: data.resumeCommandId,
             ackCommandId: data.ackCommandId ?? null,
             skipEpoch: data.skipEpoch ?? null,
             workletGraphGeneration: power.workletGraphGeneration,
             topologyRevision: power.topologyRevision,
             enabledPluginCount: power.enabledPluginCount,
-            coveredPluginCount: uniqueIds.size,
-            appliedPolicyCounts: counts,
+            coveredPluginCount: preparation.coveredPluginCount,
+            appliedPolicyCounts: preparation.counts,
             skippedFrameCount: state === 'acknowledged'
-                ? power.skippedFrameCount
-                : data.skippedFrameCount,
+                ? totalSkippedFrameCount
+                : power.skippedFrameCount,
             renderSequence: power.renderSequence,
-            errorCode
-        });
+            errorCode: preparation.errorCode,
+            monitoringFastWakeEligible: preparation.success
+                ? power.monitoringFastWakeEligible
+                : false,
+            monitoringFastWakeBlockerReason: preparation.success
+                ? power.monitoringFastWakeBlockerReason
+                : 'temporal-preparation-runtime-failed'
+        };
+        if (preparation.success) {
+            power.state = 'active';
+            power.processingDirective = 'full-process';
+            power.activeFullProcessSettled = false;
+            power.pendingConfigWake = false;
+            this._clearPowerSkipOwnership();
+            power.pendingFirstRenderCommandId = data.resumeCommandId;
+            this._resetPowerSilenceWindow();
+        } else {
+            power.monitoringFastWakeEligible = false;
+            power.monitoringFastWakeBlockerReason = 'temporal-preparation-runtime-failed';
+            power.counters.monitoringRuntimeFailures++;
+            power.pendingConfigWake = false;
+        }
+        power.hostResumeTerminal = {
+            ...result,
+            ownerOperationId: null,
+            ackCommandId: null
+        };
+        this.port.postMessage({ type: 'temporalStateResumed', ...result });
     }
 
     async initializeDsp(data) {
@@ -1575,7 +1906,8 @@ class PluginProcessor extends AudioWorkletProcessor {
             this.wasmKernels = new Map(
                 capabilities.kernels.map(kernel => [kernel.name, {
                     paramsHash: kernel.hash >>> 0,
-                    byteCapacity: kernel.byteCapacity ?? 0
+                    byteCapacity: kernel.byteCapacity ?? 0,
+                    assetCapacity: kernel.assetCapacity ?? 0
                 }])
             );
             this.adoptDspArena();
@@ -1591,7 +1923,8 @@ class PluginProcessor extends AudioWorkletProcessor {
                 kernels: capabilities.kernels.map(kernel => ({
                     name: kernel.name,
                     hash: kernel.hash >>> 0,
-                    byteCapacity: kernel.byteCapacity ?? 0
+                    byteCapacity: kernel.byteCapacity ?? 0,
+                    assetCapacity: kernel.assetCapacity ?? 0
                 })),
                 simd: this.dspSimd
             });
@@ -1719,6 +2052,14 @@ class PluginProcessor extends AudioWorkletProcessor {
     reconcileDspInstances() {
         if (!this.dspLive) return false;
         const currentIds = new Set(this.plugins.map(plugin => plugin.id));
+        for (const pluginId of this.dspAssetCache.keys()) {
+            if (!currentIds.has(pluginId)) {
+                this.dspAssetCache.delete(pluginId);
+                this.dspAssetStates.delete(pluginId);
+                this.dspAssetStateRevisions.delete(pluginId);
+                this.dspAssetStateReplayEpochs.delete(pluginId);
+            }
+        }
         try {
             for (const pluginId of this.wasmInstances.keys()) {
                 if (!currentIds.has(pluginId)) this.destroyDspInstance(pluginId);
@@ -1787,6 +2128,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             if (tapStatus !== 0) {
                 this.reportDspFailure(`instance:${plugin.id}`, `tap binding returned ${tapStatus}`);
             }
+            this.restageDspAssets(plugin.id);
         }
 
         if (plugin.wasmParams instanceof Float32Array && (plugin.wasmParamsHash >>> 0) === kernel.paramsHash) {
@@ -1823,6 +2165,362 @@ class PluginProcessor extends AudioWorkletProcessor {
         } else {
             entry.ready = false;
         }
+    }
+
+    normalizeAssetOperationRevision(value) {
+        return Number.isSafeInteger(value) && value > 0 ? value : null;
+    }
+
+    normalizeAssetReplayEpoch(value) {
+        return Number.isSafeInteger(value) && value > 0 ? value : null;
+    }
+
+    postAssetState(
+        pluginId,
+        slot,
+        state,
+        operationRevision = null,
+        force = false,
+        replayEpoch = null
+    ) {
+        operationRevision = this.normalizeAssetOperationRevision(operationRevision);
+        replayEpoch = this.normalizeAssetReplayEpoch(replayEpoch);
+        let states = this.dspAssetStates.get(pluginId);
+        if (!states) {
+            states = new Map();
+            this.dspAssetStates.set(pluginId, states);
+        }
+        let revisions = this.dspAssetStateRevisions.get(pluginId);
+        if (!revisions) {
+            revisions = new Map();
+            this.dspAssetStateRevisions.set(pluginId, revisions);
+        }
+        let replayEpochs = this.dspAssetStateReplayEpochs.get(pluginId);
+        if (!replayEpochs) {
+            replayEpochs = new Map();
+            this.dspAssetStateReplayEpochs.set(pluginId, replayEpochs);
+        }
+        if (!force && states.get(slot) === state && revisions.has(slot) &&
+            revisions.get(slot) === operationRevision && replayEpochs.has(slot) &&
+            replayEpochs.get(slot) === replayEpoch) return false;
+        states.set(slot, state);
+        revisions.set(slot, operationRevision);
+        replayEpochs.set(slot, replayEpoch);
+        this.port.postMessage({
+            type: 'assetState',
+            pluginId,
+            slot,
+            state,
+            ...(operationRevision !== null && { operationRevision }),
+            ...(replayEpoch !== null && { replayEpoch })
+        });
+        return true;
+    }
+
+    postAssetLoadRejected(
+        pluginId,
+        slot,
+        reason,
+        operationRevision = null,
+        retention = {},
+        replayEpoch = null
+    ) {
+        operationRevision = this.normalizeAssetOperationRevision(operationRevision);
+        replayEpoch = this.normalizeAssetReplayEpoch(replayEpoch);
+        const retainedOperationRevision = this.normalizeAssetOperationRevision(
+            retention.retainedOperationRevision
+        );
+        const retainedReplayEpoch = this.normalizeAssetReplayEpoch(
+            retention.retainedReplayEpoch
+        );
+        const retainedAssetState = Number.isInteger(retention.retainedAssetState)
+            ? retention.retainedAssetState >>> 0
+            : 0;
+        const retainedStatus = retainedAssetState & 0xff;
+        const residentRetained = retention.residentRetained === true &&
+            retainedOperationRevision !== null && retainedStatus >= 1 && retainedStatus <= 3;
+        const replayFailure = retention.replayFailure === true;
+        this.port.postMessage({
+            type: 'assetLoadRejected',
+            pluginId,
+            slot,
+            reason,
+            residentRetained,
+            replayFailure,
+            ...(residentRetained && { retainedOperationRevision }),
+            ...(residentRetained && { retainedAssetState }),
+            ...(residentRetained && retainedReplayEpoch !== null && { retainedReplayEpoch }),
+            ...(operationRevision !== null && { operationRevision }),
+            ...(replayEpoch !== null && { replayEpoch })
+        });
+    }
+
+    pruneDspAssetSlot(pluginId, slot) {
+        const slots = this.dspAssetCache.get(pluginId);
+        slots?.delete(slot);
+        if (slots?.size === 0) this.dspAssetCache.delete(pluginId);
+        const states = this.dspAssetStates.get(pluginId);
+        states?.delete(slot);
+        if (states?.size === 0) this.dspAssetStates.delete(pluginId);
+        const revisions = this.dspAssetStateRevisions.get(pluginId);
+        revisions?.delete(slot);
+        if (revisions?.size === 0) this.dspAssetStateRevisions.delete(pluginId);
+        const replayEpochs = this.dspAssetStateReplayEpochs.get(pluginId);
+        replayEpochs?.delete(slot);
+        if (replayEpochs?.size === 0) this.dspAssetStateReplayEpochs.delete(pluginId);
+    }
+
+    rejectDspAssetCandidate(
+        pluginId,
+        slot,
+        reason,
+        operationRevision,
+        previousDescriptor = null,
+        replayFailure = false,
+        nativeAttempted = false,
+        replayEpoch = null
+    ) {
+        const retainedOperationRevision = this.normalizeAssetOperationRevision(
+            previousDescriptor?.operationRevision
+        );
+        const retainedReplayEpoch = this.normalizeAssetReplayEpoch(previousDescriptor?.replayEpoch);
+        const previousState = this.dspAssetStates.get(pluginId)?.get(slot) ?? 0;
+        const previousStateRevision = this.dspAssetStateRevisions.get(pluginId)?.get(slot);
+        const entry = this.wasmInstances.get(pluginId);
+        let nativeState = 0;
+        if (entry && this.dspLive && this.dspBinding) {
+            nativeState = this.dspBinding.instanceAssetState(entry.id, slot) >>> 0;
+        }
+        const metadataMatches = previousDescriptor !== null && retainedOperationRevision !== null &&
+            previousStateRevision === retainedOperationRevision;
+        const retainedAssetState = !replayFailure && metadataMatches
+            ? (entry && this.dspLive && this.dspBinding
+                ? nativeState
+                : (!nativeAttempted ? 1 : 0))
+            : 0;
+        const retainedStatus = retainedAssetState & 0xff;
+        const previousStatus = previousState & 0xff;
+        const residentRetained = retainedStatus >= 1 && retainedStatus <= 3 &&
+            (Boolean(entry) || previousStatus >= 1 && previousStatus <= 3);
+        if (residentRetained) {
+            this.dspAssetStates.get(pluginId)?.set(slot, retainedAssetState);
+            this.dspAssetStateRevisions.get(pluginId)?.set(slot, retainedOperationRevision);
+        } else {
+            this.pruneDspAssetSlot(pluginId, slot);
+        }
+        this.postAssetLoadRejected(pluginId, slot, reason, operationRevision, {
+            residentRetained,
+            retainedOperationRevision,
+            retainedAssetState,
+            retainedReplayEpoch,
+            replayFailure
+        }, replayEpoch);
+    }
+
+    dspAssetFootprintBytes(excludedPluginId = null, excludedSlot = null) {
+        let total = 0;
+        for (const [pluginId, slots] of this.dspAssetCache) {
+            for (const [slot, asset] of slots) {
+                if (pluginId === excludedPluginId && slot === excludedSlot) continue;
+                total += asset.footprintBytes;
+            }
+        }
+        return total;
+    }
+
+    setPluginAsset(data) {
+        const pluginId = data?.pluginId;
+        const slot = data?.slot >>> 0;
+        const payload = data?.payload;
+        const operationRevision = this.normalizeAssetOperationRevision(data?.operationRevision);
+        const replayEpoch = this.normalizeAssetReplayEpoch(data?.replayEpoch);
+        const invalidRevision = data?.operationRevision !== undefined && operationRevision === null;
+        const invalidReplayEpoch = data?.replayEpoch !== undefined && replayEpoch === null;
+        const previousDescriptor = Number.isInteger(pluginId)
+            ? this.dspAssetCache.get(pluginId)?.get(slot) || null
+            : null;
+        if (!Number.isInteger(pluginId) || !(payload instanceof ArrayBuffer) || payload.byteLength < 32) {
+            console.warn('[dsp-wasm] Ignored an invalid plugin asset payload.');
+            if (Number.isInteger(pluginId)) {
+                this.rejectDspAssetCandidate(
+                    pluginId, slot, 'invalid-asset', operationRevision, previousDescriptor,
+                    replayEpoch !== null, false, replayEpoch
+                );
+            }
+            return;
+        }
+        const header = new DataView(payload);
+        const channels = header.getUint32(4, true);
+        const frames = header.getUint32(8, true);
+        const topology = header.getUint32(16, true);
+        const pathCount = data.pathCount >>> 0;
+        const processingChannels = data.processingChannels >>> 0;
+        const footprintBytes = data.footprintBytes;
+        const pathBytes = topology === 4 ? pathCount * 12 : 0;
+        const expectedBytes = 32 + pathBytes + channels * frames * 4;
+        if (header.getUint32(0, true) !== 0x31415445 || channels === 0 || channels > 8 ||
+            frames === 0 || topology > 4 || expectedBytes !== payload.byteLength ||
+            processingChannels === 0 || processingChannels > ET_DSP_MAX_CHANNELS ||
+            !Number.isSafeInteger(footprintBytes) || footprintBytes < payload.byteLength ||
+            invalidRevision || invalidReplayEpoch) {
+            console.warn('[dsp-wasm] Rejected a malformed plugin asset payload.');
+            this.rejectDspAssetCandidate(
+                pluginId, slot, 'invalid-asset', operationRevision, previousDescriptor,
+                replayEpoch !== null, false, replayEpoch
+            );
+            return;
+        }
+        const aggregateFootprint =
+            this.dspAssetFootprintBytes(pluginId, slot) + footprintBytes;
+        if (aggregateFootprint > ET_DSP_ASSET_AGGREGATE_BUDGET_BYTES) {
+            console.warn('[dsp-wasm] Plugin asset load exceeds the module asset budget.');
+            this.rejectDspAssetCandidate(
+                pluginId, slot, 'module-budget', operationRevision, previousDescriptor,
+                replayEpoch !== null, false, replayEpoch
+            );
+            return;
+        }
+        const candidate = {
+            payload: new Uint8Array(payload),
+            beginInfo: {
+                channels,
+                frames,
+                topology,
+                headBlock: data.headBlock >>> 0,
+                rateDivider: data.rateDivider >>> 0,
+                pathCount,
+                inputCount: data.inputCount >>> 0,
+                processingChannels,
+                footprintBytes
+            },
+            formatTag: data.formatTag >>> 0,
+            footprintBytes,
+            operationRevision,
+            replayEpoch
+        };
+        const stageResult = this.stageDspAsset(pluginId, slot, candidate);
+        if (stageResult === false) return;
+        let slots = this.dspAssetCache.get(pluginId);
+        if (!slots) {
+            slots = new Map();
+            this.dspAssetCache.set(pluginId, slots);
+        }
+        slots.set(slot, candidate);
+        if (stageResult === null) {
+            this.postAssetState(pluginId, slot, 1, operationRevision, true, replayEpoch);
+        }
+        if (this.isDspAssetWakeEligible(pluginId)) {
+            this.audioLevelMonitoring.isSleepMode = false;
+            this.powerPolicy.pendingConfigWake = true;
+        }
+    }
+
+    stageDspAsset(pluginId, slot, candidate = null) {
+        const replayFailure = candidate === null || candidate?.replayEpoch !== null;
+        const previousDescriptor = this.dspAssetCache.get(pluginId)?.get(slot) || null;
+        const cached = candidate || this.dspAssetCache.get(pluginId)?.get(slot);
+        const entry = this.wasmInstances.get(pluginId);
+        if (!cached || !entry || !this.dspLive || !this.dspBinding) {
+            return cached ? null : false;
+        }
+        const previousMemory = this.bufferPool.combined?.buffer;
+        let status;
+        try {
+            status = this.dspBinding.instanceSetAsset(
+                entry.id,
+                slot,
+                cached.payload,
+                cached.beginInfo,
+                cached.formatTag
+            );
+        } finally {
+            if (this.dspBinding.memory?.buffer !== previousMemory) this.adoptDspArena();
+        }
+        if (status !== 0) {
+            console.warn(`[dsp-wasm] Asset staging failed for plugin ${pluginId}, slot ${slot}.`);
+            this.rejectDspAssetCandidate(
+                pluginId,
+                slot,
+                'capacity',
+                cached.operationRevision,
+                previousDescriptor,
+                replayFailure,
+                true,
+                cached.replayEpoch
+            );
+            return false;
+        }
+        this.postAssetState(pluginId, slot,
+            this.dspBinding.instanceAssetState(entry.id, slot), cached.operationRevision, true,
+            cached.replayEpoch);
+        return true;
+    }
+
+    restageDspAssets(pluginId) {
+        const slots = this.dspAssetCache.get(pluginId);
+        if (!slots) return;
+        for (const slot of slots.keys()) this.stageDspAsset(pluginId, slot);
+    }
+
+    clearPluginAsset(data) {
+        const pluginId = data?.pluginId;
+        const slot = data?.slot >>> 0;
+        const operationRevision = this.normalizeAssetOperationRevision(data?.operationRevision);
+        const replayEpoch = this.normalizeAssetReplayEpoch(data?.replayEpoch);
+        if (!Number.isInteger(pluginId) ||
+            (data?.operationRevision !== undefined && operationRevision === null) ||
+            (data?.replayEpoch !== undefined && replayEpoch === null)) {
+            return;
+        }
+        const slots = this.dspAssetCache.get(pluginId);
+        slots?.delete(slot);
+        if (slots?.size === 0) this.dspAssetCache.delete(pluginId);
+        const entry = this.wasmInstances.get(pluginId);
+        if (entry && this.dspBinding) this.dspBinding.instanceAssetAbort(entry.id, slot);
+        this.postAssetState(pluginId, slot, 0, operationRevision, false, replayEpoch);
+    }
+
+    isDspAssetWakeEligible(pluginId) {
+        if (this.masterBypass) return false;
+        let sectionEnabled = true;
+        for (const plugin of this.plugins) {
+            if (plugin.type === 'SectionPlugin') {
+                sectionEnabled = Boolean(plugin.enabled);
+            } else if (plugin.id === pluginId) {
+                return Boolean(plugin.enabled) && sectionEnabled;
+            }
+        }
+        return false;
+    }
+
+    pollDspAssetStates() {
+        let preparing = false;
+        let changed = false;
+        if (this.dspLive && this.dspBinding) {
+            for (const [pluginId, slots] of this.dspAssetCache) {
+                const entry = this.wasmInstances.get(pluginId);
+                if (!entry) continue;
+                const wakeEligible = this.isDspAssetWakeEligible(pluginId);
+                for (const [slot, cached] of slots) {
+                    const state = this.dspBinding.instanceAssetState(entry.id, slot);
+                    if (this.postAssetState(
+                        pluginId,
+                        slot,
+                        state,
+                        cached.operationRevision,
+                        false,
+                        cached.replayEpoch
+                    )) changed = true;
+                    if ((state & 0xff) === 2 && wakeEligible) preparing = true;
+                }
+            }
+        }
+        if (preparing) {
+            this.audioLevelMonitoring.isSleepMode = false;
+            this.powerPolicy.pendingConfigWake = true;
+        }
+        if (changed && this.dspPipelineReady) this.updateDspPipelineLatency();
+        return preparing;
     }
 
     refreshDspPipeline() {
@@ -2219,6 +2917,10 @@ class PluginProcessor extends AudioWorkletProcessor {
         try {
             this.plugins.splice(index, 1);
             this.pluginContexts.delete(pluginId);
+            this.dspAssetCache.delete(pluginId);
+            this.dspAssetStates.delete(pluginId);
+            this.dspAssetStateRevisions.delete(pluginId);
+            this.dspAssetStateReplayEpochs.delete(pluginId);
             try {
                 this.destroyDspInstance(pluginId);
             } catch (error) {
@@ -2327,6 +3029,8 @@ class PluginProcessor extends AudioWorkletProcessor {
             renderSequence: power.renderSequence,
             skippedFrameCount: power.skippedFrameCount,
             automaticMonitoringArm: { ...power.arm },
+            monitoringFastWakeEligible: power.monitoringFastWakeEligible,
+            monitoringFastWakeBlockerReason: power.monitoringFastWakeBlockerReason,
             counters: { ...power.counters }
         });
         power.lastReportedInputActive = inputActive;
@@ -2335,7 +3039,13 @@ class PluginProcessor extends AudioWorkletProcessor {
         if (heartbeatDue) power.lastHeartbeatFrame = this.currentFrame;
     }
 
-    _finishPowerRender(inputPower, outputPower, blockSize, eventReason = null) {
+    _finishPowerRender(
+        inputPower,
+        outputPower,
+        blockSize,
+        eventReason = null,
+        fullDspRenderCompleted = true
+    ) {
         const power = this.powerPolicy;
         const alpha = power.ewmaAlpha;
         const inputFinite = Number.isFinite(inputPower);
@@ -2347,11 +3057,16 @@ class PluginProcessor extends AudioWorkletProcessor {
 
         if (inputActive || outputActive) {
             power.silentSinceFrame = null;
+            power.monitoringPreparationPending = false;
         } else if (power.silentSinceFrame === null) {
             power.silentSinceFrame = this.currentFrame - blockSize;
         }
 
-        if (power.pendingFirstRenderCommandId !== null) {
+        const skipTransportRendered = power.processingDirective === 'force-monitoring' ||
+            power.processingDirective === 'zero-output-transport' ||
+            power.processingDirective === 'bypass-transport';
+        if (power.pendingFirstRenderCommandId !== null &&
+            (fullDspRenderCompleted || skipTransportRendered)) {
             this.port.postMessage({
                 type: 'powerFirstRender',
                 commandId: power.pendingFirstRenderCommandId,
@@ -2368,21 +3083,46 @@ class PluginProcessor extends AudioWorkletProcessor {
             power.pendingFirstRenderCommandId = null;
         }
 
-        if (power.arm.state === 'armed' && power.processingDirective === 'allow-automatic') {
+        if (fullDspRenderCompleted && power.arm.state === 'armed' &&
+            power.processingDirective === 'allow-automatic') {
             power.inputSilentFrames = inputActive ? 0 : power.inputSilentFrames + blockSize;
             power.outputSilentFrames = outputActive ? 0 : power.outputSilentFrames + blockSize;
             if (!inputActive && !outputActive &&
                 power.inputSilentFrames >= power.silenceFramesRequired &&
                 power.outputSilentFrames >= power.silenceFramesRequired) {
-                power.state = 'monitoring';
-                power.processingDirective = 'allow-automatic';
-                power.arm.state = 'consumed';
-                power.lastConsumedSkipEpoch = power.arm.skipEpoch;
-                power.skippedFrameCount = 0;
-                power.skippedFrameRemainder = 0;
-                power.skipSampleRate = globalThis.sampleRate;
-                power.lowLevelWakeFrames = 0;
-                eventReason = 'automatic-silence';
+                if (power.monitoringPreparationRequired &&
+                    !power.monitoringPreparationPending) {
+                    let prepared = false;
+                    try {
+                        prepared = this._prepareAutomaticMonitoringState();
+                    } catch (_) {
+                        prepared = false;
+                    }
+                    if (prepared) {
+                        // The next full-process quantum recreates and warms any
+                        // reset JS/WASM state before monitoring can begin.
+                        power.monitoringPreparationPending = true;
+                        eventReason = 'automatic-preparation';
+                    } else {
+                        power.monitoringFastWakeEligible = false;
+                        power.monitoringFastWakeBlockerReason =
+                            'temporal-preparation-runtime-failed';
+                        power.counters.monitoringRuntimeFailures++;
+                        power.processingDirective = 'full-process';
+                        this._disarmAutomaticMonitoring();
+                        eventReason = 'temporal-preparation-runtime-failed';
+                    }
+                } else {
+                    power.monitoringPreparationPending = false;
+                    power.state = 'monitoring';
+                    power.processingDirective = 'allow-automatic';
+                    power.arm.state = 'consumed';
+                    power.lastConsumedSkipEpoch = power.arm.skipEpoch;
+                    power.skippedFrameCount = 0;
+                    power.skippedFrameRemainder = 0;
+                    power.skipSampleRate = globalThis.sampleRate;
+                    eventReason = 'automatic-silence';
+                }
             }
         }
         if (eventReason === null && power.pendingPowerEventReason !== null) {
@@ -2392,7 +3132,8 @@ class PluginProcessor extends AudioWorkletProcessor {
             power.pendingConfigWake = false;
             eventReason = 'config-wake';
         }
-        if (power.state === 'active' && power.processingDirective === 'full-process') {
+        if (fullDspRenderCompleted && power.state === 'active' &&
+            power.processingDirective === 'full-process') {
             power.activeFullProcessSettled = true;
         }
         this._publishPowerObservation(inputActive, outputActive, eventReason);
@@ -2419,6 +3160,7 @@ class PluginProcessor extends AudioWorkletProcessor {
 
     // Optimized process method
     process(inputs, outputs, parameters) {
+        this.pollDspAssetStates();
         const input = inputs[0];
         const output = outputs[0];
 
@@ -2439,7 +3181,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                 this.currentFrame += emptyBlockSize;
                 const emptyInputReason = power.emptyInputActive ? null : 'empty-input';
                 power.emptyInputActive = true;
-                this._finishPowerRender(0, 0, emptyBlockSize, emptyInputReason);
+                this._finishPowerRender(0, 0, emptyBlockSize, emptyInputReason, false);
             }
             // Keep processor alive, even with no input, as input might appear later.
             return true;
@@ -2478,19 +3220,26 @@ class PluginProcessor extends AudioWorkletProcessor {
             if (inputDetectorNonFinite) powerInputPower = Number.POSITIVE_INFINITY;
             const directive = power.processingDirective;
             if (power.state === 'monitoring' || directive === 'force-monitoring') {
-                const predictedInputEwma = inputDetectorNonFinite
-                    ? Number.POSITIVE_INFINITY
-                    : power.inputPowerEwma + power.ewmaAlpha *
-                        (powerInputPower - power.inputPowerEwma);
-                if (predictedInputEwma > power.wakeFloorPower) {
-                    power.lowLevelWakeFrames += blockSize;
-                } else {
-                    power.lowLevelWakeFrames = 0;
+                const finiteGainWake = inputDetectorNonFinite ||
+                    power.inputDetectorResult[1] > power.wakeFloorPower;
+                const anyInputWake = power.wakeOnAnyInput &&
+                    power.inputDetectorResult[1] > 0;
+                const forceMonitoring = directive === 'force-monitoring';
+                const inputActivity = finiteGainWake || anyInputWake;
+                if (forceMonitoring) {
+                    this._copyPowerInput(input, output);
+                    power.counters.monitoringQuanta++;
+                    power.skippedFrameCount += blockSize;
+                    this.currentFrame += blockSize;
+                    this._finishPowerRender(
+                        powerInputPower,
+                        powerInputPower,
+                        blockSize,
+                        inputActivity ? 'host-temporal-resume-required' : null
+                    );
+                    return true;
                 }
-                const fastWake = inputDetectorNonFinite ||
-                    power.inputDetectorResult[1] > power.fastWakeThresholdPower;
-                const lowLevelWake = power.lowLevelWakeFrames >= power.lowLevelWakeFramesRequired;
-                const wake = power.monitoringFastWakeEligible && (fastWake || lowLevelWake);
+                const wake = power.monitoringFastWakeEligible && inputActivity;
                 if (!wake) {
                     this._copyPowerInput(input, output);
                     power.counters.monitoringQuanta++;
@@ -2511,22 +3260,17 @@ class PluginProcessor extends AudioWorkletProcessor {
                     power.monitoringFastWakeBlockerReason = 'temporal-preparation-runtime-failed';
                     power.counters.monitoringRuntimeFailures++;
                     this._disarmAutomaticMonitoring();
-                    this._copyPowerInput(input, output);
-                    this.currentFrame += blockSize;
-                    this._finishPowerRender(
-                        powerInputPower,
-                        powerInputPower,
-                        blockSize,
-                        'temporal-preparation-runtime-failed'
-                    );
-                    return true;
+                    this._resetPowerSilenceWindow();
+                    power.pendingConfigWake = false;
+                    power.pendingPowerEventReason = 'temporal-preparation-runtime-failed';
+                } else {
+                    power.state = 'active';
+                    power.processingDirective = 'full-process';
+                    this._disarmAutomaticMonitoring();
+                    this._resetPowerSilenceWindow();
+                    power.pendingConfigWake = false;
+                    power.pendingPowerEventReason = 'signal-wake';
                 }
-                power.state = 'active';
-                power.processingDirective = 'full-process';
-                this._disarmAutomaticMonitoring();
-                this._resetPowerSilenceWindow();
-                power.pendingConfigWake = false;
-                power.pendingPowerEventReason = 'signal-wake';
             } else if (directive === 'zero-output-transport') {
                 this._zeroPowerOutput(output);
                 power.counters.zeroOutputQuanta++;

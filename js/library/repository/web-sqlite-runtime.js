@@ -206,6 +206,7 @@ const ENTITY_DEFINITIONS = Object.freeze({
       'e.identity_version AS identityVersion',
       'e.name',
       'e.artist',
+      `${createActiveAlbumYearExpression()} AS year`,
       createActiveAggregateSelection('track_albums', 'album_key', 'count(*)', 'track_count', 'trackCount'),
       createActiveAggregateSelection(
         'track_albums', 'album_key', 'COALESCE(SUM(active_track.duration_sec), 0)',
@@ -221,6 +222,16 @@ const ENTITY_DEFINITIONS = Object.freeze({
       ]),
       artist: Object.freeze([
         Object.freeze({ field: 'sortArtist', column: 'sort_artist', type: 'text', nulls: 'last' }),
+        Object.freeze({ field: 'sortName', column: 'sort_name', type: 'text', nulls: 'last' })
+      ]),
+      year: Object.freeze([
+        Object.freeze({
+          field: 'year',
+          column: 'year',
+          expression: createActiveAlbumYearExpression(),
+          type: 'number',
+          nulls: 'last'
+        }),
         Object.freeze({ field: 'sortName', column: 'sort_name', type: 'text', nulls: 'last' })
       ]),
       trackCount: Object.freeze([
@@ -450,6 +461,7 @@ function createActiveAggregateSelection(membershipTable, keyColumn, aggregateExp
 }
 
 function createActiveAggregateExpression(membershipTable, keyColumn, aggregateExpression, fallbackColumn) {
+  const fallbackExpression = fallbackColumn ? `e.${fallbackColumn}` : 'NULL';
   return `(CASE
     WHEN EXISTS(
       SELECT 1 FROM ${membershipTable} any_membership
@@ -462,8 +474,14 @@ function createActiveAggregateExpression(membershipTable, keyColumn, aggregateEx
         AND active_folder.status <> 'removed'
       WHERE active_membership.${keyColumn} = e.${keyColumn}
     )
-    ELSE e.${fallbackColumn}
+    ELSE ${fallbackExpression}
   END)`;
+}
+
+function createActiveAlbumYearExpression() {
+  return createActiveAggregateExpression(
+    'track_albums', 'album_key', 'MIN(active_track.year)', null
+  );
 }
 
 function createActiveRepresentativeTrackSelection(membershipTable, keyColumn) {
@@ -531,7 +549,7 @@ export async function initializeWebSqliteRuntime(databaseAdapter, {
   database.exec(schema.getMusicLibraryV3InitializationSql({ journalMode: 'persist' }));
   database.prepare('DELETE FROM artwork_claims').run();
   verifyPragmas();
-  initializeMetadata(schema.MUSIC_LIBRARY_SCHEMA_VERSION);
+  initializeMetadata(schema.MUSIC_LIBRARY_SCHEMA_VERSION, schema.MUSIC_LIBRARY_COLLATION_VERSION);
   recoverInterruptedOperations();
   removeLegacyPlaybackOperations();
   recoverInterruptedScans();
@@ -637,7 +655,7 @@ function verifyPragmas() {
   database.prepare("SELECT rowid FROM tracks_prefix_fts WHERE tracks_prefix_fts MATCH 'ca*' LIMIT 1").all();
 }
 
-function initializeMetadata(expectedSchemaVersion) {
+function initializeMetadata(expectedSchemaVersion, expectedCollationVersion) {
   const getMeta = database.prepare('SELECT value FROM meta WHERE key = ?');
   const insertMeta = database.prepare('INSERT OR IGNORE INTO meta(key, value) VALUES (?, ?)');
   insertMeta.run('schema_version', String(expectedSchemaVersion));
@@ -656,6 +674,12 @@ function initializeMetadata(expectedSchemaVersion) {
     const value = Number(getMeta.get(key).value);
     scopeVersions[scope] = Number.isSafeInteger(value) && value >= 0 ? value : 0;
   }
+  ({ catalogVersion, scopeVersions } = orderContract.ensureCatalogSortKeyVersion(database, {
+    expectedVersion: expectedCollationVersion,
+    catalogVersion,
+    scopeVersions,
+    createKey: createSortKey
+  }));
 }
 
 function recoverInterruptedOperations() {
@@ -1690,8 +1714,8 @@ function resolveNamedEntityContextOrdinal(context, { entityId, prefix, mode }) {
   const bindings = [...base.bindings];
   if (mode === 'prefix') {
     if (prefix === null) return null;
-    const prefixKey = modules.orderContract.encodeCanonicalSortKey(prefix);
-    where.push('substr(hex(e.sort_name), 1, length(?)) = ?');
+    const prefixKey = Buffer.from(modules.orderContract.encodeCanonicalSearchKey(prefix), 'hex');
+    where.push(`substr(e.sort_name, instr(e.sort_name, X'00') + 1, length(?)) = ?`);
     bindings.push(prefixKey, prefixKey);
   } else {
     if (entityId === null) return null;
@@ -2071,7 +2095,7 @@ function createEntityContextFilter(context, definition) {
   if (context.tokens.length > 0) {
     const searchExpression = definition.searchColumns
       .map(column => column.startsWith('sort_')
-        ? `CAST(e.${column} AS TEXT)`
+        ? `CAST(substr(e.${column}, instr(e.${column}, X'00') + 1) AS TEXT)`
         : `lower(e.${column})`)
       .join(" || '\n' || ");
     for (const token of context.tokens) {

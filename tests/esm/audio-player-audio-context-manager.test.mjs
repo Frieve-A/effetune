@@ -509,6 +509,57 @@ test('automatic playback checks active state without entering the gesture resume
   });
 });
 
+test('staged player activation waits for a pending automatic-monitoring command to reconcile the force-active lease', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    let finishReconcile;
+    const reconcileBarrier = new Promise(resolve => { finishReconcile = resolve; });
+    let released = false;
+    let stageCallCount = 0;
+    const powerPolicyController = {
+      acquireLease(reason, options) {
+        calls.push(['acquireLease', reason, options]);
+        void this.requestReconcile(`lease-acquired:${reason}`);
+        return () => {
+          released = true;
+          calls.push(['releaseLease']);
+        };
+      },
+      requestReconcile(reason) {
+        calls.push(['requestReconcile', reason]);
+        return reconcileBarrier;
+      }
+    };
+    const harness = createHarness({
+      calls,
+      audioManager: {
+        powerPolicyController,
+        isStagedAudioActivationEnabled: () => true,
+        async stageAudioActivation(intent) {
+          stageCallCount += 1;
+          return { generation: 1, intent };
+        }
+      }
+    });
+
+    const staging = harness.manager.stagePlaybackActivation('buffer-source', 4, 2);
+    await flushMicrotasks();
+
+    assert.equal(stageCallCount, 0);
+    assert.deepEqual(calls.filter(call => call[0] === 'requestReconcile'), [
+      ['requestReconcile', 'lease-acquired:player-activation'],
+      ['requestReconcile', 'player-activation-lease-barrier']
+    ]);
+
+    finishReconcile({ effectiveState: 'ACTIVE', processingDirective: 'full-process' });
+    const stage = await staging;
+
+    assert.equal(stageCallCount, 1);
+    assert.equal(released, false);
+    harness.manager.releasePlaybackActivationStage(stage);
+    assert.equal(released, true);
+  });
+});
+
 test('power source status reflects the current connected player source', () => {
   const connectedSources = new Set();
   const harness = createHarness({
@@ -1470,20 +1521,20 @@ test('catalog Stop during graph revalidation preserves ownership and settles on 
     let markRevalidationStarted;
     const revalidationStarted = new Promise(resolve => { markRevalidationStarted = resolve; });
     playbackManager.prepareCatalogTrackForGraphRebuild = async () => {
-      const generation = playbackManager.catalogTrackGeneration;
+      const generation = playbackManager.trackCommandGeneration;
       markRevalidationStarted();
       await new Promise(resolve => { releaseRevalidation = resolve; });
-      return generation === playbackManager.catalogTrackGeneration
+      return generation === playbackManager.trackCommandGeneration
         ? { handled: false, track }
         : { handled: true, reason: 'stale' };
     };
 
     const rebuilding = harness.manager.handleAudioGraphRebuilt();
     await revalidationStarted;
-    const generation = playbackManager.catalogTrackGeneration;
+    const generation = playbackManager.trackCommandGeneration;
     await playbackManager.stop();
 
-    assert.equal(playbackManager.catalogTrackGeneration, generation);
+    assert.equal(playbackManager.trackCommandGeneration, generation);
     assert.equal(oldElement.paused, false);
     releaseRevalidation();
     await rebuilding;
@@ -1538,7 +1589,7 @@ test('catalog graph recovery without a backend commit settles the current graph 
   });
 });
 
-test('committed catalog graph recovery hands off the latest transport intent', async () => {
+test('catalog graph maintenance cannot hand transport to a replacement track', async () => {
   await withAudioContextGlobals({
     audioElements: [
       { readyState: 1, duration: 20, currentTime: 5, paused: false },
@@ -1564,44 +1615,23 @@ test('committed catalog graph recovery hands off the latest transport intent', a
       playbackMode: 'audioElement',
       audioElement: oldElement
     });
-    let recoveryLoadStayedCurrent = false;
     harness.audioPlayer.playbackManager.prepareCatalogTrackForGraphRebuild = async () => {
-      const recoveryLoadRequest = harness.manager.beginLoadRequest(track, 0);
-      await harness.manager.pause();
-      await harness.manager.stop();
-      await harness.manager.play(false, false);
-      recoveryLoadStayedCurrent = harness.manager.isActiveLoadRequest(recoveryLoadRequest);
       harness.audioPlayer.audioElement = recoveredElement;
       harness.manager.mediaSource = createNode(calls, 'recoveredCatalogSource');
       harness.manager.mediaSourceGeneration += 1;
-      Object.assign(harness.state, {
-        playbackMode: 'audioElement',
-        currentTrackPosition: 0,
-        isPlaying: false,
-        isPaused: true,
-        isStopped: false,
-        isTransitioning: false,
-        transitionType: null
-      });
       return { handled: true, committed: true, track };
     };
     const seekCalls = [];
     harness.manager.seek = async position => {
       seekCalls.push(position);
-      await harness.manager.pause();
-      await harness.manager.stop();
-      await harness.manager.play(false, false);
-      await harness.manager.pause();
-      await harness.manager.play(false, false);
     };
 
     await harness.manager.handleAudioGraphRebuilt();
 
-    assert.equal(recoveryLoadStayedCurrent, true);
-    assert.deepEqual(seekCalls, [0]);
-    assert.equal(recoveredElement.paused, false);
-    assert.equal(harness.state.isPlaying, true);
-    assert.equal(harness.state.isPaused, false);
+    assert.deepEqual(seekCalls, []);
+    assert.equal(recoveredElement.paused, true);
+    assert.equal(harness.state.isPlaying, false);
+    assert.equal(harness.state.isPaused, true);
     assert.equal(harness.state.isStopped, false);
     assert.equal(harness.manager.activeGraphRebuildRequest, null);
   });
@@ -2720,6 +2750,45 @@ test('v2 catalog metadata requests Now Playing artwork by track identity', async
       call[1] === 'track-uid-1' &&
       call[2]?.reason === 'now-playing'
     ), true);
+  });
+});
+
+test('catalog artwork remains current when the same playback entry moves from provisional index zero', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    const track = {
+      entryInstanceId: 'entry-current',
+      name: 'Catalog Track',
+      libraryTrackId: 'track-current',
+      meta: { title: 'Catalog Title', artworkId: null }
+    };
+    const publishedTrack = { ...track };
+    const { manager, playlist, state } = createHarness({
+      calls,
+      playlist: [track],
+      state: { currentTrack: track, currentTrackIndex: 0 }
+    });
+    let resolveArtwork;
+    window.libraryManager = {
+      runtime: 'web',
+      getArtworkThumbURL() {
+        return new Promise(resolve => { resolveArtwork = resolve; });
+      }
+    };
+
+    manager.loadMetadata(track, null, 0);
+    playlist.splice(0, playlist.length,
+      { entryInstanceId: 'entry-before-1', libraryTrackId: 'track-current' },
+      { entryInstanceId: 'entry-before-2', libraryTrackId: 'track-before-2' },
+      publishedTrack
+    );
+    state.currentTrackIndex = 2;
+    state.currentTrack = publishedTrack;
+    resolveArtwork('blob:catalog-art');
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    assert.equal(state.artworkUrl, 'blob:catalog-art');
+    assert.equal(state.isTrackPresentationPending, false);
   });
 });
 

@@ -88,8 +88,15 @@ comparable. At 96 kHz, the single-call result improved from the Phase 4 budget r
 
 The Phase 4 telemetry contract runs all five analyzers together for one second at
 96 kHz/stereo with the production 256 KiB ring and the visible-tab 60 Hz global tick.
-Both artifacts produced the same deterministic byte counts, stayed within every §07.6
-per-tap limit, and reported zero core drops:
+The original Phase 4 measurements used a 64 x 64 Stereo Meter histogram. Stereo Meter
+telemetry v2 instead transfers each new X/Y sample as two Float32 values and lets the
+renderer retain and draw the selected window. This restores sample-level resolution,
+keeps coordinates independent of the current display scale, and raises its intentional
+96 kHz transfer budget from 0.2 MB/s to 0.9 MB/s. The v2 byte count below is derived from
+768,000 coordinate bytes plus 60 fixed 1,480-byte frames per second. At 96 kHz, the
+one-second renderer ring stores 96,000 X/Y pairs in two Float32 arrays (768,000 bytes).
+The updated all-analyzer soak produced the listed v2 count in both artifacts with zero
+core drops; the other rows retain their Phase 4 measurements.
 
 | Analyzer | Target | Baseline WASM | WASM SIMD |
 | --- | ---: | ---: | ---: |
@@ -97,7 +104,7 @@ per-tap limit, and reported zero core drops:
 | Oscilloscope | ≤ 300,000 B/s | 116,040 B/s | 116,040 B/s |
 | Spectrum Analyzer | ≤ 600,000 B/s | 492,600 B/s | 492,600 B/s |
 | Spectrogram | ≤ 50,000 B/s | 13,064 B/s | 13,064 B/s |
-| Stereo Meter | ≤ 200,000 B/s | 167,160 B/s | 167,160 B/s |
+| Stereo Meter | ≤ 900,000 B/s | 856,800 B/s | 856,800 B/s |
 
 ## Per-Plugin Notes
 
@@ -935,9 +942,10 @@ Command: `node tools/dsp-parity/bench.mjs --type OscilloscopePlugin --modes js,w
 | 192000 | 2 | 54.68x | 1085.03x | 1204.74x |
 | 192000 | 8 | 51.60x | 440.06x | 455.58x |
 
-Telemetry sends raw snapshots up to 2,048 samples or a fixed 1,024-bucket min/max
-envelope. At 30 Hz the bucket payload is 8,224 bytes per frame including transport
-header, or about 0.247 MB/s, within the 0.3 MB/s target.
+Telemetry sends raw snapshots up to 2,048 samples or a fixed 512-bucket M4 reduction.
+Each M4 bucket retains its first, minimum, maximum, and last values plus the sample
+positions of both extrema. At 30 Hz the M4 payload is 9,248 bytes per frame including
+the transport header, or about 0.277 MB/s, within the 0.3 MB/s target.
 
 #### SpectrumAnalyzerPlugin
 

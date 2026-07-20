@@ -345,6 +345,7 @@
 | Resonator | Modal Resonator | تأثير رنين ترددي مع ما يصل إلى 5 رنانات | [تفاصيل](plugins/resonator.md#modal-resonator) |
 | Reverb | Dattorro Plate Reverb | صدى plate كلاسيكي مبني على خوارزمية Dattorro | [تفاصيل](plugins/reverb.md#dattorro-plate-reverb) |
 | Reverb | FDN Reverb | صدى Feedback Delay Network بنسيج صدى غني وكثيف | [تفاصيل](plugins/reverb.md#fdn-reverb) |
+| Reverb | IR Reverb | صدى التفاف يستخدم استجابات نبضية مستوردة للغرف والمعدات | [تفاصيل](plugins/reverb.md#ir-reverb) |
 | Reverb | RS Reverb | صدى random scattering بانتشار طبيعي | [تفاصيل](plugins/reverb.md#rs-reverb) |
 | Saturation | Dynamic Saturation | يحاكي الإزاحة غير الخطية لمخاريط السماعات | [تفاصيل](plugins/saturation.md#dynamic-saturation) |
 | Saturation | Exciter | يضيف محتوى توافقيًا لتعزيز الوضوح والحضور | [تفاصيل](plugins/saturation.md#exciter) |

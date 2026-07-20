@@ -9,13 +9,24 @@ namespace effetune::plugins::analyzer {
 namespace {
 
 constexpr std::uint16_t kTapScopeSnapshot = 3u;
-constexpr std::uint16_t kTelemetryVersion = 1u;
+constexpr std::uint16_t kTelemetryVersion = 2u;
 constexpr std::uint32_t kRingSamples = 65536u;
 constexpr std::uint32_t kRingMask = kRingSamples - 1u;
 constexpr std::uint32_t kMaxRawSamples = 2048u;
-constexpr std::uint32_t kBucketCount = 1024u;
+constexpr std::uint32_t kM4BucketCount = 512u;
 constexpr std::uint32_t kPayloadHeaderBytes = 16u;
-constexpr std::uint32_t kMaxPayloadBytes = kPayloadHeaderBytes + kMaxRawSamples * 4u;
+constexpr std::uint32_t kM4BucketBytes = 18u;
+constexpr std::uint8_t kRawEncoding = 0u;
+constexpr std::uint8_t kM4Encoding = 1u;
+constexpr std::uint8_t kTriggeredFlag = 1u << 0u;
+constexpr std::uint32_t kMaxPayloadBytes = kPayloadHeaderBytes + kM4BucketCount * kM4BucketBytes;
+
+static_assert((kRingSamples + kM4BucketCount - 1u) / kM4BucketCount <= 256u);
+
+void writeU16(std::uint8_t *output, std::uint16_t value) noexcept {
+  output[0] = static_cast<std::uint8_t>(value & 0xffu);
+  output[1] = static_cast<std::uint8_t>(value >> 8u);
+}
 
 void writeU32(std::uint8_t *output, std::uint32_t value) noexcept {
   output[0] = static_cast<std::uint8_t>(value & 0xffu);
@@ -228,47 +239,55 @@ private:
     }
   }
 
-  void writePayloadHeader(std::uint32_t sample_count, std::uint8_t mode) noexcept {
+  void writePayloadHeader(std::uint16_t bucket_count, std::uint8_t encoding) noexcept {
     writeF32(payload_.data(), sample_rate_);
-    writeU32(payload_.data() + 4u, 0u);
-    writeU32(payload_.data() + 8u, sample_count);
-    payload_[12u] = mode;
-    payload_[13u] = capture_triggered_ ? 1u : 0u;
-    payload_[14u] = 0u;
-    payload_[15u] = 0u;
+    writeU32(payload_.data() + 4u, capture_target_samples_);
+    writeU32(payload_.data() + 8u, 0u);
+    writeU16(payload_.data() + 12u, bucket_count);
+    payload_[14u] = encoding;
+    payload_[15u] = capture_triggered_ ? kTriggeredFlag : 0u;
   }
 
   void buildSnapshotPayload() noexcept {
     if (capture_target_samples_ <= kMaxRawSamples) {
-      writePayloadHeader(capture_target_samples_, 0u);
+      writePayloadHeader(0u, kRawEncoding);
       for (std::uint32_t index = 0u; index < capture_target_samples_; ++index) {
         writeF32(payload_.data() + kPayloadHeaderBytes + index * 4u, capture_[index]);
       }
       payload_bytes_ =
           static_cast<std::uint16_t>(kPayloadHeaderBytes + capture_target_samples_ * 4u);
     } else {
-      writePayloadHeader(kBucketCount, 1u);
-      for (std::uint32_t bucket = 0u; bucket < kBucketCount; ++bucket) {
+      writePayloadHeader(static_cast<std::uint16_t>(kM4BucketCount), kM4Encoding);
+      for (std::uint32_t bucket = 0u; bucket < kM4BucketCount; ++bucket) {
         const std::uint32_t begin = static_cast<std::uint32_t>(
-            (static_cast<std::uint64_t>(bucket) * capture_target_samples_) / kBucketCount);
+            (static_cast<std::uint64_t>(bucket) * capture_target_samples_) / kM4BucketCount);
         const std::uint32_t end = static_cast<std::uint32_t>(
-            (static_cast<std::uint64_t>(bucket + 1u) * capture_target_samples_) / kBucketCount);
+            (static_cast<std::uint64_t>(bucket + 1u) * capture_target_samples_) / kM4BucketCount);
         float minimum = capture_[begin];
         float maximum = minimum;
+        std::uint32_t minimum_index = begin;
+        std::uint32_t maximum_index = begin;
         for (std::uint32_t index = begin + 1u; index < end; ++index) {
           const float sample = capture_[index];
           if (sample < minimum) {
             minimum = sample;
+            minimum_index = index;
           }
           if (sample > maximum) {
             maximum = sample;
+            maximum_index = index;
           }
         }
-        const std::uint32_t offset = kPayloadHeaderBytes + bucket * 8u;
-        writeF32(payload_.data() + offset, minimum);
-        writeF32(payload_.data() + offset + 4u, maximum);
+        const std::uint32_t offset = kPayloadHeaderBytes + bucket * kM4BucketBytes;
+        writeF32(payload_.data() + offset, capture_[begin]);
+        writeF32(payload_.data() + offset + 4u, minimum);
+        writeF32(payload_.data() + offset + 8u, maximum);
+        writeF32(payload_.data() + offset + 12u, capture_[end - 1u]);
+        payload_[offset + 16u] = static_cast<std::uint8_t>(minimum_index - begin);
+        payload_[offset + 17u] = static_cast<std::uint8_t>(maximum_index - begin);
       }
-      payload_bytes_ = static_cast<std::uint16_t>(kPayloadHeaderBytes + kBucketCount * 8u);
+      payload_bytes_ =
+          static_cast<std::uint16_t>(kPayloadHeaderBytes + kM4BucketCount * kM4BucketBytes);
     }
     has_snapshot_ = true;
   }

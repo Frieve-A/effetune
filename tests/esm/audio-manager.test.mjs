@@ -780,9 +780,21 @@ test('registers processors, rebuilds pipelines, and posts audio configuration', 
 
   await withAudioManager({}, async ({ calls, manager }) => {
     manager._parallelActive = true;
-    manager._applyParallelRouting = () => calls.push(['manager.applyParallelRouting']);
+    manager.disableParallelPipelines = () => {
+      calls.push(['manager.disableParallelPipelines']);
+      manager._parallelActive = false;
+      return Promise.resolve(true);
+    };
+    manager.dispatchEvent = (type, detail) => calls.push(['manager.dispatchEvent', type, detail]);
     await manager.rebuildPipeline(false);
-    assert.equal(calls.some(call => call[0] === 'manager.applyParallelRouting'), true);
+    assert.equal(calls.some(call => call[0] === 'manager.disableParallelPipelines'), true);
+    assert.deepEqual(
+      calls.find(call => call[0] === 'manager.dispatchEvent' && call[1] === 'parallelInvalidated'),
+      ['manager.dispatchEvent', 'parallelInvalidated', {
+        reason: 'pipelineChanged',
+        restorePrimaryDsp: true
+      }]
+    );
   });
 });
 

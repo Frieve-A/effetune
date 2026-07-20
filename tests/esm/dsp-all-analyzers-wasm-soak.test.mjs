@@ -16,15 +16,15 @@ const bandwidthTargets = new Map([
   [202, ['Oscilloscope', 300_000]],
   [203, ['Spectrum Analyzer', 600_000]],
   [204, ['Spectrogram', 50_000]],
-  [205, ['Stereo Meter', 200_000]]
+  [205, ['Stereo Meter', 900_000]]
 ]);
 
 const analyzers = [
-  ['LevelMeterPlugin', 201, TelemetryFrameType.TAP_LEVEL],
-  ['OscilloscopePlugin', 202, TelemetryFrameType.TAP_SCOPE_SNAPSHOT],
-  ['SpectrumAnalyzerPlugin', 203, TelemetryFrameType.TAP_SPECTRUM],
-  ['SpectrogramPlugin', 204, TelemetryFrameType.TAP_SPECTROGRAM_COL],
-  ['StereoMeterPlugin', 205, TelemetryFrameType.TAP_STEREO_FIELD]
+  ['LevelMeterPlugin', 201, TelemetryFrameType.TAP_LEVEL, 1],
+  ['OscilloscopePlugin', 202, TelemetryFrameType.TAP_SCOPE_SNAPSHOT, 2],
+  ['SpectrumAnalyzerPlugin', 203, TelemetryFrameType.TAP_SPECTRUM, 1],
+  ['SpectrogramPlugin', 204, TelemetryFrameType.TAP_SPECTROGRAM_COL, 1],
+  ['StereoMeterPlugin', 205, TelemetryFrameType.TAP_STEREO_FIELD, 2]
 ];
 
 function fillInput(audio, block) {
@@ -54,7 +54,8 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
 
       const instances = [];
       const expectedTypeByTap = new Map();
-      for (const [type, tapId, frameType] of analyzers) {
+      const expectedVersionByTap = new Map();
+      for (const [type, tapId, frameType, formatVersion] of analyzers) {
         const instanceId = binding.createInstance(type);
         assert.notEqual(instanceId, 0, `${type} instance`);
         const packer = DSP_PARAM_PACKERS.get(type);
@@ -67,6 +68,7 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
         assert.equal(binding.instanceSetTap(instanceId, tapId), 0);
         instances.push(instanceId);
         expectedTypeByTap.set(tapId, frameType);
+        expectedVersionByTap.set(tapId, formatVersion);
       }
 
       const arena = binding.getArenaViews();
@@ -93,7 +95,7 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
         droppedFrames += binding.lastTelemetryDroppedFrames;
         if (bytes === 0) continue;
         const parsed = parseTelemetryPacket(packet, bytes, frame => {
-          assert.equal(frame.formatVersion, 1);
+          assert.equal(frame.formatVersion, expectedVersionByTap.get(frame.tapId));
           assert.equal(frame.frameType, expectedTypeByTap.get(frame.tapId));
           const previousSequence = lastSequences.get(frame.tapId);
           if (previousSequence !== undefined) {

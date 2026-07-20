@@ -12,7 +12,10 @@ import {
   normalizeRelativePathForMatching,
   stripExtension
 } from '../../js/library/constants.js';
-import { encodeCanonicalSortKey } from '../../js/library/repository/catalog-order-contract.js';
+import {
+  encodeCanonicalSearchKey,
+  encodeCanonicalSortKey
+} from '../../js/library/repository/catalog-order-contract.js';
 
 test('music library path helpers normalize supported files and display names', () => {
   assert.equal(normalizeMusicLibraryStartupView('albums'), 'albums');
@@ -29,5 +32,8 @@ test('music library path helpers normalize supported files and display names', (
   assert.equal(joinRelativePath('/Album/', '', 'Song.flac'), 'Album/Song.flac');
   assert.equal(createFallbackDisplayName('/Music/Song.flac'), 'Song');
   assert.equal(createFallbackDisplayName(''), 'Untitled');
-  assert.equal(encodeCanonicalSortKey('Ａ\\B'), '612F62');
+  assert.equal(encodeCanonicalSearchKey('Ａ\\B'), '612F62');
+  const names = ['Track 11', 'Track 2', 'Track 10', 'Track 1'];
+  names.sort((left, right) => encodeCanonicalSortKey(left).localeCompare(encodeCanonicalSortKey(right)));
+  assert.deepEqual(names, ['Track 1', 'Track 2', 'Track 10', 'Track 11']);
 });

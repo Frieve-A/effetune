@@ -851,9 +851,10 @@ async function loadPlaywright() {
 }
 
 async function loadSmokeSpecs() {
-  const [powerSpec, cueRegionSpec] = await Promise.all([
+  const [powerSpec, cueRegionSpec, irReverbSpec] = await Promise.all([
     import('../tests/browser/power-policy-smoke.spec.mjs'),
-    import('../tests/browser/cue-region-smoke.spec.mjs')
+    import('../tests/browser/cue-region-smoke.spec.mjs'),
+    import('../tests/browser/ir-reverb-wasm-smoke.spec.mjs')
   ]);
   if (typeof powerSpec.runPowerPolicyBrowserSmoke !== 'function') {
     throw new TypeError('power-policy-smoke.spec.mjs must export runPowerPolicyBrowserSmoke().');
@@ -861,7 +862,16 @@ async function loadSmokeSpecs() {
   if (typeof cueRegionSpec.runCueRegionBrowserSmoke !== 'function') {
     throw new TypeError('cue-region-smoke.spec.mjs must export runCueRegionBrowserSmoke().');
   }
-  return [powerSpec.runPowerPolicyBrowserSmoke, cueRegionSpec.runCueRegionBrowserSmoke];
+  if (typeof irReverbSpec.runIrReverbWasmBrowserSmoke !== 'function') {
+    throw new TypeError(
+      'ir-reverb-wasm-smoke.spec.mjs must export runIrReverbWasmBrowserSmoke().'
+    );
+  }
+  return [
+    powerSpec.runPowerPolicyBrowserSmoke,
+    cueRegionSpec.runCueRegionBrowserSmoke,
+    irReverbSpec.runIrReverbWasmBrowserSmoke
+  ];
 }
 
 export async function runPowerBrowserSmoke() {

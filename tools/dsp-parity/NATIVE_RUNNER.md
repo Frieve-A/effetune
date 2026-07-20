@@ -54,3 +54,31 @@ bytes. Each event is `u32 frame`, a complete float block, `u32 structuredByteCou
 that event's complete structured block. Counts may vary between events. The runner
 validates every boundary and stages the numeric block before the structured block. Numeric-
 only schemas continue to emit version 1 unchanged.
+
+## ETPC Version 3
+
+Cases that stage one large kernel asset use version 3. Offsets 0-39 match version 2,
+followed by one fixed asset-begin record:
+
+| Offset | Type | Field |
+| ---: | --- | --- |
+| 40 | `u32` | asset slot |
+| 44 | `u32` | asset format tag |
+| 48 | `u32` | asset channel count |
+| 52 | `u32` | asset frame count |
+| 56 | `u32` | topology |
+| 60 | `u32` | head block / resolved latency mode |
+| 64 | `u32` | convolution-rate divider |
+| 68 | `u32` | path count |
+| 72 | `u32` | input count |
+| 76 | `u32` | asset payload byte count |
+| 80 | `u32` | reserved, must be zero |
+
+The initial float block starts at offset 84, followed by structured parameter bytes,
+the exact asset payload, and version-2-style parameter events. The current IR Reverb
+cases carry an `ETA1` planar float payload in this field.
+
+Both native and Node-hosted WASM runners call asset begin, copy the complete payload,
+and commit it before measured rendering. They process silent blocks until the asset
+reports `ACTIVE`, reset the instance while retaining committed spectra, and only then
+process the case input. Versions 1 and 2 do not execute any asset operations.

@@ -531,6 +531,18 @@ export function packHumGeneratorPluginParams(params = {}) {
   return packed;
 }
 
+export const IRReverbPlugin_PARAMS_HASH = 0x831d7030;
+export function packIRReverbPluginParams(params = {}) {
+  const packed = new Float32Array(6);
+  packed[0] = (() => { const index = ["auto","mono","indep","true","multi"].indexOf(params["cm"]); return index < 0 ? 0 : index; })();
+  packed[1] = (() => { const index = ["0","128","256","512","1024"].indexOf(params["lt"]); return index < 0 ? 1 : index; })();
+  packed[2] = (() => { const index = ["auto","full","half","quarter"].indexOf(params["cr"]); return index < 0 ? 0 : index; })();
+  packed[3] = (() => { const value = params["dw"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < -96) return -96; if (value > 12) return 12; return value; })();
+  packed[4] = (() => { const value = params["dl"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < -96) return -96; if (value > 12) return 12; return value; })();
+  packed[5] = (() => { const value = params["pd"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < 0) return 0; if (value > 500) return 500; return value; })();
+  return packed;
+}
+
 export const LevelMeterPlugin_PARAMS_HASH = 0x811c9dc5;
 export function packLevelMeterPluginParams(params = {}) {
   const packed = new Float32Array(0);
@@ -1133,6 +1145,7 @@ export const DSP_PARAM_LAYOUTS = Object.freeze({
   HornResonatorPlugin: Object.freeze({ hash: HornResonatorPlugin_PARAMS_HASH, floatCount: 8 }),
   HornResonatorPlusPlugin: Object.freeze({ hash: HornResonatorPlusPlugin_PARAMS_HASH, floatCount: 8 }),
   HumGeneratorPlugin: Object.freeze({ hash: HumGeneratorPlugin_PARAMS_HASH, floatCount: 6 }),
+  IRReverbPlugin: Object.freeze({ hash: IRReverbPlugin_PARAMS_HASH, floatCount: 6 }),
   LevelMeterPlugin: Object.freeze({ hash: LevelMeterPlugin_PARAMS_HASH, floatCount: 0 }),
   LoPassFilterPlugin: Object.freeze({ hash: LoPassFilterPlugin_PARAMS_HASH, floatCount: 2 }),
   LoudnessEqualizerPlugin: Object.freeze({ hash: LoudnessEqualizerPlugin_PARAMS_HASH, floatCount: 7 }),
@@ -1204,6 +1217,7 @@ export const DSP_PARAM_PACKERS = new Map([
   ["HornResonatorPlugin", Object.freeze({ pack: packHornResonatorPluginParams, hash: HornResonatorPlugin_PARAMS_HASH, floatCount: 8 })],
   ["HornResonatorPlusPlugin", Object.freeze({ pack: packHornResonatorPlusPluginParams, hash: HornResonatorPlusPlugin_PARAMS_HASH, floatCount: 8 })],
   ["HumGeneratorPlugin", Object.freeze({ pack: packHumGeneratorPluginParams, hash: HumGeneratorPlugin_PARAMS_HASH, floatCount: 6 })],
+  ["IRReverbPlugin", Object.freeze({ pack: packIRReverbPluginParams, hash: IRReverbPlugin_PARAMS_HASH, floatCount: 6 })],
   ["LevelMeterPlugin", Object.freeze({ pack: packLevelMeterPluginParams, hash: LevelMeterPlugin_PARAMS_HASH, floatCount: 0 })],
   ["LoPassFilterPlugin", Object.freeze({ pack: packLoPassFilterPluginParams, hash: LoPassFilterPlugin_PARAMS_HASH, floatCount: 2 })],
   ["LoudnessEqualizerPlugin", Object.freeze({ pack: packLoudnessEqualizerPluginParams, hash: LoudnessEqualizerPlugin_PARAMS_HASH, floatCount: 7 })],

@@ -135,6 +135,7 @@ test('artwork collections and playlists expose and retain their database sort or
     const expectedOptions = {
       album: [
         'name:asc', 'name:desc', 'artist:asc', 'artist:desc',
+        'year:asc', 'year:desc',
         'trackCount:asc', 'trackCount:desc', 'duration:asc', 'duration:desc'
       ],
       artist: [

@@ -4,6 +4,14 @@ import test from 'node:test';
 import { PresetManager } from '../../js/ui/pipeline/preset-manager.js';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
 
+function createDeferred() {
+  let resolve;
+  const promise = new Promise(resolvePromise => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 class FakeElement {
   constructor(tagName = 'div', options = {}) {
     this.tagName = tagName.toUpperCase();
@@ -278,6 +286,7 @@ async function createInitializedManager(pipelineManager, options = {}) {
 }
 
 function createUiManager(calls, options = {}) {
+  const messageState = options.messageState;
   return {
     pluginListManager: options.pluginListManager ?? {
       async refreshPresetsIfVisible() {
@@ -286,9 +295,28 @@ function createUiManager(calls, options = {}) {
     },
     setError(key, isError, params) {
       calls.push(['setError', key, isError, params]);
+      if (messageState) {
+        messageState.revision += 1;
+        messageState.current = { key, isError, params };
+      }
     },
     clearError() {
       calls.push(['clearError']);
+      if (messageState) {
+        messageState.revision += 1;
+        messageState.current = null;
+      }
+    },
+    showTransientMessage(key, isError, params = {}, duration = 3000) {
+      calls.push(['showTransientMessage', key, isError, params, duration]);
+      if (messageState) {
+        const revision = ++messageState.revision;
+        messageState.current = { key, isError, params };
+        messageState.timers.push(() => {
+          if (revision !== messageState.revision) return;
+          messageState.current = null;
+        });
+      }
     },
     t(key) {
       return key;
@@ -458,13 +486,21 @@ test('savePreset and deletePreset persist web and Electron presets with UI feedb
     storage: { effetune_presets: '{"Old":{"plugins":[]}}' }
   }, async ({ calls, storage, windowRef }) => {
     windowRef.uiManager = createUiManager(calls);
-    const manager = await createInitializedManager(createPipelineManager());
+    const pipelineManager = createPipelineManager();
+    pipelineManager.audioManager.pipeline[0].externalAssetInfo = {
+      missing: false,
+      kind: 'IR',
+      ids: ['aaaaaaaaaaaaaaaaaaaaaaaa'],
+      names: ['Measured Hall']
+    };
+    const manager = await createInitializedManager(pipelineManager);
     await manager.savePreset('Saved');
     const saved = JSON.parse(storage.get('effetune_presets'));
     assert.deepEqual(Object.keys(saved).sort(), ['Old', 'Saved']);
     assert.equal(saved.Saved.plugins[0].nm, 'Cleanup');
     assert.ok(calls.some(call => call[0] === 'refreshPresetsIfVisible'));
-    assert.ok(calls.some(call => call[0] === 'setError' && call[1] === 'success.presetSaved'));
+    assert.ok(calls.some(call => call[0] === 'showTransientMessage' &&
+      /success\.presetSaved.*external IR data \(Measured Hall\)/.test(call[1])));
 
     windowRef.uiManager = createUiManager(calls, { pluginListManager: null });
     await manager.savePreset('SavedNoRefresh');
@@ -476,7 +512,7 @@ test('savePreset and deletePreset persist web and Electron presets with UI feedb
     windowRef.uiManager = null;
     await manager.deletePreset('SavedNoUi');
     assert.equal(JSON.parse(storage.get('effetune_presets')).Saved, undefined);
-    assert.ok(calls.some(call => call[0] === 'setError' && call[1] === 'success.presetDeleted'));
+    assert.ok(calls.some(call => call[0] === 'showTransientMessage' && call[1] === 'success.presetDeleted'));
   });
 
   await withPresetGlobals({
@@ -485,10 +521,10 @@ test('savePreset and deletePreset persist web and Electron presets with UI feedb
     windowRef.uiManager = createUiManager(calls);
     const manager = await createInitializedManager(createPipelineManager());
     await manager.savePreset('Broken');
-    assert.ok(calls.some(call => call[0] === 'setError' && call[1] === 'error.failedToSavePreset'));
+    assert.ok(calls.some(call => call[0] === 'showTransientMessage' && call[1] === 'error.failedToSavePreset'));
     manager.getPresets = async () => ({ Broken: { plugins: [] } });
     await manager.deletePreset('Broken');
-    assert.ok(calls.some(call => call[0] === 'setError' && call[1] === 'error.failedToDeletePreset'));
+    assert.ok(calls.some(call => call[0] === 'showTransientMessage' && call[1] === 'error.failedToDeletePreset'));
   });
 
   await withPresetGlobals({}, async ({ calls, windowRef }) => {
@@ -525,6 +561,296 @@ test('savePreset and deletePreset persist web and Electron presets with UI feedb
     await flushMicrotasks();
     assert.ok(savedFiles.some(entry => entry[0] === 'user/effetune_presets.json'));
     assert.ok(savedFiles.some(entry => entry[0] === 'tray'));
+  });
+});
+
+test('save success warning stays bound to the preset written before file completion', async () => {
+  let releaseSave;
+  let saveStarted;
+  let writtenPreset;
+  const saveReady = new Promise(resolve => {
+    saveStarted = resolve;
+  });
+  const savePending = new Promise(resolve => {
+    releaseSave = resolve;
+  });
+
+  await withPresetGlobals({
+    electronIntegration: { isElectron: true },
+    electronAPI: {
+      async getPath() { return 'user'; },
+      async joinPaths(...parts) { return parts.join('/'); },
+      async fileExists() { return true; },
+      async readFile() { return { success: true, content: '{}' }; },
+      saveFile(path, content) {
+        writtenPreset = JSON.parse(content);
+        saveStarted();
+        return savePending.then(() => ({ success: true }));
+      },
+      async getUserPresetsForTray() { return { success: true, presets: [] }; },
+      async updateTrayMenu() { return { success: true }; }
+    }
+  }, async ({ calls, windowRef }) => {
+    windowRef.uiManager = createUiManager(calls);
+    const pipelineManager = createPipelineManager();
+    pipelineManager.audioManager.pipeline[0].externalAssetInfo = {
+      missing: false,
+      kind: 'IR',
+      ids: ['aaaaaaaaaaaaaaaaaaaaaaaa'],
+      names: ['Saved Hall']
+    };
+    const manager = await createInitializedManager(pipelineManager);
+
+    const save = manager.savePreset('Snapshot');
+    await saveReady;
+    pipelineManager.audioManager.pipeline[0].externalAssetInfo.names = ['Later Hall'];
+    pipelineManager.audioManager.pipeline = [];
+    releaseSave();
+    await save;
+
+    assert.equal(writtenPreset.Snapshot.plugins[0].nm, 'Cleanup');
+    const success = calls.find(call => call[0] === 'showTransientMessage' && String(call[1]).includes('success.presetSaved'));
+    assert.match(success[1], /external IR data \(Saved Hall\)/);
+    assert.doesNotMatch(success[1], /Later Hall/);
+  });
+});
+
+test('only the latest preset save attempt can publish completion feedback', async () => {
+  const scenarios = [
+    {
+      latestResult: { success: true },
+      staleResult: { success: false, error: 'stale save failure' },
+      expectedMessage: 'success.presetSaved',
+      unexpectedMessage: 'error.failedToSavePreset',
+      expectsRefresh: true
+    },
+    {
+      latestResult: { success: false, error: 'latest save failure' },
+      staleResult: { success: true },
+      expectedMessage: 'error.failedToSavePreset',
+      unexpectedMessage: 'success.presetSaved',
+      expectsRefresh: false
+    }
+  ];
+
+  for (const scenario of scenarios) {
+    const saveAttempts = [createDeferred(), createDeferred()];
+    const saveStarts = [createDeferred(), createDeferred()];
+    let saveIndex = 0;
+    await withPresetGlobals({
+      electronIntegration: { isElectron: true },
+      electronAPI: {
+        async getPath() { return 'user'; },
+        async joinPaths(...parts) { return parts.join('/'); },
+        async fileExists() { return true; },
+        async readFile() { return { success: true, content: '{}' }; },
+        saveFile() {
+          const index = saveIndex++;
+          saveStarts[index].resolve();
+          return saveAttempts[index].promise;
+        },
+        async getUserPresetsForTray() { return { success: true, presets: [] }; },
+        async updateTrayMenu() { return { success: true }; }
+      }
+    }, async ({ calls, windowRef }) => {
+      windowRef.uiManager = createUiManager(calls);
+      const manager = await createInitializedManager(createPipelineManager(), { waitMore: true });
+
+      const staleSave = manager.savePreset('Stale');
+      await saveStarts[0].promise;
+      const latestSave = manager.savePreset('Latest');
+      await flushMicrotasks();
+      assert.equal(saveIndex, 1);
+
+      saveAttempts[0].resolve(scenario.staleResult);
+      await saveStarts[1].promise;
+      assert.equal(saveIndex, 2);
+
+      saveAttempts[1].resolve(scenario.latestResult);
+      await latestSave;
+      await staleSave;
+
+      const messages = calls.filter(call => call[0] === 'showTransientMessage');
+      assert.equal(messages.filter(call => String(call[1]).includes(scenario.expectedMessage)).length, 1);
+      assert.equal(messages.some(call => String(call[1]).includes(scenario.unexpectedMessage)), false);
+      assert.equal(calls.some(call => call[0] === 'refreshPresetsIfVisible'), scenario.expectsRefresh);
+    });
+  }
+});
+
+test('concurrent preset saves serialize read-modify-write and preserve invocation snapshots', async () => {
+  const firstWrite = createDeferred();
+  const firstWriteStarted = createDeferred();
+  let persisted = { Existing: { plugins: [] } };
+  const writes = [];
+
+  await withPresetGlobals({
+    electronIntegration: { isElectron: true },
+    electronAPI: {
+      async getPath() { return 'user'; },
+      async joinPaths(...parts) { return parts.join('/'); },
+      async fileExists() { return true; },
+      async readFile() { return { success: true, content: JSON.stringify(persisted) }; },
+      async saveFile(path, content) {
+        const snapshot = JSON.parse(content);
+        writes.push(snapshot);
+        if (writes.length === 1) {
+          firstWriteStarted.resolve();
+          await firstWrite.promise;
+        }
+        persisted = snapshot;
+        return { success: true };
+      },
+      async getUserPresetsForTray() { return { success: true, presets: [] }; },
+      async updateTrayMenu() { return { success: true }; }
+    }
+  }, async ({ calls, windowRef }) => {
+    windowRef.uiManager = createUiManager(calls);
+    const pipelineManager = createPipelineManager();
+    pipelineManager.audioManager.pipeline[0].externalAssetInfo = {
+      missing: false,
+      kind: 'IR',
+      ids: ['aaaaaaaaaaaaaaaaaaaaaaaa'],
+      names: ['First Hall']
+    };
+    const manager = await createInitializedManager(pipelineManager, { waitMore: true });
+
+    const firstSave = manager.savePreset('First');
+    await firstWriteStarted.promise;
+    pipelineManager.audioManager.pipeline = [createPlugin('Latest')];
+    pipelineManager.audioManager.pipeline[0].externalAssetInfo = {
+      missing: false,
+      kind: 'IR',
+      ids: ['bbbbbbbbbbbbbbbbbbbbbbbb'],
+      names: ['Latest Hall']
+    };
+    const latestSave = manager.savePreset('Latest');
+    await flushMicrotasks();
+
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0].First.plugins[0].nm, 'Cleanup');
+    firstWrite.resolve();
+    await Promise.all([firstSave, latestSave]);
+
+    assert.deepEqual(Object.keys(persisted).sort(), ['Existing', 'First', 'Latest']);
+    assert.equal(persisted.First.plugins[0].nm, 'Cleanup');
+    assert.equal(persisted.Latest.plugins[0].nm, 'Latest');
+    const messages = calls.filter(call => call[0] === 'showTransientMessage');
+    assert.equal(messages.filter(call => String(call[1]).includes('success.presetSaved')).length, 1);
+    assert.match(messages[0][1], /Latest Hall/);
+    assert.doesNotMatch(messages[0][1], /First Hall/);
+  });
+});
+
+test('concurrent preset saves and deletes commit in invocation order', async () => {
+  const scenarios = [
+    {
+      first(manager) { return manager.savePreset('Target'); },
+      latest(manager) { return manager.deletePreset('Target'); },
+      expectedTarget: undefined,
+      expectedMessage: 'success.presetDeleted'
+    },
+    {
+      first(manager) { return manager.deletePreset('Target'); },
+      latest(manager) { return manager.savePreset('Target'); },
+      expectedTarget: 'Cleanup',
+      expectedMessage: 'success.presetSaved'
+    }
+  ];
+
+  for (const scenario of scenarios) {
+    const firstWrite = createDeferred();
+    const firstWriteStarted = createDeferred();
+    let persisted = { Target: { plugins: [] }, Other: { plugins: [] } };
+    let writeCount = 0;
+    await withPresetGlobals({
+      electronIntegration: { isElectron: true },
+      electronAPI: {
+        async getPath() { return 'user'; },
+        async joinPaths(...parts) { return parts.join('/'); },
+        async fileExists() { return true; },
+        async readFile() { return { success: true, content: JSON.stringify(persisted) }; },
+        async saveFile(path, content) {
+          writeCount += 1;
+          if (writeCount === 1) {
+            firstWriteStarted.resolve();
+            await firstWrite.promise;
+          }
+          persisted = JSON.parse(content);
+          return { success: true };
+        },
+        async getUserPresetsForTray() { return { success: true, presets: [] }; },
+        async updateTrayMenu() { return { success: true }; }
+      }
+    }, async ({ calls, windowRef }) => {
+      windowRef.uiManager = createUiManager(calls);
+      const manager = await createInitializedManager(createPipelineManager(), { waitMore: true });
+
+      const first = scenario.first(manager);
+      await firstWriteStarted.promise;
+      const latest = scenario.latest(manager);
+      await flushMicrotasks();
+      assert.equal(writeCount, 1);
+
+      firstWrite.resolve();
+      await Promise.all([first, latest]);
+
+      assert.equal(persisted.Other.plugins.length, 0);
+      assert.equal(persisted.Target?.plugins?.[0]?.nm, scenario.expectedTarget);
+      const messages = calls.filter(call => call[0] === 'showTransientMessage');
+      assert.equal(messages.filter(call => String(call[1]).includes(scenario.expectedMessage)).length, 1);
+      assert.equal(messages.filter(call => String(call[1]).includes('success.')).length, 1);
+    });
+  }
+});
+
+test('a preset success timeout cannot clear a newer missing-asset error', async () => {
+  await withPresetGlobals({}, async ({ calls, windowRef }) => {
+    const messageState = { revision: 0, current: null, timers: [] };
+    const uiManager = createUiManager(calls, { messageState });
+    windowRef.uiManager = uiManager;
+    const manager = await createInitializedManager(createPipelineManager());
+
+    await manager.savePreset('Safe Message');
+    const successCall = calls.find(call => call[0] === 'showTransientMessage' &&
+      String(call[1]).includes('success.presetSaved'));
+    assert.equal(successCall?.[4], 3000);
+    assert.equal(messageState.timers.length, 1);
+
+    uiManager.setError('error.irMissing', true);
+    messageState.timers[0]();
+
+    assert.deepEqual(messageState.current, {
+      key: 'error.irMissing',
+      isError: true,
+      params: undefined
+    });
+  });
+});
+
+test('Electron save and delete failures do not report success or refresh preset UI', async () => {
+  await withPresetGlobals({
+    electronIntegration: { isElectron: true },
+    electronAPI: {
+      async getPath() { return 'user'; },
+      async joinPaths(...parts) { return parts.join('/'); },
+      async fileExists() { return true; },
+      async readFile() { return { success: true, content: '{"Existing":{"plugins":[]}}' }; },
+      async saveFile() { return { success: false, error: 'private disk detail' }; }
+    }
+  }, async ({ calls, windowRef }) => {
+    windowRef.uiManager = createUiManager(calls);
+    const manager = await createInitializedManager(createPipelineManager());
+
+    await manager.savePreset('NotSaved');
+    await manager.deletePreset('Existing');
+
+    const messages = calls.filter(call => call[0] === 'showTransientMessage');
+    assert.ok(messages.some(call => call[1] === 'error.failedToSavePreset'));
+    assert.ok(messages.some(call => call[1] === 'error.failedToDeletePreset'));
+    assert.equal(messages.some(call => String(call[1]).includes('success.')), false);
+    assert.equal(messages.some(call => String(call[1]).includes('private disk detail')), false);
+    assert.equal(calls.some(call => call[0] === 'refreshPresetsIfVisible'), false);
   });
 });
 
@@ -566,7 +892,7 @@ test('loadPreset applies preset formats, restores state, and reports invalid dat
     assert.equal(dom.masterToggle.classList.contains('off'), false);
     assert.ok(pipelineManager.cleanupPlugin.calls.some(call => call[0] === 'cleanup'));
     assert.ok(calls.some(call => call[0] === 'clearTimeout' && call[1] === 77));
-    assert.ok(calls.some(call => call[0] === 'setError' && call[1] === 'success.presetLoaded'));
+    assert.ok(calls.some(call => call[0] === 'showTransientMessage' && call[1] === 'success.presetLoaded'));
   });
 
   await withPresetGlobals({

@@ -107,7 +107,7 @@ struct KernelHarness {
 void checkFrameHeader(const std::uint8_t *frame, std::uint32_t tap_id, std::uint32_t sequence,
                       std::uint16_t payload_bytes) noexcept {
   SCOPE_CHECK(readU16(frame) == 3u);
-  SCOPE_CHECK(readU16(frame + 2u) == 1u);
+  SCOPE_CHECK(readU16(frame + 2u) == 2u);
   SCOPE_CHECK(readU32(frame + 4u) == tap_id);
   SCOPE_CHECK(readU32(frame + 8u) == sequence);
   SCOPE_CHECK(readU16(frame + 12u) == payload_bytes);
@@ -136,11 +136,11 @@ void testRawCadenceTapSequenceResetAndPassthrough() {
   checkFrameHeader(harness.output.data(), 0x1234u, 0u, 48u);
   const std::uint8_t *payload = harness.output.data() + 16u;
   SCOPE_CHECK(readF32(payload) == 8000.0F);
-  SCOPE_CHECK(readU32(payload + 4u) == 0u);
-  SCOPE_CHECK(readU32(payload + 8u) == 8u);
-  SCOPE_CHECK(payload[12u] == 0u);
-  SCOPE_CHECK(payload[13u] == 0u);
-  SCOPE_CHECK(readU16(payload + 14u) == 0u);
+  SCOPE_CHECK(readU32(payload + 4u) == 8u);
+  SCOPE_CHECK(readU32(payload + 8u) == 0u);
+  SCOPE_CHECK(readU16(payload + 12u) == 0u);
+  SCOPE_CHECK(payload[14u] == 0u);
+  SCOPE_CHECK(payload[15u] == 0u);
   for (std::uint32_t frame = 0u; frame < 8u; ++frame) {
     SCOPE_CHECK(readF32(payload + 16u + frame * 4u) == (left[frame] + right[frame]) * 0.5F);
   }
@@ -181,16 +181,18 @@ void testRisingTriggerCaptureContent() {
   SCOPE_CHECK(harness.read() == 48u);
   checkFrameHeader(harness.output.data(), 7u, 0u, 32u);
   const std::uint8_t *payload = harness.output.data() + 16u;
-  SCOPE_CHECK(readU32(payload + 8u) == 4u);
-  SCOPE_CHECK(payload[12u] == 0u);
-  SCOPE_CHECK(payload[13u] == 1u);
+  SCOPE_CHECK(readU32(payload + 4u) == 4u);
+  SCOPE_CHECK(readU32(payload + 8u) == 0u);
+  SCOPE_CHECK(readU16(payload + 12u) == 0u);
+  SCOPE_CHECK(payload[14u] == 0u);
+  SCOPE_CHECK(payload[15u] == 1u);
   SCOPE_CHECK(readF32(payload + 16u) == 0.5F);
   SCOPE_CHECK(readF32(payload + 20u) == 0.5F);
   SCOPE_CHECK(readF32(payload + 24u) == 0.5F);
   SCOPE_CHECK(readF32(payload + 28u) == 0.5F);
 }
 
-void testBucketReductionWithVariableBlocks() {
+void testM4ReductionWithVariableBlocks() {
   constexpr std::uint32_t kFrames = 4800u;
   KernelHarness harness(48000.0F, 127u);
   harness.tap_id = 88u;
@@ -201,7 +203,18 @@ void testBucketReductionWithVariableBlocks() {
     const std::uint32_t remainder = kFrames - processed;
     const std::uint32_t block = remainder < 127u ? remainder : 127u;
     for (std::uint32_t frame = 0u; frame < block; ++frame) {
-      audio[frame] = static_cast<float>(processed + frame);
+      const std::uint32_t index = processed + frame;
+      if (index == 0u) {
+        audio[frame] = 1.0F;
+      } else if (index == 1u) {
+        audio[frame] = 10.0F;
+      } else if (index == 4u) {
+        audio[frame] = -10.0F;
+      } else if (index == 8u) {
+        audio[frame] = 2.0F;
+      } else {
+        audio[frame] = static_cast<float>(index);
+      }
     }
     harness.process(audio.data(), 1u, block, static_cast<double>(processed) / 48000.0);
     processed += block;
@@ -209,21 +222,28 @@ void testBucketReductionWithVariableBlocks() {
   harness.telemetryTick();
   harness.telemetryTick();
 
-  SCOPE_CHECK(harness.read() == 8224u);
-  checkFrameHeader(harness.output.data(), 88u, 0u, 8208u);
+  SCOPE_CHECK(harness.read() == 9248u);
+  checkFrameHeader(harness.output.data(), 88u, 0u, 9232u);
   const std::uint8_t *payload = harness.output.data() + 16u;
   SCOPE_CHECK(readF32(payload) == 48000.0F);
-  SCOPE_CHECK(readU32(payload + 4u) == 0u);
-  SCOPE_CHECK(readU32(payload + 8u) == 1024u);
-  SCOPE_CHECK(payload[12u] == 1u);
-  SCOPE_CHECK(payload[13u] == 0u);
-  SCOPE_CHECK(readF32(payload + 16u) == 0.0F);
-  SCOPE_CHECK(readF32(payload + 20u) == 3.0F);
-  SCOPE_CHECK(readF32(payload + 24u) == 4.0F);
-  SCOPE_CHECK(readF32(payload + 28u) == 8.0F);
-  const std::uint32_t last_bucket = 16u + 1023u * 8u;
-  SCOPE_CHECK(readF32(payload + last_bucket) == 4795.0F);
-  SCOPE_CHECK(readF32(payload + last_bucket + 4u) == 4799.0F);
+  SCOPE_CHECK(readU32(payload + 4u) == 4800u);
+  SCOPE_CHECK(readU32(payload + 8u) == 0u);
+  SCOPE_CHECK(readU16(payload + 12u) == 512u);
+  SCOPE_CHECK(payload[14u] == 1u);
+  SCOPE_CHECK(payload[15u] == 0u);
+  SCOPE_CHECK(readF32(payload + 16u) == 1.0F);
+  SCOPE_CHECK(readF32(payload + 20u) == -10.0F);
+  SCOPE_CHECK(readF32(payload + 24u) == 10.0F);
+  SCOPE_CHECK(readF32(payload + 28u) == 2.0F);
+  SCOPE_CHECK(payload[32u] == 4u);
+  SCOPE_CHECK(payload[33u] == 1u);
+  const std::uint32_t last_bucket = 16u + 511u * 18u;
+  SCOPE_CHECK(readF32(payload + last_bucket) == 4790.0F);
+  SCOPE_CHECK(readF32(payload + last_bucket + 4u) == 4790.0F);
+  SCOPE_CHECK(readF32(payload + last_bucket + 8u) == 4799.0F);
+  SCOPE_CHECK(readF32(payload + last_bucket + 12u) == 4799.0F);
+  SCOPE_CHECK(payload[last_bucket + 16u] == 0u);
+  SCOPE_CHECK(payload[last_bucket + 17u] == 9u);
 }
 
 } // namespace
@@ -231,7 +251,7 @@ void testBucketReductionWithVariableBlocks() {
 int main() {
   testRawCadenceTapSequenceResetAndPassthrough();
   testRisingTriggerCaptureContent();
-  testBucketReductionWithVariableBlocks();
+  testM4ReductionWithVariableBlocks();
   if (failures != 0) {
     std::fprintf(stderr, "%d Oscilloscope frame-content check(s) failed\n", failures);
     return 1;

@@ -5,6 +5,8 @@ project(effetune_dsp VERSION 1.0.0 LANGUAGES C CXX)
 include(CTest)
 
 option(ET_SIMD "Build the WebAssembly SIMD128 variant" OFF)
+option(ET_BUILD_LONG_CONVOLUTION_EXPERIMENT
+       "Build the unregistered long-convolution Phase 0 experiment" OFF)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -40,6 +42,7 @@ set(
   core/abi.cpp
   core/arena.cpp
   core/engine.cpp
+  core/partitioned_convolver.cpp
   core/registry.cpp
   core/telemetry.cpp)
 
@@ -105,7 +108,7 @@ if(EMSCRIPTEN)
       -sSTANDALONE_WASM=1
       -sALLOW_MEMORY_GROWTH=1
       -sINITIAL_MEMORY=8388608
-      -sMAXIMUM_MEMORY=67108864
+      -sMAXIMUM_MEMORY=268435456
       -sEXPORTED_FUNCTIONS=@${CMAKE_CURRENT_SOURCE_DIR}/exports.txt
       -fwasm-exceptions
       $<$<CONFIG:Release>:-O3>
@@ -161,6 +164,12 @@ if(BUILD_TESTING AND NOT EMSCRIPTEN)
     TEST_NAME effetune_dsp_parity_runner_help
     TEST_ARGS --help)
   et_add_dsp_test(effetune_dsp_biquad_tests SOURCES test/biquad_test.cpp)
+  et_add_dsp_test(effetune_dsp_halfband_tests SOURCES test/halfband_test.cpp)
+  et_add_dsp_test(
+    effetune_dsp_partitioned_convolver_tests
+    SOURCES test/partitioned_convolver_test.cpp
+    INCLUDE_DIRS core
+    WRAP_MALLOC)
   et_add_dsp_test(
     effetune_dsp_phase3b_group_b_descriptor_tests
     SOURCES test/phase3b_group_b_descriptor_test.cpp)
@@ -252,6 +261,11 @@ if(BUILD_TESTING AND NOT EMSCRIPTEN)
     INCLUDE_DIRS core
     WRAP_MALLOC)
   et_add_dsp_test(
+    effetune_dsp_ir_reverb_tests
+    SOURCES plugins/reverb/ir_reverb/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
     effetune_dsp_multiband_saturation_tests
     SOURCES plugins/saturation/multiband_saturation/native_test.cpp
     INCLUDE_DIRS core generated/cpp
@@ -280,5 +294,65 @@ if(BUILD_TESTING AND NOT EMSCRIPTEN)
     add_test(
       NAME effetune_dsp_codegen_tests
       COMMAND ${ET_NODE_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/codegen_test.mjs)
+  endif()
+endif()
+
+if(ET_BUILD_LONG_CONVOLUTION_EXPERIMENT)
+  add_executable(
+    effetune-long-convolution-experiment
+    core/allocation_guard.cpp
+    experiments/long_convolution/main.cpp
+    experiments/long_convolution/prototype.cpp)
+  target_include_directories(
+    effetune-long-convolution-experiment
+    PRIVATE experiments/long_convolution core include)
+  target_link_libraries(effetune-long-convolution-experiment PRIVATE pffft)
+  if(MSVC)
+    target_compile_options(effetune-long-convolution-experiment PRIVATE /W4 /WX /EHsc)
+  else()
+    target_compile_options(
+      effetune-long-convolution-experiment PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  endif()
+  target_compile_definitions(
+    effetune-long-convolution-experiment PRIVATE $<$<CONFIG:Debug>:ET_ALLOCATION_GUARD=1>)
+  if(NOT MSVC)
+    target_compile_definitions(
+      effetune-long-convolution-experiment PRIVATE $<$<CONFIG:Debug>:ET_WRAP_MALLOC=1>)
+    target_link_options(
+      effetune-long-convolution-experiment
+      PRIVATE $<$<CONFIG:Debug>:-Wl,--wrap=malloc>)
+  endif()
+  if(EMSCRIPTEN)
+    set_target_properties(
+      effetune-long-convolution-experiment
+      PROPERTIES OUTPUT_NAME "effetune-long-convolution-experiment" SUFFIX ".js")
+    target_compile_options(
+      effetune-long-convolution-experiment
+      PRIVATE -O3 -fwasm-exceptions $<$<BOOL:${ET_SIMD}>:-msimd128>)
+    target_link_options(
+      effetune-long-convolution-experiment
+      PRIVATE -O3 -sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=67108864
+              -sENVIRONMENT=node -sEXIT_RUNTIME=1 -fwasm-exceptions
+              $<$<BOOL:${ET_SIMD}>:-msimd128>)
+
+    add_executable(
+      effetune-long-convolution-worker
+      experiments/long_convolution/prototype.cpp
+      experiments/long_convolution/worker_api.cpp)
+    target_include_directories(
+      effetune-long-convolution-worker PRIVATE experiments/long_convolution include)
+    target_link_libraries(effetune-long-convolution-worker PRIVATE pffft)
+    target_compile_options(
+      effetune-long-convolution-worker
+      PRIVATE -O3 -Wall -Wextra -Wpedantic -Werror $<$<BOOL:${ET_SIMD}>:-msimd128>)
+    set_target_properties(
+      effetune-long-convolution-worker
+      PROPERTIES OUTPUT_NAME "effetune-long-convolution-worker" SUFFIX ".wasm")
+    target_link_options(
+      effetune-long-convolution-worker
+      PRIVATE --no-entry -O3 -sSTANDALONE_WASM=1 -sALLOW_MEMORY_GROWTH=1
+              -sINITIAL_MEMORY=8388608 -sMAXIMUM_MEMORY=67108864
+              -sEXPORTED_FUNCTIONS=@${CMAKE_CURRENT_SOURCE_DIR}/experiments/long_convolution/worker-exports.txt
+              $<$<BOOL:${ET_SIMD}>:-msimd128>)
   endif()
 endif()

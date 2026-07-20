@@ -102,6 +102,15 @@ export class AudioManager {
         this._dspCapabilitiesByNode = new Map();
         this._dspReadyTokens = new Map();
         this._pendingDspActivationRequests = new Map();
+        this._wasmAssetStatesByNode = new Map();
+        this._wasmAssetExpectedRevisionsByNode = new Map();
+        this._wasmAssetExpectedReplayEpochsByNode = new Map();
+        this._wasmAssetMembershipByNode = new Map();
+        this._wasmAssetResolverPlugins = new WeakSet();
+        this._pendingWasmAssetReadyRequests = new Map();
+        this._pendingWasmAssetDescriptorRequests = new Set();
+        this._pendingSignedExternalAssetRequests = new Set();
+        this._wasmAssetPrimaryWorklet = null;
         this._dspReadyTransitionPromise = null;
         this._dspTransitionGeneration = -1;
         this._audioGraphGeneration = 0;
@@ -110,7 +119,9 @@ export class AudioManager {
         this._primaryWorkletEpoch = 0;
         this._outputFadeToken = 0;
         this._parallelDspBarrier = null;
+        this._parallelBranchSnapshot = null;
         this._parallelPreparing = false;
+        this._parallelTeardownPromise = null;
         this._connectedPipelineSources = new Set();
         this._dspModuleLoadPromise = null;
         this._dspModuleLoadRequest = null;
@@ -187,6 +198,7 @@ export class AudioManager {
         
         this.currentPipeline = pipeline;
         this.pipeline = this.getCurrentPipeline();
+        this._configureOwnedPipelineWasmAssetResolvers();
         
         // Rebuild audio pipeline if worklet is initialized
         if (this.workletNode) {
@@ -277,6 +289,7 @@ export class AudioManager {
 
             this.currentPipeline = pipeline;
             this.pipeline = this.getCurrentPipeline();
+            this._configureOwnedPipelineWasmAssetResolvers();
 
             if (this.workletNode) {
                 const result = await this.rebuildPipeline();
@@ -380,6 +393,7 @@ export class AudioManager {
             }
         }).filter(plugin => plugin !== null);
 
+        for (const plugin of copiedPlugins) this._configureWasmAssetTargetResolver(plugin);
         return copiedPlugins;
     }
 
@@ -395,6 +409,7 @@ export class AudioManager {
             this.pipelineB = nextPlugins;
         }
         this.pipeline = this.getCurrentPipeline();
+        this._configureOwnedPipelineWasmAssetResolvers();
     }
 
     /**
@@ -424,6 +439,7 @@ export class AudioManager {
             this.setCurrentPipeline(state.currentPipeline);
         } else {
             this.pipeline = this.pipelineA; // Default to A
+            this._configureOwnedPipelineWasmAssetResolvers();
         }
     }
     /**
@@ -713,7 +729,11 @@ export class AudioManager {
         this._completeDspActivationRequest(workletNode, false);
     }
 
-    _reinitializeDspWorklet(workletNode, targetTypes, { muteOutput = true } = {}) {
+    _reinitializeDspWorklet(
+        workletNode,
+        targetTypes,
+        { muteOutput = true, beforeUnmute = null } = {}
+    ) {
         if (!workletNode?.port || !this.dspModuleInfo) return Promise.resolve(false);
         this._completeDspActivationRequest(workletNode, false);
         let resolve;
@@ -727,6 +747,7 @@ export class AudioManager {
             token: this._dspReadyTokens.get(workletNode),
             targetTypes: [...targetTypes],
             muteOutput,
+            beforeUnmute,
             timer: null,
             resolve,
             promise
@@ -740,6 +761,10 @@ export class AudioManager {
     }
 
     _advanceAudioGraphGeneration() {
+        this._cancelPendingWasmAssetReadyRequests();
+        this._cancelPendingWasmAssetDescriptorRequests();
+        this._cancelPendingSignedExternalAssetRequests();
+        this._disposeParallelBranchSnapshot(this._parallelBranchSnapshot);
         this._audioGraphGeneration = (this._audioGraphGeneration || 0) + 1;
         const barrier = this._parallelDspBarrier;
         if (barrier && !barrier.settled) {
@@ -927,6 +952,34 @@ export class AudioManager {
                 if (!active.has(workletNode)) this._completeDspActivationRequest(workletNode, false);
             }
         }
+        if (this._wasmAssetStatesByNode instanceof Map) {
+            for (const workletNode of this._wasmAssetStatesByNode.keys()) {
+                if (!active.has(workletNode)) this._wasmAssetStatesByNode.delete(workletNode);
+            }
+        }
+        if (this._wasmAssetExpectedRevisionsByNode instanceof Map) {
+            for (const workletNode of this._wasmAssetExpectedRevisionsByNode.keys()) {
+                if (!active.has(workletNode)) this._wasmAssetExpectedRevisionsByNode.delete(workletNode);
+            }
+        }
+        if (this._wasmAssetExpectedReplayEpochsByNode instanceof Map) {
+            for (const workletNode of this._wasmAssetExpectedReplayEpochsByNode.keys()) {
+                if (!active.has(workletNode)) {
+                    this._wasmAssetExpectedReplayEpochsByNode.delete(workletNode);
+                }
+            }
+        }
+        if (this._wasmAssetMembershipByNode instanceof Map) {
+            for (const workletNode of this._wasmAssetMembershipByNode.keys()) {
+                if (!active.has(workletNode)) {
+                    const membership = this._wasmAssetMembershipByNode.get(workletNode);
+                    for (const plugin of new Set(membership?.values() || [])) {
+                        plugin?.dropWasmAssetTarget?.(workletNode);
+                    }
+                    this._wasmAssetMembershipByNode.delete(workletNode);
+                }
+            }
+        }
     }
 
     startDspOnActiveWorklets() {
@@ -959,10 +1012,12 @@ export class AudioManager {
         if (this._parallelActive) {
             if (workletNode === this._getPrimaryWorkletNode()) {
                 this._postBlindPlugins(workletNode, this.pipelineA);
+                this._syncWasmAssetMembership(workletNode, this.pipelineA, { trackState: true });
                 return;
             }
             if (workletNode === this._parallelWorkletB) {
                 this._postBlindPlugins(workletNode, this.pipelineB || []);
+                this._syncWasmAssetMembership(workletNode, this.pipelineB || []);
                 return;
             }
         }
@@ -972,6 +1027,9 @@ export class AudioManager {
             type: 'updatePlugins',
             plugins,
             masterBypass: this.masterBypass
+        });
+        this._syncWasmAssetMembership(workletNode, this.pipeline, {
+            trackState: workletNode === this._getPrimaryWorkletNode()
         });
     }
 
@@ -991,7 +1049,7 @@ export class AudioManager {
         workletNodes,
         apply,
         generation = this._audioGraphGeneration,
-        { muteOutput = true } = {}
+        { muteOutput = true, beforeUnmute = null } = {}
     ) {
         const snapshot = {
             generation,
@@ -1021,6 +1079,7 @@ export class AudioManager {
                 !!(snapshot.context && snapshot.outputGainNode);
             let faded = false;
             let fadeToken = null;
+            let safeToUnmute = typeof beforeUnmute !== 'function';
             try {
                 if (useOutputTransition) {
                     fadeToken = this.fadeOutOutput(PIPELINE_SWITCH_FADE_SECONDS);
@@ -1036,9 +1095,16 @@ export class AudioManager {
                     await this._waitForDspTransition(PIPELINE_SWITCH_SILENCE_SECONDS);
                     if (!this._isDspTransitionSnapshotCurrent(snapshot)) return false;
                 }
+                if (typeof beforeUnmute === 'function') {
+                    const valid = await beforeUnmute(snapshot);
+                    if (!this._isDspTransitionSnapshotCurrent(snapshot) || valid === false) {
+                        return false;
+                    }
+                    safeToUnmute = true;
+                }
                 return true;
             } finally {
-                if (faded && this._isDspTransitionSnapshotCurrent(snapshot)) {
+                if (faded && safeToUnmute && this._isDspTransitionSnapshotCurrent(snapshot)) {
                     this.fadeInOutputForToken(fadeToken, PIPELINE_SWITCH_FADE_SECONDS);
                 }
             }
@@ -1124,13 +1190,22 @@ export class AudioManager {
         barrier.targetTypes = [...targetTypes];
         barrier.requestedMode = mode;
         barrier.requestVersion++;
+        barrier.branchSnapshot ??= this._createParallelBranchSnapshot(barrier.generation);
+        barrier.assetDeadline ??= Date.now() + DSP_BYTES_READY_TIMEOUT_MS;
         if (barrier.activationPromise) return barrier.activationPromise;
 
         const startTransition = () => {
             let appliedRequest = null;
+            const assetExpectationsActive = () => {
+                if (!appliedRequest) return false;
+                for (const [workletNode, expected] of appliedRequest.assetExpectations || []) {
+                    if (!this._areWasmAssetExpectationsActive(workletNode, expected)) return false;
+                }
+                return true;
+            };
             const transition = this._runDspOutputTransition(
                 barrier.workletNodes,
-                () => {
+                async () => {
                     if (!this._isParallelDspBarrierCurrent(barrier)) return false;
                     appliedRequest = {
                         version: barrier.requestVersion,
@@ -1147,12 +1222,26 @@ export class AudioManager {
                             }
                         }
                     }
+                    const branchSnapshot = barrier.branchSnapshot;
+                    const descriptorsReady = await this._waitForParallelBranchAssets(
+                        branchSnapshot,
+                        barrier.assetDeadline
+                    );
+                    if (!descriptorsReady || !this._isParallelBranchSnapshotCurrent(branchSnapshot)) {
+                        if (this._isParallelDspBarrierCurrent(barrier)) {
+                            this.dispatchEvent('parallelInvalidated', {
+                                reason: 'asset-not-ready',
+                                restorePrimaryDsp: true
+                            });
+                        }
+                        return false;
+                    }
                     const [workletA, workletB] = barrier.workletNodes;
                     for (const workletNode of barrier.workletNodes) {
                         workletNode.port.postMessage({ type: 'dspEnableTypes', types: [] });
                     }
-                    this._postBlindPlugins(workletA, this.pipelineA);
-                    this._postBlindPlugins(workletB, this.pipelineB || []);
+                    this._postBlindPluginData(workletA, branchSnapshot.pipelineA.pluginData);
+                    this._postBlindPluginData(workletB, branchSnapshot.pipelineB.pluginData);
                     if (appliedRequest.targetTypes.length > 0) {
                         for (const workletNode of barrier.workletNodes) {
                             workletNode.port.postMessage({
@@ -1160,13 +1249,89 @@ export class AudioManager {
                                 types: appliedRequest.targetTypes
                             });
                         }
-                        this._postBlindPlugins(workletA, this.pipelineA);
-                        this._postBlindPlugins(workletB, this.pipelineB || []);
+                        this._postBlindPluginData(workletA, branchSnapshot.pipelineA.pluginData);
+                        this._postBlindPluginData(workletB, branchSnapshot.pipelineB.pluginData);
                     }
-                    if (!this._applyParallelRouting()) return false;
+                    if (!this._applyParallelRouting({
+                        pluginDataA: branchSnapshot.pipelineA.pluginData,
+                        pluginDataB: branchSnapshot.pipelineB.pluginData
+                    })) return false;
+                    if (this._syncWasmAssetMembership(
+                        workletA,
+                        branchSnapshot.pipelineA.plugins,
+                        { generation: barrier.generation, replayNew: false }
+                    ) === null || this._syncWasmAssetMembership(
+                        workletB,
+                        branchSnapshot.pipelineB.plugins,
+                        { generation: barrier.generation, replayNew: false }
+                    ) === null) return false;
+                    const expectedA = this._replayPipelineWasmAssets(
+                        workletA,
+                        branchSnapshot.pipelineA.plugins,
+                        {
+                            generation: barrier.generation,
+                            trackState: true,
+                            assetMaps: branchSnapshot.pipelineA.assetMaps
+                        }
+                    );
+                    const expectedB = this._replayPipelineWasmAssets(
+                        workletB,
+                        branchSnapshot.pipelineB.plugins,
+                        {
+                            generation: barrier.generation,
+                            assetMaps: branchSnapshot.pipelineB.assetMaps
+                        }
+                    );
+                    if (expectedA === null || expectedB === null) return false;
+                    const exactA = this._captureWasmAssetExpectations(workletA, expectedA);
+                    const exactB = this._captureWasmAssetExpectations(workletB, expectedB);
+                    if (exactA === null || exactB === null) return false;
+                    appliedRequest.assetExpectations = new Map([
+                        [workletA, exactA],
+                        [workletB, exactB]
+                    ]);
+                    const remaining = barrier.assetDeadline - Date.now();
+                    const [assetsAReady, assetsBReady] = await Promise.all([
+                        this._waitForWasmAssetsActive(
+                            workletA,
+                            expectedA,
+                            barrier.generation,
+                            remaining
+                        ),
+                        this._waitForWasmAssetsActive(
+                            workletB,
+                            expectedB,
+                            barrier.generation,
+                            remaining
+                        )
+                    ]);
+                    if (!assetsAReady || !assetsBReady ||
+                        !this._areWasmAssetExpectationsActive(workletA, exactA) ||
+                        !this._areWasmAssetExpectationsActive(workletB, exactB) ||
+                        !this._isParallelBranchSnapshotCurrent(branchSnapshot)) {
+                        if (this._isParallelDspBarrierCurrent(barrier)) {
+                            this.dispatchEvent('parallelInvalidated', {
+                                reason: 'asset-not-ready',
+                                restorePrimaryDsp: true
+                            });
+                        }
+                        return false;
+                    }
                     return true;
                 },
-                barrier.generation
+                barrier.generation,
+                {
+                    beforeUnmute: () => {
+                        if (assetExpectationsActive()) return true;
+                        if (this._isParallelDspBarrierCurrent(barrier)) {
+                            this.dispatchEvent('parallelInvalidated', {
+                                reason: 'asset-not-ready',
+                                restorePrimaryDsp: true
+                            });
+                        }
+                        return false;
+                    }
+                }
             ).then(applied => {
                 barrier.activationPromise = null;
                 if (!applied || !this._isParallelDspBarrierCurrent(barrier)) {
@@ -1175,6 +1340,14 @@ export class AudioManager {
                 }
                 if (!appliedRequest || appliedRequest.version !== barrier.requestVersion) {
                     return startTransition();
+                }
+                if (!assetExpectationsActive()) {
+                    this.dispatchEvent('parallelInvalidated', {
+                        reason: 'asset-not-ready',
+                        restorePrimaryDsp: true
+                    });
+                    this._settleParallelDspBarrier(barrier, 'cancelled');
+                    return false;
                 }
                 this._parallelPreparing = false;
                 this._parallelActive = true;
@@ -1276,7 +1449,10 @@ export class AudioManager {
                 return true;
             },
             this._audioGraphGeneration,
-            { muteOutput: options.muteOutput !== false }
+            {
+                muteOutput: options.muteOutput !== false,
+                beforeUnmute: options.beforeUnmute
+            }
         );
     }
 
@@ -1419,7 +1595,18 @@ export class AudioManager {
     handleWorkletMessage(event, workletNode = this.workletNode) {
         const data = event?.data || {};
         if (!this._isActiveDspWorklet(workletNode)) return;
-        if (data.type === 'powerStateAck' || data.type === 'powerObservation' ||
+        if (data.type === 'assetState') {
+            this._updateWasmAssetState(
+                workletNode,
+                data.pluginId,
+                data.slot,
+                data.state,
+                data.operationRevision,
+                data.replayEpoch
+            );
+        } else if (data.type === 'assetLoadRejected') {
+            this._updateWasmAssetRejection(workletNode, data);
+        } else if (data.type === 'powerStateAck' || data.type === 'powerObservation' ||
             data.type === 'powerFirstRender' || data.type === 'powerHeartbeat' ||
             data.type === 'temporalStatePrepared') {
             if (!this._isActivePowerWorklet(workletNode)) return;
@@ -1463,7 +1650,10 @@ export class AudioManager {
                     : undefined,
                 muteOutput: activationRequest?.token === token
                     ? activationRequest.muteOutput
-                    : true
+                    : true,
+                beforeUnmute: activationRequest?.token === token
+                    ? activationRequest.beforeUnmute
+                    : null
             });
             if (activationRequest?.token === token) {
                 void transition.then(result => {
@@ -1617,6 +1807,16 @@ export class AudioManager {
         if (!Array.isArray(this.pipeline)) {
             this.pipeline = [];
         }
+        this._configureOwnedPipelineWasmAssetResolvers();
+
+        if (this._hasParallelResources()) {
+            const teardown = this.disableParallelPipelines();
+            this.dispatchEvent('parallelInvalidated', {
+                reason: 'pipelineChanged',
+                restorePrimaryDsp: true
+            });
+            await teardown;
+        }
 
         if (Array.isArray(this.pipeline)) {
             let sectionOn = true;
@@ -1643,22 +1843,20 @@ export class AudioManager {
         
         const result = await this.pipelineProcessor.rebuildPipeline(isInitializing);
         this.updateExposedProperties();
+        const primaryWorklet = this._getPrimaryWorkletNode();
+        if (primaryWorklet?.port) {
+            const replayed = this._syncWasmAssetMembership(primaryWorklet, this.pipeline, {
+                generation: this._audioGraphGeneration,
+                trackState: true
+            });
+            if (replayed === null) {
+                throw new Error('primary-worklet-asset-replay-failed');
+            }
+            this._wasmAssetPrimaryWorklet = primaryWorklet;
+        }
         this.powerPolicyController?.notifyTopologyChanged?.('pipeline-rebuild', {
             resetWorkletTemporalState: true
         });
-
-        // If a rebuild happens while the Double Blind Test is running its two
-        // pipelines in parallel (e.g. an audio-device change), the standard
-        // rebuild reconnects only the main worklet; re-establish the parallel
-        // branches so the blind test keeps working.
-        if (this._parallelActive && !this._applyParallelRouting()) {
-            this.dispatchEvent('parallelInvalidated', {
-                reason: 'pipeline-routing-failed',
-                restorePrimaryDsp: true
-            });
-            await this.disableParallelPipelines();
-            throw new Error('parallel-pipeline-routing-failed');
-        }
 
             return result;
         } finally {
@@ -1666,7 +1864,7 @@ export class AudioManager {
         }
     }
     
-    _transitionDspConfiguration(workletNodes, targetTypes) {
+    _transitionDspConfiguration(workletNodes, targetTypes, options = {}) {
         const nodes = new Set([...workletNodes].filter(node => node?.port));
         if (nodes.size === 0) return Promise.resolve(false);
         if (this._parallelPreparing || this._parallelActive) {
@@ -1720,16 +1918,23 @@ export class AudioManager {
         if (targetTypes.length > 0) {
             const missing = [...nodes].filter(node => !this._dspCapabilitiesByNode?.has(node));
             if (missing.length > 0) {
-                return Promise.all(missing.map(node => this._reinitializeDspWorklet(node, targetTypes)))
+                return Promise.all(
+                    missing.map(node => this._reinitializeDspWorklet(node, targetTypes, options))
+                )
                     .then(results => results.every(Boolean));
             }
         }
-        return this._runDspOutputTransition(nodes, () => {
-            for (const workletNode of nodes) {
-                this._applyDspReadyPipeline(workletNode, targetTypes);
-            }
-            return true;
-        });
+        return this._runDspOutputTransition(
+            nodes,
+            () => {
+                for (const workletNode of nodes) {
+                    this._applyDspReadyPipeline(workletNode, targetTypes);
+                }
+                return true;
+            },
+            this._audioGraphGeneration,
+            options
+        );
     }
 
     /**
@@ -2148,7 +2353,7 @@ export class AudioManager {
     _hasParallelResources() {
         return !!(this._parallelPreparing || this._parallelActive || this._parallelWorkletB ||
             this._parallelSelA || this._parallelSelB || this._parallelInputTap ||
-            this._parallelDspBarrier);
+            this._parallelDspBarrier || this._parallelTeardownPromise);
     }
 
     _captureOutputOwner() {
@@ -2180,6 +2385,7 @@ export class AudioManager {
     _buildBlindPluginData(pipeline) {
         if (!Array.isArray(pipeline)) return [];
         const sampleRate = this.contextManager?.audioContext?.sampleRate ?? null;
+        const outputChannelCount = this._getActualOutputChannelCount();
         let sectionOn = true;
         for (let i = 0; i < pipeline.length; i++) {
             const p = pipeline[i];
@@ -2190,7 +2396,11 @@ export class AudioManager {
             }
         }
         return pipeline.map(plugin => {
-            const parameters = plugin.getParameters({ sampleRate, commitSampleRate: true });
+            const parameters = plugin.getParameters({
+                sampleRate,
+                outputChannelCount,
+                commitSampleRate: true
+            });
             if (typeof plugin.getWorkletPluginData === 'function') {
                 return plugin.getWorkletPluginData(parameters);
             }
@@ -2204,6 +2414,11 @@ export class AudioManager {
                 channel: plugin.channel
             };
         });
+    }
+
+    _getActualOutputChannelCount() {
+        const value = this.contextManager?.audioContext?.destination?.channelCount;
+        return Number.isInteger(value) && value >= 1 && value <= 8 ? value : 2;
     }
 
     /** Post the processor code for the given pipelines onto a worklet node. */
@@ -2229,12 +2444,859 @@ export class AudioManager {
     }
 
     _postBlindPlugins(workletNode, pipeline) {
+        this._postBlindPluginData(workletNode, this._buildBlindPluginData(pipeline));
+    }
+
+    _postBlindPluginData(workletNode, plugins) {
         if (!workletNode?.port) return;
         workletNode.port.postMessage({
             type: 'updatePlugins',
-            plugins: this._buildBlindPluginData(pipeline),
+            plugins,
             masterBypass: false
         });
+    }
+
+    _wasmAssetKey(pluginId, slot) {
+        return `${pluginId}:${slot}`;
+    }
+
+    _configureWasmAssetTargetResolver(plugin) {
+        if (typeof plugin?.setWasmAssetTargetResolver !== 'function') return;
+        if (!(this._wasmAssetResolverPlugins instanceof WeakSet)) {
+            this._wasmAssetResolverPlugins = new WeakSet();
+        }
+        if (this._wasmAssetResolverPlugins.has(plugin)) return;
+        plugin.setWasmAssetTargetResolver(() => this._getWasmAssetTargetWorklets(plugin));
+        plugin.setWasmAssetOperationObserver?.((
+            workletNode,
+            slot,
+            operationRevision,
+            state,
+            replayEpoch
+        ) => {
+            this._expectWasmAssetOperation(
+                workletNode,
+                plugin.id,
+                slot,
+                operationRevision,
+                state,
+                replayEpoch
+            );
+        });
+        this._wasmAssetResolverPlugins.add(plugin);
+    }
+
+    _configureOwnedPipelineWasmAssetResolvers() {
+        for (const pipeline of [this.pipelineA, this.pipelineB]) {
+            if (!Array.isArray(pipeline)) continue;
+            for (const plugin of pipeline) this._configureWasmAssetTargetResolver(plugin);
+        }
+    }
+
+    _getWasmAssetTargetWorklets(plugin) {
+        const targets = [];
+        if (!(this._wasmAssetMembershipByNode instanceof Map)) return targets;
+        for (const [workletNode, membership] of this._wasmAssetMembershipByNode) {
+            if (!this._isActiveDspWorklet(workletNode) || !(membership instanceof Map)) continue;
+            if ([...membership.values()].some(member => member === plugin)) targets.push(workletNode);
+        }
+        return targets;
+    }
+
+    _pruneWasmAssetStatesForPlugin(workletNode, pluginId) {
+        const states = this._wasmAssetStatesByNode?.get(workletNode);
+        const prefix = `${pluginId}:`;
+        if (states instanceof Map) {
+            for (const key of states.keys()) {
+                if (key.startsWith(prefix)) states.delete(key);
+            }
+        }
+        const revisions = this._wasmAssetExpectedRevisionsByNode?.get(workletNode);
+        if (revisions instanceof Map) {
+            for (const key of revisions.keys()) {
+                if (key.startsWith(prefix)) revisions.delete(key);
+            }
+        }
+        const replayEpochs = this._wasmAssetExpectedReplayEpochsByNode?.get(workletNode);
+        if (replayEpochs instanceof Map) {
+            for (const key of replayEpochs.keys()) {
+                if (key.startsWith(prefix)) replayEpochs.delete(key);
+            }
+        }
+    }
+
+    _normalizedWasmAssetOperationRevision(value) {
+        return Number.isSafeInteger(value) && value > 0 ? value : null;
+    }
+
+    _normalizedWasmAssetReplayEpoch(value) {
+        return Number.isSafeInteger(value) && value > 0 ? value : null;
+    }
+
+    _expectWasmAssetOperation(
+        workletNode,
+        pluginId,
+        slot,
+        operationRevision,
+        state = 1,
+        replayEpoch = null
+    ) {
+        if (!this._isActiveDspWorklet(workletNode) || !Number.isInteger(pluginId)) return false;
+        if (!(this._wasmAssetExpectedReplayEpochsByNode instanceof Map)) {
+            this._wasmAssetExpectedReplayEpochsByNode = new Map();
+        }
+        const key = this._wasmAssetKey(pluginId, slot);
+        let states = this._wasmAssetStatesByNode.get(workletNode);
+        if (!(states instanceof Map)) {
+            states = new Map();
+            this._wasmAssetStatesByNode.set(workletNode, states);
+        }
+        let revisions = this._wasmAssetExpectedRevisionsByNode.get(workletNode);
+        if (!(revisions instanceof Map)) {
+            revisions = new Map();
+            this._wasmAssetExpectedRevisionsByNode.set(workletNode, revisions);
+        }
+        let replayEpochs = this._wasmAssetExpectedReplayEpochsByNode.get(workletNode);
+        if (!(replayEpochs instanceof Map)) {
+            replayEpochs = new Map();
+            this._wasmAssetExpectedReplayEpochsByNode.set(workletNode, replayEpochs);
+        }
+        states.set(key, state >>> 0);
+        revisions.set(key, this._normalizedWasmAssetOperationRevision(operationRevision));
+        replayEpochs.set(key, this._normalizedWasmAssetReplayEpoch(replayEpoch));
+        this._checkPendingSignedExternalAssetRequests();
+        return true;
+    }
+
+    _syncWasmAssetMembership(workletNode, pipeline, options = {}) {
+        const generation = options.generation ?? this._audioGraphGeneration;
+        if (generation !== this._audioGraphGeneration || !this._isActiveDspWorklet(workletNode)) {
+            return null;
+        }
+        if (!(this._wasmAssetMembershipByNode instanceof Map)) {
+            this._wasmAssetMembershipByNode = new Map();
+        }
+        const previous = this._wasmAssetMembershipByNode.get(workletNode) || new Map();
+        const next = new Map();
+        const added = [];
+        for (const plugin of Array.isArray(pipeline) ? pipeline : []) {
+            if (!Number.isInteger(plugin?.id)) continue;
+            this._configureWasmAssetTargetResolver(plugin);
+            next.set(plugin.id, plugin);
+            if (previous.get(plugin.id) !== plugin) added.push(plugin);
+        }
+        for (const [pluginId, plugin] of previous) {
+            if (next.get(pluginId) !== plugin) this._pruneWasmAssetStatesForPlugin(workletNode, pluginId);
+        }
+        this._wasmAssetMembershipByNode.set(workletNode, next);
+        if (options.replayNew === false) return new Set();
+        return this._replayPipelineWasmAssets(workletNode, added, {
+            generation,
+            trackState: options.trackState === true
+        });
+    }
+
+    _replayPipelineWasmAssets(workletNode, pipeline, options = {}) {
+        const generation = options.generation ?? this._audioGraphGeneration;
+        if (generation !== this._audioGraphGeneration || !this._isActiveDspWorklet(workletNode)) {
+            return null;
+        }
+        if (!(this._wasmAssetStatesByNode instanceof Map)) {
+            this._wasmAssetStatesByNode = new Map();
+        }
+        if (!(this._wasmAssetExpectedRevisionsByNode instanceof Map)) {
+            this._wasmAssetExpectedRevisionsByNode = new Map();
+        }
+        if (!(this._wasmAssetExpectedReplayEpochsByNode instanceof Map)) {
+            this._wasmAssetExpectedReplayEpochsByNode = new Map();
+        }
+        const plugins = Array.isArray(pipeline) ? pipeline : [];
+        const expected = new Set();
+        for (const plugin of plugins) {
+            if (!Number.isInteger(plugin?.id) || typeof plugin.getWasmAssets !== 'function') continue;
+            const assets = options.assetMaps?.get(plugin) || plugin.getWasmAssets();
+            this._pruneWasmAssetStatesForPlugin(workletNode, plugin.id);
+            for (const [slot, descriptor] of assets) {
+                const key = this._wasmAssetKey(plugin.id, slot);
+                expected.add(key);
+                this._expectWasmAssetOperation(
+                    workletNode,
+                    plugin.id,
+                    slot,
+                    descriptor?.operationRevision,
+                    1
+                );
+            }
+        }
+        let states = this._wasmAssetStatesByNode.get(workletNode);
+        if (!(states instanceof Map)) {
+            states = new Map();
+            this._wasmAssetStatesByNode.set(workletNode, states);
+        }
+        for (const plugin of plugins) {
+            if (typeof plugin?.replayWasmAssetsTo !== 'function') continue;
+            if (generation !== this._audioGraphGeneration || !this._isActiveDspWorklet(workletNode)) {
+                return null;
+            }
+            const assets = options.assetMaps?.get(plugin) || plugin.getWasmAssets?.();
+            plugin.replayWasmAssetsTo(workletNode, {
+                trackState: options.trackState === true,
+                ...(assets instanceof Map && { assets })
+            });
+        }
+        return expected;
+    }
+
+    _settleWasmAssetReadyRequest(workletNode, result) {
+        const request = this._pendingWasmAssetReadyRequests?.get(workletNode);
+        if (!request) return;
+        if (request.timer !== null) clearTimeout(request.timer);
+        this._pendingWasmAssetReadyRequests.delete(workletNode);
+        request.resolve(result);
+    }
+
+    _cancelPendingWasmAssetReadyRequests() {
+        if (!(this._pendingWasmAssetReadyRequests instanceof Map)) return;
+        for (const workletNode of [...this._pendingWasmAssetReadyRequests.keys()]) {
+            this._settleWasmAssetReadyRequest(workletNode, false);
+        }
+    }
+
+    _areWasmAssetsActive(workletNode, expected) {
+        const states = this._wasmAssetStatesByNode?.get(workletNode);
+        if (!(states instanceof Map)) return false;
+        let allActive = true;
+        for (const key of expected) {
+            const state = (states.get(key) || 0) & 0xff;
+            if (state === 4) return false;
+            if (state !== 3) allActive = false;
+        }
+        return allActive ? true : null;
+    }
+
+    _captureWasmAssetExpectations(workletNode, expected) {
+        if (expected.size === 0) return new Map();
+        const revisions = this._wasmAssetExpectedRevisionsByNode?.get(workletNode);
+        const replayEpochs = this._wasmAssetExpectedReplayEpochsByNode?.get(workletNode);
+        if (!(revisions instanceof Map) || !(replayEpochs instanceof Map)) return null;
+        const captured = new Map();
+        for (const key of expected) {
+            if (!revisions.has(key) || !replayEpochs.has(key)) return null;
+            captured.set(key, {
+                operationRevision: revisions.get(key),
+                replayEpoch: replayEpochs.get(key)
+            });
+        }
+        return captured;
+    }
+
+    _areWasmAssetExpectationsActive(workletNode, captured) {
+        if (!(captured instanceof Map)) return false;
+        const states = this._wasmAssetStatesByNode?.get(workletNode);
+        const revisions = this._wasmAssetExpectedRevisionsByNode?.get(workletNode);
+        const replayEpochs = this._wasmAssetExpectedReplayEpochsByNode?.get(workletNode);
+        if (!(states instanceof Map) || !(revisions instanceof Map) ||
+            !(replayEpochs instanceof Map)) return captured.size === 0;
+        for (const [key, expected] of captured) {
+            if (revisions.get(key) !== expected.operationRevision ||
+                replayEpochs.get(key) !== expected.replayEpoch ||
+                ((states.get(key) || 0) & 0xff) !== 3) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    _waitForWasmAssetsActive(
+        workletNode,
+        expected,
+        generation = this._audioGraphGeneration,
+        timeoutMs = DSP_BYTES_READY_TIMEOUT_MS
+    ) {
+        if (expected.size === 0) return Promise.resolve(true);
+        if (generation !== this._audioGraphGeneration || !this._isActiveDspWorklet(workletNode)) {
+            return Promise.resolve(false);
+        }
+        const current = this._areWasmAssetsActive(workletNode, expected);
+        if (current !== null) return Promise.resolve(current);
+        if (timeoutMs <= 0) return Promise.resolve(false);
+        if (!(this._pendingWasmAssetReadyRequests instanceof Map)) {
+            this._pendingWasmAssetReadyRequests = new Map();
+        }
+        this._settleWasmAssetReadyRequest(workletNode, false);
+        let resolve;
+        const promise = new Promise(done => { resolve = done; });
+        const request = { expected, generation, timer: null, resolve, promise };
+        request.timer = setTimeout(() => {
+            if (this._pendingWasmAssetReadyRequests.get(workletNode) !== request) return;
+            this._settleWasmAssetReadyRequest(workletNode, false);
+        }, timeoutMs);
+        this._pendingWasmAssetReadyRequests.set(workletNode, request);
+        return promise;
+    }
+
+    _updateWasmAssetState(
+        workletNode,
+        pluginId,
+        slot,
+        state,
+        operationRevision,
+        replayEpoch = null,
+        transportAcknowledged = false
+    ) {
+        if (!transportAcknowledged) {
+            this._wasmAssetMembershipByNode?.get(workletNode)?.get(pluginId)
+                ?.acknowledgeWasmAssetOperation?.(
+                    workletNode,
+                    slot,
+                    operationRevision,
+                    replayEpoch
+                );
+        }
+        const states = this._wasmAssetStatesByNode?.get(workletNode);
+        if (!(states instanceof Map)) return;
+        const key = this._wasmAssetKey(pluginId, slot);
+        if (!states.has(key)) return;
+        const revisions = this._wasmAssetExpectedRevisionsByNode?.get(workletNode);
+        if (!(revisions instanceof Map) || !revisions.has(key)) return;
+        const replayEpochs = this._wasmAssetExpectedReplayEpochsByNode?.get(workletNode);
+        if (!(replayEpochs instanceof Map) || !replayEpochs.has(key)) return;
+        const expectedRevision = revisions.get(key);
+        const expectedReplayEpoch = replayEpochs.get(key);
+        if (expectedRevision === null
+            ? operationRevision !== undefined
+            : operationRevision !== expectedRevision) return;
+        if (this._normalizedWasmAssetReplayEpoch(replayEpoch) !== expectedReplayEpoch) return;
+        states.set(key, state >>> 0);
+        this._checkPendingSignedExternalAssetRequests();
+        const request = this._pendingWasmAssetReadyRequests?.get(workletNode);
+        if (!request || request.generation !== this._audioGraphGeneration ||
+            !this._isActiveDspWorklet(workletNode)) return;
+        const ready = this._areWasmAssetsActive(workletNode, request.expected);
+        if (ready === false && this._parallelPreparing && this._parallelDspBarrier) {
+            for (const node of this._parallelDspBarrier.workletNodes) {
+                this._settleWasmAssetReadyRequest(node, false);
+            }
+        } else if (ready !== null) {
+            this._settleWasmAssetReadyRequest(workletNode, ready);
+        }
+    }
+
+    _updateWasmAssetRejection(workletNode, data) {
+        this._wasmAssetMembershipByNode?.get(workletNode)?.get(data?.pluginId)
+            ?.acknowledgeWasmAssetOperation?.(
+                workletNode,
+                data?.slot,
+                data?.operationRevision,
+                data?.replayEpoch
+            );
+        const states = this._wasmAssetStatesByNode?.get(workletNode);
+        const revisions = this._wasmAssetExpectedRevisionsByNode?.get(workletNode);
+        const replayEpochs = this._wasmAssetExpectedReplayEpochsByNode?.get(workletNode);
+        if (!(states instanceof Map) || !(revisions instanceof Map) ||
+            !(replayEpochs instanceof Map)) return;
+        const key = this._wasmAssetKey(data?.pluginId, data?.slot);
+        if (!states.has(key) || !revisions.has(key) || !replayEpochs.has(key)) return;
+        const expectedRevision = revisions.get(key);
+        const expectedReplayEpoch = replayEpochs.get(key);
+        if (expectedRevision === null
+            ? data?.operationRevision !== undefined
+            : data?.operationRevision !== expectedRevision) return;
+        if (this._normalizedWasmAssetReplayEpoch(data?.replayEpoch) !== expectedReplayEpoch) return;
+        const retainedOperationRevision = this._normalizedWasmAssetOperationRevision(
+            data?.retainedOperationRevision
+        );
+        const retainedReplayEpoch = this._normalizedWasmAssetReplayEpoch(
+            data?.retainedReplayEpoch
+        );
+        const retainedAssetState = Number.isInteger(data?.retainedAssetState)
+            ? data.retainedAssetState >>> 0
+            : 0;
+        const retainedStatus = retainedAssetState & 0xff;
+        const replayFailure = data?.replayFailure === true;
+        if (!replayFailure && expectedRevision !== null && data?.residentRetained === true &&
+            retainedOperationRevision !== null && retainedStatus >= 1 && retainedStatus <= 3) {
+            revisions.set(key, retainedOperationRevision);
+            replayEpochs.set(key, retainedReplayEpoch);
+            this._updateWasmAssetState(
+                workletNode,
+                data.pluginId,
+                data.slot,
+                retainedAssetState,
+                retainedOperationRevision,
+                retainedReplayEpoch,
+                true
+            );
+            return;
+        }
+        this._updateWasmAssetState(
+            workletNode,
+            data.pluginId,
+            data.slot,
+            4,
+            data?.operationRevision,
+            data?.replayEpoch,
+            true
+        );
+    }
+
+    _externalAssetSignature(plugin) {
+        const info = plugin?.externalAssetInfo;
+        if (!info) return '';
+        return JSON.stringify({
+            pending: info.pending === true,
+            missing: info.missing === true,
+            ids: Array.isArray(info.ids) ? info.ids.map(String) : [],
+            kind: typeof info.kind === 'string' ? info.kind : '',
+            assetSignature: typeof info.assetSignature === 'string' ? info.assetSignature : null
+        });
+    }
+
+    _pluginConfigurationSignature(plugin) {
+        let parameters = null;
+        try {
+            parameters = typeof plugin?.getSerializableParameters === 'function'
+                ? plugin.getSerializableParameters()
+                : plugin?.getParameters?.();
+        } catch {
+            parameters = null;
+        }
+        return JSON.stringify({
+            id: plugin?.id,
+            type: plugin?.constructor?.name,
+            enabled: plugin?.enabled !== false,
+            inputBus: plugin?.inputBus ?? null,
+            outputBus: plugin?.outputBus ?? null,
+            channel: plugin?.channel ?? null,
+            parameters
+        });
+    }
+
+    _capturePendingSignedExternalAssetRequests(workletNode, pipeline) {
+        const requests = new Map();
+        const states = this._wasmAssetStatesByNode?.get(workletNode);
+        const revisions = this._wasmAssetExpectedRevisionsByNode?.get(workletNode);
+        for (const plugin of Array.isArray(pipeline) ? pipeline : []) {
+            const info = plugin?.externalAssetInfo;
+            const requestedSignature = typeof info?.assetSignature === 'string'
+                ? info.assetSignature
+                : null;
+            if (info?.missing === true) return false;
+            if (info?.pending === true) {
+                requests.set(plugin, {
+                    awaitingPending: true,
+                    requestedFromPending: true,
+                    requestedSignature
+                });
+                continue;
+            }
+            if (requestedSignature === null || !Array.isArray(info?.ids) || info.ids.length === 0) {
+                continue;
+            }
+            const assets = plugin?.getWasmAssets?.();
+            const settled = assets instanceof Map && assets.size > 0 &&
+                [...assets].every(([slot, descriptor]) => {
+                    const key = this._wasmAssetKey(plugin.id, slot);
+                    return descriptor?.externalAssetSignature === requestedSignature &&
+                        revisions?.get(key) === this._normalizedWasmAssetOperationRevision(
+                            descriptor?.operationRevision
+                        ) && ((states?.get(key) || 0) & 0xff) === 3;
+                });
+            if (!settled) requests.set(plugin, {
+                awaitingPending: false,
+                requestedFromPending: false,
+                requestedSignature
+            });
+        }
+        return requests;
+    }
+
+    _evaluateSignedExternalAssetRequest(request) {
+        if (!request || request.generation !== this._audioGraphGeneration ||
+            !this._isActiveDspWorklet(request.workletNode)) {
+            return false;
+        }
+        const states = this._wasmAssetStatesByNode?.get(request.workletNode);
+        const revisions = this._wasmAssetExpectedRevisionsByNode?.get(request.workletNode);
+        const replayEpochs = this._wasmAssetExpectedReplayEpochsByNode?.get(request.workletNode);
+        let pending = false;
+        for (const [plugin, pendingRequest] of request.requests) {
+            const info = plugin?.externalAssetInfo;
+            if (info?.missing === true) return false;
+            if (info?.pending === true) {
+                pending = true;
+                continue;
+            }
+            if (pendingRequest.awaitingPending) {
+                if (!Array.isArray(info?.ids) || info.ids.length === 0 ||
+                    typeof info?.assetSignature !== 'string') {
+                    return false;
+                }
+                pendingRequest.awaitingPending = false;
+                pendingRequest.requestedSignature = info.assetSignature;
+            }
+            const requestedSignature = pendingRequest.requestedSignature;
+            if (typeof requestedSignature !== 'string' || info?.assetSignature !== requestedSignature) {
+                return false;
+            }
+            const assets = plugin?.getWasmAssets?.();
+            if (!(assets instanceof Map) || assets.size === 0 ||
+                [...assets.values()].some(
+                    descriptor => descriptor?.externalAssetSignature !== requestedSignature
+                )) {
+                if (pendingRequest.requestedFromPending === true) return false;
+                pending = true;
+                continue;
+            }
+            for (const [slot, descriptor] of assets) {
+                const key = this._wasmAssetKey(plugin.id, slot);
+                const revision = this._normalizedWasmAssetOperationRevision(
+                    descriptor?.operationRevision
+                );
+                const state = (states?.get(key) || 0) & 0xff;
+                if (state === 4) return false;
+                if (revisions?.get(key) !== revision || !replayEpochs?.has(key) || state !== 3) {
+                    pending = true;
+                }
+            }
+        }
+        return pending ? null : true;
+    }
+
+    _settleSignedExternalAssetRequest(request, result) {
+        if (!request || request.settled) return;
+        request.settled = true;
+        if (request.timer !== null) clearTimeout(request.timer);
+        for (const unsubscribe of request.unsubscribes) unsubscribe();
+        this._pendingSignedExternalAssetRequests?.delete(request);
+        request.resolve(result);
+    }
+
+    _checkPendingSignedExternalAssetRequests() {
+        if (!(this._pendingSignedExternalAssetRequests instanceof Set)) return;
+        for (const request of [...this._pendingSignedExternalAssetRequests]) {
+            const result = this._evaluateSignedExternalAssetRequest(request);
+            if (result !== null) this._settleSignedExternalAssetRequest(request, result);
+        }
+    }
+
+    _cancelPendingSignedExternalAssetRequests() {
+        if (!(this._pendingSignedExternalAssetRequests instanceof Set)) return;
+        for (const request of [...this._pendingSignedExternalAssetRequests]) {
+            this._settleSignedExternalAssetRequest(request, false);
+        }
+    }
+
+    _waitForSignedExternalAssetsOnPrimary(workletNode, pipeline, deadline) {
+        const requests = this._capturePendingSignedExternalAssetRequests(workletNode, pipeline);
+        if (requests === false) return false;
+        if (requests.size === 0) return true;
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) return false;
+        if (!(this._pendingSignedExternalAssetRequests instanceof Set)) {
+            this._pendingSignedExternalAssetRequests = new Set();
+        }
+        for (const plugin of requests.keys()) this._configureWasmAssetTargetResolver(plugin);
+        let resolve;
+        const promise = new Promise(done => { resolve = done; });
+        const request = {
+            workletNode,
+            requests,
+            generation: this._audioGraphGeneration,
+            settled: false,
+            timer: null,
+            unsubscribes: [],
+            resolve,
+            promise
+        };
+        const check = () => {
+            const result = this._evaluateSignedExternalAssetRequest(request);
+            if (result !== null) this._settleSignedExternalAssetRequest(request, result);
+        };
+        for (const plugin of requests.keys()) {
+            request.unsubscribes.push(plugin.addWasmAssetChangeListener?.(check) || (() => {}));
+            request.unsubscribes.push(
+                plugin.addWasmAssetSnapshotChangeListener?.(check) || (() => {})
+            );
+        }
+        request.timer = setTimeout(() => {
+            this._settleSignedExternalAssetRequest(request, false);
+        }, remaining);
+        this._pendingSignedExternalAssetRequests.add(request);
+        check();
+        return promise;
+    }
+
+    _waitForPendingExternalAssetDescriptors(pipeline, deadline) {
+        const plugins = new Set(
+            (Array.isArray(pipeline) ? pipeline : []).filter(
+                plugin => plugin?.externalAssetInfo?.pending === true
+            )
+        );
+        if (plugins.size === 0) return true;
+        const generation = this._audioGraphGeneration;
+        const evaluate = () => {
+            if (generation !== this._audioGraphGeneration) return false;
+            let pending = false;
+            for (const plugin of plugins) {
+                const info = plugin?.externalAssetInfo;
+                if (info?.missing === true) return false;
+                if (info?.pending === true) {
+                    pending = true;
+                    continue;
+                }
+                if (!Array.isArray(info?.ids) || info.ids.length === 0 ||
+                    typeof info?.assetSignature !== 'string') {
+                    return false;
+                }
+                const assets = plugin?.getWasmAssets?.();
+                if (!(assets instanceof Map) || assets.size === 0 ||
+                    [...assets.values()].some(
+                        descriptor => descriptor?.externalAssetSignature !== info.assetSignature
+                    )) {
+                    return false;
+                }
+            }
+            return pending ? null : true;
+        };
+        const initial = evaluate();
+        if (initial !== null) return initial;
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) return false;
+        if (!(this._pendingWasmAssetDescriptorRequests instanceof Set)) {
+            this._pendingWasmAssetDescriptorRequests = new Set();
+        }
+        let resolve;
+        const promise = new Promise(done => { resolve = done; });
+        const request = {
+            settled: false,
+            timer: null,
+            unsubscribes: [],
+            resolve,
+            promise
+        };
+        const check = () => {
+            if (request.settled) return;
+            const result = evaluate();
+            if (result !== null) this._settleWasmAssetDescriptorRequest(request, result);
+        };
+        for (const plugin of plugins) {
+            request.unsubscribes.push(plugin.addWasmAssetChangeListener?.(check) || (() => {}));
+            request.unsubscribes.push(
+                plugin.addWasmAssetSnapshotChangeListener?.(check) || (() => {})
+            );
+        }
+        request.timer = setTimeout(() => {
+            this._settleWasmAssetDescriptorRequest(request, false);
+        }, remaining);
+        this._pendingWasmAssetDescriptorRequests.add(request);
+        check();
+        return promise;
+    }
+
+    _createBlindBranchSnapshot(pipeline, pluginData = null) {
+        const plugins = Array.isArray(pipeline) ? [...pipeline] : [];
+        const committedPluginData = Array.isArray(pluginData)
+            ? pluginData
+            : this._buildBlindPluginData(plugins);
+        const records = plugins.map(plugin => {
+            this._configureWasmAssetTargetResolver(plugin);
+            return {
+                plugin,
+                id: plugin?.id,
+                externalSignature: this._externalAssetSignature(plugin),
+                configurationSignature: this._pluginConfigurationSignature(plugin),
+                lockedRevision: null,
+                assets: null
+            };
+        });
+        return {
+            plugins,
+            pluginData: committedPluginData,
+            records,
+            assetMaps: new Map()
+        };
+    }
+
+    _createParallelBranchSnapshot(
+        generation = this._audioGraphGeneration,
+        pluginDataA = null,
+        pluginDataB = null
+    ) {
+        this._disposeParallelBranchSnapshot(this._parallelBranchSnapshot);
+        const snapshot = {
+            generation,
+            pipelineA: this._createBlindBranchSnapshot(this.pipelineA, pluginDataA),
+            pipelineB: this._createBlindBranchSnapshot(this.pipelineB || [], pluginDataB),
+            invalidated: false,
+            unsubscribes: []
+        };
+        const onChange = () => this._handleParallelBranchSnapshotChange(snapshot);
+        const subscribed = new Set();
+        for (const branch of [snapshot.pipelineA, snapshot.pipelineB]) {
+            for (const record of branch.records) {
+                const plugin = record.plugin;
+                if (!plugin || subscribed.has(plugin)) continue;
+                subscribed.add(plugin);
+                const subscribe = typeof plugin.addWasmAssetSnapshotChangeListener === 'function'
+                    ? plugin.addWasmAssetSnapshotChangeListener.bind(plugin)
+                    : plugin.addWasmAssetChangeListener?.bind(plugin);
+                const unsubscribe = subscribe?.(onChange);
+                if (typeof unsubscribe === 'function') snapshot.unsubscribes.push(unsubscribe);
+            }
+        }
+        this._parallelBranchSnapshot = snapshot;
+        return snapshot;
+    }
+
+    _disposeParallelBranchSnapshot(snapshot) {
+        if (!snapshot || snapshot.disposed) return;
+        snapshot.disposed = true;
+        const unsubscribes = Array.isArray(snapshot.unsubscribes)
+            ? snapshot.unsubscribes.splice(0)
+            : [];
+        for (const unsubscribe of unsubscribes) {
+            try {
+                unsubscribe();
+            } catch (error) {
+                console.warn('[AudioManager] Failed to remove a parallel asset listener:', error);
+            }
+        }
+        if (this._parallelBranchSnapshot === snapshot) this._parallelBranchSnapshot = null;
+    }
+
+    _handleParallelBranchSnapshotChange(snapshot) {
+        if (!snapshot || snapshot.invalidated || snapshot.disposed ||
+            this._parallelBranchSnapshot !== snapshot ||
+            (!this._parallelPreparing && !this._parallelActive) ||
+            this._isParallelBranchSnapshotCurrent(snapshot)) {
+            return;
+        }
+        snapshot.invalidated = true;
+        this.dispatchEvent('parallelInvalidated', {
+            reason: 'branch-snapshot-changed',
+            restorePrimaryDsp: true
+        });
+        if (this._hasParallelResources()) {
+            void Promise.resolve(this.disableParallelPipelines()).catch(() => {});
+        }
+    }
+
+    _isBlindBranchSnapshotCurrent(snapshot, pipeline) {
+        const current = Array.isArray(pipeline) ? pipeline : [];
+        if (current.length !== snapshot.plugins.length) return false;
+        for (let index = 0; index < current.length; index++) {
+            const record = snapshot.records[index];
+            if (current[index] !== record.plugin || current[index]?.id !== record.id ||
+                this._externalAssetSignature(record.plugin) !== record.externalSignature ||
+                this._pluginConfigurationSignature(record.plugin) !== record.configurationSignature) {
+                return false;
+            }
+            if (record.lockedRevision !== null &&
+                (record.plugin?.getWasmAssetRevision?.() ?? 0) !== record.lockedRevision) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    _isParallelBranchSnapshotCurrent(snapshot) {
+        return !!snapshot && !snapshot.invalidated && !snapshot.disposed &&
+            snapshot.generation === this._audioGraphGeneration &&
+            this._isBlindBranchSnapshotCurrent(snapshot.pipelineA, this.pipelineA) &&
+            this._isBlindBranchSnapshotCurrent(snapshot.pipelineB, this.pipelineB || []);
+    }
+
+    _captureBlindBranchAssets(snapshot) {
+        let pending = false;
+        for (const record of snapshot.records) {
+            const plugin = record.plugin;
+            const info = plugin?.externalAssetInfo;
+            if (info?.missing === true) return false;
+            if (info?.pending === true) {
+                pending = true;
+                continue;
+            }
+            if (record.lockedRevision !== null) continue;
+            const assets = plugin?.getWasmAssets?.();
+            const configured = Array.isArray(info?.ids) && info.ids.length > 0;
+            const requiredSignature = typeof info?.assetSignature === 'string'
+                ? info.assetSignature
+                : null;
+            const descriptorsMatch = requiredSignature === null || assets instanceof Map &&
+                assets.size > 0 && [...assets.values()].every(
+                    descriptor => descriptor?.externalAssetSignature === requiredSignature
+                );
+            if ((configured && (!(assets instanceof Map) || assets.size === 0)) || !descriptorsMatch) {
+                pending = true;
+                continue;
+            }
+            const fixedAssets = assets instanceof Map ? new Map(assets) : new Map();
+            record.assets = fixedAssets;
+            record.lockedRevision = plugin?.getWasmAssetRevision?.() ?? 0;
+            snapshot.assetMaps.set(plugin, fixedAssets);
+        }
+        return pending ? null : true;
+    }
+
+    _captureParallelBranchAssets(snapshot) {
+        if (!this._isParallelBranchSnapshotCurrent(snapshot)) return false;
+        const a = this._captureBlindBranchAssets(snapshot.pipelineA);
+        if (a === false) return false;
+        const b = this._captureBlindBranchAssets(snapshot.pipelineB);
+        if (b === false) return false;
+        return a === true && b === true ? true : null;
+    }
+
+    _settleWasmAssetDescriptorRequest(request, result) {
+        if (!request || request.settled) return;
+        request.settled = true;
+        if (request.timer !== null) clearTimeout(request.timer);
+        for (const unsubscribe of request.unsubscribes) unsubscribe();
+        this._pendingWasmAssetDescriptorRequests?.delete(request);
+        request.resolve(result);
+    }
+
+    _cancelPendingWasmAssetDescriptorRequests() {
+        if (!(this._pendingWasmAssetDescriptorRequests instanceof Set)) return;
+        for (const request of [...this._pendingWasmAssetDescriptorRequests]) {
+            this._settleWasmAssetDescriptorRequest(request, false);
+        }
+    }
+
+    _waitForParallelBranchAssets(snapshot, deadline) {
+        const initial = this._captureParallelBranchAssets(snapshot);
+        if (initial !== null) return Promise.resolve(initial);
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) return Promise.resolve(false);
+        if (!(this._pendingWasmAssetDescriptorRequests instanceof Set)) {
+            this._pendingWasmAssetDescriptorRequests = new Set();
+        }
+        let resolve;
+        const promise = new Promise(done => { resolve = done; });
+        const request = {
+            settled: false,
+            timer: null,
+            unsubscribes: [],
+            resolve,
+            promise
+        };
+        const check = () => {
+            if (request.settled) return;
+            const result = this._captureParallelBranchAssets(snapshot);
+            if (result !== null) this._settleWasmAssetDescriptorRequest(request, result);
+        };
+        for (const branch of [snapshot.pipelineA, snapshot.pipelineB]) {
+            for (const record of branch.records) {
+                request.unsubscribes.push(record.plugin?.addWasmAssetChangeListener?.(check) || (() => {}));
+            }
+        }
+        request.timer = setTimeout(() => {
+            this._settleWasmAssetDescriptorRequest(request, false);
+        }, remaining);
+        this._pendingWasmAssetDescriptorRequests.add(request);
+        check();
+        return promise;
     }
 
     /**
@@ -2243,6 +3305,15 @@ export class AudioManager {
      * @returns {Promise<boolean>} true if the parallel graph was established
      */
     async enableParallelPipelines(initialSelection = 'A') {
+        const pendingTeardown = this._parallelTeardownPromise;
+        if (pendingTeardown) {
+            try {
+                await pendingTeardown;
+            } catch (error) {
+                console.error('[AudioManager] Previous parallel pipeline teardown failed:', error);
+                return false;
+            }
+        }
         const ctx = this.contextManager?.audioContext;
         const wA = this.contextManager?.workletNode;
         const out = this.ioManager?.outputGainNode;
@@ -2259,12 +3330,63 @@ export class AudioManager {
             return true;
         }
 
+        this._parallelActive = false;
         this._advanceAudioGraphGeneration();
         const failureOutputOwner = this._captureOutputOwner();
+        const assetDeadline = Date.now() + DSP_BYTES_READY_TIMEOUT_MS;
         try {
+            // Committing the render format may synchronously request a new IR
+            // descriptor. Do that for both branches before waiting on the live
+            // primary, but discard these pre-wait control snapshots.
+            this._buildBlindPluginData(this.pipelineA);
+            this._buildBlindPluginData(this.pipelineB || []);
+            const primaryPipeline = this.currentPipeline === 'B'
+                ? (this.pipelineB || [])
+                : this.pipelineA;
+            const inactivePipeline = this.currentPipeline === 'B'
+                ? this.pipelineA
+                : (this.pipelineB || []);
+            const primaryAssetReadiness = this._waitForSignedExternalAssetsOnPrimary(
+                wA,
+                primaryPipeline,
+                assetDeadline
+            );
+            const branchAssetReadiness = this._waitForPendingExternalAssetDescriptors(
+                inactivePipeline,
+                assetDeadline
+            );
+            let primaryAssetsReady = primaryAssetReadiness;
+            let branchAssetsReady = branchAssetReadiness;
+            if (typeof primaryAssetReadiness?.then === 'function' ||
+                typeof branchAssetReadiness?.then === 'function') {
+                [primaryAssetsReady, branchAssetsReady] = await Promise.all([
+                    Promise.resolve(primaryAssetReadiness),
+                    Promise.resolve(branchAssetReadiness)
+                ]);
+            }
+            if (!primaryAssetsReady || !branchAssetsReady) {
+                this.dispatchEvent('parallelInvalidated', {
+                    reason: 'asset-not-ready',
+                    restorePrimaryDsp: true
+                });
+                return false;
+            }
+            // Rebuild after the signed primary descriptor has settled, then
+            // freeze control data and signatures together before any more work.
+            const pluginDataA = this._buildBlindPluginData(this.pipelineA);
+            const pluginDataB = this._buildBlindPluginData(this.pipelineB || []);
+            const branchSnapshot = this._createParallelBranchSnapshot(
+                this._audioGraphGeneration,
+                pluginDataA,
+                pluginDataB
+            );
             const ch = ctx.destination.channelCount || 2;
             const lowLatency = !!this.contextManager.lowLatencyMode;
-            const wB = new AudioWorkletNode(ctx, 'plugin-processor', {
+            const WorkletNode = globalThis.AudioWorkletNode;
+            if (typeof WorkletNode !== 'function') {
+                throw new Error('AudioWorkletNode is unavailable');
+            }
+            const wB = new WorkletNode(ctx, 'plugin-processor', {
                 channelCount: ch,
                 outputChannelCount: [ch],
                 processorOptions: { initialOutputChannelCount: ch, lowLatencyMode: lowLatency },
@@ -2277,7 +3399,8 @@ export class AudioManager {
                 const data = event?.data;
                 if (data?.type === 'dspTelemetry' && data.packet instanceof ArrayBuffer) {
                     wB.port.postMessage({ type: 'dspTelemetryReturn', packet: data.packet }, [data.packet]);
-                } else if (data?.type === 'dspReady' || data?.type === 'dspFailed' ||
+                } else if (data?.type === 'assetState' || data?.type === 'assetLoadRejected' ||
+                    data?.type === 'dspReady' || data?.type === 'dspFailed' ||
                     data?.type === 'dspCleanupNeeded' || data?.type === 'powerStateAck' ||
                     data?.type === 'powerObservation' || data?.type === 'powerFirstRender' ||
                     data?.type === 'powerHeartbeat' || data?.type === 'temporalStatePrepared') {
@@ -2308,11 +3431,26 @@ export class AudioManager {
             this._parallelActive = false;
 
             // Both worklets must know every plugin type used by either pipeline.
-            this._registerProcessorsOnWorklet(wA, [this.pipelineA, this.pipelineB]);
-            this._registerProcessorsOnWorklet(wB, [this.pipelineA, this.pipelineB]);
-            this._postBlindPlugins(wB, this.pipelineB || []);
+            this._registerProcessorsOnWorklet(wA, [
+                branchSnapshot.pipelineA.plugins,
+                branchSnapshot.pipelineB.plugins
+            ]);
+            this._registerProcessorsOnWorklet(wB, [
+                branchSnapshot.pipelineA.plugins,
+                branchSnapshot.pipelineB.plugins
+            ]);
+            this._postBlindPluginData(wB, branchSnapshot.pipelineB.pluginData);
+            if (this._syncWasmAssetMembership(
+                wB,
+                branchSnapshot.pipelineB.plugins,
+                { generation: branchSnapshot.generation, replayNew: false }
+            ) === null) {
+                throw new Error('parallel-asset-membership-failed');
+            }
 
             const barrier = this._createParallelDspBarrier([wA, wB]);
+            barrier.branchSnapshot = branchSnapshot;
+            barrier.assetDeadline = assetDeadline;
             const preferredTypes = this.getEnabledDspTypes();
             barrier.desiredTypes = this.dspModuleInfo ? [...preferredTypes] : null;
             const preference = window.audioPreferences || window.electronIntegration?.audioPreferences || {};
@@ -2325,9 +3463,9 @@ export class AudioManager {
                 barrier.dispatchedReady.add(wA);
             }
 
-            // A remains on its current direct path while B initializes. The
-            // transition that resolves this barrier performs the first A/B
-            // state reset and graph routing under the master output mute.
+            // The current primary remains on its direct path while the second
+            // worklet initializes. The transition that resolves this barrier
+            // performs the first A/B state reset and routing under the output mute.
             this.fadeInOutput(PIPELINE_SWITCH_FADE_SECONDS);
             if (!dspRequested || (this.dspModuleInfo && preferredTypes.length === 0)) {
                 this._completeParallelDspWithoutModule();
@@ -2344,14 +3482,21 @@ export class AudioManager {
             }
 
             const mode = await barrier.promise;
-            if (mode === 'cancelled' && this._parallelDspBarrier === barrier &&
-                this._hasParallelResources()) {
-                await this.disableParallelPipelines();
+            if (mode === 'cancelled') {
+                try {
+                    await Promise.resolve(this.disableParallelPipelines());
+                } catch (teardownError) {
+                    console.error('[AudioManager] Parallel pipeline teardown failed:', teardownError);
+                }
             }
             return mode !== 'cancelled' && this._parallelActive;
         } catch (err) {
             console.error('[AudioManager] enableParallelPipelines failed:', err);
-            this.disableParallelPipelines();
+            try {
+                await Promise.resolve(this.disableParallelPipelines());
+            } catch (teardownError) {
+                console.error('[AudioManager] Parallel pipeline teardown failed:', teardownError);
+            }
             this._fadeInOutputIfOwned(failureOutputOwner, PIPELINE_SWITCH_FADE_SECONDS);
             return false;
         }
@@ -2380,7 +3525,7 @@ export class AudioManager {
     }
 
     /** (Re)wire the parallel branches and (re)post both pipelines. Idempotent. */
-    _applyParallelRouting() {
+    _applyParallelRouting(options = {}) {
         if (!this._parallelPreparing && !this._parallelActive) return false;
         const wA = this.contextManager?.workletNode;
         const wB = this._parallelWorkletB;
@@ -2412,8 +3557,16 @@ export class AudioManager {
                 }
             }
 
-            this._postBlindPlugins(wA, this.pipelineA);
-            this._postBlindPlugins(wB, this.pipelineB || []);
+            if (Array.isArray(options.pluginDataA)) {
+                this._postBlindPluginData(wA, options.pluginDataA);
+            } else {
+                this._postBlindPlugins(wA, this.pipelineA);
+            }
+            if (Array.isArray(options.pluginDataB)) {
+                this._postBlindPluginData(wB, options.pluginDataB);
+            } else {
+                this._postBlindPlugins(wB, this.pipelineB || []);
+            }
             return true;
         } catch (error) {
             for (const source of sources) {
@@ -2523,13 +3676,36 @@ export class AudioManager {
      * @returns {Promise<boolean>|boolean} primary DSP restoration result, or false for a no-op
      */
     disableParallelPipelines(options = {}) {
-        if (!this._hasParallelResources()) return false;
+        if (this._parallelTeardownPromise) return this._parallelTeardownPromise;
+        if (!this._hasParallelResources()) {
+            this._disposeParallelBranchSnapshot(this._parallelBranchSnapshot);
+            return false;
+        }
         const wA = this.contextManager?.workletNode;
         const out = this.ioManager?.outputGainNode;
         const wB = this._parallelWorkletB;
         const selA = this._parallelSelA;
         const selB = this._parallelSelB;
         const tap = this._parallelInputTap;
+        const branchSnapshot = this._parallelBranchSnapshot;
+        const savedBranch = this.currentPipeline === 'B'
+            ? branchSnapshot?.pipelineB
+            : branchSnapshot?.pipelineA;
+        const primaryPipeline = Array.isArray(savedBranch?.plugins)
+            ? [...savedBranch.plugins]
+            : [...(Array.isArray(this.pipeline) ? this.pipeline : [])];
+        const primaryPluginData = Array.isArray(savedBranch?.pluginData)
+            ? savedBranch.pluginData
+            : this._buildBlindPluginData(primaryPipeline);
+        const primaryAssetMaps = savedBranch?.assetMaps instanceof Map
+            ? new Map([...savedBranch.assetMaps].map(
+                ([plugin, assets]) => [plugin, new Map(assets)]
+            ))
+            : new Map(primaryPipeline.map(
+                plugin => [plugin, new Map(plugin?.getWasmAssets?.() || [])]
+            ));
+        const primaryMasterBypass = this.masterBypass === true;
+        const assetDeadline = Date.now() + DSP_BYTES_READY_TIMEOUT_MS;
 
         this._parallelPreparing = false;
         this._parallelActive = false;
@@ -2552,6 +3728,15 @@ export class AudioManager {
         if (wB) {
             this.clearDspReadyFallback(wB);
             this._completeDspActivationRequest(wB, false);
+            this._settleWasmAssetReadyRequest(wB, false);
+            this._wasmAssetStatesByNode?.delete(wB);
+            this._wasmAssetExpectedRevisionsByNode?.delete(wB);
+            this._wasmAssetExpectedReplayEpochsByNode?.delete(wB);
+            const membership = this._wasmAssetMembershipByNode?.get(wB);
+            for (const plugin of new Set(membership?.values() || [])) {
+                plugin?.dropWasmAssetTarget?.(wB);
+            }
+            this._wasmAssetMembershipByNode?.delete(wB);
             this._dspCapabilitiesByNode?.delete(wB);
             this._dspReadyTokens?.delete(wB);
             if (wB.port) wB.port.onmessage = null;
@@ -2561,39 +3746,62 @@ export class AudioManager {
         this._parallelSelA = null;
         this._parallelSelB = null;
         this._parallelInputTap = null;
-        if (options.restorePrimaryDsp === false || !wA?.port) {
-            this._fadeInOutputIfOwned(outputOwner, PIPELINE_SWITCH_FADE_SECONDS);
-            return Promise.resolve(true);
-        }
+        const teardownPromise = (async () => {
+            if (options.restorePrimaryDsp === false || !wA?.port) {
+                this._fadeInOutputIfOwned(outputOwner, PIPELINE_SWITCH_FADE_SECONDS);
+                return true;
+            }
 
-        let restoration;
-        try {
-            const preferredTypes = this.getEnabledDspTypes();
-            if (preferredTypes.length === 0) {
-                wA.port.postMessage({ type: 'dspEnableTypes', types: [] });
-                this._fadeInOutputIfOwned(outputOwner, PIPELINE_SWITCH_FADE_SECONDS);
-                return Promise.resolve(true);
-            }
-            if (this._dspCapabilitiesByNode?.has(wA)) {
-                return this._transitionDspConfiguration(new Set([wA]), preferredTypes);
-            }
-            restoration = this._reinitializeDspWorklet(wA, preferredTypes);
-        } catch (error) {
-            this._fadeInOutputIfOwned(outputOwner, PIPELINE_SWITCH_FADE_SECONDS);
-            throw error;
-        }
-        return Promise.resolve(restoration).then(
-            restored => {
-                if (!restored) {
-                    this._fadeInOutputIfOwned(outputOwner, PIPELINE_SWITCH_FADE_SECONDS);
-                }
-                return restored;
-            },
-            error => {
-                this._fadeInOutputIfOwned(outputOwner, PIPELINE_SWITCH_FADE_SECONDS);
+            try {
+                const preferredTypes = this.getEnabledDspTypes();
+                const beforeUnmute = async () => {
+                    wA.port.postMessage({
+                        type: 'updatePlugins',
+                        plugins: primaryPluginData,
+                        masterBypass: primaryMasterBypass
+                    });
+                    if (this._syncWasmAssetMembership(wA, primaryPipeline, {
+                        generation: this._audioGraphGeneration,
+                        replayNew: false,
+                        trackState: true
+                    }) === null) return false;
+                    const expected = this._replayPipelineWasmAssets(wA, primaryPipeline, {
+                        generation: this._audioGraphGeneration,
+                        trackState: true,
+                        assetMaps: primaryAssetMaps
+                    });
+                    if (expected === null) return false;
+                    const exact = this._captureWasmAssetExpectations(wA, expected);
+                    if (exact === null) return false;
+                    const ready = await this._waitForWasmAssetsActive(
+                        wA,
+                        expected,
+                        this._audioGraphGeneration,
+                        assetDeadline - Date.now()
+                    );
+                    return ready === true && this._areWasmAssetExpectationsActive(wA, exact);
+                };
+                const restoration = preferredTypes.length === 0 ||
+                    this._dspCapabilitiesByNode?.has(wA)
+                    ? this._transitionDspConfiguration(
+                        new Set([wA]),
+                        preferredTypes,
+                        { beforeUnmute }
+                    )
+                    : this._reinitializeDspWorklet(wA, preferredTypes, { beforeUnmute });
+                return await restoration;
+            } catch (error) {
                 throw error;
             }
-        );
+        })();
+        this._parallelTeardownPromise = teardownPromise;
+        const clearIfCurrent = () => {
+            if (this._parallelTeardownPromise === teardownPromise) {
+                this._parallelTeardownPromise = null;
+            }
+        };
+        teardownPromise.then(clearIfCurrent, clearIfCurrent);
+        return teardownPromise;
     }
 
     /**
@@ -2624,11 +3832,16 @@ export class AudioManager {
             if (this.workletNode) {
                 this.registerPipelineProcessors();
                 const sampleRate = this.contextManager?.audioContext?.sampleRate ?? null;
+                const outputChannelCount = this._getActualOutputChannelCount();
                 const pluginData = this.pipeline.map(plugin => ({
                     id: plugin.id,
                     type: plugin.constructor.name,
                     enabled: plugin.enabled,
-                    parameters: plugin.getParameters({ sampleRate, commitSampleRate: true })
+                    parameters: plugin.getParameters({
+                        sampleRate,
+                        outputChannelCount,
+                        commitSampleRate: true
+                    })
                 }));
                 
                 this.commitPowerTopologyMutation({
@@ -2636,6 +3849,12 @@ export class AudioManager {
                     plugins: pluginData,
                     masterBypass: this.masterBypass
                 }, { reason: 'pipeline-state-parameter-update' });
+                const primaryWorklet = this._getPrimaryWorkletNode();
+                if (primaryWorklet?.port) {
+                    this._syncWasmAssetMembership(primaryWorklet, this.pipeline, {
+                        trackState: true
+                    });
+                }
             }
             return Promise.resolve();
         }

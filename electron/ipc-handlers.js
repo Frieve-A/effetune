@@ -6,6 +6,7 @@ const constants = require('./constants');
 const config = require('./config');
 const windowState = require('./window-state');
 const { registerClipboardIpcHandlers } = require('./clipboard-ipc');
+const { registerIrLibraryIpc } = require('./ir-library-ipc');
 const { readFileBytes } = require('./bounded-file-reader');
 
 // Import file handlers
@@ -296,6 +297,7 @@ function simulateKeyboardShortcut(keyCode, modifiers = []) {
 
 // Register all IPC handlers
 function registerIpcHandlers() {
+  registerIrLibraryIpc({ ipcMain, getUserDataPath: fileHandlers.getUserDataPath });
   ipcMain.handle('set-mini-player-mode', async (event, options = {}) => {
     if (options?.enabled === true) {
       await enterMiniPlayerMode(options.alwaysOnTop === true);
@@ -319,6 +321,14 @@ function registerIpcHandlers() {
   // Get first launch flag
   ipcMain.handle('get-first-launch-flag', () => {
     return constants.getIsFirstLaunch();
+  });
+
+  ipcMain.handle('get-window-visibility', () => {
+    const mainWin = constants.getMainWindow();
+    if (!mainWin || mainWin.isDestroyed()) return { hidden: true };
+    return {
+      hidden: mainWin.isMinimized?.() === true || mainWin.isVisible?.() === false
+    };
   });
 
   // Get command line preset file

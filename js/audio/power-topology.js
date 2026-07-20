@@ -382,8 +382,9 @@ export function analyzeTemporalCapabilities(plugins) {
     for (const item of capabilities) {
         if (item.capability === 'stateless') continue;
         const descriptor = item.descriptor;
-        if (!descriptor || descriptor.primitive !== 'canonical-reset' ||
-            descriptor.allocationFree !== true) {
+        // Canonical reset runs before a full-process warm-up quantum, so its
+        // allocation behavior is not part of the same-quantum wake path.
+        if (!descriptor || descriptor.primitive !== 'canonical-reset') {
             return {
                 capabilities,
                 temporalSkipEligible: true,

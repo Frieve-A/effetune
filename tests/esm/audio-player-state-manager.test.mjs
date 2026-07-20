@@ -39,8 +39,35 @@ test('StateManager initializes defaults and returns defensive snapshots', () => 
   assert.equal(snapshot.repeatMode, 'OFF');
   assert.equal(snapshot.artworkUrl, '');
   assert.equal(snapshot.isTrackPresentationPending, false);
+  assert.equal(snapshot.isPlaybackPending, false);
   snapshot.isStopped = false;
   assert.equal(manager.getStateSnapshot().isStopped, true);
+});
+
+test('playback pending ownership is immediate, scoped, and cancellation-safe', () => {
+  const manager = new StateManager({});
+
+  const finishExplicit = manager.beginPlaybackPending(2);
+  assert.equal(manager.state.isPlaybackPending, true);
+
+  const finishAutomatic = manager.beginPlaybackPending(1);
+  finishExplicit();
+  assert.equal(manager.state.isPlaybackPending, true, 'a lower-priority active wait remains visible');
+  finishAutomatic();
+  assert.equal(manager.state.isPlaybackPending, false);
+
+  const finishOld = manager.beginPlaybackPending(2);
+  const finishLatest = manager.beginPlaybackPending(2);
+  finishOld();
+  assert.equal(manager.state.isPlaybackPending, true, 'an obsolete owner cannot clear the latest wait');
+  finishLatest();
+  assert.equal(manager.state.isPlaybackPending, false);
+
+  const finishCancelled = manager.beginPlaybackPending(3);
+  manager.cancelPlaybackPending();
+  assert.equal(manager.state.isPlaybackPending, false);
+  finishCancelled();
+  assert.equal(manager.state.isPlaybackPending, false, 'late completion cannot revive a cancelled wait');
 });
 
 test('StateManager validates playback state, track bounds, and enum values', async () => {

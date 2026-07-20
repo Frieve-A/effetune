@@ -1,8 +1,13 @@
 const OSCILLOSCOPE_TAP_SCOPE_SNAPSHOT = 3;
-const OSCILLOSCOPE_TELEMETRY_VERSION = 1;
+const OSCILLOSCOPE_TELEMETRY_VERSION = 2;
 const OSCILLOSCOPE_MAX_RAW_SAMPLES = 2048;
-const OSCILLOSCOPE_BUCKET_COUNT = 1024;
+const OSCILLOSCOPE_MAX_CAPTURE_SAMPLES = 65536;
+const OSCILLOSCOPE_M4_BUCKET_COUNT = 512;
 const OSCILLOSCOPE_PAYLOAD_HEADER_BYTES = 16;
+const OSCILLOSCOPE_M4_BUCKET_BYTES = 18;
+const OSCILLOSCOPE_ENCODING_RAW = 0;
+const OSCILLOSCOPE_ENCODING_M4 = 1;
+const OSCILLOSCOPE_TRIGGERED_FLAG = 1 << 0;
 
 class OscilloscopePlugin extends PluginBase {
     constructor() {
@@ -540,52 +545,106 @@ class OscilloscopePlugin extends PluginBase {
       }
 
       const sampleRate = payload.getFloat32(0, true);
-      const triggerOffsetInSnapshot = payload.getUint32(4, true);
-      const sampleCount = payload.getUint32(8, true);
-      const mode = payload.getUint8(12);
-      const triggeredValue = payload.getUint8(13);
-      const reserved = payload.getUint16(14, true);
-      if (!Number.isFinite(sampleRate) || sampleRate <= 0 || reserved !== 0 ||
-          triggeredValue > 1 || triggerOffsetInSnapshot >= sampleCount) {
+      const captureSampleCount = payload.getUint32(4, true);
+      const triggerOffsetInSnapshot = payload.getUint32(8, true);
+      const bucketCount = payload.getUint16(12, true);
+      const encoding = payload.getUint8(14);
+      const flags = payload.getUint8(15);
+      if (!Number.isFinite(sampleRate) || sampleRate <= 0 ||
+          captureSampleCount < 1 || captureSampleCount > OSCILLOSCOPE_MAX_CAPTURE_SAMPLES ||
+          triggerOffsetInSnapshot >= captureSampleCount ||
+          (flags & ~OSCILLOSCOPE_TRIGGERED_FLAG) !== 0) {
         return null;
       }
 
-      let valueCount;
-      if (mode === 0) {
-        if (sampleCount < 1 || sampleCount > OSCILLOSCOPE_MAX_RAW_SAMPLES) return null;
-        valueCount = sampleCount;
-      } else if (mode === 1) {
-        if (sampleCount !== OSCILLOSCOPE_BUCKET_COUNT) return null;
-        valueCount = sampleCount * 2;
-      } else {
-        return null;
-      }
-      if (payload.byteLength !== OSCILLOSCOPE_PAYLOAD_HEADER_BYTES + valueCount * 4) {
-        return null;
-      }
-
-      const values = new Float32Array(valueCount);
-      for (let index = 0; index < valueCount; index++) {
-        const value = payload.getFloat32(
-          OSCILLOSCOPE_PAYLOAD_HEADER_BYTES + index * 4,
-          true
-        );
-        if (!Number.isFinite(value)) return null;
-        values[index] = value;
-      }
-      if (mode === 1) {
-        for (let bucket = 0; bucket < sampleCount; bucket++) {
-          if (values[bucket * 2] > values[bucket * 2 + 1]) return null;
+      if (encoding === OSCILLOSCOPE_ENCODING_RAW) {
+        if (bucketCount !== 0 || captureSampleCount > OSCILLOSCOPE_MAX_RAW_SAMPLES ||
+            payload.byteLength !== OSCILLOSCOPE_PAYLOAD_HEADER_BYTES + captureSampleCount * 4) {
+          return null;
         }
+        const values = new Float32Array(captureSampleCount);
+        for (let index = 0; index < captureSampleCount; index++) {
+          const value = payload.getFloat32(
+            OSCILLOSCOPE_PAYLOAD_HEADER_BYTES + index * 4,
+            true
+          );
+          if (!Number.isFinite(value)) return null;
+          values[index] = value;
+        }
+        return {
+          sampleRate,
+          captureSampleCount,
+          triggerOffsetInSnapshot,
+          bucketCount,
+          encoding,
+          triggered: (flags & OSCILLOSCOPE_TRIGGERED_FLAG) !== 0,
+          sampleIndices: null,
+          values
+        };
+      }
+
+      if (encoding !== OSCILLOSCOPE_ENCODING_M4 ||
+          captureSampleCount <= OSCILLOSCOPE_MAX_RAW_SAMPLES ||
+          bucketCount !== OSCILLOSCOPE_M4_BUCKET_COUNT ||
+          payload.byteLength !==
+            OSCILLOSCOPE_PAYLOAD_HEADER_BYTES + bucketCount * OSCILLOSCOPE_M4_BUCKET_BYTES) {
+        return null;
+      }
+
+      const sampleIndices = new Uint32Array(bucketCount * 4);
+      const values = new Float32Array(bucketCount * 4);
+      let pointCount = 0;
+      const appendPoint = (sampleIndex, value) => {
+        if (pointCount > 0 && sampleIndices[pointCount - 1] === sampleIndex) {
+          return values[pointCount - 1] === value;
+        }
+        sampleIndices[pointCount] = sampleIndex;
+        values[pointCount] = value;
+        pointCount++;
+        return true;
+      };
+
+      for (let bucket = 0; bucket < bucketCount; bucket++) {
+        const begin = Math.floor(bucket * captureSampleCount / bucketCount);
+        const end = Math.floor((bucket + 1) * captureSampleCount / bucketCount);
+        const bucketLength = end - begin;
+        const offset = OSCILLOSCOPE_PAYLOAD_HEADER_BYTES +
+          bucket * OSCILLOSCOPE_M4_BUCKET_BYTES;
+        const first = payload.getFloat32(offset, true);
+        const minimum = payload.getFloat32(offset + 4, true);
+        const maximum = payload.getFloat32(offset + 8, true);
+        const last = payload.getFloat32(offset + 12, true);
+        const minimumOffset = payload.getUint8(offset + 16);
+        const maximumOffset = payload.getUint8(offset + 17);
+        if (!Number.isFinite(first) || !Number.isFinite(minimum) ||
+            !Number.isFinite(maximum) || !Number.isFinite(last) || minimum > maximum ||
+            first < minimum || first > maximum || last < minimum || last > maximum ||
+            minimumOffset >= bucketLength || maximumOffset >= bucketLength) {
+          return null;
+        }
+
+        const minimumIndex = begin + minimumOffset;
+        const maximumIndex = begin + maximumOffset;
+        if (!appendPoint(begin, first)) return null;
+        if (minimumIndex <= maximumIndex) {
+          if (!appendPoint(minimumIndex, minimum) ||
+              !appendPoint(maximumIndex, maximum)) return null;
+        } else if (!appendPoint(maximumIndex, maximum) ||
+                   !appendPoint(minimumIndex, minimum)) {
+          return null;
+        }
+        if (!appendPoint(end - 1, last)) return null;
       }
 
       return {
         sampleRate,
+        captureSampleCount,
         triggerOffsetInSnapshot,
-        sampleCount,
-        mode,
-        triggered: triggeredValue === 1,
-        values
+        bucketCount,
+        encoding,
+        triggered: (flags & OSCILLOSCOPE_TRIGGERED_FLAG) !== 0,
+        sampleIndices: sampleIndices.subarray(0, pointCount),
+        values: values.subarray(0, pointCount)
       };
     }
 
@@ -594,7 +653,9 @@ class OscilloscopePlugin extends PluginBase {
       if (!snapshot || !this.enabled) return;
       this.sampleRate = snapshot.sampleRate;
       this.scopeSnapshot = snapshot;
-      this.frozenDisplayBuffer = snapshot.mode === 0 ? snapshot.values : null;
+      this.frozenDisplayBuffer = snapshot.encoding === OSCILLOSCOPE_ENCODING_RAW
+        ? snapshot.values
+        : null;
     }
   
     // ---------------------------
@@ -853,31 +914,17 @@ class OscilloscopePlugin extends PluginBase {
       // ---------------------------
       // Draw the waveform if a frozen snapshot is available.
       // ---------------------------
-      if (this.scopeSnapshot?.mode === 1) {
-        const { values, sampleCount } = this.scopeSnapshot;
+      const displayBuffer = this.scopeSnapshot?.values || this.frozenDisplayBuffer;
+      if (displayBuffer) {
+        const sampleIndices = this.scopeSnapshot?.sampleIndices;
+        const sampleCount = this.scopeSnapshot?.captureSampleCount || displayBuffer.length;
         ctx.strokeStyle = '#0f0';
         ctx.lineWidth = 2 * dpr;
         ctx.beginPath();
         const denominator = sampleCount > 1 ? sampleCount - 1 : 1;
-        for (let bucket = 0; bucket < sampleCount; bucket++) {
-          const x = leftMargin + (bucket / denominator) * (width - leftMargin);
-          const minimum = values[bucket * 2];
-          const maximum = values[bucket * 2 + 1];
-          const top = centerY - (maximum * factor) * (height / 2);
-          const bottom = centerY - (minimum * factor) * (height / 2);
-          ctx.moveTo(x, top);
-          ctx.lineTo(x, bottom);
-        }
-        ctx.stroke();
-      } else if (this.frozenDisplayBuffer) {
-        const displayBuffer = this.frozenDisplayBuffer;
-        ctx.strokeStyle = '#0f0';
-        ctx.lineWidth = 2 * dpr;
-        ctx.beginPath();
-        // Draw continuous line: map each sample index to x coordinate.
-        const denominator = displayBuffer.length > 1 ? displayBuffer.length - 1 : 1;
         for (let i = 0; i < displayBuffer.length; i++) {
-          const x = leftMargin + (i / denominator) * (width - leftMargin);
+          const sampleIndex = sampleIndices ? sampleIndices[i] : i;
+          const x = leftMargin + (sampleIndex / denominator) * (width - leftMargin);
           const sample = displayBuffer[i];
           const y = centerY - (sample * factor) * (height / 2);
           if (i === 0) {

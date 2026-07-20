@@ -19,7 +19,7 @@ const schemaPath = path.join(pluginRoot, 'params.json');
 const goldenDir = path.join(pluginRoot, 'golden');
 const kernelPath = path.join(pluginRoot, 'kernel.cpp');
 const rendererPath = path.join(repoRoot, 'plugins', 'analyzer', 'stereo_meter.js');
-const jsEngineHash = '81d123160c8dd3182e27d1a294e80ba111f1026c273ec47d1e4bfe7f2c2b1f01';
+const jsEngineHash = '97a79673cad8706f90c9ed247f2b980798abd44ff953627a4bcd494b7eddc5ca';
 
 async function directoryBytes(directory) {
   const entries = await fs.readdir(directory, { withFileTypes: true });
@@ -121,17 +121,17 @@ test('Stereo Meter legacy fallback freezes planar XY, angle, cadence, and decay'
   assert.match(plugin.processorString, /measurementInterval = 1 \/ 60/);
 });
 
-test('Stereo Meter kernel and renderer freeze the bounded v1 field contract', async () => {
+test('Stereo Meter kernel and renderer freeze the bounded v2 sample-delta contract', async () => {
   const [kernel, renderer] = await Promise.all([
     fs.readFile(kernelPath, 'utf8'),
     fs.readFile(rendererPath, 'utf8')
   ]);
-  assert.match(kernel, /kPayloadBytes == 5554u/);
-  assert.match(kernel, /kHistogramOffset = 2u/);
-  assert.match(kernel, /kEnvelopeOffset = kHistogramOffset \+ kHistogramCellCount/);
-  assert.match(kernel, /kCorrelationOffset = kEnvelopeOffset \+ kEnvelopeBinCount \* 4u/);
-  assert.match(kernel, /std::log1p\(static_cast<double>\(maximum_cell_count\)\)/);
-  assert.match(kernel, /telemetry_write_phase_ \^= 1u/);
+  assert.match(kernel, /kTelemetryVersion = 2u/);
+  assert.match(kernel, /kPayloadHeaderBytes = 8u/);
+  assert.match(kernel, /kMaxDeltaSamples = 8000u/);
+  assert.match(kernel, /kMaxPayloadBytes == 65464u/);
+  assert.match(kernel, /coordinateToFloat\(right - left\)/);
+  assert.doesNotMatch(kernel, /telemetry_write_phase_/);
   assert.doesNotMatch(kernel, /std::(?:fabs|max|min)\s*\(/);
 
   const processBody = /void process\([\s\S]*?\n  }\n\n  void writeTelemetry/.exec(kernel)?.[0];
@@ -141,16 +141,22 @@ test('Stereo Meter kernel and renderer freeze the bounded v1 field contract', as
   assert.ok(payloadBody);
   assert.doesNotMatch(payloadBody, /(?:resize|reserve|\bnew\b)/);
 
-  assert.match(renderer, /STEREO_FIELD_PAYLOAD_BYTES = 5554/);
-  assert.match(renderer, /STEREO_FIELD_ENVELOPE_OFFSET = 4098/);
-  const handlerBody = /\n  handleDspStereoFieldTelemetry\(frame\) \{[\s\S]*?\n  }\n\n  renderDspStereoFieldHistogram/.exec(renderer)?.[0];
-  assert.ok(handlerBody);
-  assert.doesNotMatch(handlerBody, /(?:buckets|Math\.exp|xBuffer|yBuffer)/);
+  assert.match(renderer, /STEREO_FIELD_TELEMETRY_VERSION = 2/);
+  assert.match(renderer, /STEREO_FIELD_MAX_DELTA_SAMPLES = 8000/);
+  const sampleHandlerStart = renderer.indexOf('\n  handleDspStereoFieldTelemetry(frame) {');
+  const sampleHandlerEnd = renderer.indexOf('\n  onMessage(message) {', sampleHandlerStart);
+  const sampleHandlerBody = renderer.slice(sampleHandlerStart, sampleHandlerEnd);
+  assert.ok(sampleHandlerStart >= 0 && sampleHandlerEnd > sampleHandlerStart);
+  assert.match(sampleHandlerBody, /sequence !== expectedSequence/);
+  assert.match(sampleHandlerBody, /resetDspSampleBuffers/);
+  assert.match(sampleHandlerBody, /xBuffer: this\.dspXBuffer/);
+  assert.match(sampleHandlerBody, /yBuffer: this\.dspYBuffer/);
   assert.match(renderer, /const weight = Math\.exp/);
-  assert.match(renderer, /Legacy processBuffer fallback keeps its age-graded point rendering/);
+  assert.match(renderer, /Draw every sample in the selected window with the original age grading/);
 
-  const paddedFrameBytes = (16 + 5554 + 3) & ~3;
-  assert.equal(paddedFrameBytes, 5572);
-  assert.equal(paddedFrameBytes - 16 - 5554, 2);
-  assert.ok(paddedFrameBytes * 30 < 200000);
+  const coordinateBytesPerSecond = 96000 * 8;
+  const fixedFrameBytes = (16 + 1464 + 3) & ~3;
+  assert.equal(coordinateBytesPerSecond, 768000);
+  assert.equal(fixedFrameBytes, 1480);
+  assert.ok(coordinateBytesPerSecond + fixedFrameBytes * 60 < 900000);
 });

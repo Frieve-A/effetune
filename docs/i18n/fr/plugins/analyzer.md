@@ -55,7 +55,7 @@ Affiche la forme de l'onde sonore en temps réel, afin de voir les impacts, les 
 - **Vertical Offset** - Décale la forme d'onde vers le haut/bas (-1 à 1)
 
 ### Note sur l'Affichage de la Forme d'Onde
-La ligne est lissée entre les échantillons. Utilisez-la comme guide visuel plutôt que comme outil de mesure exact.
+La forme d'onde relie les points capturés dans l'ordre chronologique. Pour les durées d'affichage longues, chaque intervalle conserve son premier et son dernier échantillon, ainsi que les échantillons minimum et maximum à leur position d'origine. La continuité et les pics brefs sont ainsi préservés dans les limites de la résolution d'affichage. Utilisez-la comme guide visuel plutôt que comme outil de mesure exact.
 
 ## Spectrogram
 

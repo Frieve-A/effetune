@@ -1,6 +1,15 @@
 import { buildDspPipelineDescriptor } from '../js/audio/dsp-pipeline-descriptor.js';
 import { getDspRolloutConfig } from '../js/audio/dsp-rollout.js';
 import { instantiateDsp, loadDspModule } from '../js/audio/dsp-wasm-loader.js';
+import {
+    buildIrAssetPayload,
+    IR_ASSET_FORMAT_TAG,
+    IR_ASSET_TOPOLOGY
+} from '../js/ir-library/ir-asset-payload.js';
+import {
+    estimateIrKernelCommitFootprint,
+    resolveIrProcessingConfig
+} from '../js/ir-library/ir-plugin-contract.js';
 
 export const BENCHMARK_DSP_MODES = Object.freeze({
     JAVASCRIPT: 'javascript',
@@ -10,8 +19,16 @@ export const BENCHMARK_DSP_MODES = Object.freeze({
 export const BENCHMARK_DSP_MAX_CHANNELS = 8;
 export const BENCHMARK_DSP_TELEMETRY_BYTES = 256 * 1024;
 export const BENCHMARK_DSP_TELEMETRY_RATE = 60;
+export const BENCHMARK_IR_REVERB_FRAMES = 256 * 1024;
+export const BENCHMARK_IR_REVERB_NOTE =
+    'True Stereo; deterministic 4-channel IR, 256K samples/channel ' +
+    '(IR load/preparation excluded from timing)';
 
 const DSP_OK = 0;
+const DSP_ASSET_STATE_PREPARING = 2;
+const DSP_ASSET_STATE_ACTIVE = 3;
+const IR_REVERB_ASSET_SLOT = 0;
+const IR_REVERB_CHANNELS = 4;
 
 export class DspBenchmarkUnavailableError extends Error {
     constructor(message) {
@@ -67,6 +84,75 @@ function preparePlugin(plugin, sampleRate, blockSize, channelCount) {
     };
 }
 
+function createDeterministicTrueStereoIr() {
+    const channels = Array.from(
+        { length: IR_REVERB_CHANNELS },
+        () => new Float32Array(BENCHMARK_IR_REVERB_FRAMES)
+    );
+    const seeds = [0x12345678, 0x9abcdef0, 0x31415926, 0x27182818];
+    for (let channel = 0; channel < channels.length; channel++) {
+        const samples = channels[channel];
+        let state = seeds[channel];
+        let envelope = 0.02;
+        for (let frame = 1; frame < samples.length; frame++) {
+            state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+            samples[frame] = ((state / 0x100000000) * 2 - 1) * envelope;
+            envelope *= 0.99995;
+        }
+    }
+    channels[0][0] = 1;
+    channels[1][0] = 0.25;
+    channels[2][0] = 0.25;
+    channels[3][0] = 1;
+    return channels;
+}
+
+export function createIrReverbBenchmarkAssets({
+    sampleRate,
+    channelCount = 2,
+    latency = '128',
+    convolutionRate = 'auto'
+}) {
+    const config = resolveIrProcessingConfig({
+        sampleRate,
+        channelCount: IR_REVERB_CHANNELS,
+        engineChannels: channelCount,
+        selectedChannels: channelCount,
+        topologyHint: 'true-stereo',
+        channelMode: 'true',
+        latency,
+        convolutionRate
+    });
+    if (!config.valid) {
+        throw new Error(`IR Reverb benchmark configuration is invalid: ${config.message}`);
+    }
+
+    const payload = buildIrAssetPayload({
+        channels: createDeterministicTrueStereoIr(),
+        sampleRate: config.sampleRate,
+        topology: IR_ASSET_TOPOLOGY.trueStereo
+    });
+    const footprintBytes = estimateIrKernelCommitFootprint({
+        frames: BENCHMARK_IR_REVERB_FRAMES,
+        assetChannels: config.assetChannels,
+        topology: config.topology,
+        processingChannels: config.processingChannels,
+        headBlock: config.headBlock,
+        pathCount: config.pathCount,
+        inputCount: config.inputCount
+    });
+    return new Map([[IR_REVERB_ASSET_SLOT, {
+        payload,
+        formatTag: IR_ASSET_FORMAT_TAG,
+        headBlock: config.headBlock,
+        rateDivider: config.rateDivider,
+        pathCount: config.pathCount,
+        inputCount: config.inputCount,
+        processingChannels: config.processingChannels,
+        footprintBytes
+    }]]);
+}
+
 class JavascriptBenchmarkSession {
     constructor(plugin, { sampleRate, blockSize, channelCount }) {
         if (typeof plugin?.executeProcessor !== 'function') {
@@ -88,6 +174,10 @@ class JavascriptBenchmarkSession {
         );
     }
 
+    prepareAssets() {
+        return 0;
+    }
+
     close() {
         this.closed = true;
     }
@@ -107,9 +197,12 @@ class JavascriptBenchmarkRuntime {
         return true;
     }
 
-    createPluginSession(plugin, { channelCount }) {
+    createPluginSession(plugin, { channelCount, assets }) {
         if (this.closed) throw new Error('JavaScript benchmark runtime is closed');
         requirePositiveInteger(channelCount, 'channelCount', BENCHMARK_DSP_MAX_CHANNELS);
+        if (assets instanceof Map && assets.size > 0) {
+            throw new DspBenchmarkPluginUnavailableError(getPluginType(plugin));
+        }
         return new JavascriptBenchmarkSession(plugin, {
             sampleRate: this.sampleRate,
             blockSize: this.blockSize,
@@ -123,14 +216,54 @@ class JavascriptBenchmarkRuntime {
 }
 
 class WasmBenchmarkSession {
-    constructor(runtime, plugin, instanceId, arena, channelCount) {
+    constructor(runtime, plugin, instanceId, arena, channelCount, assetSlots) {
         this.runtime = runtime;
         this.plugin = plugin;
         this.instanceId = instanceId;
         this.arena = arena;
         this.channelCount = channelCount;
         this.sampleCount = channelCount * runtime.blockSize;
+        this.assetSlots = assetSlots;
         this.closed = false;
+    }
+
+    prepareAssets() {
+        if (this.closed) throw new Error('WebAssembly benchmark session is closed');
+        if (this.assetSlots.length === 0) return 0;
+
+        const maximumBlocks = Math.ceil(2 * this.runtime.sampleRate / this.runtime.blockSize);
+        let block = 0;
+        while (block < maximumBlocks) {
+            const states = this.assetSlots.map(slot =>
+                this.runtime.binding.instanceAssetState(this.instanceId, slot) & 0xff
+            );
+            if (states.every(state => state === DSP_ASSET_STATE_ACTIVE)) break;
+            if (states.some(state => state !== DSP_ASSET_STATE_PREPARING)) {
+                throw new Error('WebAssembly benchmark asset preparation failed');
+            }
+            this.arena.combined.fill(0, 0, this.sampleCount);
+            assertStatus(
+                this.runtime.binding.pipelineProcess(
+                    this.channelCount,
+                    this.runtime.blockSize,
+                    block * this.runtime.blockSize / this.runtime.sampleRate,
+                    false
+                ),
+                'WebAssembly benchmark asset preparation'
+            );
+            block++;
+        }
+
+        const ready = this.assetSlots.every(slot =>
+            (this.runtime.binding.instanceAssetState(this.instanceId, slot) & 0xff) ===
+                DSP_ASSET_STATE_ACTIVE
+        );
+        if (!ready) throw new Error('WebAssembly benchmark asset preparation timed out');
+        assertStatus(
+            this.runtime.binding.resetInstance(this.instanceId),
+            'WebAssembly benchmark instance reset'
+        );
+        return block;
     }
 
     process(inputData, timeSeconds) {
@@ -188,7 +321,7 @@ class WasmBenchmarkRuntime {
         return this.enabledTypes.has(typeName);
     }
 
-    createPluginSession(plugin, { channelCount }) {
+    createPluginSession(plugin, { channelCount, assets = new Map() }) {
         if (this.closed) throw new Error('WebAssembly benchmark runtime is closed');
         if (this.activeSession) {
             throw new Error('Close the active WebAssembly benchmark session before creating another one');
@@ -198,6 +331,9 @@ class WasmBenchmarkRuntime {
         const typeName = getPluginType(plugin);
         if (!this.supportsPlugin(typeName)) {
             throw new DspBenchmarkPluginUnavailableError(typeName);
+        }
+        if (!(assets instanceof Map)) {
+            throw new TypeError('WebAssembly benchmark assets must be provided as a Map');
         }
         const packer = this.moduleInfo.paramPackers.get(typeName);
         if (!packer || typeof packer.pack !== 'function') {
@@ -245,6 +381,25 @@ class WasmBenchmarkRuntime {
                 );
             }
 
+            const assetSlots = [];
+            for (const [slot, asset] of assets) {
+                if (!Number.isInteger(slot) || slot < 0 ||
+                    !(asset?.payload instanceof ArrayBuffer)) {
+                    throw new TypeError(`${typeName} benchmark asset is invalid`);
+                }
+                assertStatus(
+                    this.binding.instanceSetAsset(
+                        instanceId,
+                        slot,
+                        asset.payload,
+                        asset,
+                        asset.formatTag
+                    ),
+                    `${typeName} asset staging`
+                );
+                assetSlots.push(slot);
+            }
+
             const arena = this.binding.getArenaViews();
             const descriptorParameters = {
                 ...parameters,
@@ -268,7 +423,8 @@ class WasmBenchmarkRuntime {
                 plugin,
                 instanceId,
                 arena,
-                channelCount
+                channelCount,
+                assetSlots
             );
             this.activeSession = session;
             return session;

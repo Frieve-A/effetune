@@ -75,6 +75,7 @@ resonator/horn_resonator_plus: Horn Resonator Plus | Resonator | HornResonatorPl
 resonator/modal_resonator: Modal Resonator | Resonator | ModalResonatorPlugin | css
 reverb/dattorro_plate_reverb: Dattorro Plate Reverb | Reverb | DattorroPlateReverbPlugin
 reverb/fdn_reverb: FDN Reverb | Reverb | FDNReverbPlugin
+reverb/ir_reverb: IR Reverb | Reverb | IRReverbPlugin | css
 reverb/rs_reverb: RS Reverb | Reverb | RSReverbPlugin
 saturation/dynamic_saturation: Dynamic Saturation | Saturation | DynamicSaturationPlugin | css
 saturation/exciter: Exciter | Saturation | ExciterPlugin | css

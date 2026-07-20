@@ -146,6 +146,12 @@ Os drivers de sistema operacional atuais suportam até 8 canais. O EffeTune pode
 
 ---
 
+### Compartilhar e reproduzir resultados do IR Reverb
+
+URLs e presets contêm apenas o ID da IR, não o áudio. Se a IR aparecer como ausente ou não houver sinal wet, importe o mesmo original para religar automaticamente, ou escolha um substituto na **Impulse Response Library**, e confira **Dry**.
+
+Para reproduzir o resultado em outro sistema, envie a IR inalterada com a URL/preset e os dados de fonte/licença; iguale também sample rate, seleção de canais e ajustes do IR Reverb. Em um send/return multicanal, use **Matrix** para copiar canais a um bus livre, ajuste **Dry** para -96 dB, deixe **Wet** em 0 dB e devolva o bus wet apenas às saídas desejadas.
+
 ## 5. Resposta de Frequência e Correção de Sala
 
 ### 5.1. Importando configurações do AutoEQ para o 15Band PEQ

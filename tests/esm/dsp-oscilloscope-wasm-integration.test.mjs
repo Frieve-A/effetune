@@ -10,7 +10,7 @@ const LEFT = [-1, -0.5, 0, 0.5, 1, 0.75, 0.25, -0.25];
 const RIGHT = [1, 0.5, 0, -0.5, -1, 0.25, 0.75, -0.75];
 
 for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
-  test(`Oscilloscope telemetry from ${artifact} contains a v1 raw snapshot`, async () => {
+  test(`Oscilloscope telemetry from ${artifact} contains a v2 raw snapshot`, async () => {
     const bytes = fs.readFileSync(new URL(`../../plugins/dsp/${artifact}`, import.meta.url));
     const binding = await instantiateDsp(bytes);
     try {
@@ -60,21 +60,94 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
       assert.equal(frames.length, 1);
       const frame = frames[0];
       assert.equal(frame.frameType, TelemetryFrameType.TAP_SCOPE_SNAPSHOT);
-      assert.equal(frame.formatVersion, 1);
+      assert.equal(frame.formatVersion, 2);
       assert.equal(frame.tapId, 77);
       assert.equal(frame.sequence, 0);
       assert.equal(frame.payload.getFloat32(0, true), 8000);
-      assert.equal(frame.payload.getUint32(4, true), 0);
-      assert.equal(frame.payload.getUint32(8, true), 8);
-      assert.equal(frame.payload.getUint8(12), 0);
-      assert.equal(frame.payload.getUint8(13), 0);
-      assert.equal(frame.payload.getUint16(14, true), 0);
+      assert.equal(frame.payload.getUint32(4, true), 8);
+      assert.equal(frame.payload.getUint32(8, true), 0);
+      assert.equal(frame.payload.getUint16(12, true), 0);
+      assert.equal(frame.payload.getUint8(14), 0);
+      assert.equal(frame.payload.getUint8(15), 0);
       for (let index = 0; index < LEFT.length; index++) {
         assert.equal(
           frame.payload.getFloat32(16 + index * 4, true),
           (LEFT[index] + RIGHT[index]) * 0.5
         );
       }
+    } finally {
+      binding.close();
+    }
+  });
+
+  test(`Oscilloscope telemetry from ${artifact} preserves M4 values and positions`, async () => {
+    const bytes = fs.readFileSync(new URL(`../../plugins/dsp/${artifact}`, import.meta.url));
+    const binding = await instantiateDsp(bytes);
+    try {
+      assert.notEqual(binding.createEngine(), 0);
+      assert.equal(binding.prepare(48000, 1, 128, 32768), 0);
+      const instanceId = binding.createInstance('OscilloscopePlugin');
+      assert.notEqual(instanceId, 0);
+      assert.equal(binding.instanceSetTap(instanceId, 78), 0);
+
+      const packer = DSP_PARAM_PACKERS.get('OscilloscopePlugin');
+      assert.ok(packer);
+      assert.equal(binding.instanceSetParams(instanceId, packer.pack({
+        dt: 0.1,
+        tm: 'Normal',
+        tl: 1,
+        te: 'Rising',
+        ho: 0.01,
+        dl: 0,
+        vo: 0
+      }), packer.hash), 0);
+
+      const arena = binding.getArenaViews();
+      const packet = new ArrayBuffer(32768);
+      let telemetryBytes = 0;
+      for (let block = 0; block < 45 && telemetryBytes === 0; block++) {
+        for (let frame = 0; frame < 128; frame++) {
+          arena.combined[frame] = block * 128 + frame;
+        }
+        assert.equal(binding.instanceProcess(
+          instanceId,
+          arena.offsets.combined,
+          1,
+          128,
+          block * 128 / 48000
+        ), 0);
+        telemetryBytes = binding.telemetryRead(packet);
+        assert.equal(binding.lastTelemetryDroppedFrames, 0);
+      }
+
+      const frames = [];
+      const parsed = parseTelemetryPacket(packet, telemetryBytes, frame => frames.push(frame));
+      assert.equal(parsed.ok, true);
+      assert.equal(frames.length, 1);
+      const frame = frames[0];
+      assert.equal(frame.frameType, TelemetryFrameType.TAP_SCOPE_SNAPSHOT);
+      assert.equal(frame.formatVersion, 2);
+      assert.equal(frame.tapId, 78);
+      assert.equal(frame.payload.byteLength, 9232);
+      assert.equal(frame.payload.getFloat32(0, true), 48000);
+      assert.equal(frame.payload.getUint32(4, true), 4800);
+      assert.equal(frame.payload.getUint32(8, true), 0);
+      assert.equal(frame.payload.getUint16(12, true), 512);
+      assert.equal(frame.payload.getUint8(14), 1);
+      assert.equal(frame.payload.getUint8(15), 0);
+      assert.equal(frame.payload.getFloat32(16, true), 0);
+      assert.equal(frame.payload.getFloat32(20, true), 0);
+      assert.equal(frame.payload.getFloat32(24, true), 8);
+      assert.equal(frame.payload.getFloat32(28, true), 8);
+      assert.equal(frame.payload.getUint8(32), 0);
+      assert.equal(frame.payload.getUint8(33), 8);
+      const lastBucket = 16 + 511 * 18;
+      assert.equal(frame.payload.getFloat32(lastBucket, true), 4790);
+      assert.equal(frame.payload.getFloat32(lastBucket + 4, true), 4790);
+      assert.equal(frame.payload.getFloat32(lastBucket + 8, true), 4799);
+      assert.equal(frame.payload.getFloat32(lastBucket + 12, true), 4799);
+      assert.equal(frame.payload.getUint8(lastBucket + 16), 0);
+      assert.equal(frame.payload.getUint8(lastBucket + 17), 9);
     } finally {
       binding.close();
     }

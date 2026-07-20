@@ -155,7 +155,8 @@ export class FileProcessor {
                     await this._processMultipleFiles(files);
                 }
             } catch (error) {
-                window.uiManager.setError('error.failedToProcessAudioFiles', true, { errorMessage: error.message });
+                window.uiManager.setError('error.failedToProcessAudioFiles', true,
+                    { errorMessage: this._processingErrorMessage(error) });
             } finally {
                 this.hideProgress();
                 fileInput.value = '';
@@ -520,6 +521,13 @@ export class FileProcessor {
         }
     }
 
+    _processingErrorMessage(error) {
+        if (typeof error?.userMessageKey === 'string' && window.uiManager?.t) {
+            return window.uiManager.t(error.userMessageKey);
+        }
+        return error?.message || 'Unable to process the audio file.';
+    }
+
     /**
      * Dispatches multiple-file processing to the appropriate path:
      * - Electron: folder selection dialog → write each file directly to disk
@@ -592,7 +600,7 @@ export class FileProcessor {
                 }
             } catch (error) {
                 window.uiManager.setError('error.failedToProcessFile', true,
-                    { fileName: files[i].name, errorMessage: error.message });
+                    { fileName: files[i].name, errorMessage: this._processingErrorMessage(error) });
             }
         }
 
@@ -630,7 +638,7 @@ export class FileProcessor {
                 savedCount++;
             } catch (error) {
                 window.uiManager.setError('error.failedToProcessFile', true,
-                    { fileName: files[i].name, errorMessage: error.message });
+                    { fileName: files[i].name, errorMessage: this._processingErrorMessage(error) });
             }
         }
 
@@ -662,7 +670,7 @@ export class FileProcessor {
                 processedFiles.push({ blob, name: this.getProcessedFileName(files[i].name) });
             } catch (error) {
                 window.uiManager.setError('error.failedToProcessFile', true,
-                    { fileName: files[i].name, errorMessage: error.message });
+                    { fileName: files[i].name, errorMessage: this._processingErrorMessage(error) });
             }
         }
 
@@ -819,7 +827,8 @@ export class FileProcessor {
                 await this._processMultipleFiles(audioFiles);
             }
         } catch (error) {
-            window.uiManager.setError('error.failedToProcessAudioFiles', true, { errorMessage: error.message });
+            window.uiManager.setError('error.failedToProcessAudioFiles', true,
+                { errorMessage: this._processingErrorMessage(error) });
         } finally {
             this.hideProgress();
 

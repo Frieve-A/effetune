@@ -131,6 +131,8 @@ Current OS drivers support up to 8 channels. EffeTune can support more channels 
 | AV receiver vs. interface cost? | Reusing an AV receiver with HDMI is simple. For PC-centric setups, a multichannel interface plus small amps offers good cost and quality. |
 | No sound from other apps right after installing VB-CABLE | The OS default output was switched to **CABLE Input**. Change it back in sound settings. |
 | Only channels 3+4 change volume after splitting | Place a **Volume** effect after the splitter and set **Channel** to 3+4. If placed before, all channels change. |
+| Why does shared IR Reverb sound dry or report a missing IR? | URLs and presets store only the IR content ID, not the audio file. Import the exact original file to relink automatically, or choose a substitute in **Impulse Response Library**. Also check the **Dry** setting: with a missing IR, no wet signal is produced. |
+| How can another person reproduce my IR Reverb result? | Share the preset or URL together with the original IR file and its source/license information. The recipient should import the unchanged file; identical bytes produce the same ID. Also match audio sample rate, output-channel selection, and IR Reverb settings. |
 
 ---
 
@@ -148,6 +150,7 @@ Copy the 5Band PEQ settings from the measurement page and paste into the **Effec
 * Signal flow is top to bottom.
 * Use the **Matrix** effect for conversions like 2→4ch or 8→2ch (set **Channel = All** in bus routing).
 * Manage level, mute, and delay for up to 8 channels with **MultiChannel Panel**.
+* For a multichannel reverb send/return, use **Matrix** to copy the desired source channels to a spare bus, place **IR Reverb** on that bus with **Dry** at -96 dB and **Wet** at 0 dB, then use Matrix gains as send levels. Route the wet bus back only to the intended output channels so the original dry path is not duplicated.
 
 ---
 

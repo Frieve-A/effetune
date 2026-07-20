@@ -1,9 +1,18 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { DoubleBlindTest } from '../../js/ui/double-blind-test/double-blind-test.js';
 import { encodePipelineState, decodePipelineState } from '../../js/utils/pipeline-state-codec.js';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
+
+function createDeferred() {
+  let resolve;
+  const promise = new Promise(resolvePromise => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
 
 class FakeClassList {
   constructor(element) {
@@ -509,6 +518,7 @@ function createHarness(options = {}) {
     }
   };
 
+  let messageRevision = 0;
   const uiManager = {
     audioManager,
     pluginManager,
@@ -519,10 +529,20 @@ function createHarness(options = {}) {
       return `${key}:${JSON.stringify(params)}`;
     },
     setError(message, isError) {
+      messageRevision += 1;
       errors.push({ message, isError });
     },
     clearError() {
+      messageRevision += 1;
       errors.push({ clear: true });
+    },
+    showTransientMessage(message, isError, params = {}, duration = 3000) {
+      const revision = ++messageRevision;
+      errors.push({ message, isError });
+      setTimeout(() => {
+        if (revision !== messageRevision) return;
+        this.clearError();
+      }, duration);
     },
     refreshApplicationMenu: options.omitRefreshMenu ? undefined : () => {
       menuRefreshes.push('refresh');
@@ -634,6 +654,7 @@ test('validates pipeline availability and manages entry/exit gating', async () =
 
     h.dbt.enterFresh();
     await flushMicrotasks();
+    assert.equal(h.dbt.els.configError.getAttribute('role'), 'alert');
 
     assert.equal(h.dbt.isActive(), true);
     assert.equal(h.uiManager.urlReflectionEnabled, false);
@@ -646,8 +667,7 @@ test('validates pipeline availability and manages entry/exit gating', async () =
     h.dbt.enterFresh();
     assert.equal(h.document.listenerCount('keydown'), 1);
 
-    h.dbt.exit();
-    await flushMicrotasks();
+    await h.dbt.exit();
     assert.equal(h.dbt.isActive(), false);
     assert.equal(h.document.listenerCount('keydown'), 0);
     assert.equal(h.uiManager.urlReflectionEnabled, true);
@@ -658,9 +678,40 @@ test('validates pipeline availability and manages entry/exit gating', async () =
     assert.deepEqual(h.calls.filter(call => call[0] === 'setCurrentPipeline').at(-1), ['setCurrentPipeline', 'B', true]);
     assert.equal(h.calls.some(call => call[0] === 'fadeInOutput'), false);
 
-    h.dbt.exit();
+    await h.dbt.exit();
     assert.equal(h.menuRefreshes.length, 2);
   });
+});
+
+test('waits for primary pipeline teardown before completing DBT exit and finish', async () => {
+  for (const mode of ['exit', 'finish']) {
+    let resolveTeardown;
+    const disableParallelPromise = new Promise(resolve => { resolveTeardown = resolve; });
+    await withHarness({ disableParallelPromise }, async h => {
+      h.dbt.enterFresh();
+      await flushMicrotasks();
+      let completion;
+      if (mode === 'exit') {
+        completion = h.dbt.exit();
+        await flushMicrotasks();
+        assert.equal(h.main.style.display, 'none');
+      } else {
+        h.dbt.localName = 'Finished';
+        h.dbt.totalCount = 1;
+        completion = h.dbt._finishTest();
+        await flushMicrotasks();
+        assert.equal(h.dbt.els.result.classList.contains('hidden'), false);
+      }
+
+      resolveTeardown(true);
+      await completion;
+      if (mode === 'exit') {
+        assert.equal(h.main.style.display, '');
+      } else {
+        assert.equal(h.dbt.els.result.classList.contains('hidden'), false);
+      }
+    });
+  }
 });
 
 test('gating fallbacks and panel insertion keep the panel usable', async () => {
@@ -721,7 +772,7 @@ test('mobile panel insertion keeps DBT shared by Player and Effects tabs', async
     assert.equal(h.mobilePlayerView.children.includes(h.dbt.container), false);
     assert.equal(h.main.children.includes(h.dbt.container), false);
 
-    h.dbt.exit();
+    await h.dbt.exit();
     h.dbt.enterFresh();
     await flushMicrotasks();
 
@@ -1027,12 +1078,16 @@ test('starts tests, randomizes trials, switches labels, and handles keyboard sho
     try {
       await h.dbt._startTest('ABX');
       assert.equal(h.dbt.testRunning, false);
+      assert.equal(h.dbt.els.configError.textContent, 'dbt.error.parallelStartFailed');
+      assert.equal(h.dbt.els.configError.classList.contains('hidden'), false);
       h.dbt.audioManager.enableParallelPipelines = label => {
         h.calls.push(['enableParallelPipelines', label]);
         return Promise.resolve(true);
       };
       await h.dbt._startTest('ABX');
       assert.equal(h.dbt.testRunning, true);
+      assert.equal(h.dbt.els.configError.textContent, '');
+      assert.equal(h.dbt.els.configError.classList.contains('hidden'), true);
       assert.equal(h.dbt._aIsPhysicalA, true);
       assert.equal(h.dbt._xIsA, true);
     } finally {
@@ -1168,6 +1223,8 @@ test('waits for parallel readiness and ignores stale completion after close or f
     await h.dbt._startTest('ABX');
     assert.equal(trials, 0);
     assert.equal(h.dbt.testRunning, false);
+    assert.equal(h.dbt.els.configError.textContent, 'dbt.error.parallelStartFailed');
+    assert.equal(h.dbt.els.configError.classList.contains('hidden'), false);
   });
 });
 
@@ -1191,6 +1248,8 @@ test('parallel invalidation aborts active trials and rejects further votes', asy
       assert.ok(h.dbt._switchSeq > switchSeq);
       assert.equal(h.dbt.els.config.classList.contains('hidden'), false);
       assert.equal(h.dbt.els.test.classList.contains('hidden'), true);
+      assert.equal(h.dbt.els.configError.textContent, 'dbt.error.parallelStartFailed');
+      assert.equal(h.dbt.els.configError.classList.contains('hidden'), false);
       h.dbt._vote('A');
       assert.equal(h.dbt.totalCount, total);
 
@@ -1199,6 +1258,17 @@ test('parallel invalidation aborts active trials and rejects further votes', asy
       h.runTimers();
       await flushMicrotasks();
     });
+  }
+});
+
+test('all locales include the parallel start failure message', () => {
+  for (const locale of ['en', 'ja', 'ar', 'es', 'fr', 'hi', 'ko', 'pt', 'ru', 'zh']) {
+    const source = readFileSync(new URL(`../../js/locales/${locale}.json5`, import.meta.url), 'utf8');
+    assert.match(
+      source,
+      /^\s*"dbt\.error\.parallelStartFailed":\s*"[^"]+"/m,
+      `${locale} is missing dbt.error.parallelStartFailed`
+    );
   }
 });
 
@@ -1328,6 +1398,18 @@ test('builds and shares payloads through success and failure clipboard paths', a
     h.dbt.totalCount = 4;
     h.dbt.prefACount = 0;
     h.dbt.timeSpent = 1000;
+    h.dbt.audioManager.pipelineA[0].externalAssetInfo = {
+      missing: false,
+      kind: 'IR',
+      ids: ['aaaaaaaaaaaaaaaaaaaaaaaa'],
+      names: ['Hall A']
+    };
+    h.dbt.audioManager.pipelineB[0].externalAssetInfo = {
+      missing: false,
+      kind: 'IR',
+      ids: ['bbbbbbbbbbbbbbbbbbbbbbbb'],
+      names: ['Hall B']
+    };
 
     const payload = h.dbt._buildSharePayload();
     assert.equal(payload.pA[0].nm, 'Alpha');
@@ -1341,7 +1423,11 @@ test('builds and shares payloads through success and failure clipboard paths', a
     h.runTimers();
     const dbtParam = new URL(h.windowObject.electronAPI.text).searchParams.get('dbt');
     assert.equal(decodePipelineState(dbtParam).tn, 'Shareable');
-    assert.deepEqual(h.errors.at(-2), { message: 'dbt.copySuccess', isError: false });
+    assert.deepEqual(h.errors.at(-2), {
+      message: 'dbt.copySuccess This pipeline references external IR data (Hall A, Hall B). Recipients must import the same files; they are not included.',
+      isError: false
+    });
+    assert.equal(h.errors.at(-2).message.match(/Recipients must import/g)?.length, 1);
   });
 
   await withHarness({
@@ -1362,6 +1448,99 @@ test('builds and shares payloads through success and failure clipboard paths', a
     await flushMicrotasks();
     h.runTimers();
     assert.deepEqual(h.errors.at(-1), { clear: true });
+  });
+});
+
+test('share success warning stays bound to the A/B payload copied before clipboard completion', async () => {
+  let releaseClipboard;
+  let clipboardStarted;
+  const clipboardReady = new Promise(resolve => {
+    clipboardStarted = resolve;
+  });
+  const clipboardPending = new Promise(resolve => {
+    releaseClipboard = resolve;
+  });
+
+  await withHarness({
+    electronAPI: {
+      writeClipboardText(text) {
+        this.text = text;
+        clipboardStarted();
+        return clipboardPending.then(() => true);
+      }
+    }
+  }, async h => {
+    h.dbt.audioManager.pipelineA[0].externalAssetInfo = {
+      missing: false,
+      kind: 'IR',
+      ids: ['aaaaaaaaaaaaaaaaaaaaaaaa'],
+      names: ['Copied Hall A']
+    };
+    h.dbt.audioManager.pipelineB[0].externalAssetInfo = {
+      missing: false,
+      kind: 'IR',
+      ids: ['bbbbbbbbbbbbbbbbbbbbbbbb'],
+      names: ['Copied Hall B']
+    };
+
+    const share = h.dbt._share();
+    await clipboardReady;
+    h.dbt.audioManager.pipelineA[0].externalAssetInfo.names = ['Later Hall'];
+    h.dbt.audioManager.pipelineA = [];
+    h.dbt.audioManager.pipelineB = [];
+    releaseClipboard();
+    await share;
+
+    assert.match(h.errors.at(-1).message, /external IR data \(Copied Hall A, Copied Hall B\)/);
+    assert.doesNotMatch(h.errors.at(-1).message, /Later Hall/);
+  });
+});
+
+test('only the latest DBT share attempt can publish completion feedback', async () => {
+  const scenarios = [
+    { latestResult: true, staleResult: false, expected: 'dbt.copySuccess', unexpected: 'dbt.copyFailure', timerCount: 1 },
+    { latestResult: false, staleResult: true, expected: 'dbt.copyFailure', unexpected: 'dbt.copySuccess', timerCount: 0 }
+  ];
+
+  for (const scenario of scenarios) {
+    const clipboardAttempts = [createDeferred(), createDeferred()];
+    let clipboardIndex = 0;
+    await withHarness({
+      electronAPI: {
+        writeClipboardText() {
+          return clipboardAttempts[clipboardIndex++].promise;
+        }
+      }
+    }, async h => {
+      const staleShare = h.dbt._share();
+      const latestShare = h.dbt._share();
+      assert.equal(clipboardIndex, 2);
+
+      clipboardAttempts[1].resolve(scenario.latestResult);
+      await latestShare;
+      clipboardAttempts[0].resolve(scenario.staleResult);
+      await staleShare;
+
+      const messages = h.errors.filter(entry => entry.message);
+      assert.equal(messages.filter(entry => entry.message.includes(scenario.expected)).length, 1);
+      assert.equal(messages.some(entry => entry.message.includes(scenario.unexpected)), false);
+      assert.equal(h.timers.filter(timer => timer.delay === 3000).length, scenario.timerCount);
+    });
+  }
+});
+
+test('a DBT success timeout cannot clear a newer preparation error', async () => {
+  await withHarness({ documentOptions: { execCommand: command => command === 'copy' } }, async h => {
+    h.dbt._buildPanel();
+    await h.dbt._share();
+    await flushMicrotasks();
+    const successTimer = h.timers.find(timer => timer.delay === 3000);
+    assert.ok(successTimer);
+
+    h.uiManager.setError('dbt.parallelStartFailed', true);
+    successTimer.fn();
+
+    assert.deepEqual(h.errors.at(-1), { message: 'dbt.parallelStartFailed', isError: true });
   });
 });
 

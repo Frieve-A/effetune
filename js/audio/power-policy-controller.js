@@ -87,6 +87,17 @@ function isDspSkippingDirective(directive) {
         directive === ProcessingDirective.SUSPENDED;
 }
 
+function selectHostGuardDirective(processingDirective, suspendCause) {
+    if (processingDirective === ProcessingDirective.FORCE_MONITORING ||
+        processingDirective === ProcessingDirective.ZERO_OUTPUT_TRANSPORT ||
+        processingDirective === ProcessingDirective.BYPASS_TRANSPORT) {
+        return processingDirective;
+    }
+    return suspendCause === SuspendCause.ZERO_OUTPUT_NO_TRANSPORT
+        ? ProcessingDirective.ZERO_OUTPUT_TRANSPORT
+        : ProcessingDirective.FORCE_MONITORING;
+}
+
 function resourceStateFromContext(context) {
     if (!context) return 'unavailable';
     return context.state || 'unknown';
@@ -163,6 +174,7 @@ export class PowerPolicyController {
         this.workletAcks = new Map();
         this.workletArms = new Map();
         this.workletPreparations = new Map();
+        this.monitoringFastWakeRuntimeFailure = null;
         this.workletDiagnosticIds = new WeakMap();
         this.workletDiagnosticSequence = 0;
         this.firstRenderWaiters = new Map();
@@ -190,7 +202,10 @@ export class PowerPolicyController {
         this.suspendedTemporalContinuity = true;
         this.inputUnusedSinceEpochMs = null;
         this.inputUnusedInputGeneration = null;
-        this.hiddenSinceEpochMs = this.documentRef?.hidden ? this.now() : null;
+        this.pageHidden = this.documentRef?.hidden === true;
+        this.hostHidden = null;
+        this.hostVisibilityDisposer = null;
+        this.hiddenSinceEpochMs = this.pageHidden ? this.now() : null;
         this.routedInputSilentSinceEpochMs = null;
         this.routedOutputSilentSinceEpochMs = null;
         this.routedSilenceInputAvailabilityRevision = null;
@@ -259,6 +274,62 @@ export class PowerPolicyController {
         return () => this.listeners.delete(listener);
     }
 
+    _isEffectivelyHidden() {
+        return this.pageHidden || this.hostHidden === true;
+    }
+
+    _refreshHiddenClock(now = this.now()) {
+        if (this._isEffectivelyHidden()) {
+            if (!Number.isFinite(this.hiddenSinceEpochMs)) this.hiddenSinceEpochMs = now;
+        } else {
+            this.hiddenSinceEpochMs = null;
+        }
+        this._setUiPowerGate(this.effectiveState, this.processingDirective);
+    }
+
+    _applyHostVisibility(snapshot, reconcile) {
+        if (this.disposed) return false;
+        if (!snapshot || typeof snapshot.hidden !== 'boolean') return false;
+        const changed = this.hostHidden !== snapshot.hidden;
+        this.hostHidden = snapshot.hidden;
+        this._refreshHiddenClock();
+        if (changed && reconcile && this.enabled && !this.disposed) {
+            this._requestWorkletObservation();
+            this.requestReconcile('lifecycle:window-visibility').catch(() => {});
+        }
+        return changed;
+    }
+
+    async _initializeHostVisibility() {
+        const api = this.windowRef?.electronAPI;
+        if (!api) {
+            this._refreshHiddenClock();
+            return;
+        }
+        let initializing = true;
+        let eventReceived = false;
+        if (typeof api.onWindowVisibilityChanged === 'function') {
+            try {
+                const disposer = api.onWindowVisibilityChanged(snapshot => {
+                    if (initializing) eventReceived = true;
+                    this._applyHostVisibility(snapshot, !initializing);
+                });
+                if (typeof disposer === 'function') this.hostVisibilityDisposer = disposer;
+            } catch (error) {
+                console.warn('Unable to observe the application window visibility.', error);
+            }
+        }
+        if (typeof api.getWindowVisibility === 'function') {
+            try {
+                const snapshot = await api.getWindowVisibility();
+                if (!eventReceived) this._applyHostVisibility(snapshot, false);
+            } catch (error) {
+                console.warn('Unable to read the application window visibility.', error);
+            }
+        }
+        initializing = false;
+    }
+
     async start() {
         if (this.started || this.disposed) return this.getSnapshot();
         this.started = true;
@@ -268,6 +339,8 @@ export class PowerPolicyController {
         if (restoredRelease?.manualResumeRequired === true) {
             this.manualResumeRequired = true;
         }
+        await this._initializeHostVisibility();
+        if (this.disposed) return this.getSnapshot();
         this.audioManager.contextManager?.setPowerStateDelegate?.(this);
         this._configureWorklets();
         this._requestWorkletObservation();
@@ -296,6 +369,8 @@ export class PowerPolicyController {
             this.clearTimeoutFn?.(waiter.timer);
         }
         this.observationWaiters.clear();
+        this.hostVisibilityDisposer?.();
+        this.hostVisibilityDisposer = null;
         this.listeners.clear();
         if (this.audioManager.contextManager?.powerStateDelegate === this) {
             this.audioManager.contextManager.setPowerStateDelegate(null);
@@ -451,6 +526,7 @@ export class PowerPolicyController {
         this.workletAcks.clear();
         this.workletArms.clear();
         this.workletPreparations.clear();
+        this.monitoringFastWakeRuntimeFailure = null;
         this.automaticMonitoringArm = emptyAutomaticArm();
         if (resetWorkletTemporalState) {
             this.skipEpoch++;
@@ -756,24 +832,19 @@ export class PowerPolicyController {
         const route = this._deriveRouteAndPlayerFacts();
         const temporal = analyzeTemporalCapabilities(this.audioManager.getCurrentPipeline?.() ||
             this.audioManager.pipeline || []);
-        const allEnabledPluginsStateless = temporal.capabilities.every(
-            item => item.capability === 'stateless'
-        );
         const temporalSkipEligible = temporal.temporalSkipEligible;
         const currentPipeline = this.audioManager.getCurrentPipeline?.() ||
             this.audioManager.pipeline || [];
-        const gainBound = this.audioManager.getPowerGraphAmplitudeBound?.(currentPipeline) ||
-            computeLinearPipelineWakeBound(
-                currentPipeline,
-                this.audioManager.getPowerChannelFanInBound?.() || 1
-            );
+        const monitoringRuntimeFailed = this._hasMonitoringFastWakeRuntimeFailure(
+            coordinator.tokens
+        );
         const monitoringFastWakeEligible = temporal.monitoringFastWakeEligible &&
-            allEnabledPluginsStateless && gainBound.finite;
+            !monitoringRuntimeFailed;
         const monitoringBlocker = monitoringFastWakeEligible
             ? null
-            : (temporal.blockerReason || (allEnabledPluginsStateless
-                ? 'temporal-preparation-unbounded'
-                : 'temporal-preparation-not-worklet-local'));
+            : (monitoringRuntimeFailed
+                ? 'temporal-preparation-runtime-failed'
+                : (temporal.blockerReason || 'temporal-preparation-not-worklet-local'));
         const safeTemporal = {
             ...temporal,
             temporalSkipEligible,
@@ -844,7 +915,7 @@ export class PowerPolicyController {
         const worklets = this.audioManager.getActivePowerWorklets?.() || [];
         const hasWorklet = worklets.length > 0 || !!this.audioManager.workletNode;
         const requiredResourcesKnown = !!context && hasWorklet;
-        const temporalDegraded = safeTemporal.blockerReason !== null || !gainBound.finite;
+        const temporalDegraded = safeTemporal.blockerReason !== null || monitoringRuntimeFailed;
         const resourceHealth = requiredResourcesKnown
             ? (temporalDegraded ? ResourceHealth.DEGRADED : ResourceHealth.HEALTHY)
             : ResourceHealth.UNKNOWN;
@@ -928,7 +999,7 @@ export class PowerPolicyController {
             noRouteIdleTopologyRevision: this.noRouteIdleEpochTokens?.topologyRevision,
             inputUnusedSinceEpochMs: this.inputUnusedSinceEpochMs,
             inputUnusedInputGeneration: this.inputUnusedInputGeneration,
-            visibility: this.documentRef?.hidden ? 'hidden' : 'visible',
+            visibility: this._isEffectivelyHidden() ? 'hidden' : 'visible',
             hiddenSinceEpochMs: this.hiddenSinceEpochMs,
             routedInputSilentSinceEpochMs: this.routedInputSilentSinceEpochMs,
             routedOutputSilentSinceEpochMs: this.routedOutputSilentSinceEpochMs,
@@ -973,29 +1044,62 @@ export class PowerPolicyController {
 
     _configureWorklets() {
         if (!this.enabled) return;
+        this.workletArms.clear();
+        this.automaticMonitoringArm = emptyAutomaticArm();
         const coordinator = this._getTokensAndGuards();
         const pipeline = this.audioManager.getCurrentPipeline?.() || this.audioManager.pipeline || [];
         const temporal = analyzeTemporalCapabilities(pipeline);
-        const allEnabledPluginsStateless = temporal.capabilities.every(
-            item => item.capability === 'stateless'
-        );
         const bound = this.audioManager.getPowerGraphAmplitudeBound?.(pipeline) ||
             computeLinearPipelineWakeBound(
                 pipeline,
                 this.audioManager.getPowerChannelFanInBound?.() || 1
             );
-        const monitoringFastWakeEligible = temporal.monitoringFastWakeEligible &&
-            allEnabledPluginsStateless && bound.finite;
+        const finiteWakeBound = bound?.finite === true && Number.isFinite(bound.db);
+        const monitoringFastWakeEligible = temporal.monitoringFastWakeEligible;
         const temporalSkipEligible = temporal.temporalSkipEligible;
-        this._broadcast({
+        const commandId = ++this.commandSequence;
+        const currentTerminalError = this.statePreparation.state === 'error' &&
+            this.statePreparation.commandId === this.lastSkipCommandId &&
+            this.statePreparation.skipEpoch === this.skipEpoch &&
+            this.statePreparation.workletGraphGeneration ===
+                coordinator.tokens.workletGraphGeneration &&
+            this.statePreparation.topologyRevision === coordinator.tokens.topologyRevision;
+        const hostGuardRequired = (this.effectiveState === AudioPowerState.SUSPENDED ||
+            this.lastSkipCommandId !== null) && !currentTerminalError;
+        const hostGuardDirective = selectHostGuardDirective(
+            this.processingDirective,
+            this.suspendCause
+        );
+        const preserveHostSkipState = this.lastSkipCommandId !== null;
+        let hostGuardSkipEpoch = null;
+        if (hostGuardRequired) {
+            hostGuardSkipEpoch = this.skipEpoch + 1;
+            this.skipEpoch = hostGuardSkipEpoch;
+            this.lastSkipCommandId = commandId;
+            if (!this.suspendedTemporalTiming &&
+                this.effectiveState === AudioPowerState.SUSPENDED) {
+                this._startSuspendedTemporalInterval({ preserveCompleted: false });
+            }
+            if (this.suspendedTemporalTiming) {
+                this.suspendedTemporalTiming = {
+                    ...this.suspendedTemporalTiming,
+                    skipEpoch: hostGuardSkipEpoch,
+                    topologyRevision: coordinator.tokens.topologyRevision,
+                    workletGraphGeneration: coordinator.tokens.workletGraphGeneration
+                };
+            }
+        }
+        const configuration = {
             type: 'configurePowerPolicy',
             enabled: true,
             workletGraphGeneration: coordinator.tokens.workletGraphGeneration,
             topologyRevision: coordinator.tokens.topologyRevision,
-            commandId: ++this.commandSequence,
+            commandId,
+            uiTelemetryEnabled: this.dspUiActivityAllowed === true,
             silenceThresholdDb: this.settings.silenceThresholdDb,
             silenceDurationSeconds: 60,
-            wakeGainMarginDb: bound.finite ? bound.db : 0,
+            wakeGainMarginDb: finiteWakeBound ? bound.db : 0,
+            wakeOnAnyInput: !finiteWakeBound,
             enabledPluginCount: temporal.capabilities.length,
             monitoringPreparationCapabilities: temporal.capabilities.map((item, index) => ({
                 pluginId: item.pluginId ?? `pipeline-${index}`,
@@ -1006,8 +1110,15 @@ export class PowerPolicyController {
             monitoringFastWakeEligible,
             monitoringFastWakeBlockerReason: monitoringFastWakeEligible
                 ? null
-                : (temporal.blockerReason || 'temporal-preparation-unbounded')
-        });
+                : (temporal.blockerReason || 'temporal-preparation-unbounded'),
+            ...(hostGuardRequired && {
+                hostGuardDirective,
+                hostGuardSkipEpoch,
+                preserveHostSkipState
+            })
+        };
+        this._broadcast(configuration);
+        return configuration;
     }
 
     _broadcast(message) {
@@ -1090,6 +1201,14 @@ export class PowerPolicyController {
             await this.requestInputRelease(decision.inputReleaseRequest);
         }
 
+        if (decision.targetState === AudioPowerState.SUSPENDED &&
+            this.gestureResumeInProgress > 0) {
+            if (forceDirectiveResend) this.workletDirectiveResendRequired = true;
+            this._setUiPowerGate(this.effectiveState, this.processingDirective);
+            this._emitSnapshot();
+            return;
+        }
+
         if (decision.workletControl.shouldArmAutomaticMonitoring) {
             await this._armAutomaticMonitoring(decision);
             return;
@@ -1111,8 +1230,24 @@ export class PowerPolicyController {
                 // policy still wants it suspended. Restore the suspended context
                 // so the pre-suspend monitoring directive cannot keep copying
                 // unprocessed input to the output.
-                await this.audioManager.contextManager?.suspendForPowerPolicy?.();
-                this._clearRecoveredTransitionError();
+                try {
+                    const suspended = await this.audioManager.contextManager
+                        ?.suspendForPowerPolicy?.();
+                    if (suspended !== true ||
+                        this.audioManager.contextManager?.audioContext?.state !== 'suspended') {
+                        throw new Error('AudioContext did not enter suspended state');
+                    }
+                    this._clearRecoveredTransitionError();
+                } catch (error) {
+                    this.workletDirectiveResendRequired = true;
+                    this.transitionError = {
+                        code: 'audio-context-suspend-failed',
+                        message: error?.message || String(error),
+                        operationId: null,
+                        recoverable: true
+                    };
+                    this.resourceHealth = ResourceHealth.DEGRADED;
+                }
                 this._setUiPowerGate(this.effectiveState, this.processingDirective);
                 this._emitSnapshot();
             } else {
@@ -1122,6 +1257,7 @@ export class PowerPolicyController {
             }
             if (deferInputReleaseUntilSuspend &&
                 this.effectiveState === AudioPowerState.SUSPENDED &&
+                this.audioManager.contextManager?.audioContext?.state === 'suspended' &&
                 canApplyInputRelease(decision.inputReleaseRequest)) {
                 const now = this.now();
                 const currentDecision = decidePowerTarget(
@@ -1202,7 +1338,7 @@ export class PowerPolicyController {
         return new Promise(resolve => {
             const timer = this.setTimeoutFn?.(() => {
                 this.preparationWaiters.delete(ackCommandId);
-                resolve(false);
+                resolve('timeout');
             }, POWER_COMMAND_TIMEOUT_MS);
             const nodes = this._getActiveWorkletNodes();
             this.preparationWaiters.set(ackCommandId, {
@@ -1217,12 +1353,61 @@ export class PowerPolicyController {
         });
     }
 
-    _getSuspendedTemporalElapsed(coordinator, skippedFrameCount) {
+    _freezeSuspendedTemporalElapsed() {
+        const timing = this.suspendedTemporalTiming;
+        if (!timing || Number.isFinite(timing.endedAtMonotonicMs)) return;
+        const endedAtMonotonicMs = this.monotonicNow();
+        if (!Number.isFinite(endedAtMonotonicMs) ||
+            !Number.isFinite(timing.startedAtMonotonicMs) ||
+            endedAtMonotonicMs < timing.startedAtMonotonicMs) {
+            this.suspendedTemporalContinuity = false;
+            return;
+        }
+        const completedElapsedMs = Number.isFinite(timing.completedElapsedMs) &&
+            timing.completedElapsedMs >= 0 ? timing.completedElapsedMs : 0;
+        this.suspendedTemporalTiming = {
+            ...timing,
+            endedAtMonotonicMs,
+            completedElapsedMs:
+                completedElapsedMs + endedAtMonotonicMs - timing.startedAtMonotonicMs
+        };
+    }
+
+    _startSuspendedTemporalInterval({ preserveCompleted = true } = {}) {
+        const previous = this.suspendedTemporalTiming;
+        let completedElapsedMs = 0;
+        if (preserveCompleted && previous) {
+            if (Number.isFinite(previous.completedElapsedMs) && previous.completedElapsedMs >= 0) {
+                completedElapsedMs = previous.completedElapsedMs;
+            } else if (Number.isFinite(previous.startedAtMonotonicMs) &&
+                Number.isFinite(previous.endedAtMonotonicMs) &&
+                previous.endedAtMonotonicMs >= previous.startedAtMonotonicMs) {
+                completedElapsedMs = previous.endedAtMonotonicMs -
+                    previous.startedAtMonotonicMs;
+            }
+        }
+        const coordinator = this._getTokensAndGuards();
+        const startedAtMonotonicMs = this.monotonicNow();
+        const sampleRate = this.audioManager.contextManager?.audioContext?.sampleRate ?? null;
+        this.suspendedTemporalTiming = {
+            completedElapsedMs,
+            startedAtMonotonicMs,
+            endedAtMonotonicMs: null,
+            sampleRate,
+            skipEpoch: this.skipEpoch,
+            topologyRevision: coordinator.tokens.topologyRevision,
+            workletGraphGeneration: coordinator.tokens.workletGraphGeneration
+        };
+        this.suspendedTemporalContinuity = Number.isFinite(startedAtMonotonicMs) &&
+            Number.isFinite(sampleRate) && (!preserveCompleted ||
+                this.suspendedTemporalContinuity !== false);
+    }
+
+    _getSuspendedTemporalElapsed(coordinator) {
         const timing = this.suspendedTemporalTiming;
         const sampleRate = this.audioManager.contextManager?.audioContext?.sampleRate;
         if (!timing && Number.isFinite(sampleRate) && sampleRate > 0) {
             return {
-                skippedFrameCount,
                 suspendedElapsedMs: 0,
                 elapsedContinuity: 'verified',
                 resumeSampleRate: sampleRate
@@ -1233,14 +1418,26 @@ export class PowerPolicyController {
             timing.topologyRevision === coordinator.tokens.topologyRevision &&
             timing.workletGraphGeneration === coordinator.tokens.workletGraphGeneration &&
             Number.isFinite(sampleRate) && sampleRate > 0 && sampleRate === timing.sampleRate;
-        const now = this.monotonicNow();
-        const elapsed = identityCurrent && Number.isFinite(now) &&
-            Number.isFinite(timing.startedAtMonotonicMs)
-            ? now - timing.startedAtMonotonicMs
+        const completedElapsedMs = Number.isFinite(timing?.completedElapsedMs) &&
+            timing.completedElapsedMs >= 0
+            ? timing.completedElapsedMs
+            : 0;
+        const endedAtMonotonicMs = Number.isFinite(timing?.endedAtMonotonicMs)
+            ? timing.endedAtMonotonicMs
+            : this.monotonicNow();
+        const openElapsedMs = Number.isFinite(timing?.endedAtMonotonicMs)
+            ? 0
+            : endedAtMonotonicMs - timing?.startedAtMonotonicMs;
+        const legacyClosedElapsedMs = !Number.isFinite(timing?.completedElapsedMs) &&
+            Number.isFinite(timing?.endedAtMonotonicMs)
+            ? timing.endedAtMonotonicMs - timing.startedAtMonotonicMs
+            : 0;
+        const elapsed = identityCurrent && Number.isFinite(openElapsedMs) && openElapsedMs >= 0 &&
+            Number.isFinite(legacyClosedElapsedMs) && legacyClosedElapsedMs >= 0
+            ? completedElapsedMs + openElapsedMs + legacyClosedElapsedMs
             : NaN;
         if (!Number.isFinite(elapsed) || elapsed < 0) {
             return {
-                skippedFrameCount,
                 suspendedElapsedMs: 0,
                 elapsedContinuity: 'unknown',
                 resumeSampleRate: Number.isFinite(sampleRate) && sampleRate > 0
@@ -1249,68 +1446,27 @@ export class PowerPolicyController {
             };
         }
         return {
-            skippedFrameCount,
             suspendedElapsedMs: elapsed,
             elapsedContinuity: 'verified',
             resumeSampleRate: sampleRate
         };
     }
 
-    async _prepareTemporalStateForResume(operationId, coordinator) {
-        if (this.lastSkipCommandId === null) return true;
+    async _prepareTemporalStateAndResume(operationId, coordinator, resumeCommandId) {
+        const nodes = this._getActiveWorkletNodes();
+        if (this.lastSkipCommandId === null || nodes.length !== 1) {
+            return 'temporal-resume-failed';
+        }
         const temporal = analyzeTemporalCapabilities(
             this.audioManager.getCurrentPipeline?.() || this.audioManager.pipeline || []
         );
-        if (!temporal.temporalSkipEligible) return false;
+        if (!temporal.temporalSkipEligible) return 'temporal-resume-failed';
         const enabledPluginCount = temporal.capabilities.length;
-        const statelessCount = temporal.capabilities.filter(
-            item => item.capability === 'stateless'
-        ).length;
         const observedSkippedFrameCount = this.workletObservation?.skippedFrameCount;
         const skippedFrameCount = Number.isSafeInteger(observedSkippedFrameCount) &&
             observedSkippedFrameCount >= 0 ? observedSkippedFrameCount : 0;
-        if (statelessCount === enabledPluginCount) {
-            const notRequired = {
-                state: 'not-required',
-                origin: 'deliberate',
-                ownerOperationId: operationId,
-                workletGraphGeneration: coordinator.tokens.workletGraphGeneration,
-                topologyRevision: coordinator.tokens.topologyRevision,
-                skipEpoch: this.skipEpoch,
-                enabledPluginCount,
-                coveredPluginCount: enabledPluginCount,
-                appliedPolicyCounts: {
-                    stateless: statelessCount,
-                    resetOnResume: 0,
-                    agedBySkippedFrames: 0,
-                    mustProcess: 0
-                },
-                skippedFrameCount,
-                commandId: this.lastSkipCommandId,
-                ackCommandId: null,
-                renderSequence: this.workletObservation?.renderSequence ?? null,
-                errorCode: null
-            };
-            this._setPreparationForNodes(notRequired);
-            return validateStatePreparation(notRequired);
-        }
-
-        // The worklet pre-validates the skipped-frame base against its live
-        // counter, so a base taken from a stale heartbeat fails whenever frames
-        // advanced since. Refresh the observation right before preparing.
-        const freshObservation = await this._requestFreshWorkletObservation();
-        const freshSkippedFrameCount = freshObservation?.skippedFrameCount;
-        const prepareSkippedFrameCount = Number.isSafeInteger(freshSkippedFrameCount) &&
-            freshSkippedFrameCount >= 0 ? freshSkippedFrameCount : skippedFrameCount;
-        const ackCommandId = ++this.commandSequence;
-        const elapsed = this._getSuspendedTemporalElapsed(coordinator, prepareSkippedFrameCount);
-        const derivedFrames = elapsed.elapsedContinuity === 'verified'
-            ? Math.floor(elapsed.suspendedElapsedMs * elapsed.resumeSampleRate / 1000)
-            : 0;
-        const expectedSkippedFrameCount = Number.isSafeInteger(derivedFrames) &&
-            Number.isSafeInteger(prepareSkippedFrameCount + derivedFrames)
-            ? prepareSkippedFrameCount + derivedFrames
-            : prepareSkippedFrameCount;
+        let ackCommandId = ++this.commandSequence;
+        const elapsed = this._getSuspendedTemporalElapsed(coordinator);
         const pending = {
             state: 'pending',
             origin: 'deliberate',
@@ -1326,32 +1482,143 @@ export class PowerPolicyController {
                 agedBySkippedFrames: 0,
                 mustProcess: 0
             },
-            skippedFrameCount: prepareSkippedFrameCount,
+            skippedFrameCount,
             commandId: this.lastSkipCommandId,
             ackCommandId,
             renderSequence: null,
             errorCode: null
         };
         this._setPreparationForNodes(pending);
-        const prepared = this._waitForTemporalPreparation(ackCommandId, {
+        const expectations = {
             ownerOperationId: operationId,
             commandId: this.lastSkipCommandId,
+            resumeCommandId,
             skipEpoch: this.skipEpoch,
-            enabledPluginCount,
-            expectedSkippedFrameCount
-        });
-        this._broadcast({
-            type: 'prepareTemporalState',
+            enabledPluginCount
+        };
+        const request = {
+            type: 'prepareTemporalStateAndResume',
             origin: 'deliberate',
             ownerOperationId: operationId,
             commandId: this.lastSkipCommandId,
-            ackCommandId,
+            resumeCommandId,
             skipEpoch: this.skipEpoch,
             ...elapsed,
             workletGraphGeneration: coordinator.tokens.workletGraphGeneration,
             topologyRevision: coordinator.tokens.topologyRevision
+        };
+        let prepared = this._waitForTemporalPreparation(ackCommandId, expectations);
+        let rendered = this._waitForFirstRender(
+            resumeCommandId,
+            'active',
+            ProcessingDirective.FULL_PROCESS
+        );
+        this._broadcast({
+            ...request,
+            ackCommandId
         });
-        return prepared;
+        let preparationResult = await prepared;
+        if (preparationResult === 'timeout') {
+            const waiter = this.firstRenderWaiters.get(resumeCommandId);
+            if (waiter) {
+                this.firstRenderWaiters.delete(resumeCommandId);
+                this.clearTimeoutFn?.(waiter.timer);
+                waiter.resolve(false);
+            }
+            ackCommandId = ++this.commandSequence;
+            this._setPreparationForNodes({ ...pending, ackCommandId });
+            prepared = this._waitForTemporalPreparation(ackCommandId, expectations);
+            rendered = this._waitForFirstRender(
+                resumeCommandId,
+                'active',
+                ProcessingDirective.FULL_PROCESS
+            );
+            this._broadcast({ ...request, ackCommandId });
+            preparationResult = await prepared;
+            if (preparationResult === 'timeout') {
+                preparationResult = 'retry-timeout';
+            }
+        }
+        if (preparationResult !== true) {
+            const waiter = this.firstRenderWaiters.get(resumeCommandId);
+            if (waiter) {
+                this.firstRenderWaiters.delete(resumeCommandId);
+                this.clearTimeoutFn?.(waiter.timer);
+                waiter.resolve(false);
+            }
+            return preparationResult === 'terminal-error'
+                ? 'temporal-resume-terminal-error'
+                : preparationResult === 'retry-timeout'
+                    ? 'temporal-resume-preparation-timeout'
+                    : 'temporal-resume-failed';
+        }
+        this._broadcast({
+            type: 'setUiTelemetryEnabled',
+            enabled: true,
+            commandId: resumeCommandId,
+            workletGraphGeneration: coordinator.tokens.workletGraphGeneration,
+            topologyRevision: coordinator.tokens.topologyRevision
+        });
+        const firstRender = await rendered;
+        return firstRender || firstRender === 'stale-topology'
+            ? firstRender
+            : 'temporal-resume-render-failed';
+    }
+
+    _hasCurrentHostGuardEvidence(directive, tokens) {
+        const observation = this.workletObservation;
+        if (observation && observation.workletGraphGeneration === tokens.workletGraphGeneration &&
+            observation.topologyRevision === tokens.topologyRevision &&
+            observation.commandId === this.lastSkipCommandId &&
+            observation.skipEpoch === this.skipEpoch &&
+            observation.processingDirective === directive) {
+            return true;
+        }
+        const preparation = this.statePreparation;
+        return preparation.state === 'error' &&
+            preparation.workletGraphGeneration === tokens.workletGraphGeneration &&
+            preparation.topologyRevision === tokens.topologyRevision &&
+            preparation.commandId === this.lastSkipCommandId &&
+            preparation.skipEpoch === this.skipEpoch;
+    }
+
+    async _ensureHostGuardRendered() {
+        if (this.lastSkipCommandId === null) return true;
+        const coordinator = this._getTokensAndGuards();
+        const directive = selectHostGuardDirective(
+            this.processingDirective,
+            this.suspendCause
+        );
+        if (this._hasCurrentHostGuardEvidence(directive, coordinator.tokens)) return true;
+
+        const commandId = ++this.commandSequence;
+        const skipEpoch = this.skipEpoch + 1;
+        const expectedState = directive === ProcessingDirective.FORCE_MONITORING
+            ? 'monitoring'
+            : 'active';
+        const rendered = this._waitForFirstRender(commandId, expectedState, directive);
+        this.skipEpoch = skipEpoch;
+        this.lastSkipCommandId = commandId;
+        if (this.suspendedTemporalTiming) {
+            this.suspendedTemporalTiming = {
+                ...this.suspendedTemporalTiming,
+                skipEpoch,
+                topologyRevision: coordinator.tokens.topologyRevision,
+                workletGraphGeneration: coordinator.tokens.workletGraphGeneration
+            };
+        }
+        this._broadcast({
+            type: 'setPowerProcessingState',
+            state: expectedState,
+            processingDirective: directive,
+            commandId,
+            skipEpoch,
+            preserveHostSkipState: true,
+            armAfterRenderSequence: null,
+            workletGraphGeneration: coordinator.tokens.workletGraphGeneration,
+            topologyRevision: coordinator.tokens.topologyRevision
+        });
+        return await rendered === true;
     }
 
     async _applyWorkletState(targetState, directive, commandOptions = {}) {
@@ -1366,50 +1633,45 @@ export class PowerPolicyController {
             : (commandOptions.skipEpoch ?? this.skipEpoch);
         this._setTransition(targetState === AudioPowerState.ACTIVE ? 'resuming' : 'suspending', operationId);
         this.pendingCommand = { commandId, targetState, directive, operationId };
-        if (targetState === AudioPowerState.ACTIVE &&
-            directive === ProcessingDirective.FULL_PROCESS && this.lastSkipCommandId !== null) {
-            const prepared = await this._prepareTemporalStateForResume(operationId, coordinator);
-            if (!prepared) {
-                this.transitionError = {
-                    code: 'temporal-state-preparation-failed',
-                    message: 'Temporal plugin state could not be prepared safely.',
-                    operationId,
-                    recoverable: true
-                };
-                this.resourceHealth = ResourceHealth.DEGRADED;
-                this.pendingCommand = null;
-                this._setTransition('stable', null);
-                return false;
-            }
+        const atomicHostResume = targetState === AudioPowerState.ACTIVE &&
+            directive === ProcessingDirective.FULL_PROCESS && this.lastSkipCommandId !== null;
+        let rendered;
+        if (atomicHostResume) {
+            rendered = await this._prepareTemporalStateAndResume(
+                operationId,
+                coordinator,
+                commandId
+            );
+        } else {
+            const expectedWorkletState = targetState === AudioPowerState.MONITORING
+                ? 'monitoring'
+                : 'active';
+            const firstRenderPromise = this._waitForFirstRender(
+                commandId,
+                expectedWorkletState,
+                directive
+            );
+            this._broadcast({
+                type: 'setUiTelemetryEnabled',
+                enabled: targetState === AudioPowerState.ACTIVE &&
+                    directive !== ProcessingDirective.BYPASS_TRANSPORT &&
+                    directive !== ProcessingDirective.ZERO_OUTPUT_TRANSPORT,
+                commandId,
+                workletGraphGeneration: coordinator.tokens.workletGraphGeneration,
+                topologyRevision: coordinator.tokens.topologyRevision
+            });
+            this._broadcast({
+                type: 'setPowerProcessingState',
+                state: targetState === AudioPowerState.MONITORING ? 'monitoring' : 'active',
+                processingDirective: directive,
+                commandId,
+                skipEpoch: commandSkipEpoch,
+                armAfterRenderSequence: commandOptions.armAfterRenderSequence ?? null,
+                workletGraphGeneration: coordinator.tokens.workletGraphGeneration,
+                topologyRevision: coordinator.tokens.topologyRevision
+            });
+            rendered = await firstRenderPromise;
         }
-        const expectedWorkletState = targetState === AudioPowerState.MONITORING
-            ? 'monitoring'
-            : 'active';
-        const firstRenderPromise = this._waitForFirstRender(
-            commandId,
-            expectedWorkletState,
-            directive
-        );
-        this._broadcast({
-            type: 'setUiTelemetryEnabled',
-            enabled: targetState === AudioPowerState.ACTIVE &&
-                directive !== ProcessingDirective.BYPASS_TRANSPORT &&
-                directive !== ProcessingDirective.ZERO_OUTPUT_TRANSPORT,
-            commandId,
-            workletGraphGeneration: coordinator.tokens.workletGraphGeneration,
-            topologyRevision: coordinator.tokens.topologyRevision
-        });
-        this._broadcast({
-            type: 'setPowerProcessingState',
-            state: targetState === AudioPowerState.MONITORING ? 'monitoring' : 'active',
-            processingDirective: directive,
-            commandId,
-            skipEpoch: commandSkipEpoch,
-            armAfterRenderSequence: commandOptions.armAfterRenderSequence ?? null,
-            workletGraphGeneration: coordinator.tokens.workletGraphGeneration,
-            topologyRevision: coordinator.tokens.topologyRevision
-        });
-        const rendered = await firstRenderPromise;
         if (rendered === 'stale-topology') {
             // The topology changed while waiting for the first render; this
             // command identity is stale, so settle without a false timeout and
@@ -1419,18 +1681,31 @@ export class PowerPolicyController {
             this.requestReconcile('stale-topology-transition').catch(() => {});
             return false;
         }
-        if (!rendered) {
+        const temporalRenderFailed = rendered === 'temporal-resume-render-failed';
+        const temporalPreparationTimedOut = rendered === 'temporal-resume-preparation-timeout';
+        const terminalPreparationError = rendered === 'temporal-resume-terminal-error';
+        if (!rendered || rendered === 'temporal-resume-failed' || temporalRenderFailed ||
+            temporalPreparationTimedOut || terminalPreparationError) {
             let restored = true;
-            if (commandOptions.restoreOnFailure === true) {
-                restored = await this._restoreWorkletCommandState(priorWorkletState, coordinator);
+            if (commandOptions.restoreOnFailure === true && !terminalPreparationError) {
+                restored = await this._restoreWorkletCommandState(priorWorkletState, coordinator, {
+                    preserveHostSkipState: atomicHostResume && !temporalRenderFailed &&
+                        !temporalPreparationTimedOut
+                });
                 if (!restored) {
                     this.workletDirectiveResendRequired = true;
                     this.requestReconcile('failed-worklet-command-rollback').catch(() => {});
                 }
             }
             this.transitionError = {
-                code: 'worklet-render-timeout',
-                message: 'The audio processor did not confirm a fresh render.',
+                code: rendered === 'temporal-resume-failed' || temporalPreparationTimedOut ||
+                    terminalPreparationError
+                    ? 'temporal-state-preparation-failed'
+                    : 'worklet-render-timeout',
+                message: rendered === 'temporal-resume-failed' || temporalPreparationTimedOut ||
+                    terminalPreparationError
+                    ? 'Temporal plugin state could not be prepared safely.'
+                    : 'The audio processor did not confirm a fresh render.',
                 operationId,
                 recoverable: true
             };
@@ -1466,7 +1741,21 @@ export class PowerPolicyController {
         { requireActivityObservation = false } = {}
     ) {
         return new Promise(resolve => {
+            const waiter = {
+                resolve,
+                timer: null,
+                expectedState,
+                expectedDirective,
+                requireActivityObservation,
+                expectedNodes: null,
+                seenNodes: new Set(),
+                observations: new Map(),
+                anonymousObservations: [],
+                anonymousCount: 0,
+                expectedCount: 1
+            };
             const timer = this.setTimeoutFn?.(() => {
+                if (this.firstRenderWaiters.get(commandId) !== waiter) return;
                 this.firstRenderWaiters.delete(commandId);
                 resolve(false);
             }, POWER_COMMAND_TIMEOUT_MS);
@@ -1475,19 +1764,10 @@ export class PowerPolicyController {
             if (expectedNodes.size === 0 && this.audioManager.workletNode) {
                 expectedNodes.add(this.audioManager.workletNode);
             }
-            this.firstRenderWaiters.set(commandId, {
-                resolve,
-                timer,
-                expectedState,
-                expectedDirective,
-                requireActivityObservation,
-                expectedNodes,
-                seenNodes: new Set(),
-                observations: new Map(),
-                anonymousObservations: [],
-                anonymousCount: 0,
-                expectedCount: expectedNodes.size || 1
-            });
+            waiter.timer = timer;
+            waiter.expectedNodes = expectedNodes;
+            waiter.expectedCount = expectedNodes.size || 1;
+            this.firstRenderWaiters.set(commandId, waiter);
         });
     }
 
@@ -1574,16 +1854,7 @@ export class PowerPolicyController {
             this.audioManager.ioManager?.pauseOutputBridge?.();
             this.effectiveState = AudioPowerState.SUSPENDED;
             this.processingDirective = ProcessingDirective.SUSPENDED;
-            this.suspendedTemporalTiming = {
-                startedAtMonotonicMs: this.monotonicNow(),
-                sampleRate: this.audioManager.contextManager?.audioContext?.sampleRate ?? null,
-                skipEpoch: this.skipEpoch,
-                topologyRevision: coordinator.tokens.topologyRevision,
-                workletGraphGeneration: coordinator.tokens.workletGraphGeneration
-            };
-            this.suspendedTemporalContinuity = Number.isFinite(
-                this.suspendedTemporalTiming.startedAtMonotonicMs
-            ) && Number.isFinite(this.suspendedTemporalTiming.sampleRate);
+            this._startSuspendedTemporalInterval({ preserveCompleted: false });
             this.audioManager.powerDiagnostics?.recordEffectiveCommit?.(
                 coordinator.tokens.workletGraphGeneration
             );
@@ -1607,7 +1878,7 @@ export class PowerPolicyController {
     }
 
     _setUiPowerGate(state, directive) {
-        const hidden = this.documentRef?.hidden === true;
+        const hidden = this._isEffectivelyHidden();
         const structuralZero = isCurrentZeroOutputProof(
             this.currentZeroOutputProof,
             this.currentPowerTopologySnapshot
@@ -1683,12 +1954,33 @@ export class PowerPolicyController {
         this.automaticMonitoringArm = allAgree ? { ...first } : emptyAutomaticArm();
     }
 
+    _hasMonitoringFastWakeRuntimeFailure(tokens = this._getTokensAndGuards().tokens) {
+        const failure = this.monitoringFastWakeRuntimeFailure;
+        return !!failure &&
+            failure.workletGraphGeneration === tokens.workletGraphGeneration &&
+            failure.topologyRevision === tokens.topologyRevision;
+    }
+
+    _recordMonitoringFastWakeRuntimeFailure(data, tokens) {
+        if (data.monitoringFastWakeEligible !== false ||
+            data.monitoringFastWakeBlockerReason !== 'temporal-preparation-runtime-failed') {
+            return false;
+        }
+        this.monitoringFastWakeRuntimeFailure = {
+            workletGraphGeneration: tokens.workletGraphGeneration,
+            topologyRevision: tokens.topologyRevision
+        };
+        this.resourceHealth = ResourceHealth.DEGRADED;
+        return true;
+    }
+
     handleWorkletPowerEvent(data, workletNode = null) {
         if (!this.enabled || !data || typeof data !== 'object') return false;
         const tokens = this._getTokensAndGuards().tokens;
         if (data.workletGraphGeneration !== tokens.workletGraphGeneration ||
             data.topologyRevision !== tokens.topologyRevision) return false;
         const nodeKey = workletNode || this.audioManager.workletNode || null;
+        this._recordMonitoringFastWakeRuntimeFailure(data, tokens);
         if (data.type === 'powerStateAck') {
             this.workletAck = data;
             if (nodeKey) this.workletAcks.set(nodeKey, data);
@@ -1769,12 +2061,20 @@ export class PowerPolicyController {
             }
             if (data.state === 'monitoring') {
                 this.effectiveState = AudioPowerState.MONITORING;
-                this.processingDirective = ProcessingDirective.ALLOW_AUTOMATIC;
+                this.processingDirective = data.processingDirective ===
+                    ProcessingDirective.FORCE_MONITORING
+                    ? ProcessingDirective.FORCE_MONITORING
+                    : ProcessingDirective.ALLOW_AUTOMATIC;
                 this.audioManager.powerDiagnostics?.recordEffectiveCommit?.(
                     tokens.workletGraphGeneration
                 );
                 this._setUiPowerGate(this.effectiveState, this.processingDirective);
-            } else if (data.reason === 'signal-wake') {
+            } else if (data.state === 'active' &&
+                data.processingDirective === ProcessingDirective.FULL_PROCESS &&
+                (data.reason === 'signal-wake' || data.reason === 'config-wake' ||
+                    data.reason === 'temporal-preparation-runtime-failed' ||
+                    data.monitoringFastWakeBlockerReason ===
+                        'temporal-preparation-runtime-failed')) {
                 this.effectiveState = AudioPowerState.ACTIVE;
                 this.processingDirective = ProcessingDirective.FULL_PROCESS;
                 this.workletArms.clear();
@@ -1804,7 +2104,7 @@ export class PowerPolicyController {
             this.requestReconcile('worklet-observation').catch(() => {});
             return true;
         }
-        if (data.type === 'temporalStatePrepared') {
+        if (data.type === 'temporalStateResumed') {
             const hasCoverage = Number.isSafeInteger(data.enabledPluginCount) &&
                 Number.isSafeInteger(data.coveredPluginCount) &&
                 data.appliedPolicyCounts && typeof data.appliedPolicyCounts === 'object';
@@ -1834,15 +2134,17 @@ export class PowerPolicyController {
             if (nodeKey) this.workletPreparations.set(nodeKey, this.statePreparation);
             const waiter = this.preparationWaiters.get(data.ackCommandId);
             if (waiter) {
-                const matches = candidateValid && candidate.state === 'acknowledged' &&
+                const ownerMatches = candidateValid &&
                     candidate.ownerOperationId === waiter.ownerOperationId &&
                     candidate.commandId === waiter.commandId &&
                     candidate.skipEpoch === waiter.skipEpoch &&
-                    candidate.enabledPluginCount === waiter.enabledPluginCount &&
+                    candidate.enabledPluginCount === waiter.enabledPluginCount;
+                const acknowledged = ownerMatches && candidate.state === 'acknowledged' &&
+                    data.resumeCommandId === waiter.resumeCommandId &&
                     candidate.coveredPluginCount === waiter.enabledPluginCount &&
-                    candidate.skippedFrameCount === waiter.expectedSkippedFrameCount &&
                     candidate.appliedPolicyCounts.mustProcess === 0;
-                if (!matches) {
+                const terminalError = ownerMatches && candidate.state === 'error';
+                if (!acknowledged && !terminalError) {
                     this.preparationWaiters.delete(data.ackCommandId);
                     this.clearTimeoutFn?.(waiter.timer);
                     waiter.resolve(false);
@@ -1852,7 +2154,7 @@ export class PowerPolicyController {
                     if (waiter.seenNodes.size + waiter.anonymousCount >= waiter.expectedCount) {
                         this.preparationWaiters.delete(data.ackCommandId);
                         this.clearTimeoutFn?.(waiter.timer);
-                        waiter.resolve(true);
+                        waiter.resolve(terminalError ? 'terminal-error' : true);
                     }
                 }
             }
@@ -1870,6 +2172,7 @@ export class PowerPolicyController {
             this.reason = 'browser';
             this._emitSnapshot();
         } else if (state === 'running' && this.effectiveState === AudioPowerState.SUSPENDED) {
+            this._freezeSuspendedTemporalElapsed();
             // Do not adopt ACTIVE without a confirmed worklet render: mark the
             // directive dirty so reconcile bypasses its equality short-circuits
             // and re-sends the desired directive to the worklet.
@@ -1885,20 +2188,13 @@ export class PowerPolicyController {
 
     handlePageLifecycleEvent(type, detail = {}) {
         if (!this.enabled || this.disposed) return;
-        const now = this.now();
         if (type === 'visibilitychange' || type === 'startup' || type === 'pageshow' || type === 'resume') {
-            const hidden = detail.hidden ?? this.documentRef?.hidden;
-            if (hidden) {
-                if (!Number.isFinite(this.hiddenSinceEpochMs)) this.hiddenSinceEpochMs = now;
-                this._setUiPowerGate(this.effectiveState, this.processingDirective);
-            } else {
-                this.hiddenSinceEpochMs = null;
-                this._setUiPowerGate(this.effectiveState, this.processingDirective);
-            }
+            this.pageHidden = (detail.hidden ?? this.documentRef?.hidden) === true;
+            this._refreshHiddenClock();
         } else if (type === 'freeze' || type === 'pagehide') {
-            if (!Number.isFinite(this.hiddenSinceEpochMs)) this.hiddenSinceEpochMs = now;
+            this.pageHidden = true;
+            this._refreshHiddenClock();
             this.suspendedTemporalContinuity = false;
-            this._setUiPowerGate(this.effectiveState, this.processingDirective);
         }
         this._requestWorkletObservation();
         this.requestReconcile(`lifecycle:${type}`).catch(() => {});
@@ -2027,13 +2323,26 @@ export class PowerPolicyController {
         };
     }
 
-    async _restoreWorkletCommandState(priorState, coordinator) {
+    async _restoreWorkletCommandState(
+        priorState,
+        coordinator,
+        { preserveHostSkipState = false } = {}
+    ) {
         if (!priorState) return false;
         const current = this._getTokensAndGuards().tokens;
         if (current.workletGraphGeneration !== coordinator.tokens.workletGraphGeneration ||
             current.topologyRevision !== coordinator.tokens.topologyRevision) {
             return false;
         }
+        const restoresSkip = isDspSkippingDirective(priorState.processingDirective);
+        const previousSkipEpoch = Number.isSafeInteger(priorState.skipEpoch)
+            ? priorState.skipEpoch
+            : this.skipEpoch;
+        const restoreSkipEpoch = restoresSkip
+            ? Math.max(this.skipEpoch, previousSkipEpoch) + 1
+            : this.skipEpoch;
+        if (!Number.isSafeInteger(restoreSkipEpoch)) return false;
+        if (restoresSkip) this.skipEpoch = restoreSkipEpoch;
         const commandId = ++this.commandSequence;
         const rendered = this._waitForFirstRender(
             commandId,
@@ -2052,12 +2361,45 @@ export class PowerPolicyController {
             state: priorState.state,
             processingDirective: priorState.processingDirective,
             commandId,
-            skipEpoch: priorState.skipEpoch,
+            skipEpoch: restoreSkipEpoch,
+            preserveHostSkipState: restoresSkip && preserveHostSkipState,
             armAfterRenderSequence: null,
             workletGraphGeneration: current.workletGraphGeneration,
             topologyRevision: current.topologyRevision
         });
-        return await rendered === true;
+        const restored = await rendered === true;
+        if (!restored) return false;
+        this.effectiveState = priorState.state === 'monitoring'
+            ? AudioPowerState.MONITORING
+            : AudioPowerState.ACTIVE;
+        this.processingDirective = priorState.processingDirective;
+        if (restoresSkip) {
+            this.lastSkipCommandId = commandId;
+            if (this.suspendedTemporalTiming) {
+                if (preserveHostSkipState) {
+                    this.suspendedTemporalTiming = {
+                        ...this.suspendedTemporalTiming,
+                        skipEpoch: restoreSkipEpoch
+                    };
+                } else {
+                    const rollbackAtMonotonicMs = this.monotonicNow();
+                    this.suspendedTemporalTiming = {
+                        completedElapsedMs: 0,
+                        startedAtMonotonicMs: rollbackAtMonotonicMs,
+                        endedAtMonotonicMs: rollbackAtMonotonicMs,
+                        sampleRate: this.audioManager.contextManager?.audioContext?.sampleRate ?? null,
+                        skipEpoch: restoreSkipEpoch,
+                        topologyRevision: current.topologyRevision,
+                        workletGraphGeneration: current.workletGraphGeneration
+                    };
+                    this.suspendedTemporalContinuity = Number.isFinite(rollbackAtMonotonicMs) &&
+                        Number.isFinite(this.suspendedTemporalTiming.sampleRate);
+                }
+            }
+        } else {
+            this.lastSkipCommandId = null;
+        }
+        return true;
     }
 
     beginUserGestureResume(resumeKind = ResumeKind.UNEXPECTED_RECOVERY, inheritedRollback = null) {
@@ -2123,7 +2465,13 @@ export class PowerPolicyController {
         try {
             gestureOperation.contextPromise = Promise.resolve(
                 this.audioManager.contextManager?.resumeForPowerPolicy?.(resumeKind) ?? true
-            );
+            ).then(result => {
+                if (result !== false && !gestureOperation.contextWasRunning &&
+                    this.audioManager.contextManager?.audioContext?.state === 'running') {
+                    this._freezeSuspendedTemporalElapsed();
+                }
+                return result;
+            });
         } catch (error) {
             gestureOperation.contextPromise = Promise.reject(error);
         }
@@ -2248,7 +2596,19 @@ export class PowerPolicyController {
                             !predecessorCommitted &&
                             !gestureOperation.contextWasRunning &&
                             this.audioManager.contextManager?.audioContext?.state === 'running') {
-                            await this.audioManager.contextManager?.suspendForPowerPolicy?.();
+                            const suspended = await this.audioManager.contextManager
+                                ?.suspendForPowerPolicy?.();
+                            if (suspended !== false &&
+                                this.audioManager.contextManager?.audioContext?.state === 'suspended') {
+                                this.effectiveState = AudioPowerState.SUSPENDED;
+                                this.processingDirective = ProcessingDirective.SUSPENDED;
+                                this._startSuspendedTemporalInterval({ preserveCompleted: true });
+                                this._setTransition('stable', null);
+                                this._setUiPowerGate(
+                                    AudioPowerState.SUSPENDED,
+                                    ProcessingDirective.SUSPENDED
+                                );
+                            }
                         }
                         this._emitSnapshot();
                         return false;
@@ -2290,6 +2650,7 @@ export class PowerPolicyController {
                                     this._invalidateTopologyBoundPowerEvidence();
                                 }
                                 this.audioManager.adoptPowerMutation?.(mutation);
+                                if (topologyChanged) this._configureWorklets();
                                 inputMutationBefore = null;
                             } catch {
                                 this._resynchronizeInputGeneration();
@@ -2337,6 +2698,35 @@ export class PowerPolicyController {
                             return rejectResume();
                         }
                     }
+                    this.resumeKind = finalResumeKind;
+                    this.workletArms.clear();
+                    this.automaticMonitoringArm = emptyAutomaticArm();
+                    const atomicHostResume = this.lastSkipCommandId !== null;
+                    if (!atomicHostResume) this._configureWorklets();
+                    let workletReady = false;
+                    try {
+                        const hostGuardReady = !atomicHostResume ||
+                            await this._ensureHostGuardRendered();
+                        if (hostGuardReady) {
+                            workletReady = await this._applyWorkletState(
+                                AudioPowerState.ACTIVE,
+                                ProcessingDirective.FULL_PROCESS,
+                                { restoreOnFailure: true }
+                            );
+                        }
+                    } catch {
+                        workletReady = false;
+                    }
+                    if (!workletReady) {
+                        await rollbackNewInput();
+                        return rejectResume();
+                    }
+                    if (atomicHostResume) this._configureWorklets();
+                    // A successful user gesture starts a fresh no-route idle period;
+                    // an expired pre-resume clock must not immediately undo the resume.
+                    this.noRouteIdleSinceEpochMs = null;
+                    this.noRouteIdleEpochTokens = null;
+                    this.requestReconcile('gesture-resume').catch(() => {});
                     if (finalResumeKind === ResumeKind.DEDICATED_INPUT ||
                         finalResumeKind === ResumeKind.MIXED_PLAY) {
                         const inputAfter = this.audioManager.ioManager?.getInputSnapshot?.() || null;
@@ -2354,29 +2744,6 @@ export class PowerPolicyController {
                             }
                         }
                     }
-                    this.resumeKind = finalResumeKind;
-                    this.workletArms.clear();
-                    this.automaticMonitoringArm = emptyAutomaticArm();
-                    this._configureWorklets();
-                    let workletReady = false;
-                    try {
-                        workletReady = await this._applyWorkletState(
-                            AudioPowerState.ACTIVE,
-                            ProcessingDirective.FULL_PROCESS,
-                            { restoreOnFailure: true }
-                        );
-                    } catch {
-                        workletReady = false;
-                    }
-                    if (!workletReady) {
-                        await rollbackNewInput();
-                        return rejectResume();
-                    }
-                    // A successful user gesture starts a fresh no-route idle period;
-                    // an expired pre-resume clock must not immediately undo the resume.
-                    this.noRouteIdleSinceEpochMs = null;
-                    this.noRouteIdleEpochTokens = null;
-                    this.requestReconcile('gesture-resume').catch(() => {});
                     gestureOperation.commitSucceeded = true;
                     return true;
             } finally {
@@ -2835,7 +3202,11 @@ export class PowerPolicyController {
             routeState = route.inputRouteConnected && playerReady ? 'connected' :
                 (input.inputSourcePresent ? 'disconnected' : 'unknown');
         }
-        const monitoringFastWakeEligible = decision?.monitoringFastWakeEligible === true;
+        const monitoringRuntimeFailed = this._hasMonitoringFastWakeRuntimeFailure(
+            coordinator.tokens
+        );
+        const monitoringFastWakeEligible = decision?.monitoringFastWakeEligible === true &&
+            !monitoringRuntimeFailed;
         const persistenceStatus = this.sessionJournal.getStatus?.() || {
             state: 'unknown',
             storage: 'session',
@@ -2927,8 +3298,10 @@ export class PowerPolicyController {
                     monitoringFastWakeEligible,
                     monitoringFastWakeBlockerReason: monitoringFastWakeEligible
                         ? null
-                        : (decision?.monitoringFastWakeBlockerReason ||
-                            'temporal-preparation-not-worklet-local'),
+                        : (monitoringRuntimeFailed
+                            ? 'temporal-preparation-runtime-failed'
+                            : (decision?.monitoringFastWakeBlockerReason ||
+                                'temporal-preparation-not-worklet-local')),
                     nodes: this._getSnapshotWorkletNodes(coordinator)
                 },
                 persistence: persistenceStatus

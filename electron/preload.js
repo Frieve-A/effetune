@@ -49,6 +49,71 @@ const libraryCatalogV1 = Object.freeze({
   )
 });
 
+const IR_LIBRARY_BRIDGE_LIMITS = Object.freeze({
+  original: 64 * 1024 * 1024,
+  index: 32 * 1024 * 1024,
+  analysis: 4 * 1024 * 1024,
+  cacheEntry: 64 * 1024 * 1024,
+  cacheIndex: 4 * 1024 * 1024
+});
+const IR_LIBRARY_ANALYSIS_NAME = /^[a-f0-9]{24}(?:\.analysis|\.a[0-9]{9})$/;
+const IR_LIBRARY_INDEX_TOO_LARGE_CODE = 'ir-library-index-too-large';
+
+function normalizeIrLibraryReadResponse(request, response) {
+  if (response?.ok !== false) return response;
+  const code = request?.name === 'index.json' && response.code === IR_LIBRARY_INDEX_TOO_LARGE_CODE
+    ? IR_LIBRARY_INDEX_TOO_LARGE_CODE
+    : 'storage-failed';
+  return { ok: false, code };
+}
+
+function requireBoundedIrLibraryWrite(request, cache = false) {
+  const bytes = request?.bytes;
+  if (!(bytes instanceof ArrayBuffer) && !ArrayBuffer.isView(bytes)) {
+    const error = new TypeError('IR library data must be binary.');
+    error.code = 'ERR_INVALID_IR_LIBRARY_DATA';
+    throw error;
+  }
+  let maxBytes;
+  if (cache) {
+    maxBytes = request?.name === 'index.json'
+      ? IR_LIBRARY_BRIDGE_LIMITS.cacheIndex
+      : IR_LIBRARY_BRIDGE_LIMITS.cacheEntry;
+  } else if (request?.name === 'index.json') {
+    maxBytes = IR_LIBRARY_BRIDGE_LIMITS.index;
+  } else {
+    maxBytes = IR_LIBRARY_ANALYSIS_NAME.test(request?.name)
+      ? IR_LIBRARY_BRIDGE_LIMITS.analysis
+      : IR_LIBRARY_BRIDGE_LIMITS.original;
+  }
+  if (bytes.byteLength > maxBytes) {
+    const error = new RangeError('IR library data is too large.');
+    error.code = 'ERR_IR_LIBRARY_DATA_TOO_LARGE';
+    throw error;
+  }
+}
+
+const irLibraryV1 = Object.freeze({
+  apiVersion: 1,
+  read: request => ipcRenderer.invoke('ir-library-v1:read', request)
+    .then(response => normalizeIrLibraryReadResponse(request, response)),
+  exists: request => ipcRenderer.invoke('ir-library-v1:exists', request),
+  writeAtomic: request => {
+    requireBoundedIrLibraryWrite(request);
+    return ipcRenderer.invoke('ir-library-v1:write-atomic', request);
+  },
+  remove: request => ipcRenderer.invoke('ir-library-v1:remove', request),
+  list: request => ipcRenderer.invoke('ir-library-v1:list', request),
+  cleanupTemporary: request => ipcRenderer.invoke('ir-library-v1:cleanup-temporary', request),
+  readCache: request => ipcRenderer.invoke('ir-library-v1:cache-read', request),
+  writeCacheAtomic: request => {
+    requireBoundedIrLibraryWrite(request, true);
+    return ipcRenderer.invoke('ir-library-v1:cache-write-atomic', request);
+  },
+  removeCache: request => ipcRenderer.invoke('ir-library-v1:cache-remove', request),
+  listCache: request => ipcRenderer.invoke('ir-library-v1:cache-list', request)
+});
+
 const libraryServiceV1 = Object.freeze({
   apiVersion: 1,
   start: (request) => ipcRenderer.invoke('library-service-v1:start', request),
@@ -155,6 +220,9 @@ contextBridge.exposeInMainWorld(
     // Versioned, bounded music catalog API. Filesystem grants remain brokered by the main process.
     libraryCatalogV1,
 
+    // Versioned IR storage exposes generated logical names only; native paths stay in the main process.
+    irLibraryV1,
+
     // Catalog startup and recovery remain available even when the catalog utility cannot open.
     libraryRecoveryV1,
 
@@ -175,6 +243,7 @@ contextBridge.exposeInMainWorld(
       ? ipcRenderer.invoke('save-audio-preferences', preferences)
       : ipcRenderer.invoke('save-audio-preferences', preferences, options),
     loadAudioPreferences: () => ipcRenderer.invoke('load-audio-preferences'),
+    getWindowVisibility: () => ipcRenderer.invoke('get-window-visibility'),
     // First launch flag for audio workaround - use IPC instead of window property
     isFirstLaunch: () => {
       // Return a Promise that resolves to a boolean
@@ -223,6 +292,9 @@ contextBridge.exposeInMainWorld(
     },
     onShowAboutDialog: (callback) => {
       return addSingleArgIpcListener('show-about-dialog', callback);
+    },
+    onWindowVisibilityChanged: (callback) => {
+      return addSingleArgIpcListener('window-visibility-changed', callback);
     },
     
     // Get app version

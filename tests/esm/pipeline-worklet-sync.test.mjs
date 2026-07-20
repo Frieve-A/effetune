@@ -76,20 +76,24 @@ test('helper methods handle absent processors, non-array pipelines, sample rates
   noRegister.sync.ensureProcessorsRegistered(['ignored']);
   assert.deepEqual(noRegister.sync.getCurrentPipeline(), []);
   assert.equal(noRegister.sync.getAudioSampleRate(), null);
+  assert.equal(noRegister.sync.getAudioOutputChannelCount(), 2);
   assert.deepEqual(noRegister.sync.getPluginParameters({}), {});
 
   const contextRuntime = createRuntime({
-    contextManager: { audioContext: { sampleRate: 48000 } },
+    contextManager: { audioContext: { sampleRate: 48000, destination: { channelCount: 6 } } },
     audioContext: { sampleRate: 44100 }
   });
   assert.equal(contextRuntime.sync.getAudioSampleRate(), 48000);
+  assert.equal(contextRuntime.sync.getAudioOutputChannelCount(), 6);
 
-  const fallbackRuntime = createRuntime({ audioContext: { sampleRate: 96000 } });
+  const fallbackRuntime = createRuntime({
+    audioContext: { sampleRate: 96000, destination: { channelCount: 4 } }
+  });
   const plugin = new TestPlugin(1, fallbackRuntime.calls, { parameters: { gain: -3 } });
   assert.equal(fallbackRuntime.sync.getAudioSampleRate(), 96000);
   assert.deepEqual(fallbackRuntime.sync.getPluginParameters(plugin), { gain: -3 });
   assert.deepEqual(fallbackRuntime.calls, [
-    ['getParameters', 1, { sampleRate: 96000, commitSampleRate: true }]
+    ['getParameters', 1, { sampleRate: 96000, outputChannelCount: 4, commitSampleRate: true }]
   ]);
 });
 
@@ -185,7 +189,7 @@ test('master bypass synchronizes processor state and worklet payloads', async ()
   assert.equal(runtime.audioManager.masterBypass, true);
   assert.deepEqual(processorCalls, [
     ['setMasterBypass', true],
-    ['getParameters', 1, { sampleRate: null, commitSampleRate: true }],
+    ['getParameters', 1, { sampleRate: null, outputChannelCount: 2, commitSampleRate: true }],
   ]);
   assert.deepEqual(runtime.calls.find(call => call[0] === 'postMessage')[1], {
     type: 'updatePlugins',

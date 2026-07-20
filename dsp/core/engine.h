@@ -40,6 +40,13 @@ public:
   et_status setInstanceParamBytes(et_instance instance, const std::uint8_t *packed,
                                   std::uint32_t byte_count, std::uint32_t params_hash,
                                   std::uint32_t offset_frames) noexcept;
+  std::uint8_t *beginInstanceAsset(et_instance instance, std::uint32_t slot,
+                                   const AssetBeginInfo &info) noexcept;
+  et_status commitInstanceAsset(et_instance instance, std::uint32_t slot, std::uint32_t byte_size,
+                                std::uint32_t format_tag) noexcept;
+  void abortInstanceAsset(et_instance instance, std::uint32_t slot) noexcept;
+  [[nodiscard]] std::uint32_t instanceAssetState(et_instance instance,
+                                                 std::uint32_t slot) const noexcept;
   et_status processInstance(et_instance instance, float *audio, std::uint32_t channel_count,
                             std::uint32_t frame_count, double time_seconds) noexcept;
 

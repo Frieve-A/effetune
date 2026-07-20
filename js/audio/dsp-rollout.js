@@ -55,6 +55,7 @@ export const SHIPPED_ENABLED_TYPES = Object.freeze([
     'ModalResonatorPlugin',
     'DattorroPlateReverbPlugin',
     'FDNReverbPlugin',
+    'IRReverbPlugin',
     'RSReverbPlugin',
     'DynamicSaturationPlugin',
     'ExciterPlugin',

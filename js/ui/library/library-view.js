@@ -102,6 +102,7 @@ const ENTITY_SORT_FIELDS = Object.freeze({
   album: Object.freeze([
     Object.freeze({ sort: 'name', labelKey: 'library.sort.name' }),
     Object.freeze({ sort: 'artist', labelKey: 'library.column.artist' }),
+    Object.freeze({ sort: 'year', labelKey: 'library.sort.year' }),
     Object.freeze({ sort: 'trackCount', labelKey: 'library.sort.trackCount' }),
     Object.freeze({ sort: 'duration', labelKey: 'library.sort.duration' })
   ]),
@@ -5398,6 +5399,7 @@ function fallbackText(key, params = {}) {
     'library.sort.label': 'Sort',
     'library.sort.name': 'Name',
     'library.sort.path': 'Path',
+    'library.sort.year': 'Year',
     'library.sort.trackCount': 'Tracks',
     'library.sort.duration': 'Total duration',
     'library.sort.updated': 'Updated',

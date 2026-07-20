@@ -345,6 +345,7 @@ EffeTune 2.1.0 में कैटलॉग स्कीमा v3 पर आध�
 | Resonator | Modal Resonator | 5 resonators तक वाला frequency resonance effect | [विवरण](plugins/resonator.md#modal-resonator) |
 | Reverb    | Dattorro Plate Reverb | Dattorro algorithm आधारित classic plate reverb | [विवरण](plugins/reverb.md#dattorro-plate-reverb) |
 | Reverb    | FDN Reverb | rich, dense reverb textures वाला Feedback Delay Network reverb | [विवरण](plugins/reverb.md#fdn-reverb) |
+| Reverb    | IR Reverb | इम्पोर्ट की गई room और equipment impulse responses वाला convolution reverb | [विवरण](plugins/reverb.md#ir-reverb) |
 | Reverb    | RS Reverb | natural diffusion वाला random scattering reverb | [विवरण](plugins/reverb.md#rs-reverb) |
 | Saturation| Dynamic Saturation | speaker cones के nonlinear displacement को simulate करता है | [विवरण](plugins/saturation.md#dynamic-saturation) |
 | Saturation| Exciter | clarity और presence बढ़ाने के लिए harmonic content जोड़ता है | [विवरण](plugins/saturation.md#exciter) |

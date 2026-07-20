@@ -6,11 +6,15 @@ import {
   BENCHMARK_DSP_MODES,
   BENCHMARK_DSP_TELEMETRY_BYTES,
   BENCHMARK_DSP_TELEMETRY_RATE,
+  BENCHMARK_IR_REVERB_FRAMES,
+  BENCHMARK_IR_REVERB_NOTE,
   DspBenchmarkPluginUnavailableError,
   DspBenchmarkUnavailableError,
+  createIrReverbBenchmarkAssets,
   createDspBenchmarkRuntime
 } from '../../features/effetune-benchmark.js';
 import { decodeDspPipelineDescriptor } from '../../js/audio/dsp-pipeline-descriptor.js';
+import { IR_ASSET_FORMAT_TAG, IR_ASSET_TOPOLOGY } from '../../js/ir-library/ir-asset-payload.js';
 
 class VolumePlugin {
   constructor(calls = []) {
@@ -104,6 +108,28 @@ function createWasmHarness({ simd = false } = {}) {
     },
     instanceSetParamBytes(instanceId, packed, packedHash) {
       calls.push(['instanceSetParamBytes', instanceId, [...packed], packedHash]);
+      return 0;
+    },
+    instanceSetAsset(instanceId, slot, payload, descriptor, formatTag) {
+      calls.push([
+        'instanceSetAsset',
+        instanceId,
+        slot,
+        payload.byteLength,
+        descriptor.headBlock,
+        descriptor.rateDivider,
+        descriptor.processingChannels,
+        descriptor.footprintBytes,
+        formatTag
+      ]);
+      return 0;
+    },
+    instanceAssetState(instanceId, slot) {
+      calls.push(['instanceAssetState', instanceId, slot]);
+      return 3;
+    },
+    resetInstance(instanceId) {
+      calls.push(['resetInstance', instanceId]);
       return 0;
     },
     getArenaViews() {
@@ -237,6 +263,34 @@ test('JavaScript mode measures executeProcessor without initializing WebAssembly
   session.close();
   assert.throws(() => session.process(input, 2), /session is closed/);
   runtime.close();
+});
+
+test('IR Reverb benchmark assets contain a 256K-sample four-channel true-stereo IR', () => {
+  const assets = createIrReverbBenchmarkAssets({
+    sampleRate: 96000,
+    channelCount: 2,
+    latency: '128',
+    convolutionRate: 'auto'
+  });
+  const asset = assets.get(0);
+  const view = new DataView(asset.payload);
+  const channelBytes = BENCHMARK_IR_REVERB_FRAMES * Float32Array.BYTES_PER_ELEMENT;
+
+  assert.equal(BENCHMARK_IR_REVERB_NOTE.includes('True Stereo'), true);
+  assert.equal(BENCHMARK_IR_REVERB_NOTE.includes('256K samples/channel'), true);
+  assert.equal(view.getUint32(4, true), 4);
+  assert.equal(view.getUint32(8, true), BENCHMARK_IR_REVERB_FRAMES);
+  assert.equal(view.getUint32(12, true), 48000);
+  assert.equal(view.getUint32(16, true), IR_ASSET_TOPOLOGY.trueStereo);
+  assert.equal(view.getFloat32(32, true), 1);
+  assert.equal(view.getFloat32(32 + channelBytes, true), 0.25);
+  assert.equal(view.getFloat32(32 + 2 * channelBytes, true), 0.25);
+  assert.equal(view.getFloat32(32 + 3 * channelBytes, true), 1);
+  assert.equal(asset.formatTag, IR_ASSET_FORMAT_TAG);
+  assert.equal(asset.headBlock, 128);
+  assert.equal(asset.rateDivider, 2);
+  assert.equal(asset.processingChannels, 2);
+  assert.ok(asset.footprintBytes >= asset.payload.byteLength);
 });
 
 test('WebAssembly mode honors the user setting and dsp=off before loading an artifact', async () => {
@@ -374,6 +428,45 @@ test('WebAssembly sessions use one pipeline call with packed and structured para
   runtime.close();
   runtime.close();
   assert.equal(harness.calls.filter(call => call[0] === 'close').length, 1);
+});
+
+test('WebAssembly sessions stage assets and wait for active state before measurement', async () => {
+  const harness = createWasmHarness();
+  let preparingChecks = 2;
+  harness.binding.instanceAssetState = (instanceId, slot) => {
+    const state = preparingChecks > 0 ? 2 : 3;
+    preparingChecks--;
+    harness.calls.push(['instanceAssetState', instanceId, slot, state]);
+    return state;
+  };
+  const plugin = new VolumePlugin();
+  const runtime = await createWasmRuntime(harness);
+  const payload = new ArrayBuffer(32);
+  const assets = new Map([[0, {
+    payload,
+    formatTag: 1,
+    headBlock: 128,
+    rateDivider: 1,
+    pathCount: 0,
+    inputCount: 0,
+    processingChannels: 2,
+    footprintBytes: payload.byteLength
+  }]]);
+
+  const session = runtime.createPluginSession(plugin, { channelCount: 2, assets });
+  assert.deepEqual(
+    harness.calls.find(call => call[0] === 'instanceSetAsset'),
+    ['instanceSetAsset', 17, 0, 32, 128, 1, 2, 32, 1]
+  );
+  assert.equal(session.prepareAssets(), 2);
+  assert.equal(harness.calls.filter(call => call[0] === 'pipelineProcess').length, 2);
+  assert.deepEqual(
+    harness.calls.filter(call => call[0] === 'resetInstance'),
+    [['resetInstance', 17]]
+  );
+
+  session.close();
+  runtime.close();
 });
 
 test('WebAssembly mode rejects noneligible plugins without measuring JavaScript', async () => {

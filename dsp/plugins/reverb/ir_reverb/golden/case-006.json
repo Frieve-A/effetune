@@ -1,0 +1,46 @@
+{
+  "formatVersion": 1,
+  "type": "IRReverbPlugin",
+  "id": "mono-impulse-96000-lt128-d2-block255",
+  "stimulus": "imp",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 4096,
+  "blockSize": 255,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "cm": "mono",
+    "lt": "128",
+    "cr": "half",
+    "dw": 0,
+    "dl": -96,
+    "pd": 0
+  },
+  "events": [],
+  "asset": {
+    "slot": 0,
+    "format": 1,
+    "channels": 1,
+    "frames": 769,
+    "topology": 1,
+    "headBlock": 128,
+    "rateDivider": 2,
+    "ir": {
+      "kind": "sparse-decay-v1",
+      "seed": 1229121078,
+      "tapCount": 23
+    }
+  },
+  "tolerance": {
+    "abs": 0.0002,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "native-ir-direct-double-v1",
+  "referenceHash": "ebb984943707d4c0ba8839367722c6250b22bea01dd7479fca2a5b2e720244d7",
+  "outputFloats": 8192,
+  "byteLength": 32768,
+  "binary": "case-006.f32"
+}

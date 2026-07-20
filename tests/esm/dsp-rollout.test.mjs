@@ -114,6 +114,7 @@ test('rollout enables only shipped kernels with matching generated layouts', () 
     'ModalResonatorPlugin',
     'DattorroPlateReverbPlugin',
     'FDNReverbPlugin',
+    'IRReverbPlugin',
     'RSReverbPlugin',
     'DynamicSaturationPlugin',
     'ExciterPlugin',

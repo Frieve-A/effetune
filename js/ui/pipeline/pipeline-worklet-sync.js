@@ -28,9 +28,19 @@ export class PipelineWorkletSync {
             null;
     }
 
+    getAudioOutputChannelCount() {
+        const value = this.audioManager?.contextManager?.audioContext?.destination?.channelCount ??
+            this.audioManager?.audioContext?.destination?.channelCount;
+        return Number.isInteger(value) && value >= 1 && value <= 8 ? value : 2;
+    }
+
     getPluginParameters(plugin) {
         return typeof plugin.getParameters === 'function'
-            ? plugin.getParameters({ sampleRate: this.getAudioSampleRate(), commitSampleRate: true })
+            ? plugin.getParameters({
+                sampleRate: this.getAudioSampleRate(),
+                outputChannelCount: this.getAudioOutputChannelCount(),
+                commitSampleRate: true
+            })
             : {};
     }
 

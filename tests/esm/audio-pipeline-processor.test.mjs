@@ -213,7 +213,7 @@ test('rebuildPipeline sends section-aware plugin data from the global pipeline',
   await withProcessorGlobals({ window: {} }, async ({ calls }) => {
     const worklet = createWorklet(calls);
     const contextManager = {
-      audioContext: { sampleRate: 96000 },
+      audioContext: { sampleRate: 96000, destination: { channelCount: 6 } },
       workletNode: worklet
     };
     const ioManager = createIoManager(calls, {
@@ -237,6 +237,7 @@ test('rebuildPipeline sends section-aware plugin data from the global pipeline',
     assert.equal(registerCount, 1);
     assert.deepEqual(calls.find(call => call[0] === 'getParameters')?.[1], {
       sampleRate: 96000,
+      outputChannelCount: 6,
       commitSampleRate: true
     });
     assert.deepEqual(calls.find(call => call[0] === 'postMessage')?.[1], {
@@ -297,6 +298,7 @@ test('prepareSectionAwarePluginData tolerates a missing audio context sample rat
   }]);
   assert.deepEqual(calls[0], ['getParameters', {
     sampleRate: null,
+    outputChannelCount: 2,
     commitSampleRate: true
   }]);
 });

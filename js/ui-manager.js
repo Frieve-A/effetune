@@ -27,6 +27,12 @@ import { PowerStateView } from './ui/power-state-view.js';
 import { CatalogPlaybackBridge } from './ui/audio-player/catalog-playback-bridge.js';
 import { resolveWebPlaybackSelection } from './ui/playback-selection-router.js';
 import { resolveWebCueSiblingFiles } from './ui/web-cue-source-resolver.js';
+import {
+    appendExternalAssetWarningSnapshot,
+    captureExternalAssetWarning,
+    collectUniquePipelinePlugins,
+    formatMissingExternalAssetSummary
+} from './ui/pipeline/external-asset-info.js';
 
 function usesIOSFilePicker(windowRef = window) {
     const navigatorRef = windowRef?.navigator || globalThis.navigator;
@@ -112,6 +118,8 @@ export class UIManager {
         this.doubleBlindTest = null;
         this.urlReflectionEnabled = true;
         this._pipelineSwitching = false;
+        this.externalAssetSummaryTimer = null;
+        this.shareAttemptRevision = 0;
 
         // UI elements
         this.errorDisplay = document.getElementById('errorDisplay');
@@ -510,9 +518,9 @@ export class UIManager {
         }
     }
 
-    getPipelineState() {
+    getPipelineState(pipeline = this.audioManager.pipeline) {
         // Get current pipeline state for URL sharing
-        const state = this.audioManager.pipeline.map(plugin =>
+        const state = pipeline.map(plugin =>
             getSerializablePluginStateShort(plugin)
         );
 
@@ -1223,18 +1231,39 @@ export class UIManager {
     initShareButton() {
         if (this.shareButton) { // Added check
             this.shareButton.addEventListener('click', async () => {
-                const state = this.getPipelineState();
+                const attemptRevision = ++this.shareAttemptRevision;
+                const pipeline = [...this.audioManager.pipeline];
+                const state = this.getPipelineState(pipeline);
+                const externalAssetWarning = captureExternalAssetWarning(pipeline);
                 const newURL = new URL('https://effetune.frieve.com/effetune.html');
                 newURL.searchParams.set('p', state);
-                if (await copyTextToClipboard(newURL.toString())) {
-                    this.setError('success.urlCopied', false);
-                    setTimeout(() => this.clearError(), 3000);
+                const copied = await copyTextToClipboard(newURL.toString());
+                if (attemptRevision !== this.shareAttemptRevision) return;
+                if (copied) {
+                    this.showTransientMessage(appendExternalAssetWarningSnapshot(
+                        this.t('success.urlCopied'),
+                        externalAssetWarning
+                    ), false, {}, 3000);
                 } else {
                     console.error('Failed to copy URL');
                     this.setError('error.failedToCopyUrl', true);
                 }
             });
         }
+    }
+
+    queueMissingExternalAssetSummary() {
+        if (this.externalAssetSummaryTimer !== null) clearTimeout(this.externalAssetSummaryTimer);
+        this.externalAssetSummaryTimer = setTimeout(() => {
+            this.externalAssetSummaryTimer = null;
+            const plugins = collectUniquePipelinePlugins(
+                this.audioManager.pipelineA,
+                this.audioManager.pipelineB,
+                this.audioManager.pipeline
+            );
+            const message = formatMissingExternalAssetSummary(plugins);
+            if (message) this.showTransientMessage(message, false, {}, 5000);
+        }, 50);
     }
 
     /**

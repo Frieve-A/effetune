@@ -125,6 +125,10 @@ et_instance Engine::createInstance(const char *type_name) noexcept {
       const et_instance handle = makeHandle(index, slot.generation);
       slot.kernel->setRandomSeed(0xeffe7a5eU ^ handle, 0U);
       slot.kernel->prepare({sample_rate_, max_channels_, max_frames_});
+      if (!slot.kernel->preparedSuccessfully()) {
+        destroySlot(slot);
+        return 0;
+      }
       slot.kernel->reset();
       return handle;
     };
@@ -241,6 +245,47 @@ et_status Engine::setInstanceParamBytes(et_instance instance, const std::uint8_t
     return ET_ERR_HASH;
   }
   return slot->kernel->stageParameterBytes(packed, byte_count, params_hash);
+}
+
+std::uint8_t *Engine::beginInstanceAsset(et_instance instance, std::uint32_t asset_slot,
+                                         const AssetBeginInfo &info) noexcept {
+  InstanceSlot *slot = findInstance(instance);
+  if (slot == nullptr || info.channels == 0u || info.channels > 8u || info.frames == 0u ||
+      info.byteSize == 0u || info.byteSize > slot->kernel->assetCapacity(asset_slot) ||
+      info.topology > 4u || info.processingChannels == 0u ||
+      info.processingChannels > max_channels_ || info.footprintBytes < info.byteSize ||
+      info.footprintBytes > slot->kernel->assetCapacity(asset_slot) ||
+      (info.headBlock != 0u && info.headBlock != 128u && info.headBlock != 256u &&
+       info.headBlock != 512u && info.headBlock != 1024u) ||
+      (info.rateDivider != 1u && info.rateDivider != 2u && info.rateDivider != 4u) ||
+      (info.topology == 4u && (info.pathCount == 0u || info.pathCount > 8u ||
+                               info.inputCount == 0u || info.inputCount > 8u)) ||
+      (info.topology != 4u && (info.pathCount != 0u || info.inputCount != 0u))) {
+    return nullptr;
+  }
+  return slot->kernel->beginAsset(asset_slot, info);
+}
+
+et_status Engine::commitInstanceAsset(et_instance instance, std::uint32_t asset_slot,
+                                      std::uint32_t byte_size, std::uint32_t format_tag) noexcept {
+  InstanceSlot *slot = findInstance(instance);
+  if (slot == nullptr || byte_size == 0u) {
+    return ET_ERR_ARGS;
+  }
+  return slot->kernel->commitAsset(asset_slot, byte_size, format_tag);
+}
+
+void Engine::abortInstanceAsset(et_instance instance, std::uint32_t asset_slot) noexcept {
+  InstanceSlot *slot = findInstance(instance);
+  if (slot != nullptr) {
+    slot->kernel->clearAsset(asset_slot);
+  }
+}
+
+std::uint32_t Engine::instanceAssetState(et_instance instance,
+                                         std::uint32_t asset_slot) const noexcept {
+  const InstanceSlot *slot = findInstance(instance);
+  return slot == nullptr ? ET_ASSET_STATE_NONE : slot->kernel->assetState(asset_slot);
 }
 
 et_status Engine::validateProcessArgs(const float *audio, std::uint32_t channel_count,

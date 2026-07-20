@@ -341,6 +341,7 @@ EffeTune создан для аудиоэнтузиастов, которые х
 | Resonator | Modal Resonator | Частотный резонанс с поддержкой до 5 резонаторов | [Подробнее](plugins/resonator.md#modal-resonator) |
 | Reverb    | Dattorro Plate Reverb | Классический plate reverb на основе алгоритма Dattorro | [Подробнее](plugins/reverb.md#dattorro-plate-reverb) |
 | Reverb    | FDN Reverb | Feedback Delay Network reverb с насыщенными плотными реверберационными текстурами | [Подробнее](plugins/reverb.md#fdn-reverb) |
+| Reverb    | IR Reverb | Свёрточная реверберация с импортированными импульсными характеристиками помещений и оборудования | [Подробнее](plugins/reverb.md#ir-reverb) |
 | Reverb    | RS Reverb | Реверберация с случайным рассеянием и естественной диффузией | [Подробнее](plugins/reverb.md#rs-reverb) |
 | Saturation| Dynamic Saturation | Имитирует нелинейное смещение диффузоров динамиков | [Подробнее](plugins/saturation.md#dynamic-saturation) |
 | Saturation| Exciter | Добавляет гармоники для ясности и присутствия | [Подробнее](plugins/saturation.md#exciter) |

@@ -22,6 +22,11 @@ import {
     decodePipelineState
 } from '../../utils/pipeline-state-codec.js';
 import { copyTextToClipboard } from '../../utils/clipboard-utils.js';
+import {
+    appendExternalAssetWarningSnapshot,
+    captureExternalAssetWarning,
+    collectUniquePipelinePlugins
+} from '../pipeline/external-asset-info.js';
 
 const CLOSE_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 // Save / delete glyphs reuse the exact markup of the Effect Preset buttons.
@@ -45,6 +50,7 @@ export class DoubleBlindTest {
         this._savedCurrentPipeline = 'A';
         this._switchSeq = 0;             // guards rapid presses' delayed fade-ins
         this._startSeq = 0;              // guards delayed parallel-readiness completion
+        this._shareAttemptRevision = 0;
         this._mainContainer = null;
         this._savedMainChildren = null;
         this._parallelInvalidatedHandler = detail => this._handleParallelInvalidated(detail);
@@ -198,7 +204,7 @@ export class DoubleBlindTest {
     }
 
     /** Close the test and restore the normal UI. */
-    exit() {
+    async exit() {
         if (!this.active) return;
         this.active = false;
         this.testRunning = false;
@@ -211,7 +217,7 @@ export class DoubleBlindTest {
         }
 
         // Tear down the parallel pipelines and make sure output is audible again.
-        this._teardownParallelPipelines();
+        await this._teardownParallelPipelines();
 
         this._removePanel();
         this._applyGating(false);
@@ -233,8 +239,7 @@ export class DoubleBlindTest {
         } catch (_) {
             teardown = false;
         }
-        void Promise.resolve(teardown)
-            .catch(() => false);
+        return Promise.resolve(teardown).catch(() => false);
     }
 
     _handleParallelInvalidated(detail = {}) {
@@ -248,6 +253,7 @@ export class DoubleBlindTest {
         this._showConfigScreen();
         this.updateTexts();
         this._updateStartAvailability();
+        this._showParallelStartError();
     }
 
     _applyGating(on) {
@@ -371,7 +377,7 @@ export class DoubleBlindTest {
                     <div class="dbt-config-share-row">
                         <button class="header-button dbt-config-share-button" type="button"></button>
                     </div>
-                    <div class="dbt-config-error hidden"></div>
+                    <div class="dbt-config-error hidden" role="alert"></div>
                     <ul class="dbt-config-info"></ul>
                 </div>
             </div>
@@ -546,6 +552,12 @@ export class DoubleBlindTest {
         this.els.test.classList.remove('hidden');
     }
 
+    _showParallelStartError() {
+        if (!this.els.configError) return;
+        this.els.configError.textContent = this.t('dbt.error.parallelStartFailed');
+        this.els.configError.classList.remove('hidden');
+    }
+
     _applyConfigToInputs() {
         if (!this.els.nameInput) return;
         this.els.testNameInput.value = this.testName || '';
@@ -640,12 +652,10 @@ export class DoubleBlindTest {
             await this._persistTests(tests);
             this.testName = name;
             await this._loadTestList(name);
-            this.uiManager.setError(this.t('dbt.testSaved', { name }), false);
-            setTimeout(() => this.uiManager.clearError(), 3000);
+            this.uiManager.showTransientMessage(this.t('dbt.testSaved', { name }), false, {}, 3000);
         } catch (err) {
             console.error('[DoubleBlindTest] Failed to save test:', err);
-            this.uiManager.setError(this.t('dbt.testSaveFailed'), true);
-            setTimeout(() => this.uiManager.clearError(), 3000);
+            this.uiManager.showTransientMessage(this.t('dbt.testSaveFailed'), true, {}, 3000);
         }
     }
 
@@ -656,12 +666,10 @@ export class DoubleBlindTest {
             delete tests[name];
             await this._persistTests(tests);
             await this._loadTestList('');
-            this.uiManager.setError(this.t('dbt.testDeleted', { name }), false);
-            setTimeout(() => this.uiManager.clearError(), 3000);
+            this.uiManager.showTransientMessage(this.t('dbt.testDeleted', { name }), false, {}, 3000);
         } catch (err) {
             console.error('[DoubleBlindTest] Failed to delete test:', err);
-            this.uiManager.setError(this.t('dbt.testDeleteFailed'), true);
-            setTimeout(() => this.uiManager.clearError(), 3000);
+            this.uiManager.showTransientMessage(this.t('dbt.testDeleteFailed'), true, {}, 3000);
         }
     }
 
@@ -696,8 +704,7 @@ export class DoubleBlindTest {
         this._applyConfigToInputs();
         this._updateStartAvailability();
 
-        this.uiManager.setError(this.t('dbt.testLoaded', { name }), false);
-        setTimeout(() => this.uiManager.clearError(), 3000);
+        this.uiManager.showTransientMessage(this.t('dbt.testLoaded', { name }), false, {}, 3000);
     }
 
     // ===================================================================== //
@@ -790,6 +797,7 @@ export class DoubleBlindTest {
             return;
         }
         const tc = parseInt(this.els.countInput.value, 10);
+        this.els.configError.textContent = '';
         this.els.configError.classList.add('hidden');
         if (isNaN(tc) || tc < 1) {
             this.els.configError.textContent = this.t('dbt.error.invalidConfig');
@@ -829,6 +837,7 @@ export class DoubleBlindTest {
             this._showConfigScreen();
             this.updateTexts();
             this._updateStartAvailability();
+            this._showParallelStartError();
             return;
         }
 
@@ -952,7 +961,7 @@ export class DoubleBlindTest {
         this._nextTrial();
     }
 
-    _finishTest() {
+    async _finishTest() {
         this._startSeq++;
         this._startPending = false;
         this.timeSpent = this.startTime ? (Date.now() - this.startTime) : this.timeSpent;
@@ -961,9 +970,10 @@ export class DoubleBlindTest {
         // Stop the parallel pipelines now that switching is over, and make sure
         // the master output is restored (a switch dip may have been in progress).
         this._switchSeq++;
-        this._teardownParallelPipelines();
+        const teardown = this._teardownParallelPipelines();
         this._showConfigScreen();
         this._displayResult();
+        await teardown;
     }
 
     // ===================================================================== //
@@ -1038,7 +1048,10 @@ export class DoubleBlindTest {
         this._updateStartAvailability();
     }
 
-    _buildSharePayload() {
+    _buildSharePayload(
+        pipelineA = this.audioManager.pipelineA || [],
+        pipelineB = this.audioManager.pipelineB || []
+    ) {
         return {
             v: 1,
             n: this.name,
@@ -1049,21 +1062,30 @@ export class DoubleBlindTest {
             tC: this.totalCount,
             pa: this.prefACount,
             ts: this.timeSpent,
-            pA: (this.audioManager.pipelineA || []).map(getSerializablePluginStateShort),
-            pB: (this.audioManager.pipelineB || []).map(getSerializablePluginStateShort)
+            pA: pipelineA.map(getSerializablePluginStateShort),
+            pB: pipelineB.map(getSerializablePluginStateShort)
         };
     }
 
     async _share() {
-        const encoded = encodePipelineState(this._buildSharePayload());
+        const attemptRevision = ++this._shareAttemptRevision;
+        const pipelineA = [...(this.audioManager.pipelineA || [])];
+        const pipelineB = [...(this.audioManager.pipelineB || [])];
+        const encoded = encodePipelineState(this._buildSharePayload(pipelineA, pipelineB));
+        const externalAssetWarning = captureExternalAssetWarning(
+            collectUniquePipelinePlugins(pipelineA, pipelineB)
+        );
         const url = new URL('https://effetune.frieve.com/effetune.html');
         url.searchParams.set('dbt', encoded);
         const text = url.toString();
 
         const ok = await copyTextToClipboard(text);
+        if (attemptRevision !== this._shareAttemptRevision) return;
         if (ok) {
-            this.uiManager.setError(this.t('dbt.copySuccess'), false);
-            setTimeout(() => this.uiManager.clearError(), 3000);
+            this.uiManager.showTransientMessage(appendExternalAssetWarningSnapshot(
+                this.t('dbt.copySuccess'),
+                externalAssetWarning
+            ), false, {}, 3000);
         } else {
             this.uiManager.setError(this.t('dbt.copyFailure'), true);
         }

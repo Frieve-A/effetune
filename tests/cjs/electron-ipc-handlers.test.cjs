@@ -83,6 +83,12 @@ function createMainWindow(calls, options = {}) {
     isDestroyed() {
       return Boolean(options.destroyed);
     },
+    isMinimized() {
+      return Boolean(options.minimized);
+    },
+    isVisible() {
+      return options.visible !== false;
+    },
     destroy() {
       calls.push(['window.destroy']);
     }
@@ -430,12 +436,19 @@ async function invokeAllDelegates(handlers) {
 
 test('registers core handlers and delegates file, config, update, path, and URL work', async () => {
   await withHarness({}, async ({ calls, electron, ipcMain, moduleUnderTest, tempDir }) => {
-    moduleUnderTest.setMainWindow(createMainWindow(calls));
+    const visibleMainWindow = createMainWindow(calls);
+    moduleUnderTest.setMainWindow(visibleMainWindow);
     moduleUnderTest.simulateKeyboardShortcut('K', ['control']);
     moduleUnderTest.registerIpcHandlers();
 
     const { handlers, listeners } = ipcMain;
     assert.equal(handlers.get('get-first-launch-flag')(), true);
+    assert.deepEqual(handlers.get('get-window-visibility')(), { hidden: false });
+    moduleUnderTest.setMainWindow(createMainWindow(calls, { minimized: true }));
+    assert.deepEqual(handlers.get('get-window-visibility')(), { hidden: true });
+    moduleUnderTest.setMainWindow(createMainWindow(calls, { visible: false }));
+    assert.deepEqual(handlers.get('get-window-visibility')(), { hidden: true });
+    moduleUnderTest.setMainWindow(visibleMainWindow);
     assert.equal(handlers.get('get-command-line-preset-file')(), 'startup.effetune_preset');
     listeners.get('update-available')({}, { version: '2.0.0' });
     assert.deepEqual(handlers.get('renderer-ready-for-updates')(), { success: true });

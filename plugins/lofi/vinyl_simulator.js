@@ -1406,7 +1406,11 @@ class VinylSimulatorPlugin extends PluginBase {
         const disabled = this.sh === 'Spherical';
         const slider = this.scanRadiusRow.querySelector('input[type="range"]');
         const number = this.scanRadiusRow.querySelector('input[type="number"]');
-        if (slider) { slider.disabled = disabled; slider.value = this.rc; }
+        if (slider) {
+            slider.disabled = disabled;
+            slider.value = this.rc;
+            window.uiManager?.refreshRangeFillStyling?.(slider);
+        }
         if (number) { number.disabled = disabled; number.value = this.rc; }
         this.scanRadiusRow.classList.toggle('parameter-disabled', disabled);
     }

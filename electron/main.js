@@ -329,6 +329,14 @@ if (process.platform === 'darwin') {
   app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
 }
 
+// Electron's native Wayland backend cannot reliably report a minimized
+// BrowserWindow. Keep Linux on X11/XWayland so the native visibility signal
+// used by the power policy remains observable while renderer timers stay live.
+// Must be set before app.ready.
+if (process.platform === 'linux') {
+  app.commandLine.appendSwitch('ozone-platform', 'x11');
+}
+
 // Set up logging to file for debugging (disabled for release)
 function setupFileLogging() {
   // Disabled for release
@@ -346,6 +354,20 @@ function showMainWindowInRestoredState(mainWindow) {
   }
   // The window now holds its final restored geometry — allow state saving.
   windowState.markRestoreComplete();
+}
+
+function presentMainWindow(mainWindow) {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  return true;
+}
+
+function sendWindowVisibilityState(mainWindow) {
+  if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.webContents) return;
+  const hidden = mainWindow.isMinimized() || !mainWindow.isVisible();
+  mainWindow.webContents.send('window-visibility-changed', { hidden });
 }
 
 // Create the main application window
@@ -849,8 +871,11 @@ function createWindow() {
     mainWindow.unmaximize();
   });
   mainWindow.on('unmaximize', () => windowState.saveWindowState());
+  mainWindow.on('hide', () => sendWindowVisibilityState(mainWindow));
+  mainWindow.on('show', () => sendWindowVisibilityState(mainWindow));
   
   mainWindow.on('minimize', () => {
+    sendWindowVisibilityState(mainWindow);
     if (constants.getAppConfig().minimizeToTray) {
       // 'minimize' is not a preventable event — the window is already
       // minimized when it fires, so hide() leaves the window in a combined
@@ -873,6 +898,7 @@ function createWindow() {
     // state is still hidden, leaving the window unable to receive input.
     // show() resyncs it, and is harmless when the window is already visible.
     mainWindow.show();
+    sendWindowVisibilityState(mainWindow);
     if (tray) {
       tray.destroy();
       tray = null;
@@ -1290,7 +1316,7 @@ function updateTrayMenuTemplate(trayMenuTemplate) {
       
       // Add standard menu items
       menuTemplate.push(
-        { label: trayMenuLabels.open, click: () => { const win = constants.getMainWindow(); if (win) { win.show(); } } },
+        { label: trayMenuLabels.open, click: () => presentMainWindow(constants.getMainWindow()) },
         { label: trayMenuLabels.quit, click: () => { app.quit(); } }
       );
       
@@ -1316,7 +1342,7 @@ function createTray() {
     
     // Create initial menu template (will be updated when translations are loaded)
     const menuTemplate = [
-      { label: trayMenuLabels.open, click: () => { const win = constants.getMainWindow(); if (win) { win.show(); } } },
+      { label: trayMenuLabels.open, click: () => presentMainWindow(constants.getMainWindow()) },
       { label: trayMenuLabels.quit, click: () => { app.quit(); } }
     ];
     
@@ -1324,10 +1350,7 @@ function createTray() {
     tray.setToolTip('EffeTune');
     tray.setContextMenu(contextMenu);
     tray.on('double-click', () => {
-      const win = constants.getMainWindow();
-      if (win) {
-        win.show();
-      }
+      presentMainWindow(constants.getMainWindow());
     });
   } catch (error) {
     console.error('Failed to create tray icon:', error);
@@ -1496,16 +1519,7 @@ if (!gotTheLock) {
       // Skip presenting the window while the startup splash still owns the
       // screen — the deferred show in the splash flow will present it.
       if (!pendingMainWindowShow) {
-        // restore() first, so a minimized window returns to its pre-minimize
-        // state (a bare show() would lose the maximized state — isMaximized()
-        // is false while minimized).  Then show(): restore() alone on a
-        // window hidden by the minimize-to-tray flow re-shows the native
-        // window but leaves Chromium's internal visibility state hidden,
-        // making the window input-dead.  show() also covers the hidden-but-
-        // not-minimized tray state, where focus() alone did nothing visible.
-        if (mainWindow.isMinimized()) mainWindow.restore();
-        mainWindow.show();
-        mainWindow.focus();
+        presentMainWindow(mainWindow);
       }
       
       // If there's a preset file, send it to the renderer

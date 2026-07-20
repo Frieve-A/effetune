@@ -1,0 +1,75 @@
+{
+  "formatVersion": 1,
+  "type": "IRReverbPlugin",
+  "id": "matrix-noise-96000-lt256-d2-block127",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 4096,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 11,
+  "seed": "0xeffe7a55",
+  "params": {
+    "cm": "multi",
+    "lt": "256",
+    "cr": "half",
+    "dw": 0,
+    "dl": -96,
+    "pd": 0
+  },
+  "events": [],
+  "asset": {
+    "slot": 0,
+    "format": 1,
+    "channels": 4,
+    "frames": 777,
+    "topology": 4,
+    "headBlock": 256,
+    "rateDivider": 2,
+    "pathCount": 5,
+    "inputCount": 2,
+    "paths": [
+      {
+        "input": 0,
+        "output": 0,
+        "irChannel": 0
+      },
+      {
+        "input": 0,
+        "output": 1,
+        "irChannel": 1
+      },
+      {
+        "input": 1,
+        "output": 0,
+        "irChannel": 2
+      },
+      {
+        "input": 1,
+        "output": 1,
+        "irChannel": 3
+      },
+      {
+        "input": 0,
+        "output": 0,
+        "irChannel": 3
+      }
+    ],
+    "ir": {
+      "kind": "sparse-decay-v1",
+      "seed": 1229121084,
+      "tapCount": 23
+    }
+  },
+  "tolerance": {
+    "abs": 0.0002,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "native-ir-direct-double-v1",
+  "referenceHash": "ebb984943707d4c0ba8839367722c6250b22bea01dd7479fca2a5b2e720244d7",
+  "outputFloats": 8192,
+  "byteLength": 32768,
+  "binary": "case-012.f32"
+}

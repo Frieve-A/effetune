@@ -144,6 +144,27 @@ a write-free freshness check. Kernel preparation and instance creation run betwe
 grow WASM memory; processing itself must never allocate, lock, perform I/O, or grow
 memory. See `dsp/README.md` for the ABI and kernel workflow.
 
+Before rebuilding artifacts for a commit that changes C++ under `dsp/`, format the changed
+sources and run the same repository-wide non-vendor check as the DSP Core workflow:
+
+```bash
+find dsp -path dsp/vendor -prune -o \( -name '*.cpp' -o -name '*.h' \) -print0 | xargs -0 clang-format --dry-run --Werror
+```
+
+On Windows PowerShell, use the equivalent check:
+
+```powershell
+Get-ChildItem dsp -Recurse -File |
+  Where-Object { $_.Extension -in '.cpp', '.h' -and $_.FullName -notmatch '[\\/]dsp[\\/]vendor[\\/]' } |
+  ForEach-Object { clang-format --dry-run --Werror $_.FullName }
+```
+
+Use a current clang-format version that accepts the repository's `.clang-format`; the LLVM
+binary bundled with the current Visual Studio installation is suitable on Windows. A parser
+or configuration error is a failed check. `npm run verify` does not include this C++ check.
+Run formatting before `npm run build:dsp` because formatting changes the committed DSP source
+digest. After the build, rerun it and confirm that no managed files change on the second run.
+
 For a browser runtime check, open the served app, start the audio graph with a user
 gesture, and confirm the console stays free of `[dsp-wasm]` warnings. Repeat once with
 `?dsp=off` and confirm that the JavaScript compatibility path starts without any

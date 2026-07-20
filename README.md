@@ -353,6 +353,7 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Resonator | Modal Resonator | Frequency resonance effect with up to 5 resonators | [Details](docs/plugins/resonator.md#modal-resonator) |
 | Reverb    | Dattorro Plate Reverb | Classic plate reverb based on Dattorro algorithm | [Details](docs/plugins/reverb.md#dattorro-plate-reverb) |
 | Reverb    | FDN Reverb | Feedback Delay Network reverb with rich, dense reverb textures | [Details](docs/plugins/reverb.md#fdn-reverb) |
+| Reverb    | IR Reverb | Convolution reverb using imported room and equipment impulse responses | [Details](docs/plugins/reverb.md#ir-reverb) |
 | Reverb    | RS Reverb | Random scattering reverb with natural diffusion | [Details](docs/plugins/reverb.md#rs-reverb) |
 | Saturation| Dynamic Saturation | Simulates the nonlinear displacement of speaker cones | [Details](docs/plugins/saturation.md#dynamic-saturation) |
 | Saturation| Exciter | Add harmonic content to enhance clarity and presence | [Details](docs/plugins/saturation.md#exciter) |

@@ -14,7 +14,7 @@ import { createRecentlyPlayedTracker } from '../library/playlists/recently-playe
 export class AudioPlayer {
   constructor(audioManager) {
     this.audioManager = audioManager;
-    this.audioContext = audioManager.audioContext;
+    this._audioContext = audioManager.audioContext ?? null;
     this.audioElement = null;
     
     // Initialize centralized state manager first
@@ -54,6 +54,18 @@ export class AudioPlayer {
       }
     }).catch(() => {});
   }
+
+  get audioContext() {
+    if (!this._audioContext) {
+      this._audioContext = this.audioManager?.contextManager?.audioContext ??
+        this.audioManager?.audioContext ?? null;
+    }
+    return this._audioContext;
+  }
+
+  set audioContext(audioContext) {
+    this._audioContext = audioContext ?? null;
+  }
   
   /**
    * Enhanced loadFiles with seamless playback support
@@ -65,29 +77,35 @@ export class AudioPlayer {
     // Start the resume while transient user activation is still available.
     // File loading and decoding below can outlive WebKit's activation window.
     const gestureResume = this.resumeAudioContextInGesture();
-    // Stop the old source before publishing the replacement queue. The stop,
-    // decode, and gesture resume then settle in parallel, so pending activation
-    // can never leave old audio playing behind the new track UI.
+    // Stop the old source before activating the replacement queue.
     const stopOldPlayback = this.stop();
     const stopTokenBefore = this.contextManager?.stopRequestToken;
     this.playbackManager.loadFiles(files, append, insertAt);
     if (!this.ui.container) {
       this.ui.createPlayerUI();
     }
-    // Capture the stop/pause token before loading so we can distinguish a
-    // pause/stop requested DURING this load (must not auto-start) from a player
-    // that was merely already paused when reused to open new files (must start
-    // playback for the freshly-opened files).
-    const loadTrack = this.loadTrack(this.stateManager.getCurrentTrackIndex());
-    const [resumeReady, loaded] = await Promise.all([
-      gestureResume,
-      loadTrack,
-      stopOldPlayback.then(() => true)
-    ]);
-    const pausedDuringLoad = typeof stopTokenBefore === 'number' &&
-      this.contextManager?.stopRequestToken !== stopTokenBefore;
-    if (loaded === false || pausedDuringLoad || !resumeReady) return false;
-    return await this.play(false) !== false;
+    return this.playbackManager.runWithPlaybackPending(async () => {
+      // Capture the token before waiting so a later Stop remains a hard barrier.
+      const [resumeReady] = await Promise.all([
+        gestureResume,
+        stopOldPlayback.then(() => true)
+      ]);
+      const pausedDuringLoad = typeof stopTokenBefore === 'number' &&
+        this.contextManager?.stopRequestToken !== stopTokenBefore;
+      if (pausedDuringLoad || !resumeReady) return false;
+      const result = await this.playbackManager.selectQueueOrdinal(
+        this.stateManager.getCurrentTrackIndex(),
+        {
+          play: true,
+          userInitiated: true,
+          skipUnavailable: true,
+          playbackReady: resumeReady
+        }
+      );
+      const stoppedDuringSelection = typeof stopTokenBefore === 'number' &&
+        this.contextManager?.stopRequestToken !== stopTokenBefore;
+      return result?.accepted === true && !stoppedDuringSelection;
+    }, 3);
   }
   
   /**
@@ -129,7 +147,6 @@ export class AudioPlayer {
    * @param {boolean} userInitiated - Whether this command is running in a user gesture
    */
   async play(userInitiated = true) {
-    if (userInitiated) this.resumeAudioContextInGesture();
     return await this.playbackManager.play(userInitiated);
   }
   
@@ -144,18 +161,13 @@ export class AudioPlayer {
    * Toggle between play and pause
    */
   async togglePlayPause() {
-    await this.playbackManager.togglePlayPause(() => this.resumeAudioContextInGesture());
+    await this.playbackManager.togglePlayPause();
   }
   
   /**
    * Stop playback and reset position
-   * @param {Object} options - Stop behavior options
-   * @param {boolean} options.preservePlaylistSelectionIntent - Keep an in-flight selection's play intent
    */
-  async stop({ preservePlaylistSelectionIntent = false } = {}) {
-    if (!preservePlaylistSelectionIntent) {
-      this.ui?.cancelPlaylistSelectionIntent?.();
-    }
+  async stop() {
     await this.playbackManager.stop();
   }
   

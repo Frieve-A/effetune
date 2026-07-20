@@ -53,10 +53,42 @@ export async function findPluginDefinition(typeOrName, repoRoot = DEFAULT_REPO_R
   const definition = plugins.find(plugin =>
     plugin.type === typeOrName || plugin.displayName === typeOrName || plugin.path === typeOrName
   );
-  if (!definition) {
-    throw new Error(`Plugin "${typeOrName}" is not registered in ${path.join(repoRoot, 'plugins', 'plugins.txt')}`);
+  if (definition) return definition;
+
+  const dspRoot = path.join(repoRoot, 'dsp', 'plugins');
+  const pending = [dspRoot];
+  while (pending.length > 0) {
+    const directory = pending.pop();
+    let entries;
+    try {
+      entries = await fs.readdir(directory, { withFileTypes: true });
+    } catch (error) {
+      if (error.code === 'ENOENT') continue;
+      throw error;
+    }
+    for (const entry of entries) {
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        pending.push(entryPath);
+      } else if (entry.isFile() && entry.name === 'params.json') {
+        const schema = JSON.parse(await fs.readFile(entryPath, 'utf8'));
+        const relative = path.relative(dspRoot, path.dirname(entryPath)).split(path.sep).join('/');
+        if (schema.type === typeOrName || relative === typeOrName) {
+          return {
+            path: relative,
+            displayName: schema.type,
+            category: relative.split('/')[0] ?? 'dsp',
+            type: schema.type,
+            dspOnly: true
+          };
+        }
+      }
+    }
   }
-  return definition;
+  throw new Error(
+    `Plugin "${typeOrName}" is not registered in ${path.join(repoRoot, 'plugins', 'plugins.txt')} ` +
+    'and has no DSP parameter schema'
+  );
 }
 
 export async function findParamsSchema(type, repoRoot = DEFAULT_REPO_ROOT, explicitPath = null) {

@@ -1,0 +1,58 @@
+{
+  "kind": "worker-wasm-offload-comparator",
+  "implementation": "C++/PFFFT deferred tail in a dedicated WASM Worker",
+  "blockSize": 2048,
+  "deepOffset": 4096,
+  "sampleRate": 48000,
+  "channels": 2,
+  "irSeconds": 10,
+  "accuracy": {
+    "pass": true,
+    "finite": true,
+    "maxAbsError": 1.766814910521275e-10,
+    "rmsError": 1.470150291059678e-11,
+    "setup": {
+      "type": "ready",
+      "setupMs": 0.35249999999999204,
+      "algorithmMemoryBytes": 524584,
+      "wasmMemoryBytes": 8388608
+    }
+  },
+  "resident": {
+    "algorithmMemoryBytes": 320288,
+    "moduleMemoryBytes": 8388608
+  },
+  "realtime": {
+    "deadlineMs": 42.666666666666664,
+    "blocks": 47,
+    "misses": 0,
+    "missRate": 0,
+    "medianRoundtripMs": 0.5906999999999982,
+    "p95RoundtripMs": 0.8017999999999859,
+    "worstRoundtripMs": 1.3070000000000164,
+    "medianWorkerProcessMs": 0.5209000000000117,
+    "worstWorkerProcessMs": 1.0482999999999834,
+    "setupMs": 9.063500000000005,
+    "recoveryMs": 30.719799999999992,
+    "algorithmMemoryBytes": 15532328,
+    "workerModuleMemoryBytes": 23330816
+  },
+  "combined": {
+    "algorithmMemoryBytes": 15852616,
+    "rawStagingBytes": 3840000,
+    "convolutionMemoryPeakBytes": 19692616,
+    "convolutionMemoryUnder32MiB": true,
+    "residentProfileModuleHighWaterBytes": 16777216,
+    "workerModuleHighWaterBytes": 23330816,
+    "fullLogicalInstanceHighWaterBytes": 40108032,
+    "fullLogicalInstanceUnder48MiB": true,
+    "residentModuleHeadroomWithin64MiB": 50331648,
+    "workerModuleHeadroomWithin64MiB": 43778048,
+    "eachModulePreserves16MiBHeadroom": true
+  },
+  "coResident": {
+    "workerCount": 3,
+    "totalWorkerModuleMemoryBytes": 69992448,
+    "eightBlocksEachElapsedMs": 7.685600000000022
+  }
+}

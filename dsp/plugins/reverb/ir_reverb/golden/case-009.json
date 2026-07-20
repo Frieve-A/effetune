@@ -1,0 +1,46 @@
+{
+  "formatVersion": 1,
+  "type": "IRReverbPlugin",
+  "id": "independent-noise-192000-lt1024-d4-block511",
+  "stimulus": "noise",
+  "sampleRate": 192000,
+  "channels": 2,
+  "frameCount": 8192,
+  "blockSize": 511,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 8,
+  "seed": "0xeffe7a56",
+  "params": {
+    "cm": "indep",
+    "lt": "1024",
+    "cr": "quarter",
+    "dw": 0,
+    "dl": -96,
+    "pd": 0
+  },
+  "events": [],
+  "asset": {
+    "slot": 0,
+    "format": 1,
+    "channels": 2,
+    "frames": 1537,
+    "topology": 2,
+    "headBlock": 1024,
+    "rateDivider": 4,
+    "ir": {
+      "kind": "sparse-decay-v1",
+      "seed": 1229121081,
+      "tapCount": 31
+    }
+  },
+  "tolerance": {
+    "abs": 0.0002,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "native-ir-direct-double-v1",
+  "referenceHash": "ebb984943707d4c0ba8839367722c6250b22bea01dd7479fca2a5b2e720244d7",
+  "outputFloats": 16384,
+  "byteLength": 65536,
+  "binary": "case-009.f32"
+}

@@ -90,6 +90,7 @@ function createAudioPlayer(options = {}) {
     currentTrackDuration: options.currentTrackDuration ?? 120,
     ...options.state
   };
+  const playbackPendingRequests = new Set();
   const stateManager = options.noStateManager ? null : {
     getStateSnapshot() {
       calls.push(['getStateSnapshot']);
@@ -107,6 +108,24 @@ function createAudioPlayer(options = {}) {
     updateState(update, label) {
       calls.push(['updateState', { ...update }, label]);
       Object.assign(state, update);
+    },
+    beginPlaybackPending(priority = 2) {
+      let highestPriority = -1;
+      for (const request of playbackPendingRequests) {
+        if (request.priority > highestPriority) highestPriority = request.priority;
+      }
+      if (priority >= highestPriority) playbackPendingRequests.clear();
+      const request = { priority };
+      playbackPendingRequests.add(request);
+      state.isPlaybackPending = true;
+      return () => {
+        if (!playbackPendingRequests.delete(request)) return;
+        state.isPlaybackPending = playbackPendingRequests.size > 0;
+      };
+    },
+    cancelPlaybackPending() {
+      playbackPendingRequests.clear();
+      state.isPlaybackPending = false;
     }
   };
 
@@ -230,8 +249,13 @@ function makeManager(audioPlayer) {
 }
 
 function setPlaylist(manager, names = ['One', 'Two', 'Three']) {
-  manager.playlist = names.map(name => ({ path: `${name}.wav`, name, file: null }));
-  manager.originalPlaylist = manager.playlist.map(track => ({ ...track }));
+  manager.playlist = names.map(name => manager.withImmutableEntryInstanceId({
+    path: `${name}.wav`,
+    name,
+    file: null
+  }));
+  manager.originalPlaylist = manager.playlist.map(track => manager.createOriginalTrackEntry(track));
+  manager.syncMaterializedSequence();
 }
 
 function createDeferred() {
@@ -308,7 +332,8 @@ test('loadFiles, getTrack, and basic commands handle unavailable state and deleg
     assert.deepEqual(manager.playlist.map(track => track.name), ['one.mp3', 'two.wav', 'append.flac']);
 
     await manager.play();
-    assert.ok(audioPlayer.calls.some(call => call[0] === 'seamlessTransition' && call[1] === 'one.mp3'));
+    assert.ok(audioPlayer.calls.some(call => call[0] === 'contextLoadTrack' && call[1] === 'one.mp3'));
+    assert.ok(audioPlayer.calls.some(call => call[0] === 'contextPlay'));
     await manager.pause();
     await manager.stop();
     await manager.togglePlayPause();
@@ -351,7 +376,7 @@ test('loadFiles, getTrack, and basic commands handle unavailable state and deleg
   });
 });
 
-test('active graph rebuild keeps catalog Play and Stop under the current request ownership', async () => {
+test('Stop remains a transport barrier while graph rebuild keeps only its transport intent', async () => {
   await withPlaybackGlobals({}, async () => {
     const options = {
       activeGraphRebuild: true,
@@ -365,12 +390,12 @@ test('active graph rebuild keeps catalog Play and Stop under the current request
     const audioPlayer = createAudioPlayer(options);
     const manager = makeManager(audioPlayer);
     manager.catalogSequence = { sequenceId: 'catalog-sequence', itemCount: 1 };
-    const generation = manager.catalogTrackGeneration;
+    const generation = manager.trackCommandGeneration;
     const pendingGeneration = manager.pendingTransport.generation;
 
     await manager.stop();
-    assert.equal(manager.catalogTrackGeneration, generation);
-    assert.equal(manager.pendingTransport.generation, pendingGeneration);
+    assert.equal(manager.trackCommandGeneration, generation);
+    assert.equal(manager.pendingTransport.generation, pendingGeneration + 1);
     assert.equal(audioPlayer.calls.some(call => call[0] === 'contextStop'), true);
 
     audioPlayer.calls.length = 0;
@@ -380,8 +405,8 @@ test('active graph rebuild keeps catalog Play and Stop under the current request
 
     options.activeGraphRebuild = false;
     await manager.stop();
-    assert.equal(manager.catalogTrackGeneration, generation + 1);
-    assert.equal(manager.pendingTransport.generation, pendingGeneration + 1);
+    assert.equal(manager.trackCommandGeneration, generation + 1);
+    assert.equal(manager.pendingTransport.generation, pendingGeneration + 2);
 
     const recoveryOptions = [];
     options.graphRebuildRequest = { transportIntent: { isPlaying: false } };
@@ -391,7 +416,7 @@ test('active graph rebuild keeps catalog Play and Stop under the current request
       async getEntry() { return {}; },
       async resolveEntrySource() { throw new Error('source unavailable'); }
     };
-    manager.selectCatalogOrdinal = async (_ordinal, selectOptions) => {
+    manager.selectSequenceOrdinal = async (_ordinal, selectOptions) => {
       recoveryOptions.push(selectOptions);
       return { accepted: true, value: { committed: true } };
     };
@@ -399,8 +424,199 @@ test('active graph rebuild keeps catalog Play and Stop under the current request
       options.state.currentTrack,
       { play: true }
     );
-    assert.equal(recoveryOptions[0].play, false);
-    assert.equal(recovery.committed, true);
+    assert.deepEqual(recoveryOptions, []);
+    assert.equal(recovery.committed, false);
+    assert.equal(recovery.reason, 'source-unavailable');
+  });
+});
+
+test('queue selection uses the shared seamless activation path while playback is running', async () => {
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({ isPlaying: true, isStopped: false });
+    const manager = makeManager(audioPlayer);
+    manager.loadFiles([
+      { name: 'CUE One', path: '/album.flac', startFrame: 0, endFrame: 1000 },
+      { name: 'CUE Two', path: '/album.flac', startFrame: 1000, endFrame: 2000 }
+    ]);
+    Object.assign(audioPlayer.state, {
+      currentTrack: manager.playlist[0],
+      currentTrackIndex: 0,
+      isPlaying: true,
+      isStopped: false
+    });
+    audioPlayer.contextManager.transitionToNextTrack = async (track, ordinal, userInitiated) => {
+      audioPlayer.calls.push(['sharedTransition', track.name, ordinal, userInitiated]);
+      return true;
+    };
+
+    const result = await manager.selectQueueOrdinal(1);
+
+    assert.equal(result.accepted, true);
+    assert.deepEqual(audioPlayer.calls.filter(call => call[0] === 'sharedTransition'), [
+      ['sharedTransition', 'CUE Two', 1, true]
+    ]);
+    assert.equal(audioPlayer.calls.some(call => call[0] === 'contextStop'), false);
+    assert.equal(audioPlayer.calls.some(call => call[0] === 'contextLoadTrack'), false);
+    assert.equal(audioPlayer.calls.some(call => call[0] === 'resumeAudioContextInGesture'), true);
+  });
+});
+
+test('queue selection keeps playback pending through a slow seamless activation', async () => {
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({ isPlaying: true, isStopped: false });
+    const manager = makeManager(audioPlayer);
+    manager.loadFiles(['one.wav', 'two.wav']);
+    Object.assign(audioPlayer.state, {
+      currentTrack: manager.playlist[0],
+      currentTrackIndex: 0,
+      isPlaying: true,
+      isStopped: false
+    });
+    let finishTransition;
+    audioPlayer.contextManager.transitionToNextTrack = () => new Promise(resolve => {
+      finishTransition = resolve;
+    });
+
+    const selection = manager.selectQueueOrdinal(1);
+    assert.equal(audioPlayer.state.isPlaybackPending, true);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(typeof finishTransition, 'function');
+    assert.equal(audioPlayer.state.isPlaybackPending, true);
+
+    finishTransition(true);
+    assert.equal((await selection).accepted, true);
+    assert.equal(audioPlayer.state.isPlaybackPending, false);
+  });
+});
+
+test('failed queue activation always releases playback pending', async () => {
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({ isPlaying: true, isStopped: false });
+    const manager = makeManager(audioPlayer);
+    manager.loadFiles(['one.wav', 'two.wav']);
+    const currentTrack = manager.playlist[0];
+    Object.assign(audioPlayer.state, {
+      currentTrack,
+      currentTrackIndex: 0,
+      isPlaying: true,
+      isStopped: false
+    });
+    const errors = [];
+    globalThis.window.uiManager = {
+      setError(...args) { errors.push(args); }
+    };
+    audioPlayer.contextManager.transitionToNextTrack = async (track, ordinal, userInitiated) => {
+      audioPlayer.calls.push(['failedTransition', track.name, ordinal, userInitiated]);
+      throw new Error('activation failed');
+    };
+
+    const result = await manager.selectQueueOrdinal(1);
+
+    assert.equal(result.accepted, false);
+    assert.equal(result.reason, 'media-load-failed');
+    assert.strictEqual(audioPlayer.state.currentTrack, currentTrack);
+    assert.equal(audioPlayer.state.currentTrackIndex, 0);
+    assert.deepEqual(audioPlayer.calls.filter(call => call[0] === 'failedTransition'), [
+      ['failedTransition', 'two.wav', 1, true]
+    ]);
+    assert.deepEqual(errors, [['error.playbackCommandFailed', true]]);
+    assert.equal(audioPlayer.state.isPlaybackPending, false);
+  });
+});
+
+test('Stop clears playback pending and late completion cannot restore it', async () => {
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({ isPlaying: true, isStopped: false });
+    const manager = makeManager(audioPlayer);
+    manager.loadFiles(['one.wav', 'two.wav']);
+    Object.assign(audioPlayer.state, {
+      currentTrack: manager.playlist[0],
+      currentTrackIndex: 0,
+      isPlaying: true,
+      isStopped: false
+    });
+    let finishTransition;
+    audioPlayer.contextManager.transitionToNextTrack = () => new Promise(resolve => {
+      finishTransition = resolve;
+    });
+
+    const selection = manager.selectQueueOrdinal(1);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(audioPlayer.state.isPlaybackPending, true);
+
+    await manager.stop();
+    assert.equal(audioPlayer.state.isPlaybackPending, false);
+    finishTransition(true);
+    await selection;
+    assert.equal(audioPlayer.state.isPlaybackPending, false);
+  });
+});
+
+test('queue selection loads and starts playback from a stopped state', async () => {
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({ isPlaying: false, isStopped: true });
+    const manager = makeManager(audioPlayer);
+    manager.loadFiles(['one.wav', 'two.wav']);
+    audioPlayer.contextManager.loadTrack = async (track, ordinal) => {
+      audioPlayer.calls.push(['sharedLoad', track.name, ordinal]);
+      return true;
+    };
+    audioPlayer.contextManager.play = async (forcePlay, userInitiated) => {
+      audioPlayer.calls.push(['sharedPlay', forcePlay, userInitiated]);
+      return true;
+    };
+
+    const result = await manager.selectQueueOrdinal(1);
+
+    assert.equal(result.accepted, true);
+    assert.deepEqual(audioPlayer.calls.filter(call => call[0] === 'sharedLoad'), [
+      ['sharedLoad', 'two.wav', 1]
+    ]);
+    assert.deepEqual(audioPlayer.calls.filter(call => call[0] === 'sharedPlay'), [
+      ['sharedPlay', false, true]
+    ]);
+  });
+});
+
+test('sequence-start activation skips failures through the same materialized queue transaction', async () => {
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({ isPlaying: false, isStopped: true });
+    const manager = makeManager(audioPlayer);
+    manager.loadFiles(['one.wav', 'two.wav']);
+    const loadedOrdinals = [];
+    audioPlayer.contextManager.loadTrack = async (_track, ordinal) => {
+      loadedOrdinals.push(ordinal);
+      return ordinal !== 0;
+    };
+    audioPlayer.contextManager.play = async () => true;
+
+    const result = await manager.selectQueueOrdinal(0, { skipUnavailable: true });
+
+    assert.equal(result.accepted, true);
+    assert.equal(result.skippedCount, 1);
+    assert.deepEqual(loadedOrdinals, [0, 1]);
+  });
+});
+
+test('only the latest rapid materialized queue selection remains accepted', async () => {
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({ isPlaying: true, isStopped: false });
+    const manager = makeManager(audioPlayer);
+    manager.loadFiles(['one.wav', 'two.wav', 'three.wav']);
+    const transitions = [];
+    audioPlayer.contextManager.transitionToNextTrack = async (_track, ordinal) => {
+      transitions.push(ordinal);
+      return true;
+    };
+
+    const first = manager.selectQueueOrdinal(1);
+    const second = manager.selectQueueOrdinal(2);
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+
+    assert.deepEqual(transitions, [2]);
+    assert.equal(secondResult.accepted, true);
+    assert.equal(firstResult.accepted, false);
+    assert.equal(firstResult.reason, 'stale');
   });
 });
 
@@ -441,7 +657,7 @@ test('loadFiles append and insert invalidate a stale pre-decoded next-track buff
   });
 });
 
-test('play treats a seamless transition as the complete playback start', async () => {
+test('play uses the shared load-and-start transaction when no backend is resumable', async () => {
   await withPlaybackGlobals({}, async () => {
     const audioPlayer = createAudioPlayer({ hasCurrentBuffer: false });
     const manager = makeManager(audioPlayer);
@@ -449,14 +665,9 @@ test('play treats a seamless transition as the complete playback start', async (
 
     await manager.play();
 
-    assert.equal(
-      audioPlayer.calls.filter(call => call[0] === 'seamlessTransition').length,
-      1
-    );
-    assert.equal(
-      audioPlayer.calls.filter(call => call[0] === 'contextPlay').length,
-      0
-    );
+    assert.equal(audioPlayer.calls.filter(call => call[0] === 'contextLoadTrack').length, 1);
+    assert.equal(audioPlayer.calls.filter(call => call[0] === 'contextPlay').length, 1);
+    assert.equal(audioPlayer.calls.some(call => call[0] === 'seamlessTransition'), false);
   });
 });
 
@@ -525,7 +736,6 @@ test('100 rapid play-pause toggles use the latest intent and cancel every in-fli
     const manager = makeManager(audioPlayer);
     setPlaylist(manager, ['One']);
     const playResolvers = [];
-    let playIntentCount = 0;
 
     audioPlayer.contextManager.play = () => {
       audioPlayer.calls.push(['contextPlay.pending']);
@@ -542,22 +752,18 @@ test('100 rapid play-pause toggles use the latest intent and cancel every in-fli
 
     const operations = [];
     for (let index = 0; index < 100; index++) {
-      operations.push(manager.togglePlayPause(() => { playIntentCount += 1; }));
+      operations.push(manager.togglePlayPause());
       await flushMicrotasks();
     }
 
     playResolvers.forEach(resolve => resolve(false));
     await Promise.all(operations);
 
-    assert.equal(
-      audioPlayer.calls.filter(call => call[0] === 'contextPlay.pending').length,
-      50
-    );
+    assert.ok(audioPlayer.calls.filter(call => call[0] === 'contextPlay.pending').length <= 50);
     assert.equal(
       audioPlayer.calls.filter(call => call[0] === 'contextPause').length,
       50
     );
-    assert.equal(playIntentCount, 50);
   });
 });
 

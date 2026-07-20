@@ -3,6 +3,10 @@
  * Manages preset UI and storage (localStorage for web, file system for Electron)
  */
 import { getSerializablePluginStateShort, applySerializedState } from '../../utils/serialization-utils.js';
+import {
+    appendExternalAssetWarningSnapshot,
+    captureExternalAssetWarning
+} from './external-asset-info.js';
 export class PresetManager {
     /**
      * Create a new PresetManager instance
@@ -18,6 +22,8 @@ export class PresetManager {
         this.presetClearButton = document.getElementById('presetClearButton');
         this.savePresetButton = document.getElementById('savePresetButton');
         this.deletePresetButton = document.getElementById('deletePresetButton');
+        this.presetMutationAttemptRevision = 0;
+        this.presetMutationQueue = Promise.resolve();
         
         // Initialize preset management (async)
         this.initPresetManagement().catch(error => {
@@ -203,66 +209,80 @@ export class PresetManager {
     async getLoadablePresets() {
         return this.filterLoadablePresets(await this.getPresets());
     }
+
+    enqueuePresetMutation(mutation) {
+        const result = this.presetMutationQueue.then(mutation);
+        this.presetMutationQueue = result.catch(() => {});
+        return result;
+    }
+
+    async persistPresets(presets) {
+        if (window.electronAPI && window.electronIntegration && window.electronIntegration.isElectron) {
+            const appPath = await window.electronAPI.getPath('userData');
+            const filePath = await window.electronAPI.joinPaths(appPath, 'effetune_presets.json');
+            const result = await window.electronAPI.saveFile(
+                filePath,
+                JSON.stringify(presets, null, 2)
+            );
+            if (!result?.success) {
+                throw new Error(result?.error || 'Preset file write failed');
+            }
+            return;
+        }
+
+        localStorage.setItem('effetune_presets', JSON.stringify(presets));
+    }
     
     /**
      * Save a preset
      * @param {string} name - The name of the preset
      */
     async savePreset(name) {
-        const presets = await this.getPresets();
-        
+        const attemptRevision = ++this.presetMutationAttemptRevision;
+        const pipeline = [...this.audioManager.pipeline];
         // Create preset data with original format (plugins array)
-        const pluginsData = this.audioManager.pipeline.map(plugin =>
+        const pluginsData = pipeline.map(plugin =>
             getSerializablePluginStateShort(plugin)
         );
-        
-        // Save preset with original format
-        presets[name] = {
-            plugins: pluginsData
-        };
+        const externalAssetWarning = captureExternalAssetWarning(pipeline);
         
         try {
-            // Check if running in Electron environment
-            if (window.electronAPI && window.electronIntegration && window.electronIntegration.isElectron) {
-                // Get app path from Electron
-                const appPath = await window.electronAPI.getPath('userData');
-                
-                // Use path.join for cross-platform compatibility
-                const filePath = await window.electronAPI.joinPaths(appPath, 'effetune_presets.json');
-                
-                // Save presets to file
-                await window.electronAPI.saveFile(
-                    filePath,
-                    JSON.stringify(presets, null, 2)
-                );
-            } else {
-                // Fallback to localStorage for web version
-                localStorage.setItem('effetune_presets', JSON.stringify(presets));
-            }
+            await this.enqueuePresetMutation(async () => {
+                const presets = await this.getPresets();
+                presets[name] = { plugins: pluginsData };
+                await this.persistPresets(presets);
+            });
+
+            if (attemptRevision !== this.presetMutationAttemptRevision) return;
             
             // Update UI
             await this.loadPresetList(name);
+            if (attemptRevision !== this.presetMutationAttemptRevision) return;
             
             // Update plugin list presets tab if it's visible
             if (window.uiManager && window.uiManager.pluginListManager) {
                 await window.uiManager.pluginListManager.refreshPresetsIfVisible();
+                if (attemptRevision !== this.presetMutationAttemptRevision) return;
             }
             
             // Update tray menu with new preset list
             if (window.electronIntegration && window.electronIntegration.isElectron) {
                 const { updateTrayMenu } = await import('../../electron/menuIntegration.js');
+                if (attemptRevision !== this.presetMutationAttemptRevision) return;
                 await updateTrayMenu(true);
+                if (attemptRevision !== this.presetMutationAttemptRevision) return;
             }
             
             if (window.uiManager) {
-                window.uiManager.setError('success.presetSaved', false, { name });
-                setTimeout(() => window.uiManager.clearError(), 3000);
+                window.uiManager.showTransientMessage(appendExternalAssetWarningSnapshot(
+                    window.uiManager.t('success.presetSaved', { name }),
+                    externalAssetWarning
+                ), false, {}, 3000);
             }
         } catch (error) {
             console.error('Failed to save preset:', error);
-            if (window.uiManager) {
-                window.uiManager.setError('error.failedToSavePreset', true);
-                setTimeout(() => window.uiManager.clearError(), 3000);
+            if (attemptRevision === this.presetMutationAttemptRevision && window.uiManager) {
+                window.uiManager.showTransientMessage('error.failedToSavePreset', true, {}, 3000);
             }
         }
     }
@@ -429,8 +449,7 @@ export class PresetManager {
             
             // Display message only when loading from preset combo box (string name)
             if (window.uiManager && typeof nameOrPreset === 'string') {
-                window.uiManager.setError('success.presetLoaded', false, { name });
-                setTimeout(() => window.uiManager.clearError(), 3000);
+                window.uiManager.showTransientMessage('success.presetLoaded', false, { name }, 3000);
             }
         } catch (error) {
             // Failed to load preset
@@ -445,58 +464,52 @@ export class PresetManager {
      * @param {string} name - The name of the preset to delete
      */
     async deletePreset(name) {
-        const presets = await this.getPresets();
-        if (!presets[name]) {
-            if (window.uiManager) {
-                window.uiManager.setError('error.noPresetSelected');
-            }
-            return;
-        }
-        
-        delete presets[name];
+        const attemptRevision = ++this.presetMutationAttemptRevision;
         
         try {
-            // Check if running in Electron environment
-            if (window.electronAPI && window.electronIntegration && window.electronIntegration.isElectron) {
-                // Get app path from Electron
-                const appPath = await window.electronAPI.getPath('userData');
-                
-                // Use path.join for cross-platform compatibility
-                const filePath = await window.electronAPI.joinPaths(appPath, 'effetune_presets.json');
-                
-                // Save presets to file
-                await window.electronAPI.saveFile(
-                    filePath,
-                    JSON.stringify(presets, null, 2)
-                );
-            } else {
-                // Fallback to localStorage for web version
-                localStorage.setItem('effetune_presets', JSON.stringify(presets));
+            const deleted = await this.enqueuePresetMutation(async () => {
+                const presets = await this.getPresets();
+                if (!presets[name]) return false;
+
+                delete presets[name];
+                await this.persistPresets(presets);
+                return true;
+            });
+
+            if (!deleted) {
+                if (attemptRevision === this.presetMutationAttemptRevision && window.uiManager) {
+                    window.uiManager.setError('error.noPresetSelected');
+                }
+                return;
             }
+
+            if (attemptRevision !== this.presetMutationAttemptRevision) return;
             
             // Update UI
             await this.loadPresetList('');
+            if (attemptRevision !== this.presetMutationAttemptRevision) return;
             
             // Update plugin list presets tab if it's visible
             if (window.uiManager && window.uiManager.pluginListManager) {
                 await window.uiManager.pluginListManager.refreshPresetsIfVisible();
+                if (attemptRevision !== this.presetMutationAttemptRevision) return;
             }
             
             // Update tray menu with new preset list
             if (window.electronIntegration && window.electronIntegration.isElectron) {
                 const { updateTrayMenu } = await import('../../electron/menuIntegration.js');
+                if (attemptRevision !== this.presetMutationAttemptRevision) return;
                 await updateTrayMenu(true);
+                if (attemptRevision !== this.presetMutationAttemptRevision) return;
             }
             
             if (window.uiManager) {
-                window.uiManager.setError('success.presetDeleted', false, { name });
-                setTimeout(() => window.uiManager.clearError(), 3000);
+                window.uiManager.showTransientMessage('success.presetDeleted', false, { name }, 3000);
             }
         } catch (error) {
             console.error('Failed to delete preset:', error);
-            if (window.uiManager) {
-                window.uiManager.setError('error.failedToDeletePreset', true);
-                setTimeout(() => window.uiManager.clearError(), 3000);
+            if (attemptRevision === this.presetMutationAttemptRevision && window.uiManager) {
+                window.uiManager.showTransientMessage('error.failedToDeletePreset', true, {}, 3000);
             }
         }
     }

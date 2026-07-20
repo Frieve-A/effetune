@@ -1,0 +1,195 @@
+{
+  "defaults": {
+    "frames": 4096,
+    "channels": 2,
+    "channelMode": "stereo",
+    "blockSize": 128,
+    "params": {
+      "cm": "auto",
+      "lt": "128",
+      "cr": "full",
+      "dw": 0,
+      "dl": -96,
+      "pd": 0
+    }
+  },
+  "cases": [
+    {
+      "id": "mono-impulse-44100-lt0-d1-block1",
+      "stimulus": "imp",
+      "sampleRate": 44100,
+      "frames": 4096,
+      "channels": 1,
+      "channelMode": "mono",
+      "blockSize": 1,
+      "params": { "cm": "mono", "lt": "0", "cr": "full" },
+      "asset": {
+        "slot": 0, "format": 1, "channels": 1, "frames": 511,
+        "topology": 1, "headBlock": 0, "rateDivider": 1,
+        "ir": { "kind": "sparse-decay-v1", "seed": 1229121073, "tapCount": 19 }
+      }
+    },
+    {
+      "id": "independent-noise-48000-lt128-d1-block63",
+      "stimulus": "noise",
+      "sampleRate": 48000,
+      "frames": 4096,
+      "blockSize": 63,
+      "params": { "cm": "indep", "lt": "128", "cr": "full" },
+      "asset": {
+        "slot": 0, "format": 1, "channels": 2, "frames": 777,
+        "topology": 2, "headBlock": 128, "rateDivider": 1,
+        "ir": { "kind": "sparse-decay-v1", "seed": 1229121074, "tapCount": 23 }
+      }
+    },
+    {
+      "id": "mono-silence-tail-48000-lt256-d1-block128",
+      "stimulus": "imp",
+      "sampleRate": 48000,
+      "frames": 6144,
+      "blockSize": 128,
+      "params": { "cm": "mono", "lt": "256", "cr": "full" },
+      "asset": {
+        "slot": 0, "format": 1, "channels": 1, "frames": 1025,
+        "topology": 1, "headBlock": 256, "rateDivider": 1,
+        "ir": { "kind": "sparse-decay-v1", "seed": 1229121075, "tapCount": 29 }
+      }
+    },
+    {
+      "id": "independent-noise-96000-lt512-d1-block511",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "frames": 4096,
+      "blockSize": 511,
+      "params": { "cm": "indep", "lt": "512", "cr": "full" },
+      "asset": {
+        "slot": 0, "format": 1, "channels": 2, "frames": 513,
+        "topology": 2, "headBlock": 512, "rateDivider": 1,
+        "ir": { "kind": "sparse-decay-v1", "seed": 1229121076, "tapCount": 17 }
+      }
+    },
+    {
+      "id": "mono-silence-tail-192000-lt1024-d1-block17",
+      "stimulus": "imp",
+      "sampleRate": 192000,
+      "frames": 8192,
+      "channels": 1,
+      "channelMode": "mono",
+      "blockSize": 17,
+      "params": { "cm": "mono", "lt": "1024", "cr": "full" },
+      "asset": {
+        "slot": 0, "format": 1, "channels": 1, "frames": 1537,
+        "topology": 1, "headBlock": 1024, "rateDivider": 1,
+        "ir": { "kind": "sparse-decay-v1", "seed": 1229121077, "tapCount": 31 }
+      }
+    },
+    {
+      "id": "mono-impulse-96000-lt128-d2-block255",
+      "stimulus": "imp",
+      "sampleRate": 96000,
+      "frames": 4096,
+      "blockSize": 255,
+      "params": { "cm": "mono", "lt": "128", "cr": "half" },
+      "asset": {
+        "slot": 0, "format": 1, "channels": 1, "frames": 769,
+        "topology": 1, "headBlock": 128, "rateDivider": 2,
+        "ir": { "kind": "sparse-decay-v1", "seed": 1229121078, "tapCount": 23 }
+      }
+    },
+    {
+      "id": "independent-noise-96000-lt256-d2-block63",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "frames": 4096,
+      "blockSize": 63,
+      "params": { "cm": "indep", "lt": "256", "cr": "half" },
+      "asset": {
+        "slot": 0, "format": 1, "channels": 2, "frames": 1025,
+        "topology": 2, "headBlock": 256, "rateDivider": 2,
+        "ir": { "kind": "sparse-decay-v1", "seed": 1229121079, "tapCount": 27 }
+      }
+    },
+    {
+      "id": "mono-impulse-192000-lt512-d4-block128",
+      "stimulus": "imp",
+      "sampleRate": 192000,
+      "frames": 6144,
+      "blockSize": 128,
+      "params": { "cm": "mono", "lt": "512", "cr": "quarter" },
+      "asset": {
+        "slot": 0, "format": 1, "channels": 1, "frames": 769,
+        "topology": 1, "headBlock": 512, "rateDivider": 4,
+        "ir": { "kind": "sparse-decay-v1", "seed": 1229121080, "tapCount": 23 }
+      }
+    },
+    {
+      "id": "independent-noise-192000-lt1024-d4-block511",
+      "stimulus": "noise",
+      "sampleRate": 192000,
+      "frames": 8192,
+      "blockSize": 511,
+      "params": { "cm": "indep", "lt": "1024", "cr": "quarter" },
+      "asset": {
+        "slot": 0, "format": 1, "channels": 2, "frames": 1537,
+        "topology": 2, "headBlock": 1024, "rateDivider": 4,
+        "ir": { "kind": "sparse-decay-v1", "seed": 1229121081, "tapCount": 31 }
+      }
+    },
+    {
+      "id": "mono-direct-predelay-48000-lt128-d1-block255",
+      "stimulus": "noise",
+      "sampleRate": 48000,
+      "frames": 4096,
+      "channels": 1,
+      "channelMode": "mono",
+      "blockSize": 255,
+      "params": {
+        "cm": "mono", "lt": "128", "cr": "full",
+        "dw": -3, "dl": -6, "pd": 5
+      },
+      "asset": {
+        "slot": 0, "format": 1, "channels": 1, "frames": 257,
+        "topology": 1, "headBlock": 128, "rateDivider": 1,
+        "ir": { "kind": "sparse-decay-v1", "seed": 1229121082, "tapCount": 13 }
+      }
+    },
+    {
+      "id": "true-stereo-noise-48000-lt128-d1-block63",
+      "stimulus": "noise",
+      "sampleRate": 48000,
+      "frames": 4096,
+      "channels": 2,
+      "channelMode": "stereo",
+      "blockSize": 63,
+      "params": { "cm": "true", "lt": "128", "cr": "full" },
+      "asset": {
+        "slot": 0, "format": 1, "channels": 4, "frames": 777,
+        "topology": 3, "headBlock": 128, "rateDivider": 1,
+        "ir": { "kind": "sparse-decay-v1", "seed": 1229121083, "tapCount": 23 }
+      }
+    },
+    {
+      "id": "matrix-noise-96000-lt256-d2-block127",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "frames": 4096,
+      "channels": 2,
+      "channelMode": "stereo",
+      "blockSize": 127,
+      "params": { "cm": "multi", "lt": "256", "cr": "half" },
+      "asset": {
+        "slot": 0, "format": 1, "channels": 4, "frames": 777,
+        "topology": 4, "headBlock": 256, "rateDivider": 2,
+        "pathCount": 5, "inputCount": 2,
+        "paths": [
+          { "input": 0, "output": 0, "irChannel": 0 },
+          { "input": 0, "output": 1, "irChannel": 1 },
+          { "input": 1, "output": 0, "irChannel": 2 },
+          { "input": 1, "output": 1, "irChannel": 3 },
+          { "input": 0, "output": 0, "irChannel": 3 }
+        ],
+        "ir": { "kind": "sparse-decay-v1", "seed": 1229121084, "tapCount": 23 }
+      }
+    }
+  ]
+}

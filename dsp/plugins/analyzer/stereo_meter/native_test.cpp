@@ -14,14 +14,11 @@ namespace {
 
 constexpr std::uint32_t kKernelStorageBytes = 8192u;
 constexpr std::uint32_t kTelemetryBytes = 64u * 1024u;
-constexpr std::uint32_t kPayloadBytes = 5554u;
-constexpr std::uint32_t kFrameBytes = 5572u;
-constexpr std::uint32_t kHistogramOffset = 2u;
-constexpr std::uint32_t kEnvelopeOffset = 4098u;
-constexpr std::uint32_t kCorrelationOffset = 5538u;
-constexpr std::uint32_t kBalanceOffset = 5542u;
-constexpr std::uint32_t kPeakLeftOffset = 5546u;
-constexpr std::uint32_t kPeakRightOffset = 5550u;
+constexpr std::uint32_t kPayloadHeaderBytes = 8u;
+constexpr std::uint32_t kSampleBytes = 8u;
+constexpr std::uint32_t kEnvelopeBytes = 360u * 4u;
+constexpr std::uint32_t kPayloadTailBytes = kEnvelopeBytes + 16u;
+constexpr std::uint32_t kMaxDeltaSamples = 8000u;
 int failures = 0;
 
 void check(bool condition, const char *expression, int line) noexcept {
@@ -121,26 +118,43 @@ const std::uint8_t *payload(const KernelHarness &harness) noexcept {
   return harness.output.data() + 16u;
 }
 
-void emitFrame(KernelHarness &harness) noexcept {
-  harness.telemetryTick();
-  STEREO_CHECK(harness.read() == 0u);
-  harness.telemetryTick();
-  STEREO_CHECK(harness.read() == kFrameBytes);
+std::uint32_t payloadBytes(std::uint32_t sample_count) noexcept {
+  return kPayloadHeaderBytes + sample_count * kSampleBytes + kPayloadTailBytes;
 }
 
-void checkFrame(const KernelHarness &harness, std::uint32_t sequence) noexcept {
+std::uint32_t frameBytes(std::uint32_t sample_count) noexcept {
+  return (16u + payloadBytes(sample_count) + 3u) & ~3u;
+}
+
+std::uint32_t envelopeOffset(std::uint32_t sample_count) noexcept {
+  return kPayloadHeaderBytes + sample_count * kSampleBytes;
+}
+
+std::uint32_t statisticsOffset(std::uint32_t sample_count) noexcept {
+  return envelopeOffset(sample_count) + kEnvelopeBytes;
+}
+
+void emitFrame(KernelHarness &harness, std::uint32_t sample_count) noexcept {
+  harness.telemetryTick();
+  STEREO_CHECK(harness.read() == frameBytes(sample_count));
+}
+
+void checkFrame(const KernelHarness &harness, std::uint32_t sequence, std::uint32_t sample_count,
+                std::uint16_t sample_flags = 0u) noexcept {
   const std::uint8_t *frame = harness.output.data();
   STEREO_CHECK(readU16(frame) == 6u);
-  STEREO_CHECK(readU16(frame + 2u) == 1u);
+  STEREO_CHECK(readU16(frame + 2u) == 2u);
   STEREO_CHECK(readU32(frame + 4u) == harness.tap_id);
   STEREO_CHECK(readU32(frame + 8u) == sequence);
-  STEREO_CHECK(readU16(frame + 12u) == kPayloadBytes);
+  STEREO_CHECK(readU16(frame + 12u) == payloadBytes(sample_count));
   STEREO_CHECK(readU16(frame + 14u) == 0u);
-  STEREO_CHECK(frame[16u + kPayloadBytes] == 0u);
-  STEREO_CHECK(frame[16u + kPayloadBytes + 1u] == 0u);
+  const std::uint8_t *data = payload(harness);
+  STEREO_CHECK(near(readF32(data), 1000.0F) || readF32(data) == 384000.0F);
+  STEREO_CHECK(readU16(data + 4u) == sample_count);
+  STEREO_CHECK(readU16(data + 6u) == sample_flags);
 }
 
-void testMonoMirrorAndDensityQuantization() {
+void testMonoMirrorAndFullPrecisionCoordinates() {
   KernelHarness harness(1000.0F, 10u);
   harness.tap_id = 61u;
   harness.setWindow(0.01F);
@@ -150,19 +164,18 @@ void testMonoMirrorAndDensityQuantization() {
   harness.process(audio.data(), 1u, 10u, 1.0);
   STEREO_CHECK(std::memcmp(audio.data(), original.data(), sizeof(audio)) == 0);
 
-  emitFrame(harness);
-  checkFrame(harness, 0u);
+  emitFrame(harness, 10u);
+  checkFrame(harness, 0u, 10u);
   const std::uint8_t *data = payload(harness);
-  STEREO_CHECK(readU16(data) == 64u);
-  const std::uint32_t center = 32u * 64u + 32u;
-  const std::uint32_t mono_tone = 16u * 64u + 32u;
-  STEREO_CHECK(data[kHistogramOffset + center] == 255u);
-  STEREO_CHECK(data[kHistogramOffset + mono_tone] == 77u);
-  STEREO_CHECK(near(readF32(data + kEnvelopeOffset + 270u * 4u), 1.0F));
-  STEREO_CHECK(near(readF32(data + kCorrelationOffset), 1.0F));
-  STEREO_CHECK(near(readF32(data + kBalanceOffset), 0.0F));
-  STEREO_CHECK(near(readF32(data + kPeakLeftOffset), 0.5F));
-  STEREO_CHECK(near(readF32(data + kPeakRightOffset), 0.5F));
+  STEREO_CHECK(near(readF32(data + kPayloadHeaderBytes + 9u * kSampleBytes), 0.0F));
+  STEREO_CHECK(near(readF32(data + kPayloadHeaderBytes + 9u * kSampleBytes + 4u), 1.0F));
+  const std::uint32_t envelope = envelopeOffset(10u);
+  const std::uint32_t statistics = statisticsOffset(10u);
+  STEREO_CHECK(near(readF32(data + envelope + 270u * 4u), 1.0F));
+  STEREO_CHECK(near(readF32(data + statistics), 1.0F));
+  STEREO_CHECK(near(readF32(data + statistics + 4u), 0.0F));
+  STEREO_CHECK(near(readF32(data + statistics + 8u), 0.5F));
+  STEREO_CHECK(near(readF32(data + statistics + 12u), 0.5F));
 }
 
 void testAntiPhaseBoundariesAndFourChannelPassthrough() {
@@ -181,19 +194,20 @@ void testAntiPhaseBoundariesAndFourChannelPassthrough() {
   harness.process(audio.data(), 4u, 10u, 2.0);
   STEREO_CHECK(std::memcmp(audio.data(), original.data(), sizeof(audio)) == 0);
 
-  emitFrame(harness);
-  checkFrame(harness, 0u);
+  emitFrame(harness, 10u);
+  checkFrame(harness, 0u, 10u);
   const std::uint8_t *data = payload(harness);
-  const std::uint32_t left_edge = 32u * 64u;
-  const std::uint32_t right_edge = 32u * 64u + 63u;
-  STEREO_CHECK(data[kHistogramOffset + left_edge] == 255u);
-  STEREO_CHECK(data[kHistogramOffset + right_edge] == 255u);
-  STEREO_CHECK(near(readF32(data + kEnvelopeOffset), 2.0F));
-  STEREO_CHECK(near(readF32(data + kEnvelopeOffset + 180u * 4u), 2.0F));
-  STEREO_CHECK(near(readF32(data + kCorrelationOffset), -1.0F));
-  STEREO_CHECK(near(readF32(data + kBalanceOffset), 0.0F));
-  STEREO_CHECK(near(readF32(data + kPeakLeftOffset), 1.0F));
-  STEREO_CHECK(near(readF32(data + kPeakRightOffset), 1.0F));
+  STEREO_CHECK(near(readF32(data + kPayloadHeaderBytes), -2.0F));
+  STEREO_CHECK(near(readF32(data + kPayloadHeaderBytes + 4u), 0.0F));
+  STEREO_CHECK(near(readF32(data + kPayloadHeaderBytes + kSampleBytes), 2.0F));
+  const std::uint32_t envelope = envelopeOffset(10u);
+  const std::uint32_t statistics = statisticsOffset(10u);
+  STEREO_CHECK(near(readF32(data + envelope), 2.0F));
+  STEREO_CHECK(near(readF32(data + envelope + 180u * 4u), 2.0F));
+  STEREO_CHECK(near(readF32(data + statistics), -1.0F));
+  STEREO_CHECK(near(readF32(data + statistics + 4u), 0.0F));
+  STEREO_CHECK(near(readF32(data + statistics + 8u), 1.0F));
+  STEREO_CHECK(near(readF32(data + statistics + 12u), 1.0F));
 }
 
 void testVariableBlocksUseLatestWindow() {
@@ -216,15 +230,19 @@ void testVariableBlocksUseLatestWindow() {
   }
   STEREO_CHECK(processed == 12u);
 
-  emitFrame(harness);
+  emitFrame(harness, 12u);
+  checkFrame(harness, 0u, 12u);
   const std::uint8_t *data = payload(harness);
-  const std::uint32_t field_cell = 20u * 64u + 36u;
-  STEREO_CHECK(data[kHistogramOffset + field_cell] == 255u);
-  STEREO_CHECK(near(readF32(data + kCorrelationOffset), 1.0F));
-  STEREO_CHECK(near(readF32(data + kBalanceOffset), 6.0205999F, 2.0e-5F));
-  STEREO_CHECK(near(readF32(data + kPeakLeftOffset), 0.25F));
-  STEREO_CHECK(near(readF32(data + kPeakRightOffset), 0.5F));
-  STEREO_CHECK(near(readF32(data + kEnvelopeOffset + 270u * 4u), 4.0F));
+  const std::uint32_t latest_sample = kPayloadHeaderBytes + 11u * kSampleBytes;
+  STEREO_CHECK(near(readF32(data + latest_sample), 0.25F));
+  STEREO_CHECK(near(readF32(data + latest_sample + 4u), 0.75F));
+  const std::uint32_t envelope = envelopeOffset(12u);
+  const std::uint32_t statistics = statisticsOffset(12u);
+  STEREO_CHECK(near(readF32(data + statistics), 1.0F));
+  STEREO_CHECK(near(readF32(data + statistics + 4u), 6.0205999F, 2.0e-5F));
+  STEREO_CHECK(near(readF32(data + statistics + 8u), 0.25F));
+  STEREO_CHECK(near(readF32(data + statistics + 12u), 0.5F));
+  STEREO_CHECK(near(readF32(data + envelope + 270u * 4u), 4.0F));
 }
 
 void testEnvelopeDecayAndSequence() {
@@ -233,18 +251,19 @@ void testEnvelopeDecayAndSequence() {
   harness.setWindow(0.01F);
   float tone = 0.5F;
   harness.process(&tone, 1u, 1u, 4.0);
-  emitFrame(harness);
-  checkFrame(harness, 0u);
-  STEREO_CHECK(near(readF32(payload(harness) + kEnvelopeOffset + 270u * 4u), 1.0F));
+  emitFrame(harness, 1u);
+  checkFrame(harness, 0u, 1u);
+  STEREO_CHECK(near(readF32(payload(harness) + envelopeOffset(1u) + 270u * 4u), 1.0F));
 
   float silence = 0.0F;
   harness.process(&silence, 1u, 1u, 4.1);
-  emitFrame(harness);
-  checkFrame(harness, 1u);
-  STEREO_CHECK(near(readF32(payload(harness) + kEnvelopeOffset + 270u * 4u), 0.7943282F, 2.0e-6F));
+  emitFrame(harness, 1u);
+  checkFrame(harness, 1u, 1u);
+  STEREO_CHECK(
+      near(readF32(payload(harness) + envelopeOffset(1u) + 270u * 4u), 0.7943282F, 2.0e-6F));
 }
 
-void testOutOfFieldProducesZeroHistogram() {
+void testOutOfFieldCoordinatesRetainTheirRange() {
   KernelHarness harness(1000.0F, 10u);
   harness.tap_id = 65u;
   harness.setWindow(0.01F);
@@ -254,23 +273,45 @@ void testOutOfFieldProducesZeroHistogram() {
     audio[10u + frame] = 2.0F;
   }
   harness.process(audio.data(), 2u, 10u, 5.0);
-  emitFrame(harness);
+  emitFrame(harness, 10u);
+  checkFrame(harness, 0u, 10u);
   const std::uint8_t *data = payload(harness);
-  for (std::uint32_t cell = 0u; cell < 4096u; ++cell) {
-    STEREO_CHECK(data[kHistogramOffset + cell] == 0u);
+  STEREO_CHECK(near(readF32(data + kPayloadHeaderBytes), 0.0F));
+  STEREO_CHECK(near(readF32(data + kPayloadHeaderBytes + 4u), 4.0F));
+  const std::uint32_t statistics = statisticsOffset(10u);
+  STEREO_CHECK(near(readF32(data + statistics + 8u), 2.0F));
+  STEREO_CHECK(near(readF32(data + statistics + 12u), 2.0F));
+}
+
+void testOversizedDeltaKeepsLatestSamplesAndMarksDiscontinuity() {
+  KernelHarness harness(384000.0F, 1000u);
+  harness.tap_id = 66u;
+  harness.setWindow(0.01F);
+  std::vector<float> audio(2000u);
+  for (std::uint32_t frame = 0u; frame < 1000u; ++frame) {
+    audio[frame] = 0.25F;
+    audio[1000u + frame] = 0.5F;
   }
-  STEREO_CHECK(near(readF32(data + kPeakLeftOffset), 2.0F));
-  STEREO_CHECK(near(readF32(data + kPeakRightOffset), 2.0F));
+  for (std::uint32_t block = 0u; block < 17u; ++block) {
+    harness.process(audio.data(), 2u, 1000u, 6.0);
+  }
+
+  emitFrame(harness, kMaxDeltaSamples);
+  checkFrame(harness, 0u, kMaxDeltaSamples, 1u);
+  const std::uint8_t *data = payload(harness);
+  STEREO_CHECK(near(readF32(data + kPayloadHeaderBytes), 0.25F));
+  STEREO_CHECK(near(readF32(data + kPayloadHeaderBytes + 4u), 0.75F));
 }
 
 } // namespace
 
 int main() {
-  testMonoMirrorAndDensityQuantization();
+  testMonoMirrorAndFullPrecisionCoordinates();
   testAntiPhaseBoundariesAndFourChannelPassthrough();
   testVariableBlocksUseLatestWindow();
   testEnvelopeDecayAndSequence();
-  testOutOfFieldProducesZeroHistogram();
+  testOutOfFieldCoordinatesRetainTheirRange();
+  testOversizedDeltaKeepsLatestSamplesAndMarksDiscontinuity();
   if (failures != 0) {
     std::fprintf(stderr, "%d Stereo Meter native check(s) failed\n", failures);
     return 1;

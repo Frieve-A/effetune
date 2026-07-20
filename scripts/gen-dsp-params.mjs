@@ -279,12 +279,37 @@ export function validateParamSpec(raw, source = '<params.json>') {
     };
   }
 
+  if (raw.assets !== undefined && !Array.isArray(raw.assets)) {
+    fail('assets must be an array', source);
+  }
+  const assetSlots = new Set();
+  const assets = (raw.assets ?? []).map((rawAsset, assetIndex) => {
+    if (!isPlainObject(rawAsset)) {
+      fail(`assets[${assetIndex}] must be an object`, source);
+    }
+    const slot = rawAsset.slot;
+    if (!Number.isSafeInteger(slot) || slot < 0 || slot > 31) {
+      fail(`assets[${assetIndex}].slot must be an integer from 0 to 31`, source);
+    }
+    if (assetSlots.has(slot)) {
+      fail(`duplicate asset slot ${slot}`, source);
+    }
+    assetSlots.add(slot);
+    if (typeof rawAsset.format !== 'string' || rawAsset.format.length === 0) {
+      fail(`assets[${assetIndex}].format must be a non-empty string`, source);
+    }
+    if (typeof rawAsset.capacity !== 'string' || rawAsset.capacity.length === 0) {
+      fail(`assets[${assetIndex}].capacity must be a non-empty string`, source);
+    }
+    return { slot, format: rawAsset.format, capacity: rawAsset.capacity };
+  });
   return {
     type,
     tolerance: { abs, rel: raw.tolerance.rel ?? null, policy },
     fields,
     floatCount,
     structured,
+    assets,
     byteCapacity: structured?.byteCapacity ?? 0,
     hash: computeLayoutHash(fields, structured),
     source

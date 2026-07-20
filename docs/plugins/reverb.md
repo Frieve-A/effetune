@@ -1,6 +1,6 @@
 ---
 title: "Reverb Plugins - EffeTune"
-description: "Reverb effect plugins including RS Reverb, Dattorro Plate Reverb, and FDN Reverb."
+description: "Reverb effect plugins including Dattorro Plate Reverb, FDN Reverb, IR Reverb, and RS Reverb."
 lang: en
 ---
 
@@ -12,6 +12,7 @@ A collection of plugins that add space and atmosphere to your music. These effec
 
 - [Dattorro Plate Reverb](#dattorro-plate-reverb) - Classic plate reverb based on Dattorro algorithm
 - [FDN Reverb](#fdn-reverb) - Feedback Delay Network reverb with advanced diffusion matrix
+- [IR Reverb](#ir-reverb) - Convolution reverb using an imported acoustic impulse response
 - [RS Reverb](#rs-reverb) - Creates natural room ambience and space
 
 ## Dattorro Plate Reverb
@@ -260,6 +261,44 @@ Routing note: FDN Reverb is a stereo reverb model with one shared feedback tank.
    - Fine-tune based on your music and preferences
 
 The FDN Reverb transforms your listening experience by adding realistic acoustic spaces to any recording. Perfect for music lovers who want to enhance their favorite tracks with beautiful, natural-sounding reverberation!
+
+## IR Reverb
+
+IR Reverb convolves the signal with an imported impulse response (IR), reproducing the measured decay and spatial character of a room, hall, plate, or other acoustic system. It is useful when you want the repeatable character of a particular capture rather than a synthesized reverb model.
+
+### Sound Enhancement Guide
+
+- **Subtle room support:** import a short room IR, keep **Dry** at 0 dB, set **Wet** around -18 to -12 dB, and use a short **Pre Delay**. This adds space without obscuring the recording.
+- **Concert-hall expansion:** use a stereo or true-stereo hall IR, lower **Wet** first, then shorten an overly long tail with **Decay** and **Trim**.
+- **Reverberant send/return:** route the source to another bus with **Matrix**, place IR Reverb on that return with **Dry** at -96 dB and **Wet** at 0 dB, then use the send level to control reverb. This avoids adding the dry signal twice and also works for selected multichannel returns.
+- **Comparison and repeatability:** retain the original IR file and its source/license record. The same IR bytes produce the same library ID, so another installation can relink exactly by importing that file.
+
+### Parameters
+
+- **Channel Mode** - Selects how IR channels are routed. **Auto** uses recognized metadata/layout; **Mono** applies one IR to the selected channels; **Independent** maps one IR channel to each selected channel; **True Stereo** uses LL/LR/RL/RR paths; **Diagonal Matrix** maps matching input/output channels without crossfeed.
+- **Latency** - Chooses the convolution block latency (Zero, 128, 256, 512, or 1024 samples). Higher settings generally reduce processing pressure but add wet-path delay. **Zero** requires **Convolution Rate = Full**.
+- **Convolution Rate** - Sets the rate used by the wet convolution. **Auto** uses half rate at high context rates, while **Full**, **Half**, and **Quarter** make the choice explicit. Reduced rates lower processing cost but also reduce wet-path bandwidth; Quarter requires a context rate of at least 176.4 kHz.
+- **Wet** - Sets convolved output level from -96 to +12 dB.
+- **Dry** - Sets direct-signal level from -96 to +12 dB. The -96 dB endpoint mutes the dry signal completely for a fully wet effect or send/return setup.
+- **Pre Delay** - Delays only the wet signal by 0 to 500 ms, separating the original transient from the room response.
+- **Direct Cut** - Removes the detected direct impulse from the IR so the capture contributes only its reverberant portion. Normalization continues to use the uncut IR as its reference, so enabling Direct Cut does not boost the remaining reverberant tail.
+- **Cut Offset** - Moves the detected cut point by -20 to +50 ms when **Direct Cut** is on.
+- **Decay** - Reshapes the IR decay from 10% to 400%; 100% preserves the recorded decay, lower values shorten it, and higher values extend it.
+- **Trim** - Retains 1% to 100% of the post-cut IR with a fade. Shorter settings reduce tail length, CPU use, and memory.
+
+### Reading the Decay Graph
+
+Time runs left to right and level runs from 0 to -90 dB. The solid energy decay curve (EDC) shows how stored acoustic energy falls; a steeper descent means a shorter tail. The faint envelope gives transient context. Markers identify detected onset, the active direct-cut point, wet pre-delay, and trim point. **RT60** estimates the time for a 60 dB decay; “unavailable” means the IR did not contain a reliable fitting range. When **Decay** differs from 100%, compare the reshaped solid curve with the original dotted curve.
+
+### Routing, Library, and Sharing
+
+A mono IR can feed selected channels, independent IR channels stay separate, and a four-channel true-stereo IR uses LL/LR/RL/RR cross-routes. Multichannel files use a bounded diagonal route; IR Reverb does not create a full surround crossfeed matrix. For paired true-stereo files, select matching `L`/`R` or `Left`/`Right` filenames together.
+
+Imported originals are kept in the IR library. The web app uses browser origin-private storage (OPFS); the desktop app uses its managed application storage. **Impulse Response Library** displays and searches the original filenames and lets you load or delete entries. Changing the audio sample rate rebuilds the prepared data from the stored original. Browser storage can still be removed by site-data cleanup or storage pressure, so keep a separate copy of every IR you need.
+
+Shared URLs and presets contain only the IR content ID, not the audio bytes or filename. A recipient must import the exact same file to relink the ID, or deliberately choose a substitute from the library. If the IR is missing, the wet asset is cleared and IR Reverb follows its **Dry** setting. Because convolution is WASM-only, an unavailable WASM engine passes only the configured dry signal and shows a warning.
+
+For freely available material, start with the University of York [OpenAIR library](https://www.openair.hosted.york.ac.uk/), [EchoThief downloads](https://www.echothief.com/downloads/), or individual IR uploads on [Freesound](https://freesound.org/). “Free” does not mean unrestricted: OpenAIR records the license on each content page, and Freesound files may be CC0, CC BY, or CC BY-NC. Check the specific download page, keep the author/source/license with the file, provide attribution where required, and confirm that your intended commercial or redistribution use is permitted. EffeTune does not store or verify licensing information.
 
 ## RS Reverb
 

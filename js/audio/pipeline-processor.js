@@ -134,8 +134,17 @@ export class PipelineProcessor {
      */
     prepareSectionAwarePluginData() {
         const sampleRate = this.contextManager?.audioContext?.sampleRate ?? null;
+        const destinationChannels = this.contextManager?.audioContext?.destination?.channelCount;
+        const outputChannelCount = Number.isInteger(destinationChannels) &&
+            destinationChannels >= 1 && destinationChannels <= 8
+            ? destinationChannels
+            : 2;
         return this.pipeline.map(plugin => {
-            const params = plugin.getParameters({ sampleRate, commitSampleRate: true });
+            const params = plugin.getParameters({
+                sampleRate,
+                outputChannelCount,
+                commitSampleRate: true
+            });
             if (typeof plugin.getWorkletPluginData === 'function') {
                 return plugin.getWorkletPluginData(params);
             }
