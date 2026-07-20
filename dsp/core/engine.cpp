@@ -285,7 +285,8 @@ void Engine::abortInstanceAsset(et_instance instance, std::uint32_t asset_slot) 
 std::uint32_t Engine::instanceAssetState(et_instance instance,
                                          std::uint32_t asset_slot) const noexcept {
   const InstanceSlot *slot = findInstance(instance);
-  return slot == nullptr ? ET_ASSET_STATE_NONE : slot->kernel->assetState(asset_slot);
+  return slot == nullptr ? static_cast<std::uint32_t>(ET_ASSET_STATE_NONE)
+                         : slot->kernel->assetState(asset_slot);
 }
 
 et_status Engine::validateProcessArgs(const float *audio, std::uint32_t channel_count,

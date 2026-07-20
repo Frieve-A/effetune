@@ -30,7 +30,7 @@ Use this checklist when reviewing changes in this repository. Lead with concrete
 
 ## Commit Readiness
 
-- For every added or modified filesystem/path test, check whether the tested production path is canonicalized with `realpath`. Canonicalize a temporary root immediately after `mkdtemp`, derive expected paths from the same canonical root, and do not compare a raw `os.tmpdir()` path with a canonicalized production path. Prefer `await fs.realpath(await fs.mkdtemp(...))` when the temporary root enters production path checks. This prevents macOS `/var` versus `/private/var` failures and Windows short-path mismatches that may not reproduce on the development machine.
+- For every added or modified filesystem/path test, check whether the tested production path is canonicalized with `realpath`. Canonicalize a temporary root immediately after `mkdtemp`, derive expected paths from the same canonical root, and do not compare a raw `os.tmpdir()` path with a canonicalized production path. Prefer `await fs.realpath(await fs.mkdtemp(...))` when the temporary root enters production path checks. Avoid mocks that match filesystem calls using only `path.resolve()` or case-folded strings when production uses `realpath`; prefer a real file, including a sparse file for size-limit tests, or canonicalize both operands identically. This prevents macOS `/var` versus `/private/var` failures and Windows short-path mismatches that may not reproduce on the development machine.
 - If a C++ source or header under `dsp/` changed, format the changed files before rebuilding DSP artifacts. Then run the same non-vendor check as the DSP Core workflow with a clang-format version that accepts `.clang-format`:
 
   ```bash
@@ -46,6 +46,14 @@ Use this checklist when reviewing changes in this repository. Lead with concrete
   ```
 
   Use the current Visual Studio LLVM `clang-format.exe` if the executable on `PATH` is too old. Treat an unsupported `.clang-format` option or other configuration error as a failed check. `npm run verify` does not run this C++ formatting check.
+- For C++ changes, also run the CodeQL manual build in a Linux/GCC environment when available; an MSVC build does not cover GCC `-Werror` diagnostics:
+
+  ```bash
+  cmake -S dsp -B dsp/build/codeql -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
+  cmake --build dsp/build/codeql --parallel
+  ```
+
+  If the environment is unavailable, record the residual CI risk and wait for the GitHub Actions result before reporting the publish workflow as successful.
 - Run `npm run build:dsp` after C++ formatting or any other DSP digest-input change, include all generated changes, rerun it, and confirm the second run produces no further managed-file changes.
 - Run `npm run assets:web` when web runtime or precache inputs changed, then run `npm run verify` after all generated files are current.
-- Immediately before committing, inspect `git status`, review the staged diff, run `git diff --cached --check`, and confirm no intended change remains unstaged. Immediately before pushing, confirm the branch and exact commit. After pushing, monitor every GitHub Actions workflow triggered by that commit through completion and investigate any failure before reporting success.
+- Use a restartable commit-readiness loop: update required generated files → run required verification → stage intended changes → review the cached diff and run `git diff --cached --check` → confirm no intended change remains unstaged → commit. Any edit caused by these checks invalidates earlier generation and verification results, so return to generated-file updates and repeat the loop before committing. Immediately before pushing, confirm the branch and exact commit. After pushing, monitor every GitHub Actions workflow triggered by that commit through completion and investigate any failure before reporting success.

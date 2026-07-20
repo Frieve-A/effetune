@@ -194,7 +194,8 @@ void et_instance_asset_abort(et_engine engine, et_instance instance, std::uint32
 
 std::uint32_t et_instance_asset_state(et_engine engine, et_instance instance, std::uint32_t slot) {
   const effetune::Engine *target = findEngine(engine);
-  return target == nullptr ? ET_ASSET_STATE_NONE : target->instanceAssetState(instance, slot);
+  return target == nullptr ? static_cast<std::uint32_t>(ET_ASSET_STATE_NONE)
+                           : target->instanceAssetState(instance, slot);
 }
 
 et_status et_instance_process(et_engine engine, et_instance instance, float *audio,
