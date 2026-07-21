@@ -538,10 +538,12 @@ private:
 
   void interpolateAndQueue() noexcept {
     std::array<std::array<float, kMaximumChannels>, 4> generated{};
+    const float rate_gain = rate_divider_ == 4u ? 2.0F : 1.41421356237F;
     if (rate_divider_ == 2u) {
       for (std::uint32_t channel = 0u; channel < processing_channels_; ++channel) {
         interpolator(channel, 0u)
-            .interpolate(conv_frame_[channel], generated[0u][channel], generated[1u][channel]);
+            .interpolate(conv_frame_[channel] * rate_gain, generated[0u][channel],
+                         generated[1u][channel]);
       }
       pushWetFrame(generated[0u]);
       pushWetFrame(generated[1u]);
@@ -551,7 +553,7 @@ private:
     for (std::uint32_t channel = 0u; channel < processing_channels_; ++channel) {
       float first = 0.0F;
       float second = 0.0F;
-      interpolator(channel, 1u).interpolate(conv_frame_[channel], first, second);
+      interpolator(channel, 1u).interpolate(conv_frame_[channel] * rate_gain, first, second);
       interpolator(channel, 0u).interpolate(first, generated[0u][channel], generated[1u][channel]);
       interpolator(channel, 0u).interpolate(second, generated[2u][channel], generated[3u][channel]);
     }

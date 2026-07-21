@@ -472,7 +472,7 @@
   "irReverb.status.importPrompt": "请导入脉冲响应以使用IR Reverb。",
   "irReverb.status.preparing": "正在准备脉冲响应…",
   "irReverb.status.loading": "正在加载{name}…",
-  "irReverb.status.ready": "{name}已就绪。",
+  "irReverb.status.ready": "正在使用{name}。",
   "irReverb.status.partialImport": "已导入{count}个；部分文件已跳过。",
   "irReverb.status.wasmNotReady": "WASM音频处理尚未就绪。IR Reverb仅通过dry信号。",
   "irReverb.error.chooseFiles": "请选择一个或多个脉冲响应音频文件。",

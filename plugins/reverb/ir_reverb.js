@@ -38,6 +38,8 @@ class IRReverbPlugin extends PluginBase {
         this._assetControlRows = new Map();
         this._channelModeSelect = null;
         this._resolvedModeElement = null;
+        this._convolutionRateSelect = null;
+        this._resolvedRateElement = null;
         this._pendingReadyNotice = null;
         this._statusElement = null;
         this._metadataElement = null;
@@ -1540,7 +1542,7 @@ class IRReverbPlugin extends PluginBase {
                 }
                 const readyNotice = this._pendingReadyNotice;
                 this._pendingReadyNotice = null;
-                this._setStatus(readyNotice || this._t('irReverb.status.ready', '{name} is ready.', {
+                this._setStatus(readyNotice || this._t('irReverb.status.ready', '{name} is in use.', {
                     name: this._irFileLabel || this._t('irReverb.name.theImpulseResponseCapitalized', 'The impulse response')
                 }), 'ready');
                 break;
@@ -1687,14 +1689,35 @@ class IRReverbPlugin extends PluginBase {
         return names[mode] || mode;
     }
 
+    _convolutionRateName(mode) {
+        const names = {
+            full: this._t('irReverb.option.full', 'Full'),
+            half: this._t('irReverb.option.half', 'Half'),
+            quarter: this._t('irReverb.option.quarter', 'Quarter')
+        };
+        return names[mode] || mode;
+    }
+
     _updateResolvedModeDisplay() {
-        const element = this._resolvedModeElement;
-        if (!element) return;
         const selectedMode = this._channelModeSelect?.value ?? this.cm;
         const resolvedMode = this._prepared?.config?.channelMode;
-        const visible = selectedMode === 'auto' && resolvedMode && resolvedMode !== 'auto';
-        element.textContent = visible ? `→ ${this._channelModeName(resolvedMode)}` : '';
-        element.hidden = !visible;
+        const modeVisible = selectedMode === 'auto' && resolvedMode && resolvedMode !== 'auto';
+        if (this._resolvedModeElement) {
+            this._resolvedModeElement.textContent = modeVisible
+                ? `→ ${this._channelModeName(resolvedMode)}`
+                : '';
+            this._resolvedModeElement.hidden = !modeVisible;
+        }
+
+        const selectedRate = this._convolutionRateSelect?.value ?? this.cr;
+        const resolvedRate = this._prepared?.config?.rateMode;
+        const rateVisible = selectedRate === 'auto' && resolvedRate && resolvedRate !== 'auto';
+        if (this._resolvedRateElement) {
+            this._resolvedRateElement.textContent = rateVisible
+                ? `→ ${this._convolutionRateName(resolvedRate)}`
+                : '';
+            this._resolvedRateElement.hidden = !rateVisible;
+        }
     }
 
     _drawEdcGraph() {
@@ -1927,12 +1950,20 @@ class IRReverbPlugin extends PluginBase {
                 label: this._t('irReverb.option.samples', '{count} samples', { count: value })
             }))
         ], this.lt, value => this.setParameters({ lt: value })));
-        appendAssetControl('cr', this.createSelectControl(this._t('irReverb.parameter.convolutionRate', 'Convolution Rate'), [
+        const convolutionRateRow = this.createSelectControl(this._t('irReverb.parameter.convolutionRate', 'Convolution Rate'), [
             { value: 'auto', label: this._t('irReverb.option.auto', 'Auto') },
             { value: 'full', label: this._t('irReverb.option.full', 'Full') },
             { value: 'half', label: this._t('irReverb.option.half', 'Half') },
             { value: 'quarter', label: this._t('irReverb.option.quarter', 'Quarter') }
-        ], this.cr, value => this.setParameters({ cr: value })));
+        ], this.cr, value => this.setParameters({ cr: value }));
+        this._convolutionRateSelect = convolutionRateRow.querySelector('select');
+        const resolvedRate = document.createElement('span');
+        resolvedRate.className = 'ir-reverb-mode-note';
+        resolvedRate.setAttribute('aria-live', 'polite');
+        convolutionRateRow.appendChild(resolvedRate);
+        this._resolvedRateElement = resolvedRate;
+        appendAssetControl('cr', convolutionRateRow);
+        this._updateResolvedModeDisplay();
         container.appendChild(this.createParameterControl(this._t('irReverb.parameter.wet', 'Wet'), -96, 12, 0.1, this.dw, value => this.setParameters({ dw: value }), 'dB'));
         container.appendChild(this.createParameterControl(this._t('irReverb.parameter.dry', 'Dry'), -96, 12, 0.1, this.dl, value => this.setParameters({ dl: value }), 'dB'));
         container.appendChild(this.createParameterControl(this._t('irReverb.parameter.preDelay', 'Pre Delay'), 0, 500, 0.1, this.pd, value => this.setParameters({ pd: value }), 'ms'));
@@ -1969,6 +2000,8 @@ class IRReverbPlugin extends PluginBase {
         this._assetControlRows.clear();
         this._channelModeSelect = null;
         this._resolvedModeElement = null;
+        this._convolutionRateSelect = null;
+        this._resolvedRateElement = null;
         this._pendingReadyNotice = null;
         this._statusElement = null;
         this._metadataElement = null;

@@ -420,8 +420,9 @@ reference(const std::vector<float> &input, const std::vector<float> &ir, std::ui
   for (std::uint32_t channel = 0u; channel < channels; ++channel) {
     const std::vector<double> &lowOutput = lowOutputs[channel];
     std::vector<float> lowFloat(lowOutput.size());
+    const float rateGain = divider == 4u ? 2.0F : divider == 2u ? 1.41421356237F : 1.0F;
     for (std::size_t index = 0u; index < lowOutput.size(); ++index)
-      lowFloat[index] = static_cast<float>(lowOutput[index]);
+      lowFloat[index] = static_cast<float>(lowOutput[index]) * rateGain;
     const std::vector<float> full = interpolate(lowFloat, divider);
     const std::size_t start = divider - 1u;
     for (std::size_t index = 0u; index < full.size() && start + index < frames; ++index) {
@@ -644,6 +645,31 @@ void testDirectReferenceMatrix() {
       compare(actual, expected, divider == 1u ? 2.0e-4 : 3.5e-4);
       IR_CHECK(effetune::allocation_guard::violationCount() == allocationBefore);
     }
+  }
+}
+
+void testConvolutionRatesPreserveNormalizedIrWetLevel() {
+  constexpr std::uint32_t fullRateIrFrames = 400u;
+  constexpr std::uint32_t renderFrames = 6000u;
+  constexpr std::uint32_t measurementFrames = 512u;
+  constexpr float inputLevel = 0.01F;
+  constexpr float expectedLevel = inputLevel * 20.0F;
+
+  for (const std::uint32_t divider : {1u, 2u, 4u}) {
+    const std::uint32_t irFrames = fullRateIrFrames / divider;
+    const float tap = 1.0F / std::sqrt(static_cast<float>(irFrames));
+    const std::vector<float> ir(irFrames, tap);
+    Harness harness(192000.0F);
+    IR_CHECK(harness.stageAsset(ir, 1u, kMono, 128u, divider));
+    harness.prepareToActive();
+
+    const std::vector<float> input(2u * renderFrames, inputLevel);
+    const std::vector<float> output = render(harness, input, renderFrames);
+    double total = 0.0;
+    for (std::uint32_t frame = renderFrames - measurementFrames; frame < renderFrames; ++frame)
+      total += output[frame];
+    const double mean = total / measurementFrames;
+    IR_CHECK(std::abs(mean - expectedLevel) < 5.0e-4);
   }
 }
 
@@ -1063,6 +1089,7 @@ int main() {
   testDryOnlyUntilMatchingAssetIsActive();
   testReplacementAndClearWetFadeOut();
   testDirectReferenceMatrix();
+  testConvolutionRatesPreserveNormalizedIrWetLevel();
   testTrueStereoReference();
   testSparseMatrixSharedInputs();
   testMalformedMatrixTables();

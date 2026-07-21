@@ -531,7 +531,7 @@
   "irReverb.status.importPrompt": "IR Reverbを使うにはインパルス応答を取り込んでください。",
   "irReverb.status.preparing": "インパルス応答を準備しています…",
   "irReverb.status.loading": "{name}を読み込んでいます…",
-  "irReverb.status.ready": "{name}を使用できます。",
+  "irReverb.status.ready": "{name}を使用中です。",
   "irReverb.status.partialImport": "{count}件を取り込みました。一部のファイルはスキップされました。",
   "irReverb.status.wasmNotReady": "WASM音声処理の準備ができていません。IR Reverbはdry音だけを通します。",
   "irReverb.error.chooseFiles": "インパルス応答の音声ファイルを1つ以上選んでください。",

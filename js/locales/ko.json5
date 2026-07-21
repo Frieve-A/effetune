@@ -472,7 +472,7 @@
   "irReverb.status.importPrompt": "IR Reverb를 사용하려면 임펄스 응답을 가져오십시오.",
   "irReverb.status.preparing": "임펄스 응답을 준비하는 중…",
   "irReverb.status.loading": "{name} 불러오는 중…",
-  "irReverb.status.ready": "{name}을 사용할 수 있습니다.",
+  "irReverb.status.ready": "{name}을 사용 중입니다.",
   "irReverb.status.partialImport": "{count}개를 가져왔으며 일부 파일은 건너뛰었습니다.",
   "irReverb.status.wasmNotReady": "WASM 오디오 처리가 아직 준비되지 않았습니다. IR Reverb는 dry 신호만 통과시킵니다.",
   "irReverb.error.chooseFiles": "임펄스 응답 오디오 파일을 하나 이상 선택하십시오.",

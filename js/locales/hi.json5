@@ -472,7 +472,7 @@
   "irReverb.status.importPrompt": "IR Reverb उपयोग करने के लिए impulse response इम्पोर्ट करें।",
   "irReverb.status.preparing": "Impulse response तैयार हो रही है…",
   "irReverb.status.loading": "{name} लोड हो रही है…",
-  "irReverb.status.ready": "{name} तैयार है।",
+  "irReverb.status.ready": "{name} उपयोग में है।",
   "irReverb.status.partialImport": "{count} इम्पोर्ट हुईं; कुछ files छोड़ दी गईं।",
   "irReverb.status.wasmNotReady": "WASM audio processing तैयार नहीं है। IR Reverb केवल dry signal pass कर रहा है।",
   "irReverb.error.chooseFiles": "एक या अधिक impulse-response audio files चुनें।",

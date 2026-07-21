@@ -383,6 +383,23 @@ test('IR Reverb shows the resolved Channel Mode only while Auto is selected', ()
   assert.equal(plugin._resolvedModeElement.hidden, true);
 });
 
+test('IR Reverb shows the resolved Convolution Rate only while Auto is selected', () => {
+  const { Plugin } = loadPlugin();
+  const plugin = new Plugin();
+  plugin._convolutionRateSelect = { value: 'auto' };
+  plugin._resolvedRateElement = { textContent: '', hidden: true };
+  plugin._prepared = { config: { rateMode: 'half' } };
+
+  plugin._updateResolvedModeDisplay();
+  assert.equal(plugin._resolvedRateElement.textContent, '→ Half');
+  assert.equal(plugin._resolvedRateElement.hidden, false);
+
+  plugin._convolutionRateSelect.value = 'half';
+  plugin._updateResolvedModeDisplay();
+  assert.equal(plugin._resolvedRateElement.textContent, '');
+  assert.equal(plugin._resolvedRateElement.hidden, true);
+});
+
 test('IR Reverb requires an offline DSP asset only when an IR is selected', () => {
   const { Plugin } = loadPlugin();
   const plugin = new Plugin();
@@ -1544,7 +1561,7 @@ test('rapid A to B to C rejection restores the exact B snapshot through PREPARIN
     assert.equal(plugin._pendingAssetCandidate, null);
     assert.equal(plugin._committedAssetSnapshot.prepared, preparedB);
     assert.equal(plugin._assetRevisionSnapshots.size, 1);
-    assert.equal(plugin._statusMessage, 'B Hall.wav is ready.');
+    assert.equal(plugin._statusMessage, 'B Hall.wav is in use.');
 
     assert.equal(await plugin.loadLibraryEntry(entries.get(irC)), true);
     const secondRevisionC = plugin.getWasmAssetOperationRevision(0);
@@ -1566,7 +1583,7 @@ test('rapid A to B to C rejection restores the exact B snapshot through PREPARIN
     plugin.onWasmAssetState(0, 1, revisionB);
     assert.notEqual(plugin._statusState, 'error');
     plugin.onWasmAssetState(0, 3, revisionB);
-    assert.equal(plugin._statusMessage, 'B Hall.wav is ready.');
+    assert.equal(plugin._statusMessage, 'B Hall.wav is in use.');
   } finally {
     plugin.cleanup();
   }
@@ -1876,7 +1893,7 @@ test('a newer asset operation supersedes a pending clear before ACTIVE or reject
     assert.equal(plugin._assetClearPending, false);
     plugin.onWasmAssetState(0, 0, clearRevision);
     plugin.onWasmAssetState(0, 3, revisionB);
-    assert.equal(plugin._statusMessage, 'B Hall.wav is ready.');
+    assert.equal(plugin._statusMessage, 'B Hall.wav is in use.');
     assert.equal(plugin._pendingAssetCandidate, null);
 
     plugin._clearIrAsset(false);
@@ -2524,7 +2541,7 @@ test('cleared and missing IR states ignore delayed notifications from the previo
     assert.equal(await plugin.loadLibraryEntry(entryA), true);
     const firstAssetRevision = plugin.getWasmAssetOperationRevision(0);
     plugin.onWasmAssetState(0, 3, firstAssetRevision);
-    assert.equal(plugin._statusMessage, 'A Hall.wav is ready.');
+    assert.equal(plugin._statusMessage, 'A Hall.wav is in use.');
 
     plugin._clearIrAsset(false);
     const firstClearRevision = plugin.getWasmAssetOperationRevision(0);
@@ -3057,6 +3074,7 @@ test('IR Reverb UI source exposes persistent library and multi-file import contr
   assert.match(pluginSource, /value: 'true', label: this\._t\('irReverb\.option\.trueStereo', 'True Stereo'\)/);
   assert.match(pluginSource, /value: 'multi', label: this\._t\('irReverb\.option\.diagonalMatrix', 'Diagonal Matrix'\)/);
   assert.match(pluginSource, /resolvedMode\.className = 'ir-reverb-mode-note'/);
+  assert.match(pluginSource, /resolvedRate\.className = 'ir-reverb-mode-note'/);
   assert.match(pluginCss, /\.ir-reverb-mode-note\s*\{[^}]*white-space: nowrap/s);
   assert.match(pluginSource, /this\._t\('irReverb\.action\.chooseLibrary', 'Choose from library…'\)/);
   assert.match(pluginSource, /this\._t\('irReverb\.action\.importFile', 'Import file…'\)/);

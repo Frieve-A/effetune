@@ -472,7 +472,7 @@
   "irReverb.status.importPrompt": "Importez une réponse impulsionnelle pour utiliser IR Reverb.",
   "irReverb.status.preparing": "Préparation de la réponse impulsionnelle…",
   "irReverb.status.loading": "Chargement de {name}…",
-  "irReverb.status.ready": "{name} est prête.",
+  "irReverb.status.ready": "{name} est en cours d’utilisation.",
   "irReverb.status.partialImport": "{count} importées ; certains fichiers ont été ignorés.",
   "irReverb.status.wasmNotReady": "Le traitement WASM n'est pas prêt. IR Reverb laisse passer le signal dry.",
   "irReverb.error.chooseFiles": "Choisissez un ou plusieurs fichiers de réponse impulsionnelle.",

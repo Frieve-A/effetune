@@ -472,7 +472,7 @@
   "irReverb.status.importPrompt": "استورد استجابة نبضية لاستخدام IR Reverb.",
   "irReverb.status.preparing": "جارٍ إعداد الاستجابة النبضية…",
   "irReverb.status.loading": "جارٍ تحميل {name}…",
-  "irReverb.status.ready": "أصبحت {name} جاهزة.",
+  "irReverb.status.ready": "{name} قيد الاستخدام.",
   "irReverb.status.partialImport": "تم استيراد {count}؛ وتُخطيت بعض الملفات.",
   "irReverb.status.wasmNotReady": "معالجة WASM الصوتية غير جاهزة. يمرر IR Reverb الإشارة dry فقط.",
   "irReverb.error.chooseFiles": "اختر ملفاً واحداً أو أكثر لاستجابة نبضية.",

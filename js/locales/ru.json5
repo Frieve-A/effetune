@@ -472,7 +472,7 @@
   "irReverb.status.importPrompt": "Импортируйте импульсную характеристику для работы IR Reverb.",
   "irReverb.status.preparing": "Подготовка импульсной характеристики…",
   "irReverb.status.loading": "Загрузка: {name}…",
-  "irReverb.status.ready": "{name} готова.",
+  "irReverb.status.ready": "{name} используется.",
   "irReverb.status.partialImport": "Импортировано: {count}; некоторые файлы пропущены.",
   "irReverb.status.wasmNotReady": "Обработка WASM ещё не готова. IR Reverb пропускает только dry-сигнал.",
   "irReverb.error.chooseFiles": "Выберите один или несколько файлов импульсной характеристики.",
