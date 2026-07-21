@@ -6,6 +6,26 @@ import {
   createReferenceFixtureLoader,
   REFERENCE_FIXTURE_MAX_COUNT
 } from '../../tools/library-scale/reference-fixture.mjs';
+import {
+  createFolderTreeScaleTrack,
+  FOLDER_TREE_FIRST_LEVEL_COUNT,
+  SCALE_PRESETS
+} from '../../tools/library-scale/catalog-fixture.mjs';
+
+test('folder-tree scale fixtures keep more than 100000 deterministic first-level children', () => {
+  assert.ok(FOLDER_TREE_FIRST_LEVEL_COUNT > 100_000);
+  for (const preset of ['million', 'boundary']) {
+    const count = SCALE_PRESETS[preset];
+    const first = createFolderTreeScaleTrack(0);
+    const lastFirstLevel = createFolderTreeScaleTrack(FOLDER_TREE_FIRST_LEVEL_COUNT - 1);
+    const nextCycle = createFolderTreeScaleTrack(FOLDER_TREE_FIRST_LEVEL_COUNT);
+    assert.ok(count > FOLDER_TREE_FIRST_LEVEL_COUNT);
+    assert.match(first.relativePath, /^Directory-000000\/Album-000\//);
+    assert.match(lastFirstLevel.relativePath, /^Directory-100002\/Album-000\//);
+    assert.match(nextCycle.relativePath, /^Directory-000000\/Album-000\//);
+    assert.notEqual(first.trackUid, nextCycle.trackUid);
+  }
+});
 
 test('reference fixture loader writes bounded batches through the production repository contract', async () => {
   const folders = [];

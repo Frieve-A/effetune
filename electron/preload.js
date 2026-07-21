@@ -7,6 +7,7 @@ const libraryCatalogV1 = Object.freeze({
   createContext: (request) => ipcRenderer.invoke('library-catalog-v1:create-context', request),
   getContextCount: (request) => ipcRenderer.invoke('library-catalog-v1:get-context-count', request),
   queryTracks: (request) => ipcRenderer.invoke('library-catalog-v1:query-tracks', request),
+  browseFolderChildren: (request) => ipcRenderer.invoke('library-catalog-v1:browse-folder-children', request),
   queryEntities: (request) => ipcRenderer.invoke('library-catalog-v1:query-entities', request),
   readContextPageAtOrdinal: (request) => ipcRenderer.invoke('library-catalog-v1:read-context-page-at-ordinal', request),
   resolveEntityAnchor: (request) => ipcRenderer.invoke('library-catalog-v1:resolve-entity-anchor', request),

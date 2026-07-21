@@ -307,6 +307,14 @@ export class LibraryManagerV2 {
     );
   }
 
+  async browseFolderChildren(request = {}) {
+    await this.#ensureReady();
+    if (typeof this.client.browseFolderChildren !== 'function') {
+      throw unavailable('browseFolderChildren', `${this.runtime} catalog client`);
+    }
+    return this.client.browseFolderChildren(request);
+  }
+
   async queryEntities(request = {}) {
     await this.#ensureReady();
     return this.#normalizePageResponse(

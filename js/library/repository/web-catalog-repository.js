@@ -279,6 +279,7 @@ export class WebSqliteCatalogRepository {
   releaseContext(contextToken) { return this.#call('releaseContext', { contextToken }); }
   cleanupExpiredContextItems(limit = 500) { return this.#call('cleanupExpiredContextItems', { limit }); }
   queryTracks(request) { return this.#call('queryTracks', request); }
+  browseFolderChildren(request) { return this.#call('browseFolderChildren', request); }
   queryEntities(request) { return this.#call('queryEntities', request); }
   getContextCount(request) { return this.#call('getContextCount', request); }
   readContextPage(request) { return this.#call('readContextPage', request); }
@@ -340,7 +341,7 @@ const READ_COMMANDS = new Set([
   'getOperationStatus', 'queryOperationSnapshot',
   'queryPlaybackSequence', 'queryTransportDescriptorPage',
   'queryPlaylistItems', 'getFavoriteTrackUids', 'getSystemPlaylists',
-  'getCachedArtwork', 'getArtworkSource', 'queryTracks',
+  'getCachedArtwork', 'getArtworkSource', 'queryTracks', 'browseFolderChildren',
   'queryEntities', 'getContextCount', 'readContextPage', 'readContextPageAtOrdinal',
   'resolveEntityAnchor', 'getTrack', 'getTrackStorageIdentity',
   'resolvePlaylistExportSource',

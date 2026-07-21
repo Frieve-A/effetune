@@ -350,7 +350,7 @@ test('IR Reverb serializes defaults and applies Dry in the JavaScript fallback',
   const plugin = new Plugin();
   assert.deepEqual({ ...plugin.getParameters() }, {
     type: 'IRReverbPlugin', id: 7, enabled: true, ir: '', cm: 'auto', lt: '128', cr: 'auto',
-    dw: 0, dl: 0, pd: 0, dc: true, co: 0, dt: 100, tr: 100
+    dw: -15, dl: 0, pd: 0, dc: true, co: 0, dt: 100, tr: 100
   });
   const data = new Float32Array([0.25, -0.5]);
   assert.equal(plugin.process({}, data, {}, 0), data);
@@ -809,7 +809,8 @@ test('IR Reverb stages a resolved WASM descriptor with kernel commit footprint',
   assert.equal(Object.hasOwn(plugin._prepared, 'payload'), false);
   assert.equal(Object.hasOwn(plugin._prepared, 'asset'), false);
   assert.equal(plugin._statusMessage, 'Loading room.wav…');
-  assert.ok(Math.abs(plugin.powerGainUpperBoundDb - 20 * Math.log10(3)) < 1e-10);
+  const wetGain = 10 ** (plugin.dw / 20);
+  assert.ok(Math.abs(plugin.powerGainUpperBoundDb - 20 * Math.log10(1 + 2 * wetGain)) < 1e-10);
   assert.match(plugin._metadataText, /room\.wav/);
   assert.match(plugin._metadataText, /Mono/);
   assert.match(plugin._metadataText, /48 → 48 kHz/);
@@ -1069,7 +1070,7 @@ test('IR Reverb propagates the routed wet L1 bound into its power gain bound', a
     topologyHint: 'true-stereo'
   };
   assert.equal(await plugin._prepareAndStage(++plugin._generation), true);
-  assert.ok(Math.abs(plugin.powerGainUpperBoundDb - 20 * Math.log10(2)) < 1e-12);
+  assert.ok(Math.abs(plugin.powerGainUpperBoundDb - (plugin.dw + 20 * Math.log10(2))) < 1e-12);
 });
 
 test('IR Reverb preserves common routing properties and re-stages once after channel selection changes', async () => {

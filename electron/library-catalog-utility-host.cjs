@@ -27,7 +27,7 @@ const COORDINATOR_METHODS = Object.freeze([
 ]);
 const REPOSITORY_METHODS = Object.freeze([
   'getCapabilities', 'getCounts', 'createContext', 'getContextCount',
-  'queryTracks', 'queryEntities', 'readContextPage', 'readContextPageAtOrdinal',
+  'queryTracks', 'browseFolderChildren', 'queryEntities', 'readContextPage', 'readContextPageAtOrdinal',
   'resolveEntityAnchor', 'retainContext', 'releaseRetainedContext', 'releaseContext', 'getTrack',
   'createPlaylist', 'createPlaylistWithItems',
   'recordRecentlyPlayed', 'setTrackFavorite', 'getFavoriteTrackUids', 'getSystemPlaylists',

@@ -67,6 +67,58 @@ function createTrack(index, overrides = {}) {
   };
 }
 
+function createFolderDirScope(folderId, directoryPath) {
+  return { folderDirKey: `${folderId.length}:${folderId}${directoryPath}` };
+}
+
+function assertElectronDirectoriesMatchTracks(dbPath) {
+  const database = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    const expected = new Map();
+    for (const track of database.prepare(`
+      SELECT folder_id AS folderId, relative_path AS relativePath FROM tracks
+    `).all()) {
+      const segments = track.relativePath.split('/');
+      segments.pop();
+      let parentPath = '';
+      for (let index = 0; index < segments.length; index += 1) {
+        const name = segments[index];
+        const relativePath = parentPath === '' ? name : `${parentPath}/${name}`;
+        const key = `${track.folderId}\0${relativePath}`;
+        const row = expected.get(key) ?? {
+          folderId: track.folderId,
+          relativePath,
+          parentPath,
+          name,
+          directTrackCount: 0,
+          recursiveTrackCount: 0
+        };
+        row.recursiveTrackCount += 1;
+        if (index === segments.length - 1) row.directTrackCount += 1;
+        expected.set(key, row);
+        parentPath = relativePath;
+      }
+    }
+    const actual = database.prepare(`
+      SELECT folder_id AS folderId, relative_path AS relativePath, parent_path AS parentPath,
+        name, direct_track_count AS directTrackCount,
+        recursive_track_count AS recursiveTrackCount
+      FROM directories ORDER BY folder_id, relative_path
+    `).all().map(row => ({
+      ...row,
+      directTrackCount: Number(row.directTrackCount),
+      recursiveTrackCount: Number(row.recursiveTrackCount)
+    }));
+    assert.deepEqual(actual, [...expected.values()].sort((left, right) => {
+      if (left.folderId !== right.folderId) return left.folderId < right.folderId ? -1 : 1;
+      if (left.relativePath === right.relativePath) return 0;
+      return left.relativePath < right.relativePath ? -1 : 1;
+    }));
+  } finally {
+    database.close();
+  }
+}
+
 async function seedFolder(host, directory) {
   return host.upsertFolders([{
     id: 'folder_music',
@@ -538,6 +590,172 @@ test('bounded writes advance catalog/scope versions and page rows never expose f
   assert.deepEqual(await host.resolvePlaylistExportSource('track_source'), expectedExportSource);
 });
 
+test('Electron folder browsing mirrors physical hierarchy counts and direct-track scopes', async t => {
+  const { host, directory, dbPath } = await openCatalog(t);
+  await seedFolder(host, directory);
+  await host.upsertTracks([
+    createTrack(1, { trackUid: 'root', relativePath: 'Root.flac', metadataStatus: 'parsing' }),
+    createTrack(2, {
+      trackUid: 'a-direct', relativePath: 'A/Direct.flac', metadataStatus: 'terminal-error'
+    }),
+    createTrack(3, { trackUid: 'a-deep-1', relativePath: 'A/B/One.flac' }),
+    createTrack(4, { trackUid: 'a-deep-2', relativePath: 'A/B/Two.flac' }),
+    createTrack(5, { trackUid: 'a2-direct', relativePath: 'A2/Other.flac' }),
+    createTrack(6, { trackUid: 'percent', relativePath: '%_/Track.flac' }),
+    createTrack(7, { trackUid: 'cafe', relativePath: 'Cafe/Track.flac' }),
+    createTrack(8, { trackUid: 'accent', relativePath: 'Café/Track.flac' }),
+    createTrack(9, { trackUid: 'fullwidth', relativePath: 'A／B/Track.flac' }),
+    createTrack(10, { trackUid: 'unicode', relativePath: '音楽😀/子/Track.flac' })
+  ]);
+
+  assertElectronDirectoriesMatchTracks(dbPath);
+  assert.deepEqual(await host.browseFolderChildren({
+    folderId: 'folder_music', path: '', limit: 20
+  }), {
+    children: [
+      { name: '%_', directTrackCount: 1, recursiveTrackCount: 1 },
+      { name: 'A', directTrackCount: 1, recursiveTrackCount: 3 },
+      { name: 'A2', directTrackCount: 1, recursiveTrackCount: 1 },
+      { name: 'A／B', directTrackCount: 1, recursiveTrackCount: 1 },
+      { name: 'Cafe', directTrackCount: 1, recursiveTrackCount: 1 },
+      { name: 'Café', directTrackCount: 1, recursiveTrackCount: 1 },
+      { name: '音楽😀', directTrackCount: 0, recursiveTrackCount: 1 }
+    ],
+    hasMore: false,
+    cursor: null,
+    nodeExists: true
+  });
+  assert.deepEqual(await host.browseFolderChildren({
+    folderId: 'folder_music', path: 'A', limit: 20
+  }), {
+    children: [{ name: 'B', directTrackCount: 2, recursiveTrackCount: 2 }],
+    hasMore: false,
+    cursor: null,
+    nodeExists: true
+  });
+  assert.equal((await host.browseFolderChildren({
+    folderId: 'folder_music', path: 'Missing/Node', limit: 20
+  })).nodeExists, false);
+
+  const rootScope = createFolderDirScope('folder_music', '');
+  const nestedScope = createFolderDirScope('folder_music', 'A');
+  assert.deepEqual((await host.queryTracks({
+    query: '', sort: 'title', direction: 'asc', scope: rootScope, limit: 20
+  })).rows.map(row => row.trackUid), ['root']);
+  assert.deepEqual((await host.queryTracks({
+    query: '', sort: 'title', direction: 'asc', scope: nestedScope, limit: 20
+  })).rows.map(row => row.trackUid), ['a-direct']);
+  const context = await host.createContext({
+    query: '', sort: 'title', direction: 'asc', scope: nestedScope
+  });
+  assert.equal((await host.getContextCount({ contextToken: context.contextToken })).totalCount, 1);
+
+  await host.upsertTracks([createTrack(3, {
+    trackUid: 'a-deep-1', relativePath: 'Moved/One.flac'
+  })]);
+  assertElectronDirectoriesMatchTracks(dbPath);
+  assert.deepEqual((await host.browseFolderChildren({
+    folderId: 'folder_music', path: 'A', limit: 20
+  })).children, [{ name: 'B', directTrackCount: 1, recursiveTrackCount: 1 }]);
+
+  const database = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    const rootDirectTrackPlan = database.prepare(`
+      EXPLAIN QUERY PLAN
+      SELECT count(*) FROM tracks INDEXED BY tracks_root_direct_by_folder
+      WHERE folder_id = ? AND instr(relative_path, '/') = 0
+    `).all('folder_music');
+    assert.ok(rootDirectTrackPlan.some(row => (
+      String(row.detail).includes('tracks_root_direct_by_folder') &&
+      String(row.detail).includes('folder_id=?')
+    )), JSON.stringify(rootDirectTrackPlan));
+    const directoryCleanupPlan = database.prepare(`
+      EXPLAIN QUERY PLAN
+      DELETE FROM directories
+      WHERE folder_id = ? AND relative_path = ? AND recursive_track_count = 0
+    `).all('folder_music', 'A');
+    assert.ok(directoryCleanupPlan.some(row => (
+      String(row.detail).includes('sqlite_autoindex_directories_1') &&
+      String(row.detail).includes('folder_id=? AND relative_path=?')
+    )), JSON.stringify(directoryCleanupPlan));
+  } finally {
+    database.close();
+  }
+  const workerSource = fs.readFileSync(
+    path.join(__dirname, '../../electron/library-catalog-worker.cjs'),
+    'utf8'
+  );
+  assert.match(workerSource, /DELETE FROM directories\s+WHERE folder_id = \? AND relative_path = \? AND recursive_track_count = 0/);
+  assert.doesNotMatch(workerSource, /DELETE FROM directories WHERE folder_id = \? AND recursive_track_count = 0/);
+  assert.match(workerSource, /folder_id = \?[\s\S]*instr\(t\.relative_path, '\/'\) = 0/);
+
+  for (const request of [
+    { folderId: 'folder_music', path: '', limit: 20, extra: true },
+    { folderId: '', path: '', limit: 20 },
+    { folderId: 'folder_music', path: '..', limit: 20 },
+    { folderId: 'folder_music', path: 'A\\B', limit: 20 },
+    { folderId: 'folder_music', path: '', cursor: 'A/B', limit: 20 },
+    { folderId: 'folder_music', path: '', limit: 501 }
+  ]) {
+    await assert.rejects(host.browseFolderChildren(request));
+  }
+  await assert.rejects(host.createContext({
+    query: '', sort: 'title', direction: 'asc',
+    scope: { folderDirKey: '12:folder_musicA', folderKey: 'folder_music' }
+  }), assertCode('invalidScope'));
+});
+
+test('Electron startup rebuilds directory rows when generation and watermark diverge', async t => {
+  const { directory, dbPath } = createTempCatalog(t, { registerCleanup: false });
+  let host = await LibraryCatalogHost.open({ dbPath });
+  t.after(async () => {
+    if (host) await host.close();
+    await fs.promises.rm(directory, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100
+    });
+  });
+  await seedFolder(host, directory);
+  await host.upsertTracks([createTrack(1, {
+    trackUid: 'reopen-directory-track',
+    relativePath: 'Before/Track.flac'
+  })]);
+  await host.close();
+  host = null;
+
+  const database = new DatabaseSync(dbPath);
+  try {
+    database.prepare(`
+      UPDATE tracks SET relative_path = 'After/Track.flac'
+      WHERE track_uid = 'reopen-directory-track'
+    `).run();
+    const divergent = database.prepare(`
+      SELECT
+        (SELECT generation FROM directories_sync WHERE id = 1) AS generation,
+        (SELECT CAST(value AS INTEGER) FROM meta WHERE key = 'directories_watermark') AS watermark
+    `).get();
+    assert.ok(divergent.generation > divergent.watermark);
+  } finally {
+    database.close();
+  }
+
+  host = await LibraryCatalogHost.open({ dbPath });
+  assertElectronDirectoriesMatchTracks(dbPath);
+  const reopenedDatabase = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    const synchronized = reopenedDatabase.prepare(`
+      SELECT
+        (SELECT generation FROM directories_sync WHERE id = 1) AS generation,
+        (SELECT CAST(value AS INTEGER) FROM meta WHERE key = 'directories_watermark') AS watermark
+    `).get();
+    assert.equal(synchronized.generation, synchronized.watermark);
+  } finally {
+    reopenedDatabase.close();
+  }
+});
+
 test('canonical keyset cursors traverse duplicate sort keys forward and backward without duplicates or omissions', async t => {
   const { host, directory } = await openCatalog(t);
   await seedFolder(host, directory);
@@ -997,10 +1215,11 @@ test('Electron CUE metadata claims keep the track UID while replacing the physic
   } finally {
     database.close();
   }
+  assertElectronDirectoriesMatchTracks(dbPath);
 });
 
 test('Electron retains CUE rows and playlists after pause, then cleans them in an eligible final sweep', async t => {
-  const { host, directory } = await openCatalog(t);
+  const { host, directory, dbPath } = await openCatalog(t);
   await seedFolder(host, directory);
   const begin = scanId => host.beginScanFolder({
     scanId, folderId: 'folder_music', normalizedRoot: directory,
@@ -1125,6 +1344,7 @@ test('Electron retains CUE rows and playlists after pause, then cleans them in a
     folderId: 'folder_music', entryKey, cueRelativePath: 'Album/disc.cue',
     relativePath: 'Album/Image.flac', startFrame: 0, endFrame: 750
   });
+  assertElectronDirectoriesMatchTracks(dbPath);
 });
 
 test('responses over 1 MiB are rejected at the host boundary', async () => {
@@ -1808,6 +2028,7 @@ test('folder deletion removes published artwork references before deleting the t
   assert.equal(deleted.hasMore, false);
   assert.equal((await host.getCounts()).tracks, 0);
   assertTrackArtworkRemoved(dbPath, trackUid, artworkId);
+  assertElectronDirectoriesMatchTracks(dbPath);
 });
 
 test('scan sweep removes published artwork references for a missing track', async t => {
@@ -1855,6 +2076,7 @@ test('scan sweep removes published artwork references for a missing track', asyn
   assert.equal(swept.deleted, 1);
   assert.equal((await host.getCounts()).tracks, 0);
   assertTrackArtworkRemoved(dbPath, trackUid, artworkId);
+  assertElectronDirectoriesMatchTracks(dbPath);
 });
 
 test('scan sweep deletes one bounded track page per catalog transaction', async t => {

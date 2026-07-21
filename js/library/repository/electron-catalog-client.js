@@ -32,6 +32,10 @@ export class ElectronCatalogClient {
     return this.api.queryTracks(request);
   }
 
+  browseFolderChildren(request) {
+    return this.api.browseFolderChildren(request);
+  }
+
   queryEntities(request) {
     return this.api.queryEntities(request);
   }

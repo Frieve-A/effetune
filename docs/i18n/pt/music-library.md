@@ -48,19 +48,23 @@ Use as abas de navegação para alternar o catálogo.
 - **Artistas** - Agrupa por artista e artista do álbum nos metadados.
 - **Gêneros** - Agrupa por gênero nos metadados.
 - **Subpastas** - Agrupa as faixas pelo caminho relativo da subpasta que contém diretamente cada arquivo em cada pasta de música indexada.
-- **Pastas** - Mostra as raízes de música registradas e o estado da varredura.
+- **Pastas** - Mostra as raízes de música registradas, o estado da varredura e a estrutura física de diretórios.
 - **Adicionadas recentemente** - Mostra as faixas indexadas recentemente.
 - **Playlists** - Mostra as playlists criadas ou importadas dentro da Biblioteca de música.
 
 Um valor de artista do álbum separado por ponto e vírgula, como `Artist A; Artist B`, é indexado para cada artista, mantendo o crédito completo na exibição. `&`, `/` e `feat.` não são tratados como separadores.
 
-Por exemplo, `Artist/Album/01 Song.flac` aparece no grupo de subpasta `Artist/Album`. Caminhos relativos idênticos em raízes indexadas diferentes permanecem separados. Arquivos armazenados diretamente na raiz não criam um grupo de subpasta; eles continuam disponíveis em **Faixas** e nessa raiz em **Pastas**.
+Abra uma raiz em **Pastas** para percorrê-la na **Vista em árvore**. As subpastas aparecem acima da lista de faixas; selecione uma para entrar nela e use o caminho de navegação ou **Anterior** para subir um nível. A lista mostra somente as faixas armazenadas diretamente no nível atual. A **Vista plana**, por sua vez, mostra todas as faixas indexadas da raiz registrada, inclusive as que estão em subpastas. A troca de vista preserva o local atual, para que você possa voltar ao mesmo ponto na **Vista em árvore**. **Pesquisar na biblioteca** continua pesquisando em toda a biblioteca, portanto a lista de subpastas fica oculta durante a pesquisa.
+
+A árvore de **Pastas** respeita os caminhos relativos físicos exatos e inclui todas as entradas de faixa encontradas no catálogo, mesmo durante a análise dos metadados ou quando essa análise falha. A contagem de uma pasta inclui as faixas da própria pasta e de todos os níveis abaixo dela. As faixas CUE são contadas individualmente: várias faixas lógicas que compartilham uma única fonte WAV ou FLAC contam como várias faixas, não como um único arquivo de áudio físico. **Subpastas** tem outra finalidade: agrupa as faixas analisadas com êxito pela identidade normalizada da pasta pai direta, portanto variantes que diferem apenas em maiúsculas, minúsculas ou normalização Unicode podem ser combinadas.
+
+Por exemplo, `Artist/Album/01 Song.flac` aparece no grupo de subpasta `Artist/Album` e sob `Artist` e depois `Album` na árvore física de **Pastas**. Caminhos relativos idênticos em raízes indexadas diferentes permanecem separados. Arquivos armazenados diretamente na raiz não criam um grupo de subpasta; eles continuam disponíveis em **Faixas** e na lista de faixas diretas dessa raiz em **Pastas**.
 
 Com **Pesquisar na biblioteca**, você pode pesquisar faixas, álbuns, artistas e playlists ao mesmo tempo. No layout para PC, é possível ordenar a lista de faixas pelo cabeçalho usando **Título**, **Artista**, **Álbum**, **Gênero** e **Tempo**. As visualizações de álbuns, artistas, gêneros, subpastas e playlists oferecem uma lista **Ordenar** baseada no catálogo. Dependendo da visualização, é possível ordenar por nome, artista, ano, caminho, número de faixas, duração total, data de atualização ou data de criação, em ambos os sentidos. Cada visualização mantém sua própria seleção.
 
 Na pesquisa de faixas, termos com três ou mais caracteres correspondem a qualquer parte do título, artista, álbum, gênero, nome do arquivo ou caminho. Termos com um ou dois caracteres correspondem apenas ao início de uma palavra. Digite pelo menos três caracteres para pesquisar no meio de uma palavra.
 
-Nos layouts para PC e dispositivos móveis, quando uma pesquisa de faixas ou os detalhes de um álbum, artista, gênero, subpasta ou playlist retornam 300 faixas ou menos, todas são selecionadas por padrão. Com 301 faixas ou mais, não há seleção automática. Use as caixas das linhas, **Selecionar tudo** ou **Desmarcar tudo** para alterar a seleção.
+Nos layouts para PC e dispositivos móveis, quando uma pesquisa de faixas, as faixas diretas do nível atual na **Vista em árvore** ou os detalhes de um álbum, artista, gênero, subpasta ou playlist retornam 300 faixas ou menos, todas são selecionadas por padrão. Com 301 faixas ou mais, não há seleção automática. Use as caixas das linhas, **Selecionar tudo** ou **Desmarcar tudo** para alterar a seleção.
 
 No celular, a lista normal de títulos aparece primeiro, sem colunas de artista ou duração. Somente manter uma faixa pressionada abre o modo de seleção; as caixas, **Selecionar tudo** e **Desmarcar tudo** aparecem, enquanto as ações normais das linhas continuam disponíveis. A seleção automática e as alterações posteriores — incluindo **Selecionar tudo**, **Desmarcar tudo** e as caixas individuais — mudam apenas o estado da seleção; elas não abrem nem encerram o modo de seleção.
 

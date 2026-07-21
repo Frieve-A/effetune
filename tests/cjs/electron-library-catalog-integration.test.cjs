@@ -46,6 +46,10 @@ class FakeCatalogHost extends EventEmitter {
     return this.request('queryTracks', request);
   }
 
+  browseFolderChildren(request) {
+    return this.request('browseFolderChildren', request);
+  }
+
   queryEntities(request) {
     return this.request('queryEntities', request);
   }
@@ -159,6 +163,12 @@ test('catalog IPC rejects stale senders, forwards worker-validated payloads, and
   const result = await ipcMain.handlers.get(LIBRARY_CATALOG_RENDERER_CHANNELS.queryTracks)(senderEvent, query);
   assert.deepEqual(result, { command: 'queryTracks', payload: query });
   assert.equal(host.calls.at(-1)[1], query);
+  const browse = { folderId: 'folder-1', path: 'Albums', limit: 200 };
+  const browseResult = await ipcMain.handlers.get(
+    LIBRARY_CATALOG_RENDERER_CHANNELS.browseFolderChildren
+  )(senderEvent, browse);
+  assert.deepEqual(browseResult, { command: 'browseFolderChildren', payload: browse });
+  assert.equal(host.calls.at(-1)[1], browse);
 
   assert.throws(
     () => ipcMain.handlers.get(LIBRARY_CATALOG_RENDERER_CHANNELS.getCounts)({ sender: {} }, {}),
@@ -381,6 +391,7 @@ test('preload exposes versioned bounded catalog and playlist wrappers', async ()
   await api.createContext({ query: '' });
   await api.getContextCount({ contextToken: 'ctx' });
   await api.queryTracks({ query: '', limit: 200 });
+  await api.browseFolderChildren({ folderId: 'folder-1', path: '', limit: 200 });
   await api.queryEntities({ type: 'album', query: '', limit: 200 });
   await api.readContextPageAtOrdinal({ contextToken: 'ctx', ordinal: 10, limit: 200 });
   await api.resolveEntityAnchor({ contextToken: 'ctx', entityId: 'album-1' });

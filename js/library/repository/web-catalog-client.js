@@ -122,6 +122,7 @@ export class WebCatalogRepositoryClient {
   async createContext(options) { return this.request('createContext', options); }
   async releaseContext(contextToken) { return this.request('releaseContext', contextToken); }
   async queryTracks(options) { return this.request('queryTracks', options); }
+  async browseFolderChildren(options) { return this.request('browseFolderChildren', options); }
   async queryEntities(options) { return this.request('queryEntities', options); }
   async getContextCount(options) { return this.request('getContextCount', options); }
   async readContextPageAtOrdinal(options) { return this.request('readContextPageAtOrdinal', options); }

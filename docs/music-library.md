@@ -48,19 +48,23 @@ Use the navigation tabs to browse the catalog:
 - **Artists** - Artists and album artists from metadata.
 - **Genres** - Genre groups from metadata.
 - **Subfolders** - Tracks grouped by the direct parent subfolder path relative to each indexed music folder.
-- **Folders** - Registered music folder roots and their scan status.
+- **Folders** - Registered music folder roots, their scan status, and their physical directory trees.
 - **Recently Added** - Recently indexed tracks.
 - **Playlists** - Playlists created or imported inside Music Library.
 
 An Album Artist value separated with semicolons, such as `Artist A; Artist B`, is indexed under each artist while the full credit remains displayed. `&`, `/`, and `feat.` are not treated as separators.
 
-For example, `Artist/Album/01 Song.flac` appears in the `Artist/Album` subfolder group. Identical relative paths in different indexed roots remain separate. Files stored directly in a root do not create a subfolder group; they remain available in **Tracks** and from that root in **Folders**.
+Open a root in **Folders** to browse it in **Tree view**. Subfolders appear above the track list; select one to descend into it, and use the breadcrumb path or **Previous** to move back up. The track list contains only tracks stored directly at the current level. **Flat view** instead shows every indexed track from the registered root, including tracks in all of its subfolders. Switching views keeps the current breadcrumb location so you can return to the same place in **Tree view**. **Search library** remains a library-wide search, so the subfolder list is hidden while a search is active.
+
+The **Folders** tree follows exact physical relative paths and includes every discovered catalog track entry, even while metadata is being analyzed or when analysis fails. Its folder count includes track entries in that folder and all descendants. CUE tracks count individually, so several logical tracks that share one WAV or FLAC source count as several tracks, not as one physical audio file. **Subfolders** is different: it is a metadata-derived grouping of successfully analyzed tracks by normalized direct-parent identity, so case or Unicode-normalization variants can be combined there.
+
+For example, `Artist/Album/01 Song.flac` appears in the `Artist/Album` subfolder group and under `Artist` then `Album` in the physical **Folders** tree. Identical relative paths in different indexed roots remain separate. Files stored directly in a root do not create a subfolder group; they remain available in **Tracks** and in that root's direct track list in **Folders**.
 
 Use **Search library** to search across tracks, albums, artists, and playlists. In the PC layout, track table headers sort by **Title**, **Artist**, **Album**, **Genre**, or **Time**. Album, artist, genre, subfolder, and playlist views provide a **Sort** list backed by the catalog. Depending on the view, it can order by name, artist, year, path, track count, total duration, updated time, or created time, in either direction. Each view keeps its own selection.
 
 For tracks, search terms of three or more characters match anywhere in the title, artist, album, genre, file name, or path. One- or two-character terms match only the beginning of a word. Enter at least three characters when you need a match in the middle of a word.
 
-In both the PC and mobile layouts, track search results and tracks in an album, artist, genre, subfolder, or playlist detail are all selected by default when the result contains 300 tracks or fewer. Results with 301 tracks or more are not selected automatically. Use the row checkboxes, **Select All**, or **Deselect All** to change the selection.
+In both the PC and mobile layouts, track search results, tracks shown directly at the current folder level in **Tree view**, and tracks in an album, artist, genre, subfolder, or playlist detail are all selected by default when the result contains 300 tracks or fewer. Results with 301 tracks or more are not selected automatically. Use the row checkboxes, **Select All**, or **Deselect All** to change the selection.
 
 Mobile starts with the normal title list and does not show artist or duration columns. Only long-pressing a track enters selection mode; checkboxes, **Select All**, and **Deselect All** then appear while the usual row actions remain available. Automatic selection and later selection changes—including **Select All**, **Deselect All**, and individual checkboxes—change only the selection state; they do not enter or leave selection mode.
 

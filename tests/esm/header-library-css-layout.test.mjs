@@ -72,6 +72,14 @@ test('library playlist actions keep action-bar spacing when controls wrap', () =
   assert.match(actionsRule, /margin:\s*0 0 12px;/);
 });
 
+test('folder detail headers override the fixed base section height', () => {
+  const css = readCss('../../effetune-library.css');
+  const folderHeaderRule = getRule(css, '.library-section-head.library-folder-detail-head');
+
+  assert.match(folderHeaderRule, /height:\s*auto;/);
+  assert.match(folderHeaderRule, /flex-wrap:\s*wrap;/);
+});
+
 test('library sort options remain readable in the dark theme', () => {
   const css = readCss('../../effetune-library.css');
   const selectRule = getRule(css, '.library-entity-sort-select {');

@@ -9,7 +9,7 @@
     { "name": "channelMode", "key": "cm", "kind": "enum", "values": ["auto", "mono", "indep", "true", "multi"], "default": "auto" },
     { "name": "latency", "key": "lt", "kind": "enum", "values": ["0", "128", "256", "512", "1024"], "default": "128" },
     { "name": "convRate", "key": "cr", "kind": "enum", "values": ["auto", "full", "half", "quarter"], "default": "auto" },
-    { "name": "wetLevel", "key": "dw", "kind": "float", "min": -96, "max": 12, "default": 0, "unit": "dB" },
+    { "name": "wetLevel", "key": "dw", "kind": "float", "min": -96, "max": 12, "default": -15, "unit": "dB" },
     { "name": "dryLevel", "key": "dl", "kind": "float", "min": -96, "max": 12, "default": 0, "unit": "dB" },
     { "name": "preDelay", "key": "pd", "kind": "float", "min": 0, "max": 500, "default": 0, "unit": "ms" }
   ]

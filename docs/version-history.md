@@ -11,6 +11,7 @@ lang: en
 - Added a physics simulation-based Vinyl Simulator effect
 - Added a compact desktop mini player with artwork, transport and seek controls, repeat and shuffle controls, and an optional always-on-top mode
 - Added pinned Recently Played and Favorites playlists to Music Library
+- Added hierarchical Music Library folder browsing with direct tracks and switchable Tree and Flat views
 - Various minor improvements
 
 ### Version 2.1.0 (Jul 17, 2026)

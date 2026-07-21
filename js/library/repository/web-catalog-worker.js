@@ -35,6 +35,7 @@ const ALLOWED_METHODS = Object.freeze(new Set([
   'createContext',
   'releaseContext',
   'queryTracks',
+  'browseFolderChildren',
   'queryEntities',
   'getContextCount',
   'readContextPageAtOrdinal',

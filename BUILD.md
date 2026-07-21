@@ -115,9 +115,6 @@ The Playwright install command is needed only when Chromium is not already avail
 The smoke-test runner starts and stops its own temporary loopback server; do not start a
 separate development server for this command.
 
-For release-candidate device coverage and repeatable battery/power observations, complete
-the [Web/PWA power-saving measurement record](docs/mobile-pwa-power-saving-measurement.md).
-
 ### 4. Build and Test the DSP Core
 
 The committed WebAssembly DSP artifacts let JavaScript-only contributors run the app

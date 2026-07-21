@@ -396,6 +396,23 @@ CREATE TABLE IF NOT EXISTS tracks(
   )
 );
 
+CREATE TABLE IF NOT EXISTS directories(
+  folder_id TEXT NOT NULL REFERENCES folders(id) ON DELETE RESTRICT,
+  relative_path TEXT NOT NULL,
+  parent_path TEXT NOT NULL,
+  name TEXT NOT NULL,
+  direct_track_count INTEGER NOT NULL DEFAULT 0 CHECK(direct_track_count >= 0),
+  recursive_track_count INTEGER NOT NULL DEFAULT 0 CHECK(recursive_track_count >= 0),
+  PRIMARY KEY(folder_id, relative_path)
+);
+
+CREATE TABLE IF NOT EXISTS directories_sync(
+  id INTEGER PRIMARY KEY CHECK(id = 1),
+  generation INTEGER NOT NULL CHECK(generation >= 0)
+);
+
+INSERT OR IGNORE INTO directories_sync(id, generation) VALUES (1, 0);
+
 CREATE TABLE IF NOT EXISTS albums(
   album_key TEXT PRIMARY KEY,
   identity_version INTEGER NOT NULL CHECK(identity_version > 0),
@@ -479,6 +496,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS tracks_plain_storage_unique_v3
   ON tracks(folder_id, relative_path) WHERE source_kind = 'file';
 CREATE UNIQUE INDEX IF NOT EXISTS tracks_cue_storage_unique_v3
   ON tracks(folder_id, entry_key) WHERE source_kind = 'cue-track';
+CREATE INDEX IF NOT EXISTS tracks_by_folder_relative_path
+  ON tracks(folder_id, relative_path);
+CREATE INDEX IF NOT EXISTS tracks_root_direct_by_folder
+  ON tracks(folder_id) WHERE instr(relative_path, '/') = 0;
 CREATE INDEX IF NOT EXISTS tracks_terminal_by_parser ON tracks(metadata_parser_version, track_key)
   WHERE metadata_status = 'terminal-error';
 CREATE INDEX IF NOT EXISTS tracks_resolve_by_basename ON tracks(normalized_basename, track_uid);
@@ -490,6 +511,21 @@ CREATE INDEX IF NOT EXISTS track_subfolders_by_subfolder ON track_subfolders(sub
 CREATE INDEX IF NOT EXISTS subfolders_by_name ON subfolders(sort_name, subfolder_key);
 CREATE INDEX IF NOT EXISTS subfolders_by_track_count ON subfolders(track_count, sort_name, subfolder_key);
 CREATE INDEX IF NOT EXISTS subfolders_by_duration ON subfolders(total_duration_sec, sort_name, subfolder_key);
+CREATE INDEX IF NOT EXISTS directories_by_parent
+  ON directories(folder_id, parent_path, name);
+
+CREATE TRIGGER IF NOT EXISTS directories_dirty_insert AFTER INSERT ON tracks BEGIN
+  UPDATE directories_sync SET generation = generation + 1 WHERE id = 1;
+END;
+
+CREATE TRIGGER IF NOT EXISTS directories_dirty_delete AFTER DELETE ON tracks BEGIN
+  UPDATE directories_sync SET generation = generation + 1 WHERE id = 1;
+END;
+
+CREATE TRIGGER IF NOT EXISTS directories_dirty_move
+AFTER UPDATE OF folder_id, relative_path ON tracks BEGIN
+  UPDATE directories_sync SET generation = generation + 1 WHERE id = 1;
+END;
 
 CREATE VIRTUAL TABLE IF NOT EXISTS tracks_fts USING fts5(
   search_text,

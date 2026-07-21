@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  createFolderDirKey,
+  decodeFolderDirKey,
   getPagedPlaylistTarget,
   getPagedInvalidationDecision,
   LibraryView,
@@ -54,6 +56,9 @@ function createPagedManager() {
   return {
     async createContext() { return 'context'; },
     async queryTracks() {},
+    async browseFolderChildren() {
+      return { children: [], hasMore: false, cursor: null, nodeExists: true };
+    },
     async queryEntities() {},
     async releaseContext() {},
     async getCounts() { return {}; },
@@ -115,6 +120,1056 @@ test('LibraryView maps every top-level collection and Search to a paged endpoint
     scope: null
   });
   assert.ok(PAGED_RENDERED_ROW_LIMIT < 500);
+});
+
+test('folderNode queries switch between direct tree tracks and flat folder tracks without losing path', () => {
+  const view = new LibraryView({ manager: createPagedManager(), uiManager: {} });
+  view.currentView = 'folders';
+  view.detail = { type: 'folderNode', folderId: 'folder:one', path: '音楽/Live', title: 'Music' };
+  assert.deepEqual(decodeFolderDirKey(createFolderDirKey('folder:one', '音楽/Live')), {
+    folderId: 'folder:one', path: '音楽/Live'
+  });
+  assert.deepEqual(view.getPagedQuery().scope, {
+    folderDirKey: createFolderDirKey('folder:one', '音楽/Live')
+  });
+
+  view.folderBrowseMode = 'flat';
+  assert.deepEqual(view.getPagedQuery().scope, { folderKey: 'folder:one' });
+  assert.equal(view.detail.path, '音楽/Live');
+
+  view.folderBrowseMode = 'tree';
+  view.searchQuery = 'needle';
+  assert.equal(view.getPagedQuery().scope, null);
+  assert.equal(view.isFolderTreeBrowse(), false);
+  assert.deepEqual(view.detail, {
+    type: 'folderNode', folderId: 'folder:one', path: '音楽/Live', title: 'Music'
+  });
+  view.searchQuery = '';
+  assert.equal(view.isFolderTreeBrowse(), true);
+  assert.deepEqual(view.getPagedQuery().scope, {
+    folderDirKey: createFolderDirKey('folder:one', '音楽/Live')
+  });
+
+  assert.deepEqual(view.createEntityDetail('folder', 'folder:one', { displayName: 'Music' }), {
+    type: 'folderNode', folderId: 'folder:one', path: '', title: 'Music'
+  });
+  assert.equal(getPagedInvalidationDecision(view.getPagedQuery(), {
+    changedScopes: ['folder:folder:one']
+  }).restart, true);
+});
+
+test('folder navigation uses canonical root paths, migrates legacy detail, and backs up one level', () => {
+  const view = new LibraryView({ manager: createPagedManager(), uiManager: {} });
+  view.render = () => {};
+  view.currentView = 'folders';
+  view.applyNavigationSnapshot({
+    currentView: 'folders',
+    detail: { type: 'folder', key: 'folder-1', title: 'Music' }
+  });
+  assert.deepEqual(view.detail, {
+    type: 'folderNode', folderId: 'folder-1', path: '', title: 'Music'
+  });
+
+  view.detail = null;
+  view.content = new PagedDomElement('main');
+  view.content.scrollTop = 987;
+  view.navigateToDetail(
+    { type: 'folderNode', folderId: 'folder-1', path: '', title: 'Music' },
+    null,
+    { pushHistory: false }
+  );
+  const collectionReturnSnapshot = view.navigationReturnSnapshot;
+  view.navigateToFolderPath('Child');
+  assert.equal(view.detail.path, 'Child');
+  assert.equal(view.navigationReturnSnapshot, collectionReturnSnapshot);
+  view.navigateToFolderPath('Child/Grandchild');
+  assert.equal(view.detail.path, 'Child/Grandchild');
+  assert.equal(view.navigationReturnSnapshot, collectionReturnSnapshot);
+  assert.equal(view.navigateBack({ fromPopState: true }), true);
+  assert.equal(view.detail.path, 'Child');
+  assert.equal(view.pendingFolderFocusPath, 'Child/Grandchild');
+  assert.equal(view.navigateBack({ fromPopState: true }), true);
+  assert.equal(view.detail.path, '');
+  assert.equal(view.pendingFolderFocusPath, 'Child');
+  assert.equal(view.navigateBack({ fromPopState: true }), true);
+  assert.equal(view.detail, null);
+  assert.equal(view.currentView, 'folders');
+  assert.equal(view.pendingPagedNavigationPosition.contentScrollTop, 987);
+});
+
+test('the first folder-row activation from a root creates a path without a leading slash', () => {
+  return withGlobals({
+    document: { createElement: tagName => new PagedDomElement(tagName) }
+  }, () => {
+    const view = new LibraryView({ manager: createPagedManager(), uiManager: {} });
+    view.render = () => {};
+    view.currentView = 'folders';
+    view.detail = { type: 'folderNode', folderId: 'folder-1', path: '', title: 'Music' };
+    view.folderChildrenState = {
+      key: 'folder-1\0',
+      requestId: view.folderBrowseRequestId,
+      intentId: view.navigationIntentId,
+      browseGeneration: view.folderBrowseGeneration,
+      children: [{ name: 'Child', directTrackCount: 1, recursiveTrackCount: 1 }],
+      cursor: null,
+      hasMore: false,
+      nodeExists: true,
+      loading: false,
+      error: false
+    };
+    const section = view.createFolderDirectorySection(0);
+    const row = section.children[0].children[0];
+    assert.equal(row.tagName, 'BUTTON');
+    row.listeners.get('click')();
+    assert.equal(view.detail.path, 'Child');
+  });
+});
+
+test('folder browse requests are suppressed during search and stale responses cannot replace a newer path', async () => {
+  await withGlobals({
+    document: { createElement: tagName => new PagedDomElement(tagName) }
+  }, async () => {
+    const requests = [];
+    const manager = createPagedManager();
+    manager.browseFolderChildren = request => {
+      const deferred = createDeferred();
+      requests.push({ request, deferred });
+      return deferred.promise;
+    };
+    const view = new LibraryView({ manager, uiManager: {} });
+    view.render = () => {};
+    view.content = new PagedDomElement('main');
+    view.currentView = 'folders';
+    view.detail = { type: 'folderNode', folderId: 'folder-1', path: 'A', title: 'Music' };
+    const sectionA = new PagedDomElement('section');
+    sectionA.dataset.folderBrowseKey = 'folder-1\0A';
+
+    view.searchQuery = 'needle';
+    await view.loadFolderChildren(sectionA, 0);
+    assert.equal(requests.length, 0);
+    view.searchQuery = '';
+    const firstLoad = view.loadFolderChildren(sectionA, 0);
+    assert.deepEqual(requests[0].request, { folderId: 'folder-1', path: 'A', limit: 500 });
+
+    view.navigateToFolderPath('B');
+    const sectionB = new PagedDomElement('section');
+    sectionB.dataset.folderBrowseKey = 'folder-1\0B';
+    const secondLoad = view.loadFolderChildren(sectionB, 0);
+    requests[0].deferred.resolve({
+      children: [{ name: 'Stale', directTrackCount: 1, recursiveTrackCount: 1 }],
+      hasMore: false, cursor: null, nodeExists: true
+    });
+    await firstLoad;
+    assert.equal(view.folderChildrenState.key, 'folder-1\0B');
+    assert.deepEqual(view.folderChildrenState.children, []);
+
+    requests[1].deferred.resolve({
+      children: [{ name: 'Current', directTrackCount: 1, recursiveTrackCount: 1 }],
+      hasMore: false, cursor: null, nodeExists: true
+    });
+    await secondLoad;
+    assert.deepEqual(view.folderChildrenState.children.map(child => child.name), ['Current']);
+  });
+});
+
+test('folder child loading preserves scroll only when the viewport has reached the track grid', async () => {
+  const manager = createPagedManager();
+  manager.browseFolderChildren = async () => ({
+    children: [{ name: 'Child', directTrackCount: 1, recursiveTrackCount: 1 }],
+    hasMore: false,
+    cursor: null,
+    nodeExists: true
+  });
+  const view = new LibraryView({ manager, uiManager: {} });
+  view.currentView = 'folders';
+  view.detail = { type: 'folderNode', folderId: 'folder-1', path: '', title: 'Music' };
+  const section = new PagedDomElement('section');
+  section.dataset.folderBrowseKey = 'folder-1\0';
+  const grid = { offsetTop: 200 };
+  view.content = {
+    scrollTop: 50,
+    querySelector(selector) {
+      if (selector === '.library-folder-directory-section') return section;
+      if (selector === '.library-paged-grid') return grid;
+      return null;
+    }
+  };
+  let refreshCount = 0;
+  view.refreshPagedWindow = () => { refreshCount += 1; };
+  view.renderFolderDirectorySection = () => {
+    if (view.folderChildrenState?.loading === false) grid.offsetTop += 50;
+  };
+
+  await view.loadFolderChildren(section, 1);
+  assert.equal(view.content.scrollTop, 50);
+  assert.equal(refreshCount, 0);
+
+  view.folderChildrenState = null;
+  grid.offsetTop = 200;
+  view.content.scrollTop = 220;
+  await view.loadFolderChildren(section, 1);
+  assert.equal(view.content.scrollTop, 270);
+  assert.equal(refreshCount, 1);
+});
+
+test('folder browse invalidation fences same-path responses and renders only the current live section', async () => {
+  const requests = [];
+  const manager = createPagedManager();
+  manager.browseFolderChildren = () => {
+    const deferred = createDeferred();
+    requests.push(deferred);
+    return deferred.promise;
+  };
+  const view = new LibraryView({ manager, uiManager: {} });
+  view.currentView = 'folders';
+  view.detail = { type: 'folderNode', folderId: 'folder-1', path: 'A', title: 'Music' };
+  view.scheduleRender = () => {};
+  const originalSection = new PagedDomElement('section');
+  originalSection.dataset.folderBrowseKey = 'folder-1\0A';
+  let liveSection = originalSection;
+  const grid = { offsetTop: 200 };
+  view.content = {
+    scrollTop: 0,
+    querySelector(selector) {
+      if (selector === '.library-folder-directory-section') return liveSection;
+      if (selector === '.library-paged-grid') return grid;
+      return null;
+    }
+  };
+  const renderedSections = [];
+  view.renderFolderDirectorySection = section => renderedSections.push(section);
+
+  const staleLoad = view.loadFolderChildren(originalSection, 1);
+  view.handleCatalogInvalidation({ changedScopes: ['folder:folder-1'] });
+  requests[0].resolve({
+    children: [{ name: 'Stale', directTrackCount: 1, recursiveTrackCount: 1 }],
+    hasMore: false,
+    cursor: null,
+    nodeExists: true
+  });
+  await staleLoad;
+  assert.equal(view.folderChildrenState, null);
+
+  const detachedSection = new PagedDomElement('section');
+  detachedSection.dataset.folderBrowseKey = 'folder-1\0A';
+  liveSection = detachedSection;
+  const currentLoad = view.loadFolderChildren(detachedSection, 1);
+  renderedSections.length = 0;
+  detachedSection.isConnected = false;
+  const replacementSection = new PagedDomElement('section');
+  replacementSection.dataset.folderBrowseKey = 'folder-1\0A';
+  liveSection = replacementSection;
+  requests[1].resolve({
+    children: [{ name: 'Current', directTrackCount: 1, recursiveTrackCount: 1 }],
+    hasMore: false,
+    cursor: null,
+    nodeExists: true
+  });
+  await currentLoad;
+  assert.deepEqual(view.folderChildrenState.children.map(child => child.name), ['Current']);
+  assert.deepEqual(renderedSections, [replacementSection]);
+});
+
+test('folder browse state expires with its navigation intent and the same path reloads', async () => {
+  await withGlobals({
+    document: { createElement: tagName => new PagedDomElement(tagName) }
+  }, async () => {
+    const requests = [];
+    const manager = createPagedManager();
+    manager.browseFolderChildren = () => {
+      const deferred = createDeferred();
+      requests.push(deferred);
+      return deferred.promise;
+    };
+    const view = new LibraryView({ manager, uiManager: {} });
+    view.currentView = 'folders';
+    view.detail = { type: 'folderNode', folderId: 'folder-1', path: 'A', title: 'Music' };
+    view.content = { querySelector() { return null; } };
+    view.renderFolderDirectorySection = () => {};
+    const section = new PagedDomElement('section');
+    section.dataset.folderBrowseKey = 'folder-1\0A';
+
+    const staleLoad = view.loadFolderChildren(section, 0);
+    assert.equal(view.folderChildrenState.loading, true);
+    view.beginNavigationIntent();
+    assert.equal(view.folderChildrenState, null);
+    requests[0].resolve({
+      children: [{ name: 'Stale', directTrackCount: 1, recursiveTrackCount: 1 }],
+      hasMore: false, cursor: null, nodeExists: true
+    });
+    await staleLoad;
+    assert.equal(view.folderChildrenState, null);
+
+    view.createFolderDirectorySection(0);
+    assert.equal(requests.length, 2);
+    requests[1].resolve({
+      children: [{ name: 'Fresh', directTrackCount: 1, recursiveTrackCount: 1 }],
+      hasMore: false, cursor: null, nodeExists: true
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.deepEqual(view.folderChildrenState.children.map(child => child.name), ['Fresh']);
+    assert.ok(view.getCurrentFolderChildrenState('folder-1\0A'));
+
+    view.invalidateNavigationIntent();
+    assert.equal(view.getCurrentFolderChildrenState('folder-1\0A'), null);
+    view.createFolderDirectorySection(0);
+    assert.equal(requests.length, 3);
+    requests[2].resolve({ children: [], hasMore: false, cursor: null, nodeExists: true });
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+});
+
+test('folder ancestor jumps restore the target position and focus its descended child row', () => {
+  const view = new LibraryView({ manager: createPagedManager(), uiManager: {} });
+  view.render = () => {};
+  view.currentView = 'folders';
+  view.detail = { type: 'folderNode', folderId: 'folder-1', path: '', title: 'Music' };
+  view.content = new PagedDomElement('main');
+
+  view.content.scrollTop = 100;
+  view.navigateToFolderPath('Child');
+  view.content.scrollTop = 200;
+  view.navigateToFolderPath('Child/Grandchild');
+  view.content.scrollTop = 300;
+  view.navigateToFolderPath('');
+
+  assert.equal(view.detail.path, '');
+  assert.equal(view.pendingPagedNavigationPosition.contentScrollTop, 100);
+  assert.equal(view.pendingFolderFocusPath, 'Child');
+
+  view.content.scrollTop = 100;
+  view.navigateToFolderPath('Child');
+  assert.equal(view.pendingPagedNavigationPosition.contentScrollTop, 200);
+  assert.equal(view.pendingFolderFocusPath, null);
+});
+
+test('folder Back restores loaded parent pages and focuses a child only after its section is live', async () => {
+  const document = {
+    body: { classList: { contains: () => false } },
+    createElement: tagName => new PagedDomElement(tagName),
+    activeElement: null
+  };
+  await withGlobals({ document }, () => {
+    let browseCalls = 0;
+    const manager = createPagedManager();
+    manager.browseFolderChildren = async () => {
+      browseCalls += 1;
+      return { children: [], hasMore: false, cursor: null, nodeExists: true };
+    };
+    const view = new LibraryView({ manager, uiManager: {} });
+    view.render = () => {};
+    view.currentView = 'folders';
+    view.detail = { type: 'folderNode', folderId: 'folder-1', path: '', title: 'Music' };
+    view.content = new PagedDomElement('main');
+    view.content.scrollTop = 640;
+    view.folderChildrenState = {
+      key: 'folder-1\0',
+      requestId: view.folderBrowseRequestId,
+      intentId: view.navigationIntentId,
+      browseGeneration: view.folderBrowseGeneration,
+      children: [
+        { name: 'First', directTrackCount: 1, recursiveTrackCount: 1 },
+        { name: 'OutsideFirstPage', directTrackCount: 1, recursiveTrackCount: 1 }
+      ],
+      cursor: 'OutsideFirstPage',
+      hasMore: true,
+      nodeExists: true,
+      loading: false,
+      error: false
+    };
+
+    view.navigateToFolderPath('OutsideFirstPage', { pushHistory: false });
+    assert.equal(view.detail.path, 'OutsideFirstPage');
+    view.navigateBack({ fromPopState: true });
+
+    const restored = view.getCurrentFolderChildrenState('folder-1\0');
+    assert.deepEqual(restored.children.map(child => child.name), ['First', 'OutsideFirstPage']);
+    assert.equal(restored.cursor, 'OutsideFirstPage');
+    assert.equal(restored.hasMore, true);
+    assert.equal(view.pendingPagedNavigationPosition.contentScrollTop, 640);
+    assert.equal(view.pendingFolderFocusPath, 'OutsideFirstPage');
+
+    const section = new PagedDomElement('section');
+    section.dataset.folderBrowseKey = 'folder-1\0';
+    section.querySelectorAll = selector => selector === '.library-folder-directory-row'
+      ? section.children.flatMap(child => child.children || [])
+        .filter(child => child.className === 'library-folder-directory-row')
+      : [];
+    view.renderFolderDirectorySection(section, 0);
+    const focused = section.querySelectorAll('.library-folder-directory-row')
+      .find(row => row.dataset.folderPath === 'OutsideFirstPage');
+    focused.focus = options => {
+      focused.focused = true;
+      focused.focusOptions = options;
+      document.activeElement = focused;
+    };
+    assert.equal(focused.focused, undefined);
+    assert.equal(view.pendingFolderFocusPath, 'OutsideFirstPage');
+    view.content.querySelector = selector => (
+      selector === '.library-folder-directory-section' ? section : null
+    );
+    assert.equal(view.focusPendingFolderRow(section), true);
+    assert.equal(focused.focused, true);
+    assert.deepEqual(focused.focusOptions, { preventScroll: true });
+    assert.equal(view.pendingFolderFocusPath, null);
+    assert.equal(browseCalls, 0);
+  });
+});
+
+test('mobile folder popstate restores cached pages without copying them into History state', async () => {
+  const document = {
+    body: { classList: { contains: name => name === 'layout-mobile' || name === 'view-library' } },
+    createElement: tagName => new PagedDomElement(tagName),
+    activeElement: null
+  };
+  const history = { state: null, replaceState() {}, pushState() {} };
+  await withGlobals({ document, history }, () => {
+    let browseCalls = 0;
+    const manager = createPagedManager();
+    manager.browseFolderChildren = async () => {
+      browseCalls += 1;
+      return { children: [], hasMore: false, cursor: null, nodeExists: true };
+    };
+    const view = new LibraryView({ manager, uiManager: {} });
+    view.render = () => {};
+    view.currentView = 'folders';
+    view.detail = { type: 'folderNode', folderId: 'folder-1', path: 'Child-500', title: 'Music' };
+    const children = Array.from({ length: 501 }, (_, index) => ({
+      name: `Child-${String(index).padStart(3, '0')}`,
+      directTrackCount: 1,
+      recursiveTrackCount: 1
+    }));
+    const parentKey = 'folder-1\0';
+    view.folderNavigationPositions.set(parentKey, {
+      currentView: 'folders',
+      detail: { type: 'folderNode', folderId: 'folder-1', path: '', title: 'Music' },
+      pagedPosition: { contentScrollTop: 720 },
+      folderBrowseState: {
+        key: parentKey,
+        browseGeneration: view.folderBrowseGeneration,
+        children,
+        cursor: 'Child-500',
+        hasMore: true,
+        nodeExists: true
+      }
+    });
+    const state = {
+      effetuneLibrary: true,
+      index: 0,
+      depth: 0,
+      snapshot: {
+        currentView: 'folders',
+        detail: { type: 'folderNode', folderId: 'folder-1', path: '', title: 'Music' },
+        searchQuery: '',
+        pagedPosition: { contentScrollTop: 720 }
+      }
+    };
+
+    view.handleMobilePopState({ state });
+
+    const restored = view.getCurrentFolderChildrenState(parentKey);
+    assert.equal(restored.children.length, 501);
+    assert.equal(restored.children.at(-1).name, 'Child-500');
+    assert.equal(restored.hasMore, true);
+    assert.equal(view.pendingFolderFocusPath, 'Child-500');
+    assert.equal(browseCalls, 0);
+    assert.equal(JSON.stringify(state).includes('folderBrowseState'), false);
+    assert.equal(Object.hasOwn(view.getNavigationSnapshot(), 'folderBrowseState'), false);
+
+    const section = new PagedDomElement('section');
+    section.dataset.folderBrowseKey = parentKey;
+    section.querySelectorAll = selector => selector === '.library-folder-directory-row'
+      ? section.children.flatMap(child => child.children || [])
+        .filter(child => child.className === 'library-folder-directory-row')
+      : [];
+    view.content = {
+      scrollTop: 0,
+      querySelector: selector => selector === '.library-folder-directory-section' ? section : null
+    };
+    view.renderFolderDirectorySection(section, 0);
+    const focusTarget = section.querySelectorAll('.library-folder-directory-row').at(-1);
+    focusTarget.focus = options => {
+      focusTarget.focusOptions = options;
+      document.activeElement = focusTarget;
+    };
+    assert.equal(view.focusPendingFolderRow(section), true);
+    assert.deepEqual(focusTarget.focusOptions, { preventScroll: true });
+    assert.equal(view.pendingFolderFocusPath, null);
+  });
+});
+
+test('folder append keeps the live More button mounted and busy until the request settles', async () => {
+  const deferred = createDeferred();
+  const manager = createPagedManager();
+  manager.browseFolderChildren = () => deferred.promise;
+  const view = new LibraryView({ manager, uiManager: {} });
+  view.currentView = 'folders';
+  view.detail = { type: 'folderNode', folderId: 'folder-1', path: 'A', title: 'Music' };
+  const more = new PagedDomElement('button');
+  const section = new PagedDomElement('section');
+  section.dataset.folderBrowseKey = 'folder-1\0A';
+  section.querySelector = selector => selector === '.library-folder-directory-more' ? more : null;
+  view.content = {
+    scrollTop: 0,
+    querySelector(selector) {
+      return selector === '.library-folder-directory-section' ? section : null;
+    }
+  };
+  view.folderChildrenState = {
+    key: 'folder-1\0A',
+    requestId: view.folderBrowseRequestId,
+    intentId: view.navigationIntentId,
+    browseGeneration: view.folderBrowseGeneration,
+    children: [{ name: 'First', directTrackCount: 1, recursiveTrackCount: 1 }],
+    cursor: 'First',
+    hasMore: true,
+    nodeExists: true,
+    loading: false,
+    error: false
+  };
+  const rendered = [];
+  view.renderFolderDirectorySection = target => rendered.push(target);
+
+  const load = view.loadFolderChildren(section, 1, { append: true });
+  assert.deepEqual(rendered, []);
+  assert.notEqual(more.disabled, true);
+  assert.equal(more.attributes.get('aria-disabled'), 'true');
+  assert.equal(more.attributes.get('aria-busy'), 'true');
+
+  deferred.resolve({
+    children: [{ name: 'Second', directTrackCount: 1, recursiveTrackCount: 1 }],
+    hasMore: false, cursor: null, nodeExists: true
+  });
+  await load;
+  assert.deepEqual(view.folderChildrenState.children.map(child => child.name), ['First', 'Second']);
+  assert.deepEqual(rendered, [section]);
+});
+
+test('More forwards focus intent only for keyboard activation and guards busy clicks', () => {
+  const document = {
+    activeElement: null,
+    createElement: tagName => new PagedDomElement(tagName)
+  };
+  return withGlobals({ document }, () => {
+    const view = new LibraryView({ manager: createPagedManager(), uiManager: {} });
+    view.currentView = 'folders';
+    view.detail = { type: 'folderNode', folderId: 'folder-1', path: 'A', title: 'Music' };
+    view.folderChildrenState = {
+      key: 'folder-1\0A',
+      requestId: view.folderBrowseRequestId,
+      intentId: view.navigationIntentId,
+      browseGeneration: view.folderBrowseGeneration,
+      children: [{ name: 'First', directTrackCount: 1, recursiveTrackCount: 1 }],
+      cursor: 'First', hasMore: true, nodeExists: true, loading: false, error: false
+    };
+    const section = new PagedDomElement('section');
+    section.dataset.folderBrowseKey = 'folder-1\0A';
+    const calls = [];
+    view.loadFolderChildren = (_section, _count, options) => { calls.push(options); };
+    view.renderFolderDirectorySection(section, 1);
+    const more = section.children.at(-1);
+    document.activeElement = more;
+
+    more.listeners.get('click')({ detail: 1 });
+    more.listeners.get('click')({ detail: 0 });
+    assert.deepEqual(calls, [
+      { append: true, preserveFocus: false },
+      { append: true, preserveFocus: true }
+    ]);
+
+    view.folderChildrenState.loading = true;
+    let prevented = 0;
+    more.listeners.get('click')({ detail: 0, preventDefault() { prevented += 1; } });
+    assert.equal(prevented, 1);
+    assert.equal(calls.length, 2);
+  });
+});
+
+test('keyboard More append keeps focus during loading and hands it to the first appended row', async () => {
+  const deferred = createDeferred();
+  const manager = createPagedManager();
+  let browseCalls = 0;
+  manager.browseFolderChildren = () => {
+    browseCalls += 1;
+    return deferred.promise;
+  };
+  const document = { activeElement: null };
+  await withGlobals({ document }, async () => {
+    const view = new LibraryView({ manager, uiManager: {} });
+    view.currentView = 'folders';
+    view.detail = { type: 'folderNode', folderId: 'folder-1', path: 'A', title: 'Music' };
+    const more = new PagedDomElement('button');
+    const existingRow = new PagedDomElement('button');
+    existingRow.className = 'library-folder-directory-row';
+    let currentMore = more;
+    let rows = [existingRow];
+    const section = new PagedDomElement('section');
+    section.dataset.folderBrowseKey = 'folder-1\0A';
+    section.querySelector = selector => {
+      if (selector === '.library-folder-directory-more') return currentMore;
+      return null;
+    };
+    section.querySelectorAll = selector => selector === '.library-folder-directory-row' ? rows : [];
+    view.content = {
+      scrollTop: 0,
+      querySelector(selector) {
+        return selector === '.library-folder-directory-section' ? section : null;
+      }
+    };
+    view.folderChildrenState = {
+      key: 'folder-1\0A',
+      requestId: view.folderBrowseRequestId,
+      intentId: view.navigationIntentId,
+      browseGeneration: view.folderBrowseGeneration,
+      children: [{ name: 'First', directTrackCount: 1, recursiveTrackCount: 1 }],
+      cursor: 'First',
+      hasMore: true,
+      nodeExists: true,
+      loading: false,
+      error: false
+    };
+    let appendedRow = null;
+    view.renderFolderDirectorySection = () => {
+      more.isConnected = false;
+      currentMore = null;
+      appendedRow = new PagedDomElement('button');
+      appendedRow.className = 'library-folder-directory-row';
+      appendedRow.focus = options => {
+        appendedRow.focusOptions = options;
+        document.activeElement = appendedRow;
+      };
+      rows = [existingRow, appendedRow];
+    };
+    document.activeElement = more;
+
+    const load = view.loadFolderChildren(section, 1, { append: true, preserveFocus: true });
+    await view.loadFolderChildren(section, 1, { append: true, preserveFocus: true });
+    assert.equal(browseCalls, 1);
+    assert.notEqual(more.disabled, true);
+    assert.equal(more.attributes.get('aria-disabled'), 'true');
+    assert.equal(document.activeElement, more);
+
+    deferred.resolve({
+      children: [{ name: 'Second', directTrackCount: 1, recursiveTrackCount: 1 }],
+      hasMore: false, cursor: null, nodeExists: true
+    });
+    await load;
+    assert.equal(document.activeElement, appendedRow);
+    assert.deepEqual(appendedRow.focusOptions, { preventScroll: true });
+  });
+});
+
+test('failed keyboard More append hands focus to the live Retry control', async () => {
+  const manager = createPagedManager();
+  manager.browseFolderChildren = async () => {
+    throw new Error('expected append failure');
+  };
+  const document = { activeElement: null };
+  await withGlobals({ document }, async () => {
+    const view = new LibraryView({ manager, uiManager: {} });
+    view.currentView = 'folders';
+    view.detail = { type: 'folderNode', folderId: 'folder-1', path: 'A', title: 'Music' };
+    const more = new PagedDomElement('button');
+    let retry = null;
+    const section = new PagedDomElement('section');
+    section.dataset.folderBrowseKey = 'folder-1\0A';
+    section.querySelector = selector => {
+      if (selector === '.library-folder-directory-more') return retry ? null : more;
+      if (selector === '.library-folder-directory-retry') return retry;
+      return null;
+    };
+    view.content = {
+      querySelector(selector) {
+        return selector === '.library-folder-directory-section' ? section : null;
+      }
+    };
+    view.folderChildrenState = {
+      key: 'folder-1\0A',
+      requestId: view.folderBrowseRequestId,
+      intentId: view.navigationIntentId,
+      browseGeneration: view.folderBrowseGeneration,
+      children: [{ name: 'First', directTrackCount: 1, recursiveTrackCount: 1 }],
+      cursor: 'First',
+      hasMore: true,
+      nodeExists: true,
+      loading: false,
+      error: false
+    };
+    view.renderFolderDirectorySection = () => {
+      more.isConnected = false;
+      retry = new PagedDomElement('button');
+      retry.focus = options => {
+        retry.focusOptions = options;
+        document.activeElement = retry;
+      };
+    };
+    document.activeElement = more;
+
+    await view.loadFolderChildren(section, 1, { append: true, preserveFocus: true });
+    assert.equal(document.activeElement, retry);
+    assert.deepEqual(retry.focusOptions, { preventScroll: true });
+  });
+});
+
+test('pointer and detached More appends never hand focus to replacement content', async () => {
+  const document = { activeElement: null };
+  await withGlobals({ document }, async () => {
+    for (const { preserveFocus, moreConnected } of [
+      { preserveFocus: false, moreConnected: true },
+      { preserveFocus: true, moreConnected: false }
+    ]) {
+      const manager = createPagedManager();
+      const view = new LibraryView({ manager, uiManager: {} });
+      view.currentView = 'folders';
+      view.detail = { type: 'folderNode', folderId: 'folder-1', path: 'A', title: 'Music' };
+      const more = new PagedDomElement('button');
+      more.isConnected = moreConnected;
+      const successor = new PagedDomElement('button');
+      successor.className = 'library-folder-directory-row';
+      successor.focus = () => { successor.focused = true; };
+      let rows = [];
+      const section = new PagedDomElement('section');
+      section.dataset.folderBrowseKey = 'folder-1\0A';
+      section.querySelector = selector => selector === '.library-folder-directory-more' ? more : null;
+      section.querySelectorAll = selector => selector === '.library-folder-directory-row' ? rows : [];
+      view.content = {
+        querySelector(selector) {
+          return selector === '.library-folder-directory-section' ? section : null;
+        }
+      };
+      view.folderChildrenState = {
+        key: 'folder-1\0A',
+        requestId: view.folderBrowseRequestId,
+        intentId: view.navigationIntentId,
+        browseGeneration: view.folderBrowseGeneration,
+        children: [], cursor: null, hasMore: true, nodeExists: true, loading: false, error: false
+      };
+      view.renderFolderDirectorySection = () => { rows = [successor]; };
+      document.activeElement = more;
+
+      await view.loadFolderChildren(section, 0, { append: true, preserveFocus });
+      assert.notEqual(successor.focused, true);
+    }
+  });
+});
+
+test('append failure keeps existing rows and its Retry preserves activation modality and busy guard', () => {
+  const document = {
+    activeElement: null,
+    createElement: tagName => new PagedDomElement(tagName)
+  };
+  return withGlobals({ document }, () => {
+    const view = new LibraryView({ manager: createPagedManager(), uiManager: {} });
+    view.currentView = 'folders';
+    view.detail = { type: 'folderNode', folderId: 'folder-1', path: 'A', title: 'Music' };
+    view.folderChildrenState = {
+      key: 'folder-1\0A',
+      requestId: view.folderBrowseRequestId,
+      intentId: view.navigationIntentId,
+      browseGeneration: view.folderBrowseGeneration,
+      children: [{ name: 'First', directTrackCount: 1, recursiveTrackCount: 1 }],
+      cursor: 'First', hasMore: true, nodeExists: true, loading: false, error: true
+    };
+    const calls = [];
+    view.loadFolderChildren = (_section, _count, options) => { calls.push(options); };
+    const section = new PagedDomElement('section');
+    section.dataset.folderBrowseKey = 'folder-1\0A';
+
+    view.renderFolderDirectorySection(section, 1);
+    const list = section.children[0];
+    const failure = section.children[1];
+    const retry = failure.children[1];
+    assert.equal(list.className, 'library-folder-directory-list');
+    assert.equal(list.children[0].dataset.folderPath, 'A/First');
+    assert.match(failure.className, /library-folder-directory-append-error/);
+
+    retry.listeners.get('click')({ detail: 1 });
+    retry.listeners.get('click')({ detail: 0 });
+    assert.deepEqual(calls, [
+      { append: true, preserveFocus: false },
+      { append: true, preserveFocus: true }
+    ]);
+    view.folderChildrenState.loading = true;
+    let prevented = 0;
+    retry.listeners.get('click')({ detail: 0, preventDefault() { prevented += 1; } });
+    assert.equal(prevented, 1);
+    assert.equal(calls.length, 2);
+
+    view.folderChildrenState = {
+      ...view.folderChildrenState,
+      children: [], loading: false, error: true
+    };
+    const initialFailureSection = new PagedDomElement('section');
+    initialFailureSection.dataset.folderBrowseKey = 'folder-1\0A';
+    view.renderFolderDirectorySection(initialFailureSection, 0);
+    assert.equal(initialFailureSection.children.length, 1);
+    assert.doesNotMatch(initialFailureSection.children[0].className, /append-error/);
+  });
+});
+
+test('append Retry hands keyboard focus through success and repeated failure without pointer focus theft', async () => {
+  const document = { activeElement: null };
+  await withGlobals({ document }, async () => {
+    const run = async ({ preserveFocus, reject }) => {
+      const manager = createPagedManager();
+      manager.browseFolderChildren = async () => {
+        if (reject) throw new Error('expected retry failure');
+        return {
+          children: [{ name: 'Second', directTrackCount: 1, recursiveTrackCount: 1 }],
+          hasMore: false, cursor: null, nodeExists: true
+        };
+      };
+      const view = new LibraryView({ manager, uiManager: {} });
+      view.currentView = 'folders';
+      view.detail = { type: 'folderNode', folderId: 'folder-1', path: 'A', title: 'Music' };
+      view.folderChildrenState = {
+        key: 'folder-1\0A',
+        requestId: view.folderBrowseRequestId,
+        intentId: view.navigationIntentId,
+        browseGeneration: view.folderBrowseGeneration,
+        children: [{ name: 'First', directTrackCount: 1, recursiveTrackCount: 1 }],
+        cursor: 'First', hasMore: true, nodeExists: true, loading: false, error: true
+      };
+      const existingRow = new PagedDomElement('button');
+      const retry = new PagedDomElement('button');
+      let liveRetry = retry;
+      let rows = [existingRow];
+      let successor = null;
+      const section = new PagedDomElement('section');
+      section.dataset.folderBrowseKey = 'folder-1\0A';
+      section.querySelector = selector => {
+        if (selector === '.library-folder-directory-retry') return liveRetry;
+        return null;
+      };
+      section.querySelectorAll = selector => selector === '.library-folder-directory-row' ? rows : [];
+      view.content = {
+        querySelector(selector) {
+          return selector === '.library-folder-directory-section' ? section : null;
+        }
+      };
+      view.renderFolderDirectorySection = () => {
+        retry.isConnected = false;
+        if (view.folderChildrenState.error) {
+          successor = new PagedDomElement('button');
+          successor.className = 'library-folder-directory-retry';
+          liveRetry = successor;
+        } else {
+          successor = new PagedDomElement('button');
+          successor.className = 'library-folder-directory-row';
+          rows = [existingRow, successor];
+          liveRetry = null;
+        }
+        successor.focus = options => {
+          successor.focusOptions = options;
+          document.activeElement = successor;
+        };
+        return false;
+      };
+      document.activeElement = retry;
+
+      await view.loadFolderChildren(section, 1, { append: true, preserveFocus });
+      return { retry, successor };
+    };
+
+    const succeeded = await run({ preserveFocus: true, reject: false });
+    assert.equal(document.activeElement, succeeded.successor);
+    assert.deepEqual(succeeded.successor.focusOptions, { preventScroll: true });
+
+    const failed = await run({ preserveFocus: true, reject: true });
+    assert.equal(document.activeElement, failed.successor);
+    assert.equal(failed.successor.className, 'library-folder-directory-retry');
+    assert.deepEqual(failed.successor.focusOptions, { preventScroll: true });
+
+    const pointer = await run({ preserveFocus: false, reject: false });
+    assert.notEqual(document.activeElement, pointer.successor);
+    assert.equal(pointer.successor.focusOptions, undefined);
+  });
+});
+
+test('Back pending child focus wins over generic keyboard append focus', async () => {
+  const document = { activeElement: null };
+  await withGlobals({ document }, async () => {
+    const manager = createPagedManager();
+    manager.browseFolderChildren = async () => ({
+      children: [
+        { name: 'Second', directTrackCount: 1, recursiveTrackCount: 1 },
+        { name: 'Third', directTrackCount: 1, recursiveTrackCount: 1 }
+      ],
+      hasMore: false, cursor: null, nodeExists: true
+    });
+    const view = new LibraryView({ manager, uiManager: {} });
+    view.currentView = 'folders';
+    view.detail = { type: 'folderNode', folderId: 'folder-1', path: 'A', title: 'Music' };
+    view.pendingFolderFocusPath = 'A/Third';
+    view.folderChildrenState = {
+      key: 'folder-1\0A',
+      requestId: view.folderBrowseRequestId,
+      intentId: view.navigationIntentId,
+      browseGeneration: view.folderBrowseGeneration,
+      children: [{ name: 'First', directTrackCount: 1, recursiveTrackCount: 1 }],
+      cursor: 'First', hasMore: true, nodeExists: true, loading: false, error: false
+    };
+    const more = new PagedDomElement('button');
+    let rows = [];
+    const section = new PagedDomElement('section');
+    section.dataset.folderBrowseKey = 'folder-1\0A';
+    section.querySelector = selector => selector === '.library-folder-directory-more' ? more : null;
+    section.querySelectorAll = selector => selector === '.library-folder-directory-row' ? rows : [];
+    view.content = {
+      querySelector(selector) {
+        return selector === '.library-folder-directory-section' ? section : null;
+      }
+    };
+    let second = null;
+    let third = null;
+    view.renderFolderDirectorySection = target => {
+      more.isConnected = false;
+      second = new PagedDomElement('button');
+      second.className = 'library-folder-directory-row';
+      second.dataset.folderPath = 'A/Second';
+      second.focus = options => {
+        second.focusOptions = options;
+        document.activeElement = second;
+      };
+      third = new PagedDomElement('button');
+      third.className = 'library-folder-directory-row';
+      third.dataset.folderPath = 'A/Third';
+      third.focus = options => {
+        third.focusOptions = options;
+        document.activeElement = third;
+      };
+      rows = [new PagedDomElement('button'), second, third];
+      return view.focusPendingFolderRow(target);
+    };
+    document.activeElement = more;
+
+    await view.loadFolderChildren(section, 1, { append: true, preserveFocus: true });
+    assert.equal(document.activeElement, third);
+    assert.deepEqual(third.focusOptions, { preventScroll: true });
+    assert.equal(second.focusOptions, undefined);
+    assert.equal(view.pendingFolderFocusPath, null);
+  });
+});
+
+test('folder search clears before every back path and mobile parent pop restores child focus', async () => {
+  const historyCalls = [];
+  const history = {
+    state: null,
+    backCount: 0,
+    back() { this.backCount += 1; },
+    replaceState(state) { this.state = state; historyCalls.push(['replace', state]); },
+    pushState(state) { this.state = state; historyCalls.push(['push', state]); }
+  };
+  const body = {
+    classList: {
+      contains: name => name === 'layout-mobile' || name === 'view-library'
+    }
+  };
+  await withGlobals({ document: { body }, history }, async () => {
+    const view = new LibraryView({ manager: createPagedManager(), uiManager: {} });
+    view.render = () => {};
+    view.currentView = 'folders';
+    view.detail = { type: 'folderNode', folderId: 'folder-1', path: 'A/B', title: 'Music' };
+    view.searchQuery = 'needle';
+    view.searchInput = { value: 'needle' };
+    view.mobileHistoryDepth = 2;
+    view.mobileHistoryIndex = 2;
+
+    let prevented = 0;
+    view.handleContentKeyDown({
+      key: 'Backspace',
+      target: null,
+      preventDefault() { prevented += 1; }
+    });
+    assert.equal(prevented, 1);
+    assert.equal(view.detail.path, 'A/B');
+    assert.equal(view.searchQuery, '');
+    assert.equal(history.backCount, 0);
+
+    view.searchQuery = 'needle';
+    view.searchInput.value = 'needle';
+    assert.equal(view.navigateBack(), true);
+    assert.equal(view.detail.path, 'A/B');
+    assert.equal(view.searchQuery, '');
+    assert.equal(history.backCount, 0);
+
+    view.searchQuery = 'needle';
+    view.searchInput.value = 'needle';
+    view.handleMobilePopState({
+      state: {
+        effetuneLibrary: true,
+        index: 1,
+        depth: 1,
+        snapshot: {
+          currentView: 'folders',
+          detail: { type: 'folderNode', folderId: 'folder-1', path: 'A', title: 'Music' },
+          searchQuery: ''
+        }
+      }
+    });
+    assert.equal(view.detail.path, 'A/B');
+    assert.equal(view.searchQuery, '');
+    assert.equal(view.mobileHistoryIndex, 2);
+    assert.equal(view.mobileHistoryDepth, 2);
+    assert.equal(historyCalls.at(-1)[0], 'push');
+    assert.equal(historyCalls.at(-1)[1].snapshot.detail.path, 'A/B');
+
+    view.handleMobilePopState({
+      state: {
+        effetuneLibrary: true,
+        index: 1,
+        depth: 1,
+        snapshot: {
+          currentView: 'folders',
+          detail: { type: 'folderNode', folderId: 'folder-1', path: 'A', title: 'Music' },
+          searchQuery: ''
+        }
+      }
+    });
+    assert.equal(view.detail.path, 'A');
+    assert.equal(view.pendingFolderFocusPath, 'A/B');
+  });
+});
+
+test('missing folder nodes use an existing mobile parent entry or replace the current snapshot', async () => {
+  const historyCalls = [];
+  const history = {
+    state: { effetuneLibrary: true, index: 0, depth: 0, snapshot: null },
+    backCount: 0,
+    pushCount: 0,
+    back() { this.backCount += 1; },
+    pushState() { this.pushCount += 1; },
+    replaceState(state) { this.state = state; historyCalls.push(state); }
+  };
+  const body = {
+    classList: {
+      contains: name => name === 'layout-mobile' || name === 'view-library'
+    }
+  };
+  await withGlobals({ document: { body }, history }, async () => {
+    const manager = createPagedManager();
+    manager.browseFolderChildren = async () => ({
+      children: [], hasMore: false, cursor: null, nodeExists: false
+    });
+    const view = new LibraryView({ manager, uiManager: {} });
+    view.render = () => {};
+    view.renderFolderDirectorySection = () => {};
+    view.currentView = 'folders';
+    view.detail = { type: 'folderNode', folderId: 'folder-1', path: 'A/B', title: 'Music' };
+    view.mobileHistoryDepth = 1;
+    await view.loadFolderChildren(new PagedDomElement('section'), 0);
+    assert.equal(history.backCount, 1);
+    assert.equal(view.detail.path, 'A/B');
+
+    view.mobileHistoryDepth = 0;
+    await view.loadFolderChildren(new PagedDomElement('section'), 0);
+    assert.equal(history.backCount, 1);
+    assert.equal(view.detail.path, 'A');
+    assert.equal(history.pushCount, 0);
+    assert.equal(historyCalls.at(-1).snapshot.detail.path, 'A');
+  });
 });
 
 test('artwork collections and playlists expose and retain their database sort orders', async () => {
@@ -631,6 +1686,78 @@ test('all-results search uses paging, preserves the query, and returns to track 
   assert.equal(view.searchEntityType, null);
   assert.equal(view.searchInput.value, 'needle');
   assert.equal(renders, 2);
+});
+
+test('folder Search all-results Back and Escape restore the saved folder path', async () => {
+  const document = {
+    body: { classList: { contains: () => false } },
+    querySelector: () => null
+  };
+  await withGlobals({ document }, () => {
+    for (const exit of ['back', 'escape']) {
+      const view = new LibraryView({ manager: createPagedManager(), uiManager: {} });
+      view.render = () => {};
+      view.currentView = 'folders';
+      view.detail = {
+        type: 'folder',
+        folderId: 'folder-1',
+        title: 'Music'
+      };
+      view.searchQuery = 'needle';
+      view.searchInput = { value: 'needle' };
+
+      assert.equal(view.navigateToSearchEntityResults('artist', { pushHistory: false }), true);
+      if (exit === 'back') {
+        assert.equal(view.navigateBack(), true);
+      } else {
+        assert.equal(view.handleLibraryEscape({ preventDefault() {} }), true);
+      }
+      assert.deepEqual(view.detail, {
+        type: 'folderNode',
+        folderId: 'folder-1',
+        path: '',
+        title: 'Music'
+      });
+      assert.equal(view.currentView, 'folders');
+      assert.equal(view.searchQuery, 'needle');
+      assert.equal(view.searchInput.value, 'needle');
+      assert.equal(view.searchEntityType, null);
+    }
+  });
+});
+
+test('folder Search show-all preserves the outer Folders collection return snapshot', async () => {
+  const document = {
+    body: { classList: { contains: () => false } },
+    querySelector: () => null
+  };
+  await withGlobals({ document }, () => {
+    const view = new LibraryView({ manager: createPagedManager(), uiManager: {} });
+    view.render = () => {};
+    view.currentView = 'folders';
+    view.content = new PagedDomElement('main');
+    view.content.scrollTop = 880;
+    view.navigateToDetail({
+      type: 'folderNode', folderId: 'folder-1', path: '', title: 'Music'
+    }, null, { pushHistory: false });
+    const collectionReturnSnapshot = view.navigationReturnSnapshot;
+    view.searchQuery = 'needle';
+    view.searchInput = { value: 'needle' };
+
+    assert.equal(view.navigateToSearchEntityResults('artist', { pushHistory: false }), true);
+    assert.equal(view.navigationReturnSnapshot, collectionReturnSnapshot);
+    assert.equal(view.navigateBack(), true);
+    assert.equal(view.navigationReturnSnapshot, collectionReturnSnapshot);
+    assert.equal(view.detail.path, '');
+    assert.equal(view.searchQuery, 'needle');
+
+    assert.equal(view.handleLibraryEscape({ preventDefault() {} }), true);
+    assert.equal(view.searchQuery, '');
+    assert.equal(view.navigateBack({ fromPopState: true }), true);
+    assert.equal(view.detail, null);
+    assert.equal(view.currentView, 'folders');
+    assert.equal(view.pendingPagedNavigationPosition.contentScrollTop, 880);
+  });
 });
 
 test('mobile history restores the search summary after opening all entity results', async () => {
@@ -3863,6 +4990,41 @@ test('unrelated invalidations preserve the active page, viewport, and selection'
 
   assert.equal(view.pagedQueryKey, 'active-query');
   assert.equal(view.pagedViewportOrdinal, 4567);
+});
+
+test('folder invalidation expires offscreen browse pages before visible-query early return', () => {
+  const view = new LibraryView({ manager: createPagedManager(), uiManager: {} });
+  view.currentView = 'artists';
+  view.searchQuery = 'needle';
+  view.searchEntityType = 'artist';
+  view.pagedQueryKey = 'show-all-query';
+  view.renderPagedNav = () => {};
+  view.renderPagedStatus = () => {};
+  const targetKey = 'folder-1\0Parent';
+  const otherKey = 'folder-2\0Parent';
+  const cached = key => ({
+    folderBrowseState: {
+      key,
+      browseGeneration: view.folderBrowseGeneration,
+      children: [{ name: 'Stale', directTrackCount: 1, recursiveTrackCount: 1 }],
+      cursor: null,
+      hasMore: false,
+      nodeExists: true
+    }
+  });
+  view.folderNavigationPositions.set(targetKey, cached(targetKey));
+  view.folderNavigationPositions.set(otherKey, cached(otherKey));
+
+  view.handleCatalogInvalidation({ changedScopes: ['folder:folder-1'] });
+
+  assert.equal(view.pagedQueryKey, 'show-all-query');
+  assert.equal(view.folderNavigationPositions.has(targetKey), false);
+  assert.equal(view.folderNavigationPositions.has(otherKey), true);
+
+  const generation = view.folderBrowseGeneration;
+  view.handleCatalogInvalidation({ changedScopes: ['tracks'] });
+  assert.equal(view.folderBrowseGeneration, generation + 1);
+  assert.equal(view.folderNavigationPositions.size, 0);
 });
 
 test('Search summary invalidation includes Albums, Artists, and Playlists previews', () => {

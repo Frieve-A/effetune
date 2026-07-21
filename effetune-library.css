@@ -212,9 +212,133 @@ body.view-library:not(.layout-mobile) .library-header {
 .library-paged-entity-open:focus-visible,
 .library-card-play:focus-visible,
 .library-simple-row:focus-visible,
-.library-entity-sort-select:focus-visible {
+.library-entity-sort-select:focus-visible,
+.library-folder-breadcrumb:focus-visible,
+.library-folder-directory-row:focus-visible {
   outline: none;
   box-shadow: var(--library-focus-ring);
+}
+
+.library-section-head.library-folder-detail-head {
+  height: auto;
+  min-height: 32px;
+  flex-wrap: wrap;
+}
+
+.library-folder-browse-controls {
+  display: flex;
+  flex: 1 1 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.library-folder-breadcrumbs {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--library-muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.library-folder-breadcrumb {
+  max-width: 180px;
+  padding: 2px 4px;
+  overflow: hidden;
+  color: var(--library-text);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.library-folder-breadcrumb:disabled {
+  color: var(--library-muted);
+  cursor: default;
+}
+
+.library-folder-directory-section {
+  margin: 0 0 16px;
+}
+
+.library-folder-directory-section h3,
+.library-folder-tracks-heading {
+  margin: 0 0 8px;
+  color: var(--library-text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.library-folder-directory-list {
+  overflow: hidden;
+  border: 1px solid var(--library-border);
+  border-radius: 7px;
+}
+
+.library-folder-directory-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  width: 100%;
+  min-height: 40px;
+  padding: 7px 10px;
+  align-items: center;
+  gap: 8px;
+  color: var(--library-text);
+  text-align: start;
+  background: var(--library-panel);
+  border: 0;
+  border-bottom: 1px solid var(--library-border);
+  cursor: pointer;
+}
+
+.library-folder-directory-row:last-child {
+  border-bottom: 0;
+}
+
+.library-folder-directory-row:hover {
+  background: var(--library-row-hover);
+}
+
+.library-folder-directory-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-folder-directory-count,
+.library-folder-directory-status {
+  color: var(--library-muted);
+  font-size: 13px;
+}
+
+.library-folder-directory-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.library-folder-directory-more {
+  margin-top: 8px;
+}
+
+body.layout-mobile .library-folder-browse-controls {
+  align-items: stretch;
+  flex-direction: column;
+  gap: 8px;
+}
+
+body.layout-mobile .library-folder-view-toggle {
+  align-self: flex-start;
+}
+
+body.layout-mobile .library-folder-directory-row {
+  min-height: 36px;
+  padding: 5px 8px;
 }
 
 .library-header-actions,

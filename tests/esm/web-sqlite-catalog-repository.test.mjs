@@ -111,6 +111,241 @@ test('Electron and Web catalogs expose the scan-folder track-count command', () 
   }
 });
 
+test('Web folder directory browsing keeps physical hierarchy counts and direct-track scopes exact', async t => {
+  const { database, close } = await openWebTestCatalog(t, 'effetune-web-directory-tree-');
+  seedWebTestFolder();
+  dispatchWebSqliteCommand('upsertTracks', { tracks: [
+    createWebTestTrack('root', 'Root.flac', { metadataStatus: 'parsing' }),
+    createWebTestTrack('a-direct', 'A/Direct.flac', { metadataStatus: 'terminal-error' }),
+    createWebTestTrack('a-deep-1', 'A/B/One.flac'),
+    createWebTestTrack('a-deep-2', 'A/B/Two.flac'),
+    createWebTestTrack('a2-direct', 'A2/Other.flac'),
+    createWebTestTrack('percent', '%_/Track.flac'),
+    createWebTestTrack('cafe', 'Cafe/Track.flac'),
+    createWebTestTrack('accent', 'Café/Track.flac'),
+    createWebTestTrack('fullwidth', 'A／B/Track.flac'),
+    createWebTestTrack('unicode', '音楽😀/子/Track.flac')
+  ] });
+
+  assertDirectoriesMatchTracks(database);
+  assert.deepEqual(dispatchWebSqliteCommand('browseFolderChildren', {
+    folderId: 'web-folder', path: '', limit: 20
+  }), {
+    children: [
+      { name: '%_', directTrackCount: 1, recursiveTrackCount: 1 },
+      { name: 'A', directTrackCount: 1, recursiveTrackCount: 3 },
+      { name: 'A2', directTrackCount: 1, recursiveTrackCount: 1 },
+      { name: 'A／B', directTrackCount: 1, recursiveTrackCount: 1 },
+      { name: 'Cafe', directTrackCount: 1, recursiveTrackCount: 1 },
+      { name: 'Café', directTrackCount: 1, recursiveTrackCount: 1 },
+      { name: '音楽😀', directTrackCount: 0, recursiveTrackCount: 1 }
+    ],
+    hasMore: false,
+    cursor: null,
+    nodeExists: true
+  });
+  assert.deepEqual(dispatchWebSqliteCommand('browseFolderChildren', {
+    folderId: 'web-folder', path: 'A', limit: 20
+  }), {
+    children: [{ name: 'B', directTrackCount: 2, recursiveTrackCount: 2 }],
+    hasMore: false,
+    cursor: null,
+    nodeExists: true
+  });
+  assert.deepEqual(dispatchWebSqliteCommand('browseFolderChildren', {
+    folderId: 'web-folder', path: '音楽😀', limit: 20
+  }).children, [{ name: '子', directTrackCount: 1, recursiveTrackCount: 1 }]);
+  assert.equal(dispatchWebSqliteCommand('browseFolderChildren', {
+    folderId: 'web-folder', path: 'Missing/Node', limit: 20
+  }).nodeExists, false);
+
+  const rootScope = createFolderDirScope('web-folder', '');
+  const nestedScope = createFolderDirScope('web-folder', 'A');
+  const rootPage = dispatchWebSqliteCommand('queryTracks', {
+    query: '', sort: 'title', direction: 'asc', scope: rootScope, limit: 20
+  });
+  assert.deepEqual(rootPage.rows.map(row => row.trackUid), ['root']);
+  const nestedPage = dispatchWebSqliteCommand('queryTracks', {
+    query: '', sort: 'title', direction: 'asc', scope: nestedScope, limit: 20
+  });
+  assert.deepEqual(nestedPage.rows.map(row => row.trackUid), ['a-direct']);
+  const context = dispatchWebSqliteCommand('createContext', {
+    query: '', sort: 'title', direction: 'asc', scope: nestedScope
+  });
+  assert.equal(dispatchWebSqliteCommand('getContextCount', {
+    contextToken: context.contextToken
+  }).totalCount, 1);
+  const boundaryFolderId = '音'.repeat(512);
+  const boundaryPath = 'a'.repeat(32768);
+  const boundaryContext = dispatchWebSqliteCommand('createContext', {
+    query: '', sort: 'title', direction: 'asc',
+    scope: createFolderDirScope(boundaryFolderId, boundaryPath)
+  });
+  assert.equal(dispatchWebSqliteCommand('getContextCount', {
+    contextToken: boundaryContext.contextToken
+  }).totalCount, 0);
+  dispatchWebSqliteCommand('releaseContext', { contextToken: boundaryContext.contextToken });
+  assert.throws(() => dispatchWebSqliteCommand('createContext', {
+    query: '', sort: 'title', direction: 'asc',
+    scope: createFolderDirScope(boundaryFolderId, `${boundaryPath}a`)
+  }));
+
+  dispatchWebSqliteCommand('upsertTracks', {
+    tracks: [createWebTestTrack('a-deep-1', 'Moved/One.flac')]
+  });
+  dispatchWebSqliteCommand('deleteTracks', { trackUids: ['a-deep-2'] });
+  assertDirectoriesMatchTracks(database);
+  assert.equal(dispatchWebSqliteCommand('browseFolderChildren', {
+    folderId: 'web-folder', path: 'A', limit: 20
+  }).children.length, 0);
+
+  const continuationPlan = database.prepare(`
+    EXPLAIN QUERY PLAN
+    SELECT name FROM directories
+    WHERE folder_id = ? AND parent_path = ? AND name > ?
+    ORDER BY name LIMIT ?
+  `).all('web-folder', '', 'A', 10);
+  assert.ok(continuationPlan.some(row => (
+    String(row.detail).includes('directories_by_parent') &&
+    String(row.detail).includes('name>?')
+  )), JSON.stringify(continuationPlan));
+  const directTrackPlan = database.prepare(`
+    EXPLAIN QUERY PLAN
+    SELECT track_uid FROM tracks
+    WHERE folder_id = ? AND relative_path >= ? || '/' AND relative_path < ? || '0'
+      AND instr(substr(relative_path, length(?) + 2), '/') = 0
+  `).all('web-folder', 'A', 'A', 'A');
+  assert.ok(directTrackPlan.some(row => (
+    String(row.detail).includes('tracks_by_folder_relative_path') &&
+    String(row.detail).includes('relative_path>?')
+  )), JSON.stringify(directTrackPlan));
+  const rootDirectTrackPlan = database.prepare(`
+    EXPLAIN QUERY PLAN
+    SELECT count(*) FROM tracks INDEXED BY tracks_root_direct_by_folder
+    WHERE folder_id = ? AND instr(relative_path, '/') = 0
+  `).all('web-folder');
+  assert.ok(rootDirectTrackPlan.some(row => (
+    String(row.detail).includes('tracks_root_direct_by_folder') &&
+    String(row.detail).includes('folder_id=?')
+  )), JSON.stringify(rootDirectTrackPlan));
+  const directoryCleanupPlan = database.prepare(`
+    EXPLAIN QUERY PLAN
+    DELETE FROM directories
+    WHERE folder_id = ? AND relative_path = ? AND recursive_track_count = 0
+  `).all('web-folder', 'A');
+  assert.ok(directoryCleanupPlan.some(row => (
+    String(row.detail).includes('sqlite_autoindex_directories_1') &&
+    String(row.detail).includes('folder_id=? AND relative_path=?')
+  )), JSON.stringify(directoryCleanupPlan));
+  const runtimeSource = fs.readFileSync(
+    new URL('../../js/library/repository/web-sqlite-runtime.js', import.meta.url),
+    'utf8'
+  );
+  assert.match(runtimeSource, /DELETE FROM directories\s+WHERE folder_id = \? AND relative_path = \? AND recursive_track_count = 0/);
+  assert.doesNotMatch(runtimeSource, /DELETE FROM directories WHERE folder_id = \? AND recursive_track_count = 0/);
+  assert.match(runtimeSource, /folder_id = \?[\s\S]*instr\(t\.relative_path, '\/'\) = 0/);
+
+  for (const request of [
+    { folderId: 'web-folder', path: '', limit: 20, extra: true },
+    { folderId: '', path: '', limit: 20 },
+    { folderId: 'web-folder', path: '..', limit: 20 },
+    { folderId: 'web-folder', path: '/A', limit: 20 },
+    { folderId: 'web-folder', path: 'A/', limit: 20 },
+    { folderId: 'web-folder', path: 'A\\B', limit: 20 },
+    { folderId: 'web-folder', path: './A', limit: 20 },
+    { folderId: 'web-folder', path: '', cursor: 'A/B', limit: 20 },
+    { folderId: 'web-folder', path: '', cursor: '', limit: 20 },
+    { folderId: 'web-folder', path: '', limit: 501 }
+  ]) {
+    assert.throws(() => dispatchWebSqliteCommand('browseFolderChildren', request));
+  }
+  for (const scope of [
+    { folderDirKey: '' },
+    { folderDirKey: '01:x' },
+    { folderDirKey: '3:ab' },
+    { folderDirKey: '1:xA/' },
+    { folderDirKey: '1:x', folderKey: 'x' }
+  ]) {
+    assert.throws(() => dispatchWebSqliteCommand('createContext', {
+      query: '', sort: 'title', direction: 'asc', scope
+    }));
+  }
+  close();
+});
+
+test('Web folder child cursors preserve binary order without duplicates or omissions', async t => {
+  const { close } = await openWebTestCatalog(t, 'effetune-web-directory-cursor-');
+  seedWebTestFolder();
+  const names = Array.from({ length: 505 }, (_, index) => `Child-${String(index).padStart(4, '0')}`);
+  dispatchWebSqliteCommand('upsertTracks', {
+    tracks: names.map((name, index) => createWebTestTrack(`fanout-${index}`, `${name}/Track.flac`))
+  });
+  const seen = [];
+  let cursor = null;
+  do {
+    const page = dispatchWebSqliteCommand('browseFolderChildren', {
+      folderId: 'web-folder', path: '', cursor, limit: 137
+    });
+    seen.push(...page.children.map(child => child.name));
+    cursor = page.cursor;
+    if (!page.hasMore) break;
+  } while (cursor !== null);
+  assert.deepEqual(seen, names);
+  assert.equal(new Set(seen).size, names.length);
+  close();
+});
+
+test('Web startup rebuilds directory rows when generation and watermark diverge', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-web-directory-rebuild-'));
+  const dbPath = path.join(directory, 'catalog.sqlite');
+  let database = new DatabaseSync(dbPath);
+  let open = true;
+  t.after(() => {
+    if (open) dispatchWebSqliteCommand('close', {});
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+  const options = {
+    storageManager: { async estimate() { return { quota: 1024 * 1024 * 1024, usage: 0 }; } }
+  };
+  await initializeWebSqliteRuntime(database, options);
+  seedWebTestFolder();
+  dispatchWebSqliteCommand('upsertTracks', {
+    tracks: [createWebTestTrack('legacy-move', 'Before/Track.flac')]
+  });
+  const synchronized = database.prepare(`
+    SELECT
+      (SELECT generation FROM directories_sync WHERE id = 1) AS generation,
+      (SELECT CAST(value AS INTEGER) FROM meta WHERE key = 'directories_watermark') AS watermark
+  `).get();
+  assert.equal(synchronized.generation, synchronized.watermark);
+
+  database.prepare(`
+    UPDATE tracks SET relative_path = 'After/Track.flac' WHERE track_uid = 'legacy-move'
+  `).run();
+  const divergent = database.prepare(`
+    SELECT
+      (SELECT generation FROM directories_sync WHERE id = 1) AS generation,
+      (SELECT CAST(value AS INTEGER) FROM meta WHERE key = 'directories_watermark') AS watermark
+  `).get();
+  assert.ok(divergent.generation > divergent.watermark);
+  dispatchWebSqliteCommand('close', {});
+  open = false;
+
+  database = new DatabaseSync(dbPath);
+  await initializeWebSqliteRuntime(database, options);
+  open = true;
+  assertDirectoriesMatchTracks(database);
+  assert.deepEqual(dispatchWebSqliteCommand('browseFolderChildren', {
+    folderId: 'web-folder', path: '', limit: 20
+  }).children, [{ name: 'After', directTrackCount: 1, recursiveTrackCount: 1 }]);
+  const rebuilt = database.prepare(`
+    SELECT
+      (SELECT generation FROM directories_sync WHERE id = 1) AS generation,
+      (SELECT CAST(value AS INTEGER) FROM meta WHERE key = 'directories_watermark') AS watermark
+  `).get();
+  assert.equal(rebuilt.generation, rebuilt.watermark);
+});
+
 test('Web scans reparse unchanged tracks from the previous parser and preserve a resumed parser version', async t => {
   const { database, close } = await openWebTestCatalog(t, 'effetune-web-parser-version-');
   seedWebTestFolder();
@@ -350,6 +585,7 @@ test('Web SQLite deletion tombstones an offline folder', async t => {
     lifecycleVersion: 1,
     path: null
   });
+  assertDirectoriesMatchTracks(database);
   assert.deepEqual(dispatchWebSqliteCommand('removeScanFolder', {
     folderId: folder.id,
     expectedLifecycleVersion: 0
@@ -990,6 +1226,7 @@ test('Web CUE metadata claims keep the track UID while replacing the physical so
   assert.equal(completed.normalizedBasename, 'new.flac');
   assert.match(completed.searchText, /new\.flac/);
   assert.doesNotMatch(completed.searchText, /old\.flac/);
+  assertDirectoriesMatchTracks(database);
   close();
 });
 
@@ -1235,6 +1472,7 @@ test('Web retains CUE rows and playlists after pause, then cleans them in an eli
     folderId: 'web-folder', entryKey, cueRelativePath,
     relativePath, startFrame: 0, endFrame: 750
   });
+  assertDirectoriesMatchTracks(database);
   close();
 });
 
@@ -1395,6 +1633,69 @@ async function openWebTestCatalog(t, prefix) {
   });
   open = true;
   return { database, close };
+}
+
+function createWebTestTrack(trackUid, relativePath, overrides = {}) {
+  return {
+    trackUid,
+    folderId: 'web-folder',
+    relativePath,
+    fileName: path.posix.basename(relativePath),
+    title: trackUid,
+    artist: 'Artist',
+    albumArtist: 'Artist',
+    album: 'Album',
+    genre: 'Genre',
+    durationSec: 10,
+    ...overrides
+  };
+}
+
+function createFolderDirScope(folderId, directoryPath) {
+  return { folderDirKey: `${folderId.length}:${folderId}${directoryPath}` };
+}
+
+function assertDirectoriesMatchTracks(database) {
+  const expected = new Map();
+  for (const track of database.prepare(`
+    SELECT folder_id AS folderId, relative_path AS relativePath FROM tracks
+  `).all()) {
+    const segments = track.relativePath.split('/');
+    segments.pop();
+    let parentPath = '';
+    for (let index = 0; index < segments.length; index += 1) {
+      const name = segments[index];
+      const relativePath = parentPath === '' ? name : `${parentPath}/${name}`;
+      const key = `${track.folderId}\0${relativePath}`;
+      const row = expected.get(key) ?? {
+        folderId: track.folderId,
+        relativePath,
+        parentPath,
+        name,
+        directTrackCount: 0,
+        recursiveTrackCount: 0
+      };
+      row.recursiveTrackCount += 1;
+      if (index === segments.length - 1) row.directTrackCount += 1;
+      expected.set(key, row);
+      parentPath = relativePath;
+    }
+  }
+  const actual = database.prepare(`
+    SELECT folder_id AS folderId, relative_path AS relativePath, parent_path AS parentPath,
+      name, direct_track_count AS directTrackCount,
+      recursive_track_count AS recursiveTrackCount
+    FROM directories ORDER BY folder_id, relative_path
+  `).all().map(row => ({
+    ...row,
+    directTrackCount: Number(row.directTrackCount),
+    recursiveTrackCount: Number(row.recursiveTrackCount)
+  }));
+  assert.deepEqual(actual, [...expected.values()].sort((left, right) => {
+    if (left.folderId !== right.folderId) return left.folderId < right.folderId ? -1 : 1;
+    if (left.relativePath === right.relativePath) return 0;
+    return left.relativePath < right.relativePath ? -1 : 1;
+  }));
 }
 
 function seedWebTestFolder() {

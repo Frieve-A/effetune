@@ -4,6 +4,7 @@ import fs from 'node:fs';
 export const DEFAULT_FIXTURE_SEED = 0x5eed2026;
 export const DEFAULT_SCALE_SIZE = 10_000;
 export const DEFAULT_BATCH_SIZE = 1_000;
+export const FOLDER_TREE_FIRST_LEVEL_COUNT = 100_003;
 export const SCALE_PRESETS = Object.freeze({
   million: 1_000_000,
   boundary: 5_000_000
@@ -101,6 +102,28 @@ export function createCatalogTrack(index, seed = DEFAULT_FIXTURE_SEED) {
     sampleRate: index % 5 === 0 ? 96_000 : 48_000,
     codec: 'FLAC',
     addedAt: 1_700_000_000_000 + index
+  };
+}
+
+export function createFolderTreeScaleTrack(index, seed = DEFAULT_FIXTURE_SEED) {
+  const {
+    discNumber,
+    trackNumber,
+    ...track
+  } = createCatalogTrack(index, seed);
+  const firstLevel = index % FOLDER_TREE_FIRST_LEVEL_COUNT;
+  const cycle = Math.floor(index / FOLDER_TREE_FIRST_LEVEL_COUNT);
+  const secondLevel = Math.floor(cycle / 12);
+  return {
+    ...track,
+    discNo: discNumber,
+    trackNo: trackNumber,
+    folderId: 'folder-tree-scale',
+    relativePath: [
+      `Directory-${String(firstLevel).padStart(6, '0')}`,
+      `Album-${String(secondLevel).padStart(3, '0')}`,
+      track.fileName
+    ].join('/')
   };
 }
 

@@ -97,6 +97,18 @@ test('main-process utility host exposes one repository facade and relays invalid
   assert.deepEqual(await host.repository.getCounts({ scope: 'tracks' }), {
     target: 'repository', method: 'getCounts'
   });
+  const folderBrowseRequest = { folderId: 'folder', path: 'Albums', limit: 25 };
+  assert.deepEqual(await host.repository.browseFolderChildren(folderBrowseRequest), {
+    target: 'repository', method: 'browseFolderChildren'
+  });
+  const folderBrowseMessage = child.sent.find(message => (
+    message.type === 'request' && message.method === 'browseFolderChildren'
+  ));
+  assert.deepEqual({
+    target: folderBrowseMessage.target,
+    method: folderBrowseMessage.method,
+    args: folderBrowseMessage.args
+  }, { target: 'repository', method: 'browseFolderChildren', args: [folderBrowseRequest] });
   const recentlyPlayedRequest = { trackUid: 'track-1' };
   const favoriteRequest = { trackUid: 'track-2', favorite: true };
   const favoritePageRequest = { cursor: { position: 1024, itemKey: 7 }, limit: 25 };

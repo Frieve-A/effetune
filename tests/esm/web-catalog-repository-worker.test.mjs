@@ -34,6 +34,9 @@ test('Worker protocol accepts only versioned bounded method requests and forward
   let closed = false;
   const repository = {
     async open(options) { return { mode: options.mode }; },
+    async browseFolderChildren(request) {
+      return { ...request, children: [], hasMore: false, cursor: null, nodeExists: true };
+    },
     subscribeInvalidations(listener) {
       invalidationListener = listener;
       return () => { invalidationListener = null; };
@@ -64,6 +67,22 @@ test('Worker protocol accepts only versioned bounded method requests and forward
     requestId: 'open-1',
     ok: true,
     result: { mode: 'readwrite' }
+  });
+  scope.dispatch({
+    protocolVersion: WEB_CATALOG_WORKER_PROTOCOL_VERSION,
+    requestId: 'browse-1',
+    method: 'browseFolderChildren',
+    args: [{ folderId: 'folder-1', path: '', limit: 20 }]
+  });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.deepEqual(scope.messages.at(-1), {
+    protocolVersion: WEB_CATALOG_WORKER_PROTOCOL_VERSION,
+    requestId: 'browse-1',
+    ok: true,
+    result: {
+      folderId: 'folder-1', path: '', limit: 20,
+      children: [], hasMore: false, cursor: null, nodeExists: true
+    }
   });
   invalidationListener({ catalogVersion: 1, changedScopes: ['tracks'] });
   assert.equal(scope.messages.at(-1).type, 'invalidation');
@@ -319,6 +338,7 @@ test('client maps its catalog, scan, operation, and playlist API to the versione
     ['createContext', [{ endpoint: 'tracks', query: '' }], 'createContext'],
     ['releaseContext', ['context-1'], 'releaseContext'],
     ['queryTracks', [{ query: '', limit: 20 }], 'queryTracks'],
+    ['browseFolderChildren', [{ folderId: 'folder-1', path: '', limit: 20 }], 'browseFolderChildren'],
     ['queryEntities', [{ type: 'album', query: '', limit: 20 }], 'queryEntities'],
     ['getContextCount', [{ contextToken: 'context-1' }], 'getContextCount'],
     ['readContextPageAtOrdinal', [{ contextToken: 'context-1', ordinal: 0, limit: 20 }], 'readContextPageAtOrdinal'],

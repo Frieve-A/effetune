@@ -21,6 +21,9 @@ const MAX_QUERY_TOKEN_CHARACTERS = 128;
 const FOLDER_DELETION_TRACKS_PER_CHUNK = 100;
 const DELETION_MAINTENANCE_DELAY_MS = 50;
 const MAX_TRACK_TEXT_CHARACTERS = 4096;
+const MAX_DIRECTORY_PATH_CHARACTERS = 32768;
+const MAX_FOLDER_DIRECTORY_KEY_CHARACTERS = 33536;
+const DIRECTORY_RESPONSE_BYTE_BUDGET = 512 * 1024;
 const MAX_ARTWORK_RAW_BYTES = 20 * 1024 * 1024;
 const MAX_ARTWORK_THUMBNAIL_BYTES = 512 * 1024;
 const ARTWORK_STORAGE_SAFETY_MIN_BYTES = 256 * 1024 * 1024;
@@ -64,6 +67,7 @@ const SEARCH_FIELDS = Object.freeze([
 const TRACK_SCOPE_FIELDS = Object.freeze([
   'folderId',
   'folderKey',
+  'folderDirKey',
   'albumKey',
   'artistKey',
   'genreKey',
@@ -498,6 +502,7 @@ async function initialize() {
   database.prepare('DELETE FROM artwork_claims').run();
   verifyPragmas();
   initializeMetadata(schema.MUSIC_LIBRARY_SCHEMA_VERSION, schema.MUSIC_LIBRARY_COLLATION_VERSION);
+  ensureDirectoriesSynchronized();
   recoverInterruptedOperations();
   removeLegacyPlaybackOperations();
   recoverInterruptedScans();
@@ -744,6 +749,7 @@ function dispatchCommand(command, payload) {
     case 'createContext': return createContext(payload);
     case 'getContextCount': return getContextCount(payload);
     case 'queryTracks': return queryTracks(payload);
+    case 'browseFolderChildren': return browseFolderChildren(payload);
     case 'queryEntities': return queryEntities(payload);
     case 'readContextPage': return readContextPage(payload);
     case 'readContextPageAtOrdinal': return readContextPageAtOrdinal(payload);
@@ -1044,6 +1050,10 @@ function upsertTracks(payload) {
     UPDATE search_index_control SET deferred = ? WHERE singleton = 1
   `);
   return commitMutation(['tracks'], 'upsert-tracks', () => {
+    const existingLocations = new Map(database.prepare(`
+      SELECT track_uid AS trackUid, folder_id AS folderId, relative_path AS relativePath
+      FROM tracks WHERE track_uid IN (${uidPlaceholders})
+    `).all(...trackUids).map(row => [row.trackUid, row]));
     deleteFts.run(...trackUids);
     deletePrefixFts.run(...trackUids);
     setIndexDeferred.run(1);
@@ -1057,6 +1067,11 @@ function upsertTracks(payload) {
     } finally {
       setIndexDeferred.run(0);
     }
+    const finalTracks = new Map(normalized.map(track => [track.trackUid, track]));
+    for (const [trackUid, track] of finalTracks) {
+      updateDirectoryMembership(existingLocations.get(trackUid) ?? null, track);
+    }
+    markDirectoriesSynchronized();
     return { writtenCount: normalized.length };
   });
 }
@@ -1328,6 +1343,11 @@ function normalizeScope(scope) {
   if (field === 'trackUids') {
     return { trackUids: validateBoundedStringList(scope.trackUids, 'scope.trackUids', 4096, 512) };
   }
+  if (field === 'folderDirKey') {
+    const value = requireString(scope.folderDirKey, 'scope.folderDirKey', MAX_FOLDER_DIRECTORY_KEY_CHARACTERS);
+    parseFolderDirKey(value);
+    return { folderDirKey: value };
+  }
   const value = requireString(scope[field], `scope.${field}`, 512);
   return field === 'folderKey' ? { folderId: value } : { [field]: value };
 }
@@ -1586,7 +1606,7 @@ function resolveTrackContextOrdinal(context, { entityId, prefix, mode }) {
   }
   const row = database.prepare(`
     SELECT ${createTrackPageSelection(order)}
-    FROM tracks t
+    FROM ${base.tableSql}
     WHERE ${where.join(' AND ')}
     ORDER BY ${createOrderBySql(order, false)}
     LIMIT 1
@@ -1595,7 +1615,7 @@ function resolveTrackContextOrdinal(context, { entityId, prefix, mode }) {
   const normalized = normalizePageRow(row);
   const keyset = createKeysetSql(order, order.descriptor.buildTuple(normalized), 'before');
   const count = database.prepare(`
-    SELECT count(*) AS count FROM tracks t
+    SELECT count(*) AS count FROM ${base.tableSql}
     WHERE ${[...base.clauses, keyset.sql].join(' AND ')}
   `).get(...base.bindings, ...keyset.bindings);
   return { ordinal: Number(count.count), entityId: normalized.trackUid };
@@ -1678,7 +1698,7 @@ function executeContextPage(
   if (offset !== null) bindings.push(offset);
   const rows = database.prepare(`
     SELECT ${createTrackPageSelection(order)}
-    FROM tracks t
+    FROM ${base.tableSql}
     ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
     ORDER BY ${orderBy}
     LIMIT ?${offsetSql}
@@ -2155,7 +2175,7 @@ function contextHasRows(context, order, tuple, continuation) {
   const keyset = createKeysetSql(order, tuple, continuation);
   const where = [...base.clauses, keyset.sql];
   return Boolean(database.prepare(`
-    SELECT 1 AS found FROM tracks t
+    SELECT 1 AS found FROM ${base.tableSql}
     WHERE ${where.join(' AND ')}
     LIMIT 1
   `).get(...base.bindings, ...keyset.bindings));
@@ -2166,7 +2186,7 @@ function countContextRows(context) {
   if (context.scope?.playlistId) return countPlaylistContextRows(context);
   const base = createContextFilter(context);
   const row = database.prepare(`
-    SELECT count(*) AS count FROM tracks t
+    SELECT count(*) AS count FROM ${base.tableSql}
     ${base.clauses.length ? `WHERE ${base.clauses.join(' AND ')}` : ''}
   `).get(...base.bindings);
   return Number(row.count);
@@ -2194,8 +2214,21 @@ function createContextFilter(context) {
     ? '1 = 1'
     : ACTIVE_TRACK_FOLDER_CLAUSE];
   const bindings = [];
+  let tableSql = 'tracks t';
   if (context.scope) {
-    if (context.scope.folderId) {
+    if (context.scope.folderDirKey) {
+      const { folderId, path: directoryPath } = parseFolderDirKey(context.scope.folderDirKey);
+      clauses.push('t.folder_id = ?');
+      bindings.push(folderId);
+      if (directoryPath === '') {
+        tableSql = 'tracks t INDEXED BY tracks_root_direct_by_folder';
+        clauses.push("instr(t.relative_path, '/') = 0");
+      } else {
+        clauses.push("t.relative_path >= ? || '/' AND t.relative_path < ? || '0'");
+        clauses.push("instr(substr(t.relative_path, length(?) + 2), '/') = 0");
+        bindings.push(directoryPath, directoryPath, directoryPath);
+      }
+    } else if (context.scope.folderId) {
       clauses.push('t.folder_id = ?');
       bindings.push(context.scope.folderId);
     } else if (context.scope.trackUids) {
@@ -2246,7 +2279,174 @@ function createContextFilter(context) {
     clauses.push('instr(t.search_text, ?) > 0');
     bindings.push(token);
   }
-  return { clauses, bindings };
+  return { clauses, bindings, tableSql };
+}
+
+function ensureDirectoriesSynchronized() {
+  const generation = Number(database.prepare(
+    'SELECT generation FROM directories_sync WHERE id = 1'
+  ).get()?.generation ?? 0);
+  const watermark = Number(database.prepare(
+    "SELECT value FROM meta WHERE key = 'directories_watermark'"
+  ).get()?.value ?? -1);
+  if (watermark === generation) return;
+  runDurableTransaction(() => {
+    database.prepare('DELETE FROM directories').run();
+    database.exec(`
+      INSERT INTO directories(
+        folder_id, relative_path, parent_path, name, direct_track_count, recursive_track_count
+      )
+      WITH RECURSIVE ancestors(folder_id, relative_path, parent_path, name, rest) AS (
+        SELECT
+          folder_id,
+          substr(relative_path, 1, instr(relative_path, '/') - 1),
+          '',
+          substr(relative_path, 1, instr(relative_path, '/') - 1),
+          substr(relative_path, instr(relative_path, '/') + 1)
+        FROM tracks
+        WHERE instr(relative_path, '/') > 0
+        UNION ALL
+        SELECT
+          folder_id,
+          relative_path || '/' || substr(rest, 1, instr(rest, '/') - 1),
+          relative_path,
+          substr(rest, 1, instr(rest, '/') - 1),
+          substr(rest, instr(rest, '/') + 1)
+        FROM ancestors
+        WHERE instr(rest, '/') > 0
+      )
+      SELECT folder_id, relative_path, parent_path, name,
+        SUM(CASE WHEN instr(rest, '/') = 0 THEN 1 ELSE 0 END), COUNT(*)
+      FROM ancestors
+      GROUP BY folder_id, relative_path, parent_path, name;
+    `);
+    database.prepare(`
+      INSERT INTO meta(key, value) VALUES ('directories_watermark', ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `).run(String(generation));
+  });
+}
+
+function createDirectoryAncestors(relativePath) {
+  const segments = relativePath.split('/');
+  segments.pop();
+  const ancestors = [];
+  let parentPath = '';
+  for (const name of segments) {
+    const relativePathValue = parentPath === '' ? name : `${parentPath}/${name}`;
+    ancestors.push({ relativePath: relativePathValue, parentPath, name });
+    parentPath = relativePathValue;
+  }
+  return ancestors;
+}
+
+function updateDirectoryMembership(previous, next) {
+  if (previous && next && previous.folderId === next.folderId && previous.relativePath === next.relativePath) return;
+  if (previous) {
+    const ancestors = createDirectoryAncestors(previous.relativePath);
+    const decrement = database.prepare(`
+      UPDATE directories SET direct_track_count = direct_track_count - ?,
+        recursive_track_count = recursive_track_count - 1
+      WHERE folder_id = ? AND relative_path = ?
+    `);
+    const removeEmpty = database.prepare(`
+      DELETE FROM directories
+      WHERE folder_id = ? AND relative_path = ? AND recursive_track_count = 0
+    `);
+    for (let index = 0; index < ancestors.length; index += 1) {
+      const relativePath = ancestors[index].relativePath;
+      decrement.run(index === ancestors.length - 1 ? 1 : 0, previous.folderId, relativePath);
+      removeEmpty.run(previous.folderId, relativePath);
+    }
+  }
+  if (next) incrementDirectoryMembership(next);
+}
+
+function incrementDirectoryMembership(track) {
+  const ancestors = createDirectoryAncestors(track.relativePath);
+  const increment = database.prepare(`
+    INSERT INTO directories(
+      folder_id, relative_path, parent_path, name, direct_track_count, recursive_track_count
+    ) VALUES (?, ?, ?, ?, ?, 1)
+    ON CONFLICT(folder_id, relative_path) DO UPDATE SET
+      direct_track_count = direct_track_count + excluded.direct_track_count,
+      recursive_track_count = recursive_track_count + 1
+  `);
+  for (let index = 0; index < ancestors.length; index += 1) {
+    const ancestor = ancestors[index];
+    increment.run(
+      track.folderId, ancestor.relativePath, ancestor.parentPath, ancestor.name,
+      index === ancestors.length - 1 ? 1 : 0
+    );
+  }
+}
+
+function markDirectoriesSynchronized() {
+  database.prepare(`
+    INSERT INTO meta(key, value)
+    SELECT 'directories_watermark', CAST(generation AS TEXT) FROM directories_sync WHERE id = 1
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+  `).run();
+}
+
+function browseFolderChildren(payload) {
+  assertAllowedFields(payload, ['folderId', 'path', 'limit', 'cursor'], 'invalidDirectoryBrowse');
+  const folderId = requireString(payload.folderId, 'folderId', 512);
+  const directoryPath = normalizeDirectoryPath(payload.path, 'path');
+  const limit = payload.limit === undefined ? MAX_QUERY_LIMIT : normalizeQueryLimit(payload.limit);
+  let cursor = null;
+  if (payload.cursor !== undefined && payload.cursor !== null) {
+    cursor = requireString(payload.cursor, 'cursor', MAX_DIRECTORY_PATH_CHARACTERS);
+    if (cursor.includes('/')) {
+      throw createCatalogError('invalidDirectoryBrowse', 'Folder cursor must be a single path segment');
+    }
+  }
+  const folder = database.prepare(
+    "SELECT 1 AS present FROM folders WHERE id = ? AND status <> 'removed'"
+  ).get(folderId);
+  if (!folder) throw createCatalogError('folderNotFound', 'Music folder does not exist');
+  const nodeExists = directoryPath === '' || Boolean(database.prepare(`
+    SELECT 1 AS present FROM directories WHERE folder_id = ? AND relative_path = ?
+  `).get(folderId, directoryPath));
+  const sql = cursor === null ? `
+    SELECT name, direct_track_count AS directTrackCount,
+      recursive_track_count AS recursiveTrackCount
+    FROM directories
+    WHERE folder_id = ? AND parent_path = ?
+    ORDER BY name
+    LIMIT ?
+  ` : `
+    SELECT name, direct_track_count AS directTrackCount,
+      recursive_track_count AS recursiveTrackCount
+    FROM directories
+    WHERE folder_id = ? AND parent_path = ? AND name > ?
+    ORDER BY name
+    LIMIT ?
+  `;
+  const rows = cursor === null
+    ? database.prepare(sql).all(folderId, directoryPath, limit + 1)
+    : database.prepare(sql).all(folderId, directoryPath, cursor, limit + 1);
+  const children = [];
+  let responseBytes = 128;
+  for (const row of rows) {
+    if (children.length >= limit) break;
+    const child = {
+      name: row.name,
+      directTrackCount: Number(row.directTrackCount),
+      recursiveTrackCount: Number(row.recursiveTrackCount)
+    };
+    const childBytes = Buffer.byteLength(JSON.stringify(child), 'utf8') + 1;
+    if (children.length > 0 && responseBytes + childBytes > DIRECTORY_RESPONSE_BYTE_BUDGET) break;
+    children.push(child);
+    responseBytes += childBytes;
+  }
+  const hasMore = rows.length > children.length;
+  return {
+    children,
+    hasMore,
+    cursor: hasMore && children.length > 0 ? children.at(-1).name : null,
+    nodeExists
+  };
 }
 
 function ensureRecentTrackUids(context) {
@@ -6828,13 +7028,18 @@ function deleteScanSweepRows(identity, rows) {
           identity.scanId, now, now
         );
         const repair = repairPlaylistItemsForTrack(row, 100, deletionJobId);
-        if (repair.hasMore) return { deleted, hasMore: true };
+        if (repair.hasMore) {
+          markDirectoriesSynchronized();
+          return { deleted, hasMore: true };
+        }
         removeTrackEntityMemberships(row.trackUid);
         removeTrackArtworkReferences(row.trackUid);
         database.prepare('DELETE FROM tracks WHERE track_uid = ?').run(row.trackUid);
+        updateDirectoryMembership(row, null);
         completeTrackDeletionRepair(deletionJobId, row.trackUid, 'completed');
         deleted += 1;
       }
+      markDirectoriesSynchronized();
       return { deleted, hasMore: true };
     },
     { deferInvalidationKey: entityAggregationScanKey(identity) }
@@ -7067,6 +7272,7 @@ function claimMetadataParse(payload) {
         source.cueRelativePath, source.startFrame, source.endFrame, source.cueSignature, attempts,
         generation, parserVersion, now, trackUid
       );
+      updateDirectoryMembership({ folderId, relativePath: existing.relativePath }, { folderId, relativePath });
       if (artworkSourceChanged) {
         database.prepare('UPDATE tracks SET artwork_id = NULL WHERE track_uid = ?').run(trackUid);
         database.prepare('DELETE FROM track_artwork_sources WHERE track_uid = ?').run(trackUid);
@@ -7096,7 +7302,9 @@ function claimMetadataParse(payload) {
         signature.size, signature.mtimeMs, title, attempts, generation, parserVersion,
         now, now, searchText, normalize(fileName), normalize(title)
       );
+      updateDirectoryMembership(null, { folderId, relativePath });
     }
+    markDirectoriesSynchronized();
     database.prepare(`
       INSERT INTO metadata_claims(
         folder_id, logical_storage_id, relative_path, track_uid, lifecycle_version, generation,
@@ -7555,17 +7763,23 @@ function runFolderDeletionChunkInTransaction(folderId, lifecycleVersion, deletio
     if (!row) {
       database.prepare(`UPDATE deletion_jobs SET state = 'completed', updated_at = ? WHERE job_id = ?`)
         .run(Date.now(), deletionJobId);
+      markDirectoriesSynchronized();
       return { folderId, lifecycleVersion, deleted, hasMore: false };
     }
     const repair = repairPlaylistItemsForTrack(row, 100, deletionJobId);
-    if (repair.hasMore) return { folderId, lifecycleVersion, deleted, hasMore: true };
+    if (repair.hasMore) {
+      markDirectoriesSynchronized();
+      return { folderId, lifecycleVersion, deleted, hasMore: true };
+    }
     removeTrackEntityMemberships(row.trackUid);
     removeTrackArtworkReferences(row.trackUid);
     database.prepare('DELETE FROM tracks WHERE track_uid = ?').run(row.trackUid);
+    updateDirectoryMembership(row, null);
     deleteRepairItems.run(deletionJobId, row.trackUid);
     updateJob.run(row.trackUid, Date.now(), deletionJobId);
     deleted += 1;
   }
+  markDirectoriesSynchronized();
   return { folderId, lifecycleVersion, deleted, hasMore: true };
 }
 
@@ -8372,6 +8586,35 @@ function normalizeRelativePath(value) {
     throw createCatalogError('invalidRelativePath', 'Track relative path is invalid');
   }
   return segments.join('/');
+}
+
+function normalizeDirectoryPath(value, field = 'path') {
+  const pathValue = requireStringAllowEmpty(value, field, MAX_DIRECTORY_PATH_CHARACTERS);
+  if (pathValue === '') return '';
+  const normalized = normalizeRelativePath(pathValue);
+  if (normalized !== pathValue) {
+    throw createCatalogError('invalidDirectoryPath', `${field} must be a canonical folder path`);
+  }
+  return normalized;
+}
+
+function parseFolderDirKey(value) {
+  const separator = value.indexOf(':');
+  if (separator <= 0 || !/^\d+$/.test(value.slice(0, separator))) {
+    throw createCatalogError('invalidScope', 'Folder directory scope is invalid');
+  }
+  const folderIdLength = Number(value.slice(0, separator));
+  if (!Number.isSafeInteger(folderIdLength) || folderIdLength <= 0 || folderIdLength > 512) {
+    throw createCatalogError('invalidScope', 'Folder directory scope is invalid');
+  }
+  const folderIdStart = separator + 1;
+  const folderId = value.slice(folderIdStart, folderIdStart + folderIdLength);
+  if (folderId.length !== folderIdLength || String(folderIdLength) !== value.slice(0, separator)) {
+    throw createCatalogError('invalidScope', 'Folder directory scope is invalid');
+  }
+  requireString(folderId, 'scope.folderId', 512);
+  const directoryPath = normalizeDirectoryPath(value.slice(folderIdStart + folderIdLength), 'scope.path');
+  return { folderId, path: directoryPath };
 }
 
 function createPhysicalSourceKey(folderId, relativePath) {

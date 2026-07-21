@@ -279,7 +279,7 @@ O IR Reverb convolui o sinal com uma resposta ao impulso (IR) importada para rep
 - **Latency**: Zero ou 128/256/512/1024 samples. Valores altos aliviam o processamento, mas atrasam o sinal wet; Zero exige Full.
 - **Convolution Rate**: Auto, Full, Half ou Quarter. Taxas menores reduzem carga e largura de banda wet; Quarter exige pelo menos 176,4 kHz.
 - **Dry**: ajusta o nível do sinal original. Em -96 dB, silencia-o completamente para um efeito totalmente wet ou um retorno.
-- **Wet**: nível do sinal convoluído, de -96 a +12 dB.
+- **Wet**: nível do sinal convoluído, de -96 a +12 dB. O padrão é -15 dB para uso normal como insert; em uma configuração de send/return, ajuste para 0 dB e controle a quantidade de reverb pelo nível de envio.
 - **Pre Delay**: atrasa apenas o sinal wet de 0 a 500 ms.
 - **Direct Cut** remove o impulso direto detectado; **Cut Offset** move o corte entre -20 e +50 ms. A normalização continua usando a IR sem corte como referência; portanto, ativar o Direct Cut não aumenta o nível da cauda de reverberação restante.
 - **Decay** remodela o decaimento de 10% a 400%; 100% preserva a captura.

@@ -7,7 +7,7 @@ class IRReverbPlugin extends PluginBase {
         this.cm = 'auto';
         this.lt = '128';
         this.cr = 'auto';
-        this.dw = 0;
+        this.dw = -15;
         this.dl = 0;
         this.pd = 0;
         this.dc = true;

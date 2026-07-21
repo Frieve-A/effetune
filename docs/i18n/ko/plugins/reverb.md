@@ -282,7 +282,7 @@ IR Reverb는 가져온 임펄스 응답(IR)과 신호을 컨볼루션하여 방,
 - **Latency**: Zero 또는 128/256/512/1024 samples입니다. 값이 크면 처리 부담은 줄지만 wet path 지연이 늘며, Zero는 Full이 필요합니다.
 - **Convolution Rate**: Auto, Full, Half, Quarter입니다. 낮은 rate는 부하와 wet 대역폭을 줄이며 Quarter는 176.4 kHz 이상이 필요합니다.
 - **Dry**: 원음 레벨을 정합니다. -96 dB에서는 원음이 완전히 음소거되어 완전 wet 효과나 return bus에 적합합니다.
-- **Wet**: 컨볼루션 신호 레벨(-96~+12 dB)입니다.
+- **Wet**: 컨볼루션 신호 레벨(-96~+12 dB)입니다. 기본값은 일반적인 insert 사용에 맞춘 -15 dB입니다. send/return 구성에서는 0 dB로 설정하고 send level로 리버브 양을 조절합니다.
 - **Pre Delay**: wet 신호만 0~500 ms 지연합니다.
 - **Direct Cut**은 감지한 직접음을 제거하고, **Cut Offset**은 절단점을 -20~+50 ms 이동합니다. 정규화 기준은 자르기 전 IR로 유지되므로 Direct Cut을 켜도 남은 잔향 꼬리의 레벨이 커지지 않습니다.
 - **Decay**는 감쇠를 10~400%로 바꿉니다. 100%는 원본 상태입니다.

@@ -1629,7 +1629,7 @@ test('paged folder rows restore status, rescan, removal, and live scan updates',
 
   assert.deepEqual(calls.slice(0, 7), [
     ['dispatch', { queryGeneration: 3, pageAttemptId: 5 }],
-    ['open', { type: 'folder', key: 'folder-one', title: 'Music' }],
+    ['open', { type: 'folderNode', folderId: 'folder-one', path: '', title: 'Music' }],
     ['dispatch', { queryGeneration: 3, pageAttemptId: 5 }],
     ['scan', { folderIds: ['folder-one'], scanReason: 'explicit-rescan' }],
     ['dispatch', { queryGeneration: 3, pageAttemptId: 5 }],

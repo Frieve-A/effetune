@@ -19,6 +19,7 @@ const LIBRARY_CATALOG_RENDERER_CHANNELS = Object.freeze({
   createContext: 'library-catalog-v1:create-context',
   getContextCount: 'library-catalog-v1:get-context-count',
   queryTracks: 'library-catalog-v1:query-tracks',
+  browseFolderChildren: 'library-catalog-v1:browse-folder-children',
   queryEntities: 'library-catalog-v1:query-entities',
   readContextPageAtOrdinal: 'library-catalog-v1:read-context-page-at-ordinal',
   resolveEntityAnchor: 'library-catalog-v1:resolve-entity-anchor',
@@ -161,6 +162,10 @@ class LibraryCatalogHost extends EventEmitter {
 
   queryTracks(query) {
     return this.request('queryTracks', query);
+  }
+
+  browseFolderChildren(request) {
+    return this.request('browseFolderChildren', request);
   }
 
   queryEntities(query) {
@@ -601,6 +606,7 @@ function registerLibraryCatalogIpc({ ipcMain, host, getMainWindow }) {
     createContext: (_event, request) => host.createContext(request),
     getContextCount: (_event, request) => host.getContextCount(request),
     queryTracks: (_event, request) => host.queryTracks(request),
+    browseFolderChildren: (_event, request) => host.browseFolderChildren(request),
     queryEntities: (_event, request) => host.queryEntities(request),
     readContextPageAtOrdinal: (_event, request) => host.readContextPageAtOrdinal(request),
     resolveEntityAnchor: (_event, request) => host.resolveEntityAnchor(request),

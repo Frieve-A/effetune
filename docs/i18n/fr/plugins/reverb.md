@@ -279,7 +279,7 @@ IR Reverb convolue le signal avec une réponse impulsionnelle (IR) importée afi
 - **Latency** : Zero ou 128/256/512/1024 échantillons. Une valeur élevée allège le traitement mais retarde le signal wet ; Zero impose Full.
 - **Convolution Rate** : Auto, Full, Half ou Quarter. Un taux réduit diminue la charge et la bande passante wet ; Quarter exige au moins 176,4 kHz.
 - **Dry** : règle le niveau du signal d'origine. À -96 dB, il le coupe complètement pour un effet entièrement wet ou un retour.
-- **Wet** : niveau du signal convolué, de -96 à +12 dB.
+- **Wet** : niveau du signal convolué, de -96 à +12 dB. La valeur par défaut est de -15 dB pour une utilisation courante en insert ; en départ/retour, réglez-la sur 0 dB et dosez la réverbération avec le niveau de départ.
 - **Pre Delay** : retarde uniquement le signal wet de 0 à 500 ms.
 - **Direct Cut** supprime l'impulsion directe détectée ; **Cut Offset** décale la coupe de -20 à +50 ms. La normalisation conserve l’IR non coupée comme référence : activer Direct Cut n’augmente donc pas le niveau de la queue de réverbération restante.
 - **Decay** remodèle la décroissance de 10% à 400% ; 100% conserve la prise.

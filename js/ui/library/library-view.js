@@ -73,7 +73,7 @@ const LIBRARY_SEARCH_DEBOUNCE_MS = 100;
 const PAGED_ACTION_TOAST_DELAY_MS = 750;
 const PAGED_DEFAULT_SELECT_ALL_LIMIT = 300;
 const PAGED_DEFAULT_SELECT_ALL_SCOPE_KEYS = Object.freeze([
-  'albumKey', 'artistKey', 'genreKey', 'subfolderKey', 'playlistId'
+  'albumKey', 'artistKey', 'genreKey', 'subfolderKey', 'playlistId', 'folderDirKey'
 ]);
 const PAGED_GRID_MIN_CARD_WIDTH_PX = 176;
 const PAGED_GRID_MAX_COLUMNS = 12;
@@ -225,6 +225,7 @@ export class LibraryView {
     this.sortDirection = 'asc';
     this.entitySorts = createDefaultEntitySorts();
     this.detailSortOverride = false;
+    this.folderBrowseMode = 'tree';
     this.loadUIState();
     this.unsubscribe = [];
     this.lastScanState = null;
@@ -264,6 +265,7 @@ export class LibraryView {
     this.mobileHistoryDepth = 0;
     this.mobileHistoryIndex = 0;
     this.navigationReturnSnapshot = null;
+    this.searchEntityReturnSnapshot = null;
     this.pendingPagedNavigationPosition = null;
     this.pagedNavigationRestorePosition = null;
     this.suppressPopStateCount = 0;
@@ -274,6 +276,11 @@ export class LibraryView {
     this.renderScheduled = false;
     this.libraryReturnFocus = null;
     this.navigationIntentId = 0;
+    this.folderBrowseRequestId = 0;
+    this.folderBrowseGeneration = 0;
+    this.folderChildrenState = null;
+    this.folderNavigationPositions = new Map();
+    this.pendingFolderFocusPath = null;
     this.pagedPaginationFailureOrdinal = null;
   }
 
@@ -433,6 +440,7 @@ export class LibraryView {
   }
 
   handleCatalogInvalidation(event) {
+    this.invalidateFolderBrowseCaches(event?.changedScopes);
     if (this.isCatalogRefreshDeferred()) {
       this.deferredCatalogInvalidationScopes ??= new Set();
       for (const scope of event?.changedScopes ?? []) {
@@ -455,6 +463,39 @@ export class LibraryView {
     this.pagedRestartPreservesSelection = true;
     this.pagedQueryKey = null;
     this.scheduleRender();
+  }
+
+  invalidateFolderBrowseCaches(changedScopes = []) {
+    const scopes = Array.isArray(changedScopes) ? changedScopes : [];
+    const navigationPositions = this.folderNavigationPositions instanceof Map
+      ? this.folderNavigationPositions
+      : null;
+    const invalidateAll = scopes.includes('tracks') || scopes.includes('folders');
+    const folderIds = new Set(scopes
+      .filter(scope => typeof scope === 'string' && scope.startsWith('folder:'))
+      .map(scope => scope.slice('folder:'.length))
+      .filter(Boolean));
+    if (!invalidateAll && folderIds.size === 0) return;
+
+    if (invalidateAll) {
+      this.folderBrowseGeneration = (this.folderBrowseGeneration ?? 0) + 1;
+      this.folderChildrenState = null;
+      navigationPositions?.clear();
+      return;
+    }
+
+    for (const key of navigationPositions?.keys() ?? []) {
+      const separator = key.indexOf('\0');
+      if (separator >= 0 && folderIds.has(key.slice(0, separator))) {
+        navigationPositions.delete(key);
+      }
+    }
+    const currentFolderId = this.detail?.type === 'folderNode' ? this.detail.folderId : null;
+    const stateFolderId = this.folderChildrenState?.key?.split('\0', 1)[0] ?? null;
+    if (folderIds.has(currentFolderId) || folderIds.has(stateFolderId)) {
+      this.folderBrowseGeneration = (this.folderBrowseGeneration ?? 0) + 1;
+      this.folderChildrenState = null;
+    }
   }
 
   handlePlaylistsChanged(event) {
@@ -619,6 +660,9 @@ export class LibraryView {
           };
         }
       }
+      if (state.folderBrowseMode === 'tree' || state.folderBrowseMode === 'flat') {
+        this.folderBrowseMode = state.folderBrowseMode;
+      }
     } catch (_) {
       // UI preferences are optional; invalid stored state falls back to defaults.
     }
@@ -629,7 +673,8 @@ export class LibraryView {
       globalThis.localStorage?.setItem(MUSIC_LIBRARY_UI_STORAGE_KEY, JSON.stringify({
         sort: this.sort,
         sortDirection: this.sortDirection,
-        entitySorts: this.entitySorts
+        entitySorts: this.entitySorts,
+        folderBrowseMode: this.folderBrowseMode
       }));
     } catch (_) {
       // Ignore storage failures so private browsing or quota issues do not block the library.
@@ -719,18 +764,33 @@ export class LibraryView {
         this.searchEntityType = null;
         this.searchEntityReturnView = null;
       }
-      this.detail = null;
+      if (this.detail?.type !== 'folderNode') this.detail = null;
       this.render();
     }, LIBRARY_SEARCH_DEBOUNCE_MS);
   }
 
   beginNavigationIntent() {
+    this.retirePendingFolderBrowse();
     this.navigationIntentId += 1;
     return this.navigationIntentId;
   }
 
   invalidateNavigationIntent() {
+    this.retirePendingFolderBrowse();
     this.navigationIntentId += 1;
+  }
+
+  retirePendingFolderBrowse() {
+    if (!this.folderChildrenState?.loading) return;
+    const liveSection = this.content?.querySelector?.('.library-folder-directory-section');
+    if (liveSection?.dataset.folderBrowseKey === this.folderChildrenState.key) {
+      const more = liveSection.querySelector?.('.library-folder-directory-more');
+      if (more) {
+        more.disabled = false;
+        more.removeAttribute?.('aria-busy');
+      }
+    }
+    this.folderChildrenState = null;
   }
 
   isNavigationIntentCurrent(intentId) {
@@ -1151,6 +1211,17 @@ export class LibraryView {
       };
     }
     if (this.detail) {
+      if (this.detail.type === 'folderNode') {
+        return {
+          endpoint: 'tracks',
+          query: '',
+          sort: this.sort,
+          direction: this.sortDirection,
+          scope: this.folderBrowseMode === 'flat'
+            ? { folderKey: this.detail.folderId }
+            : { folderDirKey: createFolderDirKey(this.detail.folderId, this.detail.path) }
+        };
+      }
       const scopeKey = this.detail.type === 'playlist' ? 'playlistId' : `${this.detail.type}Key`;
       const useAlbumTrackOrder = this.detail.type === 'album' && !this.detailSortOverride;
       return {
@@ -1819,6 +1890,7 @@ export class LibraryView {
     const totalCount = Number.isSafeInteger(state.totalCount) ? state.totalCount : null;
     const pagedQuery = this.getPagedQuery();
     const isTrackQuery = pagedQuery.endpoint === 'tracks';
+    const isFolderTreeBrowse = this.isFolderTreeBrowse();
     const currentPageStart = Number.isSafeInteger(state.pageStartOrdinal)
       ? state.pageStartOrdinal
       : state.currentPageIndex * this.pagedController.pageLimit;
@@ -1834,6 +1906,13 @@ export class LibraryView {
     }
     const shell = this.createPagedAttemptShell(state);
     shell.appendChild(this.createPagedSectionHeader(state, totalCount, isTrackQuery));
+    if (isFolderTreeBrowse) {
+      shell.appendChild(this.createFolderDirectorySection(logicalCount));
+      const tracksHeading = document.createElement('h3');
+      tracksHeading.className = 'library-folder-tracks-heading';
+      tracksHeading.textContent = this.t('library.browse.tracksInFolder');
+      shell.appendChild(tracksHeading);
+    }
     if (this.searchQuery.trim() && isTrackQuery) {
       shell.appendChild(this.createPagedSearchEntitySections(state, {
         showEmptyWhenNoResults: logicalCount === 0
@@ -1853,7 +1932,7 @@ export class LibraryView {
     const hasTrackSort = isTrackQuery && this.detail?.type !== 'playlist' && !(
       this.currentView === 'recent' && !this.searchQuery.trim() && !this.detail
     );
-    if (logicalCount === 0 && !(this.searchQuery.trim() && isTrackQuery)) {
+    if (logicalCount === 0 && !(this.searchQuery.trim() && isTrackQuery) && !isFolderTreeBrowse) {
       shell.appendChild(this.createPagedEmptyState());
     }
     const hasTrackHeader = hasTrackSort && !hasNoTrackSearchResults && !isMobileLayout();
@@ -2165,6 +2244,7 @@ export class LibraryView {
       this.trackScrollCleanup = null;
       return;
     }
+    this.focusPendingFolderRow(this.content.querySelector?.('.library-folder-directory-section'));
     this.pagedPublishedState = state;
     this.pagedPublishedResultSignature = this.createPagedCommittedSearchSignature(state);
     this.pagedPublishedSearchQuery = this.searchQuery.trim();
@@ -2262,8 +2342,400 @@ export class LibraryView {
       header.className += ' library-section-head-sortable';
       header.appendChild(sortControl);
     }
+    if (this.detail?.type === 'folderNode' && !this.searchQuery.trim()) {
+      header.className += ' library-folder-detail-head';
+      header.appendChild(this.createFolderBrowseHeaderControls());
+    }
     header.querySelector('.library-back')?.addEventListener('click', () => this.navigateBack());
     return header;
+  }
+
+  createFolderBrowseHeaderControls() {
+    const controls = document.createElement('div');
+    controls.className = 'library-folder-browse-controls';
+    const breadcrumbs = document.createElement('nav');
+    breadcrumbs.className = 'library-folder-breadcrumbs';
+    breadcrumbs.setAttribute('aria-label', this.detail.title || this.t('library.nav.folders'));
+    const segments = this.detail.path ? this.detail.path.split('/') : [];
+    const crumbs = [{ label: this.detail.title || this.t('library.nav.folders'), path: '' }];
+    let pathValue = '';
+    for (const segment of segments) {
+      pathValue = pathValue === '' ? segment : `${pathValue}/${segment}`;
+      crumbs.push({ label: segment, path: pathValue });
+    }
+    const visibleCrumbs = crumbs.length <= 4
+      ? crumbs
+      : [crumbs[0], crumbs[1], { label: '…', path: null }, ...crumbs.slice(-2)];
+    visibleCrumbs.forEach((crumb, index) => {
+      if (index > 0) breadcrumbs.append(' / ');
+      if (crumb.path === null) {
+        const ellipsis = document.createElement('span');
+        ellipsis.textContent = crumb.label;
+        breadcrumbs.appendChild(ellipsis);
+        return;
+      }
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'library-folder-breadcrumb';
+      button.textContent = crumb.label;
+      button.disabled = crumb.path === this.detail.path;
+      button.addEventListener('click', () => this.navigateToFolderPath(crumb.path));
+      breadcrumbs.appendChild(button);
+    });
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'library-button library-folder-view-toggle';
+    const nextMode = this.folderBrowseMode === 'tree' ? 'flat' : 'tree';
+    toggle.textContent = this.t(nextMode === 'tree' ? 'library.browse.viewTree' : 'library.browse.viewFlat');
+    toggle.addEventListener('click', () => this.setFolderBrowseMode(nextMode));
+    controls.append(breadcrumbs, toggle);
+    return controls;
+  }
+
+  setFolderBrowseMode(mode) {
+    if ((mode !== 'tree' && mode !== 'flat') || mode === this.folderBrowseMode) return;
+    this.capturePagedAnchor();
+    this.folderBrowseMode = mode;
+    this.folderChildrenState = null;
+    this.saveUIState();
+    this.invalidateNavigationIntent();
+    this.clearSelection({ keepMobileSelectionMode: false });
+    this.render();
+    if (isMobileLayout() && globalThis.history?.state?.effetuneLibrary) {
+      globalThis.history.replaceState({
+        ...globalThis.history.state,
+        snapshot: this.getNavigationSnapshot()
+      }, '');
+    }
+  }
+
+  navigateToFolderPath(path, { pushHistory = true } = {}) {
+    if (this.detail?.type !== 'folderNode' || path === this.detail.path) return;
+    const currentPath = this.detail.path;
+    this.saveCurrentFolderNavigationPosition();
+    const targetKey = createFolderNavigationKey(this.detail.folderId, path);
+    const targetSnapshot = this.folderNavigationPositions.get(targetKey);
+    const targetPosition = targetSnapshot?.pagedPosition || null;
+    this.pendingPagedNavigationPosition = targetPosition;
+    const isAncestor = path === '' || currentPath.startsWith(`${path}/`);
+    if (isAncestor) {
+      const remainder = path === '' ? currentPath : currentPath.slice(path.length + 1);
+      const childName = remainder.split('/')[0];
+      this.pendingFolderFocusPath = path === '' ? childName : `${path}/${childName}`;
+    } else {
+      this.pendingFolderFocusPath = null;
+    }
+    this.navigateToDetail({ ...this.detail, path }, null, {
+      pushHistory,
+      folderBrowseState: targetSnapshot?.folderBrowseState ?? null
+    });
+  }
+
+  isFolderTreeBrowse() {
+    return this.detail?.type === 'folderNode' && this.folderBrowseMode === 'tree' &&
+      !this.searchQuery.trim();
+  }
+
+  createFolderDirectorySection(directTrackCount) {
+    const section = document.createElement('section');
+    section.className = 'library-folder-directory-section';
+    section.dataset.folderBrowseKey = createFolderNavigationKey(this.detail.folderId, this.detail.path);
+    this.renderFolderDirectorySection(section, directTrackCount);
+    if (!this.getCurrentFolderChildrenState(section.dataset.folderBrowseKey)) {
+      void this.loadFolderChildren(section, directTrackCount, { append: false });
+    }
+    return section;
+  }
+
+  getCurrentFolderChildrenState(key) {
+    const state = this.folderChildrenState;
+    if (!state || state.key !== key || state.requestId !== this.folderBrowseRequestId ||
+        state.intentId !== this.navigationIntentId ||
+        state.browseGeneration !== this.folderBrowseGeneration) return null;
+    return state;
+  }
+
+  createFolderBrowseSnapshot(key) {
+    const state = this.getCurrentFolderChildrenState(key);
+    if (!state || state.error || state.loading && state.children.length === 0) return null;
+    return {
+      key,
+      browseGeneration: state.browseGeneration,
+      children: state.children.map(child => ({ ...child })),
+      cursor: state.cursor,
+      hasMore: state.hasMore,
+      nodeExists: state.nodeExists
+    };
+  }
+
+  saveCurrentFolderNavigationPosition() {
+    if (this.detail?.type !== 'folderNode') return;
+    const key = createFolderNavigationKey(this.detail.folderId, this.detail.path);
+    const snapshot = this.getNavigationSnapshot();
+    const folderBrowseState = this.createFolderBrowseSnapshot(key);
+    this.folderNavigationPositions.set(key, folderBrowseState
+      ? { ...snapshot, folderBrowseState }
+      : snapshot);
+  }
+
+  restoreFolderBrowseSnapshot(snapshot, key) {
+    if (!snapshot || snapshot.key !== key || snapshot.browseGeneration !== this.folderBrowseGeneration) return;
+    this.folderChildrenState = {
+      ...snapshot,
+      children: snapshot.children.map(child => ({ ...child })),
+      requestId: this.folderBrowseRequestId,
+      intentId: this.navigationIntentId,
+      loading: false,
+      error: false
+    };
+  }
+
+  createFolderDirectoryFailure(section, directTrackCount, { append }) {
+    const failure = document.createElement('div');
+    failure.className = append
+      ? 'library-folder-directory-status library-folder-directory-append-error'
+      : 'library-folder-directory-status';
+    const message = document.createElement('span');
+    message.textContent = this.t('library.error.actionFailed');
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.className = 'library-button library-folder-directory-retry';
+    retry.textContent = this.t('library.paged.retry');
+    retry.addEventListener('click', event => {
+      if (this.getCurrentFolderChildrenState(section.dataset.folderBrowseKey)?.loading) {
+        event?.preventDefault?.();
+        return;
+      }
+      void this.loadFolderChildren(section, directTrackCount, {
+        append,
+        preserveFocus: event?.detail === 0
+      });
+    });
+    failure.appendChild(message);
+    failure.appendChild(retry);
+    return failure;
+  }
+
+  renderFolderDirectorySection(section, directTrackCount) {
+    if (!section) return false;
+    const key = section.dataset.folderBrowseKey;
+    const state = this.getCurrentFolderChildrenState(key);
+    section.innerHTML = `<h3>${escapeHtml(this.t('library.browse.folders'))}</h3>`;
+    if (!state || state.loading && state.children.length === 0) {
+      const loading = document.createElement('p');
+      loading.className = 'library-folder-directory-status';
+      loading.textContent = this.t('library.paged.loading');
+      section.appendChild(loading);
+      return false;
+    }
+    if (state.error && state.children.length === 0) {
+      section.appendChild(this.createFolderDirectoryFailure(section, directTrackCount, {
+        append: false
+      }));
+      return false;
+    }
+    const list = document.createElement('div');
+    list.className = 'library-folder-directory-list';
+    for (const child of state.children) {
+      const childPath = this.detail.path === '' ? child.name : `${this.detail.path}/${child.name}`;
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'library-folder-directory-row';
+      row.dataset.folderPath = childPath;
+      row.innerHTML = `
+        <span class="library-folder-directory-icon" aria-hidden="true">📁</span>
+        <span class="library-folder-directory-name">${escapeHtml(child.name)}</span>
+        <span class="library-folder-directory-count">${escapeHtml(String(child.recursiveTrackCount))}</span>
+      `;
+      row.addEventListener('click', () => this.navigateToFolderPath(childPath));
+      list.appendChild(row);
+    }
+    section.appendChild(list);
+    if (state.error) {
+      section.appendChild(this.createFolderDirectoryFailure(section, directTrackCount, {
+        append: true
+      }));
+    } else if (state.hasMore) {
+      const more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'library-button library-folder-directory-more';
+      more.textContent = this.t('library.paged.next');
+      if (state.loading) {
+        more.setAttribute('aria-disabled', 'true');
+        more.setAttribute('aria-busy', 'true');
+      }
+      more.addEventListener('click', event => {
+        if (this.getCurrentFolderChildrenState(key)?.loading) {
+          event?.preventDefault?.();
+          return;
+        }
+        void this.loadFolderChildren(section, directTrackCount, {
+          append: true,
+          preserveFocus: event?.detail === 0
+        });
+      });
+      section.appendChild(more);
+    }
+    if (state.children.length === 0 && directTrackCount === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'library-folder-directory-status';
+      empty.textContent = this.t('library.state.emptyFolder');
+      section.appendChild(empty);
+    }
+    return this.focusPendingFolderRow(section);
+  }
+
+  focusPendingFolderRow(section) {
+    const focusPath = this.pendingFolderFocusPath;
+    const liveSection = this.content?.querySelector?.('.library-folder-directory-section');
+    if (!focusPath || !section || section !== liveSection) return false;
+    const focusTarget = [...section.querySelectorAll?.('.library-folder-directory-row') || []]
+      .find(row => row.dataset.folderPath === focusPath);
+    if (!focusTarget || typeof focusTarget.focus !== 'function') return false;
+    focusTarget.focus({ preventScroll: true });
+    if (globalThis.document?.activeElement !== focusTarget) return false;
+    this.pendingFolderFocusPath = null;
+    return true;
+  }
+
+  focusFolderAppendResult(section, key, { previousChildCount, failed = false, preserveFocus = false }) {
+    if (!preserveFocus || !section || section.isConnected === false) return false;
+    const liveSection = this.content?.querySelector?.('.library-folder-directory-section');
+    if (section !== liveSection || section.dataset.folderBrowseKey !== key) return false;
+    const rows = [...section.querySelectorAll?.('.library-folder-directory-row') || []];
+    const focusTarget = failed
+      ? section.querySelector?.('.library-folder-directory-retry')
+      : rows[previousChildCount] ??
+        section.querySelector?.('.library-folder-directory-more') ??
+        rows.at(-1);
+    if (!focusTarget || focusTarget.isConnected === false || typeof focusTarget.focus !== 'function') return false;
+    focusTarget.focus({ preventScroll: true });
+    return globalThis.document?.activeElement === focusTarget;
+  }
+
+  async loadFolderChildren(section, directTrackCount, { append = false, preserveFocus = false } = {}) {
+    if (!this.isFolderTreeBrowse() || typeof this.manager?.browseFolderChildren !== 'function') return;
+    const folderId = this.detail.folderId;
+    const path = this.detail.path;
+    const key = createFolderNavigationKey(folderId, path);
+    const currentState = this.getCurrentFolderChildrenState(key);
+    if (currentState?.loading) return;
+    const previous = append && currentState
+      ? currentState
+      : { key, children: [], cursor: null, hasMore: false, nodeExists: true };
+    const requestId = ++this.folderBrowseRequestId;
+    const browseGeneration = this.folderBrowseGeneration;
+    const intentId = this.navigationIntentId;
+    this.folderChildrenState = {
+      ...previous,
+      requestId,
+      intentId,
+      browseGeneration,
+      loading: true,
+      error: false
+    };
+    const liveSection = this.content?.querySelector?.('.library-folder-directory-section');
+    const liveMore = append && liveSection?.dataset.folderBrowseKey === key
+      ? liveSection.querySelector?.('.library-folder-directory-more')
+      : null;
+    const liveRetry = liveSection?.dataset.folderBrowseKey === key
+      ? liveSection.querySelector?.('.library-folder-directory-retry')
+      : null;
+    const liveLoadControl = liveMore ?? liveRetry;
+    const handoffLoadFocus = Boolean(
+      preserveFocus && liveSection && liveLoadControl &&
+      liveSection.isConnected !== false && liveLoadControl.isConnected !== false &&
+      globalThis.document?.activeElement === liveLoadControl
+    );
+    if (liveLoadControl) {
+      liveLoadControl.setAttribute?.('aria-disabled', 'true');
+      liveLoadControl.setAttribute?.('aria-busy', 'true');
+    } else {
+      this.renderFolderDirectorySection(section, directTrackCount);
+    }
+    try {
+      const result = await this.manager.browseFolderChildren({
+        folderId,
+        path,
+        limit: 500,
+        ...(append && previous.cursor ? { cursor: previous.cursor } : {})
+      });
+      if (requestId !== this.folderBrowseRequestId || browseGeneration !== this.folderBrowseGeneration ||
+          !this.isNavigationIntentCurrent(intentId) ||
+          key !== createFolderNavigationKey(this.detail?.folderId, this.detail?.path)) return;
+      if (result.nodeExists === false) {
+        this.folderChildrenState = null;
+        const usedMobileHistory = isMobileLayout() && this.mobileHistoryDepth > 0 &&
+          typeof globalThis.history?.back === 'function';
+        this.navigateBack();
+        if (isMobileLayout() && !usedMobileHistory && globalThis.history?.state?.effetuneLibrary) {
+          globalThis.history.replaceState({
+            ...globalThis.history.state,
+            snapshot: this.getNavigationSnapshot()
+          }, '');
+        }
+        return;
+      }
+      let children = append ? [...previous.children, ...result.children] : [...result.children];
+      if (!append && result.hasMore !== true) {
+        const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+        children.sort((left, right) => collator.compare(left.name, right.name));
+      }
+      this.folderChildrenState = {
+        key,
+        requestId,
+        intentId,
+        browseGeneration,
+        children,
+        cursor: result.cursor ?? null,
+        hasMore: result.hasMore === true,
+        nodeExists: true,
+        loading: false,
+        error: false
+      };
+      const liveSection = this.content?.querySelector?.('.library-folder-directory-section');
+      if (!liveSection || liveSection.isConnected === false || liveSection.dataset.folderBrowseKey !== key) return;
+      const previousGrid = this.content?.querySelector?.('.library-paged-grid');
+      const previousGridOffset = Number(previousGrid?.offsetTop) || 0;
+      const previousScrollTop = Number(this.content?.scrollTop) || 0;
+      const preserveTrackViewport = Boolean(previousGrid) && previousScrollTop >= previousGridOffset;
+      const focusedPendingRow = this.renderFolderDirectorySection(liveSection, directTrackCount);
+      if (!focusedPendingRow) {
+        this.focusFolderAppendResult(liveSection, key, {
+          previousChildCount: previous.children.length,
+          preserveFocus: handoffLoadFocus
+        });
+      }
+      const nextGridOffset = Number(this.content?.querySelector?.('.library-paged-grid')?.offsetTop) || 0;
+      if (this.content && preserveTrackViewport && nextGridOffset !== previousGridOffset) {
+        this.content.scrollTop = previousScrollTop + nextGridOffset - previousGridOffset;
+        this.refreshPagedWindow?.();
+      }
+    } catch (error) {
+      if (requestId !== this.folderBrowseRequestId || browseGeneration !== this.folderBrowseGeneration ||
+          !this.isNavigationIntentCurrent(intentId) ||
+          key !== createFolderNavigationKey(this.detail?.folderId, this.detail?.path)) return;
+      console.warn('Unable to browse music folder contents:', error);
+      this.folderChildrenState = {
+        ...previous,
+        requestId,
+        intentId,
+        browseGeneration,
+        loading: false,
+        error: true
+      };
+      const liveSection = this.content?.querySelector?.('.library-folder-directory-section');
+      if (liveSection?.isConnected !== false && liveSection?.dataset.folderBrowseKey === key) {
+        const focusedPendingRow = this.renderFolderDirectorySection(liveSection, directTrackCount);
+        if (!focusedPendingRow) {
+          this.focusFolderAppendResult(liveSection, key, {
+            previousChildCount: previous.children.length,
+            failed: true,
+            preserveFocus: handoffLoadFocus
+          });
+        }
+      }
+    }
   }
 
   createEntitySortControl(entityType) {
@@ -3002,11 +3474,9 @@ export class LibraryView {
         </span>
       `;
       row.querySelector('.library-paged-folder-main')?.addEventListener('click', () => {
-        this.dispatchPagedRowAction(row, () => this.navigateToDetail({
-          type: entityType,
-          key: entityId,
-          title: item.displayName || item.name || ''
-        }));
+        this.dispatchPagedRowAction(row, () => this.navigateToDetail(
+          this.createEntityDetail(entityType, entityId, item)
+        ));
       });
       row.querySelector('.library-paged-folder-main')?.addEventListener('focus', () => {
         this.pagedFocusedOrdinal = ordinal;
@@ -3457,6 +3927,14 @@ export class LibraryView {
       item?.folderId ?? item?.playlistId ?? item?.id ?? null;
   }
 
+  createEntityDetail(entityType, entityId, item) {
+    const title = item?.displayName || item?.name || '';
+    if (entityType === 'folder') {
+      return { type: 'folderNode', folderId: entityId, path: '', title };
+    }
+    return { type: entityType, key: entityId, title };
+  }
+
   getPagedTrackUid(item) {
     const trackUid = item?.trackUid ?? item?.id;
     return typeof trackUid === 'string' && trackUid ? trackUid : null;
@@ -3548,16 +4026,23 @@ export class LibraryView {
     };
   }
 
-  applyNavigationSnapshot(snapshot = {}) {
+  applyNavigationSnapshot(snapshot = {}, { folderBrowseState = null } = {}) {
     this.invalidateNavigationIntent();
     this.currentView = snapshot.currentView || 'tracks';
-    this.detail = snapshot.detail ? { ...snapshot.detail } : null;
+    this.detail = normalizeFolderDetail(snapshot.detail);
+    if (this.detail?.type === 'folderNode') {
+      this.restoreFolderBrowseSnapshot(
+        folderBrowseState,
+        createFolderNavigationKey(this.detail.folderId, this.detail.path)
+      );
+    }
     this.detailSortOverride = false;
     this.searchQuery = snapshot.searchQuery || '';
     this.searchEntityType = PAGED_SEARCH_ENTITY_TYPES.includes(snapshot.searchEntityType)
       ? snapshot.searchEntityType
       : null;
     this.searchEntityReturnView = snapshot.searchEntityReturnView || null;
+    this.searchEntityReturnSnapshot = null;
     this.pendingPagedNavigationPosition = snapshot.pagedPosition || null;
     if (this.searchInput) this.searchInput.value = this.searchQuery;
     this.clearSelection({ keepMobileSelectionMode: false });
@@ -3610,6 +4095,7 @@ export class LibraryView {
     this.searchQuery = '';
     this.searchEntityType = null;
     this.searchEntityReturnView = null;
+    this.searchEntityReturnSnapshot = null;
     this.navigationReturnSnapshot = null;
     this.clearSelection({ keepMobileSelectionMode: false });
     if (this.searchInput) this.searchInput.value = '';
@@ -3617,20 +4103,34 @@ export class LibraryView {
     this.render();
   }
 
-  navigateToDetail(detail, view = null, { pushHistory = true } = {}) {
+  navigateToDetail(detail, view = null, { pushHistory = true, folderBrowseState = null } = {}) {
     if (!detail) {
       this.navigateToView(view || this.currentView, { pushHistory });
       return;
     }
     this.invalidateNavigationIntent();
     const previousSnapshot = this.getNavigationSnapshot();
-    this.navigationReturnSnapshot = previousSnapshot;
-    this.currentView = view || DETAIL_VIEW_BY_TYPE[detail.type] || this.currentView;
-    this.detail = { ...detail };
+    const normalizedDetail = normalizeFolderDetail(detail);
+    const staysInFolderHierarchy = this.detail?.type === 'folderNode' &&
+      normalizedDetail.type === 'folderNode' && this.detail.folderId === normalizedDetail.folderId;
+    if (!staysInFolderHierarchy) {
+      this.navigationReturnSnapshot = previousSnapshot;
+    }
+    this.currentView = view || (normalizedDetail.type === 'folderNode'
+      ? 'folders'
+      : DETAIL_VIEW_BY_TYPE[normalizedDetail.type]) || this.currentView;
+    this.detail = normalizedDetail;
+    if (normalizedDetail.type === 'folderNode') {
+      this.restoreFolderBrowseSnapshot(
+        folderBrowseState,
+        createFolderNavigationKey(normalizedDetail.folderId, normalizedDetail.path)
+      );
+    }
     this.detailSortOverride = false;
     this.searchQuery = '';
     this.searchEntityType = null;
     this.searchEntityReturnView = null;
+    this.searchEntityReturnSnapshot = null;
     this.clearSelection({ keepMobileSelectionMode: false });
     if (this.searchInput) this.searchInput.value = '';
     if (pushHistory) this.pushMobileHistory(previousSnapshot);
@@ -3641,7 +4141,7 @@ export class LibraryView {
     if (!PAGED_SEARCH_ENTITY_TYPES.includes(entityType) || !this.searchQuery.trim()) return false;
     this.invalidateNavigationIntent();
     const previousSnapshot = this.getNavigationSnapshot();
-    this.navigationReturnSnapshot = previousSnapshot;
+    this.searchEntityReturnSnapshot = previousSnapshot;
     this.searchEntityReturnView = this.currentView;
     this.currentView = DETAIL_VIEW_BY_TYPE[entityType];
     this.detail = null;
@@ -3655,22 +4155,40 @@ export class LibraryView {
   }
 
   navigateBack({ fromPopState = false } = {}) {
+    if (this.detail?.type === 'folderNode' && (this.searchQuery || this.searchInput?.value)) {
+      this.invalidateNavigationIntent();
+      clearTimeout(this.searchDebounceTimer);
+      this.searchDebounceTimer = null;
+      this.searchQuery = '';
+      this.searchEntityType = null;
+      this.searchEntityReturnView = null;
+      if (this.searchInput) this.searchInput.value = '';
+      this.render();
+      return true;
+    }
     if (isMobileLayout() && !fromPopState && this.mobileHistoryDepth > 0 && typeof globalThis.history?.back === 'function') {
       globalThis.history.back();
       return true;
     }
     if (this.searchEntityType) {
       this.invalidateNavigationIntent();
-      const returnSnapshot = this.navigationReturnSnapshot;
-      this.currentView = this.searchEntityReturnView || 'tracks';
+      const returnSnapshot = this.searchEntityReturnSnapshot;
+      this.currentView = returnSnapshot?.currentView || this.searchEntityReturnView || 'tracks';
       this.searchEntityType = null;
       this.searchEntityReturnView = null;
-      this.navigationReturnSnapshot = null;
+      this.searchEntityReturnSnapshot = null;
       this.pendingPagedNavigationPosition = returnSnapshot?.pagedPosition || null;
-      this.detail = null;
+      this.detail = normalizeFolderDetail(returnSnapshot?.detail);
       this.clearSelection({ keepMobileSelectionMode: false });
       if (this.searchInput) this.searchInput.value = this.searchQuery;
       this.render();
+      return true;
+    }
+    if (this.detail?.type === 'folderNode' && this.detail.path !== '') {
+      const childPath = this.detail.path;
+      const separator = childPath.lastIndexOf('/');
+      const parentPath = separator < 0 ? '' : childPath.slice(0, separator);
+      this.navigateToFolderPath(parentPath, { pushHistory: false });
       return true;
     }
     if (!this.detail && !this.searchQuery) return false;
@@ -3680,6 +4198,7 @@ export class LibraryView {
     this.searchQuery = '';
     this.searchEntityType = null;
     this.searchEntityReturnView = null;
+    this.searchEntityReturnSnapshot = null;
     this.navigationReturnSnapshot = null;
     this.pendingPagedNavigationPosition = returnSnapshot?.pagedPosition || null;
     this.clearSelection({ keepMobileSelectionMode: false });
@@ -3697,6 +4216,8 @@ export class LibraryView {
     const state = event.state?.effetuneLibrary ? event.state : null;
     const snapshot = state?.snapshot ?? null;
     if (!snapshot) return;
+    const currentDetail = this.detail?.type === 'folderNode' ? { ...this.detail } : null;
+    const clearCurrentFolderSearch = Boolean(currentDetail && (this.searchQuery || this.searchInput?.value));
     if (Number.isSafeInteger(state.index)) {
       this.mobileHistoryIndex = Math.max(0, state.index);
       this.mobileHistoryDepth = Number.isSafeInteger(state.depth)
@@ -3713,7 +4234,40 @@ export class LibraryView {
         snapshot
       }, '');
     }
-    this.applyNavigationSnapshot(snapshot);
+    if (clearCurrentFolderSearch) {
+      this.invalidateNavigationIntent();
+      clearTimeout(this.searchDebounceTimer);
+      this.searchDebounceTimer = null;
+      this.searchQuery = '';
+      this.searchEntityType = null;
+      this.searchEntityReturnView = null;
+      if (this.searchInput) this.searchInput.value = '';
+      this.render();
+      this.mobileHistoryIndex += 1;
+      this.mobileHistoryDepth += 1;
+      globalThis.history?.pushState?.({
+        effetuneLibrary: true,
+        index: this.mobileHistoryIndex,
+        depth: this.mobileHistoryDepth,
+        snapshot: this.getNavigationSnapshot()
+      }, '');
+      return;
+    }
+    const targetDetail = normalizeFolderDetail(snapshot.detail);
+    this.saveCurrentFolderNavigationPosition();
+    const targetKey = targetDetail?.type === 'folderNode'
+      ? createFolderNavigationKey(targetDetail.folderId, targetDetail.path)
+      : null;
+    const targetFolderBrowseState = targetKey
+      ? this.folderNavigationPositions.get(targetKey)?.folderBrowseState ?? null
+      : null;
+    if (currentDetail && targetDetail?.type === 'folderNode' &&
+        currentDetail.folderId === targetDetail.folderId) {
+      const separator = currentDetail.path.lastIndexOf('/');
+      const parentPath = separator < 0 ? '' : currentDetail.path.slice(0, separator);
+      if (targetDetail.path === parentPath) this.pendingFolderFocusPath = currentDetail.path;
+    }
+    this.applyNavigationSnapshot(snapshot, { folderBrowseState: targetFolderBrowseState });
   }
 
   async openPagedAddToPlaylistMenu(anchor, state, actionIntent = null) {
@@ -4300,6 +4854,11 @@ export class LibraryView {
       event.stopPropagation?.();
       return;
     }
+    if (event.key === 'Backspace' && this.detail?.type === 'folderNode' && !isTextEditingTarget(event.target)) {
+      event.preventDefault();
+      this.navigateBack();
+      return;
+    }
     if ((event.ctrlKey || event.metaKey) && String(event.key).toLowerCase() === 'f') {
       event.preventDefault();
       this.searchInput?.focus();
@@ -4449,7 +5008,6 @@ export class LibraryView {
       this.searchQuery = '';
       this.searchEntityType = null;
       this.searchEntityReturnView = null;
-      this.detail = null;
       if (this.searchInput) this.searchInput.value = '';
       this.render();
       return true;
@@ -4571,11 +5129,10 @@ export class LibraryView {
       ));
     }
     const entityId = this.getPagedEntityId(item);
-    return this.pagedController.dispatchRowAction(identity, () => this.navigateToDetail({
-      type: this.getPagedQuery().entityType,
-      key: entityId,
-      title: item.name || item.displayName || ''
-    }));
+    const entityType = this.getPagedQuery().entityType;
+    return this.pagedController.dispatchRowAction(identity, () => this.navigateToDetail(
+      this.createEntityDetail(entityType, entityId, item)
+    ));
   }
 
   async focusPagedByPrefix(prefix) {
@@ -5265,6 +5822,11 @@ function fallbackText(key, params = {}) {
     'library.nav.genres': 'Genres',
     'library.nav.subfolders': 'Subfolders',
     'library.nav.folders': 'Folders',
+    'library.browse.folders': 'Folders',
+    'library.browse.tracksInFolder': 'Tracks',
+    'library.browse.viewTree': 'Tree view',
+    'library.browse.viewFlat': 'Flat view',
+    'library.state.emptyFolder': 'This folder is empty.',
     'library.nav.playlists': 'Playlists',
     'library.nav.recentlyAdded': 'Recently Added',
     'library.search.placeholder': 'Search library',
@@ -5663,6 +6225,39 @@ function sanitizeFileName(value) {
     .trim() || 'playlist';
 }
 
+export function createFolderDirKey(folderId, path = '') {
+  return `${folderId.length}:${folderId}${path}`;
+}
+
+export function decodeFolderDirKey(value) {
+  if (typeof value !== 'string') return null;
+  const separator = value.indexOf(':');
+  const lengthText = value.slice(0, separator);
+  if (separator <= 0 || !/^\d+$/.test(lengthText)) return null;
+  const folderIdLength = Number(lengthText);
+  if (!Number.isSafeInteger(folderIdLength) || folderIdLength <= 0) return null;
+  const start = separator + 1;
+  const folderId = value.slice(start, start + folderIdLength);
+  return folderId.length === folderIdLength ? { folderId, path: value.slice(start + folderIdLength) } : null;
+}
+
+function normalizeFolderDetail(detail) {
+  if (!detail) return null;
+  if (detail.type === 'folder') {
+    return {
+      type: 'folderNode',
+      folderId: detail.folderId ?? detail.key,
+      path: '',
+      title: detail.title || ''
+    };
+  }
+  return { ...detail };
+}
+
+function createFolderNavigationKey(folderId, path) {
+  return `${folderId}\0${path}`;
+}
+
 export function getPagedInvalidationDecision(query, event, dependentQueries = []) {
   const changedScopes = Array.isArray(event?.changedScopes) ? event.changedScopes : [];
   if (changedScopes.length === 0) return { restart: false, reason: 'no-changed-scope' };
@@ -5676,7 +6271,8 @@ export function getPagedInvalidationDecision(query, event, dependentQueries = []
         relevantScopes.add('playlists');
         relevantScopes.add(`playlist:${playlistId}`);
       }
-      const folderId = visibleQuery.scope?.folderKey ?? visibleQuery.scope?.folderId;
+      const folderId = visibleQuery.scope?.folderKey ?? visibleQuery.scope?.folderId ??
+        decodeFolderDirKey(visibleQuery.scope?.folderDirKey)?.folderId;
       if (folderId) {
         relevantScopes.add('folders');
         relevantScopes.add(`folder:${folderId}`);

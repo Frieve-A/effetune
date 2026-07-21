@@ -14,6 +14,8 @@ const PAGED_KEYS = [
   'library.paged.reselectFailed', 'library.paged.playlistVersionUnavailable',
   'library.paged.serviceUnavailable', 'library.paged.selectTrack',
   'library.paged.previous', 'library.paged.next',
+  'library.browse.folders', 'library.browse.tracksInFolder',
+  'library.browse.viewTree', 'library.browse.viewFlat', 'library.state.emptyFolder',
   'library.search.showAll',
   'library.status.unresolved',
   'library.properties.sourceType', 'library.properties.cueTrack',

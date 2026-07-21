@@ -48,19 +48,23 @@ Usa las pestañas de navegación para cambiar de vista en el catálogo.
 - **Artistas** - Agrupa por artistas y artistas de álbum indicados en los metadatos.
 - **Géneros** - Agrupa por los géneros indicados en los metadatos.
 - **Subcarpetas** - Agrupa las pistas por la subcarpeta que las contiene.
-- **Carpetas** - Muestra las carpetas registradas en la biblioteca y su estado de escaneo.
+- **Carpetas** - Muestra las raíces de música registradas, su estado de escaneo y su estructura real de directorios.
 - **Añadidas recientemente** - Muestra las pistas indexadas recientemente.
 - **Listas de reproducción** - Muestra las listas de reproducción creadas o importadas dentro de la Biblioteca musical.
 
 Un valor de artista del álbum separado por punto y coma, como `Artist A; Artist B`, se indexa bajo cada artista y conserva el crédito completo en pantalla. `&`, `/` y `feat.` no se tratan como separadores.
 
-Los grupos de **Subcarpetas** se crean con la ruta de la subcarpeta que contiene directamente cada pista, relativa a su carpeta de música importada. Las rutas relativas idénticas de distintas carpetas importadas se mantienen en grupos separados. Los archivos situados directamente en la raíz importada no crean un grupo de subcarpeta, pero siguen apareciendo en **Pistas** y **Carpetas**.
+Abre una raíz en **Carpetas** para recorrerla en **Vista de árbol**. Las subcarpetas aparecen encima de la lista de pistas; selecciona una para entrar en ella y usa la ruta de navegación o **Anterior** para subir de nivel. La lista solo muestra las pistas guardadas directamente en el nivel actual. **Vista plana** muestra, en cambio, todas las pistas indexadas de la raíz registrada, incluidas las de sus subcarpetas. Al cambiar de vista se conserva la ubicación actual, de modo que puedes volver al mismo punto en **Vista de árbol**. **Buscar en la biblioteca** sigue buscando en toda la biblioteca, por lo que la lista de subcarpetas se oculta durante la búsqueda.
+
+El árbol de **Carpetas** respeta las rutas relativas físicas exactas e incluye todas las entradas de pista encontradas en el catálogo, incluso mientras se analizan sus metadatos o si el análisis falla. El número de una carpeta incluye las pistas de esa carpeta y de todos sus descendientes. Las pistas CUE se cuentan por separado: varias pistas lógicas que comparten un único WAV o FLAC cuentan como varias pistas, no como un solo archivo de audio físico. **Subcarpetas** tiene otra finalidad: agrupa las pistas analizadas correctamente según la identidad normalizada de su carpeta superior directa, por lo que puede combinar variantes que solo difieren en mayúsculas, minúsculas o normalización Unicode.
+
+Por ejemplo, `Artist/Album/01 Song.flac` aparece en el grupo de subcarpeta `Artist/Album` y bajo `Artist` y después `Album` en el árbol físico de **Carpetas**. Las rutas relativas idénticas de distintas raíces indexadas se mantienen separadas. Los archivos situados directamente en una raíz no crean un grupo de subcarpeta, pero siguen disponibles en **Pistas** y en la lista de pistas directas de esa raíz en **Carpetas**.
 
 Con **Buscar en la biblioteca** puedes buscar en pistas, álbumes, artistas y listas de reproducción. En el diseño de PC, los encabezados de la lista de pistas permiten ordenar por título, artista, álbum, género o duración. Las vistas de álbumes, artistas, géneros, subcarpetas y listas de reproducción incluyen una lista **Ordenar** basada en el catálogo. Según la vista, permite ordenar por nombre, artista, año, ruta, número de pistas, duración total, fecha de actualización o fecha de creación, en ambos sentidos. Cada vista conserva su propia selección.
 
 Al buscar pistas, los términos de tres o más caracteres coinciden en cualquier parte del título, artista, álbum, género, nombre de archivo o ruta. Los términos de uno o dos caracteres solo coinciden al principio de una palabra. Escribe al menos tres caracteres para buscar dentro de una palabra.
 
-Tanto en el diseño para PC como en el móvil, si una búsqueda de pistas o los detalles de un álbum, artista, género, subcarpeta o lista de reproducción devuelven 300 pistas o menos, todas se seleccionan de forma predeterminada. Con 301 pistas o más no hay selección automática. Usa las casillas de las filas, **Seleccionar todo** o **Deseleccionar todo** para cambiar la selección.
+Tanto en el diseño para PC como en el móvil, si una búsqueda de pistas, las pistas directas del nivel actual en **Vista de árbol** o los detalles de un álbum, artista, género, subcarpeta o lista de reproducción devuelven 300 pistas o menos, todas se seleccionan de forma predeterminada. Con 301 pistas o más no hay selección automática. Usa las casillas de las filas, **Seleccionar todo** o **Deseleccionar todo** para cambiar la selección.
 
 En móvil se muestra primero la lista normal de títulos, sin columnas de artista ni duración. Solo mantener pulsada una pista abre el modo de selección; entonces aparecen las casillas, **Seleccionar todo** y **Deseleccionar todo**, mientras las acciones habituales de las filas siguen disponibles. La selección automática y los cambios posteriores —incluidos **Seleccionar todo**, **Deseleccionar todo** y las casillas individuales— solo cambian el estado de selección; no abren ni cierran el modo de selección.
 

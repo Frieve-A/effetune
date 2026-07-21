@@ -29,6 +29,10 @@ function createClient(overrides = {}) {
       calls.push(['queryTracks', request]);
       return { rows: [{ trackUid: 'track-1' }], nextCursor: null, previousCursor: null };
     },
+    async browseFolderChildren(request) {
+      calls.push(['browseFolderChildren', request]);
+      return { children: [], hasMore: false, cursor: null, nodeExists: true };
+    },
     async queryEntities(request) {
       calls.push(['queryEntities', request]);
       return { rows: [{ albumKey: 'album-1' }], nextCursor: null, previousCursor: null };
@@ -177,6 +181,18 @@ test('LibraryManagerV2 initializes without a full count and serves the first bou
     direction: 'asc',
     scope: null
   });
+});
+
+test('LibraryManagerV2 forwards bounded physical folder browse requests', async () => {
+  const harness = createClient();
+  const manager = createManager(harness.client);
+  await manager.init();
+  const request = { folderId: 'folder-1', path: '音楽', cursor: null, limit: 200 };
+
+  assert.deepEqual(await manager.browseFolderChildren(request), {
+    children: [], hasMore: false, cursor: null, nodeExists: true
+  });
+  assert.deepEqual(harness.calls.at(-1), ['browseFolderChildren', request]);
 });
 
 test('LibraryManagerV2 requests bounded lazy artwork and releases its URL cache on close', async () => {

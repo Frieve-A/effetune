@@ -20,6 +20,7 @@ function createApi({ protocolVersion = 1 } = {}) {
     'getCounts',
     'createContext',
     'queryTracks',
+    'browseFolderChildren',
     'queryEntities',
     'readContextPageAtOrdinal',
     'resolveEntityAnchor',
@@ -91,6 +92,7 @@ test('Electron catalog client mirrors bounded repository read methods', async ()
   const requestMethods = [
     'createContext',
     'queryTracks',
+    'browseFolderChildren',
     'queryEntities',
     'readContextPageAtOrdinal',
     'resolveEntityAnchor'
