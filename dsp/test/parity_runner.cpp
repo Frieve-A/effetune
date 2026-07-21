@@ -468,7 +468,7 @@ bool runDirectReference(const Control &control, const std::vector<float> &input,
   const bool matrix_topology = asset.begin.topology == kTopologyMatrix && path_count >= 1u &&
                                path_count <= 8u && asset.begin.inputCount >= 1u &&
                                asset.begin.inputCount <= path_count;
-  if (!control.hasAsset || !control.events.empty() || control.initialParams.size() != 7u ||
+  if (!control.hasAsset || !control.events.empty() || control.initialParams.size() != 6u ||
       asset.format != ET_ASSET_F32_MULTICH || expected_bytes != asset.bytes.size() ||
       readU32(asset.bytes.data()) != kEtaMagic || readU32(asset.bytes.data() + 4u) != ir_channels ||
       readU32(asset.bytes.data() + 8u) != ir_frames ||
@@ -556,8 +556,9 @@ bool runDirectReference(const Control &control, const std::vector<float> &input,
   for (std::uint32_t channel = 0u; channel < control.channels; ++channel) {
     const std::vector<double> &low_output = low_outputs[channel];
     std::vector<float> low_float(low_output.size());
+    const float rate_gain = divider == 4u ? 2.0F : divider == 2u ? 1.41421356237F : 1.0F;
     for (std::size_t index = 0u; index < low_output.size(); ++index)
-      low_float[index] = static_cast<float>(low_output[index]);
+      low_float[index] = static_cast<float>(low_output[index]) * rate_gain;
     const std::vector<float> full = interpolateReference(low_float, divider);
     const std::size_t start = divider - 1u;
     for (std::size_t index = 0u; index < full.size() && start + index < control.frames; ++index) {
@@ -565,11 +566,10 @@ bool runDirectReference(const Control &control, const std::vector<float> &input,
     }
   }
 
-  const bool direct = control.initialParams[3u] >= 0.5F;
-  const float wet_gain = std::pow(10.0F, control.initialParams[4u] * 0.05F);
-  const float dry_gain = std::pow(10.0F, control.initialParams[5u] * 0.05F);
+  const float wet_gain = std::pow(10.0F, control.initialParams[3u] * 0.05F);
+  const float dry_gain = std::pow(10.0F, control.initialParams[4u] * 0.05F);
   const double requested_delay =
-      static_cast<double>(control.initialParams[6u]) * control.sampleRate * 0.001;
+      static_cast<double>(control.initialParams[5u]) * control.sampleRate * 0.001;
   const std::uint32_t delay =
       requested_delay > 0.0 ? static_cast<std::uint32_t>(requested_delay) : 0u;
   output.assign(input.size(), 0.0F);
@@ -578,7 +578,7 @@ bool runDirectReference(const Control &control, const std::vector<float> &input,
     for (std::uint32_t frame = 0u; frame < control.frames; ++frame) {
       const float delayed_wet = frame >= delay ? wet[channel_offset + frame - delay] : 0.0F;
       output[channel_offset + frame] =
-          (direct ? input[channel_offset + frame] * dry_gain : 0.0F) + delayed_wet * wet_gain;
+          input[channel_offset + frame] * dry_gain + delayed_wet * wet_gain;
     }
   }
   return true;
