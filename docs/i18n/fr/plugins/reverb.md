@@ -275,7 +275,7 @@ IR Reverb convolue le signal avec une réponse impulsionnelle (IR) importée afi
 
 ### Paramètres
 
-- **Channel Mode** : Auto, Mono, Independent, True Stereo (trajets LL/LR/RL/RR) ou Diagonal Matrix sans diaphonie.
+- **Channel Mode** : **Auto** choisit Mono pour une IR à un canal, True Stereo pour une IR à quatre canaux avec une sélection stéréo, Independent lorsque les nombres de canaux correspondent, et Diagonal Matrix dans les autres cas ; le mode retenu apparaît à droite du menu. Vous pouvez aussi choisir explicitement Mono, Independent, True Stereo (trajets LL/LR/RL/RR) ou Diagonal Matrix sans diaphonie.
 - **Latency** : Zero ou 128/256/512/1024 échantillons. Une valeur élevée allège le traitement mais retarde le signal wet ; Zero impose Full.
 - **Convolution Rate** : Auto, Full, Half ou Quarter. Un taux réduit diminue la charge et la bande passante wet ; Quarter exige au moins 176,4 kHz.
 - **Dry** : règle le niveau du signal d'origine. À -96 dB, il le coupe complètement pour un effet entièrement wet ou un retour.
@@ -291,7 +291,7 @@ Le temps va de gauche à droite et le niveau de 0 à -90 dB. La courbe EDC conti
 
 ### Routage, bibliothèque et partage
 
-Mono applique une IR, Independent sépare les canaux, True Stereo utilise LL/LR/RL/RR et Diagonal Matrix relie uniquement les entrées et sorties correspondantes. Pour une paire True Stereo, sélectionnez ensemble des fichiers assortis terminés par `L`/`R` ou `Left`/`Right`.
+Mono applique une IR, Independent sépare les canaux, True Stereo utilise LL/LR/RL/RR et Diagonal Matrix relie uniquement les entrées et sorties correspondantes. En Auto, toute IR à quatre canaux avec une sélection stéréo est interprétée dans cet ordre ; pour une disposition Quad ou une autre disposition à quatre canaux, choisissez explicitement Independent ou Diagonal Matrix. Pour une paire True Stereo, sélectionnez ensemble des fichiers assortis terminés par `L`/`R` ou `Left`/`Right`.
 
 Les originaux sont conservés dans **Impulse Response Library**. La version web utilise l'OPFS privé du site et l'application de bureau son stockage géré. La bibliothèque affiche les noms de fichiers d'origine et permet de les rechercher, de charger une entrée ou de la supprimer. Un changement de fréquence d'échantillonnage recrée les données depuis l'original. Gardez aussi votre propre copie, car l'effacement des données du site ou la pression de stockage peut supprimer les données du navigateur.
 

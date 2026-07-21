@@ -275,6 +275,11 @@ body.layout-desktop .ir-reverb-status[data-state="preparing"],
     line-height: 1.4;
 }
 
+.ir-reverb-mode-note {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
 .ir-reverb-edc {
     overflow: hidden;
     margin: 12px auto 10px;

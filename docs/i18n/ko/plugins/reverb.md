@@ -278,7 +278,7 @@ IR Reverb는 가져온 임펄스 응답(IR)과 신호을 컨볼루션하여 방,
 
 ### 파라미터
 
-- **Channel Mode**: Auto, Mono, Independent, True Stereo(LL/LR/RL/RR), crossfeed가 없는 Diagonal Matrix 중에서 라우팅을 선택합니다.
+- **Channel Mode**: **Auto**는 1채널 IR을 Mono로, 스테레오 채널을 선택한 4채널 IR을 True Stereo로, IR 채널 수와 선택 채널 수가 같으면 Independent로, 그 밖의 경우에는 Diagonal Matrix로 설정합니다. 실제로 선택된 모드는 메뉴 오른쪽에 표시됩니다. Mono, Independent, True Stereo(LL/LR/RL/RR), crossfeed가 없는 Diagonal Matrix를 직접 선택할 수도 있습니다.
 - **Latency**: Zero 또는 128/256/512/1024 samples입니다. 값이 크면 처리 부담은 줄지만 wet path 지연이 늘며, Zero는 Full이 필요합니다.
 - **Convolution Rate**: Auto, Full, Half, Quarter입니다. 낮은 rate는 부하와 wet 대역폭을 줄이며 Quarter는 176.4 kHz 이상이 필요합니다.
 - **Dry**: 원음 레벨을 정합니다. -96 dB에서는 원음이 완전히 음소거되어 완전 wet 효과나 return bus에 적합합니다.
@@ -294,7 +294,7 @@ IR Reverb는 가져온 임펄스 응답(IR)과 신호을 컨볼루션하여 방,
 
 ### 라우팅, 라이브러리, 공유
 
-Mono는 하나의 IR을 적용하고 Independent는 채널을 분리하며 True Stereo는 LL/LR/RL/RR 경로를 사용합니다. Diagonal Matrix는 같은 번호의 입출력만 연결합니다. True Stereo pair는 이름 끝이 `L`/`R` 또는 `Left`/`Right`로 대응하는 파일을 함께 선택합니다.
+Mono는 하나의 IR을 적용하고 Independent는 채널을 분리하며 True Stereo는 LL/LR/RL/RR 경로를 사용합니다. Diagonal Matrix는 같은 번호의 입출력만 연결합니다. Auto에서는 스테레오 채널을 선택한 모든 4채널 IR을 이 순서로 해석하므로, Quad 등 다른 4채널 레이아웃에는 Independent 또는 Diagonal Matrix를 직접 선택하십시오. True Stereo pair는 이름 끝이 `L`/`R` 또는 `Left`/`Right`로 대응하는 파일을 함께 선택합니다.
 
 원본은 **Impulse Response Library**에 저장됩니다. 웹 앱은 사이트 전용 OPFS, 데스크톱 앱은 관리형 앱 저장소를 사용합니다. 라이브러리는 원본 파일명을 표시하며 파일명 검색, 항목 불러오기, 삭제를 지원합니다. sample rate가 바뀌면 원본에서 다시 준비합니다. 사이트 데이터 삭제나 저장 공간 부족으로 브라우저 데이터가 지워질 수 있으므로 별도 사본을 보관하십시오.
 

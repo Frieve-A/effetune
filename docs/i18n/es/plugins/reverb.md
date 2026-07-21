@@ -275,7 +275,7 @@ IR Reverb convoluciona la señal con una respuesta al impulso (IR) importada par
 
 ### Parámetros
 
-- **Channel Mode**: Auto, Mono, Independent, True Stereo (rutas LL/LR/RL/RR) o Diagonal Matrix sin cruce entre canales.
+- **Channel Mode**: **Auto** selecciona Mono para una IR de un canal, True Stereo para una IR de cuatro canales con selección estéreo, Independent cuando coinciden las cantidades de canales y Diagonal Matrix en los demás casos; el modo resultante aparece a la derecha del menú. También permite elegir explícitamente Mono, Independent, True Stereo (rutas LL/LR/RL/RR) o Diagonal Matrix sin cruce entre canales.
 - **Latency**: Zero o 128/256/512/1024 muestras. Los valores altos reducen la presión de proceso pero retrasan la señal wet; Zero requiere Full.
 - **Convolution Rate**: Auto, Full, Half o Quarter. Las tasas reducidas disminuyen la carga y el ancho de banda wet; Quarter requiere al menos 176,4 kHz.
 - **Dry**: regula el nivel de la señal original. A -96 dB la silencia por completo para un efecto totalmente wet o un retorno.
@@ -291,7 +291,7 @@ El tiempo avanza de izquierda a derecha y el nivel va de 0 a -90 dB. La curva ED
 
 ### Enrutamiento, biblioteca y uso compartido
 
-Mono aplica una IR, Independent mantiene canales separados, True Stereo usa LL/LR/RL/RR y Diagonal Matrix conecta solo entradas y salidas equivalentes. Para un par True Stereo, selecciona juntos archivos coincidentes terminados en `L`/`R` o `Left`/`Right`.
+Mono aplica una IR, Independent mantiene canales separados, True Stereo usa LL/LR/RL/RR y Diagonal Matrix conecta solo entradas y salidas equivalentes. En Auto, toda IR de cuatro canales con selección estéreo se interpreta en ese orden; para disposiciones Quad u otras disposiciones de cuatro canales, selecciona explícitamente Independent o Diagonal Matrix. Para un par True Stereo, selecciona juntos archivos coincidentes terminados en `L`/`R` o `Left`/`Right`.
 
 Los originales se guardan en **Impulse Response Library**. La web usa OPFS privado del sitio y la aplicación de escritorio su almacenamiento administrado. La biblioteca muestra los nombres de archivo originales y permite buscarlos, cargar entradas o eliminarlas. Un cambio de frecuencia de muestreo vuelve a preparar la IR desde el original. Conserva además una copia propia, pues borrar los datos del sitio o la presión de almacenamiento puede eliminar datos del navegador.
 

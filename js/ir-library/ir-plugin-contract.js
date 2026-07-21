@@ -105,7 +105,6 @@ export function resolveIrProcessingConfig({
   engineChannels = 8,
   selectedChannels,
   channel,
-  topologyHint = '',
   channelMode = 'auto',
   latency = '128',
   convolutionRate = 'auto'
@@ -146,7 +145,7 @@ export function resolveIrProcessingConfig({
   let resolvedMode = channelMode;
   if (resolvedMode === 'auto') {
     if (channelCount === 1) resolvedMode = 'mono';
-    else if (topologyHint === 'true-stereo' && channelCount === 4 && routedChannels === 2) {
+    else if (channelCount === 4 && routedChannels === 2) {
       resolvedMode = 'true';
     } else if (channelCount === routedChannels) {
       resolvedMode = 'indep';

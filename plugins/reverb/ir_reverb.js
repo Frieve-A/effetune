@@ -36,6 +36,8 @@ class IRReverbPlugin extends PluginBase {
         this._requestedAssetDefinition = null;
         this._assetRevisionSnapshots = new Map();
         this._assetControlRows = new Map();
+        this._channelModeSelect = null;
+        this._resolvedModeElement = null;
         this._pendingReadyNotice = null;
         this._statusElement = null;
         this._metadataElement = null;
@@ -230,6 +232,7 @@ class IRReverbPlugin extends PluginBase {
             this._applyAssetControls(residentControls);
             this._updatePowerGainBound();
             this.updateParameters();
+            this._updateResolvedModeDisplay();
             if (previous.pd !== this.pd) this._drawEdcGraph();
             return;
         }
@@ -242,6 +245,7 @@ class IRReverbPlugin extends PluginBase {
         if (this._pcm && (hostPreparationChanged || kernelRestageChanged)) {
             this._queuePreparation(hostPreparationChanged ? 'host' : 'restage', hostPreparationChanged ? 150 : 0);
         }
+        this._updateResolvedModeDisplay();
         if (previous.pd !== this.pd) this._drawEdcGraph();
     }
 
@@ -373,7 +377,6 @@ class IRReverbPlugin extends PluginBase {
                 channelCount: requested.pcm.channels.length,
                 engineChannels,
                 channel: requested.controls.channel,
-                topologyHint: requested.pcm.topologyHint,
                 channelMode: requested.controls.cm,
                 latency: requested.controls.lt,
                 convolutionRate: requested.controls.cr
@@ -462,7 +465,6 @@ class IRReverbPlugin extends PluginBase {
                 channelCount: requested.pcm.channels.length,
                 engineChannels: requested.outputChannelCount,
                 channel: requested.controls.channel,
-                topologyHint: requested.pcm.topologyHint,
                 channelMode: requested.controls.cm,
                 latency: requested.controls.lt,
                 convolutionRate: requested.controls.cr
@@ -645,7 +647,6 @@ class IRReverbPlugin extends PluginBase {
             channelCount: pcm.channels.length,
             engineChannels: outputChannelCount,
             channel: this.channel,
-            topologyHint: pcm.topologyHint,
             channelMode: this.cm,
             latency: this.lt,
             convolutionRate: this.cr
@@ -817,7 +818,6 @@ class IRReverbPlugin extends PluginBase {
                 channelCount: entry.channels || (entry.composition === 'pair' ? 4 : 1),
                 engineChannels: requested.outputChannelCount,
                 channel: requested.controls.channel,
-                topologyHint: entry.composition === 'pair' ? 'true-stereo' : undefined,
                 channelMode: requested.controls.cm,
                 latency: requested.controls.lt,
                 convolutionRate: requested.controls.cr
@@ -978,6 +978,7 @@ class IRReverbPlugin extends PluginBase {
             const channel = document.getElementById?.(`${this.id}-channel-select`);
             if (channel) channel.value = controls.channel ?? '';
         }
+        this._updateResolvedModeDisplay();
     }
 
     _externalAssetSignature({
@@ -1661,13 +1662,7 @@ class IRReverbPlugin extends PluginBase {
                 126 * (config.rateDivider - 1);
             const latencyMs = latencySamples * 1000 / engineRate;
             const memoryMiB = footprintBytes / (1024 * 1024);
-            const topologyNames = {
-                mono: this._t('irReverb.option.mono', 'Mono'),
-                indep: this._t('irReverb.option.independent', 'Independent'),
-                true: this._t('irReverb.option.trueStereo', 'True Stereo'),
-                multi: this._t('irReverb.option.diagonalMatrix', 'Diagonal Matrix')
-            };
-            const topology = topologyNames[config.channelMode] || config.channelMode;
+            const topology = this._channelModeName(config.channelMode);
             const maximumSeconds = maximumFrames / sampleRate;
             const limitNote = this._t('irReverb.metadata.limit', '{active} s active / {limit} s limit', {
                 active: effectiveSeconds.toFixed(2),
@@ -1679,6 +1674,27 @@ class IRReverbPlugin extends PluginBase {
                 `${latencySamples} samples / ${latencyMs.toFixed(2)} ms · ${memoryMiB.toFixed(1)} MiB`;
         }
         if (this._metadataElement) this._metadataElement.textContent = this._metadataText;
+        this._updateResolvedModeDisplay();
+    }
+
+    _channelModeName(mode) {
+        const names = {
+            mono: this._t('irReverb.option.mono', 'Mono'),
+            indep: this._t('irReverb.option.independent', 'Independent'),
+            true: this._t('irReverb.option.trueStereo', 'True Stereo'),
+            multi: this._t('irReverb.option.diagonalMatrix', 'Diagonal Matrix')
+        };
+        return names[mode] || mode;
+    }
+
+    _updateResolvedModeDisplay() {
+        const element = this._resolvedModeElement;
+        if (!element) return;
+        const selectedMode = this._channelModeSelect?.value ?? this.cm;
+        const resolvedMode = this._prepared?.config?.channelMode;
+        const visible = selectedMode === 'auto' && resolvedMode && resolvedMode !== 'auto';
+        element.textContent = visible ? `→ ${this._channelModeName(resolvedMode)}` : '';
+        element.hidden = !visible;
     }
 
     _drawEdcGraph() {
@@ -1889,13 +1905,21 @@ class IRReverbPlugin extends PluginBase {
             this._assetControlRows.set(name, row);
             container.appendChild(row);
         };
-        appendAssetControl('cm', this.createSelectControl(this._t('irReverb.parameter.channelMode', 'Channel Mode'), [
+        const channelModeRow = this.createSelectControl(this._t('irReverb.parameter.channelMode', 'Channel Mode'), [
             { value: 'auto', label: this._t('irReverb.option.auto', 'Auto') },
             { value: 'mono', label: this._t('irReverb.option.mono', 'Mono') },
             { value: 'indep', label: this._t('irReverb.option.independent', 'Independent') },
             { value: 'true', label: this._t('irReverb.option.trueStereo', 'True Stereo') },
             { value: 'multi', label: this._t('irReverb.option.diagonalMatrix', 'Diagonal Matrix') }
-        ], this.cm, value => this.setParameters({ cm: value })));
+        ], this.cm, value => this.setParameters({ cm: value }));
+        this._channelModeSelect = channelModeRow.querySelector('select');
+        const resolvedMode = document.createElement('span');
+        resolvedMode.className = 'ir-reverb-mode-note';
+        resolvedMode.setAttribute('aria-live', 'polite');
+        channelModeRow.appendChild(resolvedMode);
+        this._resolvedModeElement = resolvedMode;
+        appendAssetControl('cm', channelModeRow);
+        this._updateResolvedModeDisplay();
         appendAssetControl('lt', this.createSelectControl(this._t('irReverb.parameter.latency', 'Latency'), [
             { value: '0', label: this._t('irReverb.option.zero', 'Zero') },
             ...[128, 256, 512, 1024].map(value => ({
@@ -1943,6 +1967,8 @@ class IRReverbPlugin extends PluginBase {
         this._assetResolutionGeneration = null;
         this._assetRevisionSnapshots.clear();
         this._assetControlRows.clear();
+        this._channelModeSelect = null;
+        this._resolvedModeElement = null;
         this._pendingReadyNotice = null;
         this._statusElement = null;
         this._metadataElement = null;

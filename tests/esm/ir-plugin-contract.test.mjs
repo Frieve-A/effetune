@@ -67,7 +67,7 @@ test('IR rate and latency resolver enforces the product combinations', () => {
     channelMode: 'auto',
     latency: '128',
     convolutionRate: 'full'
-  }).topology, IR_ASSET_TOPOLOGY.matrix);
+  }).topology, IR_ASSET_TOPOLOGY.trueStereo);
   assert.equal(resolveIrProcessingConfig({
     sampleRate: 48000,
     channelCount: 4,
@@ -77,7 +77,7 @@ test('IR rate and latency resolver enforces the product combinations', () => {
   }).valid, true);
 });
 
-test('IR topology resolver combines routing selection, metadata, and explicit mode', () => {
+test('IR topology resolver combines routing selection, channel layout, and explicit mode', () => {
   assert.equal(selectedIrChannelCount(null, 8), 2);
   assert.equal(selectedIrChannelCount('A', 8), 8);
   assert.equal(selectedIrChannelCount('34', 4), 2);
@@ -94,15 +94,15 @@ test('IR topology resolver combines routing selection, metadata, and explicit mo
   assert.equal(explicitTrue.assetChannels, 4);
   assert.equal(explicitTrue.pathCount, 0);
 
-  const metadataTrue = resolveIrProcessingConfig({
+  const autoTrue = resolveIrProcessingConfig({
     sampleRate: 48000,
     channelCount: 4,
     engineChannels: 2,
     selectedChannels: 2,
-    topologyHint: 'true-stereo',
     channelMode: 'auto'
   });
-  assert.equal(metadataTrue.topology, IR_ASSET_TOPOLOGY.trueStereo);
+  assert.equal(autoTrue.topology, IR_ASSET_TOPOLOGY.trueStereo);
+  assert.equal(autoTrue.channelMode, 'true');
 
   const plainFour = resolveIrProcessingConfig({
     sampleRate: 48000,

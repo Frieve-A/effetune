@@ -366,6 +366,23 @@ test('IR Reverb serializes defaults and applies Dry in the JavaScript fallback',
   assert.equal(plugin.temporalCapability, 'reset-on-resume');
 });
 
+test('IR Reverb shows the resolved Channel Mode only while Auto is selected', () => {
+  const { Plugin } = loadPlugin();
+  const plugin = new Plugin();
+  plugin._channelModeSelect = { value: 'auto' };
+  plugin._resolvedModeElement = { textContent: '', hidden: true };
+  plugin._prepared = { config: { channelMode: 'true' } };
+
+  plugin._updateResolvedModeDisplay();
+  assert.equal(plugin._resolvedModeElement.textContent, '→ True Stereo');
+  assert.equal(plugin._resolvedModeElement.hidden, false);
+
+  plugin._channelModeSelect.value = 'true';
+  plugin._updateResolvedModeDisplay();
+  assert.equal(plugin._resolvedModeElement.textContent, '');
+  assert.equal(plugin._resolvedModeElement.hidden, true);
+});
+
 test('IR Reverb requires an offline DSP asset only when an IR is selected', () => {
   const { Plugin } = loadPlugin();
   const plugin = new Plugin();
@@ -1063,11 +1080,10 @@ test('IR Reverb propagates the routed wet L1 bound into its power gain bound', a
   });
   const plugin = new Plugin();
   plugin.dl = -96;
-  plugin.cm = 'true';
+  plugin.cm = 'auto';
   plugin._pcm = {
     channels: Array.from({ length: 4 }, () => new Float32Array([1, 0])),
-    sampleRate: 48000,
-    topologyHint: 'true-stereo'
+    sampleRate: 48000
   };
   assert.equal(await plugin._prepareAndStage(++plugin._generation), true);
   assert.ok(Math.abs(plugin.powerGainUpperBoundDb - (plugin.dw + 20 * Math.log10(2))) < 1e-12);
@@ -1114,6 +1130,39 @@ test('IR Reverb imports a recognized L/R stereo pair and stages true-stereo meta
     assert.equal(plugin._prepared.config.assetChannels, 4);
     assert.equal(plugin.assets.at(-1).descriptor.pathCount, 0);
     assert.equal(plugin._irFileLabel, 'Room_L.wav + Room_R.wav');
+  } finally {
+    plugin.cleanup();
+  }
+});
+
+test('IR Reverb imports a single four-channel IR as True Stereo in Auto mode', async () => {
+  const entry = {
+    irId: 'cccccccccccccccccccccccc',
+    fileLabel: 'Hall Quad.wav',
+    composition: 'single',
+    channels: 4
+  };
+  const pcm = {
+    channels: Array.from({ length: 4 }, (_, index) => new Float32Array([index + 1])),
+    sampleRate: 48000
+  };
+  const libraryService = {
+    store: { async updateAnalysis() {} },
+    async importFiles() {
+      return { imported: [entry], failedCount: 0, unsupportedCount: 0 };
+    },
+    get() { return entry; },
+    async resolveDecodedPcm() { return pcm; }
+  };
+  const { Plugin } = loadPlugin({ libraryService });
+  const plugin = new Plugin();
+  try {
+    const file = { name: entry.fileLabel, async arrayBuffer() { return new ArrayBuffer(1); } };
+    assert.equal(await withTimeout(plugin.importFiles([file]), 'four-channel import did not settle'), true);
+    assert.equal(plugin.cm, 'auto');
+    assert.equal(plugin._prepared.config.channelMode, 'true');
+    assert.equal(plugin._prepared.config.topology, 3);
+    assert.equal(plugin._prepared.config.assetChannels, 4);
   } finally {
     plugin.cleanup();
   }
@@ -3007,6 +3056,8 @@ test('IR Reverb UI source exposes persistent library and multi-file import contr
   assert.doesNotMatch(pluginSource, /ir-reverb-importer/);
   assert.match(pluginSource, /value: 'true', label: this\._t\('irReverb\.option\.trueStereo', 'True Stereo'\)/);
   assert.match(pluginSource, /value: 'multi', label: this\._t\('irReverb\.option\.diagonalMatrix', 'Diagonal Matrix'\)/);
+  assert.match(pluginSource, /resolvedMode\.className = 'ir-reverb-mode-note'/);
+  assert.match(pluginCss, /\.ir-reverb-mode-note\s*\{[^}]*white-space: nowrap/s);
   assert.match(pluginSource, /this\._t\('irReverb\.action\.chooseLibrary', 'Choose from library…'\)/);
   assert.match(pluginSource, /this\._t\('irReverb\.action\.importFile', 'Import file…'\)/);
   assert.match(pluginSource, /importActions\.className = 'ir-reverb-import-actions'/);

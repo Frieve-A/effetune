@@ -275,7 +275,7 @@ O IR Reverb convolui o sinal com uma resposta ao impulso (IR) importada para rep
 
 ### Parâmetros
 
-- **Channel Mode**: Auto, Mono, Independent, True Stereo (rotas LL/LR/RL/RR) ou Diagonal Matrix sem crossfeed.
+- **Channel Mode**: **Auto** seleciona Mono para uma IR de um canal, True Stereo para uma IR de quatro canais com seleção estéreo, Independent quando as quantidades de canais coincidem e Diagonal Matrix nos demais casos; o modo resultante aparece à direita do menu. Também permite escolher explicitamente Mono, Independent, True Stereo (rotas LL/LR/RL/RR) ou Diagonal Matrix sem crossfeed.
 - **Latency**: Zero ou 128/256/512/1024 samples. Valores altos aliviam o processamento, mas atrasam o sinal wet; Zero exige Full.
 - **Convolution Rate**: Auto, Full, Half ou Quarter. Taxas menores reduzem carga e largura de banda wet; Quarter exige pelo menos 176,4 kHz.
 - **Dry**: ajusta o nível do sinal original. Em -96 dB, silencia-o completamente para um efeito totalmente wet ou um retorno.
@@ -291,7 +291,7 @@ O tempo avança da esquerda para a direita e o nível vai de 0 a -90 dB. A curva
 
 ### Roteamento, biblioteca e compartilhamento
 
-Mono aplica uma IR, Independent mantém os canais separados, True Stereo usa LL/LR/RL/RR e Diagonal Matrix conecta apenas entradas e saídas correspondentes. Para um par True Stereo, selecione juntos arquivos correspondentes terminados em `L`/`R` ou `Left`/`Right`.
+Mono aplica uma IR, Independent mantém os canais separados, True Stereo usa LL/LR/RL/RR e Diagonal Matrix conecta apenas entradas e saídas correspondentes. Em Auto, toda IR de quatro canais com seleção estéreo é interpretada nessa ordem; para layouts Quad ou outros layouts de quatro canais, selecione explicitamente Independent ou Diagonal Matrix. Para um par True Stereo, selecione juntos arquivos correspondentes terminados em `L`/`R` ou `Left`/`Right`.
 
 Os originais ficam na **Impulse Response Library**. A versão web usa o OPFS privado do site; o app desktop usa o armazenamento gerenciado do aplicativo. A biblioteca mostra os nomes dos arquivos originais e permite pesquisá-los, carregar entradas ou excluí-las. Uma mudança de sample rate recria os dados a partir do original. Mantenha também uma cópia própria, pois a limpeza de dados do site ou a pressão de armazenamento pode remover dados do navegador.
 
