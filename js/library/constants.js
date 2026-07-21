@@ -4,7 +4,9 @@ export const MUSIC_LIBRARY_STARTUP_VIEWS = Object.freeze([
   'albums',
   'artists',
   'genres',
-  'subfolders'
+  'subfolders',
+  'folders',
+  'playlists'
 ]);
 
 export const SUPPORTED_AUDIO_EXTENSIONS = Object.freeze([

@@ -28,7 +28,7 @@ A Biblioteca de música indexa extensões comuns de arquivos de mídia, como MP3
 
 Para voltar à edição de efeitos, clique no botão **Effect Pipeline** no layout para PC e, no layout móvel, volte para a aba **Efeitos**. No aplicativo desktop, também é possível usar **Visualizar > Effect Pipeline** ou **Ctrl+E** (**Command+E** no macOS).
 
-Se quiser que a Biblioteca de música seja a primeira tela exibida ao iniciar, abra **Configurações > Configuração...** e defina **Visualização ao iniciar:** como **Biblioteca de música**. Na lista ao lado de **Biblioteca de música**, escolha qual seção será exibida primeiro: **Faixas**, **Álbuns**, **Artistas**, **Gêneros** ou **Subpastas**.
+Se quiser que a Biblioteca de música seja a primeira tela exibida ao iniciar, abra **Configurações > Configuração...** e defina **Visualização ao iniciar:** como **Biblioteca de música**. Na lista ao lado de **Biblioteca de música**, escolha qual seção será exibida primeiro: **Faixas**, **Álbuns**, **Artistas**, **Gêneros**, **Subpastas**, **Pastas** ou **Playlists**.
 
 ## Adicionar pastas de música
 

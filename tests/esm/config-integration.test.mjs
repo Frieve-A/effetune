@@ -727,8 +727,12 @@ test('showConfigDialog opens in Web and hides Electron-only settings', async () 
     assert.equal(harness.document.getElementById('power-full-suspend-delay').value, '300');
     assert.equal(harness.document.getElementById('language-select').value, 'ja');
     assert.equal(harness.document.getElementById('startup-view-library').checked, true);
-    assert.equal(harness.document.getElementById('library-startup-view-select').value, 'artists');
-    assert.equal(harness.document.getElementById('library-startup-view-select').disabled, false);
+    const initialLibraryStartupViewSelect = harness.document.getElementById('library-startup-view-select');
+    assert.equal(initialLibraryStartupViewSelect.value, 'artists');
+    assert.equal(initialLibraryStartupViewSelect.disabled, false);
+    assert.deepEqual(initialLibraryStartupViewSelect.children.map(option => option.value), [
+      'tracks', 'albums', 'artists', 'genres', 'subfolders', 'folders', 'playlists'
+    ]);
     assert.equal(harness.document.getElementById('preset-select').value, 'WebPreset');
 
     const pipelineDefault = harness.document.getElementById('pl-default');
@@ -743,9 +747,9 @@ test('showConfigDialog opens in Web and hides Electron-only settings', async () 
     await harness.document.getElementById('startup-view-library').dispatchEvent('change');
     const libraryStartupViewSelect = harness.document.getElementById('library-startup-view-select');
     assert.equal(libraryStartupViewSelect.disabled, false);
-    libraryStartupViewSelect.value = 'subfolders';
+    libraryStartupViewSelect.value = 'playlists';
     await libraryStartupViewSelect.dispatchEvent('change');
-    assert.equal(JSON.parse(localStorage.snapshot().effetune_app_config).libraryStartupView, 'subfolders');
+    assert.equal(JSON.parse(localStorage.snapshot().effetune_app_config).libraryStartupView, 'playlists');
   });
 });
 
@@ -1114,12 +1118,23 @@ test('showConfigDialog supports last/default startup states and Escape close', a
   const invalidLibraryStartupView = createConfigHarness({
     config: {
       startupView: 'library',
-      libraryStartupView: 'folders'
+      libraryStartupView: 'recent'
     }
   });
   await withGlobals({ window: invalidLibraryStartupView.window, document: invalidLibraryStartupView.document }, async () => {
     await showConfigDialog(true, {});
     assert.equal(invalidLibraryStartupView.document.getElementById('library-startup-view-select').value, 'tracks');
+  });
+
+  const folderLibraryStartupView = createConfigHarness({
+    config: {
+      startupView: 'library',
+      libraryStartupView: 'folders'
+    }
+  });
+  await withGlobals({ window: folderLibraryStartupView.window, document: folderLibraryStartupView.document }, async () => {
+    await showConfigDialog(true, {});
+    assert.equal(folderLibraryStartupView.document.getElementById('library-startup-view-select').value, 'folders');
   });
 
   const presetWithoutNames = createConfigHarness({

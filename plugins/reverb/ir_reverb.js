@@ -1805,9 +1805,8 @@ class IRReverbPlugin extends PluginBase {
         };
         context.setLineDash([]);
         context.lineWidth = 1;
-        context.fillStyle = markerColors.rt60;
-        drawMarkerLabel(graph.rt60Label, left - 4, 0);
-        let labelRow = 1;
+        let labelRow = 0;
+        let rt60LabelDrawn = false;
         for (const [label, seconds] of Object.entries(graph.markers)) {
             if (!Number.isFinite(seconds) || seconds < 0 || seconds > graph.durationSeconds) continue;
             const px = x(seconds);
@@ -1817,10 +1816,14 @@ class IRReverbPlugin extends PluginBase {
             context.moveTo(px, top);
             context.lineTo(px, height - bottom);
             context.stroke();
-            if (label !== 'rt60') {
-                drawMarkerLabel(markerLabels[label] || label, px, labelRow);
-                labelRow = labelRow === markerLabelRows - 1 ? 1 : labelRow + 1;
-            }
+            drawMarkerLabel(label === 'rt60' ? graph.rt60Label : markerLabels[label] || label,
+                px, labelRow);
+            if (label === 'rt60') rt60LabelDrawn = true;
+            labelRow = (labelRow + 1) % markerLabelRows;
+        }
+        if (!rt60LabelDrawn) {
+            context.fillStyle = markerColors.rt60;
+            drawMarkerLabel(graph.rt60Label, width - right, labelRow);
         }
         context.fillStyle = '#fff';
         context.textAlign = 'right';

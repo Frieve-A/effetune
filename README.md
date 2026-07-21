@@ -88,7 +88,7 @@ To use EffeTune with CD players, network players, or other physical sources:
 
 ### Application Settings
 
-Open **Settings > Config...** to choose **Language**, set **Startup view:**, and configure **Effect Pipeline at startup:**. **Startup view:** can be **Effect Pipeline (Default)** or **Music Library**. When you choose Music Library, use its list to select **Tracks**, **Albums**, **Artists**, **Genres**, or **Subfolders** as the first library view.
+Open **Settings > Config...** to choose **Language**, set **Startup view:**, and configure **Effect Pipeline at startup:**. **Startup view:** can be **Effect Pipeline (Default)** or **Music Library**. When you choose Music Library, use its list to select **Tracks**, **Albums**, **Artists**, **Genres**, **Subfolders**, **Folders**, or **Playlists** as the first library view.
 
 ### Browsing Your Music Library
 

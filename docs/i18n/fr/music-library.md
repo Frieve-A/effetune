@@ -28,7 +28,7 @@ La Bibliothèque musicale indexe les extensions de fichiers multimédias courant
 
 Pour revenir à l'édition des effets, cliquez sur le bouton **Effect Pipeline** en disposition ordinateur, ou revenez à l'onglet **Effets** en disposition mobile. Dans l'application de bureau, vous pouvez aussi utiliser **Affichage > Effect Pipeline** ou **Ctrl+E** (**Command+E** sur macOS).
 
-Si vous voulez afficher la Bibliothèque musicale en premier au démarrage, ouvrez **Paramètres > Configuration...** et réglez **Vue au démarrage :** sur **Bibliothèque musicale**. Dans la liste située à côté de **Bibliothèque musicale**, choisissez la section qui s'affichera en premier : **Morceaux**, **Albums**, **Artistes**, **Genres** ou **Sous-dossiers**.
+Si vous voulez afficher la Bibliothèque musicale en premier au démarrage, ouvrez **Paramètres > Configuration...** et réglez **Vue au démarrage :** sur **Bibliothèque musicale**. Dans la liste située à côté de **Bibliothèque musicale**, choisissez la section qui s'affichera en premier : **Morceaux**, **Albums**, **Artistes**, **Genres**, **Sous-dossiers**, **Dossiers** ou **Listes de lecture**.
 
 ## Ajouter un dossier de musique
 

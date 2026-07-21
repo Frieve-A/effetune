@@ -28,7 +28,7 @@ La Biblioteca musical indexa extensiones de archivos multimedia habituales, como
 
 Para volver a editar efectos, haz clic en el botón **Effect Pipeline** en el diseño de PC o vuelve a la pestaña **Efectos** en el diseño móvil. En la aplicación de escritorio también puedes usar **Ver > Effect Pipeline** o **Ctrl+E** (**Command+E** en macOS).
 
-Si quieres que la Biblioteca musical sea la primera vista al iniciar, abre **Configuración > Configuración...** y cambia **Vista al inicio:** a **Biblioteca musical**. En la lista situada junto a **Biblioteca musical**, elige la sección que aparecerá primero: **Pistas**, **Álbumes**, **Artistas**, **Géneros** o **Subcarpetas**.
+Si quieres que la Biblioteca musical sea la primera vista al iniciar, abre **Configuración > Configuración...** y cambia **Vista al inicio:** a **Biblioteca musical**. En la lista situada junto a **Biblioteca musical**, elige la sección que aparecerá primero: **Pistas**, **Álbumes**, **Artistas**, **Géneros**, **Subcarpetas**, **Carpetas** o **Listas de reproducción**.
 
 ## Añadir carpetas de música
 

@@ -11,9 +11,13 @@
     color: var(--et-accent-hover, #5db3ff);
 }
 
+body.layout-desktop .ir-reverb-status[data-state="preparing"],
 .ir-reverb-status[data-state="ready"] {
     max-width: 100%;
     flex: 0 0 auto;
+}
+
+.ir-reverb-status[data-state="ready"] {
     color: var(--et-success, #4caf50);
 }
 

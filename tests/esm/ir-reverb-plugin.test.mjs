@@ -2890,7 +2890,7 @@ test('IR Reverb EDC graph keeps marker labels in bounds and adds unobstructed on
   const { Plugin } = loadPlugin();
   const plugin = new Plugin();
   plugin._prepared = { ...preparedResult({ frames: 144000 }), config: {} };
-  plugin.pd = 200;
+  plugin.pd = 0;
   plugin.dc = true;
   const transforms = [];
   const strokes = [];
@@ -2930,17 +2930,23 @@ test('IR Reverb EDC graph keeps marker labels in bounds and adds unobstructed on
   assert.ok(trim);
   assert.ok(trim.x >= 42);
   assert.ok(trim.x + 32 <= 320 - 12);
+  const coLocatedLabels = ['onset', 'cut', 'pre-delay'].map(text =>
+    labels.find(label => label.text === text));
+  assert.ok(coLocatedLabels.every(Boolean));
+  assert.equal(new Set(coLocatedLabels.map(label => label.y)).size, coLocatedLabels.length);
   const rt60Labels = labels.filter(label => String(label.text).includes('RT60'));
   assert.equal(rt60Labels.length, 1);
   assert.equal(rt60Labels[0].text, 'RT60 0.50 s');
   assert.equal(rt60Labels[0].color, '#fff');
+  const expectedRt60X = 42 + 0.5 / 3 * (320 - 42 - 12) + 4;
+  assert.ok(Math.abs(rt60Labels[0].x - expectedRt60X) < 1e-9);
   assert.ok(labels.some(label => label.text === '1 s'));
   assert.ok(labels.some(label => label.text === '2 s'));
   assert.equal(labels.some(label => label.text === '3 s'), false);
   assert.ok(labels.some(label => label.text === 'Time'));
 });
 
-test('IR Reverb EDC graph separates the RT60 readout from positional markers', () => {
+test('IR Reverb EDC graph retains the RT60 readout when its marker is unavailable', () => {
   const drawGraph = ({ directCut, rt60Seconds }) => {
     const { Plugin } = loadPlugin();
     const plugin = new Plugin();
@@ -3006,7 +3012,7 @@ test('IR Reverb UI source exposes persistent library and multi-file import contr
   assert.match(pluginSource, /importActions\.className = 'ir-reverb-import-actions'/);
   assert.match(pluginSource, /importActions\.append\(importButton, libraryButton, status\)/);
   assert.match(pluginCss, /\.ir-reverb-status:not\(\[data-state="ready"\]\)\s*\{[^}]*flex-basis: 100%/s);
-  assert.match(pluginCss, /\.ir-reverb-status\[data-state="ready"\]\s*\{[^}]*flex: 0 0 auto/s);
+  assert.match(pluginCss, /body\.layout-desktop \.ir-reverb-status\[data-state="preparing"\],\s*\.ir-reverb-status\[data-state="ready"\]\s*\{[^}]*flex: 0 0 auto/s);
   assert.doesNotMatch(pluginSource, /irReverb\.import\.(?:namePlaceholder|tagsPlaceholder|sourcePlaceholder)/);
   assert.doesNotMatch(pluginSource, /irReverb\.aria\.import(?:Name|Tags|Source)/);
   assert.match(pluginSource, /-db \/ 90/);

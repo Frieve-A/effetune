@@ -937,7 +937,7 @@ void testEngineRejectsFailedPrepareAndReusesSlot() {
   IR_CHECK(engine.resetInstance(retained) == ET_OK);
 }
 
-void testInstancePhaseStaggerPreservesOutput() {
+void testInstancePhaseStaggerPreservesActivationAndOutput() {
   const std::vector<float> ir = makeIr(1u, 600u);
   Harness first;
   Harness second;
@@ -958,7 +958,7 @@ void testInstancePhaseStaggerPreservesOutput() {
   };
   const std::uint32_t firstQuanta = prepare(first);
   const std::uint32_t secondQuanta = prepare(second);
-  IR_CHECK(firstQuanta != secondQuanta);
+  IR_CHECK(firstQuanta == secondQuanta);
   IR_CHECK((first.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_ACTIVE);
   IR_CHECK((second.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_ACTIVE);
 
@@ -1073,7 +1073,7 @@ int main() {
   testBeginAllocationFailuresAreRecoverable();
   testPrepareAllocationFailuresAreRecoverable();
   testEngineRejectsFailedPrepareAndReusesSlot();
-  testInstancePhaseStaggerPreservesOutput();
+  testInstancePhaseStaggerPreservesActivationAndOutput();
   testHostFootprintEstimatorGrid();
   return failures == 0 ? 0 : 1;
 }

@@ -506,7 +506,6 @@ public:
     stage_index_ = stage_count_ == 0u ? 0u : config_.sliceOffset % stage_count_;
     prepared_stages_ = 0u;
     preparation_samples_ = 0u;
-    preparation_quantum_ = 0u;
     if (latency_ == 0u) {
       for (std::uint32_t channel = 0u; channel < ir_channels_; ++channel) {
         const float *source = ir + static_cast<std::size_t>(channel) * frames;
@@ -560,10 +559,8 @@ public:
       preparation_samples_ += frames;
       while (preparation_samples_ >= 128u && state_ == ConvolverPreparationState::preparing) {
         preparation_samples_ -= 128u;
-        const std::uint32_t budget =
-            ((preparation_quantum_ + config_.sliceOffset) & 1u) == 0u ? 2u : 1u;
-        ++preparation_quantum_;
-        prepareSlice(budget);
+        // Keep activation timing independent of the CPU-load staggering phase.
+        prepareSlice(1u);
       }
       std::memset(audio, 0, static_cast<std::size_t>(channels) * frames * sizeof(float));
       return;
@@ -682,7 +679,6 @@ private:
     stage_index_ = 0u;
     prepared_stages_ = 0u;
     preparation_samples_ = 0u;
-    preparation_quantum_ = 0u;
     ring_size_ = 1u;
     latency_ = 0u;
     direct_position_ = 0u;
@@ -707,7 +703,6 @@ private:
   std::uint32_t stage_index_ = 0u;
   std::uint32_t prepared_stages_ = 0u;
   std::uint32_t preparation_samples_ = 0u;
-  std::uint64_t preparation_quantum_ = 0u;
   ConvolverPreparationState state_ = ConvolverPreparationState::empty;
 };
 

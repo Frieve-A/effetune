@@ -251,7 +251,7 @@ void testReservedPathUpdateWithoutAllocation() {
   CONVOLVER_CHECK(maximumError <= 2.0e-4);
 }
 
-void testHeavyPreparationPhaseStagger() {
+void testPreparationPhaseStaggerPreservesActivationTiming() {
   constexpr std::uint32_t irFrames = 16384u;
   ConvolverConfig inPhaseConfig;
   inPhaseConfig.latencySamples = 256u;
@@ -286,7 +286,7 @@ void testHeavyPreparationPhaseStagger() {
     inPhase.process(block.data(), 1u, 128u);
     staggered.process(block.data(), 1u, 128u);
   }
-  CONVOLVER_CHECK(inPhase.state() == ConvolverPreparationState::active);
+  CONVOLVER_CHECK(inPhase.state() == ConvolverPreparationState::preparing);
   CONVOLVER_CHECK(staggered.state() == ConvolverPreparationState::preparing);
   CONVOLVER_CHECK(
       std::all_of(block.begin(), block.end(), [](float sample) { return sample == 0.0F; }));
@@ -294,8 +294,10 @@ void testHeavyPreparationPhaseStagger() {
   std::fill(block.begin(), block.end(), 1.0F);
   {
     effetune::allocation_guard::Scope guard;
+    inPhase.process(block.data(), 1u, 128u);
     staggered.process(block.data(), 1u, 128u);
   }
+  CONVOLVER_CHECK(inPhase.state() == ConvolverPreparationState::active);
   CONVOLVER_CHECK(staggered.state() == ConvolverPreparationState::active);
   CONVOLVER_CHECK(
       std::all_of(block.begin(), block.end(), [](float sample) { return sample == 0.0F; }));
@@ -360,7 +362,7 @@ int main() {
   testIncrementalPreparationAndAllocationGuard();
   testReferenceParityAndReset();
   testReservedPathUpdateWithoutAllocation();
-  testHeavyPreparationPhaseStagger();
+  testPreparationPhaseStaggerPreservesActivationTiming();
   testStaggeredInstances();
   testMemoryAccountingScalesWithIrCapacity();
   return failures == 0 ? 0 : 1;

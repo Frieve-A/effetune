@@ -914,7 +914,10 @@ test('LibraryView show can skip search focus and hide restores the opener', asyn
     assert.equal(documentRef.activeElement, searchInput);
 
     view.show({ focusSearch: false, initialView: 'folders' });
-    assert.equal(view.currentView, 'tracks');
+    assert.equal(view.currentView, 'folders');
+
+    view.show({ focusSearch: false, initialView: 'playlists' });
+    assert.equal(view.currentView, 'playlists');
   });
 });
 

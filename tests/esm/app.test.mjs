@@ -770,7 +770,18 @@ test('startup view preference opens library unless URL or first-launch content t
     });
 
     await app.applyStartupViewPreference();
-    assert.equal(calls.some(call => call[0] === 'ui.showLibraryView' && call[1]?.initialView === 'tracks'), true);
+    assert.equal(calls.some(call => call[0] === 'ui.showLibraryView' && call[1]?.initialView === 'folders'), true);
+  });
+
+  await withAppModule({}, async ({ calls, mod, window }) => {
+    window.electronIntegration = { isElectron: false };
+    const app = new mod.App({
+      ...createDependencies(calls),
+      loadStartupConfig: async () => ({ startupView: 'library', libraryStartupView: 'playlists' })
+    });
+
+    await app.applyStartupViewPreference();
+    assert.equal(calls.some(call => call[0] === 'ui.showLibraryView' && call[1]?.initialView === 'playlists'), true);
   });
 
   await withAppModule({ search: '?p=shared' }, async ({ calls, mod, window }) => {
