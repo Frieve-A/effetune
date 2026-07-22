@@ -22,10 +22,14 @@ public:
   void prepare(const PrepareInfo &info) override {
     oversampled_.resize(static_cast<std::size_t>(info.maxFrames) * kOversampleFactor);
     low_pass_previous_.resize(info.maxChannels);
+    interpolation_previous_.resize(info.maxChannels);
   }
 
   void reset() noexcept override {
     for (double &previous : low_pass_previous_) {
+      previous = 0.0;
+    }
+    for (double &previous : interpolation_previous_) {
       previous = 0.0;
     }
     active_channel_count_ = 0u;
@@ -46,6 +50,9 @@ public:
       for (double &previous : low_pass_previous_) {
         previous = 0.0;
       }
+      for (double &previous : interpolation_previous_) {
+        previous = 0.0;
+      }
       active_channel_count_ = channel_count;
     }
 
@@ -53,19 +60,21 @@ public:
     const double negative_threshold = -threshold_;
     for (std::uint32_t channel = 0; channel < channel_count; ++channel) {
       const std::size_t channel_offset = static_cast<std::size_t>(channel) * frame_count;
+      double interpolation_previous = interpolation_previous_[channel];
 
       for (std::uint32_t frame = 0; frame < frame_count; ++frame) {
         const std::size_t input_index = channel_offset + frame;
-        const double first = static_cast<double>(audio[input_index]);
-        const double second =
-            frame + 1u < frame_count ? static_cast<double>(audio[input_index + 1u]) : first;
+        const double first = interpolation_previous;
+        const double second = static_cast<double>(audio[input_index]);
         const double delta = second - first;
         const std::size_t output_index = static_cast<std::size_t>(frame) * kOversampleFactor;
         oversampled_[output_index] = static_cast<float>(first);
         oversampled_[output_index + 1u] = static_cast<float>(first + 0.25 * delta);
         oversampled_[output_index + 2u] = static_cast<float>(first + 0.5 * delta);
         oversampled_[output_index + 3u] = static_cast<float>(first + 0.75 * delta);
+        interpolation_previous = second;
       }
+      interpolation_previous_[channel] = interpolation_previous;
 
       if (mode == 0u) {
         for (std::size_t index = 0; index < oversampled_count; ++index) {
@@ -114,6 +123,7 @@ private:
 
   std::vector<float> oversampled_;
   std::vector<double> low_pass_previous_;
+  std::vector<double> interpolation_previous_;
   double threshold_ = 1.0;
   std::uint32_t active_channel_count_ = 0u;
 };

@@ -66,25 +66,6 @@ public:
         work_buffer_[frame] = static_cast<float>(
             envelope_value < detail::kMinimumEnvelope ? detail::kMinimumEnvelope : envelope_value);
       }
-      detail::persistEnvelopeAsFloat(envelope);
-
-      float maximum_envelope = static_cast<float>(detail::kMinimumEnvelope);
-      for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-        if (work_buffer_[frame] > maximum_envelope) {
-          maximum_envelope = work_buffer_[frame];
-        }
-      }
-      const double maximum_difference = lookup_.decibels(maximum_envelope) - threshold;
-      if (maximum_difference >= half_knee) {
-        const double makeup_gain = lookup_.gain(makeup_db);
-        if (makeup_gain != 1.0) {
-          for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-            channel_audio[frame] =
-                static_cast<float>(static_cast<double>(channel_audio[frame]) * makeup_gain);
-          }
-        }
-        continue;
-      }
 
       for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
         const double difference = lookup_.decibels(work_buffer_[frame]) - threshold;

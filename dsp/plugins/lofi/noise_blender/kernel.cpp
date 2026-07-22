@@ -10,12 +10,12 @@ namespace effetune::plugins::lofi {
 namespace {
 
 struct PinkState final {
-  float values[7]{};
+  double values[7]{};
 };
 
 struct BrownState final {
-  float last_brown = 0.0F;
-  float dc_offset = 0.0F;
+  double last_brown = 0.0;
+  double dc_offset = 0.0;
 };
 
 } // namespace
@@ -66,19 +66,31 @@ public:
     const bool per_channel = params_.perChannel != 0.0F;
 
     if (per_channel) {
-      for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
-        const std::uint32_t offset = channel * frame_count;
-        if (noise_type == 0u) {
-          for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+      // Advance the shared RNG frame-first so block boundaries cannot reassign noise to channels.
+      if (noise_type == 0u) {
+        for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+          for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
+            const std::uint32_t index = channel * frame_count + frame;
             const double white = random_.nextFloatSigned();
-            audio[offset + frame] =
-                static_cast<float>(static_cast<double>(audio[offset + frame]) + white * level_gain);
+            audio[index] =
+                static_cast<float>(static_cast<double>(audio[index]) + white * level_gain);
           }
-        } else if (noise_type == 1u) {
-          processPinkChannel(audio + offset, frame_count, pink_states_[channel], level_gain, false);
-        } else {
-          processBrownChannel(audio + offset, frame_count, brown_states_[channel], level_gain,
-                              false);
+        }
+      } else if (noise_type == 1u) {
+        for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+          for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
+            const std::uint32_t index = channel * frame_count + frame;
+            const double scaled = nextPink(pink_states_[channel]) * level_gain;
+            audio[index] = static_cast<float>(static_cast<double>(audio[index]) + scaled);
+          }
+        }
+      } else {
+        for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+          for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
+            const std::uint32_t index = channel * frame_count + frame;
+            const double scaled = nextBrown(brown_states_[channel]) * level_gain;
+            audio[index] = static_cast<float>(static_cast<double>(audio[index]) + scaled);
+          }
         }
       }
       return;
@@ -89,9 +101,13 @@ public:
         noise_buffer_[frame] = static_cast<float>(random_.nextFloatSigned() * level_gain);
       }
     } else if (noise_type == 1u) {
-      processPinkChannel(noise_buffer_.data(), frame_count, pink_states_[0], level_gain, true);
+      for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+        noise_buffer_[frame] = static_cast<float>(nextPink(pink_states_[0]) * level_gain);
+      }
     } else {
-      processBrownChannel(noise_buffer_.data(), frame_count, brown_states_[0], level_gain, true);
+      for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+        noise_buffer_[frame] = static_cast<float>(nextBrown(brown_states_[0]) * level_gain);
+      }
     }
 
     if (level_gain != 0.0) {
@@ -108,67 +124,39 @@ public:
 private:
   void clearStates() noexcept {
     for (PinkState &state : pink_states_) {
-      for (float &value : state.values) {
-        value = 0.0F;
+      for (double &value : state.values) {
+        value = 0.0;
       }
     }
     for (BrownState &state : brown_states_) {
-      state.last_brown = 0.0F;
-      state.dc_offset = 0.0F;
+      state.last_brown = 0.0;
+      state.dc_offset = 0.0;
     }
   }
 
-  void processPinkChannel(float *output, std::uint32_t frame_count, PinkState &state,
-                          double level_gain, bool replace) noexcept {
-    double b0 = static_cast<double>(state.values[0]);
-    double b1 = static_cast<double>(state.values[1]);
-    double b2 = static_cast<double>(state.values[2]);
-    double b3 = static_cast<double>(state.values[3]);
-    double b4 = static_cast<double>(state.values[4]);
-    double b5 = static_cast<double>(state.values[5]);
-    double b6 = static_cast<double>(state.values[6]);
-    for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-      const double white = random_.nextFloatSigned();
-      b0 = 0.99886 * b0 + white * 0.0555179;
-      b1 = 0.99332 * b1 + white * 0.0750759;
-      b2 = 0.96900 * b2 + white * 0.1538520;
-      b3 = 0.86650 * b3 + white * 0.3104856;
-      b4 = 0.55000 * b4 + white * 0.5329522;
-      b5 = -0.7616 * b5 - white * 0.0168980;
-      const double pink = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.11;
-      b6 = white * 0.115926;
-      const double scaled = pink * level_gain;
-      output[frame] = replace ? static_cast<float>(scaled)
-                              : static_cast<float>(static_cast<double>(output[frame]) + scaled);
-    }
-    state.values[0] = static_cast<float>(b0);
-    state.values[1] = static_cast<float>(b1);
-    state.values[2] = static_cast<float>(b2);
-    state.values[3] = static_cast<float>(b3);
-    state.values[4] = static_cast<float>(b4);
-    state.values[5] = static_cast<float>(b5);
-    state.values[6] = static_cast<float>(b6);
+  double nextPink(PinkState &state) noexcept {
+    const double white = random_.nextFloatSigned();
+    state.values[0] = 0.99886 * state.values[0] + white * 0.0555179;
+    state.values[1] = 0.99332 * state.values[1] + white * 0.0750759;
+    state.values[2] = 0.96900 * state.values[2] + white * 0.1538520;
+    state.values[3] = 0.86650 * state.values[3] + white * 0.3104856;
+    state.values[4] = 0.55000 * state.values[4] + white * 0.5329522;
+    state.values[5] = -0.7616 * state.values[5] - white * 0.0168980;
+    const double pink = (state.values[0] + state.values[1] + state.values[2] + state.values[3] +
+                         state.values[4] + state.values[5] + state.values[6] + white * 0.5362) *
+                        0.11;
+    state.values[6] = white * 0.115926;
+    return pink;
   }
 
-  void processBrownChannel(float *output, std::uint32_t frame_count, BrownState &state,
-                           double level_gain, bool replace) noexcept {
+  double nextBrown(BrownState &state) noexcept {
     constexpr double normalization = 0.04166666666666666666666666666667;
     constexpr double decay = 0.995;
-    double last_brown = static_cast<double>(state.last_brown);
-    double dc_offset = static_cast<double>(state.dc_offset);
-    for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-      const double white = random_.nextFloatSigned();
-      const double brown = last_brown + white;
-      double generated = brown - dc_offset;
-      dc_offset = dc_offset * decay + (1.0 - decay) * brown;
-      generated *= normalization;
-      const double scaled = generated * level_gain;
-      output[frame] = replace ? static_cast<float>(scaled)
-                              : static_cast<float>(static_cast<double>(output[frame]) + scaled);
-      last_brown = brown;
-    }
-    state.last_brown = static_cast<float>(last_brown);
-    state.dc_offset = static_cast<float>(dc_offset);
+    const double brown = state.last_brown + random_.nextFloatSigned();
+    const double generated = (brown - state.dc_offset) * normalization;
+    state.dc_offset = state.dc_offset * decay + (1.0 - decay) * brown;
+    state.last_brown = brown;
+    return generated;
   }
 
   std::uint32_t max_channels_ = 0u;

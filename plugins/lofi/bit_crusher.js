@@ -93,14 +93,15 @@ class BitCrusherPlugin extends PluginBase {
                 this.processorState.lastSeed = seed;
             }
             
-            // Process each channel and sample
-            for (let ch = 0; ch < channelCount; ch++) {
-                const offset = ch * blockSize;
-                for (let i = 0; i < blockSize; i++) {
-                    const currentIndex = this.processorState.sampleCount + i;
-                    const sampleIndex = Math.floor(currentIndex * zohRatio);
+            // Process samples in time order so shared dither RNG consumption is block-size invariant
+            for (let i = 0; i < blockSize; i++) {
+                const currentIndex = this.processorState.sampleCount + i;
+                const sampleIndex = Math.floor(currentIndex * zohRatio);
+                const reuseLastSample = sampleIndex === Math.floor((currentIndex - 1) * zohRatio);
+                for (let ch = 0; ch < channelCount; ch++) {
+                    const offset = ch * blockSize;
                     // Apply Zero-Order Hold: reuse sample if still within same ZOH window
-                    if (i > 0 && sampleIndex === Math.floor((currentIndex - 1) * zohRatio)) {
+                    if (reuseLastSample) {
                         data[offset + i] = this.processorState.lastSample[ch];
                         continue;
                     }

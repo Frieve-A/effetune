@@ -89,8 +89,8 @@ public:
 
   void reset() noexcept override {
     crossover_.reset();
-    for (float &envelope : envelopes_)
-      envelope = 0.0F;
+    for (double &envelope : envelopes_)
+      envelope = 0.0;
     for (float &sample : output_)
       sample = 0.0F;
     for (float &sample : envelope_work_)
@@ -113,10 +113,10 @@ public:
     const multiband_detail::CrossoverChange change =
         crossover_.configure(frequencies, channel_count);
     if (change.filtersReset)
-      startFade(frame_count);
+      startFade();
     if (change.dynamicsReset) {
-      for (float &envelope : envelopes_) {
-        envelope = static_cast<float>(kMinimumEnvelope);
+      for (double &envelope : envelopes_) {
+        envelope = kMinimumEnvelope;
       }
     }
     crossover_.split(audio, channel_count, frame_count);
@@ -146,8 +146,7 @@ public:
         const float *band_signal = crossover_.band(channel, band);
         const double attack = static_cast<double>(time_constants[band * 2u]);
         const double release = static_cast<double>(time_constants[band * 2u + 1u]);
-        double envelope = static_cast<double>(envelopes_[envelope_offset + band]);
-        double maximum_envelope = envelope;
+        double envelope = envelopes_[envelope_offset + band];
         for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
           const double input = static_cast<double>(band_signal[frame]);
           const double magnitude = input >= 0.0 ? input : -input;
@@ -156,10 +155,8 @@ public:
           if (envelope < kMinimumEnvelope)
             envelope = kMinimumEnvelope;
           envelope_work_[frame] = static_cast<float>(envelope);
-          if (envelope > maximum_envelope)
-            maximum_envelope = envelope;
         }
-        envelopes_[envelope_offset + band] = static_cast<float>(envelope);
+        envelopes_[envelope_offset + band] = envelope;
 
         const double threshold = static_cast<double>(params_.threshold[band]);
         double ratio = static_cast<double>(params_.ratio[band]);
@@ -171,18 +168,7 @@ public:
         const double half_knee = knee * 0.5;
         const double slope = ratio - 1.0;
         const double makeup_db = static_cast<double>(params_.gain[band]);
-        const double makeup = std::exp(makeup_db * kGainFactor);
-        const double maximum_difference = lookup_.decibels(maximum_envelope) - threshold;
         latest_values_[band] = 0.0F;
-
-        if (maximum_difference >= half_knee) {
-          for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-            const double sum = static_cast<double>(output_[frame]) +
-                               static_cast<double>(band_signal[frame]) * makeup;
-            output_[frame] = static_cast<float>(sum);
-          }
-          continue;
-        }
 
         double last_gain_boost = 0.0;
         for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
@@ -242,16 +228,14 @@ public:
   }
 
 private:
-  void startFade(std::uint32_t frame_count) noexcept {
-    const double requested = std::ceil(sample_rate_ * 0.005);
-    const std::uint32_t requested_frames = static_cast<std::uint32_t>(requested);
-    fade_length_ = requested_frames < frame_count ? requested_frames : frame_count;
+  void startFade() noexcept {
+    fade_length_ = static_cast<std::uint32_t>(std::ceil(sample_rate_ * 0.005));
     fade_counter_ = 0u;
   }
 
-  multiband_detail::FiveBandCrossover crossover_;
+  multiband_detail::FiveBandCrossover crossover_{dsp::LinkwitzRileyStateStorage::Float64};
   ExpanderLookup lookup_;
-  std::vector<float> envelopes_;
+  std::vector<double> envelopes_;
   std::vector<float> output_;
   std::vector<float> envelope_work_;
   std::array<float, multiband_detail::kFiveBandCount> latest_values_{};

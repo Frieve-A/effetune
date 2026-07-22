@@ -44,13 +44,12 @@ public:
     shelf_state_.reset();
     buffer_index_ = 0u;
     window_samples_ = 1u;
+    valid_samples_ = 0u;
     active_channel_count_ = 0u;
-    active_block_size_ = 0u;
     sum_ = 0.0;
     current_gain_ = 1.0;
     latest_input_lufs_ = -144.0F;
     latest_output_lufs_ = -144.0F;
-    buffer_filled_ = false;
     initialized_ = false;
     has_measurement_ = false;
   }
@@ -70,8 +69,8 @@ public:
       requested_window = maximum_window_samples_;
     }
     if (!initialized_ || channel_count != active_channel_count_ ||
-        frame_count != active_block_size_ || requested_window != window_samples_) {
-      initializeState(channel_count, frame_count, requested_window);
+        requested_window != window_samples_) {
+      initializeState(channel_count, requested_window);
     }
 
     std::fill(mono_buffer_.begin(), mono_buffer_.begin() + frame_count, 0.0F);
@@ -96,54 +95,11 @@ public:
           static_cast<double>(weighted_buffer_[frame]), kShelfFilter, shelf_state_));
     }
 
-    double sum_change = 0.0;
-    const std::uint32_t start_index = buffer_index_;
-    bool filled = buffer_filled_;
-    for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-      const double weighted = static_cast<double>(weighted_buffer_[frame]);
-      const double square = weighted * weighted;
-      const std::uint32_t index = (start_index + frame) % window_samples_;
-      sum_change -= static_cast<double>(energy_buffer_[index]);
-      sum_change += square;
-      energy_buffer_[index] = static_cast<float>(square);
-    }
-
-    const double current_sum = sum_ + sum_change;
-    sum_ = current_sum;
-    const std::uint32_t end_index = (start_index + frame_count) % window_samples_;
-    buffer_index_ = end_index;
-    if (!filled && end_index <= start_index) {
-      filled = true;
-      buffer_filled_ = true;
-    }
-
-    const std::uint32_t valid_samples = filled ? window_samples_ : end_index;
-    double current_lufs_linear = 0.0;
-    if (valid_samples > 0u && current_sum > 0.0) {
-      current_lufs_linear = current_sum / static_cast<double>(valid_samples);
-    }
-    double input_lufs = -144.0;
-    if (current_lufs_linear > 0.0) {
-      input_lufs = 10.0 * std::log10(current_lufs_linear) - 0.691;
-      if (input_lufs < -144.0) {
-        input_lufs = -144.0;
-      }
-    }
-
     const double noise_gate_linear = std::pow(10.0, static_cast<double>(params_.noiseGate) / 10.0);
     const double target_lufs_linear =
         std::pow(10.0, static_cast<double>(params_.targetLufs) / 10.0);
-    double target_gain = current_lufs_linear < noise_gate_linear || current_lufs_linear <= 0.0
-                             ? 1.0
-                             : std::sqrt(target_lufs_linear / current_lufs_linear);
     const double maximum_gain = std::pow(10.0, static_cast<double>(params_.maxGain) / 20.0);
     const double minimum_gain = std::pow(10.0, static_cast<double>(params_.minGain) / 20.0);
-    if (target_gain > maximum_gain) {
-      target_gain = maximum_gain;
-    } else if (target_gain < minimum_gain) {
-      target_gain = minimum_gain;
-    }
-
     const double attack_samples_raw = static_cast<double>(params_.attack) * sample_rate_ / 1000.0;
     const double attack_samples = attack_samples_raw < 1.0 ? 1.0 : attack_samples_raw;
     const double release_samples_raw = static_cast<double>(params_.release) * sample_rate_ / 1000.0;
@@ -151,7 +107,30 @@ public:
     const double attack_decay = std::exp(-0.6931471805599453 / attack_samples);
     const double release_decay = std::exp(-0.6931471805599453 / release_samples);
     double gain = current_gain_;
+    double current_lufs_linear = 0.0;
     for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+      const double weighted = static_cast<double>(weighted_buffer_[frame]);
+      const double square = weighted * weighted;
+      sum_ -= static_cast<double>(energy_buffer_[buffer_index_]);
+      sum_ += square;
+      energy_buffer_[buffer_index_] = static_cast<float>(square);
+      ++buffer_index_;
+      if (buffer_index_ == window_samples_) {
+        buffer_index_ = 0u;
+      }
+      if (valid_samples_ < window_samples_) {
+        ++valid_samples_;
+      }
+      current_lufs_linear = sum_ > 0.0 ? sum_ / static_cast<double>(valid_samples_) : 0.0;
+
+      double target_gain = current_lufs_linear < noise_gate_linear || current_lufs_linear <= 0.0
+                               ? 1.0
+                               : std::sqrt(target_lufs_linear / current_lufs_linear);
+      if (target_gain > maximum_gain) {
+        target_gain = maximum_gain;
+      } else if (target_gain < minimum_gain) {
+        target_gain = minimum_gain;
+      }
       const bool use_attack = target_gain < gain;
       const double decay = use_attack ? attack_decay : release_decay;
       gain = gain * decay + target_gain * (1.0 - decay);
@@ -162,6 +141,13 @@ public:
     }
     current_gain_ = gain;
 
+    double input_lufs = -144.0;
+    if (current_lufs_linear > 0.0) {
+      input_lufs = 10.0 * std::log10(current_lufs_linear) - 0.691;
+      if (input_lufs < -144.0) {
+        input_lufs = -144.0;
+      }
+    }
     double output_lufs = -144.0;
     if (input_lufs > -144.0 && gain > 0.0) {
       output_lufs = input_lufs + 20.0 * std::log10(gain);
@@ -169,7 +155,7 @@ public:
         output_lufs = -144.0;
       }
     }
-    if (valid_samples > 0u) {
+    if (valid_samples_ > 0u) {
       latest_input_lufs_ = static_cast<float>(input_lufs);
       latest_output_lufs_ = static_cast<float>(output_lufs);
       has_measurement_ = true;
@@ -183,20 +169,18 @@ public:
   }
 
 private:
-  void initializeState(std::uint32_t channel_count, std::uint32_t block_size,
-                       std::uint32_t requested_window) noexcept {
+  void initializeState(std::uint32_t channel_count, std::uint32_t requested_window) noexcept {
     std::fill(energy_buffer_.begin(), energy_buffer_.begin() + requested_window, 0.0F);
     pre_state_.reset();
     shelf_state_.reset();
     buffer_index_ = 0u;
     window_samples_ = requested_window;
+    valid_samples_ = 0u;
     active_channel_count_ = channel_count;
-    active_block_size_ = block_size;
     sum_ = 0.0;
     current_gain_ = 1.0;
     latest_input_lufs_ = -144.0F;
     latest_output_lufs_ = -144.0F;
-    buffer_filled_ = false;
     initialized_ = true;
     has_measurement_ = false;
   }
@@ -213,11 +197,10 @@ private:
   std::uint32_t maximum_window_samples_ = 1u;
   std::uint32_t window_samples_ = 1u;
   std::uint32_t buffer_index_ = 0u;
+  std::uint32_t valid_samples_ = 0u;
   std::uint32_t active_channel_count_ = 0u;
-  std::uint32_t active_block_size_ = 0u;
   float latest_input_lufs_ = -144.0F;
   float latest_output_lufs_ = -144.0F;
-  bool buffer_filled_ = false;
   bool initialized_ = false;
   bool has_measurement_ = false;
 };

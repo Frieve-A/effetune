@@ -14,7 +14,7 @@ class NoiseBlenderPlugin extends PluginBase {
             const { channelCount, blockSize, enabled } = parameters; // Cache parameters early
 
             // Initialize pink noise state storage if needed
-            // Use Float32Array for performance (index access often faster than property access)
+            // Use Float64Array so filter state does not depend on processing block boundaries
             // Store state variables per channel. Pink: 7 (b0-b6), Brown: 2 (lastBrown, dcOffset)
             const needsPinkInit = !context.pinkNoiseState || context.pinkNoiseState.length !== channelCount;
             const needsBrownInit = !context.brownNoiseState || context.brownNoiseState.length !== channelCount;
@@ -23,13 +23,13 @@ class NoiseBlenderPlugin extends PluginBase {
             if (needsPinkInit) {
                 context.pinkNoiseState = new Array(channelCount);
                 for (let ch = 0; ch < channelCount; ch++) {
-                    context.pinkNoiseState[ch] = new Float32Array(7).fill(0.0); // b0-b6
+                    context.pinkNoiseState[ch] = new Float64Array(7).fill(0.0); // b0-b6
                 }
             }
             if (needsBrownInit) {
                 context.brownNoiseState = new Array(channelCount);
                 for (let ch = 0; ch < channelCount; ch++) {
-                    context.brownNoiseState[ch] = new Float32Array(2).fill(0.0); // lastBrown, dcOffset
+                    context.brownNoiseState[ch] = new Float64Array(2).fill(0.0); // lastBrown, dcOffset
                 }
             }
             if (needsNoiseBufferInit) {
@@ -58,68 +58,61 @@ class NoiseBlenderPlugin extends PluginBase {
             // Branch based on per-channel generation *before* main loops
             if (perChannel) {
                 // --- Generate Unique Noise Per Channel ---
-                for (let ch = 0; ch < channelCount; ch++) {
-                    const offset = ch * blockSize; // Output buffer offset for this channel
-                    // Cache the state array for the current channel
-                    const pinkState = context.pinkNoiseState[ch];
-                    const brownState = context.brownNoiseState[ch]; // Float32Array([lastBrown, dcOffset])
-
-                    // Select noise generation function *outside* the inner sample loop
-                    if (noiseType === 'white') {
-                        // White noise generation loop for this channel
-                        for (let i = 0; i < blockSize; i++) {
+                // Process frames first so block boundaries do not change which random value
+                // belongs to each channel sample.
+                if (noiseType === 'white') {
+                    for (let i = 0; i < blockSize; i++) {
+                        for (let ch = 0; ch < channelCount; ch++) {
+                            const offset = ch * blockSize;
                             const white = Math.random() * 2.0 - 1.0;
                             data[offset + i] += white * levelGain; // Add scaled white noise
                         }
-                    } else if (noiseType === 'pink') { // Pink noise generation loop for this channel
-                        // Cache state variables locally for the inner loop (read/write)
-                        let b0 = pinkState[0], b1 = pinkState[1], b2 = pinkState[2], b3 = pinkState[3];
-                        let b4 = pinkState[4], b5 = pinkState[5], b6 = pinkState[6];
-
-                        for (let i = 0; i < blockSize; i++) {
+                    }
+                } else if (noiseType === 'pink') {
+                    for (let i = 0; i < blockSize; i++) {
+                        for (let ch = 0; ch < channelCount; ch++) {
+                            const offset = ch * blockSize;
+                            const pinkState = context.pinkNoiseState[ch];
                             const white = Math.random() * 2.0 - 1.0;
 
                             // Apply Paul Kellett's filter coefficients (optimized access)
-                            b0 = 0.99886 * b0 + white * 0.0555179;
-                            b1 = 0.99332 * b1 + white * 0.0750759;
-                            b2 = 0.96900 * b2 + white * 0.1538520;
-                            b3 = 0.86650 * b3 + white * 0.3104856;
-                            b4 = 0.55000 * b4 + white * 0.5329522;
-                            b5 = -0.7616 * b5 - white * 0.0168980; // Note the sign difference
+                            const b0 = 0.99886 * pinkState[0] + white * 0.0555179;
+                            const b1 = 0.99332 * pinkState[1] + white * 0.0750759;
+                            const b2 = 0.96900 * pinkState[2] + white * 0.1538520;
+                            const b3 = 0.86650 * pinkState[3] + white * 0.3104856;
+                            const b4 = 0.55000 * pinkState[4] + white * 0.5329522;
+                            const b5 = -0.7616 * pinkState[5] - white * 0.0168980;
 
                             // Calculate pink noise output
-                            const pink = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.11;
-                            b6 = white * 0.115926; // Update b6 state last
+                            const pink = (b0 + b1 + b2 + b3 + b4 + b5 + pinkState[6] + white * 0.5362) * 0.11;
+                            pinkState[0] = b0; pinkState[1] = b1; pinkState[2] = b2;
+                            pinkState[3] = b3; pinkState[4] = b4; pinkState[5] = b5;
+                            pinkState[6] = white * 0.115926;
 
                             // Add scaled pink noise to the output buffer
                             data[offset + i] += pink * levelGain;
                         }
-
-                        // Update the context state array with the final values for this block
-                        pinkState[0] = b0; pinkState[1] = b1; pinkState[2] = b2; pinkState[3] = b3;
-                        pinkState[4] = b4; pinkState[5] = b5; pinkState[6] = b6;
-                    } else { // Brown noise generation loop for this channel
-                        let lastBrown = brownState[0];
-                        let dcOffset = brownState[1];
-
-                        for (let i = 0; i < blockSize; i++) {
+                    }
+                } else {
+                    for (let i = 0; i < blockSize; i++) {
+                        for (let ch = 0; ch < channelCount; ch++) {
+                            const offset = ch * blockSize;
+                            const brownState = context.brownNoiseState[ch];
                             const white = Math.random() * 2.0 - 1.0;
                             // Integrate white noise
-                            const brown = lastBrown + white;
+                            const brown = brownState[0] + white;
                             // DC offset removal using exponential decay
-                            let output = brown - dcOffset;
-                            dcOffset = dcOffset * brownDecayAlpha + (1.0 - brownDecayAlpha) * brown;
+                            let output = brown - brownState[1];
+                            brownState[1] = brownState[1] * brownDecayAlpha +
+                                (1.0 - brownDecayAlpha) * brown;
                             // Normalize and add scaled brown noise
                             output *= brownNoiseNormalizationFactor; // Apply normalization
                             data[offset + i] += output * levelGain;
                             // Store state for next sample
-                            lastBrown = brown; // Store the *un-normalized* value for integration
+                            brownState[0] = brown; // Store the *un-normalized* value for integration
                         }
-                        // Update context state
-                        brownState[0] = lastBrown;
-                        brownState[1] = dcOffset;
-                    } // End noise type check for this channel
-                } // End channel loop (perChannel === true)
+                    }
+                }
 
             } else {
                 // --- Generate Single Noise Source, Apply to All Channels ---

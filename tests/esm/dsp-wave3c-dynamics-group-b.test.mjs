@@ -20,7 +20,7 @@ const ports = [
     folder: 'auto_leveler',
     hash: 0xe0b1f34d,
     floatCount: 7,
-    jsEngineHash: 'edb476f179312c23993dee782b0620b03abebcde81e5727591b123ef47a8020f'
+    jsEngineHash: 'c7879957c76a762369258fa683ac8baa5dbc3f6e3f4a61810d9164a180a29311'
   },
   {
     type: 'BrickwallLimiterPlugin',

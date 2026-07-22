@@ -21,6 +21,10 @@ struct CrossoverChange final {
 
 class FiveBandCrossover final {
 public:
+  explicit FiveBandCrossover(dsp::LinkwitzRileyStateStorage state_storage =
+                                 dsp::LinkwitzRileyStateStorage::Float32) noexcept
+      : state_storage_(state_storage) {}
+
   void prepare(const PrepareInfo &info) {
     sample_rate_ = static_cast<double>(info.sampleRate);
     max_channels_ = info.maxChannels;
@@ -107,10 +111,10 @@ public:
 private:
   void resetFilterStates() noexcept {
     for (dsp::LinkwitzRiley24State &state : lowpass_states_) {
-      dsp::resetLinkwitzRiley24State(state, dsp::LinkwitzRileyStateStorage::Float32);
+      dsp::resetLinkwitzRiley24State(state, state_storage_);
     }
     for (dsp::LinkwitzRiley24State &state : highpass_states_) {
-      dsp::resetLinkwitzRiley24State(state, dsp::LinkwitzRileyStateStorage::Float32);
+      dsp::resetLinkwitzRiley24State(state, state_storage_);
     }
   }
 
@@ -120,7 +124,9 @@ private:
       output[frame] = static_cast<float>(dsp::processLinkwitzRiley24Sample(
           static_cast<double>(input[frame]), coefficients, state));
     }
-    dsp::quantizeLinkwitzRiley24StateToFloat(state);
+    if (state_storage_ == dsp::LinkwitzRileyStateStorage::Float32) {
+      dsp::quantizeLinkwitzRiley24StateToFloat(state);
+    }
   }
 
   [[nodiscard]] dsp::LinkwitzRiley24State &lowpassState(std::uint32_t crossover,
@@ -145,6 +151,7 @@ private:
   std::uint32_t max_channels_ = 0u;
   std::uint32_t max_frames_ = 0u;
   std::uint32_t channel_count_ = 0u;
+  dsp::LinkwitzRileyStateStorage state_storage_ = dsp::LinkwitzRileyStateStorage::Float32;
   bool configured_ = false;
 };
 

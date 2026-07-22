@@ -31,7 +31,7 @@ const ports = [
     type: 'ExpanderPlugin',
     folder: 'expander',
     measurement: 'gainBoost',
-    jsEngineHash: '39b26039da7ccdf421311bec492eeb70a5ef55f908d7715bf4bd78994a887e4f'
+    jsEngineHash: 'f1bb266f9f26237b5e424bb9f7f2c582d3bf6913d7a2211a0cacb0d88d3a0871'
   }
 ];
 
@@ -194,7 +194,11 @@ test('Wave 3c dynamics kernels lock allocation, state, and telemetry contracts',
     assert.doesNotMatch(kernel, /\b(?:malloc|calloc|realloc|free)\s*\(/);
     assert.match(kernel, /\.resize\(info\.maxChannels\)/);
     if (port.type !== 'GatePlugin') assert.match(kernel, /work_buffer_\.resize\(info\.maxFrames\)/);
-    assert.match(kernel, /persistEnvelopeAsFloat/);
+    if (port.type === 'ExpanderPlugin') {
+      assert.doesNotMatch(kernel, /persistEnvelopeAsFloat/);
+    } else {
+      assert.match(kernel, /persistEnvelopeAsFloat/);
+    }
     assert.match(kernel, /writeGainReductionTelemetry/);
     assert.match(kernel, /static_assert\(sizeof\(.+Kernel\) <= 8192u\)/);
     assert.match(common, /kTapGainReduction = 2u/);

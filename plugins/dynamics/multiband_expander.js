@@ -84,12 +84,12 @@ class MultibandExpanderPlugin extends PluginBase {
         const createFilterState = () => {
           const state = {
             stage1: {
-              x1: new Float32Array(channelCount), x2: new Float32Array(channelCount),
-              y1: new Float32Array(channelCount), y2: new Float32Array(channelCount)
+              x1: new Float64Array(channelCount), x2: new Float64Array(channelCount),
+              y1: new Float64Array(channelCount), y2: new Float64Array(channelCount)
             },
             stage2: {
-              x1: new Float32Array(channelCount), x2: new Float32Array(channelCount),
-              y1: new Float32Array(channelCount), y2: new Float32Array(channelCount)
+              x1: new Float64Array(channelCount), x2: new Float64Array(channelCount),
+              y1: new Float64Array(channelCount), y2: new Float64Array(channelCount)
             }
           };
           // Initialize with small opposing DC offsets to prevent instability/denormals
@@ -116,11 +116,11 @@ class MultibandExpanderPlugin extends PluginBase {
         // Apply a short fade-in to prevent clicks when filter states are reset
         context.fadeIn = {
           counter: 0,
-          length: Math.min(blockSize, Math.ceil(sampleRate * 0.005))
+          length: Math.ceil(sampleRate * 0.005)
         };
         // Ensure envelope states are initialized
         if (!context.envelopeStates || context.envelopeStates.length !== channelCount * 5) {
-            context.envelopeStates = new Float32Array(channelCount * 5).fill(MIN_ENV_VAL);
+            context.envelopeStates = new Float64Array(channelCount * 5).fill(MIN_ENV_VAL);
         }
       }
 
@@ -426,8 +426,7 @@ class MultibandExpanderPlugin extends PluginBase {
                   makeupDb: bp.g,
                   halfKneeDb: knee * 0.5,
                   // For expander: expansion slope = ratio - 1
-                  expansionSlope: ratio - 1,
-                  makeupLinear: Math.exp(bp.g * GAIN_FACTOR)
+                  expansionSlope: ratio - 1
               };
               context.lastBandParams[band] = { ...context.lastBandParams[band], t: bp.t, r: bp.r, k: bp.k, g: bp.g };
           }
@@ -512,12 +511,9 @@ class MultibandExpanderPlugin extends PluginBase {
           const halfKneeDb = params.halfKneeDb;
           const kneeDb = params.kneeDb;
           const expansionSlope = params.expansionSlope;
-          const makeupLinear = params.makeupLinear;
-
           let lastGainBoost = 0;
 
           // First pass: Calculate envelope for the block
-          let maxEnvelope = envelope;
           for (let i = 0; i < blockSize; i++) {
               const sample = bandSignal[i];
               const absVal = sample >= 0 ? sample : -sample;
@@ -525,31 +521,12 @@ class MultibandExpanderPlugin extends PluginBase {
               envelope = envelope * coeff + absVal * (1 - coeff);
               if (envelope < MIN_ENV_VAL) envelope = MIN_ENV_VAL;
               workBuffer[i] = envelope;
-              if (envelope > maxEnvelope) maxEnvelope = envelope;
           }
 
-          // Check if the entire block might be above the threshold zone (no expansion needed)
-          const maxEnvelopeDb = fastDb(maxEnvelope);
-          const maxDiff = maxEnvelopeDb - thresholdDb;
+          const blockSizeMod8 = blockSize & ~7;
+          let i = 0;
 
-          // For expander: if signal is above threshold + halfKnee, no expansion needed
-          if (maxDiff >= halfKneeDb) {
-            if (makeupLinear !== 1.0) {
-                for (let i = 0; i < blockSize; i++) {
-                    outputBuffer[i] += bandSignal[i] * makeupLinear;
-                }
-            } else {
-                for (let i = 0; i < blockSize; i++) {
-                    outputBuffer[i] += bandSignal[i];
-                }
-            }
-            lastGainBoost = 0;
-          } else {
-            // Expansion needed for at least part of the block
-            const blockSizeMod8 = blockSize & ~7;
-            let i = 0;
-
-            for (; i < blockSizeMod8; i += 8) {
+          for (; i < blockSizeMod8; i += 8) {
               for (let j=0; j<8; ++j) {
                   const idx = i + j;
                   const currentEnvelope = workBuffer[idx];
@@ -579,9 +556,9 @@ class MultibandExpanderPlugin extends PluginBase {
                     lastGainBoost = gainBoost >= 0 ? gainBoost : -gainBoost;
                   }
               }
-            }
+          }
 
-            for (; i < blockSize; i++) {
+          for (; i < blockSize; i++) {
               const currentEnvelope = workBuffer[i];
               const envelopeDb = fastDb(currentEnvelope);
               const diff = envelopeDb - thresholdDb;
@@ -604,7 +581,6 @@ class MultibandExpanderPlugin extends PluginBase {
               if (i === blockSize - 1) {
                 lastGainBoost = gainBoost >= 0 ? gainBoost : -gainBoost;
               }
-            }
           }
 
           if (envelope < MIN_ENV_VAL) envelope = MIN_ENV_VAL;

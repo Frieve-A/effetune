@@ -117,13 +117,14 @@ public:
     const double ideal_full_scale = 1.0 - std::ldexp(1.0, -static_cast<int>(bit_depth));
     const double zoh_ratio = zoh_frequency / sample_rate_;
 
-    for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
-      const std::uint32_t offset = channel * frame_count;
-      for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-        const double current_index =
-            static_cast<double>(sample_count_ + static_cast<std::uint64_t>(frame));
-        const double sample_index = std::floor(current_index * zoh_ratio);
-        if (frame > 0u && sample_index == std::floor((current_index - 1.0) * zoh_ratio)) {
+    for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+      const double current_index =
+          static_cast<double>(sample_count_ + static_cast<std::uint64_t>(frame));
+      const double sample_index = std::floor(current_index * zoh_ratio);
+      const bool reuse_last_sample = sample_index == std::floor((current_index - 1.0) * zoh_ratio);
+      for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
+        const std::uint32_t offset = channel * frame_count;
+        if (reuse_last_sample) {
           audio[offset + frame] = last_samples_[channel];
           continue;
         }

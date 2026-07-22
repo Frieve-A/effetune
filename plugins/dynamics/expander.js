@@ -87,7 +87,7 @@ class ExpanderPlugin extends PluginBase {
 
             // Initialize envelope state per channel if needed
             if (!context.envelopeStates || context.envelopeStates.length !== channelCount) {
-                context.envelopeStates = new Float32Array(channelCount).fill(MIN_ENVELOPE);
+                context.envelopeStates = new Array(channelCount).fill(MIN_ENVELOPE);
             }
 
             // Create or reuse lookup tables (LUTs) - Functionally identical to original setup
@@ -200,31 +200,6 @@ class ExpanderPlugin extends PluginBase {
 
                 // Store the final envelope state for the next block
                 context.envelopeStates[ch] = envelope;
-
-                // --- Optimization: Check if expansion is needed ---
-                let maxEnvelope = MIN_ENVELOPE;
-                 for (let i = 0; i < blockSize; i++) {
-                     if (workBuffer[i] > maxEnvelope) maxEnvelope = workBuffer[i];
-                 }
-                const maxEnvelopeDb = fastDb(maxEnvelope);
-                const maxDiff = maxEnvelopeDb - th;
-
-                // For expander: If max level is above the start of the knee, skip detailed processing
-                if (maxDiff >= halfKnee) {
-                    // Apply ONLY makeup gain if needed. Calculate makeup gain multiplier.
-                    const makeupGainMultiplier = fastExpDb(gn);
-                    if (makeupGainMultiplier !== 1.0) {
-                        for (let i = 0; i < blockSize; i++) {
-                            result[offset + i] = data[offset + i] * makeupGainMultiplier;
-                        }
-                    } else {
-                        // Fastest path: No expansion, no makeup gain. Copy data.
-                        result.set(data.subarray(offset, offset + blockSize), offset);
-                    }
-                    continue; // Skip to next channel
-                }
-                // --- End Optimization Check ---
-
 
                 // Second pass: Calculate gain boost and apply gain. Loop unrolling maintained.
                 const blockSizeMod4 = blockSize - (blockSize % 4);

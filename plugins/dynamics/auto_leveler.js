@@ -59,14 +59,12 @@ class AutoLevelerPlugin extends PluginBase {
             if (!context.initialized ||
                 context.sampleRate !== SAMPLE_RATE ||
                 context.channelCount !== CHANNEL_COUNT ||
-                context.blockSize !== BLOCK_SIZE ||
                 context.windowSamples !== windowSamples) {
                 context.buffer = new Float32Array(windowSamples);
                 context.bufferIndex = 0;
-                context.bufferFilled = false;
+                context.validSamples = 0;
                 context.sampleRate = SAMPLE_RATE;
                 context.channelCount = CHANNEL_COUNT;
-                context.blockSize = BLOCK_SIZE;
                 context.windowSamples = windowSamples;
                 context.sum = 0;
                 context.currentGain = 1.0;
@@ -80,9 +78,9 @@ class AutoLevelerPlugin extends PluginBase {
                 context.initialized = true;
                 context.lastLufs = -144;
                 context.lastOutputLufs = -144;
-                // Pre-compute linear thresholds
-                context.noiseGateLinear = Math.pow(10, parameters.gt / 10);
-                context.targetLufsLinear = Math.pow(10, parameters.tg / 10);
+            } else if (context.monoBuffer.length !== BLOCK_SIZE) {
+                context.monoBuffer = new Float32Array(BLOCK_SIZE);
+                context.weightedBuffer = new Float32Array(BLOCK_SIZE);
             }
 
             // Per-block processing
@@ -186,115 +184,60 @@ class AutoLevelerPlugin extends PluginBase {
             processBlockBiquad(monoBuffer, weightedBuffer, kFilterPreState, preB0, preB1, preB2, preA1, preA2);
             processBlockBiquad(weightedBuffer, weightedBuffer, kFilterShelfState, shelfB0, shelfB1, shelfB2, shelfA1, shelfA2);
 
-            // Step 3 & 4: LUFS Update
-            let sumChange = 0;
-            const startBufferIndex = context.bufferIndex;
-            let bufferFilled = context.bufferFilled; // Cache locally
+            const result = new Float32Array(data.length); // Allocate output buffer
+            let currentSum = context.sum;
+            let bufferIndex = context.bufferIndex;
+            let validSamples = context.validSamples;
+            let currentGain = context.currentGain;
+            let currentLufsLinear = 0;
 
+            // Update the loudness window and gain in sample order so block boundaries do not
+            // affect the control signal.
             for (let i = 0; i < BLOCK_SIZE; i++) {
                 const weightedSample = weightedBuffer[i];
                 const weightedSquare = weightedSample * weightedSample;
+                currentSum -= lufsBuffer[bufferIndex];
+                currentSum += weightedSquare;
+                lufsBuffer[bufferIndex] = weightedSquare;
+                bufferIndex++;
+                if (bufferIndex === windowSamples) bufferIndex = 0;
+                if (validSamples < windowSamples) validSamples++;
+                currentLufsLinear = currentSum > 0 ? currentSum / validSamples : 0;
 
-                // Determine the index in the circular buffer to update
-                const bufferIndexToUpdate = (startBufferIndex + i) % windowSamples;
-
-                // Update sum: subtract old value, add new value
-                sumChange -= lufsBuffer[bufferIndexToUpdate];
-                sumChange += weightedSquare;
-
-                // Store the new squared value in the buffer
-                lufsBuffer[bufferIndexToUpdate] = weightedSquare;
-            }
-
-            // Update context sum and buffer index *after* the loop
-            let currentSum = context.sum + sumChange;
-            context.sum = currentSum;
-            const endBufferIndex = (startBufferIndex + BLOCK_SIZE) % windowSamples;
-            context.bufferIndex = endBufferIndex;
-
-            // Update bufferFilled status - check if wrap-around occurred during this block
-            if (!bufferFilled && BLOCK_SIZE > 0 && endBufferIndex <= startBufferIndex) {
-                 // If end index is <= start index (and we processed > 0 samples), we must have wrapped.
-                 // Note: <= covers the case where blockSize is an exact multiple of windowSamples.
-                 bufferFilled = true;
-                 context.bufferFilled = true; // Update context state
-            }
-
-            // Calculate current LUFS (linear and dB)
-            let currentLufsLinear = 0; // Use local var
-            // Use the locally cached bufferFilled status
-            const validSamples = bufferFilled ? windowSamples : endBufferIndex; // Use endBufferIndex for count if not filled
-            if (validSamples > 0 && currentSum > 0) {
-                currentLufsLinear = currentSum / validSamples; // Use updated sum
-            } else if (currentSum <= 0) {
-                // Handle non-positive sum edge case explicitly if needed, otherwise it remains 0
-                currentLufsLinear = 0; // Or a very small positive number if log10 needs it? Original implies 0 is okay.
-            }
-
-            // Convert to dB LUFS for measurement output later
-            let currentLUFS = -144; // Default/minimum value
-            if (currentLufsLinear > 0) {
-                 // LUFS = 10 * log10(mean square) - 0.691
-                 currentLUFS = 10 * Math.log10(currentLufsLinear) - 0.691;
-            }
-            context.lastLufs = currentLUFS; // Store potentially clamped LUFS
-
-
-            // Step 5: Calculate target gain
-            let targetGainLinear; // Use local var
-            // Compare against the pre-calculated noiseGateLinear
-            if (currentLufsLinear < noiseGateLinear || currentLufsLinear <= 0) {
-                targetGainLinear = 1.0; // Below noise gate threshold, no gain change
-            } else {
-                // In linear domain: targetGain = sqrt(targetLevel / currentLevel)
-                targetGainLinear = Math.sqrt(targetLufsLinear / currentLufsLinear);
-            }
-
-            // Apply min/max gain limits - Use local pre-calculated limits
-            // Apply min/max gain limits
-            targetGainLinear = targetGainLinear > maxGainLinear ? maxGainLinear :
-                              (targetGainLinear < minGainLinear ? minGainLinear : targetGainLinear);
-
-
-            // Step 6 & 7: Gain Smoothing and Application
-
-            const result = new Float32Array(data.length); // Allocate output buffer
-            let currentGain = context.currentGain; // Get initial gain for the block
-
-            // Process sample by sample, applying smoothed gain to all channels
-            for (let i = 0; i < BLOCK_SIZE; i++) {
-                // Determine smoothing coefficient (attack or release)
+                let targetGainLinear =
+                    currentLufsLinear < noiseGateLinear || currentLufsLinear <= 0 ?
+                        1.0 : Math.sqrt(targetLufsLinear / currentLufsLinear);
+                targetGainLinear = targetGainLinear > maxGainLinear ? maxGainLinear :
+                                  (targetGainLinear < minGainLinear ? minGainLinear : targetGainLinear);
                 const useAttack = targetGainLinear < currentGain;
                 const coeff = useAttack ? attackCoeff : releaseCoeff;
                 const coeffInv = useAttack ? attackCoeffInv : releaseCoeffInv;
-
-                // Calculate smoothed gain for this sample
                 currentGain = currentGain * coeff + targetGainLinear * coeffInv;
 
-                // Apply this gain to all channels for the current sample
                 for (let ch = 0; ch < CHANNEL_COUNT; ch++) {
                     const offset = ch * BLOCK_SIZE;
                     result[offset + i] = data[offset + i] * currentGain;
                 }
             }
 
-            // Store the final gain value for the next block's starting point
+            context.sum = currentSum;
+            context.bufferIndex = bufferIndex;
+            context.validSamples = validSamples;
             context.currentGain = currentGain;
 
-            // Compute output LUFS for measurement only (using the *final* gain of the block)
-            // This matches the original's calculation method.
+            let currentLUFS = -144;
+            if (currentLufsLinear > 0) {
+                 currentLUFS = 10 * Math.log10(currentLufsLinear) - 0.691;
+                 if (currentLUFS < -144) currentLUFS = -144;
+            }
+            context.lastLufs = currentLUFS;
+
             let outputLufs = -144; // Default/minimum
-            // Use the dB LUFS calculated earlier (currentLUFS)
-            if (currentLUFS > -144 && currentGain > 0) { // Check if input LUFS was valid & gain is positive
-                 // Output LUFS = Input LUFS (dB) + Gain (dB)
+            if (currentLUFS > -144 && currentGain > 0) {
                  outputLufs = currentLUFS + 20 * Math.log10(currentGain);
-                 // Clamp to minimum - match original check
                  if (outputLufs < -144) {
                     outputLufs = -144;
                  }
-            } else if (currentLUFS <= -144) {
-                 // If input LUFS was at minimum, output LUFS is also minimum
-                 outputLufs = -144;
             }
             context.lastOutputLufs = outputLufs;
 

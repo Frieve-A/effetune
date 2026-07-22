@@ -38,7 +38,7 @@ const ports = [
     hash: 0x31e6082d,
     floatCount: 2,
     caseCount: 11,
-    jsEngineHash: '45f4e47d822b7267fe6b597e721d4803a565c9b201786ba01f49fda7fcef1c2b'
+    jsEngineHash: '55f308a296a34df38fcaa789965eb236e017ee0722e3d57aa09a68657e4b21e7'
   },
   {
     directory: 'saturation/saturation',
@@ -175,7 +175,7 @@ test('MS Matrix and Stereo Blend goldens preserve their channel contracts', asyn
   }
 });
 
-test('Hard Clipping goldens preserve enum polarity and binary64 filter state', async () => {
+test('Hard Clipping goldens preserve enum polarity and continuous interpolation state', async () => {
   const goldens = await readGoldenSet(
     path.join(pluginsRoot, 'saturation/hard_clipping/golden')
   );
@@ -191,12 +191,23 @@ test('Hard Clipping goldens preserve enum polarity and binary64 filter state', a
   const threshold = 10 ** (-18 / 20);
   for (let channel = 0; channel < oneFrameBlocks.metadata.channels; ++channel) {
     let previous = 0;
+    let interpolationPrevious = 0;
     const offset = channel * oneFrameBlocks.metadata.frameCount;
     for (let frame = 0; frame < oneFrameBlocks.metadata.frameCount; ++frame) {
-      let sample = input[offset + frame];
-      if (sample < -threshold) sample = Math.fround(-threshold);
-      const fir = sample * 0.125 + sample * 0.375 +
-        sample * 0.375 + sample * 0.125;
+      const sample = input[offset + frame];
+      const delta = sample - interpolationPrevious;
+      const oversampled = [
+        Math.fround(interpolationPrevious),
+        Math.fround(interpolationPrevious + 0.25 * delta),
+        Math.fround(interpolationPrevious + 0.5 * delta),
+        Math.fround(interpolationPrevious + 0.75 * delta)
+      ];
+      for (let index = 0; index < oversampled.length; ++index) {
+        if (oversampled[index] < -threshold) oversampled[index] = Math.fround(-threshold);
+      }
+      interpolationPrevious = sample;
+      const fir = oversampled[0] * 0.125 + oversampled[1] * 0.375 +
+        oversampled[2] * 0.375 + oversampled[3] * 0.125;
       const filtered = 0.3 * fir + 0.7 * previous;
       previous = filtered;
       assert.equal(oneFrameBlocks.expected[offset + frame], Math.fround(filtered));

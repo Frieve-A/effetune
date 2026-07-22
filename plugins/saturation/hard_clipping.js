@@ -35,7 +35,8 @@ class HardClippingPlugin extends PluginBase {
             // Check if context needs initialization or buffer resizing
             const needsReset = !context.osBuffer || context.osBuffer.length !== channelCount ||
                                context.osBuffer[0].length !== osBlockSize ||
-                               !context.lpPrev || context.lpPrev.length !== channelCount;
+                               !context.lpPrev || context.lpPrev.length !== channelCount ||
+                               !context.interpolationPrev || context.interpolationPrev.length !== channelCount;
 
             if (needsReset) {
                 // Allocate/Reallocate oversampling buffers
@@ -47,6 +48,9 @@ class HardClippingPlugin extends PluginBase {
                 if (!context.lpPrev || context.lpPrev.length !== channelCount) {
                     context.lpPrev = new Array(channelCount).fill(0.0); // Initialize with 0.0
                 }
+                if (!context.interpolationPrev || context.interpolationPrev.length !== channelCount) {
+                    context.interpolationPrev = new Array(channelCount).fill(0.0);
+                }
                 // Note: Existing filter states in lpPrev are preserved if only osBuffer was resized.
             }
 
@@ -56,17 +60,14 @@ class HardClippingPlugin extends PluginBase {
                 // Cache context arrays/values for faster access within the loop
                 const os = context.osBuffer[ch]; // Oversampling buffer for this channel
                 let lpPrev = context.lpPrev[ch];   // IIR filter state (use let for update)
+                let interpolationPrev = context.interpolationPrev[ch];
 
                 // --- 1. Upsampling (Linear Interpolation) ---
                 // Process input samples and fill the oversampling buffer 'os'
-                // We need the sample *before* the current block for the first interpolation step.
-                // However, the original code didn't explicitly handle state across blocks for interpolation.
-                // Replicating original behavior: first sample interpolates towards the second.
+                // Interpolate from the preceding input sample so block boundaries do not affect the stream.
                 for (let j = 0; j < blockSize; j++) {
-                    const idx0 = offset + j;
-                    const x0 = data[idx0];
-                    // Handle boundary: For the last sample, interpolate towards itself (delta=0)
-                    const x1 = (j < blockSize - 1) ? data[idx0 + 1] : x0;
+                    const x0 = interpolationPrev;
+                    const x1 = data[offset + j];
                     const delta = x1 - x0;
                     const osBase = OS * j; // Base index in oversampling buffer
 
@@ -75,6 +76,7 @@ class HardClippingPlugin extends PluginBase {
                     os[osBase + 1] = x0 + 0.25 * delta;
                     os[osBase + 2] = x0 + 0.50 * delta; // Use 0.50 for clarity
                     os[osBase + 3] = x0 + 0.75 * delta;
+                    interpolationPrev = x1;
                 }
 
                 // --- 2. Hard Clipping (Oversampled Domain) ---
@@ -132,6 +134,7 @@ class HardClippingPlugin extends PluginBase {
                 // --- Update Context State ---
                 // Store the final IIR filter state back into the context for the next block
                 context.lpPrev[ch] = lpPrev;
+                context.interpolationPrev[ch] = interpolationPrev;
             }
 
             // Return the modified data buffer
