@@ -2426,14 +2426,38 @@ function browseFolderChildren(payload) {
   const rows = cursor === null
     ? database.prepare(sql).all(folderId, directoryPath, limit + 1)
     : database.prepare(sql).all(folderId, directoryPath, cursor, limit + 1);
+  const peekOnlyChild = database.prepare(`
+    SELECT name, direct_track_count AS directTrackCount,
+      recursive_track_count AS recursiveTrackCount
+    FROM directories
+    WHERE folder_id = ? AND parent_path = ?
+    ORDER BY name
+    LIMIT 2
+  `);
   const children = [];
   let responseBytes = 128;
   for (const row of rows) {
     if (children.length >= limit) break;
+    const segments = [row.name];
+    let currentRelPath = directoryPath === '' ? row.name : `${directoryPath}/${row.name}`;
+    let directTrackCount = Number(row.directTrackCount);
+    let recursiveTrackCount = Number(row.recursiveTrackCount);
+    while (directTrackCount === 0 && segments.length < 64) {
+      const nestedRows = peekOnlyChild.all(folderId, currentRelPath);
+      if (nestedRows.length !== 1) break;
+      const nested = nestedRows[0];
+      const nestedRelPath = `${currentRelPath}/${nested.name}`;
+      if (nestedRelPath.length > MAX_DIRECTORY_PATH_CHARACTERS) break;
+      segments.push(nested.name);
+      currentRelPath = nestedRelPath;
+      directTrackCount = Number(nested.directTrackCount);
+      recursiveTrackCount = Number(nested.recursiveTrackCount);
+    }
     const child = {
       name: row.name,
-      directTrackCount: Number(row.directTrackCount),
-      recursiveTrackCount: Number(row.recursiveTrackCount)
+      segments,
+      directTrackCount,
+      recursiveTrackCount
     };
     const childBytes = Buffer.byteLength(JSON.stringify(child), 'utf8') + 1;
     if (children.length > 0 && responseBytes + childBytes > DIRECTORY_RESPONSE_BYTE_BUDGET) break;

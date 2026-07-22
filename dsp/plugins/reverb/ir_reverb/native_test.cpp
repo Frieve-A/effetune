@@ -1,4 +1,5 @@
 #include "allocation_guard.h"
+#include "effetune/abi.h"
 #include "effetune/dsp/halfband.h"
 #include "effetune/dsp/partitioned_convolver.h"
 #include "effetune/kernel.h"
@@ -41,6 +42,10 @@ void check(bool condition, const char *expression, int line) noexcept {
 }
 
 #define IR_CHECK(expression) check(static_cast<bool>(expression), #expression, __LINE__)
+
+bool allocationFailureInjectionAvailable() noexcept {
+  return (et_build_flags() & ET_BUILD_DEBUG) != 0u;
+}
 
 std::size_t nextPowerOfTwo(std::size_t value) noexcept {
   std::size_t result = 1u;
@@ -845,13 +850,15 @@ void testAssetReplacementAndRejection() {
                                     2u,
                                     replacementFootprint,
                                     kHeaderBytes + 600u * sizeof(float)};
-  // The admission probe is the first nothrow allocation made by beginAsset().
-  effetune::allocation_guard::failNothrowAllocationAfterForTesting(0);
-  IR_CHECK(harness.kernel->beginAsset(0u, rejected) == nullptr);
-  effetune::allocation_guard::failNothrowAllocationAfterForTesting(-1);
-  IR_CHECK((harness.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_ACTIVE);
-  const std::vector<float> afterRejectedBegin = render(harness, input, 3000u);
-  IR_CHECK(first == afterRejectedBegin);
+  if (allocationFailureInjectionAvailable()) {
+    // The admission probe is the first nothrow allocation made by beginAsset().
+    effetune::allocation_guard::failNothrowAllocationAfterForTesting(0);
+    IR_CHECK(harness.kernel->beginAsset(0u, rejected) == nullptr);
+    effetune::allocation_guard::failNothrowAllocationAfterForTesting(-1);
+    IR_CHECK((harness.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_ACTIVE);
+    const std::vector<float> afterRejectedBegin = render(harness, input, 3000u);
+    IR_CHECK(first == afterRejectedBegin);
+  }
 
   IR_CHECK(harness.stageAsset(secondIr, 1u, kMono, 128u, 1u));
   harness.prepareToActive();
@@ -1097,9 +1104,11 @@ int main() {
   testPredelayAndDryMix();
   testAssetReplacementAndRejection();
   testMalformedCommitAndDryMix();
-  testBeginAllocationFailuresAreRecoverable();
-  testPrepareAllocationFailuresAreRecoverable();
-  testEngineRejectsFailedPrepareAndReusesSlot();
+  if (allocationFailureInjectionAvailable()) {
+    testBeginAllocationFailuresAreRecoverable();
+    testPrepareAllocationFailuresAreRecoverable();
+    testEngineRejectsFailedPrepareAndReusesSlot();
+  }
   testInstancePhaseStaggerPreservesActivationAndOutput();
   testHostFootprintEstimatorGrid();
   return failures == 0 ? 0 : 1;

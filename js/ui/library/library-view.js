@@ -281,6 +281,7 @@ export class LibraryView {
     this.folderChildrenState = null;
     this.folderNavigationPositions = new Map();
     this.pendingFolderFocusPath = null;
+    this.pendingFolderFocusFolderId = null;
     this.pagedPaginationFailureOrdinal = null;
   }
 
@@ -2422,8 +2423,10 @@ export class LibraryView {
       const remainder = path === '' ? currentPath : currentPath.slice(path.length + 1);
       const childName = remainder.split('/')[0];
       this.pendingFolderFocusPath = path === '' ? childName : `${path}/${childName}`;
+      this.pendingFolderFocusFolderId = this.detail.folderId;
     } else {
       this.pendingFolderFocusPath = null;
+      this.pendingFolderFocusFolderId = null;
     }
     this.navigateToDetail({ ...this.detail, path }, null, {
       pushHistory,
@@ -2537,17 +2540,26 @@ export class LibraryView {
     const list = document.createElement('div');
     list.className = 'library-folder-directory-list';
     for (const child of state.children) {
-      const childPath = this.detail.path === '' ? child.name : `${this.detail.path}/${child.name}`;
+      const segments = Array.isArray(child.segments) && child.segments.length > 0
+        ? child.segments
+        : [child.name];
+      const basePath = this.detail.path;
+      const deepestPath = segments.reduce(
+        (acc, segment) => acc === '' ? segment : `${acc}/${segment}`,
+        basePath
+      );
+      const firstPath = basePath === '' ? segments[0] : `${basePath}/${segments[0]}`;
       const row = document.createElement('button');
       row.type = 'button';
       row.className = 'library-folder-directory-row';
-      row.dataset.folderPath = childPath;
+      row.dataset.folderPath = deepestPath;
+      row.dataset.folderFirstPath = firstPath;
       row.innerHTML = `
         <span class="library-folder-directory-icon" aria-hidden="true">📁</span>
-        <span class="library-folder-directory-name">${escapeHtml(child.name)}</span>
+        <span class="library-folder-directory-name">${escapeHtml(segments.join(' / '))}</span>
         <span class="library-folder-directory-count">${escapeHtml(String(child.recursiveTrackCount))}</span>
       `;
-      row.addEventListener('click', () => this.navigateToFolderPath(childPath));
+      row.addEventListener('click', () => this.navigateToFolderPath(deepestPath));
       list.appendChild(row);
     }
     section.appendChild(list);
@@ -2588,13 +2600,15 @@ export class LibraryView {
   focusPendingFolderRow(section) {
     const focusPath = this.pendingFolderFocusPath;
     const liveSection = this.content?.querySelector?.('.library-folder-directory-section');
-    if (!focusPath || !section || section !== liveSection) return false;
+    if (!focusPath || !section || section !== liveSection ||
+        this.detail?.folderId !== this.pendingFolderFocusFolderId) return false;
     const focusTarget = [...section.querySelectorAll?.('.library-folder-directory-row') || []]
-      .find(row => row.dataset.folderPath === focusPath);
+      .find(row => row.dataset.folderPath === focusPath || row.dataset.folderFirstPath === focusPath);
     if (!focusTarget || typeof focusTarget.focus !== 'function') return false;
     focusTarget.focus({ preventScroll: true });
     if (globalThis.document?.activeElement !== focusTarget) return false;
     this.pendingFolderFocusPath = null;
+    this.pendingFolderFocusFolderId = null;
     return true;
   }
 
@@ -4194,6 +4208,8 @@ export class LibraryView {
     if (!this.detail && !this.searchQuery) return false;
     this.invalidateNavigationIntent();
     const returnSnapshot = this.navigationReturnSnapshot;
+    this.pendingFolderFocusPath = null;
+    this.pendingFolderFocusFolderId = null;
     this.detail = null;
     this.searchQuery = '';
     this.searchEntityType = null;
@@ -4261,11 +4277,22 @@ export class LibraryView {
     const targetFolderBrowseState = targetKey
       ? this.folderNavigationPositions.get(targetKey)?.folderBrowseState ?? null
       : null;
+    this.pendingFolderFocusPath = null;
+    this.pendingFolderFocusFolderId = null;
     if (currentDetail && targetDetail?.type === 'folderNode' &&
         currentDetail.folderId === targetDetail.folderId) {
-      const separator = currentDetail.path.lastIndexOf('/');
-      const parentPath = separator < 0 ? '' : currentDetail.path.slice(0, separator);
-      if (targetDetail.path === parentPath) this.pendingFolderFocusPath = currentDetail.path;
+      const targetPath = targetDetail.path;
+      const isAncestor = targetPath === '' || currentDetail.path.startsWith(`${targetPath}/`);
+      if (isAncestor) {
+        const remainder = targetPath === ''
+          ? currentDetail.path
+          : currentDetail.path.slice(targetPath.length + 1);
+        const childName = remainder.split('/')[0];
+        if (childName) {
+          this.pendingFolderFocusPath = targetPath === '' ? childName : `${targetPath}/${childName}`;
+          this.pendingFolderFocusFolderId = targetDetail.folderId;
+        }
+      }
     }
     this.applyNavigationSnapshot(snapshot, { folderBrowseState: targetFolderBrowseState });
   }

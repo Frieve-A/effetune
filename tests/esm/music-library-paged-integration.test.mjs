@@ -1003,6 +1003,7 @@ test('Back pending child focus wins over generic keyboard append focus', async (
     view.currentView = 'folders';
     view.detail = { type: 'folderNode', folderId: 'folder-1', path: 'A', title: 'Music' };
     view.pendingFolderFocusPath = 'A/Third';
+    view.pendingFolderFocusFolderId = 'folder-1';
     view.folderChildrenState = {
       key: 'folder-1\0A',
       requestId: view.folderBrowseRequestId,
@@ -5395,4 +5396,349 @@ test('paged playlist import cancels hidden staging when commit fails', async () 
 
   await assert.rejects(view.importPagedPlaylistSource('source'), /commit failed/);
   assert.deepEqual(calls, [['commit'], ['cancel', 'preview-2']]);
+});
+
+function createCompressedFolderBrowseState(view, path, segments) {
+  return {
+    key: `folder-1\0${path}`,
+    browseGeneration: view.folderBrowseGeneration,
+    children: [{
+      name: segments[0],
+      segments,
+      directTrackCount: 0,
+      recursiveTrackCount: 5
+    }],
+    cursor: null,
+    hasMore: false,
+    nodeExists: true
+  };
+}
+
+function createCompressedFolderChildrenState(view, path, segments) {
+  return {
+    ...createCompressedFolderBrowseState(view, path, segments),
+    requestId: view.folderBrowseRequestId,
+    intentId: view.navigationIntentId,
+    loading: false,
+    error: false
+  };
+}
+
+function createFolderDirectoryTestSection(path) {
+  const section = new PagedDomElement('section');
+  section.dataset.folderBrowseKey = `folder-1\0${path}`;
+  section.querySelectorAll = selector => selector === '.library-folder-directory-row'
+    ? section.children.flatMap(child => child.children || [])
+      .filter(child => child.className === 'library-folder-directory-row')
+    : [];
+  return section;
+}
+
+function connectFolderRowFocus(view, section, row, document) {
+  row.focus = options => {
+    row.focusOptions = options;
+    document.activeElement = row;
+  };
+  view.content.querySelector = selector => (
+    selector === '.library-folder-directory-section' ? section : null
+  );
+}
+
+test('compressed folder rows join segments and activate their deepest path', () => {
+  return withGlobals({
+    document: { createElement: tagName => new PagedDomElement(tagName) }
+  }, () => {
+    const view = new LibraryView({ manager: createPagedManager(), uiManager: {} });
+    view.render = () => {};
+    view.currentView = 'folders';
+    view.detail = { type: 'folderNode', folderId: 'folder-1', path: '', title: 'Music' };
+    view.folderChildrenState = createCompressedFolderChildrenState(view, '', ['A', 'B', 'C']);
+    const section = createFolderDirectoryTestSection('');
+
+    view.renderFolderDirectorySection(section, 0);
+
+    const row = section.children[0].children[0];
+    const nameText = row.innerHTML.match(
+      /<span class="library-folder-directory-name">([^<]*)<\/span>/
+    )?.[1];
+    assert.equal(nameText, 'A / B / C');
+    assert.equal(row.dataset.folderPath, 'A/B/C');
+    assert.equal(row.dataset.folderFirstPath, 'A');
+
+    row.listeners.get('click')();
+    assert.equal(view.detail.path, 'A/B/C');
+  });
+});
+
+test('compressed folder rows restore focus by first path after one-level Back', async () => {
+  const document = {
+    body: { classList: { contains: () => false } },
+    createElement: tagName => new PagedDomElement(tagName),
+    activeElement: null
+  };
+  await withGlobals({ document }, () => {
+    const view = new LibraryView({ manager: createPagedManager(), uiManager: {} });
+    view.render = () => {};
+    view.currentView = 'folders';
+    view.detail = { type: 'folderNode', folderId: 'folder-1', path: 'A/B/C', title: 'Music' };
+    view.content = new PagedDomElement('main');
+
+    assert.equal(view.navigateBack(), true);
+    assert.equal(view.detail.path, 'A/B');
+    assert.equal(view.pendingFolderFocusPath, 'A/B/C');
+
+    view.folderChildrenState = createCompressedFolderChildrenState(view, 'A/B', ['C', 'D']);
+    const section = createFolderDirectoryTestSection('A/B');
+    view.renderFolderDirectorySection(section, 0);
+    const row = section.querySelectorAll('.library-folder-directory-row')[0];
+    assert.equal(row.dataset.folderPath, 'A/B/C/D');
+    assert.equal(row.dataset.folderFirstPath, 'A/B/C');
+    connectFolderRowFocus(view, section, row, document);
+
+    assert.equal(view.focusPendingFolderRow(section), true);
+    assert.equal(document.activeElement, row);
+    assert.deepEqual(row.focusOptions, { preventScroll: true });
+    assert.equal(view.pendingFolderFocusPath, null);
+  });
+});
+
+test('compressed folder rows restore ancestor focus after their deepest segment changes', async () => {
+  const document = {
+    body: { classList: { contains: () => false } },
+    createElement: tagName => new PagedDomElement(tagName),
+    activeElement: null
+  };
+  await withGlobals({ document }, () => {
+    const view = new LibraryView({ manager: createPagedManager(), uiManager: {} });
+    view.render = () => {};
+    view.currentView = 'folders';
+    view.detail = { type: 'folderNode', folderId: 'folder-1', path: 'A/B/C', title: 'Music' };
+    view.content = new PagedDomElement('main');
+
+    view.navigateToFolderPath('');
+    assert.equal(view.detail.path, '');
+    assert.equal(view.pendingFolderFocusPath, 'A');
+
+    view.folderChildrenState = createCompressedFolderChildrenState(view, '', ['A', 'B', 'D']);
+    const section = createFolderDirectoryTestSection('');
+    view.renderFolderDirectorySection(section, 0);
+    const row = section.querySelectorAll('.library-folder-directory-row')[0];
+    assert.equal(row.dataset.folderPath, 'A/B/D');
+    assert.equal(row.dataset.folderFirstPath, 'A');
+    connectFolderRowFocus(view, section, row, document);
+
+    assert.equal(view.focusPendingFolderRow(section), true);
+    assert.equal(document.activeElement, row);
+    assert.equal(view.pendingFolderFocusPath, null);
+  });
+});
+
+test('pending compressed-folder focus is scoped to its monitored folder', async () => {
+  const document = {
+    body: { classList: { contains: () => false } },
+    createElement: tagName => new PagedDomElement(tagName),
+    activeElement: null
+  };
+  await withGlobals({ document }, () => {
+    const view = new LibraryView({ manager: createPagedManager(), uiManager: {} });
+    view.render = () => {};
+    view.currentView = 'folders';
+    view.folderBrowseMode = 'tree';
+    view.detail = { type: 'folderNode', folderId: 'folder-x', path: 'A/B/C', title: 'X' };
+    view.content = new PagedDomElement('main');
+
+    view.navigateToFolderPath('');
+    assert.equal(view.pendingFolderFocusPath, 'A');
+    assert.equal(view.pendingFolderFocusFolderId, 'folder-x');
+
+    view.navigateToDetail(
+      { type: 'folderNode', folderId: 'folder-y', path: '', title: 'Y' },
+      null,
+      { pushHistory: false }
+    );
+    assert.equal(view.pendingFolderFocusPath, 'A');
+    assert.equal(view.pendingFolderFocusFolderId, 'folder-x');
+
+    view.folderChildrenState = {
+      ...createCompressedFolderChildrenState(view, '', ['A', 'Other']),
+      key: 'folder-y\0'
+    };
+    const section = createFolderDirectoryTestSection('');
+    section.dataset.folderBrowseKey = 'folder-y\0';
+    view.renderFolderDirectorySection(section, 0);
+    const row = section.querySelectorAll('.library-folder-directory-row')[0];
+    assert.equal(row.dataset.folderFirstPath, 'A');
+    connectFolderRowFocus(view, section, row, document);
+
+    assert.equal(view.focusPendingFolderRow(section), false);
+    assert.equal(document.activeElement, null);
+    assert.equal(row.focusOptions, undefined);
+  });
+});
+
+test('mobile folder popstate restores focus to a compressed chain row by first path', async () => {
+  const document = {
+    body: { classList: { contains: name => name === 'layout-mobile' || name === 'view-library' } },
+    createElement: tagName => new PagedDomElement(tagName),
+    activeElement: null
+  };
+  const history = { state: null, replaceState() {}, pushState() {} };
+  await withGlobals({ document, history }, () => {
+    const view = new LibraryView({ manager: createPagedManager(), uiManager: {} });
+    view.render = () => {};
+    view.currentView = 'folders';
+    view.detail = { type: 'folderNode', folderId: 'folder-1', path: 'A/B/C', title: 'Music' };
+    const rootKey = 'folder-1\0';
+    view.folderNavigationPositions.set(rootKey, {
+      currentView: 'folders',
+      detail: { type: 'folderNode', folderId: 'folder-1', path: '', title: 'Music' },
+      pagedPosition: { contentScrollTop: 720 },
+      folderBrowseState: createCompressedFolderBrowseState(view, '', ['A', 'B', 'C'])
+    });
+    const state = {
+      effetuneLibrary: true,
+      index: 0,
+      depth: 0,
+      snapshot: {
+        currentView: 'folders',
+        detail: { type: 'folderNode', folderId: 'folder-1', path: '', title: 'Music' },
+        searchQuery: '',
+        pagedPosition: { contentScrollTop: 720 }
+      }
+    };
+
+    view.handleMobilePopState({ state });
+
+    assert.equal(view.detail.path, '');
+    assert.equal(view.pendingFolderFocusPath, 'A');
+    const section = createFolderDirectoryTestSection('');
+    view.content = {
+      scrollTop: 0,
+      querySelector: selector => selector === '.library-folder-directory-section' ? section : null
+    };
+    view.renderFolderDirectorySection(section, 0);
+    const row = section.querySelectorAll('.library-folder-directory-row')[0];
+    assert.equal(row.dataset.folderPath, 'A/B/C');
+    assert.equal(row.dataset.folderFirstPath, 'A');
+    connectFolderRowFocus(view, section, row, document);
+
+    assert.equal(view.focusPendingFolderRow(section), true);
+    assert.equal(document.activeElement, row);
+    assert.deepEqual(row.focusOptions, { preventScroll: true });
+    assert.equal(view.pendingFolderFocusPath, null);
+  });
+});
+
+test('mobile popstate clears pending compressed-folder focus before leaving folder detail', async () => {
+  const document = {
+    body: { classList: { contains: name => name === 'layout-mobile' || name === 'view-library' } }
+  };
+  const history = { state: null, replaceState() {}, pushState() {} };
+  await withGlobals({ document, history }, () => {
+    const view = new LibraryView({ manager: createPagedManager(), uiManager: {} });
+    view.render = () => {};
+    view.currentView = 'folders';
+    view.detail = { type: 'folderNode', folderId: 'folder-1', path: 'A/B/C', title: 'Music' };
+
+    view.handleMobilePopState({
+      state: {
+        effetuneLibrary: true,
+        index: 1,
+        depth: 1,
+        snapshot: {
+          currentView: 'folders',
+          detail: { type: 'folderNode', folderId: 'folder-1', path: '', title: 'Music' },
+          searchQuery: ''
+        }
+      }
+    });
+    assert.equal(view.pendingFolderFocusPath, 'A');
+
+    view.handleMobilePopState({
+      state: {
+        effetuneLibrary: true,
+        index: 0,
+        depth: 0,
+        snapshot: { currentView: 'folders', detail: null, searchQuery: '' }
+      }
+    });
+
+    assert.equal(view.pendingFolderFocusPath, null);
+  });
+});
+
+test('desktop Back restores a compressed child row and clears pending focus when leaving folders', () => {
+  const document = {
+    body: { classList: { contains: () => false } },
+    createElement: tagName => new PagedDomElement(tagName)
+  };
+  return withGlobals({ document }, () => {
+    const view = new LibraryView({ manager: createPagedManager(), uiManager: {} });
+    view.render = () => {};
+    view.currentView = 'folders';
+    view.detail = { type: 'folderNode', folderId: 'folder-1', path: '', title: 'Music' };
+    view.content = new PagedDomElement('main');
+    view.folderChildrenState = createCompressedFolderChildrenState(view, '', ['A', 'B', 'C']);
+    const rootSection = createFolderDirectoryTestSection('');
+    view.renderFolderDirectorySection(rootSection, 0);
+    rootSection.children[0].children[0].listeners.get('click')();
+    assert.equal(view.detail.path, 'A/B/C');
+
+    assert.equal(view.navigateBack(), true);
+    assert.equal(view.detail.path, 'A/B');
+
+    view.folderChildrenState = createCompressedFolderChildrenState(view, 'A/B', ['C']);
+    const parentSection = createFolderDirectoryTestSection('A/B');
+    view.renderFolderDirectorySection(parentSection, 0);
+    const rows = parentSection.children[0].children;
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].dataset.folderPath, 'A/B/C');
+    assert.equal(rows[0].dataset.folderFirstPath, 'A/B/C');
+
+    assert.equal(view.navigateBack(), true);
+    assert.equal(view.detail.path, 'A');
+    assert.equal(view.navigateBack(), true);
+    assert.equal(view.detail.path, '');
+    assert.equal(view.pendingFolderFocusPath, 'A');
+    assert.equal(view.navigateBack(), true);
+    assert.equal(view.detail, null);
+    assert.equal(view.pendingFolderFocusPath, null);
+  });
+});
+
+test('missing compressed folder nodes recover to a cached ancestor row', async () => {
+  const document = {
+    body: { classList: { contains: () => false } },
+    createElement: tagName => new PagedDomElement(tagName)
+  };
+  await withGlobals({ document }, async () => {
+    const manager = createPagedManager();
+    manager.browseFolderChildren = async () => ({
+      children: [], hasMore: false, cursor: null, nodeExists: false
+    });
+    const view = new LibraryView({ manager, uiManager: {} });
+    view.render = () => {};
+    view.currentView = 'folders';
+    view.detail = { type: 'folderNode', folderId: 'folder-1', path: 'A/B/C', title: 'Music' };
+    view.content = { scrollTop: 0, querySelector() { return null; } };
+    const parentKey = 'folder-1\0A/B';
+    view.folderNavigationPositions.set(parentKey, {
+      currentView: 'folders',
+      detail: { type: 'folderNode', folderId: 'folder-1', path: 'A/B', title: 'Music' },
+      pagedPosition: { contentScrollTop: 320 },
+      folderBrowseState: createCompressedFolderBrowseState(view, 'A/B', ['C', 'D'])
+    });
+
+    await view.loadFolderChildren(new PagedDomElement('section'), 0);
+
+    assert.equal(view.detail.path, 'A/B');
+    assert.equal(view.pendingFolderFocusPath, 'A/B/C');
+    const restored = view.getCurrentFolderChildrenState(parentKey);
+    assert.deepEqual(restored.children[0].segments, ['C', 'D']);
+    const section = createFolderDirectoryTestSection('A/B');
+    view.renderFolderDirectorySection(section, 0);
+    const row = section.children[0].children[0];
+    assert.equal(row.dataset.folderPath, 'A/B/C/D');
+    assert.equal(row.dataset.folderFirstPath, 'A/B/C');
+  });
 });

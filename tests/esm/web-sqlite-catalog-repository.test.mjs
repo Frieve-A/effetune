@@ -132,13 +132,16 @@ test('Web folder directory browsing keeps physical hierarchy counts and direct-t
     folderId: 'web-folder', path: '', limit: 20
   }), {
     children: [
-      { name: '%_', directTrackCount: 1, recursiveTrackCount: 1 },
-      { name: 'A', directTrackCount: 1, recursiveTrackCount: 3 },
-      { name: 'A2', directTrackCount: 1, recursiveTrackCount: 1 },
-      { name: 'A／B', directTrackCount: 1, recursiveTrackCount: 1 },
-      { name: 'Cafe', directTrackCount: 1, recursiveTrackCount: 1 },
-      { name: 'Café', directTrackCount: 1, recursiveTrackCount: 1 },
-      { name: '音楽😀', directTrackCount: 0, recursiveTrackCount: 1 }
+      { name: '%_', segments: ['%_'], directTrackCount: 1, recursiveTrackCount: 1 },
+      { name: 'A', segments: ['A'], directTrackCount: 1, recursiveTrackCount: 3 },
+      { name: 'A2', segments: ['A2'], directTrackCount: 1, recursiveTrackCount: 1 },
+      { name: 'A／B', segments: ['A／B'], directTrackCount: 1, recursiveTrackCount: 1 },
+      { name: 'Cafe', segments: ['Cafe'], directTrackCount: 1, recursiveTrackCount: 1 },
+      { name: 'Café', segments: ['Café'], directTrackCount: 1, recursiveTrackCount: 1 },
+      {
+        name: '音楽😀', segments: ['音楽😀', '子'],
+        directTrackCount: 1, recursiveTrackCount: 1
+      }
     ],
     hasMore: false,
     cursor: null,
@@ -147,14 +150,14 @@ test('Web folder directory browsing keeps physical hierarchy counts and direct-t
   assert.deepEqual(dispatchWebSqliteCommand('browseFolderChildren', {
     folderId: 'web-folder', path: 'A', limit: 20
   }), {
-    children: [{ name: 'B', directTrackCount: 2, recursiveTrackCount: 2 }],
+    children: [{ name: 'B', segments: ['B'], directTrackCount: 2, recursiveTrackCount: 2 }],
     hasMore: false,
     cursor: null,
     nodeExists: true
   });
   assert.deepEqual(dispatchWebSqliteCommand('browseFolderChildren', {
     folderId: 'web-folder', path: '音楽😀', limit: 20
-  }).children, [{ name: '子', directTrackCount: 1, recursiveTrackCount: 1 }]);
+  }).children, [{ name: '子', segments: ['子'], directTrackCount: 1, recursiveTrackCount: 1 }]);
   assert.equal(dispatchWebSqliteCommand('browseFolderChildren', {
     folderId: 'web-folder', path: 'Missing/Node', limit: 20
   }).nodeExists, false);
@@ -295,6 +298,140 @@ test('Web folder child cursors preserve binary order without duplicates or omiss
   close();
 });
 
+test('Web folder browsing compresses single-child chains without changing cursors', async t => {
+  const { database, close } = await openWebTestCatalog(t, 'effetune-web-directory-compression-');
+  seedWebTestFolder();
+  dispatchWebSqliteCommand('upsertTracks', { tracks: [
+    createWebTestTrack('chain-one', 'A/B/C/One.flac'),
+    createWebTestTrack('chain-two', 'A/B/C/Two.flac'),
+    createWebTestTrack('direct-own', 'Direct/Stop/Own.flac'),
+    createWebTestTrack('direct-deep', 'Direct/Stop/Next/Deep.flac'),
+    createWebTestTrack('branch-left', 'Branch/Left/Track.flac'),
+    createWebTestTrack('branch-right', 'Branch/Right/Track.flac'),
+    createWebTestTrack('unicode-chain', '日本語/フォルダ/🎵/Track.flac'),
+    createWebTestTrack('page-a', 'Paging/A/One/Track.flac'),
+    createWebTestTrack('page-b', 'Paging/B/Two/Track.flac')
+  ] });
+  database.prepare(`
+    INSERT INTO directories(
+      folder_id, relative_path, parent_path, name, direct_track_count, recursive_track_count
+    ) VALUES ('web-folder', 'Leaf', '', 'Leaf', 0, 0)
+  `).run();
+
+  const children = dispatchWebSqliteCommand('browseFolderChildren', {
+    folderId: 'web-folder', path: '', limit: 20
+  }).children;
+  const childByName = new Map(children.map(child => [child.name, child]));
+  assert.deepEqual(childByName.get('A'), {
+    name: 'A', segments: ['A', 'B', 'C'], directTrackCount: 2, recursiveTrackCount: 2
+  });
+  assert.deepEqual(childByName.get('Direct'), {
+    name: 'Direct', segments: ['Direct', 'Stop'], directTrackCount: 1, recursiveTrackCount: 2
+  });
+  assert.deepEqual(childByName.get('Branch'), {
+    name: 'Branch', segments: ['Branch'], directTrackCount: 0, recursiveTrackCount: 2
+  });
+  assert.deepEqual(childByName.get('Leaf'), {
+    name: 'Leaf', segments: ['Leaf'], directTrackCount: 0, recursiveTrackCount: 0
+  });
+  assert.deepEqual(childByName.get('日本語'), {
+    name: '日本語', segments: ['日本語', 'フォルダ', '🎵'],
+    directTrackCount: 1, recursiveTrackCount: 1
+  });
+
+  const firstPage = dispatchWebSqliteCommand('browseFolderChildren', {
+    folderId: 'web-folder', path: 'Paging', limit: 1
+  });
+  assert.deepEqual(firstPage, {
+    children: [{
+      name: 'A', segments: ['A', 'One'], directTrackCount: 1, recursiveTrackCount: 1
+    }],
+    hasMore: true,
+    cursor: 'A',
+    nodeExists: true
+  });
+  assert.equal(firstPage.cursor, firstPage.children[0].segments[0]);
+  const secondPage = dispatchWebSqliteCommand('browseFolderChildren', {
+    folderId: 'web-folder', path: 'Paging', cursor: firstPage.cursor, limit: 1
+  });
+  assert.deepEqual(secondPage, {
+    children: [{
+      name: 'B', segments: ['B', 'Two'], directTrackCount: 1, recursiveTrackCount: 1
+    }],
+    hasMore: false,
+    cursor: null,
+    nodeExists: true
+  });
+  assert.deepEqual([...firstPage.children, ...secondPage.children].map(child => child.name), ['A', 'B']);
+  close();
+});
+
+test('Web folder browsing enforces chain depth, path length, and response byte limits', async t => {
+  const { database, close } = await openWebTestCatalog(t, 'effetune-web-directory-limits-');
+  seedWebTestFolder();
+  const depthSegments = Array.from(
+    { length: 65 },
+    (_, index) => `Depth-${String(index + 1).padStart(2, '0')}`
+  );
+  dispatchWebSqliteCommand('upsertTracks', { tracks: [
+    createWebTestTrack('depth-limit', `${depthSegments.join('/')}/Track.flac`)
+  ] });
+
+  const longName = 'x'.repeat(32768 - 'Length/'.length);
+  const maximumPath = `Length/${longName}`;
+  const insertDirectory = database.prepare(`
+    INSERT INTO directories(
+      folder_id, relative_path, parent_path, name, direct_track_count, recursive_track_count
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `);
+  insertDirectory.run('web-folder', 'Length', '', 'Length', 0, 1);
+  insertDirectory.run('web-folder', maximumPath, 'Length', longName, 0, 1);
+  insertDirectory.run('web-folder', `${maximumPath}/Tail`, maximumPath, 'Tail', 1, 1);
+
+  const rootChildren = dispatchWebSqliteCommand('browseFolderChildren', {
+    folderId: 'web-folder', path: '', limit: 20
+  }).children;
+  const depthChild = rootChildren.find(child => child.name === depthSegments[0]);
+  assert.equal(depthChild.segments.length, 64);
+  assert.deepEqual(depthChild.segments, depthSegments.slice(0, 64));
+  assert.equal(depthChild.directTrackCount, 0);
+  const finalDepthPage = dispatchWebSqliteCommand('browseFolderChildren', {
+    folderId: 'web-folder', path: depthSegments.slice(0, 64).join('/'), limit: 20
+  });
+  assert.deepEqual(finalDepthPage.children, [{
+    name: depthSegments[64], segments: [depthSegments[64]],
+    directTrackCount: 1, recursiveTrackCount: 1
+  }]);
+
+  const lengthChild = rootChildren.find(child => child.name === 'Length');
+  assert.deepEqual(lengthChild.segments, ['Length', longName]);
+  assert.equal(lengthChild.segments.join('/').length, 32768);
+  assert.equal(lengthChild.directTrackCount, 0);
+  assert.deepEqual(dispatchWebSqliteCommand('browseFolderChildren', {
+    folderId: 'web-folder', path: maximumPath, limit: 20
+  }).children, [{
+    name: 'Tail', segments: ['Tail'], directTrackCount: 1, recursiveTrackCount: 1
+  }]);
+
+  const budgetRootCount = 160;
+  const longSegments = Array.from({ length: 7 }, () => 'y'.repeat(500));
+  dispatchWebSqliteCommand('upsertTracks', {
+    tracks: Array.from({ length: budgetRootCount }, (_, index) => {
+      const root = `Budget-${String(index).padStart(3, '0')}`;
+      return createWebTestTrack(`budget-${index}`, `${[root, ...longSegments].join('/')}/Track.flac`);
+    })
+  });
+  const budgetPage = dispatchWebSqliteCommand('browseFolderChildren', {
+    folderId: 'web-folder', path: '', limit: 500
+  });
+  assert.ok(budgetPage.children.length > 0);
+  assert.ok(budgetPage.children.length < budgetRootCount);
+  assert.ok(budgetPage.children.every(child => child.segments.length === 8));
+  assert.equal(budgetPage.hasMore, true);
+  assert.equal(budgetPage.cursor, budgetPage.children.at(-1).segments[0]);
+  close();
+});
+
 test('Web startup rebuilds directory rows when generation and watermark diverge', async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-web-directory-rebuild-'));
   const dbPath = path.join(directory, 'catalog.sqlite');
@@ -337,7 +474,9 @@ test('Web startup rebuilds directory rows when generation and watermark diverge'
   assertDirectoriesMatchTracks(database);
   assert.deepEqual(dispatchWebSqliteCommand('browseFolderChildren', {
     folderId: 'web-folder', path: '', limit: 20
-  }).children, [{ name: 'After', directTrackCount: 1, recursiveTrackCount: 1 }]);
+  }).children, [{
+    name: 'After', segments: ['After'], directTrackCount: 1, recursiveTrackCount: 1
+  }]);
   const rebuilt = database.prepare(`
     SELECT
       (SELECT generation FROM directories_sync WHERE id = 1) AS generation,

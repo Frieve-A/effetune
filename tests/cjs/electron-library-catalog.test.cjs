@@ -613,13 +613,16 @@ test('Electron folder browsing mirrors physical hierarchy counts and direct-trac
     folderId: 'folder_music', path: '', limit: 20
   }), {
     children: [
-      { name: '%_', directTrackCount: 1, recursiveTrackCount: 1 },
-      { name: 'A', directTrackCount: 1, recursiveTrackCount: 3 },
-      { name: 'A2', directTrackCount: 1, recursiveTrackCount: 1 },
-      { name: 'A／B', directTrackCount: 1, recursiveTrackCount: 1 },
-      { name: 'Cafe', directTrackCount: 1, recursiveTrackCount: 1 },
-      { name: 'Café', directTrackCount: 1, recursiveTrackCount: 1 },
-      { name: '音楽😀', directTrackCount: 0, recursiveTrackCount: 1 }
+      { name: '%_', segments: ['%_'], directTrackCount: 1, recursiveTrackCount: 1 },
+      { name: 'A', segments: ['A'], directTrackCount: 1, recursiveTrackCount: 3 },
+      { name: 'A2', segments: ['A2'], directTrackCount: 1, recursiveTrackCount: 1 },
+      { name: 'A／B', segments: ['A／B'], directTrackCount: 1, recursiveTrackCount: 1 },
+      { name: 'Cafe', segments: ['Cafe'], directTrackCount: 1, recursiveTrackCount: 1 },
+      { name: 'Café', segments: ['Café'], directTrackCount: 1, recursiveTrackCount: 1 },
+      {
+        name: '音楽😀', segments: ['音楽😀', '子'],
+        directTrackCount: 1, recursiveTrackCount: 1
+      }
     ],
     hasMore: false,
     cursor: null,
@@ -628,7 +631,7 @@ test('Electron folder browsing mirrors physical hierarchy counts and direct-trac
   assert.deepEqual(await host.browseFolderChildren({
     folderId: 'folder_music', path: 'A', limit: 20
   }), {
-    children: [{ name: 'B', directTrackCount: 2, recursiveTrackCount: 2 }],
+    children: [{ name: 'B', segments: ['B'], directTrackCount: 2, recursiveTrackCount: 2 }],
     hasMore: false,
     cursor: null,
     nodeExists: true
@@ -656,7 +659,7 @@ test('Electron folder browsing mirrors physical hierarchy counts and direct-trac
   assertElectronDirectoriesMatchTracks(dbPath);
   assert.deepEqual((await host.browseFolderChildren({
     folderId: 'folder_music', path: 'A', limit: 20
-  })).children, [{ name: 'B', directTrackCount: 1, recursiveTrackCount: 1 }]);
+  })).children, [{ name: 'B', segments: ['B'], directTrackCount: 1, recursiveTrackCount: 1 }]);
 
   const database = new DatabaseSync(dbPath, { readOnly: true });
   try {
@@ -703,6 +706,149 @@ test('Electron folder browsing mirrors physical hierarchy counts and direct-trac
     query: '', sort: 'title', direction: 'asc',
     scope: { folderDirKey: '12:folder_musicA', folderKey: 'folder_music' }
   }), assertCode('invalidScope'));
+});
+
+test('Electron folder browsing compresses single-child chains without changing cursors', async t => {
+  const { host, directory, dbPath } = await openCatalog(t);
+  await seedFolder(host, directory);
+  await host.upsertTracks([
+    createTrack(1, { trackUid: 'chain-one', relativePath: 'A/B/C/One.flac' }),
+    createTrack(2, { trackUid: 'chain-two', relativePath: 'A/B/C/Two.flac' }),
+    createTrack(3, { trackUid: 'direct-own', relativePath: 'Direct/Stop/Own.flac' }),
+    createTrack(4, { trackUid: 'direct-deep', relativePath: 'Direct/Stop/Next/Deep.flac' }),
+    createTrack(5, { trackUid: 'branch-left', relativePath: 'Branch/Left/Track.flac' }),
+    createTrack(6, { trackUid: 'branch-right', relativePath: 'Branch/Right/Track.flac' }),
+    createTrack(7, { trackUid: 'unicode-chain', relativePath: '日本語/フォルダ/🎵/Track.flac' }),
+    createTrack(8, { trackUid: 'page-a', relativePath: 'Paging/A/One/Track.flac' }),
+    createTrack(9, { trackUid: 'page-b', relativePath: 'Paging/B/Two/Track.flac' })
+  ]);
+  const database = new DatabaseSync(dbPath);
+  try {
+    database.prepare(`
+      INSERT INTO directories(
+        folder_id, relative_path, parent_path, name, direct_track_count, recursive_track_count
+      ) VALUES ('folder_music', 'Leaf', '', 'Leaf', 0, 0)
+    `).run();
+  } finally {
+    database.close();
+  }
+
+  const children = (await host.browseFolderChildren({
+    folderId: 'folder_music', path: '', limit: 20
+  })).children;
+  const childByName = new Map(children.map(child => [child.name, child]));
+  assert.deepEqual(childByName.get('A'), {
+    name: 'A', segments: ['A', 'B', 'C'], directTrackCount: 2, recursiveTrackCount: 2
+  });
+  assert.deepEqual(childByName.get('Direct'), {
+    name: 'Direct', segments: ['Direct', 'Stop'], directTrackCount: 1, recursiveTrackCount: 2
+  });
+  assert.deepEqual(childByName.get('Branch'), {
+    name: 'Branch', segments: ['Branch'], directTrackCount: 0, recursiveTrackCount: 2
+  });
+  assert.deepEqual(childByName.get('Leaf'), {
+    name: 'Leaf', segments: ['Leaf'], directTrackCount: 0, recursiveTrackCount: 0
+  });
+  assert.deepEqual(childByName.get('日本語'), {
+    name: '日本語', segments: ['日本語', 'フォルダ', '🎵'],
+    directTrackCount: 1, recursiveTrackCount: 1
+  });
+
+  const firstPage = await host.browseFolderChildren({
+    folderId: 'folder_music', path: 'Paging', limit: 1
+  });
+  assert.deepEqual(firstPage, {
+    children: [{
+      name: 'A', segments: ['A', 'One'], directTrackCount: 1, recursiveTrackCount: 1
+    }],
+    hasMore: true,
+    cursor: 'A',
+    nodeExists: true
+  });
+  assert.equal(firstPage.cursor, firstPage.children[0].segments[0]);
+  const secondPage = await host.browseFolderChildren({
+    folderId: 'folder_music', path: 'Paging', cursor: firstPage.cursor, limit: 1
+  });
+  assert.deepEqual(secondPage, {
+    children: [{
+      name: 'B', segments: ['B', 'Two'], directTrackCount: 1, recursiveTrackCount: 1
+    }],
+    hasMore: false,
+    cursor: null,
+    nodeExists: true
+  });
+  assert.deepEqual([...firstPage.children, ...secondPage.children].map(child => child.name), ['A', 'B']);
+});
+
+test('Electron folder browsing enforces chain depth, path length, and response byte limits', async t => {
+  const { host, directory, dbPath } = await openCatalog(t);
+  await seedFolder(host, directory);
+  const depthSegments = Array.from(
+    { length: 65 },
+    (_, index) => `Depth-${String(index + 1).padStart(2, '0')}`
+  );
+  await host.upsertTracks([createTrack(1, {
+    trackUid: 'depth-limit', relativePath: `${depthSegments.join('/')}/Track.flac`
+  })]);
+
+  const longName = 'x'.repeat(32768 - 'Length/'.length);
+  const maximumPath = `Length/${longName}`;
+  const database = new DatabaseSync(dbPath);
+  try {
+    const insertDirectory = database.prepare(`
+      INSERT INTO directories(
+        folder_id, relative_path, parent_path, name, direct_track_count, recursive_track_count
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    insertDirectory.run('folder_music', 'Length', '', 'Length', 0, 1);
+    insertDirectory.run('folder_music', maximumPath, 'Length', longName, 0, 1);
+    insertDirectory.run('folder_music', `${maximumPath}/Tail`, maximumPath, 'Tail', 1, 1);
+  } finally {
+    database.close();
+  }
+
+  const rootChildren = (await host.browseFolderChildren({
+    folderId: 'folder_music', path: '', limit: 20
+  })).children;
+  const depthChild = rootChildren.find(child => child.name === depthSegments[0]);
+  assert.equal(depthChild.segments.length, 64);
+  assert.deepEqual(depthChild.segments, depthSegments.slice(0, 64));
+  assert.equal(depthChild.directTrackCount, 0);
+  const finalDepthPage = await host.browseFolderChildren({
+    folderId: 'folder_music', path: depthSegments.slice(0, 64).join('/'), limit: 20
+  });
+  assert.deepEqual(finalDepthPage.children, [{
+    name: depthSegments[64], segments: [depthSegments[64]],
+    directTrackCount: 1, recursiveTrackCount: 1
+  }]);
+
+  const lengthChild = rootChildren.find(child => child.name === 'Length');
+  assert.deepEqual(lengthChild.segments, ['Length', longName]);
+  assert.equal(lengthChild.segments.join('/').length, 32768);
+  assert.equal(lengthChild.directTrackCount, 0);
+  assert.deepEqual((await host.browseFolderChildren({
+    folderId: 'folder_music', path: maximumPath, limit: 20
+  })).children, [{
+    name: 'Tail', segments: ['Tail'], directTrackCount: 1, recursiveTrackCount: 1
+  }]);
+
+  const budgetRootCount = 160;
+  const longSegments = Array.from({ length: 7 }, () => 'y'.repeat(500));
+  await host.upsertTracks(Array.from({ length: budgetRootCount }, (_, index) => {
+    const root = `Budget-${String(index).padStart(3, '0')}`;
+    return createTrack(index + 2, {
+      trackUid: `budget-${index}`,
+      relativePath: `${[root, ...longSegments].join('/')}/Track.flac`
+    });
+  }));
+  const budgetPage = await host.browseFolderChildren({
+    folderId: 'folder_music', path: '', limit: 500
+  });
+  assert.ok(budgetPage.children.length > 0);
+  assert.ok(budgetPage.children.length < budgetRootCount);
+  assert.ok(budgetPage.children.every(child => child.segments.length === 8));
+  assert.equal(budgetPage.hasMore, true);
+  assert.equal(budgetPage.cursor, budgetPage.children.at(-1).segments[0]);
 });
 
 test('Electron startup rebuilds directory rows when generation and watermark diverge', async t => {

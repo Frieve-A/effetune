@@ -8,12 +8,9 @@ on:
 permissions: {}
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
-
-    runs-on: ${{ matrix.os }}
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-latest
 
     steps:
       - name: Check out Git repository
@@ -44,23 +41,88 @@ jobs:
       - name: Verify packaged DSP artifacts
         run: npm run smoke:dsp-package
 
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-artifacts
+          path: dist/**/*.AppImage
+
+  build-windows:
+    name: Build Windows
+    needs: build-linux
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Verify source and tests
+        run: npm run verify
+
+      - name: Generate web assets
+        run: npm run assets:web
+
+      - name: Build
+        run: |
+          npm run clean
+          npx electron-builder --publish never
+        env:
+          USE_HARD_LINKS: false
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify packaged DSP artifacts
+        run: npm run smoke:dsp-package
+
       - name: Upload Windows Artifacts
-        if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v7
         with:
           name: windows-artifacts
           path: dist/**/*.exe
 
+  build-macos:
+    name: Build macOS
+    needs: build-windows
+    runs-on: macos-latest
+
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Verify source and tests
+        run: npm run verify
+
+      - name: Generate web assets
+        run: npm run assets:web
+
+      - name: Build
+        run: |
+          npm run clean
+          npx electron-builder --publish never
+        env:
+          USE_HARD_LINKS: false
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify packaged DSP artifacts
+        run: npm run smoke:dsp-package
+
       - name: Upload macOS artifacts
-        if: matrix.os == 'macos-latest'
         uses: actions/upload-artifact@v7
         with:
           name: macos-artifacts
           path: dist/**/*.dmg
-
-      - name: Upload Linux artifacts
-        if: matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v7
-        with:
-          name: linux-artifacts
-          path: dist/**/*.AppImage
