@@ -96,8 +96,12 @@ class RoomEqAdditionalEqEditor {
         container.id = `room-eq-additional-eq-container-${this.id}`;
 
         const graphContainer = document.createElement('div');
-        graphContainer.className = 'room-eq-additional-eq-graph';
-        graphContainer.id = `room-eq-additional-eq-graph-${this.id}`;
+        graphContainer.className = 'graph-container';
+        graphContainer.style.margin = '10px auto';
+
+        const graph = document.createElement('div');
+        graph.className = 'room-eq-additional-eq-graph';
+        graph.id = `room-eq-additional-eq-graph-${this.id}`;
 
         const gridSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         gridSvg.setAttribute('class', 'room-eq-additional-eq-grid');
@@ -133,14 +137,14 @@ class RoomEqAdditionalEqEditor {
             text.textContent = `${gain}dB`;
             gridSvg.appendChild(text);
         }
-        graphContainer.appendChild(gridSvg);
+        graph.appendChild(gridSvg);
 
         const responseSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         responseSvg.setAttribute('class', 'room-eq-additional-eq-response');
         responseSvg.setAttribute('width', '100%');
         responseSvg.setAttribute('height', '100%');
         responseSvg.setAttribute('preserveAspectRatio', 'none');
-        graphContainer.appendChild(responseSvg);
+        graph.appendChild(responseSvg);
 
         const markers = [];
         for (let index = 0; index < ROOM_EQ_ADDITIONAL_EQ_BANDS.length; index += 1) {
@@ -154,7 +158,7 @@ class RoomEqAdditionalEqEditor {
             const markerText = document.createElement('div');
             markerText.className = 'room-eq-additional-eq-marker-text';
             marker.appendChild(markerText);
-            graphContainer.appendChild(marker);
+            graph.appendChild(marker);
             markers.push(marker);
 
             const handleDragStart = (clientX, clientY) => {
@@ -179,7 +183,7 @@ class RoomEqAdditionalEqEditor {
                 onDragMove: event => this.handleDragMove({
                     clientX: event.clientX,
                     clientY: event.clientY,
-                    targetContainer: graphContainer,
+                    targetContainer: graph,
                     targetBand: index
                 }),
                 onDragEnd: () => this.handleDragEnd(),
@@ -206,13 +210,14 @@ class RoomEqAdditionalEqEditor {
             controlsContainer.appendChild(this._createBandControls(index));
         }
 
+        graphContainer.appendChild(graph);
         container.appendChild(graphContainer);
         container.appendChild(controlsContainer);
-        this.graphContainer = graphContainer;
+        this.graphContainer = graph;
         this.responseSvg = responseSvg;
         this.markers = markers;
         this.uiContainer = container;
-        this.observeGraphResize(graphContainer);
+        this.observeGraphResize(graph);
         this.uiCreated = true;
         this.setUIValues();
         setTimeout(() => {

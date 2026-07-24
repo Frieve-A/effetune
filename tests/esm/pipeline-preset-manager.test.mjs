@@ -22,6 +22,9 @@ class FakeElement {
     this.style = {};
     this.listeners = new Map();
     this.textContent = options.textContent ?? '';
+    this.attributes = new Map();
+    this.scrollHeight = options.scrollHeight ?? 0;
+    this.rect = options.rect;
     this._innerHTML = '';
     this._className = '';
     this.classes = new Set();
@@ -75,6 +78,36 @@ class FakeElement {
     return child;
   }
 
+  contains(element) {
+    for (let current = element; current; current = current.parentNode) {
+      if (current === this) return true;
+    }
+    return false;
+  }
+
+  setAttribute(name, value) {
+    this.attributes.set(name, String(value));
+  }
+
+  getAttribute(name) {
+    return this.attributes.get(name) ?? null;
+  }
+
+  removeAttribute(name) {
+    this.attributes.delete(name);
+  }
+
+  getBoundingClientRect() {
+    return this.rect ?? {
+      left: 0,
+      right: 0,
+      top: 0,
+      bottom: 0,
+      width: 0,
+      height: 0
+    };
+  }
+
   addEventListener(type, listener) {
     if (!this.listeners.has(type)) {
       this.listeners.set(type, []);
@@ -83,12 +116,24 @@ class FakeElement {
   }
 
   async dispatchEvent(type, event = {}) {
-    const eventObject = { target: this, type, ...event };
+    const eventObject = {
+      target: this,
+      type,
+      preventDefault() {
+        this.defaultPrevented = true;
+      },
+      ...event
+    };
     await Promise.all((this.listeners.get(type) || []).map(listener => listener(eventObject)));
+    return eventObject;
   }
 
   focus() {
     this.focused = true;
+  }
+
+  scrollIntoView() {
+    this.scrolledIntoView = true;
   }
 }
 
@@ -101,18 +146,33 @@ function createDocument(options = {}) {
     return element;
   };
 
-  const presetSelect = make('presetSelect', 'input', { value: options.presetValue ?? '' });
-  make('presetClearButton', 'button');
+  const presetSelectContainer = make('presetSelectContainer');
+  const presetSelect = make('presetSelect', 'input', {
+    value: options.presetValue ?? '',
+    rect: options.presetRect
+  });
+  const presetClearButton = make('presetClearButton', 'button');
+  const presetDropdownButton = make('presetDropdownButton', 'button');
   make('savePresetButton', 'button');
   make('deletePresetButton', 'button');
-  make('presetList', 'datalist');
+  const presetList = make('presetList', 'div', { scrollHeight: options.presetListHeight });
+  [presetSelect, presetClearButton, presetDropdownButton, presetList].forEach(element => {
+    if (element) presetSelectContainer?.appendChild(element);
+  });
   const masterToggle = new FakeElement('button', { className: 'toggle-button master-toggle off' });
+  const body = new FakeElement('body');
+  body.style.zoom = options.bodyZoom ?? '';
 
   return {
     elements,
     presetSelect,
     masterToggle,
     documentRef: {
+      body,
+      documentElement: {
+        clientHeight: options.viewportHeight ?? 0,
+        clientWidth: options.viewportWidth ?? 0
+      },
       createElement(tagName) {
         return new FakeElement(tagName);
       },
@@ -229,7 +289,10 @@ async function withPresetGlobals(options, callback) {
   const windowRef = {
     electronAPI: options.electronAPI,
     electronIntegration: options.electronIntegration,
-    uiManager: options.uiManager
+    uiManager: options.uiManager,
+    innerHeight: options.viewportHeight ?? options.documentOptions?.viewportHeight ?? 0,
+    innerWidth: options.viewportWidth ?? options.documentOptions?.viewportWidth ?? 0,
+    getComputedStyle: options.getComputedStyle
   };
   const localStorageRef = {
     getItem(key) {
@@ -390,6 +453,99 @@ test('constructor initializes controls and handles listener combinations', async
     await flushMicrotasks();
     await flushMicrotasks();
     assert.ok(calls.some(call => call[0] === 'console.error' && call[1] === 'Failed to initialize preset management:'));
+  });
+});
+
+test('preset dropdown stays inside the viewport and selects from a scrollable list', async () => {
+  await withPresetGlobals({
+    documentOptions: {
+      viewportHeight: 300,
+      viewportWidth: 500,
+      presetListHeight: 600,
+      presetRect: {
+        left: 100,
+        right: 330,
+        top: 250,
+        bottom: 280,
+        width: 230,
+        height: 30
+      }
+    },
+    storage: {
+      effetune_presets: JSON.stringify({
+        Zeta: { plugins: [] },
+        Alpha: { plugins: [] },
+        Beta: { plugins: [] }
+      })
+    }
+  }, async ({ dom }) => {
+    const manager = await createInitializedManager(createPipelineManager());
+    const dropdown = dom.elements.get('presetDropdownButton');
+    const list = dom.elements.get('presetList');
+
+    await dropdown.dispatchEvent('click');
+    assert.equal(list.classList.contains('show'), true);
+    assert.equal(manager.presetSelect.getAttribute('aria-expanded'), 'true');
+    assert.equal(list.style.left, '100px');
+    assert.equal(list.style.top, '8px');
+    assert.equal(list.style.width, '230px');
+    assert.equal(list.style.maxHeight, '238px');
+
+    manager.presetSelect.rect = {
+      left: 100,
+      right: 330,
+      top: 20,
+      bottom: 50,
+      width: 230,
+      height: 30
+    };
+    manager.positionPresetList();
+    assert.equal(list.style.top, '54px');
+    assert.equal(list.style.maxHeight, '238px');
+
+    manager.presetSelect.value = 'ta';
+    await manager.presetSelect.dispatchEvent('input');
+    assert.deepEqual(manager.visiblePresetNames, ['Beta', 'Zeta']);
+
+    const loadCalls = [];
+    manager.loadPreset = async name => loadCalls.push(name);
+    await list.children[0].dispatchEvent('click');
+    assert.equal(manager.presetSelect.value, 'Beta');
+    assert.deepEqual(loadCalls, ['Beta']);
+    assert.equal(list.classList.contains('show'), false);
+    assert.equal(manager.presetSelect.getAttribute('aria-expanded'), 'false');
+  });
+});
+
+test('preset dropdown uses unzoomed CSS coordinates with body zoom', async () => {
+  await withPresetGlobals({
+    documentOptions: {
+      bodyZoom: '2',
+      viewportHeight: 300,
+      viewportWidth: 500,
+      presetListHeight: 120,
+      presetRect: {
+        left: 400,
+        right: 600,
+        top: 200,
+        bottom: 260,
+        width: 200,
+        height: 60
+      }
+    },
+    storage: {
+      effetune_presets: '{"Zoomed":{"plugins":[]}}'
+    }
+  }, async ({ dom }) => {
+    const manager = await createInitializedManager(createPipelineManager());
+    const list = dom.elements.get('presetList');
+
+    manager.openPresetList(true);
+
+    assert.equal(list.style.left, '142px');
+    assert.equal(list.style.top, '8px');
+    assert.equal(list.style.width, '100px');
+    assert.equal(list.style.maxHeight, '88px');
   });
 });
 

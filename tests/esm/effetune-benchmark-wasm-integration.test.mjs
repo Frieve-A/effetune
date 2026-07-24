@@ -6,6 +6,7 @@ import {
   BENCHMARK_DSP_MODES,
   BENCHMARK_IR_REVERB_FRAMES,
   createIrReverbBenchmarkAssets,
+  createRoomEqBenchmarkAssets,
   createDspBenchmarkRuntime
 } from '../../features/effetune-benchmark.js';
 import {
@@ -17,6 +18,7 @@ const SAMPLE_RATE = 48000;
 const BLOCK_SIZE = 128;
 const CHANNEL_COUNT = 2;
 const MATRIX_PARAMS_HASH = 0x07080f45;
+const ROOM_EQ_DEFAULT_TAPS = 32768;
 
 class MatrixPlugin {
   constructor() {
@@ -66,6 +68,30 @@ class IRReverbPlugin {
       dw: 0,
       dl: -96,
       pd: 0,
+      enabled: this.enabled
+    };
+  }
+}
+
+class RoomEqPlugin {
+  constructor() {
+    this.id = 89;
+    this.enabled = false;
+    this.lt = '128';
+    this.tp = ROOM_EQ_DEFAULT_TAPS;
+  }
+
+  setEnabled(enabled) {
+    this.enabled = enabled;
+  }
+
+  getParameters() {
+    return {
+      type: this.constructor.name,
+      lt: this.lt,
+      fd: this.tp / 2,
+      dy: 0,
+      gn: 0,
       enabled: this.enabled
     };
   }
@@ -289,6 +315,78 @@ for (const variant of variants) {
       assert.equal(payloadView.getUint32(4, true), 4);
       assert.equal(payloadView.getUint32(8, true), BENCHMARK_IR_REVERB_FRAMES);
       assert.equal(payloadView.getUint32(16, true), 3);
+      assert.equal(findCall(calls, 'resetInstance').args[0], assetCall.args[0]);
+
+      const input = new Float32Array(CHANNEL_COUNT * BLOCK_SIZE);
+      input[0] = 1;
+      const output = session.process(input, 0);
+      assert.equal(output.every(Number.isFinite), true);
+      assert.equal(
+        calls.filter(call => call.name === 'pipelineProcess').length,
+        preparationBlocks + 1
+      );
+      assert.deepEqual(warnings, []);
+    } finally {
+      session?.close();
+      runtime.close();
+    }
+  });
+
+  test(`WebAssembly benchmark ${variant.variant} artifact activates the default Room EQ IR`, async () => {
+    const calls = [];
+    const warnings = [];
+    const dependencies = {
+      warning(message) {
+        warnings.push(message);
+      },
+      loadDspModule(options) {
+        return loadDspModule({
+          ...options,
+          basePath: '',
+          fetchImpl: fetchRepositoryAsset,
+          webAssembly: variant.webAssembly,
+          publishTarget: null,
+          cache: false
+        });
+      },
+      async instantiateDsp(moduleOrBytes, options) {
+        const binding = await instantiateDsp(moduleOrBytes, options);
+        return observeBinding(binding, calls);
+      }
+    };
+    const runtime = await createDspBenchmarkRuntime({
+      mode: BENCHMARK_DSP_MODES.WEBASSEMBLY,
+      sampleRate: SAMPLE_RATE,
+      blockSize: BLOCK_SIZE,
+      preference: { useWasmDsp: true },
+      location: '',
+      basePath: '',
+      dependencies
+    });
+    const plugin = new RoomEqPlugin();
+    const assets = createRoomEqBenchmarkAssets({
+      sampleRate: SAMPLE_RATE,
+      channelCount: CHANNEL_COUNT,
+      taps: plugin.tp,
+      latency: plugin.lt
+    });
+    let session = null;
+
+    try {
+      assert.equal(runtime.supportsPlugin(plugin), true);
+      session = runtime.createPluginSession(plugin, {
+        channelCount: CHANNEL_COUNT,
+        assets
+      });
+      const preparationBlocks = session.prepareAssets();
+      assert.ok(preparationBlocks > 0);
+
+      const assetCall = findCall(calls, 'instanceSetAsset');
+      assert.ok(assetCall);
+      const payloadView = new DataView(assetCall.args[2]);
+      assert.equal(payloadView.getUint32(4, true), 1);
+      assert.equal(payloadView.getUint32(8, true), ROOM_EQ_DEFAULT_TAPS);
+      assert.equal(payloadView.getUint32(16, true), 1);
       assert.equal(findCall(calls, 'resetInstance').args[0], assetCall.args[0]);
 
       const input = new Float32Array(CHANNEL_COUNT * BLOCK_SIZE);

@@ -3,6 +3,12 @@
  */
 
 import FFT from './fft.js';
+import {
+    MeasurementOutputError,
+    loadConfiguredOutputChannels,
+    prepareMeasurementOutputRoute,
+    releaseMeasurementOutputRoute
+} from './output-routing.js';
 
 /**
  * Start white noise playback
@@ -34,15 +40,23 @@ async function startWhiteNoise(level = -12, outputDeviceId = null, channel = 'al
     }
 
     try {
-        // Get the maximum channel count for the device
-        const maxChannels = await this.getDeviceMaxChannelCount(outputDeviceId);
-        console.log(`Using max channel count: ${maxChannels}`);
+        const configuredChannels = await loadConfiguredOutputChannels();
+        const outputRoute = await prepareMeasurementOutputRoute(
+            this.audioContext,
+            outputDeviceId,
+            channel,
+            configuredChannels
+        );
+        const outputChannels = outputRoute.outputChannels;
+        this.whiteNoiseDestination = outputRoute.mediaStreamDestination;
+        this.whiteNoiseAudioElement = outputRoute.audioElement;
+        console.log(`Using ${outputChannels}-channel ${outputRoute.mode} measurement output`);
 
         // Use a power-of-two buffer length (~2 seconds) so we can FFT-band-limit in place.
         // AudioBufferSourceNode loops any length seamlessly; FFT treats the buffer as
         // periodic, so the band-limited result is continuous across loop boundaries.
         const sampleRate = this.audioContext.sampleRate;
-        const bufferChannels = maxChannels;
+        const bufferChannels = 1;
         const bufferSize = 1 << Math.ceil(Math.log2(Math.max(2 * sampleRate, 2)));
         const noiseBuffer = this.audioContext.createBuffer(
             bufferChannels, bufferSize, sampleRate
@@ -146,14 +160,7 @@ async function startWhiteNoise(level = -12, outputDeviceId = null, channel = 'al
         this.whiteNoiseGain.gain.value = Math.pow(10, level / 20);
 
         // Create channel merger for multichannel output
-        this.channelMerger = this.audioContext.createChannelMerger(maxChannels);
-        
-        // Reset all merger inputs (to silence)
-        for (let ch = 0; ch < maxChannels; ch++) {
-            const silenceNode = this.audioContext.createGain();
-            silenceNode.gain.value = 0;
-            silenceNode.connect(this.channelMerger, 0, ch);
-        }
+        this.channelMerger = this.audioContext.createChannelMerger(outputChannels);
         
         // Handle different channel routing
         const targetChannel = parseInt(channel);
@@ -167,7 +174,7 @@ async function startWhiteNoise(level = -12, outputDeviceId = null, channel = 'al
             // Route to right channel only
             this.whiteNoiseNode.connect(this.whiteNoiseGain);
             this.whiteNoiseGain.connect(this.channelMerger, 0, 1);
-        } else if (!isNaN(targetChannel) && targetChannel >= 2 && targetChannel < maxChannels) {
+        } else if (!isNaN(targetChannel) && targetChannel >= 2 && targetChannel < outputChannels) {
             // Route to specific channel (C3-C8)
             this.whiteNoiseNode.connect(this.whiteNoiseGain);
             this.whiteNoiseGain.connect(this.channelMerger, 0, targetChannel);
@@ -176,73 +183,13 @@ async function startWhiteNoise(level = -12, outputDeviceId = null, channel = 'al
             this.whiteNoiseNode.connect(this.whiteNoiseGain);
             
             // Connect to all available channels
-            for (let ch = 0; ch < maxChannels; ch++) {
+            for (let ch = 0; ch < outputChannels; ch++) {
                 this.whiteNoiseGain.connect(this.channelMerger, 0, ch);
             }
         }
 
-        // Handle output device selection
-        let audioDestination = this.audioContext.destination;
-        
-        // Set the channel count of the destination to match our max channels
-        if (audioDestination.maxChannelCount) {
-            try {
-                // Set to maximum available channels
-                const channelCount = Math.min(maxChannels, audioDestination.maxChannelCount);
-                audioDestination.channelCount = channelCount;
-                audioDestination.channelCountMode = 'explicit';
-                audioDestination.channelInterpretation = 'discrete';
-                console.log(`Set output channel count to ${channelCount}`);
-            } catch (e) {
-                console.warn('Error setting destination channel count:', e);
-            }
-        }
-
-        // If a specific output device is requested, route the audio through a
-        // MediaStreamDestination + <audio> element and select the device with setSinkId.
-        if (outputDeviceId) {
-            try {
-                // Create an audio element and media stream destination to route audio
-                const audioElement = new Audio();
-                const mediaStreamDestination = this.audioContext.createMediaStreamDestination();
-
-                // Set media stream destination channel count if possible
-                if (mediaStreamDestination.channelCount !== undefined) {
-                    mediaStreamDestination.channelCount = Math.min(maxChannels, mediaStreamDestination.maxChannelCount || maxChannels);
-                    mediaStreamDestination.channelCountMode = 'explicit';
-                    mediaStreamDestination.channelInterpretation = 'discrete';
-                }
-
-                // Store references for cleanup
-                this.whiteNoiseDestination = mediaStreamDestination;
-                this.whiteNoiseAudioElement = audioElement;
-
-                // Connect audio element to media stream
-                audioElement.srcObject = mediaStreamDestination.stream;
-
-                // Set the sink ID if supported
-                if (typeof audioElement.setSinkId === 'function') {
-                    await audioElement.setSinkId(outputDeviceId);
-                    console.log(`Output device set to ID: ${outputDeviceId}`);
-
-                    // Use the media stream destination instead of default
-                    audioDestination = mediaStreamDestination;
-
-                    // Start playback on the audio element
-                    audioElement.play().catch(e => {
-                        console.error('Failed to play audio element:', e);
-                    });
-                } else {
-                    console.warn('setSinkId is not supported in this browser - using default output device');
-                }
-            } catch (error) {
-                console.error('Error setting output device:', error);
-                // Fall back to default device
-            }
-        }
-
         // Connect merger to the destination
-        this.channelMerger.connect(audioDestination);
+        this.channelMerger.connect(outputRoute.destination);
         
         // Start playback
         this.whiteNoiseNode.start(0);
@@ -256,7 +203,11 @@ async function startWhiteNoise(level = -12, outputDeviceId = null, channel = 'al
         return true;
     } catch (error) {
         console.error('Error starting white noise:', error);
+        this.stopWhiteNoise();
         this.isWhiteNoiseActive = false;
+        if (error instanceof MeasurementOutputError) {
+            throw error;
+        }
         return false;
     }
 }
@@ -265,17 +216,18 @@ async function startWhiteNoise(level = -12, outputDeviceId = null, channel = 'al
  * Stop white noise playback
  */
 function stopWhiteNoise() {
-    // Only proceed if white noise is active
-    if (!this.isWhiteNoiseActive) return;
-    
     try {
         // Stop the noise source first
         if (this.whiteNoiseNode) {
             try {
                 this.whiteNoiseNode.stop(0);
+            } catch (e) {
+                console.warn('Error stopping white noise node:', e);
+            }
+            try {
                 this.whiteNoiseNode.disconnect();
             } catch (e) {
-                console.warn('Error stopping/disconnecting white noise node:', e);
+                console.warn('Error disconnecting white noise node:', e);
             }
             this.whiteNoiseNode = null;
         }
@@ -300,26 +252,12 @@ function stopWhiteNoise() {
             this.channelMerger = null;
         }
         
-        // Stop audio element if it exists
-        if (this.whiteNoiseAudioElement) {
-            try {
-                this.whiteNoiseAudioElement.pause();
-                this.whiteNoiseAudioElement.srcObject = null;
-            } catch (e) {
-                console.warn('Error stopping audio element:', e);
-            }
-            this.whiteNoiseAudioElement = null;
-        }
-        
-        // Disconnect media stream destination if it exists
-        if (this.whiteNoiseDestination) {
-            try {
-                this.whiteNoiseDestination.disconnect();
-            } catch (e) {
-                console.warn('Error disconnecting media stream destination:', e);
-            }
-            this.whiteNoiseDestination = null;
-        }
+        releaseMeasurementOutputRoute({
+            audioElement: this.whiteNoiseAudioElement,
+            mediaStreamDestination: this.whiteNoiseDestination
+        });
+        this.whiteNoiseAudioElement = null;
+        this.whiteNoiseDestination = null;
         
         // Set flag
         this.isWhiteNoiseActive = false;

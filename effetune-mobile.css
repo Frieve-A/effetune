@@ -732,7 +732,21 @@ body.layout-mobile .preset-select {
     height: var(--et-mobile-control-height);
     min-height: var(--et-mobile-control-height);
     min-width: var(--et-mobile-field-min-width);
+    padding-right: 64px;
     box-sizing: border-box;
+}
+
+body.layout-mobile .preset-dropdown-button {
+    width: var(--et-mobile-control-height);
+    height: calc(var(--et-mobile-control-height) - 2px);
+}
+
+body.layout-mobile .preset-clear-button {
+    right: var(--et-mobile-control-height);
+}
+
+body.layout-mobile .preset-list-option {
+    min-height: var(--et-mobile-control-height);
 }
 
 body.layout-mobile select {

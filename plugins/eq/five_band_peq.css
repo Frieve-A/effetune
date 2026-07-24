@@ -202,6 +202,21 @@
     font-size: 12px;
 }
 
+body:not(.layout-mobile) .five-band-peq-plugin-ui .five-band-peq-filter-type,
+body:not(.layout-mobile) .five-band-peq-plugin-ui .five-band-peq-q-text,
+body:not(.layout-mobile) .five-band-peq-plugin-ui .five-band-peq-freq-text,
+body:not(.layout-mobile) .five-band-peq-plugin-ui .five-band-peq-gain-text {
+    box-sizing: border-box;
+    flex: 0 0 90px;
+    width: 90px;
+    min-width: 90px;
+    max-width: 90px;
+}
+
+body:not(.layout-mobile) .five-band-peq-plugin-ui .five-band-peq-filter-type {
+    margin-left: auto;
+}
+
 .five-band-peq-plugin-ui .five-band-peq-grid {
     position: absolute;
     width: calc(100% - 40px);
@@ -246,6 +261,14 @@ body.layout-mobile .five-band-peq-plugin-ui .five-band-peq-freq-label,
 body.layout-mobile .five-band-peq-plugin-ui .five-band-peq-gain-label {
     flex: 1 1 auto;
     min-width: 78px;
+}
+
+body.layout-mobile .five-band-peq-plugin-ui .five-band-peq-band {
+    min-width: calc(
+        var(--et-mobile-effect-slider-min-width) +
+        var(--et-mobile-field-min-width) +
+        44px
+    );
 }
 
 body.layout-mobile .five-band-peq-plugin-ui .five-band-peq-q-text,

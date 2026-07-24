@@ -435,6 +435,48 @@ test('an offline provisional first occurrence waits for the published sequence a
   });
 });
 
+test('Web catalog CUE provisional handoff retains metadata needed for Player artwork lookup', async () => {
+  await withPlaybackHarness(async ({ audioPlayer, calls, manager }) => {
+    const receipt = {
+      operationId: 'web-cue-artwork',
+      provisionalEntry: {
+        entryInstanceId: 'web-cue-entry',
+        trackUid: 'web-cue-track',
+        title: 'CUE Track',
+        artist: 'Track Artist',
+        albumArtist: 'Album Artist',
+        album: 'CUE Album',
+        artworkId: 'cue-artwork'
+      }
+    };
+
+    const result = await manager.installBulkPlayProvisional({
+      receipt,
+      service: {},
+      async resolveSource() {
+        return {
+          path: '/music/cue-album.flac',
+          startFrame: 44_100,
+          endFrame: 88_200,
+          durationSec: 1
+        };
+      }
+    });
+
+    assert.equal(result.accepted, true);
+    assert.deepEqual(audioPlayer.stateManager.state.currentTrack.meta, {
+      title: 'CUE Track',
+      artist: 'Track Artist',
+      album: 'CUE Album'
+    });
+    assert.equal(audioPlayer.stateManager.state.currentTrack.libraryTrackId, 'web-cue-track');
+    assert.equal(audioPlayer.stateManager.state.currentTrack.startFrame, 44_100);
+    assert.deepEqual(calls.find(call => call[0] === 'seamlessTransition'), [
+      'seamlessTransition', 'web-cue-entry', 0
+    ]);
+  });
+});
+
 test('Electron catalog source stays a direct path without a renderer byte provider', async () => {
   await withPlaybackHarness(async ({ audioPlayer, manager }) => {
     await manager.loadCatalogSequence({

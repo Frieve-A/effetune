@@ -1,13 +1,13 @@
 /* Oscilloscope plugin specific styles */
-.plugin-parameter-ui canvas {
+.oscilloscope-plugin-ui canvas {
     background-color: #1a1a1a;
 }
 
-.plugin-parameter-ui .graph-container {
+.oscilloscope-plugin-ui .graph-container {
     margin-top: 20px;
 }
 
-.plugin-parameter-ui .parameters-grid {
+.oscilloscope-plugin-ui .parameters-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     grid-template-rows: repeat(4, auto);
@@ -15,7 +15,7 @@
     row-gap:0 px;
 }
 
-.plugin-parameter-ui input[type="number"] {
+.oscilloscope-plugin-ui input[type="number"] {
     width: 80px;
     padding: 4px;
     background-color: #3d3d3d;

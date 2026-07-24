@@ -1183,6 +1183,25 @@ test('blind switches complete only the fade token owned by the latest switch', a
   });
 });
 
+test('clears the switch highlight when an answer advances to the next trial', async () => {
+  await withHarness({}, async h => {
+    h.dbt.enterFresh();
+    await flushMicrotasks();
+    h.dbt.els.countInput.value = '2';
+    await h.dbt._startTest('ABX');
+
+    h.dbt._switchToLabel('A');
+    assert.equal(h.dbt.els.switchA.classList.contains('active'), true);
+
+    h.dbt._vote('A');
+    assert.equal(h.dbt.totalCount, 1);
+    assert.equal(h.dbt._activeLabel, null);
+    assert.equal(h.dbt.els.switchA.classList.contains('active'), false);
+    assert.equal(h.dbt.els.switchB.classList.contains('active'), false);
+    assert.equal(h.dbt.els.switchX.classList.contains('active'), false);
+  });
+});
+
 test('waits for parallel readiness and ignores stale completion after close or finish', async () => {
   for (const stopMode of ['close', 'finish']) {
     let resolveParallel;

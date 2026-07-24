@@ -283,10 +283,20 @@ export class UIManager {
         this.refreshRangeFillStyling();
 
         const handleRangeInput = (event) => {
-            this._rangeFillInput(event.target);
+            const input = event.target;
+            if (input?.matches?.('input[type="range"]')) {
+                this._rangeFillInput(input);
+                return;
+            }
+
+            const rangeFillRoot = input?.closest?.('.parameter-row') ??
+                input?.closest?.('.plugin-parameter-ui');
+            if (rangeFillRoot) {
+                this.refreshRangeFillStyling(rangeFillRoot);
+            }
         };
-        document.addEventListener?.('input', handleRangeInput, true);
-        document.addEventListener?.('change', handleRangeInput, true);
+        document.addEventListener?.('input', handleRangeInput);
+        document.addEventListener?.('change', handleRangeInput);
 
         if (typeof MutationObserver !== 'undefined' && document.body) {
             this._rangeFillObserver = new MutationObserver((mutations) => {

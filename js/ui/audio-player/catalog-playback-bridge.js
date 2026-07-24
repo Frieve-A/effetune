@@ -146,10 +146,7 @@ export class CatalogPlaybackBridge {
     const status = await this.service.status(operationId);
     const operation = this.operations.get(operationId);
     if (operation && isTerminalOperationStatus(status)) {
-      await this.#finishOperation(operation, {
-        state: status.terminalKind,
-        result: status.result
-      });
+      await this.#finishOperation(operation, terminalFromOperationStatus(status));
     }
     return status;
   }
@@ -279,10 +276,7 @@ export class CatalogPlaybackBridge {
       const status = await this.service.status?.(operation.operationId);
       if (!status) return;
       if (status.result && (status.finishedAt != null || status.terminalKind)) {
-        await this.#finishOperation(operation, {
-          state: status.terminalKind,
-          result: status.result
-        });
+        await this.#finishOperation(operation, terminalFromOperationStatus(status));
       }
     } catch (error) {
       this.#reportError(error);
@@ -446,6 +440,21 @@ function throwIfPlaybackSourceResolutionAborted(signal) {
 
 function isTerminalOperationStatus(status) {
   return status?.result && (status.finishedAt != null || status.terminalKind != null);
+}
+
+function terminalFromOperationStatus(status) {
+  const storedTerminal = status?.result;
+  if (
+    storedTerminal && typeof storedTerminal === 'object' &&
+    ['succeeded', 'failed', 'cancelled'].includes(storedTerminal.state) &&
+    (status.terminalKind == null || storedTerminal.state === status.terminalKind)
+  ) {
+    return storedTerminal;
+  }
+  return {
+    state: status?.terminalKind,
+    result: storedTerminal
+  };
 }
 
 function terminalResult(terminal) {

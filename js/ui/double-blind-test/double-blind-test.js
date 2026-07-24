@@ -858,6 +858,7 @@ export class DoubleBlindTest {
         this.els.progressBar.style.width = ((this.totalCount / this.testCount) * 100) + '%';
         this.els.listening.textContent = '';
         this._activeLabel = null;
+        this._highlightSwitch(null);
 
         // Randomise the label -> pipeline mapping for this trial.
         this._aIsPhysicalA = Math.random() < 0.5;

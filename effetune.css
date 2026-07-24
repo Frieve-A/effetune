@@ -746,10 +746,80 @@ input[type="checkbox"] {
     z-index: 2;
 }
 
+.preset-combobox::after {
+    content: none;
+}
+
 .preset-clear-button {
     top: 50%;
     right: 29px;
     transform: translateY(-50%);
+}
+
+.preset-dropdown-button {
+    position: absolute;
+    top: 1px;
+    right: 1px;
+    z-index: 2;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 0 3px 3px 0;
+    background: transparent;
+    color: #c7d7e8;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.preset-dropdown-button:hover,
+.preset-dropdown-button:focus-visible {
+    background: rgba(74, 158, 255, 0.18);
+    color: #ffffff;
+    outline: none;
+}
+
+.preset-list {
+    position: fixed;
+    display: none;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background-color: #373737;
+    border: 1px solid #565656;
+    border-radius: 4px;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42);
+    z-index: 10000;
+}
+
+.preset-list.show {
+    display: block;
+}
+
+.preset-list-option {
+    display: block;
+    width: 100%;
+    min-height: 30px;
+    padding: 6px 8px;
+    overflow: hidden;
+    border: 0;
+    background: transparent;
+    color: #ffffff;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.preset-list-option:hover,
+.preset-list-option.active {
+    background-color: #454545;
+}
+
+.preset-list-option[aria-selected="true"] {
+    background-color: var(--et-accent-pressed);
 }
 
 .preset-select:-webkit-autofill,

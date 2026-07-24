@@ -11,10 +11,13 @@ import {
   DspBenchmarkPluginUnavailableError,
   DspBenchmarkUnavailableError,
   createIrReverbBenchmarkAssets,
+  createRoomEqBenchmarkAssets,
   createDspBenchmarkRuntime
 } from '../../features/effetune-benchmark.js';
 import { decodeDspPipelineDescriptor } from '../../js/audio/dsp-pipeline-descriptor.js';
 import { IR_ASSET_FORMAT_TAG, IR_ASSET_TOPOLOGY } from '../../js/ir-library/ir-asset-payload.js';
+
+const ROOM_EQ_DEFAULT_TAPS = 32768;
 
 class VolumePlugin {
   constructor(calls = []) {
@@ -289,6 +292,35 @@ test('IR Reverb benchmark assets contain a 256K-sample four-channel true-stereo 
   assert.equal(asset.formatTag, IR_ASSET_FORMAT_TAG);
   assert.equal(asset.headBlock, 128);
   assert.equal(asset.rateDivider, 2);
+  assert.equal(asset.processingChannels, 2);
+  assert.ok(asset.footprintBytes >= asset.payload.byteLength);
+});
+
+test('Room EQ benchmark assets contain a default-length deterministic mono IR', () => {
+  const assets = createRoomEqBenchmarkAssets({
+    sampleRate: 96000,
+    channelCount: 2,
+    taps: ROOM_EQ_DEFAULT_TAPS
+  });
+  const asset = assets.get(0);
+  const view = new DataView(asset.payload);
+
+  assert.equal(view.getUint32(4, true), 1);
+  assert.equal(view.getUint32(8, true), ROOM_EQ_DEFAULT_TAPS);
+  assert.equal(view.getUint32(12, true), 96000);
+  assert.equal(view.getUint32(16, true), IR_ASSET_TOPOLOGY.mono);
+  assert.equal(view.getFloat32(32, true), 1);
+  assert.notEqual(view.getFloat32(36, true), 0);
+  assert.notEqual(
+    view.getFloat32(
+      32 + (ROOM_EQ_DEFAULT_TAPS - 1) * Float32Array.BYTES_PER_ELEMENT,
+      true
+    ),
+    0
+  );
+  assert.equal(asset.formatTag, IR_ASSET_FORMAT_TAG);
+  assert.equal(asset.headBlock, 128);
+  assert.equal(asset.rateDivider, 1);
   assert.equal(asset.processingChannels, 2);
   assert.ok(asset.footprintBytes >= asset.payload.byteLength);
 });

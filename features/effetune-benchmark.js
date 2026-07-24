@@ -153,6 +153,56 @@ export function createIrReverbBenchmarkAssets({
     }]]);
 }
 
+export function createRoomEqBenchmarkAssets({
+    sampleRate,
+    channelCount = 2,
+    taps,
+    latency = '128'
+}) {
+    const frames = requirePositiveInteger(taps, 'Room EQ benchmark taps', 131072);
+    const processingChannels = requirePositiveInteger(
+        channelCount,
+        'channelCount',
+        BENCHMARK_DSP_MAX_CHANNELS
+    );
+    const headBlock = Number(latency);
+    if (![0, 128, 256, 512, 1024].includes(headBlock)) {
+        throw new RangeError('Room EQ benchmark latency is invalid');
+    }
+
+    const impulseResponse = new Float32Array(frames);
+    let state = 0x6d2b79f5;
+    let envelope = 0.001;
+    for (let frame = 1; frame < impulseResponse.length; frame++) {
+        state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+        impulseResponse[frame] = ((state / 0x100000000) * 2 - 1) * envelope;
+        envelope *= 0.9998;
+    }
+    impulseResponse[0] = 1;
+    const payload = buildIrAssetPayload({
+        channels: [impulseResponse],
+        sampleRate,
+        topology: IR_ASSET_TOPOLOGY.mono
+    });
+    const footprintBytes = estimateIrKernelCommitFootprint({
+        frames,
+        assetChannels: 1,
+        topology: IR_ASSET_TOPOLOGY.mono,
+        processingChannels,
+        headBlock
+    });
+    return new Map([[0, {
+        payload,
+        formatTag: IR_ASSET_FORMAT_TAG,
+        headBlock,
+        rateDivider: 1,
+        pathCount: 0,
+        inputCount: 0,
+        processingChannels,
+        footprintBytes
+    }]]);
+}
+
 class JavascriptBenchmarkSession {
     constructor(plugin, { sampleRate, blockSize, channelCount }) {
         if (typeof plugin?.executeProcessor !== 'function') {

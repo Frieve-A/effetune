@@ -151,7 +151,14 @@ test('Web playback builds a TEMP sequence directly and tracks the operation in s
           }
         : {
             catalogVersion: 7,
-            rows: [{ trackUid: 'track-3' }],
+            rows: [{
+              trackUid: 'track-3',
+              title: 'CUE Track',
+              artist: 'Track Artist',
+              albumArtist: 'Album Artist',
+              album: 'CUE Album',
+              artworkId: 'cue-artwork'
+            }],
             nextCursor: null
           };
     },
@@ -197,7 +204,12 @@ test('Web playback builds a TEMP sequence directly and tracks the operation in s
   assert.deepEqual(provisional, {
     ordinal: 1,
     entryInstanceId: provisional.entryInstanceId,
-    trackUid: 'track-3'
+    trackUid: 'track-3',
+    title: 'CUE Track',
+    artist: 'Track Artist',
+    albumArtist: 'Album Artist',
+    album: 'CUE Album',
+    artworkId: 'cue-artwork'
   });
   assert.equal(status.result.state, 'succeeded');
   assert.deepEqual(status.result.result.firstEntry, provisional);

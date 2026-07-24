@@ -483,7 +483,7 @@ export class WebLibraryServiceCoordinator {
       };
       const appendTrack = track => {
         const entry = createPlaybackEntry(track, this.idFactory(), itemCount);
-        if (itemCount === currentOrdinal) firstEntry = Object.freeze({ ...entry });
+        if (itemCount === currentOrdinal) firstEntry = createPlaybackHandoffEntry(entry, track);
         entries.push(entry);
         itemCount += 1;
       };
@@ -1034,6 +1034,17 @@ function createPlaybackEntry(track, entryInstanceId, ordinal) {
     entryInstanceId,
     trackUid: track.trackUid
   };
+}
+
+function createPlaybackHandoffEntry(entry, track) {
+  return Object.freeze({
+    ...entry,
+    title: track.title ?? '',
+    artist: track.artist ?? '',
+    albumArtist: track.albumArtist ?? '',
+    album: track.album ?? '',
+    artworkId: track.artworkId ?? null
+  });
 }
 
 function publicPlaybackOperationStatus(operation) {

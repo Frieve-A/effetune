@@ -306,10 +306,18 @@ test('terminal event and session status race commit one sequence', async () => {
     async start() { return { kind: 'started', operationId: 'operation-race' }; },
     async getProvisionalEntry() { return terminal.firstEntry; },
     async status() {
-      return { terminalKind: 'succeeded', finishedAt: 1, result: terminal };
+      return {
+        terminalKind: 'succeeded',
+        finishedAt: 1,
+        result: {
+          state: 'succeeded',
+          result: terminal,
+          finishedAt: 1
+        }
+      };
     },
     subscribeOperation(operationId, listener) {
-      queueMicrotask(() => listener({ kind: 'terminal', operationId, result: terminal }));
+      setImmediate(() => listener({ kind: 'terminal', operationId, result: terminal }));
       return () => {};
     }
   };

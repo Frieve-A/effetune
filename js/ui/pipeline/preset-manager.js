@@ -19,9 +19,15 @@ export class PresetManager {
         
         // Preset UI elements
         this.presetSelect = document.getElementById('presetSelect');
+        this.presetSelectContainer = document.getElementById('presetSelectContainer');
+        this.presetList = document.getElementById('presetList');
+        this.presetDropdownButton = document.getElementById('presetDropdownButton');
         this.presetClearButton = document.getElementById('presetClearButton');
         this.savePresetButton = document.getElementById('savePresetButton');
         this.deletePresetButton = document.getElementById('deletePresetButton');
+        this.presetNames = [];
+        this.visiblePresetNames = [];
+        this.activePresetIndex = -1;
         this.presetMutationAttemptRevision = 0;
         this.presetMutationQueue = Promise.resolve();
         
@@ -57,6 +63,7 @@ export class PresetManager {
         
         // Preset selection change
         this.presetSelect.addEventListener('change', async (e) => {
+            this.closePresetList();
             this.updatePresetClearButton();
             const name = e.target.value.trim();
             const presets = await this.getLoadablePresets();
@@ -68,20 +75,203 @@ export class PresetManager {
 
         this.presetSelect.addEventListener('input', () => {
             this.updatePresetClearButton();
+            this.openPresetList(false);
+        });
+
+        this.presetSelect.addEventListener('keydown', (event) => {
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                event.preventDefault();
+                if (!this.isPresetListOpen()) {
+                    this.openPresetList(true);
+                    return;
+                }
+                this.moveActivePreset(event.key === 'ArrowDown' ? 1 : -1);
+            } else if (event.key === 'Enter' && this.isPresetListOpen() && this.activePresetIndex >= 0) {
+                event.preventDefault();
+                this.selectPreset(this.visiblePresetNames[this.activePresetIndex]);
+            } else if (event.key === 'Escape' || event.key === 'Tab') {
+                this.closePresetList();
+            }
         });
 
         if (this.presetClearButton) {
+            this.presetClearButton.addEventListener('mousedown', (event) => {
+                event.preventDefault();
+            });
             this.presetClearButton.addEventListener('click', () => {
                 this.presetSelect.value = '';
+                this.closePresetList();
                 this.updatePresetClearButton();
                 this.presetSelect.focus();
             });
         }
+
+        if (this.presetDropdownButton) {
+            this.presetDropdownButton.addEventListener('mousedown', (event) => {
+                event.preventDefault();
+            });
+            this.presetDropdownButton.addEventListener('click', () => {
+                if (this.isPresetListOpen()) {
+                    this.closePresetList();
+                } else {
+                    this.openPresetList(true);
+                }
+                this.presetSelect.focus();
+            });
+        }
+
+        document.addEventListener?.('pointerdown', (event) => {
+            if (!this.presetSelectContainer?.contains(event.target)) {
+                this.closePresetList();
+            }
+        });
+        window.addEventListener?.('resize', () => this.positionPresetList());
+        window.addEventListener?.('scroll', () => this.positionPresetList(), true);
     }
 
     updatePresetClearButton() {
         if (!this.presetClearButton) return;
         this.presetClearButton.classList.toggle('visible', this.presetSelect.value.length > 0);
+    }
+
+    isPresetListOpen() {
+        return this.presetList?.classList.contains('show') ?? false;
+    }
+
+    openPresetList(showAll) {
+        if (!this.presetList) return;
+
+        const query = this.presetSelect.value.trim().toLowerCase();
+        const names = showAll || !query
+            ? this.presetNames
+            : this.presetNames.filter(name => name.toLowerCase().includes(query));
+        this.renderPresetOptions(names);
+        if (names.length === 0) {
+            this.closePresetList();
+            return;
+        }
+
+        const selectedIndex = names.indexOf(this.presetSelect.value.trim());
+        this.activePresetIndex = selectedIndex >= 0 ? selectedIndex : 0;
+        this.presetList.classList.add('show');
+        this.setPresetListExpanded(true);
+        this.updateActivePreset();
+        this.positionPresetList();
+    }
+
+    closePresetList() {
+        if (!this.presetList) return;
+        this.presetList.classList.remove('show');
+        this.activePresetIndex = -1;
+        this.setPresetListExpanded(false);
+        this.presetSelect.removeAttribute?.('aria-activedescendant');
+    }
+
+    setPresetListExpanded(expanded) {
+        const value = String(expanded);
+        this.presetSelect.setAttribute?.('aria-expanded', value);
+        this.presetDropdownButton?.setAttribute?.('aria-expanded', value);
+    }
+
+    renderPresetOptions(names) {
+        if (!this.presetList) return;
+
+        this.visiblePresetNames = [...names];
+        this.presetList.innerHTML = '';
+        names.forEach((name, index) => {
+            const option = document.createElement('button');
+            option.type = 'button';
+            option.id = `preset-option-${index}`;
+            option.className = 'preset-list-option';
+            option.value = name;
+            option.textContent = name;
+            option.setAttribute?.('role', 'option');
+            option.setAttribute?.('aria-selected', 'false');
+            option.addEventListener('mousedown', (event) => {
+                event.preventDefault();
+            });
+            option.addEventListener('click', () => {
+                this.selectPreset(name);
+            });
+            this.presetList.appendChild(option);
+        });
+    }
+
+    moveActivePreset(direction) {
+        if (this.visiblePresetNames.length === 0) return;
+        const count = this.visiblePresetNames.length;
+        this.activePresetIndex = (this.activePresetIndex + direction + count) % count;
+        this.updateActivePreset();
+    }
+
+    updateActivePreset() {
+        Array.from(this.presetList?.children ?? []).forEach((option, index) => {
+            const isActive = index === this.activePresetIndex;
+            option.classList.toggle('active', isActive);
+            option.setAttribute?.('aria-selected', String(isActive));
+            if (isActive) {
+                this.presetSelect.setAttribute?.('aria-activedescendant', option.id);
+                option.scrollIntoView?.({ block: 'nearest' });
+            }
+        });
+    }
+
+    async selectPreset(name) {
+        if (!name) return;
+        this.presetSelect.value = name;
+        this.updatePresetClearButton();
+        this.closePresetList();
+        this.presetSelect.focus();
+        await this.loadPreset(name);
+    }
+
+    positionPresetList() {
+        if (!this.isPresetListOpen() || !this.presetSelect.getBoundingClientRect) return;
+
+        const computedZoom = Number.parseFloat(
+            document.body ? window.getComputedStyle?.(document.body)?.zoom : ''
+        );
+        const inlineZoom = Number.parseFloat(document.body?.style?.zoom);
+        const bodyZoom = Number.isFinite(computedZoom) && computedZoom > 0
+            ? computedZoom
+            : (Number.isFinite(inlineZoom) && inlineZoom > 0 ? inlineZoom : 1);
+        const viewportHeight = (
+            window.innerHeight || document.documentElement?.clientHeight || 0
+        ) / bodyZoom;
+        const viewportWidth = (
+            window.innerWidth || document.documentElement?.clientWidth || 0
+        ) / bodyZoom;
+        if (viewportHeight <= 0 || viewportWidth <= 0) return;
+
+        const viewportMargin = 8;
+        const listGap = 4;
+        const renderedInputRect = this.presetSelect.getBoundingClientRect();
+        const inputRect = {
+            left: renderedInputRect.left / bodyZoom,
+            right: renderedInputRect.right / bodyZoom,
+            top: renderedInputRect.top / bodyZoom,
+            bottom: renderedInputRect.bottom / bodyZoom,
+            width: renderedInputRect.width / bodyZoom,
+            height: renderedInputRect.height / bodyZoom
+        };
+        const availableBelow = Math.max(0, viewportHeight - inputRect.bottom - listGap - viewportMargin);
+        const availableAbove = Math.max(0, inputRect.top - listGap - viewportMargin);
+        const desiredHeight = this.presetList.scrollHeight;
+        const openAbove = desiredHeight > availableBelow && availableAbove > availableBelow;
+        const availableHeight = openAbove ? availableAbove : availableBelow;
+        const listHeight = Math.min(desiredHeight, availableHeight);
+        const listWidth = Math.min(inputRect.width, Math.max(0, viewportWidth - viewportMargin * 2));
+        const left = Math.min(
+            Math.max(inputRect.left, viewportMargin),
+            Math.max(viewportMargin, viewportWidth - viewportMargin - listWidth)
+        );
+
+        this.presetList.style.left = `${left}px`;
+        this.presetList.style.top = `${openAbove
+            ? Math.max(viewportMargin, inputRect.top - listGap - listHeight)
+            : inputRect.bottom + listGap}px`;
+        this.presetList.style.width = `${listWidth}px`;
+        this.presetList.style.maxHeight = `${availableHeight}px`;
     }
     
     /**
@@ -89,25 +279,17 @@ export class PresetManager {
      * @param {string} preserveValue - Optional value to preserve in the select
      */
     async loadPresetList(preserveValue = null) {
-        // Get datalist element
-        const datalist = document.getElementById('presetList');
-        if (!datalist) return;
+        if (!this.presetList) return;
         
         // Get current value or use preserveValue if provided
         const currentValue = preserveValue !== null ? preserveValue : this.presetSelect.value;
-        
-        // Clear existing options
-        datalist.innerHTML = '';
         
         // Get presets from local storage or file
         const presets = await this.getLoadablePresets();
         
         // Add preset options (sorted alphabetically)
-        Object.keys(presets).sort().forEach(name => {
-            const option = document.createElement('option');
-            option.value = name;
-            datalist.appendChild(option);
-        });
+        this.presetNames = Object.keys(presets).sort();
+        this.renderPresetOptions(this.presetNames);
         
         // Restore current value
         this.presetSelect.value = currentValue;

@@ -28,8 +28,12 @@ test('5Band PEQ keeps band parameter fields in the established right-side column
     /flex:\s*1 1 auto;[\s\S]*min-width:\s*78px;/
   );
   assert.match(
-    getRule(css, '.five-band-peq-plugin-ui .five-band-peq-q-text'),
-    /flex:\s*0 0 auto;[\s\S]*width:\s*40px;[\s\S]*min-width:\s*40px;/
+    css,
+    /body:not\(\.layout-mobile\) \.five-band-peq-plugin-ui \.five-band-peq-filter-type,\nbody:not\(\.layout-mobile\) \.five-band-peq-plugin-ui \.five-band-peq-q-text,\nbody:not\(\.layout-mobile\) \.five-band-peq-plugin-ui \.five-band-peq-freq-text,\nbody:not\(\.layout-mobile\) \.five-band-peq-plugin-ui \.five-band-peq-gain-text \{/
+  );
+  assert.match(
+    getRule(css, 'body:not(.layout-mobile) .five-band-peq-plugin-ui .five-band-peq-filter-type'),
+    /box-sizing:\s*border-box;[\s\S]*flex:\s*0 0 90px;[\s\S]*width:\s*90px;[\s\S]*min-width:\s*90px;[\s\S]*max-width:\s*90px;/
   );
   assert.match(
     css,
@@ -42,6 +46,76 @@ test('5Band PEQ keeps band parameter fields in the established right-side column
   assert.match(
     getRule(css, 'body.layout-mobile .five-band-peq-plugin-ui .five-band-peq-q-text'),
     /flex:\s*0 0 40px;[\s\S]*width:\s*40px;[\s\S]*min-width:\s*40px;[\s\S]*max-width:\s*40px;/
+  );
+});
+
+test('Room EQ keeps Additional EQ filter types aligned with its parameter fields on desktop', () => {
+  const css = readCss('../../plugins/eq/room_eq.css');
+
+  assert.match(
+    css,
+    /body:not\(\.layout-mobile\) \.room-eq-additional-eq-ui \.room-eq-additional-eq-filter-type,\nbody:not\(\.layout-mobile\) \.room-eq-additional-eq-ui \.room-eq-additional-eq-q-text,\nbody:not\(\.layout-mobile\) \.room-eq-additional-eq-ui \.room-eq-additional-eq-freq-text,\nbody:not\(\.layout-mobile\) \.room-eq-additional-eq-ui \.room-eq-additional-eq-gain-text \{/
+  );
+  assert.match(
+    getRule(css, 'body:not(.layout-mobile) .room-eq-additional-eq-ui .room-eq-additional-eq-filter-type'),
+    /box-sizing:\s*border-box;[\s\S]*flex:\s*0 0 90px;[\s\S]*width:\s*90px;[\s\S]*min-width:\s*90px;[\s\S]*max-width:\s*90px;/
+  );
+});
+
+test('Oscilloscope styles do not set numeric input widths in other plugins', () => {
+  const css = readCss('../../plugins/analyzer/oscilloscope.css');
+
+  assert.match(
+    getRule(css, '.oscilloscope-plugin-ui input[type="number"]'),
+    /width:\s*80px;[\s\S]*padding:\s*4px;/
+  );
+  assert.doesNotMatch(css, /^\.plugin-parameter-ui input\[type="number"\]/m);
+});
+
+test('5Band PEQ and Room EQ wrap mobile bands before their controls overflow', () => {
+  const bandRules = [
+    [
+      readCss('../../plugins/eq/five_band_peq.css'),
+      '.five-band-peq-plugin-ui .five-band-peq-controls',
+      'body.layout-mobile .five-band-peq-plugin-ui .five-band-peq-band'
+    ],
+    [
+      readCss('../../plugins/eq/room_eq.css'),
+      '.room-eq-additional-eq-ui .room-eq-additional-eq-controls',
+      'body.layout-mobile .room-eq-additional-eq-ui .room-eq-additional-eq-band'
+    ]
+  ];
+
+  for (const [css, controlsSelector, bandSelector] of bandRules) {
+    assert.match(
+      getRule(css, controlsSelector),
+      /display:\s*flex;[\s\S]*flex-wrap:\s*wrap;/
+    );
+    assert.match(
+      getRule(css, bandSelector),
+      /min-width:\s*calc\(\s*var\(--et-mobile-effect-slider-min-width\)\s*\+\s*var\(--et-mobile-field-min-width\)\s*\+\s*44px\s*\);/
+    );
+  }
+});
+
+test('Room EQ keeps its inset plot size over the generic mobile SVG rule', () => {
+  const mobileCss = readCss('../../effetune-mobile.css');
+  const roomEqCss = readCss('../../plugins/eq/room_eq.css');
+
+  assert.match(
+    getRule(mobileCss, 'body.layout-mobile .graph-container svg'),
+    /width:\s*100%\s*!important;[\s\S]*height:\s*auto\s*!important;/
+  );
+  assert.match(
+    roomEqCss,
+    /body\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-additional-eq-grid,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-additional-eq-response,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-impulse-grid,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-impulse-response \{/
+  );
+  assert.match(
+    getRule(
+      roomEqCss,
+      'body.layout-mobile .room-eq-additional-eq-ui .room-eq-additional-eq-grid'
+    ),
+    /width:\s*calc\(100%\s*-\s*40px\)\s*!important;[\s\S]*height:\s*calc\(100%\s*-\s*40px\)\s*!important;/
   );
 });
 

@@ -289,6 +289,13 @@ test('Room EQ owns its Additional EQ editor implementation', () => {
     editor.dispose();
 });
 
+test('Room EQ wraps its graph in the standard graph container', () => {
+    assert.match(pluginSource, /graphContainer\.className = 'graph-container'/);
+    assert.match(pluginSource, /graphContainer\.style\.margin = '10px auto'/);
+    assert.match(pluginSource,
+        /graphContainer\.appendChild\(graph\);\s*container\.appendChild\(graphContainer\)/);
+});
+
 test('Room EQ graph draws measured, correction, and corrected response curves', () => {
     const { context } = loadPlugin();
     const paths = [];

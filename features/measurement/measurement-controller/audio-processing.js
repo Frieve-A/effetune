@@ -11,7 +11,41 @@
 
 import audioUtils from '../audio-utils/index.js';
 import { FFT } from '../audio-utils/index.js';
+import {
+    loadConfiguredOutputChannels,
+    prepareMeasurementOutputRoute,
+    releaseMeasurementOutputRoute
+} from '../audio-utils/output-routing.js';
 import { detectOnset, trimMeasurementImpulseResponse } from '../../../js/utils/measurement-dsp/onset.js';
+
+function createRepeatedSweepAudioBuffer(
+    audioContext,
+    sweepBuffer,
+    repeatCount,
+    outputChannels,
+    sampleRate
+) {
+    const combinedBufferLength = sweepBuffer.length * repeatCount;
+    const combinedSweepBuffer = audioContext.createBuffer(
+        outputChannels,
+        combinedBufferLength,
+        sampleRate
+    );
+
+    for (let channel = 0; channel < outputChannels; channel++) {
+        const sourceChannel = sweepBuffer.channels[channel];
+        if (!(sourceChannel instanceof Float32Array) || sourceChannel.length !== sweepBuffer.length) {
+            continue;
+        }
+
+        const destinationChannel = combinedSweepBuffer.getChannelData(channel);
+        for (let repeat = 0; repeat < repeatCount; repeat++) {
+            destinationChannel.set(sourceChannel, repeat * sweepBuffer.length);
+        }
+    }
+
+    return combinedSweepBuffer;
+}
 
 const AudioProcessing = {
     createSweepMeasurementResult(processed, details) {
@@ -63,7 +97,7 @@ const AudioProcessing = {
                 if (!audioContext || audioContext.state !== 'running') {
                     throw new Error('Audio context is not running');
                 }
-                
+
                 // Verify that microphone input is working
                 if (!audioUtils.microphone) {
                     throw new Error('Microphone input is not initialized. Please check browser settings.');
@@ -84,54 +118,25 @@ const AudioProcessing = {
                 const totalPlaybackDuration = sweepDuration * (averagingCount + 1); // +1 for safety
                 console.log(`Sweep duration: ${sweepDuration.toFixed(2)}s, Total playback: ${totalPlaybackDuration.toFixed(2)}s`);
                 
-                // Get maximum channel count for selected output device
-                const maxChannels = await audioUtils.getDeviceMaxChannelCount(this.measurementConfig.audioOutputId) || 2;
-                console.log(`Maximum output channels: ${maxChannels}`);
-                
-                // Create combined buffer of repeated TSP signals for each channel
-                const combinedBufferLength = sweepBuffer.length * (averagingCount + 1);
-                
-                // Pre-allocate buffer arrays for all channels (Float32Array is zero-initialized)
-                const combinedChannelBuffers = [];
-                for (let ch = 0; ch < maxChannels; ch++) {
-                    combinedChannelBuffers.push(new Float32Array(combinedBufferLength));
-                }
-
-                // Copy the sweep into the combined buffer multiple times for each channel
-                for (let i = 0; i < averagingCount + 1; i++) {
-                    const offset = i * sweepBuffer.length;
-                    
-                    // Add the sweep signal
-                    for (let j = 0; j < sweepBuffer.length; j++) {
-                        // Copy to each channel's buffer from the source channel buffers
-                        for (let ch = 0; ch < maxChannels; ch++) {
-                            if (ch < sweepBuffer.channels.length) {
-                                combinedChannelBuffers[ch][offset + j] = sweepBuffer.channels[ch][j];
-                            }
-                        }
-                    }
-                }
-                
-                // Create audio buffer for the combined sweep signal with all channels
-                const combinedSweepBuffer = audioContext.createBuffer(
-                    maxChannels, combinedBufferLength, sampleRate
+                const configuredChannels = await loadConfiguredOutputChannels();
+                const outputRoute = await prepareMeasurementOutputRoute(
+                    audioContext,
+                    this.measurementConfig.audioOutputId,
+                    this.measurementConfig.outputChannel,
+                    configuredChannels
                 );
-                
-                // Copy each channel data to audio buffer with error handling
-                for (let ch = 0; ch < maxChannels; ch++) {
-                    try {
-                        if (combinedChannelBuffers[ch] && combinedChannelBuffers[ch].length === combinedBufferLength) {
-                            combinedSweepBuffer.copyToChannel(combinedChannelBuffers[ch], ch);
-                        } else {
-                            console.warn(`Invalid buffer for channel ${ch}`);
-                        }
-                    } catch (e) {
-                        console.warn(`Could not copy to channel ${ch}: ${e.message}`);
-                    }
-                }
-                
-                // Clear temporary buffers to free memory
-                combinedChannelBuffers.length = 0;
+                const outputChannels = outputRoute.outputChannels;
+                this.activeSweepElements.audioElement = outputRoute.audioElement;
+                this.activeSweepElements.mediaStreamDestination = outputRoute.mediaStreamDestination;
+                console.log(`Using ${outputChannels}-channel ${outputRoute.mode} measurement output`);
+
+                const combinedSweepBuffer = createRepeatedSweepAudioBuffer(
+                    audioContext,
+                    sweepBuffer,
+                    averagingCount + 1,
+                    outputChannels,
+                    sampleRate
+                );
                 
                 // Calculate recording buffer length - match exactly with playback plus some padding
                 // Instead of using fixed delays, calculate exact timing:
@@ -178,6 +183,7 @@ const AudioProcessing = {
                 if (!audioUtils.audioWorkletSupported) {
                     console.error('AudioWorklet is not supported in this browser');
                     alert('This browser does not support AudioWorklet. For accurate measurements, please use the latest version of Chrome or Edge.');
+                    this.stopSweepPlayback();
                     reject(new Error('AudioWorklet not supported'));
                     return;
                 }
@@ -256,6 +262,7 @@ const AudioProcessing = {
                     
                 } catch (err) {
                     console.error('Failed to create AudioWorkletNode:', err);
+                    this.stopSweepPlayback();
                     reject(err);
                     return;
                 }
@@ -284,86 +291,13 @@ const AudioProcessing = {
                         // Convert dB to linear gain
                         const linearGain = Math.pow(10, signalLevel / 20);
                         gainNode.gain.value = linearGain;
-                        
-                        // Get output device ID from measurement config
-                        const outputDeviceId = this.measurementConfig.audioOutputId;
-                        
-                        // Handle output device selection
-                        let audioDestination = audioContext.destination;
-                        
-                        // Set the channel count of the destination to match our max channels
-                        if (audioDestination.maxChannelCount) {
-                            try {
-                                // Set to maximum available channels
-                                const channelCount = Math.min(maxChannels, audioDestination.maxChannelCount);
-                                audioDestination.channelCount = channelCount;
-                                audioDestination.channelCountMode = 'explicit';
-                                audioDestination.channelInterpretation = 'discrete';
-                                console.log(`Set output channel count to ${channelCount}`);
-                            } catch (e) {
-                                console.warn('Error setting destination channel count:', e);
-                            }
-                        }
-                        
-                        // If specific output device is requested, try to use it
-                        if (outputDeviceId) {
-                            try {
-                                console.log(`Attempting to use output device ID: ${outputDeviceId}`);
-
-                                // Create an audio element for output device routing
-                                const audioElement = new Audio();
-                                const mediaStreamDestination = audioContext.createMediaStreamDestination();
-
-                                // Set media stream destination channel count if possible
-                                if (mediaStreamDestination.channelCount !== undefined) {
-                                    try {
-                                        mediaStreamDestination.channelCount = Math.min(maxChannels, mediaStreamDestination.maxChannelCount || maxChannels);
-                                        mediaStreamDestination.channelCountMode = 'explicit';
-                                        mediaStreamDestination.channelInterpretation = 'discrete';
-                                        console.log(`Set media stream destination channel count to ${mediaStreamDestination.channelCount}`);
-                                    } catch (e) {
-                                        console.warn('Error setting media stream destination channel count:', e);
-                                    }
-                                }
-
-                                // Store references for cleanup
-                                this.activeSweepElements.audioElement = audioElement;
-                                this.activeSweepElements.mediaStreamDestination = mediaStreamDestination;
-
-                                // Connect audio element to media stream
-                                audioElement.srcObject = mediaStreamDestination.stream;
-
-                                // Use setSinkId if available
-                                if (typeof audioElement.setSinkId === 'function') {
-                                    // Execute asynchronously using a Promise
-                                    (async () => {
-                                        try {
-                                            await audioElement.setSinkId(outputDeviceId);
-                                            console.log(`Sweep playback output device set to ID: ${outputDeviceId}`);
-
-                                            // Start playback on the audio element
-                                            audioElement.play().catch(e => {
-                                                console.error('Failed to play audio element:', e);
-                                            });
-                                        } catch (err) {
-                                            console.error('Error in setSinkId:', err);
-                                        }
-                                    })();
-
-                                    // Use the media stream destination
-                                    audioDestination = mediaStreamDestination;
-                                } else {
-                                    console.warn('setSinkId is not supported in this browser - using default output device');
-                                }
-                            } catch (error) {
-                                console.error('Failed to set output device for sweep playback:', error);
-                                // Fall back to default output
-                            }
-                        }
+                        gainNode.channelCount = outputChannels;
+                        gainNode.channelCountMode = 'explicit';
+                        gainNode.channelInterpretation = 'discrete';
                         
                         // Connect source -> gain -> output
                         source.connect(gainNode);
-                        gainNode.connect(audioDestination);
+                        gainNode.connect(outputRoute.destination);
                         
                         // Store source and gain node in active elements
                         this.activeSweepElements.source = source;
@@ -433,9 +367,12 @@ const AudioProcessing = {
                         if (analyzer) {
                             analyzer.disconnect();
                         }
+                        self.cleanupSweepOutput();
                         // Clear active elements references
                         self.activeSweepElements.recordNode = null;
                         self.activeSweepElements.analyzer = null;
+                        self.activeSweepElements.checkInterval = null;
+                        self.recorderNode = null;
                     } catch (e) {
                         console.error("Error during cleanup:", e);
                     }
@@ -507,6 +444,7 @@ const AudioProcessing = {
                 }, 2 * (prePostRollTime + totalPlaybackDuration) * 1000);
                 
             } catch (error) {
+                this.stopSweepPlayback();
                 reject(error);
             }
         });
@@ -663,6 +601,40 @@ const AudioProcessing = {
         }
     },
     
+    cleanupSweepOutput() {
+        if (!this.activeSweepElements) return;
+
+        if (this.activeSweepElements.source) {
+            try {
+                this.activeSweepElements.source.stop();
+            } catch (_) {
+                // The source may already have ended.
+            }
+            try {
+                this.activeSweepElements.source.disconnect();
+            } catch (error) {
+                console.warn('Error disconnecting sweep source:', error);
+            }
+            this.activeSweepElements.source = null;
+        }
+
+        if (this.activeSweepElements.gainNode) {
+            try {
+                this.activeSweepElements.gainNode.disconnect();
+            } catch (error) {
+                console.warn('Error disconnecting gain node:', error);
+            }
+            this.activeSweepElements.gainNode = null;
+        }
+
+        releaseMeasurementOutputRoute({
+            audioElement: this.activeSweepElements.audioElement,
+            mediaStreamDestination: this.activeSweepElements.mediaStreamDestination
+        });
+        this.activeSweepElements.audioElement = null;
+        this.activeSweepElements.mediaStreamDestination = null;
+    },
+
     /**
      * Stop active sweep playback
      * This is used to clean up active sweep playback when measurement is cancelled
@@ -672,47 +644,7 @@ const AudioProcessing = {
         
         // Clean up active elements
         if (this.activeSweepElements) {
-            // Stop source if it exists
-            if (this.activeSweepElements.source) {
-                try {
-                    this.activeSweepElements.source.stop();
-                    this.activeSweepElements.source.disconnect();
-                } catch (e) {
-                    console.warn('Error stopping sweep source:', e);
-                }
-                this.activeSweepElements.source = null;
-            }
-            
-            // Disconnect gain node
-            if (this.activeSweepElements.gainNode) {
-                try {
-                    this.activeSweepElements.gainNode.disconnect();
-                } catch (e) {
-                    console.warn('Error disconnecting gain node:', e);
-                }
-                this.activeSweepElements.gainNode = null;
-            }
-            
-            // Stop audio element if it exists
-            if (this.activeSweepElements.audioElement) {
-                try {
-                    this.activeSweepElements.audioElement.pause();
-                    this.activeSweepElements.audioElement.srcObject = null;
-                } catch (e) {
-                    console.warn('Error stopping audio element:', e);
-                }
-                this.activeSweepElements.audioElement = null;
-            }
-            
-            // Disconnect media stream destination
-            if (this.activeSweepElements.mediaStreamDestination) {
-                try {
-                    this.activeSweepElements.mediaStreamDestination.disconnect();
-                } catch (e) {
-                    console.warn('Error disconnecting media stream destination:', e);
-                }
-                this.activeSweepElements.mediaStreamDestination = null;
-            }
+            this.cleanupSweepOutput();
             
             // Clean up other elements
             if (this.activeSweepElements.analyzer) {
@@ -725,13 +657,17 @@ const AudioProcessing = {
             }
             
             if (this.activeSweepElements.recordNode) {
+                const recordNode = this.activeSweepElements.recordNode;
                 try {
-                    this.activeSweepElements.recordNode.port.postMessage({ command: 'stop' });
-                    this.activeSweepElements.recordNode.disconnect();
+                    recordNode.port.postMessage({ command: 'stop' });
+                    recordNode.disconnect();
                 } catch (e) {
                     console.warn('Error stopping record node:', e);
                 }
                 this.activeSweepElements.recordNode = null;
+                if (this.recorderNode === recordNode) {
+                    this.recorderNode = null;
+                }
             }
             
             if (this.activeSweepElements.checkInterval) {
@@ -745,3 +681,4 @@ const AudioProcessing = {
 };
 
 export default AudioProcessing;
+export { createRepeatedSweepAudioBuffer };

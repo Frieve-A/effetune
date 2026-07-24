@@ -173,6 +173,7 @@ class FakeElement {
   matches(selector) {
     if (!selector) return false;
     if (selector === 'input, textarea') return this.tagName === 'INPUT' || this.tagName === 'TEXTAREA';
+    if (selector === 'input[type="range"]') return this.tagName === 'INPUT' && this.type === 'range';
     if (selector.startsWith('#')) return this.id === selector.slice(1);
     if (selector.startsWith('.')) {
       return selector.slice(1).split('.').every(cls => this.classList.contains(cls));
@@ -1235,6 +1236,61 @@ test('wires clipboard, history, pipeline toggles, menus, and keyboard shortcuts'
     await manager.pasteButton.click();
     await flushMicrotasks();
     assert.match(manager.stateManager.errorDisplay.textContent, /Read failed/);
+  });
+});
+
+test('keeps a parameter slider fill synced during consecutive direct number input', async () => {
+  await withUIHarness({}, async ({ document, manager }) => {
+    const row = appendElement(document, document.body, 'div', '', 'parameter-row');
+    const slider = appendElement(document, row, 'input', 'parameter-slider');
+    slider.type = 'range';
+    slider.min = '-10';
+    slider.max = '30';
+    slider.value = '0';
+    const valueInput = appendElement(document, row, 'input', 'parameter-value');
+    valueInput.type = 'number';
+    valueInput.addEventListener('input', (event) => {
+      slider.value = event.target.value;
+    });
+
+    manager.initRangeFillStyling();
+    assert.equal(slider.style['--et-range-fill'], '25%');
+
+    valueInput.focus();
+    for (const [value, expectedFill] of [['-5', '12.5%'], ['20', '75%'], ['30', '100%']]) {
+      valueInput.value = value;
+      await valueInput.dispatch('input');
+      document.dispatch('input', { target: valueInput });
+
+      assert.equal(document.activeElement, valueInput);
+      assert.equal(slider.style['--et-range-fill'], expectedFill);
+    }
+  });
+});
+
+test('keeps a custom plugin parameter slider fill synced from number input', async () => {
+  await withUIHarness({}, async ({ document, manager }) => {
+    const pluginUi = appendElement(document, document.body, 'div', '', 'plugin-parameter-ui');
+    const customRow = appendElement(document, pluginUi, 'div', '', 'band-controls');
+    const slider = appendElement(document, customRow, 'input', 'band-q-slider');
+    slider.type = 'range';
+    slider.min = '0.1';
+    slider.max = '10.1';
+    slider.value = '2.1';
+    const valueInput = appendElement(document, customRow, 'input', 'band-q-value');
+    valueInput.type = 'number';
+    valueInput.addEventListener('input', (event) => {
+      slider.value = event.target.value;
+    });
+
+    manager.initRangeFillStyling();
+    assert.equal(slider.style['--et-range-fill'], '20%');
+
+    valueInput.value = '8.1';
+    await valueInput.dispatch('input');
+    document.dispatch('input', { target: valueInput });
+
+    assert.equal(slider.style['--et-range-fill'], '80%');
   });
 });
 

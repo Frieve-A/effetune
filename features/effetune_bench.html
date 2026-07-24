@@ -292,6 +292,7 @@
             BENCHMARK_DSP_MODES,
             BENCHMARK_IR_REVERB_NOTE,
             createIrReverbBenchmarkAssets,
+            createRoomEqBenchmarkAssets,
             createDspBenchmarkRuntime
         } from './effetune-benchmark.js';
 
@@ -567,10 +568,25 @@
                                 convolutionRate: parameters.cr
                             });
                         }
+                    } else if (name === 'Room EQ') {
+                        const parameters = plugin.getParameters({
+                            sampleRate: SAMPLE_RATE,
+                            outputChannelCount: channelCount
+                        });
+                        note = `Deterministic mono IR, ${parameters.tp.toLocaleString()} samples ` +
+                            '(IR load/preparation excluded from timing)';
+                        if (runtime.usesWasm) {
+                            assets = createRoomEqBenchmarkAssets({
+                                sampleRate: SAMPLE_RATE,
+                                channelCount,
+                                taps: parameters.tp,
+                                latency: parameters.lt
+                            });
+                        }
                     }
 
                     let result;
-                    const requiresWasmAssets = name === 'IR Reverb';
+                    const requiresWasmAssets = name === 'IR Reverb' || name === 'Room EQ';
                     if (runtime.supportsPlugin(plugin) &&
                         (!requiresWasmAssets || runtime.usesWasm)) {
                         result = await benchmarkPlugin(
