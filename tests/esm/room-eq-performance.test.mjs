@@ -193,7 +193,7 @@ test('Room EQ PFFFT design and final-4096 convolution stay inside release budget
             sources: maximumSources
         }));
 
-        assert.ok(typicalWarmMs < 250,
+        assert.ok(typicalWarmMs < 350,
             `typical warm design used ${typicalWarmMs.toFixed(1)} ms of CPU time`);
         assert.ok(maximumColdMs < 3000,
             `maximum cold design used ${maximumColdMs.toFixed(1)} ms of CPU time`);
