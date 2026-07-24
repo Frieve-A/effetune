@@ -16,6 +16,11 @@ constexpr std::uint32_t kHeaderBytes = 32u;
 constexpr std::uint32_t kMagic = 0x31415445u;
 constexpr std::uint32_t kMono = 1u;
 constexpr std::uint32_t kReplacementDryReady = 1u << 16u;
+
+constexpr std::uint32_t payloadByteSize(std::uint32_t frames) noexcept {
+  return kHeaderBytes + frames * static_cast<std::uint32_t>(sizeof(float));
+}
+
 int failures = 0;
 
 void check(bool condition, const char *expression, int line) noexcept {
@@ -91,7 +96,7 @@ struct Harness final {
   effetune::AssetBeginInfo assetInfo(std::uint32_t frames = 257u,
                                      std::uint32_t headBlock = 128u) const noexcept {
     return {1u, frames, kMono, headBlock,           1u,
-            0u, 0u,     2u,    16u * 1024u * 1024u, kHeaderBytes + frames * sizeof(float)};
+            0u, 0u,     2u,    16u * 1024u * 1024u, payloadByteSize(frames)};
   }
 
   bool beginAndCommit(std::vector<std::uint8_t> payload, std::uint32_t headBlock = 128u) noexcept {
@@ -314,7 +319,7 @@ void testRejectsAssetsBeyondMaximumTapCount() {
   Harness harness;
   constexpr std::uint32_t frames = 131073u;
   auto info = harness.assetInfo(frames);
-  info.byteSize = kHeaderBytes + frames * sizeof(float);
+  info.byteSize = payloadByteSize(frames);
   ROOM_EQ_CHECK(harness.kernel->beginAsset(0u, info) == nullptr);
 }
 
