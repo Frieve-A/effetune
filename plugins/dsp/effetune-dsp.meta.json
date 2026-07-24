@@ -1,6 +1,6 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:d8546a596ed5c047d28674f2cd6db2c2244069d6fb26f667aa986f399ad32a00",
+  "sourceDigest": "sha256:1fe34f808dd673febf55ead28ea907ccbe2b386691d4f28cee6bd3457369acc1",
   "emsdkVersion": "6.0.2",
   "kernels": [
     {
@@ -439,7 +439,7 @@
     }
   ],
   "sizes": {
-    "baseline": 388686,
-    "simd": 439422
+    "baseline": 388774,
+    "simd": 439502
   }
 }

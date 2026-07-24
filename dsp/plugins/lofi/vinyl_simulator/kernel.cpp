@@ -872,8 +872,8 @@ private:
     double previous_penetration_right = 0.0;
     double previous_offset = 0.0;
     std::int64_t cached_signal_base = std::numeric_limits<std::int64_t>::min();
-    std::array<double, 4u> left_coefficients;
-    std::array<double, 4u> right_coefficients;
+    std::array<double, 4u> left_coefficients{};
+    std::array<double, 4u> right_coefficients{};
     const bool has_active_defects = active_dust_count_ != 0u;
     const double groove_grid = groove_position_ / kRoughStep;
     for (std::uint32_t point = 0u; point < scan_points_; ++point) {
