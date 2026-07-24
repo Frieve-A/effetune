@@ -68,10 +68,11 @@ function designConfig(taps, maxBoostDb = 6, phase = 'lin') {
     };
 }
 
-function elapsed(action) {
-    const started = performance.now();
+function cpuElapsed(action) {
+    const started = process.cpuUsage();
     action();
-    return performance.now() - started;
+    const usage = process.cpuUsage(started);
+    return (usage.user + usage.system) / 1000;
 }
 
 function percentile(sorted, ratio) {
@@ -174,7 +175,7 @@ test('Room EQ PFFFT design and final-4096 convolution stay inside release budget
         clearRoomEqDesignCache();
         designRoomEq({ config: designConfig(32768), sources: typicalSources });
         clearRoomEqDesignCache();
-        const typicalWarmMs = elapsed(() => designRoomEq({
+        const typicalWarmMs = cpuElapsed(() => designRoomEq({
             config: designConfig(32768, 6.1),
             sources: typicalSources
         }));
@@ -182,19 +183,22 @@ test('Room EQ PFFFT design and final-4096 convolution stay inside release budget
         const maximumSources = designSources(1);
         clearRoomEqAnalysisCache();
         clearRoomEqDesignCache();
-        const maximumColdMs = elapsed(() => designRoomEq({
+        const maximumColdMs = cpuElapsed(() => designRoomEq({
             config: designConfig(TAPS),
             sources: maximumSources
         }));
         clearRoomEqDesignCache();
-        const maximumWarmMs = elapsed(() => designRoomEq({
+        const maximumWarmMs = cpuElapsed(() => designRoomEq({
             config: designConfig(TAPS, 6.1),
             sources: maximumSources
         }));
 
-        assert.ok(typicalWarmMs < 150, `typical warm design took ${typicalWarmMs.toFixed(1)} ms`);
-        assert.ok(maximumColdMs < 3000, `maximum cold design took ${maximumColdMs.toFixed(1)} ms`);
-        assert.ok(maximumWarmMs < 1000, `maximum warm design took ${maximumWarmMs.toFixed(1)} ms`);
+        assert.ok(typicalWarmMs < 150,
+            `typical warm design used ${typicalWarmMs.toFixed(1)} ms of CPU time`);
+        assert.ok(maximumColdMs < 3000,
+            `maximum cold design used ${maximumColdMs.toFixed(1)} ms of CPU time`);
+        assert.ok(maximumWarmMs < 1000,
+            `maximum warm design used ${maximumWarmMs.toFixed(1)} ms of CPU time`);
 
         clearRoomEqDesignCache();
         const direct = designRoomEq({
