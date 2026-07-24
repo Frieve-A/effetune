@@ -194,13 +194,28 @@ function nativeEnvironment() {
   return env;
 }
 
-function runNativeTests() {
+export function parseNativeBuildType(args) {
+  const prefix = '--native-build-type=';
+  const values = [...args]
+    .filter(argument => argument.startsWith(prefix))
+    .map(argument => argument.slice(prefix.length));
+  if (values.length > 1) {
+    fail('--native-build-type may only be specified once');
+  }
+  const buildType = values[0] ?? 'Debug';
+  if (buildType !== 'Debug' && buildType !== 'Release') {
+    fail('--native-build-type must be Debug or Release');
+  }
+  return buildType;
+}
+
+function runNativeTests(buildType) {
   const buildDirectory = path.join(buildRoot, 'native');
   resetBuildDirectory(buildDirectory);
   const env = nativeEnvironment();
   run('cmake', [
     '-S', dspRoot, '-B', buildDirectory, '-G', 'Ninja',
-    '-DCMAKE_BUILD_TYPE=Debug', '-DBUILD_TESTING=ON'
+    `-DCMAKE_BUILD_TYPE=${buildType}`, '-DBUILD_TESTING=ON'
   ], { env });
   run('cmake', ['--build', buildDirectory, '--parallel'], { env });
   run('ctest', ['--test-dir', buildDirectory, '--output-on-failure'], { env });
@@ -418,29 +433,36 @@ async function buildWasm({ check }) {
 }
 
 function printHelp() {
-  console.log('Usage: node scripts/build-dsp-wasm.mjs [--check|--native-tests]');
+  console.log('Usage: node scripts/build-dsp-wasm.mjs [--check|--native-tests] [--native-build-type=Debug|Release]');
   console.log('  default         update codegen/inlining and build committed baseline + SIMD WASM');
   console.log('  --check         write-free codegen/inlining/artifact freshness verification');
   console.log('  --native-tests  configure, compile, and run native CTest tests (no emsdk needed)');
+  console.log('  --native-build-type  native CMake build type (default Debug; requires --native-tests)');
 }
 
 async function main() {
-  const args = new Set(process.argv.slice(2));
+  const cliArgs = process.argv.slice(2);
+  const args = new Set(cliArgs);
   if (args.has('--help')) {
     printHelp();
     return;
   }
   const allowed = new Set(['--check', '--native-tests']);
-  const unknown = [...args].filter(arg => !allowed.has(arg));
+  const unknown = cliArgs.filter(arg =>
+    !allowed.has(arg) && !arg.startsWith('--native-build-type='));
   if (unknown.length !== 0) {
     fail(`unknown argument(s): ${unknown.join(', ')}`);
   }
   const check = args.has('--check');
   const nativeTests = args.has('--native-tests');
+  const nativeBuildType = parseNativeBuildType(cliArgs);
+  if (!nativeTests && cliArgs.some(arg => arg.startsWith('--native-build-type='))) {
+    fail('--native-build-type requires --native-tests');
+  }
   runCodegen(check);
   refreshWorkletBinding(check);
   if (nativeTests) {
-    runNativeTests();
+    runNativeTests(nativeBuildType);
     return;
   }
   await buildWasm({ check });

@@ -3,11 +3,11 @@ import {
   IR_ASSET_FORMAT_TAG,
   IR_ASSET_TOPOLOGY
 } from './ir-asset-payload.js';
+import { detectOnsetFromEnergies } from '../utils/measurement-dsp/onset.js';
 
 const MAX_ANALYSIS_POINTS = 2000;
 const DIRECT_CUT_FADE_FRAMES = 64;
 const TRIM_FADE_FRAMES = 2048;
-const SILENCE_ENERGY = 1e-20;
 
 function validateRequest(request) {
   const channels = request?.channels;
@@ -88,33 +88,6 @@ function frameEnergies(channels, channelGains = null) {
     }
   }
   return energies;
-}
-
-function detectOnset(energies, sampleRate) {
-  let leadingSilenceFrames = 0;
-  while (leadingSilenceFrames < energies.length && energies[leadingSilenceFrames] <= SILENCE_ENERGY) {
-    leadingSilenceFrames += 1;
-  }
-  if (leadingSilenceFrames === energies.length) {
-    return { onsetFrame: 0, leadingSilenceFrames: 0 };
-  }
-
-  const roundedWindow = Math.round(sampleRate * 0.001);
-  const windowFrames = roundedWindow < 8 ? 8 : roundedWindow;
-  let running = 0;
-  let peak = 0;
-  const windowEnergy = new Float64Array(energies.length);
-  for (let frame = 0; frame < energies.length; frame += 1) {
-    running += energies[frame];
-    if (frame >= windowFrames) running -= energies[frame - windowFrames];
-    windowEnergy[frame] = running;
-    if (running > peak) peak = running;
-  }
-  const threshold = peak * 0.01;
-  let onsetFrame = leadingSilenceFrames;
-  while (onsetFrame < windowEnergy.length && windowEnergy[onsetFrame] < threshold) onsetFrame += 1;
-  if (onsetFrame === windowEnergy.length) onsetFrame = leadingSilenceFrames;
-  return { onsetFrame, leadingSilenceFrames };
 }
 
 function channelEnergies(channels) {
@@ -367,7 +340,7 @@ function analyze(channels, sampleRate, pointLimit, topology, paths) {
 export function prepareIr(request) {
   const validated = validateRequest(request);
   const options = resolveOptions(request, validated.frames, validated.channels.length);
-  const detected = detectOnset(frameEnergies(validated.channels), validated.sampleRate);
+  const detected = detectOnsetFromEnergies(frameEnergies(validated.channels), validated.sampleRate);
   const onsetFrame = options.onsetFrame ?? detected.onsetFrame;
   const cutOffsetFrames = Math.round(options.cutOffsetMs * validated.sampleRate / 1000);
   let startFrame = detected.leadingSilenceFrames;

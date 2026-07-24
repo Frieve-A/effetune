@@ -29,6 +29,9 @@ const PIPELINE_SWITCH_SILENCE_SECONDS = 0.05;
 const DSP_MODULE_LOAD_TIMEOUT_MS = 1000;
 const DSP_MODULE_READY_TIMEOUT_MS = 1000;
 const DSP_BYTES_READY_TIMEOUT_MS = 3000;
+const WASM_ONLY_EXECUTION_STATE_PLUGIN_TYPES = new Set([
+    'RoomEqPlugin'
+]);
 
 // Pipeline-content mutations describe the visible (primary) pipeline only.
 // During a Double Blind Test the parallel worklet B holds its own dedicated
@@ -113,6 +116,7 @@ export class AudioManager {
         this._wasmAssetPrimaryWorklet = null;
         this._dspReadyTransitionPromise = null;
         this._dspTransitionGeneration = -1;
+        this._dspExecutionGenerationsByNode = new Map();
         this._audioGraphGeneration = 0;
         this._topologyRevision = 0;
         this._workletGraphGeneration = 0;
@@ -1623,6 +1627,28 @@ export class AudioManager {
             this.rebuildPipeline(false).catch(error => {
                 console.error('[AudioManager] Failed to rebuild after missing processor report:', error);
             });
+        } else if (data.type === 'dspExecutionState') {
+            const bypassReasons = new Set([
+                'unsupportedSampleRate', 'wasmUnavailable', 'rolloutDisabled',
+                'runtimeFallback', 'engineStopped'
+            ]);
+            if (workletNode !== this._getPrimaryWorkletNode() ||
+                !WASM_ONLY_EXECUTION_STATE_PLUGIN_TYPES.has(data.pluginType) ||
+                !Number.isInteger(data.pluginId) || !Number.isInteger(data.generation) ||
+                !['pending', 'active', 'bypassed'].includes(data.state) ||
+                (data.state === 'bypassed' && !bypassReasons.has(data.reason)) ||
+                (data.state !== 'bypassed' && data.reason != null)) return;
+            const plugin = [this.pipelineA, this.pipelineB, this.pipeline]
+                .filter(Array.isArray)
+                .flat()
+                .find(candidate => candidate?.id === data.pluginId &&
+                    candidate?.constructor?.name === data.pluginType);
+            if (!plugin) return;
+            const currentGeneration = this._dspExecutionGenerationsByNode.get(workletNode) ?? -1;
+            if (data.generation < currentGeneration) return;
+            this._dspExecutionGenerationsByNode.set(workletNode, data.generation);
+            plugin.onMessage?.({ ...data, validated: true });
+            this.dispatchEvent('dspExecutionState', { ...data, validated: true });
         } else if (data.type === 'dspReady') {
             this.clearDspReadyFallback(workletNode);
             if (!this.dspModuleInfo) {

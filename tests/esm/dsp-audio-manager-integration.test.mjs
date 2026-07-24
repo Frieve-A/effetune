@@ -48,6 +48,7 @@ function createManager() {
   manager._wasmAssetPrimaryWorklet = null;
   manager._dspReadyTransitionPromise = null;
   manager._dspTransitionGeneration = -1;
+  manager._dspExecutionGenerationsByNode = new Map();
   manager._audioGraphGeneration = 1;
   manager._primaryWorkletEpoch = 1;
   manager._outputFadeToken = 0;
@@ -68,6 +69,18 @@ function createManager() {
   manager.dispatchEvent = () => {};
   return manager;
 }
+
+class WasmOnlyTestPlugin {
+  constructor(id) {
+    this.id = id;
+    this.messages = [];
+  }
+  onMessage(message) {
+    this.messages.push(message);
+  }
+}
+
+class RoomEqPlugin extends WasmOnlyTestPlugin {}
 
 class VolumePlugin {
   constructor(id, branch) {
@@ -337,6 +350,47 @@ test('initializeAudioWorklet returns while optional DSP loading continues', asyn
     assert.equal(rejectedManager.dspModuleInfo, null);
     assert.ok(warnings.some(message => message.includes('load rejected')));
   });
+});
+
+test('AudioManager validates Room EQ execution state and rejects stale or auxiliary messages', () => {
+  const manager = createManager();
+  const main = createNode('main');
+  const auxiliary = createNode('auxiliary');
+  const roomEq = new RoomEqPlugin(42);
+  manager.workletNode = main;
+  manager.contextManager = { workletNode: main };
+  manager.pipelineA = [roomEq];
+  manager.pipeline = manager.pipelineA;
+  manager._parallelActive = true;
+  manager._parallelWorkletB = auxiliary;
+  const dispatched = [];
+  manager.dispatchEvent = (type, data) => dispatched.push({ type, data });
+  const state = (generation, overrides = {}) => ({
+    type: 'dspExecutionState', pluginId: 42, pluginType: 'RoomEqPlugin',
+    state: 'active', reason: null, generation, ...overrides
+  });
+
+  manager.handleWorkletMessage({ data: state(7) }, main);
+  manager.handleWorkletMessage({ data: state(6, {
+    state: 'bypassed', reason: 'runtimeFallback'
+  }) }, main);
+  manager.handleWorkletMessage({ data: state(8, {
+    state: 'bypassed', reason: 'wasmUnavailable'
+  }) }, auxiliary);
+  manager.handleWorkletMessage({ data: state(99, { pluginId: 999 }) }, main);
+  manager.handleWorkletMessage({ data: state(8, { pluginType: 'VolumePlugin' }) }, main);
+  manager.handleWorkletMessage({ data: state(8, {
+    state: 'bypassed', reason: 'wasmUnavailable'
+  }) }, main);
+
+  assert.equal(roomEq.messages.length, 2);
+  assert.equal(roomEq.messages[0].state, 'active');
+  assert.equal(roomEq.messages[0].validated, true);
+  assert.equal(roomEq.messages[1].reason, 'wasmUnavailable');
+  assert.equal(dispatched.length, 2);
+  assert.equal(dispatched[0].data.pluginType, 'RoomEqPlugin');
+  assert.equal(dispatched[0].data.generation, 7);
+  assert.equal(dispatched[1].data.generation, 8);
 });
 
 test('AudioManager starts a delayed DSP module only on the worklet that requested it', async () => {

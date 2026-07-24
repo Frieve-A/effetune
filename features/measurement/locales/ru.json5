@@ -100,6 +100,14 @@
 
   // Messages
   "message:peqCopied": "Настройки PEQ успешно скопированы в буфер обмена. Скопированные настройки можно вставить в Effect Pipeline EffeTune с помощью Ctrl+V.", // Success message for PEQ copy
+  "message:saveFailed": "Не удалось сохранить измерение. Проверьте свободное место и повторите попытку.",
+  "message:irStorageUnavailable": "Этот браузер не может сохранять импульсные характеристики. Режим Correction в Room EQ будет недоступен.",
+  "label:includeImpulseResponses": "Включать импульсные характеристики при экспорте измерений в JSON",
+  "help:includeImpulseResponses": "Импульсные характеристики могут увеличить экспортируемый файл на десятки мегабайт.",
+  "help:roomEq": "Для FIR-коррекции с управлением фазой используйте плагин Room EQ в основном приложении.",
+  "message:irSaved": "IR сохранена ✓ ({seconds} с @ {sampleRate} кГц)",
+  "help:sweepLimited": "Более длинный свип позволяет Room EQ сохранить более длинную импульсную характеристику.",
+  "message:measurementStorageUsage": "Измерения: {megabytes} МБ",
 
   // Channel options
   "option:left": "Левый канал", // Option for left channel

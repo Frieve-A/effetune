@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { PowerPolicyController } from '../../js/audio/power-policy-controller.js';
 import { AudioContextManager } from '../../js/ui/audio-player/audio-context-manager.js';
 import { PlaybackManager } from '../../js/ui/audio-player/playback-manager.js';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
@@ -483,7 +484,7 @@ test('playback resume kind follows the mixed-input preference', async () => {
   });
 });
 
-test('automatic playback checks active state without entering the gesture resume path', async () => {
+test('automatic playback checks context continuity without entering the gesture resume path', async () => {
   await withAudioContextGlobals({}, async ({ calls }) => {
     const harness = createHarness({
       calls,
@@ -503,9 +504,10 @@ test('automatic playback checks active state without entering the gesture resume
     });
 
     assert.equal(await harness.manager.resumePlaybackAudioContext(false), false);
-    assert.deepEqual(calls.filter(call => call[0].includes('Active') || call[0].includes('Gesture')), [
-      ['ensureActiveForAutomaticPlayback']
-    ]);
+    assert.deepEqual(
+      calls.filter(call => ['ensureActiveForAutomaticPlayback', 'unexpectedGestureResume'].includes(call[0])),
+      [['ensureActiveForAutomaticPlayback']]
+    );
   });
 });
 
@@ -4351,6 +4353,65 @@ test('automatic plan resolves provider capabilities once and reuses the exact sn
       }
       playbackManager.dispose();
     }
+  });
+});
+
+test('automatic media transition continues from an active automatic-monitoring directive', async () => {
+  await withAudioContextGlobals({
+    electronIntegration: { audioPreferences: { useInputWithPlayer: true } }
+  }, async ({ calls }) => {
+    const tracks = [
+      { name: 'Current', data: new Uint8Array([0]) },
+      {
+        name: 'Streamed',
+        async provider() {
+          return {
+            byteLength: 256 * 1024 * 1024 + 1,
+            mediaSource: 'file:///streamed.wav'
+          };
+        }
+      }
+    ];
+    const harness = createHarness({
+      calls,
+      playlist: tracks,
+      currentTrackIndex: 0,
+      isPlaying: true,
+      isStopped: false,
+      playbackMode: 'bufferSource'
+    });
+    const { playbackManager, entries } = installMaterializedPlaybackManager(harness, tracks);
+    Object.assign(harness.state, {
+      currentTrack: entries[0],
+      currentTrackIndex: 0,
+      isPlaying: true,
+      isPaused: false,
+      isStopped: false,
+      playbackMode: 'bufferSource'
+    });
+    harness.audioContext.state = 'running';
+    harness.audioManager.contextManager = { audioContext: harness.audioContext };
+    const powerController = new PowerPolicyController(harness.audioManager, {
+      enabled: true,
+      windowRef: {
+        sessionStorage: {},
+        localStorage: { getItem: () => null }
+      }
+    });
+    powerController.effectiveState = 'ACTIVE';
+    powerController.processingDirective = 'allow-automatic';
+    powerController.transition = { state: 'stable', operationId: null, generation: 0 };
+    harness.audioManager.powerPolicyController = powerController;
+
+    await harness.manager.prepareNextTrackBufferWithRepeatMode();
+    const prepared = harness.manager.nextBuffer;
+    assert.equal(prepared.decisionRecord.committedMode, 'media');
+    assert.equal(await harness.manager.transitionPreparedAutomaticMove(prepared), true);
+    assert.equal(harness.state.currentTrack, prepared.playableTrack);
+    assert.equal(harness.state.currentTrackIndex, 1);
+    assert.equal(harness.state.playbackMode, 'audioElement');
+    assert.equal(harness.state.isPlaying, true);
+    playbackManager.dispose();
   });
 });
 

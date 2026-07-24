@@ -95,20 +95,25 @@ export function hasTranslation(id) {
  * @param {string} id - Translation ID
  * @returns {string|null} Translated text or null if translation not found
  */
-export function t(id) {
+export function t(id, params = {}) {
+  let translation = null;
   // First check if ID exists in current language
   if (currentTranslations && currentTranslations[id]) {
-    return currentTranslations[id];
+    translation = currentTranslations[id];
   }
   
   // Fallback to English
-  if (baseTranslations && baseTranslations[id]) {
-    return baseTranslations[id];
+  if (translation === null && baseTranslations && baseTranslations[id]) {
+    translation = baseTranslations[id];
   }
-  
+
   // Return null if no translation found
   // This signals to keep the original text
-  return null;
+  if (translation === null) return null;
+  return Object.entries(params).reduce(
+    (text, [name, value]) => text.replaceAll(`{${name}}`, String(value)),
+    translation
+  );
 }
 
 /**
@@ -116,8 +121,8 @@ export function t(id) {
  * @param {string} id - Translation ID
  * @returns {Promise<string|null>} Translated text or null if translation not found
  */
-export async function tAsync(id) {
-  return t(id);
+export async function tAsync(id, params = {}) {
+  return t(id, params);
 }
 
 /**
@@ -169,4 +174,4 @@ export default {
   setLanguage,
   translateUI,
   initI18n
-}; 
+};

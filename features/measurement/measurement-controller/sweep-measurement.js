@@ -5,6 +5,7 @@
 import audioUtils from '../audio-utils/index.js';
 import uiManager from '../ui/ui-manager.js';
 import dataStorage from '../dataStorage.js';
+import i18n from '../i18n.js';
 
 const SweepMeasurement = {
     /**
@@ -133,16 +134,7 @@ const SweepMeasurement = {
             // Update frequency response graph
             this.updateFrequencyResponseGraph(measurementResult.frequencyResponse, measurementResult.maxSignalLevel);
             
-            // Create measurement point object
-            const point = {
-                name: `Point ${this.currentMeasurement.points.length + 1}`,
-                frequencyResponse: measurementResult.frequencyResponse,
-                maxSignalLevel: measurementResult.maxSignalLevel, // Record maximum signal level
-                timestamp: new Date().toISOString()
-            };
-            
-            // Store the point
-            this.currentPoint = point;
+            this.acceptMeasurementResult(measurementResult);
             
             // Measurement is complete
             this.isRunningMeasurement = false;
@@ -163,6 +155,41 @@ const SweepMeasurement = {
             // Display error to user
             alert(`Error: Measurement error occurred: ${error.message}`);
         }
+    },
+
+    acceptMeasurementResult(measurementResult) {
+        const pointId = this.currentMeasurement.nextPointId || 0;
+        this.currentMeasurement.nextPointId = pointId + 1;
+        const point = {
+            pointId,
+            name: `Point ${this.currentMeasurement.points.length + 1}`,
+            frequencyResponse: measurementResult.frequencyResponse,
+            maxSignalLevel: measurementResult.maxSignalLevel,
+            timestamp: new Date().toISOString()
+        };
+
+        this.currentImpulseResponse = null;
+        if (measurementResult.irValid && measurementResult.impulseResponse instanceof Float32Array) {
+            point.ir = {
+                stored: true,
+                length: measurementResult.impulseResponse.length,
+                sampleRate: measurementResult.sampleRate,
+                onsetIndex: measurementResult.onsetIndex,
+                peakDb: measurementResult.peakDb,
+                sweepLimited: measurementResult.sweepLimited
+            };
+            this.currentImpulseResponse = {
+                measurementId: this.currentMeasurement.id,
+                pointId,
+                sampleRate: measurementResult.sampleRate,
+                onsetIndex: measurementResult.onsetIndex,
+                prerollSamples: measurementResult.prerollSamples,
+                refScale: measurementResult.refScale,
+                peakDb: measurementResult.peakDb,
+                data: measurementResult.impulseResponse
+            };
+        }
+        this.currentPoint = point;
     },
 
     /**
@@ -206,18 +233,10 @@ const SweepMeasurement = {
      * @returns {Promise<string|null>} Measurement ID or null if no data
      */
     async saveAndContinueMeasurement() {
-        if (!this.currentPoint) return null;
-        
-        // Add point to measurement
-        this.currentMeasurement.points.push(this.currentPoint);
-        
-        // Save progress
-        if (this.currentMeasurement.points.length > 0) {
-            // Calculate average response based on current points
-            this.calculateAverageResponse();
-            
-            // Save measurement in progress and make sure it's selected in UI
-            const measurementId = await dataStorage.addMeasurement(this.currentMeasurement);
+        return this.runSaveAction(async () => {
+            if (!this.currentPoint) return null;
+
+            const measurementId = await this.saveCurrentPoint();
             uiManager.selectedMeasurementId = measurementId;
             uiManager.measurementDisplay.updateSelectedMeasurementHighlight();
 
@@ -225,9 +244,7 @@ const SweepMeasurement = {
             this.resetForNextSweepMeasurement();
 
             return measurementId;
-        }
-        
-        return null;
+        });
     },
     
     /**
@@ -235,20 +252,66 @@ const SweepMeasurement = {
      * @returns {Promise<string|null>} Measurement ID or null if no data
      */
     async saveAndFinishMeasurement() {
-        if (!this.currentPoint) return null;
-        
-        // Add final point to measurement
-        this.currentMeasurement.points.push(this.currentPoint);
-        
-        // Calculate average frequency response
-        this.calculateAverageResponse();
-        
-        // Save the complete measurement
-        const measurementId = await dataStorage.addMeasurement(this.currentMeasurement);
-        console.log(`Measurement saved with ID: ${measurementId}`);
-        
-        // Return the measurement ID for further processing by the UI
-        return measurementId;
+        return this.runSaveAction(async () => {
+            if (!this.currentPoint) return null;
+
+            const measurementId = await this.saveCurrentPoint();
+            console.log(`Measurement saved with ID: ${measurementId}`);
+
+            // Return the measurement ID for further processing by the UI
+            return measurementId;
+        });
+    },
+
+    async runSaveAction(action) {
+        if (this.saveActionPromise) return this.saveActionPromise;
+
+        const operation = (async () => {
+            for (const id of ['saveAndContinueBtn', 'saveAndFinishBtn']) {
+                const button = globalThis.document?.getElementById(id);
+                if (button) button.disabled = true;
+            }
+            try {
+                return await action();
+            } finally {
+                for (const id of ['saveAndContinueBtn', 'saveAndFinishBtn']) {
+                    const button = globalThis.document?.getElementById(id);
+                    if (button) button.disabled = false;
+                }
+            }
+        })();
+        this.saveActionPromise = operation;
+        try {
+            return await operation;
+        } finally {
+            if (this.saveActionPromise === operation) this.saveActionPromise = null;
+        }
+    },
+
+    /**
+     * Persist a candidate containing the current point, then publish it as current state.
+     * @returns {Promise<string>} Measurement ID
+     */
+    async saveCurrentPoint() {
+        const candidate = {
+            ...this.currentMeasurement,
+            points: [...this.currentMeasurement.points, this.currentPoint]
+        };
+        this.calculateAverageResponse(candidate);
+
+        try {
+            const measurementId = await dataStorage.addMeasurement(
+                candidate,
+                this.currentImpulseResponse
+            );
+            this.currentMeasurement = candidate;
+            return measurementId;
+        } catch (error) {
+            console.error('Measurement point could not be saved:', error);
+            uiManager.showNotification(i18n.t('message:saveFailed') ||
+                'The measurement could not be saved. Check available storage and try again.', 'error');
+            throw error;
+        }
     },
     
     /**
@@ -272,8 +335,6 @@ const SweepMeasurement = {
             return measurementId;
         } catch (error) {
             console.error('Error finishing measurement:', error);
-            // Ensure cleanup happens even in case of error
-            this.cleanup();
             throw error;
         }
     },
@@ -294,6 +355,7 @@ const SweepMeasurement = {
         this.currentSweepIndex = 0;
         this.sweepMeasurements = [];
         this.currentPoint = null;
+        this.currentImpulseResponse = null;
         
         // Clear graphs
         const canvas = document.getElementById('frequencyResponseGraph');
@@ -312,6 +374,7 @@ const SweepMeasurement = {
         this.currentSweepIndex = 0;
         this.sweepMeasurements = [];
         this.currentPoint = null;
+        this.currentImpulseResponse = null;
         
         // Clear graphs
         const canvas = document.getElementById('frequencyResponseGraph');
@@ -325,13 +388,13 @@ const SweepMeasurement = {
     /**
      * Calculate average frequency response from all measurement points
      */
-    calculateAverageResponse() {
-        if (!this.currentMeasurement.points || this.currentMeasurement.points.length === 0) {
+    calculateAverageResponse(measurement = this.currentMeasurement) {
+        if (!measurement.points || measurement.points.length === 0) {
             return;
         }
         
         // Get all frequency responses
-        const responses = this.currentMeasurement.points.map(point => point.frequencyResponse);
+        const responses = measurement.points.map(point => point.frequencyResponse);
         
         // All measurement points should have the same frequency grid since they are created
         // with the same measurement process. We can directly average corresponding frequency points.
@@ -369,18 +432,18 @@ const SweepMeasurement = {
         
         // Calculate average maxSignalLevel across all points
         let maxSignalLevelSum = 0;
-        this.currentMeasurement.points.forEach(point => {
+        measurement.points.forEach(point => {
             if (point.maxSignalLevel !== undefined) {
                 maxSignalLevelSum += point.maxSignalLevel;
             }
         });
-        const avgMaxSignalLevel = this.currentMeasurement.points.length > 0 
-            ? maxSignalLevelSum / this.currentMeasurement.points.length 
+        const avgMaxSignalLevel = measurement.points.length > 0
+            ? maxSignalLevelSum / measurement.points.length
             : -100;
         
         // Set the average response and maxSignalLevel
-        this.currentMeasurement.averageFrequencyResponse = averageResponse;
-        this.currentMeasurement.maxSignalLevel = avgMaxSignalLevel;
+        measurement.averageFrequencyResponse = averageResponse;
+        measurement.maxSignalLevel = avgMaxSignalLevel;
     }
 };
 

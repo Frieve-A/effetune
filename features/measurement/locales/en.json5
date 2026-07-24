@@ -100,6 +100,14 @@
   
   // Messages
   "message:peqCopied": "PEQ settings copied to clipboard successfully. The copied settings can be pasted into EffeTune's Effect Pipeline by Ctrl+V.", // Success message for PEQ copy
+  "message:saveFailed": "The measurement could not be saved. Check available storage and try again.",
+  "message:irStorageUnavailable": "Impulse responses can't be saved in this browser. Room EQ's Correction mode will be unavailable.",
+  "label:includeImpulseResponses": "Include impulse responses in measurement JSON exports",
+  "help:includeImpulseResponses": "Impulse responses can make the exported file tens of megabytes larger.",
+  "help:roomEq": "For FIR correction with phase control, use the Room EQ plugin in the main app.",
+  "message:irSaved": "IR saved ✓ ({seconds} s @ {sampleRate} kHz)",
+  "help:sweepLimited": "A longer sweep allows Room EQ to retain a longer impulse response.",
+  "message:measurementStorageUsage": "Measurements: {megabytes} MB",
   
   // Channel options
   "option:left": "Left Channel", // Option for left channel
@@ -143,4 +151,4 @@
   "option:averaging10": "10", // Option for 10 averaging
   "option:averaging12": "12", // Option for 12 averaging
   "option:averaging16": "16" // Option for 16 averaging
-} 
+}

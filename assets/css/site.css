@@ -79,7 +79,6 @@ img {
   padding: 0.8rem clamp(1rem, 3vw, 2.5rem);
   border-bottom: 1px solid var(--line);
   background: rgba(8, 11, 10, 0.82);
-  backdrop-filter: blur(18px);
 }
 
 .visually-hidden {
@@ -1048,7 +1047,6 @@ install.button > a {
     max-height: none;
     padding: 1rem;
     background: rgba(8, 11, 10, 0.62);
-    backdrop-filter: blur(8px);
   }
 
   .docs-page.toc-visible .toc-card {
@@ -1168,7 +1166,6 @@ install.button > a {
     border-radius: 0;
     background: rgba(8, 11, 10, 0.62);
     box-shadow: none;
-    backdrop-filter: blur(8px);
   }
 
   .docs-page.docs-nav-visible .docs-sidebar {

@@ -47,6 +47,36 @@ function sequenceClient(overrides = {}) {
   };
 }
 
+test('Library Play begins audio recovery before restored state and service work', async () => {
+  const calls = [];
+  let finishStateRestore;
+  const player = {
+    stateRestored: new Promise(resolve => { finishStateRestore = resolve; }),
+    resumeAudioContextInGesture() {
+      calls.push('resume');
+      return Promise.resolve(true);
+    },
+    playbackManager: {}
+  };
+  const bridge = new CatalogPlaybackBridge({
+    uiManager: { audioPlayer: player },
+    service: {
+      async start() {
+        calls.push('start');
+        return { kind: 'unavailable' };
+      }
+    },
+    sequenceClient: sequenceClient()
+  });
+
+  const starting = bridge.start(playbackRequest());
+  assert.deepEqual(calls, ['resume']);
+
+  finishStateRestore();
+  await starting;
+  assert.deepEqual(calls, ['resume', 'start']);
+});
+
 test('Library Play stays pending from service queueing through provisional activation', async () => {
   let finishStart;
   let finishActivation;

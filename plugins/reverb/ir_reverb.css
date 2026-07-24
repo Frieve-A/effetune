@@ -99,7 +99,6 @@ body.layout-desktop .ir-reverb-status[data-state="preparing"],
     place-items: center;
     padding: 16px;
     background: rgb(0 0 0 / 62%);
-    backdrop-filter: blur(10px);
 }
 
 .ir-library-dialog {

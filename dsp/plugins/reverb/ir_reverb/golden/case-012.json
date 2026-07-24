@@ -68,7 +68,7 @@
     "policy": "per-sample"
   },
   "referenceEngine": "native-ir-direct-double-v1",
-  "referenceHash": "c3b272baadca3fc51c71954751cdf02ba68240e1f244be21190407701c646e82",
+  "referenceHash": "ebb984943707d4c0ba8839367722c6250b22bea01dd7479fca2a5b2e720244d7",
   "outputFloats": 8192,
   "byteLength": 32768,
   "binary": "case-012.f32"

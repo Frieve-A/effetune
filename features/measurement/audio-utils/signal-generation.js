@@ -526,6 +526,7 @@ function generateTSP(length = 65536, sampleRate = 48000, channel = 'all', minFre
     // Save the generated signals for future reference
     this.lastTspSignal = tspSignal;
     this.lastInverseFilter = inverseFilter;
+    this.lastDeconvolutionRefScale = norm * invNorm;
     
     // Find the peak position for later synchronization
     let maxVal = 0;

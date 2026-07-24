@@ -529,7 +529,7 @@ public:
     }
     if (prepared_stages_ == stage_count_) {
       reset();
-      state_ = ConvolverPreparationState::active;
+      state_ = ConvolverPreparationState::warming;
     }
     return state_;
   }
@@ -549,27 +549,40 @@ public:
     output_ring_.clear();
     direct_position_ = 0u;
     timeline_ = 0u;
+    stream_history_samples_ = 0u;
     non_finite_ = false;
   }
 
   void process(float *audio, std::uint32_t channels, std::uint32_t frames) noexcept {
     if (audio == nullptr || channels < config_.inputs || channels < config_.outputs || frames == 0u)
       return;
+    std::uint32_t processStart = 0u;
     if (state_ == ConvolverPreparationState::preparing) {
-      preparation_samples_ += frames;
-      while (preparation_samples_ >= 128u && state_ == ConvolverPreparationState::preparing) {
-        preparation_samples_ -= 128u;
-        // Keep activation timing independent of the CPU-load staggering phase.
-        prepareSlice(1u);
+      while (processStart < frames && state_ == ConvolverPreparationState::preparing) {
+        const std::uint32_t untilSlice = 128u - preparation_samples_;
+        const std::uint32_t available = frames - processStart;
+        const std::uint32_t consumed = available < untilSlice ? available : untilSlice;
+        preparation_samples_ += consumed;
+        processStart += consumed;
+        if (preparation_samples_ == 128u) {
+          preparation_samples_ = 0u;
+          // Keep activation timing independent of the CPU-load staggering phase.
+          prepareSlice(1u);
+        }
       }
+      if (state_ == ConvolverPreparationState::preparing) {
+        std::memset(audio, 0, static_cast<std::size_t>(channels) * frames * sizeof(float));
+        return;
+      }
+    }
+    if (state_ != ConvolverPreparationState::warming &&
+        state_ != ConvolverPreparationState::active) {
       std::memset(audio, 0, static_cast<std::size_t>(channels) * frames * sizeof(float));
       return;
     }
-    if (state_ != ConvolverPreparationState::active) {
-      std::memset(audio, 0, static_cast<std::size_t>(channels) * frames * sizeof(float));
-      return;
-    }
-    for (std::uint32_t frame = 0u; frame < frames; ++frame) {
+    for (std::uint32_t frame = processStart; frame < frames; ++frame) {
+      if (state_ == ConvolverPreparationState::warming && stream_history_samples_ >= latency_)
+        state_ = ConvolverPreparationState::active;
       for (std::uint32_t input = 0u; input < config_.inputs; ++input)
         input_frame_[input] = audio[static_cast<std::size_t>(input) * frames + frame];
 
@@ -600,7 +613,12 @@ public:
           direct_position_ = 0u;
       }
       ++timeline_;
+      if (state_ == ConvolverPreparationState::warming)
+        ++stream_history_samples_;
     }
+    for (std::uint32_t channel = 0u; channel < channels; ++channel)
+      std::memset(audio + static_cast<std::size_t>(channel) * frames, 0,
+                  processStart * sizeof(float));
   }
 
   [[nodiscard]] std::size_t memoryBytes() const noexcept {
@@ -679,6 +697,7 @@ private:
     stage_index_ = 0u;
     prepared_stages_ = 0u;
     preparation_samples_ = 0u;
+    stream_history_samples_ = 0u;
     ring_size_ = 1u;
     latency_ = 0u;
     direct_position_ = 0u;
@@ -703,6 +722,7 @@ private:
   std::uint32_t stage_index_ = 0u;
   std::uint32_t prepared_stages_ = 0u;
   std::uint32_t preparation_samples_ = 0u;
+  std::uint64_t stream_history_samples_ = 0u;
   ConvolverPreparationState state_ = ConvolverPreparationState::empty;
 };
 

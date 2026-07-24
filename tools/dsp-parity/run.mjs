@@ -10,7 +10,12 @@ import {
 } from './cases.mjs';
 import { readGoldenSet, writeFloat32File } from './golden-io.mjs';
 import { executeReferenceCase, loadReferencePlugin } from './node-host.mjs';
-import { runNativeCase, runNativeReferenceCase, runWasmCase } from './runners.mjs';
+import {
+  isNativeDirectReferenceEngine,
+  runNativeCase,
+  runNativeReferenceCase,
+  runWasmCase
+} from './runners.mjs';
 import { generateStimulus, noiseSeedForCase } from './stimuli.mjs';
 import { compareAudio, formatComparison } from './tolerance.mjs';
 
@@ -81,11 +86,16 @@ function testCaseFromMetadata(metadata) {
     events: metadata.events ?? [],
     asset: metadata.asset,
     tolerance: metadata.tolerance,
-    toleranceNote: metadata.toleranceNote
+    toleranceNote: metadata.toleranceNote,
+    performanceBudgetMs: metadata.performanceBudgetMs
   };
 }
 
-async function nativeDirectReferenceHash(repoRoot) {
+async function nativeDirectReferenceHash(repoRoot, referenceEngine) {
+  // The IR v1 identity predates per-engine hashing; a semantic change requires a new version.
+  if (referenceEngine === 'native-ir-direct-double-v1') {
+    return 'ebb984943707d4c0ba8839367722c6250b22bea01dd7479fca2a5b2e720244d7';
+  }
   const source = await fs.readFile(path.join(repoRoot, 'dsp', 'test', 'parity_runner.cpp'), 'utf8');
   return crypto.createHash('sha256').update(source.replace(/\r\n?/g, '\n')).digest('hex');
 }
@@ -158,16 +168,19 @@ async function runParityForType({
     if (allowEmptyCase) return { type: plan.definition.type, results: [], skipped: true };
     throw new Error(`No golden case matched ${caseId}`);
   }
-  const nativeReference = goldens.every(
-    golden => golden.metadata.referenceEngine === 'native-ir-direct-double-v1'
-  );
-  if (!nativeReference && goldens.some(golden => golden.metadata.referenceEngine !== undefined)) {
+  const referenceEngines = new Set(goldens.map(golden => golden.metadata.referenceEngine));
+  if (referenceEngines.size !== 1) {
     throw new Error('Golden set mixes incompatible reference engines');
+  }
+  const referenceEngine = goldens[0].metadata.referenceEngine;
+  const nativeReference = isNativeDirectReferenceEngine(referenceEngine);
+  if (referenceEngine !== undefined && !nativeReference) {
+    throw new Error(`Golden set uses unsupported reference engine ${referenceEngine}`);
   }
   let loaded = null;
   let referenceHash = null;
   if (nativeReference) {
-    referenceHash = await nativeDirectReferenceHash(repoRoot);
+    referenceHash = await nativeDirectReferenceHash(repoRoot, referenceEngine);
   } else {
     loaded = await loadReferencePlugin(plan.definition.type, { repoRoot });
     await assertPluginBaseUnchanged(repoRoot, loaded.baseSourceHash);
@@ -202,6 +215,7 @@ async function runParityForType({
         seed: testCase.seed
       });
       let actual;
+      const startedAt = performance.now();
       if (mode === 'self-check') {
         actual = nativeReference
           ? await runNativeReferenceCase({
@@ -234,6 +248,10 @@ async function runParityForType({
           wasmPath: mode === 'simd' ? (simdPath ?? undefined) : (wasmPath ?? undefined)
         });
       }
+      const elapsedMs = performance.now() - startedAt;
+      const performanceBudgetMs = testCase.performanceBudgetMs;
+      const performancePass = !Number.isFinite(performanceBudgetMs) ||
+        elapsedMs <= performanceBudgetMs;
       const tolerance = golden.metadata.tolerance ?? plan.schema.tolerance ?? { abs: 0, policy: 'per-sample' };
       const comparison = compareAudio(golden.expected, actual, tolerance, {
         frames: testCase.frames,
@@ -243,12 +261,26 @@ async function runParityForType({
       if (!comparison.pass) {
         failureDump = await dumpFailure(dumpDir, plan.definition.type, mode, testCase, golden.expected, actual, comparison);
       }
-      log(`${comparison.pass ? 'PASS' : 'FAIL'} ${mode} ${plan.definition.type}/${testCase.id}: ${formatComparison(comparison)}` +
+      const pass = comparison.pass && performancePass;
+      const performanceText = Number.isFinite(performanceBudgetMs)
+        ? `; ${elapsedMs.toFixed(1)} ms / ${performanceBudgetMs} ms`
+        : '';
+      log(`${pass ? 'PASS' : 'FAIL'} ${mode} ${plan.definition.type}/${testCase.id}: ${formatComparison(comparison)}${performanceText}` +
         (failureDump ? `; dumped to ${failureDump}` : ''));
-      results.push({ type: plan.definition.type, mode, caseId: testCase.id, comparison, failureDump });
+      results.push({
+        type: plan.definition.type,
+        mode,
+        caseId: testCase.id,
+        comparison,
+        performance: Number.isFinite(performanceBudgetMs)
+          ? { elapsedMs, budgetMs: performanceBudgetMs, pass: performancePass }
+          : null,
+        pass,
+        failureDump
+      });
     }
   }
-  const failed = results.filter(result => !result.comparison.pass);
+  const failed = results.filter(result => !result.pass);
   if (throwOnFailure && failed.length > 0) {
     throw new Error(`${failed.length} of ${results.length} DSP parity comparisons failed`);
   }
@@ -287,7 +319,7 @@ export async function runParity(options) {
   if (options.caseId && results.length === 0 && errors.length === 0) {
     throw new Error(`No golden case matched ${options.caseId}`);
   }
-  const failed = results.filter(result => !result.comparison.pass);
+  const failed = results.filter(result => !result.pass);
   if (failed.length > 0) {
     errors.push(`${failed.length} of ${results.length} DSP parity comparisons failed`);
   }

@@ -1,4 +1,0 @@
-[
-  {"kind":"co-resident","partitioning":"capped-ladder","scheduling":"in-phase","instances":3,"sampleRate":48000,"contextRate":96000,"quantumFrames":64,"channels":2,"irSeconds":10,"medianQuantumUs":15.35,"worstQuantumUs":265.3,"halfDeadlineUs":666.666667,"totalProcessMs":162.6322,"algorithmBytes":48739392,"rawIrBytes":3840000,"wasmHeapBytes":0,"allocationViolations":0,"finite":true},
-  {"kind":"co-resident","partitioning":"capped-ladder","scheduling":"staggered","instances":3,"sampleRate":48000,"contextRate":96000,"quantumFrames":64,"channels":2,"irSeconds":10,"medianQuantumUs":15.75,"worstQuantumUs":355.4,"halfDeadlineUs":666.666667,"totalProcessMs":167.2335,"algorithmBytes":48739392,"rawIrBytes":3840000,"wasmHeapBytes":0,"allocationViolations":0,"finite":true}
-]

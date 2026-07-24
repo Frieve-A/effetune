@@ -95,6 +95,7 @@ export function createGoldenArtifacts({ type, schemaTolerance = null, cases }) {
       asset: testCase.asset,
       tolerance: testCase.tolerance ?? schemaTolerance,
       toleranceNote: testCase.toleranceNote,
+      performanceBudgetMs: testCase.performanceBudgetMs,
       jsEngineHash: entry.jsEngineHash,
       referenceEngine: entry.referenceEngine,
       referenceHash: entry.referenceHash,

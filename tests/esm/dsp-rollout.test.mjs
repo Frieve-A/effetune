@@ -94,6 +94,7 @@ test('rollout enables only shipped kernels with matching generated layouts', () 
     'LoPassFilterPlugin',
     'LoudnessEqualizerPlugin',
     'NarrowRangePlugin',
+    'RoomEqPlugin',
     'TiltEQPlugin',
     'ToneControlPlugin',
     'BitCrusherPlugin',

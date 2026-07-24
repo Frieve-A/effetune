@@ -4,6 +4,7 @@
   <a class="button button-primary" href="https://effetune.frieve.com/effetune.html">Abrir aplicación web</a>
   <install class="button button-secondary"><a href="https://effetune.frieve.com/effetune.html">Instalar versión PWA</a></install>
   <a class="button button-secondary" href="https://github.com/Frieve-A/effetune/releases/">Descargar aplicación de escritorio</a>
+  <a class="button button-secondary" href="https://github.com/Frieve-A/effetune-mixwright/releases">Descargar versión VST</a>
 </div>
 
 Un procesador de efectos de audio en tiempo real, diseñado para entusiastas del audio que desean mejorar su experiencia musical. EffeTune te permite procesar cualquier fuente de audio a través de diversos efectos de alta calidad, lo que te posibilita personalizar y perfeccionar tu experiencia auditiva en tiempo real.
@@ -326,6 +327,7 @@ Si el problema persiste, repórtalo a través de [GitHub Issues](https://github.
 | EQ        | Lo Pass Filter | Elimina con precisión las frecuencias altas no deseadas | [Detalles](plugins/eq.md#lo-pass-filter) |
 | EQ        | Loudness Equalizer | Corrección del equilibrio de frecuencias para escucha a bajo volumen | [Detalles](plugins/eq.md#loudness-equalizer) |
 | EQ        | Narrow Range | Combinación de filtros pasaaltos y pasabajos | [Detalles](plugins/eq.md#narrow-range) |
+| EQ        | Room EQ      | Corrección FIR basada en mediciones de sala guardadas | [Detalles](plugins/eq.md#room-eq) |
 | EQ        | Tilt EQ      | Ecualizador de inclinación para modelado rápido del tono | [Detalles](plugins/eq.md#tilt-eq)      |
 | EQ        | Tone Control | Control de tono de tres bandas | [Detalles](plugins/eq.md#tone-control) |
 | Lo-Fi     | Bit Crusher | Reducción de profundidad de bits y efecto de retención de orden cero | [Detalles](plugins/lofi.md#bit-crusher) |

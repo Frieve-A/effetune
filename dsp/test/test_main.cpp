@@ -4,6 +4,7 @@
 
 int main() {
   effetune::test::runAbiTests();
+  effetune::test::runDesignFftTests();
   effetune::test::runTelemetryTests();
   if (effetune::test::failures != 0) {
     std::fprintf(stderr, "%d DSP test check(s) failed\n", effetune::test::failures);

@@ -100,6 +100,14 @@
 
 // Messages
 "message:peqCopied": "PEQ 设置已成功复制到剪贴板，可通过 Ctrl+V 将复制的设置粘贴到 EffeTune 的效果管道中。", // Success message for PEQ copy
+"message:saveFailed": "无法保存测量。请检查可用存储空间后重试。",
+"message:irStorageUnavailable": "此浏览器无法保存脉冲响应。Room EQ的Correction将不可用。",
+"label:includeImpulseResponses": "导出测量JSON时包含脉冲响应",
+"help:includeImpulseResponses": "脉冲响应可能使导出文件增大几十MB。",
+"help:roomEq": "如需带相位控制的FIR校正，请使用主应用中的Room EQ插件。",
+"message:irSaved": "IR已保存 ✓（{seconds} s @ {sampleRate} kHz）",
+"help:sweepLimited": "更长的扫描信号可让Room EQ保留更长的脉冲响应。",
+"message:measurementStorageUsage": "测量数据：{megabytes} MB",
 
 // Channel options
 "option:left": "左声道", // Option for left channel

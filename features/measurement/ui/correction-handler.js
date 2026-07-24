@@ -13,8 +13,9 @@ class CorrectionHandler {
     /**
      * Update the correction settings and displayed graph
      */
-    async updateCorrection() {
+    async updateCorrection(expectedGeneration = this.uiManager.measurementStateGeneration) {
         if (!this.uiManager.selectedMeasurementId) return;
+        if (expectedGeneration !== this.uiManager.measurementStateGeneration) return;
         
         try {
             // Show spinner if not already displayed
@@ -33,7 +34,9 @@ class CorrectionHandler {
             this.updateFrequencyMarkers();
             
             // Calculate PEQ parameters
-            await this.calculatePEQParameters(settings);
+            await this.calculatePEQParameters(settings, expectedGeneration);
+
+            if (expectedGeneration !== this.uiManager.measurementStateGeneration) return;
 
             // Hide spinner on success
             spinner.style.display = 'none';
@@ -349,15 +352,11 @@ class CorrectionHandler {
      * @param {Object} settings - Target settings object
      * @returns {Promise<Array>} - Promise resolving to PEQ parameters
      */
-    async calculatePEQParameters(settings) {
-        const measurement = dataStorage.getMeasurementById(this.uiManager.selectedMeasurementId);
+    async calculatePEQParameters(settings, expectedGeneration = this.uiManager.measurementStateGeneration) {
+        const measurementId = this.uiManager.selectedMeasurementId;
+        const measurement = dataStorage.getMeasurementById(measurementId);
         if (!measurement) return [];
-        
-        // Update measurement with new settings
-        measurement.correctionLowFreq = settings.lowFreq;
-        measurement.correctionHighFreq = settings.highFreq;
-        measurement.smoothing = settings.smoothing;
-        measurement.eqBandCount = settings.eqBandCount;
+        if (expectedGeneration !== this.uiManager.measurementStateGeneration) return [];
         
         // Get frequency response data
         const responseData = measurement.averageFrequencyResponse;
@@ -373,13 +372,25 @@ class CorrectionHandler {
         );
         
         // Calculate PEQ parameters
-        const peqParameters = window.app.audioUtils.calculatePEQParameters(
+        const peqParameters = await window.app.audioUtils.calculatePEQParameters(
             smoothedResponse,
             settings.lowFreq,
             settings.highFreq,
             settings.eqBandCount,
             settings.smoothing
         );
+
+        if (expectedGeneration !== this.uiManager.measurementStateGeneration ||
+            measurementId !== this.uiManager.selectedMeasurementId ||
+            measurement !== dataStorage.getMeasurementById(measurementId)) {
+            return [];
+        }
+
+        // Commit settings and derived state together only if this calculation is current.
+        measurement.correctionLowFreq = settings.lowFreq;
+        measurement.correctionHighFreq = settings.highFreq;
+        measurement.smoothing = settings.smoothing;
+        measurement.eqBandCount = settings.eqBandCount;
         
         // Store PEQ parameters
         measurement.peqParameters = peqParameters;
@@ -400,4 +411,4 @@ class CorrectionHandler {
     }
 }
 
-export default CorrectionHandler; 
+export default CorrectionHandler;

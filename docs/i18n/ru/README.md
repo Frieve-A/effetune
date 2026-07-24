@@ -4,6 +4,7 @@
   <a class="button button-primary" href="https://effetune.frieve.com/effetune.html">Открыть веб-приложение</a>
   <install class="button button-secondary"><a href="https://effetune.frieve.com/effetune.html">Установить PWA-версию</a></install>
   <a class="button button-secondary" href="https://github.com/Frieve-A/effetune/releases/">Скачать настольное приложение</a>
+  <a class="button button-secondary" href="https://github.com/Frieve-A/effetune-mixwright/releases">Скачать VST-версию</a>
 </div>
 
 Приложение для обработки аудио в реальном времени, созданное для аудиофилов, стремящихся улучшить процесс прослушивания музыки. EffeTune позволяет обрабатывать любой аудио источник с помощью различных высококачественных эффектов, давая возможность настроить и усовершенствовать ваш опыт прослушивания в реальном времени.
@@ -322,6 +323,7 @@ EffeTune создан для аудиоэнтузиастов, которые х
 | EQ        | Lo Pass Filter | Точно убирает нежелательные высокие частоты | [Подробнее](plugins/eq.md#lo-pass-filter) |
 | EQ        | Loudness Equalizer | Коррекция частотного баланса для тихого прослушивания | [Подробнее](plugins/eq.md#loudness-equalizer) |
 | EQ        | Narrow Range | Сочетание фильтров высоких и низких частот | [Подробнее](plugins/eq.md#narrow-range) |
+| EQ        | Room EQ | FIR-коррекция по сохранённым измерениям помещения | [Подробнее](plugins/eq.md#room-eq) |
 | EQ        | Tilt EQ | Наклонный эквалайзер для быстрой коррекции тембра | [Подробнее](plugins/eq.md#tilt-eq) |
 | EQ        | Tone Control | Трехполосное управление тоном | [Подробнее](plugins/eq.md#tone-control) |
 | Lo-Fi     | Bit Crusher | Снижение битовой глубины и эффект zero-order hold | [Подробнее](plugins/lofi.md#bit-crusher) |

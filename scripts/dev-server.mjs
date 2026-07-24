@@ -730,6 +730,7 @@ function renderHomeLayout(page, contentHtml) {
           <a class="button button-primary" href="/effetune.html">Open Web App</a>
           <install class="button button-secondary"><a href="/effetune.html">Install PWA version</a></install>
           <a class="button button-secondary" href="https://github.com/Frieve-A/effetune/releases/">Download Desktop App</a>
+          <a class="button button-secondary" href="https://github.com/Frieve-A/effetune-mixwright/releases">Download VST Version</a>
         </div>
       </div>
     </section>

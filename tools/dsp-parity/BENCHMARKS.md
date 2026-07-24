@@ -991,3 +991,27 @@ js,wasm,simd --duration 1 --warmup 2 --repetitions 5`
 | 96000 | 8 | 16.06x | 127.67x | 126.34x |
 | 192000 | 2 | 8.32x | 77.25x | 77.65x |
 | 192000 | 8 | 5.02x | 56.88x | 66.78x |
+
+### Room EQ Maximum-Asset Admission Gate
+
+Measured on 2026-07-21 with Node v24.13.0 on a 13th Gen Intel Core i9-13900KF,
+Windows NT 10.0.26200.0. Both committed cases use 96 kHz, eight channels, a
+131,072-tap asymmetric independent-channel asset, and 128-frame processing blocks.
+The elapsed time includes artifact startup, asset admission and preparation, and the
+short parity render. Each golden case enforces a persistent 2,500 ms ceiling.
+
+Command:
+
+```text
+node tools/dsp-parity/run.mjs --type RoomEqPlugin --native --wasm --simd
+```
+
+| Case | Native debug | WASM | WASM SIMD | Ceiling |
+| --- | ---: | ---: | ---: | ---: |
+| Latency 0, noise | 144.1 ms | 30.6 ms | 27.3 ms | 2,500 ms |
+| Latency 128, impulse | 144.1 ms | 27.0 ms | 19.1 ms | 2,500 ms |
+
+All six parity comparisons passed the direct-double reference with maximum absolute
+error below `6e-8`. The two latency cases are part of the normal committed golden-set
+discovery, so baseline WASM, SIMD WASM, and native CI runs keep both the maximum asset
+admission and preparation-time ceiling persistent.

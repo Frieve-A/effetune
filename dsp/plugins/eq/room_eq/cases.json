@@ -1,0 +1,65 @@
+{
+  "defaults": {
+    "sampleRate": 96000,
+    "frames": 1024,
+    "channels": 8,
+    "channelMode": "all8",
+    "blockSize": 128,
+    "performanceBudgetMs": 2500,
+    "params": {
+      "fd": 0,
+      "dy": 4,
+      "gn": -1
+    }
+  },
+  "cases": [
+    {
+      "id": "max-mono-noise-96000-lt0",
+      "stimulus": "noise",
+      "frames": 1024,
+      "channels": 8,
+      "channelMode": "all8",
+      "params": { "lt": "0" },
+      "asset": {
+        "slot": 0,
+        "format": 1,
+        "channels": 1,
+        "frames": 131072,
+        "topology": 1,
+        "headBlock": 0,
+        "rateDivider": 1,
+        "ir": {
+          "kind": "sparse-decay-v1",
+          "seed": 1380274241,
+          "tapCount": 41,
+          "directGain": 0.65,
+          "tailGain": 0.4
+        }
+      }
+    },
+    {
+      "id": "max-mono-impulse-96000-lt128",
+      "stimulus": "imp",
+      "frames": 1536,
+      "channels": 8,
+      "channelMode": "all8",
+      "params": { "lt": "128", "fd": 256, "gn": 0 },
+      "asset": {
+        "slot": 0,
+        "format": 1,
+        "channels": 1,
+        "frames": 131072,
+        "topology": 1,
+        "headBlock": 128,
+        "rateDivider": 1,
+        "ir": {
+          "kind": "sparse-decay-v1",
+          "seed": 1380274242,
+          "tapCount": 43,
+          "directGain": 0.7,
+          "tailGain": 0.45
+        }
+      }
+    }
+  ]
+}

@@ -438,8 +438,8 @@ std::vector<float> interpolateReference(const std::vector<float> &input, std::ui
   return output;
 }
 
-bool runDirectReference(const Control &control, const std::vector<float> &input,
-                        std::vector<float> &output) {
+bool runDirectReference(const std::string &type, const Control &control,
+                        const std::vector<float> &input, std::vector<float> &output) {
   struct RoutePath {
     std::uint32_t input;
     std::uint32_t output;
@@ -452,6 +452,12 @@ bool runDirectReference(const Control &control, const std::vector<float> &input,
   constexpr std::uint32_t kTopologyIndependent = 2u;
   constexpr std::uint32_t kTopologyTrueStereo = 3u;
   constexpr std::uint32_t kTopologyMatrix = 4u;
+  const bool room_eq = type == "RoomEqPlugin";
+  const bool ir_reverb = type == "IRReverbPlugin";
+  if (!room_eq && !ir_reverb) {
+    std::fputs("Direct reference is not available for this kernel\n", stderr);
+    return false;
+  }
   const Asset &asset = control.asset;
   const std::uint32_t divider = asset.begin.rateDivider;
   const std::uint32_t ir_channels = asset.begin.channels;
@@ -468,15 +474,21 @@ bool runDirectReference(const Control &control, const std::vector<float> &input,
   const bool matrix_topology = asset.begin.topology == kTopologyMatrix && path_count >= 1u &&
                                path_count <= 8u && asset.begin.inputCount >= 1u &&
                                asset.begin.inputCount <= path_count;
-  if (!control.hasAsset || !control.events.empty() || control.initialParams.size() != 6u ||
-      asset.format != ET_ASSET_F32_MULTICH || expected_bytes != asset.bytes.size() ||
-      readU32(asset.bytes.data()) != kEtaMagic || readU32(asset.bytes.data() + 4u) != ir_channels ||
+  const std::size_t expected_params = room_eq ? 4u : 6u;
+  const bool valid_room_eq_asset =
+      !room_eq || (asset.begin.topology == kTopologyMono && divider == 1u && ir_channels == 1u &&
+                   asset.begin.processingChannels == control.channels &&
+                   asset.begin.pathCount == 0u && asset.begin.inputCount == 0u);
+  if (!control.hasAsset || !control.events.empty() ||
+      control.initialParams.size() != expected_params || asset.format != ET_ASSET_F32_MULTICH ||
+      expected_bytes != asset.bytes.size() || readU32(asset.bytes.data()) != kEtaMagic ||
+      readU32(asset.bytes.data() + 4u) != ir_channels ||
       readU32(asset.bytes.data() + 8u) != ir_frames ||
       readU32(asset.bytes.data() + 16u) != asset.begin.topology ||
       (!fixed_topology && !matrix_topology) ||
       (fixed_topology && (asset.begin.pathCount != 0u || asset.begin.inputCount != 0u)) ||
       (asset.begin.topology == kTopologyTrueStereo && ir_channels != 4u) ||
-      (divider != 1u && divider != 2u && divider != 4u)) {
+      (divider != 1u && divider != 2u && divider != 4u) || !valid_room_eq_asset) {
     std::fputs("Direct reference requires one valid ETA1 asset and no events\n", stderr);
     return false;
   }
@@ -564,6 +576,42 @@ bool runDirectReference(const Control &control, const std::vector<float> &input,
     for (std::size_t index = 0u; index < full.size() && start + index < control.frames; ++index) {
       wet[static_cast<std::size_t>(channel) * control.frames + start + index] = full[index];
     }
+  }
+
+  if (room_eq) {
+    const std::uint32_t filter_delay = control.initialParams[1u] > 0.0F
+                                           ? static_cast<std::uint32_t>(control.initialParams[1u])
+                                           : 0u;
+    const float gain = std::pow(10.0F, control.initialParams[3u] * 0.05F);
+    output.assign(input.size(), 0.0F);
+    for (std::uint32_t channel = 0u; channel < control.channels; ++channel) {
+      const std::size_t channel_offset = static_cast<std::size_t>(channel) * control.frames;
+      const std::uint32_t manual_delay = control.initialParams[2u] > 0.0F
+                                             ? static_cast<std::uint32_t>(control.initialParams[2u])
+                                             : 0u;
+      float wet_mix = 0.0F;
+      for (std::uint32_t frame = 0u; frame < control.frames; ++frame) {
+        if (wet_mix < 1.0F) {
+          wet_mix += 1.0F / 128.0F;
+          if (wet_mix > 1.0F)
+            wet_mix = 1.0F;
+        }
+        const std::uint32_t active_manual_delay =
+            manual_delay > 0u && frame < 128u ? 0u : manual_delay;
+        const std::uint32_t dry_delay = asset.begin.headBlock + filter_delay + active_manual_delay;
+        const float dry = frame >= dry_delay ? input[channel_offset + frame - dry_delay] : 0.0F;
+        const float delayed_wet =
+            frame >= active_manual_delay ? wet[channel_offset + frame - active_manual_delay] : 0.0F;
+        float manual_transition_gain = 1.0F;
+        if (manual_delay > 0u && frame < 128u)
+          manual_transition_gain = static_cast<float>(128u - frame) / 128.0F;
+        else if (manual_delay > 0u && frame < 256u)
+          manual_transition_gain = static_cast<float>(frame - 128u) / 128.0F;
+        output[channel_offset + frame] =
+            (dry + wet_mix * (delayed_wet - dry)) * gain * manual_transition_gain;
+      }
+    }
+    return true;
   }
 
   const float wet_gain = std::pow(10.0F, control.initialParams[3u] * 0.05F);
@@ -699,7 +747,7 @@ bool runCase(const Options &options, const Control &control, const std::vector<f
     return false;
   }
   if (options.referenceDirect)
-    return runDirectReference(control, input, output);
+    return runDirectReference(options.type, control, input, output);
   if (control.hasAsset)
     return runAssetCase(options, control, input, output);
 

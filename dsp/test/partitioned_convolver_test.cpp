@@ -133,8 +133,17 @@ void prepareToActive(PartitionedConvolver &convolver, std::uint32_t budget) {
     convolver.prepareSlice(budget);
     ++slices;
   }
+  CONVOLVER_CHECK(convolver.state() == ConvolverPreparationState::warming);
+  std::vector<float> silence(2u * 128u, 0.0F);
+  std::uint32_t warmingBlocks = 0u;
+  while (convolver.state() == ConvolverPreparationState::warming && warmingBlocks < 100u) {
+    effetune::allocation_guard::Scope guard;
+    convolver.process(silence.data(), 2u, 128u);
+    ++warmingBlocks;
+  }
   CONVOLVER_CHECK(convolver.state() == ConvolverPreparationState::active);
   CONVOLVER_CHECK(slices < 100000u);
+  CONVOLVER_CHECK(warmingBlocks > 0u && warmingBlocks < 100u);
 }
 
 void testIncrementalPreparationAndAllocationGuard() {
@@ -164,19 +173,23 @@ void testIncrementalPreparationAndAllocationGuard() {
       std::all_of(block.begin(), block.end(), [](float sample) { return sample == 0.0F; }));
 
   std::uint32_t processCalls = 1u;
-  while (convolver.state() == ConvolverPreparationState::preparing && processCalls < 1000u) {
+  bool sawWarming = false;
+  while (convolver.state() != ConvolverPreparationState::active && processCalls < 1000u) {
     std::fill(block.begin(), block.end(), 0.25F);
+    const ConvolverPreparationState stateBefore = convolver.state();
     {
       effetune::allocation_guard::Scope guard;
       convolver.process(block.data(), 2u, 128u);
     }
-    if (convolver.state() == ConvolverPreparationState::preparing) {
+    sawWarming = sawWarming || convolver.state() == ConvolverPreparationState::warming;
+    if (stateBefore == ConvolverPreparationState::preparing) {
       CONVOLVER_CHECK(
           std::all_of(block.begin(), block.end(), [](float sample) { return sample == 0.0F; }));
     }
     ++processCalls;
   }
   CONVOLVER_CHECK(convolver.state() == ConvolverPreparationState::active);
+  CONVOLVER_CHECK(sawWarming);
   CONVOLVER_CHECK(processCalls > 1u);
   CONVOLVER_CHECK(processCalls < 1000u);
   CONVOLVER_CHECK(effetune::allocation_guard::violationCount() == allocationBefore);
@@ -297,10 +310,18 @@ void testPreparationPhaseStaggerPreservesActivationTiming() {
     inPhase.process(block.data(), 1u, 128u);
     staggered.process(block.data(), 1u, 128u);
   }
-  CONVOLVER_CHECK(inPhase.state() == ConvolverPreparationState::active);
-  CONVOLVER_CHECK(staggered.state() == ConvolverPreparationState::active);
+  CONVOLVER_CHECK(inPhase.state() == ConvolverPreparationState::warming);
+  CONVOLVER_CHECK(staggered.state() == ConvolverPreparationState::warming);
   CONVOLVER_CHECK(
       std::all_of(block.begin(), block.end(), [](float sample) { return sample == 0.0F; }));
+  for (std::uint32_t blockIndex = 0u; blockIndex < 3u; ++blockIndex) {
+    std::fill(block.begin(), block.end(), 1.0F);
+    effetune::allocation_guard::Scope guard;
+    inPhase.process(block.data(), 1u, 128u);
+    staggered.process(block.data(), 1u, 128u);
+  }
+  CONVOLVER_CHECK(inPhase.state() == ConvolverPreparationState::active);
+  CONVOLVER_CHECK(staggered.state() == ConvolverPreparationState::active);
   CONVOLVER_CHECK(effetune::allocation_guard::violationCount() == allocationBefore);
 }
 
@@ -319,8 +340,8 @@ void testStaggeredInstances() {
   std::vector<float> silence(2u * 128u, 0.0F);
   std::uint32_t quanta = 0u;
   const std::uint32_t allocationBefore = effetune::allocation_guard::violationCount();
-  while ((first.state() == ConvolverPreparationState::preparing ||
-          second.state() == ConvolverPreparationState::preparing) &&
+  while ((first.state() != ConvolverPreparationState::active ||
+          second.state() != ConvolverPreparationState::active) &&
          quanta < 1000u) {
     {
       effetune::allocation_guard::Scope guard;

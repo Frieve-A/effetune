@@ -41,6 +41,7 @@ export class CatalogPlaybackBridge {
     const destination = PLAYBACK_DESTINATIONS[request?.operationKind];
     if (!destination) return this.service.start(request);
     const player = this.#getPlayer();
+    if (request.operationKind === 'play') player.resumeAudioContextInGesture?.();
     const finishPlaybackPending = request.operationKind === 'play'
       ? player.stateManager?.beginPlaybackPending?.(3) ?? null
       : null;

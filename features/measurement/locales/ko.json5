@@ -100,6 +100,14 @@
 
   // Messages
   "message:peqCopied": "PEQ 설정이 클립보드에 성공적으로 복사되었습니다. 복사된 설정은 Ctrl+V로 EffeTune의 이펙트 파이프라인에 붙여넣을 수 있습니다.",
+  "message:saveFailed": "측정을 저장하지 못했습니다. 사용 가능한 저장 공간을 확인한 뒤 다시 시도하십시오.",
+  "message:irStorageUnavailable": "이 브라우저에서는 임펄스 응답을 저장할 수 없습니다. Room EQ의 Correction을 사용할 수 없습니다.",
+  "label:includeImpulseResponses": "측정 JSON 내보내기에 임펄스 응답 포함",
+  "help:includeImpulseResponses": "임펄스 응답을 포함하면 내보낸 파일이 수십 MB 더 커질 수 있습니다.",
+  "help:roomEq": "위상을 제어하는 FIR 보정에는 메인 앱의 Room EQ 플러그인을 사용하십시오.",
+  "message:irSaved": "IR 저장됨 ✓ ({seconds} s @ {sampleRate} kHz)",
+  "help:sweepLimited": "스윕을 길게 하면 Room EQ가 더 긴 임펄스 응답을 보존할 수 있습니다.",
+  "message:measurementStorageUsage": "측정 데이터: {megabytes} MB",
 
   // Channel options
   "option:left": "왼쪽 채널",

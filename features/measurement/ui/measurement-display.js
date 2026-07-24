@@ -151,7 +151,7 @@ class MeasurementDisplay {
                 false
             );
             this.uiManager.pendingAction = () => {
-                this.uiManager.hasUnsavedChanges = false;
+                this.uiManager.rollbackMeasurementChanges();
                 this.selectMeasurement(id);
             };
             return false;
@@ -219,51 +219,30 @@ class MeasurementDisplay {
             ? `${measurement.maxSignalLevel.toFixed(1)} dB` 
             : 'Not recorded';
         
-        // Format metadata as table rows
-        let html = `
-            <tr>
-                <th>Measurement Date</th>
-                <td>${dateString} ${timeString}</td>
-            </tr>
-            <tr>
-                <th>Input Device</th>
-                <td>${measurement.audioInput}</td>
-            </tr>
-            <tr>
-                <th>Input Channel</th>
-                <td>${inputChannelText}</td>
-            </tr>
-            <tr>
-                <th>Output Device</th>
-                <td>${measurement.audioOutput}</td>
-            </tr>
-            <tr>
-                <th>Output Channel</th>
-                <td>${outputChannelText}</td>
-            </tr>
-            <tr>
-                <th>Sampling Frequency</th>
-                <td>${measurement.sampleRate ? (measurement.sampleRate / 1000).toFixed(1) + ' kHz' : '48 kHz'}</td>
-            </tr>
-            <tr>
-                <th>Sweep Length</th>
-                <td>${Number(measurement.sweepLength).toLocaleString()} samples</td>
-            </tr>
-            <tr>
-                <th>Synchronous Averaging</th>
-                <td>${measurement.averaging} times</td>
-            </tr>
-            <tr>
-                <th>Max Signal Level</th>
-                <td>${maxSignalLevel}</td>
-            </tr>
-            <tr>
-                <th>Measurement Points</th>
-                <td>${measurement.points.length}</td>
-            </tr>
-        `;
-        
-        document.getElementById('measurementDetails').innerHTML = html;
+        const details = [
+            ['Measurement Date', `${dateString} ${timeString}`],
+            ['Input Device', measurement.audioInput || 'Not recorded'],
+            ['Input Channel', inputChannelText],
+            ['Output Device', measurement.audioOutput || 'Not recorded'],
+            ['Output Channel', outputChannelText],
+            ['Sampling Frequency', measurement.sampleRate
+                ? `${(measurement.sampleRate / 1000).toFixed(1)} kHz` : '48 kHz'],
+            ['Sweep Length', `${Number(measurement.sweepLength).toLocaleString()} samples`],
+            ['Synchronous Averaging', `${measurement.averaging} times`],
+            ['Max Signal Level', maxSignalLevel],
+            ['Measurement Points', String(measurement.points.length)]
+        ];
+        const detailsElement = document.getElementById('measurementDetails');
+        detailsElement.replaceChildren();
+        for (const [label, value] of details) {
+            const row = document.createElement('tr');
+            const heading = document.createElement('th');
+            const cell = document.createElement('td');
+            heading.textContent = label;
+            cell.textContent = value;
+            row.append(heading, cell);
+            detailsElement.appendChild(row);
+        }
         
         // Display measurement points
         this.displayMeasurementPoints(measurement);
@@ -371,6 +350,19 @@ class MeasurementDisplay {
             
             const nameElement = document.createElement('div');
             nameElement.textContent = point.name || `Point ${index + 1}`;
+            if (point.ir?.stored) {
+                const irBadge = document.createElement('span');
+                irBadge.className = 'measurement-ir-badge';
+                irBadge.textContent = i18n.t('message:irSaved', {
+                    seconds: (point.ir.length / point.ir.sampleRate).toFixed(2),
+                    sampleRate: Math.round(point.ir.sampleRate / 100) / 10
+                }) || `IR saved ✓ (${(point.ir.length / point.ir.sampleRate).toFixed(2)} s @ ${Math.round(point.ir.sampleRate / 100) / 10} kHz)`;
+                nameElement.appendChild(irBadge);
+                if (point.ir.sweepLimited) {
+                    irBadge.title = i18n.t('help:sweepLimited') ||
+                        'A longer sweep allows Room EQ to retain a longer impulse response.';
+                }
+            }
             
             const deleteBtn = document.createElement('button');
             deleteBtn.className = 'delete-point delete-button';
@@ -420,8 +412,9 @@ class MeasurementDisplay {
      * Export measurement as JSON file
      * @param {string} id - Measurement ID to export
      */
-    exportMeasurement(id) {
-        const jsonString = dataStorage.exportMeasurementToJSON(id);
+    async exportMeasurement(id) {
+        const includeImpulseResponses = Boolean(document.getElementById('includeImpulseResponses')?.checked);
+        const jsonString = await dataStorage.exportMeasurementToJSON(id, includeImpulseResponses);
         if (!jsonString) return;
         
         const measurement = dataStorage.getMeasurementById(id);
@@ -460,23 +453,28 @@ class MeasurementDisplay {
      * Delete a measurement
      * @param {string} id - Measurement ID to delete
      */
-    deleteMeasurement(id) {
+    async deleteMeasurement(id) {
         const wasSelected = id === this.uiManager.selectedMeasurementId;
-        
-        dataStorage.deleteMeasurement(id);
+        const deleted = await dataStorage.deleteMeasurement(id);
+        if (!deleted) {
+            this.uiManager.showNotification(i18n.t('message:deleteFailed') ||
+                'The measurement could not be deleted. Check available storage and try again.', 'error');
+            return false;
+        }
         this.updateMeasurementList();
         
         if (wasSelected) {
             // Select the latest measurement if available
             const latestMeasurement = dataStorage.getLatestMeasurement();
             if (latestMeasurement) {
-                this.selectMeasurement(latestMeasurement.id);
+                await this.selectMeasurement(latestMeasurement.id);
             } else {
                 this.uiManager.selectedMeasurementId = null;
                 document.getElementById('noMeasurementMessage').style.display = 'block';
                 document.getElementById('measurementResults').style.display = 'none';
             }
         }
+        return true;
     }
 
     /**
@@ -572,12 +570,17 @@ class MeasurementDisplay {
             return;
         }
         
-        // Create a copy of the points array and remove the specified point
+        // Snapshot the complete editable state so Discard can restore it as one unit.
+        if (!measurement._editSnapshot) measurement._editSnapshot = structuredClone(measurement);
+        if (!measurement._deletedPointIds) measurement._deletedPointIds = [];
+        const deletedPointId = measurement.points[index]?.pointId;
+        if (Number.isSafeInteger(deletedPointId)) measurement._deletedPointIds.push(deletedPointId);
         const updatedPoints = [...measurement.points];
         updatedPoints.splice(index, 1);
         
         // Mark as having unsaved changes
         this.uiManager.hasUnsavedChanges = true;
+        const stateGeneration = ++this.uiManager.measurementStateGeneration;
         
         // Update the measurement object temporarily (not saved to storage yet)
         measurement.points = updatedPoints;
@@ -591,7 +594,7 @@ class MeasurementDisplay {
         this.displayMeasurementDetails(this.uiManager.selectedMeasurementId, true);
 
         if (hadPEQParameters && measurement.averageFrequencyResponse.length > 0) {
-            this.uiManager.correctionHandler.updateCorrection().catch(error => {
+            this.uiManager.correctionHandler.updateCorrection(stateGeneration).catch(error => {
                 console.error('Error recalculating correction after point deletion:', error);
             });
         }

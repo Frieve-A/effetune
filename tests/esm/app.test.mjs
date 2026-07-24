@@ -126,6 +126,14 @@ async function withAppModule(options = {}, callback) {
   };
   const windowObject = {
     __EFFECTUNE_DISABLE_APP_AUTO_START__: true,
+    listeners: new Map(),
+    addEventListener(type, listener) {
+      if (!this.listeners.has(type)) this.listeners.set(type, []);
+      this.listeners.get(type).push(listener);
+    },
+    dispatch(type, event = {}) {
+      for (const listener of this.listeners.get(type) || []) listener(event);
+    },
     electronAPI: options.electronApiDuringImport,
     location: {
       search: options.search ?? '',
@@ -287,6 +295,9 @@ function createDependencies(calls, options = {}) {
     async showLibraryView(viewOptions) {
       calls.push(['ui.showLibraryView', viewOptions]);
       if (options.showLibraryReject) throw new Error('library failed');
+    },
+    deferLibraryStartupView(initialView) {
+      calls.push(['ui.deferLibraryStartupView', initialView]);
     },
     getDoubleBlindTest() {
       return {
@@ -853,6 +864,29 @@ test('startup view preference opens library unless URL or first-launch content t
     await app.applyStartupViewPreference();
     assert.equal(document.body.className.split(/\s+/).includes('view-library'), false);
     assert.equal(calls.some(call => call[0] === 'ui.showLibraryView'), false);
+  });
+
+  await withAppModule({}, async ({ calls, mod, window }) => {
+    window.appConfig = { startupView: 'library', libraryStartupView: 'tracks' };
+    window.electronIntegration = { isElectron: false };
+    const app = new mod.App({
+      ...createDependencies(calls),
+      loadStartupConfig: async () => ({
+        startupView: 'library',
+        libraryStartupView: 'playlists',
+        pipelineStartup: 'default'
+      })
+    });
+
+    await app.initializeAndBuildPipeline();
+    await app.applyStartupViewPreference();
+
+    assert.deepEqual(calls.filter(call => call[0] === 'ui.deferLibraryStartupView'), [
+      ['ui.deferLibraryStartupView', 'tracks'],
+      ['ui.deferLibraryStartupView', 'playlists']
+    ]);
+    assert.equal(calls.some(call => call[0] === 'ui.showLibraryView' &&
+      call[1]?.initialView === 'playlists'), true);
   });
 });
 
@@ -1472,6 +1506,44 @@ test('event listeners and update notifications stay recoverable', async () => {
     app._deviceChangeInProgress = true;
     await app.handleOutputDeviceChange();
     app._deviceChangeInProgress = false;
+  });
+});
+
+test('app activation and user interaction resume power-managed audio through one route-aware entry point', async () => {
+  await withAppModule({}, async ({ calls, document, mod, window }) => {
+    const deps = createDependencies(calls);
+    deps.audioManager.powerPolicyController = {
+      enabled: true,
+      handlePageLifecycleEvent(type, detail) {
+        calls.push(['power.lifecycle', type, detail.hidden]);
+      },
+      requestResumeFromUserInteraction() {
+        calls.push(['power.resumeFromInteraction']);
+        return Promise.resolve(true);
+      }
+    };
+    const app = new mod.App(deps);
+    app.setupEventListeners();
+
+    document.dispatch('pointerdown');
+    document.dispatch('keydown', { key: 'x' });
+    window.dispatch('focus');
+    document.hidden = true;
+    document.dispatch('visibilitychange');
+    document.hidden = false;
+    document.dispatch('visibilitychange');
+    document.dispatch('resume');
+    window.dispatch('pageshow', { persisted: true });
+    await flushMicrotasks();
+
+    assert.equal(calls.filter(call => call[0] === 'power.resumeFromInteraction').length, 6);
+    assert.deepEqual(calls.filter(call => call[0] === 'power.lifecycle').map(call => call[1]), [
+      'startup',
+      'visibilitychange',
+      'visibilitychange',
+      'resume',
+      'pageshow'
+    ]);
   });
 });
 

@@ -29,6 +29,15 @@ export const NATIVE_CONTROL_ASSET_VERSION = 3;
 export const NATIVE_CONTROL_ASSET_HEADER_BYTES = 84;
 export const WASM_PIPELINE_TELEMETRY_BYTES = 256 * 1024;
 
+const NATIVE_DIRECT_REFERENCE_ENGINES = new Set([
+  'native-ir-direct-double-v1',
+  'native-room-eq-direct-double-v1'
+]);
+
+export function isNativeDirectReferenceEngine(value) {
+  return NATIVE_DIRECT_REFERENCE_ENGINES.has(value);
+}
+
 export function seedWords(seed = DEFAULT_NOISE_SEED) {
   const mask64 = (1n << 64n) - 1n;
   let normalized = BigInt(seed) & mask64;

@@ -140,6 +140,7 @@ class MeasurementController {
             sweepMaxFreq: sweepMaxFreq,
             averaging: config.averaging,
             points: [],
+            nextPointId: 0,
             correctionLowFreq: 20,
             correctionHighFreq: 20000,
             smoothing: 0.3,

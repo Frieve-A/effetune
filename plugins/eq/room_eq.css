@@ -1,0 +1,361 @@
+.room-eq-measurement-row { display: flex; align-items: center; flex-wrap: nowrap !important; gap: 10px; }
+.room-eq-measurement-row label { min-width: 120px; }
+.room-eq-measurement-row select { flex: 1; min-width: 0; }
+.room-eq-measurement-status,
+.room-eq-refresh { flex: 0 0 auto; white-space: nowrap; }
+.room-eq-measurement-status[data-state='warning'],
+.room-eq-status[data-state='error'],
+.room-eq-status[data-state='warning'] { color: #ff9f43; }
+.room-eq-status-line { display: flex; flex-wrap: wrap; gap: 0 0.6em; margin: 2px 0; }
+.room-eq-status, .room-eq-latency { color: #bbb; font-size: 0.9em; white-space: nowrap; }
+.room-eq-additional-eq-ui {
+    position: relative;
+    width: 100%;
+}
+.room-eq-additional-eq-ui .room-eq-additional-eq-graph {
+    position: relative;
+    width: 100%;
+    max-width: 1024px;
+    aspect-ratio: 1024 / 480;
+    background-color: #1a1a1a;
+}
+.room-eq-additional-eq-ui .room-eq-additional-eq-grid,
+.room-eq-additional-eq-ui .room-eq-additional-eq-response {
+    position: absolute;
+    width: calc(100% - 40px);
+    height: calc(100% - 40px);
+    left: 20px;
+    top: 20px;
+    pointer-events: none;
+}
+.room-eq-additional-eq-ui .room-eq-additional-eq-grid line {
+    stroke: #333;
+    stroke-width: 1;
+}
+.room-eq-additional-eq-ui .room-eq-additional-eq-grid text {
+    fill: #666;
+    font-size: 10px;
+}
+.room-eq-additional-eq-ui .room-eq-additional-eq-response path {
+    fill: none;
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+}
+.room-eq-additional-eq-ui .room-eq-additional-eq-response .room-eq-correction-boundary {
+    stroke: #fff;
+    stroke-width: 1;
+    stroke-dasharray: 2 3;
+    stroke-linecap: round;
+    vector-effect: non-scaling-stroke;
+}
+.room-eq-additional-eq-ui .room-eq-additional-eq-marker {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    color: #fff;
+    background-color: #4a4a4a;
+    border: 2px solid #666;
+    border-radius: 50%;
+    font-size: 12px;
+    cursor: pointer;
+    transform: translate(-50%, -50%);
+    user-select: none;
+    touch-action: none;
+}
+.room-eq-additional-eq-ui .room-eq-additional-eq-marker::before {
+    position: absolute;
+    inset: -10px;
+    content: "";
+}
+.room-eq-additional-eq-ui .room-eq-additional-eq-marker:hover,
+.room-eq-additional-eq-ui .room-eq-additional-eq-marker.active {
+    background-color: #666;
+    border-color: #999;
+}
+.room-eq-additional-eq-ui .room-eq-additional-eq-marker.disabled {
+    background-color: #333;
+    border-color: #444;
+    opacity: 0.6;
+}
+.room-eq-additional-eq-ui .room-eq-additional-eq-marker-text {
+    position: absolute;
+    top: 50%;
+    display: flex;
+    flex-direction: column;
+    color: #ccc;
+    font-size: 11px;
+    white-space: nowrap;
+    pointer-events: none;
+    transform: translateY(-50%);
+}
+.room-eq-additional-eq-ui .room-eq-additional-eq-marker-text.left {
+    left: calc(100% + 8px);
+    text-align: left;
+}
+.room-eq-additional-eq-ui .room-eq-additional-eq-marker-text.right {
+    right: calc(100% + 8px);
+    text-align: right;
+}
+.room-eq-additional-eq-ui .room-eq-additional-eq-controls {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 10px;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 1024px;
+    padding: 10px;
+    background-color: #2a2a2a;
+    border-radius: 4px;
+}
+.room-eq-additional-eq-ui .room-eq-additional-eq-band {
+    display: flex;
+    flex: 1 1 180px;
+    flex-direction: column;
+    gap: 8px;
+    box-sizing: border-box;
+    min-width: 0;
+    padding: 8px;
+    background-color: #333;
+    border-radius: 4px;
+}
+.room-eq-additional-eq-ui .room-eq-additional-eq-band.active { background-color: #444; }
+.room-eq-additional-eq-ui .room-eq-additional-eq-band-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    color: #ccc;
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+}
+.room-eq-additional-eq-ui .room-eq-additional-eq-band-checkbox { margin: 0; }
+.room-eq-additional-eq-ui .room-eq-additional-eq-type-row,
+.room-eq-additional-eq-ui .room-eq-additional-eq-q-row,
+.room-eq-additional-eq-ui .room-eq-additional-eq-freq-row,
+.room-eq-additional-eq-ui .room-eq-additional-eq-gain-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.room-eq-additional-eq-ui .room-eq-additional-eq-type-label,
+.room-eq-additional-eq-ui .room-eq-additional-eq-freq-label,
+.room-eq-additional-eq-ui .room-eq-additional-eq-gain-label {
+    min-width: 78px;
+    color: #ccc;
+    font-size: 12px;
+    white-space: nowrap;
+}
+.room-eq-additional-eq-ui .room-eq-additional-eq-freq-label,
+.room-eq-additional-eq-ui .room-eq-additional-eq-gain-label {
+    flex: 1 1 auto;
+}
+.room-eq-additional-eq-ui .room-eq-additional-eq-q-label {
+    min-width: 20px;
+    color: #ccc;
+    font-size: 12px;
+    white-space: nowrap;
+}
+.room-eq-additional-eq-ui .room-eq-additional-eq-q-slider {
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+    height: 20px;
+    margin: 0;
+}
+.room-eq-additional-eq-ui .room-eq-additional-eq-q-text,
+.room-eq-additional-eq-ui .room-eq-additional-eq-freq-text,
+.room-eq-additional-eq-ui .room-eq-additional-eq-gain-text {
+    flex: 0 0 auto;
+    width: 40px;
+    min-width: 40px;
+    padding: 2px 4px;
+    color: #ccc;
+    background-color: #222;
+    border: 1px solid #444;
+    border-radius: 3px;
+    font-size: 12px;
+}
+.room-eq-additional-eq-ui .room-eq-additional-eq-freq-text,
+.room-eq-additional-eq-ui .room-eq-additional-eq-gain-text {
+    margin-left: auto;
+}
+.room-eq-additional-eq-ui .room-eq-additional-eq-filter-type {
+    width: 100%;
+    padding: 4px;
+    color: #ccc;
+    background-color: #222;
+    border: 1px solid #444;
+    border-radius: 3px;
+    font-size: 12px;
+}
+.room-eq-additional-eq-ui .room-eq-additional-eq-response .room-eq-measured-response-path {
+    stroke: #b0b0b0;
+    opacity: 0.7;
+}
+.room-eq-additional-eq-ui .room-eq-additional-eq-response .room-eq-base-response-path {
+    stroke: #80c080;
+    opacity: 0.65;
+}
+.room-eq-additional-eq-ui .room-eq-additional-eq-response .room-eq-combined-response-path {
+    stroke: #00ff00;
+}
+.room-eq-additional-eq-ui .room-eq-additional-eq-response .room-eq-corrected-response-path {
+    stroke: #fff;
+}
+.room-eq-response-view-controls {
+    position: absolute;
+    z-index: 4;
+    top: 5px;
+    left: 50%;
+    display: flex;
+    gap: 12px;
+    padding: 2px 7px;
+    color: #ccc;
+    background: rgba(26, 26, 26, 0.88);
+    border-radius: 3px;
+    font-size: 11px;
+    transform: translateX(-50%);
+    white-space: nowrap;
+}
+.room-eq-response-view-controls label {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    cursor: pointer;
+}
+.room-eq-response-view-controls input { margin: 0; }
+.room-eq-response-legend {
+    position: absolute;
+    z-index: 4;
+    top: 5px;
+    right: 7px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 2px 6px;
+    color: #ccc;
+    background: rgba(26, 26, 26, 0.88);
+    border-radius: 3px;
+    font-size: 11px;
+    line-height: 1.25;
+    white-space: nowrap;
+}
+.room-eq-response-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: default;
+}
+.room-eq-response-legend-swatch {
+    width: 14px;
+    border-top: 2px solid currentColor;
+}
+.room-eq-response-legend-item:hover { font-weight: 600; }
+.room-eq-response-legend-room { color: #80c080; opacity: 0.65; }
+.room-eq-response-legend-total { color: #00ff00; }
+.room-eq-response-legend-before { color: #b0b0b0; opacity: 0.7; }
+.room-eq-response-legend-after { color: #fff; }
+.room-eq-impulse-grid,
+.room-eq-impulse-response {
+    position: absolute;
+    display: none;
+    width: calc(100% - 40px);
+    height: calc(100% - 40px);
+    left: 20px;
+    top: 20px;
+    pointer-events: none;
+}
+.room-eq-impulse-grid line {
+    stroke: #333;
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+}
+.room-eq-impulse-grid text {
+    fill: #666;
+    font-size: 10px;
+}
+.room-eq-impulse-response path {
+    fill: none;
+    vector-effect: non-scaling-stroke;
+}
+.room-eq-impulse-response .room-eq-impulse-before {
+    stroke: #888;
+    stroke-width: 1;
+}
+.room-eq-impulse-response .room-eq-impulse-after {
+    stroke: #fff;
+    stroke-width: 1;
+}
+.room-eq-additional-eq-ui .room-eq-additional-eq-response .room-eq-response-highlighted,
+.room-eq-impulse-response .room-eq-response-highlighted {
+    stroke-width: 3.5;
+    opacity: 1;
+}
+.room-eq-impulse-unavailable {
+    position: absolute;
+    z-index: 3;
+    display: none;
+    left: 50%;
+    top: 50%;
+    max-width: calc(100% - 60px);
+    color: #aaa;
+    font-size: 12px;
+    text-align: center;
+    transform: translate(-50%, -50%);
+}
+.room-eq-impulse-view .room-eq-additional-eq-grid,
+.room-eq-impulse-view .room-eq-additional-eq-response,
+.room-eq-impulse-view .room-eq-additional-eq-marker {
+    display: none;
+}
+.room-eq-impulse-view .room-eq-response-legend-room,
+.room-eq-impulse-view .room-eq-response-legend-total {
+    display: none;
+}
+.room-eq-impulse-view .room-eq-response-legend-before {
+    color: #888;
+    opacity: 1;
+}
+.room-eq-impulse-view .room-eq-impulse-grid,
+.room-eq-impulse-view .room-eq-impulse-response {
+    display: block;
+}
+.room-eq-impulse-view .room-eq-impulse-unavailable:not([hidden]) {
+    display: block;
+}
+
+body.layout-mobile .room-eq-measurement-row { flex-wrap: wrap !important; }
+body.layout-mobile .room-eq-measurement-row select { flex-basis: calc(100% - 130px); }
+body.layout-mobile .room-eq-response-view-controls {
+    gap: 7px;
+    font-size: 10px;
+}
+body.layout-mobile .room-eq-response-legend {
+    right: 5px;
+    font-size: 10px;
+}
+body.layout-mobile .room-eq-additional-eq-ui .room-eq-additional-eq-type-label {
+    flex: 0 0 auto;
+    min-width: 78px;
+}
+body.layout-mobile .room-eq-additional-eq-ui .room-eq-additional-eq-freq-label,
+body.layout-mobile .room-eq-additional-eq-ui .room-eq-additional-eq-gain-label {
+    flex: 1 1 auto;
+    min-width: 78px;
+}
+body.layout-mobile .room-eq-additional-eq-ui .room-eq-additional-eq-q-text,
+body.layout-mobile .room-eq-additional-eq-ui .room-eq-additional-eq-freq-text,
+body.layout-mobile .room-eq-additional-eq-ui .room-eq-additional-eq-gain-text {
+    flex: 0 0 40px;
+    width: 40px;
+    min-width: 40px;
+    max-width: 40px;
+    font-size: 16px;
+}
+body.layout-mobile .room-eq-additional-eq-graph {
+    aspect-ratio: 4 / 3;
+}

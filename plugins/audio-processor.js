@@ -347,6 +347,46 @@ class DspEngineBinding {
         return this.exports.et_kernel_asset_capacity(index, slot) >>> 0;
     }
 
+    hasDesignFft() {
+        return [
+            'et_design_fft_create',
+            'et_design_fft_destroy',
+            'et_design_fft_input',
+            'et_design_fft_output',
+            'et_design_fft_forward',
+            'et_design_fft_inverse'
+        ].every(name => typeof this.exports[name] === 'function');
+    }
+
+    createDesignFft(size) {
+        if (!this.hasDesignFft()) return 0;
+        const preparing = this._preparing;
+        this._preparing = true;
+        try {
+            return this.exports.et_design_fft_create(size >>> 0) >>> 0;
+        } finally {
+            this._refreshViews();
+            this._preparing = preparing;
+        }
+    }
+
+    destroyDesignFft(handle) {
+        if (handle && this.hasDesignFft()) this.exports.et_design_fft_destroy(handle >>> 0);
+    }
+
+    getDesignFftInput(handle) {
+        return this.exports.et_design_fft_input(handle >>> 0) >>> 0;
+    }
+
+    getDesignFftOutput(handle) {
+        return this.exports.et_design_fft_output(handle >>> 0) >>> 0;
+    }
+
+    runDesignFft(handle, inverse = false) {
+        const transform = inverse ? this.exports.et_design_fft_inverse : this.exports.et_design_fft_forward;
+        return transform(handle >>> 0);
+    }
+
     getCapabilities() {
         const kernels = [];
         const count = this.getKernelCount();
@@ -823,12 +863,17 @@ async function instantiateDspBinding(moduleOrBytes, {
 }
 // __ETDSP_BINDING_INJECT_END__
 
+const WASM_ONLY_EXECUTION_STATE_PLUGIN_TYPES = new Set([
+    'RoomEqPlugin'
+]);
 const ET_DSP_MAX_CHANNELS = 8;
 const ET_DSP_MAX_FRAMES = 128;
 const ET_DSP_ERR_ARGS = -1;
 const ET_DSP_TELEMETRY_BYTES = 256 * 1024;
 // Keep half of the 256 MiB module ceiling available for arenas, other kernels, and replacement probes.
 const ET_DSP_ASSET_AGGREGATE_BUDGET_BYTES = 128 * 1024 * 1024;
+const ET_DSP_ROOM_EQ_REPLACEMENT_DRY_MODE = -1;
+const ET_DSP_ROOM_EQ_REPLACEMENT_DRY_READY = 1 << 16;
 const ET_DSP_PACKET_POOL_SIZE = 3;
 const ET_DSP_PIPELINE_FALLBACK = 0;
 const ET_DSP_PIPELINE_PROCESSED = 1;
@@ -907,6 +952,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.dspAssetStates = new Map();
         this.dspAssetStateRevisions = new Map();
         this.dspAssetStateReplayEpochs = new Map();
+        this.dspDeferredAssetStages = new Map();
         this.dspRuntimeFailures = new Map();
         this.dspFailedTypes = new Set();
         this.dspReportedFailures = new Set();
@@ -919,6 +965,11 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.dspInitGeneration = 0;
         this.dspPipelineReady = false;
         this.dspPipelineLatencySamples = 0;
+        this.dspExecutionGeneration = 0;
+        this.dspExecutionStates = new Map();
+        this.dspExecutionRuntimeFallbacks = new Set();
+        this.dspEnableTypesReceived = false;
+        this.dspExecutionInitializing = false;
 
         // Audio configuration
         this.outputChannelCount = options?.processorOptions?.initialOutputChannelCount ?? 2;
@@ -1062,7 +1113,11 @@ class PluginProcessor extends AudioWorkletProcessor {
                         this.MESSAGE_INTERVAL = this.lowLatencyMode ? 8 : 16;
                     }
                     if (typeof data.sampleRate === 'number' && data.sampleRate > 0) {
-                        this.dspSampleRate = data.sampleRate;
+                        if (data.sampleRate !== this.dspSampleRate) {
+                            this.dspSampleRate = data.sampleRate;
+                            ++this.dspExecutionGeneration;
+                            this.publishWasmOnlyExecutionStates(true);
+                        }
                     }
                     break;
                 case 'dspModule':
@@ -1071,12 +1126,14 @@ class PluginProcessor extends AudioWorkletProcessor {
                     break;
                 case 'dspEnableTypes':
                     this._invalidatePowerSkipForMutation();
+                    this.dspEnableTypesReceived = true;
                     this.dspEnabledTypes = new Set(
                         (Array.isArray(data.types) ? data.types : [])
                             .filter(type => !this.dspFailedTypes.has(type))
                     );
                     this.reconcileDspInstances();
                     this.refreshDspPipeline();
+                    this.publishWasmOnlyExecutionStates();
                     break;
                 case 'dspSetTelemetryRate':
                     if (typeof data.hz === 'number') {
@@ -1125,6 +1182,8 @@ class PluginProcessor extends AudioWorkletProcessor {
                     break;
                 case 'reset':
                     this._invalidatePowerSkipForMutation();
+                    ++this.dspExecutionGeneration;
+                    this.publishWasmOnlyExecutionStates(true, true);
                     this.destroyAllDspInstances();
                     if (this.dspLive) this.dspBinding.reset();
                     this.plugins = [];
@@ -1133,6 +1192,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                     this.dspAssetStates.clear();
                     this.dspAssetStateRevisions.clear();
                     this.dspAssetStateReplayEpochs.clear();
+                    this.dspDeferredAssetStages.clear();
                     this.masterBypass = false;
                     break;
                 case 'userActivity':
@@ -1863,9 +1923,16 @@ class PluginProcessor extends AudioWorkletProcessor {
 
     async initializeDsp(data) {
         const generation = ++this.dspInitGeneration;
+        ++this.dspExecutionGeneration;
+        this.dspExecutionInitializing = true;
+        this.dspExecutionRuntimeFallbacks.clear();
+        this.publishWasmOnlyExecutionStates(true);
         const moduleOrBytes = data?.module ?? data?.bytes;
         if (!moduleOrBytes) {
+            this.dspExecutionInitializing = false;
+            this.disableDspEngine();
             this.reportDspFailure('instantiate', 'module payload is missing');
+            this.publishWasmOnlyExecutionStates(true);
             return;
         }
 
@@ -1917,6 +1984,8 @@ class PluginProcessor extends AudioWorkletProcessor {
             );
             this.reconcileDspInstances();
             this.refreshDspPipeline();
+            this.dspExecutionInitializing = false;
+            this.publishWasmOnlyExecutionStates();
             this.port.postMessage({
                 type: 'dspReady',
                 abiVersion: capabilities.abiVersion,
@@ -1933,8 +2002,10 @@ class PluginProcessor extends AudioWorkletProcessor {
                 try { binding?.close(); } catch (_) { /* stale initialization cleanup */ }
                 return;
             }
+            this.dspExecutionInitializing = false;
             this.disableDspEngine();
             this.reportDspFailure('instantiate', error?.message || String(error));
+            this.publishWasmOnlyExecutionStates(true);
         }
     }
 
@@ -1968,6 +2039,7 @@ class PluginProcessor extends AudioWorkletProcessor {
 
     disableDspEngine() {
         this.destroyAllDspInstances();
+        this.dspDeferredAssetStages.clear();
         if (this.dspBinding) {
             try {
                 this.dspBinding.close();
@@ -1988,6 +2060,7 @@ class PluginProcessor extends AudioWorkletProcessor {
 
     failDspEngine(stage, error) {
         if (!this.dspLive) return;
+        this.dspDeferredAssetStages.clear();
         this.dspLive = false;
         this.dspPipelineReady = false;
         this.publishDspPipelineLatency(0);
@@ -1996,6 +2069,13 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.dspEngineNeedsCleanup = true;
         this.bufferPool = this.createLegacyBufferPool();
         this.reportDspFailure(stage, error);
+        for (const plugin of this.plugins) {
+            if (WASM_ONLY_EXECUTION_STATE_PLUGIN_TYPES.has(plugin?.type)) {
+                this.dspExecutionRuntimeFallbacks.add(plugin.id);
+            }
+        }
+        ++this.dspExecutionGeneration;
+        this.publishWasmOnlyExecutionStates(true);
         this.port.postMessage({ type: 'dspCleanupNeeded' });
     }
 
@@ -2059,6 +2139,9 @@ class PluginProcessor extends AudioWorkletProcessor {
                 this.dspAssetStateRevisions.delete(pluginId);
                 this.dspAssetStateReplayEpochs.delete(pluginId);
             }
+        }
+        for (const [key, deferred] of this.dspDeferredAssetStages) {
+            if (!currentIds.has(deferred.pluginId)) this.dspDeferredAssetStages.delete(key);
         }
         try {
             for (const pluginId of this.wasmInstances.keys()) {
@@ -2132,9 +2215,13 @@ class PluginProcessor extends AudioWorkletProcessor {
         }
 
         if (plugin.wasmParams instanceof Float32Array && (plugin.wasmParamsHash >>> 0) === kernel.paramsHash) {
+            const wasmParams = plugin.type === 'RoomEqPlugin' &&
+                this.dspDeferredAssetStages.has(`${plugin.id}:0`)
+                ? this.roomEqReplacementDryParams(plugin.wasmParams)
+                : plugin.wasmParams;
             const numericStatus = this.dspBinding.instanceSetParams(
                 entry.id,
-                plugin.wasmParams,
+                wasmParams,
                 plugin.wasmParamsHash >>> 0
             );
             let byteStatus = 0;
@@ -2151,6 +2238,9 @@ class PluginProcessor extends AudioWorkletProcessor {
                 }
             }
             entry.ready = numericStatus === 0 && byteStatus === 0;
+            if (entry.ready && WASM_ONLY_EXECUTION_STATE_PLUGIN_TYPES.has(plugin.type)) {
+                this.dspExecutionRuntimeFallbacks.delete(plugin.id);
+            }
             if (numericStatus !== 0) {
                 this.reportDspFailure(
                     `instance:${plugin.id}`,
@@ -2256,6 +2346,7 @@ class PluginProcessor extends AudioWorkletProcessor {
     }
 
     pruneDspAssetSlot(pluginId, slot) {
+        this.dspDeferredAssetStages.delete(`${pluginId}:${slot}`);
         const slots = this.dspAssetCache.get(pluginId);
         slots?.delete(slot);
         if (slots?.size === 0) this.dspAssetCache.delete(pluginId);
@@ -2322,8 +2413,14 @@ class PluginProcessor extends AudioWorkletProcessor {
         for (const [pluginId, slots] of this.dspAssetCache) {
             for (const [slot, asset] of slots) {
                 if (pluginId === excludedPluginId && slot === excludedSlot) continue;
-                total += asset.footprintBytes;
+                const deferred = this.dspDeferredAssetStages.get(`${pluginId}:${slot}`);
+                total += deferred?.candidate?.footprintBytes ?? asset.footprintBytes;
             }
+        }
+        for (const deferred of this.dspDeferredAssetStages.values()) {
+            if (deferred.pluginId === excludedPluginId && deferred.slot === excludedSlot) continue;
+            if (this.dspAssetCache.get(deferred.pluginId)?.has(deferred.slot)) continue;
+            total += deferred.candidate.footprintBytes;
         }
         return total;
     }
@@ -2398,6 +2495,71 @@ class PluginProcessor extends AudioWorkletProcessor {
             operationRevision,
             replayEpoch
         };
+        if (this.shouldDeferDspAssetStage(pluginId, slot, candidate, previousDescriptor)) {
+            if (!this.requestRoomEqReplacementDry(pluginId)) {
+                this.rejectDspAssetCandidate(
+                    pluginId, slot, 'transition', operationRevision, previousDescriptor,
+                    false, false, replayEpoch
+                );
+                return;
+            }
+            this.dspDeferredAssetStages.set(`${pluginId}:${slot}`, {
+                pluginId,
+                slot,
+                candidate
+            });
+            if (this.isDspAssetWakeEligible(pluginId)) {
+                this.audioLevelMonitoring.isSleepMode = false;
+                this.powerPolicy.pendingConfigWake = true;
+            }
+            return;
+        }
+        this.commitDspAssetCandidate(pluginId, slot, candidate);
+    }
+
+    shouldDeferDspAssetStage(pluginId, slot, candidate, previousDescriptor) {
+        if (candidate.replayEpoch !== null || !previousDescriptor) return false;
+        const plugin = this.plugins.find(entry => entry.id === pluginId);
+        if (plugin?.type !== 'RoomEqPlugin') return false;
+        const previousState = this.dspAssetStates.get(pluginId)?.get(slot) ?? 0;
+        const previousRevision = this.dspAssetStateRevisions.get(pluginId)?.get(slot);
+        return (previousState & 0xff) === 3 &&
+            previousRevision === previousDescriptor.operationRevision;
+    }
+
+    roomEqReplacementDryParams(params) {
+        if (!(params instanceof Float32Array) || params.length !== 4) return null;
+        const dryParams = params.slice();
+        dryParams[0] = ET_DSP_ROOM_EQ_REPLACEMENT_DRY_MODE;
+        return dryParams;
+    }
+
+    requestRoomEqReplacementDry(pluginId) {
+        const plugin = this.plugins.find(entry => entry.id === pluginId);
+        const entry = this.wasmInstances.get(pluginId);
+        const dryParams = this.roomEqReplacementDryParams(plugin?.wasmParams);
+        if (plugin?.type !== 'RoomEqPlugin' || !entry || !this.dspLive || !this.dspBinding ||
+            !dryParams) return false;
+        return this.dspBinding.instanceSetParams(
+            entry.id,
+            dryParams,
+            plugin.wasmParamsHash >>> 0
+        ) === 0;
+    }
+
+    restoreRoomEqParams(pluginId) {
+        const plugin = this.plugins.find(entry => entry.id === pluginId);
+        const entry = this.wasmInstances.get(pluginId);
+        if (plugin?.type !== 'RoomEqPlugin' || !entry || !this.dspLive || !this.dspBinding ||
+            !(plugin.wasmParams instanceof Float32Array)) return;
+        this.dspBinding.instanceSetParams(
+            entry.id,
+            plugin.wasmParams,
+            plugin.wasmParamsHash >>> 0
+        );
+    }
+
+    commitDspAssetCandidate(pluginId, slot, candidate) {
         const stageResult = this.stageDspAsset(pluginId, slot, candidate);
         if (stageResult === false) return;
         let slots = this.dspAssetCache.get(pluginId);
@@ -2407,11 +2569,34 @@ class PluginProcessor extends AudioWorkletProcessor {
         }
         slots.set(slot, candidate);
         if (stageResult === null) {
-            this.postAssetState(pluginId, slot, 1, operationRevision, true, replayEpoch);
+            this.postAssetState(
+                pluginId,
+                slot,
+                1,
+                candidate.operationRevision,
+                true,
+                candidate.replayEpoch
+            );
         }
         if (this.isDspAssetWakeEligible(pluginId)) {
             this.audioLevelMonitoring.isSleepMode = false;
             this.powerPolicy.pendingConfigWake = true;
+        }
+        return true;
+    }
+
+    flushDeferredDspAssetStages() {
+        for (const [key, deferred] of this.dspDeferredAssetStages) {
+            const entry = this.wasmInstances.get(deferred.pluginId);
+            if (!entry || !this.dspLive || !this.dspBinding ||
+                (this.dspBinding.instanceAssetState(entry.id, deferred.slot) &
+                    ET_DSP_ROOM_EQ_REPLACEMENT_DRY_READY) === 0) continue;
+            this.dspDeferredAssetStages.delete(key);
+            try {
+                this.commitDspAssetCandidate(deferred.pluginId, deferred.slot, deferred.candidate);
+            } finally {
+                this.restoreRoomEqParams(deferred.pluginId);
+            }
         }
     }
 
@@ -2472,6 +2657,9 @@ class PluginProcessor extends AudioWorkletProcessor {
             (data?.replayEpoch !== undefined && replayEpoch === null)) {
             return;
         }
+        const deferredKey = `${pluginId}:${slot}`;
+        const replacementDeferred = this.dspDeferredAssetStages.delete(deferredKey);
+        if (replacementDeferred) this.restoreRoomEqParams(pluginId);
         const slots = this.dspAssetCache.get(pluginId);
         slots?.delete(slot);
         if (slots?.size === 0) this.dspAssetCache.delete(pluginId);
@@ -2758,6 +2946,9 @@ class PluginProcessor extends AudioWorkletProcessor {
         }
         const failures = (this.dspRuntimeFailures.get(plugin.type) || 0) + 1;
         this.dspRuntimeFailures.set(plugin.type, failures);
+        if (WASM_ONLY_EXECUTION_STATE_PLUGIN_TYPES.has(plugin.type)) {
+            this.dspExecutionRuntimeFallbacks.add(plugin.id);
+        }
         this.reportDspFailure(`${stage}:${plugin.id}`, error);
         if (failures >= 3) {
             this.dspFailedTypes.add(plugin.type);
@@ -2772,6 +2963,8 @@ class PluginProcessor extends AudioWorkletProcessor {
                 }
             }
         }
+        ++this.dspExecutionGeneration;
+        this.publishWasmOnlyExecutionStates(true);
         this.port.postMessage({ type: 'dspCleanupNeeded' });
     }
 
@@ -2843,6 +3036,7 @@ class PluginProcessor extends AudioWorkletProcessor {
 
     updatePlugin(pluginConfig) {
         if (!pluginConfig) return;
+        ++this.dspExecutionGeneration;
         const index = this.plugins.findIndex(p => p.id === pluginConfig.id);
         if (index !== -1) {
             const normalizedPlugin = this.normalizePluginConfig(pluginConfig);
@@ -2852,6 +3046,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                 this.reconcileDspPluginSafely(normalizedPlugin);
             } finally {
                 this.refreshDspPipeline();
+                this.publishWasmOnlyExecutionStates();
             }
 
             // console.log(`Updated plugin: ${pluginConfig.id}`);
@@ -2864,6 +3059,7 @@ class PluginProcessor extends AudioWorkletProcessor {
     }
 
     updatePlugins(pluginConfigs) {
+        ++this.dspExecutionGeneration;
         const normalizedPlugins = pluginConfigs.map(p => this.normalizePluginConfig(p));
         this.dspPipelineReady = false;
         try {
@@ -2871,6 +3067,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             this.reconcileDspInstances();
         } finally {
             this.refreshDspPipeline();
+            this.publishWasmOnlyExecutionStates();
         }
         // Clear contexts for plugins that might have been removed?
         // Or handle context cleanup based on removed IDs.
@@ -2884,8 +3081,55 @@ class PluginProcessor extends AudioWorkletProcessor {
         }
     }
 
+    wasmOnlyExecutionState(plugin, engineStopped = false) {
+        if (engineStopped) return { state: 'bypassed', reason: 'engineStopped' };
+        if (this.dspExecutionInitializing) return { state: 'pending', reason: null };
+        const supported = this.dspSampleRate === 44100 || this.dspSampleRate === 48000 ||
+            this.dspSampleRate === 88200 || this.dspSampleRate === 96000 ||
+            this.dspSampleRate === 176400 || this.dspSampleRate === 192000;
+        if (!supported) return { state: 'bypassed', reason: 'unsupportedSampleRate' };
+        if (this.dspExecutionRuntimeFallbacks.has(plugin.id)) {
+            return { state: 'bypassed', reason: 'runtimeFallback' };
+        }
+        if (!this.dspEnableTypesReceived) return { state: 'pending', reason: null };
+        if (!this.dspEnabledTypes.has(plugin.type)) {
+            return { state: 'bypassed', reason: 'rolloutDisabled' };
+        }
+        if (!this.dspLive || !this.wasmKernels.has(plugin.type)) {
+            return { state: 'bypassed', reason: 'wasmUnavailable' };
+        }
+        const entry = this.wasmInstances.get(plugin.id);
+        return entry?.ready
+            ? { state: 'active', reason: null }
+            : { state: 'pending', reason: null };
+    }
+
+    publishWasmOnlyExecutionStates(force = false, engineStopped = false) {
+        const activeIds = new Set();
+        for (const plugin of this.plugins) {
+            if (!WASM_ONLY_EXECUTION_STATE_PLUGIN_TYPES.has(plugin?.type)) continue;
+            activeIds.add(plugin.id);
+            const status = this.wasmOnlyExecutionState(plugin, engineStopped);
+            const key = `${status.state}:${status.reason || ''}:${this.dspExecutionGeneration}`;
+            if (!force && this.dspExecutionStates.get(plugin.id) === key) continue;
+            this.dspExecutionStates.set(plugin.id, key);
+            this.port.postMessage({
+                type: 'dspExecutionState',
+                pluginId: plugin.id,
+                pluginType: plugin.type,
+                state: status.state,
+                reason: status.reason,
+                generation: this.dspExecutionGeneration
+            });
+        }
+        for (const pluginId of this.dspExecutionStates.keys()) {
+            if (!activeIds.has(pluginId)) this.dspExecutionStates.delete(pluginId);
+        }
+    }
+
     addPlugin(pluginConfig, index) {
         if (!pluginConfig) return;
+        ++this.dspExecutionGeneration;
         const normalizedPlugin = this.normalizePluginConfig(pluginConfig);
         const existingIndex = this.plugins.findIndex(p => p.id === normalizedPlugin.id);
         this.dspPipelineReady = false;
@@ -2895,6 +3139,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                 this.reconcileDspPluginSafely(normalizedPlugin);
             } finally {
                 this.refreshDspPipeline();
+                this.publishWasmOnlyExecutionStates();
             }
             return;
         }
@@ -2907,12 +3152,14 @@ class PluginProcessor extends AudioWorkletProcessor {
             this.reconcileDspPluginSafely(normalizedPlugin);
         } finally {
             this.refreshDspPipeline();
+            this.publishWasmOnlyExecutionStates();
         }
     }
 
     removePlugin(pluginId) {
         const index = this.plugins.findIndex(p => p.id === pluginId);
         if (index === -1) return;
+        ++this.dspExecutionGeneration;
         this.dspPipelineReady = false;
         try {
             this.plugins.splice(index, 1);
@@ -2921,6 +3168,9 @@ class PluginProcessor extends AudioWorkletProcessor {
             this.dspAssetStates.delete(pluginId);
             this.dspAssetStateRevisions.delete(pluginId);
             this.dspAssetStateReplayEpochs.delete(pluginId);
+            for (const [key, deferred] of this.dspDeferredAssetStages) {
+                if (deferred.pluginId === pluginId) this.dspDeferredAssetStages.delete(key);
+            }
             try {
                 this.destroyDspInstance(pluginId);
             } catch (error) {
@@ -2928,6 +3178,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             }
         } finally {
             this.refreshDspPipeline();
+            this.publishWasmOnlyExecutionStates();
         }
     }
 
@@ -3160,6 +3411,7 @@ class PluginProcessor extends AudioWorkletProcessor {
 
     // Optimized process method
     process(inputs, outputs, parameters) {
+        this.flushDeferredDspAssetStages();
         this.pollDspAssetStates();
         const input = inputs[0];
         const output = outputs[0];

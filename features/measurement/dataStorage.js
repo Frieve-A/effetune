@@ -3,19 +3,94 @@
  * Manages saving/loading from IndexedDB and file export/import
  */
 
-class DataStorage {
+export class MeasurementImportError extends Error {
+    constructor(kind, cause = null) {
+        super(kind === 'storage'
+            ? 'The imported measurement could not be saved.'
+            : 'The measurement file format is invalid.');
+        this.name = 'MeasurementImportError';
+        this.kind = kind;
+        this.cause = cause;
+    }
+}
+
+export class MeasurementLoadError extends Error {
+    constructor(cause) {
+        super('Measurements could not be loaded.');
+        this.name = 'MeasurementLoadError';
+        this.cause = cause;
+    }
+}
+
+function isFrequencyResponse(value) {
+    return Array.isArray(value) && value.every(entry =>
+        Array.isArray(entry) && entry.length >= 2 &&
+        Number.isFinite(entry[0]) && entry[0] > 0 && Number.isFinite(entry[1]));
+}
+
+function isIndexedDbUnavailableError(error) {
+    return ['SecurityError', 'NotSupportedError', 'InvalidStateError'].includes(error?.name);
+}
+
+function metadataOnlyMeasurement(measurement) {
+    const metadata = structuredClone(measurement);
+    delete metadata._deletedPointIds;
+    delete metadata._originalPoints;
+    delete metadata._editSnapshot;
+    for (const point of metadata.points || []) delete point.ir;
+    return metadata;
+}
+
+function hasValidImportedScalars(data) {
+    const optionalStrings = [
+        'timestamp', 'audioInput', 'inputChannel', 'audioOutput', 'outputChannel'
+    ];
+    if (optionalStrings.some(key => data[key] !== undefined && typeof data[key] !== 'string')) {
+        return false;
+    }
+
+    const optionalNumbers = [
+        'requestedSampleRate', 'sampleRate', 'sweepMinFreq', 'sweepMaxFreq', 'averaging',
+        'correctionLowFreq', 'correctionHighFreq', 'smoothing', 'eqBandCount', 'maxSignalLevel'
+    ];
+    if (optionalNumbers.some(key => data[key] !== undefined && !Number.isFinite(data[key]))) {
+        return false;
+    }
+    if (data.sampleRate !== undefined && data.sampleRate <= 0) return false;
+    if (data.sweepLength !== undefined && (
+        !['number', 'string'].includes(typeof data.sweepLength) ||
+        !Number.isFinite(Number(data.sweepLength)) || Number(data.sweepLength) <= 0
+    )) return false;
+    if (data.nextPointId !== undefined && !Number.isSafeInteger(data.nextPointId)) return false;
+    if (data.averageFrequencyResponse !== undefined &&
+        !isFrequencyResponse(data.averageFrequencyResponse)) return false;
+    if (data.correctedResponse !== undefined && !isFrequencyResponse(data.correctedResponse)) return false;
+    if (data.peqParameters !== undefined && !Array.isArray(data.peqParameters)) return false;
+
+    return data.points.every(point => point && typeof point === 'object' &&
+        (point.name === undefined || typeof point.name === 'string') &&
+        (point.timestamp === undefined || typeof point.timestamp === 'string') &&
+        (point.pointId === undefined || Number.isSafeInteger(point.pointId)) &&
+        (point.maxSignalLevel === undefined || Number.isFinite(point.maxSignalLevel)) &&
+        isFrequencyResponse(point.frequencyResponse));
+}
+
+export class DataStorage {
     constructor() {
         this.STORAGE_KEY = 'frequency_response_measurements';
         this.DO_NOT_WARN_KEY = 'do_not_warn_on_delete';
         this.USER_SETTINGS_KEY = 'user_settings';
         this.PEQ_SETTINGS_KEY = 'peq_settings';
         this.DB_NAME = 'frequencyResponseDB';
-        this.DB_VERSION = 1;
+        this.DB_VERSION = 2;
         this.STORE_NAME = 'measurements';
         this.SETTINGS_STORE = 'settings';
+        this.IR_STORE = 'impulseResponses';
         this.db = null;
         this.measurements = [];
         this.loaded = false;
+        this.irPersistenceAvailable = true;
+        this.indexedDbUnavailable = false;
         
         // Event names for data changes
         this.EVENTS = {
@@ -34,14 +109,29 @@ class DataStorage {
         
         try {
             await this.openDatabase();
-            await this.loadMeasurements();
-            this.loaded = true;
         } catch (error) {
-            console.error('Error initializing database:', error);
-            // Fallback to localStorage if IndexedDB fails
+            console.error('Error opening measurement database:', error);
+            this.loadFromLocalStorage();
+            if (this.indexedDbUnavailable) this.irPersistenceAvailable = false;
+            this.loaded = true;
+            return;
+        }
+
+        try {
+            await this.loadMeasurements();
+        } catch (error) {
+            console.error('Error loading measurement database:', error);
             this.loadFromLocalStorage();
             this.loaded = true;
+            return;
         }
+
+        try {
+            await this.removeOrphanImpulseResponses();
+        } catch (error) {
+            console.error('Error removing orphan impulse responses:', error);
+        }
+        this.loaded = true;
     }
 
     /**
@@ -55,16 +145,26 @@ class DataStorage {
                 return;
             }
 
-            if (!window.indexedDB) {
+            if (!globalThis.indexedDB) {
+                this.indexedDbUnavailable = true;
                 reject(new Error('Your browser does not support IndexedDB'));
                 return;
             }
 
-            const request = indexedDB.open(this.DB_NAME, this.DB_VERSION);
+            let request;
+            try {
+                request = globalThis.indexedDB.open(this.DB_NAME, this.DB_VERSION);
+            } catch (error) {
+                this.indexedDbUnavailable = isIndexedDbUnavailableError(error);
+                reject(error);
+                return;
+            }
 
             request.onerror = (event) => {
-                console.error('IndexedDB error:', event.target.error);
-                reject(event.target.error);
+                const error = event.target.error;
+                this.indexedDbUnavailable = isIndexedDbUnavailableError(error);
+                console.error('IndexedDB error:', error);
+                reject(error);
             };
 
             request.onupgradeneeded = (event) => {
@@ -79,6 +179,13 @@ class DataStorage {
                 // Create settings store
                 if (!db.objectStoreNames.contains(this.SETTINGS_STORE)) {
                     db.createObjectStore(this.SETTINGS_STORE, { keyPath: 'key' });
+                }
+
+                if (!db.objectStoreNames.contains(this.IR_STORE)) {
+                    const irStore = db.createObjectStore(this.IR_STORE, {
+                        keyPath: ['measurementId', 'pointId']
+                    });
+                    irStore.createIndex('measurementId', 'measurementId', { unique: false });
                 }
             };
 
@@ -157,7 +264,7 @@ class DataStorage {
     async loadMeasurements() {
         try {
             const db = await this.openDatabase();
-            return new Promise((resolve, reject) => {
+            return await new Promise((resolve, reject) => {
                 const transaction = db.transaction([this.STORE_NAME], 'readonly');
                 const store = transaction.objectStore(this.STORE_NAME);
                 const index = store.index('timestamp');
@@ -191,7 +298,7 @@ class DataStorage {
             });
         } catch (error) {
             console.error('Error loading measurements:', error);
-            return [];
+            throw new MeasurementLoadError(error);
         }
     }
 
@@ -225,19 +332,7 @@ class DataStorage {
                 const transaction = db.transaction([this.STORE_NAME], 'readwrite');
                 const store = transaction.objectStore(this.STORE_NAME);
                 
-                // Clear existing data and add all measurements
-                const clearRequest = store.clear();
-                
-                clearRequest.onsuccess = () => {
-                    // Add all measurements
-                    let count = 0;
-                    for (const measurement of this.measurements) {
-                        store.put(measurement);
-                        count++;
-                    }
-                    
-                    console.log(`Saved ${count} measurements to IndexedDB`);
-                };
+                for (const measurement of this.measurements) store.put(measurement);
                 
                 transaction.oncomplete = () => {
                     resolve(true);
@@ -269,6 +364,182 @@ class DataStorage {
                 console.error('Failed to save to localStorage:', err);
                 return false;
             }
+        }
+    }
+
+    async putMeasurement(measurement, impulseResponses = []) {
+        const records = Array.isArray(impulseResponses)
+            ? impulseResponses
+            : impulseResponses ? [impulseResponses] : [];
+        const deletedPointIds = Array.isArray(measurement._deletedPointIds)
+            ? measurement._deletedPointIds
+            : [];
+        const storedMeasurement = { ...measurement };
+        delete storedMeasurement._deletedPointIds;
+        delete storedMeasurement._originalPoints;
+        delete storedMeasurement._editSnapshot;
+        try {
+            const db = await this.openDatabase();
+            const needsIrStore = records.length > 0 || deletedPointIds.length > 0;
+            if (records.length) await this.ensureImpulseResponseQuota(records);
+            const stores = needsIrStore ? [this.STORE_NAME, this.IR_STORE] : [this.STORE_NAME];
+            await new Promise((resolve, reject) => {
+                const transaction = db.transaction(stores, 'readwrite');
+                transaction.objectStore(this.STORE_NAME).put(storedMeasurement);
+                if (needsIrStore) {
+                    const irStore = transaction.objectStore(this.IR_STORE);
+                    for (const record of records) irStore.put(record);
+                    for (const pointId of deletedPointIds) irStore.delete([measurement.id, pointId]);
+                }
+                transaction.oncomplete = () => resolve();
+                transaction.onerror = event => reject(event.target.error);
+                transaction.onabort = event => reject(event.target.error || new Error('Measurement save was cancelled'));
+            });
+            if (records.length) await this.requestPersistentStorage();
+            return true;
+        } catch (error) {
+            console.error('Error saving measurement record:', error);
+            if (this.indexedDbUnavailable) return this.saveMetadataFallback(measurement);
+            return false;
+        }
+    }
+
+    saveMetadataFallback(measurement) {
+        const metadataOnly = metadataOnlyMeasurement(measurement);
+
+        const measurements = [...this.measurements];
+        const existingIndex = measurements.findIndex(candidate => candidate.id === metadataOnly.id);
+        if (existingIndex >= 0) measurements[existingIndex] = metadataOnly;
+        else measurements.unshift(metadataOnly);
+
+        try {
+            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(measurements));
+            for (const point of measurement.points || []) delete point.ir;
+            for (const key of Object.keys(measurement)) delete measurement[key];
+            Object.assign(measurement, metadataOnly);
+            this.irPersistenceAvailable = false;
+            return true;
+        } catch (error) {
+            console.error('Failed to save measurement metadata to localStorage:', error);
+            return false;
+        }
+    }
+
+    async putImpulseResponse(record) {
+        if (!record?.measurementId || !Number.isSafeInteger(record.pointId) ||
+            !(record.data instanceof Float32Array)) {
+            throw new TypeError('Impulse response record is invalid');
+        }
+        const db = await this.openDatabase();
+        await new Promise((resolve, reject) => {
+            const transaction = db.transaction([this.IR_STORE], 'readwrite');
+            transaction.objectStore(this.IR_STORE).put(record);
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = event => reject(event.target.error);
+        });
+        await this.requestPersistentStorage();
+        return true;
+    }
+
+    async getImpulseResponse(measurementId, pointId) {
+        try {
+            const db = await this.openDatabase();
+            return await new Promise((resolve, reject) => {
+                const request = db.transaction([this.IR_STORE], 'readonly')
+                    .objectStore(this.IR_STORE).get([measurementId, pointId]);
+                request.onsuccess = () => resolve(request.result || null);
+                request.onerror = event => reject(event.target.error);
+            });
+        } catch (error) {
+            console.error('Error loading impulse response:', error);
+            return null;
+        }
+    }
+
+    async getImpulseResponses(measurementId) {
+        try {
+            const db = await this.openDatabase();
+            return await new Promise((resolve, reject) => {
+                const store = db.transaction([this.IR_STORE], 'readonly').objectStore(this.IR_STORE);
+                const request = store.index('measurementId').getAll(measurementId);
+                request.onsuccess = () => resolve(request.result || []);
+                request.onerror = event => reject(event.target.error);
+            });
+        } catch (error) {
+            console.error('Error loading impulse responses:', error);
+            return [];
+        }
+    }
+
+    async deletePoint(measurementId, pointId) {
+        const measurement = this.getMeasurementById(measurementId);
+        if (!measurement) return false;
+        const points = measurement.points || [];
+        const index = points.findIndex(point => point.pointId === pointId);
+        if (index < 0) return false;
+        measurement.points = points.filter(point => point.pointId !== pointId);
+        try {
+            const db = await this.openDatabase();
+            await new Promise((resolve, reject) => {
+                const transaction = db.transaction([this.STORE_NAME, this.IR_STORE], 'readwrite');
+                transaction.objectStore(this.STORE_NAME).put(measurement);
+                transaction.objectStore(this.IR_STORE).delete([measurementId, pointId]);
+                transaction.oncomplete = () => resolve();
+                transaction.onerror = event => reject(event.target.error);
+                transaction.onabort = event => reject(
+                    event.target.error || new Error('Point deletion was cancelled')
+                );
+            });
+            return true;
+        } catch (error) {
+            console.error('Error deleting measurement point:', error);
+            measurement.points = points;
+            return false;
+        }
+    }
+
+    async removeOrphanImpulseResponses() {
+        if (!this.db?.objectStoreNames.contains(this.IR_STORE)) return;
+        const known = new Set(this.measurements.map(measurement => measurement.id));
+        await new Promise((resolve, reject) => {
+            const transaction = this.db.transaction([this.IR_STORE], 'readwrite');
+            const request = transaction.objectStore(this.IR_STORE).openCursor();
+            request.onsuccess = event => {
+                const cursor = event.target.result;
+                if (!cursor) return;
+                if (!known.has(cursor.value.measurementId)) cursor.delete();
+                cursor.continue();
+            };
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = event => reject(event.target.error);
+        });
+    }
+
+    async requestPersistentStorage() {
+        if (this._persistenceRequested) return;
+        this._persistenceRequested = true;
+        try {
+            await navigator.storage?.persist?.();
+        } catch (error) {
+            console.warn('Persistent measurement storage could not be requested:', error);
+        }
+    }
+
+    async getStorageEstimate() {
+        try {
+            return await navigator.storage?.estimate?.() || null;
+        } catch (error) {
+            console.warn('Measurement storage usage is unavailable:', error);
+            return null;
+        }
+    }
+
+    async ensureImpulseResponseQuota(records) {
+        const estimate = await this.getStorageEstimate();
+        if (!estimate || !Number.isFinite(estimate.usage) || !Number.isFinite(estimate.quota)) return;
+        const addedBytes = records.reduce((total, record) => total + (record.data?.byteLength || 0), 0);
+        if (estimate.usage + addedBytes > estimate.quota * 0.8) {
+            throw new Error('Measurement storage is nearly full. Delete old measurements and try again.');
         }
     }
 
@@ -393,7 +664,7 @@ class DataStorage {
      * @param {Object} measurement - Measurement object
      * @returns {string} ID of the new or updated measurement
      */
-    async addMeasurement(measurement) {
+    async addMeasurement(measurement, impulseResponseRecords = []) {
         // Ensure measurement has an ID and timestamp
         const measurementId = measurement.id || this.generateId();
         
@@ -408,24 +679,28 @@ class DataStorage {
         
         if (existingIndex !== -1) {
             // Update existing measurement
-            this.measurements[existingIndex] = {
+            const updatedMeasurement = {
                 ...newMeasurement,
                 lastModified: new Date().toISOString()
             };
             
-            // Save to database
-            await this.saveMeasurements();
+            const saved = await this.putMeasurement(updatedMeasurement, impulseResponseRecords);
+            if (!saved) {
+                throw new Error('The measurement could not be saved.');
+            }
+            this.measurements[existingIndex] = updatedMeasurement;
             
             // Notify UI of updated measurement
             this.dispatchEvent(this.EVENTS.MEASUREMENT_UPDATED, {
-                measurement: this.measurements[existingIndex]
+                measurement: updatedMeasurement
             });
         } else {
+            const saved = await this.putMeasurement(newMeasurement, impulseResponseRecords);
+            if (!saved) {
+                throw new Error('The measurement could not be saved.');
+            }
             // Add new measurement to the beginning (newest first)
             this.measurements.unshift(newMeasurement);
-            
-            // Save to database
-            await this.saveMeasurements();
             
             // Notify UI of new measurement
             this.dispatchEvent(this.EVENTS.MEASUREMENT_ADDED, {
@@ -455,10 +730,14 @@ class DataStorage {
             id: id, // Ensure ID doesn't change
             lastModified: new Date().toISOString()
         };
-        
+        const saved = await this.putMeasurement(updatedMeasurement);
+        if (!saved) {
+            return false;
+        }
+        delete updatedMeasurement._deletedPointIds;
+        delete updatedMeasurement._originalPoints;
+        delete updatedMeasurement._editSnapshot;
         this.measurements[index] = updatedMeasurement;
-
-        await this.saveMeasurements();
         
         // Notify UI of updated measurement
         this.dispatchEvent(this.EVENTS.MEASUREMENT_UPDATED, {
@@ -476,11 +755,37 @@ class DataStorage {
     async deleteMeasurement(id) {
         const initialLength = this.measurements.length;
         const deletedMeasurement = this.getMeasurementById(id);
-        
+        const deletedIndex = this.measurements.findIndex(measurement => measurement.id === id);
         this.measurements = this.measurements.filter(m => m.id !== id);
         
         if (this.measurements.length < initialLength) {
-            await this.saveMeasurements();
+            try {
+                const db = await this.openDatabase();
+                await new Promise((resolve, reject) => {
+                    const transaction = db.transaction([this.STORE_NAME, this.IR_STORE], 'readwrite');
+                    transaction.objectStore(this.STORE_NAME).delete(id);
+                    const range = IDBKeyRange.bound([id, 0], [id, Number.MAX_SAFE_INTEGER]);
+                    transaction.objectStore(this.IR_STORE).delete(range);
+                    transaction.oncomplete = () => resolve();
+                    transaction.onerror = event => reject(event.target.error);
+                });
+            } catch (error) {
+                console.error('Error deleting measurement:', error);
+                if (this.indexedDbUnavailable) {
+                    try {
+                        const metadata = this.measurements.map(metadataOnlyMeasurement);
+                        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(metadata));
+                        this.irPersistenceAvailable = false;
+                    } catch (fallbackError) {
+                        console.error('Failed to delete measurement from localStorage:', fallbackError);
+                        this.measurements.splice(deletedIndex, 0, deletedMeasurement);
+                        return false;
+                    }
+                } else {
+                    this.measurements.splice(deletedIndex, 0, deletedMeasurement);
+                    return false;
+                }
+            }
             
             // Notify UI of deleted measurement
             if (deletedMeasurement) {
@@ -500,7 +805,8 @@ class DataStorage {
      * @returns {string} A unique ID
      */
     generateId() {
-        return 'measurement_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        const unique = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${performance.now()}`;
+        return `measurement_${unique}`;
     }
 
     /**
@@ -508,13 +814,21 @@ class DataStorage {
      * @param {string} id - Measurement ID
      * @returns {string|null} JSON string or null if measurement not found
      */
-    exportMeasurementToJSON(id) {
+    async exportMeasurementToJSON(id, includeImpulseResponses = false) {
         const measurement = this.getMeasurementById(id);
         if (!measurement) {
             return null;
         }
         
-        return JSON.stringify(measurement, null, 2);
+        const exported = structuredClone(measurement);
+        if (includeImpulseResponses) {
+            const records = await this.getImpulseResponses(id);
+            exported.impulseResponses = records.map(record => ({
+                ...record,
+                data: this.encodeFloat32Array(record.data)
+            }));
+        }
+        return JSON.stringify(exported, null, 2);
     }
 
     /**
@@ -568,24 +882,73 @@ class DataStorage {
      * @returns {string|null} ID of imported measurement or null on error
      */
     async importMeasurementFromJSON(jsonString) {
+        let data;
         try {
-            const data = JSON.parse(jsonString);
-            
-            // Validate required fields
-            if (!data.name || !data.points || !Array.isArray(data.points)) {
-                console.error('Invalid measurement data format');
-                return null;
-            }
-            
-            // Give the imported measurement a new ID
-            data.id = this.generateId();
-            data.imported = true;
-            data.importTimestamp = new Date().toISOString();
-            
-            return await this.addMeasurement(data);
+            data = JSON.parse(jsonString);
         } catch (error) {
-            console.error('Error importing measurement:', error);
+            console.error('Invalid measurement JSON:', error);
             return null;
+        }
+
+        if (!data || typeof data !== 'object' || typeof data.name !== 'string' ||
+            !data.name.trim() || !Array.isArray(data.points) || !hasValidImportedScalars(data)) {
+            console.error('Invalid measurement data format');
+            return null;
+        }
+
+        // Give the imported measurement a new ID.
+        data.id = this.generateId();
+        data.imported = true;
+        data.importTimestamp = new Date().toISOString();
+
+        const impulseResponses = Array.isArray(data.impulseResponses) ? data.impulseResponses : [];
+        delete data.impulseResponses;
+        for (const point of data.points) {
+            if (!Number.isSafeInteger(point.pointId)) point.pointId = data.nextPointId || 0;
+            data.nextPointId = Math.max(data.nextPointId || 0, point.pointId + 1);
+        }
+
+        const pointsById = new Map(data.points.map(point => [point.pointId, point]));
+        for (const point of data.points) delete point.ir;
+        const decodedRecords = [];
+        const decodedPointIds = new Set();
+        for (const record of impulseResponses) {
+            if (!record || typeof record !== 'object' || typeof record.data !== 'string' ||
+                !Number.isSafeInteger(record.pointId) || decodedPointIds.has(record.pointId) ||
+                !pointsById.has(record.pointId) || !Number.isFinite(record.sampleRate) ||
+                record.sampleRate <= 0 || !Number.isSafeInteger(record.onsetIndex) ||
+                record.onsetIndex < 0) {
+                continue;
+            }
+
+            try {
+                const samples = this.decodeFloat32Array(record.data);
+                if (samples.length === 0 || record.onsetIndex >= samples.length) continue;
+                const decodedRecord = {
+                    ...record,
+                    measurementId: data.id,
+                    data: samples
+                };
+                decodedRecords.push(decodedRecord);
+                decodedPointIds.add(record.pointId);
+                const point = pointsById.get(record.pointId);
+                point.ir = {
+                    stored: true,
+                    length: samples.length,
+                    sampleRate: record.sampleRate,
+                    onsetIndex: record.onsetIndex,
+                    ...(Number.isFinite(record.peakDb) ? { peakDb: record.peakDb } : {})
+                };
+            } catch (error) {
+                console.warn('Embedded impulse response was ignored:', error);
+            }
+        }
+
+        try {
+            return await this.addMeasurement(data, decodedRecords);
+        } catch (error) {
+            console.error('Error saving imported measurement:', error);
+            throw new MeasurementImportError('storage', error);
         }
     }
 
@@ -618,6 +981,9 @@ class DataStorage {
      */
     decodeFloat32Array(base64) {
         const binary = atob(base64);
+        if (binary.length === 0 || binary.length % Float32Array.BYTES_PER_ELEMENT !== 0) {
+            throw new TypeError('Impulse response data length is invalid');
+        }
         const bytes = new Uint8Array(binary.length);
         
         for (let i = 0; i < binary.length; i++) {
@@ -703,4 +1069,4 @@ class DataStorage {
 
 // Export a singleton instance
 const dataStorage = new DataStorage();
-export default dataStorage; 
+export default dataStorage;

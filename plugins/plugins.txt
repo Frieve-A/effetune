@@ -55,6 +55,7 @@ eq/hi_pass_filter: Hi Pass Filter | EQ | HiPassFilterPlugin | css
 eq/lo_pass_filter: Lo Pass Filter | EQ | LoPassFilterPlugin | css
 eq/loudness_equalizer: Loudness Equalizer | EQ | LoudnessEqualizerPlugin | css
 eq/narrow_range: Narrow Range | EQ | NarrowRangePlugin | css
+eq/room_eq: Room EQ | EQ | RoomEqPlugin | css
 eq/tilt_eq: Tilt EQ | EQ | TiltEQPlugin | css
 eq/tone_control: Tone Control | EQ | ToneControlPlugin | css
 lofi/bit_crusher: Bit Crusher | Lo-Fi | BitCrusherPlugin

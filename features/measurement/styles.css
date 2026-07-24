@@ -821,6 +821,26 @@ select {
     transition: background var(--et-transition-fast), border-color var(--et-transition-fast), box-shadow var(--et-transition-fast), color var(--et-transition-fast);
 }
 
+select {
+    color-scheme: dark;
+}
+
+select option {
+    background-color: #373737 !important;
+    color: var(--et-text-primary) !important;
+    color-scheme: dark;
+}
+
+select option:hover {
+    background-color: #454545 !important;
+    color: #ffffff !important;
+}
+
+select option:checked {
+    background-color: var(--et-accent-pressed) !important;
+    color: #ffffff !important;
+}
+
 input:not([type="range"]):focus,
 select:focus {
     outline: none;
@@ -938,7 +958,6 @@ canvas,
 
 .dialog-overlay {
     background-color: rgba(0, 0, 0, 0.62);
-    backdrop-filter: blur(10px);
 }
 
 input[type="range"] {
@@ -1033,3 +1052,7 @@ input[type="range"]::-moz-range-thumb,
         animation-iteration-count: 1 !important;
     }
 }
+.measurement-storage-usage, .measurement-storage-notice { margin: 8px 0; color: #888; font-size: 0.85rem; }
+.measurement-storage-notice { color: #b86b25; }
+.measurement-ir-badge { display: block; margin-top: 2px; color: #2b9d62; font-size: 0.78rem; }
+.measurement-ir-export-option { display: flex; align-items: center; gap: 6px; margin-top: 10px; }

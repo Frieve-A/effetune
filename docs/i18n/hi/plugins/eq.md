@@ -1,6 +1,6 @@
 ---
 title: "EQ प्लगइन - EffeTune"
-description: "Parametric EQ, Graphic EQ, Dynamic EQ, Earphone Cable Sim, filters और Tone Control सहित equalizer प्लगइन।"
+description: "Parametric EQ, Graphic EQ, Dynamic EQ, Room EQ, Earphone Cable Sim, filters और Tone Control सहित equalizer प्लगइन।"
 lang: hi
 ---
 
@@ -21,6 +21,7 @@ lang: hi
 - [Lo Pass Filter](#lo-pass-filter) - अनचाही उच्च आवृत्तियों को सटीकता से हटाएं
 - [Loudness Equalizer](#loudness-equalizer) - कम वॉल्यूम पर सुनने के लिए आवृत्ति संतुलन सुधार
 - [Narrow Range](#narrow-range) - ध्वनि के विशिष्ट हिस्सों पर ध्यान केंद्रित करें
+- [Room EQ](#room-eq) - सेव की गई room measurements पर आधारित FIR correction
 - [Tilt EQ](#tilt-eq) - झुकाव EQ - ध्वनि स्पेक्ट्रम को झुकाने वाला सरल इक्वलाइज़र
 - [Tone Control](#tone-control) - सरल बास, मिड और ट्रेबल समायोजन
 
@@ -514,6 +515,56 @@ music playback shape करने के लिए flexible 5-band equalizer। 
 - आवृत्ति प्रतिक्रिया दिखाने वाला स्पष्ट ग्राफ
 - आसानी से समायोजित होने वाले आवृत्ति नियंत्रण
 - सरल slope drop-down menus
+
+## Room EQ
+
+Room EQ, EffeTune में सेव की गई एक frequency-response measurement से एक FIR correction filter बनाता है और plugin को route किए गए सभी channels पर वही filter लागू करता है। Standard plugin bus selector तय करता है कि कौन-से channels process होंगे। यह चुनी गई measurement के सभी points का औसत लेता है, परिणाम को smooth करता है और चुनी हुई correction range में विचलन घटाता है। इसका उपयोग तब करें जब speaker और room के परस्पर प्रभाव से listening area में बार-बार आने वाले peaks या व्यापक tonal imbalance बनें। यह linear-phase magnitude correction के साथ-साथ minimum-phase magnitude correction और मापे गए direct sound की excess phase correction को जोड़ने वाला mixed-phase correction भी कर सकता है। Default रूप से excess-phase correction सभी measurement points में साझा component को बनाए रखता है और जहाँ उनकी phases सहमत नहीं होतीं वहाँ correction घटाता है। Room EQ को WASM DSP engine चाहिए; यह उपलब्ध न हो तो signal बिना बदले pass होता है।
+
+### ध्वनि सुधार गाइड
+
+- जिस speaker group को ठीक करना है, उसे listening area में पास-पास की कई microphone positions से मापें और वह measurement Room EQ में चुनें। कई points से correction केवल एक सटीक स्थान पर कम निर्भर रहता है।
+- शुरुआत **Phase: Linear**, **Smoothing: 0.17 oct**, **Correction Low: 20 Hz**, **Correction High: 16000 Hz**, **Max Boost: 6 dB** और **Level Correction: 100%** से करें। Plugin के मुख्य on/off control से तुलना करके देखें कि balance अधिक समान हो, पर ध्वनि अस्वाभाविक रूप से पतली या बहुत चमकीली न बने।
+- यदि filter ऐसे संकरे dips भरने की कोशिश करे जो microphone position के साथ बदलते हैं, तो Smoothing बढ़ाएँ या Max Boost घटाएँ। Max Boost को 0 dB रखने पर automatic boost रुकता है, लेकिन peaks घटाने वाले cuts जारी रहते हैं।
+- यदि पूरी level correction बहुत अधिक लगे, तो Level Correction घटाएँ। यह हर automatic correction value को dB में समान अनुपात से बदलता है, इसलिए 50% पर +6 dB की correction +3 dB और -8 dB की correction -4 dB हो जाती है।
+- Correction Low और Correction High को speaker तथा measurement microphone की भरोसेमंद range तक सीमित रखें। अविश्वसनीय measurement range के बाहर correction करने से परिणाम बिगड़ सकता है।
+- Room correction स्थिर होने के बाद अतिरिक्त EQ से हल्का listening target बनाएँ, जैसे 100 Hz के पास चौड़ा +2 dB Low shelf या 10 kHz के पास छोटा High shelf adjustment। ये bands target बदलते हैं और FIR filter में शामिल होते हैं।
+- कम latency के लिए **Minimum** चुनें। Frequency response के साथ excess phase भी correct करना हो तो **Correction** चुनें। Reference Point को **सहमति (सभी बिंदु)** पर रखकर, Direct Window के default और **Phase Correction: 100%** से शुरुआत करें। किसी एक microphone position के लिए excess phase optimize करनी हो तभी अलग point चुनें। यदि phase correction बहुत अधिक लगे, तो Phase Correction को अलग से घटाएँ।
+- Room EQ speaker-distance alignment अपने-आप नहीं निकालता। **Delay** सभी processed channels में समान manual delay जोड़ता है। अलग groups को अलग delay चाहिए तो अलग Room EQ instances उपयोग करें।
+
+Measurement एक device-local reference है। URL या preset में उसका नाम और identifier रहता है, measurement data नहीं। दूसरे device पर measurement उपयोग करने के लिए export से पहले measurement screen पर **Measurement JSON export में impulse responses शामिल करें** चालू करें, फिर दूसरे device पर import करके उसे चुनें। यह option default रूप से off होता है, और impulse responses शामिल करने से file का आकार दसियों megabytes तक बढ़ सकता है। Measurement न मिलने पर warning दिखती है और Room EQ पुराने correction data की जगह time-aligned bypass उपयोग करता है।
+
+### पैरामीटर
+
+- **Measurement** - सभी processed channels के लिए सेव की गई frequency-response measurement चुनता है। सूची में नाम, points की संख्या और impulse-response data होने पर `IR` दिखता है। Measurement जोड़ने या बदलने के बाद **Refresh measurements** उपयोग करें।
+- **Delay** - सभी processed channels में 0 से 20 ms manual delay जोड़ता है। यह plugin की दिखाई गई processing latency में शामिल नहीं होता।
+- **Phase** - FIR filter का phase व्यवहार चुनता है।
+  - **Minimum** - सबसे कम अतिरिक्त latency वाला minimum-phase magnitude correction।
+  - **Linear** - Linear-phase magnitude correction। यह input की relative phase बनाए रखता है, लेकिन चुने गए taps की आधी delay जोड़ता है।
+  - **Correction** - Minimum-phase magnitude correction के साथ सेव की गई direct-sound impulse response की excess phase correction करता है। Mixed-phase filter के लिए `Taps / 2` samples की delay बनाए रखते हुए यह group-delay variation घटाता है। Design के समय main impulse की energy position को उसी Level Correction setting वाली Minimum response के साथ align रखा जाता है। चुनी गई एक measurement से एक filter design किया जाता है और उसे बिना बदले सभी routed channels पर लगाया जाता है। इसलिए Level Correction या Phase Correction बदलने से channels के बीच अलग-अलग timing difference नहीं आता। इसके लिए Reference Point, Direct Window और impulse-response data चाहिए।
+- **Taps** - FIR length: 8192, 16384, 32768, 65536 या 131072। अधिक taps low-frequency resolution बढ़ाते हैं, लेकिन delay, memory और filter-design time भी बढ़ाते हैं। Linear और Correction में `Taps / 2` samples की delay जुड़ती है।
+- **Latency** - Convolution engine की head latency: 0, 128, 256, 512 या 1024 samples। कम value delay घटाती है लेकिन processing बढ़ाती है; Linear और Correction में FIR की half-length delay आम तौर पर अधिक होती है।
+- **Smoothing** - 0.02 से 1.00 octave तक Gaussian smoothing। बड़ी value व्यापक और अधिक conservative correction देती है; छोटी value बारीक response variations को अधिक follow करती है।
+- **Correction Low / Correction High** - Automatic magnitude correction की निचली और ऊपरी transition boundaries सेट करते हैं। Gaussian smoothing से पहले इन boundaries पर और इनके बाहर automatic correction को 0 dB माना जाता है। इसलिए Smoothing तय करता है कि correction कितनी धीरे कम हो और हर boundary के बाहर कितनी दूर तक फैले। ऊपरी boundary को Nyquist frequency के नीचे margin रखने के लिए भीतर से भी सीमित किया जाता है।
+- **Direct Window** - Correction में direct-sound onset के बाद उपयोग होने वाली measurement response की 1 से 50 ms लंबाई। लंबी window phase correction को नीचे तक बढ़ाती है, पर अधिक room reflections भी शामिल करती है।
+- **Max Boost** - Automatic response inversion से बने boost को 0 से 18 dB तक सीमित करता है। यह limit Gaussian smoothing से पहले लागू होती है, इसलिए limit तक पहुँचे हिस्से आसपास के correction curve में smoothly blend होते हैं। Cuts सीमित नहीं होते।
+- **Level Correction** - Automatic magnitude correction को 0% से 100% तक 1% के steps में, dB में linearly सेट करता है। 0% पर automatic level correction बंद रहती है; Phase Correction, Additional EQ, Delay और Gain सक्रिय रहते हैं।
+- **Phase Correction** - मापी गई excess-phase correction को 0% से 100% तक 1% के steps में सेट करता है और केवल Correction में काम करता है। Minimum और Linear modes में इसके controls disabled रहते हैं। 0% पर excess-phase correction बंद रहती है, जबकि Level Correction सक्रिय रहती है। Level Correction की magnitude response के साथ स्वाभाविक रूप से जुड़ा minimum-phase बदलाव बना रहता है, इसलिए Phase Correction केवल measurement से जोड़े गए अतिरिक्त excess-phase component को नियंत्रित करता है।
+- **Reference Point** - Correction में direct-sound excess phase का source चुनता है। **सहमति (सभी बिंदु)** default और fallback है: यह points को समय में align करता है, उनकी excess phase जोड़ता है, गहरे response nulls के पास अविश्वसनीय phase को कम weight देता है और जहाँ points सहमत नहीं होते वहाँ correction घटाता है। किसी नामित point को चुनने पर केवल उसी की excess phase उपयोग होती है। Magnitude correction हमेशा सभी points का उपयोग करता है। चुना हुआ point हटाने पर setting सहमति पर लौट जाती है।
+- **अतिरिक्त EQ (FIR में शामिल)** - 5Band PEQ के समान पाँच-band interface और graph का उपयोग करता है। हर band को enable करके Peak, Low shelf या High shelf चुन सकते हैं और 20 Hz से 20 kHz, -20 से +20 dB तथा Q 0.1 से 10 तक सेट कर सकते हैं। Response अलग IIR stage में नहीं, FIR में शामिल होती है। Linear में इसकी phase zero और Minimum तथा Correction में minimum-phase होती है। Max Boost automatic room-response inversion को सीमित करता है, इस EQ के जानबूझकर दिए boost को नहीं।
+- **Gain** - Corrected और bypass paths को मिलाने के बाद सभी channels पर -12 से +12 dB लागू करता है।
+
+### दृश्य प्रदर्शन
+
+- Graph के ऊपर दिए **Frequency Response** और **Impulse Response** radio buttons से दोनों views के बीच बदल सकते हैं।
+- **Impulse Response** चुना हुआ point दिखाता है; Reference Point को सहमति पर रखने पर यह समय में align की गई औसत waveform दिखाता है। Range मापे गए onset से 5 ms पहले से 5 ms और Direct Window में जो अधिक हो, वहाँ तक रहती है। धूसर line correction से पहले की response और सफेद line वास्तविक FIR लगाने के बाद का calculated result दिखाती है। मापा गया onset दोनों के लिए साझा 0 ms reference है और corrected waveform से केवल FIR का ज्ञात fixed delay हटाया जाता है, इसलिए peak की relative timing और pre-ringing दिखाई देते रहते हैं। दोनों एक ही normalized amplitude scale का उपयोग करती हैं। Impulse-response data न होने पर unavailable message दिखाई देता है।
+- Graph का horizontal axis logarithmic frequency और vertical axis dB level दिखाता है।
+- दो सफेद खड़ी dotted lines, Correction Low और Correction High से सेट की गई frequencies दिखाती हैं।
+- Markers से हर band की frequency और gain बदली जा सकती है।
+- हल्की धूसर curve graph का common display offset लागू की गई smoothed measured frequency response दिखाती है।
+- पतली हल्की हरी curve चुनी हुई measurement और मौजूदा Room EQ correction settings से निकली automatic correction को अतिरिक्त EQ लागू होने से पहले दिखाती है।
+- चमकीली हरी curve उसी correction पर अतिरिक्त EQ लागू होने के बाद की response दिखाती है। यही combined magnitude response FIR में शामिल होती है।
+- सफेद curve हल्की धूसर measured response में चमकीली हरी combined correction जोड़कर मिली estimated corrected response दिखाती है। धूसर और सफेद curves पर एक ही offset लगाया जाता है, जो 100% automatic correction के destination level को 0 dB पर रखता है; Max Boost की सीमा कुछ deviation छोड़ सकती है, जबकि Additional EQ इस reference के आसपास response को जानबूझकर बदलता है। यह calculated preview है, कोई नई acoustic measurement नहीं।
+- Controls के नीचे status total processing latency, FIR resolution और filter की bypass, staged, preparing, active या error अवस्था दिखाता है।
 
 ## Tone Control
 

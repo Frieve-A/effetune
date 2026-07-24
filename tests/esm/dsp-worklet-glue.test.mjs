@@ -291,6 +291,15 @@ function pluginConfig(overrides = {}) {
   };
 }
 
+function roomEqPluginConfig(overrides = {}) {
+  return pluginConfig({
+    type: 'RoomEqPlugin',
+    parameters: { enabled: true, lt: '128', fd: 0, dy: 0, gn: 0 },
+    wasmParams: Float32Array.of(1, 0, 0, 0),
+    ...overrides
+  });
+}
+
 function assetPayload(sample = 1) {
   const payload = new ArrayBuffer(36);
   const header = new DataView(payload);
@@ -637,6 +646,167 @@ test('worklet preserves a resident asset when a replacement is rejected', async 
   assert.equal(stagingCalls.length, 3);
   assert.equal(new Float32Array(Uint8Array.from(stagingCalls.at(-1)[3]).buffer, 32, 1)[0], 0.25);
   assert.equal(messagesOf(harness.posts, 'assetState').at(-1).message.operationRevision, 1);
+});
+
+test('Room EQ replacement staging waits for one dry-ramp quantum before switching assets', async () => {
+  let dryReady = false;
+  const binding = createBinding({
+    pipelineConfigureStatus: 0,
+    assetState: () => 3 | (dryReady ? 1 << 16 : 0),
+    onPipelineProcess() {
+      dryReady = binding.calls.some(call =>
+        call[0] === 'instanceSetParams' && call[2].length === 4 && call[2][0] === -1
+      );
+    },
+    capabilities: {
+      abiVersion: 1,
+      simd: false,
+      kernels: [{
+        name: 'RoomEqPlugin', hash: 0x1234, byteCapacity: 0,
+        assetCapacity: 4096, kernelIndex: 0
+      }]
+    }
+  });
+  const harness = await createWorkletHarness({ binding });
+  await harness.send({
+    type: 'registerProcessor', pluginType: 'RoomEqPlugin', processor: 'return data;'
+  });
+  await harness.send({ type: 'updatePlugins', plugins: [roomEqPluginConfig()], masterBypass: false });
+  await harness.send({ type: 'dspEnableTypes', types: ['RoomEqPlugin'] });
+  await harness.send({ type: 'dspModule', module: { compiled: true } });
+  const sendAsset = (sample, operationRevision) => harness.send({
+    type: 'setPluginAsset', pluginId: 7, slot: 0, formatTag: 1,
+    headBlock: operationRevision === 1 ? 128 : 0,
+    rateDivider: 1, pathCount: 0, inputCount: 0, processingChannels: 2,
+    footprintBytes: 1024, operationRevision, payload: assetPayload(sample)
+  });
+
+  await sendAsset(0.25, 1);
+  await sendAsset(0.75, 2);
+  assert.equal(binding.calls.filter(call => call[0] === 'instanceSetAsset').length, 1);
+  assert.ok(binding.calls.some(call =>
+    call[0] === 'instanceSetParams' && call[2].length === 4 && call[2][0] === -1
+  ));
+
+  processBlock(harness.processor);
+  assert.equal(binding.calls.filter(call => call[0] === 'instanceSetAsset').length, 1);
+  processBlock(harness.processor);
+  const stagingCalls = binding.calls.filter(call => call[0] === 'instanceSetAsset');
+  assert.equal(stagingCalls.length, 2);
+  const disableIndex = binding.calls.findLastIndex(call =>
+    call[0] === 'instanceSetParams' && call[2].length === 4 && call[2][0] === -1
+  );
+  const replacementIndex = binding.calls.findLastIndex(call => call[0] === 'instanceSetAsset');
+  assert.ok(disableIndex >= 0 && disableIndex < replacementIndex);
+  const restoreIndex = binding.calls.findLastIndex(call =>
+    call[0] === 'instanceSetParams' && call[2].length === 4 && call[2][0] === 1
+  );
+  assert.ok(restoreIndex > replacementIndex);
+  assert.deepEqual(stagingCalls[1][3].slice(-4), [...new Uint8Array(new Float32Array([0.75]).buffer)]);
+  assert.equal(harness.processor.dspAssetCache.get(7).get(0).operationRevision, 2);
+});
+
+test('deferred Room EQ replacements reserve aggregate budget until staged or cleared', async () => {
+  const binding = createBinding({
+    assetState: 3,
+    capabilities: {
+      abiVersion: 1,
+      simd: false,
+      kernels: [{
+        name: 'RoomEqPlugin', hash: 0x1234, byteCapacity: 0,
+        assetCapacity: 4096, kernelIndex: 0
+      }]
+    }
+  });
+  const harness = await createWorkletHarness({ binding });
+  await harness.send({
+    type: 'registerProcessor', pluginType: 'RoomEqPlugin', processor: 'return data;'
+  });
+  await harness.send({
+    type: 'updatePlugins',
+    plugins: [roomEqPluginConfig(), { ...roomEqPluginConfig(), id: 8 }],
+    masterBypass: false
+  });
+  await harness.send({ type: 'dspEnableTypes', types: ['RoomEqPlugin'] });
+  await harness.send({ type: 'dspModule', module: { compiled: true } });
+  const sendAsset = (pluginId, footprintBytes, operationRevision) => harness.send({
+    type: 'setPluginAsset', pluginId, slot: 0, formatTag: 1,
+    headBlock: 128, rateDivider: 1, pathCount: 0, inputCount: 0,
+    processingChannels: 2, footprintBytes, operationRevision,
+    payload: assetPayload(operationRevision)
+  });
+
+  await sendAsset(7, 64 * 1024 * 1024, 1);
+  await sendAsset(7, 100 * 1024 * 1024, 2);
+  assert.equal(harness.processor.dspAssetFootprintBytes(), 100 * 1024 * 1024);
+  assert.equal(binding.calls.filter(call => call[0] === 'instanceSetAsset').length, 1);
+
+  await sendAsset(8, 40 * 1024 * 1024, 1);
+  assert.equal(messagesOf(harness.posts, 'assetLoadRejected').at(-1).message.reason, 'module-budget');
+  assert.equal(harness.processor.dspAssetCache.has(8), false);
+
+  await harness.send({
+    type: 'clearPluginAsset', pluginId: 7, slot: 0, operationRevision: 3
+  });
+  assert.equal(harness.processor.dspAssetFootprintBytes(), 0);
+  await sendAsset(8, 40 * 1024 * 1024, 2);
+  assert.equal(harness.processor.dspAssetCache.get(8).get(0).operationRevision, 2);
+});
+
+test('Room EQ failed replacement is rejected only after the resident wet path ramps dry', async () => {
+  let stagingAttempt = 0;
+  let dryReady = false;
+  let replacementFailed = false;
+  const binding = createBinding({
+    pipelineConfigureStatus: 0,
+    assetCommitStatus() {
+      stagingAttempt += 1;
+      replacementFailed = stagingAttempt === 2;
+      return replacementFailed ? -2 : 0;
+    },
+    assetState: () => replacementFailed ? 4 : 3 | (dryReady ? 1 << 16 : 0),
+    onPipelineProcess() {
+      dryReady = binding.calls.some(call =>
+        call[0] === 'instanceSetParams' && call[2].length === 4 && call[2][0] === -1
+      );
+    },
+    capabilities: {
+      abiVersion: 1,
+      simd: false,
+      kernels: [{
+        name: 'RoomEqPlugin', hash: 0x1234, byteCapacity: 0,
+        assetCapacity: 4096, kernelIndex: 0
+      }]
+    }
+  });
+  const harness = await createWorkletHarness({ binding });
+  await harness.send({
+    type: 'registerProcessor', pluginType: 'RoomEqPlugin', processor: 'return data;'
+  });
+  await harness.send({ type: 'updatePlugins', plugins: [roomEqPluginConfig()], masterBypass: false });
+  await harness.send({ type: 'dspEnableTypes', types: ['RoomEqPlugin'] });
+  await harness.send({ type: 'dspModule', module: { compiled: true } });
+  const sendAsset = (sample, operationRevision) => harness.send({
+    type: 'setPluginAsset', pluginId: 7, slot: 0, formatTag: 1,
+    headBlock: operationRevision === 1 ? 128 : 0,
+    rateDivider: 1, pathCount: 0, inputCount: 0, processingChannels: 2,
+    footprintBytes: 1024, operationRevision, payload: assetPayload(sample)
+  });
+
+  await sendAsset(0.25, 1);
+  await sendAsset(0.75, 2);
+  processBlock(harness.processor);
+  assert.equal(messagesOf(harness.posts, 'assetLoadRejected').length, 0);
+  processBlock(harness.processor);
+  const rejection = messagesOf(harness.posts, 'assetLoadRejected').at(-1).message;
+  assert.equal(rejection.operationRevision, 2);
+  assert.equal(rejection.residentRetained, false);
+  assert.equal(harness.processor.dspAssetCache.has(7), false);
+  const replacementIndex = binding.calls.findLastIndex(call => call[0] === 'instanceSetAsset');
+  const restoreIndex = binding.calls.findLastIndex(call =>
+    call[0] === 'instanceSetParams' && call[2].length === 4 && call[2][0] === 1
+  );
+  assert.ok(restoreIndex > replacementIndex);
 });
 
 test('worklet retains the immediate rapid predecessor in PREPARING or ACTIVE state', async () => {
@@ -3728,4 +3898,40 @@ test('power protocol refuses zero and bypass skip when temporal processing is un
   assert.ok(harness.processor.powerPolicy.counters.fullJsProcessQuanta > 0);
   assert.equal(harness.processor.powerPolicy.counters.zeroOutputQuanta, 0);
   assert.equal(harness.processor.powerPolicy.counters.bypassQuanta, 0);
+});
+
+test('worklet publishes Room EQ WASM availability and runtime fallback states', async () => {
+  const binding = createBinding({
+    capabilities: {
+      abiVersion: 1,
+      simd: false,
+      kernels: [{
+        name: 'RoomEqPlugin', hash: 0x6b4d1234, byteCapacity: 0, kernelIndex: 0
+      }]
+    }
+  });
+  const harness = await createWorkletHarness({ binding });
+  const roomEq = pluginConfig({
+    type: 'RoomEqPlugin',
+    wasmParams: new Float32Array(4),
+    wasmParamsHash: 0x6b4d1234
+  });
+  const executionMessages = () => messagesOf(harness.posts, 'dspExecutionState')
+    .map(entry => entry.message)
+    .filter(message => message.pluginType === 'RoomEqPlugin');
+
+  await harness.send({ type: 'updatePlugins', plugins: [roomEq], masterBypass: false });
+  assert.equal(executionMessages().at(-1).state, 'pending');
+  await harness.send({ type: 'dspEnableTypes', types: [] });
+  assert.equal(executionMessages().at(-1).reason, 'rolloutDisabled');
+  await harness.send({ type: 'dspEnableTypes', types: ['RoomEqPlugin'] });
+  assert.equal(executionMessages().at(-1).reason, 'wasmUnavailable');
+
+  await harness.send({ type: 'dspModule', module: {} });
+  assert.deepEqual(
+    { state: executionMessages().at(-1).state, reason: executionMessages().at(-1).reason },
+    { state: 'active', reason: null }
+  );
+  harness.processor.runtimeFallback(harness.processor.plugins[0], 'trap');
+  assert.equal(executionMessages().at(-1).reason, 'runtimeFallback');
 });

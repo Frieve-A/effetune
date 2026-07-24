@@ -3,6 +3,7 @@
  */
 
 import FFT from './fft.js';
+import { smoothFrequencyResponse as smoothSharedFrequencyResponse } from '../../../js/utils/measurement-dsp/smoothing.js';
 
 /**
  * Perform FFT on time-domain signal using optimized Cooley-Tukey algorithm
@@ -327,59 +328,7 @@ function calculateFrequencyResponseWithSmoothing(timeDomainData, sampleRate = 48
  * @returns {Array} Smoothed frequency response
  */
 function smoothFrequencyResponse(frequencyResponse, sigma = 0.3) {
-    // Check for null or invalid input
-    if (!frequencyResponse || !Array.isArray(frequencyResponse) || frequencyResponse.length < 3) {
-        return frequencyResponse || [];
-    }
-    
-    if (sigma <= 0) {
-        return frequencyResponse;
-    }
-    
-    // Determine the format of the frequency response (array or object)
-    const isObjectFormat = typeof frequencyResponse[0] === 'object' && 
-                         !Array.isArray(frequencyResponse[0]) &&
-                         'frequency' in frequencyResponse[0] &&
-                         'magnitude' in frequencyResponse[0];
-    
-    const smoothed = [];
-    
-    for (let i = 0; i < frequencyResponse.length; i++) {
-        // Get the frequency value based on format
-        const freq = isObjectFormat ? frequencyResponse[i].frequency : frequencyResponse[i][0];
-        
-        let weightedSum = 0;
-        let weightSum = 0;
-        
-        for (let j = 0; j < frequencyResponse.length; j++) {
-            // Get other frequency and magnitude based on format
-            const otherFreq = isObjectFormat ? frequencyResponse[j].frequency : frequencyResponse[j][0];
-            const otherMag = isObjectFormat ? frequencyResponse[j].magnitude : frequencyResponse[j][1];
-            
-            // Calculate distance in octaves
-            const octaveDistance = Math.log2(otherFreq / freq);
-            
-            // Apply Gaussian weighting
-            const weight = Math.exp(-(octaveDistance * octaveDistance) / (2 * sigma * sigma));
-            
-            weightedSum += otherMag * weight;
-            weightSum += weight;
-        }
-        
-        const smoothedMagnitude = weightedSum / weightSum;
-        
-        // Return in the same format as input
-        if (isObjectFormat) {
-            smoothed.push({
-                frequency: freq,
-                magnitude: smoothedMagnitude
-            });
-        } else {
-            smoothed.push([freq, smoothedMagnitude]);
-        }
-    }
-    
-    return smoothed;
+    return smoothSharedFrequencyResponse(frequencyResponse, sigma);
 }
 
 /**
@@ -681,4 +630,4 @@ export {
     calculatePEQParameters,
     applyCorrectionToResponse,
     exportWAV
-}; 
+};

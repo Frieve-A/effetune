@@ -11,8 +11,22 @@
 
 import audioUtils from '../audio-utils/index.js';
 import { FFT } from '../audio-utils/index.js';
+import { detectOnset, trimMeasurementImpulseResponse } from '../../../js/utils/measurement-dsp/onset.js';
 
 const AudioProcessing = {
+    createSweepMeasurementResult(processed, details) {
+        return {
+            ...details,
+            impulseResponse: processed.impulseResponse,
+            irValid: processed.irValid,
+            onsetIndex: processed.onsetIndex,
+            prerollSamples: processed.prerollSamples,
+            sweepLimited: processed.sweepLimited,
+            peakDb: processed.peakDb,
+            refScale: processed.refScale
+        };
+    },
+
     /**
      * Active audio elements for the current sweep
      */
@@ -442,7 +456,8 @@ const AudioProcessing = {
                     
                     // Process the recording to extract the impulse response
                     const processStart = performance.now();
-                    const processedBuffer = this.processRecordedBuffer(finalBuffer, sweepBuffer.length, averagingCount, sampleRate);
+                    const processed = this.processRecordedBuffer(finalBuffer, sweepBuffer.length, averagingCount, sampleRate);
+                    const processedBuffer = processed.analysisImpulseResponse;
                     
                     // Save synchronized buffer for debugging
                     this.syncedBuffer = processedBuffer;
@@ -463,13 +478,13 @@ const AudioProcessing = {
                     finalBuffer = null;
                     
                     // Resolve promise with processed data
-                    resolve({
+                    resolve(this.createSweepMeasurementResult(processed, {
                         frequencyResponse: frequencyResponse,
                         hasOverload: hasOverload,
                         maxSignalLevel: maxSignalLevel,
                         fullRecording: finalBuffer,
                         sampleRate: sampleRate
-                    });
+                    }));
                 };
                 
                 // Final safety timeout
@@ -503,7 +518,7 @@ const AudioProcessing = {
      * @param {number} sweepLength - Sweep length in samples
      * @param {number} averagingCount - Number of repetitions
      * @param {number} sampleRate - Sample rate in Hz
-     * @returns {Float32Array} Processed impulse response
+     * @returns {Object} Processed and trimmed impulse response
      */
     processRecordedBuffer(recordBuffer, sweepLength, averagingCount, sampleRate) {
         console.time('processRecordedBuffer');
@@ -519,7 +534,11 @@ const AudioProcessing = {
             if (!inverseFilter) {
                 console.warn('No inverse filter available, returning original recording');
                 console.timeEnd('processRecordedBuffer');
-                return recordBuffer;
+                return {
+                    analysisImpulseResponse: recordBuffer,
+                    impulseResponse: null,
+                    irValid: false
+                };
             }
             
             // Assuming there's a pre-roll time before the actual sweep
@@ -608,16 +627,39 @@ const AudioProcessing = {
                 }
             } else {
                 console.warn('No processed segments available');
-                result = recordBuffer;
+                console.timeEnd('processRecordedBuffer');
+                return {
+                    analysisImpulseResponse: recordBuffer,
+                    impulseResponse: null,
+                    irValid: false
+                };
             }
             
+            const onsetIndex = detectOnset(result, sampleRate);
+            const trimmed = trimMeasurementImpulseResponse(result, sampleRate, sweepLength, onsetIndex);
+            let peak = 0;
+            for (const sample of trimmed.data) {
+                const magnitude = sample < 0 ? -sample : sample;
+                if (magnitude > peak) peak = magnitude;
+            }
             console.timeEnd('processRecordedBuffer');
-            return result;
+            return {
+                ...trimmed,
+                analysisImpulseResponse: result,
+                impulseResponse: trimmed.data,
+                irValid: true,
+                peakDb: peak > 0 ? 20 * Math.log10(peak) : -Infinity,
+                refScale: audioUtils.lastDeconvolutionRefScale || 1
+            };
             
         } catch (error) {
             console.error('Error processing recorded buffer:', error);
             console.timeEnd('processRecordedBuffer');
-            return recordBuffer;
+            return {
+                analysisImpulseResponse: recordBuffer,
+                impulseResponse: null,
+                irValid: false
+            };
         }
     },
     

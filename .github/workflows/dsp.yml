@@ -75,6 +75,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
+        build-type: [Debug, Release]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -83,9 +84,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run test:dsp
+      - run: npm run test:dsp -- --native-build-type=${{ matrix.build-type }}
       - name: Run native parity with the realtime allocation guard
+        if: matrix.build-type == 'Debug'
         run: node tools/dsp-parity/run.mjs --native --allocations
+      - name: Run native parity
+        if: matrix.build-type == 'Release'
+        run: node tools/dsp-parity/run.mjs --native
 
   dsp-parity:
     needs: source-verification

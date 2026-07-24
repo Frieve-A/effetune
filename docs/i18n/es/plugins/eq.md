@@ -1,6 +1,6 @@
 ---
 title: "Plugins de EQ - EffeTune"
-description: "Plugins de ecualización, incluidos Parametric EQ, Graphic EQ, Dynamic EQ, Earphone Cable Sim, filtros y Tone Control."
+description: "Plugins de ecualización, incluidos Parametric EQ, Graphic EQ, Dynamic EQ, Room EQ, Earphone Cable Sim, filtros y Tone Control."
 lang: es
 ---
 
@@ -21,6 +21,7 @@ Una colección de plugins que te permiten ajustar diferentes aspectos del sonido
 - [Lo Pass Filter](#lo-pass-filter) - Elimina frecuencias altas no deseadas con precisión
 - [Loudness Equalizer](#loudness-equalizer) - Corrección del balance de frecuencias para escuchar a bajo volumen
 - [Narrow Range](#narrow-range) - Enfoca partes específicas del sonido
+- [Room EQ](#room-eq) - Corrección FIR basada en mediciones de sala guardadas
 - [Tilt EQ](#tilt-eq) - Ecualizador de inclinación para ajuste tonal simple
 - [Tone Control](#tone-control) - Ajuste sencillo de bajos, medios y agudos
 
@@ -514,6 +515,56 @@ Una herramienta que te permite enfocarte en partes específicas de la música fi
 - Gráfico claro que muestra la respuesta en frecuencia
 - Controles de frecuencia fáciles de ajustar
 - Selectores de pendiente sencillos
+
+## Room EQ
+
+Room EQ crea un único filtro de corrección FIR a partir de una medición de respuesta en frecuencia guardada por EffeTune y aplica ese mismo filtro a todos los canales dirigidos al plugin. Usa el selector de bus estándar del plugin para decidir qué canales procesa. Promedia todos los puntos de la medición elegida, suaviza el resultado y reduce las desviaciones dentro del intervalo de corrección seleccionado. Úsalo cuando la interacción entre los altavoces y la sala produzca picos repetibles o un desequilibrio tonal amplio en la zona de escucha. También puede aplicar corrección de magnitud con fase lineal o una corrección de fase mixta que combina corrección de magnitud con fase mínima y corrección del exceso de fase del sonido directo medido. De forma predeterminada, la corrección del exceso de fase conserva el componente común a los puntos de medición y se reduce donde sus fases no coinciden. Room EQ necesita el motor DSP WASM; si no está disponible, la señal pasa sin cambios.
+
+### Guía de mejora del sonido
+
+- Mide el grupo de altavoces que quieras corregir desde varias posiciones cercanas del micrófono en la zona de escucha y selecciona esa medición en Room EQ. Varios puntos hacen que la corrección dependa menos de una única posición exacta.
+- Empieza con **Phase: Linear**, **Smoothing: 0.17 oct**, **Correction Low: 20 Hz**, **Correction High: 16000 Hz**, **Max Boost: 6 dB** y **Level Correction: 100%**. Compara con el control principal de encendido y apagado del plugin para comprobar que el balance sea más uniforme sin sonar artificialmente delgado o brillante.
+- Si el filtro intenta rellenar valles estrechos que cambian con la posición del micrófono, aumenta Smoothing o reduce Max Boost. Con Max Boost en 0 dB se impiden los realces automáticos, pero los cortes siguen reduciendo los picos.
+- Si la corrección de nivel completa resulta demasiado intensa, reduce Level Correction. Como ajusta proporcionalmente en dB cada valor de corrección automática, al 50% una corrección de +6 dB pasa a +3 dB y una de -8 dB pasa a -4 dB.
+- Limita Correction Low y Correction High al intervalo que los altavoces y el micrófono reproduzcan con fiabilidad. Corregir fuera de un intervalo de medición fiable puede empeorar el resultado.
+- Cuando la corrección de sala sea estable, usa el EQ adicional para crear un objetivo de escucha suave, por ejemplo un Low shelf amplio de +2 dB cerca de 100 Hz o un pequeño ajuste High shelf alrededor de 10 kHz. Estas bandas modifican el objetivo y se integran en el filtro FIR.
+- Usa **Minimum** cuando importe una latencia baja. Usa **Correction** cuando quieras corregir tanto la respuesta en frecuencia como el exceso de fase. Empieza con Reference Point en **Consenso (todos los puntos)**, el valor predeterminado de Direct Window y **Phase Correction: 100%**. Selecciona un punto concreto solo cuando quieras optimizar el exceso de fase para esa posición del micrófono. Reduce Phase Correction de forma independiente si el resultado de fase es demasiado intenso.
+- Room EQ no calcula la alineación por distancia de los altavoces. **Delay** añade el mismo retardo manual a todos los canales procesados. Si distintos grupos necesitan retardos diferentes, usa instancias independientes de Room EQ.
+
+La medición es una referencia local del dispositivo. Una URL o un preset guarda su nombre e identificador, pero no los datos medidos. Para usarla en otro dispositivo, activa **Incluir respuestas impulsionales al exportar mediciones en JSON** en la pantalla de medición antes de exportarla; después, impórtala en el otro dispositivo antes de seleccionarla. Esta opción está desactivada de forma predeterminada, e incluir respuestas impulsionales puede aumentar el tamaño del archivo en decenas de megabytes. Si falta la medición, se muestra un aviso y Room EQ usa un bypass alineado en lugar de datos de corrección antiguos.
+
+### Parámetros
+
+- **Measurement** - Selecciona una medición guardada para todos los canales procesados. La lista muestra su nombre, número de puntos e `IR` cuando hay datos de respuesta impulsional. Usa **Refresh measurements** tras añadir o cambiar mediciones.
+- **Delay** - Añade manualmente de 0 a 20 ms de retardo a todos los canales procesados. No se incluye en la latencia de procesamiento indicada por el plugin.
+- **Phase** - Selecciona el tratamiento de fase del filtro FIR.
+  - **Minimum** - Corrección de magnitud de fase mínima con la menor latencia añadida.
+  - **Linear** - Corrección de magnitud de fase lineal. Conserva la fase relativa de la entrada, pero añade un retardo igual a la mitad de los taps elegidos.
+  - **Correction** - Añade a la corrección de magnitud de fase mínima la corrección del exceso de fase de la respuesta impulsional directa guardada. Esto reduce la variación del retardo de grupo y conserva `Taps / 2` muestras de retardo para el filtro de fase mixta. Durante el diseño mantiene la posición de la energía del impulso principal alineada con la respuesta Minimum que usa el mismo ajuste de Level Correction. Se diseña un único filtro a partir de la medición seleccionada y se aplica sin cambios a todos los canales enrutados. Por tanto, cambiar Level Correction o Phase Correction no introduce diferencias de tiempo específicas entre canales. Necesita Reference Point, Direct Window y datos impulsionales.
+- **Taps** - Longitud FIR: 8192, 16384, 32768, 65536 o 131072. Más taps mejoran la resolución en graves, pero aumentan el retardo, el uso de memoria y el tiempo de diseño. Linear y Correction añaden `Taps / 2` muestras de retardo.
+- **Latency** - Latencia de cabecera del motor de convolución: 0, 128, 256, 512 o 1024 muestras. Los valores bajos reducen el retardo a costa de más procesamiento; en Linear y Correction suele dominar el retardo de media longitud del FIR.
+- **Smoothing** - Suavizado gaussiano de 0,02 a 1,00 octavas. Los valores altos producen una corrección más amplia y conservadora; los bajos siguen variaciones más finas.
+- **Correction Low / Correction High** - Establecen los límites de transición inferior y superior de la corrección automática de magnitud. Antes del suavizado gaussiano, la corrección automática se considera de 0 dB en estos límites y fuera de ellos. Por tanto, Smoothing controla lo gradualmente que se desvanece la corrección y hasta dónde se extiende más allá de cada límite. El límite superior también se restringe internamente para dejar margen bajo la frecuencia de Nyquist.
+- **Direct Window** - Tramo de 1 a 50 ms tras el inicio del sonido directo que utiliza Correction. Una ventana mayor extiende la corrección de fase hacia frecuencias más bajas, pero incluye más reflexiones de la sala.
+- **Max Boost** - Limita entre 0 y 18 dB los realces generados por la inversión automática de la respuesta. El límite se aplica antes del suavizado gaussiano, de modo que las zonas limitadas se integran suavemente en la curva de corrección circundante. No limita los cortes.
+- **Level Correction** - Ajusta la corrección automática de magnitud entre el 0% y el 100% en pasos del 1%, linealmente en dB. Al 0% se desactiva la corrección automática de nivel; Phase Correction, Additional EQ, Delay y Gain siguen activos.
+- **Phase Correction** - Ajusta la corrección del exceso de fase medido entre el 0% y el 100% en pasos del 1% y solo actúa en Correction. Sus controles están desactivados en los modos Minimum y Linear. Al 0% se desactiva la corrección del exceso de fase mientras Level Correction sigue activa. Se mantiene el cambio de fase mínima inherente a la respuesta de magnitud de Level Correction, por lo que Phase Correction solo controla el componente adicional de exceso de fase obtenido de la medición.
+- **Reference Point** - Selecciona la fuente del exceso de fase del sonido directo en Correction. **Consenso (todos los puntos)** es el valor predeterminado y de respaldo: alinea temporalmente los puntos, combina su exceso de fase, reduce el peso de la fase poco fiable cerca de cancelaciones profundas y atenúa la corrección donde los puntos no coinciden. Al elegir un punto por su nombre solo se usa el exceso de fase de ese punto. La corrección de magnitud siempre utiliza todos los puntos. Si se elimina el punto seleccionado, el ajuste vuelve a Consenso.
+- **EQ adicional (integrado en el FIR)** - Reutiliza la misma interfaz de cinco bandas y el mismo gráfico de 5Band PEQ. Cada banda puede activarse, configurarse como Peak, Low shelf o High shelf y ajustarse entre 20 Hz y 20 kHz, entre -20 y +20 dB y con Q de 0,1 a 10. La respuesta se incorpora al FIR, sin una etapa IIR separada. Su fase es cero en el modo Linear y de fase mínima en Minimum y Correction. Max Boost limita la inversión automática de la sala, no los realces intencionados de este EQ.
+- **Gain** - Aplica de -12 a +12 dB a todos los canales después de combinar las rutas corregidas y de bypass.
+
+### Visualización
+
+- Usa los botones de opción **Respuesta en frecuencia** y **Respuesta al impulso** de la parte superior del gráfico para cambiar de vista.
+- **Respuesta al impulso** muestra el punto seleccionado o, cuando Reference Point está en Consenso, la forma de onda media alineada en el tiempo. El intervalo va desde 5 ms antes del inicio medido hasta el valor mayor entre 5 ms y Direct Window. La línea gris corresponde al estado anterior a la corrección y la blanca al resultado calculado después de aplicar el FIR real. El inicio medido es la referencia común de 0 ms y de la forma de onda corregida solo se elimina el retardo fijo conocido del FIR, por lo que siguen siendo visibles la posición relativa del pico y el pre-ringing. Ambas líneas usan la misma escala de amplitud normalizada. Si la medición no contiene datos de respuesta al impulso, se muestra un mensaje que indica que no están disponibles.
+- El gráfico muestra la frecuencia en escala logarítmica en el eje horizontal y el nivel en dB en el vertical.
+- Las dos líneas verticales blancas de puntos marcan las frecuencias ajustadas con Correction Low y Correction High.
+- Los marcadores permiten cambiar la frecuencia y la ganancia de cada banda.
+- La curva gris clara muestra la respuesta en frecuencia medida y suavizada con el desplazamiento de visualización común del gráfico.
+- La curva fina de color verde claro muestra la corrección automática calculada a partir de la medición elegida y de los ajustes actuales de Room EQ, antes de aplicar el EQ adicional.
+- La curva verde brillante muestra esa corrección con el EQ adicional aplicado. Esta respuesta de magnitud combinada es la que se integra en el FIR.
+- La curva blanca muestra la respuesta corregida estimada que se obtiene al sumar la corrección combinada verde brillante a la respuesta medida gris clara. Las curvas gris y blanca comparten un desplazamiento que sitúa en 0 dB el nivel de destino de una corrección automática del 100%; los límites de Max Boost pueden dejar desviaciones residuales, mientras que Additional EQ modifica intencionadamente la respuesta alrededor de esa referencia. Es una vista previa calculada, no una nueva medición acústica.
+- El estado situado bajo los controles muestra la latencia total, la resolución FIR y si el filtro está en bypass, staged, preparing, active o error.
 
 ## Tone Control
 

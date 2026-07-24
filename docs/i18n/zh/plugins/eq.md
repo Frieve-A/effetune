@@ -1,6 +1,6 @@
 ---
 title: "均衡器插件 - EffeTune"
-description: "包含 Parametric EQ、Graphic EQ、Dynamic EQ、Earphone Cable Sim、Filters 和 Tone Control 的均衡器插件。"
+description: "包含 Parametric EQ、Graphic EQ、Dynamic EQ、Room EQ、Earphone Cable Sim、Filters 和 Tone Control 的均衡器插件。"
 lang: zh
 ---
 
@@ -21,6 +21,7 @@ lang: zh
 - [Lo Pass Filter](#lo-pass-filter) - 精确去除不需要的高频
 - [Loudness Equalizer](#loudness-equalizer) - 针对低音量播放进行频率平衡校正
 - [Narrow Range](#narrow-range) - 聚焦于声音的特定部分
+- [Room EQ](#room-eq) - 根据已保存的房间测量进行FIR校正
 - [Tilt EQ](#tilt-eq) - 简单倾斜声音频谱的均衡器
 - [Tone Control](#tone-control) - 简单的低音、中音和高音调整
 
@@ -514,6 +515,56 @@ lang: zh
 - 清晰显示频率响应的图表
 - 易于调整的频率控制
 - 简单的斜率下拉菜单
+
+## Room EQ
+
+Room EQ根据EffeTune保存的一项频率响应测量生成一个FIR校正滤波器，并将同一个滤波器应用于所有路由到该插件的声道。由插件的标准总线选择器决定处理哪些声道。它会对所选测量的全部测量点取平均、平滑结果，并减小所选校正范围内的偏差。适合用于改善扬声器与房间相互作用在聆听区域造成的稳定峰值或大范围音色失衡。它还支持线性相位幅度校正，以及将最小相位幅度校正与测得直达声的额外相位校正结合起来的混合相位校正。默认的额外相位校正会保留各测量点共有的成分，并在相位不一致的部分减弱校正。Room EQ需要WASM DSP引擎；如果不可用，信号将不作改动直接通过。
+
+### 声音改善指南
+
+- 在聆听区域内相邻的多个麦克风位置测量要校正的扬声器组，然后在Room EQ中选择该测量。使用多个测量点可降低校正对某一个精确位置的依赖。
+- 建议从 **Phase: Linear**、**Smoothing: 0.17 oct**、**Correction Low: 20 Hz**、**Correction High: 16000 Hz**、**Max Boost: 6 dB** 和 **Level Correction: 100%** 开始。使用插件的主开关进行比较，确认频率平衡更均匀，同时没有变得不自然地单薄或明亮。
+- 如果滤波器试图抬高随麦克风位置变化的狭窄凹陷，请增大Smoothing或减小Max Boost。将Max Boost设为0 dB会阻止自动提升，但仍允许通过衰减来压低峰值。
+- 如果完整的电平校正听起来过强，请降低Level Correction。它会按dB等比例缩放每个自动校正值，因此设为50%时，+6 dB校正会变为+3 dB，-8 dB校正会变为-4 dB。
+- 将Correction Low和Correction High限制在扬声器和测量麦克风都能可靠工作的范围内。校正超出可信测量范围的频段可能降低准确性。
+- 房间校正稳定后，可用附加EQ设置温和的聆听目标，例如在100 Hz附近加入宽缓的+2 dB Low shelf，或在10 kHz附近小幅调整High shelf。这些频段会改变目标并合并到FIR滤波器中。
+- 需要低延迟时使用 **Minimum**。需要同时校正频率响应和额外相位时使用 **Correction**。先将Reference Point保持为 **一致成分（所有测量点）**，并从Direct Window默认值和 **Phase Correction: 100%** 开始。只有需要针对某个麦克风位置优化额外相位时，才选择单个测量点。如果相位校正听起来过强，可单独降低Phase Correction。
+- Room EQ不会自动计算扬声器距离对齐。**Delay**会为所有处理声道添加相同的手动延迟。不同扬声器组需要不同延迟时，请使用独立的Room EQ实例。
+
+测量是本机引用。URL或preset只保存它的名称和标识符，不包含测量数据。要在另一台设备上使用测量，请先在测量界面启用 **导出测量JSON时包含脉冲响应** 后再导出，然后在另一台设备上导入并选择。此选项默认关闭，包含脉冲响应可能会使文件增大几十MB。找不到测量时会显示警告，Room EQ会使用时间对齐的bypass，而不会继续使用旧的校正数据。
+
+### 参数
+
+- **Measurement** - 为所有处理声道选择一项已保存的频率响应测量。列表显示名称、测量点数量；有脉冲响应数据时还会显示`IR`。添加或更改测量后使用 **Refresh measurements**。
+- **Delay** - 为所有处理声道手动增加0到20 ms延迟。它不计入插件显示的处理延迟。
+- **Phase** - 选择FIR滤波器的相位处理方式。
+  - **Minimum** - 最小相位幅度校正，附加延迟最低。
+  - **Linear** - 线性相位幅度校正。它保留输入的相对相位，但会增加所选taps数量一半的延迟。
+  - **Correction** - 在最小相位幅度校正之外，校正已保存直达声脉冲响应的额外相位。它在保留混合相位滤波器所需的`Taps / 2`个采样延迟的同时，减小群延迟起伏。设计时会将主脉冲的能量位置与采用相同Level Correction设置的Minimum响应对齐。系统根据所选的一次测量设计一个滤波器，并将其原样应用于所有路由到该效果器的声道。因此，改变Level Correction或Phase Correction不会在声道之间产生不同的时序差异。需要Reference Point、Direct Window和脉冲响应数据。
+- **Taps** - FIR长度：8192、16384、32768、65536或131072。更多taps可提高低频分辨率，但会增加延迟、内存占用和滤波器设计时间。Linear和Correction会增加`Taps / 2`个采样的延迟。
+- **Latency** - 卷积引擎头部延迟：0、128、256、512或1024个采样。数值越低，延迟越小但处理负载越高；在Linear和Correction中，FIR半长度延迟通常更大。
+- **Smoothing** - 0.02到1.00倍频程的高斯平滑。数值越大，校正越宽缓、保守；数值越小，越会跟随细微的响应变化。
+- **Correction Low / Correction High** - 设置自动幅度校正的下、上过渡边界。进行高斯平滑前，边界处及边界外的自动校正按0 dB处理。因此，Smoothing决定校正衰减的平缓程度，以及越过各边界后延伸多远。上边界仍会在内部受到限制，以便在音频采样率的奈奎斯特频率以下保留余量。
+- **Direct Window** - Correction使用直达声起点之后1到50 ms的测量响应。较长窗口可让相位校正延伸到更低频率，但也会包含更多房间反射。
+- **Max Boost** - 将自动反转响应产生的提升限制在0到18 dB。限制在高斯平滑前应用，因此达到上限的区域会平滑融入周围的校正曲线。不限制衰减。
+- **Level Correction** - 以1%为步进，在0%到100%之间调节自动幅度校正，并按dB线性缩放。设为0%时，自动电平校正关闭；Phase Correction、Additional EQ、Delay和Gain仍然有效。
+- **Phase Correction** - 以1%为步进，在0%到100%之间调节测得的余相位校正，并且仅在Correction下生效。在Minimum和Linear模式下，其控件会被禁用。设为0%时，余相位校正关闭，而Level Correction仍然有效。Level Correction的幅度响应本身所伴随的最小相位变化仍会保留，因此Phase Correction只控制由测量附加的余相位分量。
+- **Reference Point** - 选择Correction所使用的直达声额外相位来源。**一致成分（所有测量点）** 是默认值和回退选项：它会在时间上对齐各测量点、合并额外相位、降低深度响应凹陷附近不可靠相位的权重，并在测量点之间相位不一致时减弱校正。选择具名测量点后，只使用该点的额外相位。幅度校正始终使用全部测量点。如果所选测量点之后被删除，设置会回到一致成分。
+- **附加EQ（合并到FIR）** - 直接使用与5Band PEQ相同的五频段界面和图表。每个频段都可启用，可选择Peak、Low shelf或High shelf，并可在20 Hz至20 kHz、-20至+20 dB、Q 0.1至10范围内调整。它会将响应合并到FIR，而不是使用独立IIR级。在Linear下采用零相位，在Minimum和Correction下采用最小相位。Max Boost限制的是自动房间响应反转，不限制此EQ有意设置的提升。
+- **Gain** - 在校正路径和bypass路径合并后，对所有声道施加-12到+12 dB增益。
+
+### 可视化显示
+
+- 使用图表顶部的**频率响应**和**脉冲响应**单选按钮切换视图。
+- **脉冲响应**显示所选测量点；Reference Point设为一致成分时，则显示时间对齐后的平均波形。显示范围从测得起点前5 ms开始，到5 ms与Direct Window中的较大值为止。灰线表示校正前，白线表示应用实际FIR后的计算结果。测得的起点作为校正前后共同的0 ms基准，校正后波形只扣除FIR已知的固定延迟，因此相对峰值位置和前振铃仍然可见。两条线使用相同的归一化幅度刻度。如果测量不含脉冲响应数据，界面会显示不可用提示。
+- 图表的横轴为对数频率，纵轴为dB电平。
+- 两条白色垂直点线表示Correction Low和Correction High所设定的频率。
+- 可拖动标记来调整各频段的频率和增益。
+- 浅灰色曲线表示经过平滑处理并应用图表公共显示偏移的实测频率响应。
+- 细的浅绿色曲线表示根据所选测量和当前Room EQ校正设置计算出的自动校正，即应用附加EQ之前的响应。
+- 亮绿色曲线表示自动校正叠加附加EQ后的响应。这一组合幅度响应会合并到FIR中。
+- 白色曲线表示将亮绿色组合校正叠加到浅灰色实测响应后得到的预计校正响应。灰色和白色曲线使用相同偏移，将100%自动校正的目标电平映射到0 dB；Max Boost限制可能留下残余偏差，而Additional EQ会围绕该基准有意重塑响应。它是计算预览，并非新的声学测量结果。
+- 控件下方状态会显示总处理延迟、FIR分辨率，以及滤波器处于bypass、staged、preparing、active还是error状态。
 
 ## Tone Control
 

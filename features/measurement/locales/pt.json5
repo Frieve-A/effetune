@@ -100,6 +100,14 @@
 
   // Messages
   "message:peqCopied": "Configurações de PEQ copiadas para a área de transferência com sucesso. As configurações copiadas podem ser coladas no Pipeline de Efeitos do EffeTune com Ctrl+V.",
+  "message:saveFailed": "Não foi possível salvar a medição. Verifique o espaço disponível e tente novamente.",
+  "message:irStorageUnavailable": "Este navegador não pode salvar respostas ao impulso. O modo Correction do Room EQ ficará indisponível.",
+  "label:includeImpulseResponses": "Incluir respostas ao impulso nas exportações JSON de medições",
+  "help:includeImpulseResponses": "As respostas ao impulso podem aumentar o arquivo exportado em dezenas de megabytes.",
+  "help:roomEq": "Para correção FIR com controle de fase, use o plugin Room EQ no aplicativo principal.",
+  "message:irSaved": "IR salva ✓ ({seconds} s @ {sampleRate} kHz)",
+  "help:sweepLimited": "Uma varredura mais longa permite que o Room EQ preserve uma resposta ao impulso mais longa.",
+  "message:measurementStorageUsage": "Medições: {megabytes} MB",
 
   // Channel options
   "option:left": "Canal Esquerdo",

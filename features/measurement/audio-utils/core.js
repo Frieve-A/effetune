@@ -69,6 +69,7 @@ class AudioUtils {
         this.selectedInputChannel = 'both';
         this.lastSweepFrequencyResponse = null; // Last generated sweep signal frequency response
         this.lastInverseFilter = null; // Inverse filter
+        this.lastDeconvolutionRefScale = 1;
         this.lastTspSignal = null; // Last generated TSP signal
         this.tspPeakOffset = 0; // TSP signal peak position
         this.audioWorkletSupported = false;

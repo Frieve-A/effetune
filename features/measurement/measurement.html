@@ -52,6 +52,8 @@
                 <ul id="measurementList" class="measurement-list">
                     <!-- Measurement items will be populated here -->
                 </ul>
+                <div id="measurementStorageUsage" class="measurement-storage-usage" aria-live="polite"></div>
+                <div id="impulseResponseStorageNotice" class="measurement-storage-notice" data-i18n="message:irStorageUnavailable" hidden>Impulse responses can't be saved in this browser. Room EQ's Correction mode will be unavailable.</div>
             </div>
             <div class="options-menu">
             </div>
@@ -288,6 +290,12 @@
                         <button id="exportTxtBtn" class="secondary-btn" data-i18n="button:exportTxt">Export Correction Parameters (txt)</button>
                         <button id="exportCSVBtn" class="secondary-btn" data-i18n="button:exportCSV">Export Correction Parameters (CSV)</button>
                         <div class="explanation-text" data-i18n="help:exportOptions">The copied frequency correction settings can be pasted into EffeTune's Effect Pipeline by Ctrl+V.</div>
+                        <label class="measurement-ir-export-option">
+                            <input id="includeImpulseResponses" type="checkbox">
+                            <span data-i18n="label:includeImpulseResponses">Include impulse responses in measurement JSON exports</span>
+                        </label>
+                        <div class="explanation-text" data-i18n="help:includeImpulseResponses">Impulse responses can make the exported file tens of megabytes larger.</div>
+                        <div class="explanation-text" data-i18n="help:roomEq">For FIR correction with phase control, use the Room EQ plugin in the main app.</div>
                     </div>
                     <div class="result-metadata">
                         <h3 data-i18n="title:measurementDetails">Measurement Details</h3>

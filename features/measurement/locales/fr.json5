@@ -100,6 +100,14 @@
 
   // Messages
   "message:peqCopied": "Paramètres PEQ copiés dans le presse-papiers avec succès. Les paramètres copiés peuvent être collés dans le pipeline d'effets d'EffeTune avec Ctrl+V.",
+  "message:saveFailed": "La mesure n'a pas pu être enregistrée. Vérifiez l'espace disponible et réessayez.",
+  "message:irStorageUnavailable": "Les réponses impulsionnelles ne peuvent pas être enregistrées dans ce navigateur. Le mode Correction de Room EQ ne sera pas disponible.",
+  "label:includeImpulseResponses": "Inclure les réponses impulsionnelles dans les exports JSON de mesure",
+  "help:includeImpulseResponses": "Les réponses impulsionnelles peuvent alourdir le fichier exporté de plusieurs dizaines de mégaoctets.",
+  "help:roomEq": "Pour une correction FIR avec contrôle de la phase, utilisez le plugin Room EQ dans l'application principale.",
+  "message:irSaved": "IR enregistrée ✓ ({seconds} s @ {sampleRate} kHz)",
+  "help:sweepLimited": "Un balayage plus long permet à Room EQ de conserver une réponse impulsionnelle plus longue.",
+  "message:measurementStorageUsage": "Mesures : {megabytes} Mo",
 
   // Channel options
   "option:left": "Canal gauche",

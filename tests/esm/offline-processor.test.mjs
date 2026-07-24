@@ -5,6 +5,16 @@ import { OfflineProcessor } from '../../js/audio/offline-processor.js';
 import { decodeDspPipelineDescriptor } from '../../js/audio/dsp-pipeline-descriptor.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 class SectionPlugin {
   constructor(enabled = true) {
     this.id = `section-${enabled}`;
@@ -365,18 +375,19 @@ function createFakeDspBinding(calls, options = {}) {
 function createFakeDspRuntime(calls, options = {}) {
   const hash = options.hash ?? 0x12345678;
   const packerHash = options.packerHash ?? hash;
+  const typeName = options.typeName ?? 'OfflineTestPlugin';
   const moduleInfo = {
     module: { name: 'cached-test-module' },
     meta: {
       abiVersion: 1,
       kernels: [{
-        name: 'OfflineTestPlugin',
+        name: typeName,
         hash,
         byteCapacity: options.byteCapacity ?? 0
       }]
     },
     paramPackers: new Map([[
-      'OfflineTestPlugin',
+      typeName,
       {
         hash: packerHash,
         pack(parameters) {
@@ -413,7 +424,7 @@ function createFakeDspRuntime(calls, options = {}) {
       if (options.forceOff) return { forceOff: true, enabledTypes: [] };
       return {
         forceOff: false,
-        enabledTypes: rolloutOptions.meta ? ['OfflineTestPlugin'] : []
+        enabledTypes: rolloutOptions.meta ? [typeName] : []
       };
     },
     async instantiateDsp(modulePayload) {
@@ -989,7 +1000,7 @@ test('offline DSP sessions use target-specific plugin assets and parameter snaps
     plugin.offlineDspAssetRequired = true;
     plugin.getWasmAssets = () => { throw new Error('live assets must not be read'); };
     plugin.createOfflineDspState = async options => {
-      calls.push(['createOfflineDspState', options]);
+      calls.push(['createOfflineDspState', options, options.isCurrent()]);
       return {
         parameters: { gain: 2, channel: 'A' },
         assets: new Map([[0, {
@@ -1005,14 +1016,79 @@ test('offline DSP sessions use target-specific plugin assets and parameter snaps
 
     assert.deepEqual([...result.encodedBuffer.getChannelData(0)], [2, 4]);
     assert.deepEqual([...result.encodedBuffer.getChannelData(1)], [20, 40]);
+    const offlineStateOptions = calls.find(call => call[0] === 'createOfflineDspState')[1];
     assert.deepEqual(
-      calls.find(call => call[0] === 'createOfflineDspState')[1],
+      {
+        sampleRate: offlineStateOptions.sampleRate,
+        outputChannelCount: offlineStateOptions.outputChannelCount
+      },
       { sampleRate: 96000, outputChannelCount: 2 }
     );
+    assert.equal(typeof offlineStateOptions.isCurrent, 'function');
+    assert.equal(calls.find(call => call[0] === 'createOfflineDspState')[2], true);
+    assert.equal(offlineStateOptions.isCurrent(), false);
     assert.ok(calls.some(call => call[0] === 'dspSetAsset' && call[4] === 2));
     assert.equal(calls.filter(call => call[0] === 'dspGetArenaViews').length, 3);
     assert.equal(calls.filter(call => call[0] === 'dspPackParams').every(call => call[1] === 2), true);
   });
+});
+
+test('offline required-asset preflight uses the decoded 4- and 8-channel render width', async () => {
+  for (const outputChannelCount of [4, 8]) {
+    await withOfflineGlobals({
+      window: { audioPreferences: { outputChannels: outputChannelCount } }
+    }, async ({ calls }) => {
+      const runtime = createFakeDspRuntime(calls);
+      const { processor, file } = createHarness(calls, {
+        audioBuffer: createAudioBuffer([[1, 2], [10, 20]]),
+        offlineProcessorOptions: runtime.dependencies
+      });
+      const plugin = createGainPlugin(calls, { id: `width-${outputChannelCount}`, gain: 1 });
+      const preflightWidths = [];
+      plugin.isOfflineDspAssetRequired = context => {
+        preflightWidths.push(context.outputChannelCount);
+        return context.outputChannelCount >= 4;
+      };
+      plugin.createOfflineDspState = async options => ({
+        assets: new Map([[0, {
+          payload: new ArrayBuffer(16),
+          footprintBytes: 16,
+          processingChannels: options.outputChannelCount,
+          formatTag: 1,
+          warmupSamples: 256
+        }]])
+      });
+
+      const result = await processor.processAudioFile(file, [plugin]);
+      assert.equal(result.encodedBuffer.numberOfChannels, outputChannelCount);
+      assert.deepEqual(preflightWidths, [outputChannelCount]);
+      assert.ok(calls.some(call => call[0] === 'dspSetAsset' && call[4] === outputChannelCount));
+    });
+
+    await withOfflineGlobals({
+      window: { audioPreferences: { outputChannels: outputChannelCount } }
+    }, async ({ calls }) => {
+      const runtime = createFakeDspRuntime(calls, { forceOff: true });
+      const { processor, file } = createHarness(calls, {
+        audioBuffer: createAudioBuffer([[1, 2], [10, 20]]),
+        offlineProcessorOptions: runtime.dependencies
+      });
+      const plugin = createGainPlugin(calls, { id: `width-failure-${outputChannelCount}` });
+      const preflightWidths = [];
+      plugin.isOfflineDspAssetRequired = context => {
+        preflightWidths.push(context.outputChannelCount);
+        return context.outputChannelCount >= 4;
+      };
+      plugin.createOfflineDspState = async () => ({ assets: new Map() });
+
+      await assert.rejects(
+        processor.processAudioFile(file, [plugin]),
+        error => error?.userMessageKey === 'irReverb.error.prepare'
+      );
+      assert.deepEqual(preflightWidths, [outputChannelCount]);
+      assert.equal(calls.some(call => call[0] === 'encodeWAV'), false);
+    });
+  }
 });
 
 test('offline DSP asset admission enforces one safe 128 MiB session budget before staging', async () => {
@@ -1254,6 +1330,316 @@ test('offline required assets fail closed across every DSP preparation step', as
     });
   }
 });
+
+test('Room EQ offline snapshot removes stale required intent when its measurement is missing',
+  async () => {
+    await withOfflineGlobals({ window: {} }, async ({ calls }) => {
+      const runtime = createFakeDspRuntime(calls, { typeName: 'RoomEqPlugin' });
+      const { processor, file } = createHarness(calls, {
+        audioBuffer: createAudioBuffer([[1, 2], [10, 20]]),
+        offlineProcessorOptions: runtime.dependencies
+      });
+      const plugin = createGainPlugin(calls, { id: 'room-eq-missing', gain: 1 });
+      class RoomEqPlugin {}
+      Object.defineProperty(plugin, 'constructor', { value: RoomEqPlugin });
+      plugin.offlineDspAssetErrorMessageKey = 'roomEq.error.design';
+      plugin.isOfflineDspAssetRequired = () => true;
+      plugin.resolveOfflineDspAssetRequirement = async () => ({ required: false });
+      plugin.createOfflineDspState = async () => ({
+        parameters: { gain: 1 },
+        assets: new Map(),
+        offlineDspAssetRequired: false
+      });
+
+      const result = await processor.processAudioFile(file, [plugin]);
+
+      assert.deepEqual([...result.encodedBuffer.getChannelData(0)], [1, 2]);
+      assert.deepEqual([...result.encodedBuffer.getChannelData(1)], [10, 20]);
+      assert.equal(calls.some(call => call[0] === 'dspSetAsset'), false);
+      assert.equal(calls.some(call =>
+        call[0] === 'executeProcessor' && call[1] === plugin.id), false);
+      assert.equal(calls.some(call => call[0] === 'dspWarning' &&
+        call[1].includes('required asset')), false);
+    });
+  });
+
+test('Room EQ offline snapshot adds required intent before a valid asset staging failure',
+  async () => {
+    await withOfflineGlobals({ window: {} }, async ({ calls }) => {
+      const runtime = createFakeDspRuntime(calls, {
+        typeName: 'RoomEqPlugin',
+        bindingOptions: { assetStatus: -2 }
+      });
+      const { processor, file } = createHarness(calls, {
+        audioBuffer: createAudioBuffer([[1, 2], [10, 20]]),
+        offlineProcessorOptions: runtime.dependencies
+      });
+      const plugin = createGainPlugin(calls, { id: 'room-eq-resolved', gain: 1 });
+      class RoomEqPlugin {}
+      Object.defineProperty(plugin, 'constructor', { value: RoomEqPlugin });
+      plugin.offlineDspAssetErrorMessageKey = 'roomEq.error.design';
+      plugin.isOfflineDspAssetRequired = () => false;
+      plugin.resolveOfflineDspAssetRequirement = async () => ({ required: true });
+      plugin.createOfflineDspState = async () => ({
+        parameters: { gain: 1 },
+        assets: new Map([[0, {
+          payload: new ArrayBuffer(16),
+          footprintBytes: 16,
+          processingChannels: 2,
+          formatTag: 1
+        }]]),
+        offlineDspAssetRequired: true
+      });
+
+      await assert.rejects(
+        processor.processAudioFile(file, [plugin]),
+        error => error?.userMessageKey === 'roomEq.error.design'
+      );
+      assert.equal(calls.some(call =>
+        call[0] === 'executeProcessor' && call[1] === plugin.id), false);
+      assert.ok(calls.some(call => call[0] === 'dspWarning' &&
+        call[1].includes('required asset preparation failed')));
+    });
+  });
+
+test('Room EQ missing snapshots bypass DSP preflight failures resolved after DB lookup', async () => {
+  const scenarios = [
+    {
+      name: 'missing measurement with WASM disabled',
+      window: { audioPreferences: { useWasmDsp: false } },
+      runtimeOptions: { typeName: 'RoomEqPlugin' },
+      provisionalRequired: true,
+      boundaryCall: 'dspRollout'
+    },
+    {
+      name: 'null store with no module',
+      window: {},
+      runtimeOptions: {
+        typeName: 'RoomEqPlugin',
+        moduleInfo: null,
+        loadResult: null
+      },
+      provisionalRequired: true,
+      boundaryCall: 'dspGetModuleInfo'
+    },
+    {
+      name: 'no selection with engine prepare failure',
+      window: {},
+      runtimeOptions: {
+        typeName: 'RoomEqPlugin',
+        bindingOptions: { prepareStatus: -1 }
+      },
+      provisionalRequired: false,
+      boundaryCall: 'dspPrepare'
+    }
+  ];
+
+  for (const scenario of scenarios) {
+    await withOfflineGlobals({ window: scenario.window }, async ({ calls }) => {
+      const runtime = createFakeDspRuntime(calls, scenario.runtimeOptions);
+      const { processor, file } = createHarness(calls, {
+        audioBuffer: createAudioBuffer([[1, 2], [10, 20]]),
+        offlineProcessorOptions: runtime.dependencies
+      });
+      const plugin = createGainPlugin(calls, { id: scenario.name, gain: 1 });
+      class RoomEqPlugin {}
+      Object.defineProperty(plugin, 'constructor', { value: RoomEqPlugin });
+      plugin.offlineDspAssetErrorMessageKey = 'roomEq.error.design';
+      plugin.isOfflineDspAssetRequired = () => scenario.provisionalRequired;
+      plugin.resolveOfflineDspAssetRequirement = async () => {
+        calls.push(['roomEqResolveRequirement', scenario.name]);
+        return { required: false };
+      };
+      plugin.createOfflineDspState = async () => {
+        calls.push(['roomEqCreateOfflineState', scenario.name]);
+        return {
+          parameters: { gain: 1 },
+          assets: new Map(),
+          offlineDspAssetRequired: false
+        };
+      };
+
+      const result = await processor.processAudioFile(file, [plugin]);
+
+      assert.deepEqual([...result.encodedBuffer.getChannelData(0)], [1, 2], scenario.name);
+      const requirementIndex = calls.findIndex(call => call[0] === 'roomEqResolveRequirement');
+      const boundaryIndex = calls.findIndex(call => call[0] === scenario.boundaryCall);
+      assert.ok(requirementIndex >= 0 && requirementIndex < boundaryIndex, scenario.name);
+      assert.equal(calls.some(call => call[0] === 'roomEqCreateOfflineState'), false,
+        scenario.name);
+      assert.equal(calls.some(call => call[0] === 'dspWarning' &&
+        call[1].includes('required asset')), false, scenario.name);
+    });
+  }
+});
+
+test('Room EQ valid snapshots fail closed across DSP preflight boundaries', async () => {
+  const scenarios = [
+    {
+      name: 'WASM disabled',
+      window: { audioPreferences: { useWasmDsp: false } },
+      runtimeOptions: { typeName: 'RoomEqPlugin' },
+      boundaryCall: 'dspRollout'
+    },
+    {
+      name: 'module unavailable',
+      window: {},
+      runtimeOptions: {
+        typeName: 'RoomEqPlugin',
+        moduleInfo: null,
+        loadResult: null
+      },
+      boundaryCall: 'dspGetModuleInfo'
+    },
+    {
+      name: 'engine prepare failure',
+      window: {},
+      runtimeOptions: {
+        typeName: 'RoomEqPlugin',
+        bindingOptions: { prepareStatus: -1 }
+      },
+      boundaryCall: 'dspPrepare'
+    }
+  ];
+
+  for (const scenario of scenarios) {
+    await withOfflineGlobals({ window: scenario.window }, async ({ calls }) => {
+      const runtime = createFakeDspRuntime(calls, scenario.runtimeOptions);
+      const { processor, file } = createHarness(calls, {
+        audioBuffer: createAudioBuffer([[1, 2], [10, 20]]),
+        offlineProcessorOptions: runtime.dependencies
+      });
+      const plugin = createGainPlugin(calls, { id: `valid-${scenario.name}`, gain: 1 });
+      class RoomEqPlugin {}
+      Object.defineProperty(plugin, 'constructor', { value: RoomEqPlugin });
+      plugin.offlineDspAssetErrorMessageKey = 'roomEq.error.design';
+      plugin.isOfflineDspAssetRequired = () => false;
+      plugin.resolveOfflineDspAssetRequirement = async () => {
+        calls.push(['roomEqResolveRequirement', scenario.name]);
+        return { required: true };
+      };
+      plugin.createOfflineDspState = async () => {
+        calls.push(['roomEqCreateOfflineState', scenario.name]);
+        throw new Error('asset design should follow successful DSP preflight');
+      };
+
+      await assert.rejects(
+        processor.processAudioFile(file, [plugin]),
+        error => error?.userMessageKey === 'roomEq.error.design',
+        scenario.name
+      );
+      const requirementIndex = calls.findIndex(call => call[0] === 'roomEqResolveRequirement');
+      const boundaryIndex = calls.findIndex(call => call[0] === scenario.boundaryCall);
+      assert.ok(requirementIndex >= 0 && requirementIndex < boundaryIndex, scenario.name);
+      assert.equal(calls.some(call => call[0] === 'roomEqCreateOfflineState'), false,
+        scenario.name);
+      assert.equal(calls.some(call =>
+        call[0] === 'executeProcessor' && call[1] === plugin.id), false, scenario.name);
+      assert.ok(calls.some(call => call[0] === 'dspWarning' &&
+        call[1].includes('required asset preparation failed')), scenario.name);
+    });
+  }
+});
+
+test('Room EQ cancellation while resolving its requirement returns null without a design error',
+  async () => {
+    await withOfflineGlobals({ window: {} }, async ({ calls }) => {
+      const runtime = createFakeDspRuntime(calls, { typeName: 'RoomEqPlugin' });
+      const { processor, file } = createHarness(calls, {
+        audioBuffer: createAudioBuffer([[1, 2], [10, 20]]),
+        offlineProcessorOptions: runtime.dependencies
+      });
+      const plugin = createGainPlugin(calls, { id: 'room-eq-cancel-requirement', gain: 1 });
+      class RoomEqPlugin {}
+      Object.defineProperty(plugin, 'constructor', { value: RoomEqPlugin });
+      plugin.offlineDspAssetErrorMessageKey = 'roomEq.error.design';
+      plugin.isOfflineDspAssetRequired = () => true;
+      const started = deferred();
+      const release = deferred();
+      plugin.resolveOfflineDspAssetRequirement = async options => {
+        started.resolve(options);
+        await release.promise;
+        if (!options.isCurrent()) {
+          const error = new Error('Room EQ settings changed during offline filter preparation.');
+          error.userMessageKey = 'roomEq.error.design';
+          throw error;
+        }
+        return { required: true };
+      };
+      plugin.createOfflineDspState = async () => {
+        throw new Error('offline state must not start after cancellation');
+      };
+
+      const pending = processor.processAudioFile(file, [plugin]);
+      const requirementOptions = await started.promise;
+      assert.equal(requirementOptions.isCurrent(), true);
+      processor.cancelProcessing();
+      assert.equal(requirementOptions.isCurrent(), false);
+      release.resolve();
+
+      assert.equal(await pending, null);
+      assert.equal(processor.isProcessing(), false);
+      assert.equal(processor.offlineContext, null);
+      assert.equal(calls.some(call => call[0] === 'dspRollout'), false);
+      assert.equal(calls.some(call => call[0] === 'dspWarning'), false);
+      assert.equal(calls.some(call => call[0] === 'encodeWAV'), false);
+    });
+  });
+
+test('Room EQ cancellation while creating offline state releases its DSP session and returns null',
+  async () => {
+    await withOfflineGlobals({ window: {} }, async ({ calls }) => {
+      const runtime = createFakeDspRuntime(calls, { typeName: 'RoomEqPlugin' });
+      const { processor, file } = createHarness(calls, {
+        audioBuffer: createAudioBuffer([[1, 2], [10, 20]]),
+        offlineProcessorOptions: runtime.dependencies
+      });
+      processor.offlineWorkletNode = {
+        disconnect() {
+          calls.push(['offlineWorkletDisconnect']);
+        }
+      };
+      const plugin = createGainPlugin(calls, { id: 'room-eq-cancel-state', gain: 1 });
+      class RoomEqPlugin {}
+      Object.defineProperty(plugin, 'constructor', { value: RoomEqPlugin });
+      plugin.offlineDspAssetErrorMessageKey = 'roomEq.error.design';
+      plugin.isOfflineDspAssetRequired = () => true;
+      plugin.resolveOfflineDspAssetRequirement = async () => ({ required: true });
+      const started = deferred();
+      const release = deferred();
+      plugin.createOfflineDspState = async options => {
+        started.resolve(options);
+        await release.promise;
+        if (!options.isCurrent()) {
+          const error = new Error('Room EQ settings changed during offline filter preparation.');
+          error.userMessageKey = 'roomEq.error.design';
+          throw error;
+        }
+        return {
+          parameters: { gain: 1 },
+          assets: new Map(),
+          offlineDspAssetRequired: true
+        };
+      };
+
+      const pending = processor.processAudioFile(file, [plugin]);
+      const stateOptions = await started.promise;
+      assert.equal(stateOptions.isCurrent(), true);
+      assert.notEqual(processor.offlineContext, null);
+      processor.cancelProcessing();
+      assert.equal(stateOptions.isCurrent(), false);
+      release.resolve();
+
+      assert.equal(await pending, null);
+      assert.equal(processor.isProcessing(), false);
+      assert.equal(processor.offlineContext, null);
+      assert.equal(processor.offlineWorkletNode, null);
+      assert.equal(calls.filter(call => call[0] === 'dspClose').length, 1);
+      assert.equal(calls.some(call => call[0] === 'offlineWorkletDisconnect'), true);
+      assert.equal(calls.some(call => call[0] === 'dspWarning'), false);
+      assert.equal(calls.some(call => call[0] === 'encodeWAV'), false);
+    });
+  });
 
 test('failed instance creation refreshes grown-memory arena and preserves earlier WASM entries',
   async () => {

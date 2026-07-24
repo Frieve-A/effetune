@@ -15,6 +15,7 @@ inline void check(bool condition, const char *expression, const char *file, int 
 }
 
 void runAbiTests();
+void runDesignFftTests();
 void runTelemetryTests();
 
 } // namespace effetune::test

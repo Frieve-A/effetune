@@ -1,0 +1,14 @@
+{
+  "type": "RoomEqPlugin",
+  "parityReference": "native-room-eq-direct-double-v1",
+  "tolerance": { "abs": 0.0002, "policy": "per-sample" },
+  "assets": [
+    { "slot": 0, "format": "ET_ASSET_F32_MULTICH", "capacity": "32 MiB convolution cap" }
+  ],
+  "fields": [
+    { "name": "latencyMode", "key": "lt", "kind": "enum", "values": ["0", "128", "256", "512", "1024"], "default": "128" },
+    { "name": "filterDelaySamples", "key": "fd", "kind": "int", "min": 0, "max": 65536, "default": 16384 },
+    { "name": "channelDelay", "key": "dy", "kind": "int", "min": 0, "max": 3840, "default": 0 },
+    { "name": "outputGain", "key": "gn", "kind": "float", "min": -12, "max": 12, "default": 0, "unit": "dB" }
+  ]
+}

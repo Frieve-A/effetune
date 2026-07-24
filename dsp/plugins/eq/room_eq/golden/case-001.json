@@ -1,0 +1,47 @@
+{
+  "formatVersion": 1,
+  "type": "RoomEqPlugin",
+  "id": "max-mono-noise-96000-lt0",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 8,
+  "frameCount": 1024,
+  "blockSize": 128,
+  "channelMode": "all8",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "lt": "0",
+    "fd": 0,
+    "dy": 4,
+    "gn": -1
+  },
+  "events": [],
+  "asset": {
+    "slot": 0,
+    "format": 1,
+    "channels": 1,
+    "frames": 131072,
+    "topology": 1,
+    "headBlock": 0,
+    "rateDivider": 1,
+    "ir": {
+      "kind": "sparse-decay-v1",
+      "seed": 1380274241,
+      "tapCount": 41,
+      "directGain": 0.65,
+      "tailGain": 0.4
+    }
+  },
+  "tolerance": {
+    "abs": 0.0002,
+    "policy": "per-sample"
+  },
+  "performanceBudgetMs": 2500,
+  "referenceEngine": "native-room-eq-direct-double-v1",
+  "referenceHash": "83045565caf287233033c9a0221826e637f07068df1af63eb59cb246b274133f",
+  "outputFloats": 8192,
+  "byteLength": 32768,
+  "binary": "case-001.f32"
+}

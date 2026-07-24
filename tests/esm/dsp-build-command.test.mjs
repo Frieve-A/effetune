@@ -8,6 +8,7 @@ import {
   createVsEnvironmentInvocation,
   emscriptenExecutableName,
   metadataContents,
+  parseNativeBuildType,
   sourceDigest
 } from '../../scripts/build-dsp-wasm.mjs';
 
@@ -35,6 +36,23 @@ test('DSP build invokes tools without placing dynamic paths in shell input', () 
   assert.equal(invocation.cwd, path.dirname(vsDevCmd));
   assert.equal(invocation.args.some(argument => argument.includes('Visual Studio & Tools')), false);
   assert.equal(Object.hasOwn(invocation, 'shell'), false);
+});
+
+test('DSP native build type accepts only explicit CMake configurations', () => {
+  assert.equal(parseNativeBuildType([]), 'Debug');
+  assert.equal(parseNativeBuildType(['--native-build-type=Debug']), 'Debug');
+  assert.equal(parseNativeBuildType(['--native-build-type=Release']), 'Release');
+  assert.throws(
+    () => parseNativeBuildType(['--native-build-type=RelWithDebInfo']),
+    /must be Debug or Release/
+  );
+  assert.throws(
+    () => parseNativeBuildType([
+      '--native-build-type=Debug',
+      '--native-build-type=Release'
+    ]),
+    /may only be specified once/
+  );
 });
 
 test('DSP source digest ignores retained all-golden transaction directories', t => {

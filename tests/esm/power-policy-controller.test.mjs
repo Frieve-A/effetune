@@ -2491,7 +2491,7 @@ test('an unresolvable partial worklet resume schedules directive reconciliation'
   assert.ok(reconcileReasons.includes('failed-worklet-command-rollback'));
 });
 
-test('automatic playback activation never starts a gesture resume', async () => {
+test('automatic playback continuation never starts a gesture resume', async () => {
   const harness = createHarness({ contextState: 'suspended' });
   harness.controller.effectiveState = 'suspended';
   let gestureResumeCount = 0;
@@ -2503,6 +2503,26 @@ test('automatic playback activation never starts a gesture resume', async () => 
   assert.equal(await harness.controller.ensureActiveForAutomaticPlayback(), false);
   assert.equal(gestureResumeCount, 0);
   assert.equal(harness.context.state, 'suspended');
+});
+
+test('automatic playback continuation accepts a running context while monitoring settles', async () => {
+  const harness = createHarness();
+  let gestureResumeCount = 0;
+  harness.controller.beginUserGestureResume = () => {
+    gestureResumeCount++;
+    return Promise.resolve(true);
+  };
+
+  harness.controller.effectiveState = 'ACTIVE';
+  harness.controller.processingDirective = 'allow-automatic';
+  assert.equal(await harness.controller.ensureActiveForAutomaticPlayback(), true);
+
+  harness.controller.effectiveState = 'MONITORING';
+  assert.equal(await harness.controller.ensureActiveForAutomaticPlayback(), true);
+
+  harness.context.state = 'suspended';
+  assert.equal(await harness.controller.ensureActiveForAutomaticPlayback(), false);
+  assert.equal(gestureResumeCount, 0);
 });
 
 test('a partial gesture resume rolls acquired input back without clearing the release journal', async () => {
@@ -3341,6 +3361,73 @@ test('mixed playback resume reacquires a released configured input', async () =>
   assert.equal(reacquireCount, 1);
   assert.equal(harness.inputState.state, 'live');
   assert.equal(harness.controller.getSnapshot().manualResumeRequired, false);
+});
+
+test('user interaction resumes the current route and restores a released routed input', async () => {
+  const harness = createHarness({
+    inputDeviceId: 'mic',
+    input: {
+      state: 'released',
+      inputAvailability: 'unknown',
+      inputAvailabilityRevision: 2,
+      inputGeneration: 4,
+      inputResourceId: null,
+      inputConfigured: true,
+      inputSourcePresent: false,
+      trackState: 'ended'
+    }
+  });
+  let reacquireCount = 0;
+  const originalReacquire = harness.audioManager.ioManager.beginReacquireAudioInput
+    .bind(harness.audioManager.ioManager);
+  harness.audioManager.ioManager.beginReacquireAudioInput = () => {
+    reacquireCount++;
+    return originalReacquire();
+  };
+  await harness.controller.start();
+  harness.controller.manualResumeRequired = true;
+
+  const resumed = await harness.controller.requestResumeFromUserInteraction();
+  await harness.flush();
+
+  assert.equal(resumed, true);
+  assert.equal(reacquireCount, 1);
+  assert.equal(harness.inputState.state, 'live');
+  assert.equal(harness.controller.getSnapshot().manualResumeRequired, false);
+});
+
+test('user interaction reuses the existing resume kind for each current route', async () => {
+  const input = {
+    state: 'live',
+    inputAvailability: 'available',
+    inputAvailabilityRevision: 1,
+    inputGeneration: 1,
+    inputResourceId: 'mic-1',
+    inputConfigured: true,
+    inputSourcePresent: true,
+    trackState: 'live'
+  };
+  const external = createHarness({ input: { ...input } });
+  const player = createPausedPlayer();
+  const playerOnly = createHarness({ player, input: { ...input } });
+  const mixedPlayer = createPausedPlayer();
+  mixedPlayer.useInputWithPlayer = true;
+  mixedPlayer.instance.contextManager.getUseInputWithPlayer = () => true;
+  const mixed = createHarness({ player: mixedPlayer, input: { ...input } });
+
+  for (const [harness, expectedKind] of [
+    [external, 'dedicated-input'],
+    [playerOnly, 'route-activation'],
+    [mixed, 'mixed-play']
+  ]) {
+    let actualKind = null;
+    harness.controller.ensureActive = kind => {
+      actualKind = kind;
+      return Promise.resolve(true);
+    };
+    assert.equal(await harness.controller.requestResumeFromUserInteraction(), true);
+    assert.equal(actualKind, expectedKind);
+  }
 });
 
 test('the maximum-policy input release latch clears after the dedicated-input resume gesture', async () => {

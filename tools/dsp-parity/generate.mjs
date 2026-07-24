@@ -15,7 +15,7 @@ import {
   writeGoldenSet
 } from './golden-io.mjs';
 import { createReferenceSession, executeReferenceCase } from './node-host.mjs';
-import { runNativeReferenceCase } from './runners.mjs';
+import { isNativeDirectReferenceEngine, runNativeReferenceCase } from './runners.mjs';
 import { discoverGoldenTargets } from './run.mjs';
 import { generateStimulus, noiseSeedForCase, STIMULUS_IDS } from './stimuli.mjs';
 import { comparePerSample, formatComparison } from './tolerance.mjs';
@@ -35,7 +35,11 @@ function usage() {
   ].join('\n');
 }
 
-async function nativeDirectReferenceHash(repoRoot) {
+async function nativeDirectReferenceHash(repoRoot, referenceEngine) {
+  // The IR v1 identity predates per-engine hashing; a semantic change requires a new version.
+  if (referenceEngine === 'native-ir-direct-double-v1') {
+    return 'ebb984943707d4c0ba8839367722c6250b22bea01dd7479fca2a5b2e720244d7';
+  }
   const source = await fs.readFile(path.join(repoRoot, 'dsp', 'test', 'parity_runner.cpp'), 'utf8');
   return crypto.createHash('sha256').update(source.replace(/\r\n?/g, '\n')).digest('hex');
 }
@@ -105,8 +109,10 @@ export async function generateGoldens({
     throw new Error(`No params.json was found for ${definition.type}. Use --self-check for an unported plugin.`);
   }
   cases = filterCases(cases, args);
-  const nativeReference = plan.schema?.parityReference === 'native-ir-direct-double-v1';
-  const referenceHash = nativeReference ? await nativeDirectReferenceHash(repoRoot) : null;
+  const nativeReference = isNativeDirectReferenceEngine(plan.schema?.parityReference);
+  const referenceHash = nativeReference
+    ? await nativeDirectReferenceHash(repoRoot, plan.schema.parityReference)
+    : null;
   const generated = [];
   let baseSourceHash = null;
   for (const testCase of cases) {

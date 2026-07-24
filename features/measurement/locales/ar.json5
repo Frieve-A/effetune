@@ -100,6 +100,14 @@
   
   // Messages
   "message:peqCopied": "تم نسخ إعدادات PEQ إلى الحافظة بنجاح. يمكن لصق الإعدادات في خط أنابيب التأثير في EffeTune عبر Ctrl+V.",
+  "message:saveFailed": "تعذر حفظ القياس. تحقق من مساحة التخزين المتاحة وحاول مرة أخرى.",
+  "message:irStorageUnavailable": "لا يستطيع هذا المتصفح حفظ impulse responses. لن يتوفر وضع Correction في Room EQ.",
+  "label:includeImpulseResponses": "تضمين impulse responses عند تصدير القياسات بصيغة JSON",
+  "help:includeImpulseResponses": "قد تزيد impulse responses حجم الملف المصدّر بعشرات الميغابايت.",
+  "help:roomEq": "لتصحيح FIR مع التحكم بالطور، استخدم ملحق Room EQ في التطبيق الرئيسي.",
+  "message:irSaved": "تم حفظ IR ✓ ({seconds} s @ {sampleRate} kHz)",
+  "help:sweepLimited": "يسمح sweep الأطول لـ Room EQ بالاحتفاظ بـ impulse response أطول.",
+  "message:measurementStorageUsage": "القياسات: {megabytes} MB",
   
   // Channel options
   "option:left": "القناة اليسرى",

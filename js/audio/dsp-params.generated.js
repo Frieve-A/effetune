@@ -917,6 +917,16 @@ export function packPowerAmpSagPluginParams(params = {}) {
   return packed;
 }
 
+export const RoomEqPlugin_PARAMS_HASH = 0xe814a5b2;
+export function packRoomEqPluginParams(params = {}) {
+  const packed = new Float32Array(4);
+  packed[0] = (() => { const index = ["0","128","256","512","1024"].indexOf(params["lt"]); return index < 0 ? 1 : index; })();
+  packed[1] = (() => { const value = params["fd"]; if (!(Number.isSafeInteger(value))) return 16384; if (value < 0) return 0; if (value > 65536) return 65536; return value; })();
+  packed[2] = (() => { const value = params["dy"]; if (!(Number.isSafeInteger(value))) return 0; if (value < 0) return 0; if (value > 3840) return 3840; return value; })();
+  packed[3] = (() => { const value = params["gn"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < -12) return -12; if (value > 12) return 12; return value; })();
+  return packed;
+}
+
 export const RSReverbPlugin_PARAMS_HASH = 0xc3be374c;
 export function packRSReverbPluginParams(params = {}) {
   const packed = new Float32Array(9);
@@ -1166,6 +1176,7 @@ export const DSP_PARAM_LAYOUTS = Object.freeze({
   PitchShifterPlugin: Object.freeze({ hash: PitchShifterPlugin_PARAMS_HASH, floatCount: 4 }),
   PolarityInversionPlugin: Object.freeze({ hash: PolarityInversionPlugin_PARAMS_HASH, floatCount: 0 }),
   PowerAmpSagPlugin: Object.freeze({ hash: PowerAmpSagPlugin_PARAMS_HASH, floatCount: 4 }),
+  RoomEqPlugin: Object.freeze({ hash: RoomEqPlugin_PARAMS_HASH, floatCount: 4 }),
   RSReverbPlugin: Object.freeze({ hash: RSReverbPlugin_PARAMS_HASH, floatCount: 9 }),
   SaturationPlugin: Object.freeze({ hash: SaturationPlugin_PARAMS_HASH, floatCount: 4 }),
   SimpleJitterPlugin: Object.freeze({ hash: SimpleJitterPlugin_PARAMS_HASH, floatCount: 1 }),
@@ -1238,6 +1249,7 @@ export const DSP_PARAM_PACKERS = new Map([
   ["PitchShifterPlugin", Object.freeze({ pack: packPitchShifterPluginParams, hash: PitchShifterPlugin_PARAMS_HASH, floatCount: 4 })],
   ["PolarityInversionPlugin", Object.freeze({ pack: packPolarityInversionPluginParams, hash: PolarityInversionPlugin_PARAMS_HASH, floatCount: 0 })],
   ["PowerAmpSagPlugin", Object.freeze({ pack: packPowerAmpSagPluginParams, hash: PowerAmpSagPlugin_PARAMS_HASH, floatCount: 4 })],
+  ["RoomEqPlugin", Object.freeze({ pack: packRoomEqPluginParams, hash: RoomEqPlugin_PARAMS_HASH, floatCount: 4 })],
   ["RSReverbPlugin", Object.freeze({ pack: packRSReverbPluginParams, hash: RSReverbPlugin_PARAMS_HASH, floatCount: 9 })],
   ["SaturationPlugin", Object.freeze({ pack: packSaturationPluginParams, hash: SaturationPlugin_PARAMS_HASH, floatCount: 4 })],
   ["SimpleJitterPlugin", Object.freeze({ pack: packSimpleJitterPluginParams, hash: SimpleJitterPlugin_PARAMS_HASH, floatCount: 1 })],

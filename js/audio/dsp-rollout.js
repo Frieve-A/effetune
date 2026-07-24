@@ -35,6 +35,7 @@ export const SHIPPED_ENABLED_TYPES = Object.freeze([
     'LoPassFilterPlugin',
     'LoudnessEqualizerPlugin',
     'NarrowRangePlugin',
+    'RoomEqPlugin',
     'TiltEQPlugin',
     'ToneControlPlugin',
     'BitCrusherPlugin',

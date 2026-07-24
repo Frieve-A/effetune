@@ -1454,9 +1454,3 @@ body.layout-mobile input[type="range"]:not(.vertical-slider)::-moz-range-thumb {
     width: 20px;
     height: 20px;
 }
-
-body.layout-mobile .routing-dialog,
-body.layout-mobile .ai-dialog,
-body.layout-mobile .mobile-overflow-menu {
-    backdrop-filter: blur(10px);
-}

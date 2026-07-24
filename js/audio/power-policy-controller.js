@@ -2770,15 +2770,32 @@ export class PowerPolicyController {
     }
 
     ensureActiveForAutomaticPlayback() {
-        return Promise.resolve(this._isFullyActive());
+        // Staged activation owns power-state promotion and fresh-render proof.
+        // Automatic transport may continue only while its authorized context is still running.
+        return Promise.resolve(
+            this.audioManager.contextManager?.audioContext?.state === 'running'
+        );
     }
 
     ensureActive(resumeKind = ResumeKind.UNEXPECTED_RECOVERY) {
         if (!this.enabled) return this.audioManager.contextManager?.resumeAudioContext?.();
-        if (this._isFullyActive()) {
+        const inputResumeRequired = this.manualResumeRequired === true &&
+            (resumeKind === ResumeKind.DEDICATED_INPUT ||
+                resumeKind === ResumeKind.MIXED_PLAY);
+        if (this._isFullyActive() && !inputResumeRequired) {
             return Promise.resolve(true);
         }
         return this.beginUserGestureResume(resumeKind);
+    }
+
+    requestResumeFromUserInteraction() {
+        const { inputRouteIntent } = this._deriveRouteAndPlayerFacts();
+        const resumeKind = inputRouteIntent === InputRouteIntent.EXTERNAL
+            ? ResumeKind.DEDICATED_INPUT
+            : (inputRouteIntent === InputRouteIntent.MIXED
+                ? ResumeKind.MIXED_PLAY
+                : ResumeKind.ROUTE_ACTIVATION);
+        return this.ensureActive(resumeKind);
     }
 
     requestResumeFromUserGesture(resumeKind = ResumeKind.DEDICATED_INPUT) {

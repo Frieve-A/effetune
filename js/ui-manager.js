@@ -22,6 +22,7 @@ import { MobileMenu } from './ui/mobile-menu.js';
 import { MobileNav } from './ui/mobile-nav.js';
 import { LibraryManagerV2 } from './library/library-manager-v2.js';
 import { createWebCatalogRecoveryController } from './library/repository/catalog-client-factory.js';
+import { normalizeMusicLibraryStartupView } from './library/constants.js';
 import { LibraryView } from './ui/library/library-view.js';
 import { PowerStateView } from './ui/power-state-view.js';
 import { CatalogPlaybackBridge } from './ui/audio-player/catalog-playback-bridge.js';
@@ -1508,16 +1509,23 @@ export class UIManager {
             });
     }
 
+    deferLibraryStartupView(initialView) {
+        this.libraryDeferredStartupOptions = {
+            focusSearch: false,
+            initialView: normalizeMusicLibraryStartupView(initialView)
+        };
+    }
+
     queueLibraryRecoveryState(state) {
         this.libraryRecoveryStateQueue = this.libraryRecoveryStateQueue
-            .then(() => this.applyLibraryRecoveryState(state))
+            .then(() => this.applyLibraryRecoveryState(state, { insideRecoveryQueue: true }))
             .catch(error => {
                 console.error('Failed to apply Music Library availability:', error);
             });
         return this.libraryRecoveryStateQueue.then(() => this.libraryRecoveryState);
     }
 
-    async applyLibraryRecoveryState(state) {
+    async applyLibraryRecoveryState(state, context = {}) {
         const normalized = this.normalizeLibraryRecoveryState(state);
         if (!normalized) return this.libraryRecoveryState;
         const previous = this.libraryRecoveryState;
@@ -1537,10 +1545,14 @@ export class UIManager {
         this.hideLibraryRecoveryShell();
         if (this.libraryDeferredStartupOptions) {
             const options = this.libraryDeferredStartupOptions;
-            this.libraryDeferredStartupOptions = null;
-            await this.showLibraryView({ ...options, skipRecoveryWait: true });
+            await this.showLibraryView(
+                { ...options, skipRecoveryWait: true },
+                { insideRecoveryQueue: context.insideRecoveryQueue === true }
+            );
         } else if (document.body?.classList?.contains('view-library') && !this.libraryView) {
-            await this.ensureLibraryManager({ skipRecoveryWait: true });
+            const ensureOptions = { skipRecoveryWait: true };
+            if (context.insideRecoveryQueue === true) ensureOptions.insideRecoveryQueue = true;
+            await this.ensureLibraryManager(ensureOptions);
             if (this.libraryView) this.libraryView.show({ focusSearch: false });
         }
         return normalized;
@@ -1672,7 +1684,7 @@ export class UIManager {
                 console.error('Failed to initialize the Music Library:', error);
                 if (typeof this.libraryRecoveryApi?.reportOpenFailure === 'function') {
                     this.libraryRecoveryApi.reportOpenFailure(error);
-                    await this.libraryRecoveryStateQueue;
+                    if (!options.insideRecoveryQueue) await this.libraryRecoveryStateQueue;
                 } else {
                     this.setError('library.error.actionFailed', true);
                     await this.disposeLibraryManager({ destroyView: true });
@@ -1737,21 +1749,25 @@ export class UIManager {
         await manager?.close?.();
     }
 
-    async showLibraryView(options = {}) {
+    async showLibraryView(options = {}, context = {}) {
         if ((this.miniPlayerMode || this.miniPlayerTargetMode) && !await this.setMiniPlayerMode(false)) return false;
-        await this.ensureLibraryManager({
-            skipRecoveryWait: options.skipRecoveryWait === true
-        });
+        const ensureOptions = { skipRecoveryWait: options.skipRecoveryWait === true };
+        if (context.insideRecoveryQueue === true) ensureOptions.insideRecoveryQueue = true;
+        await this.ensureLibraryManager(ensureOptions);
         if (options.isCurrentRequest?.() === false) {
             return false;
         }
         if (!this.libraryView) {
+            if (options.initialView !== undefined) {
+                const deferredOptions = { ...options, isCurrentRequest: undefined };
+                delete deferredOptions.skipRecoveryWait;
+                this.libraryDeferredStartupOptions = deferredOptions;
+            }
             if (this.libraryRecoveryState?.available) {
                 this.showEffectPipelineView({ restoreFocus: false });
                 return false;
             }
             if (options.initialView !== undefined) {
-                this.libraryDeferredStartupOptions = { ...options, isCurrentRequest: undefined };
                 this.showEffectPipelineView({ restoreFocus: false });
                 return false;
             }
@@ -1767,6 +1783,7 @@ export class UIManager {
             showOptions.initialView = options.initialView;
         }
         this.libraryView.show(showOptions);
+        if (options.initialView !== undefined) this.libraryDeferredStartupOptions = null;
         this.updateViewSwitchButtons(true);
         this.mobileNav?.setView?.('library', { fromLibraryView: true });
         return true;

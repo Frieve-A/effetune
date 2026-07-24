@@ -50,6 +50,9 @@ function createIrAsset(topologyCase = 'mono', frameCount = 2048) {
   if (topologyCase === 'true') {
     topology = IR_ASSET_TOPOLOGY.trueStereo;
     channels = [1, 2, 3, 4].map(gain => Float32Array.from(samples, sample => sample * gain));
+  } else if (topologyCase === 'independent') {
+    topology = IR_ASSET_TOPOLOGY.independent;
+    channels = [samples, Float32Array.from(samples, sample => sample * 0.5)];
   } else if (topologyCase === 'matrix') {
     topology = IR_ASSET_TOPOLOGY.matrix;
     channels = [samples, Float32Array.from(samples, sample => sample * 0.5)];
@@ -94,6 +97,18 @@ function createInput({ leftOnly = false } = {}) {
   input[TOTAL_FRAMES] = leftOnly ? 0 : -0.6;
   input[701] = 0.35;
   input[TOTAL_FRAMES + 701] = leftOnly ? 0 : 0.35;
+  return input;
+}
+
+function createStreamingInput(totalFrames = 8192) {
+  const input = new Float32Array(CHANNEL_COUNT * totalFrames);
+  let state = 0x12345678;
+  for (let frame = 0; frame < totalFrames; frame++) {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    const sample = ((state >>> 8) / 0x1000000 - 0.5) * 0.16;
+    input[frame] = sample;
+    input[totalFrames + frame] = sample;
+  }
   return input;
 }
 
@@ -206,6 +221,66 @@ async function renderDirect(bytes, asset, input, { warmup, parameters = PARAMETE
   }
 }
 
+async function renderDirectWithPattern(bytes, asset, input, blockPattern) {
+  const totalFrames = input.length / CHANNEL_COUNT;
+  const maxFrames = Math.max(...blockPattern);
+  const binding = await instantiateDsp(bytes);
+  try {
+    assert.notEqual(binding.createEngine(), 0);
+    assert.equal(binding.prepare(SAMPLE_RATE, CHANNEL_COUNT, maxFrames, 0), 0);
+    const instanceId = binding.createInstance('IRReverbPlugin');
+    assert.notEqual(instanceId, 0);
+    assert.equal(binding.instanceSetParams(instanceId, PACKER.pack(PARAMETERS), PACKER.hash), 0);
+    assert.equal(binding.instanceSetAsset(
+      instanceId,
+      0,
+      asset.payload,
+      asset,
+      asset.formatTag
+    ), 0);
+
+    const output = new Float32Array(input.length);
+    const scratch = binding.getArenaViews().scratch.allChannels.subarray(
+      0,
+      CHANNEL_COUNT * maxFrames
+    );
+    const pointer = binding.pointerForArenaView(scratch);
+    let patternIndex = 0;
+    for (let offset = 0; offset < totalFrames; patternIndex++) {
+      const frames = Math.min(blockPattern[patternIndex % blockPattern.length], totalFrames - offset);
+      for (let channel = 0; channel < CHANNEL_COUNT; channel++) {
+        scratch.set(
+          input.subarray(
+            channel * totalFrames + offset,
+            channel * totalFrames + offset + frames
+          ),
+          channel * frames
+        );
+      }
+      assert.equal(binding.instanceProcess(
+        instanceId,
+        pointer,
+        CHANNEL_COUNT,
+        frames,
+        offset / SAMPLE_RATE
+      ), 0);
+      for (let channel = 0; channel < CHANNEL_COUNT; channel++) {
+        output.set(
+          scratch.subarray(channel * frames, (channel + 1) * frames),
+          channel * totalFrames + offset
+        );
+      }
+      offset += frames;
+    }
+    return {
+      output,
+      assetState: binding.instanceAssetState(instanceId, 0) & 0xff
+    };
+  } finally {
+    binding.close();
+  }
+}
+
 async function renderOfflineSession(bytes, asset, input, parameters = PARAMETERS) {
   const tracking = { warmupBlocks: 0, resetStates: [], assetMemoryGrowth: [] };
   const warnings = [];
@@ -289,6 +364,16 @@ function maximumDifference(left, right) {
   return maximum;
 }
 
+function maximumStereoGainError(output, rightGain) {
+  const frames = output.length / CHANNEL_COUNT;
+  let maximum = 0;
+  for (let frame = 0; frame < frames; frame++) {
+    const error = Math.abs(output[frames + frame] - output[frame] * rightGain);
+    if (error > maximum) maximum = error;
+  }
+  return maximum;
+}
+
 function channelPeak(output, channel) {
   let peak = 0;
   const offset = channel * TOTAL_FRAMES;
@@ -300,6 +385,24 @@ function channelPeak(output, channel) {
 }
 
 for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
+  test(`IR Reverb ${artifact} keeps preparation and activation independent of block size`, async () => {
+    const bytes = fs.readFileSync(new URL(`../../plugins/dsp/${artifact}`, import.meta.url));
+    const asset = createIrAsset('independent');
+    const input = createStreamingInput();
+    const quantum = await renderDirectWithPattern(bytes, asset, input, [128]);
+    const block512 = await renderDirectWithPattern(bytes, asset, input, [512]);
+    const irregular = await renderDirectWithPattern(bytes, asset, input, [1, 63, 512, 17, 255, 127]);
+
+    assert.equal(quantum.assetState, 3);
+    assert.equal(block512.assetState, 3);
+    assert.equal(irregular.assetState, 3);
+    assert.ok(quantum.output.some(sample => Math.abs(sample) > 1e-5));
+    assert.ok(maximumDifference(block512.output, quantum.output) <= 1e-7);
+    assert.ok(maximumDifference(irregular.output, quantum.output) <= 1e-7);
+    assert.ok(maximumStereoGainError(block512.output, 0.5) <= 1e-7);
+    assert.ok(maximumStereoGainError(irregular.output, 0.5) <= 1e-7);
+  });
+
   test(`IR Reverb offline ${artifact} refreshes arena views after asset memory growth`, async () => {
     const bytes = fs.readFileSync(new URL(`../../plugins/dsp/${artifact}`, import.meta.url));
     const offline = await renderOfflineSession(

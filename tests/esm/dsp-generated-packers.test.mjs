@@ -45,7 +45,7 @@ function assertPackedField(packer, field, offset, value, expected, label) {
 }
 
 test('every shipped DSP type packs explicit schema defaults matching artifact metadata', async () => {
-  assert.equal(metadata.kernels.length, 69);
+  assert.equal(metadata.kernels.length, 70);
   assert.equal(DSP_PARAM_PACKERS.size, metadata.kernels.length);
   assert.deepEqual(
     new Set(Object.keys(DSP_PARAM_LAYOUTS)),

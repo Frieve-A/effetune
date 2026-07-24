@@ -26,7 +26,7 @@ struct ConvolverConfig {
   std::array<ConvolutionPath, kMaximumPaths> paths{};
 };
 
-enum class ConvolverPreparationState { empty, reserved, preparing, active, error };
+enum class ConvolverPreparationState { empty, reserved, preparing, warming, active, error };
 
 class PartitionedConvolver {
 public:

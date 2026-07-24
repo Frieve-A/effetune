@@ -100,6 +100,14 @@
   
   // メッセージ
   "message:peqCopied": "PEQ設定がクリップボードにコピーされました。コピーした設定はEffeTuneのエフェクトパイプラインにCtrl+Vで貼り付けられます。", // PEQコピー成功メッセージ
+  "message:saveFailed": "測定を保存できませんでした。空き容量を確認して、もう一度お試しください。",
+  "message:irStorageUnavailable": "このブラウザーではインパルス応答を保存できません。Room EQのCorrectionは利用できません。",
+  "label:includeImpulseResponses": "測定JSONのエクスポートにインパルス応答を含める",
+  "help:includeImpulseResponses": "インパルス応答を含めると、エクスポートファイルが数十MB大きくなる場合があります。",
+  "help:roomEq": "位相を制御できるFIR補正には、メインアプリのRoom EQプラグインを使用してください。",
+  "message:irSaved": "IR保存済み ✓（{seconds}秒 @ {sampleRate} kHz）",
+  "help:sweepLimited": "スイープを長くすると、Room EQ用により長いインパルス応答を保存できます。",
+  "message:measurementStorageUsage": "測定データ：{megabytes} MB",
   
   // チャンネルオプション
   "option:left": "左チャンネル", // 左チャンネルのオプション

@@ -1,0 +1,8 @@
+{
+  "formatVersion": 1,
+  "type": "RoomEqPlugin",
+  "cases": [
+    "case-001.json",
+    "case-002.json"
+  ]
+}

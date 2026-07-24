@@ -49,6 +49,14 @@ ET_EXPORT uint32_t et_kernel_params_hash(uint32_t index);
 ET_EXPORT uint32_t et_kernel_param_bytes_capacity(uint32_t index);
 ET_EXPORT uint32_t et_kernel_asset_capacity(uint32_t index, uint32_t slot);
 
+typedef struct et_design_fft et_design_fft;
+ET_EXPORT et_design_fft *et_design_fft_create(uint32_t size);
+ET_EXPORT void et_design_fft_destroy(et_design_fft *fft);
+ET_EXPORT float *et_design_fft_input(et_design_fft *fft);
+ET_EXPORT const float *et_design_fft_output(const et_design_fft *fft);
+ET_EXPORT et_status et_design_fft_forward(et_design_fft *fft);
+ET_EXPORT et_status et_design_fft_inverse(et_design_fft *fft);
+
 ET_EXPORT uint32_t et_engine_memory_required(float sample_rate, uint32_t max_channels,
                                              uint32_t max_frames, uint32_t telemetry_ring_bytes);
 ET_EXPORT et_engine et_engine_create(void);

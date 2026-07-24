@@ -190,9 +190,11 @@ public:
     const MixParameters mix = currentMixParameters();
     if (asset_state_ == ET_ASSET_STATE_PREPARING) {
       if (rate_divider_ == 1u) {
-        processFullRate(audio, channel_count, frame_count, mix, false);
+        processFullRate(audio, channel_count, frame_count, mix,
+                        channel_count == processing_channels_);
       } else {
-        processReducedRate(audio, channel_count, frame_count, mix, false);
+        processReducedRate(audio, channel_count, frame_count, mix,
+                           channel_count == processing_channels_);
       }
       return;
     }
@@ -471,22 +473,35 @@ private:
   }
 
   void processFullRate(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
-                       const MixParameters &mix, bool process_wet) noexcept {
+                       const MixParameters &mix, bool wet_allowed) noexcept {
     for (std::uint32_t channel = 0u; channel < processing_channels_; ++channel) {
       float *target = full_rate_audio_.data() + static_cast<std::size_t>(channel) * frame_count;
-      if (process_wet && channel < channel_count) {
+      if (channel < channel_count) {
         std::memcpy(target, audio + static_cast<std::size_t>(channel) * frame_count,
                     frame_count * sizeof(float));
       } else {
         std::memset(target, 0, frame_count * sizeof(float));
       }
     }
-    convolver_.process(full_rate_audio_.data(), processing_channels_, frame_count);
-    updatePreparationState();
-    if (!process_wet) {
-      applyDryWithWetFadeOut(audio, channel_count, frame_count, mix);
+    if (asset_state_ == ET_ASSET_STATE_PREPARING) {
+      for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+        for (std::uint32_t channel = 0u; channel < processing_channels_; ++channel) {
+          conv_frame_[channel] =
+              full_rate_audio_[static_cast<std::size_t>(channel) * frame_count + frame];
+        }
+        convolver_.process(conv_frame_.data(), processing_channels_, 1u);
+        updatePreparationState();
+        if (wet_allowed && asset_state_ == ET_ASSET_STATE_ACTIVE) {
+          for (std::uint32_t channel = 0u; channel < channel_count; ++channel)
+            wet_frame_[channel] = conv_frame_[channel];
+          mixFrame(audio, channel_count, frame_count, frame, mix);
+        } else {
+          mixDryWithWetFadeOutFrame(audio, channel_count, frame_count, frame, mix);
+        }
+      }
       return;
     }
+    convolver_.process(full_rate_audio_.data(), processing_channels_, frame_count);
     for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
       for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
         wet_frame_[channel] =
@@ -497,11 +512,11 @@ private:
   }
 
   void processReducedRate(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
-                          const MixParameters &mix, bool process_wet) noexcept {
+                          const MixParameters &mix, bool wet_allowed) noexcept {
     for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
       bool low_ready = false;
       for (std::uint32_t channel = 0u; channel < processing_channels_; ++channel) {
-        const float input = process_wet && channel < channel_count
+        const float input = channel < channel_count
                                 ? audio[static_cast<std::size_t>(channel) * frame_count + frame]
                                 : 0.0F;
         float first_stage = 0.0F;
@@ -513,19 +528,19 @@ private:
         if (channel == 0u)
           low_ready = produced;
       }
-      if (low_ready && (process_wet || asset_state_ == ET_ASSET_STATE_PREPARING)) {
+      if (low_ready) {
         convolver_.process(conv_frame_.data(), processing_channels_, 1u);
         updatePreparationState();
-        if (process_wet)
+        if (wet_allowed && asset_state_ == ET_ASSET_STATE_ACTIVE)
           interpolateAndQueue();
       }
-      if (process_wet) {
+      if (wet_allowed && asset_state_ == ET_ASSET_STATE_ACTIVE) {
         popWetFrame();
         mixFrame(audio, channel_count, frame_count, frame, mix);
+      } else {
+        mixDryWithWetFadeOutFrame(audio, channel_count, frame_count, frame, mix);
       }
     }
-    if (!process_wet)
-      applyDryWithWetFadeOut(audio, channel_count, frame_count, mix);
   }
 
   dsp::Halfband2x &decimator(std::uint32_t channel, std::uint32_t stage) noexcept {
@@ -623,19 +638,25 @@ private:
       return;
     }
     for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-      const float fade = wet_fade_out_remaining_ == 0u
-                             ? 0.0F
-                             : static_cast<float>(wet_fade_out_remaining_) / kFadeFrames;
-      for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
-        const std::size_t index = static_cast<std::size_t>(channel) * frame_count + frame;
-        const float dry = audio[index] * mix.dryGain;
-        audio[index] = dry + last_wet_[channel] * fade * mix.wetGain;
-      }
-      if (wet_fade_out_remaining_ != 0u) {
-        --wet_fade_out_remaining_;
-        if (wet_fade_out_remaining_ == 0u)
-          last_wet_.fill(0.0F);
-      }
+      mixDryWithWetFadeOutFrame(audio, channel_count, frame_count, frame, mix);
+    }
+  }
+
+  void mixDryWithWetFadeOutFrame(float *audio, std::uint32_t channel_count,
+                                 std::uint32_t frame_count, std::uint32_t frame,
+                                 const MixParameters &mix) noexcept {
+    const float fade = wet_fade_out_remaining_ == 0u
+                           ? 0.0F
+                           : static_cast<float>(wet_fade_out_remaining_) / kFadeFrames;
+    for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
+      const std::size_t index = static_cast<std::size_t>(channel) * frame_count + frame;
+      const float dry = audio[index] * mix.dryGain;
+      audio[index] = dry + last_wet_[channel] * fade * mix.wetGain;
+    }
+    if (wet_fade_out_remaining_ != 0u) {
+      --wet_fade_out_remaining_;
+      if (wet_fade_out_remaining_ == 0u)
+        last_wet_.fill(0.0F);
     }
   }
 

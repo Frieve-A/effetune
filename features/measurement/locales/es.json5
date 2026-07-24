@@ -100,6 +100,14 @@
 
 // Messages
 "message:peqCopied": "Ajustes de PEQ copiados al portapapeles correctamente. Los ajustes copiados se pueden pegar en el Pipeline de Efectos de EffeTune con Ctrl+V.", // Success message for PEQ copy
+"message:saveFailed": "No se pudo guardar la medición. Comprueba el espacio disponible y vuelve a intentarlo.",
+"message:irStorageUnavailable": "Este navegador no puede guardar respuestas impulsionales. El modo Correction de Room EQ no estará disponible.",
+"label:includeImpulseResponses": "Incluir respuestas impulsionales al exportar mediciones en JSON",
+"help:includeImpulseResponses": "Las respuestas impulsionales pueden aumentar el archivo exportado en decenas de megabytes.",
+"help:roomEq": "Para corrección FIR con control de fase, usa el plugin Room EQ de la aplicación principal.",
+"message:irSaved": "IR guardada ✓ ({seconds} s @ {sampleRate} kHz)",
+"help:sweepLimited": "Un barrido más largo permite que Room EQ conserve una respuesta impulsional más larga.",
+"message:measurementStorageUsage": "Mediciones: {megabytes} MB",
 
 // Channel options
 "option:left": "Canal izquierdo", // Option for left channel

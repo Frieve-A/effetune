@@ -341,6 +341,46 @@ export class DspEngineBinding {
         return this.exports.et_kernel_asset_capacity(index, slot) >>> 0;
     }
 
+    hasDesignFft() {
+        return [
+            'et_design_fft_create',
+            'et_design_fft_destroy',
+            'et_design_fft_input',
+            'et_design_fft_output',
+            'et_design_fft_forward',
+            'et_design_fft_inverse'
+        ].every(name => typeof this.exports[name] === 'function');
+    }
+
+    createDesignFft(size) {
+        if (!this.hasDesignFft()) return 0;
+        const preparing = this._preparing;
+        this._preparing = true;
+        try {
+            return this.exports.et_design_fft_create(size >>> 0) >>> 0;
+        } finally {
+            this._refreshViews();
+            this._preparing = preparing;
+        }
+    }
+
+    destroyDesignFft(handle) {
+        if (handle && this.hasDesignFft()) this.exports.et_design_fft_destroy(handle >>> 0);
+    }
+
+    getDesignFftInput(handle) {
+        return this.exports.et_design_fft_input(handle >>> 0) >>> 0;
+    }
+
+    getDesignFftOutput(handle) {
+        return this.exports.et_design_fft_output(handle >>> 0) >>> 0;
+    }
+
+    runDesignFft(handle, inverse = false) {
+        const transform = inverse ? this.exports.et_design_fft_inverse : this.exports.et_design_fft_forward;
+        return transform(handle >>> 0);
+    }
+
     getCapabilities() {
         const kernels = [];
         const count = this.getKernelCount();

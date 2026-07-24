@@ -1,6 +1,6 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:e233481025ef1dda9403f077984fd19e59d839cf37a643aa0f5f648d6732d3ec",
+  "sourceDigest": "sha256:e095cff6e706179d848c9a0c1b8379ec7b2dcbc8eab8ed8d9456972045950776",
   "emsdkVersion": "6.0.2",
   "kernels": [
     {
@@ -220,6 +220,19 @@
       "assets": []
     },
     {
+      "name": "RoomEqPlugin",
+      "hash": 3893667250,
+      "byteCapacity": 0,
+      "assets": [
+        {
+          "slot": 0,
+          "format": "ET_ASSET_F32_MULTICH",
+          "capacity": "32 MiB convolution cap",
+          "byteCapacity": 33554432
+        }
+      ]
+    },
+    {
       "name": "TiltEQPlugin",
       "hash": 3110132925,
       "byteCapacity": 0,
@@ -426,7 +439,7 @@
     }
   ],
   "sizes": {
-    "baseline": 381437,
-    "simd": 432609
+    "baseline": 388686,
+    "simd": 439422
   }
 }

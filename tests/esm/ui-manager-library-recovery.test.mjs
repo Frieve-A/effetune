@@ -29,6 +29,21 @@ function createDocument(...bodyClasses) {
   };
 }
 
+async function withBoundedTimeout(promise, label, timeoutMs = 1000) {
+  let timeoutId;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
+        timeoutId.ref?.();
+      })
+    ]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 test('unavailable startup Library falls back to Effect Pipeline without hiding it', async () => {
   const calls = [];
   const documentRef = createDocument('view-library');
@@ -77,6 +92,59 @@ test('an unavailable Library opened explicitly shows the recovery shell', async 
 
   assert.equal(await manager.showLibraryView({ focusSearch: false }), true);
   assert.deepEqual(calls, [['ensure'], ['recovery']]);
+});
+
+test('startup selection reaches the first Library view created by recovery', async () => {
+  const calls = [];
+  const documentRef = createDocument('view-library');
+  const manager = Object.assign(Object.create(UIManager.prototype), {
+    miniPlayerMode: false,
+    miniPlayerTargetMode: false,
+    libraryRecoveryState: {
+      apiVersion: 1,
+      status: 'initializing',
+      available: false,
+      canReset: false
+    },
+    libraryDeferredStartupOptions: null,
+    libraryManager: null,
+    libraryView: null,
+    layoutMode: { isMobile: false },
+    mobileNav: { setView() {} },
+    renderLibraryRecoveryShell() {},
+    hideLibraryRecoveryShell() {},
+    updateViewSwitchButtons() {},
+    async ensureLibraryManager() {
+      if (!this.libraryManager) {
+        this.libraryManager = {};
+        this.libraryView = {
+          currentView: 'tracks',
+          show(options) {
+            calls.push(['show', options]);
+            this.currentView = options.initialView ?? this.currentView;
+          }
+        };
+      }
+      return this.libraryManager;
+    }
+  });
+
+  manager.deferLibraryStartupView('subfolders');
+  await withGlobals({ document: documentRef }, async () => {
+    await manager.applyLibraryRecoveryState({
+      apiVersion: 1,
+      status: 'available',
+      available: true,
+      canReset: false
+    });
+  });
+
+  assert.equal(manager.libraryView.currentView, 'subfolders');
+  assert.equal(manager.libraryDeferredStartupOptions, null);
+  assert.deepEqual(calls, [[
+    'show',
+    { focusSearch: false, returnFocus: undefined, initialView: 'subfolders' }
+  ]]);
 });
 
 test('recovery transition disposes the old Library and rebuilds it after reset', async () => {
@@ -199,7 +267,7 @@ test('reset request uses localized renderer confirmation and applies the returne
   assert.equal(resetButton.disabled, true);
 });
 
-test('Web catalog open failure shows recovery, resets fixed storage, and reopens with a new manager', async () => {
+test('queued Web startup recovery preserves its deferred subview without waiting on itself', async () => {
   const calls = [];
   const documentRef = createDocument('view-library');
   let managerAttempts = 0;
@@ -224,7 +292,14 @@ test('Web catalog open failure shows recovery, resets fixed storage, and reopens
     libraryView: null,
     libraryInitPromise: null,
     libraryPlaybackBridge: null,
-    mobileNav: { attachLibraryView() {} },
+    miniPlayerMode: false,
+    miniPlayerTargetMode: false,
+    layoutMode: { isMobile: false },
+    mobileNav: {
+      attachLibraryView() {},
+      setView() {}
+    },
+    updateViewSwitchButtons() {},
     createLibraryManager() {
       managerAttempts += 1;
       const attempt = managerAttempts;
@@ -238,8 +313,13 @@ test('Web catalog open failure shows recovery, resets fixed storage, and reopens
     },
     createLibraryView() {
       return {
+        currentView: 'tracks',
         mount() { calls.push(['mount']); },
-        show() { calls.push(['show-library']); }
+        show(options) {
+          calls.push(['show-library', options]);
+          this.currentView = options.initialView ?? this.currentView;
+          documentRef.body.classList.add('view-library');
+        }
       };
     },
     connectLibraryPlaybackBridge() {},
@@ -250,11 +330,17 @@ test('Web catalog open failure shows recovery, resets fixed storage, and reopens
       return true;
     },
     hideLibraryRecoveryShell() { calls.push(['hide-recovery']); },
+    showEffectPipelineView(options) {
+      calls.push(['show-effects', options]);
+      documentRef.body.classList.remove('view-library');
+      return true;
+    },
     t() { return '日本語の確認'; }
   });
   const unsubscribe = recoveryApi.onStateChange(state => {
     void manager.queueLibraryRecoveryState(state);
   });
+  manager.deferLibraryStartupView('subfolders');
 
   await withGlobals({
     console: createConsoleHarness({ error() {} }),
@@ -267,17 +353,32 @@ test('Web catalog open failure shows recovery, resets fixed storage, and reopens
       }
     }
   }, async () => {
-    assert.equal(await manager.ensureLibraryManager(), null);
+    await withBoundedTimeout(
+      manager.queueLibraryRecoveryState(recoveryApi.getState()),
+      'initial recovery state'
+    );
+    await withBoundedTimeout(manager.libraryRecoveryStateQueue, 'open-failure recovery state');
     assert.equal(manager.libraryRecoveryState.status, 'unavailable');
-    assert.equal(await manager.resetLibraryCatalog(), true);
-    await manager.libraryRecoveryStateQueue;
+    assert.equal(documentRef.body.classList.contains('view-library'), false);
+    assert.equal(manager.libraryDeferredStartupOptions.initialView, 'subfolders');
+    assert.ok(calls.some(call => call[0] === 'show-effects'));
+
+    assert.equal(await withBoundedTimeout(
+      manager.resetLibraryCatalog(),
+      'catalog reset'
+    ), true);
+    await withBoundedTimeout(manager.libraryRecoveryStateQueue, 'post-reset recovery state');
   });
   unsubscribe();
 
   assert.equal(recoveryClients, 1);
   assert.equal(managerAttempts, 2);
   assert.equal(manager.libraryRecoveryState.status, 'available');
-  assert.ok(calls.some(call => call[0] === 'show-recovery'));
+  assert.equal(manager.libraryView.currentView, 'subfolders');
+  assert.equal(manager.libraryDeferredStartupOptions, null);
   assert.ok(calls.some(call => call[0] === 'clear-fixed-opfs'));
   assert.ok(calls.some(call => call[0] === 'mount'));
+  assert.ok(calls.some(call =>
+    call[0] === 'show-library' && call[1].initialView === 'subfolders'
+  ));
 });

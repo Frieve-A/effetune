@@ -27,7 +27,7 @@ constexpr std::uint32_t kIndependent = 2u;
 constexpr std::uint32_t kTrueStereo = 3u;
 constexpr std::uint32_t kMatrix = 4u;
 constexpr std::uint32_t kPathRecordBytes = 12u;
-constexpr std::uint32_t kMaxFrames = 511u;
+constexpr std::uint32_t kMaxFrames = 512u;
 constexpr std::size_t kAssetCapacity = 32u * 1024u * 1024u;
 constexpr std::size_t kConvolverImplUpperBound = 512u;
 constexpr std::size_t kConvolverStageUpperBound = 512u;
@@ -437,8 +437,10 @@ reference(const std::vector<float> &input, const std::vector<float> &ir, std::ui
   return result;
 }
 
-std::vector<float> render(Harness &harness, const std::vector<float> &input, std::uint32_t frames) {
-  constexpr std::array<std::uint32_t, 6> pattern = {1u, 63u, 128u, 511u, 17u, 255u};
+template <std::size_t PatternSize>
+std::vector<float> renderPattern(Harness &harness, const std::vector<float> &input,
+                                 std::uint32_t frames,
+                                 const std::array<std::uint32_t, PatternSize> &pattern) {
   std::vector<float> output(input.size(), 0.0F);
   std::vector<float> block(static_cast<std::size_t>(harness.channels) * kMaxFrames, 0.0F);
   std::size_t patternIndex = 0u;
@@ -460,6 +462,11 @@ std::vector<float> render(Harness &harness, const std::vector<float> &input, std
     offset += count;
   }
   return output;
+}
+
+std::vector<float> render(Harness &harness, const std::vector<float> &input, std::uint32_t frames) {
+  constexpr std::array<std::uint32_t, 6> pattern = {1u, 63u, 128u, 511u, 17u, 255u};
+  return renderPattern(harness, input, frames, pattern);
 }
 
 void compare(const std::vector<float> &actual, const std::vector<float> &expected,
@@ -587,6 +594,99 @@ void testDryOnlyUntilMatchingAssetIsActive() {
   expectDryOnly(multichannel, stagedAudio, frames, dryLevel);
 }
 
+void testPreparationWarmsFromLiveInputWithoutInterruptingDryOutput() {
+  constexpr std::uint32_t frames = 128u;
+  for (const std::uint32_t divider : {1u, 2u}) {
+    for (const std::uint32_t headBlock : {128u, 1024u}) {
+      Harness live(48000.0F * static_cast<float>(divider));
+      Harness silent(48000.0F * static_cast<float>(divider));
+      std::vector<float> ir(4096u, 0.0F);
+      ir[0u] = 0.25F;
+      ir[2047u] = 0.75F;
+      live.stageParams(params(0.0F, 0.0F));
+      silent.stageParams(params(0.0F, 0.0F));
+      IR_CHECK(live.stageAsset(ir, 1u, kMono, headBlock, divider));
+      IR_CHECK(silent.stageAsset(ir, 1u, kMono, headBlock, divider));
+
+      std::uint32_t preparationCalls = 0u;
+      while ((live.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_PREPARING &&
+             preparationCalls < 2000u) {
+        std::vector<float> liveAudio(2u * frames, 0.25F);
+        std::vector<float> silentAudio(2u * frames, 0.0F);
+        live.kernel->process(liveAudio.data(), 2u, frames, {0.0});
+        silent.kernel->process(silentAudio.data(), 2u, frames, {0.0});
+        if ((live.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_PREPARING) {
+          IR_CHECK(std::all_of(liveAudio.begin(), liveAudio.end(),
+                               [](float sample) { return std::abs(sample - 0.25F) < 1.0e-6F; }));
+        } else {
+          IR_CHECK(std::all_of(liveAudio.begin(), liveAudio.end(),
+                               [](float sample) { return std::isfinite(sample); }));
+        }
+        IR_CHECK(std::all_of(silentAudio.begin(), silentAudio.end(),
+                             [](float sample) { return sample == 0.0F; }));
+        ++preparationCalls;
+      }
+      IR_CHECK((live.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_ACTIVE);
+      IR_CHECK((silent.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_ACTIVE);
+      IR_CHECK(preparationCalls < 2000u);
+
+      float livePeak = 0.0F;
+      float silentPeak = 0.0F;
+      for (std::uint32_t call = 0u; call < 64u; ++call) {
+        std::vector<float> liveAudio(2u * frames, 0.0F);
+        std::vector<float> silentAudio(2u * frames, 0.0F);
+        live.kernel->process(liveAudio.data(), 2u, frames, {0.0});
+        silent.kernel->process(silentAudio.data(), 2u, frames, {0.0});
+        for (const float sample : liveAudio) {
+          const float magnitude = sample < 0.0F ? -sample : sample;
+          if (magnitude > livePeak)
+            livePeak = magnitude;
+        }
+        for (const float sample : silentAudio) {
+          const float magnitude = sample < 0.0F ? -sample : sample;
+          if (magnitude > silentPeak)
+            silentPeak = magnitude;
+        }
+      }
+      IR_CHECK(livePeak > 1.0e-4F);
+      IR_CHECK(silentPeak < 1.0e-7F);
+    }
+  }
+}
+
+void testPreparationAndActivationAreBlockSizeIndependent() {
+  constexpr std::uint32_t renderFrames = 8000u;
+  constexpr std::array<std::uint32_t, 1> quantumPattern = {128u};
+  constexpr std::array<std::uint32_t, 6> irregularPattern = {1u, 63u, 511u, 17u, 255u, 127u};
+  struct Scenario {
+    std::uint32_t headBlock;
+    std::uint32_t divider;
+  };
+  constexpr std::array<Scenario, 5> scenarios = {Scenario{0u, 1u}, Scenario{128u, 1u},
+                                                 Scenario{128u, 2u}, Scenario{128u, 4u},
+                                                 Scenario{1024u, 1u}};
+
+  const std::vector<float> ir = makeIr(1u, 2048u);
+  const std::vector<float> input = makeInput(2u, renderFrames);
+  for (const Scenario &scenario : scenarios) {
+    const float sampleRate = 48000.0F * static_cast<float>(scenario.divider);
+    Harness quantum(sampleRate);
+    Harness irregular(sampleRate);
+    IR_CHECK(quantum.stageAsset(ir, 1u, kMono, scenario.headBlock, scenario.divider));
+    IR_CHECK(irregular.stageAsset(ir, 1u, kMono, scenario.headBlock, scenario.divider));
+
+    const std::vector<float> quantumOutput =
+        renderPattern(quantum, input, renderFrames, quantumPattern);
+    const std::vector<float> irregularOutput =
+        renderPattern(irregular, input, renderFrames, irregularPattern);
+    compare(irregularOutput, quantumOutput, 1.0e-7);
+    IR_CHECK((quantum.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_ACTIVE);
+    IR_CHECK((irregular.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_ACTIVE);
+    IR_CHECK(std::any_of(quantumOutput.begin(), quantumOutput.end(),
+                         [](float sample) { return std::abs(sample) > 1.0e-5F; }));
+  }
+}
+
 void testReplacementAndClearWetFadeOut() {
   constexpr std::uint32_t frames = 128u;
   const std::vector<float> lastWet = {0.75F, -0.5F};
@@ -617,6 +717,10 @@ void testReplacementAndClearWetFadeOut() {
   IR_CHECK((replacement.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_PREPARING);
   std::vector<float> replacementAudio(2u * frames, 0.375F);
   expectWetFadeOut(replacement, replacementAudio, frames, -96.0F, lastWet);
+  if ((replacement.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_PREPARING) {
+    std::vector<float> warmingAudio(2u * frames, 0.25F);
+    expectDryOnly(replacement, warmingAudio, frames, -96.0F);
+  }
   IR_CHECK((replacement.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_ACTIVE);
   std::vector<float> silentIrAudio(2u * frames, 0.25F);
   expectDryOnly(replacement, silentIrAudio, frames, -6.0F);
@@ -634,6 +738,7 @@ void testReplacementAndClearWetFadeOut() {
 void testDirectReferenceMatrix() {
   constexpr std::uint32_t irFrames = 600u;
   constexpr std::uint32_t renderFrames = 5000u;
+  constexpr std::array<std::uint32_t, 1> block512 = {512u};
   for (const std::uint32_t divider : {1u, 2u, 4u}) {
     const float rate = 48000.0F * static_cast<float>(divider);
     for (const std::uint32_t topology : {kMono, kIndependent}) {
@@ -648,6 +753,10 @@ void testDirectReferenceMatrix() {
       const std::vector<float> expected =
           reference(input, ir, 2u, irChannels, irFrames, topology, renderFrames, 128u, divider);
       compare(actual, expected, divider == 1u ? 2.0e-4 : 3.5e-4);
+      harness.kernel->reset();
+      const std::vector<float> actual512 = renderPattern(harness, input, renderFrames, block512);
+      compare(actual512, expected, divider == 1u ? 2.0e-4 : 3.5e-4);
+      IR_CHECK(actual512 == actual);
       IR_CHECK(effetune::allocation_guard::violationCount() == allocationBefore);
     }
   }
@@ -1094,6 +1203,8 @@ int main() {
   IR_CHECK(descriptor != nullptr && descriptor->paramsFloatCount == 6u);
   IR_CHECK(descriptor != nullptr && descriptor->assetCapacity(0u) == 32u * 1024u * 1024u);
   testDryOnlyUntilMatchingAssetIsActive();
+  testPreparationWarmsFromLiveInputWithoutInterruptingDryOutput();
+  testPreparationAndActivationAreBlockSizeIndependent();
   testReplacementAndClearWetFadeOut();
   testDirectReferenceMatrix();
   testConvolutionRatesPreserveNormalizedIrWetLevel();

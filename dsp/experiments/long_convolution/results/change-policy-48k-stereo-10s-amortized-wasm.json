@@ -1,4 +1,0 @@
-[
-  {"kind":"change-policies","partitioning":"two-stage","sampleRate":48000,"contextRate":48000,"quantumFrames":128,"channels":2,"irSeconds":10,"hardPrepareMs":7.3458,"hardPeakBytes":19839440,"crossfadePrepareMs":9.4721,"crossfadePeakBytes":39678880,"crossfadeMedianQuantumUs":130.85,"crossfadeWorstQuantumUs":306.8,"oldSteadyBytes":15999440,"wasmHeapBytes":57802752},
-  {"kind":"change-policies","partitioning":"capped-ladder","sampleRate":48000,"contextRate":48000,"quantumFrames":128,"channels":2,"irSeconds":10,"hardPrepareMs":7.9383,"hardPeakBytes":20085872,"crossfadePrepareMs":8.5219,"crossfadePeakBytes":40171744,"crossfadeMedianQuantumUs":114.95,"crossfadeWorstQuantumUs":390.7,"oldSteadyBytes":16245872,"wasmHeapBytes":57802752}
-]

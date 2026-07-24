@@ -1,3 +1,0 @@
-[
-  {"kind":"accuracy","pass":true,"cases":198,"longCases":12,"longIrFrames":70000,"longRenderFrames":100000,"maxAbsError":1.78813934e-07,"maxRmsError":3.03938194e-08,"finite":true,"allocationViolations":0}
-]

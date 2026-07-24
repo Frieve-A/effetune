@@ -100,6 +100,14 @@
 
 // Messages
 "message:peqCopied": "PEQ सेटिंग्स सफलतापूर्वक क्लिपबोर्ड पर कॉपी हो गईं। कॉपी की गई सेटिंग्स को Ctrl+V द्वारा EffeTune के इफेक्ट पाइपलाइन में चिपकाया जा सकता है।", // Success message for PEQ copy
+"message:saveFailed": "Measurement सेव नहीं हो सकी। उपलब्ध storage जाँचें और फिर प्रयास करें।",
+"message:irStorageUnavailable": "इस browser में impulse responses सेव नहीं की जा सकतीं। Room EQ का Correction mode उपलब्ध नहीं होगा।",
+"label:includeImpulseResponses": "Measurement JSON export में impulse responses शामिल करें",
+"help:includeImpulseResponses": "Impulse responses से exported file कई दसियों megabytes बड़ी हो सकती है।",
+"help:roomEq": "Phase control वाली FIR correction के लिए main app में Room EQ plugin उपयोग करें।",
+"message:irSaved": "IR सेव हुई ✓ ({seconds} s @ {sampleRate} kHz)",
+"help:sweepLimited": "लंबा sweep Room EQ को लंबी impulse response सुरक्षित रखने देता है।",
+"message:measurementStorageUsage": "Measurements: {megabytes} MB",
 
 // Channel options
 "option:left": "बायाँ चैनल", // Option for left channel

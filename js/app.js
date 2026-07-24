@@ -202,6 +202,7 @@ class App {
         const PluginManagerClass = dependencies.PluginManagerClass || PluginManager;
         const AudioManagerClass = dependencies.AudioManagerClass || AudioManager;
         const UIManagerClass = dependencies.UIManagerClass || UIManager;
+        this.startupConfig = dependencies.startupConfig || getCachedStartupConfig(window) || null;
 
         // Initialize core components
         this.pluginManager = dependencies.pluginManager || new PluginManagerClass();
@@ -217,6 +218,12 @@ class App {
             return loadConfig(isElectron);
         });
         this.loadPipelineState = dependencies.loadPipelineState || loadPipelineState;
+
+        if (shouldUseLibraryStartupView(this.startupConfig, window)) {
+            this.uiManager.deferLibraryStartupView?.(
+                normalizeMusicLibraryStartupView(this.startupConfig.libraryStartupView)
+            );
+        }
         
         // Set pipeline manager reference in audio manager
         this.audioManager.pipelineManager = this.uiManager.pipelineManager;
@@ -436,10 +443,11 @@ class App {
     }
 
     async applyStartupViewPreference() {
-        let startupConfig = getCachedStartupConfig(window) || {};
+        let startupConfig = this.startupConfig || getCachedStartupConfig(window) || {};
         if (!startupConfig.startupView) {
             try {
                 startupConfig = await this.loadStartupConfig() || {};
+                this.startupConfig = startupConfig;
             } catch (error) {
                 console.error('Error loading config for startup view:', error);
                 return;
@@ -451,10 +459,12 @@ class App {
         }
 
         try {
+            const initialView = normalizeMusicLibraryStartupView(startupConfig.libraryStartupView);
+            this.uiManager?.deferLibraryStartupView?.(initialView);
             applyInitialStartupViewClass(startupConfig, window);
             await this.uiManager?.showLibraryView?.({
                 focusSearch: false,
-                initialView: normalizeMusicLibraryStartupView(startupConfig.libraryStartupView)
+                initialView
             });
         } catch (error) {
             console.error('Error opening startup view:', error);
@@ -610,6 +620,7 @@ class App {
         if (window.electronIntegration) {
             try {
                 startupConfig = await this.loadStartupConfig() || {};
+                this.startupConfig = startupConfig;
 
                 if (!isElectron && !webUrlState && startupConfig.pipelineStartup === 'preset' && startupConfig.startupPreset) {
                     const presetManager = this.uiManager.pipelineManager.presetManager;
@@ -899,6 +910,26 @@ class App {
         }
 
         const powerController = this.audioManager.powerPolicyController;
+        const resumeAudioFromInteraction = () => {
+            if (document.hidden) return;
+            if (powerController?.enabled) {
+                try {
+                    Promise.resolve(
+                        powerController.requestResumeFromUserInteraction?.()
+                    ).catch(error => {
+                        console.warn('Audio processing resume after user interaction failed:', error);
+                    });
+                } catch (error) {
+                    console.warn('Audio processing resume after user interaction failed:', error);
+                }
+                return;
+            }
+            if (this.audioManager.audioContext?.state === 'suspended') {
+                Promise.resolve(this.audioManager.audioContext.resume()).catch(error => {
+                    console.warn('AudioContext resume after user interaction failed:', error);
+                });
+            }
+        };
         // Page-lifecycle events are registered on their specified targets in
         // capture phase because freeze/resume do not reliably bubble.
         const handleDocumentLifecycle = (event, eventType = event?.type) => {
@@ -910,11 +941,10 @@ class App {
                     hidden: document.hidden,
                     visibilityState: document.visibilityState
                 });
-                return;
             }
-            if (eventType === 'visibilitychange' && !document.hidden &&
-                this.audioManager.audioContext?.state === 'suspended') {
-                this.audioManager.audioContext.resume();
+            if (!document.hidden &&
+                (eventType === 'visibilitychange' || eventType === 'resume')) {
+                resumeAudioFromInteraction();
             }
         };
         document.addEventListener(
@@ -933,6 +963,9 @@ class App {
                 persisted: event.persisted === true,
                 hidden: document.hidden
             });
+            if (eventType === 'pageshow' && !document.hidden) {
+                resumeAudioFromInteraction();
+            }
         };
         window.addEventListener?.(
             'pageshow',
@@ -950,21 +983,11 @@ class App {
             wasDiscarded: document.wasDiscarded === true
         });
 
-        // Legacy Web Audio unlock remains available only when the power
-        // controller is disabled. Power-managed audio is resumed exclusively
-        // by controls that express an audio intent (Play, input resume, reset).
-        if (!powerController?.enabled) {
-            const resumeOnGesture = () => {
-                if (this.audioManager.audioContext &&
-                    this.audioManager.audioContext.state === 'suspended') {
-                    this.audioManager.audioContext.resume().catch(error => {
-                        console.warn('AudioContext resume after user gesture failed:', error);
-                    });
-                }
-            };
-            document.addEventListener('pointerdown', resumeOnGesture, { passive: true });
-            document.addEventListener('keydown', resumeOnGesture);
-        }
+        // Start recovery while transient user activation is still available.
+        // The controller returns immediately when the required resources are active.
+        document.addEventListener('pointerdown', resumeAudioFromInteraction, { passive: true });
+        document.addEventListener('keydown', resumeAudioFromInteraction);
+        window.addEventListener?.('focus', resumeAudioFromInteraction, true);
 
         // Handle audio device changes (e.g., USB device reconnected)
         if (navigator.mediaDevices && typeof navigator.mediaDevices.addEventListener === 'function') {

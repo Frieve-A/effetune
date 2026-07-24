@@ -2,7 +2,7 @@
  * Main UI Manager for handling UI components and interactions
  */
 
-import dataStorage from '../dataStorage.js';
+import dataStorage, { MeasurementImportError } from '../dataStorage.js';
 import measurementController from '../measurement-controller/index.js';
 import audioUtils from '../audio-utils/index.js';
 import MeasurementDisplay from './measurement-display.js';
@@ -11,7 +11,7 @@ import CorrectionHandler from './correction-handler.js';
 import DialogController from './dialog-controller.js';
 import i18n from '../i18n.js';
 
-class UIManager {
+export class UIManager {
     constructor() {
         this.currentScreen = 'resultsDisplayScreen';
         this.selectedMeasurementId = null;
@@ -20,6 +20,7 @@ class UIManager {
         this.pendingAction = null;
         this.pendingDeleteId = null;
         this.pendingDeleteType = null;
+        this.measurementStateGeneration = 0;
         this.graphColors = {
             original: '#4e79a7',
             correction: '#f28e2b',
@@ -53,6 +54,9 @@ class UIManager {
         
         this.showScreen('resultsDisplayScreen');
         this.updateMeasurementList();
+        await this.updateStorageUsage();
+        const storageNotice = document.getElementById('impulseResponseStorageNotice');
+        if (storageNotice) storageNotice.hidden = dataStorage.irPersistenceAvailable !== false;
         
         // Select latest measurement if available
         const latestMeasurement = dataStorage.getLatestMeasurement();
@@ -84,9 +88,18 @@ class UIManager {
         document.getElementById('importInput').addEventListener('change', (e) => this.handleImport(e));
 
         // Setup data storage event listeners
-        document.addEventListener(dataStorage.EVENTS.MEASUREMENT_ADDED, () => this.updateMeasurementList());
-        document.addEventListener(dataStorage.EVENTS.MEASUREMENT_UPDATED, () => this.updateMeasurementList());
-        document.addEventListener(dataStorage.EVENTS.MEASUREMENT_DELETED, () => this.updateMeasurementList());
+        document.addEventListener(dataStorage.EVENTS.MEASUREMENT_ADDED, () => {
+            this.updateMeasurementList();
+            this.updateStorageUsage();
+        });
+        document.addEventListener(dataStorage.EVENTS.MEASUREMENT_UPDATED, () => {
+            this.updateMeasurementList();
+            this.updateStorageUsage();
+        });
+        document.addEventListener(dataStorage.EVENTS.MEASUREMENT_DELETED, () => {
+            this.updateMeasurementList();
+            this.updateStorageUsage();
+        });
         document.addEventListener(dataStorage.EVENTS.MEASUREMENTS_LOADED, () => this.updateMeasurementList());
 
         // Results screen
@@ -307,7 +320,7 @@ class UIManager {
             );
             // Set up a pending action to continue after user confirmation
             this.pendingAction = () => {
-                this.hasUnsavedChanges = false;
+                this.rollbackMeasurementChanges();
                 this.startNewMeasurement(); // Re-call the function after confirmation
             };
             return;
@@ -353,22 +366,7 @@ class UIManager {
         if (!file) return;
         
         const reader = new FileReader();
-        reader.onload = async (e) => {
-            try {
-                const jsonString = e.target.result;
-                const measurementId = await dataStorage.importMeasurementFromJSON(jsonString);
-
-                if (measurementId) {
-                    this.updateMeasurementList();
-                    await this.selectMeasurement(measurementId);
-                } else {
-                    alert('Error importing measurement. Invalid format.');
-                }
-            } catch (error) {
-                console.error('Error importing measurement:', error);
-                alert('Error importing measurement. Invalid format.');
-            }
-        };
+        reader.onload = e => this.importMeasurementText(e.target.result);
         reader.onerror = () => {
             console.error('Error reading measurement import file:', reader.error);
             alert('Error importing measurement. Invalid format.');
@@ -376,6 +374,28 @@ class UIManager {
         
         reader.readAsText(file);
         event.target.value = ''; // Reset file input
+    }
+
+    async importMeasurementText(jsonString) {
+        try {
+            const measurementId = await dataStorage.importMeasurementFromJSON(jsonString);
+            if (!measurementId) {
+                alert('Error importing measurement. Invalid format.');
+                return null;
+            }
+            this.updateMeasurementList();
+            await this.selectMeasurement(measurementId);
+            return measurementId;
+        } catch (error) {
+            console.error('Error importing measurement:', error);
+            if (error instanceof MeasurementImportError && error.kind === 'storage') {
+                this.showNotification(i18n.t('message:saveFailed') ||
+                    'The measurement could not be saved. Check available storage and try again.', 'error');
+            } else {
+                alert('Error importing measurement. Invalid format.');
+            }
+            return null;
+        }
     }
 
     /**
@@ -437,15 +457,36 @@ class UIManager {
         this.dialogController.showNotification(message);
     }
 
+    async updateStorageUsage() {
+        const element = document.getElementById('measurementStorageUsage');
+        const storageNotice = document.getElementById('impulseResponseStorageNotice');
+        if (storageNotice) storageNotice.hidden = dataStorage.irPersistenceAvailable !== false;
+        if (!element) return;
+        const estimate = await dataStorage.getStorageEstimate();
+        if (!estimate || !Number.isFinite(estimate.usage)) {
+            element.textContent = '';
+            return;
+        }
+        const megabytes = estimate.usage / (1024 * 1024);
+        element.textContent = i18n.t('message:measurementStorageUsage', {
+            megabytes: megabytes.toFixed(megabytes >= 10 ? 0 : 1)
+        }) || `Measurements: ${megabytes.toFixed(megabytes >= 10 ? 0 : 1)} MB`;
+    }
+
     /**
      * Save changes to a measurement
      */
-    saveChanges() {
+    async saveChanges() {
         const measurement = dataStorage.getMeasurementById(this.selectedMeasurementId);
         if (!measurement) return;
         
         // Save changes to storage
-        dataStorage.updateMeasurement(this.selectedMeasurementId, measurement);
+        const saved = await dataStorage.updateMeasurement(this.selectedMeasurementId, measurement);
+        if (!saved) {
+            this.showNotification(i18n.t('message:saveFailed') ||
+                'The measurement could not be saved. Check available storage and try again.', 'error');
+            return;
+        }
         
         // Update state
         this.hasUnsavedChanges = false;
@@ -453,14 +494,29 @@ class UIManager {
     }
 
     /**
+     * Restore the selected measurement without touching the DOM.
+     */
+    rollbackMeasurementChanges() {
+        const measurement = dataStorage.getMeasurementById(this.selectedMeasurementId);
+        ++this.measurementStateGeneration;
+        if (measurement?._editSnapshot) {
+            const snapshot = measurement._editSnapshot;
+            for (const key of Object.keys(measurement)) delete measurement[key];
+            Object.assign(measurement, structuredClone(snapshot));
+        }
+        this.hasUnsavedChanges = false;
+    }
+
+    /**
      * Discard changes to a measurement
      */
     discardChanges() {
+        this.rollbackMeasurementChanges();
+        document.getElementById('loading-spinner-results').style.display = 'none';
         // Reload the measurement from storage
         this.measurementDisplay.displayMeasurementDetails(this.selectedMeasurementId);
         
         // Update state
-        this.hasUnsavedChanges = false;
         document.getElementById('editActions').style.display = 'none';
     }
 }
