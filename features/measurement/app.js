@@ -6,7 +6,9 @@
 import audioUtils from './audio-utils/index.js';
 import dataStorage from './dataStorage.js';
 import uiManager from './ui/ui-manager.js';
-import measurementController from './measurement-controller/index.js';
+import measurementController, {
+    MeasurementSetupError
+} from './measurement-controller/index.js';
 import i18n from './i18n.js'; // Import the i18n module
 import './peq-calculator/peq-calculator.js';
 import { startRendererWatchdogHeartbeat } from '../../js/electron-watchdog.js';
@@ -14,6 +16,8 @@ import { copyTextToClipboard } from '../../js/utils/clipboard-utils.js';
 
 let isAudioInitialized = false;
 let audioInitializationPromise = null;
+let configSubmissionPromise = null;
+let backFromSweepTransitionPromise = null;
 
 startRendererWatchdogHeartbeat('measurement-page');
 
@@ -118,8 +122,26 @@ function initializePEQCalculator() {
  */
 function setupEventConnections() {
     // Configuration form submission
-    document.getElementById('configForm').addEventListener('submit', (e) => {
+    document.getElementById('configForm').addEventListener('submit', async (e) => {
         e.preventDefault();
+        if (configSubmissionPromise) return;
+
+        const calibrationSelect = document.getElementById('interfaceCalibration');
+        let interfaceCalibration = null;
+        if (calibrationSelect?.value) {
+            try {
+                const [sourceMeasurementId, sourcePointId] = JSON.parse(calibrationSelect.value);
+                interfaceCalibration = { sourceMeasurementId, sourcePointId };
+            } catch (error) {
+                console.error('Invalid interface calibration selection:', error);
+                uiManager.showNotification(
+                    i18n.t('error:interfaceCalibrationUnavailable') ||
+                    'The selected calibration is no longer available. Choose another measurement point.',
+                    'error'
+                );
+                return;
+            }
+        }
         
         // Get form values
         const config = {
@@ -130,11 +152,13 @@ function setupEventConnections() {
             audioOutputId: document.getElementById('audioOutput').value,
             sampleRate: parseInt(document.getElementById('sampleRate').value),
             sweepLength: document.getElementById('sweepLength').value,
+            sweepBandLimited: document.getElementById('sweepBandLimited').checked,
             sweepMinFreq: parseFloat(document.getElementById('sweepMinFreq').value),
             sweepMaxFreq: parseFloat(document.getElementById('sweepMaxFreq').value),
             averaging: parseInt(document.getElementById('averaging').value),
             inputChannel: document.getElementById('inputChannel').value,
-            outputChannel: document.getElementById('outputChannel').value
+            outputChannel: document.getElementById('outputChannel').value,
+            ...(interfaceCalibration ? { interfaceCalibration } : {})
         };
 
         // Validate form
@@ -145,15 +169,35 @@ function setupEventConnections() {
 
         // Validate sweep frequency range: 1 <= min < max <= Nyquist - 1
         const nyquistLimit = Math.max(2, Math.floor(config.sampleRate / 2) - 1);
-        if (!isFinite(config.sweepMinFreq) || !isFinite(config.sweepMaxFreq) ||
+        if (config.sweepBandLimited &&
+            (!isFinite(config.sweepMinFreq) || !isFinite(config.sweepMaxFreq) ||
             config.sweepMinFreq < 1 || config.sweepMaxFreq > nyquistLimit ||
-            config.sweepMinFreq >= config.sweepMaxFreq) {
+            config.sweepMinFreq >= config.sweepMaxFreq)) {
             alert(`Invalid sweep frequency range. Set 1 <= min < max <= ${nyquistLimit} Hz.`);
             return;
         }
         
-        // Start measurement
-        measurementController.startNewMeasurement(config);
+        const configForm = e.currentTarget;
+        const operation = measurementController.startNewMeasurement(config);
+        configSubmissionPromise = operation;
+        uiManager.setConfigFormBusy(configForm, true);
+        try {
+            await operation;
+        } catch (error) {
+            console.error('Could not start measurement:', error);
+            uiManager.showScreen('measurementConfigScreen');
+            const errorKey = error instanceof MeasurementSetupError
+                ? `error:${error.code}`
+                : 'error:measurementSetupFailed';
+            uiManager.showNotification(
+                i18n.t(errorKey) ||
+                'The measurement could not be prepared. Check the audio devices and try again.',
+                'error'
+            );
+        } finally {
+            if (configSubmissionPromise === operation) configSubmissionPromise = null;
+            uiManager.setConfigFormBusy(configForm, false);
+        }
     });
     
     // White noise toggle button
@@ -215,13 +259,34 @@ function setupEventConnections() {
         uiManager.showScreen('measurementConfigScreen');
     });
     
-    document.getElementById('backFromSweepBtn').addEventListener('click', () => {
-        // Ensure audio cleanup before navigation
-        uiManager.cleanupAudioBeforeNavigation();
-        // Return to level adjustment screen
-        uiManager.showScreen('levelAdjustmentScreen');
-        // Prepare for level adjustment again
-        measurementController.prepareForLevelAdjustment();
+    const backFromSweepButton = document.getElementById('backFromSweepBtn');
+    backFromSweepButton.addEventListener('click', () => {
+        if (backFromSweepTransitionPromise) return;
+
+        backFromSweepButton.disabled = true;
+        const operation = Promise.resolve().then(async () => {
+            try {
+                measurementController.cancelMeasurement();
+                if (audioUtils.audioContext?.state === 'running') {
+                    await audioUtils.audioContext.suspend();
+                }
+                await measurementController.prepareForLevelAdjustment();
+            } catch (error) {
+                console.error('Could not return to level adjustment:', error);
+                uiManager.showScreen('sweepMeasurementScreen');
+                uiManager.showNotification(
+                    i18n.t('error:levelAdjustmentFailed') ||
+                    'The audio input could not be prepared. Check the input device and try again.',
+                    'error'
+                );
+            } finally {
+                if (backFromSweepTransitionPromise === operation) {
+                    backFromSweepTransitionPromise = null;
+                }
+                backFromSweepButton.disabled = false;
+            }
+        });
+        backFromSweepTransitionPromise = operation;
     });
     
     // Add window beforeunload event to clean up audio
@@ -452,6 +517,7 @@ function saveUserSettings() {
         inputChannel: document.getElementById('inputChannel').value,
         outputChannel: document.getElementById('outputChannel').value,
         sweepLength: document.getElementById('sweepLength').value,
+        sweepBandLimited: document.getElementById('sweepBandLimited').checked,
         sweepMinFreq: document.getElementById('sweepMinFreq').value,
         sweepMaxFreq: document.getElementById('sweepMaxFreq').value,
         averaging: document.getElementById('averaging').value,
@@ -509,6 +575,9 @@ function loadUserSettings() {
         if (settings.inputChannel) document.getElementById('inputChannel').value = settings.inputChannel;
         if (settings.outputChannel) document.getElementById('outputChannel').value = settings.outputChannel;
         if (settings.sweepLength) document.getElementById('sweepLength').value = settings.sweepLength;
+        if (typeof settings.sweepBandLimited === 'boolean') {
+            document.getElementById('sweepBandLimited').checked = settings.sweepBandLimited;
+        }
         if (settings.sweepMinFreq) document.getElementById('sweepMinFreq').value = settings.sweepMinFreq;
         if (settings.sweepMaxFreq) document.getElementById('sweepMaxFreq').value = settings.sweepMaxFreq;
         if (settings.averaging) document.getElementById('averaging').value = settings.averaging;
@@ -646,6 +715,17 @@ function updateSweepFreqLimits() {
     }
 }
 
+function updateSweepBandLimitControls() {
+    const bandLimitedInput = document.getElementById('sweepBandLimited');
+    const minInput = document.getElementById('sweepMinFreq');
+    const maxInput = document.getElementById('sweepMaxFreq');
+    if (!bandLimitedInput || !minInput || !maxInput) return;
+
+    const disabled = !bandLimitedInput.checked;
+    minInput.disabled = disabled;
+    maxInput.disabled = disabled;
+}
+
 // Initialize the application when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     initializeApp();
@@ -655,6 +735,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Apply Nyquist limits to the sweep frequency inputs based on current sample rate
     updateSweepFreqLimits();
+    updateSweepBandLimitControls();
 
     // Load PEQ settings when app starts
     loadPEQSettings();
@@ -667,6 +748,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('inputChannel').addEventListener('change', saveUserSettings);
     document.getElementById('outputChannel').addEventListener('change', saveUserSettings);
     document.getElementById('sweepLength').addEventListener('change', saveUserSettings);
+    document.getElementById('sweepBandLimited').addEventListener('change', () => {
+        updateSweepBandLimitControls();
+        saveUserSettings();
+    });
     document.getElementById('sweepMinFreq').addEventListener('change', saveUserSettings);
     document.getElementById('sweepMaxFreq').addEventListener('change', saveUserSettings);
     document.getElementById('averaging').addEventListener('change', saveUserSettings);

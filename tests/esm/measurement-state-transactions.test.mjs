@@ -4,7 +4,14 @@ import test from 'node:test';
 import dataStorage, { MeasurementImportError } from '../../features/measurement/dataStorage.js';
 import audioUtils from '../../features/measurement/audio-utils/index.js';
 import uiManager, { UIManager } from '../../features/measurement/ui/ui-manager.js';
-import AudioProcessing from '../../features/measurement/measurement-controller/audio-processing.js';
+import AudioProcessing, {
+    createSweepCapturePlan
+} from '../../features/measurement/measurement-controller/audio-processing.js';
+import {
+    MeasurementController,
+    MeasurementSetupError
+} from '../../features/measurement/measurement-controller/index.js';
+import LevelAdjustment from '../../features/measurement/measurement-controller/level-adjustment.js';
 
 const { default: SweepMeasurement } = await import(
     '../../features/measurement/measurement-controller/sweep-measurement.js'
@@ -16,6 +23,81 @@ function point(pointId, magnitude) {
         frequencyResponse: [[100, magnitude], [1000, magnitude + 1]],
         maxSignalLevel: -20 + pointId
     };
+}
+
+function measurementConfig(interfaceCalibration = null) {
+    return {
+        name: 'New measurement',
+        audioInput: 'Input',
+        audioInputId: 'input-id',
+        inputChannel: 'left',
+        audioOutput: 'Output',
+        audioOutputId: 'output-id',
+        outputChannel: 'right',
+        sampleRate: 48000,
+        sweepLength: '65536',
+        sweepMinFreq: 20,
+        sweepMaxFreq: 20000,
+        averaging: 4,
+        ...(interfaceCalibration ? { interfaceCalibration } : {})
+    };
+}
+
+function calibrationSource(overrides = {}) {
+    return {
+        id: 'measurement-calibration',
+        name: 'Interface loopback',
+        timestamp: '2026-07-24T12:00:00.000Z',
+        sampleRate: 48000,
+        sweepMinFreq: 20,
+        sweepMaxFreq: 20000,
+        points: [{
+            pointId: 3,
+            name: 'Loopback left',
+            frequencyResponse: [[100, 0]],
+            ir: { stored: true }
+        }],
+        ...overrides
+    };
+}
+
+function calibrationImpulse(overrides = {}) {
+    return {
+        measurementId: 'measurement-calibration',
+        pointId: 3,
+        sampleRate: 48000,
+        onsetIndex: 1,
+        prerollSamples: 1,
+        refScale: 0.5,
+        data: Float32Array.from([0.1, 1, 0.2]),
+        ...overrides
+    };
+}
+
+function installMeasurementStartEnvironment(t, source, impulse) {
+    const originals = {
+        audioContext: audioUtils.audioContext,
+        getMeasurementById: dataStorage.getMeasurementById,
+        getImpulseResponse: dataStorage.getImpulseResponse,
+        generateId: dataStorage.generateId,
+        document: globalThis.document
+    };
+    t.after(() => {
+        audioUtils.audioContext = originals.audioContext;
+        dataStorage.getMeasurementById = originals.getMeasurementById;
+        dataStorage.getImpulseResponse = originals.getImpulseResponse;
+        dataStorage.generateId = originals.generateId;
+        globalThis.document = originals.document;
+    });
+    audioUtils.audioContext = { sampleRate: 48000, state: 'running' };
+    dataStorage.getMeasurementById = () => source;
+    dataStorage.getImpulseResponse = async () => impulse;
+    dataStorage.generateId = () => 'measurement-new';
+    const elements = new Map([
+        ['measurementResults', { style: {} }],
+        ['noMeasurementMessage', { style: {} }]
+    ]);
+    globalThis.document = { getElementById: id => elements.get(id) || null };
 }
 
 async function withPatchedSingletons(t, callback) {
@@ -49,29 +131,35 @@ test('failed deconvolution keeps FR fallback data but never exposes a persistabl
     });
     audioUtils.lastDeconvolutionRefScale = 0.5;
 
-    const fullRecording = new Float32Array(24);
-    fullRecording[9] = 1;
+    const sweepLength = 8;
+    const sampleRate = 16;
+    const capturePlan = createSweepCapturePlan(sweepLength, 1, sampleRate);
+    const preRollSamples = sampleRate / 2;
+    const fullRecording = new Float32Array(
+        preRollSamples + capturePlan.analysisStartSamples + sweepLength
+    );
+    fullRecording[preRollSamples + capturePlan.analysisStartSamples] = 1;
     const cases = [
         {
             label: 'missing inverse',
             inverse: null,
             recording: fullRecording,
-            sweepLength: 8,
-            sampleRate: 16
+            sweepLength,
+            sampleRate
         },
         {
-            label: 'no complete segment',
-            inverse: Float32Array.from([1]),
-            recording: new Float32Array(4),
-            sweepLength: 8,
-            sampleRate: 16
+            label: 'empty inverse',
+            inverse: new Float32Array(0),
+            recording: fullRecording,
+            sweepLength,
+            sampleRate
         },
         {
             label: 'deconvolution exception',
             inverse: { length: Symbol('invalid') },
             recording: fullRecording,
-            sweepLength: 8,
-            sampleRate: 16
+            sweepLength,
+            sampleRate
         }
     ];
 
@@ -89,6 +177,358 @@ test('failed deconvolution keeps FR fallback data but never exposes a persistabl
     }
 });
 
+test('calibrated measurement start is single-flight and snapshots valid source data', async t => {
+    const source = calibrationSource();
+    const impulse = calibrationImpulse();
+    installMeasurementStartEnvironment(t, source, impulse);
+    let resolvePreparation;
+    const preparation = new Promise(resolve => { resolvePreparation = resolve; });
+    let impulseReads = 0;
+    let preparationCalls = 0;
+    dataStorage.getImpulseResponse = async () => {
+        impulseReads += 1;
+        return impulse;
+    };
+    const controller = new MeasurementController();
+    controller.prepareForLevelAdjustment = async () => {
+        preparationCalls += 1;
+        await preparation;
+    };
+    const config = measurementConfig({
+        sourceMeasurementId: source.id,
+        sourcePointId: 3
+    });
+
+    const first = controller.startNewMeasurement(config);
+    const second = controller.startNewMeasurement(structuredClone(config));
+    assert.strictEqual(second, first);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(impulseReads, 1);
+    assert.equal(preparationCalls, 1);
+    resolvePreparation();
+    const measurement = await first;
+
+    assert.equal(measurement.interfaceCalibration.sourceMeasurementName, source.name);
+    assert.equal(measurement.interfaceCalibration.sourcePointName, 'Loopback left');
+    assert.equal(measurement.interfaceCalibration.sourceTimestamp, source.timestamp);
+    assert.equal(measurement.interfaceCalibration.sampleRate, 48000);
+    assert.notStrictEqual(controller.interfaceCalibrationImpulseResponse.data, impulse.data);
+    assert.deepEqual(controller.interfaceCalibrationImpulseResponse.data, impulse.data);
+    assert.equal(controller.startMeasurementPromise, null);
+});
+
+test('uncalibrated start does not read calibration IR or add provenance', async t => {
+    installMeasurementStartEnvironment(t, null, null);
+    let impulseReads = 0;
+    dataStorage.getImpulseResponse = async () => {
+        impulseReads += 1;
+        return null;
+    };
+    const controller = new MeasurementController();
+    controller.prepareForLevelAdjustment = async () => {};
+
+    const measurement = await controller.startNewMeasurement(measurementConfig());
+    assert.equal(impulseReads, 0);
+    assert.equal(measurement.interfaceCalibration, undefined);
+    assert.equal(controller.interfaceCalibrationImpulseResponse, null);
+});
+
+test('unlimited sweep records the full FFT bandwidth', async t => {
+    installMeasurementStartEnvironment(t, null, null);
+    const controller = new MeasurementController();
+    controller.prepareForLevelAdjustment = async () => {};
+    const config = measurementConfig();
+    config.sweepBandLimited = false;
+
+    const measurement = await controller.startNewMeasurement(config);
+    const fftLength = Number(config.sweepLength);
+
+    assert.equal(measurement.sweepBandLimited, false);
+    assert.equal(measurement.sweepMinFreq, 48000 / fftLength);
+    assert.equal(
+        measurement.sweepMaxFreq,
+        (fftLength / 2 - 1) * 48000 / fftLength
+    );
+});
+
+test('calibration validation rejects corrected, missing, non-finite, mismatched, and narrow sources', async t => {
+    const source = calibrationSource();
+    const impulse = calibrationImpulse();
+    installMeasurementStartEnvironment(t, source, impulse);
+    const selection = {
+        sourceMeasurementId: source.id,
+        sourcePointId: 3
+    };
+    const cases = [
+        {
+            code: 'interfaceCalibrationUnavailable',
+            source: calibrationSource({ interfaceCalibration: {
+                sourceMeasurementId: 'older'
+            } }),
+            impulse
+        },
+        {
+            code: 'interfaceCalibrationUnavailable',
+            source,
+            impulse: null
+        },
+        {
+            code: 'interfaceCalibrationUnavailable',
+            source,
+            impulse: calibrationImpulse({
+                data: Float32Array.from([0.1, Number.NaN, 0.2])
+            })
+        },
+        {
+            code: 'interfaceCalibrationUnavailable',
+            source,
+            impulse: calibrationImpulse({
+                data: Float32Array.from([0.1, Number.POSITIVE_INFINITY, 0.2])
+            })
+        },
+        {
+            code: 'interfaceCalibrationUnavailable',
+            source,
+            impulse: calibrationImpulse({
+                data: Float32Array.from([0.1, Number.NEGATIVE_INFINITY, 0.2])
+            })
+        },
+        {
+            code: 'interfaceCalibrationSampleRateMismatch',
+            source,
+            impulse: calibrationImpulse({ sampleRate: 44100 })
+        },
+        {
+            code: 'interfaceCalibrationSweepRangeMismatch',
+            source: calibrationSource({ sweepMinFreq: 100 }),
+            impulse
+        }
+    ];
+
+    for (const scenario of cases) {
+        dataStorage.getMeasurementById = () => scenario.source;
+        dataStorage.getImpulseResponse = async () => scenario.impulse;
+        const controller = new MeasurementController();
+        let preparationCalls = 0;
+        controller.prepareForLevelAdjustment = async () => { preparationCalls += 1; };
+        await assert.rejects(
+            controller.startNewMeasurement(measurementConfig(selection)),
+            error => error instanceof MeasurementSetupError && error.code === scenario.code
+        );
+        assert.equal(preparationCalls, 0);
+        assert.equal(controller.currentMeasurement, null);
+        assert.equal(controller.measurementConfig, null);
+        assert.equal(controller.interfaceCalibrationImpulseResponse, null);
+        assert.equal(controller.startMeasurementPromise, null);
+    }
+});
+
+test('level preparation failure cleans up, restores state, and releases start guard', async t => {
+    const source = calibrationSource();
+    const impulse = calibrationImpulse();
+    installMeasurementStartEnvironment(t, source, impulse);
+    const controller = new MeasurementController();
+    const previousConfig = { name: 'Previous config' };
+    const previousMeasurement = { id: 'measurement-previous' };
+    const previousCalibration = { data: Float32Array.from([1]) };
+    controller.measurementConfig = previousConfig;
+    controller.currentMeasurement = previousMeasurement;
+    controller.interfaceCalibrationImpulseResponse = previousCalibration;
+    let attempts = 0;
+    let cleanupCalls = 0;
+    controller.prepareForLevelAdjustment = async () => {
+        attempts += 1;
+        if (attempts === 1) throw new Error('Simulated input failure');
+    };
+    controller.cleanup = () => { cleanupCalls += 1; };
+    const config = measurementConfig({
+        sourceMeasurementId: source.id,
+        sourcePointId: 3
+    });
+
+    await assert.rejects(controller.startNewMeasurement(config), /input failure/);
+    assert.strictEqual(controller.measurementConfig, previousConfig);
+    assert.strictEqual(controller.currentMeasurement, previousMeasurement);
+    assert.strictEqual(controller.interfaceCalibrationImpulseResponse, previousCalibration);
+    assert.equal(controller.startMeasurementPromise, null);
+    assert.equal(cleanupCalls, 1);
+
+    const measurement = await controller.startNewMeasurement(config);
+    assert.equal(measurement.id, 'measurement-new');
+    assert.equal(attempts, 2);
+});
+
+test('level adjustment preparation stops partial input and propagates failure', async t => {
+    const originals = {
+        audioContext: audioUtils.audioContext,
+        startMicrophoneInput: audioUtils.startMicrophoneInput,
+        stopMicrophoneInput: audioUtils.stopMicrophoneInput
+    };
+    t.after(() => {
+        audioUtils.audioContext = originals.audioContext;
+        audioUtils.startMicrophoneInput = originals.startMicrophoneInput;
+        audioUtils.stopMicrophoneInput = originals.stopMicrophoneInput;
+    });
+    audioUtils.audioContext = { state: 'running' };
+    let stopCalls = 0;
+    audioUtils.startMicrophoneInput = async () => {
+        throw new Error('Simulated device rejection');
+    };
+    audioUtils.stopMicrophoneInput = () => { stopCalls += 1; };
+    const controller = {
+        ...LevelAdjustment,
+        measurementConfig: { audioInputId: 'input', inputChannel: 'left' },
+        stopLevelMeter() {}
+    };
+
+    await assert.rejects(
+        controller.prepareForLevelAdjustment(),
+        /device rejection/
+    );
+    assert.equal(stopCalls, 1);
+});
+
+test('calibrated deconvolution failures reject instead of exposing uncalibrated fallback', () => {
+    const originalInverseFilter = audioUtils.lastInverseFilter;
+    audioUtils.lastInverseFilter = null;
+    try {
+        assert.throws(() => AudioProcessing.processRecordedBuffer.call({
+            ...AudioProcessing,
+            interfaceCalibrationImpulseResponse: calibrationImpulse(),
+            currentMeasurement: { sweepMinFreq: 20, sweepMaxFreq: 20000 }
+        }, new Float32Array(32), 8, 1, 48000), /could not be created/);
+    } finally {
+        audioUtils.lastInverseFilter = originalInverseFilter;
+    }
+});
+
+test('configuration lists only uncalibrated points with stored IR metadata', async t => {
+    const originals = {
+        measurements: dataStorage.measurements,
+        irPersistenceAvailable: dataStorage.irPersistenceAvailable,
+        document: globalThis.document
+    };
+    t.after(() => {
+        dataStorage.measurements = originals.measurements;
+        dataStorage.irPersistenceAvailable = originals.irPersistenceAvailable;
+        globalThis.document = originals.document;
+    });
+
+    class FakeElement {
+        constructor() {
+            this.children = [];
+            this.disabled = false;
+            this.textContent = '';
+            this.value = '';
+        }
+        replaceChildren(...children) { this.children = children; }
+        appendChild(child) { this.children.push(child); }
+        focus() {}
+    }
+
+    const elements = new Map([
+        ['measurementName', new FakeElement()],
+        ['interfaceCalibration', new FakeElement()],
+        ['interfaceCalibrationHelp', new FakeElement()]
+    ]);
+    globalThis.document = {
+        getElementById: id => elements.get(id),
+        createElement: () => new FakeElement()
+    };
+    dataStorage.irPersistenceAvailable = true;
+    dataStorage.measurements = [
+        calibrationSource(),
+        calibrationSource({
+            id: 'measurement-corrected',
+            interfaceCalibration: {
+                sourceMeasurementId: 'older',
+                sourcePointId: 0
+            }
+        }),
+        calibrationSource({
+            id: 'measurement-no-ir',
+            points: [{
+                pointId: 4,
+                name: 'No IR',
+                frequencyResponse: [[100, 0]]
+            }]
+        })
+    ];
+    const manager = new UIManager();
+    manager.showScreen = () => {};
+
+    manager.prepareConfigScreen();
+    const select = elements.get('interfaceCalibration');
+    assert.equal(select.disabled, false);
+    assert.equal(select.children.length, 2);
+    assert.equal(select.children[0].value, '');
+    assert.deepEqual(JSON.parse(select.children[1].value), [
+        'measurement-calibration',
+        3
+    ]);
+    assert.match(select.children[1].textContent, /Interface loopback/);
+
+    dataStorage.irPersistenceAvailable = false;
+    manager.prepareConfigScreen();
+    assert.equal(select.disabled, true);
+    assert.equal(select.children.length, 1);
+    assert.match(elements.get('interfaceCalibrationHelp').textContent, /unavailable/i);
+});
+
+test('configuration busy state restores each control to its original disabled state', () => {
+    const manager = new UIManager();
+    const name = { disabled: false };
+    const outputDevice = { disabled: false };
+    const unavailableCalibration = { disabled: true };
+    const form = {
+        elements: [name, outputDevice, unavailableCalibration]
+    };
+
+    manager.setConfigFormBusy(form, true);
+    assert.equal(name.disabled, true);
+    assert.equal(outputDevice.disabled, true);
+    assert.equal(unavailableCalibration.disabled, true);
+
+    manager.setConfigFormBusy(form, false);
+    assert.equal(name.disabled, false);
+    assert.equal(outputDevice.disabled, false);
+    assert.equal(unavailableCalibration.disabled, true);
+    assert.equal(manager.configControlDisabledStates.size, 0);
+});
+
+test('next-point level preparation failure preserves the current point and sweep screen', async t => {
+    const originalShowScreen = uiManager.showScreen;
+    const originalShowNotification = uiManager.showNotification;
+    t.after(() => {
+        uiManager.showScreen = originalShowScreen;
+        uiManager.showNotification = originalShowNotification;
+    });
+    let shownScreen = null;
+    let notice = null;
+    uiManager.showScreen = screen => { shownScreen = screen; };
+    uiManager.showNotification = message => { notice = message; };
+    const currentPoint = point(2, 4);
+    const currentImpulseResponse = calibrationImpulse();
+    const controller = {
+        ...SweepMeasurement,
+        currentSweepIndex: 5,
+        sweepMeasurements: [{ result: true }],
+        currentPoint,
+        currentImpulseResponse,
+        prepareForLevelAdjustment: async () => {
+            throw new Error('Simulated retry failure');
+        }
+    };
+
+    assert.equal(await controller.resetForNextMeasurement(), false);
+    assert.equal(controller.currentSweepIndex, 5);
+    assert.equal(controller.sweepMeasurements.length, 1);
+    assert.strictEqual(controller.currentPoint, currentPoint);
+    assert.strictEqual(controller.currentImpulseResponse, currentImpulseResponse);
+    assert.equal(shownScreen, 'sweepMeasurementScreen');
+    assert.match(notice, /could not be prepared/i);
+});
+
 test('only valid deconvolution publishes IR metadata and binary for atomic saving', async t => {
     await withPatchedSingletons(t, async () => {
         const originalInverseFilter = audioUtils.lastInverseFilter;
@@ -97,8 +537,12 @@ test('only valid deconvolution publishes IR metadata and binary for atomic savin
         });
         const sweepLength = 5000;
         const sampleRate = 100;
-        const recording = new Float32Array(50 + sweepLength * 2);
-        recording[50 + 4096] = 1;
+        const capturePlan = createSweepCapturePlan(sweepLength, 1, sampleRate);
+        const preRollSamples = sampleRate / 2;
+        const recording = new Float32Array(
+            preRollSamples + capturePlan.analysisStartSamples + sweepLength
+        );
+        recording[preRollSamples + capturePlan.analysisStartSamples + 4096] = 1;
         audioUtils.lastInverseFilter = Float32Array.from([1]);
         const valid = AudioProcessing.processRecordedBuffer(
             recording,

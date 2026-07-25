@@ -1,4 +1,14 @@
 {
+  "title:impulseResponse": "Respuesta impulsional",
+  "axis:impulseTime": "Tiempo (ms)",
+  "axis:normalizedAmplitude": "Amplitud normalizada",
+  "button:zoomOut": "Alejar",
+  "button:zoomIn": "Acercar",
+  "button:resetZoom": "Restablecer",
+"button:exportImpulseResponseWav": "Exportar respuesta impulsional (WAV)",
+"error:measurementExportFailed": "No se pudo exportar la medición. Inténtalo de nuevo.",
+  "label:impulseTimePosition": "Posición temporal",
+  "help:impulseResponseGraph": "La amplitud se normaliza respecto al pico de la respuesta. Usa la rueda del ratón o los botones para cambiar el zoom, y arrastra el gráfico o usa el control deslizante para desplazarte en el tiempo.",
 // Measurement History Section
 "button:newMeasurement": "+ Nueva medición", // Button to start a new measurement
 "button:import": "Importar", // Import button for loading saved measurements
@@ -21,12 +31,21 @@
 "help:sampleRate": "Especifica la frecuencia de muestreo al realizar mediciones.", // Help text for sample rate
 "label:sweepLength": "Longitud de barrido (muestras):", // Label for sweep length selection
 "help:sweepLength": "Especifica la longitud de la señal de medición en muestras.", // Help text for sweep length
+"label:sweepBandLimited": "Limitar el ancho de banda del barrido",
+"help:sweepBandLimited": "Cuando está activado, el TSP y la señal de prueba se limitan al rango de frecuencias indicado abajo. Cuando está desactivado, el TSP se reproduce en todo el ancho de banda disponible.",
 "label:sweepMinFreq": "Frecuencia mínima del barrido (Hz):", // Label for sweep minimum frequency
 "help:sweepMinFreq": "Frecuencia mínima de la señal de barrido en Hz. Configurable desde 1 Hz hasta justo por debajo de la frecuencia de Nyquist de la frecuencia de muestreo seleccionada. La señal de prueba también se limita a este rango. (Predeterminado: 20 Hz)", // Help text for sweep min frequency
 "label:sweepMaxFreq": "Frecuencia máxima del barrido (Hz):", // Label for sweep maximum frequency
 "help:sweepMaxFreq": "Frecuencia máxima de la señal de barrido en Hz. Los valores superiores a la frecuencia de Nyquist de la frecuencia de muestreo seleccionada se limitan automáticamente. La señal de prueba también se limita a este rango. (Predeterminado: 20000 Hz)", // Help text for sweep max frequency
 "label:averaging": "Promediado síncrono:", // Label for synchronous averaging selection
 "help:averaging": "Especifica el número de repeticiones de la medición en el mismo punto para mayor precisión.", // Help text for averaging
+"label:interfaceCalibration": "Calibración de la interfaz de audio:",
+"option:noInterfaceCalibration": "Ninguna (sin calibrar)",
+"option:interfaceCalibrationPoint": "{measurement} — {point} ({date}, {sampleRate})",
+"help:interfaceCalibration": "Usa una medición de bucle guardada para eliminar la respuesta de la interfaz de audio. Mantén la misma interfaz, los mismos canales de entrada y salida, la misma frecuencia de muestreo y las mismas ganancias, y no cambies las ganancias después de medir la calibración.",
+"help:noInterfaceCalibrationCandidates": "Guarda un punto de medición sin calibrar con respuesta impulsional antes de usar la calibración de la interfaz de audio.",
+"help:interfaceCalibrationUnavailable": "La calibración de la interfaz de audio no está disponible porque este navegador no puede guardar respuestas impulsionales.",
+"label:appliedInterfaceCalibration": "Calibración de la interfaz de audio",
 "button:next": "Siguiente", // Next button in configuration form to move to the Level Adjustment Screen
 
 // Level Adjustment Screen
@@ -97,6 +116,12 @@
 "error:confirmationDialogNotFound": "Elemento del diálogo de confirmación no encontrado en el DOM", // Error when confirmation dialog not found
 "error:notificationDialogNotFound": "Elementos del diálogo de notificación no encontrados en el DOM", // Error when notification dialog not found
 "error:noPEQSettings": "No hay ajustes de PEQ disponibles para esta medición", // Error when no PEQ settings available
+"error:interfaceCalibrationUnavailable": "La calibración seleccionada ya no está disponible. Elige otro punto de medición.",
+"error:interfaceCalibrationSampleRateMismatch": "La calibración seleccionada usa otra frecuencia de muestreo. Elige datos grabados con la misma frecuencia de muestreo.",
+"error:interfaceCalibrationSweepRangeMismatch": "La calibración seleccionada no cubre este rango de barrido. Reduce el rango o elige otros datos.",
+"error:interfaceCalibrationProcessingFailed": "No se pudo completar la medición calibrada. Revisa la configuración y vuelve a medir este punto.",
+"error:measurementSetupFailed": "No se pudo preparar la medición. Comprueba los dispositivos de audio y vuelve a intentarlo.",
+"error:levelAdjustmentFailed": "No se pudo preparar la entrada de audio. Comprueba el dispositivo de entrada y vuelve a intentarlo.",
 
 // Messages
 "message:peqCopied": "Ajustes de PEQ copiados al portapapeles correctamente. Los ajustes copiados se pueden pegar en el Pipeline de Efectos de EffeTune con Ctrl+V.", // Success message for PEQ copy

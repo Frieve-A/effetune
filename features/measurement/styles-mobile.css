@@ -158,6 +158,20 @@ body.layout-mobile .export-section button {
     margin-left: 0;
 }
 
+body.layout-mobile .impulse-response-controls {
+    flex-wrap: wrap;
+}
+
+body.layout-mobile .impulse-response-controls button {
+    width: auto;
+    flex: 1 1 auto;
+}
+
+body.layout-mobile .impulse-response-controls label {
+    order: -1;
+    flex-basis: 100%;
+}
+
 body.layout-mobile .metadata-table th,
 body.layout-mobile .metadata-table td {
     word-break: break-word;

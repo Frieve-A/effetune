@@ -34,3 +34,26 @@ test('measurement select options remain readable in the dark theme', () => {
   assert.match(checkedOptionRule, /background-color:\s*var\(--et-accent-pressed\)\s*!important;/);
   assert.match(checkedOptionRule, /color:\s*#ffffff\s*!important;/);
 });
+
+test('measurement configuration clearly dims disabled settings', () => {
+  const css = readCss('../../features/measurement/styles.css');
+  const disabledControlRule = getRule(
+    css,
+    '#configForm input:disabled,\n#configForm select:disabled {'
+  );
+  const disabledChoiceRule = getRule(
+    css,
+    '#configForm input[type="checkbox"]:disabled,\n#configForm input[type="radio"]:disabled {'
+  );
+  const disabledCopyRule = getRule(
+    css,
+    '#configForm .form-group:has(input:disabled, select:disabled) > label,'
+  );
+
+  assert.match(disabledControlRule, /background:\s*linear-gradient\(180deg,\s*#2b2b2b,\s*#242424\);/);
+  assert.match(disabledControlRule, /color:\s*#7c8187;/);
+  assert.match(disabledControlRule, /cursor:\s*not-allowed;/);
+  assert.match(disabledControlRule, /opacity:\s*1;/);
+  assert.match(disabledChoiceRule, /filter:\s*grayscale\(1\)\s*brightness\(0\.65\);/);
+  assert.match(disabledCopyRule, /color:\s*#747980;/);
+});

@@ -119,7 +119,8 @@ const SweepMeasurement = {
                 sampleRate,
                 outputChannel,
                 sweepMinFreq,
-                sweepMaxFreq
+                sweepMaxFreq,
+                this.currentMeasurement.sweepBandLimited !== false
             );
             
             // Update the graph to show the entire measurement duration
@@ -151,9 +152,19 @@ const SweepMeasurement = {
             if (this.levelGraphInterval) {
                 clearInterval(this.levelGraphInterval);
             }
-            
-            // Display error to user
-            alert(`Error: Measurement error occurred: ${error.message}`);
+
+            if (this.interfaceCalibrationImpulseResponse) {
+                this.currentPoint = null;
+                this.currentImpulseResponse = null;
+                uiManager.showNotification(
+                    i18n.t('error:interfaceCalibrationProcessingFailed') ||
+                    'The calibrated measurement could not be completed. Check the setup and measure this point again.',
+                    'error'
+                );
+            } else {
+                // Preserve the established uncalibrated measurement error path.
+                alert(`Error: Measurement error occurred: ${error.message}`);
+            }
         }
     },
 
@@ -350,20 +361,30 @@ const SweepMeasurement = {
     /**
      * Reset state for the next measurement
      */
-    resetForNextMeasurement() {
-        // Reset variables
+    async resetForNextMeasurement() {
+        try {
+            await this.prepareForLevelAdjustment();
+        } catch (error) {
+            console.error('Could not return to level adjustment:', error);
+            uiManager.showScreen('sweepMeasurementScreen');
+            uiManager.showNotification(
+                i18n.t('error:levelAdjustmentFailed') ||
+                'The audio input could not be prepared. Check the input device and try again.',
+                'error'
+            );
+            return false;
+        }
+
+        // Reset variables only after the next level-adjustment session is ready.
         this.currentSweepIndex = 0;
         this.sweepMeasurements = [];
         this.currentPoint = null;
         this.currentImpulseResponse = null;
-        
-        // Clear graphs
+
         const canvas = document.getElementById('frequencyResponseGraph');
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        // Start level adjustment
-        this.prepareForLevelAdjustment();
+        return true;
     },
     
     /**

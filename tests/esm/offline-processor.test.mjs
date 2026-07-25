@@ -293,7 +293,9 @@ function createFakeDspBinding(calls, options = {}) {
     },
     instanceAssetState(instanceId, slot) {
       calls.push(['dspAssetState', instanceId, slot]);
-      return options.assetState ?? 3;
+      return typeof options.assetState === 'function'
+        ? options.assetState(instanceId, slot)
+        : (options.assetState ?? 3);
     },
     resetInstance(instanceId) {
       calls.push(['dspResetInstance', instanceId]);
@@ -312,7 +314,7 @@ function createFakeDspBinding(calls, options = {}) {
       calls.push(['dspInstanceProcess', instanceId, channels, frames, time]);
       const view = pointerViews.get(pointer);
       const status = typeof options.instanceProcessStatus === 'function'
-        ? options.instanceProcessStatus(view, instanceId)
+        ? options.instanceProcessStatus(view, instanceId, channels, frames, time)
         : (options.instanceProcessStatus ?? 0);
       if (status !== 0) return status;
       const gain = parameters.get(instanceId)?.[0] ?? 1;
@@ -1030,6 +1032,49 @@ test('offline DSP sessions use target-specific plugin assets and parameter snaps
     assert.ok(calls.some(call => call[0] === 'dspSetAsset' && call[4] === 2));
     assert.equal(calls.filter(call => call[0] === 'dspGetArenaViews').length, 3);
     assert.equal(calls.filter(call => call[0] === 'dspPackParams').every(call => call[1] === 2), true);
+  });
+});
+
+test('offline asset warmup uses the routed processing channel count', async () => {
+  await withOfflineGlobals({
+    window: { audioPreferences: { outputChannels: 4 } }
+  }, async ({ calls }) => {
+    let assetState = 2;
+    const runtime = createFakeDspRuntime(calls, {
+      typeName: 'RoomEqPlugin',
+      bindingOptions: {
+        assetState() {
+          return assetState;
+        },
+        instanceProcessStatus(view, instanceId, channels) {
+          if (channels === 1) assetState = 3;
+          return 0;
+        }
+      }
+    });
+    const { processor, file } = createHarness(calls, {
+      audioBuffer: createAudioBuffer([[1, 2], [10, 20]]),
+      offlineProcessorOptions: runtime.dependencies
+    });
+    const plugin = createGainPlugin(calls, { id: 'room-eq-left', gain: 1 });
+    class RoomEqPlugin {}
+    Object.defineProperty(plugin, 'constructor', { value: RoomEqPlugin });
+    plugin.offlineDspAssetRequired = true;
+    plugin.createOfflineDspState = async () => ({
+      parameters: { gain: 1, channel: 'L' },
+      assets: new Map([[0, {
+        payload: new ArrayBuffer(16),
+        footprintBytes: 16,
+        processingChannels: 1,
+        formatTag: 1
+      }]]),
+      offlineDspAssetRequired: true
+    });
+
+    const result = await processor.processAudioFile(file, [plugin]);
+
+    assert.equal(result.encodedBuffer.numberOfChannels, 4);
+    assert.ok(calls.some(call => call[0] === 'dspInstanceProcess' && call[2] === 1));
   });
 });
 

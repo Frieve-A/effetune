@@ -76,6 +76,7 @@ export class PipelineWorkletSync {
                 plugins: plugins,
                 masterBypass: this.audioManager.masterBypass
             }, 'pipeline-full-update');
+            this.audioManager.syncPrimaryWasmAssetMembership?.(this.getCurrentPipeline());
         }
         this.updateURL();
     }

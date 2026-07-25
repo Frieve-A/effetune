@@ -2594,6 +2594,14 @@ export class AudioManager {
         return true;
     }
 
+    syncPrimaryWasmAssetMembership(pipeline = this.pipeline) {
+        const primaryWorklet = this._getPrimaryWorkletNode();
+        if (!primaryWorklet?.port) return false;
+        return this._syncWasmAssetMembership(primaryWorklet, pipeline, {
+            trackState: true
+        }) !== null;
+    }
+
     _syncWasmAssetMembership(workletNode, pipeline, options = {}) {
         const generation = options.generation ?? this._audioGraphGeneration;
         if (generation !== this._audioGraphGeneration || !this._isActiveDspWorklet(workletNode)) {

@@ -41,6 +41,10 @@ function createRuntime(options = {}) {
     broadcastToActiveWorklets(message) {
       for (const node of this.getActivePowerWorklets()) node.port.postMessage(message);
       calls.push(['broadcastToActiveWorklets', message.type]);
+    },
+    syncPrimaryWasmAssetMembership(pipeline) {
+      calls.push(['syncPrimaryWasmAssetMembership', pipeline]);
+      return true;
     }
   };
   if (options.register !== false) {
@@ -140,6 +144,10 @@ test('worklet update methods send full plugin payloads and update the URL', asyn
       ['pipeline-plugin-update', 'updatePlugin'],
       ['pipeline-parameter-update', 'updatePlugin']
     ]
+  );
+  assert.deepEqual(
+    runtime.calls.filter(call => call[0] === 'syncPrimaryWasmAssetMembership'),
+    [['syncPrimaryWasmAssetMembership', [pluginA, pluginB]]]
   );
 });
 

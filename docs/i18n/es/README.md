@@ -252,6 +252,10 @@ Para medir la respuesta en frecuencia de tu sistema de audio y crear una correcc
 4. Genera una corrección de EQ paramétrico que se puede importar directamente en EffeTune
 5. Aplica la corrección para lograr una reproducción más precisa y neutral
 
+Para eliminar la respuesta propia de la interfaz de audio, conecta directamente su salida a su entrada y guarda ese bucle como una medición normal sin calibrar que incluya una respuesta impulsional. En la siguiente medición, elige ese punto en **Calibración de la interfaz de audio**. Usa la misma interfaz, los mismos canales de entrada y salida, la misma frecuencia de muestreo y las mismas ganancias, y no cambies las ganancias después de la medición en bucle. Elige **Ninguna (sin calibrar)** para medir sin esta corrección.
+
+Las mediciones que contienen datos de respuesta impulsional muestran un gráfico normalizado de **Respuesta impulsional** en los resultados. La vista inicial abarca de 0 a 10 ms desde el inicio detectado. Usa la rueda del ratón o los botones para ampliar o reducir el eje temporal, y arrastra el gráfico o usa el control deslizante para desplazarte. Al seleccionar un punto de medición se actualiza el gráfico; **Todos (promedio)** muestra el primer punto con una respuesta impulsional guardada y lo identifica sobre el gráfico. Usa **Exportar respuesta impulsional (WAV)** debajo del gráfico para guardar la respuesta completa y sin normalizar del punto mostrado como un WAV mono de coma flotante de 32 bits con la frecuencia de muestreo de la medición.
+
 ## Combinaciones Comunes de Efectos
 
 Aquí hay algunas combinaciones populares de efectos para mejorar tu experiencia de escucha:

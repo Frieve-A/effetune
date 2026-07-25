@@ -26,11 +26,11 @@ class MeasurementDisplay {
             const li = document.createElement('li');
             li.className = 'measurement-item';
             li.setAttribute('data-id', measurement.id); // Always set data-id attribute
-            
+
             if (measurement.id === this.uiManager.selectedMeasurementId) {
                 li.classList.add('selected');
             }
-            
+
             const header = document.createElement('div');
             header.className = 'measurement-item-header';
             
@@ -212,7 +212,7 @@ class MeasurementDisplay {
         
         // Prepare channel information
         const inputChannelText = this.formatChannelInfo(measurement.inputChannel);
-        const outputChannelText = this.formatChannelInfo(measurement.outputChannel);
+        const outputChannelText = this.formatOutputChannelInfo(measurement.outputChannel);
         
         // Prepare max signal level information
         const maxSignalLevel = measurement.maxSignalLevel !== undefined 
@@ -232,6 +232,14 @@ class MeasurementDisplay {
             ['Max Signal Level', maxSignalLevel],
             ['Measurement Points', String(measurement.points.length)]
         ];
+        if (measurement.interfaceCalibration) {
+            details.push([
+                i18n.t('label:appliedInterfaceCalibration') ||
+                    'Audio Interface Calibration',
+                `${measurement.interfaceCalibration.sourceMeasurementName} — ` +
+                    measurement.interfaceCalibration.sourcePointName
+            ]);
+        }
         const detailsElement = document.getElementById('measurementDetails');
         detailsElement.replaceChildren();
         for (const [label, value] of details) {
@@ -311,6 +319,20 @@ class MeasurementDisplay {
             return 'Right Channel';
         }
         return channelValue;
+    }
+
+    formatOutputChannelInfo(channelValue) {
+        if (channelValue === 'all' || channelValue === 'both') {
+            return i18n.t('option:all') || 'All Channels';
+        }
+        const channelIndex = Number.parseInt(channelValue, 10);
+        if (String(channelIndex) === String(channelValue) &&
+            channelIndex >= 0 && channelIndex <= 7) {
+            return `Ch ${channelIndex + 1}`;
+        }
+        if (channelValue === 'left') return 'Ch 1';
+        if (channelValue === 'right') return 'Ch 2';
+        return channelValue || i18n.t('option:all') || 'All Channels';
     }
 
     /**
@@ -406,6 +428,7 @@ class MeasurementDisplay {
         
         // Update graph to show selected point or average
         this.uiManager.updateResultsGraph(index);
+        this.uiManager.graphRenderer.updateImpulseResponseGraph(index);
     }
 
     /**
@@ -413,14 +436,23 @@ class MeasurementDisplay {
      * @param {string} id - Measurement ID to export
      */
     async exportMeasurement(id) {
-        const includeImpulseResponses = Boolean(document.getElementById('includeImpulseResponses')?.checked);
-        const jsonString = await dataStorage.exportMeasurementToJSON(id, includeImpulseResponses);
-        if (!jsonString) return;
-        
-        const measurement = dataStorage.getMeasurementById(id);
-        const filename = `${measurement.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_${new Date().toISOString().split('T')[0]}.json`;
-        
-        this.uiManager.downloadFile(jsonString, filename, 'application/json');
+        try {
+            const includeImpulseResponses = Boolean(document.getElementById('includeImpulseResponses')?.checked);
+            const jsonString = await dataStorage.exportMeasurementToJSON(id, includeImpulseResponses);
+            if (!jsonString) return;
+
+            const measurement = dataStorage.getMeasurementById(id);
+            const filename = `${measurement.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_${new Date().toISOString().split('T')[0]}.json`;
+
+            this.uiManager.downloadFile(jsonString, filename, 'application/json');
+        } catch (error) {
+            console.error('Measurement export failed:', error);
+            this.uiManager.showNotification(
+                i18n.t('error:measurementExportFailed') ||
+                    'The measurement could not be exported. Please try again.',
+                'error'
+            );
+        }
     }
 
     /**

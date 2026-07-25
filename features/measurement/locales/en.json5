@@ -1,4 +1,14 @@
 {
+  "title:impulseResponse": "Impulse Response",
+  "axis:impulseTime": "Time (ms)",
+  "axis:normalizedAmplitude": "Normalized amplitude",
+  "button:zoomOut": "Zoom Out",
+  "button:zoomIn": "Zoom In",
+  "button:resetZoom": "Reset",
+  "button:exportImpulseResponseWav": "Export Impulse Response (WAV)",
+  "error:measurementExportFailed": "The measurement could not be exported. Please try again.",
+  "label:impulseTimePosition": "Time Position",
+  "help:impulseResponseGraph": "Amplitude is normalized to the response peak. Use the mouse wheel or buttons to zoom, and drag the plot or use the slider to scroll through time.",
   // Measurement History Section
   "button:newMeasurement": "+ New Measurement", // Button to start a new measurement
   "button:import": "Import", // Import button for loading saved measurements
@@ -21,12 +31,21 @@
   "help:sampleRate": "Specify the sampling frequency when taking measurements.", // Help text for sample rate
   "label:sweepLength": "Sweep Length (samples):", // Label for sweep length selection
   "help:sweepLength": "Specifies the length of the measurement signal in samples.", // Help text for sweep length
+  "label:sweepBandLimited": "Limit Sweep Bandwidth",
+  "help:sweepBandLimited": "When enabled, the TSP and test signal are limited to the frequency range below. When disabled, the TSP is played across the full available bandwidth.",
   "label:sweepMinFreq": "Sweep Minimum Frequency (Hz):", // Label for sweep minimum frequency
   "help:sweepMinFreq": "The minimum frequency of the sweep signal in Hz. Set from 1 Hz up to just below the Nyquist frequency of the selected sampling rate. The test signal is also band-limited to this range. (Default: 20 Hz)", // Help text for sweep min frequency
   "label:sweepMaxFreq": "Sweep Maximum Frequency (Hz):", // Label for sweep maximum frequency
   "help:sweepMaxFreq": "The maximum frequency of the sweep signal in Hz. Values above the Nyquist frequency of the selected sampling rate are automatically clamped. The test signal is also band-limited to this range. (Default: 20000 Hz)", // Help text for sweep max frequency
   "label:averaging": "Synchronous Averaging:", // Label for synchronous averaging selection
   "help:averaging": "Specify the number of times to repeat the measurement at the same measurement point for more accurate measurement.", // Help text for averaging
+  "label:interfaceCalibration": "Audio Interface Calibration:",
+  "option:noInterfaceCalibration": "None (uncalibrated)",
+  "option:interfaceCalibrationPoint": "{measurement} — {point} ({date}, {sampleRate})",
+  "help:interfaceCalibration": "Use a saved loopback measurement to remove the audio interface response. Keep the same interface, input/output channels, sampling rate, and input/output gains, and do not change the gains after the calibration measurement.",
+  "help:noInterfaceCalibrationCandidates": "Save an uncalibrated measurement point with an impulse response before using audio interface calibration.",
+  "help:interfaceCalibrationUnavailable": "Audio interface calibration is unavailable because impulse responses cannot be saved in this browser.",
+  "label:appliedInterfaceCalibration": "Audio Interface Calibration",
   "button:next": "Next", // Next button in configuration form to move to the Level Adjustment Screen
   
   // Level Adjustment Screen
@@ -97,6 +116,12 @@
   "error:confirmationDialogNotFound": "Confirmation dialog element not found in the DOM", // Error when confirmation dialog not found
   "error:notificationDialogNotFound": "Notification dialog elements not found in the DOM", // Error when notification dialog not found
   "error:noPEQSettings": "No PEQ settings available for this measurement", // Error when no PEQ settings available
+  "error:interfaceCalibrationUnavailable": "The selected calibration is no longer available. Choose another measurement point.",
+  "error:interfaceCalibrationSampleRateMismatch": "The selected calibration uses a different sampling rate. Choose calibration data recorded at the same sampling rate.",
+  "error:interfaceCalibrationSweepRangeMismatch": "The selected calibration does not cover this sweep range. Narrow the sweep range or choose different calibration data.",
+  "error:interfaceCalibrationProcessingFailed": "The calibrated measurement could not be completed. Check the setup and measure this point again.",
+  "error:measurementSetupFailed": "The measurement could not be prepared. Check the audio devices and try again.",
+  "error:levelAdjustmentFailed": "The audio input could not be prepared. Check the input device and try again.",
   
   // Messages
   "message:peqCopied": "PEQ settings copied to clipboard successfully. The copied settings can be pasted into EffeTune's Effect Pipeline by Ctrl+V.", // Success message for PEQ copy

@@ -1,4 +1,4 @@
-self.EFFECTUNE_CACHE_VERSION = "effetune-v2.1.0-20f7da5e12d8479d";
+self.EFFECTUNE_CACHE_VERSION = "effetune-v2.1.0-a1335dba6e15eaf6";
 self.EFFECTUNE_PRECACHE_URLS = [
   "./effetune-library.css",
   "./effetune-mobile.css",
@@ -181,6 +181,7 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/update-notification.js",
   "./js/utils/clipboard-utils.js",
   "./js/utils/measurement-dsp/fft.js",
+  "./js/utils/measurement-dsp/interface-calibration.js",
   "./js/utils/measurement-dsp/onset.js",
   "./js/utils/measurement-dsp/resample.js",
   "./js/utils/measurement-dsp/smoothing.js",

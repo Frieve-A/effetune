@@ -1,4 +1,14 @@
 {
+  "title:impulseResponse": "インパルス応答",
+  "axis:impulseTime": "時間（ms）",
+  "axis:normalizedAmplitude": "正規化振幅",
+  "button:zoomOut": "縮小",
+  "button:zoomIn": "拡大",
+  "button:resetZoom": "表示をリセット",
+  "button:exportImpulseResponseWav": "インパルス応答をWAVでエクスポート",
+  "error:measurementExportFailed": "測定結果をエクスポートできませんでした。もう一度お試しください。",
+  "label:impulseTimePosition": "時間位置",
+  "help:impulseResponseGraph": "振幅は応答のピークを基準に正規化しています。マウスホイールまたはボタンで時間軸を拡大・縮小し、プロットのドラッグまたはスライダーで時間方向にスクロールできます。",
   // 計測履歴セクション
   "button:newMeasurement": "+ 新しい測定を開始", // 新しい測定を開始
   "button:import": "インポート", // 保存済み測定を読み込む
@@ -21,12 +31,21 @@
   "help:sampleRate": "測定時のサンプリング周波数を指定してください。", // サンプリング周波数のヘルプ
   "label:sweepLength": "スイープ長（サンプル数）：", // スイープ長選択のラベル
   "help:sweepLength": "測定信号の長さをサンプル数で指定します。", // スイープ長のヘルプ
+  "label:sweepBandLimited": "スイープの帯域を制限",
+  "help:sweepBandLimited": "ONの場合、TSPとテスト信号を以下の周波数範囲に制限します。OFFの場合、TSPを利用可能な全帯域で再生します。",
   "label:sweepMinFreq": "スイープ最低周波数（Hz）：", // スイープ最低周波数のラベル
   "help:sweepMinFreq": "スイープ信号の最低周波数をHz単位で指定します。1Hzから選択したサンプリング周波数のナイキスト周波数直下まで設定可能です。テスト信号もこの帯域に制限されます。（デフォルト：20 Hz）", // スイープ最低周波数のヘルプ
   "label:sweepMaxFreq": "スイープ最高周波数（Hz）：", // スイープ最高周波数のラベル
   "help:sweepMaxFreq": "スイープ信号の最高周波数をHz単位で指定します。選択したサンプリング周波数のナイキスト周波数を超える値は自動的に制限されます。テスト信号もこの帯域に制限されます。（デフォルト：20000 Hz）", // スイープ最高周波数のヘルプ
   "label:averaging": "同期平均化：", // 同期平均化選択のラベル
   "help:averaging": "より正確な測定のために、同一測定点での測定を繰り返す回数を指定してください。", // 同期平均化のヘルプ
+  "label:interfaceCalibration": "オーディオインターフェイスのキャリブレーション：",
+  "option:noInterfaceCalibration": "なし（未補正）",
+  "option:interfaceCalibrationPoint": "{measurement} — {point}（{date}、{sampleRate}）",
+  "help:interfaceCalibration": "保存済みの直結測定を使って、オーディオインターフェイスの特性を差し引きます。同じインターフェイス、入出力チャンネル、サンプリング周波数、入出力ゲインを使用し、キャリブレーション測定後はゲインを変更しないでください。",
+  "help:noInterfaceCalibrationCandidates": "オーディオインターフェイスのキャリブレーションを使用するには、未補正の測定点をインパルス応答付きで保存してください。",
+  "help:interfaceCalibrationUnavailable": "このブラウザーではインパルス応答を保存できないため、オーディオインターフェイスのキャリブレーションは利用できません。",
+  "label:appliedInterfaceCalibration": "オーディオインターフェイスのキャリブレーション",
   "button:next": "次へ", // レベル調整画面に進む
 
   // レベル調整画面
@@ -97,6 +116,12 @@
   "error:confirmationDialogNotFound": "確認ダイアログ要素がDOMに見つかりません", // 確認ダイアログが見つからない場合のエラー
   "error:notificationDialogNotFound": "通知ダイアログの要素がDOMに見つかりません", // 通知ダイアログが見つからない場合のエラー
   "error:noPEQSettings": "この測定に対応するPEQ設定がありません", // PEQ設定がない場合のエラー
+  "error:interfaceCalibrationUnavailable": "選択したキャリブレーションを読み込めません。別の測定点を選択してください。",
+  "error:interfaceCalibrationSampleRateMismatch": "選択したキャリブレーションのサンプリング周波数が異なります。同じサンプリング周波数で記録したデータを選択してください。",
+  "error:interfaceCalibrationSweepRangeMismatch": "選択したキャリブレーションは、このスイープ範囲をカバーしていません。スイープ範囲を狭めるか、別のデータを選択してください。",
+  "error:interfaceCalibrationProcessingFailed": "キャリブレーションを適用した測定を完了できませんでした。接続と設定を確認して、この測定点をもう一度測定してください。",
+  "error:measurementSetupFailed": "測定の準備ができませんでした。オーディオデバイスを確認して、もう一度お試しください。",
+  "error:levelAdjustmentFailed": "音声入力の準備ができませんでした。入力デバイスを確認して、もう一度お試しください。",
   
   // メッセージ
   "message:peqCopied": "PEQ設定がクリップボードにコピーされました。コピーした設定はEffeTuneのエフェクトパイプラインにCtrl+Vで貼り付けられます。", // PEQコピー成功メッセージ

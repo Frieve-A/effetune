@@ -252,6 +252,10 @@ EffeTune 2.1.0 में कैटलॉग स्कीमा v3 पर आध�
 4. ऐसा parametric EQ correction बनाएं जिसे सीधे EffeTune में import किया जा सके
 5. अधिक accurate और neutral sound reproduction के लिए correction लागू करें
 
+ऑडियो इंटरफ़ेस की अपनी response हटाने के लिए उसके output को सीधे input से जोड़ें और इस loopback को impulse response वाले सामान्य, बिना कैलिब्रेशन के माप के रूप में सेव करें। अगले माप में **ऑडियो इंटरफ़ेस कैलिब्रेशन** से उस माप बिंदु को चुनें। वही इंटरफ़ेस, input और output चैनल, sampling rate तथा input/output gain इस्तेमाल करें और loopback माप के बाद gain न बदलें। इस correction के बिना मापने के लिए **कोई नहीं (बिना कैलिब्रेशन)** चुनें।
+
+जिन मापों में impulse response data सेव है, उनके results में normalized **Impulse Response** plot दिखाई देता है। शुरुआत में detected onset को 0 ms मानकर 0–10 ms का हिस्सा दिखता है। Time axis को zoom करने के लिए mouse wheel या buttons और समय में scroll करने के लिए plot को drag करें या slider इस्तेमाल करें। Measurement point चुनने पर plot बदल जाता है; **सभी (औसत)** में सेव impulse response वाला पहला point दिखता है और उसका नाम graph के ऊपर दिया जाता है। Plot के नीचे **आवेग प्रतिक्रिया निर्यात करें (WAV)** से दिखाए गए point की पूरी, बिना normalize की गई response को measurement की sampling rate पर mono 32-bit floating-point WAV के रूप में सेव किया जा सकता है।
+
 ## सामान्य इफेक्ट संयोजन
 
 सुनने के अनुभव को बेहतर बनाने के लिए कुछ लोकप्रिय इफेक्ट संयोजन:

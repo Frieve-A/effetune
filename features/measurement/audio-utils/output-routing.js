@@ -1,5 +1,4 @@
 const SUPPORTED_OUTPUT_CHANNEL_COUNTS = Object.freeze([2, 4, 6, 8]);
-const WEB_AUDIO_PREFERENCES_KEY = 'effetune_audio_preferences';
 const SET_SINK_ID_TIMEOUT_MS = 3000;
 
 class MeasurementOutputError extends Error {
@@ -7,11 +6,6 @@ class MeasurementOutputError extends Error {
         super(message);
         this.name = 'MeasurementOutputError';
     }
-}
-
-function normalizeOutputChannelCount(value) {
-    const channelCount = Number(value);
-    return SUPPORTED_OUTPUT_CHANNEL_COUNTS.includes(channelCount) ? channelCount : 2;
 }
 
 function getRequiredOutputChannelCount(channel) {
@@ -33,6 +27,19 @@ function getRequiredOutputChannelCount(channel) {
     return 8;
 }
 
+function getMeasurementOutputChannelCount(channel, maxChannelCount = 2) {
+    if (channel !== 'all' && channel !== 'both') {
+        return getRequiredOutputChannelCount(channel);
+    }
+
+    const availableChannels = Number(maxChannelCount);
+    for (let index = SUPPORTED_OUTPUT_CHANNEL_COUNTS.length - 1; index >= 0; index -= 1) {
+        const channelCount = SUPPORTED_OUTPUT_CHANNEL_COUNTS[index];
+        if (channelCount <= availableChannels) return channelCount;
+    }
+    return 2;
+}
+
 function validateOutputChannel(channel, outputChannels) {
     const requiredChannels = getRequiredOutputChannelCount(channel);
     if (requiredChannels <= outputChannels) return;
@@ -40,57 +47,16 @@ function validateOutputChannel(channel, outputChannels) {
     const displayedChannel = Number.parseInt(channel, 10) + 1;
     throw new MeasurementOutputError(
         `Output Channel Ch ${displayedChannel} requires at least ${requiredChannels} output channels. ` +
-        `Set Output Channels to ${requiredChannels} or higher in EffeTune's audio settings and try again.`
+        'Choose a compatible measurement output device or a lower output channel.'
     );
-}
-
-function readWebAudioPreferences(storage) {
-    try {
-        const value = storage?.getItem?.(WEB_AUDIO_PREFERENCES_KEY);
-        return value ? JSON.parse(value) : null;
-    } catch (error) {
-        console.warn('Could not read web audio preferences:', error);
-        return null;
-    }
-}
-
-async function loadConfiguredOutputChannels(windowRef = globalThis.window) {
-    let preferences = windowRef?.audioPreferences ||
-        windowRef?.electronIntegration?.audioPreferences ||
-        null;
-
-    if (!preferences && typeof windowRef?.electronIntegration?.loadAudioPreferences === 'function') {
-        try {
-            preferences = await windowRef.electronIntegration.loadAudioPreferences();
-        } catch (error) {
-            console.warn('Could not load audio preferences from Electron integration:', error);
-        }
-    }
-
-    if (!preferences && typeof windowRef?.electronAPI?.loadAudioPreferences === 'function') {
-        try {
-            const result = await windowRef.electronAPI.loadAudioPreferences();
-            if (result?.success) {
-                preferences = result.preferences;
-            }
-        } catch (error) {
-            console.warn('Could not load audio preferences from Electron:', error);
-        }
-    }
-
-    if (!preferences) {
-        preferences = readWebAudioPreferences(windowRef?.localStorage);
-    }
-
-    return normalizeOutputChannelCount(preferences?.outputChannels);
 }
 
 function configureDestinationChannels(destination, outputChannels) {
     const maxChannels = Number(destination?.maxChannelCount) || 2;
     if (maxChannels < outputChannels) {
         throw new MeasurementOutputError(
-            `The selected output device supports ${maxChannels} channels, but EffeTune is configured for ` +
-            `${outputChannels}. Select a compatible device or reduce Output Channels in EffeTune's audio settings.`
+            `The selected output device supports ${maxChannels} channels, but measurement Output Channel ` +
+            `requires ${outputChannels}. Select a compatible device or a lower output channel.`
         );
     }
 
@@ -102,14 +68,14 @@ function configureDestinationChannels(destination, outputChannels) {
         console.error('Could not configure measurement output channels:', error);
         throw new MeasurementOutputError(
             `The selected output device could not be configured for ${outputChannels} channels. ` +
-            'Check EffeTune audio settings and the device configuration, then try again.'
+            'Check the selected measurement device and output channel, then try again.'
         );
     }
 
     if (destination.channelCount !== outputChannels) {
         throw new MeasurementOutputError(
             `The selected output device did not accept the configured ${outputChannels}-channel layout. ` +
-            'Check EffeTune audio settings and the device configuration, then try again.'
+            'Check the selected measurement device and output channel, then try again.'
         );
     }
 }
@@ -188,7 +154,6 @@ async function prepareMeasurementOutputRoute(
     audioContext,
     outputDeviceId,
     outputChannel,
-    outputChannels,
     dependencies = {}
 ) {
     if (!audioContext?.destination) {
@@ -197,16 +162,14 @@ async function prepareMeasurementOutputRoute(
         );
     }
 
-    const configuredChannels = normalizeOutputChannelCount(outputChannels);
-    validateOutputChannel(outputChannel, configuredChannels);
-
     const hasExplicitDevice = Boolean(outputDeviceId && outputDeviceId !== 'default');
     const sinkId = hasExplicitDevice ? outputDeviceId : '';
     const canSelectContextSink = typeof audioContext.setSinkId === 'function';
     const currentSinkId = typeof audioContext.sinkId === 'string' ? audioContext.sinkId : null;
+    const requiredChannels = getRequiredOutputChannelCount(outputChannel);
 
     if (hasExplicitDevice && !canSelectContextSink) {
-        if (configuredChannels !== 2) {
+        if (requiredChannels !== 2) {
             throw new MeasurementOutputError(
                 'This browser cannot send multichannel measurement audio directly to the selected output device. ' +
                 'Use a current version of Chrome or Edge and try again.'
@@ -238,11 +201,19 @@ async function prepareMeasurementOutputRoute(
         }
     }
 
-    configureDestinationChannels(audioContext.destination, configuredChannels);
+    // Measurement routing intentionally does not use EffeTune's playback channel
+    // setting. A measurement may use a different device and channel layout, so its
+    // layout is derived only from the selected measurement channel and device.
+    const outputChannels = getMeasurementOutputChannelCount(
+        outputChannel,
+        audioContext.destination.maxChannelCount
+    );
+    validateOutputChannel(outputChannel, outputChannels);
+    configureDestinationChannels(audioContext.destination, outputChannels);
     return {
         mode: 'direct',
         destination: audioContext.destination,
-        outputChannels: configuredChannels,
+        outputChannels,
         audioElement: null,
         mediaStreamDestination: null
     };
@@ -272,10 +243,9 @@ function releaseMeasurementOutputRoute(route) {
 export {
     SUPPORTED_OUTPUT_CHANNEL_COUNTS,
     MeasurementOutputError,
-    normalizeOutputChannelCount,
     getRequiredOutputChannelCount,
+    getMeasurementOutputChannelCount,
     validateOutputChannel,
-    loadConfiguredOutputChannels,
     configureDestinationChannels,
     prepareMeasurementOutputRoute,
     releaseMeasurementOutputRoute

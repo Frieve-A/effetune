@@ -14,18 +14,12 @@ const LevelAdjustment = {
         try {
             // Ensure audio context is available and running
             if (!audioUtils.audioContext) {
-                console.error('Audio context not initialized');
-                alert('Error: Audio context is not initialized. Please refresh the browser and try again.');
-                return;
+                throw new Error('Audio context is not initialized');
             }
             
             // Ensure audio context is running
             if (audioUtils.audioContext.state !== 'running') {
-                try {
-                    await audioUtils.audioContext.resume();
-                } catch (error) {
-                    console.error('Failed to resume audio context:', error);
-                }
+                await audioUtils.audioContext.resume();
             }
             
             // Start input monitoring
@@ -41,7 +35,13 @@ const LevelAdjustment = {
             document.getElementById('noiseToggleBtn').textContent = i18n.t('button:playbackTestSignal') || 'Playback test signal for checking volume';
         } catch (error) {
             console.error('Error preparing level adjustment:', error);
-            alert(`Failed to access audio device: ${error.message}`);
+            this.stopLevelMeter();
+            try {
+                audioUtils.stopMicrophoneInput();
+            } catch (cleanupError) {
+                console.warn('Error stopping microphone input after setup failure:', cleanupError);
+            }
+            throw error;
         }
     },
 

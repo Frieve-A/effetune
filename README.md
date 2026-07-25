@@ -260,6 +260,10 @@ To measure your audio system's frequency response and create a flat correction E
 4. Generate a parametric EQ correction that can be directly imported into EffeTune
 5. Apply the correction to achieve a more accurate, neutral sound reproduction
 
+To remove the audio interface's own response, connect its output directly to its input and save that loopback as a normal, uncalibrated measurement with an impulse response. For the next measurement, choose that saved point under **Audio Interface Calibration**. Use the same interface, input and output channels, sampling rate, and input/output gains, and do not change the gains after the loopback measurement. Choose **None (uncalibrated)** to measure without this correction.
+
+Saved measurements with impulse-response data show a normalized **Impulse Response** plot in the results. It opens at 0–10 ms from the detected onset. Use the mouse wheel or buttons to zoom the time axis, and drag the plot or use the slider to scroll. Selecting a measurement point updates the plot; **All (Average)** displays the first point that has saved impulse-response data and identifies it above the graph. Use **Export Impulse Response (WAV)** below the plot to save the displayed point's complete, unnormalized response as a mono 32-bit floating-point WAV at the measurement sample rate.
+
 ## Common Effect Combinations
 
 Here are some popular effect combinations to enhance your listening experience:

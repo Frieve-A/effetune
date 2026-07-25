@@ -12,11 +12,28 @@
 import audioUtils from '../audio-utils/index.js';
 import { FFT } from '../audio-utils/index.js';
 import {
-    loadConfiguredOutputChannels,
     prepareMeasurementOutputRoute,
     releaseMeasurementOutputRoute
 } from '../audio-utils/output-routing.js';
 import { detectOnset, trimMeasurementImpulseResponse } from '../../../js/utils/measurement-dsp/onset.js';
+import {
+    applyInterfaceCalibration
+} from '../../../js/utils/measurement-dsp/interface-calibration.js';
+
+const SWEEP_START_DELAY_SECONDS = 0.05;
+const MAX_PRACTICAL_PATH_LATENCY_SECONDS = 1;
+
+function createSweepCapturePlan(sweepLength, averagingCount, sampleRate) {
+    const guardSamples = Math.ceil(
+        (SWEEP_START_DELAY_SECONDS + MAX_PRACTICAL_PATH_LATENCY_SECONDS) * sampleRate
+    ) + sweepLength;
+    const guardPeriods = Math.ceil(guardSamples / sweepLength);
+    return {
+        guardPeriods,
+        repeatCount: guardPeriods + averagingCount,
+        analysisStartSamples: guardPeriods * sweepLength
+    };
+}
 
 function createRepeatedSweepAudioBuffer(
     audioContext,
@@ -115,15 +132,18 @@ const AudioProcessing = {
                 
                 // Calculate the expected playback duration
                 const sweepDuration = sweepBuffer.length / sampleRate;
-                const totalPlaybackDuration = sweepDuration * (averagingCount + 1); // +1 for safety
+                const capturePlan = createSweepCapturePlan(
+                    sweepBuffer.length,
+                    averagingCount,
+                    sampleRate
+                );
+                const totalPlaybackDuration = sweepDuration * capturePlan.repeatCount;
                 console.log(`Sweep duration: ${sweepDuration.toFixed(2)}s, Total playback: ${totalPlaybackDuration.toFixed(2)}s`);
                 
-                const configuredChannels = await loadConfiguredOutputChannels();
                 const outputRoute = await prepareMeasurementOutputRoute(
                     audioContext,
                     this.measurementConfig.audioOutputId,
-                    this.measurementConfig.outputChannel,
-                    configuredChannels
+                    this.measurementConfig.outputChannel
                 );
                 const outputChannels = outputRoute.outputChannels;
                 this.activeSweepElements.audioElement = outputRoute.audioElement;
@@ -133,7 +153,7 @@ const AudioProcessing = {
                 const combinedSweepBuffer = createRepeatedSweepAudioBuffer(
                     audioContext,
                     sweepBuffer,
-                    averagingCount + 1,
+                    capturePlan.repeatCount,
                     outputChannels,
                     sampleRate
                 );
@@ -193,8 +213,7 @@ const AudioProcessing = {
                     
                     // Create recorder worklet node
                     recordNode = await audioUtils.createRecorderWorkletNode(
-                        null, // device ID is handled by microphone
-                        this.measurementConfig.inputChannel
+                        null // Device and channel selection are handled by the shared input route.
                     );
                     
                     if (!recordNode) {
@@ -241,15 +260,16 @@ const AudioProcessing = {
                     };
                     
                     // Verify microphone is not null before trying to connect
-                    if (!audioUtils.microphone) {
-                        throw new Error('Microphone source is null. Please ensure microphone access is granted.');
+                    if (!audioUtils.channelGain) {
+                        throw new Error('Measurement input is unavailable. Please check the selected input device.');
                     }
                     
                     console.log('Connecting microphone to recorder node');
-                    // Connect microphone to recorder node and analyzer with error handling
+                    // The shared input route applies Left, Right, or Both exactly
+                    // once, so level adjustment and recording observe the same mono signal.
                     try {
-                        audioUtils.microphone.connect(recordNode);
-                        audioUtils.microphone.connect(analyzer);
+                        audioUtils.channelGain.connect(recordNode);
+                        audioUtils.channelGain.connect(analyzer);
                     } catch (connectError) {
                         throw new Error(`Failed to connect microphone: ${connectError.message}`);
                     }
@@ -309,8 +329,7 @@ const AudioProcessing = {
                         console.log(`Playback started at ${startTime}`);
                         
                         // Schedule playback start slightly in the future for better stability
-                        const startDelay = 0.05; // 50ms delay
-                        source.start(audioContext.currentTime + startDelay);
+                        source.start(audioContext.currentTime + SWEEP_START_DELAY_SECONDS);
                         
                         // Track when playback ends
                         source.onended = () => {
@@ -390,38 +409,49 @@ const AudioProcessing = {
                     
                     // Save full recording for debugging
                     this.fullRecordBuffer = finalBuffer;
-                    
-                    // Process the recording to extract the impulse response
-                    const processStart = performance.now();
-                    const processed = this.processRecordedBuffer(finalBuffer, sweepBuffer.length, averagingCount, sampleRate);
-                    const processedBuffer = processed.analysisImpulseResponse;
-                    
-                    // Save synchronized buffer for debugging
-                    this.syncedBuffer = processedBuffer;
-                    
-                    // Calculate smoothed frequency response with 0.005 octave spacing
-                    const freqStart = performance.now();
-                    const frequencyResponse = audioUtils.calculateFrequencyResponseWithSmoothing(
-                        processedBuffer, 
-                        sampleRate, 
-                        true, // Normalize with last sweep
-                        0.005  // Octave smoothing factor
-                    );
-                    
-                    const processEnd = performance.now();
-                    console.log(`Processing: ${(processEnd - processStart).toFixed(1)}ms (freq: ${(processEnd - freqStart).toFixed(1)}ms)`);
-                    
-                    // Clear large temporary buffers
-                    finalBuffer = null;
-                    
-                    // Resolve promise with processed data
-                    resolve(this.createSweepMeasurementResult(processed, {
-                        frequencyResponse: frequencyResponse,
-                        hasOverload: hasOverload,
-                        maxSignalLevel: maxSignalLevel,
-                        fullRecording: finalBuffer,
-                        sampleRate: sampleRate
-                    }));
+
+                    try {
+                        // Process the recording to extract the impulse response
+                        const processStart = performance.now();
+                        const processed = this.processRecordedBuffer(
+                            finalBuffer,
+                            sweepBuffer.length,
+                            averagingCount,
+                            sampleRate
+                        );
+                        const processedBuffer = processed.analysisImpulseResponse;
+
+                        // Save synchronized buffer for debugging
+                        this.syncedBuffer = processedBuffer;
+
+                        // Calculate smoothed frequency response with 0.005 octave spacing
+                        const freqStart = performance.now();
+                        const frequencyResponse = audioUtils.calculateFrequencyResponseWithSmoothing(
+                            processedBuffer,
+                            sampleRate,
+                            true, // Normalize with last sweep
+                            0.005  // Octave smoothing factor
+                        );
+
+                        const processEnd = performance.now();
+                        console.log(`Processing: ${(processEnd - processStart).toFixed(1)}ms (freq: ${(processEnd - freqStart).toFixed(1)}ms)`);
+
+                        // Clear large temporary buffers
+                        finalBuffer = null;
+
+                        // Resolve promise with processed data
+                        resolve(this.createSweepMeasurementResult(processed, {
+                            frequencyResponse: frequencyResponse,
+                            hasOverload: hasOverload,
+                            maxSignalLevel: maxSignalLevel,
+                            fullRecording: finalBuffer,
+                            sampleRate: sampleRate
+                        }));
+                    } catch (error) {
+                        finalBuffer = null;
+                        console.error('Recorded sweep processing failed:', error);
+                        reject(error);
+                    }
                 };
                 
                 // Final safety timeout
@@ -460,6 +490,7 @@ const AudioProcessing = {
      */
     processRecordedBuffer(recordBuffer, sweepLength, averagingCount, sampleRate) {
         console.time('processRecordedBuffer');
+        const calibrationRequired = Boolean(this.interfaceCalibrationImpulseResponse);
         
         // Log recording information
         console.log(`Recording length: ${recordBuffer.length} samples (${recordBuffer.length/sampleRate}s)`);
@@ -471,6 +502,9 @@ const AudioProcessing = {
             
             if (!inverseFilter) {
                 console.warn('No inverse filter available, returning original recording');
+                if (calibrationRequired) {
+                    throw new Error('The measured impulse response could not be created');
+                }
                 console.timeEnd('processRecordedBuffer');
                 return {
                     analysisImpulseResponse: recordBuffer,
@@ -482,71 +516,87 @@ const AudioProcessing = {
             // Assuming there's a pre-roll time before the actual sweep
             const preRollTime = 0.5; // seconds
             const preRollSamples = Math.floor(preRollTime * sampleRate);
+            const capturePlan = createSweepCapturePlan(
+                sweepLength,
+                averagingCount,
+                sampleRate
+            );
             
-            // Extract segments based on averaging count
+            // Extract complete steady-state periods for circular deconvolution.
+            // Guard periods cover the scheduled start and practical device-path
+            // latency, plus one complete settling period. Any remaining offset
+            // only rotates a complete period and therefore shifts the recovered
+            // impulse response without changing its frequency response.
             const segments = [];
-            const avgLength = sweepLength * 2; // Double length for convolution result
             
             for (let i = 0; i < averagingCount; i++) {
-                const startOffset = preRollSamples + (i * sweepLength);
+                const startOffset = preRollSamples +
+                    capturePlan.analysisStartSamples +
+                    (i * sweepLength);
                 
                 // Skip if not enough samples
-                if (startOffset + avgLength > recordBuffer.length) {
+                if (startOffset + sweepLength > recordBuffer.length) {
                     console.warn(`Not enough samples for segment ${i+1}`);
                     continue;
                 }
                 
-                // Extract segment using subarray (more efficient)
-                const segment = recordBuffer.subarray(startOffset, startOffset + avgLength);
-                segments.push(new Float32Array(segment)); // Create a copy for processing
+                segments.push(recordBuffer.subarray(startOffset, startOffset + sweepLength));
             }
             
             console.log(`Created ${segments.length} segments for averaging`);
+            if (segments.length !== averagingCount) {
+                const error = new Error(
+                    'The recording did not contain enough complete sweep periods. Please try the measurement again.'
+                );
+                error.isIncompleteSweepRecording = true;
+                throw error;
+            }
             
-            // Process each segment to get impulse response
+            // Circular convolution is implemented by folding the tail of a
+            // zero-padded linear convolution back into one sweep period.
+            const filterLength = Math.min(inverseFilter.length, sweepLength);
+            if (filterLength < 1) {
+                throw new Error('Inverse filter is empty');
+            }
+            const linearLength = sweepLength + filterLength - 1;
+            const paddedSize = Math.pow(2, Math.ceil(Math.log2(linearLength)));
+            const fft = new FFT(paddedSize);
+            const filterInputReal = new Float32Array(paddedSize);
+            const filterInputImag = new Float32Array(paddedSize);
+            const filterReal = new Float32Array(paddedSize);
+            const filterImag = new Float32Array(paddedSize);
+            for (let i = 0; i < filterLength; i++) {
+                filterInputReal[i] = inverseFilter[i];
+            }
+            fft.transform(filterReal, filterImag, filterInputReal, filterInputImag);
+
             const processedSegments = [];
             for (let i = 0; i < segments.length; i++) {
-                // Get FFT size that can fit both signals
-                const paddedSize = Math.pow(2, Math.ceil(Math.log2(segments[i].length + inverseFilter.length - 1)));
-                const fft = new FFT(paddedSize);
-                
-                // Prepare arrays for FFT
                 const signalReal = new Float32Array(paddedSize);
                 const signalImag = new Float32Array(paddedSize);
-                const filterReal = new Float32Array(paddedSize);
-                const filterImag = new Float32Array(paddedSize);
                 const resultReal = new Float32Array(paddedSize);
                 const resultImag = new Float32Array(paddedSize);
                 
-                // Copy segments with zero padding
                 signalReal.set(segments[i]);
-                filterReal.set(inverseFilter);
-                
-                // Transform to frequency domain
                 fft.transform(resultReal, resultImag, signalReal, signalImag);
-                const signal1Real = new Float32Array(resultReal);
-                const signal1Imag = new Float32Array(resultImag);
                 
-                fft.transform(resultReal, resultImag, filterReal, filterImag);
-                
-                // Multiply in frequency domain (convolution in time domain)
                 for (let j = 0; j < paddedSize; j++) {
-                    const real1 = signal1Real[j];
-                    const imag1 = signal1Imag[j];
-                    const real2 = resultReal[j];
-                    const imag2 = resultImag[j];
+                    const real1 = resultReal[j];
+                    const imag1 = resultImag[j];
+                    const real2 = filterReal[j];
+                    const imag2 = filterImag[j];
                     
                     resultReal[j] = real1 * real2 - imag1 * imag2;
                     resultImag[j] = real1 * imag2 + imag1 * real2;
                 }
                 
-                // Transform back to time domain
                 fft.inverseTransform(resultReal, resultImag, resultReal, resultImag);
                 
-                // Copy result
-                const impulseResponse = new Float32Array(avgLength);
-                for (let j = 0; j < avgLength; j++) {
-                    impulseResponse[j] = resultReal[j];
+                const impulseResponse = new Float32Array(sweepLength);
+                for (let j = 0; j < sweepLength; j++) {
+                    const wrappedIndex = j + sweepLength;
+                    impulseResponse[j] = resultReal[j] +
+                        (wrappedIndex < linearLength ? resultReal[wrappedIndex] : 0);
                 }
                 
                 processedSegments.push(impulseResponse);
@@ -565,6 +615,9 @@ const AudioProcessing = {
                 }
             } else {
                 console.warn('No processed segments available');
+                if (calibrationRequired) {
+                    throw new Error('The measured impulse response could not be created');
+                }
                 console.timeEnd('processRecordedBuffer');
                 return {
                     analysisImpulseResponse: recordBuffer,
@@ -580,6 +633,30 @@ const AudioProcessing = {
                 const magnitude = sample < 0 ? -sample : sample;
                 if (magnitude > peak) peak = magnitude;
             }
+
+            if (calibrationRequired) {
+                const calibrated = applyInterfaceCalibration({
+                    data: trimmed.data,
+                    onsetIndex: trimmed.onsetIndex,
+                    prerollSamples: trimmed.prerollSamples,
+                    refScale: audioUtils.lastDeconvolutionRefScale || 1
+                }, this.interfaceCalibrationImpulseResponse, {
+                    sampleRate,
+                    minFrequency: this.currentMeasurement.sweepMinFreq,
+                    maxFrequency: this.currentMeasurement.sweepMaxFreq,
+                    outputLength: trimmed.data.length,
+                    prerollSamples: trimmed.prerollSamples
+                });
+                console.timeEnd('processRecordedBuffer');
+                return {
+                    ...trimmed,
+                    ...calibrated,
+                    analysisImpulseResponse: calibrated.data,
+                    impulseResponse: calibrated.data,
+                    irValid: true
+                };
+            }
+
             console.timeEnd('processRecordedBuffer');
             return {
                 ...trimmed,
@@ -593,6 +670,7 @@ const AudioProcessing = {
         } catch (error) {
             console.error('Error processing recorded buffer:', error);
             console.timeEnd('processRecordedBuffer');
+            if (calibrationRequired || error?.isIncompleteSweepRecording) throw error;
             return {
                 analysisImpulseResponse: recordBuffer,
                 impulseResponse: null,
@@ -681,4 +759,4 @@ const AudioProcessing = {
 };
 
 export default AudioProcessing;
-export { createRepeatedSweepAudioBuffer };
+export { createRepeatedSweepAudioBuffer, createSweepCapturePlan };

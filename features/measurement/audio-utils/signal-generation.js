@@ -5,7 +5,6 @@
 import FFT from './fft.js';
 import {
     MeasurementOutputError,
-    loadConfiguredOutputChannels,
     prepareMeasurementOutputRoute,
     releaseMeasurementOutputRoute
 } from './output-routing.js';
@@ -40,12 +39,10 @@ async function startWhiteNoise(level = -12, outputDeviceId = null, channel = 'al
     }
 
     try {
-        const configuredChannels = await loadConfiguredOutputChannels();
         const outputRoute = await prepareMeasurementOutputRoute(
             this.audioContext,
             outputDeviceId,
-            channel,
-            configuredChannels
+            channel
         );
         const outputChannels = outputRoute.outputChannels;
         this.whiteNoiseDestination = outputRoute.mediaStreamDestination;
@@ -300,11 +297,19 @@ function setNoiseLevel(levelDb) {
  * @param {string} channel - Output channel ('left', 'right', 'all', or specific channel number '2'-'7')
  * @param {number} minFreq - Lower frequency bound of the sweep in Hz (default 20)
  * @param {number} maxFreq - Upper frequency bound of the sweep in Hz (default 20000)
+ * @param {boolean} bandLimited - Whether to limit the sweep to minFreq/maxFreq
  * @returns {{left: Float32Array, right: Float32Array, length: number, frequencyResponse: Array, peakOffset: number,
  *   inverseFilter: Float32Array
  * }}
  */
-function generateTSP(length = 65536, sampleRate = 48000, channel = 'all', minFreq = 20, maxFreq = 20000) {
+function generateTSP(
+    length = 65536,
+    sampleRate = 48000,
+    channel = 'all',
+    minFreq = 20,
+    maxFreq = 20000,
+    bandLimited = true
+) {
     if (!this.initialized) {
         return null;
     }
@@ -316,19 +321,28 @@ function generateTSP(length = 65536, sampleRate = 48000, channel = 'all', minFre
     const N = 1 << Math.ceil(Math.log2(length));
     const halfN = N >>> 1;
 
-    // Clamp and sanitize band limits. Allow the usable range [1, Nyquist - 1] Hz.
+    // Clamp and sanitize limited sweeps. Unlimited sweeps use every FFT bin
+    // from the first non-DC bin through the bin immediately below Nyquist.
     const nyquist = sampleRate / 2;
     const nyquistLimit = Math.max(2, Math.floor(nyquist) - 1);
-    const fLo = Math.max(1, Math.min(minFreq, nyquistLimit - 1));
-    const fHi = Math.max(fLo + 1, Math.min(maxFreq, nyquistLimit));
+    const fLo = bandLimited
+        ? Math.max(1, Math.min(minFreq, nyquistLimit - 1))
+        : sampleRate / N;
+    const fHi = bandLimited
+        ? Math.max(fLo + 1, Math.min(maxFreq, nyquistLimit))
+        : (halfN - 1) * sampleRate / N;
 
     // Record sweep band on the instance so analysis code can reference it
     this.sweepMinFreq = fLo;
     this.sweepMaxFreq = fHi;
 
     // Translate band limits to FFT bin indices
-    const kLo = Math.max(1, Math.floor(fLo * N / sampleRate));
-    const kHi = Math.min(halfN - 1, Math.ceil(fHi * N / sampleRate));
+    const kLo = bandLimited
+        ? Math.max(1, Math.floor(fLo * N / sampleRate))
+        : 1;
+    const kHi = bandLimited
+        ? Math.min(halfN - 1, Math.ceil(fHi * N / sampleRate))
+        : halfN - 1;
 
     // Compute raised-cosine taper lengths outside the flat band.
     // The specified band [kLo, kHi] stays at unity gain; outside, a short
@@ -381,6 +395,12 @@ function generateTSP(length = 65536, sampleRate = 48000, channel = 'all', minFre
         invImag[k] = -s;       // Negative sign for inverse filter
         invReal[N - k] = c;    // Conjugate symmetric
         invImag[N - k] = s;    // Positive for complex conjugate
+    }
+
+    if (!bandLimited) {
+        // Match the legacy full-band TSP spectrum at DC and Nyquist as well.
+        real[0] = 1;
+        real[halfN] = 1;
     }
 
     // Create FFT processor

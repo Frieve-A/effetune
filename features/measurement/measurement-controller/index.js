@@ -13,10 +13,32 @@ import SweepMeasurement from './sweep-measurement.js';
 import AudioProcessing from './audio-processing.js';
 import GraphUtils from './graph-utils.js';
 
-class MeasurementController {
+export class MeasurementSetupError extends Error {
+    constructor(code) {
+        super(code);
+        this.name = 'MeasurementSetupError';
+        this.code = code;
+    }
+}
+
+function isValidCalibrationImpulseResponse(record) {
+    return record &&
+        record.data instanceof Float32Array &&
+        record.data.length > 0 &&
+        record.data.every(sample => Number.isFinite(sample)) &&
+        Number.isFinite(record.sampleRate) &&
+        record.sampleRate > 0 &&
+        Number.isSafeInteger(record.onsetIndex) &&
+        record.onsetIndex >= 0 &&
+        record.onsetIndex < record.data.length;
+}
+
+export class MeasurementController {
     constructor() {
         this.currentMeasurement = null;
         this.measurementConfig = null;
+        this.interfaceCalibrationImpulseResponse = null;
+        this.startMeasurementPromise = null;
         this.currentSweepIndex = 0;
         this.sweepMeasurements = [];
         this.levelMeterInterval = null;
@@ -45,11 +67,6 @@ class MeasurementController {
             // Setup back button event listeners
             document.getElementById('backFromLevelBtn').addEventListener('click', () => {
                 this.returnToConfigScreen();
-            });
-            
-            document.getElementById('backFromSweepBtn').addEventListener('click', () => {
-                this.cancelMeasurement();
-                this.returnToLevelAdjustmentScreen();
             });
         } catch (error) {
             console.error('Failed to initialize audio:', error);
@@ -89,15 +106,36 @@ class MeasurementController {
      * Start a new measurement with the given configuration
      * @param {Object} config - Measurement configuration
      */
-    async startNewMeasurement(config) {
+    startNewMeasurement(config) {
+        if (this.startMeasurementPromise) return this.startMeasurementPromise;
+
+        const operation = (async () => {
+            try {
+                return await this.startNewMeasurementOperation(config);
+            } finally {
+                if (this.startMeasurementPromise === operation) {
+                    this.startMeasurementPromise = null;
+                }
+            }
+        })();
+        this.startMeasurementPromise = operation;
+        return operation;
+    }
+
+    async startNewMeasurementOperation(config) {
+        const previousState = {
+            measurementConfig: this.measurementConfig,
+            currentMeasurement: this.currentMeasurement,
+            interfaceCalibrationImpulseResponse: this.interfaceCalibrationImpulseResponse
+        };
         if (this.isRunningMeasurement) {
             this.cancelMeasurement();
         }
-        
-        this.measurementConfig = config;
+
+        const configSnapshot = structuredClone(config);
         
         // Get preferred sample rate from config
-        const preferredSampleRate = parseInt(config.sampleRate);
+        const preferredSampleRate = parseInt(configSnapshot.sampleRate);
         
         // Reinitialize audio context with preferred sample rate
         if (audioUtils.audioContext && audioUtils.audioContext.sampleRate !== preferredSampleRate) {
@@ -118,27 +156,105 @@ class MeasurementController {
         // Get actual sample rate that will be used
         const actualSampleRate = audioUtils.audioContext ? audioUtils.audioContext.sampleRate : preferredSampleRate;
         
-        // Clamp sweep min/max frequency to [1, Nyquist - 1] of the actual sample rate
+        // Clamp a limited sweep to the configured band. An unlimited sweep uses
+        // every representable non-DC FFT bin for the selected sweep length.
         const nyquistLimit = Math.max(2, Math.floor(actualSampleRate / 2) - 1);
-        const sweepMinFreq = Math.max(1, Math.min(parseFloat(config.sweepMinFreq) || 20, nyquistLimit - 1));
-        const requestedMax = parseFloat(config.sweepMaxFreq) || 20000;
-        const sweepMaxFreq = Math.max(sweepMinFreq + 1, Math.min(requestedMax, nyquistLimit));
+        const sweepBandLimited = configSnapshot.sweepBandLimited !== false;
+        const requestedSweepLength = parseInt(configSnapshot.sweepLength);
+        const sweepFftLength = 1 << Math.ceil(Math.log2(requestedSweepLength));
+        let sweepMinFreq;
+        let sweepMaxFreq;
+        if (sweepBandLimited) {
+            sweepMinFreq = Math.max(1, Math.min(
+                parseFloat(configSnapshot.sweepMinFreq) || 20,
+                nyquistLimit - 1
+            ));
+            const requestedMax = parseFloat(configSnapshot.sweepMaxFreq) || 20000;
+            sweepMaxFreq = Math.max(sweepMinFreq + 1, Math.min(requestedMax, nyquistLimit));
+        } else {
+            sweepMinFreq = actualSampleRate / sweepFftLength;
+            sweepMaxFreq = (sweepFftLength / 2 - 1) *
+                actualSampleRate / sweepFftLength;
+        }
+
+        let calibrationImpulseResponse = null;
+        let interfaceCalibration = null;
+        if (configSnapshot.interfaceCalibration) {
+            const {
+                sourceMeasurementId,
+                sourcePointId
+            } = configSnapshot.interfaceCalibration;
+            const sourceMeasurement = typeof sourceMeasurementId === 'string'
+                ? dataStorage.getMeasurementById(sourceMeasurementId)
+                : null;
+            const sourcePoint = sourceMeasurement?.points?.find(
+                point => point.pointId === sourcePointId
+            );
+            if (!sourceMeasurement ||
+                sourceMeasurement.interfaceCalibration !== undefined ||
+                !Number.isFinite(sourceMeasurement.sampleRate) ||
+                !Number.isSafeInteger(sourcePointId) ||
+                !sourcePoint?.ir?.stored) {
+                throw new MeasurementSetupError('interfaceCalibrationUnavailable');
+            }
+
+            const storedImpulseResponse = await dataStorage.getImpulseResponse(
+                sourceMeasurementId,
+                sourcePointId
+            );
+            if (!isValidCalibrationImpulseResponse(storedImpulseResponse)) {
+                throw new MeasurementSetupError('interfaceCalibrationUnavailable');
+            }
+            if (sourceMeasurement.sampleRate !== actualSampleRate ||
+                storedImpulseResponse.sampleRate !== actualSampleRate) {
+                throw new MeasurementSetupError('interfaceCalibrationSampleRateMismatch');
+            }
+
+            const sourceNyquistLimit = Math.max(
+                2,
+                Math.floor(sourceMeasurement.sampleRate / 2) - 1
+            );
+            const sourceSweepMin = Number.isFinite(sourceMeasurement.sweepMinFreq)
+                ? sourceMeasurement.sweepMinFreq
+                : 20;
+            const sourceSweepMax = Number.isFinite(sourceMeasurement.sweepMaxFreq)
+                ? sourceMeasurement.sweepMaxFreq
+                : Math.min(20000, sourceNyquistLimit);
+            if (sourceSweepMin > sweepMinFreq || sourceSweepMax < sweepMaxFreq) {
+                throw new MeasurementSetupError('interfaceCalibrationSweepRangeMismatch');
+            }
+
+            calibrationImpulseResponse = {
+                ...storedImpulseResponse,
+                data: Float32Array.from(storedImpulseResponse.data)
+            };
+            interfaceCalibration = {
+                sourceMeasurementId,
+                sourcePointId,
+                sourceMeasurementName: sourceMeasurement.name,
+                sourcePointName: sourcePoint.name ||
+                    `Point ${sourceMeasurement.points.indexOf(sourcePoint) + 1}`,
+                sourceTimestamp: sourceMeasurement.timestamp || '',
+                sampleRate: actualSampleRate
+            };
+        }
 
         // Create new measurement object with actual sample rate
-        this.currentMeasurement = {
+        const measurement = {
             id: dataStorage.generateId(),
-            name: config.name,
+            name: configSnapshot.name,
             timestamp: new Date().toISOString(),
-            audioInput: config.audioInput,
-            inputChannel: config.inputChannel,
-            audioOutput: config.audioOutput,
-            outputChannel: config.outputChannel,
+            audioInput: configSnapshot.audioInput,
+            inputChannel: configSnapshot.inputChannel,
+            audioOutput: configSnapshot.audioOutput,
+            outputChannel: configSnapshot.outputChannel,
             requestedSampleRate: preferredSampleRate, // Store the requested rate
             sampleRate: actualSampleRate, // Store the actual rate used
-            sweepLength: config.sweepLength,
+            sweepLength: configSnapshot.sweepLength,
+            sweepBandLimited,
             sweepMinFreq: sweepMinFreq,
             sweepMaxFreq: sweepMaxFreq,
-            averaging: config.averaging,
+            averaging: configSnapshot.averaging,
             points: [],
             nextPointId: 0,
             correctionLowFreq: 20,
@@ -146,17 +262,29 @@ class MeasurementController {
             smoothing: 0.3,
             eqBandCount: 5
         };
+        if (interfaceCalibration) measurement.interfaceCalibration = interfaceCalibration;
+
+        this.measurementConfig = configSnapshot;
+        this.currentMeasurement = measurement;
+        this.interfaceCalibrationImpulseResponse = calibrationImpulseResponse;
         
-        // Clear any previous measurement display
-        if (document.getElementById('measurementResults')) {
-            document.getElementById('measurementResults').style.display = 'none';
+        try {
+            await this.prepareForLevelAdjustment();
+        } catch (error) {
+            this.cleanup();
+            this.measurementConfig = previousState.measurementConfig;
+            this.currentMeasurement = previousState.currentMeasurement;
+            this.interfaceCalibrationImpulseResponse =
+                previousState.interfaceCalibrationImpulseResponse;
+            throw error;
         }
-        if (document.getElementById('noMeasurementMessage')) {
-            document.getElementById('noMeasurementMessage').style.display = 'block';
-        }
-        
-        // Prepare for level adjustment
-        this.prepareForLevelAdjustment();
+
+        // Clear any previous measurement display only after setup succeeds.
+        const measurementResults = document.getElementById('measurementResults');
+        if (measurementResults) measurementResults.style.display = 'none';
+        const noMeasurementMessage = document.getElementById('noMeasurementMessage');
+        if (noMeasurementMessage) noMeasurementMessage.style.display = 'block';
+        return measurement;
     }
 
     /**

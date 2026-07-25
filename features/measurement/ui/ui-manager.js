@@ -32,6 +32,7 @@ export class UIManager {
         this.graphRenderer = new GraphRenderer(this);
         this.correctionHandler = new CorrectionHandler(this);
         this.dialogController = new DialogController(this);
+        this.configControlDisabledStates = new Map();
     }
 
     /**
@@ -82,6 +83,8 @@ export class UIManager {
      * Initialize all event listeners
      */
     initializeEventListeners() {
+        this.graphRenderer.initializeImpulseResponseGraph();
+
         // Navigation buttons
         document.getElementById('newMeasurementBtn').addEventListener('click', () => this.startNewMeasurement());
         document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importInput').click());
@@ -257,6 +260,22 @@ export class UIManager {
             document.querySelector('.main-content')?.scrollIntoView({ behavior: 'smooth' });
         }
     }
+
+    setConfigFormBusy(form, busy) {
+        if (busy) {
+            if (this.configControlDisabledStates.size > 0) return;
+            for (const control of form.elements) {
+                this.configControlDisabledStates.set(control, control.disabled);
+                control.disabled = true;
+            }
+            return;
+        }
+
+        for (const [control, wasDisabled] of this.configControlDisabledStates) {
+            control.disabled = wasDisabled;
+        }
+        this.configControlDisabledStates.clear();
+    }
     
     /**
      * Clean up audio resources before navigation
@@ -349,6 +368,59 @@ export class UIManager {
     prepareConfigScreen() {
         // Clear previous values
         document.getElementById('measurementName').value = '';
+
+        const calibrationSelect = document.getElementById('interfaceCalibration');
+        const calibrationHelp = document.getElementById('interfaceCalibrationHelp');
+        const noCalibrationOption = document.createElement('option');
+        noCalibrationOption.value = '';
+        noCalibrationOption.textContent = i18n.t('option:noInterfaceCalibration') ||
+            'None (uncalibrated)';
+        calibrationSelect.replaceChildren(noCalibrationOption);
+
+        let candidateCount = 0;
+        if (dataStorage.irPersistenceAvailable !== false) {
+            for (const measurement of dataStorage.getAllMeasurements()) {
+                if (measurement.interfaceCalibration !== undefined ||
+                    typeof measurement.id !== 'string' ||
+                    !Number.isFinite(measurement.sampleRate) ||
+                    !Array.isArray(measurement.points)) {
+                    continue;
+                }
+                for (let pointIndex = 0; pointIndex < measurement.points.length; pointIndex += 1) {
+                    const point = measurement.points[pointIndex];
+                    if (!Number.isSafeInteger(point?.pointId) || point.ir?.stored !== true) {
+                        continue;
+                    }
+                    const option = document.createElement('option');
+                    option.value = JSON.stringify([measurement.id, point.pointId]);
+                    const timestamp = new Date(measurement.timestamp);
+                    const date = Number.isFinite(timestamp.getTime())
+                        ? timestamp.toLocaleDateString()
+                        : '';
+                    const sampleRate = `${measurement.sampleRate / 1000} kHz`;
+                    option.textContent = i18n.t('option:interfaceCalibrationPoint', {
+                        measurement: measurement.name,
+                        point: point.name || `Point ${pointIndex + 1}`,
+                        date,
+                        sampleRate
+                    }) || `${measurement.name} — ${point.name || `Point ${pointIndex + 1}`} (${date}, ${sampleRate})`;
+                    calibrationSelect.appendChild(option);
+                    candidateCount += 1;
+                }
+            }
+        }
+
+        calibrationSelect.disabled = candidateCount === 0;
+        if (dataStorage.irPersistenceAvailable === false) {
+            calibrationHelp.textContent = i18n.t('help:interfaceCalibrationUnavailable') ||
+                'Audio interface calibration is unavailable because impulse responses cannot be saved in this browser.';
+        } else if (candidateCount === 0) {
+            calibrationHelp.textContent = i18n.t('help:noInterfaceCalibrationCandidates') ||
+                'Save an uncalibrated measurement point with an impulse response before using audio interface calibration.';
+        } else {
+            calibrationHelp.textContent = i18n.t('help:interfaceCalibration') ||
+                'Use a saved loopback measurement to remove the audio interface response. Keep the same interface, input/output channels, sampling rate, and input/output gains, and do not change the gains after the calibration measurement.';
+        }
         
         // Show the configuration screen
         this.showScreen('measurementConfigScreen');

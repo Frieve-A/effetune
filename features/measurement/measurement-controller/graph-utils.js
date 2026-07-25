@@ -4,6 +4,9 @@
 
 import audioUtils from '../audio-utils/index.js';
 import i18n from '../i18n.js';
+import {
+    normalizeResponseToZeroDb as normalizeFrequencyResponseToZeroDb
+} from '../response-normalization.js';
 
 const GraphUtils = {
     /**
@@ -232,8 +235,12 @@ const GraphUtils = {
         const minDb = -24;
         const maxDb = 24;
         
-        // Normalize frequencyResponse to average 0dB
-        const normalizedResponse = this.normalizeResponseToZeroDb([...frequencyResponse]);
+        // Normalize to the median level inside the measured audible band
+        const normalizedResponse = this.normalizeResponseToZeroDb(
+            [...frequencyResponse],
+            this.currentMeasurement?.sweepMinFreq,
+            this.currentMeasurement?.sweepMaxFreq
+        );
         
         // Setup scales
         const scaleX = (freq) => {
@@ -334,22 +341,18 @@ const GraphUtils = {
     },
     
     /**
-     * Normalize frequency response curve to have an average of 0dB
+     * Normalize frequency response to the measured audible-band median
      * @param {Array} response - Frequency response data as [[freq, db], ...]
+     * @param {number} minFrequency - Measured lower frequency limit
+     * @param {number} maxFrequency - Measured upper frequency limit
      * @returns {Array} Normalized frequency response
      */
-    normalizeResponseToZeroDb(response) {
-        if (!response || response.length === 0) return response;
-        
-        // Calculate the average dB value across all frequencies
-        let sum = 0;
-        for (const [_, db] of response) {
-            sum += db;
-        }
-        const avgDb = sum / response.length;
-        
-        // Normalize by shifting all values by the negative of the average
-        return response.map(([freq, db]) => [freq, db - avgDb]);
+    normalizeResponseToZeroDb(response, minFrequency, maxFrequency) {
+        return normalizeFrequencyResponseToZeroDb(
+            response,
+            minFrequency,
+            maxFrequency
+        );
     },
     
     /**

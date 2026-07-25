@@ -3,9 +3,8 @@ import test from 'node:test';
 
 import {
   MeasurementOutputError,
+  getMeasurementOutputChannelCount,
   getRequiredOutputChannelCount,
-  loadConfiguredOutputChannels,
-  normalizeOutputChannelCount,
   prepareMeasurementOutputRoute,
   releaseMeasurementOutputRoute
 } from '../../features/measurement/audio-utils/output-routing.js';
@@ -27,47 +26,20 @@ function createDestination(maxChannelCount = 8) {
 }
 
 test('measurement output channel counts use only supported complete layouts', () => {
-  assert.equal(normalizeOutputChannelCount(2), 2);
-  assert.equal(normalizeOutputChannelCount('4'), 4);
-  assert.equal(normalizeOutputChannelCount(6), 6);
-  assert.equal(normalizeOutputChannelCount(8), 8);
-  assert.equal(normalizeOutputChannelCount(3), 2);
-  assert.equal(normalizeOutputChannelCount(undefined), 2);
-
   assert.equal(getRequiredOutputChannelCount('left'), 2);
   assert.equal(getRequiredOutputChannelCount('right'), 2);
   assert.equal(getRequiredOutputChannelCount('2'), 4);
   assert.equal(getRequiredOutputChannelCount('4'), 6);
   assert.equal(getRequiredOutputChannelCount('6'), 8);
   assert.equal(getRequiredOutputChannelCount('all'), 2);
-});
-
-test('measurement output loads the normal Electron output channel setting', async () => {
-  const calls = [];
-  const windowRef = {
-    electronAPI: {
-      async loadAudioPreferences() {
-        calls.push('load');
-        return { success: true, preferences: { outputChannels: 6 } };
-      }
-    }
-  };
-
-  assert.equal(await loadConfiguredOutputChannels(windowRef), 6);
-  assert.deepEqual(calls, ['load']);
-});
-
-test('measurement output loads the normal web output channel setting', async () => {
-  const windowRef = {
-    localStorage: {
-      getItem(key) {
-        assert.equal(key, 'effetune_audio_preferences');
-        return JSON.stringify({ outputChannels: 8 });
-      }
-    }
-  };
-
-  assert.equal(await loadConfiguredOutputChannels(windowRef), 8);
+  assert.equal(getMeasurementOutputChannelCount('left', 8), 2);
+  assert.equal(getMeasurementOutputChannelCount('2', 8), 4);
+  assert.equal(getMeasurementOutputChannelCount('4', 8), 6);
+  assert.equal(getMeasurementOutputChannelCount('6', 8), 8);
+  assert.equal(getMeasurementOutputChannelCount('all', 2), 2);
+  assert.equal(getMeasurementOutputChannelCount('all', 4), 4);
+  assert.equal(getMeasurementOutputChannelCount('all', 6), 6);
+  assert.equal(getMeasurementOutputChannelCount('all', 8), 8);
 });
 
 test('direct measurement output selects the requested device before configuring its layout', async () => {
@@ -85,8 +57,7 @@ test('direct measurement output selects the requested device before configuring 
   const route = await prepareMeasurementOutputRoute(
     audioContext,
     'speaker-4ch',
-    '2',
-    4
+    '2'
   );
 
   assert.equal(route.mode, 'direct');
@@ -110,7 +81,7 @@ test('direct measurement output returns an existing context to the default devic
     }
   };
 
-  await prepareMeasurementOutputRoute(audioContext, 'default', 'left', 2);
+  await prepareMeasurementOutputRoute(audioContext, 'default', 'left');
 
   assert.deepEqual(calls, ['']);
   assert.equal(audioContext.sinkId, '');
@@ -129,32 +100,14 @@ test('direct measurement output does not reopen an already selected device', asy
   const route = await prepareMeasurementOutputRoute(
     audioContext,
     'speaker-4ch',
-    '2',
-    4
+    '2'
   );
 
   assert.equal(route.mode, 'direct');
   assert.equal(destination.channelCount, 4);
 });
 
-test('measurement output rejects a selected channel outside the configured layout', async () => {
-  const calls = [];
-  const audioContext = {
-    destination: createDestination(8),
-    async setSinkId(sinkId) {
-      calls.push(sinkId);
-    }
-  };
-
-  await assert.rejects(
-    prepareMeasurementOutputRoute(audioContext, 'speaker', '2', 2),
-    error => error instanceof MeasurementOutputError &&
-      /Ch 3 requires at least 4 output channels/.test(error.message)
-  );
-  assert.deepEqual(calls, []);
-});
-
-test('measurement output rejects a configured layout unsupported by the selected device', async () => {
+test('measurement output rejects a selected channel unsupported by the selected device', async () => {
   const destination = createDestination(2);
   const calls = [];
   const audioContext = {
@@ -165,7 +118,7 @@ test('measurement output rejects a configured layout unsupported by the selected
   };
 
   await assert.rejects(
-    prepareMeasurementOutputRoute(audioContext, 'stereo-device', 'left', 4),
+    prepareMeasurementOutputRoute(audioContext, 'stereo-device', '2'),
     error => error instanceof MeasurementOutputError &&
       /supports 2 channels/.test(error.message)
   );
@@ -183,7 +136,7 @@ test('multichannel measurement output never falls back to an audio element', asy
   };
 
   await assert.rejects(
-    prepareMeasurementOutputRoute(audioContext, 'speaker', 'left', 4),
+    prepareMeasurementOutputRoute(audioContext, 'speaker', '2'),
     error => error instanceof MeasurementOutputError &&
       /cannot send multichannel measurement audio directly/.test(error.message)
   );
@@ -227,7 +180,6 @@ test('stereo measurement output retains the exact-device compatibility fallback'
     audioContext,
     'stereo-device',
     'right',
-    2,
     { AudioConstructor: FakeAudio }
   );
 
@@ -293,7 +245,6 @@ test('a stalled stereo element device selection times out and cleans up', async 
       audioContext,
       'stalled-stereo-device',
       'left',
-      2,
       { AudioConstructor: StalledAudio, setSinkIdTimeoutMs: 1 }
     ),
     error => error instanceof MeasurementOutputError &&
@@ -320,7 +271,7 @@ test('a failed direct device selection is reported without changing devices', as
   };
 
   await assert.rejects(
-    prepareMeasurementOutputRoute(audioContext, 'missing-device', 'left', 2),
+    prepareMeasurementOutputRoute(audioContext, 'missing-device', 'left'),
     error => error instanceof MeasurementOutputError &&
       !error.message.includes('raw device failure') &&
       /could not be opened/.test(error.message)
@@ -347,7 +298,6 @@ test('a stalled direct device selection times out without falling back', async (
       audioContext,
       'stalled-device',
       'left',
-      2,
       { setSinkIdTimeoutMs: 1 }
     ),
     error => error instanceof MeasurementOutputError &&
@@ -357,9 +307,9 @@ test('a stalled direct device selection times out without falling back', async (
   assert.equal(destination.channelCount, 2);
 });
 
-test('white-noise level adjustment uses the direct full-layout route', async () => {
+test('stereo measurement ignores EffeTune main app four-channel output setting', async () => {
   const previousWindow = globalThis.window;
-  const destination = createDestination(8);
+  const destination = createDestination(2);
   const createdBuffers = [];
   const createdMergers = [];
   const sinkIds = [];
@@ -436,14 +386,17 @@ test('white-noise level adjustment uses the direct full-layout route', async () 
 
   globalThis.window = { audioPreferences: { outputChannels: 4 } };
   try {
-    assert.equal(await startWhiteNoise.call(harness, -12, 'speaker-4ch', '2'), true);
-    assert.deepEqual(sinkIds, ['speaker-4ch']);
-    assert.equal(destination.channelCount, 4);
+    assert.equal(await startWhiteNoise.call(harness, -12, 'stereo-device', 'all'), true);
+    assert.deepEqual(sinkIds, ['stereo-device']);
+    assert.equal(destination.channelCount, 2);
     assert.equal(createdBuffers.length, 1);
     assert.equal(createdBuffers[0].channelCount, 1);
     assert.equal(createdMergers.length, 1);
-    assert.equal(createdMergers[0].channelCount, 4);
-    assert.deepEqual(gain.connections, [[createdMergers[0], 0, 2]]);
+    assert.equal(createdMergers[0].channelCount, 2);
+    assert.deepEqual(gain.connections, [
+      [createdMergers[0], 0, 0],
+      [createdMergers[0], 0, 1]
+    ]);
     assert.deepEqual(createdMergers[0].connections, [[destination]]);
     assert.equal(source.started, true);
 

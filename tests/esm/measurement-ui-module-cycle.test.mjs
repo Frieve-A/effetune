@@ -65,3 +65,65 @@ test('new measurement startup serializes audio initialization and device populat
     /await window\.app\.initializeAudio\(\);\s+await window\.app\.populateAudioDevices\(\);/
   );
 });
+
+test('measurement setup failure restores every configuration control', () => {
+  const appSource = readFileSync(
+    new URL('../../features/measurement/app.js', import.meta.url),
+    'utf8'
+  );
+  const submitStart = appSource.indexOf(
+    "document.getElementById('configForm').addEventListener('submit'"
+  );
+  const submitEnd = appSource.indexOf('// White noise toggle button', submitStart);
+  const submitSource = appSource.slice(submitStart, submitEnd);
+
+  assert.notEqual(submitStart, -1);
+  assert.match(submitSource, /uiManager\.setConfigFormBusy\(configForm, true\);/);
+  assert.match(
+    submitSource,
+    /finally \{[\s\S]*?configSubmissionPromise = null;[\s\S]*?uiManager\.setConfigFormBusy\(configForm, false\);/
+  );
+});
+
+test('back-from-sweep transition has one single-flight owner with retryable cleanup', () => {
+  const appSource = readFileSync(
+    new URL('../../features/measurement/app.js', import.meta.url),
+    'utf8'
+  );
+  const controllerSource = readFileSync(
+    new URL('../../features/measurement/measurement-controller/index.js', import.meta.url),
+    'utf8'
+  );
+
+  assert.equal(
+    [...appSource.matchAll(/backFromSweepButton\.addEventListener/g)].length,
+    1
+  );
+  assert.doesNotMatch(controllerSource, /backFromSweepBtn/);
+  const transitionStart = appSource.indexOf(
+    "const backFromSweepButton = document.getElementById('backFromSweepBtn');"
+  );
+  const transitionEnd = appSource.indexOf(
+    '// Add window beforeunload event',
+    transitionStart
+  );
+  const transitionSource = appSource.slice(transitionStart, transitionEnd);
+  const guardIndex = transitionSource.indexOf(
+    'if (backFromSweepTransitionPromise) return;'
+  );
+  const cancelIndex = transitionSource.indexOf(
+    'measurementController.cancelMeasurement();'
+  );
+
+  assert.notEqual(transitionStart, -1);
+  assert.ok(guardIndex >= 0 && guardIndex < cancelIndex);
+  assert.match(transitionSource, /backFromSweepButton\.disabled = true;/);
+  assert.match(
+    transitionSource,
+    /Promise\.resolve\(\)\.then\(async \(\) =>[\s\S]*?await measurementController\.prepareForLevelAdjustment\(\)/
+  );
+  assert.match(
+    transitionSource,
+    /finally \{[\s\S]*?backFromSweepTransitionPromise = null;[\s\S]*?backFromSweepButton\.disabled = false;/
+  );
+});

@@ -1,4 +1,14 @@
 {
+  "title:impulseResponse": "脉冲响应",
+  "axis:impulseTime": "时间（ms）",
+  "axis:normalizedAmplitude": "归一化幅度",
+  "button:zoomOut": "缩小",
+  "button:zoomIn": "放大",
+  "button:resetZoom": "重置",
+  "button:exportImpulseResponseWav": "导出脉冲响应 (WAV)",
+  "error:measurementExportFailed": "无法导出测量结果。请重试。",
+  "label:impulseTimePosition": "时间位置",
+  "help:impulseResponseGraph": "幅度已按响应峰值归一化。使用鼠标滚轮或按钮缩放时间轴，拖动图形或使用滑块沿时间方向滚动。",
 // Measurement History Section
 "button:newMeasurement": "+ 新测量", // Button to start a new measurement
 "button:import": "导入", // Import button for loading saved measurements
@@ -21,12 +31,21 @@
 "help:sampleRate": "指定测量时的采样频率。", // Help text for sample rate
 "label:sweepLength": "扫描长度（采样点）：", // Label for sweep length selection
 "help:sweepLength": "指定测量信号的采样长度。", // Help text for sweep length
+"label:sweepBandLimited": "限制扫描带宽",
+"help:sweepBandLimited": "启用时，TSP 和测试信号会限制在下方的频率范围内。禁用时，TSP 会在全部可用带宽内播放。",
 "label:sweepMinFreq": "扫描最低频率（Hz）：", // Label for sweep minimum frequency
 "help:sweepMinFreq": "扫描信号的最低频率（Hz）。可从 1 Hz 设置到所选采样频率的奈奎斯特频率以下。测试信号也会被限制在此频带。（默认：20 Hz）", // Help text for sweep min frequency
 "label:sweepMaxFreq": "扫描最高频率（Hz）：", // Label for sweep maximum frequency
 "help:sweepMaxFreq": "扫描信号的最高频率（Hz）。超过所选采样频率的奈奎斯特频率的值会被自动限制。测试信号也会被限制在此频带。（默认：20000 Hz）", // Help text for sweep max frequency
 "label:averaging": "同步平均：", // Label for synchronous averaging selection
 "help:averaging": "指定在同一测量点重复测量的次数，以提高测量精度。", // Help text for averaging
+"label:interfaceCalibration": "音频接口校准：",
+"option:noInterfaceCalibration": "无（未校准）",
+"option:interfaceCalibrationPoint": "{measurement} — {point}（{date}，{sampleRate}）",
+"help:interfaceCalibration": "使用已保存的环回测量来消除音频接口的响应。请保持相同的接口、输入和输出通道、采样率以及输入和输出增益，并且不要在校准测量后更改增益。",
+"help:noInterfaceCalibrationCandidates": "使用音频接口校准前，请先保存一个带脉冲响应的未校准测量点。",
+"help:interfaceCalibrationUnavailable": "此浏览器无法保存脉冲响应，因此不能使用音频接口校准。",
+"label:appliedInterfaceCalibration": "音频接口校准",
 "button:next": "下一步", // Next button in configuration form to move to the Level Adjustment Screen
 
 // Level Adjustment Screen
@@ -97,6 +116,12 @@
 "error:confirmationDialogNotFound": "未在 DOM 中找到确认对话框元素", // Error when confirmation dialog not found
 "error:notificationDialogNotFound": "未在 DOM 中找到通知对话框元素", // Error when notification dialog not found
 "error:noPEQSettings": "此测量没有可用的 PEQ 设置", // Error when no PEQ settings available
+"error:interfaceCalibrationUnavailable": "所选校准数据已不可用。请选择其他测量点。",
+"error:interfaceCalibrationSampleRateMismatch": "所选校准数据使用了不同的采样率。请选择以相同采样率录制的数据。",
+"error:interfaceCalibrationSweepRangeMismatch": "所选校准数据未覆盖此扫描范围。请缩小扫描范围或选择其他数据。",
+"error:interfaceCalibrationProcessingFailed": "无法完成校准测量。请检查连接和设置，然后重新测量此点。",
+"error:measurementSetupFailed": "无法准备测量。请检查音频设备后重试。",
+"error:levelAdjustmentFailed": "无法准备音频输入。请检查输入设备后重试。",
 
 // Messages
 "message:peqCopied": "PEQ 设置已成功复制到剪贴板，可通过 Ctrl+V 将复制的设置粘贴到 EffeTune 的效果管道中。", // Success message for PEQ copy

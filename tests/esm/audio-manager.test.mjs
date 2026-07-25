@@ -1558,6 +1558,9 @@ test('builds, routes, selects, and disables parallel blind-test pipelines', asyn
     assert.equal(manager._parallelSelection, 'B');
     manager._parallelWorkletB.port.onmessage({ data: { ignored: true } });
     assert.equal(calls.some(call => call[0] === 'newAudioWorkletNode'), true);
+    const auxiliaryWorkletOptions = calls.find(call => call[0] === 'newAudioWorkletNode')?.[2];
+    assert.equal(auxiliaryWorkletOptions.channelCountMode, 'explicit');
+    assert.equal(auxiliaryWorkletOptions.channelInterpretation, 'discrete');
     assert.equal(calls.some(call => call[0] === 'postMessage' && call[2].type === 'updatePlugins'), true);
 
     assert.equal(await manager.enableParallelPipelines('A'), true);

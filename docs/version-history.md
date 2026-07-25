@@ -7,12 +7,11 @@ lang: en
 # Version History
 
 ### Version 2.2.0 (TBD, 2026)
-- Added Room EQ FIR room correction from saved measurements, with optional impulse-response data in measurement JSON exports
-- Added IR Reverb with imported impulse responses, true-stereo and multichannel routing, a persistent IR library, decay visualization, and missing-file/share warnings
-- Added a physics simulation-based Vinyl Simulator effect
-- Added a compact desktop mini player with artwork, transport and seek controls, repeat and shuffle controls, and an optional always-on-top mode
-- Added pinned Recently Played and Favorites playlists to Music Library
-- Added hierarchical Music Library folder browsing with direct tracks and switchable Tree and Flat views
+- Added Room EQ room correction based on saved measurements
+- Added IR Reverb using imported room and equipment impulse responses
+- Added Vinyl Simulator effect
+- Added a compact desktop mini player with artwork, playback controls, and an optional always-on-top mode
+- Improved Music Library with pinned Recently Played and Favorites playlists, hierarchical folder browsing, and Tree and Flat views
 - Various minor improvements
 
 ### Version 2.1.0 (Jul 17, 2026)

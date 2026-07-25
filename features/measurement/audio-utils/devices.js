@@ -38,6 +38,7 @@ async function enumerateDevices() {
  * @param {string} channel - The input channel to use ('left', 'right', 'both')
  */
 async function startMicrophoneInput(deviceId = null, channel = 'left') {
+    const useRightChannel = channel === 'right' || channel === 1;
     try {
         // Stop any existing microphone input
         this.stopMicrophoneInput();
@@ -55,7 +56,8 @@ async function startMicrophoneInput(deviceId = null, channel = 'left') {
                 deviceId: deviceId ? { exact: deviceId } : undefined,
                 echoCancellation: false,
                 noiseSuppression: false,
-                autoGainControl: false
+                autoGainControl: false,
+                ...(useRightChannel ? { channelCount: { min: 2 } } : {})
             }
         };
         
@@ -71,6 +73,13 @@ async function startMicrophoneInput(deviceId = null, channel = 'left') {
         
         // Create source from stream
         const micSource = this.audioContext.createMediaStreamSource(stream);
+        const actualChannelCount = tracks[0].getSettings?.().channelCount ??
+            micSource.channelCount;
+        if (useRightChannel && (!Number.isFinite(actualChannelCount) || actualChannelCount < 2)) {
+            throw new Error(
+                'The selected input device does not provide a right channel. Choose a stereo input device or select Left.'
+            );
+        }
         this.microphone = micSource;
         
         if (!this.microphone) {
@@ -86,6 +95,9 @@ async function startMicrophoneInput(deviceId = null, channel = 'left') {
         
         // Create a gain node to route only the selected channel
         this.channelGain = this.audioContext.createGain();
+        this.channelGain.channelCount = 1;
+        this.channelGain.channelCountMode = 'explicit';
+        this.channelGain.channelInterpretation = 'discrete';
         
         // Connect based on channel selection
         if (channel === 'left' || channel === 0) {
@@ -98,6 +110,8 @@ async function startMicrophoneInput(deviceId = null, channel = 'left') {
             // Both channels (mix to mono)
             const leftGain = this.audioContext.createGain();
             const rightGain = this.audioContext.createGain();
+            leftGain.gain.value = 0.5;
+            rightGain.gain.value = 0.5;
             this.channelSplitter.connect(leftGain, 0);
             this.channelSplitter.connect(rightGain, 1);
             leftGain.connect(this.channelGain);
@@ -109,7 +123,7 @@ async function startMicrophoneInput(deviceId = null, channel = 'left') {
         
         // Setup level meter with AudioWorklet
         try {
-            this.levelMeterNode = await this.createLevelMeterWorkletNode(this.selectedInputChannel);
+            this.levelMeterNode = await this.createLevelMeterWorkletNode();
             
             // Handle level meter messages
             this.levelMeterNode.port.onmessage = (event) => {
@@ -131,14 +145,19 @@ async function startMicrophoneInput(deviceId = null, channel = 'left') {
         return true;
     } catch (error) {
         console.error('Error starting microphone input:', error);
+
+        // Ensure microphone resources are cleaned up on error
+        this.stopMicrophoneInput();
         
         // If there's a permissions error, provide a more user-friendly message
         if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
             throw new Error('Microphone access is not allowed. Please allow microphone access in your browser settings.');
         }
-        
-        // Ensure microphone resources are cleaned up on error
-        this.stopMicrophoneInput();
+        if (useRightChannel && error.name === 'OverconstrainedError') {
+            throw new Error(
+                'The selected input device does not provide a right channel. Choose a stereo input device or select Left.'
+            );
+        }
         
         throw error;
     }
@@ -218,10 +237,9 @@ function stopMicrophoneInput() {
 
 /**
  * Create an AudioWorkletNode for level meter
- * @param {string} channel - Input channel ('left', 'right', 'both')
  * @returns {Promise<AudioWorkletNode>} AudioWorkletNode for level meter
  */
-async function createLevelMeterWorkletNode(channel = 'left') {
+async function createLevelMeterWorkletNode() {
     // Ensure AudioContext is running
     if (!this.audioContext) {
         throw new Error('AudioContext is not initialized');
@@ -244,9 +262,9 @@ async function createLevelMeterWorkletNode(channel = 'left') {
         const levelMeterNode = new AudioWorkletNode(this.audioContext, 'level-meter-processor', {
             numberOfInputs: 1,
             numberOfOutputs: 1,
-            processorOptions: {
-                channel: channel
-            }
+            channelCount: 1,
+            channelCountMode: 'explicit',
+            channelInterpretation: 'discrete'
         });
         
         return levelMeterNode;
@@ -257,11 +275,9 @@ async function createLevelMeterWorkletNode(channel = 'left') {
 
 /**
  * Create an AudioWorkletNode for recording
- * @param {string} deviceId - Device ID to use (null for default)
- * @param {string} channel - Input channel ('left', 'right', 'both')
  * @returns {Promise<AudioWorkletNode>} Created AudioWorkletNode
  */
-async function createRecorderWorkletNode(deviceId = null, channel = 'left') {
+async function createRecorderWorkletNode() {
     // Ensure AudioContext is running
     if (!this.audioContext) {
         throw new Error('AudioContext is not initialized');
@@ -284,9 +300,9 @@ async function createRecorderWorkletNode(deviceId = null, channel = 'left') {
         const recorderNode = new AudioWorkletNode(this.audioContext, 'recorder-processor', {
             numberOfInputs: 1,
             numberOfOutputs: 1,
-            processorOptions: {
-                channel: channel
-            }
+            channelCount: 1,
+            channelCountMode: 'explicit',
+            channelInterpretation: 'discrete'
         });
         
         // Verify the node was created successfully

@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
     DataStorage,
+    MeasurementExportError,
     MeasurementImportError,
     MeasurementLoadError
 } from '../../features/measurement/dataStorage.js';
@@ -252,6 +253,92 @@ test('IR-ON export imports synchronized metadata and binary availability', async
     assert.equal(binary.data[1], 0.75);
 });
 
+test('IR-ON export fails when the strict IR read fails', async () => {
+    const { storage } = createStorage();
+    storage.measurements = [exportableMeasurement()];
+    storage.getImpulseResponses = async (_measurementId, options) => {
+        assert.equal(options.strict, true);
+        throw new Error('Simulated IR read failure');
+    };
+
+    await assert.rejects(
+        storage.exportMeasurementToJSON('measurement-source', true),
+        error => error instanceof MeasurementExportError &&
+            /IR read failure/.test(error.cause.message)
+    );
+});
+
+test('IR-ON export requires one stored IR record for every advertised point', async () => {
+    const { storage } = createStorage();
+    storage.measurements = [exportableMeasurement()];
+    storage.getImpulseResponses = async () => [];
+
+    await assert.rejects(
+        storage.exportMeasurementToJSON('measurement-source', true),
+        error => error instanceof MeasurementExportError
+    );
+});
+
+test('calibrated measurement export and import retain provenance and corrected IR', async () => {
+    const provenance = {
+        sourceMeasurementId: 'measurement-loopback-original',
+        sourcePointId: 7,
+        sourceMeasurementName: 'Interface loopback',
+        sourcePointName: 'Left channel',
+        sourceTimestamp: '2026-07-24T12:00:00.000Z',
+        sampleRate: 48000
+    };
+    const sourceMeasurement = {
+        ...exportableMeasurement(),
+        interfaceCalibration: provenance
+    };
+    const { storage: source } = createStorage();
+    source.measurements = [sourceMeasurement];
+    source.getImpulseResponses = async () => [
+        impulseRecord('measurement-source', 0, 0.625)
+    ];
+    const json = await source.exportMeasurementToJSON('measurement-source', true);
+
+    const { storage: target, database } = createStorage();
+    target.generateId = () => 'measurement-calibrated-import';
+    assert.equal(
+        await target.importMeasurementFromJSON(json),
+        'measurement-calibrated-import'
+    );
+    const imported = target.getMeasurementById('measurement-calibrated-import');
+    assert.deepEqual(imported.interfaceCalibration, provenance);
+    assert.equal(imported.points[0].ir.stored, true);
+    assert.equal(database.impulseResponses.get(JSON.stringify([
+        'measurement-calibrated-import',
+        0
+    ])).data[1], 0.625);
+});
+
+test('calibration provenance remains display-only when importing without IR', async () => {
+    const provenance = {
+        sourceMeasurementId: 'measurement-source',
+        sourcePointId: 0,
+        sourceMeasurementName: 'Deleted later',
+        sourcePointName: 'Point 1',
+        sourceTimestamp: '2026-07-24T12:00:00.000Z',
+        sampleRate: 48000
+    };
+    const { storage: source } = createStorage();
+    source.measurements = [{
+        ...exportableMeasurement(),
+        interfaceCalibration: provenance
+    }];
+    const json = await source.exportMeasurementToJSON('measurement-source', false);
+
+    const { storage: target, database } = createStorage();
+    target.generateId = () => 'measurement-calibrated-metadata-only';
+    await target.importMeasurementFromJSON(json);
+    const imported = target.getMeasurementById('measurement-calibrated-metadata-only');
+    assert.deepEqual(imported.interfaceCalibration, provenance);
+    assert.equal(imported.points[0].ir, undefined);
+    assert.equal(database.impulseResponses.size, 0);
+});
+
 test('invalid embedded IR is ignored and cannot retain exported availability metadata', async () => {
     const { storage, database } = createStorage();
     storage.generateId = () => 'measurement-imported-invalid-ir';
@@ -295,6 +382,28 @@ test('bad JSON and bad measurement schema return validation failure without muta
         {
             points: [{ frequencyResponse: [[100, 1]] }],
             correctedResponse: [[-100, 1]]
+        },
+        {
+            points: [{ frequencyResponse: [[100, 1]] }],
+            interfaceCalibration: {
+                sourceMeasurementId: 'measurement-source',
+                sourcePointId: 'not-an-integer',
+                sourceMeasurementName: 'Source',
+                sourcePointName: 'Point',
+                sourceTimestamp: '2026-07-24T12:00:00.000Z',
+                sampleRate: 48000
+            }
+        },
+        {
+            points: [{ frequencyResponse: [[100, 1]] }],
+            interfaceCalibration: {
+                sourceMeasurementId: 'measurement-source',
+                sourcePointId: 0,
+                sourceMeasurementName: 'Source',
+                sourcePointName: 'Point',
+                sourceTimestamp: '2026-07-24T12:00:00.000Z',
+                sampleRate: 0
+            }
         }
     ]) {
         assert.equal(await storage.importMeasurementFromJSON(JSON.stringify({

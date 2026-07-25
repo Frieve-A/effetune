@@ -252,6 +252,10 @@ Pour mesurer la réponse en fréquence de votre système audio et créer une cor
 4. Générez une correction EQ paramétrique qui peut être importée directement dans EffeTune.
 5. Appliquez la correction pour obtenir une reproduction sonore plus précise et plus neutre.
 
+Pour retirer la réponse propre à l’interface audio, reliez directement sa sortie à son entrée et enregistrez cette boucle comme une mesure normale sans étalonnage, avec une réponse impulsionnelle. Lors de la mesure suivante, choisissez ce point dans **Étalonnage de l’interface audio**. Utilisez la même interface, les mêmes canaux d’entrée et de sortie, la même fréquence d’échantillonnage et les mêmes gains, sans modifier les gains après la mesure en boucle. Choisissez **Aucun (sans étalonnage)** pour effectuer une mesure sans cette correction.
+
+Les mesures contenant des données de réponse impulsionnelle affichent un graphique **Réponse impulsionnelle** normalisé dans les résultats. La vue initiale couvre 0 à 10 ms à partir du début détecté. Utilisez la molette ou les boutons pour modifier l’échelle temporelle, puis faites glisser le graphique ou utilisez le curseur pour vous déplacer. La sélection d’un point met le graphique à jour ; **Tous (moyenne)** affiche le premier point dont la réponse impulsionnelle a été enregistrée et l’identifie au-dessus du graphique. Utilisez **Exporter la réponse impulsionnelle (WAV)** sous le graphique pour enregistrer la réponse complète et non normalisée du point affiché dans un fichier WAV mono à virgule flottante 32 bits, à la fréquence d’échantillonnage de la mesure.
+
 ## Combinaisons d'effets courantes
 
 Voici quelques combinaisons d'effets populaires pour améliorer votre expérience d'écoute :

@@ -629,6 +629,44 @@ test('AudioManager replays retained assets once after configuring a recreated pr
   });
 });
 
+test('AudioManager routes assets completed after a same-node full pipeline replacement', async () => {
+  await withGlobals({ window: {} }, async () => {
+    const manager = createManager();
+    const main = createNode('main');
+    const previousPlugin = new AssetVolumePlugin(11, 'previous');
+    const restoredPlugin = new AssetVolumePlugin(12, 'restored', {
+      configured: true,
+      pending: true,
+      ready: false
+    });
+    manager.workletNode = main;
+    manager.contextManager = { workletNode: main };
+    manager.pipeline = [previousPlugin];
+
+    assert.equal(manager.syncPrimaryWasmAssetMembership(), true);
+    main.port.messages.length = 0;
+
+    manager.pipeline = [restoredPlugin];
+    assert.equal(manager.syncPrimaryWasmAssetMembership(), true);
+    restoredPlugin.completeAsset();
+
+    assert.equal(
+      main.port.messages.some(entry =>
+        entry.message.type === 'setPluginAsset' &&
+        entry.message.pluginId === restoredPlugin.id
+      ),
+      true
+    );
+    assert.equal(
+      main.port.messages.some(entry =>
+        entry.message.type === 'setPluginAsset' &&
+        entry.message.pluginId === previousPlugin.id
+      ),
+      false
+    );
+  });
+});
+
 test('AudioManager suppresses an old asset when a recreated node changes output format', async () => {
   await withGlobals({ window: {} }, async () => {
     const manager = createManager();

@@ -3,11 +3,31 @@
  */
 
 import dataStorage from '../dataStorage.js';
+import audioUtils from '../audio-utils/index.js';
 import i18n from '../i18n.js';
+import {
+    normalizeResponseToZeroDb as normalizeFrequencyResponseToZeroDb
+} from '../response-normalization.js';
+import {
+    clampImpulseView,
+    createDefaultImpulseView,
+    findImpulsePeak,
+    getImpulseTimeBounds,
+    getNiceTimeTickInterval,
+    isValidImpulseResponse,
+    sampleImpulseEnvelope
+} from './impulse-response-plot.js';
 
 class GraphRenderer {
     constructor(uiManager) {
         this.uiManager = uiManager;
+        this.impulseResponse = null;
+        this.impulseResponsePeak = 1;
+        this.impulseResponseView = null;
+        this.impulseResponseBounds = null;
+        this.impulseResponseLoadGeneration = 0;
+        this.impulseResponseDrag = null;
+        this.impulseResponseGraphInitialized = false;
     }
 
     /**
@@ -61,8 +81,12 @@ class GraphRenderer {
                 return;
             }
             
-            // Normalize frequency response to average 0dB at the beginning
-            const normalizedFrequencyResponse = this.normalizeResponseToZeroDb([...frequencyResponse]);
+            // Normalize to the median level inside the measured audible band
+            const normalizedFrequencyResponse = this.normalizeResponseToZeroDb(
+                [...frequencyResponse],
+                measurement.sweepMinFreq,
+                measurement.sweepMaxFreq
+            );
             
             // Draw original frequency response with smoothing
             if (showOriginal) {
@@ -158,12 +182,358 @@ class GraphRenderer {
         }
     }
 
+    initializeImpulseResponseGraph() {
+        if (this.impulseResponseGraphInitialized) return;
+        const canvas = document.getElementById('impulseResponseGraph');
+        const scroll = document.getElementById('impulseResponseScroll');
+        const zoomIn = document.getElementById('impulseResponseZoomIn');
+        const zoomOut = document.getElementById('impulseResponseZoomOut');
+        const reset = document.getElementById('impulseResponseReset');
+        const exportWav = document.getElementById('exportImpulseResponseWav');
+        if (!canvas || !scroll || !zoomIn || !zoomOut || !reset || !exportWav) return;
+
+        zoomIn.addEventListener('click', () => this.zoomImpulseResponse(0.5));
+        zoomOut.addEventListener('click', () => this.zoomImpulseResponse(2));
+        reset.addEventListener('click', () => this.resetImpulseResponseView());
+        exportWav.addEventListener('click', () => this.exportImpulseResponseWav());
+        scroll.addEventListener('input', event => {
+            if (!this.impulseResponseView || !this.impulseResponseBounds) return;
+            const availableScroll = this.impulseResponseBounds.maxMs -
+                this.impulseResponseBounds.minMs -
+                this.impulseResponseView.durationMs;
+            const startMs = this.impulseResponseBounds.minMs +
+                availableScroll * Number(event.target.value) / 1000;
+            this.setImpulseResponseView(startMs, this.impulseResponseView.durationMs);
+        });
+
+        canvas.addEventListener('wheel', event => {
+            if (!this.impulseResponseView) return;
+            event.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const anchor = rect.width > 0
+                ? Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width))
+                : 0.5;
+            this.zoomImpulseResponse(event.deltaY < 0 ? 0.8 : 1.25, anchor);
+        }, { passive: false });
+        canvas.addEventListener('pointerdown', event => {
+            if (!this.impulseResponseView || event.button !== 0) return;
+            canvas.setPointerCapture?.(event.pointerId);
+            this.impulseResponseDrag = {
+                pointerId: event.pointerId,
+                clientX: event.clientX,
+                startMs: this.impulseResponseView.startMs
+            };
+            canvas.classList.add('is-panning');
+        });
+        canvas.addEventListener('pointermove', event => {
+            const drag = this.impulseResponseDrag;
+            if (!drag || drag.pointerId !== event.pointerId || !this.impulseResponseView) return;
+            const width = canvas.getBoundingClientRect().width;
+            if (width <= 0) return;
+            const offsetMs = (event.clientX - drag.clientX) / width *
+                this.impulseResponseView.durationMs;
+            this.setImpulseResponseView(
+                drag.startMs - offsetMs,
+                this.impulseResponseView.durationMs
+            );
+        });
+        const endPan = event => {
+            if (this.impulseResponseDrag?.pointerId !== event.pointerId) return;
+            this.impulseResponseDrag = null;
+            canvas.classList.remove('is-panning');
+            canvas.releasePointerCapture?.(event.pointerId);
+        };
+        canvas.addEventListener('pointerup', endPan);
+        canvas.addEventListener('pointercancel', endPan);
+        canvas.addEventListener('keydown', event => {
+            if (!this.impulseResponseView) return;
+            if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+                event.preventDefault();
+                const direction = event.key === 'ArrowLeft' ? -1 : 1;
+                this.panImpulseResponse(direction * this.impulseResponseView.durationMs * 0.1);
+            } else if (event.key === '+' || event.key === '=') {
+                event.preventDefault();
+                this.zoomImpulseResponse(0.5);
+            } else if (event.key === '-' || event.key === '_') {
+                event.preventDefault();
+                this.zoomImpulseResponse(2);
+            } else if (event.key === 'Home') {
+                event.preventDefault();
+                this.resetImpulseResponseView();
+            }
+        });
+        this.impulseResponseGraphInitialized = true;
+    }
+
+    async updateImpulseResponseGraph(pointIndex = 'all') {
+        const generation = ++this.impulseResponseLoadGeneration;
+        const measurementId = this.uiManager.selectedMeasurementId;
+        const measurement = dataStorage.getMeasurementById(measurementId);
+        const section = document.getElementById('impulseResponseSection');
+        if (!section) return;
+        section.hidden = true;
+
+        const point = pointIndex === 'all'
+            ? measurement?.points?.find(candidate => candidate.ir?.stored === true)
+            : measurement?.points?.[pointIndex];
+        if (!measurement || !Number.isSafeInteger(point?.pointId) ||
+            point.ir?.stored !== true) {
+            this.clearImpulseResponseGraph();
+            return;
+        }
+
+        const record = await dataStorage.getImpulseResponse(measurementId, point.pointId);
+        if (generation !== this.impulseResponseLoadGeneration ||
+            measurementId !== this.uiManager.selectedMeasurementId ||
+            pointIndex !== this.uiManager.measurementDisplay.selectedPointIndex) {
+            return;
+        }
+        if (!isValidImpulseResponse(record)) {
+            this.clearImpulseResponseGraph();
+            return;
+        }
+
+        this.impulseResponse = record;
+        this.impulseResponsePeak = findImpulsePeak(record.data);
+        this.impulseResponseBounds = getImpulseTimeBounds(record);
+        this.impulseResponseView = createDefaultImpulseView(record);
+        const pointName = point.name || `Point ${measurement.points.indexOf(point) + 1}`;
+        const pointNameElement = document.getElementById('impulseResponsePointName');
+        if (pointNameElement) pointNameElement.textContent = pointName;
+        document.getElementById('impulseResponseGraph')?.setAttribute(
+            'aria-label',
+            `${i18n.t('title:impulseResponse') || 'Impulse Response'}: ${pointName}`
+        );
+        section.hidden = false;
+        this.drawImpulseResponseGraph();
+    }
+
+    exportImpulseResponseWav() {
+        const record = this.impulseResponse;
+        if (!isValidImpulseResponse(record)) return;
+
+        const measurement = dataStorage.getMeasurementById(this.uiManager.selectedMeasurementId);
+        const pointIndex = measurement?.points?.findIndex(point => point.pointId === record.pointId);
+        if (!measurement || !Number.isSafeInteger(pointIndex) || pointIndex < 0) return;
+
+        const point = measurement.points[pointIndex];
+        const filenamePrefix = `${measurement.name}_${point.name || `Point ${pointIndex + 1}`}`
+            .trim()
+            .replace(/[<>:"/\\|?*]/g, '_')
+            .replace(/\s+/g, '_')
+            .toLowerCase();
+        const date = new Date().toISOString().split('T')[0];
+        audioUtils.exportWAV(
+            record.data,
+            record.sampleRate,
+            `${filenamePrefix}_impulse_response_${date}.wav`
+        );
+    }
+
+    clearImpulseResponseGraph() {
+        this.impulseResponseLoadGeneration += 1;
+        this.impulseResponse = null;
+        this.impulseResponseView = null;
+        this.impulseResponseBounds = null;
+        this.impulseResponseDrag = null;
+        document.getElementById('impulseResponseGraph')?.classList.remove('is-panning');
+        const section = document.getElementById('impulseResponseSection');
+        if (section) section.hidden = true;
+    }
+
+    resetImpulseResponseView() {
+        if (!this.impulseResponse) return;
+        this.impulseResponseView = createDefaultImpulseView(this.impulseResponse);
+        this.drawImpulseResponseGraph();
+    }
+
+    setImpulseResponseView(startMs, durationMs) {
+        const view = clampImpulseView(startMs, durationMs, this.impulseResponseBounds);
+        if (!view) return;
+        this.impulseResponseView = view;
+        this.drawImpulseResponseGraph();
+    }
+
+    zoomImpulseResponse(factor, anchor = 0.5) {
+        const view = this.impulseResponseView;
+        if (!view || !Number.isFinite(factor) || factor <= 0) return;
+        const clampedAnchor = Math.min(1, Math.max(0, anchor));
+        const anchorTimeMs = view.startMs + view.durationMs * clampedAnchor;
+        const durationMs = view.durationMs * factor;
+        this.setImpulseResponseView(
+            anchorTimeMs - durationMs * clampedAnchor,
+            durationMs
+        );
+    }
+
+    panImpulseResponse(offsetMs) {
+        if (!this.impulseResponseView) return;
+        this.setImpulseResponseView(
+            this.impulseResponseView.startMs + offsetMs,
+            this.impulseResponseView.durationMs
+        );
+    }
+
+    updateImpulseResponseControls() {
+        const view = this.impulseResponseView;
+        const bounds = this.impulseResponseBounds;
+        if (!view || !bounds) return;
+        const availableScroll = bounds.maxMs - bounds.minMs - view.durationMs;
+        const scroll = document.getElementById('impulseResponseScroll');
+        if (scroll) {
+            scroll.disabled = availableScroll <= bounds.samplePeriodMs / 2;
+            scroll.value = availableScroll > 0
+                ? Math.round((view.startMs - bounds.minMs) / availableScroll * 1000)
+                : 0;
+        }
+        const range = document.getElementById('impulseResponseRange');
+        if (range) {
+            const endMs = view.startMs + view.durationMs;
+            const digits = view.durationMs < 1 ? 3 : view.durationMs < 20 ? 2 : 1;
+            range.textContent = `${view.startMs.toFixed(digits)}–${endMs.toFixed(digits)} ms`;
+        }
+    }
+
+    drawImpulseResponseGraph() {
+        const canvas = document.getElementById('impulseResponseGraph');
+        const record = this.impulseResponse;
+        const view = this.impulseResponseView;
+        if (!canvas || !record || !view) return;
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width;
+        const height = canvas.height;
+        const padding = { top: 20, right: 20, bottom: 35, left: 55 };
+        const graphWidth = width - padding.left - padding.right;
+        const graphHeight = height - padding.top - padding.bottom;
+        const endMs = view.startMs + view.durationMs;
+        const timeToX = timeMs =>
+            padding.left + (timeMs - view.startMs) / view.durationMs * graphWidth;
+        const amplitudeToY = value =>
+            padding.top + graphHeight * (0.5 - value / 2);
+
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(0, 0, width, height);
+        this.drawImpulseResponseGrid(
+            ctx,
+            padding,
+            graphWidth,
+            graphHeight,
+            view,
+            timeToX,
+            amplitudeToY
+        );
+        if (view.startMs <= 0 && endMs >= 0) {
+            const zeroX = timeToX(0);
+            ctx.strokeStyle = '#aaa';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 3]);
+            ctx.beginPath();
+            ctx.moveTo(zeroX, padding.top);
+            ctx.lineTo(zeroX, padding.top + graphHeight);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        const envelope = sampleImpulseEnvelope(record, view, graphWidth);
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(padding.left, padding.top, graphWidth, graphHeight);
+        ctx.clip();
+        ctx.strokeStyle = this.uiManager.graphColors.original;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        let firstPoint = true;
+        for (const bucket of envelope) {
+            const ordered = bucket.minimumIndex <= bucket.maximumIndex
+                ? [
+                    [bucket.minimumIndex, bucket.minimum],
+                    [bucket.maximumIndex, bucket.maximum]
+                ]
+                : [
+                    [bucket.maximumIndex, bucket.maximum],
+                    [bucket.minimumIndex, bucket.minimum]
+                ];
+            if (bucket.minimumIndex === bucket.maximumIndex) ordered.length = 1;
+            for (const [sampleIndex, sample] of ordered) {
+                const timeMs = (sampleIndex - record.onsetIndex) /
+                    record.sampleRate * 1000;
+                const x = timeToX(timeMs);
+                const normalized = sample / this.impulseResponsePeak;
+                const y = amplitudeToY(Math.min(1, Math.max(-1, normalized)));
+                if (firstPoint) {
+                    ctx.moveTo(x, y);
+                    firstPoint = false;
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+        }
+        ctx.stroke();
+        ctx.restore();
+        this.updateImpulseResponseControls();
+    }
+
+    drawImpulseResponseGrid(
+        ctx,
+        padding,
+        graphWidth,
+        graphHeight,
+        view,
+        timeToX,
+        amplitudeToY
+    ) {
+        ctx.strokeStyle = '#555';
+        ctx.fillStyle = '#aaa';
+        ctx.lineWidth = 0.5;
+        ctx.font = '10px Arial';
+        const interval = getNiceTimeTickInterval(view.durationMs);
+        const endMs = view.startMs + view.durationMs;
+        const digits = interval < 0.01 ? 3 : interval < 0.1 ? 2 : interval < 1 ? 1 : 0;
+        let tick = Math.ceil(view.startMs / interval) * interval;
+        for (let count = 0; tick <= endMs && count < 100; count += 1, tick += interval) {
+            const x = timeToX(tick);
+            ctx.beginPath();
+            ctx.moveTo(x, padding.top);
+            ctx.lineTo(x, padding.top + graphHeight);
+            ctx.stroke();
+            ctx.textAlign = 'center';
+            ctx.fillText(tick.toFixed(digits), x, padding.top + graphHeight + 15);
+        }
+
+        for (const amplitude of [-1, -0.5, 0, 0.5, 1]) {
+            const y = amplitudeToY(amplitude);
+            ctx.beginPath();
+            ctx.moveTo(padding.left, y);
+            ctx.lineTo(padding.left + graphWidth, y);
+            ctx.stroke();
+            ctx.textAlign = 'right';
+            ctx.fillText(String(amplitude), padding.left - 6, y + 3);
+        }
+
+        ctx.strokeStyle = '#888';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(padding.left, padding.top, graphWidth, graphHeight);
+        ctx.fillStyle = '#ccc';
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(
+            i18n.t('axis:impulseTime') || 'Time (ms)',
+            padding.left + graphWidth / 2,
+            padding.top + graphHeight + 31
+        );
+        ctx.save();
+        ctx.translate(14, padding.top + graphHeight / 2);
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillText(i18n.t('axis:normalizedAmplitude') || 'Normalized amplitude', 0, 0);
+        ctx.restore();
+    }
+
     /**
      * Draw a frequency response graph on canvas
      * @param {CanvasRenderingContext2D} ctx - Canvas context
      * @param {Array} data - Frequency response data [[freq, db], ...]
      * @param {string} color - Line color
-     * @param {boolean} [normalize=false] - Whether to normalize data to average 0dB
+     * @param {boolean} [normalize=false] - Whether to normalize to the audible-band median
      */
     drawGraph(ctx, data, color, normalize = false) {
         if (!data || data.length === 0) return;
@@ -218,22 +588,18 @@ class GraphRenderer {
     }
 
     /**
-     * Normalize frequency response curve to have an average of 0dB
+     * Normalize frequency response to the measured audible-band median
      * @param {Array} response - Frequency response data as [[freq, db], ...]
+     * @param {number} minFrequency - Measured lower frequency limit
+     * @param {number} maxFrequency - Measured upper frequency limit
      * @returns {Array} Normalized frequency response
      */
-    normalizeResponseToZeroDb(response) {
-        if (!response || response.length === 0) return response;
-        
-        // Calculate the average dB value across all frequencies
-        let sum = 0;
-        for (const [_, db] of response) {
-            sum += db;
-        }
-        const avgDb = sum / response.length;
-        
-        // Normalize by shifting all values by the negative of the average
-        return response.map(([freq, db]) => [freq, db - avgDb]);
+    normalizeResponseToZeroDb(response, minFrequency, maxFrequency) {
+        return normalizeFrequencyResponseToZeroDb(
+            response,
+            minFrequency,
+            maxFrequency
+        );
     }
 
     /**

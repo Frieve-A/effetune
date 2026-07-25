@@ -362,8 +362,12 @@ class CorrectionHandler {
         const responseData = measurement.averageFrequencyResponse;
         if (!responseData || responseData.length === 0) return [];
         
-        // Normalize the response to 0dB average before calculating PEQ parameters
-        const normalizedResponse = this.uiManager.graphRenderer.normalizeResponseToZeroDb(responseData);
+        // Normalize to the measured audible-band median before calculating PEQ parameters
+        const normalizedResponse = this.uiManager.graphRenderer.normalizeResponseToZeroDb(
+            responseData,
+            measurement.sweepMinFreq,
+            measurement.sweepMaxFreq
+        );
         
         // Apply smoothing to the normalized response before calculating PEQ parameters
         const smoothedResponse = window.app.audioUtils.smoothFrequencyResponse(

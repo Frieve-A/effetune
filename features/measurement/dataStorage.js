@@ -22,6 +22,14 @@ export class MeasurementLoadError extends Error {
     }
 }
 
+export class MeasurementExportError extends Error {
+    constructor(cause = null) {
+        super('The measurement could not be exported with its impulse responses.');
+        this.name = 'MeasurementExportError';
+        this.cause = cause;
+    }
+}
+
 function isFrequencyResponse(value) {
     return Array.isArray(value) && value.every(entry =>
         Array.isArray(entry) && entry.length >= 2 &&
@@ -56,6 +64,9 @@ function hasValidImportedScalars(data) {
     if (optionalNumbers.some(key => data[key] !== undefined && !Number.isFinite(data[key]))) {
         return false;
     }
+    if (data.sweepBandLimited !== undefined && typeof data.sweepBandLimited !== 'boolean') {
+        return false;
+    }
     if (data.sampleRate !== undefined && data.sampleRate <= 0) return false;
     if (data.sweepLength !== undefined && (
         !['number', 'string'].includes(typeof data.sweepLength) ||
@@ -66,6 +77,19 @@ function hasValidImportedScalars(data) {
         !isFrequencyResponse(data.averageFrequencyResponse)) return false;
     if (data.correctedResponse !== undefined && !isFrequencyResponse(data.correctedResponse)) return false;
     if (data.peqParameters !== undefined && !Array.isArray(data.peqParameters)) return false;
+    if (data.interfaceCalibration !== undefined) {
+        const calibration = data.interfaceCalibration;
+        if (!calibration || typeof calibration !== 'object' ||
+            typeof calibration.sourceMeasurementId !== 'string' ||
+            !Number.isSafeInteger(calibration.sourcePointId) ||
+            typeof calibration.sourceMeasurementName !== 'string' ||
+            typeof calibration.sourcePointName !== 'string' ||
+            typeof calibration.sourceTimestamp !== 'string' ||
+            !Number.isFinite(calibration.sampleRate) ||
+            calibration.sampleRate <= 0) {
+            return false;
+        }
+    }
 
     return data.points.every(point => point && typeof point === 'object' &&
         (point.name === undefined || typeof point.name === 'string') &&
@@ -456,7 +480,7 @@ export class DataStorage {
         }
     }
 
-    async getImpulseResponses(measurementId) {
+    async getImpulseResponses(measurementId, { strict = false } = {}) {
         try {
             const db = await this.openDatabase();
             return await new Promise((resolve, reject) => {
@@ -467,6 +491,7 @@ export class DataStorage {
             });
         } catch (error) {
             console.error('Error loading impulse responses:', error);
+            if (strict) throw error;
             return [];
         }
     }
@@ -822,7 +847,35 @@ export class DataStorage {
         
         const exported = structuredClone(measurement);
         if (includeImpulseResponses) {
-            const records = await this.getImpulseResponses(id);
+            let records;
+            try {
+                records = await this.getImpulseResponses(id, { strict: true });
+            } catch (error) {
+                throw new MeasurementExportError(error);
+            }
+            const expectedPointIds = new Set(
+                (measurement.points || [])
+                    .filter(point => point.ir?.stored === true)
+                    .map(point => point.pointId)
+            );
+            const recordPointIds = new Set();
+            let recordsComplete = records.length === expectedPointIds.size;
+            for (const record of records) {
+                if (record?.measurementId !== id ||
+                    !Number.isSafeInteger(record.pointId) ||
+                    !expectedPointIds.has(record.pointId) ||
+                    recordPointIds.has(record.pointId) ||
+                    !(record.data instanceof Float32Array)) {
+                    recordsComplete = false;
+                    break;
+                }
+                recordPointIds.add(record.pointId);
+            }
+            if (!recordsComplete || recordPointIds.size !== expectedPointIds.size) {
+                throw new MeasurementExportError(
+                    new Error('Stored impulse response metadata and records do not match')
+                );
+            }
             exported.impulseResponses = records.map(record => ({
                 ...record,
                 data: this.encodeFloat32Array(record.data)

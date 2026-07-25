@@ -1,4 +1,14 @@
 {
+  "title:impulseResponse": "इम्पल्स रिस्पॉन्स",
+  "axis:impulseTime": "समय (ms)",
+  "axis:normalizedAmplitude": "नॉर्मलाइज़्ड एम्प्लिट्यूड",
+  "button:zoomOut": "ज़ूम आउट",
+  "button:zoomIn": "ज़ूम इन",
+  "button:resetZoom": "रीसेट",
+"button:exportImpulseResponseWav": "आवेग प्रतिक्रिया निर्यात करें (WAV)",
+"error:measurementExportFailed": "मापन निर्यात नहीं किया जा सका। कृपया फिर से प्रयास करें।",
+  "label:impulseTimePosition": "समय की स्थिति",
+  "help:impulseResponseGraph": "एम्प्लिट्यूड को रिस्पॉन्स के पीक के अनुसार नॉर्मलाइज़ किया गया है। ज़ूम के लिए माउस व्हील या बटन इस्तेमाल करें और समय में स्क्रॉल करने के लिए प्लॉट को खींचें या स्लाइडर इस्तेमाल करें।",
 // Measurement History Section
 "button:newMeasurement": "+ नया माप", // Button to start a new measurement
 "button:import": "आयात करें", // Import button for loading saved measurements
@@ -21,12 +31,21 @@
 "help:sampleRate": "माप लेते समय नमूना आवृत्ति निर्दिष्ट करें।", // Help text for sample rate
 "label:sweepLength": "स्वीप लंबाई (नमूने):", // Label for sweep length selection
 "help:sweepLength": "माप संकेत की लंबाई नमूनों में निर्दिष्ट करता है।", // Help text for sweep length
+"label:sweepBandLimited": "स्वीप बैंडविड्थ सीमित करें",
+"help:sweepBandLimited": "चालू होने पर TSP और टेस्ट संकेत नीचे दी गई आवृत्ति सीमा तक सीमित रहते हैं। बंद होने पर TSP पूरे उपलब्ध बैंडविड्थ में चलाया जाता है।",
 "label:sweepMinFreq": "न्यूनतम स्वीप आवृत्ति (Hz):", // Label for sweep minimum frequency
 "help:sweepMinFreq": "स्वीप संकेत की न्यूनतम आवृत्ति Hz में। चयनित सैंपलिंग दर की नाइक्विस्ट आवृत्ति से ठीक नीचे तक 1 Hz से सेट की जा सकती है। टेस्ट संकेत भी इसी रेंज तक सीमित होता है। (डिफ़ॉल्ट: 20 Hz)", // Help text for sweep min frequency
 "label:sweepMaxFreq": "अधिकतम स्वीप आवृत्ति (Hz):", // Label for sweep maximum frequency
 "help:sweepMaxFreq": "स्वीप संकेत की अधिकतम आवृत्ति Hz में। चयनित सैंपलिंग दर की नाइक्विस्ट आवृत्ति से ऊपर के मान स्वचालित रूप से सीमित कर दिए जाते हैं। टेस्ट संकेत भी इसी रेंज तक सीमित होता है। (डिफ़ॉल्ट: 20000 Hz)", // Help text for sweep max frequency
 "label:averaging": "सामयिक औसत:", // Label for synchronous averaging selection
 "help:averaging": "अधिक सटीक माप के लिए एक ही माप बिंदु पर माप को दोहराने की संख्या निर्दिष्ट करें।", // Help text for averaging
+"label:interfaceCalibration": "ऑडियो इंटरफ़ेस कैलिब्रेशन:",
+"option:noInterfaceCalibration": "कोई नहीं (बिना कैलिब्रेशन)",
+"option:interfaceCalibrationPoint": "{measurement} — {point} ({date}, {sampleRate})",
+"help:interfaceCalibration": "ऑडियो इंटरफ़ेस की प्रतिक्रिया हटाने के लिए सेव किया हुआ loopback माप इस्तेमाल करें। वही इंटरफ़ेस, इनपुट/आउटपुट चैनल, sampling rate और इनपुट/आउटपुट gain बनाए रखें, और कैलिब्रेशन माप के बाद gain न बदलें।",
+"help:noInterfaceCalibrationCandidates": "ऑडियो इंटरफ़ेस कैलिब्रेशन इस्तेमाल करने से पहले impulse response वाला कोई बिना कैलिब्रेशन का माप बिंदु सेव करें।",
+"help:interfaceCalibrationUnavailable": "इस browser में impulse responses सेव नहीं की जा सकतीं, इसलिए ऑडियो इंटरफ़ेस कैलिब्रेशन उपलब्ध नहीं है।",
+"label:appliedInterfaceCalibration": "ऑडियो इंटरफ़ेस कैलिब्रेशन",
 "button:next": "अगला", // Next button in configuration form to move to the Level Adjustment Screen
 
 // Level Adjustment Screen
@@ -97,6 +116,12 @@
 "error:confirmationDialogNotFound": "DOM में पुष्टि डायलॉग तत्व नहीं मिला", // Error when confirmation dialog not found
 "error:notificationDialogNotFound": "DOM में सूचना डायलॉग तत्व नहीं मिले", // Error when notification dialog not found
 "error:noPEQSettings": "इस माप के लिए कोई PEQ सेटिंग उपलब्ध नहीं है", // Error when no PEQ settings available
+"error:interfaceCalibrationUnavailable": "चुना हुआ कैलिब्रेशन अब उपलब्ध नहीं है। कोई दूसरा माप बिंदु चुनें।",
+"error:interfaceCalibrationSampleRateMismatch": "चुने हुए कैलिब्रेशन का sampling rate अलग है। उसी sampling rate पर रिकॉर्ड किया हुआ data चुनें।",
+"error:interfaceCalibrationSweepRangeMismatch": "चुना हुआ कैलिब्रेशन इस sweep range को cover नहीं करता। range कम करें या दूसरा data चुनें।",
+"error:interfaceCalibrationProcessingFailed": "कैलिब्रेशन वाला माप पूरा नहीं हो सका। setup जाँचें और इस बिंदु को फिर से मापें।",
+"error:measurementSetupFailed": "माप की तैयारी नहीं हो सकी। ऑडियो devices जाँचें और फिर प्रयास करें।",
+"error:levelAdjustmentFailed": "ऑडियो input तैयार नहीं हो सका। input device जाँचें और फिर प्रयास करें।",
 
 // Messages
 "message:peqCopied": "PEQ सेटिंग्स सफलतापूर्वक क्लिपबोर्ड पर कॉपी हो गईं। कॉपी की गई सेटिंग्स को Ctrl+V द्वारा EffeTune के इफेक्ट पाइपलाइन में चिपकाया जा सकता है।", // Success message for PEQ copy

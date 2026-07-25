@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { PowerPolicyController } from '../../js/audio/power-policy-controller.js';
+import { AudioManager } from '../../js/audio-manager.js';
 import { AudioContextManager } from '../../js/ui/audio-player/audio-context-manager.js';
 import { PlaybackManager } from '../../js/ui/audio-player/playback-manager.js';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
@@ -720,6 +721,116 @@ test('core graph connections and source management preserve playback wiring', as
 
     const failingGain = createHarness({ calls, audioContextOptions: { createGainThrows: true } });
     assert.equal(failingGain.manager.createSilentGain(), null);
+  });
+});
+
+test('known mono playback is routed only to front left and right for every output layout', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    for (const outputChannels of [2, 4, 6, 8]) {
+      calls.length = 0;
+      const routing = [];
+      const makeRoutingNode = name => ({
+        name,
+        connect(target, output = 0, input = 0) {
+          routing.push([name, target?.name, output, input]);
+        },
+        disconnect() {
+          routing.push([name, 'disconnect']);
+        },
+        start() {},
+        stop() {},
+        gain: { value: 1 }
+      });
+      const audioContext = {
+        currentTime: 0,
+        destination: { channelCount: outputChannels },
+        createBufferSource: () => makeRoutingNode('mono-source'),
+        createChannelSplitter: count => makeRoutingNode(`splitter-${count}`),
+        createChannelMerger: count => makeRoutingNode(`merger-${count}`),
+        createGain: () => makeRoutingNode('private-gate')
+      };
+      const harness = createHarness({ calls, audioContext });
+      const source = harness.manager.createBufferSource({
+        duration: 1,
+        numberOfChannels: 1
+      }, 1);
+
+      assert.deepEqual(routing.slice(0, 3), [
+        ['mono-source', 'splitter-1', 0, 0],
+        ['splitter-1', `merger-${outputChannels}`, 0, 0],
+        ['splitter-1', `merger-${outputChannels}`, 0, 1]
+      ]);
+      assert.equal(calls.some(call =>
+        call[0] === 'connectSourceToPipeline' &&
+        call[1] === `merger-${outputChannels}`), true);
+      harness.manager.releasePipelineSource(source);
+    }
+  });
+});
+
+test('mono channel adapters are shared by private A/B, scheduled, and metadata-known media routes', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    const routing = [];
+    let sourceSequence = 0;
+    const makeRoutingNode = name => ({
+      name,
+      buffer: null,
+      onended: null,
+      gain: { value: 1 },
+      connect(target, output = 0, input = 0) {
+        routing.push([name, target?.name, output, input]);
+      },
+      disconnect() {},
+      start() {},
+      stop() {}
+    });
+    const audioContext = {
+      currentTime: 0,
+      destination: { channelCount: 8 },
+      createBufferSource: () => makeRoutingNode(`source-${++sourceSequence}`),
+      createChannelSplitter: count => makeRoutingNode(`splitter-${count}-${sourceSequence}`),
+      createChannelMerger: count => makeRoutingNode(`merger-${count}-${sourceSequence}`),
+      createGain: () => makeRoutingNode('private-gate')
+    };
+    const harness = createHarness({ calls, audioContext });
+
+    harness.manager.createBufferSource(
+      { duration: 1, numberOfChannels: 1 },
+      1,
+      { privateUntilCommit: true }
+    );
+    assert.equal(routing.some(([from, to]) =>
+      from === 'merger-8-1' && to === 'private-gate'), true);
+    assert.equal(calls.some(call =>
+      call[0] === 'connectSourceToPipeline' && call[1] === 'private-gate'), true);
+
+    const scheduled = makeRoutingNode('scheduled-source');
+    scheduled.buffer = { numberOfChannels: 1 };
+    assert.equal(harness.manager.connectScheduledBufferSource(scheduled), true);
+    assert.equal(calls.some(call =>
+      call[0] === 'connectSourceToPipeline' && call[1].startsWith('merger-8-')), true);
+
+    const media = makeRoutingNode('media-source');
+    assert.equal(harness.manager.connectMediaSource(media, 1), true);
+    assert.equal(routing.some(([from, to]) =>
+      from === 'media-source' && to.startsWith('splitter-1-')), true);
+    const managedMediaSource = harness.manager.getPipelineSourceNode(media);
+    assert.notStrictEqual(managedMediaSource, media);
+    assert.strictEqual(harness.audioManager.sourceNode, managedMediaSource);
+    assert.strictEqual(harness.audioManager.ioManager.sourceNode, managedMediaSource);
+    const pipelineSources = AudioManager.prototype._getPipelineInputSources.call({
+      _connectedPipelineSources: new Set([managedMediaSource]),
+      ioManager: harness.audioManager.ioManager
+    });
+    assert.deepEqual([...pipelineSources], [managedMediaSource]);
+    assert.equal(pipelineSources.has(media), false);
+
+    calls.length = 0;
+    const multichannel = makeRoutingNode('multichannel-source');
+    multichannel.buffer = { numberOfChannels: 4 };
+    assert.equal(harness.manager.connectBufferSource(multichannel), true);
+    assert.equal(calls.some(call =>
+      call[0] === 'connectSourceToPipeline' && call[1] === 'multichannel-source'), true);
   });
 });
 

@@ -454,7 +454,7 @@ export class OfflineProcessor {
                 session.entries.set(plugin, entry);
                 const parameters = this.getOfflinePluginParameters(session, plugin, sampleRate);
                 if (!this.updateOfflineDspParameters(session, entry, parameters)) continue;
-                if (!this.stageOfflineDspAssets(session, entry, outputChannelCount)) continue;
+                if (!this.stageOfflineDspAssets(session, entry)) continue;
             }
 
             const liveEntryCount = [...session.entries.values()].filter(entry => !entry.disabled).length;
@@ -471,7 +471,7 @@ export class OfflineProcessor {
         }
     }
 
-    stageOfflineDspAssets(session, entry, outputChannelCount) {
+    stageOfflineDspAssets(session, entry) {
         const assets = entry.offlineState?.assets ?? entry.plugin.getWasmAssets?.();
         if (!(assets instanceof Map) || assets.size === 0) return true;
         let entryFootprintBytes = 0;
@@ -530,9 +530,10 @@ export class OfflineProcessor {
                 this.disableOfflineDspEntry(session, entry);
                 return false;
             }
+            const processingChannelCount = asset.processingChannels ?? 1;
             const silence = session.arena.scratch.allChannels.subarray(
                 0,
-                outputChannelCount * OFFLINE_BLOCK_SIZE
+                processingChannelCount * OFFLINE_BLOCK_SIZE
             );
             const pointer = session.binding.pointerForArenaView(silence);
             let state = session.binding.instanceAssetState(entry.instanceId, slot);
@@ -546,7 +547,7 @@ export class OfflineProcessor {
                 const processStatus = session.binding.instanceProcess(
                     entry.instanceId,
                     pointer,
-                    outputChannelCount,
+                    processingChannelCount,
                     OFFLINE_BLOCK_SIZE,
                     block * OFFLINE_BLOCK_SIZE / session.sampleRate
                 );

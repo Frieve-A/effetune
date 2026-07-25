@@ -531,6 +531,9 @@ test('loadAudioWorklet creates a configured worklet and applies pending audio co
     assert.equal(manager.lowLatencyMode, true);
     assert.equal(globalThis.window.workletNode, manager.workletNode);
     assert.equal(manager._pendingAudioConfig, null);
+    const workletOptions = calls.find(call => call[0] === 'newAudioWorkletNode')?.[3];
+    assert.equal(workletOptions.channelCountMode, 'explicit');
+    assert.equal(workletOptions.channelInterpretation, 'discrete');
     assert.equal(calls.some(call => call[0] === 'addModule' && call[1] === '/nested/player/plugins/audio-processor.js'), true);
     assert.deepEqual(calls.filter(call => call[0] === 'workletPostMessage').map(call => call[1]), [
       { type: 'updateAudioConfig', outputChannels: 4 },

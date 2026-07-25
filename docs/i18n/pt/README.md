@@ -252,6 +252,10 @@ Para medir a resposta em frequência do seu sistema de áudio e criar uma corre�
 4. Gere uma correção de EQ paramétrico que pode ser importada diretamente no EffeTune
 5. Aplique a correção para obter uma reprodução sonora mais precisa e neutra
 
+Para remover a resposta da própria interface de áudio, conecte diretamente a saída à entrada e salve esse loopback como uma medição normal sem calibração, com uma resposta ao impulso. Na medição seguinte, escolha esse ponto em **Calibração da interface de áudio**. Use a mesma interface, os mesmos canais de entrada e saída, a mesma taxa de amostragem e os mesmos ganhos, sem alterar os ganhos após a medição de loopback. Escolha **Nenhuma (sem calibração)** para medir sem essa correção.
+
+As medições que contêm dados de resposta ao impulso mostram um gráfico normalizado de **Resposta ao impulso** nos resultados. A visualização inicial cobre de 0 a 10 ms a partir do início detectado. Use a roda do mouse ou os botões para ajustar o zoom do eixo de tempo e arraste o gráfico ou use o controle deslizante para percorrê-lo. Ao selecionar um ponto, o gráfico é atualizado; **Todos (média)** mostra o primeiro ponto com uma resposta ao impulso salva e o identifica acima do gráfico. Use **Exportar resposta ao impulso (WAV)** abaixo do gráfico para salvar a resposta completa e não normalizada do ponto exibido como um WAV mono de ponto flutuante de 32 bits na taxa de amostragem da medição.
+
 ## Combinações Comuns de Efeitos
 
 Aqui estão algumas combinações populares de efeitos para aprimorar sua experiência de escuta:
