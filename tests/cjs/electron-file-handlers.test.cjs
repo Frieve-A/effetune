@@ -262,6 +262,15 @@ test('file operation helpers delegate to file-utils', async () => {
     op: 'savePipelineStateToFile',
     args: [[{ name: 'Volume' }], 'C:\\UserData']
   });
+  const emptyState = { pipelineA: [], pipelineB: null, currentPipeline: 'A' };
+  assert.deepEqual(await harness.withElectronStub(() => harness.module.savePipelineStateToFile(
+    emptyState,
+    { allowEmpty: true }
+  )), {
+    success: true,
+    op: 'savePipelineStateToFile',
+    args: [emptyState, 'C:\\UserData', { allowEmpty: true }]
+  });
 });
 
 test('getFilePath returns selected path, null on cancellation, and null on errors', async () => {

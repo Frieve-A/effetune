@@ -773,11 +773,14 @@ function synthesizeFilter(correctionDb, gridFrequencies, config, phaseSource) {
 }
 
 function createImpulseResponsePreview(analysis, taps, config) {
+    const previewPrerollMs = 2;
     const previewDurationMs = Math.max(5, config.directWindowMs);
     const sampleCount = Math.max(2, Math.round(
         config.sampleRate * previewDurationMs / 1000
     ));
-    const prerollSamples = Math.max(1, Math.round(config.sampleRate * 0.005));
+    const prerollSamples = Math.max(1, Math.round(
+        config.sampleRate * previewPrerollMs / 1000
+    ));
     const displaySampleCount = prerollSamples + sampleCount;
     const before = new Float32Array(displaySampleCount);
     const beforeStart = analysis.onsetIndex - prerollSamples;

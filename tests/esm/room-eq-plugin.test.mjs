@@ -145,6 +145,13 @@ test('Room EQ renders Phase as radio buttons', () => {
         /createSelectControl\(this\._t\('roomEq\.parameter\.phase', 'Phase'\), \[/);
 });
 
+test('Room EQ defaults Phase to Minimum', () => {
+    const { Plugin } = loadPlugin();
+    const plugin = new Plugin();
+    assert.equal(plugin.pm, 'min');
+    plugin.cleanup();
+});
+
 test('Room EQ renders independent level and phase correction controls', () => {
     assert.match(pluginSource,
         /roomEq\.parameter\.levelCorrection', 'Level Correction'\),\s*0, 100, 1, this\.cr/);
@@ -403,6 +410,10 @@ test('Room EQ offers frequency and impulse response graph views', () => {
     assert.match(pluginCss, /\.room-eq-impulse-view \.room-eq-additional-eq-grid/);
     assert.match(pluginCss, /\.room-eq-impulse-response \.room-eq-impulse-before/);
     assert.match(pluginCss, /\.room-eq-impulse-response \.room-eq-impulse-after/);
+    assert.match(
+        pluginSource,
+        /'room-eq-response-legend-before',[\s\S]*?'\.room-eq-impulse-before',\s*'\.room-eq-impulse-after'/
+    );
 });
 
 test('Room EQ graph shows a color-matched legend in its upper-right corner', () => {
@@ -419,7 +430,7 @@ test('Room EQ graph shows a color-matched legend in its upper-right corner', () 
         /\.room-eq-impulse-view \.room-eq-response-legend-room,[\s\S]*\.room-eq-impulse-view \.room-eq-response-legend-total \{\s*display: none;/);
 });
 
-test('Room EQ legend emphasis moves a response path to the front and restores it', () => {
+test('Room EQ legend emphasis fronts its response, hides an optional competitor, and restores both', () => {
     const { Plugin } = loadPlugin();
     const plugin = new Plugin();
     const createPath = name => ({
@@ -438,7 +449,11 @@ test('Room EQ legend emphasis moves a response path to the front and restores it
     for (const path of [before, target, after]) path.classList.owner = path;
     const container = {
         children: [before, target, after],
-        querySelector(selector) { return selector === '.target' ? target : null; },
+        querySelector(selector) {
+            if (selector === '.target') return target;
+            if (selector === '.competitor') return after;
+            return null;
+        },
         appendChild(path) {
             this.children.splice(this.children.indexOf(path), 1);
             this.children.push(path);
@@ -459,16 +474,24 @@ test('Room EQ legend emphasis moves a response path to the front and restores it
         });
     }
 
-    const restore = plugin._emphasizeResponsePath(container, '.target');
+    const restore = plugin._emphasizeResponsePath(
+        container,
+        '.target',
+        '.competitor'
+    );
 
     assert.deepEqual(container.children.map(path => path.name), ['before', 'after', 'target']);
     assert.equal(target.classes.has('room-eq-response-highlighted'), true);
+    assert.equal(after.classes.has('room-eq-response-hidden'), true);
     restore();
     assert.deepEqual(container.children.map(path => path.name), ['before', 'target', 'after']);
     assert.equal(target.classes.has('room-eq-response-highlighted'), false);
+    assert.equal(after.classes.has('room-eq-response-hidden'), false);
     assert.equal(plugin._emphasizeResponsePath(container, '.missing'), null);
     assert.match(pluginCss,
         /\.room-eq-additional-eq-response \.room-eq-response-highlighted,[\s\S]*stroke-width: 3\.5;[\s\S]*opacity: 1;/);
+    assert.match(pluginCss,
+        /\.room-eq-impulse-response \.room-eq-response-hidden \{\s*display: none;/);
     plugin.cleanup();
 });
 
@@ -505,19 +528,62 @@ test('Room EQ impulse graph uses one even time interval for the displayed range'
 
 test('Room EQ impulse graph draws gray before and white after waveforms', () => {
     const { Plugin, context } = loadPlugin();
-    context.document.createElementNS = () => ({
-        attributes: {},
-        textContent: '',
-        setAttribute(name, value) { this.attributes[name] = value; }
-    });
+    context.document.createElementNS = () => {
+        const classes = new Set();
+        return {
+            attributes: {},
+            classes,
+            parentNode: null,
+            textContent: '',
+            classList: {
+                add(className) { classes.add(className); },
+                remove(className) { classes.delete(className); }
+            },
+            setAttribute(name, value) {
+                this.attributes[name] = value;
+                if (name === 'class') {
+                    classes.clear();
+                    for (const className of String(value).split(/\s+/)) {
+                        if (className) classes.add(className);
+                    }
+                }
+            },
+            get nextSibling() {
+                if (!this.parentNode) return null;
+                const index = this.parentNode.children.indexOf(this);
+                return this.parentNode.children[index + 1] || null;
+            }
+        };
+    };
     const svg = (width = 0, height = 0) => ({
         clientWidth: width,
         clientHeight: height,
         attributes: {},
         children: [],
-        replaceChildren() { this.children = []; },
+        replaceChildren() {
+            for (const child of this.children) child.parentNode = null;
+            this.children = [];
+        },
         setAttribute(name, value) { this.attributes[name] = value; },
-        appendChild(child) { this.children.push(child); }
+        appendChild(child) {
+            if (child.parentNode) {
+                child.parentNode.children.splice(
+                    child.parentNode.children.indexOf(child),
+                    1
+                );
+            }
+            this.children.push(child);
+            child.parentNode = this;
+        },
+        insertBefore(child, sibling) {
+            this.children.splice(this.children.indexOf(child), 1);
+            this.children.splice(this.children.indexOf(sibling), 0, child);
+            child.parentNode = this;
+        },
+        querySelector(selector) {
+            const className = selector.startsWith('.') ? selector.slice(1) : '';
+            return this.children.find(child => child.classes?.has(className)) || null;
+        }
     });
     const plugin = new Plugin();
     const impulseGrid = svg();
@@ -528,7 +594,7 @@ test('Room EQ impulse graph draws gray before and white after waveforms', () => 
     plugin._lastDesign = {
         previews: [{
             impulseResponse: {
-                startMs: -5,
+                startMs: -2,
                 durationMs: 5,
                 before: new Float32Array([1, 0.5, 0, -0.5]),
                 after: new Float32Array([0.8, 0.25, 0, -0.25])
@@ -552,7 +618,7 @@ test('Room EQ impulse graph draws gray before and white after waveforms', () => 
     ));
     const zeroLabel = gridLabels.find(label => label.textContent === '0');
     assert.ok(zeroLabel);
-    assert.equal(Number(zeroLabel.attributes.x), 200);
+    assert.equal(Number(zeroLabel.attributes.x), 2 / 7 * 400);
     assert.ok(verticalLines.some(
         line => line.attributes.x1 === zeroLabel.attributes.x
     ));
@@ -572,6 +638,34 @@ test('Room EQ impulse graph draws gray before and white after waveforms', () => 
         /\.room-eq-impulse-before \{\s*stroke: #888;\s*stroke-width: 1;/s);
     assert.match(pluginCss,
         /\.room-eq-impulse-after \{\s*stroke: #fff;\s*stroke-width: 1;/s);
+
+    const firstBefore = impulseResponse.querySelector('.room-eq-impulse-before');
+    const emphasis = { restore: null };
+    plugin._impulseBeforeLegendHover = {
+        owner: {},
+        container: impulseResponse,
+        selector: '.room-eq-impulse-before',
+        hiddenSelector: '.room-eq-impulse-after',
+        emphasis
+    };
+    plugin._applyImpulseBeforeLegendHover();
+    assert.equal(firstBefore.classes.has('room-eq-response-highlighted'), true);
+    assert.equal(
+        impulseResponse.querySelector('.room-eq-impulse-after')
+            .classes.has('room-eq-response-hidden'),
+        true
+    );
+
+    plugin._drawImpulseResponse();
+
+    const redrawnBefore = impulseResponse.querySelector('.room-eq-impulse-before');
+    assert.notEqual(redrawnBefore, firstBefore);
+    assert.equal(redrawnBefore.classes.has('room-eq-response-highlighted'), true);
+    assert.equal(
+        impulseResponse.querySelector('.room-eq-impulse-after')
+            .classes.has('room-eq-response-hidden'),
+        true
+    );
     plugin.cleanup();
 });
 

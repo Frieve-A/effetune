@@ -89,6 +89,12 @@ test('savePipelineStateToFile rejects empty and invalid formats', async () => {
     success: false,
     error: 'Invalid pipeline state format'
   });
+  assert.deepEqual(await fileUtils.savePipelineStateToFile({ pipelineA: 'invalid' }, dir, {
+    allowEmpty: true
+  }), {
+    success: false,
+    error: 'Invalid pipeline state format'
+  });
 });
 
 test('savePipelineStateToFile writes single and dual pipeline states', async () => {
@@ -107,6 +113,13 @@ test('savePipelineStateToFile writes single and dual pipeline states', async () 
   const dualBState = { pipelineA: [], pipelineB: [{ name: 'B' }], currentPipeline: 'B' };
   assert.deepEqual(await fileUtils.savePipelineStateToFile(dualBState, dualBDir), { success: true });
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dualBDir, 'pipeline-state.json'), 'utf8')), dualBState);
+
+  const emptyDir = createTempDir('effetune-file-utils');
+  const emptyState = { pipelineA: [], pipelineB: null, currentPipeline: 'A' };
+  assert.deepEqual(await fileUtils.savePipelineStateToFile(emptyState, emptyDir, {
+    allowEmpty: true
+  }), { success: true });
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(emptyDir, 'pipeline-state.json'), 'utf8')), emptyState);
 });
 
 test('savePipelineStateToFile reports write errors', async () => {

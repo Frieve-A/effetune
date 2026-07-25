@@ -523,7 +523,7 @@ Room EQ, EffeTune में सेव की गई एक frequency-response me
 ### ध्वनि सुधार गाइड
 
 - जिस speaker group को ठीक करना है, उसे listening area में पास-पास की कई microphone positions से मापें और वह measurement Room EQ में चुनें। कई points से correction केवल एक सटीक स्थान पर कम निर्भर रहता है।
-- शुरुआत **Phase: Linear**, **Smoothing: 0.17 oct**, **Correction Low: 20 Hz**, **Correction High: 16000 Hz**, **Max Boost: 6 dB** और **Level Correction: 100%** से करें। Plugin के मुख्य on/off control से तुलना करके देखें कि balance अधिक समान हो, पर ध्वनि अस्वाभाविक रूप से पतली या बहुत चमकीली न बने।
+- शुरुआत **Phase: Minimum**, **Smoothing: 0.17 oct**, **Correction Low: 20 Hz**, **Correction High: 16000 Hz**, **Max Boost: 6 dB** और **Level Correction: 100%** से करें। Plugin के मुख्य on/off control से तुलना करके देखें कि balance अधिक समान हो, पर ध्वनि अस्वाभाविक रूप से पतली या बहुत चमकीली न बने।
 - यदि filter ऐसे संकरे dips भरने की कोशिश करे जो microphone position के साथ बदलते हैं, तो Smoothing बढ़ाएँ या Max Boost घटाएँ। Max Boost को 0 dB रखने पर automatic boost रुकता है, लेकिन peaks घटाने वाले cuts जारी रहते हैं।
 - यदि पूरी level correction बहुत अधिक लगे, तो Level Correction घटाएँ। यह हर automatic correction value को dB में समान अनुपात से बदलता है, इसलिए 50% पर +6 dB की correction +3 dB और -8 dB की correction -4 dB हो जाती है।
 - Correction Low और Correction High को speaker तथा measurement microphone की भरोसेमंद range तक सीमित रखें। अविश्वसनीय measurement range के बाहर correction करने से परिणाम बिगड़ सकता है।
@@ -556,7 +556,7 @@ Measurement एक device-local reference है। URL या preset में 
 ### दृश्य प्रदर्शन
 
 - Graph के ऊपर दिए **Frequency Response** और **Impulse Response** radio buttons से दोनों views के बीच बदल सकते हैं।
-- **Impulse Response** चुना हुआ point दिखाता है; Reference Point को सहमति पर रखने पर यह समय में align की गई औसत waveform दिखाता है। Range मापे गए onset से 5 ms पहले से 5 ms और Direct Window में जो अधिक हो, वहाँ तक रहती है। धूसर line correction से पहले की response और सफेद line वास्तविक FIR लगाने के बाद का calculated result दिखाती है। मापा गया onset दोनों के लिए साझा 0 ms reference है और corrected waveform से केवल FIR का ज्ञात fixed delay हटाया जाता है, इसलिए peak की relative timing और pre-ringing दिखाई देते रहते हैं। दोनों एक ही normalized amplitude scale का उपयोग करती हैं। Impulse-response data न होने पर unavailable message दिखाई देता है।
+- **Impulse Response** चुना हुआ point दिखाता है; Reference Point को सहमति पर रखने पर यह समय में align की गई औसत waveform दिखाता है। Range मापे गए onset से 2 ms पहले से 5 ms और Direct Window में जो अधिक हो, वहाँ तक रहती है। धूसर line correction से पहले की response और सफेद line वास्तविक FIR लगाने के बाद का calculated result दिखाती है। मापा गया onset दोनों के लिए साझा 0 ms reference है और corrected waveform से केवल FIR का ज्ञात fixed delay हटाया जाता है, इसलिए peak की relative timing और pre-ringing दिखाई देते रहते हैं। दोनों एक ही normalized amplitude scale का उपयोग करती हैं। Impulse-response data न होने पर unavailable message दिखाई देता है।
 - Graph का horizontal axis logarithmic frequency और vertical axis dB level दिखाता है।
 - दो सफेद खड़ी dotted lines, Correction Low और Correction High से सेट की गई frequencies दिखाती हैं।
 - Markers से हर band की frequency और gain बदली जा सकती है।

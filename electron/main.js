@@ -1042,6 +1042,9 @@ async function checkForUpdates() {
     const latestVersionName = response.name;
     const targetVersion = normalizeReleaseVersion(response);
     const currentVersion = normalizeSemVer(constants.getAppVersion());
+
+    // A successful check replaces any update information from an earlier check.
+    pendingUpdateInfo = null;
     
     // Compare versions
     if (latestVersionName && targetVersion && currentVersion && isNewerVersion(targetVersion, currentVersion)) {

@@ -10,6 +10,16 @@ const {
   withPatchedPropertyAsync
 } = require('../helpers/cjs-module-utils.cjs');
 
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 async function withModuleLoadStubAsync(stubs, callback) {
   const originalLoad = Module._load;
   Module._load = function patchedLoad(request, parent, isMain) {
@@ -40,6 +50,7 @@ function createIpcMain() {
 }
 
 function createMainWindow(calls, options = {}) {
+  const loadFileResults = [...(options.loadFileResults ?? [])];
   const webContents = {
     sent: [],
     inputEvents: [],
@@ -76,9 +87,14 @@ function createMainWindow(calls, options = {}) {
       calls.push(['window.reload']);
       if (options.throwReload) throw new Error('reload failed');
     },
-    loadFile(file) {
-      calls.push(['window.loadFile', file]);
+    loadFile(file, loadOptions) {
+      calls.push(loadOptions === undefined
+        ? ['window.loadFile', file]
+        : ['window.loadFile', file, loadOptions]);
       if (options.throwLoadFile) throw new Error('load failed');
+      const next = loadFileResults.shift();
+      if (next instanceof Error) throw next;
+      return next;
     },
     isDestroyed() {
       return Boolean(options.destroyed);
@@ -319,8 +335,10 @@ function createHarness(options = {}) {
       calls.push(['fileHandlers.handleDroppedPresetFile', fileInfo]);
       return fileInfo;
     },
-    async savePipelineStateToFile(pipelineState) {
-      calls.push(['fileHandlers.savePipelineStateToFile', pipelineState]);
+    async savePipelineStateToFile(pipelineState, saveOptions) {
+      calls.push(saveOptions === undefined
+        ? ['fileHandlers.savePipelineStateToFile', pipelineState]
+        : ['fileHandlers.savePipelineStateToFile', pipelineState, saveOptions]);
       const next = savePipelineResults.length ? savePipelineResults.shift() : { success: true };
       if (next instanceof Error) throw next;
       return next;
@@ -674,8 +692,8 @@ test('IPC handlers recover from update, permission, config, preference, relaunch
     assert.deepEqual(await handlers.get('clear-microphone-permission')(), { success: true });
     constants.setMainWindow(null);
     assert.deepEqual(await handlers.get('clear-microphone-permission')(), { success: false, error: 'Main window not available' });
-    assert.deepEqual(handlers.get('reload-window')(), { success: false, error: 'Main window not available' });
-    assert.deepEqual(handlers.get('navigate-to-main')(), { success: false, error: 'Main window not available' });
+    assert.deepEqual(await handlers.get('reload-window')(), { success: false, error: 'Main window not available' });
+    assert.deepEqual(await handlers.get('navigate-to-main')(), { success: false, error: 'Main window not available' });
     assert.deepEqual(await handlers.get('load-preset-from-tray')({}, 'Preset'), { success: false, error: 'Main window not available' });
 
     const fallbackWin = createMainWindow(calls);
@@ -731,7 +749,7 @@ test('IPC handlers manage menus, tray presets, documentation, default menu creat
     clickMenu(defaultMenu);
     await Promise.resolve();
 
-    assert.deepEqual(handlers.get('navigate-to-main')(), { success: true });
+    assert.deepEqual(await handlers.get('navigate-to-main')(), { success: true });
     assert.deepEqual(handlers.get('update-tray-menu')({}, { items: ['A'] }), { success: true });
     constants.setUpdateTrayMenuTemplate(null);
     assert.deepEqual(handlers.get('update-tray-menu')({}, { items: ['B'] }), {
@@ -761,6 +779,179 @@ test('IPC handlers manage menus, tray presets, documentation, default menu creat
       calls.find(call => call[0] === 'webContents.send' && call[1] === 'audio-files-dropped'),
       ['webContents.send', 'audio-files-dropped', ['/tmp/a.mp3', '/tmp/movie.MP4']]
     );
+    assert.equal(
+      calls.some(call =>
+        call[0] === 'webContents.send' &&
+        call[1] === 'reload-with-pipeline-state'
+      ),
+      true
+    );
+  });
+});
+
+test('Frequency Response Measurement navigation saves and restores the exact pipeline', async () => {
+  await withHarness({}, async ({ calls, ipcMain, moduleUnderTest }) => {
+    moduleUnderTest.registerIpcHandlers();
+    const pipelineState = {
+      pipelineA: [{ name: 'A' }],
+      pipelineB: [{ name: 'B' }],
+      currentPipeline: 'B'
+    };
+
+    assert.deepEqual(
+      await ipcMain.handlers.get('open-frequency-response-measurement')({}, pipelineState),
+      { success: true }
+    );
+    assert.deepEqual(
+      calls.find(call => call[0] === 'fileHandlers.savePipelineStateToFile'),
+      ['fileHandlers.savePipelineStateToFile', pipelineState, { allowEmpty: true }]
+    );
+    assert.equal(
+      calls.some(call =>
+        call[0] === 'window.loadFile' &&
+        call[1] === 'features/measurement/measurement.html'
+      ),
+      true
+    );
+
+    assert.deepEqual(await ipcMain.handlers.get('navigate-to-main')(), { success: true });
+    assert.equal(
+      calls.some(call =>
+        call[0] === 'window.loadFile' &&
+        call[1] === 'effetune.html' &&
+        call[2]?.query?.restorePipeline === 'transient'
+      ),
+      true
+    );
+  });
+});
+
+test('Measurement open and Back navigation deduplicate in-flight loads and consume restore once', async () => {
+  const openLoad = deferred();
+  const backLoad = deferred();
+  await withHarness({
+    mainWindowOptions: {
+      loadFileResults: [openLoad.promise, backLoad.promise]
+    }
+  }, async ({ calls, ipcMain, moduleUnderTest }) => {
+    moduleUnderTest.registerIpcHandlers();
+    const open = ipcMain.handlers.get('open-frequency-response-measurement');
+    const back = ipcMain.handlers.get('navigate-to-main');
+    const pipelineState = {
+      pipelineA: [{ name: 'A' }],
+      pipelineB: null,
+      currentPipeline: 'A'
+    };
+
+    const firstOpen = open({}, pipelineState);
+    const secondOpen = open({}, pipelineState);
+    await Promise.resolve();
+    assert.equal(
+      calls.filter(call => call[0] === 'fileHandlers.savePipelineStateToFile').length,
+      1
+    );
+    assert.equal(
+      calls.filter(call =>
+        call[0] === 'window.loadFile' &&
+        call[1] === 'features/measurement/measurement.html'
+      ).length,
+      1
+    );
+    openLoad.resolve();
+    assert.deepEqual(await Promise.all([firstOpen, secondOpen]), [
+      { success: true },
+      { success: true }
+    ]);
+
+    const firstBack = back();
+    const secondBack = back();
+    assert.equal(
+      calls.filter(call =>
+        call[0] === 'window.loadFile' &&
+        call[1] === 'effetune.html'
+      ).length,
+      1
+    );
+    backLoad.resolve();
+    assert.deepEqual(await Promise.all([firstBack, secondBack]), [
+      { success: true },
+      { success: true }
+    ]);
+
+    assert.deepEqual(await back(), { success: true });
+    const mainLoads = calls.filter(call =>
+      call[0] === 'window.loadFile' &&
+      call[1] === 'effetune.html'
+    );
+    assert.equal(mainLoads.length, 2);
+    assert.equal(mainLoads[0][2]?.query?.restorePipeline, 'transient');
+    assert.equal(mainLoads[1].length, 2);
+  });
+});
+
+test('Measurement navigation failures preserve a previously completed restore', async () => {
+  await withHarness({
+    mainWindowOptions: {
+      loadFileResults: [
+        undefined,
+        new Error('second open failed'),
+        new Error('first Back failed'),
+        undefined
+      ]
+    }
+  }, async ({ calls, ipcMain, moduleUnderTest }) => {
+    moduleUnderTest.registerIpcHandlers();
+    const open = ipcMain.handlers.get('open-frequency-response-measurement');
+    const back = ipcMain.handlers.get('navigate-to-main');
+
+    assert.deepEqual(await open({}, { pipelineA: [], pipelineB: null }), {
+      success: true
+    });
+    assert.deepEqual(await open({}, { pipelineA: [], pipelineB: null }), {
+      success: false,
+      error: 'Frequency Response Measurement could not be opened.'
+    });
+    assert.deepEqual(await back(), {
+      success: false,
+      error: 'first Back failed'
+    });
+    assert.deepEqual(await back(), { success: true });
+
+    const successfulRestore = calls.find(call =>
+      call[0] === 'window.loadFile' &&
+      call[1] === 'effetune.html' &&
+      call[2]?.query?.restorePipeline === 'transient'
+    );
+    assert.ok(successfulRestore);
+  });
+});
+
+test('Reload saves and restores the exact pipeline instead of applying startup policy', async () => {
+  await withHarness({}, async ({ calls, ipcMain, moduleUnderTest }) => {
+    moduleUnderTest.registerIpcHandlers();
+    const pipelineState = {
+      pipelineA: [{ name: 'Reload A' }],
+      pipelineB: [{ name: 'Reload B' }],
+      currentPipeline: 'B'
+    };
+
+    assert.deepEqual(
+      await ipcMain.handlers.get('reload-window')({}, pipelineState),
+      { success: true }
+    );
+    assert.deepEqual(
+      calls.find(call => call[0] === 'fileHandlers.savePipelineStateToFile'),
+      ['fileHandlers.savePipelineStateToFile', pipelineState, { allowEmpty: true }]
+    );
+    assert.equal(
+      calls.some(call =>
+        call[0] === 'window.loadFile' &&
+        call[1] === 'effetune.html' &&
+        call[2]?.query?.restorePipeline === 'transient'
+      ),
+      true
+    );
+    assert.equal(calls.some(call => call[0] === 'window.reload'), false);
   });
 });
 
@@ -782,7 +973,7 @@ test('IPC handlers recover from menu, tray preset, menu read, navigation, docs, 
     assert.equal(handlers.get('get-application-menu')(), null);
     assert.deepEqual(handlers.get('hide-application-menu')(), { success: true });
     assert.deepEqual(handlers.get('restore-default-menu')(), { success: false, error: 'build menu failed' });
-    assert.deepEqual(handlers.get('navigate-to-main')(), { success: false, error: 'build menu failed' });
+    assert.deepEqual(await handlers.get('navigate-to-main')(), { success: false, error: 'build menu failed' });
     assert.deepEqual(await handlers.get('open-documentation')({}, '/docs/readme.md'), { success: false, error: 'doc failed' });
 
     constants.setMainWindow({ webContents: null });
@@ -941,7 +1132,7 @@ test('IPC handlers report menu click rejections and recover from IPC errors', as
     moduleUnderTest.registerIpcHandlers();
     const win = createMainWindow([]);
     moduleUnderTest.setMainWindow(win);
-    assert.deepEqual(ipcMain.handlers.get('reload-window')(), { success: true });
+    assert.deepEqual(await ipcMain.handlers.get('reload-window')(), { success: true });
     moduleUnderTest.setMainWindow(null);
     moduleUnderTest.simulateKeyboardShortcut('K');
   });

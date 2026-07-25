@@ -276,12 +276,14 @@ async function handleDroppedPresetFile(fileInfo) {
   }
 }
 // Handle save pipeline state to file request
-async function savePipelineStateToFile(pipelineState) {
+async function savePipelineStateToFile(pipelineState, options) {
   // Get app path
   const appPath = getUserDataPath();
   
   // Use fileUtils to save the pipeline state
-  return await fileUtils.savePipelineStateToFile(pipelineState, appPath);
+  return options === undefined
+    ? await fileUtils.savePipelineStateToFile(pipelineState, appPath)
+    : await fileUtils.savePipelineStateToFile(pipelineState, appPath, options);
 }
 
 // Process command line arguments to find preset files and music files

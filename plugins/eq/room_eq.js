@@ -776,7 +776,7 @@ class RoomEqPlugin extends PluginBase {
 
     constructor() {
         super('Room EQ', 'FIR room correction using saved frequency-response measurements');
-        this.pm = 'lin';
+        this.pm = 'min';
         this.tp = 32768;
         this.lt = '128';
         this.sm = 0.17;
@@ -825,6 +825,7 @@ class RoomEqPlugin extends PluginBase {
         this._referencePointSelect = null;
         this._responseView = 'frequency';
         this._responseViewElements = null;
+        this._impulseBeforeLegendHover = null;
         this._visibilityHandler = () => {
             if (!this._disposed && document.visibilityState === 'visible') {
                 this._refreshMeasurements(true);
@@ -1715,7 +1716,13 @@ class RoomEqPlugin extends PluginBase {
 
         const legend = document.createElement('div');
         legend.className = 'room-eq-response-legend';
-        for (const [className, labelText, frequencySelector, impulseSelector] of [
+        for (const [
+            className,
+            labelText,
+            frequencySelector,
+            impulseSelector,
+            hiddenImpulseSelector
+        ] of [
             [
                 'room-eq-response-legend-room',
                 'Room EQ',
@@ -1732,7 +1739,8 @@ class RoomEqPlugin extends PluginBase {
                 'room-eq-response-legend-before',
                 'Before',
                 '.room-eq-measured-response-path',
-                '.room-eq-impulse-before'
+                '.room-eq-impulse-before',
+                '.room-eq-impulse-after'
             ],
             [
                 'room-eq-response-legend-after',
@@ -1747,17 +1755,34 @@ class RoomEqPlugin extends PluginBase {
             swatch.className = 'room-eq-response-legend-swatch';
             swatch.setAttribute('aria-hidden', 'true');
             item.append(swatch, document.createTextNode(labelText));
-            let restoreEmphasis = null;
+            const emphasis = { restore: null };
             item.addEventListener('mouseenter', () => {
+                emphasis.restore?.();
                 const impulseView = this._responseView === 'impulse';
-                restoreEmphasis = this._emphasizeResponsePath(
-                    impulseView ? impulseResponse : editor.responseSvg,
-                    impulseView ? impulseSelector : frequencySelector
+                const container = impulseView ? impulseResponse : editor.responseSvg;
+                const selector = impulseView ? impulseSelector : frequencySelector;
+                const hiddenSelector = impulseView ? hiddenImpulseSelector : null;
+                emphasis.restore = this._emphasizeResponsePath(
+                    container,
+                    selector,
+                    hiddenSelector
                 );
+                if (impulseView && hiddenSelector) {
+                    this._impulseBeforeLegendHover = {
+                        owner: item,
+                        container,
+                        selector,
+                        hiddenSelector,
+                        emphasis
+                    };
+                }
             });
             item.addEventListener('mouseleave', () => {
-                restoreEmphasis?.();
-                restoreEmphasis = null;
+                emphasis.restore?.();
+                emphasis.restore = null;
+                if (this._impulseBeforeLegendHover?.owner === item) {
+                    this._impulseBeforeLegendHover = null;
+                }
             });
             legend.appendChild(item);
         }
@@ -1803,14 +1828,19 @@ class RoomEqPlugin extends PluginBase {
         return element;
     }
 
-    _emphasizeResponsePath(container, selector) {
+    _emphasizeResponsePath(container, selector, hiddenSelector = null) {
         const path = selector ? container?.querySelector?.(selector) : null;
         if (!path) return null;
+        const hiddenPath = hiddenSelector
+            ? container.querySelector(hiddenSelector)
+            : null;
         const originalNextSibling = path.nextSibling;
         path.classList.add('room-eq-response-highlighted');
+        hiddenPath?.classList.add('room-eq-response-hidden');
         container.appendChild(path);
         return () => {
             path.classList.remove('room-eq-response-highlighted');
+            hiddenPath?.classList.remove('room-eq-response-hidden');
             if (path.parentNode !== container) return;
             if (originalNextSibling?.parentNode === container) {
                 container.insertBefore(path, originalNextSibling);
@@ -1818,6 +1848,17 @@ class RoomEqPlugin extends PluginBase {
                 container.appendChild(path);
             }
         };
+    }
+
+    _applyImpulseBeforeLegendHover(container = null) {
+        const hover = this._impulseBeforeLegendHover;
+        if (!hover || (container && hover.container !== container)) return;
+        hover.emphasis.restore?.();
+        hover.emphasis.restore = this._emphasizeResponsePath(
+            hover.container,
+            hover.selector,
+            hover.hiddenSelector
+        );
     }
 
     _waveformPath(samples, width, height, peak, left = 0) {
@@ -1888,12 +1929,13 @@ class RoomEqPlugin extends PluginBase {
         if (!width || !height) return;
         impulseGrid.replaceChildren();
         impulseResponse.replaceChildren();
+        this._applyImpulseBeforeLegendHover(impulseResponse);
         impulseGrid.setAttribute('viewBox', `0 0 ${width} ${height}`);
         impulseGrid.setAttribute('preserveAspectRatio', 'none');
         impulseResponse.setAttribute('viewBox', `0 0 ${width} ${height}`);
 
         const preview = this._lastDesign?.previews?.find(Boolean)?.impulseResponse;
-        const startMs = preview?.startMs ?? -5;
+        const startMs = preview?.startMs ?? -2;
         const durationMs = preview?.durationMs || Math.max(5, this.dw);
         const timePlotLeft = 0;
         const timePlotWidth = width - timePlotLeft;
@@ -1961,6 +2003,7 @@ class RoomEqPlugin extends PluginBase {
                 class: className
             });
         }
+        this._applyImpulseBeforeLegendHover(impulseResponse);
     }
 
     createUI() {
@@ -2101,6 +2144,8 @@ class RoomEqPlugin extends PluginBase {
         this._designer = null;
         this._measurementStore = null;
         this._measurementRow = null;
+        this._impulseBeforeLegendHover?.emphasis.restore?.();
+        this._impulseBeforeLegendHover = null;
         this._additionalEqEditor?.dispose();
         this._additionalEqEditor = null;
         this._responseViewElements = null;

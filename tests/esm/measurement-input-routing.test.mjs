@@ -82,6 +82,29 @@ test('Both input averages left and right once before level metering and recordin
     assert.doesNotMatch(processingSource, /audioUtils\.microphone\.connect\(recordNode\)/);
 });
 
+test('Both input keeps a mono capture stream at unity gain', async () => {
+    const harness = createInputHarness(1);
+    await withGlobals({
+        navigator: {
+            mediaDevices: {
+                getUserMedia: async () => harness.stream
+            }
+        }
+    }, async () => {
+        assert.equal(
+            await startMicrophoneInput.call(harness.audioUtils, 'mono-device', 'both'),
+            true
+        );
+    });
+
+    assert.equal(harness.gains.length, 1);
+    assert.equal(harness.gains[0].gain.value, 1);
+    assert.equal(harness.connections.some(connection =>
+        connection[0] === 'splitter' &&
+        connection[1] === 'gain-0' &&
+        connection[2] === 0), true);
+});
+
 test('Right input requires and validates a stereo capture stream', async () => {
     const stereo = createInputHarness(2);
     let constraints;

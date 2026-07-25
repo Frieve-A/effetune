@@ -523,7 +523,7 @@ Room EQ creates one FIR correction filter from a frequency-response measurement 
 ### Sound Enhancement Guide
 
 - Measure the loudspeaker or channel group that you will route through one Room EQ instance from several nearby microphone positions, then select that saved measurement. Multiple points make the correction less dependent on one exact microphone position.
-- Start with **Phase: Linear**, **Smoothing: 0.17 oct**, **Correction Low: 20 Hz**, **Correction High: 16000 Hz**, **Max Boost: 6 dB**, and **Level Correction: 100%**. Compare with the plugin's main on/off control to confirm that the result is more even without becoming unnaturally thin or bright.
+- Start with **Phase: Minimum**, **Smoothing: 0.17 oct**, **Correction Low: 20 Hz**, **Correction High: 16000 Hz**, **Max Boost: 6 dB**, and **Level Correction: 100%**. Compare with the plugin's main on/off control to confirm that the result is more even without becoming unnaturally thin or bright.
 - If the filter tries to fill narrow dips that change with microphone position, increase Smoothing or lower Max Boost. A value of 0 dB for Max Boost prevents automatic boosts while still allowing cuts to reduce peaks.
 - If full level correction sounds too strong, lower Level Correction. Because it scales each automatic correction value in dB, 50% changes a +6 dB correction to +3 dB and a -8 dB correction to -4 dB.
 - Limit Correction Low and Correction High to the range your loudspeaker and measurement microphone reproduce reliably. Correcting outside a trustworthy measurement range can make the result less accurate.
@@ -556,7 +556,7 @@ Measurements are device-local references. A URL or preset stores the selected me
 ### Visual Display
 
 - Use the **Frequency Response** and **Impulse Response** radio buttons at the top of the graph to switch views.
-- **Impulse Response** shows the selected point, or the time-aligned average waveform when Reference Point is Consensus, from 5 ms before the measured onset through the later of 5 ms or Direct Window. The gray line is before correction and the white line is the calculated result after the actual FIR. The measured onset is the shared 0 ms reference, and only the FIR's known fixed delay is removed from the corrected waveform, so relative peak timing and pre-ringing remain visible. Both lines use the same normalized amplitude scale. A measurement without impulse-response data shows an unavailable message instead.
+- **Impulse Response** shows the selected point, or the time-aligned average waveform when Reference Point is Consensus, from 2 ms before the measured onset through the later of 5 ms or Direct Window. The gray line is before correction and the white line is the calculated result after the actual FIR. The measured onset is the shared 0 ms reference, and only the FIR's known fixed delay is removed from the corrected waveform, so relative peak timing and pre-ringing remain visible. Both lines use the same normalized amplitude scale. A measurement without impulse-response data shows an unavailable message instead.
 - The graph uses a logarithmic frequency axis and a vertical gain axis in dB.
 - The two white dotted vertical lines mark the frequencies set by Correction Low and Correction High.
 - Numbered markers correspond to the five bands. Drag a marker horizontally to change frequency and vertically to change gain; disabled bands appear dimmed.

@@ -42,7 +42,7 @@ function joinPaths(basePath, ...paths) {
 }
 
 // Save pipeline state to file
-async function savePipelineStateToFile(pipelineState, userDataPath) {
+async function savePipelineStateToFile(pipelineState, userDataPath, { allowEmpty = false } = {}) {
   try {
     // Skip saving if pipeline state is empty
     if (!pipelineState) {
@@ -51,10 +51,17 @@ async function savePipelineStateToFile(pipelineState, userDataPath) {
     
     // Handle dual pipeline format (object with pipelineA, pipelineB, currentPipeline)
     if (pipelineState.pipelineA !== undefined) {
+      const hasValidPipelines = Array.isArray(pipelineState.pipelineA) &&
+        (pipelineState.pipelineB === null ||
+         pipelineState.pipelineB === undefined ||
+         Array.isArray(pipelineState.pipelineB));
+      if (!hasValidPipelines) {
+        return { success: false, error: 'Invalid pipeline state format' };
+      }
       // Check if at least one pipeline has content
-      const hasContent = (Array.isArray(pipelineState.pipelineA) && pipelineState.pipelineA.length > 0) ||
-                         (pipelineState.pipelineB && Array.isArray(pipelineState.pipelineB) && pipelineState.pipelineB.length > 0);
-      if (!hasContent) {
+      const hasContent = pipelineState.pipelineA.length > 0 ||
+                         (Array.isArray(pipelineState.pipelineB) && pipelineState.pipelineB.length > 0);
+      if (!hasContent && !allowEmpty) {
         return { success: false, error: 'Empty pipeline state' };
       }
     } else if (Array.isArray(pipelineState)) {

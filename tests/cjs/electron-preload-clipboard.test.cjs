@@ -145,6 +145,11 @@ test('preload exposes electronAPI invoke and send wrappers', async () => {
     ['hideApplicationMenu', [], ['hide-application-menu']],
     ['restoreDefaultMenu', [], ['restore-default-menu']],
     ['navigateToMain', [], ['navigate-to-main']],
+    [
+      'openFrequencyResponseMeasurement',
+      [{ pipelineA: [{ name: 'Volume' }], pipelineB: null, currentPipeline: 'A' }],
+      ['open-frequency-response-measurement', { pipelineA: [{ name: 'Volume' }], pipelineB: null, currentPipeline: 'A' }]
+    ],
     ['getApplicationMenu', [], ['get-application-menu']],
     ['getPath', ['userData'], ['getPath', 'userData']],
     ['joinPaths', ['base', 'child', 'leaf'], ['joinPaths', 'base', 'child', 'leaf']],
@@ -166,6 +171,16 @@ test('preload exposes electronAPI invoke and send wrappers', async () => {
       args: expectedInvocation.slice(1)
     });
   }
+
+  const reloadState = {
+    pipelineA: [{ name: 'Volume' }],
+    pipelineB: null,
+    currentPipeline: 'A'
+  };
+  assert.deepEqual(await api.reloadWindow(reloadState), {
+    channel: 'reload-window',
+    args: [reloadState]
+  });
 
   const favoriteRequest = { limit: 25, cursor: { position: 1024, itemKey: 7 } };
   assert.deepEqual(await api.libraryCatalogV1.getFavoriteTrackUids(favoriteRequest), {
@@ -289,6 +304,8 @@ test('preload exposes listener registration wrappers', () => {
     ['onSavePresetAs', 'save-preset-as'],
     ['onConfigAudio', 'config-audio'],
     ['onConfigApp', 'config-app'],
+    ['onOpenFrequencyResponseMeasurement', 'open-frequency-response-measurement'],
+    ['onReloadWithPipelineState', 'reload-with-pipeline-state'],
     ['onRequestPipelineStateForClose', 'request-pipeline-state-for-close']
   ];
   for (const [method, channel] of noArgListeners) {
@@ -352,6 +369,8 @@ test('preload exposes listener registration wrappers', () => {
     ['onSavePresetAs'],
     ['onConfigAudio'],
     ['onConfigApp'],
+    ['onOpenFrequencyResponseMeasurement'],
+    ['onReloadWithPipelineState'],
     ['onRequestPipelineStateForClose'],
     ['onOpenPresetFile', 'preset.effetune_preset'],
     ['onOpenMusicFiles', ['song.wav']],

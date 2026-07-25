@@ -99,6 +99,7 @@ async function withStateGlobals(options, callback) {
   const windowRef = {
     electronAPI: options.electronAPI,
     electronIntegration: options.electronIntegration,
+    app: options.app,
     uiManager: options.uiManager,
     HTMLInstallElement: options.HTMLInstallElement,
     matchMedia: options.matchMedia,
@@ -378,6 +379,23 @@ test('settings menu dispatches config, audio, feature links, and explicit audio 
     assert.deepEqual(calls.filter(call => call[0] === 'showConfigDialog'), [['showConfigDialog']]);
     assert.deepEqual(calls.filter(call => call[0] === 'showAudioConfigDialog'), [['showAudioConfigDialog']]);
     assert.deepEqual(calls.filter(call => call[0] === 'audio.reset'), [['audio.reset', null]]);
+  });
+});
+
+test('feature links delegate navigation so the pipeline can be saved first', async () => {
+  const navigations = [];
+  await withStateGlobals({
+    app: {
+      async openFeaturePage(path) {
+        navigations.push(path);
+      }
+    }
+  }, async ({ documentRef }) => {
+    const manager = new StateManager({});
+    await manager.measurementSettingsButton.click();
+
+    assert.deepEqual(navigations, ['features/measurement/measurement.html']);
+    assert.equal(documentRef.elements.get('measurementSettingsButton').hidden, false);
   });
 });
 

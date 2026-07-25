@@ -108,14 +108,18 @@ async function startMicrophoneInput(deviceId = null, channel = 'left') {
             this.channelSplitter.connect(this.channelGain, 1);
         } else {
             // Both channels (mix to mono)
-            const leftGain = this.audioContext.createGain();
-            const rightGain = this.audioContext.createGain();
-            leftGain.gain.value = 0.5;
-            rightGain.gain.value = 0.5;
-            this.channelSplitter.connect(leftGain, 0);
-            this.channelSplitter.connect(rightGain, 1);
-            leftGain.connect(this.channelGain);
-            rightGain.connect(this.channelGain);
+            if (actualChannelCount === 1) {
+                this.channelSplitter.connect(this.channelGain, 0);
+            } else {
+                const leftGain = this.audioContext.createGain();
+                const rightGain = this.audioContext.createGain();
+                leftGain.gain.value = 0.5;
+                rightGain.gain.value = 0.5;
+                this.channelSplitter.connect(leftGain, 0);
+                this.channelSplitter.connect(rightGain, 1);
+                leftGain.connect(this.channelGain);
+                rightGain.connect(this.channelGain);
+            }
         }
         
         // Connect to analyzer

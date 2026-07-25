@@ -152,7 +152,9 @@ const ALLOWED_IPC_LISTENER_CHANNELS = new Set([
   'exit-mini-player',
   'load-preset-from-tray',
   'open-effect-pipeline-view',
+  'open-frequency-response-measurement',
   'open-library-view',
+  'reload-with-pipeline-state',
   'request-tray-menu-update',
   'rescan-library',
   'start-double-blind-test',
@@ -305,7 +307,9 @@ contextBridge.exposeInMainWorld(
     getCommandLinePresetFile: () => ipcRenderer.invoke('get-command-line-preset-file'),
     
     // Reload window
-    reloadWindow: () => ipcRenderer.invoke('reload-window'),
+    reloadWindow: (pipelineState) => pipelineState === undefined
+      ? ipcRenderer.invoke('reload-window')
+      : ipcRenderer.invoke('reload-window', pipelineState),
 
     // Full app relaunch (kills renderer process — used for HDMI reconnect recovery)
     relaunchApp: () => ipcRenderer.invoke('relaunch-app'),
@@ -337,7 +341,9 @@ contextBridge.exposeInMainWorld(
   onRequestTrayMenuUpdate: (callback) => addNoArgIpcListener('request-tray-menu-update', callback),
   onStartDoubleBlindTest: (callback) => addNoArgIpcListener('start-double-blind-test', callback),
   onOpenEffectPipelineView: (callback) => addNoArgIpcListener('open-effect-pipeline-view', callback),
+  onOpenFrequencyResponseMeasurement: (callback) => addNoArgIpcListener('open-frequency-response-measurement', callback),
   onOpenLibraryView: (callback) => addNoArgIpcListener('open-library-view', callback),
+  onReloadWithPipelineState: (callback) => addNoArgIpcListener('reload-with-pipeline-state', callback),
   onExitMiniPlayer: (callback) => addNoArgIpcListener('exit-mini-player', callback),
   onToggleMiniPlayer: (callback) => addNoArgIpcListener('toggle-mini-player', callback),
   onAddMusicFolder: (callback) => addNoArgIpcListener('add-music-folder', callback),
@@ -362,6 +368,10 @@ contextBridge.exposeInMainWorld(
     
     // Navigate back to main page
     navigateToMain: () => ipcRenderer.invoke('navigate-to-main'),
+
+    // Save the current pipeline and open Frequency Response Measurement
+    openFrequencyResponseMeasurement: (pipelineState) =>
+      ipcRenderer.invoke('open-frequency-response-measurement', pipelineState),
     
     // Get current application menu template
     getApplicationMenu: () => ipcRenderer.invoke('get-application-menu'),

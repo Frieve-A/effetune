@@ -287,7 +287,7 @@ test('IR-backed direct-phase design is available and finite', () => {
     assert.equal(result.qualityWarnings.length, 0);
 });
 
-test('IR preview spans from 5 ms before onset through at least 5 ms', () => {
+test('IR preview spans from 2 ms before onset through at least 5 ms', () => {
     const impulse = new Float32Array(10000);
     const onset = 512;
     impulse[onset] = 1;
@@ -323,9 +323,9 @@ test('IR preview spans from 5 ms before onset through at least 5 ms', () => {
         });
         const preview = result.previews[0].impulseResponse;
         assert.equal(preview.sampleRate, 48000);
-        assert.equal(preview.startMs, -5);
+        assert.equal(preview.startMs, -2);
         assert.equal(preview.durationMs, 6);
-        assert.equal(preview.before.length, 528);
+        assert.equal(preview.before.length, 384);
         assert.equal(preview.after.length, preview.before.length);
         let maximumDifference = 0;
         for (let index = 0; index < preview.before.length; index += 1) {
@@ -345,9 +345,9 @@ test('IR preview spans from 5 ms before onset through at least 5 ms', () => {
         },
         sources: source
     }).previews[0].impulseResponse;
-    assert.equal(shortWindowPreview.startMs, -5);
+    assert.equal(shortWindowPreview.startMs, -2);
     assert.equal(shortWindowPreview.durationMs, 5);
-    assert.equal(shortWindowPreview.before.length, 480);
+    assert.equal(shortWindowPreview.before.length, 336);
 });
 
 test('IR preview keeps before and after waveforms on the measured onset reference', () => {
@@ -388,7 +388,7 @@ test('IR preview keeps before and after waveforms on the measured onset referenc
         }]
     });
     const preview = result.previews[0].impulseResponse;
-    const onsetSample = 240;
+    const onsetSample = Math.round(-preview.startMs * preview.sampleRate / 1000);
     let correctedPeakIndex = 0;
     for (let index = 1; index < preview.after.length; index += 1) {
         if (Math.abs(preview.after[index]) > Math.abs(preview.after[correctedPeakIndex])) {

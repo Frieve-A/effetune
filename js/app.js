@@ -13,8 +13,31 @@ import {
 import { normalizeMusicLibraryStartupView } from './library/constants.js';
 import { createUpdateNotification } from './update-notification.js';
 
+const TRANSIENT_PIPELINE_RESTORE_PARAM = 'restorePipeline';
+const TRANSIENT_PIPELINE_RESTORE_VALUE = 'transient';
+const TRANSIENT_PIPELINE_STATE_STORAGE_KEY = 'effetune_transient_pipeline_state';
+
 // Make electronIntegration globally accessible first
 window.electronIntegration = electronIntegration;
+
+function getFullPipelineStateForSave(audioManager, pipelineManager) {
+    const core = pipelineManager?.core;
+    if (!audioManager || !core) {
+        return null;
+    }
+
+    const serialize = pipeline => pipeline
+        ? pipeline.map(plugin =>
+            core.getSerializablePluginState(plugin, false, false, false)
+        )
+        : null;
+
+    return {
+        pipelineA: serialize(audioManager.pipelineA),
+        pipelineB: serialize(audioManager.pipelineB),
+        currentPipeline: audioManager.currentPipeline === 'B' ? 'B' : 'A'
+    };
+}
 
 // Function to get the current pipeline state for saving
 function getPipelineStateForSave() {
@@ -60,18 +83,18 @@ async function writePipelineStateToFile() {
 registerPipelineStateCloseHandler(getPipelineStateForSave);
 
 // Function to load pipeline state from file when in Electron environment
-async function loadPipelineState() {
+async function loadPipelineState(forceLoad = false) {
     if (!window.electronAPI || !window.electronIntegration || !window.electronIntegration.isElectron) {
         return null;
     }
     
     // Double-check that we should load the pipeline state
-    if (window.__FORCE_SKIP_PIPELINE_STATE_LOAD === true) {
+    if (!forceLoad && window.__FORCE_SKIP_PIPELINE_STATE_LOAD === true) {
         return null;
     }
     
     // Check the pipelineStateLoaded flag again
-    if (window.pipelineStateLoaded !== true) {
+    if (!forceLoad && window.pipelineStateLoaded !== true) {
         return null;
     }
     
@@ -165,9 +188,76 @@ function hasExplicitStartupViewRequest(windowRef = window) {
 
     try {
         const params = new URLSearchParams(windowRef.location?.search || '');
-        return params.has('p') || params.has('dbt');
+        return params.has('p') ||
+            params.has('dbt') ||
+            params.get(TRANSIENT_PIPELINE_RESTORE_PARAM) === TRANSIENT_PIPELINE_RESTORE_VALUE;
     } catch (error) {
         return false;
+    }
+}
+
+function markTransientPipelineRestoreRequest(windowRef = window) {
+    try {
+        if (typeof windowRef.history?.replaceState !== 'function') {
+            return false;
+        }
+        const params = new URLSearchParams(windowRef.location?.search || '');
+        params.set(TRANSIENT_PIPELINE_RESTORE_PARAM, TRANSIENT_PIPELINE_RESTORE_VALUE);
+        const pathname = windowRef.location?.pathname || 'effetune.html';
+        const search = params.toString();
+        const hash = windowRef.location?.hash || '';
+        windowRef.history.replaceState(
+            windowRef.history?.state ?? {},
+            '',
+            `${pathname}${search ? `?${search}` : ''}${hash}`
+        );
+        return true;
+    } catch (error) {
+        console.warn('Failed to mark feature pipeline restore request:', error);
+        return false;
+    }
+}
+
+function consumeTransientPipelineRestoreRequest(windowRef = window) {
+    try {
+        const params = new URLSearchParams(windowRef.location?.search || '');
+        if (params.get(TRANSIENT_PIPELINE_RESTORE_PARAM) !== TRANSIENT_PIPELINE_RESTORE_VALUE) {
+            return false;
+        }
+
+        params.delete(TRANSIENT_PIPELINE_RESTORE_PARAM);
+        const pathname = windowRef.location?.pathname || 'effetune.html';
+        const search = params.toString();
+        const hash = windowRef.location?.hash || '';
+        windowRef.history?.replaceState?.(
+            windowRef.history?.state ?? {},
+            '',
+            `${pathname}${search ? `?${search}` : ''}${hash}`
+        );
+        return true;
+    } catch (error) {
+        console.warn('Failed to consume feature pipeline restore request:', error);
+        return false;
+    }
+}
+
+function loadTransientPipelineState(windowRef = window) {
+    try {
+        const serializedState = windowRef.sessionStorage?.getItem?.(TRANSIENT_PIPELINE_STATE_STORAGE_KEY);
+        windowRef.sessionStorage?.removeItem?.(TRANSIENT_PIPELINE_STATE_STORAGE_KEY);
+        if (!serializedState) {
+            return null;
+        }
+
+        const state = JSON.parse(serializedState);
+        if (!Array.isArray(state?.pipelineA) ||
+            (state.pipelineB !== null && !Array.isArray(state.pipelineB))) {
+            return null;
+        }
+        return state;
+    } catch (error) {
+        console.warn('Failed to load feature pipeline state:', error);
+        return null;
     }
 }
 
@@ -246,10 +336,99 @@ class App {
         // to prevent infinite relaunch loops when HDMI is unstable at startup
         this._appStartTime = Date.now();
         this.startupWarningMessage = null;
+        this.restoringTransientPipeline = false;
 
         // Make managers globally accessible for preset functionality
         window.pluginManager = this.pluginManager;
         window.pipelineManager = this.uiManager.pipelineManager;
+
+        window.electronAPI?.onOpenFrequencyResponseMeasurement?.(
+            () => this.openFeaturePage('features/measurement/measurement.html')
+        );
+        window.electronAPI?.onReloadWithPipelineState?.(
+            () => this.reloadWithPipelineState()
+        );
+    }
+
+    getPipelineStateForFeatureNavigation() {
+        return getFullPipelineStateForSave(this.audioManager, this.uiManager?.pipelineManager);
+    }
+
+    async openFeaturePage(path) {
+        const isMeasurementPage = /(?:^|\/)measurement\/measurement\.html$/.test(path);
+        if (!isMeasurementPage) {
+            window.location.href = path;
+            return;
+        }
+
+        let pipelineState = null;
+        try {
+            pipelineState = this.getPipelineStateForFeatureNavigation();
+        } catch (error) {
+            console.error('Failed to prepare the effect pipeline for feature navigation:', error);
+        }
+        const isElectron = window.electronIntegration?.isElectron === true ||
+            window.electronIntegration?.isElectronEnvironment?.() === true;
+
+        if (isElectron && window.electronAPI?.openFrequencyResponseMeasurement) {
+            try {
+                const result = await window.electronAPI.openFrequencyResponseMeasurement(pipelineState);
+                if (!result?.success) {
+                    console.error('Failed to open Frequency Response Measurement:', result?.error);
+                }
+            } catch (error) {
+                console.error('Failed to open Frequency Response Measurement:', error);
+            }
+            return;
+        }
+
+        this.uiManager.flushPipelineStateToLocalStorage?.();
+        try {
+            if (!pipelineState) {
+                throw new Error('The effect pipeline snapshot is unavailable.');
+            }
+            if (typeof window.sessionStorage?.setItem !== 'function') {
+                throw new Error('Session storage is unavailable.');
+            }
+            window.sessionStorage.setItem(
+                TRANSIENT_PIPELINE_STATE_STORAGE_KEY,
+                JSON.stringify(pipelineState)
+            );
+            if (!markTransientPipelineRestoreRequest()) {
+                throw new Error('The restore marker could not be set.');
+            }
+        } catch (error) {
+            console.warn('Failed to save feature pipeline state:', error);
+            try {
+                window.sessionStorage?.removeItem?.(TRANSIENT_PIPELINE_STATE_STORAGE_KEY);
+            } catch (cleanupError) {
+                console.warn('Failed to clear incomplete feature pipeline state:', cleanupError);
+            }
+            this.uiManager.setError(
+                'Frequency Response Measurement could not be opened because the current effect pipeline could not be saved. Please try again.',
+                true
+            );
+            return;
+        }
+        window.location.href = path;
+    }
+
+    async reloadWithPipelineState() {
+        let pipelineState = null;
+        try {
+            pipelineState = this.getPipelineStateForFeatureNavigation();
+        } catch (error) {
+            console.error('Failed to prepare the effect pipeline for reload:', error);
+        }
+
+        try {
+            const result = await window.electronAPI?.reloadWindow?.(pipelineState);
+            if (!result?.success) {
+                console.error('Failed to reload the application:', result?.error);
+            }
+        } catch (error) {
+            console.error('Failed to reload the application:', error);
+        }
     }
 
     async initialize() {
@@ -443,6 +622,10 @@ class App {
     }
 
     async applyStartupViewPreference() {
+        if (this.restoringTransientPipeline) {
+            return;
+        }
+
         let startupConfig = this.startupConfig || getCachedStartupConfig(window) || {};
         if (!startupConfig.startupView) {
             try {
@@ -479,6 +662,11 @@ class App {
     async initializeAndBuildPipeline() {
         // Check if running in Electron environment
         const isElectron = window.electronIntegration && window.electronIntegration.isElectron;
+        const restoreTransientPipeline = consumeTransientPipelineRestoreRequest();
+        this.restoringTransientPipeline = restoreTransientPipeline;
+        const transientPipelineState = restoreTransientPipeline && !isElectron
+            ? loadTransientPipelineState()
+            : null;
         
         // Check if this is first launch (during splash screen)
         const isFirstLaunch = window.isFirstLaunch === true;
@@ -491,7 +679,7 @@ class App {
         
         // Try to load pipeline state from file if in Electron environment and no preset file was specified via command line
         // Check for the force skip flag first
-        if (window.__FORCE_SKIP_PIPELINE_STATE_LOAD === true) {
+        if (window.__FORCE_SKIP_PIPELINE_STATE_LOAD === true && !restoreTransientPipeline) {
             // Clear the flag after using it
             window.__FORCE_SKIP_PIPELINE_STATE_LOAD = false;
             return;
@@ -622,7 +810,11 @@ class App {
                 startupConfig = await this.loadStartupConfig() || {};
                 this.startupConfig = startupConfig;
 
-                if (!isElectron && !webUrlState && startupConfig.pipelineStartup === 'preset' && startupConfig.startupPreset) {
+                if (!restoreTransientPipeline &&
+                    !isElectron &&
+                    !webUrlState &&
+                    startupConfig.pipelineStartup === 'preset' &&
+                    startupConfig.startupPreset) {
                     const presetManager = this.uiManager.pipelineManager.presetManager;
                     const presets = await presetManager.getPresets();
 
@@ -653,7 +845,10 @@ class App {
                 }
                 
                 // If Electron config specifies a preset for startup, load it instead of previous state.
-                if (isElectron && startupConfig.pipelineStartup === 'preset' && startupConfig.startupPreset) {
+                if (!restoreTransientPipeline &&
+                    isElectron &&
+                    startupConfig.pipelineStartup === 'preset' &&
+                    startupConfig.startupPreset) {
                     const presetManager = this.uiManager.pipelineManager.presetManager;
                     const presets = await presetManager.getPresets();
                     
@@ -691,7 +886,7 @@ class App {
                 }
                 
                 // If config specifies default settings, skip loading previous state
-                if (isElectron && startupConfig.pipelineStartup === 'default') {
+                if (!restoreTransientPipeline && isElectron && startupConfig.pipelineStartup === 'default') {
                     window.pipelineStateLoaded = false;
                     if (typeof window.ORIGINAL_PIPELINE_STATE_LOADED !== 'undefined') {
                         window.ORIGINAL_PIPELINE_STATE_LOADED = false;
@@ -704,17 +899,20 @@ class App {
         }
         
         // Load pipeline state
-        let savedState = null;
+        let savedState = transientPipelineState;
         const plugins = [];
+        let restoredPipelineB = null;
+        let restoredCurrentPipeline = 'A';
+        let restoredDualPipeline = false;
         
         // Use the ORIGINAL_PIPELINE_STATE_LOADED value if available, as it can't be changed
         const shouldLoadPipeline = window.ORIGINAL_PIPELINE_STATE_LOADED !== undefined
             ? window.ORIGINAL_PIPELINE_STATE_LOADED === true
             : window.pipelineStateLoaded === true;
             
-        if (isElectron && shouldLoadPipeline) {
+        if (isElectron && (shouldLoadPipeline || restoreTransientPipeline)) {
             try {
-                savedState = await this.loadPipelineState();
+                savedState = await this.loadPipelineState(restoreTransientPipeline);
             } catch (error) {
                 // Error loading pipeline state, will use default
                 console.error('Error loading pipeline state:', error);
@@ -726,7 +924,11 @@ class App {
             savedState = webUrlState || this.uiManager.parsePipelineState();
         }
 
-        if (!savedState && !isElectron && (!startupConfig.pipelineStartup || startupConfig.pipelineStartup === 'last')) {
+        if (!savedState &&
+            !isElectron &&
+            (restoreTransientPipeline ||
+                !startupConfig.pipelineStartup ||
+                startupConfig.pipelineStartup === 'last')) {
             savedState = this.uiManager.loadPipelineStateFromLocalStorage?.() || null;
         }
         
@@ -786,10 +988,9 @@ class App {
                 });
             }
             
-            // Set dual pipeline state
-            this.audioManager.pipelineA = pluginsA;
-            this.audioManager.pipelineB = pluginsB;
-            this.audioManager.setCurrentPipeline(savedState.currentPipeline || 'A');
+            restoredDualPipeline = true;
+            restoredPipelineB = pluginsB;
+            restoredCurrentPipeline = savedState.currentPipeline === 'B' ? 'B' : 'A';
             plugins.push(...pluginsA); // Use pipeline A for current pipeline
             
         } else if (savedState && Array.isArray(savedState) && savedState.length > 0) {
@@ -842,7 +1043,12 @@ class App {
         
         // Set the pipeline in audioManager
         this.audioManager.pipelineA = plugins;
-        this.audioManager.setCurrentPipeline('A');
+        if (restoredDualPipeline) {
+            this.audioManager.pipelineB = restoredPipelineB;
+            this.audioManager.setCurrentPipeline(restoredCurrentPipeline);
+        } else {
+            this.audioManager.setCurrentPipeline('A');
+        }
         
         // Update UI
         this.uiManager.updatePipelineUI(true);

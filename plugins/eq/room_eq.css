@@ -303,6 +303,9 @@ body:not(.layout-mobile) .room-eq-additional-eq-ui .room-eq-additional-eq-filter
     stroke: #fff;
     stroke-width: 1;
 }
+.room-eq-impulse-response .room-eq-response-hidden {
+    display: none;
+}
 .room-eq-additional-eq-ui .room-eq-additional-eq-response .room-eq-response-highlighted,
 .room-eq-impulse-response .room-eq-response-highlighted {
     stroke-width: 3.5;

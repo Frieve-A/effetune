@@ -103,6 +103,7 @@ async function withAppModule(options = {}, callback) {
   const calls = [];
   const timers = [];
   const rafs = [];
+  const sessionValues = new Map(Object.entries(options.sessionStorage ?? {}));
   const document = createDocument(options.document ?? {});
   const mediaDevices = {
     async enumerateDevices() {
@@ -137,8 +138,29 @@ async function withAppModule(options = {}, callback) {
     electronAPI: options.electronApiDuringImport,
     location: {
       search: options.search ?? '',
+      pathname: options.pathname ?? '/effetune.html',
+      hash: options.hash ?? '',
+      href: options.href ?? '',
       reload() {
         calls.push(['location.reload']);
+      }
+    },
+    history: {
+      replaceState(state, title, url) {
+        if (options.historyReplaceStateError) throw options.historyReplaceStateError;
+        calls.push(['history.replaceState', state, title, url]);
+      }
+    },
+    sessionStorage: {
+      getItem(key) {
+        return sessionValues.get(key) ?? null;
+      },
+      setItem(key, value) {
+        if (options.sessionStorageSetError) throw options.sessionStorageSetError;
+        sessionValues.set(key, String(value));
+      },
+      removeItem(key) {
+        sessionValues.delete(key);
       }
     },
     open(url, target) {
@@ -225,6 +247,9 @@ function createPlugin(name) {
     name,
     enabled: true,
     updateParameters() {},
+    setEnabled(enabled) {
+      this.enabled = enabled;
+    },
     setVl(value) {
       this.volume = value;
     }
@@ -945,8 +970,206 @@ test('initializeAndBuildPipeline loads pending, URL, and saved pipeline state', 
     window.electronIntegration = { isElectron: true };
     const app = new mod.App(createDependencies(calls));
     await app.initializeAndBuildPipeline();
-    assert.equal(app.audioManager.currentPipeline, 'A');
+    assert.equal(app.audioManager.currentPipeline, 'B');
     assert.equal(calls.some(call => call[0] === 'audio.setCurrentPipeline' && call[1] === 'B'), true);
+  });
+});
+
+test('feature navigation snapshots and restores both pipelines before startup policy is applied', async () => {
+  await withAppModule({
+    search: '?mode=compact&restorePipeline=stale',
+    hash: '#pipeline-b'
+  }, async ({ calls, mod, window }) => {
+    window.electronIntegration = { isElectron: false };
+    const dependencies = createDependencies(calls, {
+      pipelineA: [createPlugin('Route A')],
+      pipelineB: [createPlugin('Route B')]
+    });
+    dependencies.audioManager.currentPipeline = 'B';
+    const app = new mod.App(dependencies);
+
+    await app.openFeaturePage('features/measurement/measurement.html');
+
+    assert.equal(window.location.href, 'features/measurement/measurement.html');
+    assert.deepEqual(JSON.parse(window.sessionStorage.getItem('effetune_transient_pipeline_state')), {
+      pipelineA: [{ name: 'Route A' }],
+      pipelineB: [{ name: 'Route B' }],
+      currentPipeline: 'B'
+    });
+    assert.deepEqual(
+      calls.find(call => call[0] === 'history.replaceState'),
+      [
+        'history.replaceState',
+        {},
+        '',
+        '/effetune.html?mode=compact&restorePipeline=transient#pipeline-b'
+      ]
+    );
+  });
+
+  for (const failure of [
+    {
+      name: 'serialization',
+      setup(app) {
+        app.getPipelineStateForFeatureNavigation = () => ({
+          pipelineA: [{ value: 1n }],
+          pipelineB: null,
+          currentPipeline: 'A'
+        });
+      }
+    },
+    {
+      name: 'storage',
+      options: { sessionStorageSetError: new Error('storage unavailable') }
+    },
+    {
+      name: 'marker',
+      options: { historyReplaceStateError: new Error('history unavailable') }
+    }
+  ]) {
+    await withAppModule({
+      href: '/effetune.html',
+      sessionStorage: {
+        effetune_transient_pipeline_state: 'stale'
+      },
+      ...failure.options
+    }, async ({ calls, mod, window }) => {
+      window.electronIntegration = { isElectron: false };
+      const app = new mod.App(createDependencies(calls, {
+        pipelineA: [createPlugin('Unsaved')]
+      }));
+      failure.setup?.(app);
+
+      await app.openFeaturePage('features/measurement/measurement.html');
+
+      assert.equal(window.location.href, '/effetune.html', failure.name);
+      assert.equal(
+        window.sessionStorage.getItem('effetune_transient_pipeline_state'),
+        null,
+        failure.name
+      );
+      assert.deepEqual(
+        calls.find(call => call[0] === 'ui.setError'),
+        [
+          'ui.setError',
+          'Frequency Response Measurement could not be opened because the current effect pipeline could not be saved. Please try again.',
+          true,
+          undefined
+        ],
+        failure.name
+      );
+    });
+  }
+
+  let openMeasurementListener;
+  let reloadWithPipelineStateListener;
+  let openedElectronState;
+  let reloadedElectronState;
+  await withAppModule({
+    electronAPI: {
+      onOpenFrequencyResponseMeasurement(listener) {
+        openMeasurementListener = listener;
+      },
+      onReloadWithPipelineState(listener) {
+        reloadWithPipelineStateListener = listener;
+      },
+      async openFrequencyResponseMeasurement(state) {
+        openedElectronState = state;
+        return { success: true, state };
+      },
+      async reloadWindow(state) {
+        reloadedElectronState = state;
+        return { success: true };
+      }
+    }
+  }, async ({ calls, mod, window }) => {
+    window.electronIntegration = { isElectron: true };
+    const dependencies = createDependencies(calls, {
+      pipelineA: [createPlugin('Electron A')],
+      pipelineB: [createPlugin('Electron B')]
+    });
+    dependencies.audioManager.currentPipeline = 'B';
+    new mod.App(dependencies);
+
+    const result = await openMeasurementListener();
+    await reloadWithPipelineStateListener();
+
+    assert.deepEqual(result, undefined);
+    assert.deepEqual(
+      calls.filter(call => call[0] === 'core.serialize').map(call => call[1]),
+      ['Electron A', 'Electron B', 'Electron A', 'Electron B']
+    );
+    assert.deepEqual(openedElectronState, {
+      pipelineA: [{ name: 'Electron A' }],
+      pipelineB: [{ name: 'Electron B' }],
+      currentPipeline: 'B'
+    });
+    assert.deepEqual(reloadedElectronState, openedElectronState);
+  });
+
+  const savedState = {
+    pipelineA: [{ name: 'Saved A', enabled: true, parameters: {} }],
+    pipelineB: [{ name: 'Saved B', enabled: false, parameters: {} }],
+    currentPipeline: 'B'
+  };
+  await withAppModule({
+    search: '?mode=compact&restorePipeline=transient',
+    hash: '#pipeline-b',
+    sessionStorage: {
+      effetune_transient_pipeline_state: JSON.stringify(savedState)
+    }
+  }, async ({ calls, mod, window }) => {
+    window.electronIntegration = { isElectron: false };
+    const app = new mod.App({
+      ...createDependencies(calls, {
+        presets: { Startup: { name: 'Startup' } }
+      }),
+      loadStartupConfig: async () => ({
+        pipelineStartup: 'preset',
+        startupPreset: 'Startup',
+        startupView: 'library'
+      })
+    });
+
+    await app.initializeAndBuildPipeline();
+    await app.applyStartupViewPreference();
+
+    assert.equal(calls.some(call => call[0] === 'presetManager.loadPreset'), false);
+    assert.equal(calls.some(call => call[0] === 'ui.showLibraryView'), false);
+    assert.equal(app.audioManager.currentPipeline, 'B');
+    assert.deepEqual(app.audioManager.pipelineA.map(plugin => plugin.name), ['Saved A']);
+    assert.deepEqual(app.audioManager.pipelineB.map(plugin => plugin.name), ['Saved B']);
+    assert.equal(window.sessionStorage.getItem('effetune_transient_pipeline_state'), null);
+    assert.deepEqual(
+      calls.find(call => call[0] === 'history.replaceState'),
+      ['history.replaceState', {}, '', '/effetune.html?mode=compact#pipeline-b']
+    );
+  });
+
+  await withAppModule({
+    search: '?restorePipeline=transient',
+    originalPipelineStateLoaded: false,
+    pipelineStateLoaded: false,
+    electronAPI: {
+      async getPath() { return '/user'; },
+      async joinPaths(...parts) { return parts.join('/'); },
+      async fileExists() { return true; },
+      async readFile() {
+        return { success: true, content: JSON.stringify(savedState) };
+      }
+    }
+  }, async ({ calls, mod, window }) => {
+    window.electronIntegration = { isElectron: true };
+    const app = new mod.App({
+      ...createDependencies(calls),
+      loadStartupConfig: async () => ({ pipelineStartup: 'default' })
+    });
+
+    await app.initializeAndBuildPipeline();
+
+    assert.equal(app.audioManager.currentPipeline, 'B');
+    assert.deepEqual(app.audioManager.pipelineA.map(plugin => plugin.name), ['Saved A']);
+    assert.deepEqual(app.audioManager.pipelineB.map(plugin => plugin.name), ['Saved B']);
   });
 });
 

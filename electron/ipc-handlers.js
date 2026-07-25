@@ -33,6 +33,9 @@ const FULL_SCREEN_EXIT_TIMEOUT_MS = 3000;
 const atomicFileWrites = new Map();
 let isMiniMode = false;
 let wasMaximizedBeforeMiniMode = false;
+let pendingMeasurementPipelineRestore = null;
+let openMeasurementNavigation = null;
+let mainPageNavigation = null;
 
 function setFullscreenMenuEnabled(enabled) {
   const menuItem = Menu.getApplicationMenu?.()?.getMenuItemById?.('toggle-fullscreen');
@@ -725,6 +728,38 @@ function registerIpcHandlers() {
     return await fileHandlers.savePipelineStateToFile(pipelineState);
   });
 
+  ipcMain.handle('open-frequency-response-measurement', (event, pipelineState) => {
+    if (openMeasurementNavigation) return openMeasurementNavigation;
+
+    openMeasurementNavigation = (async () => {
+      const mainWin = constants.getMainWindow();
+      if (!mainWin) {
+        return { success: false, error: 'Main window not available' };
+      }
+
+      try {
+        const saveResult = await fileHandlers.savePipelineStateToFile(pipelineState, {
+          allowEmpty: true
+        });
+        if (!saveResult?.success) {
+          console.error('Failed to save pipeline state before opening Frequency Response Measurement:', saveResult?.error);
+          return { success: false, error: 'The effect pipeline could not be saved.' };
+        }
+
+        restoreNormalWindowShape();
+        await mainWin.loadFile('features/measurement/measurement.html');
+        pendingMeasurementPipelineRestore = {};
+        return { success: true };
+      } catch (error) {
+        console.error('Failed to open Frequency Response Measurement:', error);
+        return { success: false, error: 'Frequency Response Measurement could not be opened.' };
+      }
+    })().finally(() => {
+      openMeasurementNavigation = null;
+    });
+    return openMeasurementNavigation;
+  });
+
   // Handle pipeline state response for window close
   ipcMain.on('pipeline-state-for-close', async (event, pipelineState) => {
     // Clear the close timeout
@@ -759,13 +794,34 @@ function registerIpcHandlers() {
   });
 
   // Handle window reload request
-  ipcMain.handle('reload-window', () => {
+  ipcMain.handle('reload-window', async (event, pipelineState) => {
     const mainWin = constants.getMainWindow();
-    if (mainWin) {
+    if (!mainWin) {
+      return { success: false, error: 'Main window not available' };
+    }
+
+    if (pipelineState === undefined) {
       mainWin.reload();
       return { success: true };
     }
-    return { success: false, error: 'Main window not available' };
+
+    try {
+      const saveResult = await fileHandlers.savePipelineStateToFile(pipelineState, {
+        allowEmpty: true
+      });
+      if (!saveResult?.success) {
+        console.error('Failed to save pipeline state before reload:', saveResult?.error);
+        return { success: false, error: 'The effect pipeline could not be saved.' };
+      }
+
+      await mainWin.loadFile('effetune.html', {
+        query: { restorePipeline: 'transient' }
+      });
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to reload the application:', error);
+      return { success: false, error: 'The application could not be reloaded.' };
+    }
   });
 
   // Handle full app relaunch (used for HDMI reconnect recovery on macOS,
@@ -970,8 +1026,7 @@ function registerIpcHandlers() {
                   `).catch(err => {
                     console.error('Error resetting zoom before reload:', err);
                   }).finally(() => {
-                    // Then reload the window
-                    mainWin.reload();
+                    mainWin.webContents.send('reload-with-pipeline-state');
                   });
                 }
               }
@@ -1104,7 +1159,7 @@ function registerIpcHandlers() {
                 const mainWin = constants.getMainWindow();
                 if (mainWin) {
                   restoreNormalWindowShape();
-                  mainWin.loadFile('features/measurement/measurement.html');
+                  mainWin.webContents.send('open-frequency-response-measurement');
                 }
               }
             }
@@ -1308,20 +1363,37 @@ function registerIpcHandlers() {
 
   // Handle navigate back to main page request
   ipcMain.handle('navigate-to-main', () => {
-    try {
-      const mainWin = constants.getMainWindow();
-      if (mainWin) {
-        // Restore the default menu first
-        createMenu();
-        // Then navigate back to the main page
-        mainWin.loadFile('effetune.html');
-        return { success: true };
+    if (mainPageNavigation) return mainPageNavigation;
+
+    mainPageNavigation = (async () => {
+      try {
+        const mainWin = constants.getMainWindow();
+        if (mainWin) {
+          // Restore the default menu first
+          createMenu();
+          // Then navigate back to the main page
+          const restorePipeline = pendingMeasurementPipelineRestore;
+          if (restorePipeline) {
+            await mainWin.loadFile('effetune.html', {
+              query: { restorePipeline: 'transient' }
+            });
+            if (pendingMeasurementPipelineRestore === restorePipeline) {
+              pendingMeasurementPipelineRestore = null;
+            }
+          } else {
+            await mainWin.loadFile('effetune.html');
+          }
+          return { success: true };
+        }
+        return { success: false, error: 'Main window not available' };
+      } catch (error) {
+        console.error('Error navigating to main page:', error);
+        return { success: false, error: error.message };
       }
-      return { success: false, error: 'Main window not available' };
-    } catch (error) {
-      console.error('Error navigating to main page:', error);
-      return { success: false, error: error.message };
-    }
+    })().finally(() => {
+      mainPageNavigation = null;
+    });
+    return mainPageNavigation;
   });
 
   // Handle opening documentation
@@ -1532,8 +1604,7 @@ function createMenu() {
               `).catch(err => {
                 console.error('Error resetting zoom before reload:', err.message || String(err));
               }).finally(() => {
-                // Then reload the window
-                mainWin.reload();
+                mainWin.webContents.send('reload-with-pipeline-state');
               });
             }
           }
@@ -1661,7 +1732,7 @@ function createMenu() {
             const mainWin = constants.getMainWindow();
             if (mainWin) {
               restoreNormalWindowShape();
-              mainWin.loadFile('features/measurement/measurement.html');
+              mainWin.webContents.send('open-frequency-response-measurement');
             }
           }
         }

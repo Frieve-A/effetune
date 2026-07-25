@@ -384,7 +384,13 @@
                         console.error('Error navigating to main page:', error);
                     });
             } else {
-                window.location.href = '../../effetune.html';
+                let restorePipeline = false;
+                try {
+                    restorePipeline = Boolean(sessionStorage.getItem('effetune_transient_pipeline_state'));
+                } catch (error) {
+                    console.warn('Could not check the saved effect pipeline:', error);
+                }
+                window.location.href = `../../effetune.html${restorePipeline ? '?restorePipeline=transient' : ''}`;
             }
         });
 

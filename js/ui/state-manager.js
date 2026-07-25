@@ -197,6 +197,10 @@ export class StateManager {
     }
 
     openFeaturePage(path) {
+        if (typeof window.app?.openFeaturePage === 'function') {
+            return window.app.openFeaturePage(path);
+        }
+        window.uiManager?.flushPipelineStateToLocalStorage?.();
         window.location.href = path;
     }
 

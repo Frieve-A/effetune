@@ -6,7 +6,7 @@ lang: en
 
 # Version History
 
-### Version 2.2.0 (TBD, 2026)
+### Version 2.2.0 (Jul 25, 2026)
 - Added Room EQ room correction based on saved measurements
 - Added IR Reverb using imported room and equipment impulse responses
 - Added Vinyl Simulator effect
