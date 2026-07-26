@@ -1,6 +1,6 @@
 ---
 title: "Plugins Lo-Fi - EffeTune"
-description: "Plugins d'effets lo-fi incluant Bit Crusher, Noise Blender, Vinyl Artifacts et plus encore."
+description: "Plugins d'effets lo-fi incluant AM Radio Simulator, Bit Crusher, Noise Blender, Vinyl Artifacts et plus encore."
 lang: fr
 ---
 
@@ -10,14 +10,106 @@ Une collection de plugins qui ajoutent du caractère vintage et des qualités no
 
 ## Liste des Plugins
 
+- [AM Radio Simulator](#am-radio-simulator) - Fait passer la musique dans une chaîne de diffusion et de réception AM modélisée
 - [Bit Crusher](#bit-crusher) - Crée des sons rétro de jeux vidéo et numériques vintage
 - [Digital Error Emulator](#digital-error-emulator) - Simule diverses erreurs de transmission audio numérique
 - [DSD64 IMD Simulator](#dsd64-imd-simulator) - Simule la distorsion d'intermodulation audible issue du bruit ultrasonique du DSD64
+- [FM Radio Simulator](#fm-radio-simulator) - Fait passer la musique par une chaîne d'émission et de réception FM simulée physiquement
 - [Hum Generator](#hum-generator) - Ajoute une ambiance de ronflement électrique contrôlable pour une écoute vintage/lo-fi
 - [Noise Blender](#noise-blender) - Ajoute une texture atmosphérique en arrière-plan
 - [Simple Jitter](#simple-jitter) - Crée des imperfections numériques vintage subtiles
 - [Vinyl Artifacts](#vinyl-artifacts) - Ajoute des pops, crépitements, souffle, rumble et fuite de bruit stéréo façon vinyle
 - [Vinyl Simulator](#vinyl-simulator) - Grave le signal dans un sillon modélisé puis le lit avec un modèle physique de pointe
+
+## AM Radio Simulator
+
+AM Radio Simulator transforme la musique au moyen d'une chaîne de radiodiffusion AM modélisée : traitement et modulation de l'émetteur, propagation par onde de sol et onde ionosphérique, parasites et brouillage du canal adjacent, accord, détection et AGC du récepteur, puis haut-parleur de radio facultatif. Utilisez-le pour comparer une station locale puissante à une station lointaine qui s'évanouit la nuit, explorer une bande encombrée ou appliquer à la musique la bande passante, la distorsion, les évanouissements et les interférences propres à la réception AM.
+
+Cet effet nécessite un environnement compatible avec son traitement en temps réel. Lorsque ce traitement n'est pas disponible, le son reste inchangé et le HUD indique que l'effet est indisponible.
+
+### Différences avec les effets lo-fi additifs
+
+- **AM Radio Simulator** modifie le signal d'entrée en le modulant, puis en lui faisant subir propagation, filtrage et détection. Les parasites, le brouillage et le ronflement sont introduits à des endroits modélisés de la chaîne radio ; ils interagissent donc avec l'accord, le filtre IF et l'AGC.
+- **Noise Blender** ajoute un bruit de fond général, tandis que **Hum Generator** ajoute une couche de ronflement réglable. Choisissez-les si vous voulez ces sons sans transformer la musique au moyen d'un récepteur radio.
+- **Vinyl Artifacts** ajoute des bruits de surface de disque sans modifier le signal musical d'origine. **Vinyl Simulator** transforme lui aussi le signal à l'aide d'un modèle physique, mais il simule un sillon et une pointe de lecture plutôt qu'une transmission radio.
+
+### Guide d'amélioration du son
+
+- **Station locale claire :** utilisez un Signal puissant, peu de Skywave et de Static, centrez Tuning et élargissez IF Bandwidth. Choisissez Table pour une réponse de radio plus ample ou Off pour une sortie ligne.
+- **Station lointaine de nuit :** baissez Signal, augmentez Skywave et choisissez un Fading Speed modéré. Avec AGC Speed sur Slow, le niveau revient plus progressivement ; Static ajoute des salves occasionnelles rappelant des éclairs lointains.
+- **Bande encombrée :** augmentez Interference et réglez Interf. Offset sur 9 ou 10 kHz. Un IF Bandwidth étroit rejette davantage la station voisine ; de petits changements de Tuning modifient la quantité de brouillage qui atteint le détecteur.
+- **Surcharge de l'émission :** poussez Mod Depth au-dessus de 100 % ou allongez Detector RC pour entendre la surmodulation et la distorsion de coupure diagonale propres à l'AM. Réduisez l'un des deux pour une réception plus propre.
+- **Profondeur des évanouissements :** les nouvelles instances utilisent Skywave à 1 % pour des variations de niveau plus calmes en Mono et un évanouissement nocturne moins marqué. Montez Skywave à environ 8 % si vous recherchez un évanouissement nettement plus profond ; les valeurs supérieures accentuent encore l'effet.
+- Commencez avec Mix à 100 % pour évaluer le modèle radio. Réduisez-le uniquement si vous souhaitez conserver délibérément une partie de l'image stéréo d'origine.
+
+### Mélange C-QUAM et modèle Static
+
+En C-QUAM, le mélange stéréo automatique observe les pertes de signal qualifiées sur deux axes orthogonaux du récepteur : le signal somme décodé et la région du pilote à 25 Hz du signal différence en quadrature. L'effet de l'AGC est retiré des deux observations, et la qualité ne diminue que lorsque la perte coïncide sur les deux axes. Cette règle de coïncidence évite de confondre les variations normales du programme sur un seul axe avec un évanouissement RF. L'observation ne fonctionne que lorsque la PLL est en TRACK et que le pilote est accepté ; dans les autres cas, elle est effacée.
+
+La valeur Skywave par défaut des nouvelles instances est de 1 %, adoptée après validation des contrôles intégrés du modèle. Les préréglages enregistrés conservent leur valeur Skywave explicitement stockée. Par rapport à 8 %, le réglage de 1 % donne en Mono des variations de niveau plus calmes et des évanouissements moins profonds ; choisissez environ 8 % pour simuler un évanouissement nocturne plus sévère.
+
+La plage figée et validée de la réponse de qualité commence à Fading Speed 0.05 Hz. Une atténuation qui évolue beaucoup plus lentement que la constante de descente de 60 s de la référence adaptative est absorbée dans cette référence et n'est volontairement pas conservée comme perte de qualité continue. La tolérance résiduelle de programme de 0.75 dB, le décalage de rapport de 0.04, la bande d'observation du pilote Q=4, les constantes de temps de qualité de 0.05/0.2/0.5/60 s, ainsi que la zone morte de 0.5 dB et l'étendue de transition de 5.0 dB, sont des calibrages empiriques du simulateur et non des spécifications générales des récepteurs C-QUAM.
+
+Cette observation fidèle au récepteur partage avec le matériel C-QUAM à pilote une ambiguïté liée au programme. Si un programme contient à la fois de l'énergie de différence près de 25 Hz et une somme/DC asymétrique, l'arrêt simultané des deux composantes peut réduire brièvement le mélange stéréo, car le récepteur reçoit les mêmes indices que lors d'un évanouissement RF. De même, un résidu cohérent en opposition de phase peut réduire l'observation de qualité alors que la PLL reste en TRACK et que le pilote demeure accepté. Ces comportements sont intentionnels dans les limites approuvées du modèle et ne constituent pas des défauts.
+
+Les événements Static utilisent un calibrage d'aire vectorielle relatif à la porteuse. Chaque événement part d'une aire de 20.0 µs rapportée à la porteuse nominale de la station souhaitée, avec une distribution uniforme empirique de 0.5 à 1.5 et une phase aléatoire. Les événements sont planifiés selon des échéances absolues en double précision, et non par un compte à rebours d'échantillons arrondi : le temps reste donc continu entre les blocs de rendu et plusieurs événements dus dans un même échantillon sont cumulés. L'échelle de 20.0 µs et sa distribution sont des calibrages empiriques du simulateur.
+
+### Paramètres
+
+#### Station
+
+- **Stereo Mode** (Mono ou C-QUAM) - Mono utilise un récepteur classique à détecteur d'enveloppe. C-QUAM permet une réception stéréo, avec un rapport signal/bruit inférieur à celui du mono, et revient automatiquement vers le mono lorsque le signal est faible ou mal accordé. Comme le récepteur emploie une méthode de détection physiquement différente, le changement de mode peut aussi modifier le timbre ; Detector RC et son écrêtage diagonal ne s'appliquent qu'à Mono et sont sans effet en C-QUAM. La stéréo C-QUAM fonctionne jusqu’à une fréquence d’échantillonnage de 192 kHz ; au-delà, la réception est monophonique. La simulation ne modélise que la limite de phase de modulation C-QUAM c(5) de la FCC, et non un test complet de conformité.
+- **TX Bandwidth** (2.0 à 10.0 kHz) - Règle la bande passante audio de l'émetteur. Une valeur basse donne un son plus sombre et restreint ; une valeur élevée conserve davantage de détails.
+- **Pre-emphasis** (0 à 100 %) - Renforce les hautes fréquences avant l'émission. Un réglage élevé ajoute de la présence, mais sollicite aussi davantage la chaîne de diffusion sur les crêtes brillantes.
+- **Mod Depth** (10 à 125 %) - Règle la profondeur de modulation AM. Au-dessus de 100 %, une surmodulation et un écrêtage des crêtes négatives apparaissent.
+- **Compression** (0 à 20 dB) - Règle la profondeur du limiteur de diffusion. Un réglage élevé maîtrise les crêtes et uniformise la modulation.
+
+#### Path
+
+- **Signal** (-50 à 0 dB) - Règle la puissance du signal reçu. Un signal faible révèle davantage le bruit du récepteur et demande plus de gain AGC.
+- **Skywave** (0 à 100 %) - Mélange l'onde de sol stable aux trajets ionosphériques retardés. Les nouvelles instances démarrent à 1 % pour un mouvement discret ; autour de 8 %, l'évanouissement nocturne devient plus sévère, et les valeurs supérieures approfondissent encore l'évanouissement sélectif.
+- **Fading Speed** (0.05 à 2.0 Hz) - Règle la vitesse de variation des conditions de propagation ionosphérique.
+- **Static** (0 à 100/s) - Règle la fréquence des événements parasites semblables à des éclairs. Chaque événement relatif à la porteuse suit un calendrier absolu et résonne dans le filtre IF au lieu d'être ajouté après réception.
+- **Interference** (-80 à 0 dB) - Règle la puissance de la station voisine. -80 dB la désactive ; elle devient plus forte à mesure que la valeur approche de 0 dB.
+- **Interf. Offset** (5 à 10 kHz) - Règle l'espacement de la station voisine et la fréquence de battement de porteuses qui en résulte. 9 et 10 kHz correspondent à des espacements de canaux courants.
+
+#### Receiver
+
+- **Tuning** (-30.0 à +30.0 kHz) - Décale l'accord du récepteur par rapport à la station voulue. Un faible décalage réduit la clarté et accentue la distorsion du filtrage asymétrique ; avec un fort décalage, la station disparaît sous le bruit du récepteur.
+- **IF Bandwidth** (2.0 à 20.0 kHz) - Règle la largeur totale de la bande passante IF du récepteur. Une bande étroite rejette davantage de bruit et de brouillage, mais atténue plus d'aigus ; une bande large conserve davantage de détails.
+- **AGC Speed** (Slow, Mid ou Fast) - Règle la vitesse de suivi des variations du signal par le contrôle automatique de gain. Slow donne un retour de niveau et un pompage plus progressifs ; Fast maîtrise mieux les évanouissements rapides.
+- **Detector RC** (20 à 500 µs) - Règle le temps de décharge du détecteur d'enveloppe. Une valeur longue lisse davantage l'enveloppe, mais accroît la distorsion de coupure diagonale dans les aigus lorsque la modulation est forte.
+- **Hum** (-80 à -20 dB) - Règle le ronflement d'alimentation. -80 dB le désactive. Contrairement à une couche de ronflement ajoutée, la majeure partie de cet effet module le gain du récepteur avant la détection.
+- **Hum Freq** (50 ou 60 Hz) - Sélectionne la fréquence secteur simulée.
+
+#### Output
+
+- **Speaker** (Off, Small ou Table) - Sélectionne une sortie ligne, la réponse limitée d'une radio de poche ou la réponse plus ample d'un poste de table.
+- **Output Gain** (-24 à +24 dB) - Règle le niveau après le traitement du récepteur et du haut-parleur.
+- **Mix** (0 à 100 %) - Mélange le signal stéréo d'origine avec la réception mono simulée. À 0 %, la stéréo reste inchangée ; à 100 %, le même signal traité est envoyé à gauche et à droite. La sortie n'est entièrement mono qu'avec Mix à 100 %.
+- En C-QUAM, le signal traité est stéréo lorsque la réception le permet ; la description mono ci-dessus ne concerne que le mode Mono. Le retard du filtre FIR reste dans le trajet traité du récepteur. Mix ne retarde pas le signal sec pour l'aligner : les réglages intermédiaires combinent donc les deux avec ce décalage temporel.
+
+### Lecture du HUD
+
+- **S METER** indique, sur une échelle de S1 à S9, la puissance du signal que le récepteur reçoit dans sa bande avant l'AGC. Comme le S-mètre d'un poste réel, il additionne tout ce qui se trouve dans la bande passante : la station voisine, le bruit et les parasites font donc monter l'indication en même temps que la station voulue.
+- **AGC GAIN** indique le gain actuellement appliqué par le récepteur. Il augmente normalement lorsque Signal baisse ou qu'un évanouissement s'accentue. Il est plafonné à +42 dB : les évanouissements plus profonds et les signaux plus faibles restent donc moins forts au lieu d'être entièrement compensés.
+- **MODULATION** indique le taux de modulation effectif après le filtrage de l'émetteur.
+- **FADE / EVENTS** indique en dB la variation actuelle du gain de propagation et clignote selon les fréquences récentes de parasites et d'écrêtage. Si vous recherchez un résultat plus propre et que l'écrêtage est fréquent, réduisez Mod Depth ou Detector RC.
+- **STEREO** suit le mélange stéréo décodé. Il s'illumine lorsque la réception stéréo s'ouvre et s'atténue quand le récepteur revient automatiquement vers le mono.
+
+### Réglages recommandés
+
+1. **Station locale puissante**
+   - TX Bandwidth: 6.0 kHz, Mod Depth: 90 %, Signal: -10 dB, Skywave: 5 %, Fading Speed: 0.1 Hz, Static: 0.5/s
+   - Interference: -80 dB, Tuning: 0 kHz, IF Bandwidth: 12 kHz, AGC Speed: Fast, Speaker: Table, Mix: 100 %
+
+2. **Station lointaine de nuit**
+   - TX Bandwidth: 4.5 kHz, Signal: -35 dB, Skywave: 75 %, Fading Speed: 0.3 Hz, Static: 6/s
+   - Interference: -55 dB, Interf. Offset: 9 kHz, IF Bandwidth: 6 kHz, AGC Speed: Slow, Detector RC: 150 µs, Speaker: Small, Mix: 100 %
+
+3. **Canal adjacent encombré**
+   - Signal: -25 dB, Skywave: 40 %, Fading Speed: 0.5 Hz, Static: 3/s
+   - Interference: -28 dB, Interf. Offset: 9 kHz, Tuning: +0.5 kHz, IF Bandwidth: 6 kHz, AGC Speed: Mid, Speaker: Small, Mix: 100 %
 
 ## Bit Crusher
 
@@ -195,6 +287,76 @@ Paramètres avancés / utilitaires
 - Subtil (par défaut) : Amount +24 dB, Ultrasonic Level -30 dBFS, Analog Nonlinearity 1.40%, Even Bias 20%, Signal Coupling 150%, Cross Sideband 75%, Scratch Tone 10.5 kHz.
 - IMD du tweeter uniquement : IMD Path HPF 2.5 kHz, Signal Coupling 80–150%, Cross Sideband 50–100%, Scratch Tone 9–14 kHz.
 - Effet marqué : augmentez Amount, Ultrasonic Level et Analog Nonlinearity.
+
+## FM Radio Simulator
+
+FM Radio Simulator fait passer la musique par une chaîne modélisée d'émission et de réception FM : traitement audio d'émission et préaccentuation, composition du multiplex stéréo (MPX) avec le pilote à 19 kHz, modulation FM d'une porteuse, propagation par trajets multiples et bruit d'antenne, accord du récepteur, filtrage FI, limitation dure, discrimination FM, décodage stéréo par PLL du pilote et désaccentuation. Comme le signal est réellement modulé puis démodulé en FM, les comportements caractéristiques de la réception FM émergent de la physique au lieu d'être synthétisés : le souffle brillant qui monte quand le signal faiblit, la pénalité de bruit du mode stéréo avec le fondu automatique vers le mono, les clics et crachotements sous le seuil FM, et la distorsion par trajets multiples.
+
+Cet effet nécessite un environnement prenant en charge son traitement en temps réel. Lorsque ce traitement n'est pas disponible, l'audio reste inchangé et le HUD signale que l'effet est indisponible.
+
+### Différences avec les effets lo-fi additifs
+
+- **FM Radio Simulator** ne synthétise pas un bruit « façon radio » à superposer. Il module la musique sur une porteuse, dégrade cette porteuse et la démodule. Le souffle, les clics et la distorsion n'apparaissent que là où la physique du récepteur les crée, et ils réagissent à Signal, Tuning, au filtre FI et au décodeur stéréo en montrant les mêmes tendances physiques que la réception FM réelle.
+- **Noise Blender** ajoute une texture de bruit de fond constante sans modifier la musique ; choisissez-le quand vous ne voulez qu'une ambiance. Il peut aussi être chaîné après cet effet pour représenter des parasites impulsionnels de type allumage moteur, que ce modèle n'inclut pas.
+- **Digital Error Emulator** reproduit des erreurs de transmission numérique telles que coupures et artefacts de masquage — une famille de dégradations différente de la réception FM analogique.
+- **AM Radio Simulator** est le modèle physique équivalent pour la radiodiffusion AM ; FM Radio Simulator reproduit le son FM large bande avec son multiplex stéréo, le verrouillage du pilote et le comportement de bruit propre à la FM.
+
+### Guide du caractère sonore
+
+- **Diffusion propre :** avec un signal fort, la chaîne apporte surtout le traitement d'émission lui-même — la limite de bande à 15 kHz et la densité du limiteur de la station réglée par Processing.
+- **Souffle de signal faible :** quand Signal baisse, un souffle brillant et aérien monte d'abord en stéréo. Passer Stereo sur Mono rend la même réception nettement plus silencieuse, pour la même raison que le mono est plus silencieux sur un vrai tuner.
+- **Réception en limite de zone :** près du seuil FM, clics et crachotements apparaissent, le récepteur fond vers le mono, et le programme finit par sombrer dans le bruit.
+- **Couleur des trajets multiples :** les réflexions ajoutent une distorsion âpre et creuse dont le caractère suit Path Delay ; augmenter Fading la transforme en flottement typique de la réception mobile.
+
+### Paramètres
+
+- **Emphasis** (50 ou 75 µs) - Sélectionne la paire de constantes de temps de préaccentuation/désaccentuation (50 µs : Japon/Europe, 75 µs : Amériques). Sur un signal propre, la paire s'annule presque ; le choix modifie subtilement le timbre du souffle et de la distorsion.
+- **Processing** (0 à +18 dB) - Niveau d'attaque du limiteur d'émission — la « puissance sonore » de la station. 0 dB est presque transparent ; les valeurs élevées sonnent plus denses et plus fortes, comme les stations très traitées.
+- **Signal** (0 à 70 dBµV) - Niveau de porteuse à l'entrée d'antenne. Le plancher de bruit est fixé par la physique (bruit thermique 75 Ω plus facteur de bruit du récepteur), ce réglage détermine donc le rapport porteuse/bruit et constitue l'axe principal de dégradation. Vers 50 dBµV et au-dessus, la réception est pratiquement propre ; vers 30, le souffle stéréo est clairement audible ; vers 15, le fondu Auto est passé en mono ; à 6 et en dessous, les clics se multiplient et le programme sombre dans le bruit.
+- **Tuning** (-200 à +200 kHz) - Désaccorde le récepteur par rapport à la station. Les petits écarts passent presque inaperçus ; à partir d'environ ±40 kHz, le son devient de plus en plus distordu, asymétrique et faible à mesure que les bandes latérales sortent de la bande passante FI. À ±200 kHz, la station se trouve entièrement hors de la bande passante et seul le bruit du récepteur subsiste.
+- **IF Band** (80 à 240 kHz) - Largeur du filtre FI du récepteur. Les réglages étroits représentent un récepteur conçu pour des bandes encombrées : ils tronquent les bandes latérales FM et augmentent la distorsion, surtout combinés au désaccord. Les réglages larges sont plus propres pour une station forte et bien accordée.
+- **Multipath** (0 à 100%) - Quantité d'effet de deux réflexions retardées : à 100%, la première réflexion atteint 30% de l'onde directe et la seconde 60% de la première. Les creux d'interférence transforment la FM en erreurs d'amplitude et de phase que le limiteur ne peut pas éliminer complètement, produisant la distorsion âpre typique des trajets multiples.
+- **Path Delay** (0.5 à 50 µs) - Retard de la première réflexion (la seconde est fixée à 2.7 fois). Les retards courts donnent une coloration large, un peu « phasing » ; les retards longs produisent une distorsion plus nette et localisée.
+- **Fading** (0 à 20 Hz) - Vitesse de rotation des phases des réflexions. 0 Hz fige le motif de trajets multiples ; les valeurs élevées créent le flottement et l'effet « palissade » de la réception en voiture.
+- **Stereo** (Auto / Stereo / Mono) - Auto fond continûment de la stéréo vers le mono à mesure que le verrouillage du pilote et la qualité du signal se dégradent, comme un récepteur réel. Stereo force le décodeur et expose toute la pénalité de bruit stéréo sur les signaux faibles. Mono abandonne le sous-canal L−R pour une réception nettement plus silencieuse en signal faible.
+- **Output** (-24 à +24 dB) - Ajustement de niveau après démodulation.
+- **Mix** (0 à 100%) - Mélange le signal démodulé avec un signal sec aligné en latence. 100% correspond à la réception radio complète ; les valeurs plus basses réintègrent l'original sans filtrage en peigne.
+
+### Lecture du HUD
+
+- Le graphique montre le **spectre MPX** observé à la sortie du démodulateur sur un axe de fréquence logarithmique, avec des repères à 15 kHz (fin de la région L+R), au pilote de 19 kHz et au sous-canal L−R autour de 38 kHz (bande de 23 à 53 kHz). Quand Signal baisse, le plancher de bruit monte d'autant plus que la fréquence est haute — le spectre de bruit triangulaire caractéristique de la FM — et engloutit d'abord la région L−R. C'est la raison visible pour laquelle la stéréo devient bruyante avant le mono.
+- Le **vumètre de signal et l'affichage en dBµV** montrent le niveau de porteuse reçu, fixé par Signal et fluctuant avec l'interférence des trajets multiples.
+- **CNR** est le rapport porteuse/bruit estimé. Les clics commencent à apparaître lorsqu'il approche le seuil FM, vers 12 dB.
+- Le **témoin ST et son pourcentage** indiquent le fondu stéréo courant : 100% est la stéréo complète, 0% le mono. Avec Stereo sur Auto, le pourcentage baisse quand le signal se dégrade.
+- **MPath** indique le niveau de la première réflexion par rapport à l'onde directe en dB (−∞ quand Multipath est à 0%).
+- **Clicks** compte les clics de seuil FM récents par seconde et se met en évidence quand ils deviennent fréquents.
+- Si le moteur **WASM** est indisponible, le HUD affiche une notification et le signal traverse sans modification.
+
+### Réglages recommandés
+
+1. **Station locale puissante**
+   - Emphasis : 50 µs, Processing : 6 dB, Signal : 50 dBµV, Tuning : 0 kHz, IF Band : 230 kHz
+   - Multipath : 0%, Fading : 0 Hz, Stereo : Auto, Mix : 100%
+   - Stéréo propre avec seulement le caractère du traitement d'émission. Augmentez Processing pour comparer le son des stations.
+
+2. **Réception de banlieue**
+   - Signal : 30 dBµV, Tuning : 0 kHz, IF Band : 230 kHz, Multipath : 20%, Path Delay : 5 µs, Fading : 0.5 Hz
+   - Stereo : Auto, Mix : 100%
+   - Souffle stéréo clairement audible par-dessus la musique. Comparez avec Stereo : Mono pour entendre disparaître la pénalité de bruit stéréo.
+
+3. **Réception en limite de couverture**
+   - Signal : 15 dBµV, IF Band : 180 kHz, Multipath : 40%, Path Delay : 12 µs, Fading : 2 Hz
+   - Stereo : Auto, Mix : 100%
+   - Le fondu Auto est passé en mono et la réception flotte. Forcez Stereo pour entendre pourquoi les récepteurs fondent vers le mono.
+
+4. **Signal à peine présent**
+   - Signal : 6 dBµV, Tuning : +30 kHz, Multipath : 60%, Path Delay : 12 µs, Fading : 5 Hz
+   - Stereo : Auto, Mix : 100%
+   - Sous le seuil FM : clics crachotants, bruit intense et un programme qui émerge et disparaît dans les parasites.
+
+### Notes sur le modèle
+
+L'effet traite la première paire stéréo comme une seule chaîne d'émission ; une entrée mono est diffusée avec un canal L−R vide. Le RDS, les stations adjacentes et les sources d'interférence sont hors du périmètre de ce modèle. Pour un son multibande de « grosse station », placez un Multiband Compressor avant cet effet ; pour des parasites impulsionnels, chaînez Noise Blender ou Digital Error Emulator après.
 
 ## Hum Generator
 

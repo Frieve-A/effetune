@@ -864,6 +864,7 @@ async function instantiateDspBinding(moduleOrBytes, {
 // __ETDSP_BINDING_INJECT_END__
 
 const WASM_ONLY_EXECUTION_STATE_PLUGIN_TYPES = new Set([
+    'AMRadioSimulatorPlugin',
     'RoomEqPlugin'
 ]);
 const ET_DSP_MAX_CHANNELS = 8;
@@ -3084,7 +3085,8 @@ class PluginProcessor extends AudioWorkletProcessor {
     wasmOnlyExecutionState(plugin, engineStopped = false) {
         if (engineStopped) return { state: 'bypassed', reason: 'engineStopped' };
         if (this.dspExecutionInitializing) return { state: 'pending', reason: null };
-        const supported = this.dspSampleRate === 44100 || this.dspSampleRate === 48000 ||
+        const supported = plugin.type === 'AMRadioSimulatorPlugin' ||
+            this.dspSampleRate === 44100 || this.dspSampleRate === 48000 ||
             this.dspSampleRate === 88200 || this.dspSampleRate === 96000 ||
             this.dspSampleRate === 176400 || this.dspSampleRate === 192000;
         if (!supported) return { state: 'bypassed', reason: 'unsupportedSampleRate' };

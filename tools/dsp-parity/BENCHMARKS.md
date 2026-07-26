@@ -992,6 +992,34 @@ js,wasm,simd --duration 1 --warmup 2 --repetitions 5`
 | 192000 | 2 | 8.32x | 77.25x | 77.65x |
 | 192000 | 8 | 5.02x | 56.88x | 66.78x |
 
+### AM Radio Simulator
+
+Measured on 2026-07-22 with Node v24.13.0 on a 13th Gen Intel Core i9-13900KF,
+Windows NT 10.0.26200.0. The WASM artifacts use Emscripten 6.0.2 with `-O3 -flto`;
+the SIMD artifact also uses `-msimd128`. All measurements use 96 kHz, two channels,
+128-frame blocks, 10 seconds of audio, five warmups, and 20 measured repetitions. To
+exclude unrelated concurrent builds from the one-core budget, each backend was measured in
+a separate invocation pinned to logical processor 2 (a P-core) at Windows High priority.
+
+Bench arguments (each command was launched with the affinity and priority above):
+
+```text
+node tools/dsp-parity/bench.mjs --type AMRadioSimulatorPlugin --modes js --sample-rates 96000 --channels 2 --block-size 128 --duration 10 --warmup 5 --repetitions 20 --params '{"sm":"C-QUAM"}'
+node tools/dsp-parity/bench.mjs --type AMRadioSimulatorPlugin --modes wasm --sample-rates 96000 --channels 2 --block-size 128 --duration 10 --warmup 5 --repetitions 20 --params '{"sm":"C-QUAM"}'
+node tools/dsp-parity/bench.mjs --type AMRadioSimulatorPlugin --modes simd --sample-rates 96000 --channels 2 --block-size 128 --duration 10 --warmup 5 --repetitions 20 --params '{"sm":"C-QUAM"}'
+node tools/dsp-parity/bench.mjs --type AMRadioSimulatorPlugin --modes wasm --sample-rates 96000 --channels 2 --block-size 128 --duration 10 --warmup 5 --repetitions 20 --params '{"sm":"Mono"}'
+node tools/dsp-parity/bench.mjs --type AMRadioSimulatorPlugin --modes simd --sample-rates 96000 --channels 2 --block-size 128 --duration 10 --warmup 5 --repetitions 20 --params '{"sm":"Mono"}'
+```
+
+| Mode | JS fallback | WASM | WASM SIMD | WASM CPU | SIMD CPU | C-QUAM/Mono CPU time |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Mono | n/a | 47.69x | 52.66x | 2.10% | 1.90% | baseline |
+| C-QUAM | 510.68x | 20.80x | 21.89x | 4.81% | 4.57% | 2.29x / 2.41x |
+
+Both C-QUAM production paths remain below the fixed 5% one-core budget. The benchmark
+tool's JavaScript mode measures the transparent fallback, not the deterministic JavaScript
+reference DSP, so its value is recorded only to show that all requested modes were exercised.
+
 ### Room EQ Maximum-Asset Admission Gate
 
 Measured on 2026-07-21 with Node v24.13.0 on a 13th Gen Intel Core i9-13900KF,

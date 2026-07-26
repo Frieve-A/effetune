@@ -1,0 +1,37 @@
+{
+  "formatVersion": 1,
+  "type": "FMRadioSimulatorPlugin",
+  "id": "dry-latency-alignment",
+  "stimulus": "imp",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 1025,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 14,
+  "seed": "0xeffe7a50",
+  "params": {
+    "em": "50",
+    "pr": 0,
+    "st": 35,
+    "tn": 0,
+    "bw": 230,
+    "mp": 0,
+    "dl": 5,
+    "fd": 0,
+    "sm": "Auto",
+    "og": 0,
+    "mx": 0,
+    "fr": true
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "aa4b27acdf94473209fab80148bed2434a64705fd4bb5719cd2b2c4a421e23f6",
+  "outputFloats": 2050,
+  "byteLength": 8200,
+  "binary": "case-015.f32"
+}

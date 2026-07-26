@@ -1,6 +1,6 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:1fe34f808dd673febf55ead28ea907ccbe2b386691d4f28cee6bd3457369acc1",
+  "sourceDigest": "sha256:17bc3f3671c01b7acbde613522ad80ebe3bcf314e4bed784fd91674038cf9841",
   "emsdkVersion": "6.0.2",
   "kernels": [
     {
@@ -245,6 +245,12 @@
       "assets": []
     },
     {
+      "name": "AMRadioSimulatorPlugin",
+      "hash": 3482469380,
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
       "name": "BitCrusherPlugin",
       "hash": 3414646542,
       "byteCapacity": 0,
@@ -259,6 +265,12 @@
     {
       "name": "DSD64IMDSimulatorPlugin",
       "hash": 1223862878,
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
+      "name": "FMRadioSimulatorPlugin",
+      "hash": 1965882227,
       "byteCapacity": 0,
       "assets": []
     },
@@ -439,7 +451,7 @@
     }
   ],
   "sizes": {
-    "baseline": 388774,
-    "simd": 439502
+    "baseline": 459950,
+    "simd": 517694
   }
 }

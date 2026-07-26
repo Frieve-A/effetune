@@ -81,6 +81,7 @@ class WasmOnlyTestPlugin {
 }
 
 class RoomEqPlugin extends WasmOnlyTestPlugin {}
+class AMRadioSimulatorPlugin extends WasmOnlyTestPlugin {}
 
 class VolumePlugin {
   constructor(id, branch) {
@@ -391,6 +392,48 @@ test('AudioManager validates Room EQ execution state and rejects stale or auxili
   assert.equal(dispatched[0].data.pluginType, 'RoomEqPlugin');
   assert.equal(dispatched[0].data.generation, 7);
   assert.equal(dispatched[1].data.generation, 8);
+});
+
+test('AudioManager relays current primary AM Radio Simulator execution transitions', () => {
+  const manager = createManager();
+  const main = createNode('main');
+  const auxiliary = createNode('auxiliary');
+  const amRadio = new AMRadioSimulatorPlugin(43);
+  manager.workletNode = main;
+  manager.contextManager = { workletNode: main };
+  manager.pipelineA = [amRadio];
+  manager.pipeline = manager.pipelineA;
+  manager._parallelActive = true;
+  manager._parallelWorkletB = auxiliary;
+  const dispatched = [];
+  manager.dispatchEvent = (type, data) => dispatched.push({ type, data });
+  const state = (generation, overrides = {}) => ({
+    type: 'dspExecutionState', pluginId: 43, pluginType: 'AMRadioSimulatorPlugin',
+    state: 'pending', reason: null, generation, ...overrides
+  });
+
+  manager.handleWorkletMessage({ data: state(10) }, main);
+  manager.handleWorkletMessage({ data: state(11, { state: 'active' }) }, main);
+  manager.handleWorkletMessage({ data: state(10, {
+    state: 'bypassed', reason: 'runtimeFallback'
+  }) }, main);
+  manager.handleWorkletMessage({ data: state(12, {
+    state: 'bypassed', reason: 'wasmUnavailable'
+  }) }, auxiliary);
+  manager.handleWorkletMessage({ data: state(12, {
+    state: 'bypassed', reason: 'wasmUnavailable'
+  }) }, main);
+
+  assert.deepEqual(amRadio.messages.map(message => ({
+    state: message.state,
+    reason: message.reason,
+    validated: message.validated
+  })), [
+    { state: 'pending', reason: null, validated: true },
+    { state: 'active', reason: null, validated: true },
+    { state: 'bypassed', reason: 'wasmUnavailable', validated: true }
+  ]);
+  assert.deepEqual(dispatched.map(entry => entry.data.generation), [10, 11, 12]);
 });
 
 test('AudioManager starts a delayed DSP module only on the worklet that requested it', async () => {

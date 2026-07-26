@@ -195,7 +195,7 @@ SOFTWARE.
 ---
 
 music-metadata
-Version: 11.13.0
+Version: 11.14.0
 License: MIT
 
 LICENSE.txt

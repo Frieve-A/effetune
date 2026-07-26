@@ -2,11 +2,48 @@
  * Internationalization utilities for EffeTune Measurement feature
  */
 
+import {
+  AUTO_LANGUAGE_PREFERENCE,
+  resolveLanguagePreference
+} from '../../js/language-options.js';
+import { loadWebAppConfig } from '../../js/electron/webSettingsStorage.js';
+
 // Default language is English
 let currentLanguage = 'en';
 // Cache for loaded translations
 let baseTranslations = null; // English translations (fallback)
 let currentTranslations = null; // Current language translations
+
+export async function loadConfiguredLanguage({
+  electronAPI = globalThis.window?.electronAPI,
+  loadWebConfig = loadWebAppConfig,
+  browserLanguage = globalThis.navigator?.language
+} = {}) {
+  let languagePreference = AUTO_LANGUAGE_PREFERENCE;
+
+  try {
+    if (typeof electronAPI?.loadConfig === 'function') {
+      const result = await electronAPI.loadConfig();
+      if (result?.success) {
+        languagePreference = result.config?.language;
+      } else {
+        console.warn('Could not load the configured language for the measurement page.');
+      }
+    } else {
+      languagePreference = (await loadWebConfig())?.language;
+    }
+  } catch (error) {
+    console.warn('Could not load the configured language for the measurement page:', error);
+  }
+
+  return resolveLanguagePreference(languagePreference, browserLanguage);
+}
+
+function applyDocumentLanguage(language) {
+  if (globalThis.document?.documentElement) {
+    globalThis.document.documentElement.lang = language;
+  }
+}
 
 /**
  * Load the English base translations
@@ -74,6 +111,7 @@ export async function setLanguage(lang) {
   }
   
   currentLanguage = lang;
+  applyDocumentLanguage(currentLanguage);
   // Load new language translations
   await loadCurrentTranslations();
   // Refresh the UI with new language
@@ -153,12 +191,9 @@ export async function initI18n() {
   // First load English as base translations
   await loadBaseTranslations();
   
-  // Detect browser language or use stored preference
-  const browserLang = navigator.language.split('-')[0];
-  const storedLang = localStorage.getItem('effetune-language');
-  
-  // Set language (default to 'en' if browser language or stored preference not available)
-  currentLanguage = storedLang || browserLang || 'en';
+  // Use the same saved language preference as the main application.
+  currentLanguage = await loadConfiguredLanguage();
+  applyDocumentLanguage(currentLanguage);
   
   // Load translations for current language
   await loadCurrentTranslations();

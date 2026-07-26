@@ -30,6 +30,7 @@ const DSP_MODULE_LOAD_TIMEOUT_MS = 1000;
 const DSP_MODULE_READY_TIMEOUT_MS = 1000;
 const DSP_BYTES_READY_TIMEOUT_MS = 3000;
 const WASM_ONLY_EXECUTION_STATE_PLUGIN_TYPES = new Set([
+    'AMRadioSimulatorPlugin',
     'RoomEqPlugin'
 ]);
 

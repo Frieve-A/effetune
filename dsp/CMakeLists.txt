@@ -219,6 +219,11 @@ if(BUILD_TESTING AND NOT EMSCRIPTEN)
     INCLUDE_DIRS core generated/cpp
     WRAP_MALLOC)
   et_add_dsp_test(
+    effetune_dsp_fm_radio_simulator_tests
+    SOURCES plugins/lofi/fm_radio_simulator/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
     effetune_dsp_five_band_dynamic_eq_tests
     SOURCES plugins/eq/five_band_dynamic_eq/native_test.cpp
     INCLUDE_DIRS core generated/cpp
@@ -229,6 +234,11 @@ if(BUILD_TESTING AND NOT EMSCRIPTEN)
   et_add_dsp_test(
     effetune_dsp_pitch_shifter_tests
     SOURCES plugins/modulation/pitch_shifter/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_am_radio_simulator_tests
+    SOURCES plugins/lofi/am_radio_simulator/native_test.cpp
     INCLUDE_DIRS core generated/cpp
     WRAP_MALLOC)
   et_add_dsp_test(

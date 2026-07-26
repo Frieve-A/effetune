@@ -1,0 +1,92 @@
+{
+  "formatVersion": 1,
+  "type": "FMRadioSimulatorPlugin",
+  "id": "tuning-drag-events",
+  "stimulus": "sin1k",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 4097,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 15,
+  "seed": "0xeffe7a51",
+  "params": {
+    "em": "50",
+    "pr": 0,
+    "st": 35,
+    "tn": 0,
+    "bw": 230,
+    "mp": 0,
+    "dl": 5,
+    "fd": 0,
+    "sm": "Auto",
+    "og": 0,
+    "mx": 100,
+    "fr": true
+  },
+  "events": [
+    {
+      "frame": 257,
+      "params": {
+        "tn": 5
+      }
+    },
+    {
+      "frame": 641,
+      "params": {
+        "tn": 12
+      }
+    },
+    {
+      "frame": 1025,
+      "params": {
+        "tn": 20
+      }
+    },
+    {
+      "frame": 1409,
+      "params": {
+        "tn": 31
+      }
+    },
+    {
+      "frame": 1793,
+      "params": {
+        "tn": 44
+      }
+    },
+    {
+      "frame": 2177,
+      "params": {
+        "tn": 60
+      }
+    },
+    {
+      "frame": 2561,
+      "params": {
+        "tn": 45
+      }
+    },
+    {
+      "frame": 2945,
+      "params": {
+        "tn": -25
+      }
+    },
+    {
+      "frame": 3329,
+      "params": {
+        "tn": 0
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "aa4b27acdf94473209fab80148bed2434a64705fd4bb5719cd2b2c4a421e23f6",
+  "outputFloats": 8194,
+  "byteLength": 32776,
+  "binary": "case-016.f32"
+}

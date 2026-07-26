@@ -1,0 +1,17 @@
+{
+  "type": "FMRadioSimulatorPlugin",
+  "tolerance": { "abs": 0.0001, "policy": "per-sample" },
+  "fields": [
+    { "name": "emphasis", "key": "em", "kind": "enum", "default": "50", "values": ["50", "75"] },
+    { "name": "processing", "key": "pr", "kind": "float", "min": 0, "max": 18, "default": 0, "unit": "dB" },
+    { "name": "signal", "key": "st", "kind": "float", "min": 0, "max": 70, "default": 35, "unit": "dBuV" },
+    { "name": "tuning", "key": "tn", "kind": "float", "min": -200, "max": 200, "default": 0, "unit": "kHz" },
+    { "name": "ifBand", "key": "bw", "kind": "float", "min": 80, "max": 240, "default": 230, "unit": "kHz" },
+    { "name": "multipath", "key": "mp", "kind": "float", "min": 0, "max": 100, "default": 0, "unit": "%" },
+    { "name": "pathDelay", "key": "dl", "kind": "float", "min": 0.5, "max": 50, "default": 5, "unit": "us" },
+    { "name": "fading", "key": "fd", "kind": "float", "min": 0, "max": 20, "default": 0, "unit": "Hz" },
+    { "name": "stereo", "key": "sm", "kind": "enum", "default": "Auto", "values": ["Auto", "Stereo", "Mono"] },
+    { "name": "outputGain", "key": "og", "kind": "float", "min": -24, "max": 24, "default": 0, "unit": "dB" },
+    { "name": "mix", "key": "mx", "kind": "float", "min": 0, "max": 100, "default": 100, "unit": "%" }
+  ]
+}

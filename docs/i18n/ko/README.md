@@ -338,9 +338,11 @@ EffeTune 2.1.0에서는 카탈로그 스키마 v3를 사용하는 음악 라이�
 | EQ | Room EQ | 저장된 룸 측정에 기반한 FIR 보정 | [세부 정보](plugins/eq.md#room-eq) |
 | EQ | Tilt EQ | 빠른 톤 조정을 위한 틸트 이퀄라이저 | [세부 정보](plugins/eq.md#tilt-eq) |
 | EQ | Tone Control | 3밴드 톤 컨트롤 | [세부 정보](plugins/eq.md#tone-control) |
+| Lo-Fi | AM Radio Simulator | 음악을 모델링한 AM 송출·수신 체인으로 변환 | [세부 정보](plugins/lofi.md#am-radio-simulator) |
 | Lo-Fi | Bit Crusher | 비트 깊이 감소와 제로 오더 홀드 효과 | [세부 정보](plugins/lofi.md#bit-crusher) |
 | Lo-Fi | Digital Error Emulator | 다양한 디지털 오디오 전송 오류와 빈티지 디지털 장비 특성을 시뮬레이션 | [세부 정보](plugins/lofi.md#digital-error-emulator) |
 | Lo-Fi | DSD64 IMD Simulator | DSD64 초음파 노이즈에서 생기는 가청 상호변조 왜곡을 시뮬레이션 | [세부 정보](plugins/lofi.md#dsd64-imd-simulator) |
+| Lo-Fi | FM Radio Simulator | 물리 시뮬레이션된 FM 방송·수신 체인에 음악을 통과 | [세부 정보](plugins/lofi.md#fm-radio-simulator) |
 | Lo-Fi | Hum Generator | 빈티지/로파이 청취 분위기를 위한 조절 가능한 50/60 Hz 전원 험 추가 | [세부 정보](plugins/lofi.md#hum-generator) |
 | Lo-Fi | Noise Blender | 로파이 분위기를 위한 조절 가능한 배경 노이즈 질감 추가 | [세부 정보](plugins/lofi.md#noise-blender) |
 | Lo-Fi | Simple Jitter | 디지털 지터 시뮬레이션 | [세부 정보](plugins/lofi.md#simple-jitter) |

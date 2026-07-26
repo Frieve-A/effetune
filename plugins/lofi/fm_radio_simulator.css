@@ -1,0 +1,41 @@
+.fm-radio-simulator-container {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.fm-radio-simulator-hud {
+    width: 100%;
+    min-height: 120px;
+    max-width: none !important;
+    margin-top: 8px;
+    overflow: hidden;
+    border: 1px solid #454545;
+    border-radius: 4px;
+    background: #1a1a1a;
+}
+
+.fm-radio-simulator-hud canvas {
+    display: block;
+}
+
+.fm-radio-simulator-status-note {
+    margin-top: 6px;
+    color: #aaa;
+    font-size: 11px;
+    line-height: 1.35;
+}
+
+/* No standing status text while the simulation runs normally (U-3): an empty
+   note must not reserve layout space. */
+.fm-radio-simulator-status-note:empty {
+    display: none;
+}
+
+body.layout-mobile .fm-radio-simulator-container,
+body.layout-mobile .fm-radio-simulator-hud {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}

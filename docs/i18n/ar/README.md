@@ -334,9 +334,11 @@
 | EQ | Room EQ | تصحيح FIR اعتمادًا على قياسات الغرفة المحفوظة | [تفاصيل](plugins/eq.md#room-eq) |
 | EQ | Tilt EQ | معادل ميل لتشكيل النغمة بسرعة | [تفاصيل](plugins/eq.md#tilt-eq) |
 | EQ | Tone Control | تحكم نغمي بثلاثة نطاقات | [تفاصيل](plugins/eq.md#tone-control) |
+| Lo-Fi | AM Radio Simulator | يمرر الموسيقى عبر سلسلة بث واستقبال AM مُنمذجة | [تفاصيل](plugins/lofi.md#am-radio-simulator) |
 | Lo-Fi | Bit Crusher | تقليل عمق البت وتأثير zero-order hold | [تفاصيل](plugins/lofi.md#bit-crusher) |
 | Lo-Fi | Digital Error Emulator | يحاكي أخطاء نقل الصوت الرقمي وخصائص الأجهزة الرقمية القديمة | [تفاصيل](plugins/lofi.md#digital-error-emulator) |
 | Lo-Fi | DSD64 IMD Simulator | يحاكي تشوه التداخل المسموع الناتج عن ضوضاء DSD64 فوق الصوتية | [تفاصيل](plugins/lofi.md#dsd64-imd-simulator) |
+| Lo-Fi | FM Radio Simulator | يمرر الموسيقى عبر سلسلة بث واستقبال FM محاكاة فيزيائيًا | [تفاصيل](plugins/lofi.md#fm-radio-simulator) |
 | Lo-Fi | Hum Generator | يضيف طنينًا كهربائيًا 50/60 Hz قابلًا للتحكم لأجواء vintage/lo-fi | [تفاصيل](plugins/lofi.md#hum-generator) |
 | Lo-Fi | Noise Blender | يضيف نسيج ضوضاء خلفية قابلًا للضبط لأجواء lo-fi | [تفاصيل](plugins/lofi.md#noise-blender) |
 | Lo-Fi | Simple Jitter | يحاكي jitter رقميًا | [تفاصيل](plugins/lofi.md#simple-jitter) |

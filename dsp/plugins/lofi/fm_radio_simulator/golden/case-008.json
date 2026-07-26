@@ -1,0 +1,37 @@
+{
+  "formatVersion": 1,
+  "type": "FMRadioSimulatorPlugin",
+  "id": "multipath-fading-44100",
+  "stimulus": "noise",
+  "sampleRate": 44100,
+  "channels": 2,
+  "frameCount": 4097,
+  "blockSize": 83,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "em": "50",
+    "pr": 0,
+    "st": 35,
+    "tn": 0,
+    "bw": 230,
+    "mp": 80,
+    "dl": 25,
+    "fd": 12,
+    "sm": "Auto",
+    "og": 0,
+    "mx": 100,
+    "fr": true
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "aa4b27acdf94473209fab80148bed2434a64705fd4bb5719cd2b2c4a421e23f6",
+  "outputFloats": 8194,
+  "byteLength": 32776,
+  "binary": "case-008.f32"
+}

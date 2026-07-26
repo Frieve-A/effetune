@@ -330,9 +330,11 @@ EffeTune создан для аудиоэнтузиастов, которые х
 | EQ        | Room EQ | FIR-коррекция по сохранённым измерениям помещения | [Подробнее](plugins/eq.md#room-eq) |
 | EQ        | Tilt EQ | Наклонный эквалайзер для быстрой коррекции тембра | [Подробнее](plugins/eq.md#tilt-eq) |
 | EQ        | Tone Control | Трехполосное управление тоном | [Подробнее](plugins/eq.md#tone-control) |
+| Lo-Fi     | AM Radio Simulator | Проводит музыку через модель тракта AM-передачи и приёма | [Подробнее](plugins/lofi.md#am-radio-simulator) |
 | Lo-Fi     | Bit Crusher | Снижение битовой глубины и эффект zero-order hold | [Подробнее](plugins/lofi.md#bit-crusher) |
 | Lo-Fi     | Digital Error Emulator | Имитирует разные ошибки передачи цифрового аудио и характер винтажной цифровой аппаратуры | [Подробнее](plugins/lofi.md#digital-error-emulator) |
 | Lo-Fi     | DSD64 IMD Simulator | Имитирует слышимые интермодуляционные искажения от ультразвукового шума DSD64 | [Подробнее](plugins/lofi.md#dsd64-imd-simulator) |
+| Lo-Fi     | FM Radio Simulator | Пропускает музыку через физически смоделированный тракт FM-вещания и приёма | [Подробнее](plugins/lofi.md#fm-radio-simulator) |
 | Lo-Fi     | Hum Generator | Добавляет настраиваемый фон электрического гула 50/60 Hz для винтажного или lo-fi прослушивания | [Подробнее](plugins/lofi.md#hum-generator) |
 | Lo-Fi     | Noise Blender | Добавляет регулируемую текстуру фонового шума для lo-fi атмосферы | [Подробнее](plugins/lofi.md#noise-blender) |
 | Lo-Fi     | Simple Jitter | Имитация цифрового джиттера | [Подробнее](plugins/lofi.md#simple-jitter) |

@@ -1,0 +1,59 @@
+{
+  "formatVersion": 1,
+  "type": "AMRadioSimulatorPlugin",
+  "id": "static-rate-step-rescales-pending-deadline",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 1,
+  "frameCount": 2049,
+  "blockSize": 97,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 19,
+  "seed": "0xeffe7a4d",
+  "params": {
+    "tb": 6,
+    "pe": 50,
+    "md": 90,
+    "cp": 6,
+    "sm": "Mono",
+    "sg": -12,
+    "sk": 0,
+    "fd": 0.15,
+    "st": 0.125,
+    "in": -80,
+    "io": 9,
+    "tn": 0,
+    "bw": 12,
+    "ag": "Fast",
+    "dt": 50,
+    "hm": -80,
+    "hz": "50",
+    "sp": "Off",
+    "og": 0,
+    "mx": 100,
+    "fr": true
+  },
+  "events": [
+    {
+      "frame": 512,
+      "params": {
+        "st": 100
+      }
+    },
+    {
+      "frame": 1536,
+      "params": {
+        "st": 0.125
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "2bba19990389185d4f793cabae7a81e180e8937375a1666c8f365b41c53a68a3",
+  "outputFloats": 2049,
+  "byteLength": 8196,
+  "binary": "case-020.f32"
+}

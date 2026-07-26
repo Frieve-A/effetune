@@ -131,14 +131,28 @@ little-endian `u32` in the range 1-8. Type 10 (`TAP_MULTI_CHANNEL_LEVELS`) start
 a nonnegative float32 raw window peak, a zero-or-one effective-mute byte, and three zero
 bytes. Its exact payload size is `4 + 8 * channelCount`. Frame type 2
 (`TAP_GAIN_REDUCTION`) is one nonnegative float32 dB value and is shared by Compressor,
-Gate, Expander, and BrickwallLimiter. Consumers require format version 1 and the exact
-payload size; all payloads are little-endian and four-byte aligned. Type 14
+Gate, Expander, and BrickwallLimiter. Consumers require format version 1 unless a tap
+states otherwise; Type 3 (`TAP_SCOPE_SNAPSHOT`), Type 6 (`TAP_STEREO_FIELD`), and Type 17
+(`TAP_AM_RADIO_SIMULATOR`) emit format version 2. Consumers require the exact payload size
+for the accepted version; all payloads are little-endian and four-byte aligned. Type 14
 (`TAP_FIVE_BAND_DYNAMIC_EQ`) is exactly 24 bytes: a five-band count, three zero reserved
 bytes, and five signed float32 gain values in band order. Type 15
 (`TAP_VINYL_SIMULATOR`) is exactly 48 bytes: eight float32 values for left/right contact
 force in N, left/right mean pressure in Pa, tip-velocity RMS in m/s, left/right tracking
 signal-to-error ratio in dB, and contact-centroid jitter in ns, followed by four cumulative
 little-endian `u32` counters for mistracks, skips, static pops, and dust hits.
+Type 16 (`TAP_FM_RADIO_SIMULATOR`) is exactly 216 bytes: five float32 values for RF
+input level in dBuV, estimated CNR in dB, pilot-lock quality 0-1, stereo blend ratio
+0-1, and multipath echo depth in dB, one cumulative little-endian `u32` counter for
+FM threshold clicks, and forty-eight float32 recovered-MPX spectrum magnitudes in
+dBFS on a fixed logarithmic frequency grid from 300 Hz to 60 kHz.
+Type 17 (`TAP_AM_RADIO_SIMULATOR`) format version 2 is exactly 28 bytes: five
+float32 values at byte offsets 0, 4, 8, 12, and 16 for carrier level before AGC
+in dB, AGC gain in dB, modulation depth in percent, fading level in dB, and stereo
+blend ratio, followed by cumulative little-endian `u32` counters at byte offsets
+20 and 24 for static events and clipping events. Legacy format version 1 is exactly
+24 bytes, omits stereo blend, and stores those counters at byte offsets 16 and 20;
+the parser accepts it for backward compatibility.
 
 `et_instance_latency` reflects staged parameters immediately. BrickwallLimiter reports
 `max(1, ceil(lookaheadMs * sampleRate / 1000))` samples at 1x oversampling and

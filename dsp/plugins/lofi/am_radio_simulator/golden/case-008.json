@@ -1,0 +1,85 @@
+{
+  "formatVersion": 1,
+  "type": "AMRadioSimulatorPlugin",
+  "id": "smooth-controls-and-enums",
+  "stimulus": "sweep",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 4097,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "tb": 6,
+    "pe": 50,
+    "md": 90,
+    "cp": 6,
+    "sm": "Mono",
+    "sg": -12,
+    "sk": 1,
+    "fd": 0.15,
+    "st": 0.3,
+    "in": -65,
+    "io": 9,
+    "tn": 0,
+    "bw": 12,
+    "ag": "Fast",
+    "dt": 50,
+    "hm": -70,
+    "hz": "50",
+    "sp": "Table",
+    "og": 0,
+    "mx": 100,
+    "fr": true
+  },
+  "events": [
+    {
+      "frame": 31,
+      "params": {
+        "tb": 10,
+        "pe": 100,
+        "md": 125,
+        "cp": 20
+      }
+    },
+    {
+      "frame": 997,
+      "params": {
+        "sg": -50,
+        "sk": 100,
+        "fd": 2,
+        "st": 100,
+        "in": 0,
+        "io": 10
+      }
+    },
+    {
+      "frame": 1999,
+      "params": {
+        "tn": -30,
+        "bw": 20,
+        "ag": "Slow",
+        "dt": 500,
+        "hm": -20,
+        "hz": "60"
+      }
+    },
+    {
+      "frame": 3001,
+      "params": {
+        "og": -12,
+        "mx": 25
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "2bba19990389185d4f793cabae7a81e180e8937375a1666c8f365b41c53a68a3",
+  "outputFloats": 8194,
+  "byteLength": 32776,
+  "binary": "case-008.f32"
+}

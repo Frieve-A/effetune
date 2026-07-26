@@ -310,15 +310,6 @@ function setupEventConnections() {
         window.app.uiManager.showNotification(successMessage);
     });
 
-    // Language selector - only add if element exists
-    const languageSelect = document.getElementById('language-select');
-    if (languageSelect) {
-        languageSelect.addEventListener('change', async (e) => {
-            const newLang = e.target.value;
-            await i18n.setLanguage(newLang);
-            localStorage.setItem('effetune-language', newLang);
-        });
-    }
 }
 
 /**

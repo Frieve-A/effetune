@@ -1,0 +1,37 @@
+{
+  "formatVersion": 1,
+  "type": "FMRadioSimulatorPlugin",
+  "id": "ultra-rate-max-processing-384000",
+  "stimulus": "sin1k",
+  "sampleRate": 384000,
+  "channels": 2,
+  "frameCount": 2049,
+  "blockSize": 96,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 19,
+  "seed": "0xeffe7a4d",
+  "params": {
+    "em": "50",
+    "pr": 18,
+    "st": 40,
+    "tn": 0,
+    "bw": 230,
+    "mp": 0,
+    "dl": 5,
+    "fd": 0,
+    "sm": "Auto",
+    "og": 0,
+    "mx": 100,
+    "fr": true
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "aa4b27acdf94473209fab80148bed2434a64705fd4bb5719cd2b2c4a421e23f6",
+  "outputFloats": 4098,
+  "byteLength": 16392,
+  "binary": "case-020.f32"
+}

@@ -1,0 +1,141 @@
+.am-radio-simulator-container {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.am-radio-simulator-panel {
+    padding: 10px;
+    border-radius: 4px;
+    background: #2d2d2d;
+}
+
+.am-radio-simulator-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    margin-bottom: 12px;
+}
+
+.am-radio-simulator-tab {
+    flex: 1 1 100px;
+    min-height: 36px;
+    padding: 8px 14px;
+    border: 1px solid #484848;
+    border-radius: 4px 4px 0 0;
+    color: #ddd;
+    background: #333;
+    cursor: pointer;
+}
+
+.am-radio-simulator-tab:hover {
+    background: #3c3c3c;
+}
+
+.am-radio-simulator-tab.active {
+    border-color: #666;
+    color: #fff;
+    background: #484848;
+}
+
+.am-radio-simulator-tab:focus-visible {
+    outline: 2px solid #7ec8ff;
+    outline-offset: 2px;
+}
+
+.am-radio-simulator-tab-content {
+    min-height: 196px;
+}
+
+.am-radio-simulator-tab-content[hidden] {
+    display: none;
+}
+
+.am-radio-simulator-hud {
+    position: relative;
+    width: 100%;
+    min-height: 64px;
+    max-width: none !important;
+    margin-top: 8px;
+    overflow: hidden;
+    border: 1px solid #454545;
+    border-radius: 4px;
+    background: #171717;
+}
+
+.am-radio-simulator-stereo-lamp {
+    --stereo-blend: 0;
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 6px;
+    border: 1px solid #454545;
+    border-radius: 3px;
+    color: #777;
+    background: rgb(24 24 24 / 88%);
+    font: 600 9px/1 Arial, sans-serif;
+    letter-spacing: 0.08em;
+    pointer-events: none;
+}
+
+.am-radio-simulator-stereo-lamp-indicator {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: rgb(64 74 65);
+    box-shadow: none;
+}
+
+.am-radio-simulator-stereo-lamp.active {
+    color: rgb(
+        calc(119 + 136 * var(--stereo-blend))
+        calc(119 + 103 * var(--stereo-blend))
+        calc(119 - 69 * var(--stereo-blend))
+    );
+}
+
+.am-radio-simulator-stereo-lamp.active .am-radio-simulator-stereo-lamp-indicator {
+    background: rgb(
+        calc(64 + 191 * var(--stereo-blend))
+        calc(74 + 148 * var(--stereo-blend))
+        calc(65 - 15 * var(--stereo-blend))
+    );
+    box-shadow: 0 0 7px rgb(255 190 50 / calc(70% * var(--stereo-blend)));
+}
+
+.am-radio-simulator-hud canvas {
+    display: block;
+}
+
+body.layout-mobile .am-radio-simulator-container,
+body.layout-mobile .am-radio-simulator-panel,
+body.layout-mobile .am-radio-simulator-tab-content,
+body.layout-mobile .am-radio-simulator-hud {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+body.layout-mobile .am-radio-simulator-panel {
+    padding: 8px;
+    overflow-x: clip;
+}
+
+body.layout-mobile .am-radio-simulator-tabs {
+    gap: 4px;
+}
+
+body.layout-mobile .am-radio-simulator-tab {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+    min-height: 42px;
+    padding: 8px 6px;
+}
+
+body.layout-mobile .am-radio-simulator-tab-content {
+    min-height: 0;
+}

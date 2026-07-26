@@ -333,9 +333,11 @@ EffeTune 2.1.0引入了采用目录架构v3的音乐库，可按曲目浏览CUE�
 | EQ        | Room EQ | 根据已保存的房间测量进行FIR校正 | [详情](plugins/eq.md#room-eq) |
 | EQ        | Tilt EQ | 倾斜均衡器，用于快速音色塑造 | [详情](plugins/eq.md#tilt-eq)      |
 | EQ        | Tone Control | 三频段音色控制 | [详情](plugins/eq.md#tone-control) |
+| Lo-Fi     | AM Radio Simulator | 让音乐经过建模的 AM 广播与接收链路 | [详情](plugins/lofi.md#am-radio-simulator) |
 | Lo-Fi     | Bit Crusher | 降低位深并应用零阶保持效果 | [详情](plugins/lofi.md#bit-crusher) |
 | Lo-Fi     | Digital Error Emulator | 模拟各种数字音频传输错误和复古数字设备特性 | [详情](plugins/lofi.md#digital-error-emulator) |
 | Lo-Fi     | DSD64 IMD Simulator | 模拟 DSD64 超声噪声引发的可闻互调失真 | [详情](plugins/lofi.md#dsd64-imd-simulator) |
+| Lo-Fi     | FM Radio Simulator | 让音乐通过物理仿真的 FM 广播与接收链路 | [详情](plugins/lofi.md#fm-radio-simulator) |
 | Lo-Fi     | Hum Generator | 加入可控的 50/60 Hz 电气嗡声氛围，适合复古/lo-fi 聆听 | [详情](plugins/lofi.md#hum-generator) |
 | Lo-Fi     | Noise Blender | 加入可调背景噪声质感，营造 lo-fi 氛围 | [详情](plugins/lofi.md#noise-blender) |
 | Lo-Fi     | Simple Jitter | 数字抖动模拟 | [详情](plugins/lofi.md#simple-jitter) |

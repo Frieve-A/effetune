@@ -1,0 +1,167 @@
+{
+  "defaults": {
+    "sampleRate": 96000,
+    "blockSize": 128,
+    "channels": 2,
+    "channelMode": "stereo"
+  },
+  "cases": [
+    { "id": "default-silence-must-process", "stimulus": "silence", "frames": 2049, "params": { "fr": true } },
+    { "id": "default-program-noise", "stimulus": "noise", "frames": 4097, "params": { "fr": true } },
+    {
+      "id": "multipath-impulse-48000",
+      "stimulus": "imp",
+      "sampleRate": 48000,
+      "blockSize": 127,
+      "frames": 3073,
+      "params": { "fr": true, "mp": 35, "dl": 7.3, "fd": 3 }
+    },
+    {
+      "id": "fullscale-processing-44100",
+      "stimulus": "fs",
+      "sampleRate": 44100,
+      "blockSize": 83,
+      "frames": 3001,
+      "params": { "fr": true, "pr": 18, "em": "75" }
+    },
+    {
+      "id": "toneburst-step-peak-controller",
+      "stimulus": "step",
+      "frames": 4097,
+      "params": { "fr": true, "pr": 18 }
+    },
+    {
+      "id": "weak-signal-auto-blend-48000",
+      "stimulus": "noise",
+      "sampleRate": 48000,
+      "frames": 4097,
+      "params": { "fr": true, "st": 10 }
+    },
+    {
+      "id": "detuned-narrow-if-192000",
+      "stimulus": "sweep",
+      "sampleRate": 192000,
+      "blockSize": 64,
+      "frames": 4097,
+      "params": { "fr": true, "tn": -65, "bw": 120 }
+    },
+    {
+      "id": "multipath-fading-44100",
+      "stimulus": "noise",
+      "sampleRate": 44100,
+      "blockSize": 83,
+      "frames": 4097,
+      "params": { "fr": true, "mp": 80, "dl": 25, "fd": 12 }
+    },
+    {
+      "id": "corner-detune-fullscale-48000",
+      "stimulus": "fs",
+      "sampleRate": 48000,
+      "blockSize": 97,
+      "frames": 3073,
+      "params": { "fr": true, "pr": 18, "st": 0, "tn": 200, "bw": 240 }
+    },
+    {
+      "id": "triple-core-path-176400",
+      "stimulus": "noise",
+      "sampleRate": 176400,
+      "blockSize": 128,
+      "frames": 2049,
+      "params": { "fr": true, "mp": 20, "dl": 3 }
+    },
+    {
+      "id": "one-frame-blocks",
+      "stimulus": "noise",
+      "blockSize": 1,
+      "frames": 513,
+      "params": { "fr": true }
+    },
+    {
+      "id": "pair-mode-extra-channels",
+      "stimulus": "noise",
+      "channels": 4,
+      "channelMode": "all4",
+      "channel": "A",
+      "frames": 1025,
+      "params": { "fr": true, "mx": 65 }
+    },
+    {
+      "id": "mono-input-48000",
+      "stimulus": "noise",
+      "sampleRate": 48000,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 2049,
+      "params": { "fr": true, "st": 30 }
+    },
+    {
+      "id": "smooth-parameter-events",
+      "stimulus": "sweep",
+      "frames": 4097,
+      "params": { "fr": true },
+      "events": [
+        { "frame": 31, "params": { "st": 25, "tn": 40, "bw": 150 } },
+        { "frame": 997, "params": { "mp": 60, "dl": 12, "fd": 5 } },
+        { "frame": 1499, "params": { "pr": 9 } },
+        { "frame": 1999, "params": { "sm": "Stereo", "em": "75" } },
+        { "frame": 3001, "params": { "sm": "Mono", "og": -6, "mx": 60 } }
+      ]
+    },
+    {
+      "id": "dry-latency-alignment",
+      "stimulus": "imp",
+      "frames": 1025,
+      "params": { "fr": true, "mx": 0 }
+    },
+    {
+      "id": "tuning-drag-events",
+      "stimulus": "sin1k",
+      "sampleRate": 48000,
+      "frames": 4097,
+      "params": { "fr": true },
+      "events": [
+        { "frame": 257, "params": { "tn": 5 } },
+        { "frame": 641, "params": { "tn": 12 } },
+        { "frame": 1025, "params": { "tn": 20 } },
+        { "frame": 1409, "params": { "tn": 31 } },
+        { "frame": 1793, "params": { "tn": 44 } },
+        { "frame": 2177, "params": { "tn": 60 } },
+        { "frame": 2561, "params": { "tn": 45 } },
+        { "frame": 2945, "params": { "tn": -25 } },
+        { "frame": 3329, "params": { "tn": 0 } }
+      ]
+    },
+    {
+      "id": "highband-max-processing-88200",
+      "stimulus": "sin1k",
+      "sampleRate": 88200,
+      "blockSize": 96,
+      "frames": 3073,
+      "params": { "fr": true, "pr": 18, "em": "75" }
+    },
+    {
+      "id": "sq50-max-processing-44100",
+      "stimulus": "sq50",
+      "sampleRate": 44100,
+      "blockSize": 83,
+      "frames": 3001,
+      "params": { "fr": true, "pr": 18 }
+    },
+    {
+      "id": "ultra-rate-multipath-352800",
+      "stimulus": "noise",
+      "sampleRate": 352800,
+      "blockSize": 128,
+      "frames": 2049,
+      "params": { "fr": true, "mp": 40, "dl": 3, "fd": 5 }
+    },
+    {
+      "id": "ultra-rate-max-processing-384000",
+      "stimulus": "sin1k",
+      "sampleRate": 384000,
+      "blockSize": 96,
+      "frames": 2049,
+      "params": { "fr": true, "pr": 18, "st": 40 }
+    }
+  ]
+}

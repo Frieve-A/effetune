@@ -343,9 +343,11 @@ EffeTune 2.1.0では、カタログスキーマv3を採用し、CUE形式のア�
 | EQ        | Room EQ      | 保存した室内測定に基づくFIR補正 | [詳細](plugins/eq.md#room-eq) |
 | EQ        | Tilt EQ      | クイックトーンシェイピング用のチルトイコライザー      | [詳細](plugins/eq.md#tilt-eq)      |
 | EQ        | Tone Control | 3バンドトーンコントロール | [詳細](plugins/eq.md#tone-control) |
+| Lo-Fi     | AM Radio Simulator | 音楽をモデル化したAM放送・受信機チェーンで変換 | [詳細](plugins/lofi.md#am-radio-simulator) |
 | Lo-Fi     | Bit Crusher | ビット深度削減とゼロオーダーホールド効果 | [詳細](plugins/lofi.md#bit-crusher) |
 | Lo-Fi     | Digital Error Emulator | 様々なデジタルオーディオ伝送エラーとビンテージデジタル機器の特性をシミュレート | [詳細](plugins/lofi.md#digital-error-emulator) |
 | Lo-Fi     | DSD64 IMD Simulator | DSD64の超音波ノイズに由来する可聴域の相互変調歪み（IMD）をシミュレート | [詳細](plugins/lofi.md#dsd64-imd-simulator) |
+| Lo-Fi     | FM Radio Simulator | 音楽を物理シミュレーションによるFM放送・受信機チェーンで変換 | [詳細](plugins/lofi.md#fm-radio-simulator) |
 | Lo-Fi     | Hum Generator | ビンテージ/ローファイ風の50/60 Hz電源ハムの雰囲気を調整して追加 | [詳細](plugins/lofi.md#hum-generator) |
 | Lo-Fi     | Noise Blender | ローファイな雰囲気のための背景ノイズ質感を調整して追加 | [詳細](plugins/lofi.md#noise-blender) |
 | Lo-Fi     | Simple Jitter | デジタルジッターシミュレーション | [詳細](plugins/lofi.md#simple-jitter) |

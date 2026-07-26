@@ -334,9 +334,11 @@ EffeTune 2.1.0 में कैटलॉग स्कीमा v3 पर आध�
 | EQ        | Room EQ      | सेव की गई room measurements पर आधारित FIR correction | [विवरण](plugins/eq.md#room-eq) |
 | EQ        | Tilt EQ      | quick tone shaping के लिए tilt equalizer | [विवरण](plugins/eq.md#tilt-eq) |
 | EQ        | Tone Control | three-band tone control | [विवरण](plugins/eq.md#tone-control) |
+| Lo-Fi     | AM Radio Simulator | संगीत को मॉडल की गई AM प्रसारण और रिसीवर शृंखला से गुजारता है | [विवरण](plugins/lofi.md#am-radio-simulator) |
 | Lo-Fi     | Bit Crusher | bit depth reduction और zero-order hold effect | [विवरण](plugins/lofi.md#bit-crusher) |
 | Lo-Fi     | Digital Error Emulator | अलग-अलग digital audio transmission errors और vintage digital equipment characteristics simulate करता है | [विवरण](plugins/lofi.md#digital-error-emulator) |
 | Lo-Fi     | DSD64 IMD Simulator | DSD64 ultrasonic noise से audible intermodulation distortion simulate करता है | [विवरण](plugins/lofi.md#dsd64-imd-simulator) |
+| Lo-Fi     | FM Radio Simulator | संगीत को भौतिक रूप से सिम्युलेट की गई FM प्रसारण और रिसीवर श्रृंखला से गुज़ारता है | [विवरण](plugins/lofi.md#fm-radio-simulator) |
 | Lo-Fi     | Hum Generator | vintage/lo-fi listening के लिए adjustable 50/60 Hz electrical hum ambience जोड़ता है | [विवरण](plugins/lofi.md#hum-generator) |
 | Lo-Fi     | Noise Blender | lo-fi ambience के लिए adjustable background noise texture जोड़ता है | [विवरण](plugins/lofi.md#noise-blender) |
 | Lo-Fi     | Simple Jitter | digital jitter simulation | [विवरण](plugins/lofi.md#simple-jitter) |

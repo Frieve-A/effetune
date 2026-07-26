@@ -334,9 +334,11 @@ Se o problema continuar, reporte em [GitHub Issues](https://github.com/Frieve-A/
 | EQ        | Room EQ | Correção FIR baseada em medições de sala salvas | [Detalhes](plugins/eq.md#room-eq) |
 | EQ        | Tilt EQ | Equalizador tilt para modelagem rápida de tonalidade | [Detalhes](plugins/eq.md#tilt-eq) |
 | EQ        | Tone Control | Controle de tonalidade de três bandas | [Detalhes](plugins/eq.md#tone-control) |
+| Lo-Fi     | AM Radio Simulator | Passa a música por uma cadeia modelada de transmissão e recepção AM | [Detalhes](plugins/lofi.md#am-radio-simulator) |
 | Lo-Fi     | Bit Crusher | Redução de profundidade de bits e efeito de retenção de ordem zero | [Detalhes](plugins/lofi.md#bit-crusher) |
 | Lo-Fi     | Digital Error Emulator | Simula vários erros de transmissão de áudio digital e características de equipamentos digitais vintage | [Detalhes](plugins/lofi.md#digital-error-emulator) |
 | Lo-Fi     | DSD64 IMD Simulator | Simula a distorção de intermodulação audível causada pelo ruído ultrassônico do DSD64 | [Detalhes](plugins/lofi.md#dsd64-imd-simulator) |
+| Lo-Fi     | FM Radio Simulator | Passa a música por uma cadeia de transmissão e recepção FM simulada fisicamente | [Detalhes](plugins/lofi.md#fm-radio-simulator) |
 | Lo-Fi     | Hum Generator | Adiciona ambiência controlável de hum elétrico de 50/60 Hz para escuta vintage/lo-fi | [Detalhes](plugins/lofi.md#hum-generator) |
 | Lo-Fi     | Noise Blender | Adiciona textura ajustável de ruído de fundo para ambiência lo-fi | [Detalhes](plugins/lofi.md#noise-blender) |
 | Lo-Fi     | Simple Jitter | Simulação de jitter digital | [Detalhes](plugins/lofi.md#simple-jitter) |

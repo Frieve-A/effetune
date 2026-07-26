@@ -1,0 +1,59 @@
+{
+  "formatVersion": 1,
+  "type": "AMRadioSimulatorPlugin",
+  "id": "mode-mono-cquam-mono-one-second-segments",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 1,
+  "frameCount": 288000,
+  "blockSize": 128,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 18,
+  "seed": "0xeffe7a4c",
+  "params": {
+    "tb": 6,
+    "pe": 50,
+    "md": 90,
+    "cp": 6,
+    "sm": "Mono",
+    "sg": -12,
+    "sk": 1,
+    "fd": 0.15,
+    "st": 0.3,
+    "in": -65,
+    "io": 9,
+    "tn": 0,
+    "bw": 12,
+    "ag": "Fast",
+    "dt": 50,
+    "hm": -70,
+    "hz": "50",
+    "sp": "Table",
+    "og": 0,
+    "mx": 100,
+    "fr": true
+  },
+  "events": [
+    {
+      "frame": 96000,
+      "params": {
+        "sm": "C-QUAM"
+      }
+    },
+    {
+      "frame": 192000,
+      "params": {
+        "sm": "Mono"
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "2bba19990389185d4f793cabae7a81e180e8937375a1666c8f365b41c53a68a3",
+  "outputFloats": 288000,
+  "byteLength": 1152000,
+  "binary": "case-019.f32"
+}

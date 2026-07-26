@@ -89,6 +89,11 @@ ET_EXPORT et_status et_instance_asset_commit(et_engine engine, et_instance insta
                                              uint32_t byte_size, uint32_t format_tag);
 ET_EXPORT void et_instance_asset_abort(et_engine engine, et_instance instance, uint32_t slot);
 ET_EXPORT uint32_t et_instance_asset_state(et_engine engine, et_instance instance, uint32_t slot);
+/*
+ * Audio is planar (channel-major): channel c starts at audio + c * frame_count.
+ * frame_count is the number of frames per channel, not the total float count, and
+ * must not exceed max_frames passed to et_engine_prepare.
+ */
 ET_EXPORT et_status et_instance_process(et_engine engine, et_instance instance, float *audio,
                                         uint32_t channel_count, uint32_t frame_count,
                                         double time_seconds);
