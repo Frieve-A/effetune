@@ -24,6 +24,7 @@ El tono o ruido generado se mezcla en la ruta de audio actual en lugar de sustit
   - Onda cuadrada para contenido armónico rico
   - Onda triangular para armónicos más suaves
   - Onda de sierra para timbres brillantes
+  - Impulsos periódicos de una muestra para comprobar la respuesta al impulso y la temporización
   - Ruido blanco para comprobaciones de banda ancha en altavoces o auriculares
   - Ruido rosa para un balance de ruido más suave y natural
 - Modo de operación pulsado para tonos intermitentes o ráfagas de ruido
@@ -33,7 +34,7 @@ El tono o ruido generado se mezcla en la ruta de audio actual en lugar de sustit
   - Frecuencias bajas: Tonos graves profundos
   - Frecuencias medias: Rango musical
   - Frecuencias altas: Úsalas con cuidado y solo a niveles de escucha seguros
-  - Se aplica solo a Sine, Square, Triangle y Sawtooth; está desactivado para White Noise y Pink Noise
+  - Se aplica solo a Sine, Square, Triangle y Sawtooth; está desactivado para Impulse, White Noise y Pink Noise
   - La salida de alta frecuencia disponible depende de la frecuencia de muestreo de audio actual; los tonos por encima de la frecuencia de Nyquist utilizable se silencian
 - **Volume (dB)** - Ajusta el nivel de salida (-96 dB a 0 dB)
   - Empieza bajo y sube lentamente
@@ -46,21 +47,23 @@ El tono o ruido generado se mezcla en la ruta de audio actual en lugar de sustit
   - Square: Rico en armónicos impares
   - Triangle: Contenido armónico más suave
   - Sawtooth: Serie armónica completa
+  - Impulse: Una muestra a amplitud máxima en cada Interval, según la frecuencia de muestreo actual; Frequency no le afecta
   - White Noise: Energía igual por Hz; Frequency no le afecta
   - Pink Noise: Energía igual por octava; Frequency no le afecta
 - **Mode** - Controla el patrón de generación de señal
   - Continuous: Generación de señal continua sin interrupciones
   - Pulsed: Señal intermitente con temporización controlable
+  - Impulse siempre usa Pulsed; Continuous queda desactivado
 - **Interval (ms)** - Tiempo entre ráfagas de pulsos en modo pulsado (100-2000 ms, paso 10 ms)
   - Intervalos cortos: Secuencias de pulsos rápidas
   - Intervalos largos: Pulsos ampliamente espaciados
-  - Solo activo cuando Mode está establecido en Pulsed
+  - Activo cuando Mode está establecido en Pulsed, incluido Impulse
 - **Width (ms)** - Tiempo de rampa del pulso en modo pulsado (2-100 ms, limitado a la mitad de Interval, paso 1 ms)
   - Controla el tiempo de entrada/salida gradual de cada pulso
   - El pulso generado dura aproximadamente el doble de Width, sin una sección sostenida plana
   - Anchuras cortas: Bordes de pulso nítidos
   - Anchuras largas: Transiciones de pulso más suaves
-  - Solo activo cuando Mode está establecido en Pulsed
+  - Solo activo cuando Mode está establecido en Pulsed; se desactiva para Impulse porque cada impulso dura exactamente una muestra
 
 ### Ejemplos de Uso
 
@@ -104,5 +107,11 @@ El tono o ruido generado se mezcla en la ruta de audio actual en lugar de sustit
      * Los intervalos más largos hacen que cada ráfaga se oiga por separado con más claridad
      * Los valores de Width más cortos crean comienzos y finales más definidos
      * Comparar el comportamiento a diferentes niveles de volumen
+
+6. Comprobaciones de respuesta al impulso y temporización
+   - Selecciona Impulse para generar transitorios de una muestra con el Interval configurado
+     * Usa un Interval más largo para separar las reflexiones o las colas de los efectos
+     * Graba la salida para analizar la respuesta al impulso de un sistema o una cadena de plugins
+     * Empieza con un Volume bajo porque el impulso tiene un pico brusco y contenido de banda ancha
 
 Recuerda: Oscillator es un generador de señales de prueba. Empieza con Volume bajo, súbelo gradualmente y evita tonos fuertes o de alta frecuencia que puedan dañar el equipo o fatigar el oído.

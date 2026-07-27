@@ -24,6 +24,7 @@ lang: zh
   - Square：丰富奇次谐波
   - Triangle：较柔和的谐波
   - Sawtooth：明亮音色
+  - Impulse：用于检查脉冲响应和时序的周期性单采样脉冲
   - White Noise：宽频扬声器/耳机检查
   - Pink Noise：更平滑、更自然的噪声平衡
 - Pulsed 模式用于间歇测试音或噪声脉冲
@@ -33,7 +34,7 @@ lang: zh
   - 低频：深沉低音测试
   - 中频：音乐常用范围
   - 高频：请谨慎使用，并保持安全聆听音量
-  - 仅适用于 sine、square、triangle 和 sawtooth；white/pink noise 下禁用
+  - 仅适用于 Sine、Square、Triangle 和 Sawtooth；Impulse、White Noise 和 Pink Noise 下禁用
   - 可用的高频输出取决于当前音频采样率；超过可用 Nyquist 频率的音调会被静音
 - **Volume (dB)** - 调整输出电平（-96 dB 到 0 dB）
   - 从低音量开始，再慢慢提高
@@ -46,21 +47,23 @@ lang: zh
   - Square：富含奇次谐波
   - Triangle：较柔和的谐波内容
   - Sawtooth：完整谐波系列
+  - Impulse：按照当前音频采样率，在每个 Interval 输出一个满幅采样；Frequency 不影响它
   - White Noise：每 Hz 能量相同；Frequency 不影响它
   - Pink Noise：每倍频程能量相同；Frequency 不影响它
 - **Mode** - 控制信号生成模式
   - Continuous：连续信号
   - Pulsed：带可控时序的间歇信号
+  - Impulse 始终使用 Pulsed；Continuous 会被禁用
 - **Interval (ms)** - Pulsed 模式中脉冲之间的时间（100-2000 ms，步进 10 ms）
   - 较短间隔：快速脉冲序列
   - 较长间隔：相隔更远的脉冲
-  - 仅 Mode 为 Pulsed 时有效
+  - Mode 为 Pulsed 时有效，包括 Impulse
 - **Width (ms)** - Pulsed 模式中的脉冲淡入/淡出时间（2-100 ms，最大为 Interval 的一半，步进 1 ms）
   - 控制每个脉冲的淡入/淡出时间
   - 生成的脉冲约为 Width 的两倍时长，没有稳定保持段
   - 较短 Width：脉冲边缘更锐利
   - 较长 Width：脉冲过渡更平滑
-  - 仅 Mode 为 Pulsed 时有效
+  - 仅 Mode 为 Pulsed 时有效；Impulse 的脉冲固定为一个采样，因此此项会被禁用
 
 ### 使用示例
 
@@ -104,5 +107,11 @@ lang: zh
      * 较长 Interval 让每个脉冲更容易分开听
      * 较短 Width 产生更尖锐的起止
      * 比较不同音量下的表现
+
+6. 脉冲响应与时序检查
+   - 选择 Impulse，按设定的 Interval 生成单采样瞬态信号
+     * 使用更长的 Interval，以便分离反射声或效果尾音
+     * 录制输出，以分析系统或插件链的脉冲响应
+     * 脉冲峰值尖锐且包含宽频成分，请从较低 Volume 开始
 
 请记住：Oscillator 是测试信号发生器。请从较低 Volume 开始逐步提高，并避免可能损伤设备或造成听觉疲劳的高音量/高频音调。

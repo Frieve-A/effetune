@@ -1,6 +1,6 @@
 ---
 title: "基础音频插件 - EffeTune"
-description: "包含 Volume、Mute、Stereo Balance、Matrix 路由等基础音频插件。"
+description: "包含 Volume、Mute、Stereo Balance、FIR Crossover、Matrix 路由等基础音频插件。"
 lang: zh
 ---
 
@@ -12,6 +12,7 @@ lang: zh
 
 - [Channel Divider](#channel-divider) - 将立体声分成多个频段，并分配到立体声输出对
 - [DC Offset](#dc-offset) - 添加或校正常量 DC 偏移
+- [FIR Crossover](#fir-crossover) - 使用 FIR 滤波器将立体声信号分为陡峭的频段
 - [Matrix](#matrix) - 灵活路由并混合音频通道
 - [MultiChannel Panel](#multichannel-panel) - 分别控制多个音频通道
 - [Mute](#mute) - 静音音频输出
@@ -71,6 +72,35 @@ lang: zh
   - 正值：将信号向上移动
   - 负值：将信号向下移动
   - 即使需要校正，也应从非常小的数值开始
+
+## FIR Crossover
+
+FIR Crossover 将立体声输入分为两个、三个或四个频段，并把每个频段送至独立的一对输出。它适用于具有 4、6 或 8 个输出声道的桌面系统，且仅在 WASM DSP 下工作。
+
+FIR 设计能够实现非常陡峭的斜率，而不会产生传统滤波器的谐振。Minimum Phase 使用可保持各频段重组的因果分频结构；Linear Phase 则以固定延迟换取对称的相位响应。
+
+### 使用指南
+
+- 从默认值开始，再根据扬声器的工作频段调整 Crossover Frequencies。
+- 输出按频段由低到高排列，每个频段占用一对立体声输出。
+- 常规设置可先尝试 48 至 96 dB/oct。更陡的斜率通常需要更多 Taps。
+- 需要较低延迟时选择 Minimum Phase；更重视相位对齐时选择 Linear Phase。
+- 测试多声道路由时请从低音量开始，以保护扬声器。
+
+### 参数
+
+- **Phase**：选择 **Minimum Phase** 或 **Linear Phase**。
+- **Taps**：设置 FIR 滤波器长度。数值越大，低频分辨率和处理负载越高。
+- **Latency**：添加 0、128、256、512 或 1024 个采样的标示延迟。
+- **Band Count**：选择两个、三个或四个频段，分别需要 4、6 或 8 个输出声道。
+- **Crossover Frequencies**：按升序设置频段之间的边界。
+- **Slope**：为每个分频点选择 24 至 384 dB/oct。
+
+### 如何查看显示
+
+- 图表显示各频段随频率变化的目标响应。
+- 每种颜色对应相应频段的一对输出。
+- 状态行显示延迟和滤波器分辨率；输出声道数不匹配时会显示警告。
 
 ## Matrix
 

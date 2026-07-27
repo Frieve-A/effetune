@@ -1,6 +1,6 @@
 ---
 title: "Plugins de base - EffeTune"
-description: "Plugins audio essentiels, dont Volume, Mute, Stereo Balance, Matrix et plus encore."
+description: "Plugins audio essentiels, dont Volume, Mute, Stereo Balance, FIR Crossover, Matrix et plus encore."
 lang: fr
 ---
 
@@ -12,6 +12,7 @@ Un ensemble d'outils essentiels pour ajuster les aspects fondamentaux de la lect
 
 * [Channel Divider](#channel-divider) - Divise l'audio stéréo en bandes de fréquences et les répartit vers des paires de sorties stéréo
 * [DC Offset](#dc-offset) - Ajoute ou corrige un décalage DC constant
+* [FIR Crossover](#fir-crossover) - Répartit le signal stéréo en bandes à forte pente avec des filtres FIR
 * [Matrix](#matrix) - Dirige et mélange les canaux audio avec un contrôle flexible
 * [MultiChannel Panel](#multichannel-panel) - Contrôle plusieurs canaux audio avec des réglages individuels
 * [Mute](#mute) - Met le son en sourdine
@@ -80,6 +81,35 @@ Un utilitaire pour corriger un signal dont la forme d'onde est décalée par rap
   * Les valeurs positives déplacent le signal vers le haut
   * Les valeurs négatives déplacent le signal vers le bas
   * Utilisez de très petits ajustements lorsqu'une correction est nécessaire
+
+## FIR Crossover
+
+FIR Crossover répartit une entrée stéréo en deux, trois ou quatre bandes et envoie chacune vers une paire de sorties distincte. Il est destiné aux systèmes de bureau disposant de 4, 6 ou 8 canaux de sortie et fonctionne uniquement avec WASM DSP.
+
+La conception FIR autorise des pentes très raides sans la résonance des filtres classiques. Minimum Phase utilise une construction causale qui préserve la recombinaison des bandes ; Linear Phase fournit une réponse de phase symétrique au prix d'une latence fixe.
+
+### Guide d'utilisation
+
+- Commencez avec les valeurs par défaut, puis adaptez Crossover Frequencies aux plages de vos haut-parleurs.
+- Les sorties vont de la bande la plus grave à la plus aiguë ; chaque bande occupe une paire stéréo.
+- Pour un réglage courant, essayez 48 à 96 dB/oct. Les pentes plus fortes demandent généralement davantage de Taps.
+- Choisissez Minimum Phase pour réduire la latence, ou Linear Phase si l'alignement de phase est prioritaire.
+- Testez le routage multicanal à faible volume afin de protéger les haut-parleurs.
+
+### Paramètres
+
+- **Phase** : sélectionne **Minimum Phase** ou **Linear Phase**.
+- **Taps** : définit la longueur du filtre FIR. Une valeur élevée améliore la résolution dans le grave et augmente la charge.
+- **Latency** : ajoute 0, 128, 256, 512 ou 1024 échantillons de latence déclarée.
+- **Band Count** : sélectionne deux, trois ou quatre bandes, nécessitant respectivement 4, 6 ou 8 canaux de sortie.
+- **Crossover Frequencies** : définit, par ordre croissant, les limites entre les bandes.
+- **Slope** : sélectionne de 24 à 384 dB/oct pour chaque fréquence de coupure.
+
+### Lecture de l'affichage
+
+- Le graphique montre la réponse cible de chaque bande en fonction de la fréquence.
+- Chaque couleur correspond à la paire de sorties de la bande.
+- La ligne d'état indique la latence et la résolution du filtre, ou avertit si le nombre de canaux est incompatible.
 
 ## Matrix
 

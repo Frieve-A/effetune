@@ -127,6 +127,7 @@ Version 2.1.0 introduces the CUE-enabled Music Library with catalog schema v3. E
    - For Section effects: Shift+click the × button to remove entire sections
 9. Click the routing button to set the channels to be processed and the input and output busses
    - [More about bus functions](docs/bus-function.md)
+10. For fine slider adjustment, hold Shift while dragging; the value changes by one minimum step at a time
 
 ### Using Presets
 
@@ -310,6 +311,7 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Analyzer  | Stereo Meter | Visualizes stereo balance and channel correlation | [Details](docs/plugins/analyzer.md#stereo-meter) |
 | Basics    | Channel Divider | Splits stereo signal into frequency bands and routes each band to separate stereo output pairs | [Details](docs/plugins/basics.md#channel-divider) |
 | Basics    | DC Offset | DC offset adjustment | [Details](docs/plugins/basics.md#dc-offset) |
+| Basics    | FIR Crossover | FIR crossover that routes steeply separated frequency bands to stereo output pairs | [Details](docs/plugins/basics.md#fir-crossover) |
 | Basics    | Matrix | Routes and mixes audio channels with flexible control | [Details](docs/plugins/basics.md#matrix) |
 | Basics    | MultiChannel Panel | Control panel for multiple channels with volume, mute, solo and delay | [Details](docs/plugins/basics.md#multichannel-panel) |
 | Basics    | Mute | Completely silences the audio signal | [Details](docs/plugins/basics.md#mute) |
@@ -331,10 +333,12 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | EQ        | 15Band GEQ | 15-band graphic equalizer | [Details](docs/plugins/eq.md#15band-geq) |
 | EQ        | 15Band PEQ | 15-band parametric equalizer for detailed listening tone adjustment | [Details](docs/plugins/eq.md#15band-peq) |
 | EQ        | 5Band Dynamic EQ | 5-band dynamic equalizer with threshold-based frequency adjustment | [Details](docs/plugins/eq.md#5band-dynamic-eq) |
+| EQ        | 5Band FIR PEQ | Five-band parametric tone shaping implemented as a minimum- or linear-phase FIR filter | [Details](docs/plugins/eq.md#5band-fir-peq) |
 | EQ        | 5Band PEQ | Flexible 5-band equalizer for shaping bass, mids, and treble | [Details](docs/plugins/eq.md#5band-peq) |
 | EQ        | Band Pass Filter | Focus on specific frequencies | [Details](docs/plugins/eq.md#band-pass-filter) |
 | EQ        | Comb Filter | Adds phasey, hollow, or metallic coloration | [Details](docs/plugins/eq.md#comb-filter) |
 | EQ        | Earphone Cable Sim | Helps check how small normal earphone-cable response shifts usually are | [Details](docs/plugins/eq.md#earphone-cable-sim) |
+| EQ        | Group Delay EQ | Adjusts the delay of each frequency band without changing the tone | [Details](docs/plugins/eq.md#group-delay-eq) |
 | EQ        | Hi Pass Filter | Remove unwanted low frequencies with precision | [Details](docs/plugins/eq.md#hi-pass-filter) |
 | EQ        | Lo Pass Filter | Remove unwanted high frequencies with precision | [Details](docs/plugins/eq.md#lo-pass-filter) |
 | EQ        | Loudness Equalizer | Frequency balance correction for low-volume listening | [Details](docs/plugins/eq.md#loudness-equalizer) |
@@ -350,6 +354,7 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Lo-Fi     | Hum Generator | Adds controllable 50/60 Hz electrical hum ambience for vintage/lo-fi listening | [Details](docs/plugins/lofi.md#hum-generator) |
 | Lo-Fi     | Noise Blender | Adds adjustable background noise texture for lo-fi ambience | [Details](docs/plugins/lofi.md#noise-blender) |
 | Lo-Fi     | Simple Jitter | Digital jitter simulation | [Details](docs/plugins/lofi.md#simple-jitter) |
+| Lo-Fi     | SW Radio Simulator | Passes music through a modeled shortwave broadcast, ionospheric path, and receiver chain | [Details](docs/plugins/lofi.md#sw-radio-simulator) |
 | Lo-Fi     | Vinyl Artifacts | Adds vinyl-style pops, crackle, hiss, rumble, and stereo noise bleed | [Details](docs/plugins/lofi.md#vinyl-artifacts) |
 | Lo-Fi     | Vinyl Simulator | Cuts the input into a modeled groove and plays it back with a physical stylus model | [Details](docs/plugins/lofi.md#vinyl-simulator) |
 | Modulation | Doppler Distortion | Simulates natural, dynamic changes in sound caused by subtle speaker cone movements | [Details](docs/plugins/modulation.md#doppler-distortion) |

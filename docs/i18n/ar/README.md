@@ -119,6 +119,7 @@
    - لتأثيرات Section: انقر مع Shift على زر × لإزالة أقسام كاملة
 9. انقر فوق زر التوجيه لتعيين القنوات التي سيتم معالجتها وحافلات الإدخال والإخراج  
    - [المزيد عن وظائف الحافلات](bus-function.md)
+10. لضبط شريط التمرير بدقة، اضغط مع الاستمرار على Shift أثناء سحبه؛ ستتغير القيمة بمقدار أصغر خطوة في كل مرة
 
 ### استخدام الإعدادات المسبقة
 
@@ -302,6 +303,7 @@
 | Analyzer | Stereo Meter | يوضح توازن الستيريو وترابط القناتين | [تفاصيل](plugins/analyzer.md#stereo-meter) |
 | Basics | Channel Divider | يقسم الإشارة الاستريو إلى نطاقات ترددية ويوجه كل نطاق إلى زوج مخارج استريو منفصل | [تفاصيل](plugins/basics.md#channel-divider) |
 | Basics | DC Offset | يضبط إزاحة DC في الإشارة | [تفاصيل](plugins/basics.md#dc-offset) |
+| Basics | FIR Crossover | مرشح تقسيم FIR يوجّه نطاقات ترددية شديدة الانحدار إلى أزواج مخارج ستيريو | [تفاصيل](plugins/basics.md#fir-crossover) |
 | Basics | Matrix | يوجه القنوات الصوتية ويمزجها بتحكم مرن | [تفاصيل](plugins/basics.md#matrix) |
 | Basics | MultiChannel Panel | لوحة تحكم لقنوات متعددة مع الصوت والكتم والعزل والتأخير | [تفاصيل](plugins/basics.md#multichannel-panel) |
 | Basics | Mute | يكتم الإشارة الصوتية تمامًا | [تفاصيل](plugins/basics.md#mute) |
@@ -323,10 +325,12 @@
 | EQ | 15Band GEQ | معادل رسومي من 15 نطاقًا | [تفاصيل](plugins/eq.md#15band-geq) |
 | EQ | 15Band PEQ | معادل بارامتري من 15 نطاقًا لضبط نغمة الاستماع بتفصيل | [تفاصيل](plugins/eq.md#15band-peq) |
 | EQ | 5Band Dynamic EQ | معادل ديناميكي خماسي النطاق يغير الترددات حسب العتبة | [تفاصيل](plugins/eq.md#5band-dynamic-eq) |
+| EQ | 5Band FIR PEQ | معادل بارامتري من 5 نطاقات يستخدم مرشح FIR بنمط Minimum Phase أو Linear Phase | [تفاصيل](plugins/eq.md#5band-fir-peq) |
 | EQ | 5Band PEQ | معادل مرن من 5 نطاقات لتشكيل الجهير والوسط والعالي | [تفاصيل](plugins/eq.md#5band-peq) |
 | EQ | Band Pass Filter | يركز على ترددات محددة | [تفاصيل](plugins/eq.md#band-pass-filter) |
 | EQ | Comb Filter | يضيف لونًا طوريًا أو أجوف أو معدنيًا | [تفاصيل](plugins/eq.md#comb-filter) |
 | EQ | Earphone Cable Sim | يساعد على التحقق من صغر تغيرات الاستجابة الترددية الناتجة عادةً عن كابلات سماعات الأذن العادية | [تفاصيل](plugins/eq.md#earphone-cable-sim) |
+| EQ | Group Delay EQ | يضبط تأخير كل نطاق ترددي دون تغيير طابع الصوت | [تفاصيل](plugins/eq.md#group-delay-eq) |
 | EQ | Hi Pass Filter | يزيل الترددات المنخفضة غير المرغوبة بدقة | [تفاصيل](plugins/eq.md#hi-pass-filter) |
 | EQ | Lo Pass Filter | يزيل الترددات العالية غير المرغوبة بدقة | [تفاصيل](plugins/eq.md#lo-pass-filter) |
 | EQ | Loudness Equalizer | يصحح توازن الترددات عند الاستماع بمستوى منخفض | [تفاصيل](plugins/eq.md#loudness-equalizer) |
@@ -342,6 +346,7 @@
 | Lo-Fi | Hum Generator | يضيف طنينًا كهربائيًا 50/60 Hz قابلًا للتحكم لأجواء vintage/lo-fi | [تفاصيل](plugins/lofi.md#hum-generator) |
 | Lo-Fi | Noise Blender | يضيف نسيج ضوضاء خلفية قابلًا للضبط لأجواء lo-fi | [تفاصيل](plugins/lofi.md#noise-blender) |
 | Lo-Fi | Simple Jitter | يحاكي jitter رقميًا | [تفاصيل](plugins/lofi.md#simple-jitter) |
+| Lo-Fi | SW Radio Simulator | يمرر الموسيقى عبر سلسلة مُنمذجة من بث الموجات القصيرة والمسار الأيونوسفيري والمستقبِل | [تفاصيل](plugins/lofi.md#sw-radio-simulator) |
 | Lo-Fi | Vinyl Artifacts | يضيف طقطقات وفرقعة وهسيسًا ورمبلًا وتسرب ضوضاء ستيريو بطابع الفينيل | [تفاصيل](plugins/lofi.md#vinyl-artifacts) |
 | Lo-Fi | Vinyl Simulator | يقطع الإدخال في أخدود مُنمذج ثم يشغله بنموذج فيزيائي للإبرة | [تفاصيل](plugins/lofi.md#vinyl-simulator) |
 | Modulation | Doppler Distortion | يحاكي تغيرات طبيعية ديناميكية في الصوت ناتجة عن حركات طفيفة في مخروط السماعة | [تفاصيل](plugins/modulation.md#doppler-distortion) |

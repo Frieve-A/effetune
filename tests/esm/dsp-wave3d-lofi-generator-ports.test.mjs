@@ -76,7 +76,7 @@ const ports = [
   {
     directory: 'others/oscillator',
     type: 'OscillatorPlugin',
-    hash: 0xc3977673,
+    hash: 0x85591ea8,
     fields: [
       ['frequency', 'fr', 'float'],
       ['volume', 'vl', 'float'],
@@ -86,9 +86,9 @@ const ports = [
       ['interval', 'it', 'float'],
       ['width', 'wd', 'float']
     ],
-    caseCount: 13,
-    goldenBytes: 232893,
-    jsEngineHash: '3a1f4dc7da1d024ce3e0846ff3724f3ae9ff4729746b4d7d01d81d525992094c',
+    caseCount: 14,
+    goldenBytes: 269579,
+    jsEngineHash: '78bb2fb4268436591587c8303c57371bdf0c9028bdefc4c21d205cb4b2aa6f0a',
     activeParams: { fr: 880, vl: -6, pn: 0, wf: 'pink', md: 'pulsed', it: 100, wd: 50 }
   }
 ];
@@ -212,13 +212,21 @@ test('Noise and generator modes honor their parameter extrema', async () => {
 
   const oscillator = await readGoldenSet(path.join(pluginsRoot, 'others/oscillator/golden'));
   assert.deepEqual(new Set(oscillator.map(item => item.metadata.params.wf)),
-    new Set(['sine', 'square', 'triangle', 'sawtooth', 'white', 'pink']));
+    new Set(['sine', 'square', 'triangle', 'sawtooth', 'white', 'pink', 'impulse']));
   assert.ok(oscillator.some(item => item.metadata.params.md === 'continuous'));
   assert.ok(oscillator.some(item => item.metadata.params.md === 'pulsed'));
   assert.ok(oscillator.some(item => item.metadata.params.fr === 20));
   assert.ok(oscillator.some(item => item.metadata.params.fr === 96000));
   assert.ok(oscillator.some(item => item.metadata.params.vl === -96));
   assert.ok(oscillator.some(item => item.metadata.params.vl === 0));
+
+  const impulse = oscillator.find(item => item.metadata.id === 'impulse-interval-one-sample');
+  const impulseFrames = [];
+  for (let frame = 0; frame < impulse.expected.length; ++frame) {
+    if (impulse.expected[frame] !== 0) impulseFrames.push(frame);
+  }
+  assert.deepEqual(impulseFrames, [0, 4410, 8820]);
+  assert.deepEqual(impulseFrames.map(frame => impulse.expected[frame]), [1, 1, 1]);
 });
 
 test('Hum and Oscillator freeze input independence and phase continuity', async () => {

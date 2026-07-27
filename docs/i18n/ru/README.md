@@ -119,6 +119,7 @@ EffeTune создан для аудиоэнтузиастов, которые х
    - Для эффектов Section: Shift+нажатие кнопки × для удаления целых секций  
 9. Нажмите кнопку маршрутизации, чтобы настроить каналы для обработки и входные и выходные шины  
    - [Подробнее о функциях шин](bus-function.md)
+10. Для точной настройки ползунка удерживайте Shift при перетаскивании; значение будет изменяться на один минимальный шаг
 
 ### Использование пресетов
 
@@ -298,6 +299,7 @@ EffeTune создан для аудиоэнтузиастов, которые х
 | Analyzer  | Stereo Meter | Визуализирует стереобаланс и корреляцию каналов | [Подробнее](plugins/analyzer.md#stereo-meter) |
 | Basics    | Channel Divider | Делит стереосигнал на частотные полосы и направляет каждую полосу в отдельные стереопары выходов | [Подробнее](plugins/basics.md#channel-divider) |
 | Basics    | DC Offset | Регулировка DC offset | [Подробнее](plugins/basics.md#dc-offset) |
+| Basics    | FIR Crossover | FIR-кроссовер, направляющий круто разделённые частотные полосы на пары стереовыходов | [Подробнее](plugins/basics.md#fir-crossover) |
 | Basics    | Matrix | Гибко маршрутизирует и смешивает аудиоканалы | [Подробнее](plugins/basics.md#matrix) |
 | Basics    | MultiChannel Panel | Панель управления несколькими каналами: громкость, mute, solo и задержка | [Подробнее](plugins/basics.md#multichannel-panel) |
 | Basics    | Mute | Полностью отключает аудиосигнал | [Подробнее](plugins/basics.md#mute) |
@@ -319,10 +321,12 @@ EffeTune создан для аудиоэнтузиастов, которые х
 | EQ        | 15Band GEQ | 15-полосный графический эквалайзер | [Подробнее](plugins/eq.md#15band-geq) |
 | EQ        | 15Band PEQ | 15-полосный параметрический эквалайзер для детальной настройки тембра при прослушивании | [Подробнее](plugins/eq.md#15band-peq) |
 | EQ        | 5Band Dynamic EQ | 5-полосный динамический эквалайзер с регулировкой частот по порогу | [Подробнее](plugins/eq.md#5band-dynamic-eq) |
+| EQ        | 5Band FIR PEQ | 5-полосный параметрический эквалайзер с FIR-фильтрацией Minimum Phase или Linear Phase | [Подробнее](plugins/eq.md#5band-fir-peq) |
 | EQ        | 5Band PEQ | Гибкий 5-полосный эквалайзер для настройки баса, середины и верхов | [Подробнее](plugins/eq.md#5band-peq) |
 | EQ        | Band Pass Filter | Выделяет определенный диапазон частот | [Подробнее](plugins/eq.md#band-pass-filter) |
 | EQ        | Comb Filter | Добавляет фазовую, полую или металлическую окраску | [Подробнее](plugins/eq.md#comb-filter) |
 | EQ        | Earphone Cable Sim | Помогает проверить, насколько малы обычные сдвиги АЧХ из-за кабеля наушников | [Подробнее](plugins/eq.md#earphone-cable-sim) |
+| EQ        | Group Delay EQ | Регулирует задержку каждой полосы частот, не изменяя тембр | [Подробнее](plugins/eq.md#group-delay-eq) |
 | EQ        | Hi Pass Filter | Точно убирает нежелательные низкие частоты | [Подробнее](plugins/eq.md#hi-pass-filter) |
 | EQ        | Lo Pass Filter | Точно убирает нежелательные высокие частоты | [Подробнее](plugins/eq.md#lo-pass-filter) |
 | EQ        | Loudness Equalizer | Коррекция частотного баланса для тихого прослушивания | [Подробнее](plugins/eq.md#loudness-equalizer) |
@@ -338,6 +342,7 @@ EffeTune создан для аудиоэнтузиастов, которые х
 | Lo-Fi     | Hum Generator | Добавляет настраиваемый фон электрического гула 50/60 Hz для винтажного или lo-fi прослушивания | [Подробнее](plugins/lofi.md#hum-generator) |
 | Lo-Fi     | Noise Blender | Добавляет регулируемую текстуру фонового шума для lo-fi атмосферы | [Подробнее](plugins/lofi.md#noise-blender) |
 | Lo-Fi     | Simple Jitter | Имитация цифрового джиттера | [Подробнее](plugins/lofi.md#simple-jitter) |
+| Lo-Fi     | SW Radio Simulator | Проводит музыку через модель тракта коротковолнового вещания, ионосферного распространения и приёма | [Подробнее](plugins/lofi.md#sw-radio-simulator) |
 | Lo-Fi     | Vinyl Artifacts | Добавляет виниловые pops, crackle, hiss, rumble и утечку стереошума | [Подробнее](plugins/lofi.md#vinyl-artifacts) |
 | Lo-Fi     | Vinyl Simulator | Записывает вход в моделируемую канавку и воспроизводит ее физической моделью иглы | [Подробнее](plugins/lofi.md#vinyl-simulator) |
 | Modulation | Doppler Distortion | Имитирует естественные динамические изменения звука от небольших движений диффузора динамика | [Подробнее](plugins/modulation.md#doppler-distortion) |

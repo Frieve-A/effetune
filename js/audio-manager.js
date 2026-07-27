@@ -31,7 +31,11 @@ const DSP_MODULE_READY_TIMEOUT_MS = 1000;
 const DSP_BYTES_READY_TIMEOUT_MS = 3000;
 const WASM_ONLY_EXECUTION_STATE_PLUGIN_TYPES = new Set([
     'AMRadioSimulatorPlugin',
-    'RoomEqPlugin'
+    'FIRCrossoverPlugin',
+    'FiveBandFIRPEQPlugin',
+    'GroupDelayEqPlugin',
+    'RoomEqPlugin',
+    'SWRadioSimulatorPlugin'
 ]);
 
 // Pipeline-content mutations describe the visible (primary) pipeline only.
@@ -1617,6 +1621,8 @@ export class AudioManager {
             if (!this._isActivePowerWorklet(workletNode)) return;
             this.audioActivationCoordinator?.recordWorkletEvent?.(data, workletNode);
             this.powerPolicyController?.handleWorkletPowerEvent?.(data, workletNode);
+        } else if (data.type === 'audioProcessingOverload' && typeof data.active === 'boolean') {
+            this.dispatchEvent('audioProcessingOverload', { active: data.active });
         } else if (data.type === 'sleepModeChanged') {
             this.dispatchEvent('sleepModeChanged', {
                 isSleepMode: data.isSleepMode,

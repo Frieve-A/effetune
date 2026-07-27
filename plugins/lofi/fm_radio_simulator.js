@@ -21,6 +21,7 @@ const FM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
     const QUARTER_PI = 0.25 * PI;
     const TWO_PI = 2 * PI;
     const INV_TWO_PI = 1 / TWO_PI;
+    const DC_CUT_HZ = 5;
     const PI_F = F(PI);
     const HALF_PI_F = F(HALF_PI);
     const QUARTER_PI_F = F(QUARTER_PI);
@@ -484,6 +485,14 @@ const FM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
         return output;
     }
 
+    function processDcCut(state, input, filter) {
+        const output = F(F(input - filter.previousInput) +
+            F(state.dcCoefficient * filter.previousOutput));
+        filter.previousInput = input;
+        filter.previousOutput = output;
+        return output;
+    }
+
     function createState(sampleRate) {
         const plan = RATE_PLANS[Math.floor(sampleRate + 0.5)];
         if (!plan) return null;
@@ -503,6 +512,8 @@ const FM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
             ifImag: [makeBiquad(), makeBiquad(), makeBiquad(), makeBiquad()],
             preLeft: { previousInput: 0 }, preRight: { previousInput: 0 },
             deLeft: { previousOutput: 0 }, deRight: { previousOutput: 0 },
+            dcLeft: { previousInput: 0, previousOutput: 0 },
+            dcRight: { previousInput: 0, previousOutput: 0 },
             limiterLeft: { envelope: 0, gain: 1 }, limiterRight: { envelope: 0, gain: 1 },
             peakLeft: makePeak(mpx), peakRight: makePeak(mpx),
             hostToMpx: makeResampler(2), mpxToHost: makeResampler(2),
@@ -524,6 +535,7 @@ const FM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
             dryLeft: null, dryRight: null, drySize: 0, dryPosition: 0, latencySamples: 0,
             controlsConfigured: false, lastParams: null,
             emphasisTau: TAU50, deCoefficient: 0, preInverse: 1,
+            dcCoefficient: F(Math.exp(-TWO_PI * DC_CUT_HZ / host)),
             processingAmountTarget: 0, processingDriveTarget: 1, limiterRelease: F(0.999),
             signalAmplitude: 1, tuningKhz: 0, ifBandKhz: F(230),
             multipathTarget: 0, pathDelayTargetUs: F(5), fadingHz: 0, stereoMode: 0,
@@ -854,8 +866,10 @@ const FM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
         const delayedRight = state.dryRight[dryRead];
         let left = frame < hostCount ? state.wetLeft[frame] : 0;
         let right = frame < hostCount ? state.wetRight[frame] : left;
-        left = F(processDeEmphasis(state, left, state.deLeft) * outputGain);
-        right = F(processDeEmphasis(state, right, state.deRight) * outputGain);
+        left = F(processDcCut(state, processDeEmphasis(state, left, state.deLeft),
+            state.dcLeft) * outputGain);
+        right = F(processDcCut(state, processDeEmphasis(state, right, state.deRight),
+            state.dcRight) * outputGain);
         left = F(delayedLeft + F(mix * F(left - delayedLeft)));
         right = F(delayedRight + F(mix * F(right - delayedRight)));
         data[frame] = left;

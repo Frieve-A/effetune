@@ -14,7 +14,7 @@ struct OscillatorPluginParams {
   float mode;
   float interval;
   float width;
-  static constexpr std::uint32_t kHash = 0xc3977673u;
+  static constexpr std::uint32_t kHash = 0x85591ea8u;
   static constexpr std::uint32_t kFloatCount = 7u;
 };
 static_assert(7u == 0u || sizeof(OscillatorPluginParams) == sizeof(float) * 7u);

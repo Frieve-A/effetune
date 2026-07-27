@@ -18,6 +18,7 @@ A collection of plugins that add vintage character and nostalgic qualities to yo
 - [Hum Generator](#hum-generator) - Adds controllable electrical hum ambience for vintage/lo-fi listening
 - [Noise Blender](#noise-blender) - Adds atmospheric background texture
 - [Simple Jitter](#simple-jitter) - Creates subtle vintage digital imperfections
+- [SW Radio Simulator](#sw-radio-simulator) - Passes the music through a modeled shortwave broadcast, ionospheric path, and receiver
 - [Vinyl Artifacts](#vinyl-artifacts) - Adds vinyl-style pops, crackle, hiss, rumble, and stereo noise bleed
 - [Vinyl Simulator](#vinyl-simulator) - Cuts the input into a modeled groove and plays it back with a physical stylus model
 
@@ -507,6 +508,102 @@ An effect that adds subtle timing variations to create that imperfect, vintage d
 5. Creative Wobble Effect
    - RMS Jitter: 10-100µs (0.01-0.1ms)
    - Perfect for: Experimental effects and noticeable pitch modulation
+
+## SW Radio Simulator
+
+SW Radio Simulator passes the music through a modeled shortwave broadcast chain: transmitter processing and AM modulation, ionospheric propagation with deep frequency-selective fading, atmospheric static and a station sharing the channel, a narrow communications receiver with envelope or synchronous detection and AGC, and an optional radio speaker. Use it to hear music the way a distant international broadcast arrives on a shortwave set: narrow and hollow, swelling and sinking with the ionosphere, whistling where another transmitter is close in frequency.
+
+This effect requires an environment that supports its real-time processing. When that processing is unavailable, the audio remains unchanged and the HUD reports that the effect is unavailable.
+
+### How It Differs from AM, FM, and Additive Lo-Fi Effects
+
+- **AM Radio Simulator** models medium-wave reception, where a stable groundwave normally dominates and fading is a secondary effect. Its passband is wider and it offers C-QUAM stereo.
+- **SW Radio Simulator** models shortwave, where the signal arrives by ionospheric reflection. Deep frequency-selective fading is the main event, the audio band is narrower, and the heterodyne whistle of a co-channel station is part of the sound. Shortwave broadcasting is mono, so the processed signal is always mono.
+- **FM Radio Simulator** reproduces wideband FM with its stereo multiplex, rising hiss, and threshold clicks — a different family of degradation.
+- **Noise Blender** and **Hum Generator** add noise or hum on top of unchanged music. This effect instead modulates, propagates, and detects the music, so its noise, interference, and distortion react to Tuning, the IF filter, and AGC the way real reception does.
+
+### Sound Character Guide
+
+- **Narrow and hollow:** the transmitter bandwidth and the narrow receiver IF remove most treble, giving the restricted, boxy tone of a shortwave set.
+- **Slow deep fading (QSB):** the received level swells and sinks continuously. This is the defining shortwave behavior and is active by default.
+- **Watery fade distortion:** in a deep fade the carrier and the sidebands sink at different rates, so the envelope detector no longer reconstructs the audio cleanly. The sound turns hollow, unstable, and "underwater" at the bottom of each fade rather than simply getting quieter. Delay Spread controls how strong this is; Synchronous detection largely removes it.
+- **Flutter:** at high Fading Speed the swells become a fast shimmer, like reception over a disturbed or polar path.
+- **Heterodyne whistle (QRM):** a co-channel transmitter beats against your carrier and produces a steady tone whose pitch equals Interf. Offset.
+- **Atmospheric static (QRN):** distant lightning arrives as crashes that ring through the IF filter.
+- **Pumping:** as fades pass, AGC chases the level and the background noise breathes up and down between passages.
+
+### Parameters
+
+#### Station
+
+- **TX Bandwidth** (2.0 to 10.0 kHz) - Sets the transmitter's audio bandwidth. Shortwave broadcast channels are spaced 5 kHz apart, so the narrow default already sounds darker than a medium-wave station; raise it for a more open transmitter.
+- **Pre-emphasis** (0 to 100%) - Boosts upper audio frequencies before transmission. Higher settings add presence inside the narrow band but drive bright peaks harder through the broadcast limiter.
+- **Mod Depth** (10 to 125%) - Sets AM modulation depth. Values above 100% create overmodulation and negative-peak clipping.
+- **Compression** (0 to 20 dB) - Sets the depth of the broadcast limiter. Higher settings restrain peaks and keep modulation more consistent, which is how international broadcasters stay readable through fades.
+
+#### Propagation
+
+- **Signal** (-50 to 0 dB) - Sets received signal strength. Weaker settings expose more receiver noise and require more AGC gain.
+- **Fading** (0 to 100%) - Distributes the received power between a stable direct path and two delayed ionospheric paths. 0% is steady short-range reception; the default gives the continuous fading of a distant signal; 100% makes fades deepest and selective-fade distortion strongest.
+- **Fading Speed** (0.1 to 10.0 Hz) - Sets how quickly the ionospheric paths change. Low values give slow swells; a few hertz and above turns the movement into rapid flutter.
+- **Delay Spread** (0.2 to 8.0 ms) - Sets the delay difference between the two ionospheric paths. It determines how closely the fading notches are spaced across the audio band — about 1 kHz apart at 1 ms, and closer as the setting rises — which is what makes a deep fade sound watery instead of merely quiet. Short values fade the whole band together; long values let different parts of the spectrum fade at different moments.
+- **Static** (0 to 100/s) - Sets the rate of lightning-like crashes. Each event is injected ahead of the IF filter and rings through it. 0 switches them off.
+- **Interference** (-80 to 0 dB) - Sets the strength of a station sharing the channel. -80 dB is effectively off; values closer to 0 dB make it louder.
+- **Interf. Offset** (0.1 to 10 kHz) - Sets how far the interfering carrier sits from yours. The two carriers beat at that difference and produce the heterodyne whistle, so this control sets its pitch: below roughly 3 kHz it is a clear tone, and higher settings raise its pitch until the IF filter begins to attenuate it. The interfering program is modeled as shaped noise, so it adds a rough, rushing texture rather than intelligible speech.
+
+#### Receiver
+
+- **Tuning** (-5.0 to +5.0 kHz) - Offsets the receiver from the station. Small offsets dull the sound, add asymmetric filtering distortion, and change how loud the heterodyne whistle is; larger offsets push the station out of the narrow IF passband.
+- **IF Bandwidth** (2.0 to 10.0 kHz) - Sets the receiver's IF passband. Narrow settings are the communications-receiver response that rejects noise and the co-channel station but removes more treble; wide settings keep more detail and more interference.
+- **Detector** (Envelope or Synchronous) - Envelope is the ordinary diode detector, and it is what turns a deep selective fade into watery distortion. Synchronous recovers the carrier with a PLL and demodulates against it, which greatly reduces that distortion while the fade is deep. It pulls in over roughly ±1 kHz of Tuning and drops out of lock beyond that, so use Envelope while moving the dial. Switching detectors restarts carrier acquisition.
+- **AGC Speed** (Slow, Mid, or Fast) - Sets how quickly automatic gain control follows the fades. Slow leaves the level swings audible and pumps as the signal recovers; Fast holds the level more tightly.
+- **Detector RC** (20 to 500 µs) - Sets the envelope detector's discharge time. Longer values smooth the envelope more but increase high-frequency diagonal-clipping distortion at strong modulation. It has no effect when Detector is Synchronous.
+- **Hum** (-80 to -20 dB) - Sets power-supply hum. -80 dB is effectively off. Most of this control modulates receiver gain before detection rather than adding a hum layer.
+- **Hum Freq** (50 or 60 Hz) - Selects the simulated power frequency.
+
+#### Output
+
+- **Speaker** (Off, Small, or Table) - Selects line output, the restricted speaker of a portable shortwave set, or the fuller response of a tabletop communications receiver.
+- **Output Gain** (-24 to +24 dB) - Adjusts level after receiver and speaker processing.
+- **Mix** (0 to 100%) - Blends the original stereo signal with the simulated mono reception. 100% is full shortwave reception, sent identically to left and right. Mix does not delay the dry signal to align it, so intermediate settings combine dry and wet signals with the receiver and propagation delay between them.
+
+### Reading the HUD
+
+- **S METER** shows, on an S1-to-S9 scale, the in-band signal strength the receiver has before AGC. Like the S meter of a real set it reads everything inside the passband, so the co-channel station, noise, and static lift it along with the station you want.
+- **FADE** shows the current propagation gain change in dB, and it swings both below and above 0 dB as the direct path and the two ionospheric paths cancel or reinforce each other. On shortwave this is the display to watch: it moves continuously at the default settings, and the deepest dips are where the sound turns watery and distorted.
+- **AGC GAIN** shows how much gain the receiver is applying. It rises as Signal falls or a fade deepens. It stops at +42 dB, so the deepest fades stay quiet instead of being fully compensated.
+- **MOD / EVENTS** shows the effective transmitter modulation percentage, followed by the recent static-crash rate (⚡) and clipping rate (▲) per second, and flashes as those events occur. Frequent clipping suggests reducing Mod Depth or Detector RC when a cleaner result is wanted.
+- If the **WASM** engine is unavailable, the HUD shows a notice and the plugin passes audio through unchanged.
+
+### Recommended Settings
+
+1. **Distant International Broadcast**
+   - TX Bandwidth: 4.5 kHz, Mod Depth: 90%, Signal: -15 dB, Fading: 55%, Fading Speed: 0.5 Hz, Delay Spread: 1.4 ms, Static: 2/s
+   - Interference: -47 dB, Interf. Offset: 1.0 kHz, Tuning: 0 kHz, IF Bandwidth: 6.0 kHz, Detector: Envelope, AGC Speed: Fast, Hum: -80 dB, Speaker: Small, Mix: 100%
+   - The everyday shortwave sound: narrow, continuously fading, with an occasional crash and a faint whistle.
+
+2. **Deep Nighttime Fading**
+   - Signal: -30 dB, Fading: 100%, Fading Speed: 0.3 Hz, Delay Spread: 5.0 ms, Static: 10/s
+   - IF Bandwidth: 4.0 kHz, Detector: Envelope, AGC Speed: Slow, Detector RC: 150 µs, Speaker: Small, Mix: 100%
+   - Long, deep swells with watery distortion at the bottom of each fade and clearly audible AGC pumping on recovery.
+
+3. **Crowded Band**
+   - Signal: -20 dB, Fading: 60%, Fading Speed: 0.5 Hz, Static: 8/s, Interference: -18 dB, Interf. Offset: 0.8 kHz
+   - Tuning: +0.3 kHz, IF Bandwidth: 4.0 kHz, AGC Speed: Mid, Speaker: Small, Mix: 100%
+   - A steady heterodyne whistle over the program. Change Interf. Offset to move its pitch, and Tuning to change how loud it is.
+
+4. **Synchronous Detection**
+   - Start from Deep Nighttime Fading and set Detector: Synchronous
+   - The deep fades remain, but the distortion at the bottom of each fade is far weaker and the program stays readable. Keep Tuning within about ±1 kHz so the detector stays locked, and compare with Envelope to hear what the detector is doing.
+
+5. **Polar Flutter**
+   - Signal: -25 dB, Fading: 90%, Fading Speed: 6 Hz, Delay Spread: 3.0 ms, Static: 5/s
+   - IF Bandwidth: 5.0 kHz, Detector: Envelope, AGC Speed: Fast, Speaker: Small, Mix: 100%
+   - The fast shimmer of a disturbed or polar path instead of a slow swell.
+
+### Model Notes
+
+The effect processes the first stereo pair as one mono broadcast, as real shortwave broadcasting does, and the received signal is always mono. One co-channel station is modeled, and its program is shaped noise rather than speech or music. Real band conditions — day and night propagation changes, specific broadcast bands, and single-sideband reception — are outside this model; set the conditions you want with Signal, Fading, and the propagation controls.
 
 ## Vinyl Artifacts
 

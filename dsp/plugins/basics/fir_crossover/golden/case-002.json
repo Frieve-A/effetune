@@ -1,0 +1,90 @@
+{
+  "formatVersion": 1,
+  "type": "FIRCrossoverPlugin",
+  "id": "four-band-matrix-noise-lt128",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 8,
+  "frameCount": 1536,
+  "blockSize": 127,
+  "channelMode": "all8",
+  "channel": null,
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "lt": "128",
+    "fd": 0,
+    "bc": 4
+  },
+  "events": [],
+  "asset": {
+    "slot": 0,
+    "format": 1,
+    "channels": 4,
+    "frames": 4096,
+    "topology": 4,
+    "headBlock": 128,
+    "rateDivider": 1,
+    "pathCount": 8,
+    "inputCount": 2,
+    "paths": [
+      {
+        "input": 0,
+        "output": 0,
+        "irChannel": 0
+      },
+      {
+        "input": 1,
+        "output": 1,
+        "irChannel": 0
+      },
+      {
+        "input": 0,
+        "output": 2,
+        "irChannel": 1
+      },
+      {
+        "input": 1,
+        "output": 3,
+        "irChannel": 1
+      },
+      {
+        "input": 0,
+        "output": 4,
+        "irChannel": 2
+      },
+      {
+        "input": 1,
+        "output": 5,
+        "irChannel": 2
+      },
+      {
+        "input": 0,
+        "output": 6,
+        "irChannel": 3
+      },
+      {
+        "input": 1,
+        "output": 7,
+        "irChannel": 3
+      }
+    ],
+    "ir": {
+      "kind": "sparse-decay-v1",
+      "seed": 1179209044,
+      "tapCount": 31,
+      "directGain": 0.7,
+      "tailGain": 0.3
+    }
+  },
+  "tolerance": {
+    "abs": 0.0002,
+    "policy": "per-sample"
+  },
+  "performanceBudgetMs": 2500,
+  "referenceEngine": "native-fir-crossover-direct-double-v1",
+  "referenceHash": "561fee25d5b57f940e580e63e28bf544cc41fc6809acbb065ea1c7b7bfef29a8",
+  "outputFloats": 12288,
+  "byteLength": 49152,
+  "binary": "case-002.f32"
+}

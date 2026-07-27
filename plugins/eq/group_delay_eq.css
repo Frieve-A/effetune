@@ -1,0 +1,146 @@
+/* Group Delay EQ plugin specific styles */
+.group-delay-eq-plugin-ui {
+    position: relative;
+}
+
+.group-delay-eq-plugin-ui .sliders-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 20px;
+}
+
+.group-delay-eq-plugin-ui .slider-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 0 3px;
+    width: 56px;
+}
+
+.group-delay-eq-plugin-ui .freq-label {
+    font-size: 12px;
+    margin-bottom: 5px;
+    white-space: nowrap;
+    text-align: center;
+}
+
+.group-delay-eq-plugin-ui .value-display {
+    font-size: 12px;
+    margin-top: 5px;
+    white-space: nowrap;
+    width: 56px;
+    text-align: center;
+}
+
+.group-delay-eq-plugin-ui .angle-display {
+    margin-top: 1px;
+    color: #bbb;
+    font-size: 10px;
+    min-height: 13px;
+}
+
+.group-delay-eq-plugin-ui .vertical-slider {
+    writing-mode: vertical-lr;
+    direction: rtl;
+    width: 20px;
+    height: 200px;
+    margin: 0;
+    padding: 0;
+}
+
+body.layout-mobile .group-delay-eq-plugin-ui .sliders-container {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px 6px;
+}
+
+body.layout-mobile .group-delay-eq-plugin-ui .slider-container {
+    flex: 0 1 52px;
+    width: 52px;
+    margin: 0;
+}
+
+body.layout-mobile .group-delay-eq-plugin-ui .value-display {
+    width: 52px;
+}
+
+body.layout-mobile .group-delay-eq-plugin-ui .vertical-slider {
+    height: 160px;
+}
+
+.group-delay-eq-plugin-ui canvas {
+    margin: 10px auto;
+    display: block;
+    background: #222;
+}
+
+.group-delay-eq-plugin-ui .graph-container {
+    margin-top: 0;
+}
+
+.group-delay-eq-plugin-ui .group-delay-eq-legend {
+    position: absolute;
+    z-index: 4;
+    top: 5px;
+    right: 7px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 2px 6px;
+    color: #ccc;
+    background: rgba(26, 26, 26, 0.88);
+    border-radius: 3px;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.group-delay-eq-plugin-ui .group-delay-eq-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: default;
+}
+
+.group-delay-eq-plugin-ui .group-delay-eq-legend-swatch {
+    width: 14px;
+    border-top: 2px solid currentColor;
+}
+
+.group-delay-eq-plugin-ui .group-delay-eq-legend-target { color: #b0b0b0; opacity: 0.7; }
+.group-delay-eq-plugin-ui .group-delay-eq-legend-realized { color: #00ff00; }
+
+.group-delay-eq-plugin-ui .eq-reset-button {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    padding: 5px 15px;
+    background-color: #444;
+    color: #fff;
+    border: 1px solid #666;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.group-delay-eq-plugin-ui .eq-reset-button:hover {
+    background-color: #555;
+}
+
+.group-delay-eq-plugin-ui .group-delay-eq-status-line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 0.6em;
+    margin: 2px 0;
+}
+
+.group-delay-eq-plugin-ui .group-delay-eq-status,
+.group-delay-eq-plugin-ui .group-delay-eq-details {
+    color: #bbb;
+    font-size: 0.9em;
+    white-space: nowrap;
+}
+
+.group-delay-eq-plugin-ui .group-delay-eq-status[data-state='error'],
+.group-delay-eq-plugin-ui .group-delay-eq-status[data-state='warning'] {
+    color: #ff9f43;
+}

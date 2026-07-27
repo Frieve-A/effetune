@@ -26,6 +26,7 @@ constexpr double kQuarterPi = 0.25 * kPi;
 constexpr double kTwoPi = 2.0 * kPi;
 constexpr double kInvTwoPi = 1.0 / kTwoPi;
 constexpr double kKaiserBeta100Db = 10.06126;
+constexpr double kDcCutHz = 5.0;
 constexpr std::uint32_t kMaximumBlockRatio = 10u;
 
 // Telemetry (HUD only, never part of the audio path or parity goldens).
@@ -703,6 +704,8 @@ public:
     preRight_.reset();
     deLeft_.reset();
     deRight_.reset();
+    dcLeft_.reset();
+    dcRight_.reset();
     limiterLeft_.reset();
     limiterRight_.reset();
     peakLeft_.reset();
@@ -947,6 +950,8 @@ private:
     deCoefficient_ =
         static_cast<float>(std::exp(-1.0 / (static_cast<double>(ratePlan_->host) * emphasisTau_)));
     preInverse_ = 1.0F / (1.0F - deCoefficient_);
+    dcCoefficient_ =
+        static_cast<float>(std::exp(-kTwoPi * kDcCutHz / static_cast<double>(ratePlan_->host)));
     processingAmountTarget_ = params_.processing / 18.0F;
     processingDriveTarget_ = static_cast<float>(std::pow(10.0, params_.processing / 20.0F));
     limiterRelease_ = static_cast<float>(std::exp(-1.0 / (0.050 * ratePlan_->mpx)));
@@ -1052,6 +1057,13 @@ private:
 
   float processDeEmphasis(float input, FirstOrderState &state) const noexcept {
     const float output = (1.0F - deCoefficient_) * input + deCoefficient_ * state.previousOutput;
+    state.previousOutput = output;
+    return output;
+  }
+
+  float processDcCut(float input, FirstOrderState &state) const noexcept {
+    const float output = input - state.previousInput + dcCoefficient_ * state.previousOutput;
+    state.previousInput = input;
     state.previousOutput = output;
     return output;
   }
@@ -1208,8 +1220,8 @@ private:
       const float dry_right = dryRight_[dry_read];
       float left = index < wet_count ? wetLeft_[index] : 0.0F;
       float right = index < wet_count ? wetRight_[index] : left;
-      left = processDeEmphasis(left, deLeft_) * output_gain;
-      right = processDeEmphasis(right, deRight_) * output_gain;
+      left = processDcCut(processDeEmphasis(left, deLeft_), dcLeft_) * output_gain;
+      right = processDcCut(processDeEmphasis(right, deRight_), dcRight_) * output_gain;
       left = dry_left + mix * (left - dry_left);
       right = dry_right + mix * (right - dry_right);
       output_left[index] = left;
@@ -1233,6 +1245,8 @@ private:
   FirstOrderState preRight_;
   FirstOrderState deLeft_;
   FirstOrderState deRight_;
+  FirstOrderState dcLeft_;
+  FirstOrderState dcRight_;
   LimiterState limiterLeft_;
   LimiterState limiterRight_;
   PeakController peakLeft_;
@@ -1275,6 +1289,7 @@ private:
   float emphasisTau_ = 50.0e-6F;
   float deCoefficient_ = 0.0F;
   float preInverse_ = 1.0F;
+  float dcCoefficient_ = 0.0F;
   float processingAmountTarget_ = 0.0F;
   float processingDriveTarget_ = 1.0F;
   float limiterRelease_ = 0.999F;

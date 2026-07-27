@@ -1020,6 +1020,40 @@ Both C-QUAM production paths remain below the fixed 5% one-core budget. The benc
 tool's JavaScript mode measures the transparent fallback, not the deterministic JavaScript
 reference DSP, so its value is recorded only to show that all requested modes were exercised.
 
+### SW Radio Simulator
+
+Measured on 2026-07-25 with Node v24.13.0 on a 13th Gen Intel Core i9-13900KF,
+Windows NT 10.0.26200.0. The WASM artifacts use Emscripten 6.0.2 with `-O3 -flto`;
+the SIMD artifact also uses `-msimd128`. All measurements use 96 kHz, two channels,
+128-frame blocks, 10 seconds of audio, five warmups, and 20 measured repetitions. To
+exclude unrelated concurrent builds from the one-core budget, each backend was measured in
+a separate invocation pinned to logical processor 2 (a P-core) at Windows High priority.
+
+Bench arguments (each command was launched with the affinity and priority above):
+
+```text
+node tools/dsp-parity/bench.mjs --type SWRadioSimulatorPlugin --modes js --sample-rates 96000 --channels 2 --block-size 128 --duration 10 --warmup 5 --repetitions 20 --params '{"de":"Envelope"}'
+node tools/dsp-parity/bench.mjs --type SWRadioSimulatorPlugin --modes wasm --sample-rates 96000 --channels 2 --block-size 128 --duration 10 --warmup 5 --repetitions 20 --params '{"de":"Envelope"}'
+node tools/dsp-parity/bench.mjs --type SWRadioSimulatorPlugin --modes simd --sample-rates 96000 --channels 2 --block-size 128 --duration 10 --warmup 5 --repetitions 20 --params '{"de":"Envelope"}'
+node tools/dsp-parity/bench.mjs --type SWRadioSimulatorPlugin --modes js --sample-rates 96000 --channels 2 --block-size 128 --duration 10 --warmup 5 --repetitions 20 --params '{"de":"Synchronous"}'
+node tools/dsp-parity/bench.mjs --type SWRadioSimulatorPlugin --modes wasm --sample-rates 96000 --channels 2 --block-size 128 --duration 10 --warmup 5 --repetitions 20 --params '{"de":"Synchronous"}'
+node tools/dsp-parity/bench.mjs --type SWRadioSimulatorPlugin --modes simd --sample-rates 96000 --channels 2 --block-size 128 --duration 10 --warmup 5 --repetitions 20 --params '{"de":"Synchronous"}'
+```
+
+| Detector | JS fallback | WASM | WASM SIMD | WASM CPU | SIMD CPU | Synchronous/Envelope CPU time |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Envelope | 717.11x | 53.75x | 53.80x | 1.86% | 1.86% | baseline |
+| Synchronous | 691.55x | 45.21x | 46.13x | 2.21% | 2.17% | 1.19x / 1.17x |
+
+Both detector paths stay far below the fixed 5% one-core budget, so the plan's ~2%
+envelope and ~2.6-3% synchronous estimates were conservative: envelope detection measures
+lighter than AM Mono on both backends even though the AM Mono run never exercises the C-QUAM
+path, synchronous detection is the only SW mode that costs more than AM Mono, and the added
+carrier-recovery PLL costs only about 19% more CPU than envelope detection. SIMD and
+baseline WASM are within measurement noise of each other because the kernel is a scalar IIR
+chain, so no SIMD specialisation was added. As with AM, the benchmark tool's JavaScript mode
+measures the transparent fallback rather than the deterministic JavaScript reference DSP.
+
 ### Room EQ Maximum-Asset Admission Gate
 
 Measured on 2026-07-21 with Node v24.13.0 on a 13th Gen Intel Core i9-13900KF,

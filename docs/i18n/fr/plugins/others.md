@@ -24,6 +24,7 @@ Le son ou bruit généré est mélangé dans le chemin audio courant au lieu de 
   - Onde carrée pour un contenu harmonique riche
   - Onde triangulaire pour des harmoniques plus douces
   - Onde en dents de scie pour des timbres brillants
+  - Impulsions périodiques d'un échantillon pour vérifier la réponse impulsionnelle et la synchronisation
   - Bruit blanc pour les tests système
   - Bruit rose pour les mesures acoustiques
 - Mode d'opération pulsé pour des tons ou rafales de bruit intermittents
@@ -33,7 +34,7 @@ Le son ou bruit généré est mélangé dans le chemin audio courant au lieu de 
   - Basses fréquences : Tons graves profonds
   - Fréquences moyennes : Gamme musicale
   - Hautes fréquences : À utiliser prudemment et seulement à des niveaux d'écoute sûrs
-  - S'applique seulement à Sine, Square, Triangle et Sawtooth ; désactivé pour White Noise et Pink Noise
+  - S'applique seulement à Sine, Square, Triangle et Sawtooth ; désactivé pour Impulse, White Noise et Pink Noise
   - La sortie disponible dans les hautes fréquences dépend de la fréquence d'échantillonnage audio courante ; les tons au-dessus de la fréquence de Nyquist utilisable sont coupés
 - **Volume (dB)** - Ajuste le niveau de sortie (-96 dB à 0 dB)
   - Commencez bas et montez lentement
@@ -46,21 +47,23 @@ Le son ou bruit généré est mélangé dans le chemin audio courant au lieu de 
   - Square : Riche en harmoniques impaires
   - Triangle : Contenu harmonique plus doux
   - Sawtooth : Série harmonique complète
+  - Impulse : Un échantillon à amplitude maximale à chaque Interval, selon la fréquence d'échantillonnage actuelle ; Frequency n'a aucun effet
   - White Noise : Énergie égale par Hz ; Frequency ne l'affecte pas
   - Pink Noise : Énergie égale par octave ; Frequency ne l'affecte pas
 - **Mode** - Contrôle le motif de génération du signal
   - Continuous : Génération de signal continue et ininterrompue
   - Pulsed : Signal intermittent avec timing contrôlable
+  - Impulse utilise toujours Pulsed ; Continuous est désactivé
 - **Interval (ms)** - Temps entre les rafales de pulses en mode pulsé (100-2000 ms, pas de 10 ms)
   - Intervalles courts : Séquences de pulses rapides
   - Intervalles longs : Pulses largement espacés
-  - Actif seulement quand le Mode est réglé sur Pulsed
+  - Actif quand le Mode est réglé sur Pulsed, y compris pour Impulse
 - **Width (ms)** - Temps de rampe des pulses en mode pulsé (2-100 ms, limité à la moitié de Interval, pas de 1 ms)
   - Contrôle le temps de fondu entrant/sortant de chaque pulse
   - Le pulse généré dure environ deux fois Width, sans section maintenue à niveau constant
   - Largeurs courtes : Bords de pulse nets
   - Largeurs longues : Transitions de pulse plus douces
-  - Actif seulement quand le Mode est réglé sur Pulsed
+  - Actif seulement quand le Mode est réglé sur Pulsed ; désactivé pour Impulse, car chaque impulsion dure exactement un échantillon
 
 ### Exemples d'Utilisation
 
@@ -104,5 +107,11 @@ Le son ou bruit généré est mélangé dans le chemin audio courant au lieu de 
      * Des intervalles plus longs rendent chaque rafale plus distincte
      * Des valeurs Width plus courtes créent des débuts et fins plus nets
      * Comparez le comportement à différents volumes
+
+6. Vérifications de la réponse impulsionnelle et de la synchronisation
+   - Sélectionnez Impulse pour générer des transitoires d'un échantillon selon l'Interval défini
+     * Utilisez un Interval plus long pour séparer les réflexions ou les traînes d'effets
+     * Enregistrez la sortie pour analyser la réponse impulsionnelle d'un système ou d'une chaîne de plugins
+     * Commencez avec un Volume faible, car l'impulsion présente un pic abrupt et un contenu large bande
 
 N'oubliez pas : Oscillator est un générateur de signal de test. Commencez avec un Volume bas, augmentez progressivement et évitez les tons forts ou très aigus pouvant endommager l'équipement ou fatiguer l'audition.

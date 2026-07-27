@@ -1,6 +1,6 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:17bc3f3671c01b7acbde613522ad80ebe3bcf314e4bed784fd91674038cf9841",
+  "sourceDigest": "sha256:1ecd3e5537517a587c31b390d4cd1e380d6858add324909204e00235c47e853f",
   "emsdkVersion": "6.0.2",
   "kernels": [
     {
@@ -44,6 +44,19 @@
       "hash": 1104945464,
       "byteCapacity": 0,
       "assets": []
+    },
+    {
+      "name": "FIRCrossoverPlugin",
+      "hash": 577225552,
+      "byteCapacity": 0,
+      "assets": [
+        {
+          "slot": 0,
+          "format": "ET_ASSET_F32_MULTICH",
+          "capacity": "32 MiB convolution cap",
+          "byteCapacity": 33554432
+        }
+      ]
     },
     {
       "name": "MatrixPlugin",
@@ -190,10 +203,36 @@
       "assets": []
     },
     {
+      "name": "FiveBandFIRPEQPlugin",
+      "hash": 2941825417,
+      "byteCapacity": 0,
+      "assets": [
+        {
+          "slot": 0,
+          "format": "ET_ASSET_F32_MULTICH",
+          "capacity": "32 MiB convolution cap",
+          "byteCapacity": 33554432
+        }
+      ]
+    },
+    {
       "name": "FiveBandPEQPlugin",
       "hash": 2285236921,
       "byteCapacity": 0,
       "assets": []
+    },
+    {
+      "name": "GroupDelayEqPlugin",
+      "hash": 2941825417,
+      "byteCapacity": 0,
+      "assets": [
+        {
+          "slot": 0,
+          "format": "ET_ASSET_F32_MULTICH",
+          "capacity": "32 MiB convolution cap",
+          "byteCapacity": 33554432
+        }
+      ]
     },
     {
       "name": "HiPassFilterPlugin",
@@ -293,6 +332,12 @@
       "assets": []
     },
     {
+      "name": "SWRadioSimulatorPlugin",
+      "hash": 2343942365,
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
       "name": "VinylArtifactsPlugin",
       "hash": 1145282217,
       "byteCapacity": 0,
@@ -330,7 +375,7 @@
     },
     {
       "name": "OscillatorPlugin",
-      "hash": 3281483379,
+      "hash": 2237210280,
       "byteCapacity": 0,
       "assets": []
     },
@@ -451,7 +496,7 @@
     }
   ],
   "sizes": {
-    "baseline": 459950,
-    "simd": 517694
+    "baseline": 499350,
+    "simd": 560617
   }
 }

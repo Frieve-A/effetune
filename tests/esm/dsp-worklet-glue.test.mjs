@@ -248,6 +248,9 @@ async function instantiateDspBinding(payload, options) {
       error() {},
       warn(...args) { warnings.push(args.join(' ')); }
     },
+    performance: {
+      now: options.performanceNow ?? (() => 0)
+    },
     currentTime: 0,
     sampleRate: 48000,
     __instantiateDspBinding: async (payload, factoryOptions) => {
@@ -330,6 +333,67 @@ function processBlock(processor, value = 1) {
 function messagesOf(posts, type) {
   return posts.filter(entry => entry.message.type === type);
 }
+
+test('worklet reports sustained effect-processing deadline overruns but ignores pipeline bypass', async () => {
+  const nowValues = [0, 10, 14, 20, 24, 30, 31, 40, 46];
+  const harness = await createWorkletHarness({
+    performanceNow: () => nowValues.shift() ?? 46
+  });
+  await registerFallback(harness);
+
+  const enabledPlugin = pluginConfig();
+  await harness.send({
+    type: 'updatePlugins',
+    plugins: [enabledPlugin],
+    masterBypass: true
+  });
+  processBlock(harness.processor);
+  assert.deepEqual(messagesOf(harness.posts, 'audioProcessingOverload'), []);
+
+  await harness.send({
+    type: 'updatePlugins',
+    plugins: [{ ...enabledPlugin, enabled: false }],
+    masterBypass: false
+  });
+  processBlock(harness.processor);
+  assert.deepEqual(messagesOf(harness.posts, 'audioProcessingOverload'), []);
+
+  await harness.send({
+    type: 'updatePlugins',
+    plugins: [enabledPlugin],
+    masterBypass: false
+  });
+  processBlock(harness.processor);
+  assert.deepEqual(messagesOf(harness.posts, 'audioProcessingOverload'), []);
+
+  processBlock(harness.processor);
+  assert.deepEqual(
+    messagesOf(harness.posts, 'audioProcessingOverload').map(entry => entry.message.active),
+    [true]
+  );
+
+  processBlock(harness.processor);
+  assert.deepEqual(
+    messagesOf(harness.posts, 'audioProcessingOverload').map(entry => entry.message.active),
+    [true, false]
+  );
+
+  processBlock(harness.processor);
+  assert.deepEqual(
+    messagesOf(harness.posts, 'audioProcessingOverload').map(entry => entry.message.active),
+    [true, false, true]
+  );
+
+  await harness.send({
+    type: 'updatePlugins',
+    plugins: [enabledPlugin],
+    masterBypass: true
+  });
+  assert.deepEqual(
+    messagesOf(harness.posts, 'audioProcessingOverload').map(entry => entry.message.active),
+    [true, false, true, false]
+  );
+});
 
 test('worklet reconciles pre-module plugins, adopts every arena bus, and manages instance lifecycle', async () => {
   const harness = await createWorkletHarness();
@@ -704,6 +768,53 @@ test('Room EQ replacement staging waits for one dry-ramp quantum before switchin
   assert.ok(restoreIndex > replacementIndex);
   assert.deepEqual(stagingCalls[1][3].slice(-4), [...new Uint8Array(new Float32Array([0.75]).buffer)]);
   assert.equal(harness.processor.dspAssetCache.get(7).get(0).operationRevision, 2);
+});
+
+test('FIR plugin replacements use the shared replacement handshake', async () => {
+  for (const [type, params] of [
+    ['FIRCrossoverPlugin', Float32Array.of(1, 0, 0)],
+    ['FiveBandFIRPEQPlugin', Float32Array.of(1, 0)]
+  ]) {
+    const binding = createBinding({
+      assetState: 3,
+      capabilities: {
+        abiVersion: 1,
+        simd: false,
+        kernels: [{
+          name: type, hash: 0x1234, byteCapacity: 0,
+          assetCapacity: 4096, kernelIndex: 0
+        }]
+      }
+    });
+    const harness = await createWorkletHarness({ binding });
+    await harness.send({
+      type: 'registerProcessor', pluginType: type, processor: 'return data;'
+    });
+    await harness.send({
+      type: 'updatePlugins',
+      plugins: [roomEqPluginConfig({
+        type,
+        parameters: { enabled: true, lt: '128', fd: 0, gn: 0 },
+        wasmParams: params
+      })],
+      masterBypass: false
+    });
+    await harness.send({ type: 'dspEnableTypes', types: [type] });
+    await harness.send({ type: 'dspModule', module: { compiled: true } });
+    const sendAsset = operationRevision => harness.send({
+      type: 'setPluginAsset', pluginId: 7, slot: 0, formatTag: 1,
+      headBlock: 128, rateDivider: 1, pathCount: 0, inputCount: 0,
+      processingChannels: 2, footprintBytes: 1024, operationRevision,
+      payload: assetPayload(operationRevision)
+    });
+
+    await sendAsset(1);
+    await sendAsset(2);
+    assert.equal(binding.calls.filter(call => call[0] === 'instanceSetAsset').length, 1);
+    assert.ok(binding.calls.some(call =>
+      call[0] === 'instanceSetParams' && call[2].length === params.length && call[2][0] === -1
+    ));
+  }
 });
 
 test('deferred Room EQ replacements reserve aggregate budget until staged or cleared', async () => {

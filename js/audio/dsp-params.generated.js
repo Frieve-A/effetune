@@ -381,6 +381,15 @@ export function packFifteenBandPEQPluginParams(params = {}) {
   return packed;
 }
 
+export const FIRCrossoverPlugin_PARAMS_HASH = 0x2267c350;
+export function packFIRCrossoverPluginParams(params = {}) {
+  const packed = new Float32Array(3);
+  packed[0] = (() => { const index = ["0","128","256","512","1024"].indexOf(params["lt"]); return index < 0 ? 1 : index; })();
+  packed[1] = (() => { const value = params["fd"]; if (!(Number.isSafeInteger(value))) return 0; if (value < 0) return 0; if (value > 65536) return 65536; return value; })();
+  packed[2] = (() => { const value = params["bc"]; if (!(Number.isSafeInteger(value))) return 2; if (value < 2) return 2; if (value > 4) return 4; return value; })();
+  return packed;
+}
+
 export const FiveBandDynamicEQ_PARAMS_HASH = 0xb02487c7;
 export function packFiveBandDynamicEQParams(params = {}) {
   const packed = new Float32Array(60);
@@ -447,6 +456,14 @@ export function packFiveBandDynamicEQParams(params = {}) {
   return packed;
 }
 
+export const FiveBandFIRPEQPlugin_PARAMS_HASH = 0xaf58b189;
+export function packFiveBandFIRPEQPluginParams(params = {}) {
+  const packed = new Float32Array(2);
+  packed[0] = (() => { const index = ["0","128","256","512","1024"].indexOf(params["lt"]); return index < 0 ? 1 : index; })();
+  packed[1] = (() => { const value = params["fd"]; if (!(Number.isSafeInteger(value))) return 0; if (value < 0) return 0; if (value > 65536) return 65536; return value; })();
+  return packed;
+}
+
 export const FiveBandPEQPlugin_PARAMS_HASH = 0x8835f2b9;
 export function packFiveBandPEQPluginParams(params = {}) {
   const packed = new Float32Array(25);
@@ -504,6 +521,14 @@ export function packGatePluginParams(params = {}) {
   packed[3] = (() => { const value = params["rl"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 200; if (value < 10) return 10; if (value > 2000) return 2000; return value; })();
   packed[4] = (() => { const value = params["kn"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 1; if (value < 0) return 0; if (value > 6) return 6; return value; })();
   packed[5] = (() => { const value = params["gn"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < -12) return -12; if (value > 12) return 12; return value; })();
+  return packed;
+}
+
+export const GroupDelayEqPlugin_PARAMS_HASH = 0xaf58b189;
+export function packGroupDelayEqPluginParams(params = {}) {
+  const packed = new Float32Array(2);
+  packed[0] = (() => { const index = ["0","128","256","512","1024"].indexOf(params["lt"]); return index < 0 ? 1 : index; })();
+  packed[1] = (() => { const value = params["fd"]; if (!(Number.isSafeInteger(value))) return 8192; if (value < 0) return 0; if (value > 65536) return 65536; return value; })();
   return packed;
 }
 
@@ -908,13 +933,13 @@ export function packNoiseBlenderPluginParams(params = {}) {
   return packed;
 }
 
-export const OscillatorPlugin_PARAMS_HASH = 0xc3977673;
+export const OscillatorPlugin_PARAMS_HASH = 0x85591ea8;
 export function packOscillatorPluginParams(params = {}) {
   const packed = new Float32Array(7);
   packed[0] = (() => { const value = params["fr"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 880; if (value < 20) return 20; if (value > 96000) return 96000; return value; })();
   packed[1] = (() => { const value = params["vl"]; if (!(typeof value === 'number' && Number.isFinite(value))) return -12; if (value < -96) return -96; if (value > 0) return 0; return value; })();
   packed[2] = (() => { const value = params["pn"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < -1) return -1; if (value > 1) return 1; return value; })();
-  packed[3] = (() => { const index = ["sine","square","triangle","sawtooth","white","pink"].indexOf(params["wf"]); return index < 0 ? 0 : index; })();
+  packed[3] = (() => { const index = ["sine","square","triangle","sawtooth","white","pink","impulse"].indexOf(params["wf"]); return index < 0 ? 0 : index; })();
   packed[4] = (() => { const index = ["continuous","pulsed"].indexOf(params["md"]); return index < 0 ? 0 : index; })();
   packed[5] = (() => { const value = params["it"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 500; if (value < 100) return 100; if (value > 2000) return 2000; return value; })();
   packed[6] = (() => { const value = params["wd"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 5; if (value < 2) return 2; if (value > 100) return 100; return value; })();
@@ -1050,6 +1075,33 @@ export function packSubSynthPluginParams(params = {}) {
   packed[5] = (() => { const value = params["shs"]; if (!(Number.isSafeInteger(value))) return -6; if (value < -24) return -24; if (value > 0) return 0; return value; })();
   packed[6] = (() => { const value = params["dhf"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 40; if (value < 5) return 5; if (value > 400) return 400; return value; })();
   packed[7] = (() => { const value = params["dhs"]; if (!(Number.isSafeInteger(value))) return 0; if (value < -24) return -24; if (value > 0) return 0; return value; })();
+  return packed;
+}
+
+export const SWRadioSimulatorPlugin_PARAMS_HASH = 0x8bb5b8dd;
+export function packSWRadioSimulatorPluginParams(params = {}) {
+  const packed = new Float32Array(21);
+  packed[0] = (() => { const value = params["tb"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 4.5; if (value < 2) return 2; if (value > 10) return 10; return value; })();
+  packed[1] = (() => { const value = params["pe"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 50; if (value < 0) return 0; if (value > 100) return 100; return value; })();
+  packed[2] = (() => { const value = params["md"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 90; if (value < 10) return 10; if (value > 125) return 125; return value; })();
+  packed[3] = (() => { const value = params["cp"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 6; if (value < 0) return 0; if (value > 20) return 20; return value; })();
+  packed[4] = (() => { const value = params["sg"]; if (!(typeof value === 'number' && Number.isFinite(value))) return -15; if (value < -50) return -50; if (value > 0) return 0; return value; })();
+  packed[5] = (() => { const value = params["sk"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 55; if (value < 0) return 0; if (value > 100) return 100; return value; })();
+  packed[6] = (() => { const value = params["fd"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0.5; if (value < 0.1) return 0.1; if (value > 10) return 10; return value; })();
+  packed[7] = (() => { const value = params["ds"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 1.4; if (value < 0.2) return 0.2; if (value > 8) return 8; return value; })();
+  packed[8] = (() => { const value = params["st"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 2; if (value < 0) return 0; if (value > 100) return 100; return value; })();
+  packed[9] = (() => { const value = params["in"]; if (!(typeof value === 'number' && Number.isFinite(value))) return -47; if (value < -80) return -80; if (value > 0) return 0; return value; })();
+  packed[10] = (() => { const value = params["io"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 1; if (value < 0.1) return 0.1; if (value > 10) return 10; return value; })();
+  packed[11] = (() => { const value = params["tn"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < -5) return -5; if (value > 5) return 5; return value; })();
+  packed[12] = (() => { const value = params["bw"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 6; if (value < 2) return 2; if (value > 10) return 10; return value; })();
+  packed[13] = (() => { const index = ["Envelope","Synchronous"].indexOf(params["de"]); return index < 0 ? 0 : index; })();
+  packed[14] = (() => { const index = ["Slow","Mid","Fast"].indexOf(params["ag"]); return index < 0 ? 2 : index; })();
+  packed[15] = (() => { const value = params["dt"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 50; if (value < 20) return 20; if (value > 500) return 500; return value; })();
+  packed[16] = (() => { const value = params["hm"]; if (!(typeof value === 'number' && Number.isFinite(value))) return -80; if (value < -80) return -80; if (value > -20) return -20; return value; })();
+  packed[17] = (() => { const index = ["50","60"].indexOf(params["hz"]); return index < 0 ? 0 : index; })();
+  packed[18] = (() => { const index = ["Off","Small","Table"].indexOf(params["sp"]); return index < 0 ? 1 : index; })();
+  packed[19] = (() => { const value = params["og"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < -24) return -24; if (value > 24) return 24; return value; })();
+  packed[20] = (() => { const value = params["mx"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 100; if (value < 0) return 0; if (value > 100) return 100; return value; })();
   return packed;
 }
 
@@ -1190,10 +1242,13 @@ export const DSP_PARAM_LAYOUTS = Object.freeze({
   FDNReverbPlugin: Object.freeze({ hash: FDNReverbPlugin_PARAMS_HASH, floatCount: 13 }),
   FifteenBandGEQPlugin: Object.freeze({ hash: FifteenBandGEQPlugin_PARAMS_HASH, floatCount: 15 }),
   FifteenBandPEQPlugin: Object.freeze({ hash: FifteenBandPEQPlugin_PARAMS_HASH, floatCount: 75 }),
+  FIRCrossoverPlugin: Object.freeze({ hash: FIRCrossoverPlugin_PARAMS_HASH, floatCount: 3 }),
   FiveBandDynamicEQ: Object.freeze({ hash: FiveBandDynamicEQ_PARAMS_HASH, floatCount: 60 }),
+  FiveBandFIRPEQPlugin: Object.freeze({ hash: FiveBandFIRPEQPlugin_PARAMS_HASH, floatCount: 2 }),
   FiveBandPEQPlugin: Object.freeze({ hash: FiveBandPEQPlugin_PARAMS_HASH, floatCount: 25 }),
   FMRadioSimulatorPlugin: Object.freeze({ hash: FMRadioSimulatorPlugin_PARAMS_HASH, floatCount: 11 }),
   GatePlugin: Object.freeze({ hash: GatePlugin_PARAMS_HASH, floatCount: 6 }),
+  GroupDelayEqPlugin: Object.freeze({ hash: GroupDelayEqPlugin_PARAMS_HASH, floatCount: 2 }),
   HardClippingPlugin: Object.freeze({ hash: HardClippingPlugin_PARAMS_HASH, floatCount: 2 }),
   HarmonicDistortionPlugin: Object.freeze({ hash: HarmonicDistortionPlugin_PARAMS_HASH, floatCount: 5 }),
   HiPassFilterPlugin: Object.freeze({ hash: HiPassFilterPlugin_PARAMS_HASH, floatCount: 2 }),
@@ -1231,6 +1286,7 @@ export const DSP_PARAM_LAYOUTS = Object.freeze({
   StereoBlendPlugin: Object.freeze({ hash: StereoBlendPlugin_PARAMS_HASH, floatCount: 1 }),
   StereoMeterPlugin: Object.freeze({ hash: StereoMeterPlugin_PARAMS_HASH, floatCount: 1 }),
   SubSynthPlugin: Object.freeze({ hash: SubSynthPlugin_PARAMS_HASH, floatCount: 8 }),
+  SWRadioSimulatorPlugin: Object.freeze({ hash: SWRadioSimulatorPlugin_PARAMS_HASH, floatCount: 21 }),
   TiltEQPlugin: Object.freeze({ hash: TiltEQPlugin_PARAMS_HASH, floatCount: 2 }),
   TimeAlignmentPlugin: Object.freeze({ hash: TimeAlignmentPlugin_PARAMS_HASH, floatCount: 1 }),
   ToneControlPlugin: Object.freeze({ hash: ToneControlPlugin_PARAMS_HASH, floatCount: 3 }),
@@ -1265,10 +1321,13 @@ export const DSP_PARAM_PACKERS = new Map([
   ["FDNReverbPlugin", Object.freeze({ pack: packFDNReverbPluginParams, hash: FDNReverbPlugin_PARAMS_HASH, floatCount: 13 })],
   ["FifteenBandGEQPlugin", Object.freeze({ pack: packFifteenBandGEQPluginParams, hash: FifteenBandGEQPlugin_PARAMS_HASH, floatCount: 15 })],
   ["FifteenBandPEQPlugin", Object.freeze({ pack: packFifteenBandPEQPluginParams, hash: FifteenBandPEQPlugin_PARAMS_HASH, floatCount: 75 })],
+  ["FIRCrossoverPlugin", Object.freeze({ pack: packFIRCrossoverPluginParams, hash: FIRCrossoverPlugin_PARAMS_HASH, floatCount: 3 })],
   ["FiveBandDynamicEQ", Object.freeze({ pack: packFiveBandDynamicEQParams, hash: FiveBandDynamicEQ_PARAMS_HASH, floatCount: 60 })],
+  ["FiveBandFIRPEQPlugin", Object.freeze({ pack: packFiveBandFIRPEQPluginParams, hash: FiveBandFIRPEQPlugin_PARAMS_HASH, floatCount: 2 })],
   ["FiveBandPEQPlugin", Object.freeze({ pack: packFiveBandPEQPluginParams, hash: FiveBandPEQPlugin_PARAMS_HASH, floatCount: 25 })],
   ["FMRadioSimulatorPlugin", Object.freeze({ pack: packFMRadioSimulatorPluginParams, hash: FMRadioSimulatorPlugin_PARAMS_HASH, floatCount: 11 })],
   ["GatePlugin", Object.freeze({ pack: packGatePluginParams, hash: GatePlugin_PARAMS_HASH, floatCount: 6 })],
+  ["GroupDelayEqPlugin", Object.freeze({ pack: packGroupDelayEqPluginParams, hash: GroupDelayEqPlugin_PARAMS_HASH, floatCount: 2 })],
   ["HardClippingPlugin", Object.freeze({ pack: packHardClippingPluginParams, hash: HardClippingPlugin_PARAMS_HASH, floatCount: 2 })],
   ["HarmonicDistortionPlugin", Object.freeze({ pack: packHarmonicDistortionPluginParams, hash: HarmonicDistortionPlugin_PARAMS_HASH, floatCount: 5 })],
   ["HiPassFilterPlugin", Object.freeze({ pack: packHiPassFilterPluginParams, hash: HiPassFilterPlugin_PARAMS_HASH, floatCount: 2 })],
@@ -1306,6 +1365,7 @@ export const DSP_PARAM_PACKERS = new Map([
   ["StereoBlendPlugin", Object.freeze({ pack: packStereoBlendPluginParams, hash: StereoBlendPlugin_PARAMS_HASH, floatCount: 1 })],
   ["StereoMeterPlugin", Object.freeze({ pack: packStereoMeterPluginParams, hash: StereoMeterPlugin_PARAMS_HASH, floatCount: 1 })],
   ["SubSynthPlugin", Object.freeze({ pack: packSubSynthPluginParams, hash: SubSynthPlugin_PARAMS_HASH, floatCount: 8 })],
+  ["SWRadioSimulatorPlugin", Object.freeze({ pack: packSWRadioSimulatorPluginParams, hash: SWRadioSimulatorPlugin_PARAMS_HASH, floatCount: 21 })],
   ["TiltEQPlugin", Object.freeze({ pack: packTiltEQPluginParams, hash: TiltEQPlugin_PARAMS_HASH, floatCount: 2 })],
   ["TimeAlignmentPlugin", Object.freeze({ pack: packTimeAlignmentPluginParams, hash: TimeAlignmentPlugin_PARAMS_HASH, floatCount: 1 })],
   ["ToneControlPlugin", Object.freeze({ pack: packToneControlPluginParams, hash: ToneControlPlugin_PARAMS_HASH, floatCount: 3 })],

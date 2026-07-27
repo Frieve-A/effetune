@@ -1,0 +1,70 @@
+{
+  "formatVersion": 1,
+  "type": "FIRCrossoverPlugin",
+  "id": "two-band-matrix-impulse-lt0",
+  "stimulus": "imp",
+  "sampleRate": 48000,
+  "channels": 4,
+  "frameCount": 12000,
+  "blockSize": 128,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "lt": "0",
+    "fd": 0,
+    "bc": 2
+  },
+  "events": [],
+  "asset": {
+    "slot": 0,
+    "format": 1,
+    "channels": 2,
+    "frames": 2048,
+    "topology": 4,
+    "headBlock": 0,
+    "rateDivider": 1,
+    "pathCount": 4,
+    "inputCount": 2,
+    "paths": [
+      {
+        "input": 0,
+        "output": 0,
+        "irChannel": 0
+      },
+      {
+        "input": 1,
+        "output": 1,
+        "irChannel": 0
+      },
+      {
+        "input": 0,
+        "output": 2,
+        "irChannel": 1
+      },
+      {
+        "input": 1,
+        "output": 3,
+        "irChannel": 1
+      }
+    ],
+    "ir": {
+      "kind": "sparse-decay-v1",
+      "seed": 1179209043,
+      "tapCount": 17,
+      "directGain": 0.65,
+      "tailGain": 0.25
+    }
+  },
+  "tolerance": {
+    "abs": 0.0002,
+    "policy": "per-sample"
+  },
+  "performanceBudgetMs": 2500,
+  "referenceEngine": "native-fir-crossover-direct-double-v1",
+  "referenceHash": "561fee25d5b57f940e580e63e28bf544cc41fc6809acbb065ea1c7b7bfef29a8",
+  "outputFloats": 48000,
+  "byteLength": 192000,
+  "binary": "case-001.f32"
+}

@@ -153,6 +153,11 @@ blend ratio, followed by cumulative little-endian `u32` counters at byte offsets
 20 and 24 for static events and clipping events. Legacy format version 1 is exactly
 24 bytes, omits stereo blend, and stores those counters at byte offsets 16 and 20;
 the parser accepts it for backward compatibility.
+Type 18 (`TAP_SW_RADIO_SIMULATOR`) format version 1 is exactly 24 bytes: four float32
+values at byte offsets 0, 4, 8, and 12 for carrier level before AGC in dB, AGC gain in
+dB, modulation depth in percent, and fading level in dB, followed by cumulative
+little-endian `u32` counters at byte offsets 16 and 20 for static events and clipping
+events. Shortwave reception is mono, so no stereo blend field exists.
 
 `et_instance_latency` reflects staged parameters immediately. BrickwallLimiter reports
 `max(1, ceil(lookaheadMs * sampleRate / 1000))` samples at 1x oversampling and

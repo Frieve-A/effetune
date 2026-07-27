@@ -1,0 +1,98 @@
+.sw-radio-simulator-container {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.sw-radio-simulator-panel {
+    padding: 10px;
+    border-radius: 4px;
+    background: #2d2d2d;
+}
+
+.sw-radio-simulator-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    margin-bottom: 12px;
+}
+
+.sw-radio-simulator-tab {
+    flex: 1 1 100px;
+    min-height: 36px;
+    padding: 8px 14px;
+    border: 1px solid #484848;
+    border-radius: 4px 4px 0 0;
+    color: #ddd;
+    background: #333;
+    cursor: pointer;
+}
+
+.sw-radio-simulator-tab:hover {
+    background: #3c3c3c;
+}
+
+.sw-radio-simulator-tab.active {
+    border-color: #666;
+    color: #fff;
+    background: #484848;
+}
+
+.sw-radio-simulator-tab:focus-visible {
+    outline: 2px solid #7ec8ff;
+    outline-offset: 2px;
+}
+
+.sw-radio-simulator-tab-content {
+    min-height: 224px;
+}
+
+.sw-radio-simulator-tab-content[hidden] {
+    display: none;
+}
+
+.sw-radio-simulator-hud {
+    position: relative;
+    width: 100%;
+    min-height: 64px;
+    max-width: none !important;
+    margin-top: 8px;
+    overflow: hidden;
+    border: 1px solid #454545;
+    border-radius: 4px;
+    background: #171717;
+}
+
+.sw-radio-simulator-hud canvas {
+    display: block;
+}
+
+body.layout-mobile .sw-radio-simulator-container,
+body.layout-mobile .sw-radio-simulator-panel,
+body.layout-mobile .sw-radio-simulator-tab-content,
+body.layout-mobile .sw-radio-simulator-hud {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+body.layout-mobile .sw-radio-simulator-panel {
+    padding: 8px;
+    overflow-x: clip;
+}
+
+body.layout-mobile .sw-radio-simulator-tabs {
+    gap: 4px;
+}
+
+body.layout-mobile .sw-radio-simulator-tab {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+    min-height: 42px;
+    padding: 8px 6px;
+}
+
+body.layout-mobile .sw-radio-simulator-tab-content {
+    min-height: 0;
+}

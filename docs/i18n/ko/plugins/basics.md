@@ -1,6 +1,6 @@
 ---
 title: "기본 플러그인 - EffeTune"
-description: "Volume, Mute, Stereo Balance, Matrix 라우팅 등을 포함한 기본 오디오 플러그인입니다."
+description: "Volume, Mute, Stereo Balance, FIR Crossover, Matrix 라우팅 등을 포함한 기본 오디오 플러그인입니다."
 lang: ko
 ---
 
@@ -12,6 +12,7 @@ lang: ko
 
 * [Channel Divider](#channel-divider) - 스테레오 신호를 주파수 대역으로 나누어 별도 스테레오 출력 쌍으로 라우팅
 * [DC Offset](#dc-offset) - 파형이 0 라인에서 벗어난 신호를 보정
+* [FIR Crossover](#fir-crossover) - FIR 필터로 스테레오 신호를 급경사 대역으로 분할
 * [Matrix](#matrix) - 유연한 제어로 오디오 채널을 라우팅 및 믹싱
 * [MultiChannel Panel](#multichannel-panel) - 개별 설정으로 여러 오디오 채널을 제어
 * [Mute](#mute) - 오디오 출력을 음소거
@@ -80,6 +81,35 @@ lang: ko
   * 양수 값: 신호를 위로 이동
   * 음수 값: 신호를 아래로 이동
   * 보정이 필요할 때도 아주 작은 값부터 사용
+
+## FIR Crossover
+
+FIR Crossover는 스테레오 입력을 2개, 3개 또는 4개 대역으로 나누고 각 대역을 별도의 출력 쌍으로 보냅니다. 4, 6 또는 8개의 출력 채널을 갖춘 데스크톱 시스템용이며 WASM DSP에서만 동작합니다.
+
+FIR 설계는 일반 필터의 공진 없이 매우 가파른 기울기를 사용할 수 있습니다. Minimum Phase는 대역의 재결합을 유지하는 인과적 크로스오버 구성을 사용하고, Linear Phase는 일정한 지연을 대가로 대칭 위상 응답을 제공합니다.
+
+### 사용 가이드
+
+- 기본값에서 시작해 스피커의 재생 대역에 맞게 Crossover Frequencies를 조정합니다.
+- 출력은 가장 낮은 대역부터 높은 대역 순서이며, 각 대역은 스테레오 출력 한 쌍을 사용합니다.
+- 일반적인 설정에는 48~96 dB/oct를 사용해 보세요. 더 가파른 기울기는 보통 더 많은 Taps가 필요합니다.
+- 지연을 줄이려면 Minimum Phase, 위상 정렬이 중요하면 Linear Phase를 선택합니다.
+- 멀티채널 라우팅을 시험할 때는 스피커 보호를 위해 낮은 음량에서 시작하세요.
+
+### 파라미터
+
+- **Phase**: **Minimum Phase** 또는 **Linear Phase**를 선택합니다.
+- **Taps**: FIR 필터 길이를 정합니다. 값이 클수록 저역 해상도와 처리 부하가 증가합니다.
+- **Latency**: 표시되는 지연을 0, 128, 256, 512 또는 1024 samples로 설정합니다.
+- **Band Count**: 2개, 3개 또는 4개 대역을 선택하며 각각 4, 6 또는 8개의 출력 채널이 필요합니다.
+- **Crossover Frequencies**: 대역 사이의 경계를 낮은 순서로 설정합니다.
+- **Slope**: 각 크로스오버에서 24~384 dB/oct를 선택합니다.
+
+### 표시 읽기
+
+- 그래프는 주파수에 따른 각 대역의 목표 응답을 보여 줍니다.
+- 각 색은 해당 대역의 출력 쌍을 나타냅니다.
+- 상태 표시줄에는 지연과 필터 해상도가 나오며, 출력 채널 수가 맞지 않으면 경고가 표시됩니다.
 
 ## Matrix
 

@@ -18,6 +18,7 @@ lang: hi
 - [Hum Generator](#hum-generator) - विंटेज/lo-fi सुनने के लिए नियंत्रित विद्युत हम वातावरण जोड़ता है
 - [Noise Blender](#noise-blender) - वातावरणीय पृष्ठभूमि बनावट जोड़ता है
 - [Simple Jitter](#simple-jitter) - सूक्ष्म विंटेज डिजिटल अपूर्णताएं बनाता है
+- [SW Radio Simulator](#sw-radio-simulator) - संगीत को मॉडल की गई शॉर्टवेव प्रसारण, आयनमंडलीय पथ और रिसीवर शृंखला से गुजारता है
 - [Vinyl Artifacts](#vinyl-artifacts) - विनाइल-शैली के पॉप, क्रैकल, हिस, रंबल और स्टेरियो शोर रिसाव जोड़ता है
 - [Vinyl Simulator](#vinyl-simulator) - इनपुट को मॉडल किए गए groove में काटकर भौतिक stylus मॉडल से चलाता है
 
@@ -508,6 +509,102 @@ FM Radio Simulator संगीत को एक मॉडल की गई FM �
 5. रचनात्मक डगमगाहट प्रभाव
    - RMS Jitter: 10-100µs (0.01-0.1ms)
    - इसके लिए बिल्कुल सही: प्रयोगात्मक प्रभाव और ध्यान देने योग्य पिच मॉड्यूलेशन
+
+## SW Radio Simulator
+
+SW Radio Simulator संगीत को एक मॉडल की गई शॉर्टवेव प्रसारण शृंखला से गुजारता है: transmitter processing और AM modulation, गहरी frequency-selective fading वाला आयनमंडलीय प्रसारण, वायुमंडलीय static और उसी चैनल पर बैठा एक दूसरा स्टेशन, envelope या synchronous detection तथा AGC वाला संकरा communications receiver, और वैकल्पिक रेडियो स्पीकर। इसका उपयोग तब करें जब आप चाहते हैं कि संगीत ऐसा सुनाई दे जैसे कोई दूर का अंतरराष्ट्रीय प्रसारण शॉर्टवेव सेट पर आ रहा हो: संकरा और खोखला, आयनमंडल के साथ ऊपर-नीचे होता हुआ, और वहां सीटी बजाता हुआ जहां पास की आवृत्ति पर कोई और transmitter हो।
+
+इस effect के लिए इसकी real-time processing का समर्थन करने वाला वातावरण आवश्यक है। जहां यह processing उपलब्ध नहीं है वहां ऑडियो अपरिवर्तित रहता है और HUD बताता है कि effect उपलब्ध नहीं है।
+
+### AM, FM और जोड़कर मिलाए जाने वाले lo-fi effects से अंतर
+
+- **AM Radio Simulator** मीडियम-वेव reception को model करता है, जहां सामान्यतः स्थिर groundwave प्रमुख रहती है और fading गौण प्रभाव है। इसका passband अधिक चौड़ा है और C-QUAM stereo भी उपलब्ध है।
+- **SW Radio Simulator** शॉर्टवेव को model करता है, जहां signal आयनमंडल से परावर्तित होकर पहुंचता है। यहां गहरी frequency-selective fading मुख्य भूमिका में है, ऑडियो बैंड अधिक संकरा है, और उसी चैनल के स्टेशन से बनने वाली heterodyne सीटी भी इस ध्वनि का हिस्सा है। शॉर्टवेव प्रसारण mono होता है, इसलिए संसाधित signal हमेशा mono रहता है।
+- **FM Radio Simulator** stereo multiplex, बढ़ती hiss और threshold clicks के साथ wideband FM को पुनः बनाता है — यह क्षरण का अलग परिवार है।
+- **Noise Blender** और **Hum Generator** संगीत बदले बिना उसके ऊपर noise या hum जोड़ते हैं। यह effect इसके बजाय संगीत को modulate, propagate और detect करता है, इसलिए इसका noise, interference और distortion वास्तविक reception की तरह Tuning, IF filter और AGC के अनुसार बदलते हैं।
+
+### ध्वनि चरित्र गाइड
+
+- **संकरा और खोखला:** transmitter bandwidth और संकरा receiver IF अधिकांश treble हटा देते हैं, जिससे शॉर्टवेव सेट जैसा सीमित, डिब्बेनुमा रंग बनता है।
+- **धीमी गहरी fading (QSB):** प्राप्त स्तर लगातार ऊपर-नीचे होता रहता है। यही शॉर्टवेव की पहचान है और डिफ़ॉल्ट सेटिंग पर भी सक्रिय रहता है।
+- **पानी जैसी fade distortion:** गहरी fade में carrier और sidebands अलग-अलग दर से गिरते हैं, इसलिए envelope detector ऑडियो को साफ तरीके से पुनः नहीं बना पाता। हर fade के तल पर ध्वनि केवल धीमी नहीं होती, बल्कि खोखली, अस्थिर और "पानी के भीतर" जैसी हो जाती है। इसकी तीव्रता Delay Spread से बदलती है, और synchronous detection इसे काफी हद तक हटा देता है।
+- **Flutter:** Fading Speed अधिक होने पर ये उतार-चढ़ाव तेज झिलमिलाहट में बदल जाते हैं, जैसे किसी अशांत या ध्रुवीय पथ से reception हो रहा हो।
+- **Heterodyne सीटी (QRM):** उसी चैनल का transmitter आपके carrier के साथ beat करता है और ऐसी लगातार ध्वनि बनाता है जिसकी पिच Interf. Offset के बराबर होती है।
+- **वायुमंडलीय static (QRN):** दूर की बिजली crashes के रूप में आती है जो IF filter में ringing करती है।
+- **Pumping:** fade गुजरने पर AGC स्तर का पीछा करता है और पृष्ठभूमि का noise अंशों के बीच सांस लेता हुआ ऊपर-नीचे होता है।
+
+### पैरामीटर
+
+#### Station
+
+- **TX Bandwidth** (2.0 से 10.0 kHz) - ट्रांसमीटर की ऑडियो बैंडविड्थ तय करता है। शॉर्टवेव प्रसारण चैनल 5 kHz के अंतर पर होते हैं, इसलिए संकरा डिफ़ॉल्ट भी मीडियम-वेव स्टेशन से अधिक गहरा सुनाई देता है; अधिक खुले transmitter के लिए इसे बढ़ाएं।
+- **Pre-emphasis** (0 से 100%) - प्रसारण से पहले ऊंची आवृत्तियां बढ़ाता है। अधिक सेटिंग संकरे बैंड में भी उपस्थिति बढ़ाती है, लेकिन चमकीले peaks प्रसारण limiter को अधिक जोर से चलाते हैं।
+- **Mod Depth** (10 से 125%) - AM मॉड्यूलेशन की गहराई तय करता है। 100% से ऊपर ओवरमॉड्यूलेशन और negative-peak clipping होता है।
+- **Compression** (0 से 20 dB) - प्रसारण limiter की गहराई तय करता है। अधिक सेटिंग peaks को नियंत्रित करके मॉड्यूलेशन को अधिक समान बनाती है — अंतरराष्ट्रीय प्रसारक इसी तरह fade के दौरान भी सुनने योग्य बने रहते हैं।
+
+#### Propagation
+
+- **Signal** (-50 से 0 dB) - प्राप्त signal की ताकत तय करता है। कमजोर सेटिंग पर receiver noise अधिक सुनाई देता है और अधिक AGC gain की जरूरत पड़ती है।
+- **Fading** (0 से 100%) - प्राप्त शक्ति को एक स्थिर सीधे पथ और दो विलंबित आयनमंडलीय पथों के बीच बांटता है। 0% पर नजदीकी स्थिर reception मिलता है; डिफ़ॉल्ट मान दूर के signal जैसी लगातार fading देता है; 100% पर fade सबसे गहरे और selective-fade distortion सबसे तेज होता है।
+- **Fading Speed** (0.1 से 10.0 Hz) - आयनमंडलीय पथों के बदलने की गति तय करता है। कम मान धीमे उतार-चढ़ाव देते हैं; कुछ hertz से ऊपर यह गति तेज flutter में बदल जाती है।
+- **Delay Spread** (0.2 से 8.0 ms) - दोनों आयनमंडलीय पथों के बीच विलंब का अंतर तय करता है। यह तय करता है कि ऑडियो बैंड में fading के notches कितने पास-पास होंगे (1 ms पर लगभग 1 kHz की दूरी, और मान बढ़ने पर और पास), और इसी कारण गहरी fade केवल धीमी होने के बजाय पानी जैसी सुनाई देती है। छोटे मान पर पूरा बैंड एक साथ fade होता है; बड़े मान पर spectrum के अलग-अलग हिस्से अलग-अलग समय पर fade होते हैं।
+- **Static** (0 से 100/s) - बिजली जैसे crashes की दर तय करता है। हर event IF filter से पहले डाला जाता है और उसमें ringing करता है। 0 पर ये बंद हो जाते हैं।
+- **Interference** (-80 से 0 dB) - उसी चैनल पर मौजूद स्टेशन की ताकत तय करता है। -80 dB पर यह व्यावहारिक रूप से बंद रहता है; 0 dB के जितना पास, उतना तेज।
+- **Interf. Offset** (0.1 से 10 kHz) - तय करता है कि बाधक carrier आपके carrier से कितनी दूर है। दोनों carrier इसी अंतर पर beat करते हैं और heterodyne सीटी बनाते हैं, इसलिए यह सेटिंग उसकी पिच तय करती है: लगभग 3 kHz से नीचे यह साफ स्वर होता है और बढ़ाने पर इसकी पिच ऊपर जाती है, जब तक कि IF filter उसे घटाना शुरू न कर दे। बाधक स्टेशन का कार्यक्रम shaped noise के रूप में model किया गया है, इसलिए यह समझ में आने वाली आवाज के बजाय खुरदुरा, सरसराता हुआ texture जोड़ता है।
+
+#### Receiver
+
+- **Tuning** (-5.0 से +5.0 kHz) - रिसीवर को स्टेशन से हटाता है। छोटी offset ध्वनि को मंद करती है, असममित filtering से distortion बढ़ाती है और heterodyne सीटी की तेजी भी बदलती है; बड़ी offset पर स्टेशन संकरे IF passband से बाहर चला जाता है।
+- **IF Bandwidth** (2.0 से 10.0 kHz) - रिसीवर का IF passband तय करता है। संकरी सेटिंग communications receiver जैसी है जो noise और उसी चैनल के स्टेशन को अधिक रोकती है लेकिन treble भी अधिक हटाती है; चौड़ी सेटिंग अधिक विवरण के साथ अधिक interference भी रखती है।
+- **Detector** (Envelope या Synchronous) - Envelope सामान्य diode detector है, और गहरी selective fading को पानी जैसी distortion में यही बदलता है। Synchronous PLL से carrier को पुनः प्राप्त करके उसी के सापेक्ष demodulate करता है, जिससे fade गहरी होने पर भी यह distortion काफी कम रहती है। इसकी pull-in सीमा Tuning में लगभग ±1 kHz है और उससे आगे lock छूट जाता है, इसलिए dial घुमाते समय Envelope उपयुक्त रहता है। Detector बदलने पर carrier acquisition फिर से शुरू होता है।
+- **AGC Speed** (Slow, Mid या Fast) - तय करता है कि automatic gain control fade का कितनी तेजी से अनुसरण करता है। Slow में स्तर के उतार-चढ़ाव सुनाई देते रहते हैं और signal लौटने पर pumping होती है; Fast स्तर को अधिक कसकर पकड़ता है।
+- **Detector RC** (20 से 500 µs) - envelope detector का discharge समय तय करता है। अधिक मान envelope को अधिक चिकना करते हैं लेकिन तेज modulation पर उच्च आवृत्तियों की diagonal-clipping distortion बढ़ाते हैं। Detector के Synchronous होने पर इसका कोई प्रभाव नहीं होता।
+- **Hum** (-80 से -20 dB) - पावर-सप्लाई hum तय करता है। -80 dB पर यह व्यावहारिक रूप से बंद रहता है। जोड़े गए hum की परत के विपरीत, इस नियंत्रण का अधिकांश भाग detection से पहले receiver gain को modulate करता है।
+- **Hum Freq** (50 या 60 Hz) - सिम्युलेट की जाने वाली पावर आवृत्ति चुनता है।
+
+#### Output
+
+- **Speaker** (Off, Small या Table) - लाइन आउटपुट, पोर्टेबल शॉर्टवेव सेट का सीमित स्पीकर, या टेबलटॉप communications receiver की भरी हुई प्रतिक्रिया चुनता है।
+- **Output Gain** (-24 से +24 dB) - receiver और speaker processing के बाद स्तर समायोजित करता है।
+- **Mix** (0 से 100%) - मूल stereo signal और सिम्युलेटेड mono reception को मिलाता है। 100% पूरा शॉर्टवेव reception है, जो बाएं और दाएं दोनों में समान भेजा जाता है। Mix dry signal को alignment के लिए delay नहीं करता, इसलिए बीच की settings दोनों signals को receiver और propagation से आए समय-अंतर के साथ मिलाती हैं।
+
+### HUD पढ़ना
+
+- **S METER** दिखाता है कि AGC से पहले receiver अपने band के भीतर कितनी signal strength पा रहा है, S1 से S9 के पैमाने पर। असली सेट के S meter की तरह यह passband के भीतर की हर चीज़ जोड़कर पढ़ता है, इसलिए एक ही चैनल का स्टेशन, शोर और static भी इच्छित स्टेशन के साथ इसे ऊपर उठाते हैं।
+- **FADE** मौजूदा propagation gain का बदलाव dB में दिखाता है, और सीधा पथ तथा दो आयनमंडलीय पथ एक-दूसरे को काटते या बढ़ाते हैं इसलिए यह 0 dB के नीचे और ऊपर दोनों ओर झूलता है। शॉर्टवेव पर यही देखने लायक प्रदर्शन है: डिफ़ॉल्ट सेटिंग पर यह लगातार चलता रहता है, और सबसे गहरे गड्ढों पर ही ध्वनि पानी जैसी और विकृत होती है।
+- **AGC GAIN** रिसीवर द्वारा अभी लगाया जा रहा gain दिखाता है। Signal घटने या fade गहरा होने पर यह बढ़ता है। यह +42 dB पर रुक जाता है, इसलिए सबसे गहरे fade पूरी तरह compensate होने के बजाय धीमे रह जाते हैं।
+- **MOD / EVENTS** प्रभावी modulation percentage दिखाता है, उसके बाद हाल की Static (⚡) और clipping (▲) की प्रति सेकंड दर, और इन events के होने पर चमकता है। साफ परिणाम चाहिए और clipping बार-बार हो तो Mod Depth या Detector RC घटाएं।
+- **WASM** engine उपलब्ध न होने पर HUD सूचना दिखाता है और plugin ऑडियो को अपरिवर्तित पास कर देता है।
+
+### सुझाई गई सेटिंग
+
+1. **दूर का अंतरराष्ट्रीय प्रसारण**
+   - TX Bandwidth: 4.5 kHz, Mod Depth: 90%, Signal: -15 dB, Fading: 55%, Fading Speed: 0.5 Hz, Delay Spread: 1.4 ms, Static: 2/s
+   - Interference: -47 dB, Interf. Offset: 1.0 kHz, Tuning: 0 kHz, IF Bandwidth: 6.0 kHz, Detector: Envelope, AGC Speed: Fast, Hum: -80 dB, Speaker: Small, Mix: 100%
+   - शॉर्टवेव की रोजमर्रा की ध्वनि: संकरी, लगातार fade होती हुई, बीच-बीच में crash और हल्की सीटी के साथ।
+
+2. **रात के बैंड की गहरी fade**
+   - Signal: -30 dB, Fading: 100%, Fading Speed: 0.3 Hz, Delay Spread: 5.0 ms, Static: 10/s
+   - IF Bandwidth: 4.0 kHz, Detector: Envelope, AGC Speed: Slow, Detector RC: 150 µs, Speaker: Small, Mix: 100%
+   - लंबे, गहरे उतार-चढ़ाव, हर fade के तल पर पानी जैसी distortion, और signal लौटने पर साफ सुनाई देती AGC pumping।
+
+3. **भीड़भाड़ वाला बैंड**
+   - Signal: -20 dB, Fading: 60%, Fading Speed: 0.5 Hz, Static: 8/s, Interference: -18 dB, Interf. Offset: 0.8 kHz
+   - Tuning: +0.3 kHz, IF Bandwidth: 4.0 kHz, AGC Speed: Mid, Speaker: Small, Mix: 100%
+   - कार्यक्रम के ऊपर लगातार heterodyne सीटी। Interf. Offset से उसकी पिच और Tuning से उसकी तेजी बदलें।
+
+4. **Synchronous detection**
+   - "रात के बैंड की गहरी fade" से शुरू करके Detector: Synchronous करें
+   - गहरी fade बनी रहती है, लेकिन हर fade के तल की distortion बहुत कम हो जाती है और कार्यक्रम सुनने योग्य बना रहता है। lock बनाए रखने के लिए Tuning को लगभग ±1 kHz के भीतर रखें, और अंतर सुनने के लिए Envelope से तुलना करें।
+
+5. **ध्रुवीय flutter**
+   - Signal: -25 dB, Fading: 90%, Fading Speed: 6 Hz, Delay Spread: 3.0 ms, Static: 5/s
+   - IF Bandwidth: 5.0 kHz, Detector: Envelope, AGC Speed: Fast, Speaker: Small, Mix: 100%
+   - धीमे उतार-चढ़ाव के बजाय किसी अशांत या ध्रुवीय पथ जैसी तेज झिलमिलाहट।
+
+### मॉडल संबंधी टिप्पणियां
+
+यह effect पहली stereo जोड़ी को एक ही mono प्रसारण के रूप में संसाधित करता है, ठीक जैसे वास्तविक शॉर्टवेव प्रसारण करता है, और प्राप्त signal हमेशा mono रहता है। उसी चैनल पर केवल एक बाधक स्टेशन model किया गया है, और उसका कार्यक्रम भाषण या संगीत नहीं बल्कि shaped noise है। वास्तविक बैंड परिस्थितियां — दिन-रात के अनुसार propagation में बदलाव, विशिष्ट प्रसारण बैंड, और single-sideband (SSB) reception — इस model के दायरे से बाहर हैं; जो स्थिति चाहिए उसे Signal, Fading और अन्य propagation नियंत्रणों से सेट करें।
 
 ## Vinyl Artifacts
 

@@ -41,11 +41,31 @@ jobs:
       - name: Verify packaged DSP artifacts
         run: npm run smoke:dsp-package
 
+      - name: Package Linux AppImage
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          appimage="EffeTune-${version}.AppImage"
+          release_zip="EffeTune-${version}-Linux-AppImage.zip"
+
+          # Keep the executable mode inside the release ZIP because the outer
+          # Actions artifact ZIP does not preserve Unix file permissions.
+          chmod 0755 "dist/${appimage}"
+          (
+            cd dist
+            zip -9 "${release_zip}" "${appimage}"
+            stored_mode="$(zipinfo -l "${release_zip}" "${appimage}" | awk -v file="${appimage}" '$NF == file { print $1 }')"
+            test "${stored_mode}" = "-rwxr-xr-x"
+          )
+
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v7
         with:
           name: linux-artifacts
-          path: dist/**/*.AppImage
+          path: dist/*-Linux-AppImage.zip
+          if-no-files-found: error
+          compression-level: 0
 
   build-windows:
     name: Build Windows

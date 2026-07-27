@@ -119,6 +119,7 @@ EffeTune 2.1.0 में कैटलॉग स्कीमा v3 पर आध�
    - Section इफेक्ट्स के लिए: पूरे सेक्शन को हटाने के लिए Shift+click के साथ × बटन इस्तेमाल करें
 9. प्रोसेस होने वाले चैनल और इनपुट/आउटपुट बस सेट करने के लिए routing बटन क्लिक करें
    - [बस फंक्शन के बारे में अधिक जानकारी](bus-function.md)
+10. स्लाइडर को बारीकी से एडजस्ट करने के लिए उसे ड्रैग करते समय Shift दबाए रखें; मान हर बार एक न्यूनतम स्टेप से बदलेगा
 
 ### प्रीसेट्स का उपयोग
 
@@ -302,6 +303,7 @@ EffeTune 2.1.0 में कैटलॉग स्कीमा v3 पर आध�
 | Analyzer  | Stereo Meter | stereo balance और channel correlation को visualize करता है | [विवरण](plugins/analyzer.md#stereo-meter) |
 | Basics    | Channel Divider | stereo signal को frequency bands में बांटकर हर band को अलग stereo output pairs पर भेजता है | [विवरण](plugins/basics.md#channel-divider) |
 | Basics    | DC Offset | DC offset को समायोजित करता है | [विवरण](plugins/basics.md#dc-offset) |
+| Basics    | FIR Crossover | तेज़ी से अलग किए गए frequency bands को stereo output pairs पर भेजने वाला FIR crossover | [विवरण](plugins/basics.md#fir-crossover) |
 | Basics    | Matrix | audio channels को flexible control के साथ route और mix करता है | [विवरण](plugins/basics.md#matrix) |
 | Basics    | MultiChannel Panel | volume, mute, solo और delay के साथ कई channels का control panel | [विवरण](plugins/basics.md#multichannel-panel) |
 | Basics    | Mute | audio signal को पूरी तरह silent करता है | [विवरण](plugins/basics.md#mute) |
@@ -323,10 +325,12 @@ EffeTune 2.1.0 में कैटलॉग स्कीमा v3 पर आध�
 | EQ        | 15Band GEQ | 15-band graphic equalizer | [विवरण](plugins/eq.md#15band-geq) |
 | EQ        | 15Band PEQ | detailed listening tone adjustment के लिए 15-band parametric equalizer | [विवरण](plugins/eq.md#15band-peq) |
 | EQ        | 5Band Dynamic EQ | threshold-based frequency adjustment वाला 5-band dynamic equalizer | [विवरण](plugins/eq.md#5band-dynamic-eq) |
+| EQ        | 5Band FIR PEQ | Minimum Phase या Linear Phase FIR filtering वाला 5-band parametric equalizer | [विवरण](plugins/eq.md#5band-fir-peq) |
 | EQ        | 5Band PEQ | bass, mids और treble shape करने के लिए flexible 5-band equalizer | [विवरण](plugins/eq.md#5band-peq) |
 | EQ        | Band Pass Filter | specific frequencies पर focus करता है | [विवरण](plugins/eq.md#band-pass-filter) |
 | EQ        | Comb Filter | फेज़िंग जैसी, खोखली या metallic coloration जोड़ता है | [विवरण](plugins/eq.md#comb-filter) |
 | EQ        | Earphone Cable Sim | सामान्य ईयरफोन केबल से होने वाले आवृत्ति-प्रतिक्रिया बदलाव आम तौर पर कितने छोटे रहते हैं, यह जांचने में मदद करता है | [विवरण](plugins/eq.md#earphone-cable-sim) |
+| EQ        | Group Delay EQ | Tone बदले बिना हर frequency band की delay समायोजित करता है | [विवरण](plugins/eq.md#group-delay-eq) |
 | EQ        | Hi Pass Filter | unwanted low frequencies को precision से हटाता है | [विवरण](plugins/eq.md#hi-pass-filter) |
 | EQ        | Lo Pass Filter | unwanted high frequencies को precision से हटाता है | [विवरण](plugins/eq.md#lo-pass-filter) |
 | EQ        | Loudness Equalizer | low-volume listening के लिए frequency balance correction | [विवरण](plugins/eq.md#loudness-equalizer) |
@@ -342,6 +346,7 @@ EffeTune 2.1.0 में कैटलॉग स्कीमा v3 पर आध�
 | Lo-Fi     | Hum Generator | vintage/lo-fi listening के लिए adjustable 50/60 Hz electrical hum ambience जोड़ता है | [विवरण](plugins/lofi.md#hum-generator) |
 | Lo-Fi     | Noise Blender | lo-fi ambience के लिए adjustable background noise texture जोड़ता है | [विवरण](plugins/lofi.md#noise-blender) |
 | Lo-Fi     | Simple Jitter | digital jitter simulation | [विवरण](plugins/lofi.md#simple-jitter) |
+| Lo-Fi     | SW Radio Simulator | संगीत को मॉडल की गई शॉर्टवेव प्रसारण, आयनमंडलीय पथ और रिसीवर शृंखला से गुजारता है | [विवरण](plugins/lofi.md#sw-radio-simulator) |
 | Lo-Fi     | Vinyl Artifacts | vinyl-style pops, crackle, hiss, rumble और stereo noise bleed जोड़ता है | [विवरण](plugins/lofi.md#vinyl-artifacts) |
 | Lo-Fi     | Vinyl Simulator | input को modeled groove में काटकर physical stylus model से चलाता है | [विवरण](plugins/lofi.md#vinyl-simulator) |
 | Modulation | Doppler Distortion | subtle speaker cone movements से होने वाले natural, dynamic sound changes simulate करता है | [विवरण](plugins/modulation.md#doppler-distortion) |

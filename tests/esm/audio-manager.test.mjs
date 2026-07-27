@@ -708,10 +708,19 @@ test('initializes audio and worklet phases with success, warnings, messages, and
       throw new Error('rebuild after missing failed');
     };
     manager.registerPipelineProcessors = () => calls.push(['manager.registerPipelineProcessors']);
+    const overloadStates = [];
+    manager.addEventListener('audioProcessingOverload', data => overloadStates.push(data.active));
     assert.equal(await manager.initializeAudioWorklet(), '');
+    manager.workletNode.port.onmessage({
+      data: { type: 'audioProcessingOverload', active: true }
+    });
+    manager.workletNode.port.onmessage({
+      data: { type: 'audioProcessingOverload', active: false }
+    });
     manager.workletNode.port.onmessage({ data: { type: 'sleepModeChanged', isSleepMode: true } });
     manager.workletNode.port.onmessage({ data: { type: 'processorMissing', pluginType: 'AlphaPlugin' } });
     await Promise.resolve();
+    assert.deepEqual(overloadStates, [true, false]);
     assert.equal(calls.some(call => call[0] === 'manager.registerPipelineProcessors'), true);
   });
 

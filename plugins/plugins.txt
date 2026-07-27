@@ -26,6 +26,7 @@ analyzer/spectrum_analyzer: Spectrum Analyzer | Analyzer | SpectrumAnalyzerPlugi
 analyzer/stereo_meter: Stereo Meter | Analyzer | StereoMeterPlugin | css
 basics/channel_divider: Channel Divider | Basics | ChannelDividerPlugin | css
 basics/dc_offset: DC Offset | Basics | DCOffsetPlugin
+basics/fir_crossover: FIR Crossover | Basics | FIRCrossoverPlugin | css
 basics/matrix: Matrix | Basics | MatrixPlugin | css
 basics/multi_channel_panel: MultiChannel Panel | Basics | MultiChannelPanelPlugin | css
 basics/mute: Mute | Basics | MutePlugin
@@ -47,10 +48,12 @@ dynamics/transient_shaper: Transient Shaper | Dynamics | TransientShaperPlugin |
 eq/fifteen_band_geq: 15Band GEQ | EQ | FifteenBandGEQPlugin | css
 eq/fifteen_band_peq: 15Band PEQ | EQ | FifteenBandPEQPlugin | css
 eq/five_band_dynamic_eq: 5Band Dynamic EQ | EQ | FiveBandDynamicEQ | css
+eq/five_band_fir_peq: 5Band FIR PEQ | EQ | FiveBandFIRPEQPlugin | css
 eq/five_band_peq: 5Band PEQ | EQ | FiveBandPEQPlugin | css
 eq/band_pass_filter: Band Pass Filter | EQ | BandPassFilterPlugin | css
 eq/comb_filter: Comb Filter | EQ | CombFilterPlugin | css
 eq/earphone_cable_sim: Earphone Cable Sim | EQ | EarphoneCableSimPlugin | css
+eq/group_delay_eq: Group Delay EQ | EQ | GroupDelayEqPlugin | css
 eq/hi_pass_filter: Hi Pass Filter | EQ | HiPassFilterPlugin | css
 eq/lo_pass_filter: Lo Pass Filter | EQ | LoPassFilterPlugin | css
 eq/loudness_equalizer: Loudness Equalizer | EQ | LoudnessEqualizerPlugin | css
@@ -66,6 +69,7 @@ lofi/fm_radio_simulator: FM Radio Simulator | Lo-Fi | FMRadioSimulatorPlugin | c
 lofi/hum_generator: Hum Generator | Lo-Fi | HumGeneratorPlugin
 lofi/noise_blender: Noise Blender | Lo-Fi | NoiseBlenderPlugin
 lofi/simple_jitter: Simple Jitter | Lo-Fi | SimpleJitterPlugin
+lofi/sw_radio_simulator: SW Radio Simulator | Lo-Fi | SWRadioSimulatorPlugin | css
 lofi/vinyl_artifacts: Vinyl Artifacts | Lo-Fi | VinylArtifactsPlugin
 lofi/vinyl_simulator: Vinyl Simulator | Lo-Fi | VinylSimulatorPlugin | css
 modulation/doppler_distortion: Doppler Distortion | Modulation | DopplerDistortionPlugin

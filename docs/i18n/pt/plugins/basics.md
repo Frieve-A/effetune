@@ -1,6 +1,6 @@
 ---
 title: "Plugins Básicos - EffeTune"
-description: "Plugins essenciais de áudio, incluindo Volume, Mute, Stereo Balance, roteamento Matrix e outros."
+description: "Plugins essenciais de áudio, incluindo Volume, Mute, Stereo Balance, FIR Crossover, roteamento Matrix e outros."
 lang: pt
 ---
 
@@ -12,6 +12,7 @@ Uma coleção de ferramentas essenciais para ajustar os aspectos fundamentais da
 
 * [Channel Divider](#channel-divider) - Divide áudio estéreo em bandas de frequência por pares de saída estéreo
 * [DC Offset](#dc-offset) - Adiciona ou corrige um offset DC constante
+* [FIR Crossover](#fir-crossover) - Divide o sinal estéreo em bandas de inclinação acentuada com filtros FIR
 * [Matrix](#matrix) - Roteia e mistura canais de áudio com controle flexível
 * [MultiChannel Panel](#multichannel-panel) - Controla múltiplos canais de áudio com configurações individuais
 * [Mute](#mute) - Silencia a saída de áudio
@@ -80,6 +81,35 @@ Uma ferramenta para corrigir um sinal cuja forma de onda está deslocada em rela
   * Valores positivos deslocam o sinal para cima
   * Valores negativos deslocam o sinal para baixo
   * Use ajustes bem pequenos quando uma correção for necessária
+
+## FIR Crossover
+
+O FIR Crossover divide uma entrada estéreo em duas, três ou quatro bandas e envia cada uma a um par de saídas separado. Ele se destina a sistemas desktop com 4, 6 ou 8 canais de saída e funciona somente com WASM DSP.
+
+O projeto FIR permite inclinações muito acentuadas sem a ressonância dos filtros convencionais. Minimum Phase usa uma construção causal que preserva a recombinação das bandas; Linear Phase oferece resposta de fase simétrica em troca de uma latência fixa.
+
+### Guia de uso
+
+- Comece com os valores padrão e ajuste Crossover Frequencies às faixas dos seus alto-falantes.
+- As saídas seguem da banda mais baixa para a mais alta; cada banda ocupa um par estéreo.
+- Para ajustes comuns, experimente de 48 a 96 dB/oct. Inclinações maiores geralmente exigem mais Taps.
+- Escolha Minimum Phase para reduzir a latência ou Linear Phase quando o alinhamento de fase for prioritário.
+- Teste o roteamento multicanal em volume baixo para proteger os alto-falantes.
+
+### Parâmetros
+
+- **Phase**: seleciona **Minimum Phase** ou **Linear Phase**.
+- **Taps**: define o comprimento do filtro FIR. Valores maiores melhoram a resolução nos graves e aumentam a carga.
+- **Latency**: adiciona 0, 128, 256, 512 ou 1024 amostras de latência declarada.
+- **Band Count**: seleciona duas, três ou quatro bandas, que exigem respectivamente 4, 6 ou 8 canais de saída.
+- **Crossover Frequencies**: define em ordem crescente os limites entre as bandas.
+- **Slope**: seleciona de 24 a 384 dB/oct para cada crossover.
+
+### Como ler a tela
+
+- O gráfico mostra a resposta-alvo de cada banda ao longo da frequência.
+- Cada cor corresponde ao par de saídas da respectiva banda.
+- A linha de status mostra a latência e a resolução do filtro, ou alerta se o número de canais não for compatível.
 
 ## Matrix
 

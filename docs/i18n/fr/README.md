@@ -119,6 +119,7 @@ La version 2.1.0 d'EffeTune introduit une Bibliothèque musicale fondée sur le 
    - Pour les effets Section : Maj+clic sur le bouton × pour supprimer des sections entières  
 9. Cliquez sur le bouton de routage pour définir les canaux à traiter et les bus d'entrée et de sortie  
    - [Plus d'informations sur les fonctions de bus](bus-function.md)
+10. Pour régler précisément un curseur, maintenez la touche Maj enfoncée pendant que vous le faites glisser ; la valeur change alors d'une unité minimale à la fois
 
 ### Utilisation des préréglages
 
@@ -302,6 +303,7 @@ Si le souci persiste, signalez-le sur [GitHub Issues](https://github.com/Frieve-
 | Analyzer  | Stereo Meter      | Visualise l'équilibre stéréo et la corrélation entre canaux              | [Détails](plugins/analyzer.md#stereo-meter)             |
 | Basics    | Channel Divider   | Divise le signal stéréo en bandes de fréquences et envoie chaque bande vers des paires de sorties stéréo séparées | [Détails](plugins/basics.md#channel-divider)            |
 | Basics    | DC Offset         | Ajustement du décalage continu                                            | [Détails](plugins/basics.md#dc-offset)                  |
+| Basics    | FIR Crossover     | Filtre répartiteur FIR qui achemine des bandes à forte pente vers des paires de sorties stéréo | [Détails](plugins/basics.md#fir-crossover) |
 | Basics    | Matrix            | Routage et mixage des canaux audio avec un contrôle flexible             | [Détails](plugins/basics.md#matrix)                     |
 | Basics    | MultiChannel Panel| Panneau de contrôle pour plusieurs canaux avec volume, mute, solo et délai | [Détails](plugins/basics.md#multichannel-panel)        |
 | Basics    | Mute              | Silence complètement le signal audio                                     | [Détails](plugins/basics.md#mute)                       |
@@ -323,10 +325,12 @@ Si le souci persiste, signalez-le sur [GitHub Issues](https://github.com/Frieve-
 | EQ        | 15Band GEQ | Égaliseur graphique 15 bandes | [Détails](plugins/eq.md#15band-geq) |
 | EQ        | 15Band PEQ | Égaliseur paramétrique 15 bandes pour des réglages d'écoute détaillés | [Détails](plugins/eq.md#15band-peq) |
 | EQ        | 5Band Dynamic EQ | Égaliseur dynamique 5 bandes avec ajustement des fréquences basé sur un seuil | [Détails](plugins/eq.md#5band-dynamic-eq) |
+| EQ        | 5Band FIR PEQ | Égaliseur paramétrique 5 bandes à filtrage FIR Minimum Phase ou Linear Phase | [Détails](plugins/eq.md#5band-fir-peq) |
 | EQ        | 5Band PEQ | Égaliseur 5 bandes flexible pour modeler graves, médiums et aigus | [Détails](plugins/eq.md#5band-peq) |
 | EQ        | Band Pass Filter | Concentrez-vous sur des fréquences spécifiques | [Détails](plugins/eq.md#band-pass-filter) |
 | EQ        | Comb Filter | Ajoute une coloration déphasée, creuse ou métallique | [Détails](plugins/eq.md#comb-filter) |
 | EQ        | Earphone Cable Sim | Permet de vérifier à quel point les variations de réponse en fréquence dues aux câbles d'écouteurs ordinaires restent généralement faibles | [Détails](plugins/eq.md#earphone-cable-sim) |
+| EQ        | Group Delay EQ | Règle le retard de chaque bande de fréquence sans modifier le timbre | [Détails](plugins/eq.md#group-delay-eq) |
 | EQ        | Hi Pass Filter | Élimine avec précision les basses indésirables | [Détails](plugins/eq.md#hi-pass-filter) |
 | EQ        | Lo Pass Filter | Élimine avec précision les hautes fréquences indésirables | [Détails](plugins/eq.md#lo-pass-filter) |
 | EQ        | Loudness Equalizer | Correction de l'équilibre fréquentiel pour l'écoute à faible volume | [Détails](plugins/eq.md#loudness-equalizer) |
@@ -342,6 +346,7 @@ Si le souci persiste, signalez-le sur [GitHub Issues](https://github.com/Frieve-
 | Lo-Fi     | Hum Generator | Ajoute une ambiance de ronflement électrique 50/60 Hz contrôlable pour une écoute vintage/lo-fi | [Détails](plugins/lofi.md#hum-generator) |
 | Lo-Fi     | Noise Blender | Ajoute une texture de bruit de fond réglable pour une ambiance lo-fi | [Détails](plugins/lofi.md#noise-blender) |
 | Lo-Fi     | Simple Jitter | Simulation de gigue numérique | [Détails](plugins/lofi.md#simple-jitter) |
+| Lo-Fi     | SW Radio Simulator | Fait passer la musique dans une chaîne modélisée d'émission en ondes courtes, de propagation ionosphérique et de réception | [Détails](plugins/lofi.md#sw-radio-simulator) |
 | Lo-Fi     | Vinyl Artifacts | Ajoute des pops, crépitements, souffle, rumble et fuite de bruit stéréo façon vinyle | [Détails](plugins/lofi.md#vinyl-artifacts) |
 | Lo-Fi     | Vinyl Simulator | Grave le signal dans un sillon modélisé puis le lit avec un modèle physique de pointe | [Détails](plugins/lofi.md#vinyl-simulator) |
 | Modulation | Doppler Distortion | Simule les changements naturels et dynamiques du son causés par de subtiles oscillations du cône de haut-parleur | [Détails](plugins/modulation.md#doppler-distortion) |

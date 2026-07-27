@@ -92,9 +92,12 @@ function testCaseFromMetadata(metadata) {
 }
 
 async function nativeDirectReferenceHash(repoRoot, referenceEngine) {
-  // The IR v1 identity predates per-engine hashing; a semantic change requires a new version.
+  // These v1 identities predate per-engine hashing; a semantic change requires a new version.
   if (referenceEngine === 'native-ir-direct-double-v1') {
     return 'ebb984943707d4c0ba8839367722c6250b22bea01dd7479fca2a5b2e720244d7';
+  }
+  if (referenceEngine === 'native-room-eq-direct-double-v1') {
+    return '83045565caf287233033c9a0221826e637f07068df1af63eb59cb246b274133f';
   }
   const source = await fs.readFile(path.join(repoRoot, 'dsp', 'test', 'parity_runner.cpp'), 'utf8');
   return crypto.createHash('sha256').update(source.replace(/\r\n?/g, '\n')).digest('hex');

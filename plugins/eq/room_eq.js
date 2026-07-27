@@ -4,6 +4,8 @@ const ROOM_EQ_ADDITIONAL_EQ_FILTER_TYPES = [
     { id: 'ls', name: 'LowShelv' },
     { id: 'hs', name: 'HighShel' }
 ];
+const ROOM_EQ_PHASE_LOW_MIN = 20;
+const ROOM_EQ_PHASE_LOW_MAX = 20000;
 
 class RoomEqAdditionalEqEditor {
     constructor({
@@ -783,6 +785,8 @@ class RoomEqPlugin extends PluginBase {
         this.fl = 20;
         this.fh = 16000;
         this.dw = 6;
+        this.pa = true;
+        this.pl = 500;
         this.mb = 6;
         this.cr = 100;
         this.pr = 100;
@@ -822,10 +826,11 @@ class RoomEqPlugin extends PluginBase {
         this._measurementRow = null;
         this._additionalEqEditor = null;
         this._phaseCorrectionControl = null;
+        this._phaseLowControl = null;
         this._referencePointSelect = null;
         this._responseView = 'frequency';
         this._responseViewElements = null;
-        this._impulseBeforeLegendHover = null;
+        this._beforeLegendHover = null;
         this._visibilityHandler = () => {
             if (!this._disposed && document.visibilityState === 'visible') {
                 this._refreshMeasurements(true);
@@ -916,6 +921,8 @@ class RoomEqPlugin extends PluginBase {
             fl: this.fl,
             fh: this.fh,
             dw: this.dw,
+            pa: this.pa,
+            pl: this.pl,
             mb: this.mb,
             cr: this.cr,
             pr: this.pr,
@@ -946,6 +953,25 @@ class RoomEqPlugin extends PluginBase {
         if (params.fl !== undefined) this.fl = this.parseFiniteNumber(params.fl, 20, 1000, this.fl);
         if (params.fh !== undefined) this.fh = this.parseFiniteNumber(params.fh, 1000, 20000, this.fh);
         if (params.dw !== undefined) this.dw = this.parseFiniteNumber(params.dw, 1, 50, this.dw);
+        if (params.pa !== undefined) {
+            const auto = params.pa === true || params.pa === 1 ||
+                params.pa === 'true' || params.pa === '1';
+            if (this.pa && !auto && params.pl === undefined) {
+                this.pl = Math.round(this._automaticPhaseLowFrequency());
+            }
+            this.pa = auto;
+        }
+        if (params.pl !== undefined) {
+            this.pl = Math.round(this.parseFiniteNumber(
+                params.pl,
+                ROOM_EQ_PHASE_LOW_MIN,
+                ROOM_EQ_PHASE_LOW_MAX,
+                this.pl
+            ));
+        }
+        if (!this.pa) {
+            this.pl = Math.max(this.pl, this._manualPhaseLowMinimumFrequency());
+        }
         if (params.mb !== undefined) this.mb = this.parseFiniteNumber(params.mb, 0, 18, this.mb);
         if (params.cr !== undefined) {
             this.cr = Math.round(this.parseFiniteNumber(params.cr, 0, 100, this.cr));
@@ -1001,7 +1027,8 @@ class RoomEqPlugin extends PluginBase {
 
     _designSignature() {
         return JSON.stringify([
-            this.pm, this.tp, this.sm, this.fl, this.fh, this.dw, this.mb, this.cr, this.pr, this.rp,
+            this.pm, this.tp, this.sm, this.fl, this.fh, this.dw, this.pa, this.pl,
+            this.mb, this.cr, this.pr, this.rp,
             this.eqBands, this.measurementId, this._sampleRate, this._outputChannelCount, this.channel
         ]);
     }
@@ -1022,6 +1049,77 @@ class RoomEqPlugin extends PluginBase {
         const inputs = this._phaseCorrectionControl?.querySelectorAll?.('input') || [];
         for (const input of inputs) input.disabled = disabled;
         if (this._referencePointSelect) this._referencePointSelect.disabled = disabled;
+        this._syncPhaseLowControl();
+    }
+
+    _automaticPhaseLowFrequency() {
+        return Math.max(this.fl, 3000 / this.dw);
+    }
+
+    _phaseLowDisplayFrequency() {
+        return this.pa ? this._automaticPhaseLowFrequency() : this.pl;
+    }
+
+    _manualPhaseLowMinimumFrequency() {
+        return Math.max(ROOM_EQ_PHASE_LOW_MIN, Math.ceil(1000 / this.dw));
+    }
+
+    _syncPhaseLowControl() {
+        const control = this._phaseLowControl;
+        if (!control) return;
+        const value = Math.max(
+            ROOM_EQ_PHASE_LOW_MIN,
+            Math.min(ROOM_EQ_PHASE_LOW_MAX, this._phaseLowDisplayFrequency())
+        );
+        const logMin = Math.log10(ROOM_EQ_PHASE_LOW_MIN);
+        const logRange = Math.log10(ROOM_EQ_PHASE_LOW_MAX) - logMin;
+        control.slider.value = (Math.log10(value) - logMin) / logRange * 100;
+        window.uiManager?.refreshRangeFillStyling?.(control.slider);
+        control.valueInput.value = String(Math.round(value));
+        control.valueInput.min = String(this._manualPhaseLowMinimumFrequency());
+        control.auto.checked = this.pa;
+        const unavailable = this.pm !== 'full';
+        control.auto.disabled = unavailable;
+        control.slider.disabled = unavailable || this.pa;
+        control.valueInput.disabled = unavailable || this.pa;
+    }
+
+    _createPhaseLowControl() {
+        const row = this.createLogarithmicParameterControl(
+            this._t('roomEq.parameter.phaseLow', 'Phase Low'),
+            ROOM_EQ_PHASE_LOW_MIN,
+            ROOM_EQ_PHASE_LOW_MAX,
+            1,
+            this._phaseLowDisplayFrequency(),
+            value => this.setParameters({ pl: value }),
+            'Hz'
+        );
+        row.classList.add('room-eq-phase-low-row');
+        const [slider, valueInput] = row.querySelectorAll('input');
+        const autoLabel = document.createElement('label');
+        autoLabel.className = 'room-eq-phase-low-auto';
+        const auto = document.createElement('input');
+        auto.type = 'checkbox';
+        auto.id = `room-eq-phase-low-auto-${this.id}`;
+        auto.name = auto.id;
+        auto.autocomplete = 'off';
+        auto.addEventListener('change', () => {
+            this.setParameters({
+                pa: auto.checked,
+                ...(!auto.checked && { pl: Math.round(this._automaticPhaseLowFrequency()) })
+            });
+        });
+        autoLabel.htmlFor = auto.id;
+        autoLabel.append(
+            auto,
+            document.createTextNode(this._t('roomEq.option.auto', 'Auto'))
+        );
+        row.insertBefore(autoLabel, valueInput);
+        this._phaseLowControl = { slider, valueInput, auto };
+        slider.addEventListener('input', () => this._syncPhaseLowControl());
+        valueInput.addEventListener('input', () => this._syncPhaseLowControl());
+        this._syncPhaseLowControl();
+        return row;
     }
 
     _renderReferencePoints(measurement, allowFallback = true) {
@@ -1163,6 +1261,7 @@ class RoomEqPlugin extends PluginBase {
             lowFrequency: this.fl,
             highFrequency: this.fh,
             directWindowMs: this.dw,
+            phaseLowFrequency: this.pa ? null : this.pl,
             maxBoostDb: this.mb,
             correctionAmount: this.cr / 100,
             phaseCorrectionAmount: this.pr / 100,
@@ -1672,11 +1771,15 @@ class RoomEqPlugin extends PluginBase {
         for (const option of [
             {
                 value: 'frequency',
-                label: this._t('roomEq.graph.frequencyResponse', 'Frequency Response')
+                label: this._t('roomEq.graph.frequency', 'Frequency')
+            },
+            {
+                value: 'phase',
+                label: this._t('roomEq.graph.phase', 'Phase')
             },
             {
                 value: 'impulse',
-                label: this._t('roomEq.graph.impulseResponse', 'Impulse Response')
+                label: this._t('roomEq.graph.impulse', 'Impulse')
             }
         ]) {
             const label = document.createElement('label');
@@ -1693,6 +1796,26 @@ class RoomEqPlugin extends PluginBase {
             controls.appendChild(label);
             inputs[option.value] = input;
         }
+
+        const phaseGrid = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        phaseGrid.setAttribute('class', 'room-eq-phase-grid');
+        phaseGrid.setAttribute('width', '100%');
+        phaseGrid.setAttribute('height', '100%');
+        const phaseResponse = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        phaseResponse.setAttribute('class', 'room-eq-phase-response');
+        phaseResponse.setAttribute('width', '100%');
+        phaseResponse.setAttribute('height', '100%');
+        phaseResponse.setAttribute('preserveAspectRatio', 'none');
+        phaseResponse.setAttribute(
+            'aria-label',
+            this._t('roomEq.graph.phaseResponse', 'Phase Response')
+        );
+        const phaseUnavailable = document.createElement('div');
+        phaseUnavailable.className = 'room-eq-phase-unavailable';
+        phaseUnavailable.textContent = this._t(
+            'roomEq.graph.phaseUnavailable',
+            'Phase data is unavailable because this measurement has no impulse response.'
+        );
 
         const impulseGrid = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         impulseGrid.setAttribute('class', 'room-eq-impulse-grid');
@@ -1720,32 +1843,39 @@ class RoomEqPlugin extends PluginBase {
             className,
             labelText,
             frequencySelector,
+            phaseSelector,
             impulseSelector,
+            hiddenPhaseSelector,
             hiddenImpulseSelector
         ] of [
             [
                 'room-eq-response-legend-room',
                 'Room EQ',
                 '.room-eq-base-response-path',
+                null,
                 null
             ],
             [
                 'room-eq-response-legend-total',
                 'Total EQ',
                 '.room-eq-combined-response-path',
+                null,
                 null
             ],
             [
                 'room-eq-response-legend-before',
                 'Before',
                 '.room-eq-measured-response-path',
+                '.room-eq-phase-before',
                 '.room-eq-impulse-before',
+                '.room-eq-phase-after',
                 '.room-eq-impulse-after'
             ],
             [
                 'room-eq-response-legend-after',
                 'After',
                 '.room-eq-corrected-response-path',
+                '.room-eq-phase-after',
                 '.room-eq-impulse-after'
             ]
         ]) {
@@ -1758,18 +1888,25 @@ class RoomEqPlugin extends PluginBase {
             const emphasis = { restore: null };
             item.addEventListener('mouseenter', () => {
                 emphasis.restore?.();
-                const impulseView = this._responseView === 'impulse';
-                const container = impulseView ? impulseResponse : editor.responseSvg;
-                const selector = impulseView ? impulseSelector : frequencySelector;
-                const hiddenSelector = impulseView ? hiddenImpulseSelector : null;
+                const view = this._responseView;
+                const container = view === 'phase'
+                    ? phaseResponse
+                    : view === 'impulse' ? impulseResponse : editor.responseSvg;
+                const selector = view === 'phase'
+                    ? phaseSelector
+                    : view === 'impulse' ? impulseSelector : frequencySelector;
+                const hiddenSelector = view === 'phase'
+                    ? hiddenPhaseSelector
+                    : view === 'impulse' ? hiddenImpulseSelector : null;
                 emphasis.restore = this._emphasizeResponsePath(
                     container,
                     selector,
                     hiddenSelector
                 );
-                if (impulseView && hiddenSelector) {
-                    this._impulseBeforeLegendHover = {
+                if ((view === 'phase' || view === 'impulse') && hiddenSelector) {
+                    this._beforeLegendHover = {
                         owner: item,
+                        view,
                         container,
                         selector,
                         hiddenSelector,
@@ -1780,19 +1917,31 @@ class RoomEqPlugin extends PluginBase {
             item.addEventListener('mouseleave', () => {
                 emphasis.restore?.();
                 emphasis.restore = null;
-                if (this._impulseBeforeLegendHover?.owner === item) {
-                    this._impulseBeforeLegendHover = null;
+                if (this._beforeLegendHover?.owner === item) {
+                    this._beforeLegendHover = null;
                 }
             });
             legend.appendChild(item);
         }
 
-        graph.append(impulseGrid, impulseResponse, unavailable, legend, controls);
+        graph.append(
+            phaseGrid,
+            phaseResponse,
+            phaseUnavailable,
+            impulseGrid,
+            impulseResponse,
+            unavailable,
+            legend,
+            controls
+        );
         this._responseViewElements = {
             graph,
             controls,
             legend,
             inputs,
+            phaseGrid,
+            phaseResponse,
+            phaseUnavailable,
             impulseGrid,
             impulseResponse,
             unavailable
@@ -1801,9 +1950,15 @@ class RoomEqPlugin extends PluginBase {
     }
 
     _setResponseView(view) {
-        this._responseView = view === 'impulse' ? 'impulse' : 'frequency';
+        this._responseView = ['frequency', 'phase', 'impulse'].includes(view)
+            ? view
+            : 'frequency';
         const elements = this._responseViewElements;
         if (!elements) return;
+        elements.graph.classList.toggle(
+            'room-eq-phase-view',
+            this._responseView === 'phase'
+        );
         elements.graph.classList.toggle(
             'room-eq-impulse-view',
             this._responseView === 'impulse'
@@ -1811,14 +1966,15 @@ class RoomEqPlugin extends PluginBase {
         for (const [value, input] of Object.entries(elements.inputs)) {
             input.checked = value === this._responseView;
         }
-        if (this._responseView === 'impulse') this._drawImpulseResponse();
+        if (this._responseView === 'phase') this._drawPhaseResponse();
+        else if (this._responseView === 'impulse') this._drawImpulseResponse();
         else {
             this._additionalEqEditor?.updateMarkers();
             this._additionalEqEditor?.updateResponse();
         }
     }
 
-    _appendImpulseSvgElement(parent, name, attributes, text = '') {
+    _appendResponseSvgElement(parent, name, attributes, text = '') {
         const element = document.createElementNS('http://www.w3.org/2000/svg', name);
         for (const [key, value] of Object.entries(attributes)) {
             element.setAttribute(key, String(value));
@@ -1850,15 +2006,113 @@ class RoomEqPlugin extends PluginBase {
         };
     }
 
-    _applyImpulseBeforeLegendHover(container = null) {
-        const hover = this._impulseBeforeLegendHover;
-        if (!hover || (container && hover.container !== container)) return;
+    _applyBeforeLegendHover(view, container = null) {
+        const hover = this._beforeLegendHover;
+        if (!hover || hover.view !== view ||
+            (container && hover.container !== container)) {
+            return;
+        }
         hover.emphasis.restore?.();
         hover.emphasis.restore = this._emphasizeResponsePath(
             hover.container,
             hover.selector,
             hover.hiddenSelector
         );
+    }
+
+    _phasePath(frequencies, phases, width, height) {
+        if (!frequencies?.length || frequencies.length !== phases?.length ||
+            width <= 0 || height <= 0) {
+            return '';
+        }
+        const path = [];
+        let previousPhase = null;
+        for (let index = 0; index < phases.length; index += 1) {
+            const frequency = frequencies[index];
+            const phase = phases[index];
+            if (!Number.isFinite(frequency) || !Number.isFinite(phase)) {
+                previousPhase = null;
+                continue;
+            }
+            const boundedPhase = phase < -180 ? -180 : phase > 180 ? 180 : phase;
+            const x = this._additionalEqEditor.freqToX(frequency) * width / 100;
+            const y = (180 - boundedPhase) / 360 * height;
+            const command = previousPhase === null ||
+                Math.abs(boundedPhase - previousPhase) > 180 ? 'M' : 'L';
+            path.push(`${command} ${x.toFixed(2)},${y.toFixed(2)}`);
+            previousPhase = boundedPhase;
+        }
+        return path.join(' ');
+    }
+
+    _drawPhaseResponse() {
+        const elements = this._responseViewElements;
+        if (!elements || this._responseView !== 'phase') return;
+        const { phaseGrid, phaseResponse, phaseUnavailable } = elements;
+        const width = phaseResponse.clientWidth;
+        const height = phaseResponse.clientHeight;
+        if (!width || !height) return;
+        phaseGrid.replaceChildren();
+        phaseResponse.replaceChildren();
+        this._applyBeforeLegendHover('phase', phaseResponse);
+        phaseGrid.setAttribute('viewBox', `0 0 ${width} ${height}`);
+        phaseGrid.setAttribute('preserveAspectRatio', 'none');
+        phaseResponse.setAttribute('viewBox', `0 0 ${width} ${height}`);
+
+        const frequencyTicks = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+        for (const frequency of frequencyTicks) {
+            const x = this._additionalEqEditor.freqToX(frequency) * width / 100;
+            this._appendResponseSvgElement(phaseGrid, 'line', {
+                x1: x,
+                x2: x,
+                y1: 0,
+                y2: height
+            });
+            this._appendResponseSvgElement(phaseGrid, 'text', {
+                x,
+                y: height - 4,
+                'text-anchor': 'middle'
+            }, frequency >= 1000 ? `${frequency / 1000}k` : String(frequency));
+        }
+        for (const phase of [180, 90, 0, -90, -180]) {
+            const y = (180 - phase) / 360 * height;
+            this._appendResponseSvgElement(phaseGrid, 'line', {
+                x1: 0,
+                x2: width,
+                y1: y,
+                y2: y
+            });
+            this._appendResponseSvgElement(phaseGrid, 'text', {
+                x: 2,
+                y: phase === 180 ? 5 : phase === -180 ? height - 5 : y,
+                'dominant-baseline': 'middle'
+            }, `${phase}°`);
+        }
+
+        const preview = this._lastDesign?.previews?.find(Boolean);
+        const phasePreview = preview?.phaseResponse;
+        const hasPreview = preview?.frequencies?.length > 1 &&
+            preview.frequencies.length === phasePreview?.before?.length &&
+            phasePreview.before.length === phasePreview.after?.length;
+        phaseUnavailable.hidden = hasPreview;
+        if (!hasPreview) return;
+        for (const [phases, className] of [
+            [phasePreview.before, 'room-eq-phase-before'],
+            [phasePreview.after, 'room-eq-phase-after']
+        ]) {
+            const pathData = this._phasePath(
+                preview.frequencies,
+                phases,
+                width,
+                height
+            );
+            if (!pathData) continue;
+            this._appendResponseSvgElement(phaseResponse, 'path', {
+                d: pathData,
+                class: className
+            });
+        }
+        this._applyBeforeLegendHover('phase', phaseResponse);
     }
 
     _waveformPath(samples, width, height, peak, left = 0) {
@@ -1929,7 +2183,7 @@ class RoomEqPlugin extends PluginBase {
         if (!width || !height) return;
         impulseGrid.replaceChildren();
         impulseResponse.replaceChildren();
-        this._applyImpulseBeforeLegendHover(impulseResponse);
+        this._applyBeforeLegendHover('impulse', impulseResponse);
         impulseGrid.setAttribute('viewBox', `0 0 ${width} ${height}`);
         impulseGrid.setAttribute('preserveAspectRatio', 'none');
         impulseResponse.setAttribute('viewBox', `0 0 ${width} ${height}`);
@@ -1946,14 +2200,14 @@ class RoomEqPlugin extends PluginBase {
         for (let index = 0; index < timeTicks.length; index += 1) {
             const time = timeTicks[index];
             const x = timeToX(time);
-            this._appendImpulseSvgElement(impulseGrid, 'line', {
+            this._appendResponseSvgElement(impulseGrid, 'line', {
                 x1: x,
                 x2: x,
                 y1: 0,
                 y2: height
             });
             const digits = timeTickInterval < 1 ? 1 : 0;
-            this._appendImpulseSvgElement(impulseGrid, 'text', {
+            this._appendResponseSvgElement(impulseGrid, 'text', {
                 x,
                 y: height - 4,
                 'text-anchor': 'middle'
@@ -1961,13 +2215,13 @@ class RoomEqPlugin extends PluginBase {
         }
         for (const [value, label] of [[0.25, '0.5'], [0.5, '0'], [0.75, '-0.5']]) {
             const y = value * height;
-            this._appendImpulseSvgElement(impulseGrid, 'line', {
+            this._appendResponseSvgElement(impulseGrid, 'line', {
                 x1: 0,
                 x2: width,
                 y1: y,
                 y2: y
             });
-            this._appendImpulseSvgElement(impulseGrid, 'text', {
+            this._appendResponseSvgElement(impulseGrid, 'text', {
                 x: 2,
                 y,
                 'dominant-baseline': 'middle'
@@ -1998,12 +2252,12 @@ class RoomEqPlugin extends PluginBase {
                 timePlotLeft
             );
             if (!pathData) continue;
-            this._appendImpulseSvgElement(impulseResponse, 'path', {
+            this._appendResponseSvgElement(impulseResponse, 'path', {
                 d: pathData,
                 class: className
             });
         }
-        this._applyImpulseBeforeLegendHover(impulseResponse);
+        this._applyBeforeLegendHover('impulse', impulseResponse);
     }
 
     createUI() {
@@ -2057,6 +2311,7 @@ class RoomEqPlugin extends PluginBase {
             1000, 20000, 10, this.fh, value => this.setParameters({ fh: value }), 'Hz'));
         container.appendChild(this.createParameterControl(this._t('roomEq.parameter.directWindow', 'Direct Window'),
             1, 50, 0.1, this.dw, value => this.setParameters({ dw: value }), 'ms'));
+        container.appendChild(this._createPhaseLowControl());
         container.appendChild(this.createParameterControl(this._t('roomEq.parameter.maxBoost', 'Max Boost'),
             0, 18, 0.1, this.mb, value => this.setParameters({ mb: value }), 'dB'));
         container.appendChild(this.createParameterControl(
@@ -2106,6 +2361,7 @@ class RoomEqPlugin extends PluginBase {
         );
         this._additionalEqEditor.updateResponse = () => {
             updateResponse();
+            this._drawPhaseResponse();
             this._drawImpulseResponse();
         };
         this._syncCorrectionPreview();
@@ -2144,12 +2400,13 @@ class RoomEqPlugin extends PluginBase {
         this._designer = null;
         this._measurementStore = null;
         this._measurementRow = null;
-        this._impulseBeforeLegendHover?.emphasis.restore?.();
-        this._impulseBeforeLegendHover = null;
+        this._beforeLegendHover?.emphasis.restore?.();
+        this._beforeLegendHover = null;
         this._additionalEqEditor?.dispose();
         this._additionalEqEditor = null;
         this._responseViewElements = null;
         this._phaseCorrectionControl = null;
+        this._phaseLowControl = null;
         this._referencePointSelect = null;
         this._statusElement = null;
         this._latencyElement = null;

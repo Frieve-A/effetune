@@ -1227,6 +1227,10 @@ class PluginBase {
         slider.step = 0.1;
         slider.value = linearToLogSlider(value);
         slider.autocomplete = "off";
+        slider.dataset.rangeFineTarget = valueId;
+        slider.dataset.rangeFineMin = String(min);
+        slider.dataset.rangeFineMax = String(max);
+        slider.dataset.rangeFineStep = String(step);
 
         const valueInput = document.createElement('input');
         valueInput.type = 'number';

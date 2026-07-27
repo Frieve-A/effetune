@@ -152,6 +152,64 @@ test('Room EQ defaults Phase to Minimum', () => {
     plugin.cleanup();
 });
 
+test('Room EQ keeps Phase Low automatic by default and supports a manual lower edge', () => {
+    const { Plugin } = loadPlugin();
+    const plugin = new Plugin();
+    assert.equal(plugin.pa, true);
+    assert.equal(plugin.pl, 500);
+    assert.equal(plugin._automaticPhaseLowFrequency(), 500);
+    assert.equal(plugin._designConfig().phaseLowFrequency, null);
+
+    plugin.setParameters({ dw: 10, pa: false });
+    assert.equal(plugin.pa, false);
+    assert.equal(plugin.pl, 300);
+    assert.equal(plugin._designConfig().phaseLowFrequency, 300);
+
+    plugin.setParameters({ pl: 166.6 });
+    assert.equal(plugin.pl, 167);
+    plugin.setParameters({ dw: 6, pl: 100 });
+    assert.equal(plugin.pl, 167);
+    plugin.setParameters({ fl: 800, pl: 200 });
+    assert.equal(plugin.pl, 200);
+    assert.equal(plugin._designConfig().phaseLowFrequency, 200);
+    plugin.setParameters({ pa: 'true' });
+    assert.equal(plugin.pa, true);
+    assert.equal(plugin._designConfig().phaseLowFrequency, null);
+    plugin.cleanup();
+});
+
+test('Room EQ keeps the automatic Phase Low slider fill synced with Direct Window', () => {
+    const { Plugin, context } = loadPlugin();
+    const plugin = new Plugin();
+    const slider = { disabled: false, value: '' };
+    plugin._phaseLowControl = {
+        slider,
+        valueInput: { disabled: false, value: '' },
+        auto: { checked: false, disabled: false }
+    };
+    const refreshed = [];
+    context.window.uiManager = {
+        refreshRangeFillStyling(control) {
+            refreshed.push(control);
+        }
+    };
+
+    plugin.setParameters({ dw: 10 });
+
+    assert.equal(plugin._phaseLowDisplayFrequency(), 300);
+    assert.ok(Number(slider.value) < 50);
+    assert.equal(refreshed.at(-1), slider);
+    plugin.cleanup();
+});
+
+test('Room EQ lays out Phase Low, Auto, and its value input on one desktop row', () => {
+    assert.match(pluginSource, /roomEq\.parameter\.phaseLow', 'Phase Low'/);
+    assert.match(pluginSource, /roomEq\.option\.auto', 'Auto'/);
+    assert.match(pluginSource, /classList\.add\('room-eq-phase-low-row'\)/);
+    assert.match(pluginCss,
+        /body:not\(\.layout-mobile\) \.room-eq-phase-low-row \{ flex-wrap: nowrap; \}/);
+});
+
 test('Room EQ renders independent level and phase correction controls', () => {
     assert.match(pluginSource,
         /roomEq\.parameter\.levelCorrection', 'Level Correction'\),\s*0, 100, 1, this\.cr/);
@@ -187,11 +245,25 @@ test('Room EQ disables Phase Correction outside Correction mode', () => {
     const plugin = new Plugin();
     const inputs = [{ disabled: false }, { disabled: false }];
     plugin._phaseCorrectionControl = { querySelectorAll: () => inputs };
+    plugin._phaseLowControl = {
+        slider: { disabled: false, value: '' },
+        valueInput: { disabled: false, value: '' },
+        auto: { checked: false, disabled: false }
+    };
 
     plugin._syncPhaseCorrectionControl();
     assert.ok(inputs.every(input => input.disabled));
+    assert.equal(plugin._phaseLowControl.auto.disabled, true);
+    assert.equal(plugin._phaseLowControl.slider.disabled, true);
+    assert.equal(plugin._phaseLowControl.valueInput.disabled, true);
     plugin.setParameters({ pm: 'full' });
     assert.ok(inputs.every(input => !input.disabled));
+    assert.equal(plugin._phaseLowControl.auto.disabled, false);
+    assert.equal(plugin._phaseLowControl.slider.disabled, true);
+    assert.equal(plugin._phaseLowControl.valueInput.disabled, true);
+    plugin.setParameters({ pa: false });
+    assert.equal(plugin._phaseLowControl.slider.disabled, false);
+    assert.equal(plugin._phaseLowControl.valueInput.disabled, false);
     plugin.setParameters({ pm: 'min' });
     assert.ok(inputs.every(input => input.disabled));
     plugin.cleanup();
@@ -247,6 +319,8 @@ test('Room EQ serializes one measurement, common delay, and the selected host ch
         dy0: 1.25,
         cr: 42,
         pr: 73,
+        pa: false,
+        pl: 240,
         rp: 4,
         channel: 'B'
     });
@@ -257,6 +331,8 @@ test('Room EQ serializes one measurement, common delay, and the selected host ch
     assert.equal(serialized.dl, 1.25);
     assert.equal(serialized.cr, 42);
     assert.equal(serialized.pr, 73);
+    assert.equal(serialized.pa, false);
+    assert.equal(serialized.pl, 240);
     assert.equal(serialized.rp, 4);
     assert.equal(serialized.en0, undefined);
     assert.equal(serialized.ce, undefined);
@@ -272,6 +348,8 @@ test('Room EQ serializes one measurement, common delay, and the selected host ch
     assert.equal(restored.delayMs, 1.25);
     assert.equal(restored.cr, 42);
     assert.equal(restored.pr, 73);
+    assert.equal(restored.pa, false);
+    assert.equal(restored.pl, 240);
     assert.equal(restored.rp, 4);
     plugin.cleanup();
     restored.cleanup();
@@ -404,15 +482,22 @@ test('Room EQ graph draws measured, correction, and corrected response curves', 
     editor.dispose();
 });
 
-test('Room EQ offers frequency and impulse response graph views', () => {
-    assert.match(pluginSource, /value: 'frequency',\s+label: this\._t\(\s*'roomEq\.graph\.frequencyResponse'/);
-    assert.match(pluginSource, /value: 'impulse',\s+label: this\._t\('roomEq\.graph\.impulseResponse'/);
+test('Room EQ offers short Frequency, Phase, and Impulse graph view captions', () => {
+    assert.match(pluginSource,
+        /value: 'frequency',\s+label: this\._t\(\s*'roomEq\.graph\.frequency', 'Frequency'/);
+    assert.match(pluginSource,
+        /value: 'phase',\s+label: this\._t\('roomEq\.graph\.phase', 'Phase'/);
+    assert.match(pluginSource,
+        /value: 'impulse',\s+label: this\._t\('roomEq\.graph\.impulse', 'Impulse'/);
+    assert.match(pluginCss, /\.room-eq-phase-view \.room-eq-additional-eq-grid/);
     assert.match(pluginCss, /\.room-eq-impulse-view \.room-eq-additional-eq-grid/);
+    assert.match(pluginCss, /\.room-eq-phase-response \.room-eq-phase-before/);
+    assert.match(pluginCss, /\.room-eq-phase-response \.room-eq-phase-after/);
     assert.match(pluginCss, /\.room-eq-impulse-response \.room-eq-impulse-before/);
     assert.match(pluginCss, /\.room-eq-impulse-response \.room-eq-impulse-after/);
     assert.match(
         pluginSource,
-        /'room-eq-response-legend-before',[\s\S]*?'\.room-eq-impulse-before',\s*'\.room-eq-impulse-after'/
+        /'room-eq-response-legend-before',[\s\S]*?'\.room-eq-phase-before',\s*'\.room-eq-impulse-before',\s*'\.room-eq-phase-after',\s*'\.room-eq-impulse-after'/
     );
 });
 
@@ -426,6 +511,8 @@ test('Room EQ graph shows a color-matched legend in its upper-right corner', () 
     assert.match(pluginCss, /\.room-eq-response-legend-total \{ color: #00ff00;/);
     assert.match(pluginCss, /\.room-eq-response-legend-before \{ color: #b0b0b0;/);
     assert.match(pluginCss, /\.room-eq-response-legend-after \{ color: #fff;/);
+    assert.match(pluginCss,
+        /\.room-eq-phase-view \.room-eq-response-legend-after,[\s\S]*\.room-eq-impulse-view \.room-eq-response-legend-after \{\s*color: #00ff00;/);
     assert.match(pluginCss,
         /\.room-eq-impulse-view \.room-eq-response-legend-room,[\s\S]*\.room-eq-impulse-view \.room-eq-response-legend-total \{\s*display: none;/);
 });
@@ -491,7 +578,46 @@ test('Room EQ legend emphasis fronts its response, hides an optional competitor,
     assert.match(pluginCss,
         /\.room-eq-additional-eq-response \.room-eq-response-highlighted,[\s\S]*stroke-width: 3\.5;[\s\S]*opacity: 1;/);
     assert.match(pluginCss,
-        /\.room-eq-impulse-response \.room-eq-response-hidden \{\s*display: none;/);
+        /\.room-eq-phase-response \.room-eq-response-hidden,\s*\.room-eq-impulse-response \.room-eq-response-hidden \{\s*display: none;/);
+    plugin.cleanup();
+});
+
+test('Room EQ phase graph uses frequency and phase axes without connecting wrap jumps', () => {
+    const { Plugin } = loadPlugin();
+    const plugin = new Plugin();
+    plugin._additionalEqEditor = {
+        freqToX(frequency) {
+            return (Math.log10(frequency) - Math.log10(10)) /
+                (Math.log10(40000) - Math.log10(10)) * 100;
+        },
+        dispose() {}
+    };
+
+    const pathData = plugin._phasePath(
+        new Float32Array([20, 100, 1000, 10000]),
+        new Float32Array([170, -175, -90, 0]),
+        400,
+        200
+    );
+
+    assert.equal(pathData.match(/\bM\b/g)?.length, 2);
+    assert.equal(pathData.match(/\bL\b/g)?.length, 2);
+    assert.match(pathData, /^M \d+\.\d{2},5\.56 M \d+\.\d{2},197\.22 L /);
+    assert.match(pluginSource, /for \(const phase of \[180, 90, 0, -90, -180\]\)/);
+    assert.match(pluginSource,
+        /const frequencyTicks = \[20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000\]/);
+    assert.match(pluginCss,
+        /\.room-eq-phase-before \{\s*stroke: #b0b0b0;\s*stroke-width: 1;/s);
+    assert.match(pluginCss,
+        /\.room-eq-phase-after \{\s*stroke: #00ff00;\s*stroke-width: 1;/s);
+    assert.match(pluginSource,
+        /const hiddenSelector = view === 'phase'\s*\? hiddenPhaseSelector/);
+    assert.equal(
+        pluginSource.match(
+            /this\._applyBeforeLegendHover\('phase', phaseResponse\)/g
+        )?.length,
+        2
+    );
     plugin.cleanup();
 });
 
@@ -526,7 +652,7 @@ test('Room EQ impulse graph uses one even time interval for the displayed range'
     plugin.cleanup();
 });
 
-test('Room EQ impulse graph draws gray before and white after waveforms', () => {
+test('Room EQ impulse graph draws gray before and green after waveforms', () => {
     const { Plugin, context } = loadPlugin();
     context.document.createElementNS = () => {
         const classes = new Set();
@@ -637,18 +763,19 @@ test('Room EQ impulse graph draws gray before and white after waveforms', () => 
     assert.match(pluginCss,
         /\.room-eq-impulse-before \{\s*stroke: #888;\s*stroke-width: 1;/s);
     assert.match(pluginCss,
-        /\.room-eq-impulse-after \{\s*stroke: #fff;\s*stroke-width: 1;/s);
+        /\.room-eq-impulse-after \{\s*stroke: #00ff00;\s*stroke-width: 1;/s);
 
     const firstBefore = impulseResponse.querySelector('.room-eq-impulse-before');
     const emphasis = { restore: null };
-    plugin._impulseBeforeLegendHover = {
+    plugin._beforeLegendHover = {
         owner: {},
+        view: 'impulse',
         container: impulseResponse,
         selector: '.room-eq-impulse-before',
         hiddenSelector: '.room-eq-impulse-after',
         emphasis
     };
-    plugin._applyImpulseBeforeLegendHover();
+    plugin._applyBeforeLegendHover('impulse');
     assert.equal(firstBefore.classes.has('room-eq-response-highlighted'), true);
     assert.equal(
         impulseResponse.querySelector('.room-eq-impulse-after')

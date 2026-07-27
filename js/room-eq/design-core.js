@@ -7,6 +7,7 @@ import {
 import { resampleWindowedSinc } from '../utils/measurement-dsp/resample.js';
 
 const MIN_MAGNITUDE = 1e-8;
+const IMPULSE_PREVIEW_MAX_FREQUENCY = 20000;
 const QUALITY_WARNING_FILTER_ACCURACY = 'filterAccuracy';
 const QUALITY_WARNING_IMPULSE_RESPONSE_REQUIRED = 'impulseResponseRequired';
 const analysisCache = new Map();
@@ -31,6 +32,16 @@ function realTransform(input) {
 function inverseRealTransform(real, imag, size) {
     return fftBackend?.inverseRealTransform(real, imag, size) ||
         new FFT(size).inverseRealTransform(real, imag);
+}
+
+function bandLimitImpulsePreviewSpectrum(spectrum, sampleRate, fftSize) {
+    const firstFilteredBin = Math.ceil(
+        IMPULSE_PREVIEW_MAX_FREQUENCY * fftSize / sampleRate
+    );
+    for (let bin = firstFilteredBin; bin < spectrum.real.length; bin += 1) {
+        spectrum.real[bin] = 0;
+        spectrum.imag[bin] = 0;
+    }
 }
 
 export function nextPowerOfTwo(value) {
@@ -378,6 +389,13 @@ function correctionWeight(frequency, low, high, upperLimit = Infinity) {
     return 0.5 - 0.5 * Math.cos(Math.PI * phase);
 }
 
+function phaseCorrectionLowFrequency(config) {
+    if (config.phaseLowFrequency === null) {
+        return Math.max(config.lowFrequency, 3000 / config.directWindowMs);
+    }
+    return Math.max(1000 / config.directWindowMs, config.phaseLowFrequency);
+}
+
 export function softLimitBoost(decibels, maximum) {
     const kneeStart = maximum - 1;
     if (decibels <= kneeStart) return decibels;
@@ -425,9 +443,11 @@ function smoothSynthesisValues(values, frequencies, config) {
 }
 
 function directPhaseCorrection(direct, frequencies, config, fftSize) {
+    const low = phaseCorrectionLowFrequency(config);
+    const high = Math.min(config.highFrequency, config.sampleRate * 0.45);
     const cacheKey = [
-        config.lowFrequency,
-        config.highFrequency,
+        low,
+        high,
         config.directWindowMs,
         config.smoothing,
         config.sampleRate,
@@ -435,8 +455,6 @@ function directPhaseCorrection(direct, frequencies, config, fftSize) {
     ].join(':');
     const cached = direct.phaseCorrectionCache?.get(cacheKey);
     if (cached) return cached;
-    const low = Math.max(config.lowFrequency, 3000 / config.directWindowMs);
-    const high = Math.min(config.highFrequency, config.sampleRate * 0.45);
     let first = 0;
     while (first < frequencies.length && frequencies[first] < low) first += 1;
     const inBandMagnitudes = [];
@@ -518,7 +536,7 @@ function consensusDirectPhaseCorrection(directs, frequencies, config, fftSize) {
     }
     const corrections = directs.map(direct =>
         directPhaseCorrection(direct, frequencies, config, fftSize));
-    const low = Math.max(config.lowFrequency, 3000 / config.directWindowMs);
+    const low = phaseCorrectionLowFrequency(config);
     const high = Math.min(config.highFrequency, config.sampleRate * 0.45);
     const upper = Math.min(high * 2 ** (1 / 3), config.sampleRate * 0.48);
     let first = 0;
@@ -772,6 +790,76 @@ function synthesizeFilter(correctionDb, gridFrequencies, config, phaseSource) {
     };
 }
 
+function alignedPhaseOnGrid(samples, alignmentSamples, sampleRate, frequencies, minimumFftSize = 0) {
+    const fftSize = nextPowerOfTwo(
+        samples.length > minimumFftSize ? samples.length : minimumFftSize
+    );
+    const input = new Float64Array(fftSize);
+    for (let index = 0; index < samples.length; index += 1) {
+        let alignedIndex = index - alignmentSamples;
+        if (alignedIndex < 0) alignedIndex += fftSize;
+        input[alignedIndex] = samples[index];
+    }
+    const spectrum = realTransform(input);
+    const sourceFrequencies = new Float64Array(spectrum.real.length - 1);
+    const sourcePhases = new Float64Array(spectrum.real.length - 1);
+    for (let bin = 1; bin < spectrum.real.length; bin += 1) {
+        sourceFrequencies[bin - 1] = bin * sampleRate / fftSize;
+        sourcePhases[bin - 1] = Math.atan2(spectrum.imag[bin], spectrum.real[bin]);
+    }
+    const unwrapped = unwrapPhase(sourcePhases);
+    const result = new Float64Array(frequencies.length);
+    let upper = 1;
+    for (let index = 0; index < frequencies.length; index += 1) {
+        const frequency = frequencies[index];
+        while (upper < sourceFrequencies.length && sourceFrequencies[upper] < frequency) {
+            upper += 1;
+        }
+        if (frequency <= sourceFrequencies[0]) result[index] = unwrapped[0];
+        else if (upper >= sourceFrequencies.length) {
+            result[index] = unwrapped[unwrapped.length - 1];
+        } else {
+            const lowFrequency = sourceFrequencies[upper - 1];
+            const highFrequency = sourceFrequencies[upper];
+            const fraction = (frequency - lowFrequency) / (highFrequency - lowFrequency);
+            result[index] = unwrapped[upper - 1] +
+                fraction * (unwrapped[upper] - unwrapped[upper - 1]);
+        }
+    }
+    return result;
+}
+
+function wrapPhaseDegrees(radians) {
+    let wrapped = radians % (2 * Math.PI);
+    if (wrapped >= Math.PI) wrapped -= 2 * Math.PI;
+    else if (wrapped < -Math.PI) wrapped += 2 * Math.PI;
+    return wrapped * 180 / Math.PI;
+}
+
+function createPhaseResponsePreview(analysis, taps, config, frequencies) {
+    const beforeRadians = alignedPhaseOnGrid(
+        analysis.samples,
+        analysis.onsetIndex,
+        config.sampleRate,
+        frequencies
+    );
+    const filterDelay = config.phase === 'min' ? 0 : taps.length / 2;
+    const filterRadians = alignedPhaseOnGrid(
+        taps,
+        filterDelay,
+        config.sampleRate,
+        frequencies,
+        taps.length * 2
+    );
+    return {
+        before: Float32Array.from(beforeRadians, wrapPhaseDegrees),
+        after: Float32Array.from(
+            beforeRadians,
+            (phase, index) => wrapPhaseDegrees(phase + filterRadians[index])
+        )
+    };
+}
+
 function createImpulseResponsePreview(analysis, taps, config) {
     const previewPrerollMs = 2;
     const previewDurationMs = Math.max(5, config.directWindowMs);
@@ -783,10 +871,6 @@ function createImpulseResponsePreview(analysis, taps, config) {
     ));
     const displaySampleCount = prerollSamples + sampleCount;
     const before = new Float32Array(displaySampleCount);
-    const beforeStart = analysis.onsetIndex - prerollSamples;
-    for (let index = 0; index < displaySampleCount; index += 1) {
-        before[index] = analysis.samples[beforeStart + index] || 0;
-    }
 
     const filterDelay = config.phase === 'min' ? 0 : taps.length / 2;
     const correctedSampleCount = filterDelay + displaySampleCount;
@@ -800,6 +884,12 @@ function createImpulseResponsePreview(analysis, taps, config) {
     const paddedTaps = new Float64Array(fftSize);
     paddedTaps.set(taps);
     const inputSpectrum = realTransform(input);
+    bandLimitImpulsePreviewSpectrum(inputSpectrum, config.sampleRate, fftSize);
+    const filteredInputTime = inverseRealTransform(
+        inputSpectrum.real,
+        inputSpectrum.imag,
+        fftSize
+    );
     const filterSpectrum = realTransform(paddedTaps);
     const correctedReal = new Float64Array(inputSpectrum.real.length);
     const correctedImaginary = new Float64Array(inputSpectrum.imag.length);
@@ -816,6 +906,7 @@ function createImpulseResponsePreview(analysis, taps, config) {
     const after = new Float32Array(displaySampleCount);
     const afterStart = firstValidSample + filterDelay;
     for (let index = 0; index < displaySampleCount; index += 1) {
+        before[index] = filteredInputTime[firstValidSample + index] || 0;
         after[index] = correctedTime[afterStart + index] || 0;
     }
     return {
@@ -837,6 +928,7 @@ function normalizeConfig(config) {
     const phase = ['min', 'lin', 'full'].includes(config.phase) ? config.phase : 'lin';
     const taps = [8192, 16384, 32768, 65536, 131072].includes(config.taps) ? config.taps : 32768;
     const requestedReferencePoint = Number(config.referencePoint);
+    const requestedPhaseLowFrequency = Number(config.phaseLowFrequency);
     return {
         ...config,
         phase,
@@ -846,6 +938,11 @@ function normalizeConfig(config) {
         lowFrequency: Math.max(20, config.lowFrequency ?? 20),
         highFrequency: Math.min(20000, config.highFrequency ?? 16000),
         directWindowMs: Math.max(1, Math.min(50, config.directWindowMs ?? 6)),
+        phaseLowFrequency: config.phaseLowFrequency === null ||
+            config.phaseLowFrequency === undefined ||
+            !Number.isFinite(requestedPhaseLowFrequency)
+            ? null
+            : Math.max(20, Math.min(20000, requestedPhaseLowFrequency)),
         maxBoostDb: Math.max(0, Math.min(18, config.maxBoostDb ?? 6)),
         correctionAmount: Math.max(0, Math.min(1, config.correctionAmount ?? 1)),
         phaseCorrectionAmount: Math.max(0, Math.min(1, config.phaseCorrectionAmount ?? 1)),
@@ -865,6 +962,7 @@ function designCacheKey(config, sources) {
         lowFrequency: config.lowFrequency,
         highFrequency: config.highFrequency,
         directWindowMs: config.directWindowMs,
+        phaseLowFrequency: config.phaseLowFrequency,
         maxBoostDb: config.maxBoostDb,
         correctionAmount: config.correctionAmount,
         phaseCorrectionAmount: config.phaseCorrectionAmount,
@@ -917,6 +1015,10 @@ function cloneDesignResult(result) {
             targetDb: Float32Array.from(preview.targetDb),
             predictedDb: Float32Array.from(preview.predictedDb),
             baseCorrectionDb: Float32Array.from(preview.baseCorrectionDb),
+            phaseResponse: preview.phaseResponse ? {
+                before: Float32Array.from(preview.phaseResponse.before),
+                after: Float32Array.from(preview.phaseResponse.after)
+            } : null,
             impulseResponse: preview.impulseResponse ? {
                 sampleRate: preview.impulseResponse.sampleRate,
                 startMs: preview.impulseResponse.startMs,
@@ -1070,6 +1172,14 @@ export function designRoomEq(request) {
             targetDb: Float32Array.from(targetDb),
             predictedDb: Float32Array.from(predictedDb),
             baseCorrectionDb: Float32Array.from(baseCorrectionDb),
+            phaseResponse: referenceAnalysis
+                ? createPhaseResponsePreview(
+                    referenceAnalysis,
+                    synthesis.taps,
+                    config,
+                    frequencies
+                )
+                : null,
             impulseResponse: referenceAnalysis
                 ? createImpulseResponsePreview(referenceAnalysis, synthesis.taps, config)
                 : null

@@ -454,7 +454,11 @@ bool runDirectReference(const std::string &type, const Control &control,
   constexpr std::uint32_t kTopologyMatrix = 4u;
   const bool room_eq = type == "RoomEqPlugin";
   const bool ir_reverb = type == "IRReverbPlugin";
-  if (!room_eq && !ir_reverb) {
+  const bool fir_crossover = type == "FIRCrossoverPlugin";
+  // Both kernels convolve one mono impulse response into every channel and report the head
+  // block plus the filter delay as latency, so they share one reference path.
+  const bool mono_fir = type == "FiveBandFIRPEQPlugin" || type == "GroupDelayEqPlugin";
+  if (!room_eq && !ir_reverb && !mono_fir && !fir_crossover) {
     std::fputs("Direct reference is not available for this kernel\n", stderr);
     return false;
   }
@@ -474,11 +478,21 @@ bool runDirectReference(const std::string &type, const Control &control,
   const bool matrix_topology = asset.begin.topology == kTopologyMatrix && path_count >= 1u &&
                                path_count <= 8u && asset.begin.inputCount >= 1u &&
                                asset.begin.inputCount <= path_count;
-  const std::size_t expected_params = room_eq ? 4u : 6u;
+  const std::size_t expected_params = room_eq ? 4u : ir_reverb ? 6u : mono_fir ? 2u : 3u;
   const bool valid_room_eq_asset =
       !room_eq || (asset.begin.topology == kTopologyMono && divider == 1u && ir_channels == 1u &&
                    asset.begin.processingChannels == control.channels &&
                    asset.begin.pathCount == 0u && asset.begin.inputCount == 0u);
+  const bool valid_mono_fir_asset =
+      !mono_fir || (asset.begin.topology == kTopologyMono && divider == 1u && ir_channels == 1u &&
+                    asset.begin.processingChannels == control.channels &&
+                    asset.begin.pathCount == 0u && asset.begin.inputCount == 0u);
+  const bool valid_fir_crossover_asset =
+      !fir_crossover ||
+      (asset.begin.topology == kTopologyMatrix && divider == 1u && ir_channels >= 2u &&
+       ir_channels <= 4u && asset.begin.processingChannels == control.channels &&
+       control.channels == ir_channels * 2u && asset.begin.pathCount == ir_channels * 2u &&
+       asset.begin.inputCount == 2u);
   if (!control.hasAsset || !control.events.empty() ||
       control.initialParams.size() != expected_params || asset.format != ET_ASSET_F32_MULTICH ||
       expected_bytes != asset.bytes.size() || readU32(asset.bytes.data()) != kEtaMagic ||
@@ -488,7 +502,8 @@ bool runDirectReference(const std::string &type, const Control &control,
       (!fixed_topology && !matrix_topology) ||
       (fixed_topology && (asset.begin.pathCount != 0u || asset.begin.inputCount != 0u)) ||
       (asset.begin.topology == kTopologyTrueStereo && ir_channels != 4u) ||
-      (divider != 1u && divider != 2u && divider != 4u) || !valid_room_eq_asset) {
+      (divider != 1u && divider != 2u && divider != 4u) || !valid_room_eq_asset ||
+      !valid_mono_fir_asset || !valid_fir_crossover_asset) {
     std::fputs("Direct reference requires one valid ETA1 asset and no events\n", stderr);
     return false;
   }
@@ -609,6 +624,45 @@ bool runDirectReference(const std::string &type, const Control &control,
           manual_transition_gain = static_cast<float>(frame - 128u) / 128.0F;
         output[channel_offset + frame] =
             (dry + wet_mix * (delayed_wet - dry)) * gain * manual_transition_gain;
+      }
+    }
+    return true;
+  }
+
+  if (mono_fir) {
+    const std::uint32_t filter_delay = control.initialParams[1u] > 0.0F
+                                           ? static_cast<std::uint32_t>(control.initialParams[1u])
+                                           : 0u;
+    output.assign(input.size(), 0.0F);
+    for (std::uint32_t channel = 0u; channel < control.channels; ++channel) {
+      const std::size_t channel_offset = static_cast<std::size_t>(channel) * control.frames;
+      float wet_mix = 0.0F;
+      for (std::uint32_t frame = 0u; frame < control.frames; ++frame) {
+        if (wet_mix < 1.0F) {
+          wet_mix += 1.0F / 128.0F;
+          if (wet_mix > 1.0F)
+            wet_mix = 1.0F;
+        }
+        const std::uint32_t dry_delay = asset.begin.headBlock + filter_delay;
+        const float dry = frame >= dry_delay ? input[channel_offset + frame - dry_delay] : 0.0F;
+        output[channel_offset + frame] = dry + wet_mix * (wet[channel_offset + frame] - dry);
+      }
+    }
+    return true;
+  }
+
+  if (fir_crossover) {
+    output.assign(input.size(), 0.0F);
+    for (std::uint32_t channel = 0u; channel < control.channels; ++channel) {
+      const std::size_t channel_offset = static_cast<std::size_t>(channel) * control.frames;
+      float wet_mix = 0.0F;
+      for (std::uint32_t frame = 0u; frame < control.frames; ++frame) {
+        if (wet_mix < 1.0F) {
+          wet_mix += 1.0F / 128.0F;
+          if (wet_mix > 1.0F)
+            wet_mix = 1.0F;
+        }
+        output[channel_offset + frame] = wet[channel_offset + frame] * wet_mix;
       }
     }
     return true;

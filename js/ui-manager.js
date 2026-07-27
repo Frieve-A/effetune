@@ -28,6 +28,7 @@ import { PowerStateView } from './ui/power-state-view.js';
 import { CatalogPlaybackBridge } from './ui/audio-player/catalog-playback-bridge.js';
 import { resolveWebPlaybackSelection } from './ui/playback-selection-router.js';
 import { resolveWebCueSiblingFiles } from './ui/web-cue-source-resolver.js';
+import { installRangePrecisionControl } from './ui/range-precision-controller.js';
 import {
     appendExternalAssetWarningSnapshot,
     captureExternalAssetWarning,
@@ -44,6 +45,7 @@ function usesIOSFilePicker(windowRef = window) {
 }
 
 const ERROR_MESSAGE_DURATION_MS = 5000;
+const AUDIO_GLITCH_WARNING_DURATION_MS = 10000;
 const MINI_PLAYER_ALWAYS_ON_TOP_STORAGE_KEY = 'miniPlayerAlwaysOnTop';
 const WEB_MUSIC_FILE_ACCEPT = 'audio/*,video/mp4,image/jpeg,image/png,.mp4,.cue,.jpg,.png';
 const WEB_MUSIC_PICKER_TYPES = [{
@@ -121,6 +123,7 @@ export class UIManager {
         this._pipelineSwitching = false;
         this.externalAssetSummaryTimer = null;
         this.shareAttemptRevision = 0;
+        this.audioGlitchWarningTimer = null;
 
         // UI elements
         this.errorDisplay = document.getElementById('errorDisplay');
@@ -263,6 +266,7 @@ export class UIManager {
         }
 
         this._rangeFillStylingInitialized = true;
+        this._disposeRangePrecisionControl = installRangePrecisionControl(document);
         this._rangeFillInput = (input) => {
             if (!input?.matches?.('input[type="range"]')) return;
 
@@ -685,6 +689,20 @@ export class UIManager {
                 this.updateSampleRateDisplay();
             });
 
+            this.audioManager.addEventListener('audioProcessingOverload', (data) => {
+                if (data?.active === false) {
+                    if (this.sampleRate?.classList.contains('audio-glitch-warning')) {
+                        this.scheduleAudioGlitchWarningClear();
+                    }
+                    return;
+                }
+                if (this.sampleRate?.classList.contains('audio-glitch-warning')) {
+                    this.scheduleAudioGlitchWarningClear();
+                    return;
+                }
+                this.showAudioGlitchWarning();
+            });
+
             this.initRangeFillStyling();
         }
     }
@@ -754,19 +772,40 @@ export class UIManager {
                 }
             }
 
-            // Add a visual indicator if the sample rate is below recommended value
-            if (currentSampleRate < 88200) {
-                this.sampleRate.classList.add('low-sample-rate');
-                if (this.sampleRate) { // Added check
-                    this.sampleRate.title = this.t('error.sampleRateWarning');
-                }
-            } else {
-                this.sampleRate.classList.remove('low-sample-rate');
-                if (this.sampleRate) { // Added check
-                    this.sampleRate.title = '';
-                }
-            }
+            this.updateSampleRateStatus(currentSampleRate);
         }
+    }
+
+    updateSampleRateStatus(sampleRate = this.audioManager?.audioContext?.sampleRate) {
+        if (!this.sampleRate) return;
+
+        this.sampleRate.classList.toggle('low-sample-rate', sampleRate < 88200);
+        this.sampleRate.title = this.sampleRate.classList.contains('audio-glitch-warning')
+            ? this.t('error.audioPlaybackGlitch')
+            : (sampleRate < 88200 ? this.t('error.sampleRateWarning') : '');
+    }
+
+    showAudioGlitchWarning() {
+        if (!this.sampleRate) return;
+
+        this.sampleRate.classList.add('audio-glitch-warning');
+        this.sampleRate.classList.remove('audio-glitch-warning-pulse');
+        void this.sampleRate.offsetWidth;
+        this.sampleRate.classList.add('audio-glitch-warning-pulse');
+        this.updateSampleRateStatus();
+        this.scheduleAudioGlitchWarningClear();
+    }
+
+    scheduleAudioGlitchWarningClear() {
+        if (this.audioGlitchWarningTimer !== null) {
+            clearTimeout(this.audioGlitchWarningTimer);
+        }
+        this.audioGlitchWarningTimer = setTimeout(() => {
+            this.audioGlitchWarningTimer = null;
+            this.sampleRate?.classList.remove('audio-glitch-warning');
+            this.sampleRate?.classList.remove('audio-glitch-warning-pulse');
+            this.updateSampleRateStatus();
+        }, AUDIO_GLITCH_WARNING_DURATION_MS);
     }
 
     getStoredLanguagePreference() {
@@ -963,6 +1002,8 @@ export class UIManager {
      * Update UI elements with translated text
      */
     updateUITexts() {
+        this.updateSampleRateStatus();
+
         // Update static UI elements
         const subtitleElement = document.querySelector('.subtitle');
         if (subtitleElement) {

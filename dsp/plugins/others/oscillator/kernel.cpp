@@ -83,7 +83,7 @@ public:
     const double pan_gain_left = std::cos(pan_angle);
     const double pan_gain_right = std::sin(pan_angle);
     std::uint32_t waveform = static_cast<std::uint32_t>(params_.waveform);
-    if (waveform > 5u) {
+    if (waveform > 6u) {
       waveform = 0u;
     }
     const bool pulsed = static_cast<std::uint32_t>(params_.mode) == 1u;
@@ -96,7 +96,9 @@ public:
     }
     const double pulse_duration = pulse_width_samples * 2.0;
 
-    if (waveform == 4u) {
+    if (waveform == 6u) {
+      generateImpulse(interval_samples, frame_count);
+    } else if (waveform == 4u) {
       for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
         samples_[frame] = static_cast<float>(random_.nextFloatSigned());
       }
@@ -106,7 +108,7 @@ public:
       generateOscillator(waveform, frequency, safe_sample_rate, frame_count);
     }
 
-    if (pulsed) {
+    if (pulsed && waveform != 6u) {
       double pulse_time = pulse_time_;
       for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
         const double pulse_position = std::fmod(pulse_time, interval_samples);
@@ -141,6 +143,18 @@ public:
   }
 
 private:
+  void generateImpulse(double interval_samples, std::uint32_t frame_count) noexcept {
+    double impulse_position = std::fmod(pulse_time_, interval_samples);
+    for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+      samples_[frame] = impulse_position < 1.0 ? 1.0F : 0.0F;
+      impulse_position += 1.0;
+      if (impulse_position >= interval_samples) {
+        impulse_position -= interval_samples;
+      }
+    }
+    pulse_time_ = impulse_position;
+  }
+
   void generatePink(std::uint32_t frame_count) noexcept {
     double b0 = static_cast<double>(pink_state_[0]);
     double b1 = static_cast<double>(pink_state_[1]);

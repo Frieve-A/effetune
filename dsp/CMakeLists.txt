@@ -188,6 +188,11 @@ if(BUILD_TESTING AND NOT EMSCRIPTEN)
   et_add_dsp_test(
     effetune_dsp_basics_topology_tests
     SOURCES plugins/basics/topology_native_test.cpp)
+  et_add_dsp_test(
+    effetune_dsp_fir_crossover_tests
+    SOURCES plugins/basics/fir_crossover/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
   et_add_dsp_test(effetune_dsp_primitives_tests SOURCES test/primitives_test.cpp)
   et_add_dsp_test(
     effetune_dsp_dynamics_group_a_tests
@@ -242,6 +247,11 @@ if(BUILD_TESTING AND NOT EMSCRIPTEN)
     INCLUDE_DIRS core generated/cpp
     WRAP_MALLOC)
   et_add_dsp_test(
+    effetune_dsp_sw_radio_simulator_tests
+    SOURCES plugins/lofi/sw_radio_simulator/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
     effetune_dsp_vinyl_artifacts_tests
     SOURCES plugins/lofi/vinyl_artifacts/native_test.cpp
     INCLUDE_DIRS core generated/cpp
@@ -277,6 +287,16 @@ if(BUILD_TESTING AND NOT EMSCRIPTEN)
   et_add_dsp_test(
     effetune_dsp_room_eq_tests
     SOURCES plugins/eq/room_eq/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_five_band_fir_peq_tests
+    SOURCES plugins/eq/five_band_fir_peq/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_group_delay_eq_tests
+    SOURCES plugins/eq/group_delay_eq/native_test.cpp
     INCLUDE_DIRS core generated/cpp
     WRAP_MALLOC)
   et_add_dsp_test(

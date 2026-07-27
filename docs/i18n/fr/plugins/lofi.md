@@ -18,6 +18,7 @@ Une collection de plugins qui ajoutent du caractère vintage et des qualités no
 - [Hum Generator](#hum-generator) - Ajoute une ambiance de ronflement électrique contrôlable pour une écoute vintage/lo-fi
 - [Noise Blender](#noise-blender) - Ajoute une texture atmosphérique en arrière-plan
 - [Simple Jitter](#simple-jitter) - Crée des imperfections numériques vintage subtiles
+- [SW Radio Simulator](#sw-radio-simulator) - Fait passer la musique dans une chaîne modélisée d'émission en ondes courtes, de propagation ionosphérique et de réception
 - [Vinyl Artifacts](#vinyl-artifacts) - Ajoute des pops, crépitements, souffle, rumble et fuite de bruit stéréo façon vinyle
 - [Vinyl Simulator](#vinyl-simulator) - Grave le signal dans un sillon modélisé puis le lit avec un modèle physique de pointe
 
@@ -507,6 +508,102 @@ Un effet qui ajoute des variations de timing subtiles pour créer ce son numéri
 5. Effet de Fluctuation Créatif
    - RMS Jitter : 10-100µs (0.01-0.1ms)
    - Parfait pour : Effets expérimentaux et modulation de hauteur notable
+
+## SW Radio Simulator
+
+SW Radio Simulator fait passer la musique dans une chaîne modélisée d'émission en ondes courtes : traitement d'émission et modulation AM, propagation ionosphérique avec évanouissement sélectif profond, parasites atmosphériques et station partageant le canal, récepteur de trafic à bande étroite avec détection d'enveloppe ou synchrone et AGC, et haut-parleur de radio optionnel. Utilisez-le pour entendre la musique comme une émission internationale lointaine reçue sur un poste à ondes courtes : étroite et creuse, montant et descendant au gré de l'ionosphère, sifflant là où un autre émetteur est proche en fréquence.
+
+Cet effet nécessite un environnement prenant en charge son traitement en temps réel. Lorsque ce traitement n'est pas disponible, l'audio reste inchangé et le HUD signale que l'effet est indisponible.
+
+### Différences avec l'AM, la FM et les effets lo-fi additifs
+
+- **AM Radio Simulator** modélise la réception en ondes moyennes, où une onde de sol stable domine généralement et où l'évanouissement reste secondaire. Sa bande passante est plus large et la stéréo C-QUAM est disponible.
+- **SW Radio Simulator** modélise les ondes courtes, où le signal arrive par réflexion ionosphérique. L'évanouissement sélectif profond est au premier plan, la bande audio est plus étroite, et le sifflement hétérodyne d'une station sur le même canal fait partie du son. La diffusion en ondes courtes est monophonique : le signal traité est donc toujours mono.
+- **FM Radio Simulator** reproduit la FM à bande large avec son multiplex stéréo, son souffle croissant et ses clics de seuil — une autre famille de dégradations.
+- **Noise Blender** et **Hum Generator** ajoutent du bruit ou du ronflement sur une musique inchangée. Cet effet, lui, module, propage et détecte la musique : son bruit, ses interférences et sa distorsion réagissent donc à Tuning, au filtre FI et à l'AGC comme en réception réelle.
+
+### Guide du caractère sonore
+
+- **Étroit et creux :** la bande passante d'émission et la FI étroite du récepteur retirent l'essentiel de l'aigu et donnent le timbre restreint et boîteux d'un poste à ondes courtes.
+- **Évanouissement lent et profond (QSB) :** le niveau reçu monte et descend en permanence. C'est le comportement caractéristique des ondes courtes, actif dès les réglages par défaut.
+- **Distorsion aqueuse d'évanouissement :** dans un évanouissement profond, la porteuse et les bandes latérales chutent différemment, et le détecteur d'enveloppe ne reconstruit plus proprement l'audio. Au creux de chaque évanouissement, le son devient creux, instable et « sous-marin » au lieu de simplement baisser. Delay Spread en règle l'intensité, et la détection synchrone l'élimine en grande partie.
+- **Flutter :** à Fading Speed élevée, les ondulations deviennent un scintillement rapide, comme une réception par un trajet perturbé ou polaire.
+- **Sifflement hétérodyne (QRM) :** l'émetteur partageant le canal bat avec votre porteuse et produit une note continue dont la hauteur est égale à Interf. Offset.
+- **Parasites atmosphériques (QRN) :** les éclairs lointains arrivent sous forme de craquements qui résonnent dans le filtre FI.
+- **Pompage :** au passage des évanouissements, l'AGC poursuit le niveau et le bruit de fond respire entre les passages.
+
+### Paramètres
+
+#### Station
+
+- **TX Bandwidth** (2.0 à 10.0 kHz) - Règle la bande passante audio de l'émetteur. Les canaux de radiodiffusion en ondes courtes sont espacés de 5 kHz : la valeur par défaut, étroite, sonne donc déjà plus sombre qu'une station en ondes moyennes ; augmentez-la pour un émetteur plus ouvert.
+- **Pre-emphasis** (0 à 100 %) - Renforce les hautes fréquences avant l'émission. Un réglage élevé ajoute de la présence dans cette bande étroite, mais sollicite davantage le limiteur de diffusion sur les crêtes brillantes.
+- **Mod Depth** (10 à 125 %) - Règle la profondeur de modulation AM. Au-dessus de 100 %, une surmodulation et un écrêtage des crêtes négatives apparaissent.
+- **Compression** (0 à 20 dB) - Règle l'intensité du limiteur de diffusion. Un réglage élevé retient les crêtes et rend la modulation plus régulière : c'est ainsi que les radiodiffuseurs internationaux restent intelligibles à travers les évanouissements.
+
+#### Propagation
+
+- **Signal** (-50 à 0 dB) - Règle la puissance du signal reçu. Un réglage faible laisse entendre davantage de bruit du récepteur et demande plus de gain AGC.
+- **Fading** (0 à 100 %) - Répartit la puissance reçue entre un trajet direct stable et deux trajets ionosphériques retardés. À 0 %, la réception à courte distance est stable ; la valeur par défaut donne l'évanouissement continu d'un signal lointain ; à 100 %, les évanouissements sont les plus profonds et la distorsion sélective la plus marquée.
+- **Fading Speed** (0.1 à 10.0 Hz) - Règle la vitesse d'évolution des trajets ionosphériques. Les valeurs basses donnent de lentes ondulations ; à partir de quelques hertz, le mouvement devient un flutter rapide.
+- **Delay Spread** (0.2 à 8.0 ms) - Règle l'écart de retard entre les deux trajets ionosphériques. Il détermine l'espacement des creux d'évanouissement dans la bande audio (environ 1 kHz d'écart à 1 ms, et d'autant plus serré que la valeur monte), ce qui fait qu'un évanouissement profond sonne aqueux au lieu de simplement s'atténuer. Les valeurs courtes font s'évanouir toute la bande ensemble ; les valeurs longues font s'évanouir chaque zone du spectre à un moment différent.
+- **Static** (0 à 100/s) - Règle la fréquence des parasites de type éclair. Chaque événement est injecté avant le filtre FI et y résonne. À 0, ils sont désactivés.
+- **Interference** (-80 à 0 dB) - Règle la puissance d'une station partageant le canal. À -80 dB, elle est pratiquement désactivée ; plus la valeur approche 0 dB, plus elle est forte.
+- **Interf. Offset** (0.1 à 10 kHz) - Règle l'écart entre la porteuse brouilleuse et la vôtre. Les deux porteuses battent à cet écart et produisent le sifflement hétérodyne : ce réglage en fixe donc la hauteur. En dessous d'environ 3 kHz, c'est une note claire ; en montant, elle monte en hauteur jusqu'à ce que le filtre FI commence à l'atténuer. Le programme de la station brouilleuse est modélisé par un bruit mis en forme : il apporte une texture rugueuse et sifflante plutôt qu'une parole intelligible.
+
+#### Receiver
+
+- **Tuning** (-5.0 à +5.0 kHz) - Désaccorde le récepteur par rapport à la station. Les faibles écarts ternissent le son, ajoutent une distorsion de filtrage asymétrique et modifient le volume du sifflement hétérodyne ; les écarts plus importants font sortir la station de l'étroite bande passante FI.
+- **IF Bandwidth** (2.0 à 10.0 kHz) - Règle la bande passante FI du récepteur. Les réglages étroits correspondent à la réponse d'un récepteur de trafic : ils rejettent davantage de bruit et de station brouilleuse, mais retirent plus d'aigu ; les réglages larges conservent plus de détails et plus d'interférences.
+- **Detector** (Envelope ou Synchronous) - Envelope est le détecteur à diode classique : c'est lui qui transforme un évanouissement sélectif profond en distorsion aqueuse. Synchronous récupère la porteuse avec une PLL et démodule par rapport à elle, ce qui réduit fortement cette distorsion pendant les évanouissements profonds. Il accroche sur environ ±1 kHz de Tuning et décroche au-delà : utilisez Envelope pendant que vous tournez le cadran. Changer de détecteur relance l'acquisition de la porteuse.
+- **AGC Speed** (Slow, Mid ou Fast) - Règle la vitesse à laquelle le contrôle automatique de gain suit les évanouissements. Slow laisse les variations de niveau audibles et pompe à la remontée du signal ; Fast tient le niveau plus serré.
+- **Detector RC** (20 à 500 µs) - Règle le temps de décharge du détecteur d'enveloppe. Les valeurs longues lissent davantage l'enveloppe mais augmentent la distorsion d'écrêtage diagonal dans l'aigu à forte modulation. Sans effet lorsque Detector est sur Synchronous.
+- **Hum** (-80 à -20 dB) - Règle le ronflement d'alimentation. À -80 dB, il est pratiquement désactivé. Contrairement à une couche de ronflement ajoutée, l'essentiel de ce réglage module le gain du récepteur avant la détection.
+- **Hum Freq** (50 ou 60 Hz) - Sélectionne la fréquence secteur simulée.
+
+#### Output
+
+- **Speaker** (Off, Small ou Table) - Sélectionne une sortie ligne, le haut-parleur limité d'un poste portatif à ondes courtes ou la réponse plus ample d'un récepteur de trafic de table.
+- **Output Gain** (-24 à +24 dB) - Règle le niveau après le traitement du récepteur et du haut-parleur.
+- **Mix** (0 à 100 %) - Mélange le signal stéréo d'origine avec la réception mono simulée. À 100 %, c'est la réception en ondes courtes complète, identique à gauche et à droite. Mix ne retarde pas le signal sec pour l'aligner : les réglages intermédiaires combinent donc les deux avec le décalage temporel du récepteur et de la propagation.
+
+### Lecture du HUD
+
+- **S METER** indique, sur une échelle de S1 à S9, la puissance du signal que le récepteur reçoit dans sa bande avant l'AGC. Comme le S-mètre d'un poste réel, il additionne tout ce qui se trouve dans la bande passante : la station co-canal, le bruit et les parasites font donc monter l'indication en même temps que la station voulue.
+- **FADE** indique en dB la variation actuelle du gain de propagation, et il oscille aussi bien au-dessous qu'au-dessus de 0 dB selon que le trajet direct et les deux trajets ionosphériques s'annulent ou se renforcent. En ondes courtes, c'est l'affichage à surveiller : il bouge en permanence aux réglages par défaut, et c'est dans les creux les plus profonds que le son devient aqueux et distordu.
+- **AGC GAIN** indique le gain actuellement appliqué par le récepteur. Il augmente lorsque Signal baisse ou qu'un évanouissement s'accentue. Il est plafonné à +42 dB : les évanouissements les plus profonds restent donc moins forts au lieu d'être entièrement compensés.
+- **MOD / EVENTS** indique le taux de modulation effectif, puis les fréquences récentes par seconde des parasites (⚡) et de l'écrêtage (▲), et clignote au passage de ces événements. Si vous recherchez un résultat plus propre et que l'écrêtage est fréquent, réduisez Mod Depth ou Detector RC.
+- Si le moteur **WASM** n'est pas disponible, le HUD l'indique et le plugin laisse passer l'audio inchangé.
+
+### Réglages recommandés
+
+1. **Émission internationale lointaine**
+   - TX Bandwidth : 4.5 kHz, Mod Depth : 90 %, Signal : -15 dB, Fading : 55 %, Fading Speed : 0.5 Hz, Delay Spread : 1.4 ms, Static : 2/s
+   - Interference : -47 dB, Interf. Offset : 1.0 kHz, Tuning : 0 kHz, IF Bandwidth : 6.0 kHz, Detector : Envelope, AGC Speed : Fast, Hum : -80 dB, Speaker : Small, Mix : 100 %
+   - Le son quotidien des ondes courtes : étroit, en évanouissement continu, avec quelques craquements et un sifflement discret.
+
+2. **Évanouissement nocturne profond**
+   - Signal : -30 dB, Fading : 100 %, Fading Speed : 0.3 Hz, Delay Spread : 5.0 ms, Static : 10/s
+   - IF Bandwidth : 4.0 kHz, Detector : Envelope, AGC Speed : Slow, Detector RC : 150 µs, Speaker : Small, Mix : 100 %
+   - De longues ondulations profondes, une distorsion aqueuse au creux de chaque évanouissement et un pompage d'AGC nettement audible à la remontée.
+
+3. **Bande encombrée**
+   - Signal : -20 dB, Fading : 60 %, Fading Speed : 0.5 Hz, Static : 8/s, Interference : -18 dB, Interf. Offset : 0.8 kHz
+   - Tuning : +0.3 kHz, IF Bandwidth : 4.0 kHz, AGC Speed : Mid, Speaker : Small, Mix : 100 %
+   - Un sifflement hétérodyne continu par-dessus le programme. Changez Interf. Offset pour en déplacer la hauteur et Tuning pour en modifier le volume.
+
+4. **Détection synchrone**
+   - Partez d'Évanouissement nocturne profond et réglez Detector : Synchronous
+   - Les évanouissements profonds subsistent, mais la distorsion à leur creux est bien plus faible et le programme reste intelligible. Gardez Tuning dans une plage d'environ ±1 kHz pour que le détecteur reste accroché, et comparez avec Envelope pour entendre son action.
+
+5. **Flutter polaire**
+   - Signal : -25 dB, Fading : 90 %, Fading Speed : 6 Hz, Delay Spread : 3.0 ms, Static : 5/s
+   - IF Bandwidth : 5.0 kHz, Detector : Envelope, AGC Speed : Fast, Speaker : Small, Mix : 100 %
+   - Le scintillement rapide d'un trajet perturbé ou polaire, au lieu d'une lente ondulation.
+
+### Notes sur le modèle
+
+L'effet traite la première paire stéréo comme une seule émission mono, comme le fait la radiodiffusion réelle en ondes courtes, et le signal reçu est toujours mono. Une seule station partageant le canal est modélisée, et son programme est un bruit mis en forme, non de la parole ou de la musique. Les conditions réelles de bande — variations de propagation jour/nuit, bandes de radiodiffusion précises et réception en bande latérale unique (BLU) — sortent de ce modèle ; réglez les conditions souhaitées avec Signal, Fading et les autres commandes de propagation.
 
 ## Vinyl Artifacts
 

@@ -6,6 +6,11 @@ lang: en
 
 # Version History
 
+### Version 2.3.0 (TBD, 2026)
+- Added AM/FM/SW Radio Simulator effects
+- Added 5Band FIR PEQ, FIR Crossover and Group Delay EQ effects
+- Various minor improvements
+
 ### Version 2.2.0 (Jul 25, 2026)
 - Added Room EQ room correction based on saved measurements
 - Added IR Reverb using imported room and equipment impulse responses

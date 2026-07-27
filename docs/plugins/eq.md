@@ -1,6 +1,6 @@
 ---
 title: "EQ Plugins - EffeTune"
-description: "Equalizer plugins including Parametric EQ, Graphic EQ, Dynamic EQ, Room EQ, Earphone Cable Sim, filters, and Tone Control."
+description: "Equalizer plugins including Parametric EQ, FIR EQ, Graphic EQ, Dynamic EQ, Room EQ, Earphone Cable Sim, filters, and Tone Control."
 lang: en
 ---
 
@@ -13,10 +13,12 @@ A collection of plugins that let you adjust different aspects of your music's so
 - [15Band GEQ](#15band-geq) - Detailed sound adjustment with 15 precise controls
 - [15Band PEQ](#15band-peq) - Detailed 15-band tone shaping for music playback
 - [5Band Dynamic EQ](#5band-dynamic-eq) - Dynamics-based equalizer that responds to your music
+- [5Band FIR PEQ](#5band-fir-peq) - Five-band tone shaping with minimum- or linear-phase FIR filtering
 - [5Band PEQ](#5band-peq) - Flexible equalizer for shaping bass, mids, and treble
 - [Band Pass Filter](#band-pass-filter) - Focus on specific frequencies
 - [Comb Filter](#comb-filter) - Phasey, hollow, or metallic sound coloration
 - [Earphone Cable Sim](#earphone-cable-sim) - Helps check how small normal earphone-cable response shifts usually are
+- [Group Delay EQ](#group-delay-eq) - Adjusts the delay of each frequency band without changing the tone
 - [Hi Pass Filter](#hi-pass-filter) - Remove unwanted low frequencies with precision
 - [Lo Pass Filter](#lo-pass-filter) - Remove unwanted high frequencies with precision
 - [Loudness Equalizer](#loudness-equalizer) - Frequency balance correction for low volume listening
@@ -178,6 +180,41 @@ A smart equalizer that automatically adjusts frequency bands based on the conten
 - Real-time frequency response graph
 - Dynamic response curve showing the current boosts and cuts
 - Interactive frequency and gain controls
+
+## 5Band FIR PEQ
+
+5Band FIR PEQ provides the familiar five-band layout of 5Band PEQ but builds the combined response as one FIR filter. Use it for precise playback correction, very narrow cuts, or steep shelf transitions when you want to avoid recursive-filter stability limits. Minimum Phase keeps processing delay low, while Linear Phase gives every frequency the same fixed delay. The plugin requires the WASM DSP engine; without it, the signal passes through unchanged.
+
+### Sound Enhancement Guide
+
+- Start with **Minimum Phase**, 32768 Taps, and 128 samples of Latency. Use broad Q values around 0.7 to 2 for ordinary bass, midrange, and treble shaping.
+- For a measured narrow peak, select Peaking, set the center frequency to the peak, and increase Q gradually. Values above 10 are intended for precise corrections; check the status because an extremely narrow response may need more Taps.
+- Use Low Shelf for bass balance and High Shelf for treble balance. Small changes of 1 to 3 dB are usually enough for everyday listening.
+- Use LowPass or HighPass to remove unwanted frequency extremes. Start with a 12 or 24 dB/oct Slope, and increase it only when you need a sharper cutoff.
+- Choose **Linear Phase** when constant phase delay across the spectrum is important and the added latency is acceptable. It can place energy before a transient, especially with sharp settings, so compare Minimum Phase for music with strong attacks.
+- FIR construction avoids feedback-pole instability, but a large boost or very high Q still produces a long, selective impulse response. Prefer cuts for isolated resonances and leave enough playback headroom.
+
+### Parameters
+
+- **Phase**
+  - **Minimum Phase** - Builds a causal minimum-phase response and adds no FIR half-length delay. The selected convolution Latency still applies.
+  - **Linear Phase** - Builds a symmetric linear-phase response and adds `Taps / 2` samples of FIR delay in addition to the selected convolution Latency.
+- **Taps** - FIR length: 8192, 16384, 32768, 65536, or 131072. More taps improve the accuracy of low-frequency and very high-Q settings, but increase memory use, design time, and Linear Phase delay.
+- **Latency** - Convolution-engine head latency: 0, 128, 256, 512, or 1024 samples. Lower values reduce delay but require more processing.
+- **Five Adjustable Bands** - The default centers are 100 Hz, 316 Hz, 1 kHz, 3.16 kHz, and 10 kHz. Each band can be enabled independently.
+- **Type** - Peaking, LowPass, HighPass, Low Shelf, High Shelf, BandPass, or Notch. All enabled bands are combined before the FIR is designed.
+- **Freq** - Sets the band frequency from 20 Hz to 20 kHz.
+- **Gain** - Sets the boost or cut from -20 to +20 dB for Peaking, Low Shelf, and High Shelf. LowPass, HighPass, BandPass, and Notch do not use Gain.
+- **Q** - Sets the response width from 0.1 to 100. Higher values make a narrower change; lower values make a broader transition. The slider uses a logarithmic scale.
+- **Slope** - Sets the LowPass or HighPass cutoff rate from 0.1 to 384 dB/oct. The slider uses a logarithmic scale, and the control is available only for those two filter types.
+
+### Visual Display
+
+- The grey curve shows the combined target response requested by the current band settings.
+- The green curve shows the magnitude response realized by the designed FIR. A visible gap means the selected Taps cannot reproduce the target exactly.
+- Numbered markers correspond to the five bands. Drag horizontally to change frequency and vertically to change gain; disabled bands appear dimmed.
+- The status line reports whether the FIR is being designed, prepared, or used, and shows total processing latency in samples and milliseconds.
+- If the selected Taps cannot reproduce an extreme response accurately, the status recommends increasing Taps or reducing Q or Slope.
 
 ## 5Band PEQ
 
@@ -360,6 +397,36 @@ Reproduces the small frequency-response shifts that appear when an earphone is d
 - Grid labels cover 20Hz to 20kHz; the plotted curve extends across the full 10Hz to 40kHz graph range
 - Green response curve over a dark grid, with an auto-scaled dB axis around the normalized 0dB reference
 - Larger curve deviations indicate where the model changes playback level most
+
+## Group Delay EQ
+
+Group Delay EQ is the counterpart of an ordinary equalizer: instead of changing how loud each band is, it changes **when** each band arrives. Fifteen sliders set the delay of each frequency range, and the plugin builds one FIR filter designed to realize those delays with a flat magnitude response. A flat response is the design target, not a guarantee: finite Taps approximate that ideal target, and large or rapidly changing delay settings can create measurable magnitude ripple. Use it to compensate the timing errors of a speaker or crossover, or to hear for yourself how much phase distortion your system and your ears actually reveal. The plugin requires the WASM DSP engine; without it, the signal passes through unchanged.
+
+Only the differences between bands matter for the sound. A filter that delays every band equally is just a plain delay, so the plugin keeps a fixed internal delay and lets you push each band earlier or later around it. While all sliders are at 0 ms the plugin is completely transparent and adds no latency at all.
+
+### Sound Enhancement Guide
+
+- **Speaker and subwoofer timing**: If bass arrives late compared with the rest of the music, delay the bands above the crossover by the same amount until the graph shows a flat line there. Typical corrections are 2 to 10 ms and are easiest to judge on kick drums and bass guitar.
+- **Ported speakers and room modes**: A ported enclosure adds group delay around its tuning frequency. Lower the affected low band, or raise everything else, so the curve becomes flatter. Small residual differences below 50 Hz are normal.
+- **Listening test for phase distortion**: Set one band to +10 ms, compare with the effect off, and then lower the value until you can no longer hear a difference. Interpret this as a phase-only comparison only when Ripple in the status line is sufficiently small and the green Realized curve closely overlaps the grey Target curve. Otherwise, magnitude changes or an inaccurately realized delay can also affect what you hear.
+- **Work band by band**: Change one slider at a time and listen. Phase-only changes are subtle on most program material and show up mainly on transients such as drums, plucked strings, and piano attacks.
+- **Watch the two curves**: If the green curve no longer follows the grey one, the current Taps setting cannot realize that shape. Increase Taps, or reduce the difference between neighbouring bands.
+
+### Parameters
+
+- **Taps** - FIR length: 4096, 8192, 16384, or 32768. Low frequencies need a long filter: at 96 kHz, 16384 taps track even large delay differences down to about 60 Hz, while shorter settings lose accuracy in the bass first. Taps also decide how much delay the filter can hold, and therefore how far the sliders reach. More taps mean more latency and more processing.
+- **Latency** - Convolution-engine head latency: 0, 128, 256, 512, or 1024 samples. Lower values reduce delay but require more processing.
+- **Band Sliders (25 Hz to 16 kHz)** - Fifteen sliders set the group delay of each band. Positive values make that range arrive later, negative values earlier. The range covers the whole delay the filter can hold: at 96 kHz that is ±18.6 ms with 4096 taps and ±149.3 ms with 32768 taps. The highest band realizes those values in full, while lower bands need more taps to follow a large setting; the graph shows how far each one gets. The values are interpolated smoothly across frequency, so neighbouring bands always blend into each other.
+- **Phase angle** - Below each millisecond value the slider shows the same delay as a phase rotation at the band centre frequency. Past a full turn the reading is split into whole cycles and the remaining angle, so `+2c180°` means two complete cycles plus a half turn.
+- **Reset** - Double-click a slider to return that band to 0 ms. The Reset button on the graph clears every band at once.
+
+Total latency is the Latency setting plus half the Taps count. It stays the same while you move the sliders, so only a change of Taps or Latency changes the delay of the whole chain.
+
+### Visual Display
+
+- The grey curve is the target: the delay you asked for, interpolated across a logarithmic frequency axis from 20 Hz to 20 kHz. The delay axis rescales itself to fit the current settings, starting at ±5 ms.
+- The green curve is what the designed filter really does. Where the two curves lie on top of each other the setting is fully realized; where they separate, the filter cannot follow the request with the current Taps.
+- The status line shows the total latency in samples and milliseconds, and the magnitude ripple of the filter. Ripple measures how far the realized magnitude response departs from the flat design target: smaller values are closer to the target, and 0.3 dB is the accuracy-warning threshold.
 
 ## Hi Pass Filter
 
@@ -546,6 +613,7 @@ Measurements are device-local references. A URL or preset stores the selected me
 - **Smoothing** - Gaussian frequency smoothing from 0.02 to 1.00 octaves. Higher values produce broader, more conservative correction; lower values follow finer response variations.
 - **Correction Low / Correction High** - Set the lower and upper transition boundaries for automatic magnitude correction. Before Gaussian smoothing, automatic correction is treated as 0 dB at and outside these boundaries. Smoothing therefore controls how gradually correction fades and how far it extends beyond each boundary. The high boundary is also limited internally to leave headroom below the audio sample rate's Nyquist frequency.
 - **Direct Window** - 1 to 50 ms of the measured response after the direct-sound onset used by Correction. A longer window allows phase correction to extend lower but includes more room reflections.
+- **Phase Low** - Sets the lower frequency for measured excess-phase correction in Correction mode from 20 to 20000 Hz. With **Auto** selected by default, Room EQ uses the higher of Correction Low and the frequency that fits three cycles inside Direct Window (500 Hz at 6 ms). Clear Auto to set the boundary manually. The manual value is independent of Correction Low and cannot be set below the frequency of one cycle inside Direct Window (167 Hz at 6 ms). Values below the automatic boundary are more sensitive to time-window truncation and room reflections.
 - **Max Boost** - 0 to 18 dB limit for boosts created by automatic response inversion. The limit is applied before Gaussian smoothing so capped regions blend smoothly into the surrounding correction curve. It does not limit cuts.
 - **Level Correction** - Scales automatic magnitude correction from 0% to 100% in 1% steps, linearly in dB. At 0%, automatic level correction is disabled; Phase Correction, Additional EQ, Delay, and Gain remain active.
 - **Phase Correction** - Scales the measured excess-phase correction from 0% to 100% in 1% steps and affects only the Correction mode. Its controls are disabled in Minimum and Linear modes. At 0%, excess-phase correction is disabled while Level Correction remains active. Level Correction still carries the minimum-phase shift inherently associated with its magnitude response, so Phase Correction controls only the additional measured excess-phase component.
@@ -555,9 +623,10 @@ Measurements are device-local references. A URL or preset stores the selected me
 
 ### Visual Display
 
-- Use the **Frequency Response** and **Impulse Response** radio buttons at the top of the graph to switch views.
-- **Impulse Response** shows the selected point, or the time-aligned average waveform when Reference Point is Consensus, from 2 ms before the measured onset through the later of 5 ms or Direct Window. The gray line is before correction and the white line is the calculated result after the actual FIR. The measured onset is the shared 0 ms reference, and only the FIR's known fixed delay is removed from the corrected waveform, so relative peak timing and pre-ringing remain visible. Both lines use the same normalized amplitude scale. A measurement without impulse-response data shows an unavailable message instead.
-- The graph uses a logarithmic frequency axis and a vertical gain axis in dB.
+- Use the **Frequency**, **Phase**, and **Impulse** radio buttons at the top of the graph to switch views.
+- **Phase** uses a logarithmic frequency axis and a vertical phase axis from -180° to 180°. The gray line is the phase before correction and the green line is the calculated phase after the actual FIR. The measured onset is removed from both, and the FIR's known fixed delay is also removed from the corrected result, so the graph shows the phase change introduced by the filter without those fixed timing offsets. A measurement without impulse-response data shows an unavailable message instead.
+- **Impulse** shows the selected point, or the time-aligned average waveform when Reference Point is Consensus, from 2 ms before the measured onset through the later of 5 ms or Direct Window. The gray line is before correction and the green line is the calculated result after the actual FIR. The measured onset is the shared 0 ms reference, and only the FIR's known fixed delay is removed from the corrected waveform, so relative peak timing and pre-ringing remain visible. Both lines use the same normalized amplitude scale. For this display only, components at and above 20 kHz are removed; this does not affect the correction filter or audio processing. A measurement without impulse-response data shows an unavailable message instead.
+- **Frequency** uses a logarithmic frequency axis and a vertical gain axis in dB.
 - The two white dotted vertical lines mark the frequencies set by Correction Low and Correction High.
 - Numbered markers correspond to the five bands. Drag a marker horizontally to change frequency and vertically to change gain; disabled bands appear dimmed.
 - The light gray curve shows the smoothed measured frequency response with the graph's common display offset applied.

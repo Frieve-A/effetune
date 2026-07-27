@@ -6,6 +6,17 @@
 .room-eq-measurement-status[data-state='warning'],
 .room-eq-status[data-state='error'],
 .room-eq-status[data-state='warning'] { color: #ff9f43; }
+.room-eq-phase-low-auto {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    width: auto !important;
+    min-width: 0 !important;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.room-eq-phase-low-auto input { margin: 0; }
+body:not(.layout-mobile) .room-eq-phase-low-row { flex-wrap: nowrap; }
 .room-eq-status-line { display: flex; flex-wrap: wrap; gap: 0 0.6em; margin: 2px 0; }
 .room-eq-status, .room-eq-latency { color: #bbb; font-size: 0.9em; white-space: nowrap; }
 .room-eq-additional-eq-ui {
@@ -272,6 +283,8 @@ body:not(.layout-mobile) .room-eq-additional-eq-ui .room-eq-additional-eq-filter
 .room-eq-response-legend-total { color: #00ff00; }
 .room-eq-response-legend-before { color: #b0b0b0; opacity: 0.7; }
 .room-eq-response-legend-after { color: #fff; }
+.room-eq-phase-grid,
+.room-eq-phase-response,
 .room-eq-impulse-grid,
 .room-eq-impulse-response {
     position: absolute;
@@ -282,35 +295,50 @@ body:not(.layout-mobile) .room-eq-additional-eq-ui .room-eq-additional-eq-filter
     top: 20px;
     pointer-events: none;
 }
+.room-eq-phase-grid line,
 .room-eq-impulse-grid line {
     stroke: #333;
     stroke-width: 1;
     vector-effect: non-scaling-stroke;
 }
+.room-eq-phase-grid text,
 .room-eq-impulse-grid text {
     fill: #666;
     font-size: 10px;
 }
+.room-eq-phase-response path,
 .room-eq-impulse-response path {
     fill: none;
     vector-effect: non-scaling-stroke;
+}
+.room-eq-phase-response .room-eq-phase-before {
+    stroke: #b0b0b0;
+    stroke-width: 1;
+    opacity: 0.7;
+}
+.room-eq-phase-response .room-eq-phase-after {
+    stroke: #00ff00;
+    stroke-width: 1;
 }
 .room-eq-impulse-response .room-eq-impulse-before {
     stroke: #888;
     stroke-width: 1;
 }
 .room-eq-impulse-response .room-eq-impulse-after {
-    stroke: #fff;
+    stroke: #00ff00;
     stroke-width: 1;
 }
+.room-eq-phase-response .room-eq-response-hidden,
 .room-eq-impulse-response .room-eq-response-hidden {
     display: none;
 }
 .room-eq-additional-eq-ui .room-eq-additional-eq-response .room-eq-response-highlighted,
+.room-eq-phase-response .room-eq-response-highlighted,
 .room-eq-impulse-response .room-eq-response-highlighted {
     stroke-width: 3.5;
     opacity: 1;
 }
+.room-eq-phase-unavailable,
 .room-eq-impulse-unavailable {
     position: absolute;
     z-index: 3;
@@ -323,11 +351,16 @@ body:not(.layout-mobile) .room-eq-additional-eq-ui .room-eq-additional-eq-filter
     text-align: center;
     transform: translate(-50%, -50%);
 }
+.room-eq-phase-view .room-eq-additional-eq-grid,
+.room-eq-phase-view .room-eq-additional-eq-response,
+.room-eq-phase-view .room-eq-additional-eq-marker,
 .room-eq-impulse-view .room-eq-additional-eq-grid,
 .room-eq-impulse-view .room-eq-additional-eq-response,
 .room-eq-impulse-view .room-eq-additional-eq-marker {
     display: none;
 }
+.room-eq-phase-view .room-eq-response-legend-room,
+.room-eq-phase-view .room-eq-response-legend-total,
 .room-eq-impulse-view .room-eq-response-legend-room,
 .room-eq-impulse-view .room-eq-response-legend-total {
     display: none;
@@ -336,10 +369,17 @@ body:not(.layout-mobile) .room-eq-additional-eq-ui .room-eq-additional-eq-filter
     color: #888;
     opacity: 1;
 }
+.room-eq-phase-view .room-eq-response-legend-after,
+.room-eq-impulse-view .room-eq-response-legend-after {
+    color: #00ff00;
+}
+.room-eq-phase-view .room-eq-phase-grid,
+.room-eq-phase-view .room-eq-phase-response,
 .room-eq-impulse-view .room-eq-impulse-grid,
 .room-eq-impulse-view .room-eq-impulse-response {
     display: block;
 }
+.room-eq-phase-view .room-eq-phase-unavailable:not([hidden]),
 .room-eq-impulse-view .room-eq-impulse-unavailable:not([hidden]) {
     display: block;
 }
@@ -347,10 +387,13 @@ body:not(.layout-mobile) .room-eq-additional-eq-ui .room-eq-additional-eq-filter
 body.layout-mobile .room-eq-measurement-row { flex-wrap: wrap !important; }
 body.layout-mobile .room-eq-measurement-row select { flex-basis: calc(100% - 130px); }
 body.layout-mobile .room-eq-response-view-controls {
+    left: 5px;
     gap: 7px;
     font-size: 10px;
+    transform: none;
 }
 body.layout-mobile .room-eq-response-legend {
+    top: calc(5px + var(--et-mobile-control-height) + 8px);
     right: 5px;
     font-size: 10px;
 }
@@ -381,6 +424,8 @@ body.layout-mobile .room-eq-additional-eq-ui .room-eq-additional-eq-gain-text {
 }
 body.layout-mobile .room-eq-additional-eq-ui .room-eq-additional-eq-grid,
 body.layout-mobile .room-eq-additional-eq-ui .room-eq-additional-eq-response,
+body.layout-mobile .room-eq-additional-eq-ui .room-eq-phase-grid,
+body.layout-mobile .room-eq-additional-eq-ui .room-eq-phase-response,
 body.layout-mobile .room-eq-additional-eq-ui .room-eq-impulse-grid,
 body.layout-mobile .room-eq-additional-eq-ui .room-eq-impulse-response {
     width: calc(100% - 40px) !important;

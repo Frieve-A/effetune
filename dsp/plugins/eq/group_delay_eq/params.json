@@ -1,0 +1,12 @@
+{
+  "type": "GroupDelayEqPlugin",
+  "parityReference": "native-group-delay-eq-direct-double-v1",
+  "tolerance": { "abs": 0.0002, "policy": "per-sample" },
+  "assets": [
+    { "slot": 0, "format": "ET_ASSET_F32_MULTICH", "capacity": "32 MiB convolution cap" }
+  ],
+  "fields": [
+    { "name": "latencyMode", "key": "lt", "kind": "enum", "values": ["0", "128", "256", "512", "1024"], "default": "128" },
+    { "name": "filterDelaySamples", "key": "fd", "kind": "int", "min": 0, "max": 65536, "default": 8192 }
+  ]
+}

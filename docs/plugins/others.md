@@ -24,6 +24,7 @@ The generated tone or noise is mixed into the current audio path rather than rep
   - Square wave for rich harmonic content
   - Triangle wave for softer harmonics
   - Sawtooth wave for bright timbres
+  - Periodic one-sample impulses for checking impulse response and timing
   - White noise for broadband speaker/headphone checks
   - Pink noise for a smoother, more natural noise balance
 - Pulsed operation mode for intermittent tones or noise bursts
@@ -33,7 +34,7 @@ The generated tone or noise is mixed into the current audio path rather than rep
   - Low frequencies: Deep bass tones
   - Mid frequencies: Musical range
   - High frequencies: Use carefully and only at safe listening levels
-  - Applies to sine, square, triangle, and sawtooth only; disabled for white and pink noise
+  - Applies to sine, square, triangle, and sawtooth only; disabled for Impulse, white noise, and pink noise
   - Available high-frequency output depends on the current audio sample rate; tones above the usable Nyquist frequency are muted
 - **Volume (dB)** - Adjusts output level (-96 dB to 0 dB)
   - Start low and raise slowly
@@ -46,21 +47,23 @@ The generated tone or noise is mixed into the current audio path rather than rep
   - Square: Rich in odd harmonics
   - Triangle: Softer harmonic content
   - Sawtooth: Full harmonic series
+  - Impulse: One full-scale sample at each Interval, based on the current audio sample rate; Frequency does not affect it
   - White Noise: Equal energy per Hz; Frequency does not affect it
   - Pink Noise: Equal energy per octave; Frequency does not affect it
 - **Mode** - Controls signal generation pattern
   - Continuous: Standard uninterrupted signal generation
   - Pulsed: Intermittent signal with controllable timing
+  - Impulse always uses Pulsed; Continuous is disabled
 - **Interval (ms)** - Time between pulse bursts in pulsed mode (100-2000 ms, step 10 ms)
   - Shorter intervals: Rapid pulse sequences
   - Longer intervals: Widely spaced pulses
-  - Only active when Mode is set to Pulsed
+  - Active when Mode is set to Pulsed, including Impulse
 - **Width (ms)** - Pulse ramp time in pulsed mode (2-100 ms, capped at half of Interval, step 1 ms)
   - Controls the fade-in/fade-out time of each pulse
   - The generated pulse lasts about twice the Width, with no steady hold section
   - Shorter widths: Sharp pulse edges
   - Longer widths: Smoother pulse transitions
-  - Only active when Mode is set to Pulsed
+  - Only active when Mode is set to Pulsed; disabled for Impulse because each impulse is exactly one sample
 
 ### Example Uses
 
@@ -104,5 +107,11 @@ The generated tone or noise is mixed into the current audio path rather than rep
      * Longer intervals make each burst easier to hear separately
      * Shorter Width values create sharper starts and stops
      * Compare behavior at different volume levels
+
+6. Impulse Response and Timing Checks
+   - Select Impulse to generate one-sample transients at the configured Interval
+     * Use a longer Interval to separate reflections or effect tails
+     * Record the output when you need to inspect a system or plugin chain's impulse response
+     * Begin with a low Volume because an impulse has a sharp peak and broad frequency content
 
 Remember: The Oscillator is a test signal generator. Start with low Volume, raise it gradually, and avoid loud or high-frequency tones that could cause equipment damage or hearing fatigue.

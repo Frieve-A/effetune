@@ -108,14 +108,49 @@ test('Room EQ keeps its inset plot size over the generic mobile SVG rule', () =>
   );
   assert.match(
     roomEqCss,
-    /body\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-additional-eq-grid,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-additional-eq-response,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-impulse-grid,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-impulse-response \{/
+    /body\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-additional-eq-grid,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-additional-eq-response,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-phase-grid,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-phase-response,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-impulse-grid,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-impulse-response \{/
+  );
+  for (const selector of [
+    '.room-eq-additional-eq-grid',
+    '.room-eq-additional-eq-response',
+    '.room-eq-phase-grid',
+    '.room-eq-phase-response',
+    '.room-eq-impulse-grid',
+    '.room-eq-impulse-response'
+  ]) {
+    assert.match(
+      getRule(
+        roomEqCss,
+        `body.layout-mobile .room-eq-additional-eq-ui ${selector}`
+      ),
+      /width:\s*calc\(100%\s*-\s*40px\)\s*!important;[\s\S]*height:\s*calc\(100%\s*-\s*40px\)\s*!important;/
+    );
+  }
+});
+
+test('Room EQ separates mobile graph view controls from the legend at narrow widths', () => {
+  const mobileCss = readCss('../../effetune-mobile.css');
+  const css = readCss('../../plugins/eq/room_eq.css');
+
+  assert.match(
+    getRule(mobileCss, ':root'),
+    /--et-mobile-control-height:\s*40px;/
   );
   assert.match(
-    getRule(
-      roomEqCss,
-      'body.layout-mobile .room-eq-additional-eq-ui .room-eq-additional-eq-grid'
-    ),
-    /width:\s*calc\(100%\s*-\s*40px\)\s*!important;[\s\S]*height:\s*calc\(100%\s*-\s*40px\)\s*!important;/
+    getRule(css, '.room-eq-response-view-controls'),
+    /top:\s*5px;[\s\S]*left:\s*50%;[\s\S]*transform:\s*translateX\(-50%\);/
+  );
+  assert.match(
+    getRule(css, '.room-eq-response-legend'),
+    /top:\s*5px;[\s\S]*right:\s*7px;/
+  );
+  assert.match(
+    getRule(css, 'body.layout-mobile .room-eq-response-view-controls'),
+    /left:\s*5px;[\s\S]*transform:\s*none;/
+  );
+  assert.match(
+    getRule(css, 'body.layout-mobile .room-eq-response-legend'),
+    /top:\s*calc\(5px\s*\+\s*var\(--et-mobile-control-height\)\s*\+\s*8px\);[\s\S]*right:\s*5px;/
   );
 });
 
@@ -166,27 +201,10 @@ test('Earphone Cable Sim keeps resonance parameter inputs in the right-side colu
   );
 });
 
-test('Channel Divider frequency rows keep compact numeric and slope controls on mobile', () => {
+test('Channel Divider leaves frequency row layout to the shared parameter controls', () => {
   const css = readCss('../../plugins/basics/channel_divider.css');
 
-  assert.match(
-    getRule(css, '.plugin-parameter-ui .channel-divider-frequency-slider-top > label'),
-    /flex:\s*1 1 auto;[\s\S]*min-width:\s*0;/
-  );
-  assert.match(
-    getRule(css, '.plugin-parameter-ui .channel-divider-frequency-slider-top > input[type="number"]'),
-    /flex:\s*0 0 70px;[\s\S]*width:\s*70px;[\s\S]*min-width:\s*70px;[\s\S]*max-width:\s*70px;/
-  );
-  assert.match(
-    getRule(css, 'body.layout-mobile .plugin-parameter-ui .channel-divider-frequency-slider-top > input[type="number"]'),
-    /flex:\s*0 0 80px;[\s\S]*width:\s*80px;[\s\S]*min-width:\s*80px;[\s\S]*max-width:\s*80px;/
-  );
-  assert.match(
-    getRule(css, '.plugin-parameter-ui .channel-divider-frequency-slider-top > .slope-select'),
-    /flex:\s*0 0 90px;[\s\S]*width:\s*90px;[\s\S]*min-width:\s*90px;[\s\S]*max-width:\s*90px;/
-  );
-  assert.match(
-    getRule(css, 'body.layout-mobile .plugin-parameter-ui .channel-divider-frequency-slider-top > .slope-select'),
-    /flex:\s*0 0 90px;[\s\S]*width:\s*90px;[\s\S]*min-width:\s*90px;[\s\S]*max-width:\s*90px;/
-  );
+  assert.doesNotMatch(css, /channel-divider-frequency-slider/);
+  assert.doesNotMatch(css, /^\.plugin-parameter-ui/m);
+  assert.doesNotMatch(css, /input\[type="(?:range|number)"\]/);
 });

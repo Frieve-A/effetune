@@ -1,0 +1,159 @@
+{
+  "defaults": {
+    "sampleRate": 96000,
+    "blockSize": 128,
+    "channels": 2,
+    "channelMode": "stereo"
+  },
+  "cases": [
+    { "id": "default-silence-must-process", "stimulus": "silence", "frames": 4097, "params": { "fr": true } },
+    { "id": "default-program-noise", "stimulus": "noise", "frames": 4097, "params": { "fr": true } },
+    {
+      "id": "band-guard-44100-mono",
+      "stimulus": "fs",
+      "sampleRate": 44100,
+      "blockSize": 83,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 3001,
+      "params": { "fr": true, "tb": 10, "md": 125, "cp": 20, "io": 10, "tn": 5, "bw": 10, "dt": 20, "sp": "Off" }
+    },
+    {
+      "id": "band-guard-44100-negative-tuning",
+      "stimulus": "sweep",
+      "sampleRate": 44100,
+      "blockSize": 83,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 3001,
+      "params": { "fr": true, "tb": 10, "md": 125, "cp": 20, "io": 10, "tn": -5, "bw": 10, "dt": 20, "sp": "Off" }
+    },
+    {
+      "id": "stable-propagation-48000-impulse",
+      "stimulus": "imp",
+      "sampleRate": 48000,
+      "blockSize": 127,
+      "frames": 3073,
+      "params": { "fr": true, "pe": 0, "sk": 0, "st": 0, "in": -80, "hm": -80, "sp": "Off" }
+    },
+    {
+      "id": "maximum-delay-192000",
+      "stimulus": "noise",
+      "sampleRate": 192000,
+      "blockSize": 64,
+      "frames": 1025,
+      "params": { "fr": true, "sk": 100, "fd": 10, "ds": 8, "st": 100, "in": 0, "ag": "Fast", "hz": "60", "sp": "Table" }
+    },
+    {
+      "id": "one-frame-blocks",
+      "stimulus": "noise",
+      "blockSize": 1,
+      "frames": 513,
+      "params": { "fr": true, "sk": 65, "ds": 5.3, "st": 12, "in": -18, "dt": 37 }
+    },
+    {
+      "id": "pair-mode-extra-channels",
+      "stimulus": "noise",
+      "channels": 4,
+      "channelMode": "all4",
+      "channel": "A",
+      "frames": 1025,
+      "params": { "fr": true, "mx": 65, "sp": "Off" }
+    },
+    {
+      "id": "smooth-controls-and-enums",
+      "stimulus": "sweep",
+      "frames": 4097,
+      "params": { "fr": true },
+      "events": [
+        { "frame": 31, "params": { "tb": 10, "pe": 100, "md": 125, "cp": 20 } },
+        { "frame": 997, "params": { "sg": -50, "sk": 100, "fd": 10, "ds": 8, "st": 100, "in": 0, "io": 0.1 } },
+        { "frame": 1999, "params": { "tn": -5, "bw": 10, "ag": "Slow", "dt": 500, "hm": -20, "hz": "60" } },
+        { "frame": 3001, "params": { "og": -12, "mx": 25 } }
+      ]
+    },
+    {
+      "id": "speaker-crossfade-events",
+      "stimulus": "noise",
+      "frames": 3073,
+      "params": { "fr": true, "sp": "Off" },
+      "events": [
+        { "frame": 769, "params": { "sp": "Small" } },
+        { "frame": 1537, "params": { "sp": "Table" } },
+        { "frame": 2305, "params": { "sp": "Off" } }
+      ]
+    },
+    {
+      "id": "dry-output",
+      "stimulus": "imp",
+      "frames": 1025,
+      "params": { "fr": true, "mx": 0 }
+    },
+    {
+      "id": "deep-selective-fade",
+      "stimulus": "noise",
+      "frames": 4097,
+      "params": { "fr": true, "sk": 100, "fd": 4, "ds": 8, "st": 0, "in": -80, "hm": -80, "sp": "Small" }
+    },
+    {
+      "id": "heterodyne-qrm",
+      "stimulus": "sin1k",
+      "frames": 4097,
+      "params": { "fr": true, "io": 0.1, "in": 0, "sk": 0, "st": 0, "bw": 2, "sp": "Off" }
+    },
+    {
+      "id": "flutter",
+      "stimulus": "noise",
+      "sampleRate": 48000,
+      "blockSize": 97,
+      "frames": 4097,
+      "params": { "fr": true, "sk": 100, "fd": 10, "ds": 0.2, "st": 30, "in": -20, "sp": "Table" }
+    },
+    {
+      "id": "sync-detector-lock",
+      "stimulus": "noise",
+      "sampleRate": 48000,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 24001,
+      "params": { "fr": true, "de": "Synchronous", "pe": 0, "sk": 0, "st": 0, "in": -80, "hm": -80, "tn": 0.25, "sp": "Off" }
+    },
+    {
+      "id": "sync-detector-selective-fade",
+      "stimulus": "noise",
+      "sampleRate": 48000,
+      "channels": 1,
+      "channelMode": "mono",
+      "blockSize": 63,
+      "frames": 12289,
+      "params": { "fr": true, "de": "Synchronous", "sk": 100, "fd": 6, "ds": 6, "st": 20, "in": -25, "io": 0.4, "sp": "Small" }
+    },
+    {
+      "id": "detector-mode-switch",
+      "stimulus": "noise",
+      "sampleRate": 48000,
+      "blockSize": 127,
+      "frames": 12289,
+      "params": { "fr": true, "de": "Envelope", "sk": 30, "st": 4, "sp": "Small" },
+      "events": [
+        { "frame": 2049, "params": { "de": "Synchronous" } },
+        { "frame": 6145, "params": { "de": "Envelope" } },
+        { "frame": 9217, "params": { "de": "Synchronous", "dt": 500 } }
+      ]
+    },
+    {
+      "id": "static-rate-step-rescales-pending-deadline",
+      "stimulus": "noise",
+      "sampleRate": 48000,
+      "channels": 1,
+      "channelMode": "mono",
+      "blockSize": 97,
+      "frames": 2049,
+      "params": { "fr": true, "st": 0.125, "sk": 0, "in": -80, "hm": -80, "sp": "Off" },
+      "events": [
+        { "frame": 512, "params": { "st": 100 } },
+        { "frame": 1536, "params": { "st": 0.125 } }
+      ]
+    }
+  ]
+}

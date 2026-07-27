@@ -1,6 +1,6 @@
 ---
 title: "बेसिक प्लगइन - EffeTune"
-description: "Volume, Mute, Stereo Balance, Matrix routing आदि सहित बुनियादी ऑडियो प्लगइन।"
+description: "Volume, Mute, Stereo Balance, FIR Crossover, Matrix routing आदि सहित बुनियादी ऑडियो प्लगइन।"
 lang: hi
 ---
 
@@ -12,6 +12,7 @@ lang: hi
 
 - [Channel Divider](#channel-divider) - stereo audio को frequency bands में बांटकर stereo output pairs पर भेजता है
 - [DC Offset](#dc-offset) - constant DC offset जोड़ता या ठीक करता है
+- [FIR Crossover](#fir-crossover) - FIR फ़िल्टर से stereo signal को तीखी slope वाले bands में बाँटता है
 - [Matrix](#matrix) - audio channels को flexible control के साथ route और mix करता है
 - [MultiChannel Panel](#multichannel-panel) - कई audio channels को individual settings से नियंत्रित करता है
 - [Mute](#mute) - audio output को silent करता है
@@ -71,6 +72,35 @@ lang: hi
   - positive values signal को ऊपर shift करती हैं
   - negative values signal को नीचे shift करती हैं
   - correction की जरूरत हो तो बहुत छोटे adjustments करें
+
+## FIR Crossover
+
+FIR Crossover stereo input को दो, तीन या चार bands में बाँटकर हर band को अलग output pair में भेजता है। यह 4, 6 या 8 output channels वाले desktop systems के लिए है और केवल WASM DSP के साथ काम करता है।
+
+FIR design पारंपरिक filters की resonance के बिना बहुत तीखी slopes देता है। Minimum Phase एक causal crossover construction इस्तेमाल करता है जो bands को फिर से जोड़ने की क्षमता बनाए रखता है; Linear Phase निश्चित latency के बदले symmetric phase response देता है।
+
+### उपयोग गाइड
+
+- default values से शुरू करें और Crossover Frequencies को अपने speakers की ranges के अनुसार रखें।
+- outputs सबसे नीचे वाले band से सबसे ऊपर वाले band तक क्रम में होते हैं; हर band एक stereo pair लेता है।
+- सामान्य setup के लिए 48 से 96 dB/oct आज़माएँ। अधिक तीखी slopes को प्रायः अधिक Taps चाहिए।
+- कम latency के लिए Minimum Phase, या phase alignment महत्वपूर्ण हो तो Linear Phase चुनें।
+- multichannel routing जाँचते समय speakers की सुरक्षा के लिए volume कम रखें।
+
+### Parameters
+
+- **Phase**: **Minimum Phase** या **Linear Phase** चुनता है।
+- **Taps**: FIR filter की लंबाई तय करता है। अधिक value bass resolution और processing load बढ़ाती है।
+- **Latency**: 0, 128, 256, 512 या 1024 samples की घोषित latency जोड़ता है।
+- **Band Count**: दो, तीन या चार bands चुनता है, जिनके लिए क्रमशः 4, 6 या 8 output channels चाहिए।
+- **Crossover Frequencies**: bands के बीच boundaries को बढ़ते क्रम में तय करता है।
+- **Slope**: हर crossover के लिए 24 से 384 dB/oct चुनता है।
+
+### Display को समझना
+
+- graph frequency के साथ हर band का target response दिखाता है।
+- हर रंग उस band के output pair को दर्शाता है।
+- status line latency और filter resolution दिखाती है, या channel count असंगत होने पर चेतावनी देती है।
 
 ## Matrix
 

@@ -24,6 +24,7 @@ lang: hi
   - समृद्ध हार्मोनिक सामग्री के लिए स्क्वेयर वेव
   - नरम हार्मोनिक्स के लिए ट्रायएंगल वेव
   - चमकीले टिम्बर के लिए सॉटूथ वेव
+  - impulse response और timing जाँचने के लिए एक-सैंपल के आवर्ती impulses
   - broadband speaker/headphone checks के लिए व्हाइट नॉइज़
   - अधिक smooth और natural noise balance के लिए पिंक नॉइज़
 - बर्स्ट परीक्षण और आंतरायिक सिग्नल के लिए पल्स ऑपरेशन मोड
@@ -33,7 +34,7 @@ lang: hi
   - निम्न फ्रीक्वेंसी: गहरी बास टोन
   - मध्य फ्रीक्वेंसी: संगीत रेंज
   - उच्च फ्रीक्वेंसी: सावधानी से और केवल सुरक्षित listening levels पर उपयोग करें
-  - केवल sine, square, triangle और sawtooth पर लागू; white और pink noise के लिए disabled
+  - केवल Sine, Square, Triangle और Sawtooth पर लागू; Impulse, White Noise और Pink Noise के लिए disabled
   - उपलब्ध high-frequency output मौजूदा audio sample rate पर निर्भर करता है; usable Nyquist frequency से ऊपर के tones muted होते हैं
 - **Volume (dB)** - आउटपुट स्तर समायोजित करता है (-96 dB से 0 dB)
   - कम level से शुरू करें और धीरे-धीरे बढ़ाएँ
@@ -46,21 +47,23 @@ lang: hi
   - Square: विषम हार्मोनिक्स में समृद्ध
   - Triangle: नरम हार्मोनिक सामग्री
   - Sawtooth: पूर्ण हार्मोनिक श्रृंखला
+  - Impulse: मौजूदा audio sample rate के अनुसार हर Interval पर अधिकतम amplitude का एक sample; Frequency का कोई प्रभाव नहीं
   - White Noise: प्रति Hz समान ऊर्जा
   - Pink Noise: प्रति ऑक्टेव समान ऊर्जा
 - **Mode** - signal generation pattern को नियंत्रित करता है
   - Continuous: मानक निरंतर signal generation
   - Pulsed: नियंत्रणीय समयबद्धता के साथ आंतरायिक सिग्नल
+  - Impulse हमेशा Pulsed का उपयोग करता है; Continuous disabled रहता है
 - **Interval (ms)** - पल्स मोड में पल्स बर्स्ट के बीच का समय (100-2000 ms, स्टेप 10 ms)
   - छोटे अंतराल: तेज़ पल्स अनुक्रम
   - लंबे अंतराल: व्यापक रूप से फैले पल्स
-  - केवल तभी सक्रिय जब Mode को Pulsed पर सेट किया गया हो
+  - Impulse सहित, Mode को Pulsed पर सेट करने पर सक्रिय
 - **Width (ms)** - पल्स मोड में pulse ramp time (2-100 ms, Interval के आधे तक सीमित, step 1 ms)
   - प्रत्येक पल्स के फेड-इन/फेड-आउट समय को नियंत्रित करता है
   - generated pulse लगभग Width के दोगुने समय तक रहता है, इसमें steady hold section नहीं होता
   - छोटी चौड़ाई: तेज़ पल्स किनारे
   - लंबी चौड़ाई: चिकने पल्स संक्रमण
-  - केवल तभी सक्रिय जब Mode को Pulsed पर सेट किया गया हो
+  - केवल Mode को Pulsed पर सेट करने पर सक्रिय; Impulse में हर impulse ठीक एक sample का होता है, इसलिए disabled
 
 ### उपयोग के उदाहरण
 
@@ -101,5 +104,11 @@ lang: hi
      * लंबे intervals हर burst को अलग-अलग सुनना आसान बनाते हैं
      * छोटी Width values तेज़ starts और stops बनाती हैं
      * अलग-अलग volume levels पर behavior की तुलना करें
+
+6. Impulse Response और Timing Checks
+   - चुने गए Interval पर एक-sample transients बनाने के लिए Impulse चुनें
+     * reflections या effect tails को अलग करने के लिए लंबा Interval उपयोग करें
+     * system या plugin chain की impulse response जाँचने के लिए output record करें
+     * impulse में तेज़ peak और broadband content होता है, इसलिए कम Volume से शुरू करें
 
 याद रखें: Oscillator एक test signal generator है। कम Volume से शुरू करें, धीरे-धीरे बढ़ाएँ, और बहुत तेज़ या high-frequency tones से बचें, क्योंकि वे equipment damage या hearing fatigue का कारण बन सकते हैं।

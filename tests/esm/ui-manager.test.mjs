@@ -862,6 +862,58 @@ test('updates audio, sleep, sample-rate, language, translations, and UI text', a
   });
 });
 
+test('shows a temporary prioritized warning for worklet processing overloads', async () => {
+  await withUIHarness({
+    englishTranslations: {
+      'error.sampleRateWarning': 'Low sample rate',
+      'error.audioPlaybackGlitch': 'Playback glitch'
+    }
+  }, async ({ calls, manager, timers }) => {
+    manager.translations = { ...manager.englishTranslations };
+
+    const intervalCount = calls.filter(call => call[0] === 'setInterval').length;
+    manager.initAudio();
+
+    assert.equal(manager.sampleRate.classList.contains('low-sample-rate'), true);
+    assert.equal(manager.sampleRate.classList.contains('audio-glitch-warning'), false);
+    assert.equal(manager.sampleRate.title, 'Low sample rate');
+    assert.equal(calls.filter(call => call[0] === 'setInterval').length, intervalCount);
+
+    manager.audioManager.listeners.get('audioProcessingOverload')?.({ active: true });
+
+    assert.equal(manager.sampleRate.classList.contains('audio-glitch-warning'), true);
+    assert.equal(manager.sampleRate.classList.contains('audio-glitch-warning-pulse'), true);
+    assert.equal(manager.sampleRate.title, 'Playback glitch');
+    let warningTimer = timers[manager.audioGlitchWarningTimer - 1];
+    assert.ok(warningTimer);
+    assert.equal(warningTimer.delay, 10000);
+
+    const firstWarningTimerId = manager.audioGlitchWarningTimer;
+    manager.sampleRate.classList.remove('audio-glitch-warning-pulse');
+    manager.audioManager.listeners.get('audioProcessingOverload')?.({ active: true });
+    assert.notEqual(manager.audioGlitchWarningTimer, firstWarningTimerId);
+    assert.equal(manager.sampleRate.classList.contains('audio-glitch-warning-pulse'), false);
+    assert.equal(calls.some(call => call[0] === 'clearTimeout' && call[1] === firstWarningTimerId), true);
+    manager.updateSampleRateDisplay();
+    assert.equal(manager.sampleRate.title, 'Playback glitch');
+
+    const activeWarningTimerId = manager.audioGlitchWarningTimer;
+    manager.audioManager.listeners.get('audioProcessingOverload')?.({ active: false });
+    assert.notEqual(manager.audioGlitchWarningTimer, activeWarningTimerId);
+    assert.equal(
+      calls.some(call => call[0] === 'clearTimeout' && call[1] === activeWarningTimerId),
+      true
+    );
+
+    warningTimer = timers[manager.audioGlitchWarningTimer - 1];
+    assert.equal(warningTimer.delay, 10000);
+    warningTimer.fn();
+    assert.equal(manager.sampleRate.classList.contains('audio-glitch-warning'), false);
+    assert.equal(manager.sampleRate.classList.contains('audio-glitch-warning-pulse'), false);
+    assert.equal(manager.sampleRate.title, 'Low sample rate');
+  });
+});
+
 test('publishes only the latest requested language when translation loads finish out of order', async () => {
   const jaTranslations = createDeferred();
   const frTranslations = createDeferred();

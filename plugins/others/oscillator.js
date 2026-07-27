@@ -81,7 +81,18 @@ class OscillatorPlugin extends PluginBase {
             // --- Sample Generation ---
 
             // Logic selection outside the main sample loop
-            if (waveform === 'white') {
+            if (waveform === 'impulse') {
+                let impulsePosition = pulseTime % intervalSamples;
+                for (let i = 0; i < blockSize; i++) {
+                    samples[i] = impulsePosition < 1.0 ? 1.0 : 0.0;
+                    impulsePosition += 1.0;
+                    if (impulsePosition >= intervalSamples) {
+                        impulsePosition -= intervalSamples;
+                    }
+                }
+                pulseTime = impulsePosition;
+                context.pulseTime = pulseTime;
+            } else if (waveform === 'white') {
                 // White noise generation loop
                 for (let i = 0; i < blockSize; i++) {
                     samples[i] = Math.random() * 2.0 - 1.0;
@@ -232,7 +243,7 @@ class OscillatorPlugin extends PluginBase {
             } // End waveform type check
 
             // --- Apply Pulse Modulation (if pulsed mode) ---
-            if (mode === 'pulsed') {
+            if (mode === 'pulsed' && waveform !== 'impulse') {
                 for (let i = 0; i < blockSize; i++) {
                     // Calculate position within current pulse cycle
                     const pulsePosition = pulseTime % intervalSamples;
@@ -301,12 +312,18 @@ class OscillatorPlugin extends PluginBase {
     }
 
     setWaveform(value) {
-        this.wf = this.isAllowedEnum(value, ['sine', 'square', 'triangle', 'sawtooth', 'white', 'pink'], this.wf);
+        this.wf = this.isAllowedEnum(
+            value,
+            ['sine', 'square', 'triangle', 'sawtooth', 'white', 'pink', 'impulse'],
+            this.wf
+        );
+        if (this.wf === 'impulse') this.md = 'pulsed';
         this.updateParameters();
     }
 
     setMode(value) {
-        this.md = this.isAllowedEnum(value, ['continuous', 'pulsed'], this.md);
+        const mode = this.isAllowedEnum(value, ['continuous', 'pulsed'], this.md);
+        this.md = this.wf === 'impulse' ? 'pulsed' : mode;
         this.updateParameters();
     }
 
@@ -458,6 +475,7 @@ class OscillatorPlugin extends PluginBase {
             ['sawtooth', 'Sawtooth'],
             ['triangle', 'Triangle'],
             ['square', 'Square'],
+            ['impulse', 'Impulse'],
             ['white', 'White Noise'],
             ['pink', 'Pink Noise']
         ];
@@ -470,15 +488,9 @@ class OscillatorPlugin extends PluginBase {
         });
         waveSelect.value = this.wf;
 
-        const updateFrequencyControlState = (value) => {
-            const isNoise = value === 'white' || value === 'pink';
-            freqSlider.disabled = isNoise;
-            freqValue.disabled = isNoise;
-        };
-
         waveSelect.addEventListener('change', () => {
             this.setWaveform(waveSelect.value);
-            updateFrequencyControlState(waveSelect.value);
+            updateControlStates();
         });
 
         waveRow.appendChild(waveLabel);
@@ -493,6 +505,7 @@ class OscillatorPlugin extends PluginBase {
         
         const modeRadioGroup = document.createElement('div');
         modeRadioGroup.className = 'radio-group';
+        const modeRadios = {};
         
         ['Continuous', 'Pulsed'].forEach((label, index) => {
             const value = index === 0 ? 'continuous' : 'pulsed';
@@ -506,13 +519,9 @@ class OscillatorPlugin extends PluginBase {
             radio.autocomplete = "off";
             radio.addEventListener('change', () => {
                 this.setMode(value);
-                // Update UI element states based on mode
-                const isPulsed = value === 'pulsed';
-                intervalSlider.disabled = !isPulsed;
-                intervalValue.disabled = !isPulsed;
-                widthSlider.disabled = !isPulsed;
-                widthValue.disabled = !isPulsed;
+                updateControlStates();
             });
+            modeRadios[value] = radio;
             
             const radioLabel = document.createElement('label');
             radioLabel.htmlFor = radioId;
@@ -614,13 +623,24 @@ class OscillatorPlugin extends PluginBase {
         widthRow.appendChild(widthSlider);
         widthRow.appendChild(widthValue);
 
-        // Set initial UI state based on current mode
-        const initialIsPulsed = this.md === 'pulsed';
-        intervalSlider.disabled = !initialIsPulsed;
-        intervalValue.disabled = !initialIsPulsed;
-        widthSlider.disabled = !initialIsPulsed;
-        widthValue.disabled = !initialIsPulsed;
-        updateFrequencyControlState(this.wf);
+        const updateControlStates = () => {
+            const isImpulse = this.wf === 'impulse';
+            const disablesFrequency = isImpulse || this.wf === 'white' || this.wf === 'pink';
+            const isPulsed = this.md === 'pulsed';
+
+            freqSlider.disabled = disablesFrequency;
+            freqValue.disabled = disablesFrequency;
+            modeRadios.continuous.disabled = isImpulse;
+            modeRadios.continuous.checked = !isPulsed;
+            modeRadios.pulsed.checked = isPulsed;
+            intervalSlider.disabled = !isPulsed;
+            intervalValue.disabled = !isPulsed;
+            widthSlider.disabled = !isPulsed || isImpulse;
+            widthValue.disabled = !isPulsed || isImpulse;
+        };
+
+        // Set initial UI state based on the current waveform and mode
+        updateControlStates();
 
         // Add all controls to container
         container.appendChild(freqRow);

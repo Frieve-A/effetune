@@ -350,6 +350,105 @@ test('IR preview spans from 2 ms before onset through at least 5 ms', () => {
     assert.equal(shortWindowPreview.before.length, 336);
 });
 
+test('phase preview removes measurement onset and known FIR delay', () => {
+    const impulse = new Float32Array(10000);
+    const onset = 512;
+    impulse[onset] = 1;
+    const measurement = {
+        id: 'phase-preview-fixture',
+        timestamp: 'fixed',
+        points: [{ pointId: 1, timestamp: 'fixed' }],
+        averageFrequencyResponse: []
+    };
+    const sources = [{
+        measurement,
+        impulses: [{
+            measurementId: measurement.id,
+            pointId: 1,
+            sampleRate: 48000,
+            onsetIndex: onset,
+            refScale: 1,
+            data: impulse
+        }]
+    }];
+
+    for (const phase of ['min', 'lin']) {
+        const preview = designRoomEq({
+            config: {
+                sampleRate: 48000,
+                taps: 8192,
+                phase,
+                correctionAmount: 0
+            },
+            sources
+        }).previews[0];
+        assert.equal(preview.phaseResponse.before.length, preview.frequencies.length);
+        assert.equal(preview.phaseResponse.after.length, preview.frequencies.length);
+        for (const values of [
+            preview.phaseResponse.before,
+            preview.phaseResponse.after
+        ]) {
+            let maximum = 0;
+            for (const value of values) {
+                const magnitude = Math.abs(value);
+                if (magnitude > maximum) maximum = magnitude;
+            }
+            assert.ok(maximum < 0.01, `${phase}: maximum phase was ${maximum}°`);
+        }
+    }
+});
+
+test('IR preview removes frequencies above 20 kHz from before and after waveforms', () => {
+    const sampleRate = 48000;
+    const lowFrequency = 9000;
+    const highFrequency = 22500;
+    const onset = 8288;
+    const impulse = new Float32Array(20000);
+    for (let index = 0; index < impulse.length; index += 1) {
+        impulse[index] = 0.25 * Math.sin(2 * Math.PI * lowFrequency * index / sampleRate) +
+            Math.sin(2 * Math.PI * highFrequency * index / sampleRate);
+    }
+    const measurement = {
+        id: 'band-limited-impulse-preview',
+        timestamp: 'fixed',
+        points: [{ pointId: 1, timestamp: 'fixed' }],
+        averageFrequencyResponse: []
+    };
+    const preview = designRoomEq({
+        config: {
+            sampleRate,
+            taps: 8192,
+            phase: 'min',
+            directWindowMs: 5,
+            correctionAmount: 0
+        },
+        sources: [{
+            measurement,
+            impulses: [{
+                measurementId: measurement.id,
+                pointId: 1,
+                sampleRate,
+                onsetIndex: onset,
+                refScale: 1,
+                data: impulse
+            }]
+        }]
+    }).previews[0].impulseResponse;
+    const firstSample = onset + Math.round(preview.startMs * sampleRate / 1000);
+
+    for (const samples of [preview.before, preview.after]) {
+        let maximumError = 0;
+        for (let index = 0; index < samples.length; index += 1) {
+            const expected = 0.25 * Math.sin(
+                2 * Math.PI * lowFrequency * (firstSample + index) / sampleRate
+            );
+            const error = Math.abs(samples[index] - expected);
+            if (error > maximumError) maximumError = error;
+        }
+        assert.ok(maximumError < 1e-5, `maximum preview error was ${maximumError}`);
+    }
+});
+
 test('IR preview keeps before and after waveforms on the measured onset reference', () => {
     const impulse = new Float32Array(10000);
     const onset = 512;
@@ -502,6 +601,61 @@ test('full mode flattens nonlinear direct-sound group delay', () => {
         assert.equal(result.qualityWarnings.length, 0);
     }
     assert.ok(residuals.full < residuals.lin * 0.1);
+});
+
+test('manual Phase Low overrides the automatic three-cycle boundary', () => {
+    const impulse = new Float32Array(4096);
+    const onset = 128;
+    const coefficient = 0.72;
+    impulse[onset] = coefficient;
+    for (let index = 1; index < 600; index += 1) {
+        impulse[onset + index] = (1 - coefficient * coefficient) *
+            (-coefficient) ** (index - 1);
+    }
+    const measurement = {
+        id: 'manual-phase-low-fixture',
+        timestamp: 'fixed',
+        points: [{ pointId: 1, timestamp: 'fixed' }],
+        averageFrequencyResponse: []
+    };
+    const sources = [{
+        measurement,
+        impulses: [{
+            measurementId: measurement.id,
+            pointId: 1,
+            sampleRate: 48000,
+            onsetIndex: onset,
+            refScale: 1,
+            data: impulse
+        }]
+    }];
+    const design = phaseLowFrequency => designRoomEq({
+        config: {
+            sampleRate: 48000,
+            taps: 8192,
+            phase: 'full',
+            smoothing: 0.05,
+            directWindowMs: 6,
+            correctionAmount: 0,
+            ...(phaseLowFrequency !== undefined && { phaseLowFrequency })
+        },
+        sources
+    });
+    const automatic = design();
+    const manualEquivalent = design(500);
+    const manualLower = design(200);
+    const manualBelowWindowLimit = design(100);
+    const manualAtWindowLimit = design(1000 / 6);
+
+    assert.equal(automatic.config.phaseLowFrequency, null);
+    assert.equal(manualEquivalent.config.phaseLowFrequency, 500);
+    assert.deepEqual(manualEquivalent.channels[0], automatic.channels[0]);
+    assert.ok(manualLower.channels[0].some((value, index) =>
+        Math.abs(value - automatic.channels[0][index]) > 1e-6));
+    assert.deepEqual(
+        manualBelowWindowLimit.channels[0],
+        manualAtWindowLimit.channels[0]
+    );
 });
 
 test('full mode defaults and falls back to the multipoint excess-phase consensus', () => {

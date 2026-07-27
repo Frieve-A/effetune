@@ -1,6 +1,6 @@
 ---
 title: "Plugins de EQ - EffeTune"
-description: "Plugins de equalização, incluindo Parametric EQ, Graphic EQ, Dynamic EQ, Room EQ, Earphone Cable Sim, filtros e Tone Control."
+description: "Plugins de equalização, incluindo Parametric EQ, Graphic EQ, Dynamic EQ, 5Band FIR PEQ, Room EQ, Earphone Cable Sim, filtros e Tone Control."
 lang: pt
 ---
 
@@ -13,10 +13,12 @@ Uma coleção de plugins que permite ajustar diferentes aspectos do som da sua m
 - [15Band GEQ](#15band-geq) - Ajuste detalhado do som com 15 controles precisos
 - [15Band PEQ](#15band-peq) - Modelagem tonal detalhada em 15 bandas para ajustar o som durante a escuta
 - [5Band Dynamic EQ](#5band-dynamic-eq) - Equalizador baseado em dinâmica que reage à sua música
+- [5Band FIR PEQ](#5band-fir-peq) - Equalizador FIR de cinco bandas para ajustes acentuados e estáveis
 - [5Band PEQ](#5band-peq) - Equalizador flexível para moldar graves, médios e agudos
 - [Band Pass Filter](#band-pass-filter) - Foco em frequências específicas
 - [Comb Filter](#comb-filter) - Coloração sonora faseada, oca ou metálica
 - [Earphone Cable Sim](#earphone-cable-sim) - Ajuda a verificar como as mudanças de resposta em frequência causadas por cabos comuns de fones de ouvido costumam ser pequenas
+- [Group Delay EQ](#group-delay-eq) - Ajusta o atraso de cada banda de frequência sem alterar o timbre
 - [Hi Pass Filter](#hi-pass-filter) - Remove frequências baixas indesejadas com precisão
 - [Lo Pass Filter](#lo-pass-filter) - Remove frequências altas indesejadas com precisão
 - [Loudness Equalizer](#loudness-equalizer) - Correção do balanço de frequência para audição em volumes baixos
@@ -178,6 +180,41 @@ Um equalizador inteligente que ajusta automaticamente as bandas de frequência c
 - Gráfico de resposta de frequência em tempo real
 - Curva de resposta dinâmica mostrando os boosts e cortes atuais
 - Controles interativos de frequência e ganho
+
+## 5Band FIR PEQ
+
+O 5Band FIR PEQ mantém os controles familiares de cinco bandas do 5Band PEQ, mas constrói a resposta combinada como um único filtro FIR. Use-o para corrigir com precisão o som durante a reprodução, aplicar cortes muito estreitos ou criar transições de shelf acentuadas sem os limites de estabilidade dos filtros recursivos. Minimum Phase mantém baixa a latência de processamento, enquanto Linear Phase atrasa todas as frequências pelo mesmo tempo fixo. O plugin requer o motor WASM DSP; sem ele, o sinal passa sem alterações.
+
+### Guia de aprimoramento sonoro
+
+- Comece com **Minimum Phase**, 32768 Taps e Latency de 128 samples. Para ajustes comuns de graves, médios e agudos, use valores amplos de Q, em torno de 0,7 a 2.
+- Para reduzir um pico estreito confirmado por medição, selecione Peaking, ajuste a frequência central ao pico e aumente Q aos poucos. Valores acima de 10 são destinados a correções precisas; verifique o status, pois uma resposta extremamente estreita pode exigir mais Taps.
+- Use Low Shelf para equilibrar os graves e High Shelf para equilibrar os agudos. Na audição cotidiana, comece com pequenas alterações de 1 a 3 dB.
+- Use LowPass ou HighPass para remover extremos de frequência indesejados. Comece com Slope de 12 ou 24 dB/oct e aumente somente se precisar de um corte mais acentuado.
+- Escolha **Linear Phase** quando for importante manter um atraso de fase constante em todo o espectro e a latência adicional for aceitável. Pode surgir energia antes de um transiente, sobretudo com ajustes acentuados; compare com Minimum Phase em músicas com ataques marcantes.
+- A construção FIR evita a instabilidade causada por polos de realimentação, mas um ganho alto ou Q muito elevado ainda produz uma resposta ao impulso longa e seletiva. Para ressonâncias isoladas, prefira cortes a ganhos e preserve margem de nível suficiente na reprodução.
+
+### Parâmetros
+
+- **Phase**
+  - **Minimum Phase** - Cria uma resposta causal de fase mínima e não acrescenta o atraso correspondente à metade do comprimento do FIR. A Latency selecionada ainda é aplicada.
+  - **Linear Phase** - Cria uma resposta simétrica de fase linear e acrescenta `Taps / 2` samples de atraso FIR além da Latency selecionada.
+- **Taps** - Comprimento do FIR: 8192, 16384, 32768, 65536 ou 131072. Mais taps melhoram a precisão nos graves e com valores muito altos de Q, mas aumentam o uso de memória, o tempo de projeto e o atraso de Linear Phase.
+- **Latency** - Latência inicial do motor de convolução: 0, 128, 256, 512 ou 1024 samples. Valores menores reduzem o atraso, mas exigem mais processamento.
+- **Cinco bandas ajustáveis** - As frequências centrais iniciais são 100 Hz, 316 Hz, 1 kHz, 3,16 kHz e 10 kHz. Cada banda pode ser ativada separadamente com Enable.
+- **Type** - Seleciona Peaking, LowPass, HighPass, Low Shelf, High Shelf, BandPass ou Notch. Todas as bandas ativas são combinadas antes do projeto do filtro FIR.
+- **Freq** - Define a frequência da banda entre 20 Hz e 20 kHz.
+- **Gain** - Define o ganho ou corte de -20 a +20 dB para Peaking, Low Shelf e High Shelf. LowPass, HighPass, BandPass e Notch não usam Gain.
+- **Q** - Define a largura da resposta entre 0,1 e 100. Valores maiores produzem uma alteração mais estreita e valores menores, uma alteração mais ampla. O controle deslizante usa escala logarítmica.
+- **Slope** - Define a inclinação de corte de LowPass ou HighPass entre 0,1 e 384 dB/oct. O controle deslizante usa escala logarítmica e só fica disponível para esses dois valores de Type.
+
+### Como ler a tela
+
+- A curva cinza mostra o «Alvo» combinado dos ajustes atuais das bandas.
+- A curva verde mostra a resposta de magnitude realizada pelo FIR projetado. Uma separação visível indica que o valor de Taps escolhido não consegue reproduzir exatamente o alvo.
+- Os marcadores numerados correspondem às cinco bandas. Arraste na horizontal para alterar Freq e na vertical para alterar Gain; as bandas desativadas aparecem esmaecidas.
+- A linha de status indica se o FIR está sendo projetado, preparado ou usado e mostra a latência total de processamento em samples e milissegundos.
+- Se os Taps escolhidos não conseguirem reproduzir com precisão uma resposta extrema, o status recomenda aumentar Taps ou reduzir Q ou Slope.
 
 ## 5Band PEQ
 
@@ -360,6 +397,36 @@ Reproduz as pequenas mudanças de resposta em frequência que aparecem quando um
 - Os rótulos da grade cobrem 20Hz a 20kHz; a curva exibida se estende por toda a faixa do gráfico, de 10Hz a 40kHz
 - Curva de resposta verde sobre uma grade escura, com eixo em dB ajustado automaticamente em torno da referência normalizada de 0dB
 - Desvios maiores na curva indicam onde o modelo altera mais o nível de reprodução
+
+## Group Delay EQ
+
+O Group Delay EQ é a contraparte de um equalizador comum: em vez de mudar o volume de cada banda, ele muda **quando** cada banda chega. Quinze deslizadores definem o atraso de cada faixa de frequências e o plugin constrói um único filtro FIR projetado para realizar esses atrasos com uma resposta de magnitude plana. Uma resposta plana é o objetivo do projeto, não uma garantia: um número finito de Taps aproxima o alvo ideal, e ajustes de atraso grandes ou que mudam rapidamente entre as bandas podem gerar uma ondulação de magnitude mensurável. Use-o para compensar erros de tempo de uma caixa acústica ou de um divisor de frequências, ou para conferir você mesmo quanto de distorção de fase o seu sistema e os seus ouvidos realmente revelam. O plugin requer o motor WASM DSP; sem ele, o sinal passa sem alterações.
+
+Para o som, só importam as diferenças entre bandas. Um filtro que atrasa todas as bandas igualmente é apenas um delay, então o plugin mantém um atraso interno fixo e deixa você adiantar ou atrasar cada banda em torno dele. Enquanto todos os deslizadores estiverem em 0 ms, o plugin é totalmente transparente e não acrescenta latência.
+
+### Guia de melhoria do som
+
+- **Tempo entre caixas e subwoofer**: Se o grave chega atrasado em relação ao restante da música, atrase as bandas acima do corte na mesma medida até o gráfico ficar plano nessa região. As correções típicas ficam entre 2 e 10 ms e são mais fáceis de julgar com bumbo e baixo.
+- **Caixas bass-reflex e modos da sala**: Uma caixa com duto acrescenta atraso de grupo perto da frequência de sintonia. Abaixe a banda grave afetada, ou levante todas as outras, para deixar a curva mais plana. Pequenas diferenças residuais abaixo de 50 Hz são normais.
+- **Teste de audição da distorção de fase**: Coloque uma banda em +10 ms, compare com o efeito desligado e depois reduza o valor até não ouvir mais diferença. Só interprete o resultado como uma comparação de fase quando a «Ondulação» na linha de status estiver suficientemente baixa e a curva verde «Obtido» coincidir de perto com a curva cinza «Alvo». Caso contrário, mudanças de magnitude ou um atraso realizado com pouca precisão também podem afetar o que você ouve.
+- **Trabalhe banda por banda**: Mova um deslizador de cada vez e ouça. Mudanças apenas de fase são sutis na maior parte do material e aparecem principalmente em transientes como bateria, cordas dedilhadas e ataques de piano.
+- **Observe as duas curvas**: Se a curva verde deixa de acompanhar a cinza, o ajuste atual de Taps não consegue realizar aquela forma. Aumente Taps ou reduza a diferença entre bandas vizinhas.
+
+### Parâmetros
+
+- **Taps** - Comprimento do FIR: 4096, 8192, 16384 ou 32768. As frequências baixas exigem um filtro longo: a 96 kHz, 16384 taps acompanham grandes diferenças de atraso até cerca de 60 Hz, enquanto ajustes menores perdem precisão primeiro no grave. Taps também define quanto atraso o filtro consegue conter e, portanto, o alcance dos deslizadores. Mais taps significam mais latência e mais processamento.
+- **Latency** - Latência inicial do motor de convolução: 0, 128, 256, 512 ou 1024 samples. Valores menores reduzem o atraso, mas exigem mais processamento.
+- **Deslizadores de banda (25 Hz a 16 kHz)** - Quinze deslizadores definem o atraso de grupo de cada banda. Valores positivos fazem a faixa chegar mais tarde; negativos, mais cedo. A faixa de ajuste cobre todo o atraso que o filtro consegue conter: a 96 kHz são ±18,6 ms com 4096 taps e ±149,3 ms com 32768 taps. A banda mais alta realiza esses valores por completo, enquanto as bandas graves precisam de mais taps para acompanhar um ajuste grande; o gráfico mostra até onde cada uma chega. Os valores são interpolados suavemente ao longo da frequência, de modo que bandas vizinhas sempre se combinam.
+- **Ângulo de fase** - Abaixo de cada valor em milissegundos, o deslizador mostra o mesmo atraso como rotação de fase na frequência central da banda. Acima de uma volta completa a leitura é dividida em ciclos inteiros e no ângulo restante, portanto `+2c180°` significa dois ciclos completos mais meia volta.
+- **Redefinir** - Dê um duplo clique em um deslizador para devolver aquela banda a 0 ms. O botão Reset do gráfico redefine todas as bandas de uma vez.
+
+A latência total é o valor de Latency mais metade dos Taps. Ela não muda enquanto você move os deslizadores, portanto apenas alterar Taps ou Latency muda o atraso de toda a cadeia.
+
+### Visualização
+
+- A curva cinza é o alvo: o atraso solicitado, interpolado em um eixo logarítmico de 20 Hz a 20 kHz. O eixo de atraso se redimensiona conforme os ajustes atuais, a partir de ±5 ms.
+- A curva verde é o que o filtro projetado realmente faz. Onde as duas coincidem, o ajuste é realizado por completo; onde se separam, o filtro não consegue seguir o pedido com os Taps atuais.
+- A linha de status mostra a latência total em samples e milissegundos e a ondulação de magnitude do filtro. A ondulação mede quanto a resposta de magnitude realizada se afasta do objetivo de projeto plano: valores menores ficam mais perto do objetivo, e 0,3 dB é o limite do aviso de precisão.
 
 ## Hi Pass Filter
 
@@ -546,6 +613,7 @@ A medição é uma referência local do dispositivo. Uma URL ou preset guarda se
 - **Smoothing** - Suavização gaussiana de 0,02 a 1,00 oitava. Valores maiores produzem uma correção mais ampla e conservadora; valores menores seguem variações mais finas.
 - **Correction Low / Correction High** - Definem os limites de transição inferior e superior da correção automática de magnitude. Antes da suavização gaussiana, a correção automática é tratada como 0 dB nesses limites e fora deles. Assim, Smoothing controla a suavidade com que a correção diminui e até onde se estende além de cada limite. O limite superior também é restringido internamente para deixar margem abaixo da frequência de Nyquist.
 - **Direct Window** - Trecho de 1 a 50 ms após o início do som direto usado por Correction. Uma janela maior estende a correção de fase para frequências mais baixas, mas inclui mais reflexões da sala.
+- **Phase Low** - Define entre 20 e 20000 Hz a frequência inferior da correção do excesso de fase medido no modo Correction. Com **Auto** ativado por padrão, o Room EQ usa o maior valor entre Correction Low e a frequência correspondente a três ciclos dentro de Direct Window (500 Hz com 6 ms). Desative Auto para ajustar o limite manualmente. O valor manual é independente de Correction Low e não pode ficar abaixo da frequência de um ciclo dentro de Direct Window (167 Hz com 6 ms). Valores abaixo do limite automático são mais sensíveis ao corte da janela temporal e às reflexões da sala.
 - **Max Boost** - Limita de 0 a 18 dB os reforços produzidos pela inversão automática da resposta. O limite é aplicado antes da suavização gaussiana, permitindo que as regiões limitadas se integrem suavemente à curva de correção ao redor. Não limita os cortes.
 - **Level Correction** - Ajusta a correção automática de magnitude de 0% a 100% em passos de 1%, linearmente em dB. Em 0%, a correção automática de nível fica desativada; Phase Correction, Additional EQ, Delay e Gain continuam ativos.
 - **Phase Correction** - Ajusta a correção do excesso de fase medido de 0% a 100% em passos de 1% e atua somente em Correction. Seus controles ficam desativados nos modos Minimum e Linear. Em 0%, a correção do excesso de fase fica desativada enquanto Level Correction continua ativa. A mudança de fase mínima inerente à resposta de magnitude de Level Correction permanece; portanto, Phase Correction controla apenas o componente adicional de excesso de fase obtido da medição.
@@ -555,9 +623,10 @@ A medição é uma referência local do dispositivo. Uma URL ou preset guarda se
 
 ### Exibição visual
 
-- Use os botões de opção **Resposta em frequência** e **Resposta ao impulso** na parte superior do gráfico para alternar a visualização.
-- **Resposta ao impulso** mostra o ponto selecionado ou, quando Reference Point está em Consenso, a forma de onda média alinhada no tempo. O intervalo vai de 2 ms antes do início medido até o maior valor entre 5 ms e Direct Window. A linha cinza representa o sinal antes da correção e a branca, o resultado calculado após a aplicação do FIR real. O início medido é a referência comum de 0 ms e apenas o atraso fixo conhecido do FIR é removido da forma de onda corrigida, de modo que a posição relativa do pico e o pré-ringing permaneçam visíveis. As duas linhas usam a mesma escala de amplitude normalizada. Se a medição não contiver dados de resposta ao impulso, será exibida uma mensagem informando que eles não estão disponíveis.
-- O gráfico mostra a frequência em escala logarítmica no eixo horizontal e o nível em dB no vertical.
+- Use os botões de opção **Frequência**, **Fase** e **Impulso** na parte superior do gráfico para alternar a visualização.
+- **Fase** mostra a frequência em escala logarítmica no eixo horizontal e a fase de -180° a 180° no vertical. A linha cinza representa a fase antes da correção e a verde, a fase calculada após a aplicação do FIR real. O início medido é removido das duas linhas, e o atraso fixo conhecido do FIR também é removido do resultado corrigido; assim, o gráfico mostra a mudança de fase introduzida pelo filtro sem esses deslocamentos temporais fixos. Se a medição não contiver resposta ao impulso, será exibida uma mensagem informando que os dados não estão disponíveis.
+- **Impulso** mostra o ponto selecionado ou, quando Reference Point está em Consenso, a forma de onda média alinhada no tempo. O intervalo vai de 2 ms antes do início medido até o maior valor entre 5 ms e Direct Window. A linha cinza representa o sinal antes da correção e a verde, o resultado calculado após a aplicação do FIR real. O início medido é a referência comum de 0 ms e apenas o atraso fixo conhecido do FIR é removido da forma de onda corrigida, de modo que a posição relativa do pico e o pré-ringing permaneçam visíveis. As duas linhas usam a mesma escala de amplitude normalizada. Somente para esta exibição, os componentes a partir de 20 kHz são removidos; isso não afeta o filtro de correção nem o processamento de áudio. Se a medição não contiver dados de resposta ao impulso, será exibida uma mensagem informando que eles não estão disponíveis.
+- **Frequência** mostra a frequência em escala logarítmica no eixo horizontal e o nível em dB no vertical.
 - As duas linhas verticais brancas pontilhadas marcam as frequências definidas por Correction Low e Correction High.
 - Os marcadores permitem ajustar a frequência e o ganho de cada banda.
 - A linha cinza-clara mostra a resposta em frequência medida e suavizada com o deslocamento de exibição comum do gráfico.

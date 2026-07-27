@@ -123,6 +123,7 @@ EffeTune 2.1.0では、カタログスキーマv3を採用し、CUE形式のア�
    - Sectionエフェクトの場合：Shift+×ボタンクリックでセクション全体を削除
 9. ルーティングボタンをクリックして、処理するチャンネルと入出力バスを設定します
    - [バス機能の詳細](bus-function.md)
+10. スライダーを細かく調整するには、Shiftキーを押しながらドラッグします。値は最小単位ずつ変化します
 
 ### プリセットの使用
 
@@ -311,6 +312,7 @@ EffeTune 2.1.0では、カタログスキーマv3を採用し、CUE形式のア�
 | Analyzer  | Stereo Meter        | ステレオバランスとチャンネル相関を可視化                                              | [詳細](plugins/analyzer.md#stereo-meter)              |
 | Basics    | Channel Divider     | ステレオ信号を周波数帯域に分割し、各帯域を別々のステレオ出力ペアへルーティング                         | [詳細](plugins/basics.md#channel-divider)             |
 | Basics    | DC Offset           | DCオフセットの調整                                                        | [詳細](plugins/basics.md#dc-offset)                   |
+| Basics    | FIR Crossover       | 急峻に分割した周波数帯域をステレオ出力ペアへ送るFIRクロスオーバー | [詳細](plugins/basics.md#fir-crossover) |
 | Basics    | Matrix              | オーディオチャンネルを柔軟に割り当て、混ぜ合わせる                                  | [詳細](plugins/basics.md#matrix)                      |
 | Basics    | MultiChannel Panel  | 複数チャンネルを音量、ミュート、ソロ、遅延で個別制御するコントロールパネル                   | [詳細](plugins/basics.md#multichannel-panel)          |
 | Basics    | Mute                | オーディオ信号を完全に無音化                                                   | [詳細](plugins/basics.md#mute)                        |
@@ -332,10 +334,12 @@ EffeTune 2.1.0では、カタログスキーマv3を採用し、CUE形式のア�
 | EQ        | 15Band GEQ | 15バンドグラフィックイコライザー | [詳細](plugins/eq.md#15band-geq) |
 | EQ        | 15Band PEQ | リスニング用の細かな音色調整に使える15バンドパラメトリックイコライザー | [詳細](plugins/eq.md#15band-peq) |
 | EQ        | 5Band Dynamic EQ | しきい値に基づく周波数調整が可能な5バンドダイナミックイコライザー | [詳細](plugins/eq.md#5band-dynamic-eq) |
+| EQ        | 5Band FIR PEQ | Minimum PhaseまたはLinear PhaseのFIRフィルターで音色を整える5バンドパラメトリックイコライザー | [詳細](plugins/eq.md#5band-fir-peq) |
 | EQ        | 5Band PEQ | 低域・中域・高域を整えやすい柔軟な5バンドイコライザー | [詳細](plugins/eq.md#5band-peq) |
 | EQ        | Band Pass Filter | 特定の周波数に焦点を当てる | [詳細](plugins/eq.md#band-pass-filter) |
 | EQ        | Comb Filter | フェイザー風、空洞感、金属的な色づきを追加 | [詳細](plugins/eq.md#comb-filter) |
 | EQ        | Earphone Cable Sim | 通常範囲のイヤホンケーブル差による周波数特性変化の小ささを確認 | [詳細](plugins/eq.md#earphone-cable-sim) |
+| EQ        | Group Delay EQ | 音色を変えずに帯域ごとの遅延を調整 | [詳細](plugins/eq.md#group-delay-eq) |
 | EQ        | Hi Pass Filter | 不要な低域を精密に除去 | [詳細](plugins/eq.md#hi-pass-filter) |
 | EQ        | Lo Pass Filter | 不要な高域を精密に除去 | [詳細](plugins/eq.md#lo-pass-filter) |
 | EQ        | Loudness Equalizer | 低音量リスニング向けの周波数バランス補正 | [詳細](plugins/eq.md#loudness-equalizer) |
@@ -351,6 +355,7 @@ EffeTune 2.1.0では、カタログスキーマv3を採用し、CUE形式のア�
 | Lo-Fi     | Hum Generator | ビンテージ/ローファイ風の50/60 Hz電源ハムの雰囲気を調整して追加 | [詳細](plugins/lofi.md#hum-generator) |
 | Lo-Fi     | Noise Blender | ローファイな雰囲気のための背景ノイズ質感を調整して追加 | [詳細](plugins/lofi.md#noise-blender) |
 | Lo-Fi     | Simple Jitter | デジタルジッターシミュレーション | [詳細](plugins/lofi.md#simple-jitter) |
+| Lo-Fi     | SW Radio Simulator | 音楽をモデル化した短波放送・電離層伝搬・受信機チェーンで変換 | [詳細](plugins/lofi.md#sw-radio-simulator) |
 | Lo-Fi     | Vinyl Artifacts | レコード風のポップノイズ、クラックル、ヒス、ランブル、ステレオノイズ漏れを追加 | [詳細](plugins/lofi.md#vinyl-artifacts) |
 | Lo-Fi     | Vinyl Simulator | 入力をモデル化した溝にカッティングし、物理的な針モデルで再生 | [詳細](plugins/lofi.md#vinyl-simulator) |
 | Modulation | Doppler Distortion | スピーカーコーンの微細な動きによる自然でダイナミックな音変化をシミュレート | [詳細](plugins/modulation.md#doppler-distortion) |

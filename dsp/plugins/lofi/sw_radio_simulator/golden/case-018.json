@@ -1,0 +1,60 @@
+{
+  "formatVersion": 1,
+  "type": "SWRadioSimulatorPlugin",
+  "id": "static-rate-step-rescales-pending-deadline",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 1,
+  "frameCount": 2049,
+  "blockSize": 97,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 17,
+  "seed": "0xeffe7a4f",
+  "params": {
+    "tb": 4.5,
+    "pe": 50,
+    "md": 90,
+    "cp": 6,
+    "sg": -15,
+    "sk": 0,
+    "fd": 0.5,
+    "ds": 1.4,
+    "st": 0.125,
+    "in": -80,
+    "io": 1,
+    "tn": 0,
+    "bw": 6,
+    "de": "Envelope",
+    "ag": "Fast",
+    "dt": 50,
+    "hm": -80,
+    "hz": "50",
+    "sp": "Off",
+    "og": 0,
+    "mx": 100,
+    "fr": true
+  },
+  "events": [
+    {
+      "frame": 512,
+      "params": {
+        "st": 100
+      }
+    },
+    {
+      "frame": 1536,
+      "params": {
+        "st": 0.125
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "781f85e8258c9a8549cd8c05f4e22b98977185ea87e7b9c764c6d598b5510384",
+  "outputFloats": 2049,
+  "byteLength": 8196,
+  "binary": "case-018.f32"
+}

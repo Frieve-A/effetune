@@ -13,6 +13,7 @@ import i18n from './i18n.js'; // Import the i18n module
 import './peq-calculator/peq-calculator.js';
 import { startRendererWatchdogHeartbeat } from '../../js/electron-watchdog.js';
 import { copyTextToClipboard } from '../../js/utils/clipboard-utils.js';
+import { installRangePrecisionControl } from '../../js/ui/range-precision-controller.js';
 
 let isAudioInitialized = false;
 let audioInitializationPromise = null;
@@ -719,6 +720,7 @@ function updateSweepBandLimitControls() {
 
 // Initialize the application when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
+    installRangePrecisionControl(document);
     initializeApp();
 
     // Load user settings when app starts

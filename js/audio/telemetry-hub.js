@@ -17,7 +17,8 @@ export const TelemetryFrameType = Object.freeze({
     TAP_FIVE_BAND_DYNAMIC_EQ: 14,
     TAP_VINYL_SIMULATOR: 15,
     TAP_FM_RADIO_SIMULATOR: 16,
-    TAP_AM_RADIO_SIMULATOR: 17
+    TAP_AM_RADIO_SIMULATOR: 17,
+    TAP_SW_RADIO_SIMULATOR: 18
 });
 
 function defaultWarning(message) {

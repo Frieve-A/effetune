@@ -503,12 +503,9 @@ class ChannelDividerPlugin extends PluginBase {
     bandRow.appendChild(radioGroup);
     frag.appendChild(bandRow);
 
-    const freqContainer = document.createElement("div");
-    freqContainer.className = "channel-divider-frequency-sliders";
-    this.freq1Slider = this._createFreqControl(freqContainer, "Freq 1", 1, (val) => this.setParameters({ f1: val }), (val) => this.setParameters({ s1: val }), this.f1, this.s1);
-    this.freq2Slider = this._createFreqControl(freqContainer, "Freq 2", 2, (val) => this.setParameters({ f2: val }), (val) => this.setParameters({ s2: val }), this.f2, this.s2);
-    this.freq3Slider = this._createFreqControl(freqContainer, "Freq 3", 3, (val) => this.setParameters({ f3: val }), (val) => this.setParameters({ s3: val }), this.f3, this.s3);
-    frag.appendChild(freqContainer);
+    this.freq1Slider = this._createFreqControl(frag, "Freq 1", 1, (val) => this.setParameters({ f1: val }), (val) => this.setParameters({ s1: val }), this.f1, this.s1);
+    this.freq2Slider = this._createFreqControl(frag, "Freq 2", 2, (val) => this.setParameters({ f2: val }), (val) => this.setParameters({ s2: val }), this.f2, this.s2);
+    this.freq3Slider = this._createFreqControl(frag, "Freq 3", 3, (val) => this.setParameters({ f3: val }), (val) => this.setParameters({ s3: val }), this.f3, this.s3);
 
     const graphWrap = document.createElement("div");
     graphWrap.className = "channel-divider-graph-container";
@@ -577,7 +574,6 @@ class ChannelDividerPlugin extends PluginBase {
     select.id = selectId;
     select.name = selectId;
     select.autocomplete = "off";
-    select.style.marginLeft = "5px"; // Add some space next to the number input
     [-12, -24, -36, -48, -60, -72, -84, -96].forEach(slope => {
       const option = document.createElement("option");
       option.value = slope;
@@ -594,49 +590,35 @@ class ChannelDividerPlugin extends PluginBase {
 
   _createFreqControl(parent, labelPrefix, index, freqSetter, slopeSetter, currentFreq, currentSlope) {
     const minFreq = 10, maxFreq = 40000;
-    const sliderContainer = document.createElement("div");
-    sliderContainer.className = `channel-divider-frequency-slider channel-divider-freq-${index}`;
-    Object.assign(sliderContainer.style, { marginBottom: "10px" });
+    const row = document.createElement("div");
+    row.className = `parameter-row channel-divider-frequency-row channel-divider-freq-${index}`;
+    const sliderId = `${this.id}-freq${index}-slider`;
+    this._createLabel(sliderId, `${labelPrefix} (Hz):`, row);
 
+    const rangeInput = this._createInput("range", sliderId, this.logToLinear(currentFreq, minFreq, maxFreq), row);
+    Object.assign(rangeInput, { min: 0, max: 1000, step: 1 });
 
-    // Top Row: Label, Number Input, and Slope Select
-    const topRow = this._createRow(); // _createRow now applies flex
-    topRow.classList.add("channel-divider-frequency-slider-top"); // Keep specific class if needed
-
-    this._createLabel(`${this.id}-freq${index}-number`, `${labelPrefix} (Hz):`, topRow, { marginRight: "5px"});
-    
-    const numberInput = this._createInput("number", `${this.id}-freq${index}-number`, currentFreq, topRow);
+    const numberInput = this._createInput("number", `${this.id}-freq${index}-number`, currentFreq, row);
     Object.assign(numberInput, { min: minFreq, max: maxFreq, step: 1 });
 
-    // Add Slope Select directly to the topRow, after numberInput
     const slopeSelect = this._createSlopeSelect(currentSlope, (val) => { slopeSetter(val); }, index);
-    topRow.appendChild(slopeSelect);
-    
-    sliderContainer.appendChild(topRow);
+    row.appendChild(slopeSelect);
 
-    // Middle: Range Slider (Full width below the top row)
-    const rangeInput = this._createInput("range", `${this.id}-freq${index}-slider`, this.logToLinear(currentFreq, minFreq, maxFreq), sliderContainer);
-    Object.assign(rangeInput, { min: 0, max: 1000, step: 1 });
-    rangeInput.style.width = "100%"; // Make slider take full width
-    
-    sliderContainer.appendChild(rangeInput);
-    
-    // Event Listeners
     rangeInput.oninput = () => {
       const logValue = Math.round(this.linearToLog(parseFloat(rangeInput.value), minFreq, maxFreq));
       numberInput.value = logValue;
-      freqSetter(logValue); // This will trigger setParameters, which handles drawGraph
+      freqSetter(logValue);
     };
     numberInput.onchange = () => { 
       let val = parseFloat(numberInput.value) || minFreq;
       val = Math.max(minFreq, Math.min(maxFreq, val));
       numberInput.value = val; 
       rangeInput.value = this.logToLinear(val, minFreq, maxFreq);
-      freqSetter(val); // This will trigger setParameters
+      freqSetter(val);
     };
 
-    parent.appendChild(sliderContainer);
-    return sliderContainer;
+    parent.appendChild(row);
+    return row;
   }
 
 

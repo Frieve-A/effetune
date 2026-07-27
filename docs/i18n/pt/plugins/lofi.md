@@ -18,6 +18,7 @@ Uma coleção de plugins que adicionam caráter vintage e qualidades nostálgica
 - [Hum Generator](#hum-generator) - Adiciona ambiência controlável de hum elétrico para escuta vintage/lo-fi
 - [Noise Blender](#noise-blender) - Adiciona textura atmosférica de fundo
 - [Simple Jitter](#simple-jitter) - Cria imperfeições digitais vintage sutis
+- [SW Radio Simulator](#sw-radio-simulator) - Passa a música por uma cadeia modelada de transmissão em onda curta, propagação ionosférica e recepção
 - [Vinyl Artifacts](#vinyl-artifacts) - Adiciona estalos, crackle, hiss, rumble e vazamento de ruído estéreo no estilo vinil
 - [Vinyl Simulator](#vinyl-simulator) - Grava a entrada em um sulco modelado e a reproduz com uma agulha física simulada
 
@@ -507,6 +508,102 @@ Um efeito que adiciona variações sutis de tempo para criar aquele som digital 
 5. Efeito Criativo de Oscilação
    - RMS Jitter: 10-100µs (0.01-0.1ms)
    - Perfeito para: Efeitos experimentais e modulação de pitch perceptível
+
+## SW Radio Simulator
+
+SW Radio Simulator passa a música por uma cadeia modelada de transmissão em onda curta: processamento do transmissor e modulação AM, propagação ionosférica com desvanecimento seletivo profundo, estática atmosférica e uma estação que divide o mesmo canal, um receptor de comunicações de banda estreita com detecção de envoltória ou síncrona e AGC, e um alto-falante de rádio opcional. Use-o para ouvir a música como uma transmissão internacional distante chega a um receptor de onda curta: estreita e oca, subindo e descendo com a ionosfera, assobiando onde outro transmissor está próximo em frequência.
+
+Este efeito exige um ambiente compatível com seu processamento em tempo real. Quando esse processamento não está disponível, o áudio permanece inalterado e o HUD informa que o efeito está indisponível.
+
+### Diferenças em relação a AM, FM e aos efeitos lo-fi aditivos
+
+- **AM Radio Simulator** modela a recepção em onda média, na qual uma onda terrestre estável costuma dominar e o desvanecimento é um efeito secundário. Sua banda passante é mais larga e há estéreo C-QUAM.
+- **SW Radio Simulator** modela a onda curta, em que o sinal chega por reflexão ionosférica. O desvanecimento seletivo profundo é o protagonista, a banda de áudio é mais estreita e o assobio de heteródino de uma estação no mesmo canal faz parte do som. A radiodifusão em onda curta é mono, portanto o sinal processado é sempre mono.
+- **FM Radio Simulator** reproduz o FM de banda larga com seu multiplex estéreo, o chiado crescente e os cliques de limiar — outra família de degradação.
+- **Noise Blender** e **Hum Generator** somam ruído ou zumbido sobre uma música inalterada. Este efeito, em vez disso, modula, propaga e detecta a música, de modo que seu ruído, interferência e distorção reagem a Tuning, ao filtro FI e ao AGC como na recepção real.
+
+### Guia de caráter sonoro
+
+- **Estreito e oco:** a largura de banda do transmissor e a FI estreita do receptor removem a maior parte dos agudos, dando o timbre limitado e encaixotado de um receptor de onda curta.
+- **Desvanecimento lento e profundo (QSB):** o nível recebido sobe e desce continuamente. É o comportamento que define a onda curta e já está ativo nos valores padrão.
+- **Distorsão aquosa do desvanecimento:** em um desvanecimento profundo, a portadora e as bandas laterais caem de formas diferentes, e o detector de envoltória deixa de reconstruir o áudio corretamente. No fundo de cada desvanecimento o som fica oco, instável e "submerso", em vez de apenas mais baixo. Delay Spread controla sua intensidade, e a detecção síncrona o elimina em grande parte.
+- **Flutter:** com Fading Speed alta, as ondulações viram um cintilar rápido, como a recepção por um trajeto perturbado ou polar.
+- **Assobio de heteródino (QRM):** o transmissor que divide o canal bate com a sua portadora e produz um tom contínuo cuja altura é igual a Interf. Offset.
+- **Estática atmosférica (QRN):** raios distantes chegam como estalos que ressoam no filtro FI.
+- **Bombeamento:** à passagem dos desvanecimentos, o AGC persegue o nível e o ruído de fundo respira entre as passagens.
+
+### Parâmetros
+
+#### Station
+
+- **TX Bandwidth** (2.0 a 10.0 kHz) - Define a largura de banda de áudio do transmissor. Os canais de radiodifusão em onda curta são espaçados de 5 kHz, então o padrão estreito já soa mais escuro que uma estação de onda média; aumente-o para um transmissor mais aberto.
+- **Pre-emphasis** (0 a 100%) - Reforça as frequências altas antes da transmissão. Ajustes maiores acrescentam presença dentro da banda estreita, mas fazem os picos brilhantes acionarem mais o limitador de transmissão.
+- **Mod Depth** (10 a 125%) - Define a profundidade da modulação AM. Acima de 100%, surgem sobremodulação e corte dos picos negativos.
+- **Compression** (0 a 20 dB) - Define a intensidade do limitador de transmissão. Ajustes maiores contêm os picos e mantêm a modulação mais uniforme, que é como as emissoras internacionais continuam inteligíveis ao longo dos desvanecimentos.
+
+#### Propagation
+
+- **Signal** (-50 a 0 dB) - Define a intensidade do sinal recebido. Valores mais fracos expõem mais ruído do receptor e exigem mais ganho de AGC.
+- **Fading** (0 a 100%) - Distribui a potência recebida entre um trajeto direto estável e dois trajetos ionosféricos atrasados. Em 0% a recepção de curta distância é estável; o padrão dá o desvanecimento contínuo de um sinal distante; em 100% os desvanecimentos são mais profundos e a distorção seletiva é mais forte.
+- **Fading Speed** (0.1 a 10.0 Hz) - Define a rapidez com que os trajetos ionosféricos variam. Valores baixos produzem ondulações lentas; a partir de alguns hertz o movimento vira um flutter rápido.
+- **Delay Spread** (0.2 a 8.0 ms) - Define a diferença de atraso entre os dois trajetos ionosféricos. Determina o espaçamento dos vales de desvanecimento dentro da banda de áudio (cerca de 1 kHz de espaçamento em 1 ms, ficando mais estreito conforme o valor sobe), que é o que faz um desvanecimento profundo soar aquoso em vez de apenas mais baixo. Valores curtos desvanecem toda a banda junta; valores longos fazem cada região do espectro desvanecer em momentos diferentes.
+- **Static** (0 a 100/s) - Define a taxa de eventos de estática semelhantes a raios. Cada evento é injetado antes do filtro FI e ressoa nele. Em 0 eles ficam desligados.
+- **Interference** (-80 a 0 dB) - Define a intensidade de uma estação que divide o canal. Em -80 dB ela fica praticamente desligada; quanto mais perto de 0 dB, mais forte.
+- **Interf. Offset** (0.1 a 10 kHz) - Define a que distância a portadora interferente está da sua. As duas portadoras batem nessa diferença e produzem o assobio de heteródino, de modo que este controle define sua altura: abaixo de cerca de 3 kHz é um tom claro e, ao subir, ele fica mais agudo até o filtro FI começar a atenuá-lo. O programa da estação interferente é modelado como ruído conformado, então acrescenta uma textura áspera e chiada em vez de fala inteligível.
+
+#### Receiver
+
+- **Tuning** (-5.0 a +5.0 kHz) - Desloca o receptor em relação à estação. Desvios pequenos abafam o som, acrescentam distorção de filtragem assimétrica e mudam o volume do assobio de heteródino; desvios maiores empurram a estação para fora da estreita banda passante de FI.
+- **IF Bandwidth** (2.0 a 10.0 kHz) - Define a banda passante de FI do receptor. Ajustes estreitos correspondem à resposta de um receptor de comunicações, que rejeita mais ruído e mais da estação interferente, mas remove mais agudos; ajustes largos preservam mais detalhes e mais interferência.
+- **Detector** (Envelope ou Synchronous) - Envelope é o detector a diodo comum, e é ele que transforma um desvanecimento seletivo profundo em distorção aquosa. Synchronous recupera a portadora com um PLL e demodula em relação a ela, o que reduz muito essa distorção enquanto o desvanecimento é profundo. Ele engata em cerca de ±1 kHz de Tuning e perde o engate além disso, então use Envelope enquanto move o dial. Trocar de detector reinicia a aquisição da portadora.
+- **AGC Speed** (Slow, Mid ou Fast) - Define a rapidez com que o controle automático de ganho acompanha os desvanecimentos. Slow mantém as variações de nível audíveis e bombeia quando o sinal se recupera; Fast segura o nível com mais firmeza.
+- **Detector RC** (20 a 500 µs) - Define o tempo de descarga do detector de envoltória. Valores longos suavizam mais a envoltória, mas aumentam a distorção de corte diagonal nos agudos com modulação forte. Não tem efeito quando Detector está em Synchronous.
+- **Hum** (-80 a -20 dB) - Define o zumbido da fonte de alimentação. Em -80 dB ele fica praticamente desligado. Ao contrário de uma camada de zumbido somada, a maior parte deste controle modula o ganho do receptor antes da detecção.
+- **Hum Freq** (50 ou 60 Hz) - Seleciona a frequência de rede simulada.
+
+#### Output
+
+- **Speaker** (Off, Small ou Table) - Seleciona saída de linha, o alto-falante limitado de um receptor portátil de onda curta ou a resposta mais cheia de um receptor de comunicações de mesa.
+- **Output Gain** (-24 a +24 dB) - Ajusta o nível após o processamento do receptor e do alto-falante.
+- **Mix** (0 a 100%) - Mistura o sinal estéreo original com a recepção mono simulada. 100% é a recepção de onda curta completa, enviada igual para a esquerda e a direita. Mix não atrasa o sinal seco para alinhá-lo, portanto os ajustes intermediários combinam os dois com a diferença de tempo do receptor e da propagação.
+
+### Leitura do HUD
+
+- **S METER** mostra, em uma escala de S1 a S9, a intensidade de sinal que o receptor tem dentro da sua banda antes do AGC. Como o S-metro de um receptor real, ele lê tudo o que está dentro da faixa de passagem, portanto a estação do mesmo canal, o ruído e a estática também elevam a leitura junto com a estação desejada.
+- **FADE** mostra em dB a variação atual do ganho de propagação e oscila tanto abaixo quanto acima de 0 dB conforme o trajeto direto e os dois trajetos ionosféricos se cancelam ou se reforçam. Em onda curta este é o indicador a observar: ele se move continuamente nos valores padrão, e os pontos mais fundos são onde o som fica aquoso e distorcido.
+- **AGC GAIN** mostra quanto ganho o receptor está aplicando. Aumenta quando Signal diminui ou o desvanecimento se aprofunda. Ele é limitado a +42 dB, portanto os desvanecimentos mais profundos permanecem com volume menor em vez de serem totalmente compensados.
+- **MOD / EVENTS** mostra a porcentagem efetiva de modulação e, em seguida, as taxas recentes por segundo de estática (⚡) e de corte (▲), piscando quando esses eventos ocorrem. Se você quiser um resultado mais limpo e o corte for frequente, reduza Mod Depth ou Detector RC.
+- Se o motor **WASM** não estiver disponível, o HUD exibe um aviso e o plugin deixa o áudio passar inalterado.
+
+### Ajustes recomendados
+
+1. **Transmissão internacional distante**
+   - TX Bandwidth: 4.5 kHz, Mod Depth: 90%, Signal: -15 dB, Fading: 55%, Fading Speed: 0.5 Hz, Delay Spread: 1.4 ms, Static: 2/s
+   - Interference: -47 dB, Interf. Offset: 1.0 kHz, Tuning: 0 kHz, IF Bandwidth: 6.0 kHz, Detector: Envelope, AGC Speed: Fast, Hum: -80 dB, Speaker: Small, Mix: 100%
+   - O som cotidiano da onda curta: estreito, em desvanecimento contínuo, com um estalo ocasional e um assobio tênue.
+
+2. **Desvanecimento profundo noturno**
+   - Signal: -30 dB, Fading: 100%, Fading Speed: 0.3 Hz, Delay Spread: 5.0 ms, Static: 10/s
+   - IF Bandwidth: 4.0 kHz, Detector: Envelope, AGC Speed: Slow, Detector RC: 150 µs, Speaker: Small, Mix: 100%
+   - Ondulações longas e profundas, com distorção aquosa no fundo de cada desvanecimento e bombeamento de AGC claramente audível na recuperação.
+
+3. **Banda congestionada**
+   - Signal: -20 dB, Fading: 60%, Fading Speed: 0.5 Hz, Static: 8/s, Interference: -18 dB, Interf. Offset: 0.8 kHz
+   - Tuning: +0.3 kHz, IF Bandwidth: 4.0 kHz, AGC Speed: Mid, Speaker: Small, Mix: 100%
+   - Um assobio de heteródino constante sobre o programa. Mude Interf. Offset para mover sua altura e Tuning para mudar seu volume.
+
+4. **Detecção síncrona**
+   - Parta de Desvanecimento profundo noturno e defina Detector: Synchronous
+   - Os desvanecimentos profundos continuam, mas a distorção no fundo de cada um fica bem mais fraca e o programa segue inteligível. Mantenha Tuning dentro de cerca de ±1 kHz para o detector permanecer engatado e compare com Envelope para ouvir o que ele faz.
+
+5. **Flutter polar**
+   - Signal: -25 dB, Fading: 90%, Fading Speed: 6 Hz, Delay Spread: 3.0 ms, Static: 5/s
+   - IF Bandwidth: 5.0 kHz, Detector: Envelope, AGC Speed: Fast, Speaker: Small, Mix: 100%
+   - O cintilar rápido de um trajeto perturbado ou polar, em vez de uma ondulação lenta.
+
+### Notas sobre o modelo
+
+O efeito processa o primeiro par estéreo como uma única transmissão mono, assim como faz a radiodifusão real em onda curta, e o sinal recebido é sempre mono. É modelada apenas uma estação no mesmo canal, e seu programa é ruído conformado, não fala ou música. Condições reais de banda — mudanças de propagação entre dia e noite, faixas específicas de radiodifusão e recepção em banda lateral única (SSB) — estão fora deste modelo; ajuste as condições desejadas com Signal, Fading e os demais controles de propagação.
 
 ## Vinyl Artifacts
 

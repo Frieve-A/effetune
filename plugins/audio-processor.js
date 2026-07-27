@@ -865,6 +865,16 @@ async function instantiateDspBinding(moduleOrBytes, {
 
 const WASM_ONLY_EXECUTION_STATE_PLUGIN_TYPES = new Set([
     'AMRadioSimulatorPlugin',
+    'FIRCrossoverPlugin',
+    'FiveBandFIRPEQPlugin',
+    'GroupDelayEqPlugin',
+    'RoomEqPlugin',
+    'SWRadioSimulatorPlugin'
+]);
+const FIR_CONVOLVER_PLUGIN_TYPES = new Set([
+    'FIRCrossoverPlugin',
+    'FiveBandFIRPEQPlugin',
+    'GroupDelayEqPlugin',
     'RoomEqPlugin'
 ]);
 const ET_DSP_MAX_CHANNELS = 8;
@@ -873,8 +883,8 @@ const ET_DSP_ERR_ARGS = -1;
 const ET_DSP_TELEMETRY_BYTES = 256 * 1024;
 // Keep half of the 256 MiB module ceiling available for arenas, other kernels, and replacement probes.
 const ET_DSP_ASSET_AGGREGATE_BUDGET_BYTES = 128 * 1024 * 1024;
-const ET_DSP_ROOM_EQ_REPLACEMENT_DRY_MODE = -1;
-const ET_DSP_ROOM_EQ_REPLACEMENT_DRY_READY = 1 << 16;
+const ET_DSP_FIR_REPLACEMENT_DRY_MODE = -1;
+const ET_DSP_FIR_REPLACEMENT_DRY_READY = 1 << 16;
 const ET_DSP_PACKET_POOL_SIZE = 3;
 const ET_DSP_PIPELINE_FALLBACK = 0;
 const ET_DSP_PIPELINE_PROCESSED = 1;
@@ -883,6 +893,8 @@ const ET_DSP_PIPELINE_VERSION = 1;
 const ET_DSP_PIPELINE_HEADER_BYTES = 8;
 const ET_DSP_PIPELINE_NODE_BYTES = 12;
 const ET_DSP_PIPELINE_MAX_NODES = 128;
+const AUDIO_PROCESSING_OVERLOAD_CONFIRM_QUANTA = 2;
+const AUDIO_PROCESSING_OVERLOAD_HEARTBEAT_SECONDS = 1;
 
 function encodeWorkletDspChannelSpec(channel) {
     if (channel === null || channel === undefined) return -1;
@@ -940,6 +952,11 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.processorRegistrationErrors = new Set();
         this.reportedMissingProcessors = new Set();
         this.masterBypass = false;
+        this.processingDeadlineSequence = 0;
+        this.processingOverloadLastSequence = -1;
+        this.processingOverloadConsecutiveQuanta = 0;
+        this.processingOverloadActive = false;
+        this.processingOverloadLastReportFrame = Number.NEGATIVE_INFINITY;
 
         // WebAssembly DSP state. The legacy processor registry remains authoritative
         // until a parity-gated type has a live instance with current packed params.
@@ -965,6 +982,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.dspHybridInputBackup = new Float32Array(ET_DSP_MAX_CHANNELS * ET_DSP_MAX_FRAMES);
         this.dspInitGeneration = 0;
         this.dspPipelineReady = false;
+        this.dspPipelinePluginCount = 0;
         this.dspPipelineLatencySamples = 0;
         this.dspExecutionGeneration = 0;
         this.dspExecutionStates = new Map();
@@ -1100,6 +1118,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                     // this.isOfflineProcessing = data.isOfflineProcessing ?? false; // Store if needed elsewhere
                     this.masterBypass = data.masterBypass ?? false;
                     this.updatePlugins(data.plugins);
+                    if (this.masterBypass) this.clearAudioProcessingOverload();
                     break;
                 case 'updateAudioConfig':
                     this._invalidatePowerSkipForMutation();
@@ -1183,6 +1202,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                     break;
                 case 'reset':
                     this._invalidatePowerSkipForMutation();
+                    this.clearAudioProcessingOverload();
                     ++this.dspExecutionGeneration;
                     this.publishWasmOnlyExecutionStates(true, true);
                     this.destroyAllDspInstances();
@@ -2216,9 +2236,9 @@ class PluginProcessor extends AudioWorkletProcessor {
         }
 
         if (plugin.wasmParams instanceof Float32Array && (plugin.wasmParamsHash >>> 0) === kernel.paramsHash) {
-            const wasmParams = plugin.type === 'RoomEqPlugin' &&
+            const wasmParams = FIR_CONVOLVER_PLUGIN_TYPES.has(plugin.type) &&
                 this.dspDeferredAssetStages.has(`${plugin.id}:0`)
-                ? this.roomEqReplacementDryParams(plugin.wasmParams)
+                ? this.firReplacementDryParams(plugin.wasmParams)
                 : plugin.wasmParams;
             const numericStatus = this.dspBinding.instanceSetParams(
                 entry.id,
@@ -2497,7 +2517,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             replayEpoch
         };
         if (this.shouldDeferDspAssetStage(pluginId, slot, candidate, previousDescriptor)) {
-            if (!this.requestRoomEqReplacementDry(pluginId)) {
+            if (!this.requestFirReplacementDry(pluginId)) {
                 this.rejectDspAssetCandidate(
                     pluginId, slot, 'transition', operationRevision, previousDescriptor,
                     false, false, replayEpoch
@@ -2521,25 +2541,26 @@ class PluginProcessor extends AudioWorkletProcessor {
     shouldDeferDspAssetStage(pluginId, slot, candidate, previousDescriptor) {
         if (candidate.replayEpoch !== null || !previousDescriptor) return false;
         const plugin = this.plugins.find(entry => entry.id === pluginId);
-        if (plugin?.type !== 'RoomEqPlugin') return false;
+        if (!FIR_CONVOLVER_PLUGIN_TYPES.has(plugin?.type)) return false;
         const previousState = this.dspAssetStates.get(pluginId)?.get(slot) ?? 0;
         const previousRevision = this.dspAssetStateRevisions.get(pluginId)?.get(slot);
         return (previousState & 0xff) === 3 &&
             previousRevision === previousDescriptor.operationRevision;
     }
 
-    roomEqReplacementDryParams(params) {
-        if (!(params instanceof Float32Array) || params.length !== 4) return null;
+    firReplacementDryParams(params) {
+        if (!(params instanceof Float32Array) || params.length < 1) return null;
         const dryParams = params.slice();
-        dryParams[0] = ET_DSP_ROOM_EQ_REPLACEMENT_DRY_MODE;
+        dryParams[0] = ET_DSP_FIR_REPLACEMENT_DRY_MODE;
         return dryParams;
     }
 
-    requestRoomEqReplacementDry(pluginId) {
+    requestFirReplacementDry(pluginId) {
         const plugin = this.plugins.find(entry => entry.id === pluginId);
         const entry = this.wasmInstances.get(pluginId);
-        const dryParams = this.roomEqReplacementDryParams(plugin?.wasmParams);
-        if (plugin?.type !== 'RoomEqPlugin' || !entry || !this.dspLive || !this.dspBinding ||
+        const dryParams = this.firReplacementDryParams(plugin?.wasmParams);
+        if (!FIR_CONVOLVER_PLUGIN_TYPES.has(plugin?.type) ||
+            !entry || !this.dspLive || !this.dspBinding ||
             !dryParams) return false;
         return this.dspBinding.instanceSetParams(
             entry.id,
@@ -2548,10 +2569,11 @@ class PluginProcessor extends AudioWorkletProcessor {
         ) === 0;
     }
 
-    restoreRoomEqParams(pluginId) {
+    restoreFirParams(pluginId) {
         const plugin = this.plugins.find(entry => entry.id === pluginId);
         const entry = this.wasmInstances.get(pluginId);
-        if (plugin?.type !== 'RoomEqPlugin' || !entry || !this.dspLive || !this.dspBinding ||
+        if (!FIR_CONVOLVER_PLUGIN_TYPES.has(plugin?.type) ||
+            !entry || !this.dspLive || !this.dspBinding ||
             !(plugin.wasmParams instanceof Float32Array)) return;
         this.dspBinding.instanceSetParams(
             entry.id,
@@ -2591,12 +2613,12 @@ class PluginProcessor extends AudioWorkletProcessor {
             const entry = this.wasmInstances.get(deferred.pluginId);
             if (!entry || !this.dspLive || !this.dspBinding ||
                 (this.dspBinding.instanceAssetState(entry.id, deferred.slot) &
-                    ET_DSP_ROOM_EQ_REPLACEMENT_DRY_READY) === 0) continue;
+                    ET_DSP_FIR_REPLACEMENT_DRY_READY) === 0) continue;
             this.dspDeferredAssetStages.delete(key);
             try {
                 this.commitDspAssetCandidate(deferred.pluginId, deferred.slot, deferred.candidate);
             } finally {
-                this.restoreRoomEqParams(deferred.pluginId);
+                this.restoreFirParams(deferred.pluginId);
             }
         }
     }
@@ -2660,7 +2682,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         }
         const deferredKey = `${pluginId}:${slot}`;
         const replacementDeferred = this.dspDeferredAssetStages.delete(deferredKey);
-        if (replacementDeferred) this.restoreRoomEqParams(pluginId);
+        if (replacementDeferred) this.restoreFirParams(pluginId);
         const slots = this.dspAssetCache.get(pluginId);
         slots?.delete(slot);
         if (slots?.size === 0) this.dspAssetCache.delete(pluginId);
@@ -2714,6 +2736,7 @@ class PluginProcessor extends AudioWorkletProcessor {
 
     refreshDspPipeline() {
         this.dspPipelineReady = false;
+        this.dspPipelinePluginCount = 0;
         if (!this.dspLive || !this.dspBinding) {
             this.publishDspPipelineLatency(0);
             return;
@@ -2748,6 +2771,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                 this.reportDspFailure('pipeline-configure', `status ${status}`);
                 return;
             }
+            this.dspPipelinePluginCount = nodes.length;
             this.dspPipelineReady = true;
         } catch (error) {
             this.reportDspFailure('pipeline-configure', error?.message || String(error));
@@ -3411,8 +3435,60 @@ class PluginProcessor extends AudioWorkletProcessor {
         this._finishPowerRender(inputPower, safeOutputPower, blockSize);
     }
 
+    clearAudioProcessingOverload() {
+        this.processingOverloadConsecutiveQuanta = 0;
+        this.processingOverloadLastSequence = -1;
+        if (!this.processingOverloadActive) return;
+        this.processingOverloadActive = false;
+        this.port.postMessage({ type: 'audioProcessingOverload', active: false });
+    }
+
+    audioProcessingClockNow() {
+        const performanceRef = globalThis.performance;
+        return typeof performanceRef?.now === 'function'
+            ? performanceRef.now()
+            : Date.now();
+    }
+
+    finishAudioProcessingDeadline(startedAt, sequence, blockSize, processedPlugin) {
+        if (!processedPlugin || this.masterBypass ||
+            !Number.isFinite(startedAt)) {
+            this.clearAudioProcessingOverload();
+            return;
+        }
+
+        const elapsedMs = this.audioProcessingClockNow() - startedAt;
+        const quantumMs = blockSize * 1000 / globalThis.sampleRate;
+        if (!Number.isFinite(elapsedMs) || elapsedMs <= quantumMs) {
+            this.clearAudioProcessingOverload();
+            return;
+        }
+
+        if (this.processingOverloadLastSequence === sequence - 1) {
+            this.processingOverloadConsecutiveQuanta++;
+        } else {
+            this.processingOverloadConsecutiveQuanta = 1;
+        }
+        this.processingOverloadLastSequence = sequence;
+
+        const confirmed = this.processingOverloadConsecutiveQuanta >=
+                AUDIO_PROCESSING_OVERLOAD_CONFIRM_QUANTA ||
+            elapsedMs >= quantumMs * 2;
+        if (!confirmed) return;
+
+        const heartbeatFrames = globalThis.sampleRate *
+            AUDIO_PROCESSING_OVERLOAD_HEARTBEAT_SECONDS;
+        if (!this.processingOverloadActive ||
+            this.currentFrame - this.processingOverloadLastReportFrame >= heartbeatFrames) {
+            this.processingOverloadActive = true;
+            this.processingOverloadLastReportFrame = this.currentFrame;
+            this.port.postMessage({ type: 'audioProcessingOverload', active: true });
+        }
+    }
+
     // Optimized process method
     process(inputs, outputs, parameters) {
+        const processingDeadlineSequence = ++this.processingDeadlineSequence;
         this.flushDeferredDspAssetStages();
         this.pollDspAssetStates();
         const input = inputs[0];
@@ -3438,6 +3514,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                 this._finishPowerRender(0, 0, emptyBlockSize, emptyInputReason, false);
             }
             // Keep processor alive, even with no input, as input might appear later.
+            this.clearAudioProcessingOverload();
             return true;
         }
 
@@ -3491,6 +3568,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                         blockSize,
                         inputActivity ? 'host-temporal-resume-required' : null
                     );
+                    this.clearAudioProcessingOverload();
                     return true;
                 }
                 const wake = power.monitoringFastWakeEligible && inputActivity;
@@ -3500,6 +3578,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                     power.skippedFrameCount += blockSize;
                     this.currentFrame += blockSize;
                     this._finishPowerRender(powerInputPower, powerInputPower, blockSize);
+                    this.clearAudioProcessingOverload();
                     return true;
                 }
                 const staticWakeIdentityValid = power.monitoringStaticCoverageValid &&
@@ -3531,6 +3610,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                 power.skippedFrameCount += blockSize;
                 this.currentFrame += blockSize;
                 this._finishPowerRender(powerInputPower, 0, blockSize);
+                this.clearAudioProcessingOverload();
                 return true;
             } else if (directive === 'bypass-transport') {
                 this._copyPowerInput(input, output);
@@ -3538,6 +3618,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                 power.skippedFrameCount += blockSize;
                 this.currentFrame += blockSize;
                 this._finishPowerRender(powerInputPower, powerInputPower, blockSize);
+                this.clearAudioProcessingOverload();
                 return true;
             }
         }
@@ -3635,8 +3716,13 @@ class PluginProcessor extends AudioWorkletProcessor {
 
             // IMPORTANT: Still need to advance the frame counter even when bypassed/sleeping
             this.currentFrame += blockSize;
+            this.clearAudioProcessingOverload();
             return true; // Keep processor alive
         }
+
+        const audioProcessingStartedAt = !this.masterBypass
+            ? this.audioProcessingClockNow()
+            : null;
 
         // --- 6. Update Processor State ---
         // this.blockSize = blockSize; // Update instance property if it's used elsewhere
@@ -3705,6 +3791,12 @@ class PluginProcessor extends AudioWorkletProcessor {
                     'wasm'
                 );
             }
+            this.finishAudioProcessingDeadline(
+                audioProcessingStartedAt,
+                processingDeadlineSequence,
+                blockSize,
+                this.dspPipelinePluginCount > 0
+            );
             return true;
         }
         if (dspPipelineResult === ET_DSP_PIPELINE_ARENA_INVALID) {
@@ -3719,6 +3811,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                     'none'
                 );
             }
+            this.clearAudioProcessingOverload();
             return true;
         }
 
@@ -3782,6 +3875,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         let lastMessageTime = this.lastMessageTime; // Cache for message throttling
         const messageQueue = this.messageQueue; // Cache message queue
         const MESSAGE_INTERVAL = this.MESSAGE_INTERVAL; // Cache interval
+        let processedPlugin = false;
 
         for (const plugin of plugins) {
             // Handle section start/end
@@ -3813,6 +3907,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                     output[ch].fill(0);
                 }
                 this.lastMessageTime = lastMessageTime;
+                this.clearAudioProcessingOverload();
                 return true;
             }
 
@@ -3971,6 +4066,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             }
 
             // --- 9d. Execute Plugin Processor Function ---
+            processedPlugin = true;
             let result = processingBuffer;
             let processedInWasm = false;
             if (wasmEntry?.ready && this.dspLive &&
@@ -3990,6 +4086,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                             'none'
                         );
                     }
+                    this.clearAudioProcessingOverload();
                     return true;
                 }
                 const audioPtr = this.dspBinding.pointerForArenaView(processingBuffer);
@@ -4021,6 +4118,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                                 'none'
                             );
                         }
+                        this.clearAudioProcessingOverload();
                         return true;
                     }
                     if (status === 0 && !processError) {
@@ -4245,6 +4343,13 @@ class PluginProcessor extends AudioWorkletProcessor {
                 'js'
             );
         }
+
+        this.finishAudioProcessingDeadline(
+            audioProcessingStartedAt,
+            processingDeadlineSequence,
+            blockSize,
+            processedPlugin
+        );
 
         // --- 12. Return Status ---
         // Return true to keep the processor alive

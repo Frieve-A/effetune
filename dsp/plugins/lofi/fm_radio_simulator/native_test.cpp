@@ -447,6 +447,48 @@ void testFrequencyResponseGolden() {
   }
 }
 
+// A real receiver's audio output is AC-coupled. A sustained input offset and
+// the discriminator's detuning offset must therefore settle back to zero
+// without sacrificing the specified 30 Hz lower band edge.
+void testDcCut() {
+  auto settledMean = [](float input, float tuning) -> double {
+    constexpr float sample_rate = 48000.0F;
+    constexpr std::uint32_t total_frames = 96000u;
+    constexpr std::uint32_t analysis_start = 48000u;
+    KernelHarness harness(sample_rate, 2u);
+    harness.seed(0x0dc0ffeeu, 0x5eed1234u);
+    Params params = defaultParams();
+    params.processing = 0.0F;
+    params.tuning = tuning;
+    harness.stage(params);
+    double sum = 0.0;
+    std::uint32_t count = 0u;
+    for (std::uint32_t offset = 0u; offset < total_frames;) {
+      const std::uint32_t remaining = total_frames - offset;
+      const std::uint32_t frames = remaining < kMaximumFrames ? remaining : kMaximumFrames;
+      std::vector<float> audio(2u * frames, input);
+      harness.process(audio, 2u, frames);
+      if (offset + frames > analysis_start) {
+        const std::uint32_t first = offset < analysis_start ? analysis_start - offset : 0u;
+        for (std::uint32_t frame = first; frame < frames; ++frame) {
+          sum += static_cast<double>(audio[frame]);
+          ++count;
+        }
+      }
+      offset += frames;
+    }
+    return count > 0u ? sum / static_cast<double>(count) : 1.0;
+  };
+
+  const double input_dc = settledMean(0.7F, 0.0F);
+  const double detuning_dc = settledMean(0.0F, 50.0F);
+  std::printf("measured settled DC: input offset %.3e, +50 kHz detuning %.3e "
+              "(gate |mean| < 0.001)\n",
+              input_dc, detuning_dc);
+  check(std::fabs(input_dc) < 0.001, "receiver output rejects a sustained input DC offset");
+  check(std::fabs(detuning_dc) < 0.001, "receiver output rejects discriminator detuning DC");
+}
+
 // Section 11: the MPX peak controller guarantees max|m| <= 0.99, whose
 // observable consequence is a bounded demodulated output even for full-scale
 // square-wave and step drive at maximum Processing.
@@ -1190,6 +1232,18 @@ struct TestBiquad {
     a2 = (1.0 - alpha) * inverse_a0;
   }
 
+  void highPass(double frequency, double q, double sample_rate) noexcept {
+    const double omega = kTwoPi * frequency / sample_rate;
+    const double cosine = std::cos(omega);
+    const double alpha = std::sin(omega) / (2.0 * q);
+    const double inverse_a0 = 1.0 / (1.0 + alpha);
+    b0 = 0.5 * (1.0 + cosine) * inverse_a0;
+    b1 = -(1.0 + cosine) * inverse_a0;
+    b2 = b0;
+    a1 = -2.0 * cosine * inverse_a0;
+    a2 = (1.0 - alpha) * inverse_a0;
+  }
+
   double process(double input) noexcept {
     const double output = b0 * input + s1;
     s1 = b1 * input - a1 * output + s2;
@@ -1204,8 +1258,10 @@ std::vector<float> makePinkSource(std::uint32_t frames) {
   double b0 = 0.0, b1 = 0.0, b2 = 0.0, b3 = 0.0, b4 = 0.0, b5 = 0.0, b6 = 0.0;
   TestBiquad lp1;
   TestBiquad lp2;
+  TestBiquad hp;
   lp1.lowPass(14000.0, 0.54119610, 48000.0);
   lp2.lowPass(14000.0, 1.30656296, 48000.0);
+  hp.highPass(30.0, 0.70710678, 48000.0);
   double sum_squares = 0.0;
   for (std::uint32_t index = 0u; index < frames; ++index) {
     state ^= state << 13u;
@@ -1220,7 +1276,7 @@ std::vector<float> makePinkSource(std::uint32_t frames) {
     b5 = -0.7616 * b5 - white * 0.0168980;
     const double pink = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
     b6 = white * 0.115926;
-    const double band_limited = lp2.process(lp1.process(pink));
+    const double band_limited = hp.process(lp2.process(lp1.process(pink)));
     source[index] = static_cast<float>(band_limited);
     sum_squares += band_limited * band_limited;
   }
@@ -1320,6 +1376,7 @@ int main() {
   testThdGolden();
   testMultipathThdRise();
   testFrequencyResponseGolden();
+  testDcCut();
   testBandEdgeResponseGolden();
   testProgramTemplateSpurious();
   testStereoMonoSnrDifference();

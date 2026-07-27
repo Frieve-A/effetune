@@ -1,6 +1,6 @@
 ---
 title: "EQ प्लगइन - EffeTune"
-description: "Parametric EQ, Graphic EQ, Dynamic EQ, Room EQ, Earphone Cable Sim, filters और Tone Control सहित equalizer प्लगइन।"
+description: "Parametric EQ, Graphic EQ, Dynamic EQ, 5Band FIR PEQ, Room EQ, Earphone Cable Sim, filters और Tone Control सहित equalizer प्लगइन।"
 lang: hi
 ---
 
@@ -13,10 +13,12 @@ lang: hi
 - [15Band GEQ](#15band-geq) - 15 सटीक नियंत्रणों के साथ विस्तृत ध्वनि समायोजन
 - [15Band PEQ](#15band-peq) - music playback के लिए detailed 15-band tone shaping
 - [5Band Dynamic EQ](#5band-dynamic-eq) - डायनेमिक्स-आधारित इक्वलाइज़र जो आपकी संगीत पर प्रतिक्रिया करता है
+- [5Band FIR PEQ](#5band-fir-peq) - तीखे और स्थिर adjustments के लिए five-band FIR equalizer
 - [5Band PEQ](#5band-peq) - bass, mids और treble shape करने के लिए flexible equalizer
 - [Band Pass Filter](#band-pass-filter) - विशिष्ट आवृत्तियों पर ध्यान केंद्रित करें
 - [Comb Filter](#comb-filter) - फेज़िंग जैसी, खोखली या metallic sound coloration
 - [Earphone Cable Sim](#earphone-cable-sim) - सामान्य ईयरफोन केबल से होने वाले frequency response बदलाव आम तौर पर कितने छोटे होते हैं, यह जांचें
+- [Group Delay EQ](#group-delay-eq) - Tone बदले बिना हर frequency band की delay समायोजित करता है
 - [Hi Pass Filter](#hi-pass-filter) - अनचाही निम्न आवृत्तियों को सटीकता से हटाएं
 - [Lo Pass Filter](#lo-pass-filter) - अनचाही उच्च आवृत्तियों को सटीकता से हटाएं
 - [Loudness Equalizer](#loudness-equalizer) - कम वॉल्यूम पर सुनने के लिए आवृत्ति संतुलन सुधार
@@ -178,6 +180,41 @@ listening के दौरान bass, vocals, presence और treble को fin
 - आपके ध्वनि समायोजन दिखाने वाला रीयल-टाइम ग्राफ
 - सटीक नियंत्रण के साथ उपयोग में आसान स्लाइडर्स
 - वन-क्लिक डिफ़ॉल्ट सेटिंग्स रीसेट
+
+## 5Band FIR PEQ
+
+5Band FIR PEQ, 5Band PEQ जैसी परिचित पाँच-band controls को बनाए रखते हुए सभी bands की संयुक्त response को एक FIR filter के रूप में बनाता है। इसका उपयोग playback की सटीक correction, बहुत narrow cuts या तीखे shelf transitions के लिए करें, जब आप recursive filters की stability limits से बचना चाहते हों। Minimum Phase processing delay कम रखता है, जबकि Linear Phase सभी frequencies को एक समान निश्चित समय से delay करता है। इसके लिए WASM DSP engine आवश्यक है; उसके बिना signal बिना बदलाव के गुजरता है।
+
+### Sound enhancement guide
+
+- **Minimum Phase**, 32768 Taps और 128 samples की Latency से शुरू करें। सामान्य bass, midrange और treble adjustment के लिए लगभग 0.7 से 2 तक के broad Q values उपयोग करें।
+- Measurement में दिखी narrow peak को घटाने के लिए Peaking चुनें, center frequency को peak पर रखें और Q को धीरे-धीरे बढ़ाएँ। 10 से अधिक values सटीक correction के लिए हैं; बहुत narrow response को अधिक Taps चाहिए हो सकते हैं, इसलिए status देखें।
+- Bass balance के लिए Low Shelf और treble balance के लिए High Shelf उपयोग करें। रोज़मर्रा की listening में 1 से 3 dB के छोटे बदलावों से शुरू करें।
+- अनचाहे frequency extremes हटाने के लिए LowPass या HighPass उपयोग करें। Slope को 12 या 24 dB/oct से शुरू करें और अधिक तीखा cutoff चाहिए तभी बढ़ाएँ।
+- जब पूरे spectrum में स्थिर phase delay महत्वपूर्ण हो और अतिरिक्त latency स्वीकार्य हो, तो **Linear Phase** चुनें। खासकर तीखी settings में transient से पहले energy आ सकती है, इसलिए तेज़ attacks वाली music पर Minimum Phase से भी तुलना करें।
+- FIR design feedback poles से होने वाली instability से बचता है, लेकिन अधिक boost या बहुत ऊँचा Q फिर भी लंबी और अधिक selective impulse response बनाता है। अलग-थलग resonance के लिए boost की जगह cut को प्राथमिकता दें और playback के लिए पर्याप्त headroom रखें।
+
+### Parameters
+
+- **Phase**
+  - **Minimum Phase** - Causal minimum-phase response बनाता है और FIR की आधी लंबाई के बराबर delay नहीं जोड़ता। चुनी हुई Latency फिर भी लागू होती है।
+  - **Linear Phase** - Symmetric linear-phase response बनाता है और चुनी हुई Latency के अतिरिक्त `Taps / 2` samples का FIR delay जोड़ता है।
+- **Taps** - FIR length: 8192, 16384, 32768, 65536 या 131072। अधिक taps low frequencies और बहुत ऊँचे Q की accuracy सुधारते हैं, लेकिन memory use, design time और Linear Phase delay भी बढ़ाते हैं।
+- **Latency** - Convolution engine की head latency: 0, 128, 256, 512 या 1024 samples। कम values delay घटाती हैं, लेकिन अधिक processing चाहती हैं।
+- **पाँच adjustable bands** - Default center frequencies 100 Hz, 316 Hz, 1 kHz, 3.16 kHz और 10 kHz हैं। हर band को अलग से Enable किया जा सकता है।
+- **Type** - Peaking, LowPass, HighPass, Low Shelf, High Shelf, BandPass या Notch चुनता है। FIR filter design होने से पहले सभी enabled bands को combine किया जाता है।
+- **Freq** - Band frequency को 20 Hz से 20 kHz तक set करता है।
+- **Gain** - Peaking, Low Shelf और High Shelf के लिए -20 से +20 dB तक boost या cut set करता है। LowPass, HighPass, BandPass और Notch Gain का उपयोग नहीं करते।
+- **Q** - Response width को 0.1 से 100 तक set करता है। बड़ी values बदलाव को narrow और छोटी values broad बनाती हैं। Slider logarithmic scale का उपयोग करता है।
+- **Slope** - LowPass या HighPass की cutoff rate को 0.1 से 384 dB/oct तक set करता है। Slider logarithmic scale का उपयोग करता है और यह control केवल इन दो Type values के लिए उपलब्ध है।
+
+### Display को समझना
+
+- धूसर curve मौजूदा band settings से बनी संयुक्त «लक्ष्य» response दिखाती है।
+- हरी curve designed FIR की वास्तविक magnitude response दिखाती है। दोनों curves के बीच दिखाई देने वाला अंतर बताता है कि चुने गए Taps target को ठीक से reproduce नहीं कर पा रहे हैं।
+- Numbered markers पाँच bands से मेल खाते हैं। Freq बदलने के लिए horizontal और Gain बदलने के लिए vertical drag करें; disabled bands धुंधली दिखती हैं।
+- Status line बताती है कि FIR design, prepare या use हो रहा है और total processing latency को samples तथा milliseconds में दिखाती है।
+- यदि चुने हुए Taps किसी extreme response को सटीक रूप से reproduce नहीं कर सकते, तो status Taps बढ़ाने या Q अथवा Slope घटाने की सलाह देता है।
 
 ## 5Band PEQ
 
@@ -360,6 +397,36 @@ music playback shape करने के लिए flexible 5-band equalizer। 
 - grid labels 20Hz से 20kHz तक होते हैं; plotted curve पूरे 10Hz से 40kHz graph range में फैलती है
 - dark grid पर green response curve, normalized 0dB reference के आसपास auto-scaled dB axis के साथ
 - curve deviations जितनी बड़ी हों, model playback level को वहां उतना अधिक बदल रहा होता है
+
+## Group Delay EQ
+
+Group Delay EQ सामान्य equalizer का समकक्ष है: यह हर band का स्तर नहीं, बल्कि यह बदलता है कि हर band **कब** पहुँचती है। पंद्रह sliders हर frequency range की delay तय करते हैं और plugin एक FIR filter बनाता है जिसे इन delays को सपाट magnitude response के साथ साकार करने के लिए design किया गया है। सपाट response design का लक्ष्य है, गारंटी नहीं: सीमित Taps आदर्श लक्ष्य का approximation करते हैं, और बहुत बड़ी या bands के बीच तेजी से बदलने वाली delay settings मापी जा सकने वाली magnitude ripple पैदा कर सकती हैं। इसका उपयोग speaker या crossover की timing त्रुटियों की भरपाई के लिए करें, या यह जाँचने के लिए कि आपके सिस्टम पर phase distortion वास्तव में कितनी सुनाई देती है। इसके लिए WASM DSP engine आवश्यक है; उसके बिना signal बिना बदलाव के गुजरता है।
+
+ध्वनि पर केवल bands के बीच का अंतर असर डालता है। सभी bands को समान रूप से delay करना केवल एक साधारण delay है, इसलिए plugin एक निश्चित आंतरिक delay रखता है और आपको हर band को उसके आगे-पीछे खिसकाने देता है। जब तक सभी sliders 0 ms पर हैं, plugin पूरी तरह पारदर्शी है और कोई latency नहीं जोड़ता।
+
+### ध्वनि सुधार गाइड
+
+- **Speaker और subwoofer की timing**: यदि bass बाकी संगीत से देर से पहुँचता है, तो crossover के ऊपर की bands को उतनी ही मात्रा में delay करें जब तक graph उस हिस्से में सपाट न हो जाए। सामान्य सुधार 2 से 10 ms के होते हैं और kick drum तथा bass पर सबसे आसानी से पहचाने जाते हैं।
+- **Ported speakers और room modes**: Port वाला cabinet अपनी tuning frequency के आसपास group delay बढ़ाता है। प्रभावित low band को घटाएं, या बाकी सभी को बढ़ाएं, ताकि curve अधिक सपाट हो जाए। 50 Hz से नीचे थोड़ा अंतर बचा रहना सामान्य है।
+- **Phase distortion का श्रवण परीक्षण**: एक band को +10 ms पर रखें, effect बंद होने से तुलना करें, फिर मान तब तक घटाएं जब तक अंतर सुनाई देना बंद न हो जाए। इस परिणाम को केवल phase की तुलना तभी मानें जब status line में Ripple पर्याप्त रूप से छोटी हो और हरी «वास्तविक» curve धूसर «लक्ष्य» curve के बहुत पास हो। अन्यथा magnitude में बदलाव या delay का ठीक से साकार न होना भी आपकी सुनाई देने वाली चीज़ों को प्रभावित कर सकता है।
+- **एक-एक band पर काम करें**: एक बार में एक slider बदलें और सुनें। केवल phase के बदलाव अधिकांश संगीत में सूक्ष्म होते हैं और मुख्यतः drums, plucked strings और piano के attack जैसे transients पर दिखते हैं।
+- **दोनों curves देखें**: यदि हरी curve धूसर curve का अनुसरण करना छोड़ दे, तो वर्तमान Taps से वह आकार नहीं बन सकता। Taps बढ़ाएं या पड़ोसी bands के बीच अंतर घटाएं।
+
+### पैरामीटर
+
+- **Taps** - FIR की लंबाई: 4096, 8192, 16384 या 32768। कम frequencies को लंबा filter चाहिए: 96 kHz पर 16384 taps लगभग 60 Hz तक बड़े delay अंतर भी बनाए रखते हैं, जबकि छोटी settings में सबसे पहले bass की सटीकता घटती है। Taps यह भी तय करता है कि filter कितनी delay संभाल सकता है, यानी sliders की सीमा भी। अधिक taps का अर्थ अधिक latency और अधिक processing भी है।
+- **Latency** - Convolution engine की आरंभिक latency: 0, 128, 256, 512 या 1024 samples। कम मान delay घटाते हैं पर processing बढ़ाते हैं।
+- **Band sliders (25 Hz से 16 kHz)** - पंद्रह sliders हर band की group delay तय करते हैं। धनात्मक मान उस range को बाद में पहुँचाते हैं, ऋणात्मक पहले। सीमा उतनी ही है जितनी delay filter संभाल सकता है: 96 kHz पर 4096 taps के साथ ±18.6 ms और 32768 taps के साथ ±149.3 ms। सबसे ऊँची band इन मानों को पूरी तरह साकार करती है, जबकि नीची bands को बड़ी setting का अनुसरण करने के लिए अधिक taps चाहिए; कहाँ तक पहुँचा, यह graph दिखाता है। मान frequency के साथ सहजता से interpolate होते हैं, इसलिए पड़ोसी bands हमेशा एक-दूसरे में मिल जाती हैं।
+- **Phase angle** - हर millisecond मान के नीचे slider उसी delay को उस band की केंद्र frequency पर phase के घुमाव के रूप में दिखाता है। एक पूरे चक्कर (360°) से आगे इसे «पूरे cycles + शेष कोण» में बाँटकर दिखाया जाता है, इसलिए `+2c180°` का अर्थ है दो पूरे cycles और आधा चक्कर।
+- **Reset** - किसी slider पर double-click करने से वह band 0 ms पर लौट आती है। Graph का Reset बटन सभी bands को एक साथ रीसेट करता है।
+
+कुल latency, Latency की setting और Taps के आधे का योग है। sliders हिलाने पर यह नहीं बदलती, इसलिए पूरी chain की delay केवल Taps या Latency बदलने पर बदलती है।
+
+### प्रदर्शन
+
+- धूसर curve लक्ष्य है: माँगी गई delay, जो 20 Hz से 20 kHz के logarithmic frequency axis पर interpolate करके दिखाई जाती है। Delay axis वर्तमान settings के अनुसार अपने आप scale होती है, न्यूनतम ±5 ms।
+- हरी curve वह है जो design किया गया filter वास्तव में करता है। जहाँ दोनों curves मिलती हैं वहाँ setting पूरी तरह साकार है; जहाँ अलग होती हैं वहाँ filter वर्तमान Taps के साथ अनुरोध का पालन नहीं कर पाता।
+- Status पंक्ति कुल latency को samples और milliseconds में तथा filter की magnitude ripple दिखाती है। Ripple बताती है कि साकार हुई magnitude response सपाट design लक्ष्य से कितनी अलग है: मान जितना छोटा होगा, response लक्ष्य के उतना ही करीब होगा, और 0.3 dB सटीकता की चेतावनी का threshold है।
 
 ## Hi Pass Filter
 
@@ -546,6 +613,7 @@ Measurement एक device-local reference है। URL या preset में 
 - **Smoothing** - 0.02 से 1.00 octave तक Gaussian smoothing। बड़ी value व्यापक और अधिक conservative correction देती है; छोटी value बारीक response variations को अधिक follow करती है।
 - **Correction Low / Correction High** - Automatic magnitude correction की निचली और ऊपरी transition boundaries सेट करते हैं। Gaussian smoothing से पहले इन boundaries पर और इनके बाहर automatic correction को 0 dB माना जाता है। इसलिए Smoothing तय करता है कि correction कितनी धीरे कम हो और हर boundary के बाहर कितनी दूर तक फैले। ऊपरी boundary को Nyquist frequency के नीचे margin रखने के लिए भीतर से भी सीमित किया जाता है।
 - **Direct Window** - Correction में direct-sound onset के बाद उपयोग होने वाली measurement response की 1 से 50 ms लंबाई। लंबी window phase correction को नीचे तक बढ़ाती है, पर अधिक room reflections भी शामिल करती है।
+- **Phase Low** - Correction mode में measured excess-phase correction की निचली frequency 20 से 20000 Hz तक सेट करता है। Default **Auto** में Room EQ, Correction Low और Direct Window में तीन cycles समाने वाली frequency में से अधिक मान का उपयोग करता है (6 ms पर 500 Hz)। Boundary को manually सेट करने के लिए Auto हटाएँ। Manual value Correction Low से independent होती है और Direct Window में एक cycle समाने वाली frequency (6 ms पर 167 Hz) से कम नहीं हो सकती। Automatic boundary से कम values time-window truncation और room reflections से अधिक प्रभावित होती हैं।
 - **Max Boost** - Automatic response inversion से बने boost को 0 से 18 dB तक सीमित करता है। यह limit Gaussian smoothing से पहले लागू होती है, इसलिए limit तक पहुँचे हिस्से आसपास के correction curve में smoothly blend होते हैं। Cuts सीमित नहीं होते।
 - **Level Correction** - Automatic magnitude correction को 0% से 100% तक 1% के steps में, dB में linearly सेट करता है। 0% पर automatic level correction बंद रहती है; Phase Correction, Additional EQ, Delay और Gain सक्रिय रहते हैं।
 - **Phase Correction** - मापी गई excess-phase correction को 0% से 100% तक 1% के steps में सेट करता है और केवल Correction में काम करता है। Minimum और Linear modes में इसके controls disabled रहते हैं। 0% पर excess-phase correction बंद रहती है, जबकि Level Correction सक्रिय रहती है। Level Correction की magnitude response के साथ स्वाभाविक रूप से जुड़ा minimum-phase बदलाव बना रहता है, इसलिए Phase Correction केवल measurement से जोड़े गए अतिरिक्त excess-phase component को नियंत्रित करता है।
@@ -555,9 +623,10 @@ Measurement एक device-local reference है। URL या preset में 
 
 ### दृश्य प्रदर्शन
 
-- Graph के ऊपर दिए **Frequency Response** और **Impulse Response** radio buttons से दोनों views के बीच बदल सकते हैं।
-- **Impulse Response** चुना हुआ point दिखाता है; Reference Point को सहमति पर रखने पर यह समय में align की गई औसत waveform दिखाता है। Range मापे गए onset से 2 ms पहले से 5 ms और Direct Window में जो अधिक हो, वहाँ तक रहती है। धूसर line correction से पहले की response और सफेद line वास्तविक FIR लगाने के बाद का calculated result दिखाती है। मापा गया onset दोनों के लिए साझा 0 ms reference है और corrected waveform से केवल FIR का ज्ञात fixed delay हटाया जाता है, इसलिए peak की relative timing और pre-ringing दिखाई देते रहते हैं। दोनों एक ही normalized amplitude scale का उपयोग करती हैं। Impulse-response data न होने पर unavailable message दिखाई देता है।
-- Graph का horizontal axis logarithmic frequency और vertical axis dB level दिखाता है।
+- Graph के ऊपर दिए **Frequency**, **Phase**, और **Impulse** radio buttons से views के बीच बदल सकते हैं।
+- **Phase** view में horizontal axis logarithmic frequency और vertical axis -180° से 180° तक phase दिखाता है। धूसर line correction से पहले की phase और हरी line वास्तविक FIR लगाने के बाद की calculated phase दिखाती है। दोनों से measured onset हटाया जाता है और corrected result से FIR का ज्ञात fixed delay भी हटाया जाता है, इसलिए graph इन fixed timing offsets के बिना filter से आया phase change दिखाता है। Impulse response न होने पर unavailable message दिखाई देता है।
+- **Impulse** चुना हुआ point दिखाता है; Reference Point को सहमति पर रखने पर यह समय में align की गई औसत waveform दिखाता है। Range मापे गए onset से 2 ms पहले से 5 ms और Direct Window में जो अधिक हो, वहाँ तक रहती है। धूसर line correction से पहले की response और हरी line वास्तविक FIR लगाने के बाद का calculated result दिखाती है। मापा गया onset दोनों के लिए साझा 0 ms reference है और corrected waveform से केवल FIR का ज्ञात fixed delay हटाया जाता है, इसलिए peak की relative timing और pre-ringing दिखाई देते रहते हैं। दोनों एक ही normalized amplitude scale का उपयोग करती हैं। केवल display के लिए, 20 kHz और उससे ऊपर के components हटा दिए जाते हैं; इससे correction filter या audio processing प्रभावित नहीं होती। Impulse-response data न होने पर unavailable message दिखाई देता है।
+- **Frequency** view में horizontal axis logarithmic frequency और vertical axis dB level दिखाता है।
 - दो सफेद खड़ी dotted lines, Correction Low और Correction High से सेट की गई frequencies दिखाती हैं।
 - Markers से हर band की frequency और gain बदली जा सकती है।
 - हल्की धूसर curve graph का common display offset लागू की गई smoothed measured frequency response दिखाती है।

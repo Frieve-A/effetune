@@ -33,6 +33,12 @@ globalThis.onmessage = async event => {
                 preview.predictedDb.buffer,
                 preview.baseCorrectionDb.buffer
             );
+            if (preview.phaseResponse) {
+                transferables.push(
+                    preview.phaseResponse.before.buffer,
+                    preview.phaseResponse.after.buffer
+                );
+            }
             if (preview.impulseResponse) {
                 transferables.push(
                     preview.impulseResponse.before.buffer,

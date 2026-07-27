@@ -20,6 +20,7 @@
     { "id": "above-nyquist-phase-freeze", "stimulus": "noise", "sampleRate": 96000, "frames": 259, "blockSize": 65, "params": { "fr": 96000, "vl": 0, "wf": "sine" } },
     { "id": "phase-continuity-odd-blocks", "stimulus": "silence", "sampleRate": 96000, "channels": 1, "channelMode": "mono", "frames": 257, "blockSize": 63, "params": { "fr": 1234, "vl": -6, "wf": "triangle" } },
     { "id": "phase-continuity-one-frame", "stimulus": "silence", "sampleRate": 96000, "channels": 1, "channelMode": "mono", "frames": 257, "blockSize": 1, "params": { "fr": 1234, "vl": -6, "wf": "triangle" } },
+    { "id": "impulse-interval-one-sample", "stimulus": "silence", "sampleRate": 44100, "channels": 1, "channelMode": "mono", "frames": 9000, "blockSize": 127, "params": { "fr": 96000, "vl": 0, "pn": 0, "wf": "impulse", "md": "pulsed", "it": 100, "wd": 100 } },
     {
       "id": "waveform-mode-pan-transitions",
       "stimulus": "sin1k",

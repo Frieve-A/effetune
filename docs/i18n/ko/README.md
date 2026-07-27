@@ -122,6 +122,7 @@ EffeTune 2.1.0에서는 카탈로그 스키마 v3를 사용하는 음악 라이�
    - Section 이펙트의 경우: Shift+× 버튼 클릭으로 전체 섹션 제거
 9. 라우팅 버튼을 클릭하여 처리할 채널과 입출력 버스를 설정합니다
    - [버스 기능에 대해 더 알아보기](bus-function.md)
+10. 슬라이더를 세밀하게 조정하려면 Shift 키를 누른 채 드래그합니다. 값은 최소 단위씩 변경됩니다
 
 ### 프리셋 사용하기
 
@@ -306,6 +307,7 @@ EffeTune 2.1.0에서는 카탈로그 스키마 v3를 사용하는 음악 라이�
 | Analyzer | Stereo Meter | 스테레오 밸런스와 채널 상관을 시각화 | [세부 정보](plugins/analyzer.md#stereo-meter) |
 | Basics | Channel Divider | 스테레오 신호를 주파수 대역으로 나누어 각 대역을 별도 스테레오 출력 쌍으로 라우팅 | [세부 정보](plugins/basics.md#channel-divider) |
 | Basics | DC Offset | DC 오프셋 조정 | [세부 정보](plugins/basics.md#dc-offset) |
+| Basics | FIR Crossover | 가파르게 분리한 주파수 대역을 스테레오 출력 쌍으로 보내는 FIR 크로스오버 | [세부 정보](plugins/basics.md#fir-crossover) |
 | Basics | Matrix | 유연한 제어로 오디오 채널을 라우팅하고 믹싱 | [세부 정보](plugins/basics.md#matrix) |
 | Basics | MultiChannel Panel | 볼륨, 뮤트, 솔로, 딜레이로 여러 채널을 제어하는 패널 | [세부 정보](plugins/basics.md#multichannel-panel) |
 | Basics | Mute | 오디오 신호를 완전히 무음 처리 | [세부 정보](plugins/basics.md#mute) |
@@ -327,10 +329,12 @@ EffeTune 2.1.0에서는 카탈로그 스키마 v3를 사용하는 음악 라이�
 | EQ | 15Band GEQ | 15밴드 그래픽 이퀄라이저 | [세부 정보](plugins/eq.md#15band-geq) |
 | EQ | 15Band PEQ | 청취용 세밀한 톤 조정을 위한 15밴드 파라메트릭 이퀄라이저 | [세부 정보](plugins/eq.md#15band-peq) |
 | EQ | 5Band Dynamic EQ | 임계값 기반 주파수 조정이 가능한 5밴드 다이내믹 이퀄라이저 | [세부 정보](plugins/eq.md#5band-dynamic-eq) |
+| EQ | 5Band FIR PEQ | Minimum Phase 또는 Linear Phase FIR 필터를 사용하는 5밴드 파라메트릭 이퀄라이저 | [세부 정보](plugins/eq.md#5band-fir-peq) |
 | EQ | 5Band PEQ | 저역, 중역, 고역을 유연하게 다듬는 5밴드 이퀄라이저 | [세부 정보](plugins/eq.md#5band-peq) |
 | EQ | Band Pass Filter | 특정 주파수에 집중 | [세부 정보](plugins/eq.md#band-pass-filter) |
 | EQ | Comb Filter | 위상감, 빈 공간감, 금속성 색채를 추가 | [세부 정보](plugins/eq.md#comb-filter) |
 | EQ | Earphone Cable Sim | 일반적인 이어폰 케이블 차이로 생기는 주파수 응답 변화가 대개 얼마나 작은지 확인 | [세부 정보](plugins/eq.md#earphone-cable-sim) |
+| EQ | Group Delay EQ | 음색을 바꾸지 않고 대역별 지연을 조정 | [세부 정보](plugins/eq.md#group-delay-eq) |
 | EQ | Hi Pass Filter | 불필요한 저주파를 정밀하게 제거 | [세부 정보](plugins/eq.md#hi-pass-filter) |
 | EQ | Lo Pass Filter | 불필요한 고주파를 정밀하게 제거 | [세부 정보](plugins/eq.md#lo-pass-filter) |
 | EQ | Loudness Equalizer | 낮은 볼륨 청취를 위한 주파수 밸런스 보정 | [세부 정보](plugins/eq.md#loudness-equalizer) |
@@ -346,6 +350,7 @@ EffeTune 2.1.0에서는 카탈로그 스키마 v3를 사용하는 음악 라이�
 | Lo-Fi | Hum Generator | 빈티지/로파이 청취 분위기를 위한 조절 가능한 50/60 Hz 전원 험 추가 | [세부 정보](plugins/lofi.md#hum-generator) |
 | Lo-Fi | Noise Blender | 로파이 분위기를 위한 조절 가능한 배경 노이즈 질감 추가 | [세부 정보](plugins/lofi.md#noise-blender) |
 | Lo-Fi | Simple Jitter | 디지털 지터 시뮬레이션 | [세부 정보](plugins/lofi.md#simple-jitter) |
+| Lo-Fi | SW Radio Simulator | 음악을 모델링한 단파 송출·전리층 전파·수신 체인으로 변환 | [세부 정보](plugins/lofi.md#sw-radio-simulator) |
 | Lo-Fi | Vinyl Artifacts | 레코드풍 팝, 크래클, 히스, 럼블, 스테레오 노이즈 블리드를 추가 | [세부 정보](plugins/lofi.md#vinyl-artifacts) |
 | Lo-Fi | Vinyl Simulator | 입력을 모델링한 홈에 커팅한 뒤 물리적 스타일러스 모델로 재생 | [세부 정보](plugins/lofi.md#vinyl-simulator) |
 | Modulation | Doppler Distortion | 미세한 스피커 콘 움직임으로 인한 자연스럽고 동적인 사운드 변화를 시뮬레이션 | [세부 정보](plugins/modulation.md#doppler-distortion) |
