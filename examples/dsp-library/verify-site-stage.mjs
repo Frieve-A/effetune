@@ -200,10 +200,7 @@ export function verifyStage(stageRoot) {
       throw new Error(`Launch route is not rendered HTML: ${route.path}`);
     }
     const canonical = `${canonicalOrigin}${route.path.split('#')[0]}`;
-    const escapedCanonical = canonical.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    if (!new RegExp(
-      `<link\\s+rel=["']canonical["']\\s+href=["']${escapedCanonical}["']`
-    ).test(html)) {
+    if (!html.includes(`<link rel="canonical" href="${canonical}">`)) {
       throw new Error(`Canonical URL is missing or incorrect on ${route.path}.`);
     }
     if (/<title>\s*(?:404|page not found)\b/i.test(html) ||

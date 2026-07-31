@@ -297,9 +297,12 @@ function createDspLibraryBuildSpec(environment = process.env) {
     'build'
   ];
   const isWindows = process.platform === 'win32';
+  const npmCli = environment.npm_execpath || path.join(
+    path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js'
+  );
   return {
-    command: isWindows ? environment.ComSpec || process.env.ComSpec || 'cmd.exe' : 'npm',
-    args: isWindows ? ['/d', '/s', '/c', 'npm.cmd', ...npmArgs] : npmArgs,
+    command: isWindows ? process.execPath : 'npm',
+    args: isWindows ? [npmCli, ...npmArgs] : npmArgs,
     options: {
       cwd: repoRoot,
       env: environment,

@@ -47,7 +47,7 @@ test('dev server builds the preview with the production GitHub Pages environment
 });
 
 test('dev server builds the DSP browser package used by the Pages workflow', () => {
-  const environment = { ComSpec: 'test-command-shell', PATH: 'test-path' };
+  const environment = { npm_execpath: 'test-npm-cli.js', PATH: 'test-path' };
   const spec = createDspLibraryBuildSpec(environment);
   const npmArgs = [
     '--prefix',
@@ -56,11 +56,11 @@ test('dev server builds the DSP browser package used by the Pages workflow', () 
     'build'
   ];
 
-  assert.equal(spec.command, process.platform === 'win32' ? environment.ComSpec : 'npm');
+  assert.equal(spec.command, process.platform === 'win32' ? process.execPath : 'npm');
   assert.deepEqual(
     spec.args,
     process.platform === 'win32'
-      ? ['/d', '/s', '/c', 'npm.cmd', ...npmArgs]
+      ? [environment.npm_execpath, ...npmArgs]
       : npmArgs
   );
   assert.equal(spec.options.cwd, path.resolve(import.meta.dirname, '../..'));

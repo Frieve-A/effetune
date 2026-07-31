@@ -694,14 +694,21 @@ test('research record captures input, mode, and replayable ordered operations', 
   }
 });
 
-test('DSP Library CI watches the root bridge and runs documentation gates', () => {
+test('DSP Library coordinator watches the root bridge and runs documentation gates', () => {
+  const coordinator = fs.readFileSync(path.join(
+    repoRoot, '.github', 'workflows', 'ci.yml'
+  ), 'utf8');
   const workflow = fs.readFileSync(path.join(
     repoRoot, '.github', 'workflows', 'dsp-library-ci.yml'
   ), 'utf8');
-  assert.equal(workflow.split("- 'README.md'").length, 3);
+  const libraryScope = coordinator.slice(
+    coordinator.indexOf('            dsp_library:'),
+    coordinator.indexOf('\n\n  common:')
+  );
+  assert.equal(libraryScope.split("- 'README.md'").length, 2);
   const preflight = workflow.slice(
     workflow.indexOf('  preflight:'),
-    workflow.indexOf('  docs-stage:')
+    workflow.indexOf('  linux:')
   );
   for (const testFile of [
     'tests/esm/dsp-library-docs.test.mjs',

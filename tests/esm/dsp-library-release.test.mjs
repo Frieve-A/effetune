@@ -59,8 +59,8 @@ test('every wheel runs export and Python golden checks with abi3 forward smoke',
 
 test('npm candidate jobs verify committed DSP artifacts with the pinned SDK before packaging', () => {
   for (const [source, name] of [
-    [ciWorkflow, 'javascript'],
-    [workflow, 'npm-package']
+    [ciWorkflow, 'linux'],
+    [workflow, 'linux']
   ]) {
     const job = workflowJob(source, name);
     const setup = job.indexOf('uses: emscripten-core/setup-emsdk@v16');

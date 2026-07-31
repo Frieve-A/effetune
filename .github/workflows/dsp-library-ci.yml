@@ -1,85 +1,22 @@
 name: DSP Library
 
 on:
-  push:
-    paths:
-      - 'dsp/bindings/**'
-      - 'dsp/plugins/**'
-      - 'dsp/core/**'
-      - 'dsp/generated/**'
-      - 'dsp/include/**'
-      - 'dsp/vendor/**'
-      - 'dsp/CMakeLists.txt'
-      - 'dsp/exports.txt'
-      - 'dsp/registry.inc'
-      - 'js/audio/dsp-engine-binding.js'
-      - 'js/audio/dsp-wasm-loader.js'
-      - 'js/audio/dsp-params.generated.js'
-      - 'js/ir-library/**'
-      - 'plugins/audio-processor.js'
-      - 'plugins/dsp/**'
-      - 'examples/dsp-library/**'
-      - 'docs/**'
-      - 'README.md'
-      - '_config.yml'
-      - '_includes/site_head.html'
-      - '_includes/site_header.html'
-      - '_includes/site_footer.html'
-      - '_layouts/dsp.html'
-      - '_data/dsp-nav.yml'
-      - 'scripts/gen-dsp-library-bindings.mjs'
-      - 'scripts/gen-dsp-params.mjs'
-      - 'scripts/build-dsp-wasm.mjs'
-      - 'tools/verify-dsp-library-goldens.mjs'
-      - 'tools/dsp-parity/**'
-      - 'tests/esm/dsp-library-codegen*.test.mjs'
-      - 'tests/esm/dsp-library-goldens.test.mjs'
-      - 'tests/esm/dsp-library-*.test.mjs'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/dsp-library-ci.yml'
-      - '.github/workflows/dsp-library-release.yml'
-      - '.github/workflows/pages.yml'
-  pull_request:
-    paths:
-      - 'dsp/bindings/**'
-      - 'dsp/plugins/**'
-      - 'dsp/core/**'
-      - 'dsp/generated/**'
-      - 'dsp/include/**'
-      - 'dsp/vendor/**'
-      - 'dsp/CMakeLists.txt'
-      - 'dsp/exports.txt'
-      - 'dsp/registry.inc'
-      - 'js/audio/dsp-engine-binding.js'
-      - 'js/audio/dsp-wasm-loader.js'
-      - 'js/audio/dsp-params.generated.js'
-      - 'js/ir-library/**'
-      - 'plugins/audio-processor.js'
-      - 'plugins/dsp/**'
-      - 'examples/dsp-library/**'
-      - 'docs/**'
-      - 'README.md'
-      - '_config.yml'
-      - '_includes/site_head.html'
-      - '_includes/site_header.html'
-      - '_includes/site_footer.html'
-      - '_layouts/dsp.html'
-      - '_data/dsp-nav.yml'
-      - 'scripts/gen-dsp-library-bindings.mjs'
-      - 'scripts/gen-dsp-params.mjs'
-      - 'scripts/build-dsp-wasm.mjs'
-      - 'tools/verify-dsp-library-goldens.mjs'
-      - 'tools/dsp-parity/**'
-      - 'tests/esm/dsp-library-codegen*.test.mjs'
-      - 'tests/esm/dsp-library-goldens.test.mjs'
-      - 'tests/esm/dsp-library-*.test.mjs'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/dsp-library-ci.yml'
-      - '.github/workflows/dsp-library-release.yml'
-      - '.github/workflows/pages.yml'
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      stage:
+        description: DSP Library CI stage to run
+        required: true
+        type: string
+      verify_docs:
+        description: Run the DSP documentation site stage in the Linux job
+        required: false
+        default: true
+        type: boolean
+      verify_dsp:
+        description: Verify committed DSP artifacts and golden parity in the Linux job
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -87,6 +24,7 @@ permissions:
 jobs:
   preflight:
     name: Static preflight
+    if: ${{ inputs.stage == 'preflight' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -96,8 +34,6 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - name: Install Python runtime dependency for import smoke
-        run: python -m pip install "numpy>=1.26"
       - name: Verify manifests, identity, paths, and workflow syntax
         run: |
           python - <<'PY'
@@ -157,42 +93,19 @@ jobs:
               raise SystemExit("npm package allowlist changed")
           PY
           ruby -e "require 'yaml'; ARGV.each { |path| YAML.parse_file(path) }" \
+            .github/workflows/ci.yml \
             .github/workflows/dsp-library-ci.yml \
             .github/workflows/dsp-library-release.yml
       - run: node scripts/gen-dsp-library-bindings.mjs --check
       - run: node examples/dsp-library/verify-site-inputs.mjs
       - run: node examples/dsp-library/generate-docs.mjs --check
+      - name: Install Python runtime dependency for import smoke
+        run: python -m pip install "numpy>=1.26"
       - run: node --test tests/esm/dsp-library-codegen.test.mjs tests/esm/dsp-library-codegen-import-smoke.test.mjs tests/esm/dsp-library-docs.test.mjs tests/esm/dsp-library-demo.test.mjs
 
-  docs-stage:
-    name: DSP docs Jekyll stage
-    needs: preflight
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-      - name: Build DSP library web package
-        run: npm --prefix dsp/bindings/js run build
-      - name: Setup Pages
-        uses: actions/configure-pages@v6
-      - name: Build with Jekyll
-        uses: actions/jekyll-build-pages@v1
-        with:
-          source: ./
-          destination: ./_site
-      - name: Make Jekyll output writable
-        run: sudo chown -R "$(id -u):$(id -g)" ./_site
-      - name: Snapshot and verify DSP subtree
-        run: |
-          node examples/dsp-library/build-site.mjs --guide ./_site/dsp/index.html --check
-          node examples/dsp-library/build-site.mjs --guide ./_site/dsp/index.html --output ./_site/dsp
-          node examples/dsp-library/verify-site-stage.mjs --stage ./_site/dsp
-
-  golden-parity:
-    name: DSP golden parity
-    needs: preflight
+  linux:
+    name: Linux validation and wheels
+    if: ${{ inputs.stage == 'linux' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -201,24 +114,18 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run test:dsp:parity
-
-  javascript:
-    name: npm package and demo
-    needs: preflight
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
       - name: Setup Emscripten SDK
+        if: ${{ inputs.verify_dsp }}
         uses: emscripten-core/setup-emsdk@v16
         with:
           version: 6.0.2
       - name: Verify committed DSP artifacts
+        if: ${{ inputs.verify_dsp }}
         run: npm run build:dsp -- --check
-      - name: Build and test package
+      - name: Verify DSP golden parity
+        if: ${{ inputs.verify_dsp }}
+        run: npm run test:dsp:parity
+      - name: Build and test npm package
         working-directory: dsp/bindings/js
         run: |
           npm install --ignore-scripts --package-lock=false
@@ -271,40 +178,35 @@ jobs:
           name: npm-package
           path: ${{ runner.temp }}/npm-package/*.tgz
           if-no-files-found: error
-
-  python-wheels:
-    name: Python ${{ matrix.python-tag }} / ${{ matrix.os }}
-    needs: preflight
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: true
-      matrix:
-        # macos-15 is Apple Silicon; macos-15-intel keeps the Intel wheel.
-        os: [ubuntu-latest, macos-15, macos-15-intel, windows-latest]
-        python-tag: [cp310, cp311, cp312]
-        include:
-          - python-tag: cp310
-            build-selector: cp310-*
-            expected-tag: cp310-cp310
-            config-settings: ''
-          - python-tag: cp311
-            build-selector: cp311-*
-            expected-tag: cp311-cp311
-            config-settings: ''
-          - python-tag: cp312
-            build-selector: cp312-*
-            expected-tag: cp312-abi3
-            config-settings: >-
-              cmake.define.ET_PYTHON_STABLE_ABI=ON
-              wheel.py-api=cp312
-    steps:
-      - uses: actions/checkout@v5
-      - uses: pypa/cibuildwheel@v3.2.1
+      - name: Build DSP library web package
+        run: npm --prefix dsp/bindings/js run build
+      - name: Setup Pages
+        if: ${{ inputs.verify_docs }}
+        uses: actions/configure-pages@v6
+      - name: Build with Jekyll
+        if: ${{ inputs.verify_docs }}
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./
+          destination: ./_site
+      - name: Make Jekyll output writable
+        if: ${{ inputs.verify_docs }}
+        run: sudo chown -R "$(id -u):$(id -g)" ./_site
+      - name: Snapshot and verify DSP subtree
+        if: ${{ inputs.verify_docs }}
+        run: |
+          node examples/dsp-library/build-site.mjs --guide ./_site/dsp/index.html --check
+          node examples/dsp-library/build-site.mjs --guide ./_site/dsp/index.html --output ./_site/dsp
+          node examples/dsp-library/verify-site-stage.mjs --stage ./_site/dsp
+      - name: Build CPython 3.12 stable-ABI wheel
+        uses: pypa/cibuildwheel@v3.2.1
         env:
-          CIBW_BUILD: ${{ matrix.build-selector }}
+          CIBW_BUILD: cp312-*
           CIBW_ARCHS: auto64
           CIBW_SKIP: "*-musllinux_*"
-          CIBW_CONFIG_SETTINGS: ${{ matrix.config-settings }}
+          CIBW_CONFIG_SETTINGS: >-
+            cmake.define.ET_PYTHON_STABLE_ABI=ON
+            wheel.py-api=cp312
           CIBW_TEST_REQUIRES: numpy>=1.26 soundfile>=0.12
           CIBW_TEST_COMMAND: >-
             python -m unittest discover
@@ -314,17 +216,17 @@ jobs:
             --repo-root {project}
         with:
           package-dir: dsp/bindings/python
-          output-dir: wheelhouse
-      - name: Verify wheel ABI tag
-        shell: bash
+          output-dir: wheelhouse/cp312
+      - name: Verify CPython 3.12 wheel ABI tag
         env:
-          EXPECTED_TAG: ${{ matrix.expected-tag }}
+          EXPECTED_TAG: cp312-abi3
+          WHEEL_DIRECTORY: wheelhouse/cp312
         run: |
           python - <<'PY'
           import os
           from pathlib import Path
 
-          wheels = list(Path("wheelhouse").glob("*.whl"))
+          wheels = list(Path(os.environ["WHEEL_DIRECTORY"]).glob("*.whl"))
           assert wheels, "cibuildwheel did not produce a wheel"
           expected = os.environ["EXPECTED_TAG"]
           assert all(expected in wheel.name for wheel in wheels), (
@@ -333,21 +235,485 @@ jobs:
           )
           PY
       - uses: actions/setup-python@v6
-        if: matrix.python-tag == 'cp312'
         with:
           python-version: '3.13'
       - name: Verify abi3 wheel on newer CPython
-        if: matrix.python-tag == 'cp312'
-        run: python dsp/bindings/python/tools/verify_abi3_wheel.py wheelhouse
+        run: python dsp/bindings/python/tools/verify_abi3_wheel.py wheelhouse/cp312
       - uses: actions/upload-artifact@v4
         with:
-          name: python-${{ matrix.os }}-${{ matrix.python-tag }}
-          path: wheelhouse/*.whl
+          name: python-ubuntu-latest-cp312
+          path: wheelhouse/cp312/*.whl
+          if-no-files-found: error
+      - name: Build CPython 3.10 wheel
+        uses: pypa/cibuildwheel@v3.2.1
+        env:
+          CIBW_BUILD: cp310-*
+          CIBW_ARCHS: auto64
+          CIBW_SKIP: "*-musllinux_*"
+          CIBW_TEST_REQUIRES: numpy>=1.26 soundfile>=0.12
+          CIBW_TEST_COMMAND: >-
+            python -m unittest discover
+            -s {project}/dsp/bindings/python/tests -v &&
+            python {project}/dsp/bindings/python/tools/audit_native_exports.py &&
+            python {project}/dsp/bindings/acceptance/python_golden_runner.py
+            --repo-root {project}
+        with:
+          package-dir: dsp/bindings/python
+          output-dir: wheelhouse/cp310
+      - name: Verify CPython 3.10 wheel ABI tag
+        env:
+          EXPECTED_TAG: cp310-cp310
+          WHEEL_DIRECTORY: wheelhouse/cp310
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          wheels = list(Path(os.environ["WHEEL_DIRECTORY"]).glob("*.whl"))
+          assert wheels, "cibuildwheel did not produce a wheel"
+          expected = os.environ["EXPECTED_TAG"]
+          assert all(expected in wheel.name for wheel in wheels), (
+              expected,
+              [wheel.name for wheel in wheels],
+          )
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-ubuntu-latest-cp310
+          path: wheelhouse/cp310/*.whl
+          if-no-files-found: error
+      - name: Build CPython 3.11 wheel
+        uses: pypa/cibuildwheel@v3.2.1
+        env:
+          CIBW_BUILD: cp311-*
+          CIBW_ARCHS: auto64
+          CIBW_SKIP: "*-musllinux_*"
+          CIBW_TEST_REQUIRES: numpy>=1.26 soundfile>=0.12
+          CIBW_TEST_COMMAND: >-
+            python -m unittest discover
+            -s {project}/dsp/bindings/python/tests -v &&
+            python {project}/dsp/bindings/python/tools/audit_native_exports.py &&
+            python {project}/dsp/bindings/acceptance/python_golden_runner.py
+            --repo-root {project}
+        with:
+          package-dir: dsp/bindings/python
+          output-dir: wheelhouse/cp311
+      - name: Verify CPython 3.11 wheel ABI tag
+        env:
+          EXPECTED_TAG: cp311-cp311
+          WHEEL_DIRECTORY: wheelhouse/cp311
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          wheels = list(Path(os.environ["WHEEL_DIRECTORY"]).glob("*.whl"))
+          assert wheels, "cibuildwheel did not produce a wheel"
+          expected = os.environ["EXPECTED_TAG"]
+          assert all(expected in wheel.name for wheel in wheels), (
+              expected,
+              [wheel.name for wheel in wheels],
+          )
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-ubuntu-latest-cp311
+          path: wheelhouse/cp311/*.whl
+          if-no-files-found: error
+
+  windows:
+    name: Windows wheels
+    if: ${{ inputs.stage == 'windows' }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build CPython 3.12 stable-ABI wheel
+        uses: pypa/cibuildwheel@v3.2.1
+        env:
+          CIBW_BUILD: cp312-*
+          CIBW_ARCHS: auto64
+          CIBW_SKIP: "*-musllinux_*"
+          CIBW_CONFIG_SETTINGS: >-
+            cmake.define.ET_PYTHON_STABLE_ABI=ON
+            wheel.py-api=cp312
+          CIBW_TEST_REQUIRES: numpy>=1.26 soundfile>=0.12
+          CIBW_TEST_COMMAND: >-
+            python -m unittest discover
+            -s {project}/dsp/bindings/python/tests -v &&
+            python {project}/dsp/bindings/python/tools/audit_native_exports.py &&
+            python {project}/dsp/bindings/acceptance/python_golden_runner.py
+            --repo-root {project}
+        with:
+          package-dir: dsp/bindings/python
+          output-dir: wheelhouse/cp312
+      - name: Verify CPython 3.12 wheel ABI tag
+        shell: bash
+        env:
+          EXPECTED_TAG: cp312-abi3
+          WHEEL_DIRECTORY: wheelhouse/cp312
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          wheels = list(Path(os.environ["WHEEL_DIRECTORY"]).glob("*.whl"))
+          assert wheels, "cibuildwheel did not produce a wheel"
+          expected = os.environ["EXPECTED_TAG"]
+          assert all(expected in wheel.name for wheel in wheels), (
+              expected,
+              [wheel.name for wheel in wheels],
+          )
+          PY
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Verify abi3 wheel on newer CPython
+        run: python dsp/bindings/python/tools/verify_abi3_wheel.py wheelhouse/cp312
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-windows-latest-cp312
+          path: wheelhouse/cp312/*.whl
+          if-no-files-found: error
+      - name: Build CPython 3.10 wheel
+        uses: pypa/cibuildwheel@v3.2.1
+        env:
+          CIBW_BUILD: cp310-*
+          CIBW_ARCHS: auto64
+          CIBW_SKIP: "*-musllinux_*"
+          CIBW_TEST_REQUIRES: numpy>=1.26 soundfile>=0.12
+          CIBW_TEST_COMMAND: >-
+            python -m unittest discover
+            -s {project}/dsp/bindings/python/tests -v &&
+            python {project}/dsp/bindings/python/tools/audit_native_exports.py &&
+            python {project}/dsp/bindings/acceptance/python_golden_runner.py
+            --repo-root {project}
+        with:
+          package-dir: dsp/bindings/python
+          output-dir: wheelhouse/cp310
+      - name: Verify CPython 3.10 wheel ABI tag
+        shell: bash
+        env:
+          EXPECTED_TAG: cp310-cp310
+          WHEEL_DIRECTORY: wheelhouse/cp310
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          wheels = list(Path(os.environ["WHEEL_DIRECTORY"]).glob("*.whl"))
+          assert wheels, "cibuildwheel did not produce a wheel"
+          expected = os.environ["EXPECTED_TAG"]
+          assert all(expected in wheel.name for wheel in wheels), (
+              expected,
+              [wheel.name for wheel in wheels],
+          )
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-windows-latest-cp310
+          path: wheelhouse/cp310/*.whl
+          if-no-files-found: error
+      - name: Build CPython 3.11 wheel
+        uses: pypa/cibuildwheel@v3.2.1
+        env:
+          CIBW_BUILD: cp311-*
+          CIBW_ARCHS: auto64
+          CIBW_SKIP: "*-musllinux_*"
+          CIBW_TEST_REQUIRES: numpy>=1.26 soundfile>=0.12
+          CIBW_TEST_COMMAND: >-
+            python -m unittest discover
+            -s {project}/dsp/bindings/python/tests -v &&
+            python {project}/dsp/bindings/python/tools/audit_native_exports.py &&
+            python {project}/dsp/bindings/acceptance/python_golden_runner.py
+            --repo-root {project}
+        with:
+          package-dir: dsp/bindings/python
+          output-dir: wheelhouse/cp311
+      - name: Verify CPython 3.11 wheel ABI tag
+        shell: bash
+        env:
+          EXPECTED_TAG: cp311-cp311
+          WHEEL_DIRECTORY: wheelhouse/cp311
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          wheels = list(Path(os.environ["WHEEL_DIRECTORY"]).glob("*.whl"))
+          assert wheels, "cibuildwheel did not produce a wheel"
+          expected = os.environ["EXPECTED_TAG"]
+          assert all(expected in wheel.name for wheel in wheels), (
+              expected,
+              [wheel.name for wheel in wheels],
+          )
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-windows-latest-cp311
+          path: wheelhouse/cp311/*.whl
+          if-no-files-found: error
+
+  macos-arm:
+    name: macOS Apple Silicon wheels
+    if: ${{ inputs.stage == 'macos-arm' }}
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build CPython 3.12 stable-ABI wheel
+        uses: pypa/cibuildwheel@v3.2.1
+        env:
+          CIBW_BUILD: cp312-*
+          CIBW_ARCHS: auto64
+          CIBW_SKIP: "*-musllinux_*"
+          CIBW_CONFIG_SETTINGS: >-
+            cmake.define.ET_PYTHON_STABLE_ABI=ON
+            wheel.py-api=cp312
+          CIBW_TEST_REQUIRES: numpy>=1.26 soundfile>=0.12
+          CIBW_TEST_COMMAND: >-
+            python -m unittest discover
+            -s {project}/dsp/bindings/python/tests -v &&
+            python {project}/dsp/bindings/python/tools/audit_native_exports.py &&
+            python {project}/dsp/bindings/acceptance/python_golden_runner.py
+            --repo-root {project}
+        with:
+          package-dir: dsp/bindings/python
+          output-dir: wheelhouse/cp312
+      - name: Verify CPython 3.12 wheel ABI tag
+        env:
+          EXPECTED_TAG: cp312-abi3
+          WHEEL_DIRECTORY: wheelhouse/cp312
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          wheels = list(Path(os.environ["WHEEL_DIRECTORY"]).glob("*.whl"))
+          assert wheels, "cibuildwheel did not produce a wheel"
+          expected = os.environ["EXPECTED_TAG"]
+          assert all(expected in wheel.name for wheel in wheels), (
+              expected,
+              [wheel.name for wheel in wheels],
+          )
+          PY
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Verify abi3 wheel on newer CPython
+        run: python dsp/bindings/python/tools/verify_abi3_wheel.py wheelhouse/cp312
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-macos-15-cp312
+          path: wheelhouse/cp312/*.whl
+          if-no-files-found: error
+      - name: Build CPython 3.10 wheel
+        uses: pypa/cibuildwheel@v3.2.1
+        env:
+          CIBW_BUILD: cp310-*
+          CIBW_ARCHS: auto64
+          CIBW_SKIP: "*-musllinux_*"
+          CIBW_TEST_REQUIRES: numpy>=1.26 soundfile>=0.12
+          CIBW_TEST_COMMAND: >-
+            python -m unittest discover
+            -s {project}/dsp/bindings/python/tests -v &&
+            python {project}/dsp/bindings/python/tools/audit_native_exports.py &&
+            python {project}/dsp/bindings/acceptance/python_golden_runner.py
+            --repo-root {project}
+        with:
+          package-dir: dsp/bindings/python
+          output-dir: wheelhouse/cp310
+      - name: Verify CPython 3.10 wheel ABI tag
+        env:
+          EXPECTED_TAG: cp310-cp310
+          WHEEL_DIRECTORY: wheelhouse/cp310
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          wheels = list(Path(os.environ["WHEEL_DIRECTORY"]).glob("*.whl"))
+          assert wheels, "cibuildwheel did not produce a wheel"
+          expected = os.environ["EXPECTED_TAG"]
+          assert all(expected in wheel.name for wheel in wheels), (
+              expected,
+              [wheel.name for wheel in wheels],
+          )
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-macos-15-cp310
+          path: wheelhouse/cp310/*.whl
+          if-no-files-found: error
+      - name: Build CPython 3.11 wheel
+        uses: pypa/cibuildwheel@v3.2.1
+        env:
+          CIBW_BUILD: cp311-*
+          CIBW_ARCHS: auto64
+          CIBW_SKIP: "*-musllinux_*"
+          CIBW_TEST_REQUIRES: numpy>=1.26 soundfile>=0.12
+          CIBW_TEST_COMMAND: >-
+            python -m unittest discover
+            -s {project}/dsp/bindings/python/tests -v &&
+            python {project}/dsp/bindings/python/tools/audit_native_exports.py &&
+            python {project}/dsp/bindings/acceptance/python_golden_runner.py
+            --repo-root {project}
+        with:
+          package-dir: dsp/bindings/python
+          output-dir: wheelhouse/cp311
+      - name: Verify CPython 3.11 wheel ABI tag
+        env:
+          EXPECTED_TAG: cp311-cp311
+          WHEEL_DIRECTORY: wheelhouse/cp311
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          wheels = list(Path(os.environ["WHEEL_DIRECTORY"]).glob("*.whl"))
+          assert wheels, "cibuildwheel did not produce a wheel"
+          expected = os.environ["EXPECTED_TAG"]
+          assert all(expected in wheel.name for wheel in wheels), (
+              expected,
+              [wheel.name for wheel in wheels],
+          )
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-macos-15-cp311
+          path: wheelhouse/cp311/*.whl
+          if-no-files-found: error
+
+  macos-intel:
+    name: macOS Intel wheels
+    if: ${{ inputs.stage == 'macos-intel' }}
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build CPython 3.12 stable-ABI wheel
+        uses: pypa/cibuildwheel@v3.2.1
+        env:
+          CIBW_BUILD: cp312-*
+          CIBW_ARCHS: auto64
+          CIBW_SKIP: "*-musllinux_*"
+          CIBW_CONFIG_SETTINGS: >-
+            cmake.define.ET_PYTHON_STABLE_ABI=ON
+            wheel.py-api=cp312
+          CIBW_TEST_REQUIRES: numpy>=1.26 soundfile>=0.12
+          CIBW_TEST_COMMAND: >-
+            python -m unittest discover
+            -s {project}/dsp/bindings/python/tests -v &&
+            python {project}/dsp/bindings/python/tools/audit_native_exports.py &&
+            python {project}/dsp/bindings/acceptance/python_golden_runner.py
+            --repo-root {project}
+        with:
+          package-dir: dsp/bindings/python
+          output-dir: wheelhouse/cp312
+      - name: Verify CPython 3.12 wheel ABI tag
+        env:
+          EXPECTED_TAG: cp312-abi3
+          WHEEL_DIRECTORY: wheelhouse/cp312
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          wheels = list(Path(os.environ["WHEEL_DIRECTORY"]).glob("*.whl"))
+          assert wheels, "cibuildwheel did not produce a wheel"
+          expected = os.environ["EXPECTED_TAG"]
+          assert all(expected in wheel.name for wheel in wheels), (
+              expected,
+              [wheel.name for wheel in wheels],
+          )
+          PY
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Verify abi3 wheel on newer CPython
+        run: python dsp/bindings/python/tools/verify_abi3_wheel.py wheelhouse/cp312
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-macos-15-intel-cp312
+          path: wheelhouse/cp312/*.whl
+          if-no-files-found: error
+      - name: Build CPython 3.10 wheel
+        uses: pypa/cibuildwheel@v3.2.1
+        env:
+          CIBW_BUILD: cp310-*
+          CIBW_ARCHS: auto64
+          CIBW_SKIP: "*-musllinux_*"
+          CIBW_TEST_REQUIRES: numpy>=1.26 soundfile>=0.12
+          CIBW_TEST_COMMAND: >-
+            python -m unittest discover
+            -s {project}/dsp/bindings/python/tests -v &&
+            python {project}/dsp/bindings/python/tools/audit_native_exports.py &&
+            python {project}/dsp/bindings/acceptance/python_golden_runner.py
+            --repo-root {project}
+        with:
+          package-dir: dsp/bindings/python
+          output-dir: wheelhouse/cp310
+      - name: Verify CPython 3.10 wheel ABI tag
+        env:
+          EXPECTED_TAG: cp310-cp310
+          WHEEL_DIRECTORY: wheelhouse/cp310
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          wheels = list(Path(os.environ["WHEEL_DIRECTORY"]).glob("*.whl"))
+          assert wheels, "cibuildwheel did not produce a wheel"
+          expected = os.environ["EXPECTED_TAG"]
+          assert all(expected in wheel.name for wheel in wheels), (
+              expected,
+              [wheel.name for wheel in wheels],
+          )
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-macos-15-intel-cp310
+          path: wheelhouse/cp310/*.whl
+          if-no-files-found: error
+      - name: Build CPython 3.11 wheel
+        uses: pypa/cibuildwheel@v3.2.1
+        env:
+          CIBW_BUILD: cp311-*
+          CIBW_ARCHS: auto64
+          CIBW_SKIP: "*-musllinux_*"
+          CIBW_TEST_REQUIRES: numpy>=1.26 soundfile>=0.12
+          CIBW_TEST_COMMAND: >-
+            python -m unittest discover
+            -s {project}/dsp/bindings/python/tests -v &&
+            python {project}/dsp/bindings/python/tools/audit_native_exports.py &&
+            python {project}/dsp/bindings/acceptance/python_golden_runner.py
+            --repo-root {project}
+        with:
+          package-dir: dsp/bindings/python
+          output-dir: wheelhouse/cp311
+      - name: Verify CPython 3.11 wheel ABI tag
+        env:
+          EXPECTED_TAG: cp311-cp311
+          WHEEL_DIRECTORY: wheelhouse/cp311
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          wheels = list(Path(os.environ["WHEEL_DIRECTORY"]).glob("*.whl"))
+          assert wheels, "cibuildwheel did not produce a wheel"
+          expected = os.environ["EXPECTED_TAG"]
+          assert all(expected in wheel.name for wheel in wheels), (
+              expected,
+              [wheel.name for wheel in wheels],
+          )
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-macos-15-intel-cp311
+          path: wheelhouse/cp311/*.whl
           if-no-files-found: error
 
   acceptance:
     name: Candidate wrapper acceptance
-    needs: [preflight, javascript, python-wheels]
+    if: ${{ inputs.stage == 'acceptance' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

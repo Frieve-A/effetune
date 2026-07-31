@@ -1,0 +1,551 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - '**'
+    tags-ignore:
+      - 'dsp-v*'
+  pull_request:
+  schedule:
+    - cron: '23 15 * * 4'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  id-token: write
+  pages: write
+  pull-requests: read
+  security-events: write
+
+jobs:
+  scope:
+    name: Resolve validation scope
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      dsp_core: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) || ((github.event_name == 'push' || github.event_name == 'pull_request') && steps.changes.outputs.dsp_core == 'true') }}
+      dsp_library: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) || ((github.event_name == 'push' || github.event_name == 'pull_request') && steps.changes.outputs.dsp_library == 'true') }}
+      electron: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/heads/feature/')) }}
+      pages: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) }}
+      codeql: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.base_ref == 'main') }}
+      power_browser: ${{ github.event_name == 'pull_request' }}
+      any: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || (github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/heads/feature/') || steps.changes.outputs.dsp_core == 'true' || steps.changes.outputs.dsp_library == 'true')) }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+      - name: Match path-scoped workflows
+        id: changes
+        if: github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/'))
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            dsp_core:
+              - 'dsp/**'
+              - 'plugins/**'
+              - 'js/audio/**'
+              - 'js/audio-manager.js'
+              - 'js/electron/audioIntegration.js'
+              - 'js/ui/pipeline/pipeline-worklet-sync.js'
+              - 'features/effetune-benchmark.js'
+              - 'features/effetune_bench.html'
+              - 'scripts/gen-dsp-params.mjs'
+              - 'scripts/build-dsp-wasm.mjs'
+              - 'tools/dsp-parity/**'
+              - 'tools/verify-dsp-package.mjs'
+              - 'tests/esm/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.github/workflows/dsp.yml'
+              - '.github/workflows/ci.yml'
+            dsp_library:
+              - 'dsp/bindings/**'
+              - 'dsp/plugins/**'
+              - 'dsp/core/**'
+              - 'dsp/generated/**'
+              - 'dsp/include/**'
+              - 'dsp/vendor/**'
+              - 'dsp/CMakeLists.txt'
+              - 'dsp/exports.txt'
+              - 'dsp/registry.inc'
+              - 'js/audio/dsp-engine-binding.js'
+              - 'js/audio/dsp-wasm-loader.js'
+              - 'js/audio/dsp-params.generated.js'
+              - 'js/ir-library/**'
+              - 'plugins/audio-processor.js'
+              - 'plugins/dsp/**'
+              - 'examples/dsp-library/**'
+              - 'docs/**'
+              - 'README.md'
+              - '_config.yml'
+              - '_includes/site_head.html'
+              - '_includes/site_header.html'
+              - '_includes/site_footer.html'
+              - '_layouts/dsp.html'
+              - '_data/dsp-nav.yml'
+              - 'scripts/gen-dsp-library-bindings.mjs'
+              - 'scripts/gen-dsp-params.mjs'
+              - 'scripts/build-dsp-wasm.mjs'
+              - 'tools/verify-dsp-library-goldens.mjs'
+              - 'tools/dsp-parity/**'
+              - 'tests/esm/dsp-library-codegen*.test.mjs'
+              - 'tests/esm/dsp-library-goldens.test.mjs'
+              - 'tests/esm/dsp-library-*.test.mjs'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.github/workflows/dsp-library-ci.yml'
+              - '.github/workflows/dsp-library-release.yml'
+              - '.github/workflows/pages.yml'
+              - '.github/workflows/ci.yml'
+
+  dsp-library-preflight:
+    name: DSP Library preflight
+    needs: scope
+    if: needs.scope.outputs.dsp_library == 'true'
+    uses: ./.github/workflows/dsp-library-ci.yml
+    with:
+      stage: preflight
+    permissions:
+      contents: read
+
+  common:
+    name: Static and common verification
+    needs: [scope, dsp-library-preflight]
+    if: >-
+      always() && !cancelled() &&
+      needs.scope.outputs.any == 'true' &&
+      (needs.dsp-library-preflight.result == 'success' || needs.dsp-library-preflight.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - name: Verify workflow YAML syntax
+        shell: bash
+        run: ruby -e 'require "yaml"; Dir[".github/workflows/*.{yml,yaml}"].sort.each { |path| YAML.parse_file(path) }'
+      - name: Check C++ formatting
+        if: needs.scope.outputs.dsp_core == 'true' || needs.scope.outputs.dsp_library == 'true'
+        shell: bash
+        run: find dsp -path dsp/vendor -prune -o \( -name '*.cpp' -o -name '*.h' \) -print0 | xargs -0 clang-format --dry-run --Werror
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Verify source and tests
+        run: npm run verify
+
+  codeql-actions:
+    name: CodeQL Actions preflight
+    needs: [scope, common, dsp-library-preflight]
+    if: >-
+      always() && !cancelled() &&
+      needs.scope.outputs.codeql == 'true' &&
+      needs.common.result == 'success' &&
+      (needs.dsp-library-preflight.result == 'success' || needs.dsp-library-preflight.result == 'skipped')
+    uses: ./.github/workflows/codeql.yml
+    with:
+      language: actions
+    permissions:
+      contents: read
+      security-events: write
+
+  codeql-python:
+    name: CodeQL Python preflight
+    needs: [scope, common, dsp-library-preflight]
+    if: >-
+      always() && !cancelled() &&
+      needs.scope.outputs.codeql == 'true' &&
+      needs.common.result == 'success' &&
+      (needs.dsp-library-preflight.result == 'success' || needs.dsp-library-preflight.result == 'skipped')
+    uses: ./.github/workflows/codeql.yml
+    with:
+      language: python
+    permissions:
+      contents: read
+      security-events: write
+
+  electron-linux:
+    name: Electron Linux
+    needs: [scope, common, dsp-library-preflight, codeql-actions, codeql-python]
+    if: >-
+      always() && !cancelled() &&
+      needs.scope.outputs.electron == 'true' &&
+      needs.common.result == 'success' &&
+      (needs.dsp-library-preflight.result == 'success' || needs.dsp-library-preflight.result == 'skipped') &&
+      (needs.codeql-actions.result == 'success' || needs.codeql-actions.result == 'skipped') &&
+      (needs.codeql-python.result == 'success' || needs.codeql-python.result == 'skipped')
+    uses: ./.github/workflows/build.yml
+    with:
+      stage: linux
+    permissions:
+      contents: read
+
+  dsp-linux:
+    name: DSP Core Linux
+    needs: [scope, common, dsp-library-preflight, codeql-actions, codeql-python]
+    if: >-
+      always() && !cancelled() &&
+      needs.scope.outputs.dsp_core == 'true' &&
+      needs.common.result == 'success' &&
+      (needs.dsp-library-preflight.result == 'success' || needs.dsp-library-preflight.result == 'skipped') &&
+      (needs.codeql-actions.result == 'success' || needs.codeql-actions.result == 'skipped') &&
+      (needs.codeql-python.result == 'success' || needs.codeql-python.result == 'skipped')
+    uses: ./.github/workflows/dsp.yml
+    with:
+      stage: linux
+    permissions:
+      contents: read
+
+  dsp-library-linux:
+    name: DSP Library Linux
+    needs: [scope, common, dsp-library-preflight, codeql-actions, codeql-python]
+    if: >-
+      always() && !cancelled() &&
+      needs.scope.outputs.dsp_library == 'true' &&
+      needs.common.result == 'success' &&
+      needs.dsp-library-preflight.result == 'success' &&
+      (needs.codeql-actions.result == 'success' || needs.codeql-actions.result == 'skipped') &&
+      (needs.codeql-python.result == 'success' || needs.codeql-python.result == 'skipped')
+    uses: ./.github/workflows/dsp-library-ci.yml
+    with:
+      stage: linux
+      verify_docs: ${{ needs.scope.outputs.pages != 'true' }}
+      verify_dsp: ${{ needs.scope.outputs.dsp_core != 'true' }}
+    permissions:
+      contents: read
+
+  pages-build:
+    name: Pages build
+    needs: [scope, common, dsp-library-preflight, codeql-actions, codeql-python]
+    if: >-
+      always() && !cancelled() &&
+      needs.scope.outputs.pages == 'true' &&
+      needs.common.result == 'success' &&
+      (needs.dsp-library-preflight.result == 'success' || needs.dsp-library-preflight.result == 'skipped') &&
+      (needs.codeql-actions.result == 'success' || needs.codeql-actions.result == 'skipped') &&
+      (needs.codeql-python.result == 'success' || needs.codeql-python.result == 'skipped')
+    uses: ./.github/workflows/pages.yml
+    with:
+      stage: build
+      verify_dsp: ${{ needs.scope.outputs.dsp_core != 'true' && needs.scope.outputs.dsp_library != 'true' }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+  power-browser:
+    name: Power browser
+    needs: [scope, common, dsp-library-preflight, codeql-actions, codeql-python]
+    if: >-
+      always() && !cancelled() &&
+      needs.scope.outputs.power_browser == 'true' &&
+      needs.common.result == 'success' &&
+      (needs.dsp-library-preflight.result == 'success' || needs.dsp-library-preflight.result == 'skipped') &&
+      (needs.codeql-actions.result == 'success' || needs.codeql-actions.result == 'skipped') &&
+      (needs.codeql-python.result == 'success' || needs.codeql-python.result == 'skipped')
+    uses: ./.github/workflows/power-browser.yml
+    permissions:
+      contents: read
+
+  codeql-javascript:
+    name: CodeQL JavaScript
+    needs: [codeql-actions, codeql-python]
+    if: needs.codeql-actions.result == 'success' && needs.codeql-python.result == 'success'
+    uses: ./.github/workflows/codeql.yml
+    with:
+      language: javascript-typescript
+    permissions:
+      contents: read
+      security-events: write
+
+  codeql-cpp:
+    name: CodeQL C and C++
+    needs: [codeql-actions, codeql-python]
+    if: needs.codeql-actions.result == 'success' && needs.codeql-python.result == 'success'
+    uses: ./.github/workflows/codeql.yml
+    with:
+      language: c-cpp
+    permissions:
+      contents: read
+      security-events: write
+
+  electron-windows:
+    name: Electron Windows
+    needs: [scope, electron-linux, dsp-linux, dsp-library-linux, pages-build, power-browser, codeql-javascript, codeql-cpp]
+    if: >-
+      always() && !cancelled() &&
+      needs.scope.outputs.electron == 'true' &&
+      needs.electron-linux.result == 'success' &&
+      (needs.dsp-linux.result == 'success' || needs.dsp-linux.result == 'skipped') &&
+      (needs.dsp-library-linux.result == 'success' || needs.dsp-library-linux.result == 'skipped') &&
+      (needs.pages-build.result == 'success' || needs.pages-build.result == 'skipped') &&
+      (needs.power-browser.result == 'success' || needs.power-browser.result == 'skipped') &&
+      (needs.codeql-javascript.result == 'success' || needs.codeql-javascript.result == 'skipped') &&
+      (needs.codeql-cpp.result == 'success' || needs.codeql-cpp.result == 'skipped')
+    uses: ./.github/workflows/build.yml
+    with:
+      stage: windows
+    permissions:
+      contents: read
+
+  dsp-windows:
+    name: DSP Core Windows
+    needs: [scope, electron-linux, dsp-linux, dsp-library-linux, pages-build, power-browser, codeql-javascript, codeql-cpp]
+    if: >-
+      always() && !cancelled() &&
+      needs.scope.outputs.dsp_core == 'true' &&
+      (needs.electron-linux.result == 'success' || needs.electron-linux.result == 'skipped') &&
+      needs.dsp-linux.result == 'success' &&
+      (needs.dsp-library-linux.result == 'success' || needs.dsp-library-linux.result == 'skipped') &&
+      (needs.pages-build.result == 'success' || needs.pages-build.result == 'skipped') &&
+      (needs.power-browser.result == 'success' || needs.power-browser.result == 'skipped') &&
+      (needs.codeql-javascript.result == 'success' || needs.codeql-javascript.result == 'skipped') &&
+      (needs.codeql-cpp.result == 'success' || needs.codeql-cpp.result == 'skipped')
+    uses: ./.github/workflows/dsp.yml
+    with:
+      stage: windows
+      package_smoke: ${{ needs.scope.outputs.electron != 'true' }}
+    permissions:
+      contents: read
+
+  dsp-library-windows:
+    name: DSP Library Windows
+    needs: [scope, electron-linux, dsp-linux, dsp-library-linux, pages-build, power-browser, codeql-javascript, codeql-cpp]
+    if: >-
+      always() && !cancelled() &&
+      needs.scope.outputs.dsp_library == 'true' &&
+      (needs.electron-linux.result == 'success' || needs.electron-linux.result == 'skipped') &&
+      (needs.dsp-linux.result == 'success' || needs.dsp-linux.result == 'skipped') &&
+      needs.dsp-library-linux.result == 'success' &&
+      (needs.pages-build.result == 'success' || needs.pages-build.result == 'skipped') &&
+      (needs.power-browser.result == 'success' || needs.power-browser.result == 'skipped') &&
+      (needs.codeql-javascript.result == 'success' || needs.codeql-javascript.result == 'skipped') &&
+      (needs.codeql-cpp.result == 'success' || needs.codeql-cpp.result == 'skipped')
+    uses: ./.github/workflows/dsp-library-ci.yml
+    with:
+      stage: windows
+    permissions:
+      contents: read
+
+  electron-macos:
+    name: Electron macOS
+    needs: [scope, electron-windows, dsp-windows, dsp-library-windows]
+    if: >-
+      always() && !cancelled() &&
+      needs.scope.outputs.electron == 'true' &&
+      needs.electron-windows.result == 'success' &&
+      (needs.dsp-windows.result == 'success' || needs.dsp-windows.result == 'skipped') &&
+      (needs.dsp-library-windows.result == 'success' || needs.dsp-library-windows.result == 'skipped')
+    uses: ./.github/workflows/build.yml
+    with:
+      stage: macos
+    permissions:
+      contents: read
+
+  dsp-library-macos-arm:
+    name: DSP Library macOS ARM64
+    needs: [scope, electron-windows, dsp-windows, dsp-library-windows]
+    if: >-
+      always() && !cancelled() &&
+      needs.scope.outputs.dsp_library == 'true' &&
+      (needs.electron-windows.result == 'success' || needs.electron-windows.result == 'skipped') &&
+      (needs.dsp-windows.result == 'success' || needs.dsp-windows.result == 'skipped') &&
+      needs.dsp-library-windows.result == 'success'
+    uses: ./.github/workflows/dsp-library-ci.yml
+    with:
+      stage: macos-arm
+    permissions:
+      contents: read
+
+  dsp-library-macos-intel:
+    name: DSP Library macOS Intel
+    needs: [scope, electron-macos, dsp-library-macos-arm]
+    if: >-
+      always() && !cancelled() &&
+      needs.scope.outputs.dsp_library == 'true' &&
+      (needs.electron-macos.result == 'success' || needs.electron-macos.result == 'skipped') &&
+      needs.dsp-library-macos-arm.result == 'success'
+    uses: ./.github/workflows/dsp-library-ci.yml
+    with:
+      stage: macos-intel
+    permissions:
+      contents: read
+
+  dsp-library-acceptance:
+    name: DSP Library acceptance
+    needs: [scope, electron-macos, dsp-library-macos-intel]
+    if: >-
+      always() && !cancelled() &&
+      needs.scope.outputs.dsp_library == 'true' &&
+      (needs.electron-macos.result == 'success' || needs.electron-macos.result == 'skipped') &&
+      needs.dsp-library-macos-intel.result == 'success'
+    uses: ./.github/workflows/dsp-library-ci.yml
+    with:
+      stage: acceptance
+    permissions:
+      contents: read
+
+  pages-deploy:
+    name: Pages deploy
+    needs:
+      - scope
+      - common
+      - dsp-library-preflight
+      - codeql-actions
+      - codeql-python
+      - electron-linux
+      - dsp-linux
+      - dsp-library-linux
+      - pages-build
+      - power-browser
+      - codeql-javascript
+      - codeql-cpp
+      - electron-windows
+      - dsp-windows
+      - dsp-library-windows
+      - electron-macos
+      - dsp-library-macos-arm
+      - dsp-library-macos-intel
+      - dsp-library-acceptance
+    if: >-
+      always() && !cancelled() &&
+      needs.scope.outputs.pages == 'true' &&
+      needs.common.result == 'success' &&
+      (needs.dsp-library-preflight.result == 'success' || needs.dsp-library-preflight.result == 'skipped') &&
+      (needs.codeql-actions.result == 'success' || needs.codeql-actions.result == 'skipped') &&
+      (needs.codeql-python.result == 'success' || needs.codeql-python.result == 'skipped') &&
+      (needs.electron-linux.result == 'success' || needs.electron-linux.result == 'skipped') &&
+      (needs.dsp-linux.result == 'success' || needs.dsp-linux.result == 'skipped') &&
+      (needs.dsp-library-linux.result == 'success' || needs.dsp-library-linux.result == 'skipped') &&
+      needs.pages-build.result == 'success' &&
+      (needs.power-browser.result == 'success' || needs.power-browser.result == 'skipped') &&
+      (needs.codeql-javascript.result == 'success' || needs.codeql-javascript.result == 'skipped') &&
+      (needs.codeql-cpp.result == 'success' || needs.codeql-cpp.result == 'skipped') &&
+      (needs.electron-windows.result == 'success' || needs.electron-windows.result == 'skipped') &&
+      (needs.dsp-windows.result == 'success' || needs.dsp-windows.result == 'skipped') &&
+      (needs.dsp-library-windows.result == 'success' || needs.dsp-library-windows.result == 'skipped') &&
+      (needs.electron-macos.result == 'success' || needs.electron-macos.result == 'skipped') &&
+      (needs.dsp-library-macos-arm.result == 'success' || needs.dsp-library-macos-arm.result == 'skipped') &&
+      (needs.dsp-library-macos-intel.result == 'success' || needs.dsp-library-macos-intel.result == 'skipped') &&
+      (needs.dsp-library-acceptance.result == 'success' || needs.dsp-library-acceptance.result == 'skipped')
+    uses: ./.github/workflows/pages.yml
+    with:
+      stage: deploy
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+  required-gate:
+    name: Required gate
+    needs:
+      - scope
+      - common
+      - dsp-library-preflight
+      - codeql-actions
+      - codeql-python
+      - electron-linux
+      - dsp-linux
+      - dsp-library-linux
+      - pages-build
+      - power-browser
+      - codeql-javascript
+      - codeql-cpp
+      - electron-windows
+      - dsp-windows
+      - dsp-library-windows
+      - electron-macos
+      - dsp-library-macos-arm
+      - dsp-library-macos-intel
+      - dsp-library-acceptance
+      - pages-deploy
+    if: >-
+      always() && !cancelled() &&
+      (needs.scope.result != 'success' || needs.scope.outputs.any == 'true')
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Verify selected validation stages
+        shell: bash
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          SELECT_ANY: ${{ needs.scope.outputs.any }}
+          SELECT_DSP_LIBRARY: ${{ needs.scope.outputs.dsp_library }}
+          SELECT_CODEQL: ${{ needs.scope.outputs.codeql }}
+          SELECT_ELECTRON: ${{ needs.scope.outputs.electron }}
+          SELECT_DSP_CORE: ${{ needs.scope.outputs.dsp_core }}
+          SELECT_PAGES: ${{ needs.scope.outputs.pages }}
+          SELECT_POWER_BROWSER: ${{ needs.scope.outputs.power_browser }}
+          COMMON_RESULT: ${{ needs.common.result }}
+          DSP_LIBRARY_PREFLIGHT_RESULT: ${{ needs.dsp-library-preflight.result }}
+          CODEQL_ACTIONS_RESULT: ${{ needs.codeql-actions.result }}
+          CODEQL_PYTHON_RESULT: ${{ needs.codeql-python.result }}
+          ELECTRON_LINUX_RESULT: ${{ needs.electron-linux.result }}
+          DSP_LINUX_RESULT: ${{ needs.dsp-linux.result }}
+          DSP_LIBRARY_LINUX_RESULT: ${{ needs.dsp-library-linux.result }}
+          PAGES_BUILD_RESULT: ${{ needs.pages-build.result }}
+          POWER_BROWSER_RESULT: ${{ needs.power-browser.result }}
+          CODEQL_JAVASCRIPT_RESULT: ${{ needs.codeql-javascript.result }}
+          CODEQL_CPP_RESULT: ${{ needs.codeql-cpp.result }}
+          ELECTRON_WINDOWS_RESULT: ${{ needs.electron-windows.result }}
+          DSP_WINDOWS_RESULT: ${{ needs.dsp-windows.result }}
+          DSP_LIBRARY_WINDOWS_RESULT: ${{ needs.dsp-library-windows.result }}
+          ELECTRON_MACOS_RESULT: ${{ needs.electron-macos.result }}
+          DSP_LIBRARY_MACOS_ARM_RESULT: ${{ needs.dsp-library-macos-arm.result }}
+          DSP_LIBRARY_MACOS_INTEL_RESULT: ${{ needs.dsp-library-macos-intel.result }}
+          DSP_LIBRARY_ACCEPTANCE_RESULT: ${{ needs.dsp-library-acceptance.result }}
+          PAGES_DEPLOY_RESULT: ${{ needs.pages-deploy.result }}
+        run: |
+          set -euo pipefail
+          failures=()
+
+          check_result() {
+            local selected="$1"
+            local stage="$2"
+            local actual="$3"
+            local expected="skipped"
+            if [[ "$selected" == "true" ]]; then
+              expected="success"
+            fi
+            if [[ "$actual" != "$expected" ]]; then
+              failures+=("${stage}: expected ${expected}, got ${actual:-missing}")
+            fi
+          }
+
+          if [[ "$SCOPE_RESULT" != "success" ]]; then
+            failures+=("scope: expected success, got ${SCOPE_RESULT:-missing}")
+          fi
+          check_result "$SELECT_ANY" common "$COMMON_RESULT"
+          check_result "$SELECT_DSP_LIBRARY" dsp-library-preflight "$DSP_LIBRARY_PREFLIGHT_RESULT"
+          check_result "$SELECT_DSP_LIBRARY" dsp-library-linux "$DSP_LIBRARY_LINUX_RESULT"
+          check_result "$SELECT_DSP_LIBRARY" dsp-library-windows "$DSP_LIBRARY_WINDOWS_RESULT"
+          check_result "$SELECT_DSP_LIBRARY" dsp-library-macos-arm "$DSP_LIBRARY_MACOS_ARM_RESULT"
+          check_result "$SELECT_DSP_LIBRARY" dsp-library-macos-intel "$DSP_LIBRARY_MACOS_INTEL_RESULT"
+          check_result "$SELECT_DSP_LIBRARY" dsp-library-acceptance "$DSP_LIBRARY_ACCEPTANCE_RESULT"
+          check_result "$SELECT_CODEQL" codeql-actions "$CODEQL_ACTIONS_RESULT"
+          check_result "$SELECT_CODEQL" codeql-python "$CODEQL_PYTHON_RESULT"
+          check_result "$SELECT_CODEQL" codeql-javascript "$CODEQL_JAVASCRIPT_RESULT"
+          check_result "$SELECT_CODEQL" codeql-cpp "$CODEQL_CPP_RESULT"
+          check_result "$SELECT_ELECTRON" electron-linux "$ELECTRON_LINUX_RESULT"
+          check_result "$SELECT_ELECTRON" electron-windows "$ELECTRON_WINDOWS_RESULT"
+          check_result "$SELECT_ELECTRON" electron-macos "$ELECTRON_MACOS_RESULT"
+          check_result "$SELECT_DSP_CORE" dsp-linux "$DSP_LINUX_RESULT"
+          check_result "$SELECT_DSP_CORE" dsp-windows "$DSP_WINDOWS_RESULT"
+          check_result "$SELECT_PAGES" pages-build "$PAGES_BUILD_RESULT"
+          check_result "$SELECT_PAGES" pages-deploy "$PAGES_DEPLOY_RESULT"
+          check_result "$SELECT_POWER_BROWSER" power-browser "$POWER_BROWSER_RESULT"
+
+          if (( ${#failures[@]} != 0 )); then
+            printf '%s\n' "${failures[@]}" >&2
+            exit 1
+          fi
+          echo "All selected validation stages completed successfully."

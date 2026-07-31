@@ -1,7 +1,7 @@
 name: Power Browser
 
 on:
-  pull_request:
+  workflow_call:
 
 permissions:
   contents: read
@@ -26,9 +26,6 @@ jobs:
 
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
-
-      - name: Verify source and tests
-        run: npm run verify
 
       - name: Run mandatory power browser smoke
         timeout-minutes: 2

@@ -1,23 +1,27 @@
 name: Deploy Site to GitHub Pages
 
 on:
-  push:
-    branches:
-      - main
-      - master
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      stage:
+        description: Build or deploy stage
+        required: true
+        type: string
+      verify_dsp:
+        description: Verify committed DSP artifacts and parity during the build
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: read
   pages: write
   id-token: write
 
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
 jobs:
   build:
+    if: inputs.stage == 'build'
+    name: Build Pages artifact
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -27,6 +31,7 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 22
+          cache: npm
 
       - name: Verify DSP site inputs
         run: node examples/dsp-library/verify-site-inputs.mjs
@@ -43,22 +48,22 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Verify source and tests
-        run: npm run verify
-
       - name: Run mandatory power browser smoke
         timeout-minutes: 2
         run: npm run test:power-browser
 
       - name: Setup Emscripten SDK
+        if: inputs.verify_dsp
         uses: emscripten-core/setup-emsdk@v16
         with:
           version: 6.0.2
 
       - name: Verify committed DSP artifacts
+        if: inputs.verify_dsp
         run: npm run build:dsp -- --check
 
       - name: Verify DSP parity
+        if: inputs.verify_dsp
         run: npm run test:dsp:parity
 
       - name: Build DSP library web package
@@ -96,11 +101,15 @@ jobs:
           path: ./_site
 
   deploy:
+    if: inputs.stage == 'deploy'
+    name: Deploy Pages artifact
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-    needs: build
     steps:
       - name: Deploy to GitHub Pages
         id: deployment

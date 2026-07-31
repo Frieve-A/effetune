@@ -1,48 +1,25 @@
 name: DSP Core
 
 on:
-  push:
-    paths:
-      - 'dsp/**'
-      - 'plugins/**'
-      - 'js/audio/**'
-      - 'js/audio-manager.js'
-      - 'js/electron/audioIntegration.js'
-      - 'js/ui/pipeline/pipeline-worklet-sync.js'
-      - 'features/effetune-benchmark.js'
-      - 'features/effetune_bench.html'
-      - 'scripts/gen-dsp-params.mjs'
-      - 'scripts/build-dsp-wasm.mjs'
-      - 'tools/dsp-parity/**'
-      - 'tools/verify-dsp-package.mjs'
-      - 'tests/esm/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/dsp.yml'
-  pull_request:
-    paths:
-      - 'dsp/**'
-      - 'plugins/**'
-      - 'js/audio/**'
-      - 'js/audio-manager.js'
-      - 'js/electron/audioIntegration.js'
-      - 'js/ui/pipeline/pipeline-worklet-sync.js'
-      - 'features/effetune-benchmark.js'
-      - 'features/effetune_bench.html'
-      - 'scripts/gen-dsp-params.mjs'
-      - 'scripts/build-dsp-wasm.mjs'
-      - 'tools/dsp-parity/**'
-      - 'tools/verify-dsp-package.mjs'
-      - 'tests/esm/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/dsp.yml'
+  workflow_call:
+    inputs:
+      stage:
+        description: Platform stage to verify
+        required: true
+        type: string
+      package_smoke:
+        description: Run the Windows Electron package smoke test
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: read
 
 jobs:
-  source-verification:
+  linux:
+    if: inputs.stage == 'linux'
+    name: Linux DSP verification
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -50,62 +27,31 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - run: npm run verify
-
-  dsp-build:
-    needs: source-verification
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: npm
-      - uses: emscripten-core/setup-emsdk@v16
+      - name: Install dependencies
+        run: npm ci
+      - name: Setup Emscripten SDK
+        uses: emscripten-core/setup-emsdk@v16
         with:
           version: 6.0.2
-      - run: npm ci
-      - run: npm run build:dsp
+      - name: Build committed DSP artifacts
+        run: npm run build:dsp
       - name: Verify committed generated files and artifacts
+        shell: bash
         run: git diff --exit-code && test -z "$(git status --porcelain)"
+      - name: Run Debug native tests and allocation guard
+        run: |
+          npm run test:dsp -- --native-build-type=Debug
+          node tools/dsp-parity/run.mjs --native --allocations
+      - name: Run Release native tests and parity
+        run: |
+          npm run test:dsp -- --native-build-type=Release
+          node tools/dsp-parity/run.mjs --native
+      - name: Run WebAssembly parity
+        run: npm run test:dsp:parity
 
-  dsp-native-tests:
-    needs: source-verification
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-        build-type: [Debug, Release]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run test:dsp -- --native-build-type=${{ matrix.build-type }}
-      - name: Run native parity with the realtime allocation guard
-        if: matrix.build-type == 'Debug'
-        run: node tools/dsp-parity/run.mjs --native --allocations
-      - name: Run native parity
-        if: matrix.build-type == 'Release'
-        run: node tools/dsp-parity/run.mjs --native
-
-  dsp-parity:
-    needs: source-verification
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run test:dsp:parity
-
-  electron-package-smoke:
-    needs: [source-verification, dsp-build]
+  windows:
+    if: inputs.stage == 'windows'
+    name: Windows DSP verification
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
@@ -113,15 +59,19 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - run: npm run pack
-      - run: npm run smoke:dsp-package
-
-  format:
-    needs: source-verification
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - name: Check C++ formatting
-        shell: bash
-        run: find dsp -path dsp/vendor -prune -o \( -name '*.cpp' -o -name '*.h' \) -print0 | xargs -0 clang-format --dry-run --Werror
+      - name: Install dependencies
+        run: npm ci
+      - name: Run Debug native tests and allocation guard
+        run: |
+          npm run test:dsp -- --native-build-type=Debug
+          node tools/dsp-parity/run.mjs --native --allocations
+      - name: Run Release native tests and parity
+        run: |
+          npm run test:dsp -- --native-build-type=Release
+          node tools/dsp-parity/run.mjs --native
+      - name: Package Electron application
+        if: inputs.package_smoke
+        run: npm run pack
+      - name: Verify packaged DSP artifacts
+        if: inputs.package_smoke
+        run: npm run smoke:dsp-package

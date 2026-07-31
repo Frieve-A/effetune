@@ -87,7 +87,10 @@ from a public repository.
 2. Confirm DSP Library CI is green, including all wheel platforms, clean
    installed package tests, npm preset rendering, golden parity, codegen drift,
    and the reproducible demo. Confirm the existing Pages workflow also stages
-   the guide, schemas, and demo under `/dsp/`.
+   the guide, schemas, and demo under `/dsp/`. The release workflow repeats its
+   publication-critical checks in gated stages: preflight, Linux, Windows,
+   macOS Apple Silicon, macOS Intel, and candidate acceptance. A failed stage
+   prevents every later platform runner and publication job from starting.
 3. Review the exact commit and create the tag explicitly:
 
    ```console
@@ -98,8 +101,10 @@ from a public repository.
 4. Review the build logs and the assembled
    `dsp-v<version>-publication-candidate`
    artifact before approving either registry environment.
-5. Approve `pypi` and `npm` only when the filenames, wheel tags,
-   checksums, SPDX SBOM, and attestations match the reviewed commit.
+5. Approve `npm` only when the filenames, wheel tags, checksums, SPDX SBOM,
+   and attestations match the reviewed commit. After npm publication succeeds,
+   review and approve `pypi`; the registry uploads are deliberately serialized
+   to prevent both irreversible operations from starting at once.
 6. Confirm the GitHub Release is created automatically after both registry
    uploads succeed.
 
