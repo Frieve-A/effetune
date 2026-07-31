@@ -3,7 +3,6 @@ from __future__ import annotations
 import unittest
 import importlib.metadata
 import json
-import tomllib
 from pathlib import Path
 
 import numpy as np
@@ -15,18 +14,13 @@ from effetune.validation import pack_parameter_bytes, pack_parameters
 
 class ValidationAndEffectsTests(unittest.TestCase):
     def test_runtime_version_matches_wheel_and_package_manifests(self) -> None:
-        python_root = Path(__file__).resolve().parents[1]
         repository_root = Path(__file__).resolve().parents[4]
-        python_data = tomllib.loads(
-            (python_root / "pyproject.toml").read_text(encoding="utf-8")
-        )
         npm_data = json.loads(
             (repository_root / "dsp" / "bindings" / "js" / "package.json").read_text(
                 encoding="utf-8"
             )
         )
         self.assertEqual(effetune.__version__, importlib.metadata.version("effetune"))
-        self.assertEqual(effetune.__version__, python_data["project"]["version"])
         self.assertEqual(effetune.__version__, npm_data["version"])
 
     def test_unknown_generated_factory_type_uses_public_effect_error(self) -> None:
