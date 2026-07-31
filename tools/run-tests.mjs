@@ -135,7 +135,10 @@ function checkTestSourceHygiene(testFiles) {
 }
 
 const cjsTests = collectTestFiles(path.join(repoRoot, 'tests/cjs'), '.test.cjs');
-const esmTests = collectTestFiles(path.join(repoRoot, 'tests/esm'), '.test.mjs');
+const performanceTests = ['tests/esm/room-eq-performance.test.mjs'];
+const performanceTestSet = new Set(performanceTests);
+const esmTests = collectTestFiles(path.join(repoRoot, 'tests/esm'), '.test.mjs')
+  .filter(file => !performanceTestSet.has(file));
 const cjsCoverageIncludes = collectCoverageIncludeArgs(path.join(repoRoot, 'electron'), {
   exclude: ['electron/main.js']
 });
@@ -160,7 +163,7 @@ if (cjsTests.length === 0 && esmTests.length === 0) {
   process.exit(1);
 }
 
-const allTests = [...cjsTests, ...esmTests];
+const allTests = [...cjsTests, ...esmTests, ...performanceTests];
 checkTestTitles(allTests);
 checkTestSourceHygiene(allTests);
 
@@ -183,3 +186,8 @@ if (esmTests.length > 0) {
     ...esmTests
   ]);
 }
+
+runNodeTestPhase('Performance tests', [
+  '--test',
+  ...performanceTests
+]);

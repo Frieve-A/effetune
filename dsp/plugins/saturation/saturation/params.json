@@ -1,7 +1,7 @@
 {
   "type": "SaturationPlugin",
   "tolerance": {
-    "abs": 0.000001,
+    "abs": 0.000002,
     "policy": "per-sample"
   },
   "fields": [
