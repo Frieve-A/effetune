@@ -40,12 +40,15 @@ baseline-plus-SIMD modes. Build directories live below `dsp/build/`.
 
 ## ABI And Memory
 
-The public C ABI is `include/effetune/abi.h`. ABI version 1 uses 32-bit handles and
-offsets only; exported signatures contain no `i64`. Engines are independent and own all
-DSP state. `et_engine_memory_required` validates and preflights the arena. Memory growth
-is restricted to control-rate lifecycle calls: `et_engine_prepare` and kernel setup from
-`et_instance_create`. Hosts must refresh arena views after either call and before the next
-quantum. Processing never allocates or grows memory.
+The C ABI in `include/effetune/abi.h` is the host ABI for the bundled WebAssembly
+modules. ABI version 1 is not a supported public native ABI or native binary-compatibility
+promise; see the [Phase 0 native ABI audit](../experiments/dsp-library-phase0/native-abi-audit.md).
+It uses 32-bit handles and offsets only; exported signatures contain no `i64`. Engines are
+independent and own all DSP state. `et_engine_memory_required` validates and preflights
+the arena. Memory growth is restricted to control-rate lifecycle calls:
+`et_engine_prepare` and kernel setup from `et_instance_create`. Hosts must refresh arena
+views after either call and before the next quantum. Processing never allocates or grows
+memory.
 
 The arena contains the combined buffer (bus 0), buses 1-4, and four full-size scratch
 slabs (`allChannels`, `mixing`, `stereo`, `mono`). It also contains a 4 KiB byte scratch,
@@ -158,7 +161,6 @@ values at byte offsets 0, 4, 8, and 12 for carrier level before AGC in dB, AGC g
 dB, modulation depth in percent, and fading level in dB, followed by cumulative
 little-endian `u32` counters at byte offsets 16 and 20 for static events and clipping
 events. Shortwave reception is mono, so no stereo blend field exists.
-
 `et_instance_latency` reflects staged parameters immediately. BrickwallLimiter reports
 `max(1, ceil(lookaheadMs * sampleRate / 1000))` samples at 1x oversampling and
 that same lookahead term plus `ceil(62 / oversampling)` samples at 2x/4x/8x.

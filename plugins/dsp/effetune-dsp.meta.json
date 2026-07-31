@@ -1,6 +1,6 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:1ecd3e5537517a587c31b390d4cd1e380d6858add324909204e00235c47e853f",
+  "sourceDigest": "sha256:c4ba1fd310fc7aaba4b4c3dce94cd3ae2a73c8c5d0781d698e2feae3e24b2ac7",
   "emsdkVersion": "6.0.2",
   "kernels": [
     {
@@ -248,7 +248,7 @@
     },
     {
       "name": "LoudnessEqualizerPlugin",
-      "hash": 2288594783,
+      "hash": 2860520897,
       "byteCapacity": 0,
       "assets": []
     },
@@ -496,7 +496,7 @@
     }
   ],
   "sizes": {
-    "baseline": 499350,
-    "simd": 560617
+    "baseline": 499462,
+    "simd": 560691
   }
 }

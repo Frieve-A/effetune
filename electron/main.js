@@ -329,14 +329,6 @@ if (process.platform === 'darwin') {
   app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
 }
 
-// Electron's native Wayland backend cannot reliably report a minimized
-// BrowserWindow. Keep Linux on X11/XWayland so the native visibility signal
-// used by the power policy remains observable while renderer timers stay live.
-// Must be set before app.ready.
-if (process.platform === 'linux') {
-  app.commandLine.appendSwitch('ozone-platform', 'x11');
-}
-
 // Set up logging to file for debugging (disabled for release)
 function setupFileLogging() {
   // Disabled for release

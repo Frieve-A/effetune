@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EffeTune DSP Worklet demo</title>
+  <meta
+    name="description"
+    content="A self-contained @effetune/dsp AudioWorklet demo with a generated signal or local audio."
+  >
+  <link rel="canonical" href="https://effetune.frieve.com/dsp/demo/">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main>
+    <p class="eyebrow">EffeTune DSP v0.1.0</p>
+    <h1>AudioWorklet volume</h1>
+    <p>
+      Start the generated signal immediately, or choose a local audio file.
+      Processing stays in this browser tab; nothing is uploaded and no code
+      loads from a CDN.
+    </p>
+
+    <label class="mode-control" for="source-mode">
+      <span>Audio source</span>
+      <select id="source-mode">
+        <option value="generated">Generated test signal</option>
+        <option value="local">Local audio file</option>
+      </select>
+    </label>
+
+    <label class="file-control" data-local-file hidden>
+      <span>Audio file</span>
+      <input id="audio-file" type="file" accept="audio/*">
+    </label>
+
+    <label class="parameter-control" for="volume">
+      <span>Processed volume</span>
+      <output id="volume-value" for="volume">−6 dB</output>
+      <input id="volume" type="range" min="-24" max="0" step="1" value="-6">
+    </label>
+
+    <div class="actions">
+      <button id="start" type="button">Start processing</button>
+      <button id="bypass" type="button" aria-pressed="false" disabled>Bypass off</button>
+      <button id="stop" type="button" disabled>Stop</button>
+    </div>
+
+    <p id="status" class="status" role="status" aria-live="polite">
+      Ready to play a generated test signal.
+    </p>
+  </main>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

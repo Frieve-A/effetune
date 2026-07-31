@@ -1142,42 +1142,47 @@ class PluginBase {
         valueInput.autocomplete = "off";
 
         slider.addEventListener('input', (e) => {
-            // Use setter directly, assuming it handles parseFloat if needed
-            setter(parseFloat(e.target.value));
+            const val = parseFloat(e.target.value);
+            if (!Number.isFinite(val)) return;
+            setter(val);
+            lastAppliedValue = val;
             valueInput.value = e.target.value; // Keep number input synced
         });
 
+        let lastAppliedValue = parseFloat(value);
+        if (!Number.isFinite(lastAppliedValue)) {
+            lastAppliedValue = min;
+        }
+
         valueInput.addEventListener('input', (e) => {
             // Allow typing slightly outside bounds temporarily before clamping on blur/enter
-            // Use setter immediately, assuming it handles parseFloat if needed
-            const val = parseFloat(e.target.value) || 0; // Use 0 as fallback for invalid input
+            const val = parseFloat(e.target.value);
+            if (!Number.isFinite(val)) return;
             setter(val); // Update internal value immediately
+            lastAppliedValue = val;
             // Update slider thumb, clamping it within bounds
             slider.value = Math.max(min, Math.min(max, val));
         });
 
         // Clamp value on blur or Enter key press for the number input
-         const clampAndUpdate = (e) => {
-            const val = parseFloat(e.target.value) || 0; // Use 0 as fallback
-            const clampedVal = Math.max(min, Math.min(max, val));
-            // Only update if the value was actually clamped
-            if (clampedVal !== val) {
-                setter(clampedVal); // Ensure internal state matches clamped value
-                e.target.value = clampedVal; // Update display
-                slider.value = clampedVal;   // Update slider thumb
-            } else if (isNaN(val)) { // Handle NaN case explicitly
-                 setter(min); // Or some default fallback like min
-                 e.target.value = min;
-                 slider.value = min;
+        const clampAndUpdate = (e) => {
+            const val = parseFloat(e.target.value);
+            const finiteVal = Number.isFinite(val) ? val : lastAppliedValue;
+            const clampedVal = Math.max(min, Math.min(max, finiteVal));
+            if (clampedVal !== lastAppliedValue) {
+                setter(clampedVal);
+                lastAppliedValue = clampedVal;
             }
-         };
-         valueInput.addEventListener('blur', clampAndUpdate);
-         valueInput.addEventListener('keydown', (e) => {
-             if (e.key === 'Enter') {
-                 clampAndUpdate(e);
-                 e.preventDefault(); // Prevent form submission if inside a form
-             }
-         });
+            e.target.value = clampedVal;
+            slider.value = clampedVal;
+        };
+        valueInput.addEventListener('blur', clampAndUpdate);
+        valueInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                clampAndUpdate(e);
+                e.preventDefault(); // Prevent form submission if inside a form
+            }
+        });
 
 
         row.appendChild(labelEl);

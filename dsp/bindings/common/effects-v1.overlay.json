@@ -1,0 +1,776 @@
+{
+  "version": 1,
+  "effects": [
+    {
+      "type": "LevelMeter",
+      "internalType": "LevelMeterPlugin",
+      "telemetry": [
+        "levelMeter"
+      ]
+    },
+    {
+      "type": "Oscilloscope",
+      "internalType": "OscilloscopePlugin",
+      "telemetry": [
+        "oscilloscope"
+      ]
+    },
+    {
+      "type": "Spectrogram",
+      "internalType": "SpectrogramPlugin",
+      "telemetry": [
+        "spectrogram"
+      ]
+    },
+    {
+      "type": "SpectrumAnalyzer",
+      "internalType": "SpectrumAnalyzerPlugin",
+      "telemetry": [
+        "spectrum"
+      ]
+    },
+    {
+      "type": "StereoMeter",
+      "internalType": "StereoMeterPlugin",
+      "telemetry": [
+        "stereoMeter"
+      ]
+    },
+    {
+      "type": "ChannelDivider",
+      "internalType": "ChannelDividerPlugin"
+    },
+    {
+      "type": "DCOffset",
+      "internalType": "DCOffsetPlugin"
+    },
+    {
+      "type": "FIRCrossover",
+      "internalType": "FIRCrossoverPlugin",
+      "seeded": true,
+      "latency": {
+        "kind": "dynamic",
+        "dependsOn": [
+          "latencyMode",
+          "filterDelaySamples",
+          "impulseResponse"
+        ]
+      },
+      "assets": [
+        {
+          "name": "impulseResponse",
+          "kind": "impulseResponse",
+          "slot": 0,
+          "required": true
+        }
+      ]
+    },
+    {
+      "type": "Matrix",
+      "internalType": "MatrixPlugin"
+    },
+    {
+      "type": "MultiChannelPanel",
+      "internalType": "MultiChannelPanelPlugin",
+      "telemetry": [
+        "multiChannelLevels"
+      ]
+    },
+    {
+      "type": "Mute",
+      "internalType": "MutePlugin"
+    },
+    {
+      "type": "PolarityInversion",
+      "internalType": "PolarityInversionPlugin"
+    },
+    {
+      "type": "StereoBalance",
+      "internalType": "StereoBalancePlugin"
+    },
+    {
+      "type": "Volume",
+      "internalType": "VolumePlugin"
+    },
+    {
+      "type": "Delay",
+      "internalType": "DelayPlugin"
+    },
+    {
+      "type": "TimeAlignment",
+      "internalType": "TimeAlignmentPlugin"
+    },
+    {
+      "type": "AutoLeveler",
+      "internalType": "AutoLevelerPlugin",
+      "telemetry": [
+        "loudnessLevels"
+      ]
+    },
+    {
+      "type": "BrickwallLimiter",
+      "internalType": "BrickwallLimiterPlugin",
+      "parameters": {
+        "oversampling": {
+          "allowedValues": [
+            1,
+            2,
+            4,
+            8
+          ]
+        }
+      },
+      "telemetry": [
+        "gainReduction"
+      ],
+      "latency": {
+        "kind": "dynamic",
+        "dependsOn": [
+          "lookahead",
+          "oversampling",
+          "sampleRate"
+        ]
+      }
+    },
+    {
+      "type": "Compressor",
+      "internalType": "CompressorPlugin",
+      "telemetry": [
+        "gainReduction"
+      ]
+    },
+    {
+      "type": "Expander",
+      "internalType": "ExpanderPlugin",
+      "telemetry": [
+        "gainReduction"
+      ]
+    },
+    {
+      "type": "Gate",
+      "internalType": "GatePlugin",
+      "telemetry": [
+        "gainReduction"
+      ]
+    },
+    {
+      "type": "MultibandCompressor",
+      "internalType": "MultibandCompressorPlugin",
+      "telemetry": [
+        "multibandGainReduction"
+      ]
+    },
+    {
+      "type": "MultibandExpander",
+      "internalType": "MultibandExpanderPlugin",
+      "telemetry": [
+        "multibandGainReduction"
+      ]
+    },
+    {
+      "type": "MultibandTransient",
+      "internalType": "MultibandTransientPlugin",
+      "telemetry": [
+        "multibandTransientGain"
+      ]
+    },
+    {
+      "type": "PowerAmpSag",
+      "internalType": "PowerAmpSagPlugin"
+    },
+    {
+      "type": "TransientShaper",
+      "internalType": "TransientShaperPlugin",
+      "telemetry": [
+        "transientGain"
+      ]
+    },
+    {
+      "type": "BandPassFilter",
+      "internalType": "BandPassFilterPlugin"
+    },
+    {
+      "type": "CombFilter",
+      "internalType": "CombFilterPlugin"
+    },
+    {
+      "type": "EarphoneCableSim",
+      "internalType": "EarphoneCableSimPlugin"
+    },
+    {
+      "type": "FifteenBandGEQ",
+      "internalType": "FifteenBandGEQPlugin"
+    },
+    {
+      "type": "FifteenBandPEQ",
+      "internalType": "FifteenBandPEQPlugin",
+      "parameters": {
+        "frequency": {
+          "name": "frequencies"
+        },
+        "gain": {
+          "name": "gains"
+        },
+        "q": {
+          "name": "qValues"
+        },
+        "filterType": {
+          "name": "filterTypes",
+          "valueMap": [
+            {
+              "internal": "pk",
+              "public": "peaking"
+            },
+            {
+              "internal": "lp",
+              "public": "lowPass"
+            },
+            {
+              "internal": "hp",
+              "public": "highPass"
+            },
+            {
+              "internal": "ls",
+              "public": "lowShelf"
+            },
+            {
+              "internal": "hs",
+              "public": "highShelf"
+            },
+            {
+              "internal": "bp",
+              "public": "bandPass"
+            },
+            {
+              "internal": "no",
+              "public": "notch"
+            },
+            {
+              "internal": "ap",
+              "public": "allPass"
+            }
+          ]
+        },
+        "bandEnabled": {
+          "name": "enabledBands"
+        }
+      }
+    },
+    {
+      "type": "FiveBandDynamicEQ",
+      "internalType": "FiveBandDynamicEQ",
+      "parameters": {
+        "enabled": {
+          "name": "enabledBands"
+        }
+      },
+      "telemetry": [
+        "dynamicEqGains"
+      ]
+    },
+    {
+      "type": "FiveBandFIRPEQ",
+      "internalType": "FiveBandFIRPEQPlugin",
+      "seeded": true,
+      "latency": {
+        "kind": "dynamic",
+        "dependsOn": [
+          "latencyMode",
+          "filterDelaySamples",
+          "impulseResponse"
+        ]
+      },
+      "assets": [
+        {
+          "name": "impulseResponse",
+          "kind": "impulseResponse",
+          "slot": 0,
+          "required": true
+        }
+      ]
+    },
+    {
+      "type": "FiveBandPEQ",
+      "internalType": "FiveBandPEQPlugin",
+      "parameters": {
+        "frequency": {
+          "name": "frequencies"
+        },
+        "gain": {
+          "name": "gains"
+        },
+        "q": {
+          "name": "qValues"
+        },
+        "filterType": {
+          "name": "filterTypes",
+          "valueMap": [
+            {
+              "internal": "pk",
+              "public": "peaking"
+            },
+            {
+              "internal": "lp",
+              "public": "lowPass"
+            },
+            {
+              "internal": "hp",
+              "public": "highPass"
+            },
+            {
+              "internal": "ls",
+              "public": "lowShelf"
+            },
+            {
+              "internal": "hs",
+              "public": "highShelf"
+            },
+            {
+              "internal": "bp",
+              "public": "bandPass"
+            },
+            {
+              "internal": "no",
+              "public": "notch"
+            },
+            {
+              "internal": "ap",
+              "public": "allPass"
+            }
+          ]
+        },
+        "bandEnabled": {
+          "name": "enabledBands"
+        }
+      }
+    },
+    {
+      "type": "GroupDelayEQ",
+      "internalType": "GroupDelayEqPlugin",
+      "seeded": true,
+      "latency": {
+        "kind": "dynamic",
+        "dependsOn": [
+          "latencyMode",
+          "filterDelaySamples",
+          "impulseResponse"
+        ]
+      },
+      "assets": [
+        {
+          "name": "impulseResponse",
+          "kind": "impulseResponse",
+          "slot": 0,
+          "required": true
+        }
+      ]
+    },
+    {
+      "type": "HiPassFilter",
+      "internalType": "HiPassFilterPlugin",
+      "parameters": {
+        "slope": {
+          "allowedValues": [
+            0,
+            -12,
+            -24,
+            -36,
+            -48,
+            -60,
+            -72,
+            -84,
+            -96
+          ]
+        }
+      }
+    },
+    {
+      "type": "LoPassFilter",
+      "internalType": "LoPassFilterPlugin",
+      "parameters": {
+        "slope": {
+          "allowedValues": [
+            0,
+            -12,
+            -24,
+            -36,
+            -48,
+            -60,
+            -72,
+            -84,
+            -96
+          ]
+        }
+      }
+    },
+    {
+      "type": "LoudnessEqualizer",
+      "internalType": "LoudnessEqualizerPlugin"
+    },
+    {
+      "type": "NarrowRange",
+      "internalType": "NarrowRangePlugin"
+    },
+    {
+      "type": "RoomEQ",
+      "internalType": "RoomEqPlugin",
+      "seeded": true,
+      "latency": {
+        "kind": "dynamic",
+        "dependsOn": [
+          "latencyMode",
+          "filterDelaySamples",
+          "impulseResponse"
+        ]
+      },
+      "assets": [
+        {
+          "name": "impulseResponse",
+          "kind": "impulseResponse",
+          "slot": 0,
+          "required": true
+        }
+      ]
+    },
+    {
+      "type": "TiltEQ",
+      "internalType": "TiltEQPlugin",
+      "parameters": {
+        "pivotExponent": {
+          "name": "pivotFrequency",
+          "transform": {
+            "kind": "naturalLog",
+            "unit": "Hz"
+          }
+        }
+      }
+    },
+    {
+      "type": "ToneControl",
+      "internalType": "ToneControlPlugin"
+    },
+    {
+      "type": "AMRadioSimulator",
+      "internalType": "AMRadioSimulatorPlugin",
+      "seeded": true,
+      "telemetry": [
+        "amRadioStatus"
+      ]
+    },
+    {
+      "type": "BitCrusher",
+      "internalType": "BitCrusherPlugin",
+      "seeded": true
+    },
+    {
+      "type": "DigitalErrorEmulator",
+      "internalType": "DigitalErrorEmulatorPlugin",
+      "parameters": {
+        "bitErrorRateExponent": {
+          "name": "bitErrorRate",
+          "transform": {
+            "kind": "log10"
+          }
+        },
+        "referenceFs": {
+          "name": "referenceSampleRate"
+        }
+      },
+      "seeded": true
+    },
+    {
+      "type": "DSD64IMDSimulator",
+      "internalType": "DSD64IMDSimulatorPlugin",
+      "minimumSampleRate": 88200,
+      "effectiveDelaySamples": 63
+    },
+    {
+      "type": "FMRadioSimulator",
+      "internalType": "FMRadioSimulatorPlugin",
+      "parameters": {
+        "emphasis": {
+          "valueMap": [
+            {
+              "internal": "50",
+              "public": "50us"
+            },
+            {
+              "internal": "75",
+              "public": "75us"
+            }
+          ]
+        },
+        "ifBand": {
+          "name": "ifBandwidth"
+        }
+      },
+      "sampleRates": [
+        44100,
+        48000,
+        88200,
+        96000,
+        176400,
+        192000,
+        352800,
+        384000
+      ],
+      "seeded": true,
+      "telemetry": [
+        "fmRadioStatus",
+        "fmMultiplexSpectrum"
+      ],
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      }
+    },
+    {
+      "type": "HumGenerator",
+      "internalType": "HumGeneratorPlugin"
+    },
+    {
+      "type": "NoiseBlender",
+      "internalType": "NoiseBlenderPlugin",
+      "seeded": true
+    },
+    {
+      "type": "SimpleJitter",
+      "internalType": "SimpleJitterPlugin",
+      "parameters": {
+        "rmsJitter": {
+          "name": "rmsJitterNanoseconds",
+          "transform": {
+            "kind": "decibelsFromReference",
+            "reference": 0.001,
+            "unit": "ns"
+          }
+        }
+      },
+      "seeded": true
+    },
+    {
+      "type": "SWRadioSimulator",
+      "internalType": "SWRadioSimulatorPlugin",
+      "seeded": true,
+      "telemetry": [
+        "swRadioStatus"
+      ]
+    },
+    {
+      "type": "VinylArtifacts",
+      "internalType": "VinylArtifactsPlugin",
+      "seeded": true
+    },
+    {
+      "type": "VinylSimulator",
+      "internalType": "VinylSimulatorPlugin",
+      "parameters": {
+        "hfCutoff": {
+          "name": "highFrequencyCutoff"
+        }
+      },
+      "seeded": true,
+      "telemetry": [
+        "vinylStatus"
+      ],
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      }
+    },
+    {
+      "type": "DopplerDistortion",
+      "internalType": "DopplerDistortionPlugin"
+    },
+    {
+      "type": "PitchShifter",
+      "internalType": "PitchShifterPlugin"
+    },
+    {
+      "type": "Tremolo",
+      "internalType": "TremoloPlugin",
+      "seeded": true
+    },
+    {
+      "type": "WowFlutter",
+      "internalType": "WowFlutterPlugin",
+      "seeded": true
+    },
+    {
+      "type": "Oscillator",
+      "internalType": "OscillatorPlugin",
+      "seeded": true
+    },
+    {
+      "type": "HornResonator",
+      "internalType": "HornResonatorPlugin"
+    },
+    {
+      "type": "HornResonatorPlus",
+      "internalType": "HornResonatorPlusPlugin"
+    },
+    {
+      "type": "ModalResonator",
+      "internalType": "ModalResonatorPlugin"
+    },
+    {
+      "type": "DattorroPlateReverb",
+      "internalType": "DattorroPlateReverbPlugin"
+    },
+    {
+      "type": "FDNReverb",
+      "internalType": "FDNReverbPlugin",
+      "seeded": true
+    },
+    {
+      "type": "IRReverb",
+      "internalType": "IRReverbPlugin",
+      "parameters": {
+        "channelMode": {
+          "valueMap": [
+            {
+              "internal": "auto",
+              "public": "automatic"
+            },
+            {
+              "internal": "mono",
+              "public": "mono"
+            },
+            {
+              "internal": "indep",
+              "public": "independent"
+            },
+            {
+              "internal": "true",
+              "public": "trueStereo"
+            },
+            {
+              "internal": "multi",
+              "public": "matrix"
+            }
+          ]
+        },
+        "latency": {
+          "valueMap": [
+            {
+              "internal": "0",
+              "public": 0
+            },
+            {
+              "internal": "128",
+              "public": 128
+            },
+            {
+              "internal": "256",
+              "public": 256
+            },
+            {
+              "internal": "512",
+              "public": 512
+            },
+            {
+              "internal": "1024",
+              "public": 1024
+            }
+          ]
+        },
+        "convRate": {
+          "name": "convolutionRate"
+        }
+      },
+      "seeded": true,
+      "latency": {
+        "kind": "dynamic",
+        "dependsOn": [
+          "latency",
+          "convolutionRate",
+          "impulseResponse"
+        ]
+      },
+      "assets": [
+        {
+          "name": "impulseResponse",
+          "kind": "impulseResponse",
+          "slot": 0,
+          "required": true
+        }
+      ]
+    },
+    {
+      "type": "RSReverb",
+      "internalType": "RSReverbPlugin",
+      "seeded": true
+    },
+    {
+      "type": "DynamicSaturation",
+      "internalType": "DynamicSaturationPlugin"
+    },
+    {
+      "type": "Exciter",
+      "internalType": "ExciterPlugin",
+      "parameters": {
+        "highPassSlope": {
+          "unit": "dB/oct",
+          "valueMap": [
+            {
+              "internal": 0,
+              "public": 0
+            },
+            {
+              "internal": 1,
+              "public": 6
+            },
+            {
+              "internal": 2,
+              "public": 12
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "HardClipping",
+      "internalType": "HardClippingPlugin"
+    },
+    {
+      "type": "HarmonicDistortion",
+      "internalType": "HarmonicDistortionPlugin"
+    },
+    {
+      "type": "MultibandSaturation",
+      "internalType": "MultibandSaturationPlugin"
+    },
+    {
+      "type": "Saturation",
+      "internalType": "SaturationPlugin"
+    },
+    {
+      "type": "SubSynth",
+      "internalType": "SubSynthPlugin"
+    },
+    {
+      "type": "CrossfeedFilter",
+      "internalType": "CrossfeedFilterPlugin"
+    },
+    {
+      "type": "MSMatrix",
+      "internalType": "MSMatrixPlugin"
+    },
+    {
+      "type": "MultibandBalance",
+      "internalType": "MultibandBalancePlugin"
+    },
+    {
+      "type": "StereoBlend",
+      "internalType": "StereoBlendPlugin"
+    }
+  ],
+  "contractDigests": {
+    "publicCatalogSha256": "cbc1e92be9587b6fa2ac2717093aa623dd1094735fd01d45c740150b13e375e8",
+    "privateLayoutSha256": "23f4859aa8ec49bcbb2814a9b1fb7f5f3d318b95e39e0706a1a546babe2ba309"
+  }
+}

@@ -414,6 +414,23 @@ For optimal performance with nonlinear effects, it is recommended to use EffeTun
 Want to create your own audio plugins? Check out our [Plugin Development Guide](docs/plugin-development.md).
 Want to build or package EffeTune? Check out our [Build Guide](BUILD.md).
 
+## DSP Library
+
+EffeTune's DSP engine is also an independent, deterministic MIT-licensed
+library for Python, JavaScript, and browser AudioWorklets. Its public Chain
+schema and generated effect catalog can be used without the EffeTune app.
+See the [EffeTune DSP Library documentation](https://effetune.frieve.com/dsp/).
+
+<!-- BEGIN DSP-LIBRARY-BRIDGE -->
+Use the package quickstarts for installation and complete runnable examples:
+
+- [Python package](https://effetune.frieve.com/dsp/getting-started/python/)
+- [JavaScript and AudioWorklet package](https://effetune.frieve.com/dsp/getting-started/javascript/)
+
+The [DSP Library guide](https://effetune.frieve.com/dsp/) covers effects,
+schemas, deterministic processing, assets, and release verification.
+<!-- END DSP-LIBRARY-BRIDGE -->
+
 ## Links
 
 [Version History](docs/version-history.md)

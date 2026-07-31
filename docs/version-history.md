@@ -9,6 +9,8 @@ lang: en
 ### Version 2.3.0 (TBD, 2026)
 - Added AM/FM/SW Radio Simulator effects
 - Added 5Band FIR PEQ, FIR Crossover and Group Delay EQ effects
+- Updated Loudness Equalizer so Relative Volume adjusts the output level and EQ compensation together
+- Added EffeTune DSP Library : Deterministic DSP for Python, JavaScript, browsers, humans, and agents
 - Various minor improvements
 
 ### Version 2.2.0 (Jul 25, 2026)

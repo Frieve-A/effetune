@@ -1,17 +1,11 @@
 {
   "pipeline": [
     {
-      "name": "Volume",
-      "enabled": true,
-      "parameters": {
-        "vl": -24
-      }
-    },
-    {
       "name": "Loudness Equalizer",
       "enabled": true,
       "parameters": {
-        "sp": 65,
+        "sp": 85,
+        "rv": -24,
         "lg": 10,
         "lf": 180,
         "lq": 0.6,

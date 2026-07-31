@@ -126,7 +126,7 @@ public:
         const double low_output = dsp::processBiquadDf1Sample(
             static_cast<double>(audio[offset + frame]), low_shelf_, state.low);
         const double high_output = dsp::processBiquadDf1Sample(low_output, high_shelf_, state.high);
-        audio[offset + frame] = static_cast<float>(high_output);
+        audio[offset + frame] = static_cast<float>(high_output * volume_gain_);
       }
     }
   }
@@ -134,6 +134,7 @@ public:
 private:
   [[nodiscard]] bool parametersChanged() const noexcept {
     return !coefficients_cached_ || cached_average_spl_ != params_.averageSpl ||
+           cached_relative_volume_ != params_.relativeVolume ||
            cached_low_gain_ != params_.lowGain || cached_low_frequency_ != params_.lowFrequency ||
            cached_low_q_ != params_.lowQ || cached_high_gain_ != params_.highGain ||
            cached_high_frequency_ != params_.highFrequency || cached_high_q_ != params_.highQ ||
@@ -141,15 +142,21 @@ private:
   }
 
   void calculateCoefficients() noexcept {
-    const double gain_multiplier = (85.0 - static_cast<double>(params_.averageSpl)) / 25.0;
+    const double listening_spl =
+        static_cast<double>(params_.averageSpl) + static_cast<double>(params_.relativeVolume);
+    const double effective_spl =
+        listening_spl < 60.0 ? 60.0 : (listening_spl > 85.0 ? 85.0 : listening_spl);
+    const double gain_multiplier = (85.0 - effective_spl) / 25.0;
     const double low_gain = static_cast<double>(params_.lowGain) * gain_multiplier;
     const double high_gain = static_cast<double>(params_.highGain) * gain_multiplier;
+    volume_gain_ = std::pow(10.0, static_cast<double>(params_.relativeVolume) / 20.0);
     low_shelf_ = designLowShelf(sample_rate_, static_cast<double>(params_.lowFrequency),
                                 static_cast<double>(params_.lowQ), low_gain);
     high_shelf_ = designHighShelf(sample_rate_, static_cast<double>(params_.highFrequency),
                                   static_cast<double>(params_.highQ), high_gain);
 
     cached_average_spl_ = params_.averageSpl;
+    cached_relative_volume_ = params_.relativeVolume;
     cached_low_gain_ = params_.lowGain;
     cached_low_frequency_ = params_.lowFrequency;
     cached_low_q_ = params_.lowQ;
@@ -165,6 +172,7 @@ private:
   std::uint32_t max_channels_ = 0u;
   std::uint32_t last_channel_count_ = 0u;
   float cached_average_spl_ = 0.0F;
+  float cached_relative_volume_ = 0.0F;
   float cached_low_gain_ = 0.0F;
   float cached_low_frequency_ = 0.0F;
   float cached_low_q_ = 0.0F;
@@ -173,6 +181,7 @@ private:
   float cached_high_frequency_ = 0.0F;
   bool initialized_ = false;
   bool coefficients_cached_ = false;
+  double volume_gain_ = 1.0;
   Coefficients low_shelf_{};
   Coefficients high_shelf_{};
   std::vector<LoudnessState> states_;

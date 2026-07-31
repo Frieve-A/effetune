@@ -1,0 +1,143 @@
+:root {
+  color-scheme: light dark;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  background: #10151c;
+  color: #edf3fa;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at top left, #1c4b62 0, transparent 45%),
+    #10151c;
+}
+
+main {
+  width: min(38rem, calc(100% - 3rem));
+  padding: 2.5rem;
+  border: 1px solid #466476;
+  border-radius: 1.25rem;
+  background: rgb(15 22 30 / 92%);
+  box-shadow: 0 1.5rem 4rem rgb(0 0 0 / 35%);
+}
+
+h1 {
+  margin: 0 0 1rem;
+  font-size: clamp(2rem, 7vw, 3.25rem);
+  line-height: 1;
+}
+
+p {
+  line-height: 1.6;
+}
+
+.eyebrow {
+  margin: 0 0 0.75rem;
+  color: #6fd8ff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.file-control,
+.mode-control,
+.parameter-control {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 1.5rem;
+  font-weight: 650;
+}
+
+.parameter-control {
+  grid-template-columns: 1fr auto;
+}
+
+.parameter-control input {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+input[type="file"] {
+  padding: 0.75rem;
+  border: 1px solid #466476;
+  border-radius: 0.65rem;
+  background: #19232e;
+}
+
+select {
+  padding: 0.7rem;
+  border: 1px solid #466476;
+  border-radius: 0.65rem;
+  background: #19232e;
+  color: inherit;
+  font: inherit;
+}
+
+.actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.75rem;
+}
+
+button {
+  padding: 0.75rem 1rem;
+  border: 1px solid #5dd3ff;
+  border-radius: 0.65rem;
+  background: #12769a;
+  color: white;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button:disabled {
+  border-color: #52606a;
+  background: #2b343c;
+  color: #a8b1b8;
+  cursor: default;
+}
+
+button[aria-pressed="true"] {
+  border-color: #ffd16f;
+  background: #795410;
+}
+
+.status {
+  min-height: 1.6em;
+  margin-bottom: 0;
+  color: #b9cedb;
+}
+
+.status[data-kind="error"] {
+  color: #ffb0a9;
+}
+
+@media (max-width: 32rem) {
+  main {
+    padding: 1.5rem;
+  }
+
+  .actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+body.is-compact main {
+  width: min(34rem, calc(100% - 2rem));
+  padding: 1.25rem;
+}
+
+body.is-compact .eyebrow {
+  display: none;
+}

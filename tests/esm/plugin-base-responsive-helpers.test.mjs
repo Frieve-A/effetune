@@ -139,6 +139,70 @@ test('PluginBase creates mobile-friendly select, checkbox, and radio controls', 
   ]);
 });
 
+test('PluginBase parameter controls preserve the last finite value while editing', () => {
+  const plugin = createPlugin();
+  const calls = [];
+  const row = plugin.createParameterControl(
+    'Relative Volume',
+    -30,
+    0,
+    0.1,
+    -30,
+    value => calls.push(value),
+    'dB'
+  );
+  const slider = row.children[1];
+  const valueInput = row.children[2];
+
+  valueInput.value = '';
+  valueInput.dispatch('input');
+  assert.deepEqual(calls, []);
+  assert.equal(Number(slider.value), -30);
+
+  valueInput.dispatch('blur');
+  assert.deepEqual(calls, []);
+  assert.equal(Number(valueInput.value), -30);
+  assert.equal(Number(slider.value), -30);
+
+  valueInput.value = '-';
+  valueInput.dispatch('input');
+  assert.deepEqual(calls, []);
+  assert.equal(Number(slider.value), -30);
+
+  let enterPrevented = false;
+  valueInput.dispatch('keydown', {
+    key: 'Enter',
+    preventDefault() {
+      enterPrevented = true;
+    }
+  });
+  assert.deepEqual(calls, []);
+  assert.equal(Number(valueInput.value), -30);
+  assert.equal(Number(slider.value), -30);
+  assert.equal(enterPrevented, true);
+
+  valueInput.value = '0';
+  valueInput.dispatch('input');
+  assert.deepEqual(calls, [0]);
+  assert.equal(Number(slider.value), 0);
+
+  valueInput.dispatch('blur');
+  assert.deepEqual(calls, [0]);
+  assert.equal(Number(valueInput.value), 0);
+  assert.equal(Number(slider.value), 0);
+
+  valueInput.value = '10';
+  valueInput.dispatch('input');
+  assert.deepEqual(calls, [0, 10]);
+  assert.equal(valueInput.value, '10');
+  assert.equal(Number(slider.value), 0);
+
+  valueInput.dispatch('blur');
+  assert.deepEqual(calls, [0, 10, 0]);
+  assert.equal(Number(valueInput.value), 0);
+  assert.equal(Number(slider.value), 0);
+});
+
 test('PluginBase creates responsive graph containers and maps pointer coordinates', () => {
   const plugin = createPlugin();
   const { container, canvas } = plugin.createGraphContainer({

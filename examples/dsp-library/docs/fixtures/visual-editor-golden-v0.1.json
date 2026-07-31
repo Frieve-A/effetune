@@ -1,0 +1,14 @@
+{
+  "name": "DSP docs Volume",
+  "pipeline": [
+    {
+      "name": "Volume",
+      "enabled": true,
+      "parameters": {
+        "vl": -6
+      },
+      "channel": "A"
+    }
+  ],
+  "timestamp": 1710000000000
+}

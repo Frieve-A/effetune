@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "docsVersion": "0.1.0",
+  "surfaces": {
+    "python": { "status": "unreleased" },
+    "npm": { "status": "unreleased" },
+    "githubRelease": { "status": "unreleased" }
+  }
+}

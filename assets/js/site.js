@@ -3,6 +3,7 @@
   const languages = readLanguageData();
   const languageCodes = new Set(languages.map((language) => language.code));
   const defaultLanguage = languageCodes.has("en") ? "en" : languages[0]?.code || "en";
+  const siteBasePath = getSiteBasePath();
   const preferredLanguage = getPreferredLanguage();
   const defaultUiText = {
     searching: "Searching...",
@@ -576,6 +577,12 @@
   }
 
   function getPreferredLanguage() {
+    const dspOverviewLanguage = getCurrentDspOverviewLanguage();
+    if (dspOverviewLanguage) {
+      writeStoredLanguage(dspOverviewLanguage);
+      return dspOverviewLanguage;
+    }
+
     const stored = readStoredLanguage();
     if (stored) return stored;
 
@@ -595,6 +602,14 @@
     }
 
     return defaultLanguage;
+  }
+
+  function getCurrentDspOverviewLanguage() {
+    const pageInfo = getLocalizablePageInfo(window.location.pathname);
+    if (pageInfo.area !== "dsp" || pageInfo.currentLanguage === "en") {
+      return null;
+    }
+    return pageInfo.currentLanguage;
   }
 
   function readStoredLanguage() {
@@ -653,14 +668,44 @@
     if (!pageInfo.localizable) return null;
 
     if (targetLanguage === "en") {
-      return pageInfo.englishPath;
+      return withSiteBasePath(pageInfo.englishPath);
     }
 
-    return `/docs/i18n/${targetLanguage}${pageInfo.localizedSuffix}`;
+    return withSiteBasePath(
+      `${pageInfo.localizedPrefix}${targetLanguage}${pageInfo.localizedSuffix}`
+    );
   }
 
   function getLocalizablePageInfo(pathname) {
-    const path = pathname.replace(/\/index\.html$/, "/");
+    const path = stripSiteBasePath(pathname).replace(/\/index\.html$/, "/");
+    const localizedDspMatch = path.match(/^\/dsp\/([a-z]{2})\/?$/);
+
+    if (localizedDspMatch) {
+      const currentLanguage = localizedDspMatch[1];
+      if (currentLanguage === "en" || !languageCodes.has(currentLanguage)) {
+        return { localizable: false };
+      }
+      return {
+        localizable: true,
+        area: "dsp",
+        currentLanguage,
+        englishPath: "/dsp/",
+        localizedPrefix: "/dsp/",
+        localizedSuffix: "/"
+      };
+    }
+
+    if (/^\/dsp\/?$/.test(path)) {
+      return {
+        localizable: true,
+        area: "dsp",
+        currentLanguage: "en",
+        englishPath: "/dsp/",
+        localizedPrefix: "/dsp/",
+        localizedSuffix: "/"
+      };
+    }
+
     const localizedMatch = path.match(/^\/docs\/i18n\/([a-z]{2})(\/.*)?$/);
 
     if (localizedMatch) {
@@ -669,24 +714,76 @@
       }
       const suffix = localizedMatch[2] || "/";
       if (suffix === "/") {
-        return { localizable: true, englishPath: "/", localizedSuffix: "/" };
+        return {
+          localizable: true,
+          area: "docs",
+          currentLanguage: localizedMatch[1],
+          englishPath: "/",
+          localizedPrefix: "/docs/i18n/",
+          localizedSuffix: "/"
+        };
       }
       if (isLocalizedDocSuffix(suffix)) {
-        return { localizable: true, englishPath: `/docs${suffix}`, localizedSuffix: suffix };
+        return {
+          localizable: true,
+          area: "docs",
+          currentLanguage: localizedMatch[1],
+          englishPath: `/docs${suffix}`,
+          localizedPrefix: "/docs/i18n/",
+          localizedSuffix: suffix
+        };
       }
       return { localizable: false };
     }
 
     if (path === "/") {
-      return { localizable: true, englishPath: "/", localizedSuffix: "/" };
+      return {
+        localizable: true,
+        area: "docs",
+        currentLanguage: "en",
+        englishPath: "/",
+        localizedPrefix: "/docs/i18n/",
+        localizedSuffix: "/"
+      };
     }
 
     const englishMatch = path.match(/^\/docs(\/.*)$/);
     if (englishMatch && isLocalizedDocSuffix(englishMatch[1])) {
-      return { localizable: true, englishPath: path, localizedSuffix: englishMatch[1] };
+      return {
+        localizable: true,
+        area: "docs",
+        currentLanguage: "en",
+        englishPath: path,
+        localizedPrefix: "/docs/i18n/",
+        localizedSuffix: englishMatch[1]
+      };
     }
 
     return { localizable: false };
+  }
+
+  function getSiteBasePath() {
+    const englishRoot = languages.find((language) => language.code === "en")?.url;
+    if (!englishRoot) return "";
+
+    try {
+      const url = new URL(englishRoot, window.location.origin);
+      if (url.origin !== window.location.origin) return "";
+      return url.pathname.replace(/\/+$/, "");
+    } catch (_error) {
+      return "";
+    }
+  }
+
+  function stripSiteBasePath(pathname) {
+    if (!siteBasePath) return pathname;
+    if (pathname === siteBasePath) return "/";
+    if (!pathname.startsWith(`${siteBasePath}/`)) return pathname;
+    return pathname.slice(siteBasePath.length);
+  }
+
+  function withSiteBasePath(pathname) {
+    return `${siteBasePath}${pathname}`;
   }
 
   function isLocalizedDocSuffix(suffix) {

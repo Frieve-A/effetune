@@ -625,16 +625,17 @@ export function packLoPassFilterPluginParams(params = {}) {
   return packed;
 }
 
-export const LoudnessEqualizerPlugin_PARAMS_HASH = 0x88692f5f;
+export const LoudnessEqualizerPlugin_PARAMS_HASH = 0xaa8015c1;
 export function packLoudnessEqualizerPluginParams(params = {}) {
-  const packed = new Float32Array(7);
-  packed[0] = (() => { const value = params["sp"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 65; if (value < 60) return 60; if (value > 85) return 85; return value; })();
-  packed[1] = (() => { const value = params["lg"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 10; if (value < 0) return 0; if (value > 15) return 15; return value; })();
-  packed[2] = (() => { const value = params["lf"]; if (!(Number.isSafeInteger(value))) return 180; if (value < 100) return 100; if (value > 300) return 300; return value; })();
-  packed[3] = (() => { const value = params["lq"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0.6; if (value < 0.5) return 0.5; if (value > 1) return 1; return value; })();
-  packed[4] = (() => { const value = params["hq"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0.6; if (value < 0.5) return 0.5; if (value > 1) return 1; return value; })();
-  packed[5] = (() => { const value = params["hg"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < 0) return 0; if (value > 15) return 15; return value; })();
-  packed[6] = (() => { const value = params["hf"]; if (!(Number.isSafeInteger(value))) return 4000; if (value < 3000) return 3000; if (value > 6000) return 6000; return value; })();
+  const packed = new Float32Array(8);
+  packed[0] = (() => { const value = params["sp"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 65; if (value < 60) return 60; if (value > 96) return 96; return value; })();
+  packed[1] = (() => { const value = params["rv"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < -30) return -30; if (value > 12) return 12; return value; })();
+  packed[2] = (() => { const value = params["lg"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 10; if (value < 0) return 0; if (value > 15) return 15; return value; })();
+  packed[3] = (() => { const value = params["lf"]; if (!(Number.isSafeInteger(value))) return 180; if (value < 100) return 100; if (value > 300) return 300; return value; })();
+  packed[4] = (() => { const value = params["lq"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0.6; if (value < 0.5) return 0.5; if (value > 1) return 1; return value; })();
+  packed[5] = (() => { const value = params["hq"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0.6; if (value < 0.5) return 0.5; if (value > 1) return 1; return value; })();
+  packed[6] = (() => { const value = params["hg"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < 0) return 0; if (value > 15) return 15; return value; })();
+  packed[7] = (() => { const value = params["hf"]; if (!(Number.isSafeInteger(value))) return 4000; if (value < 3000) return 3000; if (value > 6000) return 6000; return value; })();
   return packed;
 }
 
@@ -1258,7 +1259,7 @@ export const DSP_PARAM_LAYOUTS = Object.freeze({
   IRReverbPlugin: Object.freeze({ hash: IRReverbPlugin_PARAMS_HASH, floatCount: 6 }),
   LevelMeterPlugin: Object.freeze({ hash: LevelMeterPlugin_PARAMS_HASH, floatCount: 0 }),
   LoPassFilterPlugin: Object.freeze({ hash: LoPassFilterPlugin_PARAMS_HASH, floatCount: 2 }),
-  LoudnessEqualizerPlugin: Object.freeze({ hash: LoudnessEqualizerPlugin_PARAMS_HASH, floatCount: 7 }),
+  LoudnessEqualizerPlugin: Object.freeze({ hash: LoudnessEqualizerPlugin_PARAMS_HASH, floatCount: 8 }),
   MatrixPlugin: Object.freeze({ hash: MatrixPlugin_PARAMS_HASH, floatCount: 0, byteCapacity: 3076 }),
   ModalResonatorPlugin: Object.freeze({ hash: ModalResonatorPlugin_PARAMS_HASH, floatCount: 31 }),
   MSMatrixPlugin: Object.freeze({ hash: MSMatrixPlugin_PARAMS_HASH, floatCount: 4 }),
@@ -1337,7 +1338,7 @@ export const DSP_PARAM_PACKERS = new Map([
   ["IRReverbPlugin", Object.freeze({ pack: packIRReverbPluginParams, hash: IRReverbPlugin_PARAMS_HASH, floatCount: 6 })],
   ["LevelMeterPlugin", Object.freeze({ pack: packLevelMeterPluginParams, hash: LevelMeterPlugin_PARAMS_HASH, floatCount: 0 })],
   ["LoPassFilterPlugin", Object.freeze({ pack: packLoPassFilterPluginParams, hash: LoPassFilterPlugin_PARAMS_HASH, floatCount: 2 })],
-  ["LoudnessEqualizerPlugin", Object.freeze({ pack: packLoudnessEqualizerPluginParams, hash: LoudnessEqualizerPlugin_PARAMS_HASH, floatCount: 7 })],
+  ["LoudnessEqualizerPlugin", Object.freeze({ pack: packLoudnessEqualizerPluginParams, hash: LoudnessEqualizerPlugin_PARAMS_HASH, floatCount: 8 })],
   ["MatrixPlugin", Object.freeze({ pack: packMatrixPluginParams, hash: MatrixPlugin_PARAMS_HASH, floatCount: 0, packBytes: packMatrixPluginParamBytes, byteCapacity: 3076 })],
   ["ModalResonatorPlugin", Object.freeze({ pack: packModalResonatorPluginParams, hash: ModalResonatorPlugin_PARAMS_HASH, floatCount: 31 })],
   ["MSMatrixPlugin", Object.freeze({ pack: packMSMatrixPluginParams, hash: MSMatrixPlugin_PARAMS_HASH, floatCount: 4 })],

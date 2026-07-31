@@ -1,0 +1,44 @@
+[build-system]
+requires = [
+  "nanobind>=2.9,<3",
+  "scikit-build-core>=0.11,<1"
+]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "effetune"
+version = "0.1.0"
+description = "Deterministic, host-neutral audio DSP for Python"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.26",
+  "soundfile>=0.12"
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12"
+]
+
+[project.scripts]
+effetune = "effetune.cli:main"
+
+[project.urls]
+Homepage = "https://effetune.frieve.com/dsp/"
+Documentation = "https://effetune.frieve.com/dsp/"
+Repository = "https://github.com/Frieve-A/effetune"
+Issues = "https://github.com/Frieve-A/effetune/issues"
+
+[tool.scikit-build]
+build-dir = "../../../.tmp/phase1-python/build/{wheel_tag}"
+wheel.packages = ["src/effetune"]
+# Official releases are wheel-only. Building this subproject as an sdist would
+# omit the DSP sources that intentionally remain rooted in the monorepo.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

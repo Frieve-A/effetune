@@ -1,0 +1,6530 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://effetune.frieve.com/dsp/schemas/chain-v1.schema.json",
+  "title": "EffeTune DSP Chain v1",
+  "description": "Canonical semantic v1 ordered serial effect chain. Application pipeline/plugins presets are not accepted.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "chain"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1
+    },
+    "chain": {
+      "type": "array",
+      "description": "Effects in processing order; an empty chain is the identity.",
+      "items": {
+        "$ref": "#/$defs/effect"
+      }
+    }
+  },
+  "$comment": "Duplicate explicit effect IDs are rejected by the runtime because JSON Schema cannot express uniqueness by one object property.",
+  "$defs": {
+    "channel": {
+      "type": "string",
+      "enum": [
+        "all",
+        "stereo",
+        "left",
+        "right",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "34",
+        "56",
+        "78"
+      ],
+      "default": "all"
+    },
+    "assetReference": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Opaque bundle asset ID or resolver key."
+    },
+    "effect": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/LevelMeter"
+        },
+        {
+          "$ref": "#/$defs/Oscilloscope"
+        },
+        {
+          "$ref": "#/$defs/Spectrogram"
+        },
+        {
+          "$ref": "#/$defs/SpectrumAnalyzer"
+        },
+        {
+          "$ref": "#/$defs/StereoMeter"
+        },
+        {
+          "$ref": "#/$defs/ChannelDivider"
+        },
+        {
+          "$ref": "#/$defs/DCOffset"
+        },
+        {
+          "$ref": "#/$defs/FIRCrossover"
+        },
+        {
+          "$ref": "#/$defs/Matrix"
+        },
+        {
+          "$ref": "#/$defs/MultiChannelPanel"
+        },
+        {
+          "$ref": "#/$defs/Mute"
+        },
+        {
+          "$ref": "#/$defs/PolarityInversion"
+        },
+        {
+          "$ref": "#/$defs/StereoBalance"
+        },
+        {
+          "$ref": "#/$defs/Volume"
+        },
+        {
+          "$ref": "#/$defs/Delay"
+        },
+        {
+          "$ref": "#/$defs/TimeAlignment"
+        },
+        {
+          "$ref": "#/$defs/AutoLeveler"
+        },
+        {
+          "$ref": "#/$defs/BrickwallLimiter"
+        },
+        {
+          "$ref": "#/$defs/Compressor"
+        },
+        {
+          "$ref": "#/$defs/Expander"
+        },
+        {
+          "$ref": "#/$defs/Gate"
+        },
+        {
+          "$ref": "#/$defs/MultibandCompressor"
+        },
+        {
+          "$ref": "#/$defs/MultibandExpander"
+        },
+        {
+          "$ref": "#/$defs/MultibandTransient"
+        },
+        {
+          "$ref": "#/$defs/PowerAmpSag"
+        },
+        {
+          "$ref": "#/$defs/TransientShaper"
+        },
+        {
+          "$ref": "#/$defs/BandPassFilter"
+        },
+        {
+          "$ref": "#/$defs/CombFilter"
+        },
+        {
+          "$ref": "#/$defs/EarphoneCableSim"
+        },
+        {
+          "$ref": "#/$defs/FifteenBandGEQ"
+        },
+        {
+          "$ref": "#/$defs/FifteenBandPEQ"
+        },
+        {
+          "$ref": "#/$defs/FiveBandDynamicEQ"
+        },
+        {
+          "$ref": "#/$defs/FiveBandFIRPEQ"
+        },
+        {
+          "$ref": "#/$defs/FiveBandPEQ"
+        },
+        {
+          "$ref": "#/$defs/GroupDelayEQ"
+        },
+        {
+          "$ref": "#/$defs/HiPassFilter"
+        },
+        {
+          "$ref": "#/$defs/LoPassFilter"
+        },
+        {
+          "$ref": "#/$defs/LoudnessEqualizer"
+        },
+        {
+          "$ref": "#/$defs/NarrowRange"
+        },
+        {
+          "$ref": "#/$defs/RoomEQ"
+        },
+        {
+          "$ref": "#/$defs/TiltEQ"
+        },
+        {
+          "$ref": "#/$defs/ToneControl"
+        },
+        {
+          "$ref": "#/$defs/AMRadioSimulator"
+        },
+        {
+          "$ref": "#/$defs/BitCrusher"
+        },
+        {
+          "$ref": "#/$defs/DigitalErrorEmulator"
+        },
+        {
+          "$ref": "#/$defs/DSD64IMDSimulator"
+        },
+        {
+          "$ref": "#/$defs/FMRadioSimulator"
+        },
+        {
+          "$ref": "#/$defs/HumGenerator"
+        },
+        {
+          "$ref": "#/$defs/NoiseBlender"
+        },
+        {
+          "$ref": "#/$defs/SimpleJitter"
+        },
+        {
+          "$ref": "#/$defs/SWRadioSimulator"
+        },
+        {
+          "$ref": "#/$defs/VinylArtifacts"
+        },
+        {
+          "$ref": "#/$defs/VinylSimulator"
+        },
+        {
+          "$ref": "#/$defs/DopplerDistortion"
+        },
+        {
+          "$ref": "#/$defs/PitchShifter"
+        },
+        {
+          "$ref": "#/$defs/Tremolo"
+        },
+        {
+          "$ref": "#/$defs/WowFlutter"
+        },
+        {
+          "$ref": "#/$defs/Oscillator"
+        },
+        {
+          "$ref": "#/$defs/HornResonator"
+        },
+        {
+          "$ref": "#/$defs/HornResonatorPlus"
+        },
+        {
+          "$ref": "#/$defs/ModalResonator"
+        },
+        {
+          "$ref": "#/$defs/DattorroPlateReverb"
+        },
+        {
+          "$ref": "#/$defs/FDNReverb"
+        },
+        {
+          "$ref": "#/$defs/IRReverb"
+        },
+        {
+          "$ref": "#/$defs/RSReverb"
+        },
+        {
+          "$ref": "#/$defs/DynamicSaturation"
+        },
+        {
+          "$ref": "#/$defs/Exciter"
+        },
+        {
+          "$ref": "#/$defs/HardClipping"
+        },
+        {
+          "$ref": "#/$defs/HarmonicDistortion"
+        },
+        {
+          "$ref": "#/$defs/MultibandSaturation"
+        },
+        {
+          "$ref": "#/$defs/Saturation"
+        },
+        {
+          "$ref": "#/$defs/SubSynth"
+        },
+        {
+          "$ref": "#/$defs/CrossfeedFilter"
+        },
+        {
+          "$ref": "#/$defs/MSMatrix"
+        },
+        {
+          "$ref": "#/$defs/MultibandBalance"
+        },
+        {
+          "$ref": "#/$defs/StereoBlend"
+        }
+      ]
+    },
+    "LevelMeter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "LevelMeter"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        }
+      }
+    },
+    "Oscilloscope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "Oscilloscope"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "displayTime": {
+              "type": "number",
+              "minimum": 0.001,
+              "maximum": 0.1,
+              "x-effetune-unit": "s",
+              "default": 0.01
+            },
+            "triggerMode": {
+              "type": "string",
+              "enum": [
+                "Auto",
+                "Normal"
+              ],
+              "default": "Auto"
+            },
+            "triggerLevel": {
+              "type": "number",
+              "minimum": -1,
+              "maximum": 1,
+              "default": 0
+            },
+            "triggerEdge": {
+              "type": "string",
+              "enum": [
+                "Rising",
+                "Falling"
+              ],
+              "default": "Rising"
+            },
+            "holdoff": {
+              "type": "number",
+              "minimum": 0.0001,
+              "maximum": 0.01,
+              "x-effetune-unit": "s",
+              "default": 0.0001
+            },
+            "displayLevel": {
+              "type": "number",
+              "minimum": -96,
+              "maximum": 0,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "verticalOffset": {
+              "type": "number",
+              "minimum": -1,
+              "maximum": 1,
+              "default": 0
+            }
+          }
+        }
+      }
+    },
+    "Spectrogram": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "Spectrogram"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "dBRange": {
+              "type": "number",
+              "minimum": -144,
+              "maximum": -48,
+              "x-effetune-unit": "dB",
+              "default": -96
+            },
+            "points": {
+              "type": "integer",
+              "minimum": 8,
+              "maximum": 14,
+              "default": 12
+            }
+          }
+        }
+      }
+    },
+    "SpectrumAnalyzer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "SpectrumAnalyzer"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "dBRange": {
+              "type": "number",
+              "minimum": -144,
+              "maximum": -48,
+              "x-effetune-unit": "dB",
+              "default": -96
+            },
+            "points": {
+              "type": "integer",
+              "minimum": 8,
+              "maximum": 14,
+              "default": 12
+            }
+          }
+        }
+      }
+    },
+    "StereoMeter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "StereoMeter"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "windowTime": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 1,
+              "x-effetune-unit": "s",
+              "default": 0.1
+            }
+          }
+        }
+      }
+    },
+    "ChannelDivider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "ChannelDivider"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "bandCount": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 4,
+              "default": 2
+            },
+            "frequency1": {
+              "type": "number",
+              "minimum": 10,
+              "maximum": 40000,
+              "x-effetune-unit": "Hz",
+              "default": 2000
+            },
+            "slope1": {
+              "type": "integer",
+              "minimum": -96,
+              "maximum": -12,
+              "x-effetune-unit": "dB/oct",
+              "default": -24
+            },
+            "frequency2": {
+              "type": "number",
+              "minimum": 10,
+              "maximum": 40000,
+              "x-effetune-unit": "Hz",
+              "default": 4000
+            },
+            "slope2": {
+              "type": "integer",
+              "minimum": -96,
+              "maximum": -12,
+              "x-effetune-unit": "dB/oct",
+              "default": -24
+            },
+            "frequency3": {
+              "type": "number",
+              "minimum": 10,
+              "maximum": 40000,
+              "x-effetune-unit": "Hz",
+              "default": 8000
+            },
+            "slope3": {
+              "type": "integer",
+              "minimum": -96,
+              "maximum": -12,
+              "x-effetune-unit": "dB/oct",
+              "default": -24
+            }
+          }
+        }
+      }
+    },
+    "DCOffset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "DCOffset"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "offset": {
+              "type": "number",
+              "minimum": -1,
+              "maximum": 1,
+              "default": 0
+            }
+          }
+        }
+      }
+    },
+    "FIRCrossover": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters",
+        "assets"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "FIRCrossover"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "latencyMode": {
+              "type": "string",
+              "enum": [
+                "0",
+                "128",
+                "256",
+                "512",
+                "1024"
+              ],
+              "default": "128"
+            },
+            "filterDelaySamples": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65536,
+              "default": 0
+            },
+            "bandCount": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 4,
+              "default": 2
+            }
+          }
+        },
+        "assets": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "impulseResponse"
+          ],
+          "properties": {
+            "impulseResponse": {
+              "$ref": "#/$defs/assetReference"
+            }
+          }
+        }
+      }
+    },
+    "Matrix": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "Matrix"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "matrixRoutes": {
+              "type": "string",
+              "maxLength": 3072,
+              "pattern": "^(?:p?[0-8][0-8])*$",
+              "default": "0011"
+            }
+          }
+        }
+      }
+    },
+    "MultiChannelPanel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "MultiChannelPanel"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mute": {
+              "type": "array",
+              "minItems": 8,
+              "maxItems": 8,
+              "items": {
+                "type": "boolean"
+              },
+              "default": [
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            "solo": {
+              "type": "array",
+              "minItems": 8,
+              "maxItems": 8,
+              "items": {
+                "type": "boolean"
+              },
+              "default": [
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            "volume": {
+              "type": "array",
+              "minItems": 8,
+              "maxItems": 8,
+              "items": {
+                "type": "number",
+                "minimum": -20,
+                "maximum": 10,
+                "x-effetune-unit": "dB"
+              },
+              "default": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            },
+            "delay": {
+              "type": "array",
+              "minItems": 8,
+              "maxItems": 8,
+              "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 30,
+                "x-effetune-unit": "ms"
+              },
+              "default": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            },
+            "link": {
+              "type": "array",
+              "minItems": 7,
+              "maxItems": 7,
+              "items": {
+                "type": "boolean"
+              },
+              "default": [
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            }
+          }
+        }
+      }
+    },
+    "Mute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "Mute"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        }
+      }
+    },
+    "PolarityInversion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "PolarityInversion"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        }
+      }
+    },
+    "StereoBalance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "StereoBalance"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "balance": {
+              "type": "number",
+              "minimum": -1,
+              "maximum": 1,
+              "default": 0
+            }
+          }
+        }
+      }
+    },
+    "Volume": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "Volume"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "volume": {
+              "type": "number",
+              "minimum": -60,
+              "maximum": 24,
+              "x-effetune-unit": "dB",
+              "default": 0
+            }
+          }
+        }
+      }
+    },
+    "Delay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "Delay"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "preDelay": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "ms",
+              "default": 0
+            },
+            "delaySize": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 5000,
+              "x-effetune-unit": "ms",
+              "default": 150
+            },
+            "damping": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 50
+            },
+            "highDamp": {
+              "type": "number",
+              "minimum": 20,
+              "maximum": 20000,
+              "x-effetune-unit": "Hz",
+              "default": 5000
+            },
+            "lowDamp": {
+              "type": "number",
+              "minimum": 20,
+              "maximum": 20000,
+              "x-effetune-unit": "Hz",
+              "default": 100
+            },
+            "mix": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 16
+            },
+            "feedback": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 99,
+              "x-effetune-unit": "%",
+              "default": 50
+            },
+            "pingPong": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 0
+            }
+          }
+        }
+      }
+    },
+    "TimeAlignment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "TimeAlignment"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "delay": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "ms",
+              "default": 0
+            }
+          }
+        }
+      }
+    },
+    "AutoLeveler": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "AutoLeveler"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "targetLufs": {
+              "type": "number",
+              "minimum": -36,
+              "maximum": 0,
+              "x-effetune-unit": "LUFS",
+              "default": -18
+            },
+            "timeWindow": {
+              "type": "number",
+              "minimum": 1000,
+              "maximum": 10000,
+              "x-effetune-unit": "ms",
+              "default": 3000
+            },
+            "maxGain": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 12,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "minGain": {
+              "type": "number",
+              "minimum": -36,
+              "maximum": 0,
+              "x-effetune-unit": "dB",
+              "default": -12
+            },
+            "attack": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 1000,
+              "x-effetune-unit": "ms",
+              "default": 50
+            },
+            "release": {
+              "type": "number",
+              "minimum": 10,
+              "maximum": 10000,
+              "x-effetune-unit": "ms",
+              "default": 5000
+            },
+            "noiseGate": {
+              "type": "number",
+              "minimum": -96,
+              "maximum": -24,
+              "x-effetune-unit": "dB",
+              "default": -60
+            }
+          }
+        }
+      }
+    },
+    "BrickwallLimiter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "BrickwallLimiter"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "threshold": {
+              "type": "number",
+              "minimum": -24,
+              "maximum": 0,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "release": {
+              "type": "number",
+              "minimum": 10,
+              "maximum": 500,
+              "x-effetune-unit": "ms",
+              "default": 100
+            },
+            "lookahead": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10,
+              "x-effetune-unit": "ms",
+              "default": 3
+            },
+            "oversampling": {
+              "type": "integer",
+              "enum": [
+                1,
+                2,
+                4,
+                8
+              ],
+              "default": 1
+            },
+            "inputGain": {
+              "type": "number",
+              "minimum": -18,
+              "maximum": 18,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "margin": {
+              "type": "number",
+              "minimum": -3,
+              "maximum": 0,
+              "x-effetune-unit": "dB",
+              "default": -1
+            }
+          }
+        }
+      }
+    },
+    "Compressor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "Compressor"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "threshold": {
+              "type": "number",
+              "minimum": -60,
+              "maximum": 0,
+              "x-effetune-unit": "dB",
+              "default": -24
+            },
+            "ratio": {
+              "type": "number",
+              "minimum": 0.5,
+              "maximum": 20,
+              "default": 2
+            },
+            "attack": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 100,
+              "x-effetune-unit": "ms",
+              "default": 10
+            },
+            "release": {
+              "type": "number",
+              "minimum": 10,
+              "maximum": 1000,
+              "x-effetune-unit": "ms",
+              "default": 100
+            },
+            "knee": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 12,
+              "x-effetune-unit": "dB",
+              "default": 3
+            },
+            "gain": {
+              "type": "number",
+              "minimum": -12,
+              "maximum": 12,
+              "x-effetune-unit": "dB",
+              "default": 0
+            }
+          }
+        }
+      }
+    },
+    "Expander": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "Expander"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "threshold": {
+              "type": "number",
+              "minimum": -60,
+              "maximum": 0,
+              "x-effetune-unit": "dB",
+              "default": -24
+            },
+            "ratio": {
+              "type": "number",
+              "minimum": 0.05,
+              "maximum": 20,
+              "default": 2
+            },
+            "attack": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 100,
+              "x-effetune-unit": "ms",
+              "default": 10
+            },
+            "release": {
+              "type": "number",
+              "minimum": 10,
+              "maximum": 1000,
+              "x-effetune-unit": "ms",
+              "default": 100
+            },
+            "knee": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 12,
+              "x-effetune-unit": "dB",
+              "default": 3
+            },
+            "gain": {
+              "type": "number",
+              "minimum": -12,
+              "maximum": 12,
+              "x-effetune-unit": "dB",
+              "default": 0
+            }
+          }
+        }
+      }
+    },
+    "Gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "Gate"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "threshold": {
+              "type": "number",
+              "minimum": -96,
+              "maximum": 0,
+              "x-effetune-unit": "dB",
+              "default": -40
+            },
+            "ratio": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 10
+            },
+            "attack": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 50,
+              "x-effetune-unit": "ms",
+              "default": 1
+            },
+            "release": {
+              "type": "number",
+              "minimum": 10,
+              "maximum": 2000,
+              "x-effetune-unit": "ms",
+              "default": 200
+            },
+            "knee": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 6,
+              "x-effetune-unit": "dB",
+              "default": 1
+            },
+            "gain": {
+              "type": "number",
+              "minimum": -12,
+              "maximum": 12,
+              "x-effetune-unit": "dB",
+              "default": 0
+            }
+          }
+        }
+      }
+    },
+    "MultibandCompressor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "MultibandCompressor"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "frequency1": {
+              "type": "number",
+              "minimum": 20,
+              "maximum": 500,
+              "x-effetune-unit": "Hz",
+              "default": 100
+            },
+            "frequency2": {
+              "type": "number",
+              "minimum": 100,
+              "maximum": 2000,
+              "x-effetune-unit": "Hz",
+              "default": 500
+            },
+            "frequency3": {
+              "type": "number",
+              "minimum": 500,
+              "maximum": 8000,
+              "x-effetune-unit": "Hz",
+              "default": 2000
+            },
+            "frequency4": {
+              "type": "number",
+              "minimum": 1000,
+              "maximum": 20000,
+              "x-effetune-unit": "Hz",
+              "default": 8000
+            },
+            "threshold": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": -60,
+                "maximum": 0,
+                "x-effetune-unit": "dB"
+              },
+              "default": [
+                -20,
+                -22,
+                -25,
+                -28,
+                -18
+              ]
+            },
+            "ratio": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 20
+              },
+              "default": [
+                4,
+                3,
+                2.5,
+                2,
+                5
+              ]
+            },
+            "attack": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 0.1,
+                "maximum": 100,
+                "x-effetune-unit": "ms"
+              },
+              "default": [
+                30,
+                20,
+                15,
+                10,
+                5
+              ]
+            },
+            "release": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 10,
+                "maximum": 1000,
+                "x-effetune-unit": "ms"
+              },
+              "default": [
+                150,
+                120,
+                80,
+                60,
+                40
+              ]
+            },
+            "knee": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 12,
+                "x-effetune-unit": "dB"
+              },
+              "default": [
+                6,
+                4,
+                4,
+                3,
+                2
+              ]
+            },
+            "gain": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": -12,
+                "maximum": 12,
+                "x-effetune-unit": "dB"
+              },
+              "default": [
+                -1,
+                0,
+                1,
+                1.5,
+                -2
+              ]
+            }
+          }
+        }
+      }
+    },
+    "MultibandExpander": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "MultibandExpander"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "frequency1": {
+              "type": "number",
+              "minimum": 20,
+              "maximum": 500,
+              "x-effetune-unit": "Hz",
+              "default": 100
+            },
+            "frequency2": {
+              "type": "number",
+              "minimum": 100,
+              "maximum": 2000,
+              "x-effetune-unit": "Hz",
+              "default": 500
+            },
+            "frequency3": {
+              "type": "number",
+              "minimum": 500,
+              "maximum": 8000,
+              "x-effetune-unit": "Hz",
+              "default": 2000
+            },
+            "frequency4": {
+              "type": "number",
+              "minimum": 1000,
+              "maximum": 20000,
+              "x-effetune-unit": "Hz",
+              "default": 8000
+            },
+            "threshold": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": -60,
+                "maximum": 0,
+                "x-effetune-unit": "dB"
+              },
+              "default": [
+                -30,
+                -16,
+                -24,
+                -36,
+                -48
+              ]
+            },
+            "ratio": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 0.05,
+                "maximum": 20
+              },
+              "default": [
+                1.2,
+                1.2,
+                1.2,
+                1.1,
+                1.1
+              ]
+            },
+            "attack": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 0.1,
+                "maximum": 100,
+                "x-effetune-unit": "ms"
+              },
+              "default": [
+                10,
+                7.75,
+                5.5,
+                3.25,
+                1
+              ]
+            },
+            "release": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 10,
+                "maximum": 1000,
+                "x-effetune-unit": "ms"
+              },
+              "default": [
+                100,
+                87.5,
+                75,
+                62.5,
+                50
+              ]
+            },
+            "knee": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 12,
+                "x-effetune-unit": "dB"
+              },
+              "default": [
+                6,
+                4,
+                4,
+                3,
+                2
+              ]
+            },
+            "gain": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": -12,
+                "maximum": 12,
+                "x-effetune-unit": "dB"
+              },
+              "default": [
+                1,
+                1,
+                1,
+                1,
+                1
+              ]
+            }
+          }
+        }
+      }
+    },
+    "MultibandTransient": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "MultibandTransient"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "frequency1": {
+              "type": "number",
+              "minimum": 20,
+              "maximum": 2000,
+              "x-effetune-unit": "Hz",
+              "default": 200
+            },
+            "frequency2": {
+              "type": "number",
+              "minimum": 200,
+              "maximum": 20000,
+              "x-effetune-unit": "Hz",
+              "default": 4000
+            },
+            "fastAttack": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "number",
+                "minimum": 0.1,
+                "maximum": 10,
+                "x-effetune-unit": "ms"
+              },
+              "default": [
+                5,
+                2,
+                0.5
+              ]
+            },
+            "fastRelease": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "number",
+                "minimum": 1,
+                "maximum": 200,
+                "x-effetune-unit": "ms"
+              },
+              "default": [
+                50,
+                30,
+                20
+              ]
+            },
+            "slowAttack": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "number",
+                "minimum": 1,
+                "maximum": 100,
+                "x-effetune-unit": "ms"
+              },
+              "default": [
+                25,
+                10,
+                5
+              ]
+            },
+            "slowRelease": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "number",
+                "minimum": 50,
+                "maximum": 1000,
+                "x-effetune-unit": "ms"
+              },
+              "default": [
+                250,
+                150,
+                100
+              ]
+            },
+            "transientGain": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "number",
+                "minimum": -24,
+                "maximum": 24,
+                "x-effetune-unit": "dB"
+              },
+              "default": [
+                6,
+                6,
+                6
+              ]
+            },
+            "sustainGain": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "number",
+                "minimum": -24,
+                "maximum": 24,
+                "x-effetune-unit": "dB"
+              },
+              "default": [
+                0,
+                0,
+                0
+              ]
+            },
+            "gainSmoothing": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "number",
+                "minimum": 0.1,
+                "maximum": 20,
+                "x-effetune-unit": "ms"
+              },
+              "default": [
+                5,
+                5,
+                5
+              ]
+            }
+          }
+        }
+      }
+    },
+    "PowerAmpSag": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "PowerAmpSag"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "sagSensitivity": {
+              "type": "number",
+              "minimum": -18,
+              "maximum": 18,
+              "x-effetune-unit": "dB",
+              "default": 3
+            },
+            "powerStability": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 50
+            },
+            "recoverySpeed": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 40
+            },
+            "monoblock": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        }
+      }
+    },
+    "TransientShaper": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "TransientShaper"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "fastAttack": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 10,
+              "x-effetune-unit": "ms",
+              "default": 1
+            },
+            "fastRelease": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 200,
+              "x-effetune-unit": "ms",
+              "default": 20
+            },
+            "slowAttack": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 100,
+              "x-effetune-unit": "ms",
+              "default": 20
+            },
+            "slowRelease": {
+              "type": "number",
+              "minimum": 50,
+              "maximum": 1000,
+              "x-effetune-unit": "ms",
+              "default": 300
+            },
+            "transientGain": {
+              "type": "number",
+              "minimum": -24,
+              "maximum": 24,
+              "x-effetune-unit": "dB",
+              "default": 6
+            },
+            "sustainGain": {
+              "type": "number",
+              "minimum": -24,
+              "maximum": 24,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "gainSmoothing": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 20,
+              "x-effetune-unit": "ms",
+              "default": 5
+            }
+          }
+        }
+      }
+    },
+    "BandPassFilter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "BandPassFilter"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "highPassFrequency": {
+              "type": "number",
+              "minimum": 10,
+              "maximum": 40000,
+              "x-effetune-unit": "Hz",
+              "default": 1000
+            },
+            "lowPassFrequency": {
+              "type": "number",
+              "minimum": 10,
+              "maximum": 40000,
+              "x-effetune-unit": "Hz",
+              "default": 1000
+            },
+            "highPassSlope": {
+              "type": "integer",
+              "minimum": -48,
+              "maximum": 0,
+              "x-effetune-unit": "dB/oct",
+              "default": -24
+            },
+            "lowPassSlope": {
+              "type": "integer",
+              "minimum": -48,
+              "maximum": 0,
+              "x-effetune-unit": "dB/oct",
+              "default": -24
+            }
+          }
+        }
+      }
+    },
+    "CombFilter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "CombFilter"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "fundamentalFrequency": {
+              "type": "number",
+              "minimum": 20,
+              "maximum": 20000,
+              "x-effetune-unit": "Hz",
+              "default": 440
+            },
+            "feedbackGain": {
+              "type": "number",
+              "minimum": -1,
+              "maximum": 1,
+              "default": 0.4
+            },
+            "dryWetMix": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 50
+            },
+            "combType": {
+              "type": "string",
+              "enum": [
+                "fb",
+                "ff"
+              ],
+              "default": "ff"
+            }
+          }
+        }
+      }
+    },
+    "EarphoneCableSim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "EarphoneCableSim"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "outputImpedance": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 20,
+              "x-effetune-unit": "ohm",
+              "default": 0.5
+            },
+            "cableResistance": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 2,
+              "x-effetune-unit": "ohm",
+              "default": 0.3
+            },
+            "cableInductance": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 5,
+              "x-effetune-unit": "uH",
+              "default": 0.5
+            },
+            "voiceCoilInductance": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 2,
+              "x-effetune-unit": "mH",
+              "default": 0.2
+            },
+            "baseImpedance": {
+              "type": "number",
+              "minimum": 4,
+              "maximum": 64,
+              "x-effetune-unit": "ohm",
+              "default": 16
+            },
+            "resonanceFrequency": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 20,
+                "maximum": 20000,
+                "x-effetune-unit": "Hz"
+              },
+              "default": [
+                120,
+                2000,
+                5000,
+                9000,
+                60
+              ]
+            },
+            "resonanceQ": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 10
+              },
+              "default": [
+                2,
+                1.5,
+                2,
+                3,
+                1.5
+              ]
+            },
+            "resonanceImpedance": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 16,
+                "maximum": 116,
+                "x-effetune-unit": "ohm"
+              },
+              "default": [
+                48,
+                36,
+                64,
+                80,
+                64
+              ]
+            },
+            "resonanceEnabled": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "boolean"
+              },
+              "default": [
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            }
+          }
+        }
+      }
+    },
+    "FifteenBandGEQ": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "FifteenBandGEQ"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "bandGain": {
+              "type": "array",
+              "minItems": 15,
+              "maxItems": 15,
+              "items": {
+                "type": "number",
+                "minimum": -12,
+                "maximum": 12,
+                "x-effetune-unit": "dB"
+              },
+              "default": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            }
+          }
+        }
+      }
+    },
+    "FifteenBandPEQ": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "FifteenBandPEQ"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "frequencies": {
+              "type": "array",
+              "minItems": 15,
+              "maxItems": 15,
+              "items": {
+                "type": "number",
+                "minimum": 20,
+                "maximum": 20000,
+                "x-effetune-unit": "Hz"
+              },
+              "default": [
+                25,
+                40,
+                63,
+                100,
+                160,
+                250,
+                400,
+                630,
+                1000,
+                1600,
+                2500,
+                4000,
+                6300,
+                10000,
+                16000
+              ]
+            },
+            "gains": {
+              "type": "array",
+              "minItems": 15,
+              "maxItems": 15,
+              "items": {
+                "type": "number",
+                "minimum": -20,
+                "maximum": 20,
+                "x-effetune-unit": "dB"
+              },
+              "default": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            },
+            "qValues": {
+              "type": "array",
+              "minItems": 15,
+              "maxItems": 15,
+              "items": {
+                "type": "number",
+                "minimum": 0.1,
+                "maximum": 10
+              },
+              "default": [
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1
+              ]
+            },
+            "filterTypes": {
+              "type": "array",
+              "minItems": 15,
+              "maxItems": 15,
+              "items": {
+                "type": "string",
+                "enum": [
+                  "peaking",
+                  "lowPass",
+                  "highPass",
+                  "lowShelf",
+                  "highShelf",
+                  "bandPass",
+                  "notch",
+                  "allPass"
+                ]
+              },
+              "default": [
+                "peaking",
+                "peaking",
+                "peaking",
+                "peaking",
+                "peaking",
+                "peaking",
+                "peaking",
+                "peaking",
+                "peaking",
+                "peaking",
+                "peaking",
+                "peaking",
+                "peaking",
+                "peaking",
+                "peaking"
+              ]
+            },
+            "enabledBands": {
+              "type": "array",
+              "minItems": 15,
+              "maxItems": 15,
+              "items": {
+                "type": "boolean"
+              },
+              "default": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            }
+          }
+        }
+      }
+    },
+    "FiveBandDynamicEQ": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "FiveBandDynamicEQ"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabledBands": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "boolean"
+              },
+              "default": [
+                false,
+                false,
+                true,
+                false,
+                false
+              ]
+            },
+            "filterType": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "string",
+                "enum": [
+                  "pk",
+                  "ls",
+                  "hs"
+                ]
+              },
+              "default": [
+                "pk",
+                "pk",
+                "pk",
+                "pk",
+                "pk"
+              ]
+            },
+            "frequency": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 20,
+                "maximum": 20000,
+                "x-effetune-unit": "Hz"
+              },
+              "default": [
+                100,
+                300,
+                1000,
+                3000,
+                10000
+              ]
+            },
+            "q": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 0.1,
+                "maximum": 10
+              },
+              "default": [
+                1,
+                1,
+                1,
+                1,
+                1
+              ]
+            },
+            "maxGain": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 24,
+                "x-effetune-unit": "dB"
+              },
+              "default": [
+                6,
+                6,
+                6,
+                6,
+                6
+              ]
+            },
+            "threshold": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": -60,
+                "maximum": 0,
+                "x-effetune-unit": "dB"
+              },
+              "default": [
+                -18,
+                -21,
+                -24,
+                -27,
+                -30
+              ]
+            },
+            "ratio": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 0.1,
+                "maximum": 100
+              },
+              "default": [
+                2,
+                2,
+                2,
+                2,
+                2
+              ]
+            },
+            "knee": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10,
+                "x-effetune-unit": "dB"
+              },
+              "default": [
+                3,
+                3,
+                3,
+                3,
+                3
+              ]
+            },
+            "attack": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 0.1,
+                "maximum": 100,
+                "x-effetune-unit": "ms"
+              },
+              "default": [
+                10,
+                10,
+                10,
+                10,
+                10
+              ]
+            },
+            "release": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 1,
+                "maximum": 1000,
+                "x-effetune-unit": "ms"
+              },
+              "default": [
+                100,
+                100,
+                100,
+                100,
+                100
+              ]
+            },
+            "sidechainFrequency": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 20,
+                "maximum": 20000,
+                "x-effetune-unit": "Hz"
+              },
+              "default": [
+                100,
+                300,
+                1000,
+                3000,
+                10000
+              ]
+            },
+            "sidechainQ": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 0.1,
+                "maximum": 10
+              },
+              "default": [
+                1,
+                1,
+                1,
+                1,
+                1
+              ]
+            }
+          }
+        }
+      }
+    },
+    "FiveBandFIRPEQ": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters",
+        "assets"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "FiveBandFIRPEQ"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "latencyMode": {
+              "type": "string",
+              "enum": [
+                "0",
+                "128",
+                "256",
+                "512",
+                "1024"
+              ],
+              "default": "128"
+            },
+            "filterDelaySamples": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65536,
+              "default": 0
+            }
+          }
+        },
+        "assets": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "impulseResponse"
+          ],
+          "properties": {
+            "impulseResponse": {
+              "$ref": "#/$defs/assetReference"
+            }
+          }
+        }
+      }
+    },
+    "FiveBandPEQ": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "FiveBandPEQ"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "frequencies": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 20,
+                "maximum": 20000,
+                "x-effetune-unit": "Hz"
+              },
+              "default": [
+                100,
+                316,
+                1000,
+                3160,
+                10000
+              ]
+            },
+            "gains": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": -20,
+                "maximum": 20,
+                "x-effetune-unit": "dB"
+              },
+              "default": [
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            },
+            "qValues": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 0.1,
+                "maximum": 10
+              },
+              "default": [
+                1,
+                1,
+                1,
+                1,
+                1
+              ]
+            },
+            "filterTypes": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "string",
+                "enum": [
+                  "peaking",
+                  "lowPass",
+                  "highPass",
+                  "lowShelf",
+                  "highShelf",
+                  "bandPass",
+                  "notch",
+                  "allPass"
+                ]
+              },
+              "default": [
+                "peaking",
+                "peaking",
+                "peaking",
+                "peaking",
+                "peaking"
+              ]
+            },
+            "enabledBands": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "boolean"
+              },
+              "default": [
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            }
+          }
+        }
+      }
+    },
+    "GroupDelayEQ": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters",
+        "assets"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "GroupDelayEQ"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "latencyMode": {
+              "type": "string",
+              "enum": [
+                "0",
+                "128",
+                "256",
+                "512",
+                "1024"
+              ],
+              "default": "128"
+            },
+            "filterDelaySamples": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65536,
+              "default": 8192
+            }
+          }
+        },
+        "assets": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "impulseResponse"
+          ],
+          "properties": {
+            "impulseResponse": {
+              "$ref": "#/$defs/assetReference"
+            }
+          }
+        }
+      }
+    },
+    "HiPassFilter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "HiPassFilter"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "frequency": {
+              "type": "number",
+              "minimum": 10,
+              "maximum": 40000,
+              "x-effetune-unit": "Hz",
+              "default": 1000
+            },
+            "slope": {
+              "type": "integer",
+              "enum": [
+                0,
+                -12,
+                -24,
+                -36,
+                -48,
+                -60,
+                -72,
+                -84,
+                -96
+              ],
+              "x-effetune-unit": "dB/oct",
+              "default": -24
+            }
+          }
+        }
+      }
+    },
+    "LoPassFilter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "LoPassFilter"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "frequency": {
+              "type": "number",
+              "minimum": 10,
+              "maximum": 40000,
+              "x-effetune-unit": "Hz",
+              "default": 1000
+            },
+            "slope": {
+              "type": "integer",
+              "enum": [
+                0,
+                -12,
+                -24,
+                -36,
+                -48,
+                -60,
+                -72,
+                -84,
+                -96
+              ],
+              "x-effetune-unit": "dB/oct",
+              "default": -24
+            }
+          }
+        }
+      }
+    },
+    "LoudnessEqualizer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "LoudnessEqualizer"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "averageSpl": {
+              "type": "number",
+              "minimum": 60,
+              "maximum": 96,
+              "x-effetune-unit": "dB",
+              "default": 65
+            },
+            "relativeVolume": {
+              "type": "number",
+              "minimum": -30,
+              "maximum": 12,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "lowGain": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 15,
+              "x-effetune-unit": "dB",
+              "default": 10
+            },
+            "lowFrequency": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 300,
+              "x-effetune-unit": "Hz",
+              "default": 180
+            },
+            "lowQ": {
+              "type": "number",
+              "minimum": 0.5,
+              "maximum": 1,
+              "default": 0.6
+            },
+            "highQ": {
+              "type": "number",
+              "minimum": 0.5,
+              "maximum": 1,
+              "default": 0.6
+            },
+            "highGain": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 15,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "highFrequency": {
+              "type": "integer",
+              "minimum": 3000,
+              "maximum": 6000,
+              "x-effetune-unit": "Hz",
+              "default": 4000
+            }
+          }
+        }
+      }
+    },
+    "NarrowRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "NarrowRange"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "highPassFrequency": {
+              "type": "number",
+              "minimum": 20,
+              "maximum": 4000,
+              "x-effetune-unit": "Hz",
+              "default": 60
+            },
+            "highPassSlope": {
+              "type": "integer",
+              "minimum": -48,
+              "maximum": 0,
+              "x-effetune-unit": "dB/oct",
+              "default": -24
+            },
+            "lowPassFrequency": {
+              "type": "number",
+              "minimum": 200,
+              "maximum": 40000,
+              "x-effetune-unit": "Hz",
+              "default": 5000
+            },
+            "lowPassSlope": {
+              "type": "integer",
+              "minimum": -48,
+              "maximum": 0,
+              "x-effetune-unit": "dB/oct",
+              "default": -12
+            }
+          }
+        }
+      }
+    },
+    "RoomEQ": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters",
+        "assets"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "RoomEQ"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "latencyMode": {
+              "type": "string",
+              "enum": [
+                "0",
+                "128",
+                "256",
+                "512",
+                "1024"
+              ],
+              "default": "128"
+            },
+            "filterDelaySamples": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65536,
+              "default": 16384
+            },
+            "channelDelay": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3840,
+              "default": 0
+            },
+            "outputGain": {
+              "type": "number",
+              "minimum": -12,
+              "maximum": 12,
+              "x-effetune-unit": "dB",
+              "default": 0
+            }
+          }
+        },
+        "assets": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "impulseResponse"
+          ],
+          "properties": {
+            "impulseResponse": {
+              "$ref": "#/$defs/assetReference"
+            }
+          }
+        }
+      }
+    },
+    "TiltEQ": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "TiltEQ"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "pivotFrequency": {
+              "type": "number",
+              "minimum": 20.085536923187668,
+              "maximum": 19930.370438230297,
+              "x-effetune-unit": "Hz",
+              "default": 1002.2472422902518
+            },
+            "slope": {
+              "type": "number",
+              "minimum": -12,
+              "maximum": 12,
+              "x-effetune-unit": "dB/oct",
+              "default": 0
+            }
+          }
+        }
+      }
+    },
+    "ToneControl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "ToneControl"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "bass": {
+              "type": "number",
+              "minimum": -24,
+              "maximum": 24,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "mid": {
+              "type": "number",
+              "minimum": -24,
+              "maximum": 24,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "treble": {
+              "type": "number",
+              "minimum": -24,
+              "maximum": 24,
+              "x-effetune-unit": "dB",
+              "default": 0
+            }
+          }
+        }
+      }
+    },
+    "AMRadioSimulator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "AMRadioSimulator"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "txBandwidth": {
+              "type": "number",
+              "minimum": 2,
+              "maximum": 10,
+              "x-effetune-unit": "kHz",
+              "default": 6
+            },
+            "preEmphasis": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 50
+            },
+            "modDepth": {
+              "type": "number",
+              "minimum": 10,
+              "maximum": 125,
+              "x-effetune-unit": "%",
+              "default": 90
+            },
+            "compression": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 20,
+              "x-effetune-unit": "dB",
+              "default": 6
+            },
+            "stereoMode": {
+              "type": "string",
+              "enum": [
+                "Mono",
+                "C-QUAM"
+              ],
+              "default": "Mono"
+            },
+            "signal": {
+              "type": "number",
+              "minimum": -50,
+              "maximum": 0,
+              "x-effetune-unit": "dB",
+              "default": -12
+            },
+            "skywave": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 1
+            },
+            "fadingSpeed": {
+              "type": "number",
+              "minimum": 0.05,
+              "maximum": 2,
+              "x-effetune-unit": "Hz",
+              "default": 0.15
+            },
+            "staticRate": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "/s",
+              "default": 0.3
+            },
+            "interference": {
+              "type": "number",
+              "minimum": -80,
+              "maximum": 0,
+              "x-effetune-unit": "dB",
+              "default": -65
+            },
+            "interferenceOffset": {
+              "type": "number",
+              "minimum": 5,
+              "maximum": 10,
+              "x-effetune-unit": "kHz",
+              "default": 9
+            },
+            "tuning": {
+              "type": "number",
+              "minimum": -30,
+              "maximum": 30,
+              "x-effetune-unit": "kHz",
+              "default": 0
+            },
+            "ifBandwidth": {
+              "type": "number",
+              "minimum": 2,
+              "maximum": 20,
+              "x-effetune-unit": "kHz",
+              "default": 12
+            },
+            "agcSpeed": {
+              "type": "string",
+              "enum": [
+                "Slow",
+                "Mid",
+                "Fast"
+              ],
+              "default": "Fast"
+            },
+            "detectorRc": {
+              "type": "number",
+              "minimum": 20,
+              "maximum": 500,
+              "x-effetune-unit": "us",
+              "default": 50
+            },
+            "hum": {
+              "type": "number",
+              "minimum": -80,
+              "maximum": -20,
+              "x-effetune-unit": "dB",
+              "default": -70
+            },
+            "humFrequency": {
+              "type": "string",
+              "enum": [
+                "50",
+                "60"
+              ],
+              "default": "50"
+            },
+            "speaker": {
+              "type": "string",
+              "enum": [
+                "Off",
+                "Small",
+                "Table"
+              ],
+              "default": "Table"
+            },
+            "outputGain": {
+              "type": "number",
+              "minimum": -24,
+              "maximum": 24,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "mix": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 100
+            }
+          }
+        }
+      }
+    },
+    "BitCrusher": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "BitCrusher"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "bitDepth": {
+              "type": "integer",
+              "minimum": 4,
+              "maximum": 24,
+              "default": 8
+            },
+            "tpdfDither": {
+              "type": "boolean",
+              "default": false
+            },
+            "zohFrequency": {
+              "type": "number",
+              "minimum": 4000,
+              "maximum": 96000,
+              "x-effetune-unit": "Hz",
+              "default": 44100
+            },
+            "bitError": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10,
+              "x-effetune-unit": "%",
+              "default": 0
+            },
+            "seed": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000,
+              "default": 11
+            }
+          }
+        }
+      }
+    },
+    "DigitalErrorEmulator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "DigitalErrorEmulator"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "bitErrorRate": {
+              "type": "number",
+              "minimum": 1e-12,
+              "maximum": 0.01,
+              "default": 0.000001
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "1",
+                "2A",
+                "2B",
+                "3A",
+                "3B",
+                "4",
+                "5A",
+                "5B",
+                "5C",
+                "6A",
+                "6B",
+                "8",
+                "9",
+                "10",
+                "10A"
+              ],
+              "default": "10A"
+            },
+            "referenceSampleRate": {
+              "type": "number",
+              "minimum": 44.1,
+              "maximum": 192,
+              "x-effetune-unit": "kHz",
+              "default": 48
+            },
+            "wetMix": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 100
+            }
+          }
+        }
+      }
+    },
+    "DSD64IMDSimulator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "DSD64IMDSimulator"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "amount": {
+              "type": "number",
+              "minimum": -40,
+              "maximum": 50,
+              "x-effetune-unit": "dB",
+              "default": 24
+            },
+            "dryWet": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 50
+            },
+            "ultrasonicLevel": {
+              "type": "number",
+              "minimum": -48,
+              "maximum": -18,
+              "x-effetune-unit": "dBFS RMS",
+              "default": -30
+            },
+            "noiseColor": {
+              "type": "integer",
+              "minimum": -100,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 0
+            },
+            "analogNonlinearity": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10,
+              "x-effetune-unit": "%",
+              "default": 1.4
+            },
+            "evenBias": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 20
+            },
+            "signalCoupling": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 200,
+              "x-effetune-unit": "%",
+              "default": 150
+            },
+            "scratchTone": {
+              "type": "number",
+              "minimum": 3,
+              "maximum": 14,
+              "x-effetune-unit": "kHz",
+              "default": 10.5
+            },
+            "noiseTexture": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 25
+            },
+            "crossSideband": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 75
+            },
+            "imdPathHpf": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 8,
+              "x-effetune-unit": "kHz",
+              "default": 0
+            },
+            "outputTrim": {
+              "type": "number",
+              "minimum": -24,
+              "maximum": 12,
+              "x-effetune-unit": "dB",
+              "default": 0
+            }
+          }
+        }
+      }
+    },
+    "FMRadioSimulator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "FMRadioSimulator"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "emphasis": {
+              "type": "string",
+              "enum": [
+                "50us",
+                "75us"
+              ],
+              "default": "50us"
+            },
+            "processing": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 18,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "signal": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 70,
+              "x-effetune-unit": "dBuV",
+              "default": 35
+            },
+            "tuning": {
+              "type": "number",
+              "minimum": -200,
+              "maximum": 200,
+              "x-effetune-unit": "kHz",
+              "default": 0
+            },
+            "ifBandwidth": {
+              "type": "number",
+              "minimum": 80,
+              "maximum": 240,
+              "x-effetune-unit": "kHz",
+              "default": 230
+            },
+            "multipath": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 0
+            },
+            "pathDelay": {
+              "type": "number",
+              "minimum": 0.5,
+              "maximum": 50,
+              "x-effetune-unit": "us",
+              "default": 5
+            },
+            "fading": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 20,
+              "x-effetune-unit": "Hz",
+              "default": 0
+            },
+            "stereo": {
+              "type": "string",
+              "enum": [
+                "Auto",
+                "Stereo",
+                "Mono"
+              ],
+              "default": "Auto"
+            },
+            "outputGain": {
+              "type": "number",
+              "minimum": -24,
+              "maximum": 24,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "mix": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 100
+            }
+          }
+        }
+      }
+    },
+    "HumGenerator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "HumGenerator"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "frequency": {
+              "type": "number",
+              "minimum": 10,
+              "maximum": 120,
+              "x-effetune-unit": "Hz",
+              "default": 50
+            },
+            "humType": {
+              "type": "string",
+              "enum": [
+                "Standard",
+                "Rich",
+                "Dirty"
+              ],
+              "default": "Standard"
+            },
+            "harmonics": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 50
+            },
+            "tone": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 20,
+              "x-effetune-unit": "kHz",
+              "default": 10
+            },
+            "instability": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10,
+              "x-effetune-unit": "%",
+              "default": 1
+            },
+            "level": {
+              "type": "number",
+              "minimum": -80,
+              "maximum": 0,
+              "x-effetune-unit": "dB",
+              "default": -40
+            }
+          }
+        }
+      }
+    },
+    "NoiseBlender": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "NoiseBlender"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "noiseType": {
+              "type": "string",
+              "enum": [
+                "white",
+                "pink",
+                "brown"
+              ],
+              "default": "pink"
+            },
+            "level": {
+              "type": "number",
+              "minimum": -96,
+              "maximum": 0,
+              "x-effetune-unit": "dB",
+              "default": -36
+            },
+            "perChannel": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        }
+      }
+    },
+    "SimpleJitter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "SimpleJitter"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "rmsJitterNanoseconds": {
+              "type": "number",
+              "minimum": 0.001,
+              "maximum": 10000000,
+              "x-effetune-unit": "ns",
+              "default": 100
+            }
+          }
+        }
+      }
+    },
+    "SWRadioSimulator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "SWRadioSimulator"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "txBandwidth": {
+              "type": "number",
+              "minimum": 2,
+              "maximum": 10,
+              "x-effetune-unit": "kHz",
+              "default": 4.5
+            },
+            "preEmphasis": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 50
+            },
+            "modDepth": {
+              "type": "number",
+              "minimum": 10,
+              "maximum": 125,
+              "x-effetune-unit": "%",
+              "default": 90
+            },
+            "compression": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 20,
+              "x-effetune-unit": "dB",
+              "default": 6
+            },
+            "signal": {
+              "type": "number",
+              "minimum": -50,
+              "maximum": 0,
+              "x-effetune-unit": "dB",
+              "default": -15
+            },
+            "skywave": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 55
+            },
+            "fadingSpeed": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 10,
+              "x-effetune-unit": "Hz",
+              "default": 0.5
+            },
+            "delaySpread": {
+              "type": "number",
+              "minimum": 0.2,
+              "maximum": 8,
+              "x-effetune-unit": "ms",
+              "default": 1.4
+            },
+            "staticRate": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "/s",
+              "default": 2
+            },
+            "interference": {
+              "type": "number",
+              "minimum": -80,
+              "maximum": 0,
+              "x-effetune-unit": "dB",
+              "default": -47
+            },
+            "interferenceOffset": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 10,
+              "x-effetune-unit": "kHz",
+              "default": 1
+            },
+            "tuning": {
+              "type": "number",
+              "minimum": -5,
+              "maximum": 5,
+              "x-effetune-unit": "kHz",
+              "default": 0
+            },
+            "ifBandwidth": {
+              "type": "number",
+              "minimum": 2,
+              "maximum": 10,
+              "x-effetune-unit": "kHz",
+              "default": 6
+            },
+            "detector": {
+              "type": "string",
+              "enum": [
+                "Envelope",
+                "Synchronous"
+              ],
+              "default": "Envelope"
+            },
+            "agcSpeed": {
+              "type": "string",
+              "enum": [
+                "Slow",
+                "Mid",
+                "Fast"
+              ],
+              "default": "Fast"
+            },
+            "detectorRc": {
+              "type": "number",
+              "minimum": 20,
+              "maximum": 500,
+              "x-effetune-unit": "us",
+              "default": 50
+            },
+            "hum": {
+              "type": "number",
+              "minimum": -80,
+              "maximum": -20,
+              "x-effetune-unit": "dB",
+              "default": -80
+            },
+            "humFrequency": {
+              "type": "string",
+              "enum": [
+                "50",
+                "60"
+              ],
+              "default": "50"
+            },
+            "speaker": {
+              "type": "string",
+              "enum": [
+                "Off",
+                "Small",
+                "Table"
+              ],
+              "default": "Small"
+            },
+            "outputGain": {
+              "type": "number",
+              "minimum": -24,
+              "maximum": 24,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "mix": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 100
+            }
+          }
+        }
+      }
+    },
+    "VinylArtifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "VinylArtifacts"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "popsPerMinute": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 120,
+              "default": 20
+            },
+            "popLevel": {
+              "type": "number",
+              "minimum": -80,
+              "maximum": 0,
+              "x-effetune-unit": "dB",
+              "default": -24
+            },
+            "cracklesPerMinute": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2000,
+              "default": 500
+            },
+            "crackleLevel": {
+              "type": "number",
+              "minimum": -80,
+              "maximum": 0,
+              "x-effetune-unit": "dB",
+              "default": -33
+            },
+            "hissLevel": {
+              "type": "number",
+              "minimum": -80,
+              "maximum": 0,
+              "x-effetune-unit": "dB",
+              "default": -42
+            },
+            "rumbleLevel": {
+              "type": "number",
+              "minimum": -80,
+              "maximum": 0,
+              "x-effetune-unit": "dB",
+              "default": -50
+            },
+            "crosstalk": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 60
+            },
+            "noiseProfile": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10,
+              "default": 0
+            },
+            "wear": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 200,
+              "x-effetune-unit": "%",
+              "default": 100
+            },
+            "react": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 25
+            },
+            "reactMode": {
+              "type": "string",
+              "enum": [
+                "Velocity",
+                "Amplitude"
+              ],
+              "default": "Velocity"
+            },
+            "mix": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 100
+            }
+          }
+        }
+      }
+    },
+    "VinylSimulator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "VinylSimulator"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "cutLevel": {
+              "type": "number",
+              "minimum": -20,
+              "maximum": 20,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "highFrequencyCutoff": {
+              "type": "number",
+              "minimum": 6000,
+              "maximum": 24000,
+              "x-effetune-unit": "Hz",
+              "default": 16000
+            },
+            "bassMonoBelow": {
+              "type": "number",
+              "minimum": 50,
+              "maximum": 1000,
+              "x-effetune-unit": "Hz",
+              "default": 250
+            },
+            "sideMix": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 70
+            },
+            "speed": {
+              "type": "string",
+              "enum": [
+                "33⅓",
+                "45",
+                "78"
+              ],
+              "default": "33⅓"
+            },
+            "radius": {
+              "type": "number",
+              "minimum": 60,
+              "maximum": 146,
+              "x-effetune-unit": "mm",
+              "default": 120
+            },
+            "roughness": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 100,
+              "x-effetune-unit": "nm",
+              "default": 13.17
+            },
+            "dustRate": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10000,
+              "x-effetune-unit": "/s",
+              "default": 2
+            },
+            "staticRate": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10000,
+              "x-effetune-unit": "/s",
+              "default": 0.08
+            },
+            "scratchRate": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1000,
+              "x-effetune-unit": "/s",
+              "default": 0
+            },
+            "stylusShape": {
+              "type": "string",
+              "enum": [
+                "Spherical",
+                "Elliptical"
+              ],
+              "default": "Elliptical"
+            },
+            "sideRadius": {
+              "type": "number",
+              "minimum": 5,
+              "maximum": 25,
+              "x-effetune-unit": "um",
+              "default": 18
+            },
+            "scanRadius": {
+              "type": "number",
+              "minimum": 2,
+              "maximum": 25,
+              "x-effetune-unit": "um",
+              "default": 8
+            },
+            "trackingForce": {
+              "type": "number",
+              "minimum": 0.5,
+              "maximum": 5,
+              "x-effetune-unit": "g",
+              "default": 2
+            },
+            "tipMass": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 1.5,
+              "x-effetune-unit": "mg",
+              "default": 0.4
+            },
+            "compliance": {
+              "type": "number",
+              "minimum": 5,
+              "maximum": 35,
+              "x-effetune-unit": "cu",
+              "default": 15
+            },
+            "damping": {
+              "type": "number",
+              "minimum": 0.05,
+              "maximum": 1,
+              "x-effetune-unit": "zeta",
+              "default": 0.25
+            },
+            "quality": {
+              "type": "string",
+              "enum": [
+                "Eco",
+                "Standard",
+                "High",
+                "Ultra"
+              ],
+              "default": "Standard"
+            },
+            "outputGain": {
+              "type": "number",
+              "minimum": -24,
+              "maximum": 24,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "mix": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 100
+            }
+          }
+        }
+      }
+    },
+    "DopplerDistortion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "DopplerDistortion"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "coilForce": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "N / V",
+              "default": 8
+            },
+            "speakerMass": {
+              "type": "number",
+              "minimum": 0.001,
+              "maximum": 0.5,
+              "x-effetune-unit": "kg",
+              "default": 0.03
+            },
+            "springConstant": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 100000,
+              "x-effetune-unit": "N/m",
+              "default": 6000
+            },
+            "dampingFactor": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 50,
+              "x-effetune-unit": "N*s/m",
+              "default": 1.5
+            }
+          }
+        }
+      }
+    },
+    "PitchShifter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "PitchShifter"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "pitchShift": {
+              "type": "integer",
+              "minimum": -6,
+              "maximum": 6,
+              "x-effetune-unit": "semitones",
+              "default": 0
+            },
+            "fineTune": {
+              "type": "integer",
+              "minimum": -50,
+              "maximum": 50,
+              "x-effetune-unit": "cents",
+              "default": 0
+            },
+            "windowSize": {
+              "type": "integer",
+              "minimum": 80,
+              "maximum": 500,
+              "x-effetune-unit": "ms",
+              "default": 150
+            },
+            "crossfadeTime": {
+              "type": "number",
+              "minimum": 20,
+              "maximum": 40,
+              "x-effetune-unit": "ms",
+              "default": 35
+            }
+          }
+        }
+      }
+    },
+    "Tremolo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "Tremolo"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "rate": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 50,
+              "x-effetune-unit": "Hz",
+              "default": 10
+            },
+            "depth": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 12,
+              "x-effetune-unit": "dB",
+              "default": 2
+            },
+            "randomness": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 96,
+              "x-effetune-unit": "dB",
+              "default": 6
+            },
+            "randomnessCutoff": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 1000,
+              "x-effetune-unit": "Hz",
+              "default": 200
+            },
+            "randomnessSlope": {
+              "type": "number",
+              "minimum": -12,
+              "maximum": 0,
+              "x-effetune-unit": "dB",
+              "default": -6
+            },
+            "channelPhase": {
+              "type": "number",
+              "minimum": -180,
+              "maximum": 180,
+              "x-effetune-unit": "degrees",
+              "default": 0
+            },
+            "channelSync": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 100
+            }
+          }
+        }
+      }
+    },
+    "WowFlutter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "WowFlutter"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "rate": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 20,
+              "x-effetune-unit": "Hz",
+              "default": 0.5
+            },
+            "depth": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 40,
+              "x-effetune-unit": "ms",
+              "default": 6
+            },
+            "randomness": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 40,
+              "x-effetune-unit": "ms",
+              "default": 10
+            },
+            "randomnessCutoff": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 20,
+              "x-effetune-unit": "Hz",
+              "default": 5
+            },
+            "randomnessSlope": {
+              "type": "number",
+              "minimum": -12,
+              "maximum": 0,
+              "x-effetune-unit": "dB",
+              "default": -6
+            },
+            "channelPhase": {
+              "type": "number",
+              "minimum": -180,
+              "maximum": 180,
+              "x-effetune-unit": "deg",
+              "default": 0
+            },
+            "channelSync": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 100
+            }
+          }
+        }
+      }
+    },
+    "Oscillator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "Oscillator"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "frequency": {
+              "type": "number",
+              "minimum": 20,
+              "maximum": 96000,
+              "x-effetune-unit": "Hz",
+              "default": 880
+            },
+            "volume": {
+              "type": "number",
+              "minimum": -96,
+              "maximum": 0,
+              "x-effetune-unit": "dB",
+              "default": -12
+            },
+            "panning": {
+              "type": "number",
+              "minimum": -1,
+              "maximum": 1,
+              "default": 0
+            },
+            "waveform": {
+              "type": "string",
+              "enum": [
+                "sine",
+                "square",
+                "triangle",
+                "sawtooth",
+                "white",
+                "pink",
+                "impulse"
+              ],
+              "default": "sine"
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "continuous",
+                "pulsed"
+              ],
+              "default": "continuous"
+            },
+            "interval": {
+              "type": "number",
+              "minimum": 100,
+              "maximum": 2000,
+              "x-effetune-unit": "ms",
+              "default": 500
+            },
+            "width": {
+              "type": "number",
+              "minimum": 2,
+              "maximum": 100,
+              "x-effetune-unit": "ms",
+              "default": 5
+            }
+          }
+        }
+      }
+    },
+    "HornResonator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "HornResonator"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "crossover": {
+              "type": "number",
+              "minimum": 20,
+              "maximum": 5000,
+              "x-effetune-unit": "Hz",
+              "default": 600
+            },
+            "length": {
+              "type": "number",
+              "minimum": 20,
+              "maximum": 120,
+              "x-effetune-unit": "cm",
+              "default": 70
+            },
+            "throatDiameter": {
+              "type": "number",
+              "minimum": 0.5,
+              "maximum": 50,
+              "x-effetune-unit": "cm",
+              "default": 3
+            },
+            "mouthDiameter": {
+              "type": "number",
+              "minimum": 5,
+              "maximum": 200,
+              "x-effetune-unit": "cm",
+              "default": 60
+            },
+            "curve": {
+              "type": "number",
+              "minimum": -100,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 40
+            },
+            "damping": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10,
+              "x-effetune-unit": "dB/m",
+              "default": 0.03
+            },
+            "throatReflection": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.99,
+              "default": 0.99
+            },
+            "waveguideGain": {
+              "type": "number",
+              "minimum": -36,
+              "maximum": 36,
+              "x-effetune-unit": "dB",
+              "default": 30
+            }
+          }
+        }
+      }
+    },
+    "HornResonatorPlus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "HornResonatorPlus"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "crossover": {
+              "type": "number",
+              "minimum": 20,
+              "maximum": 5000,
+              "x-effetune-unit": "Hz",
+              "default": 600
+            },
+            "length": {
+              "type": "number",
+              "minimum": 20,
+              "maximum": 120,
+              "x-effetune-unit": "cm",
+              "default": 70
+            },
+            "throatDiameter": {
+              "type": "number",
+              "minimum": 0.5,
+              "maximum": 50,
+              "x-effetune-unit": "cm",
+              "default": 3
+            },
+            "mouthDiameter": {
+              "type": "number",
+              "minimum": 5,
+              "maximum": 200,
+              "x-effetune-unit": "cm",
+              "default": 60
+            },
+            "curve": {
+              "type": "number",
+              "minimum": -100,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 40
+            },
+            "damping": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10,
+              "x-effetune-unit": "dB/m",
+              "default": 0.03
+            },
+            "throatReflection": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.99,
+              "default": 0.99
+            },
+            "waveguideGain": {
+              "type": "number",
+              "minimum": -36,
+              "maximum": 36,
+              "x-effetune-unit": "dB",
+              "default": 30
+            }
+          }
+        }
+      }
+    },
+    "ModalResonator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "ModalResonator"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "resonatorEnabled": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "boolean"
+              },
+              "default": [
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            "frequencyLog": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 3,
+                "maximum": 9.9
+              },
+              "default": [
+                6.86,
+                7.52,
+                7.99,
+                8.34,
+                8.75
+              ]
+            },
+            "decay": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 1,
+                "maximum": 500,
+                "x-effetune-unit": "ms"
+              },
+              "default": [
+                15,
+                12,
+                10,
+                8,
+                6
+              ]
+            },
+            "lowPassLog": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 3,
+                "maximum": 9.9
+              },
+              "default": [
+                7.19,
+                7.86,
+                8.33,
+                8.68,
+                9.08
+              ]
+            },
+            "highPassLog": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 3,
+                "maximum": 9.9
+              },
+              "default": [
+                5.8,
+                6.48,
+                6.94,
+                7.29,
+                7.7
+              ]
+            },
+            "gain": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": -18,
+                "maximum": 18,
+                "x-effetune-unit": "dB"
+              },
+              "default": [
+                0,
+                -3,
+                -6,
+                -9,
+                -12
+              ]
+            },
+            "mix": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 25
+            }
+          }
+        }
+      }
+    },
+    "DattorroPlateReverb": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "DattorroPlateReverb"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "preDelay": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "ms",
+              "default": 10
+            },
+            "bandwidth": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "default": 0.9995
+            },
+            "inputDiffusion1": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "default": 0.75
+            },
+            "inputDiffusion2": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "default": 0.625
+            },
+            "decay": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "default": 0.5
+            },
+            "decayDiffusion1": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "default": 0.7
+            },
+            "damping": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "default": 0.0005
+            },
+            "modulationDepth": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 16,
+              "x-effetune-unit": "samples",
+              "default": 1
+            },
+            "modulationRate": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10,
+              "x-effetune-unit": "Hz",
+              "default": 1
+            },
+            "wetMix": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 30
+            },
+            "dryMix": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 100
+            }
+          }
+        }
+      }
+    },
+    "FDNReverb": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "FDNReverb"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "reverbTime": {
+              "type": "number",
+              "minimum": 0.2,
+              "maximum": 10,
+              "x-effetune-unit": "s",
+              "default": 1.2
+            },
+            "density": {
+              "type": "integer",
+              "minimum": 4,
+              "maximum": 8,
+              "x-effetune-unit": "lines",
+              "default": 8
+            },
+            "preDelay": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "ms",
+              "default": 10
+            },
+            "baseDelay": {
+              "type": "number",
+              "minimum": 10,
+              "maximum": 60,
+              "x-effetune-unit": "ms",
+              "default": 20
+            },
+            "delaySpread": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 25,
+              "x-effetune-unit": "ms",
+              "default": 5
+            },
+            "highFrequencyDamp": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 12,
+              "x-effetune-unit": "dB/s",
+              "default": 6
+            },
+            "lowCut": {
+              "type": "integer",
+              "minimum": 20,
+              "maximum": 500,
+              "x-effetune-unit": "Hz",
+              "default": 100
+            },
+            "modulationDepth": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10,
+              "x-effetune-unit": "ct",
+              "default": 3
+            },
+            "modulationRate": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 5,
+              "x-effetune-unit": "Hz",
+              "default": 0.3
+            },
+            "diffusion": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 100
+            },
+            "wetMix": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 30
+            },
+            "dryMix": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 100
+            },
+            "stereoWidth": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 200,
+              "x-effetune-unit": "%",
+              "default": 100
+            }
+          }
+        }
+      }
+    },
+    "IRReverb": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters",
+        "assets"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "IRReverb"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "channelMode": {
+              "type": "string",
+              "enum": [
+                "automatic",
+                "mono",
+                "independent",
+                "trueStereo",
+                "matrix"
+              ],
+              "default": "automatic"
+            },
+            "latency": {
+              "type": "integer",
+              "enum": [
+                0,
+                128,
+                256,
+                512,
+                1024
+              ],
+              "default": 128
+            },
+            "convolutionRate": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "full",
+                "half",
+                "quarter"
+              ],
+              "default": "auto"
+            },
+            "wetLevel": {
+              "type": "number",
+              "minimum": -96,
+              "maximum": 12,
+              "x-effetune-unit": "dB",
+              "default": -15
+            },
+            "dryLevel": {
+              "type": "number",
+              "minimum": -96,
+              "maximum": 12,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "preDelay": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 500,
+              "x-effetune-unit": "ms",
+              "default": 0
+            }
+          }
+        },
+        "assets": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "impulseResponse"
+          ],
+          "properties": {
+            "impulseResponse": {
+              "$ref": "#/$defs/assetReference"
+            }
+          }
+        }
+      }
+    },
+    "RSReverb": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "RSReverb"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "preDelay": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 50,
+              "x-effetune-unit": "ms",
+              "default": 10
+            },
+            "roomSize": {
+              "type": "number",
+              "minimum": 2,
+              "maximum": 50,
+              "x-effetune-unit": "m",
+              "default": 10
+            },
+            "reverbTime": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 10,
+              "x-effetune-unit": "s",
+              "default": 2.4
+            },
+            "density": {
+              "type": "integer",
+              "minimum": 4,
+              "maximum": 8,
+              "x-effetune-unit": "lines",
+              "default": 8
+            },
+            "diffusion": {
+              "type": "number",
+              "minimum": 0.2,
+              "maximum": 0.8,
+              "x-effetune-unit": "ratio",
+              "default": 0.7
+            },
+            "damping": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 80
+            },
+            "highDamp": {
+              "type": "integer",
+              "minimum": 1000,
+              "maximum": 20000,
+              "x-effetune-unit": "Hz",
+              "default": 2000
+            },
+            "lowDamp": {
+              "type": "integer",
+              "minimum": 20,
+              "maximum": 500,
+              "x-effetune-unit": "Hz",
+              "default": 200
+            },
+            "mix": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 16
+            }
+          }
+        }
+      }
+    },
+    "DynamicSaturation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "DynamicSaturation"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "speakerDrive": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10,
+              "default": 3
+            },
+            "speakerStiffness": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10,
+              "default": 2
+            },
+            "speakerDamping": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 10,
+              "default": 1
+            },
+            "speakerMass": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 5,
+              "default": 1
+            },
+            "distortionDrive": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10,
+              "default": 1.5
+            },
+            "distortionBias": {
+              "type": "number",
+              "minimum": -1,
+              "maximum": 1,
+              "default": 0.1
+            },
+            "distortionMix": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 100
+            },
+            "coneMotionMix": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 20
+            },
+            "outputGain": {
+              "type": "number",
+              "minimum": -18,
+              "maximum": 18,
+              "x-effetune-unit": "dB",
+              "default": 0
+            }
+          }
+        }
+      }
+    },
+    "Exciter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "Exciter"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "highPassFrequency": {
+              "type": "number",
+              "minimum": 500,
+              "maximum": 10000,
+              "x-effetune-unit": "Hz",
+              "default": 3000
+            },
+            "highPassSlope": {
+              "type": "integer",
+              "enum": [
+                0,
+                6,
+                12
+              ],
+              "x-effetune-unit": "dB/oct",
+              "default": 6
+            },
+            "drive": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10,
+              "default": 3
+            },
+            "bias": {
+              "type": "number",
+              "minimum": -0.3,
+              "maximum": 0.3,
+              "default": 0.1
+            },
+            "mix": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 25
+            }
+          }
+        }
+      }
+    },
+    "HardClipping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "HardClipping"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "threshold": {
+              "type": "number",
+              "minimum": -60,
+              "maximum": 0,
+              "x-effetune-unit": "dB",
+              "default": -18
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "both",
+                "positive",
+                "negative"
+              ],
+              "default": "both"
+            }
+          }
+        }
+      }
+    },
+    "HarmonicDistortion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "HarmonicDistortion"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "secondHarmonic": {
+              "type": "number",
+              "minimum": -30,
+              "maximum": 30,
+              "x-effetune-unit": "%",
+              "default": 2
+            },
+            "thirdHarmonic": {
+              "type": "number",
+              "minimum": -30,
+              "maximum": 30,
+              "x-effetune-unit": "%",
+              "default": 3
+            },
+            "fourthHarmonic": {
+              "type": "number",
+              "minimum": -30,
+              "maximum": 30,
+              "x-effetune-unit": "%",
+              "default": 0.5
+            },
+            "fifthHarmonic": {
+              "type": "number",
+              "minimum": -30,
+              "maximum": 30,
+              "x-effetune-unit": "%",
+              "default": 0.3
+            },
+            "sensitivity": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 2,
+              "default": 0.5
+            }
+          }
+        }
+      }
+    },
+    "MultibandSaturation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "MultibandSaturation"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "frequency1": {
+              "type": "number",
+              "minimum": 20,
+              "maximum": 2000,
+              "x-effetune-unit": "Hz",
+              "default": 200
+            },
+            "frequency2": {
+              "type": "number",
+              "minimum": 200,
+              "maximum": 20000,
+              "x-effetune-unit": "Hz",
+              "default": 4000
+            },
+            "drive": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10
+              },
+              "default": [
+                1.5,
+                1.5,
+                1.5
+              ]
+            },
+            "bias": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "number",
+                "minimum": -0.3,
+                "maximum": 0.3
+              },
+              "default": [
+                0.1,
+                0.1,
+                0.1
+              ]
+            },
+            "mix": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100,
+                "x-effetune-unit": "%"
+              },
+              "default": [
+                100,
+                100,
+                100
+              ]
+            },
+            "gain": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "number",
+                "minimum": -18,
+                "maximum": 18,
+                "x-effetune-unit": "dB"
+              },
+              "default": [
+                0,
+                0,
+                0
+              ]
+            }
+          }
+        }
+      }
+    },
+    "Saturation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "Saturation"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "drive": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10,
+              "default": 1.5
+            },
+            "bias": {
+              "type": "number",
+              "minimum": -0.3,
+              "maximum": 0.3,
+              "default": 0.1
+            },
+            "mix": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 100
+            },
+            "gain": {
+              "type": "number",
+              "minimum": -18,
+              "maximum": 18,
+              "x-effetune-unit": "dB",
+              "default": -2
+            }
+          }
+        }
+      }
+    },
+    "SubSynth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "SubSynth"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "subLevel": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 200,
+              "x-effetune-unit": "%",
+              "default": 100
+            },
+            "dryLevel": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 200,
+              "x-effetune-unit": "%",
+              "default": 100
+            },
+            "subLowPassFrequency": {
+              "type": "number",
+              "minimum": 5,
+              "maximum": 400,
+              "x-effetune-unit": "Hz",
+              "default": 160
+            },
+            "subLowPassSlope": {
+              "type": "integer",
+              "minimum": -24,
+              "maximum": 0,
+              "x-effetune-unit": "dB/oct",
+              "default": -12
+            },
+            "subHighPassFrequency": {
+              "type": "number",
+              "minimum": 5,
+              "maximum": 400,
+              "x-effetune-unit": "Hz",
+              "default": 5
+            },
+            "subHighPassSlope": {
+              "type": "integer",
+              "minimum": -24,
+              "maximum": 0,
+              "x-effetune-unit": "dB/oct",
+              "default": -6
+            },
+            "dryHighPassFrequency": {
+              "type": "number",
+              "minimum": 5,
+              "maximum": 400,
+              "x-effetune-unit": "Hz",
+              "default": 40
+            },
+            "dryHighPassSlope": {
+              "type": "integer",
+              "minimum": -24,
+              "maximum": 0,
+              "x-effetune-unit": "dB/oct",
+              "default": 0
+            }
+          }
+        }
+      }
+    },
+    "CrossfeedFilter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "CrossfeedFilter"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "level": {
+              "type": "number",
+              "minimum": -60,
+              "maximum": 0,
+              "x-effetune-unit": "dB",
+              "default": -6
+            },
+            "delay": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "x-effetune-unit": "ms",
+              "default": 0.3
+            },
+            "lowPassFrequency": {
+              "type": "number",
+              "minimum": 100,
+              "maximum": 20000,
+              "x-effetune-unit": "Hz",
+              "default": 700
+            }
+          }
+        }
+      }
+    },
+    "MSMatrix": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "MSMatrix"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1,
+              "default": 0
+            },
+            "midGain": {
+              "type": "number",
+              "minimum": -18,
+              "maximum": 18,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "sideGain": {
+              "type": "number",
+              "minimum": -18,
+              "maximum": 18,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "swap": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1,
+              "default": 0
+            }
+          }
+        }
+      }
+    },
+    "MultibandBalance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "MultibandBalance"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "frequency1": {
+              "type": "number",
+              "minimum": 20,
+              "maximum": 500,
+              "x-effetune-unit": "Hz",
+              "default": 100
+            },
+            "frequency2": {
+              "type": "number",
+              "minimum": 100,
+              "maximum": 2000,
+              "x-effetune-unit": "Hz",
+              "default": 500
+            },
+            "frequency3": {
+              "type": "number",
+              "minimum": 500,
+              "maximum": 8000,
+              "x-effetune-unit": "Hz",
+              "default": 2000
+            },
+            "frequency4": {
+              "type": "number",
+              "minimum": 1000,
+              "maximum": 20000,
+              "x-effetune-unit": "Hz",
+              "default": 8000
+            },
+            "balance": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": -100,
+                "maximum": 100,
+                "x-effetune-unit": "%"
+              },
+              "default": [
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            }
+          }
+        }
+      }
+    },
+    "StereoBlend": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "StereoBlend"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "stereo": {
+              "type": "number",
+              "minimum": -200,
+              "maximum": 200,
+              "x-effetune-unit": "%",
+              "default": 60
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,9 +1,10 @@
 // FM Radio Simulator: physical FM broadcast transmission -> propagation -> reception
 // chain on the three-tier split-rate layout (host / MPX / RF core). Production port of
-// the verified scratch kernel (tmp/dev/fm-radio-simulator-scratch/src/kernel.cpp, run
-// r0-f1f2-20260723-01) with the diagnostic-only levers removed; every arithmetic step
-// matches the JS reference processor in plugins/lofi/fm_radio_simulator.js bit for bit
-// so that fixed-seed goldens hold across native, WASM, and WASM+SIMD.
+// the verified scratch kernel
+// (tmp/dev/fm-radio-simulator/fm-radio-simulator-scratch/src/kernel.cpp, run r0-f1f2-20260723-01)
+// with the diagnostic-only levers removed; every arithmetic step matches the JS reference processor
+// in plugins/lofi/fm_radio_simulator.js bit for bit so that fixed-seed goldens hold across native,
+// WASM, and WASM+SIMD.
 #include "effetune/kernel.h"
 #include "FMRadioSimulatorPluginParams.h"
 #include "effetune/dsp/xorshift_rng.h"

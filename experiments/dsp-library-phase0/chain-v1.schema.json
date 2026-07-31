@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:effetune:dsp-chain:v1-draft",
+  "title": "EffeTune DSP Chain v1 draft",
+  "description": "Phase 0 draft of the semantic high-level chain format. Entries are processed as one ordered serial chain. This draft covers Compressor only and is not a published v1 compatibility guarantee.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "chain"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Semantic chain schema version. This is independent of all binary ABI versions and parameter layout hashes."
+    },
+    "chain": {
+      "type": "array",
+      "description": "Effects in processing order. Audio flows through each enabled entry from index zero to the final entry; an empty array is an identity chain.",
+      "items": {
+        "$ref": "#/$defs/effect"
+      }
+    }
+  },
+  "$defs": {
+    "effect": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/compressor"
+        }
+      ]
+    },
+    "compressor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional caller-owned identifier used to address this effect instance. A runtime must reject duplicate explicit identifiers within one chain."
+        },
+        "type": {
+          "const": "Compressor",
+          "description": "Semantic effect type. It is deliberately independent of the internal CompressorPlugin registry name."
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether this effect processes audio. The default is an annotation; the wrapper, not JSON Schema validation, applies it when the member is absent."
+        },
+        "parameters": {
+          "$ref": "#/$defs/compressorParameters"
+        }
+      }
+    },
+    "compressorParameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Long-name semantic Compressor parameters. Each default is an annotation that a wrapper must materialize before invoking the DSP kernel.",
+      "properties": {
+        "threshold": {
+          "type": "number",
+          "minimum": -60,
+          "maximum": 0,
+          "default": -24,
+          "description": "Compression threshold in dB."
+        },
+        "ratio": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 20,
+          "default": 2,
+          "description": "Compression ratio."
+        },
+        "attack": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 100,
+          "default": 10,
+          "description": "Attack time in milliseconds."
+        },
+        "release": {
+          "type": "number",
+          "minimum": 10,
+          "maximum": 1000,
+          "default": 100,
+          "description": "Release time in milliseconds."
+        },
+        "knee": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 12,
+          "default": 3,
+          "description": "Knee width in dB."
+        },
+        "gain": {
+          "type": "number",
+          "minimum": -12,
+          "maximum": 12,
+          "default": 0,
+          "description": "Makeup gain in dB."
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "version": 1,
+      "chain": [
+        {
+          "id": "dialog-compressor",
+          "type": "Compressor",
+          "enabled": true,
+          "parameters": {
+            "threshold": -24,
+            "ratio": 4,
+            "attack": 5,
+            "release": 100,
+            "knee": 3,
+            "gain": 0
+          }
+        }
+      ]
+    }
+  ]
+}

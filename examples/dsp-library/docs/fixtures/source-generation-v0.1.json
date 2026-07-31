@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "frames": 4096,
+  "channels": 2,
+  "defaultSampleRate": 48000,
+  "members": [
+    { "type": "AMRadioSimulator", "parameters": {} },
+    { "type": "DCOffset", "parameters": { "offset": 0.25 } },
+    { "type": "BitCrusher", "parameters": {} },
+    { "type": "DSD64IMDSimulator", "sampleRate": 96000, "parameters": {} },
+    { "type": "FMRadioSimulator", "parameters": {} },
+    { "type": "HumGenerator", "parameters": { "level": -20 } },
+    { "type": "NoiseBlender", "parameters": { "level": -20 } },
+    { "type": "Oscillator", "parameters": { "volume": -12 } },
+    { "type": "SWRadioSimulator", "parameters": {} },
+    {
+      "type": "VinylArtifacts",
+      "parameters": {
+        "popsPerMinute": 120,
+        "cracklesPerMinute": 2000,
+        "hissLevel": -20,
+        "rumbleLevel": -20
+      }
+    },
+    {
+      "type": "VinylSimulator",
+      "parameters": { "roughness": 100, "dustRate": 10000, "staticRate": 100 }
+    }
+  ]
+}

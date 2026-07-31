@@ -8,16 +8,17 @@ namespace effetune::generated {
 
 struct LoudnessEqualizerPluginParams {
   float averageSpl;
+  float relativeVolume;
   float lowGain;
   float lowFrequency;
   float lowQ;
   float highQ;
   float highGain;
   float highFrequency;
-  static constexpr std::uint32_t kHash = 0x88692f5fu;
-  static constexpr std::uint32_t kFloatCount = 7u;
+  static constexpr std::uint32_t kHash = 0xaa8015c1u;
+  static constexpr std::uint32_t kFloatCount = 8u;
 };
-static_assert(7u == 0u || sizeof(LoudnessEqualizerPluginParams) == sizeof(float) * 7u);
+static_assert(8u == 0u || sizeof(LoudnessEqualizerPluginParams) == sizeof(float) * 8u);
 
 } // namespace effetune::generated
 

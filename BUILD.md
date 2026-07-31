@@ -15,6 +15,7 @@ Before you begin, ensure you have the following installed on your system:
 - **Node.js** (v22.12 or later)
 - **npm** (v10 or later)
 - **Git** (for cloning the repository)
+- **Ruby** with the GitHub Pages gem used by the deployment workflow (`gem install github-pages -v 232`) when previewing the documentation site
 
 ## Development Environment Setup
 
@@ -186,10 +187,18 @@ Then open:
 
 - `http://localhost:8000/effetune.html` for the web app
 - `http://localhost:8000/` for the local documentation site home
+- `http://localhost:8000/dsp/` for the DSP library documentation
 - `http://localhost:8000/docs/i18n/ja/` for a localized documentation page
 - `http://localhost:8000/dev/effetune_test.html` for the development test page
 
-The development server renders the documentation Markdown locally with the site layout, so the public site structure can be checked without running Jekyll separately.
+The development server first builds the DSP browser package, builds `_site` with GitHub
+Pages 232 in the production environment, and stages the complete DSP site snapshot under
+the rendered guide. It then serves that output while Jekyll watches for changes, refreshing
+the staged demo, schemas, catalog, LLM index, and site manifest after every Jekyll rebuild.
+The initial build can take a few minutes. Documentation pages therefore use the real Liquid
+layouts, kramdown renderer, navigation data, and permalink handling instead of a separate
+development-only Markdown implementation. Web application assets still receive the
+development server's no-cache behavior.
 
 ## Building the Application
 

@@ -1,0 +1,25 @@
+---
+layout: default
+---
+{{ content }}
+<script>
+  (() => {
+    const input = document.querySelector('[data-dsp-effect-filter]');
+    if (!input) return;
+    const items = [...document.querySelectorAll('[data-effect-tags]')].map(marker => marker.closest('li'));
+    const count = document.querySelector('[data-dsp-effect-count]');
+    const update = () => {
+      const query = input.value.trim().toLowerCase();
+      let visible = 0;
+      for (const item of items) {
+        const matches = !query || item.textContent.toLowerCase().includes(query) ||
+          item.querySelector('[data-effect-tags]').dataset.effectTags.includes(query);
+        item.hidden = !matches;
+        if (matches) visible += 1;
+      }
+      if (count) count.textContent = `${visible} effect${visible === 1 ? '' : 's'} shown`;
+    };
+    input.addEventListener('input', update);
+    update();
+  })();
+</script>

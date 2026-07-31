@@ -576,6 +576,29 @@ test('fast-wake unsafe routed chains remain Active but maximum deep suspend uses
   assert.equal(muted.inputRetentionTarget, true);
 });
 
+test('unobserved window minimization cannot trigger maximum deep suspend or input release', () => {
+  const decision = decidePowerTarget(makeFacts({
+    inputConfigured: true,
+    inputRouteIntent: InputRouteIntent.EXTERNAL,
+    inputResourceState: InputResourceState.LIVE,
+    inputAvailability: InputAvailability.AVAILABLE,
+    visibility: 'visible',
+    hiddenSinceEpochMs: NOW - 600_000,
+    routedInputSilentSinceEpochMs: NOW - 600_000,
+    routedOutputSilentSinceEpochMs: NOW - 600_000,
+    routedSilenceInputAvailabilityRevision: 17,
+    observationTopologyRevision: 11,
+    observationWorkletGraphGeneration: 12
+  }), {
+    mode: PowerPolicy.MAXIMUM,
+    fullSuspendDelaySeconds: 300
+  }, NOW);
+
+  assert.notEqual(decision.targetState, AudioPowerState.SUSPENDED);
+  assert.equal(decision.shouldReleaseInput, false);
+  assert.equal(decision.manualResumeRequired, false);
+});
+
 test('maximum routed-silence suspension is source-neutral while microphone release is not', () => {
   const common = {
     visibility: 'hidden',

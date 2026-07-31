@@ -18,6 +18,7 @@ const AM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
     const TWO_PI = 6.28318530717958647692;
     const SQRT_HALF = 0.70710678118654752440;
     const FLOAT32_SCALE = 4294967296;
+    const FLOAT53_SCALE = 9007199254740992;
     const CONTROL_INTERVAL = 32;
     const AGC_TARGET_DB = -6;
     const AGC_MINIMUM_GAIN_DB = ${AM_RADIO_SIMULATOR_MINIMUM_AGC_GAIN_DB};
@@ -1296,7 +1297,7 @@ const AM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
     const selectedSpeaker = speakerIndex(parameters.sp);
     if (!Number.isInteger(context.__amRadioBaseSeed)) {
         const seeded = typeof context.__seededRandom === 'function' ? context.__seededRandom() : 0.937232635;
-        context.__amRadioBaseSeed = Math.floor(seeded * FLOAT32_SCALE) >>> 0;
+        context.__amRadioBaseSeed = Math.floor(seeded * FLOAT53_SCALE) >>> 0;
     }
     let state = context.__amRadioSimulator;
     if (!state || state.sampleRate !== sampleRate || state.pairChannels !== pairChannels) {

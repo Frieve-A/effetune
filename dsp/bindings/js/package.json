@@ -1,0 +1,53 @@
+{
+  "name": "@effetune/dsp",
+  "version": "0.1.0",
+  "description": "EffeTune's deterministic WebAssembly audio effects for JavaScript and AudioWorklet",
+  "type": "module",
+  "license": "MIT",
+  "author": "Yoshiyuki Kobayashi",
+  "homepage": "https://effetune.frieve.com/dsp/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Frieve-A/effetune",
+    "directory": "dsp/bindings/js"
+  },
+  "bugs": {
+    "url": "https://github.com/Frieve-A/effetune/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "sideEffects": [
+    "./dist/worklet-processor.js"
+  ],
+  "files": [
+    "dist/",
+    "LICENSE",
+    "README.md",
+    "THIRD_PARTY_NOTICES.txt"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./worklet": {
+      "types": "./dist/worklet.d.ts",
+      "import": "./dist/worklet.js"
+    },
+    "./processor": "./dist/worklet-processor.js",
+    "./schemas/chain-v1.json": "./dist/schemas/chain-v1.schema.json",
+    "./schemas/bundle-v1.json": "./dist/schemas/bundle-v1.schema.json",
+    "./catalog": {
+      "types": "./dist/catalog-entry.d.ts",
+      "import": "./dist/catalog-entry.js"
+    },
+    "./catalog.json": "./dist/catalog/effects-v1.json"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "pack:check": "node scripts/verify-pack.mjs",
+    "install:check": "node scripts/verify-install.mjs"
+  }
+}

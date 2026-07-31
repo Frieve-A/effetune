@@ -1,0 +1,49 @@
+{
+  "baseFormat": {
+    "formatTag": 1,
+    "magic": "ETA1",
+    "headerBytes": 32,
+    "pathRecordBytes": 12,
+    "reservedBytes": 8,
+    "sampleType": "float32",
+    "byteOrder": "little-endian",
+    "layout": "planar",
+    "channels": 1,
+    "frames": 1,
+    "sampleRate": 48000,
+    "topology": "mono",
+    "pathCount": 0
+  },
+  "invalid": [
+    {
+      "name": "numeric-public-topology",
+      "byteLength": 36,
+      "formatOverrides": {
+        "topology": 1
+      }
+    },
+    {
+      "name": "nonmatrix-paths-key",
+      "byteLength": 36,
+      "formatOverrides": {
+        "paths": []
+      }
+    },
+    {
+      "name": "matrix-path-additional-property",
+      "byteLength": 48,
+      "formatOverrides": {
+        "topology": "matrix",
+        "pathCount": 1,
+        "paths": [
+          {
+            "inputSlot": 0,
+            "outputSlot": 0,
+            "irChannel": 0,
+            "gain": 1
+          }
+        ]
+      }
+    }
+  ]
+}

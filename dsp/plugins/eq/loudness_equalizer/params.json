@@ -10,8 +10,17 @@
       "key": "sp",
       "kind": "float",
       "min": 60,
-      "max": 85,
+      "max": 96,
       "default": 65,
+      "unit": "dB"
+    },
+    {
+      "name": "relativeVolume",
+      "key": "rv",
+      "kind": "float",
+      "min": -30,
+      "max": 12,
+      "default": 0,
       "unit": "dB"
     },
     {

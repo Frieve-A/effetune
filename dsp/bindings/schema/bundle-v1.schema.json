@@ -1,0 +1,223 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://effetune.frieve.com/dsp/schemas/bundle-v1.schema.json",
+  "title": "EffeTune DSP Bundle v1",
+  "description": "Manifest form for a canonical chain and bounded external impulse-response assets. Container and transport are outside this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "chain",
+    "assets"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1
+    },
+    "chain": {
+      "$ref": "https://effetune.frieve.com/dsp/schemas/chain-v1.schema.json"
+    },
+    "assets": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "$ref": "#/$defs/asset"
+      }
+    }
+  },
+  "$comment": "Duplicate asset IDs, missing chain references, digest verification, and byteLength === 32 + pathCount*12 + channels*frames*4 are runtime validation responsibilities.",
+  "$defs": {
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "reference",
+        "sha256",
+        "byteLength",
+        "format"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "kind": {
+          "const": "impulseResponse"
+        },
+        "reference": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048,
+          "description": "Opaque resolver reference. The bundle schema does not require ZIP or filesystem paths."
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "byteLength": {
+          "type": "integer",
+          "minimum": 36,
+          "maximum": 33554432
+        },
+        "format": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "formatTag",
+            "magic",
+            "headerBytes",
+            "pathRecordBytes",
+            "sampleType",
+            "byteOrder",
+            "layout",
+            "channels",
+            "frames",
+            "sampleRate",
+            "topology",
+            "pathCount",
+            "reservedBytes"
+          ],
+          "properties": {
+            "formatTag": {
+              "type": "integer",
+              "const": 1,
+              "description": "ET_ASSET_F32_MULTICH format tag."
+            },
+            "magic": {
+              "const": "ETA1",
+              "description": "ASCII bytes stored at payload offsets 0..3."
+            },
+            "headerBytes": {
+              "type": "integer",
+              "const": 32
+            },
+            "pathRecordBytes": {
+              "type": "integer",
+              "const": 12
+            },
+            "reservedBytes": {
+              "type": "integer",
+              "const": 8,
+              "description": "Zero-filled payload header bytes at offsets 24..31."
+            },
+            "sampleType": {
+              "const": "float32"
+            },
+            "byteOrder": {
+              "const": "little-endian"
+            },
+            "layout": {
+              "const": "planar"
+            },
+            "channels": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8
+            },
+            "frames": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8388600
+            },
+            "sampleRate": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4294967295
+            },
+            "topology": {
+              "type": "string",
+              "enum": [
+                "unspecified",
+                "mono",
+                "independent",
+                "trueStereo",
+                "matrix"
+              ],
+              "description": "Decoded uint32 header tag: unspecified=0, mono=1, independent=2, trueStereo=3, matrix=4."
+            },
+            "pathCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 8
+            },
+            "paths": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 8,
+              "description": "Matrix routes. Distinct inputSlot values must be exactly 0..N-1, and N must not exceed the selected effect processing-channel count.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "inputSlot",
+                  "outputSlot",
+                  "irChannel"
+                ],
+                "properties": {
+                  "inputSlot": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 7,
+                    "description": "Zero-based matrix input; the set of input slots must be contiguous from 0."
+                  },
+                  "outputSlot": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 7
+                  },
+                  "irChannel": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 7
+                  }
+                }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "topology": {
+                    "const": "matrix"
+                  }
+                },
+                "required": [
+                  "topology"
+                ]
+              },
+              "then": {
+                "required": [
+                  "paths"
+                ],
+                "properties": {
+                  "pathCount": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 8
+                  }
+                }
+              },
+              "else": {
+                "properties": {
+                  "pathCount": {
+                    "const": 0
+                  }
+                },
+                "not": {
+                  "required": [
+                    "paths"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

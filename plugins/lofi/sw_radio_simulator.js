@@ -4,7 +4,7 @@
 // parameter; with `fr` off the processor is a pass-through that reports a bypass marker.
 //
 // The signal chain is a faithful port of the Phase 0 reference model
-// (tmp/dev/sw-radio-phase0/sw-radio-model.mjs), which is itself a fork of the shipped AM
+// (tmp/dev/sw-radio-simulator/sw-radio-phase0/sw-radio-model.mjs), which is itself a fork of the shipped AM
 // Radio Simulator complex-envelope engine with the C-QUAM stereo machinery removed and the
 // HF differences applied: ionospheric delay spread (ds), Doppler spread up to 10 Hz,
 // heterodyne offsets down to 0.1 kHz, skywave-dominant defaults, and an optional
@@ -32,6 +32,7 @@ const SW_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
     const TWO_PI = 6.28318530717958647692;
     const SQRT_HALF = 0.70710678118654752440;
     const FLOAT32_SCALE = 4294967296;
+    const FLOAT53_SCALE = 9007199254740992;
     const CONTROL_INTERVAL = 32;
     const AGC_TARGET_DB = -6;
     const AGC_MINIMUM_GAIN_DB = ${SW_RADIO_SIMULATOR_MINIMUM_AGC_GAIN_DB};
@@ -919,7 +920,7 @@ const SW_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
     if (!Number.isInteger(context.__swRadioBaseSeed)) {
         const seeded = typeof context.__seededRandom === 'function' ?
             context.__seededRandom() : 0.937232635;
-        context.__swRadioBaseSeed = Math.floor(seeded * FLOAT32_SCALE) >>> 0;
+        context.__swRadioBaseSeed = Math.floor(seeded * FLOAT53_SCALE) >>> 0;
     }
     let state = context.__swRadioSimulator;
     if (!state || state.sampleRate !== sampleRate || state.pairChannels !== pairChannels) {

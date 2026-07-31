@@ -1,0 +1,6428 @@
+{
+  "version": 1,
+  "channelMapping": {
+    "1": "1",
+    "2": "2",
+    "3": "3",
+    "4": "4",
+    "5": "5",
+    "6": "6",
+    "7": "7",
+    "8": "8",
+    "34": "34",
+    "56": "56",
+    "78": "78",
+    "all": "A",
+    "stereo": null,
+    "left": "L",
+    "right": "R"
+  },
+  "effects": {
+    "LevelMeter": {
+      "internalType": "LevelMeterPlugin",
+      "layoutHash": 2166136261,
+      "floatCount": 0,
+      "packedParameters": [],
+      "assets": []
+    },
+    "Oscilloscope": {
+      "internalType": "OscilloscopePlugin",
+      "layoutHash": 2229411282,
+      "floatCount": 7,
+      "packedParameters": [
+        {
+          "publicName": "displayTime",
+          "field": "displayTime",
+          "keys": [
+            "dt"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "triggerMode",
+          "field": "triggerMode",
+          "keys": [
+            "tm"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "triggerLevel",
+          "field": "triggerLevel",
+          "keys": [
+            "tl"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "triggerEdge",
+          "field": "triggerEdge",
+          "keys": [
+            "te"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "holdoff",
+          "field": "holdoff",
+          "keys": [
+            "ho"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "displayLevel",
+          "field": "displayLevel",
+          "keys": [
+            "dl"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "verticalOffset",
+          "field": "verticalOffset",
+          "keys": [
+            "vo"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "Spectrogram": {
+      "internalType": "SpectrogramPlugin",
+      "layoutHash": 3382561824,
+      "floatCount": 2,
+      "packedParameters": [
+        {
+          "publicName": "dBRange",
+          "field": "dBRange",
+          "keys": [
+            "dr"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "points",
+          "field": "points",
+          "keys": [
+            "pt"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "SpectrumAnalyzer": {
+      "internalType": "SpectrumAnalyzerPlugin",
+      "layoutHash": 3382561824,
+      "floatCount": 2,
+      "packedParameters": [
+        {
+          "publicName": "dBRange",
+          "field": "dBRange",
+          "keys": [
+            "dr"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "points",
+          "field": "points",
+          "keys": [
+            "pt"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "StereoMeter": {
+      "internalType": "StereoMeterPlugin",
+      "layoutHash": 2967351826,
+      "floatCount": 1,
+      "packedParameters": [
+        {
+          "publicName": "windowTime",
+          "field": "windowTime",
+          "keys": [
+            "wt"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "ChannelDivider": {
+      "internalType": "ChannelDividerPlugin",
+      "layoutHash": 3926343008,
+      "floatCount": 7,
+      "packedParameters": [
+        {
+          "publicName": "bandCount",
+          "field": "bandCount",
+          "keys": [
+            "bc"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "frequency1",
+          "field": "frequency1",
+          "keys": [
+            "f1"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "slope1",
+          "field": "slope1",
+          "keys": [
+            "s1"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "frequency2",
+          "field": "frequency2",
+          "keys": [
+            "f2"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "slope2",
+          "field": "slope2",
+          "keys": [
+            "s2"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "frequency3",
+          "field": "frequency3",
+          "keys": [
+            "f3"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "slope3",
+          "field": "slope3",
+          "keys": [
+            "s3"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "DCOffset": {
+      "internalType": "DCOffsetPlugin",
+      "layoutHash": 1104945464,
+      "floatCount": 1,
+      "packedParameters": [
+        {
+          "publicName": "offset",
+          "field": "offset",
+          "keys": [
+            "of"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "FIRCrossover": {
+      "internalType": "FIRCrossoverPlugin",
+      "layoutHash": 577225552,
+      "floatCount": 3,
+      "packedParameters": [
+        {
+          "publicName": "latencyMode",
+          "field": "latencyMode",
+          "keys": [
+            "lt"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "filterDelaySamples",
+          "field": "filterDelaySamples",
+          "keys": [
+            "fd"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "bandCount",
+          "field": "bandCount",
+          "keys": [
+            "bc"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": [
+        {
+          "publicName": "impulseResponse",
+          "slot": 0,
+          "format": "ET_ASSET_F32_MULTICH",
+          "capacity": "32 MiB convolution cap"
+        }
+      ]
+    },
+    "Matrix": {
+      "internalType": "MatrixPlugin",
+      "layoutHash": 117968709,
+      "floatCount": 0,
+      "packedParameters": [],
+      "structuredParameter": {
+        "publicName": "matrixRoutes",
+        "key": "mx",
+        "codec": "matrix-routes-v1",
+        "maxItems": 1024,
+        "byteCapacity": 3076
+      },
+      "assets": []
+    },
+    "MultiChannelPanel": {
+      "internalType": "MultiChannelPanelPlugin",
+      "layoutHash": 4191368224,
+      "floatCount": 39,
+      "packedParameters": [
+        {
+          "publicName": "mute",
+          "field": "mute",
+          "keys": [
+            "m0",
+            "m1",
+            "m2",
+            "m3",
+            "m4",
+            "m5",
+            "m6",
+            "m7"
+          ],
+          "offset": 0,
+          "count": 8,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "solo",
+          "field": "solo",
+          "keys": [
+            "s0",
+            "s1",
+            "s2",
+            "s3",
+            "s4",
+            "s5",
+            "s6",
+            "s7"
+          ],
+          "offset": 8,
+          "count": 8,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "volume",
+          "field": "volume",
+          "keys": [
+            "v0",
+            "v1",
+            "v2",
+            "v3",
+            "v4",
+            "v5",
+            "v6",
+            "v7"
+          ],
+          "offset": 16,
+          "count": 8,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "delay",
+          "field": "delay",
+          "keys": [
+            "d0",
+            "d1",
+            "d2",
+            "d3",
+            "d4",
+            "d5",
+            "d6",
+            "d7"
+          ],
+          "offset": 24,
+          "count": 8,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "link",
+          "field": "link",
+          "keys": [
+            "l0",
+            "l1",
+            "l2",
+            "l3",
+            "l4",
+            "l5",
+            "l6"
+          ],
+          "offset": 32,
+          "count": 7,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "Mute": {
+      "internalType": "MutePlugin",
+      "layoutHash": 2166136261,
+      "floatCount": 0,
+      "packedParameters": [],
+      "assets": []
+    },
+    "PolarityInversion": {
+      "internalType": "PolarityInversionPlugin",
+      "layoutHash": 2166136261,
+      "floatCount": 0,
+      "packedParameters": [],
+      "assets": []
+    },
+    "StereoBalance": {
+      "internalType": "StereoBalancePlugin",
+      "layoutHash": 289332571,
+      "floatCount": 1,
+      "packedParameters": [
+        {
+          "publicName": "balance",
+          "field": "balance",
+          "keys": [
+            "bl"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "Volume": {
+      "internalType": "VolumePlugin",
+      "layoutHash": 1719233191,
+      "floatCount": 1,
+      "packedParameters": [
+        {
+          "publicName": "volume",
+          "field": "volume",
+          "keys": [
+            "vl"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "Delay": {
+      "internalType": "DelayPlugin",
+      "layoutHash": 1607012936,
+      "floatCount": 8,
+      "packedParameters": [
+        {
+          "publicName": "preDelay",
+          "field": "preDelay",
+          "keys": [
+            "pd"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "delaySize",
+          "field": "delaySize",
+          "keys": [
+            "ds"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "damping",
+          "field": "damping",
+          "keys": [
+            "dp"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "highDamp",
+          "field": "highDamp",
+          "keys": [
+            "hd"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "lowDamp",
+          "field": "lowDamp",
+          "keys": [
+            "ld"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mix",
+          "field": "mix",
+          "keys": [
+            "mx"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "feedback",
+          "field": "feedback",
+          "keys": [
+            "fb"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "pingPong",
+          "field": "pingPong",
+          "keys": [
+            "pp"
+          ],
+          "offset": 7,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "TimeAlignment": {
+      "internalType": "TimeAlignmentPlugin",
+      "layoutHash": 669252438,
+      "floatCount": 1,
+      "packedParameters": [
+        {
+          "publicName": "delay",
+          "field": "delay",
+          "keys": [
+            "dl"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "AutoLeveler": {
+      "internalType": "AutoLevelerPlugin",
+      "layoutHash": 3769758541,
+      "floatCount": 7,
+      "packedParameters": [
+        {
+          "publicName": "targetLufs",
+          "field": "targetLufs",
+          "keys": [
+            "tg"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "timeWindow",
+          "field": "timeWindow",
+          "keys": [
+            "tw"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "maxGain",
+          "field": "maxGain",
+          "keys": [
+            "mg"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "minGain",
+          "field": "minGain",
+          "keys": [
+            "ng"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "attack",
+          "field": "attack",
+          "keys": [
+            "at"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "release",
+          "field": "release",
+          "keys": [
+            "rt"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "noiseGate",
+          "field": "noiseGate",
+          "keys": [
+            "gt"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "BrickwallLimiter": {
+      "internalType": "BrickwallLimiterPlugin",
+      "layoutHash": 3039928906,
+      "floatCount": 6,
+      "packedParameters": [
+        {
+          "publicName": "threshold",
+          "field": "threshold",
+          "keys": [
+            "th"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "release",
+          "field": "release",
+          "keys": [
+            "rl"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "lookahead",
+          "field": "lookahead",
+          "keys": [
+            "la"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "oversampling",
+          "field": "oversampling",
+          "keys": [
+            "os"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "inputGain",
+          "field": "inputGain",
+          "keys": [
+            "ig"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "margin",
+          "field": "margin",
+          "keys": [
+            "sm"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "Compressor": {
+      "internalType": "CompressorPlugin",
+      "layoutHash": 763850658,
+      "floatCount": 6,
+      "packedParameters": [
+        {
+          "publicName": "threshold",
+          "field": "threshold",
+          "keys": [
+            "th"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "ratio",
+          "field": "ratio",
+          "keys": [
+            "rt"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "attack",
+          "field": "attack",
+          "keys": [
+            "at"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "release",
+          "field": "release",
+          "keys": [
+            "rl"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "knee",
+          "field": "knee",
+          "keys": [
+            "kn"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "gain",
+          "field": "gain",
+          "keys": [
+            "gn"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "Expander": {
+      "internalType": "ExpanderPlugin",
+      "layoutHash": 763850658,
+      "floatCount": 6,
+      "packedParameters": [
+        {
+          "publicName": "threshold",
+          "field": "threshold",
+          "keys": [
+            "th"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "ratio",
+          "field": "ratio",
+          "keys": [
+            "rt"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "attack",
+          "field": "attack",
+          "keys": [
+            "at"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "release",
+          "field": "release",
+          "keys": [
+            "rl"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "knee",
+          "field": "knee",
+          "keys": [
+            "kn"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "gain",
+          "field": "gain",
+          "keys": [
+            "gn"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "Gate": {
+      "internalType": "GatePlugin",
+      "layoutHash": 763850658,
+      "floatCount": 6,
+      "packedParameters": [
+        {
+          "publicName": "threshold",
+          "field": "threshold",
+          "keys": [
+            "th"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "ratio",
+          "field": "ratio",
+          "keys": [
+            "rt"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "attack",
+          "field": "attack",
+          "keys": [
+            "at"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "release",
+          "field": "release",
+          "keys": [
+            "rl"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "knee",
+          "field": "knee",
+          "keys": [
+            "kn"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "gain",
+          "field": "gain",
+          "keys": [
+            "gn"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "MultibandCompressor": {
+      "internalType": "MultibandCompressorPlugin",
+      "layoutHash": 3844787426,
+      "floatCount": 34,
+      "packedParameters": [
+        {
+          "publicName": "frequency1",
+          "field": "frequency1",
+          "keys": [
+            "f1"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "frequency2",
+          "field": "frequency2",
+          "keys": [
+            "f2"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "frequency3",
+          "field": "frequency3",
+          "keys": [
+            "f3"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "frequency4",
+          "field": "frequency4",
+          "keys": [
+            "f4"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "threshold",
+          "field": "threshold",
+          "keys": [
+            "t0",
+            "t1",
+            "t2",
+            "t3",
+            "t4"
+          ],
+          "offset": 4,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "ratio",
+          "field": "ratio",
+          "keys": [
+            "r0",
+            "r1",
+            "r2",
+            "r3",
+            "r4"
+          ],
+          "offset": 9,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "attack",
+          "field": "attack",
+          "keys": [
+            "a0",
+            "a1",
+            "a2",
+            "a3",
+            "a4"
+          ],
+          "offset": 14,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "release",
+          "field": "release",
+          "keys": [
+            "rl0",
+            "rl1",
+            "rl2",
+            "rl3",
+            "rl4"
+          ],
+          "offset": 19,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "knee",
+          "field": "knee",
+          "keys": [
+            "k0",
+            "k1",
+            "k2",
+            "k3",
+            "k4"
+          ],
+          "offset": 24,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "gain",
+          "field": "gain",
+          "keys": [
+            "g0",
+            "g1",
+            "g2",
+            "g3",
+            "g4"
+          ],
+          "offset": 29,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "MultibandExpander": {
+      "internalType": "MultibandExpanderPlugin",
+      "layoutHash": 3844787426,
+      "floatCount": 34,
+      "packedParameters": [
+        {
+          "publicName": "frequency1",
+          "field": "frequency1",
+          "keys": [
+            "f1"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "frequency2",
+          "field": "frequency2",
+          "keys": [
+            "f2"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "frequency3",
+          "field": "frequency3",
+          "keys": [
+            "f3"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "frequency4",
+          "field": "frequency4",
+          "keys": [
+            "f4"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "threshold",
+          "field": "threshold",
+          "keys": [
+            "t0",
+            "t1",
+            "t2",
+            "t3",
+            "t4"
+          ],
+          "offset": 4,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "ratio",
+          "field": "ratio",
+          "keys": [
+            "r0",
+            "r1",
+            "r2",
+            "r3",
+            "r4"
+          ],
+          "offset": 9,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "attack",
+          "field": "attack",
+          "keys": [
+            "a0",
+            "a1",
+            "a2",
+            "a3",
+            "a4"
+          ],
+          "offset": 14,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "release",
+          "field": "release",
+          "keys": [
+            "rl0",
+            "rl1",
+            "rl2",
+            "rl3",
+            "rl4"
+          ],
+          "offset": 19,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "knee",
+          "field": "knee",
+          "keys": [
+            "k0",
+            "k1",
+            "k2",
+            "k3",
+            "k4"
+          ],
+          "offset": 24,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "gain",
+          "field": "gain",
+          "keys": [
+            "g0",
+            "g1",
+            "g2",
+            "g3",
+            "g4"
+          ],
+          "offset": 29,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "MultibandTransient": {
+      "internalType": "MultibandTransientPlugin",
+      "layoutHash": 1428242716,
+      "floatCount": 23,
+      "packedParameters": [
+        {
+          "publicName": "frequency1",
+          "field": "frequency1",
+          "keys": [
+            "f1"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "frequency2",
+          "field": "frequency2",
+          "keys": [
+            "f2"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "fastAttack",
+          "field": "fastAttack",
+          "keys": [
+            "fa0",
+            "fa1",
+            "fa2"
+          ],
+          "offset": 2,
+          "count": 3,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "fastRelease",
+          "field": "fastRelease",
+          "keys": [
+            "fr0",
+            "fr1",
+            "fr2"
+          ],
+          "offset": 5,
+          "count": 3,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "slowAttack",
+          "field": "slowAttack",
+          "keys": [
+            "sa0",
+            "sa1",
+            "sa2"
+          ],
+          "offset": 8,
+          "count": 3,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "slowRelease",
+          "field": "slowRelease",
+          "keys": [
+            "sr0",
+            "sr1",
+            "sr2"
+          ],
+          "offset": 11,
+          "count": 3,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "transientGain",
+          "field": "transientGain",
+          "keys": [
+            "gt0",
+            "gt1",
+            "gt2"
+          ],
+          "offset": 14,
+          "count": 3,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "sustainGain",
+          "field": "sustainGain",
+          "keys": [
+            "gs0",
+            "gs1",
+            "gs2"
+          ],
+          "offset": 17,
+          "count": 3,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "gainSmoothing",
+          "field": "gainSmoothing",
+          "keys": [
+            "sm0",
+            "sm1",
+            "sm2"
+          ],
+          "offset": 20,
+          "count": 3,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "PowerAmpSag": {
+      "internalType": "PowerAmpSagPlugin",
+      "layoutHash": 745762387,
+      "floatCount": 4,
+      "packedParameters": [
+        {
+          "publicName": "sagSensitivity",
+          "field": "sagSensitivity",
+          "keys": [
+            "ss"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "powerStability",
+          "field": "powerStability",
+          "keys": [
+            "ps"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "recoverySpeed",
+          "field": "recoverySpeed",
+          "keys": [
+            "rs"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "monoblock",
+          "field": "monoblock",
+          "keys": [
+            "mb"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "TransientShaper": {
+      "internalType": "TransientShaperPlugin",
+      "layoutHash": 3795078379,
+      "floatCount": 7,
+      "packedParameters": [
+        {
+          "publicName": "fastAttack",
+          "field": "fastAttack",
+          "keys": [
+            "fa"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "fastRelease",
+          "field": "fastRelease",
+          "keys": [
+            "fr"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "slowAttack",
+          "field": "slowAttack",
+          "keys": [
+            "sa"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "slowRelease",
+          "field": "slowRelease",
+          "keys": [
+            "sr"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "transientGain",
+          "field": "transientGain",
+          "keys": [
+            "gt"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "sustainGain",
+          "field": "sustainGain",
+          "keys": [
+            "gs"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "gainSmoothing",
+          "field": "gainSmoothing",
+          "keys": [
+            "sm"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "BandPassFilter": {
+      "internalType": "BandPassFilterPlugin",
+      "layoutHash": 2360494665,
+      "floatCount": 4,
+      "packedParameters": [
+        {
+          "publicName": "highPassFrequency",
+          "field": "highPassFrequency",
+          "keys": [
+            "hf"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "lowPassFrequency",
+          "field": "lowPassFrequency",
+          "keys": [
+            "lf"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "highPassSlope",
+          "field": "highPassSlope",
+          "keys": [
+            "hs"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "lowPassSlope",
+          "field": "lowPassSlope",
+          "keys": [
+            "ls"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "CombFilter": {
+      "internalType": "CombFilterPlugin",
+      "layoutHash": 2689435779,
+      "floatCount": 4,
+      "packedParameters": [
+        {
+          "publicName": "fundamentalFrequency",
+          "field": "fundamentalFrequency",
+          "keys": [
+            "ff"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "feedbackGain",
+          "field": "feedbackGain",
+          "keys": [
+            "fg"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "dryWetMix",
+          "field": "dryWetMix",
+          "keys": [
+            "dw"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "combType",
+          "field": "combType",
+          "keys": [
+            "ct"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "EarphoneCableSim": {
+      "internalType": "EarphoneCableSimPlugin",
+      "layoutHash": 1106244643,
+      "floatCount": 25,
+      "packedParameters": [
+        {
+          "publicName": "outputImpedance",
+          "field": "outputImpedance",
+          "keys": [
+            "zo"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "cableResistance",
+          "field": "cableResistance",
+          "keys": [
+            "rc"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "cableInductance",
+          "field": "cableInductance",
+          "keys": [
+            "lc"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "voiceCoilInductance",
+          "field": "voiceCoilInductance",
+          "keys": [
+            "lv"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "baseImpedance",
+          "field": "baseImpedance",
+          "keys": [
+            "zb"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "resonanceFrequency",
+          "field": "resonanceFrequency",
+          "keys": [
+            "rf0",
+            "rf1",
+            "rf2",
+            "rf3",
+            "rf4"
+          ],
+          "offset": 5,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "resonanceQ",
+          "field": "resonanceQ",
+          "keys": [
+            "rq0",
+            "rq1",
+            "rq2",
+            "rq3",
+            "rq4"
+          ],
+          "offset": 10,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "resonanceImpedance",
+          "field": "resonanceImpedance",
+          "keys": [
+            "rz0",
+            "rz1",
+            "rz2",
+            "rz3",
+            "rz4"
+          ],
+          "offset": 15,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "resonanceEnabled",
+          "field": "resonanceEnabled",
+          "keys": [
+            "re0",
+            "re1",
+            "re2",
+            "re3",
+            "re4"
+          ],
+          "offset": 20,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "FifteenBandGEQ": {
+      "internalType": "FifteenBandGEQPlugin",
+      "layoutHash": 1817151884,
+      "floatCount": 15,
+      "packedParameters": [
+        {
+          "publicName": "bandGain",
+          "field": "bandGain",
+          "keys": [
+            "b0",
+            "b1",
+            "b2",
+            "b3",
+            "b4",
+            "b5",
+            "b6",
+            "b7",
+            "b8",
+            "b9",
+            "b10",
+            "b11",
+            "b12",
+            "b13",
+            "b14"
+          ],
+          "offset": 0,
+          "count": 15,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "FifteenBandPEQ": {
+      "internalType": "FifteenBandPEQPlugin",
+      "layoutHash": 1637338438,
+      "floatCount": 75,
+      "packedParameters": [
+        {
+          "publicName": "frequencies",
+          "field": "frequency",
+          "keys": [
+            "f0",
+            "f1",
+            "f2",
+            "f3",
+            "f4",
+            "f5",
+            "f6",
+            "f7",
+            "f8",
+            "f9",
+            "f10",
+            "f11",
+            "f12",
+            "f13",
+            "f14"
+          ],
+          "offset": 0,
+          "count": 15,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "gains",
+          "field": "gain",
+          "keys": [
+            "g0",
+            "g1",
+            "g2",
+            "g3",
+            "g4",
+            "g5",
+            "g6",
+            "g7",
+            "g8",
+            "g9",
+            "g10",
+            "g11",
+            "g12",
+            "g13",
+            "g14"
+          ],
+          "offset": 15,
+          "count": 15,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "qValues",
+          "field": "q",
+          "keys": [
+            "q0",
+            "q1",
+            "q2",
+            "q3",
+            "q4",
+            "q5",
+            "q6",
+            "q7",
+            "q8",
+            "q9",
+            "q10",
+            "q11",
+            "q12",
+            "q13",
+            "q14"
+          ],
+          "offset": 30,
+          "count": 15,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "filterTypes",
+          "field": "filterType",
+          "keys": [
+            "t0",
+            "t1",
+            "t2",
+            "t3",
+            "t4",
+            "t5",
+            "t6",
+            "t7",
+            "t8",
+            "t9",
+            "t10",
+            "t11",
+            "t12",
+            "t13",
+            "t14"
+          ],
+          "offset": 45,
+          "count": 15,
+          "transform": {
+            "kind": "map",
+            "values": [
+              {
+                "public": "peaking",
+                "internal": "pk"
+              },
+              {
+                "public": "lowPass",
+                "internal": "lp"
+              },
+              {
+                "public": "highPass",
+                "internal": "hp"
+              },
+              {
+                "public": "lowShelf",
+                "internal": "ls"
+              },
+              {
+                "public": "highShelf",
+                "internal": "hs"
+              },
+              {
+                "public": "bandPass",
+                "internal": "bp"
+              },
+              {
+                "public": "notch",
+                "internal": "no"
+              },
+              {
+                "public": "allPass",
+                "internal": "ap"
+              }
+            ]
+          }
+        },
+        {
+          "publicName": "enabledBands",
+          "field": "bandEnabled",
+          "keys": [
+            "e0",
+            "e1",
+            "e2",
+            "e3",
+            "e4",
+            "e5",
+            "e6",
+            "e7",
+            "e8",
+            "e9",
+            "e10",
+            "e11",
+            "e12",
+            "e13",
+            "e14"
+          ],
+          "offset": 60,
+          "count": 15,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "FiveBandDynamicEQ": {
+      "internalType": "FiveBandDynamicEQ",
+      "layoutHash": 2955184071,
+      "floatCount": 60,
+      "packedParameters": [
+        {
+          "publicName": "enabledBands",
+          "field": "enabled",
+          "keys": [
+            "en0",
+            "en1",
+            "en2",
+            "en3",
+            "en4"
+          ],
+          "offset": 0,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "filterType",
+          "field": "filterType",
+          "keys": [
+            "ft0",
+            "ft1",
+            "ft2",
+            "ft3",
+            "ft4"
+          ],
+          "offset": 5,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "frequency",
+          "field": "frequency",
+          "keys": [
+            "f0",
+            "f1",
+            "f2",
+            "f3",
+            "f4"
+          ],
+          "offset": 10,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "q",
+          "field": "q",
+          "keys": [
+            "q0",
+            "q1",
+            "q2",
+            "q3",
+            "q4"
+          ],
+          "offset": 15,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "maxGain",
+          "field": "maxGain",
+          "keys": [
+            "mg0",
+            "mg1",
+            "mg2",
+            "mg3",
+            "mg4"
+          ],
+          "offset": 20,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "threshold",
+          "field": "threshold",
+          "keys": [
+            "th0",
+            "th1",
+            "th2",
+            "th3",
+            "th4"
+          ],
+          "offset": 25,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "ratio",
+          "field": "ratio",
+          "keys": [
+            "r0",
+            "r1",
+            "r2",
+            "r3",
+            "r4"
+          ],
+          "offset": 30,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "knee",
+          "field": "knee",
+          "keys": [
+            "kn0",
+            "kn1",
+            "kn2",
+            "kn3",
+            "kn4"
+          ],
+          "offset": 35,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "attack",
+          "field": "attack",
+          "keys": [
+            "a0",
+            "a1",
+            "a2",
+            "a3",
+            "a4"
+          ],
+          "offset": 40,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "release",
+          "field": "release",
+          "keys": [
+            "rl0",
+            "rl1",
+            "rl2",
+            "rl3",
+            "rl4"
+          ],
+          "offset": 45,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "sidechainFrequency",
+          "field": "sidechainFrequency",
+          "keys": [
+            "scf0",
+            "scf1",
+            "scf2",
+            "scf3",
+            "scf4"
+          ],
+          "offset": 50,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "sidechainQ",
+          "field": "sidechainQ",
+          "keys": [
+            "scq0",
+            "scq1",
+            "scq2",
+            "scq3",
+            "scq4"
+          ],
+          "offset": 55,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "FiveBandFIRPEQ": {
+      "internalType": "FiveBandFIRPEQPlugin",
+      "layoutHash": 2941825417,
+      "floatCount": 2,
+      "packedParameters": [
+        {
+          "publicName": "latencyMode",
+          "field": "latencyMode",
+          "keys": [
+            "lt"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "filterDelaySamples",
+          "field": "filterDelaySamples",
+          "keys": [
+            "fd"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": [
+        {
+          "publicName": "impulseResponse",
+          "slot": 0,
+          "format": "ET_ASSET_F32_MULTICH",
+          "capacity": "32 MiB convolution cap"
+        }
+      ]
+    },
+    "FiveBandPEQ": {
+      "internalType": "FiveBandPEQPlugin",
+      "layoutHash": 2285236921,
+      "floatCount": 25,
+      "packedParameters": [
+        {
+          "publicName": "frequencies",
+          "field": "frequency",
+          "keys": [
+            "f0",
+            "f1",
+            "f2",
+            "f3",
+            "f4"
+          ],
+          "offset": 0,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "gains",
+          "field": "gain",
+          "keys": [
+            "g0",
+            "g1",
+            "g2",
+            "g3",
+            "g4"
+          ],
+          "offset": 5,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "qValues",
+          "field": "q",
+          "keys": [
+            "q0",
+            "q1",
+            "q2",
+            "q3",
+            "q4"
+          ],
+          "offset": 10,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "filterTypes",
+          "field": "filterType",
+          "keys": [
+            "t0",
+            "t1",
+            "t2",
+            "t3",
+            "t4"
+          ],
+          "offset": 15,
+          "count": 5,
+          "transform": {
+            "kind": "map",
+            "values": [
+              {
+                "public": "peaking",
+                "internal": "pk"
+              },
+              {
+                "public": "lowPass",
+                "internal": "lp"
+              },
+              {
+                "public": "highPass",
+                "internal": "hp"
+              },
+              {
+                "public": "lowShelf",
+                "internal": "ls"
+              },
+              {
+                "public": "highShelf",
+                "internal": "hs"
+              },
+              {
+                "public": "bandPass",
+                "internal": "bp"
+              },
+              {
+                "public": "notch",
+                "internal": "no"
+              },
+              {
+                "public": "allPass",
+                "internal": "ap"
+              }
+            ]
+          }
+        },
+        {
+          "publicName": "enabledBands",
+          "field": "bandEnabled",
+          "keys": [
+            "e0",
+            "e1",
+            "e2",
+            "e3",
+            "e4"
+          ],
+          "offset": 20,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "GroupDelayEQ": {
+      "internalType": "GroupDelayEqPlugin",
+      "layoutHash": 2941825417,
+      "floatCount": 2,
+      "packedParameters": [
+        {
+          "publicName": "latencyMode",
+          "field": "latencyMode",
+          "keys": [
+            "lt"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "filterDelaySamples",
+          "field": "filterDelaySamples",
+          "keys": [
+            "fd"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": [
+        {
+          "publicName": "impulseResponse",
+          "slot": 0,
+          "format": "ET_ASSET_F32_MULTICH",
+          "capacity": "32 MiB convolution cap"
+        }
+      ]
+    },
+    "HiPassFilter": {
+      "internalType": "HiPassFilterPlugin",
+      "layoutHash": 299011831,
+      "floatCount": 2,
+      "packedParameters": [
+        {
+          "publicName": "frequency",
+          "field": "frequency",
+          "keys": [
+            "fr"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "slope",
+          "field": "slope",
+          "keys": [
+            "sl"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "LoPassFilter": {
+      "internalType": "LoPassFilterPlugin",
+      "layoutHash": 299011831,
+      "floatCount": 2,
+      "packedParameters": [
+        {
+          "publicName": "frequency",
+          "field": "frequency",
+          "keys": [
+            "fr"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "slope",
+          "field": "slope",
+          "keys": [
+            "sl"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "LoudnessEqualizer": {
+      "internalType": "LoudnessEqualizerPlugin",
+      "layoutHash": 2860520897,
+      "floatCount": 8,
+      "packedParameters": [
+        {
+          "publicName": "averageSpl",
+          "field": "averageSpl",
+          "keys": [
+            "sp"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "relativeVolume",
+          "field": "relativeVolume",
+          "keys": [
+            "rv"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "lowGain",
+          "field": "lowGain",
+          "keys": [
+            "lg"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "lowFrequency",
+          "field": "lowFrequency",
+          "keys": [
+            "lf"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "lowQ",
+          "field": "lowQ",
+          "keys": [
+            "lq"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "highQ",
+          "field": "highQ",
+          "keys": [
+            "hq"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "highGain",
+          "field": "highGain",
+          "keys": [
+            "hg"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "highFrequency",
+          "field": "highFrequency",
+          "keys": [
+            "hf"
+          ],
+          "offset": 7,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "NarrowRange": {
+      "internalType": "NarrowRangePlugin",
+      "layoutHash": 925285799,
+      "floatCount": 4,
+      "packedParameters": [
+        {
+          "publicName": "highPassFrequency",
+          "field": "highPassFrequency",
+          "keys": [
+            "hf"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "highPassSlope",
+          "field": "highPassSlope",
+          "keys": [
+            "hs"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "lowPassFrequency",
+          "field": "lowPassFrequency",
+          "keys": [
+            "lf"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "lowPassSlope",
+          "field": "lowPassSlope",
+          "keys": [
+            "ls"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "RoomEQ": {
+      "internalType": "RoomEqPlugin",
+      "layoutHash": 3893667250,
+      "floatCount": 4,
+      "packedParameters": [
+        {
+          "publicName": "latencyMode",
+          "field": "latencyMode",
+          "keys": [
+            "lt"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "filterDelaySamples",
+          "field": "filterDelaySamples",
+          "keys": [
+            "fd"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "channelDelay",
+          "field": "channelDelay",
+          "keys": [
+            "dy"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "outputGain",
+          "field": "outputGain",
+          "keys": [
+            "gn"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": [
+        {
+          "publicName": "impulseResponse",
+          "slot": 0,
+          "format": "ET_ASSET_F32_MULTICH",
+          "capacity": "32 MiB convolution cap"
+        }
+      ]
+    },
+    "TiltEQ": {
+      "internalType": "TiltEQPlugin",
+      "layoutHash": 3110132925,
+      "floatCount": 2,
+      "packedParameters": [
+        {
+          "publicName": "pivotFrequency",
+          "field": "pivotExponent",
+          "keys": [
+            "f0"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "naturalLog"
+          }
+        },
+        {
+          "publicName": "slope",
+          "field": "slope",
+          "keys": [
+            "sl"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "ToneControl": {
+      "internalType": "ToneControlPlugin",
+      "layoutHash": 4085396528,
+      "floatCount": 3,
+      "packedParameters": [
+        {
+          "publicName": "bass",
+          "field": "bass",
+          "keys": [
+            "bs"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mid",
+          "field": "mid",
+          "keys": [
+            "md"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "treble",
+          "field": "treble",
+          "keys": [
+            "tr"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "AMRadioSimulator": {
+      "internalType": "AMRadioSimulatorPlugin",
+      "layoutHash": 3482469380,
+      "floatCount": 20,
+      "packedParameters": [
+        {
+          "publicName": "txBandwidth",
+          "field": "txBandwidth",
+          "keys": [
+            "tb"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "preEmphasis",
+          "field": "preEmphasis",
+          "keys": [
+            "pe"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "modDepth",
+          "field": "modDepth",
+          "keys": [
+            "md"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "compression",
+          "field": "compression",
+          "keys": [
+            "cp"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "stereoMode",
+          "field": "stereoMode",
+          "keys": [
+            "sm"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "signal",
+          "field": "signal",
+          "keys": [
+            "sg"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "skywave",
+          "field": "skywave",
+          "keys": [
+            "sk"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "fadingSpeed",
+          "field": "fadingSpeed",
+          "keys": [
+            "fd"
+          ],
+          "offset": 7,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "staticRate",
+          "field": "staticRate",
+          "keys": [
+            "st"
+          ],
+          "offset": 8,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "interference",
+          "field": "interference",
+          "keys": [
+            "in"
+          ],
+          "offset": 9,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "interferenceOffset",
+          "field": "interferenceOffset",
+          "keys": [
+            "io"
+          ],
+          "offset": 10,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "tuning",
+          "field": "tuning",
+          "keys": [
+            "tn"
+          ],
+          "offset": 11,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "ifBandwidth",
+          "field": "ifBandwidth",
+          "keys": [
+            "bw"
+          ],
+          "offset": 12,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "agcSpeed",
+          "field": "agcSpeed",
+          "keys": [
+            "ag"
+          ],
+          "offset": 13,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "detectorRc",
+          "field": "detectorRc",
+          "keys": [
+            "dt"
+          ],
+          "offset": 14,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "hum",
+          "field": "hum",
+          "keys": [
+            "hm"
+          ],
+          "offset": 15,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "humFrequency",
+          "field": "humFrequency",
+          "keys": [
+            "hz"
+          ],
+          "offset": 16,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "speaker",
+          "field": "speaker",
+          "keys": [
+            "sp"
+          ],
+          "offset": 17,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "outputGain",
+          "field": "outputGain",
+          "keys": [
+            "og"
+          ],
+          "offset": 18,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mix",
+          "field": "mix",
+          "keys": [
+            "mx"
+          ],
+          "offset": 19,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "BitCrusher": {
+      "internalType": "BitCrusherPlugin",
+      "layoutHash": 3414646542,
+      "floatCount": 5,
+      "packedParameters": [
+        {
+          "publicName": "bitDepth",
+          "field": "bitDepth",
+          "keys": [
+            "bd"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "tpdfDither",
+          "field": "tpdfDither",
+          "keys": [
+            "td"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "zohFrequency",
+          "field": "zohFrequency",
+          "keys": [
+            "zf"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "bitError",
+          "field": "bitError",
+          "keys": [
+            "be"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "seed",
+          "field": "seed",
+          "keys": [
+            "sd"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "DigitalErrorEmulator": {
+      "internalType": "DigitalErrorEmulatorPlugin",
+      "layoutHash": 929157540,
+      "floatCount": 4,
+      "packedParameters": [
+        {
+          "publicName": "bitErrorRate",
+          "field": "bitErrorRateExponent",
+          "keys": [
+            "be"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "log10"
+          }
+        },
+        {
+          "publicName": "mode",
+          "field": "mode",
+          "keys": [
+            "md"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "referenceSampleRate",
+          "field": "referenceFs",
+          "keys": [
+            "rf"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "wetMix",
+          "field": "wetMix",
+          "keys": [
+            "wt"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "DSD64IMDSimulator": {
+      "internalType": "DSD64IMDSimulatorPlugin",
+      "layoutHash": 1223862878,
+      "floatCount": 12,
+      "packedParameters": [
+        {
+          "publicName": "amount",
+          "field": "amount",
+          "keys": [
+            "am"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "dryWet",
+          "field": "dryWet",
+          "keys": [
+            "dw"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "ultrasonicLevel",
+          "field": "ultrasonicLevel",
+          "keys": [
+            "ul"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "noiseColor",
+          "field": "noiseColor",
+          "keys": [
+            "nc"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "analogNonlinearity",
+          "field": "analogNonlinearity",
+          "keys": [
+            "an"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "evenBias",
+          "field": "evenBias",
+          "keys": [
+            "eb"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "signalCoupling",
+          "field": "signalCoupling",
+          "keys": [
+            "sc"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "scratchTone",
+          "field": "scratchTone",
+          "keys": [
+            "st"
+          ],
+          "offset": 7,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "noiseTexture",
+          "field": "noiseTexture",
+          "keys": [
+            "nt"
+          ],
+          "offset": 8,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "crossSideband",
+          "field": "crossSideband",
+          "keys": [
+            "cs"
+          ],
+          "offset": 9,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "imdPathHpf",
+          "field": "imdPathHpf",
+          "keys": [
+            "hf"
+          ],
+          "offset": 10,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "outputTrim",
+          "field": "outputTrim",
+          "keys": [
+            "ot"
+          ],
+          "offset": 11,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "FMRadioSimulator": {
+      "internalType": "FMRadioSimulatorPlugin",
+      "layoutHash": 1965882227,
+      "floatCount": 11,
+      "packedParameters": [
+        {
+          "publicName": "emphasis",
+          "field": "emphasis",
+          "keys": [
+            "em"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "map",
+            "values": [
+              {
+                "public": "50us",
+                "internal": "50"
+              },
+              {
+                "public": "75us",
+                "internal": "75"
+              }
+            ]
+          }
+        },
+        {
+          "publicName": "processing",
+          "field": "processing",
+          "keys": [
+            "pr"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "signal",
+          "field": "signal",
+          "keys": [
+            "st"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "tuning",
+          "field": "tuning",
+          "keys": [
+            "tn"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "ifBandwidth",
+          "field": "ifBand",
+          "keys": [
+            "bw"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "multipath",
+          "field": "multipath",
+          "keys": [
+            "mp"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "pathDelay",
+          "field": "pathDelay",
+          "keys": [
+            "dl"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "fading",
+          "field": "fading",
+          "keys": [
+            "fd"
+          ],
+          "offset": 7,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "stereo",
+          "field": "stereo",
+          "keys": [
+            "sm"
+          ],
+          "offset": 8,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "outputGain",
+          "field": "outputGain",
+          "keys": [
+            "og"
+          ],
+          "offset": 9,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mix",
+          "field": "mix",
+          "keys": [
+            "mx"
+          ],
+          "offset": 10,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "HumGenerator": {
+      "internalType": "HumGeneratorPlugin",
+      "layoutHash": 2503317040,
+      "floatCount": 6,
+      "packedParameters": [
+        {
+          "publicName": "frequency",
+          "field": "frequency",
+          "keys": [
+            "fr"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "humType",
+          "field": "humType",
+          "keys": [
+            "tp"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "harmonics",
+          "field": "harmonics",
+          "keys": [
+            "hm"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "tone",
+          "field": "tone",
+          "keys": [
+            "tn"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "instability",
+          "field": "instability",
+          "keys": [
+            "in"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "level",
+          "field": "level",
+          "keys": [
+            "lv"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "NoiseBlender": {
+      "internalType": "NoiseBlenderPlugin",
+      "layoutHash": 394198189,
+      "floatCount": 3,
+      "packedParameters": [
+        {
+          "publicName": "noiseType",
+          "field": "noiseType",
+          "keys": [
+            "nt"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "level",
+          "field": "level",
+          "keys": [
+            "lv"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "perChannel",
+          "field": "perChannel",
+          "keys": [
+            "pc"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "SimpleJitter": {
+      "internalType": "SimpleJitterPlugin",
+      "layoutHash": 3196737583,
+      "floatCount": 1,
+      "packedParameters": [
+        {
+          "publicName": "rmsJitterNanoseconds",
+          "field": "rmsJitter",
+          "keys": [
+            "rj"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "decibelsFromReference",
+            "reference": 0.001
+          }
+        }
+      ],
+      "assets": []
+    },
+    "SWRadioSimulator": {
+      "internalType": "SWRadioSimulatorPlugin",
+      "layoutHash": 2343942365,
+      "floatCount": 21,
+      "packedParameters": [
+        {
+          "publicName": "txBandwidth",
+          "field": "txBandwidth",
+          "keys": [
+            "tb"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "preEmphasis",
+          "field": "preEmphasis",
+          "keys": [
+            "pe"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "modDepth",
+          "field": "modDepth",
+          "keys": [
+            "md"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "compression",
+          "field": "compression",
+          "keys": [
+            "cp"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "signal",
+          "field": "signal",
+          "keys": [
+            "sg"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "skywave",
+          "field": "skywave",
+          "keys": [
+            "sk"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "fadingSpeed",
+          "field": "fadingSpeed",
+          "keys": [
+            "fd"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "delaySpread",
+          "field": "delaySpread",
+          "keys": [
+            "ds"
+          ],
+          "offset": 7,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "staticRate",
+          "field": "staticRate",
+          "keys": [
+            "st"
+          ],
+          "offset": 8,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "interference",
+          "field": "interference",
+          "keys": [
+            "in"
+          ],
+          "offset": 9,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "interferenceOffset",
+          "field": "interferenceOffset",
+          "keys": [
+            "io"
+          ],
+          "offset": 10,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "tuning",
+          "field": "tuning",
+          "keys": [
+            "tn"
+          ],
+          "offset": 11,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "ifBandwidth",
+          "field": "ifBandwidth",
+          "keys": [
+            "bw"
+          ],
+          "offset": 12,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "detector",
+          "field": "detector",
+          "keys": [
+            "de"
+          ],
+          "offset": 13,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "agcSpeed",
+          "field": "agcSpeed",
+          "keys": [
+            "ag"
+          ],
+          "offset": 14,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "detectorRc",
+          "field": "detectorRc",
+          "keys": [
+            "dt"
+          ],
+          "offset": 15,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "hum",
+          "field": "hum",
+          "keys": [
+            "hm"
+          ],
+          "offset": 16,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "humFrequency",
+          "field": "humFrequency",
+          "keys": [
+            "hz"
+          ],
+          "offset": 17,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "speaker",
+          "field": "speaker",
+          "keys": [
+            "sp"
+          ],
+          "offset": 18,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "outputGain",
+          "field": "outputGain",
+          "keys": [
+            "og"
+          ],
+          "offset": 19,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mix",
+          "field": "mix",
+          "keys": [
+            "mx"
+          ],
+          "offset": 20,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "VinylArtifacts": {
+      "internalType": "VinylArtifactsPlugin",
+      "layoutHash": 1145282217,
+      "floatCount": 12,
+      "packedParameters": [
+        {
+          "publicName": "popsPerMinute",
+          "field": "popsPerMinute",
+          "keys": [
+            "pp"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "popLevel",
+          "field": "popLevel",
+          "keys": [
+            "pl"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "cracklesPerMinute",
+          "field": "cracklesPerMinute",
+          "keys": [
+            "cm"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "crackleLevel",
+          "field": "crackleLevel",
+          "keys": [
+            "cl"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "hissLevel",
+          "field": "hissLevel",
+          "keys": [
+            "hs"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "rumbleLevel",
+          "field": "rumbleLevel",
+          "keys": [
+            "rb"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "crosstalk",
+          "field": "crosstalk",
+          "keys": [
+            "xt"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "noiseProfile",
+          "field": "noiseProfile",
+          "keys": [
+            "tn"
+          ],
+          "offset": 7,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "wear",
+          "field": "wear",
+          "keys": [
+            "wr"
+          ],
+          "offset": 8,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "react",
+          "field": "react",
+          "keys": [
+            "rt"
+          ],
+          "offset": 9,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "reactMode",
+          "field": "reactMode",
+          "keys": [
+            "rm"
+          ],
+          "offset": 10,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mix",
+          "field": "mix",
+          "keys": [
+            "mx"
+          ],
+          "offset": 11,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "VinylSimulator": {
+      "internalType": "VinylSimulatorPlugin",
+      "layoutHash": 336931452,
+      "floatCount": 20,
+      "packedParameters": [
+        {
+          "publicName": "cutLevel",
+          "field": "cutLevel",
+          "keys": [
+            "lv"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "highFrequencyCutoff",
+          "field": "hfCutoff",
+          "keys": [
+            "hf"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "bassMonoBelow",
+          "field": "bassMonoBelow",
+          "keys": [
+            "mb"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "sideMix",
+          "field": "sideMix",
+          "keys": [
+            "sm"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "speed",
+          "field": "speed",
+          "keys": [
+            "rp"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "radius",
+          "field": "radius",
+          "keys": [
+            "rd"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "roughness",
+          "field": "roughness",
+          "keys": [
+            "rg"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "dustRate",
+          "field": "dustRate",
+          "keys": [
+            "dr"
+          ],
+          "offset": 7,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "staticRate",
+          "field": "staticRate",
+          "keys": [
+            "st"
+          ],
+          "offset": 8,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "scratchRate",
+          "field": "scratchRate",
+          "keys": [
+            "sc"
+          ],
+          "offset": 9,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "stylusShape",
+          "field": "stylusShape",
+          "keys": [
+            "sh"
+          ],
+          "offset": 10,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "sideRadius",
+          "field": "sideRadius",
+          "keys": [
+            "rs"
+          ],
+          "offset": 11,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "scanRadius",
+          "field": "scanRadius",
+          "keys": [
+            "rc"
+          ],
+          "offset": 12,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "trackingForce",
+          "field": "trackingForce",
+          "keys": [
+            "tf"
+          ],
+          "offset": 13,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "tipMass",
+          "field": "tipMass",
+          "keys": [
+            "tm"
+          ],
+          "offset": 14,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "compliance",
+          "field": "compliance",
+          "keys": [
+            "cm"
+          ],
+          "offset": 15,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "damping",
+          "field": "damping",
+          "keys": [
+            "dz"
+          ],
+          "offset": 16,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "quality",
+          "field": "quality",
+          "keys": [
+            "ql"
+          ],
+          "offset": 17,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "outputGain",
+          "field": "outputGain",
+          "keys": [
+            "og"
+          ],
+          "offset": 18,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mix",
+          "field": "mix",
+          "keys": [
+            "mx"
+          ],
+          "offset": 19,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "DopplerDistortion": {
+      "internalType": "DopplerDistortionPlugin",
+      "layoutHash": 10372816,
+      "floatCount": 4,
+      "packedParameters": [
+        {
+          "publicName": "coilForce",
+          "field": "coilForce",
+          "keys": [
+            "cf"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "speakerMass",
+          "field": "speakerMass",
+          "keys": [
+            "sm"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "springConstant",
+          "field": "springConstant",
+          "keys": [
+            "sc"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "dampingFactor",
+          "field": "dampingFactor",
+          "keys": [
+            "df"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "PitchShifter": {
+      "internalType": "PitchShifterPlugin",
+      "layoutHash": 1998192054,
+      "floatCount": 4,
+      "packedParameters": [
+        {
+          "publicName": "pitchShift",
+          "field": "pitchShift",
+          "keys": [
+            "ps"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "fineTune",
+          "field": "fineTune",
+          "keys": [
+            "ft"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "windowSize",
+          "field": "windowSize",
+          "keys": [
+            "ws"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "crossfadeTime",
+          "field": "crossfadeTime",
+          "keys": [
+            "xf"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "Tremolo": {
+      "internalType": "TremoloPlugin",
+      "layoutHash": 1836520376,
+      "floatCount": 7,
+      "packedParameters": [
+        {
+          "publicName": "rate",
+          "field": "rate",
+          "keys": [
+            "rt"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "depth",
+          "field": "depth",
+          "keys": [
+            "dp"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "randomness",
+          "field": "randomness",
+          "keys": [
+            "rn"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "randomnessCutoff",
+          "field": "randomnessCutoff",
+          "keys": [
+            "rc"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "randomnessSlope",
+          "field": "randomnessSlope",
+          "keys": [
+            "rs"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "channelPhase",
+          "field": "channelPhase",
+          "keys": [
+            "cp"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "channelSync",
+          "field": "channelSync",
+          "keys": [
+            "cs"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "WowFlutter": {
+      "internalType": "WowFlutterPlugin",
+      "layoutHash": 1836520376,
+      "floatCount": 7,
+      "packedParameters": [
+        {
+          "publicName": "rate",
+          "field": "rate",
+          "keys": [
+            "rt"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "depth",
+          "field": "depth",
+          "keys": [
+            "dp"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "randomness",
+          "field": "randomness",
+          "keys": [
+            "rn"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "randomnessCutoff",
+          "field": "randomnessCutoff",
+          "keys": [
+            "rc"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "randomnessSlope",
+          "field": "randomnessSlope",
+          "keys": [
+            "rs"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "channelPhase",
+          "field": "channelPhase",
+          "keys": [
+            "cp"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "channelSync",
+          "field": "channelSync",
+          "keys": [
+            "cs"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "Oscillator": {
+      "internalType": "OscillatorPlugin",
+      "layoutHash": 2237210280,
+      "floatCount": 7,
+      "packedParameters": [
+        {
+          "publicName": "frequency",
+          "field": "frequency",
+          "keys": [
+            "fr"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "volume",
+          "field": "volume",
+          "keys": [
+            "vl"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "panning",
+          "field": "panning",
+          "keys": [
+            "pn"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "waveform",
+          "field": "waveform",
+          "keys": [
+            "wf"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mode",
+          "field": "mode",
+          "keys": [
+            "md"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "interval",
+          "field": "interval",
+          "keys": [
+            "it"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "width",
+          "field": "width",
+          "keys": [
+            "wd"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "HornResonator": {
+      "internalType": "HornResonatorPlugin",
+      "layoutHash": 3233763204,
+      "floatCount": 8,
+      "packedParameters": [
+        {
+          "publicName": "crossover",
+          "field": "crossover",
+          "keys": [
+            "co"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "length",
+          "field": "length",
+          "keys": [
+            "ln"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "throatDiameter",
+          "field": "throatDiameter",
+          "keys": [
+            "th"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mouthDiameter",
+          "field": "mouthDiameter",
+          "keys": [
+            "mo"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "curve",
+          "field": "curve",
+          "keys": [
+            "cv"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "damping",
+          "field": "damping",
+          "keys": [
+            "dp"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "throatReflection",
+          "field": "throatReflection",
+          "keys": [
+            "tr"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "waveguideGain",
+          "field": "waveguideGain",
+          "keys": [
+            "wg"
+          ],
+          "offset": 7,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "HornResonatorPlus": {
+      "internalType": "HornResonatorPlusPlugin",
+      "layoutHash": 3233763204,
+      "floatCount": 8,
+      "packedParameters": [
+        {
+          "publicName": "crossover",
+          "field": "crossover",
+          "keys": [
+            "co"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "length",
+          "field": "length",
+          "keys": [
+            "ln"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "throatDiameter",
+          "field": "throatDiameter",
+          "keys": [
+            "th"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mouthDiameter",
+          "field": "mouthDiameter",
+          "keys": [
+            "mo"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "curve",
+          "field": "curve",
+          "keys": [
+            "cv"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "damping",
+          "field": "damping",
+          "keys": [
+            "dp"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "throatReflection",
+          "field": "throatReflection",
+          "keys": [
+            "tr"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "waveguideGain",
+          "field": "waveguideGain",
+          "keys": [
+            "wg"
+          ],
+          "offset": 7,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "ModalResonator": {
+      "internalType": "ModalResonatorPlugin",
+      "layoutHash": 1547233380,
+      "floatCount": 31,
+      "packedParameters": [
+        {
+          "publicName": "resonatorEnabled",
+          "field": "resonatorEnabled",
+          "keys": [
+            "en0",
+            "en1",
+            "en2",
+            "en3",
+            "en4"
+          ],
+          "offset": 0,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "frequencyLog",
+          "field": "frequencyLog",
+          "keys": [
+            "fr0",
+            "fr1",
+            "fr2",
+            "fr3",
+            "fr4"
+          ],
+          "offset": 5,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "decay",
+          "field": "decay",
+          "keys": [
+            "dc0",
+            "dc1",
+            "dc2",
+            "dc3",
+            "dc4"
+          ],
+          "offset": 10,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "lowPassLog",
+          "field": "lowPassLog",
+          "keys": [
+            "lp0",
+            "lp1",
+            "lp2",
+            "lp3",
+            "lp4"
+          ],
+          "offset": 15,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "highPassLog",
+          "field": "highPassLog",
+          "keys": [
+            "hp0",
+            "hp1",
+            "hp2",
+            "hp3",
+            "hp4"
+          ],
+          "offset": 20,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "gain",
+          "field": "gain",
+          "keys": [
+            "gn0",
+            "gn1",
+            "gn2",
+            "gn3",
+            "gn4"
+          ],
+          "offset": 25,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mix",
+          "field": "mix",
+          "keys": [
+            "mx"
+          ],
+          "offset": 30,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "DattorroPlateReverb": {
+      "internalType": "DattorroPlateReverbPlugin",
+      "layoutHash": 582778991,
+      "floatCount": 11,
+      "packedParameters": [
+        {
+          "publicName": "preDelay",
+          "field": "preDelay",
+          "keys": [
+            "pd"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "bandwidth",
+          "field": "bandwidth",
+          "keys": [
+            "bw"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "inputDiffusion1",
+          "field": "inputDiffusion1",
+          "keys": [
+            "id1"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "inputDiffusion2",
+          "field": "inputDiffusion2",
+          "keys": [
+            "id2"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "decay",
+          "field": "decay",
+          "keys": [
+            "dc"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "decayDiffusion1",
+          "field": "decayDiffusion1",
+          "keys": [
+            "dd1"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "damping",
+          "field": "damping",
+          "keys": [
+            "dp"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "modulationDepth",
+          "field": "modulationDepth",
+          "keys": [
+            "md"
+          ],
+          "offset": 7,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "modulationRate",
+          "field": "modulationRate",
+          "keys": [
+            "mr"
+          ],
+          "offset": 8,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "wetMix",
+          "field": "wetMix",
+          "keys": [
+            "wm"
+          ],
+          "offset": 9,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "dryMix",
+          "field": "dryMix",
+          "keys": [
+            "dm"
+          ],
+          "offset": 10,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "FDNReverb": {
+      "internalType": "FDNReverbPlugin",
+      "layoutHash": 1755319973,
+      "floatCount": 13,
+      "packedParameters": [
+        {
+          "publicName": "reverbTime",
+          "field": "reverbTime",
+          "keys": [
+            "rt"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "density",
+          "field": "density",
+          "keys": [
+            "dt"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "preDelay",
+          "field": "preDelay",
+          "keys": [
+            "pd"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "baseDelay",
+          "field": "baseDelay",
+          "keys": [
+            "bd"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "delaySpread",
+          "field": "delaySpread",
+          "keys": [
+            "ds"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "highFrequencyDamp",
+          "field": "highFrequencyDamp",
+          "keys": [
+            "hd"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "lowCut",
+          "field": "lowCut",
+          "keys": [
+            "lc"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "modulationDepth",
+          "field": "modulationDepth",
+          "keys": [
+            "md"
+          ],
+          "offset": 7,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "modulationRate",
+          "field": "modulationRate",
+          "keys": [
+            "mr"
+          ],
+          "offset": 8,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "diffusion",
+          "field": "diffusion",
+          "keys": [
+            "df"
+          ],
+          "offset": 9,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "wetMix",
+          "field": "wetMix",
+          "keys": [
+            "wm"
+          ],
+          "offset": 10,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "dryMix",
+          "field": "dryMix",
+          "keys": [
+            "dm"
+          ],
+          "offset": 11,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "stereoWidth",
+          "field": "stereoWidth",
+          "keys": [
+            "sw"
+          ],
+          "offset": 12,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "IRReverb": {
+      "internalType": "IRReverbPlugin",
+      "layoutHash": 2199744560,
+      "floatCount": 6,
+      "packedParameters": [
+        {
+          "publicName": "channelMode",
+          "field": "channelMode",
+          "keys": [
+            "cm"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "map",
+            "values": [
+              {
+                "public": "automatic",
+                "internal": "auto"
+              },
+              {
+                "public": "mono",
+                "internal": "mono"
+              },
+              {
+                "public": "independent",
+                "internal": "indep"
+              },
+              {
+                "public": "trueStereo",
+                "internal": "true"
+              },
+              {
+                "public": "matrix",
+                "internal": "multi"
+              }
+            ]
+          }
+        },
+        {
+          "publicName": "latency",
+          "field": "latency",
+          "keys": [
+            "lt"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "map",
+            "values": [
+              {
+                "public": 0,
+                "internal": "0"
+              },
+              {
+                "public": 128,
+                "internal": "128"
+              },
+              {
+                "public": 256,
+                "internal": "256"
+              },
+              {
+                "public": 512,
+                "internal": "512"
+              },
+              {
+                "public": 1024,
+                "internal": "1024"
+              }
+            ]
+          }
+        },
+        {
+          "publicName": "convolutionRate",
+          "field": "convRate",
+          "keys": [
+            "cr"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "wetLevel",
+          "field": "wetLevel",
+          "keys": [
+            "dw"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "dryLevel",
+          "field": "dryLevel",
+          "keys": [
+            "dl"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "preDelay",
+          "field": "preDelay",
+          "keys": [
+            "pd"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": [
+        {
+          "publicName": "impulseResponse",
+          "slot": 0,
+          "format": "ET_ASSET_F32_MULTICH",
+          "capacity": "32 MiB convolution cap"
+        }
+      ]
+    },
+    "RSReverb": {
+      "internalType": "RSReverbPlugin",
+      "layoutHash": 3284023116,
+      "floatCount": 9,
+      "packedParameters": [
+        {
+          "publicName": "preDelay",
+          "field": "preDelay",
+          "keys": [
+            "pd"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "roomSize",
+          "field": "roomSize",
+          "keys": [
+            "rs"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "reverbTime",
+          "field": "reverbTime",
+          "keys": [
+            "rt"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "density",
+          "field": "density",
+          "keys": [
+            "ds"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "diffusion",
+          "field": "diffusion",
+          "keys": [
+            "df"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "damping",
+          "field": "damping",
+          "keys": [
+            "dp"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "highDamp",
+          "field": "highDamp",
+          "keys": [
+            "hd"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "lowDamp",
+          "field": "lowDamp",
+          "keys": [
+            "ld"
+          ],
+          "offset": 7,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mix",
+          "field": "mix",
+          "keys": [
+            "mx"
+          ],
+          "offset": 8,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "DynamicSaturation": {
+      "internalType": "DynamicSaturationPlugin",
+      "layoutHash": 3365051379,
+      "floatCount": 9,
+      "packedParameters": [
+        {
+          "publicName": "speakerDrive",
+          "field": "speakerDrive",
+          "keys": [
+            "sd"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "speakerStiffness",
+          "field": "speakerStiffness",
+          "keys": [
+            "ss"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "speakerDamping",
+          "field": "speakerDamping",
+          "keys": [
+            "sp"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "speakerMass",
+          "field": "speakerMass",
+          "keys": [
+            "sm"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "distortionDrive",
+          "field": "distortionDrive",
+          "keys": [
+            "dd"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "distortionBias",
+          "field": "distortionBias",
+          "keys": [
+            "db"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "distortionMix",
+          "field": "distortionMix",
+          "keys": [
+            "dm"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "coneMotionMix",
+          "field": "coneMotionMix",
+          "keys": [
+            "cm"
+          ],
+          "offset": 7,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "outputGain",
+          "field": "outputGain",
+          "keys": [
+            "og"
+          ],
+          "offset": 8,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "Exciter": {
+      "internalType": "ExciterPlugin",
+      "layoutHash": 4235094650,
+      "floatCount": 5,
+      "packedParameters": [
+        {
+          "publicName": "highPassFrequency",
+          "field": "highPassFrequency",
+          "keys": [
+            "hf"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "highPassSlope",
+          "field": "highPassSlope",
+          "keys": [
+            "hs"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "map",
+            "values": [
+              {
+                "public": 0,
+                "internal": 0
+              },
+              {
+                "public": 6,
+                "internal": 1
+              },
+              {
+                "public": 12,
+                "internal": 2
+              }
+            ]
+          }
+        },
+        {
+          "publicName": "drive",
+          "field": "drive",
+          "keys": [
+            "dr"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "bias",
+          "field": "bias",
+          "keys": [
+            "bs"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mix",
+          "field": "mix",
+          "keys": [
+            "mx"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "HardClipping": {
+      "internalType": "HardClippingPlugin",
+      "layoutHash": 837158957,
+      "floatCount": 2,
+      "packedParameters": [
+        {
+          "publicName": "threshold",
+          "field": "threshold",
+          "keys": [
+            "th"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mode",
+          "field": "mode",
+          "keys": [
+            "md"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "HarmonicDistortion": {
+      "internalType": "HarmonicDistortionPlugin",
+      "layoutHash": 83146208,
+      "floatCount": 5,
+      "packedParameters": [
+        {
+          "publicName": "secondHarmonic",
+          "field": "secondHarmonic",
+          "keys": [
+            "h2"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "thirdHarmonic",
+          "field": "thirdHarmonic",
+          "keys": [
+            "h3"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "fourthHarmonic",
+          "field": "fourthHarmonic",
+          "keys": [
+            "h4"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "fifthHarmonic",
+          "field": "fifthHarmonic",
+          "keys": [
+            "h5"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "sensitivity",
+          "field": "sensitivity",
+          "keys": [
+            "sn"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "MultibandSaturation": {
+      "internalType": "MultibandSaturationPlugin",
+      "layoutHash": 698810406,
+      "floatCount": 14,
+      "packedParameters": [
+        {
+          "publicName": "frequency1",
+          "field": "frequency1",
+          "keys": [
+            "f1"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "frequency2",
+          "field": "frequency2",
+          "keys": [
+            "f2"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "drive",
+          "field": "drive",
+          "keys": [
+            "dr0",
+            "dr1",
+            "dr2"
+          ],
+          "offset": 2,
+          "count": 3,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "bias",
+          "field": "bias",
+          "keys": [
+            "bs0",
+            "bs1",
+            "bs2"
+          ],
+          "offset": 5,
+          "count": 3,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mix",
+          "field": "mix",
+          "keys": [
+            "mx0",
+            "mx1",
+            "mx2"
+          ],
+          "offset": 8,
+          "count": 3,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "gain",
+          "field": "gain",
+          "keys": [
+            "gn0",
+            "gn1",
+            "gn2"
+          ],
+          "offset": 11,
+          "count": 3,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "Saturation": {
+      "internalType": "SaturationPlugin",
+      "layoutHash": 1115003603,
+      "floatCount": 4,
+      "packedParameters": [
+        {
+          "publicName": "drive",
+          "field": "drive",
+          "keys": [
+            "dr"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "bias",
+          "field": "bias",
+          "keys": [
+            "bs"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mix",
+          "field": "mix",
+          "keys": [
+            "mx"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "gain",
+          "field": "gain",
+          "keys": [
+            "gn"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "SubSynth": {
+      "internalType": "SubSynthPlugin",
+      "layoutHash": 116561234,
+      "floatCount": 8,
+      "packedParameters": [
+        {
+          "publicName": "subLevel",
+          "field": "subLevel",
+          "keys": [
+            "sl"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "dryLevel",
+          "field": "dryLevel",
+          "keys": [
+            "dl"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "subLowPassFrequency",
+          "field": "subLowPassFrequency",
+          "keys": [
+            "slf"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "subLowPassSlope",
+          "field": "subLowPassSlope",
+          "keys": [
+            "sls"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "subHighPassFrequency",
+          "field": "subHighPassFrequency",
+          "keys": [
+            "shf"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "subHighPassSlope",
+          "field": "subHighPassSlope",
+          "keys": [
+            "shs"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "dryHighPassFrequency",
+          "field": "dryHighPassFrequency",
+          "keys": [
+            "dhf"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "dryHighPassSlope",
+          "field": "dryHighPassSlope",
+          "keys": [
+            "dhs"
+          ],
+          "offset": 7,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "CrossfeedFilter": {
+      "internalType": "CrossfeedFilterPlugin",
+      "layoutHash": 715048833,
+      "floatCount": 3,
+      "packedParameters": [
+        {
+          "publicName": "level",
+          "field": "level",
+          "keys": [
+            "lv"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "delay",
+          "field": "delay",
+          "keys": [
+            "dl"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "lowPassFrequency",
+          "field": "lowPassFrequency",
+          "keys": [
+            "lf"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "MSMatrix": {
+      "internalType": "MSMatrixPlugin",
+      "layoutHash": 607668476,
+      "floatCount": 4,
+      "packedParameters": [
+        {
+          "publicName": "mode",
+          "field": "mode",
+          "keys": [
+            "md"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "midGain",
+          "field": "midGain",
+          "keys": [
+            "mg"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "sideGain",
+          "field": "sideGain",
+          "keys": [
+            "sg"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "swap",
+          "field": "swap",
+          "keys": [
+            "sw"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "MultibandBalance": {
+      "internalType": "MultibandBalancePlugin",
+      "layoutHash": 3715792583,
+      "floatCount": 9,
+      "packedParameters": [
+        {
+          "publicName": "frequency1",
+          "field": "frequency1",
+          "keys": [
+            "f1"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "frequency2",
+          "field": "frequency2",
+          "keys": [
+            "f2"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "frequency3",
+          "field": "frequency3",
+          "keys": [
+            "f3"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "frequency4",
+          "field": "frequency4",
+          "keys": [
+            "f4"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "balance",
+          "field": "balance",
+          "keys": [
+            "balance0",
+            "balance1",
+            "balance2",
+            "balance3",
+            "balance4"
+          ],
+          "offset": 4,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "StereoBlend": {
+      "internalType": "StereoBlendPlugin",
+      "layoutHash": 648556109,
+      "floatCount": 1,
+      "packedParameters": [
+        {
+          "publicName": "stereo",
+          "field": "stereo",
+          "keys": [
+            "stereo"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    }
+  },
+  "frozenGoldenIndexes": {
+    "dsp/plugins/analyzer/level_meter/params.json": "dsp/plugins/analyzer/level_meter/golden/index.json",
+    "dsp/plugins/analyzer/oscilloscope/params.json": "dsp/plugins/analyzer/oscilloscope/golden/index.json",
+    "dsp/plugins/analyzer/spectrogram/params.json": "dsp/plugins/analyzer/spectrogram/golden/index.json",
+    "dsp/plugins/analyzer/spectrum_analyzer/params.json": "dsp/plugins/analyzer/spectrum_analyzer/golden/index.json",
+    "dsp/plugins/analyzer/stereo_meter/params.json": "dsp/plugins/analyzer/stereo_meter/golden/index.json",
+    "dsp/plugins/basics/channel_divider/params.json": "dsp/plugins/basics/channel_divider/golden/index.json",
+    "dsp/plugins/basics/dc_offset/params.json": "dsp/plugins/basics/dc_offset/golden/index.json",
+    "dsp/plugins/basics/fir_crossover/params.json": "dsp/plugins/basics/fir_crossover/golden/index.json",
+    "dsp/plugins/basics/matrix/params.json": "dsp/plugins/basics/matrix/golden/index.json",
+    "dsp/plugins/basics/multi_channel_panel/params.json": "dsp/plugins/basics/multi_channel_panel/golden/index.json",
+    "dsp/plugins/basics/mute/params.json": "dsp/plugins/basics/mute/golden/index.json",
+    "dsp/plugins/basics/polarity_inversion/params.json": "dsp/plugins/basics/polarity_inversion/golden/index.json",
+    "dsp/plugins/basics/stereo_balance/params.json": "dsp/plugins/basics/stereo_balance/golden/index.json",
+    "dsp/plugins/basics/volume/params.json": "dsp/plugins/basics/volume/golden/index.json",
+    "dsp/plugins/delay/delay/params.json": "dsp/plugins/delay/delay/golden/index.json",
+    "dsp/plugins/delay/time_alignment/params.json": "dsp/plugins/delay/time_alignment/golden/index.json",
+    "dsp/plugins/dynamics/auto_leveler/params.json": "dsp/plugins/dynamics/auto_leveler/golden/index.json",
+    "dsp/plugins/dynamics/brickwall_limiter/params.json": "dsp/plugins/dynamics/brickwall_limiter/golden/index.json",
+    "dsp/plugins/dynamics/compressor/params.json": "dsp/plugins/dynamics/compressor/golden/index.json",
+    "dsp/plugins/dynamics/expander/params.json": "dsp/plugins/dynamics/expander/golden/index.json",
+    "dsp/plugins/dynamics/gate/params.json": "dsp/plugins/dynamics/gate/golden/index.json",
+    "dsp/plugins/dynamics/multiband_compressor/params.json": "dsp/plugins/dynamics/multiband_compressor/golden/index.json",
+    "dsp/plugins/dynamics/multiband_expander/params.json": "dsp/plugins/dynamics/multiband_expander/golden/index.json",
+    "dsp/plugins/dynamics/multiband_transient/params.json": "dsp/plugins/dynamics/multiband_transient/golden/index.json",
+    "dsp/plugins/dynamics/power_amp_sag/params.json": "dsp/plugins/dynamics/power_amp_sag/golden/index.json",
+    "dsp/plugins/dynamics/transient_shaper/params.json": "dsp/plugins/dynamics/transient_shaper/golden/index.json",
+    "dsp/plugins/eq/band_pass_filter/params.json": "dsp/plugins/eq/band_pass_filter/golden/index.json",
+    "dsp/plugins/eq/comb_filter/params.json": "dsp/plugins/eq/comb_filter/golden/index.json",
+    "dsp/plugins/eq/earphone_cable_sim/params.json": "dsp/plugins/eq/earphone_cable_sim/golden/index.json",
+    "dsp/plugins/eq/fifteen_band_geq/params.json": "dsp/plugins/eq/fifteen_band_geq/golden/index.json",
+    "dsp/plugins/eq/fifteen_band_peq/params.json": "dsp/plugins/eq/fifteen_band_peq/golden/index.json",
+    "dsp/plugins/eq/five_band_dynamic_eq/params.json": "dsp/plugins/eq/five_band_dynamic_eq/golden/index.json",
+    "dsp/plugins/eq/five_band_fir_peq/params.json": "dsp/plugins/eq/five_band_fir_peq/golden/index.json",
+    "dsp/plugins/eq/five_band_peq/params.json": "dsp/plugins/eq/five_band_peq/golden/index.json",
+    "dsp/plugins/eq/group_delay_eq/params.json": "dsp/plugins/eq/group_delay_eq/golden/index.json",
+    "dsp/plugins/eq/hi_pass_filter/params.json": "dsp/plugins/eq/hi_pass_filter/golden/index.json",
+    "dsp/plugins/eq/lo_pass_filter/params.json": "dsp/plugins/eq/lo_pass_filter/golden/index.json",
+    "dsp/plugins/eq/loudness_equalizer/params.json": "dsp/plugins/eq/loudness_equalizer/golden/index.json",
+    "dsp/plugins/eq/narrow_range/params.json": "dsp/plugins/eq/narrow_range/golden/index.json",
+    "dsp/plugins/eq/room_eq/params.json": "dsp/plugins/eq/room_eq/golden/index.json",
+    "dsp/plugins/eq/tilt_eq/params.json": "dsp/plugins/eq/tilt_eq/golden/index.json",
+    "dsp/plugins/eq/tone_control/params.json": "dsp/plugins/eq/tone_control/golden/index.json",
+    "dsp/plugins/lofi/am_radio_simulator/params.json": "dsp/plugins/lofi/am_radio_simulator/golden/index.json",
+    "dsp/plugins/lofi/bit_crusher/params.json": "dsp/plugins/lofi/bit_crusher/golden/index.json",
+    "dsp/plugins/lofi/digital_error_emulator/params.json": "dsp/plugins/lofi/digital_error_emulator/golden/index.json",
+    "dsp/plugins/lofi/dsd64_imd_simulator/params.json": "dsp/plugins/lofi/dsd64_imd_simulator/golden/index.json",
+    "dsp/plugins/lofi/fm_radio_simulator/params.json": "dsp/plugins/lofi/fm_radio_simulator/golden/index.json",
+    "dsp/plugins/lofi/hum_generator/params.json": "dsp/plugins/lofi/hum_generator/golden/index.json",
+    "dsp/plugins/lofi/noise_blender/params.json": "dsp/plugins/lofi/noise_blender/golden/index.json",
+    "dsp/plugins/lofi/simple_jitter/params.json": "dsp/plugins/lofi/simple_jitter/golden/index.json",
+    "dsp/plugins/lofi/sw_radio_simulator/params.json": "dsp/plugins/lofi/sw_radio_simulator/golden/index.json",
+    "dsp/plugins/lofi/vinyl_artifacts/params.json": "dsp/plugins/lofi/vinyl_artifacts/golden/index.json",
+    "dsp/plugins/lofi/vinyl_simulator/params.json": "dsp/plugins/lofi/vinyl_simulator/golden/index.json",
+    "dsp/plugins/modulation/doppler_distortion/params.json": "dsp/plugins/modulation/doppler_distortion/golden/index.json",
+    "dsp/plugins/modulation/pitch_shifter/params.json": "dsp/plugins/modulation/pitch_shifter/golden/index.json",
+    "dsp/plugins/modulation/tremolo/params.json": "dsp/plugins/modulation/tremolo/golden/index.json",
+    "dsp/plugins/modulation/wow_flutter/params.json": "dsp/plugins/modulation/wow_flutter/golden/index.json",
+    "dsp/plugins/others/oscillator/params.json": "dsp/plugins/others/oscillator/golden/index.json",
+    "dsp/plugins/resonator/horn_resonator/params.json": "dsp/plugins/resonator/horn_resonator/golden/index.json",
+    "dsp/plugins/resonator/horn_resonator_plus/params.json": "dsp/plugins/resonator/horn_resonator_plus/golden/index.json",
+    "dsp/plugins/resonator/modal_resonator/params.json": "dsp/plugins/resonator/modal_resonator/golden/index.json",
+    "dsp/plugins/reverb/dattorro_plate_reverb/params.json": "dsp/plugins/reverb/dattorro_plate_reverb/golden/index.json",
+    "dsp/plugins/reverb/fdn_reverb/params.json": "dsp/plugins/reverb/fdn_reverb/golden/index.json",
+    "dsp/plugins/reverb/ir_reverb/params.json": "dsp/plugins/reverb/ir_reverb/golden/index.json",
+    "dsp/plugins/reverb/rs_reverb/params.json": "dsp/plugins/reverb/rs_reverb/golden/index.json",
+    "dsp/plugins/saturation/dynamic_saturation/params.json": "dsp/plugins/saturation/dynamic_saturation/golden/index.json",
+    "dsp/plugins/saturation/exciter/params.json": "dsp/plugins/saturation/exciter/golden/index.json",
+    "dsp/plugins/saturation/hard_clipping/params.json": "dsp/plugins/saturation/hard_clipping/golden/index.json",
+    "dsp/plugins/saturation/harmonic_distortion/params.json": "dsp/plugins/saturation/harmonic_distortion/golden/index.json",
+    "dsp/plugins/saturation/multiband_saturation/params.json": "dsp/plugins/saturation/multiband_saturation/golden/index.json",
+    "dsp/plugins/saturation/saturation/params.json": "dsp/plugins/saturation/saturation/golden/index.json",
+    "dsp/plugins/saturation/sub_synth/params.json": "dsp/plugins/saturation/sub_synth/golden/index.json",
+    "dsp/plugins/spatial/crossfeed_filter/params.json": "dsp/plugins/spatial/crossfeed_filter/golden/index.json",
+    "dsp/plugins/spatial/ms_matrix/params.json": "dsp/plugins/spatial/ms_matrix/golden/index.json",
+    "dsp/plugins/spatial/multiband_balance/params.json": "dsp/plugins/spatial/multiband_balance/golden/index.json",
+    "dsp/plugins/spatial/stereo_blend/params.json": "dsp/plugins/spatial/stereo_blend/golden/index.json"
+  },
+  "contractDigest": "23f4859aa8ec49bcbb2814a9b1fb7f5f3d318b95e39e0706a1a546babe2ba309"
+}

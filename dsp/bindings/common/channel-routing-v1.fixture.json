@@ -1,0 +1,28 @@
+{
+  "valid": [
+    {
+      "name": "mono-stereo",
+      "channels": 1,
+      "channel": "stereo",
+      "processingChannels": 1,
+      "nativeChannel": "left"
+    }
+  ],
+  "invalid": [
+    {
+      "name": "mono-right",
+      "channels": 1,
+      "channel": "right"
+    },
+    {
+      "name": "missing-numbered-channel",
+      "channels": 2,
+      "channel": "3"
+    },
+    {
+      "name": "missing-channel-pair",
+      "channels": 3,
+      "channel": "34"
+    }
+  ]
+}

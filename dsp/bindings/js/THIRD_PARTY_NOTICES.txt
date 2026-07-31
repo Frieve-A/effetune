@@ -1,0 +1,11 @@
+EffeTune DSP includes PFFFT v1.1.0.
+
+PFFFT source: https://github.com/marton78/pffft
+
+Copyright (c) 2020 Dario Mambro
+Copyright (c) 2019 Hayati Ayguen
+Copyright (c) 2013 Julien Pommier
+Copyright (c) 2004 the University Corporation for Atmospheric Research
+
+PFFFT is distributed under a permissive BSD-style license. The complete
+upstream notice is included in dist/assets/NOTICE.txt.

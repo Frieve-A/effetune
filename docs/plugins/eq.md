@@ -508,7 +508,7 @@ A precision low-pass filter that removes unwanted high frequencies while preserv
 
 ## Loudness Equalizer
 
-A specialized equalizer that adjusts frequency balance based on the Average SPL value you set. Use it for quieter listening, where bass and treble can feel weaker, to keep the music balanced and enjoyable.
+A specialized equalizer that links volume adjustment with frequency balance correction. Set Average SPL to the estimated average listening level at 0dB Relative Volume, then use Relative Volume for everyday volume changes. The plugin automatically strengthens the correction as you turn the volume down and reduces it as you turn the volume up.
 
 ### Listening Enhancement Guide
 - Low Volume Listening:
@@ -516,19 +516,26 @@ A specialized equalizer that adjusts frequency balance based on the Average SPL 
   - Maintains musical balance at quiet levels
   - Compensates for human hearing characteristics
 - Average SPL Setting:
-  - More enhancement at lower Average SPL settings
-  - Gradual reduction of processing as the setting increases
-  - Natural sound at higher listening levels
+  - Set it to the estimated average listening level at 0dB Relative Volume
+  - This is a manual reference value; the plugin does not measure SPL
+- Relative Volume Adjustment:
+  - Negative values lower the output level and increase the correction
+  - Positive values raise the output level and reduce the correction
+  - EQ correction is based on `Average SPL + Relative Volume` and is limited to the 60dB-to-85dB correction range
 - Frequency Balance:
   - Low shelf for bass enhancement (100-300Hz)
   - High shelf for treble enhancement (3-6kHz)
   - Smooth transition between frequency ranges
 
 ### Parameters
-- **Average SPL** - Estimated average listening level used for correction (60dB to 85dB)
-  - Lower values: More enhancement
-  - Higher values: Less enhancement
-  - Set this manually to match your typical listening volume
+- **Average SPL** - Estimated average listening level at 0dB Relative Volume (60dB to 96dB)
+  - Set this manually to match the average SPL at your listening position
+  - Values above 85dB allow a higher reference level; EQ correction remains off until `Average SPL + Relative Volume` falls below 85dB
+- **Relative Volume** - Volume adjustment relative to Average SPL (-30dB to +12dB)
+  - 0dB: Output level corresponding to Average SPL
+  - Negative values: Lower volume with more loudness correction
+  - Positive values: Higher volume with less loudness correction
+  - Positive values can cause clipping when the input or EQ boost is already high
 - **Low Frequency Controls**
   - Frequency: Bass enhancement center (100Hz to 300Hz)
   - Gain: Maximum bass boost (0dB to 15dB)
@@ -539,9 +546,9 @@ A specialized equalizer that adjusts frequency balance based on the Average SPL 
   - Q: Shape of treble enhancement (0.5 to 1.0)
 
 ### Visual Display
-- Real-time frequency response graph
+- Real-time EQ response graph
 - Interactive parameter controls
-- Volume-dependent curve visualization
+- Volume-dependent correction curve; the uniform Relative Volume gain is not included in the graph
 - Precise numerical readouts
 
 ## Narrow Range

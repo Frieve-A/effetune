@@ -1,0 +1,19 @@
+# EffeTune DSP Library
+
+Version: 0.1.0
+Python package: effetune
+npm package: @effetune/dsp
+Catalog entries: 76
+Release state: cohort: unreleased; python: unreleased; npm: unreleased; githubRelease: unreleased
+
+Canonical resources:
+- https://effetune.frieve.com/dsp/
+- https://effetune.frieve.com/dsp/catalog/effects-v1.json
+- https://effetune.frieve.com/dsp/schemas/chain-v1.schema.json
+- https://effetune.frieve.com/dsp/schemas/bundle-v1.schema.json
+- https://effetune.frieve.com/dsp/getting-started/python/
+- https://effetune.frieve.com/dsp/getting-started/javascript/
+- https://effetune.frieve.com/dsp/concepts/determinism/
+- https://effetune.frieve.com/dsp/reference/compatibility/
+
+MCP, measurement, resampling, ffmpeg, integrated LUFS, and true-peak APIs are not implemented in v0.1.

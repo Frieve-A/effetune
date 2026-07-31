@@ -467,6 +467,23 @@ void testDeterminismAndBlockDivision() {
   harness.stage(params);
   harness.process(replay, 2u, 128u);
   check(first == replay, "reset and reseed reproduce the complete simulation");
+
+  const auto render_seed = [](std::uint32_t seed) {
+    KernelHarness seeded;
+    seeded.seed(seed, 0u);
+    Params seeded_params = defaultParams();
+    std::vector<float> output = makeSignal(2u, 128u, 11u);
+    seeded.stage(seeded_params);
+    seeded.process(output, 2u, 128u);
+    return output;
+  };
+  const std::vector<float> seed_1 = render_seed(1u);
+  const std::vector<float> seed_2 = render_seed(2u);
+  const std::vector<float> seed_3 = render_seed(3u);
+  const std::vector<float> seed_4 = render_seed(4u);
+  const std::vector<float> seed_5 = render_seed(5u);
+  check(seed_1 != seed_2 && seed_2 != seed_3 && seed_4 != seed_5,
+        "adjacent execution seeds select distinct simulations");
 }
 
 void testDetectorTransitionDeterminismAndBlockDivision() {
@@ -728,7 +745,7 @@ StaticRateProbe probeStaticRateChange(float raised_rate) {
   slow.hum = -80.0F;
   slow.speaker = 0.0F;
   KernelHarness harness(static_cast<float>(sample_rate), 1u);
-  harness.seed(0x77777777u, 0x11111111u);
+  harness.seed(2u, 0u);
   harness.stage(slow);
   processTone(harness, 0.0, kSlowFrames, 0u, sample_rate);
   const std::uint32_t before = telemetryCounter(harness, 16u);

@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "publicRoot": "/dsp/",
+  "routes": [
+    { "id": "landing", "status": "launch", "path": "/dsp/", "title": "EffeTune DSP Library", "output": "docs/dsp-library.md", "anchors": ["library-strengths"] },
+    { "id": "python-start", "status": "launch", "path": "/dsp/getting-started/python/", "title": "Python Start", "output": "docs/dsp/getting-started/python/index.md", "installSurfaces": ["python"] },
+    { "id": "javascript-start", "status": "launch", "path": "/dsp/getting-started/javascript/", "title": "JavaScript Start", "output": "docs/dsp/getting-started/javascript/index.md", "installSurfaces": ["npm"] },
+    { "id": "audioworklet-start", "status": "launch", "path": "/dsp/getting-started/audioworklet/", "title": "AudioWorklet Start", "output": "docs/dsp/getting-started/audioworklet/index.md", "anchors": ["browser-audio", "api"], "installSurfaces": ["npm"] },
+    { "id": "cli-start", "status": "launch", "path": "/dsp/getting-started/cli/", "title": "CLI Start", "output": "docs/dsp/getting-started/cli/index.md", "anchors": ["batch-rendering", "api"], "installSurfaces": ["python"] },
+    { "id": "effects", "status": "launch", "path": "/dsp/effects/", "title": "Effects", "output": "docs/dsp/effects/index.md" },
+    { "id": "effect", "status": "launch", "path": "/dsp/effects/{effect-slug}/", "pathPlaceholders": ["effect-slug"], "title": "Effect reference", "output": "docs/dsp/effects/{effect-slug}/index.md", "dynamic": "catalog-effects" },
+    { "id": "processing-model", "status": "launch", "path": "/dsp/concepts/processing-model/", "title": "Processing model", "output": "docs/dsp/concepts/processing-model/index.md", "anchors": ["source-generating-effects"] },
+    { "id": "determinism", "status": "launch", "path": "/dsp/concepts/determinism/", "title": "Determinism", "output": "docs/dsp/concepts/determinism/index.md", "anchors": ["reproducible-experiment"] },
+    { "id": "chain-and-presets", "status": "launch", "path": "/dsp/concepts/chain-and-presets/", "title": "Chain and presets", "output": "docs/dsp/concepts/chain-and-presets/index.md", "anchors": ["visual-editor-to-code"] },
+    { "id": "streaming-and-events", "status": "launch", "path": "/dsp/concepts/streaming-and-events/", "title": "Streaming and events", "output": "docs/dsp/concepts/streaming-and-events/index.md" },
+    { "id": "assets-and-bundles", "status": "launch", "path": "/dsp/concepts/assets-and-bundles/", "title": "Assets and bundles", "output": "docs/dsp/concepts/assets-and-bundles/index.md", "anchors": ["asset-required-effects"] },
+    { "id": "ml-data-augmentation", "status": "launch", "path": "/dsp/cookbook/ml-data-augmentation/", "title": "ML data augmentation", "output": "docs/dsp/cookbook/ml-data-augmentation/index.md" },
+    { "id": "schema-driven-agent", "status": "launch", "path": "/dsp/cookbook/schema-driven-agent/", "title": "Schema-driven agent", "output": "docs/dsp/cookbook/schema-driven-agent/index.md" },
+    { "id": "python-api", "status": "launch", "path": "/dsp/api/python/", "title": "Python API", "output": "docs/dsp/api/python/index.md", "installSurfaces": ["python"] },
+    { "id": "javascript-api", "status": "launch", "path": "/dsp/api/javascript/", "title": "JavaScript API", "output": "docs/dsp/api/javascript/index.md", "installSurfaces": ["npm"] },
+    { "id": "chain-v1", "status": "launch", "path": "/dsp/reference/chain-v1/", "title": "Chain v1", "output": "docs/dsp/reference/chain-v1/index.md" },
+    { "id": "bundle-v1", "status": "launch", "path": "/dsp/reference/bundle-v1/", "title": "Bundle v1", "output": "docs/dsp/reference/bundle-v1/index.md" },
+    { "id": "compatibility", "status": "launch", "path": "/dsp/reference/compatibility/", "title": "Compatibility", "output": "docs/dsp/reference/compatibility/index.md", "anchors": ["analyzers-and-telemetry"] },
+    { "id": "verification", "status": "launch", "path": "/dsp/reference/verification/", "title": "Verification", "output": "docs/dsp/reference/verification/index.md" },
+    { "id": "release-integrity", "status": "launch", "path": "/dsp/reference/release-integrity/", "title": "Release integrity", "output": "docs/dsp/reference/release-integrity/index.md" },
+    { "id": "faq", "status": "launch", "path": "/dsp/faq/", "title": "FAQ", "output": "docs/dsp/faq/index.md", "anchors": ["errors"] },
+    { "id": "demo", "status": "launch", "path": "/dsp/demo/", "title": "Live demo", "source": "examples/dsp-library/index.html", "externalSource": true },
+    { "id": "chain-schema", "status": "launch", "path": "/dsp/schemas/chain-v1.schema.json", "title": "Chain v1 schema", "source": "dsp/bindings/schema/chain-v1.schema.json", "raw": true },
+    { "id": "bundle-schema", "status": "launch", "path": "/dsp/schemas/bundle-v1.schema.json", "title": "Bundle v1 schema", "source": "dsp/bindings/schema/bundle-v1.schema.json", "raw": true },
+    { "id": "catalog", "status": "launch", "path": "/dsp/catalog/effects-v1.json", "title": "Effect catalog", "output": "docs/dsp/catalog/effects-v1.json", "raw": true },
+    { "id": "llms", "status": "launch", "path": "/dsp/llms.txt", "title": "LLM index", "output": "docs/dsp/llms.txt", "raw": true },
+    { "id": "visual-editor-to-code", "status": "merged", "path": "/dsp/concepts/chain-and-presets/#visual-editor-to-code" },
+    { "id": "browser-audio", "status": "merged", "path": "/dsp/getting-started/audioworklet/#browser-audio" },
+    { "id": "reproducible-experiment", "status": "merged", "path": "/dsp/concepts/determinism/#reproducible-experiment" },
+    { "id": "batch-rendering", "status": "merged", "path": "/dsp/getting-started/cli/#batch-rendering" },
+    { "id": "worklet-api", "status": "merged", "path": "/dsp/getting-started/audioworklet/#api" },
+    { "id": "cli-api", "status": "merged", "path": "/dsp/getting-started/cli/#api" },
+    { "id": "errors-api", "status": "merged", "path": "/dsp/faq/#errors" },
+    { "id": "library-strengths", "status": "merged", "path": "/dsp/#library-strengths" },
+    { "id": "contributing", "status": "post-launch", "path": "/dsp/contributing/" },
+    { "id": "localized-full-tree", "status": "post-launch", "path": "/dsp/{locale}/", "pathPlaceholders": ["locale"] }
+  ],
+  "localizedOverviews": {
+    "locales": ["ar", "es", "fr", "hi", "ja", "ko", "pt", "ru", "zh"],
+    "path": "/dsp/{locale}/",
+    "output": "docs/i18n/{locale}/dsp-library.md"
+  },
+  "navigation": {
+    "output": "_data/dsp-nav.yml",
+    "groups": [
+      { "label": "Start", "routeIds": ["landing", "python-start", "javascript-start", "audioworklet-start", "cli-start"] },
+      { "label": "Effects", "routeIds": ["effects"] },
+      { "label": "Build", "routeIds": ["ml-data-augmentation", "schema-driven-agent"] },
+      { "label": "Understand", "routeIds": ["processing-model", "determinism", "chain-and-presets", "streaming-and-events", "assets-and-bundles"] },
+      { "label": "Reference", "routeIds": ["python-api", "javascript-api", "chain-v1", "bundle-v1", "compatibility", "verification", "release-integrity"] },
+      { "label": "Help", "routeIds": ["faq", "demo"] }
+    ]
+  },
+  "nonRouteOutputs": [
+    { "id": "root-readme", "output": "README.md", "snippet": "root-readme-bridge.md", "language": "markdown", "marker": "DSP-LIBRARY-BRIDGE" },
+    { "id": "python-readme-summary", "output": "dsp/bindings/python/README.md", "summary": "python", "marker": "DSP-LIBRARY-PYTHON-SUMMARY" },
+    { "id": "python-readme", "output": "dsp/bindings/python/README.md", "install": "pip install effetune", "snippet": "python-start.py", "language": "python", "marker": "DSP-LIBRARY-PYTHON-START" },
+    { "id": "javascript-readme-summary", "output": "dsp/bindings/js/README.md", "summary": "javascript", "marker": "DSP-LIBRARY-JAVASCRIPT-SUMMARY" },
+    { "id": "javascript-readme", "output": "dsp/bindings/js/README.md", "install": "npm install @effetune/dsp", "snippet": "javascript-start.mjs", "language": "js", "marker": "DSP-LIBRARY-JAVASCRIPT-START" }
+  ]
+}

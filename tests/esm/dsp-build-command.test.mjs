@@ -87,3 +87,24 @@ test('DSP source digest ignores retained all-golden transaction directories', t 
   assert.equal(sourceDigest(), digestBefore);
   assert.equal(metadataContents('fixture-sdk', baseline, simd), metadataBefore);
 });
+
+test('DSP source digest ignores generated JavaScript package output', t => {
+  const distRoot = path.join(repoRoot, 'dsp', 'bindings', 'js', 'dist');
+  const distExisted = fs.existsSync(distRoot);
+  const sentinelPath = path.join(
+    distRoot,
+    `.source-digest-sentinel-${process.pid}-${Date.now()}.json`
+  );
+  const digestBefore = sourceDigest();
+
+  fs.mkdirSync(distRoot, { recursive: true });
+  t.after(() => {
+    fs.rmSync(sentinelPath, { force: true });
+    if (!distExisted && fs.existsSync(distRoot) && fs.readdirSync(distRoot).length === 0) {
+      fs.rmdirSync(distRoot);
+    }
+  });
+  fs.writeFileSync(sentinelPath, '{"generated":true}\n');
+
+  assert.equal(sourceDigest(), digestBefore);
+});

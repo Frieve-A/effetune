@@ -13,6 +13,7 @@
   "seed": "0xeffe7a59",
   "params": {
     "sp": 65,
+    "rv": 0,
     "lg": 10,
     "lf": 180,
     "lq": 0.6,
@@ -25,12 +26,14 @@
       "frame": 17,
       "params": {
         "sp": 80,
+        "rv": -20,
         "hg": 12
       }
     },
     {
       "frame": 66,
       "params": {
+        "rv": 12,
         "lg": 0,
         "hf": 6000
       }
@@ -38,7 +41,8 @@
     {
       "frame": 129,
       "params": {
-        "sp": 85,
+        "sp": 96,
+        "rv": 0,
         "lg": 15,
         "hg": 15
       }
@@ -47,6 +51,7 @@
       "frame": 194,
       "params": {
         "sp": 60,
+        "rv": -30,
         "lf": 100,
         "lq": 1,
         "hq": 0.5
@@ -57,7 +62,7 @@
     "abs": 0.00001,
     "policy": "per-sample"
   },
-  "jsEngineHash": "dd973d93f2940a29f459b7eacc565abcf01a459b7f234c90b9839c86920809de",
+  "jsEngineHash": "7b9c79f705605bedd95ad7cab419f2f36ce7070d2843370a5b24bc1bfa63dbf8",
   "outputFloats": 1036,
   "byteLength": 4144,
   "binary": "case-008.f32"

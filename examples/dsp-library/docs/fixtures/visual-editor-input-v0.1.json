@@ -1,0 +1,11 @@
+{
+  "name": "DSP docs Volume",
+  "plugins": [
+    {
+      "nm": "Volume",
+      "en": true,
+      "ch": "A",
+      "vl": -6
+    }
+  ]
+}

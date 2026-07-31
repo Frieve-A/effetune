@@ -7,6 +7,7 @@ import vm from 'node:vm';
 
 import { validateParamSpec } from '../../scripts/gen-dsp-params.mjs';
 import { readGoldenSet } from '../../tools/dsp-parity/golden-io.mjs';
+import { XorShift64 } from '../../tools/dsp-parity/stimuli.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const pluginRoot = path.join(repoRoot, 'dsp', 'plugins', 'lofi', 'am_radio_simulator');
@@ -61,7 +62,7 @@ test('AM Radio Simulator freezes the parameter layout and representative parity 
   assert.equal(goldens.length, 20);
   assert.ok(goldens.every(item =>
     item.metadata.jsEngineHash ===
-      '2bba19990389185d4f793cabae7a81e180e8937375a1666c8f365b41c53a68a3'
+      'dd4ac2f6764c9b22350e9ee4fe14bafe6cb8d54d161262bc8049c93ce6335e48'
   ));
 });
 
@@ -124,6 +125,22 @@ test('AM Radio Simulator reference is deterministic tooling while normal fallbac
   const maximumGainResult = processor(
     new Float32Array(1), maximumGainParameters, { __seededRandom: () => 0.5 });
   assert.equal(maximumGainResult.measurements.agcGainDb, 42);
+
+  const renderSeed = seed => {
+    const rng = new XorShift64(BigInt(seed));
+    const source = new Float32Array(128);
+    for (let frame = 0; frame < source.length; frame++) {
+      source[frame] = Math.sin(frame * 0.071) * 0.3;
+    }
+    return [...processor(source, {
+      ...plugin.getParameters(), fr: true, enabled: true,
+      sampleRate: 48000, blockSize: 128, channelCount: 1
+    }, { __seededRandom: () => rng.nextFloat() })];
+  };
+  const seededRuns = [1, 2, 3, 4, 5].map(renderSeed);
+  assert.notDeepEqual(seededRuns[0], seededRuns[1]);
+  assert.notDeepEqual(seededRuns[1], seededRuns[2]);
+  assert.notDeepEqual(seededRuns[3], seededRuns[4]);
 
   const render384k = sm => {
     const referenceContext = { __seededRandom: () => 0.314159265 };

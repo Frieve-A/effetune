@@ -13,6 +13,7 @@
   "seed": "0xeffe7a5d",
   "params": {
     "sp": 60,
+    "rv": 0,
     "lg": 15,
     "lf": 300,
     "lq": 1,
@@ -25,7 +26,7 @@
     "abs": 0.00001,
     "policy": "per-sample"
   },
-  "jsEngineHash": "dd973d93f2940a29f459b7eacc565abcf01a459b7f234c90b9839c86920809de",
+  "jsEngineHash": "7b9c79f705605bedd95ad7cab419f2f36ce7070d2843370a5b24bc1bfa63dbf8",
   "outputFloats": 516,
   "byteLength": 2064,
   "binary": "case-004.f32"

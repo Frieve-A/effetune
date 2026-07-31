@@ -992,7 +992,7 @@ private:
 
   void deriveBaseRandomState() noexcept {
     dsp::XorShiftRng master(selected_seed_low_, selected_seed_high_);
-    base_random_state_ = static_cast<std::uint32_t>(master.nextU64() >> 32u);
+    base_random_state_ = static_cast<std::uint32_t>(master.nextU64() >> 11u);
     if (base_random_state_ == 0u) {
       base_random_state_ = static_cast<std::uint32_t>(dsp::XorShiftRng::kFallbackSeed);
     }

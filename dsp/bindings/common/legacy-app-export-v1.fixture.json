@@ -1,0 +1,852 @@
+{
+  "preset": {
+    "name": "Legacy import contract",
+    "timestamp": 1710000000000,
+    "pipeline": [
+      {
+        "name": "Section",
+        "enabled": false,
+        "parameters": {
+          "cm": "Muted group"
+        }
+      },
+      {
+        "id": "legacy-volume",
+        "name": "Volume",
+        "enabled": true,
+        "inputBus": 0,
+        "outputBus": 0,
+        "parameters": {
+          "vl": -3
+        }
+      },
+      {
+        "name": "Section",
+        "enabled": true,
+        "parameters": {
+          "cm": "Active group"
+        }
+      },
+      {
+        "id": "legacy-tilt",
+        "name": "Tilt EQ",
+        "enabled": true,
+        "inputBus": 0,
+        "outputBus": 0,
+        "channel": null,
+        "parameters": {
+          "f0": 6.907755278982137,
+          "sl": 1
+        }
+      },
+      {
+        "name": "Five Band PEQ",
+        "enabled": true,
+        "inputBus": 0,
+        "outputBus": 0,
+        "channel": "34",
+        "parameters": {
+          "f0": 100,
+          "f1": 250,
+          "f2": 1000,
+          "f3": 4000,
+          "f4": 10000,
+          "g0": 1,
+          "g1": 2,
+          "g2": 3,
+          "g3": 4,
+          "g4": 5,
+          "q0": 1,
+          "q1": 1,
+          "q2": 1,
+          "q3": 1,
+          "q4": 1,
+          "t0": "pk",
+          "t1": "lp",
+          "t2": "hp",
+          "t3": "ls",
+          "t4": "hs",
+          "e0": true,
+          "e1": true,
+          "e2": false,
+          "e3": true,
+          "e4": false
+        }
+      }
+    ]
+  },
+  "expected": [
+    {
+      "id": "legacy-volume",
+      "type": "Volume",
+      "enabled": false,
+      "channel": "stereo",
+      "parameters": {
+        "volume": -3
+      }
+    },
+    {
+      "id": "legacy-tilt",
+      "type": "TiltEQ",
+      "enabled": true,
+      "channel": "stereo",
+      "parameters": {
+        "pivotFrequency": 1000,
+        "slope": 1
+      }
+    },
+    {
+      "type": "FiveBandPEQ",
+      "enabled": true,
+      "channel": "34",
+      "parameters": {
+        "frequencies": [100, 250, 1000, 4000, 10000],
+        "gains": [1, 2, 3, 4, 5],
+        "qValues": [1, 1, 1, 1, 1],
+        "filterTypes": ["peaking", "lowPass", "highPass", "lowShelf", "highShelf"],
+        "enabledBands": [true, true, false, true, false]
+      }
+    }
+  ],
+  "displayNameAliases": {
+    "5Band PEQ": "FiveBandPEQ",
+    "15Band GEQ": "FifteenBandGEQ",
+    "15Band PEQ": "FifteenBandPEQ",
+    "5Band Dynamic EQ": "FiveBandDynamicEQ",
+    "5Band FIR PEQ": "FiveBandFIRPEQ"
+  },
+  "unaliasedDisplayName": "5 Band PEQ",
+  "structuredParameters": {
+    "preset": {
+      "pipeline": [
+        {
+          "name": "Matrix",
+          "enabled": true,
+          "parameters": { "mx": "0002p0311p1213" }
+        },
+        {
+          "name": "Multiband Compressor",
+          "enabled": true,
+          "parameters": {
+            "f1": 100,
+            "f2": 500,
+            "f3": 2000,
+            "f4": 8000,
+            "bands": [
+              { "t": -20, "r": 4, "a": 30, "rl": 150, "k": 6, "g": -1, "gr": 0 },
+              { "t": -22, "r": 3, "a": 20, "rl": 120, "k": 4, "g": 0, "gr": 0 },
+              { "t": -25, "r": 2.5, "a": 15, "rl": 80, "k": 4, "g": 1, "gr": -3.5 },
+              { "t": -28, "r": 2, "a": 10, "rl": 60, "k": 3, "g": 1.5, "gr": 0 },
+              { "t": -18, "r": 5, "a": 5, "rl": 40, "k": 2, "g": -2, "gr": 0 }
+            ]
+          }
+        },
+        {
+          "name": "Multiband Saturation",
+          "enabled": true,
+          "parameters": {
+            "f1": 200,
+            "f2": 4000,
+            "bands": [
+              { "dr": 1.5, "bs": 0.1, "mx": 50, "gn": 0 },
+              { "dr": 2, "bs": 0, "mx": 60, "gn": 1 },
+              { "dr": 2.5, "bs": -0.1, "mx": 70, "gn": -1 }
+            ]
+          }
+        },
+        {
+          "name": "5Band Dynamic EQ",
+          "enabled": true,
+          "parameters": {
+            "bs": [
+              { "en": false, "ft": "pk", "f": 100, "q": 1, "mg": 6, "th": -18, "r": 4, "kn": 3, "a": 10, "rl": 100, "scf": 100, "scq": 1 },
+              { "en": false, "ft": "pk", "f": 300, "q": 1, "mg": 6, "th": -21, "r": 4, "kn": 3, "a": 10, "rl": 100, "scf": 300, "scq": 1 },
+              { "en": true, "ft": "hs", "f": 2500, "q": 1, "mg": 6, "th": -18, "r": 0.8228108312679314, "kn": 3, "a": 1, "rl": 100, "scf": 1177.687310711178, "scq": 0.7 },
+              { "en": false, "ft": "pk", "f": 3000, "q": 1, "mg": 6, "th": -27, "r": 4, "kn": 3, "a": 10, "rl": 100, "scf": 3000, "scq": 1 },
+              { "en": false, "ft": "ls", "f": 10000, "q": 1, "mg": 6, "th": -30, "r": 4, "kn": 3, "a": 10, "rl": 100, "scf": 10000, "scq": 1 }
+            ]
+          }
+        },
+        {
+          "name": "Multiband Expander",
+          "enabled": true,
+          "parameters": {
+            "f1": 120,
+            "f2": 600,
+            "f3": 2400,
+            "f4": 9000,
+            "bands": [
+              { "t": -30, "r": 1.5, "a": 10, "rl": 100, "k": 6, "g": 1 },
+              { "t": -32, "r": 1.4, "a": 8, "rl": 90, "k": 5, "g": 0.5 },
+              { "t": -34, "r": 1.3, "a": 6, "rl": 80, "k": 4, "g": 0 },
+              { "t": -36, "r": 1.2, "a": 4, "rl": 70, "k": 3, "g": -0.5 },
+              { "t": -38, "r": 1.1, "a": 2, "rl": 60, "k": 2, "g": -1 }
+            ]
+          }
+        },
+        {
+          "name": "Multiband Transient",
+          "enabled": true,
+          "parameters": {
+            "f1": 250,
+            "f2": 5000,
+            "bands": [
+              { "fa": 5, "fr": 50, "sa": 25, "sr": 250, "gt": 6, "gs": 0, "sm": 5 },
+              { "fa": 2, "fr": 30, "sa": 10, "sr": 150, "gt": 4, "gs": -2, "sm": 3 },
+              { "fa": 0.5, "fr": 20, "sa": 5, "sr": 100, "gt": 2, "gs": -4, "sm": 1 }
+            ]
+          }
+        },
+        {
+          "name": "Multiband Balance",
+          "enabled": true,
+          "parameters": {
+            "f1": 110,
+            "f2": 550,
+            "f3": 2200,
+            "f4": 8800,
+            "bands": [
+              { "balance": -40 },
+              { "balance": -20 },
+              { "balance": 0 },
+              { "balance": 20 },
+              { "balance": 40 }
+            ]
+          }
+        },
+        {
+          "name": "MultiChannel Panel",
+          "enabled": true,
+          "parameters": {
+            "m": [false, true, false, false, false, false, false, false],
+            "s": [false, false, true, false, false, false, false, false],
+            "v": [0, -3, 1.5, 0, 0, 0, 0, 0],
+            "d": [0, 1, 2, 0, 0, 0, 0, 0],
+            "l": [true, false, false, false, false, false, false]
+          }
+        },
+        {
+          "name": "Modal Resonator",
+          "enabled": true,
+          "parameters": {
+            "en": false,
+            "sr": 3,
+            "mx": 25,
+            "rs": [
+              { "en": true, "fr": 6.86, "dc": 15, "lp": 7.19, "hp": 5.8, "gn": 0 },
+              { "en": true, "fr": 7.52, "dc": 12, "lp": 7.86, "hp": 6.48, "gn": -3 },
+              { "en": true, "fr": 7.99, "dc": 10, "lp": 8.33, "hp": 6.94, "gn": -6 },
+              { "en": false, "fr": 8.34, "dc": 8, "lp": 8.68, "hp": 7.29, "gn": -9 },
+              { "en": true, "fr": 8.75, "dc": 6, "lp": 9.08, "hp": 7.7, "gn": -12 }
+            ]
+          }
+        }
+      ]
+    },
+    "expected": [
+      {
+        "type": "Matrix",
+        "enabled": true,
+        "channel": "stereo",
+        "parameters": { "matrixRoutes": "0002p0311p1213" }
+      },
+      {
+        "type": "MultibandCompressor",
+        "enabled": true,
+        "channel": "stereo",
+        "parameters": {
+          "frequency1": 100,
+          "frequency2": 500,
+          "frequency3": 2000,
+          "frequency4": 8000,
+          "threshold": [-20, -22, -25, -28, -18],
+          "ratio": [4, 3, 2.5, 2, 5],
+          "attack": [30, 20, 15, 10, 5],
+          "release": [150, 120, 80, 60, 40],
+          "knee": [6, 4, 4, 3, 2],
+          "gain": [-1, 0, 1, 1.5, -2]
+        }
+      },
+      {
+        "type": "MultibandSaturation",
+        "enabled": true,
+        "channel": "stereo",
+        "parameters": {
+          "frequency1": 200,
+          "frequency2": 4000,
+          "drive": [1.5, 2, 2.5],
+          "bias": [0.1, 0, -0.1],
+          "mix": [50, 60, 70],
+          "gain": [0, 1, -1]
+        }
+      },
+      {
+        "type": "FiveBandDynamicEQ",
+        "enabled": true,
+        "channel": "stereo",
+        "parameters": {
+          "enabledBands": [false, false, true, false, false],
+          "filterType": ["pk", "pk", "hs", "pk", "ls"],
+          "frequency": [100, 300, 2500, 3000, 10000],
+          "q": [1, 1, 1, 1, 1],
+          "maxGain": [6, 6, 6, 6, 6],
+          "threshold": [-18, -21, -18, -27, -30],
+          "ratio": [4, 4, 0.8228108312679314, 4, 4],
+          "knee": [3, 3, 3, 3, 3],
+          "attack": [10, 10, 1, 10, 10],
+          "release": [100, 100, 100, 100, 100],
+          "sidechainFrequency": [100, 300, 1177.687310711178, 3000, 10000],
+          "sidechainQ": [1, 1, 0.7, 1, 1]
+        }
+      },
+      {
+        "type": "MultibandExpander",
+        "enabled": true,
+        "channel": "stereo",
+        "parameters": {
+          "frequency1": 120,
+          "frequency2": 600,
+          "frequency3": 2400,
+          "frequency4": 9000,
+          "threshold": [-30, -32, -34, -36, -38],
+          "ratio": [1.5, 1.4, 1.3, 1.2, 1.1],
+          "attack": [10, 8, 6, 4, 2],
+          "release": [100, 90, 80, 70, 60],
+          "knee": [6, 5, 4, 3, 2],
+          "gain": [1, 0.5, 0, -0.5, -1]
+        }
+      },
+      {
+        "type": "MultibandTransient",
+        "enabled": true,
+        "channel": "stereo",
+        "parameters": {
+          "frequency1": 250,
+          "frequency2": 5000,
+          "fastAttack": [5, 2, 0.5],
+          "fastRelease": [50, 30, 20],
+          "slowAttack": [25, 10, 5],
+          "slowRelease": [250, 150, 100],
+          "transientGain": [6, 4, 2],
+          "sustainGain": [0, -2, -4],
+          "gainSmoothing": [5, 3, 1]
+        }
+      },
+      {
+        "type": "MultibandBalance",
+        "enabled": true,
+        "channel": "stereo",
+        "parameters": {
+          "frequency1": 110,
+          "frequency2": 550,
+          "frequency3": 2200,
+          "frequency4": 8800,
+          "balance": [-40, -20, 0, 20, 40]
+        }
+      },
+      {
+        "type": "MultiChannelPanel",
+        "enabled": true,
+        "channel": "stereo",
+        "parameters": {
+          "mute": [false, true, false, false, false, false, false, false],
+          "solo": [false, false, true, false, false, false, false, false],
+          "volume": [0, -3, 1.5, 0, 0, 0, 0, 0],
+          "delay": [0, 1, 2, 0, 0, 0, 0, 0],
+          "link": [true, false, false, false, false, false, false]
+        }
+      },
+      {
+        "type": "ModalResonator",
+        "enabled": false,
+        "channel": "stereo",
+        "parameters": {
+          "resonatorEnabled": [true, true, true, false, true],
+          "frequencyLog": [6.86, 7.52, 7.99, 8.34, 8.75],
+          "decay": [15, 12, 10, 8, 6],
+          "lowPassLog": [7.19, 7.86, 8.33, 8.68, 9.08],
+          "highPassLog": [5.8, 6.48, 6.94, 7.29, 7.7],
+          "gain": [0, -3, -6, -9, -12],
+          "mix": 25
+        }
+      }
+    ],
+    "invalid": [
+      {
+        "reason": "band arrays must have the exact per-effect length",
+        "message": "must contain exactly 3 band settings",
+        "preset": {
+          "pipeline": [
+            {
+              "name": "Multiband Saturation",
+              "parameters": { "bands": [{ "dr": 1, "bs": 0, "mx": 100, "gn": 0 }] }
+            }
+          ]
+        }
+      },
+      {
+        "reason": "band objects must not carry unknown members",
+        "message": "contains unsupported or incomplete band settings",
+        "preset": {
+          "pipeline": [
+            {
+              "name": "Multiband Saturation",
+              "parameters": {
+                "bands": [
+                  { "dr": 1, "bs": 0, "mx": 100, "gn": 0 },
+                  { "dr": 1, "bs": 0, "mx": 100, "gn": 0 },
+                  { "dr": 1, "bs": 0, "mx": 100, "gn": 0, "mystery": 1 }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "reason": "band objects must carry every member",
+        "message": "contains unsupported or incomplete band settings",
+        "preset": {
+          "pipeline": [
+            {
+              "name": "Multiband Saturation",
+              "parameters": {
+                "bands": [
+                  { "dr": 1, "bs": 0, "mx": 100, "gn": 0 },
+                  { "dr": 1, "bs": 0, "mx": 100, "gn": 0 },
+                  { "dr": 1, "bs": 0, "mx": 100 }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "reason": "resonator arrays must have the exact per-effect length",
+        "message": "must contain exactly 5 resonator settings",
+        "preset": {
+          "pipeline": [
+            {
+              "name": "Modal Resonator",
+              "parameters": {
+                "rs": [{ "en": true, "fr": 6.86, "dc": 15, "lp": 7.19, "hp": 5.8, "gn": 0 }]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "reason": "the expanded band settings must not also be supplied flat",
+        "message": "supplies the same band settings more than once",
+        "preset": {
+          "pipeline": [
+            {
+              "name": "Multiband Compressor",
+              "parameters": {
+                "threshold": [-20, -20, -20, -20, -20],
+                "bands": [
+                  { "t": -20, "r": 4, "a": 30, "rl": 150, "k": 6, "g": 0 },
+                  { "t": -20, "r": 4, "a": 30, "rl": 150, "k": 6, "g": 0 },
+                  { "t": -20, "r": 4, "a": 30, "rl": 150, "k": 6, "g": 0 },
+                  { "t": -20, "r": 4, "a": 30, "rl": 150, "k": 6, "g": 0 },
+                  { "t": -20, "r": 4, "a": 30, "rl": 150, "k": 6, "g": 0 }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "reason": "the discarded compressor meter readout must still be a finite number",
+        "message": "contains invalid meter display state",
+        "preset": {
+          "pipeline": [
+            {
+              "name": "Multiband Compressor",
+              "parameters": {
+                "bands": [
+                  { "t": -20, "r": 4, "a": 30, "rl": 150, "k": 6, "g": 0, "gr": "loud" },
+                  { "t": -20, "r": 4, "a": 30, "rl": 150, "k": 6, "g": 0, "gr": 0 },
+                  { "t": -20, "r": 4, "a": 30, "rl": 150, "k": 6, "g": 0, "gr": 0 },
+                  { "t": -20, "r": 4, "a": 30, "rl": 150, "k": 6, "g": 0, "gr": 0 },
+                  { "t": -20, "r": 4, "a": 30, "rl": 150, "k": 6, "g": 0, "gr": 0 }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "reason": "matrix routing must not be supplied under both names",
+        "message": "supplies routing settings more than once",
+        "preset": {
+          "pipeline": [
+            {
+              "name": "Matrix",
+              "parameters": { "mx": "0011", "matrixRoutes": "0011" }
+            }
+          ]
+        }
+      },
+      {
+        "reason": "expander band arrays must have the exact per-effect length",
+        "message": "must contain exactly 5 band settings",
+        "preset": {
+          "pipeline": [
+            {
+              "name": "Multiband Expander",
+              "parameters": {
+                "bands": [
+                  { "t": -30, "r": 1.5, "a": 10, "rl": 100, "k": 6, "g": 1 },
+                  { "t": -30, "r": 1.5, "a": 10, "rl": 100, "k": 6, "g": 1 }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "reason": "only the compressor persists a band meter readout; the expander must not accept one",
+        "message": "contains unsupported or incomplete band settings",
+        "preset": {
+          "pipeline": [
+            {
+              "name": "Multiband Expander",
+              "parameters": {
+                "bands": [
+                  { "t": -30, "r": 1.5, "a": 10, "rl": 100, "k": 6, "g": 1, "gr": 0 },
+                  { "t": -30, "r": 1.5, "a": 10, "rl": 100, "k": 6, "g": 1 },
+                  { "t": -30, "r": 1.5, "a": 10, "rl": 100, "k": 6, "g": 1 },
+                  { "t": -30, "r": 1.5, "a": 10, "rl": 100, "k": 6, "g": 1 },
+                  { "t": -30, "r": 1.5, "a": 10, "rl": 100, "k": 6, "g": 1 }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "reason": "transient band objects must carry every member",
+        "message": "contains unsupported or incomplete band settings",
+        "preset": {
+          "pipeline": [
+            {
+              "name": "Multiband Transient",
+              "parameters": {
+                "bands": [
+                  { "fa": 5, "fr": 50, "sa": 25, "sr": 250, "gt": 6, "gs": 0, "sm": 5 },
+                  { "fa": 5, "fr": 50, "sa": 25, "sr": 250, "gt": 6, "gs": 0, "sm": 5 },
+                  { "fa": 5, "fr": 50, "sa": 25, "sr": 250, "gt": 6, "gs": 0 }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "reason": "balance band objects must not carry unknown members",
+        "message": "contains unsupported or incomplete band settings",
+        "preset": {
+          "pipeline": [
+            {
+              "name": "Multiband Balance",
+              "parameters": {
+                "bands": [
+                  { "balance": 0 },
+                  { "balance": 0 },
+                  { "balance": 0 },
+                  { "balance": 0 },
+                  { "balance": 0, "mystery": 1 }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "reason": "the whole-array short key must not also be supplied under its public name",
+        "message": "supplies the same channel settings more than once",
+        "preset": {
+          "pipeline": [
+            {
+              "name": "MultiChannel Panel",
+              "parameters": {
+                "v": [0, 0, 0, 0, 0, 0, 0, 0],
+                "volume": [0, 0, 0, 0, 0, 0, 0, 0]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "reason": "the whole-array short key must hold an array",
+        "message": "contains unsupported or incomplete channel settings",
+        "preset": {
+          "pipeline": [
+            {
+              "name": "MultiChannel Panel",
+              "parameters": { "v": 0 }
+            }
+          ]
+        }
+      },
+      {
+        "reason": "the whole-array short key must have the exact per-effect length",
+        "message": "MultiChannelPanel.volume",
+        "preset": {
+          "pipeline": [
+            {
+              "name": "MultiChannel Panel",
+              "parameters": { "v": [0, 0, 0] }
+            }
+          ]
+        }
+      },
+      {
+        "reason": "the Modal Resonator processing switch must be a boolean",
+        "message": "processing state must be a boolean",
+        "preset": {
+          "pipeline": [
+            {
+              "name": "Modal Resonator",
+              "parameters": { "en": "no" }
+            }
+          ]
+        }
+      },
+      {
+        "reason": "the discarded Modal Resonator editor selection must still be in range",
+        "message": "editor selection must be an integer from 0 to 4",
+        "preset": {
+          "pipeline": [
+            {
+              "name": "Modal Resonator",
+              "parameters": { "sr": 9 }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "echoedStructuralKeys": {
+    "comment": "The app's serializer echoes structural values back into the long-format parameters object: plugin-base.js getSerializableParameters() re-emits the assigned channel and bus indexes under their short names, Brickwall Limiter adds its class name under pluginType, and both Horn Resonators duplicate the node's enabled switch under en. All of them are dropped unconditionally; the node keeps being the source of truth. Modal Resonator's en is a genuinely independent processing switch and must keep being folded into enabled. Expected parameters are asserted key by key, not exhaustively.",
+    "preset": {
+      "pipeline": [
+        {
+          "name": "Section",
+          "enabled": true,
+          "channel": "R",
+          "parameters": { "cm": "Echoed channel", "ch": "R" }
+        },
+        {
+          "name": "Brickwall Limiter",
+          "enabled": true,
+          "channel": "R",
+          "parameters": {
+            "pluginType": "BrickwallLimiterPlugin",
+            "ch": "R",
+            "ib": 0,
+            "ob": 0,
+            "th": -1,
+            "rl": 100,
+            "la": 3,
+            "os": 1,
+            "ig": 0,
+            "sm": -1
+          }
+        },
+        {
+          "name": "Horn Resonator",
+          "enabled": true,
+          "parameters": {
+            "en": false,
+            "ln": 70,
+            "th": 3,
+            "mo": 60,
+            "cv": 40,
+            "dp": 0.03,
+            "wg": 30,
+            "tr": 0.99,
+            "co": 600
+          }
+        },
+        {
+          "name": "Modal Resonator",
+          "enabled": true,
+          "parameters": { "en": false, "mx": 25 }
+        }
+      ]
+    },
+    "expected": [
+      {
+        "type": "BrickwallLimiter",
+        "enabled": true,
+        "channel": "right",
+        "parameters": { "threshold": -1, "lookahead": 3 }
+      },
+      {
+        "reason": "the echoed en is a duplicate of the node switch, so enabled stays true",
+        "type": "HornResonator",
+        "enabled": true,
+        "channel": "stereo",
+        "parameters": { "length": 70, "crossover": 600 }
+      },
+      {
+        "reason": "Modal Resonator's en is an independent processing switch and still disables the effect",
+        "type": "ModalResonator",
+        "enabled": false,
+        "channel": "stereo",
+        "parameters": { "mix": 25 }
+      }
+    ]
+  },
+  "bareArrayPipeline": {
+    "comment": "The app still loads a preset file whose top level is a bare array of long-format entries as the pipeline (js/electron/presetIntegration.js and js/app.js), so files in that shape exist in the wild and both bindings accept them. A bare array of short-format entries keeps the existing guidance; the first entry that is an object decides.",
+    "long": [
+      {
+        "name": "Volume",
+        "enabled": true,
+        "parameters": { "vl": -6 }
+      },
+      {
+        "name": "Compressor",
+        "enabled": false,
+        "channel": "L",
+        "parameters": { "th": -12, "rt": 4 }
+      }
+    ],
+    "expected": [
+      {
+        "type": "Volume",
+        "enabled": true,
+        "channel": "stereo",
+        "parameters": { "volume": -6 }
+      },
+      {
+        "type": "Compressor",
+        "enabled": false,
+        "channel": "left",
+        "parameters": { "threshold": -12, "ratio": 4 }
+      }
+    ],
+    "short": [{ "nm": "Volume", "en": true, "vl": 0 }],
+    "shortMessageIncludes": "uses short-format keys (nm/en);"
+  },
+  "bundledPresetCorpus": {
+    "comment": "The app's bundled presets/**.effetune_preset corpus. Both bindings import the same files; the listed ones describe more than one audio path and are rejected in both languages.",
+    "count": 17,
+    "multiBus": [
+      "lofi/dsd_noise.effetune_preset",
+      "lofi/vinyl.effetune_preset",
+      "others/karaoke.effetune_preset"
+    ]
+  },
+  "unknownEffect": {
+    "pipeline": [
+      {
+        "name": "Unknown Effect",
+        "parameters": {}
+      }
+    ]
+  },
+  "appSerializerCorpus": {
+    "comment": "Every plugin in the app's plugins.txt, exported by the app's own long-format serializer (js/utils/serialization-utils.js getSerializablePluginStateLong) in its default state, plus a channel='R' variant for the twelve plugins whose export echoes structural keys back into parameters. Both bindings import each node and must reach the annotated outcome. Regenerate by re-running the app serializer; do not hand-edit the nodes.",
+    "outcomeLegend": {
+      "imports": "the node imports and yields the listed effect types, each on the listed channel",
+      "flattened": "the node is a Section: it is folded into the surrounding chain and contributes no effect",
+      "assetBackedRejected": "the semantic effect replaces the app's filter-design parameters with a precomputed impulse-response asset, so the app export carries no convertible parameters; both bindings reject the node up front with the listed error type and message rather than reporting the app's parameters as unsupported fields"
+    },
+    "count": 89,
+    "outcomeCounts": {"imports":77,"assetBackedRejected":10,"flattened":2},
+    "entries": [
+      {"displayName":"Level Meter","variant":"default","outcome":"imports","types":["LevelMeter"],"channel":"stereo","node":{"name":"Level Meter","enabled":true,"parameters":{}}},
+      {"displayName":"Oscilloscope","variant":"default","outcome":"imports","types":["Oscilloscope"],"channel":"stereo","node":{"name":"Oscilloscope","enabled":true,"parameters":{"dt":0.01,"tm":"Auto","tl":0,"te":"Rising","ho":0.0001,"dl":0,"vo":0}}},
+      {"displayName":"Spectrogram","variant":"default","outcome":"imports","types":["Spectrogram"],"channel":"stereo","node":{"name":"Spectrogram","enabled":true,"parameters":{"dr":-96,"pt":12}}},
+      {"displayName":"Spectrum Analyzer","variant":"default","outcome":"imports","types":["SpectrumAnalyzer"],"channel":"stereo","node":{"name":"Spectrum Analyzer","enabled":true,"parameters":{"dr":-96,"pt":12}}},
+      {"displayName":"Stereo Meter","variant":"default","outcome":"imports","types":["StereoMeter"],"channel":"stereo","node":{"name":"Stereo Meter","enabled":true,"parameters":{"wt":0.1}}},
+      {"displayName":"Channel Divider","variant":"default","outcome":"imports","types":["ChannelDivider"],"channel":"stereo","node":{"name":"Channel Divider","enabled":true,"parameters":{"bc":2,"f1":2000,"s1":-24,"f2":4000,"s2":-24,"f3":8000,"s3":-24}}},
+      {"displayName":"DC Offset","variant":"default","outcome":"imports","types":["DCOffset"],"channel":"stereo","node":{"name":"DC Offset","enabled":true,"parameters":{"of":0}}},
+      {"displayName":"FIR Crossover","variant":"default","outcome":"assetBackedRejected","errorType":"EffectError","messageIncludes":"FIRCrossover cannot be imported from an EffeTune app preset","node":{"name":"FIR Crossover","enabled":true,"parameters":{"lt":"128","bc":2,"pm":"min","tp":32768,"f1":2000,"s1":-24,"f2":4000,"s2":-24,"f3":8000,"s3":-24}}},
+      {"displayName":"FIR Crossover","variant":"channelRight","outcome":"assetBackedRejected","errorType":"EffectError","messageIncludes":"FIRCrossover cannot be imported from an EffeTune app preset","node":{"name":"FIR Crossover","enabled":true,"parameters":{"lt":"128","bc":2,"pm":"min","tp":32768,"f1":2000,"s1":-24,"f2":4000,"s2":-24,"f3":8000,"s3":-24,"ch":"R"},"channel":"R"}},
+      {"displayName":"Matrix","variant":"default","outcome":"imports","types":["Matrix"],"channel":"stereo","node":{"name":"Matrix","enabled":true,"parameters":{"mx":"0011"}}},
+      {"displayName":"MultiChannel Panel","variant":"default","outcome":"imports","types":["MultiChannelPanel"],"channel":"stereo","node":{"name":"MultiChannel Panel","enabled":true,"parameters":{"m":[false,false,false,false,false,false,false,false],"s":[false,false,false,false,false,false,false,false],"v":[0,0,0,0,0,0,0,0],"d":[0,0,0,0,0,0,0,0],"l":[false,false,false,false,false,false,false]}}},
+      {"displayName":"Mute","variant":"default","outcome":"imports","types":["Mute"],"channel":"stereo","node":{"name":"Mute","enabled":true,"parameters":{}}},
+      {"displayName":"Polarity Inversion","variant":"default","outcome":"imports","types":["PolarityInversion"],"channel":"stereo","node":{"name":"Polarity Inversion","enabled":true,"parameters":{}}},
+      {"displayName":"Stereo Balance","variant":"default","outcome":"imports","types":["StereoBalance"],"channel":"stereo","node":{"name":"Stereo Balance","enabled":true,"parameters":{"bl":0}}},
+      {"displayName":"Volume","variant":"default","outcome":"imports","types":["Volume"],"channel":"stereo","node":{"name":"Volume","enabled":true,"parameters":{"vl":0}}},
+      {"displayName":"Delay","variant":"default","outcome":"imports","types":["Delay"],"channel":"stereo","node":{"name":"Delay","enabled":true,"parameters":{"pd":0,"ds":150,"dp":50,"hd":5000,"ld":100,"mx":16,"fb":50,"pp":0}}},
+      {"displayName":"Time Alignment","variant":"default","outcome":"imports","types":["TimeAlignment"],"channel":"stereo","node":{"name":"Time Alignment","enabled":true,"parameters":{"dl":0}}},
+      {"displayName":"Auto Leveler","variant":"default","outcome":"imports","types":["AutoLeveler"],"channel":"stereo","node":{"name":"Auto Leveler","enabled":true,"parameters":{"tg":-18,"tw":3000,"mg":0,"ng":-12,"at":50,"rt":5000,"gt":-60}}},
+      {"displayName":"Brickwall Limiter","variant":"default","outcome":"imports","types":["BrickwallLimiter"],"channel":"stereo","node":{"name":"Brickwall Limiter","enabled":true,"parameters":{"pluginType":"BrickwallLimiterPlugin","th":0,"rl":100,"la":3,"os":1,"ig":0,"sm":-1}}},
+      {"displayName":"Brickwall Limiter","variant":"channelRight","outcome":"imports","types":["BrickwallLimiter"],"channel":"right","node":{"name":"Brickwall Limiter","enabled":true,"parameters":{"pluginType":"BrickwallLimiterPlugin","th":0,"rl":100,"la":3,"os":1,"ig":0,"sm":-1,"ch":"R"},"channel":"R"}},
+      {"displayName":"Compressor","variant":"default","outcome":"imports","types":["Compressor"],"channel":"stereo","node":{"name":"Compressor","enabled":true,"parameters":{"th":-24,"rt":2,"at":10,"rl":100,"kn":3,"gn":0}}},
+      {"displayName":"Expander","variant":"default","outcome":"imports","types":["Expander"],"channel":"stereo","node":{"name":"Expander","enabled":true,"parameters":{"th":-24,"rt":2,"at":10,"rl":100,"kn":3,"gn":0}}},
+      {"displayName":"Gate","variant":"default","outcome":"imports","types":["Gate"],"channel":"stereo","node":{"name":"Gate","enabled":true,"parameters":{"th":-40,"rt":10,"at":1,"rl":200,"kn":1,"gn":0}}},
+      {"displayName":"Multiband Compressor","variant":"default","outcome":"imports","types":["MultibandCompressor"],"channel":"stereo","node":{"name":"Multiband Compressor","enabled":true,"parameters":{"f1":100,"f2":500,"f3":2000,"f4":8000,"bands":[{"t":-20,"r":4,"a":30,"rl":150,"k":6,"g":-1},{"t":-22,"r":3,"a":20,"rl":120,"k":4,"g":0},{"t":-25,"r":2.5,"a":15,"rl":80,"k":4,"g":1},{"t":-28,"r":2,"a":10,"rl":60,"k":3,"g":1.5},{"t":-18,"r":5,"a":5,"rl":40,"k":2,"g":-2}]}}},
+      {"displayName":"Multiband Expander","variant":"default","outcome":"imports","types":["MultibandExpander"],"channel":"stereo","node":{"name":"Multiband Expander","enabled":true,"parameters":{"f1":100,"f2":500,"f3":2000,"f4":8000,"bands":[{"t":-30,"r":1.2,"a":10,"rl":100,"k":6,"g":1},{"t":-16,"r":1.2,"a":7.75,"rl":87.5,"k":4,"g":1},{"t":-24,"r":1.2,"a":5.5,"rl":75,"k":4,"g":1},{"t":-36,"r":1.1,"a":3.25,"rl":62.5,"k":3,"g":1},{"t":-48,"r":1.1,"a":1,"rl":50,"k":2,"g":1}]}}},
+      {"displayName":"Multiband Transient","variant":"default","outcome":"imports","types":["MultibandTransient"],"channel":"stereo","node":{"name":"Multiband Transient","enabled":true,"parameters":{"f1":200,"f2":4000,"bands":[{"fa":5,"fr":50,"sa":25,"sr":250,"gt":6,"gs":0,"sm":5},{"fa":2,"fr":30,"sa":10,"sr":150,"gt":6,"gs":0,"sm":5},{"fa":0.5,"fr":20,"sa":5,"sr":100,"gt":6,"gs":0,"sm":5}]}}},
+      {"displayName":"Power Amp Sag","variant":"default","outcome":"imports","types":["PowerAmpSag"],"channel":"stereo","node":{"name":"Power Amp Sag","enabled":true,"parameters":{"ss":3,"ps":50,"rs":40,"mb":false}}},
+      {"displayName":"Transient Shaper","variant":"default","outcome":"imports","types":["TransientShaper"],"channel":"stereo","node":{"name":"Transient Shaper","enabled":true,"parameters":{"fa":1,"fr":20,"sa":20,"sr":300,"gt":6,"gs":0,"sm":5}}},
+      {"displayName":"15Band GEQ","variant":"default","outcome":"imports","types":["FifteenBandGEQ"],"channel":"stereo","node":{"name":"15Band GEQ","enabled":true,"parameters":{"b0":0,"b1":0,"b2":0,"b3":0,"b4":0,"b5":0,"b6":0,"b7":0,"b8":0,"b9":0,"b10":0,"b11":0,"b12":0,"b13":0,"b14":0}}},
+      {"displayName":"15Band PEQ","variant":"default","outcome":"imports","types":["FifteenBandPEQ"],"channel":"stereo","node":{"name":"15Band PEQ","enabled":true,"parameters":{"f0":25,"g0":0,"q0":1,"t0":"pk","e0":true,"f1":40,"g1":0,"q1":1,"t1":"pk","e1":true,"f2":63,"g2":0,"q2":1,"t2":"pk","e2":true,"f3":100,"g3":0,"q3":1,"t3":"pk","e3":true,"f4":160,"g4":0,"q4":1,"t4":"pk","e4":true,"f5":250,"g5":0,"q5":1,"t5":"pk","e5":true,"f6":400,"g6":0,"q6":1,"t6":"pk","e6":true,"f7":630,"g7":0,"q7":1,"t7":"pk","e7":true,"f8":1000,"g8":0,"q8":1,"t8":"pk","e8":true,"f9":1600,"g9":0,"q9":1,"t9":"pk","e9":true,"f10":2500,"g10":0,"q10":1,"t10":"pk","e10":true,"f11":4000,"g11":0,"q11":1,"t11":"pk","e11":true,"f12":6300,"g12":0,"q12":1,"t12":"pk","e12":true,"f13":10000,"g13":0,"q13":1,"t13":"pk","e13":true,"f14":16000,"g14":0,"q14":1,"t14":"pk","e14":true}}},
+      {"displayName":"15Band PEQ","variant":"channelRight","outcome":"imports","types":["FifteenBandPEQ"],"channel":"right","node":{"name":"15Band PEQ","enabled":true,"parameters":{"f0":25,"g0":0,"q0":1,"t0":"pk","e0":true,"f1":40,"g1":0,"q1":1,"t1":"pk","e1":true,"f2":63,"g2":0,"q2":1,"t2":"pk","e2":true,"f3":100,"g3":0,"q3":1,"t3":"pk","e3":true,"f4":160,"g4":0,"q4":1,"t4":"pk","e4":true,"f5":250,"g5":0,"q5":1,"t5":"pk","e5":true,"f6":400,"g6":0,"q6":1,"t6":"pk","e6":true,"f7":630,"g7":0,"q7":1,"t7":"pk","e7":true,"f8":1000,"g8":0,"q8":1,"t8":"pk","e8":true,"f9":1600,"g9":0,"q9":1,"t9":"pk","e9":true,"f10":2500,"g10":0,"q10":1,"t10":"pk","e10":true,"f11":4000,"g11":0,"q11":1,"t11":"pk","e11":true,"f12":6300,"g12":0,"q12":1,"t12":"pk","e12":true,"f13":10000,"g13":0,"q13":1,"t13":"pk","e13":true,"f14":16000,"g14":0,"q14":1,"t14":"pk","e14":true,"ch":"R"},"channel":"R"}},
+      {"displayName":"5Band Dynamic EQ","variant":"default","outcome":"imports","types":["FiveBandDynamicEQ"],"channel":"stereo","node":{"name":"5Band Dynamic EQ","enabled":true,"parameters":{"bs":[{"en":false,"ft":"pk","f":100,"q":1,"mg":6,"th":-18,"r":2,"kn":3,"a":10,"rl":100,"scf":100,"scq":1},{"en":false,"ft":"pk","f":300,"q":1,"mg":6,"th":-21,"r":2,"kn":3,"a":10,"rl":100,"scf":300,"scq":1},{"en":true,"ft":"pk","f":1000,"q":1,"mg":6,"th":-24,"r":2,"kn":3,"a":10,"rl":100,"scf":1000,"scq":1},{"en":false,"ft":"pk","f":3000,"q":1,"mg":6,"th":-27,"r":2,"kn":3,"a":10,"rl":100,"scf":3000,"scq":1},{"en":false,"ft":"pk","f":10000,"q":1,"mg":6,"th":-30,"r":2,"kn":3,"a":10,"rl":100,"scf":10000,"scq":1}]}}},
+      {"displayName":"5Band FIR PEQ","variant":"default","outcome":"assetBackedRejected","errorType":"EffectError","messageIncludes":"FiveBandFIRPEQ cannot be imported from an EffeTune app preset","node":{"name":"5Band FIR PEQ","enabled":true,"parameters":{"lt":"128","fd":0,"dy":0,"gn":0,"pm":"min","tp":32768,"f0":100,"g0":0,"q0":0.7,"s0":12,"t0":"pk","e0":true,"f1":316,"g1":0,"q1":0.7,"s1":12,"t1":"pk","e1":true,"f2":1000,"g2":0,"q2":0.7,"s2":12,"t2":"pk","e2":true,"f3":3160,"g3":0,"q3":0.7,"s3":12,"t3":"pk","e3":true,"f4":10000,"g4":0,"q4":0.7,"s4":12,"t4":"pk","e4":true}}},
+      {"displayName":"5Band FIR PEQ","variant":"channelRight","outcome":"assetBackedRejected","errorType":"EffectError","messageIncludes":"FiveBandFIRPEQ cannot be imported from an EffeTune app preset","node":{"name":"5Band FIR PEQ","enabled":true,"parameters":{"lt":"128","fd":0,"dy":0,"gn":0,"pm":"min","tp":32768,"f0":100,"g0":0,"q0":0.7,"s0":12,"t0":"pk","e0":true,"f1":316,"g1":0,"q1":0.7,"s1":12,"t1":"pk","e1":true,"f2":1000,"g2":0,"q2":0.7,"s2":12,"t2":"pk","e2":true,"f3":3160,"g3":0,"q3":0.7,"s3":12,"t3":"pk","e3":true,"f4":10000,"g4":0,"q4":0.7,"s4":12,"t4":"pk","e4":true,"ch":"R"},"channel":"R"}},
+      {"displayName":"5Band PEQ","variant":"default","outcome":"imports","types":["FiveBandPEQ"],"channel":"stereo","node":{"name":"5Band PEQ","enabled":true,"parameters":{"f0":100,"g0":0,"q0":1,"t0":"pk","e0":true,"f1":316,"g1":0,"q1":1,"t1":"pk","e1":true,"f2":1000,"g2":0,"q2":1,"t2":"pk","e2":true,"f3":3160,"g3":0,"q3":1,"t3":"pk","e3":true,"f4":10000,"g4":0,"q4":1,"t4":"pk","e4":true}}},
+      {"displayName":"Band Pass Filter","variant":"default","outcome":"imports","types":["BandPassFilter"],"channel":"stereo","node":{"name":"Band Pass Filter","enabled":true,"parameters":{"hf":1000,"lf":1000,"hs":-24,"ls":-24}}},
+      {"displayName":"Comb Filter","variant":"default","outcome":"imports","types":["CombFilter"],"channel":"stereo","node":{"name":"Comb Filter","enabled":true,"parameters":{"ff":440,"fg":0.4,"dw":50,"ct":"ff"}}},
+      {"displayName":"Earphone Cable Sim","variant":"default","outcome":"imports","types":["EarphoneCableSim"],"channel":"stereo","node":{"name":"Earphone Cable Sim","enabled":true,"parameters":{"zo":0.5,"rc":0.3,"lc":0.5,"lv":0.2,"zb":16,"rf0":120,"rq0":2,"rz0":48,"re0":true,"rf1":2000,"rq1":1.5,"rz1":36,"re1":false,"rf2":5000,"rq2":2,"rz2":64,"re2":false,"rf3":9000,"rq3":3,"rz3":80,"re3":false,"rf4":60,"rq4":1.5,"rz4":64,"re4":false}}},
+      {"displayName":"Group Delay EQ","variant":"default","outcome":"assetBackedRejected","errorType":"EffectError","messageIncludes":"GroupDelayEQ cannot be imported from an EffeTune app preset","node":{"name":"Group Delay EQ","enabled":true,"parameters":{"lt":"128","tp":16384,"d0":0,"d1":0,"d2":0,"d3":0,"d4":0,"d5":0,"d6":0,"d7":0,"d8":0,"d9":0,"d10":0,"d11":0,"d12":0,"d13":0,"d14":0}}},
+      {"displayName":"Group Delay EQ","variant":"channelRight","outcome":"assetBackedRejected","errorType":"EffectError","messageIncludes":"GroupDelayEQ cannot be imported from an EffeTune app preset","node":{"name":"Group Delay EQ","enabled":true,"parameters":{"lt":"128","tp":16384,"d0":0,"d1":0,"d2":0,"d3":0,"d4":0,"d5":0,"d6":0,"d7":0,"d8":0,"d9":0,"d10":0,"d11":0,"d12":0,"d13":0,"d14":0,"ch":"R"},"channel":"R"}},
+      {"displayName":"Hi Pass Filter","variant":"default","outcome":"imports","types":["HiPassFilter"],"channel":"stereo","node":{"name":"Hi Pass Filter","enabled":true,"parameters":{"fr":1000,"sl":-24}}},
+      {"displayName":"Lo Pass Filter","variant":"default","outcome":"imports","types":["LoPassFilter"],"channel":"stereo","node":{"name":"Lo Pass Filter","enabled":true,"parameters":{"fr":1000,"sl":-24}}},
+      {"displayName":"Loudness Equalizer","variant":"default","outcome":"imports","types":["LoudnessEqualizer"],"channel":"stereo","node":{"name":"Loudness Equalizer","enabled":true,"parameters":{"sp":65,"rv":0,"lg":10,"lf":180,"lq":0.6,"hq":0.6,"hg":0,"hf":4000}}},
+      {"displayName":"Narrow Range","variant":"default","outcome":"imports","types":["NarrowRange"],"channel":"stereo","node":{"name":"Narrow Range","enabled":true,"parameters":{"hf":60,"hs":-24,"lf":5000,"ls":-12}}},
+      {"displayName":"Room EQ","variant":"default","outcome":"assetBackedRejected","errorType":"EffectError","messageIncludes":"RoomEQ cannot be imported from an EffeTune app preset","node":{"name":"Room EQ","enabled":true,"parameters":{"lt":"128","gn":0,"pm":"min","tp":32768,"sm":0.17,"fl":20,"fh":16000,"dw":6,"pa":true,"pl":500,"mb":6,"cr":100,"pr":100,"rp":0,"bs":[{"frequency":100,"gain":0,"q":1,"type":"pk","enabled":true},{"frequency":316,"gain":0,"q":1,"type":"pk","enabled":true},{"frequency":1000,"gain":0,"q":1,"type":"pk","enabled":true},{"frequency":3160,"gain":0,"q":1,"type":"pk","enabled":true},{"frequency":10000,"gain":0,"q":1,"type":"pk","enabled":true}],"ms":"","mn":"","dl":0}}},
+      {"displayName":"Room EQ","variant":"channelRight","outcome":"assetBackedRejected","errorType":"EffectError","messageIncludes":"RoomEQ cannot be imported from an EffeTune app preset","node":{"name":"Room EQ","enabled":true,"parameters":{"lt":"128","gn":0,"pm":"min","tp":32768,"sm":0.17,"fl":20,"fh":16000,"dw":6,"pa":true,"pl":500,"mb":6,"cr":100,"pr":100,"rp":0,"bs":[{"frequency":100,"gain":0,"q":1,"type":"pk","enabled":true},{"frequency":316,"gain":0,"q":1,"type":"pk","enabled":true},{"frequency":1000,"gain":0,"q":1,"type":"pk","enabled":true},{"frequency":3160,"gain":0,"q":1,"type":"pk","enabled":true},{"frequency":10000,"gain":0,"q":1,"type":"pk","enabled":true}],"ms":"","mn":"","ch":"R","dl":0},"channel":"R"}},
+      {"displayName":"Tilt EQ","variant":"default","outcome":"imports","types":["TiltEQ"],"channel":"stereo","node":{"name":"Tilt EQ","enabled":true,"parameters":{"f0":6.91,"sl":0}}},
+      {"displayName":"Tone Control","variant":"default","outcome":"imports","types":["ToneControl"],"channel":"stereo","node":{"name":"Tone Control","enabled":true,"parameters":{"bs":0,"md":0,"tr":0}}},
+      {"displayName":"AM Radio Simulator","variant":"default","outcome":"imports","types":["AMRadioSimulator"],"channel":"stereo","node":{"name":"AM Radio Simulator","enabled":true,"parameters":{"tb":6,"pe":50,"md":90,"cp":6,"sm":"Mono","sg":-12,"sk":1,"fd":0.15,"st":0.3,"in":-65,"io":9,"tn":0,"bw":12,"ag":"Fast","dt":50,"hm":-70,"hz":"50","sp":"Table","og":0,"mx":100}}},
+      {"displayName":"Bit Crusher","variant":"default","outcome":"imports","types":["BitCrusher"],"channel":"stereo","node":{"name":"Bit Crusher","enabled":true,"parameters":{"bd":8,"td":false,"zf":44100,"be":0,"sd":11}}},
+      {"displayName":"Digital Error Emulator","variant":"default","outcome":"imports","types":["DigitalErrorEmulator"],"channel":"stereo","node":{"name":"Digital Error Emulator","enabled":true,"parameters":{"be":-6,"md":"10A","rf":48,"wt":100}}},
+      {"displayName":"DSD64 IMD Simulator","variant":"default","outcome":"imports","types":["DSD64IMDSimulator"],"channel":"stereo","node":{"name":"DSD64 IMD Simulator","enabled":true,"parameters":{"am":24,"dw":50,"ul":-30,"nc":0,"an":1.4,"eb":20,"sc":150,"st":10.5,"nt":25,"cs":75,"hf":0,"ot":0}}},
+      {"displayName":"FM Radio Simulator","variant":"default","outcome":"imports","types":["FMRadioSimulator"],"channel":"stereo","node":{"name":"FM Radio Simulator","enabled":true,"parameters":{"em":"50","pr":0,"st":35,"tn":0,"bw":230,"mp":0,"dl":5,"fd":0,"sm":"Auto","og":0,"mx":100}}},
+      {"displayName":"Hum Generator","variant":"default","outcome":"imports","types":["HumGenerator"],"channel":"stereo","node":{"name":"Hum Generator","enabled":true,"parameters":{"fr":50,"tp":"Standard","hm":50,"tn":10,"in":1,"lv":-40}}},
+      {"displayName":"Noise Blender","variant":"default","outcome":"imports","types":["NoiseBlender"],"channel":"stereo","node":{"name":"Noise Blender","enabled":true,"parameters":{"nt":"pink","lv":-36,"pc":true}}},
+      {"displayName":"Simple Jitter","variant":"default","outcome":"imports","types":["SimpleJitter"],"channel":"stereo","node":{"name":"Simple Jitter","enabled":true,"parameters":{"rj":100}}},
+      {"displayName":"Simple Jitter","variant":"channelRight","outcome":"imports","types":["SimpleJitter"],"channel":"right","node":{"name":"Simple Jitter","enabled":true,"parameters":{"rj":100,"ch":"R"},"channel":"R"}},
+      {"displayName":"SW Radio Simulator","variant":"default","outcome":"imports","types":["SWRadioSimulator"],"channel":"stereo","node":{"name":"SW Radio Simulator","enabled":true,"parameters":{"tb":4.5,"pe":50,"md":90,"cp":6,"sg":-15,"sk":55,"fd":0.5,"ds":1.4,"st":2,"in":-47,"io":1,"tn":0,"bw":6,"de":"Envelope","ag":"Fast","dt":50,"hm":-80,"hz":"50","sp":"Small","og":0,"mx":100}}},
+      {"displayName":"Vinyl Artifacts","variant":"default","outcome":"imports","types":["VinylArtifacts"],"channel":"stereo","node":{"name":"Vinyl Artifacts","enabled":true,"parameters":{"pp":20,"pl":-24,"cm":500,"cl":-33,"hs":-42,"rb":-50,"xt":60,"tn":0,"wr":100,"rt":25,"rm":"Velocity","mx":100}}},
+      {"displayName":"Vinyl Simulator","variant":"default","outcome":"imports","types":["VinylSimulator"],"channel":"stereo","node":{"name":"Vinyl Simulator","enabled":true,"parameters":{"lv":0,"hf":16000,"mb":250,"sm":70,"rp":"33⅓","rd":120,"rg":13.17,"dr":2,"st":0.08,"sc":0,"sh":"Elliptical","rs":18,"rc":8,"tf":2,"tm":0.4,"cm":15,"dz":0.25,"ql":"Standard","og":0,"mx":100}}},
+      {"displayName":"Doppler Distortion","variant":"default","outcome":"imports","types":["DopplerDistortion"],"channel":"stereo","node":{"name":"Doppler Distortion","enabled":true,"parameters":{"cf":8,"sm":0.03,"sc":6000,"df":1.5}}},
+      {"displayName":"Doppler Distortion","variant":"channelRight","outcome":"imports","types":["DopplerDistortion"],"channel":"right","node":{"name":"Doppler Distortion","enabled":true,"parameters":{"cf":8,"sm":0.03,"sc":6000,"df":1.5,"ch":"R"},"channel":"R"}},
+      {"displayName":"Pitch Shifter","variant":"default","outcome":"imports","types":["PitchShifter"],"channel":"stereo","node":{"name":"Pitch Shifter","enabled":true,"parameters":{"ps":0,"ft":0,"ws":150,"xf":35}}},
+      {"displayName":"Tremolo","variant":"default","outcome":"imports","types":["Tremolo"],"channel":"stereo","node":{"name":"Tremolo","enabled":true,"parameters":{"rt":10,"dp":2,"rn":6,"rc":200,"rs":-6,"cp":0,"cs":100}}},
+      {"displayName":"Tremolo","variant":"channelRight","outcome":"imports","types":["Tremolo"],"channel":"right","node":{"name":"Tremolo","enabled":true,"parameters":{"rt":10,"dp":2,"rn":6,"rc":200,"rs":-6,"cp":0,"cs":100,"ch":"R"},"channel":"R"}},
+      {"displayName":"Wow Flutter","variant":"default","outcome":"imports","types":["WowFlutter"],"channel":"stereo","node":{"name":"Wow Flutter","enabled":true,"parameters":{"rt":0.5,"dp":6,"rn":10,"rc":5,"rs":-6,"cp":0,"cs":100}}},
+      {"displayName":"Wow Flutter","variant":"channelRight","outcome":"imports","types":["WowFlutter"],"channel":"right","node":{"name":"Wow Flutter","enabled":true,"parameters":{"rt":0.5,"dp":6,"rn":10,"rc":5,"rs":-6,"cp":0,"cs":100,"ch":"R"},"channel":"R"}},
+      {"displayName":"Oscillator","variant":"default","outcome":"imports","types":["Oscillator"],"channel":"stereo","node":{"name":"Oscillator","enabled":true,"parameters":{"fr":880,"vl":-12,"pn":0,"wf":"sine","md":"continuous","it":500,"wd":5}}},
+      {"displayName":"Horn Resonator","variant":"default","outcome":"imports","types":["HornResonator"],"channel":"stereo","node":{"name":"Horn Resonator","enabled":true,"parameters":{"en":true,"ln":70,"th":3,"mo":60,"cv":40,"dp":0.03,"wg":30,"tr":0.99,"co":600}}},
+      {"displayName":"Horn Resonator Plus","variant":"default","outcome":"imports","types":["HornResonatorPlus"],"channel":"stereo","node":{"name":"Horn Resonator Plus","enabled":true,"parameters":{"en":true,"ln":70,"th":3,"mo":60,"cv":40,"dp":0.03,"wg":30,"tr":0.99,"co":600}}},
+      {"displayName":"Modal Resonator","variant":"default","outcome":"imports","types":["ModalResonator"],"channel":"stereo","node":{"name":"Modal Resonator","enabled":true,"parameters":{"en":true,"rs":[{"en":true,"fr":6.86,"dc":15,"lp":7.19,"hp":5.8,"gn":0},{"en":true,"fr":7.52,"dc":12,"lp":7.86,"hp":6.48,"gn":-3},{"en":true,"fr":7.99,"dc":10,"lp":8.33,"hp":6.94,"gn":-6},{"en":true,"fr":8.34,"dc":8,"lp":8.68,"hp":7.29,"gn":-9},{"en":true,"fr":8.75,"dc":6,"lp":9.08,"hp":7.7,"gn":-12}],"mx":25,"sr":0}}},
+      {"displayName":"Dattorro Plate Reverb","variant":"default","outcome":"imports","types":["DattorroPlateReverb"],"channel":"stereo","node":{"name":"Dattorro Plate Reverb","enabled":true,"parameters":{"pd":10,"bw":0.9995,"id1":0.75,"id2":0.625,"dc":0.5,"dd1":0.7,"dp":0.0005,"md":1,"mr":1,"wm":30,"dm":100}}},
+      {"displayName":"FDN Reverb","variant":"default","outcome":"imports","types":["FDNReverb"],"channel":"stereo","node":{"name":"FDN Reverb","enabled":true,"parameters":{"rt":1.2,"dt":8,"pd":10,"bd":20,"ds":5,"hd":6,"lc":100,"md":3,"mr":0.3,"df":100,"wm":30,"dm":100,"sw":100}}},
+      {"displayName":"IR Reverb","variant":"default","outcome":"assetBackedRejected","errorType":"EffectError","messageIncludes":"IRReverb cannot be imported from an EffeTune app preset","node":{"name":"IR Reverb","enabled":true,"parameters":{"ir":"","cm":"auto","lt":"128","cr":"auto","dw":-15,"dl":0,"pd":0,"dc":true,"co":0,"dt":100,"tr":100}}},
+      {"displayName":"IR Reverb","variant":"channelRight","outcome":"assetBackedRejected","errorType":"EffectError","messageIncludes":"IRReverb cannot be imported from an EffeTune app preset","node":{"name":"IR Reverb","enabled":true,"parameters":{"ir":"","cm":"auto","lt":"128","cr":"auto","dw":-15,"dl":0,"pd":0,"dc":true,"co":0,"dt":100,"tr":100,"ch":"R"},"channel":"R"}},
+      {"displayName":"RS Reverb","variant":"default","outcome":"imports","types":["RSReverb"],"channel":"stereo","node":{"name":"RS Reverb","enabled":true,"parameters":{"pd":10,"rs":10,"rt":2.4,"ds":8,"df":0.7,"dp":80,"hd":2000,"ld":200,"mx":16}}},
+      {"displayName":"Dynamic Saturation","variant":"default","outcome":"imports","types":["DynamicSaturation"],"channel":"stereo","node":{"name":"Dynamic Saturation","enabled":true,"parameters":{"sd":3,"ss":2,"sp":1,"sm":1,"dd":1.5,"db":0.1,"dm":100,"cm":20,"og":0}}},
+      {"displayName":"Exciter","variant":"default","outcome":"imports","types":["Exciter"],"channel":"stereo","node":{"name":"Exciter","enabled":true,"parameters":{"hf":3000,"hs":1,"dr":3,"bs":0.1,"mx":25}}},
+      {"displayName":"Hard Clipping","variant":"default","outcome":"imports","types":["HardClipping"],"channel":"stereo","node":{"name":"Hard Clipping","enabled":true,"parameters":{"th":-18,"md":"both"}}},
+      {"displayName":"Harmonic Distortion","variant":"default","outcome":"imports","types":["HarmonicDistortion"],"channel":"stereo","node":{"name":"Harmonic Distortion","enabled":true,"parameters":{"h2":2,"h3":3,"h4":0.5,"h5":0.3,"sn":0.5}}},
+      {"displayName":"Multiband Saturation","variant":"default","outcome":"imports","types":["MultibandSaturation"],"channel":"stereo","node":{"name":"Multiband Saturation","enabled":true,"parameters":{"f1":200,"f2":4000,"bands":[{"dr":1.5,"bs":0.1,"mx":100,"gn":0},{"dr":1.5,"bs":0.1,"mx":100,"gn":0},{"dr":1.5,"bs":0.1,"mx":100,"gn":0}]}}},
+      {"displayName":"Saturation","variant":"default","outcome":"imports","types":["Saturation"],"channel":"stereo","node":{"name":"Saturation","enabled":true,"parameters":{"dr":1.5,"bs":0.1,"mx":100,"gn":-2}}},
+      {"displayName":"Sub Synth","variant":"default","outcome":"imports","types":["SubSynth"],"channel":"stereo","node":{"name":"Sub Synth","enabled":true,"parameters":{"sl":100,"dl":100,"slf":160,"sls":-12,"shf":5,"shs":-6,"dhf":40,"dhs":0}}},
+      {"displayName":"Crossfeed Filter","variant":"default","outcome":"imports","types":["CrossfeedFilter"],"channel":"stereo","node":{"name":"Crossfeed Filter","enabled":true,"parameters":{"lv":-6,"dl":0.3,"lf":700}}},
+      {"displayName":"MS Matrix","variant":"default","outcome":"imports","types":["MSMatrix"],"channel":"stereo","node":{"name":"MS Matrix","enabled":true,"parameters":{"md":0,"mg":0,"sg":0,"sw":0}}},
+      {"displayName":"Multiband Balance","variant":"default","outcome":"imports","types":["MultibandBalance"],"channel":"stereo","node":{"name":"Multiband Balance","enabled":true,"parameters":{"f1":100,"f2":500,"f3":2000,"f4":8000,"bands":[{"balance":0},{"balance":0},{"balance":0},{"balance":0},{"balance":0}]}}},
+      {"displayName":"Stereo Blend","variant":"default","outcome":"imports","types":["StereoBlend"],"channel":"stereo","node":{"name":"Stereo Blend","enabled":true,"parameters":{"stereo":60}}},
+      {"displayName":"Section","variant":"default","outcome":"flattened","types":[],"node":{"name":"Section","enabled":true,"parameters":{"cm":""}}},
+      {"displayName":"Section","variant":"channelRight","outcome":"flattened","types":[],"node":{"name":"Section","enabled":true,"parameters":{"cm":"","ch":"R"},"channel":"R"}}
+    ]
+  }
+}

@@ -1,0 +1,5369 @@
+{
+  "version": 1,
+  "channels": [
+    "all",
+    "stereo",
+    "left",
+    "right",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "34",
+    "56",
+    "78"
+  ],
+  "effects": [
+    {
+      "type": "LevelMeter",
+      "parameters": [],
+      "seeded": false,
+      "telemetry": [
+        "levelMeter"
+      ],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "Oscilloscope",
+      "parameters": [
+        {
+          "name": "displayTime",
+          "type": "number",
+          "count": 1,
+          "default": 0.01,
+          "unit": "s",
+          "minimum": 0.001,
+          "maximum": 0.1
+        },
+        {
+          "name": "triggerMode",
+          "type": "string",
+          "count": 1,
+          "default": "Auto",
+          "values": [
+            "Auto",
+            "Normal"
+          ]
+        },
+        {
+          "name": "triggerLevel",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "minimum": -1,
+          "maximum": 1
+        },
+        {
+          "name": "triggerEdge",
+          "type": "string",
+          "count": 1,
+          "default": "Rising",
+          "values": [
+            "Rising",
+            "Falling"
+          ]
+        },
+        {
+          "name": "holdoff",
+          "type": "number",
+          "count": 1,
+          "default": 0.0001,
+          "unit": "s",
+          "minimum": 0.0001,
+          "maximum": 0.01
+        },
+        {
+          "name": "displayLevel",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -96,
+          "maximum": 0
+        },
+        {
+          "name": "verticalOffset",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "minimum": -1,
+          "maximum": 1
+        }
+      ],
+      "seeded": false,
+      "telemetry": [
+        "oscilloscope"
+      ],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "Spectrogram",
+      "parameters": [
+        {
+          "name": "dBRange",
+          "type": "number",
+          "count": 1,
+          "default": -96,
+          "unit": "dB",
+          "minimum": -144,
+          "maximum": -48
+        },
+        {
+          "name": "points",
+          "type": "integer",
+          "count": 1,
+          "default": 12,
+          "minimum": 8,
+          "maximum": 14
+        }
+      ],
+      "seeded": false,
+      "telemetry": [
+        "spectrogram"
+      ],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "SpectrumAnalyzer",
+      "parameters": [
+        {
+          "name": "dBRange",
+          "type": "number",
+          "count": 1,
+          "default": -96,
+          "unit": "dB",
+          "minimum": -144,
+          "maximum": -48
+        },
+        {
+          "name": "points",
+          "type": "integer",
+          "count": 1,
+          "default": 12,
+          "minimum": 8,
+          "maximum": 14
+        }
+      ],
+      "seeded": false,
+      "telemetry": [
+        "spectrum"
+      ],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "StereoMeter",
+      "parameters": [
+        {
+          "name": "windowTime",
+          "type": "number",
+          "count": 1,
+          "default": 0.1,
+          "unit": "s",
+          "minimum": 0.01,
+          "maximum": 1
+        }
+      ],
+      "seeded": false,
+      "telemetry": [
+        "stereoMeter"
+      ],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "ChannelDivider",
+      "parameters": [
+        {
+          "name": "bandCount",
+          "type": "integer",
+          "count": 1,
+          "default": 2,
+          "minimum": 2,
+          "maximum": 4
+        },
+        {
+          "name": "frequency1",
+          "type": "number",
+          "count": 1,
+          "default": 2000,
+          "unit": "Hz",
+          "minimum": 10,
+          "maximum": 40000
+        },
+        {
+          "name": "slope1",
+          "type": "integer",
+          "count": 1,
+          "default": -24,
+          "unit": "dB/oct",
+          "minimum": -96,
+          "maximum": -12
+        },
+        {
+          "name": "frequency2",
+          "type": "number",
+          "count": 1,
+          "default": 4000,
+          "unit": "Hz",
+          "minimum": 10,
+          "maximum": 40000
+        },
+        {
+          "name": "slope2",
+          "type": "integer",
+          "count": 1,
+          "default": -24,
+          "unit": "dB/oct",
+          "minimum": -96,
+          "maximum": -12
+        },
+        {
+          "name": "frequency3",
+          "type": "number",
+          "count": 1,
+          "default": 8000,
+          "unit": "Hz",
+          "minimum": 10,
+          "maximum": 40000
+        },
+        {
+          "name": "slope3",
+          "type": "integer",
+          "count": 1,
+          "default": -24,
+          "unit": "dB/oct",
+          "minimum": -96,
+          "maximum": -12
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "DCOffset",
+      "parameters": [
+        {
+          "name": "offset",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "minimum": -1,
+          "maximum": 1
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "FIRCrossover",
+      "parameters": [
+        {
+          "name": "latencyMode",
+          "type": "string",
+          "count": 1,
+          "default": "128",
+          "values": [
+            "0",
+            "128",
+            "256",
+            "512",
+            "1024"
+          ]
+        },
+        {
+          "name": "filterDelaySamples",
+          "type": "integer",
+          "count": 1,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 65536
+        },
+        {
+          "name": "bandCount",
+          "type": "integer",
+          "count": 1,
+          "default": 2,
+          "minimum": 2,
+          "maximum": 4
+        }
+      ],
+      "seeded": true,
+      "telemetry": [],
+      "latency": {
+        "kind": "dynamic",
+        "dependsOn": [
+          "latencyMode",
+          "filterDelaySamples",
+          "impulseResponse"
+        ]
+      },
+      "assets": [
+        {
+          "name": "impulseResponse",
+          "kind": "impulseResponse",
+          "required": true
+        }
+      ]
+    },
+    {
+      "type": "Matrix",
+      "parameters": [
+        {
+          "name": "matrixRoutes",
+          "type": "string",
+          "count": 1,
+          "default": "0011",
+          "maximumLength": 3072,
+          "pattern": "^(?:p?[0-8][0-8])*$"
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "MultiChannelPanel",
+      "parameters": [
+        {
+          "name": "mute",
+          "type": "boolean",
+          "count": 8,
+          "default": [
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false
+          ]
+        },
+        {
+          "name": "solo",
+          "type": "boolean",
+          "count": 8,
+          "default": [
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false
+          ]
+        },
+        {
+          "name": "volume",
+          "type": "number",
+          "count": 8,
+          "default": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "unit": "dB",
+          "minimum": -20,
+          "maximum": 10
+        },
+        {
+          "name": "delay",
+          "type": "number",
+          "count": 8,
+          "default": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "unit": "ms",
+          "minimum": 0,
+          "maximum": 30
+        },
+        {
+          "name": "link",
+          "type": "boolean",
+          "count": 7,
+          "default": [
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false
+          ]
+        }
+      ],
+      "seeded": false,
+      "telemetry": [
+        "multiChannelLevels"
+      ],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "Mute",
+      "parameters": [],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "PolarityInversion",
+      "parameters": [],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "StereoBalance",
+      "parameters": [
+        {
+          "name": "balance",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "minimum": -1,
+          "maximum": 1
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "Volume",
+      "parameters": [
+        {
+          "name": "volume",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -60,
+          "maximum": 24
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "Delay",
+      "parameters": [
+        {
+          "name": "preDelay",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "ms",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "delaySize",
+          "type": "number",
+          "count": 1,
+          "default": 150,
+          "unit": "ms",
+          "minimum": 1,
+          "maximum": 5000
+        },
+        {
+          "name": "damping",
+          "type": "number",
+          "count": 1,
+          "default": 50,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "highDamp",
+          "type": "number",
+          "count": 1,
+          "default": 5000,
+          "unit": "Hz",
+          "minimum": 20,
+          "maximum": 20000
+        },
+        {
+          "name": "lowDamp",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "Hz",
+          "minimum": 20,
+          "maximum": 20000
+        },
+        {
+          "name": "mix",
+          "type": "number",
+          "count": 1,
+          "default": 16,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "feedback",
+          "type": "number",
+          "count": 1,
+          "default": 50,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "name": "pingPong",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "TimeAlignment",
+      "parameters": [
+        {
+          "name": "delay",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "ms",
+          "minimum": 0,
+          "maximum": 100
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "AutoLeveler",
+      "parameters": [
+        {
+          "name": "targetLufs",
+          "type": "number",
+          "count": 1,
+          "default": -18,
+          "unit": "LUFS",
+          "minimum": -36,
+          "maximum": 0
+        },
+        {
+          "name": "timeWindow",
+          "type": "number",
+          "count": 1,
+          "default": 3000,
+          "unit": "ms",
+          "minimum": 1000,
+          "maximum": 10000
+        },
+        {
+          "name": "maxGain",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": 0,
+          "maximum": 12
+        },
+        {
+          "name": "minGain",
+          "type": "number",
+          "count": 1,
+          "default": -12,
+          "unit": "dB",
+          "minimum": -36,
+          "maximum": 0
+        },
+        {
+          "name": "attack",
+          "type": "number",
+          "count": 1,
+          "default": 50,
+          "unit": "ms",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        {
+          "name": "release",
+          "type": "number",
+          "count": 1,
+          "default": 5000,
+          "unit": "ms",
+          "minimum": 10,
+          "maximum": 10000
+        },
+        {
+          "name": "noiseGate",
+          "type": "number",
+          "count": 1,
+          "default": -60,
+          "unit": "dB",
+          "minimum": -96,
+          "maximum": -24
+        }
+      ],
+      "seeded": false,
+      "telemetry": [
+        "loudnessLevels"
+      ],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "BrickwallLimiter",
+      "parameters": [
+        {
+          "name": "threshold",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -24,
+          "maximum": 0
+        },
+        {
+          "name": "release",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "ms",
+          "minimum": 10,
+          "maximum": 500
+        },
+        {
+          "name": "lookahead",
+          "type": "number",
+          "count": 1,
+          "default": 3,
+          "unit": "ms",
+          "minimum": 0,
+          "maximum": 10
+        },
+        {
+          "name": "oversampling",
+          "type": "integer",
+          "count": 1,
+          "default": 1,
+          "values": [
+            1,
+            2,
+            4,
+            8
+          ]
+        },
+        {
+          "name": "inputGain",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -18,
+          "maximum": 18
+        },
+        {
+          "name": "margin",
+          "type": "number",
+          "count": 1,
+          "default": -1,
+          "unit": "dB",
+          "minimum": -3,
+          "maximum": 0
+        }
+      ],
+      "seeded": false,
+      "telemetry": [
+        "gainReduction"
+      ],
+      "latency": {
+        "kind": "dynamic",
+        "dependsOn": [
+          "lookahead",
+          "oversampling",
+          "sampleRate"
+        ]
+      },
+      "assets": []
+    },
+    {
+      "type": "Compressor",
+      "parameters": [
+        {
+          "name": "threshold",
+          "type": "number",
+          "count": 1,
+          "default": -24,
+          "unit": "dB",
+          "minimum": -60,
+          "maximum": 0
+        },
+        {
+          "name": "ratio",
+          "type": "number",
+          "count": 1,
+          "default": 2,
+          "minimum": 0.5,
+          "maximum": 20
+        },
+        {
+          "name": "attack",
+          "type": "number",
+          "count": 1,
+          "default": 10,
+          "unit": "ms",
+          "minimum": 0.1,
+          "maximum": 100
+        },
+        {
+          "name": "release",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "ms",
+          "minimum": 10,
+          "maximum": 1000
+        },
+        {
+          "name": "knee",
+          "type": "number",
+          "count": 1,
+          "default": 3,
+          "unit": "dB",
+          "minimum": 0,
+          "maximum": 12
+        },
+        {
+          "name": "gain",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -12,
+          "maximum": 12
+        }
+      ],
+      "seeded": false,
+      "telemetry": [
+        "gainReduction"
+      ],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "Expander",
+      "parameters": [
+        {
+          "name": "threshold",
+          "type": "number",
+          "count": 1,
+          "default": -24,
+          "unit": "dB",
+          "minimum": -60,
+          "maximum": 0
+        },
+        {
+          "name": "ratio",
+          "type": "number",
+          "count": 1,
+          "default": 2,
+          "minimum": 0.05,
+          "maximum": 20
+        },
+        {
+          "name": "attack",
+          "type": "number",
+          "count": 1,
+          "default": 10,
+          "unit": "ms",
+          "minimum": 0.1,
+          "maximum": 100
+        },
+        {
+          "name": "release",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "ms",
+          "minimum": 10,
+          "maximum": 1000
+        },
+        {
+          "name": "knee",
+          "type": "number",
+          "count": 1,
+          "default": 3,
+          "unit": "dB",
+          "minimum": 0,
+          "maximum": 12
+        },
+        {
+          "name": "gain",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -12,
+          "maximum": 12
+        }
+      ],
+      "seeded": false,
+      "telemetry": [
+        "gainReduction"
+      ],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "Gate",
+      "parameters": [
+        {
+          "name": "threshold",
+          "type": "number",
+          "count": 1,
+          "default": -40,
+          "unit": "dB",
+          "minimum": -96,
+          "maximum": 0
+        },
+        {
+          "name": "ratio",
+          "type": "number",
+          "count": 1,
+          "default": 10,
+          "minimum": 1,
+          "maximum": 100
+        },
+        {
+          "name": "attack",
+          "type": "number",
+          "count": 1,
+          "default": 1,
+          "unit": "ms",
+          "minimum": 0.01,
+          "maximum": 50
+        },
+        {
+          "name": "release",
+          "type": "number",
+          "count": 1,
+          "default": 200,
+          "unit": "ms",
+          "minimum": 10,
+          "maximum": 2000
+        },
+        {
+          "name": "knee",
+          "type": "number",
+          "count": 1,
+          "default": 1,
+          "unit": "dB",
+          "minimum": 0,
+          "maximum": 6
+        },
+        {
+          "name": "gain",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -12,
+          "maximum": 12
+        }
+      ],
+      "seeded": false,
+      "telemetry": [
+        "gainReduction"
+      ],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "MultibandCompressor",
+      "parameters": [
+        {
+          "name": "frequency1",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "Hz",
+          "minimum": 20,
+          "maximum": 500
+        },
+        {
+          "name": "frequency2",
+          "type": "number",
+          "count": 1,
+          "default": 500,
+          "unit": "Hz",
+          "minimum": 100,
+          "maximum": 2000
+        },
+        {
+          "name": "frequency3",
+          "type": "number",
+          "count": 1,
+          "default": 2000,
+          "unit": "Hz",
+          "minimum": 500,
+          "maximum": 8000
+        },
+        {
+          "name": "frequency4",
+          "type": "number",
+          "count": 1,
+          "default": 8000,
+          "unit": "Hz",
+          "minimum": 1000,
+          "maximum": 20000
+        },
+        {
+          "name": "threshold",
+          "type": "number",
+          "count": 5,
+          "default": [
+            -20,
+            -22,
+            -25,
+            -28,
+            -18
+          ],
+          "unit": "dB",
+          "minimum": -60,
+          "maximum": 0
+        },
+        {
+          "name": "ratio",
+          "type": "number",
+          "count": 5,
+          "default": [
+            4,
+            3,
+            2.5,
+            2,
+            5
+          ],
+          "minimum": 0.5,
+          "maximum": 20
+        },
+        {
+          "name": "attack",
+          "type": "number",
+          "count": 5,
+          "default": [
+            30,
+            20,
+            15,
+            10,
+            5
+          ],
+          "unit": "ms",
+          "minimum": 0.1,
+          "maximum": 100
+        },
+        {
+          "name": "release",
+          "type": "number",
+          "count": 5,
+          "default": [
+            150,
+            120,
+            80,
+            60,
+            40
+          ],
+          "unit": "ms",
+          "minimum": 10,
+          "maximum": 1000
+        },
+        {
+          "name": "knee",
+          "type": "number",
+          "count": 5,
+          "default": [
+            6,
+            4,
+            4,
+            3,
+            2
+          ],
+          "unit": "dB",
+          "minimum": 0,
+          "maximum": 12
+        },
+        {
+          "name": "gain",
+          "type": "number",
+          "count": 5,
+          "default": [
+            -1,
+            0,
+            1,
+            1.5,
+            -2
+          ],
+          "unit": "dB",
+          "minimum": -12,
+          "maximum": 12
+        }
+      ],
+      "seeded": false,
+      "telemetry": [
+        "multibandGainReduction"
+      ],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "MultibandExpander",
+      "parameters": [
+        {
+          "name": "frequency1",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "Hz",
+          "minimum": 20,
+          "maximum": 500
+        },
+        {
+          "name": "frequency2",
+          "type": "number",
+          "count": 1,
+          "default": 500,
+          "unit": "Hz",
+          "minimum": 100,
+          "maximum": 2000
+        },
+        {
+          "name": "frequency3",
+          "type": "number",
+          "count": 1,
+          "default": 2000,
+          "unit": "Hz",
+          "minimum": 500,
+          "maximum": 8000
+        },
+        {
+          "name": "frequency4",
+          "type": "number",
+          "count": 1,
+          "default": 8000,
+          "unit": "Hz",
+          "minimum": 1000,
+          "maximum": 20000
+        },
+        {
+          "name": "threshold",
+          "type": "number",
+          "count": 5,
+          "default": [
+            -30,
+            -16,
+            -24,
+            -36,
+            -48
+          ],
+          "unit": "dB",
+          "minimum": -60,
+          "maximum": 0
+        },
+        {
+          "name": "ratio",
+          "type": "number",
+          "count": 5,
+          "default": [
+            1.2,
+            1.2,
+            1.2,
+            1.1,
+            1.1
+          ],
+          "minimum": 0.05,
+          "maximum": 20
+        },
+        {
+          "name": "attack",
+          "type": "number",
+          "count": 5,
+          "default": [
+            10,
+            7.75,
+            5.5,
+            3.25,
+            1
+          ],
+          "unit": "ms",
+          "minimum": 0.1,
+          "maximum": 100
+        },
+        {
+          "name": "release",
+          "type": "number",
+          "count": 5,
+          "default": [
+            100,
+            87.5,
+            75,
+            62.5,
+            50
+          ],
+          "unit": "ms",
+          "minimum": 10,
+          "maximum": 1000
+        },
+        {
+          "name": "knee",
+          "type": "number",
+          "count": 5,
+          "default": [
+            6,
+            4,
+            4,
+            3,
+            2
+          ],
+          "unit": "dB",
+          "minimum": 0,
+          "maximum": 12
+        },
+        {
+          "name": "gain",
+          "type": "number",
+          "count": 5,
+          "default": [
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "unit": "dB",
+          "minimum": -12,
+          "maximum": 12
+        }
+      ],
+      "seeded": false,
+      "telemetry": [
+        "multibandGainReduction"
+      ],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "MultibandTransient",
+      "parameters": [
+        {
+          "name": "frequency1",
+          "type": "number",
+          "count": 1,
+          "default": 200,
+          "unit": "Hz",
+          "minimum": 20,
+          "maximum": 2000
+        },
+        {
+          "name": "frequency2",
+          "type": "number",
+          "count": 1,
+          "default": 4000,
+          "unit": "Hz",
+          "minimum": 200,
+          "maximum": 20000
+        },
+        {
+          "name": "fastAttack",
+          "type": "number",
+          "count": 3,
+          "default": [
+            5,
+            2,
+            0.5
+          ],
+          "unit": "ms",
+          "minimum": 0.1,
+          "maximum": 10
+        },
+        {
+          "name": "fastRelease",
+          "type": "number",
+          "count": 3,
+          "default": [
+            50,
+            30,
+            20
+          ],
+          "unit": "ms",
+          "minimum": 1,
+          "maximum": 200
+        },
+        {
+          "name": "slowAttack",
+          "type": "number",
+          "count": 3,
+          "default": [
+            25,
+            10,
+            5
+          ],
+          "unit": "ms",
+          "minimum": 1,
+          "maximum": 100
+        },
+        {
+          "name": "slowRelease",
+          "type": "number",
+          "count": 3,
+          "default": [
+            250,
+            150,
+            100
+          ],
+          "unit": "ms",
+          "minimum": 50,
+          "maximum": 1000
+        },
+        {
+          "name": "transientGain",
+          "type": "number",
+          "count": 3,
+          "default": [
+            6,
+            6,
+            6
+          ],
+          "unit": "dB",
+          "minimum": -24,
+          "maximum": 24
+        },
+        {
+          "name": "sustainGain",
+          "type": "number",
+          "count": 3,
+          "default": [
+            0,
+            0,
+            0
+          ],
+          "unit": "dB",
+          "minimum": -24,
+          "maximum": 24
+        },
+        {
+          "name": "gainSmoothing",
+          "type": "number",
+          "count": 3,
+          "default": [
+            5,
+            5,
+            5
+          ],
+          "unit": "ms",
+          "minimum": 0.1,
+          "maximum": 20
+        }
+      ],
+      "seeded": false,
+      "telemetry": [
+        "multibandTransientGain"
+      ],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "PowerAmpSag",
+      "parameters": [
+        {
+          "name": "sagSensitivity",
+          "type": "number",
+          "count": 1,
+          "default": 3,
+          "unit": "dB",
+          "minimum": -18,
+          "maximum": 18
+        },
+        {
+          "name": "powerStability",
+          "type": "integer",
+          "count": 1,
+          "default": 50,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "recoverySpeed",
+          "type": "integer",
+          "count": 1,
+          "default": 40,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "monoblock",
+          "type": "boolean",
+          "count": 1,
+          "default": false
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "TransientShaper",
+      "parameters": [
+        {
+          "name": "fastAttack",
+          "type": "number",
+          "count": 1,
+          "default": 1,
+          "unit": "ms",
+          "minimum": 0.1,
+          "maximum": 10
+        },
+        {
+          "name": "fastRelease",
+          "type": "number",
+          "count": 1,
+          "default": 20,
+          "unit": "ms",
+          "minimum": 1,
+          "maximum": 200
+        },
+        {
+          "name": "slowAttack",
+          "type": "number",
+          "count": 1,
+          "default": 20,
+          "unit": "ms",
+          "minimum": 1,
+          "maximum": 100
+        },
+        {
+          "name": "slowRelease",
+          "type": "number",
+          "count": 1,
+          "default": 300,
+          "unit": "ms",
+          "minimum": 50,
+          "maximum": 1000
+        },
+        {
+          "name": "transientGain",
+          "type": "number",
+          "count": 1,
+          "default": 6,
+          "unit": "dB",
+          "minimum": -24,
+          "maximum": 24
+        },
+        {
+          "name": "sustainGain",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -24,
+          "maximum": 24
+        },
+        {
+          "name": "gainSmoothing",
+          "type": "number",
+          "count": 1,
+          "default": 5,
+          "unit": "ms",
+          "minimum": 0.1,
+          "maximum": 20
+        }
+      ],
+      "seeded": false,
+      "telemetry": [
+        "transientGain"
+      ],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "BandPassFilter",
+      "parameters": [
+        {
+          "name": "highPassFrequency",
+          "type": "number",
+          "count": 1,
+          "default": 1000,
+          "unit": "Hz",
+          "minimum": 10,
+          "maximum": 40000
+        },
+        {
+          "name": "lowPassFrequency",
+          "type": "number",
+          "count": 1,
+          "default": 1000,
+          "unit": "Hz",
+          "minimum": 10,
+          "maximum": 40000
+        },
+        {
+          "name": "highPassSlope",
+          "type": "integer",
+          "count": 1,
+          "default": -24,
+          "unit": "dB/oct",
+          "minimum": -48,
+          "maximum": 0
+        },
+        {
+          "name": "lowPassSlope",
+          "type": "integer",
+          "count": 1,
+          "default": -24,
+          "unit": "dB/oct",
+          "minimum": -48,
+          "maximum": 0
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "CombFilter",
+      "parameters": [
+        {
+          "name": "fundamentalFrequency",
+          "type": "number",
+          "count": 1,
+          "default": 440,
+          "unit": "Hz",
+          "minimum": 20,
+          "maximum": 20000
+        },
+        {
+          "name": "feedbackGain",
+          "type": "number",
+          "count": 1,
+          "default": 0.4,
+          "minimum": -1,
+          "maximum": 1
+        },
+        {
+          "name": "dryWetMix",
+          "type": "number",
+          "count": 1,
+          "default": 50,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "combType",
+          "type": "string",
+          "count": 1,
+          "default": "ff",
+          "values": [
+            "fb",
+            "ff"
+          ]
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "EarphoneCableSim",
+      "parameters": [
+        {
+          "name": "outputImpedance",
+          "type": "number",
+          "count": 1,
+          "default": 0.5,
+          "unit": "ohm",
+          "minimum": 0,
+          "maximum": 20
+        },
+        {
+          "name": "cableResistance",
+          "type": "number",
+          "count": 1,
+          "default": 0.3,
+          "unit": "ohm",
+          "minimum": 0,
+          "maximum": 2
+        },
+        {
+          "name": "cableInductance",
+          "type": "number",
+          "count": 1,
+          "default": 0.5,
+          "unit": "uH",
+          "minimum": 0,
+          "maximum": 5
+        },
+        {
+          "name": "voiceCoilInductance",
+          "type": "number",
+          "count": 1,
+          "default": 0.2,
+          "unit": "mH",
+          "minimum": 0.01,
+          "maximum": 2
+        },
+        {
+          "name": "baseImpedance",
+          "type": "number",
+          "count": 1,
+          "default": 16,
+          "unit": "ohm",
+          "minimum": 4,
+          "maximum": 64
+        },
+        {
+          "name": "resonanceFrequency",
+          "type": "number",
+          "count": 5,
+          "default": [
+            120,
+            2000,
+            5000,
+            9000,
+            60
+          ],
+          "unit": "Hz",
+          "minimum": 20,
+          "maximum": 20000
+        },
+        {
+          "name": "resonanceQ",
+          "type": "number",
+          "count": 5,
+          "default": [
+            2,
+            1.5,
+            2,
+            3,
+            1.5
+          ],
+          "minimum": 0.5,
+          "maximum": 10
+        },
+        {
+          "name": "resonanceImpedance",
+          "type": "number",
+          "count": 5,
+          "default": [
+            48,
+            36,
+            64,
+            80,
+            64
+          ],
+          "unit": "ohm",
+          "minimum": 16,
+          "maximum": 116
+        },
+        {
+          "name": "resonanceEnabled",
+          "type": "boolean",
+          "count": 5,
+          "default": [
+            true,
+            false,
+            false,
+            false,
+            false
+          ]
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "FifteenBandGEQ",
+      "parameters": [
+        {
+          "name": "bandGain",
+          "type": "number",
+          "count": 15,
+          "default": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "unit": "dB",
+          "minimum": -12,
+          "maximum": 12
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "FifteenBandPEQ",
+      "parameters": [
+        {
+          "name": "frequencies",
+          "type": "number",
+          "count": 15,
+          "default": [
+            25,
+            40,
+            63,
+            100,
+            160,
+            250,
+            400,
+            630,
+            1000,
+            1600,
+            2500,
+            4000,
+            6300,
+            10000,
+            16000
+          ],
+          "unit": "Hz",
+          "minimum": 20,
+          "maximum": 20000
+        },
+        {
+          "name": "gains",
+          "type": "number",
+          "count": 15,
+          "default": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "unit": "dB",
+          "minimum": -20,
+          "maximum": 20
+        },
+        {
+          "name": "qValues",
+          "type": "number",
+          "count": 15,
+          "default": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "minimum": 0.1,
+          "maximum": 10
+        },
+        {
+          "name": "filterTypes",
+          "type": "string",
+          "count": 15,
+          "default": [
+            "peaking",
+            "peaking",
+            "peaking",
+            "peaking",
+            "peaking",
+            "peaking",
+            "peaking",
+            "peaking",
+            "peaking",
+            "peaking",
+            "peaking",
+            "peaking",
+            "peaking",
+            "peaking",
+            "peaking"
+          ],
+          "values": [
+            "peaking",
+            "lowPass",
+            "highPass",
+            "lowShelf",
+            "highShelf",
+            "bandPass",
+            "notch",
+            "allPass"
+          ]
+        },
+        {
+          "name": "enabledBands",
+          "type": "boolean",
+          "count": 15,
+          "default": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ]
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "FiveBandDynamicEQ",
+      "parameters": [
+        {
+          "name": "enabledBands",
+          "type": "boolean",
+          "count": 5,
+          "default": [
+            false,
+            false,
+            true,
+            false,
+            false
+          ]
+        },
+        {
+          "name": "filterType",
+          "type": "string",
+          "count": 5,
+          "default": [
+            "pk",
+            "pk",
+            "pk",
+            "pk",
+            "pk"
+          ],
+          "values": [
+            "pk",
+            "ls",
+            "hs"
+          ]
+        },
+        {
+          "name": "frequency",
+          "type": "number",
+          "count": 5,
+          "default": [
+            100,
+            300,
+            1000,
+            3000,
+            10000
+          ],
+          "unit": "Hz",
+          "minimum": 20,
+          "maximum": 20000
+        },
+        {
+          "name": "q",
+          "type": "number",
+          "count": 5,
+          "default": [
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "minimum": 0.1,
+          "maximum": 10
+        },
+        {
+          "name": "maxGain",
+          "type": "number",
+          "count": 5,
+          "default": [
+            6,
+            6,
+            6,
+            6,
+            6
+          ],
+          "unit": "dB",
+          "minimum": 0,
+          "maximum": 24
+        },
+        {
+          "name": "threshold",
+          "type": "number",
+          "count": 5,
+          "default": [
+            -18,
+            -21,
+            -24,
+            -27,
+            -30
+          ],
+          "unit": "dB",
+          "minimum": -60,
+          "maximum": 0
+        },
+        {
+          "name": "ratio",
+          "type": "number",
+          "count": 5,
+          "default": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ],
+          "minimum": 0.1,
+          "maximum": 100
+        },
+        {
+          "name": "knee",
+          "type": "number",
+          "count": 5,
+          "default": [
+            3,
+            3,
+            3,
+            3,
+            3
+          ],
+          "unit": "dB",
+          "minimum": 0,
+          "maximum": 10
+        },
+        {
+          "name": "attack",
+          "type": "number",
+          "count": 5,
+          "default": [
+            10,
+            10,
+            10,
+            10,
+            10
+          ],
+          "unit": "ms",
+          "minimum": 0.1,
+          "maximum": 100
+        },
+        {
+          "name": "release",
+          "type": "number",
+          "count": 5,
+          "default": [
+            100,
+            100,
+            100,
+            100,
+            100
+          ],
+          "unit": "ms",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        {
+          "name": "sidechainFrequency",
+          "type": "number",
+          "count": 5,
+          "default": [
+            100,
+            300,
+            1000,
+            3000,
+            10000
+          ],
+          "unit": "Hz",
+          "minimum": 20,
+          "maximum": 20000
+        },
+        {
+          "name": "sidechainQ",
+          "type": "number",
+          "count": 5,
+          "default": [
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "minimum": 0.1,
+          "maximum": 10
+        }
+      ],
+      "seeded": false,
+      "telemetry": [
+        "dynamicEqGains"
+      ],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "FiveBandFIRPEQ",
+      "parameters": [
+        {
+          "name": "latencyMode",
+          "type": "string",
+          "count": 1,
+          "default": "128",
+          "values": [
+            "0",
+            "128",
+            "256",
+            "512",
+            "1024"
+          ]
+        },
+        {
+          "name": "filterDelaySamples",
+          "type": "integer",
+          "count": 1,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 65536
+        }
+      ],
+      "seeded": true,
+      "telemetry": [],
+      "latency": {
+        "kind": "dynamic",
+        "dependsOn": [
+          "latencyMode",
+          "filterDelaySamples",
+          "impulseResponse"
+        ]
+      },
+      "assets": [
+        {
+          "name": "impulseResponse",
+          "kind": "impulseResponse",
+          "required": true
+        }
+      ]
+    },
+    {
+      "type": "FiveBandPEQ",
+      "parameters": [
+        {
+          "name": "frequencies",
+          "type": "number",
+          "count": 5,
+          "default": [
+            100,
+            316,
+            1000,
+            3160,
+            10000
+          ],
+          "unit": "Hz",
+          "minimum": 20,
+          "maximum": 20000
+        },
+        {
+          "name": "gains",
+          "type": "number",
+          "count": 5,
+          "default": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "unit": "dB",
+          "minimum": -20,
+          "maximum": 20
+        },
+        {
+          "name": "qValues",
+          "type": "number",
+          "count": 5,
+          "default": [
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "minimum": 0.1,
+          "maximum": 10
+        },
+        {
+          "name": "filterTypes",
+          "type": "string",
+          "count": 5,
+          "default": [
+            "peaking",
+            "peaking",
+            "peaking",
+            "peaking",
+            "peaking"
+          ],
+          "values": [
+            "peaking",
+            "lowPass",
+            "highPass",
+            "lowShelf",
+            "highShelf",
+            "bandPass",
+            "notch",
+            "allPass"
+          ]
+        },
+        {
+          "name": "enabledBands",
+          "type": "boolean",
+          "count": 5,
+          "default": [
+            true,
+            true,
+            true,
+            true,
+            true
+          ]
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "GroupDelayEQ",
+      "parameters": [
+        {
+          "name": "latencyMode",
+          "type": "string",
+          "count": 1,
+          "default": "128",
+          "values": [
+            "0",
+            "128",
+            "256",
+            "512",
+            "1024"
+          ]
+        },
+        {
+          "name": "filterDelaySamples",
+          "type": "integer",
+          "count": 1,
+          "default": 8192,
+          "minimum": 0,
+          "maximum": 65536
+        }
+      ],
+      "seeded": true,
+      "telemetry": [],
+      "latency": {
+        "kind": "dynamic",
+        "dependsOn": [
+          "latencyMode",
+          "filterDelaySamples",
+          "impulseResponse"
+        ]
+      },
+      "assets": [
+        {
+          "name": "impulseResponse",
+          "kind": "impulseResponse",
+          "required": true
+        }
+      ]
+    },
+    {
+      "type": "HiPassFilter",
+      "parameters": [
+        {
+          "name": "frequency",
+          "type": "number",
+          "count": 1,
+          "default": 1000,
+          "unit": "Hz",
+          "minimum": 10,
+          "maximum": 40000
+        },
+        {
+          "name": "slope",
+          "type": "integer",
+          "count": 1,
+          "default": -24,
+          "unit": "dB/oct",
+          "values": [
+            0,
+            -12,
+            -24,
+            -36,
+            -48,
+            -60,
+            -72,
+            -84,
+            -96
+          ]
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "LoPassFilter",
+      "parameters": [
+        {
+          "name": "frequency",
+          "type": "number",
+          "count": 1,
+          "default": 1000,
+          "unit": "Hz",
+          "minimum": 10,
+          "maximum": 40000
+        },
+        {
+          "name": "slope",
+          "type": "integer",
+          "count": 1,
+          "default": -24,
+          "unit": "dB/oct",
+          "values": [
+            0,
+            -12,
+            -24,
+            -36,
+            -48,
+            -60,
+            -72,
+            -84,
+            -96
+          ]
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "LoudnessEqualizer",
+      "parameters": [
+        {
+          "name": "averageSpl",
+          "type": "number",
+          "count": 1,
+          "default": 65,
+          "unit": "dB",
+          "minimum": 60,
+          "maximum": 96
+        },
+        {
+          "name": "relativeVolume",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -30,
+          "maximum": 12
+        },
+        {
+          "name": "lowGain",
+          "type": "number",
+          "count": 1,
+          "default": 10,
+          "unit": "dB",
+          "minimum": 0,
+          "maximum": 15
+        },
+        {
+          "name": "lowFrequency",
+          "type": "integer",
+          "count": 1,
+          "default": 180,
+          "unit": "Hz",
+          "minimum": 100,
+          "maximum": 300
+        },
+        {
+          "name": "lowQ",
+          "type": "number",
+          "count": 1,
+          "default": 0.6,
+          "minimum": 0.5,
+          "maximum": 1
+        },
+        {
+          "name": "highQ",
+          "type": "number",
+          "count": 1,
+          "default": 0.6,
+          "minimum": 0.5,
+          "maximum": 1
+        },
+        {
+          "name": "highGain",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": 0,
+          "maximum": 15
+        },
+        {
+          "name": "highFrequency",
+          "type": "integer",
+          "count": 1,
+          "default": 4000,
+          "unit": "Hz",
+          "minimum": 3000,
+          "maximum": 6000
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "NarrowRange",
+      "parameters": [
+        {
+          "name": "highPassFrequency",
+          "type": "number",
+          "count": 1,
+          "default": 60,
+          "unit": "Hz",
+          "minimum": 20,
+          "maximum": 4000
+        },
+        {
+          "name": "highPassSlope",
+          "type": "integer",
+          "count": 1,
+          "default": -24,
+          "unit": "dB/oct",
+          "minimum": -48,
+          "maximum": 0
+        },
+        {
+          "name": "lowPassFrequency",
+          "type": "number",
+          "count": 1,
+          "default": 5000,
+          "unit": "Hz",
+          "minimum": 200,
+          "maximum": 40000
+        },
+        {
+          "name": "lowPassSlope",
+          "type": "integer",
+          "count": 1,
+          "default": -12,
+          "unit": "dB/oct",
+          "minimum": -48,
+          "maximum": 0
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "RoomEQ",
+      "parameters": [
+        {
+          "name": "latencyMode",
+          "type": "string",
+          "count": 1,
+          "default": "128",
+          "values": [
+            "0",
+            "128",
+            "256",
+            "512",
+            "1024"
+          ]
+        },
+        {
+          "name": "filterDelaySamples",
+          "type": "integer",
+          "count": 1,
+          "default": 16384,
+          "minimum": 0,
+          "maximum": 65536
+        },
+        {
+          "name": "channelDelay",
+          "type": "integer",
+          "count": 1,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 3840
+        },
+        {
+          "name": "outputGain",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -12,
+          "maximum": 12
+        }
+      ],
+      "seeded": true,
+      "telemetry": [],
+      "latency": {
+        "kind": "dynamic",
+        "dependsOn": [
+          "latencyMode",
+          "filterDelaySamples",
+          "impulseResponse"
+        ]
+      },
+      "assets": [
+        {
+          "name": "impulseResponse",
+          "kind": "impulseResponse",
+          "required": true
+        }
+      ]
+    },
+    {
+      "type": "TiltEQ",
+      "parameters": [
+        {
+          "name": "pivotFrequency",
+          "type": "number",
+          "count": 1,
+          "default": 1002.2472422902518,
+          "unit": "Hz",
+          "minimum": 20.085536923187668,
+          "maximum": 19930.370438230297
+        },
+        {
+          "name": "slope",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB/oct",
+          "minimum": -12,
+          "maximum": 12
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "ToneControl",
+      "parameters": [
+        {
+          "name": "bass",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -24,
+          "maximum": 24
+        },
+        {
+          "name": "mid",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -24,
+          "maximum": 24
+        },
+        {
+          "name": "treble",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -24,
+          "maximum": 24
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "AMRadioSimulator",
+      "parameters": [
+        {
+          "name": "txBandwidth",
+          "type": "number",
+          "count": 1,
+          "default": 6,
+          "unit": "kHz",
+          "minimum": 2,
+          "maximum": 10
+        },
+        {
+          "name": "preEmphasis",
+          "type": "number",
+          "count": 1,
+          "default": 50,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "modDepth",
+          "type": "number",
+          "count": 1,
+          "default": 90,
+          "unit": "%",
+          "minimum": 10,
+          "maximum": 125
+        },
+        {
+          "name": "compression",
+          "type": "number",
+          "count": 1,
+          "default": 6,
+          "unit": "dB",
+          "minimum": 0,
+          "maximum": 20
+        },
+        {
+          "name": "stereoMode",
+          "type": "string",
+          "count": 1,
+          "default": "Mono",
+          "values": [
+            "Mono",
+            "C-QUAM"
+          ]
+        },
+        {
+          "name": "signal",
+          "type": "number",
+          "count": 1,
+          "default": -12,
+          "unit": "dB",
+          "minimum": -50,
+          "maximum": 0
+        },
+        {
+          "name": "skywave",
+          "type": "number",
+          "count": 1,
+          "default": 1,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "fadingSpeed",
+          "type": "number",
+          "count": 1,
+          "default": 0.15,
+          "unit": "Hz",
+          "minimum": 0.05,
+          "maximum": 2
+        },
+        {
+          "name": "staticRate",
+          "type": "number",
+          "count": 1,
+          "default": 0.3,
+          "unit": "/s",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "interference",
+          "type": "number",
+          "count": 1,
+          "default": -65,
+          "unit": "dB",
+          "minimum": -80,
+          "maximum": 0
+        },
+        {
+          "name": "interferenceOffset",
+          "type": "number",
+          "count": 1,
+          "default": 9,
+          "unit": "kHz",
+          "minimum": 5,
+          "maximum": 10
+        },
+        {
+          "name": "tuning",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "kHz",
+          "minimum": -30,
+          "maximum": 30
+        },
+        {
+          "name": "ifBandwidth",
+          "type": "number",
+          "count": 1,
+          "default": 12,
+          "unit": "kHz",
+          "minimum": 2,
+          "maximum": 20
+        },
+        {
+          "name": "agcSpeed",
+          "type": "string",
+          "count": 1,
+          "default": "Fast",
+          "values": [
+            "Slow",
+            "Mid",
+            "Fast"
+          ]
+        },
+        {
+          "name": "detectorRc",
+          "type": "number",
+          "count": 1,
+          "default": 50,
+          "unit": "us",
+          "minimum": 20,
+          "maximum": 500
+        },
+        {
+          "name": "hum",
+          "type": "number",
+          "count": 1,
+          "default": -70,
+          "unit": "dB",
+          "minimum": -80,
+          "maximum": -20
+        },
+        {
+          "name": "humFrequency",
+          "type": "string",
+          "count": 1,
+          "default": "50",
+          "values": [
+            "50",
+            "60"
+          ]
+        },
+        {
+          "name": "speaker",
+          "type": "string",
+          "count": 1,
+          "default": "Table",
+          "values": [
+            "Off",
+            "Small",
+            "Table"
+          ]
+        },
+        {
+          "name": "outputGain",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -24,
+          "maximum": 24
+        },
+        {
+          "name": "mix",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        }
+      ],
+      "seeded": true,
+      "telemetry": [
+        "amRadioStatus"
+      ],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "BitCrusher",
+      "parameters": [
+        {
+          "name": "bitDepth",
+          "type": "integer",
+          "count": 1,
+          "default": 8,
+          "minimum": 4,
+          "maximum": 24
+        },
+        {
+          "name": "tpdfDither",
+          "type": "boolean",
+          "count": 1,
+          "default": false
+        },
+        {
+          "name": "zohFrequency",
+          "type": "number",
+          "count": 1,
+          "default": 44100,
+          "unit": "Hz",
+          "minimum": 4000,
+          "maximum": 96000
+        },
+        {
+          "name": "bitError",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 10
+        },
+        {
+          "name": "seed",
+          "type": "integer",
+          "count": 1,
+          "default": 11,
+          "minimum": 0,
+          "maximum": 1000
+        }
+      ],
+      "seeded": true,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "DigitalErrorEmulator",
+      "parameters": [
+        {
+          "name": "bitErrorRate",
+          "type": "number",
+          "count": 1,
+          "default": 0.000001,
+          "minimum": 1e-12,
+          "maximum": 0.01
+        },
+        {
+          "name": "mode",
+          "type": "string",
+          "count": 1,
+          "default": "10A",
+          "values": [
+            "1",
+            "2A",
+            "2B",
+            "3A",
+            "3B",
+            "4",
+            "5A",
+            "5B",
+            "5C",
+            "6A",
+            "6B",
+            "8",
+            "9",
+            "10",
+            "10A"
+          ]
+        },
+        {
+          "name": "referenceSampleRate",
+          "type": "number",
+          "count": 1,
+          "default": 48,
+          "unit": "kHz",
+          "minimum": 44.1,
+          "maximum": 192
+        },
+        {
+          "name": "wetMix",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        }
+      ],
+      "seeded": true,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "DSD64IMDSimulator",
+      "parameters": [
+        {
+          "name": "amount",
+          "type": "number",
+          "count": 1,
+          "default": 24,
+          "unit": "dB",
+          "minimum": -40,
+          "maximum": 50
+        },
+        {
+          "name": "dryWet",
+          "type": "integer",
+          "count": 1,
+          "default": 50,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "ultrasonicLevel",
+          "type": "number",
+          "count": 1,
+          "default": -30,
+          "unit": "dBFS RMS",
+          "minimum": -48,
+          "maximum": -18
+        },
+        {
+          "name": "noiseColor",
+          "type": "integer",
+          "count": 1,
+          "default": 0,
+          "unit": "%",
+          "minimum": -100,
+          "maximum": 100
+        },
+        {
+          "name": "analogNonlinearity",
+          "type": "number",
+          "count": 1,
+          "default": 1.4,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 10
+        },
+        {
+          "name": "evenBias",
+          "type": "integer",
+          "count": 1,
+          "default": 20,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "signalCoupling",
+          "type": "integer",
+          "count": 1,
+          "default": 150,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 200
+        },
+        {
+          "name": "scratchTone",
+          "type": "number",
+          "count": 1,
+          "default": 10.5,
+          "unit": "kHz",
+          "minimum": 3,
+          "maximum": 14
+        },
+        {
+          "name": "noiseTexture",
+          "type": "integer",
+          "count": 1,
+          "default": 25,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "crossSideband",
+          "type": "integer",
+          "count": 1,
+          "default": 75,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "imdPathHpf",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "kHz",
+          "minimum": 0,
+          "maximum": 8
+        },
+        {
+          "name": "outputTrim",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -24,
+          "maximum": 12
+        }
+      ],
+      "seeded": false,
+      "minimumSampleRate": 88200,
+      "effectiveDelaySamples": 63,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "FMRadioSimulator",
+      "parameters": [
+        {
+          "name": "emphasis",
+          "type": "string",
+          "count": 1,
+          "default": "50us",
+          "values": [
+            "50us",
+            "75us"
+          ]
+        },
+        {
+          "name": "processing",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": 0,
+          "maximum": 18
+        },
+        {
+          "name": "signal",
+          "type": "number",
+          "count": 1,
+          "default": 35,
+          "unit": "dBuV",
+          "minimum": 0,
+          "maximum": 70
+        },
+        {
+          "name": "tuning",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "kHz",
+          "minimum": -200,
+          "maximum": 200
+        },
+        {
+          "name": "ifBandwidth",
+          "type": "number",
+          "count": 1,
+          "default": 230,
+          "unit": "kHz",
+          "minimum": 80,
+          "maximum": 240
+        },
+        {
+          "name": "multipath",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "pathDelay",
+          "type": "number",
+          "count": 1,
+          "default": 5,
+          "unit": "us",
+          "minimum": 0.5,
+          "maximum": 50
+        },
+        {
+          "name": "fading",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "Hz",
+          "minimum": 0,
+          "maximum": 20
+        },
+        {
+          "name": "stereo",
+          "type": "string",
+          "count": 1,
+          "default": "Auto",
+          "values": [
+            "Auto",
+            "Stereo",
+            "Mono"
+          ]
+        },
+        {
+          "name": "outputGain",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -24,
+          "maximum": 24
+        },
+        {
+          "name": "mix",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        }
+      ],
+      "seeded": true,
+      "sampleRates": [
+        44100,
+        48000,
+        88200,
+        96000,
+        176400,
+        192000,
+        352800,
+        384000
+      ],
+      "telemetry": [
+        "fmRadioStatus",
+        "fmMultiplexSpectrum"
+      ],
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      },
+      "assets": []
+    },
+    {
+      "type": "HumGenerator",
+      "parameters": [
+        {
+          "name": "frequency",
+          "type": "number",
+          "count": 1,
+          "default": 50,
+          "unit": "Hz",
+          "minimum": 10,
+          "maximum": 120
+        },
+        {
+          "name": "humType",
+          "type": "string",
+          "count": 1,
+          "default": "Standard",
+          "values": [
+            "Standard",
+            "Rich",
+            "Dirty"
+          ]
+        },
+        {
+          "name": "harmonics",
+          "type": "integer",
+          "count": 1,
+          "default": 50,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "tone",
+          "type": "number",
+          "count": 1,
+          "default": 10,
+          "unit": "kHz",
+          "minimum": 1,
+          "maximum": 20
+        },
+        {
+          "name": "instability",
+          "type": "number",
+          "count": 1,
+          "default": 1,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 10
+        },
+        {
+          "name": "level",
+          "type": "number",
+          "count": 1,
+          "default": -40,
+          "unit": "dB",
+          "minimum": -80,
+          "maximum": 0
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "NoiseBlender",
+      "parameters": [
+        {
+          "name": "noiseType",
+          "type": "string",
+          "count": 1,
+          "default": "pink",
+          "values": [
+            "white",
+            "pink",
+            "brown"
+          ]
+        },
+        {
+          "name": "level",
+          "type": "number",
+          "count": 1,
+          "default": -36,
+          "unit": "dB",
+          "minimum": -96,
+          "maximum": 0
+        },
+        {
+          "name": "perChannel",
+          "type": "boolean",
+          "count": 1,
+          "default": true
+        }
+      ],
+      "seeded": true,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "SimpleJitter",
+      "parameters": [
+        {
+          "name": "rmsJitterNanoseconds",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "ns",
+          "minimum": 0.001,
+          "maximum": 10000000
+        }
+      ],
+      "seeded": true,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "SWRadioSimulator",
+      "parameters": [
+        {
+          "name": "txBandwidth",
+          "type": "number",
+          "count": 1,
+          "default": 4.5,
+          "unit": "kHz",
+          "minimum": 2,
+          "maximum": 10
+        },
+        {
+          "name": "preEmphasis",
+          "type": "number",
+          "count": 1,
+          "default": 50,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "modDepth",
+          "type": "number",
+          "count": 1,
+          "default": 90,
+          "unit": "%",
+          "minimum": 10,
+          "maximum": 125
+        },
+        {
+          "name": "compression",
+          "type": "number",
+          "count": 1,
+          "default": 6,
+          "unit": "dB",
+          "minimum": 0,
+          "maximum": 20
+        },
+        {
+          "name": "signal",
+          "type": "number",
+          "count": 1,
+          "default": -15,
+          "unit": "dB",
+          "minimum": -50,
+          "maximum": 0
+        },
+        {
+          "name": "skywave",
+          "type": "number",
+          "count": 1,
+          "default": 55,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "fadingSpeed",
+          "type": "number",
+          "count": 1,
+          "default": 0.5,
+          "unit": "Hz",
+          "minimum": 0.1,
+          "maximum": 10
+        },
+        {
+          "name": "delaySpread",
+          "type": "number",
+          "count": 1,
+          "default": 1.4,
+          "unit": "ms",
+          "minimum": 0.2,
+          "maximum": 8
+        },
+        {
+          "name": "staticRate",
+          "type": "number",
+          "count": 1,
+          "default": 2,
+          "unit": "/s",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "interference",
+          "type": "number",
+          "count": 1,
+          "default": -47,
+          "unit": "dB",
+          "minimum": -80,
+          "maximum": 0
+        },
+        {
+          "name": "interferenceOffset",
+          "type": "number",
+          "count": 1,
+          "default": 1,
+          "unit": "kHz",
+          "minimum": 0.1,
+          "maximum": 10
+        },
+        {
+          "name": "tuning",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "kHz",
+          "minimum": -5,
+          "maximum": 5
+        },
+        {
+          "name": "ifBandwidth",
+          "type": "number",
+          "count": 1,
+          "default": 6,
+          "unit": "kHz",
+          "minimum": 2,
+          "maximum": 10
+        },
+        {
+          "name": "detector",
+          "type": "string",
+          "count": 1,
+          "default": "Envelope",
+          "values": [
+            "Envelope",
+            "Synchronous"
+          ]
+        },
+        {
+          "name": "agcSpeed",
+          "type": "string",
+          "count": 1,
+          "default": "Fast",
+          "values": [
+            "Slow",
+            "Mid",
+            "Fast"
+          ]
+        },
+        {
+          "name": "detectorRc",
+          "type": "number",
+          "count": 1,
+          "default": 50,
+          "unit": "us",
+          "minimum": 20,
+          "maximum": 500
+        },
+        {
+          "name": "hum",
+          "type": "number",
+          "count": 1,
+          "default": -80,
+          "unit": "dB",
+          "minimum": -80,
+          "maximum": -20
+        },
+        {
+          "name": "humFrequency",
+          "type": "string",
+          "count": 1,
+          "default": "50",
+          "values": [
+            "50",
+            "60"
+          ]
+        },
+        {
+          "name": "speaker",
+          "type": "string",
+          "count": 1,
+          "default": "Small",
+          "values": [
+            "Off",
+            "Small",
+            "Table"
+          ]
+        },
+        {
+          "name": "outputGain",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -24,
+          "maximum": 24
+        },
+        {
+          "name": "mix",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        }
+      ],
+      "seeded": true,
+      "telemetry": [
+        "swRadioStatus"
+      ],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "VinylArtifacts",
+      "parameters": [
+        {
+          "name": "popsPerMinute",
+          "type": "integer",
+          "count": 1,
+          "default": 20,
+          "minimum": 0,
+          "maximum": 120
+        },
+        {
+          "name": "popLevel",
+          "type": "number",
+          "count": 1,
+          "default": -24,
+          "unit": "dB",
+          "minimum": -80,
+          "maximum": 0
+        },
+        {
+          "name": "cracklesPerMinute",
+          "type": "integer",
+          "count": 1,
+          "default": 500,
+          "minimum": 0,
+          "maximum": 2000
+        },
+        {
+          "name": "crackleLevel",
+          "type": "number",
+          "count": 1,
+          "default": -33,
+          "unit": "dB",
+          "minimum": -80,
+          "maximum": 0
+        },
+        {
+          "name": "hissLevel",
+          "type": "number",
+          "count": 1,
+          "default": -42,
+          "unit": "dB",
+          "minimum": -80,
+          "maximum": 0
+        },
+        {
+          "name": "rumbleLevel",
+          "type": "number",
+          "count": 1,
+          "default": -50,
+          "unit": "dB",
+          "minimum": -80,
+          "maximum": 0
+        },
+        {
+          "name": "crosstalk",
+          "type": "integer",
+          "count": 1,
+          "default": 60,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "noiseProfile",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 10
+        },
+        {
+          "name": "wear",
+          "type": "integer",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 200
+        },
+        {
+          "name": "react",
+          "type": "integer",
+          "count": 1,
+          "default": 25,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "reactMode",
+          "type": "string",
+          "count": 1,
+          "default": "Velocity",
+          "values": [
+            "Velocity",
+            "Amplitude"
+          ]
+        },
+        {
+          "name": "mix",
+          "type": "integer",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        }
+      ],
+      "seeded": true,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "VinylSimulator",
+      "parameters": [
+        {
+          "name": "cutLevel",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -20,
+          "maximum": 20
+        },
+        {
+          "name": "highFrequencyCutoff",
+          "type": "number",
+          "count": 1,
+          "default": 16000,
+          "unit": "Hz",
+          "minimum": 6000,
+          "maximum": 24000
+        },
+        {
+          "name": "bassMonoBelow",
+          "type": "number",
+          "count": 1,
+          "default": 250,
+          "unit": "Hz",
+          "minimum": 50,
+          "maximum": 1000
+        },
+        {
+          "name": "sideMix",
+          "type": "number",
+          "count": 1,
+          "default": 70,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "speed",
+          "type": "string",
+          "count": 1,
+          "default": "33⅓",
+          "values": [
+            "33⅓",
+            "45",
+            "78"
+          ]
+        },
+        {
+          "name": "radius",
+          "type": "number",
+          "count": 1,
+          "default": 120,
+          "unit": "mm",
+          "minimum": 60,
+          "maximum": 146
+        },
+        {
+          "name": "roughness",
+          "type": "number",
+          "count": 1,
+          "default": 13.17,
+          "unit": "nm",
+          "minimum": 0.1,
+          "maximum": 100
+        },
+        {
+          "name": "dustRate",
+          "type": "number",
+          "count": 1,
+          "default": 2,
+          "unit": "/s",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        {
+          "name": "staticRate",
+          "type": "number",
+          "count": 1,
+          "default": 0.08,
+          "unit": "/s",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        {
+          "name": "scratchRate",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "/s",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        {
+          "name": "stylusShape",
+          "type": "string",
+          "count": 1,
+          "default": "Elliptical",
+          "values": [
+            "Spherical",
+            "Elliptical"
+          ]
+        },
+        {
+          "name": "sideRadius",
+          "type": "number",
+          "count": 1,
+          "default": 18,
+          "unit": "um",
+          "minimum": 5,
+          "maximum": 25
+        },
+        {
+          "name": "scanRadius",
+          "type": "number",
+          "count": 1,
+          "default": 8,
+          "unit": "um",
+          "minimum": 2,
+          "maximum": 25
+        },
+        {
+          "name": "trackingForce",
+          "type": "number",
+          "count": 1,
+          "default": 2,
+          "unit": "g",
+          "minimum": 0.5,
+          "maximum": 5
+        },
+        {
+          "name": "tipMass",
+          "type": "number",
+          "count": 1,
+          "default": 0.4,
+          "unit": "mg",
+          "minimum": 0.1,
+          "maximum": 1.5
+        },
+        {
+          "name": "compliance",
+          "type": "number",
+          "count": 1,
+          "default": 15,
+          "unit": "cu",
+          "minimum": 5,
+          "maximum": 35
+        },
+        {
+          "name": "damping",
+          "type": "number",
+          "count": 1,
+          "default": 0.25,
+          "unit": "zeta",
+          "minimum": 0.05,
+          "maximum": 1
+        },
+        {
+          "name": "quality",
+          "type": "string",
+          "count": 1,
+          "default": "Standard",
+          "values": [
+            "Eco",
+            "Standard",
+            "High",
+            "Ultra"
+          ]
+        },
+        {
+          "name": "outputGain",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -24,
+          "maximum": 24
+        },
+        {
+          "name": "mix",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        }
+      ],
+      "seeded": true,
+      "telemetry": [
+        "vinylStatus"
+      ],
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      },
+      "assets": []
+    },
+    {
+      "type": "DopplerDistortion",
+      "parameters": [
+        {
+          "name": "coilForce",
+          "type": "number",
+          "count": 1,
+          "default": 8,
+          "unit": "N / V",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "speakerMass",
+          "type": "number",
+          "count": 1,
+          "default": 0.03,
+          "unit": "kg",
+          "minimum": 0.001,
+          "maximum": 0.5
+        },
+        {
+          "name": "springConstant",
+          "type": "number",
+          "count": 1,
+          "default": 6000,
+          "unit": "N/m",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        {
+          "name": "dampingFactor",
+          "type": "number",
+          "count": 1,
+          "default": 1.5,
+          "unit": "N*s/m",
+          "minimum": 0,
+          "maximum": 50
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "PitchShifter",
+      "parameters": [
+        {
+          "name": "pitchShift",
+          "type": "integer",
+          "count": 1,
+          "default": 0,
+          "unit": "semitones",
+          "minimum": -6,
+          "maximum": 6
+        },
+        {
+          "name": "fineTune",
+          "type": "integer",
+          "count": 1,
+          "default": 0,
+          "unit": "cents",
+          "minimum": -50,
+          "maximum": 50
+        },
+        {
+          "name": "windowSize",
+          "type": "integer",
+          "count": 1,
+          "default": 150,
+          "unit": "ms",
+          "minimum": 80,
+          "maximum": 500
+        },
+        {
+          "name": "crossfadeTime",
+          "type": "number",
+          "count": 1,
+          "default": 35,
+          "unit": "ms",
+          "minimum": 20,
+          "maximum": 40
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "Tremolo",
+      "parameters": [
+        {
+          "name": "rate",
+          "type": "number",
+          "count": 1,
+          "default": 10,
+          "unit": "Hz",
+          "minimum": 0.1,
+          "maximum": 50
+        },
+        {
+          "name": "depth",
+          "type": "number",
+          "count": 1,
+          "default": 2,
+          "unit": "dB",
+          "minimum": 0,
+          "maximum": 12
+        },
+        {
+          "name": "randomness",
+          "type": "number",
+          "count": 1,
+          "default": 6,
+          "unit": "dB",
+          "minimum": 0,
+          "maximum": 96
+        },
+        {
+          "name": "randomnessCutoff",
+          "type": "number",
+          "count": 1,
+          "default": 200,
+          "unit": "Hz",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        {
+          "name": "randomnessSlope",
+          "type": "number",
+          "count": 1,
+          "default": -6,
+          "unit": "dB",
+          "minimum": -12,
+          "maximum": 0
+        },
+        {
+          "name": "channelPhase",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "degrees",
+          "minimum": -180,
+          "maximum": 180
+        },
+        {
+          "name": "channelSync",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        }
+      ],
+      "seeded": true,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "WowFlutter",
+      "parameters": [
+        {
+          "name": "rate",
+          "type": "number",
+          "count": 1,
+          "default": 0.5,
+          "unit": "Hz",
+          "minimum": 0.1,
+          "maximum": 20
+        },
+        {
+          "name": "depth",
+          "type": "number",
+          "count": 1,
+          "default": 6,
+          "unit": "ms",
+          "minimum": 0,
+          "maximum": 40
+        },
+        {
+          "name": "randomness",
+          "type": "number",
+          "count": 1,
+          "default": 10,
+          "unit": "ms",
+          "minimum": 0,
+          "maximum": 40
+        },
+        {
+          "name": "randomnessCutoff",
+          "type": "number",
+          "count": 1,
+          "default": 5,
+          "unit": "Hz",
+          "minimum": 0.1,
+          "maximum": 20
+        },
+        {
+          "name": "randomnessSlope",
+          "type": "number",
+          "count": 1,
+          "default": -6,
+          "unit": "dB",
+          "minimum": -12,
+          "maximum": 0
+        },
+        {
+          "name": "channelPhase",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "deg",
+          "minimum": -180,
+          "maximum": 180
+        },
+        {
+          "name": "channelSync",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        }
+      ],
+      "seeded": true,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "Oscillator",
+      "parameters": [
+        {
+          "name": "frequency",
+          "type": "number",
+          "count": 1,
+          "default": 880,
+          "unit": "Hz",
+          "minimum": 20,
+          "maximum": 96000
+        },
+        {
+          "name": "volume",
+          "type": "number",
+          "count": 1,
+          "default": -12,
+          "unit": "dB",
+          "minimum": -96,
+          "maximum": 0
+        },
+        {
+          "name": "panning",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "minimum": -1,
+          "maximum": 1
+        },
+        {
+          "name": "waveform",
+          "type": "string",
+          "count": 1,
+          "default": "sine",
+          "values": [
+            "sine",
+            "square",
+            "triangle",
+            "sawtooth",
+            "white",
+            "pink",
+            "impulse"
+          ]
+        },
+        {
+          "name": "mode",
+          "type": "string",
+          "count": 1,
+          "default": "continuous",
+          "values": [
+            "continuous",
+            "pulsed"
+          ]
+        },
+        {
+          "name": "interval",
+          "type": "number",
+          "count": 1,
+          "default": 500,
+          "unit": "ms",
+          "minimum": 100,
+          "maximum": 2000
+        },
+        {
+          "name": "width",
+          "type": "number",
+          "count": 1,
+          "default": 5,
+          "unit": "ms",
+          "minimum": 2,
+          "maximum": 100
+        }
+      ],
+      "seeded": true,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "HornResonator",
+      "parameters": [
+        {
+          "name": "crossover",
+          "type": "number",
+          "count": 1,
+          "default": 600,
+          "unit": "Hz",
+          "minimum": 20,
+          "maximum": 5000
+        },
+        {
+          "name": "length",
+          "type": "number",
+          "count": 1,
+          "default": 70,
+          "unit": "cm",
+          "minimum": 20,
+          "maximum": 120
+        },
+        {
+          "name": "throatDiameter",
+          "type": "number",
+          "count": 1,
+          "default": 3,
+          "unit": "cm",
+          "minimum": 0.5,
+          "maximum": 50
+        },
+        {
+          "name": "mouthDiameter",
+          "type": "number",
+          "count": 1,
+          "default": 60,
+          "unit": "cm",
+          "minimum": 5,
+          "maximum": 200
+        },
+        {
+          "name": "curve",
+          "type": "number",
+          "count": 1,
+          "default": 40,
+          "unit": "%",
+          "minimum": -100,
+          "maximum": 100
+        },
+        {
+          "name": "damping",
+          "type": "number",
+          "count": 1,
+          "default": 0.03,
+          "unit": "dB/m",
+          "minimum": 0,
+          "maximum": 10
+        },
+        {
+          "name": "throatReflection",
+          "type": "number",
+          "count": 1,
+          "default": 0.99,
+          "minimum": 0,
+          "maximum": 0.99
+        },
+        {
+          "name": "waveguideGain",
+          "type": "number",
+          "count": 1,
+          "default": 30,
+          "unit": "dB",
+          "minimum": -36,
+          "maximum": 36
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "HornResonatorPlus",
+      "parameters": [
+        {
+          "name": "crossover",
+          "type": "number",
+          "count": 1,
+          "default": 600,
+          "unit": "Hz",
+          "minimum": 20,
+          "maximum": 5000
+        },
+        {
+          "name": "length",
+          "type": "number",
+          "count": 1,
+          "default": 70,
+          "unit": "cm",
+          "minimum": 20,
+          "maximum": 120
+        },
+        {
+          "name": "throatDiameter",
+          "type": "number",
+          "count": 1,
+          "default": 3,
+          "unit": "cm",
+          "minimum": 0.5,
+          "maximum": 50
+        },
+        {
+          "name": "mouthDiameter",
+          "type": "number",
+          "count": 1,
+          "default": 60,
+          "unit": "cm",
+          "minimum": 5,
+          "maximum": 200
+        },
+        {
+          "name": "curve",
+          "type": "number",
+          "count": 1,
+          "default": 40,
+          "unit": "%",
+          "minimum": -100,
+          "maximum": 100
+        },
+        {
+          "name": "damping",
+          "type": "number",
+          "count": 1,
+          "default": 0.03,
+          "unit": "dB/m",
+          "minimum": 0,
+          "maximum": 10
+        },
+        {
+          "name": "throatReflection",
+          "type": "number",
+          "count": 1,
+          "default": 0.99,
+          "minimum": 0,
+          "maximum": 0.99
+        },
+        {
+          "name": "waveguideGain",
+          "type": "number",
+          "count": 1,
+          "default": 30,
+          "unit": "dB",
+          "minimum": -36,
+          "maximum": 36
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "ModalResonator",
+      "parameters": [
+        {
+          "name": "resonatorEnabled",
+          "type": "boolean",
+          "count": 5,
+          "default": [
+            true,
+            true,
+            true,
+            true,
+            true
+          ]
+        },
+        {
+          "name": "frequencyLog",
+          "type": "number",
+          "count": 5,
+          "default": [
+            6.86,
+            7.52,
+            7.99,
+            8.34,
+            8.75
+          ],
+          "minimum": 3,
+          "maximum": 9.9
+        },
+        {
+          "name": "decay",
+          "type": "number",
+          "count": 5,
+          "default": [
+            15,
+            12,
+            10,
+            8,
+            6
+          ],
+          "unit": "ms",
+          "minimum": 1,
+          "maximum": 500
+        },
+        {
+          "name": "lowPassLog",
+          "type": "number",
+          "count": 5,
+          "default": [
+            7.19,
+            7.86,
+            8.33,
+            8.68,
+            9.08
+          ],
+          "minimum": 3,
+          "maximum": 9.9
+        },
+        {
+          "name": "highPassLog",
+          "type": "number",
+          "count": 5,
+          "default": [
+            5.8,
+            6.48,
+            6.94,
+            7.29,
+            7.7
+          ],
+          "minimum": 3,
+          "maximum": 9.9
+        },
+        {
+          "name": "gain",
+          "type": "number",
+          "count": 5,
+          "default": [
+            0,
+            -3,
+            -6,
+            -9,
+            -12
+          ],
+          "unit": "dB",
+          "minimum": -18,
+          "maximum": 18
+        },
+        {
+          "name": "mix",
+          "type": "number",
+          "count": 1,
+          "default": 25,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "DattorroPlateReverb",
+      "parameters": [
+        {
+          "name": "preDelay",
+          "type": "number",
+          "count": 1,
+          "default": 10,
+          "unit": "ms",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "bandwidth",
+          "type": "number",
+          "count": 1,
+          "default": 0.9995,
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "name": "inputDiffusion1",
+          "type": "number",
+          "count": 1,
+          "default": 0.75,
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "name": "inputDiffusion2",
+          "type": "number",
+          "count": 1,
+          "default": 0.625,
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "name": "decay",
+          "type": "number",
+          "count": 1,
+          "default": 0.5,
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "name": "decayDiffusion1",
+          "type": "number",
+          "count": 1,
+          "default": 0.7,
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "name": "damping",
+          "type": "number",
+          "count": 1,
+          "default": 0.0005,
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "name": "modulationDepth",
+          "type": "number",
+          "count": 1,
+          "default": 1,
+          "unit": "samples",
+          "minimum": 0,
+          "maximum": 16
+        },
+        {
+          "name": "modulationRate",
+          "type": "number",
+          "count": 1,
+          "default": 1,
+          "unit": "Hz",
+          "minimum": 0,
+          "maximum": 10
+        },
+        {
+          "name": "wetMix",
+          "type": "integer",
+          "count": 1,
+          "default": 30,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "dryMix",
+          "type": "integer",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "FDNReverb",
+      "parameters": [
+        {
+          "name": "reverbTime",
+          "type": "number",
+          "count": 1,
+          "default": 1.2,
+          "unit": "s",
+          "minimum": 0.2,
+          "maximum": 10
+        },
+        {
+          "name": "density",
+          "type": "integer",
+          "count": 1,
+          "default": 8,
+          "unit": "lines",
+          "minimum": 4,
+          "maximum": 8
+        },
+        {
+          "name": "preDelay",
+          "type": "number",
+          "count": 1,
+          "default": 10,
+          "unit": "ms",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "baseDelay",
+          "type": "number",
+          "count": 1,
+          "default": 20,
+          "unit": "ms",
+          "minimum": 10,
+          "maximum": 60
+        },
+        {
+          "name": "delaySpread",
+          "type": "number",
+          "count": 1,
+          "default": 5,
+          "unit": "ms",
+          "minimum": 0,
+          "maximum": 25
+        },
+        {
+          "name": "highFrequencyDamp",
+          "type": "number",
+          "count": 1,
+          "default": 6,
+          "unit": "dB/s",
+          "minimum": 0,
+          "maximum": 12
+        },
+        {
+          "name": "lowCut",
+          "type": "integer",
+          "count": 1,
+          "default": 100,
+          "unit": "Hz",
+          "minimum": 20,
+          "maximum": 500
+        },
+        {
+          "name": "modulationDepth",
+          "type": "number",
+          "count": 1,
+          "default": 3,
+          "unit": "ct",
+          "minimum": 0,
+          "maximum": 10
+        },
+        {
+          "name": "modulationRate",
+          "type": "number",
+          "count": 1,
+          "default": 0.3,
+          "unit": "Hz",
+          "minimum": 0.1,
+          "maximum": 5
+        },
+        {
+          "name": "diffusion",
+          "type": "integer",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "wetMix",
+          "type": "integer",
+          "count": 1,
+          "default": 30,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "dryMix",
+          "type": "integer",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "stereoWidth",
+          "type": "integer",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 200
+        }
+      ],
+      "seeded": true,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "IRReverb",
+      "parameters": [
+        {
+          "name": "channelMode",
+          "type": "string",
+          "count": 1,
+          "default": "automatic",
+          "values": [
+            "automatic",
+            "mono",
+            "independent",
+            "trueStereo",
+            "matrix"
+          ]
+        },
+        {
+          "name": "latency",
+          "type": "integer",
+          "count": 1,
+          "default": 128,
+          "values": [
+            0,
+            128,
+            256,
+            512,
+            1024
+          ]
+        },
+        {
+          "name": "convolutionRate",
+          "type": "string",
+          "count": 1,
+          "default": "auto",
+          "values": [
+            "auto",
+            "full",
+            "half",
+            "quarter"
+          ]
+        },
+        {
+          "name": "wetLevel",
+          "type": "number",
+          "count": 1,
+          "default": -15,
+          "unit": "dB",
+          "minimum": -96,
+          "maximum": 12
+        },
+        {
+          "name": "dryLevel",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -96,
+          "maximum": 12
+        },
+        {
+          "name": "preDelay",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "ms",
+          "minimum": 0,
+          "maximum": 500
+        }
+      ],
+      "seeded": true,
+      "telemetry": [],
+      "latency": {
+        "kind": "dynamic",
+        "dependsOn": [
+          "latency",
+          "convolutionRate",
+          "impulseResponse"
+        ]
+      },
+      "assets": [
+        {
+          "name": "impulseResponse",
+          "kind": "impulseResponse",
+          "required": true
+        }
+      ]
+    },
+    {
+      "type": "RSReverb",
+      "parameters": [
+        {
+          "name": "preDelay",
+          "type": "number",
+          "count": 1,
+          "default": 10,
+          "unit": "ms",
+          "minimum": 0,
+          "maximum": 50
+        },
+        {
+          "name": "roomSize",
+          "type": "number",
+          "count": 1,
+          "default": 10,
+          "unit": "m",
+          "minimum": 2,
+          "maximum": 50
+        },
+        {
+          "name": "reverbTime",
+          "type": "number",
+          "count": 1,
+          "default": 2.4,
+          "unit": "s",
+          "minimum": 0.1,
+          "maximum": 10
+        },
+        {
+          "name": "density",
+          "type": "integer",
+          "count": 1,
+          "default": 8,
+          "unit": "lines",
+          "minimum": 4,
+          "maximum": 8
+        },
+        {
+          "name": "diffusion",
+          "type": "number",
+          "count": 1,
+          "default": 0.7,
+          "unit": "ratio",
+          "minimum": 0.2,
+          "maximum": 0.8
+        },
+        {
+          "name": "damping",
+          "type": "integer",
+          "count": 1,
+          "default": 80,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "highDamp",
+          "type": "integer",
+          "count": 1,
+          "default": 2000,
+          "unit": "Hz",
+          "minimum": 1000,
+          "maximum": 20000
+        },
+        {
+          "name": "lowDamp",
+          "type": "integer",
+          "count": 1,
+          "default": 200,
+          "unit": "Hz",
+          "minimum": 20,
+          "maximum": 500
+        },
+        {
+          "name": "mix",
+          "type": "integer",
+          "count": 1,
+          "default": 16,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        }
+      ],
+      "seeded": true,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "DynamicSaturation",
+      "parameters": [
+        {
+          "name": "speakerDrive",
+          "type": "number",
+          "count": 1,
+          "default": 3,
+          "minimum": 0,
+          "maximum": 10
+        },
+        {
+          "name": "speakerStiffness",
+          "type": "number",
+          "count": 1,
+          "default": 2,
+          "minimum": 0,
+          "maximum": 10
+        },
+        {
+          "name": "speakerDamping",
+          "type": "number",
+          "count": 1,
+          "default": 1,
+          "minimum": 0.1,
+          "maximum": 10
+        },
+        {
+          "name": "speakerMass",
+          "type": "number",
+          "count": 1,
+          "default": 1,
+          "minimum": 0.1,
+          "maximum": 5
+        },
+        {
+          "name": "distortionDrive",
+          "type": "number",
+          "count": 1,
+          "default": 1.5,
+          "minimum": 0,
+          "maximum": 10
+        },
+        {
+          "name": "distortionBias",
+          "type": "number",
+          "count": 1,
+          "default": 0.1,
+          "minimum": -1,
+          "maximum": 1
+        },
+        {
+          "name": "distortionMix",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "coneMotionMix",
+          "type": "number",
+          "count": 1,
+          "default": 20,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "outputGain",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -18,
+          "maximum": 18
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "Exciter",
+      "parameters": [
+        {
+          "name": "highPassFrequency",
+          "type": "number",
+          "count": 1,
+          "default": 3000,
+          "unit": "Hz",
+          "minimum": 500,
+          "maximum": 10000
+        },
+        {
+          "name": "highPassSlope",
+          "type": "integer",
+          "count": 1,
+          "default": 6,
+          "unit": "dB/oct",
+          "values": [
+            0,
+            6,
+            12
+          ]
+        },
+        {
+          "name": "drive",
+          "type": "number",
+          "count": 1,
+          "default": 3,
+          "minimum": 0,
+          "maximum": 10
+        },
+        {
+          "name": "bias",
+          "type": "number",
+          "count": 1,
+          "default": 0.1,
+          "minimum": -0.3,
+          "maximum": 0.3
+        },
+        {
+          "name": "mix",
+          "type": "number",
+          "count": 1,
+          "default": 25,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "HardClipping",
+      "parameters": [
+        {
+          "name": "threshold",
+          "type": "number",
+          "count": 1,
+          "default": -18,
+          "unit": "dB",
+          "minimum": -60,
+          "maximum": 0
+        },
+        {
+          "name": "mode",
+          "type": "string",
+          "count": 1,
+          "default": "both",
+          "values": [
+            "both",
+            "positive",
+            "negative"
+          ]
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "HarmonicDistortion",
+      "parameters": [
+        {
+          "name": "secondHarmonic",
+          "type": "number",
+          "count": 1,
+          "default": 2,
+          "unit": "%",
+          "minimum": -30,
+          "maximum": 30
+        },
+        {
+          "name": "thirdHarmonic",
+          "type": "number",
+          "count": 1,
+          "default": 3,
+          "unit": "%",
+          "minimum": -30,
+          "maximum": 30
+        },
+        {
+          "name": "fourthHarmonic",
+          "type": "number",
+          "count": 1,
+          "default": 0.5,
+          "unit": "%",
+          "minimum": -30,
+          "maximum": 30
+        },
+        {
+          "name": "fifthHarmonic",
+          "type": "number",
+          "count": 1,
+          "default": 0.3,
+          "unit": "%",
+          "minimum": -30,
+          "maximum": 30
+        },
+        {
+          "name": "sensitivity",
+          "type": "number",
+          "count": 1,
+          "default": 0.5,
+          "minimum": 0.1,
+          "maximum": 2
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "MultibandSaturation",
+      "parameters": [
+        {
+          "name": "frequency1",
+          "type": "number",
+          "count": 1,
+          "default": 200,
+          "unit": "Hz",
+          "minimum": 20,
+          "maximum": 2000
+        },
+        {
+          "name": "frequency2",
+          "type": "number",
+          "count": 1,
+          "default": 4000,
+          "unit": "Hz",
+          "minimum": 200,
+          "maximum": 20000
+        },
+        {
+          "name": "drive",
+          "type": "number",
+          "count": 3,
+          "default": [
+            1.5,
+            1.5,
+            1.5
+          ],
+          "minimum": 0,
+          "maximum": 10
+        },
+        {
+          "name": "bias",
+          "type": "number",
+          "count": 3,
+          "default": [
+            0.1,
+            0.1,
+            0.1
+          ],
+          "minimum": -0.3,
+          "maximum": 0.3
+        },
+        {
+          "name": "mix",
+          "type": "number",
+          "count": 3,
+          "default": [
+            100,
+            100,
+            100
+          ],
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "gain",
+          "type": "number",
+          "count": 3,
+          "default": [
+            0,
+            0,
+            0
+          ],
+          "unit": "dB",
+          "minimum": -18,
+          "maximum": 18
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "Saturation",
+      "parameters": [
+        {
+          "name": "drive",
+          "type": "number",
+          "count": 1,
+          "default": 1.5,
+          "minimum": 0,
+          "maximum": 10
+        },
+        {
+          "name": "bias",
+          "type": "number",
+          "count": 1,
+          "default": 0.1,
+          "minimum": -0.3,
+          "maximum": 0.3
+        },
+        {
+          "name": "mix",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "gain",
+          "type": "number",
+          "count": 1,
+          "default": -2,
+          "unit": "dB",
+          "minimum": -18,
+          "maximum": 18
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "SubSynth",
+      "parameters": [
+        {
+          "name": "subLevel",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 200
+        },
+        {
+          "name": "dryLevel",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 200
+        },
+        {
+          "name": "subLowPassFrequency",
+          "type": "number",
+          "count": 1,
+          "default": 160,
+          "unit": "Hz",
+          "minimum": 5,
+          "maximum": 400
+        },
+        {
+          "name": "subLowPassSlope",
+          "type": "integer",
+          "count": 1,
+          "default": -12,
+          "unit": "dB/oct",
+          "minimum": -24,
+          "maximum": 0
+        },
+        {
+          "name": "subHighPassFrequency",
+          "type": "number",
+          "count": 1,
+          "default": 5,
+          "unit": "Hz",
+          "minimum": 5,
+          "maximum": 400
+        },
+        {
+          "name": "subHighPassSlope",
+          "type": "integer",
+          "count": 1,
+          "default": -6,
+          "unit": "dB/oct",
+          "minimum": -24,
+          "maximum": 0
+        },
+        {
+          "name": "dryHighPassFrequency",
+          "type": "number",
+          "count": 1,
+          "default": 40,
+          "unit": "Hz",
+          "minimum": 5,
+          "maximum": 400
+        },
+        {
+          "name": "dryHighPassSlope",
+          "type": "integer",
+          "count": 1,
+          "default": 0,
+          "unit": "dB/oct",
+          "minimum": -24,
+          "maximum": 0
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "CrossfeedFilter",
+      "parameters": [
+        {
+          "name": "level",
+          "type": "number",
+          "count": 1,
+          "default": -6,
+          "unit": "dB",
+          "minimum": -60,
+          "maximum": 0
+        },
+        {
+          "name": "delay",
+          "type": "number",
+          "count": 1,
+          "default": 0.3,
+          "unit": "ms",
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "name": "lowPassFrequency",
+          "type": "number",
+          "count": 1,
+          "default": 700,
+          "unit": "Hz",
+          "minimum": 100,
+          "maximum": 20000
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "MSMatrix",
+      "parameters": [
+        {
+          "name": "mode",
+          "type": "integer",
+          "count": 1,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "name": "midGain",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -18,
+          "maximum": 18
+        },
+        {
+          "name": "sideGain",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -18,
+          "maximum": 18
+        },
+        {
+          "name": "swap",
+          "type": "integer",
+          "count": 1,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 1
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "MultibandBalance",
+      "parameters": [
+        {
+          "name": "frequency1",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "Hz",
+          "minimum": 20,
+          "maximum": 500
+        },
+        {
+          "name": "frequency2",
+          "type": "number",
+          "count": 1,
+          "default": 500,
+          "unit": "Hz",
+          "minimum": 100,
+          "maximum": 2000
+        },
+        {
+          "name": "frequency3",
+          "type": "number",
+          "count": 1,
+          "default": 2000,
+          "unit": "Hz",
+          "minimum": 500,
+          "maximum": 8000
+        },
+        {
+          "name": "frequency4",
+          "type": "number",
+          "count": 1,
+          "default": 8000,
+          "unit": "Hz",
+          "minimum": 1000,
+          "maximum": 20000
+        },
+        {
+          "name": "balance",
+          "type": "number",
+          "count": 5,
+          "default": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "unit": "%",
+          "minimum": -100,
+          "maximum": 100
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "StereoBlend",
+      "parameters": [
+        {
+          "name": "stereo",
+          "type": "number",
+          "count": 1,
+          "default": 60,
+          "unit": "%",
+          "minimum": -200,
+          "maximum": 200
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    }
+  ],
+  "contractDigests": {
+    "publicCatalogSha256": "cbc1e92be9587b6fa2ac2717093aa623dd1094735fd01d45c740150b13e375e8",
+    "privateLayoutSha256": "23f4859aa8ec49bcbb2814a9b1fb7f5f3d318b95e39e0706a1a546babe2ba309"
+  }
+}

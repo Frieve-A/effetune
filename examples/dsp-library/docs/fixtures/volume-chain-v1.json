@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "chain": [
+    {
+      "id": "volume",
+      "type": "Volume",
+      "parameters": { "volume": -6 }
+    }
+  ]
+}

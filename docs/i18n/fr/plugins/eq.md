@@ -502,7 +502,7 @@ Un filtre passe-bas de précision qui élimine les hautes fréquences indésirab
 - Grille de fréquences avec repères aux points de référence clés
 
 ## Loudness Equalizer
-Un égaliseur spécialisé qui ajuste l'équilibre des fréquences en fonction de la valeur Average SPL que vous réglez. Utilisez-le pour l'écoute à volume faible, où les basses et les aigus peuvent sembler plus discrets, afin de garder une musique équilibrée et agréable.
+Un égaliseur spécialisé qui associe le réglage du volume à la correction de l'équilibre fréquentiel. Réglez Average SPL sur le niveau de pression acoustique moyen estimé lorsque Relative Volume vaut 0dB, puis utilisez Relative Volume pour les variations courantes du volume. La correction augmente automatiquement lorsque vous baissez le volume et diminue lorsque vous le montez.
 
 ### Guide d'Amélioration de l'Écoute
 - Écoute à Faible Volume:
@@ -510,19 +510,26 @@ Un égaliseur spécialisé qui ajuste l'équilibre des fréquences en fonction d
   - Maintient l'équilibre musical à des niveaux bas
   - Compense les caractéristiques de l'audition humaine
 - Réglage Average SPL:
-  - Plus d'amélioration avec des valeurs Average SPL plus basses
-  - Réduction progressive du traitement à mesure que le réglage augmente
-  - Son naturel à des niveaux d'écoute plus élevés
+  - Réglez-le sur le niveau de pression acoustique moyen estimé avec Relative Volume à 0dB
+  - Il s'agit d'une valeur de référence manuelle ; le plugin ne mesure pas le SPL
+- Réglage Relative Volume:
+  - Les valeurs négatives réduisent le niveau de sortie et renforcent la correction
+  - Les valeurs positives augmentent le niveau de sortie et réduisent la correction
+  - La correction d'EQ est calculée à partir de `Average SPL + Relative Volume` et reste limitée à la plage de correction de 60dB à 85dB
 - Équilibre des Fréquences:
   - Étagère basse pour l'amélioration des basses (100-300Hz)
   - Étagère haute pour l'amélioration des aigus (3-6kHz)
   - Transition fluide entre les plages de fréquences
 
 ### Paramètres
-- **Average SPL** - Niveau d'écoute moyen estimé utilisé pour la correction (60dB à 85dB)
-  - Valeurs inférieures : Plus d'amélioration
-  - Valeurs supérieures : Moins d'amélioration
-  - Réglez cette valeur manuellement pour correspondre à votre volume d'écoute typique
+- **Average SPL** - Niveau de pression acoustique moyen estimé avec Relative Volume à 0dB (60dB à 96dB)
+  - Réglez-le manuellement selon le niveau moyen à votre position d'écoute
+  - Les valeurs supérieures à 85dB permettent de définir une référence plus élevée ; la correction d'EQ reste inactive tant que `Average SPL + Relative Volume` ne descend pas sous 85dB
+- **Relative Volume** - Réglage du volume par rapport à Average SPL (-30dB à +12dB)
+  - 0dB : Niveau de sortie correspondant à Average SPL
+  - Valeurs négatives : Volume plus faible et correction physiologique plus forte
+  - Valeurs positives : Volume plus élevé et correction physiologique plus faible
+  - Les valeurs positives peuvent provoquer un écrêtage si l'entrée ou l'accentuation de l'EQ est déjà élevée
 - **Contrôles des Basses Fréquences**
   - Frequency: Centre d'amélioration des basses (100Hz à 300Hz)
   - Gain: Boost maximal des basses (0dB à 15dB)
@@ -533,9 +540,9 @@ Un égaliseur spécialisé qui ajuste l'équilibre des fréquences en fonction d
   - Q: Forme de l'amélioration des aigus (0.5 à 1.0)
 
 ### Affichage Visuel
-- Graphique de réponse en fréquence en temps réel
+- Graphique de réponse de l'EQ en temps réel
 - Contrôles interactifs des paramètres
-- Visualisation de la courbe dépendante du volume
+- Courbe de correction dépendante du volume ; la variation uniforme de niveau due à Relative Volume n'est pas représentée
 - Affichages numériques précis
 
 ## Narrow Range

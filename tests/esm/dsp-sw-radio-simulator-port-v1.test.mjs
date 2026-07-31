@@ -7,6 +7,7 @@ import vm from 'node:vm';
 
 import { validateParamSpec } from '../../scripts/gen-dsp-params.mjs';
 import { readGoldenSet } from '../../tools/dsp-parity/golden-io.mjs';
+import { XorShift64 } from '../../tools/dsp-parity/stimuli.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const pluginRoot = path.join(repoRoot, 'dsp', 'plugins', 'lofi', 'sw_radio_simulator');
@@ -130,7 +131,7 @@ test('SW Radio Simulator freezes the parameter layout and representative parity 
   assert.equal(goldens.length, 18);
   assert.ok(goldens.every(item =>
     item.metadata.jsEngineHash ===
-      '781f85e8258c9a8549cd8c05f4e22b98977185ea87e7b9c764c6d598b5510384'
+      'f0ad54ae4df481dd2acafcf27dd591b3fa3e9c7ed8e53f9a0f58131c03c1200a'
   ));
 });
 
@@ -210,8 +211,11 @@ test('SW Radio Simulator reference is deterministic tooling while normal fallbac
     interferedGain.measurements.agcGainDb < 30,
   `interference caps the cold-start gain, got ${interferedGain.measurements.agcGainDb}`);
 
-  const render = (blockSize, totalFrames, overrides = {}) => {
-    const runContext = { __seededRandom: () => 0.4142135 };
+  const render = (blockSize, totalFrames, overrides = {}, seed = null) => {
+    const rng = seed === null ? null : new XorShift64(BigInt(seed));
+    const runContext = {
+      __seededRandom: rng === null ? () => 0.4142135 : () => rng.nextFloat()
+    };
     const parameters = {
       ...plugin.getParameters(), fr: true, enabled: true, ...overrides,
       sampleRate: 96000, blockSize, channelCount: 2
@@ -234,6 +238,10 @@ test('SW Radio Simulator reference is deterministic tooling while normal fallbac
   const singleFrameBlocks = render(1, 512);
   assert.deepEqual(wideBlocks.rendered, singleFrameBlocks.rendered);
   assert.equal(wideBlocks.rendered.every(Number.isFinite), true);
+  const seededRuns = [1, 2, 3, 4, 5].map(seed => render(128, 512, {}, seed).rendered);
+  assert.notDeepEqual(seededRuns[0], seededRuns[1]);
+  assert.notDeepEqual(seededRuns[1], seededRuns[2]);
+  assert.notDeepEqual(seededRuns[3], seededRuns[4]);
   assert.deepEqual(Object.keys(wideBlocks.measurements).sort(),
     ['agcGainDb', 'carrierPreAgcDb', 'clipCount', 'fadeDb', 'modPercent', 'staticCount']);
   assert.equal('stereoBlend' in wideBlocks.measurements, false);
@@ -250,12 +258,15 @@ test('SW Radio Simulator reference is deterministic tooling while normal fallbac
   // pure skywave path a zeroed pair nulls both sky modes, so the fade telemetry after a single
   // frame would sit exactly on its -80 dB floor for every seed; a seeded pair reports a finite
   // depth that moves with the seed.
-  const firstFrameFadeDb = seed => processor(new Float32Array(1), {
-    ...plugin.getParameters(), fr: true, enabled: true, sk: 100,
-    sampleRate: 48000, blockSize: 1, channelCount: 1
-  }, { __seededRandom: () => seed }).measurements.fadeDb;
-  const fadeFromLowSeed = firstFrameFadeDb(0.125);
-  const fadeFromHighSeed = firstFrameFadeDb(0.75);
+  const firstFrameFadeDb = seed => {
+    const rng = new XorShift64(BigInt(seed));
+    return processor(new Float32Array(1), {
+      ...plugin.getParameters(), fr: true, enabled: true, sk: 100,
+      sampleRate: 48000, blockSize: 1, channelCount: 1
+    }, { __seededRandom: () => rng.nextFloat() }).measurements.fadeDb;
+  };
+  const fadeFromLowSeed = firstFrameFadeDb(1);
+  const fadeFromHighSeed = firstFrameFadeDb(2);
   assert.ok(fadeFromLowSeed > -79 && fadeFromHighSeed > -79,
     `seeded fading taps leave the -80 dB floor, got ${fadeFromLowSeed} and ${fadeFromHighSeed}`);
   assert.ok(Math.abs(fadeFromLowSeed - fadeFromHighSeed) > 1,

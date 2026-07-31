@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "effect": "SimpleJitter",
+  "parameters": { "rmsJitterNanoseconds": 100 },
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 4096,
+  "blockSize": 256,
+  "executionSeeds": { "same": 0, "different": 1 },
+  "input": { "kind": "sine", "peak": 0.5, "periodFrames": 97 }
+}

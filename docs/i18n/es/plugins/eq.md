@@ -508,7 +508,7 @@ Un filtro pasa-bajos de precisión que elimina las frecuencias altas no deseadas
 
 ## Loudness Equalizer
 
-Un ecualizador especializado que ajusta el balance de frecuencias según el valor Average SPL que configures. Úsalo para escuchar a bajo volumen, cuando graves y agudos pueden sentirse más débiles, y mantener la música equilibrada y agradable.
+Un ecualizador especializado que vincula el ajuste de volumen con la corrección del balance de frecuencias. Configura Average SPL como el nivel medio estimado de presión sonora al usar 0dB en Relative Volume y utiliza Relative Volume para los cambios cotidianos de volumen. La corrección aumenta automáticamente al bajar el volumen y disminuye al subirlo.
 
 ### Guía de Mejora Auditiva
 - Escucha a Bajo Volumen:
@@ -516,19 +516,26 @@ Un ecualizador especializado que ajusta el balance de frecuencias según el valo
   - Mantiene el balance musical en niveles bajos
   - Compensa las características de la audición humana
 - Ajuste Average SPL:
-  - Más realce con valores Average SPL más bajos
-  - Reducción gradual del procesamiento a medida que sube el ajuste
-  - Sonido natural a niveles de escucha más altos
+  - Ajústalo al nivel medio estimado de presión sonora con Relative Volume en 0dB
+  - Es un valor de referencia manual; el plugin no mide el SPL
+- Ajuste Relative Volume:
+  - Los valores negativos reducen el nivel de salida y aumentan la corrección
+  - Los valores positivos elevan el nivel de salida y reducen la corrección
+  - La corrección de EQ se calcula a partir de `Average SPL + Relative Volume` y se limita al intervalo de corrección de 60dB a 85dB
 - Balance de Frecuencias:
   - Estantería baja para el realce de bajos (100-300Hz)
   - Estantería alta para el realce de agudos (3-6kHz)
   - Transición suave entre rangos de frecuencia
 
 ### Parámetros
-- **Average SPL** - Nivel medio estimado de escucha usado para la corrección (60dB a 85dB)
-  - Valores más bajos: Mayor realce
-  - Valores más altos: Menor realce
-  - Ajusta este valor manualmente para que coincida con tu volumen típico de escucha
+- **Average SPL** - Nivel medio estimado de presión sonora con Relative Volume en 0dB (60dB a 96dB)
+  - Ajústalo manualmente al nivel medio de presión sonora en la posición de escucha
+  - Los valores superiores a 85dB permiten fijar una referencia más alta; la corrección de EQ permanece desactivada hasta que `Average SPL + Relative Volume` baja de 85dB
+- **Relative Volume** - Ajuste de volumen relativo a Average SPL (-30dB a +12dB)
+  - 0dB: Nivel de salida correspondiente a Average SPL
+  - Valores negativos: Menor volumen y mayor corrección de sonoridad
+  - Valores positivos: Mayor volumen y menor corrección de sonoridad
+  - Los valores positivos pueden causar recorte si la entrada o el realce de EQ ya son elevados
 - **Controles de bajas frecuencias**
   - Frequency: Centro de realce de bajos (100Hz a 300Hz)
   - Gain: Potenciación máxima de bajos (0dB a 15dB)
@@ -539,9 +546,9 @@ Un ecualizador especializado que ajusta el balance de frecuencias según el valo
   - Q: Forma del realce de agudos (0.5 a 1.0)
 
 ### Visualización
-- Gráfico en tiempo real de la respuesta en frecuencia
+- Gráfico en tiempo real de la respuesta del EQ
 - Controles interactivos de parámetros
-- Visualización de curva dependiente del volumen
+- Curva de corrección dependiente del volumen; el cambio uniforme de nivel de Relative Volume no aparece en el gráfico
 - Lecturas numéricas precisas
 
 ## Narrow Range

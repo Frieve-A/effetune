@@ -4,6 +4,7 @@ class LoudnessEqualizerPlugin extends PluginBase {
 
         // Initialize parameters with defaults
         this.sp = 65.0;  // Average SPL (dB)
+        this.rv = 0.0;   // Relative Volume (dB)
         this.lg = 10.0;  // Low Gain (dB)
         this.lf = 180;   // Low Freq (Hz)
         this.lq = 0.6;  // Low Q
@@ -19,7 +20,7 @@ class LoudnessEqualizerPlugin extends PluginBase {
             // Early exit if processing is disabled
             if (!parameters.enabled) return data;
         
-            const { sp, lg, lf, lq, hq, hg, hf, channelCount, blockSize } = parameters;
+            const { sp, rv, lg, lf, lq, hq, hg, hf, channelCount, blockSize } = parameters;
         
             // --- State Initialization & Coefficient Cache Check ---
             let needsRecalculation = false;
@@ -39,6 +40,7 @@ class LoudnessEqualizerPlugin extends PluginBase {
             // Check if parameters relevant to coefficients have changed since last calculation
             if (!needsRecalculation && (
                 context.cachedSp !== sp ||
+                context.cachedRv !== rv ||
                 context.cachedLg !== lg || context.cachedLf !== lf || context.cachedLq !== lq ||
                 context.cachedHg !== hg || context.cachedHf !== hf || context.cachedHq !== hq ||
                 context.cachedSampleRate !== sampleRate
@@ -51,8 +53,12 @@ class LoudnessEqualizerPlugin extends PluginBase {
             // --- Coefficient Calculation (only if needed) ---
             if (needsRecalculation) {
                 // console.log('Recalculating coefficients...'); // Debug
-                // Calculate gain multiplier (depends only on sp)
-                const gainMultiplier = (85.0 - sp) / 25.0;
+                // Average SPL is the listening level at 0 dB Relative Volume.
+                // Keep the correction within the model's 60–85 dB range.
+                const listeningSpl = sp + rv;
+                const effectiveSpl = listeningSpl < 60.0 ? 60.0 : (listeningSpl > 85.0 ? 85.0 : listeningSpl);
+                const gainMultiplier = (85.0 - effectiveSpl) / 25.0;
+                context.volumeGain = Math.pow(10.0, rv / 20.0);
         
                 // Ensure context object for coefficients exists
                 context.c = context.c || {};
@@ -141,6 +147,7 @@ class LoudnessEqualizerPlugin extends PluginBase {
         
                 // Store parameters used for this calculation to check against next time
                 context.cachedSp = sp;
+                context.cachedRv = rv;
                 context.cachedLg = lg; context.cachedLf = lf; context.cachedLq = lq;
                 context.cachedHg = hg; context.cachedHf = hf; context.cachedHq = hq;
                 context.cachedSampleRate = sampleRate;
@@ -157,6 +164,7 @@ class LoudnessEqualizerPlugin extends PluginBase {
             const la1 = context.c.la1; const la2 = context.c.la2;
             const hb0 = context.c.hb0; const hb1 = context.c.hb1; const hb2 = context.c.hb2;
             const ha1 = context.c.ha1; const ha2 = context.c.ha2;
+            const volumeGain = context.volumeGain;
         
             // Local references to state arrays (reduces property lookups in outer loop)
             const lowStates = context.filterStates.low;
@@ -207,7 +215,7 @@ class LoudnessEqualizerPlugin extends PluginBase {
                     hy1 = highOutput; // y[n-1] = y[n]
         
                     // Write final output back to the data array
-                    data[i] = highOutput;
+                    data[i] = highOutput * volumeGain;
                 }
         
                 // Write back updated local state vars to the context object for the next block
@@ -227,6 +235,7 @@ class LoudnessEqualizerPlugin extends PluginBase {
             type: this.constructor.name,
             enabled: this.enabled,
             sp: this.sp,  // Average SPL
+            rv: this.rv,  // Relative Volume
             lg: this.lg,  // Low Gain
             lf: this.lf,  // Low Freq
             lq: this.lq,  // Low Q
@@ -239,7 +248,10 @@ class LoudnessEqualizerPlugin extends PluginBase {
     setParameters(params) {
         if (params.sp !== undefined) {
             const value = Number(params.sp);
-            this.sp = value < 60.0 ? 60.0 : (value > 85.0 ? 85.0 : value);
+            this.sp = value < 60.0 ? 60.0 : (value > 96.0 ? 96.0 : value);
+        }
+        if (params.rv !== undefined) {
+            this.rv = this.parseFiniteNumber(params.rv, -30.0, 12.0, this.rv);
         }
         if (params.lg !== undefined) {
             const value = Number(params.lg);
@@ -293,8 +305,12 @@ class LoudnessEqualizerPlugin extends PluginBase {
 
         // Create parameter rows using createParameterControl
         container.appendChild(this.createParameterControl(
-            'Average SPL', 60.0, 85.0, 0.1, this.sp,
+            'Average SPL', 60.0, 96.0, 0.1, this.sp,
             createOnChangeHandler(v => this.setParameters({ sp: v })), 'dB'
+        ));
+        container.appendChild(this.createParameterControl(
+            'Relative Volume', -30.0, 12.0, 0.1, this.rv,
+            createOnChangeHandler(v => this.setParameters({ rv: v })), 'dB'
         ));
         container.appendChild(this.createParameterControl(
             'Low Freq', 100, 300, 1, this.lf,
@@ -381,14 +397,16 @@ class LoudnessEqualizerPlugin extends PluginBase {
         ctx.save();
         ctx.translate(14, height / 2);
         ctx.rotate(-Math.PI / 2);
-        ctx.fillText('Level (dB)', 0, 0);
+        ctx.fillText('EQ Gain (dB)', 0, 0);
         ctx.restore();
 
         // Use a fixed sample rate for visualization
         const sampleRate = 96000;
 
-        // Calculate gain multiplier based on SPL difference
-        const gainMultiplier = (85 - this.sp) / 25;
+        // Calculate EQ gain from the listening SPL implied by Relative Volume.
+        const listeningSpl = this.sp + this.rv;
+        const effectiveSpl = listeningSpl < 60 ? 60 : (listeningSpl > 85 ? 85 : listeningSpl);
+        const gainMultiplier = (85 - effectiveSpl) / 25;
 
         // Compute low shelf coefficients (same as in processor)
         const lowGain = this.lg * gainMultiplier;

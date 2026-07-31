@@ -1,0 +1,76 @@
+{
+  "valid": [
+    {
+      "name": "one-input",
+      "processingChannels": 1,
+      "paths": [
+        { "inputSlot": 0, "outputSlot": 0, "irChannel": 0 }
+      ]
+    },
+    {
+      "name": "two-input",
+      "processingChannels": 2,
+      "paths": [
+        { "inputSlot": 0, "outputSlot": 0, "irChannel": 0 },
+        { "inputSlot": 1, "outputSlot": 1, "irChannel": 1 }
+      ]
+    }
+  ],
+  "invalid": [
+    {
+      "name": "input-gap",
+      "processingChannels": 2,
+      "paths": [
+        { "inputSlot": 0, "outputSlot": 0, "irChannel": 0 },
+        { "inputSlot": 2, "outputSlot": 1, "irChannel": 1 }
+      ]
+    },
+    {
+      "name": "too-many-inputs",
+      "processingChannels": 1,
+      "paths": [
+        { "inputSlot": 0, "outputSlot": 0, "irChannel": 0 },
+        { "inputSlot": 1, "outputSlot": 0, "irChannel": 1 }
+      ]
+    },
+    {
+      "name": "output-overflow",
+      "processingChannels": 1,
+      "paths": [
+        { "inputSlot": 0, "outputSlot": 1, "irChannel": 0 }
+      ]
+    }
+  ],
+  "routeStrings": {
+    "pattern": "^(?:p?[0-8][0-8])*$",
+    "valid": [
+      "",
+      "00",
+      "0011",
+      "0110",
+      "p00",
+      "p0011",
+      "00p1223",
+      "0000p0011p11",
+      "00102030p0313",
+      "880011223344556677",
+      "88"
+    ],
+    "invalid": [
+      "0011p",
+      "p",
+      "pp0011",
+      "0",
+      "001",
+      "09",
+      "P00",
+      "0011!",
+      "0-0 1-1",
+      "00,11",
+      "00\n",
+      " 0011",
+      "0011 ",
+      "x000q11p"
+    ]
+  }
+}

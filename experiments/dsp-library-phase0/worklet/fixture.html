@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>EffeTune DSP library Phase 0 worklet verifier</title>
+</head>
+<body>
+  <main>Phase 0 AudioWorklet verifier</main>
+  <script type="module">
+    import { CompressorWorklet } from './compressor-worklet.js';
+
+    function decodeFloat32LittleEndian(buffer) {
+      const view = new DataView(buffer);
+      const output = new Float32Array(buffer.byteLength / 4);
+      for (let index = 0; index < output.length; index++) {
+        output[index] = view.getFloat32(index * 4, true);
+      }
+      return output;
+    }
+
+    function fillFullScale(audioBuffer, frames, channels) {
+      for (let channel = 0; channel < channels; channel++) {
+        const data = audioBuffer.getChannelData(channel);
+        for (let frame = 0; frame < frames; frame++) {
+          data[frame] = ((frame + channel) & 1) === 0 ? 1 : -1;
+        }
+      }
+    }
+
+    async function run(artifact) {
+      const audioWorkletRenderQuantum = 128;
+      const metadataResponse = await fetch(
+        '/dsp/plugins/dynamics/compressor/golden/case-003.json'
+      );
+      if (!metadataResponse.ok) {
+        throw new Error(`Golden metadata fetch failed: HTTP ${metadataResponse.status}`);
+      }
+      const metadata = await metadataResponse.json();
+      if (metadata.stimulus !== 'fs') {
+        throw new Error('Phase 0 verifier expects compressor case-003 to use fs');
+      }
+      const expectedResponse = await fetch(
+        `/dsp/plugins/dynamics/compressor/golden/${metadata.binary}`
+      );
+      if (!expectedResponse.ok) {
+        throw new Error(`Golden samples fetch failed: HTTP ${expectedResponse.status}`);
+      }
+      const expected = decodeFloat32LittleEndian(await expectedResponse.arrayBuffer());
+      const expectedLength = metadata.channels * metadata.frameCount;
+      if (expected.length !== expectedLength) {
+        throw new Error(
+          `Golden sample count ${expected.length} does not match expected ${expectedLength}`
+        );
+      }
+      const context = new OfflineAudioContext({
+        numberOfChannels: metadata.channels,
+        length: metadata.frameCount,
+        sampleRate: metadata.sampleRate
+      });
+      const params = metadata.params;
+      const wrapper = await CompressorWorklet.create(context, {
+        channels: metadata.channels,
+        wasmUrl: `/plugins/dsp/${artifact}`,
+        params: {
+          threshold: params.th,
+          ratio: params.rt,
+          attack: params.at,
+          release: params.rl,
+          knee: params.kn,
+          gain: params.gn
+        }
+      });
+
+      try {
+        const input = context.createBuffer(
+          metadata.channels,
+          metadata.frameCount,
+          metadata.sampleRate
+        );
+        fillFullScale(input, metadata.frameCount, metadata.channels);
+        const source = new AudioBufferSourceNode(context, { buffer: input });
+        source.connect(wrapper.node);
+        wrapper.node.connect(context.destination);
+        source.start();
+
+        const targetRenderQuanta = Math.ceil(
+          metadata.frameCount / audioWorkletRenderQuantum
+        );
+        const observationFrame = (targetRenderQuanta - 1) * audioWorkletRenderQuantum;
+        const suspension = context.suspend(observationFrame / metadata.sampleRate);
+        const renderPromise = context.startRendering();
+        await suspension;
+        const evidencePromise = wrapper.requestWasmEvidence();
+        await context.resume();
+        const rendered = await renderPromise;
+        const evidence = await evidencePromise;
+        let maximumError = 0;
+        let maximumDryDifference = 0;
+        for (let channel = 0; channel < metadata.channels; channel++) {
+          const actual = rendered.getChannelData(channel);
+          const dry = input.getChannelData(channel);
+          const offset = channel * metadata.frameCount;
+          for (let frame = 0; frame < metadata.frameCount; frame++) {
+            const actualSample = actual[frame];
+            const expectedSample = expected[offset + frame];
+            if (!Number.isFinite(actualSample) || !Number.isFinite(expectedSample)) {
+              throw new Error(`Non-finite sample at channel ${channel}, frame ${frame}`);
+            }
+            const error = Math.abs(actualSample - expectedSample);
+            if (!Number.isFinite(error)) {
+              throw new Error(`Non-finite difference at channel ${channel}, frame ${frame}`);
+            }
+            if (error > maximumError) maximumError = error;
+            const dryDifference = Math.abs(dry[frame] - expectedSample);
+            if (dryDifference > maximumDryDifference) {
+              maximumDryDifference = dryDifference;
+            }
+          }
+        }
+        return {
+          artifact,
+          metadataBlockSize: metadata.blockSize,
+          audioWorkletRenderQuantum,
+          targetRenderQuanta,
+          absTolerance: metadata.tolerance.abs,
+          maximumDryDifference,
+          maximumError,
+          abiVersion: wrapper.ready.abiVersion,
+          kernelHash: wrapper.kernel.hash >>> 0,
+          simd: wrapper.ready.simd,
+          fullWasmProcessQuanta: evidence.counters.fullWasmProcessQuanta,
+          fullJsProcessQuanta: evidence.counters.fullJsProcessQuanta
+        };
+      } finally {
+        wrapper.close();
+      }
+    }
+
+    window.__phase0Worklet = { run };
+  </script>
+</body>
+</html>

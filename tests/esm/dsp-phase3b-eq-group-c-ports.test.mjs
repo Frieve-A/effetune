@@ -35,9 +35,10 @@ const ports = [
   {
     directory: 'loudness_equalizer',
     type: 'LoudnessEqualizerPlugin',
-    hash: 0x88692f5f,
+    hash: 0xaa8015c1,
     fields: [
       ['averageSpl', 'sp', 'float'],
+      ['relativeVolume', 'rv', 'float'],
       ['lowGain', 'lg', 'float'],
       ['lowFrequency', 'lf', 'int'],
       ['lowQ', 'lq', 'float'],
@@ -47,8 +48,8 @@ const ports = [
     ],
     caseCount: 8,
     identityCase: 'reference-level-identity',
-    jsEngineHash: 'dd973d93f2940a29f459b7eacc565abcf01a459b7f234c90b9839c86920809de',
-    activeParams: { sp: 60, lg: 12, lf: 220, lq: 0.7, hq: 0.8, hg: 9, hf: 5000 }
+    jsEngineHash: '7b9c79f705605bedd95ad7cab419f2f36ce7070d2843370a5b24bc1bfa63dbf8',
+    activeParams: { sp: 60, rv: -12, lg: 12, lf: 220, lq: 0.7, hq: 0.8, hg: 9, hf: 5000 }
   },
   {
     directory: 'comb_filter',
@@ -121,6 +122,16 @@ test('Phase 3b EQ group C schemas freeze source parameter order and hashes', asy
   ));
   assert.deepEqual(comb.fields[3].values, ['fb', 'ff']);
   assert.equal(comb.fields[3].default, 'ff');
+
+  const loudness = JSON.parse(await fs.readFile(
+    path.join(pluginsRoot, 'loudness_equalizer', 'params.json'),
+    'utf8'
+  ));
+  assert.deepEqual(
+    Object.fromEntries(['min', 'max', 'default'].map(key => [key, loudness.fields[1][key]])),
+    { min: -30, max: 12, default: 0 }
+  );
+  assert.equal(loudness.fields[0].max, 96);
 });
 
 test('Phase 3b EQ group C goldens are source-frozen, bounded, and representative', async () => {
@@ -219,6 +230,60 @@ test('authoritative EQ group C references freeze state while disabled', async ()
       { sampleRate, frames: 43, channels, blockSize: 43 });
     assert.deepEqual(resumedOutput, uninterruptedOutput, port.type);
   }
+});
+
+test('Loudness Equalizer links Relative Volume to output gain and effective SPL', async () => {
+  const sampleRate = 48000;
+  const frames = 96;
+  const input = new Float32Array(frames);
+  input[0] = 0.5;
+  const shared = { lg: 10, lf: 180, lq: 0.6, hq: 0.7, hg: 8, hf: 4500 };
+  const reference = await createReferenceSession('LoudnessEqualizerPlugin', {
+    repoRoot,
+    params: { ...shared, sp: 60, rv: 0 }
+  });
+  const lowered = await createReferenceSession('LoudnessEqualizerPlugin', {
+    repoRoot,
+    params: { ...shared, sp: 65, rv: -5 }
+  });
+
+  const referenceOutput = await reference.process(input, {
+    sampleRate,
+    frames,
+    channels: 1,
+    blockSize: frames
+  });
+  const loweredOutput = await lowered.process(input, {
+    sampleRate,
+    frames,
+    channels: 1,
+    blockSize: frames
+  });
+  const relativeGain = 10 ** (-5 / 20);
+  for (let index = 0; index < frames; ++index) {
+    assert.ok(Math.abs(loweredOutput[index] / relativeGain - referenceOutput[index]) < 1e-6);
+  }
+});
+
+test('built-in BGM preset uses the linked Loudness volume control', async () => {
+  const preset = JSON.parse(await fs.readFile(
+    path.join(repoRoot, 'presets', 'utils', 'bgm.effetune_preset'),
+    'utf8'
+  ));
+  assert.deepEqual(preset.pipeline, [{
+    name: 'Loudness Equalizer',
+    enabled: true,
+    parameters: {
+      sp: 85,
+      rv: -24,
+      lg: 10,
+      lf: 180,
+      lq: 0.6,
+      hq: 0.6,
+      hg: 0,
+      hf: 4000
+    }
+  }]);
 });
 
 test('Phase 3b EQ group C kernels preserve topology and realtime constraints', async () => {

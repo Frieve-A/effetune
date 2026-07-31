@@ -57,15 +57,8 @@ test('desktop power policy receives native window visibility without throttling 
   assert.match(restoreSource, /sendWindowVisibilityState\(mainWindow\)/);
 });
 
-test('Linux selects X11 before Electron becomes ready so minimize remains observable', () => {
-  const linuxSwitchStart = mainSource.indexOf("if (process.platform === 'linux')");
-  const readyStart = mainSource.indexOf('app.whenReady().then');
-  assert.ok(linuxSwitchStart >= 0);
-  assert.ok(readyStart > linuxSwitchStart);
-  assert.match(
-    mainSource.slice(linuxSwitchStart, readyStart),
-    /app\.commandLine\.appendSwitch\('ozone-platform', 'x11'\)/
-  );
+test('Linux leaves Ozone platform selection to Electron and the desktop session', () => {
+  assert.doesNotMatch(mainSource, /ozone-platform/);
 });
 
 test('every existing-window presentation restores minimized state before show and focus', () => {

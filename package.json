@@ -14,6 +14,8 @@
     "test:dsp:telemetry-soak": "node tools/dsp-parity/telemetry-soak.mjs",
     "test:power-browser": "node tools/run-power-browser-smoke.mjs",
     "smoke:dsp-package": "node tools/verify-dsp-package.mjs dist",
+    "docs:dsp": "node examples/dsp-library/generate-docs.mjs",
+    "docs:dsp:check": "node examples/dsp-library/verify-site-inputs.mjs && node examples/dsp-library/generate-docs.mjs --check",
     "assets:web": "npm run build:vendor && node scripts/generate-sw-precache.js",
     "preverify": "npm run build:vendor && node scripts/generate-sw-precache.js --check",
     "prebuild": "npm run assets:web",

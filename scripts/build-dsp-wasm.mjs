@@ -351,7 +351,9 @@ async function smokeWasm(filePath, expectedSimd) {
 function collectDigestFiles(directory, output = []) {
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })
     .sort((left, right) => left.name.localeCompare(right.name, 'en'))) {
-    if (entry.name === 'build' || entry.name === '.emsdk' || entry.name === 'golden' ||
+    if (entry.name === 'build' || entry.name === '.emsdk' ||
+        entry.name === '.pytest_cache' || entry.name === 'dist' ||
+        entry.name === 'golden' ||
         (entry.isDirectory() && entry.name.startsWith('.golden-all-'))) {
       continue;
     }

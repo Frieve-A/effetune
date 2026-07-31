@@ -1,0 +1,414 @@
+name: DSP Library
+
+on:
+  push:
+    paths:
+      - 'dsp/bindings/**'
+      - 'dsp/plugins/**'
+      - 'dsp/core/**'
+      - 'dsp/generated/**'
+      - 'dsp/include/**'
+      - 'dsp/vendor/**'
+      - 'dsp/CMakeLists.txt'
+      - 'dsp/exports.txt'
+      - 'dsp/registry.inc'
+      - 'js/audio/dsp-engine-binding.js'
+      - 'js/audio/dsp-wasm-loader.js'
+      - 'js/audio/dsp-params.generated.js'
+      - 'js/ir-library/**'
+      - 'plugins/audio-processor.js'
+      - 'plugins/dsp/**'
+      - 'examples/dsp-library/**'
+      - 'docs/**'
+      - 'README.md'
+      - '_config.yml'
+      - '_includes/site_head.html'
+      - '_includes/site_header.html'
+      - '_includes/site_footer.html'
+      - '_layouts/dsp.html'
+      - '_data/dsp-nav.yml'
+      - 'scripts/gen-dsp-library-bindings.mjs'
+      - 'scripts/gen-dsp-params.mjs'
+      - 'scripts/build-dsp-wasm.mjs'
+      - 'tools/verify-dsp-library-goldens.mjs'
+      - 'tools/dsp-parity/**'
+      - 'tests/esm/dsp-library-codegen*.test.mjs'
+      - 'tests/esm/dsp-library-goldens.test.mjs'
+      - 'tests/esm/dsp-library-*.test.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/dsp-library-ci.yml'
+      - '.github/workflows/dsp-library-release.yml'
+      - '.github/workflows/pages.yml'
+  pull_request:
+    paths:
+      - 'dsp/bindings/**'
+      - 'dsp/plugins/**'
+      - 'dsp/core/**'
+      - 'dsp/generated/**'
+      - 'dsp/include/**'
+      - 'dsp/vendor/**'
+      - 'dsp/CMakeLists.txt'
+      - 'dsp/exports.txt'
+      - 'dsp/registry.inc'
+      - 'js/audio/dsp-engine-binding.js'
+      - 'js/audio/dsp-wasm-loader.js'
+      - 'js/audio/dsp-params.generated.js'
+      - 'js/ir-library/**'
+      - 'plugins/audio-processor.js'
+      - 'plugins/dsp/**'
+      - 'examples/dsp-library/**'
+      - 'docs/**'
+      - 'README.md'
+      - '_config.yml'
+      - '_includes/site_head.html'
+      - '_includes/site_header.html'
+      - '_includes/site_footer.html'
+      - '_layouts/dsp.html'
+      - '_data/dsp-nav.yml'
+      - 'scripts/gen-dsp-library-bindings.mjs'
+      - 'scripts/gen-dsp-params.mjs'
+      - 'scripts/build-dsp-wasm.mjs'
+      - 'tools/verify-dsp-library-goldens.mjs'
+      - 'tools/dsp-parity/**'
+      - 'tests/esm/dsp-library-codegen*.test.mjs'
+      - 'tests/esm/dsp-library-goldens.test.mjs'
+      - 'tests/esm/dsp-library-*.test.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/dsp-library-ci.yml'
+      - '.github/workflows/dsp-library-release.yml'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    name: Static preflight
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Verify manifests, identity, paths, and workflow syntax
+        run: |
+          python - <<'PY'
+          import json
+          import tomllib
+          from pathlib import Path
+
+          required = [
+              "dsp/bindings/acceptance/python_golden_runner.py",
+              "tools/verify-dsp-library-goldens.mjs",
+              "js/audio/dsp-engine-binding.js",
+              "js/audio/dsp-wasm-loader.js",
+              "js/audio/dsp-params.generated.js",
+              "js/ir-library/ir-asset-payload.js",
+              "js/ir-library/ir-plugin-contract.js",
+              "plugins/dsp/effetune-dsp.wasm",
+              "plugins/dsp/effetune-dsp.simd.wasm",
+              "plugins/dsp/effetune-dsp.meta.json",
+          ]
+          missing = [item for item in required if not Path(item).is_file()]
+          if missing:
+              raise SystemExit(f"missing DSP library inputs: {missing}")
+          python_data = tomllib.loads(
+              Path("dsp/bindings/python/pyproject.toml").read_text("utf-8")
+          )
+          npm_data = json.loads(
+              Path("dsp/bindings/js/package.json").read_text("utf-8")
+          )
+          if python_data["project"]["name"] != "effetune":
+              raise SystemExit("unexpected Python package name")
+          if npm_data["name"] != "@effetune/dsp":
+              raise SystemExit("unexpected npm package name")
+          expected_urls = {
+              "Homepage": "https://effetune.frieve.com/dsp/",
+              "Documentation": "https://effetune.frieve.com/dsp/",
+              "Repository": "https://github.com/Frieve-A/effetune",
+              "Issues": "https://github.com/Frieve-A/effetune/issues",
+          }
+          if python_data["project"].get("urls") != expected_urls:
+              raise SystemExit("unexpected Python project URLs")
+          if (
+              npm_data.get("homepage") != expected_urls["Homepage"]
+              or npm_data.get("repository", {}).get("url")
+              != expected_urls["Repository"]
+              or npm_data.get("bugs", {}).get("url") != expected_urls["Issues"]
+          ):
+              raise SystemExit("unexpected npm project URLs")
+          if python_data["project"]["version"] != npm_data["version"]:
+              raise SystemExit("Python/npm versions do not match")
+          expected_files = [
+              "dist/",
+              "LICENSE",
+              "README.md",
+              "THIRD_PARTY_NOTICES.txt",
+          ]
+          if npm_data.get("files") != expected_files:
+              raise SystemExit("npm package allowlist changed")
+          PY
+          ruby -e "require 'yaml'; ARGV.each { |path| YAML.parse_file(path) }" \
+            .github/workflows/dsp-library-ci.yml \
+            .github/workflows/dsp-library-release.yml
+      - run: node scripts/gen-dsp-library-bindings.mjs --check
+      - run: node examples/dsp-library/verify-site-inputs.mjs
+      - run: node examples/dsp-library/generate-docs.mjs --check
+      - run: node --test tests/esm/dsp-library-codegen.test.mjs tests/esm/dsp-library-codegen-import-smoke.test.mjs tests/esm/dsp-library-docs.test.mjs tests/esm/dsp-library-demo.test.mjs
+
+  docs-stage:
+    name: DSP docs Jekyll stage
+    needs: preflight
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Build DSP library web package
+        run: npm --prefix dsp/bindings/js run build
+      - name: Setup Pages
+        uses: actions/configure-pages@v6
+      - name: Build with Jekyll
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./
+          destination: ./_site
+      - name: Snapshot and verify DSP subtree
+        run: |
+          node examples/dsp-library/build-site.mjs --guide ./_site/dsp/index.html --check
+          node examples/dsp-library/build-site.mjs --guide ./_site/dsp/index.html --output ./_site/dsp
+          node examples/dsp-library/verify-site-stage.mjs --stage ./_site/dsp
+
+  golden-parity:
+    name: DSP golden parity
+    needs: preflight
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:dsp:parity
+
+  javascript:
+    name: npm package and demo
+    needs: preflight
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Setup Emscripten SDK
+        uses: emscripten-core/setup-emsdk@v16
+        with:
+          version: 6.0.2
+      - name: Verify committed DSP artifacts
+        run: npm run build:dsp -- --check
+      - name: Build and test package
+        working-directory: dsp/bindings/js
+        run: |
+          npm install --ignore-scripts --package-lock=false
+          npm test
+          npm run pack:check
+      - name: Verify reproducible self-contained demo
+        run: node examples/dsp-library/build.mjs --check
+      - name: Pack npm release candidate
+        working-directory: dsp/bindings/js
+        run: |
+          mkdir -p "$RUNNER_TEMP/npm-package"
+          npm pack --pack-destination "$RUNNER_TEMP/npm-package"
+      - name: Clean-install and render a preset
+        env:
+          PACKAGE_DIRECTORY: ${{ runner.temp }}/npm-package
+        run: |
+          package_file="$(find "$PACKAGE_DIRECTORY" -maxdepth 1 -name '*.tgz' -print -quit)"
+          test -n "$package_file"
+          mkdir "$RUNNER_TEMP/npm-smoke"
+          cd "$RUNNER_TEMP/npm-smoke"
+          npm init --yes
+          npm install "$package_file"
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { createChain } from '@effetune/dsp';
+
+          const preset = {
+            version: 1,
+            chain: [{
+              id: 'smoke-compressor',
+              type: 'Compressor',
+              enabled: true,
+              channel: 'stereo',
+              parameters: { threshold: -30, ratio: 8 }
+            }]
+          };
+          const input = [
+            Float32Array.from({ length: 512 }, (_, index) => Math.sin(index * 0.1) * 0.8),
+            Float32Array.from({ length: 512 }, (_, index) => Math.cos(index * 0.1) * 0.8)
+          ];
+          const chain = await createChain(preset);
+          const output = await chain.process(input, { sampleRate: 48000, seed: 42 });
+          assert.equal(output.length, 2);
+          assert.equal(output[0].length, 512);
+          assert.notDeepEqual([...output[0]], [...input[0]]);
+          chain.close();
+          NODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-package
+          path: ${{ runner.temp }}/npm-package/*.tgz
+          if-no-files-found: error
+
+  python-wheels:
+    name: Python ${{ matrix.python-tag }} / ${{ matrix.os }}
+    needs: preflight
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        # macos-15 is Apple Silicon; macos-15-intel keeps the Intel wheel.
+        os: [ubuntu-latest, macos-15, macos-15-intel, windows-latest]
+        python-tag: [cp310, cp311, cp312]
+        include:
+          - python-tag: cp310
+            build-selector: cp310-*
+            expected-tag: cp310-cp310
+            config-settings: ''
+          - python-tag: cp311
+            build-selector: cp311-*
+            expected-tag: cp311-cp311
+            config-settings: ''
+          - python-tag: cp312
+            build-selector: cp312-*
+            expected-tag: cp312-abi3
+            config-settings: >-
+              cmake.define.ET_PYTHON_STABLE_ABI=ON
+              wheel.py-api=cp312
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pypa/cibuildwheel@v3.2.1
+        env:
+          CIBW_BUILD: ${{ matrix.build-selector }}
+          CIBW_ARCHS: auto64
+          CIBW_SKIP: "*-musllinux_*"
+          CIBW_CONFIG_SETTINGS: ${{ matrix.config-settings }}
+          CIBW_TEST_REQUIRES: numpy>=1.26 soundfile>=0.12
+          CIBW_TEST_COMMAND: >-
+            python -m unittest discover
+            -s {project}/dsp/bindings/python/tests -v &&
+            python {project}/dsp/bindings/python/tools/audit_native_exports.py &&
+            python {project}/dsp/bindings/acceptance/python_golden_runner.py
+            --repo-root {project}
+        with:
+          package-dir: dsp/bindings/python
+          output-dir: wheelhouse
+      - name: Verify wheel ABI tag
+        shell: bash
+        env:
+          EXPECTED_TAG: ${{ matrix.expected-tag }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          wheels = list(Path("wheelhouse").glob("*.whl"))
+          assert wheels, "cibuildwheel did not produce a wheel"
+          expected = os.environ["EXPECTED_TAG"]
+          assert all(expected in wheel.name for wheel in wheels), (
+              expected,
+              [wheel.name for wheel in wheels],
+          )
+          PY
+      - uses: actions/setup-python@v6
+        if: matrix.python-tag == 'cp312'
+        with:
+          python-version: '3.13'
+      - name: Verify abi3 wheel on newer CPython
+        if: matrix.python-tag == 'cp312'
+        run: python dsp/bindings/python/tools/verify_abi3_wheel.py wheelhouse
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-${{ matrix.os }}-${{ matrix.python-tag }}
+          path: wheelhouse/*.whl
+          if-no-files-found: error
+
+  acceptance:
+    name: Candidate wrapper acceptance
+    needs: [preflight, javascript, python-wheels]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v5
+        with:
+          name: python-ubuntu-latest-cp312
+          path: candidate/python
+      - uses: actions/download-artifact@v5
+        with:
+          name: npm-package
+          path: candidate/npm
+      - name: Install candidate wheel and browser harness
+        run: |
+          wheel="$(find candidate/python -maxdepth 1 -name '*.whl' -print -quit)"
+          test -n "$wheel"
+          python -m pip install "$wheel"
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Stage the candidate npm tarball for acceptance
+        run: |
+          package_file="$(find candidate/npm -maxdepth 1 -name '*.tgz' -print -quit)"
+          test -n "$package_file"
+          mkdir -p "$RUNNER_TEMP/npm-docs-candidate"
+          cd "$RUNNER_TEMP/npm-docs-candidate"
+          npm init --yes
+          npm install --ignore-scripts --no-audit --no-fund "$GITHUB_WORKSPACE/$package_file"
+          cd "$GITHUB_WORKSPACE"
+          mkdir -p "$RUNNER_TEMP/npm-candidate"
+          tar -xzf "$package_file" -C "$RUNNER_TEMP/npm-candidate"
+          candidate="$RUNNER_TEMP/npm-candidate/package/dist"
+          test -f "$candidate/index.js"
+          rm -rf dsp/bindings/js/src
+          cp -R "$candidate" dsp/bindings/js/src
+          cp "$candidate/internal/dsp-engine-binding.js" js/audio/dsp-engine-binding.js
+          cp "$candidate/internal/dsp-wasm-loader.js" js/audio/dsp-wasm-loader.js
+          cp "$candidate/internal/dsp-params.generated.js" js/audio/dsp-params.generated.js
+          cp "$candidate/internal/ir-asset-payload.js" js/ir-library/ir-asset-payload.js
+          cp "$candidate/internal/ir-plugin-contract.js" js/ir-library/ir-plugin-contract.js
+          cp "$candidate/assets/effetune-dsp.wasm" plugins/dsp/effetune-dsp.wasm
+          cp "$candidate/assets/effetune-dsp.simd.wasm" plugins/dsp/effetune-dsp.simd.wasm
+          cp "$candidate/assets/effetune-dsp.meta.json" plugins/dsp/effetune-dsp.meta.json
+          cp "$candidate/catalog/effects-v1.json" dsp/bindings/generated/effects-v1.json
+      - name: Run published documentation against clean candidates
+        run: |
+          wheel="$(find candidate/python -maxdepth 1 -name '*.whl' -print -quit)"
+          test -n "$wheel"
+          node examples/dsp-library/verify-docs-acceptance.mjs \
+            --python python \
+            --npm-root "$RUNNER_TEMP/npm-docs-candidate" \
+            --wheel "$wheel"
+      - name: Verify frozen wrapper matrix
+        run: >-
+          node tools/verify-dsp-library-goldens.mjs
+          --python python
+          --summary .tmp/dsp-library-goldens-ci.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dsp-library-acceptance-summary
+          path: .tmp/dsp-library-goldens-ci.json
+          if-no-files-found: warn

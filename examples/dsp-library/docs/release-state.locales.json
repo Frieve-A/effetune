@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 1,
+  "en": {
+    "title": "EffeTune DSP Library",
+    "coverage": "This localized page is a short entry point. The complete v0.1.0 documentation is maintained in English.",
+    "release": "Release state",
+    "unreleased": "not published",
+    "published-unverified": "published, verification pending",
+    "published": "published and verified",
+    "fullDocs": "Complete English documentation",
+    "demo": "Live demo",
+    "chainSchema": "Chain v1 schema",
+    "bundleSchema": "Bundle v1 schema"
+  },
+  "ja": {
+    "title": "EffeTune DSP ライブラリ",
+    "coverage": "このページは短い案内です。v0.1.0 の完全な文書は英語版を正として保守しています。",
+    "release": "公開状況",
+    "unreleased": "未公開",
+    "published-unverified": "公開済み・検証待ち",
+    "published": "公開・検証済み",
+    "fullDocs": "完全な英語ドキュメント",
+    "demo": "ライブデモ",
+    "chainSchema": "Chain v1 スキーマ",
+    "bundleSchema": "Bundle v1 スキーマ"
+  },
+  "ar": {
+    "title": "مكتبة EffeTune DSP",
+    "coverage": "هذه صفحة دخول مختصرة. الوثائق الكاملة للإصدار v0.1.0 متاحة باللغة الإنجليزية.",
+    "release": "حالة النشر",
+    "unreleased": "غير منشور",
+    "published-unverified": "منشور، بانتظار التحقق",
+    "published": "منشور وتم التحقق منه",
+    "fullDocs": "الوثائق الإنجليزية الكاملة",
+    "demo": "العرض المباشر",
+    "chainSchema": "مخطط Chain v1",
+    "bundleSchema": "مخطط Bundle v1"
+  },
+  "es": {
+    "title": "Biblioteca DSP de EffeTune",
+    "coverage": "Esta es una página de entrada breve. La documentación completa de v0.1.0 se mantiene en inglés.",
+    "release": "Estado de publicación",
+    "unreleased": "no publicado",
+    "published-unverified": "publicado, verificación pendiente",
+    "published": "publicado y verificado",
+    "fullDocs": "Documentación completa en inglés",
+    "demo": "Demo en vivo",
+    "chainSchema": "Esquema Chain v1",
+    "bundleSchema": "Esquema Bundle v1"
+  },
+  "fr": {
+    "title": "Bibliothèque DSP EffeTune",
+    "coverage": "Cette page est un point d’entrée concis. La documentation complète de v0.1.0 est tenue à jour en anglais.",
+    "release": "État de publication",
+    "unreleased": "non publié",
+    "published-unverified": "publié, vérification en attente",
+    "published": "publié et vérifié",
+    "fullDocs": "Documentation anglaise complète",
+    "demo": "Démo en direct",
+    "chainSchema": "Schéma Chain v1",
+    "bundleSchema": "Schéma Bundle v1"
+  },
+  "hi": {
+    "title": "EffeTune DSP लाइब्रेरी",
+    "coverage": "यह एक संक्षिप्त प्रवेश पृष्ठ है। v0.1.0 का पूरा दस्तावेज़ अंग्रेज़ी में रखा जाता है।",
+    "release": "प्रकाशन स्थिति",
+    "unreleased": "अप्रकाशित",
+    "published-unverified": "प्रकाशित, सत्यापन बाकी",
+    "published": "प्रकाशित और सत्यापित",
+    "fullDocs": "पूरा अंग्रेज़ी दस्तावेज़",
+    "demo": "लाइव डेमो",
+    "chainSchema": "Chain v1 स्कीमा",
+    "bundleSchema": "Bundle v1 स्कीमा"
+  },
+  "ko": {
+    "title": "EffeTune DSP 라이브러리",
+    "coverage": "이 페이지는 간단한 진입점입니다. v0.1.0 전체 문서는 영어로 관리됩니다.",
+    "release": "배포 상태",
+    "unreleased": "미배포",
+    "published-unverified": "배포됨, 검증 대기",
+    "published": "배포 및 검증 완료",
+    "fullDocs": "전체 영어 문서",
+    "demo": "라이브 데모",
+    "chainSchema": "Chain v1 스키마",
+    "bundleSchema": "Bundle v1 스키마"
+  },
+  "pt": {
+    "title": "Biblioteca DSP EffeTune",
+    "coverage": "Esta é uma página de entrada breve. A documentação completa da v0.1.0 é mantida em inglês.",
+    "release": "Estado de publicação",
+    "unreleased": "não publicado",
+    "published-unverified": "publicado, verificação pendente",
+    "published": "publicado e verificado",
+    "fullDocs": "Documentação completa em inglês",
+    "demo": "Demo ao vivo",
+    "chainSchema": "Esquema Chain v1",
+    "bundleSchema": "Esquema Bundle v1"
+  },
+  "ru": {
+    "title": "Библиотека EffeTune DSP",
+    "coverage": "Это краткая стартовая страница. Полная документация v0.1.0 поддерживается на английском языке.",
+    "release": "Состояние публикации",
+    "unreleased": "не опубликовано",
+    "published-unverified": "опубликовано, проверка не завершена",
+    "published": "опубликовано и проверено",
+    "fullDocs": "Полная документация на английском",
+    "demo": "Демонстрация",
+    "chainSchema": "Схема Chain v1",
+    "bundleSchema": "Схема Bundle v1"
+  },
+  "zh": {
+    "title": "EffeTune DSP 库",
+    "coverage": "这是简短的入口页面。v0.1.0 的完整文档以英文维护。",
+    "release": "发布状态",
+    "unreleased": "尚未发布",
+    "published-unverified": "已发布，等待验证",
+    "published": "已发布并验证",
+    "fullDocs": "完整英文文档",
+    "demo": "在线演示",
+    "chainSchema": "Chain v1 架构",
+    "bundleSchema": "Bundle v1 架构"
+  }
+}

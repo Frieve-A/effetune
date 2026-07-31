@@ -1,0 +1,11 @@
+EffeTune Python DSP
+Copyright (c) 2025-2026, Yoshiyuki Kobayashi
+
+This distribution statically links the EffeTune DSP core and includes PFFFT.
+PFFFT is distributed under its upstream BSD-style license; its copyright and
+license notice is included in the wheel under effetune/licenses.
+
+The Python extension statically links nanobind, which is distributed under a
+BSD-style license. Its license notice is also included under
+effetune/licenses. NumPy and SoundFile remain separately installed runtime
+dependencies under their respective licenses.

@@ -1,7 +1,7 @@
 // FM Radio Simulator: physical FM broadcast transmission -> propagation -> reception chain.
 // Runtime processing is WASM-only (D-024). This JS reference implementation is used offline
 // for parity/golden generation via the hidden `fr` parameter and is a faithful port of the
-// scratch kernel (tmp/dev/fm-radio-simulator-scratch/src/kernel.cpp, run r0-f1f2-20260723-01):
+// scratch kernel (tmp/dev/fm-radio-simulator/fm-radio-simulator-scratch/src/kernel.cpp, run r0-f1f2-20260723-01):
 // three-tier split-rate layout (host / MPX / RF core), Kaiser polyphase rational resamplers
 // with the polyphase-shifted window, shared polynomial sincos/atan2, xorshift64 + Marsaglia
 // polar noise, PLL pilot recovery, and the F-2 CNR stereo blend. Every f32 operation of the

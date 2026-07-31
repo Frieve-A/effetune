@@ -301,7 +301,7 @@ img {
 }
 
 .hero-content {
-  width: min(780px, 100%);
+  width: min(var(--content), 100%);
 }
 
 .hero-kicker,
@@ -355,7 +355,8 @@ img {
   padding: 1.2rem 0 0.5rem;
 }
 
-.button {
+.button,
+.dsp-cta {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -368,15 +369,15 @@ img {
 }
 
 install.button {
-  padding: 0;
+  padding: 0 1rem;
 }
 
 install.button > a {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
   min-height: 46px;
+  margin: 0 -1rem;
   padding: 0.72rem 1rem;
   color: inherit;
   text-decoration: none;
@@ -388,7 +389,8 @@ install.button > a {
   color: #081009;
 }
 
-.button-secondary {
+.button-secondary,
+.dsp-cta {
   background: rgba(255, 255, 255, 0.08);
   color: var(--text);
 }
@@ -575,8 +577,8 @@ install.button > a {
   text-transform: uppercase;
 }
 
-.sidebar-search input {
-  width: 100%;
+.sidebar-search input,
+[data-dsp-effect-filter] {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: rgba(255, 255, 255, 0.05);
@@ -584,6 +586,36 @@ install.button > a {
   font: inherit;
   font-size: 0.92rem;
   padding: 0.65rem 0.75rem;
+}
+
+.sidebar-search input {
+  width: 100%;
+}
+
+[data-dsp-effect-filter] {
+  width: 100%;
+  max-width: 34rem;
+}
+
+.dsp-release-state {
+  border-inline-start: 3px solid var(--cyan);
+  background: rgba(103, 216, 212, 0.08);
+  padding: 0.8rem 1rem;
+}
+
+.dsp-cta {
+  margin: 0.2rem;
+}
+
+.dsp-cta.is-disabled {
+  opacity: 0.7;
+}
+
+.dsp-demo-frame {
+  width: 100%;
+  min-height: 25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
 }
 
 .sidebar-search-results {
@@ -852,6 +884,8 @@ install.button > a {
 
 .markdown-body .doc-primary-actions .button,
 .markdown-body .doc-primary-actions .button:hover,
+.markdown-body .dsp-cta,
+.markdown-body .dsp-cta:hover,
 .markdown-body install.button > a,
 .markdown-body install.button > a:hover {
   text-decoration: none;
@@ -863,7 +897,9 @@ install.button > a {
 }
 
 .markdown-body .doc-primary-actions .button-secondary,
-.markdown-body .doc-primary-actions .button-secondary:hover {
+.markdown-body .doc-primary-actions .button-secondary:hover,
+.markdown-body .dsp-cta,
+.markdown-body .dsp-cta:hover {
   color: var(--text);
 }
 
@@ -1288,6 +1324,10 @@ install.button > a {
   .doc-content,
   .home-source .markdown-body {
     padding: 1rem;
+  }
+
+  .dsp-demo-frame {
+    min-height: 32rem;
   }
 }
 

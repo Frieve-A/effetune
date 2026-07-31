@@ -907,7 +907,7 @@ void testClickCounterTelemetry() {
 // levels 200 Hz .. 10 kHz are compared against the values measured on the
 // current implementation, which passed the audited R0 gates (the R0-F1F2
 // acceptance was +/- 3 dB vs the analytic reference; see
-// tmp/dev/fm-radio-simulator-scratch/results/R0-F1F2-RESULT.md). This pins
+// tmp/dev/fm-radio-simulator/fm-radio-simulator-scratch/results/R0-F1F2-RESULT.md). This pins
 // the existing shape against regressions; it is not a new quality gate.
 void testDemodNoiseTriangularShape() {
   constexpr std::uint32_t settle = 48000u;
