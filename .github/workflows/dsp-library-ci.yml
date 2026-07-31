@@ -182,6 +182,8 @@ jobs:
         with:
           source: ./
           destination: ./_site
+      - name: Make Jekyll output writable
+        run: sudo chown -R "$(id -u):$(id -g)" ./_site
       - name: Snapshot and verify DSP subtree
         run: |
           node examples/dsp-library/build-site.mjs --guide ./_site/dsp/index.html --check

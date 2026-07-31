@@ -40,5 +40,8 @@ wheel.packages = ["src/effetune"]
 # Official releases are wheel-only. Building this subproject as an sdist would
 # omit the DSP sources that intentionally remain rooted in the monorepo.
 
+[tool.cibuildwheel.macos]
+environment = { MACOSX_DEPLOYMENT_TARGET = "10.13" }
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
