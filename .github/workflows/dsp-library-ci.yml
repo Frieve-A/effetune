@@ -96,6 +96,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+      - name: Install Python runtime dependency for import smoke
+        run: python -m pip install "numpy>=1.26"
       - name: Verify manifests, identity, paths, and workflow syntax
         run: |
           python - <<'PY'
