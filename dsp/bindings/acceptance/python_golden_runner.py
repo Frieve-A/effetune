@@ -695,8 +695,20 @@ def main() -> int:
         arguments.summary.write_text(
             json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
         )
-    print(json.dumps(summary["counts"], separators=(",", ":")))
     contracts_pass = all(value is True for value in state_contracts.values())
+    if failures or unexecuted or not contracts_pass:
+        print(
+            json.dumps(
+                {
+                    "failures": failures,
+                    "unexecuted": unexecuted,
+                    "stateContracts": state_contracts,
+                },
+                separators=(",", ":"),
+            ),
+            file=sys.stderr,
+        )
+    print(json.dumps(summary["counts"], separators=(",", ":")))
     return 0 if not failures and not unexecuted and contracts_pass else 1
 
 
