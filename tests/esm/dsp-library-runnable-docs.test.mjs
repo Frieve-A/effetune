@@ -66,6 +66,16 @@ test('visual editor export matches the committed golden', () => {
   }
 });
 
-test('published AudioWorklet quickstart runs the real package processor', async () => {
-  await verifyWorklet(npmRoot);
+test('published AudioWorklet quickstart runs the real package processor', async context => {
+  try {
+    await verifyWorklet(npmRoot);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("browserType.launch: Executable doesn't exist at ") &&
+        message.includes('playwright install')) {
+      context.skip('Playwright Chromium is not installed.');
+      return;
+    }
+    throw error;
+  }
 });
