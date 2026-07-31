@@ -80,6 +80,11 @@ test('generated Python classes import through the real package runtime', t => {
     t.skip('Python is not available');
     return;
   }
+  if (result.status !== 0 &&
+      /ModuleNotFoundError: No module named ['"]numpy['"]/.test(result.stderr)) {
+    t.skip('NumPy is not available');
+    return;
+  }
   assert.equal(result.status, 0, result.stderr || result.stdout);
 });
 

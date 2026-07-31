@@ -28,7 +28,7 @@
     "prepack": "npm run assets:web",
     "predist": "npm run assets:web",
     "lint": "eslint electron js plugins features scripts tools tests --max-warnings=0",
-    "test": "node tools/run-tests.mjs",
+    "test": "npm --prefix dsp/bindings/js run build && node tools/run-tests.mjs",
     "test:library-scale:quick": "node tests/scale/library-scale-generation.mjs --size 10000",
     "test:library-scale:million": "node tests/scale/library-scale-generation.mjs --preset million",
     "test:library-scale:boundary": "node tests/scale/library-scale-generation.mjs --preset boundary",
