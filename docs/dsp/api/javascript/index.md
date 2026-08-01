@@ -8,8 +8,11 @@ permalink: /dsp/api/javascript/
 # JavaScript API
 
 <!-- DSP-RELEASE-NOTICE -->
-> **Release state:** npm is **unreleased**. The public install command is intentionally disabled until a version-matched smoke test passes.
+> **Release state:** npm is **published** for 0.1.0. The verified package matches these 0.1.0 docs.
 
+```console
+npm install @effetune/dsp@0.1.0
+```
 
 The package is ESM-only. These signatures follow the shipped `index.d.ts` and
 `worklet.d.ts`. The generated declarations remain authoritative for individual

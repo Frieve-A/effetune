@@ -8,8 +8,11 @@ permalink: /dsp/api/python/
 # Python API
 
 <!-- DSP-RELEASE-NOTICE -->
-> **Release state:** python is **unreleased**. The public install command is intentionally disabled until a version-matched smoke test passes.
+> **Release state:** python is **published** for 0.1.0. The verified package matches these 0.1.0 docs.
 
+```console
+pip install effetune==0.1.0
+```
 
 These signatures summarize the typed public surface. The installed `py.typed`
 package and generated effect stubs remain authoritative for individual effect options;

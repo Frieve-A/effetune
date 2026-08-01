@@ -3,6 +3,7 @@
 <div class="doc-primary-actions" aria-label="मुख्य कार्रवाइयां">
   <a class="button button-primary" href="https://effetune.frieve.com/effetune.html">वेब ऐप खोलें</a>
   <install class="button button-secondary"><a href="https://effetune.frieve.com/effetune.html">PWA संस्करण इंस्टॉल करें</a></install>
+  <a class="button button-secondary" href="/dsp/">DSP Library</a>
   <a class="button button-secondary" href="https://github.com/Frieve-A/effetune/releases/">डेस्कटॉप ऐप डाउनलोड करें</a>
   <a class="button button-secondary" href="https://github.com/Frieve-A/effetune-mixwright/releases">VST संस्करण डाउनलोड करें</a>
 </div>

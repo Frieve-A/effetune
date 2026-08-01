@@ -6,7 +6,7 @@ lang: en
 
 # Version History
 
-### Version 2.3.0 (TBD, 2026)
+### Version 2.3.0 (Aug 2, 2026)
 - Added AM/FM/SW Radio Simulator effects
 - Added 5Band FIR PEQ, FIR Crossover and Group Delay EQ effects
 - Updated Loudness Equalizer so Relative Volume adjusts the output level and EQ compensation together

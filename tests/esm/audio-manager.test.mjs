@@ -1691,6 +1691,92 @@ test('parallel routing rejects source connection failures and tolerates ramp ass
   });
 });
 
+test('syncs the realtime output keepalive with must-process pipeline state', async () => {
+  await withAudioManager({}, async ({ calls, manager }) => {
+    const keepaliveStates = [];
+    manager.contextManager.setRealtimeOutputKeepaliveEnabled = enabled => {
+      keepaliveStates.push(enabled);
+      return enabled;
+    };
+    manager.workletNode = manager.contextManager.workletNode;
+
+    const stateless = createPlugin('AlphaPlugin', { id: 'stateless', calls });
+    stateless.temporalCapability = 'stateless';
+    manager.pipeline = [stateless];
+    manager.commitPowerTopologyMutation({ type: 'updatePlugins', plugins: [] });
+
+    const generator = createPlugin('BetaPlugin', {
+      id: 'generator',
+      calls,
+      parameters: { mix: 100 }
+    });
+    generator.getTemporalCapability = () => generator.parameters.mix > 0
+      ? 'must-process'
+      : 'reset-on-resume';
+    manager.pipeline = [generator];
+    manager.commitPowerTopologyMutation({ type: 'updatePlugins', plugins: [] });
+
+    generator.parameters.mix = 0;
+    manager.commitPowerTopologyMutation({ type: 'updatePlugin', plugin: {} });
+
+    generator.parameters.mix = 100;
+    manager.masterBypass = true;
+    manager.commitPowerTopologyMutation({ type: 'updatePlugins', plugins: [] });
+
+    assert.deepEqual(keepaliveStates, [false, true, false, false]);
+  });
+});
+
+test('parallel pipelines keep realtime output alive and release it on teardown', async () => {
+  await withAudioManager({}, async ({ calls, manager }) => {
+    const statelessA = createPlugin('AlphaPlugin', { id: 'stateless-a', calls });
+    statelessA.temporalCapability = 'stateless';
+    const generatorB = createPlugin('BetaPlugin', { id: 'generator-b', calls });
+    generatorB.temporalCapability = 'must-process';
+    manager.pipelineA = [statelessA];
+    manager.pipelineB = [generatorB];
+    manager.currentPipeline = 'A';
+    manager.pipeline = manager.pipelineA;
+
+    const keepaliveEvents = [];
+    manager.contextManager.setRealtimeOutputKeepaliveEnabled = enabled => {
+      const event = [
+        'realtimeKeepalive',
+        enabled,
+        manager._parallelPreparing,
+        manager._parallelActive
+      ];
+      keepaliveEvents.push(event);
+      calls.push(event);
+      return enabled;
+    };
+
+    assert.equal(await manager.enableParallelPipelines('A'), true);
+    assert.deepEqual(keepaliveEvents, [
+      ['realtimeKeepalive', true, true, false]
+    ]);
+    assert.equal(manager._parallelBranchSnapshot.pipelineA.requiresRealtimeOutputKeepalive, false);
+    assert.equal(manager._parallelBranchSnapshot.pipelineB.requiresRealtimeOutputKeepalive, true);
+    const activationKeepaliveIndex = calls.findIndex(call => call === keepaliveEvents[0]);
+    assert.ok(calls.findIndex((call, index) => index > activationKeepaliveIndex &&
+      call[0] === 'param.ramp' && call[1] === 'outputGain.gain' && call[2] === 1) >
+      activationKeepaliveIndex);
+
+    const teardownStartIndex = calls.length;
+    await manager.disableParallelPipelines();
+    assert.deepEqual(keepaliveEvents, [
+      ['realtimeKeepalive', true, true, false],
+      ['realtimeKeepalive', false, false, false]
+    ]);
+    const teardownKeepaliveIndex = calls.findIndex(call => call === keepaliveEvents[1]);
+    const teardownDisconnectIndex = calls.findIndex((call, index) =>
+      index >= teardownStartIndex && call[0] === 'disconnect' &&
+      call[1] === 'worklet:plugin-processor');
+    assert.ok(teardownDisconnectIndex >= teardownStartIndex &&
+      teardownDisconnectIndex < teardownKeepaliveIndex);
+  });
+});
+
 test('sets pipeline, master bypass, offline processing, encoding, and event facade methods', async () => {
   await withAudioManager({}, async ({ calls, manager }) => {
     const nextPipeline = [createPlugin('AlphaPlugin', { id: 'new', calls })];

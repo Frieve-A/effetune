@@ -13,7 +13,10 @@ import { TelemetryHub } from './audio/telemetry-hub.js';
 import { PowerPolicyController } from './audio/power-policy-controller.js';
 import { PowerDiagnostics } from './audio/power-diagnostics.js';
 import { AudioPowerState, mergePowerSavingSettings } from './audio/power-policy.js';
-import { computeRuntimePipelineGraphBound } from './audio/power-topology.js';
+import {
+    analyzeTemporalCapabilities,
+    computeRuntimePipelineGraphBound
+} from './audio/power-topology.js';
 import { AudioActivationCoordinator } from './audio/audio-activation-coordinator.js';
 import {
     loadWebAudioPreferences,
@@ -816,6 +819,19 @@ export class AudioManager {
         }
     }
 
+    _syncRealtimeOutputKeepalive() {
+        const parallelSnapshot = this._parallelPreparing || this._parallelActive
+            ? this._parallelBranchSnapshot
+            : null;
+        const required = parallelSnapshot && !parallelSnapshot.disposed
+            ? [parallelSnapshot.pipelineA, parallelSnapshot.pipelineB].some(
+                branch => branch?.requiresRealtimeOutputKeepalive === true
+            )
+            : !this.masterBypass && analyzeTemporalCapabilities(this.pipeline)
+                .capabilities.some(item => item.capability === 'must-process');
+        return this.contextManager?.setRealtimeOutputKeepaliveEnabled?.(required) ?? false;
+    }
+
     /**
      * Apply one logical same-node topology mutation to every live worklet and
      * advance the power-policy topology identity exactly once.
@@ -864,6 +880,7 @@ export class AudioManager {
             // Clear the matching controller lineage in the same transaction.
             resetWorkletTemporalState: true
         }) ?? null;
+        this._syncRealtimeOutputKeepalive();
         if (firstPostError) throw firstPostError;
         return { mutation, postedNodeCount };
     }
@@ -1331,14 +1348,17 @@ export class AudioManager {
                 barrier.generation,
                 {
                     beforeUnmute: () => {
-                        if (assetExpectationsActive()) return true;
-                        if (this._isParallelDspBarrierCurrent(barrier)) {
-                            this.dispatchEvent('parallelInvalidated', {
-                                reason: 'asset-not-ready',
-                                restorePrimaryDsp: true
-                            });
+                        if (!assetExpectationsActive()) {
+                            if (this._isParallelDspBarrierCurrent(barrier)) {
+                                this.dispatchEvent('parallelInvalidated', {
+                                    reason: 'asset-not-ready',
+                                    restorePrimaryDsp: true
+                                });
+                            }
+                            return false;
                         }
-                        return false;
+                        this._syncRealtimeOutputKeepalive();
+                        return true;
                     }
                 }
             ).then(applied => {
@@ -1890,6 +1910,7 @@ export class AudioManager {
         this.powerPolicyController?.notifyTopologyChanged?.('pipeline-rebuild', {
             resetWorkletTemporalState: true
         });
+        this._syncRealtimeOutputKeepalive();
 
             return result;
         } finally {
@@ -3155,7 +3176,9 @@ export class AudioManager {
             plugins,
             pluginData: committedPluginData,
             records,
-            assetMaps: new Map()
+            assetMaps: new Map(),
+            requiresRealtimeOutputKeepalive: analyzeTemporalCapabilities(plugins)
+                .capabilities.some(item => item.capability === 'must-process')
         };
     }
 
@@ -3720,6 +3743,7 @@ export class AudioManager {
         if (this._parallelTeardownPromise) return this._parallelTeardownPromise;
         if (!this._hasParallelResources()) {
             this._disposeParallelBranchSnapshot(this._parallelBranchSnapshot);
+            this._syncRealtimeOutputKeepalive();
             return false;
         }
         const wA = this.contextManager?.workletNode;
@@ -3787,6 +3811,7 @@ export class AudioManager {
         this._parallelSelA = null;
         this._parallelSelB = null;
         this._parallelInputTap = null;
+        this._syncRealtimeOutputKeepalive();
         const teardownPromise = (async () => {
             if (options.restorePrimaryDsp === false || !wA?.port) {
                 this._fadeInOutputIfOwned(outputOwner, PIPELINE_SWITCH_FADE_SECONDS);

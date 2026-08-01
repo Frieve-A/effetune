@@ -14,7 +14,8 @@ function createSiteHarness({
   search = '',
   hash = '',
   storedLanguage = 'en',
-  basePath = ''
+  basePath = '',
+  browserLanguages = ['en']
 }) {
   const origin = 'https://example.test';
   const normalizedBase = basePath.replace(/\/+$/, '');
@@ -89,7 +90,7 @@ function createSiteHarness({
   vm.runInNewContext(siteSource, {
     console,
     document: documentRef,
-    navigator: { language: 'en', languages: ['en'] },
+    navigator: { language: browserLanguages[0] || 'en', languages: browserLanguages },
     URL,
     window: windowRef
   }, { filename: 'assets/js/site.js' });
@@ -127,6 +128,50 @@ test('DSP overview language routing preserves base URL, query, hash, and path en
   }
 });
 
+test('full English DSP guide is not automatically redirected by language preference', () => {
+  for (const pathname of ['/dsp', '/dsp/', '/dsp/index.html']) {
+    const browserHarness = createSiteHarness({
+      pathname,
+      storedLanguage: null,
+      browserLanguages: ['ja-JP', 'en']
+    });
+    const storedHarness = createSiteHarness({
+      pathname,
+      storedLanguage: 'ja'
+    });
+
+    assert.deepEqual(browserHarness.replaced, [], `browser language: ${pathname}`);
+    assert.deepEqual(storedHarness.replaced, [], `stored language: ${pathname}`);
+
+    if (pathname === '/dsp/') {
+      for (const harness of [browserHarness, storedHarness]) {
+        assert.equal(harness.select.value, 'en');
+        harness.changeLanguage('ja');
+        assert.deepEqual(harness.assigned, ['https://example.test/dsp/ja/']);
+      }
+    }
+  }
+});
+
+test('localized homepage DSP links open and retain the full English guide', () => {
+  const expectedLink =
+    '<a class="button button-secondary" href="/dsp/">DSP Library</a>';
+
+  for (const language of languageCodes.filter(code => code !== 'en')) {
+    const source = fs.readFileSync(
+      path.join(repoRoot, 'docs', 'i18n', language, 'README.md'),
+      'utf8'
+    );
+    const harness = createSiteHarness({
+      pathname: '/dsp/',
+      storedLanguage: language
+    });
+
+    assert.equal(source.split(expectedLink).length - 1, 1, language);
+    assert.deepEqual(harness.replaced, [], language);
+  }
+});
+
 test('direct localized DSP overview follows its URL before stored preference', () => {
   const harness = createSiteHarness({
     pathname: '/dsp/ar/index.html',
@@ -157,6 +202,22 @@ test('DSP subroutes without localized pages do not invent locale routes', () => 
 
   assert.deepEqual(harness.assigned, []);
   assert.deepEqual(harness.replaced, []);
+});
+
+test('English-only pages are not automatically redirected for a non-English browser', () => {
+  for (const pathname of [
+    '/dsp/effects/bit-crusher/',
+    '/docs/plugin-development.html',
+    '/docs/version-history.html'
+  ]) {
+    const harness = createSiteHarness({
+      pathname,
+      storedLanguage: null,
+      browserLanguages: ['ja-JP', 'en']
+    });
+
+    assert.deepEqual(harness.replaced, [], pathname);
+  }
 });
 
 test('root and translated docs language routing retains its existing targets', () => {

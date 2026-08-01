@@ -131,7 +131,7 @@ test('SW Radio Simulator freezes the parameter layout and representative parity 
   assert.equal(goldens.length, 18);
   assert.ok(goldens.every(item =>
     item.metadata.jsEngineHash ===
-      'f0ad54ae4df481dd2acafcf27dd591b3fa3e9c7ed8e53f9a0f58131c03c1200a'
+      '9772c71439ce4f3c94c211e99e4c424b49fcd65650d7a6682f3fc78a3ba5190d'
   ));
 });
 
@@ -604,8 +604,11 @@ test('SW Radio Simulator drives the HUD from measurements and validated executio
   assert.equal(plugin.hudValues.fadeDb, -3.5);
 
   const drawn = [];
+  const fills = [];
   const drawingContext = {
-    clearRect() {}, fillRect() {}, strokeRect() {},
+    clearRect() {},
+    fillRect(...args) { fills.push({ style: this.fillStyle, args }); },
+    strokeRect() {},
     fillText: text => drawn.push(String(text))
   };
   plugin.hudCanvas = {
@@ -619,6 +622,22 @@ test('SW Radio Simulator drives the HUD from measurements and validated executio
   assert.ok(drawn.includes('MOD / EVENTS'));
   assert.ok(drawn.includes('-3.5 dB'));
   assert.ok(drawn.includes('+9.5 dB'));
+  assert.ok(drawn.includes('S4.9'));
+
+  const meterTracks = fills.filter(fill => fill.style === '#363636');
+  const meterLevels = fills.filter(fill => fill.style === '#69c8ff');
+  assert.equal(meterTracks.length, 4);
+  assert.equal(meterLevels.length, 4);
+  assert.ok(Math.abs(meterLevels[0].args[2] / meterTracks[0].args[2] - 27.5 / 56) < 1e-12);
+  assert.ok(Math.abs(meterLevels[3].args[2] / meterTracks[3].args[2] - 74 / 160) < 1e-12);
+
+  fills.length = 0;
+  plugin.eventFlashUntil = clock.value + 180;
+  plugin.drawHud();
+  const eventTrack = fills.filter(fill => fill.style === '#363636')[3];
+  const eventLevel = fills.find(fill => fill.style === '#ffb347');
+  assert.ok(eventLevel);
+  assert.ok(Math.abs(eventLevel.args[2] / eventTrack.args[2] - 74 / 160) < 1e-12);
 
   plugin.onMessage({
     type: 'dspExecutionState', pluginId: 23, validated: true,
@@ -682,6 +701,7 @@ test('SW Radio Simulator integration registers tap 18 across the shipped wiring'
   assert.match(plugin, /setAttribute\('role', 'tablist'\)/);
   assert.match(plugin, /setAttribute\('aria-controls'/);
   assert.match(plugin, /setAttribute\('aria-labelledby'/);
+  assert.match(plugin, /createRadioGroup\('Speaker', \['Small', 'Table', 'Off'\]/);
   assert.match(plugin, /requestPowerAnimationFrame/);
   assert.match(plugin, /WASM is required/);
   assert.match(css, /body\.layout-mobile \.sw-radio-simulator-tab/);

@@ -11,15 +11,15 @@ permalink: /dsp/ja/
 このページは短い案内です。v0.1.0 の完全な文書は英語版を正として保守しています。
 
 Documentation version: **0.1.0**
-Release cohort: **unreleased**
+Release cohort: **published**
 
 <!-- DSP-RELEASE-NOTICE -->
 
 ## 公開状況
 
-- python: **未公開**
-- npm: **未公開**
-- githubRelease: **未公開**
+- python: **公開・検証済み** (0.1.0)
+- npm: **公開・検証済み** (0.1.0)
+- githubRelease: **公開・検証済み** (0.1.0)
 
 - [完全な英語ドキュメント](/dsp/)
 - [ライブデモ](/dsp/demo/)

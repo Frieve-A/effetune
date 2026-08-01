@@ -10,9 +10,11 @@ permalink: /dsp/getting-started/javascript/
 Use this path for offline processing in Node.js or a browser module.
 
 <!-- DSP-RELEASE-NOTICE -->
-> **Release state:** npm is **unreleased**. The public install command is intentionally disabled until a version-matched smoke test passes.
+> **Release state:** npm is **published** for 0.1.0. The verified package matches these 0.1.0 docs.
 
-> Use the CI candidate artifact for pre-release testing. Do not substitute an older registry version.
+```console
+npm install @effetune/dsp@0.1.0
+```
 
 The package is ESM-only. Save the example as `start.mjs` and run
 `node start.mjs`, or set `"type": "module"` in the consumer's

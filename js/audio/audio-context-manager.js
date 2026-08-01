@@ -9,6 +9,8 @@ export class AudioContextManager {
         this.audioContext = null;
         this.offlineContext = null;
         this.workletNode = null;
+        this.realtimeOutputKeepaliveNode = null;
+        this._realtimeOutputKeepaliveContext = null;
         this.silenceGain = null;
         this.isFirstLaunch = false;
         this._skipAudioInitDuringSampleRateChange = false;
@@ -445,6 +447,58 @@ export class AudioContextManager {
             return `Audio Error: ${error.message}`;
         }
     }
+
+    /**
+     * Keep Chromium's real audio sink active while a source-generating or
+     * stateful effect must process every render quantum. A zero-output
+     * AudioWorkletNode is an automatic-pull node, so it prevents the browser
+     * from replacing the real sink with its irregular silent-sink callbacks.
+     * @param {boolean} enabled
+     * @returns {boolean} Whether the requested state is active
+     */
+    setRealtimeOutputKeepaliveEnabled(enabled) {
+        const context = this.audioContext;
+        if (enabled && this.realtimeOutputKeepaliveNode &&
+            this._realtimeOutputKeepaliveContext === context) {
+            return true;
+        }
+
+        if (this.realtimeOutputKeepaliveNode) {
+            try {
+                this.realtimeOutputKeepaliveNode.port.postMessage({ type: 'stop' });
+            } catch (error) {
+                console.warn('[AudioContext] Failed to stop realtime output keepalive:', error);
+            }
+            this.realtimeOutputKeepaliveNode = null;
+            this._realtimeOutputKeepaliveContext = null;
+        }
+
+        if (!enabled || !context || !this.workletNode ||
+            typeof globalThis.AudioWorkletNode !== 'function') {
+            return false;
+        }
+
+        try {
+            this.realtimeOutputKeepaliveNode = new AudioWorkletNode(
+                context,
+                'realtime-output-keepalive-processor',
+                {
+                    numberOfInputs: 1,
+                    numberOfOutputs: 0,
+                    channelCount: 1,
+                    channelCountMode: 'explicit',
+                    channelInterpretation: 'discrete'
+                }
+            );
+            this._realtimeOutputKeepaliveContext = context;
+            return true;
+        } catch (error) {
+            this.realtimeOutputKeepaliveNode = null;
+            this._realtimeOutputKeepaliveContext = null;
+            console.warn('[AudioContext] Failed to start realtime output keepalive:', error);
+            return false;
+        }
+    }
     
     /**
      * Create an offline audio context for rendering
@@ -489,6 +543,7 @@ export class AudioContextManager {
     async closeAudioContext() {
         this.stopResumeOnUserGesture();
         this._resumePromise = null;
+        this.setRealtimeOutputKeepaliveEnabled(false);
 
         // Restore original connect method if it was overridden
         if (window.originalConnectMethod) {

@@ -7,9 +7,28 @@ permalink: /dsp/faq/
 ---
 # FAQ
 
-**Why does the registry return 404?** The package is not yet published or its smoke test
-is incomplete. Use the CI candidate named by the release process; do not install an
-older version and assume it matches these docs.
+**How do I install the registry release?** Registry availability is tracked
+independently for each package.
+
+**Python package**
+
+<!-- DSP-RELEASE-NOTICE -->
+> **Release state:** python is **published** for 0.1.0. The verified package matches these 0.1.0 docs.
+
+```console
+pip install effetune==0.1.0
+```
+
+**JavaScript package**
+
+<!-- DSP-RELEASE-NOTICE -->
+> **Release state:** npm is **published** for 0.1.0. The verified package matches these 0.1.0 docs.
+
+```console
+npm install @effetune/dsp@0.1.0
+```
+
+Use the version shown by the documentation when reproducibility matters.
 
 **Why does my Python array fail?** Use finite C-contiguous planar `float32` shaped
 `(channels, frames)`.

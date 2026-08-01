@@ -62,7 +62,7 @@ test('AM Radio Simulator freezes the parameter layout and representative parity 
   assert.equal(goldens.length, 20);
   assert.ok(goldens.every(item =>
     item.metadata.jsEngineHash ===
-      'dd4ac2f6764c9b22350e9ee4fe14bafe6cb8d54d161262bc8049c93ce6335e48'
+      'efb5244d922fcf2cf4bb7288f3dbb05ec138c6132174ef3723f7fce89fcb7881'
   ));
 });
 
@@ -308,8 +308,13 @@ test('AM Radio Simulator drives the HUD stereo lamp from subscribed v2 telemetry
     classList: { toggle: (name, value) => { if (name === 'active') lampState.active = value; } },
     setAttribute: (name, value) => { if (name === 'aria-label') lampState.label = value; }
   };
+  const drawn = [];
+  const fills = [];
   const drawingContext = {
-    clearRect() {}, fillRect() {}, strokeRect() {}, fillText() {}
+    clearRect() {},
+    fillRect(...args) { fills.push({ style: this.fillStyle, args }); },
+    strokeRect() {},
+    fillText: text => drawn.push(String(text))
   };
   plugin.hudCanvas = {
     width: 600,
@@ -322,6 +327,21 @@ test('AM Radio Simulator drives the HUD stereo lamp from subscribed v2 telemetry
   assert.deepEqual(lampState, {
     blend: '0.75', active: true, label: 'Stereo reception on'
   });
+  assert.ok(drawn.includes('S4.1'));
+  const meterTracks = fills.filter(fill => fill.style === '#363636');
+  const meterLevels = fills.filter(fill => fill.style === '#69c8ff');
+  assert.equal(meterTracks.length, 4);
+  assert.equal(meterLevels.length, 4);
+  assert.ok(Math.abs(meterLevels[0].args[2] / meterTracks[0].args[2] - 22 / 56) < 1e-12);
+  assert.ok(Math.abs(meterLevels[2].args[2] / meterTracks[2].args[2] - 88 / 160) < 1e-12);
+
+  fills.length = 0;
+  plugin.eventFlashUntil = 1180;
+  plugin.drawHud();
+  const eventTrack = fills.filter(fill => fill.style === '#363636')[3];
+  const eventLevel = fills.find(fill => fill.style === '#ffb347');
+  assert.ok(eventLevel);
+  assert.ok(Math.abs(eventLevel.args[2] / eventTrack.args[2] - 76 / 86) < 1e-12);
   for (const state of ['bypassed', 'pending']) {
     plugin.executionState = { state, reason: state === 'bypassed' ? 'wasmUnavailable' : null };
     plugin.drawHud();
@@ -381,8 +401,7 @@ test('AM Radio Simulator remains supported at 384 kHz without relaxing Room EQ',
     console: { log() {}, warn() {}, error() {} },
     sampleRate: 384000,
     registerProcessor(name, constructor) {
-      assert.equal(name, 'plugin-processor');
-      ProcessorClass = constructor;
+      if (name === 'plugin-processor') ProcessorClass = constructor;
     }
   });
   const processor = new ProcessorClass({
@@ -438,6 +457,7 @@ test('AM Radio Simulator integration keeps fixed anti-alias stages and accessibl
   assert.match(plugin, /setAttribute\('role', 'tablist'\)/);
   assert.match(plugin, /setAttribute\('aria-controls'/);
   assert.match(plugin, /setAttribute\('aria-labelledby'/);
+  assert.match(plugin, /createRadioGroup\('Speaker', \['Small', 'Table', 'Off'\]/);
   assert.match(plugin, /requestPowerAnimationFrame/);
   assert.match(plugin, /AM radio processing is unavailable in this environment/);
   assert.doesNotMatch(plugin, /WASM is required/);

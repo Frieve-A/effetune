@@ -11,15 +11,15 @@ permalink: /dsp/ko/
 이 페이지는 간단한 진입점입니다. v0.1.0 전체 문서는 영어로 관리됩니다.
 
 Documentation version: **0.1.0**
-Release cohort: **unreleased**
+Release cohort: **published**
 
 <!-- DSP-RELEASE-NOTICE -->
 
 ## 배포 상태
 
-- python: **미배포**
-- npm: **미배포**
-- githubRelease: **미배포**
+- python: **배포 및 검증 완료** (0.1.0)
+- npm: **배포 및 검증 완료** (0.1.0)
+- githubRelease: **배포 및 검증 완료** (0.1.0)
 
 - [전체 영어 문서](/dsp/)
 - [라이브 데모](/dsp/demo/)

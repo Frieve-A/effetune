@@ -11,15 +11,15 @@ permalink: /dsp/ar/
 هذه صفحة دخول مختصرة. الوثائق الكاملة للإصدار v0.1.0 متاحة باللغة الإنجليزية.
 
 Documentation version: **0.1.0**
-Release cohort: **unreleased**
+Release cohort: **published**
 
 <!-- DSP-RELEASE-NOTICE -->
 
 ## حالة النشر
 
-- python: **غير منشور**
-- npm: **غير منشور**
-- githubRelease: **غير منشور**
+- python: **منشور وتم التحقق منه** (0.1.0)
+- npm: **منشور وتم التحقق منه** (0.1.0)
+- githubRelease: **منشور وتم التحقق منه** (0.1.0)
 
 - [الوثائق الإنجليزية الكاملة](/dsp/)
 - [العرض المباشر](/dsp/demo/)

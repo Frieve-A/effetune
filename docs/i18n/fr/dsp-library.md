@@ -11,15 +11,15 @@ permalink: /dsp/fr/
 Cette page est un point d’entrée concis. La documentation complète de v0.1.0 est tenue à jour en anglais.
 
 Documentation version: **0.1.0**
-Release cohort: **unreleased**
+Release cohort: **published**
 
 <!-- DSP-RELEASE-NOTICE -->
 
 ## État de publication
 
-- python: **non publié**
-- npm: **non publié**
-- githubRelease: **non publié**
+- python: **publié et vérifié** (0.1.0)
+- npm: **publié et vérifié** (0.1.0)
+- githubRelease: **publié et vérifié** (0.1.0)
 
 - [Documentation anglaise complète](/dsp/)
 - [Démo en direct](/dsp/demo/)

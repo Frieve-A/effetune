@@ -900,11 +900,17 @@ class PluginBase {
         this._notifyWasmAssetSnapshotChange();
         if (window.workletNode) {
             const parameters = this.getParameters();
-            
-            window.workletNode.port.postMessage({
+            const message = {
                 type: 'updatePlugin',
                 plugin: this.getWorkletPluginData(parameters)
-            });
+            };
+            if (typeof window.audioManager?.commitPowerTopologyMutation === 'function') {
+                window.audioManager.commitPowerTopologyMutation(message, {
+                    reason: 'plugin-parameter-update'
+                });
+            } else {
+                window.workletNode.port.postMessage(message);
+            }
             if (window.uiManager) {
                 window.uiManager.updateURL();
             }

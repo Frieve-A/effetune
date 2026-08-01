@@ -12,6 +12,8 @@
 
 const SW_RADIO_SIMULATOR_MINIMUM_AGC_GAIN_DB = -12;
 const SW_RADIO_SIMULATOR_MAXIMUM_AGC_GAIN_DB = 42;
+const SW_RADIO_SIMULATOR_S_METER_MINIMUM_DB = -50;
+const SW_RADIO_SIMULATOR_S_METER_MAXIMUM_DB = 6;
 
 // Binary telemetry contract shared with dsp/plugins/lofi/sw_radio_simulator/kernel.cpp and
 // registered in js/audio/telemetry-hub.js. Format version 1 is exactly 24 little-endian
@@ -1529,7 +1531,7 @@ class SWRadioSimulatorPlugin extends PluginBase {
                     value => this.setParameters({ hz: value }), 'Hz'));
             } },
             { id: 'output', label: 'Output', create: content => {
-                content.appendChild(this.createRadioGroup('Speaker', ['Off', 'Small', 'Table'],
+                content.appendChild(this.createRadioGroup('Speaker', ['Small', 'Table', 'Off'],
                     this.sp, value => this.setParameters({ sp: value })));
                 content.appendChild(this.createParameterControl('Output Gain', -24, 24, 0.1,
                     this.og, value => this.setParameters({ og: value }), 'dB'));
@@ -1675,11 +1677,15 @@ class SWRadioSimulatorPlugin extends PluginBase {
         const gap = 5 * scale;
         const cardWidth = (width - padding * 2 - gap * (columns - 1)) / columns;
         const cardHeight = (height - padding * 2 - gap * (rows - 1)) / rows;
-        const sValue = values.carrierPreAgcDb <= -73 ? 1 :
-            (values.carrierPreAgcDb >= -25 ? 9 : 1 + (values.carrierPreAgcDb + 73) / 6);
+        let sLevel = (values.carrierPreAgcDb - SW_RADIO_SIMULATOR_S_METER_MINIMUM_DB) /
+            (SW_RADIO_SIMULATOR_S_METER_MAXIMUM_DB -
+                SW_RADIO_SIMULATOR_S_METER_MINIMUM_DB);
+        if (sLevel < 0) sLevel = 0;
+        else if (sLevel > 1) sLevel = 1;
+        const sValue = 1 + 8 * sLevel;
         const eventActive = now < this.eventFlashUntil;
         const cards = [
-            { title: 'S METER', value: `S${sValue.toFixed(1)}`, level: sValue / 9 },
+            { title: 'S METER', value: `S${sValue.toFixed(1)}`, level: sLevel },
             { title: 'FADE', value: `${values.fadeDb.toFixed(1)} dB`,
                 level: (values.fadeDb + 80) / 86 },
             { title: 'AGC GAIN',
@@ -1689,7 +1695,7 @@ class SWRadioSimulatorPlugin extends PluginBase {
                         SW_RADIO_SIMULATOR_MINIMUM_AGC_GAIN_DB) },
             { title: 'MOD / EVENTS',
                 value: `${values.modPercent.toFixed(0)}%  ⚡${values.staticRate.toFixed(1)}  ▲${values.clipRate.toFixed(1)}`,
-                level: eventActive ? 1 : values.modPercent / 160 }
+                level: values.modPercent / 160 }
         ];
         cards.forEach((card, index) => {
             const column = index % columns;

@@ -13,9 +13,9 @@ EffeTune DSP v0.1.0 is an MIT-licensed audio processing library with 76 catalog-
 
 Process arrays and files offline, keep state across a continuous stream, or run the package-owned AudioWorklet in a browser. The EffeTune app is an optional visual preset editor; the Python and JavaScript packages work independently.
 
-<p class="dsp-release-state"><strong>Release state:</strong> cohort: unreleased; python: unreleased; npm: unreleased; githubRelease: unreleased.</p>
+<p class="dsp-release-state"><strong>Release state:</strong> cohort: published; python: published (0.1.0); npm: published (0.1.0); githubRelease: published (0.1.0).</p>
 
-[Python Start](/dsp/getting-started/python/){: .dsp-cta .is-disabled } · [JavaScript Start](/dsp/getting-started/javascript/){: .dsp-cta .is-disabled } · [AudioWorklet Start](/dsp/getting-started/audioworklet/){: .dsp-cta .is-disabled } · [CLI Start](/dsp/getting-started/cli/){: .dsp-cta .is-disabled }
+[Python Start](/dsp/getting-started/python/){: .dsp-cta } · [JavaScript Start](/dsp/getting-started/javascript/){: .dsp-cta } · [AudioWorklet Start](/dsp/getting-started/audioworklet/){: .dsp-cta } · [CLI Start](/dsp/getting-started/cli/){: .dsp-cta }
 
 Try the [live demo](/dsp/demo/) or follow the [schema-driven agent recipe](/dsp/cookbook/schema-driven-agent/).
 
@@ -64,3 +64,9 @@ Package identities are `effetune` on PyPI and `@effetune/dsp` on npm. Source: [F
 ## Continue
 
 [Concepts](/dsp/concepts/processing-model/) · [Compatibility](/dsp/reference/compatibility/) · [Verification](/dsp/reference/verification/) · [Release integrity](/dsp/reference/release-integrity/) · [FAQ](/dsp/faq/) · [Chain schema](/dsp/schemas/chain-v1.schema.json) · [Bundle schema](/dsp/schemas/bundle-v1.schema.json)
+
+## Links
+
+[Source Code](https://github.com/Frieve-A/effetune)
+
+[Support on Ko-fi](https://ko-fi.com/frievea)

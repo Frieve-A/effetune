@@ -4357,10 +4357,30 @@ class PluginProcessor extends AudioWorkletProcessor {
     }
 }
 
+class RealtimeOutputKeepaliveProcessor extends AudioWorkletProcessor {
+    constructor() {
+        super();
+        this.active = true;
+        this.port.onmessage = event => {
+            if (event.data?.type === 'stop') this.active = false;
+        };
+    }
+
+    process() {
+        return this.active;
+    }
+}
+
 // Ensure the processor is registered with the correct name
 try {
     registerProcessor('plugin-processor', PluginProcessor);
 } catch (error) {
     console.error("Failed to register PluginProcessor:", error);
     // Fallback or error handling
+}
+
+try {
+    registerProcessor('realtime-output-keepalive-processor', RealtimeOutputKeepaliveProcessor);
+} catch (error) {
+    console.error("Failed to register RealtimeOutputKeepaliveProcessor:", error);
 }

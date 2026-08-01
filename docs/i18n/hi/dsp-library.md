@@ -11,15 +11,15 @@ permalink: /dsp/hi/
 यह एक संक्षिप्त प्रवेश पृष्ठ है। v0.1.0 का पूरा दस्तावेज़ अंग्रेज़ी में रखा जाता है।
 
 Documentation version: **0.1.0**
-Release cohort: **unreleased**
+Release cohort: **published**
 
 <!-- DSP-RELEASE-NOTICE -->
 
 ## प्रकाशन स्थिति
 
-- python: **अप्रकाशित**
-- npm: **अप्रकाशित**
-- githubRelease: **अप्रकाशित**
+- python: **प्रकाशित और सत्यापित** (0.1.0)
+- npm: **प्रकाशित और सत्यापित** (0.1.0)
+- githubRelease: **प्रकाशित और सत्यापित** (0.1.0)
 
 - [पूरा अंग्रेज़ी दस्तावेज़](/dsp/)
 - [लाइव डेमो](/dsp/demo/)

@@ -502,6 +502,35 @@ test('audio context state changes reset non-darwin managers or no-op without a r
   });
 });
 
+test('realtime output keepalive uses one zero-output automatic-pull worklet', async () => {
+  await withAudioGlobals({ AudioWorkletNode: null, window: {} }, async ({ calls }) => {
+    globalThis.AudioWorkletNode = createAudioWorkletNodeClass(calls);
+    const manager = new AudioContextManager();
+    manager.audioContext = { id: 'context' };
+    manager.workletNode = { id: 'main-worklet' };
+
+    assert.equal(manager.setRealtimeOutputKeepaliveEnabled(true), true);
+    assert.equal(manager.setRealtimeOutputKeepaliveEnabled(true), true);
+
+    const creations = calls.filter(call => call[0] === 'newAudioWorkletNode');
+    assert.equal(creations.length, 1);
+    assert.equal(creations[0][2], 'realtime-output-keepalive-processor');
+    assert.deepEqual(creations[0][3], {
+      numberOfInputs: 1,
+      numberOfOutputs: 0,
+      channelCount: 1,
+      channelCountMode: 'explicit',
+      channelInterpretation: 'discrete'
+    });
+
+    assert.equal(manager.setRealtimeOutputKeepaliveEnabled(false), false);
+    assert.equal(manager.realtimeOutputKeepaliveNode, null);
+    assert.deepEqual(calls.filter(call => call[0] === 'workletPostMessage').map(call => call[1]), [
+      { type: 'stop' }
+    ]);
+  });
+});
+
 test('loadAudioWorklet creates a configured worklet and applies pending audio config', async () => {
   await withAudioGlobals({
     AudioWorkletNode: null,

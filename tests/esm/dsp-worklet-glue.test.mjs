@@ -221,6 +221,7 @@ async function instantiateDspBinding(payload, options) {
   const warnings = [];
   const factories = [];
   let ProcessorClass = null;
+  let KeepaliveProcessorClass = null;
   const binding = options.binding ?? createBinding(options.bindingOptions);
   class FakePort {
     constructor() {
@@ -260,12 +261,18 @@ async function instantiateDspBinding(payload, options) {
       return binding;
     },
     registerProcessor(name, constructor) {
-      assert.equal(name, 'plugin-processor');
-      ProcessorClass = constructor;
+      if (name === 'plugin-processor') {
+        ProcessorClass = constructor;
+      } else if (name === 'realtime-output-keepalive-processor') {
+        KeepaliveProcessorClass = constructor;
+      } else {
+        assert.fail(`Unexpected processor registration: ${name}`);
+      }
     }
   };
   vm.runInNewContext(injected, sandbox, { filename: processorPath });
   assert.ok(ProcessorClass);
+  assert.ok(KeepaliveProcessorClass);
   const processor = new ProcessorClass({
     processorOptions: {
       initialOutputChannelCount: options.outputChannels ?? 2,
@@ -276,7 +283,7 @@ async function instantiateDspBinding(payload, options) {
     processor.port.onmessage({ data });
     await flushAsyncWork();
   };
-  return { binding, factories, posts, processor, send, warnings };
+  return { binding, factories, posts, processor, send, warnings, KeepaliveProcessorClass };
 }
 
 function pluginConfig(overrides = {}) {
@@ -293,6 +300,15 @@ function pluginConfig(overrides = {}) {
     ...overrides
   };
 }
+
+test('realtime output keepalive remains active until the host stops it', async () => {
+  const { KeepaliveProcessorClass } = await createWorkletHarness();
+  const processor = new KeepaliveProcessorClass();
+
+  assert.equal(processor.process(), true);
+  processor.port.onmessage({ data: { type: 'stop' } });
+  assert.equal(processor.process(), false);
+});
 
 function roomEqPluginConfig(overrides = {}) {
   return pluginConfig({

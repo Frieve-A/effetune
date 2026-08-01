@@ -13,6 +13,9 @@ _site/
 .jekyll-cache/
 .jekyll-metadata
 
+# Tests
+/tests/
+
 # Logs
 logs
 *.log

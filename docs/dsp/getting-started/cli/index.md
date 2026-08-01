@@ -10,7 +10,11 @@ permalink: /dsp/getting-started/cli/
 Use this path to validate a Chain and render files with the Python package.
 
 <!-- DSP-RELEASE-NOTICE -->
-> **Release state:** python is **unreleased**. The public install command is intentionally disabled until a version-matched smoke test passes.
+> **Release state:** python is **published** for 0.1.0. The verified package matches these 0.1.0 docs.
+
+```console
+pip install effetune==0.1.0
+```
 
 Save the following as `start.py` and run `python start.py`. It creates both
 `input.wav` and `volume.json` without ffmpeg:

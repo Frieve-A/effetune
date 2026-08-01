@@ -258,7 +258,7 @@ export function validateReleaseState(release) {
     }
     if (surface === 'githubRelease' && state.assetUrl !== undefined) {
       const expectedPrefix =
-        `${officialReleasePrefix}v${state.verifiedVersion}/`;
+        `${officialReleasePrefix}dsp-v${state.verifiedVersion}/`;
       const assetName = state.assetUrl.startsWith(expectedPrefix)
         ? state.assetUrl.slice(expectedPrefix.length)
         : '';
@@ -1011,6 +1011,12 @@ function landingPage(catalog, release, convenienceExports) {
       '[Verification](/dsp/reference/verification/) · [Release integrity](/dsp/reference/release-integrity/) · ' +
       '[FAQ](/dsp/faq/) · [Chain schema](/dsp/schemas/chain-v1.schema.json) · ' +
       '[Bundle schema](/dsp/schemas/bundle-v1.schema.json)',
+    '',
+    '## Links',
+    '',
+    '[Source Code](https://github.com/Frieve-A/effetune)',
+    '',
+    '[Support on Ko-fi](https://ko-fi.com/frievea)',
     ''
   ].join('\n');
 }
@@ -1074,7 +1080,7 @@ function staticPages(sources) {
 Use this path to process a planar NumPy array.
 
 ${installNotice(release, 'python')}
-${packageInstall(release, 'python', 'pip install effetune')}
+${packageInstall(release, 'python', `pip install effetune==${release.docsVersion}`)}
 
 Wheels target CPython 3.10+ on manylinux x86-64, Windows AMD64, macOS Intel, and
 macOS Apple Silicon. musllinux is not provided. Input must be C-contiguous
@@ -1113,7 +1119,7 @@ sf.write("output.wav", output.T, sample_rate, subtype="FLOAT")`)}
 Use this path for offline processing in Node.js or a browser module.
 
 ${installNotice(release, 'npm')}
-${packageInstall(release, 'npm', 'npm install @effetune/dsp')}
+${packageInstall(release, 'npm', `npm install @effetune/dsp@${release.docsVersion}`)}
 
 The package is ESM-only. Save the example as \`start.mjs\` and run
 \`node start.mjs\`, or set \`"type": "module"\` in the consumer's
@@ -1141,6 +1147,8 @@ a rejected stream block does not change filter state.
 Use this path to run the package-owned WASM processor in a browser audio graph.
 
 ${installNotice(release, 'npm')}
+${packageInstall(release, 'npm', `npm install @effetune/dsp@${release.docsVersion}`)}
+
 Serve the app over HTTPS or localhost. Direct \`file:\` loading is unsupported because
 ordinary browser module, AudioWorklet, and WASM security rules generally reject it.
 Start from a user gesture, keep processor/WASM/meta assets same-origin with correct MIME
@@ -1181,6 +1189,8 @@ Scheduled frame events belong to Python/JavaScript streams, not this Worklet API
 Use this path to validate a Chain and render files with the Python package.
 
 ${installNotice(release, 'python')}
+${packageInstall(release, 'python', `pip install effetune==${release.docsVersion}`)}
+
 Save the following as \`start.py\` and run \`python start.py\`. It creates both
 \`input.wav\` and \`volume.json\` without ffmpeg:
 
@@ -1440,6 +1450,7 @@ measurement, resampling, ffmpeg, LUFS, and true-peak tools are not v0.1 capabili
 
   add('python-api', `
 ${installNotice(release, 'python')}
+${packageInstall(release, 'python', `pip install effetune==${release.docsVersion}`)}
 
 These signatures summarize the typed public surface. The installed \`py.typed\`
 package and generated effect stubs remain authoritative for individual effect options;
@@ -1581,6 +1592,7 @@ lifecycle operations. All derive from \`EffeTuneError\`.
 
   add('javascript-api', `
 ${installNotice(release, 'npm')}
+${packageInstall(release, 'npm', `npm install @effetune/dsp@${release.docsVersion}`)}
 
 The package is ESM-only. These signatures follow the shipped \`index.d.ts\` and
 \`worklet.d.ts\`. The generated declarations remain authoritative for individual
@@ -1830,9 +1842,20 @@ partial/incomplete release cohort rather than changing that surface status.
 `);
 
   add('faq', `
-**Why does the registry return 404?** The package is not yet published or its smoke test
-is incomplete. Use the CI candidate named by the release process; do not install an
-older version and assume it matches these docs.
+**How do I install the registry release?** Registry availability is tracked
+independently for each package.
+
+**Python package**
+
+${installNotice(release, 'python')}
+${packageInstall(release, 'python', `pip install effetune==${release.docsVersion}`)}
+
+**JavaScript package**
+
+${installNotice(release, 'npm')}
+${packageInstall(release, 'npm', `npm install @effetune/dsp@${release.docsVersion}`)}
+
+Use the version shown by the documentation when reproducibility matters.
 
 **Why does my Python array fail?** Use finite C-contiguous planar \`float32\` shaped
 \`(channels, frames)\`.
@@ -2021,7 +2044,7 @@ function navYaml(routes) {
   return `${lines.join('\n')}\n`;
 }
 
-function generatedOutputs(sources) {
+export function generatedOutputs(sources) {
   const { catalog, overlay, mapping, routes, release, locales } = sources;
   routeMap(routes);
   const appSections = extractAppSections(catalog, overlay, mapping);

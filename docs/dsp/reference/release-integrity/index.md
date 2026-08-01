@@ -12,13 +12,14 @@ tarball includes the PFFFT notice. Release automation builds and clean-installs
 candidates, checks goldens, emits checksums, an SPDX SBOM, and provenance attestations.
 
 <!-- DSP-RELEASE-NOTICE -->
-> **Release state:** python is **unreleased**. The public install command is intentionally disabled until a version-matched smoke test passes.
+> **Release state:** python is **published** for 0.1.0. The verified package matches these 0.1.0 docs.
 
 <!-- DSP-RELEASE-NOTICE -->
-> **Release state:** npm is **unreleased**. The public install command is intentionally disabled until a version-matched smoke test passes.
+> **Release state:** npm is **published** for 0.1.0. The verified package matches these 0.1.0 docs.
 
 <!-- DSP-RELEASE-NOTICE -->
-> **Release state:** githubRelease is **unreleased**. The public install command is intentionally disabled until a version-matched smoke test passes.
+> **Release state:** githubRelease is **published** for 0.1.0. The verified package matches these 0.1.0 docs.
+> [Verified public Release asset](https://github.com/Frieve-A/effetune/releases/download/dsp-v0.1.0/effetune-dsp-0.1.0.tgz)
 
 
 Only an existing, version-verified public asset receives a link. A surface can be

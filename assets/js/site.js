@@ -550,7 +550,8 @@
   function setupLanguageControls(language) {
     const select = document.querySelector("[data-language-select]");
     if (select) {
-      select.value = language;
+      const pageInfo = getLocalizablePageInfo(window.location.pathname);
+      select.value = pageInfo.area === "dsp" ? pageInfo.currentLanguage : language;
       select.addEventListener("change", () => {
         const nextLanguage = toSupportedLanguageCode(select.value);
         writeStoredLanguage(nextLanguage);
@@ -645,6 +646,9 @@
   }
 
   function redirectToPreferredLanguage(language) {
+    const pageInfo = getLocalizablePageInfo(window.location.pathname);
+    if (pageInfo.area === "dsp" && pageInfo.currentLanguage === "en") return;
+
     const target = getLanguageTarget(language);
     if (!target) return;
 

@@ -3,6 +3,7 @@
 <div class="doc-primary-actions" aria-label="主な操作">
   <a class="button button-primary" href="https://effetune.frieve.com/effetune.html">Webアプリを開く</a>
   <install class="button button-secondary"><a href="https://effetune.frieve.com/effetune.html">PWA版をインストール</a></install>
+  <a class="button button-secondary" href="/dsp/">DSP Library</a>
   <a class="button button-secondary" href="https://github.com/Frieve-A/effetune/releases/">デスクトップアプリをダウンロード</a>
   <a class="button button-secondary" href="https://github.com/Frieve-A/effetune-mixwright/releases">VST版をダウンロード</a>
 </div>

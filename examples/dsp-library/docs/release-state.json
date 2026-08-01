@@ -2,8 +2,12 @@
   "schemaVersion": 1,
   "docsVersion": "0.1.0",
   "surfaces": {
-    "python": { "status": "unreleased" },
-    "npm": { "status": "unreleased" },
-    "githubRelease": { "status": "unreleased" }
+    "python": { "status": "published", "verifiedVersion": "0.1.0" },
+    "npm": { "status": "published", "verifiedVersion": "0.1.0" },
+    "githubRelease": {
+      "status": "published",
+      "verifiedVersion": "0.1.0",
+      "assetUrl": "https://github.com/Frieve-A/effetune/releases/download/dsp-v0.1.0/effetune-dsp-0.1.0.tgz"
+    }
   }
 }

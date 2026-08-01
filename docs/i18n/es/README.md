@@ -3,6 +3,7 @@
 <div class="doc-primary-actions" aria-label="Acciones principales">
   <a class="button button-primary" href="https://effetune.frieve.com/effetune.html">Abrir aplicación web</a>
   <install class="button button-secondary"><a href="https://effetune.frieve.com/effetune.html">Instalar versión PWA</a></install>
+  <a class="button button-secondary" href="/dsp/">DSP Library</a>
   <a class="button button-secondary" href="https://github.com/Frieve-A/effetune/releases/">Descargar aplicación de escritorio</a>
   <a class="button button-secondary" href="https://github.com/Frieve-A/effetune-mixwright/releases">Descargar versión VST</a>
 </div>

@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   expandPublicPath,
+  generatedOutputs,
   packageSummary,
   releaseCohort,
   routeMap,
@@ -36,6 +37,15 @@ const routes = JSON.parse(fs.readFileSync(path.join(
 const npmPackage = JSON.parse(fs.readFileSync(path.join(
   repoRoot, 'dsp', 'bindings', 'js', 'package.json'
 ), 'utf8'));
+const releaseState = JSON.parse(fs.readFileSync(path.join(
+  repoRoot, 'examples', 'dsp-library', 'docs', 'release-state.json'
+), 'utf8'));
+
+function generatedRoute(outputs, routeId) {
+  const route = routes.routes.find(entry => entry.id === routeId);
+  assert.ok(route?.output, `Missing generated route output: ${routeId}`);
+  return outputs.get(path.resolve(repoRoot, route.output));
+}
 
 function slugForType(type) {
   return type
@@ -176,6 +186,36 @@ test('localized DSP pages remain short versioned entry points', () => {
   }
 });
 
+test('published DSP release exposes version-matched public install commands', () => {
+  assert.equal(releaseCohort(releaseState), 'published');
+  for (const surface of ['python', 'npm', 'githubRelease']) {
+    assert.deepEqual(
+      [releaseState.surfaces[surface].status, releaseState.surfaces[surface].verifiedVersion],
+      ['published', releaseState.docsVersion]
+    );
+  }
+
+  const { outputs } = runDocsGenerator({ check: true });
+  const commands = {
+    python: `pip install effetune==${releaseState.docsVersion}`,
+    npm: `npm install @effetune/dsp@${releaseState.docsVersion}`
+  };
+  for (const route of routes.routes.filter(entry => entry.installSurfaces?.length)) {
+    const source = generatedRoute(outputs, route.id);
+    assert.ok(source, route.id);
+    for (const surface of route.installSurfaces) {
+      const command = commands[surface];
+      assert.ok(command, `Unknown install surface: ${surface}`);
+      assert.ok(source.includes(command), `${route.id}:${surface}`);
+    }
+  }
+
+  const landing = generatedRoute(outputs, 'landing');
+  const faq = generatedRoute(outputs, 'faq');
+  assert.doesNotMatch(landing, /\.dsp-cta \.is-disabled/);
+  assert.doesNotMatch(faq, /registry return 404|package is not yet published/i);
+});
+
 test('route and non-route manifests declare every generated output', () => {
   const { outputs, sources } = runDocsGenerator({ check: true });
   const actual = new Set([...outputs.keys()].map(filePath =>
@@ -284,8 +324,9 @@ test('analyzer telemetry documentation matches the public Phase 1 facade', () =>
 });
 
 test('release states fail closed and derive a separate cohort state', () => {
+  const docsVersion = releaseState.docsVersion;
   const unreleased = {
-    docsVersion: '0.1.0',
+    docsVersion,
     surfaces: {
       python: { status: 'unreleased' },
       npm: { status: 'unreleased' },
@@ -296,17 +337,18 @@ test('release states fail closed and derive a separate cohort state', () => {
   const partial = structuredClone(unreleased);
   partial.surfaces.python = {
     status: 'published-unverified',
-    verifiedVersion: '0.1.0'
+    verifiedVersion: docsVersion
   };
   assert.equal(validateReleaseState(partial), 'partial/incomplete');
   assert.equal(releaseCohort(partial), 'partial/incomplete');
   const published = structuredClone(unreleased);
-  published.surfaces.python = { status: 'published', verifiedVersion: '0.1.0' };
-  published.surfaces.npm = { status: 'published', verifiedVersion: '0.1.0' };
+  published.surfaces.python = { status: 'published', verifiedVersion: docsVersion };
+  published.surfaces.npm = { status: 'published', verifiedVersion: docsVersion };
   published.surfaces.githubRelease = {
     status: 'published',
-    verifiedVersion: '0.1.0',
-    assetUrl: 'https://github.com/Frieve-A/effetune/releases/download/v0.1.0/file'
+    verifiedVersion: docsVersion,
+    assetUrl:
+      `https://github.com/Frieve-A/effetune/releases/download/dsp-v${docsVersion}/file`
   };
   assert.equal(validateReleaseState(published), 'published');
   const previous = structuredClone(published);
@@ -316,7 +358,7 @@ test('release states fail closed and derive a separate cohort state', () => {
     status: 'published',
     verifiedVersion: '0.0.9',
     assetUrl:
-      'https://github.com/Frieve-A/effetune/releases/download/v0.0.9/effetune-0.0.9.zip'
+      'https://github.com/Frieve-A/effetune/releases/download/dsp-v0.0.9/effetune-0.0.9.zip'
   };
   assert.equal(validateReleaseState(previous), 'partial/incomplete');
   assert.equal(releaseCohort(previous), 'partial/incomplete');
@@ -325,7 +367,7 @@ test('release states fail closed and derive a separate cohort state', () => {
       ...published,
       surfaces: {
         ...published.surfaces,
-        githubRelease: { status: 'published', verifiedVersion: '0.1.0' }
+        githubRelease: { status: 'published', verifiedVersion: docsVersion }
       }
     }),
     /assetUrl/
@@ -347,7 +389,7 @@ test('release states fail closed and derive a separate cohort state', () => {
         ...partial.surfaces,
         githubRelease: {
           status: 'published-unverified',
-          verifiedVersion: '0.1.0',
+          verifiedVersion: docsVersion,
           assetUrl: 'https://example.test/release.zip'
         }
       }
@@ -361,7 +403,7 @@ test('release states fail closed and derive a separate cohort state', () => {
         ...partial.surfaces,
         githubRelease: {
           status: 'published-unverified',
-          verifiedVersion: '0.1.0',
+          verifiedVersion: docsVersion,
           assetUrl:
             'https://github.com/Frieve-A/effetune/releases/download/v0.1.1/release.zip'
         }
@@ -369,6 +411,51 @@ test('release states fail closed and derive a separate cohort state', () => {
     }),
     /exact verified version/
   );
+});
+
+test('FAQ registry guidance follows each generated release surface state', () => {
+  const { sources } = runDocsGenerator({ check: true });
+  const docsVersion = releaseState.docsVersion;
+  const commands = {
+    python: `pip install effetune==${docsVersion}`,
+    npm: `npm install @effetune/dsp@${docsVersion}`
+  };
+  const verification = `The verified package matches these ${docsVersion} docs.`;
+  const faqFor = release => generatedRoute(
+    generatedOutputs({ ...sources, release }),
+    'faq'
+  );
+
+  const publishedFaq = faqFor(releaseState);
+  assert.ok(publishedFaq.includes(commands.python));
+  assert.ok(publishedFaq.includes(commands.npm));
+  assert.equal(publishedFaq.split(verification).length - 1, 2);
+
+  const unreleased = {
+    ...releaseState,
+    surfaces: {
+      python: { status: 'unreleased' },
+      npm: { status: 'unreleased' },
+      githubRelease: { status: 'unreleased' }
+    }
+  };
+  assert.equal(validateReleaseState(unreleased), 'unreleased');
+  const unreleasedFaq = faqFor(unreleased);
+  assert.ok(!unreleasedFaq.includes(commands.python));
+  assert.ok(!unreleasedFaq.includes(commands.npm));
+  assert.ok(!unreleasedFaq.includes(verification));
+
+  const partial = structuredClone(unreleased);
+  partial.surfaces.python = { status: 'published', verifiedVersion: docsVersion };
+  partial.surfaces.npm = {
+    status: 'published',
+    verifiedVersion: `${docsVersion}-mismatch`
+  };
+  assert.equal(validateReleaseState(partial), 'partial/incomplete');
+  const partialFaq = faqFor(partial);
+  assert.ok(partialFaq.includes(commands.python));
+  assert.ok(!partialFaq.includes(commands.npm));
+  assert.equal(partialFaq.split(verification).length - 1, 1);
 });
 
 test('navigation authority rejects missing, duplicate, and non-launch route IDs', () => {

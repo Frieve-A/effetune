@@ -75,6 +75,42 @@ test('PluginBase adds packed parameters to direct worklet updates', () => {
   assert.deepEqual(payload.parameters, { gain: 0.25, enabled: true });
 });
 
+test('PluginBase commits Mix keepalive transitions through the AudioManager mutation', () => {
+  const runtime = loadPluginBase();
+  const plugin = createPlugin(runtime);
+  let mix = 0;
+  let urlUpdates = 0;
+  const commits = [];
+  const keepaliveStates = [];
+  plugin.getParameters = () => ({ mix });
+  plugin.getTemporalCapability = () => mix > 0 ? 'must-process' : 'reset-on-resume';
+  runtime.windowRef.uiManager = { updateURL: () => { urlUpdates++; } };
+  runtime.windowRef.audioManager = {
+    commitPowerTopologyMutation(message, options) {
+      commits.push({ message, options });
+      runtime.windowRef.workletNode.port.postMessage(message);
+      keepaliveStates.push(plugin.getTemporalCapability() === 'must-process');
+    }
+  };
+
+  plugin.updateParameters();
+  mix = 100;
+  plugin.updateParameters();
+  mix = 0;
+  plugin.updateParameters();
+
+  assert.deepEqual(keepaliveStates, [false, true, false]);
+  assert.equal(commits.length, 3);
+  assert.equal(runtime.messages.length, 3);
+  assert.deepEqual(commits.map(commit => commit.options.reason), [
+    'plugin-parameter-update',
+    'plugin-parameter-update',
+    'plugin-parameter-update'
+  ]);
+  assert.deepEqual(runtime.messages.map(message => message.plugin.parameters.mix), [0, 100, 0]);
+  assert.equal(urlUpdates, 3);
+});
+
 test('PluginBase keeps JS payloads usable and reports a broken packer once', () => {
   const runtime = loadPluginBase({
     packer: {

@@ -3,6 +3,7 @@
 <div class="doc-primary-actions" aria-label="주요 작업">
   <a class="button button-primary" href="https://effetune.frieve.com/effetune.html">웹 앱 열기</a>
   <install class="button button-secondary"><a href="https://effetune.frieve.com/effetune.html">PWA 버전 설치</a></install>
+  <a class="button button-secondary" href="/dsp/">DSP Library</a>
   <a class="button button-secondary" href="https://github.com/Frieve-A/effetune/releases/">데스크톱 앱 다운로드</a>
   <a class="button button-secondary" href="https://github.com/Frieve-A/effetune-mixwright/releases">VST 버전 다운로드</a>
 </div>
