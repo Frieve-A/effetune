@@ -1319,7 +1319,6 @@ double loudnessDeltaDb(const std::vector<float> &source, float processing) {
   harness.stage(params);
   double input_power = 0.0;
   double output_power = 0.0;
-  std::uint32_t count = 0u;
   std::uint32_t absolute = 0u;
   const auto total = static_cast<std::uint32_t>(source.size());
   while (absolute < total) {
@@ -1338,7 +1337,6 @@ double loudnessDeltaDb(const std::vector<float> &source, float processing) {
       input_power += static_cast<double>(source[absolute + frame]) *
                      static_cast<double>(source[absolute + frame]);
       output_power += static_cast<double>(audio[frame]) * static_cast<double>(audio[frame]);
-      ++count;
     }
     absolute += frames;
   }
