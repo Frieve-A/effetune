@@ -1,67 +1,32 @@
 {
   "formatVersion": 1,
   "type": "AutoLevelerPlugin",
-  "id": "parameter-transitions",
+  "id": "surround51-48000",
   "stimulus": "noise",
   "sampleRate": 48000,
-  "channels": 2,
-  "frameCount": 1237,
-  "blockSize": 64,
+  "channels": 6,
+  "frameCount": 1093,
+  "blockSize": 96,
   "channelMode": "stereo",
   "channel": null,
   "caseIndex": 7,
   "seed": "0xeffe7a59",
   "params": {
-    "tg": -18,
-    "tw": 3000,
-    "mg": 0,
-    "ng": -12,
-    "at": 50,
-    "rt": 5000,
-    "gt": -60
+    "tg": -20,
+    "tw": 1000,
+    "mg": 12,
+    "ng": -36,
+    "at": 1,
+    "rt": 10,
+    "gt": -96
   },
-  "events": [
-    {
-      "frame": 31,
-      "params": {
-        "tg": -6,
-        "mg": 12,
-        "at": 1
-      }
-    },
-    {
-      "frame": 128,
-      "params": {
-        "ng": -36,
-        "rt": 10,
-        "gt": -96
-      }
-    },
-    {
-      "frame": 513,
-      "params": {
-        "tw": 1000,
-        "tg": -36,
-        "gt": -24
-      }
-    },
-    {
-      "frame": 1001,
-      "params": {
-        "tw": 10000,
-        "mg": 0,
-        "ng": 0,
-        "at": 1000,
-        "rt": 10000
-      }
-    }
-  ],
+  "events": [],
   "tolerance": {
     "abs": 0.00002,
     "policy": "per-sample"
   },
-  "jsEngineHash": "c7879957c76a762369258fa683ac8baa5dbc3f6e3f4a61810d9164a180a29311",
-  "outputFloats": 2474,
-  "byteLength": 9896,
+  "jsEngineHash": "1b8f006713bee901dddc345abee55d7fa82f5501a03fc787d5f3de57fa0795e6",
+  "outputFloats": 6558,
+  "byteLength": 26232,
   "binary": "case-008.f32"
 }

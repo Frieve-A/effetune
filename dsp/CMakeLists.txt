@@ -57,9 +57,10 @@ file(
 list(APPEND EFFETUNE_DSP_SOURCES ${EFFETUNE_PLUGIN_SOURCES})
 
 if(NOT EMSCRIPTEN)
-  # JS golden parity requires separate multiply-add rounding in this recursive kernel.
+  # JS golden parity requires separate multiply-add rounding in these kernels.
   set_property(
-    SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/plugins/lofi/vinyl_artifacts/kernel.cpp"
+    SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/plugins/dynamics/auto_leveler/kernel.cpp"
+           "${CMAKE_CURRENT_SOURCE_DIR}/plugins/lofi/vinyl_artifacts/kernel.cpp"
     APPEND
     PROPERTY COMPILE_OPTIONS
              "$<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-ffp-contract=off>")
