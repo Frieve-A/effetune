@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>EffeTune GSM Full Rate resume WASM smoke</title>
+</head>
+<body>
+  <main>GSM Full Rate resume WASM smoke fixture ready</main>
+  <script type="module">
+    import { runCodecResumeWasmSmoke } from '/tests/browser/codec-resume-wasm-smoke.harness.mjs';
+    import {
+      GSMFullRateSimulatorPlugin_PARAMS_HASH,
+      packGSMFullRateSimulatorPluginParams
+    } from '/js/audio/dsp-params.generated.js';
+
+    // Three transcode generations keep the deepest RPE-LTP predictor and long-term-prediction
+    // history in flight, so the suspended instance holds partial codec input, queued codec output
+    // and the predictor state that a resume must either preserve or reset.
+    function run() {
+      return runCodecResumeWasmSmoke({
+        pluginType: 'GSMFullRateSimulatorPlugin',
+        label: 'GSM Full Rate',
+        parameters: { tc: 3, og: 0, mx: 100, ci: 30 },
+        pack: packGSMFullRateSimulatorPluginParams,
+        paramsHash: GSMFullRateSimulatorPlugin_PARAMS_HASH,
+        floatCount: 4
+      });
+    }
+
+    window.__gsmFullRateResumeWasmSmoke = { run };
+  </script>
+</body>
+</html>

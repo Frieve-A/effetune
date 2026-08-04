@@ -32,6 +32,7 @@
   "_et_instance_asset_abort",
   "_et_instance_asset_state",
   "_et_instance_process",
+  "_et_instance_runtime_event",
   "_et_arena_combined_ptr",
   "_et_arena_bus_ptr",
   "_et_arena_scratch_ptr",

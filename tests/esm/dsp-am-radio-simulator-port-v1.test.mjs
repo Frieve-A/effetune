@@ -420,17 +420,31 @@ test('AM Radio Simulator remains supported at 384 kHz without relaxing Room EQ',
   ]);
 
   assert.deepEqual(
-    { ...processor.wasmOnlyExecutionState({ id: 17, type: 'AMRadioSimulatorPlugin' }) },
+    { ...processor.wasmOnlyExecutionState({
+      id: 17,
+      type: 'AMRadioSimulatorPlugin',
+      executionCapabilities: { requiresWasm: true }
+    }) },
     { state: 'active', reason: null }
   );
   assert.deepEqual(
-    { ...processor.wasmOnlyExecutionState({ id: 18, type: 'RoomEqPlugin' }) },
+    { ...processor.wasmOnlyExecutionState({
+      id: 18,
+      type: 'RoomEqPlugin',
+      executionCapabilities: {
+        requiresWasm: true,
+        supportedSampleRates: [48000]
+      }
+    }) },
     { state: 'bypassed', reason: 'unsupportedSampleRate' }
   );
 });
 
 test('AM Radio Simulator integration keeps fixed anti-alias stages and accessible UI wiring', async () => {
-  const [plugin, css, registry, cmake, rollout, telemetry, readme, worklet, audioManager] = await Promise.all([
+  const [
+    plugin, css, registry, cmake, rollout, telemetry, readme, worklet, audioManager,
+    executionCapabilities
+  ] = await Promise.all([
     fs.readFile(path.join(repoRoot, 'plugins', 'lofi', 'am_radio_simulator.js'), 'utf8'),
     fs.readFile(path.join(repoRoot, 'plugins', 'lofi', 'am_radio_simulator.css'), 'utf8'),
     fs.readFile(path.join(repoRoot, 'dsp', 'registry.inc'), 'utf8'),
@@ -439,7 +453,8 @@ test('AM Radio Simulator integration keeps fixed anti-alias stages and accessibl
     fs.readFile(path.join(repoRoot, 'js', 'audio', 'telemetry-hub.js'), 'utf8'),
     fs.readFile(path.join(repoRoot, 'dsp', 'README.md'), 'utf8'),
     fs.readFile(path.join(repoRoot, 'plugins', 'audio-processor.js'), 'utf8'),
-    fs.readFile(path.join(repoRoot, 'js', 'audio-manager.js'), 'utf8')
+    fs.readFile(path.join(repoRoot, 'js', 'audio-manager.js'), 'utf8'),
+    fs.readFile(path.join(repoRoot, 'js', 'audio', 'plugin-execution-capabilities.js'), 'utf8')
   ]);
   assert.match(plugin, /AM_RADIO_SIMULATOR_TAP_STATUS\s*=\s*17/);
   assert.match(plugin, /AM_RADIO_SIMULATOR_TELEMETRY_VERSION\s*=\s*2/);
@@ -467,8 +482,8 @@ test('AM Radio Simulator integration keeps fixed anti-alias stages and accessibl
   assert.match(rollout, /'AMRadioSimulatorPlugin'/);
   assert.match(telemetry, /TAP_AM_RADIO_SIMULATOR:\s*17/);
   assert.match(readme, /Type 17\s*\(`TAP_AM_RADIO_SIMULATOR`\)/);
-  assert.match(worklet,
-    /WASM_ONLY_EXECUTION_STATE_PLUGIN_TYPES[\s\S]*'AMRadioSimulatorPlugin'/);
-  assert.match(audioManager,
-    /WASM_ONLY_EXECUTION_STATE_PLUGIN_TYPES[\s\S]*'AMRadioSimulatorPlugin'/);
+  assert.match(executionCapabilities,
+    /\['AMRadioSimulatorPlugin', UNBOUNDED_WASM_EXECUTION_CAPABILITIES\]/);
+  assert.doesNotMatch(worklet, /AMRadioSimulatorPlugin/);
+  assert.doesNotMatch(audioManager, /AMRadioSimulatorPlugin/);
 });

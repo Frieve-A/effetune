@@ -27,6 +27,7 @@ const REQUIRED_FUNCTION_EXPORTS = [
     'et_instance_asset_abort',
     'et_instance_asset_state',
     'et_instance_process',
+    'et_instance_runtime_event',
     'et_arena_combined_ptr',
     'et_arena_bus_ptr',
     'et_arena_scratch_ptr',
@@ -550,6 +551,25 @@ export class DspEngineBinding {
             paramsHash >>> 0,
             offsetFrames >>> 0
         );
+    }
+
+    instanceRuntimeEvent(instanceId) {
+        if (!this.engine || !this.prepared) return null;
+        const ptr = this.exports.et_scratch_ptr(this.engine) >>> 0;
+        this._refreshViews();
+        this._assertRange(ptr, 12, 'Runtime event state');
+        if (this.exports.et_instance_runtime_event(
+            this.engine,
+            instanceId,
+            ptr
+        ) !== ET_OK) {
+            return null;
+        }
+        return {
+            generation: this.dataView.getUint32(ptr, true),
+            latched: this.dataView.getUint32(ptr + 4, true) !== 0,
+            cause: this.dataView.getUint32(ptr + 8, true)
+        };
     }
 
     instanceSetParamBytes(instanceId, packed, paramsHash, offsetFrames = 0) {

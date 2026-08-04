@@ -84,7 +84,7 @@ defaults:
     values:
       layout: "home"
       title: "Frieve EffeTune - Real-time Audio Effect Processor"
-      description: "A real-time audio effect processor for audio enthusiasts. Features 50+ professional effects, drag-and-drop interface, and live visualization. Free for Windows, macOS, Linux, and web browsers."
+      description: "A real-time audio effect processor for audio enthusiasts. Features 80+ professional effects, drag-and-drop interface, and live visualization. Free for Windows, macOS, Linux, and web browsers."
       image: /images/ogp.jpg
       permalink: /
   # Japanese overview
@@ -93,7 +93,7 @@ defaults:
     values:
       layout: "default"
       title: "Frieve EffeTune - リアルタイムオーディオエフェクトプロセッサ"
-      description: "オーディオ愛好家のためのリアルタイムオーディオエフェクトプロセッサ。EQ、コンプレッサー、リバーブなど50以上のエフェクトを搭載。"
+      description: "オーディオ愛好家のためのリアルタイムオーディオエフェクトプロセッサ。EQ、コンプレッサー、リバーブなど80以上のエフェクトを搭載。"
       lang: "ja"
       image: /images/ogp.jpg
       permalink: /docs/i18n/ja/
@@ -103,7 +103,7 @@ defaults:
     values:
       layout: "default"
       title: "Frieve EffeTune - 실시간 오디오 이펙트 프로세서"
-      description: "오디오 애호가를 위한 실시간 오디오 이펙트 프로세서. EQ, 컴프레서, 리버브 등 50개 이상의 이펙트 제공."
+      description: "오디오 애호가를 위한 실시간 오디오 이펙트 프로세서. EQ, 컴프레서, 리버브 등 80개 이상의 이펙트 제공."
       lang: "ko"
       image: /images/ogp.jpg
       permalink: /docs/i18n/ko/
@@ -113,7 +113,7 @@ defaults:
     values:
       layout: "default"
       title: "Frieve EffeTune - 实时音频效果处理器"
-      description: "专为音频爱好者设计的实时音频效果处理器。提供50多种效果，包括EQ、压缩器、混响等。"
+      description: "专为音频爱好者设计的实时音频效果处理器。提供80多种效果，包括EQ、压缩器、混响等。"
       lang: "zh"
       image: /images/ogp.jpg
       permalink: /docs/i18n/zh/
@@ -123,7 +123,7 @@ defaults:
     values:
       layout: "default"
       title: "Frieve EffeTune - Procesador de Efectos de Audio en Tiempo Real"
-      description: "Procesador de efectos de audio en tiempo real para entusiastas del audio. Más de 50 efectos incluyendo EQ, compresor y reverb."
+      description: "Procesador de efectos de audio en tiempo real para entusiastas del audio. Más de 80 efectos incluyendo EQ, compresor y reverb."
       lang: "es"
       image: /images/ogp.jpg
       permalink: /docs/i18n/es/
@@ -133,7 +133,7 @@ defaults:
     values:
       layout: "default"
       title: "Frieve EffeTune - Processeur d'Effets Audio en Temps Réel"
-      description: "Processeur d'effets audio en temps réel pour les passionnés d'audio. Plus de 50 effets dont EQ, compresseur et réverb."
+      description: "Processeur d'effets audio en temps réel pour les passionnés d'audio. Plus de 80 effets dont EQ, compresseur et réverb."
       lang: "fr"
       image: /images/ogp.jpg
       permalink: /docs/i18n/fr/
@@ -143,7 +143,7 @@ defaults:
     values:
       layout: "default"
       title: "Frieve EffeTune - Processador de Efeitos de Áudio em Tempo Real"
-      description: "Processador de efeitos de áudio em tempo real para entusiastas de áudio. Mais de 50 efeitos incluindo EQ, compressor e reverb."
+      description: "Processador de efeitos de áudio em tempo real para entusiastas de áudio. Mais de 80 efeitos incluindo EQ, compressor e reverb."
       lang: "pt"
       image: /images/ogp.jpg
       permalink: /docs/i18n/pt/
@@ -153,7 +153,7 @@ defaults:
     values:
       layout: "default"
       title: "Frieve EffeTune - Процессор Аудиоэффектов в Реальном Времени"
-      description: "Процессор аудиоэффектов в реальном времени для аудиофилов. Более 50 эффектов, включая EQ, компрессор и ревербератор."
+      description: "Процессор аудиоэффектов в реальном времени для аудиофилов. Более 80 эффектов, включая EQ, компрессор и ревербератор."
       lang: "ru"
       image: /images/ogp.jpg
       permalink: /docs/i18n/ru/
@@ -163,7 +163,7 @@ defaults:
     values:
       layout: "default"
       title: "Frieve EffeTune - रीयल-टाइम ऑडियो इफेक्ट प्रोसेसर"
-      description: "ऑडियो प्रेमियों के लिए रीयल-टाइम ऑडियो इफेक्ट प्रोसेसर। EQ, कंप्रेसर, रिवर्ब सहित 50+ इफेक्ट्स।"
+      description: "ऑडियो प्रेमियों के लिए रीयल-टाइम ऑडियो इफेक्ट प्रोसेसर। EQ, कंप्रेसर, रिवर्ब सहित 80+ इफेक्ट्स।"
       lang: "hi"
       image: /images/ogp.jpg
       permalink: /docs/i18n/hi/
@@ -173,7 +173,7 @@ defaults:
     values:
       layout: "default"
       title: "Frieve EffeTune - معالج تأثيرات صوتية في الوقت الفعلي"
-      description: "معالج تأثيرات صوتية في الوقت الفعلي لعشاق الصوت. أكثر من 50 تأثيراً بما في ذلك EQ والضاغط والصدى."
+      description: "معالج تأثيرات صوتية في الوقت الفعلي لعشاق الصوت. أكثر من 80 تأثيراً بما في ذلك EQ والضاغط والصدى."
       lang: "ar"
       image: /images/ogp.jpg
       permalink: /docs/i18n/ar/

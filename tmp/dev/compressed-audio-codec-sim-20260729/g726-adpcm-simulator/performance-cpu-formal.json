@@ -1,0 +1,1230 @@
+{
+  "gate": "g726-adpcm-aggregate-current-thread-cpu-v1",
+  "passed": true,
+  "thresholds": {
+    "averagePercent": 15,
+    "modeledP99Percent": 50,
+    "modeledMaxPercent": 80,
+    "modeledDeadlinePercent": 100
+  },
+  "quantizationAllowanceMicroseconds": 16000,
+  "checks": [
+    {
+      "type": "G726ADPCMSimulatorPlugin",
+      "mode": "wasm",
+      "sampleRate": 96000,
+      "repetition": 1,
+      "channels": 2,
+      "blockSize": 128,
+      "quantumCount": 22500,
+      "renderedFrames": 2880000,
+      "renderedDurationSeconds": 30,
+      "cpu": {
+        "clock": "process.threadCpuUsage current-thread",
+        "userMicroseconds": 469000,
+        "systemMicroseconds": 0,
+        "totalMicroseconds": 469000
+      },
+      "outputSentinel": [
+        0,
+        0,
+        -0.015665650367736816
+      ],
+      "rawAveragePercent": 1.5633333333333332,
+      "quantizationAdjustedAveragePercent": 1.6166666666666667,
+      "maxWorkToAverageWorkRatio": 1.4359937480362266,
+      "modeledWorstFramePercent": 2.3215232259919,
+      "modeledP99Percent": 2.3215232259919,
+      "modeledMaxPercent": 2.3215232259919,
+      "modeledDeadlineMisses": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "type": "G726ADPCMSimulatorPlugin",
+      "mode": "wasm",
+      "sampleRate": 96000,
+      "repetition": 2,
+      "channels": 2,
+      "blockSize": 128,
+      "quantumCount": 22500,
+      "renderedFrames": 2880000,
+      "renderedDurationSeconds": 30,
+      "cpu": {
+        "clock": "process.threadCpuUsage current-thread",
+        "userMicroseconds": 485000,
+        "systemMicroseconds": 0,
+        "totalMicroseconds": 485000
+      },
+      "outputSentinel": [
+        0,
+        0,
+        -0.015665650367736816
+      ],
+      "rawAveragePercent": 1.6166666666666667,
+      "quantizationAdjustedAveragePercent": 1.67,
+      "maxWorkToAverageWorkRatio": 1.4359937480362266,
+      "modeledWorstFramePercent": 2.398109559220498,
+      "modeledP99Percent": 2.398109559220498,
+      "modeledMaxPercent": 2.398109559220498,
+      "modeledDeadlineMisses": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "type": "G726ADPCMSimulatorPlugin",
+      "mode": "wasm",
+      "sampleRate": 96000,
+      "repetition": 3,
+      "channels": 2,
+      "blockSize": 128,
+      "quantumCount": 22500,
+      "renderedFrames": 2880000,
+      "renderedDurationSeconds": 30,
+      "cpu": {
+        "clock": "process.threadCpuUsage current-thread",
+        "userMicroseconds": 328000,
+        "systemMicroseconds": 94000,
+        "totalMicroseconds": 422000
+      },
+      "outputSentinel": [
+        0,
+        0,
+        -0.015665650367736816
+      ],
+      "rawAveragePercent": 1.4066666666666667,
+      "quantizationAdjustedAveragePercent": 1.46,
+      "maxWorkToAverageWorkRatio": 1.4359937480362266,
+      "modeledWorstFramePercent": 2.096550872132891,
+      "modeledP99Percent": 2.096550872132891,
+      "modeledMaxPercent": 2.096550872132891,
+      "modeledDeadlineMisses": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "type": "G726ADPCMSimulatorPlugin",
+      "mode": "simd",
+      "sampleRate": 96000,
+      "repetition": 1,
+      "channels": 2,
+      "blockSize": 128,
+      "quantumCount": 22500,
+      "renderedFrames": 2880000,
+      "renderedDurationSeconds": 30,
+      "cpu": {
+        "clock": "process.threadCpuUsage current-thread",
+        "userMicroseconds": 453000,
+        "systemMicroseconds": 0,
+        "totalMicroseconds": 453000
+      },
+      "outputSentinel": [
+        0,
+        0,
+        -0.015665650367736816
+      ],
+      "rawAveragePercent": 1.51,
+      "quantizationAdjustedAveragePercent": 1.5633333333333332,
+      "maxWorkToAverageWorkRatio": 1.4359937480362266,
+      "modeledWorstFramePercent": 2.2449368927633007,
+      "modeledP99Percent": 2.2449368927633007,
+      "modeledMaxPercent": 2.2449368927633007,
+      "modeledDeadlineMisses": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "type": "G726ADPCMSimulatorPlugin",
+      "mode": "simd",
+      "sampleRate": 96000,
+      "repetition": 2,
+      "channels": 2,
+      "blockSize": 128,
+      "quantumCount": 22500,
+      "renderedFrames": 2880000,
+      "renderedDurationSeconds": 30,
+      "cpu": {
+        "clock": "process.threadCpuUsage current-thread",
+        "userMicroseconds": 406000,
+        "systemMicroseconds": 47000,
+        "totalMicroseconds": 453000
+      },
+      "outputSentinel": [
+        0,
+        0,
+        -0.015665650367736816
+      ],
+      "rawAveragePercent": 1.51,
+      "quantizationAdjustedAveragePercent": 1.5633333333333332,
+      "maxWorkToAverageWorkRatio": 1.4359937480362266,
+      "modeledWorstFramePercent": 2.2449368927633007,
+      "modeledP99Percent": 2.2449368927633007,
+      "modeledMaxPercent": 2.2449368927633007,
+      "modeledDeadlineMisses": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "type": "G726ADPCMSimulatorPlugin",
+      "mode": "simd",
+      "sampleRate": 96000,
+      "repetition": 3,
+      "channels": 2,
+      "blockSize": 128,
+      "quantumCount": 22500,
+      "renderedFrames": 2880000,
+      "renderedDurationSeconds": 30,
+      "cpu": {
+        "clock": "process.threadCpuUsage current-thread",
+        "userMicroseconds": 437000,
+        "systemMicroseconds": 15000,
+        "totalMicroseconds": 452000
+      },
+      "outputSentinel": [
+        0,
+        0,
+        -0.015665650367736816
+      ],
+      "rawAveragePercent": 1.5066666666666666,
+      "quantizationAdjustedAveragePercent": 1.56,
+      "maxWorkToAverageWorkRatio": 1.4359937480362266,
+      "modeledWorstFramePercent": 2.2401502469365138,
+      "modeledP99Percent": 2.2401502469365138,
+      "modeledMaxPercent": 2.2401502469365138,
+      "modeledDeadlineMisses": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "type": "G726ADPCMSimulatorPlugin",
+      "mode": "wasm",
+      "sampleRate": 352800,
+      "repetition": 1,
+      "channels": 2,
+      "blockSize": 128,
+      "quantumCount": 82688,
+      "renderedFrames": 10584064,
+      "renderedDurationSeconds": 30.00018140589569,
+      "cpu": {
+        "clock": "process.threadCpuUsage current-thread",
+        "userMicroseconds": 781000,
+        "systemMicroseconds": 187000,
+        "totalMicroseconds": 968000
+      },
+      "outputSentinel": [
+        0,
+        0,
+        -0.10584286600351334
+      ],
+      "rawAveragePercent": 3.2266471555727554,
+      "quantizationAdjustedAveragePercent": 3.2799801664086687,
+      "maxWorkToAverageWorkRatio": 1.400603650655766,
+      "modeledWorstFramePercent": 4.5939521951504885,
+      "modeledP99Percent": 4.5939521951504885,
+      "modeledMaxPercent": 4.5939521951504885,
+      "modeledDeadlineMisses": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "type": "G726ADPCMSimulatorPlugin",
+      "mode": "wasm",
+      "sampleRate": 352800,
+      "repetition": 2,
+      "channels": 2,
+      "blockSize": 128,
+      "quantumCount": 82688,
+      "renderedFrames": 10584064,
+      "renderedDurationSeconds": 30.00018140589569,
+      "cpu": {
+        "clock": "process.threadCpuUsage current-thread",
+        "userMicroseconds": 985000,
+        "systemMicroseconds": 16000,
+        "totalMicroseconds": 1001000
+      },
+      "outputSentinel": [
+        0,
+        0,
+        -0.10584286600351334
+      ],
+      "rawAveragePercent": 3.3366464904218267,
+      "quantizationAdjustedAveragePercent": 3.38997950125774,
+      "maxWorkToAverageWorkRatio": 1.400603650655766,
+      "modeledWorstFramePercent": 4.748017665109804,
+      "modeledP99Percent": 4.748017665109804,
+      "modeledMaxPercent": 4.748017665109804,
+      "modeledDeadlineMisses": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "type": "G726ADPCMSimulatorPlugin",
+      "mode": "wasm",
+      "sampleRate": 352800,
+      "repetition": 3,
+      "channels": 2,
+      "blockSize": 128,
+      "quantumCount": 82688,
+      "renderedFrames": 10584064,
+      "renderedDurationSeconds": 30.00018140589569,
+      "cpu": {
+        "clock": "process.threadCpuUsage current-thread",
+        "userMicroseconds": 969000,
+        "systemMicroseconds": 15000,
+        "totalMicroseconds": 984000
+      },
+      "outputSentinel": [
+        0,
+        0,
+        -0.10584286600351334
+      ],
+      "rawAveragePercent": 3.2799801664086687,
+      "quantizationAdjustedAveragePercent": 3.333313177244582,
+      "maxWorkToAverageWorkRatio": 1.400603650655766,
+      "modeledWorstFramePercent": 4.668650604827732,
+      "modeledP99Percent": 4.668650604827732,
+      "modeledMaxPercent": 4.668650604827732,
+      "modeledDeadlineMisses": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "type": "G726ADPCMSimulatorPlugin",
+      "mode": "simd",
+      "sampleRate": 352800,
+      "repetition": 1,
+      "channels": 2,
+      "blockSize": 128,
+      "quantumCount": 82688,
+      "renderedFrames": 10584064,
+      "renderedDurationSeconds": 30.00018140589569,
+      "cpu": {
+        "clock": "process.threadCpuUsage current-thread",
+        "userMicroseconds": 969000,
+        "systemMicroseconds": 0,
+        "totalMicroseconds": 969000
+      },
+      "outputSentinel": [
+        0,
+        0,
+        -0.10584286600351334
+      ],
+      "rawAveragePercent": 3.22998046875,
+      "quantizationAdjustedAveragePercent": 3.2833134795859134,
+      "maxWorkToAverageWorkRatio": 1.400603650655766,
+      "modeledWorstFramePercent": 4.598620845755316,
+      "modeledP99Percent": 4.598620845755316,
+      "modeledMaxPercent": 4.598620845755316,
+      "modeledDeadlineMisses": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "type": "G726ADPCMSimulatorPlugin",
+      "mode": "simd",
+      "sampleRate": 352800,
+      "repetition": 2,
+      "channels": 2,
+      "blockSize": 128,
+      "quantumCount": 82688,
+      "renderedFrames": 10584064,
+      "renderedDurationSeconds": 30.00018140589569,
+      "cpu": {
+        "clock": "process.threadCpuUsage current-thread",
+        "userMicroseconds": 968000,
+        "systemMicroseconds": 0,
+        "totalMicroseconds": 968000
+      },
+      "outputSentinel": [
+        0,
+        0,
+        -0.10584286600351334
+      ],
+      "rawAveragePercent": 3.2266471555727554,
+      "quantizationAdjustedAveragePercent": 3.2799801664086687,
+      "maxWorkToAverageWorkRatio": 1.400603650655766,
+      "modeledWorstFramePercent": 4.5939521951504885,
+      "modeledP99Percent": 4.5939521951504885,
+      "modeledMaxPercent": 4.5939521951504885,
+      "modeledDeadlineMisses": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "type": "G726ADPCMSimulatorPlugin",
+      "mode": "simd",
+      "sampleRate": 352800,
+      "repetition": 3,
+      "channels": 2,
+      "blockSize": 128,
+      "quantumCount": 82688,
+      "renderedFrames": 10584064,
+      "renderedDurationSeconds": 30.00018140589569,
+      "cpu": {
+        "clock": "process.threadCpuUsage current-thread",
+        "userMicroseconds": 969000,
+        "systemMicroseconds": 0,
+        "totalMicroseconds": 969000
+      },
+      "outputSentinel": [
+        0,
+        0,
+        -0.10584286600351334
+      ],
+      "rawAveragePercent": 3.22998046875,
+      "quantizationAdjustedAveragePercent": 3.2833134795859134,
+      "maxWorkToAverageWorkRatio": 1.400603650655766,
+      "modeledWorstFramePercent": 4.598620845755316,
+      "modeledP99Percent": 4.598620845755316,
+      "modeledMaxPercent": 4.598620845755316,
+      "modeledDeadlineMisses": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "type": "G726ADPCMSimulatorPlugin",
+      "mode": "wasm",
+      "sampleRate": 384000,
+      "repetition": 1,
+      "channels": 2,
+      "blockSize": 128,
+      "quantumCount": 90000,
+      "renderedFrames": 11520000,
+      "renderedDurationSeconds": 30,
+      "cpu": {
+        "clock": "process.threadCpuUsage current-thread",
+        "userMicroseconds": 828000,
+        "systemMicroseconds": 219000,
+        "totalMicroseconds": 1047000
+      },
+      "outputSentinel": [
+        0,
+        0,
+        -0.08297558128833771
+      ],
+      "rawAveragePercent": 3.49,
+      "quantizationAdjustedAveragePercent": 3.5433333333333334,
+      "maxWorkToAverageWorkRatio": 1.4603537567473572,
+      "modeledWorstFramePercent": 5.17452014474147,
+      "modeledP99Percent": 5.17452014474147,
+      "modeledMaxPercent": 5.17452014474147,
+      "modeledDeadlineMisses": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "type": "G726ADPCMSimulatorPlugin",
+      "mode": "wasm",
+      "sampleRate": 384000,
+      "repetition": 2,
+      "channels": 2,
+      "blockSize": 128,
+      "quantumCount": 90000,
+      "renderedFrames": 11520000,
+      "renderedDurationSeconds": 30,
+      "cpu": {
+        "clock": "process.threadCpuUsage current-thread",
+        "userMicroseconds": 875000,
+        "systemMicroseconds": 188000,
+        "totalMicroseconds": 1063000
+      },
+      "outputSentinel": [
+        0,
+        0,
+        -0.08297558128833771
+      ],
+      "rawAveragePercent": 3.5433333333333334,
+      "quantizationAdjustedAveragePercent": 3.5966666666666667,
+      "maxWorkToAverageWorkRatio": 1.4603537567473572,
+      "modeledWorstFramePercent": 5.252405678434662,
+      "modeledP99Percent": 5.252405678434662,
+      "modeledMaxPercent": 5.252405678434662,
+      "modeledDeadlineMisses": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "type": "G726ADPCMSimulatorPlugin",
+      "mode": "wasm",
+      "sampleRate": 384000,
+      "repetition": 3,
+      "channels": 2,
+      "blockSize": 128,
+      "quantumCount": 90000,
+      "renderedFrames": 11520000,
+      "renderedDurationSeconds": 30,
+      "cpu": {
+        "clock": "process.threadCpuUsage current-thread",
+        "userMicroseconds": 1016000,
+        "systemMicroseconds": 78000,
+        "totalMicroseconds": 1094000
+      },
+      "outputSentinel": [
+        0,
+        0,
+        -0.08297558128833771
+      ],
+      "rawAveragePercent": 3.6466666666666665,
+      "quantizationAdjustedAveragePercent": 3.7,
+      "maxWorkToAverageWorkRatio": 1.4603537567473572,
+      "modeledWorstFramePercent": 5.403308899965222,
+      "modeledP99Percent": 5.403308899965222,
+      "modeledMaxPercent": 5.403308899965222,
+      "modeledDeadlineMisses": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "type": "G726ADPCMSimulatorPlugin",
+      "mode": "simd",
+      "sampleRate": 384000,
+      "repetition": 1,
+      "channels": 2,
+      "blockSize": 128,
+      "quantumCount": 90000,
+      "renderedFrames": 11520000,
+      "renderedDurationSeconds": 30,
+      "cpu": {
+        "clock": "process.threadCpuUsage current-thread",
+        "userMicroseconds": 1031000,
+        "systemMicroseconds": 16000,
+        "totalMicroseconds": 1047000
+      },
+      "outputSentinel": [
+        0,
+        0,
+        -0.08297558128833771
+      ],
+      "rawAveragePercent": 3.49,
+      "quantizationAdjustedAveragePercent": 3.5433333333333334,
+      "maxWorkToAverageWorkRatio": 1.4603537567473572,
+      "modeledWorstFramePercent": 5.17452014474147,
+      "modeledP99Percent": 5.17452014474147,
+      "modeledMaxPercent": 5.17452014474147,
+      "modeledDeadlineMisses": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "type": "G726ADPCMSimulatorPlugin",
+      "mode": "simd",
+      "sampleRate": 384000,
+      "repetition": 2,
+      "channels": 2,
+      "blockSize": 128,
+      "quantumCount": 90000,
+      "renderedFrames": 11520000,
+      "renderedDurationSeconds": 30,
+      "cpu": {
+        "clock": "process.threadCpuUsage current-thread",
+        "userMicroseconds": 1078000,
+        "systemMicroseconds": 0,
+        "totalMicroseconds": 1078000
+      },
+      "outputSentinel": [
+        0,
+        0,
+        -0.08297558128833771
+      ],
+      "rawAveragePercent": 3.5933333333333333,
+      "quantizationAdjustedAveragePercent": 3.6466666666666665,
+      "maxWorkToAverageWorkRatio": 1.4603537567473572,
+      "modeledWorstFramePercent": 5.325423366272029,
+      "modeledP99Percent": 5.325423366272029,
+      "modeledMaxPercent": 5.325423366272029,
+      "modeledDeadlineMisses": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "type": "G726ADPCMSimulatorPlugin",
+      "mode": "simd",
+      "sampleRate": 384000,
+      "repetition": 3,
+      "channels": 2,
+      "blockSize": 128,
+      "quantumCount": 90000,
+      "renderedFrames": 11520000,
+      "renderedDurationSeconds": 30,
+      "cpu": {
+        "clock": "process.threadCpuUsage current-thread",
+        "userMicroseconds": 1125000,
+        "systemMicroseconds": 0,
+        "totalMicroseconds": 1125000
+      },
+      "outputSentinel": [
+        0,
+        0,
+        -0.08297558128833771
+      ],
+      "rawAveragePercent": 3.75,
+      "quantizationAdjustedAveragePercent": 3.8033333333333332,
+      "maxWorkToAverageWorkRatio": 1.4603537567473572,
+      "modeledWorstFramePercent": 5.554212121495782,
+      "modeledP99Percent": 5.554212121495782,
+      "modeledMaxPercent": 5.554212121495782,
+      "modeledDeadlineMisses": 0,
+      "passed": true,
+      "failures": []
+    }
+  ],
+  "performanceInput": {
+    "passed": true,
+    "failures": [],
+    "contract": "g726-production-performance-input-sha256-v2",
+    "hashAlgorithm": "SHA-256 over the contract and ordered UTF-8 components as id\\0content\\0; CRLF and CR normalize to LF",
+    "inputs": [
+      {
+        "id": "dsp/core/abi.cpp",
+        "kind": "file",
+        "sha256": "sha256:97e277947544bcb21015c9fe289af338fbe6f46b97dda233d24b594704bd2059"
+      },
+      {
+        "id": "dsp/core/allocation_guard.cpp",
+        "kind": "file",
+        "sha256": "sha256:95462089e6f7069ef80bf82e1ef49c841f0afe1a796b4ddb9151198bb403d93f"
+      },
+      {
+        "id": "dsp/core/allocation_guard.h",
+        "kind": "file",
+        "sha256": "sha256:3b515279d561968d70e2e85f9e430bd0b81c5b513cdb8b6233d3253cb5a9cf44"
+      },
+      {
+        "id": "dsp/core/arena.cpp",
+        "kind": "file",
+        "sha256": "sha256:2de46fb659bd4327d2f241dbf28529c4adff78b5a69bba7c4c28e77593857ffd"
+      },
+      {
+        "id": "dsp/core/arena.h",
+        "kind": "file",
+        "sha256": "sha256:a474f8318433d0cd264d8397abaeafcdb03bfcedce057343771f88668d5134c1"
+      },
+      {
+        "id": "dsp/core/engine.cpp",
+        "kind": "file",
+        "sha256": "sha256:49b8be2b35956dbd34c0cb46a48da64132b8b2b4395437ab3381755936fb4741"
+      },
+      {
+        "id": "dsp/core/engine.h",
+        "kind": "file",
+        "sha256": "sha256:5959f7d0bca55fb80c580d16cf7f22859db87b3d20a46f589d96f7682f80fd49"
+      },
+      {
+        "id": "dsp/core/registry.cpp",
+        "kind": "file",
+        "sha256": "sha256:3241a3bbb8649801573afd32fd0dd6226427f1223163d2f6f0e8b13cd35794b0"
+      },
+      {
+        "id": "dsp/core/registry.h",
+        "kind": "file",
+        "sha256": "sha256:7f83d8a03050edea60aa89a6efab1cd66a139812908aaa91bf12b8ff7f72239e"
+      },
+      {
+        "id": "dsp/core/telemetry.cpp",
+        "kind": "file",
+        "sha256": "sha256:515405f783c4b410567e6b44ec66abd68d1872361840e713518c4bf7425bca42"
+      },
+      {
+        "id": "dsp/EMSDK_VERSION",
+        "kind": "file",
+        "sha256": "sha256:8adcc17e039842d2f4d92ca25f72a8963ede072c885ef5f762c0682b87c6d872"
+      },
+      {
+        "id": "dsp/exports.txt",
+        "kind": "file",
+        "sha256": "sha256:a80c7af5a36d703cae78efc96e7458d238cbff7a9ac86ffaecdb2e6d19d18735"
+      },
+      {
+        "id": "dsp/generated/cpp/G726ADPCMSimulatorPluginParams.h",
+        "kind": "file",
+        "sha256": "sha256:6e3579b75e056755c03b1fd110ff43f50d5f7c3d50539e2d29a15540b43a5949"
+      },
+      {
+        "id": "dsp/include/effetune/abi.h",
+        "kind": "file",
+        "sha256": "sha256:2e13c9f28ba46ec8a0397a003d360923ccb3367639918e0d24d02ed4f6726894"
+      },
+      {
+        "id": "dsp/include/effetune/dsp/halfband.h",
+        "kind": "file",
+        "sha256": "sha256:6707a8f7d82d951161256e6545571976b8a538f7517e6bb5887b21c2806c9411"
+      },
+      {
+        "id": "dsp/include/effetune/dsp/rational_resampler.h",
+        "kind": "file",
+        "sha256": "sha256:5e74d6a4f7092736e6653f6f4424c569c63f7b80a72b9befe1338103d9f423e4"
+      },
+      {
+        "id": "dsp/include/effetune/kernel.h",
+        "kind": "file",
+        "sha256": "sha256:89f9d73a1ccd78c995487605ae285f4f522ccc126e64659d0d2fb2f8ae7ac29e"
+      },
+      {
+        "id": "dsp/include/effetune/telemetry.h",
+        "kind": "file",
+        "sha256": "sha256:4b0ba04d8d3c3e104bfb34d5b8d54254a51d45766790fdab8059fea2adb7c218"
+      },
+      {
+        "id": "dsp/plugins/lofi/g726_adpcm_simulator/kernel.cpp",
+        "kind": "file",
+        "sha256": "sha256:90119dd0d5b0c57879975c7588946819dc14e1996150cb74c19115c546e0b811"
+      },
+      {
+        "id": "dsp/plugins/lofi/g726_adpcm_simulator/kernel.h",
+        "kind": "file",
+        "sha256": "sha256:9629ba9f83836a62b45395422eccb823aca579369b8c158da6a1704b7b043c73"
+      },
+      {
+        "id": "dsp/plugins/lofi/g726_adpcm_simulator/params.json",
+        "kind": "file",
+        "sha256": "sha256:82beda1887eed7d4f61f661dc88523b3c54404c092e8e27ab8b82788f2b8ff52"
+      },
+      {
+        "id": "dsp/registry.inc#G726ADPCMSimulatorPlugin-entry",
+        "kind": "derived",
+        "sha256": "sha256:2666e2704579948c97d868484a026316e77d6cc5234c4966fd62f8e2397884f5"
+      },
+      {
+        "id": "dsp/wasm/no_entry.cpp",
+        "kind": "file",
+        "sha256": "sha256:0d2961904f2cd8bd43c50a4f861c7ad7ea8865a7c4cd4ec05e197c1a4182b3a3"
+      },
+      {
+        "id": "js/audio/dsp-engine-binding.js",
+        "kind": "file",
+        "sha256": "sha256:5186b3cd1a1d6897f644bfded4ad2f5542e09addf913e98f85b14a95825240e0"
+      },
+      {
+        "id": "production-build#g726-resolved-authority",
+        "kind": "derived",
+        "sha256": "sha256:d21a5916cc4004ba7b4b4f07a72a9b35a90776e797bb7d722f5601325a61d11b"
+      },
+      {
+        "id": "production-build#g726-source-authority",
+        "kind": "derived",
+        "sha256": "sha256:c8c7aa727cc6482cc4ace3642cb1ff7ddb0540afb19b951ddc63d1564365b3ef"
+      },
+      {
+        "id": "tools/dsp-parity/cases.mjs",
+        "kind": "file",
+        "sha256": "sha256:6648f94de566a4c2a4560a222a3957892d890e92ef79dd660a1e0b91ee2bbf02"
+      },
+      {
+        "id": "tools/dsp-parity/g726-cpu-gate.mjs",
+        "kind": "file",
+        "sha256": "sha256:80fbcd07b5ff860e2ee3d8f24be2459bff7025f47af8568cbb285b577133addd"
+      },
+      {
+        "id": "tools/dsp-parity/g726-performance-inputs.mjs",
+        "kind": "file",
+        "sha256": "sha256:0f204419ade933556e1d6aca51e5384a2965c9aafedda2d02e9f03b0aeaf9030"
+      },
+      {
+        "id": "tools/dsp-parity/runners.mjs",
+        "kind": "file",
+        "sha256": "sha256:83be9da46b7fdb60a469c853eb501d1a3a7eca7872b143a0d3e972a633229260"
+      },
+      {
+        "id": "tools/dsp-parity/stimuli.mjs",
+        "kind": "file",
+        "sha256": "sha256:76bbda8364561341df8df263cc2b69f3eedb6b2614f4f77a48ed3c75ebe816a3"
+      }
+    ],
+    "registryEntry": "EFFETUNE_PLUGIN(G726ADPCMSimulatorPlugin,lofi/g726_adpcm_simulator)",
+    "buildAuthority": {
+      "source": {
+        "cmakeTargetDeclarations": [
+          "set(CMAKE_CXX_STANDARD 20)",
+          "set(CMAKE_CXX_STANDARD_REQUIRED ON)",
+          "set(CMAKE_CXX_EXTENSIONS OFF)",
+          "target_include_directories( pffft PUBLIC vendor/pffft/include/pffft PRIVATE vendor/pffft/src)",
+          "target_compile_definitions( pffft PUBLIC PFFFT_STATIC_DEFINE=1 PRIVATE $<$<BOOL:${ET_SIMD}>:PFFFT_ENABLE_NEON=1> $<$<NOT:$<BOOL:${ET_SIMD}>>:PFFFT_SIMD_DISABLE=1>)",
+          "target_compile_options(pffft PRIVATE -msimd128)",
+          "set_target_properties(pffft PROPERTIES POSITION_INDEPENDENT_CODE ON)",
+          "target_link_libraries(pffft PUBLIC m)",
+          "target_include_directories( effetune_dsp_core PUBLIC include PRIVATE core generated/cpp)",
+          "target_link_libraries(effetune_dsp_core PUBLIC pffft)",
+          "target_compile_definitions( effetune_dsp_core PRIVATE $<$<BOOL:${ET_SIMD}>:ET_SIMD=1> $<$<BOOL:${ET_DEBUG_STATE}>:ET_DEBUG_STATE=1> $<$<BOOL:${ET_PHASE0_GSM_FR}>:ET_PHASE0_GSM_FR=1> $<$<CONFIG:Debug>:ET_DEBUG_BUILD=1> $<$<CONFIG:Debug>:ET_ALLOCATION_GUARD=1> $<$<AND:$<CONFIG:Debug>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:ET_WRAP_MALLOC=1> $<$<BOOL:${BUILD_TESTING}>:ET_ENABLE_TEST_KERNEL=1>)",
+          "target_link_options( effetune_dsp_core INTERFACE $<$<AND:$<CONFIG:Debug>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-Wl,--wrap=malloc>)",
+          "target_compile_options(effetune_dsp_core PRIVATE /W4 /WX /GR-)",
+          "target_compile_definitions( effetune_dsp_core PRIVATE ET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1)",
+          "target_compile_options( effetune_dsp_core PRIVATE -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti)",
+          "target_compile_options( effetune_dsp_core PRIVATE -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti)",
+          "target_link_libraries(effetune-dsp PRIVATE effetune_dsp_core)",
+          "set_target_properties(effetune-dsp PROPERTIES OUTPUT_NAME \"effetune-dsp\" SUFFIX \".wasm\")",
+          "target_compile_options( effetune_dsp_core PRIVATE $<$<CONFIG:Release>:-O3> $<$<CONFIG:Release>:-flto> $<$<BOOL:${ET_SIMD}>:-msimd128>)",
+          "target_link_options( effetune-dsp PRIVATE --no-entry -sSTANDALONE_WASM=1 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=8388608 -sMAXIMUM_MEMORY=268435456 -sEXPORTED_FUNCTIONS=@${ET_EXPORTED_FUNCTIONS_FILE} -fwasm-exceptions $<$<CONFIG:Release>:-O3> $<$<CONFIG:Release>:-flto> $<$<BOOL:${ET_SIMD}>:-msimd128>)"
+        ],
+        "builderInvocation": "function configureAndBuildWasm({ emcmake, name, simd, debugState = false, phase0GsmFr = false }) { const buildDirectory = path.join(buildRoot, name); resetBuildDirectory(buildDirectory); const configureArguments = productionWasmConfigureArguments({ dspRoot, buildDirectory, simd, debugState, phase0GsmFr }); run(emcmake, configureArguments); run('cmake', ['--build', buildDirectory, '--parallel']); const artifact = path.join(buildDirectory, 'effetune-dsp.wasm'); if (!fs.existsSync(artifact)) { fail(`WASM build did not produce ${artifact}`); } return { artifact, buildDirectory, configureArguments }; }",
+        "productionConfigureArguments": {
+          "baseline": [
+            "cmake",
+            "-S",
+            "<repo>/dsp",
+            "-B",
+            "<build>",
+            "-G",
+            "Ninja",
+            "-DCMAKE_BUILD_TYPE=Release",
+            "-DET_SIMD=OFF",
+            "-DET_DEBUG_STATE=OFF",
+            "-DET_PHASE0_GSM_FR=OFF",
+            "-DBUILD_TESTING=OFF"
+          ],
+          "simd": [
+            "cmake",
+            "-S",
+            "<repo>/dsp",
+            "-B",
+            "<build>",
+            "-G",
+            "Ninja",
+            "-DCMAKE_BUILD_TYPE=Release",
+            "-DET_SIMD=ON",
+            "-DET_DEBUG_STATE=OFF",
+            "-DET_PHASE0_GSM_FR=OFF",
+            "-DBUILD_TESTING=OFF"
+          ]
+        },
+        "digest": "sha256:861309ff558ef513310954eb32c92d6dd8cff7b83248940f89d150c127f5af8f"
+      },
+      "resolved": {
+        "source": "configured CMake Ninja compile/link edges",
+        "variants": {
+          "baseline": {
+            "variant": "baseline",
+            "configureArguments": [
+              "cmake",
+              "-S",
+              "<repo>/dsp",
+              "-B",
+              "<build>",
+              "-G",
+              "Ninja",
+              "-DCMAKE_BUILD_TYPE=Release",
+              "-DET_SIMD=OFF",
+              "-DET_DEBUG_STATE=OFF",
+              "-DET_PHASE0_GSM_FR=OFF",
+              "-DBUILD_TESTING=OFF"
+            ],
+            "emsdkVersion": "6.0.2",
+            "compiler": {
+              "id": "Clang",
+              "version": "23.0.0",
+              "platform": "emscripten",
+              "frontendVariant": "GNU",
+              "executable": "<repo>/dsp/.emsdk/upstream/emscripten/em++.exe"
+            },
+            "compileCommands": [
+              {
+                "source": "dsp/core/abi.cpp",
+                "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+              },
+              {
+                "source": "dsp/core/allocation_guard.cpp",
+                "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+              },
+              {
+                "source": "dsp/core/arena.cpp",
+                "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+              },
+              {
+                "source": "dsp/core/engine.cpp",
+                "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+              },
+              {
+                "source": "dsp/core/registry.cpp",
+                "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+              },
+              {
+                "source": "dsp/core/telemetry.cpp",
+                "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+              },
+              {
+                "source": "dsp/plugins/lofi/g726_adpcm_simulator/kernel.cpp",
+                "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+              },
+              {
+                "source": "dsp/wasm/no_entry.cpp",
+                "definitions": "-DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/vendor/pffft/include/pffft"
+              }
+            ],
+            "linkCommand": {
+              "flags": "-O3 -DNDEBUG",
+              "options": "--no-entry -sSTANDALONE_WASM=1 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=8388608 -sMAXIMUM_MEMORY=268435456 -sEXPORTED_FUNCTIONS=@<repo>/dsp/exports.txt -fwasm-exceptions -O3 -flto",
+              "libraries": "libeffetune_dsp_core.a libpffft.a -lm"
+            }
+          },
+          "simd": {
+            "variant": "simd",
+            "configureArguments": [
+              "cmake",
+              "-S",
+              "<repo>/dsp",
+              "-B",
+              "<build>",
+              "-G",
+              "Ninja",
+              "-DCMAKE_BUILD_TYPE=Release",
+              "-DET_SIMD=ON",
+              "-DET_DEBUG_STATE=OFF",
+              "-DET_PHASE0_GSM_FR=OFF",
+              "-DBUILD_TESTING=OFF"
+            ],
+            "emsdkVersion": "6.0.2",
+            "compiler": {
+              "id": "Clang",
+              "version": "23.0.0",
+              "platform": "emscripten",
+              "frontendVariant": "GNU",
+              "executable": "<repo>/dsp/.emsdk/upstream/emscripten/em++.exe"
+            },
+            "compileCommands": [
+              {
+                "source": "dsp/core/abi.cpp",
+                "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DET_SIMD=1 -DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto -msimd128",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+              },
+              {
+                "source": "dsp/core/allocation_guard.cpp",
+                "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DET_SIMD=1 -DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto -msimd128",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+              },
+              {
+                "source": "dsp/core/arena.cpp",
+                "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DET_SIMD=1 -DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto -msimd128",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+              },
+              {
+                "source": "dsp/core/engine.cpp",
+                "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DET_SIMD=1 -DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto -msimd128",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+              },
+              {
+                "source": "dsp/core/registry.cpp",
+                "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DET_SIMD=1 -DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto -msimd128",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+              },
+              {
+                "source": "dsp/core/telemetry.cpp",
+                "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DET_SIMD=1 -DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto -msimd128",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+              },
+              {
+                "source": "dsp/plugins/lofi/g726_adpcm_simulator/kernel.cpp",
+                "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DET_SIMD=1 -DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto -msimd128",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+              },
+              {
+                "source": "dsp/wasm/no_entry.cpp",
+                "definitions": "-DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/vendor/pffft/include/pffft"
+              }
+            ],
+            "linkCommand": {
+              "flags": "-O3 -DNDEBUG",
+              "options": "--no-entry -sSTANDALONE_WASM=1 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=8388608 -sMAXIMUM_MEMORY=268435456 -sEXPORTED_FUNCTIONS=@<repo>/dsp/exports.txt -fwasm-exceptions -O3 -flto -msimd128",
+              "libraries": "libeffetune_dsp_core.a libpffft.a -lm"
+            }
+          }
+        },
+        "digest": "sha256:a3d141bf59edf41d59ffb067fc57c19e131cc14a892298664cf767cb52a83f8d"
+      }
+    },
+    "artifactDigest": "sha256:0e95a0ed23f708ac88005b0964fcc5e18b46c765dcfda68a7a74f23eaba59e15",
+    "startDigest": "sha256:0e95a0ed23f708ac88005b0964fcc5e18b46c765dcfda68a7a74f23eaba59e15",
+    "endDigest": "sha256:0e95a0ed23f708ac88005b0964fcc5e18b46c765dcfda68a7a74f23eaba59e15",
+    "currentDigest": "sha256:0e95a0ed23f708ac88005b0964fcc5e18b46c765dcfda68a7a74f23eaba59e15"
+  },
+  "authority": {
+    "measurement": "aggregate current-thread CPU over a production-shaped WASM process batch",
+    "runtime": "Electron 43.2.0 / Node 24.18.0 / V8 15.0.1240245-electron.0",
+    "rawCpuPolicy": "user+system CPU is used without baseline subtraction",
+    "quantizationPolicy": "one 16 ms-or-observed clock quantum is added to every raw 30-second-equivalent trial",
+    "tailPolicy": "modeled from the conservative static maxWork/averageWork ratio; wall and CDP tails are diagnostic only",
+    "tailFormula": "(rawCpuMicroseconds + max(16000, observedClockQuantumMicroseconds)) / renderedDurationMicroseconds * 100 * maxWorkToAverageWorkRatio"
+  },
+  "configuration": {
+    "modes": [
+      "wasm",
+      "simd"
+    ],
+    "sampleRates": [
+      96000,
+      352800,
+      384000
+    ],
+    "channels": 2,
+    "blockSize": 128,
+    "durationSecondsEquivalent": 30,
+    "repetitions": 3,
+    "bitrateKbps": 40,
+    "outputGainDb": 0,
+    "mixPercent": 100,
+    "stimulus": "deterministic noise"
+  },
+  "powerMode": "Balanced 381b4222-f694-41f0-9685-ff5bb260df2e",
+  "machine": {
+    "platform": "win32",
+    "release": "10.0.26200",
+    "arch": "x64",
+    "cpu": "13th Gen Intel(R) Core(TM) i9-13900KF",
+    "logicalCpuCount": 32,
+    "processPriority": -14
+  },
+  "artifact": {
+    "root": "D:\\program\\proto\\effetune\\plugins\\dsp",
+    "sourceDigest": "sha256:960c6fa07b9173b19665842091f46e7e0bfb36312fe42300f0fa09c83f9c96a1",
+    "abiVersion": 1,
+    "buildType": "Release",
+    "baseline": {
+      "buildFlags": 0,
+      "bytes": 686209,
+      "sha256": "sha256:6a51fcd1d583429d215917b303ae96406d8bf4e87ed41e2613619e315e01693f"
+    },
+    "simd": {
+      "buildFlags": 1,
+      "bytes": 773016,
+      "sha256": "sha256:829de44b2fdfe7397c6e7314ab2b09d661bc97dab0942b3859c5a7fcd710f327"
+    }
+  },
+  "clockCalibration": {
+    "clock": "process.threadCpuUsage current-thread user+system",
+    "positiveIncrementsMicroseconds": [
+      15000,
+      16000,
+      16000,
+      16000,
+      15000,
+      16000,
+      16000,
+      15000
+    ],
+    "minimumPositiveIncrementMicroseconds": 15000,
+    "accumulator": 2992180192
+  },
+  "controls": {
+    "empty": {
+      "quantumCount": 90000,
+      "userMicroseconds": 0,
+      "systemMicroseconds": 0,
+      "totalMicroseconds": 0,
+      "accumulator": 4049955000
+    },
+    "volume0Db384kBaseline": {
+      "type": "VolumePlugin",
+      "mode": "wasm",
+      "sampleRate": 384000,
+      "repetition": 1,
+      "channels": 2,
+      "blockSize": 128,
+      "quantumCount": 90000,
+      "renderedFrames": 11520000,
+      "renderedDurationSeconds": 30,
+      "cpu": {
+        "clock": "process.threadCpuUsage current-thread",
+        "userMicroseconds": 31000,
+        "systemMicroseconds": 0,
+        "totalMicroseconds": 31000
+      },
+      "outputSentinel": [
+        -0.9999454021453857,
+        0.2860245704650879,
+        -0.8065477609634399
+      ]
+    },
+    "interpretation": "Controls demonstrate the aggregate clock magnitude and are not subtracted."
+  },
+  "workAnalysis": [
+    {
+      "sampleRate": 96000,
+      "blockSize": 128,
+      "renderedFrames": 2880000,
+      "renderedDurationSeconds": 30,
+      "quantumCount": 22500,
+      "halfbandStages": 1,
+      "inputHalfbandConvolutionsPerQuantum": 64,
+      "codecTicks": {
+        "minimum": 10,
+        "maximum": 11,
+        "average": 10.666666666666666
+      },
+      "baseRateOutputs": {
+        "minimum": 60,
+        "maximum": 66,
+        "average": 63.99977777777778
+      },
+      "wetOutputs": {
+        "minimum": 120,
+        "maximum": 132,
+        "average": 127.99955555555556
+      },
+      "observedSchedulePatterns": [
+        "11/61/122",
+        "11/66/132",
+        "10/60/120"
+      ],
+      "filterWork": {
+        "minimum": 30962,
+        "maximum": 33847,
+        "average": 32885.240666666665
+      },
+      "conservativeUpperWork": {
+        "minimum": 43122,
+        "maximum": 47223,
+        "average": 45855.90022222222
+      },
+      "maxWorkToAverageWorkRatio": 1.4359937480362266,
+      "workUnits": {
+        "rationalTapIterations": 383,
+        "halfbandConvolutionIterations": 33,
+        "halfbandInterpolationIterations": 34,
+        "codecRoundTripPrimitiveUpperBound": 1024,
+        "generatedWetSamplePrimitiveUpperBound": 16
+      },
+      "conservatism": [
+        "The maximum numerator charges every codec tick at a 1024-primitive ceiling.",
+        "The maximum numerator charges queue and cascade bookkeeping at 16 primitives per wet sample.",
+        "The average denominator contains FIR tap iterations only; fixed host, dry, mix, and control work is omitted.",
+        "A scalar integer primitive is charged at the same unit cost as a floating-point FIR tap iteration."
+      ]
+    },
+    {
+      "sampleRate": 352800,
+      "blockSize": 128,
+      "renderedFrames": 10584064,
+      "renderedDurationSeconds": 30.00018140589569,
+      "quantumCount": 82688,
+      "halfbandStages": 3,
+      "inputHalfbandConvolutionsPerQuantum": 112,
+      "codecTicks": {
+        "minimum": 2,
+        "maximum": 3,
+        "average": 2.90250096749226
+      },
+      "baseRateOutputs": {
+        "minimum": 11,
+        "maximum": 17,
+        "average": 15.9999758126935
+      },
+      "wetOutputs": {
+        "minimum": 88,
+        "maximum": 136,
+        "average": 127.999806501548
+      },
+      "observedSchedulePatterns": [
+        "3/12/96",
+        "3/16/128",
+        "3/17/136",
+        "2/11/88",
+        "2/12/96"
+      ],
+      "filterWork": {
+        "minimum": 11293,
+        "maximum": 15402,
+        "average": 14743.642850232198
+      },
+      "conservativeUpperWork": {
+        "minimum": 14749,
+        "maximum": 20650,
+        "average": 19763.80074496904
+      },
+      "maxWorkToAverageWorkRatio": 1.400603650655766,
+      "workUnits": {
+        "rationalTapIterations": 383,
+        "halfbandConvolutionIterations": 33,
+        "halfbandInterpolationIterations": 34,
+        "codecRoundTripPrimitiveUpperBound": 1024,
+        "generatedWetSamplePrimitiveUpperBound": 16
+      },
+      "conservatism": [
+        "The maximum numerator charges every codec tick at a 1024-primitive ceiling.",
+        "The maximum numerator charges queue and cascade bookkeeping at 16 primitives per wet sample.",
+        "The average denominator contains FIR tap iterations only; fixed host, dry, mix, and control work is omitted.",
+        "A scalar integer primitive is charged at the same unit cost as a floating-point FIR tap iteration."
+      ]
+    },
+    {
+      "sampleRate": 384000,
+      "blockSize": 128,
+      "renderedFrames": 11520000,
+      "renderedDurationSeconds": 30,
+      "quantumCount": 90000,
+      "halfbandStages": 3,
+      "inputHalfbandConvolutionsPerQuantum": 112,
+      "codecTicks": {
+        "minimum": 2,
+        "maximum": 3,
+        "average": 2.6666666666666665
+      },
+      "baseRateOutputs": {
+        "minimum": 12,
+        "maximum": 18,
+        "average": 15.999944444444445
+      },
+      "wetOutputs": {
+        "minimum": 96,
+        "maximum": 144,
+        "average": 127.99955555555556
+      },
+      "observedSchedulePatterns": [
+        "3/13/104",
+        "3/18/144",
+        "2/12/96"
+      ],
+      "filterWork": {
+        "minimum": 11914,
+        "maximum": 16023,
+        "average": 14653.298833333334
+      },
+      "conservativeUpperWork": {
+        "minimum": 15498,
+        "maximum": 21399,
+        "average": 19431.95838888889
+      },
+      "maxWorkToAverageWorkRatio": 1.4603537567473572,
+      "workUnits": {
+        "rationalTapIterations": 383,
+        "halfbandConvolutionIterations": 33,
+        "halfbandInterpolationIterations": 34,
+        "codecRoundTripPrimitiveUpperBound": 1024,
+        "generatedWetSamplePrimitiveUpperBound": 16
+      },
+      "conservatism": [
+        "The maximum numerator charges every codec tick at a 1024-primitive ceiling.",
+        "The maximum numerator charges queue and cascade bookkeeping at 16 primitives per wet sample.",
+        "The average denominator contains FIR tap iterations only; fixed host, dry, mix, and control work is omitted.",
+        "A scalar integer primitive is charged at the same unit cost as a floating-point FIR tap iteration."
+      ]
+    }
+  ],
+  "diagnosticsExcludedFromAuthority": [
+    "performance-gate.json (Node per-quantum wall clock)",
+    "performance-audioworklet-gate.json (CDP author-slice clock)",
+    "performance-audioworklet-diagnostic-after-opt.json (wall diagnostic)"
+  ]
+}

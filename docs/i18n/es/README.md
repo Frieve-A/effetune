@@ -344,8 +344,12 @@ Si el problema persiste, repórtalo a través de [GitHub Issues](https://github.
 | Lo-Fi     | Digital Error Emulator | Simula varios errores de transmisión de audio digital y características de equipos digitales vintage | [Detalles](plugins/lofi.md#digital-error-emulator) |
 | Lo-Fi     | DSD64 IMD Simulator | Simula la distorsión por intermodulación audible que genera el ruido ultrasónico del DSD64 | [Detalles](plugins/lofi.md#dsd64-imd-simulator) |
 | Lo-Fi     | FM Radio Simulator | Hace pasar la música por una cadena de emisión y recepción FM simulada físicamente | [Detalles](plugins/lofi.md#fm-radio-simulator) |
+| Lo-Fi     | G.726 Simulator | Simula una conversión de codificación y decodificación de voz ITU-T G.726 con un enlace de radio ruidoso opcional | [Detalles](plugins/lofi.md#g726-simulator) |
+| Lo-Fi     | GSM-FR Simulator | Simula una conversión de codificación y decodificación de voz GSM-FR a 13 kbit/s por enlace de radio con ocultación de pérdidas de trama | [Detalles](plugins/lofi.md#gsm-fr-simulator) |
 | Lo-Fi     | Hum Generator | Añade una atmósfera ajustable de zumbido eléctrico de 50/60 Hz para escucha vintage/lo-fi | [Detalles](plugins/lofi.md#hum-generator) |
+| Lo-Fi     | MP3 Codec Simulator | Simula una conversión limpia de codificación y decodificación MPEG Layer III a baja tasa | [Detalles](plugins/lofi.md#mp3-codec-simulator) |
 | Lo-Fi     | Noise Blender | Añade una textura de ruido de fondo ajustable para ambiente lo-fi | [Detalles](plugins/lofi.md#noise-blender) |
+| Lo-Fi     | SBC Codec Simulator | Reproduce una conversión de codificación y decodificación Bluetooth A2DP SBC con pérdida de paquetes del enlace y ocultación opcionales | [Detalles](plugins/lofi.md#sbc-codec-simulator) |
 | Lo-Fi     | Simple Jitter | Simulación de jitter digital | [Detalles](plugins/lofi.md#simple-jitter) |
 | Lo-Fi     | SW Radio Simulator | Pasa la música por una cadena modelada de emisión en onda corta, propagación ionosférica y recepción | [Detalles](plugins/lofi.md#sw-radio-simulator) |
 | Lo-Fi     | Vinyl Artifacts | Añade pops, crackle, hiss, rumble y fuga de ruido estéreo al estilo vinilo | [Detalles](plugins/lofi.md#vinyl-artifacts) |

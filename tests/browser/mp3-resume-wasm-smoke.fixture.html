@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>EffeTune MP3 resume WASM smoke</title>
+</head>
+<body>
+  <main>MP3 resume WASM smoke fixture ready</main>
+  <script type="module">
+    import { runCodecResumeWasmSmoke } from '/tests/browser/codec-resume-wasm-smoke.harness.mjs';
+    import {
+      MP3CodecSimulatorPlugin_PARAMS_HASH,
+      packMP3CodecSimulatorPluginParams
+    } from '/js/audio/dsp-params.generated.js';
+
+    // MPEG-1 at 64 kbps with the bit reservoir enabled keeps the resampler history, the granule
+    // input FIFO, the queued decoded output and the reservoir itself populated, which is exactly the
+    // state that must not leak across a suspend/resume cycle.
+    //
+    // The MP3 wet path is being retuned in parallel, so this smoke asserts behaviour only: routing,
+    // reset-on-resume exactness, state divergence and finiteness. It never pins wet audio content.
+    function run() {
+      return runCodecResumeWasmSmoke({
+        pluginType: 'MP3CodecSimulatorPlugin',
+        label: 'MP3 Codec',
+        parameters: {
+          cr: '44.1 kHz (MPEG-1)', br: '64', sm: 'Joint Stereo', rv: true, og: 0, mx: 100
+        },
+        pack: packMP3CodecSimulatorPluginParams,
+        paramsHash: MP3CodecSimulatorPlugin_PARAMS_HASH,
+        floatCount: 6
+      });
+    }
+
+    window.__mp3ResumeWasmSmoke = { run };
+  </script>
+</body>
+</html>

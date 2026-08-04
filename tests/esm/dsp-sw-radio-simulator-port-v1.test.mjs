@@ -678,7 +678,8 @@ test('SW Radio Simulator drives the HUD from measurements and validated executio
 
 test('SW Radio Simulator integration registers tap 18 across the shipped wiring', async () => {
   const [
-    plugin, css, registry, cmake, rollout, telemetry, readme, worklet, audioManager, pluginList
+    plugin, css, registry, cmake, rollout, telemetry, readme, worklet, audioManager,
+    pluginList, executionCapabilities
   ] = await Promise.all([
     fs.readFile(pluginSourcePath, 'utf8'),
     fs.readFile(path.join(repoRoot, 'plugins', 'lofi', 'sw_radio_simulator.css'), 'utf8'),
@@ -689,7 +690,8 @@ test('SW Radio Simulator integration registers tap 18 across the shipped wiring'
     fs.readFile(path.join(repoRoot, 'dsp', 'README.md'), 'utf8'),
     fs.readFile(path.join(repoRoot, 'plugins', 'audio-processor.js'), 'utf8'),
     fs.readFile(path.join(repoRoot, 'js', 'audio-manager.js'), 'utf8'),
-    fs.readFile(path.join(repoRoot, 'plugins', 'plugins.txt'), 'utf8')
+    fs.readFile(path.join(repoRoot, 'plugins', 'plugins.txt'), 'utf8'),
+    fs.readFile(path.join(repoRoot, 'js', 'audio', 'plugin-execution-capabilities.js'), 'utf8')
   ]);
   const kernel = await fs.readFile(path.join(pluginRoot, 'kernel.cpp'), 'utf8');
 
@@ -711,13 +713,10 @@ test('SW Radio Simulator integration registers tap 18 across the shipped wiring'
   assert.match(rollout, /'SWRadioSimulatorPlugin'/);
   assert.match(telemetry, /TAP_SW_RADIO_SIMULATOR:\s*18/);
   assert.match(readme, /Type 18\s*\(`TAP_SW_RADIO_SIMULATOR`\)[\s\S]*exactly 24 bytes/);
-  // Both copies of the WASM-only execution-state set must list the plugin: the worklet copy
-  // drives dspExecutionState publication and the main-thread copy keeps it from being
-  // discarded, so the assertions stay scoped to the Set literal itself.
-  assert.match(worklet,
-    /WASM_ONLY_EXECUTION_STATE_PLUGIN_TYPES\s*=\s*new Set\(\[[^\]]*'SWRadioSimulatorPlugin'/);
-  assert.match(audioManager,
-    /WASM_ONLY_EXECUTION_STATE_PLUGIN_TYPES\s*=\s*new Set\(\[[^\]]*'SWRadioSimulatorPlugin'/);
+  assert.match(executionCapabilities,
+    /\['SWRadioSimulatorPlugin', STANDARD_WASM_EXECUTION_CAPABILITIES\]/);
+  assert.doesNotMatch(worklet, /SWRadioSimulatorPlugin/);
+  assert.doesNotMatch(audioManager, /SWRadioSimulatorPlugin/);
   assert.match(pluginList,
     /lofi\/sw_radio_simulator: SW Radio Simulator \| Lo-Fi \| SWRadioSimulatorPlugin \| css/);
 

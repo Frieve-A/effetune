@@ -351,8 +351,12 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Lo-Fi     | Digital Error Emulator | Simulates various digital audio transmission errors and vintage digital equipment characteristics | [Details](docs/plugins/lofi.md#digital-error-emulator) |
 | Lo-Fi     | DSD64 IMD Simulator | Simulates audible intermodulation distortion from DSD64 ultrasonic noise | [Details](docs/plugins/lofi.md#dsd64-imd-simulator) |
 | Lo-Fi     | FM Radio Simulator | Passes music through a physically simulated FM broadcast and receiver chain | [Details](docs/plugins/lofi.md#fm-radio-simulator) |
+| Lo-Fi     | G.726 Simulator | Simulates an ITU-T G.726 speech-codec encode/decode round trip with an optional noisy radio link | [Details](docs/plugins/lofi.md#g726-simulator) |
+| Lo-Fi     | GSM-FR Simulator | Simulates a 13 kbit/s GSM-FR speech-codec encode/decode round trip over a radio link with frame erasure concealment | [Details](docs/plugins/lofi.md#gsm-fr-simulator) |
 | Lo-Fi     | Hum Generator | Adds controllable 50/60 Hz electrical hum ambience for vintage/lo-fi listening | [Details](docs/plugins/lofi.md#hum-generator) |
+| Lo-Fi     | MP3 Codec Simulator | Simulates a clean low-bitrate MPEG Layer III encode/decode round trip | [Details](docs/plugins/lofi.md#mp3-codec-simulator) |
 | Lo-Fi     | Noise Blender | Adds adjustable background noise texture for lo-fi ambience | [Details](docs/plugins/lofi.md#noise-blender) |
+| Lo-Fi     | SBC Codec Simulator | Simulates a Bluetooth A2DP SBC encode/decode round trip with optional link packet loss and concealment | [Details](docs/plugins/lofi.md#sbc-codec-simulator) |
 | Lo-Fi     | Simple Jitter | Digital jitter simulation | [Details](docs/plugins/lofi.md#simple-jitter) |
 | Lo-Fi     | SW Radio Simulator | Passes music through a modeled shortwave broadcast, ionospheric path, and receiver chain | [Details](docs/plugins/lofi.md#sw-radio-simulator) |
 | Lo-Fi     | Vinyl Artifacts | Adds vinyl-style pops, crackle, hiss, rumble, and stereo noise bleed | [Details](docs/plugins/lofi.md#vinyl-artifacts) |

@@ -97,6 +97,10 @@ export function validateParamSpec(raw, source = '<params.json>') {
     fail('root must be an object', source);
   }
   const type = requireIdentifier(raw.type, 'type', source);
+  if (raw.phase0 !== undefined && typeof raw.phase0 !== 'boolean') {
+    fail('phase0 must be true or false', source);
+  }
+  const phase0 = raw.phase0 === true;
   if (!isPlainObject(raw.tolerance)) {
     fail('tolerance must be an object', source);
   }
@@ -192,6 +196,7 @@ export function validateParamSpec(raw, source = '<params.json>') {
     let minimum = null;
     let maximum = null;
     let values = null;
+    let rejectInvalid = false;
     if (rawField.kind === 'float' || rawField.kind === 'int') {
       minimum = requireFinite(rawField.min, `field ${name} min`, source);
       maximum = requireFinite(rawField.max, `field ${name} max`, source);
@@ -216,6 +221,10 @@ export function validateParamSpec(raw, source = '<params.json>') {
         fail(`field ${name} boolean defaults must be true or false`, source);
       }
     } else {
+      if (rawField.rejectInvalid !== undefined && typeof rawField.rejectInvalid !== 'boolean') {
+        fail(`field ${name} rejectInvalid must be true or false`, source);
+      }
+      rejectInvalid = rawField.rejectInvalid === true;
       if (!Array.isArray(rawField.values) || rawField.values.length === 0 ||
           rawField.values.some(value => typeof value !== 'string' || value.length === 0) ||
           new Set(rawField.values).size !== rawField.values.length) {
@@ -243,6 +252,7 @@ export function validateParamSpec(raw, source = '<params.json>') {
       min: minimum,
       max: maximum,
       values,
+      rejectInvalid,
       defaults
     };
   });
@@ -305,6 +315,7 @@ export function validateParamSpec(raw, source = '<params.json>') {
   });
   return {
     type,
+    phase0,
     tolerance: { abs, rel: raw.tolerance.rel ?? null, policy },
     fields,
     floatCount,
@@ -438,6 +449,9 @@ function jsReadExpression(field, index) {
   if (field.kind === 'enum') {
     const values = jsLiteral(field.values);
     const fallbackIndex = field.values.indexOf(fallback);
+    if (field.rejectInvalid) {
+      return `(() => { const value = ${raw}; if (value === undefined) return ${fallbackIndex}; const index = ${values}.indexOf(value); if (index < 0) throw new TypeError(${jsLiteral(`Invalid enum value for ${key}`)}); return index; })()`;
+    }
     return `(() => { const index = ${values}.indexOf(${raw}); return index < 0 ? ${fallbackIndex} : index; })()`;
   }
   const fallbackLiteral = jsLiteral(fallback);
@@ -485,7 +499,7 @@ export function generateOutputs(specs) {
   for (const spec of specs) {
     outputs.set(path.join(cppOutputRoot, `${spec.type}Params.h`), cppForSpec(spec));
   }
-  outputs.set(runtimeJsOutput, jsForSpecs(specs));
+  outputs.set(runtimeJsOutput, jsForSpecs(specs.filter(spec => !spec.phase0)));
   return outputs;
 }
 

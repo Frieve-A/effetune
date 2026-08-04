@@ -1,6 +1,8 @@
 /**
  * PipelineProcessor - Manages the audio processing pipeline
  */
+import { attachPluginExecutionCapabilities } from './plugin-execution-capabilities.js';
+
 export class PipelineProcessor {
     /**
      * Create a new PipelineProcessor instance
@@ -146,9 +148,12 @@ export class PipelineProcessor {
                 commitSampleRate: true
             });
             if (typeof plugin.getWorkletPluginData === 'function') {
-                return plugin.getWorkletPluginData(params);
+                return attachPluginExecutionCapabilities(
+                    plugin,
+                    plugin.getWorkletPluginData(params)
+                );
             }
-            return {
+            return attachPluginExecutionCapabilities(plugin, {
                 id: plugin.id,
                 type: plugin.constructor.name,
                 enabled: plugin.enabled,
@@ -156,7 +161,7 @@ export class PipelineProcessor {
                 inputBus: plugin.inputBus,
                 outputBus: plugin.outputBus,
                 channel: plugin.channel
-            };
+            });
         });
     }
     

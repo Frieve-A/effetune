@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>EffeTune G.726 resume WASM smoke</title>
+</head>
+<body>
+  <main>G.726 resume WASM smoke fixture ready</main>
+  <script type="module">
+    import { runCodecResumeWasmSmoke } from '/tests/browser/codec-resume-wasm-smoke.harness.mjs';
+    import {
+      G726ADPCMSimulatorPlugin_PARAMS_HASH,
+      packG726ADPCMSimulatorPluginParams
+    } from '/js/audio/dsp-params.generated.js';
+
+    // 40 kbit/s is the highest-rate setting (the shipped default is 32), chosen so the
+    // suspended instance holds the ADPCM predictor, quantizer scale factor and adaptation
+    // state at their deepest configuration when the transport is skipped. The radio
+    // bit-error exponent stays at its "Off" minimum so the resume comparison is exact.
+    async function run() {
+      const result = await runCodecResumeWasmSmoke({
+        pluginType: 'G726ADPCMSimulatorPlugin',
+        label: 'G.726',
+        parameters: { br: '40', og: 0, mx: 100, re: -6 },
+        pack: packG726ADPCMSimulatorPluginParams,
+        paramsHash: G726ADPCMSimulatorPlugin_PARAMS_HASH,
+        floatCount: 4
+      });
+      return {
+        ...result,
+        // G.726 codes one sample at a time but the codec state advances in 6-sample groups, so a
+        // 128-frame AudioWorklet quantum never lands on a group boundary. The resume path must
+        // therefore carry a partial group across the suspend, which is what this smoke exercises.
+        audioWorkletQuantumCodecRemainder: 128 % 6
+      };
+    }
+
+    window.__g726ResumeWasmSmoke = { run };
+  </script>
+</body>
+</html>

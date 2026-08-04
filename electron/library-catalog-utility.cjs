@@ -1,7 +1,8 @@
 'use strict';
 
 const {
-  LIBRARY_CATALOG_UTILITY_PROTOCOL_VERSION
+  LIBRARY_CATALOG_UTILITY_PROTOCOL_VERSION,
+  UTILITY_HEARTBEAT_INTERVAL_MS
 } = require('./library-catalog-utility-host.cjs');
 const { LibraryCatalogHost } = require('./library-catalog-host.cjs');
 const { LibraryCatalogScanRuntime } = require('./library-catalog-scan-runtime.cjs');
@@ -16,6 +17,7 @@ let repository = null;
 let initialized = false;
 let closed = false;
 let nextBridgeRequestId = 1;
+let heartbeatTimer = null;
 const pendingBridgeRequests = new Map();
 
 parentPort.on('message', event => {
@@ -35,6 +37,7 @@ async function handleMessage(message) {
   if (message.type === 'initialize') {
     if (initialized) throw createUtilityError('utilityAlreadyInitialized', 'Library utility is already initialized');
     initialized = true;
+    startHeartbeat();
     const dialog = createDialogProxy();
     repository = await LibraryCatalogHost.open({ dbPath: message.dbPath });
     repository.on('invalidation', payload => emitEvent('repository', 'invalidation', payload));
@@ -116,6 +119,7 @@ function bridgeRequest(type, extra) {
 async function closeUtility() {
   if (closed) return;
   closed = true;
+  stopHeartbeat();
   await runtime?.close().catch(() => {});
   coordinator?.dispose();
   await repository?.close().catch(() => {});
@@ -128,7 +132,22 @@ function emitEvent(target, eventName, payload) {
   post({ type: 'event', target, eventName, payload });
 }
 
+// The catalog opens on a worker thread, so this thread stays free to prove the
+// utility is alive while a large or cold database is still being opened.
+function startHeartbeat() {
+  if (heartbeatTimer) return;
+  heartbeatTimer = setInterval(() => post({ type: 'heartbeat' }), UTILITY_HEARTBEAT_INTERVAL_MS);
+  heartbeatTimer.unref?.();
+}
+
+function stopHeartbeat() {
+  if (!heartbeatTimer) return;
+  clearInterval(heartbeatTimer);
+  heartbeatTimer = null;
+}
+
 function ready(ok, payload, error) {
+  stopHeartbeat();
   post({ type: 'ready', ok, ...(ok ? { payload } : { error: serializeError(error) }) });
 }
 

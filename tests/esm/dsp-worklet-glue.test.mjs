@@ -6,6 +6,7 @@ import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { decodeDspPipelineDescriptor } from '../../js/audio/dsp-pipeline-descriptor.js';
 import { PowerPolicyController } from '../../js/audio/power-policy-controller.js';
+import { SHIPPED_ENABLED_TYPES } from '../../js/audio/dsp-rollout.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const processorPath = path.join(repoRoot, 'plugins', 'audio-processor.js');
@@ -120,6 +121,13 @@ function createBinding(options = {}) {
     instanceSetParams(id, params, hash) {
       calls.push(['instanceSetParams', id, [...params], hash]);
       return options.paramsStatus ?? 0;
+    },
+    instanceRuntimeEvent(id) {
+      calls.push(['instanceRuntimeEvent', id]);
+      const state = typeof options.runtimeEvent === 'function'
+        ? options.runtimeEvent(id)
+        : options.runtimeEvent;
+      return state ?? { generation: 0, latched: false, cause: 0 };
     },
     instanceSetParamBytes(id, params, hash) {
       calls.push(['instanceSetParamBytes', id, [...params], hash]);
@@ -283,7 +291,15 @@ async function instantiateDspBinding(payload, options) {
     processor.port.onmessage({ data });
     await flushAsyncWork();
   };
-  return { binding, factories, posts, processor, send, warnings, KeepaliveProcessorClass };
+  return {
+    binding,
+    factories,
+    posts,
+    processor,
+    send,
+    warnings,
+    KeepaliveProcessorClass
+  };
 }
 
 function pluginConfig(overrides = {}) {
@@ -301,6 +317,25 @@ function pluginConfig(overrides = {}) {
   };
 }
 
+const TEST_WASM_EXECUTION_CAPABILITIES = Object.freeze({
+  requiresWasm: true
+});
+const TEST_STEREO_PAIR_WASM_CAPABILITIES = Object.freeze({
+  requiresWasm: true,
+  supportedSampleRates: Object.freeze([96000]),
+  supportedChannelModes: Object.freeze(['stereo-pair'])
+});
+const TEST_G726_WASM_CAPABILITIES = Object.freeze({
+  requiresWasm: true,
+  supportedSampleRates: Object.freeze([
+    44100, 48000, 88200, 96000, 176400, 192000, 352800, 384000
+  ]),
+  supportedChannelModes: Object.freeze(['mono', 'stereo-pair'])
+});
+const TEST_GSM_WASM_CAPABILITIES = TEST_G726_WASM_CAPABILITIES;
+const TEST_SBC_WASM_CAPABILITIES = TEST_G726_WASM_CAPABILITIES;
+const TEST_MP3_WASM_CAPABILITIES = TEST_G726_WASM_CAPABILITIES;
+
 test('realtime output keepalive remains active until the host stops it', async () => {
   const { KeepaliveProcessorClass } = await createWorkletHarness();
   const processor = new KeepaliveProcessorClass();
@@ -313,8 +348,71 @@ test('realtime output keepalive remains active until the host stops it', async (
 function roomEqPluginConfig(overrides = {}) {
   return pluginConfig({
     type: 'RoomEqPlugin',
+    executionCapabilities: TEST_WASM_EXECUTION_CAPABILITIES,
     parameters: { enabled: true, lt: '128', fd: 0, dy: 0, gn: 0 },
     wasmParams: Float32Array.of(1, 0, 0, 0),
+    ...overrides
+  });
+}
+
+function stereoPairWasmPluginConfig(overrides = {}) {
+  return pluginConfig({
+    type: 'TubeSimulatorPlugin',
+    executionCapabilities: TEST_STEREO_PAIR_WASM_CAPABILITIES,
+    channel: null,
+    wasmParams: new Float32Array(8),
+    wasmParamsHash: 0x5e01129f,
+    ...overrides
+  });
+}
+
+function g726WasmPluginConfig(overrides = {}) {
+  return pluginConfig({
+    type: 'G726ADPCMSimulatorPlugin',
+    executionCapabilities: TEST_G726_WASM_CAPABILITIES,
+    channel: null,
+    parameters: { enabled: true, br: '40', og: 0, mx: 100 },
+    wasmParams: Float32Array.of(3, 0, 100),
+    wasmParamsHash: 0xee385372,
+    ...overrides
+  });
+}
+
+function gsmWasmPluginConfig(overrides = {}) {
+  return pluginConfig({
+    type: 'GSMFullRateSimulatorPlugin',
+    executionCapabilities: TEST_GSM_WASM_CAPABILITIES,
+    channel: null,
+    parameters: { enabled: true, tc: 3, og: 0, mx: 100 },
+    wasmParams: Float32Array.of(3, 0, 100),
+    wasmParamsHash: 0x645dea59,
+    ...overrides
+  });
+}
+
+function sbcWasmPluginConfig(overrides = {}) {
+  return pluginConfig({
+    type: 'BluetoothSBCSimulatorPlugin',
+    executionCapabilities: TEST_SBC_WASM_CAPABILITIES,
+    channel: null,
+    parameters: { enabled: true, bp: 35, cm: 'Joint Stereo', bl: '16', og: 0, mx: 100 },
+    wasmParams: Float32Array.of(35, 0, 3, 0, 100),
+    wasmParamsHash: 0x8408320d,
+    ...overrides
+  });
+}
+
+function mp3WasmPluginConfig(overrides = {}) {
+  return pluginConfig({
+    type: 'MP3CodecSimulatorPlugin',
+    executionCapabilities: TEST_MP3_WASM_CAPABILITIES,
+    channel: null,
+    parameters: {
+      enabled: true, cr: '44.1 kHz (MPEG-1)', br: '64', sm: 'Joint Stereo', rv: true,
+      og: 0, mx: 100
+    },
+    wasmParams: Float32Array.of(1, 2, 0, 1, 0, 100),
+    wasmParamsHash: 0xce4e5811,
     ...overrides
   });
 }
@@ -339,9 +437,12 @@ async function registerFallback(harness) {
   });
 }
 
-function processBlock(processor, value = 1) {
-  const input = [Float32Array.from({ length: 128 }, () => value), Float32Array.from({ length: 128 }, () => value)];
-  const output = [new Float32Array(128), new Float32Array(128)];
+function processBlock(processor, value = 1, channelCount = 2) {
+  const input = Array.from(
+    { length: channelCount },
+    () => Float32Array.from({ length: 128 }, () => value)
+  );
+  const output = Array.from({ length: channelCount }, () => new Float32Array(128));
   assert.equal(processor.process([input], [output], {}), true);
   return output;
 }
@@ -356,6 +457,10 @@ test('worklet reports sustained effect-processing deadline overruns but ignores 
     performanceNow: () => nowValues.shift() ?? 46
   });
   await registerFallback(harness);
+  await harness.send({
+    type: 'setAudioProcessingOverloadMonitoring',
+    enabled: true
+  });
 
   const enabledPlugin = pluginConfig();
   await harness.send({
@@ -408,6 +513,51 @@ test('worklet reports sustained effect-processing deadline overruns but ignores 
   assert.deepEqual(
     messagesOf(harness.posts, 'audioProcessingOverload').map(entry => entry.message.active),
     [true, false, true, false]
+  );
+});
+
+test('worklet defers overload monitoring until the output fade has finished', async () => {
+  let now = 0;
+  const harness = await createWorkletHarness({
+    performanceNow: () => {
+      const value = now;
+      now += 10;
+      return value;
+    }
+  });
+  await registerFallback(harness);
+  await harness.send({
+    type: 'updatePlugins',
+    plugins: [pluginConfig()],
+    masterBypass: false
+  });
+
+  processBlock(harness.processor);
+  assert.deepEqual(messagesOf(harness.posts, 'audioProcessingOverload'), []);
+
+  await harness.send({
+    type: 'setAudioProcessingOverloadMonitoring',
+    enabled: true,
+    delaySeconds: 2 * 128 / 48000
+  });
+  processBlock(harness.processor);
+  processBlock(harness.processor);
+  assert.deepEqual(messagesOf(harness.posts, 'audioProcessingOverload'), []);
+
+  processBlock(harness.processor);
+  assert.deepEqual(
+    messagesOf(harness.posts, 'audioProcessingOverload').map(entry => entry.message.active),
+    [true]
+  );
+
+  await harness.send({
+    type: 'setAudioProcessingOverloadMonitoring',
+    enabled: false
+  });
+  processBlock(harness.processor);
+  assert.deepEqual(
+    messagesOf(harness.posts, 'audioProcessingOverload').map(entry => entry.message.active),
+    [true, false]
   );
 });
 
@@ -4038,8 +4188,7 @@ test('worklet publishes Room EQ WASM availability and runtime fallback states', 
     }
   });
   const harness = await createWorkletHarness({ binding });
-  const roomEq = pluginConfig({
-    type: 'RoomEqPlugin',
+  const roomEq = roomEqPluginConfig({
     wasmParams: new Float32Array(4),
     wasmParamsHash: 0x6b4d1234
   });
@@ -4062,3 +4211,837 @@ test('worklet publishes Room EQ WASM availability and runtime fallback states', 
   harness.processor.runtimeFallback(harness.processor.plugins[0], 'trap');
   assert.equal(executionMessages().at(-1).reason, 'runtimeFallback');
 });
+
+test('worklet reports runtime fallback for every instance after a type failure fuse', async () => {
+  const binding = createBinding({
+    capabilities: {
+      abiVersion: 1,
+      simd: false,
+      kernels: [{
+        name: 'RoomEqPlugin', hash: 0x6b4d1234, byteCapacity: 0, kernelIndex: 0
+      }]
+    }
+  });
+  const harness = await createWorkletHarness({ binding });
+  const roomEq = id => roomEqPluginConfig({
+    id,
+    wasmParams: new Float32Array(4),
+    wasmParamsHash: 0x6b4d1234
+  });
+  const latestState = id => {
+    const latest = messagesOf(harness.posts, 'dspExecutionState')
+      .map(entry => entry.message)
+      .filter(message => message.pluginId === id)
+      .at(-1);
+    return { state: latest.state, reason: latest.reason };
+  };
+
+  await harness.send({
+    type: 'updatePlugins',
+    plugins: [roomEq(7), roomEq(8)],
+    masterBypass: false
+  });
+  await harness.send({ type: 'dspEnableTypes', types: ['RoomEqPlugin'] });
+  await harness.send({ type: 'dspModule', module: {} });
+  assert.deepEqual(latestState(7), { state: 'active', reason: null });
+  assert.deepEqual(latestState(8), { state: 'active', reason: null });
+
+  harness.processor.runtimeFallback(harness.processor.plugins[0], 'trap 1');
+  harness.processor.runtimeFallback(harness.processor.plugins[0], 'trap 2');
+  assert.deepEqual(latestState(7), { state: 'bypassed', reason: 'runtimeFallback' });
+  assert.deepEqual(latestState(8), { state: 'active', reason: null });
+
+  harness.processor.runtimeFallback(harness.processor.plugins[0], 'trap 3');
+  assert.equal(harness.processor.dspRuntimeFailures.get('RoomEqPlugin'), 3);
+  assert.ok(harness.processor.dspFailedTypes.has('RoomEqPlugin'));
+  assert.deepEqual(latestState(7), { state: 'bypassed', reason: 'runtimeFallback' });
+  assert.deepEqual(latestState(8), { state: 'bypassed', reason: 'runtimeFallback' });
+});
+
+test('worklet terminal Tube Simulator setup failures become explicit pass-through bypasses',
+  async t => {
+    const cases = [
+      {
+        name: 'createInstance returned zero',
+        bindingOptions: { createInstanceResult: 0 },
+        hasInstance: false
+      },
+      {
+        name: 'set_params failed',
+        bindingOptions: { paramsStatus: -4 },
+        hasInstance: true
+      }
+    ];
+
+    for (const testCase of cases) {
+      await t.test(testCase.name, async () => {
+        const binding = createBinding({
+          capabilities: {
+            abiVersion: 1,
+            simd: false,
+            kernels: [{
+              name: 'TubeSimulatorPlugin',
+              hash: 0x5e01129f,
+              byteCapacity: 0,
+              kernelIndex: 0
+            }]
+          },
+          pipelineConfigureStatus: 0,
+          pipelineGain: 2,
+          ...testCase.bindingOptions
+        });
+        const harness = await createWorkletHarness({ binding });
+        await harness.send({
+          type: 'registerProcessor',
+          pluginType: 'TubeSimulatorPlugin',
+          processor: 'if (parameters.fr === true) data.fill(0); return data;'
+        });
+        const tube = stereoPairWasmPluginConfig();
+        const executionStates = () => messagesOf(harness.posts, 'dspExecutionState')
+          .map(entry => entry.message)
+          .filter(message => message.pluginId === tube.id)
+          .map(({ state, reason }) => ({ state, reason }));
+
+        await harness.send({ type: 'updateAudioConfig', sampleRate: 96000 });
+        await harness.send({ type: 'updatePlugins', plugins: [tube], masterBypass: false });
+        await harness.send({ type: 'dspEnableTypes', types: ['TubeSimulatorPlugin'] });
+        await harness.send({ type: 'dspModule', module: {} });
+
+        assert.deepEqual(executionStates().slice(-2), [
+          { state: 'pending', reason: null },
+          { state: 'bypassed', reason: 'runtimeFallback' }
+        ]);
+        assert.equal(
+          harness.processor.dspExecutionRuntimeFallbacks.has(tube.id),
+          true
+        );
+        assert.equal(harness.processor.wasmInstances.has(tube.id), testCase.hasInstance);
+        assert.equal(harness.processor.dspPipelinePluginCount, 0);
+
+        const output = processBlock(harness.processor, 0.25);
+        assert.ok(output.every(channel => channel.every(sample => sample === 0.25)));
+        assert.equal(
+          binding.calls.filter(call => call[0] === 'instanceProcess').length,
+          0
+        );
+      });
+    }
+  });
+
+test('worklet type fuse overrides mixed Tube Simulator support reasons', async () => {
+  const binding = createBinding({
+    capabilities: {
+      abiVersion: 1,
+      simd: false,
+      kernels: [{
+        name: 'TubeSimulatorPlugin',
+        hash: 0x5e01129f,
+        byteCapacity: 0,
+        kernelIndex: 0
+      }]
+    },
+    pipelineConfigureStatus: 0
+  });
+  const harness = await createWorkletHarness({ binding });
+  const tube = (id, channel) => stereoPairWasmPluginConfig({
+    id,
+    channel
+  });
+  const latestState = id => {
+    const latest = messagesOf(harness.posts, 'dspExecutionState')
+      .map(entry => entry.message)
+      .filter(message => message.pluginId === id)
+      .at(-1);
+    return { state: latest.state, reason: latest.reason };
+  };
+
+  await harness.send({ type: 'updateAudioConfig', sampleRate: 96000 });
+  await harness.send({
+    type: 'updatePlugins',
+    plugins: [tube(7, null), tube(8, 'A')],
+    masterBypass: false
+  });
+  await harness.send({ type: 'dspEnableTypes', types: ['TubeSimulatorPlugin'] });
+  await harness.send({ type: 'dspModule', module: {} });
+  assert.deepEqual(latestState(7), { state: 'active', reason: null });
+  assert.deepEqual(latestState(8), {
+    state: 'bypassed',
+    reason: 'unsupportedChannelMode'
+  });
+
+  for (let failure = 1; failure <= 3; failure++) {
+    harness.processor.runtimeFallback(
+      harness.processor.plugins[0],
+      `trap ${failure}`
+    );
+  }
+  assert.equal(harness.processor.dspFailedTypes.has('TubeSimulatorPlugin'), true);
+  assert.deepEqual(latestState(7), { state: 'bypassed', reason: 'runtimeFallback' });
+  assert.deepEqual(latestState(8), { state: 'bypassed', reason: 'runtimeFallback' });
+
+  await harness.send({ type: 'updateAudioConfig', sampleRate: 48000 });
+  assert.deepEqual(latestState(7), { state: 'bypassed', reason: 'runtimeFallback' });
+  assert.deepEqual(latestState(8), { state: 'bypassed', reason: 'runtimeFallback' });
+});
+
+test('worklet preserves routing for declaratively unsupported execution modes', async t => {
+  const cases = [
+    {
+      name: 'unsupported 32 kHz stereo',
+      sampleRate: 32000,
+      channel: null,
+      reason: 'unsupportedSampleRate'
+    },
+    {
+      name: '96 kHz all channels',
+      sampleRate: 96000,
+      channel: 'A',
+      reason: 'unsupportedChannelMode'
+    },
+    {
+      name: '96 kHz mono stereo target on different buses',
+      sampleRate: 96000,
+      outputChannels: 1,
+      channel: null,
+      reason: 'unsupportedChannelMode',
+      expectedOutput: [0.75]
+    },
+    {
+      name: '96 kHz incomplete 3/4 pair on different buses',
+      sampleRate: 96000,
+      outputChannels: 3,
+      channel: '34',
+      reason: 'unsupportedChannelMode',
+      expectedOutput: [0.25, 0.25, 0.75]
+    }
+  ];
+
+  for (const testCase of cases) {
+    await t.test(testCase.name, async () => {
+      const binding = createBinding({
+        capabilities: {
+          abiVersion: 1,
+          simd: false,
+          kernels: [
+            {
+              name: 'VolumePlugin',
+              hash: 0x1234,
+              byteCapacity: 0,
+              kernelIndex: 0
+            },
+            {
+              name: 'StereoPairWasmTestPlugin',
+              hash: 0x5e01129f,
+              byteCapacity: 0,
+              kernelIndex: 1
+            }
+          ]
+        },
+        instanceLatency: 64,
+        pipelineConfigureStatus: 0,
+        pipelineGain: 5,
+        wasmGain: 2
+      });
+      const harness = await createWorkletHarness({
+        binding,
+        outputChannels: testCase.outputChannels
+      });
+      await harness.send({
+        type: 'registerProcessor',
+        pluginType: 'StereoPairWasmTestPlugin',
+        processor: 'data.fill(0); return data;'
+      });
+      const constrainedPlugin = stereoPairWasmPluginConfig({
+        id: 8,
+        type: 'StereoPairWasmTestPlugin',
+        inputBus: 1,
+        outputBus: 0,
+        channel: testCase.channel
+      });
+      const latestState = () => {
+        const latest = messagesOf(harness.posts, 'dspExecutionState')
+          .map(entry => entry.message)
+          .filter(message => message.pluginId === constrainedPlugin.id)
+          .at(-1);
+        return { state: latest.state, reason: latest.reason };
+      };
+
+      await harness.send({
+        type: 'updateAudioConfig',
+        sampleRate: testCase.sampleRate,
+        ...(testCase.outputChannels !== undefined && {
+          outputChannels: testCase.outputChannels
+        })
+      });
+      await harness.send({
+        type: 'updatePlugins',
+        plugins: [
+          pluginConfig({ inputBus: 0, outputBus: 1, channel: 'A' }),
+          constrainedPlugin
+        ],
+        masterBypass: false
+      });
+      await harness.send({
+        type: 'dspEnableTypes',
+        types: ['VolumePlugin', 'StereoPairWasmTestPlugin']
+      });
+      await harness.send({ type: 'dspModule', module: {} });
+
+      assert.deepEqual(latestState(), {
+        state: 'bypassed',
+        reason: testCase.reason
+      });
+      assert.equal(harness.processor.dspPipelineReady, false);
+      assert.equal(harness.processor.dspPipelinePluginCount, 0);
+      assert.equal(harness.processor.dspPipelineLatencySamples, 0);
+
+      const output = processBlock(
+        harness.processor,
+        0.25,
+        testCase.outputChannels ?? 2
+      );
+      const expectedOutput = testCase.expectedOutput ?? output.map(() => 0.75);
+      assert.deepEqual(
+        output.map(channel => channel[0]),
+        expectedOutput
+      );
+      assert.ok(output.every((channel, index) =>
+        channel.every(sample => sample === expectedOutput[index])
+      ));
+      assert.equal(
+        binding.calls.filter(call => call[0] === 'pipelineProcess').length,
+        0
+      );
+      assert.equal(
+        binding.calls.filter(call => call[0] === 'instanceProcess').length,
+        1
+      );
+      assert.deepEqual(latestState(), {
+        state: 'bypassed',
+        reason: testCase.reason
+      });
+      assert.equal(harness.processor.dspPipelineLatencySamples, 0);
+    });
+  }
+});
+
+test('worklet never runs Tube JavaScript while WASM-only execution is inactive',
+  async () => {
+  const binding = createBinding({
+    capabilities: {
+      abiVersion: 1,
+      simd: false,
+      kernels: [{
+        name: 'TubeSimulatorPlugin',
+        hash: 0x5e01129f,
+        byteCapacity: 0,
+        kernelIndex: 0
+      }]
+    },
+    pipelineConfigureStatus: -6,
+    wasmGain: 2
+  });
+  const harness = await createWorkletHarness({ binding });
+  const tube = stereoPairWasmPluginConfig();
+  await harness.send({
+    type: 'registerProcessor',
+    pluginType: 'TubeSimulatorPlugin',
+    processor: 'context.jsRuns = (context.jsRuns || 0) + 1; data.fill(-9); return data;'
+  });
+  const latestState = () => {
+    const latest = messagesOf(harness.posts, 'dspExecutionState')
+      .map(entry => entry.message)
+      .filter(message => message.pluginId === tube.id)
+      .at(-1);
+    return { state: latest.state, reason: latest.reason };
+  };
+  const assertDryWithoutJavascript = value => {
+    const output = processBlock(harness.processor, value);
+    assert.ok(output.every(channel =>
+      channel.every(sample => sample === value)));
+    assert.equal(
+      harness.processor.pluginContexts.get(tube.id)?.jsRuns,
+      undefined
+    );
+  };
+
+  await harness.send({ type: 'updateAudioConfig', sampleRate: 96000 });
+  await harness.send({
+    type: 'updatePlugins',
+    plugins: [tube],
+    masterBypass: false
+  });
+  assert.deepEqual(latestState(), { state: 'pending', reason: null });
+  assertDryWithoutJavascript(0.125);
+
+  await harness.send({ type: 'dspEnableTypes', types: [] });
+  assert.deepEqual(latestState(), {
+    state: 'bypassed',
+    reason: 'rolloutDisabled'
+  });
+  assertDryWithoutJavascript(0.25);
+
+  await harness.send({
+    type: 'dspEnableTypes',
+    types: ['TubeSimulatorPlugin']
+  });
+  assert.deepEqual(latestState(), {
+    state: 'bypassed',
+    reason: 'wasmUnavailable'
+  });
+  assertDryWithoutJavascript(0.375);
+
+  await harness.send({ type: 'dspModule', module: {} });
+  assert.deepEqual(latestState(), { state: 'active', reason: null });
+  const activeOutput = processBlock(harness.processor, 0.5);
+  assert.ok(activeOutput.every(channel =>
+    channel.every(sample => sample === 1)));
+  assert.equal(harness.processor.pluginContexts.get(tube.id)?.jsRuns, undefined);
+
+  harness.processor.runtimeFallback(harness.processor.plugins[0], 'test trap');
+  assert.deepEqual(latestState(), {
+    state: 'bypassed',
+    reason: 'runtimeFallback'
+  });
+  assertDryWithoutJavascript(0.625);
+
+  await harness.send({ type: 'updatePlugin', plugin: tube });
+  assert.deepEqual(latestState(), { state: 'active', reason: null });
+  const recoveredOutput = processBlock(harness.processor, 0.75);
+  assert.ok(recoveredOutput.every(channel =>
+    channel.every(sample => sample === 1.5)));
+  assert.equal(harness.processor.pluginContexts.get(tube.id)?.jsRuns, undefined);
+});
+
+test('worklet keeps in-block Tube WASM failures out of JavaScript fallback',
+  async t => {
+  for (const testCase of [
+    { name: 'nonzero return', bindingOptions: { processStatuses: [-7] } },
+    {
+      name: 'throw',
+      bindingOptions: { instanceProcessError: new Error('test trap') }
+    }
+  ]) {
+    await t.test(testCase.name, async () => {
+      const binding = createBinding({
+        capabilities: {
+          abiVersion: 1,
+          simd: false,
+          kernels: [{
+            name: 'TubeSimulatorPlugin',
+            hash: 0x5e01129f,
+            byteCapacity: 0,
+            kernelIndex: 0
+          }]
+        },
+        pipelineConfigureStatus: -6,
+        instanceMutateOnFailure: true,
+        ...testCase.bindingOptions
+      });
+      const harness = await createWorkletHarness({ binding });
+      const tube = stereoPairWasmPluginConfig();
+      await harness.send({
+        type: 'registerProcessor',
+        pluginType: 'TubeSimulatorPlugin',
+        processor:
+          'context.jsRuns = (context.jsRuns || 0) + 1; data.fill(-9); return data;'
+      });
+      const latestState = () => {
+        const latest = messagesOf(harness.posts, 'dspExecutionState')
+          .map(entry => entry.message)
+          .filter(message => message.pluginId === tube.id)
+          .at(-1);
+        return { state: latest.state, reason: latest.reason };
+      };
+
+      await harness.send({ type: 'updateAudioConfig', sampleRate: 96000 });
+      await harness.send({
+        type: 'updatePlugins',
+        plugins: [tube],
+        masterBypass: false
+      });
+      await harness.send({
+        type: 'dspEnableTypes',
+        types: ['TubeSimulatorPlugin']
+      });
+      await harness.send({ type: 'dspModule', module: {} });
+      assert.deepEqual(latestState(), { state: 'active', reason: null });
+
+      const failedBlock = processBlock(harness.processor, 0.25);
+      assert.ok(failedBlock.every(channel =>
+        channel.every(sample => sample === 0.25)));
+      assert.deepEqual(latestState(), {
+        state: 'bypassed',
+        reason: 'runtimeFallback'
+      });
+      assert.equal(
+        harness.processor.pluginContexts.get(tube.id)?.jsRuns,
+        undefined
+      );
+
+      const nextBlock = processBlock(harness.processor, 0.5);
+      assert.ok(nextBlock.every(channel =>
+        channel.every(sample => sample === 0.5)));
+      assert.equal(
+        harness.processor.pluginContexts.get(tube.id)?.jsRuns,
+        undefined
+      );
+    });
+  }
+});
+
+test('worklet keeps Tube Simulator WASM-only at supported rates with enough output channels',
+  async () => {
+  const binding = createBinding({
+    capabilities: {
+      abiVersion: 1,
+      simd: false,
+      kernels: [{
+        name: 'TubeSimulatorPlugin', hash: 0x5e01129f, byteCapacity: 0, kernelIndex: 0
+      }]
+    },
+    instanceLatency: 64,
+    pipelineConfigureStatus: 0,
+    pipelineGain: 1
+  });
+  const harness = await createWorkletHarness({ binding });
+  const tube = stereoPairWasmPluginConfig();
+  const executionMessages = () => messagesOf(harness.posts, 'dspExecutionState')
+    .map(entry => entry.message)
+    .filter(message => message.pluginType === 'TubeSimulatorPlugin');
+  const latestState = () => {
+    const latest = executionMessages().at(-1);
+    return { state: latest.state, reason: latest.reason };
+  };
+
+  await harness.send({ type: 'updateAudioConfig', sampleRate: 32000 });
+  await harness.send({ type: 'updatePlugins', plugins: [tube], masterBypass: false });
+  assert.deepEqual(latestState(), {
+    state: 'bypassed',
+    reason: 'unsupportedSampleRate'
+  });
+  assert.equal(harness.processor.dspPipelinePluginCount, 0);
+  await harness.send({ type: 'updateAudioConfig', sampleRate: 96000 });
+  assert.deepEqual(latestState(), { state: 'pending', reason: null });
+  await harness.send({ type: 'dspEnableTypes', types: [] });
+  assert.deepEqual(latestState(), { state: 'bypassed', reason: 'rolloutDisabled' });
+  await harness.send({ type: 'dspEnableTypes', types: ['TubeSimulatorPlugin'] });
+  assert.deepEqual(latestState(), { state: 'bypassed', reason: 'wasmUnavailable' });
+  await harness.send({ type: 'dspModule', module: {} });
+  assert.deepEqual(latestState(), { state: 'active', reason: null });
+  assert.equal(harness.processor.dspPipelinePluginCount, 1);
+  assert.equal(harness.processor.dspPipelineLatencySamples, 64);
+
+  let generation = executionMessages().at(-1).generation;
+  await harness.send({ type: 'updateAudioConfig', outputChannels: 1 });
+  assert.deepEqual(latestState(), {
+    state: 'bypassed',
+    reason: 'unsupportedChannelMode'
+  });
+  assert.equal(executionMessages().at(-1).generation, generation + 1);
+  assert.equal(harness.processor.dspPipelinePluginCount, 0);
+  assert.equal(harness.processor.dspPipelineLatencySamples, 0);
+  const monoInstanceProcessCalls =
+    binding.calls.filter(call => call[0] === 'instanceProcess').length;
+  const monoOutput = processBlock(harness.processor, 0.25, 1);
+  assert.ok(monoOutput.every(channel => channel.every(sample => sample === 0.25)));
+  assert.equal(
+    binding.calls.filter(call => call[0] === 'instanceProcess').length,
+    monoInstanceProcessCalls
+  );
+
+  generation = executionMessages().at(-1).generation;
+  await harness.send({ type: 'updateAudioConfig', outputChannels: 2 });
+  assert.deepEqual(latestState(), { state: 'active', reason: null });
+  assert.equal(executionMessages().at(-1).generation, generation + 1);
+  assert.equal(harness.processor.dspPipelinePluginCount, 1);
+  assert.equal(harness.processor.dspPipelineLatencySamples, 64);
+
+  await harness.send({
+    type: 'updatePlugin',
+    plugin: { ...tube, channel: 'A' }
+  });
+  assert.deepEqual(latestState(), {
+    state: 'bypassed',
+    reason: 'unsupportedChannelMode'
+  });
+  assert.equal(harness.processor.dspPipelinePluginCount, 0);
+  assert.equal(harness.processor.dspPipelineLatencySamples, 0);
+  const instanceProcessCalls = binding.calls.filter(call => call[0] === 'instanceProcess').length;
+  const bypassedOutput = processBlock(harness.processor, 0.25);
+  assert.ok(bypassedOutput.every(channel => channel.every(sample => sample === 0.25)));
+  assert.equal(
+    binding.calls.filter(call => call[0] === 'instanceProcess').length,
+    instanceProcessCalls
+  );
+
+  await harness.send({
+    type: 'updatePlugin',
+    plugin: { ...tube, channel: '34' }
+  });
+  assert.deepEqual(latestState(), {
+    state: 'bypassed',
+    reason: 'unsupportedChannelMode'
+  });
+  assert.equal(harness.processor.dspPipelinePluginCount, 0);
+  assert.equal(harness.processor.dspPipelineLatencySamples, 0);
+  const pairOutput = processBlock(harness.processor, 0.5);
+  assert.ok(pairOutput.every(channel => channel.every(sample => sample === 0.5)));
+
+  generation = executionMessages().at(-1).generation;
+  const pipelineConfigureCalls = binding.calls
+    .filter(call => call[0] === 'pipelineConfigure').length;
+  await harness.send({ type: 'updateAudioConfig', outputChannels: 4 });
+  assert.deepEqual(latestState(), { state: 'active', reason: null });
+  assert.equal(harness.processor.dspPipelinePluginCount, 1);
+  assert.equal(harness.processor.dspPipelineLatencySamples, 64);
+  assert.equal(executionMessages().at(-1).generation, generation + 1);
+  assert.equal(
+    binding.calls.filter(call => call[0] === 'pipelineConfigure').length,
+    pipelineConfigureCalls + 1
+  );
+  const fourChannelOutput = processBlock(harness.processor, 0.75, 4);
+  assert.ok(fourChannelOutput.every(
+    channel => channel.every(sample => sample === 0.75)
+  ));
+  harness.processor.runtimeFallback(harness.processor.plugins[0], 'trap');
+  assert.deepEqual(latestState(), { state: 'bypassed', reason: 'runtimeFallback' });
+  harness.processor.publishWasmOnlyExecutionStates(true, true);
+  assert.deepEqual(latestState(), { state: 'bypassed', reason: 'engineStopped' });
+});
+
+test('worklet delivers Tube Simulator runtime events per instance epoch without telemetry',
+  async () => {
+  let runtimeEvent = { generation: 0, latched: false, cause: 0 };
+  const binding = createBinding({
+    capabilities: {
+      abiVersion: 1,
+      simd: false,
+      kernels: [{
+        name: 'TubeSimulatorPlugin', hash: 0x5e01129f, byteCapacity: 0, kernelIndex: 0
+      }]
+    },
+    instanceLatency: 64,
+    pipelineConfigureStatus: 0,
+    pipelineGain: 1,
+    runtimeEvent: () => runtimeEvent
+  });
+  const harness = await createWorkletHarness({ binding });
+  const tube = stereoPairWasmPluginConfig();
+  const runtimeMessages = () => messagesOf(
+    harness.posts,
+    'tubeSimulatorCircuitFault'
+  ).map(entry => entry.message);
+
+  await harness.send({ type: 'updateAudioConfig', sampleRate: 96000 });
+  await harness.send({ type: 'updatePlugins', plugins: [tube], masterBypass: false });
+  await harness.send({ type: 'dspEnableTypes', types: ['TubeSimulatorPlugin'] });
+  await harness.send({ type: 'dspModule', module: {} });
+
+  assert.equal(runtimeMessages().length, 1);
+  assert.deepEqual(
+    {
+      generation: runtimeMessages()[0].generation,
+      latched: runtimeMessages()[0].latched,
+      cause: runtimeMessages()[0].cause
+    },
+    { generation: 0, latched: false, cause: 'none' }
+  );
+  const firstEpoch = runtimeMessages()[0].instanceEpoch;
+
+  runtimeEvent = { generation: 1, latched: true, cause: 1 };
+  processBlock(harness.processor, 0.25);
+  processBlock(harness.processor, 0.25);
+  assert.equal(runtimeMessages().length, 2);
+  assert.equal(runtimeMessages()[1].instanceEpoch, firstEpoch);
+  assert.deepEqual(
+    {
+      generation: runtimeMessages()[1].generation,
+      latched: runtimeMessages()[1].latched,
+      cause: runtimeMessages()[1].cause
+    },
+    { generation: 1, latched: true, cause: 'feedbackOscillation' }
+  );
+
+  runtimeEvent = { generation: 0, latched: false, cause: 0 };
+  harness.processor.destroyDspInstance(tube.id);
+  assert.equal(harness.processor.reconcileDspInstances(), true);
+  assert.equal(runtimeMessages().length, 3);
+  assert.ok(runtimeMessages()[2].instanceEpoch > firstEpoch);
+  assert.deepEqual(
+    {
+      generation: runtimeMessages()[2].generation,
+      latched: runtimeMessages()[2].latched,
+      cause: runtimeMessages()[2].cause
+    },
+    { generation: 0, latched: false, cause: 'none' }
+  );
+  assert.equal(messagesOf(harness.posts, 'dspTelemetry').length, 0);
+  assert.ok(
+    binding.calls.filter(call => call[0] === 'instanceRuntimeEvent').length >= 3
+  );
+});
+
+test('worklet shares mono and first-pair routing for high-rate compressed codecs', async () => {
+  for (const codec of [
+    {
+      type: 'G726ADPCMSimulatorPlugin', hash: 0xee385372,
+      plugin: g726WasmPluginConfig,
+      latency: sampleRate => sampleRate === 352800 ? 10887 : 11606
+    },
+    {
+      type: 'GSMFullRateSimulatorPlugin', hash: 0x645dea59,
+      plugin: gsmWasmPluginConfig,
+      latency: sampleRate => sampleRate === 352800 ? 18641 : 20030
+    },
+    {
+      type: 'BluetoothSBCSimulatorPlugin', hash: 0x8408320d,
+      plugin: sbcWasmPluginConfig,
+      latency: () => 2560
+    },
+    {
+      type: 'MP3CodecSimulatorPlugin', hash: 0xce4e5811,
+      plugin: mp3WasmPluginConfig,
+      latency: sampleRate => sampleRate === 352800 ? 50034 : 54256
+    }
+  ]) for (const testCase of [
+    { sampleRate: 352800, outputChannels: 1, pipelineConfigureStatus: 0, fullPipeline: true },
+    { sampleRate: 384000, outputChannels: 4, pipelineConfigureStatus: -6, fullPipeline: false }
+  ]) {
+    const binding = createBinding({
+      capabilities: {
+        abiVersion: 1,
+        simd: false,
+        kernels: [{
+          name: codec.type,
+          hash: codec.hash,
+          byteCapacity: 0,
+          kernelIndex: 0
+        }]
+      },
+      instanceLatency: codec.latency(testCase.sampleRate),
+      pipelineConfigureStatus: testCase.pipelineConfigureStatus,
+      pipelineGain: 2,
+      wasmGain: 2
+    });
+    const harness = await createWorkletHarness({ binding });
+    const plugin = codec.plugin();
+    await harness.send({
+      type: 'registerProcessor',
+      pluginType: codec.type,
+      processor: 'return data;'
+    });
+    const states = () => messagesOf(harness.posts, 'dspExecutionState')
+      .map(entry => entry.message)
+      .filter(message => message.pluginType === codec.type);
+    const latestState = () => {
+      const latest = states().at(-1);
+      return { state: latest.state, reason: latest.reason };
+    };
+
+    await harness.send({
+      type: 'updateAudioConfig',
+      sampleRate: testCase.sampleRate,
+      outputChannels: testCase.outputChannels
+    });
+    await harness.send({ type: 'updatePlugins', plugins: [plugin], masterBypass: false });
+    await harness.send({ type: 'dspEnableTypes', types: [] });
+    assert.deepEqual(latestState(), { state: 'bypassed', reason: 'rolloutDisabled' });
+    const rolloutDry = processBlock(harness.processor, 0.25, testCase.outputChannels);
+    assert.ok(rolloutDry.every(channel => channel.every(sample => sample === 0.25)));
+
+    await harness.send({ type: 'dspEnableTypes', types: [codec.type] });
+    assert.deepEqual(latestState(), { state: 'bypassed', reason: 'wasmUnavailable' });
+    const unavailableDry = processBlock(harness.processor, 0.5, testCase.outputChannels);
+    assert.ok(unavailableDry.every(channel => channel.every(sample => sample === 0.5)));
+
+    await harness.send({ type: 'dspModule', module: {} });
+    assert.deepEqual(latestState(), { state: 'active', reason: null });
+    const active = processBlock(harness.processor, 0.75, testCase.outputChannels);
+    const processedChannels = testCase.outputChannels === 1 ? 1 : 2;
+    assert.ok(active.slice(0, processedChannels)
+      .every(channel => channel.every(sample => sample === 1.5)));
+    assert.ok(active.slice(processedChannels)
+      .every(channel => channel.every(sample => sample === 0.75)));
+    assert.equal(harness.processor.dspPipelineReady, testCase.fullPipeline);
+    // Both the full-pipeline descriptor and the per-instance fallback must
+    // surface the codec's wet latency to the host.
+    assert.equal(
+      harness.processor.dspPipelineLatencySamples,
+      codec.latency(testCase.sampleRate)
+    );
+    assert.equal(
+      binding.calls.filter(call => call[0] === 'pipelineProcess').length,
+      testCase.fullPipeline ? 1 : 0
+    );
+    assert.equal(
+      binding.calls.filter(call => call[0] === 'instanceProcess').length,
+      testCase.fullPipeline ? 0 : 1
+    );
+    if (testCase.fullPipeline) {
+      const configureCall = binding.calls.find(call => call[0] === 'pipelineConfigure');
+      assert.equal(decodeDspPipelineDescriptor(configureCall[1]).nodes[0].channelSpec, 0);
+    }
+
+    harness.processor.runtimeFallback(harness.processor.plugins[0], `${codec.type} test trap`);
+    assert.deepEqual(latestState(), { state: 'bypassed', reason: 'runtimeFallback' });
+    const fallbackDry = processBlock(harness.processor, 0.125, testCase.outputChannels);
+    assert.ok(fallbackDry.every(channel => channel.every(sample => sample === 0.125)));
+  }
+});
+
+test('worklet skips a plugin whose channel specifier cannot be resolved', async () => {
+  for (const spec of ['0', '', 'left', '-3', {}]) {
+    const harness = await createWorkletHarness();
+    await registerFallback(harness);
+    await harness.send({
+      type: 'updatePlugins',
+      plugins: [pluginConfig({ channel: spec })],
+      masterBypass: false
+    });
+
+    // An unresolvable specifier must not throw out of process(): an exception
+    // here permanently disables the AudioWorkletProcessor for the session.
+    const output = processBlock(harness.processor, 0.25);
+    assert.ok(output.every(channel => channel.every(sample => sample === 0.25)));
+    assert.ok(harness.warnings.some(entry => entry.includes('Invalid channel specifier')));
+  }
+});
+
+test('terminal shipped enable types keep a later-added WASM-only plugin at wasmUnavailable',
+  async () => {
+    const latestState = (harness, id) => {
+      const latest = messagesOf(harness.posts, 'dspExecutionState')
+        .map(entry => entry.message)
+        .filter(message => message.pluginId === id)
+        .at(-1);
+      return latest ? { state: latest.state, reason: latest.reason } : null;
+    };
+    const addLater = async types => {
+      const harness = await createWorkletHarness();
+      await harness.send({
+        type: 'registerProcessor',
+        pluginType: 'MP3CodecSimulatorPlugin',
+        processor: 'return data;'
+      });
+      // The module never loaded, so only the terminal enable-types message arrives.
+      await harness.send({ type: 'dspEnableTypes', types });
+      // The MP3 plugin is added afterwards; no further dspEnableTypes is sent.
+      await harness.send({
+        type: 'updatePlugins',
+        plugins: [mp3WasmPluginConfig({ id: 11 })],
+        masterBypass: false
+      });
+      return latestState(harness, 11);
+    };
+
+    // Snapshotting the pipeline at failure time (the defect) leaves MP3 out of the
+    // allow-list and misreports the cause as a rollout setting.
+    assert.deepEqual(await addLater(['RoomEqPlugin']), {
+      state: 'bypassed', reason: 'rolloutDisabled'
+    });
+    // The shipped allow-list reports the real cause.
+    assert.deepEqual(await addLater([...SHIPPED_ENABLED_TYPES]), {
+      state: 'bypassed', reason: 'wasmUnavailable'
+    });
+  });

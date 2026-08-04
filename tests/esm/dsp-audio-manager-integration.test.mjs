@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { AudioManager } from '../../js/audio-manager.js';
+import { SHIPPED_ENABLED_TYPES } from '../../js/audio/dsp-rollout.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
 function createPort() {
@@ -49,6 +50,7 @@ function createManager() {
   manager._dspReadyTransitionPromise = null;
   manager._dspTransitionGeneration = -1;
   manager._dspExecutionGenerationsByNode = new Map();
+  manager._tubeRuntimeEventsByNode = new WeakMap();
   manager._audioGraphGeneration = 1;
   manager._primaryWorkletEpoch = 1;
   manager._outputFadeToken = 0;
@@ -74,6 +76,7 @@ class WasmOnlyTestPlugin {
   constructor(id) {
     this.id = id;
     this.messages = [];
+    this.executionCapabilities = { requiresWasm: true };
   }
   onMessage(message) {
     this.messages.push(message);
@@ -82,6 +85,7 @@ class WasmOnlyTestPlugin {
 
 class RoomEqPlugin extends WasmOnlyTestPlugin {}
 class AMRadioSimulatorPlugin extends WasmOnlyTestPlugin {}
+class TubeSimulatorPlugin extends WasmOnlyTestPlugin {}
 
 class VolumePlugin {
   constructor(id, branch) {
@@ -319,6 +323,8 @@ test('initializeAudioWorklet returns while optional DSP loading continues', asyn
   }, async () => {
     const manager = createManager();
     const node = createNode('main');
+    manager.pipelineA = [new RoomEqPlugin(1), new AMRadioSimulatorPlugin(2)];
+    manager.pipeline = manager.pipelineA;
     manager.workletNode = node;
     manager.contextManager = {
       workletNode: node,
@@ -334,9 +340,16 @@ test('initializeAudioWorklet returns while optional DSP loading continues', asyn
     assert.equal(manager.dspModuleInfo, null);
     resolveDsp(null);
     assert.equal(await pendingLoad, false);
+    // Terminal allow-list, not a snapshot of the pipeline at failure time.
+    assert.deepEqual(
+      [...messageOf(node.port, 'dspEnableTypes').message.types],
+      [...SHIPPED_ENABLED_TYPES]
+    );
 
     const rejectedManager = createManager();
     const rejectedNode = createNode('rejected');
+    rejectedManager.pipelineA = [new TubeSimulatorPlugin(3)];
+    rejectedManager.pipeline = rejectedManager.pipelineA;
     rejectedManager.workletNode = rejectedNode;
     rejectedManager.contextManager = {
       workletNode: rejectedNode,
@@ -347,9 +360,112 @@ test('initializeAudioWorklet returns while optional DSP loading continues', asyn
     rejectedManager.loadDspForWorklet = async () => { throw new Error('load rejected'); };
 
     assert.equal(await rejectedManager.initializeAudioWorklet(), '');
-    for (let index = 0; index < 6; index++) await Promise.resolve();
+    const rejectedLoad = rejectedManager._dspModuleLoadPromise;
+    assert.equal(await rejectedLoad, false);
     assert.equal(rejectedManager.dspModuleInfo, null);
     assert.ok(warnings.some(message => message.includes('load rejected')));
+    assert.deepEqual(
+      [...messageOf(rejectedNode.port, 'dspEnableTypes').message.types],
+      [...SHIPPED_ENABLED_TYPES]
+    );
+  });
+});
+
+test('AudioManager startup publishes terminal rollout-disabled state for DSP kill switches',
+  async () => {
+    await withGlobals({
+      window: {
+        location: { pathname: '/app/index.html', search: '' },
+        audioPreferences: { useWasmDsp: true }
+      },
+      document: { hidden: false }
+    }, async () => {
+      const cases = [
+        { search: '?dsp=off', useWasmDsp: true },
+        { search: '', useWasmDsp: false }
+      ];
+
+      for (const testCase of cases) {
+        globalThis.window.location.search = testCase.search;
+        globalThis.window.audioPreferences.useWasmDsp = testCase.useWasmDsp;
+        const manager = createManager();
+        const node = createNode('main');
+        manager.workletNode = node;
+        manager.contextManager = {
+          workletNode: node,
+          async loadAudioWorklet() { return ''; }
+        };
+        manager.updateExposedProperties = () => {};
+        manager.registerPipelineProcessors = () => {};
+
+        assert.equal(await manager.initializeAudioWorklet(), '');
+        assert.equal(await manager._dspModuleLoadPromise, false);
+        assert.deepEqual(messageOf(node.port, 'dspEnableTypes').message.types, []);
+      }
+    });
+  });
+
+test('AudioManager startup timeout publishes terminal WASM-unavailable enable types', async () => {
+  await withGlobals({
+    window: {
+      location: { pathname: '/app/index.html', search: '' },
+      audioPreferences: { useWasmDsp: true }
+    },
+    document: { hidden: false }
+  }, async () => {
+    const originalSetTimeout = globalThis.setTimeout;
+    const originalClearTimeout = globalThis.clearTimeout;
+    let timeoutCallback = null;
+    globalThis.setTimeout = callback => {
+      timeoutCallback = callback;
+      return 1;
+    };
+    globalThis.clearTimeout = () => {};
+    try {
+      const manager = createManager();
+      const node = createNode('main');
+      manager.pipelineA = [new RoomEqPlugin(1)];
+      manager.pipeline = manager.pipelineA;
+      manager.workletNode = node;
+      manager.contextManager = {
+        workletNode: node,
+        async loadAudioWorklet() { return ''; }
+      };
+      manager.updateExposedProperties = () => {};
+      manager.registerPipelineProcessors = () => {};
+      manager.loadDspForWorklet = () => new Promise(() => {});
+
+      assert.equal(await manager.initializeAudioWorklet(), '');
+      const pendingLoad = manager._dspModuleLoadPromise;
+      assert.equal(typeof timeoutCallback, 'function');
+      timeoutCallback();
+      assert.equal(await pendingLoad, false);
+      const terminalTypes = messageOf(node.port, 'dspEnableTypes').message.types;
+      // `dspEnableTypes` is terminal here: it is never re-sent from addPlugin.
+      // Sending only the current pipeline's WASM-only types would make any
+      // WASM-only plugin added afterwards report `rolloutDisabled` instead of
+      // the true `wasmUnavailable`, so the full shipped allow-list must go out.
+      assert.deepEqual([...terminalTypes], [...SHIPPED_ENABLED_TYPES]);
+      assert.ok(terminalTypes.includes('RoomEqPlugin'));
+      for (const laterAddedType of [
+        'MP3CodecSimulatorPlugin',
+        'BluetoothSBCSimulatorPlugin',
+        'GSMFullRateSimulatorPlugin',
+        'G726ADPCMSimulatorPlugin'
+      ]) {
+        assert.ok(
+          terminalTypes.includes(laterAddedType),
+          `${laterAddedType} must stay enabled so it reports wasmUnavailable`
+        );
+      }
+      assert.equal(
+        node.port.messages.filter(entry => entry.message.type === 'dspEnableTypes').length,
+        1
+      );
+    } finally {
+      globalThis.setTimeout = originalSetTimeout;
+      globalThis.clearTimeout = originalClearTimeout;
+    }
   });
 });
 
@@ -394,6 +510,79 @@ test('AudioManager validates Room EQ execution state and rejects stale or auxili
   assert.equal(dispatched[1].data.generation, 8);
 });
 
+test('AudioManager validates Tube Simulator runtime event epochs and generations', () => {
+  const manager = createManager();
+  const main = createNode('main');
+  const auxiliary = createNode('auxiliary');
+  const tube = new TubeSimulatorPlugin(46);
+  manager.workletNode = main;
+  manager.contextManager = { workletNode: main };
+  manager.pipelineA = [tube];
+  manager.pipeline = manager.pipelineA;
+  const dispatched = [];
+  manager.dispatchEvent = (type, data) => dispatched.push({ type, data });
+  const state = (instanceEpoch, generation, overrides = {}) => ({
+    type: 'tubeSimulatorCircuitFault',
+    pluginId: 46,
+    pluginType: 'TubeSimulatorPlugin',
+    instanceEpoch,
+    generation,
+    latched: false,
+    cause: 'none',
+    ...overrides
+  });
+
+  manager.handleWorkletMessage({ data: state(10, 0) }, main);
+  manager.handleWorkletMessage({
+    data: state(10, 1, { latched: true, cause: 'feedbackOscillation' })
+  }, main);
+  manager.handleWorkletMessage({
+    data: state(10, 1, { latched: true, cause: 'processingSafetyFailure' })
+  }, main);
+  manager.handleWorkletMessage({ data: state(10, 0) }, main);
+  manager.handleWorkletMessage({ data: state(11, 0) }, main);
+  manager.handleWorkletMessage({
+    data: state(10, 2, { latched: true, cause: 'processingSafetyFailure' })
+  }, main);
+  manager.handleWorkletMessage({
+    data: state(11, 1, { latched: false, cause: 'feedbackOscillation' })
+  }, main);
+  manager.handleWorkletMessage({
+    data: state(11, 1, { latched: true, cause: 'processingSafetyFailure' })
+  }, auxiliary);
+
+  assert.deepEqual(tube.messages.map(message => ({
+    instanceEpoch: message.instanceEpoch,
+    generation: message.generation,
+    latched: message.latched,
+    cause: message.cause,
+    validated: message.validated
+  })), [
+    {
+      instanceEpoch: 10,
+      generation: 0,
+      latched: false,
+      cause: 'none',
+      validated: true
+    },
+    {
+      instanceEpoch: 10,
+      generation: 1,
+      latched: true,
+      cause: 'feedbackOscillation',
+      validated: true
+    },
+    {
+      instanceEpoch: 11,
+      generation: 0,
+      latched: false,
+      cause: 'none',
+      validated: true
+    }
+  ]);
+  assert.equal(dispatched.length, 3);
+});
+
 test('AudioManager relays current primary AM Radio Simulator execution transitions', () => {
   const manager = createManager();
   const main = createNode('main');
@@ -434,6 +623,170 @@ test('AudioManager relays current primary AM Radio Simulator execution transitio
     { state: 'bypassed', reason: 'wasmUnavailable', validated: true }
   ]);
   assert.deepEqual(dispatched.map(entry => entry.data.generation), [10, 11, 12]);
+});
+
+test('AudioManager validates every generic WASM execution bypass reason', () => {
+  const manager = createManager();
+  const main = createNode('main');
+  const auxiliary = createNode('auxiliary');
+  const roomEq = new RoomEqPlugin(44);
+  manager.workletNode = main;
+  manager.contextManager = { workletNode: main };
+  manager.pipelineA = [roomEq];
+  manager.pipeline = manager.pipelineA;
+  manager._parallelActive = true;
+  manager._parallelWorkletB = auxiliary;
+  const dispatched = [];
+  manager.dispatchEvent = (type, data) => dispatched.push({ type, data });
+  const state = (generation, reason, overrides = {}) => ({
+    type: 'dspExecutionState',
+    pluginId: 44,
+    pluginType: 'RoomEqPlugin',
+    state: 'bypassed',
+    reason,
+    generation,
+    ...overrides
+  });
+  const reasons = [
+    'unsupportedSampleRate',
+    'unsupportedChannelMode',
+    'wasmUnavailable',
+    'rolloutDisabled',
+    'runtimeFallback',
+    'engineStopped'
+  ];
+
+  reasons.forEach((reason, index) => {
+    manager.handleWorkletMessage({ data: state(index + 20, reason) }, main);
+  });
+  manager.handleWorkletMessage({ data: state(26, 'internalFailure') }, main);
+  manager.handleWorkletMessage({ data: state(27, 'wasmUnavailable') }, auxiliary);
+  manager.handleWorkletMessage({ data: state(19, 'wasmUnavailable') }, main);
+  manager.handleWorkletMessage({ data: state(28, 'wasmUnavailable', {
+    pluginType: 'VolumePlugin'
+  }) }, main);
+
+  assert.deepEqual(roomEq.messages.map(message => ({
+    reason: message.reason,
+    validated: message.validated
+  })), reasons.map(reason => ({ reason, validated: true })));
+  assert.equal(dispatched.length, reasons.length);
+  assert.deepEqual(
+    dispatched.map(entry => entry.data.generation),
+    [20, 21, 22, 23, 24, 25]
+  );
+});
+
+test('AudioManager rejects execution state from plugins without a WASM requirement', () => {
+  const manager = createManager();
+  const main = createNode('main');
+  const volume = new VolumePlugin(45, 'main');
+  manager.workletNode = main;
+  manager.contextManager = { workletNode: main };
+  manager.pipelineA = [volume];
+  manager.pipeline = manager.pipelineA;
+  const dispatched = [];
+  manager.dispatchEvent = (type, data) => dispatched.push({ type, data });
+  const state = (generation, reason) => ({
+    type: 'dspExecutionState',
+    pluginId: 45,
+    pluginType: 'VolumePlugin',
+    state: 'bypassed',
+    reason,
+    generation
+  });
+
+  manager.handleWorkletMessage({
+    data: state(30, 'unsupportedChannelMode')
+  }, main);
+  assert.deepEqual(dispatched, []);
+});
+
+test('AudioManager same-structure Tube updates use the canonical packed worklet payload', async () => {
+  await withGlobals({
+    window: { location: { pathname: '/app/index.html', search: '' } },
+    document: { hidden: false }
+  }, async () => {
+    class TubeSimulatorPlugin {
+      constructor() {
+        this.id = 45;
+        this.enabled = true;
+        this.inputBus = 2;
+        this.outputBus = 3;
+        this.channel = '34';
+        this.processorString = 'return data;';
+        this.executionState = { state: 'active', reason: null };
+        this.workletPayloadCalls = 0;
+        this.parameterOptions = null;
+      }
+      getParameters(options) {
+        this.parameterOptions = options;
+        return { dr: 12, fr: true, enabled: true };
+      }
+      getWorkletPluginData(parameters) {
+        this.workletPayloadCalls++;
+        const runtimeParameters = { ...parameters };
+        delete runtimeParameters.fr;
+        return {
+          id: this.id,
+          type: this.constructor.name,
+          enabled: this.enabled,
+          parameters: runtimeParameters,
+          inputBus: this.inputBus,
+          outputBus: this.outputBus,
+          channel: this.channel,
+          wasmParams: Float32Array.of(12, 1),
+          wasmParamsHash: 0x5e01129f
+        };
+      }
+    }
+
+    const manager = createManager();
+    const worklet = createNode('primary');
+    const tube = new TubeSimulatorPlugin();
+    const committed = [];
+    let rebuilds = 0;
+    manager.workletNode = worklet;
+    manager.contextManager = {
+      workletNode: worklet,
+      audioContext: {
+        sampleRate: 96000,
+        destination: { channelCount: 4 }
+      }
+    };
+    manager.pipeline = [tube];
+    manager.registerPipelineProcessors = () => {};
+    manager.rebuildPipeline = () => {
+      rebuilds++;
+      return Promise.resolve('');
+    };
+    manager.commitPowerTopologyMutation = (message, options) => {
+      committed.push({ message, options });
+    };
+    manager._syncWasmAssetMembership = () => {};
+
+    await manager.setPipeline([tube]);
+
+    assert.equal(rebuilds, 0);
+    assert.equal(tube.workletPayloadCalls, 1);
+    assert.deepEqual(tube.parameterOptions, {
+      sampleRate: 96000,
+      outputChannelCount: 4,
+      commitSampleRate: true
+    });
+    assert.equal(committed.length, 1);
+    assert.equal(committed[0].options.reason, 'pipeline-state-parameter-update');
+    const payload = committed[0].message.plugins[0];
+    assert.equal(payload.enabled, true);
+    assert.equal(payload.parameters.fr, undefined);
+    assert.deepEqual(
+      { inputBus: payload.inputBus, outputBus: payload.outputBus, channel: payload.channel },
+      { inputBus: 2, outputBus: 3, channel: '34' }
+    );
+    assert.deepEqual([...payload.wasmParams], [12, 1]);
+    assert.equal(payload.wasmParamsHash, 0x5e01129f);
+    assert.deepEqual(tube.executionState, { state: 'active', reason: null });
+  });
 });
 
 test('AudioManager starts a delayed DSP module only on the worklet that requested it', async () => {

@@ -14,7 +14,23 @@ const MAX_UTILITY_MESSAGE_BYTES = 4 * 1024 * 1024;
 const MAX_ARTWORK_BRIDGE_MESSAGE_BYTES = 21 * 1024 * 1024;
 const MAX_UTILITY_OUTSTANDING_REQUESTS = 32;
 const UTILITY_CLOSE_TIMEOUT_MS = 2000;
-const UTILITY_OPEN_TIMEOUT_MS = 10000;
+// Startup is bounded by silence, not by elapsed time: a catalog that is slow to
+// open (cold cache, large database, a machine under load) must never be reported
+// as unavailable while the utility keeps signalling progress.
+const UTILITY_OPEN_TIMEOUT_MS = 30000;
+// The heartbeat runs on the utility's main thread while the catalog opens on a
+// worker thread, so it proves liveness but not progress. This absolute ceiling
+// keeps a wedged worker reportable, so the recovery UI stays reachable instead of
+// waiting forever. It is deliberately generous: the only guarantee we need is
+// that `open` always settles eventually, while healthy-but-slow opens must never
+// trip it and surface the false "reset the saved Library catalog" prompt. A
+// post-update collation rebuild rewrites every table's sort keys in one
+// transaction, and grant rehydration resolves registered folders serially, so an
+// offline NAS/SMB path can add SMB timeouts one after another - both scale with
+// the library and can legitimately run for minutes.
+const UTILITY_OPEN_ABSOLUTE_TIMEOUT_MS = 600000;
+const UTILITY_HEARTBEAT_INTERVAL_MS = 1000;
+const UTILITY_SLOW_OPEN_LOG_MS = 10000;
 
 const RUNTIME_METHODS = Object.freeze([
   'addFolder', 'requestFolderAccess', 'scanFolders', 'cancelScan', 'removeFolder',
@@ -76,6 +92,7 @@ class LibraryCatalogUtilityHost {
     this.failedChildren = new WeakSet();
     this.nextRequestId = 1;
     this.pending = new Map();
+    this.onChildSignal = null;
     this.repository = new RepositoryFacade(this);
     this.runtime = new UtilityFacade(this, 'runtime', RUNTIME_METHODS, 'scan-event');
     this.coordinator = new UtilityFacade(this, 'coordinator', COORDINATOR_METHODS, 'event');
@@ -88,26 +105,69 @@ class LibraryCatalogUtilityHost {
 
   static async open(options) {
     const host = new LibraryCatalogUtilityHost(options);
-    const openTimeoutMs = Number.isFinite(options?.openTimeoutMs) && options.openTimeoutMs > 0
+    const idleTimeoutMs = Number.isFinite(options?.openTimeoutMs) && options.openTimeoutMs > 0
       ? options.openTimeoutMs
       : UTILITY_OPEN_TIMEOUT_MS;
-    let timeoutId;
+    const absoluteTimeoutMs =
+      Number.isFinite(options?.openAbsoluteTimeoutMs) && options.openAbsoluteTimeoutMs > 0
+        ? options.openAbsoluteTimeoutMs
+        : UTILITY_OPEN_ABSOLUTE_TIMEOUT_MS;
+    const startedAt = Date.now();
     try {
-      await Promise.race([
-        host.ready,
-        new Promise((_, reject) => {
-          timeoutId = setTimeout(() => reject(createUtilityError(
-            'utilityOpenTimeout', 'Library utility initialization timed out'
-          )), openTimeoutMs);
-        })
-      ]);
+      await host.waitForReady(idleTimeoutMs, absoluteTimeoutMs);
+      const elapsedMs = Date.now() - startedAt;
+      if (elapsedMs >= UTILITY_SLOW_OPEN_LOG_MS) {
+        console.warn(`The music library catalog took ${elapsedMs} ms to open.`);
+      }
       return host;
     } catch (error) {
       await host.close();
       throw error;
-    } finally {
-      if (timeoutId) clearTimeout(timeoutId);
     }
+  }
+
+  // Resolves when the utility reports readiness. The idle deadline is re-armed by
+  // every message the child sends (including its initialization heartbeat), so a
+  // silent - crashed or hung - utility is given up on quickly. Because that
+  // heartbeat comes from the utility's main thread while the catalog opens on a
+  // worker thread, a wedged worker keeps re-arming the idle deadline forever; the
+  // absolute deadline bounds that case so the open always settles.
+  waitForReady(idleTimeoutMs, absoluteTimeoutMs = UTILITY_OPEN_ABSOLUTE_TIMEOUT_MS) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      let timeoutId = null;
+      let absoluteTimeoutId = null;
+      const settle = (action, value) => {
+        if (settled) return;
+        settled = true;
+        if (timeoutId) clearTimeout(timeoutId);
+        if (absoluteTimeoutId) clearTimeout(absoluteTimeoutId);
+        if (this.onChildSignal === rearm) this.onChildSignal = null;
+        action(value);
+      };
+      const rearm = () => {
+        if (settled) return;
+        if (timeoutId) clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => settle(reject, createUtilityError(
+          'utilityOpenTimeout',
+          `Library utility initialization stalled for ${idleTimeoutMs} ms`
+        )), idleTimeoutMs);
+      };
+      absoluteTimeoutId = setTimeout(() => settle(reject, createUtilityError(
+        'utilityOpenTimeout',
+        `Library utility initialization did not complete within ${absoluteTimeoutMs} ms`
+      )), absoluteTimeoutMs);
+      this.onChildSignal = rearm;
+      rearm();
+      this.ready.then(
+        payload => settle(resolve, payload),
+        error => settle(reject, error)
+      );
+    });
+  }
+
+  noteChildSignal() {
+    this.onChildSignal?.();
   }
 
   async request(target, method, args = []) {
@@ -142,7 +202,9 @@ class LibraryCatalogUtilityHost {
     const child = this.processFactory(this.modulePath);
     this.child = child;
     child.on('message', message => {
-      if (child === this.child) this.handleMessage(unwrapMessage(message));
+      if (child !== this.child) return;
+      this.noteChildSignal();
+      this.handleMessage(unwrapMessage(message));
     });
     child.on('exit', code => {
       if (!this.closed && !this.closing) {
@@ -182,6 +244,10 @@ class LibraryCatalogUtilityHost {
       );
     } catch (error) {
       await this.handleChildFailure(this.child, error);
+      return;
+    }
+    if (message.type === 'heartbeat') {
+      // Liveness only; the deadline was already re-armed by the message itself.
       return;
     }
     if (message.type === 'ready') {
@@ -430,5 +496,7 @@ module.exports = {
   MAX_UTILITY_MESSAGE_BYTES,
   MAX_UTILITY_OUTSTANDING_REQUESTS,
   UTILITY_CLOSE_TIMEOUT_MS,
+  UTILITY_HEARTBEAT_INTERVAL_MS,
+  UTILITY_OPEN_ABSOLUTE_TIMEOUT_MS,
   UTILITY_OPEN_TIMEOUT_MS
 };

@@ -19,6 +19,7 @@ not accept a different SDK version.
 
 ```text
 npm run gen:dsp
+npm run test:dsp:warnings
 npm run test:dsp
 node tools/dsp-parity/run.mjs --native
 npm run build:dsp
@@ -31,11 +32,15 @@ updates the C++ headers plus the runtime JavaScript packers
 (`js/audio/dsp-params.generated.js`). Add `-- --check` to
 verify freshness without writing.
 
-Run the verification commands in the order shown. `npm run test:dsp` configures a native
-build and runs CTest; the following `--native` command runs every golden through that
-native runner. Neither step requires emsdk. `npm run build:dsp` then builds baseline and
-SIMD128 modules, copies them to `plugins/dsp/`, smoke-instantiates both artifacts, and
-writes deterministic metadata. The final two commands check baseline WASM and then the
+Run the verification commands in the order shown. `npm run test:dsp:warnings` uses the
+pinned Emscripten Clang frontend to compile every registered native test source with
+warnings as errors, including `-Wunused-but-set-variable`, without linking or running
+the tests. `npm run test:dsp` then configures a native build and runs CTest; the following
+`--native` command runs every golden through that native runner. Neither native step
+requires emsdk; only the warning check does.
+`npm run build:dsp` runs the same warning check before building baseline and SIMD128
+modules, copying them to `plugins/dsp/`, smoke-instantiating both artifacts, and writing
+deterministic metadata. The final two commands check baseline WASM and then the
 baseline-plus-SIMD modes. Build directories live below `dsp/build/`.
 
 ## ABI And Memory
@@ -161,6 +166,13 @@ values at byte offsets 0, 4, 8, and 12 for carrier level before AGC in dB, AGC g
 dB, modulation depth in percent, and fading level in dB, followed by cumulative
 little-endian `u32` counters at byte offsets 16 and 20 for static events and clipping
 events. Shortwave reception is mono, so no stereo blend field exists.
+Type 19 (`TAP_TUBE_SIMULATOR`) format version 1 is exactly 72 bytes: eighteen
+little-endian float32 values, first for the left channel and then for the right channel.
+Each channel contains stage 1 cathode voltage, stage 2 cathode voltage, B+ voltage,
+stage 1 grid-to-cathode voltage, stage 1 plate-to-cathode voltage, stage 1 plate current,
+stage 2 grid-to-cathode voltage, stage 2 plate-to-cathode voltage, and stage 2 plate
+current, in that order.
+
 `et_instance_latency` reflects staged parameters immediately. BrickwallLimiter reports
 `max(1, ceil(lookaheadMs * sampleRate / 1000))` samples at 1x oversampling and
 that same lookahead term plus `ceil(62 / oversampling)` samples at 2x/4x/8x.

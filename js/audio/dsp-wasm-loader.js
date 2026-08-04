@@ -174,6 +174,7 @@ export function createDspParamPackers(generatedModule, kernels = null, warning =
             const byteCapacity = Number.isInteger(value?.byteCapacity) ? value.byteCapacity : 0;
             const hash = Number.isInteger(value?.hash) ? value.hash >>> 0 : findHash(generatedModule, typeName);
             if (typeof pack !== 'function' || hash === null) continue;
+            if (kernelHashes && !kernelHashes.has(typeName)) continue;
             if (kernelHashes && (kernelHashes.get(typeName) !== hash ||
                 kernelByteCapacities.get(typeName) !== byteCapacity)) {
                 warn(warning, `${typeName} generated parameter layout does not match the loaded kernel`);
@@ -194,6 +195,7 @@ export function createDspParamPackers(generatedModule, kernels = null, warning =
         const typeName = match[1];
         const hash = findHash(generatedModule, typeName);
         if (hash === null) continue;
+        if (kernelHashes && !kernelHashes.has(typeName)) continue;
         if (kernelHashes && kernelHashes.get(typeName) !== hash) {
             warn(warning, `${typeName} generated parameter layout does not match the loaded kernel`);
             continue;

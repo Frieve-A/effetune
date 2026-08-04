@@ -15,8 +15,12 @@ Uma coleção de plugins que adicionam caráter vintage e qualidades nostálgica
 - [Digital Error Emulator](#digital-error-emulator) - Simula vários erros de transmissão de áudio digital
 - [DSD64 IMD Simulator](#dsd64-imd-simulator) - Simula a distorção de intermodulação audível causada pelo ruído ultrassônico do DSD64
 - [FM Radio Simulator](#fm-radio-simulator) - Passa a música por uma cadeia de transmissão e recepção FM simulada fisicamente
+- [G.726 Simulator](#g726-simulator) - Simula uma conversão de codificação e descodificação de voz ITU-T G.726 com uma ligação rádio ruidosa opcional
+- [GSM-FR Simulator](#gsm-fr-simulator) - Simula uma conversão de codificação e descodificação de voz GSM-FR a 13 kbit/s por ligação rádio com ocultação de perdas de trama
 - [Hum Generator](#hum-generator) - Adiciona ambiência controlável de hum elétrico para escuta vintage/lo-fi
+- [MP3 Codec Simulator](#mp3-codec-simulator) - Simula uma conversão limpa de MPEG Layer III em baixo bitrate
 - [Noise Blender](#noise-blender) - Adiciona textura atmosférica de fundo
+- [SBC Codec Simulator](#sbc-codec-simulator) - Reproduz uma conversão Bluetooth A2DP SBC com perda de pacotes da ligação e ocultação opcionais
 - [Simple Jitter](#simple-jitter) - Cria imperfeições digitais vintage sutis
 - [SW Radio Simulator](#sw-radio-simulator) - Passa a música por uma cadeia modelada de transmissão em onda curta, propagação ionosférica e recepção
 - [Vinyl Artifacts](#vinyl-artifacts) - Adiciona estalos, crackle, hiss, rumble e vazamento de ruído estéreo no estilo vinil
@@ -359,6 +363,53 @@ Este efeito requer um ambiente compatível com seu processamento em tempo real. 
 
 O efeito processa o primeiro par estéreo como uma única cadeia de transmissão; uma entrada mono é transmitida com o canal L−R vazio. RDS, emissoras adjacentes e fontes de interferência estão fora deste modelo. Para o som multibanda de uma "grande emissora", coloque um Multiband Compressor antes deste efeito; para interferências impulsivas, encadeie Noise Blender ou Digital Error Emulator depois.
 
+## G.726 Simulator
+
+O G.726 Simulator processa o canal mono ou o par estéreo selecionado por uma conversão real de codificação e descodificação ITU-T G.726 a 8 kHz. O par estéreo é combinado em mono antes da codificação, e o sinal descodificado é enviado aos dois canais selecionados. Assim, pode ouvir a largura de banda, a quantização diferencial adaptativa e os erros de predição da telefonia digital. Com Bit Error Rate no valor predefinido, o percurso mantém-se totalmente limpo; ao aumentá-lo, junta os erros de bit de uma ligação sem fios como o DECT.
+
+Os modos de 16, 24, 32 e 40 kbit/s são as quatro taxas normalizadas do G.726. O valor predefinido de 32 kbit/s corresponde ao modo de voz full-slot historicamente usado pelo DECT. Taxas inferiores usam menos bits por amostra a 8 kHz e tornam mais evidentes a quantização granular, os tons sustentados ásperos e a sobrecarga de inclinação. Como o codec foi criado para voz, a música de banda larga evidencia fortemente os seus limites.
+
+Este efeito requer o motor WebAssembly. Se o motor, a taxa de amostragem ou o modo de canais não estiver disponível, a entrada permanece inalterada e o plugin apresenta uma mensagem clara. Ao retomar o processamento após uma suspensão, os reamostradores e o estado preditivo do codec reiniciam em conjunto para não reproduzir áudio armazenado antes da suspensão.
+
+### Guia de melhoria do som
+
+- **Voz telefónica representativa:** comece com 32 kbit/s, Output a 0 dB e Mix a 100%. A fala revela a banda estreita de 8 kHz e a textura ADPCM adaptativa num ponto de funcionamento historicamente comum.
+- **Comparar artefactos por taxa:** alterne entre 40, 32, 24 e 16 kbit/s no mesmo trecho de voz. Nas taxas baixas, ouça o grão das vogais, a aspereza dos tons sustentados e a recuperação após mudanças bruscas de nível.
+- **Expor o codec com música:** use percussão, notas agudas sustentadas ou misturas densas a 16 ou 24 kbit/s para tornar mais claras a limitação de banda e os erros de predição.
+- **Adicionar erros de rádio:** aumente Bit Error Rate para -4.5 a -2 para ouvir as palavras de código a partirem-se em crepitações e zonas ásperas. Deixe em -6 para uma comparação limpa de codificação e descodificação.
+- **Misturar o efeito:** reduza Mix para manter parte do sinal original. O percurso seco está alinhado em latência com o descodificado.
+- **Igualar níveis:** use Output apenas para compensar diferenças de volume; não altera a atribuição de bits do G.726.
+
+### Parâmetros
+
+- **Bitrate** — Seleciona 16, 24, 32 ou 40 kbit/s. Cada amostra a 8 kHz usa, respetivamente, 2, 3, 4 ou 5 bits ADPCM. Taxas inferiores aumentam os artefactos de quantização e predição.
+- **Output** — Ajusta o nível descodificado de -24,0 a +12,0 dB sem alterar o estado nem a taxa do codec.
+- **Mix** — Mistura de 0% a 100% o original alinhado em latência com o resultado descodificado.
+- **Bit Error Rate** — Define a taxa de erros de bit da ligação sem fios como potência de dez, de -6 a -2 (predefinição -6). Em -6 o percurso fica isento de erros. Valores mais altos invertem mais bits nas palavras de código ADPCM e produzem o crepitar de uma ligação DECT com má receção.
+
+## GSM-FR Simulator
+
+Quando a saída de áudio tem um canal, o GSM-FR Simulator processa esse canal diretamente. Com dois ou mais canais de saída, combina em mono o par estéreo selecionado. Em seguida, reamostra o sinal mono para 8 kHz e processa-o com o codificador e descodificador RPE-LTP normalizado do GSM-FR a 13 kbit/s. O resultado descodificado regressa ao único canal de saída ou aos dois canais do par selecionado. Use-o para examinar como a codificação de voz dos primeiros telemóveis digitais altera vozes, percussão, sons sustentados e música densa. Com C/I no valor predefinido, o percurso mantém-se totalmente limpo; ao reduzi-lo, reproduz uma receção GSM fraca.
+
+Cada trama de 20 ms é representada por parâmetros quantizados de predição linear, predição a longo prazo e excitação por impulsos regulares. Transcodes repete a etapa completa de codificação e descodificação com estados independentes, reproduzindo a codificação em tandem em vez de funcionar como um controlo genérico de «qualidade». Os canais adicionais depois do par estéreo selecionado permanecem inalterados.
+
+Este efeito requer o seu motor de processamento WebAssembly. Se esse motor, a frequência de amostragem ou o modo de canais selecionados não estiverem disponíveis, a entrada permanece inalterada e o plugin apresenta uma mensagem de estado clara. Ao retomar o processamento após uma suspensão, os reamostradores, as memórias de trama e o estado do codec reiniciam em conjunto, evitando reproduzir áudio armazenado antes da suspensão.
+
+### Guia de melhoria sonora
+
+- **Voz típica dos primeiros telemóveis:** Defina Transcodes como 1, Output como 0 dB e Mix como 100%, e compare vozes, pratos e percussão com o bypass.
+- **Ouvir a codificação em tandem:** Mantenha a mesma passagem e altere Transcodes de 1 para 2 e depois 3. O chilrear, a instabilidade e a perda de clareza aumentam porque o sinal é realmente recodificado e descodificado; os erros de receção de rádio são independentes: com C/I a 30 dB não existem e reduzir o valor reproduz-os.
+- **Evidenciar o modelo de voz com música:** Use Transcodes 3 em música brilhante ou densa para identificar melhor a largura de banda vocal de 8 kHz, o zumbido RPE-LTP e a alteração dos formantes.
+- **Misturar o resultado:** Reduza Mix para recuperar parte do sinal estéreo original. O percurso seco está alinhado com a latência do codec.
+- **Igualar níveis antes de comparar:** Use apenas Output para compensar diferenças de volume percebidas ou medidas. Não altera o algoritmo do codec.
+
+### Parâmetros
+
+- **Transcodes** — Seleciona 1, 2 ou 3 ciclos completos de codificação e descodificação GSM-FR. Cada ciclo mantém um estado independente e usa o mesmo codec de 13 kbit/s. Valores superiores intensificam os artefactos da codificação em tandem.
+- **Output** — Ajusta o nível da saída descodificada entre -24,0 e +12,0 dB. Serve para igualar níveis; não altera o estado nem o bitrate do codec.
+- **Mix** — Mistura entre 0% e 100% o sinal original, alinhado em latência, com o resultado descodificado. A 100%, os dois canais do par estéreo selecionado contêm o mesmo sinal mono descodificado; valores inferiores recuperam a diferença estéreo original.
+- **C/I** — Define a relação portadora/interferência da ligação rádio entre 4 e 30 dB (predefinição 30). A 30 dB a receção é praticamente perfeita. Valores mais baixos acrescentam perdas de trama com ocultação ao estilo GSM 06.11 (repetição atenuada da trama anterior e silenciamento após perdas consecutivas) e distorção por erros de bits de Classe 2, dando os cortes ásperos de um telemóvel no limite da cobertura. Com Transcodes acima de 1, a degradação aplica-se apenas ao último salto.
+
 ## Hum Generator
 
 Adiciona uma camada controlável de hum elétrico de 50/60 Hz para uma escuta vintage ou lo-fi. Use níveis baixos quando a reprodução limpa parecer estéril demais, ou aumente Level para um hum evidente, quase de efeito sonoro.
@@ -432,6 +483,27 @@ Adiciona uma camada controlável de hum elétrico de 50/60 Hz para uma escuta vi
    - Tone: 15.0 kHz, Instability: 6.0%, Level: -36 dB
    - Perfeito para: Uma textura de hum mais forte e audível
 
+## MP3 Codec Simulator
+
+O MP3 Codec Simulator processa os canais selecionados por uma análise MPEG Layer III simplificada em tempo real, quantização espectral com orçamento limitado de bits e síntese. Use-o para ouvir como um MP3 de baixo bitrate altera transientes, detalhes de altas frequências, tons sustentados e a imagem estéreo. Ele modela somente uma conversão limpa do codec; não adiciona cliques de arquivos danificados, interrupções, perda de pacotes nem erros de transmissão.
+
+O perfil MPEG-1 de 44.1 kHz oferece de 32 a 320 kbit/s. O perfil MPEG-2 de 22.05 kHz oferece de 32 a 160 kbit/s e limita mais a banda codificada. O efeito requer seu mecanismo WebAssembly; quando esse mecanismo, a frequência de amostragem ou o modo de canais selecionados não estiverem disponíveis, o áudio permanece inalterado.
+
+### Guia de aprimoramento sonoro
+
+- Para ouvir claramente o caráter do MP3, comece com 44.1 kHz, 48 ou 64 kbit/s, Joint Stereo, Bit Reservoir On e Mix em 100%. Percussão, pratos, tons sustentados e gravações estéreo amplas evidenciam melhor as diferenças.
+- Compare 64 kbit/s com 128 ou 192 kbit/s para perceber quanto detalhe o orçamento maior preserva. Experimente 22.05 kHz em 32 ou 48 kbit/s para uma limitação de banda mais forte.
+- Desative Bit Reservoir em uma faixa com trechos calmos e densos. Cada quadro terá de caber sozinho no orçamento, e transientes complexos podem ficar mais ásperos.
+
+### Parâmetros
+
+- **Codec Rate** — Seleciona `44.1 kHz (MPEG-1)` ou `22.05 kHz (MPEG-2)` e altera perfil, estrutura dos quadros e banda codificada.
+- **Bitrate** — Define o bitrate constante total do fluxo mono ou estéreo. MPEG-1 chega a 320 kbit/s e MPEG-2 a 160 kbit/s; valores baixos aumentam lacunas espectrais, aspereza tonal e borramento de transientes.
+- **Stereo Mode** — `Joint Stereo` pode codificar o primeiro par estéreo como Mid/Side quando isso é mais eficiente; `Stereo` mantém os espectros esquerdo e direito separados.
+- **Bit Reservoir** — Permite que quadros simples guardem capacidade não utilizada para quadros complexos posteriores.
+- **Output** — Ajusta o nível decodificado de -24.0 a +12.0 dB.
+- **Mix** — Mistura de 0% a 100% o original alinhado em latência com o resultado decodificado.
+
 ## Noise Blender
 
 Um efeito que adiciona textura atmosférica de fundo à sua música, semelhante ao som de discos de vinil ou equipamentos vintage. Perfeito para criar atmosferas aconchegantes e nostálgicas.
@@ -462,6 +534,34 @@ Um efeito que adiciona textura atmosférica de fundo à sua música, semelhante 
 - **Per Channel** - Cria um efeito mais espacial
   - On: Som mais amplo e imersivo
   - Off: Textura mais focada e centralizada
+
+## SBC Codec Simulator
+
+SBC Codec Simulator processa os canais selecionados com análise SBC em tempo real, alocação de bits, quantização e síntese. Use-o para ouvir como o codec básico obrigatório do Bluetooth A2DP altera detalhes de alta frequência, texturas tonais, transientes e a imagem estéreo. Com Packet Loss no valor predefinido, a conversão é totalmente limpa; ao aumentá-lo, reproduz as falhas de uma ligação Bluetooth real.
+
+O codec opera internamente a 44,1 kHz para a família de taxas de 44,1 kHz e a 48 kHz para a família de 48 kHz. O valor Bitrate, somente leitura, é calculado pela extensão exata do quadro SBC para Bitpool, Channel Mode, Blocks e taxa do codec atuais.
+
+Este efeito requer o mecanismo de processamento WebAssembly. Se esse mecanismo, a frequência de amostragem ou o modo de canais selecionados não estiverem disponíveis, a entrada não será alterada e o plugin exibirá uma mensagem de estado clara.
+
+### Guia de aprimoramento do som
+
+- **Comparação SBC comum:** Comece com Bitpool 35, Joint Stereo, 16 Blocks e Mix em 100%. Compare com bypass usando pratos, sons sustentados, percussão e gravações estéreo amplas.
+- **Tornar os artefatos mais audíveis:** Reduza Bitpool para 12–20. Haverá menos bits de quantização para as oito sub-bandas, destacando alterações nos agudos e resíduos tonais.
+- **Comparar a alocação estéreo:** Alterne entre Joint Stereo e Stereo enquanto observa Bitrate. Joint Stereo pode codificar conteúdo estéreo correlacionado com mais eficiência; Stereo mantém separadas as sub-bandas esquerda e direita.
+- **Reproduzir o SBC XQ:** Escolha Dual Channel e defina Bitpool em 38 para a configuração conhecida como «SBC XQ», ou 47 para «SBC XQ+». Com material a 44,1 kHz, Bitrate mostra 452.0 e 551.3 kbit/s, coincidindo com os números divulgados. Com Bitpool 53 chega a 617.4 kbit/s, a taxa máxima que este simulador consegue gerar. Todos estes ajustes ficam fora da recomendação do A2DP, mas são o que os transmissores SBC de alta taxa realmente enviam, e é onde o codec fica mais difícil de distinguir do bypass.
+- **Comparar a adaptação dos quadros:** Mude Blocks de 16 para 4. Quadros curtos atualizam os fatores de escala com mais frequência, mas usam uma parcela maior de sobrecarga fixa e mudam o bitrate exibido.
+- **Adicionar falhas sem fio:** Aumente Packet Loss para 5–20% para ouvir quadros desaparecerem em rajadas e a ocultação entrar em ação. Deixe em 0% para uma comparação limpa.
+- **Misturar o efeito:** Reduza Mix para adicionar o caráter SBC com mais sutileza. O caminho original tem a latência alinhada à do caminho codificado.
+
+### Parâmetros
+
+- **Bitpool** — Define de 2 a 53 o orçamento de bits de quantização de cada quadro SBC. `Joint Stereo` e `Stereo` partilham-no entre o par estéreo, enquanto `Dual Channel` o aplica integralmente a cada canal. Valores baixos deixam mais sub-bandas com poucos ou nenhum bit e intensificam os artefatos. Bitpool não representa diretamente kbit/s.
+- **Channel Mode** — `Joint Stereo` pode codificar sub-bandas correlacionadas como soma/diferença quando isso reduz os fatores de escala necessários. `Stereo` mantém separadas as sub-bandas esquerda e direita. Estes dois modos compartilham um Bitpool no primeiro par estéreo; Joint Stereo não transforma o sinal simplesmente em mono. `Dual Channel` dá a cada canal a sua própria alocação independente com o Bitpool completo, pelo que o quadro e a taxa de bits praticamente duplicam: é a configuração por trás do «SBC XQ» e, como a esquerda e a direita são quantizadas de forma independente, a imagem estéreo oscila de maneira diferente do Joint Stereo.
+- **Blocks** — Seleciona 4, 8, 12 ou 16 blocos de amostras de sub-banda por quadro SBC. Menos blocos encurtam o quadro e aumentam a sobrecarga fixa relativa; mais blocos atualizam os fatores de escala com menor frequência.
+- **Bitrate** — Bitrate atual somente leitura em kbit/s, calculado com os bytes exatos do quadro e a taxa do codec. Ele é atualizado quando Bitpool, Channel Mode, Blocks, a família de taxa de amostragem do host ou o roteamento da saída do host entre mono e estéreo muda.
+- **Packet Loss** — Define a taxa de perda de pacotes da ligação Bluetooth de 0% a 20% (predefinição 0%). Em 0% nenhum quadro é perdido. Valores mais altos descartam quadros SBC inteiros em rajadas (modelo de Gilbert-Elliott) e a ocultação integrada repete o quadro anterior atenuando-o antes de desvanecer para o silêncio, como numa ligação sem fios real.
+- **Output** — Ajusta o nível decodificado de -24,0 a +12,0 dB. Reduza-o se a sobressinalização dos filtros do codec elevar demais os picos.
+- **Mix** — Mistura de 0 a 100% o sinal original alinhado em latência com o resultado decodificado.
 
 ## Simple Jitter
 

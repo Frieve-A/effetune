@@ -99,6 +99,28 @@ The registered processor is the behavioral reference. Keep it readable and deter
 The reference processor must remain available while `?dsp=off` and the documented
 fallback policy are supported. Do not delete it merely because the C++ port is enabled.
 
+### Declare Execution Capabilities
+
+A plugin that cannot run without its WASM kernel declares that requirement on the class
+with plain data:
+
+```javascript
+static executionCapabilities = Object.freeze({
+    requiresWasm: true,
+    supportedSampleRates: Object.freeze([48000, 96000]),
+    supportedChannelModes: Object.freeze(['mono', 'stereo-pair'])
+});
+```
+
+`supportedChannelModes` accepts `all`, `single`, `mono`, and `stereo-pair`; the default
+selection (no channel chosen) resolves to `mono` on a one-channel output and to
+`stereo-pair` otherwise. The host uses this declaration consistently for execution-state
+reporting, pipeline construction, latency, and pass-through routing. Keep effect names
+and effect-specific capability checks out of `audio-processor.js` and `audio-manager.js`.
+The compatibility declarations for existing plugins are centralized in
+`js/audio/plugin-execution-capabilities.js`; new plugins should declare their capabilities
+on the class instead of extending that table.
+
 ## 2. Declare the Parameter ABI
 
 `params.json` is the source for both the C++ parameter struct and the JavaScript packer.

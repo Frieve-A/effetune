@@ -6,7 +6,6 @@
   "start_url": "./effetune.html",
   "scope": "./",
   "display": "standalone",
-  "orientation": "any",
   "categories": [
     "music",
     "utilities"

@@ -10,6 +10,7 @@
     "gen:dsp": "node scripts/gen-dsp-params.mjs",
     "build:dsp": "node scripts/build-dsp-wasm.mjs",
     "test:dsp": "node scripts/build-dsp-wasm.mjs --native-tests",
+    "test:dsp:warnings": "node scripts/build-dsp-wasm.mjs --native-test-warning-check",
     "test:dsp:parity": "node tools/dsp-parity/run.mjs --wasm && node tools/dsp-parity/run.mjs --wasm --simd",
     "test:dsp:telemetry-soak": "node tools/dsp-parity/telemetry-soak.mjs",
     "test:power-browser": "node tools/run-power-browser-smoke.mjs",

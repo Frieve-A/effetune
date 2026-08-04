@@ -8,6 +8,7 @@ import { AudioPlayerUI } from './audio-player/audio-player-ui.js';
 import { AudioContextManager } from './audio-player/audio-context-manager.js';
 import { StateManager } from './audio-player/state-manager.js';
 import { MediaSessionManager } from './audio-player/media-session-manager.js';
+import { createMediaSessionAnchor } from './audio-player/media-session-anchor.js';
 import { WakeLockManager } from '../utils/wake-lock-manager.js';
 import { createRecentlyPlayedTracker } from '../library/playlists/recently-played-tracker.js';
 
@@ -42,7 +43,18 @@ export class AudioPlayer {
     this.ui = new AudioPlayerUI(this);
     this.contextManager = new AudioContextManager(this, audioManager);
     this.mediaSessionManager = new MediaSessionManager(this);
-    
+    // Mobile browsers only surface mediaSession metadata, headset keys, and
+    // background playback for pages that play a media element. The player
+    // renders through Web Audio only, so anchor the session with a silent
+    // element that stays outside the audio graph.
+    this.mediaSessionAnchor = createMediaSessionAnchor({
+      stateManager: this.stateManager,
+      windowRef,
+      isElectron: !!(windowRef?.electronAPI ||
+        windowRef?.electronIntegration?.isElectron ||
+        windowRef?.electronIntegration?.isElectronEnvironment?.())
+    });
+
     // Set up state manager listeners
     this.setupStateManagerListeners();
     this.audioManager?.powerPolicyController?.attachPlayer?.(this);
@@ -254,6 +266,7 @@ export class AudioPlayer {
 
     // Clear OS-level media controls and metadata
     this.mediaSessionManager?.dispose();
+    this.mediaSessionAnchor?.dispose();
 
     // Release screen wake lock, if held
     this.wakeLockManager?.dispose();

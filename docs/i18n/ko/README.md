@@ -348,8 +348,12 @@ EffeTune 2.1.0에서는 카탈로그 스키마 v3를 사용하는 음악 라이�
 | Lo-Fi | Digital Error Emulator | 다양한 디지털 오디오 전송 오류와 빈티지 디지털 장비 특성을 시뮬레이션 | [세부 정보](plugins/lofi.md#digital-error-emulator) |
 | Lo-Fi | DSD64 IMD Simulator | DSD64 초음파 노이즈에서 생기는 가청 상호변조 왜곡을 시뮬레이션 | [세부 정보](plugins/lofi.md#dsd64-imd-simulator) |
 | Lo-Fi | FM Radio Simulator | 물리 시뮬레이션된 FM 방송·수신 체인에 음악을 통과 | [세부 정보](plugins/lofi.md#fm-radio-simulator) |
+| Lo-Fi | G.726 Simulator | ITU-T G.726 음성 코덱 인코딩/디코딩 왕복 처리를 선택적 무선 오류와 함께 시뮬레이션 | [세부 정보](plugins/lofi.md#g726-simulator) |
+| Lo-Fi | GSM-FR Simulator | 13 kbit/s GSM-FR 음성 코덱 인코딩/디코딩 왕복 처리를 프레임 소실 은닉이 있는 무선 구간과 함께 시뮬레이션 | [세부 정보](plugins/lofi.md#gsm-fr-simulator) |
 | Lo-Fi | Hum Generator | 빈티지/로파이 청취 분위기를 위한 조절 가능한 50/60 Hz 전원 험 추가 | [세부 정보](plugins/lofi.md#hum-generator) |
+| Lo-Fi | MP3 Codec Simulator | 저비트레이트 MPEG Layer III의 깨끗한 인코딩/디코딩 왕복 처리 시뮬레이션 | [세부 정보](plugins/lofi.md#mp3-codec-simulator) |
 | Lo-Fi | Noise Blender | 로파이 분위기를 위한 조절 가능한 배경 노이즈 질감 추가 | [세부 정보](plugins/lofi.md#noise-blender) |
+| Lo-Fi | SBC Codec Simulator | Bluetooth A2DP SBC 인코딩/디코딩 왕복 처리를 선택적 패킷 소실 및 은닉과 함께 재현 | [세부 정보](plugins/lofi.md#sbc-codec-simulator) |
 | Lo-Fi | Simple Jitter | 디지털 지터 시뮬레이션 | [세부 정보](plugins/lofi.md#simple-jitter) |
 | Lo-Fi | SW Radio Simulator | 음악을 모델링한 단파 송출·전리층 전파·수신 체인으로 변환 | [세부 정보](plugins/lofi.md#sw-radio-simulator) |
 | Lo-Fi | Vinyl Artifacts | 레코드풍 팝, 크래클, 히스, 럼블, 스테레오 노이즈 블리드를 추가 | [세부 정보](plugins/lofi.md#vinyl-artifacts) |

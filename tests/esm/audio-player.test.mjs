@@ -590,3 +590,117 @@ test('close cleans up collaborators, clears uiManager, and debug info reflects m
     assert.ok(calls.some(call => call[0] === 'savePlayerStateNoUiManager'));
   });
 });
+
+test('player anchors the mobile media session while playing and releases it on close', async () => {
+  const elements = [];
+  const revoked = [];
+
+  class TestAnchorAudio {
+    constructor() {
+      this.paused = true;
+      this.src = '';
+      elements.push(this);
+    }
+
+    addEventListener() {}
+    removeEventListener() {}
+    removeAttribute() {}
+    load() {}
+
+    play() {
+      this.paused = false;
+      return Promise.resolve();
+    }
+
+    pause() {
+      this.paused = true;
+    }
+  }
+
+  const androidWindow = {
+    navigator: {
+      userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/126 Mobile Safari/537.36',
+      mediaSession: {}
+    },
+    Audio: TestAnchorAudio,
+    Blob: class TestBlob {
+      constructor(parts, options) {
+        this.parts = parts;
+        this.type = options?.type || '';
+      }
+    },
+    URL: {
+      createObjectURL() {
+        return 'blob:player-anchor';
+      },
+      revokeObjectURL(url) {
+        revoked.push(url);
+      }
+    }
+  };
+
+  await withAudioPlayerGlobals({ window: androidWindow }, async () => {
+    const player = createPlayer();
+    assert.ok(player.mediaSessionAnchor);
+    assert.equal(elements.length, 0);
+
+    player.stateManager.updateState({ isPlaying: true, isPaused: false, isStopped: false }, 'test');
+    await flushMicrotasks();
+    assert.equal(elements.length, 1);
+    assert.equal(elements[0].paused, false);
+    assert.equal(elements[0].src, 'blob:player-anchor');
+
+    player.playbackManager = {
+      playlist: [],
+      savePlayerState() {},
+      dispose() {}
+    };
+    player.contextManager = {
+      disconnect() {},
+      clearNextTrackBuffer() {},
+      isUsingBufferPlayback() {
+        return false;
+      }
+    };
+    player.ui = { removeUI() {} };
+    player.stateManager.clearStateHistory = () => {};
+
+    player.close();
+    assert.equal(elements[0].paused, true);
+    assert.deepEqual(revoked, ['blob:player-anchor']);
+    assert.equal(player.mediaSessionAnchor.element, null);
+  });
+});
+
+test('player skips the media session anchor on desktop browsers', async () => {
+  const desktopWindow = {
+    navigator: {
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36',
+      mediaSession: {}
+    },
+    Audio: class {},
+    Blob: class {},
+    URL: { createObjectURL() {}, revokeObjectURL() {} }
+  };
+
+  await withAudioPlayerGlobals({ window: desktopWindow }, async () => {
+    assert.equal(createPlayer().mediaSessionAnchor, null);
+  });
+});
+
+test('player skips the media session anchor inside Electron', async () => {
+  const electronWindow = {
+    electronAPI: {},
+    navigator: {
+      userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/126 Mobile Safari/537.36',
+      mediaSession: {}
+    },
+    Audio: class {},
+    Blob: class {},
+    URL: { createObjectURL() {}, revokeObjectURL() {} }
+  };
+
+  await withAudioPlayerGlobals({ window: electronWindow }, async () => {
+    assert.equal(createPlayer().mediaSessionAnchor, null);
+  });
+});

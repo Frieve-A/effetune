@@ -15,8 +15,12 @@ A collection of plugins that add vintage character and nostalgic qualities to yo
 - [Digital Error Emulator](#digital-error-emulator) - Simulates various digital audio transmission errors
 - [DSD64 IMD Simulator](#dsd64-imd-simulator) - Simulates audible intermodulation distortion from DSD64 ultrasonic noise
 - [FM Radio Simulator](#fm-radio-simulator) - Passes the music through a physically simulated FM broadcast and receiver chain
+- [G.726 Simulator](#g726-simulator) - Simulates an ITU-T G.726 speech-codec encode/decode round trip with an optional noisy radio link
+- [GSM-FR Simulator](#gsm-fr-simulator) - Simulates a 13 kbit/s GSM-FR speech-codec encode/decode round trip over a radio link with frame erasure concealment
 - [Hum Generator](#hum-generator) - Adds controllable electrical hum ambience for vintage/lo-fi listening
+- [MP3 Codec Simulator](#mp3-codec-simulator) - Simulates a clean low-bitrate MPEG Layer III encode/decode round trip
 - [Noise Blender](#noise-blender) - Adds atmospheric background texture
+- [SBC Codec Simulator](#sbc-codec-simulator) - Simulates a Bluetooth A2DP SBC encode/decode round trip with optional link packet loss and concealment
 - [Simple Jitter](#simple-jitter) - Creates subtle vintage digital imperfections
 - [SW Radio Simulator](#sw-radio-simulator) - Passes the music through a modeled shortwave broadcast, ionospheric path, and receiver
 - [Vinyl Artifacts](#vinyl-artifacts) - Adds vinyl-style pops, crackle, hiss, rumble, and stereo noise bleed
@@ -359,6 +363,53 @@ This effect requires an environment that supports its real-time processing. When
 
 The effect processes the first stereo pair as one broadcast chain; a mono input is broadcast with an empty L−R channel. RDS, adjacent stations, and interference sources are outside this model. For a multiband "big station" sound, place a Multiband Compressor before this effect; for impulse-type interference, chain Noise Blender or Digital Error Emulator after it.
 
+## G.726 Simulator
+
+G.726 Simulator passes the selected mono channel or stereo pair through a real ITU-T G.726 encode/decode round trip at an 8 kHz codec rate. A stereo pair is combined to mono before encoding, and the decoded signal is sent to both selected channels. Use it to hear the bandwidth, adaptive differential quantization, and prediction-error character of digital telephone speech coding. With Bit Error Rate at its default the path stays completely clean; raising it adds the bit errors of a wireless link such as DECT.
+
+The four modes are the standard G.726 rates: 16, 24, 32, and 40 kbit/s. The default 32 kbit/s setting is the historical DECT full-slot speech mode. Lower rates spend fewer bits on each 8 kHz sample and make granular quantization, rough sustained tones, and slope overload more apparent. The codec is designed for speech, so full-band music exposes its limits strongly.
+
+This effect requires its WebAssembly processing engine. If that engine or the selected sample-rate/channel mode is unavailable, the input remains unchanged and the plugin shows a plain-language status message. When processing resumes after suspension, the resamplers and codec prediction state restart together so buffered pre-suspension audio is not replayed.
+
+### Sound Enhancement Guide
+
+- **Representative telephone speech:** Start with 32 kbit/s, Output at 0 dB, and Mix at 100%. Spoken voice reveals the narrow 8 kHz path and characteristic adaptive-ADPCM texture while staying close to the historically common operating point.
+- **Compare rate-dependent artifacts:** Switch between 40, 32, 24, and 16 kbit/s on the same speech passage. At lower rates, listen for coarser vowels, rougher sustained tones, and slower recovery after abrupt level changes.
+- **Expose the codec with music:** Use percussion, bright sustained notes, or dense mixes at 16 or 24 kbit/s. These sources stress a speech-oriented predictor and make bandwidth and prediction-error artifacts easier to identify.
+- **Add radio bit errors:** Raise Bit Error Rate toward -4.5 to -2 to hear code words break up into crackling and rough patches. Leave it at -6 for a clean encode/decode comparison.
+- **Blend the effect:** Reduce Mix when you want some codec character without replacing the entire signal. The dry path is delayed to align with the decoded path, avoiding a separate comb-filter effect.
+- **Match levels before comparing:** Adjust Output only to compensate for perceived or measured loudness differences. It does not change the G.726 bit allocation.
+
+### Parameters
+
+- **Bitrate** — Selects the standard G.726 rate: 16, 24, 32, or 40 kbit/s. Each 8 kHz sample uses 2, 3, 4, or 5 ADPCM bits respectively. Lower settings increase quantization and predictor-error artifacts; higher settings preserve the reconstructed waveform more closely.
+- **Output** — Adjusts the decoded output level from -24.0 to +12.0 dB. Use it for level matching; it does not alter the codec state or bitrate.
+- **Mix** — Blends the latency-aligned original with the decoded result from 0% to 100%.
+- **Bit Error Rate** — Sets the wireless-link bit error rate as a power of ten, from -6 to -2 (default -6). At -6 the codec path is effectively error-free. Higher settings flip more bits inside the ADPCM code words, producing the crackling that a weak DECT-style radio link causes.
+
+## GSM-FR Simulator
+
+When the audio output has one channel, GSM-FR Simulator processes that channel directly. With two or more output channels, it combines the selected stereo pair to mono. It then resamples the mono signal to 8 kHz and passes it through the standardized 13 kbit/s GSM-FR RPE-LTP encoder and decoder. The decoded result returns to the single output channel or to both channels of the selected pair. Use it to examine how early digital mobile speech coding changes voices, percussion, sustained tones, and dense music. With C/I at its default the path stays completely clean; lowering it reproduces poor GSM reception.
+
+Each 20 ms frame is represented by quantized linear-prediction, long-term-prediction, and regular-pulse-excitation parameters. Transcodes repeats the complete encode/decode stage with independent state, reproducing tandem coding rather than acting as a generic quality control. Additional channels beyond the selected stereo pair remain unchanged.
+
+This effect requires its WebAssembly processing engine. If that engine or the selected sample-rate/channel mode is unavailable, the input remains unchanged and the plugin shows a plain-language status message. When processing resumes after suspension, the resamplers, frame buffers, and codec state restart together so buffered pre-suspension audio is not replayed.
+
+### Sound Enhancement Guide
+
+- **Representative early-mobile speech:** Set Transcodes to 1, Output to 0 dB, and Mix to 100%, then compare voices, cymbals, and percussion with bypass.
+- **Hear tandem coding:** Keep the same passage and change Transcodes from 1 to 2 to 3. Warble, chirping, and loss of clarity increase because the signal is genuinely encoded and decoded again. Radio reception errors are separate: at the default C/I of 30 dB there are none, and lowering C/I reproduces them.
+- **Expose the speech model with music:** Use Transcodes 3 on bright or dense music to make the 8 kHz speech bandwidth, RPE-LTP buzz, and formant reshaping easier to identify.
+- **Blend the result:** Lower Mix to restore some of the original stereo signal. The dry path is aligned to the codec latency.
+- **Match levels before comparing:** Adjust Output only to compensate for perceived or measured loudness differences. It does not change the codec algorithm.
+
+### Parameters
+
+- **Transcodes** — Selects 1, 2, or 3 complete GSM-FR encode/decode passes. Every pass has independent state and uses the same 13 kbit/s codec. Higher settings increase tandem-coding artifacts.
+- **Output** — Adjusts the decoded output level from -24.0 to +12.0 dB. Use it for level matching; it does not alter the codec state or bit rate.
+- **Mix** — Blends the latency-aligned original with the decoded result from 0% to 100%. At 100%, a selected stereo pair carries the same decoded mono signal on both channels; lower settings restore the original stereo difference.
+- **C/I** — Sets the carrier-to-interference ratio of the radio link from 4 to 30 dB (default 30). At 30 dB reception is effectively perfect. Lower values add frame erasures with GSM 06.11-style concealment (previous frame repeated and attenuated, muting after consecutive losses) plus Class 2 bit-error distortion, giving the ragged dropouts of a phone at the edge of coverage. With Transcodes above 1 the degradation is applied to the final hop only.
+
 ## Hum Generator
 
 Adds a controllable 50/60 Hz electrical hum layer for a vintage, lo-fi listening mood. Use low levels when clean playback feels too sterile, or raise Level for an obvious sound-effect-like hum.
@@ -432,6 +483,31 @@ Adds a controllable 50/60 Hz electrical hum layer for a vintage, lo-fi listening
    - Tone: 15.0 kHz, Instability: 6.0%, Level: -36 dB
    - Perfect for: A stronger, more audible hum texture
 
+## MP3 Codec Simulator
+
+MP3 Codec Simulator passes the selected channels through a real-time, simplified MPEG Layer III analysis, finite-bit spectral quantization, and synthesis path. Use it to hear how a clean MP3 round trip changes transients, high-frequency detail, tonal textures, and stereo imaging at low bitrates. It models codec processing only; it does not add damaged-file clicks, dropouts, packet loss, or transmission errors.
+
+The 44.1 kHz MPEG-1 profile offers 32–320 kbit/s. The 22.05 kHz MPEG-2 profile offers 32–160 kbit/s and naturally limits the coded bandwidth more strongly. High settings are useful as comparison points and may sound very close to the input on some material.
+
+This effect requires its WebAssembly processing engine. If that engine or the selected sample-rate/channel mode is unavailable, the input remains unchanged and the plugin shows a plain-language status message.
+
+### Sound Enhancement Guide
+
+- **Clearly audible low-bitrate MP3:** Start with 44.1 kHz, 48 or 64 kbit/s, Joint Stereo, Bit Reservoir On, and Mix at 100%. Percussion, cymbals, sustained tones, and wide stereo recordings reveal the codec most readily.
+- **Stronger bandwidth limitation:** Choose 22.05 kHz at 32 or 48 kbit/s. This profile is useful for comparing early low-rate downloads and streaming-like constraints with the 44.1 kHz profile.
+- **Hear the reservoir working:** Keep a track with quiet and dense passages at 48 or 64 kbit/s, then switch Bit Reservoir Off. With it off, every frame must fit its own bit budget, so dense transients can become rougher.
+- **Compare subtle and obvious degradation:** Compare 64 kbit/s with 128 or 192 kbit/s at 44.1 kHz. The higher setting does not guarantee a completely transparent result, but it shows how added bit budget preserves more detail.
+- **Blend the effect:** Reduce Mix when you want some codec character without replacing the whole signal. The dry path is latency-aligned with the coded path.
+
+### Parameters
+
+- **Codec Rate** — Selects `44.1 kHz (MPEG-1)` or `22.05 kHz (MPEG-2)`. This changes the codec profile, frame structure, and coded bandwidth; it is not just a playback sample-rate control.
+- **Bitrate** — Sets the total constant bitrate for the mono or stereo stream. MPEG-1 supports 32, 48, 64, 80, 96, 112, 128, 160, 192, 224, 256, and 320 kbit/s. MPEG-2 supports the same choices through 160 kbit/s. Lower values leave fewer bits for each transform frame and make spectral holes, rough tonal components, and transient smear more likely.
+- **Stereo Mode** — `Joint Stereo` can encode the first stereo pair as Mid/Side when that is more efficient. `Stereo` keeps the left and right spectra separate. Joint Stereo does not simply convert the output to mono.
+- **Bit Reservoir** — Lets simple frames save unused main-data capacity for later complex frames. Turning it off makes every frame meet its own budget and can expose stronger frame-to-frame quality variation.
+- **Output** — Adjusts the decoded level from -24.0 to +12.0 dB. Lower it if transform overshoot makes peaks too high.
+- **Mix** — Blends the latency-aligned original with the decoded result from 0% to 100%.
+
 ## Noise Blender
 
 An effect that adds atmospheric background texture to your music, similar to the sound of vinyl records or vintage equipment. Perfect for creating cozy, nostalgic atmospheres.
@@ -462,6 +538,34 @@ An effect that adds atmospheric background texture to your music, similar to the
 - **Per Channel** - Creates a more spacious effect
   - On: Wider, more immersive sound
   - Off: More focused, centered texture
+
+## SBC Codec Simulator
+
+SBC Codec Simulator passes the selected channels through a real-time SBC analysis, bit allocation, quantization, and synthesis path. Use it to hear how the mandatory baseline codec for Bluetooth A2DP can change high-frequency detail, tonal textures, transients, and stereo imaging. With Packet Loss at its default the round trip is completely clean; raising it reproduces the dropouts of a real Bluetooth link.
+
+The codec runs internally at 44.1 kHz for the 44.1 kHz sample-rate family and 48 kHz for the 48 kHz family. The read-only Bitrate value is calculated from the exact SBC frame length for the current Bitpool, Channel Mode, Blocks, and codec rate. It is therefore more informative than treating Bitpool itself as a bitrate.
+
+This effect requires its WebAssembly processing engine. If that engine or the selected sample-rate/channel mode is unavailable, the input remains unchanged and the plugin shows a plain-language status message.
+
+### Sound Enhancement Guide
+
+- **Typical clean SBC comparison:** Start with Bitpool 35, Joint Stereo, 16 Blocks, and Mix at 100%. Compare cymbals, sustained tones, percussion, and wide stereo recordings with bypass.
+- **Make codec artifacts easier to hear:** Lower Bitpool toward 12–20. Fewer quantization bits are available to the eight subbands, so high-frequency detail and tonal residuals become more obvious.
+- **Compare stereo allocation:** Switch between Joint Stereo and Stereo while watching Bitrate. Joint Stereo can code correlated stereo content more efficiently, while Stereo keeps left and right subbands separate.
+- **Reproduce SBC XQ:** Select Dual Channel and set Bitpool to 38 for the common "SBC XQ" configuration, or 47 for "SBC XQ+". On a 44.1 kHz source the Bitrate reads 452.0 and 551.3 kbit/s, matching the well-known figures. Bitpool 53 reaches 617.4 kbit/s, the highest rate this simulator can produce. These settings are outside the A2DP recommendation but are what high-bitrate SBC senders actually transmit, and they are where the codec becomes hardest to distinguish from bypass.
+- **Compare frame adaptation:** Change Blocks from 16 to 4. Shorter frames update scale factors more often but spend a larger share of each frame on fixed overhead, which also changes the displayed bitrate.
+- **Add wireless dropouts:** Raise Packet Loss toward 5–20% to hear frames disappear in bursts and the concealment fade in. Leave it at 0% for a clean encode/decode comparison.
+- **Blend the effect:** Reduce Mix when you want some SBC character without replacing the whole signal. The dry path is latency-aligned with the coded path.
+
+### Parameters
+
+- **Bitpool** — Sets the quantization-bit budget per SBC frame, from 2 to 53. `Joint Stereo` and `Stereo` share this budget across the stereo pair, while `Dual Channel` spends it on each channel separately. Lower values leave more subbands with few or no bits and make codec artifacts stronger. Bitpool is not a direct kbit/s value.
+- **Channel Mode** — `Joint Stereo` may encode correlated subbands as sum/difference when that reduces the required scale factors. `Stereo` keeps left and right subbands separate. Both share one bitpool across the first stereo pair; Joint Stereo does not simply make the output mono. `Dual Channel` gives each channel its own independent allocation at the full bitpool, so the frame and the bitrate roughly double: this is the configuration behind "SBC XQ", and because left and right are quantized independently the stereo image fluctuates differently than under Joint Stereo.
+- **Blocks** — Selects 4, 8, 12, or 16 subband-sample blocks per SBC frame. Fewer blocks shorten the codec frame and increase fixed overhead relative to coded audio; more blocks adapt scale factors less often.
+- **Bitrate** — Read-only current stream bitrate in kbit/s, calculated from the exact frame bytes and codec rate. It updates when Bitpool, Channel Mode, Blocks, the host sample-rate family, or the host output routing between mono and stereo changes.
+- **Packet Loss** — Sets the Bluetooth link packet loss rate from 0% to 20% (default 0%). At 0% no frames are lost. Higher values drop whole SBC frames in bursts (Gilbert-Elliott model), and the built-in concealment repeats the previous frame with attenuation before fading to silence, giving the interruptions of a real wireless link.
+- **Output** — Adjusts the decoded level from -24.0 to +12.0 dB (default 0.0 dB). Lower it if codec filter overshoot makes peaks too high.
+- **Mix** — Blends the latency-aligned original with the decoded result from 0% to 100%.
 
 ## Simple Jitter
 

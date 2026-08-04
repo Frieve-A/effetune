@@ -1,13 +1,35 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import crypto from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runBenchCli } from '../../tools/dsp-parity/bench.mjs';
-import { generateAllGoldens, runGenerateCli } from '../../tools/dsp-parity/generate.mjs';
+import {
+  generateAllGoldens,
+  productionNativeRunnerHash,
+  requireG726PromotionConformance,
+  requireGsmPromotionConformance,
+  requireMp3PromotionConformance,
+  requireSbcPromotionConformance,
+  runGenerateCli
+} from '../../tools/dsp-parity/generate.mjs';
+import {
+  assertMp3LogicalFieldsMatch,
+  compareMp3DecoderToProductionPcm,
+  decodeMp3LogicalFixture,
+  defaultMp3ProductionDiagnosticPath,
+  generateMp3ConformanceFixture,
+  MP3_CONFORMANCE_FIXTURES,
+  MP3_CONFORMANCE_PROVENANCE,
+  MP3_SYNTHESIS_PCM_CONVENTION,
+  parseMp3ConformanceFixture,
+  readMp3ProductionDiagnostic,
+  verifyMp3FixtureWithDecoder
+} from '../../tools/dsp-parity/mp3-conformance.mjs';
 import { loadReferencePlugin } from '../../tools/dsp-parity/node-host.mjs';
-import { runParityCli } from '../../tools/dsp-parity/run.mjs';
+import { discoverGoldenTargets, runParityCli } from '../../tools/dsp-parity/run.mjs';
 import { DSP_PARAM_PACKERS } from '../../js/audio/dsp-params.generated.js';
 import { computeLayoutHash, validateParamSpec } from '../../scripts/gen-dsp-params.mjs';
 import {
@@ -25,6 +47,17 @@ import {
 } from '../../tools/dsp-parity/runners.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+async function requireMp3ProductionDiagnostic(t) {
+  const diagnosticPath = defaultMp3ProductionDiagnosticPath(repoRoot);
+  try {
+    await fs.access(diagnosticPath);
+  } catch {
+    t.skip(`MP3 native production diagnostic is unavailable at ${diagnosticPath}`);
+    return null;
+  }
+  return diagnosticPath;
+}
 
 test('generator self-check executes an unported legacy plugin twice deterministically', async t => {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-dsp-unported-'));
@@ -137,6 +170,240 @@ test('generated golden files pass the legacy self-check runner', async t => {
   ], { log() {} });
   assert.equal(checked.results.length, 1);
   assert.equal(checked.results[0].comparison.pass, true);
+});
+
+test('production native promotion rejects implicit generation and never uses the bypass JS reference', async t => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-dsp-native-promotion-'));
+  t.after(() => fs.rm(tempDir, { recursive: true, force: true }));
+  const schemaPath = path.join(tempDir, 'params.json');
+  const casesPath = path.join(tempDir, 'cases.json');
+  const missingRunner = path.join(tempDir, 'missing-native-runner.exe');
+  await Promise.all([
+    fs.writeFile(schemaPath, JSON.stringify({
+      type: 'VolumePlugin',
+      parityReference: 'production-native-promoted-v1',
+      tolerance: { policy: 'per-sample', abs: 1e-6 },
+      fields: [{ name: 'volume', key: 'vl', kind: 'float', min: -60, max: 24, default: 0 }]
+    })),
+    fs.writeFile(casesPath, JSON.stringify({
+      cases: [{ id: 'volume-impulse', stimulus: 'imp', frames: 32, params: { vl: -6 } }]
+    }))
+  ]);
+
+  await assert.rejects(
+    () => runGenerateCli([
+      '--root', repoRoot,
+      '--type', 'VolumePlugin',
+      '--schema', schemaPath,
+      '--cases', casesPath
+    ], { log() {} }),
+    /requires explicit --promote-production-native/
+  );
+  await assert.rejects(
+    () => runGenerateCli([
+      '--root', repoRoot,
+      '--type', 'VolumePlugin',
+      '--schema', schemaPath,
+      '--cases', casesPath,
+      '--promote-production-native',
+      '--native-runner', missingRunner
+    ], { log() {} }),
+    /Native DSP parity runner is unavailable/
+  );
+});
+
+test('production native promotion provenance hashes the runner that is actually selected', async t => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-dsp-native-runner-hash-'));
+  t.after(() => fs.rm(tempDir, { recursive: true, force: true }));
+  const runnerPath = path.join(tempDir, 'approved-native-runner.bin');
+  const bytes = Buffer.from('approved production native runner\n');
+  await fs.writeFile(runnerPath, bytes);
+
+  const expected = `sha256:${crypto.createHash('sha256').update(bytes).digest('hex')}`;
+  assert.equal(await productionNativeRunnerHash(repoRoot, runnerPath), expected);
+  assert.equal(await productionNativeRunnerHash(repoRoot, runnerPath), expected);
+});
+
+test('G.726 production-native promotion requires the official conformance gate inputs', () => {
+  assert.throws(
+    () => requireG726PromotionConformance('G726ADPCMSimulatorPlugin', repoRoot, {
+      'promote-production-native': true
+    }),
+    /requires --g726-vector-dir, --g726-conformance-runner, and --g726-state-digest-file/
+  );
+  assert.doesNotThrow(() => requireG726PromotionConformance('VolumePlugin', repoRoot, {
+    'promote-production-native': true
+  }));
+});
+
+test('GSM-FR production-native promotion requires Phase 0, ETSI, and independent gates', async () => {
+  await assert.rejects(
+    () => requireGsmPromotionConformance('GSMFullRateSimulatorPlugin', repoRoot, {
+      'promote-production-native': true
+    }),
+    /requires --gsm-vector-dir, --gsm-conformance-runner, --gsm-reference-codec, and --gsm-phase0-evidence/
+  );
+  await assert.doesNotReject(() =>
+    requireGsmPromotionConformance('VolumePlugin', repoRoot, {
+      'promote-production-native': true
+    }));
+});
+
+test('Bluetooth SBC production-native promotion requires the SIG decoder and round-trip gates', async () => {
+  await assert.rejects(
+    () => requireSbcPromotionConformance('BluetoothSBCSimulatorPlugin', repoRoot, {
+      'promote-production-native': true
+    }),
+    /requires --sbc-conformance-runner, --sbc-fixture-dir, and --sbc-reference-decoder/
+  );
+  // The gate is inert for other plugin types and for non-promotion generation, so it can stay
+  // wired into the shared promotion path without touching unrelated golden regeneration.
+  await assert.doesNotReject(() =>
+    requireSbcPromotionConformance('VolumePlugin', repoRoot, {
+      'promote-production-native': true
+    }));
+  await assert.doesNotReject(() =>
+    requireSbcPromotionConformance('BluetoothSBCSimulatorPlugin', repoRoot, {}));
+});
+
+test('GSM-FR golden generation refuses its pass-through JavaScript shell', async () => {
+  await assert.rejects(
+    () => runGenerateCli([
+      '--root', repoRoot,
+      '--type', 'GSMFullRateSimulatorPlugin',
+      '--limit-cases', '1'
+    ], { log() {} }),
+    /requires explicit --promote-production-native/
+  );
+});
+
+test('G.726 is included in full parity discovery after production promotion', async () => {
+  const targets = await discoverGoldenTargets(repoRoot);
+  assert.equal(targets.some(target => target.type === 'G726ADPCMSimulatorPlugin'), true);
+  await fs.access(path.join(
+    repoRoot, 'dsp', 'plugins', 'lofi', 'g726_adpcm_simulator', 'params.json'));
+});
+
+test('GSM-FR is included in full parity discovery after production promotion', async () => {
+  const targets = await discoverGoldenTargets(repoRoot);
+  assert.equal(targets.some(target => target.type === 'GSMFullRateSimulatorPlugin'), true);
+  await fs.access(path.join(
+    repoRoot, 'dsp', 'plugins', 'lofi', 'gsm_full_rate_simulator', 'golden', 'index.json'));
+});
+
+test('MP3 packed conformance fixtures deterministically encode valid MPEG-1 and MPEG-2 frame sequences', async t => {
+  const diagnosticPath = await requireMp3ProductionDiagnostic(t);
+  if (!diagnosticPath) return;
+  assert.equal(MP3_CONFORMANCE_FIXTURES.length, 4);
+  assert.equal(MP3_CONFORMANCE_PROVENANCE.redistributedExternalBytes, false);
+  assert.match(MP3_CONFORMANCE_PROVENANCE.fixtureOrigin,
+    /immutable-native-production-logical-frame/);
+  assert.match(MP3_CONFORMANCE_PROVENANCE.syntaxReference, /ISO\/IEC/);
+  for (const spec of MP3_CONFORMANCE_FIXTURES) {
+    const first = generateMp3ConformanceFixture(spec,
+      await readMp3ProductionDiagnostic(spec, diagnosticPath, repoRoot));
+    const second = generateMp3ConformanceFixture(spec,
+      await readMp3ProductionDiagnostic(spec, diagnosticPath, repoRoot));
+    assert.deepEqual(first.bytes, second.bytes, `${spec.id} regeneration changed`);
+
+    const parsed = parseMp3ConformanceFixture(first.bytes);
+    assert.equal(parsed.length, 4);
+    assert.deepEqual(new Set(parsed.map(frame => frame.paddingSlotBytes)), new Set([0, 1]));
+    assert.ok(parsed.every(frame => frame.profile === spec.profile));
+    assert.ok(parsed.every(frame => frame.channels === spec.channels));
+    assert.ok(parsed.every(frame => frame.jointStereo === spec.jointStereo));
+    assert.ok(parsed.every(frame => frame.part23Lengths.every(length => length > 0)));
+    assert.ok(parsed.every(frame =>
+      frame.pcmSamples === (spec.profile === 'mpeg1' ? 1152 : 576)));
+    for (let index = 0; index < parsed.length; index++) {
+      assert.equal(parsed[index].frameBytes, first.frames[index].frameBytes);
+      assert.equal(parsed[index].physicalMainDataAreaBits,
+        first.frames[index].physicalMainDataAreaBits);
+      assert.equal(parsed[index].mainDataBegin, first.frames[index].mainDataBegin);
+      assert.ok(first.frames[index].logicalAduBits > 0);
+      assert.equal(
+        first.frames[index].reservoirBeforeBits +
+          first.frames[index].physicalMainDataAreaBits,
+        first.frames[index].logicalAduBits +
+          first.frames[index].reservoirAfterBits +
+          first.frames[index].ancillaryBits,
+        `${spec.id} frame ${index} does not conserve packed main-data bits`
+      );
+      if (index + 1 < parsed.length) {
+        assert.equal(
+          parsed[index + 1].mainDataBegin * 8,
+          first.frames[index].reservoirAfterBits,
+          `${spec.id} frame ${index} reservoir cursor does not match packed bits`
+        );
+      }
+    }
+    if (spec.reservoir) {
+      assert.equal(parsed[0].mainDataBegin, 0);
+      assert.ok(parsed.slice(1).some(frame => frame.mainDataBegin > 0));
+    } else {
+      assert.ok(parsed.every(frame => frame.mainDataBegin === 0));
+    }
+    const logical = decodeMp3LogicalFixture(first.bytes);
+    assert.equal(assertMp3LogicalFieldsMatch(first, logical), true);
+    assert.ok(first.frames.some(frame => frame.productionDecodedPcm.some(sample => sample !== 0)),
+      `${spec.id} production PCM is silent`);
+    assert.ok(logical.frames.every(frame => frame.logicalChannels.every(channel =>
+      channel.part3Length > 0 && channel.quantized.some(value => value !== 0))));
+  }
+});
+
+test('MP3 packed conformance parser rejects an impossible reservoir back-pointer', async t => {
+  const diagnosticPath = await requireMp3ProductionDiagnostic(t);
+  if (!diagnosticPath) return;
+  const spec = MP3_CONFORMANCE_FIXTURES[0];
+  const fixture = generateMp3ConformanceFixture(spec,
+    await readMp3ProductionDiagnostic(spec, diagnosticPath, repoRoot));
+  const malformed = fixture.bytes.slice();
+  malformed[4] = 0xff;
+  malformed[5] |= 0x80;
+  assert.throws(() => parseMp3ConformanceFixture(malformed), /back-pointer exceeds/);
+});
+
+test('independent decoder accepts every MP3 packed conformance fixture', {
+  skip: !process.env.EFFETUNE_MP3_DECODER
+}, async t => {
+  const diagnosticPath = await requireMp3ProductionDiagnostic(t);
+  if (!diagnosticPath) return;
+  for (const spec of MP3_CONFORMANCE_FIXTURES) {
+    const fixture = generateMp3ConformanceFixture(spec,
+      await readMp3ProductionDiagnostic(spec, diagnosticPath, repoRoot));
+    const result = await verifyMp3FixtureWithDecoder(
+      fixture.bytes,
+      process.env.EFFETUNE_MP3_DECODER
+    );
+    assert.ok(result.pcmSamples > 0, `${spec.id} decoded no PCM samples`);
+    assert.ok(result.maximumAbsoluteSample > 1e-6, `${spec.id} decoded to silence`);
+    const logical = decodeMp3LogicalFixture(fixture.bytes);
+    assert.equal(assertMp3LogicalFieldsMatch(fixture, logical), true);
+    const comparison = compareMp3DecoderToProductionPcm(fixture, result);
+    assert.ok(comparison.expectedPcmSamples > 0);
+    assert.ok(comparison.decodedPcmSamples > 0);
+    assert.equal(comparison.knownDecoderDelaySamples,
+      MP3_SYNTHESIS_PCM_CONVENTION.knownDecoderDelaySamples);
+    assert.equal(comparison.synthesisGain,
+      MP3_SYNTHESIS_PCM_CONVENTION.independentDecoderGain);
+    // Matches the recalibrated float-state residue bounds in mp3-conformance.mjs
+    // (measured max 4.21e-6 / rms 7.17e-7 after the unity-gain synthesis fix).
+    assert.ok(comparison.maximumAbsoluteError <= 5e-6);
+    assert.ok(comparison.rmsError <= 1e-6);
+  }
+});
+
+test('MP3 production-native promotion requires the independent decoder hard gate', async () => {
+  await assert.rejects(
+    requireMp3PromotionConformance('MP3CodecSimulatorPlugin', {
+      'promote-production-native': true
+    }, {}),
+    /requires --mp3-decoder/
+  );
+  await assert.doesNotReject(requireMp3PromotionConformance('VolumePlugin', {
+    'promote-production-native': true
+  }));
 });
 
 async function createTwoPluginParityFixture(t) {

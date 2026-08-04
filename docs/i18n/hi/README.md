@@ -344,8 +344,12 @@ EffeTune 2.1.0 में कैटलॉग स्कीमा v3 पर आध�
 | Lo-Fi     | Digital Error Emulator | अलग-अलग digital audio transmission errors और vintage digital equipment characteristics simulate करता है | [विवरण](plugins/lofi.md#digital-error-emulator) |
 | Lo-Fi     | DSD64 IMD Simulator | DSD64 ultrasonic noise से audible intermodulation distortion simulate करता है | [विवरण](plugins/lofi.md#dsd64-imd-simulator) |
 | Lo-Fi     | FM Radio Simulator | संगीत को भौतिक रूप से सिम्युलेट की गई FM प्रसारण और रिसीवर श्रृंखला से गुज़ारता है | [विवरण](plugins/lofi.md#fm-radio-simulator) |
+| Lo-Fi     | G.726 Simulator | ITU-T G.726 speech codec encode/decode round trip का अनुकरण वैकल्पिक noisy radio link के साथ करता है | [विवरण](plugins/lofi.md#g726-simulator) |
+| Lo-Fi     | GSM-FR Simulator | 13 kbit/s GSM-FR speech codec encode/decode round trip का अनुकरण radio link पर frame erasure concealment के साथ करता है | [विवरण](plugins/lofi.md#gsm-fr-simulator) |
 | Lo-Fi     | Hum Generator | vintage/lo-fi listening के लिए adjustable 50/60 Hz electrical hum ambience जोड़ता है | [विवरण](plugins/lofi.md#hum-generator) |
+| Lo-Fi     | MP3 Codec Simulator | कम bitrate पर साफ़ MPEG Layer III encode/decode round trip का अनुकरण करता है | [विवरण](plugins/lofi.md#mp3-codec-simulator) |
 | Lo-Fi     | Noise Blender | lo-fi ambience के लिए adjustable background noise texture जोड़ता है | [विवरण](plugins/lofi.md#noise-blender) |
+| Lo-Fi     | SBC Codec Simulator | Bluetooth A2DP SBC का encode/decode round trip वैकल्पिक link packet loss और concealment के साथ पुनः बनाता है | [विवरण](plugins/lofi.md#sbc-codec-simulator) |
 | Lo-Fi     | Simple Jitter | digital jitter simulation | [विवरण](plugins/lofi.md#simple-jitter) |
 | Lo-Fi     | SW Radio Simulator | संगीत को मॉडल की गई शॉर्टवेव प्रसारण, आयनमंडलीय पथ और रिसीवर शृंखला से गुजारता है | [विवरण](plugins/lofi.md#sw-radio-simulator) |
 | Lo-Fi     | Vinyl Artifacts | vinyl-style pops, crackle, hiss, rumble और stereo noise bleed जोड़ता है | [विवरण](plugins/lofi.md#vinyl-artifacts) |

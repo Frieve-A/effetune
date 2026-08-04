@@ -12,6 +12,7 @@ import { readGoldenSet, writeFloat32File } from './golden-io.mjs';
 import { executeReferenceCase, loadReferencePlugin } from './node-host.mjs';
 import {
   isNativeDirectReferenceEngine,
+  isProductionNativePromotedReferenceEngine,
   runNativeCase,
   runNativeReferenceCase,
   runWasmCase
@@ -176,15 +177,24 @@ async function runParityForType({
     throw new Error('Golden set mixes incompatible reference engines');
   }
   const referenceEngine = goldens[0].metadata.referenceEngine;
-  const nativeReference = isNativeDirectReferenceEngine(referenceEngine);
+  const nativeDirectReference = isNativeDirectReferenceEngine(referenceEngine);
+  const productionNativeReference =
+    isProductionNativePromotedReferenceEngine(referenceEngine);
+  const nativeReference = nativeDirectReference || productionNativeReference;
   if (referenceEngine !== undefined && !nativeReference) {
     throw new Error(`Golden set uses unsupported reference engine ${referenceEngine}`);
   }
+  if (isProductionNativePromotedReferenceEngine(plan.schema.parityReference) &&
+      !productionNativeReference) {
+    throw new Error(
+      `${plan.definition.type} requires goldens created with explicit production native promotion`
+    );
+  }
   let loaded = null;
   let referenceHash = null;
-  if (nativeReference) {
+  if (nativeDirectReference) {
     referenceHash = await nativeDirectReferenceHash(repoRoot, referenceEngine);
-  } else {
+  } else if (!productionNativeReference) {
     loaded = await loadReferencePlugin(plan.definition.type, { repoRoot });
     await assertPluginBaseUnchanged(repoRoot, loaded.baseSourceHash);
   }
@@ -194,9 +204,32 @@ async function runParityForType({
         `Golden ${golden.metadata.id} declares ${golden.metadata.type}; expected ${plan.definition.type}`
       );
     }
-    if (nativeReference && golden.metadata.referenceHash !== referenceHash) {
+    if (nativeDirectReference && golden.metadata.referenceHash !== referenceHash) {
       throw new Error(
         `Golden ${golden.metadata.id} was generated from a different native direct reference revision; regenerate it before parity testing`
+      );
+    }
+    const productionGenerationCommand = plan.definition.type === 'G726ADPCMSimulatorPlugin'
+      ? `node tools/dsp-parity/generate.mjs --type ${plan.definition.type} ` +
+        '--promote-production-native --g726-vector-dir <official-appendix-ii-root> ' +
+        '--g726-conformance-runner <native-conformance-test> ' +
+        '--g726-state-digest-file <external-stl-state-digests>'
+      : plan.definition.type === 'GSMFullRateSimulatorPlugin'
+        ? `node tools/dsp-parity/generate.mjs --type ${plan.definition.type} ` +
+          '--promote-production-native --gsm-vector-dir <official-etsi-gsm-fr-root> ' +
+          '--gsm-conformance-runner <native-conformance-test> ' +
+          '--gsm-reference-codec <independent-ffmpeg-libgsm> ' +
+          '--gsm-phase0-evidence <accepted-phase0-result-json>'
+      : plan.definition.type === 'MP3CodecSimulatorPlugin'
+        ? `node tools/dsp-parity/generate.mjs --type ${plan.definition.type} ` +
+          '--promote-production-native --mp3-decoder <independent-mp3-decoder>'
+        : `node tools/dsp-parity/generate.mjs --type ${plan.definition.type} --promote-production-native`;
+    if (productionNativeReference &&
+        (typeof golden.metadata.referenceHash !== 'string' ||
+         !/^sha256:[0-9a-f]{64}$/u.test(golden.metadata.referenceHash) ||
+         golden.metadata.generationCommand !== productionGenerationCommand)) {
+      throw new Error(
+        `Golden ${golden.metadata.id} is missing production native promotion provenance`
       );
     }
     if (!nativeReference && golden.metadata.jsEngineHash !== loaded.jsEngineHash) {
@@ -220,7 +253,16 @@ async function runParityForType({
       let actual;
       const startedAt = performance.now();
       if (mode === 'self-check') {
-        actual = nativeReference
+        actual = productionNativeReference
+          ? await runNativeCase({
+              type: plan.definition.type,
+              testCase,
+              input,
+              schema: plan.schema,
+              repoRoot,
+              runnerPath: nativeRunner ?? undefined
+            })
+          : nativeDirectReference
           ? await runNativeReferenceCase({
               type: plan.definition.type,
               testCase,

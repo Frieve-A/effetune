@@ -120,8 +120,9 @@ export function applySerializedState(plugin, state) {
         if (chValue === 'All') return 'A';
         if (chValue === '') return null;
         
-        // Handle numeric channel values (3-8)
-        if (typeof chValue === 'string' && chValue >= '3' && chValue <= '8') {
+        // Handle individual channels (3-8) and stereo channel pairs
+        if (typeof chValue === 'string' &&
+            (/^[3-8]$/.test(chValue) || ['34', '56', '78'].includes(chValue))) {
             return chValue;
         }
         

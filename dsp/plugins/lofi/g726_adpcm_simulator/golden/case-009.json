@@ -1,0 +1,51 @@
+{
+  "formatVersion": 1,
+  "type": "G726ADPCMSimulatorPlugin",
+  "id": "bitrate-boundary-changes",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 12289,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 8,
+  "seed": "0xeffe7a56",
+  "params": {
+    "br": "16",
+    "og": 0,
+    "mx": 100
+  },
+  "events": [
+    {
+      "frame": 2003,
+      "params": {
+        "br": "24"
+      }
+    },
+    {
+      "frame": 5009,
+      "params": {
+        "br": "40"
+      }
+    },
+    {
+      "frame": 8009,
+      "params": {
+        "br": "32",
+        "og": 2,
+        "mx": 60
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00002,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:c2b9214e36de44827b2f67eee9cf3569912f28fc94585c39087e7f04f9c4d5f7",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type G726ADPCMSimulatorPlugin --promote-production-native --g726-vector-dir <official-appendix-ii-root> --g726-conformance-runner <native-conformance-test> --g726-state-digest-file <external-stl-state-digests>",
+  "outputFloats": 24578,
+  "byteLength": 98312,
+  "binary": "case-009.f32"
+}

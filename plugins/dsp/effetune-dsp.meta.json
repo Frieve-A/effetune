@@ -1,7 +1,395 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:0d25f2b67cf185849f45d85eb35ec7ead7a6d1f77b9c186f49cc3773e8905f8e",
+  "sourceDigest": "sha256:7c193b3adde88b8b00705e94d1d404d28d16dd0daac3f27d41fe6a331e449a37",
   "emsdkVersion": "6.0.2",
+  "g726PerformanceInput": {
+    "contract": "g726-production-performance-input-sha256-v2",
+    "hashAlgorithm": "SHA-256 over the contract and ordered UTF-8 components as id\\0content\\0; CRLF and CR normalize to LF",
+    "digest": "sha256:450918c610e3e34c3b0da9841204d72d5ed8d1a3134bc7de1f31d0e13ff044d5",
+    "inputs": [
+      {
+        "id": "dsp/core/abi.cpp",
+        "kind": "file",
+        "sha256": "sha256:97e277947544bcb21015c9fe289af338fbe6f46b97dda233d24b594704bd2059"
+      },
+      {
+        "id": "dsp/core/allocation_guard.cpp",
+        "kind": "file",
+        "sha256": "sha256:95462089e6f7069ef80bf82e1ef49c841f0afe1a796b4ddb9151198bb403d93f"
+      },
+      {
+        "id": "dsp/core/allocation_guard.h",
+        "kind": "file",
+        "sha256": "sha256:3b515279d561968d70e2e85f9e430bd0b81c5b513cdb8b6233d3253cb5a9cf44"
+      },
+      {
+        "id": "dsp/core/arena.cpp",
+        "kind": "file",
+        "sha256": "sha256:2de46fb659bd4327d2f241dbf28529c4adff78b5a69bba7c4c28e77593857ffd"
+      },
+      {
+        "id": "dsp/core/arena.h",
+        "kind": "file",
+        "sha256": "sha256:a474f8318433d0cd264d8397abaeafcdb03bfcedce057343771f88668d5134c1"
+      },
+      {
+        "id": "dsp/core/engine.cpp",
+        "kind": "file",
+        "sha256": "sha256:49b8be2b35956dbd34c0cb46a48da64132b8b2b4395437ab3381755936fb4741"
+      },
+      {
+        "id": "dsp/core/engine.h",
+        "kind": "file",
+        "sha256": "sha256:5959f7d0bca55fb80c580d16cf7f22859db87b3d20a46f589d96f7682f80fd49"
+      },
+      {
+        "id": "dsp/core/registry.cpp",
+        "kind": "file",
+        "sha256": "sha256:64c18288f9be512826a01e93c387c9b0105fa716cdd36db5c01e9e9a757132b8"
+      },
+      {
+        "id": "dsp/core/registry.h",
+        "kind": "file",
+        "sha256": "sha256:7f83d8a03050edea60aa89a6efab1cd66a139812908aaa91bf12b8ff7f72239e"
+      },
+      {
+        "id": "dsp/core/telemetry.cpp",
+        "kind": "file",
+        "sha256": "sha256:515405f783c4b410567e6b44ec66abd68d1872361840e713518c4bf7425bca42"
+      },
+      {
+        "id": "dsp/EMSDK_VERSION",
+        "kind": "file",
+        "sha256": "sha256:8adcc17e039842d2f4d92ca25f72a8963ede072c885ef5f762c0682b87c6d872"
+      },
+      {
+        "id": "dsp/exports.txt",
+        "kind": "file",
+        "sha256": "sha256:a80c7af5a36d703cae78efc96e7458d238cbff7a9ac86ffaecdb2e6d19d18735"
+      },
+      {
+        "id": "dsp/generated/cpp/G726ADPCMSimulatorPluginParams.h",
+        "kind": "file",
+        "sha256": "sha256:56b4bd6c17d1c62a6dd341e45143926a6cac2563a8342f27d459fc9ccab325ab"
+      },
+      {
+        "id": "dsp/include/effetune/abi.h",
+        "kind": "file",
+        "sha256": "sha256:2e13c9f28ba46ec8a0397a003d360923ccb3367639918e0d24d02ed4f6726894"
+      },
+      {
+        "id": "dsp/include/effetune/dsp/halfband.h",
+        "kind": "file",
+        "sha256": "sha256:6707a8f7d82d951161256e6545571976b8a538f7517e6bb5887b21c2806c9411"
+      },
+      {
+        "id": "dsp/include/effetune/dsp/rational_resampler.h",
+        "kind": "file",
+        "sha256": "sha256:5e74d6a4f7092736e6653f6f4424c569c63f7b80a72b9befe1338103d9f423e4"
+      },
+      {
+        "id": "dsp/include/effetune/dsp/xorshift_rng.h",
+        "kind": "file",
+        "sha256": "sha256:b7f7c8100b501737041b0db649cb3c058a077b4d58f7fdaf5d86afc853faf67e"
+      },
+      {
+        "id": "dsp/include/effetune/kernel.h",
+        "kind": "file",
+        "sha256": "sha256:89f9d73a1ccd78c995487605ae285f4f522ccc126e64659d0d2fb2f8ae7ac29e"
+      },
+      {
+        "id": "dsp/include/effetune/telemetry.h",
+        "kind": "file",
+        "sha256": "sha256:4b0ba04d8d3c3e104bfb34d5b8d54254a51d45766790fdab8059fea2adb7c218"
+      },
+      {
+        "id": "dsp/plugins/lofi/g726_adpcm_simulator/kernel.cpp",
+        "kind": "file",
+        "sha256": "sha256:43d83bcb1d7a0a62bcc72b34ba22c143c3f44ead05d5478abfe64f0cc399d766"
+      },
+      {
+        "id": "dsp/plugins/lofi/g726_adpcm_simulator/kernel.h",
+        "kind": "file",
+        "sha256": "sha256:22651b16d025a151af078c6592e7cf4b2d908044617d39f4767b8673cde01e3d"
+      },
+      {
+        "id": "dsp/plugins/lofi/g726_adpcm_simulator/params.json",
+        "kind": "file",
+        "sha256": "sha256:30719f175ac3cf9625721fe2f4fe2de50924d1c1934eeaf40a6860c2e64be7bd"
+      },
+      {
+        "id": "dsp/registry.inc#G726ADPCMSimulatorPlugin-entry",
+        "kind": "derived",
+        "sha256": "sha256:2666e2704579948c97d868484a026316e77d6cc5234c4966fd62f8e2397884f5"
+      },
+      {
+        "id": "dsp/wasm/no_entry.cpp",
+        "kind": "file",
+        "sha256": "sha256:0d2961904f2cd8bd43c50a4f861c7ad7ea8865a7c4cd4ec05e197c1a4182b3a3"
+      },
+      {
+        "id": "js/audio/dsp-engine-binding.js",
+        "kind": "file",
+        "sha256": "sha256:5186b3cd1a1d6897f644bfded4ad2f5542e09addf913e98f85b14a95825240e0"
+      },
+      {
+        "id": "production-build#g726-resolved-authority",
+        "kind": "derived",
+        "sha256": "sha256:083288185aaf9068f11cca8ffef3eefc2a68f8d9aab59f4a43bc2d141e2218be"
+      },
+      {
+        "id": "production-build#g726-source-authority",
+        "kind": "derived",
+        "sha256": "sha256:957f4ed2f398b92b5d6dce22cfabd431b8445dd0b66e3d0312c063c16e09447e"
+      },
+      {
+        "id": "tools/dsp-parity/cases.mjs",
+        "kind": "file",
+        "sha256": "sha256:6648f94de566a4c2a4560a222a3957892d890e92ef79dd660a1e0b91ee2bbf02"
+      },
+      {
+        "id": "tools/dsp-parity/g726-cpu-gate.mjs",
+        "kind": "file",
+        "sha256": "sha256:80fbcd07b5ff860e2ee3d8f24be2459bff7025f47af8568cbb285b577133addd"
+      },
+      {
+        "id": "tools/dsp-parity/g726-performance-inputs.mjs",
+        "kind": "file",
+        "sha256": "sha256:4f5ac71c0c61327c921640fb0b82102d4db93aaa77040e9fb10222ed7e8430aa"
+      },
+      {
+        "id": "tools/dsp-parity/runners.mjs",
+        "kind": "file",
+        "sha256": "sha256:83be9da46b7fdb60a469c853eb501d1a3a7eca7872b143a0d3e972a633229260"
+      },
+      {
+        "id": "tools/dsp-parity/stimuli.mjs",
+        "kind": "file",
+        "sha256": "sha256:76bbda8364561341df8df263cc2b69f3eedb6b2614f4f77a48ed3c75ebe816a3"
+      }
+    ],
+    "registryEntry": "EFFETUNE_PLUGIN(G726ADPCMSimulatorPlugin,lofi/g726_adpcm_simulator)",
+    "buildAuthority": {
+      "source": {
+        "cmakeTargetDeclarations": [
+          "set(CMAKE_CXX_STANDARD 20)",
+          "set(CMAKE_CXX_STANDARD_REQUIRED ON)",
+          "set(CMAKE_CXX_EXTENSIONS OFF)",
+          "target_include_directories( pffft PUBLIC vendor/pffft/include/pffft PRIVATE vendor/pffft/src)",
+          "target_compile_definitions( pffft PUBLIC PFFFT_STATIC_DEFINE=1 PRIVATE $<$<BOOL:${ET_SIMD}>:PFFFT_ENABLE_NEON=1> $<$<NOT:$<BOOL:${ET_SIMD}>>:PFFFT_SIMD_DISABLE=1>)",
+          "target_compile_options(pffft PRIVATE -msimd128)",
+          "set_target_properties(pffft PROPERTIES POSITION_INDEPENDENT_CODE ON)",
+          "target_link_libraries(pffft PUBLIC m)",
+          "target_include_directories( effetune_dsp_core PUBLIC include PRIVATE core generated/cpp)",
+          "target_link_libraries(effetune_dsp_core PUBLIC pffft)",
+          "target_compile_definitions( effetune_dsp_core PRIVATE $<$<BOOL:${ET_SIMD}>:ET_SIMD=1> $<$<BOOL:${ET_DEBUG_STATE}>:ET_DEBUG_STATE=1> $<$<CONFIG:Debug>:ET_DEBUG_BUILD=1> $<$<CONFIG:Debug>:ET_ALLOCATION_GUARD=1> $<$<AND:$<CONFIG:Debug>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:ET_WRAP_MALLOC=1> $<$<BOOL:${BUILD_TESTING}>:ET_ENABLE_TEST_KERNEL=1>)",
+          "target_link_options( effetune_dsp_core INTERFACE $<$<AND:$<CONFIG:Debug>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-Wl,--wrap=malloc>)",
+          "target_compile_options(effetune_dsp_core PRIVATE /W4 /WX /GR-)",
+          "target_compile_definitions( effetune_dsp_core PRIVATE ET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1)",
+          "target_compile_options( effetune_dsp_core PRIVATE -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti)",
+          "target_compile_options( effetune_dsp_core PRIVATE -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti)",
+          "target_link_libraries(effetune-dsp PRIVATE effetune_dsp_core)",
+          "set_target_properties(effetune-dsp PROPERTIES OUTPUT_NAME \"effetune-dsp\" SUFFIX \".wasm\")",
+          "target_compile_options( effetune_dsp_core PRIVATE $<$<CONFIG:Release>:-O3> $<$<CONFIG:Release>:-flto> $<$<BOOL:${ET_SIMD}>:-msimd128>)",
+          "target_link_options( effetune-dsp PRIVATE --no-entry -sSTANDALONE_WASM=1 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=8388608 -sMAXIMUM_MEMORY=268435456 -sEXPORTED_FUNCTIONS=@${ET_EXPORTED_FUNCTIONS_FILE} -fwasm-exceptions $<$<CONFIG:Release>:-O3> $<$<CONFIG:Release>:-flto> $<$<BOOL:${ET_SIMD}>:-msimd128>)"
+        ],
+        "builderInvocation": "function configureAndBuildWasm({ emcmake, name, simd, debugState = false }) { const buildDirectory = path.join(buildRoot, name); resetBuildDirectory(buildDirectory); const configureArguments = productionWasmConfigureArguments({ dspRoot, buildDirectory, simd, debugState }); run(emcmake, configureArguments); run('cmake', ['--build', buildDirectory, '--parallel']); const artifact = path.join(buildDirectory, 'effetune-dsp.wasm'); if (!fs.existsSync(artifact)) { fail(`WASM build did not produce ${artifact}`); } return { artifact, buildDirectory, configureArguments }; }",
+        "productionConfigureArguments": {
+          "baseline": [
+            "cmake",
+            "-S",
+            "<repo>/dsp",
+            "-B",
+            "<build>",
+            "-G",
+            "Ninja",
+            "-DCMAKE_BUILD_TYPE=Release",
+            "-DET_SIMD=OFF",
+            "-DET_DEBUG_STATE=OFF",
+            "-DBUILD_TESTING=OFF"
+          ],
+          "simd": [
+            "cmake",
+            "-S",
+            "<repo>/dsp",
+            "-B",
+            "<build>",
+            "-G",
+            "Ninja",
+            "-DCMAKE_BUILD_TYPE=Release",
+            "-DET_SIMD=ON",
+            "-DET_DEBUG_STATE=OFF",
+            "-DBUILD_TESTING=OFF"
+          ]
+        },
+        "digest": "sha256:9f661f9436b7a66184aec1c77806dbfa36d5fe8ed156e4911a771fae4a0d95da"
+      },
+      "resolved": {
+        "source": "configured CMake Ninja compile/link edges",
+        "variants": {
+          "baseline": {
+            "variant": "baseline",
+            "configureArguments": [
+              "cmake",
+              "-S",
+              "<repo>/dsp",
+              "-B",
+              "<build>",
+              "-G",
+              "Ninja",
+              "-DCMAKE_BUILD_TYPE=Release",
+              "-DET_SIMD=OFF",
+              "-DET_DEBUG_STATE=OFF",
+              "-DBUILD_TESTING=OFF"
+            ],
+            "emsdkVersion": "6.0.2",
+            "compiler": {
+              "id": "Clang",
+              "version": "23.0.0",
+              "platform": "emscripten",
+              "frontendVariant": "GNU",
+              "executable": "em++"
+            },
+            "compileCommands": [
+              {
+                "source": "dsp/core/abi.cpp",
+                "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+              },
+              {
+                "source": "dsp/core/allocation_guard.cpp",
+                "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+              },
+              {
+                "source": "dsp/core/arena.cpp",
+                "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+              },
+              {
+                "source": "dsp/core/engine.cpp",
+                "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+              },
+              {
+                "source": "dsp/core/registry.cpp",
+                "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+              },
+              {
+                "source": "dsp/core/telemetry.cpp",
+                "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+              },
+              {
+                "source": "dsp/plugins/lofi/g726_adpcm_simulator/kernel.cpp",
+                "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+              },
+              {
+                "source": "dsp/wasm/no_entry.cpp",
+                "definitions": "-DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/vendor/pffft/include/pffft"
+              }
+            ],
+            "linkCommand": {
+              "flags": "-O3 -DNDEBUG",
+              "options": "--no-entry -sSTANDALONE_WASM=1 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=8388608 -sMAXIMUM_MEMORY=268435456 -sEXPORTED_FUNCTIONS=@<repo>/dsp/exports.txt -fwasm-exceptions -O3 -flto",
+              "libraries": "libeffetune_dsp_core.a libpffft.a -lm"
+            }
+          },
+          "simd": {
+            "variant": "simd",
+            "configureArguments": [
+              "cmake",
+              "-S",
+              "<repo>/dsp",
+              "-B",
+              "<build>",
+              "-G",
+              "Ninja",
+              "-DCMAKE_BUILD_TYPE=Release",
+              "-DET_SIMD=ON",
+              "-DET_DEBUG_STATE=OFF",
+              "-DBUILD_TESTING=OFF"
+            ],
+            "emsdkVersion": "6.0.2",
+            "compiler": {
+              "id": "Clang",
+              "version": "23.0.0",
+              "platform": "emscripten",
+              "frontendVariant": "GNU",
+              "executable": "em++"
+            },
+            "compileCommands": [
+              {
+                "source": "dsp/core/abi.cpp",
+                "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DET_SIMD=1 -DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto -msimd128",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+              },
+              {
+                "source": "dsp/core/allocation_guard.cpp",
+                "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DET_SIMD=1 -DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto -msimd128",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+              },
+              {
+                "source": "dsp/core/arena.cpp",
+                "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DET_SIMD=1 -DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto -msimd128",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+              },
+              {
+                "source": "dsp/core/engine.cpp",
+                "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DET_SIMD=1 -DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto -msimd128",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+              },
+              {
+                "source": "dsp/core/registry.cpp",
+                "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DET_SIMD=1 -DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto -msimd128",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+              },
+              {
+                "source": "dsp/core/telemetry.cpp",
+                "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DET_SIMD=1 -DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto -msimd128",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+              },
+              {
+                "source": "dsp/plugins/lofi/g726_adpcm_simulator/kernel.cpp",
+                "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DET_SIMD=1 -DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto -msimd128",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+              },
+              {
+                "source": "dsp/wasm/no_entry.cpp",
+                "definitions": "-DPFFFT_STATIC_DEFINE=1",
+                "flags": "-O3 -DNDEBUG -std=c++20",
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/vendor/pffft/include/pffft"
+              }
+            ],
+            "linkCommand": {
+              "flags": "-O3 -DNDEBUG",
+              "options": "--no-entry -sSTANDALONE_WASM=1 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=8388608 -sMAXIMUM_MEMORY=268435456 -sEXPORTED_FUNCTIONS=@<repo>/dsp/exports.txt -fwasm-exceptions -O3 -flto -msimd128",
+              "libraries": "libeffetune_dsp_core.a libpffft.a -lm"
+            }
+          }
+        },
+        "digest": "sha256:49d590ffe39aeb113169fefad12d64eef03bd8125686fbed577ddb0f86b4f833"
+      }
+    }
+  },
   "kernels": [
     {
       "name": "LevelMeterPlugin",
@@ -296,6 +684,12 @@
       "assets": []
     },
     {
+      "name": "BluetoothSBCSimulatorPlugin",
+      "hash": 2698474763,
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
       "name": "DigitalErrorEmulatorPlugin",
       "hash": 929157540,
       "byteCapacity": 0,
@@ -314,8 +708,26 @@
       "assets": []
     },
     {
+      "name": "G726ADPCMSimulatorPlugin",
+      "hash": 3034355853,
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
+      "name": "GSMFullRateSimulatorPlugin",
+      "hash": 3114431516,
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
       "name": "HumGeneratorPlugin",
       "hash": 2503317040,
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
+      "name": "MP3CodecSimulatorPlugin",
+      "hash": 3523139611,
       "byteCapacity": 0,
       "assets": []
     },
@@ -496,7 +908,7 @@
     }
   ],
   "sizes": {
-    "baseline": 499462,
-    "simd": 560691
+    "baseline": 617394,
+    "simd": 708878
   }
 }

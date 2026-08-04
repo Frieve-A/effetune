@@ -1,0 +1,52 @@
+{
+  "formatVersion": 1,
+  "type": "GSMFullRateSimulatorPlugin",
+  "id": "frame-boundary-transcode-change",
+  "stimulus": "sq50",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 24577,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "tc": 1,
+    "og": 0,
+    "mx": 100,
+    "ci": 30
+  },
+  "events": [
+    {
+      "frame": 2003,
+      "params": {
+        "tc": 2
+      }
+    },
+    {
+      "frame": 9009,
+      "params": {
+        "tc": 3,
+        "og": 2,
+        "mx": 60
+      }
+    },
+    {
+      "frame": 17011,
+      "params": {
+        "tc": 1
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00002,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:b9ee4daccf02911d1e7aa06d940b36c3682a1e338ded17f353a9752f72414d9d",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type GSMFullRateSimulatorPlugin --promote-production-native --gsm-vector-dir <official-etsi-gsm-fr-root> --gsm-conformance-runner <native-conformance-test> --gsm-reference-codec <independent-ffmpeg-libgsm> --gsm-phase0-evidence <accepted-phase0-result-json>",
+  "outputFloats": 49154,
+  "byteLength": 196616,
+  "binary": "case-007.f32"
+}

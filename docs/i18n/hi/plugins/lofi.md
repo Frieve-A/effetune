@@ -15,8 +15,12 @@ lang: hi
 - [Digital Error Emulator](#digital-error-emulator) - विभिन्न डिजिटल ऑडियो ट्रांसमिशन त्रुटियों का अनुकरण करता है
 - [DSD64 IMD Simulator](#dsd64-imd-simulator) - DSD64 के अल्ट्रासोनिक शोर से उत्पन्न श्रव्य इंटरमॉड्यूलेशन डिस्टॉर्शन का अनुकरण करता है
 - [FM Radio Simulator](#fm-radio-simulator) - संगीत को भौतिक रूप से सिम्युलेट की गई FM प्रसारण और रिसीवर श्रृंखला से गुज़ारता है
+- [G.726 Simulator](#g726-simulator) - ITU-T G.726 speech codec encode/decode round trip का अनुकरण वैकल्पिक noisy radio link के साथ करता है
+- [GSM-FR Simulator](#gsm-fr-simulator) - 13 kbit/s GSM-FR speech codec encode/decode round trip का अनुकरण radio link पर frame erasure concealment के साथ करता है
 - [Hum Generator](#hum-generator) - विंटेज/lo-fi सुनने के लिए नियंत्रित विद्युत हम वातावरण जोड़ता है
+- [MP3 Codec Simulator](#mp3-codec-simulator) - कम bitrate पर साफ़ MPEG Layer III encode/decode round trip का अनुकरण करता है
 - [Noise Blender](#noise-blender) - वातावरणीय पृष्ठभूमि बनावट जोड़ता है
+- [SBC Codec Simulator](#sbc-codec-simulator) - Bluetooth A2DP SBC का encode/decode round trip वैकल्पिक link packet loss और concealment के साथ पुनः बनाता है
 - [Simple Jitter](#simple-jitter) - सूक्ष्म विंटेज डिजिटल अपूर्णताएं बनाता है
 - [SW Radio Simulator](#sw-radio-simulator) - संगीत को मॉडल की गई शॉर्टवेव प्रसारण, आयनमंडलीय पथ और रिसीवर शृंखला से गुजारता है
 - [Vinyl Artifacts](#vinyl-artifacts) - विनाइल-शैली के पॉप, क्रैकल, हिस, रंबल और स्टेरियो शोर रिसाव जोड़ता है
@@ -360,6 +364,53 @@ FM Radio Simulator संगीत को एक मॉडल की गई FM �
 
 यह इफ़ेक्ट पहले स्टीरियो युग्म को एक ही प्रसारण श्रृंखला के रूप में प्रोसेस करता है; मोनो इनपुट खाली L−R चैनल के साथ प्रसारित होता है। RDS, समीपवर्ती स्टेशन और व्यतिकरण स्रोत इस मॉडल से बाहर हैं। मल्टीबैंड "बड़े स्टेशन" की ध्वनि के लिए इस इफ़ेक्ट से पहले Multiband Compressor रखें; आवेगी बाधाओं के लिए इसके बाद Noise Blender या Digital Error Emulator चेन करें।
 
+## G.726 Simulator
+
+G.726 Simulator चुने हुए mono channel या stereo pair को वास्तविक 8 kHz ITU-T G.726 encode/decode round trip से गुज़ारता है। Stereo pair को encoding से पहले mono में मिलाया जाता है और decoded signal दोनों चुने हुए channels को दिया जाता है। इससे digital telephone speech coding की bandwidth, adaptive differential quantization और prediction-error की प्रकृति सुनी जा सकती है। Bit Error Rate के default मान पर path पूरी तरह साफ़ रहता है; इसे बढ़ाने पर DECT जैसी wireless link की bit errors जुड़ जाती हैं।
+
+16, 24, 32 और 40 kbit/s G.726 की चार standard rates हैं। Default 32 kbit/s ऐतिहासिक DECT full-slot speech mode है। कम rate पर हर 8 kHz sample के लिए कम bits मिलते हैं, जिससे granular quantization, खुरदरे sustained tones और slope overload अधिक स्पष्ट होते हैं। Codec speech के लिए बना है, इसलिए full-band music इसकी सीमाएँ साफ़ दिखाता है।
+
+इस effect को WebAssembly processing engine चाहिए। Engine, sample rate या channel mode उपलब्ध न हो तो input बदले बिना रहता है और plugin सरल status message दिखाता है। Suspension के बाद processing फिर शुरू होने पर resamplers और codec prediction state साथ में reset होते हैं, इसलिए suspension से पहले buffer हुआ audio दोबारा नहीं बजता।
+
+### ध्वनि सुधार मार्गदर्शिका
+
+- **प्रतिनिधि telephone speech:** 32 kbit/s, Output 0 dB और Mix 100% से शुरू करें। Speech पर 8 kHz narrow band और adaptive ADPCM texture सबसे स्पष्ट सुनाई देते हैं।
+- **Rates की तुलना:** उसी speech passage पर 40, 32, 24 और 16 kbit/s बदलें। कम rates पर vowels की grain, sustained tones की roughness और अचानक level बदलने के बाद recovery सुनें।
+- **Music से सीमा जाँचें:** 16 या 24 kbit/s पर percussion, bright sustained notes या dense mixes bandwidth limit और prediction errors को अधिक स्पष्ट करते हैं।
+- **Radio bit errors जोड़ें:** Bit Error Rate को -4.5 से -2 की ओर बढ़ाएँ और सुनें कि code words कैसे चटकने और खुरदरे हिस्सों में टूटते हैं। साफ़ encode/decode तुलना के लिए इसे -6 पर रखें।
+- **Effect मिलाएँ:** मूल signal का कुछ भाग रखने के लिए Mix घटाएँ। Dry path decoded path के साथ latency-aligned है।
+- **Level मिलाएँ:** Output केवल loudness difference की भरपाई करता है; G.726 bit allocation नहीं बदलता।
+
+### Parameters
+
+- **Bitrate** — 16, 24, 32 या 40 kbit/s चुनता है। हर 8 kHz sample क्रमशः 2, 3, 4 या 5 bit ADPCM इस्तेमाल करता है; कम settings quantization और prediction artifacts बढ़ाती हैं।
+- **Output** — Codec state या bitrate बदले बिना decoded level को -24.0 से +12.0 dB तक समायोजित करता है।
+- **Mix** — Latency-aligned original और decoded result को 0% से 100% तक मिलाता है।
+- **Bit Error Rate** — Wireless link की bit error rate को दस की घात के रूप में -6 से -2 तक सेट करता है (default -6)। -6 पर path पूरी तरह error-free रहता है। मान बढ़ाने पर ADPCM code words में अधिक bits पलटते हैं, जिससे कमज़ोर DECT जैसी radio link वाली चटकने की आवाज़ आती है।
+
+## GSM-FR Simulator
+
+Audio output में एक channel होने पर GSM-FR Simulator उस channel को सीधे process करता है। दो या अधिक output channels होने पर यह चुने हुए stereo pair को mono में मिलाता है। इसके बाद mono signal को 8 kHz पर resample करके मानकीकृत 13 kbit/s GSM-FR RPE-LTP encoder और decoder से गुज़ारा जाता है। Decoded result एकमात्र output channel में, या चुने हुए pair के दोनों channels में वापस भेजा जाता है। इससे यह परखा जा सकता है कि शुरुआती digital mobile speech coding आवाज़, percussion, sustained tones और घने music को कैसे बदलती है। C/I के default मान पर path पूरी तरह साफ़ रहता है; इसे घटाने पर कमज़ोर GSM reception जैसा असर आता है।
+
+हर 20 ms frame को quantized linear prediction, long-term prediction और regular-pulse excitation parameters से दर्शाया जाता है। Transcodes पूरी encode/decode stage को अलग-अलग state के साथ दोहराता है, इसलिए यह सामान्य “quality” control नहीं, बल्कि वास्तविक tandem coding को दोहराता है। चुने हुए stereo pair के बाद के अतिरिक्त channels बिना बदलाव के रहते हैं।
+
+इस effect को अपने WebAssembly processing engine की ज़रूरत होती है। अगर engine, चुना हुआ sample rate या channel mode उपलब्ध न हो, तो input बिना बदलाव के रहता है और plugin साफ़ status message दिखाता है। Suspension के बाद processing दोबारा शुरू होने पर resamplers, frame buffers और codec state साथ में reset होते हैं, इसलिए suspension से पहले buffer हुआ audio दोबारा नहीं बजता।
+
+### साउंड एन्हांसमेंट गाइड
+
+- **शुरुआती mobile speech की प्रतिनिधि setting:** Transcodes को 1, Output को 0 dB और Mix को 100% पर रखें, फिर आवाज़, cymbals और percussion की bypass से तुलना करें।
+- **Tandem coding सुनें:** उसी passage पर Transcodes को 1 से 2 और फिर 3 करें। Signal को सच में दोबारा encode और decode किए जाने से warble, chirping और clarity loss बढ़ते हैं; radio reception errors अलग हैं: C/I 30 dB पर कोई error नहीं होता, और मान घटाने पर वे पुनः बनते हैं।
+- **Music से speech model पहचानें:** चमकीले या घने music पर Transcodes 3 इस्तेमाल करें, ताकि 8 kHz speech bandwidth, RPE-LTP buzz और formant बदलाव अधिक स्पष्ट हों।
+- **Result मिलाएँ:** मूल stereo signal का कुछ हिस्सा वापस लाने के लिए Mix घटाएँ। Dry path codec latency के साथ aligned रहता है।
+- **तुलना से पहले level मिलाएँ:** सुनाई देने वाले या मापे गए loudness अंतर की भरपाई केवल Output से करें। इससे codec algorithm नहीं बदलता।
+
+### पैरामीटर
+
+- **Transcodes** — पूरे GSM-FR encode/decode process के 1, 2 या 3 passes चुनता है। हर pass का state स्वतंत्र होता है और वही 13 kbit/s codec इस्तेमाल होता है। ऊँचे मान tandem-coding artifacts बढ़ाते हैं।
+- **Output** — Decoded output level को -24.0 से +12.0 dB तक समायोजित करता है। यह level matching के लिए है; codec state या bitrate नहीं बदलता।
+- **Mix** — Latency-aligned original signal और decoded result को 0% से 100% तक मिलाता है। 100% पर चुने हुए stereo pair के दोनों channels में एक ही decoded mono signal आता है; कम मान मूल stereo अंतर वापस लाते हैं।
+- **C/I** — Radio link का carrier-to-interference अनुपात 4 से 30 dB तक सेट करता है (default 30)। 30 dB पर reception व्यावहारिक रूप से पूर्ण रहता है। मान घटाने पर frame erasures (GSM 06.11 शैली का concealment: पिछला frame दोहराना और घटाना, लगातार loss पर mute) और Class 2 bit errors की distortion बढ़ती है, जिससे network की सीमा पर मोबाइल फ़ोन जैसी खरखराती टूटन मिलती है। Transcodes 1 से अधिक होने पर degradation केवल अंतिम hop पर लगता है।
+
 ## Hum Generator
 
 50/60 Hz electrical hum की नियंत्रित परत जोड़ता है, जिससे vintage या lo-fi listening mood बनता है। साफ playback बहुत sterile लगे तो कम Level पर इस्तेमाल करें, या साफ सुनाई देने वाले hum texture के लिए Level बढ़ाएं।
@@ -433,6 +484,27 @@ FM Radio Simulator संगीत को एक मॉडल की गई FM �
    - Tone: 15.0 kHz, Instability: 6.0%, Level: -36 dB
    - बिल्कुल सही: अधिक स्पष्ट, सुनाई देने वाली hum texture
 
+## MP3 Codec Simulator
+
+MP3 Codec Simulator चुने हुए चैनलों को real-time में सरल MPEG Layer III analysis, सीमित bit budget वाली spectral quantization और synthesis से गुज़ारता है। इससे आप सुन सकते हैं कि कम bitrate वाला MP3 transients, ऊँची frequencies के detail, sustained tones और stereo image को कैसे बदलता है। यह केवल साफ़ codec round trip का मॉडल है; इसमें damaged file clicks, dropouts, packet loss या transmission errors नहीं जोड़े जाते।
+
+44.1 kHz MPEG-1 profile में 32–320 kbit/s उपलब्ध है। 22.05 kHz MPEG-2 profile में 32–160 kbit/s उपलब्ध है और coded bandwidth अधिक सीमित रहती है। इस effect को WebAssembly processing engine चाहिए; engine, चुना हुआ sample rate या channel mode उपलब्ध न होने पर audio अपरिवर्तित रहता है।
+
+### ध्वनि सुधार मार्गदर्शिका
+
+- MP3 का असर स्पष्ट सुनने के लिए 44.1 kHz, 48 या 64 kbit/s, Joint Stereo, Bit Reservoir On और Mix 100% से शुरू करें। percussion, cymbals, sustained tones और चौड़ी stereo recordings अंतर को आसानी से दिखाती हैं।
+- 64 kbit/s की तुलना 128 या 192 kbit/s से करें ताकि अधिक bit budget से बचने वाला detail सुन सकें। अधिक bandwidth limitation के लिए 22.05 kHz पर 32 या 48 kbit/s आज़माएँ।
+- शांत और घने हिस्सों वाले track पर Bit Reservoir Off करें। तब हर frame को अपने budget में फिट होना पड़ता है और जटिल transients अधिक खुरदरे हो सकते हैं।
+
+### पैरामीटर
+
+- **Codec Rate** — `44.1 kHz (MPEG-1)` या `22.05 kHz (MPEG-2)` चुनता है और profile, frame structure तथा coded bandwidth बदलता है।
+- **Bitrate** — mono या stereo stream का कुल constant bitrate तय करता है। MPEG-1 में अधिकतम 320 kbit/s और MPEG-2 में अधिकतम 160 kbit/s मिलता है।
+- **Stereo Mode** — अधिक कुशल होने पर `Joint Stereo` पहले stereo pair को Mid/Side में encode कर सकता है; `Stereo` बाएँ और दाएँ spectra अलग रखता है।
+- **Bit Reservoir** — सरल frames की बची capacity को बाद के जटिल frames में इस्तेमाल करने देता है।
+- **Output** — decoded level को -24.0 से +12.0 dB तक समायोजित करता है।
+- **Mix** — latency-aligned मूल signal और decoded result को 0% से 100% तक मिलाता है।
+
 ## Noise Blender
 
 एक प्रभाव जो आपके संगीत में वातावरणीय पृष्ठभूमि बनावट जोड़ता है, विनाइल रिकॉर्ड या विंटेज उपकरणों की ध्वनि के समान। आरामदायक, नॉस्टैल्जिक वातावरण बनाने के लिए बिल्कुल सही।
@@ -463,6 +535,34 @@ FM Radio Simulator संगीत को एक मॉडल की गई FM �
 - **Per Channel** - अधिक विस्तृत प्रभाव बनाता है
   - चालू: चौड़ी, अधिक इमर्सिव ध्वनि
   - बंद: अधिक केंद्रित, केंद्रित बनावट
+
+## SBC Codec Simulator
+
+SBC Codec Simulator चुने गए चैनलों को real-time SBC analysis, bit allocation, quantization और synthesis से गुज़ारता है। इससे आप सुन सकते हैं कि Bluetooth A2DP का अनिवार्य baseline codec high-frequency detail, tonal texture, transients और stereo image को कैसे बदलता है। Packet Loss के default मान पर codec round trip पूरी तरह साफ़ रहता है; इसे बढ़ाने पर असली Bluetooth link जैसी आवाज़ की टूटन आती है।
+
+Codec 44.1 kHz sample-rate परिवार के लिए अंदरूनी तौर पर 44.1 kHz और 48 kHz परिवार के लिए 48 kHz पर चलता है। केवल पढ़ने योग्य Bitrate, मौजूदा Bitpool, Channel Mode, Blocks और codec rate के अनुसार सटीक SBC frame length से निकाला जाता है।
+
+इस effect को WebAssembly processing engine चाहिए। Engine, चुना हुआ sample rate या channel mode उपलब्ध न होने पर input में कोई बदलाव नहीं होता और plugin स्पष्ट status message दिखाता है।
+
+### ध्वनि सुधार मार्गदर्शिका
+
+- **सामान्य SBC तुलना:** Bitpool 35, Joint Stereo, 16 Blocks और Mix 100% से शुरू करें। Cymbals, लंबे tones, percussion और चौड़ी stereo recordings पर bypass से तुलना करें।
+- **Codec artifacts को अधिक स्पष्ट करना:** Bitpool को 12–20 तक घटाएँ। आठ subbands को कम quantization bits मिलेंगे, इसलिए high-frequency detail में बदलाव और tonal residue अधिक सुनाई देंगे।
+- **Stereo allocation की तुलना:** Bitrate देखते हुए Joint Stereo और Stereo बदलें। Joint Stereo correlated stereo content को अधिक कुशलता से code कर सकता है, जबकि Stereo बाएँ और दाएँ subbands अलग रखता है।
+- **SBC XQ को दोहराना:** Channel Mode को Dual Channel करें और Bitpool 38 रखें — यही आम तौर पर «SBC XQ» कहलाने वाला विन्यास है; 47 रखने पर «SBC XQ+» मिलता है। 44.1 kHz सामग्री पर Bitrate क्रमशः 452.0 और 551.3 kbit/s दिखाता है, जो प्रचलित आँकड़ों से मेल खाता है। Bitpool 53 पर 617.4 kbit/s मिलता है, जो इस simulator की अधिकतम दर है। ये सभी सेटिंग्स A2DP की अनुशंसित सीमा से बाहर हैं, पर उच्च bitrate वाले SBC transmitter असल में यही भेजते हैं, और यहीं codec को bypass से अलग पहचानना सबसे कठिन होता है।
+- **Frame adaptation की तुलना:** Blocks को 16 से 4 करें। छोटे frames scale factors जल्दी update करते हैं, पर fixed overhead का अनुपात बढ़ाते हैं और दिखाया गया bitrate भी बदलते हैं।
+- **Wireless dropouts जोड़ना:** Packet Loss को 5–20% तक बढ़ाएँ, ताकि frames का burst में गायब होना और concealment का fade सुनाई दे। साफ़ तुलना के लिए इसे 0% पर रखें।
+- **Effect को मिलाना:** SBC character हल्का रखने के लिए Mix घटाएँ। Dry path की latency coded path के साथ aligned रहती है।
+
+### पैरामीटर
+
+- **Bitpool** — हर SBC frame के quantization-bit budget को 2 से 53 तक सेट करता है। `Joint Stereo` और `Stereo` इसे stereo जोड़ी में साझा करते हैं, जबकि `Dual Channel` इसे हर channel को अलग-अलग पूरा देता है। कम मान पर अधिक subbands को बहुत कम या कोई bit नहीं मिलता और codec artifacts बढ़ते हैं। Bitpool सीधे kbit/s नहीं बताता।
+- **Channel Mode** — `Joint Stereo` correlated subbands को sum/difference के रूप में code कर सकता है, जब इससे ज़रूरी scale factors घटते हों। `Stereo` बाएँ और दाएँ subbands अलग रखता है। ये दोनों modes पहले stereo pair में एक Bitpool साझा करते हैं; Joint Stereo केवल output को mono नहीं बनाता। `Dual Channel` हर channel को पूरे Bitpool के साथ अपना स्वतंत्र allocation देता है, इसलिए frame और bitrate लगभग दोगुने हो जाते हैं: «SBC XQ» के पीछे यही विन्यास है, और बाएँ-दाएँ स्वतंत्र रूप से quantize होने के कारण stereo image का उतार-चढ़ाव भी Joint Stereo से अलग होता है।
+- **Blocks** — हर SBC frame में 4, 8, 12 या 16 subband-sample blocks चुनता है। कम blocks frame को छोटा करते हैं और fixed overhead का अनुपात बढ़ाते हैं; अधिक blocks scale factors को कम बार update करते हैं।
+- **Bitrate** — सटीक frame bytes और codec rate से निकला, केवल पढ़ने योग्य मौजूदा stream bitrate (kbit/s)। Bitpool, Channel Mode, Blocks, host sample-rate परिवार या mono और stereo के बीच host output routing बदलने पर यह update होता है।
+- **Packet Loss** — Bluetooth link की packet loss दर को 0% से 20% तक सेट करता है (default 0%)। 0% पर कोई frame नहीं खोता। मान बढ़ाने पर पूरे SBC frames burst में गिरते हैं (Gilbert-Elliott model), और built-in concealment पिछले frame को घटाते हुए दोहराता है और फिर silence में fade होता है, जिससे असली wireless link जैसी टूटन मिलती है।
+- **Output** — Decoded level को -24.0 से +12.0 dB तक बदलता है। Codec-filter overshoot से peaks बहुत ऊँची हों तो इसे घटाएँ।
+- **Mix** — Latency-aligned original और decoded result को 0 से 100% तक मिलाता है।
 
 ## Simple Jitter
 

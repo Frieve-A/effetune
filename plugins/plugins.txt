@@ -66,8 +66,12 @@ lofi/bit_crusher: Bit Crusher | Lo-Fi | BitCrusherPlugin
 lofi/digital_error_emulator: Digital Error Emulator | Lo-Fi | DigitalErrorEmulatorPlugin
 lofi/dsd64_imd_simulator: DSD64 IMD Simulator | Lo-Fi | DSD64IMDSimulatorPlugin | css
 lofi/fm_radio_simulator: FM Radio Simulator | Lo-Fi | FMRadioSimulatorPlugin | css
+lofi/g726_adpcm_simulator: G.726 Simulator | Lo-Fi | G726ADPCMSimulatorPlugin
+lofi/gsm_full_rate_simulator: GSM-FR Simulator | Lo-Fi | GSMFullRateSimulatorPlugin
 lofi/hum_generator: Hum Generator | Lo-Fi | HumGeneratorPlugin
+lofi/mp3_codec_simulator: MP3 Codec Simulator | Lo-Fi | MP3CodecSimulatorPlugin
 lofi/noise_blender: Noise Blender | Lo-Fi | NoiseBlenderPlugin
+lofi/bluetooth_sbc_simulator: SBC Codec Simulator | Lo-Fi | BluetoothSBCSimulatorPlugin
 lofi/simple_jitter: Simple Jitter | Lo-Fi | SimpleJitterPlugin
 lofi/sw_radio_simulator: SW Radio Simulator | Lo-Fi | SWRadioSimulatorPlugin | css
 lofi/vinyl_artifacts: Vinyl Artifacts | Lo-Fi | VinylArtifactsPlugin

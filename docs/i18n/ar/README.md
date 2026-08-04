@@ -344,8 +344,12 @@
 | Lo-Fi | Digital Error Emulator | يحاكي أخطاء نقل الصوت الرقمي وخصائص الأجهزة الرقمية القديمة | [تفاصيل](plugins/lofi.md#digital-error-emulator) |
 | Lo-Fi | DSD64 IMD Simulator | يحاكي تشوه التداخل المسموع الناتج عن ضوضاء DSD64 فوق الصوتية | [تفاصيل](plugins/lofi.md#dsd64-imd-simulator) |
 | Lo-Fi | FM Radio Simulator | يمرر الموسيقى عبر سلسلة بث واستقبال FM محاكاة فيزيائيًا | [تفاصيل](plugins/lofi.md#fm-radio-simulator) |
+| Lo-Fi | G.726 Simulator | يحاكي دورة ترميز وفك ترميز صوتي وفق ITU-T G.726 مع وصلة راديو اختيارية ذات أخطاء | [تفاصيل](plugins/lofi.md#g726-simulator) |
+| Lo-Fi | GSM-FR Simulator | يحاكي دورة ترميز وفك ترميز صوتي وفق GSM-FR بمعدل 13 kbit/s عبر وصلة راديو مع إخفاء فقد الإطارات | [تفاصيل](plugins/lofi.md#gsm-fr-simulator) |
 | Lo-Fi | Hum Generator | يضيف طنينًا كهربائيًا 50/60 Hz قابلًا للتحكم لأجواء vintage/lo-fi | [تفاصيل](plugins/lofi.md#hum-generator) |
+| Lo-Fi | MP3 Codec Simulator | يحاكي دورة ترميز وفك ترميز MPEG Layer III نظيفة بمعدل بت منخفض | [تفاصيل](plugins/lofi.md#mp3-codec-simulator) |
 | Lo-Fi | Noise Blender | يضيف نسيج ضوضاء خلفية قابلًا للضبط لأجواء lo-fi | [تفاصيل](plugins/lofi.md#noise-blender) |
+| Lo-Fi | SBC Codec Simulator | يعيد إنشاء دورة ترميز وفك ترميز لـ Bluetooth A2DP SBC مع فقد رزم اختياري في الوصلة وإخفائه | [تفاصيل](plugins/lofi.md#sbc-codec-simulator) |
 | Lo-Fi | Simple Jitter | يحاكي jitter رقميًا | [تفاصيل](plugins/lofi.md#simple-jitter) |
 | Lo-Fi | SW Radio Simulator | يمرر الموسيقى عبر سلسلة مُنمذجة من بث الموجات القصيرة والمسار الأيونوسفيري والمستقبِل | [تفاصيل](plugins/lofi.md#sw-radio-simulator) |
 | Lo-Fi | Vinyl Artifacts | يضيف طقطقات وفرقعة وهسيسًا ورمبلًا وتسرب ضوضاء ستيريو بطابع الفينيل | [تفاصيل](plugins/lofi.md#vinyl-artifacts) |

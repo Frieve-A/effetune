@@ -127,6 +127,20 @@ function createFakeInstance(options = {}) {
       calls.push(['instanceProcess', ...args]);
       return options.processStatus ?? 0;
     },
+    et_instance_runtime_event(engine, instance, ptr) {
+      calls.push(['instanceRuntimeEvent', engine, instance, ptr]);
+      if (options.runtimeEventStatus) return options.runtimeEventStatus;
+      const data = new DataView(memory.buffer);
+      const state = options.runtimeEvent ?? {
+        generation: 7,
+        latched: true,
+        cause: 1
+      };
+      data.setUint32(ptr, state.generation, true);
+      data.setUint32(ptr + 4, state.latched ? 1 : 0, true);
+      data.setUint32(ptr + 8, state.cause, true);
+      return 0;
+    },
     et_arena_combined_ptr: () => 4096,
     et_arena_bus_ptr: (_engine, bus) => 4096 + bus * 4096,
     et_arena_scratch_ptr: (_engine, which) => 24576 + which * 4096,
@@ -163,6 +177,7 @@ test('binding rejects missing ABI exports and invalid instances', () => {
   assert.ok(REQUIRED_FUNCTION_EXPORTS.includes('et_pipeline_process'));
   assert.ok(REQUIRED_FUNCTION_EXPORTS.includes('et_instance_set_param_bytes'));
   assert.ok(REQUIRED_FUNCTION_EXPORTS.includes('et_instance_asset_begin'));
+  assert.ok(REQUIRED_FUNCTION_EXPORTS.includes('et_instance_runtime_event'));
 });
 
 test('binding discovers capabilities and drives engine and instance lifecycle', () => {
@@ -205,6 +220,11 @@ test('binding discovers capabilities and drives engine and instance lifecycle', 
   assert.equal(binding.instanceSetSeed(11, 0x89abcdef, 0x01234567), 0);
   assert.equal(binding.setTelemetryRate(30), 0);
   assert.equal(binding.instanceSetParams(11, [0.25, 0.5], 0xfeedbeef, 3), 0);
+  assert.deepEqual(binding.instanceRuntimeEvent(11), {
+    generation: 7,
+    latched: true,
+    cause: 1
+  });
   assert.equal(binding.instanceSetParamBytes(11, Uint8Array.of(1, 0, 0, 0), 0xfeedbeef), 0);
   const assetPayload = new Uint8Array(64);
   const assetHeader = new DataView(assetPayload.buffer);
@@ -246,6 +266,7 @@ test('binding discovers capabilities and drives engine and instance lifecycle', 
   assert.equal(binding.createInstance('VolumePlugin'), 0);
   assert.equal(binding.instanceSetSeed(1, 2, 3), ET_ERR_STATE);
   assert.equal(binding.instanceSetParams(1, [], 0), ET_ERR_STATE);
+  assert.equal(binding.instanceRuntimeEvent(1), null);
   assert.equal(binding.instanceSetParamBytes(1, new Uint8Array(0), 0), ET_ERR_STATE);
 });
 

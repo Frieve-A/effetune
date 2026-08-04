@@ -340,8 +340,12 @@ EffeTune создан для аудиоэнтузиастов, которые х
 | Lo-Fi     | Digital Error Emulator | Имитирует разные ошибки передачи цифрового аудио и характер винтажной цифровой аппаратуры | [Подробнее](plugins/lofi.md#digital-error-emulator) |
 | Lo-Fi     | DSD64 IMD Simulator | Имитирует слышимые интермодуляционные искажения от ультразвукового шума DSD64 | [Подробнее](plugins/lofi.md#dsd64-imd-simulator) |
 | Lo-Fi     | FM Radio Simulator | Пропускает музыку через физически смоделированный тракт FM-вещания и приёма | [Подробнее](plugins/lofi.md#fm-radio-simulator) |
+| Lo-Fi     | G.726 Simulator | Имитирует цикл кодирования и декодирования речи ITU-T G.726 с необязательной зашумлённой радиолинией | [Подробнее](plugins/lofi.md#g726-simulator) |
+| Lo-Fi     | GSM-FR Simulator | Имитирует цикл кодирования и декодирования речи GSM-FR с битрейтом 13 кбит/с по радиолинии с маскированием потерь кадров | [Подробнее](plugins/lofi.md#gsm-fr-simulator) |
 | Lo-Fi     | Hum Generator | Добавляет настраиваемый фон электрического гула 50/60 Hz для винтажного или lo-fi прослушивания | [Подробнее](plugins/lofi.md#hum-generator) |
+| Lo-Fi     | MP3 Codec Simulator | Имитирует чистый цикл кодирования и декодирования MPEG Layer III с низким битрейтом | [Подробнее](plugins/lofi.md#mp3-codec-simulator) |
 | Lo-Fi     | Noise Blender | Добавляет регулируемую текстуру фонового шума для lo-fi атмосферы | [Подробнее](plugins/lofi.md#noise-blender) |
+| Lo-Fi     | SBC Codec Simulator | Воспроизводит цикл кодирования и декодирования Bluetooth A2DP SBC с необязательными потерями пакетов и маскированием | [Подробнее](plugins/lofi.md#sbc-codec-simulator) |
 | Lo-Fi     | Simple Jitter | Имитация цифрового джиттера | [Подробнее](plugins/lofi.md#simple-jitter) |
 | Lo-Fi     | SW Radio Simulator | Проводит музыку через модель тракта коротковолнового вещания, ионосферного распространения и приёма | [Подробнее](plugins/lofi.md#sw-radio-simulator) |
 | Lo-Fi     | Vinyl Artifacts | Добавляет виниловые pops, crackle, hiss, rumble и утечку стереошума | [Подробнее](plugins/lofi.md#vinyl-artifacts) |

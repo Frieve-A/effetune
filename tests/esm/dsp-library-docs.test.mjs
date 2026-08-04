@@ -153,7 +153,8 @@ test('DSP pages inherit the shared documentation layout and visual system', () =
   assert.match(siteCss, /\.button,\r?\n\.dsp-cta \{/);
   assert.match(siteCss, /\.sidebar-search input,\r?\n\[data-dsp-effect-filter\] \{/);
   assert.match(siteCss, /\.dsp-release-state \{/);
-  assert.match(siteCss, /\.dsp-demo-frame \{/);
+  assert.match(siteCss, /\.dsp-demo-frame \{[^}]*min-height: 42rem;/s);
+  assert.match(siteCss, /@media \(max-width: 520px\) \{[\s\S]*\.dsp-demo-frame \{[^}]*min-height: 58rem;/);
 });
 
 test('DSD activation, latency declarations, and execution seed stay distinct', () => {

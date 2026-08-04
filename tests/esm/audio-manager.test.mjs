@@ -1498,16 +1498,37 @@ test('Web and Electron input None switch locally only while pipeline configurati
 
 test('fades output with scheduled ramps and immediate fallbacks', async () => {
   await withAudioManager({}, async ({ calls, manager }) => {
+    const monitoringMessages = () => calls
+      .filter(call => call[0] === 'postMessage' &&
+        call[2]?.type === 'setAudioProcessingOverloadMonitoring')
+      .map(call => call[2]);
     manager.fadeInOutput(0.1);
+    assert.deepEqual(monitoringMessages(), [{
+      type: 'setAudioProcessingOverloadMonitoring',
+      enabled: true,
+      delaySeconds: 0.1
+    }]);
     const firstToken = manager.fadeOutOutput(0.2);
     const secondToken = manager.fadeOutOutput(0.2);
+    assert.deepEqual(
+      monitoringMessages().map(message => message.enabled),
+      [true, false, false]
+    );
     const fadeInRamps = () => calls.filter(call => call[0] === 'param.ramp' && call[2] === 1).length;
     const fadeInCount = fadeInRamps();
     assert.ok(secondToken > firstToken);
     assert.equal(manager.fadeInOutputForToken(firstToken, 0.1), false);
     assert.equal(fadeInRamps(), fadeInCount);
+    assert.deepEqual(
+      monitoringMessages().map(message => message.enabled),
+      [true, false, false]
+    );
     assert.equal(manager.fadeInOutputForToken(secondToken, 0.1), true);
     assert.equal(fadeInRamps(), fadeInCount + 1);
+    assert.deepEqual(
+      monitoringMessages().map(message => message.enabled),
+      [true, false, false, true]
+    );
     assert.equal(calls.some(call => call[0] === 'param.ramp' && call[2] === 1), true);
     assert.equal(calls.some(call => call[0] === 'param.ramp' && call[2] === 0), true);
 
@@ -1527,9 +1548,18 @@ test('fades output with scheduled ramps and immediate fallbacks', async () => {
     manager.fadeOutOutput();
   });
 
-  await withAudioManager({ outputGainParamOptions: { throwSchedule: true } }, async ({ manager }) => {
+  await withAudioManager({ outputGainParamOptions: { throwSchedule: true } }, async ({ calls, manager }) => {
     manager.fadeInOutput();
     assert.equal(manager.ioManager.outputGainNode.gain.value, 1);
+    assert.deepEqual(
+      calls.find(call => call[0] === 'postMessage' &&
+        call[2]?.type === 'setAudioProcessingOverloadMonitoring')?.[2],
+      {
+        type: 'setAudioProcessingOverloadMonitoring',
+        enabled: true,
+        delaySeconds: 0
+      }
+    );
     manager.fadeOutOutput();
     assert.equal(manager.ioManager.outputGainNode.gain.value, 0);
   });

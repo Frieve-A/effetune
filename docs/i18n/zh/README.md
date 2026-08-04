@@ -343,8 +343,12 @@ EffeTune 2.1.0引入了采用目录架构v3的音乐库，可按曲目浏览CUE�
 | Lo-Fi     | Digital Error Emulator | 模拟各种数字音频传输错误和复古数字设备特性 | [详情](plugins/lofi.md#digital-error-emulator) |
 | Lo-Fi     | DSD64 IMD Simulator | 模拟 DSD64 超声噪声引发的可闻互调失真 | [详情](plugins/lofi.md#dsd64-imd-simulator) |
 | Lo-Fi     | FM Radio Simulator | 让音乐通过物理仿真的 FM 广播与接收链路 | [详情](plugins/lofi.md#fm-radio-simulator) |
+| Lo-Fi     | G.726 Simulator | 模拟 ITU-T G.726 语音编解码往返处理，并可选叠加有误码的无线链路 | [详情](plugins/lofi.md#g726-simulator) |
+| Lo-Fi     | GSM-FR Simulator | 模拟 13 kbit/s GSM-FR 语音编解码往返处理，含帧丢失隐藏的无线链路 | [详情](plugins/lofi.md#gsm-fr-simulator) |
 | Lo-Fi     | Hum Generator | 加入可控的 50/60 Hz 电气嗡声氛围，适合复古/lo-fi 聆听 | [详情](plugins/lofi.md#hum-generator) |
+| Lo-Fi     | MP3 Codec Simulator | 模拟低码率 MPEG Layer III 的纯净编码/解码往返处理 | [详情](plugins/lofi.md#mp3-codec-simulator) |
 | Lo-Fi     | Noise Blender | 加入可调背景噪声质感，营造 lo-fi 氛围 | [详情](plugins/lofi.md#noise-blender) |
+| Lo-Fi     | SBC Codec Simulator | 再现 Bluetooth A2DP SBC 编码/解码往返处理，并可选叠加链路丢包与隐藏处理 | [详情](plugins/lofi.md#sbc-codec-simulator) |
 | Lo-Fi     | Simple Jitter | 数字抖动模拟 | [详情](plugins/lofi.md#simple-jitter) |
 | Lo-Fi     | SW Radio Simulator | 让音乐经过建模的短波广播、电离层传播与接收链路 | [详情](plugins/lofi.md#sw-radio-simulator) |
 | Lo-Fi     | Vinyl Artifacts | 加入黑胶风格的爆点、噼啪声、嘶声、隆隆声和立体声噪声串扰 | [详情](plugins/lofi.md#vinyl-artifacts) |

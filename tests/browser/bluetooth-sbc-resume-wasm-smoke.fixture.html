@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>EffeTune Bluetooth SBC resume WASM smoke</title>
+</head>
+<body>
+  <main>Bluetooth SBC resume WASM smoke fixture ready</main>
+  <script type="module">
+    import { runCodecResumeWasmSmoke } from '/tests/browser/codec-resume-wasm-smoke.harness.mjs';
+    import {
+      BluetoothSBCSimulatorPlugin_PARAMS_HASH,
+      packBluetoothSBCSimulatorPluginParams
+    } from '/js/audio/dsp-params.generated.js';
+
+    // Joint Stereo, 16 blocks and bitpool 35 is the shipped default, so the suspended instance holds
+    // a partially filled PQMF analysis window, a queued encoded frame and the synthesis overlap
+    // reservoir at the moment the transport is skipped. Link packet loss stays at its 0 %
+    // default so the resume comparison is exact.
+    function run() {
+      return runCodecResumeWasmSmoke({
+        pluginType: 'BluetoothSBCSimulatorPlugin',
+        label: 'Bluetooth SBC',
+        parameters: { bp: 35, cm: 'Joint Stereo', bl: '16', og: 0, mx: 100, pl: 0 },
+        pack: packBluetoothSBCSimulatorPluginParams,
+        paramsHash: BluetoothSBCSimulatorPlugin_PARAMS_HASH,
+        floatCount: 6
+      });
+    }
+
+    window.__bluetoothSbcResumeWasmSmoke = { run };
+  </script>
+</body>
+</html>

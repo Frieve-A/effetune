@@ -1,6 +1,7 @@
 import { instantiateDsp, loadDspModule } from './dsp-wasm-loader.js';
 import { getDspRolloutConfig } from './dsp-rollout.js';
 import { buildDspPipelineDescriptor } from './dsp-pipeline-descriptor.js';
+import { getPluginExecutionCapabilities } from './plugin-execution-capabilities.js';
 
 const OFFLINE_BLOCK_SIZE = 128;
 const OFFLINE_MAX_WASM_CHANNELS = 8;
@@ -458,7 +459,15 @@ export class OfflineProcessor {
             }
 
             const liveEntryCount = [...session.entries.values()].filter(entry => !entry.disabled).length;
-            session.descriptorEligible = liveEntryCount === activePlugins.length && activePlugins.length > 0;
+            // The full-pipeline descriptor routes channels inside the engine and has
+            // no bypass of its own, so a plugin with an unsupported channel mode
+            // forces the per-plugin hybrid path, exactly as refreshDspPipeline() does
+            // during playback.
+            session.descriptorEligible = liveEntryCount === activePlugins.length &&
+                activePlugins.length > 0 &&
+                !activePlugins.some(plugin => this.hasUnsupportedOfflineChannelMode(
+                    session, plugin, outputChannelCount, sampleRate
+                ));
             if (liveEntryCount === 0) {
                 this.destroyOfflineDspSession(session);
                 return null;
@@ -750,6 +759,9 @@ export class OfflineProcessor {
                 }
                 continue;
             }
+            // A plugin whose declared channel modes exclude the resolved routing is
+            // bypassed during playback, so the export must pass it through too.
+            const channelModeUnsupported = !this.isOfflineChannelModeSupported(plugin, routing);
 
             try {
                 const inputBuffer = busBuffers.get(inputBus);
@@ -792,19 +804,23 @@ export class OfflineProcessor {
                     );
                 }
 
-                const wasmResult = this.tryProcessOfflineDspInstance({
-                    session,
-                    plugin,
-                    pluginParameters,
-                    processingBuffer,
-                    routing,
-                    blockSize,
-                    currentTime: offset / sampleRate
-                });
+                const wasmResult = channelModeUnsupported
+                    ? { processed: false, result: null }
+                    : this.tryProcessOfflineDspInstance({
+                        session,
+                        plugin,
+                        pluginParameters,
+                        processingBuffer,
+                        routing,
+                        blockSize,
+                        currentTime: offset / sampleRate
+                    });
 
                 let finalResultBuffer;
                 if (wasmResult.processed) {
                     finalResultBuffer = wasmResult.result;
+                } else if (channelModeUnsupported) {
+                    finalResultBuffer = processingBuffer;
                 } else {
                     const hasExistingContext = pluginContexts.has(plugin.id);
                     const pluginContext = createContext(plugin.id);
@@ -1145,6 +1161,30 @@ export class OfflineProcessor {
         }
 
         return routing;
+    }
+
+    // Offline routing names the stereo case 'pair'; the worklet capability
+    // vocabulary calls it 'stereo-pair'. 'all' and 'single' are already shared.
+    // The worklet's 'mono' mode has no offline counterpart because
+    // getOfflineChannelRouting() already yields 'skip' for a 1-channel output.
+    offlineChannelModeForRouting(routing) {
+        return routing?.processMode === 'pair' ? 'stereo-pair' : routing?.processMode;
+    }
+
+    // Mirrors pluginExecutionUnsupportedReason()'s channel-mode branch in the
+    // worklet, so an exported file matches what playback produced.
+    isOfflineChannelModeSupported(plugin, routing) {
+        const modes = getPluginExecutionCapabilities(plugin)?.supportedChannelModes;
+        if (!Array.isArray(modes)) return true;
+        return modes.includes(this.offlineChannelModeForRouting(routing));
+    }
+
+    hasUnsupportedOfflineChannelMode(session, plugin, outputChannelCount, sampleRate) {
+        const parameters = this.getOfflinePluginParameters(session, plugin, sampleRate);
+        const channel = parameters.channel ?? plugin.channel ?? null;
+        const routing = this.getOfflineChannelRouting(channel, outputChannelCount);
+        if (routing.processMode === 'skip') return false;
+        return !this.isOfflineChannelModeSupported(plugin, routing);
     }
 
     applyOfflineRoutingResult(outputBuffer, finalResultBuffer, routing, inputBus, outputBus, blockSize, totalSize) {

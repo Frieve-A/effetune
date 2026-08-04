@@ -1,6 +1,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { performance } from 'node:perf_hooks';
+import { smokeWasm, sourceDigest } from '../../scripts/build-dsp-wasm.mjs';
 import { parseArgs, positiveInteger, nonNegativeInteger, integerList, isMain } from './cli.mjs';
 import { DEFAULT_REPO_ROOT, discoverCasePlan, findPluginDefinition } from './cases.mjs';
 import { createReferenceSession } from './node-host.mjs';
@@ -24,6 +26,10 @@ function usage() {
     '  --repetitions <count>   default 20',
     '  --allocations           enable the native runner allocation guard',
     '  --single-call           preset WASM/SIMD only; one pipeline process call per quantum',
+    '  --artifacts-dir <path>  use a scratch baseline/SIMD/metadata artifact set',
+    '  --quantum-stats         collect bounded process-time histograms for WASM/SIMD',
+    '  --g726-hard-gate        run the fixed 128-frame G.726 release acceptance gate',
+    '  --power-mode <label>    required machine power-mode provenance for the hard gate',
     '  --json <file>           write machine-readable results',
     '  Preset external modes keep pipeline order, using JS for unavailable kernels.',
     '  Single-call presets require every active plugin in the selected artifact.',
@@ -150,35 +156,67 @@ async function prepareJsOperation(target, testCase, input, repoRoot, implementat
   };
 }
 
-async function readCommittedWasmKernels(repoRoot) {
-  const metadataPath = path.join(repoRoot, 'plugins', 'dsp', 'effetune-dsp.meta.json');
+async function readWasmKernels(metadataPath) {
   let source;
   try {
     source = await fs.readFile(metadataPath, 'utf8');
   } catch (error) {
-    throw new Error(`Unable to read committed DSP metadata ${metadataPath}: ${error.message}`, { cause: error });
+    throw new Error(`Unable to read DSP metadata ${metadataPath}: ${error.message}`, { cause: error });
   }
   let metadata;
   try {
     metadata = JSON.parse(source);
   } catch (error) {
-    throw new Error(`Unable to parse committed DSP metadata ${metadataPath}: ${error.message}`, { cause: error });
+    throw new Error(`Unable to parse DSP metadata ${metadataPath}: ${error.message}`, { cause: error });
   }
   if (!Array.isArray(metadata.kernels)) {
-    throw new Error(`Committed DSP metadata ${metadataPath} has no kernels array`);
+    throw new Error(`DSP metadata ${metadataPath} has no kernels array`);
   }
   const kernels = new Map();
   for (const [index, kernel] of metadata.kernels.entries()) {
     if (!kernel || typeof kernel.name !== 'string' || kernel.name.length === 0 ||
         !Number.isInteger(kernel.hash) || kernel.hash < 0 || kernel.hash > 0xffffffff) {
-      throw new Error(`Committed DSP metadata ${metadataPath} has an invalid kernel at index ${index}`);
+      throw new Error(`DSP metadata ${metadataPath} has an invalid kernel at index ${index}`);
     }
     if (kernels.has(kernel.name)) {
-      throw new Error(`Committed DSP metadata ${metadataPath} contains duplicate kernel ${kernel.name}`);
+      throw new Error(`DSP metadata ${metadataPath} contains duplicate kernel ${kernel.name}`);
     }
     kernels.set(kernel.name, kernel.hash >>> 0);
   }
-  return { metadataPath, kernels };
+  return { metadataPath, metadata, kernels };
+}
+
+export async function preflightArtifactDirectory(artifactsDir, repoRoot = DEFAULT_REPO_ROOT) {
+  const root = path.resolve(repoRoot, artifactsDir);
+  const metadataPath = path.join(root, 'effetune-dsp.meta.json');
+  const baselinePath = path.join(root, 'effetune-dsp.wasm');
+  const simdPath = path.join(root, 'effetune-dsp.simd.wasm');
+  const support = await readWasmKernels(metadataPath);
+  const currentDigest = sourceDigest();
+  if (support.metadata.sourceDigest !== currentDigest) {
+    throw new Error(
+      `DSP artifact source digest mismatch in ${metadataPath}; rebuild the scratch artifacts`
+    );
+  }
+  const [baseline, simd] = await Promise.all([
+    smokeWasm(baselinePath, false),
+    smokeWasm(simdPath, true)
+  ]);
+  if (JSON.stringify(baseline.kernels) !== JSON.stringify(simd.kernels)) {
+    throw new Error(`Baseline and SIMD DSP artifacts in ${root} expose different kernel registries`);
+  }
+  if (JSON.stringify(support.metadata.kernels) !== JSON.stringify(baseline.kernels)) {
+    throw new Error(`DSP metadata ${metadataPath} does not match the artifact kernel registry`);
+  }
+  if (support.metadata.abiVersion !== baseline.abiVersion ||
+      support.metadata.abiVersion !== simd.abiVersion) {
+    throw new Error(`DSP metadata ${metadataPath} does not match the artifact ABI version`);
+  }
+  if (support.metadata.sizes?.baseline !== baseline.bytes ||
+      support.metadata.sizes?.simd !== simd.bytes) {
+    throw new Error(`DSP metadata ${metadataPath} does not match the artifact byte sizes`);
+  }
+  return { root, baselinePath, simdPath, baseline, simd, ...support };
 }
 
 async function readNativeKernelTypes(repoRoot) {
@@ -208,7 +246,7 @@ function missingKernelError(mode, type, sourcePath) {
   return new Error(`No ${source} kernel was found for benchmark plugin ${type} in ${sourcePath}`);
 }
 
-async function externalSupport(mode, repoRoot) {
+async function externalSupport(mode, repoRoot, artifactSet = null) {
   if (mode === 'native') {
     const { registryPath, types } = await readNativeKernelTypes(repoRoot);
     return {
@@ -217,7 +255,9 @@ async function externalSupport(mode, repoRoot) {
       expectedHash() { return null; }
     };
   }
-  const { metadataPath, kernels } = await readCommittedWasmKernels(repoRoot);
+  const { metadataPath, kernels } = artifactSet ?? await readWasmKernels(
+    path.join(repoRoot, 'plugins', 'dsp', 'effetune-dsp.meta.json')
+  );
   return {
     sourcePath: metadataPath,
     has(type) { return kernels.has(type); },
@@ -226,7 +266,7 @@ async function externalSupport(mode, repoRoot) {
 }
 
 async function prepareExternalOperation(mode, target, testCase, input, options) {
-  const support = await externalSupport(mode, options.repoRoot);
+  const support = await externalSupport(mode, options.repoRoot, options.artifactSet);
   const stages = [];
   const implementations = {
     createReferenceSession,
@@ -288,7 +328,9 @@ async function prepareExternalOperation(mode, target, testCase, input, options) 
           schema: stage.schema,
           repoRoot: options.repoRoot,
           variant: mode === 'simd' ? 'simd' : 'baseline',
-          wasmPath: mode === 'simd' ? (options.simdPath ?? undefined) : (options.wasmPath ?? undefined)
+          wasmPath: mode === 'simd' ? (options.simdPath ?? undefined) : (options.wasmPath ?? undefined),
+          onProcess: options.onProcess,
+          processWarmupCalls: options.processWarmupCalls
         });
       }
     }
@@ -297,7 +339,7 @@ async function prepareExternalOperation(mode, target, testCase, input, options) 
 }
 
 async function prepareSingleCallOperation(mode, target, testCase, input, options) {
-  const support = await externalSupport(mode, options.repoRoot);
+  const support = await externalSupport(mode, options.repoRoot, options.artifactSet);
   const active = activePipelinePlugins(target.pipeline);
   if (active.length === 0) {
     throw new Error(`Single-call benchmark preset ${target.label} has no active plugins`);
@@ -360,6 +402,148 @@ export async function measureRealtimeFactor({ operationFactory, warmup, repetiti
   };
 }
 
+const QUANTUM_HISTOGRAM_BIN_WIDTH_PERCENT = 0.25;
+const QUANTUM_HISTOGRAM_UPPER_BOUND_PERCENT = 100;
+
+export function createQuantumTimingAccumulator() {
+  const counts = new Uint32Array(
+    Math.ceil(QUANTUM_HISTOGRAM_UPPER_BOUND_PERCENT / QUANTUM_HISTOGRAM_BIN_WIDTH_PERCENT) + 1
+  );
+  let count = 0;
+  let totalPercent = 0;
+  let maximumPercent = 0;
+  let deadlineMisses = 0;
+  let clock = null;
+
+  return {
+    observe({ elapsedMilliseconds, blockFrames, sampleRate, clock: observedClock = 'wall' }) {
+      if (!(elapsedMilliseconds >= 0) || !(blockFrames > 0) || !(sampleRate > 0)) {
+        throw new Error('Invalid process timing observation');
+      }
+      const deadlineMilliseconds = blockFrames * 1000 / sampleRate;
+      const cpuPercent = elapsedMilliseconds * 100 / deadlineMilliseconds;
+      if (clock !== null && clock !== observedClock) {
+        throw new Error('Process timing observations use inconsistent clocks');
+      }
+      clock = observedClock;
+      count++;
+      totalPercent += cpuPercent;
+      if (cpuPercent > maximumPercent) maximumPercent = cpuPercent;
+      if (cpuPercent >= 100) deadlineMisses++;
+      const bucket = Math.min(
+        counts.length - 1,
+        Math.floor(cpuPercent / QUANTUM_HISTOGRAM_BIN_WIDTH_PERCENT)
+      );
+      counts[bucket]++;
+    },
+    result() {
+      if (count === 0) throw new Error('No process timing observations were collected');
+      const percentileRank = Math.ceil(count * 0.99);
+      let cumulative = 0;
+      let percentileBucket = counts.length - 1;
+      for (let index = 0; index < counts.length; index++) {
+        cumulative += counts[index];
+        if (cumulative >= percentileRank) {
+          percentileBucket = index;
+          break;
+        }
+      }
+      const overflowBucket = counts.length - 1;
+      const p99Percent = percentileBucket === overflowBucket
+        ? maximumPercent
+        : (percentileBucket + 1) * QUANTUM_HISTOGRAM_BIN_WIDTH_PERCENT;
+      const bins = [];
+      for (let index = 0; index < counts.length; index++) {
+        if (counts[index] === 0) continue;
+        bins.push({
+          upperBoundPercent: index === overflowBucket
+            ? null
+            : (index + 1) * QUANTUM_HISTOGRAM_BIN_WIDTH_PERCENT,
+          count: counts[index]
+        });
+      }
+      return {
+        buildType: 'Release',
+        clock,
+        quantumCount: count,
+        averagePercent: totalPercent / count,
+        p99Percent,
+        maxPercent: maximumPercent,
+        deadlineMisses,
+        histogram: {
+          binWidthPercent: QUANTUM_HISTOGRAM_BIN_WIDTH_PERCENT,
+          upperBoundPercent: QUANTUM_HISTOGRAM_UPPER_BOUND_PERCENT,
+          bins
+        }
+      };
+    }
+  };
+}
+
+export const G726_REALTIME_GATE_THRESHOLDS = Object.freeze({
+  averagePercent: 15,
+  p99Percent: 50,
+  maxPercent: 80,
+  deadlineMisses: 0
+});
+
+export function evaluateG726RealtimeGate(benchmark, { powerMode, artifactProvenance }) {
+  const checks = benchmark.results.map(result => {
+    const evaluateTiming = timing => {
+      const failures = [];
+      if (!(timing.averagePercent < G726_REALTIME_GATE_THRESHOLDS.averagePercent)) {
+        failures.push('averagePercent');
+      }
+      if (!(timing.p99Percent < G726_REALTIME_GATE_THRESHOLDS.p99Percent)) {
+        failures.push('p99Percent');
+      }
+      if (!(timing.maxPercent < G726_REALTIME_GATE_THRESHOLDS.maxPercent)) {
+        failures.push('maxPercent');
+      }
+      if (timing.deadlineMisses !== G726_REALTIME_GATE_THRESHOLDS.deadlineMisses) {
+        failures.push('deadlineMisses');
+      }
+      return { passed: failures.length === 0, failures, timing };
+    };
+    const aggregate = evaluateTiming(result.quantumStats);
+    const trials = (result.quantumTrials ?? [result.quantumStats]).map(evaluateTiming);
+    return {
+      mode: result.mode,
+      sampleRate: result.sampleRate,
+      channels: result.channels,
+      passed: aggregate.passed,
+      failures: aggregate.failures,
+      trials,
+      aggregateTiming: result.quantumStats
+    };
+  });
+  return {
+    gate: 'g726-adpcm-realtime-v1',
+    passed: checks.every(check => check.passed),
+    thresholds: G726_REALTIME_GATE_THRESHOLDS,
+    configuration: {
+      modes: ['wasm', 'simd'],
+      sampleRates: [96000, 352800, 384000],
+      channels: 2,
+      blockSize: 128,
+      durationSeconds: 30,
+      repetitions: 3,
+      bitrateKbps: 40
+    },
+    powerMode,
+    machine: {
+      platform: os.platform(),
+      release: os.release(),
+      arch: os.arch(),
+      cpu: os.cpus()[0]?.model ?? 'unknown',
+      processPriority: os.getPriority()
+    },
+    artifactProvenance,
+    checks,
+    benchmark
+  };
+}
+
 export async function runBenchmarks({
   type = null,
   preset = null,
@@ -376,7 +560,9 @@ export async function runBenchmarks({
   nativeRunner = null,
   wasmPath = null,
   simdPath = null,
+  artifactsDir = null,
   singleCall = false,
+  quantumStats = false,
   implementations = {},
   log = console.log
 }) {
@@ -391,6 +577,18 @@ export async function runBenchmarks({
   if (singleCall && modes.some(mode => mode !== 'wasm' && mode !== 'simd')) {
     throw new Error('--single-call supports only --modes wasm,simd');
   }
+  if (quantumStats && (singleCall || modes.some(mode => mode !== 'wasm' && mode !== 'simd'))) {
+    throw new Error('--quantum-stats supports per-instance --modes wasm,simd only');
+  }
+  if (artifactsDir !== null && (wasmPath !== null || simdPath !== null)) {
+    throw new Error('--artifacts-dir cannot be combined with --wasm-path or --simd-path');
+  }
+  const artifactSet = artifactsDir !== null &&
+    modes.some(mode => mode === 'wasm' || mode === 'simd')
+    ? await preflightArtifactDirectory(artifactsDir, repoRoot)
+    : null;
+  const selectedWasmPath = artifactSet?.baselinePath ?? wasmPath;
+  const selectedSimdPath = artifactSet?.simdPath ?? simdPath;
   const target = await benchmarkTargets({ type, preset, repoRoot, params });
   const results = [];
   for (const sampleRate of sampleRates) {
@@ -401,16 +599,39 @@ export async function runBenchmarks({
         id: 'noise', sampleRate, frames, channels, caseIndex: 0, seed: testCase.seed
       });
       for (const mode of modes) {
-        const operationFactory = async () => {
+        const quantumTiming = quantumStats ? createQuantumTimingAccumulator() : null;
+        const quantumTrials = quantumStats
+          ? Array.from({ length: repetitions }, () => createQuantumTimingAccumulator())
+          : null;
+        const operationFactory = async measurementIndex => {
           if (singleCall) {
             return prepareSingleCallOperation(mode, target, testCase, input, {
-              repoRoot, wasmPath, simdPath, implementations
+              repoRoot,
+              wasmPath: selectedWasmPath,
+              simdPath: selectedSimdPath,
+              artifactSet,
+              implementations
             });
           }
           return mode === 'js'
             ? prepareJsOperation(target, testCase, input, repoRoot, implementations)
             : prepareExternalOperation(mode, target, testCase, input, {
-                repoRoot, nativeRunner, wasmPath, simdPath, allocations, implementations
+                repoRoot,
+                nativeRunner,
+                wasmPath: selectedWasmPath,
+                simdPath: selectedSimdPath,
+                artifactSet,
+                allocations,
+                onProcess: measurementIndex >= warmup
+                  ? observation => {
+                      quantumTiming.observe(observation);
+                      quantumTrials[measurementIndex - warmup].observe(observation);
+                    }
+                  : null,
+                processWarmupCalls: measurementIndex >= warmup && quantumStats
+                  ? Math.ceil(sampleRate / blockSize)
+                  : 0,
+                implementations
               });
         };
         const measurement = await measureRealtimeFactor({
@@ -419,14 +640,40 @@ export async function runBenchmarks({
           repetitions,
           audioSeconds: frames / sampleRate
         });
-        const result = { mode, sampleRate, channels, frames, singleCall, ...measurement };
+        const result = {
+          mode,
+          sampleRate,
+          channels,
+          frames,
+          singleCall,
+          ...measurement,
+          ...(quantumTiming ? {
+            quantumStats: quantumTiming.result(),
+            quantumTrials: quantumTrials.map(timing => timing.result())
+          } : {})
+        };
         results.push(result);
         log(`${mode.padEnd(6)} ${String(sampleRate).padStart(6)} Hz ${channels} ch: ` +
           `${measurement.realtimeFactor.toFixed(2)}x realtime (${measurement.medianSeconds.toFixed(4)} s median)`);
+        if (result.quantumStats) {
+          const timing = result.quantumStats;
+          log(`       quantum CPU: avg ${timing.averagePercent.toFixed(2)}%, ` +
+            `p99 ${timing.p99Percent.toFixed(2)}%, max ${timing.maxPercent.toFixed(2)}%, ` +
+            `misses ${timing.deadlineMisses}`);
+        }
       }
     }
   }
-  return { target: target.label, durationSeconds, blockSize, warmup, repetitions, singleCall, results };
+  return {
+    target: target.label,
+    durationSeconds,
+    blockSize,
+    warmup,
+    repetitions,
+    singleCall,
+    quantumStats,
+    results
+  };
 }
 
 export async function runBenchCli(argv = process.argv.slice(2), io = console) {
@@ -444,6 +691,57 @@ export async function runBenchCli(argv = process.argv.slice(2), io = console) {
     }
   }
   const repoRoot = args.root ? path.resolve(args.root) : DEFAULT_REPO_ROOT;
+  if (args['g726-hard-gate'] === true) {
+    if (!args.json || !args['power-mode'] || !args['artifacts-dir']) {
+      throw new Error(
+        '--g726-hard-gate requires --json, --power-mode, and --artifacts-dir provenance inputs'
+      );
+    }
+    try {
+      os.setPriority(os.constants.priority.PRIORITY_HIGHEST);
+    } catch (error) {
+      throw new Error(`Unable to raise the G.726 benchmark process priority: ${error.message}`);
+    }
+    const artifactSet = await preflightArtifactDirectory(args['artifacts-dir'], repoRoot);
+    const benchmark = await runBenchmarks({
+      type: 'G726ADPCMSimulatorPlugin',
+      repoRoot,
+      modes: ['wasm', 'simd'],
+      sampleRates: [96000, 352800, 384000],
+      channelCounts: [2],
+      durationSeconds: 30,
+      blockSize: 128,
+      warmup: 0,
+      repetitions: 3,
+      params: { br: '40', og: 0, mx: 100 },
+      artifactsDir: args['artifacts-dir'],
+      quantumStats: true,
+      log: message => io.log(message)
+    });
+    const result = evaluateG726RealtimeGate(benchmark, {
+      powerMode: String(args['power-mode']),
+      artifactProvenance: {
+        root: artifactSet.root,
+        sourceDigest: artifactSet.metadata.sourceDigest,
+        abiVersion: artifactSet.metadata.abiVersion,
+        baseline: {
+          buildFlags: artifactSet.baseline.buildFlags,
+          bytes: artifactSet.baseline.bytes
+        },
+        simd: {
+          buildFlags: artifactSet.simd.buildFlags,
+          bytes: artifactSet.simd.bytes
+        }
+      }
+    });
+    const outputPath = path.resolve(repoRoot, args.json);
+    await fs.mkdir(path.dirname(outputPath), { recursive: true });
+    await fs.writeFile(outputPath, `${JSON.stringify(result, null, 2)}\n`);
+    if (!result.passed) {
+      throw new Error(`G.726 realtime hard gate failed; see ${outputPath}`);
+    }
+    return result;
+  }
   const result = await runBenchmarks({
     type: args.type ?? null,
     preset: args.preset ?? null,
@@ -460,7 +758,9 @@ export async function runBenchCli(argv = process.argv.slice(2), io = console) {
     nativeRunner: args['native-runner'] ?? null,
     wasmPath: args['wasm-path'] ?? null,
     simdPath: args['simd-path'] ?? null,
+    artifactsDir: args['artifacts-dir'] ?? null,
     singleCall: args['single-call'] === true,
+    quantumStats: args['quantum-stats'] === true,
     log: message => io.log(message)
   });
   if (args.json) {

@@ -12,7 +12,7 @@ public:
   static constexpr std::size_t kTapCount = 127u;
   static constexpr std::size_t kLatency = (kTapCount - 1u) / 2u;
 
-  Halfband2x() noexcept : coefficients_(design()) { reset(); }
+  Halfband2x() noexcept : coefficients_(&sharedCoefficients()) { reset(); }
 
   void reset() noexcept {
     history_.fill(0.0F);
@@ -33,11 +33,11 @@ public:
     push(input * 2.0F);
     first = convolve();
     push(0.0F);
-    second = historyAtDelay(kLatency) * coefficients_[kLatency];
+    second = historyAtDelay(kLatency) * (*coefficients_)[kLatency];
   }
 
   [[nodiscard]] const std::array<float, kTapCount> &coefficients() const noexcept {
-    return coefficients_;
+    return *coefficients_;
   }
 
 private:
@@ -73,6 +73,11 @@ private:
     return result;
   }
 
+  [[nodiscard]] static const std::array<float, kTapCount> &sharedCoefficients() noexcept {
+    static const std::array<float, kTapCount> coefficients = design();
+    return coefficients;
+  }
+
   void push(float input) noexcept {
     history_[position_] = input;
     position_ = position_ + 1u == kTapCount ? 0u : position_ + 1u;
@@ -88,13 +93,13 @@ private:
   [[nodiscard]] float convolve() const noexcept {
     float sum = 0.0F;
     for (std::size_t tap = 0u; tap < kLatency; tap += 2u) {
-      sum += (historyAtDelay(tap) + historyAtDelay(kTapCount - 1u - tap)) * coefficients_[tap];
+      sum += (historyAtDelay(tap) + historyAtDelay(kTapCount - 1u - tap)) * (*coefficients_)[tap];
     }
-    sum += historyAtDelay(kLatency) * coefficients_[kLatency];
+    sum += historyAtDelay(kLatency) * (*coefficients_)[kLatency];
     return sum;
   }
 
-  std::array<float, kTapCount> coefficients_{};
+  const std::array<float, kTapCount> *coefficients_ = nullptr;
   std::array<float, kTapCount> history_{};
   std::size_t position_ = 0u;
   unsigned phase_ = 0u;

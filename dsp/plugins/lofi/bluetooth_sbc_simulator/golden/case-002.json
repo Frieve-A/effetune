@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "type": "BluetoothSBCSimulatorPlugin",
+  "id": "stereo-44100",
+  "stimulus": "sweep",
+  "sampleRate": 44100,
+  "channels": 2,
+  "frameCount": 4097,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "bp": 28,
+    "cm": "Stereo",
+    "bl": "12",
+    "og": 0,
+    "mx": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00002,
+    "rel": 0.00002,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:3bf861962b615ffd8cbfa6e2cb55f1a63b75e3b5904b7077c01d94f2036f6938",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type BluetoothSBCSimulatorPlugin --promote-production-native",
+  "outputFloats": 8194,
+  "byteLength": 32776,
+  "binary": "case-002.f32"
+}

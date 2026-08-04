@@ -8,7 +8,11 @@ import { OfflineProcessor } from './audio/offline-processor.js';
 import { AudioEncoder } from './audio/audio-encoder.js';
 import { EventManager } from './audio/event-manager.js';
 import { loadDspModule } from './audio/dsp-wasm-loader.js';
-import { getDspRolloutConfig } from './audio/dsp-rollout.js';
+import { getDspRolloutConfig, SHIPPED_ENABLED_TYPES } from './audio/dsp-rollout.js';
+import {
+    attachPluginExecutionCapabilities,
+    getPluginExecutionCapabilities
+} from './audio/plugin-execution-capabilities.js';
 import { TelemetryHub } from './audio/telemetry-hub.js';
 import { PowerPolicyController } from './audio/power-policy-controller.js';
 import { PowerDiagnostics } from './audio/power-diagnostics.js';
@@ -32,14 +36,18 @@ const PIPELINE_SWITCH_SILENCE_SECONDS = 0.05;
 const DSP_MODULE_LOAD_TIMEOUT_MS = 1000;
 const DSP_MODULE_READY_TIMEOUT_MS = 1000;
 const DSP_BYTES_READY_TIMEOUT_MS = 3000;
-const WASM_ONLY_EXECUTION_STATE_PLUGIN_TYPES = new Set([
-    'AMRadioSimulatorPlugin',
-    'FIRCrossoverPlugin',
-    'FiveBandFIRPEQPlugin',
-    'GroupDelayEqPlugin',
-    'RoomEqPlugin',
-    'SWRadioSimulatorPlugin'
+const DSP_EXECUTION_BYPASS_REASONS = new Set([
+    'unsupportedSampleRate',
+    'unsupportedChannelMode',
+    'wasmUnavailable',
+    'rolloutDisabled',
+    'runtimeFallback',
+    'engineStopped'
 ]);
+
+function pluginRequiresWasmExecution(plugin) {
+    return getPluginExecutionCapabilities(plugin)?.requiresWasm === true;
+}
 
 // Pipeline-content mutations describe the visible (primary) pipeline only.
 // During a Double Blind Test the parallel worklet B holds its own dedicated
@@ -125,6 +133,7 @@ export class AudioManager {
         this._dspReadyTransitionPromise = null;
         this._dspTransitionGeneration = -1;
         this._dspExecutionGenerationsByNode = new Map();
+        this._tubeRuntimeEventsByNode = new WeakMap();
         this._audioGraphGeneration = 0;
         this._topologyRevision = 0;
         this._workletGraphGeneration = 0;
@@ -1400,8 +1409,32 @@ export class AudioManager {
 
     _completeParallelDspWithoutModule() {
         const barrier = this._parallelDspBarrier;
-        if (!barrier || barrier.settled || !this._isParallelDspBarrierCurrent(barrier)) return;
-        this._finalizeParallelDspBarrier(barrier, [], 'js');
+        if (barrier && !barrier.settled && this._isParallelDspBarrierCurrent(barrier)) {
+            this._finalizeParallelDspBarrier(barrier, [], 'js');
+            return;
+        }
+
+        const preference = window.audioPreferences ||
+            window.electronIntegration?.audioPreferences || {};
+        const rollout = getDspRolloutConfig({ preference, location: window.location });
+        const dspRequested = preference.useWasmDsp !== false && !rollout.forceOff;
+        // `dspEnableTypes` is a permanent allow-list: this terminal message is never
+        // re-sent when a plugin is added later. When the module never loaded we must
+        // therefore send the full shipped list rather than a snapshot of the current
+        // pipeline, so a WASM-only plugin added afterwards still reports
+        // `wasmUnavailable` instead of the misleading `rolloutDisabled`.
+        // `dspLive` stays false in that branch, so no instance is ever created.
+        const terminalTypes = dspRequested
+            ? (this.dspModuleInfo
+                ? this.getEnabledDspTypes(preference)
+                : SHIPPED_ENABLED_TYPES)
+            : [];
+        for (const workletNode of this._getActiveDspWorklets()) {
+            workletNode.port.postMessage({
+                type: 'dspEnableTypes',
+                types: terminalTypes
+            });
+        }
     }
 
     _handleParallelDspReady(workletNode, data, token) {
@@ -1655,27 +1688,56 @@ export class AudioManager {
                 console.error('[AudioManager] Failed to rebuild after missing processor report:', error);
             });
         } else if (data.type === 'dspExecutionState') {
-            const bypassReasons = new Set([
-                'unsupportedSampleRate', 'wasmUnavailable', 'rolloutDisabled',
-                'runtimeFallback', 'engineStopped'
-            ]);
             if (workletNode !== this._getPrimaryWorkletNode() ||
-                !WASM_ONLY_EXECUTION_STATE_PLUGIN_TYPES.has(data.pluginType) ||
                 !Number.isInteger(data.pluginId) || !Number.isInteger(data.generation) ||
                 !['pending', 'active', 'bypassed'].includes(data.state) ||
-                (data.state === 'bypassed' && !bypassReasons.has(data.reason)) ||
+                (data.state === 'bypassed' && !DSP_EXECUTION_BYPASS_REASONS.has(data.reason)) ||
                 (data.state !== 'bypassed' && data.reason != null)) return;
             const plugin = [this.pipelineA, this.pipelineB, this.pipeline]
                 .filter(Array.isArray)
                 .flat()
                 .find(candidate => candidate?.id === data.pluginId &&
                     candidate?.constructor?.name === data.pluginType);
-            if (!plugin) return;
+            if (!plugin || !pluginRequiresWasmExecution(plugin)) return;
             const currentGeneration = this._dspExecutionGenerationsByNode.get(workletNode) ?? -1;
             if (data.generation < currentGeneration) return;
             this._dspExecutionGenerationsByNode.set(workletNode, data.generation);
             plugin.onMessage?.({ ...data, validated: true });
             this.dispatchEvent('dspExecutionState', { ...data, validated: true });
+        } else if (data.type === 'tubeSimulatorCircuitFault') {
+            if (workletNode !== this._getPrimaryWorkletNode() ||
+                !Number.isInteger(data.pluginId) ||
+                data.pluginType !== 'TubeSimulatorPlugin' ||
+                !Number.isInteger(data.instanceEpoch) ||
+                data.instanceEpoch < 0 || data.instanceEpoch > 0xffffffff ||
+                !Number.isInteger(data.generation) ||
+                data.generation < 0 || data.generation > 0xffffffff ||
+                typeof data.latched !== 'boolean' ||
+                !['none', 'feedbackOscillation', 'processingSafetyFailure']
+                    .includes(data.cause) ||
+                (data.latched ? data.cause === 'none' : data.cause !== 'none')) return;
+            const plugin = [this.pipelineA, this.pipelineB, this.pipeline]
+                .filter(Array.isArray)
+                .flat()
+                .find(candidate => candidate?.id === data.pluginId &&
+                    candidate?.constructor?.name === data.pluginType);
+            if (!plugin) return;
+            let states = this._tubeRuntimeEventsByNode.get(workletNode);
+            if (!states) {
+                states = new Map();
+                this._tubeRuntimeEventsByNode.set(workletNode, states);
+            }
+            const previous = states.get(data.pluginId);
+            if (previous && (data.instanceEpoch < previous.instanceEpoch ||
+                (data.instanceEpoch === previous.instanceEpoch &&
+                    data.generation <= previous.generation))) return;
+            states.set(data.pluginId, {
+                instanceEpoch: data.instanceEpoch,
+                generation: data.generation
+            });
+            const validated = { ...data, validated: true };
+            plugin.onMessage?.(validated);
+            this.dispatchEvent('tubeSimulatorCircuitFault', validated);
         } else if (data.type === 'dspReady') {
             this.clearDspReadyFallback(workletNode);
             if (!this.dspModuleInfo) {
@@ -2294,6 +2356,23 @@ export class AudioManager {
         });
     }
 
+    _setAudioProcessingOverloadMonitoring(enabled, delaySeconds = 0) {
+        const message = {
+            type: 'setAudioProcessingOverloadMonitoring',
+            enabled: enabled === true,
+            delaySeconds: Number.isFinite(delaySeconds) && delaySeconds > 0
+                ? delaySeconds
+                : 0
+        };
+        for (const workletNode of this._getActiveDspWorklets()) {
+            try {
+                workletNode.port.postMessage(message);
+            } catch (error) {
+                console.warn('[AudioManager] Failed to update overload monitoring:', error);
+            }
+        }
+    }
+
     /**
      * Ramp the output gain from its current value to 1.
      * Called once per audio-context lifecycle, after every updatePlugins from
@@ -2307,6 +2386,9 @@ export class AudioManager {
         const ctx = this.contextManager?.audioContext;
         if (!gainNode || !ctx) return;
         this.ioManager.powerOutputStructurallyZero = false;
+        let monitoringDelaySeconds = Number.isFinite(duration) && duration > 0
+            ? duration
+            : 0;
 
         try {
             const now = ctx.currentTime;
@@ -2317,7 +2399,9 @@ export class AudioManager {
         } catch (err) {
             console.warn('[AudioManager] fadeInOutput failed, applying immediate unmute:', err);
             try { gainNode.gain.value = 1; } catch (_) { /* ignore */ }
+            monitoringDelaySeconds = 0;
         }
+        this._setAudioProcessingOverloadMonitoring(true, monitoringDelaySeconds);
     }
 
     /**
@@ -2362,6 +2446,7 @@ export class AudioManager {
     fadeOutOutput(duration = 0.05) {
         this._outputFadeToken = (this._outputFadeToken || 0) + 1;
         const token = this._outputFadeToken;
+        this._setAudioProcessingOverloadMonitoring(false);
         const gainNode = this.ioManager?.outputGainNode;
         const ctx = this.contextManager?.audioContext;
         if (!gainNode || !ctx) return token;
@@ -2456,9 +2541,12 @@ export class AudioManager {
                 commitSampleRate: true
             });
             if (typeof plugin.getWorkletPluginData === 'function') {
-                return plugin.getWorkletPluginData(parameters);
+                return attachPluginExecutionCapabilities(
+                    plugin,
+                    plugin.getWorkletPluginData(parameters)
+                );
             }
-            return {
+            return attachPluginExecutionCapabilities(plugin, {
                 id: plugin.id,
                 type: plugin.constructor.name,
                 enabled: plugin.enabled,
@@ -2466,7 +2554,7 @@ export class AudioManager {
                 inputBus: plugin.inputBus,
                 outputBus: plugin.outputBus,
                 channel: plugin.channel
-            };
+            });
         });
     }
 
@@ -3897,18 +3985,7 @@ export class AudioManager {
             // Just update parameters without rebuilding
             if (this.workletNode) {
                 this.registerPipelineProcessors();
-                const sampleRate = this.contextManager?.audioContext?.sampleRate ?? null;
-                const outputChannelCount = this._getActualOutputChannelCount();
-                const pluginData = this.pipeline.map(plugin => ({
-                    id: plugin.id,
-                    type: plugin.constructor.name,
-                    enabled: plugin.enabled,
-                    parameters: plugin.getParameters({
-                        sampleRate,
-                        outputChannelCount,
-                        commitSampleRate: true
-                    })
-                }));
+                const pluginData = this._buildBlindPluginData(this.pipeline);
                 
                 this.commitPowerTopologyMutation({
                     type: 'updatePlugins',

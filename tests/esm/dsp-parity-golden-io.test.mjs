@@ -63,6 +63,27 @@ test('golden set round-trips metadata and channel-major samples', async t => {
   assert.deepEqual([...loaded[0].expected], [1, -2.5, 0.25, 0]);
 });
 
+test('golden metadata preserves production native promotion provenance', () => {
+  const [artifact] = createGoldenArtifacts({
+    type: 'FixturePlugin',
+    schemaTolerance: { policy: 'per-sample', abs: 1e-6 },
+    cases: [{
+      testCase: {
+        id: 'fixture', stimulus: 'imp', sampleRate: 48000, frames: 2,
+        channels: 1, blockSize: 2, caseIndex: 0, seed: 1n, params: {}
+      },
+      output: Float32Array.of(0, 1),
+      referenceEngine: 'production-native-promoted-v1',
+      referenceHash: `sha256:${'a'.repeat(64)}`,
+      generationCommand:
+        'node tools/dsp-parity/generate.mjs --type FixturePlugin --promote-production-native'
+    }]
+  });
+  assert.equal(artifact.metadata.referenceEngine, 'production-native-promoted-v1');
+  assert.equal(artifact.metadata.referenceHash, `sha256:${'a'.repeat(64)}`);
+  assert.match(artifact.metadata.generationCommand, /--promote-production-native$/);
+});
+
 test('golden budget failure lists the cases that must be trimmed', () => {
   const artifacts = fixtureArtifacts();
   assert.throws(

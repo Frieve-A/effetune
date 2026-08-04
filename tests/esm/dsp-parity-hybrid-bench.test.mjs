@@ -4,16 +4,170 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runBenchCli, runBenchmarks } from '../../tools/dsp-parity/bench.mjs';
+import {
+  createQuantumTimingAccumulator,
+  evaluateG726RealtimeGate,
+  preflightArtifactDirectory,
+  runBenchCli,
+  runBenchmarks
+} from '../../tools/dsp-parity/bench.mjs';
+import { sourceDigest } from '../../scripts/build-dsp-wasm.mjs';
 import { discoverCasePlan } from '../../tools/dsp-parity/cases.mjs';
+import {
+  analyzeG726QuantumWork,
+  evaluateG726AggregateCpuGate
+} from '../../tools/dsp-parity/g726-cpu-gate.mjs';
 import {
   activePipelinePlugins,
   paramsLayoutHash,
+  runWasmCase,
   runWasmPipelineCase,
   WASM_PIPELINE_TELEMETRY_BYTES
 } from '../../tools/dsp-parity/runners.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+test('scratch artifact preflight binds metadata to both artifact registries', async t => {
+  const artifactRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-dsp-artifacts-'));
+  t.after(() => fs.rm(artifactRoot, { recursive: true, force: true }));
+  const committedRoot = path.join(repoRoot, 'plugins', 'dsp');
+  const metadata = JSON.parse(await fs.readFile(
+    path.join(committedRoot, 'effetune-dsp.meta.json'),
+    'utf8'
+  ));
+  metadata.sourceDigest = sourceDigest();
+  await Promise.all([
+    fs.copyFile(
+      path.join(committedRoot, 'effetune-dsp.wasm'),
+      path.join(artifactRoot, 'effetune-dsp.wasm')
+    ),
+    fs.copyFile(
+      path.join(committedRoot, 'effetune-dsp.simd.wasm'),
+      path.join(artifactRoot, 'effetune-dsp.simd.wasm')
+    ),
+    fs.writeFile(path.join(artifactRoot, 'effetune-dsp.meta.json'), JSON.stringify(metadata))
+  ]);
+
+  const result = await preflightArtifactDirectory(artifactRoot, repoRoot);
+  assert.equal(result.kernels.size, metadata.kernels.length);
+
+  const invented = structuredClone(metadata);
+  invented.kernels[0] = { ...invented.kernels[0], name: 'FixturePlugin' };
+  await fs.writeFile(
+    path.join(artifactRoot, 'effetune-dsp.meta.json'),
+    JSON.stringify(invented)
+  );
+  await assert.rejects(
+    () => preflightArtifactDirectory(artifactRoot, repoRoot),
+    /does not match the artifact kernel registry/
+  );
+
+  metadata.sourceDigest = `sha256:${'0'.repeat(64)}`;
+  await fs.writeFile(
+    path.join(artifactRoot, 'effetune-dsp.meta.json'),
+    JSON.stringify(metadata)
+  );
+  await assert.rejects(
+    () => preflightArtifactDirectory(artifactRoot, repoRoot),
+    /source digest mismatch/
+  );
+});
+
+test('quantum timing uses a bounded histogram and conservative p99', () => {
+  const timing = createQuantumTimingAccumulator();
+  for (let index = 0; index < 99; index++) {
+    timing.observe({ elapsedMilliseconds: 0.099, blockFrames: 128, sampleRate: 48000 });
+  }
+  timing.observe({ elapsedMilliseconds: 3, blockFrames: 128, sampleRate: 48000 });
+  const result = timing.result();
+  assert.equal(result.buildType, 'Release');
+  assert.equal(result.quantumCount, 100);
+  assert.equal(result.p99Percent, 3.75);
+  assert.equal(result.deadlineMisses, 1);
+  assert.ok(result.maxPercent > 112 && result.maxPercent < 113);
+  assert.ok(result.histogram.bins.length <= 401);
+  assert.equal(result.histogram.bins.at(-1).upperBoundPercent, null);
+});
+
+test('quantum timing excludes warmup runs and is exposed by WASM benchmarks', async t => {
+  const fixtureRoot = await createFixture(t);
+  let calls = 0;
+  const result = await runBenchmarks(benchmarkOptions(fixtureRoot, {
+    type: 'PortedFirstPlugin',
+    modes: ['wasm'],
+    warmup: 1,
+    repetitions: 2,
+    quantumStats: true,
+    implementations: {
+      async runWasmCase({ input, onProcess }) {
+        calls++;
+        onProcess?.({ elapsedMilliseconds: 0.01, blockFrames: 4, sampleRate: 8000 });
+        onProcess?.({ elapsedMilliseconds: 0.02, blockFrames: 4, sampleRate: 8000 });
+        return input;
+      }
+    }
+  }));
+
+  assert.equal(calls, 3);
+  assert.equal(result.quantumStats, true);
+  assert.equal(result.results[0].quantumStats.quantumCount, 4);
+  assert.equal(result.results[0].quantumStats.deadlineMisses, 0);
+});
+
+test('per-instance WASM deadline timing uses a high-resolution wall clock', async () => {
+  const schema = (await discoverCasePlan({ type: 'VolumePlugin', repoRoot })).schema;
+  const observations = [];
+  await runWasmCase({
+    type: 'VolumePlugin',
+    testCase: {
+      sampleRate: 48000,
+      channels: 2,
+      frames: 8,
+      blockSize: 4,
+      seed: 0xeffe7a5en,
+      params: { vl: -6 },
+      events: []
+    },
+    input: new Float32Array(16),
+    schema,
+    repoRoot,
+    onProcess(observation) { observations.push(observation); }
+  });
+
+  assert.equal(observations.length, 2);
+  assert.ok(observations.every(observation =>
+    observation.clock === 'high-resolution-wall' && observation.elapsedMilliseconds >= 0
+  ));
+});
+
+test('per-instance WASM timing warmup is excluded and reset before measured audio', async () => {
+  const schema = (await discoverCasePlan({ type: 'VolumePlugin', repoRoot })).schema;
+  const observations = [];
+  const batchBoundaries = [];
+  const input = Float32Array.from({ length: 16 }, (_, index) => (index + 1) * 0.01);
+  const output = await runWasmCase({
+    type: 'VolumePlugin',
+    testCase: {
+      sampleRate: 48000,
+      channels: 2,
+      frames: 8,
+      blockSize: 4,
+      seed: 0xeffe7a5en,
+      params: { vl: 0 },
+      events: []
+    },
+    input,
+    schema,
+    repoRoot,
+    processWarmupCalls: 3,
+    onProcess(observation) { observations.push(observation); },
+    onProcessBatchBoundary({ phase }) { batchBoundaries.push(phase); }
+  });
+
+  assert.equal(observations.length, 2);
+  assert.deepEqual(batchBoundaries, ['start', 'end']);
+  assert.deepEqual(output, input);
+});
 
 function parameterSchema(type) {
   return {
@@ -420,4 +574,146 @@ test('benchmark help describes preset hybrid and single-type strict behavior', a
   assert.match(messages.join('\n'), /--single-call/);
   assert.match(messages.join('\n'), /Single-call presets require every active plugin/);
   assert.match(messages.join('\n'), /Single --type external modes require a matching schema and kernel/);
+});
+
+test('G.726 realtime gate applies strict average, p99, max, and deadline thresholds', () => {
+  const benchmark = {
+    results: [
+      {
+        mode: 'wasm', sampleRate: 96000, channels: 2,
+        quantumStats: {
+          averagePercent: 14.99, p99Percent: 49.99, maxPercent: 79.99, deadlineMisses: 0
+        }
+      },
+      {
+        mode: 'simd', sampleRate: 384000, channels: 2,
+        quantumStats: {
+          averagePercent: 15, p99Percent: 20, maxPercent: 30, deadlineMisses: 0
+        }
+      }
+    ]
+  };
+  const result = evaluateG726RealtimeGate(benchmark, {
+    powerMode: 'test',
+    artifactProvenance: { sourceDigest: 'test' }
+  });
+  assert.equal(result.passed, false);
+  assert.deepEqual(result.checks[0].trials[0].failures, []);
+  assert.deepEqual(result.checks[1].trials[0].failures, ['averagePercent']);
+  assert.equal(result.configuration.blockSize, 128);
+  assert.equal(result.configuration.repetitions, 3);
+});
+
+test('G.726 realtime gate rejects any deadline miss across the complete formal run', () => {
+  const passingTiming = {
+    averagePercent: 5, p99Percent: 7, maxPercent: 20, deadlineMisses: 0
+  };
+  const benchmark = {
+    results: [{
+      mode: 'wasm', sampleRate: 384000, channels: 2,
+      quantumStats: {
+        averagePercent: 5, p99Percent: 7, maxPercent: 120, deadlineMisses: 1
+      },
+      quantumTrials: [
+        passingTiming,
+        passingTiming,
+        { averagePercent: 5, p99Percent: 7, maxPercent: 120, deadlineMisses: 1 }
+      ]
+    }]
+  };
+  const result = evaluateG726RealtimeGate(benchmark, {
+    powerMode: 'test',
+    artifactProvenance: { sourceDigest: 'test' }
+  });
+  assert.equal(result.passed, false);
+  assert.deepEqual(result.checks[0].failures, ['maxPercent', 'deadlineMisses']);
+});
+
+const G726_CPU_WORK_EXPECTED = new Map([
+  [96000, {
+    ticks: [10, 11, 10.666666666666666],
+    wet: [120, 132],
+    ratio: 1.4359937480362266
+  }],
+  [352800, {
+    ticks: [2, 3, 2.90250096749226],
+    wet: [88, 136],
+    ratio: 1.400603650655766
+  }],
+  [384000, {
+    ticks: [2, 3, 2.6666666666666665],
+    wet: [96, 144],
+    ratio: 1.4603537567473572
+  }]
+]);
+
+test('G.726 static work analysis fixes the formal quantum schedule and conservative ratios', () => {
+  for (const [sampleRate, expected] of G726_CPU_WORK_EXPECTED) {
+    const result = analyzeG726QuantumWork(sampleRate);
+    assert.equal(result.codecTicks.minimum, expected.ticks[0]);
+    assert.equal(result.codecTicks.maximum, expected.ticks[1]);
+    assert.ok(Math.abs(result.codecTicks.average - expected.ticks[2]) < 1e-12);
+    assert.equal(result.wetOutputs.minimum, expected.wet[0]);
+    assert.equal(result.wetOutputs.maximum, expected.wet[1]);
+    assert.ok(Math.abs(result.maxWorkToAverageWorkRatio - expected.ratio) < 1e-12);
+    assert.ok(result.maxWorkToAverageWorkRatio < 1.5);
+  }
+});
+
+function g726FormalCpuTrials(totalMicroseconds = 1000000) {
+  const trials = [];
+  for (const mode of ['wasm', 'simd']) {
+    for (const sampleRate of G726_CPU_WORK_EXPECTED.keys()) {
+      const work = analyzeG726QuantumWork(sampleRate);
+      for (let repetition = 1; repetition <= 3; repetition++) {
+        trials.push({
+          mode,
+          sampleRate,
+          repetition,
+          renderedDurationSeconds: work.renderedDurationSeconds,
+          cpu: { totalMicroseconds }
+        });
+      }
+    }
+  }
+  return trials;
+}
+
+test('G.726 aggregate CPU gate adds one clock quantum and models every trial tail', () => {
+  const workAnalysis = [...G726_CPU_WORK_EXPECTED.keys()].map(
+    sampleRate => analyzeG726QuantumWork(sampleRate)
+  );
+  const result = evaluateG726AggregateCpuGate({
+    trials: g726FormalCpuTrials(),
+    workAnalysis,
+    clockQuantumMicroseconds: 15625
+  });
+  assert.equal(result.passed, true);
+  assert.equal(result.quantizationAllowanceMicroseconds, 16000);
+  assert.equal(result.checks.length, 18);
+  const first = result.checks[0];
+  const expectedWorst =
+    (1000000 + 16000) / (first.renderedDurationSeconds * 1000000) * 100 *
+    first.maxWorkToAverageWorkRatio;
+  assert.ok(Math.abs(first.modeledWorstFramePercent - expectedWorst) < 1e-12);
+  assert.ok(result.checks.every(check =>
+    check.rawAveragePercent < check.quantizationAdjustedAveragePercent &&
+    check.quantizationAdjustedAveragePercent < check.modeledWorstFramePercent &&
+    check.modeledDeadlineMisses === 0
+  ));
+});
+
+test('G.726 aggregate CPU gate rejects one trial at the strict average boundary', () => {
+  const workAnalysis = [...G726_CPU_WORK_EXPECTED.keys()].map(
+    sampleRate => analyzeG726QuantumWork(sampleRate)
+  );
+  const trials = g726FormalCpuTrials();
+  trials[7].cpu.totalMicroseconds = 4500000;
+  const result = evaluateG726AggregateCpuGate({
+    trials,
+    workAnalysis,
+    clockQuantumMicroseconds: 16000
+  });
+  assert.equal(result.passed, false);
+  assert.deepEqual(result.checks[7].failures, ['averagePercent']);
 });

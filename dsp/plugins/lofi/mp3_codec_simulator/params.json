@@ -1,0 +1,13 @@
+{
+  "type": "MP3CodecSimulatorPlugin",
+  "tolerance": { "abs": 0.00002, "rel": 0.00002, "policy": "per-sample" },
+  "parityReference": "production-native-promoted-v1",
+  "fields": [
+    { "name": "codecRate", "key": "cr", "kind": "enum", "default": "44.1 kHz (MPEG-1)", "values": ["22.05 kHz (MPEG-2)", "44.1 kHz (MPEG-1)"], "rejectInvalid": true },
+    { "name": "bitrate", "key": "br", "kind": "enum", "default": "64", "values": ["32", "48", "64", "80", "96", "112", "128", "160", "192", "224", "256", "320"], "rejectInvalid": true },
+    { "name": "stereoMode", "key": "sm", "kind": "enum", "default": "Joint Stereo", "values": ["Joint Stereo", "Stereo"], "rejectInvalid": true },
+    { "name": "bitReservoir", "key": "rv", "kind": "bool", "default": true },
+    { "name": "outputGain", "key": "og", "kind": "float", "min": -24, "max": 12, "default": 0, "unit": "dB" },
+    { "name": "mix", "key": "mx", "kind": "float", "min": 0, "max": 100, "default": 100, "unit": "%" }
+  ]
+}

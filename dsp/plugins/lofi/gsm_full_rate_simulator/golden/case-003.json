@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "GSMFullRateSimulatorPlugin",
+  "id": "mono-44100",
+  "stimulus": "sweep",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 8193,
+  "blockSize": 127,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "tc": 2,
+    "og": 0,
+    "mx": 100,
+    "ci": 30
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00002,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:b9ee4daccf02911d1e7aa06d940b36c3682a1e338ded17f353a9752f72414d9d",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type GSMFullRateSimulatorPlugin --promote-production-native --gsm-vector-dir <official-etsi-gsm-fr-root> --gsm-conformance-runner <native-conformance-test> --gsm-reference-codec <independent-ffmpeg-libgsm> --gsm-phase0-evidence <accepted-phase0-result-json>",
+  "outputFloats": 8193,
+  "byteLength": 32772,
+  "binary": "case-003.f32"
+}

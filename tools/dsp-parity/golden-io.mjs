@@ -99,6 +99,7 @@ export function createGoldenArtifacts({ type, schemaTolerance = null, cases }) {
       jsEngineHash: entry.jsEngineHash,
       referenceEngine: entry.referenceEngine,
       referenceHash: entry.referenceHash,
+      generationCommand: entry.generationCommand,
       outputFloats: entry.output.length,
       byteLength: binary.byteLength,
       binary: binaryName

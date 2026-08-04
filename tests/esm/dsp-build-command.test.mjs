@@ -8,8 +8,10 @@ import {
   createVsEnvironmentInvocation,
   emscriptenExecutableName,
   metadataContents,
+  parseArtifactsDirectory,
   parseNativeBuildType,
-  sourceDigest
+  sourceDigest,
+  sourceDigestInputPaths
 } from '../../scripts/build-dsp-wasm.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -50,6 +52,28 @@ test('DSP native build type accepts only explicit CMake configurations', () => {
     () => parseNativeBuildType([
       '--native-build-type=Debug',
       '--native-build-type=Release'
+    ]),
+    /may only be specified once/
+  );
+});
+
+test('DSP scratch artifact directory accepts paired and equals syntax', () => {
+  assert.equal(parseArtifactsDirectory([]), null);
+  assert.equal(
+    parseArtifactsDirectory(['--artifacts-dir', 'tmp/dsp-scratch']),
+    path.join(repoRoot, 'tmp', 'dsp-scratch')
+  );
+  assert.equal(
+    parseArtifactsDirectory(['--artifacts-dir=tmp/dsp-scratch']),
+    path.join(repoRoot, 'tmp', 'dsp-scratch')
+  );
+  assert.throws(
+    () => parseArtifactsDirectory(['--artifacts-dir']),
+    /requires a path/
+  );
+  assert.throws(
+    () => parseArtifactsDirectory([
+      '--artifacts-dir=tmp/first', '--artifacts-dir', 'tmp/second'
     ]),
     /may only be specified once/
   );
@@ -107,4 +131,25 @@ test('DSP source digest ignores generated JavaScript package output', t => {
   fs.writeFileSync(sentinelPath, '{"generated":true}\n');
 
   assert.equal(sourceDigest(), digestBefore);
+});
+
+test('production source digest includes promoted GSM inputs', () => {
+  const productionPaths = new Set(sourceDigestInputPaths());
+  const phase0Paths = new Set(sourceDigestInputPaths({ includePhase0: true }));
+  const gsmDirectory = 'dsp/plugins/lofi/gsm_full_rate_simulator/';
+  const gsmHeader = 'dsp/generated/cpp/GSMFullRateSimulatorPluginParams.h';
+
+  assert.equal([...productionPaths].some(file => file.startsWith(gsmDirectory)), true);
+  assert.equal(productionPaths.has(gsmHeader), true);
+  assert.equal([...phase0Paths].some(file => file.startsWith(gsmDirectory)), true);
+  assert.equal(phase0Paths.has(gsmHeader), true);
+  assert.equal(sourceDigest(), sourceDigest({ includePhase0: true }));
+});
+
+test('CMake compiles promoted GSM Full Rate sources exactly once by default', () => {
+  const source = fs.readFileSync(path.join(repoRoot, 'dsp', 'CMakeLists.txt'), 'utf8');
+  assert.doesNotMatch(source, /ET_PHASE0_GSM_FR/);
+  assert.equal(source.match(/gsm_full_rate_simulator\/kernel\.cpp/g)?.length ?? 0, 0);
+  assert.equal(source.match(/gsm_full_rate_simulator\/codec\.cpp/g)?.length ?? 0, 2);
+  assert.match(source, /GLOB_RECURSE EFFETUNE_PLUGIN_SOURCES[\s\S]*?plugins\/\*\/kernel\.cpp/);
 });

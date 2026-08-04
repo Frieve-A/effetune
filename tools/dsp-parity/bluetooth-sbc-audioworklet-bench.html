@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Bluetooth SBC AudioWorklet benchmark</title>
+</head>
+<body>
+  <script type="module">
+    const PLUGIN_TYPE = 'BluetoothSBCSimulatorPlugin';
+    const PARAMS_HASH = 0xa0d7750b;
+    const PARAMS_URL =
+      '/dsp/plugins/lofi/bluetooth_sbc_simulator/params.json';
+    const SUPPORTED_SAMPLE_RATES = Object.freeze([
+      44100, 48000, 88200, 96000, 176400, 192000, 352800, 384000
+    ]);
+    const CHANNEL_MODES = Object.freeze(['Joint Stereo', 'Stereo', 'Dual Channel']);
+    const BLOCKS = Object.freeze(['4', '8', '12', '16']);
+    let resource = null;
+
+    function createMessageObserver(port) {
+      const messages = [];
+      const waiters = new Set();
+      port.onmessage = event => {
+        const message = event.data;
+        messages.push(message);
+        for (const waiter of [...waiters]) {
+          if (!waiter.predicate(message)) continue;
+          waiters.delete(waiter);
+          clearTimeout(waiter.timeout);
+          waiter.resolve(message);
+        }
+      };
+      return {
+        waitFor(predicate, timeoutMs = 15_000) {
+          const existing = messages.find(predicate);
+          if (existing) return Promise.resolve(existing);
+          return new Promise((resolve, reject) => {
+            const waiter = { predicate, resolve, reject, timeout: null };
+            waiter.timeout = setTimeout(() => {
+              waiters.delete(waiter);
+              reject(new Error('Timed out waiting for an AudioWorklet message.'));
+            }, timeoutMs);
+            waiters.add(waiter);
+          });
+        },
+        dispose() {
+          for (const waiter of waiters) {
+            clearTimeout(waiter.timeout);
+            waiter.reject(new Error('AudioWorklet message observer disposed.'));
+          }
+          waiters.clear();
+          port.onmessage = null;
+        }
+      };
+    }
+
+    async function loadPhase0Schema() {
+      const response = await fetch(PARAMS_URL);
+      if (!response.ok) {
+        throw new Error(`Unable to load SBC parameters: HTTP ${response.status}.`);
+      }
+      const schema = await response.json();
+      const keys = schema.fields?.map(field => field.key);
+      if (schema.type !== PLUGIN_TYPE ||
+          JSON.stringify(keys) !== JSON.stringify(['bp', 'cm', 'bl', 'og', 'mx', 'pl'])) {
+        throw new Error('Bluetooth SBC parameter layout is invalid.');
+      }
+      return schema;
+    }
+
+    function packParams(parameters) {
+      const channelMode = CHANNEL_MODES.indexOf(parameters.cm);
+      const blocks = BLOCKS.indexOf(parameters.bl);
+      if (channelMode < 0 || blocks < 0) {
+        throw new Error('Bluetooth SBC benchmark parameters are invalid.');
+      }
+      return Float32Array.of(
+        parameters.bp, channelMode, blocks, parameters.og, parameters.mx, parameters.pl
+      );
+    }
+
+    async function initialize({ sampleRate, artifactUrl, simd, parameters }) {
+      if (resource) throw new Error('Bluetooth SBC benchmark is already initialized.');
+      await loadPhase0Schema();
+      const context = new AudioContext({ sampleRate, latencyHint: 'interactive' });
+      let node;
+      let source;
+      let outputGain;
+      let observer;
+      try {
+        if (context.sampleRate !== sampleRate) {
+          throw new Error(`Requested ${sampleRate} Hz, received ${context.sampleRate} Hz.`);
+        }
+        await context.audioWorklet.addModule('/plugins/audio-processor.js');
+        node = new AudioWorkletNode(context, 'plugin-processor', {
+          numberOfInputs: 1,
+          numberOfOutputs: 1,
+          outputChannelCount: [2],
+          channelCount: 2,
+          channelCountMode: 'explicit',
+          processorOptions: {
+            initialOutputChannelCount: 2,
+            lowLatencyMode: true
+          }
+        });
+        observer = createMessageObserver(node.port);
+        source = new OscillatorNode(context, { frequency: 997, type: 'sine' });
+        outputGain = new GainNode(context, { gain: 0 });
+        source.connect(node).connect(outputGain).connect(context.destination);
+        source.start();
+        await context.resume();
+        if (context.state !== 'running') throw new Error('AudioContext did not start.');
+
+        const artifactResponse = await fetch(artifactUrl);
+        if (!artifactResponse.ok) {
+          throw new Error(`Unable to load DSP artifact: HTTP ${artifactResponse.status}.`);
+        }
+        const bytes = await artifactResponse.arrayBuffer();
+        const plugin = {
+          id: 1,
+          type: PLUGIN_TYPE,
+          enabled: true,
+          inputBus: 0,
+          outputBus: 0,
+          channel: null,
+          parameters: { ...parameters, enabled: true },
+          wasmParams: packParams(parameters),
+          wasmParamsHash: PARAMS_HASH,
+          executionCapabilities: {
+            requiresWasm: true,
+            supportedSampleRates: SUPPORTED_SAMPLE_RATES,
+            supportedChannelModes: ['mono', 'stereo-pair']
+          }
+        };
+        node.port.postMessage({
+          type: 'registerProcessor',
+          pluginType: plugin.type,
+          processor: 'return data;'
+        });
+        node.port.postMessage({
+          type: 'updateAudioConfig',
+          outputChannels: 2,
+          lowLatencyMode: true,
+          sampleRate
+        });
+        node.port.postMessage({ type: 'updatePlugins', plugins: [plugin], masterBypass: false });
+        node.port.postMessage({ type: 'dspEnableTypes', types: [plugin.type] });
+        node.port.postMessage({ type: 'dspModule', bytes, simd }, [bytes]);
+
+        const ready = await observer.waitFor(message =>
+          message?.type === 'dspReady' || message?.type === 'dspFailed'
+        );
+        if (ready.type === 'dspFailed') {
+          throw new Error(`DSP initialization failed at ${ready.stage}: ${ready.error}`);
+        }
+        if (ready.simd !== simd) throw new Error('AudioWorklet loaded the wrong DSP variant.');
+        await observer.waitFor(message =>
+          message?.type === 'dspExecutionState' &&
+          message.pluginId === plugin.id &&
+          message.state === 'active'
+        );
+        resource = { context, node, source, outputGain, observer };
+        await new Promise(resolve => setTimeout(resolve, 1_000));
+        return {
+          requestedSampleRate: sampleRate,
+          actualSampleRate: context.sampleRate,
+          state: context.state,
+          simd: ready.simd,
+          pluginType: PLUGIN_TYPE,
+          parameters,
+          baseLatency: context.baseLatency
+        };
+      } catch (error) {
+        observer?.dispose();
+        try { source?.stop(); } catch {}
+        source?.disconnect();
+        node?.disconnect();
+        outputGain?.disconnect();
+        await context.close().catch(() => {});
+        throw error;
+      }
+    }
+
+    async function measure(durationMs) {
+      if (!resource || resource.context.state !== 'running') {
+        throw new Error('Bluetooth SBC benchmark is not running.');
+      }
+      const startTime = resource.context.currentTime;
+      await new Promise(resolve => setTimeout(resolve, durationMs));
+      await resource.context.suspend();
+      return {
+        contextSeconds: resource.context.currentTime - startTime,
+        state: resource.context.state
+      };
+    }
+
+    async function close() {
+      if (!resource) return;
+      const current = resource;
+      resource = null;
+      current.observer.dispose();
+      try { current.source.stop(); } catch {}
+      current.source.disconnect();
+      current.node.disconnect();
+      current.outputGain.disconnect();
+      await current.context.close();
+    }
+
+    window.bluetoothSbcAudioWorkletBench = { initialize, measure, close };
+  </script>
+</body>
+</html>

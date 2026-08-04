@@ -125,6 +125,7 @@ CMake 3.24 or newer, Ninja, and a C++20 compiler.
 
 ```bash
 npm run gen:dsp
+npm run test:dsp:warnings
 npm run test:dsp
 npm run build:dsp
 npm run test:dsp:parity
@@ -132,9 +133,13 @@ npm run test:dsp:parity
 
 - `gen:dsp` validates every `params.json` and updates the generated C++ and JavaScript
   parameter layouts.
+- `test:dsp:warnings` uses the pinned Emscripten Clang frontend to compile every native
+  test source registered with CMake using warnings as errors, including
+  `-Wunused-but-set-variable`.
 - `test:dsp` builds the native core, allocation guard, and parity runner, then runs CTest.
 - `build:dsp` verifies the active Emscripten version and rebuilds the committed baseline
-  and SIMD modules plus deterministic metadata under `plugins/dsp/`.
+  and SIMD modules plus deterministic metadata under `plugins/dsp/`; it also runs the
+  native-test warning check before building the modules.
 - `test:dsp:parity` checks both shipped modules against the committed JavaScript goldens.
 
 Set `EMSDK` to the activated SDK root on Windows. Use `npm run build:dsp -- --check` for

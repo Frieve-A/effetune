@@ -1,0 +1,11 @@
+{
+  "type": "GSMFullRateSimulatorPlugin",
+  "tolerance": { "abs": 0.00002, "policy": "per-sample" },
+  "parityReference": "production-native-promoted-v1",
+  "fields": [
+    { "name": "transcodes", "key": "tc", "kind": "int", "min": 1, "max": 3, "default": 1 },
+    { "name": "outputGain", "key": "og", "kind": "float", "min": -24, "max": 12, "default": 0, "unit": "dB" },
+    { "name": "mix", "key": "mx", "kind": "int", "min": 0, "max": 100, "default": 100, "unit": "%" },
+    { "name": "carrierToInterference", "key": "ci", "kind": "float", "min": 4, "max": 30, "default": 30, "unit": "dB" }
+  ]
+}

@@ -6,12 +6,21 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { loadParamSpecs } from './gen-dsp-params.mjs';
+import {
+  g726PerformanceInputManifest,
+  productionWasmConfigureArguments,
+  resolvedG726WasmBuildAuthority,
+  resolvedG726WasmVariantAuthority
+} from '../tools/dsp-parity/g726-performance-inputs.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dspRoot = path.join(repoRoot, 'dsp');
 const buildRoot = path.join(dspRoot, 'build');
 const artifactsRoot = path.join(repoRoot, 'plugins', 'dsp');
 const generator = path.join(repoRoot, 'scripts', 'gen-dsp-params.mjs');
+const g726PerformanceInputsSource = path.join(
+  repoRoot, 'tools', 'dsp-parity', 'g726-performance-inputs.mjs'
+);
 const bindingSource = path.join(repoRoot, 'js', 'audio', 'dsp-engine-binding.js');
 const workletSource = path.join(repoRoot, 'plugins', 'audio-processor.js');
 const injectionStart = '// __ETDSP_BINDING_INJECT_START__';
@@ -80,7 +89,12 @@ function resetBuildDirectory(directory) {
   if (relative === '' || relative.startsWith('..') || path.isAbsolute(relative)) {
     fail(`refusing to reset build directory outside dsp/build: ${directory}`);
   }
-  fs.rmSync(directory, { recursive: true, force: true });
+  fs.rmSync(directory, {
+    recursive: true,
+    force: true,
+    maxRetries: 10,
+    retryDelay: 100
+  });
   fs.mkdirSync(directory, { recursive: true });
 }
 
@@ -221,6 +235,21 @@ function runNativeTests(buildType) {
   run('ctest', ['--test-dir', buildDirectory, '--output-on-failure'], { env });
 }
 
+function runNativeTestWarningCheck() {
+  const buildDirectory = path.join(buildRoot, 'native-test-warnings');
+  resetBuildDirectory(buildDirectory);
+  const { emcmake } = emsdkPaths();
+  run(emcmake, [
+    'cmake', '-S', dspRoot, '-B', buildDirectory, '-G', 'Ninja',
+    '-DCMAKE_BUILD_TYPE=Release', '-DBUILD_TESTING=OFF',
+    '-DET_NATIVE_TEST_WARNING_CHECK=ON'
+  ]);
+  run('cmake', [
+    '--build', buildDirectory, '--target',
+    'effetune_dsp_native_test_warning_check', '--parallel'
+  ]);
+}
+
 export function emscriptenExecutableName(name, windows = isWindows) {
   return windows ? `${name}.exe` : name;
 }
@@ -246,20 +275,27 @@ function emsdkPaths() {
   return { root, emcc, emcmake, version: pinned };
 }
 
-function configureAndBuildWasm({ emcmake, name, simd }) {
+function configureAndBuildWasm({
+  emcmake,
+  name,
+  simd,
+  debugState = false
+}) {
   const buildDirectory = path.join(buildRoot, name);
   resetBuildDirectory(buildDirectory);
-  run(emcmake, [
-    'cmake', '-S', dspRoot, '-B', buildDirectory, '-G', 'Ninja',
-    '-DCMAKE_BUILD_TYPE=Release', `-DET_SIMD=${simd ? 'ON' : 'OFF'}`,
-    '-DBUILD_TESTING=OFF'
-  ]);
+  const configureArguments = productionWasmConfigureArguments({
+    dspRoot,
+    buildDirectory,
+    simd,
+    debugState
+  });
+  run(emcmake, configureArguments);
   run('cmake', ['--build', buildDirectory, '--parallel']);
   const artifact = path.join(buildDirectory, 'effetune-dsp.wasm');
   if (!fs.existsSync(artifact)) {
     fail(`WASM build did not produce ${artifact}`);
   }
-  return artifact;
+  return { artifact, buildDirectory, configureArguments };
 }
 
 function createImports(module) {
@@ -288,7 +324,7 @@ function readCString(memory, pointer, maximum) {
   return new TextDecoder().decode(bytes.subarray(0, length));
 }
 
-async function smokeWasm(filePath, expectedSimd) {
+export async function smokeWasm(filePath, expectedSimd) {
   const bytes = fs.readFileSync(filePath);
   const module = await WebAssembly.compile(bytes);
   const instance = await WebAssembly.instantiate(module, createImports(module));
@@ -299,7 +335,8 @@ async function smokeWasm(filePath, expectedSimd) {
     'et_kernel_asset_capacity', 'et_engine_create', 'et_engine_prepare',
     'et_instance_set_param_bytes', 'et_instance_asset_begin', 'et_instance_asset_commit',
     'et_instance_asset_abort', 'et_instance_asset_state',
-    'et_instance_process', 'et_pipeline_configure', 'et_pipeline_process'
+    'et_instance_process', 'et_instance_runtime_event',
+    'et_pipeline_configure', 'et_pipeline_process'
   ];
   for (const name of required) {
     if (!(name in api)) {
@@ -351,10 +388,16 @@ async function smokeWasm(filePath, expectedSimd) {
 function collectDigestFiles(directory, output = []) {
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })
     .sort((left, right) => left.name.localeCompare(right.name, 'en'))) {
-    if (entry.name === 'build' || entry.name === '.emsdk' ||
-        entry.name === '.pytest_cache' || entry.name === 'dist' ||
-        entry.name === 'golden' ||
-        (entry.isDirectory() && entry.name.startsWith('.golden-all-'))) {
+    // Hidden directories never hold digest inputs: they are toolchain and tool
+    // caches (.emsdk, .pytest_cache), golden scratch (.golden-all-*), and
+    // transient fixture directories that tests create and delete while the
+    // digest walks the tree. Enumerating them makes the digest racy, so skip
+    // every dot-directory (and vendored dependencies) rather than naming them.
+    if (entry.isDirectory() &&
+        (entry.name.startsWith('.') || entry.name === 'node_modules')) {
+      continue;
+    }
+    if (entry.name === 'build' || entry.name === 'dist' || entry.name === 'golden') {
       continue;
     }
     const fullPath = path.join(directory, entry.name);
@@ -369,13 +412,42 @@ function collectDigestFiles(directory, output = []) {
   return output;
 }
 
-export function sourceDigest() {
-  const files = collectDigestFiles(dspRoot);
-  files.push(generator, fileURLToPath(import.meta.url));
+function phase0DigestInputs() {
+  const directories = [];
+  const generatedHeaders = new Set();
+  for (const spec of loadParamSpecs().filter(candidate => candidate.phase0)) {
+    directories.push(path.dirname(spec.source));
+    generatedHeaders.add(`dsp/generated/cpp/${spec.type}Params.h`);
+  }
+  return { directories, generatedHeaders };
+}
+
+export function sourceDigestInputPaths({ includePhase0 = false } = {}) {
+  let files = collectDigestFiles(dspRoot);
+  if (!includePhase0) {
+    const phase0 = phase0DigestInputs();
+    files = files.filter(filePath => {
+      const relative = path.relative(repoRoot, filePath).replaceAll('\\', '/');
+      return !phase0.generatedHeaders.has(relative) &&
+        !phase0.directories.some(directory =>
+          relative === directory || relative.startsWith(`${directory}/`)
+        );
+    });
+  }
+  files.push(
+    generator,
+    g726PerformanceInputsSource,
+    fileURLToPath(import.meta.url)
+  );
   files.sort((left, right) => left.localeCompare(right, 'en'));
+  return files.map(filePath =>
+    path.relative(repoRoot, filePath).replaceAll('\\', '/'));
+}
+
+export function sourceDigest(options = {}) {
   const hash = crypto.createHash('sha256');
-  for (const filePath of files) {
-    const relative = path.relative(repoRoot, filePath).replaceAll('\\', '/');
+  for (const relative of sourceDigestInputPaths(options)) {
+    const filePath = path.join(repoRoot, ...relative.split('/'));
     hash.update(relative);
     hash.update('\0');
     hash.update(normalized(fs.readFileSync(filePath, 'utf8')));
@@ -386,14 +458,22 @@ export function sourceDigest() {
   return `sha256:${hash.digest('hex')}`;
 }
 
-export function metadataContents(emsdkVersion, baseline, simd) {
+export function metadataContents(
+  emsdkVersion,
+  baseline,
+  simd,
+  phase0Plugins = [],
+  g726PerformanceInput = g726PerformanceInputManifest({ repoRoot })
+) {
   if (JSON.stringify(baseline.kernels) !== JSON.stringify(simd.kernels)) {
     fail('baseline and SIMD artifacts expose different kernel registries');
   }
   return `${JSON.stringify({
     abiVersion: baseline.abiVersion,
-    sourceDigest: sourceDigest(),
+    sourceDigest: sourceDigest({ includePhase0: phase0Plugins.length > 0 }),
     emsdkVersion,
+    g726PerformanceInput,
+    ...(phase0Plugins.length > 0 ? { phase0Plugins } : {}),
     kernels: baseline.kernels,
     sizes: { baseline: baseline.bytes, simd: simd.bytes }
   }, null, 2)}\n`;
@@ -403,20 +483,82 @@ function compareFile(source, destination) {
   return fs.existsSync(destination) && fs.readFileSync(source).equals(fs.readFileSync(destination));
 }
 
-async function buildWasm({ check }) {
+async function buildWasm({
+  check,
+  outputRoot = artifactsRoot
+}) {
+  const g726PerformanceInputAtStart = g726PerformanceInputManifest({ repoRoot });
   const emsdk = emsdkPaths();
-  const baselineArtifact = configureAndBuildWasm({
-    emcmake: emsdk.emcmake, name: 'wasm', simd: false
+  const scratchTag = path.resolve(outputRoot) === path.resolve(artifactsRoot)
+    ? ''
+    : `-scratch-${crypto.createHash('sha256').update(path.resolve(outputRoot)).digest('hex').slice(0, 12)}`;
+  const baselineBuild = configureAndBuildWasm({
+    emcmake: emsdk.emcmake,
+    name: `wasm${scratchTag}`,
+    simd: false
   });
-  const simdArtifact = configureAndBuildWasm({
-    emcmake: emsdk.emcmake, name: 'wasm-simd', simd: true
+  const simdBuild = configureAndBuildWasm({
+    emcmake: emsdk.emcmake,
+    name: `wasm-simd${scratchTag}`,
+    simd: true
   });
+  const baselineArtifact = baselineBuild.artifact;
+  const simdArtifact = simdBuild.artifact;
   const baseline = await smokeWasm(baselineArtifact, false);
   const simd = await smokeWasm(simdArtifact, true);
-  const baselineDestination = path.join(artifactsRoot, 'effetune-dsp.wasm');
-  const simdDestination = path.join(artifactsRoot, 'effetune-dsp.simd.wasm');
-  const metaDestination = path.join(artifactsRoot, 'effetune-dsp.meta.json');
-  const meta = metadataContents(emsdk.version, baseline, simd);
+  for (const artifact of [baselineArtifact, simdArtifact]) {
+    const module = await WebAssembly.compile(fs.readFileSync(artifact));
+    const exports = new Set(
+      WebAssembly.Module.exports(module).map(entry => entry.name)
+    );
+    for (const name of [
+      'et_instance_debug_state',
+      'et_instance_debug_state_v2',
+      'et_instance_debug_begin_observation',
+      'et_instance_debug_clear_detector_observation'
+    ]) {
+      if (exports.has(name)) {
+        fail(`${path.basename(artifact)} leaked test-only export ${name}`);
+      }
+    }
+  }
+  const baselineDestination = path.join(outputRoot, 'effetune-dsp.wasm');
+  const simdDestination = path.join(outputRoot, 'effetune-dsp.simd.wasm');
+  const metaDestination = path.join(outputRoot, 'effetune-dsp.meta.json');
+  const phase0Plugins = [];
+  const resolvedBuildAuthority = resolvedG726WasmBuildAuthority({
+    baseline: resolvedG726WasmVariantAuthority({
+      repoRoot,
+      buildDirectory: baselineBuild.buildDirectory,
+      configureArguments: baselineBuild.configureArguments,
+      emsdkVersion: emsdk.version,
+      variant: 'baseline'
+    }),
+    simd: resolvedG726WasmVariantAuthority({
+      repoRoot,
+      buildDirectory: simdBuild.buildDirectory,
+      configureArguments: simdBuild.configureArguments,
+      emsdkVersion: emsdk.version,
+      variant: 'simd'
+    })
+  });
+  const g726PerformanceInputWithoutResolvedAuthorityAtEnd =
+    g726PerformanceInputManifest({ repoRoot });
+  if (g726PerformanceInputWithoutResolvedAuthorityAtEnd.digest !==
+      g726PerformanceInputAtStart.digest) {
+    fail('G.726 performance inputs changed during the WASM build');
+  }
+  const g726PerformanceInputAtEnd = g726PerformanceInputManifest({
+    repoRoot,
+    resolvedBuildAuthority
+  });
+  const meta = metadataContents(
+    emsdk.version,
+    baseline,
+    simd,
+    phase0Plugins,
+    g726PerformanceInputAtEnd
+  );
 
   if (check) {
     const metaCurrent = fs.existsSync(metaDestination)
@@ -434,12 +576,83 @@ async function buildWasm({ check }) {
   console.log(`${check ? 'Checked' : 'Built'} ${baseline.kernels.length} DSP kernel(s).`);
 }
 
+async function buildDebugStateWasm() {
+  const emsdk = emsdkPaths();
+  const variants = {};
+  for (const [name, simd] of [['wasm-debug-state', false], ['wasm-simd-debug-state', true]]) {
+    const build = configureAndBuildWasm({
+      emcmake: emsdk.emcmake,
+      name,
+      simd,
+      debugState: true
+    });
+    const artifact = build.artifact;
+    const smoke = await smokeWasm(artifact, simd);
+    const bytes = fs.readFileSync(artifact);
+    const module = await WebAssembly.compile(bytes);
+    const debugExports = WebAssembly.Module.exports(module)
+      .map(entry => entry.name);
+    if (!debugExports.includes('et_instance_debug_state') ||
+        !debugExports.includes('et_instance_debug_state_v2') ||
+        !debugExports.includes('et_instance_debug_begin_observation') ||
+        !debugExports.includes(
+          'et_instance_debug_clear_detector_observation'
+        )) {
+      fail(
+        `${path.basename(artifact)} is missing a test-only debug state export`
+      );
+    }
+    variants[simd ? 'simd' : 'baseline'] = {
+      path: path.relative(repoRoot, artifact).replaceAll('\\', '/'),
+      sha256: crypto.createHash('sha256').update(bytes).digest('hex'),
+      bytes: smoke.bytes,
+      simd,
+      debugState: true,
+      abiVersion: smoke.abiVersion,
+      buildFlags: smoke.buildFlags
+    };
+  }
+  const metadata = {
+    contract: 'effetune-dsp-debug-state-wasm-v1',
+    sourceDigest: sourceDigest(),
+    emsdkVersion: emsdk.version,
+    variants
+  };
+  const metadataPath = path.join(buildRoot, 'debug-state-wasm.meta.json');
+  writeIfChanged(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`);
+  console.log(`${JSON.stringify({
+    ...metadata,
+    metadataPath:
+      path.relative(repoRoot, metadataPath).replaceAll('\\', '/')
+  }, null, 2)}\n`);
+}
+
 function printHelp() {
-  console.log('Usage: node scripts/build-dsp-wasm.mjs [--check|--native-tests] [--native-build-type=Debug|Release]');
-  console.log('  default         update codegen/inlining and build committed baseline + SIMD WASM');
+  console.log('Usage: node scripts/build-dsp-wasm.mjs [--check|--native-tests|--native-test-warning-check|--debug-state-wasm] [--native-build-type=Debug|Release] [--artifacts-dir <path>]');
+  console.log('  default         check native test warnings, update codegen/inlining, and build committed baseline + SIMD WASM');
   console.log('  --check         write-free codegen/inlining/artifact freshness verification');
   console.log('  --native-tests  configure, compile, and run native CTest tests (no emsdk needed)');
+  console.log('  --native-test-warning-check  compile registered native test sources with Emscripten Clang warnings');
+  console.log('  --debug-state-wasm  build uncommitted baseline + SIMD WASM with test state export');
   console.log('  --native-build-type  native CMake build type (default Debug; requires --native-tests)');
+  console.log('  --artifacts-dir  build baseline, SIMD, and metadata into a scratch directory');
+}
+
+export function parseArtifactsDirectory(args) {
+  const equals = args.find(arg => arg.startsWith('--artifacts-dir='));
+  const index = args.indexOf('--artifacts-dir');
+  if (equals !== undefined && index !== -1) {
+    fail('--artifacts-dir may only be specified once');
+  }
+  const value = equals?.slice('--artifacts-dir='.length) ??
+    (index === -1 ? null : args[index + 1]);
+  if (index !== -1 && (value === undefined || value.startsWith('--'))) {
+    fail('--artifacts-dir requires a path');
+  }
+  if (value === '') {
+    fail('--artifacts-dir requires a path');
+  }
+  return value === null ? null : path.resolve(repoRoot, value);
 }
 
 async function main() {
@@ -449,25 +662,54 @@ async function main() {
     printHelp();
     return;
   }
-  const allowed = new Set(['--check', '--native-tests']);
-  const unknown = cliArgs.filter(arg =>
-    !allowed.has(arg) && !arg.startsWith('--native-build-type='));
+  const artifactsDirectory = parseArtifactsDirectory(cliArgs);
+  const allowed = new Set([
+    '--check', '--native-tests', '--native-test-warning-check',
+    '--debug-state-wasm'
+  ]);
+  const unknown = cliArgs.filter((arg, index) =>
+    !allowed.has(arg) && !arg.startsWith('--native-build-type=') &&
+    !arg.startsWith('--artifacts-dir=') && arg !== '--artifacts-dir' &&
+    !(index > 0 && cliArgs[index - 1] === '--artifacts-dir'));
   if (unknown.length !== 0) {
     fail(`unknown argument(s): ${unknown.join(', ')}`);
   }
   const check = args.has('--check');
   const nativeTests = args.has('--native-tests');
+  const nativeTestWarningCheck = args.has('--native-test-warning-check');
+  const debugStateWasm = args.has('--debug-state-wasm');
+  if ([check, nativeTests, nativeTestWarningCheck, debugStateWasm]
+    .filter(Boolean).length > 1) {
+    fail('--check, --native-tests, --native-test-warning-check, and --debug-state-wasm are mutually exclusive');
+  }
+  if (artifactsDirectory !== null &&
+      (check || nativeTests || nativeTestWarningCheck || debugStateWasm)) {
+    fail('--artifacts-dir cannot be combined with --check, --native-tests, --native-test-warning-check, or --debug-state-wasm');
+  }
   const nativeBuildType = parseNativeBuildType(cliArgs);
   if (!nativeTests && cliArgs.some(arg => arg.startsWith('--native-build-type='))) {
     fail('--native-build-type requires --native-tests');
   }
-  runCodegen(check);
-  refreshWorkletBinding(check);
+  if (nativeTestWarningCheck) {
+    runNativeTestWarningCheck();
+    return;
+  }
+  const writeFreePreparation = check || debugStateWasm || artifactsDirectory !== null;
+  runCodegen(writeFreePreparation);
+  refreshWorkletBinding(writeFreePreparation);
   if (nativeTests) {
     runNativeTests(nativeBuildType);
     return;
   }
-  await buildWasm({ check });
+  runNativeTestWarningCheck();
+  if (debugStateWasm) {
+    await buildDebugStateWasm();
+    return;
+  }
+  await buildWasm({
+    check,
+    outputRoot: artifactsDirectory ?? artifactsRoot
+  });
 }
 
 const isMain = process.argv[1] &&

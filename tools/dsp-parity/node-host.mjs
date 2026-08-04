@@ -281,6 +281,9 @@ export async function executeReferenceCase(type, testCase, input, options = {}) 
     caseIndex: testCase.caseIndex ?? 0,
     seed: testCase.seed ?? noiseSeedForCase(testCase.caseIndex ?? 0)
   });
+  if (testCase.params?.fr === true && 'fr' in session.plugin) {
+    session.plugin.fr = true;
+  }
   const output = await session.process(input, testCase);
   return { output, jsEngineHash: session.jsEngineHash, baseSourceHash: session.baseSourceHash };
 }

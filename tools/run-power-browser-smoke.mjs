@@ -851,10 +851,22 @@ async function loadPlaywright() {
 }
 
 async function loadSmokeSpecs() {
-  const [powerSpec, cueRegionSpec, irReverbSpec] = await Promise.all([
+  const [
+    powerSpec,
+    cueRegionSpec,
+    irReverbSpec,
+    g726ResumeSpec,
+    sbcResumeSpec,
+    gsmResumeSpec,
+    mp3ResumeSpec
+  ] = await Promise.all([
     import('../tests/browser/power-policy-smoke.spec.mjs'),
     import('../tests/browser/cue-region-smoke.spec.mjs'),
-    import('../tests/browser/ir-reverb-wasm-smoke.spec.mjs')
+    import('../tests/browser/ir-reverb-wasm-smoke.spec.mjs'),
+    import('../tests/browser/g726-resume-wasm-smoke.spec.mjs'),
+    import('../tests/browser/bluetooth-sbc-resume-wasm-smoke.spec.mjs'),
+    import('../tests/browser/gsm-full-rate-resume-wasm-smoke.spec.mjs'),
+    import('../tests/browser/mp3-resume-wasm-smoke.spec.mjs')
   ]);
   if (typeof powerSpec.runPowerPolicyBrowserSmoke !== 'function') {
     throw new TypeError('power-policy-smoke.spec.mjs must export runPowerPolicyBrowserSmoke().');
@@ -867,10 +879,36 @@ async function loadSmokeSpecs() {
       'ir-reverb-wasm-smoke.spec.mjs must export runIrReverbWasmBrowserSmoke().'
     );
   }
+  if (typeof g726ResumeSpec.runG726ResumeWasmBrowserSmoke !== 'function') {
+    throw new TypeError(
+      'g726-resume-wasm-smoke.spec.mjs must export runG726ResumeWasmBrowserSmoke().'
+    );
+  }
+  if (typeof sbcResumeSpec.runBluetoothSbcResumeWasmBrowserSmoke !== 'function') {
+    throw new TypeError(
+      'bluetooth-sbc-resume-wasm-smoke.spec.mjs must export ' +
+      'runBluetoothSbcResumeWasmBrowserSmoke().'
+    );
+  }
+  if (typeof gsmResumeSpec.runGsmFullRateResumeWasmBrowserSmoke !== 'function') {
+    throw new TypeError(
+      'gsm-full-rate-resume-wasm-smoke.spec.mjs must export ' +
+      'runGsmFullRateResumeWasmBrowserSmoke().'
+    );
+  }
+  if (typeof mp3ResumeSpec.runMp3ResumeWasmBrowserSmoke !== 'function') {
+    throw new TypeError(
+      'mp3-resume-wasm-smoke.spec.mjs must export runMp3ResumeWasmBrowserSmoke().'
+    );
+  }
   return [
     powerSpec.runPowerPolicyBrowserSmoke,
     cueRegionSpec.runCueRegionBrowserSmoke,
-    irReverbSpec.runIrReverbWasmBrowserSmoke
+    irReverbSpec.runIrReverbWasmBrowserSmoke,
+    g726ResumeSpec.runG726ResumeWasmBrowserSmoke,
+    sbcResumeSpec.runBluetoothSbcResumeWasmBrowserSmoke,
+    gsmResumeSpec.runGsmFullRateResumeWasmBrowserSmoke,
+    mp3ResumeSpec.runMp3ResumeWasmBrowserSmoke
   ];
 }
 

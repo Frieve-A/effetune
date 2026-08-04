@@ -338,6 +338,53 @@ et_status Engine::processInstance(et_instance instance, float *audio, std::uint3
   return ET_OK;
 }
 
+et_status Engine::readInstanceRuntimeEvent(et_instance instance,
+                                           RuntimeEventState &state) const noexcept {
+  const InstanceSlot *slot = findInstance(instance);
+  if (slot == nullptr) {
+    return ET_ERR_ARGS;
+  }
+  slot->kernel->readRuntimeEvent(state);
+  return ET_OK;
+}
+
+#if defined(ET_DEBUG_STATE)
+et_status Engine::readInstanceDebugState(et_instance instance,
+                                         DebugStateSnapshot &state) const noexcept {
+  const InstanceSlot *slot = findInstance(instance);
+  if (slot == nullptr) {
+    return ET_ERR_ARGS;
+  }
+  return slot->kernel->readDebugState(state) ? ET_OK : ET_ERR_UNSUPPORTED;
+}
+
+et_status Engine::readInstanceDebugStateV2(et_instance instance,
+                                           DebugStateSnapshotV2 &state) const noexcept {
+  const InstanceSlot *slot = findInstance(instance);
+  if (slot == nullptr) {
+    return ET_ERR_ARGS;
+  }
+  return slot->kernel->readDebugStateV2(state) ? ET_OK : ET_ERR_UNSUPPORTED;
+}
+
+et_status Engine::beginInstanceDebugObservation(et_instance instance,
+                                                std::uint64_t &origin) noexcept {
+  InstanceSlot *slot = findInstance(instance);
+  if (slot == nullptr) {
+    return ET_ERR_ARGS;
+  }
+  return slot->kernel->beginDebugObservation(origin) ? ET_OK : ET_ERR_UNSUPPORTED;
+}
+
+et_status Engine::clearInstanceDebugDetectorObservation(et_instance instance) noexcept {
+  InstanceSlot *slot = findInstance(instance);
+  if (slot == nullptr) {
+    return ET_ERR_ARGS;
+  }
+  return slot->kernel->clearDebugDetectorObservation() ? ET_OK : ET_ERR_UNSUPPORTED;
+}
+#endif
+
 et_status Engine::configurePipeline(const std::uint8_t *descriptor,
                                     std::uint32_t descriptor_bytes) noexcept {
   if (!prepared_) {

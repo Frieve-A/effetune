@@ -1,0 +1,131 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 128,
+    "channels": 2,
+    "channelMode": "stereo"
+  },
+  "cases": [
+    {
+      "id": "default-joint-stereo",
+      "stimulus": "noise",
+      "frames": 4097,
+      "params": { "bp": 35, "cm": "Joint Stereo", "bl": "16" }
+    },
+    {
+      "id": "stereo-44100",
+      "stimulus": "sweep",
+      "sampleRate": 44100,
+      "blockSize": 127,
+      "frames": 4097,
+      "params": { "bp": 28, "cm": "Stereo", "bl": "12" }
+    },
+    {
+      "id": "mono-88200",
+      "stimulus": "noise",
+      "sampleRate": 88200,
+      "blockSize": 129,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 8193,
+      "params": { "bp": 20, "bl": "8" }
+    },
+    {
+      "id": "joint-96000",
+      "stimulus": "imp",
+      "sampleRate": 96000,
+      "frames": 8193,
+      "params": { "bp": 45, "cm": "Joint Stereo", "bl": "4" }
+    },
+    {
+      "id": "joint-176400",
+      "stimulus": "noise",
+      "sampleRate": 176400,
+      "frames": 8193,
+      "params": { "bp": 35, "bl": "16", "og": -3, "mx": 75 }
+    },
+    {
+      "id": "stereo-192000",
+      "stimulus": "sweep",
+      "sampleRate": 192000,
+      "blockSize": 257,
+      "frames": 12289,
+      "params": { "bp": 53, "cm": "Stereo", "bl": "16" }
+    },
+    {
+      "id": "latency-aligned-dry-352800",
+      "stimulus": "imp",
+      "sampleRate": 352800,
+      "blockSize": 255,
+      "frames": 16385,
+      "params": { "mx": 0 }
+    },
+    {
+      "id": "maximum-rate-384000",
+      "stimulus": "noise",
+      "sampleRate": 384000,
+      "frames": 16385,
+      "params": { "bp": 2, "cm": "Joint Stereo", "bl": "4" }
+    },
+    {
+      "id": "frame-boundary-controls",
+      "stimulus": "noise",
+      "frames": 12289,
+      "params": { "bp": 20, "cm": "Stereo", "bl": "8" },
+      "events": [
+        { "frame": 2003, "params": { "bp": 35, "cm": "Joint Stereo" } },
+        { "frame": 5009, "params": { "bl": "16" } },
+        { "frame": 8009, "params": { "bp": 53, "og": 2, "mx": 60 } }
+      ]
+    },
+    {
+      "id": "packet-loss-joint-48000",
+      "stimulus": "noise",
+      "frames": 12289,
+      "params": { "bp": 35, "cm": "Joint Stereo", "bl": "16", "pl": 5 }
+    },
+    {
+      "id": "packet-loss-burst-stereo-96000",
+      "stimulus": "sweep",
+      "sampleRate": 96000,
+      "blockSize": 129,
+      "frames": 12289,
+      "params": { "bp": 28, "cm": "Stereo", "bl": "8", "pl": 15 }
+    },
+    {
+      "id": "packet-loss-mono-44100",
+      "stimulus": "noise",
+      "sampleRate": 44100,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 8193,
+      "params": { "bp": 20, "bl": "16", "pl": 10 }
+    },
+    {
+      "id": "dual-channel-xq-44100",
+      "stimulus": "noise",
+      "sampleRate": 44100,
+      "frames": 8193,
+      "params": { "bp": 38, "cm": "Dual Channel", "bl": "16" }
+    },
+    {
+      "id": "dual-channel-xq-plus-48000",
+      "stimulus": "sweep",
+      "blockSize": 129,
+      "frames": 8193,
+      "params": { "bp": 47, "cm": "Dual Channel", "bl": "12" }
+    },
+    {
+      "id": "dual-channel-mode-switch-96000",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "frames": 12289,
+      "params": { "bp": 53, "cm": "Dual Channel", "bl": "4" },
+      "events": [
+        { "frame": 3001, "params": { "cm": "Joint Stereo" } },
+        { "frame": 6007, "params": { "cm": "Dual Channel", "bp": 38, "bl": "16" } },
+        { "frame": 9011, "params": { "cm": "Stereo" } }
+      ]
+    }
+  ]
+}

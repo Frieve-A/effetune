@@ -234,6 +234,18 @@ test('applySerializedState preserves already-normalized channel aliases', () => 
   assert.equal(all.channel, 'A');
 });
 
+test('applySerializedState preserves channel pairs in short and long states', () => {
+  for (const channel of ['34', '56', '78']) {
+    const short = createPlugin();
+    applySerializedState(short, { nm: `ShortPair${channel}`, ch: channel });
+    assert.equal(short.channel, channel);
+
+    const long = createPlugin();
+    applySerializedState(long, { name: `LongPair${channel}`, channel });
+    assert.equal(long.channel, channel);
+  }
+});
+
 test('applySerializedState handles numeric channel boundaries and missing parameters', () => {
   const lower = createPlugin();
   applySerializedState(lower, { name: 'TooLow', channel: '2' });

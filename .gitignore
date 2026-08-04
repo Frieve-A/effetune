@@ -14,7 +14,41 @@ _site/
 .jekyll-metadata
 
 # Tests
-/tests/
+/tests/*
+!/tests/esm/
+/tests/esm/*
+!/tests/esm/audio-session-type-controller.test.mjs
+!/tests/esm/dsp-bluetooth-sbc-audioworklet-gate.test.mjs
+!/tests/esm/dsp-codec-simulator-ui-conventions.test.mjs
+!/tests/esm/dsp-bluetooth-sbc-production-equivalence.test.mjs
+!/tests/esm/dsp-bluetooth-sbc-simulator-port-v1.test.mjs
+!/tests/esm/dsp-bluetooth-sbc-thread-cpu-gate.test.mjs
+!/tests/esm/dsp-g726-adpcm-simulator-port-v1.test.mjs
+!/tests/esm/dsp-g726-performance-inputs.test.mjs
+!/tests/esm/dsp-gsm-full-rate-audioworklet-gate.test.mjs
+!/tests/esm/dsp-gsm-full-rate-simulator-port-v1.test.mjs
+!/tests/esm/dsp-mp3-codec-simulator-port-v1.test.mjs
+!/tests/esm/media-session-anchor.test.mjs
+!/tests/esm/plugin-execution-capabilities.test.mjs
+!/tests/esm/tracked-sources-are-self-contained.test.mjs
+!/tests/browser/
+/tests/browser/*
+!/tests/browser/g726-resume-wasm-smoke.fixture.html
+!/tests/browser/g726-resume-wasm-smoke.spec.mjs
+!/tests/browser/codec-resume-wasm-smoke.harness.mjs
+!/tests/browser/bluetooth-sbc-resume-wasm-smoke.fixture.html
+!/tests/browser/bluetooth-sbc-resume-wasm-smoke.spec.mjs
+!/tests/browser/gsm-full-rate-resume-wasm-smoke.fixture.html
+!/tests/browser/gsm-full-rate-resume-wasm-smoke.spec.mjs
+!/tests/browser/mp3-resume-wasm-smoke.fixture.html
+!/tests/browser/mp3-resume-wasm-smoke.spec.mjs
+!/tests/helpers/
+/tests/helpers/*
+!/tests/helpers/app-auto-start-smoke-child.mjs
+!/tests/helpers/cjs-module-utils.cjs
+!/tests/helpers/cue-directory-stage-repository.mjs
+!/tests/helpers/fake-dom.mjs
+!/tests/helpers/global-test-utils.mjs
 
 # Logs
 logs
@@ -55,7 +89,22 @@ CLAUDE.md
 .electron-builder.env
 
 # Temporary files
-tmp/
+tmp/*
+!tmp/dev/
+tmp/dev/*
+!tmp/dev/compressed-audio-codec-sim-20260729/
+tmp/dev/compressed-audio-codec-sim-20260729/*
+!tmp/dev/compressed-audio-codec-sim-20260729/g726-adpcm-simulator/
+tmp/dev/compressed-audio-codec-sim-20260729/g726-adpcm-simulator/*
+!tmp/dev/compressed-audio-codec-sim-20260729/g726-adpcm-simulator/oracle.md
+!tmp/dev/compressed-audio-codec-sim-20260729/g726-adpcm-simulator/performance-cpu-formal.json
+!tmp/dev/compressed-audio-codec-sim-20260729/bluetooth-sbc-simulator/
+tmp/dev/compressed-audio-codec-sim-20260729/bluetooth-sbc-simulator/*
+!tmp/dev/compressed-audio-codec-sim-20260729/bluetooth-sbc-simulator/conformance.md
+!tmp/dev/compressed-audio-codec-sim-20260729/bluetooth-sbc-simulator/performance.md
+!tmp/dev/compressed-audio-codec-sim-20260729/bluetooth-sbc-simulator/performance-thread-cpu-formal.json
+!tmp/dev/compressed-audio-codec-sim-20260729/bluetooth-sbc-simulator/performance-thread-cpu-formal-pre-wasm-init-fix.json
+!tmp/dev/compressed-audio-codec-sim-20260729/bluetooth-sbc-simulator/production-equivalence.json
 .tmp/
 .temp/
 .qodo

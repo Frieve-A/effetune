@@ -4,6 +4,7 @@
 #include "effetune/abi.h"
 #include "effetune/telemetry.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -20,6 +21,30 @@ struct PrepareInfo {
 struct ProcessInfo {
   double timeSeconds;
 };
+
+struct RuntimeEventState {
+  std::uint32_t generation;
+  std::uint32_t latched;
+  std::uint32_t cause;
+};
+
+#if defined(ET_DEBUG_STATE)
+struct DebugStateSnapshot {
+  std::uint64_t digest = 0u;
+  std::array<std::uint64_t, 12> transition{};
+  std::array<double, 10> appliedParameters{};
+  std::array<double, 9> feedbackCalibration{};
+  RuntimeEventState runtimeEvent{0u, 0u, 0u};
+  std::array<std::uint64_t, 40> auxiliaryWords{};
+  std::array<double, 26> auxiliaryValues{};
+};
+
+struct DebugStateSnapshotV2 {
+  DebugStateSnapshot legacy{};
+  std::array<double, 17> appliedParameters{};
+  std::array<double, 17> transitionBoundaryAppliedParameters{};
+};
+#endif
 
 struct AssetBeginInfo {
   std::uint32_t channels;
@@ -45,6 +70,15 @@ public:
                        const ProcessInfo &info) noexcept = 0;
   [[nodiscard]] virtual std::uint32_t latencySamples() const noexcept { return 0; }
   virtual void writeTelemetry(TelemetryWriter &) noexcept {}
+  virtual void readRuntimeEvent(RuntimeEventState &state) const noexcept { state = {0u, 0u, 0u}; }
+#if defined(ET_DEBUG_STATE)
+  [[nodiscard]] virtual bool readDebugState(DebugStateSnapshot &) const noexcept { return false; }
+  [[nodiscard]] virtual bool readDebugStateV2(DebugStateSnapshotV2 &) const noexcept {
+    return false;
+  }
+  [[nodiscard]] virtual bool beginDebugObservation(std::uint64_t &) noexcept { return false; }
+  [[nodiscard]] virtual bool clearDebugDetectorObservation() noexcept { return false; }
+#endif
 
   [[nodiscard]] virtual std::uint32_t parameterHash() const noexcept = 0;
   [[nodiscard]] virtual std::uint32_t parameterFloatCount() const noexcept = 0;

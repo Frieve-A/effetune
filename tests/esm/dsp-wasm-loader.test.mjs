@@ -130,6 +130,7 @@ test('parameter packer publication accepts generated maps and named exports', ()
     DSP_PARAM_PACKERS: new Map([
       ['VolumePlugin', { pack, hash: 100 }],
       ['BadPlugin', { pack, hash: 3 }],
+      ['DeferredPlugin', { pack, hash: 5 }],
       ['IgnoredPlugin', { hash: 4 }]
     ])
   }, [
@@ -139,6 +140,16 @@ test('parameter packer publication accepts generated maps and named exports', ()
   assert.deepEqual([...declared.keys()], ['VolumePlugin']);
   assert.equal(declared.get('VolumePlugin').pack({ vl: 0.5 })[0], 0.5);
   assert.equal(warnings.length, 1);
+
+  const g726Hash = 0xee385372;
+  const g726 = createDspParamPackers({
+    DSP_PARAM_PACKERS: new Map([[
+      'G726ADPCMSimulatorPlugin',
+      { pack: () => Float32Array.of(3, 0, 100), hash: g726Hash }
+    ]])
+  }, [{ name: 'G726ADPCMSimulatorPlugin', hash: g726Hash }]);
+  assert.deepEqual([...g726.keys()], ['G726ADPCMSimulatorPlugin']);
+  assert.deepEqual([...g726.get('G726ADPCMSimulatorPlugin').pack()], [3, 0, 100]);
 
   const matrixBytes = () => Uint8Array.of(1, 0, 0, 0);
   const structured = createDspParamPackers({

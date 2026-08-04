@@ -18,6 +18,11 @@ extern "C" {
 typedef uint32_t et_engine;
 typedef uint32_t et_instance;
 typedef int32_t et_status;
+typedef struct et_runtime_event_state {
+  uint32_t generation;
+  uint32_t latched;
+  uint32_t cause;
+} et_runtime_event_state;
 
 enum {
   ET_OK = 0,
@@ -97,6 +102,8 @@ ET_EXPORT uint32_t et_instance_asset_state(et_engine engine, et_instance instanc
 ET_EXPORT et_status et_instance_process(et_engine engine, et_instance instance, float *audio,
                                         uint32_t channel_count, uint32_t frame_count,
                                         double time_seconds);
+ET_EXPORT et_status et_instance_runtime_event(et_engine engine, et_instance instance,
+                                              et_runtime_event_state *out_state);
 
 ET_EXPORT float *et_arena_combined_ptr(et_engine engine);
 ET_EXPORT float *et_arena_bus_ptr(et_engine engine, uint32_t bus);

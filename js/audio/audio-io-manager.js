@@ -1,4 +1,5 @@
 import { NO_AUDIO_INPUT_DEVICE_ID } from './audio-device-constants.js';
+import { createAudioSessionTypeController } from './audio-session-type-controller.js';
 
 /**
  * Prefix used to identify the non-fatal mic-denied warning returned by initAudioInput().
@@ -35,6 +36,16 @@ export class AudioIOManager {
         this._inputAcquisitionGeneration = 0;
         this._pendingInputAcquisition = null;
         this.lastInputInitializationError = null;
+        // iOS gates background Web Audio and the OS now-playing session on
+        // navigator.audioSession.type; the controller mirrors microphone
+        // liveness into it and is null on every other host. The initial
+        // 'unknown' above is deliberately not synced: the platform default is
+        // already the idle type, so the session stays untouched until the
+        // microphone is actually acquired.
+        this.audioSessionType = createAudioSessionTypeController({
+            navigatorRef: typeof navigator !== 'undefined' ? navigator : null,
+            isElectron: typeof window !== 'undefined' && this._isElectronEnvironment()
+        });
         this.stream = null;
         this.sourceNode = null;
         this.destinationNode = null;
@@ -65,6 +76,12 @@ export class AudioIOManager {
         this._pollDeviceWasAbsent = false;
         // Guard against overlapping poll tick executions
         this._pollRunning = false;
+    }
+
+    // Invoked after every inputResourceState assignment. Idempotent, synchronous,
+    // and a no-op off iOS, so it is safe on the user-activation path.
+    _syncAudioSessionType() {
+        this.audioSessionType?.sync(this.inputResourceState);
     }
 
     _setInputAvailability(nextAvailability) {
@@ -101,6 +118,8 @@ export class AudioIOManager {
                 this._setInputAvailability('available');
             }
         }
+        // Covers both inputResourceState assignments in the branches above.
+        this._syncAudioSessionType();
         if (notify && (this.inputResourceState !== previousState ||
             this.inputAvailabilityRevision !== previousAvailabilityRevision)) {
             this.contextManager?.powerStateDelegate?.handleInputResourceEvent?.(
@@ -155,6 +174,7 @@ export class AudioIOManager {
         this.inputGeneration++;
         this.inputResourceId = `input-${++this._inputResourceSequence}`;
         this.inputResourceState = 'live';
+        this._syncAudioSessionType();
         this.inputRouteConnected = false;
         this._observeInputTracks(stream);
         return inputSourceNode;
@@ -306,6 +326,7 @@ export class AudioIOManager {
         try {
             this.lastInputInitializationError = null;
             this.inputResourceState = 'acquiring';
+            this._syncAudioSessionType();
             this._setInputAvailability('unknown');
             // Variable to store microphone error message
             let microphoneError = null;
@@ -325,6 +346,7 @@ export class AudioIOManager {
             if (preferences?.inputDeviceId === NO_AUDIO_INPUT_DEVICE_ID) {
                 this.invalidatePendingInputAcquisition();
                 this.inputResourceState = 'not-configured';
+                this._syncAudioSessionType();
                 this.inputResourceId = null;
                 this.adoptSilentSourceFallback();
                 console.log('Audio input disabled by preference. Music file playback mode will still work.');
@@ -434,6 +456,7 @@ export class AudioIOManager {
                     lastMicError?.name === 'PermissionDeniedError'
                     ? 'denied'
                     : 'error';
+                this._syncAudioSessionType();
                 this._setInputAvailability('unknown');
                 this.adoptSilentSourceFallback();
                 
@@ -461,6 +484,7 @@ export class AudioIOManager {
             }
             this.lastInputInitializationError = error;
             this.inputResourceState = 'error';
+            this._syncAudioSessionType();
             this._setInputAvailability('unknown');
             console.error('Audio input initialization error:', error);
             return `Audio Error: ${error.message}`;
@@ -521,6 +545,7 @@ export class AudioIOManager {
         this.invalidatePendingInputAcquisition();
         if (this.inputSourceNode || this.inputStream) return false;
         this.inputResourceState = 'not-configured';
+        this._syncAudioSessionType();
         this.inputResourceId = null;
         this.inputRouteConnected = false;
         this._setInputAvailability('unknown');
@@ -1234,6 +1259,9 @@ export class AudioIOManager {
         const resourcePresent = !!(stream || source) ||
             before.state === 'live' || before.state === 'acquiring';
         if (!resourcePresent) {
+            // No assignment happens on this path; the snapshot above already
+            // refreshed the state, so this only keeps the session in step.
+            this._syncAudioSessionType();
             return {
                 reason,
                 alreadyAbsent: true,
@@ -1254,6 +1282,7 @@ export class AudioIOManager {
         this.inputRouteConnected = false;
         this.inputResourceId = null;
         this.inputResourceState = before.state === 'not-configured' ? 'not-configured' : 'released';
+        this._syncAudioSessionType();
         this._setInputAvailability('unknown');
         this.inputGeneration++;
         return {
@@ -1281,6 +1310,7 @@ export class AudioIOManager {
         if (preferences?.inputDeviceId === NO_AUDIO_INPUT_DEVICE_ID) {
             this.invalidatePendingInputAcquisition();
             this.inputResourceState = 'not-configured';
+            this._syncAudioSessionType();
             this._setInputAvailability('unknown');
             return Promise.resolve(this.getInputSnapshot());
         }
@@ -1302,6 +1332,9 @@ export class AudioIOManager {
         if (this._pendingInputAcquisition) this.invalidatePendingInputAcquisition();
         const acquisitionGeneration = ++this._inputAcquisitionGeneration;
         this.inputResourceState = 'acquiring';
+        // Synchronous property write, so the capture-compatible session type is
+        // in place before getUserMedia() below without leaving the activation stack.
+        this._syncAudioSessionType();
         this._setInputAvailability('unknown');
         // Start getUserMedia before returning so a caller in a trusted event can
         // keep the native request inside the activation stack.
@@ -1316,6 +1349,7 @@ export class AudioIOManager {
             if (acquisitionGeneration === this._inputAcquisitionGeneration) {
                 this.inputResourceState = error?.name === 'NotAllowedError' ||
                     error?.name === 'PermissionDeniedError' ? 'denied' : 'error';
+                this._syncAudioSessionType();
                 this._setInputAvailability('unknown');
             }
             throw error;

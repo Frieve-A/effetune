@@ -1,0 +1,111 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 128,
+    "channels": 2,
+    "channelMode": "stereo"
+  },
+  "cases": [
+    {
+      "id": "default-32k-program",
+      "stimulus": "noise",
+      "frames": 8193,
+      "params": { "br": "32" }
+    },
+    {
+      "id": "16k-mono-44100",
+      "stimulus": "sweep",
+      "sampleRate": 44100,
+      "blockSize": 127,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 8193,
+      "params": { "br": "16" }
+    },
+    {
+      "id": "24k-88200",
+      "stimulus": "noise",
+      "sampleRate": 88200,
+      "blockSize": 129,
+      "frames": 8193,
+      "params": { "br": "24" }
+    },
+    {
+      "id": "40k-96000",
+      "stimulus": "sweep",
+      "sampleRate": 96000,
+      "frames": 8193,
+      "params": { "br": "40", "og": -3, "mx": 75 }
+    },
+    {
+      "id": "176400-four-channel-pass-through",
+      "stimulus": "noise",
+      "sampleRate": 176400,
+      "channels": 4,
+      "frames": 12289,
+      "params": { "br": "32" }
+    },
+    {
+      "id": "192000-variable-quantum",
+      "stimulus": "noise",
+      "sampleRate": 192000,
+      "blockSize": 257,
+      "frames": 12289,
+      "params": { "br": "24" }
+    },
+    {
+      "id": "352800-latency-aligned-dry",
+      "stimulus": "imp",
+      "sampleRate": 352800,
+      "blockSize": 255,
+      "frames": 16385,
+      "params": { "mx": 0 }
+    },
+    {
+      "id": "384000-maximum-rate",
+      "stimulus": "noise",
+      "sampleRate": 384000,
+      "frames": 16385,
+      "params": { "br": "40" }
+    },
+    {
+      "id": "bitrate-boundary-changes",
+      "stimulus": "noise",
+      "frames": 12289,
+      "params": { "br": "16" },
+      "events": [
+        { "frame": 2003, "params": { "br": "24" } },
+        { "frame": 5009, "params": { "br": "40" } },
+        { "frame": 8009, "params": { "br": "32", "og": 2, "mx": 60 } }
+      ]
+    },
+    {
+      "id": "radio-ber-32k-moderate",
+      "stimulus": "noise",
+      "frames": 12289,
+      "params": { "br": "32", "re": -3 }
+    },
+    {
+      "id": "radio-ber-16k-severe-mono-44100",
+      "stimulus": "sweep",
+      "sampleRate": 44100,
+      "blockSize": 127,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 12289,
+      "params": { "br": "16", "re": -2 }
+    },
+    {
+      "id": "radio-ber-onset-96000",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "blockSize": 257,
+      "frames": 16385,
+      "params": { "br": "40" },
+      "events": [
+        { "frame": 4097, "params": { "re": -2.5 } },
+        { "frame": 12289, "params": { "re": -6 } }
+      ]
+    }
+  ]
+}

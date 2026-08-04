@@ -2,6 +2,8 @@
  * PipelineWorkletSync - Handles synchronization with the audio worklet
  * Manages communication between the UI and the audio processing worklet
  */
+import { attachPluginExecutionCapabilities } from '../../audio/plugin-execution-capabilities.js';
+
 export class PipelineWorkletSync {
     /**
      * Create a new PipelineWorkletSync instance
@@ -140,9 +142,12 @@ export class PipelineWorkletSync {
     preparePluginData(plugin) {
         const parameters = this.getPluginParameters(plugin);
         if (typeof plugin.getWorkletPluginData === 'function') {
-            return plugin.getWorkletPluginData(parameters);
+            return attachPluginExecutionCapabilities(
+                plugin,
+                plugin.getWorkletPluginData(parameters)
+            );
         }
-        return {
+        return attachPluginExecutionCapabilities(plugin, {
             id: plugin.id,
             type: plugin.constructor.name,
             enabled: plugin.enabled,
@@ -150,7 +155,7 @@ export class PipelineWorkletSync {
             inputBus: plugin.inputBus,
             outputBus: plugin.outputBus,
             channel: plugin.channel
-        };
+        });
     }
 
     /**

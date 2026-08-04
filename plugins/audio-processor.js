@@ -33,6 +33,7 @@ const REQUIRED_FUNCTION_EXPORTS = [
     'et_instance_asset_abort',
     'et_instance_asset_state',
     'et_instance_process',
+    'et_instance_runtime_event',
     'et_arena_combined_ptr',
     'et_arena_bus_ptr',
     'et_arena_scratch_ptr',
@@ -558,6 +559,25 @@ class DspEngineBinding {
         );
     }
 
+    instanceRuntimeEvent(instanceId) {
+        if (!this.engine || !this.prepared) return null;
+        const ptr = this.exports.et_scratch_ptr(this.engine) >>> 0;
+        this._refreshViews();
+        this._assertRange(ptr, 12, 'Runtime event state');
+        if (this.exports.et_instance_runtime_event(
+            this.engine,
+            instanceId,
+            ptr
+        ) !== ET_OK) {
+            return null;
+        }
+        return {
+            generation: this.dataView.getUint32(ptr, true),
+            latched: this.dataView.getUint32(ptr + 4, true) !== 0,
+            cause: this.dataView.getUint32(ptr + 8, true)
+        };
+    }
+
     instanceSetParamBytes(instanceId, packed, paramsHash, offsetFrames = 0) {
         if (!this.engine || !this.prepared) return ET_ERR_STATE;
         const values = toUint8View(packed, 'Structured parameter block');
@@ -863,14 +883,84 @@ async function instantiateDspBinding(moduleOrBytes, {
 }
 // __ETDSP_BINDING_INJECT_END__
 
-const WASM_ONLY_EXECUTION_STATE_PLUGIN_TYPES = new Set([
-    'AMRadioSimulatorPlugin',
-    'FIRCrossoverPlugin',
-    'FiveBandFIRPEQPlugin',
-    'GroupDelayEqPlugin',
-    'RoomEqPlugin',
-    'SWRadioSimulatorPlugin'
-]);
+function requiresWasmExecution(plugin) {
+    return plugin?.executionCapabilities?.requiresWasm === true;
+}
+
+function workletChannelSelection(channel, outputChannelCount) {
+    let mode;
+    let firstChannel;
+    let requiredChannels;
+    switch (channel) {
+        case 'A':
+            mode = 'all';
+            firstChannel = 0;
+            requiredChannels = outputChannelCount;
+            break;
+        case 'L':
+            mode = 'single';
+            firstChannel = 0;
+            requiredChannels = 1;
+            break;
+        case 'R':
+            mode = 'single';
+            firstChannel = 1;
+            requiredChannels = 1;
+            break;
+        case null:
+        case undefined:
+            mode = outputChannelCount === 1 ? 'mono' : 'stereo-pair';
+            firstChannel = 0;
+            requiredChannels = outputChannelCount === 1 ? 1 : 2;
+            break;
+        case '34':
+            mode = 'stereo-pair';
+            firstChannel = 2;
+            requiredChannels = 2;
+            break;
+        case '56':
+            mode = 'stereo-pair';
+            firstChannel = 4;
+            requiredChannels = 2;
+            break;
+        case '78':
+            mode = 'stereo-pair';
+            firstChannel = 6;
+            requiredChannels = 2;
+            break;
+        default: {
+            const parsedChannel = parseInt(channel, 10);
+            if (isNaN(parsedChannel) || parsedChannel <= 0) return null;
+            mode = 'single';
+            firstChannel = parsedChannel - 1;
+            requiredChannels = 1;
+            break;
+        }
+    }
+    const remainingChannels = outputChannelCount - firstChannel;
+    const availableChannels = remainingChannels <= 0
+        ? 0
+        : (remainingChannels < requiredChannels ? remainingChannels : requiredChannels);
+    return { mode, firstChannel, requiredChannels, availableChannels };
+}
+
+function pluginExecutionUnsupportedReason(plugin, sampleRate, outputChannelCount) {
+    const capabilities = plugin?.executionCapabilities;
+    if (!capabilities || typeof capabilities !== 'object') return null;
+    if (Array.isArray(capabilities.supportedSampleRates) &&
+        !capabilities.supportedSampleRates.includes(sampleRate)) {
+        return 'unsupportedSampleRate';
+    }
+    if (Array.isArray(capabilities.supportedChannelModes)) {
+        const selection = workletChannelSelection(plugin.channel, outputChannelCount);
+        if (!selection ||
+            !capabilities.supportedChannelModes.includes(selection.mode) ||
+            selection.availableChannels !== selection.requiredChannels) {
+            return 'unsupportedChannelMode';
+        }
+    }
+    return null;
+}
 const FIR_CONVOLVER_PLUGIN_TYPES = new Set([
     'FIRCrossoverPlugin',
     'FiveBandFIRPEQPlugin',
@@ -896,8 +986,8 @@ const ET_DSP_PIPELINE_MAX_NODES = 128;
 const AUDIO_PROCESSING_OVERLOAD_CONFIRM_QUANTA = 2;
 const AUDIO_PROCESSING_OVERLOAD_HEARTBEAT_SECONDS = 1;
 
-function encodeWorkletDspChannelSpec(channel) {
-    if (channel === null || channel === undefined) return -1;
+function encodeWorkletDspChannelSpec(channel, outputChannelCount = 2) {
+    if (channel === null || channel === undefined) return outputChannelCount === 1 ? 0 : -1;
     if (channel === 'A') return -2;
     if (channel === 'L') return 0;
     if (channel === 'R') return 1;
@@ -908,7 +998,7 @@ function encodeWorkletDspChannelSpec(channel) {
     throw new TypeError(`Unsupported DSP pipeline channel: ${String(channel)}`);
 }
 
-function encodeWorkletDspPipeline(nodes) {
+function encodeWorkletDspPipeline(nodes, outputChannelCount = 2) {
     if (nodes.length > ET_DSP_PIPELINE_MAX_NODES) {
         throw new RangeError(`DSP pipeline exceeds ${ET_DSP_PIPELINE_MAX_NODES} nodes`);
     }
@@ -935,7 +1025,7 @@ function encodeWorkletDspPipeline(nodes) {
         view.setUint8(offset + 4, 1);
         view.setUint8(offset + 5, node.inputBus);
         view.setUint8(offset + 6, node.outputBus);
-        view.setInt8(offset + 7, encodeWorkletDspChannelSpec(node.channel));
+        view.setInt8(offset + 7, encodeWorkletDspChannelSpec(node.channel, outputChannelCount));
         view.setUint8(offset + 8, 1);
     }
     return bytes;
@@ -951,8 +1041,11 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.pluginContexts = new Map();
         this.processorRegistrationErrors = new Set();
         this.reportedMissingProcessors = new Set();
+        this.reportedInvalidChannels = new Set();
         this.masterBypass = false;
         this.processingDeadlineSequence = 0;
+        this.processingOverloadMonitoringEnabled = false;
+        this.processingOverloadMonitoringStartFrame = Number.POSITIVE_INFINITY;
         this.processingOverloadLastSequence = -1;
         this.processingOverloadConsecutiveQuanta = 0;
         this.processingOverloadActive = false;
@@ -966,6 +1059,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.dspEnabledTypes = new Set();
         this.wasmKernels = new Map();
         this.wasmInstances = new Map();
+        this.dspInstanceEpoch = 0;
         this.dspAssetCache = new Map();
         this.dspAssetStates = new Map();
         this.dspAssetStateRevisions = new Map();
@@ -1120,13 +1214,23 @@ class PluginProcessor extends AudioWorkletProcessor {
                     this.updatePlugins(data.plugins);
                     if (this.masterBypass) this.clearAudioProcessingOverload();
                     break;
+                case 'setAudioProcessingOverloadMonitoring':
+                    this.setAudioProcessingOverloadMonitoring(
+                        data.enabled === true,
+                        data.delaySeconds
+                    );
+                    break;
                 case 'updateAudioConfig':
                     this._invalidatePowerSkipForMutation();
+                    let dspConfigurationChanged = false;
                     if (data.outputChannels !== undefined) {
-                        this.outputChannelCount = data.outputChannels;
-                        // Invalidate combined buffer if channel count changes drastically
-                        this.combinedBuffer = null;
-                        console.log(`Audio config updated: output channels = ${this.outputChannelCount}`);
+                        if (data.outputChannels !== this.outputChannelCount) {
+                            this.outputChannelCount = data.outputChannels;
+                            // Invalidate combined buffer if channel count changes drastically
+                            this.combinedBuffer = null;
+                            dspConfigurationChanged = true;
+                            console.log(`Audio config updated: output channels = ${this.outputChannelCount}`);
+                        }
                     }
                     if (data.lowLatencyMode !== undefined) {
                         this.lowLatencyMode = data.lowLatencyMode;
@@ -1135,9 +1239,13 @@ class PluginProcessor extends AudioWorkletProcessor {
                     if (typeof data.sampleRate === 'number' && data.sampleRate > 0) {
                         if (data.sampleRate !== this.dspSampleRate) {
                             this.dspSampleRate = data.sampleRate;
-                            ++this.dspExecutionGeneration;
-                            this.publishWasmOnlyExecutionStates(true);
+                            dspConfigurationChanged = true;
                         }
+                    }
+                    if (dspConfigurationChanged) {
+                        ++this.dspExecutionGeneration;
+                        this.refreshDspPipeline();
+                        this.publishWasmOnlyExecutionStates(true);
                     }
                     break;
                 case 'dspModule':
@@ -2091,7 +2199,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.bufferPool = this.createLegacyBufferPool();
         this.reportDspFailure(stage, error);
         for (const plugin of this.plugins) {
-            if (WASM_ONLY_EXECUTION_STATE_PLUGIN_TYPES.has(plugin?.type)) {
+            if (requiresWasmExecution(plugin)) {
                 this.dspExecutionRuntimeFallbacks.add(plugin.id);
             }
         }
@@ -2148,6 +2256,36 @@ class PluginProcessor extends AudioWorkletProcessor {
         if (!entry) return;
         if (this.dspBinding) this.dspBinding.destroyInstance(entry.id);
         this.wasmInstances.delete(pluginId);
+    }
+
+    postTubeSimulatorRuntimeEvent(plugin, entry, force = false) {
+        if (!plugin || plugin.type !== 'TubeSimulatorPlugin' || !entry?.id ||
+            !this.dspBinding) return;
+        const state = this.dspBinding.instanceRuntimeEvent(entry.id);
+        if (!state) return;
+        if (!force && entry.runtimeEventGeneration === state.generation) return;
+        const causes = ['none', 'feedbackOscillation', 'processingSafetyFailure'];
+        const cause = causes[state.cause];
+        if (!cause || state.generation < 0 || state.generation > 0xffffffff) return;
+        entry.runtimeEventGeneration = state.generation;
+        this.port.postMessage({
+            type: 'tubeSimulatorCircuitFault',
+            pluginId: plugin.id,
+            pluginType: plugin.type,
+            instanceEpoch: entry.instanceEpoch,
+            generation: state.generation,
+            latched: state.latched,
+            cause
+        });
+    }
+
+    pollTubeSimulatorRuntimeEvents(force = false) {
+        for (const plugin of this.plugins) {
+            const entry = this.wasmInstances.get(plugin.id);
+            if (entry?.ready) {
+                this.postTubeSimulatorRuntimeEvent(plugin, entry, force);
+            }
+        }
     }
 
     reconcileDspInstances() {
@@ -2223,16 +2361,27 @@ class PluginProcessor extends AudioWorkletProcessor {
                 }
             }
             if (!id) {
+                if (requiresWasmExecution(plugin)) {
+                    this.dspExecutionRuntimeFallbacks.add(plugin.id);
+                }
                 this.reportDspFailure(`instance:${plugin.id}`, `unable to create ${plugin.type}`);
                 return;
             }
-            entry = { id, type: plugin.type, ready: false };
+            this.dspInstanceEpoch = (this.dspInstanceEpoch + 1) >>> 0;
+            entry = {
+                id,
+                type: plugin.type,
+                ready: false,
+                instanceEpoch: this.dspInstanceEpoch,
+                runtimeEventGeneration: null
+            };
             this.wasmInstances.set(plugin.id, entry);
             const tapStatus = this.dspBinding.instanceSetTap(id, plugin.id >>> 0);
             if (tapStatus !== 0) {
                 this.reportDspFailure(`instance:${plugin.id}`, `tap binding returned ${tapStatus}`);
             }
             this.restageDspAssets(plugin.id);
+            this.postTubeSimulatorRuntimeEvent(plugin, entry, true);
         }
 
         if (plugin.wasmParams instanceof Float32Array && (plugin.wasmParamsHash >>> 0) === kernel.paramsHash) {
@@ -2259,8 +2408,12 @@ class PluginProcessor extends AudioWorkletProcessor {
                 }
             }
             entry.ready = numericStatus === 0 && byteStatus === 0;
-            if (entry.ready && WASM_ONLY_EXECUTION_STATE_PLUGIN_TYPES.has(plugin.type)) {
-                this.dspExecutionRuntimeFallbacks.delete(plugin.id);
+            if (requiresWasmExecution(plugin)) {
+                if (entry.ready) {
+                    this.dspExecutionRuntimeFallbacks.delete(plugin.id);
+                } else {
+                    this.dspExecutionRuntimeFallbacks.add(plugin.id);
+                }
             }
             if (numericStatus !== 0) {
                 this.reportDspFailure(
@@ -2754,6 +2907,11 @@ class PluginProcessor extends AudioWorkletProcessor {
                 continue;
             }
             if (!plugin.enabled || (insideSection && !sectionEnabled)) continue;
+            if (pluginExecutionUnsupportedReason(
+                plugin,
+                this.dspSampleRate,
+                this.outputChannelCount
+            )) return;
 
             const entry = this.wasmInstances.get(plugin.id);
             if (!entry?.ready) return;
@@ -2766,7 +2924,9 @@ class PluginProcessor extends AudioWorkletProcessor {
         }
 
         try {
-            const status = this.dspBinding.pipelineConfigure(encodeWorkletDspPipeline(nodes));
+            const status = this.dspBinding.pipelineConfigure(
+                encodeWorkletDspPipeline(nodes, this.outputChannelCount)
+            );
             if (status !== 0) {
                 this.reportDspFailure('pipeline-configure', `status ${status}`);
                 return;
@@ -2801,6 +2961,11 @@ class PluginProcessor extends AudioWorkletProcessor {
                 continue;
             }
             if (!plugin.enabled || (insideSection && !sectionEnabled)) continue;
+            if (pluginExecutionUnsupportedReason(
+                plugin,
+                this.dspSampleRate,
+                this.outputChannelCount
+            )) continue;
 
             const inputBus = plugin.inputBus;
             const outputBus = plugin.outputBus;
@@ -2897,6 +3062,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             return ET_DSP_PIPELINE_ARENA_INVALID;
         }
         if (status === 0 && !processError) {
+            this.pollTubeSimulatorRuntimeEvents();
             return ET_DSP_PIPELINE_PROCESSED;
         }
 
@@ -2971,7 +3137,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         }
         const failures = (this.dspRuntimeFailures.get(plugin.type) || 0) + 1;
         this.dspRuntimeFailures.set(plugin.type, failures);
-        if (WASM_ONLY_EXECUTION_STATE_PLUGIN_TYPES.has(plugin.type)) {
+        if (requiresWasmExecution(plugin)) {
             this.dspExecutionRuntimeFallbacks.add(plugin.id);
         }
         this.reportDspFailure(`${stage}:${plugin.id}`, error);
@@ -3049,13 +3215,15 @@ class PluginProcessor extends AudioWorkletProcessor {
         }
     }
 
-    normalizePluginConfig(pluginConfig) {
+    normalizePluginConfig(pluginConfig, previousPlugin = null) {
         const params = pluginConfig?.parameters ?? {};
         return {
             ...pluginConfig,
             inputBus: params.inputBus ?? pluginConfig?.inputBus ?? 0,
             outputBus: params.outputBus ?? pluginConfig?.outputBus ?? 0,
             channel: params.channel ?? pluginConfig?.channel ?? null,
+            executionCapabilities: pluginConfig?.executionCapabilities ??
+                previousPlugin?.executionCapabilities ?? null
         };
     }
 
@@ -3064,7 +3232,10 @@ class PluginProcessor extends AudioWorkletProcessor {
         ++this.dspExecutionGeneration;
         const index = this.plugins.findIndex(p => p.id === pluginConfig.id);
         if (index !== -1) {
-            const normalizedPlugin = this.normalizePluginConfig(pluginConfig);
+            const normalizedPlugin = this.normalizePluginConfig(
+                pluginConfig,
+                this.plugins[index]
+            );
             this.dspPipelineReady = false;
             try {
                 this.plugins[index] = normalizedPlugin;
@@ -3109,11 +3280,17 @@ class PluginProcessor extends AudioWorkletProcessor {
     wasmOnlyExecutionState(plugin, engineStopped = false) {
         if (engineStopped) return { state: 'bypassed', reason: 'engineStopped' };
         if (this.dspExecutionInitializing) return { state: 'pending', reason: null };
-        const supported = plugin.type === 'AMRadioSimulatorPlugin' ||
-            this.dspSampleRate === 44100 || this.dspSampleRate === 48000 ||
-            this.dspSampleRate === 88200 || this.dspSampleRate === 96000 ||
-            this.dspSampleRate === 176400 || this.dspSampleRate === 192000;
-        if (!supported) return { state: 'bypassed', reason: 'unsupportedSampleRate' };
+        if (this.dspFailedTypes.has(plugin.type)) {
+            return { state: 'bypassed', reason: 'runtimeFallback' };
+        }
+        const executionUnsupportedReason = pluginExecutionUnsupportedReason(
+            plugin,
+            this.dspSampleRate,
+            this.outputChannelCount
+        );
+        if (executionUnsupportedReason) {
+            return { state: 'bypassed', reason: executionUnsupportedReason };
+        }
         if (this.dspExecutionRuntimeFallbacks.has(plugin.id)) {
             return { state: 'bypassed', reason: 'runtimeFallback' };
         }
@@ -3133,7 +3310,7 @@ class PluginProcessor extends AudioWorkletProcessor {
     publishWasmOnlyExecutionStates(force = false, engineStopped = false) {
         const activeIds = new Set();
         for (const plugin of this.plugins) {
-            if (!WASM_ONLY_EXECUTION_STATE_PLUGIN_TYPES.has(plugin?.type)) continue;
+            if (!requiresWasmExecution(plugin)) continue;
             activeIds.add(plugin.id);
             const status = this.wasmOnlyExecutionState(plugin, engineStopped);
             const key = `${status.state}:${status.reason || ''}:${this.dspExecutionGeneration}`;
@@ -3145,6 +3322,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                 pluginType: plugin.type,
                 state: status.state,
                 reason: status.reason,
+                sampleRate: this.dspSampleRate || globalThis.sampleRate,
                 generation: this.dspExecutionGeneration
             });
         }
@@ -3156,8 +3334,11 @@ class PluginProcessor extends AudioWorkletProcessor {
     addPlugin(pluginConfig, index) {
         if (!pluginConfig) return;
         ++this.dspExecutionGeneration;
-        const normalizedPlugin = this.normalizePluginConfig(pluginConfig);
-        const existingIndex = this.plugins.findIndex(p => p.id === normalizedPlugin.id);
+        const existingIndex = this.plugins.findIndex(p => p.id === pluginConfig.id);
+        const normalizedPlugin = this.normalizePluginConfig(
+            pluginConfig,
+            existingIndex === -1 ? null : this.plugins[existingIndex]
+        );
         this.dspPipelineReady = false;
         if (existingIndex !== -1) {
             try {
@@ -3443,6 +3624,24 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.port.postMessage({ type: 'audioProcessingOverload', active: false });
     }
 
+    setAudioProcessingOverloadMonitoring(enabled, delaySeconds = 0) {
+        this.processingOverloadMonitoringEnabled = enabled;
+        this.processingOverloadMonitoringStartFrame = enabled
+            ? this.currentFrame + Math.ceil(
+                globalThis.sampleRate * (
+                    Number.isFinite(delaySeconds) && delaySeconds > 0 ? delaySeconds : 0
+                )
+            )
+            : Number.POSITIVE_INFINITY;
+        this.processingOverloadLastReportFrame = Number.NEGATIVE_INFINITY;
+        this.clearAudioProcessingOverload();
+    }
+
+    isAudioProcessingOverloadMonitoringActive() {
+        return this.processingOverloadMonitoringEnabled &&
+            this.currentFrame >= this.processingOverloadMonitoringStartFrame;
+    }
+
     audioProcessingClockNow() {
         const performanceRef = globalThis.performance;
         return typeof performanceRef?.now === 'function'
@@ -3451,7 +3650,8 @@ class PluginProcessor extends AudioWorkletProcessor {
     }
 
     finishAudioProcessingDeadline(startedAt, sequence, blockSize, processedPlugin) {
-        if (!processedPlugin || this.masterBypass ||
+        if (!this.isAudioProcessingOverloadMonitoringActive() ||
+            !processedPlugin || this.masterBypass ||
             !Number.isFinite(startedAt)) {
             this.clearAudioProcessingOverload();
             return;
@@ -3720,7 +3920,8 @@ class PluginProcessor extends AudioWorkletProcessor {
             return true; // Keep processor alive
         }
 
-        const audioProcessingStartedAt = !this.masterBypass
+        const audioProcessingStartedAt = !this.masterBypass &&
+            this.isAudioProcessingOverloadMonitoringActive()
             ? this.audioProcessingClockNow()
             : null;
 
@@ -3889,11 +4090,22 @@ class PluginProcessor extends AudioWorkletProcessor {
             if (!plugin.enabled || (insideSection && !activeSectionEnabled)) {
                 continue;
             }
+            const executionBypassed = requiresWasmExecution(plugin)
+                ? this.wasmOnlyExecutionState(plugin).state !== 'active'
+                : pluginExecutionUnsupportedReason(
+                    plugin,
+                    this.dspSampleRate,
+                    this.outputChannelCount
+                ) !== null;
 
             // Get the compiled processor function for this plugin type
-            const processor = pluginProcessors.get(plugin.type);
-            const wasmEntry = this.dspLive ? this.wasmInstances.get(plugin.id) : null;
-            if (!processor && !wasmEntry?.ready) {
+            // Unsupported execution modes still use the normal channel and bus
+            // result path below so pass-through routing remains explicit.
+            const processor = executionBypassed ? null : pluginProcessors.get(plugin.type);
+            const wasmEntry = executionBypassed
+                ? null
+                : (this.dspLive ? this.wasmInstances.get(plugin.id) : null);
+            if (!executionBypassed && !processor && !wasmEntry?.ready) {
                 if (!this.reportedMissingProcessors.has(plugin.type)) {
                     this.reportedMissingProcessors.add(plugin.type);
                     console.warn(`Processor function not found for type: ${plugin.type}`);
@@ -3945,68 +4157,44 @@ class PluginProcessor extends AudioWorkletProcessor {
             let pairStartChannel = -1; // Starting channel index (0-based) for pairs
             let singleChannelIndex = -1;// Channel index (0-based) for single channel
 
-            // Determine processing mode based on targetChannelSpec
-            switch (targetChannelSpec) {
-                case 'A': // Process all available channels
-                    if (outputChannelCount > 0) {
-                        processMode = 'all';
-                        numProcessingChannels = outputChannelCount;
-                    }
-                    break;
-                case 'L': // Process Left channel (index 0)
-                    if (outputChannelCount > 0) {
-                        processMode = 'single';
-                        singleChannelIndex = 0;
-                        numProcessingChannels = 1;
-                    }
-                    break;
-                case 'R': // Process Right channel (index 1)
-                    if (outputChannelCount > 1) {
-                        processMode = 'single';
-                        singleChannelIndex = 1;
-                        numProcessingChannels = 1;
-                    }
-                    break;
-                case null: // Default: process stereo pair (channels 0, 1)
-                case undefined:
-                    if (outputChannelCount >= 2) {
-                        processMode = 'pair';
-                        pairStartChannel = 0;
-                        numProcessingChannels = 2;
-                    }
-                    break;
-                case '34': // Process pair (channels 2, 3)
-                    if (outputChannelCount >= 4) {
-                        processMode = 'pair';
-                        pairStartChannel = 2;
-                        numProcessingChannels = 2;
-                    }
-                    break;
-                case '56': // Process pair (channels 4, 5)
-                     if (outputChannelCount >= 6) {
-                        processMode = 'pair';
-                        pairStartChannel = 4;
-                        numProcessingChannels = 2;
-                    }
-                    break;
-                 case '78': // Process pair (channels 6, 7)
-                     if (outputChannelCount >= 8) {
-                        processMode = 'pair';
-                        pairStartChannel = 6;
-                        numProcessingChannels = 2;
-                    }
-                    break;
-                default:
-                    // Check for specific numeric channel (e.g., "3")
-                    const parsedChannel = parseInt(targetChannelSpec, 10);
-                    if (!isNaN(parsedChannel) && parsedChannel > 0 && parsedChannel <= outputChannelCount) {
-                        processMode = 'single';
-                        singleChannelIndex = parsedChannel - 1; // Convert to 0-based index
-                        numProcessingChannels = 1;
-                    } else {
-                        console.warn(`Invalid channel specifier "${targetChannelSpec}" for plugin ${plugin.id}`);
-                    }
-                    break;
+            // Use the same normalized selection as capability checks and full-pipeline routing.
+            const channelSelection = workletChannelSelection(targetChannelSpec, outputChannelCount);
+            if (!channelSelection) {
+                // The specifier does not name any channel layout. Leave processMode
+                // at 'skip' so the plugin is bypassed instead of throwing out of
+                // process(), which would permanently disable this processor.
+                const invalidChannelKey = `${plugin.id}:${targetChannelSpec}`;
+                if (!this.reportedInvalidChannels.has(invalidChannelKey)) {
+                    this.reportedInvalidChannels.add(invalidChannelKey);
+                    console.warn(`Invalid channel specifier "${targetChannelSpec}" for plugin ${plugin.id}`);
+                }
+            } else if (channelSelection.availableChannels === channelSelection.requiredChannels) {
+                if (channelSelection.mode === 'all') {
+                    processMode = 'all';
+                    numProcessingChannels = channelSelection.requiredChannels;
+                } else if (channelSelection.mode === 'stereo-pair') {
+                    processMode = 'pair';
+                    pairStartChannel = channelSelection.firstChannel;
+                    numProcessingChannels = channelSelection.requiredChannels;
+                } else {
+                    processMode = 'single';
+                    singleChannelIndex = channelSelection.firstChannel;
+                    numProcessingChannels = 1;
+                }
+            }
+
+            if (executionBypassed && processMode === 'skip') {
+                const selection = workletChannelSelection(
+                    targetChannelSpec,
+                    outputChannelCount
+                );
+                if (selection?.availableChannels === 1) {
+                    // Preserve pass-through routing for the available half of an
+                    // unsupported stereo pair when the output is one channel short.
+                    processMode = 'single';
+                    singleChannelIndex = selection.firstChannel;
+                    numProcessingChannels = 1;
+                }
             }
 
             if (processMode === 'skip') continue; // Skip plugin if channel spec is invalid for current config
@@ -4066,10 +4254,10 @@ class PluginProcessor extends AudioWorkletProcessor {
             }
 
             // --- 9d. Execute Plugin Processor Function ---
-            processedPlugin = true;
+            if (!executionBypassed) processedPlugin = true;
             let result = processingBuffer;
             let processedInWasm = false;
-            if (wasmEntry?.ready && this.dspLive &&
+            if (!executionBypassed && wasmEntry?.ready && this.dspLive &&
                 outputChannelCount <= ET_DSP_MAX_CHANNELS && blockSize === ET_DSP_MAX_FRAMES) {
                 const sampleCount = numProcessingChannels * blockSize;
                 const expectedMemory = this.dspBinding.memory?.buffer;
@@ -4123,6 +4311,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                     }
                     if (status === 0 && !processError) {
                         processedInWasm = true;
+                        this.postTubeSimulatorRuntimeEvent(plugin, wasmEntry);
                     } else {
                         this.restoreDspHybridInput(processingBuffer, sampleCount);
                         this.runtimeFallback(
@@ -4133,7 +4322,8 @@ class PluginProcessor extends AudioWorkletProcessor {
                 }
             }
 
-            if (!processedInWasm && processor) {
+            if (!executionBypassed && !requiresWasmExecution(plugin) &&
+                !processedInWasm && processor) {
                 // Preserve legacy clone-and-store semantics only when JavaScript runs.
                 const context = { ...pluginContext, port };
                 const processingParams = {

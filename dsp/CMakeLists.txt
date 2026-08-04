@@ -5,6 +5,34 @@ project(effetune_dsp VERSION 1.0.0 LANGUAGES C CXX)
 include(CTest)
 
 option(ET_SIMD "Build the WebAssembly SIMD128 variant" OFF)
+option(ET_DEBUG_STATE "Expose test-only kernel state inspection" OFF)
+option(
+  ET_NATIVE_TEST_WARNING_CHECK
+  "Compile registered native test sources with Emscripten Clang warnings"
+  OFF)
+
+if(ET_NATIVE_TEST_WARNING_CHECK AND NOT EMSCRIPTEN)
+  message(FATAL_ERROR
+    "ET_NATIVE_TEST_WARNING_CHECK requires the Emscripten Clang toolchain")
+endif()
+
+if(ET_NATIVE_TEST_WARNING_CHECK)
+  include(CheckCXXSourceCompiles)
+  set(CMAKE_REQUIRED_FLAGS
+      "-Wall -Wextra -Wpedantic -Werror -Wunused-but-set-variable")
+  check_cxx_source_compiles(
+    "int main() {
+       unsigned count = 0;
+       ++count;
+       return 0;
+     }"
+    ET_UNUSED_BUT_SET_VARIABLE_COMPILES)
+  unset(CMAKE_REQUIRED_FLAGS)
+  if(ET_UNUSED_BUT_SET_VARIABLE_COMPILES)
+    message(FATAL_ERROR
+      "Clang warning check did not reject an unused-but-set variable")
+  endif()
+endif()
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -55,6 +83,9 @@ file(
   CONFIGURE_DEPENDS
   "${CMAKE_CURRENT_SOURCE_DIR}/plugins/*/kernel.cpp")
 list(APPEND EFFETUNE_DSP_SOURCES ${EFFETUNE_PLUGIN_SOURCES})
+list(
+  APPEND EFFETUNE_DSP_SOURCES
+  "${CMAKE_CURRENT_SOURCE_DIR}/plugins/lofi/gsm_full_rate_simulator/codec.cpp")
 
 if(NOT EMSCRIPTEN)
   # JS golden parity requires separate multiply-add rounding in this recursive kernel.
@@ -78,6 +109,7 @@ target_link_libraries(effetune_dsp_core PUBLIC pffft)
 target_compile_definitions(
   effetune_dsp_core
   PRIVATE $<$<BOOL:${ET_SIMD}>:ET_SIMD=1>
+          $<$<BOOL:${ET_DEBUG_STATE}>:ET_DEBUG_STATE=1>
           $<$<CONFIG:Debug>:ET_DEBUG_BUILD=1>
           $<$<CONFIG:Debug>:ET_ALLOCATION_GUARD=1>
           $<$<AND:$<CONFIG:Debug>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:ET_WRAP_MALLOC=1>
@@ -102,6 +134,21 @@ else()
 endif()
 
 if(EMSCRIPTEN)
+  set(ET_EXPORTED_FUNCTIONS_FILE "${CMAKE_CURRENT_SOURCE_DIR}/exports.txt")
+  if(ET_DEBUG_STATE)
+    file(READ "${ET_EXPORTED_FUNCTIONS_FILE}" ET_EXPORTED_FUNCTIONS_JSON)
+    string(
+      REGEX REPLACE
+      "\][ \t\r\n]*$"
+      ",\n  \"_et_instance_debug_state\",\n  \"_et_instance_debug_state_v2\",\n  \"_et_instance_debug_begin_observation\",\n  \"_et_instance_debug_clear_detector_observation\"\n]\n"
+      ET_EXPORTED_FUNCTIONS_JSON
+      "${ET_EXPORTED_FUNCTIONS_JSON}")
+    set(
+      ET_EXPORTED_FUNCTIONS_FILE
+      "${CMAKE_CURRENT_BINARY_DIR}/exports-debug-state.txt")
+    file(WRITE "${ET_EXPORTED_FUNCTIONS_FILE}" "${ET_EXPORTED_FUNCTIONS_JSON}")
+  endif()
+
   add_executable(effetune-dsp wasm/no_entry.cpp)
   target_link_libraries(effetune-dsp PRIVATE effetune_dsp_core)
   set_target_properties(effetune-dsp PROPERTIES OUTPUT_NAME "effetune-dsp" SUFFIX ".wasm")
@@ -117,16 +164,17 @@ if(EMSCRIPTEN)
       -sALLOW_MEMORY_GROWTH=1
       -sINITIAL_MEMORY=8388608
       -sMAXIMUM_MEMORY=268435456
-      -sEXPORTED_FUNCTIONS=@${CMAKE_CURRENT_SOURCE_DIR}/exports.txt
+      -sEXPORTED_FUNCTIONS=@${ET_EXPORTED_FUNCTIONS_FILE}
       -fwasm-exceptions
       $<$<CONFIG:Release>:-O3>
       $<$<CONFIG:Release>:-flto>
       $<$<BOOL:${ET_SIMD}>:-msimd128>)
 endif()
 
-if(BUILD_TESTING AND NOT EMSCRIPTEN)
+if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
   # Declares a native test executable linked against effetune_dsp_core with the
-  # standard warnings-as-errors options.
+  # standard warnings-as-errors options. The Emscripten warning check reuses
+  # the same sources, include paths, and definitions as compile-only objects.
   #   et_add_dsp_test(<target>
   #     SOURCES <src>...
   #     [INCLUDE_DIRS <dir>...]        # extra private include directories
@@ -140,7 +188,13 @@ if(BUILD_TESTING AND NOT EMSCRIPTEN)
       message(FATAL_ERROR
         "et_add_dsp_test(${NAME}): unknown arguments: ${ET_TEST_UNPARSED_ARGUMENTS}")
     endif()
-    add_executable(${NAME} ${ET_TEST_SOURCES})
+    if(ET_NATIVE_TEST_WARNING_CHECK)
+      add_library(${NAME} OBJECT ${ET_TEST_SOURCES})
+      set_property(
+        GLOBAL APPEND PROPERTY ET_NATIVE_TEST_WARNING_TARGETS ${NAME})
+    else()
+      add_executable(${NAME} ${ET_TEST_SOURCES})
+    endif()
     if(ET_TEST_INCLUDE_DIRS)
       target_include_directories(${NAME} PRIVATE ${ET_TEST_INCLUDE_DIRS})
     endif()
@@ -149,14 +203,19 @@ if(BUILD_TESTING AND NOT EMSCRIPTEN)
       target_compile_options(${NAME} PRIVATE /W4 /WX)
     else()
       target_compile_options(${NAME} PRIVATE -Wall -Wextra -Wpedantic -Werror)
-      if(ET_TEST_WRAP_MALLOC)
+      if(ET_NATIVE_TEST_WARNING_CHECK)
+        target_compile_options(
+          ${NAME} PRIVATE -Wunused-but-set-variable -fwasm-exceptions)
+      elseif(ET_TEST_WRAP_MALLOC)
         target_link_options(${NAME} PRIVATE $<$<CONFIG:Debug>:-Wl,--wrap=malloc>)
       endif()
     endif()
-    if(NOT ET_TEST_TEST_NAME)
-      set(ET_TEST_TEST_NAME ${NAME})
+    if(NOT ET_NATIVE_TEST_WARNING_CHECK)
+      if(NOT ET_TEST_TEST_NAME)
+        set(ET_TEST_TEST_NAME ${NAME})
+      endif()
+      add_test(NAME ${ET_TEST_TEST_NAME} COMMAND ${NAME} ${ET_TEST_TEST_ARGS})
     endif()
-    add_test(NAME ${ET_TEST_TEST_NAME} COMMAND ${NAME} ${ET_TEST_TEST_ARGS})
   endfunction()
 
   et_add_dsp_test(
@@ -223,6 +282,15 @@ if(BUILD_TESTING AND NOT EMSCRIPTEN)
     SOURCES test/wave3c_sub_synth_state_test.cpp
     INCLUDE_DIRS generated/cpp)
   et_add_dsp_test(
+    effetune_dsp_bluetooth_sbc_simulator_tests
+    SOURCES plugins/lofi/bluetooth_sbc_simulator/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_bluetooth_sbc_conformance_tests
+    SOURCES plugins/lofi/bluetooth_sbc_simulator/conformance_test.cpp
+    TEST_ARGS --self-test)
+  et_add_dsp_test(
     effetune_dsp_digital_error_emulator_tests
     SOURCES plugins/lofi/digital_error_emulator/native_test.cpp
     INCLUDE_DIRS core generated/cpp
@@ -235,6 +303,28 @@ if(BUILD_TESTING AND NOT EMSCRIPTEN)
   et_add_dsp_test(
     effetune_dsp_fm_radio_simulator_tests
     SOURCES plugins/lofi/fm_radio_simulator/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_g726_adpcm_simulator_tests
+    SOURCES plugins/lofi/g726_adpcm_simulator/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_gsm_full_rate_conformance_tests
+    SOURCES plugins/lofi/gsm_full_rate_simulator/native_test.cpp
+            plugins/lofi/gsm_full_rate_simulator/codec.cpp)
+  target_compile_definitions(
+    effetune_dsp_gsm_full_rate_conformance_tests
+    PRIVATE EFFETUNE_GSM_FR_DIAGNOSTICS=1)
+  et_add_dsp_test(
+    effetune_dsp_gsm_full_rate_simulator_tests
+    SOURCES plugins/lofi/gsm_full_rate_simulator/kernel_native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_mp3_codec_simulator_tests
+    SOURCES plugins/lofi/mp3_codec_simulator/native_test.cpp
     INCLUDE_DIRS core generated/cpp
     WRAP_MALLOC)
   et_add_dsp_test(
@@ -332,10 +422,19 @@ if(BUILD_TESTING AND NOT EMSCRIPTEN)
       COMMAND effetune_dsp_allocation_guard_probe)
   endif()
 
-  find_program(ET_NODE_EXECUTABLE node)
-  if(ET_NODE_EXECUTABLE)
-    add_test(
-      NAME effetune_dsp_codegen_tests
-      COMMAND ${ET_NODE_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/codegen_test.mjs)
+  if(ET_NATIVE_TEST_WARNING_CHECK)
+    get_property(
+      ET_NATIVE_TEST_WARNING_TARGETS
+      GLOBAL PROPERTY ET_NATIVE_TEST_WARNING_TARGETS)
+    add_custom_target(
+      effetune_dsp_native_test_warning_check
+      DEPENDS ${ET_NATIVE_TEST_WARNING_TARGETS})
+  else()
+    find_program(ET_NODE_EXECUTABLE node)
+    if(ET_NODE_EXECUTABLE)
+      add_test(
+        NAME effetune_dsp_codegen_tests
+        COMMAND ${ET_NODE_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/codegen_test.mjs)
+    endif()
   endif()
 endif()

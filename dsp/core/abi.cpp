@@ -4,8 +4,10 @@
 #include "engine.h"
 #include "registry.h"
 
+#include <algorithm>
 #include <array>
 #include <cstring>
+#include <limits>
 #include <new>
 
 namespace {
@@ -206,6 +208,138 @@ et_status et_instance_process(et_engine engine, et_instance instance, float *aud
              ? ET_ERR_ARGS
              : target->processInstance(instance, audio, channel_count, frame_count, time_seconds);
 }
+
+et_status et_instance_runtime_event(et_engine engine, et_instance instance,
+                                    et_runtime_event_state *out_state) {
+  effetune::Engine *target = findEngine(engine);
+  if (target == nullptr || out_state == nullptr) {
+    return ET_ERR_ARGS;
+  }
+  effetune::RuntimeEventState state{};
+  const et_status status = target->readInstanceRuntimeEvent(instance, state);
+  if (status == ET_OK) {
+    out_state->generation = state.generation;
+    out_state->latched = state.latched;
+    out_state->cause = state.cause;
+  }
+  return status;
+}
+
+#if defined(ET_DEBUG_STATE)
+et_status et_instance_debug_state(et_engine engine, et_instance instance, std::uint32_t *out_words,
+                                  std::uint32_t word_count, double *out_values,
+                                  std::uint32_t value_count) {
+  constexpr std::uint32_t kWordCount = 57u;
+  constexpr std::uint32_t kValueCount = 45u;
+  effetune::Engine *target = findEngine(engine);
+  if (target == nullptr || out_words == nullptr || word_count != kWordCount ||
+      out_values == nullptr || value_count != kValueCount) {
+    return ET_ERR_ARGS;
+  }
+  effetune::DebugStateSnapshot state{};
+  const et_status status = target->readInstanceDebugState(instance, state);
+  if (status != ET_OK) {
+    return status;
+  }
+  out_words[0] = static_cast<std::uint32_t>(state.digest);
+  out_words[1] = static_cast<std::uint32_t>(state.digest >> 32u);
+  for (std::size_t index = 0u; index < state.transition.size(); ++index) {
+    if (state.transition[index] > std::numeric_limits<std::uint32_t>::max()) {
+      return ET_ERR_STATE;
+    }
+    out_words[index + 2u] = static_cast<std::uint32_t>(state.transition[index]);
+  }
+  out_words[14] = state.runtimeEvent.generation;
+  out_words[15] = state.runtimeEvent.latched;
+  out_words[16] = state.runtimeEvent.cause;
+  for (std::size_t index = 0u; index < state.auxiliaryWords.size(); ++index) {
+    const std::uint64_t value = state.auxiliaryWords[index];
+    if (value > std::numeric_limits<std::uint32_t>::max() &&
+        !(index >= 6u && index <= 8u && value == std::numeric_limits<std::uint64_t>::max())) {
+      return ET_ERR_STATE;
+    }
+    out_words[index + 17u] = value == std::numeric_limits<std::uint64_t>::max()
+                                 ? std::numeric_limits<std::uint32_t>::max()
+                                 : static_cast<std::uint32_t>(value);
+  }
+  std::copy(state.appliedParameters.begin(), state.appliedParameters.end(), out_values);
+  std::copy(state.feedbackCalibration.begin(), state.feedbackCalibration.end(), out_values + 10u);
+  std::copy(state.auxiliaryValues.begin(), state.auxiliaryValues.end(), out_values + 19u);
+  return ET_OK;
+}
+
+et_status et_instance_debug_state_v2(et_engine engine, et_instance instance,
+                                     std::uint32_t *out_words, std::uint32_t word_count,
+                                     double *out_values, std::uint32_t value_count) {
+  constexpr std::uint32_t kWordCount = 57u;
+  constexpr std::uint32_t kValueCount = 59u;
+  effetune::Engine *target = findEngine(engine);
+  if (target == nullptr || out_words == nullptr || word_count != kWordCount ||
+      out_values == nullptr || value_count != kValueCount) {
+    return ET_ERR_ARGS;
+  }
+  effetune::DebugStateSnapshotV2 state{};
+  const et_status status = target->readInstanceDebugStateV2(instance, state);
+  if (status != ET_OK) {
+    return status;
+  }
+  out_words[0] = static_cast<std::uint32_t>(state.legacy.digest);
+  out_words[1] = static_cast<std::uint32_t>(state.legacy.digest >> 32u);
+  for (std::size_t index = 0u; index < state.legacy.transition.size(); ++index) {
+    if (state.legacy.transition[index] > std::numeric_limits<std::uint32_t>::max()) {
+      return ET_ERR_STATE;
+    }
+    out_words[index + 2u] = static_cast<std::uint32_t>(state.legacy.transition[index]);
+  }
+  out_words[14] = state.legacy.runtimeEvent.generation;
+  out_words[15] = state.legacy.runtimeEvent.latched;
+  out_words[16] = state.legacy.runtimeEvent.cause;
+  for (std::size_t index = 0u; index < state.legacy.auxiliaryWords.size(); ++index) {
+    const std::uint64_t value = state.legacy.auxiliaryWords[index];
+    if (value > std::numeric_limits<std::uint32_t>::max() &&
+        !(index >= 6u && index <= 8u && value == std::numeric_limits<std::uint64_t>::max())) {
+      return ET_ERR_STATE;
+    }
+    out_words[index + 17u] = value == std::numeric_limits<std::uint64_t>::max()
+                                 ? std::numeric_limits<std::uint32_t>::max()
+                                 : static_cast<std::uint32_t>(value);
+  }
+  std::copy(state.legacy.appliedParameters.begin(), state.legacy.appliedParameters.end(),
+            out_values);
+  std::copy(state.legacy.feedbackCalibration.begin(), state.legacy.feedbackCalibration.end(),
+            out_values + 10u);
+  std::copy(state.legacy.auxiliaryValues.begin(), state.legacy.auxiliaryValues.end(),
+            out_values + 19u);
+  std::copy(state.appliedParameters.begin() + 10u, state.appliedParameters.end(), out_values + 45u);
+  std::copy(state.transitionBoundaryAppliedParameters.begin() + 10u,
+            state.transitionBoundaryAppliedParameters.end(), out_values + 52u);
+  return ET_OK;
+}
+
+et_status et_instance_debug_begin_observation(et_engine engine, et_instance instance,
+                                              std::uint32_t *out_origin_words,
+                                              std::uint32_t word_count) {
+  effetune::Engine *target = findEngine(engine);
+  if (target == nullptr || out_origin_words == nullptr || word_count != 2u) {
+    return ET_ERR_ARGS;
+  }
+  std::uint64_t origin = 0u;
+  const et_status status = target->beginInstanceDebugObservation(instance, origin);
+  if (status == ET_OK) {
+    out_origin_words[0] = static_cast<std::uint32_t>(origin);
+    out_origin_words[1] = static_cast<std::uint32_t>(origin >> 32u);
+  }
+  return status;
+}
+
+et_status et_instance_debug_clear_detector_observation(et_engine engine, et_instance instance) {
+  effetune::Engine *target = findEngine(engine);
+  if (target == nullptr) {
+    return ET_ERR_ARGS;
+  }
+  return target->clearInstanceDebugDetectorObservation(instance);
+}
+#endif
 
 float *et_arena_combined_ptr(et_engine engine) {
   effetune::Engine *target = findEngine(engine);

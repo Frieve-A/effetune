@@ -353,8 +353,12 @@ EffeTune 2.1.0では、カタログスキーマv3を採用し、CUE形式のア�
 | Lo-Fi     | Digital Error Emulator | 様々なデジタルオーディオ伝送エラーとビンテージデジタル機器の特性をシミュレート | [詳細](plugins/lofi.md#digital-error-emulator) |
 | Lo-Fi     | DSD64 IMD Simulator | DSD64の超音波ノイズに由来する可聴域の相互変調歪み（IMD）をシミュレート | [詳細](plugins/lofi.md#dsd64-imd-simulator) |
 | Lo-Fi     | FM Radio Simulator | 音楽を物理シミュレーションによるFM放送・受信機チェーンで変換 | [詳細](plugins/lofi.md#fm-radio-simulator) |
+| Lo-Fi     | G.726 Simulator | ITU-T G.726音声コーデックのエンコード/デコード往復を、任意のノイズのある無線区間付きで再現 | [詳細](plugins/lofi.md#g726-simulator) |
+| Lo-Fi     | GSM-FR Simulator | 13 kbit/s GSM-FR音声コーデックのエンコード/デコード往復を、フレーム消失の隠蔽を伴う無線区間付きで再現 | [詳細](plugins/lofi.md#gsm-fr-simulator) |
 | Lo-Fi     | Hum Generator | ビンテージ/ローファイ風の50/60 Hz電源ハムの雰囲気を調整して追加 | [詳細](plugins/lofi.md#hum-generator) |
+| Lo-Fi     | MP3 Codec Simulator | 低ビットレートMPEG Layer IIIのクリーンなエンコード/デコード往復を再現 | [詳細](plugins/lofi.md#mp3-codec-simulator) |
 | Lo-Fi     | Noise Blender | ローファイな雰囲気のための背景ノイズ質感を調整して追加 | [詳細](plugins/lofi.md#noise-blender) |
+| Lo-Fi     | SBC Codec Simulator | Bluetooth A2DP SBCのエンコード/デコード往復を、任意のパケット消失と隠蔽付きで再現 | [詳細](plugins/lofi.md#sbc-codec-simulator) |
 | Lo-Fi     | Simple Jitter | デジタルジッターシミュレーション | [詳細](plugins/lofi.md#simple-jitter) |
 | Lo-Fi     | SW Radio Simulator | 音楽をモデル化した短波放送・電離層伝搬・受信機チェーンで変換 | [詳細](plugins/lofi.md#sw-radio-simulator) |
 | Lo-Fi     | Vinyl Artifacts | レコード風のポップノイズ、クラックル、ヒス、ランブル、ステレオノイズ漏れを追加 | [詳細](plugins/lofi.md#vinyl-artifacts) |

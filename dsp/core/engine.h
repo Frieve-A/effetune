@@ -49,6 +49,14 @@ public:
                                                  std::uint32_t slot) const noexcept;
   et_status processInstance(et_instance instance, float *audio, std::uint32_t channel_count,
                             std::uint32_t frame_count, double time_seconds) noexcept;
+  et_status readInstanceRuntimeEvent(et_instance instance, RuntimeEventState &state) const noexcept;
+#if defined(ET_DEBUG_STATE)
+  et_status readInstanceDebugState(et_instance instance, DebugStateSnapshot &state) const noexcept;
+  et_status readInstanceDebugStateV2(et_instance instance,
+                                     DebugStateSnapshotV2 &state) const noexcept;
+  et_status beginInstanceDebugObservation(et_instance instance, std::uint64_t &origin) noexcept;
+  et_status clearInstanceDebugDetectorObservation(et_instance instance) noexcept;
+#endif
 
   et_status configurePipeline(const std::uint8_t *descriptor,
                               std::uint32_t descriptor_bytes) noexcept;

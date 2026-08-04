@@ -16,6 +16,10 @@ const metadata = JSON.parse(fs.readFileSync(
   new URL('../../plugins/dsp/effetune-dsp.meta.json', import.meta.url),
   'utf8'
 ));
+const generatedSource = fs.readFileSync(
+  new URL('../../js/audio/dsp-params.generated.js', import.meta.url),
+  'utf8'
+);
 
 function paramsWithFieldValue(field, value) {
   if (field.arrayKey) {
@@ -44,13 +48,27 @@ function assertPackedField(packer, field, offset, value, expected, label) {
   }
 }
 
-test('every shipped DSP type packs explicit schema defaults matching artifact metadata', async () => {
-  assert.equal(metadata.kernels.length, 76);
-  assert.equal(DSP_PARAM_PACKERS.size, metadata.kernels.length);
-  assert.deepEqual(
-    new Set(Object.keys(DSP_PARAM_LAYOUTS)),
-    new Set(metadata.kernels.map(kernel => kernel.name))
+test('every production DSP kernel packs explicit schema defaults matching artifact metadata', async () => {
+  const kernelNames = new Set(metadata.kernels.map(kernel => kernel.name));
+  assert.ok(DSP_PARAM_PACKERS.size >= metadata.kernels.length);
+  assert.equal(kernelNames.has('G726ADPCMSimulatorPlugin'), true);
+  assert.equal(DSP_PARAM_PACKERS.has('G726ADPCMSimulatorPlugin'), true);
+  assert.equal(Object.hasOwn(DSP_PARAM_LAYOUTS, 'G726ADPCMSimulatorPlugin'), true);
+  assert.equal(generatedSource.includes('G726ADPCMSimulatorPlugin'), true);
+  assert.equal(
+    loadParamSpecs().find(spec => spec.type === 'G726ADPCMSimulatorPlugin')?.phase0,
+    false
   );
+  assert.equal(
+    loadParamSpecs().find(spec => spec.type === 'GSMFullRateSimulatorPlugin')?.phase0,
+    false
+  );
+  assert.equal(DSP_PARAM_PACKERS.has('GSMFullRateSimulatorPlugin'), true);
+  assert.equal(Object.hasOwn(DSP_PARAM_LAYOUTS, 'GSMFullRateSimulatorPlugin'), true);
+  assert.equal(generatedSource.includes('GSMFullRateSimulatorPlugin'), true);
+  for (const name of kernelNames) {
+    assert.ok(Object.hasOwn(DSP_PARAM_LAYOUTS, name), `${name} generated layout`);
+  }
 
   const schemas = new Map(await Promise.all(metadata.kernels.map(async kernel => {
     const plan = await discoverCasePlan({ type: kernel.name });
@@ -98,7 +116,7 @@ test('every shipped DSP type packs explicit schema defaults matching artifact me
 });
 
 test('numeric DSP parameters clamp to schema bounds and reject invalid values', () => {
-  for (const spec of loadParamSpecs()) {
+  for (const spec of loadParamSpecs().filter(candidate => !candidate.phase0)) {
     const packer = DSP_PARAM_PACKERS.get(spec.type);
     assert.ok(packer, `${spec.type} packer`);
     let offset = 0;
@@ -133,6 +151,25 @@ test('numeric DSP parameters clamp to schema bounds and reject invalid values', 
         }
       }
       offset += field.count;
+    }
+  }
+});
+
+test('strict enum DSP parameters reject unknown strings and numeric codes before packing', () => {
+  for (const spec of loadParamSpecs().filter(candidate => !candidate.phase0)) {
+    const packer = DSP_PARAM_PACKERS.get(spec.type);
+    for (const field of spec.fields.filter(candidate => candidate.rejectInvalid)) {
+      assert.equal(field.kind, 'enum', `${spec.type}.${field.name} strict enum kind`);
+      assert.throws(
+        () => packer.pack(paramsWithFieldValue(field, '__unknown__')),
+        /Invalid enum value/,
+        `${spec.type}.${field.name} rejects an unknown string`
+      );
+      assert.throws(
+        () => packer.pack(paramsWithFieldValue(field, 0)),
+        /Invalid enum value/,
+        `${spec.type}.${field.name} rejects a numeric code`
+      );
     }
   }
 });

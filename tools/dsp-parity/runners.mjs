@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { performance } from 'node:perf_hooks';
 import { DEFAULT_REPO_ROOT, pathExists } from './cases.mjs';
 import { readFloat32File, writeFloat32File } from './golden-io.mjs';
 import { DEFAULT_NOISE_SEED } from './stimuli.mjs';
@@ -37,8 +38,15 @@ const NATIVE_DIRECT_REFERENCE_ENGINES = new Set([
   'native-room-eq-direct-double-v1'
 ]);
 
+export const PRODUCTION_NATIVE_PROMOTED_REFERENCE_ENGINE =
+  'production-native-promoted-v1';
+
 export function isNativeDirectReferenceEngine(value) {
   return NATIVE_DIRECT_REFERENCE_ENGINES.has(value);
+}
+
+export function isProductionNativePromotedReferenceEngine(value) {
+  return value === PRODUCTION_NATIVE_PROMOTED_REFERENCE_ENGINE;
 }
 
 export function seedWords(seed = DEFAULT_NOISE_SEED) {
@@ -519,6 +527,43 @@ function copyOutputBlock(source, output, frames, channels, startFrame, blockFram
   }
 }
 
+export function createProcessTimer(timingSource = 'wall', clocks = {}) {
+  if (timingSource === 'wall') {
+    const now = clocks.performanceNow ?? (() => performance.now());
+    return {
+      clock: 'high-resolution-wall',
+      start: now,
+      elapsedMilliseconds: started => now() - started
+    };
+  }
+  if (timingSource !== 'cpu') {
+    throw new Error(`Unknown process timing source ${timingSource}`);
+  }
+
+  const threadCpuUsage = clocks.threadCpuUsage ??
+    (typeof process.threadCpuUsage === 'function' ? process.threadCpuUsage.bind(process) : null);
+  if (threadCpuUsage) {
+    return {
+      clock: 'current-thread-cpu',
+      start: () => threadCpuUsage(),
+      elapsedMilliseconds: started => {
+        const elapsed = threadCpuUsage(started);
+        return (elapsed.user + elapsed.system) / 1000;
+      }
+    };
+  }
+
+  const cpuUsage = clocks.cpuUsage ?? process.cpuUsage.bind(process);
+  return {
+    clock: 'process-cpu',
+    start: () => cpuUsage(),
+    elapsedMilliseconds: started => {
+      const elapsed = cpuUsage(started);
+      return (elapsed.user + elapsed.system) / 1000;
+    }
+  };
+}
+
 export async function runWasmCase({
   type,
   testCase,
@@ -526,8 +571,17 @@ export async function runWasmCase({
   schema,
   variant = 'baseline',
   wasmPath = defaultWasmPath(variant),
-  repoRoot = DEFAULT_REPO_ROOT
+  repoRoot = DEFAULT_REPO_ROOT,
+  onProcess = null,
+  onProcessBatch = null,
+  onProcessBatchBoundary = null,
+  processBatchCalls = 1,
+  processWarmupCalls = 0,
+  collectOutput = true
 }) {
+  if (onProcessBatch && (!Number.isInteger(processBatchCalls) || processBatchCalls <= 0)) {
+    throw new Error('processBatchCalls must be a positive integer when onProcessBatch is used');
+  }
   const resolvedWasm = path.resolve(repoRoot, wasmPath);
   await requireFile(resolvedWasm, `${variant === 'simd' ? 'SIMD' : 'Baseline'} WASM DSP artifact`);
   const bytes = await fs.readFile(resolvedWasm);
@@ -688,10 +742,37 @@ export async function runWasmCase({
       }
       checkStatus('et_instance_reset', instanceReset(engine, dspInstance));
     }
+    if (processWarmupCalls > 0) {
+      if (!instanceReset) {
+        throw new Error('WASM DSP artifact is missing reset for process timing warmup');
+      }
+      const blockFrames = Math.min(testCase.blockSize, testCase.frames);
+      const audioPtr = arenaPtr(engine);
+      const audio = new Float32Array(memory.buffer, audioPtr, testCase.channels * blockFrames);
+      for (let call = 0; call < processWarmupCalls; call++) {
+        copyInputBlock(input, testCase.frames, testCase.channels, 0, blockFrames, audio);
+        checkStatus('et_instance_process timing warmup', instanceProcess(
+          engine,
+          dspInstance,
+          audioPtr,
+          testCase.channels,
+          blockFrames,
+          call * blockFrames / testCase.sampleRate
+        ));
+      }
+      checkStatus('et_instance_reset timing warmup', instanceReset(engine, dspInstance));
+    }
     const events = [...(testCase.events ?? [])].sort((left, right) => left.frame - right.frame);
     let eventIndex = 0;
-    const output = new Float32Array(input.length);
+    const output = collectOutput ? new Float32Array(input.length) : null;
+    const batchCpuTimer = onProcessBatch ? createProcessTimer('cpu') : null;
+    const batchWallTimer = onProcessBatch ? createProcessTimer('wall') : null;
+    let batchCpuStarted;
+    let batchWallStarted;
+    let batchCalls = 0;
+    let batchFrames = 0;
     let startFrame = 0;
+    onProcessBatchBoundary?.({ phase: 'start' });
     while (startFrame < testCase.frames) {
       while (eventIndex < events.length && events[eventIndex].frame === startFrame) {
         currentParams = { ...currentParams, ...(events[eventIndex].params ?? {}) };
@@ -704,17 +785,52 @@ export async function runWasmCase({
       const audioPtr = arenaPtr(engine);
       const audio = new Float32Array(memory.buffer, audioPtr, testCase.channels * blockFrames);
       copyInputBlock(input, testCase.frames, testCase.channels, startFrame, blockFrames, audio);
-      checkStatus('et_instance_process', instanceProcess(
+      if (onProcessBatch && batchCalls === 0) {
+        batchWallStarted = batchWallTimer.start();
+        batchCpuStarted = batchCpuTimer.start();
+      }
+      const processStarted = onProcess ? performance.now() : 0;
+      const processStatus = instanceProcess(
         engine,
         dspInstance,
         audioPtr,
         testCase.channels,
         blockFrames,
         startFrame / testCase.sampleRate
-      ));
-      copyOutputBlock(audio, output, testCase.frames, testCase.channels, startFrame, blockFrames);
+      );
+      if (onProcess) {
+        onProcess({
+          elapsedMilliseconds: performance.now() - processStarted,
+          blockFrames,
+          sampleRate: testCase.sampleRate,
+          clock: 'high-resolution-wall'
+        });
+      }
+      checkStatus('et_instance_process', processStatus);
+      batchCalls++;
+      batchFrames += blockFrames;
+      if (onProcessBatch &&
+          (batchCalls === processBatchCalls || startFrame + blockFrames === testCase.frames)) {
+        const elapsedMilliseconds = batchCpuTimer.elapsedMilliseconds(batchCpuStarted);
+        const wallElapsedMilliseconds = batchWallTimer.elapsedMilliseconds(batchWallStarted);
+        onProcessBatch({
+          elapsedMilliseconds,
+          wallElapsedMilliseconds,
+          blockFrames: batchFrames,
+          processCalls: batchCalls,
+          sampleRate: testCase.sampleRate,
+          clock: batchCpuTimer.clock,
+          wallClock: batchWallTimer.clock
+        });
+        batchCalls = 0;
+        batchFrames = 0;
+      }
+      if (output) {
+        copyOutputBlock(audio, output, testCase.frames, testCase.channels, startFrame, blockFrames);
+      }
       startFrame += blockFrames;
     }
+    onProcessBatchBoundary?.({ phase: 'end' });
     return output;
   } finally {
     if (paramsPtr && free) free(paramsPtr);

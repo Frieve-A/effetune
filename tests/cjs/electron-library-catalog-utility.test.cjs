@@ -9,7 +9,8 @@ const test = require('node:test');
 
 const {
   LIBRARY_CATALOG_UTILITY_PROTOCOL_VERSION,
-  LibraryCatalogUtilityHost
+  LibraryCatalogUtilityHost,
+  UTILITY_OPEN_ABSOLUTE_TIMEOUT_MS
 } = require('../../electron/library-catalog-utility-host.cjs');
 const { createLibraryDialogTranslator } = require('../../electron/library-dialog-localization.cjs');
 const { MetadataWorkerPool } = require('../../electron/library-metadata-worker-pool.cjs');
@@ -350,4 +351,135 @@ test('utility open times out and terminates a child that never becomes ready', a
     error => error?.code === 'utilityOpenTimeout'
   );
   assert.equal(child.killed, true);
+});
+
+test('utility open keeps waiting while a slow child reports heartbeats', async () => {
+  const idleTimeoutMs = 40;
+  const child = new EventEmitter();
+  child.sent = [];
+  child.killed = false;
+  child.kill = () => { child.killed = true; };
+  let heartbeatTimer = null;
+  child.postMessage = message => {
+    child.sent.push(message);
+    if (message.type !== 'initialize') return;
+    let beats = 0;
+    heartbeatTimer = setInterval(() => {
+      beats += 1;
+      child.emit('message', {
+        protocolVersion: LIBRARY_CATALOG_UTILITY_PROTOCOL_VERSION,
+        type: 'heartbeat'
+      });
+      // Ready only after several idle windows have elapsed.
+      if (beats < 12) return;
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+      child.emit('message', {
+        protocolVersion: LIBRARY_CATALOG_UTILITY_PROTOCOL_VERSION,
+        type: 'ready', ok: true, payload: { processId: 7 }
+      });
+    }, idleTimeoutMs / 4);
+  };
+
+  const startedAt = Date.now();
+  const host = await LibraryCatalogUtilityHost.open({
+    dialog: { async showOpenDialog() { return { canceled: true, filePaths: [] }; } },
+    processFactory: () => child,
+    dbPath: TEST_DB_PATH,
+    openTimeoutMs: idleTimeoutMs,
+    closeTimeoutMs: 20
+  });
+
+  assert.ok(Date.now() - startedAt > idleTimeoutMs, 'startup must outlive a single idle window');
+  assert.equal(child.killed, false);
+  assert.equal(host.failure, null);
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
+  await host.close();
+});
+
+test('utility open gives up when heartbeats stop before readiness', async () => {
+  const idleTimeoutMs = 40;
+  const child = new EventEmitter();
+  child.sent = [];
+  child.killed = false;
+  child.kill = () => { child.killed = true; };
+  child.postMessage = message => {
+    child.sent.push(message);
+    if (message.type !== 'initialize') return;
+    let beats = 0;
+    const timer = setInterval(() => {
+      beats += 1;
+      if (beats > 3) {
+        clearInterval(timer);
+        return;
+      }
+      child.emit('message', {
+        protocolVersion: LIBRARY_CATALOG_UTILITY_PROTOCOL_VERSION,
+        type: 'heartbeat'
+      });
+    }, idleTimeoutMs / 4);
+  };
+
+  await assert.rejects(
+    LibraryCatalogUtilityHost.open({
+      dialog: { async showOpenDialog() { return { canceled: true, filePaths: [] }; } },
+      processFactory: () => child,
+      dbPath: TEST_DB_PATH,
+      openTimeoutMs: idleTimeoutMs,
+      closeTimeoutMs: 20
+    }),
+    error => error?.code === 'utilityOpenTimeout'
+  );
+  assert.equal(child.killed, true);
+});
+
+test('utility open gives up on a wedged child that only ever heartbeats', async () => {
+  // The heartbeat runs on the utility's main thread while the catalog opens on a
+  // worker thread, so an endlessly heartbeating child can still be wedged. The
+  // absolute deadline must settle the open so the recovery flow stays reachable.
+  // The shipped ceiling must stay far above any healthy-but-slow open (post-update
+  // collation rebuild, serial grant rehydration over offline SMB paths), otherwise
+  // it reintroduces the false "reset the saved Library catalog" prompt on launch.
+  assert.ok(UTILITY_OPEN_ABSOLUTE_TIMEOUT_MS >= 600000);
+  const idleTimeoutMs = 40;
+  const absoluteTimeoutMs = 80;
+  const child = new EventEmitter();
+  child.sent = [];
+  child.killed = false;
+  child.kill = () => { child.killed = true; };
+  let heartbeatTimer = null;
+  child.postMessage = message => {
+    child.sent.push(message);
+    if (message.type !== 'initialize') return;
+    heartbeatTimer = setInterval(() => {
+      child.emit('message', {
+        protocolVersion: LIBRARY_CATALOG_UTILITY_PROTOCOL_VERSION,
+        type: 'heartbeat'
+      });
+    }, idleTimeoutMs / 4);
+  };
+
+  await assert.rejects(
+    LibraryCatalogUtilityHost.open({
+      dialog: { async showOpenDialog() { return { canceled: true, filePaths: [] }; } },
+      processFactory: () => child,
+      dbPath: TEST_DB_PATH,
+      openTimeoutMs: idleTimeoutMs,
+      openAbsoluteTimeoutMs: absoluteTimeoutMs,
+      closeTimeoutMs: 20
+    }),
+    error => error?.code === 'utilityOpenTimeout' &&
+      /did not complete within 80 ms/.test(error.message)
+  );
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
+  assert.equal(child.killed, true);
+});
+
+test('the utility process heartbeats while it initializes', async () => {
+  const utilitySource = await fs.readFile(
+    path.join(__dirname, '../../electron/library-catalog-utility.cjs'), 'utf8'
+  );
+  assert.match(utilitySource, /startHeartbeat\(\);/);
+  assert.match(utilitySource, /setInterval\(\(\) => post\(\{ type: 'heartbeat' \}\), UTILITY_HEARTBEAT_INTERVAL_MS\)/);
+  assert.match(utilitySource, /function ready\(ok, payload, error\) \{\s*stopHeartbeat\(\);/);
 });

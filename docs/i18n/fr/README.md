@@ -344,8 +344,12 @@ Si le souci persiste, signalez-le sur [GitHub Issues](https://github.com/Frieve-
 | Lo-Fi     | Digital Error Emulator | Simule diverses erreurs de transmission audio numérique et caractéristiques d'équipements numériques vintage | [Détails](plugins/lofi.md#digital-error-emulator) |
 | Lo-Fi     | DSD64 IMD Simulator | Simule la distorsion d'intermodulation audible issue du bruit ultrasonique du DSD64 | [Détails](plugins/lofi.md#dsd64-imd-simulator) |
 | Lo-Fi     | FM Radio Simulator | Fait passer la musique par une chaîne d'émission et de réception FM simulée physiquement | [Détails](plugins/lofi.md#fm-radio-simulator) |
+| Lo-Fi     | G.726 Simulator | Simule un aller-retour d’encodage/décodage vocal ITU-T G.726 avec une liaison radio bruitée facultative | [Détails](plugins/lofi.md#g726-simulator) |
+| Lo-Fi     | GSM-FR Simulator | Simule un aller-retour d’encodage/décodage vocal GSM-FR à 13 kbit/s sur liaison radio avec masquage des pertes de trames | [Détails](plugins/lofi.md#gsm-fr-simulator) |
 | Lo-Fi     | Hum Generator | Ajoute une ambiance de ronflement électrique 50/60 Hz contrôlable pour une écoute vintage/lo-fi | [Détails](plugins/lofi.md#hum-generator) |
+| Lo-Fi     | MP3 Codec Simulator | Simule un aller-retour propre d’encodage/décodage MPEG Layer III à faible débit | [Détails](plugins/lofi.md#mp3-codec-simulator) |
 | Lo-Fi     | Noise Blender | Ajoute une texture de bruit de fond réglable pour une ambiance lo-fi | [Détails](plugins/lofi.md#noise-blender) |
+| Lo-Fi     | SBC Codec Simulator | Reproduit un aller-retour d'encodage/décodage Bluetooth A2DP SBC avec pertes de paquets et masquage facultatifs | [Détails](plugins/lofi.md#sbc-codec-simulator) |
 | Lo-Fi     | Simple Jitter | Simulation de gigue numérique | [Détails](plugins/lofi.md#simple-jitter) |
 | Lo-Fi     | SW Radio Simulator | Fait passer la musique dans une chaîne modélisée d'émission en ondes courtes, de propagation ionosphérique et de réception | [Détails](plugins/lofi.md#sw-radio-simulator) |
 | Lo-Fi     | Vinyl Artifacts | Ajoute des pops, crépitements, souffle, rumble et fuite de bruit stéréo façon vinyle | [Détails](plugins/lofi.md#vinyl-artifacts) |

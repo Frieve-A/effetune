@@ -1,0 +1,34 @@
+{
+  "formatVersion": 1,
+  "type": "MP3CodecSimulatorPlugin",
+  "id": "mpeg1-default-program",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 8193,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "cr": "44.1 kHz (MPEG-1)",
+    "br": "64",
+    "sm": "Joint Stereo",
+    "rv": true,
+    "og": 0,
+    "mx": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00002,
+    "rel": 0.00002,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:21e5572f38b5bf9858e89e4d28f95acfef9546811d8098fdbd45dbaa78b5ea24",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type MP3CodecSimulatorPlugin --promote-production-native --mp3-decoder <independent-mp3-decoder>",
+  "outputFloats": 16386,
+  "byteLength": 65544,
+  "binary": "case-001.f32"
+}

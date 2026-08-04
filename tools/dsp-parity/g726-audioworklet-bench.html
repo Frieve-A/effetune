@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>G.726 AudioWorklet benchmark</title>
+</head>
+<body>
+  <script type="module">
+    import {
+      G726ADPCMSimulatorPlugin_PARAMS_HASH,
+      VolumePlugin_PARAMS_HASH,
+      packG726ADPCMSimulatorPluginParams,
+      packVolumePluginParams
+    } from '/js/audio/dsp-params.generated.js';
+
+    const SUPPORTED_SAMPLE_RATES = Object.freeze([
+      44100, 48000, 88200, 96000, 176400, 192000, 352800, 384000
+    ]);
+    let resource = null;
+
+    function createMessageObserver(port) {
+      const messages = [];
+      const waiters = new Set();
+      port.onmessage = event => {
+        const message = event.data;
+        messages.push(message);
+        for (const waiter of [...waiters]) {
+          if (!waiter.predicate(message)) continue;
+          waiters.delete(waiter);
+          clearTimeout(waiter.timeout);
+          waiter.resolve(message);
+        }
+      };
+      return {
+        waitFor(predicate, timeoutMs = 15_000) {
+          const existing = messages.find(predicate);
+          if (existing) return Promise.resolve(existing);
+          return new Promise((resolve, reject) => {
+            const waiter = { predicate, resolve, reject, timeout: null };
+            waiter.timeout = setTimeout(() => {
+              waiters.delete(waiter);
+              reject(new Error('Timed out waiting for an AudioWorklet message.'));
+            }, timeoutMs);
+            waiters.add(waiter);
+          });
+        },
+        dispose() {
+          for (const waiter of waiters) {
+            clearTimeout(waiter.timeout);
+            waiter.reject(new Error('AudioWorklet message observer disposed.'));
+          }
+          waiters.clear();
+          port.onmessage = null;
+        }
+      };
+    }
+
+    async function initialize({
+      sampleRate,
+      artifactUrl,
+      simd,
+      pluginType = 'G726ADPCMSimulatorPlugin'
+    }) {
+      if (resource) throw new Error('G.726 benchmark is already initialized.');
+      const context = new AudioContext({ sampleRate, latencyHint: 'interactive' });
+      let node;
+      let source;
+      let outputGain;
+      let observer;
+      try {
+        if (context.sampleRate !== sampleRate) {
+          throw new Error(`Requested ${sampleRate} Hz, received ${context.sampleRate} Hz.`);
+        }
+        await context.audioWorklet.addModule('/plugins/audio-processor.js');
+        node = new AudioWorkletNode(context, 'plugin-processor', {
+          numberOfInputs: 1,
+          numberOfOutputs: 1,
+          outputChannelCount: [2],
+          channelCount: 2,
+          channelCountMode: 'explicit',
+          processorOptions: {
+            initialOutputChannelCount: 2,
+            lowLatencyMode: true
+          }
+        });
+        observer = createMessageObserver(node.port);
+        source = new OscillatorNode(context, { frequency: 997, type: 'sine' });
+        outputGain = new GainNode(context, { gain: 0 });
+        source.connect(node).connect(outputGain).connect(context.destination);
+        source.start();
+        await context.resume();
+        if (context.state !== 'running') throw new Error('AudioContext did not start.');
+
+        const artifactResponse = await fetch(artifactUrl);
+        if (!artifactResponse.ok) {
+          throw new Error(`Unable to load DSP artifact: HTTP ${artifactResponse.status}.`);
+        }
+        const bytes = await artifactResponse.arrayBuffer();
+        const identity = pluginType === 'VolumePlugin';
+        const plugin = {
+          id: 1,
+          type: pluginType,
+          enabled: true,
+          inputBus: 0,
+          outputBus: 0,
+          channel: null,
+          parameters: identity
+            ? { vl: 0, enabled: true }
+            : { br: '40', og: 0, mx: 100, enabled: true },
+          wasmParams: identity
+            ? packVolumePluginParams({ vl: 0 })
+            : packG726ADPCMSimulatorPluginParams({ br: '40', og: 0, mx: 100 }),
+          wasmParamsHash: identity
+            ? VolumePlugin_PARAMS_HASH
+            : G726ADPCMSimulatorPlugin_PARAMS_HASH,
+          executionCapabilities: {
+            requiresWasm: true,
+            supportedSampleRates: SUPPORTED_SAMPLE_RATES,
+            supportedChannelModes: ['mono', 'stereo-pair']
+          }
+        };
+        node.port.postMessage({
+          type: 'registerProcessor',
+          pluginType: plugin.type,
+          processor: 'return data;'
+        });
+        node.port.postMessage({
+          type: 'updateAudioConfig',
+          outputChannels: 2,
+          lowLatencyMode: true,
+          sampleRate
+        });
+        node.port.postMessage({ type: 'updatePlugins', plugins: [plugin], masterBypass: false });
+        node.port.postMessage({ type: 'dspEnableTypes', types: [plugin.type] });
+        node.port.postMessage({ type: 'dspModule', bytes, simd }, [bytes]);
+
+        const ready = await observer.waitFor(message =>
+          message?.type === 'dspReady' || message?.type === 'dspFailed'
+        );
+        if (ready.type === 'dspFailed') {
+          throw new Error(`DSP initialization failed at ${ready.stage}: ${ready.error}`);
+        }
+        if (ready.simd !== simd) throw new Error('AudioWorklet loaded the wrong DSP variant.');
+        await observer.waitFor(message =>
+          message?.type === 'dspExecutionState' &&
+          message.pluginId === plugin.id &&
+          message.state === 'active'
+        );
+        resource = { context, node, source, outputGain, observer };
+        await new Promise(resolve => setTimeout(resolve, 1_000));
+        return {
+          requestedSampleRate: sampleRate,
+          actualSampleRate: context.sampleRate,
+          state: context.state,
+          simd: ready.simd,
+          pluginType,
+          baseLatency: context.baseLatency
+        };
+      } catch (error) {
+        observer?.dispose();
+        try { source?.stop(); } catch {}
+        source?.disconnect();
+        node?.disconnect();
+        outputGain?.disconnect();
+        await context.close().catch(() => {});
+        throw error;
+      }
+    }
+
+    async function measure(durationMs) {
+      if (!resource || resource.context.state !== 'running') {
+        throw new Error('G.726 benchmark is not running.');
+      }
+      const startTime = resource.context.currentTime;
+      await new Promise(resolve => setTimeout(resolve, durationMs));
+      await resource.context.suspend();
+      return {
+        contextSeconds: resource.context.currentTime - startTime,
+        state: resource.context.state
+      };
+    }
+
+    async function close() {
+      if (!resource) return;
+      const current = resource;
+      resource = null;
+      current.observer.dispose();
+      try { current.source.stop(); } catch {}
+      current.source.disconnect();
+      current.node.disconnect();
+      current.outputGain.disconnect();
+      await current.context.close();
+    }
+
+    window.g726AudioWorkletBench = { initialize, measure, close };
+  </script>
+</body>
+</html>

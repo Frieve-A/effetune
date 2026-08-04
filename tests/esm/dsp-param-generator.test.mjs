@@ -22,6 +22,69 @@ test('DSP layout hash changes when enum value order changes', () => {
   assert.notEqual(computeLayoutHash(fields), computeLayoutHash(reorderedFields));
 });
 
+test('Phase 0 schemas generate C++ bindings without entering renderer JavaScript', () => {
+  const production = validateParamSpec({
+    type: 'ProductionProbe',
+    tolerance: { abs: 1e-6 },
+    fields: []
+  });
+  const phase0 = validateParamSpec({
+    type: 'Phase0Probe',
+    phase0: true,
+    tolerance: { abs: 1e-6 },
+    fields: [{
+      name: 'gain', key: 'gn', kind: 'float', min: -1, max: 1, default: 0
+    }]
+  });
+  const outputs = generateOutputs([production, phase0]);
+  const generatedJs = [...outputs.entries()]
+    .find(([file]) => file.endsWith('dsp-params.generated.js'))[1];
+
+  assert.equal(production.phase0, false);
+  assert.equal(phase0.phase0, true);
+  assert.ok([...outputs.keys()].some(file => file.endsWith('Phase0ProbeParams.h')));
+  assert.match(generatedJs, /ProductionProbe/);
+  assert.doesNotMatch(generatedJs, /Phase0Probe/);
+  assert.throws(
+    () => validateParamSpec({
+      type: 'InvalidPhase0Probe',
+      phase0: 'yes',
+      tolerance: { abs: 1e-6 },
+      fields: []
+    }),
+    /phase0 must be true or false/
+  );
+});
+
+test('DSP parameter generator can reject invalid enum values before packing', async () => {
+  const spec = validateParamSpec({
+    type: 'StrictEnumProbe',
+    tolerance: { abs: 1e-6 },
+    fields: [{
+      name: 'mode',
+      key: 'mode',
+      kind: 'enum',
+      values: ['line', 'power'],
+      default: 'line',
+      rejectInvalid: true
+    }]
+  });
+  const generatedJs = [...generateOutputs([spec]).entries()]
+    .find(([file]) => file.endsWith('dsp-params.generated.js'))[1];
+  const module = await import(`data:text/javascript,${encodeURIComponent(generatedJs)}`);
+
+  assert.deepEqual([...module.packStrictEnumProbeParams({})], [0]);
+  assert.deepEqual([...module.packStrictEnumProbeParams({ mode: 'power' })], [1]);
+  assert.throws(
+    () => module.packStrictEnumProbeParams({ mode: 'unknown' }),
+    /Invalid enum value for mode/
+  );
+  assert.throws(
+    () => module.packStrictEnumProbeParams({ mode: 1 }),
+    /Invalid enum value for mode/
+  );
+});
+
 test('DSP parameter generator escapes values embedded in JavaScript source', async t => {
   const probeName = '__effetuneDspCodegenProbe';
   const hostileKey = `gain</script>\u2028\u2029"];globalThis.${probeName}=true;//`;

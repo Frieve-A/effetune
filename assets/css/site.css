@@ -613,7 +613,7 @@ install.button > a {
 
 .dsp-demo-frame {
   width: 100%;
-  min-height: 25rem;
+  min-height: 42rem;
   border: 1px solid var(--line);
   border-radius: var(--radius);
 }
@@ -1327,7 +1327,7 @@ install.button > a {
   }
 
   .dsp-demo-frame {
-    min-height: 32rem;
+    min-height: 58rem;
   }
 }
 
